@@ -106,6 +106,10 @@ import {
   EventCoverMediaError,
   updatePublishedEventCoverMedia,
 } from "../../services/eventCoverMediaService";
+// ORCH-0824 hotfix (Option B): post-publish RPC for the 5 new taxonomy
+// + city fields. Bridges the local-only EditPublishedScreen save flow to
+// the events DB row so legacy events become Discover-eligible after edit.
+import { patchPublishedEventTaxonomy } from "../../services/businessEvents";
 import { businessEventKeys } from "../../hooks/useBusinessEvents";
 import { publicEventKeys } from "../../hooks/usePublicEvents";
 import { useEventHasWebPurchases } from "../../hooks/useEventOrders";
@@ -142,6 +146,29 @@ const COVER_MEDIA_PATCH_KEYS = new Set<keyof EditableLiveEventFields>([
   "coverMediaAlt",
 ]);
 
+// ORCH-0824 hotfix (Option B): keys whose patches now have a server-side
+// mutation path via `business_patch_event_taxonomy` RPC. When the patch
+// touches ONLY these (or these + cover media), the
+// disableLocalSaveReason gate is lifted because the server side IS
+// reachable. Any other field still triggers the gate because no server
+// mutation exists for it.
+const ORCH_0824_PATCH_KEYS = new Set<keyof EditableLiveEventFields>([
+  "partyTypes",
+  "vibeTags",
+  "musicGenres",
+  "city",
+  "locationGeo",
+  // ORCH-0824 hotfix-5: address re-picks via Google Places autocomplete
+  // set address + city + locationGeo together. The patch RPC accepts a
+  // p_location_text parameter that updates events.location_text.
+  "address",
+]);
+
+const SERVER_EDITABLE_PATCH_KEYS = new Set<keyof EditableLiveEventFields>([
+  ...COVER_MEDIA_PATCH_KEYS,
+  ...ORCH_0824_PATCH_KEYS,
+]);
+
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -152,6 +179,19 @@ const isCoverMediaOnlyPatch = (
   return (
     keys.length > 0 &&
     keys.every((key) => COVER_MEDIA_PATCH_KEYS.has(key))
+  );
+};
+
+// ORCH-0824 hotfix: patch contains only fields that have a server
+// mutation path (cover media + ORCH-0824 taxonomy/city). Used to lift
+// the disableLocalSaveReason gate for server-editable patches.
+const isServerEditableOnlyPatch = (
+  patch: Partial<EditableLiveEventFields>,
+): boolean => {
+  const keys = Object.keys(patch) as (keyof EditableLiveEventFields)[];
+  return (
+    keys.length > 0 &&
+    keys.every((key) => SERVER_EDITABLE_PATCH_KEYS.has(key))
   );
 };
 
@@ -330,8 +370,13 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
     () => editableDraftToPatch(liveEvent, editState),
     [liveEvent, editState],
   );
+  // ORCH-0824 hotfix: allow Save through when the disable gate is set
+  // AND the patch contains ONLY server-editable fields (cover media OR
+  // ORCH-0824 taxonomy/city). Pre-ORCH-0824 this only allowed cover-only
+  // patches; the new name reflects the broadened set.
   const canSaveServerCoverMediaOnly =
-    disableLocalSaveReason !== undefined && isCoverMediaOnlyPatch(currentPatch);
+    disableLocalSaveReason !== undefined &&
+    isServerEditableOnlyPatch(currentPatch);
 
   // ---- Save flow ----
   const handleSavePress = useCallback((): void => {
@@ -361,7 +406,14 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
       showToast("No changes to save.");
       return;
     }
-    if (disableLocalSaveReason !== undefined && !isCoverMediaOnlyPatch(patch)) {
+    if (
+      disableLocalSaveReason !== undefined &&
+      !isServerEditableOnlyPatch(patch)
+    ) {
+      // ORCH-0824 hotfix: only block when the patch contains a field
+      // with no server mutation path. Cover media OR ORCH-0824
+      // taxonomy/city are now both routable through their respective
+      // server endpoints, so they pass the gate.
       showToast(disableLocalSaveReason);
       return;
     }
@@ -616,7 +668,101 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
           return;
         }
       }
-      if (disableLocalSaveReason !== undefined && isCoverMediaOnlyPatch(patch)) {
+      // ORCH-0824 hotfix (Option B): if the patch touches any of the 5
+      // ORCH-0824 fields, push them to the events row via the post-publish
+      // RPC BEFORE the unified server-editable early-return. Server
+      // failure aborts; local stays in sync with the DB. This is the only
+      // field-set in EditPublishedScreen (besides cover media) that has a
+      // server-side propagation path.
+      const taxonomyPatchPresent =
+        patch.city !== undefined ||
+        patch.partyTypes !== undefined ||
+        patch.vibeTags !== undefined ||
+        patch.musicGenres !== undefined ||
+        patch.locationGeo !== undefined ||
+        // ORCH-0824 hotfix-5: address re-picks (via Google Places) flow
+        // through the same patch RPC.
+        patch.address !== undefined;
+      if (taxonomyPatchPresent) {
+        if (liveEvent.serverEventId === null) {
+          setSubmitting(false);
+          setModal((prev) => ({ ...prev, visible: false }));
+          showToast(
+            "Save failed because this event is missing its server id.",
+          );
+          return;
+        }
+        // Compose final values: patch keys win, else fall through to the
+        // original LiveEvent values. `!== undefined` (not nullish) so an
+        // explicit null clear (e.g. user clears autocomplete) is honored.
+        const finalCity =
+          patch.city !== undefined ? patch.city : liveEvent.city ?? null;
+        const finalPartyTypes =
+          patch.partyTypes ?? liveEvent.partyTypes ?? [];
+        const finalVibeTags =
+          patch.vibeTags ?? liveEvent.vibeTags ?? [];
+        const finalMusicGenres =
+          patch.musicGenres ?? liveEvent.musicGenres ?? [];
+        const finalLocationGeo =
+          patch.locationGeo !== undefined
+            ? patch.locationGeo
+            : liveEvent.locationGeo ?? null;
+        // ORCH-0824 hotfix-5: send formatted address only when it
+        // changed. Null tells the RPC "leave location_text alone."
+        const finalLocationText =
+          patch.address !== undefined ? patch.address : null;
+
+        try {
+          await patchPublishedEventTaxonomy({
+            eventId: liveEvent.serverEventId,
+            city: finalCity ?? "",
+            partyTypes: finalPartyTypes,
+            vibeTags: finalVibeTags,
+            musicGenres: finalMusicGenres,
+            locationGeo: finalLocationGeo,
+            locationText: finalLocationText,
+          });
+          // Invalidate any cached business-event reads so a re-open of
+          // this event sees the freshly-written DB row.
+          invalidateServerEventCaches();
+        } catch (error) {
+          setSubmitting(false);
+          setModal((prev) => ({ ...prev, visible: false }));
+          const code =
+            error instanceof Error ? error.message : "patch_failed";
+          // Map RPC error codes to user-friendly copy. Unknown codes fall
+          // back to a generic retry message — never blame the user.
+          const message =
+            code === "city_required"
+              ? "Pick the venue address from the suggestions so we have a city."
+              : code === "party_types_required"
+                ? "Pick at least one party type before saving."
+                : code === "party_types_not_canonical" ||
+                    code === "vibe_tags_not_canonical" ||
+                    code === "music_genres_not_canonical"
+                  ? "One of the selected tags is no longer supported. Pick again."
+                  : code === "insufficient_event_permission"
+                    ? "You don't have permission to edit this event."
+                    : code === "event_not_editable_status"
+                      ? "This event can't be edited (it may be ended or cancelled)."
+                      : "Couldn't save your changes. Tap to try again.";
+          showToast(message);
+          return;
+        }
+      }
+
+      // ORCH-0824 hotfix: unified early-return for server-editable-only
+      // patches when the local Zustand event isn't available
+      // (disableLocalSaveReason is set when liveEvent === null at the
+      // route layer, i.e., the user is editing a server-loaded event).
+      // Both cover-media and ORCH-0824 taxonomy/city have completed
+      // server-side at this point; the local updateLiveEventFields would
+      // fail with `event_not_found` because there's no Zustand row to
+      // mutate. Skip it cleanly with a success toast + navigate.
+      if (
+        disableLocalSaveReason !== undefined &&
+        isServerEditableOnlyPatch(patch)
+      ) {
         invalidateServerEventCaches();
         setSubmitting(false);
         setModal((prev) => ({ ...prev, visible: false }));
@@ -630,6 +776,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         }, TOAST_NAV_DELAY_MS);
         return;
       }
+
       const result = updateLiveEventFields(
         liveEvent.id,
         patch,

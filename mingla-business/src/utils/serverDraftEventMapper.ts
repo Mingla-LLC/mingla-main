@@ -47,6 +47,13 @@ export interface ServerDraftEventRow {
   updated_at: string;
   published_at: string | null;
   deleted_at: string | null;
+  // ORCH-0824: top-level taxonomy + city columns. Optional on the row
+  // type because legacy rows pre-migration may not have them populated.
+  city?: string | null;
+  party_types?: string[] | null;
+  vibe_tags?: string[] | null;
+  music_genres?: string[] | null;
+  location_geo?: string | { x: number; y: number } | null;
 }
 
 export interface ServerDraftEventInsert {
@@ -102,7 +109,15 @@ export interface BusinessDraftPayload {
   schemaVersion: number;
   legacyLocalDraftId: string | null;
   format: DraftEventFormat;
-  category: string | null;
+  // ORCH-0824: replaces the deprecated single-select `category` field.
+  // partyTypes is multi-select; required at publish (>= 1). vibeTags
+  // and musicGenres are multi-select; optional. city is populated from
+  // Google Places autocomplete; required at publish.
+  partyTypes: string[];
+  vibeTags: string[];
+  musicGenres: string[];
+  city: string | null;
+  locationGeo: { lat: number; lng: number } | null;
   requestedVisibility: DraftEventVisibility;
   coverHue: number;
   coverProvider: {
@@ -247,7 +262,13 @@ const buildBusinessDraftPayload = (
   schemaVersion: BUSINESS_DRAFT_SCHEMA_VERSION,
   legacyLocalDraftId,
   format: draft.format,
-  category: draft.category,
+  // ORCH-0824: send the three taxonomy arrays + city + locationGeo so the
+  // publish RPC can promote them to top-level events columns.
+  partyTypes: draft.partyTypes,
+  vibeTags: draft.vibeTags,
+  musicGenres: draft.musicGenres,
+  city: draft.city,
+  locationGeo: draft.locationGeo,
   requestedVisibility: draft.visibility,
   coverHue: draft.coverHue,
   coverProvider: {
@@ -411,7 +432,21 @@ export const serverRowToDraft = (row: ServerDraftEventRow): DraftEvent => {
     name: row.title === "Untitled draft" ? "" : row.title,
     description: row.description ?? "",
     format,
-    category: asStringOrNull(businessDraft.category),
+    // ORCH-0824: read taxonomy from TOP-LEVEL row columns (canonical post
+    // ORCH-0824 migration). Legacy rows without these columns fall back
+    // to empty arrays — the wizard validator will force re-selection on
+    // republish. Do NOT read businessDraft.partyTypes/etc. — those are
+    // ephemeral payload mirrors that the publish RPC strips. See
+    // feedback_verify_db_column_names_before_writing_queries.md.
+    partyTypes: Array.isArray(row.party_types)
+      ? row.party_types.filter((s): s is string => typeof s === "string")
+      : [],
+    vibeTags: Array.isArray(row.vibe_tags)
+      ? row.vibe_tags.filter((s): s is string => typeof s === "string")
+      : [],
+    musicGenres: Array.isArray(row.music_genres)
+      ? row.music_genres.filter((s): s is string => typeof s === "string")
+      : [],
     whenMode,
     date: asStringOrNull(when.date),
     doorsOpen: asStringOrNull(when.doorsOpen),
@@ -428,6 +463,22 @@ export const serverRowToDraft = (row: ServerDraftEventRow): DraftEvent => {
       : null,
     venueName: asStringOrNull(location.venueName),
     address: asStringOrNull(location.address),
+    // ORCH-0824: city from top-level column. locationGeo is parsed from
+    // the Postgres `point` representation (string "(lng,lat)" OR object
+    // {x,y}). Empty point → null.
+    city: asStringOrNull(row.city),
+    locationGeo: ((): { lat: number; lng: number } | null => {
+      const g = row.location_geo;
+      if (g == null) return null;
+      if (typeof g === "string") {
+        const m = g.match(/^\(([-\d.]+),([-\d.]+)\)$/);
+        return m ? { lng: Number(m[1]), lat: Number(m[2]) } : null;
+      }
+      if (typeof g === "object" && typeof g.x === "number" && typeof g.y === "number") {
+        return { lng: g.x, lat: g.y };
+      }
+      return null;
+    })(),
     onlineUrl: row.online_url,
     hideAddressUntilTicket: asBoolean(
       businessDraft.hideAddressUntilTicket,

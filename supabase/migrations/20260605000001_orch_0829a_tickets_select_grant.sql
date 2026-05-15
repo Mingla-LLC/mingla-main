@@ -1,0 +1,31 @@
+-- ORCH-0829-A: GRANT SELECT on public.tickets to the authenticated role
+-- so consumer buyers can read their own tickets via the existing RLS
+-- policy "Buyer or brand team can select tickets".
+--
+-- WHY: the RLS policy was already in place and correctly checks
+--   EXISTS (SELECT 1 FROM orders o WHERE o.id = tickets.order_id
+--           AND o.buyer_user_id IS NOT DISTINCT FROM auth.uid())
+-- but it never gets evaluated because PostgreSQL checks table-level
+-- GRANTs FIRST. Authenticated had DELETE / INSERT / UPDATE / REFERENCES /
+-- TRIGGER / TRUNCATE but was missing SELECT — so every consumer
+-- `SELECT FROM tickets` query died with `permission denied for table
+-- tickets` (PostgreSQL error code 42501) before RLS could allow it.
+--
+-- This was discovered during ORCH-0829-A QA live-fire — the consumer
+-- Calendar tab's `useBusinessEventOrders` query failed with the 42501
+-- error, surfacing a visible "[QUERY] ERROR businessEventOrders" banner
+-- on the Calendar tab. Without this grant, ORCH-0829-A Bug Y fix is
+-- non-functional in production despite the implementation being correct.
+--
+-- Security boundary preserved: this grant ONLY applies to the
+-- `authenticated` role (signed-in users), NOT to `anon`. Anon users
+-- still cannot read tickets at the table level. The RLS policy above
+-- further narrows the rows authenticated users can see to:
+--   (a) their own tickets (orders.buyer_user_id = auth.uid()), or
+--   (b) tickets for events whose brand they're a member of with read
+--       permission (`biz_is_brand_member_for_read`).
+--
+-- Evidence: Mingla_Artifacts/reports/QA_ORCH-0829_CHECKOUT_FLOW_REPORT.md
+-- §P0 — error logs, DB grant audit, and fix prescription.
+
+GRANT SELECT ON public.tickets TO authenticated;

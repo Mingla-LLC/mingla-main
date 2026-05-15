@@ -151,7 +151,7 @@ describe("EventCoverMedia presentation", () => {
     expect(publicPageSource).toContain("setMediaPlaybackActive(false)");
 
     const closeIndex = publicPageSource.indexOf("setMediaPlaybackActive(false)");
-    const replaceIndex = publicPageSource.indexOf('router.replace("/(tabs)/events"');
+    const replaceIndex = publicPageSource.indexOf('router.replace("/(tabs)/hub/events"');
     expect(closeIndex).toBeGreaterThan(-1);
     expect(replaceIndex).toBeGreaterThan(closeIndex);
     expect(publicPageSource).toContain("muted={coverVideoMuted}");

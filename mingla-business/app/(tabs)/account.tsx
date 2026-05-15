@@ -23,8 +23,10 @@ import { BrandSwitcherSheet } from "../../src/components/brand/BrandSwitcherShee
 import { GlassCard } from "../../src/components/ui/GlassCard";
 import { Icon } from "../../src/components/ui/Icon";
 import type { IconName } from "../../src/components/ui/Icon";
+import { IconChrome } from "../../src/components/ui/IconChrome";
 import { Toast } from "../../src/components/ui/Toast";
 import { TopBar } from "../../src/components/ui/TopBar";
+import { UniversalCreatorSheet } from "../../src/components/ui/UniversalCreatorSheet";
 import {
   accent,
   glass,
@@ -58,6 +60,8 @@ export default function AccountTab(): React.ReactElement {
   const setCurrentBrand = useCurrentBrandStore((s) => s.setCurrentBrand);
 
   const [sheetVisible, setSheetVisible] = useState<boolean>(false);
+  // ORCH-0826 M0: universal creator sheet (Create event/experience/trip)
+  const [isUniversalCreatorOpen, setIsUniversalCreatorOpen] = useState<boolean>(false);
   // Cycle 17e-A: BrandDeleteSheet state — opens from BrandSwitcherSheet trash
   // taps (operator selects which brand to delete from the switcher row UI).
   const [deleteSheetVisible, setDeleteSheetVisible] = useState<boolean>(false);
@@ -164,7 +168,19 @@ export default function AccountTab(): React.ReactElement {
   return (
     <View style={[styles.host, { paddingTop: insets.top }]}>
       <View style={styles.barWrap}>
-        <TopBar leftKind="brand" onBrandTap={handleOpenSwitcher} />
+        <TopBar
+          leftKind="brand"
+          onBrandTap={handleOpenSwitcher}
+          extraRightSlot={
+            <IconChrome
+              icon="plus"
+              size={36}
+              onPress={() => setIsUniversalCreatorOpen(true)}
+              accessibilityLabel="Create event, experience, or trip"
+              testID="account-universal-creator-button"
+            />
+          }
+        />
       </View>
       <ScrollView contentContainerStyle={styles.scroll}>
         {brandList.status === "ready" ? (
@@ -254,6 +270,12 @@ export default function AccountTab(): React.ReactElement {
         onClose={handleCloseSheet}
         onBrandCreated={handleBrandCreated}
         onRequestDeleteBrand={handleRequestDeleteBrand}
+      />
+
+      {/* ORCH-0826 M0: universal creator sheet (Create event/experience/trip) */}
+      <UniversalCreatorSheet
+        visible={isUniversalCreatorOpen}
+        onClose={() => setIsUniversalCreatorOpen(false)}
       />
 
       <BrandDeleteSheet

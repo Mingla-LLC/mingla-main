@@ -1,25 +1,12 @@
-import { useStripe } from "@stripe/stripe-react-native";
-import type {
-  PaymentSheetInitInput,
+// META-ORCH-0827 Pass 2 — native useStripePaymentSheet lives in @mingla/payments-native.
+// This file is a thin re-export so existing imports keep working (Metro
+// resolves stripePaymentSheet.native.ts on iOS/Android; .web.ts is the
+// stub web variant; .ts is the common fallback / type contract).
+export { useStripePaymentSheet } from "@mingla/payments-native";
+export type {
+  PaymentSheetError,
+  PaymentSheetErrorCode,
   PaymentSheetResult,
+  PaymentSheetInitInput,
   StripePaymentSheetController,
-} from "./stripePaymentSheet";
-import { normalizePaymentSheetResult } from "./normalizePaymentSheetResult";
-
-// ORCH-0789: preserve the Stripe RN PaymentSheetError discriminator so
-// callers can distinguish user-cancel ("Canceled") from card-decline
-// ("Failed") from "Timeout". The actual normalization is in
-// normalizePaymentSheetResult.ts (kept RN-free so it can be unit-tested
-// without the react-native runtime).
-export const useStripePaymentSheet = (): StripePaymentSheetController => {
-  const { initPaymentSheet, presentPaymentSheet } = useStripe();
-  return {
-    isPaymentSheetSupported: true,
-    initPaymentSheet: async (
-      input: PaymentSheetInitInput,
-    ): Promise<PaymentSheetResult> =>
-      normalizePaymentSheetResult(await initPaymentSheet(input)),
-    presentPaymentSheet: async (): Promise<PaymentSheetResult> =>
-      normalizePaymentSheetResult(await presentPaymentSheet()),
-  };
-};
+} from "@mingla/payments-native";

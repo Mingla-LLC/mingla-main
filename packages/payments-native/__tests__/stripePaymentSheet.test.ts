@@ -2,6 +2,8 @@
 // discriminator (Canceled / Failed / Timeout) so callers can distinguish
 // user-cancel from card-decline. Direct unit test against the exported
 // normalize function — no useStripe / RN runtime required.
+//
+// Migrated to @mingla/payments-native per META-ORCH-0827 Pass 2.
 
 import { describe, expect, test } from "@jest/globals";
 

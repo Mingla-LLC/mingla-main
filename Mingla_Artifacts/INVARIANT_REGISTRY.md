@@ -7,6 +7,23 @@
 
 ---
 
+### I-1.2-UNIFIED-EVENT-TYPE — every sellable thing in Mingla Business 1.2 is a row in `public.events` distinguished by `event_type` (ACTIVE — ratified by ORCH-0826 M0 CLOSE 2026-05-14)
+
+**Rule.** `public.events.event_type` is the unified-offering discriminator. Values: `'event'` (today's ticketed events — popup organizers; default), `'experience'` (single-intent venue offerings shipping in Ve5+), `'trip'` (multi-day curated packages shipping in Tr2+). Column constraints: `NOT NULL DEFAULT 'event' CHECK (event_type IN ('event','experience','trip'))`. No parallel offering tables — venue experiences and trip packages must INSERT into `events` with the appropriate `event_type`, not into separate tables.
+
+**Why.** ORCH-0826 (Mingla Business 1.2 M0) committed to one table for all sellable offerings so future Tr2+ trip features and Ve5+ experience features can share the existing ticketing, RLS, brand-ownership, publish-RPC, and Stripe Checkout machinery without parallel duplication. Splitting into `trips` and `experiences` tables would force every cross-cutting feature (Marketing audiences, scanner, sales summaries, Ari agent, public event pages) to fan out reads + RLS + RPCs across multiple tables.
+
+**Enforcement.**
+- **Schema layer:** Migration `supabase/migrations/20260605000000_orch_0826_events_event_type_discriminator.sql` enforces the `NOT NULL DEFAULT + CHECK` constraint at the database level. Any INSERT or UPDATE with an out-of-set value fails at the constraint boundary.
+- **Migration self-verification:** the migration's `DO $$ … $$` block raises EXCEPTION if any row ends up NULL or invalid post-backfill.
+- **Index:** `idx_events_event_type` supports future `Hub > Experiences` and `Hub > Trips` filter queries without table scans.
+
+**Test.** Post-migration sanity SQL: `SELECT count(*) FROM public.events WHERE event_type IS NULL OR event_type NOT IN ('event','experience','trip')` must return 0. Ratified live on 2026-05-14 after operator ran `supabase db push --linked` and the DO-block NOTICE confirmed.
+
+**Cross-references.** DEC-152 (decision rationale); `Mingla_Artifacts/PROJECT_SPEC_MINGLA_BUSINESS_1_2.md` §3.3; investigation `reports/INVESTIGATION_ORCH-0826_M0_HUB_FOUNDATION.md`; spec `specs/SPEC_ORCH-0826_M0_HUB_FOUNDATION.md` §2; implementation `reports/IMPLEMENTATION_ORCH-0826_M0_HUB_FOUNDATION.md`.
+
+---
+
 ## ACTIVE (post ORCH-0809 + ORCH-0809-D + ORCH-0809-E CLOSE 2026-05-12)
 
 Three invariants introduced by ORCH-0809 SPEC §7 — Discover Ticketmaster filter expansion v1. Promoted DRAFT→ACTIVE on 2026-05-12 by ORCH-0809 CLOSE after Claude `mingla-forensics` pre-M3 audit + re-audit PASS verdict (`reports/QA_ORCH-0809_PRE_M3_AUDIT_REPORT.md` §13 — P0:0 P1:0 P2:3 P3:2 P4:5), all 3 strict-grep gates green with negative-control proofs, 23/23 Deno tests, 10/10 mobile regression checks, edge function deployed, EAS OTAs published, operator confirmed "works perfect" / "all works" across 4 live-test phases.
@@ -66,6 +83,28 @@ Three invariants introduced by ORCH-0809 SPEC §7 — Discover Ticketmaster filt
 **Source:** Six iterations within ORCH-0809 (price filter pre-M2 silent hide / city-not-in-cache-key hotfix v1 / date-not-in-cache-key hotfix v2 / unknown segmentSlug M2.1 / banner state drift M2.1 P1-1 / unknown genreSlug M3 hotfix). Pre-M3 audit report `Mingla_Artifacts/reports/QA_ORCH-0809_PRE_M3_AUDIT_REPORT.md` §11 + §13 named this as the missing permanent invariant. CLOSE entry on this invariant is the registration step.
 
 **EXIT condition:** flips DRAFT→ACTIVE when the next SPEC explicitly references this invariant in its review checklist and the SPEC's enforcement path codifies both clauses (server-boundary validation + every-layer cache-key inclusion).
+
+---
+
+## ACTIVE (post ORCH-0823 CLOSE 2026-05-13)
+
+### I-PROPOSED-BP INPUT-VARIANT-EXPLICIT-FLAGS
+
+**Rule (ACTIVE):** Every variant in `mingla-business/src/components/ui/Input.variants.ts` `VARIANT_BEHAVIOUR` MUST declare both `autoCorrect` and `autoCapitalize` explicitly. No variant may evaluate to an empty `{}` or omit either property. Additionally:
+
+1. **`autoCorrect: false` on every variant** — iOS's autocorrect smart-replacement substitutes near-misses (proven: `Big P` → `Bigot` on the `text` variant pre-fix) which silently mutates user input. No Mingla input variant benefits from autocorrect.
+
+2. **`autoCapitalize: "sentences"` is BANNED on every variant** — iOS's sentences-mode pre-capitalize state machine collides with hardware capslock keypresses: pressing caps lock while a pending trailing space exists in the buffer causes iOS to silently delete the trailing space (proven via patched-build QA `T01-CLEAN-3.png` on 2026-05-13). Valid values: `"none"`, `"words"`, `"characters"`. The same ban applies to any raw `<TextInput>` outside the `Input` primitive on the same surfaces (the Description multiline field in the Event Wizard is the canonical example — covered by ORCH-0823's explicit fix at `CreatorStep1Basics.tsx:191-206`).
+
+**Why this exists:** ORCH-0823 surfaced two distinct iOS UIKit defects — Path B (autocorrect smart-replacement) and Path A (autoCapitalize sentences-mode + hardware capslock collision). Path B was identified in the original investigation; Path A was wrongly ruled out because Path B masked it visually. The v1 patch eliminated Path B only; live-fire RETEST revealed Path A as a real, independent defect. The v2 rework changed `autoCapitalize` to `"none"` everywhere ORCH-0823 touched. Both paths are now structurally impossible. Without this invariant the next free-text Input variant added to the codebase could silently re-introduce either defect.
+
+**Enforcement:** Jest regression test at `mingla-business/src/components/ui/__tests__/Input.variantBehaviour.test.tsx` (30 assertions across 6 variants). Fails if any variant: (a) omits `autoCorrect`, (b) omits `autoCapitalize`, (c) sets `autoCorrect` to `true`, (d) sets `autoCapitalize` to `"sentences"`. Test wired into per-ORCH script `npm run test:orch-0823` and the broader test suite. Sanity-check verified: reverting `text` to `{}` produces 4 test failures.
+
+**Source:** ORCH-0823 v2 close (this entry). Investigation `Mingla_Artifacts/reports/INVESTIGATION_ORCH-0823_EVENT_WIZARD_SPACE_CAPSLOCK_GLITCH.md` + Path A errata addendum + v1 QA `reports/QA_ORCH-0823_EVENT_WIZARD_SPACE_CAPSLOCK_GLITCH_REPORT.md` (FAIL evidence T01-CLEAN-3) + v2 RETEST QA `reports/QA_ORCH-0823_EVENT_WIZARD_SPACE_CAPSLOCK_GLITCH_RETEST_REPORT.md` (PASS).
+
+**Scope:** `mingla-business/` only at this time. Consumer app `app-mobile/`'s own `Input` primitive (if any with the same defect class) needs separate investigation and is queued as a follow-up.
+
+**Constitutional ties:** strengthens Constitution #9 (no fabricated data) — pre-fix, iOS could substitute the user's typed `Big P` for `Bigot` (Path B) or silently erase a trailing space on capslock (Path A). Both forms of input-layer fabrication are now eliminated.
 
 ---
 

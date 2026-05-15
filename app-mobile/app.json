@@ -82,6 +82,13 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      [
+        "@stripe/stripe-react-native",
+        {
+          "merchantIdentifier": "merchant.com.mingla.app.v2",
+          "enableGooglePay": true
+        }
+      ],
       ["@sentry/react-native/expo", {
         "organization": "mingla-llc",
         "project": "react-native"

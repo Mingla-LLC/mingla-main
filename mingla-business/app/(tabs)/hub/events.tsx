@@ -26,14 +26,10 @@ import {
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { BrandDeleteSheet } from "../../src/components/brand/BrandDeleteSheet";
-import { BrandSwitcherSheet } from "../../src/components/brand/BrandSwitcherSheet";
-import { ConfirmDialog } from "../../src/components/ui/ConfirmDialog";
-import { GlassCard } from "../../src/components/ui/GlassCard";
-import { IconChrome } from "../../src/components/ui/IconChrome";
-import { ShareModal } from "../../src/components/ui/ShareModal";
-import { Toast } from "../../src/components/ui/Toast";
-import { TopBar } from "../../src/components/ui/TopBar";
+import { ConfirmDialog } from "../../../src/components/ui/ConfirmDialog";
+import { GlassCard } from "../../../src/components/ui/GlassCard";
+import { ShareModal } from "../../../src/components/ui/ShareModal";
+import { Toast } from "../../../src/components/ui/Toast";
 import {
   accent,
   glass,
@@ -42,43 +38,38 @@ import {
   spacing,
   text as textTokens,
   typography,
-} from "../../src/constants/designSystem";
-import { useAuth } from "../../src/context/AuthContext";
-import {
-  useCurrentBrandStore,
-  type Brand,
-} from "../../src/store/currentBrandStore";
-import { useCurrentBrand } from "../../src/hooks/useCurrentBrand";
+} from "../../../src/constants/designSystem";
+import { useCurrentBrand } from "../../../src/hooks/useCurrentBrand";
 import {
   useDraftEventStore,
   useDraftsForBrand,
-} from "../../src/store/draftEventStore";
-import type { DraftEvent } from "../../src/store/draftEventStore";
+} from "../../../src/store/draftEventStore";
+import type { DraftEvent } from "../../../src/store/draftEventStore";
 import {
   useLiveEventStore,
   useLiveEventsForBrand,
-} from "../../src/store/liveEventStore";
-import type { LiveEvent } from "../../src/store/liveEventStore";
+} from "../../../src/store/liveEventStore";
+import type { LiveEvent } from "../../../src/store/liveEventStore";
 
 import {
   EventListCard,
   type EventCardStatus,
-} from "../../src/components/event/EventListCard";
-import { EndSalesSheet } from "../../src/components/event/EndSalesSheet";
-import { EventManageMenu } from "../../src/components/event/EventManageMenu";
-import { useCurrentBrandRole } from "../../src/hooks/useCurrentBrandRole";
+} from "../../../src/components/event/EventListCard";
+import { EndSalesSheet } from "../../../src/components/event/EndSalesSheet";
+import { EventManageMenu } from "../../../src/components/event/EventManageMenu";
+import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
 import {
   useDiscardServerDraft,
   useServerDraftsForBrand,
-} from "../../src/hooks/useServerDraftEvents";
+} from "../../../src/hooks/useServerDraftEvents";
 import {
   mergeServerAndLegacyLiveEvents,
   useCancelBusinessEvent,
   useBusinessEventsForBrand,
   useEndBusinessEventTicketSales,
-} from "../../src/hooks/useBusinessEvents";
-import { eventPublicUrl } from "../../src/constants/publicUrls";
-import { canPerformAction } from "../../src/utils/permissionGates";
+} from "../../../src/hooks/useBusinessEvents";
+import { eventPublicUrl } from "../../../src/constants/publicUrls";
+import { canPerformAction } from "../../../src/utils/permissionGates";
 
 type EventFilter = "all" | "live" | "upcoming" | "draft" | "past";
 
@@ -133,9 +124,7 @@ interface PillSpec {
 export default function EventsTab(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { user } = useAuth();
   const currentBrand = useCurrentBrand();
-  const setCurrentBrand = useCurrentBrandStore((s) => s.setCurrentBrand);
   useServerDraftsForBrand(currentBrand?.id ?? null);
   const businessEventsQuery = useBusinessEventsForBrand(currentBrand?.id ?? null);
   const drafts = useDraftsForBrand(currentBrand?.id ?? null);
@@ -158,13 +147,8 @@ export default function EventsTab(): React.ReactElement {
   const { rank: currentRank } = useCurrentBrandRole(currentBrand?.id ?? null);
   const canCreateEvent = canPerformAction(currentRank, "CREATE_EVENT");
 
-  const [sheetVisible, setSheetVisible] = useState<boolean>(false);
-  // Cycle 17e-A REWORK: BrandDeleteSheet state — opens from BrandSwitcherSheet
-  // trash icon taps. Mirrors account.tsx pattern per ORCH-0734-RW SPEC §3.4.
-  const [deleteSheetVisible, setDeleteSheetVisible] = useState<boolean>(false);
-  const [brandPendingDelete, setBrandPendingDelete] = useState<Brand | null>(
-    null,
-  );
+  // ORCH-0826 M0-rework: brand-switcher / brand-delete / universal-creator
+  // state lives in hub/_layout.tsx now. This screen only holds content state.
   const [toast, setToast] = useState<ToastState>({
     visible: false,
     message: "",
@@ -296,46 +280,8 @@ export default function EventsTab(): React.ReactElement {
   );
 
   // ----- Handlers -------------------------------------------------
-  const handleOpenSwitcher = useCallback((): void => {
-    setSheetVisible(true);
-  }, []);
-
-  const handleCloseSheet = useCallback((): void => {
-    setSheetVisible(false);
-  }, []);
-
-  const handleBrandCreated = useCallback((brand: Brand): void => {
-    setToast({ visible: true, message: `${brand.displayName} is ready` });
-  }, []);
-
-  // Cycle 17e-A REWORK: BrandSwitcherSheet trash tap → open BrandDeleteSheet
-  const handleRequestDeleteBrand = useCallback((brand: Brand): void => {
-    setBrandPendingDelete(brand);
-    setDeleteSheetVisible(true);
-  }, []);
-
-  const handleCloseDeleteSheet = useCallback((): void => {
-    setDeleteSheetVisible(false);
-    // Don't clear brandPendingDelete immediately — exit animation reads it
-  }, []);
-
-  const handleBrandDeleted = useCallback(
-    (deletedBrandId: string): void => {
-      // Clear currentBrand if it matches deleted brand (server already cleared
-      // default_brand_id per softDeleteBrand Step 3; this clears local UI state)
-      const currentBrandId = useCurrentBrandStore.getState().currentBrandId;
-      if (currentBrandId === deletedBrandId) {
-        setCurrentBrand(null);
-      }
-      const deleted = brandPendingDelete;
-      setBrandPendingDelete(null);
-      setToast({
-        visible: true,
-        message: `${deleted?.displayName ?? "Brand"} deleted`,
-      });
-    },
-    [setCurrentBrand, brandPendingDelete],
-  );
+  // ORCH-0826 M0-rework: brand-switcher / brand-delete handlers live in
+  // hub/_layout.tsx. This screen's only handlers below are content-bound.
 
   const handleDismissToast = useCallback((): void => {
     setToast((prev) => ({ ...prev, visible: false }));
@@ -343,8 +289,9 @@ export default function EventsTab(): React.ReactElement {
 
   const handleBuildEvent = useCallback((): void => {
     if (currentBrand === null) {
-      setToast({ visible: true, message: "Create a brand first." });
-      setSheetVisible(true);
+      // Brand switcher is owned by hub/_layout.tsx now (ORCH-0826 M0-rework).
+      // User can tap the brand chip in the layout's TopBar to open the switcher.
+      setToast({ visible: true, message: "Tap your brand to create one first." });
       return;
     }
     router.push("/event/create" as never);
@@ -535,24 +482,51 @@ export default function EventsTab(): React.ReactElement {
   }, [deleteDraftCtx, deleteLocalDraft, discardServerDraft, drafts]);
 
   // ----- Render ---------------------------------------------------
+  // ORCH-0826 M0-rework: TopBar and "Events" header title are owned by
+  // hub/_layout.tsx (above the HubSubNav pill row). This sub-route is a
+  // content-only screen — paddingTop and brand/universal-creator chrome
+  // are layout-supplied.
   return (
-    <View style={[styles.host, { paddingTop: insets.top }]}>
-      <View style={styles.barWrap}>
-        <TopBar
-          leftKind="brand"
-          onBrandTap={handleOpenSwitcher}
-          extraRightSlot={
-            canCreateEvent ? (
-              <IconChrome
-                icon="plus"
-                size={36}
-                onPress={handleBuildEvent}
-                accessibilityLabel="Build a new event"
-              />
-            ) : null
-          }
-        />
-      </View>
+    <View style={styles.host}>
+      {/* Filter pills row — fixed at top, does NOT scroll with the event list.
+          Sibling to the events ScrollView so it stays anchored below the
+          HubSubNav pill row regardless of list scroll position. */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.pillsRow}
+        style={styles.pillsScroll}
+      >
+        {pillSpecs.map((p) => {
+          const active = filter === p.key;
+          return (
+            <Pressable
+              key={p.key}
+              onPress={() => setFilter(p.key)}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: active }}
+              accessibilityLabel={`${p.label}, ${p.count}`}
+              style={({ pressed }) => [
+                styles.pill,
+                active && styles.pillActive,
+                pressed && styles.pillPressed,
+              ]}
+            >
+              {p.showLivePulse ? (
+                <View style={styles.pillLiveDot} />
+              ) : null}
+              <Text style={[styles.pillLabel, active && styles.pillLabelActive]}>
+                {p.label}
+              </Text>
+              <Text
+                style={[styles.pillCount, active && styles.pillCountActive]}
+              >
+                {p.count}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
 
       <ScrollView
         contentContainerStyle={[
@@ -565,46 +539,6 @@ export default function EventsTab(): React.ReactElement {
         ]}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.headerTitle}>Events</Text>
-
-        {/* Filter pills row */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.pillsRow}
-          style={styles.pillsScroll}
-        >
-          {pillSpecs.map((p) => {
-            const active = filter === p.key;
-            return (
-              <Pressable
-                key={p.key}
-                onPress={() => setFilter(p.key)}
-                accessibilityRole="tab"
-                accessibilityState={{ selected: active }}
-                accessibilityLabel={`${p.label}, ${p.count}`}
-                style={({ pressed }) => [
-                  styles.pill,
-                  active && styles.pillActive,
-                  pressed && styles.pillPressed,
-                ]}
-              >
-                {p.showLivePulse ? (
-                  <View style={styles.pillLiveDot} />
-                ) : null}
-                <Text style={[styles.pillLabel, active && styles.pillLabelActive]}>
-                  {p.label}
-                </Text>
-                <Text
-                  style={[styles.pillCount, active && styles.pillCountActive]}
-                >
-                  {p.count}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
-
         {/* List */}
         {filteredItems.length === 0 ? (
           <GlassCard variant="elevated" padding={spacing.lg}>
@@ -648,20 +582,10 @@ export default function EventsTab(): React.ReactElement {
         ) : null}
       </ScrollView>
 
-      <BrandSwitcherSheet
-        visible={sheetVisible}
-        onClose={handleCloseSheet}
-        onBrandCreated={handleBrandCreated}
-        onRequestDeleteBrand={handleRequestDeleteBrand}
-      />
-
-      <BrandDeleteSheet
-        visible={deleteSheetVisible}
-        brand={brandPendingDelete}
-        accountId={user?.id ?? null}
-        onClose={handleCloseDeleteSheet}
-        onDeleted={handleBrandDeleted}
-      />
+      {/* ORCH-0826 M0-rework: BrandSwitcherSheet, UniversalCreatorSheet,
+          and BrandDeleteSheet are mounted in hub/_layout.tsx so that the
+          three Hub sub-routes share the same chrome + sheet stack. This
+          content-only screen mounts events-specific sheets below. */}
 
       {/* Manage menu — Sheet primitive */}
       {manageCtx !== null && currentBrand !== null ? (
@@ -803,7 +727,12 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   pillsScroll: {
-    marginHorizontal: -spacing.md,
+    // ORCH-0826 M0-rework: pills are now a direct child of the host (sibling
+    // to the events ScrollView) rather than nested inside it. Removed the
+    // prior `marginHorizontal: -spacing.md` negative-margin hack (which was
+    // cancelling the parent ScrollView's padding) and added vertical padding
+    // for breathing room below the HubSubNav pill row.
+    paddingVertical: spacing.sm,
   },
   pillsRow: {
     paddingHorizontal: spacing.md,

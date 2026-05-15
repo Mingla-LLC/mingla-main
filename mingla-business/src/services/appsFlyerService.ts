@@ -47,17 +47,24 @@ type AppsFlyerSdk = {
 };
 
 let appsFlyer: AppsFlyerSdk | null = null;
-try {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const mod = require('react-native-appsflyer') as { default?: AppsFlyerSdk } | AppsFlyerSdk;
-  appsFlyer = (mod as { default?: AppsFlyerSdk }).default ?? (mod as AppsFlyerSdk);
-} catch (err) {
-  console.warn(
-    '[AppsFlyer] Native module unavailable at import — running as no-op. ' +
-      'This is expected on Expo Go / dev-client builds without the native ' +
-      'side linked; real release builds load normally.',
-    err,
-  );
+// ORCH-0839-A cleanup: also Platform.OS-guard for web. The existing
+// try/catch handles native dev-client missing-module crashes, but
+// `react-native-appsflyer` evaluates a native binding at import that
+// `expo export -p web` can't tree-shake even inside try/catch. Explicit
+// Platform guard short-circuits the require on web entirely.
+if (Platform.OS !== 'web') {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = require('react-native-appsflyer') as { default?: AppsFlyerSdk } | AppsFlyerSdk;
+    appsFlyer = (mod as { default?: AppsFlyerSdk }).default ?? (mod as AppsFlyerSdk);
+  } catch (err) {
+    console.warn(
+      '[AppsFlyer] Native module unavailable at import — running as no-op. ' +
+        'This is expected on Expo Go / dev-client builds without the native ' +
+        'side linked; real release builds load normally.',
+      err,
+    );
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

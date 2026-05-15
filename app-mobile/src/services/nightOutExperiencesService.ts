@@ -3,6 +3,11 @@ import type {
   DiscoverSegmentSlug,
   DiscoverGenreSlug,
 } from "../types/discoverFilters";
+// ORCH-0824: merged Discover response types.
+import type {
+  DiscoverMergedResponse,
+  DiscoverMergedSearchInput,
+} from "../types/mergedDiscover";
 
 export interface NightOutVenue {
   id: string;
@@ -189,4 +194,105 @@ export class NightOutExperiencesService {
   // function still accepts the v1 wire shape for any future external caller
   // (backward-compat detection in supabase/functions/ticketmaster-events/index.ts),
   // but no client code in this repo emits the v1 shape any more.
+
+  /**
+   * ORCH-0824: merged Discover query — fans out to Postgres (business events)
+   * AND Ticketmaster server-side, returns one ranked list with business events
+   * first.
+   *
+   * The Ticketmaster facets (segmentSlug, genreSlugs, localStartEndDateTime,
+   * keywords) work exactly as in `search()`. The new Mingla-native facets
+   * (partyTypeSlugs, vibeTagSlugs, musicGenreSlugs) filter business events and,
+   * when active, may suppress Ticketmaster from the response per the
+   * I-PROPOSED-DISCOVER-TM-SUPPRESSION invariant.
+   *
+   * City is REQUIRED (unlike `search()`, which accepts city OR location). The
+   * consumer's selected CityPicker city must be passed here; lat/lng is not a
+   * primary lookup mode for merged discover.
+   *
+   * Throws on edge-function error (no silent fallback to empty list — per
+   * Constitution #3).
+   */
+  static async searchMerged(
+    input: DiscoverMergedSearchInput,
+  ): Promise<DiscoverMergedResponse> {
+    if (!input.city || !input.city.name) {
+      throw new Error("[NightOutService] searchMerged: city.name is required");
+    }
+
+    const body: Record<string, unknown> = {
+      city: {
+        name: input.city.name,
+        stateCode: input.city.stateCode ?? null,
+        countryCode: input.city.countryCode ?? null,
+        fallbackLat: input.city.fallbackLat,
+        fallbackLng: input.city.fallbackLng,
+        fallbackRadiusKm: input.city.fallbackRadiusKm,
+      },
+      page: input.page ?? 1,
+      size: input.size ?? 20,
+    };
+    if (input.segmentSlug) body.segmentSlug = input.segmentSlug;
+    if (input.genreSlugs && input.genreSlugs.length > 0) {
+      body.genreSlugs = input.genreSlugs;
+    }
+    if (input.localStartEndDateTime) {
+      body.localStartEndDateTime = input.localStartEndDateTime;
+    }
+    if (input.keywords && input.keywords.length > 0) {
+      body.keywords = input.keywords;
+    }
+    if (input.sort) body.sort = input.sort;
+    if (input.partyTypeSlugs && input.partyTypeSlugs.length > 0) {
+      body.partyTypeSlugs = input.partyTypeSlugs;
+    }
+    if (input.vibeTagSlugs && input.vibeTagSlugs.length > 0) {
+      body.vibeTagSlugs = input.vibeTagSlugs;
+    }
+    if (input.musicGenreSlugs && input.musicGenreSlugs.length > 0) {
+      body.musicGenreSlugs = input.musicGenreSlugs;
+    }
+    // ORCH-0828: forward the device's IANA timezone so the server can
+    // anchor `localStartEndDateTime` correctly for the business-events
+    // date filter. Falls back to UTC if the platform can't resolve it.
+    if (input.timezone && input.timezone.length > 0) {
+      body.timezone = input.timezone;
+    } else {
+      try {
+        const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        if (typeof tz === "string" && tz.length > 0) body.timezone = tz;
+      } catch {
+        // fall through: server defaults to UTC + logs a warning
+      }
+    }
+
+    console.log("[NightOutService] searchMerged:", {
+      city: input.city.name,
+      partyTypes: input.partyTypeSlugs,
+      vibes: input.vibeTagSlugs,
+      genres: input.musicGenreSlugs,
+      // ORCH-0828 REWORK: log the actual date window + resolved timezone +
+      // segment so runtime traces can verify exactly what the client sent
+      // (the brutal-retest investigation lost an hour because these were
+      // absent from the log).
+      segmentSlug: input.segmentSlug,
+      localStartEndDateTime: input.localStartEndDateTime,
+      timezone: body.timezone,
+    });
+
+    const { data, error } = await supabase.functions.invoke(
+      "discover-merged-events",
+      { body },
+    );
+
+    if (error) {
+      console.error("[NightOutService] searchMerged error:", error);
+      throw new Error(`Failed to fetch merged Discover: ${error.message}`);
+    }
+    if (!data) {
+      throw new Error("Failed to fetch merged Discover: empty response");
+    }
+
+    return data as DiscoverMergedResponse;
+  }
 }

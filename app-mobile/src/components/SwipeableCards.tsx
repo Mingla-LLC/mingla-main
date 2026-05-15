@@ -1925,7 +1925,9 @@ export default function SwipeableCards({
           />
           <ExpandedCardModal
             visible={isExpandedModalVisible}
-            card={selectedCardForExpansion}
+            // ORCH-0828: discriminated-union target. SwipeableCards only
+            // surfaces Night Out (place / TM) cards, never business events.
+            target={selectedCardForExpansion ? { kind: "nightOut", data: selectedCardForExpansion } : null}
             onClose={handleCloseExpandedModal}
             isSaved={
               selectedCardForExpansion
@@ -2451,7 +2453,8 @@ export default function SwipeableCards({
       {/* Expanded Card Modal */}
       <ExpandedCardModal
         visible={isExpandedModalVisible}
-        card={selectedCardForExpansion}
+        // ORCH-0828: discriminated-union target.
+        target={selectedCardForExpansion ? { kind: "nightOut", data: selectedCardForExpansion } : null}
         onClose={handleCloseExpandedModal}
         isSaved={
           selectedCardForExpansion

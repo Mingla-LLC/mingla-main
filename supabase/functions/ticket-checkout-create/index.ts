@@ -330,7 +330,22 @@ serve(async (req) => {
       {
         amount: totalCents,
         currency,
-        automatic_payment_methods: { enabled: true },
+        // ORCH-0837: card-only PI per I-PROPOSED-STRIPE-PI-EXPLICIT-METHOD-TYPES.
+        // Previously the automatic-payment-methods enabled form fanned out
+        // to every dashboard-enabled method (16 in operator's sandbox incl.
+        // Klarna/Affirm/Cash App/Amazon Pay/Apple Pay/Link/Bancontact/BLIK/
+        // EPS/Kakao/Naver/Payco/MB Way/Pix/Samsung Pay). Operator-verified
+        // failed PIs (pi_3TX3rBPjlZyAYA401xD9EJ3N, pi_3TX2jzPjlZyAYA401JI3kgky)
+        // attached [card, klarna, link, affirm, cashapp, amazon_pay] — four
+        // redirect-flow methods that require handleURLCallback wiring shipped
+        // in this same ORCH (app/index.tsx) and Apple Pay merchant cert
+        // verification deferred to ORCH-0838. Card-only is the minimum-viable
+        // safe shape. Do NOT add other methods here without (a) dashboard
+        // config justified, AND (b) handleURLCallback proven working for any
+        // redirect-flow method, AND (c) eligibility/preflight latency
+        // measured under a 5s budget. CI gate: orch-0837-regression-check.mjs
+        // T-C1 forbids the automatic-payment-methods enabled form by string.
+        payment_method_types: ["card"],
         transfer_data: { destination: stripeAccountId },
         metadata: {
           mingla_checkout_session_id: checkoutSessionId,

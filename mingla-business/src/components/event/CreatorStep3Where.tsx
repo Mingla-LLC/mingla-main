@@ -29,6 +29,8 @@ import {
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
+import { AddressAutocompleteInput } from "./AddressAutocompleteInput";
+import type { PlaceDetails } from "../../services/googlePlacesService";
 
 import { errorForKey, type StepBodyProps } from "./types";
 
@@ -65,19 +67,28 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
             ) : null}
           </View>
 
+          {/* ORCH-0824: Google Places autocomplete replaces the plain
+              <Input>. On pick, address + city + locationGeo are written
+              atomically. Free typing without picking leaves city=null,
+              which the validator rejects with "Pick the venue address
+              from the suggestions." */}
           <View style={styles.field}>
             <Text style={styles.fieldLabel}>Address</Text>
-            <Input
+            <AddressAutocompleteInput
               value={draft.address ?? ""}
-              onChangeText={(v) => updateDraft({ address: v })}
-              placeholder="Street, city, postcode"
-              variant="text"
-              accessibilityLabel="Venue address"
-              style={addressError !== undefined ? styles.inputError : undefined}
+              onChangeText={(v) => updateDraft({ address: v, city: null, locationGeo: null })}
+              onPick={(details: PlaceDetails): void => {
+                updateDraft({
+                  address: details.formattedAddress,
+                  city: details.city,
+                  locationGeo: details.location,
+                });
+              }}
+              onClear={(): void => {
+                updateDraft({ address: null, city: null, locationGeo: null });
+              }}
+              error={addressError}
             />
-            {addressError !== undefined ? (
-              <Text style={styles.helperError}>{addressError}</Text>
-            ) : null}
           </View>
 
           {/* Hide-address toggle — replaces the static helper text from

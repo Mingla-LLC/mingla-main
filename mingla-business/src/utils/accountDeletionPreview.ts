@@ -31,6 +31,7 @@ import type { LiveEvent } from "../store/liveEventStore";
 import type { OrderRecord } from "../store/orderStore";
 import type { ScanRecord } from "../store/scanStore";
 import { deriveLiveStatus } from "./eventLifecycle";
+import { computeMasterStartAtUtc } from "./eventDateMath";
 
 export interface AccountDeletionPreview {
   brandsOwnedCount: number;
@@ -114,7 +115,8 @@ export const computeAccountDeletionPreview = (
   let pastEventsCount = 0;
   let hasActiveOrUpcomingEvents = false;
   for (const ev of liveEvents) {
-    const status = deriveLiveStatus(ev);
+    // ORCH-0828: pass timezone-aware UTC instant (not date-only string).
+    const status = deriveLiveStatus(ev, computeMasterStartAtUtc(ev));
     if (status === "live" || status === "upcoming") {
       liveEventsCount += 1;
       hasActiveOrUpcomingEvents = true;

@@ -39,12 +39,20 @@ import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 import { Image as ExpoImage } from "expo-image";
 import * as Haptics from "expo-haptics";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+// ORCH-0839-A F-4: AsyncStorage import removed — mobile cache deleted; server caches authoritatively.
 import { Icon, type IconName } from "./ui/Icon";
 import { formatPriceRange, parseAndFormatDistance } from "./utils/formatters";
 import ExpandedCardModal from "./ExpandedCardModal";
 import { ExpandedCardData } from "../types/expandedCardTypes";
+// ORCH-0828: discriminated-union expansion target
+import type { ExpansionTarget } from "../types/expansion";
 import { NightOutExperiencesService, NightOutVenue } from "../services/nightOutExperiencesService";
+// ORCH-0824: merged Discover types + business-event card.
+import type {
+  BusinessEventCard as BusinessEventCardData,
+  MergedDiscoverItem,
+} from "../types/mergedDiscover";
+import { BusinessEventCard } from "./discover/BusinessEventCard";
 import { useAppStore } from "../store/appStore";
 import { useTabScrollRegistry } from "../hooks/useTabScrollRegistry";
 import { useUserLocation } from "../hooks/useUserLocation";
@@ -67,7 +75,7 @@ import {
 import { geocodingService } from "../services/geocodingService";
 import { PreferencesService } from "../services/preferencesService";
 
-const NIGHT_OUT_CACHE_KEY = "mingla_night_out_cache";
+// ORCH-0839-A F-4: cache-key prefix const removed — mobile cache deleted.
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const d = glass.discover;
 const GRID_CARD_WIDTH = (SCREEN_WIDTH - d.grid.horizontalPadding * 2 - d.grid.columnGap) / 2;
@@ -109,6 +117,13 @@ interface NightOutFilters {
   date: DateFilter;
   segment: SegmentFilter;
   genre: GenreFilter;
+  // ORCH-0824: Mingla-native facets. When non-empty, the merged endpoint
+  // applies array-overlap filtering on business events; when partyTypes
+  // OR vibeTags has any selection, Ticketmaster is suppressed entirely
+  // (I-PROPOSED-DISCOVER-TM-SUPPRESSION).
+  partyTypes: string[];
+  vibeTags: string[];
+  musicGenres: string[];
 }
 
 // ORCH-0809 M2: GENRE_TO_KEYWORDS map removed. Genre filtering now uses real Ticketmaster
@@ -128,6 +143,48 @@ interface NightOutFilters {
  * though UTC has already rolled to Sunday. Replaces the prior UTC `toISOString`
  * helper.
  */
+/**
+ * ORCH-0828: empty-state headline that matches the active date filter.
+ * Pre-0828 the title was hard-wired to "No events near you tonight"
+ * regardless of filter, which lied when the user had "All" selected.
+ *
+ * English-only override. Non-English locales fall back to the canonical
+ * `discover:empty.no_events_title` until translations catch up.
+ */
+function getEmptyStateHeadline(
+  filter: DateFilter,
+  t: (key: string) => string,
+): string {
+  const fallback = t("discover:empty.no_events_title");
+  // Heuristic: only override when the canonical English string is what
+  // the runtime returned (i.e. user is on en-* locale). Other locales
+  // keep the existing translation until a future pass.
+  if (!fallback.toLowerCase().includes("no events near you")) {
+    return fallback;
+  }
+  switch (filter) {
+    case "any":
+      return "No events near you";
+    case "today":
+      return "No events near you tonight";
+    case "tomorrow":
+      return "No events near you tomorrow";
+    case "weekend":
+      return "No events near you this weekend";
+    case "next-week":
+      return "No events near you next week";
+    case "month":
+      return "No events near you this month";
+    default: {
+      // Exhaustiveness check — compile-time error if a new DateFilter
+      // variant is added without updating this switch.
+      const _exhaustive: never = filter;
+      void _exhaustive;
+      return fallback;
+    }
+  }
+}
+
 function getDateRange(filter: DateFilter): { localStartEndDateTime: string | null } {
   const now = new Date();
   const toLocalISO = (d: Date): string => {
@@ -158,8 +215,14 @@ function getDateRange(filter: DateFilter): { localStartEndDateTime: string | nul
       return { localStartEndDateTime: pair(startOfDay(tmrw), endOfDay(tmrw)) };
     }
     case "weekend": {
+      // ORCH-0839-A F-3.a: the `(5 - dow + 7) % 7 || 7` math was correct
+      // for dow ∈ {1,2,3,4,6} but broke on dow=5 (Friday) where
+      // `(5-5+7)%7 = 0` is falsy and the `|| 7` clause advances `friday`
+      // to NEXT Friday, sending "This Weekend" to next weekend on every
+      // Friday morning. Explicit `dow === 5 ? 0 : …` fixes it. dow=0 and
+      // dow=6 are short-circuited below (now-through-Sunday window).
       const dayOfWeek = now.getDay();
-      const daysUntilFri = (5 - dayOfWeek + 7) % 7 || 7;
+      const daysUntilFri = dayOfWeek === 5 ? 0 : (5 - dayOfWeek + 7) % 7;
       const friday = new Date(now);
       friday.setDate(friday.getDate() + (dayOfWeek <= 5 && dayOfWeek > 0 ? daysUntilFri : 0));
       friday.setHours(18, 0, 0, 0);
@@ -172,8 +235,14 @@ function getDateRange(filter: DateFilter): { localStartEndDateTime: string | nul
       return { localStartEndDateTime: pair(friday, sunday) };
     }
     case "next-week": {
+      // ORCH-0839-A F-3.b: `(8 - dow) % 7` on dow=1 (Monday) returns 0,
+      // no advance, current week instead of next week. Explicit
+      // `dow === 1 ? 7 : …` fixes it. dow=0 (Sunday) `(8-0)%7 = 1` → +1
+      // day = Monday, correct. dow=2..6 also correct via the modulo.
+      const dayOfWeek = now.getDay();
+      const daysUntilNextMon = dayOfWeek === 1 ? 7 : (8 - dayOfWeek) % 7;
       const monday = new Date(now);
-      monday.setDate(monday.getDate() + (8 - now.getDay()) % 7);
+      monday.setDate(monday.getDate() + daysUntilNextMon);
       monday.setHours(0, 0, 0, 0);
       const nextSunday = new Date(monday);
       nextSunday.setDate(nextSunday.getDate() + 6);
@@ -764,9 +833,19 @@ function DiscoverScreen({
 
   // Expanded-card state
   const [isExpandedModalVisible, setIsExpandedModalVisible] = useState(false);
-  const [selectedCardForExpansion, setSelectedCardForExpansion] = useState<ExpandedCardData | null>(null);
+  // ORCH-0828: replaced the prior dual-state pattern (`selectedCardForExpansion`
+  // + `selectedBusinessEventForExpansion`) with a single discriminated-union
+  // state. The two parallel hooks let one branch's setter forget to clear the
+  // other branch, poisoning the modal so subsequent taps no-op'd (Bug B). The
+  // union makes that bug class unrepresentable.
+  const [expansionTarget, setExpansionTarget] = useState<ExpansionTarget | null>(null);
   const expandedCardListRef = useRef<ExpandedCardData[]>([]);
   const [expandedCardIndex, setExpandedCardIndex] = useState<number | null>(null);
+  // Derived helper for the rest of this file's consumers that still read
+  // the legacy `selectedCardForExpansion` shape (saved-card detection,
+  // navigation indexing, etc.). Pure projection; no parallel state.
+  const selectedCardForExpansion: ExpandedCardData | null =
+    expansionTarget?.kind === "nightOut" ? expansionTarget.data : null;
 
   // Auth / feature gate / saved cards
   const user = useAppStore((s) => s.user);
@@ -835,8 +914,18 @@ function DiscoverScreen({
           date: discoverFiltersSnapshot.date as DateFilter,
           segment: (discoverFiltersSnapshot.segment as SegmentFilter) ?? "music",
           genre: discoverFiltersSnapshot.genre as GenreFilter,
+          // ORCH-0824: defensive — older snapshots won't have these fields.
+          partyTypes: [],
+          vibeTags: [],
+          musicGenres: [],
         }
-      : { date: "any", segment: "music", genre: "all" }
+      : { date: "any", segment: "music", genre: "all", partyTypes: [], vibeTags: [], musicGenres: [] }
+  );
+  // ORCH-0824: business events that came back from the merged endpoint,
+  // rendered above the Ticketmaster grid. Empty when no business events
+  // match the active city + filters.
+  const [businessEvents, setBusinessEvents] = useState<BusinessEventCardData[]>(
+    [],
   );
 
   // ORCH-0809 M2: city picker state. selectedCity comes from preferences;
@@ -862,6 +951,14 @@ function DiscoverScreen({
   const [nightOutCards, setNightOutCards] = useState<NightOutCardData[]>([]);
   const [nightOutLoading, setNightOutLoading] = useState(true);
   const [nightOutError, setNightOutError] = useState<string | null>(null);
+  // ORCH-0839-A F-6: surface a non-fatal banner when the merged endpoint
+  // returns a non-null meta.tmError (Ticketmaster upstream returned events=[]
+  // with non-zero totalResults, or the TM call threw, or was rate-limited).
+  // Lives separately from nightOutError (which is the hard fetch failure).
+  // Banner is non-blocking; Mingla business events continue to render. The
+  // string value is currently informational only — render is just on
+  // null-vs-non-null.
+  const [tmError, setTmError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const nightOutGpsLat = deviceGpsLat;
@@ -928,75 +1025,16 @@ function DiscoverScreen({
     };
   }, [nightOutGpsLat, nightOutGpsLng, selectedCity, gpsDefaultCity]);
 
-  const getTodayDateString = (): string => {
-    return new Intl.DateTimeFormat("en-CA", {
-      timeZone: "America/New_York",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(new Date());
-  };
-
-  interface NightOutCache {
-    // TTL date (calendar day the cache was saved). The actual filter dimensions
-    // (city, segment, dateFilter, genre) live in the cache KEY, not the payload —
-    // the key is the authoritative identity. The payload only needs:
-    // (a) `date` for the same-calendar-day TTL gate, and
-    // (b) `fallbackActive` for restoring the banner state on cache hit
-    //     (ORCH-0809 M2.1 P1-1 audit finding — the banner state was drifting
-    //     from displayed events because the cache hit branch left fallbackActive
-    //     unchanged from the previous fetch).
-    date: string;
-    venues: NightOutCardData[];
-    genre: string;
-    fallbackActive: boolean;
-  }
-
-  // ORCH-0809 M2 hotfix v2: include city + segment + DATE FILTER + genre in the
-  // cache key so changing any of them invalidates the stale on-device cache.
-  // Prior key omitted city, segment, and date — switching any of them served
-  // stale events from a previous fetch. `v2` prefix isolates from v1 rows.
-  const nightOutCityKey = effectiveCity?.name
-    ? `city:${effectiveCity.name.toLowerCase()}`
-    : `geo:${nightOutGpsLat?.toFixed(2)}:${nightOutGpsLng?.toFixed(2)}`;
-  const nightOutCacheKey = `${NIGHT_OUT_CACHE_KEY}_v2_${user?.id}_${nightOutCityKey}_seg:${selectedFilters.segment}_date:${selectedFilters.date}_gen:${selectedFilters.genre}`;
-
-  const saveNightOutCache = async (
-    venues: NightOutCardData[],
-    fallbackActiveAtSave: boolean,
-  ): Promise<void> => {
-    if (!user?.id) return;
-    try {
-      const cacheData: NightOutCache = {
-        date: getTodayDateString(),
-        venues,
-        genre: selectedFilters.genre,
-        fallbackActive: fallbackActiveAtSave,
-      };
-      await AsyncStorage.setItem(nightOutCacheKey, JSON.stringify(cacheData));
-    } catch (err) {
-      console.error("[Discover] Error saving cache:", err);
-    }
-  };
-
-  const clearNightOutCache = async (): Promise<void> => {
-    try {
-      await AsyncStorage.removeItem(nightOutCacheKey);
-    } catch (err) {
-      console.error("[Discover] Error clearing cache:", err);
-    }
-  };
-
-  const loadNightOutCache = async (): Promise<NightOutCache | null> => {
-    if (!user?.id) return null;
-    try {
-      const raw = await AsyncStorage.getItem(nightOutCacheKey);
-      if (raw) return JSON.parse(raw) as NightOutCache;
-    } catch (err) {
-      console.error("[Discover] Error loading cache:", err);
-    }
-    return null;
-  };
+  // ORCH-0839-A F-4: the prior mobile-cache surface (TTL date helper +
+  // local cache interface + loader/saver/clearer + cache-hit short-circuit
+  // + the prior symmetry guard) was removed in this ORCH. Server-side
+  // caches authoritatively (TM cache table + edge-function in-memory
+  // cache). The mobile cache was duplicative AND was the source of the
+  // cross-filter leakage that surfaced in ORCH-0839 (C-1). Constitution #8:
+  // subtract before adding. Future re-introduction requires a spec that
+  // addresses cross-filter and remount symmetry from the start.
+  // Invariant: I-PROPOSED-DISCOVER-NO-MOBILE-CACHE.
+  // CI gate: app-mobile/scripts/ci/orch-0839-a-mobile-cache-removed.mjs.
 
   const transformNightOutVenue = (venue: NightOutVenue): NightOutCardData => ({
     id: venue.id,
@@ -1028,65 +1066,86 @@ function DiscoverScreen({
 
   const fetchNightOutEvents = useCallback(
     async (skipCache: boolean = false): Promise<void> => {
+      // ORCH-0839-A F-4: prior on-device cache removed in this ORCH.
+      // Server-side caches authoritatively (TM cache table + edge-function
+      // in-memory cache). The `skipCache` parameter is preserved for API
+      // compatibility but is now a no-op.
       // ORCH-0809 M2: require EITHER an effective city OR GPS to fetch.
+      void skipCache;
       if (!effectiveCity && (!nightOutGpsLat || !nightOutGpsLng)) return;
       setNightOutLoading(true);
       setNightOutError(null);
       try {
-        if (!skipCache) {
-          const cached = await loadNightOutCache();
-          if (
-            cached &&
-            cached.date === getTodayDateString() &&
-            cached.venues.length > 0 &&
-            cached.genre === selectedFilters.genre
-          ) {
-            setNightOutCards(cached.venues);
-            // ORCH-0809 M2.1 (P1-1 audit fix): restore fallbackActive from the
-            // cached payload so the banner state matches the displayed events.
-            // `?? false` covers pre-M2.1 cache entries that didn't include the
-            // field (they auto-expire over TTL; transitional safety only).
-            setFallbackActive(cached.fallbackActive ?? false);
-            setNightOutLoading(false);
-            return;
-          }
-        }
         const { localStartEndDateTime } = getDateRange(selectedFilters.date);
         const genreSlugs: DiscoverGenreSlug[] =
           selectedFilters.genre === "all" ? [] : [selectedFilters.genre];
-        const { events, meta } = await NightOutExperiencesService.search({
-          city: effectiveCity
-            ? {
-                name: effectiveCity.name,
-                stateCode: effectiveCity.stateCode,
-                countryCode: effectiveCity.countryCode,
-                fallbackLat: effectiveCity.lat,
-                fallbackLng: effectiveCity.lng,
-                fallbackRadiusKm: 50,
-              }
-            : undefined,
-          location: !effectiveCity && nightOutGpsLat && nightOutGpsLng
-            ? { lat: nightOutGpsLat, lng: nightOutGpsLng }
-            : undefined,
-          radius: !effectiveCity ? 50 : undefined,
-          segmentSlug: selectedFilters.segment,
-          genreSlugs,
-          localStartEndDateTime: localStartEndDateTime ?? undefined,
-          sort: "date,asc",
-        });
-        const usedFallbackNow = meta?.usedFallback === true;
-        setFallbackActive(usedFallbackNow);
-        const cards = events.map(transformNightOutVenue);
-        setNightOutCards(cards);
-        // ORCH-0809 M2.1 (P1-1 audit fix): persist fallbackActive alongside the
-        // cached events so the banner state is correctly restored on cache hit.
-        saveNightOutCache(cards, usedFallbackNow);
+        // ORCH-0824: merged endpoint when we have a city; falls back to
+        // TM-only `search()` when only GPS is available (the merged
+        // endpoint requires a structured city). The merged endpoint
+        // handles TM suppression and business-first ranking server-side.
+        if (effectiveCity) {
+          const merged = await NightOutExperiencesService.searchMerged({
+            city: {
+              name: effectiveCity.name,
+              stateCode: effectiveCity.stateCode,
+              countryCode: effectiveCity.countryCode,
+              fallbackLat: effectiveCity.lat,
+              fallbackLng: effectiveCity.lng,
+              fallbackRadiusKm: 50,
+            },
+            segmentSlug: selectedFilters.segment,
+            genreSlugs,
+            localStartEndDateTime: localStartEndDateTime ?? undefined,
+            sort: "date,asc",
+            partyTypeSlugs: selectedFilters.partyTypes,
+            vibeTagSlugs: selectedFilters.vibeTags,
+            musicGenreSlugs: selectedFilters.musicGenres,
+          });
+          // ORCH-0839-A F-6: surface tmError to the inline non-fatal banner.
+          // Reads `merged.meta?.tmError` defensively because older clients
+          // pinned to the prior response shape might receive undefined.
+          setTmError(
+            (merged.meta as { tmError?: string | null } | undefined)?.tmError ??
+              null,
+          );
+          // Partition the merged items: business events first, TM second.
+          const bizItems: BusinessEventCardData[] = [];
+          const tmVenues: NightOutVenue[] = [];
+          for (const it of merged.items as MergedDiscoverItem[]) {
+            if (it.source === "business_event") bizItems.push(it.item);
+            else tmVenues.push(it.item);
+          }
+          setBusinessEvents(bizItems);
+          setFallbackActive(false);
+          const cards = tmVenues.map(transformNightOutVenue);
+          setNightOutCards(cards);
+        } else {
+          // GPS-only path keeps the legacy TM-only call. No business events
+          // until the user picks a city via CityPickerSheet.
+          setBusinessEvents([]);
+          setTmError(null);
+          const { events, meta } = await NightOutExperiencesService.search({
+            location: nightOutGpsLat && nightOutGpsLng
+              ? { lat: nightOutGpsLat, lng: nightOutGpsLng }
+              : undefined,
+            radius: 50,
+            segmentSlug: selectedFilters.segment,
+            genreSlugs,
+            localStartEndDateTime: localStartEndDateTime ?? undefined,
+            sort: "date,asc",
+          });
+          const usedFallbackNow = meta?.usedFallback === true;
+          setFallbackActive(usedFallbackNow);
+          const cards = events.map(transformNightOutVenue);
+          setNightOutCards(cards);
+        }
       } catch (err) {
         console.error("[Discover] Error fetching events:", err);
         setNightOutError(t("discover:errors.failed_events"));
         // ORCH-0809 M2.1 (P2-1 audit fix): reset fallbackActive on error so the
         // banner doesn't stay stuck on after a failed retry / city switch.
         setFallbackActive(false);
+        setTmError(null);
       } finally {
         setNightOutLoading(false);
       }
@@ -1101,6 +1160,16 @@ function DiscoverScreen({
       selectedFilters.date,
       selectedFilters.segment,
       selectedFilters.genre,
+      // ORCH-0824 (QA F-1 fix): the merged endpoint reads these three
+      // facets from the fetch closure. Without them in the deps array,
+      // toggling a Party Type / Vibe / Music Genre pill (once the
+      // deferred filter UI lands per ORCH-0824-A) would NOT trigger a
+      // refetch — stale closure bug.
+      selectedFilters.partyTypes,
+      selectedFilters.vibeTags,
+      selectedFilters.musicGenres,
+      // ORCH-0839-A F-4: businessEvents.length dep removed — the
+      // cache-hit predicate it fed is gone with the mobile cache.
       t,
     ],
   );
@@ -1121,10 +1190,23 @@ function DiscoverScreen({
 
   const handleRefresh = async (): Promise<void> => {
     setIsRefreshing(true);
-    await clearNightOutCache();
+    // ORCH-0839-A F-4: no cache-clear call here — prior on-device cache
+    // removed. Refresh just re-fetches; the server-side TTL handles
+    // its own freshness (TM events cache: 2h TTL).
     await fetchNightOutEvents(true);
     setIsRefreshing(false);
   };
+
+  // ORCH-0828: business-event card tap → set discriminated-union target.
+  // Mutual exclusion is enforced by the type system; no parallel state to
+  // clear. Replaces the ORCH-0824 dual-setter pattern that caused Bug B.
+  const handleBusinessEventCardPress = useCallback(
+    (data: BusinessEventCardData): void => {
+      setExpansionTarget({ kind: "businessEvent", data });
+      setIsExpandedModalVisible(true);
+    },
+    [],
+  );
 
   const handleNightOutCardPress = (card: NightOutCardData): void => {
     const expandedCardData: ExpandedCardData = {
@@ -1165,13 +1247,17 @@ function DiscoverScreen({
         ticketStatus: card.ticketStatus,
       },
     };
-    setSelectedCardForExpansion(expandedCardData);
+    // ORCH-0828: discriminated-union target. Replaces the prior
+    // setSelectedCardForExpansion(expandedCardData) which left the
+    // sibling business-event state alive and poisoned the modal.
+    setExpansionTarget({ kind: "nightOut", data: expandedCardData });
     setIsExpandedModalVisible(true);
   };
 
   const handleCloseExpandedModal = (): void => {
     setIsExpandedModalVisible(false);
-    setSelectedCardForExpansion(null);
+    // ORCH-0828: clear the entire target (both kinds at once via union).
+    setExpansionTarget(null);
     expandedCardListRef.current = [];
     setExpandedCardIndex(null);
   };
@@ -1225,7 +1311,17 @@ function DiscoverScreen({
   };
   const handleResetFilters = (): void => {
     // ORCH-0809 M2: reset uses { date, segment, genre } — price field gone.
-    setSelectedFilters({ date: "any", segment: "music", genre: "all" });
+    // ORCH-0828: reset must include all NightOutFilters fields, including
+    // the taxonomy arrays (kept empty so a wide-open reset doesn't narrow
+    // the next fetch).
+    setSelectedFilters({
+      date: "any",
+      segment: "music",
+      genre: "all",
+      partyTypes: [],
+      vibeTags: [],
+      musicGenres: [],
+    });
   };
 
   // ORCH-0809 M2: city picker handlers
@@ -1353,16 +1449,28 @@ function DiscoverScreen({
   const HEADER_PANEL_RADIUS = 28;
 
   // Grid content branching
-  const hasCache = nightOutCards.length > 0;
-  const showLoadingSkeleton = nightOutLoading && nightOutCards.length === 0;
+  // ORCH-0828 REWORK: every guard considers BOTH content arrays
+  // (`nightOutCards` for Ticketmaster, `businessEvents` for Mingla
+  // business events). The pre-rework version only checked Ticketmaster,
+  // so Tonight/Weekend/Next Week filters hid Big Party whenever TM
+  // returned zero — a P0 bug for any market+date combination where TM
+  // is empty but business events exist. See INVESTIGATION_ORCH-0828_BRUTAL_RETEST_REPORT.md R1.
+  // Invariant: I-PROPOSED-DISCOVER-EMPTY-STATE-BOTH-ARRAYS.
+  const hasCache = nightOutCards.length > 0 || businessEvents.length > 0;
+  const showLoadingSkeleton =
+    nightOutLoading && nightOutCards.length === 0 && businessEvents.length === 0;
   const showError = !nightOutLoading && nightOutError !== null && !hasCache;
   const showEmpty =
-    !nightOutLoading && !nightOutError && nightOutCards.length === 0;
+    !nightOutLoading &&
+    !nightOutError &&
+    nightOutCards.length === 0 &&
+    businessEvents.length === 0;
   const showFilterNoMatch =
     !nightOutLoading &&
     !nightOutError &&
-    nightOutCards.length > 0 &&
-    filteredNightOutCards.length === 0;
+    (nightOutCards.length > 0 || businessEvents.length > 0) &&
+    filteredNightOutCards.length === 0 &&
+    businessEvents.length === 0;
   const showGrid =
     !showLoadingSkeleton && !showError && !showEmpty && !showFilterNoMatch;
 
@@ -1551,7 +1659,10 @@ function DiscoverScreen({
         ) : showEmpty ? (
           <EmptyState
             icon="moon-outline"
-            title={t("discover:empty.no_events_title")}
+            // ORCH-0828: vary the headline by active date filter so "All"
+            // doesn't read "tonight". Falls back to the i18n string when
+            // not English (locales catch up incrementally).
+            title={getEmptyStateHeadline(selectedFilters.date, t)}
             subtitle={t("discover:empty.no_events_subtitle")}
             actionLabel={t("discover:empty.expand_radius")}
             actionOnPress={handleRefresh}
@@ -1578,7 +1689,31 @@ function DiscoverScreen({
                 </Text>
               </View>
             ) : null}
+            {/* ORCH-0839-A F-6: non-fatal banner when merged response carries
+                meta.tmError (Ticketmaster upstream had a hiccup but Mingla
+                business events still render). Banner clears automatically on
+                the next successful fetch via setTmError(null) in the success
+                branch. */}
+            {tmError !== null ? (
+              <View style={styles.tmErrorBanner}>
+                <Text style={styles.tmErrorText}>
+                  Live events temporarily unavailable. Showing what we have.
+                </Text>
+              </View>
+            ) : null}
             <View style={styles.gridWrap}>
+              {/* ORCH-0824: business events render above the Ticketmaster
+                  grid. Their tap handler opens the same ExpandedCardModal
+                  (Step 20) with a business_event discriminator (Step 19). */}
+              {businessEvents.map((be) => (
+                <BusinessEventCard
+                  key={be.eventId}
+                  data={be}
+                  width={GRID_CARD_WIDTH}
+                  height={GRID_CARD_HEIGHT}
+                  onPress={handleBusinessEventCardPress}
+                />
+              ))}
               {filteredNightOutCards.map((card) => (
                 <EventGridCard
                   key={card.id}
@@ -1601,7 +1736,9 @@ function DiscoverScreen({
       {/* Expanded Card Modal */}
       <ExpandedCardModal
         visible={isExpandedModalVisible}
-        card={selectedCardForExpansion}
+        // ORCH-0828: single discriminated-union target. Type system enforces
+        // mutual exclusion between place/TM cards and business events.
+        target={expansionTarget}
         onClose={handleCloseExpandedModal}
         onSave={async (card) => {
           if (!user) return;
@@ -1630,7 +1767,11 @@ function DiscoverScreen({
             ? () => {
                 const next = expandedCardIndex + 1;
                 setExpandedCardIndex(next);
-                setSelectedCardForExpansion(expandedCardListRef.current[next]);
+                // ORCH-0828: navigate via the union state.
+                setExpansionTarget({
+                  kind: "nightOut",
+                  data: expandedCardListRef.current[next],
+                });
               }
             : undefined
         }
@@ -1639,7 +1780,10 @@ function DiscoverScreen({
             ? () => {
                 const prev = expandedCardIndex - 1;
                 setExpandedCardIndex(prev);
-                setSelectedCardForExpansion(expandedCardListRef.current[prev]);
+                setExpansionTarget({
+                  kind: "nightOut",
+                  data: expandedCardListRef.current[prev],
+                });
               }
             : undefined
         }
@@ -1879,6 +2023,26 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.75)",
     fontSize: 12,
     flex: 1,
+  },
+  // ORCH-0839-A F-6: tmError banner (yellow tint) shown when the merged
+  // endpoint carries a non-null meta.tmError. Non-blocking — Mingla events
+  // continue to render normally.
+  tmErrorBanner: {
+    marginHorizontal: 12,
+    marginTop: 8,
+    marginBottom: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: "rgba(255, 200, 0, 0.12)",
+    borderColor: "rgba(255, 200, 0, 0.30)",
+    borderWidth: 1,
+    borderRadius: 12,
+  },
+  tmErrorText: {
+    color: "rgba(255, 230, 150, 0.95)",
+    fontSize: 13,
+    fontWeight: "500",
+    textAlign: "center",
   },
 
   // Floating blurred header panel (status bar + title + filter bar in one glass surface)

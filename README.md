@@ -153,6 +153,32 @@ supabase db push
 
 For release flows, follow the active orchestrator/spec instructions. Supabase migration application is operator-gated; edge function deploys require the approved lifecycle gate.
 
+## Store Submissions (EAS Submit)
+
+Both mobile apps are wired for automated store submission via `eas submit`. Submissions are scoped to safe defaults: Android lands as a **draft in the internal testing track**, iOS lands in **TestFlight**. Final production rollout always requires a manual click in Play Console / App Store Connect.
+
+| App | Android command (from app dir) | iOS command (from app dir) |
+|---|---|---|
+| Mingla Business | `cd mingla-business && eas submit --platform android --latest` | `cd mingla-business && eas submit --platform ios --latest` |
+| Mingla Consumer | `cd app-mobile && eas submit --platform android --latest` | `cd app-mobile && eas submit --platform ios --latest` |
+
+Credential layout:
+
+| Credential | Where it lives | Notes |
+|---|---|---|
+| Google Play service account JSON | `~/.mingla-secrets/playstore-mingla.json` (mode 600) | Account `eas-submit@mingla-dev.iam.gserviceaccount.com`. Scoped to testing tracks on both apps. Has NO production-release permission by design. |
+| Apple App Store Connect API key | Stored in EAS (`H46434D7Z9`, Admin role, issuer `ee78d0ff-158c-4326-80ef-aec69745fc2d`) | Managed by EAS internally; no `.p8` file required on disk. |
+
+The Google service-account JSON is git-ignored (`.gitignore:48` covers `play-service-account.json`; `~/.mingla-secrets/` lives outside the repo). The `eas.json` `submit.production` blocks reference the absolute path. The `~/.mingla-secrets/` directory is mode 700 / file mode 600 — only the owning user can read.
+
+Safety boundaries baked in:
+
+- Android submissions land as **draft** in the **internal** testing track. Promotion to production tracks requires manual Play Console action.
+- The Play service account is intentionally scoped without `Release to production` permission. Even a misfired `eas submit` cannot reach production-track users.
+- iOS submissions land in TestFlight. App Store Review submission still requires manual ASC action.
+
+Android-specific: `mingla-business` ships with an Expo config plugin at `mingla-business/plugins/withAdiRegistration.js` that writes `assets/adi-registration.properties` into Android APK builds to satisfy Play Console package-name verification. A dedicated `production-apk` build profile in `mingla-business/eas.json` produces signed APKs for that verification flow.
+
 ## Verification And Maintenance
 
 Use these checks when touching documentation:

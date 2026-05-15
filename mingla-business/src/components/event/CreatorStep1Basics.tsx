@@ -1,25 +1,31 @@
 /**
  * Wizard Step 1 — Basics.
  *
- * Designer source: screens-creator.jsx lines 82-104 (CreatorStep1).
- * PRD U.5.1 required fields surfaced here: name, description, category.
+ * Designer source: screens-creator.jsx lines 82-104 (CreatorStep1) +
+ * operator Figma 2026-05-13 for Party Type / Vibes / Music Genre pills.
+ * PRD U.5.1 required fields surfaced here: name, description, party type.
  * Format chip (in_person / online / hybrid) is also captured here so
  * Step 3 (Where) can branch its render without re-asking.
  *
- * Description field is added beyond the designer mock (designer omits it
- * but PRD U.5.1 requires it). Founder may iterate placement post-smoke
- * (W-CYCLE-3-DESC-PLACEMENT).
+ * Per ORCH-0824 (2026-05-13):
+ *   - The legacy single-select Category sheet was REMOVED. The new
+ *     taxonomy is three multi-select pill groups: Party Type (required,
+ *     ≥1), Vibe Tags (optional), Music Genre (optional). Canonical
+ *     slug lists live in `src/constants/eventTaxonomy.ts` (parity-locked
+ *     with the consumer + edge function copies).
+ *   - Render order on Step 1: Name → Format → Party Type → Vibe Tags →
+ *     Music Genre → Description.
  *
- * Category sheet ships 8 placeholder values per spec §3.9 + dispatch
- * W-CYCLE-3-CATEGORY-LIST. Founder may override the list at smoke.
- *
- * Per Cycle 3 spec §3.9 Step 1.
+ * ORCH-0823 (preserved 2026-05-13 by ORCH-0824 implementor): the
+ * Description TextInput keeps `autoCorrect={false}` + `autoCapitalize="none"`
+ * to eliminate iOS hardware-capslock + sentences-mode space-erasure
+ * (Path A) and autocorrect near-miss substitutions (Path B). See
+ * Mingla_Artifacts/reports/QA_ORCH-0823_EVENT_WIZARD_SPACE_CAPSLOCK_GLITCH_REPORT.md.
  */
 
-import React, { useCallback, useState } from "react";
+import React, { useCallback } from "react";
 import {
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -36,27 +42,16 @@ import {
   typography,
 } from "../../constants/designSystem";
 import type { DraftEventFormat } from "../../store/draftEventStore";
+import {
+  PARTY_TYPES,
+  VIBE_TAGS,
+  MUSIC_GENRES,
+} from "../../constants/eventTaxonomy";
 
 import { GlassCard } from "../ui/GlassCard";
-import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
-import { Sheet } from "../ui/Sheet";
 
 import { errorForKey, type StepBodyProps } from "./types";
-
-// [TRANSITIONAL] 8 placeholder categories — TRANS-CYCLE-3-6.
-// Real categories taxonomy lands B-cycle when consumer-side filtering
-// + admin-side categorization tooling come online together.
-const CATEGORIES: readonly string[] = [
-  "Nightlife",
-  "Brunch",
-  "Concert",
-  "Festival",
-  "Workshop",
-  "Pop-up",
-  "Private",
-  "Other",
-] as const;
 
 const FORMAT_OPTIONS: ReadonlyArray<{ id: DraftEventFormat; label: string }> = [
   { id: "in_person", label: "In person" },
@@ -84,6 +79,50 @@ const FormatPill: React.FC<FormatPillProps> = ({ label, active, onPress }) => (
   </Pressable>
 );
 
+/**
+ * Multi-select pill used for Party Type, Vibe Tag, and Music Genre grids.
+ * `emoji` is optional; when provided it renders inline before the label
+ * (used by Vibe Tags per operator Figma 2026-05-13).
+ */
+interface TaxonomyPillProps {
+  slug: string;
+  label: string;
+  emoji?: string;
+  selected: boolean;
+  onToggle: (slug: string) => void;
+}
+
+const TaxonomyPill: React.FC<TaxonomyPillProps> = ({
+  slug,
+  label,
+  emoji,
+  selected,
+  onToggle,
+}) => (
+  <Pressable
+    onPress={() => onToggle(slug)}
+    accessibilityRole="button"
+    accessibilityState={{ selected }}
+    accessibilityLabel={label}
+    style={[styles.taxonomyPill, selected && styles.taxonomyPillActive]}
+  >
+    {emoji !== undefined ? (
+      <Text style={styles.taxonomyPillEmoji}>{emoji}</Text>
+    ) : null}
+    <Text
+      style={[
+        styles.taxonomyPillLabel,
+        selected && styles.taxonomyPillLabelActive,
+      ]}
+    >
+      {label}
+    </Text>
+  </Pressable>
+);
+
+const toggleInArray = (arr: string[], slug: string): string[] =>
+  arr.includes(slug) ? arr.filter((s) => s !== slug) : [...arr, slug];
+
 export const CreatorStep1Basics: React.FC<StepBodyProps> = ({
   draft,
   updateDraft,
@@ -91,11 +130,15 @@ export const CreatorStep1Basics: React.FC<StepBodyProps> = ({
   showErrors,
   scrollToBottom,
 }) => {
-  const [categorySheetVisible, setCategorySheetVisible] = useState<boolean>(false);
-
   const nameError = showErrors ? errorForKey(errors, "name") : undefined;
   const descError = showErrors ? errorForKey(errors, "description") : undefined;
-  const categoryError = showErrors ? errorForKey(errors, "category") : undefined;
+  const partyTypesError = showErrors
+    ? errorForKey(errors, "partyTypes")
+    : undefined;
+  const vibeTagsError = showErrors ? errorForKey(errors, "vibeTags") : undefined;
+  const musicGenresError = showErrors
+    ? errorForKey(errors, "musicGenres")
+    : undefined;
 
   const handleSelectFormat = useCallback(
     (format: DraftEventFormat): void => {
@@ -104,16 +147,25 @@ export const CreatorStep1Basics: React.FC<StepBodyProps> = ({
     [updateDraft],
   );
 
-  const handleOpenCategorySheet = useCallback((): void => {
-    setCategorySheetVisible(true);
-  }, []);
-
-  const handleSelectCategory = useCallback(
-    (category: string): void => {
-      updateDraft({ category });
-      setCategorySheetVisible(false);
+  const handleTogglePartyType = useCallback(
+    (slug: string): void => {
+      updateDraft({ partyTypes: toggleInArray(draft.partyTypes, slug) });
     },
-    [updateDraft],
+    [draft.partyTypes, updateDraft],
+  );
+
+  const handleToggleVibeTag = useCallback(
+    (slug: string): void => {
+      updateDraft({ vibeTags: toggleInArray(draft.vibeTags, slug) });
+    },
+    [draft.vibeTags, updateDraft],
+  );
+
+  const handleToggleMusicGenre = useCallback(
+    (slug: string): void => {
+      updateDraft({ musicGenres: toggleInArray(draft.musicGenres, slug) });
+    },
+    [draft.musicGenres, updateDraft],
   );
 
   return (
@@ -149,33 +201,63 @@ export const CreatorStep1Basics: React.FC<StepBodyProps> = ({
         </View>
       </View>
 
-      {/* Category */}
+      {/* Party Type — required, multi-select */}
       <View style={styles.field}>
-        <Text style={styles.fieldLabel}>Category</Text>
-        <Pressable
-          onPress={handleOpenCategorySheet}
-          accessibilityRole="button"
-          accessibilityLabel={
-            draft.category !== null ? `Category: ${draft.category}` : "Pick a category"
-          }
-          style={[
-            styles.pickerRow,
-            categoryError !== undefined && styles.inputError,
-          ]}
-        >
-          <Text
-            style={
-              draft.category !== null
-                ? styles.pickerValue
-                : styles.pickerPlaceholder
-            }
-          >
-            {draft.category ?? "Pick a category"}
-          </Text>
-          <Icon name="chevD" size={16} color={textTokens.tertiary} />
-        </Pressable>
-        {categoryError !== undefined ? (
-          <Text style={styles.helperError}>{categoryError}</Text>
+        <Text style={styles.fieldLabel}>Party Type *</Text>
+        <View style={styles.taxonomyGrid}>
+          {PARTY_TYPES.map((opt) => (
+            <TaxonomyPill
+              key={opt.slug}
+              slug={opt.slug}
+              label={opt.label}
+              selected={draft.partyTypes.includes(opt.slug)}
+              onToggle={handleTogglePartyType}
+            />
+          ))}
+        </View>
+        {partyTypesError !== undefined ? (
+          <Text style={styles.helperError}>{partyTypesError}</Text>
+        ) : null}
+      </View>
+
+      {/* Vibe Tags — optional, multi-select */}
+      <View style={styles.field}>
+        <Text style={styles.fieldLabel}>Vibe Tags (Select all that apply)</Text>
+        <View style={styles.taxonomyGrid}>
+          {VIBE_TAGS.map((opt) => (
+            <TaxonomyPill
+              key={opt.slug}
+              slug={opt.slug}
+              label={opt.label}
+              emoji={opt.emoji}
+              selected={draft.vibeTags.includes(opt.slug)}
+              onToggle={handleToggleVibeTag}
+            />
+          ))}
+        </View>
+        {vibeTagsError !== undefined ? (
+          <Text style={styles.helperError}>{vibeTagsError}</Text>
+        ) : null}
+      </View>
+
+      {/* Music Genre — optional, multi-select */}
+      <View style={styles.field}>
+        <Text style={styles.fieldLabel}>
+          Music Genre (Select all that will be played)
+        </Text>
+        <View style={styles.taxonomyGrid}>
+          {MUSIC_GENRES.map((opt) => (
+            <TaxonomyPill
+              key={opt.slug}
+              slug={opt.slug}
+              label={opt.label}
+              selected={draft.musicGenres.includes(opt.slug)}
+              onToggle={handleToggleMusicGenre}
+            />
+          ))}
+        </View>
+        {musicGenresError !== undefined ? (
+          <Text style={styles.helperError}>{musicGenresError}</Text>
         ) : null}
       </View>
 
@@ -201,6 +283,13 @@ export const CreatorStep1Basics: React.FC<StepBodyProps> = ({
             multiline
             numberOfLines={5}
             textAlignVertical="top"
+            // ORCH-0823 v2: explicit autoCorrect={false} eliminates iOS
+            // autocorrect near-miss substitutions ("Big P" → "Bigot" — Path B).
+            // autoCapitalize="none" eliminates the iOS hardware-capslock +
+            // sentences-mode space-erasure (Path A) discovered during patched
+            // QA — see Mingla_Artifacts/reports/QA_ORCH-0823_EVENT_WIZARD_SPACE_CAPSLOCK_GLITCH_REPORT.md.
+            autoCorrect={false}
+            autoCapitalize="none"
             style={styles.textarea}
             accessibilityLabel="Event description"
           />
@@ -209,45 +298,6 @@ export const CreatorStep1Basics: React.FC<StepBodyProps> = ({
           <Text style={styles.helperError}>{descError}</Text>
         ) : null}
       </View>
-
-      {/* Category sheet */}
-      <Sheet
-        visible={categorySheetVisible}
-        onClose={() => setCategorySheetVisible(false)}
-        snapPoint="half"
-      >
-        <ScrollView contentContainerStyle={styles.sheetContent}>
-          <Text style={styles.sheetTitle}>Pick a category</Text>
-          {CATEGORIES.map((cat) => {
-            const active = draft.category === cat;
-            return (
-              <Pressable
-                key={cat}
-                onPress={() => handleSelectCategory(cat)}
-                accessibilityRole="button"
-                accessibilityState={{ selected: active }}
-                accessibilityLabel={cat}
-                style={[styles.categoryRow, active && styles.categoryRowActive]}
-              >
-                <Text
-                  style={[
-                    styles.categoryRowLabel,
-                    active && styles.categoryRowLabelActive,
-                  ]}
-                >
-                  {cat}
-                </Text>
-                {active ? (
-                  <Icon name="check" size={18} color={accent.warm} />
-                ) : null}
-              </Pressable>
-            );
-          })}
-          <Text style={styles.sheetFooterCaption}>
-            Real categories taxonomy lands B-cycle.
-          </Text>
-        </ScrollView>
-      </Sheet>
     </View>
   );
 };
@@ -300,27 +350,6 @@ const styles = StyleSheet.create({
   formatPillLabelActive: {
     color: textTokens.primary,
   },
-  pickerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    borderRadius: radiusTokens.md,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
-  },
-  pickerValue: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.primary,
-  },
-  pickerPlaceholder: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.tertiary,
-  },
   textareaWrap: {
     borderRadius: radiusTokens.md,
     borderWidth: 1,
@@ -338,47 +367,39 @@ const styles = StyleSheet.create({
     padding: 0,
   },
 
-  // Sheet styles --------------------------------------------------------
-  sheetContent: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xl,
+  // ORCH-0824 multi-select pill grid (Party Type / Vibe Tags / Music Genre)
+  taxonomyGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.xs,
   },
-  sheetTitle: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    letterSpacing: typography.h3.letterSpacing,
-    color: textTokens.primary,
-    marginBottom: spacing.md,
-  },
-  categoryRow: {
+  taxonomyPill: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     borderRadius: radiusTokens.md,
-    marginBottom: spacing.xs,
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+    backgroundColor: glass.tint.profileBase,
   },
-  categoryRowActive: {
+  taxonomyPillActive: {
     backgroundColor: accent.tint,
+    borderColor: accent.border,
   },
-  categoryRowLabel: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+  taxonomyPillEmoji: {
+    fontSize: typography.bodySm.fontSize,
+    marginRight: 6,
+  },
+  taxonomyPillLabel: {
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+    fontWeight: "500",
     color: textTokens.primary,
   },
-  categoryRowLabelActive: {
+  taxonomyPillLabelActive: {
     color: textTokens.primary,
     fontWeight: "600",
-  },
-  sheetFooterCaption: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
-    textAlign: "center",
-    marginTop: spacing.md,
   },
 });
 

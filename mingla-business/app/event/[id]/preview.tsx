@@ -181,7 +181,7 @@ export default function EventPreviewRoute(): React.ReactElement {
         visible: true,
         message: "This draft is no longer editable.",
       });
-      router.replace("/(tabs)/events" as never);
+      router.replace("/(tabs)/hub/events" as never);
       return undefined;
     }
     if (staleRecoveryDraftIdRef.current === idParam) {

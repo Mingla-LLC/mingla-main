@@ -220,7 +220,24 @@ export interface DraftEvent {
   name: string;
   description: string;
   format: DraftEventFormat;
-  category: string | null;
+  /**
+   * ORCH-0824: replaces the deprecated free-form `category` field.
+   * Multi-select party type slugs from `eventTaxonomy.PARTY_TYPES`.
+   * Required at publish (`partyTypes.length >= 1`). Persisted to
+   * `events.party_types` (top-level text[] column).
+   */
+  partyTypes: string[];
+  /**
+   * ORCH-0824: multi-select vibe tag slugs from `eventTaxonomy.VIBE_TAGS`.
+   * Optional at publish. Persisted to `events.vibe_tags`.
+   */
+  vibeTags: string[];
+  /**
+   * ORCH-0824: multi-select Mingla music genre slugs from
+   * `eventTaxonomy.MUSIC_GENRES`. Optional at publish. Persisted to
+   * `events.music_genres`.
+   */
+  musicGenres: string[];
   // Step 2 — When (Cycle 4 v3 — replaces `repeats`)
   /**
    * Mode of the When step. "single" = one date (Cycle 3 default behavior).
@@ -250,6 +267,17 @@ export interface DraftEvent {
   // Step 3 — Where
   venueName: string | null;
   address: string | null;
+  /**
+   * ORCH-0824: normalized city (locality) extracted from Google Places
+   * autocomplete pick. Persisted to `events.city` at publish. Required
+   * at publish — buyer-side Discover filtering joins on this column.
+   */
+  city: string | null;
+  /**
+   * ORCH-0824: structured lat/lng from Google Places autocomplete pick.
+   * Persisted to `events.location_geo` at publish.
+   */
+  locationGeo: { lat: number; lng: number } | null;
   /** Used when format ∈ {"online", "hybrid"}. */
   onlineUrl: string | null;
   /** When true (default), address hidden until ticket purchase. */
@@ -337,7 +365,10 @@ const DEFAULT_DRAFT_FIELDS: Omit<
   name: "",
   description: "",
   format: "in_person",
-  category: null,
+  // ORCH-0824: category dropped; three taxonomy fields default empty.
+  partyTypes: [],
+  vibeTags: [],
+  musicGenres: [],
   whenMode: "single",
   date: null,
   doorsOpen: null,
@@ -347,6 +378,9 @@ const DEFAULT_DRAFT_FIELDS: Omit<
   multiDates: null,
   venueName: null,
   address: null,
+  // ORCH-0824: city + locationGeo populated by Google Places autocomplete.
+  city: null,
+  locationGeo: null,
   onlineUrl: null,
   hideAddressUntilTicket: true,
   coverHue: 25,

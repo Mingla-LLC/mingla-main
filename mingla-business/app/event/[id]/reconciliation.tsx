@@ -61,6 +61,7 @@ import {
 import { formatCurrency } from "../../../src/utils/currency";
 import { formatDraftDateLine } from "../../../src/utils/eventDateDisplay";
 import { deriveLiveStatus } from "../../../src/utils/eventLifecycle";
+import { computeMasterStartAtUtc } from "../../../src/utils/eventDateMath";
 import { exportReconciliationCsv } from "../../../src/utils/guestCsvExport";
 import {
   EMPTY_SUMMARY,
@@ -106,7 +107,8 @@ export default function ReconciliationRoute(): React.ReactElement {
     if (event === null || typeof eventId !== "string") return EMPTY_SUMMARY;
     return computeReconciliation({
       eventId,
-      status: deriveLiveStatus(event),
+      // ORCH-0828: pass timezone-aware UTC instant (not date-only string).
+      status: deriveLiveStatus(event, computeMasterStartAtUtc(event)),
       eventName: event.name,
       currency: event.currency ?? "GBP",
       orderEntries: allOrderEntries,

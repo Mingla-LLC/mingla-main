@@ -847,7 +847,8 @@ export default function SessionViewModal({
         {selectedCardForExpansion && (
           <ExpandedCardModal
             visible={isExpandedModalVisible}
-            card={selectedCardForExpansion}
+            // ORCH-0828: discriminated-union target.
+            target={{ kind: "nightOut", data: selectedCardForExpansion }}
             onClose={() => {
               setIsExpandedModalVisible(false);
               setSelectedCardForExpansion(null);

@@ -21,7 +21,27 @@
  * auto-detects platform at runtime.
  */
 
-import Purchases, { LOG_LEVEL } from "react-native-purchases";
+import { Platform } from "react-native";
+
+// Defer react-native-purchases require so web bundles don't blow up at
+// module-load. The package imports native modules that fail to resolve
+// under `expo export -p web`. Web bundles intentionally skip RevenueCat.
+// Invariant: mingla-business web export tolerates native-only deps via
+// Platform.OS guard (paired with I-PROPOSED-X web-export deprecation).
+type PurchasesModule = typeof import("react-native-purchases").default;
+type LogLevelModule = typeof import("react-native-purchases").LOG_LEVEL;
+let Purchases: PurchasesModule | null = null;
+let LOG_LEVEL: LogLevelModule | null = null;
+if (Platform.OS !== "web") {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = require("react-native-purchases");
+    Purchases = mod.default;
+    LOG_LEVEL = mod.LOG_LEVEL;
+  } catch (err) {
+    console.warn("[RevenueCat] native module unavailable; purchases disabled:", err);
+  }
+}
 
 const REVENUECAT_API_KEY = process.env.EXPO_PUBLIC_REVENUECAT_API_KEY;
 
@@ -32,8 +52,10 @@ class RevenueCatService {
 
   private constructor() {
     this.enabled =
-      typeof REVENUECAT_API_KEY === "string" && REVENUECAT_API_KEY.length > 0;
-    if (!this.enabled) {
+      typeof REVENUECAT_API_KEY === "string" &&
+      REVENUECAT_API_KEY.length > 0 &&
+      Purchases !== null;
+    if (!this.enabled && Platform.OS !== "web") {
       console.warn(
         "[RevenueCat] env missing — SDK disabled. Set EXPO_PUBLIC_REVENUECAT_API_KEY as an EAS Secret to enable.",
       );
@@ -57,9 +79,9 @@ class RevenueCatService {
     if (this.initialized || !this.enabled) return;
     try {
       if (__DEV__) {
-        Purchases.setLogLevel(LOG_LEVEL.WARN);
+        Purchases!.setLogLevel(LOG_LEVEL!.WARN);
       }
-      Purchases.configure({ apiKey: REVENUECAT_API_KEY! });
+      Purchases!.configure({ apiKey: REVENUECAT_API_KEY! });
       this.initialized = true;
       if (__DEV__) console.log("[RevenueCat] configured");
     } catch (e) {
@@ -75,7 +97,7 @@ class RevenueCatService {
    */
   identify(userId: string): void {
     if (!this.initialized) return;
-    void Purchases.logIn(userId)
+    void Purchases!.logIn(userId)
       .then(() => {
         if (__DEV__) console.log("[RevenueCat] identified:", userId);
       })
@@ -94,7 +116,7 @@ class RevenueCatService {
    */
   logOut(): void {
     if (!this.initialized) return;
-    void Purchases.logOut()
+    void Purchases!.logOut()
       .then(() => {
         if (__DEV__) console.log("[RevenueCat] logged out");
       })

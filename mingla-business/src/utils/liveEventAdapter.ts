@@ -44,7 +44,21 @@ export const liveEventToEditableDraft = (e: LiveEvent): DraftEvent => ({
   name: e.name,
   description: e.description,
   format: e.format,
-  category: e.category,
+  // ORCH-0824 HOTFIX: populate new taxonomy fields with defensive defaults
+  // when editing a legacy LiveEvent that predates ORCH-0824 (those
+  // entries in Zustand persistence have no partyTypes/vibeTags/musicGenres
+  // — using nullish coalescing produces empty arrays so the validator
+  // doesn't crash on `.length`. The legacy `category` is read-only and
+  // intentionally NOT auto-mapped to partyTypes; the user re-picks on
+  // republish to ensure structured taxonomy values are honest.
+  partyTypes: e.partyTypes ?? [],
+  vibeTags: e.vibeTags ?? [],
+  musicGenres: e.musicGenres ?? [],
+  // ORCH-0824: city + locationGeo populated by Google Places autocomplete
+  // at publish; legacy LiveEvents have neither — user re-picks address
+  // on republish via the new autocomplete (validator enforces).
+  city: e.city ?? null,
+  locationGeo: e.locationGeo ?? null,
   whenMode: e.whenMode,
   date: e.date,
   doorsOpen: e.doorsOpen,
@@ -118,6 +132,12 @@ export const FIELD_LABELS: Record<keyof EditableLiveEventFields, string> = {
   passwordProtected: "Password protected",
   privateGuestList: "Private guest list",
   inPersonPaymentsEnabled: "In-person payments",
+  // ORCH-0824 hotfix
+  partyTypes: "Party types",
+  vibeTags: "Vibe tags",
+  musicGenres: "Music genres",
+  city: "City",
+  locationGeo: "Map location",
 };
 
 /**
@@ -162,6 +182,14 @@ export const SAFE_KEYS: ReadonlyArray<keyof EditableLiveEventFields> = [
   "passwordProtected",
   "visibility",
   "privateGuestList",
+  // ORCH-0824 hotfix: taxonomy + city are additive/cosmetic for buyer
+  // protection purposes (they affect Discover filtering, not ticket
+  // legitimacy). Banner-only notification when changed alone.
+  "partyTypes",
+  "vibeTags",
+  "musicGenres",
+  "city",
+  "locationGeo",
 ];
 
 /**
@@ -197,7 +225,11 @@ export const editableDraftToPatch = (
     patch.description = edited.description;
   }
   if (original.format !== edited.format) patch.format = edited.format;
-  if (original.category !== edited.category) patch.category = edited.category;
+  // ORCH-0824: `category` was removed from DraftEvent (replaced by
+  // partyTypes/vibeTags/musicGenres). LiveEvent.category remains as a
+  // read-only legacy field (cleanup target: ORCH-0824-D). Skipping the
+  // diff here prevents `patch.category = undefined` from polluting the
+  // patch and tripping the isServerEditableOnlyPatch gate.
   if (original.whenMode !== edited.whenMode) patch.whenMode = edited.whenMode;
   if (original.date !== edited.date) patch.date = edited.date;
   if (original.doorsOpen !== edited.doorsOpen) patch.doorsOpen = edited.doorsOpen;
@@ -262,6 +294,33 @@ export const editableDraftToPatch = (
   // through to "No changes to save" silently. Mirrors privateGuestList.
   if (original.inPersonPaymentsEnabled !== edited.inPersonPaymentsEnabled) {
     patch.inPersonPaymentsEnabled = edited.inPersonPaymentsEnabled;
+  }
+  // ORCH-0824 hotfix: diff the new taxonomy + city + locationGeo fields.
+  // Arrays compared via deepEqual (slug order is not stable). Without
+  // these checks, toggling a Party Type / Vibe / Music Genre pill on
+  // an existing event produces an empty patch and the Save button
+  // stays disabled (same root cause as the Cycle-12 inPersonPayments bug).
+  // Originals may be undefined on legacy LiveEvents — fall back to []
+  // for arrays, null for scalars, to make the diff honest.
+  const origPartyTypes = original.partyTypes ?? [];
+  if (!deepEqual(origPartyTypes, edited.partyTypes)) {
+    patch.partyTypes = edited.partyTypes;
+  }
+  const origVibeTags = original.vibeTags ?? [];
+  if (!deepEqual(origVibeTags, edited.vibeTags)) {
+    patch.vibeTags = edited.vibeTags;
+  }
+  const origMusicGenres = original.musicGenres ?? [];
+  if (!deepEqual(origMusicGenres, edited.musicGenres)) {
+    patch.musicGenres = edited.musicGenres;
+  }
+  const origCity = original.city ?? null;
+  if (origCity !== edited.city) {
+    patch.city = edited.city;
+  }
+  const origLocationGeo = original.locationGeo ?? null;
+  if (!deepEqual(origLocationGeo, edited.locationGeo)) {
+    patch.locationGeo = edited.locationGeo;
   }
   return patch;
 };
@@ -344,6 +403,11 @@ export const computeRichFieldDiffs = (
     keyof EditableLiveEventFields
   >;
   for (const key of allKeys) {
+    // ORCH-0824: `category` was removed from DraftEvent; skip the diff
+    // so an empty edited.category (undefined) doesn't show as a spurious
+    // change against legacy LiveEvent.category values. Cleanup target:
+    // ORCH-0824-D (when LiveEvent.category is removed entirely).
+    if (key === "category") continue;
     const a = original[key];
     const b = edited[key];
     if (deepEqual(a, b)) continue;
