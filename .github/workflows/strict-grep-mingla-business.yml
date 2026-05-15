@@ -5,6 +5,7 @@ on:
     branches: [main, Seth]
     paths:
       - "mingla-business/**"
+      - "app-mobile/**"
       - "supabase/migrations/**"
       - ".github/scripts/strict-grep/**"
       - ".github/workflows/strict-grep-mingla-business.yml"
@@ -12,6 +13,7 @@ on:
     branches: [main, Seth]
     paths:
       - "mingla-business/**"
+      - "app-mobile/**"
       - "supabase/migrations/**"
       - ".github/scripts/strict-grep/**"
       - ".github/workflows/strict-grep-mingla-business.yml"
@@ -65,6 +67,12 @@ on:
 #   - ORCH-0796 (orch-0796-no-stub-payout-fee.mjs) — Reconciliation expected-payout derived from real Stripe app-fee + refund cols, no 4% stub (I-PROPOSED-BC EVENT_PAYOUT_DATA_DERIVED)
 #   - ORCH-0808 (orch-0808-appsflyer-devices-app-discriminator.mjs) — appsflyer_devices writes carry app: 'consumer' | 'business' (I-PROPOSED-AF-DISCRIMINATOR)
 #   - ORCH-0816 (orch-0816-last-7-days-binds-rev7d.mjs) — "Last 7 days" KPI tile binds stats.rev7d, never stats.rev (label/data agreement)
+#   - ORCH-0829-B D-1 (orch-0829b-d1-checkout-expiry-tombstone-or-clause-present.mjs) — biz_ticket_checkout_create_session tombstones past-expiry in-flight sessions (I-PROPOSED-CHECKOUT-EXPIRY-TOMBSTONE)
+#   - ORCH-0836 (app-mobile/scripts/ci/orch-0836-regression-check.mjs) — Stripe RN 0.65.1 forwardRef warning silenced via LogBox.ignoreLogs
+#   - ORCH-0837 (app-mobile/scripts/ci/orch-0837-regression-check.mjs) — Stripe PI card-only + handleURLCallback wired (I-PROPOSED-STRIPE-PI-EXPLICIT-METHOD-TYPES + I-PROPOSED-STRIPE-CALLBACK-WIRED)
+#   - ORCH-0839-A pagination (app-mobile/scripts/ci/orch-0839-a-tm-pagination-aligned.mjs) — TM cache-hit serves events verbatim (I-PROPOSED-DISCOVER-TM-CACHE-NO-SLICE)
+#   - ORCH-0839-A meta (app-mobile/scripts/ci/orch-0839-a-meta-items-consistent.mjs) — merged meta counts match items returned (I-PROPOSED-DISCOVER-META-MATCHES-ITEMS)
+#   - ORCH-0839-A cache-removed (app-mobile/scripts/ci/orch-0839-a-mobile-cache-removed.mjs) — mobile AsyncStorage cache permanently removed (I-PROPOSED-DISCOVER-NO-MOBILE-CACHE; supersedes ORCH-0835 cache-symmetry gate)
 #
 # Future gates to register (proposed but not yet implemented):
 #   - I-32 rank parity (Cycle 13a proposal)
@@ -770,3 +778,80 @@ jobs:
           node-version: "20"
       - name: Run ORCH-0824 TAXONOMY-PARITY gate
         run: node .github/scripts/strict-grep/orch-0824-event-taxonomy-parity.mjs
+
+  orch-0828-no-date-only-string-constructor:
+    name: "ORCH-0828: no new Date(\"YYYY-MM-DD\") (I-PROPOSED-LIVE-STATUS-UTC-INPUT)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0828 date-only-string gate
+        run: node .github/scripts/strict-grep/orch-0828-no-date-only-string-constructor.mjs
+
+  orch-0829b-d1-checkout-expiry-tombstone:
+    name: "ORCH-0829-B D-1: biz_ticket_checkout_create_session tombstones past-expiry sessions (I-PROPOSED-CHECKOUT-EXPIRY-TOMBSTONE)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0829-B D-1 expiry-tombstone gate
+        run: node .github/scripts/strict-grep/orch-0829b-d1-checkout-expiry-tombstone-or-clause-present.mjs
+
+  orch-0836-logbox-stripe-forwardref-filter:
+    name: "ORCH-0836: Stripe RN 0.65.1 forwardRef warning silenced via LogBox.ignoreLogs"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0836 regression check
+        run: node app-mobile/scripts/ci/orch-0836-regression-check.mjs
+
+  orch-0837-stripe-card-only-and-callback-wired:
+    name: "ORCH-0837: Stripe PI card-only + handleURLCallback wired (I-PROPOSED-STRIPE-PI-EXPLICIT-METHOD-TYPES + I-PROPOSED-STRIPE-CALLBACK-WIRED)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0837 regression check
+        run: node app-mobile/scripts/ci/orch-0837-regression-check.mjs
+
+  orch-0839-a-tm-pagination-aligned:
+    name: "ORCH-0839-A: TM cache-hit serves events verbatim (I-PROPOSED-DISCOVER-TM-CACHE-NO-SLICE)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0839-A pagination gate
+        run: node app-mobile/scripts/ci/orch-0839-a-tm-pagination-aligned.mjs
+
+  orch-0839-a-meta-items-consistent:
+    name: "ORCH-0839-A: merged meta counts match items returned (I-PROPOSED-DISCOVER-META-MATCHES-ITEMS)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0839-A meta gate
+        run: node app-mobile/scripts/ci/orch-0839-a-meta-items-consistent.mjs
+
+  orch-0839-a-mobile-cache-removed:
+    name: "ORCH-0839-A: mobile AsyncStorage cache permanently removed (I-PROPOSED-DISCOVER-NO-MOBILE-CACHE)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0839-A cache-removed gate
+        run: node app-mobile/scripts/ci/orch-0839-a-mobile-cache-removed.mjs

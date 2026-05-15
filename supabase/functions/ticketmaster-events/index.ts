@@ -546,14 +546,22 @@ serve(async (req: Request) => {
       .maybeSingle();
 
     if (cached) {
+      // ORCH-0839-A F-1: serve the cached page verbatim. The cache row stores
+      // exactly ONE TM page (the page that was originally fetched); it is NOT
+      // a superset across pages. The previous `events.slice(pageNum*pageSize,
+      // …)` was always wrong — when `discover-merged-events` defaulted to
+      // `page=1`, slicing 20-element rows returned `[]` and the user saw
+      // "All shows only Mingla events." Cache key already includes every
+      // facet that would change the page contents, so a hit means "this
+      // exact page is in cache." Future paged-browsing semantics require a
+      // different cache shape; out of scope for this fix.
+      // Invariant: I-PROPOSED-DISCOVER-TM-CACHE-NO-SLICE.
       const events = (cached.events as TicketmasterEvent[]) || [];
-      const start = pageNum * pageSize;
-      const paginatedEvents = events.slice(start, start + pageSize);
-      const totalPages = Math.ceil(events.length / pageSize);
+      const totalPages = events.length > 0 ? 1 : 0;
 
       return new Response(
         JSON.stringify({
-          events: paginatedEvents,
+          events,
           meta: {
             totalResults: cached.total_results,
             page: pageNum,
@@ -604,14 +612,20 @@ serve(async (req: Request) => {
         .maybeSingle();
 
       if (staleCache) {
+        // ORCH-0839-A F-1: stale-cache recovery branch has the same
+        // verbatim-serve semantic as the primary cache-hit. Same cache
+        // shape, same fix. Was NOT explicitly named in spec scope but
+        // fixed here because (a) the bug is identical, (b) the CI gate
+        // I-PROPOSED-DISCOVER-TM-CACHE-NO-SLICE enforces no-slice
+        // across the file, and (c) Constitution #8: subtract before
+        // adding. Documented as a scope expansion in IMPLEMENTATION
+        // report.
         const events = (staleCache.events as TicketmasterEvent[]) || [];
-        const start = pageNum * pageSize;
-        const paginatedEvents = events.slice(start, start + pageSize);
-        const totalPages = Math.ceil(events.length / pageSize);
+        const totalPages = events.length > 0 ? 1 : 0;
 
         return new Response(
           JSON.stringify({
-            events: paginatedEvents,
+            events,
             meta: {
               totalResults: staleCache.total_results,
               page: pageNum,

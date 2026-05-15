@@ -14,6 +14,7 @@ import { vs, ms, s } from "../src/utils/responsive";
 import { GlassBottomNav, type BottomNavPage } from "../src/components/GlassBottomNav";
 import { useAppLayout } from "../src/hooks/useAppLayout";
 import * as Linking from "expo-linking";
+import { useStripe } from "@stripe/stripe-react-native";
 import { useAppHandlers } from "../src/components/AppHandlers";
 import { useAppState } from "../src/components/AppStateManager";
 import { useFriends } from "../src/hooks/useFriends";
@@ -154,6 +155,18 @@ function AppContent() {
   handlersRef.current = handlers;
   const layout = useAppLayout();
   const { t } = useTranslation(['navigation', 'common']);
+
+  // ORCH-0837: Stripe URL-callback handler. Used by the Linking listener
+  // below to forward Stripe redirect URLs (Apple Pay return, 3DS return,
+  // future re-enabled BNPL/wallet redirects) into Stripe's SDK so the
+  // PaymentSheet completion handler resolves. Without this wiring,
+  // presentPaymentSheet would hang indefinitely after any redirect-method
+  // selection (proven by operator's failed PIs which attached Klarna,
+  // Affirm, Cash App, Amazon Pay before the card-only fix shipped in this
+  // same ORCH). Invariant: I-PROPOSED-STRIPE-CALLBACK-WIRED.
+  // useStripe() must be called inside <StripeNativeProvider> tree — that
+  // wrapping happens in app/_layout.tsx, so AppContent is a valid descendant.
+  const { handleURLCallback } = useStripe();
 
   // CRITICAL: Destructure immediately after useAppState(). useEffect dependency
   // arrays below reference these variables during render. If the destructuring
@@ -1773,23 +1786,52 @@ function AppContent() {
     }
   }, [user?.id, refreshAllSessions]);
 
-  // Handle deep links for OAuth callback
+  // Handle deep links for OAuth callback + Stripe redirect-flow completion.
+  // ORCH-0837: route incoming URLs to Stripe's handleURLCallback FIRST so any
+  // Stripe redirect-flow payment method (Apple Pay return, 3DS return, future
+  // re-enabled Klarna/Affirm/Cash App/etc.) can complete properly. Stripe's
+  // handleURLCallback returns `true` if it consumed the URL — in that case
+  // we DO NOT fall through to handleDeepLink. If it returns `false`, the URL
+  // is a Mingla deep link (OAuth, invite, etc.) and goes to the existing
+  // handler. The Stripe callback URL is `com.mingla.app.v2://stripe-redirect`
+  // per nativeCheckoutFlow.ts; OAuth uses paths under `auth/callback`;
+  // invites use `/invite/...`. The three are non-overlapping.
+  // The try/catch around handleURLCallback preserves the OAuth/invite flow
+  // if any future Stripe SDK regression causes it to throw (Constitution #3:
+  // no silent failures — the catch logs and falls through, never swallows).
+  // Invariant: I-PROPOSED-STRIPE-CALLBACK-WIRED.
   useEffect(() => {
     // Handle initial URL (if app was opened via deep link)
-    Linking.getInitialURL().then((url) => {
-      if (url) {
+    Linking.getInitialURL().then(async (url) => {
+      if (!url) return;
+      try {
+        const handledByStripe = await handleURLCallback(url);
+        if (!handledByStripe) {
+          handleDeepLink(url);
+        }
+      } catch (err) {
+        console.warn('[Deeplink] handleURLCallback threw; falling back to handleDeepLink', err);
         handleDeepLink(url);
       }
     });
 
     // Listen for deep links while app is running
-    const subscription = Linking.addEventListener("url", (event) => {
-      handleDeepLink(event.url);
+    const subscription = Linking.addEventListener("url", async (event) => {
+      try {
+        const handledByStripe = await handleURLCallback(event.url);
+        if (!handledByStripe) {
+          handleDeepLink(event.url);
+        }
+      } catch (err) {
+        console.warn('[Deeplink] handleURLCallback threw; falling back to handleDeepLink', err);
+        handleDeepLink(event.url);
+      }
     });
 
     return () => {
       subscription.remove();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleDeepLink = async (url: string) => {

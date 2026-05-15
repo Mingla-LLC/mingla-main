@@ -2,7 +2,23 @@ import '../src/i18n'  // Must be first — initializes i18next before any compon
 import { Stack } from "expo-router";
 import * as Sentry from '@sentry/react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { LogBox } from "react-native";
 import { StripeNativeProvider } from "@mingla/payments-native";
+
+// ORCH-0836: silence the Stripe RN 0.65.1 forwardRef warning emitted at module
+// load by PaymentMethodMessagingElement.js — that file uses
+// `forwardRef(function(_ref){...})` (one parameter) which React 19.1.0's
+// stricter dev-mode arity check rejects. The component is NEVER rendered in
+// Mingla code (verified by grep across packages/, app-mobile/src/,
+// app-mobile/app/). The warning is informational noise that crowds out real
+// diagnostic logs during development. This filter is third-party-warning
+// specific and does NOT mask Mingla-side errors (the regex is anchored to
+// the exact Stripe message). Remove once Stripe ships 0.66+ with the
+// malformed forwardRef call fixed.
+// See INVESTIGATION_ORCH-0836_STRIPE_FORWARDREF_REACT19_INCOMPAT.md.
+LogBox.ignoreLogs([
+  /forwardRef render functions accept exactly two parameters/,
+]);
 
 // ORCH-0679 Wave 2B-2: SINGLE source of truth for Sentry init.
 // I-SENTRY-SINGLE-INIT — duplicate Sentry.init in app/index.tsx was deleted as
@@ -46,7 +62,24 @@ export default Sentry.wrap(function RootLayout() {
           from EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY (same Mingla Connect
           platform key mingla-business uses). Requires native rebuild via
           EAS Build — see implementation report for the exact command. */}
-      <StripeNativeProvider>
+      {/* ORCH-0834-rescoped (2026-05-14): merchantIdentifier + urlScheme
+          props added per Stripe RN documented requirements (Apple Pay +
+          3DS return). Values match app.json `scheme` (com.mingla.app.v2)
+          and the Apple Merchant ID registered in Stripe Dashboard
+          (merchant.com.mingla.app.v2). Env-var fallbacks
+          EXPO_PUBLIC_STRIPE_MERCHANT_ID + EXPO_PUBLIC_STRIPE_URL_SCHEME
+          are also supported via the StripeNativeProvider wrapper. */}
+      <StripeNativeProvider
+        merchantIdentifier="merchant.com.mingla.app.v2"
+        urlScheme="com.mingla.app.v2"
+      >
+        {/* ORCH-0828 REWORK: portal provider deleted (Sub-A2 reverted).
+            The business-event sheet now uses the inline `<BottomSheet>`
+            pattern matching the proven TM/place sheet at
+            ExpandedCardModal.tsx:1602-2066. Inline pattern does NOT need
+            a provider — `<BottomSheet>` mounts in-tree and floats
+            absolutely. New invariant:
+            I-PROPOSED-BOTTOMSHEET-INLINE-FOR-EXPANDED-SHEETS. */}
         <Stack screenOptions={{ headerShown: false }} />
       </StripeNativeProvider>
     </GestureHandlerRootView>
