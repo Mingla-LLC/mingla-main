@@ -36,9 +36,19 @@ export interface BusinessEventCard {
   timezone: string;
   venueName: string | null;
   city: string | null;
-  /** null when `hideAddressUntilTicket === true`. */
+  /**
+   * ORCH-0846: address is now passed unconditionally; the shared
+   * @mingla/event-rendering PublicEventPage gates rendering via
+   * hideAddressUntilTicket (matches brand-side mechanism).
+   */
   address: string | null;
   hideAddressUntilTicket: boolean;
+  /**
+   * ORCH-0846: shared-component format string consumed by
+   * @mingla/event-rendering PublicEventPage. Resolved server-side from
+   * theme.business_event.format with events.is_online as fallback.
+   */
+  format: "in-person" | "online" | "hybrid";
   locationGeo: { lat: number; lng: number } | null;
   // Taxonomy (canonical slugs from `eventTaxonomy.ts`)
   partyTypes: string[];

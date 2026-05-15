@@ -39,6 +39,11 @@ import {
   isSubsetOf,
 } from "../_shared/eventTaxonomy.ts";
 import { parseLocalStartEndDateTime } from "../_shared/timezone.ts";
+import {
+  extractVenueName,
+  extractBusinessEventFormat,
+  deriveSharedFormat,
+} from "./_helpers.ts";
 
 // ─── CORS ────────────────────────────────────────────────────────────────────
 const corsHeaders = {
@@ -95,6 +100,10 @@ interface BusinessEventCard {
   city: string | null;
   address: string | null;
   hideAddressUntilTicket: boolean;
+  // ORCH-0846: shared-component format for @mingla/event-rendering
+  // PublicEventPage. Resolved from theme.business_event.format with
+  // is_online fallback (see _helpers.ts:deriveSharedFormat).
+  format: "in-person" | "online" | "hybrid";
   locationGeo: { lat: number; lng: number } | null;
   partyTypes: string[];
   vibeTags: string[];
@@ -419,10 +428,27 @@ serve(async (req: Request): Promise<Response> => {
         doorsOpenLocal: null, // derivable from master_start_at; client formats with timezone
         endsAtLocal: null,
         timezone: row.timezone ?? "UTC",
-        venueName: null, // venueName lives in theme.business_event.venueName per draft store; left null for v1 — flagged in report
+        // ORCH-0846: parity with brand-side publicEventsService.toPublicEventBySlug.
+        // Resolve venueName from theme.business_event.venueName, falling
+        // back to location_text. The shared PublicEventPage gates the
+        // venue card render on `venueName !== null`; without this fallback
+        // the card would never appear on the consumer sheet.
+        venueName: extractVenueName(row.theme) ?? row.location_text ?? null,
         city: row.city ?? null,
-        address: hide ? null : (row.location_text ?? null),
+        // ORCH-0846: pass address unconditionally and let the shared
+        // component gate visibility via hideAddressUntilTicket. Mirrors
+        // brand-side mechanism at publicEventsService.ts:378 and
+        // PublicEventPage.tsx:380-384.
+        address: row.location_text ?? null,
         hideAddressUntilTicket: hide,
+        // ORCH-0846: derive shared-component format string from
+        // theme.business_event.format with is_online fallback. Hardcoded
+        // "in-person" in the consumer mapping previously misrepresented
+        // online and hybrid events.
+        format: deriveSharedFormat(
+          extractBusinessEventFormat(row.theme),
+          row.is_online === true,
+        ),
         locationGeo: parsePoint(row.location_geo),
         partyTypes: Array.isArray(row.party_types) ? row.party_types : [],
         vibeTags: Array.isArray(row.vibe_tags) ? row.vibe_tags : [],

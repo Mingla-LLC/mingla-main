@@ -77,7 +77,9 @@ const formatDateLine = (
   }
 };
 
-const mapCardToPublicEvent = (
+// ORCH-0846: exported so the regression test suite can verify the mapping
+// in isolation (the BottomSheet host is not mountable in Jest).
+export const mapCardToPublicEvent = (
   card: BusinessEventCard,
   tickets: PublicEventProps["tickets"],
 ): PublicEventProps => ({
@@ -92,7 +94,11 @@ const mapCardToPublicEvent = (
   datesList: [],
   status: "published",
   endedAt: null,
-  format: "in-person",
+  // ORCH-0846: honor server-derived format instead of hardcoding "in-person".
+  // Online events now render the online card at PublicEventPage.tsx:391
+  // instead of an empty venue card; hybrid events render the
+  // "{address} · also online" suffix.
+  format: card.format,
   venueName: card.venueName,
   address: card.address,
   hideAddressUntilTicket: card.hideAddressUntilTicket,
