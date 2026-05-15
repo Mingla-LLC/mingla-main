@@ -7,36 +7,42 @@
 //
 // ORCH-0789: preserves Stripe RN's PaymentSheetError discriminator so
 // callers can distinguish user-cancel ("Canceled") from card-decline
-// ("Failed") from "Timeout". The actual normalization is in
-// normalizePaymentSheetResult.ts (kept RN-free so it can be unit-tested
-// without the react-native runtime).
+// ("Failed"). The actual normalization is in normalizePaymentSheetResult.ts
+// (kept RN-free so it can be unit-tested without the react-native runtime).
 //
 // ORCH-0829-B: once-only guard wrapping both initPaymentSheet and
-// presentPaymentSheet. Stripe RN 0.50.3 on iOS 26 occasionally invokes
-// the PaymentSheet completion handler TWICE for the same call (verified
-// by the operator's screenshot showing two `present(from:completion:)`
-// frames in the Swift stack). The second invocation surfaces as
-// "Tried to resolve a promise more than once." which breaks the
-// PaymentSheet UX. The guard suppresses the second JS-side resolution
-// at the cost of returning the same Promise reference for any
-// concurrent re-invocation. New invariant:
-// I-PROPOSED-STRIPE-PRESENT-ONCE-ONLY — callers MUST use this wrapper
-// instead of `useStripe().presentPaymentSheet` directly.
+// presentPaymentSheet. Stripe RN can re-enter the native completion
+// handler on iOS double-tap; the guard suppresses the second JS-side
+// resolution at the cost of returning the same Promise reference for any
+// concurrent re-invocation.
+//   I-PROPOSED-STRIPE-PRESENT-ONCE-ONLY — callers MUST use this wrapper
+//   instead of `useStripe().presentPaymentSheet` directly. PRESERVED.
 //
-// ORCH-0829-B D-1 H-3: timeout race layered ABOVE the once-only guard.
-// Stripe RN 0.50.3 on iOS 26 can hang the native completion handler
-// indefinitely (proven in ORCH-0829-B RETEST_2 where the PaymentSheet
-// showed a loading skeleton for ~90s then silently self-dismissed,
-// leaving the JS-side Promise pending forever). Without a timeout race
-// the in-flight refs stay set permanently and the user is locked out of
-// the entire payment flow for the rest of the app session. 60s matches
-// Stripe SDK's own internal soft-timeout behavior; any longer and the
-// user gives up. The synthetic timeout error has code='Timeout' so
-// callers can detect it specifically (separate from 'Canceled' and
-// 'Failed'). The rejection propagates through the IIFE's try/finally
-// so the in-flight ref still clears on timeout. New invariant:
-// I-PROPOSED-PAYMENT-SHEET-TIMEOUT-RACE (proposed; codified at CLOSE
-// alongside I-PROPOSED-CHECKOUT-EXPIRY-TOMBSTONE).
+// ORCH-0844 (2026-05-15) — 60s `withTimeout` race REMOVED from both wrappers.
+// Investigation: Mingla_Artifacts/reports/INVESTIGATION_ORCH-0844_EXPLORER_PAYMENTSHEET_DOUBLE_RESOLVE.md
+// Root cause R-2: the timeout race added in ORCH-0829-B D-1 H-3 was layered
+// above Stripe's own settle path; on iOS 26 when the native bridge fired
+// `RCTPromiseResolveBlock` twice (due to the connected-account 404 caused
+// by R-1, now fixed in nativeCheckoutFlow.ts via per-PI initStripe), the
+// synthetic Timeout rejection became a third settle vector — compounding
+// the "tried to resolve a promise more than once" RN bridge warning.
+// The hang the race originally guarded (ORCH-0829-B RETEST_2 90s loading
+// skeleton) was resolved at the PI level by ORCH-0837 `payment_method_types:
+// ['card']` — with card-only PIs the sheet either resolves within ~2s or
+// fails clean; no 60s hang is reachable.
+//
+// What stayed:
+//   - inFlightInitRef / inFlightPresentRef once-only guards (JS-side
+//     double-tap defense, different mechanism from native double-resolve).
+//   - The PaymentSheetErrorCode "Timeout" union member in types.ts (legacy;
+//     no longer emitted by this hook but kept for callsite backward compat).
+//
+// Cross-references:
+//   - I-PROPOSED-STRIPE-PRESENT-ONCE-ONLY        (PRESERVED)
+//   - I-PROPOSED-PAYMENT-SHEET-TIMEOUT-RACE      (RETIRED — ORCH-0844)
+//   - I-PROPOSED-STRIPE-CONNECT-ACCOUNT-ID-PER-PI (NEW — ORCH-0844; enforced
+//     in app-mobile/src/payments/nativeCheckoutFlow.ts via initStripe)
+//   - I-PROPOSED-STRIPE-PI-EXPLICIT-METHOD-TYPES (PRESERVED — ORCH-0837)
 
 import { useRef } from "react";
 import { useStripe } from "@stripe/stripe-react-native";
@@ -47,46 +53,6 @@ import type {
   PaymentSheetResult,
   StripePaymentSheetController,
 } from "./types";
-
-// ORCH-0829-B D-1 H-3: timeout budget for both native calls.
-const PAYMENT_SHEET_TIMEOUT_MS = 60_000;
-
-// ORCH-0829-B D-1 H-3: race a Promise against a timer. On timeout, reject
-// with a synthetic Error carrying code='Timeout' so the upstream
-// normalizePaymentSheetResult / nativeCheckoutFlow can distinguish it
-// from Stripe's own 'Canceled' and 'Failed' codes. The original Promise
-// is left to settle on its own (no abort mechanism — Stripe RN doesn't
-// expose one); we only stop awaiting it. The diagnostic log fires when
-// the timer wins, giving the tester a positive Metro-log signal that
-// the race triggered.
-function withTimeout<T>(
-  promise: Promise<T>,
-  ms: number,
-  label: string,
-): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      console.log(
-        `[useStripePaymentSheet] ${label} timed out after ${ms}ms — rejecting with synthetic Timeout error`,
-      );
-      reject(
-        Object.assign(new Error(`${label} timed out after ${ms}ms`), {
-          code: "Timeout",
-        }),
-      );
-    }, ms);
-    promise.then(
-      (value) => {
-        clearTimeout(timer);
-        resolve(value);
-      },
-      (err) => {
-        clearTimeout(timer);
-        reject(err);
-      },
-    );
-  });
-}
 
 export const useStripePaymentSheet = (): StripePaymentSheetController => {
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
@@ -112,12 +78,10 @@ export const useStripePaymentSheet = (): StripePaymentSheetController => {
       const p: Promise<PaymentSheetResult> = (async () => {
         console.log("[useStripePaymentSheet] initPaymentSheet → native call");
         try {
+          // ORCH-0844: no withTimeout race — see header comment. Native call
+          // is awaited directly; the inFlightInitRef finally clears below.
           const result = normalizePaymentSheetResult(
-            await withTimeout(
-              initPaymentSheet(input),
-              PAYMENT_SHEET_TIMEOUT_MS,
-              "initPaymentSheet",
-            ),
+            await initPaymentSheet(input),
           );
           console.log(
             "[useStripePaymentSheet] initPaymentSheet ← resolved error=",
@@ -141,12 +105,9 @@ export const useStripePaymentSheet = (): StripePaymentSheetController => {
       const p: Promise<PaymentSheetResult> = (async () => {
         console.log("[useStripePaymentSheet] presentPaymentSheet → native call");
         try {
+          // ORCH-0844: no withTimeout race — see header comment.
           const result = normalizePaymentSheetResult(
-            await withTimeout(
-              presentPaymentSheet(),
-              PAYMENT_SHEET_TIMEOUT_MS,
-              "presentPaymentSheet",
-            ),
+            await presentPaymentSheet(),
           );
           console.log(
             "[useStripePaymentSheet] presentPaymentSheet ← resolved error=",

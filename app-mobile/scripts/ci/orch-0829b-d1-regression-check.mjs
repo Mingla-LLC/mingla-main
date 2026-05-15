@@ -1,30 +1,34 @@
 #!/usr/bin/env node
 /* eslint-disable no-console */
 /**
- * ORCH-0829-B D-1 regression check.
+ * ORCH-0829-B D-1 regression check (post-ORCH-0844 flip).
  *
- * Asserts the three-layer fix for the silent-failure paid checkout:
- *   - Database: new migration extends the tombstone-eligibility predicate
+ * Asserts that the timeout race was RETIRED at ORCH-0844 while preserving
+ * the migration + handleBuy try/finally layers from the original D-1 fix:
+ *   - Database: tombstone migration still extends the eligibility predicate
  *     so past-expiry in-flight sessions get tombstoned and transitioned
- *     to status='expired' (R-1).
- *   - Component: handleBuy wraps runNativeCheckout in try/catch/finally
- *     so checkoutInFlight always clears even on hang/throw (H-2).
- *   - Package: useStripePaymentSheet adds a 60s timeout race around both
- *     initPaymentSheet and presentPaymentSheet (H-3).
+ *     to status='expired' (R-1; PRESERVED).
+ *   - Component: handleBuy still wraps runNativeCheckout in try/catch/finally
+ *     so checkoutInFlight always clears even on hang/throw (H-2; PRESERVED).
+ *   - Package: useStripePaymentSheet MUST NOT declare PAYMENT_SHEET_TIMEOUT_MS
+ *     or withTimeout — the timeout race was a double-settle vector on
+ *     iOS 26 and the hang it guarded was resolved at the PI level by
+ *     ORCH-0837 `payment_method_types: ['card']` (FLIPPED — ORCH-0844).
  *
- * Contracts (spec §3.4 S4):
- *   T-A1  Migration file with monotonic prefix > 20260605000001 exists
- *   T-A2  Migration body contains the new OR clause `expires_at < now()`
- *   T-A3  Migration body transitions tombstoned non-terminal rows to status='expired'
- *   T-A4  handleBuy wraps runNativeCheckout in try { ... } finally { setCheckoutInFlight(false) }
- *   T-A5  handleBuy catch converts thrown errors to { outcome: "failed", message }
- *   T-A6  useStripePaymentSheet declares PAYMENT_SHEET_TIMEOUT_MS = 60_000 and withTimeout helper
- *   T-A7  Both initPaymentSheet and presentPaymentSheet wrappers call withTimeout(...)
- *   T-A8  Synthetic timeout error has code: "Timeout"
- *   T-A9  Timeout fires diagnostic log line `<label> timed out after <ms>ms`
+ * Contracts (spec §3.4 S4 + ORCH-0844 §3.5.3):
+ *   T-A1  Migration file with monotonic prefix > 20260605000001 exists (PRESERVED)
+ *   T-A2  Migration body contains the new OR clause `expires_at < now()` (PRESERVED)
+ *   T-A3  Migration body transitions tombstoned non-terminal rows to status='expired' (PRESERVED)
+ *   T-A4  handleBuy wraps runNativeCheckout in try { ... } finally { setCheckoutInFlight(false) } (PRESERVED)
+ *   T-A5  handleBuy catch converts thrown errors to { outcome: "failed", message } (PRESERVED)
+ *   T-A6  useStripePaymentSheet MUST NOT declare PAYMENT_SHEET_TIMEOUT_MS or function withTimeout (FLIPPED — ORCH-0844)
+ *   T-A7  Neither initPaymentSheet nor presentPaymentSheet wrappers may call withTimeout(...) (FLIPPED — ORCH-0844)
+ *   T-A8  useStripePaymentSheet MUST NOT emit a synthetic error with code: "Timeout" (FLIPPED — ORCH-0844)
+ *   T-A9  useStripePaymentSheet MUST NOT log `timed out after ${ms}ms` (FLIPPED — ORCH-0844)
  *
  * Invariants codified:
- *   I-PROPOSED-CHECKOUT-EXPIRY-TOMBSTONE  (T-A1, T-A2, T-A3)
+ *   I-PROPOSED-CHECKOUT-EXPIRY-TOMBSTONE          (T-A1, T-A2, T-A3 — PRESERVED)
+ *   I-PROPOSED-PAYMENT-SHEET-TIMEOUT-RACE         (T-A6..T-A9 — RETIRED at ORCH-0844; flipped sub-checks enforce absence)
  */
 
 import fs from "node:fs";
@@ -129,37 +133,36 @@ const hook = readMaybe(
   path.join(repoRoot, "packages/payments-native/useStripePaymentSheet.ts"),
 );
 
+// ORCH-0844 FLIPPED — the timeout race that these four sub-checks originally
+// asserted PRESENT is now asserted ABSENT. The race was a double-settle
+// vector on iOS 26 (RCTPromiseResolveBlock fired twice from native +
+// synthetic Timeout rejection from JS = three competing settles); the
+// hang it guarded was resolved at the PI level by ORCH-0837 card-only
+// PIs, so the race itself became net-negative.
 check(
-  "T-A6 useStripePaymentSheet declares PAYMENT_SHEET_TIMEOUT_MS = 60_000 and withTimeout helper",
+  "T-A6 (flipped) useStripePaymentSheet MUST NOT declare PAYMENT_SHEET_TIMEOUT_MS or function withTimeout",
   hook !== null &&
-    /const\s+PAYMENT_SHEET_TIMEOUT_MS\s*=\s*60_000\b/.test(hook) &&
-    /function\s+withTimeout\s*<\s*T\s*>\s*\(/.test(hook),
-  "useStripePaymentSheet.ts MUST declare PAYMENT_SHEET_TIMEOUT_MS = 60_000 and a module-level withTimeout<T>(promise, ms, label) helper per spec §3.3.",
+    !/const\s+PAYMENT_SHEET_TIMEOUT_MS\b/.test(hook) &&
+    !/function\s+withTimeout\s*<\s*T\s*>\s*\(/.test(hook),
+  "useStripePaymentSheet.ts MUST NOT declare PAYMENT_SHEET_TIMEOUT_MS or a withTimeout<T>(promise, ms, label) helper — the timeout race was retired in ORCH-0844 (the hang it guarded was resolved at the PI level by ORCH-0837 card-only PIs; the race itself became a double-settle vector on iOS 26).",
 );
 
 check(
-  "T-A7 Both initPaymentSheet and presentPaymentSheet wrap their native calls in withTimeout(...)",
-  hook !== null &&
-    /withTimeout\s*\(\s*initPaymentSheet\s*\(\s*input\s*\)\s*,\s*PAYMENT_SHEET_TIMEOUT_MS\s*,\s*["']initPaymentSheet["']\s*,?\s*\)/.test(
-      hook,
-    ) &&
-    /withTimeout\s*\(\s*presentPaymentSheet\s*\(\s*\)\s*,\s*PAYMENT_SHEET_TIMEOUT_MS\s*,\s*["']presentPaymentSheet["']\s*,?\s*\)/.test(
-      hook,
-    ),
-  "Both wrappers MUST invoke withTimeout(initPaymentSheet(input), PAYMENT_SHEET_TIMEOUT_MS, 'initPaymentSheet') and withTimeout(presentPaymentSheet(), PAYMENT_SHEET_TIMEOUT_MS, 'presentPaymentSheet') inside their IIFEs so the existing finally clears the in-flight ref on timeout.",
+  "T-A7 (flipped) Neither initPaymentSheet nor presentPaymentSheet wraps its native call in withTimeout(...)",
+  hook !== null && !/\bwithTimeout\s*\(/.test(hook),
+  "useStripePaymentSheet.ts MUST NOT invoke withTimeout(...) in either IIFE — the timeout race was retired in ORCH-0844. Native calls are awaited directly; the inFlightRef try/finally still clears the lock on settle.",
 );
 
 check(
-  "T-A8 Synthetic timeout error carries code: 'Timeout'",
-  hook !== null && /code:\s*["']Timeout["']/.test(hook),
-  "withTimeout's synthetic rejection MUST attach code: 'Timeout' (distinct from Stripe's 'Canceled' and 'Failed' codes) so downstream callers can detect timeout-specific failure.",
+  "T-A8 (flipped) useStripePaymentSheet MUST NOT emit a synthetic error with code: 'Timeout'",
+  hook !== null && !/code:\s*["']Timeout["']/.test(hook),
+  "useStripePaymentSheet.ts MUST NOT construct a synthetic rejection with code: 'Timeout' — the timeout race was retired in ORCH-0844. The PaymentSheetErrorCode 'Timeout' union member remains in types.ts as legacy (no longer emitted by this hook), but no code path here may produce it.",
 );
 
 check(
-  "T-A9 Timeout fires diagnostic log line `<label> timed out after <ms>ms`",
-  hook !== null &&
-    /timed out after \$\{ms\}ms/.test(hook),
-  "withTimeout MUST log `[useStripePaymentSheet] ${label} timed out after ${ms}ms` so the tester has a positive Metro signal that the timeout race triggered.",
+  "T-A9 (flipped) useStripePaymentSheet MUST NOT log `timed out after ${ms}ms`",
+  hook !== null && !/timed out after \$\{ms\}ms/.test(hook),
+  "useStripePaymentSheet.ts MUST NOT contain the diagnostic log line `timed out after ${ms}ms` — the timeout race was retired in ORCH-0844.",
 );
 
 // ─── Report ────────────────────────────────────────────────────────────────

@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { stripeTicketCheckout } from "../_shared/stripe.ts";
+import { stripeTicketCheckout, STRIPE_API_VERSION } from "../_shared/stripe.ts";
 import {
   cancelPaymentIntentIfClientAvailable,
   classifyStripeCheckoutSessionCreateFailure,
@@ -189,14 +189,66 @@ serve(async (req) => {
     return jsonResponse({ error: "stripe_account_not_ready" }, 409);
   }
 
+  // ORCH-0843 (2026-05-15) — Mingla platform application-fee formula.
+  // Hardcoded 1.5% of the order's unit amount per operator decision (G-2).
+  // Computed in the edge function (NOT plumbed through the RPC) so that
+  // changing the rate requires only an edge-function redeploy. Integer math
+  // via Math.round on integer-cent input × 0.015 is precision-safe for any
+  // realistic order amount (max safe cents ≈ 9.0×10^15). If the resulting
+  // fee is zero (totalCents < ~67), the application_fee_amount key is
+  // OMITTED from the Stripe call body entirely — Stripe documents both
+  // omitting and passing zero as accepted, but omitting is the cleaner
+  // contract and avoids any future "application_fee_amount must be > 0"
+  // edge-case error. Discovery for orchestrator (future ORCH): plumb the
+  // fee percentage through `brands` table or env config for dynamic
+  // adjustment without code redeploy.
+  const MINGLA_APPLICATION_FEE_RATE = 0.015 as const;
+  const applicationFeeAmountCents = Math.round(
+    totalCents * MINGLA_APPLICATION_FEE_RATE,
+  );
+
+  // ORCH-0843 — persist the computed fee on the session row so the refund
+  // flow (refund-order) can read it back via biz_refund_order and decide
+  // whether to pass refund_application_fee:true. The finalize RPC copies
+  // ticket_checkout_sessions.stripe_application_fee_amount_cents into
+  // orders.stripe_application_fee_amount_cents (migrations 20260515000013
+  // lines 555-568). Defensive UPDATE here means we don't need an RPC
+  // signature change. Failure is logged but non-fatal — the worst case is
+  // a future refund that doesn't refund the platform fee component
+  // (Mingla keeps that cut), which is acceptable degrade behavior at v1.
+  const { error: feePersistError } = await supabase
+    .from("ticket_checkout_sessions")
+    .update({
+      stripe_application_fee_amount_cents: applicationFeeAmountCents,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", checkoutSessionId);
+  if (feePersistError) {
+    console.error(
+      "[ticket-checkout-create] application_fee persistence failed (non-fatal)",
+      feePersistError,
+    );
+  }
+
   // ORCH-0790: web buyer flow uses Stripe Checkout Sessions (hosted page +
   // redirect). Native flow continues to use PaymentIntent + Stripe RN
-  // PaymentSheet below. Both run destination charges against the same
-  // connected account.
+  // PaymentSheet below.
   // ORCH-0839-B (2026-05-14): "mobile-web" surface joins this branch — same
   // hosted-Checkout API call, only success_url / cancel_url differ. Native
   // PaymentIntent path below stays for backward compat with older mingla-
   // business builds (untouched by this pivot).
+  // ORCH-0843 (2026-05-15): flipped to DIRECT-CHARGE shape per DEC-154
+  // (amended Path B). The charge object now lives on the connected
+  // account (Stripe-Account header via the third-arg `stripeAccount`
+  // request option); transfer_data.destination is gone; Mingla's
+  // platform cut routes via application_fee_amount; the buyer's card
+  // statement is suffixed with "MINGLA" via statement_descriptor_suffix
+  // (Stripe's Checkout API only accepts `_suffix` at this level; a true
+  // "MINGLA*" prefix requires one-time account-level config in Stripe
+  // Dashboard on Mingla's main platform account).
+  // DO NOT re-introduce transfer_data.destination — see INVESTIGATION_
+  // ORCH-0843 + SPEC_ORCH-0843. CI gate
+  // orch-0843-stripe-direct-charges-only.mjs enforces.
   if (surface === "web" || surface === "mobile-web") {
     let successUrl: string;
     let cancelUrl: string;
@@ -238,18 +290,47 @@ serve(async (req) => {
       stripeWeb = stripeTicketCheckout();
       // @ts-ignore -- Stripe SDK namespace is runtime-provided in Deno.
       // ORCH-0804 / I-PROPOSED-BF — Stripe Tax enablement.
-      // automatic_tax + liability.account designates the connected account
-      // (brand) as merchant of record. Stripe Checkout auto-collects the
-      // buyer's billing address on the new Customer (created from
-      // customer_email) when automatic_tax is enabled, so jurisdiction
-      // lookup works without a customer_update block. (ORCH-0811 removed
-      // customer_update: it requires an existing `customer` id and Stripe
-      // rejects the request with "You cannot use customer_update without
-      // setting customer" when paired with customer_email.)
-      // The strict-grep gate orch-0804-stripe-tax-enabled-on-checkout
-      // enforces these params at CI time. Reference:
-      // https://docs.stripe.com/tax/tax-for-platforms (destination-charge
-      // platform model).
+      // Under DIRECT charges the Stripe-Account header (set on the
+      // request-options below) alone designates the connected account
+      // (brand) as merchant of record — automatic_tax.liability MUST be
+      // OMITTED (ORCH-0843 REWORK; Stripe rejects the liability block on
+      // direct charges with 400 StripeInvalidRequestError, see
+      // https://docs.stripe.com/tax/connect/direct-charges). Stripe
+      // Checkout auto-collects the buyer's billing address on the new
+      // Customer (created from customer_email) when automatic_tax is
+      // enabled, so jurisdiction lookup works without a customer_update
+      // block. (ORCH-0811 removed customer_update: it requires an
+      // existing `customer` id and Stripe rejects the request with "You
+      // cannot use customer_update without setting customer" when paired
+      // with customer_email.) The strict-grep gates
+      // orch-0804-stripe-tax-enabled-on-checkout (enabled: true) and
+      // orch-0843-stripe-direct-charges-only (T-G6: no liability block)
+      // enforce these params at CI time.
+      const piData: Record<string, unknown> = {
+        // Metadata replicated on the PI so the existing webhook router
+        // (handleTicketCheckoutPaymentIntent) can resolve our session
+        // via metadata fallback when the session was created without a
+        // pre-known PI id.
+        metadata: {
+          mingla_checkout_session_id: checkoutSessionId,
+          mingla_event_id: eventId,
+          mingla_buyer_email: buyerEmail,
+        },
+        // ORCH-0843 — `statement_descriptor_suffix` appends "MINGLA" to the
+        // creator account's default descriptor on the buyer's card statement
+        // (Stripe truncates the combined string to 22 chars). Per Stripe's
+        // Checkout API, only `_suffix` is valid at this level — a true
+        // platform "MINGLA*" prefix is a one-time account-level config in
+        // the Stripe Dashboard (Settings → Public details → Statement
+        // descriptor on Mingla's main platform account) that prepends to
+        // every connected-account charge automatically.
+        statement_descriptor_suffix: "MINGLA",
+      };
+      if (applicationFeeAmountCents > 0) {
+        // ORCH-0843 — Mingla's platform cut routes via application_fee_amount.
+        // Omitted (not set to 0) when fee rounds to zero on tiny orders.
+        piData.application_fee_amount = applicationFeeAmountCents;
+      }
       checkoutSession = await stripeWeb.checkout.sessions.create(
         {
           mode: "payment",
@@ -264,25 +345,20 @@ serve(async (req) => {
               quantity: 1,
             },
           ],
-          payment_intent_data: {
-            transfer_data: { destination: stripeAccountId },
-            // Metadata replicated on the PI so the existing webhook router
-            // (handleTicketCheckoutPaymentIntent) can resolve our session
-            // via metadata fallback when the session was created without a
-            // pre-known PI id.
-            metadata: {
-              mingla_checkout_session_id: checkoutSessionId,
-              mingla_event_id: eventId,
-              mingla_buyer_email: buyerEmail,
-            },
-          },
-          automatic_tax: {
-            enabled: true,
-            liability: {
-              type: "account",
-              account: stripeAccountId,
-            },
-          },
+          payment_intent_data: piData,
+          // ORCH-0843 REWORK — Under DIRECT charges (Stripe-Account header
+          // set on the request-options below), Stripe Tax for Platforms uses
+          // the Stripe-Account header alone to designate the connected
+          // account as merchant of record. The legacy
+          // `liability: { type: "account", account: <id> }` shape is for
+          // destination/separate-transfer charges only and is REJECTED with
+          // 400 StripeInvalidRequestError on direct-charge calls. See
+          // https://docs.stripe.com/tax/connect/direct-charges — under
+          // direct charges the connected account is the merchant of record
+          // implicitly; do NOT include automatic_tax.liability. This block
+          // replaces the SPEC §3.1.3 "PRESERVED VERBATIM" claim which was
+          // SUPERSEDED by ORCH-0843 REWORK after QA caught the 400 in live.
+          automatic_tax: { enabled: true },
           // ORCH-0811 — customer_update is only valid alongside an existing
           // `customer` id. Mingla creates a new Stripe Customer per buyer via
           // customer_email, so Stripe rejects customer_update with "You cannot
@@ -297,7 +373,13 @@ serve(async (req) => {
             mingla_event_id: eventId,
           },
         },
-        { idempotencyKey: `ticket_checkout_web:${checkoutSessionId}` },
+        {
+          idempotencyKey: `ticket_checkout_web:${checkoutSessionId}`,
+          // ORCH-0843 — direct-charge: Stripe-Account header routes the
+          // charge object to the connected account. Replaces destination-
+          // charge transfer_data.destination from ORCH-0790.
+          stripeAccount: stripeAccountId,
+        },
       );
     } catch (err) {
       const failure = classifyStripeCheckoutSessionCreateFailure(err);
@@ -370,35 +452,51 @@ serve(async (req) => {
   let stripe: ReturnType<typeof stripeTicketCheckout> | null = null;
   try {
     stripe = stripeTicketCheckout();
+    // ORCH-0843 — direct-charge shape for the native PaymentIntent path.
+    // PaymentIntent is created on the connected account via the Stripe-
+    // Account header (third-arg request option `stripeAccount`). The
+    // platform-level "MINGLA*" prefix on the buyer's card statement is
+    // handled via the connected account's account-level default in Stripe
+    // Dashboard (operator config) — NOT via PI statement_descriptor_suffix
+    // (which is a separate suffix mechanism). See SPEC §3.1.2.
+    const piCreateBody: Record<string, unknown> = {
+      amount: totalCents,
+      currency,
+      // ORCH-0837: card-only PI per I-PROPOSED-STRIPE-PI-EXPLICIT-METHOD-TYPES.
+      // Previously the automatic-payment-methods enabled form fanned out
+      // to every dashboard-enabled method (16 in operator's sandbox incl.
+      // Klarna/Affirm/Cash App/Amazon Pay/Apple Pay/Link/Bancontact/BLIK/
+      // EPS/Kakao/Naver/Payco/MB Way/Pix/Samsung Pay). Operator-verified
+      // failed PIs (pi_3TX3rBPjlZyAYA401xD9EJ3N, pi_3TX2jzPjlZyAYA401JI3kgky)
+      // attached [card, klarna, link, affirm, cashapp, amazon_pay] — four
+      // redirect-flow methods that require handleURLCallback wiring shipped
+      // in this same ORCH (app/index.tsx) and Apple Pay merchant cert
+      // verification deferred to ORCH-0838. Card-only is the minimum-viable
+      // safe shape. Do NOT add other methods here without (a) dashboard
+      // config justified, AND (b) handleURLCallback proven working for any
+      // redirect-flow method, AND (c) eligibility/preflight latency
+      // measured under a 5s budget. CI gate: orch-0837-regression-check.mjs
+      // T-C1 forbids the automatic-payment-methods enabled form by string.
+      payment_method_types: ["card"],
+      metadata: {
+        mingla_checkout_session_id: checkoutSessionId,
+        mingla_event_id: eventId,
+        mingla_buyer_email: buyerEmail,
+      },
+    };
+    if (applicationFeeAmountCents > 0) {
+      // ORCH-0843 — Mingla's platform cut on direct charges.
+      piCreateBody.application_fee_amount = applicationFeeAmountCents;
+    }
     // @ts-ignore -- Stripe SDK namespace is runtime-provided in Deno.
     paymentIntent = await stripe.paymentIntents.create(
+      piCreateBody,
       {
-        amount: totalCents,
-        currency,
-        // ORCH-0837: card-only PI per I-PROPOSED-STRIPE-PI-EXPLICIT-METHOD-TYPES.
-        // Previously the automatic-payment-methods enabled form fanned out
-        // to every dashboard-enabled method (16 in operator's sandbox incl.
-        // Klarna/Affirm/Cash App/Amazon Pay/Apple Pay/Link/Bancontact/BLIK/
-        // EPS/Kakao/Naver/Payco/MB Way/Pix/Samsung Pay). Operator-verified
-        // failed PIs (pi_3TX3rBPjlZyAYA401xD9EJ3N, pi_3TX2jzPjlZyAYA401JI3kgky)
-        // attached [card, klarna, link, affirm, cashapp, amazon_pay] — four
-        // redirect-flow methods that require handleURLCallback wiring shipped
-        // in this same ORCH (app/index.tsx) and Apple Pay merchant cert
-        // verification deferred to ORCH-0838. Card-only is the minimum-viable
-        // safe shape. Do NOT add other methods here without (a) dashboard
-        // config justified, AND (b) handleURLCallback proven working for any
-        // redirect-flow method, AND (c) eligibility/preflight latency
-        // measured under a 5s budget. CI gate: orch-0837-regression-check.mjs
-        // T-C1 forbids the automatic-payment-methods enabled form by string.
-        payment_method_types: ["card"],
-        transfer_data: { destination: stripeAccountId },
-        metadata: {
-          mingla_checkout_session_id: checkoutSessionId,
-          mingla_event_id: eventId,
-          mingla_buyer_email: buyerEmail,
-        },
+        idempotencyKey: `ticket_checkout:${checkoutSessionId}`,
+        // ORCH-0843 — direct-charge: Stripe-Account header. Replaces
+        // destination-charge transfer_data.destination.
+        stripeAccount: stripeAccountId,
       },
-      { idempotencyKey: `ticket_checkout:${checkoutSessionId}` },
     );
   } catch (err) {
     const failure = classifyStripePaymentIntentCreateFailure(err);
@@ -445,6 +543,89 @@ serve(async (req) => {
     );
   }
 
+  // ORCH-0844 (2026-05-15) — Connect direct-charge mobile config.
+  // After ORCH-0843 flipped every ticket PI to a direct charge on a
+  // connected account (via the third-arg `{ stripeAccount }` request
+  // option above), the mobile Stripe SDK must be initialised with the
+  // matching stripeAccountId before opening PaymentSheet — otherwise the
+  // SDK's mid-flow confirm call hits Stripe under the platform context,
+  // the connected-account client_secret is rejected with a 404, and on
+  // iOS 26 the native RCTPromiseResolveBlock fires twice (early-error +
+  // late-completion) which RN's TurboModule bridge logs as
+  // "tried to resolve a promise more than once".
+  //
+  // We additionally provision a Stripe Customer + ephemeralKey scoped to
+  // the connected account (third-arg { stripeAccount } request option)
+  // so PaymentSheet can render saved-PM UI. Both operations are NON-FATAL
+  // — on any error we fall back to guest mode (null customer fields) and
+  // PaymentSheet still works for one-off card payments. This preserves
+  // ticket-sale uptime even when Stripe's customers-API hiccups.
+  let customerId: string | null = null;
+  let customerEphemeralKeySecret: string | null = null;
+  try {
+    // 3.2.3.a — Idempotent customer lookup by email on the CONNECTED ACCOUNT.
+    // The { stripeAccount } request option scopes the search to that account.
+    // orch-strict-grep-allow stripe-no-idempotency-key — read-only search; idempotency-key on Stripe search calls is rejected by the API (search is a query, not a mutation).
+    const searchResult = await stripe.customers.search(
+      {
+        query: `email:'${buyerEmail.replace(/'/g, "\\'")}'`,
+        limit: 1,
+      },
+      { stripeAccount: stripeAccountId },
+    );
+    let customer = searchResult.data[0] ?? null;
+
+    if (customer === null) {
+      // 3.2.3.b — Idempotent creation by email-hashed idempotency-key.
+      const customerIdemKey =
+        `mingla_customer:${stripeAccountId}:${await sha256Hex(buyerEmail)}`;
+      customer = await stripe.customers.create(
+        {
+          email: buyerEmail,
+          metadata: {
+            mingla_buyer_email: buyerEmail,
+            mingla_origin: "ticket_checkout_create_native",
+          },
+        },
+        {
+          idempotencyKey: customerIdemKey,
+          stripeAccount: stripeAccountId,
+        },
+      );
+    }
+    customerId = customer.id;
+
+    // 3.2.3.c — EphemeralKey for the mobile SDK, scoped to the connected
+    // account. apiVersion is the platform's pinned STRIPE_API_VERSION;
+    // ahead-of-SDK versions are non-fatal — the sheet still loads.
+    const ephemeralKeyIdemKey =
+      `mingla_ephkey:${stripeAccountId}:${customerId}:${Date.now()}`;
+    const ephemeralKey = await stripe.ephemeralKeys.create(
+      { customer: customerId },
+      {
+        apiVersion: STRIPE_API_VERSION,
+        stripeAccount: stripeAccountId,
+        idempotencyKey: ephemeralKeyIdemKey,
+      },
+    );
+    customerEphemeralKeySecret = String(ephemeralKey.secret ?? "");
+    if (customerEphemeralKeySecret.length === 0) {
+      // defensive: empty secret — treat as failure (paired-or-absent invariant).
+      customerId = null;
+      customerEphemeralKeySecret = null;
+    }
+  } catch (customerErr) {
+    // Non-fatal: log and continue with null customer fields. Mobile SDK
+    // will init PaymentSheet in guest mode. This preserves the existing
+    // happy path even if Connect customer-creation breaks on Stripe's side.
+    console.warn(
+      "[ticket-checkout-create] customer+ephemeralKey creation failed; continuing in guest mode",
+      customerErr instanceof Error ? customerErr.message : customerErr,
+    );
+    customerId = null;
+    customerEphemeralKeySecret = null;
+  }
+
   return jsonResponse({
     kind: "requires_payment",
     checkoutSessionId,
@@ -457,5 +638,12 @@ serve(async (req) => {
       Deno.env.get("EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY") ??
       Deno.env.get("STRIPE_PUBLISHABLE_KEY") ??
       null,
+    // ORCH-0844 NEW: Connect direct-charge mobile config.
+    // stripeAccountId is the connected account the PI lives on (above).
+    // customerId / customerEphemeralKeySecret are paired-or-absent:
+    // both populated (Customer ready), or both null (guest mode).
+    stripeAccountId,
+    customerId,
+    customerEphemeralKeySecret,
   });
 });
