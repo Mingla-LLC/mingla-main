@@ -22,24 +22,62 @@
  * TRANSITIONAL until operator sets the EAS Secret. Exit condition: secret set.
  */
 
-import { Mixpanel } from "mixpanel-react-native";
 import { Platform } from "react-native";
 import Constants from "expo-constants";
+
+// Defer the mixpanel-react-native require so web bundles don't blow up at
+// module-load. The package imports a native module that resolves to
+// `undefined.v1` on web (TypeError: Cannot read properties of undefined
+// (reading 'v1')), failing the Vercel `npx expo export -p web` build for
+// mingla-business. Loading via require() inside a Platform.OS guard
+// short-circuits the import on web without altering native behaviour.
+// Type kept as `any` here because the package's TS surface ships with the
+// require; pulling it in via `import type` still resolves the runtime
+// module on web, which is the failure we're avoiding.
+// Invariant: Mingla-business web export MUST tolerate native-only deps via
+// Platform.OS guard (paired with I-PROPOSED-X web-export deprecation parser).
+type MixpanelLike = {
+  init: () => Promise<void>;
+  identify: (id: string) => void;
+  reset: () => void;
+  track: (name: string, props?: Record<string, unknown>) => void;
+  getPeople: () => {
+    set: (p: Record<string, unknown>) => void;
+    setOnce: (p: Record<string, unknown>) => void;
+    increment: (k: string, by: number) => void;
+  };
+  registerSuperProperties: (p: Record<string, unknown>) => void;
+  timeEvent: (name: string) => void;
+};
+
+let MixpanelCtor: (new (token: string, trackAutomatic: boolean) => MixpanelLike) | null = null;
+if (Platform.OS !== "web") {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    MixpanelCtor = (require("mixpanel-react-native") as { Mixpanel: typeof MixpanelCtor }).Mixpanel;
+  } catch (err) {
+    console.warn("[Mixpanel] native module unavailable; analytics disabled:", err);
+  }
+}
 
 const MIXPANEL_TOKEN = process.env.EXPO_PUBLIC_MIXPANEL_TOKEN;
 
 class MixpanelService {
   private static instance: MixpanelService;
-  private mixpanel: Mixpanel | null = null;
+  private mixpanel: MixpanelLike | null = null;
   private initialized = false;
   private readonly enabled: boolean;
 
   private constructor() {
     this.enabled =
-      typeof MIXPANEL_TOKEN === "string" && MIXPANEL_TOKEN.length > 0;
-    if (this.enabled) {
+      typeof MIXPANEL_TOKEN === "string" &&
+      MIXPANEL_TOKEN.length > 0 &&
+      MixpanelCtor !== null;
+    if (this.enabled && MixpanelCtor !== null) {
       // Second arg = trackAutomaticEvents: true. Matches consumer pattern.
-      this.mixpanel = new Mixpanel(MIXPANEL_TOKEN!, true);
+      this.mixpanel = new MixpanelCtor(MIXPANEL_TOKEN!, true);
+    } else if (Platform.OS === "web") {
+      // Silent on web — analytics intentionally disabled for the web bundle.
     } else {
       console.warn(
         "[Mixpanel] env missing — analytics disabled. Set EXPO_PUBLIC_MIXPANEL_TOKEN as an EAS Secret to enable.",

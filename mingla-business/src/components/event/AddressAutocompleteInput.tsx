@@ -216,7 +216,12 @@ export const AddressAutocompleteInput: React.FC<AddressAutocompleteInputProps> =
       {error !== undefined ? (
         <Text style={styles.helperError}>{error}</Text>
       ) : status.kind === "pick_error" ? (
-        <Pressable onPress={handleRetry} accessibilityRole="button" hitSlop={4}>
+        <Pressable
+          onPress={handleRetry}
+          accessibilityRole="button"
+          accessibilityLabel={`Retry: ${status.message}`}
+          hitSlop={4}
+        >
           <Text style={styles.helperError}>{status.message}</Text>
         </Pressable>
       ) : null}

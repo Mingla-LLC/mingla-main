@@ -221,7 +221,7 @@ const prices = activeTickets
 
 ### ✅ P4 — F-6: CI gate caught implementor's own stale reference
 
-**File:** [.github/scripts/strict-grep/orch-0824-event-category-frozen.mjs](.github/scripts/strict-grep/orch-0824-event-category-frozen.mjs)
+**File:** [.github/scripts/strict-grep/orch-0824-event-category-frozen.mjs](../../.github/scripts/strict-grep/orch-0824-event-category-frozen.mjs)
 
 The new EVENT-CATEGORY-FROZEN CI gate caught a stale `draft.category === null` reference in `draftEventPristine.ts:6` that would have caused a TypeScript strict compile error. The implementor's session-1 pass missed this file; the gate run in session 2 surfaced it; implementor fixed in `draftEventPristine.ts`. Demonstrates the gate works as designed and protected the operator from a compile-break.
 

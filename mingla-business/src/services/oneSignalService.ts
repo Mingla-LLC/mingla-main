@@ -22,13 +22,33 @@
  * ORCH adds optIn() inside loginToOneSignal() per ORCH-0407 consumer pattern.
  */
 
-import { OneSignal, LogLevel } from "react-native-onesignal";
+import { Platform } from "react-native";
+
+// Defer react-native-onesignal require so web bundles don't blow up at
+// module-load. The package imports native modules that fail to resolve
+// under `expo export -p web`. Web bundles intentionally skip push.
+// Invariant: mingla-business web export tolerates native-only deps via
+// Platform.OS guard (paired with I-PROPOSED-X web-export deprecation).
+let OneSignal: typeof import("react-native-onesignal").OneSignal | null = null;
+let LogLevel: typeof import("react-native-onesignal").LogLevel | null = null;
+if (Platform.OS !== "web") {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = require("react-native-onesignal");
+    OneSignal = mod.OneSignal;
+    LogLevel = mod.LogLevel;
+  } catch (err) {
+    console.warn("[OneSignal] native module unavailable; push disabled:", err);
+  }
+}
 
 const ONESIGNAL_APP_ID = process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID;
 
 let _initialized = false;
 const _enabled =
-  typeof ONESIGNAL_APP_ID === "string" && ONESIGNAL_APP_ID.length > 0;
+  typeof ONESIGNAL_APP_ID === "string" &&
+  ONESIGNAL_APP_ID.length > 0 &&
+  OneSignal !== null;
 
 /**
  * Initialize the OneSignal SDK. Call once at app startup before any other
@@ -43,8 +63,8 @@ export function initializeOneSignal(): void {
     return;
   }
   try {
-    OneSignal.Debug.setLogLevel(__DEV__ ? LogLevel.Verbose : LogLevel.Warn);
-    OneSignal.initialize(ONESIGNAL_APP_ID!);
+    OneSignal!.Debug.setLogLevel(__DEV__ ? LogLevel!.Verbose : LogLevel!.Warn);
+    OneSignal!.initialize(ONESIGNAL_APP_ID!);
     _initialized = true;
     if (__DEV__) console.log("[OneSignal] initialized");
   } catch (e) {
@@ -66,7 +86,7 @@ export function isOneSignalReady(): boolean {
 export function loginToOneSignal(userId: string): void {
   if (!_initialized) return;
   try {
-    OneSignal.login(userId);
+    OneSignal!.login(userId);
     if (__DEV__) console.log("[OneSignal] logged in:", userId);
   } catch (e) {
     console.warn("[OneSignal] login failed:", e);
@@ -83,7 +103,7 @@ export function loginToOneSignal(userId: string): void {
 export function logoutOneSignal(): void {
   if (!_initialized) return;
   try {
-    OneSignal.logout();
+    OneSignal!.logout();
     if (__DEV__) console.log("[OneSignal] logged out");
   } catch (e) {
     console.warn("[OneSignal] logout failed:", e);

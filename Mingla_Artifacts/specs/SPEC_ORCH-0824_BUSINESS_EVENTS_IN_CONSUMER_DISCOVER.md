@@ -468,7 +468,7 @@ Render order on Step 1 after Description (per operator Figma): Name → Format �
 - **Vibe Tags grid:** 4-column responsive grid (collapses to 2 on narrow widths) of toggle pills rendering each `VIBE_TAGS[].label` with `emoji`. Multi-select via array `draft.vibeTags`. Optional. Helper text: `"Vibe Tags (Select all that apply)"`.
 - **Music Genres grid:** 2-column grid of toggle pills rendering each `MUSIC_GENRES[].label`. Multi-select via array `draft.musicGenres`. Optional. Helper text: `"Music Genre (Select all that will be played)"`.
 
-Apply [feedback_keyboard_never_blocks_input.md](../../.claude/...) — Step 1 grows substantially; ensure the Description field's `onFocus={scrollToBottom}` still lands flush above the keyboard. Implementor verifies on iOS sim.
+Apply the operator-feedback memory `feedback_keyboard_never_blocks_input.md` (Claude memory; not versioned in this repo) — Step 1 grows substantially; ensure the Description field's `onFocus={scrollToBottom}` still lands flush above the keyboard. Implementor verifies on iOS sim.
 
 #### 3.5.3 DraftEvent schema changes
 
@@ -608,7 +608,7 @@ Inside the existing grid map, replace the single-shape `<NightOutCard />` call w
 #### 3.7.5 New `BusinessEventCard` component
 
 - **File:** `app-mobile/src/components/discover/BusinessEventCard.tsx` (new)
-- **Visual:** Same grid cell dimensions as `NightOutCard` (`GRID_CARD_WIDTH × GRID_CARD_HEIGHT`). Hero = `coverMediaUrl` (Image) OR colored band (using `coverHue` per existing EventCover pattern) when null. Bottom info chip: `title` + `formatted date` + `venueName ?? city`. Optional small "On Mingla" pill in the corner (not a TM-style badge — defer styling to ui-ux-pro-max per [feedback_implementor_uses_ui_ux_pro_max.md](../../.claude/...)).
+- **Visual:** Same grid cell dimensions as `NightOutCard` (`GRID_CARD_WIDTH × GRID_CARD_HEIGHT`). Hero = `coverMediaUrl` (Image) OR colored band (using `coverHue` per existing EventCover pattern) when null. Bottom info chip: `title` + `formatted date` + `venueName ?? city`. Optional small "On Mingla" pill in the corner (not a TM-style badge — defer styling to ui-ux-pro-max per the operator-feedback memory `feedback_implementor_uses_ui_ux_pro_max.md` — Claude memory, not versioned in this repo).
 - **No price overlay** on the card (price lives in the expanded sheet, matching TM cards).
 
 ### 3.8 ExpandedCardModal — business-event render branch
