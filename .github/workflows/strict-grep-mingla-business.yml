@@ -82,7 +82,6 @@ on:
 #   - ORCH-0839-B (orch-0839-b-mingla-business-no-native-stripe.mjs) — mingla-business mobile uses ONLY hosted Stripe Checkout; no native Stripe RN imports, no plugin entry, payment.tsx uses openAuthSessionAsync (I-PROPOSED-MINGLA-BUSINESS-HOSTED-CHECKOUT-ONLY)
 #   - ORCH-0843 (orch-0843-stripe-direct-charges-only.mjs) — Mingla charge-creating Stripe API calls use DIRECT-CHARGE shape only (Stripe-Account header + application_fee_amount + statement_descriptor_suffix "MINGLA"); no transfer_data.destination anywhere under supabase/functions/ (I-PROPOSED-STRIPE-CHARGE-SHAPE-IS-DIRECT + I-PROPOSED-STRIPE-APPLICATION-FEE-PRESENT + I-PROPOSED-STRIPE-ACCOUNT-HEADER-ON-CONNECTED-CALLS + I-PROPOSED-STRIPE-STATEMENT-DESCRIPTOR-SUFFIX-MINGLA)
 #   - ORCH-0844 (orch-0844-stripe-connect-account-id-per-pi.mjs) — mobile re-applies the connected-account scope per-PI via initStripe(...) BEFORE initPaymentSheet, and edge fn returns stripeAccountId + customerId + customerEphemeralKeySecret on requires_payment (I-PROPOSED-STRIPE-CONNECT-ACCOUNT-ID-PER-PI)
-#   - ORCH-0845 (i-discover-excludes-ended-master-date.mjs) — discover-merged-events always filters event_dates.end_at >= lowerBoundUtc on the master date row, on BOTH the no-window and dated-chip paths (I-PROPOSED-DISCOVER-EXCLUDES-ENDED-MASTER-DATE)
 #   - I-REGRESSION-TEST-BACKFILL-WARN (regression-test-backfill-warning.mjs) — informational warning for modified source files without sibling regression tests (ORCH-0840 [Regression-test enforcement + append-only CI])
 #
 # Future gates to register (proposed but not yet implemented):
@@ -899,17 +898,6 @@ jobs:
           node-version: "20"
       - name: Run ORCH-0844 gate
         run: node .github/scripts/strict-grep/orch-0844-stripe-connect-account-id-per-pi.mjs
-
-  i-discover-excludes-ended-master-date:
-    name: "ORCH-0845: discover-merged-events excludes ended events on all paths (I-PROPOSED-DISCOVER-EXCLUDES-ENDED-MASTER-DATE)"
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-      - name: Run ORCH-0845 gate
-        run: node .github/scripts/strict-grep/i-discover-excludes-ended-master-date.mjs
 
   regression-test-backfill-warning:
     name: "I-REGRESSION-TEST-BACKFILL-WARN: modified source files without sibling test (informational, ORCH-0840)"

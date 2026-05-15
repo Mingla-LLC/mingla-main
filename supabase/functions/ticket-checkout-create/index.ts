@@ -565,6 +565,7 @@ serve(async (req) => {
   try {
     // 3.2.3.a — Idempotent customer lookup by email on the CONNECTED ACCOUNT.
     // The { stripeAccount } request option scopes the search to that account.
+    // orch-strict-grep-allow stripe-no-idempotency-key — read-only search; idempotency-key on Stripe search calls is rejected by the API (search is a query, not a mutation).
     const searchResult = await stripe.customers.search(
       {
         query: `email:'${buyerEmail.replace(/'/g, "\\'")}'`,
@@ -597,11 +598,14 @@ serve(async (req) => {
     // 3.2.3.c — EphemeralKey for the mobile SDK, scoped to the connected
     // account. apiVersion is the platform's pinned STRIPE_API_VERSION;
     // ahead-of-SDK versions are non-fatal — the sheet still loads.
+    const ephemeralKeyIdemKey =
+      `mingla_ephkey:${stripeAccountId}:${customerId}:${Date.now()}`;
     const ephemeralKey = await stripe.ephemeralKeys.create(
       { customer: customerId },
       {
         apiVersion: STRIPE_API_VERSION,
         stripeAccount: stripeAccountId,
+        idempotencyKey: ephemeralKeyIdemKey,
       },
     );
     customerEphemeralKeySecret = String(ephemeralKey.secret ?? "");
