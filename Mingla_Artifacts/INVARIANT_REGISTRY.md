@@ -3284,3 +3284,21 @@ Two strict-grep gates run together:
 **Source:** SPEC_ORCH-0821 §8, ARI_DESIGN §10.2 D2 replay-attack threat.
 
 **EXIT condition:** Permanent for any future server-authoritative confirmation-flow.
+
+### I-PROPOSED-DISCOVER-EXCLUDES-ENDED-MASTER-DATE (ACTIVE — ratified by ORCH-0845 CLOSE 2026-05-15)
+
+**Status:** ACTIVE — ratified by ORCH-0845 [Discover excludes ended events] CLOSE 2026-05-15.
+
+**Statement:** The `discover-merged-events` edge function (`supabase/functions/discover-merged-events/index.ts`) MUST always filter `event_dates.end_at >= lowerBoundUtc` on the master date row of every business-event candidate, where `lowerBoundUtc = dateWindowUtc !== null ? dateWindowUtc.startUtc : new Date().toISOString()`. The filter applies on BOTH the no-date-window code path AND the dated-chip code path. Events whose master `event_dates.end_at` is in the past MUST NOT appear in the response under any filter combination. The `event_dates` embed MUST be `!inner` unconditionally (no ternary `!left` fallback) — safe under I-PROPOSED-AX EVENT_HAS_MASTER_DATE which guarantees every row with `status IN ('scheduled','live')` has at least one master event_dates row.
+
+**Why:** Pre-0845 the `end_at >= ...` floor was scoped only to the dated-chip branch (`if (dateWindowUtc !== null)`), so the default "All" view and category/vibe/music chips without a date window returned events whose master end-time was already in the past. Ghost-inventory probe on 2026-05-15 found 2/9 (22%) of live public-scheduled inventory leaking — including the canonical Big Party Raleigh test event 20 hours after its end. `events.status='ended'` is operator-set only; nothing in the system (no trigger, no pg_cron) auto-flips status when `end_at` passes — verified via `pg_trigger` + `cron.job` introspection in the investigation. Therefore the read-side `end_at >= now()` filter is the canonical "is past" check, and it must apply on every code path that returns business events to Discover. Preserves I-PROPOSED-DISCOVER-TONIGHT-INCLUDES-IN-PROGRESS (ORCH-0839-A) by routing dated-chip requests through the `dateWindowUtc.startUtc` branch.
+
+**Enforcement:**
+1. **Strict-grep gate:** `.github/scripts/strict-grep/i-discover-excludes-ended-master-date.mjs` scans `supabase/functions/discover-merged-events/index.ts` for the binding substrings `const lowerBoundUtc` and `.gte("event_dates.end_at", lowerBoundUtc)` on non-comment lines — exits non-zero if either is missing.
+2. **Workflow:** `.github/workflows/strict-grep-mingla-business.yml` job `i-discover-excludes-ended-master-date`.
+3. **Regression test (happy-path):** `supabase/functions/discover-merged-events/__tests__/excludes_ended_events.test.ts` — 6 Deno tests asserting both the pure-function `lowerBoundUtc` decision contract AND the structural property that the `.gte` predicate is hoisted out of the `if (dateWindowUtc !== null)` block.
+4. **Regression test (adversarial):** to be written by Claude `mingla-tester` TARGETED at `supabase/functions/discover-merged-events/__tests__/end_at_boundary.test.ts` per SPEC_ORCH-0845 §3.5.2 — boundary-equal, 1-ms-before, and empty-city attack vectors.
+
+**Source:** SPEC_ORCH-0845_DISCOVER_EXCLUDES_ENDED_EVENTS.md §3.6.2, INVESTIGATION_ORCH-0845_DISCOVER_ENDED_EVENTS_STILL_SHOWN.md.
+
+**EXIT condition:** Permanent. If a future ORCH centralizes "is past" semantics across Discover + PublicEventPage + Checkout (registered as INVESTIGATION_ORCH-0845 §8 discovery #1), the centralized helper still routes through this filter — the invariant text may be rephrased to reference the helper, but the SQL predicate stays.

@@ -273,16 +273,47 @@ serve(async (req: Request): Promise<Response> => {
   //   SELECT events.*, brands.slug, brands.name, ed.start_at, MIN(tt.price_cents), MAX(tt.price_cents)
   //   FROM events
   //   JOIN brands ON ...
-  //   LEFT JOIN event_dates ed ON ed.event_id = events.id AND ed.is_master = true
+  //   INNER JOIN event_dates ed ON ed.event_id = events.id AND ed.is_master = true AND ed.end_at >= lowerBoundUtc
   //   LEFT JOIN ticket_types tt ON tt.event_id = events.id AND tt.deleted_at IS NULL ...
   // Implemented via a nested select with the supabase-js builder.
-  // ORCH-0828: when a date window is active, switch event_dates embed to
-  // !inner so events without any matching master-date row are excluded
-  // entirely. With no window we keep !left to preserve pre-0828 behavior
-  // (events with missing event_dates still appear; masterDateUtc is null).
-  const eventDatesEmbed = dateWindowUtc !== null
-    ? "event_dates!inner ( id, start_at, end_at, timezone, is_master )"
-    : "event_dates!left ( id, start_at, end_at, timezone, is_master )";
+  //
+  // Discover date-window history (most-recent last):
+  //   ORCH-0828 [Consumer Discover timezone + sheet bugs] — introduced the
+  //     dated-chip date-window math and switched the embed to !inner when a
+  //     window is present so events without any master date row are excluded.
+  //   ORCH-0839-A [Discover hardening] F-5 — switched the dated-chip lower
+  //     bound from `start_at >= window.start` to `end_at >= window.start` so
+  //     events that have already started but not ended remain visible under
+  //     dated chips (notably "Tonight"). Preserves invariant
+  //     I-PROPOSED-DISCOVER-TONIGHT-INCLUDES-IN-PROGRESS.
+  //   ORCH-0845 [Discover excludes ended events] — makes the master-date +
+  //     `end_at >= lowerBoundUtc` floor ALWAYS-ON. Pre-0845 the floor was
+  //     scoped to the dated-chip branch, so the default "All" view (and any
+  //     category/vibe/music chip without a date window) returned events whose
+  //     master `end_at` was already in the past. `events.status='ended'` is
+  //     operator-set only — nothing auto-flips it when end_at passes — so the
+  //     read-side filter is the canonical "is past" check. Establishes
+  //     invariant I-PROPOSED-DISCOVER-EXCLUDES-ENDED-MASTER-DATE (enforced by
+  //     `.github/scripts/strict-grep/i-discover-excludes-ended-master-date.mjs`).
+  //
+  // Schema reassurance: `event_dates.end_at` is NOT NULL with CHECK
+  // (end_at > start_at) per the baseline squash; no COALESCE fallback needed.
+  // I-PROPOSED-AX EVENT_HAS_MASTER_DATE (ORCH-0792) + trigger
+  // `biz_enforce_event_has_master_date` guarantees every row with
+  // status IN ('scheduled','live') has at least one master event_dates row,
+  // so the !inner embed is safe — it cannot legitimately exclude any row the
+  // base predicate is already permitting.
+  const eventDatesEmbed =
+    "event_dates!inner ( id, start_at, end_at, timezone, is_master )";
+
+  // Single reference-time decision before query build.
+  //   No-window path → "now" at request time (UTC ISO string from Edge runtime).
+  //   Dated-chip path → the window's start UTC (preserves ORCH-0839-A F-5
+  //     "in-progress events stay under Tonight" semantics).
+  // PostgREST applies the literal lowerBoundUtc server-side as a predicate
+  // against `event_dates.end_at` (timestamptz), so the comparison is exact.
+  const lowerBoundUtc: string =
+    dateWindowUtc !== null ? dateWindowUtc.startUtc : new Date().toISOString();
 
   let q = supabase
     .from("events")
@@ -316,7 +347,11 @@ serve(async (req: Request): Promise<Response> => {
       const out = [trimmed];
       if (firstSegment && firstSegment !== trimmed) out.push(firstSegment);
       return out;
-    })());
+    })())
+    // ORCH-0845: always-on master-date + end-time floor. See the comment
+    // block above the eventDatesEmbed declaration for the full rationale.
+    .eq("event_dates.is_master", true)
+    .gte("event_dates.end_at", lowerBoundUtc);
 
   if (partyTypeSlugs.length > 0) {
     q = q.overlaps("party_types", partyTypeSlugs);
@@ -328,24 +363,11 @@ serve(async (req: Request): Promise<Response> => {
     q = q.overlaps("music_genres", musicGenreSlugs);
   }
 
-  // ORCH-0828: apply date window to the master event_dates row.
-  // Filters scoped to the embedded `event_dates` alias narrow the inner-
-  // join so only events with a master date row INSIDE the window pass.
-  // ORCH-0839-A F-5: lower bound switched from start_at >= window.start to
-  // end_at >= window.start so events that have already started but not
-  // ended remain visible under dated chips (notably "Tonight"). Operator-
-  // confirmed product semantic: "Tonight" = anything happening tonight,
-  // including in-progress events. The upper bound stays on start_at so
-  // events that haven't begun by the window end don't leak forward.
-  // event_dates.end_at is NOT NULL (verified via baseline + live schema
-  // 2026-05-14) with CHECK end_at > start_at, so no defensive fallback
-  // needed.
-  // Invariant: I-PROPOSED-DISCOVER-TONIGHT-INCLUDES-IN-PROGRESS.
+  // ORCH-0845: dated-chip upper bound stays conditional. The lower bound
+  // (.gte event_dates.end_at) has been hoisted into the unconditional query
+  // construction above so it applies on every code path.
   if (dateWindowUtc !== null) {
-    q = q
-      .eq("event_dates.is_master", true)
-      .gte("event_dates.end_at", dateWindowUtc.startUtc)
-      .lte("event_dates.start_at", dateWindowUtc.endUtc);
+    q = q.lte("event_dates.start_at", dateWindowUtc.endUtc);
   }
 
   q = q.range(businessOffset, businessOffset + size - 1);
