@@ -3,12 +3,26 @@
  *
  * Route: /checkout/{eventId}/payment
  *
- * Production Stripe PaymentSheet. Free orders never reach this screen.
+ * ORCH-0839-B (2026-05-14): mingla-business pivoted from native Stripe
+ * PaymentSheet to hosted Stripe Checkout via expo-web-browser. Do NOT
+ * re-add @stripe/stripe-react-native imports here — the iOS 26 + newArch
+ * bridgeless TurboModule hang documented in
+ * Mingla_Artifacts/reports/INVESTIGATION_ORCH-0833-0834-RESCOPED_STRIPE_CONFIG_AND_ALL_FILTER_NO_TM.md
+ * §D-1 still exists in the SDK. CI gate
+ * .github/scripts/strict-grep/orch-0839-b-mingla-business-no-native-stripe.mjs
+ * forbids re-introduction.
+ *
+ * Both web and mobile (iOS + Android) buyers now redirect to the Stripe-
+ * hosted Checkout page. Web uses window.location.assign; mobile uses
+ * expo-web-browser.openAuthSessionAsync, intercepting the
+ * mingla-business://checkout/return custom-scheme redirect.
+ *
+ * Free orders never reach this screen.
  *
  * On payment success: wait for the server-backed checkout status, record the
  * issued tickets into cart Context, then router.replace to /confirm.
  *
- * Per Cycle 8 spec §4.6.
+ * Per Cycle 8 spec §4.6 + ORCH-0839-B SPEC §2.6.
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -23,6 +37,7 @@ import {
 import type { KeyboardEvent } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import * as WebBrowser from "expo-web-browser";
 
 import {
   spacing,
@@ -35,6 +50,7 @@ import {
   createTicketCheckout,
   pollTicketCheckoutStatus,
 } from "../../../src/services/ticketCheckoutService";
+import { mixpanelService } from "../../../src/services/mixpanelService";
 
 import { Button } from "../../../src/components/ui/Button";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
@@ -45,12 +61,16 @@ import {
   useCartTotals,
 } from "../../../src/components/checkout/CartContext";
 import {
-  clearCheckoutResumePayload,
   readCheckoutResumePayload,
   writeCheckoutResumePayload,
 } from "../../../src/components/checkout/checkoutPersistence";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
-import { useStripePaymentSheet } from "../../../src/payments/stripePaymentSheet";
+
+// ORCH-0839-B: return-URL scheme that the in-app browser session intercepts.
+// Stripe redirects success_url + cancel_url to a mingla-business:// URL;
+// openAuthSessionAsync resolves once the redirect happens. The scheme is
+// registered in mingla-business/app.config.ts.
+const CHECKOUT_RETURN_URL_SCHEME = "mingla-business://checkout/return";
 
 export default function CheckoutPaymentScreen(): React.ReactElement {
   const insets = useSafeAreaInsets();
@@ -71,16 +91,16 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
   const [restoreChecked, setRestoreChecked] = useState<boolean>(
     Platform.OS !== "web",
   );
-  const {
-    initPaymentSheet,
-    isPaymentSheetSupported,
-    presentPaymentSheet,
-  } = useStripePaymentSheet();
 
   const [processing, setProcessing] = useState<boolean>(false);
   const [finalizing, setFinalizing] = useState<boolean>(false);
   const [finalizingTimedOut, setFinalizingTimedOut] = useState<boolean>(false);
   const [checkoutSessionId, setCheckoutSessionId] = useState<string | null>(null);
+  // ORCH-0839-B: declineToast state is retained but dormant. Stripe's hosted
+  // page handles all card-decline UX inside its own surface. The Toast wrap
+  // below preserves the absolute-positioning lesson per
+  // feedback_toast_needs_absolute_wrap.md even though it has no caller in
+  // the new code path.
   const [declineToast, setDeclineToast] = useState<boolean>(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const finalizingRef = useRef<boolean>(false);
@@ -189,31 +209,42 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
     if (processing) return;
     if (eventId === null) return;
 
-    // ORCH-0790: web buyers go through Stripe Checkout Sessions (hosted page +
-    // redirect). Native buyers use the existing Stripe RN PaymentSheet flow.
-    if (Platform.OS === "web") {
-      try {
-        setProcessing(true);
-        setPaymentError(null);
-        const checkout = await createTicketCheckout({
-          eventId,
-          buyer,
-          lines,
-          surface: "web",
-        });
-        if (checkout.kind !== "requires_web_redirect") {
-          throw new Error("Web checkout did not return a redirect URL.");
-        }
-        setCheckoutSessionId(checkout.checkoutSessionId);
-        // Persist resume payload BEFORE the redirect — sessionStorage is
-        // scoped to the tab and survives Stripe's success_url full-page
-        // return. We persist lines + buyer too so a Stripe-side cancel
-        // returns the buyer to a populated /payment screen (instead of
-        // bouncing to /checkout/{eventId} with an empty cart) and a
-        // Stripe-side success returns to /confirm with a complete
-        // summary card and "Sent to {email}" line. Putting
-        // buyerStatusToken in the URL would leak it to history /
-        // referrers / analytics, so storage-only.
+    // ORCH-0839-B: single code path for web and mobile — both surfaces now use
+    // hosted Stripe Checkout. The only platform fork is HOW the URL is opened:
+    //   - web: window.location.assign (full-page redirect; same as ORCH-0790)
+    //   - native (iOS + Android): expo-web-browser.openAuthSessionAsync with a
+    //     custom-scheme returnUrl. The edge function emits
+    //     mingla-business://checkout/return?... for the "mobile-web" surface;
+    //     openAuthSessionAsync intercepts that redirect and resolves with
+    //     type:"success" | "cancel" | "dismiss", before the OS Linking
+    //     handler ever sees the URL (which is why there's no Linking
+    //     listener in app/_layout.tsx).
+    const surface: "web" | "mobile-web" =
+      Platform.OS === "web" ? "web" : "mobile-web";
+
+    try {
+      setProcessing(true);
+      setPaymentError(null);
+      mixpanelService.track("ticket_checkout_pay_started", {
+        surface,
+        eventId,
+      });
+      const checkout = await createTicketCheckout({
+        eventId,
+        buyer,
+        lines,
+        surface,
+      });
+      if (checkout.kind !== "requires_web_redirect") {
+        throw new Error("Hosted checkout did not return a redirect URL.");
+      }
+      setCheckoutSessionId(checkout.checkoutSessionId);
+
+      if (Platform.OS === "web") {
+        // Web path — full-page redirect via window.location.assign.
+        // sessionStorage persist BEFORE redirect so a Stripe-side cancel
+        // returns the buyer to a populated /payment screen and a success
+        // returns to /confirm with the order summary intact.
         const storage = (globalThis as unknown as { sessionStorage?: Storage })
           .sessionStorage;
         writeCheckoutResumePayload(storage, eventId, {
@@ -222,80 +253,101 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
           lines,
           buyer,
         });
-        const w = (globalThis as unknown as { location?: { assign?: (u: string) => void } });
+        const w =
+          globalThis as unknown as {
+            location?: { assign?: (u: string) => void };
+          };
         if (w.location?.assign) {
           w.location.assign(checkout.hostedCheckoutUrl);
         } else {
           // Sandbox / test environments where location.assign is unavailable.
-          // Reset processing and surface an error so the buyer isn't stuck.
           setProcessing(false);
           setPaymentError(
             "Couldn't redirect to Stripe. Please try again from a standard browser.",
           );
         }
         return;
-      } catch (error) {
-        setProcessing(false);
-        setPaymentError(
-          error instanceof Error
-            ? error.message
-            : "We couldn't start checkout. Please try again.",
-        );
-        return;
       }
-    }
 
-    if (!isPaymentSheetSupported) {
-      // Native build that somehow resolved the web stub — defensive only.
-      setPaymentError(
-        "Payment isn't available right now. Please try again from the latest app version.",
+      // Native path (iOS + Android) — open the Stripe-hosted Checkout URL in
+      // an in-app browser session. openAuthSessionAsync resolves when Stripe
+      // redirects to mingla-business://checkout/return... or when the buyer
+      // dismisses the sheet.
+      const browserResult = await WebBrowser.openAuthSessionAsync(
+        checkout.hostedCheckoutUrl,
+        CHECKOUT_RETURN_URL_SCHEME,
       );
-      return;
-    }
 
-    try {
-      setProcessing(true);
-      setPaymentError(null);
-      const checkout = await createTicketCheckout({ eventId, buyer, lines });
-      if (checkout.kind !== "requires_payment") {
-        throw new Error("Checkout did not return a payment session.");
-      }
-      setCheckoutSessionId(checkout.checkoutSessionId);
-      const initResult = await initPaymentSheet({
-        merchantDisplayName: "Mingla",
-        paymentIntentClientSecret: checkout.clientSecret,
-        allowsDelayedPaymentMethods: false,
+      mixpanelService.track("ticket_checkout_sheet_opened", {
+        surface,
+        eventId,
+        checkoutSessionId: checkout.checkoutSessionId,
+        browserResultType: browserResult.type,
       });
-      if (initResult.error) {
-        // initPaymentSheet failures are config / network issues, not user
-        // intent. Surface as inline error (no decline toast).
+
+      if (
+        browserResult.type === "cancel" ||
+        browserResult.type === "dismiss"
+      ) {
+        // Buyer closed the in-app browser. Stripe sometimes completes
+        // payment AFTER dismiss — same defensive race as
+        // BrandOnboardView.tsx. Poll once with the full backoff; if the
+        // order is still pending, surface as silent cancel.
+        const status = await pollTicketCheckoutStatus(
+          checkout.checkoutSessionId,
+          checkout.buyerStatusToken,
+        );
+        if (status !== null && status.order !== null) {
+          recordResult({
+            orderId: status.order.orderId,
+            ticketIds: status.order.tickets.map((t) => t.ticketId),
+            checkoutSessionId: status.checkoutSessionId,
+            paidAt: new Date().toISOString(),
+            paymentMethod: "card",
+            total: status.order.totalCents / 100,
+            totalCents: status.order.totalCents,
+            currency: status.order.currency,
+            paymentStatus: status.order.paymentStatus,
+            notificationStatus: status.order.notificationStatus,
+            tickets: status.order.tickets,
+          });
+          mixpanelService.track("ticket_checkout_succeeded", {
+            surface,
+            eventId,
+            checkoutSessionId: checkout.checkoutSessionId,
+          });
+          router.replace(`/checkout/${eventId}/confirm` as never);
+          return;
+        }
+        // Real cancel — silent return (mirrors web cancel UX).
+        mixpanelService.track("ticket_checkout_cancelled", {
+          surface,
+          eventId,
+          checkoutSessionId: checkout.checkoutSessionId,
+        });
         setProcessing(false);
-        setPaymentError(initResult.error.message);
         return;
       }
-      const payResult = await presentPaymentSheet();
-      if (payResult.error) {
-        // ORCH-0789: Stripe's PaymentSheet error.code distinguishes user-cancel
-        // ("Canceled") from real failures ("Failed") from "Timeout". Treating
-        // every error as a decline strands buyers who simply closed the sheet.
-        switch (payResult.error.code) {
-          case "Canceled":
-            // Buyer closed the sheet — Stripe already gave visual feedback.
-            // Silent return to the payment summary; no toast, no error text.
-            setProcessing(false);
-            return;
-          case "Timeout":
-            setProcessing(false);
-            setPaymentError("Stripe took too long — please try again.");
-            return;
-          case "Failed":
-          default:
-            setDeclineToast(true);
-            setProcessing(false);
-            return;
-        }
+
+      if (browserResult.type !== "success") {
+        // "locked" or "opened" — unusual states. Log + surface as error.
+        console.warn(
+          "[checkout-payment] openAuthSessionAsync unexpected type",
+          browserResult.type,
+        );
+        mixpanelService.track("ticket_checkout_failed", {
+          surface,
+          eventId,
+          checkoutSessionId: checkout.checkoutSessionId,
+          reason: `browser_result_${browserResult.type}`,
+        });
+        setProcessing(false);
+        setPaymentError("Checkout couldn't complete. Please try again.");
+        return;
       }
 
+      // browserResult.type === "success" — Stripe redirected back to
+      // mingla-business://checkout/return?cs=... . Poll for the paid order.
       setFinalizing(true);
       finalizingRef.current = true;
       const status = await pollTicketCheckoutStatus(
@@ -308,8 +360,15 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
         setFinalizingTimedOut(true);
         setFinalizing(false);
         setProcessing(false);
-        console.warn("[ticket-checkout] paid checkout finalization timed out", {
+        console.warn(
+          "[checkout-payment] hosted checkout finalization timed out",
+          { checkoutSessionId: checkout.checkoutSessionId },
+        );
+        mixpanelService.track("ticket_checkout_failed", {
+          surface,
+          eventId,
           checkoutSessionId: checkout.checkoutSessionId,
+          reason: "finalize_timeout",
         });
         return;
       }
@@ -326,6 +385,11 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
         notificationStatus: status.order.notificationStatus,
         tickets: status.order.tickets,
       });
+      mixpanelService.track("ticket_checkout_succeeded", {
+        surface,
+        eventId,
+        checkoutSessionId: checkout.checkoutSessionId,
+      });
       router.replace(`/checkout/${eventId}/confirm` as never);
     } catch (error) {
       if (finalizingRef.current) {
@@ -335,11 +399,18 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
         setProcessing(false);
         return;
       }
-      setPaymentError(
+      setProcessing(false);
+      const message =
         error instanceof Error
           ? error.message
-          : "Payment could not be completed. Please try again.",
-      );
+          : "Payment could not be completed. Please try again.";
+      setPaymentError(message);
+      mixpanelService.track("ticket_checkout_failed", {
+        surface,
+        eventId,
+        reason: "thrown_error",
+        message,
+      });
     } finally {
       if (!finalizingRef.current) {
         setProcessing(false);
@@ -348,10 +419,7 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
   }, [
     buyer,
     eventId,
-    initPaymentSheet,
-    isPaymentSheetSupported,
     lines,
-    presentPaymentSheet,
     processing,
     recordResult,
     router,
@@ -435,9 +503,7 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
         <GlassCard variant="base" radius="lg" padding={spacing.md}>
           <Text style={styles.summaryLabel}>PAYMENT</Text>
           <Text style={styles.paymentCopy}>
-            {Platform.OS === "web"
-              ? "You'll be redirected to Stripe to complete your purchase securely. Apple Pay and Google Pay are supported."
-              : "Card, Apple Pay, and Google Pay are handled by Stripe."}
+            You'll be redirected to Stripe to complete your purchase securely. Apple Pay and Google Pay are supported.
           </Text>
           {checkoutSessionId !== null ? (
             <Text style={styles.paymentMeta}>Session {checkoutSessionId.slice(0, 8)}</Text>

@@ -31,7 +31,9 @@ import { ErrorBoundary } from "../src/components/ui/ErrorBoundary";
 import { useCurrentBrandRecovery } from "../src/hooks/useCurrentBrandRecovery";
 import { useBrand } from "../src/hooks/useBrands";
 import { useCurrentBrandId } from "../src/store/currentBrandStore";
-import { StripeNativeProvider } from "../src/payments/StripeNativeProvider";
+// ORCH-0839-B (2026-05-14): StripeNativeProvider was a no-op pass-through
+// (post-META-ORCH-0827) and is removed alongside the native PaymentSheet
+// pivot. Hosted Stripe Checkout via expo-web-browser needs no provider.
 import { initializeAppsFlyer } from "../src/services/appsFlyerService";
 import { mixpanelService } from "../src/services/mixpanelService";
 import { revenueCatService } from "../src/services/revenueCatService";
@@ -223,11 +225,9 @@ export default function RootLayout(): React.ReactElement {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <QueryClientProvider client={queryClient}>
-          <StripeNativeProvider>
-            <AuthProvider>
-              <RootLayoutInner />
-            </AuthProvider>
-          </StripeNativeProvider>
+          <AuthProvider>
+            <RootLayoutInner />
+          </AuthProvider>
         </QueryClientProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

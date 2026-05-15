@@ -53,11 +53,15 @@ assertNotIncludes(
   "Payment succeeded. Ticket issuance is still processing",
   "successful payments must not be rendered as payment errors while webhook finalizes",
 );
-assertIncludes(
-  "mingla-business/app/checkout/[eventId]/payment.tsx",
-  "presentPaymentSheet",
-  "paid checkout must present Stripe PaymentSheet",
-);
+// [RETIRED 2026-05-14 by ORCH-0839-B] paid-checkout presentPaymentSheet
+// assertion. mingla-business pivoted from native Stripe PaymentSheet to
+// hosted Stripe Checkout via expo-web-browser.openAuthSessionAsync.
+// Replacement contract: the new gate
+// .github/scripts/strict-grep/orch-0839-b-mingla-business-no-native-stripe.mjs
+// (T-G5 + T-G6) enforces payment.tsx invokes openAuthSessionAsync with the
+// "mobile-web" surface discriminator. The remaining ORCH-0777 contracts
+// (free-checkout flow, anon RLS, QR pepper, organizer order visibility,
+// scanner) stay green a-fortiori.
 assertIncludes(
   "mingla-business/app/checkout/[eventId]/confirm.tsx",
   "result.tickets",

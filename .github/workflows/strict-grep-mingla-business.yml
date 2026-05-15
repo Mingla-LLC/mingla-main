@@ -79,6 +79,7 @@ on:
 #   - ORCH-0839-A pagination (app-mobile/scripts/ci/orch-0839-a-tm-pagination-aligned.mjs) — TM cache-hit serves events verbatim (I-PROPOSED-DISCOVER-TM-CACHE-NO-SLICE)
 #   - ORCH-0839-A meta (app-mobile/scripts/ci/orch-0839-a-meta-items-consistent.mjs) — merged meta counts match items returned (I-PROPOSED-DISCOVER-META-MATCHES-ITEMS)
 #   - ORCH-0839-A cache-removed (app-mobile/scripts/ci/orch-0839-a-mobile-cache-removed.mjs) — mobile AsyncStorage cache permanently removed (I-PROPOSED-DISCOVER-NO-MOBILE-CACHE; supersedes ORCH-0835 cache-symmetry gate)
+#   - ORCH-0839-B (orch-0839-b-mingla-business-no-native-stripe.mjs) — mingla-business mobile uses ONLY hosted Stripe Checkout; no native Stripe RN imports, no plugin entry, payment.tsx uses openAuthSessionAsync (I-PROPOSED-MINGLA-BUSINESS-HOSTED-CHECKOUT-ONLY)
 #   - I-REGRESSION-TEST-BACKFILL-WARN (regression-test-backfill-warning.mjs) — informational warning for modified source files without sibling regression tests (ORCH-0840 [Regression-test enforcement + append-only CI])
 #
 # Future gates to register (proposed but not yet implemented):
@@ -862,6 +863,17 @@ jobs:
           node-version: "20"
       - name: Run ORCH-0839-A cache-removed gate
         run: node app-mobile/scripts/ci/orch-0839-a-mobile-cache-removed.mjs
+
+  orch-0839-b-mingla-business-no-native-stripe:
+    name: "ORCH-0839-B: mingla-business hosted Stripe Checkout only (I-PROPOSED-MINGLA-BUSINESS-HOSTED-CHECKOUT-ONLY)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0839-B gate
+        run: node .github/scripts/strict-grep/orch-0839-b-mingla-business-no-native-stripe.mjs
 
   regression-test-backfill-warning:
     name: "I-REGRESSION-TEST-BACKFILL-WARN: modified source files without sibling test (informational, ORCH-0840)"

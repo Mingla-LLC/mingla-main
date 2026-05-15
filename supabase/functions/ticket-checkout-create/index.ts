@@ -17,7 +17,16 @@ import {
 } from "../_shared/ticketCheckout.ts";
 
 type CheckoutLine = { ticketTypeId: string; quantity: number };
-type CheckoutSurface = "native" | "web";
+// ORCH-0839-B (2026-05-14): widened to include "mobile-web" for the
+// mingla-business mobile hosted-Checkout pivot. "web" continues to emit
+// https://… success_url/cancel_url; "mobile-web" emits the
+// mingla-business://checkout/return custom-scheme deep link the native app
+// intercepts via expo-web-browser.openAuthSessionAsync. "native" remains
+// for backward compat with older mingla-business builds (PaymentIntent
+// path below). Decision-gate probe (2026-05-14) confirmed Stripe accepts
+// the custom scheme — see Mingla_Artifacts/reports/IMPLEMENTATION_ORCH-
+// 0839-B_STRIPE_HOSTED_CHECKOUT_PIVOT.md §3.
+type CheckoutSurface = "native" | "web" | "mobile-web";
 
 function isCheckoutLine(value: unknown): value is CheckoutLine {
   const row = value as Partial<CheckoutLine>;
@@ -41,7 +50,15 @@ serve(async (req) => {
   }
 
   const eventId = typeof body.eventId === "string" ? body.eventId : "";
-  const surface: CheckoutSurface = body.surface === "web" ? "web" : "native";
+  // ORCH-0839-B: three-way discriminator. Unknown values fall through to
+  // "native" to preserve backward compat with older mingla-business builds
+  // that send no surface field (older builds: omitted → "native").
+  const surface: CheckoutSurface =
+    body.surface === "web"
+      ? "web"
+      : body.surface === "mobile-web"
+        ? "mobile-web"
+        : "native";
   const buyer = (body.buyer ?? {}) as Record<string, unknown>;
   const buyerName = typeof buyer.name === "string" ? buyer.name.trim() : "";
   const buyerEmail = typeof buyer.email === "string" ? buyer.email.trim().toLowerCase() : "";
@@ -176,11 +193,40 @@ serve(async (req) => {
   // redirect). Native flow continues to use PaymentIntent + Stripe RN
   // PaymentSheet below. Both run destination charges against the same
   // connected account.
-  if (surface === "web") {
-    const baseUrl = Deno.env.get("MINGLA_PUBLIC_WEB_BASE_URL");
-    if (!baseUrl || !/^https:\/\/[^\s]+$/.test(baseUrl)) {
-      console.error("[ticket-checkout-create] MINGLA_PUBLIC_WEB_BASE_URL not set or invalid");
-      return jsonResponse({ error: "web_base_url_missing" }, 500);
+  // ORCH-0839-B (2026-05-14): "mobile-web" surface joins this branch — same
+  // hosted-Checkout API call, only success_url / cancel_url differ. Native
+  // PaymentIntent path below stays for backward compat with older mingla-
+  // business builds (untouched by this pivot).
+  if (surface === "web" || surface === "mobile-web") {
+    let successUrl: string;
+    let cancelUrl: string;
+    if (surface === "web") {
+      const baseUrl = Deno.env.get("MINGLA_PUBLIC_WEB_BASE_URL");
+      if (!baseUrl || !/^https:\/\/[^\s]+$/.test(baseUrl)) {
+        console.error(
+          "[ticket-checkout-create] MINGLA_PUBLIC_WEB_BASE_URL not set or invalid",
+        );
+        return jsonResponse({ error: "web_base_url_missing" }, 500);
+      }
+      successUrl =
+        `${baseUrl}/checkout/${eventId}/confirm?cs={CHECKOUT_SESSION_ID}`;
+      cancelUrl = `${baseUrl}/checkout/${eventId}/payment`;
+    } else {
+      // ORCH-0839-B: mobile-hosted Checkout returns to the native app via a
+      // custom-scheme deep link. expo-web-browser.openAuthSessionAsync
+      // intercepts this URL inside the in-app browser session and resolves
+      // with type:"success" + the full URL (so the app can read `cs` from
+      // the query string). The scheme `mingla-business` is registered in
+      // mingla-business/app.config.ts; reusing it for /checkout/return is
+      // safe because /onboarding-complete and /checkout/return have
+      // disjoint route handlers (and there is no in-app Linking listener —
+      // the in-app browser session intercepts before the OS even tries to
+      // wake the host app). Decision-gate probe 2026-05-14 confirmed Stripe
+      // accepts this custom scheme on checkout.sessions.create.
+      successUrl =
+        `mingla-business://checkout/return?cs={CHECKOUT_SESSION_ID}&eventId=${eventId}&status=success`;
+      cancelUrl =
+        `mingla-business://checkout/return?cs={CHECKOUT_SESSION_ID}&eventId=${eventId}&status=cancel`;
     }
     const eventName = typeof session.eventName === "string" && session.eventName.length > 0
       ? session.eventName
@@ -244,9 +290,8 @@ serve(async (req) => {
           // collects billing address on new Customers when automatic_tax is
           // enabled, so removing this line preserves tax jurisdiction lookup.
           customer_email: buyerEmail,
-          success_url:
-            `${baseUrl}/checkout/${eventId}/confirm?cs={CHECKOUT_SESSION_ID}`,
-          cancel_url: `${baseUrl}/checkout/${eventId}/payment`,
+          success_url: successUrl,
+          cancel_url: cancelUrl,
           metadata: {
             mingla_checkout_session_id: checkoutSessionId,
             mingla_event_id: eventId,

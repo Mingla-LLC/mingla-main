@@ -57,13 +57,11 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       },
     ],
     "expo-video",
-    [
-      "@stripe/stripe-react-native",
-      {
-        merchantIdentifier: "merchant.com.sethogieva.minglabusiness",
-        enableGooglePay: true,
-      },
-    ],
+    // ORCH-0839-B (2026-05-14): @stripe/stripe-react-native plugin removed.
+    // mingla-business pivoted from native PaymentSheet to hosted Stripe
+    // Checkout via expo-web-browser. Removing the plugin omits the native
+    // framework on the next EAS rebuild — shrinking binary size and
+    // retiring the iOS 26 + bridgeless TurboModule hang surface.
     "@sentry/react-native/expo",
     // [TRANSITIONAL] react-native-nfc-manager auto-linked via npm install
     // (D-NFC-OUTCOME = Option 3). No plugin entry required for auto-link.

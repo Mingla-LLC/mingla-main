@@ -43,11 +43,10 @@ config.resolver.extraNodeModules = {
     "packages",
     "event-rendering",
   ),
-  "@mingla/payments-native": path.join(
-    WORKSPACE_ROOT,
-    "packages",
-    "payments-native",
-  ),
+  // ORCH-0839-B (2026-05-14): @mingla/payments-native alias removed.
+  // mingla-business pivoted from native PaymentSheet to hosted Stripe
+  // Checkout. app-mobile still consumes the shared package — its own
+  // metro.config.js retains the alias independently.
   // CRITICAL — force single React + RN instance across app + packages.
   // The packages have their own node_modules/react (for type-checking
   // only) which at runtime would create a DUPLICATE React instance and
