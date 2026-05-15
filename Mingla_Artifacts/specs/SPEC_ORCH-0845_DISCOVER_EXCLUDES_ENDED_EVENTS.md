@@ -4,7 +4,7 @@
 **Skill:** Claude `mingla-forensics`
 **Date:** 2026-05-15
 **Investigation:** [`reports/INVESTIGATION_ORCH-0845_DISCOVER_ENDED_EVENTS_STILL_SHOWN.md`](../reports/INVESTIGATION_ORCH-0845_DISCOVER_ENDED_EVENTS_STILL_SHOWN.md)
-**Dispatch:** [`prompts/SPEC_ORCH-0845_DISCOVER_EXCLUDES_ENDED_EVENTS.md`](../prompts/SPEC_ORCH-0845_DISCOVER_EXCLUDES_ENDED_EVENTS.md)
+**Dispatch:** `prompts/SPEC_ORCH-0845_DISCOVER_EXCLUDES_ENDED_EVENTS.md` (PRIVATE_PROMPT_NOT_VERSIONED — gitignored)
 **Working tree:** `/Users/sethogieva/Desktop/mingla-main` on branch `Seth`
 **Confidence:** High — investigation was `root cause proven`, fix is one-file, no DB / no client, scope locked.
 
@@ -386,7 +386,7 @@ R-4. **Invariant safeguard:** `I-PROPOSED-DISCOVER-EXCLUDES-ENDED-MASTER-DATE` i
 ## 10. Cross-references
 
 - Investigation: [`reports/INVESTIGATION_ORCH-0845_DISCOVER_ENDED_EVENTS_STILL_SHOWN.md`](../reports/INVESTIGATION_ORCH-0845_DISCOVER_ENDED_EVENTS_STILL_SHOWN.md)
-- Dispatch: [`prompts/SPEC_ORCH-0845_DISCOVER_EXCLUDES_ENDED_EVENTS.md`](../prompts/SPEC_ORCH-0845_DISCOVER_EXCLUDES_ENDED_EVENTS.md)
+- Dispatch: `prompts/SPEC_ORCH-0845_DISCOVER_EXCLUDES_ENDED_EVENTS.md` (PRIVATE_PROMPT_NOT_VERSIONED — gitignored)
 - Prior Discover specs (preserved, not modified): SPEC_ORCH-0824_BUSINESS_EVENTS_IN_CONSUMER_DISCOVER, SPEC_ORCH-0828_CONSUMER_DISCOVER_TIMEZONE_AND_SHEET_BUGS, SPEC_ORCH-0839-A_DISCOVER_HARDENING.
 - Invariant registry: `Mingla_Artifacts/INVARIANT_REGISTRY.md` (entry I-PROPOSED-AX preserved; new I-PROPOSED-DISCOVER-EXCLUDES-ENDED-MASTER-DATE added per §3.6.2).
 - Memory: `feedback_strict_grep_registry_pattern.md` (one script + one job in `strict-grep-mingla-business.yml`), `feedback_orchestrator_deploys_edge_functions.md` (orchestrator owns deploy after operator's DB push — but this SPEC has no DB push), `feedback_verify_db_column_names_before_writing_queries.md` (implementor MUST re-grep migrations per implementation order step 1).
