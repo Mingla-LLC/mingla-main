@@ -5,7 +5,7 @@
 **Working tree:** `/Users/sethogieva/Desktop/mingla-main` on branch `Seth`
 **Spec:** [`Mingla_Artifacts/specs/SPEC_ORCH-0824_BUSINESS_EVENTS_IN_CONSUMER_DISCOVER.md`](../specs/SPEC_ORCH-0824_BUSINESS_EVENTS_IN_CONSUMER_DISCOVER.md)
 **Investigation:** [`Mingla_Artifacts/reports/INVESTIGATION_ORCH-0824_BUSINESS_EVENTS_IN_CONSUMER_DISCOVER.md`](INVESTIGATION_ORCH-0824_BUSINESS_EVENTS_IN_CONSUMER_DISCOVER.md)
-**Dispatch:** [`Mingla_Artifacts/prompts/IMPLEMENTOR_ORCH-0824_BUSINESS_EVENTS_IN_CONSUMER_DISCOVER.md`](../prompts/IMPLEMENTOR_ORCH-0824_BUSINESS_EVENTS_IN_CONSUMER_DISCOVER.md)
+**Dispatch:** `Mingla_Artifacts/prompts/IMPLEMENTOR_ORCH-0824_BUSINESS_EVENTS_IN_CONSUMER_DISCOVER.md` (prompts directory is gitignored per the documentation system — `PRIVATE_PROMPT_NOT_VERSIONED`)
 
 ---
 

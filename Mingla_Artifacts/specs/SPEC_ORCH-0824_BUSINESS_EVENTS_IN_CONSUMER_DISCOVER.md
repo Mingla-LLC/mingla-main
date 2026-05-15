@@ -3,7 +3,7 @@
 **Author:** Claude `mingla-forensics` (SPEC mode)
 **Date:** 2026-05-13
 **Working tree:** `/Users/sethogieva/Desktop/mingla-main` on branch `Seth`
-**Dispatch:** [`Mingla_Artifacts/prompts/SPEC_ORCH-0824_BUSINESS_EVENTS_IN_CONSUMER_DISCOVER.md`](../prompts/SPEC_ORCH-0824_BUSINESS_EVENTS_IN_CONSUMER_DISCOVER.md)
+**Dispatch:** `Mingla_Artifacts/prompts/SPEC_ORCH-0824_BUSINESS_EVENTS_IN_CONSUMER_DISCOVER.md` (prompts directory is gitignored per the documentation system — `PRIVATE_PROMPT_NOT_VERSIONED`)
 **Investigation:** [`Mingla_Artifacts/reports/INVESTIGATION_ORCH-0824_BUSINESS_EVENTS_IN_CONSUMER_DISCOVER.md`](../reports/INVESTIGATION_ORCH-0824_BUSINESS_EVENTS_IN_CONSUMER_DISCOVER.md)
 
 ---
