@@ -35,6 +35,14 @@ import { useFeatureGate } from "../../hooks/useFeatureGate";
 import { CustomPaywallScreen } from "../CustomPaywallScreen";
 import { useKeyboard } from "../../hooks/useKeyboard";
 import { useTranslation } from 'react-i18next';
+// ORCH-0829-A: business-event ticket purchases live in `orders`+`tickets`
+// tables. Surface them inside Calendar as a separate section above the
+// legacy `calendar_entries` (scheduled-saved-cards) flow. The legacy
+// prop flow (calendarEntries from AppStateManager via LikesPage) is
+// untouched to minimize blast radius. New invariant:
+// I-PROPOSED-CONSUMER-CALENDAR-UNIONS-ORDERS.
+import { useBusinessEventOrders } from "../../hooks/useCalendarEntries";
+import BusinessEventCalendarRow from "./BusinessEventCalendarRow";
 
 interface CalendarEntry {
   id: string;
@@ -125,6 +133,14 @@ const CalendarTab = ({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const { user } = useAppStore();
   const queryClient = useQueryClient();
+
+  // ORCH-0829-A: business-event tickets parallel hook. Legacy
+  // calendarEntries prop continues to flow from AppStateManager via
+  // LikesPage; this hook adds the new source without touching that
+  // path. Invalidated by `ExpandedBusinessEventSheet.handleBuy` on
+  // success via `["businessEventOrders", user.id]`.
+  const businessOrdersQuery = useBusinessEventOrders(user?.id);
+  const businessOrders = businessOrdersQuery.data ?? [];
 
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
@@ -967,6 +983,22 @@ const CalendarTab = ({
     mainScrollContent: {
       paddingBottom: 100,
     },
+    // ORCH-0829-A: business-event tickets section
+    businessEventSection: {
+      marginBottom: 16,
+      marginHorizontal: 16,
+      borderRadius: 16,
+      backgroundColor: "rgba(255,255,255,0.04)",
+      overflow: "hidden",
+    },
+    businessEventHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: 16,
+      paddingTop: 14,
+      paddingBottom: 10,
+      gap: 8,
+    },
     accordionHeader: {
       flexDirection: "row",
       alignItems: "center",
@@ -1732,6 +1764,27 @@ const CalendarTab = ({
           />
         </Animated.View>
 
+        {/* ORCH-0829-A: Business-event ticket purchases (orders + tickets).
+            Rendered above the legacy Active section so the user sees their
+            most recently purchased tickets first. No accordion (always
+            expanded if non-empty) — tickets are infrequent and high-value. */}
+        {businessOrders.length > 0 && (
+          <View style={styles.businessEventSection}>
+            <View style={styles.businessEventHeader}>
+              <Text style={styles.accordionTitle}>Tickets</Text>
+              <Text style={styles.accordionCount}>
+                ({businessOrders.length})
+              </Text>
+            </View>
+            {businessOrders.map((entry) => (
+              <BusinessEventCalendarRow
+                key={`business:${entry.orderId}`}
+                entry={entry}
+              />
+            ))}
+          </View>
+        )}
+
         {/* Active Section */}
         <TouchableOpacity
           style={styles.accordionHeader}
@@ -1865,7 +1918,8 @@ const CalendarTab = ({
       {selectedCardForExpansion && (
         <ExpandedCardModal
           visible={isExpandedModalVisible}
-          card={selectedCardForExpansion}
+          // ORCH-0828: discriminated-union target.
+          target={{ kind: "nightOut", data: selectedCardForExpansion }}
           onClose={handleCloseExpandedModal}
           onSave={handleSaveFromModal}
           onPurchase={handlePurchaseFromModal}

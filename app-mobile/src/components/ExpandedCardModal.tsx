@@ -1217,8 +1217,7 @@ function StopOpenBadge({ openingHours }: { openingHours: Record<string, string> 
 
 export default function ExpandedCardModal({
   visible,
-  card,
-  businessEvent,
+  target,
   onClose,
   onSave,
   onPurchase,
@@ -1238,6 +1237,13 @@ export default function ExpandedCardModal({
   onPaywallRequired,
   canAccessCurated = true,
 }: ExpandedCardModalProps) {
+  // ORCH-0828: project the union back to the legacy `card` / `businessEvent`
+  // local bindings used throughout the rest of this large component. The
+  // PROP-level mutual exclusion is enforced by the discriminated-union type
+  // (`ExpansionTarget`); below this point we still branch by which local is
+  // non-null. Hooks above the early-return must not depend on these bindings.
+  const card = target?.kind === "nightOut" ? target.data : null;
+  const businessEvent = target?.kind === "businessEvent" ? target.data : null;
   const { t } = useTranslation(['cards', 'common']);
   const { updateCardStrollData, collabTravelMode } = useRecommendations();
   // In collaboration mode, use the group's aggregated travel mode (majority vote).

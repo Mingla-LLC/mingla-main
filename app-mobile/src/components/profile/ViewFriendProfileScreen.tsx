@@ -472,7 +472,8 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
       {expandedCard && (
         <ExpandedCardModal
           visible={!!expandedCard}
-          card={expandedCard}
+          // ORCH-0828: discriminated-union target.
+          target={{ kind: "nightOut", data: expandedCard }}
           onClose={() => setExpandedCard(null)}
           onSave={async (card: any) => {
             await handleSaveCard(card);

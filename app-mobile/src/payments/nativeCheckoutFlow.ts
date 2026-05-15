@@ -126,6 +126,14 @@ export const useNativeCheckoutFlow = (): ((
         merchantDisplayName: MERCHANT_DISPLAY_NAME,
         paymentIntentClientSecret: data.clientSecret,
         allowsDelayedPaymentMethods: false,
+        // ORCH-0829-B: returnURL is required by Stripe for any payment
+        // method that redirects (Apple Pay, iDEAL, Klarna, etc.). Without
+        // it, Stripe SDK logs a warning and those methods are silently
+        // hidden from the PaymentSheet. Scheme matches `app.json:scheme`
+        // and the iOS bundle id (`com.mingla.app.v2`). Path segment
+        // `stripe-redirect` is arbitrary; Stripe just needs SOME URL to
+        // navigate back to.
+        returnURL: "com.mingla.app.v2://stripe-redirect",
       });
       if (initResult.error) {
         return {

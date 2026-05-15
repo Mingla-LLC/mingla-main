@@ -1,6 +1,7 @@
 import type { DraftEvent } from "../store/draftEventStore";
 import type { LiveEvent } from "../store/liveEventStore";
 import { deriveLiveStatus } from "./eventLifecycle";
+import { computeMasterStartAtUtc } from "./eventDateMath";
 
 export type BrandEventSummaryStatus = "live" | "upcoming" | "past" | "draft";
 export type BrandEventSummaryKind = "live" | "draft";
@@ -36,7 +37,8 @@ const statusRank: Record<BrandEventSummaryStatus, number> = {
 };
 
 const toSummaryStatus = (event: LiveEvent): BrandEventSummaryStatus => {
-  const status = deriveLiveStatus(event);
+  // ORCH-0828: pass timezone-aware UTC instant (not date-only string).
+  const status = deriveLiveStatus(event, computeMasterStartAtUtc(event));
   return status === "cancelled" ? "past" : status;
 };
 

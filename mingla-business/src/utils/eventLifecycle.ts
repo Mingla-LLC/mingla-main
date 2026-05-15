@@ -33,12 +33,31 @@ const LIVE_WINDOW_AFTER_MS = 24 * 60 * 60 * 1000;
  * Cycle 13 reconciliation route maps "cancelled" through to its own headline
  * branch (NOT collapsed to "past") to surface the refund/payout-audit framing.
  * Event Detail still collapses cancelled → past for its 3-bucket pill design.
+ *
+ * ORCH-0828 signature change: takes `masterStartAtUtc` (UTC ISO timestamp)
+ * as a required second argument. The pre-0828 single-arg version did
+ * `new Date(event.date).getTime()`, which parses `"YYYY-MM-DD"` as UTC
+ * midnight — for any non-UTC event this shifted the live window by hours
+ * (Big Party at 4pm EDT was classified "live" 20 hours before it started).
+ *
+ * Callers compute `masterStartAtUtc` via
+ * `computeMasterStartAtUtc(event)` from `./eventDateMath`, which prefers
+ * the hydrated `event.masterStartAtUtc` field (from `event_dates.start_at`)
+ * and falls back to a timezone-aware parse of `event.date + event.doorsOpen`.
+ *
+ * NEVER pass `event.date` directly here — it is a date-only string and
+ * cannot represent the event's wall-clock start time. Enforced by the
+ * `forbid-new-Date-on-date-only-string` strict-grep CI gate
+ * (`.github/workflows/strict-grep-mingla-business.yml`).
  */
-export const deriveLiveStatus = (event: LiveEvent): EventLifecycleStatus => {
+export const deriveLiveStatus = (
+  event: LiveEvent,
+  masterStartAtUtc: string | null,
+): EventLifecycleStatus => {
   if (event.status === "cancelled") return "cancelled";
   if (event.endedAt !== null) return "past";
-  if (event.date === null) return "upcoming";
-  const eventTime = new Date(event.date).getTime();
+  if (masterStartAtUtc === null) return "upcoming";
+  const eventTime = Date.parse(masterStartAtUtc);
   if (!Number.isFinite(eventTime)) return "upcoming";
   const liveWindowStart = eventTime - LIVE_WINDOW_BEFORE_MS;
   const liveWindowEnd = eventTime + LIVE_WINDOW_AFTER_MS;

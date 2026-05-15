@@ -1522,7 +1522,9 @@ export default function MessageInterface({
       {showExpandedCardFromChat && expandedCardFromChat && (
         <ExpandedCardModal
           visible={showExpandedCardFromChat}
-          card={expandedCardFromChat}
+          // ORCH-0828: discriminated-union target. Chat-mounted modal
+          // only ever surfaces Night Out cards.
+          target={{ kind: "nightOut", data: expandedCardFromChat }}
           onClose={() => {
             setShowExpandedCardFromChat(false);
             setExpandedCardFromChat(null);

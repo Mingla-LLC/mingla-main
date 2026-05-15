@@ -2144,7 +2144,8 @@ const SavedTab = ({
       {isModalVisible && selectedCardForModal && (
         <ExpandedCardModal
           visible={isModalVisible}
-          card={selectedCardForModal}
+          // ORCH-0828: discriminated-union target.
+          target={{ kind: "nightOut", data: selectedCardForModal }}
           onClose={handleCloseModal}
           isSaved={true}
           onSave={handleModalSave}

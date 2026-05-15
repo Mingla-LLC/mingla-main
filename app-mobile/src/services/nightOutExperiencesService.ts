@@ -252,12 +252,32 @@ export class NightOutExperiencesService {
     if (input.musicGenreSlugs && input.musicGenreSlugs.length > 0) {
       body.musicGenreSlugs = input.musicGenreSlugs;
     }
+    // ORCH-0828: forward the device's IANA timezone so the server can
+    // anchor `localStartEndDateTime` correctly for the business-events
+    // date filter. Falls back to UTC if the platform can't resolve it.
+    if (input.timezone && input.timezone.length > 0) {
+      body.timezone = input.timezone;
+    } else {
+      try {
+        const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        if (typeof tz === "string" && tz.length > 0) body.timezone = tz;
+      } catch {
+        // fall through: server defaults to UTC + logs a warning
+      }
+    }
 
     console.log("[NightOutService] searchMerged:", {
       city: input.city.name,
       partyTypes: input.partyTypeSlugs,
       vibes: input.vibeTagSlugs,
       genres: input.musicGenreSlugs,
+      // ORCH-0828 REWORK: log the actual date window + resolved timezone +
+      // segment so runtime traces can verify exactly what the client sent
+      // (the brutal-retest investigation lost an hour because these were
+      // absent from the log).
+      segmentSlug: input.segmentSlug,
+      localStartEndDateTime: input.localStartEndDateTime,
+      timezone: body.timezone,
     });
 
     const { data, error } = await supabase.functions.invoke(

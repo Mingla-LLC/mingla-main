@@ -2,6 +2,14 @@ import { supabase } from "./supabase";
 import { userActivityService } from "./userActivityService";
 import { recordCardSchedule } from "./cardEngagementService";
 
+// ORCH-0829-A: business-event purchases go through `ticket-checkout-create`
+// which writes rows to `orders` + `tickets` tables. The consumer calendar
+// surface unions both `calendar_entries` (legacy "scheduled saved cards")
+// AND business-event orders so users see their purchased tickets alongside
+// their saved-card schedules. New invariant:
+// I-PROPOSED-CONSUMER-CALENDAR-UNIONS-ORDERS.
+const BUSINESS_BUYER_DOMAIN = "https://business.mingla.app";
+
 export interface CalendarEntryRecord {
   id: string;
   user_id: string;
@@ -20,6 +28,59 @@ export interface CalendarEntryRecord {
   updated_at: string;
   archived_at?: string | null;
   device_calendar_event_id?: string | null;
+}
+
+// ORCH-0829-A: discriminated-union shape for the consumer calendar
+// timeline. The Calendar tab renders by `kind`. `calendar` = legacy
+// saved-card schedule; `business_event` = ticket purchase from a Mingla
+// business event (via `ticket-checkout-create`).
+export type ConsumerCalendarEntry =
+  | {
+      kind: "calendar";
+      id: string;
+      scheduledAt: string;
+      title: string;
+      imageUrl: string | null;
+      calendar: CalendarEntryRecord;
+    }
+  | {
+      kind: "business_event";
+      id: string;
+      scheduledAt: string;
+      title: string;
+      imageUrl: string | null;
+      businessEvent: BusinessEventCalendarRow;
+    };
+
+export interface ConsumerTicketRow {
+  id: string;
+  ticketTypeId: string;
+  qrCode: string;
+  status: "valid" | "used" | "void" | "transferred" | "refunded";
+  attendeeName: string | null;
+  attendeeEmail: string | null;
+}
+
+export interface BusinessEventCalendarRow {
+  orderId: string;
+  eventId: string;
+  eventTitle: string;
+  brandName: string;
+  brandSlug: string;
+  coverMediaUrl: string | null;
+  masterDateUtc: string | null;
+  timezone: string;
+  paymentStatus:
+    | "pending"
+    | "paid"
+    | "failed"
+    | "refunded"
+    | "partial_refund"
+    | "cancelled";
+  ticketCount: number;
+  ticketCountValid: number;
+  tickets: ConsumerTicketRow[];
+  publicBuyerUrl: string | null;
 }
 
 export class CalendarService {
@@ -195,6 +256,155 @@ export class CalendarService {
     }
 
     return true;
+  }
+
+  /**
+   * ORCH-0829-A: fetch business-event orders for the signed-in consumer.
+   *
+   * Joins orders → events (cover + timezone) → brands (name + slug) →
+   * event_dates (master date) → tickets (qr + status). Only paid+pending
+   * are surfaced; failed / refunded / cancelled hidden in v1 (separate
+   * sibling ORCH if refund UI is needed).
+   *
+   * RLS enforces buyer_user_id = auth.uid() via
+   * `biz_can_read_order_for_caller`; ticket SELECT policy similarly
+   * filters by order.buyer_user_id match.
+   */
+  static async fetchUserBusinessEventOrders(
+    userId: string,
+  ): Promise<BusinessEventCalendarRow[]> {
+    const { data: orders, error: ordersError } = await supabase
+      .from("orders")
+      .select(
+        `
+          id, event_id, payment_status, created_at,
+          events!inner (
+            id, title, slug, cover_media_url, timezone,
+            brand:brands!inner ( id, slug, name ),
+            event_dates!left ( id, start_at, end_at, is_master )
+          ),
+          tickets:tickets ( id, ticket_type_id, qr_code, status, attendee_name, attendee_email )
+        `,
+      )
+      .eq("buyer_user_id", userId)
+      .in("payment_status", ["paid", "pending"])
+      .order("created_at", { ascending: false });
+
+    if (ordersError) {
+      console.error(
+        "[CalendarService] fetchUserBusinessEventOrders error:",
+        ordersError,
+      );
+      throw ordersError;
+    }
+
+    type OrderRow = {
+      id: string;
+      event_id: string;
+      payment_status: BusinessEventCalendarRow["paymentStatus"];
+      created_at: string;
+      events: {
+        id: string;
+        title: string;
+        slug: string;
+        cover_media_url: string | null;
+        timezone: string | null;
+        brand: { id: string; slug: string; name: string } | null;
+        event_dates: Array<{
+          id: string;
+          start_at: string | null;
+          end_at: string | null;
+          is_master: boolean;
+        }> | null;
+      } | null;
+      tickets: Array<{
+        id: string;
+        ticket_type_id: string;
+        qr_code: string;
+        status: ConsumerTicketRow["status"];
+        attendee_name: string | null;
+        attendee_email: string | null;
+      }> | null;
+    };
+
+    return ((orders ?? []) as unknown as OrderRow[]).map(
+      (order): BusinessEventCalendarRow => {
+        const event = order.events;
+        const brand = event?.brand ?? null;
+        const masterDate = (event?.event_dates ?? []).find(
+          (ed) => ed?.is_master === true,
+        );
+        const tickets: ConsumerTicketRow[] = (order.tickets ?? []).map(
+          (t) => ({
+            id: t.id,
+            ticketTypeId: t.ticket_type_id,
+            qrCode: t.qr_code,
+            status: t.status,
+            attendeeName: t.attendee_name ?? null,
+            attendeeEmail: t.attendee_email ?? null,
+          }),
+        );
+        return {
+          orderId: order.id,
+          eventId: event?.id ?? order.event_id,
+          eventTitle: event?.title ?? "Event",
+          brandName: brand?.name ?? "",
+          brandSlug: brand?.slug ?? "",
+          coverMediaUrl: event?.cover_media_url ?? null,
+          masterDateUtc: masterDate?.start_at ?? null,
+          timezone: event?.timezone ?? "UTC",
+          paymentStatus: order.payment_status,
+          ticketCount: tickets.length,
+          ticketCountValid: tickets.filter((t) => t.status === "valid").length,
+          tickets,
+          publicBuyerUrl:
+            brand && event
+              ? `${BUSINESS_BUYER_DOMAIN}/e/${brand.slug}/${event.slug}`
+              : null,
+        };
+      },
+    );
+  }
+
+  /**
+   * ORCH-0829-A: unified consumer calendar fetch. Runs both sources in
+   * parallel and merges into a single sorted timeline.
+   * Throws on either source failing (first-error wins — operator can
+   * soften to "show whichever succeeded" if needed).
+   */
+  static async fetchConsumerCalendar(
+    userId: string,
+  ): Promise<ConsumerCalendarEntry[]> {
+    const [legacyEntries, businessOrders] = await Promise.all([
+      CalendarService.fetchUserCalendarEntries(userId),
+      CalendarService.fetchUserBusinessEventOrders(userId),
+    ]);
+
+    const calendarVariants: ConsumerCalendarEntry[] = legacyEntries.map(
+      (e): ConsumerCalendarEntry => ({
+        kind: "calendar",
+        id: `calendar:${e.id}`,
+        scheduledAt: e.scheduled_at,
+        title: e.card_data?.title ?? "Saved experience",
+        imageUrl: e.card_data?.image ?? null,
+        calendar: e,
+      }),
+    );
+
+    const businessVariants: ConsumerCalendarEntry[] = businessOrders.map(
+      (b): ConsumerCalendarEntry => ({
+        kind: "business_event",
+        id: `business:${b.orderId}`,
+        scheduledAt: b.masterDateUtc ?? new Date(0).toISOString(),
+        title: b.eventTitle,
+        imageUrl: b.coverMediaUrl,
+        businessEvent: b,
+      }),
+    );
+
+    return [...calendarVariants, ...businessVariants].sort(
+      (a, b) => Date.parse(b.scheduledAt) - Date.parse(a.scheduledAt),
+    );
   }
 }
 

@@ -243,15 +243,15 @@ export interface TimelineData {
 
 export interface ExpandedCardModalProps {
   visible: boolean;
-  card: ExpandedCardData | null;
   /**
-   * ORCH-0824: when set (and `card` is null), the modal renders the
-   * business-event branch instead of the place/TM branch. The two are
-   * mutually exclusive — DiscoverScreen clears one before setting the
-   * other. Optional to preserve backward compatibility with existing
-   * call sites that only pass `card`.
+   * ORCH-0828: discriminated-union expansion target. Either a Night Out
+   * (place / Ticketmaster) card or a business event — never both. The
+   * compiler enforces mutual exclusion at the type layer, replacing the
+   * pre-0828 dual-prop runtime contract that allowed state cross-
+   * contamination (Bug B). `null` means the modal is dismissed / has no
+   * data; the component returns null in that case.
    */
-  businessEvent?: import("./mergedDiscover").BusinessEventCard | null;
+  target: import("./expansion").ExpansionTarget | null;
   onClose: () => void;
   onSave: (card: ExpandedCardData) => Promise<void> | void;
   onPurchase?: (card: ExpandedCardData, bookingOption: BookingOption) => void;

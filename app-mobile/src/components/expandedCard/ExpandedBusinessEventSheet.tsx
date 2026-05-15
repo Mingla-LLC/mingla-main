@@ -16,10 +16,11 @@
  */
 
 import React, { useCallback, useMemo, useRef, useEffect, useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { StyleSheet } from "react-native";
 import BottomSheet, {
+  BottomSheetScrollView,
   BottomSheetBackdrop,
-  BottomSheetBackdropProps,
+  type BottomSheetBackdropProps,
 } from "@gorhom/bottom-sheet";
 import * as Haptics from "expo-haptics";
 
@@ -31,11 +32,18 @@ import {
   type ViewerRole,
 } from "@mingla/event-rendering";
 
+import { useQueryClient } from "@tanstack/react-query";
+
 import type { BusinessEventCard } from "../../types/mergedDiscover";
 import { useAppStore } from "../../store/appStore";
 import { usePublicEventTickets } from "../../hooks/usePublicEventTickets";
-import { useNativeCheckoutFlow } from "../../payments/nativeCheckoutFlow";
+import {
+  useNativeCheckoutFlow,
+  type NativeCheckoutOutcome,
+} from "../../payments/nativeCheckoutFlow";
 import { toastManager } from "../ui/Toast";
+import { glass } from "../../constants/designSystem";
+import TicketClaimConfirmModal from "./TicketClaimConfirmModal";
 
 interface ExpandedBusinessEventSheetProps {
   visible: boolean;
@@ -43,7 +51,11 @@ interface ExpandedBusinessEventSheetProps {
   onClose: () => void;
 }
 
-const SHEET_SNAP_POINTS: string[] = ["95%"];
+// ORCH-0828 REWORK: canonical bottomSheet snapPoints from design tokens,
+// matching the TM/place path at ExpandedCardModal.tsx:1606. Two snap points
+// give the user a natural 50% preview + 90% full gesture.
+const SHEET_SNAP_POINTS = glass.bottomSheet.snapPoints as unknown as (string | number)[];
+const SHEET_INITIAL_INDEX = 1; // open at the 90% snap (full view)
 
 const formatDateLine = (
   masterDateUtc: string | null,
@@ -111,47 +123,37 @@ export const ExpandedBusinessEventSheet: React.FC<ExpandedBusinessEventSheetProp
   const sheetRef = useRef<BottomSheet>(null);
   const user = useAppStore((s) => s.user);
   const profile = useAppStore((s) => s.profile);
+  const queryClient = useQueryClient();
 
   const [checkoutInFlight, setCheckoutInFlight] = useState<boolean>(false);
-  // Track whether the sheet has actually opened. BottomSheet emits
-  // onChange(-1) on initial mount even when starting closed, which would
-  // immediately fire onClose() and cause the parent to never open the
-  // sheet again. Wait for the first index >= 0 (real open) before allowing
-  // a -1 to count as a user-driven dismiss.
-  const hasOpenedRef = useRef<boolean>(false);
+  // ORCH-0829-A: pending claim state drives the confirmation modal.
+  // Set on Buy/Get Free tap; cleared on Cancel or after Confirm fires
+  // handleBuy. The modal sits as a sibling fragment alongside the
+  // BottomSheet so RN Modal correctly overlays the sheet.
+  const [pendingClaim, setPendingClaim] = useState<{
+    ticketId: string;
+    isFreeTicket: boolean;
+    ticketName: string;
+    ticketPriceCents: number | null;
+    ticketCurrency: string;
+  } | null>(null);
 
   const ticketsQuery = usePublicEventTickets(visible ? data.eventId : null);
   const runNativeCheckout = useNativeCheckoutFlow();
 
-  // Diagnostic: log lifecycle so we can see why the sheet isn't opening
-  // on operator devices when local sim says it should. Remove after
-  // confirming the fix works end-to-end.
+  // ORCH-0828 REWORK: diagnostic log only. Sheet open/close is driven by
+  // the declarative `index={visible ? SHEET_INITIAL_INDEX : -1}` prop on
+  // the inline `<BottomSheet>` JSX below — no `present()` / `dismiss()`
+  // ref dance needed. Matches the proven TM/place sheet pattern at
+  // ExpandedCardModal.tsx:1602-2066.
   useEffect(() => {
     console.log(
-      "[ExpandedBusinessEventSheet] mount/update visible=",
+      "[ExpandedBusinessEventSheet] visible=",
       visible,
       "eventId=",
       data.eventId,
     );
   }, [visible, data.eventId]);
-
-  // Belt-and-suspenders: declarative `index` (visible? 0 : -1) is the
-  // primary open mechanism — sheet starts at the correct index whenever
-  // mount/visibility changes, no ref dance required. The imperative
-  // `expand()` in this useEffect is a backup for cases where the
-  // declarative index gets stuck.
-  useEffect(() => {
-    if (visible) {
-      const id = requestAnimationFrame(() => {
-        sheetRef.current?.snapToIndex(0);
-      });
-      return () => cancelAnimationFrame(id);
-    }
-    if (hasOpenedRef.current) {
-      sheetRef.current?.close();
-    }
-    return undefined;
-  }, [visible]);
 
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
@@ -165,15 +167,14 @@ export const ExpandedBusinessEventSheet: React.FC<ExpandedBusinessEventSheetProp
     [],
   );
 
+  // ORCH-0828 REWORK: inline `<BottomSheet>` fires `onChange(-1)` when
+  // the user swipes down or backdrop-press dismisses. Forward to onClose
+  // so DiscoverScreen can clear its `expansionTarget` state. The diagnostic
+  // log captures every index transition for live-fire verification.
   const handleSheetChange = useCallback(
-    (index: number) => {
-      if (index >= 0) {
-        hasOpenedRef.current = true;
-        return;
-      }
-      // index === -1 (closed). Only treat as user-dismiss AFTER the sheet
-      // has actually been opened at least once.
-      if (hasOpenedRef.current) {
+    (index: number): void => {
+      console.log("[ExpandedBusinessEventSheet] onChange index=", index);
+      if (index === -1) {
         onClose();
       }
     },
@@ -190,7 +191,7 @@ export const ExpandedBusinessEventSheet: React.FC<ExpandedBusinessEventSheetProp
   const viewerRole: ViewerRole = "anonymous";
 
   const handleBuy = useCallback(
-    async (ticketId: string, _isFree: boolean) => {
+    async (ticketId: string, isFreeTicket: boolean) => {
       if (checkoutInFlight) return;
       if (user === null) {
         toastManager.show("Please sign in to get tickets.", "warning");
@@ -221,23 +222,62 @@ export const ExpandedBusinessEventSheet: React.FC<ExpandedBusinessEventSheetProp
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       setCheckoutInFlight(true);
 
-      const result = await runNativeCheckout({
-        eventId: data.eventId,
-        lines: [{ ticketTypeId: ticketId, quantity: 1 }],
-        buyer: {
-          name: buyerName,
-          email: buyerEmail,
-          phone: buyerPhone,
-          marketingOptIn: false,
-        },
-      });
-
-      setCheckoutInFlight(false);
+      let result: NativeCheckoutOutcome;
+      try {
+        result = await runNativeCheckout({
+          eventId: data.eventId,
+          lines: [{ ticketTypeId: ticketId, quantity: 1 }],
+          buyer: {
+            name: buyerName,
+            email: buyerEmail,
+            phone: buyerPhone,
+            marketingOptIn: false,
+          },
+        });
+      } catch (err) {
+        // ORCH-0829-B D-1 H-2: runNativeCheckout's contract is to return a
+        // NativeCheckoutOutcome, but if the underlying useStripePaymentSheet
+        // wrapper rejects (e.g., the H-3 timeout race fires), the await
+        // throws. Convert to the failed outcome so the existing failed-
+        // branch UX runs (toast + haptic) instead of leaking the rejection.
+        const message = err instanceof Error ? err.message : "Payment failed.";
+        result = { outcome: "failed", message };
+      } finally {
+        // ORCH-0829-B D-1 H-2: always clear the in-flight flag so a
+        // subsequent Buy tap can re-fire the flow. Without this finally,
+        // a hung or thrown runNativeCheckout leaves checkoutInFlight=true
+        // forever, silently no-op'ing all subsequent Buy taps for the
+        // rest of the session.
+        setCheckoutInFlight(false);
+      }
 
       if (result.outcome === "succeeded") {
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         toastManager.show("Ticket secured! Check your calendar.", "success");
         sheetRef.current?.close();
+
+        // ORCH-0829-A: invalidate the consumer calendar query immediately
+        // so the just-claimed ticket appears. Free orders are finalized
+        // synchronously by `ticket-checkout-create`; paid orders rely on
+        // the Stripe webhook → `biz_ticket_checkout_finalize` RPC, which
+        // typically takes 1-3s. Defensive short-poll (3 × 1s) on paid
+        // orders to catch the webhook completion. Query key
+        // `["businessEventOrders", userId]` matches the new hook in
+        // `useCalendarEntries.ts`.
+        const userId = user.id;
+        queryClient.invalidateQueries({
+          queryKey: ["businessEventOrders", userId],
+        });
+        if (!isFreeTicket) {
+          let attempts = 0;
+          const interval = setInterval(() => {
+            attempts += 1;
+            queryClient.invalidateQueries({
+              queryKey: ["businessEventOrders", userId],
+            });
+            if (attempts >= 3) clearInterval(interval);
+          }, 1000);
+        }
       } else if (result.outcome === "canceled") {
         // Silent: user dismissed PaymentSheet.
       } else {
@@ -245,8 +285,29 @@ export const ExpandedBusinessEventSheet: React.FC<ExpandedBusinessEventSheetProp
         toastManager.show(result.message, "error");
       }
     },
-    [checkoutInFlight, user, profile, runNativeCheckout, data.eventId],
+    [
+      checkoutInFlight,
+      user,
+      profile,
+      runNativeCheckout,
+      data.eventId,
+      queryClient,
+    ],
   );
+
+  // ORCH-0829-A: confirmation modal handlers. Buy/Get Free taps stage
+  // the claim in `pendingClaim`; Confirm fires `handleBuy`; Cancel
+  // dismisses without side effects.
+  const handleConfirmClaim = useCallback((): void => {
+    if (pendingClaim === null) return;
+    const { ticketId, isFreeTicket } = pendingClaim;
+    setPendingClaim(null);
+    void handleBuy(ticketId, isFreeTicket);
+  }, [pendingClaim, handleBuy]);
+
+  const handleCancelClaim = useCallback((): void => {
+    setPendingClaim(null);
+  }, []);
 
   const callbacks: PublicEventCallbacks = useMemo(
     () => ({
@@ -257,11 +318,32 @@ export const ExpandedBusinessEventSheet: React.FC<ExpandedBusinessEventSheetProp
         // [TRANSITIONAL] Share for business events lands in a follow-up.
         toastManager.show("Share is coming soon.", "info");
       },
+      // ORCH-0829-A: stage the claim in `pendingClaim` instead of firing
+      // `handleBuy` directly. The TicketClaimConfirmModal then renders
+      // for user review; Confirm calls `handleConfirmClaim` which fires
+      // `handleBuy`. New invariant: I-PROPOSED-TICKET-CLAIM-CONFIRMATION-REQUIRED.
       onBuyTicket: (ticketId: string) => {
-        void handleBuy(ticketId, false);
+        const tt = (ticketsQuery.data ?? []).find((t) => t.id === ticketId);
+        setPendingClaim({
+          ticketId,
+          isFreeTicket: false,
+          ticketName: tt?.name ?? "Ticket",
+          ticketPriceCents:
+            tt?.priceGbp !== undefined && tt.priceGbp !== null
+              ? Math.round(tt.priceGbp * 100)
+              : null,
+          ticketCurrency: tt?.currency ?? data.currency,
+        });
       },
       onClaimFreeTicket: (ticketId: string) => {
-        void handleBuy(ticketId, true);
+        const tt = (ticketsQuery.data ?? []).find((t) => t.id === ticketId);
+        setPendingClaim({
+          ticketId,
+          isFreeTicket: true,
+          ticketName: tt?.name ?? "Ticket",
+          ticketPriceCents: null,
+          ticketCurrency: tt?.currency ?? data.currency,
+        });
       },
       onJoinWaitlist: (_ticketId: string) => {
         toastManager.show("Waitlist coming soon.", "info");
@@ -270,29 +352,60 @@ export const ExpandedBusinessEventSheet: React.FC<ExpandedBusinessEventSheetProp
         toastManager.show("Request-to-attend coming soon.", "info");
       },
     }),
-    [handleBuy],
+    [ticketsQuery.data, data.currency],
   );
 
+  // ORCH-0828 REWORK: inline `<BottomSheet>` matching the proven
+  // ExpandedCardModal.tsx:1602-2066 TM/place pattern. Declarative
+  // `index={visible ? 1 : -1}` drives open/close — no portal, no
+  // provider, no `present()` ref dance. `BottomSheetScrollView` gives
+  // the library measurable content from the first frame, avoiding the
+  // collapse-to-zero failure mode that broke the prior portal-based
+  // approach with `enableDynamicSizing=true`.
   return (
-    <BottomSheet
-      ref={sheetRef}
-      snapPoints={SHEET_SNAP_POINTS}
-      enablePanDownToClose
-      onChange={handleSheetChange}
-      index={visible ? 0 : -1}
-      backdropComponent={renderBackdrop}
-      backgroundStyle={styles.sheetBackground}
-      handleIndicatorStyle={styles.sheetHandle}
-    >
-      <View style={styles.sheetContent}>
-        <PublicEventPage
-          event={publicEvent}
-          brand={publicBrand}
-          viewerRole={viewerRole}
-          callbacks={callbacks}
-        />
-      </View>
-    </BottomSheet>
+    <>
+      <BottomSheet
+        ref={sheetRef}
+        index={visible ? SHEET_INITIAL_INDEX : -1}
+        snapPoints={SHEET_SNAP_POINTS}
+        enablePanDownToClose
+        onChange={handleSheetChange}
+        backdropComponent={renderBackdrop}
+        backgroundStyle={styles.sheetBackground}
+        handleIndicatorStyle={styles.sheetHandle}
+      >
+        <BottomSheetScrollView
+          style={styles.sheetScroll}
+          contentContainerStyle={styles.sheetScrollContent}
+        >
+          <PublicEventPage
+            event={publicEvent}
+            brand={publicBrand}
+            viewerRole={viewerRole}
+            callbacks={callbacks}
+          />
+        </BottomSheetScrollView>
+      </BottomSheet>
+      {/* ORCH-0829-A: confirmation modal renders as a sibling so RN Modal
+          correctly overlays the BottomSheet. */}
+      <TicketClaimConfirmModal
+        visible={pendingClaim !== null}
+        ticketName={pendingClaim?.ticketName ?? ""}
+        ticketPriceCents={pendingClaim?.ticketPriceCents ?? null}
+        ticketCurrency={pendingClaim?.ticketCurrency ?? data.currency}
+        buyerName={
+          profile?.display_name?.trim() ||
+          user?.email?.split("@")[0] ||
+          "Guest"
+        }
+        buyerEmail={user?.email ?? profile?.email ?? ""}
+        buyerPhone={profile?.phone ?? ""}
+        isFreeTicket={pendingClaim?.isFreeTicket ?? true}
+        isSubmitting={checkoutInFlight}
+        onCancel={handleCancelClaim}
+        onConfirm={handleConfirmClaim}
+      />
+    </>
   );
 };
 
@@ -304,8 +417,11 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.32)",
     width: 36,
   },
-  sheetContent: {
+  sheetScroll: {
     flex: 1,
+  },
+  sheetScrollContent: {
+    paddingBottom: 32,
   },
 });
 
