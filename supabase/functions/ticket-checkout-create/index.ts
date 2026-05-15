@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { stripeTicketCheckout } from "../_shared/stripe.ts";
+import { stripeTicketCheckout, STRIPE_API_VERSION } from "../_shared/stripe.ts";
 import {
   cancelPaymentIntentIfClientAvailable,
   classifyStripeCheckoutSessionCreateFailure,
@@ -543,6 +543,85 @@ serve(async (req) => {
     );
   }
 
+  // ORCH-0844 (2026-05-15) — Connect direct-charge mobile config.
+  // After ORCH-0843 flipped every ticket PI to a direct charge on a
+  // connected account (via the third-arg `{ stripeAccount }` request
+  // option above), the mobile Stripe SDK must be initialised with the
+  // matching stripeAccountId before opening PaymentSheet — otherwise the
+  // SDK's mid-flow confirm call hits Stripe under the platform context,
+  // the connected-account client_secret is rejected with a 404, and on
+  // iOS 26 the native RCTPromiseResolveBlock fires twice (early-error +
+  // late-completion) which RN's TurboModule bridge logs as
+  // "tried to resolve a promise more than once".
+  //
+  // We additionally provision a Stripe Customer + ephemeralKey scoped to
+  // the connected account (third-arg { stripeAccount } request option)
+  // so PaymentSheet can render saved-PM UI. Both operations are NON-FATAL
+  // — on any error we fall back to guest mode (null customer fields) and
+  // PaymentSheet still works for one-off card payments. This preserves
+  // ticket-sale uptime even when Stripe's customers-API hiccups.
+  let customerId: string | null = null;
+  let customerEphemeralKeySecret: string | null = null;
+  try {
+    // 3.2.3.a — Idempotent customer lookup by email on the CONNECTED ACCOUNT.
+    // The { stripeAccount } request option scopes the search to that account.
+    const searchResult = await stripe.customers.search(
+      {
+        query: `email:'${buyerEmail.replace(/'/g, "\\'")}'`,
+        limit: 1,
+      },
+      { stripeAccount: stripeAccountId },
+    );
+    let customer = searchResult.data[0] ?? null;
+
+    if (customer === null) {
+      // 3.2.3.b — Idempotent creation by email-hashed idempotency-key.
+      const customerIdemKey =
+        `mingla_customer:${stripeAccountId}:${await sha256Hex(buyerEmail)}`;
+      customer = await stripe.customers.create(
+        {
+          email: buyerEmail,
+          metadata: {
+            mingla_buyer_email: buyerEmail,
+            mingla_origin: "ticket_checkout_create_native",
+          },
+        },
+        {
+          idempotencyKey: customerIdemKey,
+          stripeAccount: stripeAccountId,
+        },
+      );
+    }
+    customerId = customer.id;
+
+    // 3.2.3.c — EphemeralKey for the mobile SDK, scoped to the connected
+    // account. apiVersion is the platform's pinned STRIPE_API_VERSION;
+    // ahead-of-SDK versions are non-fatal — the sheet still loads.
+    const ephemeralKey = await stripe.ephemeralKeys.create(
+      { customer: customerId },
+      {
+        apiVersion: STRIPE_API_VERSION,
+        stripeAccount: stripeAccountId,
+      },
+    );
+    customerEphemeralKeySecret = String(ephemeralKey.secret ?? "");
+    if (customerEphemeralKeySecret.length === 0) {
+      // defensive: empty secret — treat as failure (paired-or-absent invariant).
+      customerId = null;
+      customerEphemeralKeySecret = null;
+    }
+  } catch (customerErr) {
+    // Non-fatal: log and continue with null customer fields. Mobile SDK
+    // will init PaymentSheet in guest mode. This preserves the existing
+    // happy path even if Connect customer-creation breaks on Stripe's side.
+    console.warn(
+      "[ticket-checkout-create] customer+ephemeralKey creation failed; continuing in guest mode",
+      customerErr instanceof Error ? customerErr.message : customerErr,
+    );
+    customerId = null;
+    customerEphemeralKeySecret = null;
+  }
+
   return jsonResponse({
     kind: "requires_payment",
     checkoutSessionId,
@@ -555,5 +634,12 @@ serve(async (req) => {
       Deno.env.get("EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY") ??
       Deno.env.get("STRIPE_PUBLISHABLE_KEY") ??
       null,
+    // ORCH-0844 NEW: Connect direct-charge mobile config.
+    // stripeAccountId is the connected account the PI lives on (above).
+    // customerId / customerEphemeralKeySecret are paired-or-absent:
+    // both populated (Customer ready), or both null (guest mode).
+    stripeAccountId,
+    customerId,
+    customerEphemeralKeySecret,
   });
 });

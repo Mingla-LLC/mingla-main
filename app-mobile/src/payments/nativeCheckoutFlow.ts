@@ -17,6 +17,7 @@
  */
 
 import { useStripePaymentSheet } from "@mingla/payments-native";
+import { initStripe } from "@stripe/stripe-react-native";
 
 import { supabase } from "../services/supabase";
 import { extractFunctionError } from "../utils/edgeFunctionError";
@@ -53,6 +54,19 @@ type CheckoutCreateResponse =
       clientSecret: string;
       paymentIntentId: string;
       publishableKey: string | null;
+      // ORCH-0844 — Connect direct-charge mobile config. The PI lives on
+      // a connected account (ORCH-0843 direct-charge shape); the mobile
+      // Stripe SDK MUST be re-initialised with this stripeAccountId before
+      // initPaymentSheet, otherwise the SDK's mid-sheet confirm hits Stripe
+      // under the platform context and the client_secret is rejected with
+      // a 404 (manifests on iOS 26 as native RCTPromiseResolveBlock firing
+      // twice → "tried to resolve a promise more than once" bridge warning).
+      // customerId + customerEphemeralKeySecret are paired-or-absent: when
+      // the edge function's Connect-scoped Customer/ephemeralKey creation
+      // fails, both are null and the mobile sheet falls back to guest mode.
+      stripeAccountId: string;
+      customerId: string | null;
+      customerEphemeralKeySecret: string | null;
     }
   | {
       kind: "requires_web_redirect";
@@ -122,10 +136,42 @@ export const useNativeCheckoutFlow = (): ((
 
     // 2b. Native payment required — present Stripe PaymentSheet.
     if (data.kind === "requires_payment") {
+      // ORCH-0844 — Connect direct-charge: re-initialise the native Stripe
+      // SDK for THIS PaymentIntent's connected account. Without this, the
+      // SDK's mid-PaymentSheet confirm call hits Stripe under the platform
+      // context and the client_secret (bound to the connected account via
+      // ORCH-0843 { stripeAccount } request option) is rejected with a 404.
+      // On iOS 26 the 404 manifests as the native RCTPromiseResolveBlock
+      // firing twice, which RN's TurboModule bridge logs as "tried to
+      // resolve a promise more than once".
+      //
+      // We re-pass merchantIdentifier + urlScheme because initStripe
+      // REPLACES the prior SDK config (it does NOT merge). Values mirror
+      // the StripeProvider mount at app-mobile/app/_layout.tsx:72-75; if
+      // either changes, both call sites must change together. We skip
+      // the re-init if either field is missing (defensive — the edge
+      // function should always send them on requires_payment, but a
+      // future non-Connect platform-direct PI shape falls through cleanly).
+      if (data.publishableKey && data.stripeAccountId) {
+        await initStripe({
+          publishableKey: data.publishableKey,
+          stripeAccountId: data.stripeAccountId,
+          merchantIdentifier: "merchant.com.mingla.app.v2",
+          urlScheme: "com.mingla.app.v2",
+        });
+      } else {
+        console.warn(
+          "[nativeCheckoutFlow] requires_payment missing publishableKey or stripeAccountId — skipping per-PI initStripe; PaymentSheet confirm may fail with 404 if PI is on a connected account",
+          {
+            hasPublishableKey: Boolean(data.publishableKey),
+            hasStripeAccountId: Boolean(data.stripeAccountId),
+          },
+        );
+      }
+
       const initResult = await initPaymentSheet({
         merchantDisplayName: MERCHANT_DISPLAY_NAME,
         paymentIntentClientSecret: data.clientSecret,
-        allowsDelayedPaymentMethods: false,
         // ORCH-0829-B: returnURL is required by Stripe for any payment
         // method that redirects (Apple Pay, iDEAL, Klarna, etc.). Without
         // it, Stripe SDK logs a warning and those methods are silently
@@ -134,6 +180,20 @@ export const useNativeCheckoutFlow = (): ((
         // `stripe-redirect` is arbitrary; Stripe just needs SOME URL to
         // navigate back to.
         returnURL: "com.mingla.app.v2://stripe-redirect",
+        // ORCH-0844 A-3 — Connect direct-charge Customer + ephemeralKey.
+        // Both are paired-or-absent per the edge function contract; when
+        // either is null the sheet opens in guest mode (no saved-PM UI),
+        // which is the intentional non-fatal fallback for transient
+        // Stripe customers-API failures.
+        ...(data.customerId && data.customerEphemeralKeySecret
+          ? {
+              customerId: data.customerId,
+              customerEphemeralKeySecret: data.customerEphemeralKeySecret,
+            }
+          : {}),
+        // ORCH-0844 A-4 — allowsDelayedPaymentMethods dropped (redundant
+        // under ORCH-0837 payment_method_types: ['card']; the PI itself
+        // enforces card-only).
       });
       if (initResult.error) {
         return {
