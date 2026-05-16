@@ -12,9 +12,7 @@
       "@mingla/event-rendering": ["../packages/event-rendering"],
       "@mingla/event-rendering/*": ["../packages/event-rendering/*"],
       "@mingla/payments-native": ["../packages/payments-native"],
-      "@mingla/payments-native/*": ["../packages/payments-native/*"],
-      "@mingla/phone-input": ["../packages/phone-input"],
-      "@mingla/phone-input/*": ["../packages/phone-input/*"]
+      "@mingla/payments-native/*": ["../packages/payments-native/*"]
     }
   },
   "include": [

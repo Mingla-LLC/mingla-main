@@ -43,11 +43,7 @@ import {
 } from "../../payments/nativeCheckoutFlow";
 import { toastManager } from "../ui/Toast";
 import { glass } from "../../constants/designSystem";
-// ORCH-0847 Phase C — multi-tier cart sheet replaces the single-ticket
-// TicketClaimConfirmModal. Mirrors public J-C1 cart screen.
-import TicketCartSheet, {
-  type TicketCartCheckoutPayload,
-} from "./TicketCartSheet";
+import TicketClaimConfirmModal from "./TicketClaimConfirmModal";
 
 interface ExpandedBusinessEventSheetProps {
   visible: boolean;
@@ -136,15 +132,17 @@ export const ExpandedBusinessEventSheet: React.FC<ExpandedBusinessEventSheetProp
   const queryClient = useQueryClient();
 
   const [checkoutInFlight, setCheckoutInFlight] = useState<boolean>(false);
-  // ORCH-0847 Phase C — multi-tier cart sheet visibility + seed.
-  // On Buy/Get Free tap, the tier id seeds the cart sheet at quantity 1 and
-  // opens it. The sheet renders as a sibling fragment alongside the parent
-  // BottomSheet (per memory feedback_rn_sub_sheet_must_render_inside_parent
-  // — same return fragment, separate <BottomSheet> roots).
-  const [cartSheetVisible, setCartSheetVisible] = useState<boolean>(false);
-  const [initialTicketTypeId, setInitialTicketTypeId] = useState<string | null>(
-    null,
-  );
+  // ORCH-0829-A: pending claim state drives the confirmation modal.
+  // Set on Buy/Get Free tap; cleared on Cancel or after Confirm fires
+  // handleBuy. The modal sits as a sibling fragment alongside the
+  // BottomSheet so RN Modal correctly overlays the sheet.
+  const [pendingClaim, setPendingClaim] = useState<{
+    ticketId: string;
+    isFreeTicket: boolean;
+    ticketName: string;
+    ticketPriceCents: number | null;
+    ticketCurrency: string;
+  } | null>(null);
 
   const ticketsQuery = usePublicEventTickets(visible ? data.eventId : null);
   const runNativeCheckout = useNativeCheckoutFlow();
@@ -198,13 +196,8 @@ export const ExpandedBusinessEventSheet: React.FC<ExpandedBusinessEventSheetProp
   // Consumer is a buyer, never the organizer of a business event.
   const viewerRole: ViewerRole = "anonymous";
 
-  // ORCH-0847 Phase C — multi-tier checkout. The cart sheet emits a
-  // `TicketCartCheckoutPayload` with all lines + marketingOptIn + totalCents.
-  // We compose the buyer info from auth profile (pre-fill, read-only on the
-  // sheet) and hand the lines + marketing-opt-in directly to
-  // `runNativeCheckout` which forwards them to `ticket-checkout-create`.
   const handleBuy = useCallback(
-    async (payload: TicketCartCheckoutPayload) => {
+    async (ticketId: string, isFreeTicket: boolean) => {
       if (checkoutInFlight) return;
       if (user === null) {
         toastManager.show("Please sign in to get tickets.", "warning");
@@ -239,25 +232,28 @@ export const ExpandedBusinessEventSheet: React.FC<ExpandedBusinessEventSheetProp
       try {
         result = await runNativeCheckout({
           eventId: data.eventId,
-          lines: payload.lines,
+          lines: [{ ticketTypeId: ticketId, quantity: 1 }],
           buyer: {
             name: buyerName,
             email: buyerEmail,
             phone: buyerPhone,
-            marketingOptIn: payload.marketingOptIn,
+            marketingOptIn: false,
           },
         });
       } catch (err) {
         // ORCH-0829-B D-1 H-2: runNativeCheckout's contract is to return a
         // NativeCheckoutOutcome, but if the underlying useStripePaymentSheet
-        // wrapper rejects, the await throws. Convert to the failed outcome
-        // so the existing failed-branch UX runs (toast + haptic) instead of
-        // leaking the rejection.
+        // wrapper rejects (e.g., the H-3 timeout race fires), the await
+        // throws. Convert to the failed outcome so the existing failed-
+        // branch UX runs (toast + haptic) instead of leaking the rejection.
         const message = err instanceof Error ? err.message : "Payment failed.";
         result = { outcome: "failed", message };
       } finally {
         // ORCH-0829-B D-1 H-2: always clear the in-flight flag so a
-        // subsequent Buy tap can re-fire the flow.
+        // subsequent Buy tap can re-fire the flow. Without this finally,
+        // a hung or thrown runNativeCheckout leaves checkoutInFlight=true
+        // forever, silently no-op'ing all subsequent Buy taps for the
+        // rest of the session.
         setCheckoutInFlight(false);
       }
 
@@ -266,20 +262,19 @@ export const ExpandedBusinessEventSheet: React.FC<ExpandedBusinessEventSheetProp
         toastManager.show("Ticket secured! Check your calendar.", "success");
         sheetRef.current?.close();
 
-        // ORCH-0829-A: invalidate the consumer calendar query immediately.
-        // Free orders are finalized synchronously by `ticket-checkout-create`;
-        // paid orders rely on the Stripe webhook → `biz_ticket_checkout_finalize`
-        // RPC, which typically takes 1-3s. Defensive short-poll (3 × 1s) on
-        // paid orders.
-        // ORCH-0847 Phase C — paid-vs-free branch now derived from cart total
-        // (totalCents > 0 == paid) instead of the prior single-ticket
-        // `isFreeTicket` flag. Mixed carts (some free + some paid tiers,
-        // totalCents > 0) correctly route to the paid-path polling.
+        // ORCH-0829-A: invalidate the consumer calendar query immediately
+        // so the just-claimed ticket appears. Free orders are finalized
+        // synchronously by `ticket-checkout-create`; paid orders rely on
+        // the Stripe webhook → `biz_ticket_checkout_finalize` RPC, which
+        // typically takes 1-3s. Defensive short-poll (3 × 1s) on paid
+        // orders to catch the webhook completion. Query key
+        // `["businessEventOrders", userId]` matches the new hook in
+        // `useCalendarEntries.ts`.
         const userId = user.id;
         queryClient.invalidateQueries({
           queryKey: ["businessEventOrders", userId],
         });
-        if (payload.totalCents > 0) {
+        if (!isFreeTicket) {
           let attempts = 0;
           const interval = setInterval(() => {
             attempts += 1;
@@ -306,20 +301,18 @@ export const ExpandedBusinessEventSheet: React.FC<ExpandedBusinessEventSheetProp
     ],
   );
 
-  // ORCH-0847 Phase C — cart sheet handlers. Buy/Get Free taps open the
-  // sheet seeded at the tapped tier; Confirm fires handleBuy with the
-  // assembled cart; Cancel dismisses the sheet without side effects.
-  const handleCartCheckout = useCallback(
-    (payload: TicketCartCheckoutPayload): void => {
-      setCartSheetVisible(false);
-      void handleBuy(payload);
-    },
-    [handleBuy],
-  );
+  // ORCH-0829-A: confirmation modal handlers. Buy/Get Free taps stage
+  // the claim in `pendingClaim`; Confirm fires `handleBuy`; Cancel
+  // dismisses without side effects.
+  const handleConfirmClaim = useCallback((): void => {
+    if (pendingClaim === null) return;
+    const { ticketId, isFreeTicket } = pendingClaim;
+    setPendingClaim(null);
+    void handleBuy(ticketId, isFreeTicket);
+  }, [pendingClaim, handleBuy]);
 
-  const handleCartCancel = useCallback((): void => {
-    setCartSheetVisible(false);
-    setInitialTicketTypeId(null);
+  const handleCancelClaim = useCallback((): void => {
+    setPendingClaim(null);
   }, []);
 
   const callbacks: PublicEventCallbacks = useMemo(
@@ -331,19 +324,32 @@ export const ExpandedBusinessEventSheet: React.FC<ExpandedBusinessEventSheetProp
         // [TRANSITIONAL] Share for business events lands in a follow-up.
         toastManager.show("Share is coming soon.", "info");
       },
-      // ORCH-0847 Phase C — open the multi-tier cart sheet seeded at the
-      // tapped tier. The TicketCartSheet manages the cart, opt-in, buyer
-      // recap, and primary CTA; on Continue/Claim it calls handleBuy with
-      // the assembled cart payload. I-PROPOSED-TICKET-CLAIM-CONFIRMATION-REQUIRED
-      // is preserved — the sheet IS the confirmation step (richer surface
-      // than the prior single-ticket modal).
+      // ORCH-0829-A: stage the claim in `pendingClaim` instead of firing
+      // `handleBuy` directly. The TicketClaimConfirmModal then renders
+      // for user review; Confirm calls `handleConfirmClaim` which fires
+      // `handleBuy`. New invariant: I-PROPOSED-TICKET-CLAIM-CONFIRMATION-REQUIRED.
       onBuyTicket: (ticketId: string) => {
-        setInitialTicketTypeId(ticketId);
-        setCartSheetVisible(true);
+        const tt = (ticketsQuery.data ?? []).find((t) => t.id === ticketId);
+        setPendingClaim({
+          ticketId,
+          isFreeTicket: false,
+          ticketName: tt?.name ?? "Ticket",
+          ticketPriceCents:
+            tt?.priceGbp !== undefined && tt.priceGbp !== null
+              ? Math.round(tt.priceGbp * 100)
+              : null,
+          ticketCurrency: tt?.currency ?? data.currency,
+        });
       },
       onClaimFreeTicket: (ticketId: string) => {
-        setInitialTicketTypeId(ticketId);
-        setCartSheetVisible(true);
+        const tt = (ticketsQuery.data ?? []).find((t) => t.id === ticketId);
+        setPendingClaim({
+          ticketId,
+          isFreeTicket: true,
+          ticketName: tt?.name ?? "Ticket",
+          ticketPriceCents: null,
+          ticketCurrency: tt?.currency ?? data.currency,
+        });
       },
       onJoinWaitlist: (_ticketId: string) => {
         toastManager.show("Waitlist coming soon.", "info");
@@ -386,17 +392,13 @@ export const ExpandedBusinessEventSheet: React.FC<ExpandedBusinessEventSheetProp
           />
         </BottomSheetScrollView>
       </BottomSheet>
-      {/* ORCH-0847 Phase C — multi-tier cart sheet. Renders as a sibling
-          @gorhom/bottom-sheet so it overlays the parent sheet without
-          competing for the same Modal root. Mirrors public J-C1 cart
-          within 8pt visual tolerance per
-          Mingla_Artifacts/specs/DESIGN_ORCH-0847_PHASE_C_TICKET_CART_SHEET.md. */}
-      <TicketCartSheet
-        visible={cartSheetVisible}
-        eventId={data.eventId}
-        tickets={ticketsQuery.data}
-        fallbackCurrency={data.currency}
-        initialTicketTypeId={initialTicketTypeId}
+      {/* ORCH-0829-A: confirmation modal renders as a sibling so RN Modal
+          correctly overlays the BottomSheet. */}
+      <TicketClaimConfirmModal
+        visible={pendingClaim !== null}
+        ticketName={pendingClaim?.ticketName ?? ""}
+        ticketPriceCents={pendingClaim?.ticketPriceCents ?? null}
+        ticketCurrency={pendingClaim?.ticketCurrency ?? data.currency}
         buyerName={
           profile?.display_name?.trim() ||
           user?.email?.split("@")[0] ||
@@ -404,9 +406,10 @@ export const ExpandedBusinessEventSheet: React.FC<ExpandedBusinessEventSheetProp
         }
         buyerEmail={user?.email ?? profile?.email ?? ""}
         buyerPhone={profile?.phone ?? ""}
+        isFreeTicket={pendingClaim?.isFreeTicket ?? true}
         isSubmitting={checkoutInFlight}
-        onCancel={handleCartCancel}
-        onCheckout={handleCartCheckout}
+        onCancel={handleCancelClaim}
+        onConfirm={handleConfirmClaim}
       />
     </>
   );

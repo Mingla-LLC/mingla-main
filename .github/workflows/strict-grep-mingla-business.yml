@@ -85,8 +85,6 @@ on:
 #   - ORCH-0845 (i-discover-excludes-ended-master-date.mjs) — discover-merged-events always filters event_dates.end_at >= lowerBoundUtc on the master date row, on BOTH the no-window and dated-chip paths (I-PROPOSED-DISCOVER-EXCLUDES-ENDED-MASTER-DATE)
 #   - ORCH-0849 parity (i-stripe-paymentsheet-parity.mjs) — both app-mobile and mingla-business mount <StripeNativeProvider> + call initStripe per-PI with stripeAccountId + pass customer + customerEphemeralKeySecret to initPaymentSheet (I-PROPOSED-STRIPE-PAYMENTSHEET-PARITY)
 #   - ORCH-0849 allowlist (i-stripe-pm-method-allowlist.mjs) — ticket-checkout-create sources payment_method_types from MINGLA_PM_ALLOWLIST in _shared/stripePaymentMethods.ts; no hardcoded literal at PI-create site; no automatic_payment_methods fan-out (I-PROPOSED-STRIPE-PM-METHOD-ALLOWLIST)
-#   - ORCH-0850 single-helper (i-event-lifecycle-single-helper.mjs) — every past/upcoming/live decision in mingla-business/ routes through canonical helpers in src/utils/eventLifecycle.ts + src/utils/eventDateMath.ts; no local re-implementations; no `new Date(<var>.date)` outside canonical files (I-PROPOSED-EVENT-LIFECYCLE-SINGLE-HELPER)
-#   - ORCH-0850 calendar (i-consumer-calendar-uses-end-not-start.mjs) — consumer Activity Calendar buckets via effectiveEnd = scheduled_at + duration_minutes (fallback 120m); no start-only past predicates in activity/Calendar/Saved/useCalendar* surfaces (I-PROPOSED-CONSUMER-CALENDAR-USES-END-NOT-START)
 #   - ORCH-0846 (orch-0846-consumer-event-address-parity.mjs) — consumer-side discover-merged-events + ExpandedBusinessEventSheet resolve venueName/address/format identically to brand-side publicEventsService; restores META-ORCH-0827 Pass 2 Step 10 parity contract (I-PROPOSED-CONSUMER-EVENT-ADDRESS-PARITY)
 #   - I-REGRESSION-TEST-BACKFILL-WARN (regression-test-backfill-warning.mjs) — informational warning for modified source files without sibling regression tests (ORCH-0840 [Regression-test enforcement + append-only CI])
 #
@@ -943,28 +941,6 @@ jobs:
           node-version: "20"
       - name: Run ORCH-0849 allowlist gate
         run: node .github/scripts/strict-grep/i-stripe-pm-method-allowlist.mjs
-
-  i-event-lifecycle-single-helper:
-    name: "ORCH-0850: business event lifecycle single helper (I-PROPOSED-EVENT-LIFECYCLE-SINGLE-HELPER)"
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-      - name: Run ORCH-0850 single-helper gate
-        run: node .github/scripts/strict-grep/i-event-lifecycle-single-helper.mjs
-
-  i-consumer-calendar-uses-end-not-start:
-    name: "ORCH-0850: consumer calendar end-not-start (I-PROPOSED-CONSUMER-CALENDAR-USES-END-NOT-START)"
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-      - name: Run ORCH-0850 consumer-calendar gate
-        run: node .github/scripts/strict-grep/i-consumer-calendar-uses-end-not-start.mjs
 
   regression-test-backfill-warning:
     name: "I-REGRESSION-TEST-BACKFILL-WARN: modified source files without sibling test (informational, ORCH-0840)"
