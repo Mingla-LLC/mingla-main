@@ -232,6 +232,23 @@ export const useNativeCheckoutFlow = (): ((
               customerEphemeralKeySecret: data.customerEphemeralKeySecret,
             }
           : {}),
+        // ORCH-0849 HOTFIX (2026-05-15): explicit applePay + googlePay
+        // config blocks REQUIRED for the wallet buttons to render in
+        // PaymentSheet. Setting the merchant identifier on initStripe
+        // (StripeNativeProvider) only registers the binding; per-sheet
+        // wallet exposure happens HERE. Per Stripe React Native docs:
+        //   https://docs.stripe.com/payments/accept-a-payment?platform=react-native
+        // Mirror of the consumer pattern in
+        // app-mobile/src/payments/nativeCheckoutFlow.ts — invariant
+        // I-PROPOSED-STRIPE-PAYMENTSHEET-PARITY (ORCH-0849).
+        applePay: {
+          merchantCountryCode: "US",
+        },
+        googlePay: {
+          merchantCountryCode: "US",
+          testEnv: __DEV__,
+          currencyCode: "usd",
+        },
       });
       if (initResult.error) {
         return {

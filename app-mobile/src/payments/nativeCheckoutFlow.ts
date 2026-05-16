@@ -191,9 +191,27 @@ export const useNativeCheckoutFlow = (): ((
               customerEphemeralKeySecret: data.customerEphemeralKeySecret,
             }
           : {}),
-        // ORCH-0844 A-4 — allowsDelayedPaymentMethods dropped (redundant
-        // under ORCH-0837 payment_method_types: ['card']; the PI itself
-        // enforces card-only).
+        // ORCH-0849 HOTFIX (2026-05-15): explicit applePay + googlePay
+        // config blocks are REQUIRED for the wallet buttons to render in
+        // PaymentSheet. Setting the merchant identifier on initStripe
+        // (StripeNativeProvider) only registers the binding; the actual
+        // per-sheet exposure of Apple Pay / Google Pay happens HERE. Per
+        // Stripe React Native docs:
+        //   https://docs.stripe.com/payments/accept-a-payment?platform=react-native
+        // "To accept Apple Pay or Google Pay, you must enable them in
+        // your PaymentSheet configuration."
+        // merchantCountryCode is the country where the platform is based
+        // (Mingla is a US-incorporated LLC; connected accounts use
+        // direct charges with Stripe-Account header, so the platform
+        // country is what Stripe checks for the wallet eligibility).
+        applePay: {
+          merchantCountryCode: "US",
+        },
+        googlePay: {
+          merchantCountryCode: "US",
+          testEnv: __DEV__,
+          currencyCode: "usd",
+        },
       });
       if (initResult.error) {
         return {
