@@ -9,7 +9,7 @@
  * Three angle:
  *   (1) Business _layout.tsx mounts <StripeNativeProvider> with the
  *       business merchantIdentifier + urlScheme.
- *   (2) Business nativeCheckoutFlow.ts exists; imports initStripe from
+ *   (2) Business nativeCheckoutFlow.native.ts exists; imports initStripe from
  *       @stripe/stripe-react-native; calls initStripe with stripeAccountId;
  *       passes customer + customerEphemeralKeySecret to initPaymentSheet.
  *   (3) Business payment.tsx does NOT import expo-web-browser AND DOES
@@ -39,27 +39,27 @@ describe("ORCH-0849 — mingla-business native PaymentSheet parity", () => {
     expect(source).toMatch(/urlScheme=["']com\.mingla\.business\.v2["']/);
   });
 
-  it("nativeCheckoutFlow.ts imports initStripe from @stripe/stripe-react-native", () => {
+  it("nativeCheckoutFlow.native.ts imports initStripe from @stripe/stripe-react-native", () => {
     const source = stripLineComments(
-      read("mingla-business/src/payments/nativeCheckoutFlow.ts"),
+      read("mingla-business/src/payments/nativeCheckoutFlow.native.ts"),
     );
     expect(source).toMatch(
       /import\s+\{[^}]*\binitStripe\b[^}]*\}\s+from\s+["']@stripe\/stripe-react-native["']/,
     );
   });
 
-  it("nativeCheckoutFlow.ts calls initStripe with stripeAccountId per PI", () => {
+  it("nativeCheckoutFlow.native.ts calls initStripe with stripeAccountId per PI", () => {
     const source = stripLineComments(
-      read("mingla-business/src/payments/nativeCheckoutFlow.ts"),
+      read("mingla-business/src/payments/nativeCheckoutFlow.native.ts"),
     );
     // Must call initStripe({...stripeAccountId...}) — ORCH-0844 Connect
     // direct-charge invariant.
     expect(source).toMatch(/initStripe\s*\(\s*\{[\s\S]*?stripeAccountId/);
   });
 
-  it("nativeCheckoutFlow.ts passes customer + customerEphemeralKeySecret to initPaymentSheet", () => {
+  it("nativeCheckoutFlow.native.ts passes customer + customerEphemeralKeySecret to initPaymentSheet", () => {
     const source = stripLineComments(
-      read("mingla-business/src/payments/nativeCheckoutFlow.ts"),
+      read("mingla-business/src/payments/nativeCheckoutFlow.native.ts"),
     );
     expect(source).toMatch(/customerId\s*:/);
     expect(source).toMatch(/customerEphemeralKeySecret\s*:/);

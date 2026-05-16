@@ -58,8 +58,16 @@ const repoRoot = path.resolve(__dirname, "../../..");
 
 const CONSUMER_LAYOUT = "app-mobile/app/_layout.tsx";
 const CONSUMER_FLOW = "app-mobile/src/payments/nativeCheckoutFlow.ts";
-const BUSINESS_LAYOUT = "mingla-business/app/_layout.tsx";
-const BUSINESS_FLOW = "mingla-business/src/payments/nativeCheckoutFlow.ts";
+// ORCH-0849: mingla-business uses platform-extension files to keep the web
+// bundle free of @stripe/stripe-react-native (I-PROPOSED-AE / ORCH-0778):
+//   - StripeProviderWrapper.native.tsx bakes in the business merchantIdentifier
+//     + urlScheme and wraps with the real <StripeNativeProvider>.
+//   - nativeCheckoutFlow.native.ts holds the real PaymentSheet glue
+//     (initStripe / initPaymentSheet / presentPaymentSheet).
+// Both bare-extension siblings are passthrough stubs picked by Metro on
+// web and by tsc resolution. Parity is verified against the native files.
+const BUSINESS_LAYOUT = "mingla-business/src/payments/StripeProviderWrapper.native.tsx";
+const BUSINESS_FLOW = "mingla-business/src/payments/nativeCheckoutFlow.native.ts";
 
 function readOrFail(rel) {
   try {

@@ -32,12 +32,12 @@ import { useCurrentBrandRecovery } from "../src/hooks/useCurrentBrandRecovery";
 import { useBrand } from "../src/hooks/useBrands";
 import { useCurrentBrandId } from "../src/store/currentBrandStore";
 // ORCH-0849 (2026-05-15): re-pivot from ORCH-0839-B Hosted Checkout to
-// native PaymentSheet, parity with consumer (app-mobile). StripeNativeProvider
-// mounts at root with the business merchantIdentifier; native checkout flow
-// at app/checkout/[eventId]/payment.tsx replaces openAuthSessionAsync with
-// useStripePaymentSheet. Per SPEC_ORCH-0849 §3.4.3 + invariant
-// I-PROPOSED-STRIPE-PAYMENTSHEET-PARITY.
-import { StripeNativeProvider } from "@mingla/payments-native";
+// native PaymentSheet, parity with consumer (app-mobile). Local wrapper
+// indirection keeps web-bundle safe (I-PROPOSED-AE / ORCH-0778) — Metro
+// picks StripeProviderWrapper.native.tsx on iOS/Android (real provider)
+// and StripeProviderWrapper.tsx on web (passthrough Fragment). Per
+// SPEC_ORCH-0849 §3.4.3 + invariant I-PROPOSED-STRIPE-PAYMENTSHEET-PARITY.
+import { StripeProviderWrapper } from "../src/payments/StripeProviderWrapper";
 import { initializeAppsFlyer } from "../src/services/appsFlyerService";
 import { mixpanelService } from "../src/services/mixpanelService";
 import { revenueCatService } from "../src/services/revenueCatService";
@@ -230,17 +230,19 @@ export default function RootLayout(): React.ReactElement {
       <SafeAreaProvider>
         <QueryClientProvider client={queryClient}>
           <AuthProvider>
-            {/* ORCH-0849: StripeNativeProvider mounted above the navigation
-                tree so PaymentSheet inherits the publishable key + merchant
-                identifier + URL scheme on any checkout screen. Parity with
-                consumer app-mobile/app/_layout.tsx:72-83. Invariant
+            {/* ORCH-0849: StripeProviderWrapper mounted above the navigation
+                tree. On native, the .native variant wraps with the real
+                <StripeNativeProvider> (business merchantIdentifier + URL
+                scheme baked in) so PaymentSheet inherits the configuration
+                on any checkout screen. On web, the bare-extension variant
+                is a passthrough Fragment — web buyers go through Stripe
+                Hosted Checkout (Platform.OS === "web" branch in
+                app/checkout/[eventId]/payment.tsx). Parity with consumer
+                app-mobile/app/_layout.tsx:72-83. Invariant
                 I-PROPOSED-STRIPE-PAYMENTSHEET-PARITY (ORCH-0849). */}
-            <StripeNativeProvider
-              merchantIdentifier="merchant.com.mingla.business.v2"
-              urlScheme="com.mingla.business.v2"
-            >
+            <StripeProviderWrapper>
               <RootLayoutInner />
-            </StripeNativeProvider>
+            </StripeProviderWrapper>
           </AuthProvider>
         </QueryClientProvider>
       </SafeAreaProvider>
