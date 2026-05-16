@@ -3303,6 +3303,42 @@ Two strict-grep gates run together:
 
 **EXIT condition:** Permanent. If a future ORCH centralizes "is past" semantics across Discover + PublicEventPage + Checkout (registered as INVESTIGATION_ORCH-0845 §8 discovery #1), the centralized helper still routes through this filter — the invariant text may be rephrased to reference the helper, but the SQL predicate stays.
 
+### I-PROPOSED-EVENT-LIFECYCLE-SINGLE-HELPER (ACTIVE — ratified by ORCH-0850 CLOSE 2026-05-15)
+
+**Status:** ACTIVE — ratified by ORCH-0850 [End-not-start parity systemic] CLOSE 2026-05-15.
+
+**Statement:** Every past/upcoming/live decision in `mingla-business/` MUST route through the canonical helpers in `mingla-business/src/utils/eventLifecycle.ts` (`deriveLiveStatus` for the trichotomy; `isEventPast` for the past-gate). Local re-implementations are FORBIDDEN. Date instants flowing into these helpers MUST be UTC ISO timestamps produced by `mingla-business/src/utils/eventDateMath.ts` (`computeMasterStartAtUtc`, `computeMasterEndAtUtc`) — never `new Date(event.date)` or equivalent date-only-string parses anywhere outside the canonical helper file.
+
+**Why:** ORCH-0828 [Consumer Discover timezone + sheet bugs] fixed the canonical helper but left three local copies of the broken logic in place: `app/(tabs)/hub/events.tsx` (local `deriveLiveStatus`), `app/checkout/[eventId]/index.tsx` (local `computeIsPast`), and `src/components/brand/PublicBrandPage.tsx` (inlined `upcomingEvents`/`pastEvents` memos). All three inlined `new Date(event.date).getTime()`, parsing `YYYY-MM-DD` as UTC midnight. For any US-Eastern event, the broken predicates fired at 8pm EDT on the start day — Hub Past tab listed live events, public brand page filtered them into Past while dropping from Upcoming, and (S0 revenue) checkout displayed "This event isn't taking new tickets" while the event was still in progress. ORCH-0850 deletes all three local copies and routes through the canonical helper + adds the sibling `isEventPast(event, masterEndAtUtc)` so past-gate callers get end-aware semantics. Pairs with `I-PROPOSED-DISCOVER-EXCLUDES-ENDED-MASTER-DATE` (the server-side analogue from ORCH-0845).
+
+**Enforcement:**
+1. **Strict-grep gate:** `.github/scripts/strict-grep/i-event-lifecycle-single-helper.mjs` scans every `.ts`/`.tsx` under `mingla-business/src/` and `mingla-business/app/` (excluding `__tests__/`) for: (a) the forbidden pattern `new Date(<var>.date)` outside canonical helper files; (b) presence of locally-defined `deriveLiveStatus` / `computeIsPast` / `isEventPast` outside `eventLifecycle.ts`. Whitelist token `// SPEC ORCH-0850 OK:` exempts a line. Self-test mode (`--self-test`) re-validates the regex against an inlined fixture.
+2. **Workflow:** `.github/workflows/strict-grep-mingla-business.yml` job `i-event-lifecycle-single-helper`.
+3. **Regression test (Hub):** `mingla-business/app/(tabs)/hub/__tests__/events.pastTab.test.tsx` — 4 Jest assertions against `deriveCardStatus` (the local wrapper in `./eventCardStatus.ts` that routes through canonical). Fails-on-revert verified @ 328cbe2b: synthetic revert of `deriveCardStatus` body fails T-01 + T-03.
+4. **Regression test (Checkout):** `mingla-business/app/checkout/[eventId]/__tests__/isPastGate.test.ts` — 3 Jest assertions against `isEventPast + computeMasterEndAtUtc`. Fails-on-revert verified @ 328cbe2b: synthetic revert of `isEventPast` body fails T-06.
+5. **Regression test (Brand page):** `mingla-business/src/components/brand/__tests__/PublicBrandPage.pastEvents.test.ts` — 3 Jest assertions against the same canonical chain. Fails-on-revert verified @ 328cbe2b: same revert fails T-09.
+
+**Source:** SPEC_ORCH-0850_END_NOT_START_SYSTEMIC.md §3.6.1, INVESTIGATION_ORCH-0850_END_NOT_START_SYSTEMIC.md §4 (root causes #1-#3).
+
+**EXIT condition:** Permanent. Future ORCHs that need to extend the canonical helper (e.g., end-aware variant of `deriveLiveStatus` using `masterEndAtUtc` instead of the LIVE_WINDOW_AFTER_MS 24h heuristic) extend `eventLifecycle.ts` directly; this invariant is the structural enforcement that prevents future drift back to local copies.
+
+### I-PROPOSED-CONSUMER-CALENDAR-USES-END-NOT-START (ACTIVE — ratified by ORCH-0850 CLOSE 2026-05-15)
+
+**Status:** ACTIVE — ratified by ORCH-0850 [End-not-start parity systemic] CLOSE 2026-05-15.
+
+**Statement:** Any client-side partition of consumer calendar / saved-card entries into past-vs-upcoming buckets in `app-mobile/` MUST evaluate `effectiveEnd = scheduled_at + (duration_minutes ?? 120 minutes)`, NOT the start instant. In-progress entries (`scheduled_at <= now < effectiveEnd`) MUST remain in the Active bucket until their effective end has passed. The 120-minute default mirrors prior art at `CalendarTab.tsx:391`, `CalendarTab.tsx:414`, `ActionButtons.tsx:580`, `SavedTab.tsx:1422` (device-calendar event creation) and never surfaces as a user-visible time string — it is solely the bucket cutoff.
+
+**Why:** Pre-0850 `app-mobile/src/components/activity/CalendarTab.tsx:184-207` partitioned via `scheduledDate < now` (start-only). A 3am-to-9pm saved event flipped to Archive at 3:01am while still 18h from ending. Different bug shape from the business-side `new Date(event.date)` UTC-midnight bug (this surface operates on real timestamps from `calendar_entries.scheduled_at`), but same bug class (using start to answer the end question). Option A (project `event_dates.end_at` onto entries) is unbuildable because `calendar_entries.card_id` is opaque TEXT with no FK to `events` — a saved card may reference a Google Place, curated experience, or arbitrary identifier. Option B (start + duration_minutes) with the established 120-min default is the only buildable shape. Parity-paired with `I-PROPOSED-DISCOVER-EXCLUDES-ENDED-MASTER-DATE` (server-side floor) and `I-PROPOSED-EVENT-LIFECYCLE-SINGLE-HELPER` (business-side canonical helper).
+
+**Enforcement:**
+1. **Strict-grep gate:** `.github/scripts/strict-grep/i-consumer-calendar-uses-end-not-start.mjs` scans `app-mobile/src/components/activity/CalendarTab.tsx`, `app-mobile/src/components/activity/SavedTab.tsx`, `app-mobile/src/hooks/useCalendarEntries.ts`, `app-mobile/src/hooks/useCollaborationCalendar.ts` for forbidden patterns: `scheduledDate < now`, `new Date(entry.scheduled_at) < new Date()`, etc. Whitelist token `// SPEC ORCH-0850 OK:`. Self-test mode validates the regex.
+2. **Workflow:** `.github/workflows/strict-grep-mingla-business.yml` job `i-consumer-calendar-uses-end-not-start`.
+3. **Regression test:** `app-mobile/scripts/ci/orch-0850-regression-check.mjs` — 10 Node assertions covering source-shape gates (T-01..T-04) + behavioural assertions (T-05..T-10). Fails-on-revert verified @ 328cbe2b: synthetic revert of the predicate to `entry.scheduled_at < now` fails T-04.
+
+**Source:** SPEC_ORCH-0850_END_NOT_START_SYSTEMIC.md §3.6.1 + §3.5 + folded-in SPEC_ORCH-0850_CALENDAR_ARCHIVE_USES_END_NOT_START.md §3.
+
+**EXIT condition:** Permanent unless a future ORCH adds a `calendar_entries.event_id` FK to events (enabling Option A — hydrate `end_at` from `event_dates`). In that case the predicate becomes `entry.endAt < now` and this invariant text updates to require the new field; the no-start-only rule stays.
+
 ### I-PROPOSED-STRIPE-PAYMENTSHEET-PARITY (ACTIVE — ratified by ORCH-0849 CLOSE 2026-05-15)
 
 **Status:** ACTIVE — ratified by ORCH-0849 [Stripe payment-method parity across consumer + mingla-business] CLOSE 2026-05-15.

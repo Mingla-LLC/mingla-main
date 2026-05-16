@@ -66,3 +66,37 @@ export const deriveLiveStatus = (
   if (now < liveWindowStart) return "upcoming";
   return "past";
 };
+
+/**
+ * Single-source-of-truth past check. Returns true iff the event is genuinely
+ * over: cancelled, operator-ended (endedAt set), OR master end_at has passed.
+ *
+ * Use when the caller only needs the past gate (e.g., "hide ticket-purchase
+ * CTA", "filter into Past tab"). Pair with `deriveLiveStatus` when the caller
+ * needs the full live/upcoming/past trichotomy.
+ *
+ * Replaces the local copies at:
+ *   - mingla-business/app/(tabs)/hub/events.tsx (Past pill via deriveLiveStatus)
+ *   - mingla-business/app/checkout/[eventId]/index.tsx (computeIsPast)
+ *   - mingla-business/src/components/brand/PublicBrandPage.tsx (Past tab memo)
+ *
+ * NEVER pass `event.date` directly here — it is a date-only string and
+ * cannot represent the event's wall-clock end time. Use
+ * `computeMasterEndAtUtc(event)` from `./eventDateMath` to derive the
+ * UTC ISO instant. Enforced by strict-grep CI gate
+ * `.github/scripts/strict-grep/i-event-lifecycle-single-helper.mjs`.
+ *
+ * Established by ORCH-0850 [End-not-start parity systemic]. Enforces
+ * I-PROPOSED-EVENT-LIFECYCLE-SINGLE-HELPER + I-PROPOSED-LIVE-STATUS-UTC-INPUT.
+ */
+export const isEventPast = (
+  event: LiveEvent,
+  masterEndAtUtc: string | null,
+): boolean => {
+  if (event.status === "cancelled" || event.status === "ended") return true;
+  if (event.endedAt !== null) return true;
+  if (masterEndAtUtc === null) return false;
+  const endTime = Date.parse(masterEndAtUtc);
+  if (!Number.isFinite(endTime)) return false;
+  return Date.now() > endTime;
+};

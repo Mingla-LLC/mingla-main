@@ -133,3 +133,46 @@ export function computeMasterStartAtUtc(event: LiveEvent): string | null {
   const wallClock = `${event.date}T${normalizedDoors}`;
   return localWallClockToUtcInstant(wallClock, tz);
 }
+
+/**
+ * Compute the master END instant of a LiveEvent as a UTC ISO timestamp.
+ *
+ * Sources, in order of preference:
+ *   1. `event.masterEndAtUtc` if hydrated from `event_dates.end_at`
+ *      (preferred — exact authoritative value; field currently unset by any
+ *      hydration site per ORCH-0850 pre-flight grep, but reserved for the
+ *      future server-projection extension)
+ *   2. `event.date + event.endsAt` parsed in `event.timezone`
+ *      (best-effort from display fields when hydrated field absent)
+ *   3. `event.date + "T23:59:59"` parsed in `event.timezone` (last-resort
+ *      fallback; assumes event runs until end of its local calendar day)
+ *
+ * Returns null when the event has no date at all (unscheduled draft) or
+ * when timezone parsing fails. Callers treat null as "unknown — do not
+ * declare past on the time-axis alone"; the canonical `isEventPast` helper
+ * separately short-circuits on status='ended' / endedAt !== null.
+ *
+ * Established by ORCH-0850 [End-not-start parity systemic]. Mirrors
+ * `computeMasterStartAtUtc` for the end-instant case; enforces
+ * I-PROPOSED-LIVE-STATUS-UTC-INPUT for past-decision math.
+ */
+export function computeMasterEndAtUtc(event: LiveEvent): string | null {
+  const direct = (event as LiveEvent & { masterEndAtUtc?: string | null })
+    .masterEndAtUtc;
+  if (typeof direct === "string" && direct.length > 0) {
+    return direct;
+  }
+  if (event.date === null) return null;
+  const tz = event.timezone || "UTC";
+  if (typeof event.endsAt === "string" && event.endsAt.length > 0) {
+    const endsTime = /^\d{2}:\d{2}$/.test(event.endsAt)
+      ? `${event.endsAt}:00`
+      : event.endsAt;
+    const candidate = localWallClockToUtcInstant(
+      `${event.date}T${endsTime}`,
+      tz,
+    );
+    if (candidate !== null) return candidate;
+  }
+  return localWallClockToUtcInstant(`${event.date}T23:59:59`, tz);
+}

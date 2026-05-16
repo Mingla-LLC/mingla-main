@@ -43,6 +43,9 @@ config.resolver.extraNodeModules = {
     "packages",
     "event-rendering",
   ),
+  // ORCH-0847 Phase A — shared country-picker phone input for the public
+  // buyer form (replaces the prior single-text-field phone input).
+  "@mingla/phone-input": path.join(WORKSPACE_ROOT, "packages", "phone-input"),
   // ORCH-0839-B (2026-05-14): @mingla/payments-native alias removed.
   // mingla-business pivoted from native PaymentSheet to hosted Stripe
   // Checkout. app-mobile still consumes the shared package — its own
