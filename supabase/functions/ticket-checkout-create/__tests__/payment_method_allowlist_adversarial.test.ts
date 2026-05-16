@@ -60,24 +60,26 @@ import {
 Deno.test(
   "ORCH-0849 adversarial — every MinglaPaymentMethod literal is in the runtime allowlist (type-runtime correspondence)",
   () => {
-    // If someone narrows or widens the union, the runtime allowlist must
-    // agree. We probe by enumerating the type's intended members.
+    // ORCH-0849 hotfix 2026-05-15: Phase 1 allowlist reduced from
+    // ["card","link","apple_pay","google_pay"] to ["card","link"] after
+    // Stripe CLI live-probe proved "apple_pay" / "google_pay" are NOT
+    // valid PaymentIntent payment_method_types (Stripe returned 400
+    // payment_intent_invalid_parameter). Apple Pay + Google Pay surface
+    // as wallets through `card`, not as separate types.
     const expectedLiterals: ReadonlyArray<MinglaPaymentMethod> = [
       "card",
       "link",
-      "apple_pay",
-      "google_pay",
     ];
     for (const lit of expectedLiterals) {
       assert(
         MINGLA_PM_ALLOWLIST.includes(lit),
-        `MinglaPaymentMethod includes "${lit}" but MINGLA_PM_ALLOWLIST does not — type and runtime have diverged. Either the allowlist was reduced without updating the type, or the type was widened without updating the allowlist.`,
+        `MinglaPaymentMethod includes "${lit}" but MINGLA_PM_ALLOWLIST does not — type and runtime have diverged.`,
       );
     }
     assertEquals(
       MINGLA_PM_ALLOWLIST.length,
       expectedLiterals.length,
-      `MINGLA_PM_ALLOWLIST length (${MINGLA_PM_ALLOWLIST.length}) diverges from the tester-pinned Phase 1 set (${expectedLiterals.length}). If the allowlist legitimately needs to change, this test must be amended via a new ORCH with [TEST-MOD-APPROVED ORCH-NNNN] in the commit body per ORCH-0840 append-only rules.`,
+      `MINGLA_PM_ALLOWLIST length (${MINGLA_PM_ALLOWLIST.length}) diverges from the tester-pinned set (${expectedLiterals.length}). If the allowlist legitimately needs to change, this test must be amended via a new ORCH with [TEST-MOD-APPROVED ORCH-NNNN] in the commit body per ORCH-0840 append-only rules.`,
     );
   },
 );
@@ -129,9 +131,10 @@ Deno.test(
     );
     // The `as const` assertion freezes the literal. Direct mutation
     // should fail at compile time, but defense-in-depth: assert
-    // length is the documented Phase 1 size to catch dynamic mutation
-    // via Reflect/Proxy if that ever happens.
-    assertEquals(MINGLA_PM_ALLOWLIST.length, 4);
+    // length is the documented size to catch dynamic mutation
+    // via Reflect/Proxy if that ever happens. Reduced from 4 to 2 in
+    // the 2026-05-15 hotfix — see ATTACK 1 comment for rationale.
+    assertEquals(MINGLA_PM_ALLOWLIST.length, 2);
   },
 );
 
