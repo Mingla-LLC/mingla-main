@@ -31,9 +31,13 @@ import { ErrorBoundary } from "../src/components/ui/ErrorBoundary";
 import { useCurrentBrandRecovery } from "../src/hooks/useCurrentBrandRecovery";
 import { useBrand } from "../src/hooks/useBrands";
 import { useCurrentBrandId } from "../src/store/currentBrandStore";
-// ORCH-0839-B (2026-05-14): StripeNativeProvider was a no-op pass-through
-// (post-META-ORCH-0827) and is removed alongside the native PaymentSheet
-// pivot. Hosted Stripe Checkout via expo-web-browser needs no provider.
+// ORCH-0849 (2026-05-15): re-pivot from ORCH-0839-B Hosted Checkout to
+// native PaymentSheet, parity with consumer (app-mobile). StripeNativeProvider
+// mounts at root with the business merchantIdentifier; native checkout flow
+// at app/checkout/[eventId]/payment.tsx replaces openAuthSessionAsync with
+// useStripePaymentSheet. Per SPEC_ORCH-0849 §3.4.3 + invariant
+// I-PROPOSED-STRIPE-PAYMENTSHEET-PARITY.
+import { StripeNativeProvider } from "@mingla/payments-native";
 import { initializeAppsFlyer } from "../src/services/appsFlyerService";
 import { mixpanelService } from "../src/services/mixpanelService";
 import { revenueCatService } from "../src/services/revenueCatService";
@@ -226,7 +230,17 @@ export default function RootLayout(): React.ReactElement {
       <SafeAreaProvider>
         <QueryClientProvider client={queryClient}>
           <AuthProvider>
-            <RootLayoutInner />
+            {/* ORCH-0849: StripeNativeProvider mounted above the navigation
+                tree so PaymentSheet inherits the publishable key + merchant
+                identifier + URL scheme on any checkout screen. Parity with
+                consumer app-mobile/app/_layout.tsx:72-83. Invariant
+                I-PROPOSED-STRIPE-PAYMENTSHEET-PARITY (ORCH-0849). */}
+            <StripeNativeProvider
+              merchantIdentifier="merchant.com.mingla.business.v2"
+              urlScheme="com.mingla.business.v2"
+            >
+              <RootLayoutInner />
+            </StripeNativeProvider>
           </AuthProvider>
         </QueryClientProvider>
       </SafeAreaProvider>

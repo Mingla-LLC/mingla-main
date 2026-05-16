@@ -79,10 +79,12 @@ on:
 #   - ORCH-0839-A pagination (app-mobile/scripts/ci/orch-0839-a-tm-pagination-aligned.mjs) — TM cache-hit serves events verbatim (I-PROPOSED-DISCOVER-TM-CACHE-NO-SLICE)
 #   - ORCH-0839-A meta (app-mobile/scripts/ci/orch-0839-a-meta-items-consistent.mjs) — merged meta counts match items returned (I-PROPOSED-DISCOVER-META-MATCHES-ITEMS)
 #   - ORCH-0839-A cache-removed (app-mobile/scripts/ci/orch-0839-a-mobile-cache-removed.mjs) — mobile AsyncStorage cache permanently removed (I-PROPOSED-DISCOVER-NO-MOBILE-CACHE; supersedes ORCH-0835 cache-symmetry gate)
-#   - ORCH-0839-B (orch-0839-b-mingla-business-no-native-stripe.mjs) — mingla-business mobile uses ONLY hosted Stripe Checkout; no native Stripe RN imports, no plugin entry, payment.tsx uses openAuthSessionAsync (I-PROPOSED-MINGLA-BUSINESS-HOSTED-CHECKOUT-ONLY)
+#   - ORCH-0839-B (RETIRED by ORCH-0849 [Stripe payment-method parity] 2026-05-15) — was: mingla-business hosted Stripe Checkout only. Superseded by ORCH-0849's native PaymentSheet adoption + I-PROPOSED-STRIPE-PAYMENTSHEET-PARITY. Gate file deleted.
 #   - ORCH-0843 (orch-0843-stripe-direct-charges-only.mjs) — Mingla charge-creating Stripe API calls use DIRECT-CHARGE shape only (Stripe-Account header + application_fee_amount + statement_descriptor_suffix "MINGLA"); no transfer_data.destination anywhere under supabase/functions/ (I-PROPOSED-STRIPE-CHARGE-SHAPE-IS-DIRECT + I-PROPOSED-STRIPE-APPLICATION-FEE-PRESENT + I-PROPOSED-STRIPE-ACCOUNT-HEADER-ON-CONNECTED-CALLS + I-PROPOSED-STRIPE-STATEMENT-DESCRIPTOR-SUFFIX-MINGLA)
 #   - ORCH-0844 (orch-0844-stripe-connect-account-id-per-pi.mjs) — mobile re-applies the connected-account scope per-PI via initStripe(...) BEFORE initPaymentSheet, and edge fn returns stripeAccountId + customerId + customerEphemeralKeySecret on requires_payment (I-PROPOSED-STRIPE-CONNECT-ACCOUNT-ID-PER-PI)
 #   - ORCH-0845 (i-discover-excludes-ended-master-date.mjs) — discover-merged-events always filters event_dates.end_at >= lowerBoundUtc on the master date row, on BOTH the no-window and dated-chip paths (I-PROPOSED-DISCOVER-EXCLUDES-ENDED-MASTER-DATE)
+#   - ORCH-0849 parity (i-stripe-paymentsheet-parity.mjs) — both app-mobile and mingla-business mount <StripeNativeProvider> + call initStripe per-PI with stripeAccountId + pass customer + customerEphemeralKeySecret to initPaymentSheet (I-PROPOSED-STRIPE-PAYMENTSHEET-PARITY)
+#   - ORCH-0849 allowlist (i-stripe-pm-method-allowlist.mjs) — ticket-checkout-create sources payment_method_types from MINGLA_PM_ALLOWLIST in _shared/stripePaymentMethods.ts; no hardcoded literal at PI-create site; no automatic_payment_methods fan-out (I-PROPOSED-STRIPE-PM-METHOD-ALLOWLIST)
 #   - ORCH-0846 (orch-0846-consumer-event-address-parity.mjs) — consumer-side discover-merged-events + ExpandedBusinessEventSheet resolve venueName/address/format identically to brand-side publicEventsService; restores META-ORCH-0827 Pass 2 Step 10 parity contract (I-PROPOSED-CONSUMER-EVENT-ADDRESS-PARITY)
 #   - I-REGRESSION-TEST-BACKFILL-WARN (regression-test-backfill-warning.mjs) — informational warning for modified source files without sibling regression tests (ORCH-0840 [Regression-test enforcement + append-only CI])
 #
@@ -868,16 +870,11 @@ jobs:
       - name: Run ORCH-0839-A cache-removed gate
         run: node app-mobile/scripts/ci/orch-0839-a-mobile-cache-removed.mjs
 
-  orch-0839-b-mingla-business-no-native-stripe:
-    name: "ORCH-0839-B: mingla-business hosted Stripe Checkout only (I-PROPOSED-MINGLA-BUSINESS-HOSTED-CHECKOUT-ONLY)"
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-      - name: Run ORCH-0839-B gate
-        run: node .github/scripts/strict-grep/orch-0839-b-mingla-business-no-native-stripe.mjs
+  # ORCH-0839-B [Stripe Hosted Checkout pivot] gate RETIRED by ORCH-0849
+  # [Stripe payment-method parity]. Business now uses native PaymentSheet
+  # (mirror of consumer per I-PROPOSED-STRIPE-PAYMENTSHEET-PARITY); the
+  # "no native Stripe RN" rule is superseded. Gate script removed at
+  # .github/scripts/strict-grep/orch-0839-b-mingla-business-no-native-stripe.mjs.
 
   orch-0843-stripe-direct-charges-only:
     name: "ORCH-0843: Stripe direct-charge shape (no transfer_data.destination)"
@@ -922,6 +919,28 @@ jobs:
           node-version: "20"
       - name: Run ORCH-0846 gate
         run: node .github/scripts/strict-grep/orch-0846-consumer-event-address-parity.mjs
+
+  i-stripe-paymentsheet-parity:
+    name: "ORCH-0849: PaymentSheet parity across consumer + business (I-PROPOSED-STRIPE-PAYMENTSHEET-PARITY)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0849 parity gate
+        run: node .github/scripts/strict-grep/i-stripe-paymentsheet-parity.mjs
+
+  i-stripe-pm-method-allowlist:
+    name: "ORCH-0849: PI payment_method_types sourced from allowlist (I-PROPOSED-STRIPE-PM-METHOD-ALLOWLIST)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0849 allowlist gate
+        run: node .github/scripts/strict-grep/i-stripe-pm-method-allowlist.mjs
 
   regression-test-backfill-warning:
     name: "I-REGRESSION-TEST-BACKFILL-WARN: modified source files without sibling test (informational, ORCH-0840)"
