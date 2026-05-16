@@ -31,8 +31,8 @@
  *
  *   Business (mingla-business):
  *     R-5 — mingla-business/app/_layout.tsx mounts <StripeNativeProvider>
- *           with merchantIdentifier="merchant.com.mingla.business.v2" AND
- *           urlScheme="com.mingla.business.v2".
+ *           with merchantIdentifier="merchant.com.sethogieva.minglabusiness" AND
+ *           urlScheme="com.sethogieva.minglabusiness".
  *     R-6 — mingla-business/src/payments/nativeCheckoutFlow.ts imports
  *           initStripe from @stripe/stripe-react-native.
  *     R-7 — same file calls initStripe with a stripeAccountId key.
@@ -170,11 +170,17 @@ checkFlowFile(consumerFlow, CONSUMER_FLOW, "R-2", "R-3", "R-4");
 
 // ─── Business (mingla-business) ─────────────────────────────────────────
 const businessLayout = readOrFail(BUSINESS_LAYOUT);
+// ORCH-0849 round 4 (2026-05-16): merchant identifier corrected to match
+// the actual Apple Developer registration + Stripe in-app cert. The prior
+// `merchant.com.mingla.business.v2` was never registered with Apple and
+// has no Stripe cert; it caused Apple Pay to stall at confirm on the
+// business app. See StripeProviderWrapper.native.tsx + nativeCheckoutFlow.native.ts
+// headers for full rationale.
 checkProviderMount(
   businessLayout,
   BUSINESS_LAYOUT,
-  "merchant.com.mingla.business.v2",
-  "com.mingla.business.v2",
+  "merchant.com.sethogieva.minglabusiness",
+  "com.sethogieva.minglabusiness",
   "R-5",
 );
 
