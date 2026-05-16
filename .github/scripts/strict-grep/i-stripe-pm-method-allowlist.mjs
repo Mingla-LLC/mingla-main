@@ -11,8 +11,11 @@
  * `automatic_payment_methods: { enabled: true }` form is forbidden
  * (preserves ORCH-0837 H2 root-cause guard).
  *
- * The Phase 1 allowlist contains exactly four methods: card, link,
- * apple_pay, google_pay. Adding methods to the allowlist requires a new
+ * The allowlist contains exactly two methods: card, link. (Apple Pay
+ * and Google Pay are wallets that surface through `card` — they are NOT
+ * payment_method_types; Stripe rejects them with 400 invalid_parameter.
+ * See `_shared/stripePaymentMethods.ts` header for the live-probe
+ * reproduction.) Adding methods to the allowlist requires a new
  * ORCH proving the redirect-flow / delayed-method plumbing for the new
  * method type (Cash App Pay, Klarna, Afterpay, ACH, SEPA Debit, regional
  * redirects).
@@ -31,8 +34,8 @@
  *   R-5 — same file does NOT contain
  *         `automatic_payment_methods: { enabled: true }` on a non-comment
  *         line.
- *   R-6 — allowlist file's array contains exactly four entries (card,
- *         link, apple_pay, google_pay); Phase 2 methods (cash_app_pay,
+ *   R-6 — allowlist file's array contains exactly two entries (card,
+ *         link); Phase 2 methods (cash_app_pay,
  *         klarna, afterpay_clearpay, us_bank_account, sepa_debit, ideal,
  *         bancontact, eps, p24) are absent.
  *
@@ -172,14 +175,21 @@ if (arrayMatch === null) {
 } else {
   const body = arrayMatch[1];
   const entries = [...body.matchAll(/["']([a-z_]+)["']/g)].map((m) => m[1]);
-  const phase1 = ["card", "link", "apple_pay", "google_pay"];
-  const isExactPhase1 =
-    entries.length === phase1.length &&
-    phase1.every((m, i) => entries[i] === m);
-  if (!isExactPhase1) {
+  // ORCH-0849 hotfix 2026-05-15: reduced from four to two after Stripe CLI
+  // live-probe proved "apple_pay" / "google_pay" are NOT valid
+  // payment_method_types (400 payment_intent_invalid_parameter). The
+  // wallets surface through `card` when the mobile SDK is initialized
+  // with merchantIdentifier and the platform PaymentMethodConfiguration
+  // has them enabled. See `_shared/stripePaymentMethods.ts` header.
+  const allowlist = ["card", "link"];
+  const isExactAllowlist =
+    entries.length === allowlist.length &&
+    allowlist.every((m, i) => entries[i] === m);
+  if (!isExactAllowlist) {
     failures.push(
-      "R-6: MINGLA_PM_ALLOWLIST must contain exactly [card, link, apple_pay, google_pay] in this order. Found: " +
-        JSON.stringify(entries),
+      "R-6: MINGLA_PM_ALLOWLIST must contain exactly [card, link] in this order. Found: " +
+        JSON.stringify(entries) +
+        ". Apple Pay / Google Pay are NOT separate types — they surface through `card`.",
     );
   } else {
     const phase2Leak = entries.filter((m) =>
@@ -192,7 +202,7 @@ if (arrayMatch === null) {
       );
     } else {
       passes.push(
-        "R-6: allowlist is exactly Phase 1 (card, link, apple_pay, google_pay) with no Phase 2 leakage",
+        "R-6: allowlist is exactly [card, link] with no Phase 2 leakage",
       );
     }
   }

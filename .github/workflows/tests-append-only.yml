@@ -22,10 +22,19 @@ jobs:
     name: "Test files: append-only"
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout (full history)
+      - name: Checkout (full history, real PR head SHA on pull_request events)
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          # On pull_request events GitHub Actions defaults to a synthetic
+          # merge commit (refs/pull/N/merge) whose body is GitHub-generated
+          # ("Merge xxx into yyy") — that loses any [TEST-MOD-APPROVED
+          # ORCH-NNNN] / [TEST-RENAME-APPROVED ORCH-NNNN] override token the
+          # author placed in their real HEAD commit. Pin to the PR head SHA
+          # so `git log -1 --pretty=%B` returns the author's commit body.
+          # For push events `pull_request.head.sha` is empty and this is a
+          # no-op — checkout falls back to the default ref.
+          ref: ${{ github.event.pull_request.head.sha }}
       - name: Set up Node
         uses: actions/setup-node@v4
         with:

@@ -29,15 +29,15 @@ import {
 } from "../../_shared/stripePaymentMethods.ts";
 
 Deno.test(
-  "ORCH-0849 — allowlist returns exactly the four Phase 1 methods in documented order",
+  "ORCH-0849 — allowlist returns exactly card + link in documented order (Apple Pay / Google Pay surface through `card`, NOT as separate types)",
   () => {
     const list = getPaymentMethodTypes();
     assertEquals(
       [...list],
-      ["card", "link", "apple_pay", "google_pay"],
-      "Phase 1 allowlist MUST contain exactly Card + Link + Apple Pay + Google Pay in this order. Any drift here breaks parity between consumer and mingla-business and may include a method that requires Phase 2 plumbing (redirect-flow / delayed-method).",
+      ["card", "link"],
+      "Allowlist MUST contain exactly card + link in this order. Apple Pay and Google Pay are NOT payment_method_types — Stripe rejects them with a 400 payment_intent_invalid_parameter (verified via stripe CLI 2026-05-15 against connected account acct_1TUNLtB5v00XfDTX). They surface in PaymentSheet as wallets THROUGH the `card` type when the mobile SDK is initialized with merchantIdentifier (iOS) / Google Pay config (Android) and the platform's PaymentMethodConfiguration has those wallets enabled. Any drift here may include a method that doesn't actually exist in Stripe's enum or that requires Phase 2 plumbing (redirect-flow / delayed-method).",
     );
-    assertEquals(MINGLA_PM_ALLOWLIST.length, 4);
+    assertEquals(MINGLA_PM_ALLOWLIST.length, 2);
   },
 );
 

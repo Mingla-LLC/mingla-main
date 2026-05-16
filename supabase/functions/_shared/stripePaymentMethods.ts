@@ -2,12 +2,19 @@
  * ORCH-0849 — curated Stripe payment-method allowlist for Mingla ticket
  * checkout PaymentIntents.
  *
- * Phase 1 allowlist (this ORCH): card + link + apple_pay + google_pay.
- * All four are direct-charge-compatible (Stripe-Account header per
- * ORCH-0843), require no redirect-flow plumbing beyond what
- * ORCH-0834-rescoped / ORCH-0837 already wired (urlScheme +
- * handleURLCallback), and require no delayed-method webhook routing
- * beyond what's already covered.
+ * Allowlist (this ORCH, hotfixed 2026-05-15 post-merge): card + link.
+ *
+ * IMPORTANT — Apple Pay & Google Pay are NOT payment_method_types values.
+ * The original Phase 1 set included "apple_pay" and "google_pay", which
+ * Stripe rejects with a 400 payment_intent_invalid_parameter. Apple Pay
+ * and Google Pay are wallets that surface THROUGH the `card` type when
+ * the mobile SDK is initialized with `merchantIdentifier` (iOS) and the
+ * Google Pay plugin/config (Android), and the platform's PaymentMethod
+ * Configuration has those wallets enabled. They appear automatically in
+ * PaymentSheet on supported devices — no entry in payment_method_types
+ * is required (or accepted). Live-probe reproduction:
+ *   stripe payment_intents create -d "payment_method_types[0]=apple_pay" \
+ *     --stripe-account=acct_… → 400 invalid_parameter.
  *
  * Phase 2 candidates (separate ORCHs, NOT this one):
  *   - cash_app_pay — needs urlScheme deep-link live-fire
@@ -27,8 +34,6 @@
 export const MINGLA_PM_ALLOWLIST = [
   "card",
   "link",
-  "apple_pay",
-  "google_pay",
 ] as const;
 
 export type MinglaPaymentMethod = (typeof MINGLA_PM_ALLOWLIST)[number];
