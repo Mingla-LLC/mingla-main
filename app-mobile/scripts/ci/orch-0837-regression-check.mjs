@@ -49,18 +49,29 @@ const edgeFn = readMaybe(
   path.join(repoRoot, "supabase/functions/ticket-checkout-create/index.ts"),
 );
 
+// ORCH-0849 (2026-05-15): T-C0 amended from "card-only literal" to
+// "spread of getPaymentMethodTypes() helper". Card-only was the
+// load-bearing constraint until ORCH-0844 stabilised PaymentSheet on iOS
+// 26; ORCH-0849 replaces it with a curated allowlist sourced from
+// _shared/stripePaymentMethods.ts. The four-method allowlist (Card +
+// Link + Apple Pay + Google Pay) is enforced by the dedicated
+// i-stripe-pm-method-allowlist.mjs CI gate. T-C1 (the automatic_payment_methods
+// guard) is PRESERVED VERBATIM — never re-enable that form.
 check(
-  "T-C0 ticket-checkout-create/index.ts creates PI with payment_method_types: ['card']",
+  "T-C0 ticket-checkout-create/index.ts sources payment_method_types from getPaymentMethodTypes() allowlist (ORCH-0849)",
   edgeFn !== null &&
-    /payment_method_types:\s*\[\s*["']card["']\s*\]/.test(edgeFn),
-  "supabase/functions/ticket-checkout-create/index.ts MUST pass `payment_method_types: ['card']` to stripe.paymentIntents.create. Card-only is the minimum-viable safe shape until handleURLCallback wiring is proven for redirect-flow methods AND Apple Pay merchant cert is verified end-to-end (ORCH-0838).",
+    /payment_method_types:\s*\[\s*\.\.\.\s*getPaymentMethodTypes\(\s*\)\s*\]/
+      .test(edgeFn) &&
+    /import\s+\{\s*getPaymentMethodTypes\s*\}\s+from\s+["']\.\.\/_shared\/stripePaymentMethods\.ts["']/
+      .test(edgeFn),
+  "supabase/functions/ticket-checkout-create/index.ts MUST pass `payment_method_types: [...getPaymentMethodTypes()]` to stripe.paymentIntents.create AND import getPaymentMethodTypes from ../_shared/stripePaymentMethods.ts. Per ORCH-0849, the allowlist is sourced from the shared module (Phase 1: Card + Link + Apple Pay + Google Pay); hardcoded array literals at the call site are forbidden. Adding Phase 2 methods (Cash App Pay, Klarna, ACH, etc.) requires a new ORCH proving redirect-flow / delayed-method plumbing.",
 );
 
 check(
   "T-C1 ticket-checkout-create/index.ts does NOT use automatic_payment_methods: {enabled: true}",
   edgeFn !== null &&
     !/automatic_payment_methods:\s*\{\s*enabled:\s*true\s*\}/.test(edgeFn),
-  "supabase/functions/ticket-checkout-create/index.ts MUST NOT use `automatic_payment_methods: { enabled: true }` — that form exposes every dashboard-enabled method including BNPL redirects (Klarna, Affirm, Cash App, Amazon Pay) which hang the PaymentSheet without handleURLCallback wiring. Operator-verified failed PIs pi_3TX3rBPjlZyAYA401xD9EJ3N and pi_3TX2jzPjlZyAYA401JI3kgky attached six methods including the four redirect-flow ones.",
+  "supabase/functions/ticket-checkout-create/index.ts MUST NOT use `automatic_payment_methods: { enabled: true }` — that form exposes every dashboard-enabled method including BNPL redirects (Klarna, Affirm, Cash App, Amazon Pay) which hang the PaymentSheet without handleURLCallback wiring. Operator-verified failed PIs pi_3TX3rBPjlZyAYA401xD9EJ3N and pi_3TX2jzPjlZyAYA401JI3kgky attached six methods including the four redirect-flow ones. Preserved verbatim through ORCH-0849 — the allowlist-driven approach is the replacement.",
 );
 
 // ─── Mobile: app/index.tsx useStripe import + handleURLCallback usage ────

@@ -31,9 +31,13 @@ import { ErrorBoundary } from "../src/components/ui/ErrorBoundary";
 import { useCurrentBrandRecovery } from "../src/hooks/useCurrentBrandRecovery";
 import { useBrand } from "../src/hooks/useBrands";
 import { useCurrentBrandId } from "../src/store/currentBrandStore";
-// ORCH-0839-B (2026-05-14): StripeNativeProvider was a no-op pass-through
-// (post-META-ORCH-0827) and is removed alongside the native PaymentSheet
-// pivot. Hosted Stripe Checkout via expo-web-browser needs no provider.
+// ORCH-0849 (2026-05-15): re-pivot from ORCH-0839-B Hosted Checkout to
+// native PaymentSheet, parity with consumer (app-mobile). Local wrapper
+// indirection keeps web-bundle safe (I-PROPOSED-AE / ORCH-0778) — Metro
+// picks StripeProviderWrapper.native.tsx on iOS/Android (real provider)
+// and StripeProviderWrapper.tsx on web (passthrough Fragment). Per
+// SPEC_ORCH-0849 §3.4.3 + invariant I-PROPOSED-STRIPE-PAYMENTSHEET-PARITY.
+import { StripeProviderWrapper } from "../src/payments/StripeProviderWrapper";
 import { initializeAppsFlyer } from "../src/services/appsFlyerService";
 import { mixpanelService } from "../src/services/mixpanelService";
 import { revenueCatService } from "../src/services/revenueCatService";
@@ -226,7 +230,19 @@ export default function RootLayout(): React.ReactElement {
       <SafeAreaProvider>
         <QueryClientProvider client={queryClient}>
           <AuthProvider>
-            <RootLayoutInner />
+            {/* ORCH-0849: StripeProviderWrapper mounted above the navigation
+                tree. On native, the .native variant wraps with the real
+                <StripeNativeProvider> (business merchantIdentifier + URL
+                scheme baked in) so PaymentSheet inherits the configuration
+                on any checkout screen. On web, the bare-extension variant
+                is a passthrough Fragment — web buyers go through Stripe
+                Hosted Checkout (Platform.OS === "web" branch in
+                app/checkout/[eventId]/payment.tsx). Parity with consumer
+                app-mobile/app/_layout.tsx:72-83. Invariant
+                I-PROPOSED-STRIPE-PAYMENTSHEET-PARITY (ORCH-0849). */}
+            <StripeProviderWrapper>
+              <RootLayoutInner />
+            </StripeProviderWrapper>
           </AuthProvider>
         </QueryClientProvider>
       </SafeAreaProvider>

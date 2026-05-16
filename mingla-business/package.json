@@ -36,8 +36,7 @@
     "test:orch-0783": "node ../.github/scripts/strict-grep/orch-0783-event-cover-image-provider-pivot.mjs && npx jest serverDraftEventMapper.test businessEventsPublish.test publicEventsService.test eventCoverMediaService.test eventCoverMedia.test giphyEventCoverService.test pexelsEventCoverService.test liveEventAdapter.test",
     "test:orch-0784": "node ../.github/scripts/strict-grep/orch-0784-event-list-sales-summary-visibility.mjs && npx jest eventSalesSummary.test",
     "test:orch-0786": "node ../.github/scripts/strict-grep/orch-0786-creator-avatar-upload-integrity.mjs && npx jest creatorAvatarService.test creatorAvatarRules.test creatorAvatarFileReader.test edit-profile.avatar.test",
-    "test:orch-0823": "npx jest Input.variantBehaviour.test",
-    "test:orch-0839-b": "node ../.github/scripts/strict-grep/orch-0839-b-mingla-business-no-native-stripe.mjs"
+    "test:orch-0823": "npx jest Input.variantBehaviour.test"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
@@ -47,6 +46,7 @@
     "@sentry/react-native": "~7.2.0",
     "@stripe/connect-js": "3.4.2",
     "@stripe/react-connect-js": "3.4.1",
+    "@stripe/stripe-react-native": "^0.65.1",
     "@supabase/supabase-js": "^2.74.0",
     "@tanstack/react-query": "^5.100.6",
     "@vercel/og": "^0.11.1",

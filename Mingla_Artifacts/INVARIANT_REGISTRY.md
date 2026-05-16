@@ -3302,3 +3302,39 @@ Two strict-grep gates run together:
 **Source:** SPEC_ORCH-0845_DISCOVER_EXCLUDES_ENDED_EVENTS.md §3.6.2, INVESTIGATION_ORCH-0845_DISCOVER_ENDED_EVENTS_STILL_SHOWN.md.
 
 **EXIT condition:** Permanent. If a future ORCH centralizes "is past" semantics across Discover + PublicEventPage + Checkout (registered as INVESTIGATION_ORCH-0845 §8 discovery #1), the centralized helper still routes through this filter — the invariant text may be rephrased to reference the helper, but the SQL predicate stays.
+
+### I-PROPOSED-STRIPE-PAYMENTSHEET-PARITY (ACTIVE — ratified by ORCH-0849 CLOSE 2026-05-15)
+
+**Status:** ACTIVE — ratified by ORCH-0849 [Stripe payment-method parity across consumer + mingla-business] CLOSE 2026-05-15.
+
+**Statement:** Both `app-mobile` (consumer Discover → checkout) and `mingla-business` (operator + buyer hub checkout) MUST mount `<StripeNativeProvider>` at root with their respective `merchantIdentifier` + `urlScheme`, MUST call `initStripe({ publishableKey, stripeAccountId, merchantIdentifier, urlScheme })` per-PaymentIntent BEFORE `initPaymentSheet`, and MUST pass `customer` + `customerEphemeralKeySecret` to `initPaymentSheet`. Both apps consume the same `requires_payment` response shape from `ticket-checkout-create`. Consumer values are `merchant.com.mingla.app.v2` + `com.mingla.app.v2`. Business values are `merchant.com.mingla.business.v2` + `com.mingla.business.v2`.
+
+**Why:** ORCH-0844 [Explorer PaymentSheet — Connect account ID per-PI + 60s timeout removal] proved that PaymentSheet is stable on iOS 26 when three load-bearing fixes hold: per-PI `initStripe` with Connect `stripeAccountId`, Customer + ephemeralKey on every paid checkout, and no synthetic `withTimeout` race. Mingla-business previously pivoted to Hosted Checkout (ORCH-0839-B [Stripe Hosted Checkout pivot]) because its `StripeNativeProvider` was a no-op shim at the time — the underlying blocker, not a fundamental PaymentSheet problem. ORCH-0849 retires the pivot and brings mingla-business onto the consumer's pattern verbatim so both apps share one payment UX, one set of fixes, and one maintenance cost.
+
+**Enforcement:**
+1. **Strict-grep gate:** `.github/scripts/strict-grep/i-stripe-paymentsheet-parity.mjs` scans both `_layout.tsx` files + both `nativeCheckoutFlow.ts` files; verifies provider mount with correct merchantIdentifier + urlScheme, initStripe import + call with stripeAccountId, and customer + customerEphemeralKeySecret passthrough to initPaymentSheet on both apps. Eight rules R-1..R-8.
+2. **Workflow:** `.github/workflows/strict-grep-mingla-business.yml` job `i-stripe-paymentsheet-parity`.
+3. **Regression test (implementor happy-path, business):** `mingla-business/src/payments/__tests__/native_checkout_flow_parity.test.ts` — 8 Jest assertions including SDK version parity check, provider mount, initStripe call, customer key, and the negative-control that `expo-web-browser` is NOT imported and `WebBrowser.openAuthSessionAsync` is NOT called.
+4. **Regression test (implementor happy-path, consumer):** existing ORCH-0844 gate `.github/scripts/strict-grep/orch-0844-stripe-connect-account-id-per-pi.mjs` continues to guard the consumer-side initStripe + Customer/ephemeralKey contract.
+
+**Source:** SPEC_ORCH-0849_STRIPE_PAYMENT_METHOD_PARITY.md §3.4 + §3.5.3, INVESTIGATION_ORCH-0849_STRIPE_PAYMENT_METHOD_PARITY.md §5 (three-way decision matrix selected Option A — native PaymentSheet for business), DEC-158.
+
+**EXIT condition:** Permanent while both apps ship native checkout. A future ORCH that introduces a third surface (e.g., web Payment Element on mingla-business) may amend this invariant to enumerate per-surface SDK requirements, but the native parity contract for the two apps stays.
+
+### I-PROPOSED-STRIPE-PM-METHOD-ALLOWLIST (ACTIVE — ratified by ORCH-0849 CLOSE 2026-05-15)
+
+**Status:** DRAFT — flips ACTIVE on ORCH-0849 [Stripe payment-method parity] CLOSE.
+
+**Statement:** The `ticket-checkout-create` edge function MUST set `payment_method_types` on every PaymentIntent it creates by sourcing the value from `MINGLA_PM_ALLOWLIST` in `supabase/functions/_shared/stripePaymentMethods.ts` (via `[...getPaymentMethodTypes()]`). Hardcoded array literals at the PI-create call site are forbidden. The `automatic_payment_methods: { enabled: true }` form is forbidden (preserves ORCH-0837 [Stripe PI card-only + handleURLCallback wired] H2 root-cause guard). The Phase 1 allowlist contains exactly four methods in order: `card`, `link`, `apple_pay`, `google_pay`. Phase 2 methods (cash_app_pay, klarna, afterpay_clearpay, us_bank_account, sepa_debit, ideal, bancontact, eps, p24) are explicitly forbidden from the allowlist; adding any of them requires a new ORCH that independently proves the redirect-flow / delayed-method plumbing.
+
+**Why:** ORCH-0837 added card-only as the load-bearing fix for the SDK preflight stall caused by `automatic_payment_methods: { enabled: true }` fanning out to every dashboard-enabled method. ORCH-0844's three load-bearing fixes (initStripe per-PI with stripeAccountId, Customer + ephemeralKey, withTimeout removal) made it safe to enable specific methods that don't require redirect-flow plumbing (Apple Pay, Google Pay, Link, plus Card). The allowlist replaces the card-only lock while preserving the anti-fan-out guard.
+
+**Enforcement:**
+1. **Strict-grep gate:** `.github/scripts/strict-grep/i-stripe-pm-method-allowlist.mjs` scans the shared module + edge function; verifies `MINGLA_PM_ALLOWLIST` export, the import in the edge function, the spread call at the PI-create site, the absence of hardcoded literals or `automatic_payment_methods`, and that the allowlist contains exactly Phase 1 methods. Six rules R-1..R-6.
+2. **Workflow:** `.github/workflows/strict-grep-mingla-business.yml` job `i-stripe-pm-method-allowlist`.
+3. **Amended legacy gate:** `app-mobile/scripts/ci/orch-0837-regression-check.mjs` T-C0 amended to assert the spread-call shape; T-C1 preserved verbatim as the `automatic_payment_methods` guard.
+4. **Regression test (implementor happy-path):** `supabase/functions/ticket-checkout-create/__tests__/payment_method_allowlist.test.ts` — 5 Deno tests asserting the pure-function contract, the edge fn import, the spread call, and the two anti-regression substring absences. Fails-on-revert verified on TWO independent revert paths (allowlist-collapse and source-file-revert).
+
+**Source:** SPEC_ORCH-0849_STRIPE_PAYMENT_METHOD_PARITY.md §3.2.1 + §3.5.4, INVESTIGATION_ORCH-0849 §6 Recommended PM set, DEC-158.
+
+**EXIT condition:** Permanent in spirit. The Phase 1 allowlist may be expanded in future ORCHs proving redirect-flow / delayed-method plumbing; each expansion amends the allowlist constant + this invariant's enumeration. The "no hardcoded array literal at call site" rule stays permanent — the allowlist module is always the single source of truth.

@@ -93,6 +93,13 @@
           "mode": "production"
         }
       ],
+      [
+        "@stripe/stripe-react-native",
+        {
+          "merchantIdentifier": "merchant.com.mingla.business.v2",
+          "enableGooglePay": true
+        }
+      ],
       "./plugins/withAdiRegistration"
     ],
     "experiments": {

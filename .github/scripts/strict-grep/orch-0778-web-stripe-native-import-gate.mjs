@@ -7,13 +7,17 @@ const root = process.cwd().endsWith("mingla-business")
   : process.cwd();
 
 const checkedRoots = ["mingla-business/app", "mingla-business/src"];
-// ORCH-0839-B (2026-05-14): allow-list shrunk to empty. mingla-business
-// pivoted from native PaymentSheet to hosted Stripe Checkout via
-// expo-web-browser. No file in mingla-business/{app,src}/ may import
-// @stripe/stripe-react-native — the I-PROPOSED-MINGLA-BUSINESS-HOSTED-
-// CHECKOUT-ONLY invariant is enforced a-fortiori here and explicitly by
-// the new orch-0839-b-mingla-business-no-native-stripe.mjs gate (T-G1).
-const allowedNativeImportFiles = new Set();
+// ORCH-0849 (2026-05-15): hosted-checkout-only era ended; mingla-business
+// re-adopts native PaymentSheet (parity with consumer, app-mobile).
+// I-PROPOSED-AE STRIPE_REACT_NATIVE_NATIVE_BOUNDARY_ONLY is preserved —
+// the allowlist permits the `.native.ts` platform-extension file used by
+// the buyer-side checkout glue; Metro picks it only on iOS/Android, and
+// the sibling bare-extension stub keeps web bundles free of any Stripe
+// React Native pull. Adding any other entry to this allowlist requires a
+// new ORCH proving web-bundle safety (web export probe + Vercel build).
+const allowedNativeImportFiles = new Set([
+  "mingla-business/src/payments/nativeCheckoutFlow.native.ts",
+]);
 const failures = [];
 const stripeReactNativeImportPattern =
   /(?:import\s+["']@stripe\/stripe-react-native["']|from\s+["']@stripe\/stripe-react-native["']|require\(\s*["']@stripe\/stripe-react-native["']\s*\)|import\(\s*["']@stripe\/stripe-react-native["']\s*\))/;
