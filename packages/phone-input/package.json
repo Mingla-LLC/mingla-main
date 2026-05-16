@@ -1,0 +1,16 @@
+{
+  "name": "@mingla/phone-input",
+  "version": "0.0.0",
+  "private": true,
+  "main": "index.ts",
+  "types": "index.ts",
+  "react-native": "index.ts",
+  "license": "UNLICENSED",
+  "description": "Country-picker phone input shared between mingla-business (public buyer form, ORCH-0847) and app-mobile (auth onboarding). Pure presentational — host app supplies icon renderer and i18n labels. Per ORCH-0847 Phase A.",
+  "peerDependencies": {
+    "expo-haptics": "*",
+    "react": "*",
+    "react-native": "*",
+    "react-native-safe-area-context": "*"
+  }
+}

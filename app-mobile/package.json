@@ -26,6 +26,7 @@
     "test:orch-0836": "node ./scripts/ci/orch-0836-regression-check.mjs",
     "test:orch-0837": "node ./scripts/ci/orch-0837-regression-check.mjs",
     "test:orch-0846": "node ./scripts/ci/orch-0846-regression-check.mjs",
+    "test:orch-0847": "node ./scripts/ci/orch-0847-regression-check.mjs",
     "test:orch-0848": "node ./scripts/ci/orch-0848-regression-check.mjs",
     "test:orch-0848-adv": "node ./scripts/ci/orch-0848-adversarial-check.mjs",
     "test:orch-0839-a-pagination": "node ./scripts/ci/orch-0839-a-tm-pagination-aligned.mjs",

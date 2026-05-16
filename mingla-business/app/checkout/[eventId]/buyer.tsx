@@ -49,7 +49,7 @@ import {
 } from "../../../src/constants/designSystem";
 import { usePublicEventById } from "../../../src/hooks/usePublicEvents";
 import { formatCurrency } from "../../../src/utils/currency";
-import { isRequiredPhoneValid } from "../../../src/utils/phone";
+import { isValidE164, composeE164 } from "../../../src/utils/phone";
 import { createTicketCheckout } from "../../../src/services/ticketCheckoutService";
 
 import { Button } from "../../../src/components/ui/Button";
@@ -62,6 +62,81 @@ import {
   useCartTotals,
 } from "../../../src/components/checkout/CartContext";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
+
+// ORCH-0847 Phase B — country-picker phone input shared with app-mobile
+// auth onboarding. Replaces the prior single-text-field phone Input which
+// only validated US-shaped 10/11-digit numbers client-side.
+import {
+  PhoneInput,
+  COUNTRIES,
+  getCountryByCode,
+  type PhoneInputTheme,
+} from "@mingla/phone-input";
+
+// ORCH-0847 Phase B — dark-mode theme tokens for the public buyer form's
+// phone field. mingla-business renders on a dark canvas (`#0c0e12`); the
+// package's default LIGHT-mode tokens would be unreadable here. Values
+// mirror mingla-business's designSystem (`glass`, `text`, `semantic`,
+// `accent` from `src/constants/designSystem.ts`).
+const PUBLIC_BUYER_PHONE_THEME: PhoneInputTheme = {
+  backgroundPrimary: "#0c0e12",
+  textPrimary: "rgba(255, 255, 255, 0.96)",
+  textTertiary: "rgba(255, 255, 255, 0.52)",
+  borderDefault: "rgba(255, 255, 255, 0.14)",
+  borderFocused: "#eb7825",
+  borderError: "#ef4444",
+  searchBackground: "rgba(255, 255, 255, 0.06)",
+  rowPressedBackground: "rgba(255, 255, 255, 0.04)",
+  divider: "rgba(255, 255, 255, 0.08)",
+  accessoryBackground: "rgba(12, 14, 18, 0.95)",
+  accessoryBorder: "rgba(255, 255, 255, 0.08)",
+  accent: "#eb7825",
+  errorText: "#ef4444",
+};
+
+/**
+ * Resolves the initial country ISO-2 code for the phone field per SPEC Q1
+ * (locale-first). Order:
+ *   1. If buyer.phone is already set (resume case), parse the leading dial
+ *      code and use that country.
+ *   2. Device locale via `Intl.DateTimeFormat().resolvedOptions().locale` —
+ *      e.g., "en-GB" → "GB". expo-localization is not a mingla-business dep
+ *      today; Intl works without it.
+ *   3. Brand country (forward-prepared — not yet exposed on PublicBrandProps).
+ *   4. Fallback to "GB" matching the mingla-business GBP default.
+ */
+const resolveInitialCountry = (
+  existingFullE164: string,
+  _brandCountry: string | null,
+): string => {
+  if (existingFullE164.length > 0) {
+    // Sort by descending dialCode length so "+1268" matches before "+1".
+    const found = [...COUNTRIES]
+      .sort((a, b) => b.dialCode.length - a.dialCode.length)
+      .find((c) => existingFullE164.startsWith(c.dialCode));
+    if (found) return found.code;
+  }
+  try {
+    const locale = Intl.DateTimeFormat().resolvedOptions().locale;
+    const region = locale.split("-")[1]?.toUpperCase();
+    if (region && COUNTRIES.some((c) => c.code === region)) return region;
+  } catch {
+    // Intl unavailable — fall through.
+  }
+  return "GB";
+};
+
+const splitExistingPhone = (
+  existingFullE164: string,
+  countryCode: string,
+): string => {
+  const country = getCountryByCode(countryCode);
+  if (!country) return "";
+  if (existingFullE164.startsWith(country.dialCode)) {
+    return existingFullE164.slice(country.dialCode.length);
+  }
+  return "";
+};
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const NAME_MIN_CHARS = 2;
 
@@ -84,7 +159,9 @@ const validate = (
 
   const nameValid = nameTrim.length >= NAME_MIN_CHARS;
   const emailValid = EMAIL_REGEX.test(emailTrim);
-  const phoneValid = isRequiredPhoneValid(phoneTrim);
+  // ORCH-0847 Phase B — phone now stored as full E.164 (PhoneInput composes
+  // dial code + local digits). Validate the composed value directly.
+  const phoneValid = isValidE164(phoneTrim);
 
   return {
     nameError:
@@ -115,6 +192,39 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
   const [nameTouched, setNameTouched] = useState<boolean>(false);
   const [emailTouched, setEmailTouched] = useState<boolean>(false);
   const [phoneTouched, setPhoneTouched] = useState<boolean>(false);
+
+  // ORCH-0847 Phase B — country-aware phone state. `buyer.phone` in CartContext
+  // stores the FULL E.164 string (e.g., "+447700900000"). The PhoneInput
+  // component manages country code + local digits separately; we compose
+  // them into the full E.164 on every change and write back to the cart.
+  const [phoneCountry, setPhoneCountry] = useState<string>(() =>
+    resolveInitialCountry(buyer.phone, null),
+  );
+  const [phoneLocal, setPhoneLocal] = useState<string>(() =>
+    splitExistingPhone(buyer.phone, resolveInitialCountry(buyer.phone, null)),
+  );
+
+  const handlePhoneLocalChange = useCallback(
+    (next: string): void => {
+      setPhoneLocal(next);
+      const country = getCountryByCode(phoneCountry);
+      const dialCode = country?.dialCode ?? "+44";
+      const composed = composeE164(dialCode, next);
+      setBuyer({ phone: composed ?? "" });
+    },
+    [phoneCountry, setBuyer],
+  );
+
+  const handlePhoneCountryChange = useCallback(
+    (nextIso: string): void => {
+      setPhoneCountry(nextIso);
+      const country = getCountryByCode(nextIso);
+      const dialCode = country?.dialCode ?? "+44";
+      const composed = composeE164(dialCode, phoneLocal);
+      setBuyer({ phone: composed ?? "" });
+    },
+    [phoneLocal, setBuyer],
+  );
 
   // ----- Keyboard pattern (lifted from EventCreatorWizard) ---------
   const [keyboardHeight, setKeyboardHeight] = useState<number>(0);
@@ -344,12 +454,16 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
 
         {/* Name */}
         <View style={styles.fieldWrap}>
+          <View style={styles.fieldLabelRow}>
+            <Text style={styles.fieldLabel}>Full name</Text>
+            <Text style={styles.required}>*</Text>
+          </View>
           <Input
             value={buyer.name}
             onChangeText={(next) => setBuyer({ name: next })}
             variant="text"
             placeholder="Full name"
-            accessibilityLabel="Full name"
+            accessibilityLabel="Full name, required"
             onFocus={requestScrollToInput}
             onBlur={() => setNameTouched(true)}
           />
@@ -360,12 +474,16 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
 
         {/* Email */}
         <View style={styles.fieldWrap}>
+          <View style={styles.fieldLabelRow}>
+            <Text style={styles.fieldLabel}>Email</Text>
+            <Text style={styles.required}>*</Text>
+          </View>
           <Input
             value={buyer.email}
             onChangeText={(next) => setBuyer({ email: next })}
             variant="email"
             placeholder="Email"
-            accessibilityLabel="Email address"
+            accessibilityLabel="Email address, required"
             onFocus={requestScrollToInput}
             onBlur={() => setEmailTouched(true)}
           />
@@ -374,20 +492,57 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
           ) : null}
         </View>
 
-        {/* Phone */}
-        <View style={styles.fieldWrap}>
-          <Input
-            value={buyer.phone}
-            onChangeText={(next) => setBuyer({ phone: next })}
-            variant="text"
-            placeholder="Mobile number"
-            accessibilityLabel="Mobile number"
-            onFocus={requestScrollToInput}
-            onBlur={() => setPhoneTouched(true)}
+        {/* Phone — ORCH-0847 Phase B PhoneInput with country picker */}
+        <View
+          style={styles.fieldWrap}
+          onTouchStart={requestScrollToInput}
+        >
+          <View style={styles.fieldLabelRow}>
+            <Text style={styles.fieldLabel}>Mobile number</Text>
+            <Text style={styles.required}>*</Text>
+          </View>
+          <PhoneInput
+            value={phoneLocal}
+            countryCode={phoneCountry}
+            onChangePhone={(next) => {
+              handlePhoneLocalChange(next);
+              setPhoneTouched(true);
+            }}
+            onChangeCountry={(nextIso) => {
+              handlePhoneCountryChange(nextIso);
+              setPhoneTouched(true);
+            }}
+            error={visibleErrors.phone}
+            disabled={false}
+            iconRenderer={(name, iconProps) => {
+              const iconName =
+                name === "chevronDown"
+                  ? "chevD"
+                  : name === "checkmark"
+                    ? "check"
+                    : name === "close"
+                      ? "close"
+                      : "search";
+              return (
+                <Icon
+                  name={iconName}
+                  size={iconProps.size}
+                  color={iconProps.color}
+                />
+              );
+            }}
+            labels={{
+              phonePlaceholder: "Mobile number",
+              countryButtonAccessibilityLabel: (name) =>
+                `Country code, ${name}, tap to change`,
+              phoneInputAccessibilityLabel: "Mobile number, required",
+              doneButton: "Done",
+              pickerTitle: "Select Country",
+              pickerSearchPlaceholder: "Search country or dial code",
+              pickerCloseAccessibilityLabel: "Close country picker",
+            }}
+            theme={PUBLIC_BUYER_PHONE_THEME}
           />
-          {visibleErrors.phone !== null ? (
-            <Text style={styles.errorText}>{visibleErrors.phone}</Text>
-          ) : null}
         </View>
 
         {/* Marketing opt-in */}
@@ -540,6 +695,23 @@ const styles = StyleSheet.create({
   // Field wrappers
   fieldWrap: {
     marginBottom: spacing.md,
+  },
+  // ORCH-0847 Phase B — labeled field header with required asterisk.
+  fieldLabelRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    marginBottom: 6,
+    gap: 4,
+  },
+  fieldLabel: {
+    fontSize: 13,
+    fontWeight: "500",
+    color: textTokens.secondary,
+  },
+  required: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: semantic.error,
   },
   errorText: {
     marginTop: 6,

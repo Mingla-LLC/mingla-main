@@ -30,6 +30,10 @@ config.resolver.extraNodeModules = {
     "packages",
     "payments-native",
   ),
+  // ORCH-0847 Phase A1 — shared country-picker phone input. Used by
+  // app-mobile auth onboarding (via thin re-export wrappers at
+  // components/onboarding/) and by mingla-business public buyer form.
+  "@mingla/phone-input": path.join(WORKSPACE_ROOT, "packages", "phone-input"),
   // CRITICAL — force single React + RN instance across app + packages.
   // The packages have their own node_modules/react (for type-checking
   // only) which at runtime would create a DUPLICATE React instance and

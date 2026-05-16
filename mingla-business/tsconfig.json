@@ -5,7 +5,9 @@
     "paths": {
       "@/*": ["./*"],
       "@mingla/event-rendering": ["../packages/event-rendering"],
-      "@mingla/event-rendering/*": ["../packages/event-rendering/*"]
+      "@mingla/event-rendering/*": ["../packages/event-rendering/*"],
+      "@mingla/phone-input": ["../packages/phone-input"],
+      "@mingla/phone-input/*": ["../packages/phone-input/*"]
     }
   },
   "include": [

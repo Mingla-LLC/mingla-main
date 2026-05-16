@@ -115,62 +115,58 @@ check(
 );
 
 // ─── S4: TicketClaimConfirmModal migration ────────────────────────────────
+//
+// [TEST-MOD-APPROVED ORCH-0847] — T-A5 through T-A9 RETIRED 2026-05-15
+//
+// ORCH-0847 [Consumer ticket purchase parity with public business page]
+// Phase C deleted TicketClaimConfirmModal.tsx entirely — it was a
+// single-ticket confirmation surface, superseded by the multi-tier
+// `TicketCartSheet` from the same Phase C. The replacement contracts are
+// enforced by:
+//   - .github/scripts/strict-grep/orch-0847-ticket-claim-confirm-modal-removed.mjs
+//     (asserts the file is GONE + no imports remain)
+//   - .github/scripts/strict-grep/orch-0847-consumer-multi-line-checkout.mjs
+//     (asserts <TicketCartSheet> is rendered in ExpandedBusinessEventSheet)
+//
+// The Stripe-RN-config contracts T-A0 through T-A4 above stay live —
+// those are the @stripe/stripe-react-native@0.65.x baseline + app.json
+// plugin entry + StripeNativeProvider props + _layout passthrough, all
+// of which ORCH-0847 left untouched.
+//
+// I-PROPOSED-CONFIRMATION-SHEET-VIA-GORHOM is preserved post-Phase-C:
+// TicketCartSheet uses @gorhom/bottom-sheet (not RN Modal). The Phase-C
+// design verdict + this checkpoint chain enforce that invariant
+// architecturally; a future regression would surface via the new
+// orch-0847-consumer-multi-line-checkout gate.
 
-const confirm = readMaybe(
-  path.join(
-    root,
-    "src/components/expandedCard/TicketClaimConfirmModal.tsx",
-  ),
+check(
+  "T-A5 [RETIRED ORCH-0847] TicketClaimConfirmModal → @gorhom/bottom-sheet import — modal deleted",
+  true,
+  "Retired per ORCH-0847 Phase C. The new TicketCartSheet uses @gorhom/bottom-sheet directly; see orch-0847-ticket-claim-confirm-modal-removed.mjs.",
 );
 
 check(
-  "T-A5 TicketClaimConfirmModal imports BottomSheet from @gorhom/bottom-sheet",
-  confirm !== null &&
-    /import\s+BottomSheet[\s\S]{0,300}?from\s+["']@gorhom\/bottom-sheet["']/.test(
-      confirm,
-    ),
-  "TicketClaimConfirmModal MUST import BottomSheet from @gorhom/bottom-sheet (migration from RN Modal to inline bottom-sheet).",
+  "T-A6 [RETIRED ORCH-0847] TicketClaimConfirmModal → no RN Modal — modal deleted",
+  true,
+  "Retired per ORCH-0847 Phase C. Modal file no longer exists.",
 );
 
 check(
-  "T-A6 TicketClaimConfirmModal does NOT import RN Modal anymore",
-  confirm !== null &&
-    !/import\s*\{[\s\S]{0,200}?\bModal\b[\s\S]{0,200}?\}\s*from\s*["']react-native["']/.test(
-      confirm,
-    ),
-  "TicketClaimConfirmModal MUST NOT import Modal from react-native (proves migration completion — RN Modal was the prior wrapper, BottomSheet replaces it).",
+  "T-A7 [RETIRED ORCH-0847] TicketClaimConfirmModal → BottomSheetBackdrop pressBehavior=\"close\" — modal deleted",
+  true,
+  "Retired per ORCH-0847 Phase C. The replacement TicketCartSheet uses the same backdrop pattern.",
 );
 
 check(
-  "T-A7 TicketClaimConfirmModal uses BottomSheetBackdrop with pressBehavior=\"close\"",
-  confirm !== null &&
-    /BottomSheetBackdrop/.test(confirm) &&
-    /pressBehavior=["']close["']/.test(confirm),
-  "TicketClaimConfirmModal MUST use BottomSheetBackdrop with pressBehavior=\"close\" so backdrop tap dismisses the sheet (matches the event-detail sheet pattern at ExpandedBusinessEventSheet.tsx).",
+  "T-A8 [RETIRED ORCH-0847] TicketClaimConfirmModal controlled-component props — modal deleted",
+  true,
+  "Retired per ORCH-0847 Phase C. TicketCartSheet has its own controlled-component contract (visible / onCancel / onCheckout).",
 );
 
 check(
-  "T-A8 TicketClaimConfirmModal preserves controlled-component props (visible / onCancel / onConfirm)",
-  confirm !== null &&
-    /visible:\s*boolean/.test(confirm) &&
-    /onCancel:\s*\(\s*\)\s*=>\s*void/.test(confirm) &&
-    /onConfirm:\s*\(\s*\)\s*=>\s*void/.test(confirm),
-  "TicketClaimConfirmModal props MUST preserve visible: boolean + onCancel: () => void + onConfirm: () => void so the ExpandedBusinessEventSheet consumer is unchanged.",
-);
-
-// ─── S5: ExpandedBusinessEventSheet consumer still renders the modal ─────
-
-const sheet = readMaybe(
-  path.join(
-    root,
-    "src/components/expandedCard/ExpandedBusinessEventSheet.tsx",
-  ),
-);
-
-check(
-  "T-A9 ExpandedBusinessEventSheet still renders <TicketClaimConfirmModal>",
-  sheet !== null && /<TicketClaimConfirmModal[\s\S]{0,50}/.test(sheet),
-  "ExpandedBusinessEventSheet MUST still render <TicketClaimConfirmModal> (the sibling-fragment pattern from ORCH-0828 should be intact post-migration).",
+  "T-A9 [RETIRED ORCH-0847] ExpandedBusinessEventSheet renders TicketClaimConfirmModal — superseded by TicketCartSheet",
+  true,
+  "Retired per ORCH-0847 Phase C. ExpandedBusinessEventSheet now renders <TicketCartSheet>; orch-0847-consumer-multi-line-checkout.mjs enforces.",
 );
 
 // ─── Report ────────────────────────────────────────────────────────────────

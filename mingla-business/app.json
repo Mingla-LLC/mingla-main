@@ -96,7 +96,7 @@
       [
         "@stripe/stripe-react-native",
         {
-          "merchantIdentifier": "merchant.com.mingla.business.v2",
+          "merchantIdentifier": "merchant.com.sethogieva.minglabusiness",
           "enableGooglePay": true
         }
       ],

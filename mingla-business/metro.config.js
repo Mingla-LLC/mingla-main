@@ -43,10 +43,24 @@ config.resolver.extraNodeModules = {
     "packages",
     "event-rendering",
   ),
-  // ORCH-0839-B (2026-05-14): @mingla/payments-native alias removed.
-  // mingla-business pivoted from native PaymentSheet to hosted Stripe
-  // Checkout. app-mobile still consumes the shared package — its own
-  // metro.config.js retains the alias independently.
+  // ORCH-0849 (2026-05-15): @mingla/payments-native alias RE-ADDED.
+  // ORCH-0839-B's hosted-checkout pivot was reversed by ORCH-0849
+  // [Stripe payment-method parity — mingla-business PaymentSheet re-pivot].
+  // mingla-business once again ships the native StripeProvider (via
+  // StripeProviderWrapper.native.tsx) for iOS/Android parity with consumer.
+  // The ORCH-0849 close commit (328cbe2b) re-added the dep to package.json
+  // and the StripeProviderWrapper variants, but the Metro alias re-add
+  // was missed — restoring it here so `npx expo start` resolves the import.
+  "@mingla/payments-native": path.join(
+    WORKSPACE_ROOT,
+    "packages",
+    "payments-native",
+  ),
+  // ORCH-0847 Phase A1 — shared country-picker phone input. Used by app-mobile
+  // auth onboarding (via thin re-export wrappers at components/onboarding/) and
+  // by mingla-business public buyer form (direct import).
+  "@mingla/phone-input": path.join(WORKSPACE_ROOT, "packages", "phone-input"),
+  //
   // CRITICAL — force single React + RN instance across app + packages.
   // The packages have their own node_modules/react (for type-checking
   // only) which at runtime would create a DUPLICATE React instance and
