@@ -117,7 +117,7 @@ const CalendarTab = ({
   const [removingEntryId, setRemovingEntryId] = useState<string | null>(null);
   const [expandedAccordionItems, setExpandedAccordionItems] = useState<
     string[]
-  >(["active"]); // Start with Active expanded
+  >(["tickets", "active"]); // Start with Tickets + Active expanded
   const [showProposeDateTimeModal, setShowProposeDateTimeModal] =
     useState(false);
   const [entryToReschedule, setEntryToReschedule] =
@@ -983,22 +983,6 @@ const CalendarTab = ({
     mainScrollContent: {
       paddingBottom: 100,
     },
-    // ORCH-0829-A: business-event tickets section
-    businessEventSection: {
-      marginBottom: 16,
-      marginHorizontal: 16,
-      borderRadius: 16,
-      backgroundColor: "rgba(255,255,255,0.04)",
-      overflow: "hidden",
-    },
-    businessEventHeader: {
-      flexDirection: "row",
-      alignItems: "center",
-      paddingHorizontal: 16,
-      paddingTop: 14,
-      paddingBottom: 10,
-      gap: 8,
-    },
     accordionHeader: {
       flexDirection: "row",
       alignItems: "center",
@@ -1766,23 +1750,49 @@ const CalendarTab = ({
 
         {/* ORCH-0829-A: Business-event ticket purchases (orders + tickets).
             Rendered above the legacy Active section so the user sees their
-            most recently purchased tickets first. No accordion (always
-            expanded if non-empty) — tickets are infrequent and high-value. */}
+            most recently purchased tickets first.
+            ORCH-0848: collapsible accordion mirroring Active/Archive toggle. */}
         {businessOrders.length > 0 && (
-          <View style={styles.businessEventSection}>
-            <View style={styles.businessEventHeader}>
-              <Text style={styles.accordionTitle}>Tickets</Text>
-              <Text style={styles.accordionCount}>
-                ({businessOrders.length})
-              </Text>
-            </View>
-            {businessOrders.map((entry) => (
-              <BusinessEventCalendarRow
-                key={`business:${entry.orderId}`}
-                entry={entry}
+          <>
+            <TouchableOpacity
+              style={styles.accordionHeader}
+              onPress={() =>
+                setExpandedAccordionItems((prev) =>
+                  prev.includes("tickets")
+                    ? prev.filter((i) => i !== "tickets")
+                    : [...prev, "tickets"]
+                )
+              }
+              activeOpacity={0.7}
+            >
+              <View style={styles.accordionTitleContainer}>
+                <Text style={styles.accordionTitle}>Tickets</Text>
+                <Text style={styles.accordionCount}>
+                  ({businessOrders.length})
+                </Text>
+              </View>
+              <Icon
+                name={
+                  expandedAccordionItems.includes("tickets")
+                    ? "chevron-down"
+                    : "chevron-forward"
+                }
+                size={20}
+                color="#9ca3af"
               />
-            ))}
-          </View>
+            </TouchableOpacity>
+
+            {expandedAccordionItems.includes("tickets") && (
+              <View style={styles.accordionContentContainer}>
+                {businessOrders.map((entry) => (
+                  <BusinessEventCalendarRow
+                    key={`business:${entry.orderId}`}
+                    entry={entry}
+                  />
+                ))}
+              </View>
+            )}
+          </>
         )}
 
         {/* Active Section */}
