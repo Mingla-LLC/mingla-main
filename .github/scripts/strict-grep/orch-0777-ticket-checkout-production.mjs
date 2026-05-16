@@ -28,10 +28,13 @@ assertIncludes(
   "createTicketCheckout",
   "free checkout must call the production checkout function",
 );
+// ORCH-0847 Phase B replaced isRequiredPhoneValid with isValidE164 (still
+// enforces mandatory phone — both server + client validate against the same
+// E.164 regex). The contract is unchanged; only the validator name moved.
 assertIncludes(
   "mingla-business/app/checkout/[eventId]/buyer.tsx",
-  "isRequiredPhoneValid",
-  "buyer phone must be mandatory",
+  "isValidE164",
+  "buyer phone must be mandatory (validated via E.164 regex)",
 );
 assertNotIncludes(
   "mingla-business/app/checkout/[eventId]/buyer.tsx",

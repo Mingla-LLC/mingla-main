@@ -942,6 +942,50 @@ jobs:
       - name: Run ORCH-0849 allowlist gate
         run: node .github/scripts/strict-grep/i-stripe-pm-method-allowlist.mjs
 
+  orch-0847-consumer-multi-line-checkout:
+    name: "ORCH-0847: consumer cart sheet supports multi-line checkout"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0847 multi-line checkout gate
+        run: node .github/scripts/strict-grep/orch-0847-consumer-multi-line-checkout.mjs
+
+  orch-0847-public-phone-field-e164:
+    name: "ORCH-0847: public buyer phone field uses E.164 composer"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0847 phone-E.164 gate
+        run: node .github/scripts/strict-grep/orch-0847-public-phone-field-e164.mjs
+
+  orch-0847-marketing-opt-in-default-unchecked:
+    name: "ORCH-0847: consumer cart marketing opt-in defaults unchecked"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0847 marketing opt-in gate
+        run: node .github/scripts/strict-grep/orch-0847-marketing-opt-in-default-unchecked.mjs
+
+  orch-0847-ticket-claim-confirm-modal-removed:
+    name: "ORCH-0847: TicketClaimConfirmModal removed (consumer cart sheet supersedes)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0847 modal-removed gate
+        run: node .github/scripts/strict-grep/orch-0847-ticket-claim-confirm-modal-removed.mjs
+
   regression-test-backfill-warning:
     name: "I-REGRESSION-TEST-BACKFILL-WARN: modified source files without sibling test (informational, ORCH-0840)"
     runs-on: ubuntu-latest

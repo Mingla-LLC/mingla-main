@@ -64,44 +64,60 @@ const calRow = readMaybe(
 );
 
 // ─── Confirmation modal contracts ──────────────────────────────────────────
+//
+// [TEST-MOD-APPROVED ORCH-0847] — T-A1 through T-A5 RETIRED 2026-05-15
+//
+// ORCH-0847 [Consumer ticket purchase parity with public business page]
+// Phase C replaced the single-ticket TicketClaimConfirmModal with the
+// multi-tier TicketCartSheet. The five retired checks below asserted that
+// the old modal exists, is imported, holds `pendingClaim` state, renders
+// in ExpandedBusinessEventSheet, and is wired through `setPendingClaim`
+// from the buy callbacks. NONE of those contracts hold anymore — by design.
+//
+// The replacement contracts (TicketCartSheet exists + is wired + uses
+// useTicketCart + handles multi-line lines[]) are now enforced by:
+//   - .github/scripts/strict-grep/orch-0847-consumer-multi-line-checkout.mjs
+//   - .github/scripts/strict-grep/orch-0847-ticket-claim-confirm-modal-removed.mjs
+//   - .github/scripts/strict-grep/orch-0847-marketing-opt-in-default-unchecked.mjs
+//
+// The post-success calendar-invalidation + polling contracts (T-A6 through
+// T-A15 below) STILL HOLD and stay live — they survived the Phase C rewire
+// and continue to guard the consumer calendar union from ORCH-0829-A.
 
 check(
-  "T-A1 TicketClaimConfirmModal exists with default export",
-  modal !== null && /export default TicketClaimConfirmModal/.test(modal),
-  "src/components/expandedCard/TicketClaimConfirmModal.tsx MUST exist with a default export.",
+  "T-A1 [RETIRED ORCH-0847] TicketClaimConfirmModal contract — superseded by TicketCartSheet",
+  true,
+  "Retired per ORCH-0847 Phase C. See orch-0847-ticket-claim-confirm-modal-removed.mjs for the replacement deletion gate.",
 );
 
 check(
-  "T-A2 ExpandedBusinessEventSheet imports TicketClaimConfirmModal",
-  sheet !== null &&
-    /import\s+TicketClaimConfirmModal\s+from\s+["']\.\/TicketClaimConfirmModal["']/.test(
-      sheet,
-    ),
-  "ExpandedBusinessEventSheet.tsx MUST import TicketClaimConfirmModal.",
+  "T-A2 [RETIRED ORCH-0847] ExpandedBusinessEventSheet → TicketClaimConfirmModal import — superseded by → TicketCartSheet",
+  true,
+  "Retired per ORCH-0847 Phase C. ExpandedBusinessEventSheet now imports TicketCartSheet; orch-0847-consumer-multi-line-checkout.mjs enforces.",
 );
 
 check(
-  "T-A3 ExpandedBusinessEventSheet has pendingClaim state",
-  sheet !== null &&
-    /const\s+\[pendingClaim,\s*setPendingClaim\]\s*=\s*useState/.test(sheet),
-  "ExpandedBusinessEventSheet.tsx MUST declare `[pendingClaim, setPendingClaim] = useState<...>`.",
+  "T-A3 [RETIRED ORCH-0847] pendingClaim state — superseded by cartSheetVisible + initialTicketTypeId",
+  true,
+  "Retired per ORCH-0847 Phase C. The cart sheet manages its own state via useTicketCart; the parent holds visibility + seed only.",
 );
 
 check(
-  "T-A4 ExpandedBusinessEventSheet renders <TicketClaimConfirmModal>",
-  sheet !== null && /<TicketClaimConfirmModal[\s\S]{0,800}?\/>/.test(sheet),
-  "ExpandedBusinessEventSheet.tsx MUST render <TicketClaimConfirmModal /> in its return.",
+  "T-A4 [RETIRED ORCH-0847] <TicketClaimConfirmModal /> render — superseded by <TicketCartSheet />",
+  true,
+  "Retired per ORCH-0847 Phase C. orch-0847-consumer-multi-line-checkout.mjs enforces TicketCartSheet render.",
 );
 
 check(
-  "T-A5 callbacks set pendingClaim (no direct handleBuy in onBuyTicket / onClaimFreeTicket)",
-  sheet !== null &&
-    /onBuyTicket[\s\S]{0,400}?setPendingClaim/.test(sheet) &&
-    /onClaimFreeTicket[\s\S]{0,400}?setPendingClaim/.test(sheet) &&
-    !/onBuyTicket[\s\S]{0,150}?handleBuy\(/.test(sheet) &&
-    !/onClaimFreeTicket[\s\S]{0,150}?handleBuy\(/.test(sheet),
-  "ExpandedBusinessEventSheet onBuyTicket + onClaimFreeTicket MUST call setPendingClaim (NOT handleBuy directly).",
+  "T-A5 [RETIRED ORCH-0847] callbacks setPendingClaim — superseded by setInitialTicketTypeId + setCartSheetVisible",
+  true,
+  "Retired per ORCH-0847 Phase C. onBuyTicket / onClaimFreeTicket now seed the cart sheet instead of staging a single-ticket pending claim.",
 );
+
+// I-PROPOSED-TICKET-CLAIM-CONFIRMATION-REQUIRED is preserved post-Phase-C
+// via a NEW mechanism: TicketCartSheet IS the confirmation step (review
+// cart + opt-in + buyer recap + explicit Continue CTA). The invariant's
+// intent (no silent claim) holds; the surface is richer.
 
 // ─── Post-success invalidation + polling ───────────────────────────────────
 
