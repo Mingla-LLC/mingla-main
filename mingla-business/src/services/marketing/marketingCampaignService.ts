@@ -36,6 +36,9 @@ export interface DraftInput {
   audience_id: string;
   name: string;
   channel_payload: CampaignChannelPayload;
+  /** Optional template_id (ORCH-0863) — populates marketing_campaigns.template_id
+   *  on first save when the composer was opened via `?template={id}`. */
+  template_id?: string;
 }
 
 export interface ScheduleInput {
@@ -56,17 +59,24 @@ export async function createDraft(
   // marketing_campaigns.id column. The Hermes-safe `randomId()` util
   // returns a non-UUID-shaped string on RN when global `crypto` is absent,
   // which the uuid column rejects with "invalid input syntax for type uuid".
+  if (input.template_id !== undefined) {
+    assertUuid(input.template_id, "createDraft.template_id");
+  }
+  const insertPayload: Record<string, unknown> = {
+    account_id: input.account_id,
+    brand_id: input.brand_id,
+    audience_id: input.audience_id,
+    name: input.name,
+    channel,
+    channel_payload: input.channel_payload,
+    status: "draft" as CampaignStatus,
+  };
+  if (input.template_id !== undefined) {
+    insertPayload.template_id = input.template_id;
+  }
   const { data, error } = await supabase
     .from("marketing_campaigns")
-    .insert({
-      account_id: input.account_id,
-      brand_id: input.brand_id,
-      audience_id: input.audience_id,
-      name: input.name,
-      channel,
-      channel_payload: input.channel_payload,
-      status: "draft" as CampaignStatus,
-    })
+    .insert(insertPayload)
     .select(
       "id, account_id, brand_id, audience_id, template_id, name, channel, channel_payload, status, scheduled_for, sent_at, recipient_count, created_at, updated_at",
     )

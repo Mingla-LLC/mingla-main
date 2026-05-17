@@ -310,3 +310,120 @@ describe("marketingAudienceService — consent filtering (T-03 + T-04)", () => {
     expect(result.rows[0]?.consent.email_marketing_ok).toBe(false);
   });
 });
+
+// ===========================================================================
+// T-02 (ORCH-0863) — listAudiencesForAccount virtual-row discovery
+// ===========================================================================
+
+import { listAudiencesForAccount } from "../marketingAudienceService";
+
+describe("listAudiencesForAccount (T-02 ORCH-0863 virtual-row discovery)", () => {
+  const ACCOUNT_UUID = "00000000-0000-0000-0000-0000000000aa";
+  const BRAND_UUID = "00000000-0000-0000-0000-0000000000b1";
+  const EVENT_UUID_A = "00000000-0000-0000-0000-0000000000e1";
+  const EVENT_UUID_B = "00000000-0000-0000-0000-0000000000e2";
+
+  beforeEach(() => {
+    (supabase.from as jest.Mock).mockReset();
+  });
+
+  it("merges existing real rows with virtual rows for every brand/event with paid orders", async () => {
+    // Mock chain — 4 .from() calls in order:
+    //   1. marketing_audiences SELECT (1 existing event row)
+    //   2. marketing_campaigns SELECT (last_used_at lookup)
+    //   3. orders SELECT with events!inner join (2 events under 1 brand)
+    //   4. brands SELECT (brand name)
+    (supabase.from as jest.Mock)
+      // Call 1: marketing_audiences
+      .mockReturnValueOnce({
+        select: () => ({
+          eq: () => ({
+            data: [
+              {
+                id: "00000000-0000-0000-0000-000000000a01",
+                brand_id: BRAND_UUID,
+                query_definition: {
+                  kind: "event_buyers",
+                  event_id: EVENT_UUID_A,
+                  payment_statuses: ["paid", "partial_refund"],
+                },
+              },
+            ],
+            error: null,
+          }),
+        }),
+      })
+      // Call 2: marketing_campaigns last-used lookup
+      .mockReturnValueOnce({
+        select: () => ({
+          eq: () => ({
+            in: () => ({
+              order: () => ({
+                data: [
+                  {
+                    audience_id: "00000000-0000-0000-0000-000000000a01",
+                    created_at: "2026-05-13T15:25:00Z",
+                  },
+                ],
+                error: null,
+              }),
+            }),
+          }),
+        }),
+      })
+      // Call 3: orders SELECT with events!inner
+      .mockReturnValueOnce({
+        select: () => ({
+          in: () => ({
+            data: [
+              {
+                event_id: EVENT_UUID_A,
+                events: { id: EVENT_UUID_A, title: "Event Alpha", brand_id: BRAND_UUID },
+              },
+              {
+                event_id: EVENT_UUID_B,
+                events: { id: EVENT_UUID_B, title: "Event Beta", brand_id: BRAND_UUID },
+              },
+            ],
+            error: null,
+          }),
+        }),
+      })
+      // Call 4: brands SELECT
+      .mockReturnValueOnce({
+        select: () => ({
+          in: () => ({
+            data: [{ id: BRAND_UUID, name: "Rooftop Club" }],
+            error: null,
+          }),
+        }),
+      });
+
+    const entries = await listAudiencesForAccount({ account_id: ACCOUNT_UUID });
+
+    // Should return: 1 brand_buyers (virtual) + 2 event_buyers (1 real + 1 virtual) = 3 entries.
+    expect(entries).toHaveLength(3);
+
+    // The brand-rollup entry should be virtual (no existing brand_buyers row).
+    const brandEntry = entries.find((e) => e.kind === "brand_buyers");
+    expect(brandEntry).toBeDefined();
+    expect(brandEntry?.audience_id).toBeNull();
+    expect(brandEntry?.brand_id).toBe(BRAND_UUID);
+    expect(brandEntry?.brand_name).toBe("Rooftop Club");
+    expect(brandEntry?.display_name).toContain("Rooftop Club");
+
+    // Event A entry should be REAL (has an audience row).
+    const eventA = entries.find(
+      (e) => e.kind === "event_buyers" && e.event_id === EVENT_UUID_A,
+    );
+    expect(eventA?.audience_id).toBe("00000000-0000-0000-0000-000000000a01");
+    expect(eventA?.last_used_at).toBe("2026-05-13T15:25:00Z");
+
+    // Event B entry should be VIRTUAL.
+    const eventB = entries.find(
+      (e) => e.kind === "event_buyers" && e.event_id === EVENT_UUID_B,
+    );
+    expect(eventB?.audience_id).toBeNull();
+    expect(eventB?.last_used_at).toBeNull();
+  });
+});

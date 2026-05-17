@@ -246,6 +246,66 @@ export interface AudienceReachSummary {
 }
 
 // ---------------------------------------------------------------------------
+// Phase B — Marketing → Overview tab snapshot (ORCH-0863)
+// ---------------------------------------------------------------------------
+// Funnel formulas pinned in SPEC §6.1.4:
+//   sent      = COUNT(messages WHERE status IN ('sent','delivered','clicked','preview_skipped'))
+//   delivered = COUNT(messages WHERE status IN ('delivered','clicked'))
+//   clicked   = COUNT(DISTINCT message_id from marketing_clicks WHERE clicked_at IS NOT NULL)
+//   failed    = COUNT(messages WHERE status IN ('failed','bounced'))
+// All counts windowed to the last 30 days.
+
+export interface MarketingOverviewFunnel {
+  sent: number;
+  delivered: number;
+  clicked: number;
+  failed: number;
+}
+
+export interface MarketingOverviewRecentCampaign {
+  id: string;
+  name: string;
+  status: CampaignStatus;
+  sent_at: string | null;
+  scheduled_for: string | null;
+  recipient_count: number | null;
+  created_at: string;
+}
+
+export interface MarketingOverviewSnapshot {
+  window_days: 30;
+  campaigns_sent_count: number;
+  funnel: MarketingOverviewFunnel;
+  recent_campaigns: MarketingOverviewRecentCampaign[];
+}
+
+// ---------------------------------------------------------------------------
+// Phase B — Audiences tab unified list entry (ORCH-0863)
+// ---------------------------------------------------------------------------
+// `audience_id` is null for "virtual" entries — discoverable brand/event
+// audiences that have no `marketing_audiences` row yet. Tap-handler lazily
+// materializes the row via ensureBrandBuyersAudience / ensureEventBuyersAudience
+// before navigating to the composer. Real and virtual rows render identically.
+
+export type AudienceListEntryKind = "brand_buyers" | "event_buyers";
+
+export interface AudienceListEntry {
+  /** Stable client-side key: `${kind}:${target_id}`. */
+  client_key: string;
+  kind: AudienceListEntryKind;
+  /** UUID of the marketing_audiences row IF it exists in DB. Null when virtual. */
+  audience_id: string | null;
+  brand_id: string;
+  brand_name: string;
+  /** For event_buyers; null for brand_buyers. */
+  event_id: string | null;
+  /** Display name shown on the card (e.g., "All buyers — Sunset Rooftop"). */
+  display_name: string;
+  /** Most recent marketing_campaigns.created_at using this audience_id; null when never used or virtual. */
+  last_used_at: string | null;
+}
+
+// ---------------------------------------------------------------------------
 // Type guards (runtime discriminator narrowing — I-PROPOSED-BP/BQ)
 // ---------------------------------------------------------------------------
 
