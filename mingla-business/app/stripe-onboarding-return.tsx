@@ -8,6 +8,7 @@
  * into the app.
  */
 
+// orch-strict-grep-allow safearea-on-fullscreen-routes — HTTPS-relay route that immediately redirects (window.location.href or router.replace) on mount; brief loader only, no operator-visible UI to bleed
 import React, { useEffect } from "react";
 import { Platform, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";

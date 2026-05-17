@@ -190,9 +190,14 @@ export const createServerDraft = async (
     legacyLocalDraftId,
   );
 
+  // ORCH-0859 REWORK 3 (events-type-filter audit): explicitly set
+  // event_type='event' on the insert payload. DB default is 'event' per
+  // information_schema probe so this is a no-op today, but pinning it
+  // here future-proofs against the default ever changing and makes the
+  // event vs trip ownership explicit at the call site.
   const { data, error } = await supabase
     .from("events")
-    .insert(insertPayload)
+    .insert({ ...insertPayload, event_type: "event" })
     .select(EVENT_DRAFT_SELECT)
     .single();
 
@@ -203,10 +208,12 @@ export const createServerDraft = async (
 export const fetchDraftsForBrand = async (
   brandId: string,
 ): Promise<DraftEvent[]> => {
+  // ORCH-0859 REWORK 3 (events-type-filter audit): event-only drafts list.
   const { data, error } = await supabase
     .from("events")
     .select(EVENT_DRAFT_SELECT)
     .eq("brand_id", brandId)
+    .eq("event_type", "event")
     .eq("status", "draft")
     .is("deleted_at", null)
     .order("updated_at", { ascending: false });
@@ -218,10 +225,12 @@ export const fetchDraftsForBrand = async (
 export const fetchDraftById = async (
   draftId: string,
 ): Promise<DraftEvent | null> => {
+  // ORCH-0859 REWORK 3 (events-type-filter audit): single event-draft read.
   const { data, error } = await supabase
     .from("events")
     .select(EVENT_DRAFT_SELECT)
     .eq("id", draftId)
+    .eq("event_type", "event")
     .eq("status", "draft")
     .is("deleted_at", null)
     .maybeSingle();
@@ -238,10 +247,13 @@ interface ExistingDraftSaveContext {
 const resolveMissingDraftLifecycle = async (
   draftId: string,
 ): Promise<ServerDraftLifecycleError> => {
+  // ORCH-0859 REWORK 3 (events-type-filter audit): lifecycle check is for
+  // event-only drafts. Trip-draft lifecycle is handled by tripsService.
   const { data, error } = await supabase
     .from("events")
     .select("status,deleted_at")
     .eq("id", draftId)
+    .eq("event_type", "event")
     .maybeSingle();
 
   if (error !== null) throw error;
@@ -258,10 +270,12 @@ const resolveMissingDraftLifecycle = async (
 const fetchExistingDraftSaveContext = async (
   draftId: string,
 ): Promise<ExistingDraftSaveContext> => {
+  // ORCH-0859 REWORK 3 (events-type-filter audit): event-draft save context.
   const { data, error } = await supabase
     .from("events")
     .select("theme,currency")
     .eq("id", draftId)
+    .eq("event_type", "event")
     .eq("status", "draft")
     .is("deleted_at", null)
     .maybeSingle();
@@ -287,10 +301,13 @@ export const autosaveServerDraft = async (
     draft.clientRevision ?? 0,
   );
 
+  // ORCH-0859 REWORK 3 (events-type-filter audit): event-draft UPDATE
+  // must not accidentally write to a trip row that shares an id space.
   const { data, error } = await supabase
     .from("events")
     .update(updatePayload)
     .eq("id", draft.id)
+    .eq("event_type", "event")
     .eq("status", "draft")
     .is("deleted_at", null)
     .select(EVENT_DRAFT_SELECT)

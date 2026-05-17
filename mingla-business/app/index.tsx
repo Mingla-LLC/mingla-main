@@ -1,3 +1,4 @@
+// orch-strict-grep-allow safearea-on-fullscreen-routes — Index renders BusinessWelcomeScreen (handles SafeArea internally via SafeAreaView at BusinessWelcomeScreen.tsx:463) or brief boot ActivityIndicator; intentional thin wrapper
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { Redirect } from "expo-router";
 import AppRoutes from "../src/config/routes";

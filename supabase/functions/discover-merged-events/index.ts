@@ -342,6 +342,15 @@ serve(async (req: Request): Promise<Response> => {
     )
     .is("deleted_at", null)
     .eq("visibility", "public")
+    // ORCH-0859 (Tr2): exclude trip rows from the consumer event feed. Trips
+    // surface to consumers in C1 [Consumer Discover Trips Tab] via a
+    // dedicated query; until C1 ships, leaking trips into the events feed
+    // would be jarring (event UX assumes single-date single-tier party-style
+    // gatherings; trips are multi-day multi-tier multi-day itineraries).
+    // Pre-M0 the events table only held event_type='event' rows so this
+    // filter was implicit; post-M0 we make it explicit. See
+    // I-1.2-UNIFIED-EVENT-TYPE invariant + investigation DISCOVERY-3.
+    .eq("event_type", "event")
     .in("status", ["scheduled", "live"])
     // ORCH-0824 hotfix-5b: tolerate legacy CityPicker values that
     // include state/country (e.g. "Raleigh, NC, USA") by ALSO matching

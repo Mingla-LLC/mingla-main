@@ -63,7 +63,20 @@ const writePublishedEventCaches = (
       return [published.event, ...next];
     },
   );
-  queryClient.invalidateQueries({ queryKey: businessEventKeys.detail(published.event.id) });
+  // ORCH-0862 / F-4 (Symptom A real root cause): do NOT invalidate the
+  // `detail(eventId)` key after just writing it via setQueryData above. On
+  // screens with an active subscriber to that key (the event-detail screen
+  // via useManagedEventRoute → useBusinessEventById), the invalidate would
+  // trigger a refetch that races with the cache write and cascades through
+  // every other useEffect on the screen — observed live as a 4-second
+  // 82-concurrent-HTTP-request storm followed by JS bridge stall (sim
+  // syslog evidence /tmp/orch0862-rework-symptomA-syslog.txt timestamps
+  // 14:46:22–26 on 2026-05-17). setQueryData ABOVE already wrote
+  // authoritative data from the mutation's return value — refetching the
+  // same row is redundant. The list-key invalidate below still fires
+  // because hub-list/home-list consumers may benefit from a fresh sort
+  // order if a new event landed; that key write is shape-only (filter +
+  // prepend) and the refetch is the safety net.
   queryClient.invalidateQueries({ queryKey: businessEventKeys.list(brandId) });
   queryClient.invalidateQueries({ queryKey: publicEventKeys.detailById(published.event.id) });
   queryClient.invalidateQueries({

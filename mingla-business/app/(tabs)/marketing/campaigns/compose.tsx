@@ -80,6 +80,7 @@ import {
   getCampaign,
   updateDraft,
 } from "../../../../src/services/marketing/marketingCampaignService";
+import { getTemplate } from "../../../../src/services/marketing/marketingTemplateService";
 import { supabase } from "../../../../src/services/supabase";
 import type { MarketingChannelKind } from "../../../../src/components/marketing/ChannelTabs";
 import type { PreviewVariables } from "../../../../src/services/marketing/marketingRenderingService";
@@ -89,7 +90,7 @@ import { useAuth } from "../../../../src/context/AuthContext";
 export default function ComposeCampaignRoute(): React.ReactElement {
   const router = useRouter();
   const navigation = useNavigation();
-  const params = useLocalSearchParams<{ audience?: string; draft?: string }>();
+  const params = useLocalSearchParams<{ audience?: string; draft?: string; template?: string }>();
   // Memoize so the pre-fill useEffect's dep array doesn't re-trigger on every
   // render — `parseAudienceParam` returns a new object literal each call (QA
   // finding P2-5).
@@ -101,6 +102,10 @@ export default function ComposeCampaignRoute(): React.ReactElement {
     [params.audience],
   );
   const draftId = typeof params.draft === "string" ? params.draft : null;
+  const templateId =
+    typeof params.template === "string" && params.template.length > 0
+      ? params.template
+      : null;
 
   const { user } = useAuth();
   const accountId = user?.id ?? null;
@@ -180,6 +185,33 @@ export default function ComposeCampaignRoute(): React.ReactElement {
       cancelled = true;
     };
   }, [audienceParam, accountId, brandId, audienceId]);
+
+  // Hydrate from ?template=[id] (ORCH-0863). Draft restore wins when both
+  // are present; only fires when there's no in-flight draft hydration.
+  useEffect(() => {
+    if (templateId === null || draftId !== null) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const tmpl = await getTemplate(templateId);
+        if (cancelled || tmpl === null) return;
+        setSubject(tmpl.subject_template ?? "");
+        setBody(tmpl.body_template);
+        setIsDirty(true);
+      } catch (err) {
+        if (!cancelled) {
+          setErrorBanner(
+            err instanceof Error
+              ? err.message
+              : "Couldn't load template — start fresh below.",
+          );
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [templateId, draftId]);
 
   // Hydrate draft from ?draft=[id].
   useEffect(() => {
@@ -289,6 +321,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
             audience_id: audienceId,
             name: subject.length > 0 ? subject : "Untitled campaign",
             channel_payload: payload,
+            ...(templateId !== null ? { template_id: templateId } : {}),
           });
           setCampaignId(row.id);
         } else {
@@ -306,7 +339,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
         );
       }
     },
-    [accountId, brandId, audienceId, subject, body, embeddedEvents, campaignId],
+    [accountId, brandId, audienceId, subject, body, embeddedEvents, campaignId, templateId],
   );
 
   useComposerDraft({

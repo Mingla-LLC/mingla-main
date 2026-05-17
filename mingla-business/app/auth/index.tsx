@@ -1,3 +1,4 @@
+// orch-strict-grep-allow safearea-on-fullscreen-routes — BusinessWelcomeScreen renders its own SafeAreaView internally (BusinessWelcomeScreen.tsx:463 with edges={["top", "left", "right"]}); wrapping at the route level would double-pad
 import { useEffect } from "react";
 import { useRouter } from "expo-router";
 import BusinessWelcomeScreen from "../../src/components/auth/BusinessWelcomeScreen";

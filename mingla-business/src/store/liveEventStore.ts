@@ -153,6 +153,18 @@ export interface LiveEvent {
   publishedAt: string;                 // ISO 8601
   cancelledAt: string | null;          // populated when status = "cancelled" (Cycle 9)
   endedAt: string | null;              // populated when last event date passes (Cycle 13)
+  /**
+   * ORCH-0865 REWORK 5: discriminator for event-vs-trip-vs-experience
+   * routing. Optional on the type for backward-compat with persisted
+   * pre-Tr2 LiveEvents (those are all event_type='event' by definition
+   * because liveEventConverter only writes events; pre-Tr2 data simply
+   * lacked the field). Required to be set on every row produced by
+   * fetchBusinessEventsForBrand so the tap-handler `routeForEventRow`
+   * helper can dispatch correctly. Missing value is interpreted as
+   * 'event' by routeForEventRowDefensive — safe default for legacy
+   * stored rows.
+   */
+  event_type?: "event" | "experience" | "trip";
   // Content snapshot (frozen from DraftEvent at publish)
   name: string;
   description: string;
@@ -349,8 +361,16 @@ const withProviderMetadataDefaults = (event: LiveEvent): LiveEvent => ({
 const persistOptions: PersistOptions<LiveEventState, PersistedState> = {
   name: "mingla-business.liveEvent.v1",
   storage: createJSONStorage(() => AsyncStorage),
-  partialize: (state): PersistedState => ({ events: state.events }),
-  version: 4,
+  // ORCH-0862 / DISCOVERY-1 — partialize now returns an empty events array
+  // so server snapshots NEVER persist to AsyncStorage. Compliant with
+  // I-PROPOSED-J (ACTIVE post-ORCH-0742 [Zustand persist no server
+  // snapshots]). Cold start re-hydrates the in-memory store from React
+  // Query via useBusinessEventsForBrand on home/hub mount; no stale
+  // status='scheduled' rows can survive a server-side cancel on another
+  // device. Storage key name retained (`mingla-business.liveEvent.v1`)
+  // so the v4→v5 migrator runs on existing users.
+  partialize: (_state): PersistedState => ({ events: [] }),
+  version: 5,
   migrate: (persistedState, version): PersistedState => {
     if (version < 1) {
       return { events: [] };
@@ -369,6 +389,13 @@ const persistOptions: PersistOptions<LiveEventState, PersistedState> = {
     if (version === 3) {
       const v3 = persistedState as { events: LiveEvent[] };
       return { events: v3.events.map(withProviderMetadataDefaults) };
+    }
+    if (version === 4) {
+      // ORCH-0862 — v4 → v5: drop the persisted server snapshot.
+      // React Query re-hydrates in-memory state via
+      // useBusinessEventsForBrand on next mount. Any v4 events array is
+      // discarded; no data loss because the rows live on the server.
+      return { events: [] };
     }
     return persistedState as PersistedState;
   },

@@ -193,6 +193,7 @@ async function getEventCountsByBrandIds(
 ): Promise<Map<string, number>> {
   if (brandIds.length === 0) return new Map();
 
+  // orch-strict-grep-allow events-type-filter — getEventCountsByBrandIds is intentionally type-agnostic ("does this brand have ANY content"); operator decision pending per ORCH-0859 REWORK 3 dispatch (whether trips should count as "events" for brand-card badges or get their own count)
   const { data, error } = await supabase
     .from("events")
     .select("brand_id")
@@ -392,14 +393,29 @@ export async function updateBrand(
  * Per SPEC §3.2.7. NEVER swallows error per Const #3.
  */
 export async function softDeleteBrand(brandId: string): Promise<SoftDeleteResult> {
-  // Step 1 — count scheduled OR live events. DB enum is
-  // draft/scheduled/live/ended/cancelled; "upcoming" is a UI bucket only.
+  // Step 1 — count scheduled OR live events whose end_at is in the future.
+  // DB enum is draft/scheduled/live/ended/cancelled; "upcoming" is a UI bucket.
+  //
+  // ORCH-0862 / DISCOVERY-7 — date-aware filter. Past-dated rows that still
+  // carry status='scheduled' (because nothing auto-flips them to 'ended') were
+  // wrongly blocking delete on brands whose home screen showed "0 events".
+  // Aligns with the ORCH-0850 [End-not-start parity systemic] canonical
+  // lifecycle helper which uses effective end_at, not start_at.
+  //
+  // The event_dates!inner join is safe because scheduled/live events always
+  // have at least one event_dates row per the publish-flow validation —
+  // verified via MCP probe 2026-05-17: zero scheduled/live events are
+  // orphan-without-dates (only cancelled + draft orphans exist, neither
+  // blocks delete).
+  const nowIso = new Date().toISOString();
+  // orch-strict-grep-allow events-type-filter — brand-delete blocker count is intentionally type-agnostic (a brand with scheduled trips should also block delete); operator-pending decision per ORCH-0859 REWORK 3 dispatch on whether to split into separate event + trip blocker counts
   const { count, error: countError } = await supabase
     .from("events")
-    .select("id", { count: "exact", head: true })
+    .select("id, event_dates!inner(end_at)", { count: "exact", head: true })
     .eq("brand_id", brandId)
     .in("status", BRAND_DELETE_BLOCKING_EVENT_STATUSES)
-    .is("deleted_at", null);
+    .is("deleted_at", null)
+    .gt("event_dates.end_at", nowIso);
 
   if (countError) throw countError;
 
@@ -419,7 +435,8 @@ export async function softDeleteBrand(brandId: string): Promise<SoftDeleteResult
   // ORCH-0734 REWORK. The .select() chain is safe post-ORCH-0734-v1: the
   // "Account owner can select own brands" policy admits the post-update
   // row regardless of deleted_at state.
-  const nowIso = new Date().toISOString();
+  // ORCH-0862 — reuses Step 1's `nowIso` (captured a few ms earlier);
+  // sub-second drift is acceptable for the `deleted_at` audit timestamp.
   const { data, error: updateError } = await supabase
     .from("brands")
     .update({ deleted_at: nowIso })

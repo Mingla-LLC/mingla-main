@@ -1,0 +1,74 @@
+# ORCH-0859 [Tr2 Minimum Viable Trip] REWORK 4 — events-tab no-trip-leak canonical gate.
+#
+# Tester RETEST 4 surfaced that source-grep + DB probes are insufficient to
+# verify the events tab doesn't render trips. This flow exercises the
+# actual operator-visible surface on iOS sim and asserts no trip card
+# appears in any of the 5 filters (All / Live / Upcoming / Drafts / Past).
+#
+# Run with:
+#   ~/.maestro/bin/maestro --device <iOS-sim-UDID> test mingla-business/maestro/tr2-events-tab-no-trip-leak.yaml
+# (Java via brew openjdk: export PATH="/opt/homebrew/opt/openjdk/bin:$PATH")
+#
+# Expected: every filter shows zero cards titled "The DC Adventure" (or any
+# trip title). If a trip card appears in any filter, the flow fails the
+# assertEvent step and prints which filter leaked.
+#
+# This flow becomes the canonical RETEST gate for any future Tr2 event-tab
+# changes per the RETEST 4 verdict-methodology improvement.
+
+appId: com.sethogieva.minglabusiness
+---
+- launchApp:
+    clearKeychain: false
+    clearState: false
+
+# Assume operator is already signed in to travelbrand for canonical run.
+# Navigate to Hub.
+- tapOn:
+    id: "tab-bar-hub"
+    retryTapIfNoChange: true
+    optional: true
+
+# Navigate to Events sub-tab.
+- tapOn:
+    text: "Events"
+    retryTapIfNoChange: true
+
+# ---------- Filter: All ----------
+- tapOn:
+    text: "All"
+    optional: true
+- assertNotVisible:
+    text: "The DC Adventure"
+
+# ---------- Filter: Live ----------
+- tapOn:
+    text: "Live"
+- assertNotVisible:
+    text: "The DC Adventure"
+
+# ---------- Filter: Upcoming ----------
+- tapOn:
+    text: "Upcoming"
+- assertNotVisible:
+    text: "The DC Adventure"
+
+# ---------- Filter: Drafts ----------
+- tapOn:
+    text: "Drafts"
+- assertNotVisible:
+    text: "The DC Adventure"
+
+# ---------- Filter: Past ----------
+- tapOn:
+    text: "Past"
+- assertNotVisible:
+    text: "The DC Adventure"
+
+# Cross-check positive case: switch to Trips sub-tab and confirm the
+# trip DOES appear there (proves the data exists; failure = trip
+# missing everywhere = test setup issue, not leak fix issue).
+- tapOn:
+    text: "Trips"
+- assertVisible:
+    text: "The DC Adventure"

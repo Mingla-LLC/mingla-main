@@ -37,6 +37,9 @@ import {
   type TicketBodyInput,
 } from "../_shared/email/index.ts";
 import { buildTicketPdf } from "../_shared/ticketPdf.ts";
+// ORCH-0859 (Tr2): trip-shaped confirmation email helper. Used only when
+// event_type='trip' — event_type='event' path unchanged.
+import { renderTripConfirmationEmail } from "../_shared/email/tripConfirmationEmail.ts";
 import { buildCalendarLinks } from "../_shared/email/calendar.ts";
 import {
   type BuyerContext,
@@ -169,6 +172,11 @@ interface OrderJoin {
     is_online: boolean | null;
     timezone: string | null;
     brand_id: string;
+    // ORCH-0859 (Tr2): event_type discriminator + theme jsonb for trip-specific
+    // confirmation branching. event_type='trip' rows carry trip details in
+    // theme.business_trip.{startAt,endAt,destinationLocationText,capacity}.
+    event_type: string | null;
+    theme: Record<string, unknown> | null;
     brands: {
       id: string;
       name: string | null;
@@ -302,6 +310,8 @@ serve(async (req) => {
         is_online,
         timezone,
         brand_id,
+        event_type,
+        theme,
         brands!inner ( id, name, profile_photo_url )
       )
     `)
@@ -354,9 +364,14 @@ serve(async (req) => {
 
   const ticketCount = context.bodyInput.order.tickets.length;
   const eventTitle = context.bodyInput.event.title;
-  const smsBody = `Mingla: your ${ticketCount} ticket${
-    ticketCount === 1 ? "" : "s"
-  } for ${eventTitle} are confirmed. Order ${shortId(order.id)}.`;
+  // ORCH-0859 (Tr2): trip-shaped SMS copy when event_type='trip'. Event copy
+  // is byte-equivalent for event_type='event' (the default branch).
+  const isTrip = order.events.event_type === "trip";
+  const smsBody = isTrip
+    ? `Mingla: you're booked on ${eventTitle}. Order ${shortId(order.id)}.`
+    : `Mingla: your ${ticketCount} ticket${
+        ticketCount === 1 ? "" : "s"
+      } for ${eventTitle} are confirmed. Order ${shortId(order.id)}.`;
 
   // Render email + PDF once per dispatch; reused across email ledger rows.
   let renderedEmail: ReturnType<typeof renderTransactionalEmail> | null = null;
@@ -364,14 +379,74 @@ serve(async (req) => {
   let renderError: { code: string; message: string } | null = null;
 
   try {
-    renderedEmail = renderTransactionalEmail({
-      variant: context.bodyInput.variant,
-      recipient: {
-        name: order.buyer_name,
-        email: order.buyer_email ?? "",
-      },
-      body: context.bodyInput,
-    });
+    // ORCH-0859 (Tr2): branch by event_type. Trip orders use trip-shaped
+    // template; event orders use the existing renderTransactionalEmail
+    // (byte-equivalent for event_type='event' — the new branch is fully
+    // gated on isTrip).
+    if (isTrip) {
+      // Fetch trip-specific sidecar data for the email body.
+      const [tripDaysResp, tripInclusionsResp] = await Promise.all([
+        supabase
+          .from("trip_days")
+          .select("ordinal, title")
+          .eq("event_id", order.events.id)
+          .order("ordinal"),
+        supabase
+          .from("trip_inclusions")
+          .select("kind, item, ordinal")
+          .eq("event_id", order.events.id)
+          .order("kind")
+          .order("ordinal"),
+      ]);
+      const tripDays = (tripDaysResp.data ?? []) as Array<{
+        ordinal: number;
+        title: string;
+      }>;
+      const tripInclusions = (tripInclusionsResp.data ?? []) as Array<{
+        kind: "included" | "excluded";
+        item: string;
+      }>;
+      const themeBT =
+        ((order.events.theme as Record<string, unknown> | null)?.business_trip as
+          | Record<string, unknown>
+          | undefined) ?? {};
+      renderedEmail = renderTripConfirmationEmail({
+        recipient: {
+          name: order.buyer_name,
+          email: order.buyer_email ?? "",
+        },
+        trip: {
+          title: context.bodyInput.event.title,
+          startAtIso: typeof themeBT.startAt === "string" ? themeBT.startAt : null,
+          endAtIso: typeof themeBT.endAt === "string" ? themeBT.endAt : null,
+          destinationText:
+            typeof themeBT.destinationLocationText === "string"
+              ? themeBT.destinationLocationText
+              : null,
+          timezone: context.bodyInput.event.timezone,
+          days: tripDays,
+          inclusions: tripInclusions,
+        },
+        brand: {
+          name: context.bodyInput.brand.name,
+          profilePhotoUrl: context.bodyInput.brand.profilePhotoUrl,
+        },
+        order: {
+          shortId: context.bodyInput.order.shortId,
+          totalCents: order.total_cents,
+          currency: order.currency,
+        },
+      });
+    } else {
+      renderedEmail = renderTransactionalEmail({
+        variant: context.bodyInput.variant,
+        recipient: {
+          name: order.buyer_name,
+          email: order.buyer_email ?? "",
+        },
+        body: context.bodyInput,
+      });
+    }
     assertNotResendSandbox(renderedEmail.from);
     renderedPdf = await buildTicketPdf({
       event: {

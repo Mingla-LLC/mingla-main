@@ -48,6 +48,7 @@ on:
 #   - I-PROPOSED-W (i-proposed-w-notifications-app-type-prefix.mjs) — notifications reads filtered by app-type prefix (B2a Path C V3)
 #   - I-PROPOSED-Y (i-proposed-y-platform-web-url-from-env.mjs) — platform web URL from env, never hardcoded (B2a Path C V3 forensics fix)
 #   - I-PROPOSED-Z (i-proposed-z-home-no-fabricated-events.mjs) — Home uses real event/order truth, no fabricated upcoming rows (ORCH-0754)
+#   - I-PROPOSED-TR2-EVENTS-TYPE-FILTER (i-proposed-tr2-events-type-filter.mjs) — services/hooks .from("events") + events-views must filter event_type or use allowlist (ORCH-0859 REWORK 3)
 #   - I-PROPOSED-BV (orch-0854-tickets-realtime-publication-paired.mjs) — every client postgres_changes subscription paired with publication-add migration (ORCH-0854)
 #   - I-PROPOSED-K (i-proposed-k-require-cycles.mjs) — require-cycles baselined (META-ORCH-0744)
 #   - I-PROPOSED-L (process invariant) — DIAG markers reaped at CLOSE (META-ORCH-0744)
@@ -93,6 +94,8 @@ on:
 #   - ORCH-0852 own-confirm-path (i-checkout-own-confirm-path.mjs) — buyer checkout routes call confirmTicketCheckout, never pollTicketCheckoutStatus; no `finalizing*` / `webResumeError` state; no "Payment received" / "Finalizing your tickets" / "Check now" / "Help me find my order" copy (I-CHECKOUT-OWN-CONFIRM-PATH + I-CHECKOUT-NO-POLL-AND-FAIL)
 #   - ORCH-0852 wallet-stubs-removed (i-wallet-stubs-removed.mjs) — no "Add to Apple Wallet" / "Add to Google Wallet" affordances anywhere in mingla-business/ until real .pkpass + Google Wallet JWT ships (I-WALLET-PASS-HIDDEN-UNTIL-IMPLEMENTED)
 #   - ORCH-0852 consumer-frozen (i-consumer-payment-flow-frozen.mjs) — consumer app nativeCheckoutFlow.ts + ExpandedBusinessEventSheet.tsx unchanged during ORCH-0852; identifier-substring fingerprint check
+#   - ORCH-0862 brand-delete-date-aware (i-brand-delete-blocking-date-aware.mjs) — softDeleteBrand Step 1 + useBrandCascadePreview both filter event_dates.end_at > now (I-PROPOSED-BRAND-DELETE-BLOCKING-DATE-AWARE; DISCOVERY-7 regression guard)
+#   - ORCH-0862 event-detail-cancel-no-nav (i-event-detail-cancel-no-navigation.mjs) — event/[id]/index.tsx handleCancelConfirm contains zero router.replace/push/back calls (Symptom A regression guard)
 #
 # Future gates to register (proposed but not yet implemented):
 #   - I-32 rank parity (Cycle 13a proposal)
@@ -312,6 +315,17 @@ jobs:
           node-version: "20"
       - name: Run I-PROPOSED-Z gate
         run: node .github/scripts/strict-grep/i-proposed-z-home-no-fabricated-events.mjs
+
+  i-proposed-tr2-events-type-filter:
+    name: "I-PROPOSED-TR2-EVENTS-TYPE-FILTER: events queries must filter event_type"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run I-PROPOSED-TR2-EVENTS-TYPE-FILTER gate
+        run: node .github/scripts/strict-grep/i-proposed-tr2-events-type-filter.mjs
 
   orch-0854-tickets-realtime-publication-paired:
     name: "I-PROPOSED-BV: REALTIME-TABLE-PUBLICATION-PAIRED (ORCH-0854)"
@@ -1127,3 +1141,38 @@ jobs:
           node-version: "20"
       - name: Run ORCH-0861 sibling-ScrollView informational gate
         run: node .github/scripts/strict-grep/orch-0861-sibling-scrollview-flexgrow-zero.mjs
+
+  orch-0863-marketing-hub-phase-b:
+    name: "ORCH-0863: Marketing Hub Phase B invariants (no revenue, no Opened, starter-pack guard, compose template param, no new backend files)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0863 Marketing Hub Phase B gate
+        run: node .github/scripts/strict-grep/orch-0863-marketing-hub-phase-b.mjs
+
+  i-brand-delete-blocking-date-aware:
+    name: "ORCH-0862: brand-delete blocking filter is date-aware (I-PROPOSED-BRAND-DELETE-BLOCKING-DATE-AWARE / DISCOVERY-7)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0862 brand-delete-date-aware gate
+        run: node .github/scripts/strict-grep/i-brand-delete-blocking-date-aware.mjs
+
+  i-event-detail-cancel-no-navigation:
+    name: "ORCH-0862: event-detail handleCancelConfirm does not navigate (Symptom A)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0862 event-detail cancel no-nav gate
+        run: node .github/scripts/strict-grep/i-event-detail-cancel-no-navigation.mjs
