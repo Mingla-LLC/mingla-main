@@ -9,13 +9,13 @@
 
 ## §1. Scope
 
-The Hub → Events filter pill row in `mingla-business` ([mingla-business/app/(tabs)/hub/events.tsx](mingla-business/app/(tabs)/hub/events.tsx)) MUST render with these guarantees:
+The Hub → Events filter pill row in `mingla-business` ([mingla-business/app/(tabs)/hub/events.tsx](mingla-business/app/%28tabs%29/hub/events.tsx)) MUST render with these guarantees:
 
 - **SC-1.** All five filter pills (All / Live / Upcoming / Drafts / Past) share an identical visible top edge and visible bottom edge (±1 device pixel) regardless of which pill is selected. Toggling `pillActive` changes color only — never perceived bounding rect.
 - **SC-2.** Each pill exposes a hit area ≥ 44pt (Apple HIG + WCAG AA + Mingla invariant `I-38 IconChrome touch ≥ 44pt`). Visual height may remain at the current 34pt; `hitSlop` carries the touch-target compliance.
 - **SC-3.** On the Live pill, the green pulse dot's optical center aligns with the label glyph's optical center (±1 device pixel), eliminating the F-2 baseline asymmetry the investigation identified.
 
-Implementation is StyleSheet-only inside [events.tsx](mingla-business/app/(tabs)/hub/events.tsx). No new tokens added to the global design system (`designSystem.ts` is NOT touched).
+Implementation is StyleSheet-only inside [events.tsx](mingla-business/app/%28tabs%29/hub/events.tsx). No new tokens added to the global design system (`designSystem.ts` is NOT touched).
 
 ## §2. Non-goals
 
@@ -33,7 +33,7 @@ Implementation is StyleSheet-only inside [events.tsx](mingla-business/app/(tabs)
 | 1. Consumer iOS (`app-mobile/`) | NO | n/a — different app, different design system | none | n/a |
 | 2. Consumer Android (`app-mobile/`) | NO | n/a — different app | none | n/a |
 | 3. Buyer/anon Web (`mingla-business/` `/checkout/...`, `/e/...`, `/b/...`) | NO | n/a — buyer-anon routes don't expose Hub | none | n/a |
-| 4. **Business iOS** (`mingla-business/` iOS) | **YES** | SC-1 + SC-2 + SC-3 all satisfied; selecting any filter pill produces no perceived height/position change in the row | [mingla-business/app/(tabs)/hub/events.tsx](mingla-business/app/(tabs)/hub/events.tsx) (StyleSheet section L725-L777 only) | Automatic (shared RN StyleSheet) |
+| 4. **Business iOS** (`mingla-business/` iOS) | **YES** | SC-1 + SC-2 + SC-3 all satisfied; selecting any filter pill produces no perceived height/position change in the row | [mingla-business/app/(tabs)/hub/events.tsx](mingla-business/app/%28tabs%29/hub/events.tsx) (StyleSheet section L725-L777 only) | Automatic (shared RN StyleSheet) |
 | 5. **Business Android** (`mingla-business/` Android) | **YES** | Same as Business iOS | Same files | Automatic — RN StyleSheet renders identically; alpha rgba semantics are cross-platform |
 | 6. Admin Web (`mingla-admin/`) | NO | n/a — admin doesn't render Hub | none | n/a |
 | 7. Business Web preview (`mingla-business/` dev/web) | NO | n/a — `(tabs)/hub` is mobile-only; web preview does not render the Tabs group | none | n/a |
@@ -216,7 +216,7 @@ Strict-grep enforcement of this new invariant is OUT OF SCOPE for ORCH-0857 — 
 ### Regression-test gate (ORCH-0840 [Regression-test enforcement + append-only CI] Step 0.5)
 
 **Implementor happy-path test** — REQUIRED. A scripted check that:
-1. Reads [mingla-business/app/(tabs)/hub/events.tsx](mingla-business/app/(tabs)/hub/events.tsx) text.
+1. Reads [mingla-business/app/(tabs)/hub/events.tsx](mingla-business/app/%28tabs%29/hub/events.tsx) text.
 2. Asserts `pill: { ... borderColor: "rgba(255, 255, 255, 0.55)" ... }` is present.
 3. Asserts `hitSlop={{ top: 5, bottom: 5, left: 0, right: 0 }}` is present on the pill Pressable.
 4. Asserts `pillLabel: { ... lineHeight: 16, ... }` is present.
@@ -259,6 +259,6 @@ Both tests are immutable post-land per `I-TESTS-APPEND-ONLY`.
 ## §10. Layman summary
 
 - **What the fix does.** Three tiny edits in one file. The unselected pills get a more visible border (matching the orange selected pill's intensity, but in white at the same opacity). Toggling between filters now only changes COLOR — never the apparent pill size. The pills also get a 5-point tap zone above and below so the touch target meets accessibility minimums even though the visual height stays at 34pt for row compactness. The green pulse dot on the Live pill is locked to the label's baseline so it stops drifting a pixel out of alignment.
-- **What gets touched.** One file: [mingla-business/app/(tabs)/hub/events.tsx](mingla-business/app/(tabs)/hub/events.tsx). Three edits — `pill.borderColor`, `<Pressable hitSlop>`, `pillLabel.lineHeight`. No global tokens changed. No other pill row touched.
+- **What gets touched.** One file: [mingla-business/app/(tabs)/hub/events.tsx](mingla-business/app/%28tabs%29/hub/events.tsx). Three edits — `pill.borderColor`, `<Pressable hitSlop>`, `pillLabel.lineHeight`. No global tokens changed. No other pill row touched.
 - **What gets verified.** Six success criteria (3 visual × iOS+Android). Two CI regression scripts (implementor + tester). One new invariant codified.
 - **What does NOT change.** No DB. No edge function. No service. No hook. No global design token. No other pill row. No animation. No filter logic.

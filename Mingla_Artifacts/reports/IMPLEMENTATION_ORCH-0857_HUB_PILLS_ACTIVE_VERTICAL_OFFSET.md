@@ -41,7 +41,7 @@ Pills had natural content of 50pt (34pt pill + 16pt vertical padding) but the st
 
 ## §3. Old → New Receipts
 
-### File 1: [mingla-business/app/(tabs)/hub/events.tsx](mingla-business/app/(tabs)/hub/events.tsx) — four edits
+### File 1: [mingla-business/app/(tabs)/hub/events.tsx](mingla-business/app/%28tabs%29/hub/events.tsx) — four edits
 
 #### Edit 1 — `pill.borderColor` literal swap (cosmetic polish, not bug fix)
 
@@ -153,7 +153,7 @@ Not applicable.
 
 ## §9. TypeScript gate
 
-`npx tsc --noEmit` in mingla-business — zero new errors in [events.tsx](mingla-business/app/(tabs)/hub/events.tsx). Pre-existing errors in `app/checkout/[eventId]/buyer.tsx` and `packages/phone-input/` were present at parent commit and unrelated.
+`npx tsc --noEmit` in mingla-business — zero new errors in [events.tsx](mingla-business/app/%28tabs%29/hub/events.tsx). Pre-existing errors in `app/checkout/[eventId]/buyer.tsx` and `packages/phone-input/` were present at parent commit and unrelated.
 
 ## §10. Parity Check
 

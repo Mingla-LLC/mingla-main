@@ -19,7 +19,7 @@ Operator attached two `mingla-business` Hub → Events screenshots:
 
 ## §2. Investigation Manifest (every file read, in trace order)
 
-1. [mingla-business/app/(tabs)/hub/events.tsx](mingla-business/app/(tabs)/hub/events.tsx) — pill row JSX L485-L525, style sheet L725-L777, imports L36-L41
+1. [mingla-business/app/(tabs)/hub/events.tsx](mingla-business/app/%28tabs%29/hub/events.tsx) — pill row JSX L485-L525, style sheet L725-L777, imports L36-L41
 2. [mingla-business/src/constants/designSystem.ts](mingla-business/src/constants/designSystem.ts) — `spacing` L29-L37, `radius` (imported as `radiusTokens`) L39-L47, `accent` L158-L163, `glass` L194-L220
 3. ORCH-0826 [Hub Foundation + universal-plus creator] M0 SPEC + close note — confirmed prior decisions on pill row (sticky pills, negative-margin hack removed, no documented active-height differential)
 4. Sim state probe: `xcrun simctl listapps booted` → `com.sethogieva.minglabusiness` installed on iPhone 17 Pro (iOS 26.4, UDID `17091E60-C3B6-4167-980D-60C348E177F6`)
@@ -34,7 +34,7 @@ Launched the app via `xcrun simctl launch booted com.sethogieva.minglabusiness` 
 
 | Field | Evidence |
 |---|---|
-| **File + line** | [mingla-business/app/(tabs)/hub/events.tsx:737-751](mingla-business/app/(tabs)/hub/events.tsx#L737-L751) + [mingla-business/src/constants/designSystem.ts:158-163, 211](mingla-business/src/constants/designSystem.ts#L158-L211) |
+| **File + line** | [mingla-business/app/(tabs)/hub/events.tsx:737-751](mingla-business/app/%28tabs%29/hub/events.tsx#L737-L751) + [mingla-business/src/constants/designSystem.ts:158-163, 211](mingla-business/src/constants/designSystem.ts#L158-L211) |
 | **Exact code** | `pill: { height: 34, borderWidth: 1, borderColor: glass.border.profileBase, ... }` / `pillActive: { backgroundColor: accent.tint, borderColor: accent.border }` |
 | **Token values** | `glass.border.profileBase = "rgba(255, 255, 255, 0.08)"` (alpha 0.08 — barely visible on the dark Hub background) vs `accent.border = "rgba(235, 120, 37, 0.55)"` (alpha 0.55 — clearly visible warm-orange) |
 | **What it does** | Both states layout-occupy 34px of height with a 1px border. But the idle border at α=0.08 is so faint on a near-black background that the human eye reads the pill's visible top edge as the **tint background's top**, not the (invisible) border's top. The active state at α=0.55 makes the border crisply visible, so the eye reads the pill's visible top edge as the **orange border's top** — which sits exactly 1px above where the idle pills' apparent top reads. Combined with the active background-tint being more saturated than the idle profileBase, the active pill appears to extend ~1-2px upward AND downward relative to its idle neighbors. |
@@ -48,7 +48,7 @@ Launched the app via `xcrun simctl launch booted com.sethogieva.minglabusiness` 
 
 | Field | Evidence |
 |---|---|
-| **File + line** | [mingla-business/app/(tabs)/hub/events.tsx:511-513, 772-777](mingla-business/app/(tabs)/hub/events.tsx#L511-L777) |
+| **File + line** | [mingla-business/app/(tabs)/hub/events.tsx:511-513, 772-777](mingla-business/app/%28tabs%29/hub/events.tsx#L511-L777) |
 | **Exact code** | `{p.showLivePulse ? (<View style={styles.pillLiveDot} />) : null}` with `pillLiveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: semantic.success }` |
 | **What it does** | When `counts.live > 0`, a 6×6 green `<View>` renders inside the Live pill before the label. The pill uses `flexDirection: "row"` + `alignItems: "center"` + `gap: 6`. RN on iOS computes `alignItems: center` per-child against each child's intrinsic cross-axis size — a 6px `<View>` centers around its geometric midpoint, while a `<Text>` centers around the line-box midpoint, which on iOS sits 1-2px above the visible glyph midpoint due to font ascender/descender padding. |
 | **What it should do** | The dot's optical center should sit on the same horizontal line as the label glyph's optical center. |
@@ -61,7 +61,7 @@ Launched the app via `xcrun simctl launch booted com.sethogieva.minglabusiness` 
 
 | Field | Evidence |
 |---|---|
-| **File + line** | [mingla-business/app/(tabs)/hub/events.tsx:738](mingla-business/app/(tabs)/hub/events.tsx#L738) |
+| **File + line** | [mingla-business/app/(tabs)/hub/events.tsx:738](mingla-business/app/%28tabs%29/hub/events.tsx#L738) |
 | **Exact code** | `pill: { height: 34, ... }` |
 | **What it does** | Each filter pill is 34pt tall. With WCAG AA + Apple HIG touch target = 44pt minimum (Mingla codified as invariant `I-38 IconChrome touch ≥ 44pt` per `feedback_wcag_aa_kit_invariants.md`), every Hub filter pill is currently below target. |
 | **What it should do** | Pills should expose at least a 44pt hit area, either by raising `height` to 44 or by adding `hitSlop={{ top: 5, bottom: 5, left: 0, right: 0 }}` to each Pressable. |
@@ -74,7 +74,7 @@ Launched the app via `xcrun simctl launch booted com.sethogieva.minglabusiness` 
 
 | Field | Evidence |
 |---|---|
-| **File + line** | [mingla-business/app/(tabs)/hub/events.tsx:755-771](mingla-business/app/(tabs)/hub/events.tsx#L755-L771) |
+| **File + line** | [mingla-business/app/(tabs)/hub/events.tsx:755-771](mingla-business/app/%28tabs%29/hub/events.tsx#L755-L771) |
 | **Detail** | `pillLabel { fontSize: 13, fontWeight: "500" }` and `pillCount { fontSize: 11, fontWeight: "600" }` rely on RN's platform-default line-height (iOS ~1.2× fontSize). Mixed font sizes inside `alignItems: "center"` can produce minor cross-axis baseline drift even without F-1. Not a defect today; worth noting because the F-1 fix may want to explicitly set `lineHeight: 16` (label) + `lineHeight: 14` (count) so the row baseline is deterministic. |
 
 ## §4. Five-Truth-Layer Cross-Check
@@ -91,7 +91,7 @@ Launched the app via `xcrun simctl launch booted com.sethogieva.minglabusiness` 
 
 ## §5. Blast Radius
 
-- **`mingla-business` Hub → Events** ([mingla-business/app/(tabs)/hub/events.tsx](mingla-business/app/(tabs)/hub/events.tsx)) — directly affected (the operator's reported surface).
+- **`mingla-business` Hub → Events** ([mingla-business/app/(tabs)/hub/events.tsx](mingla-business/app/%28tabs%29/hub/events.tsx)) — directly affected (the operator's reported surface).
 - **`mingla-business` Hub → Marketing sub-nav** — different component but uses the same `accent.border` token vs `glass.border.profileBase` pattern; may exhibit the same issue. Recommend spec-level audit.
 - **Any other pill rows in `mingla-business`** using `accent` for active border on dark backdrop. Quick grep target: `accent.border` co-located with `glass.border.profileBase`.
 - **`app-mobile` (consumer)** — uses different design system tokens (Mingla consumer mobile is dark with its own palette). Out of scope for ORCH-0857 per the dispatch's Surfaces declaration. Should be flagged separately if a consumer audit reveals the same alpha mismatch — `glass.border.profileBase = 0.08` is the universal Mingla idle-glass border, and any consumer pill row pairing it with a 0.55-alpha active border would replicate.

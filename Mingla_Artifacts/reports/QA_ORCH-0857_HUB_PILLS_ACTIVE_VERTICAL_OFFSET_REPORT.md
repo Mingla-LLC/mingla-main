@@ -28,7 +28,7 @@
 
 | Step | Result |
 |---|---|
-| 1. Blast radius mapping | All changes in [events.tsx](mingla-business/app/(tabs)/hub/events.tsx) + 2 new scripts under `mingla-business/scripts/ci/`. No service, hook, edge function, migration, or shared-token touched. |
+| 1. Blast radius mapping | All changes in [events.tsx](mingla-business/app/%28tabs%29/hub/events.tsx) + 2 new scripts under `mingla-business/scripts/ci/`. No service, hook, edge function, migration, or shared-token touched. |
 | 2. Implementation report audit | All 4 edits + regression test cited with old→new receipts + commit hash `a2019cfd5155eceaafaddebe38dc9cd31ece311c` for fails-on-revert. |
 | 3. Forensic code reading | Re-read events.tsx pill JSX (L499-L526), pill style block (L737-L757), pillsScroll style block (L727-L749), events ScrollView JSX (L531-L552), pillLabel style (L761-L778). All four edits present with protective comments. |
 | 4. Constitutional enforcement | All 14 rules scanned. No violations. Rule #1 (no dead taps) improved (touch area grew). Rule #8 (subtract before add) preserved. |
