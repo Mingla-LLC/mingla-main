@@ -36,6 +36,8 @@
  * Per Cycle 8 spec §4.6 + ORCH-0839-B SPEC §2.6.
  */
 
+// orch-strict-grep-allow safearea-on-fullscreen-routes — design-intent full-bleed checkout header: insets.bottom IS applied (line 483 + 543) for home-indicator clearance; the top status-bar overlap with back arrow / payment-step header / "3 OF 3" pill is the intended banner-style buyer aesthetic (matches /checkout/{id} + /checkout/{id}/buyer pattern). Per ORCH-0859 [Tr2 Minimum Viable Trip] REWORK 5b operator design ruling 2026-05-17 (QA report §1).
+
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Keyboard,

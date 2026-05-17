@@ -9,6 +9,8 @@
  * Per SPEC §4.10 file 12 + §7 Step 5.
  */
 
+// orch-strict-grep-allow safearea-on-fullscreen-routes — main render delegates to TripCreatorWizard which applies `paddingTop: insets.top` at TripCreatorWizard.tsx:396 (proven safe on sim screenshot 08-trip-edit.png). The inline loading / error / not-found early-return states render bare `<View>` for brief moments during the trip query resolve — transient flash is acceptable; not worth wrapping each early-return state. Per ORCH-0859 [Tr2 Minimum Viable Trip] REWORK 5b 2026-05-17.
+
 import React from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";

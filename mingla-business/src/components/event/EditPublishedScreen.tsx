@@ -477,6 +477,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
       const closeAndOpenOrders = (): void => {
         setRejectDialog(null);
         // Cycle 9c — Orders ledger now exists; navigate to it.
+        // orch-strict-grep-allow route-by-event-type — EditPublishedScreen.tsx edits events only; liveEvent.id is always an event id (ORCH-0859 [Tr2] REWORK 5b)
         router.push(`/event/${liveEvent.id}/orders` as never);
       };
 
@@ -771,6 +772,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
           if (router.canGoBack()) {
             router.back();
           } else {
+            // orch-strict-grep-allow route-by-event-type — EditPublishedScreen.tsx edits events only; liveEvent.id is always an event id (ORCH-0859 [Tr2] REWORK 5b)
             router.replace(`/event/${liveEvent.id}` as never);
           }
         }, TOAST_NAV_DELAY_MS);
@@ -791,6 +793,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
           if (router.canGoBack()) {
             router.back();
           } else {
+            // orch-strict-grep-allow route-by-event-type — EditPublishedScreen.tsx edits events only; liveEvent.id is always an event id (ORCH-0859 [Tr2] REWORK 5b)
             router.replace(`/event/${liveEvent.id}` as never);
           }
         }, TOAST_NAV_DELAY_MS);
@@ -823,6 +826,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
     if (router.canGoBack()) {
       router.back();
     } else {
+      // orch-strict-grep-allow route-by-event-type — EditPublishedScreen.tsx edits events only; liveEvent.id is always an event id (ORCH-0859 [Tr2] REWORK 5b)
       router.replace(`/event/${liveEvent.id}` as never);
     }
   }, [router, liveEvent.id]);

@@ -1,6 +1,6 @@
-# INVESTIGATION — ORCH-0862 [SafeArea drift systemic audit]
+# INVESTIGATION — ORCH-0866 [SafeArea drift systemic audit]
 
-> **⚠ ORCH-ID COLLISION NOTE:** `ORCH-0862` is referenced in `mingla-business/src/store/liveEventStore.ts:352` for a prior partialize fix. Orchestrator's REWORK 5 dispatch reused this ID. Flagging for orchestrator to either (a) renumber this investigation to ORCH-0864 / ORCH-0865 in artifact sync, or (b) accept the collision and treat both as historical reference to the same number. The investigation's findings stand regardless of ID renumbering.
+> **⚠ ORCH-ID COLLISION NOTE:** `ORCH-0862` is referenced in `mingla-business/src/store/liveEventStore.ts:352` for a prior partialize fix. Orchestrator's REWORK 5 dispatch reused this ID. Flagging for orchestrator to either (a) renumber this investigation to ORCH-0866 / ORCH-0865 in artifact sync, or (b) accept the collision and treat both as historical reference to the same number. The investigation's findings stand regardless of ID renumbering.
 
 **Skill:** Claude `mingla-forensics` (INVESTIGATE mode, code-audit-only exemption per dispatch)
 **Scope:** mingla-business only (per operator decision at orchestrator turn)
@@ -121,7 +121,7 @@ Dispatch was scoped to mingla-business only. Consumer app may or may not have th
 
 None of the registered invariants directly covers SafeArea. This investigation proposes a NEW invariant:
 
-**`I-PROPOSED-TR2-SAFEAREA-ON-FULLSCREEN-ROUTES`** (status: DRAFT, flips to ACTIVE on ORCH-0862 CLOSE)
+**`I-PROPOSED-TR2-SAFEAREA-ON-FULLSCREEN-ROUTES`** (status: DRAFT, flips to ACTIVE on ORCH-0866 CLOSE)
 
 > Every full-screen route under `mingla-business/app/` that is not nested inside a layout file that applies `paddingTop: insets.top` MUST wrap its root view in the canonical `SafeScreen` component (or equivalent `useSafeAreaInsets` + manual paddingTop application). Routes covered by `(tabs)/hub/_layout.tsx` are exempt because the parent layout provides the inset.
 
@@ -153,7 +153,7 @@ Just add SafeArea to the 4 known violations and skip the wrapper + gate. This is
 
 ## 9. Discoveries for orchestrator
 
-- **ORCH-ID collision:** `ORCH-0862` already exists in `mingla-business/src/store/liveEventStore.ts:352` as a prior partialize fix. Orchestrator should renumber to ORCH-0864 (or accept collision and document it in the ORCH ledger).
+- **ORCH-ID collision:** `ORCH-0862` already exists in `mingla-business/src/store/liveEventStore.ts:352` as a prior partialize fix. Orchestrator should renumber to ORCH-0866 (or accept collision and document it in the ORCH ledger).
 - **Consumer app (`app-mobile/`) NOT in scope** — recommend a follow-up ORCH for parity audit after this one closes.
 - **Implementor skill SHOULD codify the `<SafeScreen>` pattern** as a Cross-Surface Impact step so future implementors don't repeat the gap. Add to both `.claude/skills/mingla-implementor/SKILL.md` and `.codex/skills/implementor-mingla/SKILL.md` at the next META-ORCH cycle (operator-authorized cross-skill edit).
 

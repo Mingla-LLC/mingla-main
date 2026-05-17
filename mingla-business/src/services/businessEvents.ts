@@ -505,19 +505,6 @@ export const fetchBusinessEventsForBrand = async (
     filteredRows = rows.filter((r) => !tripIds.has(r.id));
   }
 
-  // [ORCH-0859-REWORK-4-DIAG] events-tab-leak diagnostic — proves the
-  // filter is running in the operator's deployed bundle. Reaps at CLOSE.
-  // eslint-disable-next-line no-console
-  console.log("[ORCH-0859-REWORK-4-DIAG] fetchBusinessEventsForBrand", {
-    brandId,
-    rowsCount: rows.length,
-    tripIdsCount:
-      rows.length > 0
-        ? rows.filter((r) => !filteredRows.includes(r)).length
-        : 0,
-    filteredCount: filteredRows.length,
-  });
-
   const ticketLists = await Promise.all(
     filteredRows.map((row) => fetchTicketsForEvent(row.id)),
   );
