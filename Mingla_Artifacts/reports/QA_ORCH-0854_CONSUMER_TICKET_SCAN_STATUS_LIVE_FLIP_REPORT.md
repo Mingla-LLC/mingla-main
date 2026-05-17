@@ -1,7 +1,7 @@
 # QA — ORCH-0854 [Consumer ticket status live-flip valid→used on scan]
 
 **Mode:** TARGETED
-**Verdict:** **CONDITIONAL PASS** — pending Seth-run live-fire sim repro of SC-1-iOS, SC-1-Android, SC-2 on a Mingla consumer dev build (see §Verdict gate).
+**Verdict:** **PASS** — promoted from CONDITIONAL PASS 2026-05-17 after operator-run live-fire smoke-test post-merge + EAS OTA confirmed `Valid → Used` badge flip ≤2s on iOS + Android consumer apps (SC-1-iOS, SC-1-Android, SC-2 all PASS).
 **Working tree:** `/Users/sethogieva/Desktop/mingla-main` on branch `Seth`.
 **Date:** 2026-05-17
 **Spec:** `Mingla_Artifacts/specs/SPEC_ORCH-0854_CONSUMER_TICKET_SCAN_STATUS_LIVE_FLIP.md`

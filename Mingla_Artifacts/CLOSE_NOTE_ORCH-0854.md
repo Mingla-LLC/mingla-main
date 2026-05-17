@@ -1,7 +1,7 @@
 # CLOSE NOTE — ORCH-0854 [Consumer ticket status live-flip valid→used on scan]
 
 **Closed:** 2026-05-17
-**Verdict:** CONDITIONAL PASS Grade A — Seth-run live-fire deferred per Phase 0.A (sim attempt made, blocker named: no Mingla consumer dev build on the booted iOS sim + no signed-in test buyer pre-staged); operator accepted close on this basis (tester path-B authorization).
+**Verdict:** PASS Grade A (CONDITIONAL → PASS promoted 2026-05-17 after operator-run live-fire smoke-test post-merge + EAS OTA confirmed `Valid → Used` badge flip ≤2s on iOS + Android consumer apps — operator-attested "passes" 2026-05-17).
 **Severity counts:** P0:0 P1:0 P2:0 P3:0 P4:3 (praise).
 **Working tree:** `/Users/sethogieva/Desktop/mingla-main` on branch `Seth`.
 
