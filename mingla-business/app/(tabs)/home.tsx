@@ -383,6 +383,65 @@ export default function HomeTab(): React.ReactElement {
           </View>
         ) : (
           <>
+            {/* ORCH-0855 (Tr1) — trip-planner-specific CTA gated by Stripe
+                status. Renders ABOVE the existing 7-day stats / KPI / upcoming
+                list (additive — does NOT replace populated state). For
+                kind='popup' | 'physical' brands this block returns null and
+                Home behaves byte-equivalent to pre-Tr1 (regression safety).
+                Per SPEC §4.5.4 + investigation Finding I-2: trip planners
+                require Stripe Connect to operate; CTA reflects readiness. */}
+            {currentBrand.kind === "trip_planner" ? (
+              <View style={styles.tripPlannerCtaWrap}>
+                <GlassCard variant="elevated" padding={spacing.lg}>
+                  {currentBrand.stripeStatus === "active" ? (
+                    <>
+                      <Text style={styles.tripPlannerCtaTitle}>Plan a trip</Text>
+                      <Text style={styles.tripPlannerCtaBody}>
+                        You&rsquo;re set up. Create your first trip to start selling.
+                      </Text>
+                      <Pressable
+                        onPress={() => router.push("/trip/coming-soon" as never)}
+                        accessibilityRole="button"
+                        accessibilityLabel="Plan a trip"
+                        style={styles.tripPlannerCtaAction}
+                        testID="trip-planner-cta-plan-a-trip"
+                      >
+                        <Icon name="plus" size={16} color={accent.warm} />
+                        <Text style={styles.tripPlannerCtaActionText}>
+                          Plan a trip
+                        </Text>
+                      </Pressable>
+                    </>
+                  ) : (
+                    <>
+                      <Text style={styles.tripPlannerCtaTitle}>
+                        Finish setting up Stripe
+                      </Text>
+                      <Text style={styles.tripPlannerCtaBody}>
+                        Trip planners need Stripe Connect to collect deposits.
+                        Finish setup to publish trips.
+                      </Text>
+                      <Pressable
+                        onPress={() =>
+                          router.push(
+                            `/brand/${currentBrand.id}/payments` as never,
+                          )
+                        }
+                        accessibilityRole="button"
+                        accessibilityLabel="Finish Stripe setup"
+                        style={styles.tripPlannerCtaAction}
+                        testID="trip-planner-cta-finish-stripe"
+                      >
+                        <Icon name="chevR" size={16} color={accent.warm} />
+                        <Text style={styles.tripPlannerCtaActionText}>
+                          Finish Stripe setup
+                        </Text>
+                      </Pressable>
+                    </>
+                  )}
+                </GlassCard>
+              </View>
+            ) : null}
             {primaryLiveEvent !== null ? (
               <GlassCard variant="elevated" padding={spacing.lg}>
                 <View style={styles.heroLiveTagRow}>
@@ -858,6 +917,35 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
   },
   emptyBuildActionText: {
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+    fontWeight: "600",
+    color: accent.warm,
+  },
+  // ORCH-0855 (Tr1) — trip-planner Home CTA styles.
+  tripPlannerCtaWrap: {
+    marginBottom: spacing.md,
+  },
+  tripPlannerCtaTitle: {
+    fontSize: typography.h3.fontSize,
+    lineHeight: typography.h3.lineHeight,
+    fontWeight: typography.h3.fontWeight,
+    color: textTokens.primary,
+    marginBottom: spacing.xs,
+  },
+  tripPlannerCtaBody: {
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+    color: textTokens.secondary,
+    marginBottom: spacing.md,
+  },
+  tripPlannerCtaAction: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    alignSelf: "flex-start",
+  },
+  tripPlannerCtaActionText: {
     fontSize: typography.bodySm.fontSize,
     lineHeight: typography.bodySm.lineHeight,
     fontWeight: "600",

@@ -557,7 +557,14 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
 
           {/* SECTION B-2 — Brand kind (Cycle 7 v10).
               Drives whether the public brand page shows a location after the
-              handle. Pop-up = no location shown. Physical = address rendered. */}
+              handle. Pop-up = no location shown. Physical = address rendered.
+
+              ORCH-0855 (Tr1) — entire section gated behind kind !== "trip_planner"
+              per I-PROPOSED-TR1-KIND-IMMUTABLE (DISCOVERY-4): trip-planner brands
+              NEVER see this toggle, and the toggle's options array does NOT
+              include 'trip_planner' (physical ↔ popup only — pre-existing). */}
+          {draft.kind !== "trip_planner" ? (
+          <>
           <Text style={styles.sectionLabel}>BRAND KIND</Text>
           <View style={styles.fieldsCol}>
             <View style={styles.kindRow}>
@@ -638,6 +645,8 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
               </View>
             ) : null}
           </View>
+          </>
+          ) : null}
 
           {/* SECTION C — Contact */}
           <Text style={styles.sectionLabel}>CONTACT</Text>
