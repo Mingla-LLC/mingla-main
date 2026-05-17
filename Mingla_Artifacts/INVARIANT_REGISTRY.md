@@ -3341,6 +3341,24 @@ Two strict-grep gates run together:
 
 **EXIT condition:** Permanent unless a future ORCH adds a `calendar_entries.event_id` FK to events (enabling Option A — hydrate `end_at` from `event_dates`). In that case the predicate becomes `entry.endAt < now` and this invariant text updates to require the new field; the no-start-only rule stays.
 
+### I-CALENDAR-BUSINESS-TICKET-END-NOT-START (DRAFT — flips ACTIVE on ORCH-0853 CLOSE)
+
+**Status:** DRAFT — flips ACTIVE on ORCH-0853 [Calendar Active/Archive partition uses event end_at for business-event tickets] CLOSE.
+
+**Statement:** Every consumer-calendar Active/Archive partition decision in `app-mobile/` — whether on `CalendarEntry` (scheduled-card) or `BusinessEventCalendarRow` (business-event ticket) or any future row type added to the unified calendar feed — MUST use the row's effective END timestamp, never its start timestamp. For business-event tickets the partition reads `masterDateEndUtc` (sourced from `event_dates.end_at` at the `is_master` row) with a defensive fallback to `masterDateUtc` (start) when end is null. Pending-payment orders always short-circuit into Active regardless of timestamps. New row types added to `BusinessEventCalendarRow`'s sibling family MUST declare an `*EndUtc` field at the service-layer row shape AND be enumerated by name in `.github/scripts/strict-grep/i-calendar-business-ticket-end-not-start.mjs` before merge.
+
+**Why:** Pre-0853 `app-mobile/src/components/activity/CalendarTab.tsx:371-390` partitioned business-event tickets via `const ts = order.masterDateUtc ? Date.parse(order.masterDateUtc) : NaN; if (ts < now) archive` — start-only. The Reckoning event (10pm-to-3am) ticket flipped to Archive at 10:01pm while still 5 hours from ending. ORCH-0850 [End-not-start parity systemic — four surfaces] CLOSE 2026-05-15 claimed systemic coverage but the audit's grep set was scoped to `scheduled_at` consumers and did not enumerate the discriminated-union sibling row type `BusinessEventCalendarRow` whose start field is `masterDateUtc` (introduced by ORCH-0829-A / ORCH-0842). The systemic-sweep methodology lesson: enumerate ROW TYPES by name, not field names. Parity-paired with `I-PROPOSED-CONSUMER-CALENDAR-USES-END-NOT-START` (scheduled-card surface) and `I-PROPOSED-EVENT-LIFECYCLE-SINGLE-HELPER` (business-side canonical helper).
+
+**Enforcement:**
+1. **Strict-grep gate:** `.github/scripts/strict-grep/i-calendar-business-ticket-end-not-start.mjs` scans `app-mobile/src/components/activity/CalendarTab.tsx` for forbidden patterns (`Date.parse(order.masterDateUtc) < now` direct; `const ts = order.masterDateUtc ? ... : NaN` followed by `ts < now` multi-line) AND `app-mobile/src/services/calendarService.ts` for required tokens (`masterDateEndUtc:` field declaration + `masterDateEndUtc: masterDate?.end_at ?? null` mapper line). Whitelist token `// SPEC ORCH-0853 OK:`. Self-test mode (`--self-test`) validates regex behaviour against inlined forbidden + allowed fixtures.
+2. **Workflow:** `.github/workflows/strict-grep-mingla-business.yml` job `i-calendar-business-ticket-end-not-start` (runs self-test step then live scan).
+3. **Regression test (implementor happy-path):** `app-mobile/scripts/ci/orch-0853-regression-check.mjs` — 10 Node assertions covering service-layer contract (S-01..S-03: interface field, mapper, select clause) + partition-layer contract (P-01..P-06: effectiveEndTs canonical name, masterDateEndUtc reference, Number.isFinite end-with-start-fallback chain, forbidden pre-fix predicate absence, pending preserved, terminal compare) + ORCH-0850 preservation (G-01: computeEntryEffectiveEnd helper intact). Fails-on-revert verified at pre-fix HEAD `4f1bab8b31eaa42b60fe4f2eb13e13bebf9e984a` — 8 of 10 checks FAIL when both files are stashed (S-01, S-02, P-01, P-02, P-03, P-04, P-05, P-06 fail; S-03 and G-01 unaffected by the partition revert).
+4. **Regression test (tester adversarial):** to be authored by Claude `mingla-tester` per SPEC §6.1(b) covering different angles than happy-path — malformed ISO strings, double-null edge, DST boundary, Y10K, corrupt `end_at < start_at` row. Path: `app-mobile/scripts/ci/orch-0853-adversarial-check.mjs`.
+
+**Source:** SPEC_ORCH-0853_BUSINESS_TICKET_CALENDAR_END_NOT_START.md §3.5.1 + §5.2 + §6 + §7.
+
+**EXIT condition:** Permanent. If a future row type is added to the unified calendar feed (e.g., a hypothetical "subscription" or "marketplace booking" sibling), it MUST extend this invariant by declaring its own `*EndUtc` field and being added to the CI gate's required-token list — the no-start-only-partition rule stays.
+
 ### I-PROPOSED-STRIPE-PAYMENTSHEET-PARITY (ACTIVE — ratified by ORCH-0849 CLOSE 2026-05-15)
 
 **Status:** ACTIVE — ratified by ORCH-0849 [Stripe payment-method parity across consumer + mingla-business] CLOSE 2026-05-15.
