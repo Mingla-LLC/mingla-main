@@ -50,7 +50,11 @@ import { useTranslation } from 'react-i18next';
 // eventTitle + brandName; `when` applies via masterDateUtc with null-date
 // tickets visible only under "all". Past-date paid tickets drop into
 // Archive (mirror of saved-card archive behavior).
-import { useBusinessEventOrders, useOrdersRealtimeSubscription } from "../../hooks/useCalendarEntries";
+import {
+  useBusinessEventOrders,
+  useOrdersRealtimeSubscription,
+  useTicketsRealtimeSubscription, // ORCH-0854
+} from "../../hooks/useCalendarEntries";
 import BusinessEventCalendarRow from "./BusinessEventCalendarRow";
 import type { BusinessEventCalendarRow as BusinessEventRow } from "../../services/calendarService";
 
@@ -206,6 +210,11 @@ const CalendarTab = ({
   // (refetchOnWindowFocus + the 3-attempt invalidate loop in
   // ExpandedBusinessEventSheet) remain intact.
   useOrdersRealtimeSubscription(user?.id);
+  // ORCH-0854 H-1: realtime subscription on `tickets` table — flips ticket
+  // badge `valid → used` within ~1s of the door scanner's commit. RLS gates
+  // delivery to tickets the buyer owns. Companion publication-add migration:
+  // `supabase/migrations/20260606000200_orch_0854_tickets_realtime_publication.sql`.
+  useTicketsRealtimeSubscription(user?.id);
 
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);

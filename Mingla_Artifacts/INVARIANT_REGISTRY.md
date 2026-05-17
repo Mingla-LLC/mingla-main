@@ -3445,3 +3445,20 @@ Two strict-grep gates run together:
 **Source:** SPEC_ORCH-0842_TICKETS_INTO_ACTIVE_AND_PDF_SHEET.md §3.1 + §6.
 
 **EXIT condition:** Permanent. The bucket may be expanded to additional artifact types if a future ORCH needs to share the same private-bucket pattern, but `public = false` and the no-client-policy rule are non-negotiable for any artifact that contains valid at-door credentials.
+
+### I-PROPOSED-BV — REALTIME-TABLE-IN-PUBLICATION-OR-NO-SUBSCRIPTION (ACTIVE — ratified by ORCH-0854 CLOSE 2026-05-17)
+
+**Status:** ACTIVE — ratified by ORCH-0854 [Consumer ticket status live-flip valid→used on scan] CLOSE 2026-05-17.
+
+**Statement:** Any client-side `.on("postgres_changes", { ..., table: "T", ... })` subscription in `app-mobile/src/`, `mingla-business/src/`, or `mingla-admin/src/` MUST satisfy ONE of: (a) table `T` is in the `BASELINE_PUBLICATION_TABLES` allowlist inside `.github/scripts/strict-grep/orch-0854-tickets-realtime-publication-paired.mjs` (snapshot of live `pg_publication_tables WHERE pubname='supabase_realtime'`), OR (b) the repo contains a migration under `supabase/migrations/` with `ALTER PUBLICATION supabase_realtime ADD TABLE public.T` AND the table is appended to BASELINE in the same PR, OR (c) the subscription is annotated with a `REALTIME-INERT-OK: ORCH-NNNN <reason>` comment within 3 lines of the `.on(` call (for intentionally-inert placeholders).
+
+**Why:** Two confirmed instances of the silent-failure trap where a client subscription was wired against an unpublished table: ORCH-0816 [Brand KPI tile freshness + Realtime] for `orders` and ORCH-0854 for `tickets`. In both cases the subscription compiled, type-checked, and shipped without firing — users hit a stale-UI bug instead of CI catching the gap. A third instance must be prevented structurally. The strict-grep gate's first run on ORCH-0854 surfaced 14 additional pre-existing legacy subscriptions of the same shape (registered as ORCH-0856 for follow-up audit), confirming this is a recurring bug class, not a one-off.
+
+**Enforcement:**
+1. **Strict-grep CI gate** `.github/scripts/strict-grep/orch-0854-tickets-realtime-publication-paired.mjs` plugged into `.github/workflows/strict-grep-mingla-business.yml`. Scans all `.ts/.tsx/.js/.jsx/.mjs` files in the three client roots for `.on("postgres_changes", { ..., table: "T", ... })`, then for each table T, asserts inclusion in BASELINE_PUBLICATION_TABLES OR a matching `ALTER PUBLICATION` migration OR a `REALTIME-INERT-OK` exemption comment. Exit 1 on any unpaired NEW subscription; exit 0 with informational WARN lines for the 14 known-legacy subscriptions tracked in the `LEGACY_KNOWN_UNPUBLISHED_SUBSCRIPTIONS` set (Discovery #1 from ORCH-0854).
+2. **Baseline maintenance:** when a new `ALTER PUBLICATION ... ADD TABLE` migration lands, the same PR must append the table to BASELINE_PUBLICATION_TABLES in the gate file. Removal from baseline requires a matching `DROP TABLE` / dashboard-removal record plus operator-confirmed ORCH-NNNN justification in the commit body.
+3. **Live-state probe (operator-runnable):** `SELECT tablename FROM pg_publication_tables WHERE pubname='supabase_realtime' ORDER BY tablename;` returns the canonical 25-table set documented in the gate's BASELINE.
+
+**Source:** SPEC_ORCH-0854_CONSUMER_TICKET_SCAN_STATUS_LIVE_FLIP.md §Invariants. Investigation report `Mingla_Artifacts/reports/INVESTIGATION_ORCH-0854_CONSUMER_TICKET_SCAN_STATUS_NOT_LIVE.md` §Invariant Analysis.
+
+**EXIT condition:** Permanent. The two-trap precedent (ORCH-0816, ORCH-0854) plus the 14-finding follow-up (ORCH-0856) make this a structural concern that does not retire when individual subscriptions are fixed. The gate stays in place; the BASELINE list evolves with the publication.

@@ -1,0 +1,20 @@
+-- ORCH-0854 — add `public.tickets` to the supabase_realtime publication so the
+-- consumer Mingla app can subscribe to postgres_changes on their tickets
+-- and flip the ticket badge from "Valid" to "Used" within ~1s of the door
+-- scanner marking it used. Mirror of ORCH-0816 [Brand KPI tile freshness +
+-- Realtime] publication-add for `public.orders`.
+--
+-- Security note: RLS policy "Buyer or brand team can select tickets"
+-- (defined in baseline squash, see supabase/migrations/20260505000000_baseline_squash_orch_0729.sql)
+-- gates SELECT to (a) the buyer via the orders.buyer_user_id = auth.uid()
+-- subquery and (b) brand team members via biz_is_brand_member_for_read.
+-- The publication change does NOT broaden read access — Supabase Realtime
+-- enforces the same RLS on event delivery as it does on direct SELECT.
+-- A buyer subscribing without a server-side filter will receive UPDATE
+-- events only for tickets whose order they own.
+--
+-- Invariant: I-PROPOSED-BV REALTIME_TABLE_IN_PUBLICATION_OR_NO_SUBSCRIPTION
+-- (any client-side postgres_changes subscription to a table MUST have a
+-- matching publication-add migration; enforced by strict-grep CI gate
+-- orch-0854-tickets-realtime-publication-paired.mjs).
+ALTER PUBLICATION supabase_realtime ADD TABLE public.tickets;
