@@ -1105,3 +1105,25 @@ jobs:
           node-version: "20"
       - name: Run ORCH-0852 consumer-frozen gate
         run: node .github/scripts/strict-grep/i-consumer-payment-flow-frozen.mjs
+
+  orch-0860-markdown-link-unescaped-parens:
+    name: "ORCH-0860: markdown links must URL-encode parens (e.g. (tabs))"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0860 markdown-link parens gate
+        run: node .github/scripts/strict-grep/orch-0860-markdown-link-unescaped-parens.mjs
+
+  orch-0861-sibling-scrollview-flexgrow-zero:
+    name: "ORCH-0861: sibling <ScrollView> without flexGrow:0 (informational, post ORCH-0857)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0861 sibling-ScrollView informational gate
+        run: node .github/scripts/strict-grep/orch-0861-sibling-scrollview-flexgrow-zero.mjs
