@@ -1,0 +1,17 @@
+# mingla-business Vercel project ignores. Read by Vercel when the project's
+# Root Directory is set to `mingla-business`.
+#
+# Repo-root .vercelignore handles universal exclusions (other apps, supabase,
+# scripts, etc.). This file handles ONLY project-internal cruft.
+#
+# Established by ORCH-0857 [Vercel .vercelignore project-aware split]
+# 2026-05-17. See docs/runbooks/VERCEL_VERCELIGNORE_ARCHITECTURE.md.
+
+node_modules/
+.env
+.env.local
+.expo/
+android/
+dist/
+ios/
+.next/

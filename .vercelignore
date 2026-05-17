@@ -1,24 +1,38 @@
-# Keep Vercel CLI uploads under the 10 MB request-body limit while preserving
-# the linked project root directory (`mingla-business`) for Vercel.
+# ─────────────────────────────────────────────────────────────────────────────
+# Repo-root .vercelignore — universal exclusions ONLY.
+#
+# This file is read by EVERY Vercel project in this monorepo (mingla-admin,
+# mingla-business, mingla-marketing) regardless of each project's Root
+# Directory setting. List ONLY paths that NO Vercel project ever needs to
+# deploy. Project-internal cruft (node_modules, .env, build artifacts, sibling
+# project sources) lives in per-project .vercelignore files under the
+# corresponding Root Directory:
+#
+#   - mingla-admin/.vercelignore     ← admin project's exclusions
+#   - mingla-business/.vercelignore  ← business project's exclusions
+#   - mingla-marketing/.vercelignore ← marketing project's exclusions
+#
+# Architecture documented in docs/runbooks/VERCEL_VERCELIGNORE_ARCHITECTURE.md.
+# Established by ORCH-0857 [Vercel .vercelignore project-aware split]
+# 2026-05-17 after PR #122's cacheless marketing build failed because the prior
+# repo-root file listed `mingla-marketing/` as ignored (a cross-project entry
+# that stripped the marketing source for the marketing project's own build).
+#
+# RULE: do NOT add any subfolder of `mingla-admin/`, `mingla-business/`, or
+# `mingla-marketing/` to this file. Project-internal ignores belong in the
+# per-project .vercelignore files. If you need to add a NEW non-Vercel folder
+# at repo root (e.g., a new mobile-only or backend-only directory), add it
+# here so all three projects skip uploading it.
+# ─────────────────────────────────────────────────────────────────────────────
 
 node_modules/
+
+# Non-Vercel codebases — mobile, backend, scripts, docs, archives.
 app-mobile/
 backend/
-mingla-marketing/
 oauth-redirect/
 scripts/
 supabase/
 tests/
 Mingla_Artifacts/
 Mingla_Roadmap/
-
-mingla-business/.env
-mingla-business/.expo/
-mingla-business/android/
-mingla-business/dist/
-mingla-business/ios/
-mingla-business/node_modules/
-
-mingla-admin/.env
-mingla-admin/dist/
-mingla-admin/node_modules/

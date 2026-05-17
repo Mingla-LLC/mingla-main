@@ -1,0 +1,19 @@
+# mingla-marketing Vercel project ignores. Read by Vercel when the project's
+# Root Directory is set to `mingla-marketing`.
+#
+# Repo-root .vercelignore handles universal exclusions (other apps, supabase,
+# scripts, etc.). This file handles ONLY project-internal cruft.
+#
+# Established by ORCH-0857 [Vercel .vercelignore project-aware split]
+# 2026-05-17 after PR #122's cacheless build failure exposed that the prior
+# repo-root .vercelignore listed `mingla-marketing/` itself — stripping the
+# Next.js source from the marketing project's own deploy when cache was cold.
+# Fix removed `mingla-marketing/` from the repo-root file; this per-project
+# file handles internal exclusions. See
+# docs/runbooks/VERCEL_VERCELIGNORE_ARCHITECTURE.md.
+
+node_modules/
+.env
+.env.local
+.next/
+out/
