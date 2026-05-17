@@ -12,9 +12,10 @@
  * Native back is BLOCKED — buyer must use explicit "Back to event" CTA.
  *
  * Email/SMS send is queued by the checkout backend after tickets exist.
- * [TRANSITIONAL] Wallet add is a toast — Apple .pkpass + Google Wallet
- * pass land in B-cycle (requires Apple Developer cert + service account
- * JSON).
+ *
+ * Wallet pass buttons removed per ORCH-0852 — future ORCH-XXXX
+ * [Wallet pass issuance] will reintroduce when .pkpass + Google Wallet
+ * JWT infrastructure ships.
  *
  * Per Cycle 8 spec §4.10.
  */
@@ -22,7 +23,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -33,7 +33,6 @@ import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 
 import {
   accent,
-  glass,
   radius as radiusTokens,
   semantic,
   spacing,
@@ -47,26 +46,14 @@ import { formatDraftDateLine } from "../../../src/utils/eventDateDisplay";
 import { Button } from "../../../src/components/ui/Button";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
 import { Icon } from "../../../src/components/ui/Icon";
-import { Toast } from "../../../src/components/ui/Toast";
-
 import { useCart } from "../../../src/components/checkout/CartContext";
 import {
   clearCheckoutResumePayload,
   readCheckoutResumePayload,
 } from "../../../src/components/checkout/checkoutPersistence";
 import { TicketQrCarousel } from "../../../src/components/checkout/TicketQrCarousel";
-import { pollTicketCheckoutStatus } from "../../../src/services/ticketCheckoutService";
-
-// Wallet button visibility:
-//   - iOS native: Apple Wallet only (Apple's platform)
-//   - Android native: Google Wallet only (Google's platform)
-//   - Web: BOTH render — buyers may use any browser regardless of OS,
-//     and both are stubbed anyway. Real platform-specific gating
-//     happens at B-cycle when Apple Developer cert + Google service
-//     account JSON arrive.
-const isWeb = Platform.OS === "web";
-const showAppleWallet = Platform.OS === "ios" || isWeb;
-const showGoogleWallet = Platform.OS === "android" || isWeb;
+import { confirmTicketCheckout } from "../../../src/services/ticketCheckoutService";
+import { useOrderRealtimeSubscription } from "../../../src/hooks/useOrderRealtimeSubscription";
 
 export default function CheckoutConfirmScreen(): React.ReactElement {
   const insets = useSafeAreaInsets();
@@ -85,14 +72,23 @@ export default function CheckoutConfirmScreen(): React.ReactElement {
     setLineQuantity,
     setBuyer,
   } = useCart();
-  const [walletToast, setWalletToast] = useState<boolean>(false);
-  // ORCH-0790: web buyers complete checkout on Stripe's hosted page, which
-  // returns them here with ?cs={CHECKOUT_SESSION_ID}. The cart context is
-  // empty on this cold reload — we need to resume polling the order status
-  // using the {checkoutSessionId, buyerStatusToken} we stashed in
-  // sessionStorage before the redirect, then call recordResult so the
-  // existing render path takes over.
-  const [webResumeError, setWebResumeError] = useState<string | null>(null);
+  // ORCH-0852: bulletproof web confirmation. On `?cs=…` arrival we call the
+  // new `ticket-checkout-confirm` edge function once. It synchronously
+  // verifies the Stripe PaymentIntent and idempotently finalizes the order,
+  // so the buyer's screen does NOT depend on Stripe webhook arrival timing.
+  // If that call returns status: "pending" OR throws, we fall through to
+  // `useOrderRealtimeSubscription` below — a Postgres-Realtime push from
+  // ticket_checkout_sessions.order_id finalizes the screen as soon as
+  // either path (the same sync confirm retried, or the webhook backup)
+  // lands the order. There is no retry button, no help link, no dead-end
+  // fallback — the user sees a calm "Confirming your tickets…" state for
+  // the rare seconds-to-30s window between PaymentSheet success and order
+  // finalization, and the screen auto-resolves to the full order view.
+  const [realtimePending, setRealtimePending] = useState<boolean>(false);
+  const [pendingSession, setPendingSession] = useState<{
+    checkoutSessionId: string;
+    buyerStatusToken: string;
+  } | null>(null);
   // Ref flag — flipped to true when buyer taps "Back to event." The
   // beforeRemove listener checks this and lets the navigation through
   // when set, so the explicit CTA exit isn't blocked by the same guard
@@ -151,14 +147,19 @@ export default function CheckoutConfirmScreen(): React.ReactElement {
     };
   }, []);
 
-  // ----- ORCH-0790 + REWORK: web Stripe Checkout resume -----
+  // ----- ORCH-0852: web Stripe Checkout sync confirm + Realtime fallback -----
   // On web, Stripe's success_url returns us here with ?cs=…, after a
   // full-page reload that wiped cart context. Read the persisted resume
   // payload from sessionStorage, restore lines + buyer (so the summary
-  // card and "Sent to {email}" line render with real data), then poll
-  // the order status and recordResult so the QR carousel mounts. Storage
-  // is cleared only on confirmed success — failed polls leave the entry
-  // in place so a refresh can retry.
+  // card and "Sent to {email}" line render with real data), then call
+  // `ticket-checkout-confirm` synchronously. That edge function calls
+  // Stripe's API directly + invokes the idempotent finalize RPC, so the
+  // buyer is NOT dependent on Stripe webhook arrival timing. On success,
+  // recordResult fires and the QR carousel mounts. On `pending` or thrown
+  // error, we set `realtimePending` + `pendingSession` and the Realtime
+  // hook below picks up the order the moment the webhook lands.
+  // Storage is cleared only on confirmed success — pending/failed paths
+  // leave the entry in place so a refresh can retry.
   useEffect(() => {
     if (Platform.OS !== "web") return;
     if (eventId === null) return;
@@ -172,7 +173,7 @@ export default function CheckoutConfirmScreen(): React.ReactElement {
     const payload = readCheckoutResumePayload(win.sessionStorage, eventId);
     if (payload === null) return;
 
-    // Restore cart context BEFORE the poll so the summary + hero render
+    // Restore cart context BEFORE the confirm so the summary + hero render
     // correctly even while the order is still finalising.
     if (lines.length === 0) {
       for (const l of payload.lines) {
@@ -194,44 +195,58 @@ export default function CheckoutConfirmScreen(): React.ReactElement {
     let cancelled = false;
     (async (): Promise<void> => {
       try {
-        const status = await pollTicketCheckoutStatus(
+        const confirmResult = await confirmTicketCheckout(
           payload.checkoutSessionId,
           payload.buyerStatusToken,
         );
         if (cancelled) return;
-        if (status === null || status.order === null) {
-          setWebResumeError(
-            "Your payment is being finalised — tickets will arrive by email shortly.",
-          );
+        if (confirmResult.status === "paid" && confirmResult.order !== null) {
+          // ORCH-0804 — pass Stripe Tax data into the order result so the
+          // confirmation can render a tax line. taxAmountCents defaults to 0
+          // when missing (free order / brand not registered in buyer
+          // jurisdiction).
+          const taxCents = Number(confirmResult.order.taxAmountCents ?? 0);
+          recordResult({
+            orderId: confirmResult.order.orderId,
+            ticketIds: confirmResult.order.tickets.map((t) => t.ticketId),
+            checkoutSessionId: confirmResult.checkoutSessionId,
+            paidAt: new Date().toISOString(),
+            paymentMethod: "card",
+            total: confirmResult.order.totalCents / 100,
+            totalCents: confirmResult.order.totalCents,
+            currency: confirmResult.order.currency,
+            tax: taxCents > 0 ? taxCents / 100 : 0,
+            taxAmountCents: taxCents,
+            paymentStatus: confirmResult.order.paymentStatus,
+            notificationStatus: confirmResult.order.notificationStatus,
+            tickets: confirmResult.order.tickets,
+          });
+          clearCheckoutResumePayload(win.sessionStorage, eventId);
           return;
         }
-        // ORCH-0804 — pass Stripe Tax data into the order result so the
-        // confirmation can render a tax line. taxAmountCents defaults to 0
-        // when the status edge fn doesn't return it (older build / free
-        // order / brand not registered in buyer jurisdiction).
-        const taxCents = Number(status.order.taxAmountCents ?? 0);
-        recordResult({
-          orderId: status.order.orderId,
-          ticketIds: status.order.tickets.map((t) => t.ticketId),
-          checkoutSessionId: status.checkoutSessionId,
-          paidAt: new Date().toISOString(),
-          paymentMethod: "card",
-          total: status.order.totalCents / 100,
-          totalCents: status.order.totalCents,
-          currency: status.order.currency,
-          tax: taxCents > 0 ? taxCents / 100 : 0,
-          taxAmountCents: taxCents,
-          paymentStatus: status.order.paymentStatus,
-          notificationStatus: status.order.notificationStatus,
-          tickets: status.order.tickets,
+        // status === "pending" — Stripe PI still processing OR no PI tied
+        // to the session yet. Fall through to Realtime; the webhook backup
+        // will populate ticket_checkout_sessions.order_id and the Realtime
+        // hook below will materialize the order.
+        setPendingSession({
+          checkoutSessionId: payload.checkoutSessionId,
+          buyerStatusToken: payload.buyerStatusToken,
         });
-        clearCheckoutResumePayload(win.sessionStorage, eventId);
+        setRealtimePending(true);
       } catch (err) {
         if (cancelled) return;
-        console.warn("[checkout-confirm] web resume failed", err);
-        setWebResumeError(
-          "Your payment is being finalised — tickets will arrive by email shortly.",
+        // Confirm errored (network, 502 stripe_unavailable, etc.). Webhook
+        // backup is still in flight — fall through to Realtime so the
+        // buyer never sees a dead-end retry screen.
+        console.warn(
+          "[checkout-confirm] sync confirm failed, falling back to realtime",
+          err,
         );
+        setPendingSession({
+          checkoutSessionId: payload.checkoutSessionId,
+          buyerStatusToken: payload.buyerStatusToken,
+        });
+        setRealtimePending(true);
       }
     })();
     return (): void => {
@@ -242,11 +257,46 @@ export default function CheckoutConfirmScreen(): React.ReactElement {
     // because we read them once for the empty-check then restore.
   }, [eventId, result]);
 
+  // ORCH-0852: Realtime safety net. Subscribes to ticket_checkout_sessions
+  // UPDATE events filtered to the active session. When session.order_id
+  // transitions from NULL to a finalized UUID (via either path: a follow-up
+  // sync confirm OR the webhook backup), `onOrderReady` fires and we
+  // populate `result` so the screen transitions to the full order view.
+  useOrderRealtimeSubscription({
+    checkoutSessionId: realtimePending ? pendingSession?.checkoutSessionId ?? null : null,
+    buyerStatusToken: realtimePending ? pendingSession?.buyerStatusToken ?? null : null,
+    onOrderReady: (order) => {
+      const taxCents = Number(order.taxAmountCents ?? 0);
+      recordResult({
+        orderId: order.orderId,
+        ticketIds: order.tickets.map((t) => t.ticketId),
+        checkoutSessionId: order.checkoutSessionId,
+        paidAt: new Date().toISOString(),
+        paymentMethod: "card",
+        total: order.totalCents / 100,
+        totalCents: order.totalCents,
+        currency: order.currency,
+        tax: taxCents > 0 ? taxCents / 100 : 0,
+        taxAmountCents: taxCents,
+        paymentStatus: order.paymentStatus,
+        notificationStatus: order.notificationStatus,
+        tickets: order.tickets,
+      });
+      if (Platform.OS === "web" && eventId !== null) {
+        const win = (globalThis as unknown as { sessionStorage?: Storage });
+        clearCheckoutResumePayload(win.sessionStorage, eventId);
+      }
+      setRealtimePending(false);
+      setPendingSession(null);
+    },
+  });
+
   // ----- Defensive: result missing → bounce to /checkout/{eventId} -----
-  // Skip the bounce on web while a resume is in flight (?cs= present and
-  // storage has a payload), so the Stripe success redirect doesn't get
-  // kicked back to the cart screen before pollTicketCheckoutStatus
-  // completes or the resume-error fallback renders.
+  // Skip the bounce on web while either (a) the ?cs= resume hasn't run yet,
+  // or (b) realtimePending is true (sync confirm returned pending OR
+  // errored, Realtime is now waiting for the webhook backup). This keeps
+  // the buyer on /confirm instead of bouncing them to the cart screen
+  // mid-finalization.
   useEffect(() => {
     if (eventId === null) return;
     if (result !== null) return;
@@ -262,10 +312,10 @@ export default function CheckoutConfirmScreen(): React.ReactElement {
       ) {
         return;
       }
-      if (webResumeError !== null) return;
+      if (realtimePending) return;
     }
     router.replace(`/checkout/${eventId}` as never);
-  }, [result, eventId, router, webResumeError]);
+  }, [result, eventId, router, realtimePending]);
 
   // ----- Handlers -----
   const handleBackToEvent = useCallback((): void => {
@@ -285,10 +335,6 @@ export default function CheckoutConfirmScreen(): React.ReactElement {
     router.replace("/(tabs)/home" as never);
   }, [router, event]);
 
-  const handleWalletAdd = useCallback((): void => {
-    setWalletToast(true);
-  }, []);
-
   // ----- Memos -----
   // Production checkout returns server-issued QR payloads. Confirmation renders
   // only those durable tickets so scanner and organizer views share truth.
@@ -303,13 +349,16 @@ export default function CheckoutConfirmScreen(): React.ReactElement {
 
   const totalTickets = carouselTickets.length;
 
-  // ORCH-0790: web cold-start resume hasn't finished AND surfaced an error
-  // (typical when the webhook is slow). Render a friendly fallback so the
-  // buyer knows their payment succeeded even though tickets aren't loaded.
+  // ORCH-0852: web buyer's sync confirm returned `pending` (or errored).
+  // Realtime subscription is now listening for the webhook backup. Render
+  // a calm "Confirming your tickets…" hero — NO retry button, NO help
+  // link, NO dead-end fallback. The Realtime push will swap this for the
+  // full order render as soon as ticket_checkout_sessions.order_id is
+  // populated server-side (typical wait: 0-5s; p99: <30s).
   if (
     Platform.OS === "web" &&
     result === null &&
-    webResumeError !== null &&
+    realtimePending &&
     event !== null
   ) {
     return (
@@ -318,9 +367,9 @@ export default function CheckoutConfirmScreen(): React.ReactElement {
           <View style={styles.checkBadge}>
             <Icon name="check" size={36} color={textTokens.primary} />
           </View>
-          <Text style={styles.heroTitle}>Payment received</Text>
-          <Text style={styles.heroEmail} numberOfLines={4}>
-            {webResumeError}
+          <Text style={styles.heroTitle}>Confirming your tickets…</Text>
+          <Text style={styles.heroEmail} numberOfLines={3}>
+            Payment received. Your tickets will appear here in a moment.
           </Text>
         </View>
       </View>
@@ -425,39 +474,9 @@ export default function CheckoutConfirmScreen(): React.ReactElement {
           ) : null}
         </GlassCard>
 
-        {/* Wallet row */}
-        {showAppleWallet || showGoogleWallet ? (
-          <View style={styles.walletRow}>
-            {showAppleWallet ? (
-              <Pressable
-                onPress={handleWalletAdd}
-                accessibilityRole="button"
-                accessibilityLabel="Add to Apple Wallet"
-                style={({ pressed }) => [
-                  styles.walletBtn,
-                  pressed && styles.walletBtnPressed,
-                ]}
-              >
-                <Icon name="apple" size={18} color={textTokens.primary} />
-                <Text style={styles.walletBtnLabel}>Add to Apple Wallet</Text>
-              </Pressable>
-            ) : null}
-            {showGoogleWallet ? (
-              <Pressable
-                onPress={handleWalletAdd}
-                accessibilityRole="button"
-                accessibilityLabel="Add to Google Wallet"
-                style={({ pressed }) => [
-                  styles.walletBtn,
-                  pressed && styles.walletBtnPressed,
-                ]}
-              >
-                <Icon name="google" size={18} color={textTokens.primary} />
-                <Text style={styles.walletBtnLabel}>Add to Google Wallet</Text>
-              </Pressable>
-            ) : null}
-          </View>
-        ) : null}
+        {/* Wallet pass buttons removed per ORCH-0852 — future ORCH-XXXX
+            [Wallet pass issuance] will reintroduce when .pkpass + Google
+            Wallet JWT infrastructure ships. */}
       </ScrollView>
 
       {/* Sticky bottom CTA */}
@@ -477,15 +496,6 @@ export default function CheckoutConfirmScreen(): React.ReactElement {
         />
       </View>
 
-      {/* Wallet toast — top-anchored absolute wrapper (Cycle 8a lesson) */}
-      <View style={styles.toastWrap} pointerEvents="box-none">
-        <Toast
-          visible={walletToast}
-          kind="info"
-          message="Coming soon — saved to your account."
-          onDismiss={() => setWalletToast(false)}
-        />
-      </View>
     </View>
   );
 }
@@ -604,34 +614,6 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
     alignItems: "center",
   },
-  walletRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing.sm,
-    marginBottom: spacing.lg,
-  },
-  walletBtn: {
-    flex: 1,
-    minWidth: 140,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.xs,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: radiusTokens.md,
-    backgroundColor: glass.tint.profileBase,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
-  },
-  walletBtnPressed: {
-    opacity: 0.7,
-  },
-  walletBtnLabel: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: textTokens.primary,
-  },
   bottomBar: {
     position: "absolute",
     left: 0,
@@ -642,13 +624,5 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(12, 14, 18, 0.94)",
     borderTopWidth: 1,
     borderTopColor: "rgba(255, 255, 255, 0.06)",
-  },
-  toastWrap: {
-    position: "absolute",
-    top: 60,
-    left: 0,
-    right: 0,
-    zIndex: 100,
-    elevation: 12,
   },
 });

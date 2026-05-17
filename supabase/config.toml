@@ -63,3 +63,11 @@ verify_jwt = false
 # session by buyerStatusToken; no Supabase JWT involved.
 [functions.ticket-checkout-status]
 verify_jwt = false
+
+# ORCH-0852 — synchronous buyer-owned confirmation path. Anon-tolerant;
+# access gated by buyerStatusToken hash match (NOT Supabase JWT). Verifies
+# Stripe PaymentIntent status directly and idempotently invokes
+# biz_ticket_checkout_finalize so the buyer never depends on Stripe
+# webhook timing to see their order.
+[functions.ticket-checkout-confirm]
+verify_jwt = false

@@ -13,13 +13,16 @@
  *   - Order summary (FROZEN snapshot fields)
  *   - Status banner per status
  *   - QR code (when status preserves a valid ticket)
- *   - Wallet add row (TRANSITIONAL — same stub as confirm.tsx)
  *   - Refund ledger (when refunds exist)
+ *
+ * Wallet pass buttons removed per ORCH-0852 — future ORCH-XXXX
+ * [Wallet pass issuance] will reintroduce when .pkpass + Google Wallet
+ * JWT infrastructure ships.
  *
  * Per Cycle 9c spec §3.5.1 + I-21 (anon-tolerant route).
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo } from "react";
 import {
   Platform,
   Pressable,
@@ -59,7 +62,6 @@ import { EmptyState } from "../../src/components/ui/EmptyState";
 import { EventCoverMedia } from "../../src/components/ui/EventCoverMedia";
 import { GlassCard } from "../../src/components/ui/GlassCard";
 import { Icon } from "../../src/components/ui/Icon";
-import { Toast } from "../../src/components/ui/Toast";
 
 // Cycle 11 J-S8 — multi-ticket QR carousel; SUBTRACTS local ticketIdFromOrder
 // helper per Const #8.
@@ -80,10 +82,6 @@ const PAYMENT_METHOD_LABEL: Record<CheckoutPaymentMethod, string> = {
   nfc: "NFC tap",
   manual: "Manual",
 };
-
-const isWeb = Platform.OS === "web";
-const showAppleWallet = Platform.OS === "ios" || isWeb;
-const showGoogleWallet = Platform.OS === "android" || isWeb;
 
 interface StatusBannerSpec {
   bgColor: string;
@@ -191,8 +189,6 @@ export default function BuyerOrderDetailRoute(): React.ReactElement {
     (s) => s.updateLastSeenEventUpdatedAt,
   );
 
-  const [walletToast, setWalletToast] = useState<boolean>(false);
-
   const handleAcknowledge = useCallback((): void => {
     if (order === null || materialEdits.length === 0) return;
     updateLastSeenEventUpdatedAt(order.id, materialEdits[0].editedAt);
@@ -205,10 +201,6 @@ export default function BuyerOrderDetailRoute(): React.ReactElement {
       router.replace("/" as never);
     }
   }, [router]);
-
-  const handleWalletAdd = useCallback((): void => {
-    setWalletToast(true);
-  }, []);
 
   // Bounce browser-back history on web so Close has stable behavior
   useEffect(() => {
@@ -425,39 +417,9 @@ export default function BuyerOrderDetailRoute(): React.ReactElement {
           </GlassCard>
         ) : null}
 
-        {/* Wallet row — hidden when ticket no longer valid */}
-        {!banner.hideQr && (showAppleWallet || showGoogleWallet) ? (
-          <View style={styles.walletRow}>
-            {showAppleWallet ? (
-              <Pressable
-                onPress={handleWalletAdd}
-                accessibilityRole="button"
-                accessibilityLabel="Add to Apple Wallet"
-                style={({ pressed }) => [
-                  styles.walletBtn,
-                  pressed && styles.walletBtnPressed,
-                ]}
-              >
-                <Icon name="apple" size={18} color={textTokens.primary} />
-                <Text style={styles.walletBtnLabel}>Add to Apple Wallet</Text>
-              </Pressable>
-            ) : null}
-            {showGoogleWallet ? (
-              <Pressable
-                onPress={handleWalletAdd}
-                accessibilityRole="button"
-                accessibilityLabel="Add to Google Wallet"
-                style={({ pressed }) => [
-                  styles.walletBtn,
-                  pressed && styles.walletBtnPressed,
-                ]}
-              >
-                <Icon name="google" size={18} color={textTokens.primary} />
-                <Text style={styles.walletBtnLabel}>Add to Google Wallet</Text>
-              </Pressable>
-            ) : null}
-          </View>
-        ) : null}
+        {/* Wallet pass buttons removed per ORCH-0852 — future ORCH-XXXX
+            [Wallet pass issuance] will reintroduce when .pkpass + Google
+            Wallet JWT infrastructure ships. */}
 
         {/* Refund ledger */}
         {order.refunds.length > 0 ? (
@@ -483,14 +445,6 @@ export default function BuyerOrderDetailRoute(): React.ReactElement {
           </View>
         ) : null}
       </ScrollView>
-
-      {/* Wallet toast — self-positions via Modal portal */}
-      <Toast
-        visible={walletToast}
-        kind="info"
-        message="Coming soon — saved to your account."
-        onDismiss={() => setWalletToast(false)}
-      />
     </View>
   );
 }
@@ -662,33 +616,6 @@ const styles = StyleSheet.create({
   qrCard: {
     alignItems: "center",
     marginBottom: 0,
-  },
-  walletRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing.sm,
-  },
-  walletBtn: {
-    flex: 1,
-    minWidth: 140,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.xs,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: radiusTokens.md,
-    backgroundColor: glass.tint.profileBase,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
-  },
-  walletBtnPressed: {
-    opacity: 0.7,
-  },
-  walletBtnLabel: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: textTokens.primary,
   },
   refundLedger: {
     marginBottom: 0,
