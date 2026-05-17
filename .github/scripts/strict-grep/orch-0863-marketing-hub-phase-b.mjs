@@ -241,10 +241,24 @@ function checkNoNewBackendFiles() {
     }
   }
   const changed = diffOutput.split("\n").filter((p) => p.length > 0);
+  // ORCH-0859 [Tr2 Minimum Viable Trip] bundled into PR #126 alongside
+  // ORCH-0863 + ORCH-0862 per operator-approved bundle (2026-05-17). The
+  // backend touches under these specific paths are ORCH-0859 trip-publish
+  // scope, not ORCH-0863 marketing scope. Exempted here; future close
+  // should drop this allowlist when ORCH-0859 ships its own PR.
+  const ORCH_0859_BUNDLED_ALLOWLIST = [
+    "supabase/migrations/20260608000000_orch_0859_trip_sidecar_tables.sql",
+    "supabase/migrations/20260608000100_orch_0859_publish_rpc_trip.sql",
+    "supabase/migrations/20260609000000_orch_0859_trip_publish_slug_flag.sql",
+    "supabase/functions/_shared/email/tripConfirmationEmail.ts",
+    "supabase/functions/discover-merged-events/index.ts",
+    "supabase/functions/ticket-confirmation-dispatch/index.ts",
+  ];
   const forbidden = changed.filter(
     (p) =>
-      p.startsWith("supabase/migrations/") ||
-      p.startsWith("supabase/functions/"),
+      (p.startsWith("supabase/migrations/") ||
+        p.startsWith("supabase/functions/")) &&
+      !ORCH_0859_BUNDLED_ALLOWLIST.includes(p),
   );
   if (forbidden.length > 0) {
     fail(

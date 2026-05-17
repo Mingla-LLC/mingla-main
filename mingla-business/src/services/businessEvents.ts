@@ -324,6 +324,12 @@ const brandFromRow = (row: BusinessManagementEventRow): Brand => {
 const eventFromRow = (
   row: BusinessManagementEventRow,
   tickets: TicketStub[],
+  // ORCH-0865 REWORK 5: discriminator passed in from the 2-step probe
+  // (fetchBusinessEventsForBrand) so the LiveEvent carries event_type
+  // into the cache → home/hub tap-handlers can route trips vs events
+  // correctly via routeForEventRow. View doesn't expose event_type so
+  // we attach it here from the events-table probe result.
+  eventType: "event" | "experience" | "trip" = "event",
 ): LiveEvent => {
   const theme = asRecord(row.management_theme);
   const businessEvent = asRecord(theme.business_event);
@@ -347,6 +353,9 @@ const eventFromRow = (
     publishedAt: row.published_at ?? row.updated_at,
     cancelledAt: row.status === "cancelled" ? row.updated_at : null,
     endedAt: row.status === "ended" ? row.updated_at : null,
+    // ORCH-0865 REWORK 5: attach event_type from the 2-step probe so
+    // home/hub tap-handlers can dispatch correctly via routeForEventRow.
+    event_type: eventType,
     name: row.title,
     description: row.description ?? "",
     format: asFormat(businessEvent.format, row.is_online),
@@ -454,6 +463,7 @@ const detailFromRow = async (
 export const fetchBusinessEventsForBrand = async (
   brandId: string,
 ): Promise<LiveEvent[]> => {
+  // orch-strict-grep-allow events-type-filter — view doesn't expose event_type; trip exclusion via 2-step probe below (.from("events").select("id, event_type")) — pattern documented in ORCH-0859 REWORK 2
   const { data, error } = await supabase
     .from("business_management_events_view")
     .select(BUSINESS_EVENT_SELECT)
@@ -462,13 +472,82 @@ export const fetchBusinessEventsForBrand = async (
 
   if (error !== null) throw error;
   const rows = (data ?? []) as BusinessManagementEventRow[];
-  const ticketLists = await Promise.all(rows.map((row) => fetchTicketsForEvent(row.id)));
-  return rows.map((row, idx) => eventFromRow(row, ticketLists[idx] ?? []));
+
+  // ORCH-0859 REWORK 2 (operator smoke #1): exclude event_type='trip' so
+  // trip-planner trips don't leak into the events tab. Trips live in their
+  // own /hub/trips view via useTripsByBrand. The view doesn't expose
+  // event_type, so filter client-side via a second small query.
+  // Mirrors the filter the discover-merged-events edge function already
+  // applies for the consumer feed
+  // (supabase/functions/discover-merged-events/index.ts).
+  let filteredRows = rows;
+  // ORCH-0865 REWORK 5: capture event_type per id so we can attach it to
+  // the LiveEvent output (defensive: tap-handlers route trips → /trip/{id}
+  // even if a trip leaks past this filter via a future regression).
+  const eventTypeById = new Map<string, "event" | "experience" | "trip">();
+  if (rows.length > 0) {
+    const ids = rows.map((r) => r.id);
+    // orch-strict-grep-allow events-type-filter — this IS the filter probe (returns event_type for client-side trip rejection)
+    const typesResp = await supabase
+      .from("events")
+      .select("id, event_type")
+      .in("id", ids);
+    if (typesResp.error !== null) throw typesResp.error;
+    const tripIds = new Set<string>();
+    for (const r of (typesResp.data ?? []) as Array<{
+      id: string;
+      event_type: "event" | "experience" | "trip" | null;
+    }>) {
+      const t = r.event_type ?? "event";
+      eventTypeById.set(r.id, t);
+      if (t === "trip") tripIds.add(r.id);
+    }
+    filteredRows = rows.filter((r) => !tripIds.has(r.id));
+  }
+
+  // [ORCH-0859-REWORK-4-DIAG] events-tab-leak diagnostic — proves the
+  // filter is running in the operator's deployed bundle. Reaps at CLOSE.
+  // eslint-disable-next-line no-console
+  console.log("[ORCH-0859-REWORK-4-DIAG] fetchBusinessEventsForBrand", {
+    brandId,
+    rowsCount: rows.length,
+    tripIdsCount:
+      rows.length > 0
+        ? rows.filter((r) => !filteredRows.includes(r)).length
+        : 0,
+    filteredCount: filteredRows.length,
+  });
+
+  const ticketLists = await Promise.all(
+    filteredRows.map((row) => fetchTicketsForEvent(row.id)),
+  );
+  return filteredRows.map((row, idx) =>
+    eventFromRow(
+      row,
+      ticketLists[idx] ?? [],
+      eventTypeById.get(row.id) ?? "event",
+    ),
+  );
 };
 
 export const fetchBusinessEventById = async (
   eventId: string,
 ): Promise<BusinessEventDetail | null> => {
+  // ORCH-0859 REWORK 3 (events-type-filter audit): view doesn't expose
+  // event_type. Do a second small probe against events to reject trips.
+  // Single-event detail is event-only; trip detail lives at /trip/{id}.
+  // orch-strict-grep-allow events-type-filter — this IS the filter probe (returns event_type for client-side trip rejection)
+  const typeResp = await supabase
+    .from("events")
+    .select("id, event_type")
+    .eq("id", eventId)
+    .maybeSingle();
+  if (typeResp.error !== null) throw typeResp.error;
+  if (typeResp.data !== null && typeResp.data.event_type === "trip") {
+    return null;
+  }
+
+  // orch-strict-grep-allow events-type-filter — view doesn't expose event_type; trip exclusion via probe above
   const { data, error } = await supabase
     .from("business_management_events_view")
     .select(BUSINESS_EVENT_SELECT)

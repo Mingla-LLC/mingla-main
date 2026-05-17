@@ -75,9 +75,12 @@ const OPTIONS: readonly CreatorOption[] = [
   {
     key: "trip",
     iconName: "globe",
+    // ORCH-0859 (Tr2): wired from /trip/coming-soon stub to real wizard.
+    // /trip/create gates on currentBrand.kind === "trip_planner" — non-trip-planner
+    // brands see an explainer (Tr2 §8 hard guard).
     title: "Create trip or otherwise",
     subtitle: "A multi-day curated package: retreat, tour, weekend getaway.",
-    route: "/trip/coming-soon",
+    route: "/trip/create",
     testID: "universal-creator-trip",
   },
 ] as const;

@@ -189,6 +189,9 @@ export const updatePublishedEventCoverMedia = async (
       "Save failed because this event is missing its server id.",
     );
   }
+  // ORCH-0859 REWORK 3 (events-type-filter audit): event-wizard cover
+  // media writer is event-only. Trip wizard manages its own cover via
+  // theme.business_trip + its own service path.
   const { data, error } = await supabase
     .from("events")
     .update({
@@ -202,6 +205,7 @@ export const updatePublishedEventCoverMedia = async (
       updated_at: new Date().toISOString(),
     })
     .eq("id", serverEventId)
+    .eq("event_type", "event")
     .is("deleted_at", null)
     .select("id")
     .maybeSingle();

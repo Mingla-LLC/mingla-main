@@ -1,0 +1,736 @@
+/**
+ * tripsService — CRUD operations for event_type='trip' rows + sidecar tables
+ * (trip_days, trip_pricing_tiers, trip_inclusions). Tr2 (ORCH-0859).
+ *
+ * Pattern mirrors brandsService.ts (ORCH-0855 Tr1 precedent):
+ *   - Throws on Postgrest error
+ *   - SlugCollisionError on 23505 from the publish RPC
+ *   - DELETE-then-INSERT upsert for sidecar tables (Tr2 design — simpler than
+ *     ON CONFLICT given the wizard's small day-count + frequent reorder)
+ *
+ * Per I-1.2-UNIFIED-EVENT-TYPE: trips are events rows with event_type='trip'.
+ * Per Tr2 §4.2 (amended 2026-05-17 Option B): publish calls
+ * `business_publish_trip_draft` RPC (NOT the event publish RPC).
+ *
+ * Spec: Mingla_Artifacts/specs/SPEC_ORCH-0859_TR2_MINIMUM_VIABLE_TRIP.md §4.6
+ */
+
+import { supabase } from "./supabase";
+import type { BrandRole } from "../store/currentBrandStore";
+
+// ---------------------- Types ----------------------
+
+export interface TripDay {
+  id: string;
+  eventId: string;
+  ordinal: number;
+  title: string;
+  narrative: string | null;
+  date: string | null;
+  stops: unknown[];
+}
+
+export interface TripPricingTier {
+  id: string;
+  eventId: string;
+  ticketTypeId: string;
+  tierName: string;
+  tierMetadata: Record<string, unknown>;
+  priceCents: number;
+  currency: string;
+  quantityTotal: number | null;
+  isUnlimited: boolean;
+}
+
+export interface TripInclusion {
+  id: string;
+  eventId: string;
+  kind: "included" | "excluded";
+  item: string;
+  ordinal: number;
+}
+
+export interface TripBusinessTrip {
+  startAt: string | null;
+  endAt: string | null;
+  destinationPlaceId: string | null;
+  destinationLocationText: string | null;
+  destinationLat: number | null;
+  destinationLng: number | null;
+  capacity: number | null;
+}
+
+export interface Trip {
+  id: string;
+  brandId: string;
+  brandSlug: string | null;
+  title: string;
+  description: string | null;
+  slug: string;
+  status: "draft" | "scheduled" | "live" | "ended" | "cancelled";
+  visibility: "draft" | "public" | "private" | "hidden";
+  publishedAt: string | null;
+  timezone: string;
+  coverMediaUrl: string | null;
+  coverMediaType: string | null;
+  businessTrip: TripBusinessTrip;
+  days: TripDay[];
+  pricingTiers: TripPricingTier[];
+  inclusions: TripInclusion[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateTripDraftInput {
+  brandId: string;
+  initialTitle?: string;
+}
+
+export interface TripBasicsPatch {
+  title?: string;
+  description?: string | null;
+  businessTrip?: Partial<TripBusinessTrip>;
+  coverMediaUrl?: string | null;
+  coverMediaType?: "image" | "video" | "gif" | null;
+  timezone?: string;
+}
+
+export interface TripDayInput {
+  ordinal: number;
+  title: string;
+  narrative?: string | null;
+  date?: string | null;
+}
+
+export interface TripInclusionInput {
+  kind: "included" | "excluded";
+  item: string;
+  ordinal: number;
+}
+
+export interface TripPricingPatch {
+  tierName: string;
+  priceCents: number;
+  capacity: number;
+  /**
+   * Optional. If provided, IGNORED. Currency is always derived from the
+   * parent event (which was set at create time from brand.default_currency).
+   * Kept on the type only for backwards source compatibility — callers
+   * MUST NOT depend on it.
+   *
+   * ORCH-0859 REWORK 2: enforced server-side because the
+   * tg_enforce_event_ticket_currency trigger (ORCH-0769) rejects any
+   * mismatch. Letting the wizard pass a user-typed currency caused
+   * `ticket_currency_must_match_event_currency` on autosave.
+   */
+  currency?: string;
+}
+
+export class SlugCollisionError extends Error {
+  constructor(public attemptedSlug: string) {
+    super(`Trip slug "${attemptedSlug}" is taken on this brand.`);
+    this.name = "SlugCollisionError";
+  }
+}
+
+export class TripPublishValidationError extends Error {
+  constructor(public code: string, message: string) {
+    super(message);
+    this.name = "TripPublishValidationError";
+  }
+}
+
+// ---------------------- Row mappers ----------------------
+
+interface TripDayRow {
+  id: string;
+  event_id: string;
+  ordinal: number;
+  title: string;
+  narrative: string | null;
+  date: string | null;
+  stops: unknown[];
+}
+
+interface TripPricingTierRow {
+  id: string;
+  event_id: string;
+  ticket_type_id: string;
+  tier_name: string;
+  tier_metadata: Record<string, unknown>;
+}
+
+interface TripInclusionRow {
+  id: string;
+  event_id: string;
+  kind: "included" | "excluded";
+  item: string;
+  ordinal: number;
+}
+
+interface TicketTypeRow {
+  id: string;
+  event_id: string;
+  price_cents: number;
+  currency: string;
+  quantity_total: number | null;
+  is_unlimited: boolean;
+}
+
+interface EventRow {
+  id: string;
+  brand_id: string;
+  title: string;
+  description: string | null;
+  slug: string;
+  status: "draft" | "scheduled" | "live" | "ended" | "cancelled";
+  visibility: "draft" | "public" | "private" | "hidden";
+  published_at: string | null;
+  timezone: string;
+  cover_media_url: string | null;
+  cover_media_type: string | null;
+  theme: Record<string, unknown> | null;
+  event_type: "event" | "experience" | "trip";
+  created_at: string;
+  updated_at: string;
+}
+
+function mapTripDay(row: TripDayRow): TripDay {
+  return {
+    id: row.id,
+    eventId: row.event_id,
+    ordinal: row.ordinal,
+    title: row.title,
+    narrative: row.narrative,
+    date: row.date,
+    stops: Array.isArray(row.stops) ? row.stops : [],
+  };
+}
+
+function mapTripInclusion(row: TripInclusionRow): TripInclusion {
+  return {
+    id: row.id,
+    eventId: row.event_id,
+    kind: row.kind,
+    item: row.item,
+    ordinal: row.ordinal,
+  };
+}
+
+function mapTripPricingTier(
+  row: TripPricingTierRow,
+  ticketType: TicketTypeRow | undefined,
+): TripPricingTier {
+  return {
+    id: row.id,
+    eventId: row.event_id,
+    ticketTypeId: row.ticket_type_id,
+    tierName: row.tier_name,
+    tierMetadata: row.tier_metadata ?? {},
+    priceCents: ticketType?.price_cents ?? 0,
+    currency: ticketType?.currency ?? "",
+    quantityTotal: ticketType?.quantity_total ?? null,
+    isUnlimited: ticketType?.is_unlimited ?? false,
+  };
+}
+
+function readBusinessTrip(theme: Record<string, unknown> | null): TripBusinessTrip {
+  const bt = (theme?.business_trip as Record<string, unknown> | undefined) ?? {};
+  return {
+    startAt: typeof bt.startAt === "string" ? bt.startAt : null,
+    endAt: typeof bt.endAt === "string" ? bt.endAt : null,
+    destinationPlaceId:
+      typeof bt.destinationPlaceId === "string" ? bt.destinationPlaceId : null,
+    destinationLocationText:
+      typeof bt.destinationLocationText === "string"
+        ? bt.destinationLocationText
+        : null,
+    destinationLat:
+      typeof bt.destinationLat === "number" ? bt.destinationLat : null,
+    destinationLng:
+      typeof bt.destinationLng === "number" ? bt.destinationLng : null,
+    capacity: typeof bt.capacity === "number" ? bt.capacity : null,
+  };
+}
+
+function mapTrip(
+  event: EventRow,
+  brandSlug: string | null,
+  days: TripDayRow[],
+  tiers: TripPricingTierRow[],
+  inclusions: TripInclusionRow[],
+  ticketTypes: TicketTypeRow[],
+): Trip {
+  const ticketTypesById = new Map(ticketTypes.map((tt) => [tt.id, tt]));
+  return {
+    id: event.id,
+    brandId: event.brand_id,
+    brandSlug,
+    title: event.title,
+    description: event.description,
+    slug: event.slug,
+    status: event.status,
+    visibility: event.visibility,
+    publishedAt: event.published_at,
+    timezone: event.timezone,
+    coverMediaUrl: event.cover_media_url,
+    coverMediaType: event.cover_media_type,
+    businessTrip: readBusinessTrip(event.theme),
+    days: days.map(mapTripDay),
+    pricingTiers: tiers.map((t) =>
+      mapTripPricingTier(t, ticketTypesById.get(t.ticket_type_id)),
+    ),
+    inclusions: inclusions.map(mapTripInclusion),
+    createdAt: event.created_at,
+    updatedAt: event.updated_at,
+  };
+}
+
+// ---------------------- createTripDraft ----------------------
+
+/**
+ * Creates a draft event_type='trip' row + placeholder ticket_types row +
+ * placeholder trip_pricing_tiers row joining the two. Returns the Trip with
+ * empty days/inclusions arrays + single placeholder pricing tier.
+ *
+ * The placeholder ticket_types row has price_cents=0, is_unlimited=false,
+ * quantity_total=1 — updated during Step 4 of the wizard via updateTripPricing.
+ */
+export async function createTripDraft(
+  input: CreateTripDraftInput,
+  _role: BrandRole,
+): Promise<Trip> {
+  const tempTitle = input.initialTitle?.trim() || "Untitled trip";
+  const tempSlug = `draft-${Date.now().toString(36)}`;
+
+  // 1. Look up brand default_currency + slug BEFORE creating the event.
+  //    The events row MUST carry a non-null currency or the
+  //    tg_enforce_event_ticket_currency trigger (ORCH-0769 [no implicit GBP
+  //    currency], 20260515000011_orch_0769_no_implicit_gbp_currency.sql:159)
+  //    raises `event_currency_not_found` when the placeholder ticket_types
+  //    row is inserted below. Mirrors `eventDrafts.fetchBrandDefaultCurrency`
+  //    + `draftToServerInsert` ordering for event_type='event'.
+  const brandCurrencyQuery = await supabase
+    .from("brands")
+    .select("default_currency, slug")
+    .eq("id", input.brandId)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (brandCurrencyQuery.error) throw brandCurrencyQuery.error;
+  const defaultCurrency =
+    (brandCurrencyQuery.data?.default_currency as string | null) ?? "USD";
+  const brandSlug = (brandCurrencyQuery.data?.slug as string | null) ?? null;
+
+  // 2. INSERT events row with currency populated up front.
+  const { data: eventRow, error: eventError } = await supabase
+    .from("events")
+    .insert({
+      brand_id: input.brandId,
+      created_by: (await supabase.auth.getUser()).data.user?.id ?? null,
+      title: tempTitle,
+      slug: tempSlug,
+      event_type: "trip",
+      status: "draft",
+      visibility: "draft",
+      currency: defaultCurrency,
+      theme: { business_trip: {} },
+      timezone: "UTC",
+    })
+    .select()
+    .single();
+
+  if (eventError) {
+    if (eventError.code === "23505") {
+      throw new SlugCollisionError(tempSlug);
+    }
+    throw eventError;
+  }
+  if (eventRow === null) {
+    throw new Error("createTripDraft: insert returned null row");
+  }
+
+  // 3. INSERT placeholder ticket_types row (price 0, capacity 1)
+
+  const { data: ticketRow, error: ticketError } = await supabase
+    .from("ticket_types")
+    .insert({
+      event_id: eventRow.id,
+      name: "Standard",
+      price_cents: 0,
+      currency: defaultCurrency,
+      quantity_total: 1,
+      is_unlimited: false,
+      is_free: true,
+      min_purchase_qty: 1,
+      available_online: true,
+      available_in_person: false,
+      display_order: 0,
+    })
+    .select()
+    .single();
+
+  if (ticketError) throw ticketError;
+  if (ticketRow === null) {
+    throw new Error("createTripDraft: ticket_types insert returned null row");
+  }
+
+  // 4. INSERT placeholder trip_pricing_tiers row
+  const { error: tierError } = await supabase.from("trip_pricing_tiers").insert({
+    event_id: eventRow.id,
+    ticket_type_id: ticketRow.id,
+    tier_name: "Standard",
+    tier_metadata: {},
+  });
+  if (tierError) throw tierError;
+
+  return mapTrip(
+    eventRow as EventRow,
+    brandSlug,
+    [],
+    [],
+    [],
+    [ticketRow as TicketTypeRow],
+  );
+}
+
+// ---------------------- getTrip ----------------------
+
+export async function getTrip(eventId: string): Promise<Trip | null> {
+  // ORCH-0859 REWORK 3 (events-type-filter audit): defensive — caller
+  // knows it's a trip but pinning the filter ensures a misrouted id
+  // for an event row doesn't accidentally render through trip mappers.
+  const { data: eventRow, error: eventError } = await supabase
+    .from("events")
+    .select("*, brands(slug)")
+    .eq("id", eventId)
+    .eq("event_type", "trip")
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (eventError) throw eventError;
+  if (eventRow === null) return null;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const event = eventRow as any;
+  const brandSlug = (event.brands?.slug as string | null) ?? null;
+
+  const [daysResp, tiersResp, inclusionsResp, ticketsResp] = await Promise.all([
+    supabase
+      .from("trip_days")
+      .select("*")
+      .eq("event_id", eventId)
+      .order("ordinal"),
+    supabase.from("trip_pricing_tiers").select("*").eq("event_id", eventId),
+    supabase
+      .from("trip_inclusions")
+      .select("*")
+      .eq("event_id", eventId)
+      .order("kind")
+      .order("ordinal"),
+    supabase
+      .from("ticket_types")
+      .select("*")
+      .eq("event_id", eventId)
+      .is("deleted_at", null),
+  ]);
+  if (daysResp.error) throw daysResp.error;
+  if (tiersResp.error) throw tiersResp.error;
+  if (inclusionsResp.error) throw inclusionsResp.error;
+  if (ticketsResp.error) throw ticketsResp.error;
+
+  return mapTrip(
+    event as EventRow,
+    brandSlug,
+    (daysResp.data ?? []) as TripDayRow[],
+    (tiersResp.data ?? []) as TripPricingTierRow[],
+    (inclusionsResp.data ?? []) as TripInclusionRow[],
+    (ticketsResp.data ?? []) as TicketTypeRow[],
+  );
+}
+
+// ---------------------- getTripsByBrand ----------------------
+
+export async function getTripsByBrand(brandId: string): Promise<Trip[]> {
+  const { data, error } = await supabase
+    .from("events")
+    .select("*")
+    .eq("brand_id", brandId)
+    .eq("event_type", "trip")
+    .is("deleted_at", null)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  const events = (data ?? []) as EventRow[];
+  if (events.length === 0) return [];
+
+  // For list view, fetch tickets only (days/inclusions/tiers shown on detail).
+  const ids = events.map((e) => e.id);
+  const ticketsResp = await supabase
+    .from("ticket_types")
+    .select("*")
+    .in("event_id", ids)
+    .is("deleted_at", null);
+  if (ticketsResp.error) throw ticketsResp.error;
+  const tickets = (ticketsResp.data ?? []) as TicketTypeRow[];
+  const ticketsByEvent = new Map<string, TicketTypeRow[]>();
+  for (const tt of tickets) {
+    const arr = ticketsByEvent.get(tt.event_id) ?? [];
+    arr.push(tt);
+    ticketsByEvent.set(tt.event_id, arr);
+  }
+
+  return events.map((e) =>
+    mapTrip(e, null, [], [], [], ticketsByEvent.get(e.id) ?? []),
+  );
+}
+
+// ---------------------- updateTripBasics ----------------------
+
+export async function updateTripBasics(
+  eventId: string,
+  patch: TripBasicsPatch,
+): Promise<Trip> {
+  // Build the partial events UPDATE
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const update: Record<string, any> = { updated_at: new Date().toISOString() };
+  if (patch.title !== undefined) update.title = patch.title;
+  if (patch.description !== undefined) update.description = patch.description;
+  if (patch.coverMediaUrl !== undefined) update.cover_media_url = patch.coverMediaUrl;
+  if (patch.coverMediaType !== undefined) update.cover_media_type = patch.coverMediaType;
+  if (patch.timezone !== undefined) update.timezone = patch.timezone;
+
+  // theme.business_trip merge — read current, jsonb_set-style merge in JS
+  if (patch.businessTrip !== undefined) {
+    // ORCH-0859 REWORK 3 (events-type-filter audit): defensive — trip-only.
+    const current = await supabase
+      .from("events")
+      .select("theme")
+      .eq("id", eventId)
+      .eq("event_type", "trip")
+      .maybeSingle();
+    if (current.error) throw current.error;
+    const currentTheme =
+      (current.data?.theme as Record<string, unknown> | null) ?? {};
+    const currentBusinessTrip =
+      (currentTheme.business_trip as Record<string, unknown> | undefined) ?? {};
+    update.theme = {
+      ...currentTheme,
+      business_trip: { ...currentBusinessTrip, ...patch.businessTrip },
+    };
+  }
+
+  // ORCH-0859 REWORK 3: defensive UPDATE on trip rows only.
+  const { error } = await supabase
+    .from("events")
+    // I-MUTATION-ROWCOUNT-WAIVER: ORCH-0859 — caller refreshes via getTrip() immediately after; rowcount-verify deferred to subsequent read.
+    .update(update)
+    .eq("id", eventId)
+    .eq("event_type", "trip")
+    .is("deleted_at", null);
+  if (error) throw error;
+
+  const refreshed = await getTrip(eventId);
+  if (refreshed === null) {
+    throw new Error("updateTripBasics: trip not found after update");
+  }
+  return refreshed;
+}
+
+// ---------------------- upsertTripDays (DELETE-then-INSERT) ----------------------
+
+export async function upsertTripDays(
+  eventId: string,
+  days: TripDayInput[],
+): Promise<TripDay[]> {
+  // Delete all existing days for this event (DELETE-then-INSERT pattern).
+  const deleteResp = await supabase
+    .from("trip_days")
+    // I-MUTATION-ROWCOUNT-WAIVER: ORCH-0859 — DELETE-then-INSERT pattern; rowcount intentionally not verified (zero rows is the valid initial-create case).
+    .delete()
+    .eq("event_id", eventId);
+  if (deleteResp.error) throw deleteResp.error;
+
+  if (days.length === 0) return [];
+
+  const insertRows = days.map((d) => ({
+    event_id: eventId,
+    ordinal: d.ordinal,
+    title: d.title,
+    narrative: d.narrative ?? null,
+    date: d.date ?? null,
+    stops: [],
+  }));
+
+  const { data, error } = await supabase
+    .from("trip_days")
+    .insert(insertRows)
+    .select()
+    .order("ordinal");
+  if (error) throw error;
+  return ((data ?? []) as TripDayRow[]).map(mapTripDay);
+}
+
+// ---------------------- upsertTripInclusions (DELETE-then-INSERT) ----------------------
+
+export async function upsertTripInclusions(
+  eventId: string,
+  items: TripInclusionInput[],
+): Promise<TripInclusion[]> {
+  const deleteResp = await supabase
+    .from("trip_inclusions")
+    // I-MUTATION-ROWCOUNT-WAIVER: ORCH-0859 — DELETE-then-INSERT pattern; rowcount intentionally not verified (zero rows is the valid initial-create case).
+    .delete()
+    .eq("event_id", eventId);
+  if (deleteResp.error) throw deleteResp.error;
+
+  if (items.length === 0) return [];
+
+  const insertRows = items.map((i) => ({
+    event_id: eventId,
+    kind: i.kind,
+    item: i.item,
+    ordinal: i.ordinal,
+  }));
+
+  const { data, error } = await supabase
+    .from("trip_inclusions")
+    .insert(insertRows)
+    .select()
+    .order("kind")
+    .order("ordinal");
+  if (error) throw error;
+  return ((data ?? []) as TripInclusionRow[]).map(mapTripInclusion);
+}
+
+// ---------------------- updateTripPricing ----------------------
+
+export async function updateTripPricing(
+  eventId: string,
+  patch: TripPricingPatch,
+): Promise<TripPricingTier> {
+  // ORCH-0859 REWORK 2: ALWAYS derive currency from the event row.
+  // The tg_enforce_event_ticket_currency trigger rejects any mismatch.
+  // The patch.currency field is accepted on the type for source
+  // compatibility but IGNORED here.
+  // ORCH-0859 REWORK 3 (events-type-filter audit): defensive — currency
+  // probe scoped to trip rows.
+  const eventCurrencyResp = await supabase
+    .from("events")
+    .select("currency")
+    .eq("id", eventId)
+    .eq("event_type", "trip")
+    .maybeSingle();
+  if (eventCurrencyResp.error) throw eventCurrencyResp.error;
+  if (eventCurrencyResp.data === null) {
+    throw new Error("updateTripPricing: event not found for id=" + eventId);
+  }
+  const eventCurrency = (eventCurrencyResp.data.currency as string | null) ?? "USD";
+
+  // Look up the existing pricing tier + its ticket_type
+  const { data: tierRow, error: tierError } = await supabase
+    .from("trip_pricing_tiers")
+    .select("*")
+    .eq("event_id", eventId)
+    .maybeSingle();
+  if (tierError) throw tierError;
+  if (tierRow === null) {
+    throw new Error(
+      "updateTripPricing: no pricing tier found for event_id=" + eventId,
+    );
+  }
+
+  // Update ticket_types row — currency comes from event, NEVER from caller.
+  const { data: ticketRow, error: ticketError } = await supabase
+    .from("ticket_types")
+    .update({
+      price_cents: patch.priceCents,
+      currency: eventCurrency,
+      quantity_total: patch.capacity,
+      is_unlimited: false,
+      is_free: patch.priceCents === 0,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", tierRow.ticket_type_id)
+    .select()
+    .single();
+  if (ticketError) throw ticketError;
+  if (ticketRow === null) {
+    throw new Error("updateTripPricing: ticket_types update returned null");
+  }
+
+  // Update tier name (metadata stays empty in Tr2)
+  const { data: tierUpdated, error: tierUpdateError } = await supabase
+    .from("trip_pricing_tiers")
+    .update({ tier_name: patch.tierName })
+    .eq("id", tierRow.id)
+    .select()
+    .single();
+  if (tierUpdateError) throw tierUpdateError;
+  if (tierUpdated === null) {
+    throw new Error("updateTripPricing: tier update returned null");
+  }
+
+  return mapTripPricingTier(
+    tierUpdated as TripPricingTierRow,
+    ticketRow as TicketTypeRow,
+  );
+}
+
+// ---------------------- publishTrip ----------------------
+
+export async function publishTrip(
+  eventId: string,
+  draftPayload: Record<string, unknown>,
+): Promise<Trip> {
+  const { data, error } = await supabase.rpc("business_publish_trip_draft", {
+    p_event_id: eventId,
+    p_draft_payload: draftPayload,
+    p_client_revision: null,
+  });
+
+  if (error) {
+    // RPC raised — surface code so wizard can show inline error pointing to failing step
+    throw new TripPublishValidationError(error.code ?? "publish_failed", error.message);
+  }
+  if (data === null) {
+    throw new Error("publishTrip: RPC returned null");
+  }
+
+  // Re-fetch full trip after publish (RPC returns composite payload but
+  // getTrip gives us the canonical mapper-shaped view).
+  const refreshed = await getTrip(eventId);
+  if (refreshed === null) {
+    throw new Error("publishTrip: trip not found after publish");
+  }
+  return refreshed;
+}
+
+// ---------------------- softDeleteTrip ----------------------
+
+export interface SoftDeleteResult {
+  rejected: boolean;
+  reason?: "has_confirmed_orders";
+}
+
+export async function softDeleteTrip(eventId: string): Promise<SoftDeleteResult> {
+  // Reject if confirmed orders exist (mirror softDeleteBrand pattern)
+  const { count, error: countError } = await supabase
+    .from("orders")
+    .select("id", { count: "exact", head: true })
+    .eq("event_id", eventId)
+    .not("payment_status", "in", "(failed,cancelled)");
+  if (countError) throw countError;
+  if (count !== null && count > 0) {
+    return { rejected: true, reason: "has_confirmed_orders" };
+  }
+
+  // Soft-delete trip; idempotent via .is("deleted_at", null) defensive filter.
+  const { error } = await supabase
+    .from("events")
+    // I-MUTATION-ROWCOUNT-WAIVER: ORCH-0859 — soft-delete trip; mirrors ORCH-0734 softDeleteBrand pattern; result type doesn't expose rowcount.
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", eventId)
+    .eq("event_type", "trip")
+    .is("deleted_at", null);
+  if (error) throw error;
+  return { rejected: false };
+}

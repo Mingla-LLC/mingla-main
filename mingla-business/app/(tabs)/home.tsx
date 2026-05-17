@@ -60,6 +60,8 @@ import {
   useLiveEventsForBrand,
   type LiveEvent,
 } from "../../src/store/liveEventStore";
+// ORCH-0865 REWORK 5 — canonical routing helper, ban hardcoded /event/{id}
+import { routeForEventRowDefensive } from "../../src/utils/routeForEventRow";
 import {
   buildBrandEventSummary,
   type BrandEventSummaryCounts,
@@ -234,16 +236,39 @@ export default function HomeTab(): React.ReactElement {
     router.push("/(tabs)/hub/events" as never);
   }, [router]);
 
+  // ORCH-0865 REWORK 5: tap-handlers route THROUGH routeForEventRow so a
+  // trip row that ever reaches this list (via stale cache, race, or future
+  // regression) navigates to the trip surface, NOT the event surface.
+  // Existing LiveEvent/DraftEvent types don't carry event_type yet —
+  // routeForEventRowDefensive defaults to "event" when missing, which is
+  // correct for legacy in-store rows (liveEventStore + draftEventStore
+  // discipline guarantees stored items are events). Rows from
+  // fetchBusinessEventsForBrand attach event_type at the service layer
+  // (REWORK 5 mapper update) so trips route correctly.
   const handleOpenDraft = useCallback(
-    (draftId: string): void => {
-      router.push(`/event/${draftId}/edit` as never);
+    (draft: DraftEvent): void => {
+      router.push(
+        routeForEventRowDefensive({
+          id: draft.id,
+          event_type:
+            (draft as DraftEvent & { event_type?: string }).event_type ?? "event",
+          status: "draft",
+        }) as never,
+      );
     },
     [router],
   );
 
   const handleOpenLiveEvent = useCallback(
-    (eventId: string): void => {
-      router.push(`/event/${eventId}` as never);
+    (event: LiveEvent): void => {
+      router.push(
+        routeForEventRowDefensive({
+          id: event.id,
+          event_type:
+            (event as LiveEvent & { event_type?: string }).event_type ?? "event",
+          status: event.status,
+        }) as never,
+      );
     },
     [router],
   );
@@ -400,7 +425,7 @@ export default function HomeTab(): React.ReactElement {
                         You&rsquo;re set up. Create your first trip to start selling.
                       </Text>
                       <Pressable
-                        onPress={() => router.push("/trip/coming-soon" as never)}
+                        onPress={() => router.push("/trip/create" as never)}
                         accessibilityRole="button"
                         accessibilityLabel="Plan a trip"
                         style={styles.tripPlannerCtaAction}
@@ -547,7 +572,7 @@ export default function HomeTab(): React.ReactElement {
                     return (
                       <Pressable
                         key={item.key}
-                        onPress={() => handleOpenDraft(draft.id)}
+                        onPress={() => handleOpenDraft(draft)}
                         accessibilityRole="button"
                         accessibilityLabel={`Resume draft: ${
                           draft.name || "Untitled"
@@ -604,7 +629,7 @@ export default function HomeTab(): React.ReactElement {
                   return (
                     <Pressable
                       key={item.key}
-                      onPress={() => handleOpenLiveEvent(event.id)}
+                      onPress={() => handleOpenLiveEvent(event)}
                       accessibilityRole="button"
                       accessibilityLabel={`Open event: ${
                         event.name || "Untitled"

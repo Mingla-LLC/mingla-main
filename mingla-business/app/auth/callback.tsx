@@ -15,6 +15,7 @@
  * flow without URL fragments.
  */
 
+// orch-strict-grep-allow safearea-on-fullscreen-routes — web-only OAuth-callback brief loader before Redirect to "/"; not user-visible on iOS/Android (native uses ID-token flow)
 import React from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { Redirect } from "expo-router";

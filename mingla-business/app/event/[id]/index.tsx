@@ -291,7 +291,12 @@ export default function EventDetailScreen(): React.ReactElement {
         });
         setCancelDialogVisible(false);
         showToast("Event cancelled.");
-        router.replace("/(tabs)/hub/events" as never);
+        // ORCH-0862: do NOT navigate post-cancel. Re-rendering in place via
+        // the cache-invalidate refetch avoids the iOS UIKit dismiss-race
+        // freeze (the prior post-cancel route swap raced the 200ms Modal
+        // exit + iOS UIViewController dismissal). Mirrors the hub-list flow
+        // that ships today and is proven to dismiss cleanly. Status pill
+        // flips to ENDED.
       } catch {
         showToast("Could not cancel event. Try again.");
       } finally {
@@ -311,8 +316,8 @@ export default function EventDetailScreen(): React.ReactElement {
     showToast(
       "Event cancelled. Buyers will be refunded when emails wire up (B-cycle).",
     );
-    router.replace("/(tabs)/hub/events" as never);
-  }, [id, isServerBackedEvent, event, cancelServerEvent, updateLifecycle, router, showToast]);
+    // ORCH-0862: see comment above — no navigation; screen re-renders in place.
+  }, [id, isServerBackedEvent, event, cancelServerEvent, updateLifecycle, showToast]);
 
   const handleDeleteDraftStub = useCallback((): void => {
     // Cycle 9b-1 EventDetail is for LIVE events only — draft delete is
@@ -791,8 +796,23 @@ export default function EventDetailScreen(): React.ReactElement {
         description={event.description.slice(0, 200) || event.name}
       />
 
-      {/* Manage menu — Sheet primitive */}
-      {brand !== null ? (
+      {/* Manage menu — Sheet primitive.
+          ORCH-0862 / F-6 (Symptom A real root cause): gate mount on
+          BOTH `brand !== null` AND `manageMenuVisible` so the component
+          fully UNMOUNTS when closed (matching the hub-list flow's
+          `{manageCtx !== null ? ... : null}` pattern at hub/events.tsx).
+          Pre-fix: this was `{brand !== null ? <EventManageMenu visible={manageMenuVisible}/> : null}`
+          which left EventManageMenu mounted with visible=false → its
+          native RN Modal lingered mid-dismiss → when ConfirmDialog tried
+          to present in the same React commit, iOS UIKit rejected with
+          "Attempt to present <RCTFabricModalHostViewController> on <X>
+          which is already presenting <Y>" → presentation queue stalled
+          → JS bridge waited forever → app frozen. Captured live in sim
+          syslog 2026-05-17 15:03:25.920411 (com.apple.UIKit:Presentation).
+          Mounting conditionally on manageMenuVisible drops the Sheet's
+          Modal from the native tree when closed, letting ConfirmDialog
+          present cleanly. */}
+      {brand !== null && manageMenuVisible ? (
         <EventManageMenu
           visible={manageMenuVisible}
           onClose={handleManageClose}

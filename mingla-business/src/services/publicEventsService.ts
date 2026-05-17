@@ -453,6 +453,11 @@ export const getPublicEventBySlug = async (
   brandSlug: string,
   eventSlug: string,
 ): Promise<PublicEventDetail | null> => {
+  // ORCH-0859 REWORK 3 (events-type-filter audit): anon buyer landing on
+  // `/e/{brandSlug}/{slug}` MUST NOT resolve to a trip rendered as an
+  // event. View doesn't expose event_type, so probe events table and
+  // reject trip slugs. Trip-public surface is /t/{brandSlug}/{tripSlug}.
+  // orch-strict-grep-allow events-type-filter — view doesn't expose event_type; trip exclusion via probe below
   const { data, error } = await supabase
     .from("business_public_events_view")
     .select("*")
@@ -461,12 +466,39 @@ export const getPublicEventBySlug = async (
     .maybeSingle();
 
   if (error !== null) throw error;
-  return data === null ? null : detailFromRow(data as BusinessPublicEventViewRow);
+  if (data === null) return null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const row = data as any;
+  // orch-strict-grep-allow events-type-filter — this IS the filter probe (returns event_type for client-side trip rejection)
+  const typeResp = await supabase
+    .from("events")
+    .select("event_type")
+    .eq("id", row.id)
+    .maybeSingle();
+  if (typeResp.error !== null) throw typeResp.error;
+  if (typeResp.data !== null && typeResp.data.event_type === "trip") {
+    return null;
+  }
+  return detailFromRow(data as BusinessPublicEventViewRow);
 };
 
 export const getPublicEventById = async (
   eventId: string,
 ): Promise<PublicEventDetail | null> => {
+  // ORCH-0859 REWORK 3 (events-type-filter audit): same as
+  // getPublicEventBySlug — reject trip rows from event-only public surface.
+  // orch-strict-grep-allow events-type-filter — this IS the filter probe (returns event_type for client-side trip rejection)
+  const typeResp = await supabase
+    .from("events")
+    .select("event_type")
+    .eq("id", eventId)
+    .maybeSingle();
+  if (typeResp.error !== null) throw typeResp.error;
+  if (typeResp.data !== null && typeResp.data.event_type === "trip") {
+    return null;
+  }
+
+  // orch-strict-grep-allow events-type-filter — view doesn't expose event_type; trip exclusion via probe above
   const { data, error } = await supabase
     .from("business_public_events_view")
     .select("*")
@@ -489,6 +521,7 @@ export const getPublicBrandBySlug = async (
   if (brandError !== null) throw brandError;
   if (brandData === null) return null;
 
+  // orch-strict-grep-allow events-type-filter — view doesn't expose event_type; trip exclusion via probe below
   const { data, error } = await supabase
     .from("business_public_events_view")
     .select("*")
@@ -496,7 +529,29 @@ export const getPublicBrandBySlug = async (
     .order("published_at", { ascending: false, nullsFirst: false });
 
   if (error !== null) throw error;
-  const rows = (data ?? []) as BusinessPublicEventViewRow[];
+  const rawRows = (data ?? []) as BusinessPublicEventViewRow[];
+
+  // ORCH-0859 REWORK 3 (events-type-filter audit): brand-public-page
+  // events list MUST exclude trips. View doesn't expose event_type;
+  // probe events for the returned ids and filter trip rows out. Trips
+  // get their own surfaces on the brand page (not yet implemented).
+  let rows = rawRows;
+  if (rawRows.length > 0) {
+    const ids = rawRows.map((r) => r.id);
+    // orch-strict-grep-allow events-type-filter — this IS the filter probe (returns event_type for client-side trip rejection)
+    const typesResp = await supabase
+      .from("events")
+      .select("id, event_type")
+      .in("id", ids);
+    if (typesResp.error !== null) throw typesResp.error;
+    const tripIds = new Set(
+      ((typesResp.data ?? []) as Array<{ id: string; event_type: string | null }>)
+        .filter((r) => r.event_type === "trip")
+        .map((r) => r.id),
+    );
+    rows = rawRows.filter((r) => !tripIds.has(r.id));
+  }
+
   const eventTickets = await Promise.all(rows.map((row) => fetchTickets(row.id)));
   return {
     brand: publicBrandViewRowToBrand(

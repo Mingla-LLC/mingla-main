@@ -129,9 +129,31 @@ export const useBrands = (
           schema: "public",
           table: "orders",
         },
-        () => {
-          rqClient.invalidateQueries({ queryKey: brandKeys.all });
-          rqClient.invalidateQueries({ queryKey: eventOrdersKeys.all });
+        // ORCH-0862 / F-5: scope the invalidates so a single order change
+        // doesn't fan out into a 5000-line cache-cascade storm. Previously
+        // `brandKeys.all` invalidated EVERY brand-related query (list +
+        // detail + cascade-preview for every brand the user has access to),
+        // and `eventOrdersKeys.all` invalidated orders for every event.
+        // Combined with the screen's own subscribers, that caused the
+        // 82-concurrent-HTTP-request storm observed in the Symptom A freeze
+        // (sim syslog evidence 2026-05-17 14:46:22–26). Surgical fix:
+        //   - brandKeys.list(accountId) — only this account's brand list
+        //     (refreshes revenue/attendees on the home brand cards)
+        //   - eventOrdersKeys.detail(eventId) IF the payload exposes the
+        //     event_id; fall back to no-op if missing (the broad invalidate
+        //     was already overreach — a missing payload doesn't justify
+        //     re-firing the whole-app invalidate).
+        (payload: { new?: Record<string, unknown>; old?: Record<string, unknown> }) => {
+          rqClient.invalidateQueries({ queryKey: brandKeys.list(accountId) });
+          const eventId =
+            (payload?.new?.event_id as string | undefined) ??
+            (payload?.old?.event_id as string | undefined) ??
+            null;
+          if (eventId !== null) {
+            rqClient.invalidateQueries({
+              queryKey: eventOrdersKeys.detail(eventId),
+            });
+          }
         },
       )
       .subscribe();
@@ -174,9 +196,21 @@ export const useBrand = (
           schema: "public",
           table: "orders",
         },
-        () => {
+        // ORCH-0862 / F-5: scope the secondary invalidate the same way as
+        // the useBrands handler. `eventOrdersKeys.all` was over-broad;
+        // extract event_id from the payload and invalidate only that
+        // event's orders. brandKeys.detail(brandId) is already scoped.
+        (payload: { new?: Record<string, unknown>; old?: Record<string, unknown> }) => {
           rqClient.invalidateQueries({ queryKey: brandKeys.detail(brandId) });
-          rqClient.invalidateQueries({ queryKey: eventOrdersKeys.all });
+          const eventId =
+            (payload?.new?.event_id as string | undefined) ??
+            (payload?.old?.event_id as string | undefined) ??
+            null;
+          if (eventId !== null) {
+            rqClient.invalidateQueries({
+              queryKey: eventOrdersKeys.detail(eventId),
+            });
+          }
         },
       )
       .subscribe();
@@ -426,26 +460,43 @@ export const useBrandCascadePreview = (
       // pg_derive_brand_stripe_status RPC instead of approximate
       // `stripe_connect_id !== null` check (which returned true even
       // for restricted-state brands per spike findings HF-8).
+      //
+      // ORCH-0862 / DISCOVERY-7 — upcomingResult + liveResult are now
+      // date-aware (event_dates!inner + .gt("event_dates.end_at", now)).
+      // Past-dated rows that still carry status='scheduled' or 'live' no
+      // longer count as blockers — matches the home screen's lifecycle
+      // helper semantics (ORCH-0850 end-not-start parity). pastResult
+      // stays status-only because cancelled/ended lifecycle is already
+      // authoritative regardless of date.
+      const nowIso = new Date().toISOString();
       const [pastResult, upcomingResult, liveResult, teamResult, stripeStatusResult] =
         await Promise.all([
+          // ORCH-0859 REWORK 3 (events-type-filter audit): brand-stats
+          // counters must exclude trips so the "X scheduled events" badge
+          // doesn't include trip rows. Trip counts have their own surface.
           supabase
             .from("events")
             .select("id", { count: "exact", head: true })
             .eq("brand_id", brandId)
+            .eq("event_type", "event")
             .in("status", ["ended", "cancelled"])
             .is("deleted_at", null),
           supabase
             .from("events")
-            .select("id", { count: "exact", head: true })
+            .select("id, event_dates!inner(end_at)", { count: "exact", head: true })
             .eq("brand_id", brandId)
+            .eq("event_type", "event")
             .eq("status", "scheduled")
-            .is("deleted_at", null),
+            .is("deleted_at", null)
+            .gt("event_dates.end_at", nowIso),
           supabase
             .from("events")
-            .select("id", { count: "exact", head: true })
+            .select("id, event_dates!inner(end_at)", { count: "exact", head: true })
             .eq("brand_id", brandId)
+            .eq("event_type", "event")
             .eq("status", "live")
-            .is("deleted_at", null),
+            .is("deleted_at", null)
+            .gt("event_dates.end_at", nowIso),
           supabase
             .from("brand_team_members")
             .select("user_id", { count: "exact", head: true })

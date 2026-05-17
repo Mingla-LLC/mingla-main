@@ -64,6 +64,18 @@ export const EventListCard: React.FC<EventListCardProps> = ({
   onOpen,
   onManageOpen,
 }) => {
+  // ORCH-0865 REWORK 5 — defensive: this card is event-only. If a trip row
+  // somehow reaches here (stale cache, future regression past the
+  // event_type filter at fetchBusinessEventsForBrand + the
+  // routeForEventRow tap-handler discipline), render nothing rather than
+  // mis-presenting the trip as an event. Belt-and-braces: filter at the
+  // query layer + helper at the tap-handler layer + defensive at the
+  // render layer. Trips have their own card surface in /hub/trips.
+  const eventType = (event as { event_type?: string }).event_type;
+  if (eventType !== undefined && eventType !== "event") {
+    return null;
+  }
+
   // ----- Computed display values ------------------------------------
   const title = event.name.trim().length > 0 ? event.name : "Untitled event";
   const dateLine = useMemo<string>((): string => {

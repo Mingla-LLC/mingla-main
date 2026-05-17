@@ -70,6 +70,8 @@ import {
 } from "../../../src/hooks/useBusinessEvents";
 import { eventPublicUrl } from "../../../src/constants/publicUrls";
 import { canPerformAction } from "../../../src/utils/permissionGates";
+// ORCH-0865 REWORK 5 — canonical routing helper, ban hardcoded /event/{id}
+import { routeForEventRowDefensive } from "../../../src/utils/routeForEventRow";
 // ORCH-0850 [End-not-start parity systemic]: route past/upcoming/live decision
 // through the canonical helper via the sibling .ts wrapper. Pre-0850 local
 // `deriveLiveStatus` used `new Date(event.date).getTime()` which parses
@@ -298,11 +300,19 @@ export default function EventsTab(): React.ReactElement {
       event: LiveEvent | DraftEvent;
       kind: "live" | "draft";
     }): void => {
-      if (item.kind === "draft") {
-        router.push(`/event/${item.event.id}/edit` as never);
-      } else {
-        router.push(`/event/${item.event.id}` as never);
-      }
+      // ORCH-0865 REWORK 5: route via canonical helper so trip rows (if
+      // they leak past the event_type filter) navigate to /trip/{id}
+      // instead of /event/{id}. Existing rows without event_type default
+      // to "event" via the defensive variant — safe for legacy DraftEvent
+      // / LiveEvent stored without the field.
+      router.push(
+        routeForEventRowDefensive({
+          id: item.event.id,
+          event_type:
+            (item.event as { event_type?: string }).event_type ?? "event",
+          status: item.kind === "draft" ? "draft" : (item.event as LiveEvent).status,
+        }) as never,
+      );
     },
     [router],
   );
@@ -336,6 +346,7 @@ export default function EventsTab(): React.ReactElement {
     // route to the focused EditPublishedScreen via ?mode=edit-published.
     const suffix =
       manageCtx.kind === "draft" ? "" : "?mode=edit-published";
+    // orch-strict-grep-allow route-by-event-type — manageCtx is event-only by construction (event manage menu); trips use a separate dashboard route with no manage-menu surface yet
     router.push(`/event/${manageCtx.event.id}/edit${suffix}` as never);
     setManageCtx(null);
   }, [manageCtx, router]);
@@ -343,6 +354,7 @@ export default function EventsTab(): React.ReactElement {
   const handleManageViewPublic = useCallback((): void => {
     if (manageCtx === null || manageCtx.kind !== "live") return;
     const live = manageCtx.event as LiveEvent;
+    // orch-strict-grep-allow route-by-event-type — buyer-facing public event page; LiveEvent fed to this handler is event-only (EventListCard defensive filter rejects non-event rows)
     router.push(`/e/${live.brandSlug}/${live.eventSlug}` as never);
     setManageCtx(null);
   }, [manageCtx, router]);
