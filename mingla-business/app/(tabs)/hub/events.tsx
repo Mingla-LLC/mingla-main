@@ -502,6 +502,10 @@ export default function EventsTab(): React.ReactElement {
               accessibilityRole="tab"
               accessibilityState={{ selected: active }}
               accessibilityLabel={`${p.label}, ${p.count}`}
+              // ORCH-0857 [Hub pill 44pt hit target]: pill visual height stays at
+              // 34pt for row compactness; hitSlop carries WCAG AA / I-38 compliance.
+              // 5pt top + 5pt bottom = 44pt total touch area.
+              hitSlop={{ top: 5, bottom: 5, left: 0, right: 0 }}
               style={({ pressed }) => [
                 styles.pill,
                 active && styles.pillActive,
@@ -729,6 +733,21 @@ const styles = StyleSheet.create({
     // cancelling the parent ScrollView's padding) and added vertical padding
     // for breathing room below the HubSubNav pill row.
     paddingVertical: spacing.sm,
+    // ORCH-0857 [Hub events list flush-with-pills]: ROOT CAUSE FIX —
+    // React Native's ScrollView defaults to `flexGrow: 1`, which means
+    // BOTH this pills ScrollView and the sibling events ScrollView were
+    // competing for the host's vertical space and splitting any leftover
+    // area between them. The amount split depended on the events list's
+    // intrinsic content size (filter-dependent: Live=2 → small events
+    // intrinsic → pills got large share → 200pt of empty space below the
+    // pills inside pillsScroll's stretched frame → events list pushed
+    // ~200pt down). Pinning `flexGrow: 0` here forces pillsScroll to
+    // take ONLY its intrinsic content height (~50pt = 34pt pill + 16pt
+    // vertical padding) regardless of how much empty space is available,
+    // so the events ScrollView sits flush against the pill row across
+    // every filter (All, Live, Upcoming, Drafts, Past).
+    flexGrow: 0,
+    flexShrink: 0,
   },
   pillsRow: {
     paddingHorizontal: spacing.md,
@@ -742,7 +761,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    // ORCH-0857 [Hub pill active-state visual parity]: idle border alpha
+    // raised from 0.08 (glass.border.profileBase) to 0.55 to match
+    // accent.border. Toggling pillActive now changes color only — never
+    // perceived bounding rect. Local to this file by design (Option B);
+    // do NOT extract into a shared token without auditing all other
+    // glass.border.profileBase consumers first.
+    borderColor: "rgba(255, 255, 255, 0.55)",
     backgroundColor: glass.tint.profileBase,
   },
   pillActive: {
@@ -754,6 +779,13 @@ const styles = StyleSheet.create({
   },
   pillLabel: {
     fontSize: 13,
+    // ORCH-0857 [Hub pill dot/label baseline]: explicit lineHeight gives
+    // RN a deterministic cross-axis center for the pillLiveDot to align
+    // against under flexDirection:"row" + alignItems:"center". Without
+    // it, iOS uses font-default line-height (~16) but reports it
+    // inconsistently against the 6×6 dot's geometric center, producing
+    // a 1-2pt visual drift unique to the Live pill.
+    lineHeight: 16,
     fontWeight: "500",
     color: textTokens.primary,
   },
