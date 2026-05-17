@@ -111,6 +111,48 @@ export const useOrdersRealtimeSubscription = (userId: string | undefined): void 
   }, [userId, queryClient]);
 };
 
+// ORCH-0854 H-1: Supabase realtime subscription on `tickets` table. Closes
+// the up-to-60s post-scan staleness window on the consumer Tickets/Calendar
+// tab by invalidating BOTH `["businessEventOrders", userId]` AND
+// `["consumerCalendar", userId]` on every UPDATE event the buyer is entitled
+// to see. RLS policy "Buyer or brand team can select tickets" (baseline
+// squash) gates delivery to tickets whose order.buyer_user_id = auth.uid(),
+// so the buyer cannot receive events for tickets they don't own. Pattern is
+// a verbatim mirror of `useOrdersRealtimeSubscription` above. Existing
+// fallback layers (`refetchOnWindowFocus: true` on `useBusinessEventOrders`,
+// 60s staleTime, and the post-purchase invalidate loop in
+// `ExpandedBusinessEventSheet.handleBuy`) remain as belt-and-suspenders if
+// realtime fails to connect. Companion migration:
+// `supabase/migrations/20260606000200_orch_0854_tickets_realtime_publication.sql`.
+// Note: postgres_changes has no server-side filter — RLS gates delivery.
+export const useTicketsRealtimeSubscription = (userId: string | undefined): void => {
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (!userId) return;
+
+    const channel = supabase
+      .channel(`tickets:buyer=${userId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "tickets",
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ["businessEventOrders", userId] });
+          queryClient.invalidateQueries({ queryKey: ["consumerCalendar", userId] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [userId, queryClient]);
+};
+
 export const useConsumerCalendar = (userId: string | undefined) => {
   return useQuery<ConsumerCalendarEntry[]>({
     queryKey: ["consumerCalendar", userId],

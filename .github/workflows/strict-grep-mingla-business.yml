@@ -48,6 +48,7 @@ on:
 #   - I-PROPOSED-W (i-proposed-w-notifications-app-type-prefix.mjs) — notifications reads filtered by app-type prefix (B2a Path C V3)
 #   - I-PROPOSED-Y (i-proposed-y-platform-web-url-from-env.mjs) — platform web URL from env, never hardcoded (B2a Path C V3 forensics fix)
 #   - I-PROPOSED-Z (i-proposed-z-home-no-fabricated-events.mjs) — Home uses real event/order truth, no fabricated upcoming rows (ORCH-0754)
+#   - I-PROPOSED-BV (orch-0854-tickets-realtime-publication-paired.mjs) — every client postgres_changes subscription paired with publication-add migration (ORCH-0854)
 #   - I-PROPOSED-K (i-proposed-k-require-cycles.mjs) — require-cycles baselined (META-ORCH-0744)
 #   - I-PROPOSED-L (process invariant) — DIAG markers reaped at CLOSE (META-ORCH-0744)
 #   - I-PROPOSED-M (i-proposed-m-persist-key-whitelist.mjs) — persist-key whitelist sync (META-ORCH-0744)
@@ -89,7 +90,7 @@ on:
 #   - I-PROPOSED-AK (i-ticket-pdf-owner-check.mjs) — ticket-pdf-fetch enforces auth.uid() == orders.buyer_user_id before any storage op (ORCH-0842 [Fold Tickets into Active + render real ticket PDF in bottom sheet with venue/QR/Save])
 #   - I-PROPOSED-AL (i-ticket-pdf-single-renderer.mjs) — pdf-lib import isolated to supabase/functions/_shared/ticketPdf.ts; no parallel renderer (ORCH-0842 [Fold Tickets into Active + render real ticket PDF in bottom sheet with venue/QR/Save])
 #   - I-REGRESSION-TEST-BACKFILL-WARN (regression-test-backfill-warning.mjs) — informational warning for modified source files without sibling regression tests (ORCH-0840 [Regression-test enforcement + append-only CI])
-#   - ORCH-0852 own-confirm-path (i-checkout-own-confirm-path.mjs) — buyer checkout routes call confirmTicketCheckout, never pollTicketCheckoutStatus; no `finalizing*` / `webResumeError` state; no banned dead-end copy (I-CHECKOUT-OWN-CONFIRM-PATH + I-CHECKOUT-NO-POLL-AND-FAIL)
+#   - ORCH-0852 own-confirm-path (i-checkout-own-confirm-path.mjs) — buyer checkout routes call confirmTicketCheckout, never pollTicketCheckoutStatus; no `finalizing*` / `webResumeError` state; no "Payment received" / "Finalizing your tickets" / "Check now" / "Help me find my order" copy (I-CHECKOUT-OWN-CONFIRM-PATH + I-CHECKOUT-NO-POLL-AND-FAIL)
 #   - ORCH-0852 wallet-stubs-removed (i-wallet-stubs-removed.mjs) — no "Add to Apple Wallet" / "Add to Google Wallet" affordances anywhere in mingla-business/ until real .pkpass + Google Wallet JWT ships (I-WALLET-PASS-HIDDEN-UNTIL-IMPLEMENTED)
 #   - ORCH-0852 consumer-frozen (i-consumer-payment-flow-frozen.mjs) — consumer app nativeCheckoutFlow.ts + ExpandedBusinessEventSheet.tsx unchanged during ORCH-0852; identifier-substring fingerprint check
 #
@@ -311,6 +312,17 @@ jobs:
           node-version: "20"
       - name: Run I-PROPOSED-Z gate
         run: node .github/scripts/strict-grep/i-proposed-z-home-no-fabricated-events.mjs
+
+  orch-0854-tickets-realtime-publication-paired:
+    name: "I-PROPOSED-BV: REALTIME-TABLE-PUBLICATION-PAIRED (ORCH-0854)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run I-PROPOSED-BV gate
+        run: node .github/scripts/strict-grep/orch-0854-tickets-realtime-publication-paired.mjs
 
   i-proposed-k-require-cycles:
     name: "I-PROPOSED-K: require-cycles baselined"
