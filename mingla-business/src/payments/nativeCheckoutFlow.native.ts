@@ -96,8 +96,18 @@ const MERCHANT_DISPLAY_NAME = "Mingla";
 // silently disappears from PaymentSheet (NOT a crash post-ORCH-0844 —
 // just absent). CI gate i-stripe-paymentsheet-parity.mjs verifies the
 // three locations agree.
-const BUSINESS_MERCHANT_IDENTIFIER = "merchant.com.mingla.business.v2";
-const BUSINESS_URL_SCHEME = "com.mingla.business.v2";
+// ORCH-0849 HOTFIX (round 4, 2026-05-16): runtime merchantIdentifier
+// MUST match the in-app-payments entitlement baked into the iOS build
+// (driven by app.json's @stripe/stripe-react-native plugin merchantIdentifier
+// at app.json:99). That value is `merchant.com.sethogieva.minglabusiness`
+// because that's what's actually registered with Apple Developer + has the
+// Stripe Apple Pay Payment Processing Certificate uploaded. Any other value
+// here makes iOS reject Apple Pay at sheet-confirm time (sheet opens, stalls,
+// never resolves) — operator-observed live behavior on 2026-05-16.
+// URL scheme matches the iOS bundleIdentifier (com.sethogieva.minglabusiness)
+// for return-URL deep links.
+const BUSINESS_MERCHANT_IDENTIFIER = "merchant.com.sethogieva.minglabusiness";
+const BUSINESS_URL_SCHEME = "com.sethogieva.minglabusiness";
 
 /**
  * Minimal edge-function-error extractor inline (mingla-business does not

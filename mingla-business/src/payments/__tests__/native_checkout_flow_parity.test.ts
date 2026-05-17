@@ -34,9 +34,9 @@ describe("ORCH-0849 — mingla-business native PaymentSheet parity", () => {
     const source = stripLineComments(read("mingla-business/app/_layout.tsx"));
     expect(source).toMatch(/<StripeNativeProvider\b/);
     expect(source).toMatch(
-      /merchantIdentifier=["']merchant\.com\.mingla\.business\.v2["']/,
+      /merchantIdentifier=["']merchant\.com\.sethogieva\.minglabusiness["']/,
     );
-    expect(source).toMatch(/urlScheme=["']com\.mingla\.business\.v2["']/);
+    expect(source).toMatch(/urlScheme=["']com\.sethogieva\.minglabusiness["']/);
   });
 
   it("nativeCheckoutFlow.native.ts imports initStripe from @stripe/stripe-react-native", () => {
@@ -93,7 +93,7 @@ describe("ORCH-0849 — mingla-business native PaymentSheet parity", () => {
     const source = read("mingla-business/app.json");
     expect(source).toMatch(/"@stripe\/stripe-react-native"/);
     expect(source).toMatch(
-      /"merchantIdentifier"\s*:\s*"merchant\.com\.mingla\.business\.v2"/,
+      /"merchantIdentifier"\s*:\s*"merchant\.com\.sethogieva\.minglabusiness"/,
     );
   });
 

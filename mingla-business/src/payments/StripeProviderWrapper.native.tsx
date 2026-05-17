@@ -11,9 +11,15 @@ import { StripeNativeProvider } from "@mingla/payments-native";
 export const StripeProviderWrapper: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => (
+  // ORCH-0849 HOTFIX (round 4, 2026-05-16): merchantIdentifier MUST match
+  // app.json's @stripe/stripe-react-native plugin config (app.json:99 =
+  // `merchant.com.sethogieva.minglabusiness`) because that's what's actually
+  // registered with Apple Developer + has the Stripe Apple Pay cert uploaded.
+  // Mismatch makes iOS stall Apple Pay at confirm. urlScheme matches the iOS
+  // bundleIdentifier for return-URL deep links.
   <StripeNativeProvider
-    merchantIdentifier="merchant.com.mingla.business.v2"
-    urlScheme="com.mingla.business.v2"
+    merchantIdentifier="merchant.com.sethogieva.minglabusiness"
+    urlScheme="com.sethogieva.minglabusiness"
   >
     {children}
   </StripeNativeProvider>

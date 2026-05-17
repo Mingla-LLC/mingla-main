@@ -82,6 +82,49 @@ interface CalendarEntry {
   device_calendar_event_id?: string | null;
 }
 
+/**
+ * ORCH-0850 [End-not-start parity systemic]: derive the effective end-time of
+ * a calendar entry for past/future bucket decisions. Returns null if no start
+ * time is parseable.
+ *
+ * Semantics: an entry is "past" if its effective end is before now, i.e.:
+ *   effectiveEnd = scheduled_at + duration_minutes  (fallback 120 min)
+ *
+ * MUST NOT be used for displaying times to the user — display strings still
+ * come from entry.suggestedDates[0] / entry.date+entry.time unchanged. The
+ * 120-minute default mirrors existing prior art at CalendarTab.tsx:391,
+ * CalendarTab.tsx:414, ActionButtons.tsx:580, SavedTab.tsx:1422 (device-
+ * calendar event creation), so the bucket cutoff stays consistent with the
+ * duration the user already saw at schedule time.
+ *
+ * Preserves invariant I-PROPOSED-CONSUMER-CALENDAR-USES-END-NOT-START.
+ */
+export const DEFAULT_CALENDAR_DURATION_MIN = 120;
+
+// Minimal shape needed for past/upcoming bucket decision. Subset of
+// CalendarEntry; exported so the regression test can construct fixtures
+// without depending on the full CalendarEntry interface.
+export interface CalendarEntryForBucketing {
+  scheduled_at?: string;
+  suggestedDates?: string[];
+  duration_minutes?: number;
+}
+
+export function computeEntryEffectiveEnd(
+  entry: CalendarEntryForBucketing,
+): Date | null {
+  const startIso =
+    entry.scheduled_at ?? entry.suggestedDates?.[0] ?? null;
+  if (startIso === null) return null;
+  const startMs = Date.parse(startIso);
+  if (!Number.isFinite(startMs)) return null;
+  const durationMin =
+    typeof entry.duration_minutes === "number" && entry.duration_minutes > 0
+      ? entry.duration_minutes
+      : DEFAULT_CALENDAR_DURATION_MIN;
+  return new Date(startMs + durationMin * 60_000);
+}
+
 interface CalendarTabProps {
   calendarEntries: CalendarEntry[];
   isLoading?: boolean;
@@ -180,25 +223,23 @@ const CalendarTab = ({
     ]).start();
   }, []);
 
-  // Filter entries into Active and Archive based on scheduled date
+  // Filter entries into Active and Archive based on EFFECTIVE END time.
+  // ORCH-0850: an entry is "past" only after its scheduled_at + duration has
+  // elapsed. Previously this used scheduledDate < now, which flipped events
+  // to Archive the moment they STARTED — e.g. a 3am-to-9pm event hit Archive
+  // at 3:01am while still 18 hours from ending. See I-PROPOSED-CONSUMER-
+  // CALENDAR-USES-END-NOT-START.
   const { activeEntries, archiveEntries } = useMemo(() => {
-    const now = new Date();
+    const now = Date.now();
     const active: CalendarEntry[] = [];
     const archive: CalendarEntry[] = [];
 
     calendarEntries.forEach((entry) => {
-      // Check if entry has a scheduled date
-      const scheduledDate = entry.scheduled_at
-        ? new Date(entry.scheduled_at)
-        : entry.suggestedDates?.[0]
-        ? new Date(entry.suggestedDates[0])
-        : null;
-
-      if (scheduledDate && scheduledDate < now) {
-        // Past date - add to archive
+      const effectiveEnd = computeEntryEffectiveEnd(entry);
+      if (effectiveEnd !== null && effectiveEnd.getTime() < now) {
         archive.push(entry);
       } else {
-        // Future date or no date - add to active
+        // Future, in-progress, or no parseable date — stays Active.
         active.push(entry);
       }
     });
