@@ -41,8 +41,9 @@ export interface BrandRow {
   stripe_connect_id: string | null;
   stripe_payouts_enabled: boolean;
   stripe_charges_enabled: boolean;
-  // NEW Cycle 17e-A — migration 20260506000000 added these 6 columns:
-  kind: "physical" | "popup";
+  // Cycle 17e-A — migration 20260506000000 added these 6 columns.
+  // ORCH-0855 (Tr1) — migration 20260607000000 widened kind to admit 'trip_planner'.
+  kind: "physical" | "popup" | "trip_planner";
   address: string | null;
   cover_hue: number;
   cover_media_url: string | null;
@@ -70,8 +71,9 @@ export type BrandTableInsert = {
   stripe_connect_id?: string | null;
   stripe_payouts_enabled?: boolean;
   stripe_charges_enabled?: boolean;
-  // NEW Cycle 17e-A — all optional (DB defaults handle absence):
-  kind?: "physical" | "popup";
+  // Cycle 17e-A — all optional (DB defaults handle absence).
+  // ORCH-0855 (Tr1) — kind union widened to include 'trip_planner'.
+  kind?: "physical" | "popup" | "trip_planner";
   address?: string | null;
   cover_hue?: number;
   cover_media_url?: string | null;

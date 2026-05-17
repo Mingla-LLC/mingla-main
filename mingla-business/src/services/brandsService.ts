@@ -83,7 +83,10 @@ export interface CreateBrandInput {
   accountId: string;
   name: string;
   slug: string;
-  kind: "physical" | "popup";
+  // ORCH-0855 (Tr1) — union widened to admit 'trip_planner'. Migration
+  // 20260607000000 widened brands_kind_check at the DB level. Hook layer
+  // useCreateBrand passes input.kind through verbatim; no hook change.
+  kind: "physical" | "popup" | "trip_planner";
   address: string | null;
   coverHue: number;
   // Optional initial fields:

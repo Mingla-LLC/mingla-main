@@ -48,6 +48,8 @@ import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
 import { TopSheet } from "../ui/TopSheet";
+import { PersonaPickerCards, type PersonaDef } from "./PersonaPickerCards";
+import { TripBrandWizard } from "./TripBrandWizard";
 
 export interface BrandSwitcherSheetProps {
   visible: boolean;
@@ -63,7 +65,11 @@ export interface BrandSwitcherSheetProps {
   testID?: string;
 }
 
-type Mode = "switch" | "create";
+// ORCH-0855 (Tr1) — Mode union widened from "switch" | "create" to add
+// "persona" (3-card brand-type picker) + "trip-create" (TripBrandWizard).
+// The original "create" mode is renamed "popup-create" — its render block
+// is preserved byte-equivalent so today's "An event" flow has zero regression.
+type Mode = "switch" | "persona" | "popup-create" | "trip-create";
 
 const slugify = (value: string): string =>
   value
@@ -87,7 +93,7 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
   const createBrandMutation = useCreateBrand();
   const updateCreatorAccountMutation = useUpdateCreatorAccount();
 
-  const initialMode: Mode = brandList.isTrueEmpty ? "create" : "switch";
+  const initialMode: Mode = brandList.isTrueEmpty ? "persona" : "switch";
   const [mode, setMode] = useState<Mode>(initialMode);
   const [displayName, setDisplayName] = useState<string>("Lonely Moth");
   const [submitting, setSubmitting] = useState<boolean>(false);
@@ -96,7 +102,7 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
 
   useEffect(() => {
     if (visible) {
-      setMode(brandList.isTrueEmpty ? "create" : "switch");
+      setMode(brandList.isTrueEmpty ? "persona" : "switch");
       setDisplayName("Lonely Moth");
       setSubmitting(false);
       setSlugError(null);
@@ -174,13 +180,57 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
     onClose();
   };
 
-  const handleSwitchToCreate = (): void => {
-    setMode("create");
+  // ORCH-0855 (Tr1) — footer "Create a new brand" now opens the persona
+  // picker (3-card chooser) rather than dropping straight into popup-create.
+  const handleSwitchToPersona = (): void => {
+    setMode("persona");
   };
 
   const handleBackToSwitch = (): void => {
     setMode("switch");
   };
+
+  // ORCH-0855 (Tr1) — return from popup-create or trip-create to the
+  // persona picker (chevL back chevron in those modes).
+  const handleBackToPersona = (): void => {
+    setMode("persona");
+    setSlugError(null);
+    setSubmitting(false);
+  };
+
+  // ORCH-0855 (Tr1) — persona configuration. PersonaDef.id union locked
+  // per I-PROPOSED-TR1-PERSONA-INTERFACE (DRAFT → ACTIVE on CLOSE).
+  // "place" card disabled until Ve1 ships; "event" preserves today's flow
+  // verbatim via "popup-create" mode; "trip" opens TripBrandWizard.
+  const personas: PersonaDef[] = [
+    {
+      id: "place",
+      title: "A place",
+      description: "I run a venue (restaurant, bar, gallery, studio)",
+      icon: "location",
+      disabled: true,
+      onSelect: () => {
+        // Ve1 will wire this to open the venue claim flow.
+      },
+      testID: "persona-place",
+    },
+    {
+      id: "event",
+      title: "An event",
+      description: "I host one-off events, parties, or pop-ups",
+      icon: "calendar",
+      onSelect: () => setMode("popup-create"),
+      testID: "persona-event",
+    },
+    {
+      id: "trip",
+      title: "A trip",
+      description: "I plan curated trips and multi-day experiences",
+      icon: "compass",
+      onSelect: () => setMode("trip-create"),
+      testID: "persona-trip",
+    },
+  ];
 
   return (
     <TopSheet visible={visible} onClose={onClose} testID={testID}>
@@ -257,7 +307,7 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
             <View style={styles.footer}>
               <Button
                 label="Create a new brand"
-                onPress={handleSwitchToCreate}
+                onPress={handleSwitchToPersona}
                 variant="primary"
                 size="lg"
                 leadingIcon="plus"
@@ -265,7 +315,8 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
               />
             </View>
           </>
-        ) : (
+        ) : mode === "persona" ? (
+          // ORCH-0855 (Tr1) — 3-card persona picker.
           <>
             <View style={styles.header}>
               {brands.length > 0 ? (
@@ -278,6 +329,36 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
                   <Icon name="chevL" size={18} color={textTokens.tertiary} />
                 </Pressable>
               ) : null}
+              <Text style={styles.headerTitle}>
+                {brands.length > 0 ? "Choose a brand type" : "What kind of brand?"}
+              </Text>
+            </View>
+            <PersonaPickerCards personas={personas} testID="persona-picker" />
+          </>
+        ) : mode === "trip-create" ? (
+          // ORCH-0855 (Tr1) — trip-planner wizard. Mounted inside this TopSheet
+          // per sub-sheet-inside-parent rule.
+          <TripBrandWizard
+            accountId={user?.id ?? ""}
+            onClose={onClose}
+            onBack={handleBackToPersona}
+            onBrandCreated={onBrandCreated}
+            onDefaultBrandSaveError={onDefaultBrandSaveError}
+            testID="trip-brand-wizard"
+          />
+        ) : (
+          // mode === "popup-create" — preserved byte-equivalent to pre-Tr1
+          // "create" mode. "An event" persona card routes here.
+          <>
+            <View style={styles.header}>
+              <Pressable
+                onPress={handleBackToPersona}
+                accessibilityRole="button"
+                accessibilityLabel="Back to brand type picker"
+                style={styles.backTouch}
+              >
+                <Icon name="chevL" size={18} color={textTokens.tertiary} />
+              </Pressable>
               <Text style={styles.headerTitle}>
                 {brands.length > 0 ? "Create a new brand" : "Create your first brand"}
               </Text>

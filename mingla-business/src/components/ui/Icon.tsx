@@ -93,7 +93,8 @@ export type IconName =
   | "facebook"
   | "youtube"
   | "linkedin"
-  | "threads";
+  | "threads"
+  | "compass";
 
 export interface IconProps {
   name: IconName;
@@ -333,6 +334,13 @@ const RENDERERS: Record<IconName, Renderer> = {
     <>
       <Circle cx="12" cy="12" r="9" />
       <Path d="M3 12h18M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18z" />
+    </>
+  ),
+  // ORCH-0855 (Tr1) — compass icon for the "A trip" persona card.
+  compass: () => (
+    <>
+      <Circle cx="12" cy="12" r="9" />
+      <Path d="M16 8l-2.5 5.5L8 16l2.5-5.5L16 8z" />
     </>
   ),
   rocket: () => (

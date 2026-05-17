@@ -7,6 +7,50 @@
 
 ---
 
+## ACTIVE (post ORCH-0855 [Tr1 Trip Planner Brand Onboarding] CLOSE 2026-05-17)
+
+Two new invariants introduced by ORCH-0855 SPEC §8. Both flipped DRAFT → ACTIVE at CLOSE after operator iOS sim live-fire confirmation, tester 14/14 adversarial check PASS at HEAD `7750f7d6`, implementor 22/22 jest tests PASS at baseline `ff46c3f5`.
+
+### I-PROPOSED-TR1-PERSONA-INTERFACE
+
+**Rule.** The `PersonaPickerCards` component in `mingla-business/src/components/brand/PersonaPickerCards.tsx` exports a `PersonaDef` interface whose `id` field is the literal union `"place" | "event" | "trip"`. Widening this union — or removing any of the three ids — requires a new ORCH + SPEC + invariant amendment. The component itself is presentation-only and does NOT own state, does NOT call services, does NOT know about brand creation — it just renders the cards the caller supplies via the `personas: PersonaDef[]` prop.
+
+**Why.** Tr1 (Track 1, Trip Planners) and Ve1 (Track 2, Physical Venues — different developer, parallel session per Mingla Business 1.2 roadmap §6.4) both build a persona fork in `BrandSwitcherSheet`. Whichever lands first sets the framework. Tr1 went first this session. Without an explicit locked interface, Ve1 could fork the persona contract — drift between the two tracks, duplicated rendering logic, broken Ve1↔Tr1 compatibility, and a guaranteed regression at the next refactor.
+
+**Enforcement.**
+- **Type layer:** TypeScript compile-time check on the literal union at `PersonaPickerCards.tsx:30`. Adding a banned id (e.g. `"venue"`) to the union is a TS error caught by `npx tsc --noEmit`.
+- **CI layer:** tester adversarial structural-grep at `mingla-business/scripts/ci/orch-0855-adversarial-check.mjs` check A-07. It (a) verifies `export interface PersonaDef` exists, (b) verifies `export const PersonaPickerCards` exists, (c) regex-matches `id:\s*"place"\s*\|\s*"event"\s*\|\s*"trip"` exactly, (d) probes for banned ids in the union (currently `"venue"`, `"experience"`, `"creator"`, `"host"`, `"planner"`) — any hit fails the check.
+- **Pattern guard:** the BrandSwitcherSheet `personas: PersonaDef[]` array literal carries `id: "place"` + `id: "event"` + `id: "trip"` only (tester check A-08 confirms order + presence; Mode-union check confirms the 4-mode state machine routes to the right destination per persona).
+
+**Test.** Run `node mingla-business/scripts/ci/orch-0855-adversarial-check.mjs` from the repo root. Check A-07 must PASS at 14/14. Fails-on-revert verified at HEAD `7750f7d6` 2026-05-17 by temporarily widening the union to `"place" | "event" | "trip" | "venue"` → A-07 FAILed with `PersonaDef.id union widened with banned ids: venue`; restored; 14/14 PASS.
+
+**Cross-references.** DEC-160 (rationale + trade-offs); SPEC `Mingla_Artifacts/specs/SPEC_ORCH-0855_TR1_TRIP_PLANNER_ONBOARDING.md` §4.5.1 + §8; implementation `reports/IMPLEMENTATION_ORCH-0855_TR1_TRIP_PLANNER_ONBOARDING.md` §3.6; QA `reports/QA_ORCH-0855_TR1_TRIP_PLANNER_ONBOARDING_REPORT.md` §5 (A-07).
+
+**EXIT condition.** Permanent until/unless a future ORCH explicitly adds a 4th persona kind (e.g., creator-economy brand). That ORCH must (a) amend this invariant text, (b) update the adversarial check A-07 banned-id list, (c) update the SPEC §4.5.1 union literal.
+
+---
+
+### I-PROPOSED-TR1-KIND-IMMUTABLE
+
+**Rule.** `brands.kind` is IMMUTABLE post-create for rows with `kind='trip_planner'`. `BrandEditView.tsx` MUST NOT render the BRAND KIND editor for trip-planner brands. The legacy physical↔popup toggle for popup/physical brands MUST NOT include `'trip_planner'` as a togglable option. Demoting a trip-planner brand to popup/physical or promoting popup/physical to trip-planner via the kind editor is forbidden by design — the only way to obtain a trip-planner brand is via the dedicated `TripBrandWizard` persona flow with mandatory Stripe Connect onboarding.
+
+**Why.** Switching `kind` post-create breaks Stripe-status gating semantics (the trip-planner-specific Home CTA branches on `currentBrand.kind === 'trip_planner'`), downstream analytics funnel assumptions (`AppsFlyer mingla_brand_created` event taxonomy treats kinds as independent funnels), and trip-planner-specific UX prompts ("Plan a trip" vs "Create event" Home CTA copy). Physical↔popup switching pre-dates this DEC and is grandfathered as low-risk because neither has Stripe-required-at-onboarding semantics. Per DEC-4 (`Mingla_Artifacts/PROJECT_SPEC_MINGLA_BUSINESS_1_2.md` §8), trip planners use Stripe Connect KYC as identity proof in lieu of the admin phone-callback used for physical venues — kind acts as the routing key for that identity-proof requirement at create time, and post-create demotion would orphan the Stripe identity-proof state.
+
+**Enforcement.**
+- **UI layer:** `mingla-business/src/components/brand/BrandEditView.tsx` wraps the BRAND KIND section in `{draft.kind !== "trip_planner" ? (<>...kind editor...</>) : null}`. The kind toggle's options array remains `kind: "physical"` + `kind: "popup"` setDraft calls only — no `setDraft({...kind: "trip_planner"...})` exists anywhere in the file.
+- **CI layer:** tester adversarial structural-grep at `mingla-business/scripts/ci/orch-0855-adversarial-check.mjs` check A-13 verifies BOTH (a) `setDraft\([\s\S]{0,200}?kind:\s*"trip_planner"` is ABSENT from `BrandEditView.tsx` — would mean the toggle admits the new kind (fails A-13), AND (b) `draft\.kind\s*!==\s*"trip_planner"` guard IS present (fails A-13 if missing — means trip-planner brands see the kind editor).
+- **Pattern guard:** the trip-brand wizard creation path is the SOLE producer of `kind='trip_planner'` rows (verified by adversarial A-14 scope-leak guardrail — `'trip_planner'` literal is confined to expected Tr1 files: TripBrandWizard.tsx + BrandSwitcherSheet's persona array + 4 type files + the 3 implementor tests + this adversarial check).
+
+**Test.** Run `node mingla-business/scripts/ci/orch-0855-adversarial-check.mjs` from the repo root. Check A-13 must PASS at 14/14.
+
+**Trade-off accepted.** A trip-planner host who later wants to demote to a popup brand cannot do so via the kind editor — they must create a fresh popup brand and migrate their content / Stripe Connect setup. Acceptable because (i) Tr1 is the first trip-planner brand creation surface so demotion is a hypothetical edge case until trip-planner brands accumulate, (ii) trip-planner-down-to-popup is a rare path with downstream Stripe + analytics consequences (orphaned Stripe Tax registrations, broken Mixpanel funnel attribution), (iii) re-creating is reliable + audit-clean + leaves a clean kind-discriminated audit trail.
+
+**Cross-references.** DEC-161 (rationale + trade-offs); SPEC §4.5.5 + §8; implementation report §3.10; QA report §5 (A-13).
+
+**EXIT condition.** Permanent. A future product decision to allow kind-switching would require (a) a new ORCH amending this invariant + updating A-13 to allow `setDraft({...kind: "trip_planner"...})`, (b) an explicit Stripe-Connect-orphan-handling spec for the popup→trip_planner promotion path, (c) an analytics-funnel-rekey spec for the trip_planner→popup demotion path. Not on the queue.
+
+---
+
 ### I-REGRESSION-TEST-MANDATORY — every code-touching ORCH ships two regression tests, both immutable (ACTIVE — ratified by ORCH-0840 CLOSE 2026-05-14)
 
 **Rule.** Every CLOSE of an ORCH that touches product code (any diff under `app-mobile/src/`, `mingla-business/src/`, `mingla-admin/src/`, `supabase/functions/`, `packages/`, `.github/scripts/strict-grep/`) MUST cite BOTH of:
