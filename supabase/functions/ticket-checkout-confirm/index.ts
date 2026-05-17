@@ -223,6 +223,10 @@ serve(async (req) => {
   };
   try {
     const stripe = stripeTicketCheckout();
+    // orch-strict-grep-allow stripe-no-idempotency-key — paymentIntents.retrieve
+    // is a read-only Stripe API call; idempotency keys are scoped to mutating
+    // create/update operations per Stripe API conventions. Retrieve is safe to
+    // retry without a key since it returns the same resource verbatim.
     paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId, {
       stripeAccount: stripeAccountId,
     }) as typeof paymentIntent;
