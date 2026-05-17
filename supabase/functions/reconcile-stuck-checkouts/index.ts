@@ -54,11 +54,12 @@ serve(async (req) => {
     const stripeAccountId = s.stripe_account_id as string | null;
     try {
       // Fetch PI from the connected account (direct charges).
+      // orch-strict-grep-allow stripe-no-idempotency-key — read-only retrieve (no side effects, no state mutation); idempotency keys protect mutating ops (create/update/capture), not GETs. This is a one-shot historical reconcile that just reads PI status to drive the local finalize RPC.
       const pi = stripeAccountId
         // @ts-ignore — Stripe SDK signature
-        ? await stripe.paymentIntents.retrieve(piId, { stripeAccount: stripeAccountId })
+        ? await stripe.paymentIntents.retrieve(piId, { stripeAccount: stripeAccountId }) // orch-strict-grep-allow stripe-no-idempotency-key — read-only retrieve
         // @ts-ignore
-        : await stripe.paymentIntents.retrieve(piId);
+        : await stripe.paymentIntents.retrieve(piId); // orch-strict-grep-allow stripe-no-idempotency-key — read-only retrieve
 
       if (pi.status !== "succeeded") {
         results.push({ sessionId, piId, skip: `pi_status_${pi.status}` });
