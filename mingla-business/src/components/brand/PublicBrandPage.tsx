@@ -79,6 +79,13 @@ import { Icon, type IconName } from "../ui/Icon";
 import { IconChrome } from "../ui/IconChrome";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { ShareModal } from "../ui/ShareModal";
+// ORCH-0850 [End-not-start parity systemic]: route Upcoming / Past memo
+// predicates through the canonical helper. Pre-0850 memos used
+// `new Date(e.date).getTime()` with a `Date.now() - 24h` cutoff — the same
+// UTC-midnight bug class as Hub events.tsx and checkout. Visitors saw live
+// events listed under Past AND missing from Upcoming on the brand profile.
+import { isEventPast } from "../../utils/eventLifecycle";
+import { computeMasterEndAtUtc } from "../../utils/eventDateMath";
 
 interface PublicBrandPageProps {
   brand: Brand;
@@ -121,27 +128,27 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
     return userBrands.some((b) => b.id === brand.id);
   }, [user, userBrands, brand.id]);
 
+  // ORCH-0850: upcoming = not past AND not cancelled.
+  // The pre-0850 24h cutoff was a band-aid for the UTC-midnight bug class;
+  // with isEventPast routing through computeMasterEndAtUtc the event itself
+  // defines its window via event_dates.end_at (preferred) or
+  // event.date + event.endsAt + timezone (fallback).
   const upcomingEvents = useMemo<LiveEvent[]>(() => {
-    const cutoff = Date.now() - 24 * 60 * 60 * 1000; // include today
     return events
       .filter((e) => {
-        if (e.status === "cancelled" || e.status === "ended") return false;
-        if (e.date === null) return true;
-        const eventTime = new Date(e.date).getTime();
-        return eventTime >= cutoff;
+        if (e.status === "cancelled") return false;
+        return !isEventPast(e, computeMasterEndAtUtc(e));
       })
       .sort((a, b) => (a.date ?? "").localeCompare(b.date ?? ""));
   }, [events]);
 
+  // ORCH-0850: past = isEventPast (canonical) AND not cancelled.
+  // Cancelled events were intentionally filtered out pre-0850; preserved.
   const pastEvents = useMemo<LiveEvent[]>(() => {
-    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
     return events
       .filter((e) => {
         if (e.status === "cancelled") return false;
-        if (e.status === "ended") return true;
-        if (e.date === null) return false;
-        const eventTime = new Date(e.date).getTime();
-        return eventTime < cutoff;
+        return isEventPast(e, computeMasterEndAtUtc(e));
       })
       .sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""))
       .slice(0, PAST_EVENT_CAP);

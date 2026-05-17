@@ -70,6 +70,13 @@ import {
 } from "../../../src/hooks/useBusinessEvents";
 import { eventPublicUrl } from "../../../src/constants/publicUrls";
 import { canPerformAction } from "../../../src/utils/permissionGates";
+// ORCH-0850 [End-not-start parity systemic]: route past/upcoming/live decision
+// through the canonical helper via the sibling .ts wrapper. Pre-0850 local
+// `deriveLiveStatus` used `new Date(event.date).getTime()` which parses
+// YYYY-MM-DD as UTC midnight — any US-Eastern event flipped to "past" at
+// 8pm EDT on its start day. The wrapper lives in `./eventCardStatus.ts` so
+// the regression test can import it without pulling this screen's JSX.
+import { deriveCardStatus } from "./eventCardStatus";
 
 type EventFilter = "all" | "live" | "upcoming" | "draft" | "past";
 
@@ -84,19 +91,8 @@ interface ManageContext {
   status: EventCardStatus;
 }
 
-const deriveLiveStatus = (event: LiveEvent): EventCardStatus => {
-  if (event.status === "cancelled") return "past";
-  if (event.endedAt !== null) return "past";
-  if (event.date === null) return "upcoming";
-  const eventTime = new Date(event.date).getTime();
-  if (!Number.isFinite(eventTime)) return "upcoming";
-  const liveWindowStart = eventTime - 4 * 60 * 60 * 1000;
-  const liveWindowEnd = eventTime + 24 * 60 * 60 * 1000;
-  const now = Date.now();
-  if (now >= liveWindowStart && now < liveWindowEnd) return "live";
-  if (now < liveWindowStart) return "upcoming";
-  return "past";
-};
+// ORCH-0850: local deriveLiveStatus deleted; deriveCardStatus imported from
+// ./eventCardStatus (sibling .ts file — see import block above).
 
 const isLocalOnlyDraft = (draft: DraftEvent): boolean =>
   draft.id.startsWith("d_") || draft.serverSlug === null;
@@ -177,7 +173,7 @@ export default function EventsTab(): React.ReactElement {
   const liveEventEntries = useMemo<
     { event: LiveEvent; status: EventCardStatus }[]
   >(() => {
-    return liveEvents.map((e) => ({ event: e, status: deriveLiveStatus(e) }));
+    return liveEvents.map((e) => ({ event: e, status: deriveCardStatus(e) }));
   }, [liveEvents]);
 
   const counts = useMemo<Record<EventFilter, number>>(() => {

@@ -942,6 +942,28 @@ jobs:
       - name: Run ORCH-0849 allowlist gate
         run: node .github/scripts/strict-grep/i-stripe-pm-method-allowlist.mjs
 
+  i-event-lifecycle-single-helper:
+    name: "ORCH-0850: business event lifecycle single helper (I-PROPOSED-EVENT-LIFECYCLE-SINGLE-HELPER)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0850 single-helper gate
+        run: node .github/scripts/strict-grep/i-event-lifecycle-single-helper.mjs
+
+  i-consumer-calendar-uses-end-not-start:
+    name: "ORCH-0850: consumer calendar end-not-start (I-PROPOSED-CONSUMER-CALENDAR-USES-END-NOT-START)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0850 consumer-calendar gate
+        run: node .github/scripts/strict-grep/i-consumer-calendar-uses-end-not-start.mjs
+
   orch-0847-consumer-multi-line-checkout:
     name: "ORCH-0847: consumer cart sheet supports multi-line checkout"
     runs-on: ubuntu-latest

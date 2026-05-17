@@ -46,6 +46,12 @@ import {
 } from "../../../src/components/checkout/CartContext";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
 import { QuantityRow } from "../../../src/components/checkout/QuantityRow";
+// ORCH-0850 [End-not-start parity systemic]: route the past gate through the
+// canonical helper. Pre-0850 local `computeIsPast` used `new Date(event.date)
+// + 24h < Date.now()` which fired at 8pm EDT on the start day for any
+// US-Eastern event — blocking ticket purchases on still-live events (S0).
+import { isEventPast } from "../../../src/utils/eventLifecycle";
+import { computeMasterEndAtUtc } from "../../../src/utils/eventDateMath";
 
 const sortByDisplayOrder = (a: TicketStub, b: TicketStub): number =>
   a.displayOrder - b.displayOrder;
@@ -55,16 +61,6 @@ const sortByDisplayOrder = (a: TicketStub, b: TicketStub): number =>
 // tiers exist for J-D3 (operator door sale flow) only.
 const isVisibleForBuyer = (t: TicketStub): boolean =>
   t.visibility !== "hidden" && t.availableAt !== "door";
-
-const computeIsPast = (event: LiveEvent): boolean => {
-  if (event.status === "cancelled" || event.status === "ended") return true;
-  if (event.endedAt !== null) return true;
-  if (event.date === null) return false;
-  const dateMs = new Date(event.date).getTime();
-  if (!Number.isFinite(dateMs)) return false;
-  // Treat "past" as 24h after start — matches PublicEventPage's variant logic.
-  return dateMs + 24 * 60 * 60 * 1000 < Date.now();
-};
 
 const ticketSalesEnded = (ticket: TicketStub): boolean => {
   if (ticket.saleEndAt === null) return false;
@@ -171,7 +167,7 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
     .slice()
     .sort(sortByDisplayOrder);
 
-  const isPast = computeIsPast(event);
+  const isPast = isEventPast(event, computeMasterEndAtUtc(event));
   const allSoldOut =
     visibleTickets.length > 0 &&
     visibleTickets.every(
