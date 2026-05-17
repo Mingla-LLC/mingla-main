@@ -13,7 +13,7 @@
 
 import React, { useCallback, useMemo, useState } from "react";
 import {
-  Dimensions,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -53,9 +53,14 @@ export const TicketQrCarousel: React.FC<TicketQrCarouselProps> = ({
   qrSize = DEFAULT_QR_SIZE,
 }) => {
   const [activeIndex, setActiveIndex] = useState<number>(0);
-  const [pageWidth, setPageWidth] = useState<number>(
-    Dimensions.get("window").width,
-  );
+  // ORCH-0852: pageWidth must come from the carousel container's onLayout, NOT
+  // from Dimensions.get("window").width. On web (RNW), the carousel sits inside
+  // a padded GlassCard whose inner width is narrower than the window; using the
+  // window width seeded the initial render with oversized pages that triggered
+  // an overflow-y: hidden clip on the QR. Initial state is now 0 and the
+  // multi-page render is gated on pageWidth > 0 so the first paint always uses
+  // a measured width.
+  const [pageWidth, setPageWidth] = useState<number>(0);
 
   const total = tickets.length;
   const isMulti = total > 1;
@@ -109,6 +114,13 @@ export const TicketQrCarousel: React.FC<TicketQrCarouselProps> = ({
     );
   }
 
+  // ORCH-0852: before the host's onLayout fires we have no measured width; the
+  // first paint of the multi-page render needs that width to size each page.
+  // Render a bare host (which still publishes onLayout) until pageWidth > 0.
+  if (pageWidth === 0) {
+    return <View style={styles.host} onLayout={handleLayout} />;
+  }
+
   return (
     <View style={styles.host} onLayout={handleLayout}>
       <ScrollView
@@ -118,6 +130,12 @@ export const TicketQrCarousel: React.FC<TicketQrCarouselProps> = ({
         onScroll={handleScroll}
         scrollEventThrottle={16}
         accessibilityLabel="Ticket QR carousel"
+        // ORCH-0852: explicit web height. RNW renders <ScrollView horizontal>
+        // as overflow-x: auto; overflow-y: hidden which clipped the QR
+        // vertically when the carousel had no measured height. Native lays
+        // out from intrinsic content fine, so the explicit height is
+        // web-only to avoid changing native behavior.
+        style={Platform.OS === "web" ? styles.scrollWeb : undefined}
       >
         {pages.map((p) => (
           <View
@@ -156,12 +174,24 @@ export const TicketQrCarousel: React.FC<TicketQrCarouselProps> = ({
   );
 };
 
+// ORCH-0852: explicit min-heights for the multi-ticket carousel on web.
+// Computed = QR (200) + qrInner padding (16) + label (~40) + dots (12) +
+// swipeHint (20) + paddingVertical (16) + small buffer. Native sizes from
+// intrinsic content correctly; minHeight is a no-op there because the
+// content already exceeds it.
+const HOST_MIN_HEIGHT = 320;
+const PAGE_MIN_HEIGHT = 260;
+
 const styles = StyleSheet.create({
   host: {
     alignSelf: "stretch",
     alignItems: "center",
     paddingVertical: spacing.sm,
     gap: spacing.sm,
+    minHeight: HOST_MIN_HEIGHT,
+  },
+  scrollWeb: {
+    height: HOST_MIN_HEIGHT - 32, // host minHeight minus paddingY + dots/swipeHint room
   },
   singleWrap: {
     alignItems: "center",
@@ -173,6 +203,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: spacing.sm,
     paddingHorizontal: spacing.md,
+    minHeight: PAGE_MIN_HEIGHT,
   },
   qrInner: {
     padding: spacing.sm,

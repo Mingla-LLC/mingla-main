@@ -76,6 +76,17 @@ export interface TicketCheckoutStatusResult {
   order: Omit<TicketCheckoutFreeCompleted, "kind"> | null;
 }
 
+/**
+ * ORCH-0852 — bulletproof confirmation. Shape mirrors TicketCheckoutStatusResult
+ * but `status` is a narrower union surfaced from ticket-checkout-confirm.
+ * Reuses the same `order` shape so existing render paths interoperate.
+ */
+export interface TicketCheckoutConfirmResult {
+  checkoutSessionId: string;
+  status: "paid" | "pending" | "failed" | "expired";
+  order: Omit<TicketCheckoutFreeCompleted, "kind"> | null;
+}
+
 export const FINALIZATION_BACKOFF_MS = [1000, 1500, 2000, 3000, 4000, 5000] as const;
 
 const centsFromMajor = (value: number): number => Math.round(value * 100);
@@ -114,6 +125,30 @@ export const getTicketCheckoutStatus = async (
   buyerStatusToken: string,
 ): Promise<TicketCheckoutStatusResult> =>
   invokeOrThrow<TicketCheckoutStatusResult>("ticket-checkout-status", {
+    checkoutSessionId,
+    buyerStatusToken,
+  });
+
+/**
+ * ORCH-0852 — synchronous confirmation. Replaces `pollTicketCheckoutStatus`
+ * on the buyer's success path. The server calls Stripe directly + invokes
+ * the idempotent `biz_ticket_checkout_finalize` RPC so the order is
+ * guaranteed to exist (or known-pending/failed) by the time this resolves.
+ *
+ * Callers should treat:
+ *  - status === "paid" + order !== null  → render full order
+ *  - status === "pending"                → fall through to a Realtime
+ *    subscription on ticket_checkout_sessions.order_id; webhook backup
+ *    will eventually populate it.
+ *  - status === "failed" | "expired"     → surface error state.
+ *  - thrown error                        → treat as transient; fall through
+ *    to Realtime; webhook backup will still complete the order.
+ */
+export const confirmTicketCheckout = async (
+  checkoutSessionId: string,
+  buyerStatusToken: string,
+): Promise<TicketCheckoutConfirmResult> =>
+  invokeOrThrow<TicketCheckoutConfirmResult>("ticket-checkout-confirm", {
     checkoutSessionId,
     buyerStatusToken,
   });

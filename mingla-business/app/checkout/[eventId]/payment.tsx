@@ -19,8 +19,19 @@
  *
  * Free orders never reach this screen.
  *
- * On payment success: wait for the server-backed checkout status, record the
- * issued tickets into cart Context, then router.replace to /confirm.
+ * ORCH-0852 (2026-05-17): native PaymentSheet success path is now FIRE-AND-
+ * FORGET. Mirrors consumer's pattern at app-mobile/src/components/expanded
+ * Card/ExpandedBusinessEventSheet.tsx:264-286. After PaymentSheet returns
+ * `succeeded`, the buyer is no longer blocked on synchronous polling for
+ * order finalization. Instead we: (a) call `confirmTicketCheckout` with a
+ * 3-second client-side timeout — server verifies the Stripe PI directly
+ * and idempotently invokes biz_ticket_checkout_finalize so the order is
+ * guaranteed to exist; (b) show a success toast; (c) router.replace to
+ * the event public page. If the sync confirm errors or times out client-
+ * side, the user is STILL navigated — the webhook backup creates the
+ * order asynchronously and the buyer's tickets list refetch / Realtime
+ * subscription picks it up. There is no stranded post-payment dead-end
+ * screen any more. Per SPEC_ORCH-0852_BUYER_WEB_CONFIRMATION_BROKEN.md §M0.
  *
  * Per Cycle 8 spec §4.6 + ORCH-0839-B SPEC §2.6.
  */
@@ -45,9 +56,10 @@ import {
 import { usePublicEventById } from "../../../src/hooks/usePublicEvents";
 import { formatCurrency } from "../../../src/utils/currency";
 import { isRequiredPhoneValid } from "../../../src/utils/phone";
+import { eventPublicPath } from "../../../src/constants/publicUrls";
 import {
+  confirmTicketCheckout,
   createTicketCheckout,
-  pollTicketCheckoutStatus,
 } from "../../../src/services/ticketCheckoutService";
 import { mixpanelService } from "../../../src/services/mixpanelService";
 // ORCH-0849 (2026-05-15): native PaymentSheet flow replaces the
@@ -85,7 +97,7 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
 
   const publicEventQuery = usePublicEventById(eventId);
   const event = publicEventQuery.data?.event ?? null;
-  const { lines, buyer, recordResult, setLineQuantity, setBuyer } = useCart();
+  const { lines, buyer, setLineQuantity, setBuyer } = useCart();
   const totals = useCartTotals();
 
   // ORCH-0789/0790 REWORK: on web, the buyer may be returning from a
@@ -98,8 +110,6 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
   );
 
   const [processing, setProcessing] = useState<boolean>(false);
-  const [finalizing, setFinalizing] = useState<boolean>(false);
-  const [finalizingTimedOut, setFinalizingTimedOut] = useState<boolean>(false);
   const [checkoutSessionId, setCheckoutSessionId] = useState<string | null>(null);
   // ORCH-0839-B: declineToast state is retained but dormant. Stripe's hosted
   // page handles all card-decline UX inside its own surface. The Toast wrap
@@ -107,8 +117,11 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
   // feedback_toast_needs_absolute_wrap.md even though it has no caller in
   // the new code path.
   const [declineToast, setDeclineToast] = useState<boolean>(false);
+  // ORCH-0852: shown briefly after PaymentSheet success, before navigation.
+  // Mirrors consumer's "Ticket secured!" toast in
+  // app-mobile/src/components/expandedCard/ExpandedBusinessEventSheet.tsx.
+  const [successToast, setSuccessToast] = useState<boolean>(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
-  const finalizingRef = useRef<boolean>(false);
 
   // ORCH-0849: native PaymentSheet hook. Returns a function that the
   // native branch of handlePay invokes; not used on web (Platform.OS ===
@@ -344,61 +357,72 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
         return;
       }
 
-      // outcome.outcome === "succeeded" — nativeCheckoutFlow returns the
-      // checkoutSessionId in the orderId slot per the consumer mirror.
-      // PaymentSheet resolved with .completed; the Stripe webhook plus
-      // biz_ticket_checkout_finalize produce the order row asynchronously.
-      // Poll for the finalized order the same way the web path does.
+      // ORCH-0852 — outcome.outcome === "succeeded". Fire-and-forget pattern
+      // mirroring consumer at app-mobile/src/components/expandedCard/
+      // ExpandedBusinessEventSheet.tsx:264-286. We:
+      //   1. Call confirmTicketCheckout SYNCHRONOUSLY (server verifies the
+      //      Stripe PI directly + invokes idempotent finalize RPC) with a
+      //      3-second CLIENT-SIDE timeout so the UI is never blocked on
+      //      a slow server. Order is guaranteed to exist server-side after
+      //      this — even if our await times out, the RPC ran.
+      //   2. Show a success toast.
+      //   3. router.replace to the event public page after a brief delay
+      //      so the buyer sees the confirmation copy.
+      // The webhook backup remains in flight; if the sync confirm threw or
+      // timed out, the webhook will still create/finalize the order and
+      // the buyer's tickets list refetch / Realtime subscription resolves it.
+      // There is no stranded post-payment dead-end any more.
       const sessionId = outcome.orderId;
       setCheckoutSessionId(sessionId);
-      setFinalizing(true);
-      finalizingRef.current = true;
-      const status = await pollTicketCheckoutStatus(sessionId, "");
-      if (!finalizingRef.current) return;
-      if (status === null || status.order === null) {
-        finalizingRef.current = false;
-        setFinalizingTimedOut(true);
-        setFinalizing(false);
-        setProcessing(false);
+      try {
+        await Promise.race([
+          confirmTicketCheckout(sessionId, ""),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("client_confirm_timeout")), 3000),
+          ),
+        ]);
+      } catch (confirmErr) {
+        // Non-fatal — webhook backup will finalize. Log for observability.
         console.warn(
-          "[checkout-payment] native PaymentSheet finalization timed out",
-          { checkoutSessionId: sessionId },
+          "[checkout-payment] synchronous confirm failed or timed out; relying on webhook backup",
+          confirmErr,
         );
-        mixpanelService.track("ticket_checkout_failed", {
+        mixpanelService.track("ticket_checkout_sync_confirm_failed", {
           surface,
           eventId,
           checkoutSessionId: sessionId,
-          reason: "finalize_timeout",
+          reason:
+            confirmErr instanceof Error ? confirmErr.message : "unknown",
         });
-        return;
       }
-      recordResult({
-        orderId: status.order.orderId,
-        ticketIds: status.order.tickets.map((ticket) => ticket.ticketId),
-        checkoutSessionId: status.checkoutSessionId,
-        paidAt: new Date().toISOString(),
-        paymentMethod: "card",
-        total: status.order.totalCents / 100,
-        totalCents: status.order.totalCents,
-        currency: status.order.currency,
-        paymentStatus: status.order.paymentStatus,
-        notificationStatus: status.order.notificationStatus,
-        tickets: status.order.tickets,
-      });
+
       mixpanelService.track("ticket_checkout_succeeded", {
         surface,
         eventId,
         checkoutSessionId: sessionId,
       });
-      router.replace(`/checkout/${eventId}/confirm` as never);
+
+      setSuccessToast(true);
+
+      // Brief delay so the buyer sees the toast before the screen unmounts
+      // via router.replace. 1.2s mirrors the consumer pattern's perceived
+      // confirmation window. Event slugs come from the public event query
+      // (already fetched above). On the off-chance event is null (race
+      // with the publicEventQuery), fall back to /(tabs)/home — same
+      // pattern as handleBackToEvent in confirm.tsx.
+      setTimeout(() => {
+        if (event !== null) {
+          router.replace(
+            eventPublicPath({
+              brandSlug: event.brandSlug,
+              eventSlug: event.eventSlug,
+            }) as never,
+          );
+        } else {
+          router.replace("/(tabs)/home" as never);
+        }
+      }, 1200);
     } catch (error) {
-      if (finalizingRef.current) {
-        finalizingRef.current = false;
-        setFinalizingTimedOut(true);
-        setFinalizing(false);
-        setProcessing(false);
-        return;
-      }
       setProcessing(false);
       const message =
         error instanceof Error
@@ -412,26 +436,17 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
         message,
       });
     } finally {
-      if (!finalizingRef.current) {
-        setProcessing(false);
-      }
+      setProcessing(false);
     }
   }, [
     buyer,
+    event,
     eventId,
     lines,
     nativeCheckout,
     processing,
-    recordResult,
     router,
   ]);
-
-  useEffect(
-    () => () => {
-      finalizingRef.current = false;
-    },
-    [],
-  );
 
   // Render an empty shell while defensive guards redirect.
   if (
@@ -511,20 +526,12 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
           ) : null}
         </GlassCard>
 
-        {finalizing || finalizingTimedOut ? (
-          <GlassCard variant="base" radius="lg" padding={spacing.md}>
-            <Text style={styles.finalizingTitle}>
-              {finalizingTimedOut ? "Payment received" : "Finalizing your tickets..."}
-            </Text>
-            <Text style={styles.finalizingCopy}>
-              {finalizingTimedOut
-                ? "Your ticket will arrive by email and message shortly."
-                : "Stripe has accepted the payment. We are waiting for the server to issue your tickets."}
-            </Text>
-          </GlassCard>
-        ) : null}
+        {/* ORCH-0852: the prior post-payment blocking GlassCard was removed.
+            PaymentSheet success no longer parks the buyer on this screen;
+            the success toast + auto-navigate happen inside handlePay so
+            this surface stays minimal. */}
 
-        {paymentError !== null && !finalizing && !finalizingTimedOut ? (
+        {paymentError !== null ? (
           <Text style={styles.errorText}>{paymentError}</Text>
         ) : null}
       </ScrollView>
@@ -550,18 +557,27 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
           size="lg"
           fullWidth
           loading={processing}
-          disabled={processing || finalizingTimedOut}
+          disabled={processing}
           accessibilityLabel={`Pay ${formatCurrency(totals.total, totals.currency)} with card`}
         />
       </View>
 
-      {/* Decline toast — top-anchored absolute wrapper (Cycle 8a lesson) */}
+      {/* Toast — top-anchored absolute wrapper (Cycle 8a lesson per
+          feedback_toast_needs_absolute_wrap.md). ORCH-0852: success toast
+          fires on PaymentSheet success before navigation; decline toast
+          retained from ORCH-0839-B for parity even though dormant. */}
       <View style={styles.toastWrap} pointerEvents="box-none">
         <Toast
           visible={declineToast}
           kind="error"
           message="Card declined — try another payment method."
           onDismiss={() => setDeclineToast(false)}
+        />
+        <Toast
+          visible={successToast}
+          kind="success"
+          message="Ticket secured! Check your tickets list."
+          onDismiss={() => setSuccessToast(false)}
         />
       </View>
     </View>
@@ -643,17 +659,6 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     fontSize: 11,
     color: textTokens.quaternary,
-  },
-  finalizingTitle: {
-    fontSize: 16,
-    color: textTokens.primary,
-    fontWeight: "700",
-    marginBottom: spacing.xs,
-  },
-  finalizingCopy: {
-    fontSize: 14,
-    color: textTokens.secondary,
-    lineHeight: 20,
   },
   errorText: {
     marginTop: spacing.sm,
