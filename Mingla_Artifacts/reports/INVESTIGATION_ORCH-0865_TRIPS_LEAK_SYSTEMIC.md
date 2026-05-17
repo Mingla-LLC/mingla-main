@@ -1,4 +1,4 @@
-# INVESTIGATION — ORCH-0863 [Trips-as-events leak systemic audit]
+# INVESTIGATION — ORCH-0865 [Trips-as-events leak systemic audit]
 
 > **⚠ ORCH-ID NOTE:** Same orchestrator-numbering caveat as the companion `ORCH-0862` investigation — orchestrator may need to renumber both at artifact sync. Findings stand regardless.
 
@@ -137,7 +137,7 @@ The current REWORK 4 diagnostic console.log will reveal which. Either way the st
 
 This investigation proposes a NEW invariant:
 
-**`I-PROPOSED-TR2-ROUTE-BY-EVENT-TYPE`** (status: DRAFT, flips to ACTIVE on ORCH-0863 CLOSE)
+**`I-PROPOSED-TR2-ROUTE-BY-EVENT-TYPE`** (status: DRAFT, flips to ACTIVE on ORCH-0865 CLOSE)
 
 > Every tap-handler / navigation action in mingla-business that receives an id from an events-table row MUST discriminate the destination by `event_type` (or use the canonical `routeForEventRow` helper that does so). Hardcoding `/event/${id}` or `/trip/${id}` based on UI context alone is forbidden because UI lists may contain rows of any type post-Tr2 [Tr2 Minimum Viable Trip].
 

@@ -7,6 +7,36 @@
 
 ---
 
+## ACTIVE (post ORCH-0859 [Tr2 Minimum Viable Trip] CLOSE 2026-05-17 — covering ORCH-0866 [SafeArea drift + SafeScreen wrapper] + ORCH-0865 [trips-leak + routeForEventRow helper])
+
+Three new invariants introduced by ORCH-0866 + ORCH-0865 structural fix. All three flipped DRAFT → ACTIVE at CLOSE after operator pixel-confirmed RETEST 5 PASS + tester 17/17 adversarial PASS at REWORK 5b state + 3 CI gates report 0/0/0 violations across 49+382+399 scanned files.
+
+### I-PROPOSED-TR2-SAFEAREA-ON-FULLSCREEN-ROUTES
+
+**Rule.** Every full-screen route file under `mingla-business/app/` MUST either (a) import `<SafeScreen>` from `src/components/ui/SafeScreen.tsx` and wrap its root render, OR (b) call `useSafeAreaInsets()` and apply `paddingTop: insets.top` (literal source pattern) on the root style, OR (c) use `<SafeAreaView>` from `react-native-safe-area-context`, OR (d) carry an allowlist comment `// orch-strict-grep-allow safearea-on-fullscreen-routes — <reason>` with operator-documented rationale. Exempted: `_layout.tsx` files (which provide SafeArea to children), and routes under `(tabs)/hub/` + `(tabs)/marketing/` whose parent layouts already apply the top inset.
+
+**Why.** RETEST 4 surfaced trip operator dashboard `Edit` button bleeding into the iPhone status bar, plus ~10 unaudited routes that could have the same bug. Without a CI gate, every new full-screen route is a potential bleed regression. The `<SafeScreen>` wrapper is the canonical fix; the allowlist exception lets design-intent full-bleed cover banners (operator-confirmed for `/e/`, `/t/`, `/b/`, 3 checkout screens during RETEST 5 pixel review) stay intentional without a CI false-positive.
+
+**Enforcement.** `.github/scripts/strict-grep/i-proposed-tr2-safearea-on-fullscreen-routes.mjs` (CI job wired in `.github/workflows/strict-grep-mingla-business.yml`). Scan 49 files, expect 0 violations on a clean tree. Adversarial test: removing any of the 13 inline allowlist comments without retrofitting `<SafeScreen>` MUST fail the gate at PR time.
+
+### I-PROPOSED-TR2-ROUTE-BY-EVENT-TYPE
+
+**Rule.** Tap-handlers must route event/trip/experience rows through `routeForEventRow(row)` (or `routeForEventRowDefensive(row)` for legacy data) from `mingla-business/src/utils/routeForEventRow.ts`. Hardcoded `router.push(\`/event/${id}\`)` or `router.push(\`/trip/${id}\`)` outside the helper is FORBIDDEN unless the call site carries an allowlist comment `// orch-strict-grep-allow route-by-event-type — <reason>` within 3 lines above the call. Exempted: the helper file itself, files under `app/event/[id]/*` or `app/trip/[id]/*` (whose entire purpose IS event-typed routing), and routes with static no-id paths.
+
+**Why.** RETEST 4 surfaced trips bleeding into Hub Events list AND routing to `/event/{id}` instead of `/trip/{id}` because Home Upcoming tap-handler hardcoded the events path. Even with the cache-layer event_type filter, a single regression in any tap-handler would re-introduce the leak. The helper is the canonical dispatcher; the gate prevents future drift.
+
+**Enforcement.** `.github/scripts/strict-grep/i-proposed-tr2-route-by-event-type.mjs` (CI job wired). Scan 382 files, expect 0 violations. The 4 allowlisted call sites in `EditPublishedScreen.tsx` (lines 480, 775, 796, 829) are structurally event-only and document this in their inline reason.
+
+### I-PROPOSED-TR2-LIVESTORE-ADDLIVEEVENT-OWNER
+
+**Rule.** `addLiveEvent` (the LiveEventStore Zustand action) may ONLY be called from `mingla-business/src/utils/liveEventConverter.ts` (the documented single writer per the `[I-16 GUARD]` comment in `liveEventStore.ts:137`), from `liveEventStore.ts` itself, or from test files.
+
+**Why.** The Zustand `liveEventStore` is operationally safe today — `partialize` returns empty + `migrate` drops persisted server data per ORCH-0742 [Zustand persist no server snapshots]. But those protections only catch DATA already in the store; they do NOT prevent a future code path from `useLiveEventStore.getState().addLiveEvent(...)` with a trip row. This invariant promotes the existing `[I-16 GUARD]` code-comment to enforced.
+
+**Enforcement.** `.github/scripts/strict-grep/i-proposed-tr2-livestore-addliveevent-owner.mjs` (CI job wired). Scan 399 files, expect 0 violations on the clean tree.
+
+---
+
 ## ACTIVE (post ORCH-0855 [Tr1 Trip Planner Brand Onboarding] CLOSE 2026-05-17)
 
 Two new invariants introduced by ORCH-0855 SPEC §8. Both flipped DRAFT → ACTIVE at CLOSE after operator iOS sim live-fire confirmation, tester 14/14 adversarial check PASS at HEAD `7750f7d6`, implementor 22/22 jest tests PASS at baseline `ff46c3f5`.

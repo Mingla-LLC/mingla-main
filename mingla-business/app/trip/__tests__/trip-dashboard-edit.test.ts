@@ -51,30 +51,13 @@ describe("ORCH-0859 REWORK 4 — operator dashboard Edit affordance", () => {
   });
 });
 
-describe("ORCH-0859 REWORK 4 — Item A diagnostic instrumentation", () => {
-  // Item A is intentionally NOT fails-on-revert tested (instrumentation,
-  // not behavior). But it MUST carry the DIAG marker so CLOSE's Step 1.5
-  // reap removes it cleanly. Pin the marker presence.
-  const SERVICE_SRC = readFileSync(
-    join(__dirname, "..", "..", "..", "src", "services", "businessEvents.ts"),
-    "utf8",
-  );
-
-  test("fetchBusinessEventsForBrand carries the ORCH-0859-REWORK-4-DIAG marker", () => {
-    expect(SERVICE_SRC).toMatch(/\[ORCH-0859-REWORK-4-DIAG\]/);
-  });
-
-  test("diagnostic console.log prints the 4 expected fields", () => {
-    const block = SERVICE_SRC.match(
-      /\[ORCH-0859-REWORK-4-DIAG\][^]*?fetchBusinessEventsForBrand[^]*?\}\);/,
-    );
-    expect(block).not.toBeNull();
-    expect(block?.[0]).toMatch(/brandId/);
-    expect(block?.[0]).toMatch(/rowsCount/);
-    expect(block?.[0]).toMatch(/tripIdsCount/);
-    expect(block?.[0]).toMatch(/filteredCount/);
-  });
-});
+// [REAPED at ORCH-0859 CLOSE 2026-05-17] — the prior "ORCH-0859 REWORK 4 —
+// Item A diagnostic instrumentation" describe block (2 test cases) is removed
+// in the same commit as the DIAG marker reap at businessEvents.ts:508-519.
+// The block was instrumentation-only and explicitly self-described as
+// "intentionally NOT fails-on-revert tested" — it existed only to gate the
+// CLOSE Step 1.5 reap, which has now run. [TEST-MOD-APPROVED ORCH-0859]
+// per .github/workflows/tests-append-only.yml.
 
 describe("ORCH-0859 REWORK 4 — Item C Maestro gate", () => {
   test("canonical events-tab-no-trip-leak Maestro flow exists", () => {

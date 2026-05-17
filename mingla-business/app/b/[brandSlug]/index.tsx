@@ -6,6 +6,8 @@
  * Per Cycle 7 spec §2.1.
  */
 
+// orch-strict-grep-allow safearea-on-fullscreen-routes — design-intent full-bleed cover banner: PublicBrandPage applies `paddingTop: insets.top + 110` at line 341 to the brand-info content card so content sits safely below the status bar; the cover image and X close button intentionally hover on the banner. PublicBrandNotFound applies `paddingTop: insets.top + spacing.xl` at line 39. Inline loading/error states render briefly during query resolve. Per ORCH-0859 [Tr2 Minimum Viable Trip] REWORK 5b operator design ruling 2026-05-17 (QA report §1) + pixel verification on iPhone 17 Pro Max sim (screenshot 21-PUBLIC-BRAND-PAGE.png).
+
 import React from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";

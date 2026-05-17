@@ -24,6 +24,8 @@
  * mingla-business/.
  */
 
+// orch-strict-grep-allow safearea-on-fullscreen-routes — web-only Stripe Connect Embedded Components page; renders DOM elements (<div>) via @stripe/react-connect-js, NOT React Native primitives. Does not render natively on iOS/Android — only loads in Expo Web bundle / mobile expo-web-browser session. iOS status bar bleed cannot occur because the page never renders in the native React Native stack. Per ORCH-0859 [Tr2 Minimum Viable Trip] REWORK 5b 2026-05-17.
+
 import React, { useEffect, useMemo, useState } from "react";
 import Constants from "expo-constants";
 import {
