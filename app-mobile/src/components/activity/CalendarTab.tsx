@@ -36,13 +36,28 @@ import { CustomPaywallScreen } from "../CustomPaywallScreen";
 import { useKeyboard } from "../../hooks/useKeyboard";
 import { useTranslation } from 'react-i18next';
 // ORCH-0829-A: business-event ticket purchases live in `orders`+`tickets`
-// tables. Surface them inside Calendar as a separate section above the
-// legacy `calendar_entries` (scheduled-saved-cards) flow. The legacy
-// prop flow (calendarEntries from AppStateManager via LikesPage) is
-// untouched to minimize blast radius. New invariant:
+// tables. Surface them inside Calendar so the user sees a unified
+// timeline. The legacy prop flow (calendarEntries from AppStateManager
+// via LikesPage) is untouched to minimize blast radius. New invariant:
 // I-PROPOSED-CONSUMER-CALENDAR-UNIONS-ORDERS.
+//
+// ORCH-0842 [Fold Tickets into Active + render real ticket PDF in
+// bottom sheet with venue/QR/Save]: the standalone "Tickets" block above
+// the Active accordion is REMOVED. Business orders are sort-merged into
+// the Active and Archive accordions using a discriminated-union row type
+// (kind: "calendar" | "ticket") rendered locally. Filter parity per SPEC
+// §3.6.1: tickets always pass category + tier; search matches
+// eventTitle + brandName; `when` applies via masterDateUtc with null-date
+// tickets visible only under "all". Past-date paid tickets drop into
+// Archive (mirror of saved-card archive behavior).
 import { useBusinessEventOrders, useOrdersRealtimeSubscription } from "../../hooks/useCalendarEntries";
 import BusinessEventCalendarRow from "./BusinessEventCalendarRow";
+import type { BusinessEventCalendarRow as BusinessEventRow } from "../../services/calendarService";
+
+// ORCH-0842: discriminated-union row for unified Active/Archive rendering.
+type UnifiedRow =
+  | { kind: "calendar"; key: string; sortAt: number; entry: CalendarEntry }
+  | { kind: "ticket"; key: string; sortAt: number; row: BusinessEventRow };
 
 interface CalendarEntry {
   id: string;
@@ -350,10 +365,174 @@ const CalendarTab = ({
     selectedTier,
   ]);
 
-  // Run card entrance animations for active entries
+  // ORCH-0853: partition business orders into active vs archive using
+  // EFFECTIVE END time (event_dates.end_at when present; start_at fallback
+  // when null — defensive). Mirrors the scheduled-card effectiveEnd logic
+  // at the useMemo above. Pre-fix this used start-only `masterDateUtc < now`
+  // and archived in-progress events the moment they STARTED — e.g. The
+  // Reckoning (10pm-to-3am) flipped to Archive at 10:01pm while still 5
+  // hours from ending. See I-CALENDAR-BUSINESS-TICKET-END-NOT-START.
+  // Sibling fix to ORCH-0850; this is the fifth surface that the systemic
+  // sweep's `scheduled_at` grep scope did not catch. Pending-payment orders
+  // always stay Active.
+  const { activeBusinessOrders, archiveBusinessOrders } = useMemo(() => {
+    const now = Date.now();
+    const active: BusinessEventRow[] = [];
+    const archive: BusinessEventRow[] = [];
+    for (const order of businessOrders) {
+      if (order.paymentStatus === "pending") {
+        active.push(order);
+        continue;
+      }
+      const endTs = order.masterDateEndUtc
+        ? Date.parse(order.masterDateEndUtc)
+        : Number.NaN;
+      const startTs = order.masterDateUtc
+        ? Date.parse(order.masterDateUtc)
+        : Number.NaN;
+      const effectiveEndTs = Number.isFinite(endTs)
+        ? endTs
+        : Number.isFinite(startTs)
+          ? startTs
+          : Number.NaN;
+      if (Number.isFinite(effectiveEndTs) && effectiveEndTs < now) {
+        archive.push(order);
+      } else {
+        active.push(order);
+      }
+    }
+    return { activeBusinessOrders: active, archiveBusinessOrders: archive };
+  }, [businessOrders]);
+
+  // ORCH-0842: filter parity rules per SPEC §3.6.1.
+  // - search: match eventTitle OR brandName (case-insensitive)
+  // - when: apply to masterDateUtc; null-date tickets show only under "all"
+  // - category + tier: tickets always pass (Mingla taxonomy doesn't apply)
+  const filterBusinessOrders = useCallback(
+    (orders: BusinessEventRow[]): BusinessEventRow[] => {
+      const normalize = (value: string | undefined | null) =>
+        (value || "").toLowerCase();
+      const q = normalize(searchQuery).trim();
+
+      return orders.filter((order) => {
+        if (q) {
+          const title = normalize(order.eventTitle);
+          const brand = normalize(order.brandName);
+          if (!title.includes(q) && !brand.includes(q)) return false;
+        }
+        if (selectedWhen !== "all") {
+          if (!order.masterDateUtc) return false;
+          const scheduled = new Date(order.masterDateUtc);
+          const now = new Date();
+          const isSameDay =
+            scheduled.getFullYear() === now.getFullYear() &&
+            scheduled.getMonth() === now.getMonth() &&
+            scheduled.getDate() === now.getDate();
+          if (selectedWhen === "today" && !isSameDay) return false;
+          if (selectedWhen === "this_week") {
+            const startOfWeek = new Date(now);
+            startOfWeek.setDate(now.getDate() - now.getDay());
+            startOfWeek.setHours(0, 0, 0, 0);
+            const endOfWeek = new Date(startOfWeek);
+            endOfWeek.setDate(startOfWeek.getDate() + 7);
+            if (scheduled < startOfWeek || scheduled >= endOfWeek) {
+              return false;
+            }
+          }
+          if (
+            selectedWhen === "this_month" &&
+            (scheduled.getFullYear() !== now.getFullYear() ||
+              scheduled.getMonth() !== now.getMonth())
+          ) {
+            return false;
+          }
+          if (selectedWhen === "upcoming" && scheduled < now) return false;
+        }
+        // category + tier: always pass for tickets per filter parity table.
+        return true;
+      });
+    },
+    [searchQuery, selectedWhen],
+  );
+
+  const filteredActiveBusinessOrders = useMemo(
+    () => filterBusinessOrders(activeBusinessOrders),
+    [activeBusinessOrders, filterBusinessOrders],
+  );
+  const filteredArchiveBusinessOrders = useMemo(
+    () => filterBusinessOrders(archiveBusinessOrders),
+    [archiveBusinessOrders, filterBusinessOrders],
+  );
+
+  // ORCH-0842: unified rows = calendar entries + ticket orders, sorted
+  // ascending by date (soonest first; null-date entries go to the bottom).
+  const unifiedActiveRows = useMemo<UnifiedRow[]>(() => {
+    const rows: UnifiedRow[] = [];
+    for (const entry of filteredActiveEntries) {
+      const iso = entry.suggestedDates?.[0];
+      const dateStr = iso ?? (entry.date && entry.time
+        ? `${entry.date}T${entry.time}`
+        : null);
+      const ts = dateStr ? Date.parse(dateStr) : Number.NaN;
+      rows.push({
+        kind: "calendar",
+        key: `calendar:${entry.id}`,
+        sortAt: Number.isFinite(ts) ? ts : Number.POSITIVE_INFINITY,
+        entry,
+      });
+    }
+    for (const order of filteredActiveBusinessOrders) {
+      const ts = order.masterDateUtc
+        ? Date.parse(order.masterDateUtc)
+        : Number.NaN;
+      rows.push({
+        kind: "ticket",
+        key: `ticket:${order.orderId}`,
+        sortAt: Number.isFinite(ts) ? ts : Number.POSITIVE_INFINITY,
+        row: order,
+      });
+    }
+    rows.sort((a, b) => a.sortAt - b.sortAt);
+    return rows;
+  }, [filteredActiveEntries, filteredActiveBusinessOrders]);
+
+  const unifiedArchiveRows = useMemo<UnifiedRow[]>(() => {
+    const rows: UnifiedRow[] = [];
+    for (const entry of filteredArchiveEntries) {
+      const iso = entry.suggestedDates?.[0];
+      const dateStr = iso ?? (entry.date && entry.time
+        ? `${entry.date}T${entry.time}`
+        : null);
+      const ts = dateStr ? Date.parse(dateStr) : Number.NaN;
+      rows.push({
+        kind: "calendar",
+        key: `calendar:${entry.id}`,
+        sortAt: Number.isFinite(ts) ? ts : Number.POSITIVE_INFINITY,
+        entry,
+      });
+    }
+    for (const order of filteredArchiveBusinessOrders) {
+      const ts = order.masterDateUtc
+        ? Date.parse(order.masterDateUtc)
+        : Number.NaN;
+      rows.push({
+        kind: "ticket",
+        key: `ticket:${order.orderId}`,
+        sortAt: Number.isFinite(ts) ? ts : Number.POSITIVE_INFINITY,
+        row: order,
+      });
+    }
+    // Archive: most recently past first.
+    rows.sort((a, b) => b.sortAt - a.sortAt);
+    return rows;
+  }, [filteredArchiveEntries, filteredArchiveBusinessOrders]);
+
+  // ORCH-0842: animate the UNIFIED active row list — calendar entries
+  // AND ticket orders participate in the same staggered entrance using
+  // their stable discriminated-union keys.
   useEffect(() => {
-    filteredActiveEntries.forEach((entry, index) => {
-      const animation = getCardAnimation(entry.id);
+    unifiedActiveRows.forEach((row, index) => {
+      const animation = getCardAnimation(row.key);
       animation.opacity.setValue(0);
       animation.slide.setValue(30);
 
@@ -372,13 +551,12 @@ const CalendarTab = ({
         ]).start();
       }, index * 60);
     });
-  }, [filteredActiveEntries.length, expandedAccordionItems]);
+  }, [unifiedActiveRows.length, expandedAccordionItems]);
 
-  // Run card entrance animations for archive entries
   useEffect(() => {
     if (expandedAccordionItems.includes("archive")) {
-      filteredArchiveEntries.forEach((entry, index) => {
-        const animation = getCardAnimation(entry.id);
+      unifiedArchiveRows.forEach((row, index) => {
+        const animation = getCardAnimation(row.key);
         animation.opacity.setValue(0);
         animation.slide.setValue(30);
 
@@ -398,7 +576,7 @@ const CalendarTab = ({
         }, index * 60);
       });
     }
-  }, [filteredArchiveEntries.length, expandedAccordionItems]);
+  }, [unifiedArchiveRows.length, expandedAccordionItems]);
 
   const handleReschedule = (entry: CalendarEntry) => {
     setEntryToReschedule(entry);
@@ -1796,54 +1974,10 @@ const CalendarTab = ({
           />
         </Animated.View>
 
-        {/* ORCH-0829-A: Business-event ticket purchases (orders + tickets).
-            Rendered above the legacy Active section so the user sees their
-            most recently purchased tickets first.
-            ORCH-0848: collapsible accordion mirroring Active/Archive toggle. */}
-        {businessOrders.length > 0 && (
-          <>
-            <TouchableOpacity
-              style={styles.accordionHeader}
-              onPress={() =>
-                setExpandedAccordionItems((prev) =>
-                  prev.includes("tickets")
-                    ? prev.filter((i) => i !== "tickets")
-                    : [...prev, "tickets"]
-                )
-              }
-              activeOpacity={0.7}
-            >
-              <View style={styles.accordionTitleContainer}>
-                <Text style={styles.accordionTitle}>Tickets</Text>
-                <Text style={styles.accordionCount}>
-                  ({businessOrders.length})
-                </Text>
-              </View>
-              <Icon
-                name={
-                  expandedAccordionItems.includes("tickets")
-                    ? "chevron-down"
-                    : "chevron-forward"
-                }
-                size={20}
-                color="#9ca3af"
-              />
-            </TouchableOpacity>
+        {/* ORCH-0842: standalone "Tickets" block removed. Business orders
+            now sort-merge into the Active + Archive accordions below. */}
 
-            {expandedAccordionItems.includes("tickets") && (
-              <View style={styles.accordionContentContainer}>
-                {businessOrders.map((entry) => (
-                  <BusinessEventCalendarRow
-                    key={`business:${entry.orderId}`}
-                    entry={entry}
-                  />
-                ))}
-              </View>
-            )}
-          </>
-        )}
-
-        {/* Active Section */}
+        {/* Active Section — unified calendar entries + business-event tickets */}
         <TouchableOpacity
           style={styles.accordionHeader}
           onPress={() =>
@@ -1858,7 +1992,7 @@ const CalendarTab = ({
           <View style={styles.accordionTitleContainer}>
             <Text style={styles.accordionTitle}>{t('activity:calendarTab.active')}</Text>
             <Text style={styles.accordionCount}>
-              ({filteredActiveEntries.length})
+              ({unifiedActiveRows.length})
             </Text>
           </View>
           <Icon
@@ -1874,23 +2008,32 @@ const CalendarTab = ({
 
         {expandedAccordionItems.includes("active") && (
           <View style={styles.accordionContentContainer}>
-            {filteredActiveEntries.length === 0
+            {unifiedActiveRows.length === 0
               ? renderEmptyComponent("active")
-              : filteredActiveEntries.map((entry) => {
-                  const animation = getCardAnimation(entry.id);
+              : unifiedActiveRows.map((row) => {
+                  const animation = getCardAnimation(row.key);
+                  if (row.kind === "calendar") {
+                    return (
+                      <Animated.View
+                        key={row.key}
+                        style={[
+                          styles.cardWrapper,
+                          {
+                            opacity: animation.opacity,
+                            transform: [{ translateY: animation.slide }],
+                          },
+                        ]}
+                      >
+                        {renderCalendarEntry({ item: row.entry })}
+                      </Animated.View>
+                    );
+                  }
                   return (
-                  <Animated.View
-                    key={entry.id}
-                    style={[
-                      styles.cardWrapper,
-                      {
-                        opacity: animation.opacity,
-                        transform: [{ translateY: animation.slide }],
-                      },
-                    ]}
-                  >
-                    {renderCalendarEntry({ item: entry })}
-                  </Animated.View>
+                    <BusinessEventCalendarRow
+                      key={row.key}
+                      entry={row.row}
+                      animation={animation}
+                    />
                   );
                 })}
           </View>
@@ -1911,7 +2054,7 @@ const CalendarTab = ({
           <View style={styles.accordionTitleContainer}>
             <Text style={styles.accordionTitle}>{t('activity:calendarTab.archives')}</Text>
             <Text style={styles.accordionCount}>
-              ({filteredArchiveEntries.length})
+              ({unifiedArchiveRows.length})
             </Text>
           </View>
           <Icon
@@ -1927,23 +2070,32 @@ const CalendarTab = ({
 
         {expandedAccordionItems.includes("archive") && (
           <View style={styles.accordionContentContainer}>
-            {filteredArchiveEntries.length === 0
+            {unifiedArchiveRows.length === 0
               ? renderEmptyComponent("archive")
-              : filteredArchiveEntries.map((entry) => {
-                  const animation = getCardAnimation(entry.id);
+              : unifiedArchiveRows.map((row) => {
+                  const animation = getCardAnimation(row.key);
+                  if (row.kind === "calendar") {
+                    return (
+                      <Animated.View
+                        key={row.key}
+                        style={[
+                          styles.cardWrapper,
+                          {
+                            opacity: animation.opacity,
+                            transform: [{ translateY: animation.slide }],
+                          },
+                        ]}
+                      >
+                        {renderCalendarEntry({ item: row.entry })}
+                      </Animated.View>
+                    );
+                  }
                   return (
-                  <Animated.View
-                    key={entry.id}
-                    style={[
-                      styles.cardWrapper,
-                      {
-                        opacity: animation.opacity,
-                        transform: [{ translateY: animation.slide }],
-                      },
-                    ]}
-                  >
-                    {renderCalendarEntry({ item: entry })}
-                  </Animated.View>
+                    <BusinessEventCalendarRow
+                      key={row.key}
+                      entry={row.row}
+                      animation={animation}
+                    />
                   );
                 })}
           </View>

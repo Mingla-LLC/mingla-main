@@ -61,6 +61,17 @@ export interface ConsumerTicketRow {
   attendeeEmail: string | null;
 }
 
+// ORCH-0842: venue info surfaced inside the consumer ticket sheet.
+// Sourced from events.location_text + events.location_geo +
+// events.is_online + events.online_url. No new DB columns.
+export interface BusinessEventVenue {
+  locationText: string | null;
+  locationGeoLat: number | null;
+  locationGeoLng: number | null;
+  isOnline: boolean;
+  onlineUrl: string | null;
+}
+
 export interface BusinessEventCalendarRow {
   orderId: string;
   eventId: string;
@@ -69,6 +80,11 @@ export interface BusinessEventCalendarRow {
   brandSlug: string;
   coverMediaUrl: string | null;
   masterDateUtc: string | null;
+  // ORCH-0853: ISO-8601 UTC end timestamp of the master event date.
+  // Sourced from `event_dates.end_at` where `is_master = true`. Active/Archive
+  // partition uses this; pre-0853 used `masterDateUtc` (start_at) only and
+  // archived in-progress events the moment they STARTED.
+  masterDateEndUtc: string | null;
   timezone: string;
   paymentStatus:
     | "pending"
@@ -81,6 +97,38 @@ export interface BusinessEventCalendarRow {
   ticketCountValid: number;
   tickets: ConsumerTicketRow[];
   publicBuyerUrl: string | null;
+  // ORCH-0842: nullable until first dispatch upload (or lazy backfill) lands;
+  // mobile uses presence as a hint, but ticket-pdf-fetch handles missing
+  // path transparently via lazy backfill.
+  ticketPdfPath: string | null;
+  // ORCH-0842: venue block rendered inside TicketPdfSheet.
+  venue: BusinessEventVenue;
+}
+
+// ORCH-0842: PostgREST returns `point` columns as either string "(x,y)" or
+// an object { x, y } depending on version. Defensive parser handles both
+// and falls back to nulls on any unexpected shape.
+function parseLocationGeo(
+  raw: unknown,
+): { lat: number | null; lng: number | null } {
+  if (raw == null) return { lat: null, lng: null };
+  if (typeof raw === "string") {
+    const match = raw.match(/^\(?(-?\d+\.?\d*),\s*(-?\d+\.?\d*)\)?$/);
+    if (!match) return { lat: null, lng: null };
+    const lng = parseFloat(match[1]);
+    const lat = parseFloat(match[2]);
+    if (Number.isNaN(lat) || Number.isNaN(lng)) {
+      return { lat: null, lng: null };
+    }
+    return { lat, lng };
+  }
+  if (typeof raw === "object") {
+    const obj = raw as { x?: unknown; y?: unknown };
+    const lng = typeof obj.x === "number" ? obj.x : null;
+    const lat = typeof obj.y === "number" ? obj.y : null;
+    return { lat, lng };
+  }
+  return { lat: null, lng: null };
 }
 
 export class CalendarService {
@@ -277,9 +325,10 @@ export class CalendarService {
       .from("orders")
       .select(
         `
-          id, event_id, payment_status, created_at,
+          id, event_id, payment_status, created_at, ticket_pdf_path,
           events!inner (
             id, title, slug, cover_media_url, timezone,
+            location_text, location_geo, is_online, online_url,
             brand:brands!inner ( id, slug, name ),
             event_dates!left ( id, start_at, end_at, is_master )
           ),
@@ -303,12 +352,17 @@ export class CalendarService {
       event_id: string;
       payment_status: BusinessEventCalendarRow["paymentStatus"];
       created_at: string;
+      ticket_pdf_path: string | null;
       events: {
         id: string;
         title: string;
         slug: string;
         cover_media_url: string | null;
         timezone: string | null;
+        location_text: string | null;
+        location_geo: unknown;
+        is_online: boolean | null;
+        online_url: string | null;
         brand: { id: string; slug: string; name: string } | null;
         event_dates: Array<{
           id: string;
@@ -344,6 +398,14 @@ export class CalendarService {
             attendeeEmail: t.attendee_email ?? null,
           }),
         );
+        const geo = parseLocationGeo(event?.location_geo);
+        const venue: BusinessEventVenue = {
+          locationText: event?.location_text ?? null,
+          locationGeoLat: geo.lat,
+          locationGeoLng: geo.lng,
+          isOnline: Boolean(event?.is_online),
+          onlineUrl: event?.online_url ?? null,
+        };
         return {
           orderId: order.id,
           eventId: event?.id ?? order.event_id,
@@ -352,6 +414,8 @@ export class CalendarService {
           brandSlug: brand?.slug ?? "",
           coverMediaUrl: event?.cover_media_url ?? null,
           masterDateUtc: masterDate?.start_at ?? null,
+          // ORCH-0853: end-of-event timestamp used by consumer Calendar partition.
+          masterDateEndUtc: masterDate?.end_at ?? null,
           timezone: event?.timezone ?? "UTC",
           paymentStatus: order.payment_status,
           ticketCount: tickets.length,
@@ -361,6 +425,8 @@ export class CalendarService {
             brand && event
               ? `${BUSINESS_BUYER_DOMAIN}/e/${brand.slug}/${event.slug}`
               : null,
+          ticketPdfPath: order.ticket_pdf_path ?? null,
+          venue,
         };
       },
     );
