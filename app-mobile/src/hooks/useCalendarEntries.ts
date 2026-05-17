@@ -1,4 +1,6 @@
+import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "../services/supabase";
 import {
   CalendarService,
   CalendarEntryRecord,
@@ -70,6 +72,43 @@ export const useBusinessEventOrders = (userId: string | undefined) => {
     refetchOnWindowFocus: true,
     retry: false,
   });
+};
+
+// ORCH-0851 H-1: Supabase realtime subscription on `orders` filtered by
+// `buyer_user_id=eq.<userId>`. Closes the 1–5s post-purchase staleness
+// window on the consumer Tickets/Calendar tab by invalidating the
+// `["businessEventOrders", userId]` cache on every INSERT/UPDATE/DELETE
+// for the signed-in buyer. The existing `refetchOnWindowFocus: true` on
+// `useBusinessEventOrders` and the 3-attempt-over-3-seconds invalidate
+// loop in `ExpandedBusinessEventSheet.handleBuy` remain as fallbacks if
+// realtime fails to connect. Pattern mirrors `useNotifications` realtime
+// sub.
+export const useOrdersRealtimeSubscription = (userId: string | undefined): void => {
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (!userId) return;
+
+    const channel = supabase
+      .channel(`orders:buyer_user_id=eq.${userId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "orders",
+          filter: `buyer_user_id=eq.${userId}`,
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ["businessEventOrders", userId] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [userId, queryClient]);
 };
 
 export const useConsumerCalendar = (userId: string | undefined) => {

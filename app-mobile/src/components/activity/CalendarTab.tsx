@@ -41,7 +41,7 @@ import { useTranslation } from 'react-i18next';
 // prop flow (calendarEntries from AppStateManager via LikesPage) is
 // untouched to minimize blast radius. New invariant:
 // I-PROPOSED-CONSUMER-CALENDAR-UNIONS-ORDERS.
-import { useBusinessEventOrders } from "../../hooks/useCalendarEntries";
+import { useBusinessEventOrders, useOrdersRealtimeSubscription } from "../../hooks/useCalendarEntries";
 import BusinessEventCalendarRow from "./BusinessEventCalendarRow";
 
 interface CalendarEntry {
@@ -184,6 +184,13 @@ const CalendarTab = ({
   // success via `["businessEventOrders", user.id]`.
   const businessOrdersQuery = useBusinessEventOrders(user?.id);
   const businessOrders = businessOrdersQuery.data ?? [];
+
+  // ORCH-0851 H-1: realtime subscription invalidates
+  // `["businessEventOrders", user.id]` within ~1s of an INSERT/UPDATE/DELETE
+  // on `orders` matching `buyer_user_id=eq.<userId>`. Fallbacks
+  // (refetchOnWindowFocus + the 3-attempt invalidate loop in
+  // ExpandedBusinessEventSheet) remain intact.
+  useOrdersRealtimeSubscription(user?.id);
 
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
