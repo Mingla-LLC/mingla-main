@@ -389,12 +389,14 @@ describe("listAudiencesForAccount (T-02 ORCH-0863 virtual-row discovery)", () =>
           }),
         }),
       })
-      // Call 4: brands SELECT
+      // Call 4: brands SELECT (with I-PROPOSED-A deleted_at filter)
       .mockReturnValueOnce({
         select: () => ({
           in: () => ({
-            data: [{ id: BRAND_UUID, name: "Rooftop Club" }],
-            error: null,
+            is: () => ({
+              data: [{ id: BRAND_UUID, name: "Rooftop Club" }],
+              error: null,
+            }),
           }),
         }),
       });

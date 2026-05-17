@@ -473,7 +473,8 @@ export async function listAudiencesForAccount(
     const { data: brandsData, error: brandsErr } = await supabase
       .from("brands")
       .select("id, name")
-      .in("id", brandIdList);
+      .in("id", brandIdList)
+      .is("deleted_at", null);
     if (brandsErr) throw brandsErr;
     for (const b of (brandsData ?? []) as BrandRowMin[]) {
       if (b.name !== null) brandNameById.set(b.id, b.name);
