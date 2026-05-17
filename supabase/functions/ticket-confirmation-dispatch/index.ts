@@ -399,6 +399,52 @@ serve(async (req) => {
     };
   }
 
+  // ORCH-0842: persist the rendered PDF to the private `ticket-pdfs` bucket
+  // so the consumer app can fetch it on demand via `ticket-pdf-fetch`.
+  // Failure is logged + swallowed; the email is the customer-facing artifact
+  // and the fetch endpoint can lazy-backfill on first open. `upsert: true`
+  // makes this safe under Resend retry (same bytes, same path).
+  if (renderedPdf) {
+    try {
+      const pdfBytes = Uint8Array.from(
+        atob(renderedPdf.contentBase64),
+        (c) => c.charCodeAt(0),
+      );
+      const pdfPath = `tickets/${order.id}.pdf`;
+      const { error: uploadError } = await supabase.storage
+        .from("ticket-pdfs")
+        .upload(pdfPath, pdfBytes, {
+          contentType: "application/pdf",
+          upsert: true,
+        });
+      if (uploadError) {
+        console.warn(
+          `[ticket-confirmation-dispatch] storage upload failed for order=${order.id}: ${uploadError.message}`,
+        );
+      } else {
+        const { error: updateError } = await supabase
+          .from("orders")
+          .update({
+            ticket_pdf_path: pdfPath,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", order.id);
+        if (updateError) {
+          console.warn(
+            `[ticket-confirmation-dispatch] orders.ticket_pdf_path update failed for order=${order.id}: ${updateError.message}`,
+          );
+        }
+      }
+    } catch (uploadErr) {
+      const message = uploadErr instanceof Error
+        ? uploadErr.message
+        : String(uploadErr);
+      console.warn(
+        `[ticket-confirmation-dispatch] storage upload threw for order=${order.id}: ${message}`,
+      );
+    }
+  }
+
   // ORCH-0788: SELECT payload so we can route by template_key per row.
   const { data: notifications, error: notificationError } = await supabase
     .from("ticket_order_notifications")

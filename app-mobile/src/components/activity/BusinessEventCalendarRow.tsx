@@ -2,31 +2,38 @@
  * BusinessEventCalendarRow — renders one business-event ticket purchase
  * inside the consumer Calendar tab.
  *
+ * ORCH-0842: tap on "View ticket" opens the new TicketPdfSheet (venue +
+ * QR strip + real emailed PDF + Save/Share). The previous inline QR-only
+ * Modal block is deleted — TicketPdfSheet supersedes it. Pending-payment
+ * guard preserved: tapping "Finalizing…" rows does nothing.
+ *
  * Per ORCH-0829-A spec §3.6. Data shape: `BusinessEventCalendarRow`
- * from `calendarService.ts`. Source is `useBusinessEventOrders` hook
- * (queries `orders + tickets + events + brands + event_dates` for the
- * signed-in consumer).
+ * from `calendarService.ts`. Source is `useBusinessEventOrders` hook.
  */
 
-import React, { useCallback } from "react";
+import React, { useCallback, useState } from "react";
 import {
-  Modal,
+  ActivityIndicator,
+  Animated,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
-  ActivityIndicator,
 } from "react-native";
 import { Image as ExpoImage } from "expo-image";
-import QRCode from "react-native-qrcode-svg";
-import { useState } from "react";
 
 import { Icon } from "../ui/Icon";
 import type { BusinessEventCalendarRow as BusinessEventRow } from "../../services/calendarService";
+import TicketPdfSheet from "./TicketPdfSheet";
 
 interface BusinessEventCalendarRowProps {
   entry: BusinessEventRow;
+  // ORCH-0842: optional animation passed by CalendarTab so the row
+  // participates in the staggered Active/Archive entrance.
+  animation?: {
+    opacity: Animated.Value;
+    slide: Animated.Value;
+  };
 }
 
 const formatLocalDate = (
@@ -48,17 +55,18 @@ const formatLocalDate = (
   }
 };
 
-export const BusinessEventCalendarRow: React.FC<
-  BusinessEventCalendarRowProps
-> = ({ entry }) => {
-  const [qrSheetVisible, setQrSheetVisible] = useState<boolean>(false);
+const BusinessEventCalendarRow: React.FC<BusinessEventCalendarRowProps> = ({
+  entry,
+  animation,
+}) => {
+  const [sheetVisible, setSheetVisible] = useState<boolean>(false);
 
   const handleOpenTickets = useCallback((): void => {
-    setQrSheetVisible(true);
+    setSheetVisible(true);
   }, []);
 
   const handleCloseTickets = useCallback((): void => {
-    setQrSheetVisible(false);
+    setSheetVisible(false);
   }, []);
 
   const dateLine = formatLocalDate(entry.masterDateUtc, entry.timezone);
@@ -73,8 +81,16 @@ export const BusinessEventCalendarRow: React.FC<
 
   const isPending = entry.paymentStatus === "pending";
 
+  const RowContainer = animation ? Animated.View : View;
+  const animatedStyle = animation
+    ? {
+        opacity: animation.opacity,
+        transform: [{ translateY: animation.slide }],
+      }
+    : undefined;
+
   return (
-    <View style={styles.row}>
+    <RowContainer style={[styles.row, animatedStyle]}>
       <View style={styles.thumbWrapper}>
         {entry.coverMediaUrl ? (
           <ExpoImage
@@ -125,61 +141,12 @@ export const BusinessEventCalendarRow: React.FC<
         </View>
       </View>
 
-      <Modal
-        visible={qrSheetVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={handleCloseTickets}
-        statusBarTranslucent
-      >
-        <View style={styles.qrBackdrop}>
-          <View style={styles.qrCard}>
-            <View style={styles.qrHeader}>
-              <Text style={styles.qrTitle} numberOfLines={2} allowFontScaling>
-                {entry.eventTitle}
-              </Text>
-              <Pressable
-                style={styles.qrClose}
-                accessibilityLabel="Close ticket viewer"
-                accessibilityRole="button"
-                hitSlop={12}
-                onPress={handleCloseTickets}
-              >
-                <Icon name="close" size={20} color="rgba(255,255,255,0.65)" />
-              </Pressable>
-            </View>
-            <Text style={styles.qrSubtitle}>{subtitle}</Text>
-            <ScrollView
-              style={styles.qrScroll}
-              contentContainerStyle={styles.qrScrollContent}
-            >
-              {entry.tickets.map((ticket) => (
-                <View key={ticket.id} style={styles.qrTicketBlock}>
-                  <View style={styles.qrCodeWrap}>
-                    <QRCode
-                      value={ticket.qrCode}
-                      size={200}
-                      backgroundColor="#fff"
-                      color="#0c0e12"
-                    />
-                  </View>
-                  <Text style={styles.qrTicketStatus}>
-                    {ticket.status === "valid"
-                      ? "Valid · Show at door"
-                      : `Status: ${ticket.status}`}
-                  </Text>
-                  {ticket.attendeeName ? (
-                    <Text style={styles.qrTicketAttendee} numberOfLines={1}>
-                      {ticket.attendeeName}
-                    </Text>
-                  ) : null}
-                </View>
-              ))}
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
-    </View>
+      <TicketPdfSheet
+        visible={sheetVisible}
+        onClose={handleCloseTickets}
+        entry={entry}
+      />
+    </RowContainer>
   );
 };
 
@@ -285,73 +252,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "700",
   },
-  qrBackdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.65)",
-    justifyContent: "flex-end",
-  },
-  qrCard: {
-    backgroundColor: "#15181f",
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    paddingTop: 16,
-    paddingHorizontal: 20,
-    paddingBottom: 28,
-    maxHeight: "85%",
-  },
-  qrHeader: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: 12,
-    marginBottom: 4,
-  },
-  qrTitle: {
-    flex: 1,
-    color: "#fff",
-    fontSize: 20,
-    fontWeight: "700",
-    lineHeight: 26,
-  },
-  qrClose: {
-    width: 32,
-    height: 32,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 16,
-    backgroundColor: "rgba(255,255,255,0.08)",
-  },
-  qrSubtitle: {
-    color: "rgba(255,255,255,0.55)",
-    fontSize: 13,
-    marginBottom: 18,
-  },
-  qrScroll: {
-    flexGrow: 0,
-  },
-  qrScrollContent: {
-    alignItems: "center",
-    gap: 24,
-    paddingBottom: 12,
-  },
-  qrTicketBlock: {
-    alignItems: "center",
-    gap: 10,
-  },
-  qrCodeWrap: {
-    padding: 16,
-    borderRadius: 18,
-    backgroundColor: "#fff",
-  },
-  qrTicketStatus: {
-    color: "rgba(255,255,255,0.85)",
-    fontSize: 13,
-    fontWeight: "600",
-  },
-  qrTicketAttendee: {
-    color: "rgba(255,255,255,0.55)",
-    fontSize: 12,
-  },
 });
 
+export { BusinessEventCalendarRow };
 export default BusinessEventCalendarRow;

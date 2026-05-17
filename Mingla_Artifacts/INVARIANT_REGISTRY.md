@@ -3341,9 +3341,9 @@ Two strict-grep gates run together:
 
 **EXIT condition:** Permanent unless a future ORCH adds a `calendar_entries.event_id` FK to events (enabling Option A — hydrate `end_at` from `event_dates`). In that case the predicate becomes `entry.endAt < now` and this invariant text updates to require the new field; the no-start-only rule stays.
 
-### I-CALENDAR-BUSINESS-TICKET-END-NOT-START (DRAFT — flips ACTIVE on ORCH-0853 CLOSE)
+### I-CALENDAR-BUSINESS-TICKET-END-NOT-START (ACTIVE — ratified by ORCH-0853 CLOSE 2026-05-17)
 
-**Status:** DRAFT — flips ACTIVE on ORCH-0853 [Calendar Active/Archive partition uses event end_at for business-event tickets] CLOSE.
+**Status:** ACTIVE — ratified by ORCH-0853 [Calendar Active/Archive partition uses event end_at for business-event tickets] CLOSE 2026-05-17 (bundled with ORCH-0842 [Fold Tickets into Active + render real ticket PDF in bottom sheet with venue/QR/Save] per operator-approved one-PR-per-CLOSE narrow exception).
 
 **Statement:** Every consumer-calendar Active/Archive partition decision in `app-mobile/` — whether on `CalendarEntry` (scheduled-card) or `BusinessEventCalendarRow` (business-event ticket) or any future row type added to the unified calendar feed — MUST use the row's effective END timestamp, never its start timestamp. For business-event tickets the partition reads `masterDateEndUtc` (sourced from `event_dates.end_at` at the `is_master` row) with a defensive fallback to `masterDateUtc` (start) when end is null. Pending-payment orders always short-circuit into Active regardless of timestamps. New row types added to `BusinessEventCalendarRow`'s sibling family MUST declare an `*EndUtc` field at the service-layer row shape AND be enumerated by name in `.github/scripts/strict-grep/i-calendar-business-ticket-end-not-start.mjs` before merge.
 
@@ -3394,3 +3394,54 @@ Two strict-grep gates run together:
 **Source:** SPEC_ORCH-0849_STRIPE_PAYMENT_METHOD_PARITY.md §3.2.1 + §3.5.4, INVESTIGATION_ORCH-0849 §6 Recommended PM set, DEC-158.
 
 **EXIT condition:** Permanent in spirit. The Phase 1 allowlist may be expanded in future ORCHs proving redirect-flow / delayed-method plumbing; each expansion amends the allowlist constant + this invariant's enumeration. The "no hardcoded array literal at call site" rule stays permanent — the allowlist module is always the single source of truth.
+
+### I-PROPOSED-TICKET-PDF-FETCHABLE-BY-OWNER (ACTIVE — ratified by ORCH-0842 CLOSE 2026-05-17)
+
+**Status:** ACTIVE — ratified by ORCH-0842 [Fold Tickets into Active + render real ticket PDF in bottom sheet with venue/QR/Save] CLOSE 2026-05-17.
+
+**Statement:** A paid order's ticket PDF in the private `ticket-pdfs` Supabase Storage bucket MUST be fetchable by `auth.uid() === orders.buyer_user_id` and ONLY that user. The `ticket-pdf-fetch` edge function (verify_jwt = true) MUST extract the caller user-id from the JWT BEFORE any storage operation, MUST compare against `orders.buyer_user_id` as an explicit branch (returning HTTP 403 on mismatch), MUST distinguish pending/failed (409 `not_paid`) from refunded/cancelled/partial_refund (410 `gone`), and MUST NOT issue a signed URL on any path that did not pass the ownership check. The error matrix is 7 distinct codes (401 / 400 / 404 / 403 / 409 / 410 / 500) — collapse of any two branches leaks information or masks security errors.
+
+**Why:** The PDF contains the buyer's ticket QR code (the `tickets.qr_code` payload that `scan-ticket` validates at the door). Allowing user B to fetch user A's PDF == handing user B a working ticket to user A's event. The bucket is private (`public = false`, zero client-role policies per I-PROPOSED-TICKET-PDF-STORAGE-BUCKET-PRIVATE), so the only path to the bytes is a signed URL issued by `ticket-pdf-fetch` after the owner check — that endpoint is the choke point and the owner check is its security-critical invariant. Refunded orders return 410 not 200 because the PDF is no longer a valid claim and the buyer should not retain it.
+
+**Enforcement:**
+1. **Strict-grep CI gate:** `.github/scripts/strict-grep/i-ticket-pdf-owner-check.mjs` scans `supabase/functions/ticket-pdf-fetch/index.ts` and asserts (a) caller-JWT extraction via `userIdFromAuthHeader(req)` or `auth.getUser(token)`, (b) `buyer_user_id` token presence, (c) an explicit equality/inequality comparison against the caller id (`!==` or `===` form). Build fails if any element is missing.
+2. **Workflow:** `.github/workflows/strict-grep-mingla-business.yml` job `i-ticket-pdf-owner-check` (no self-test step — direct scan).
+3. **Adversarial regression test:** `app-mobile/scripts/ci/orch-0842-adversarial-check.mjs` angle A2 asserts each of the 7 HTTP codes appears in a distinct branch paired with its label string (within 200 chars of each label occurrence).
+
+**Source:** SPEC_ORCH-0842_TICKETS_INTO_ACTIVE_AND_PDF_SHEET.md §3.3 + §6.
+
+**EXIT condition:** Permanent. Any future endpoint that returns a signed URL to a buyer-owned artifact must implement the same owner-check pattern. The 7-code matrix may be extended (additional 4xx for new error classes) but never collapsed.
+
+### I-PROPOSED-TICKET-PDF-SINGLE-SOURCE-OF-TRUTH (ACTIVE — ratified by ORCH-0842 CLOSE 2026-05-17)
+
+**Status:** ACTIVE — ratified by ORCH-0842 CLOSE 2026-05-17.
+
+**Statement:** `pdf-lib` (the PDF rendering library) MUST be imported ONLY from `supabase/functions/_shared/ticketPdf.ts`. All edge functions that render ticket PDFs MUST go through `buildTicketPdf` from that shared module. No parallel renderer is permitted anywhere under `supabase/functions/`. Test files under `__tests__/` directories or matching `*.test.{ts,mts,tsx,js,mjs}` are allowlisted (they legitimately import `pdf-lib` to inspect rendered output without producing user-facing PDFs).
+
+**Why:** The PDF the buyer sees inside the consumer app MUST be byte-equivalent to the PDF attached to their Resend confirmation email. If a second renderer existed (e.g., for "preview" or for "admin re-render"), the two implementations would inevitably drift in branding, layout, redaction rules, or font metrics — and the next bug would be "the PDF I downloaded doesn't match the one I got via email". Both `ticket-confirmation-dispatch` (dispatch upload site) and `ticket-pdf-fetch` (lazy backfill site) call `buildTicketPdf` from `_shared/ticketPdf.ts` so the bytes are deterministic. The shared module also enforces I-PROPOSED-AG TICKET_PDF_PRIVACY (no qr_token_hash, no payment ids, no buyer phone numbers in the rendered PDF) — a parallel renderer would bypass that enforcement.
+
+**Enforcement:**
+1. **Strict-grep CI gate:** `.github/scripts/strict-grep/i-ticket-pdf-single-renderer.mjs` walks `supabase/functions/` and fails the build if any file outside `_shared/ticketPdf.ts` (and outside test allowlist) imports `pdf-lib`. The regex matches `from "...pdf-lib..."` in any quote style.
+2. **Workflow:** `.github/workflows/strict-grep-mingla-business.yml` job `i-ticket-pdf-single-renderer`.
+3. **Implementor regression test:** `app-mobile/scripts/ci/orch-0842-regression-check.mjs` asserts `ticket-pdf-fetch` calls `buildTicketPdf` (proves the lazy backfill goes through the shared module).
+
+**Source:** SPEC_ORCH-0842_TICKETS_INTO_ACTIVE_AND_PDF_SHEET.md §3.3 + §6.
+
+**EXIT condition:** Permanent. If a future ORCH genuinely needs a different PDF layout (e.g., admin receipt format), it must add a SECOND function to `_shared/ticketPdf.ts` with its own name (`buildReceiptPdf`) — not import pdf-lib elsewhere.
+
+### I-PROPOSED-TICKET-PDF-STORAGE-BUCKET-PRIVATE (ACTIVE — ratified by ORCH-0842 CLOSE 2026-05-17)
+
+**Status:** ACTIVE — ratified by ORCH-0842 CLOSE 2026-05-17.
+
+**Statement:** The Supabase Storage bucket `ticket-pdfs` MUST have `public = false` AND zero client-role policies on `storage.objects` for `bucket_id = 'ticket-pdfs'`. Reads happen EXCLUSIVELY via signed URLs issued by `ticket-pdf-fetch` after the owner check (I-PROPOSED-TICKET-PDF-FETCHABLE-BY-OWNER). Writes happen via service-role from `ticket-confirmation-dispatch` (dispatch upload) and `ticket-pdf-fetch` (lazy backfill); service-role bypasses RLS, so no explicit storage.objects policy is needed. Only these two edge functions may reference the bucket name `'ticket-pdfs'` anywhere under `supabase/functions/`.
+
+**Why:** The PDF contains a valid at-door ticket QR. Any client-role read policy on the bucket — even one scoped by ownership — would let an attacker iterate `tickets/<uuid>.pdf` paths and try to download them, bypassing the 7-code error matrix in `ticket-pdf-fetch`. The signed-URL path forces all reads through the auth + status + ownership checks. Similarly, a third edge function (or shared helper) writing to the bucket without going through `_shared/ticketPdf.ts` would bypass I-PROPOSED-TICKET-PDF-SINGLE-SOURCE-OF-TRUTH and could persist a PDF that diverges from the email artifact.
+
+**Enforcement:**
+1. **Migration text:** `supabase/migrations/20260606000000_orch_0842_ticket_pdf_storage.sql` creates the bucket with `public = false` and adds NO `CREATE POLICY ... ON storage.objects` statements for this bucket. The adversarial regression test A4 in `app-mobile/scripts/ci/orch-0842-adversarial-check.mjs` parses the migration text and asserts the literal `false` in the bucket `public` column position (catches a future migration that flips it).
+2. **No-third-party-writer guard:** A3 in `app-mobile/scripts/ci/orch-0842-adversarial-check.mjs` walks `supabase/functions/` and fails the build if any file outside `ticket-confirmation-dispatch` or `ticket-pdf-fetch` references the bucket name `'ticket-pdfs'`. Test directories allowlisted.
+3. **Live-state probe:** Periodic SQL probe `SELECT * FROM storage.buckets WHERE id = 'ticket-pdfs'` should show `public = false`. `SELECT policyname FROM pg_policies WHERE schemaname='storage' AND tablename='objects' AND (qual LIKE '%ticket-pdfs%' OR with_check LIKE '%ticket-pdfs%')` should return empty.
+
+**Source:** SPEC_ORCH-0842_TICKETS_INTO_ACTIVE_AND_PDF_SHEET.md §3.1 + §6.
+
+**EXIT condition:** Permanent. The bucket may be expanded to additional artifact types if a future ORCH needs to share the same private-bucket pattern, but `public = false` and the no-client-policy rule are non-negotiable for any artifact that contains valid at-door credentials.

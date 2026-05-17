@@ -35,6 +35,7 @@
     "test:orch-0842": "node ./scripts/ci/orch-0842-regression-check.mjs",
     "test:orch-0842-adv": "node ./scripts/ci/orch-0842-adversarial-check.mjs",
     "test:orch-0853": "node ./scripts/ci/orch-0853-regression-check.mjs",
+    "test:orch-0853-adv": "node ./scripts/ci/orch-0853-adversarial-check.mjs",
     "test:orch-0839-a-pagination": "node ./scripts/ci/orch-0839-a-tm-pagination-aligned.mjs",
     "test:orch-0839-a-meta": "node ./scripts/ci/orch-0839-a-meta-items-consistent.mjs",
     "test:orch-0839-a-cache-removed": "node ./scripts/ci/orch-0839-a-mobile-cache-removed.mjs"
