@@ -23,7 +23,7 @@
 8. Mobile: new `TicketService.fetchTicketPdfUrl(orderId)` calling `ticket-pdf-fetch`.
 9. Mobile: 4 new dependencies — `react-native-pdf`, `react-native-blob-util`, `expo-file-system`, `expo-sharing`. No others.
 10. Native build cycle: new `eas build` for iOS + Android dev profiles, then production. NOT OTA-shippable. iOS dev-build uses [IOS_DEV_BUILD_REBUILD_RUNBOOK.md](Mingla_Artifacts/IOS_DEV_BUILD_REBUILD_RUNBOOK.md).
-11. CI: 2 new strict-grep gates per [feedback_strict_grep_registry_pattern.md](.claude/projects/...) registry pattern — one for invariant I-PROPOSED-AK, one for I-PROPOSED-AL.
+11. CI: 2 new strict-grep gates per the `feedback_strict_grep_registry_pattern` memory (registry pattern: one script + one job in `.github/workflows/strict-grep-mingla-business.yml`) — one for invariant I-PROPOSED-AK, one for I-PROPOSED-AL.
 
 ### 1.2 Non-goals (explicit)
 

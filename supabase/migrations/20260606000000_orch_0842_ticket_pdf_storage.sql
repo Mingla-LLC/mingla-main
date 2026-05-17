@@ -18,15 +18,33 @@
 
 -- 1) Storage bucket — private; only signed URLs (60s TTL) issued by
 -- ticket-pdf-fetch are allowed to read.
-INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-VALUES (
-  'ticket-pdfs',
-  'ticket-pdfs',
-  false,
-  6 * 1024 * 1024,  -- 6 MB cushion above the ticketPdf 5 MB cap
-  ARRAY['application/pdf']
-)
-ON CONFLICT (id) DO NOTHING;
+-- Guard: the local CI Postgres baseline ships a stripped-down storage
+-- schema that does not include the `public` / `file_size_limit` /
+-- `allowed_mime_types` columns the Supabase storage extension adds on
+-- the real project. Skip the INSERT when those columns are absent so
+-- the migration applies cleanly in CI. On the real Supabase remote
+-- (which has the extension) the INSERT executes verbatim with
+-- public=false per I-PROPOSED-AM TICKET_PDF_STORAGE_BUCKET_PRIVATE.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'storage'
+      AND table_name = 'buckets'
+      AND column_name = 'public'
+  ) THEN
+    INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+    VALUES (
+      'ticket-pdfs',
+      'ticket-pdfs',
+      false,
+      6 * 1024 * 1024,
+      ARRAY['application/pdf']
+    )
+    ON CONFLICT (id) DO NOTHING;
+  END IF;
+END $$;
 
 -- 2) Pointer column on orders so the fetch endpoint can short-circuit
 -- head-check. Nullable because backfill happens lazily for pre-cutover
