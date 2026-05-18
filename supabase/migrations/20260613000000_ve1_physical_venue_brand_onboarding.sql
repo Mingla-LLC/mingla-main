@@ -93,6 +93,22 @@ CREATE POLICY "Brand members can select brand_hours"
     )
   );
 
+-- I-PROPOSED-H (ORCH-0734): direct-predicate owner SELECT so INSERT/UPDATE/DELETE
+-- ... RETURNING admits post-mutation rows without biz_*_for_caller snapshot quirks.
+CREATE POLICY "Brand owners can select own brand_hours"
+  ON public.brand_hours
+  FOR SELECT
+  TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1
+      FROM public.brands b
+      WHERE b.id = brand_hours.brand_id
+        AND b.account_id = auth.uid()
+        AND b.deleted_at IS NULL
+    )
+  );
+
 CREATE POLICY "Brand admin plus can insert brand_hours"
   ON public.brand_hours
   FOR INSERT
