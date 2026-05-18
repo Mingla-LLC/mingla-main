@@ -279,9 +279,28 @@ function checkNoNewBackendFiles() {
     "supabase/migrations/20260610000001_tr3_cron_use_vault_secrets.sql",
     "supabase/migrations/20260610000002_tr3_ticket_checkout_session_installment_aware.sql",
   ];
+  // ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] CLOSE PR #134 (2026-05-18).
+  // Same scoping rationale as the ORCH-0859 and ORCH-0869 allowlists above:
+  // these backend touches are ORCH-0875 refund-engine + cancel-flow scope, not
+  // ORCH-0863 marketing scope, so they're exempted from this gate. Future
+  // close that drops these allowlists should re-scope C7 itself to fire ONLY
+  // against PRs whose commit message explicitly cites `Close ORCH-0863`.
+  const ORCH_0875_BACKEND_ALLOWLIST = [
+    "supabase/functions/_shared/email/buyerLifecycleAdapters.ts",
+    "supabase/functions/cancel-trip-booking/__tests__/adversarial_security.test.ts",
+    "supabase/functions/cancel-trip-booking/__tests__/contract_invariants.test.ts",
+    "supabase/functions/cancel-trip-booking/index.ts",
+    "supabase/functions/process-booking-deadlines/index.ts",
+    "supabase/functions/process-scheduled-installments/index.ts",
+    "supabase/functions/ticket-checkout-create/index.ts",
+    "supabase/functions/ticket-confirmation-dispatch/index.ts",
+    "supabase/migrations/20260612000000_tr4_refund_tiers_booking_deadline.sql",
+    "supabase/migrations/20260612000001_tr4_revoke_rpc_anon_grants.sql",
+  ];
   const ALLOWLIST = [
     ...ORCH_0859_BUNDLED_ALLOWLIST,
     ...ORCH_0869_BACKEND_ALLOWLIST,
+    ...ORCH_0875_BACKEND_ALLOWLIST,
   ];
   const forbidden = changed.filter(
     (p) =>

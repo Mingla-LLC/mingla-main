@@ -17,11 +17,27 @@
 
 import { describe, expect, jest, test } from "@jest/globals";
 
+// Mock matches the production chain:
+// supabase.from("events").update(...).eq("id", ...).eq("event_type", "trip")
+//   .select("id").maybeSingle()
+// per I-PROPOSED-I (MUTATION-ROWCOUNT-VERIFIED) +
+//     I-PROPOSED-TR2-EVENTS-TYPE-FILTER
 jest.mock("../supabase", () => ({
   supabase: {
     from: jest.fn(() => ({
       update: jest.fn(() => ({
-        eq: jest.fn(() => Promise.resolve({ error: null })),
+        eq: jest.fn(() => ({
+          eq: jest.fn(() => ({
+            select: jest.fn(() => ({
+              maybeSingle: jest.fn(() =>
+                Promise.resolve({
+                  data: { id: "00000000-0000-0000-0000-000000000001" },
+                  error: null,
+                }),
+              ),
+            })),
+          })),
+        })),
       })),
     })),
   },

@@ -4,11 +4,12 @@
  *
  * Both updates are operator-only (RLS gates by brand membership via the
  * existing biz_is_brand_member_for_caller policies on public.events).
- * Service calls .update().eq() directly; no edge function needed because the
+ * Service writes directly via supabase-js (no edge function needed) because the
  * CHECK constraint events_refund_policy_valid (calling validate_refund_policy)
  * enforces I-PROPOSED-TR4-REFUND-CASCADE-MONOTONICITY at DB-write time. Bad
  * policy JSONB raises 23514 (check_violation) which we map to a user-friendly
- * error.
+ * error. Both writes verify rowcount via select+maybeSingle (I-PROPOSED-I) and
+ * scope to event_type='trip' (I-PROPOSED-TR2-EVENTS-TYPE-FILTER).
  *
  * Per SPEC_ORCH-0875 §3.3.2.
  */
@@ -189,12 +190,24 @@ export async function updateRefundPolicy(
     }
   }
 
-  const { error } = await supabase
+  // I-PROPOSED-I + I-PROPOSED-TR2-EVENTS-TYPE-FILTER: chain .select("id") +
+  // .maybeSingle() to verify rowcount, and scope to event_type='trip' so the
+  // gate confirms refund_policy writes only land on trip rows (Tr4 scope).
+  const { data, error } = await supabase
     .from("events")
     .update({ refund_policy: policy })
-    .eq("id", eventId);
+    .eq("id", eventId)
+    .eq("event_type", "trip")
+    .select("id")
+    .maybeSingle();
   if (error) {
     throw mapPgError(error);
+  }
+  if (data === null) {
+    throw makeError(
+      "not_found",
+      "Trip not found or you don't have permission to update it.",
+    );
   }
 }
 
@@ -217,7 +230,9 @@ export async function updateBookingDeadline(
       throw makeError("internal_error", "Deadline must be in the future.");
     }
   }
-  const { error } = await supabase
+  // I-PROPOSED-I + I-PROPOSED-TR2-EVENTS-TYPE-FILTER: chain .select("id") +
+  // .maybeSingle() to verify rowcount, and scope to event_type='trip'.
+  const { data, error } = await supabase
     .from("events")
     .update({
       booking_deadline: deadlineIso,
@@ -227,8 +242,17 @@ export async function updateBookingDeadline(
         ? { bookings_closed: false, bookings_closed_at: null }
         : {}),
     })
-    .eq("id", eventId);
+    .eq("id", eventId)
+    .eq("event_type", "trip")
+    .select("id")
+    .maybeSingle();
   if (error) {
     throw mapPgError(error);
+  }
+  if (data === null) {
+    throw makeError(
+      "not_found",
+      "Trip not found or you don't have permission to update it.",
+    );
   }
 }

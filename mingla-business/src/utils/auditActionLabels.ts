@@ -85,6 +85,11 @@ export const KNOWN_STATIC_SLUGS: readonly string[] = [
   "tr3.installment_pi_failed",
   "tr3.installment_collected",
   "tr3.installment_failed_webhook",
+  // ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — cancel + auto-close
+  // lifecycle audit actions emitted by cancel-trip-booking (per-cancel audit
+  // row) and process-booking-deadlines cron (per auto-close batch).
+  "trip_booking_cancelled",
+  "bookings_auto_closed_by_cron",
 ];
 
 const humanizeSlug = (slug: string): string => {
@@ -265,6 +270,21 @@ export const resolveAuditActionLabel = (action: string): AuditActionLabel => {
         detail: "Stripe webhook reported installment PaymentIntent failure; retry cadence applied or at-risk flagged.",
         category: "orders",
         iconHint: "pound",
+      };
+    // ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — cancel + auto-close.
+    case "trip_booking_cancelled":
+      return {
+        title: "Trip booking cancelled",
+        detail: "Buyer or operator cancelled a trip booking; refund executed per the active cascading policy.",
+        category: "orders",
+        iconHint: "ticket",
+      };
+    case "bookings_auto_closed_by_cron":
+      return {
+        title: "Bookings auto-closed",
+        detail: "Trip's booking deadline passed; hourly cron flipped bookings_closed=true.",
+        category: "ops",
+        iconHint: "settings",
       };
   }
 
