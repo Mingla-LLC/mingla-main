@@ -28,9 +28,15 @@ import {
   joinBrandDescription,
   type BrandRow,
 } from "./brandMapping";
-import type { Brand, BrandRole } from "../store/currentBrandStore";
+import type {
+  Brand,
+  BrandRole,
+  BrandHourEntry,
+  VenueCategory,
+} from "../types/brand";
 // ORCH-0808 — organizer-funnel instrumentation.
 import { logAppsFlyerEvent } from "./appsFlyerService";
+import { brandHoursToRpcPayload } from "../utils/venueBrandHours";
 
 interface EventBrandIdRow {
   brand_id: string | null;
@@ -151,6 +157,162 @@ export async function createBrand(
   logAppsFlyerEvent("mingla_brand_created", { brand_id: data.id as string });
 
   return mapBrandRowToUi(data as BrandRow, { role });
+}
+
+// ----- Ve1 physical venue (pending review) --------------------------------
+
+export interface CreateVenueBrandPendingInput {
+  name: string;
+  slug: string;
+  tagline?: string;
+  bio?: string;
+  googlePlaceId: string;
+  lat: number;
+  lng: number;
+  city: string | null;
+  countryCode: string | null;
+  address: string;
+  venueCategory: VenueCategory;
+  contact: { email?: string; phone?: string };
+  coverMediaUrl: string | null;
+  coverMediaType: "image" | "video" | "gif" | null;
+  hours: BrandHourEntry[];
+}
+
+interface BrandHourRow {
+  weekday: number;
+  open_time: string | null;
+  close_time: string | null;
+  is_closed: boolean;
+}
+
+function formatTimeForUi(t: string | null): string | null {
+  if (t === null || t.length === 0) return null;
+  const parts = t.split(":");
+  if (parts.length >= 2) return `${parts[0]}:${parts[1]}`;
+  return t;
+}
+
+export async function getBrandHours(brandId: string): Promise<BrandHourEntry[]> {
+  const { data, error } = await supabase
+    .from("brand_hours")
+    .select("weekday,open_time,close_time,is_closed")
+    .eq("brand_id", brandId)
+    .order("weekday", { ascending: true });
+
+  if (error !== null) throw error;
+  return ((data ?? []) as BrandHourRow[]).map((r) => ({
+    weekday: r.weekday,
+    openTime: r.is_closed ? null : formatTimeForUi(r.open_time),
+    closeTime: r.is_closed ? null : formatTimeForUi(r.close_time),
+    isClosed: r.is_closed,
+  }));
+}
+
+function timeToDb(t: string | null): string | null {
+  if (t === null || t.trim() === "") return null;
+  const s = t.trim();
+  if (s.length === 5) return `${s}:00`;
+  return s;
+}
+
+/**
+ * Replaces all `brand_hours` rows for a brand (expects exactly 7 weekdays).
+ * Callers must hold brand admin-plus; mirrors the RPC insert shape.
+ */
+export async function upsertBrandHours(
+  brandId: string,
+  hours: BrandHourEntry[],
+): Promise<void> {
+  if (hours.length !== 7) {
+    throw new Error("upsertBrandHours: expected 7 weekday rows");
+  }
+  const { error: delError } = await supabase
+    .from("brand_hours")
+    .delete()
+    .eq("brand_id", brandId);
+  if (delError !== null) throw delError;
+
+  const rows = hours.map((e) => ({
+    brand_id: brandId,
+    weekday: e.weekday,
+    open_time: e.isClosed ? null : timeToDb(e.openTime),
+    close_time: e.isClosed ? null : timeToDb(e.closeTime),
+    is_closed: e.isClosed,
+  }));
+
+  const { error: insError } = await supabase.from("brand_hours").insert(rows);
+  if (insError !== null) throw insError;
+}
+
+async function invokeVenueClaimSubmittedEmail(brandId: string): Promise<void> {
+  try {
+    const { error } = await supabase.functions.invoke(
+      "venue-claim-submitted-email",
+      { body: { brand_id: brandId } },
+    );
+    if (error !== null) {
+      console.warn("[invokeVenueClaimSubmittedEmail]", error.message);
+    }
+  } catch (e) {
+    console.warn("[invokeVenueClaimSubmittedEmail]", e);
+  }
+}
+
+/**
+ * Ve1 — atomic create via `biz_create_venue_brand_pending_review` + confirmation email.
+ */
+export async function createVenueBrandPendingReview(
+  input: CreateVenueBrandPendingInput,
+  role: BrandRole,
+): Promise<Brand> {
+  const description = joinBrandDescription(input.tagline, input.bio);
+  const { data, error } = await supabase.rpc(
+    "biz_create_venue_brand_pending_review",
+    {
+      p_name: input.name,
+      p_slug: input.slug,
+      p_description: description,
+      p_google_place_id: input.googlePlaceId,
+      p_lat: input.lat,
+      p_lng: input.lng,
+      p_city: input.city ?? "",
+      p_country_code: input.countryCode ?? "",
+      p_address: input.address,
+      p_venue_category: input.venueCategory,
+      p_contact_email: input.contact.email ?? "",
+      p_contact_phone: input.contact.phone ?? "",
+      p_cover_media_url: input.coverMediaUrl ?? "",
+      p_cover_media_type: input.coverMediaType ?? "",
+      p_hours: brandHoursToRpcPayload(input.hours),
+    },
+  );
+
+  if (error !== null) {
+    const msg = error.message ?? "";
+    if (error.code === "23505") {
+      if (msg.includes("slug") || msg.includes("idx_brands_slug")) {
+        throw new SlugCollisionError(input.slug);
+      }
+      throw new Error(
+        "This place is already in our verification queue with the same Google location. Contact support if you need help.",
+      );
+    }
+    throw error;
+  }
+  if (data === null || typeof data !== "string") {
+    throw new Error("createVenueBrandPendingReview: RPC returned no brand id");
+  }
+
+  const brandId = data;
+  logAppsFlyerEvent("mingla_venue_brand_submitted", { brand_id: brandId });
+  await invokeVenueClaimSubmittedEmail(brandId);
+
+  const brand = await getBrand(brandId);
+  if (brand === null) {
+    throw new Error("createVenueBrandPendingReview: brand missing after insert");
+  }
+  return { ...brand, role };
 }
 
 // ----- getBrands (list) --------------------------------------------------

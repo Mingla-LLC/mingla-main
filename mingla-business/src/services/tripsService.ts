@@ -16,6 +16,7 @@
  */
 
 import { supabase } from "./supabase";
+import { assertBrandCanAuthorOfferings } from "./brandAuthoringGate";
 import type { BrandRole } from "../store/currentBrandStore";
 
 // ---------------------- Types ----------------------
@@ -399,6 +400,8 @@ export async function createTripDraft(
   input: CreateTripDraftInput,
   _role: BrandRole,
 ): Promise<Trip> {
+  await assertBrandCanAuthorOfferings(input.brandId);
+
   const tempTitle = input.initialTitle?.trim() || "Untitled trip";
   const tempSlug = `draft-${Date.now().toString(36)}`;
 

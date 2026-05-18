@@ -31,6 +31,10 @@ verify_jwt = false
 [functions.places-autocomplete]
 verify_jwt = true
 
+# Ve1 — venue operator confirmation after biz_create_venue_brand_pending_review.
+[functions.venue-claim-submitted-email]
+verify_jwt = true
+
 # ORCH-0770: Cloudinary is a third-party webhook sender and cannot provide
 # Supabase user JWTs. The gateway is public; the function authenticates
 # requests with Cloudinary's signed notification headers.

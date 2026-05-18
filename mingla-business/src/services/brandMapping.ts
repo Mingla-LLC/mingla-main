@@ -20,7 +20,9 @@ import type {
   BrandLiveEvent,
   BrandRole,
   BrandStats,
-} from "../store/currentBrandStore";
+  BrandClaimStatus,
+  VenueCategory,
+} from "../types/brand";
 import { deriveBrandStripeStatus } from "../utils/deriveBrandStripeStatus";
 
 /** Snapshot of `public.brands` columns needed for mapping (B1 + Cycle 17e-A). */
@@ -52,6 +54,17 @@ export interface BrandRow {
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
+  // Ve1 — optional until row is loaded from a fresh `select *` after migration.
+  place_pool_id?: string | null;
+  google_place_id?: string | null;
+  lat?: number | null;
+  lng?: number | null;
+  city?: string | null;
+  country_code?: string | null;
+  claim_status?: BrandClaimStatus | null;
+  verified_at?: string | null;
+  verified_by?: string | null;
+  venue_category?: VenueCategory | null;
 }
 
 /** Insert shape for `.from('brands').insert()` (server fills id/timestamps). */
@@ -79,6 +92,14 @@ export type BrandTableInsert = {
   cover_media_url?: string | null;
   cover_media_type?: "image" | "video" | "gif" | null;
   profile_photo_type?: "image" | "video" | "gif" | null;
+  place_pool_id?: string | null;
+  google_place_id?: string | null;
+  lat?: number | null;
+  lng?: number | null;
+  city?: string | null;
+  country_code?: string | null;
+  claim_status?: BrandClaimStatus;
+  venue_category?: VenueCategory | null;
 };
 
 export const EMPTY_BRAND_STATS: BrandStats = {
@@ -240,6 +261,14 @@ export function mapBrandRowToUi(row: BrandRow, options: MapBrandRowToUiOptions):
     // ORCH-0769: expose brands.default_currency only once Stripe/brand setup
     // has actually set it. Undefined means "currency not set" — do not imply GBP.
     defaultCurrency: row.default_currency || undefined,
+    claimStatus: (row.claim_status as BrandClaimStatus | undefined) ?? "none",
+    googlePlaceId: row.google_place_id ?? undefined,
+    lat: row.lat ?? undefined,
+    lng: row.lng ?? undefined,
+    city: row.city ?? undefined,
+    countryCode: row.country_code ?? undefined,
+    venueCategory: (row.venue_category as VenueCategory | undefined) ?? undefined,
+    placePoolId: row.place_pool_id ?? undefined,
   };
 }
 
@@ -285,6 +314,23 @@ export function mapUiToBrandInsert(input: MapUiToBrandInsertInput): BrandTableIn
   if (brand.profilePhotoType !== undefined) {
     row.profile_photo_type = brand.profilePhotoType ?? null;
   }
+  if (brand.claimStatus !== undefined) row.claim_status = brand.claimStatus;
+  if (brand.googlePlaceId !== undefined) {
+    row.google_place_id = brand.googlePlaceId ?? null;
+  }
+  if (brand.lat !== undefined) row.lat = brand.lat ?? null;
+  if (brand.lng !== undefined) row.lng = brand.lng ?? null;
+  if (brand.city !== undefined) row.city = brand.city ?? null;
+  if (brand.countryCode !== undefined) {
+    row.country_code = brand.countryCode ?? null;
+  }
+  if (brand.venueCategory !== undefined) {
+    row.venue_category = brand.venueCategory ?? null;
+  }
+  if (brand.placePoolId !== undefined) {
+    row.place_pool_id = brand.placePoolId ?? null;
+  }
+
   return row;
 }
 
@@ -351,6 +397,22 @@ export function mapUiToBrandUpdatePatch(
   }
   if (patch.profilePhotoType !== undefined) {
     out.profile_photo_type = patch.profilePhotoType ?? null;
+  }
+  if (patch.claimStatus !== undefined) out.claim_status = patch.claimStatus;
+  if (patch.googlePlaceId !== undefined) {
+    out.google_place_id = patch.googlePlaceId ?? null;
+  }
+  if (patch.lat !== undefined) out.lat = patch.lat ?? null;
+  if (patch.lng !== undefined) out.lng = patch.lng ?? null;
+  if (patch.city !== undefined) out.city = patch.city ?? null;
+  if (patch.countryCode !== undefined) {
+    out.country_code = patch.countryCode ?? null;
+  }
+  if (patch.venueCategory !== undefined) {
+    out.venue_category = patch.venueCategory ?? null;
+  }
+  if (patch.placePoolId !== undefined) {
+    out.place_pool_id = patch.placePoolId ?? null;
   }
 
   return out;
