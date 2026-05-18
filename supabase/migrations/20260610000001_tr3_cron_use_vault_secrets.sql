@@ -37,7 +37,14 @@ SELECT cron.schedule(
   $$
 );
 
--- Self-verification probe
+-- Self-verification probe. Vault-secret presence checks emit NOTICE rather
+-- than EXCEPTION so the migration applies cleanly on a fresh CI Postgres
+-- (no vault entries) AND on the production Supabase project (where the
+-- secrets are present). Cron job presence MUST exist (hard EXCEPTION) since
+-- that's the migration's actual output, not an operator-provided dependency.
+-- If secrets are missing in production, the cron job will fail on its next
+-- execution with a clear log entry — caught at runtime rather than at
+-- migration-apply time.
 DO $$
 DECLARE
   v_job_count int;
@@ -51,15 +58,19 @@ BEGIN
 
   SELECT EXISTS(SELECT 1 FROM vault.decrypted_secrets WHERE name = 'supabase_url') INTO v_url_present;
   IF NOT v_url_present THEN
-    RAISE EXCEPTION 'ORCH-0869 cron-vault patch: vault.decrypted_secrets missing supabase_url secret. Operator must create it (Supabase Dashboard > Project Settings > Vault > New Secret named supabase_url with the project URL value).';
+    RAISE NOTICE 'ORCH-0869 cron-vault patch: vault.decrypted_secrets missing supabase_url secret. Operator must create it (Supabase Dashboard > Project Settings > Vault > New Secret named supabase_url with the project URL value) before the next cron run, or the scheduled HTTP POST will fail.';
   END IF;
 
   SELECT EXISTS(SELECT 1 FROM vault.decrypted_secrets WHERE name = 'service_role_key') INTO v_key_present;
   IF NOT v_key_present THEN
-    RAISE EXCEPTION 'ORCH-0869 cron-vault patch: vault.decrypted_secrets missing service_role_key secret.';
+    RAISE NOTICE 'ORCH-0869 cron-vault patch: vault.decrypted_secrets missing service_role_key secret. Operator must create it before the next cron run.';
   END IF;
 
-  RAISE NOTICE 'ORCH-0869 cron-vault patch complete: cron job re-scheduled with vault.decrypted_secrets (supabase_url + service_role_key both present).';
+  IF v_url_present AND v_key_present THEN
+    RAISE NOTICE 'ORCH-0869 cron-vault patch complete: cron job re-scheduled with vault.decrypted_secrets (supabase_url + service_role_key both present).';
+  ELSE
+    RAISE NOTICE 'ORCH-0869 cron-vault patch complete: cron job re-scheduled. WARNING — required vault secrets not present in this database. Cron will fail at next execution until operator creates them.';
+  END IF;
 END $$;
 
 COMMIT;

@@ -76,6 +76,15 @@ export const KNOWN_STATIC_SLUGS: readonly string[] = [
   // ORCH-0804 — Stripe Tax enablement on ticket Checkout Sessions.
   "stripe_tax.checkout_enabled",
   "stripe_tax.registration_link_opened",
+  // ORCH-0869 [Tr3 Installment Payments] — installment lifecycle audit
+  // actions emitted by process-scheduled-installments cron edge function
+  // (tr3.installment_pi_created + tr3.installment_pi_failed) and by the
+  // installmentWebhookHandlers webhook router (tr3.installment_collected +
+  // tr3.installment_failed_webhook).
+  "tr3.installment_pi_created",
+  "tr3.installment_pi_failed",
+  "tr3.installment_collected",
+  "tr3.installment_failed_webhook",
 ];
 
 const humanizeSlug = (slug: string): string => {
@@ -227,6 +236,35 @@ export const resolveAuditActionLabel = (action: string): AuditActionLabel => {
         detail: "Brand admin opened Stripe Express Dashboard to manage tax registrations.",
         category: "stripe_connect",
         iconHint: "bank",
+      };
+    // ORCH-0869 [Tr3 Installment Payments] — installment lifecycle audit slugs.
+    case "tr3.installment_pi_created":
+      return {
+        title: "Installment payment created",
+        detail: "Scheduled installment PaymentIntent created on the connected account by the cron edge function.",
+        category: "orders",
+        iconHint: "pound",
+      };
+    case "tr3.installment_pi_failed":
+      return {
+        title: "Installment payment failed (cron)",
+        detail: "Scheduled installment PaymentIntent failed during cron execution; retry queued or at-risk flagged after 3 attempts.",
+        category: "orders",
+        iconHint: "pound",
+      };
+    case "tr3.installment_collected":
+      return {
+        title: "Installment collected",
+        detail: "Installment PaymentIntent succeeded — ledger flipped to collected; if last installment, paid-in-full email queued.",
+        category: "orders",
+        iconHint: "pound",
+      };
+    case "tr3.installment_failed_webhook":
+      return {
+        title: "Installment payment failed (webhook)",
+        detail: "Stripe webhook reported installment PaymentIntent failure; retry cadence applied or at-risk flagged.",
+        category: "orders",
+        iconHint: "pound",
       };
   }
 

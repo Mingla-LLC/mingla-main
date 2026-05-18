@@ -202,9 +202,17 @@ async function processInstallment(
 
   // Idempotency key includes retry_count so each retry attempt is independently
   // idempotent. Stripe returns existing PI on duplicate; new PI on next retry.
+  // Format `installment:{order_id}:{ordinal}:{retry_count}` is intentional per
+  // SPEC §3.2.1 (retry-aware uniqueness) — diverges from the canonical
+  // `{brand_id}:{op}:{epoch_ms}` shape because the cron must produce a
+  // DETERMINISTIC key per (installment, attempt) so concurrent cron + webhook
+  // arrivals never double-charge. The key IS passed at the call below (line
+  // ~30 down via the request-options second arg); the I-PROPOSED-R gate
+  // looks within ~10 lines of the create( call and so does not see it.
   const idempotencyKey = `installment:${installment.order_id}:${installment.ordinal}:${installment.retry_count}`;
 
   try {
+    // orch-strict-grep-allow stripe-no-idempotency-key — idempotencyKey IS passed via the request-options second arg (~30 lines below); SPEC §3.2.1 retry-aware format diverges from generateIdempotencyKey's epoch-ms shape because cron + webhook need deterministic per-(installment,attempt) keys to prevent double-charge.
     // @ts-ignore — Stripe SDK namespace runtime-provided in Deno.
     const pi = await stripe.paymentIntents.create(
       {
