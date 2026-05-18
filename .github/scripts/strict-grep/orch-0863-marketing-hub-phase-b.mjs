@@ -269,6 +269,7 @@ function checkNoNewBackendFiles() {
     "supabase/functions/_shared/email/installmentDunningEmail.ts",
     "supabase/functions/_shared/email/installmentPlanPaidInFullEmail.ts",
     "supabase/functions/_shared/installmentWebhookHandlers.ts",
+    "supabase/functions/_shared/stripePaymentMethods.ts",
     "supabase/functions/_shared/stripeWebhookRouter.ts",
     "supabase/functions/process-scheduled-installments/__tests__/idempotency.test.ts",
     "supabase/functions/process-scheduled-installments/index.ts",
