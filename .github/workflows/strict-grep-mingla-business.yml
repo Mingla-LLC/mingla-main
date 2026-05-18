@@ -1222,3 +1222,36 @@ jobs:
         run: |
           node .github/scripts/strict-grep/orch-0864-composer-v2.mjs --self-test
           node .github/scripts/strict-grep/orch-0864-composer-v2.mjs
+
+  i-proposed-tr4-booking-deadline-respected-at-checkout:
+    name: "ORCH-0875 [Tr4]: bookings-closed gate enforced at ticket-checkout-create"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0875 booking-deadline-respected-at-checkout gate
+        run: node .github/scripts/strict-grep/i-proposed-tr4-booking-deadline-respected-at-checkout.mjs
+
+  i-proposed-tr4-cancelled-installment-never-charged:
+    name: "ORCH-0875 [Tr4]: cron skips cancelled installments (belt-and-braces filter)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0875 cancelled-installment-never-charged gate
+        run: node .github/scripts/strict-grep/i-proposed-tr4-cancelled-installment-never-charged.mjs
+
+  i-proposed-tr4-refund-cascade-monotonicity:
+    name: "ORCH-0875 [Tr4]: refund_policy writes flow through validator"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0875 refund-cascade-monotonicity gate
+        run: node .github/scripts/strict-grep/i-proposed-tr4-refund-cascade-monotonicity.mjs

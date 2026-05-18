@@ -103,6 +103,40 @@ serve(async (req) => {
     return jsonResponse({ error: "event_no_active_dates" }, 422);
   }
 
+  // ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — bookings-closed gate.
+  // I-PROPOSED-TR4-BOOKING-DEADLINE-RESPECTED-AT-CHECKOUT (DRAFT) — last line
+  // of defense. UI close banner + cron auto-close are defense-in-depth, not
+  // enforcement. Trip-only effect (event_type='trip'); single-event flow
+  // unchanged. Returns 403 with structured error so buyer-anon-web UI can
+  // render the "Bookings closed" banner per DESIGN §4.4.
+  const { data: tripGateRow, error: tripGateErr } = await supabase
+    .from("events")
+    .select("event_type, bookings_closed, booking_deadline")
+    .eq("id", eventId)
+    .maybeSingle();
+  if (tripGateErr !== null) {
+    console.error("[ticket-checkout-create] bookings_closed gate lookup failed", tripGateErr);
+    return jsonResponse(
+      { error: "event_lookup_failed", detail: tripGateErr.message },
+      500,
+    );
+  }
+  if (
+    tripGateRow?.event_type === "trip" &&
+    (tripGateRow.bookings_closed === true ||
+      (typeof tripGateRow.booking_deadline === "string" &&
+        new Date(tripGateRow.booking_deadline).getTime() <= Date.now()))
+  ) {
+    return jsonResponse(
+      {
+        error: "bookings_closed",
+        detail: "Bookings closed",
+        deadline: tripGateRow.booking_deadline ?? null,
+      },
+      403,
+    );
+  }
+
   const idempotencyKey =
     typeof body.idempotencyKey === "string" && body.idempotencyKey.length > 0
       ? body.idempotencyKey

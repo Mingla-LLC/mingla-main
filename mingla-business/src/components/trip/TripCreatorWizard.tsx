@@ -56,6 +56,11 @@ import {
   useUpdateTripPricing,
   usePublishTrip,
 } from "../../hooks/useTrips";
+// ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — Step 5 autosave hooks.
+import {
+  useUpdateBookingDeadline,
+  useUpdateRefundPolicy,
+} from "../../hooks/useRefundPolicy";
 import type { Trip, TripPublishValidationError } from "../../services/tripsService";
 
 import {
@@ -72,6 +77,11 @@ import {
   TripCreatorStep4Pricing,
   type Step4Draft,
 } from "./TripCreatorStep4Pricing";
+// ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — NEW Step 5 component.
+import {
+  TripCreatorStep5Policy,
+  type Step5Draft,
+} from "./TripCreatorStep5Policy";
 import {
   TripCreatorStep5Review,
   type PublishErrorState,
@@ -101,14 +111,15 @@ export interface TripCreatorWizardProps {
   onExit: () => void;
 }
 
-type StepIndex = 1 | 2 | 3 | 4 | 5;
+type StepIndex = 1 | 2 | 3 | 4 | 5 | 6;
 
 const STEP_TITLES: Record<StepIndex, string> = {
   1: "Basics",
   2: "Day by day",
   3: "What's included",
   4: "Pricing",
-  5: "Review",
+  5: "Cancellation & deadline",
+  6: "Review",
 };
 
 const STEP_SUBTITLES: Record<StepIndex, string> = {
@@ -116,10 +127,14 @@ const STEP_SUBTITLES: Record<StepIndex, string> = {
   2: "Day-by-day itinerary",
   3: "What's included and excluded",
   4: "Pricing and payment plan",
-  5: "Preview and publish",
+  5: "Refund tiers and when bookings close",
+  6: "Preview and publish",
 };
 
-const STEP_COUNT = 5;
+// ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — wizard grew from 5 to 6
+// steps per DESIGN_ORCH-0875 §2 DECISION A. Step 5 NEW (combined Cancellation
+// & deadline); Review moved to Step 6.
+const STEP_COUNT = 6;
 
 const STEPPER_STEPS: StepperStep[] = [
   { id: "step-1", label: STEP_TITLES[1] },
@@ -127,6 +142,7 @@ const STEPPER_STEPS: StepperStep[] = [
   { id: "step-3", label: STEP_TITLES[3] },
   { id: "step-4", label: STEP_TITLES[4] },
   { id: "step-5", label: STEP_TITLES[5] },
+  { id: "step-6", label: STEP_TITLES[6] },
 ];
 
 function tripToStep1Draft(trip: Trip): Step1Draft {
@@ -170,6 +186,15 @@ function tripToStep4Draft(trip: Trip): Step4Draft {
   };
 }
 
+// ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — Step 5 draft seed from
+// trip's persisted refund_policy + booking_deadline columns.
+function tripToStep5Draft(trip: Trip): Step5Draft {
+  return {
+    refundPolicy: trip.refundPolicy,
+    bookingDeadline: trip.bookingDeadline,
+  };
+}
+
 /**
  * Pristine check: returns true when none of the 4 step drafts have diverged
  * from the server-derived initial values. Used to skip the discard dialog
@@ -182,6 +207,7 @@ function isTripWizardPristine(
   daysDraft: TripDayDraft[],
   inclusionsDraft: InclusionDraft[],
   step4Draft: Step4Draft,
+  step5Draft: Step5Draft,
   trip: Trip,
 ): boolean {
   // Step 1: every field equal to trip-derived initial
@@ -232,6 +258,15 @@ function isTripWizardPristine(
   ) {
     return false;
   }
+  // ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — Step 5: refundPolicy +
+  // bookingDeadline equal to initial trip values.
+  const initStep5 = tripToStep5Draft(trip);
+  if (
+    JSON.stringify(step5Draft.refundPolicy) !== JSON.stringify(initStep5.refundPolicy) ||
+    step5Draft.bookingDeadline !== initStep5.bookingDeadline
+  ) {
+    return false;
+  }
   return true;
 }
 
@@ -251,6 +286,10 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
     tripToInclusionsDraft(trip),
   );
   const [step4Draft, setStep4Draft] = useState<Step4Draft>(tripToStep4Draft(trip));
+  // ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — new Step 5 (Cancellation
+  // & deadline) state. Seeded from trip's persisted refund_policy +
+  // booking_deadline columns.
+  const [step5Draft, setStep5Draft] = useState<Step5Draft>(tripToStep5Draft(trip));
   const [publishError, setPublishError] = useState<PublishErrorState | null>(null);
   const [isAutosaving, setIsAutosaving] = useState<boolean>(false);
   const [autosaveError, setAutosaveError] = useState<boolean>(false);
@@ -307,6 +346,9 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
   const upsertInclusionsMutation = useUpsertTripInclusions();
   const updatePricingMutation = useUpdateTripPricing();
   const publishMutation = usePublishTrip();
+  // ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — Step 5 autosave hooks.
+  const updateRefundPolicyMutation = useUpdateRefundPolicy();
+  const updateBookingDeadlineMutation = useUpdateBookingDeadline();
 
   // Keep step4Draft.capacity in sync with step1Draft.capacity
   useEffect(() => {
@@ -450,6 +492,28 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
     });
   }, [step4Draft, step1Draft.capacity, trip.id, updatePricingMutation]);
 
+  // ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — Step 5 autosave.
+  // Writes refund_policy + booking_deadline via two parallel mutations.
+  // Both target the events table; either may throw and propagate to
+  // autosaveCurrentStep's catch.
+  const autosaveStep5 = useCallback(async (): Promise<void> => {
+    await Promise.all([
+      updateRefundPolicyMutation.mutateAsync({
+        eventId: trip.id,
+        policy: step5Draft.refundPolicy,
+      }),
+      updateBookingDeadlineMutation.mutateAsync({
+        eventId: trip.id,
+        deadlineIso: step5Draft.bookingDeadline,
+      }),
+    ]);
+  }, [
+    step5Draft,
+    trip.id,
+    updateRefundPolicyMutation,
+    updateBookingDeadlineMutation,
+  ]);
+
   const autosaveCurrentStep = useCallback(async (): Promise<void> => {
     setIsAutosaving(true);
     setAutosaveError(false);
@@ -458,6 +522,7 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
       else if (step === 2) await autosaveStep2();
       else if (step === 3) await autosaveStep3();
       else if (step === 4) await autosaveStep4();
+      else if (step === 5) await autosaveStep5();
       setAutosaveSavedAt(new Date().toISOString());
     } catch (e) {
       setAutosaveError(true);
@@ -465,14 +530,15 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
     } finally {
       setIsAutosaving(false);
     }
-  }, [step, autosaveStep1, autosaveStep2, autosaveStep3, autosaveStep4]);
+  }, [step, autosaveStep1, autosaveStep2, autosaveStep3, autosaveStep4, autosaveStep5]);
 
   // ----- Navigation -----
   const handleNext = useCallback(async (): Promise<void> => {
     try {
       await autosaveCurrentStep();
       setPublishError(null);
-      setStep((s) => (s < 5 ? ((s + 1) as StepIndex) : s));
+      // ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — wizard grew 5→6 steps.
+      setStep((s) => (s < 6 ? ((s + 1) as StepIndex) : s));
     } catch {
       setPublishError({
         code: "autosave_failed",
@@ -496,6 +562,7 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
         daysDraft,
         inclusionsDraft,
         step4Draft,
+        step5Draft,
         trip,
       );
       if (pristine) {
@@ -530,6 +597,7 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
     daysDraft,
     inclusionsDraft,
     step4Draft,
+    step5Draft,
     trip,
     onDiscardTrip,
     onExit,
@@ -731,7 +799,20 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
               disabled={submitting}
             />
           ) : null}
+          {/* ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — NEW Step 5
+              Cancellation & deadline. brand.timezone seeds the brand-TZ label
+              on BookingDeadlinePicker; missing TZ falls back to UTC. */}
           {step === 5 ? (
+            <TripCreatorStep5Policy
+              draft={step5Draft}
+              onChange={(patch) => setStep5Draft((s) => ({ ...s, ...patch }))}
+              tripStartIso={step1Draft.startAt}
+              brandTimezone={trip.timezone ?? null}
+              disabled={submitting}
+            />
+          ) : null}
+          {/* ORCH-0875: Review moved from Step 5 to Step 6. */}
+          {step === 6 ? (
             <TripCreatorStep5Review
               trip={previewTrip}
               brand={brand}
@@ -762,7 +843,10 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
               fullWidth
               testID="trip-wizard-footer-cta"
             />
-          ) : step === 5 ? (
+          ) : step === 6 ? (
+            // ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — Review (Publish)
+            // dock moved from Step 5 to Step 6. Step 5 falls through to the
+            // generic Back + Continue dock below.
             <View style={styles.dockButtonRow}>
               <View style={styles.dockBackCell}>
                 <Button

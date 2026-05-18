@@ -185,6 +185,9 @@ interface OrderJoin {
       id: string;
       name: string | null;
       profile_photo_url: string | null;
+      // ORCH-0875 [Tr4 Refund Tiers + Booking Deadline]: brand contact_email
+      // surfaced to refund/cancel email body adapters via BuyerContext.organizerEmail.
+      contact_email: string | null;
     };
   };
 }
@@ -501,7 +504,7 @@ serve(async (req) => {
         brand_id,
         event_type,
         theme,
-        brands!inner ( id, name, profile_photo_url )
+        brands!inner ( id, name, profile_photo_url, contact_email )
       )
     `)
     .eq("id", orderId)
@@ -727,11 +730,17 @@ serve(async (req) => {
 
   // ORCH-0788: BuyerContext shared by refund/cancel adapters. Built once
   // from the order join; cheap to materialise even on rows that don't use it.
+  // ORCH-0875 [Tr4 Refund Tiers + Booking Deadline]: extended with
+  // organizerEmail (from existing brands.contact_email join) + cardLast4
+  // (null in v1 — we don't store the card last4 locally; Tr4 adapters
+  // gracefully fall back to "your original payment method" when null).
   const buyerContext: BuyerContext = {
     buyerName: order.buyer_name,
     eventTitle: context.bodyInput.event.title,
     brandName: context.bodyInput.brand.name,
     orderShortId: context.bodyInput.order.shortId,
+    organizerEmail: order.events?.brands?.contact_email ?? null,
+    cardLast4: null,
   };
 
   const outcomes: Array<{ channel: string; status: string; templateKey: string }> = [];

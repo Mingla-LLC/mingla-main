@@ -191,6 +191,14 @@ export const usePublicTripBySlug = (
         ),
         createdAt: event.created_at,
         updatedAt: event.updated_at,
+        // ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — pass-through
+        // public-facing fields. refund_policy + booking_deadline must be
+        // visible to anon buyers so the public trip page can render the
+        // RefundPolicyDisplay ladder + countdown/closed banner.
+        refundPolicy: event.refund_policy ?? null,
+        bookingDeadline: event.booking_deadline ?? null,
+        bookingsClosed: event.bookings_closed === true,
+        bookingsClosedAt: event.bookings_closed_at ?? null,
       };
 
       return {

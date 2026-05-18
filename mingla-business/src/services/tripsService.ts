@@ -101,6 +101,13 @@ export interface Trip {
   inclusions: TripInclusion[];
   createdAt: string;
   updatedAt: string;
+  // ORCH-0875 [Tr4 Refund Tiers + Booking Deadline]:
+  /** Cascading refund tier policy; null = no refund policy set. */
+  refundPolicy: import("./refundPolicyService").RefundPolicy | null;
+  /** Absolute timestamp after which bookings auto-close; null = no deadline. */
+  bookingDeadline: string | null;
+  bookingsClosed: boolean;
+  bookingsClosedAt: string | null;
 }
 
 export interface CreateTripDraftInput {
@@ -225,6 +232,12 @@ interface EventRow {
   event_type: "event" | "experience" | "trip";
   created_at: string;
   updated_at: string;
+  // ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — new columns from
+  // migration 20260612000000.
+  refund_policy: unknown | null;
+  booking_deadline: string | null;
+  bookings_closed: boolean | null;
+  bookings_closed_at: string | null;
 }
 
 function mapTripDay(row: TripDayRow): TripDay {
@@ -359,6 +372,16 @@ function mapTrip(
     inclusions: inclusions.map(mapTripInclusion),
     createdAt: event.created_at,
     updatedAt: event.updated_at,
+    // ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — pass-through fields.
+    // refund_policy validated DB-side via events_refund_policy_valid CHECK +
+    // validate_refund_policy() function; client treats the JSONB shape as
+    // RefundPolicy when present.
+    refundPolicy: (event.refund_policy as
+      | import("./refundPolicyService").RefundPolicy
+      | null) ?? null,
+    bookingDeadline: event.booking_deadline,
+    bookingsClosed: event.bookings_closed === true,
+    bookingsClosedAt: event.bookings_closed_at,
   };
 }
 
