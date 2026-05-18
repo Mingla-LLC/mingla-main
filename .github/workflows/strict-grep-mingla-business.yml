@@ -1176,3 +1176,14 @@ jobs:
           node-version: "20"
       - name: Run ORCH-0862 event-detail cancel no-nav gate
         run: node .github/scripts/strict-grep/i-event-detail-cancel-no-navigation.mjs
+
+  i-proposed-tr3-installment-pi-via-cron-owner:
+    name: "ORCH-0869 [Tr3]: installment PI creation owned by cron edge function"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0869 installment-PI-via-cron-owner gate
+        run: node .github/scripts/strict-grep/i-proposed-tr3-installment-pi-via-cron-owner.mjs

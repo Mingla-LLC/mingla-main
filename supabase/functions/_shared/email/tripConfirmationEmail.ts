@@ -21,10 +21,14 @@
 // per ORCH-0842 ticket-pdf-fetch reuse, which carries the QR for
 // traveler-identification at trip start).
 
-interface SenderIdentity {
-  email: string;
-  name: string;
-}
+// ORCH-0869 Stage 1b: SenderIdentity unified with canonical _shared/email/
+// senders.ts shape ({name, address}). Tr2 (ORCH-0859) shipped {email, name}
+// which only failed TS check after Stage 1b started importing additional
+// senders, exposing the type mismatch in the dispatcher's `renderedEmail`
+// union. Verbatim runtime behaviour preserved (Resend `from` rendering uses
+// the same field — `formatSenderHeader` reads `sender.address`).
+
+import type { SenderIdentity } from "./senders.ts";
 
 interface TripConfirmationInput {
   recipient: {
@@ -271,6 +275,6 @@ export function renderTripConfirmationEmail(
     subject,
     html,
     text,
-    from: { email: fromAddress, name: DEFAULT_FROM_NAME },
+    from: { address: fromAddress, name: DEFAULT_FROM_NAME },
   };
 }
