@@ -29,14 +29,22 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
+  accent,
+  glass,
+  radius,
+  semantic,
   spacing,
   text as textTokens,
   typography,
 } from "../../../src/constants/designSystem";
+import { GlassCard } from "../../../src/components/ui/GlassCard";
 import { IconChrome } from "../../../src/components/ui/IconChrome";
 import { usePublicTripBySlug } from "../../../src/hooks/usePublicTripBySlug";
 import { TripPreview } from "../../../src/components/trip/TripPreview";
 import { TripCheckoutFlow } from "../../../src/components/trip/TripCheckoutFlow";
+// ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — public-facing refund
+// policy ladder + countdown/closed-banner per DESIGN_ORCH-0875 §4.4 + §5.2.
+import { RefundPolicyDisplay } from "../../../src/components/trip/RefundPolicyDisplay";
 
 export default function PublicTripRoute(): React.ReactElement {
   const router = useRouter();
@@ -120,6 +128,34 @@ export default function PublicTripRoute(): React.ReactElement {
     );
   }
 
+  // ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — booking-deadline state
+  // for the public page. Three cases per DESIGN_ORCH-0875 §4.4:
+  //   - bookings_closed=true → red banner "Bookings closed"
+  //   - booking_deadline future → "Bookings close in N days/hours" pill
+  //   - no deadline / closed=false → no banner
+  const trip = payload.trip;
+  const deadlineIso = trip.bookingDeadline;
+  const isClosed = trip.bookingsClosed === true;
+  let countdownLabel: string | null = null;
+  if (!isClosed && deadlineIso !== null) {
+    const deadlineMs = Date.parse(deadlineIso);
+    if (Number.isFinite(deadlineMs)) {
+      const diffMs = deadlineMs - Date.now();
+      if (diffMs > 0) {
+        const days = Math.floor(diffMs / (24 * 60 * 60 * 1000));
+        const hours = Math.floor(diffMs / (60 * 60 * 1000));
+        const minutes = Math.floor(diffMs / (60 * 1000));
+        if (days >= 1) {
+          countdownLabel = `Bookings close in ${days} day${days === 1 ? "" : "s"}`;
+        } else if (hours >= 1) {
+          countdownLabel = `Bookings close in ${hours} hour${hours === 1 ? "" : "s"}`;
+        } else if (minutes >= 1) {
+          countdownLabel = `Bookings close in ${minutes} minute${minutes === 1 ? "" : "s"}`;
+        }
+      }
+    }
+  }
+
   return (
     <View style={styles.host}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -128,6 +164,41 @@ export default function PublicTripRoute(): React.ReactElement {
           brand={payload.brand}
           showCta={false}
         />
+
+        {/* ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — booking-deadline
+            countdown pill (open) OR closed banner (past). Renders BELOW the
+            TripPreview hero + ABOVE the CheckoutFlow so buyers see the
+            urgency cue before reaching the Reserve CTA. */}
+        {isClosed && (
+          <View style={styles.closedBannerWrap}>
+            <GlassCard variant="elevated" padding={spacing.md} radius="lg">
+              <Text style={styles.closedBannerTitle}>⚠ Bookings closed</Text>
+              <Text style={styles.closedBannerBody}>
+                This trip stopped accepting new bookings. Contact the organizer
+                if you have questions.
+              </Text>
+            </GlassCard>
+          </View>
+        )}
+        {!isClosed && countdownLabel !== null && (
+          <View style={styles.countdownPillWrap}>
+            <View style={styles.countdownPill}>
+              <Text style={styles.countdownPillText}>{countdownLabel}</Text>
+            </View>
+          </View>
+        )}
+
+        {/* ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — cancellation
+            policy ladder. Renders ONLY when the trip has a policy set. Public
+            page omits the "You're here →" callout (no per-buyer context). */}
+        {trip.refundPolicy !== null && (
+          <View style={styles.refundPolicyWrap}>
+            <GlassCard variant="base" padding={spacing.md} radius="lg">
+              <RefundPolicyDisplay policy={trip.refundPolicy} />
+            </GlassCard>
+          </View>
+        )}
+
         <TripCheckoutFlow trip={payload.trip} brand={payload.brand} />
       </ScrollView>
 
@@ -202,5 +273,44 @@ const styles = StyleSheet.create({
     lineHeight: typography.body.lineHeight,
     color: textTokens.secondary,
     textAlign: "center",
+  },
+  // ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] styles —
+  // closed-banner / countdown-pill / refund-policy ladder wraps.
+  closedBannerWrap: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+  },
+  closedBannerTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: semantic.error,
+  },
+  closedBannerBody: {
+    fontSize: 13,
+    color: textTokens.secondary,
+    marginTop: spacing.xs,
+    lineHeight: 18,
+  },
+  countdownPillWrap: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    flexDirection: "row",
+  },
+  countdownPill: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.full,
+    backgroundColor: accent.tint,
+    borderWidth: 1,
+    borderColor: accent.border,
+  },
+  countdownPillText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: accent.warm,
+  },
+  refundPolicyWrap: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
   },
 });

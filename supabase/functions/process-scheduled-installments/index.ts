@@ -363,7 +363,15 @@ serve(async (req: Request) => {
   // migration 20260610000000_tr3_installments.sql. Tighten generic after that.
   const supabase: SupabaseClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-  // Query 1: due scheduled installments (initial attempts)
+  // Query 1: due scheduled installments (initial attempts).
+  // ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — belt-and-braces filter
+  // `is("cancelled_at", null)` per I-PROPOSED-TR4-CANCELLED-INSTALLMENT-NEVER-CHARGED.
+  // The DB-level CHECK constraint order_installments_cancelled_at_status_consistent
+  // already enforces (status='cancelled') ⟺ (cancelled_at IS NOT NULL), so the
+  // existing status='scheduled' filter would already exclude cancelled rows.
+  // The explicit cancelled_at filter is defense-in-depth against transaction-
+  // visibility lag during a rare race between cancel-trip-booking commit and
+  // this cron query.
   const { data: dueRows, error: dueError } = await supabase
     .from("order_installments")
     .select(`
@@ -371,6 +379,7 @@ serve(async (req: Request) => {
       retry_count, stripe_payment_intent_id
     `)
     .eq("status", "scheduled")
+    .is("cancelled_at", null)
     .lte("due_at", new Date().toISOString())
     .order("due_at", { ascending: true })
     .limit(limit);
@@ -380,7 +389,9 @@ serve(async (req: Request) => {
     return jsonResponse({ error: "due_query_failed", detail: dueError.message }, 500);
   }
 
-  // Query 2: failed-then-retry-eligible installments
+  // Query 2: failed-then-retry-eligible installments.
+  // ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — same belt-and-braces
+  // cancelled_at filter as Query 1 (I-PROPOSED-TR4-CANCELLED-INSTALLMENT-NEVER-CHARGED).
   const { data: retryRows, error: retryError } = await supabase
     .from("order_installments")
     .select(`
@@ -388,6 +399,7 @@ serve(async (req: Request) => {
       retry_count, stripe_payment_intent_id
     `)
     .eq("status", "failed")
+    .is("cancelled_at", null)
     .lte("next_retry_at", new Date().toISOString())
     .lt("retry_count", MAX_RETRY_ATTEMPTS)
     .order("next_retry_at", { ascending: true })

@@ -39,6 +39,10 @@ import { Toast } from "../../../src/components/ui/Toast";
 // ORCH-0874 [Trip surfaces visual parity with Events]: hero + action grid +
 // header right-slot share/moreH + manage menu + cancel-trip CTA.
 import { ActionTile } from "../../../src/components/event/ActionTile";
+// ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — operator-mode RefundPreviewSheet
+// replaces the prior Refund stub in the Money tab per DESIGN_ORCH-0875 §3 (operator
+// path) + spec §3.5.3.
+import { RefundPreviewSheet } from "../../../src/components/trip/RefundPreviewSheet";
 import { TripManageMenu } from "../../../src/components/trip/TripManageMenu";
 import { Button } from "../../../src/components/ui/Button";
 import { useTrip, useSoftDeleteTrip } from "../../../src/hooks/useTrips";
@@ -1091,6 +1095,12 @@ const MoneyTabBody: React.FC<MoneyTabBodyProps> = ({
   retryMutation,
   onEditTripPricing,
 }) => {
+  // ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — orderId of the row whose
+  // cancel sheet is currently open. NULL = no sheet visible. Mutating this
+  // state opens/closes the operator RefundPreviewSheet.
+  const [cancelSheetOrderId, setCancelSheetOrderId] = useState<string | null>(
+    null,
+  );
   if (installmentsQuery.isLoading || moneyData === null) {
     return (
       <View style={{ paddingVertical: spacing.xl, alignItems: "center" }}>
@@ -1287,15 +1297,18 @@ const MoneyTabBody: React.FC<MoneyTabBodyProps> = ({
                   );
                 })}
                 <View style={styles.moneyDivider} />
+                {/* ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — real
+                    "Cancel & refund" CTA replaces the prior coming-in-Tr4 stub.
+                    Opens operator RefundPreviewSheet for this booking. */}
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityState={{ disabled: true }}
-                  accessibilityLabel="Refund coming in Tr4"
+                  accessibilityLabel={`Cancel and refund ${head.buyerName ?? "buyer"}'s booking`}
+                  accessibilityHint="Opens cancellation preview with refund amount + reason field"
                   style={styles.moneyRefundBtn}
-                  disabled
+                  onPress={() => setCancelSheetOrderId(orderId)}
                 >
                   <Text style={styles.moneyRefundBtnText}>
-                    Refund · coming in Tr4
+                    Cancel &amp; refund
                   </Text>
                 </Pressable>
               </>
@@ -1303,6 +1316,21 @@ const MoneyTabBody: React.FC<MoneyTabBodyProps> = ({
           </View>
         );
       })}
+
+      {/* ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — operator-mode
+          RefundPreviewSheet. Mounts once for the whole tab; orderId state
+          drives visible+content. onCancelled invalidates the installments
+          query so the row reflects status=cancelled after success. */}
+      <RefundPreviewSheet
+        visible={cancelSheetOrderId !== null}
+        orderId={cancelSheetOrderId}
+        onClose={() => setCancelSheetOrderId(null)}
+        onCancelled={() => {
+          // Sheet auto-shows success state; close happens on user "Done" tap.
+          // React Query invalidation already wired inside the mutation hook.
+          void installmentsQuery.refetch();
+        }}
+      />
     </>
   );
 };
