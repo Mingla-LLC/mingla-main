@@ -1209,3 +1209,16 @@ jobs:
           node-version: "20"
       - name: Run ORCH-0873 schedule-currency-pinned gate
         run: node .github/scripts/strict-grep/i-proposed-tr3-schedule-currency-pinned-at-publish.mjs
+
+  orch-0864-marketing-composer-v2:
+    name: "ORCH-0864 [Marketing Composer V2]: TenTap single-renderer + body-not-TextInput + insertion-bar-always-visible + token-roundtrip-regex"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0864 Marketing Composer V2 gate (self-test first)
+        run: |
+          node .github/scripts/strict-grep/orch-0864-composer-v2.mjs --self-test
+          node .github/scripts/strict-grep/orch-0864-composer-v2.mjs

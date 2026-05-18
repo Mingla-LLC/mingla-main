@@ -37,7 +37,9 @@ export const ComposerStepWho: React.FC<ComposerStepWhoProps> = ({
       : null;
   return (
     <View style={styles.host}>
-      <Text style={styles.stepLabel} accessibilityRole="header">STEP 1 — WHO</Text>
+      {/* F.8: dropped "STEP 1 — WHO" label per ORCH-0864 compact-layout brief.
+          The Pick-an-audience button is self-explanatory; the step prefix
+          was a V1 wizard affordance not needed in the dense V2 layout. */}
       <Pressable
         onPress={onOpenPicker}
         disabled={disabled === true}
@@ -71,16 +73,12 @@ export const ComposerStepWho: React.FC<ComposerStepWhoProps> = ({
 
 const styles = StyleSheet.create({
   host: {
-    gap: spacing.xs,
-  },
-  stepLabel: {
-    ...typography.labelCap,
-    color: textTokens.tertiary,
+    gap: spacing.xxs,
   },
   picker: {
-    minHeight: 56,
+    minHeight: 48, // F.8: was 56
     paddingHorizontal: spacing.md,
-    borderRadius: radius.lg,
+    borderRadius: radius.md, // F.8: was radius.lg
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: "row",
     alignItems: "center",

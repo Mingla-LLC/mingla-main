@@ -1,24 +1,36 @@
 /**
- * Marketing → Campaigns → Composer (ORCH-0815-B Phase 2).
+ * Marketing → Campaigns → Composer (ORCH-0864 [Marketing Composer V2] Stage F).
  *
- * Single-page composer: Who → What → When → Compliance. Pre-fills the
- * audience from `?audience={kind}:{id}` (I-PROPOSED-BU). Auto-saves the
- * draft every 800ms after the first dirty field. Renders the review
- * sheet on tap, then triggers scheduleSend + (optionally) sendNow.
+ * V2 route: TenTap-backed rich-text body + inline chips + floating
+ * insertion bar + template preview drawer. Replaces V1 step-card layout
+ * with a flex-column where the editor canvas takes the middle.
  *
- * Hard rules enforced here:
- *   - Sub-sheets (AudiencePickerSheet, EventCardInserter, ComposerReviewSheet)
- *     render INSIDE this component (feedback_rn_sub_sheet_must_render_inside_parent.md).
- *   - Keyboard rule: KeyboardAvoidingView wraps the ScrollView so subject /
- *     body inputs never get hidden (feedback_keyboard_never_blocks_input.md).
- *   - Dirty-state back-block: back-listener intercepts unsaved exits and
- *     prompts; sanctioned exits flip a ref disarm-flag first
- *     (feedback_back_listener_disarm_pattern.md).
- *   - randomId from utils — no bare crypto.randomUUID() (Hermes).
- *   - audience= query param parsed via parseAudienceParam (I-PROPOSED-BU).
+ * Preserved from ORCH-0815-B Phase 2 (V1) verbatim:
+ *   - ?audience= pre-fill + ensureBrand/EventBuyersAudience lazy seed
+ *   - ?template= hydration (subject + body)
+ *   - ?draft= rehydration from `campaigns.channel_payload`
+ *   - useComposerDraft 800ms debounced auto-save (now derives
+ *     embedded_events from body string via extractEmbeddedEventIds)
+ *   - useScheduleCampaign (send-now = schedule for now() so cron picks up)
+ *   - Dirty-state back-block per feedback_back_listener_disarm_pattern.md
+ *   - Sub-sheets render INSIDE this component per
+ *     feedback_rn_sub_sheet_must_render_inside_parent.md
+ *   - KeyboardAvoidingView wrap per feedback_keyboard_never_blocks_input.md
+ *
+ * Removed (Stage F deletions):
+ *   - <ComposerStepWhat> + <EmbeddedEventChips> + <EventCardInserter> +
+ *     <EmailPreviewPane> + <Sheet> wrapper around preview
+ *   - bodySelection cursor state (now lives inside useTenTapEditor)
+ *   - embeddedEvents + embeddedEventDetails arrays (derived from body string)
+ *   - showPreview overlay (preview now happens inline via chip render)
+ *
+ * Layout: flex column. KeyboardAvoidingView → Header (fixed) → Toast →
+ * Who (fixed) → optional draft caption → ComposerV2Editor (flex:1,
+ * contains body + InsertionBar + TemplatePreviewDrawer) → When (fixed) →
+ * Compliance (fixed) → Footer (fixed).
  *
  * Cross-references:
- *   - SPEC: Mingla_Artifacts/specs/SPEC_ORCH-0815_B_COMPOSER_AND_SEND.md §5.1
+ *   - SPEC: Mingla_Artifacts/specs/SPEC_ORCH-0864_MARKETING_COMPOSER_V2.md
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -27,40 +39,37 @@ import {
   Alert,
   Keyboard,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
-  type NativeSyntheticEvent,
-  type TextInputSelectionChangeEventData,
 } from "react-native";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 
 import { Toast } from "../../../../src/components/ui/Toast";
 import { ComposerHeader } from "../../../../src/components/marketing/ComposerHeader";
 import { ComposerStepWho } from "../../../../src/components/marketing/ComposerStepWho";
-import {
-  ComposerStepWhat,
-  insertVariableAtCursor,
-  type PersonalizationToken,
-} from "../../../../src/components/marketing/ComposerStepWhat";
-import { ComposerStepWhen, type SendMode } from "../../../../src/components/marketing/ComposerStepWhen";
+// ComposerStepWhen removed from layout in F.9 (segmented control gone;
+// Send-now lives in ComposerFooter left CTA). Keep SendMode type import.
+import { type SendMode } from "../../../../src/components/marketing/ComposerStepWhen";
 import { ComposerFooter } from "../../../../src/components/marketing/ComposerFooter";
+import { EmailPreviewPane } from "../../../../src/components/marketing/EmailPreviewPane";
+import { SchedulePickerSheet } from "../../../../src/components/marketing/ComposerV2/SchedulePickerSheet";
 import {
   AudiencePickerSheet,
   type AudienceOption,
 } from "../../../../src/components/marketing/AudiencePickerSheet";
-import {
-  EventCardInserter,
-  type EventCardOption,
-} from "../../../../src/components/marketing/EventCardInserter";
-import { EmbeddedEventChips } from "../../../../src/components/marketing/EmbeddedEventChips";
-import { EmailPreviewPane } from "../../../../src/components/marketing/EmailPreviewPane";
 import { ComposerReviewSheet } from "../../../../src/components/marketing/ComposerReviewSheet";
 import { ComposerSentConfirmation } from "../../../../src/components/marketing/ComposerSentConfirmation";
-import { Sheet } from "../../../../src/components/ui/Sheet";
+import {
+  ComposerV2Editor,
+  type ComposerV2EditorHandle,
+} from "../../../../src/components/marketing/ComposerV2/ComposerV2Editor";
+// F.9: InsertionBar + TemplatePreviewDrawer are now mounted INSIDE
+// ComposerV2Editor (merged toolbar position requires adjacency to
+// subject + body). compose.tsx no longer imports them directly.
 import {
   canvas,
   spacing,
@@ -73,6 +82,8 @@ import {
 } from "../../../../src/hooks/marketing/useResolveAudience";
 import { useScheduleCampaign } from "../../../../src/hooks/marketing/useScheduleCampaign";
 import { useComposerDraft } from "../../../../src/hooks/marketing/useComposerDraft";
+import { useStarterTemplates } from "../../../../src/hooks/marketing/useStarterTemplates";
+import { useUserTemplates } from "../../../../src/hooks/marketing/useUserTemplates";
 import {
   createDraft,
   ensureBrandBuyersAudience,
@@ -81,7 +92,8 @@ import {
   updateDraft,
 } from "../../../../src/services/marketing/marketingCampaignService";
 import { getTemplate } from "../../../../src/services/marketing/marketingTemplateService";
-import { supabase } from "../../../../src/services/supabase";
+import { extractEmbeddedEventIds } from "../../../../src/services/marketing/tenTapTokenBridge";
+import { useBrandEvents } from "../../../../src/services/marketing/brandEvents";
 import type { MarketingChannelKind } from "../../../../src/components/marketing/ChannelTabs";
 import type { PreviewVariables } from "../../../../src/services/marketing/marketingRenderingService";
 import { useCurrentBrand } from "../../../../src/hooks/useCurrentBrand";
@@ -92,8 +104,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   const navigation = useNavigation();
   const params = useLocalSearchParams<{ audience?: string; draft?: string; template?: string }>();
   // Memoize so the pre-fill useEffect's dep array doesn't re-trigger on every
-  // render — `parseAudienceParam` returns a new object literal each call (QA
-  // finding P2-5).
+  // render — parseAudienceParam returns a new object literal each call.
   const audienceParam = useMemo(
     () =>
       parseAudienceParam(
@@ -120,33 +131,44 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   const [channel, setChannel] = useState<MarketingChannelKind>("email");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
-  const [bodySelectionStart, setBodySelectionStart] = useState(0);
-  const [bodySelectionEnd, setBodySelectionEnd] = useState(0);
   const [audienceId, setAudienceId] = useState<string | null>(null);
   const [audienceName, setAudienceName] = useState<string | null>(null);
-  const [embeddedEvents, setEmbeddedEvents] = useState<string[]>([]);
-  // Display-only metadata for the EmbeddedEventChips row. Mirrors
-  // `embeddedEvents` (the persisted IDs array) with the event title +
-  // date_label so the chip can show human-readable info. Hydrated on
-  // draft restore via a one-shot supabase query, and on first insert
-  // from the EventCardOption returned by the picker.
-  const [embeddedEventDetails, setEmbeddedEventDetails] = useState<
-    Array<{ id: string; title: string; date_label: string | null }>
-  >([]);
   const [sendMode, setSendMode] = useState<SendMode>("now");
   const [scheduledForIso, setScheduledForIso] = useState("");
   const [campaignId, setCampaignId] = useState<string | null>(null);
   const [isDirty, setIsDirty] = useState(false);
   const [showAudiencePicker, setShowAudiencePicker] = useState(false);
-  const [showEventInserter, setShowEventInserter] = useState(false);
-  const [showPreview, setShowPreview] = useState(false);
   const [showReview, setShowReview] = useState(false);
+  // F.10b: preview modal + schedule-picker sheet — both live in compose.tsx
+  // so the footer buttons can drive them directly.
+  const [showPreview, setShowPreview] = useState(false);
+  const [showSchedulePicker, setShowSchedulePicker] = useState(false);
   const [showSentConfirmation, setShowSentConfirmation] = useState(false);
   const [isSendNowConfirmation, setIsSendNowConfirmation] = useState(false);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
 
   // Sanctioned-exit disarm flag for back-listener.
   const sanctionedExitRef = useRef(false);
+
+  // F.9: editor owns its own InsertionBar + TemplatePreviewDrawer state
+  // internally. compose.tsx only keeps the imperative handle for
+  // template-apply and (legacy) insert helpers — but the merged-toolbar
+  // taps now route directly inside the editor too. Handle is retained as
+  // an escape hatch for future programmatic actions.
+  const editorHandleRef = useRef<ComposerV2EditorHandle>(null);
+
+  // Brand events for the inline event scroller inside the V2 editor.
+  const brandEventsQuery = useBrandEvents(brandId);
+  const brandEvents = brandEventsQuery.data ?? [];
+
+  // Templates for the V2 template preview drawer (starter + user merged).
+  const starterTemplatesQuery = useStarterTemplates();
+  const userTemplatesQuery = useUserTemplates(accountId);
+  const templates = useMemo(() => {
+    const starters = starterTemplatesQuery.data ?? [];
+    const userOnes = userTemplatesQuery.data ?? [];
+    return [...starters, ...userOnes];
+  }, [starterTemplatesQuery.data, userTemplatesQuery.data]);
 
   // Hydrate audience from query param (lazy: ensures system audience row exists).
   useEffect(() => {
@@ -186,8 +208,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
     };
   }, [audienceParam, accountId, brandId, audienceId]);
 
-  // Hydrate from ?template=[id] (ORCH-0863). Draft restore wins when both
-  // are present; only fires when there's no in-flight draft hydration.
+  // Hydrate from ?template=[id]. Draft restore wins when both present.
   useEffect(() => {
     if (templateId === null || draftId !== null) return;
     let cancelled = false;
@@ -227,7 +248,6 @@ export default function ComposeCampaignRoute(): React.ReactElement {
         if (row.channel_payload.kind === "email") {
           setSubject(row.channel_payload.subject);
           setBody(row.channel_payload.body_html);
-          setEmbeddedEvents(row.channel_payload.embedded_events ?? []);
         }
         if (row.scheduled_for !== null) {
           setScheduledForIso(row.scheduled_for);
@@ -248,70 +268,19 @@ export default function ComposeCampaignRoute(): React.ReactElement {
     };
   }, [draftId]);
 
-  // Reconcile embeddedEventDetails with embeddedEvents — fetches titles for
-  // any IDs that don't yet have hydrated details. Triggered when draft restore
-  // populates `embeddedEvents` from the persisted channel_payload, AND
-  // defensively when anything else mutates the ids list.
-  useEffect(() => {
-    if (embeddedEvents.length === 0) {
-      if (embeddedEventDetails.length !== 0) setEmbeddedEventDetails([]);
-      return;
-    }
-    const knownIds = new Set(embeddedEventDetails.map((e) => e.id));
-    const missing = embeddedEvents.filter((id) => !knownIds.has(id));
-    if (missing.length === 0) {
-      // Filter out details whose id has been removed from embeddedEvents.
-      const persistedIds = new Set(embeddedEvents);
-      if (embeddedEventDetails.some((e) => !persistedIds.has(e.id))) {
-        setEmbeddedEventDetails((prev) =>
-          prev.filter((e) => persistedIds.has(e.id)),
-        );
-      }
-      return;
-    }
-    let cancelled = false;
-    (async () => {
-      const { data, error } = await supabase
-        .from("events_with_master_date_view")
-        .select("id, title, master_start_at")
-        .in("id", missing);
-      if (cancelled || error || data === null) return;
-      const fetched = (data as Array<{
-        id: string;
-        title: string | null;
-        master_start_at: string | null;
-      }>).map((r) => ({
-        id: r.id,
-        title: r.title ?? "Untitled event",
-        date_label: r.master_start_at !== null
-          ? new Date(r.master_start_at).toLocaleDateString(undefined, {
-              weekday: "short",
-              month: "short",
-              day: "numeric",
-            })
-          : null,
-      }));
-      setEmbeddedEventDetails((prev) => {
-        const existingIds = new Set(prev.map((e) => e.id));
-        const newOnes = fetched.filter((e) => !existingIds.has(e.id));
-        return [...prev, ...newOnes];
-      });
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [embeddedEvents, embeddedEventDetails]);
-
-  // Auto-save draft (debounced).
+  // Auto-save draft (debounced via useComposerDraft). embedded_events is
+  // derived from the body string via extractEmbeddedEventIds — Stage F
+  // removed the parallel embeddedEvents state in favor of single-source body.
   const flushDraft = useCallback(
     async () => {
       if (accountId === null || brandId === null || audienceId === null) return;
+      const embeddedEventIds = extractEmbeddedEventIds(body);
       const payload = {
         kind: "email" as const,
         subject,
         body_html: body,
         body_text: stripHtml(body),
-        embedded_events: embeddedEvents,
+        embedded_events: embeddedEventIds,
       };
       try {
         if (campaignId === null) {
@@ -339,16 +308,42 @@ export default function ComposeCampaignRoute(): React.ReactElement {
         );
       }
     },
-    [accountId, brandId, audienceId, subject, body, embeddedEvents, campaignId, templateId],
+    [accountId, brandId, audienceId, subject, body, campaignId, templateId],
   );
 
   useComposerDraft({
-    state: { subject, body, embeddedEvents, audienceId },
+    state: { subject, body, embeddedEvents: extractEmbeddedEventIds(body), audienceId },
     isDirty,
     flush: async () => {
       await flushDraft();
     },
   });
+
+  // F.10b: core validation for footer buttons — audience + subject + body
+  // are the minimum needed BEFORE the user opens Schedule (date-time picker)
+  // or Send Now (review sheet). The schedule-time check is enforced inside
+  // the picker + review sheet, not at the footer level.
+  const coreFooterDisabled = useMemo<boolean>(() => {
+    return (
+      audienceId === null ||
+      subject.trim().length === 0 ||
+      body.trim().length === 0
+    );
+  }, [audienceId, subject, body]);
+
+  // F.10c: human-readable "what's missing" message for the toast banner
+  // that fires when an operator taps Send Now / Schedule before filling
+  // the required fields. Returns null when everything is filled.
+  const missingFieldsLabel = useCallback((): string | null => {
+    const missing: string[] = [];
+    if (audienceId === null) missing.push("an audience");
+    if (subject.trim().length === 0) missing.push("a subject");
+    if (body.trim().length === 0) missing.push("a message");
+    if (missing.length === 0) return null;
+    if (missing.length === 1) return `Pick ${missing[0]} before sending.`;
+    if (missing.length === 2) return `Add ${missing[0]} and ${missing[1]} first.`;
+    return `Add ${missing[0]}, ${missing[1]}, and ${missing[2]} first.`;
+  }, [audienceId, subject, body]);
 
   // Validation — Review CTA disabled until required fields are present.
   const validationIssues = useMemo<string[]>(() => {
@@ -369,14 +364,6 @@ export default function ComposeCampaignRoute(): React.ReactElement {
 
   const scheduleMutation = useScheduleCampaign({
     onSuccess: () => {
-      // Both "Schedule" and "Send now" rely on cron to deliver — Send now
-      // simply schedules for `scheduled_for=now()` so the next cron tick
-      // (within 60s) picks it up. The composer no longer invokes
-      // marketing-send directly; that direct-invoke path collided with
-      // `--no-verify-jwt` deploy semantics (the user JWT wasn't reaching
-      // the function reliably, causing the RLS-gated ownership check to
-      // 403 and surfacing a misleading "Send failed" banner even though
-      // cron still delivered ~30s later).
       sanctionedExitRef.current = true;
       setShowReview(false);
       setIsSendNowConfirmation(sendMode === "now");
@@ -393,12 +380,11 @@ export default function ComposeCampaignRoute(): React.ReactElement {
 
   const handleConfirmSchedule = useCallback(() => {
     if (campaignId === null) return;
-    // Drop the keyboard before the confirmation overlay paints so the
-    // overlay isn't sharing the screen with a half-collapsed keyboard.
     Keyboard.dismiss();
     const isoForServer = sendMode === "now"
       ? new Date().toISOString()
       : new Date(scheduledForIso).toISOString();
+    const embeddedEventIds = extractEmbeddedEventIds(body);
     scheduleMutation.mutate({
       campaign_id: campaignId,
       scheduled_for: isoForServer,
@@ -408,19 +394,16 @@ export default function ComposeCampaignRoute(): React.ReactElement {
         subject,
         body_html: body,
         body_text: stripHtml(body),
-        embedded_events: embeddedEvents,
+        embedded_events: embeddedEventIds,
       },
     });
-  }, [campaignId, sendMode, scheduledForIso, subject, body, embeddedEvents, scheduleMutation]);
+  }, [campaignId, sendMode, scheduledForIso, subject, body, scheduleMutation]);
 
   // Back-block — intercept exits if dirty.
   useEffect(() => {
     const unsubscribe = navigation.addListener("beforeRemove" as never, (event: unknown) => {
       const ev = event as { preventDefault: () => void; data?: { action?: unknown } };
       if (sanctionedExitRef.current) return;
-      // Only intercept on unsaved edits. A saved-clean state (campaignId set,
-      // isDirty false) has nothing to prompt about — let the user navigate
-      // freely (QA finding P2-3).
       if (!isDirty) return;
       ev.preventDefault?.();
       Alert.alert(
@@ -452,7 +435,8 @@ export default function ComposeCampaignRoute(): React.ReactElement {
     return unsubscribe;
   }, [navigation, isDirty, campaignId, flushDraft, router]);
 
-  // Audience preview variables for the EmailPreviewPane.
+  // Audience preview variables — fed to the V2 editor's template-drawer
+  // live-preview pane via the editor's props.
   const previewVariables = useMemo<PreviewVariables>(() => {
     const firstBuyerName = resolvedAudience.data?.rows[0]?.display_name ?? null;
     const firstName = firstBuyerName !== null
@@ -484,66 +468,13 @@ export default function ComposeCampaignRoute(): React.ReactElement {
     await flushDraft();
   }, [flushDraft]);
 
-  const handleInsertEventCard = useCallback((event: EventCardOption) => {
-    const token = `{{event:${event.id}}}`;
-    setBody((prev) => {
-      // Guard against double-insert of the same event — the operator probably
-      // didn't mean to embed the same card twice; the chip row reflects single
-      // membership so the body should too.
-      if (prev.includes(token)) return prev;
-      const insertAt = Math.min(bodySelectionEnd, prev.length);
-      const safeInsertAt = Math.max(0, Math.min(insertAt, prev.length));
-      return prev.slice(0, safeInsertAt) + token + prev.slice(safeInsertAt);
-    });
-    setEmbeddedEvents((prev) => (prev.includes(event.id) ? prev : [...prev, event.id]));
-    setEmbeddedEventDetails((prev) =>
-      prev.some((e) => e.id === event.id)
-        ? prev
-        : [...prev, { id: event.id, title: event.title, date_label: event.date_label }],
-    );
-    setIsDirty(true);
-  }, [bodySelectionEnd]);
-
-  const handleRemoveEmbeddedEvent = useCallback((eventId: string) => {
-    // Drop the matching `{{event:<uuid>}}` token from the body, then collapse
-    // any orphan blank lines the removal left behind so the body stays clean.
-    setBody((prev) => {
-      // Escape the UUID for a safe RegExp — UUIDs don't contain special chars
-      // but defensive escaping costs nothing.
-      const escaped = eventId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const tokenRe = new RegExp(`\\{\\{event:${escaped}\\}\\}\\n*`, "g");
-      return prev.replace(tokenRe, "").replace(/\n{3,}/g, "\n\n");
-    });
-    setEmbeddedEvents((prev) => prev.filter((id) => id !== eventId));
-    setEmbeddedEventDetails((prev) => prev.filter((e) => e.id !== eventId));
-    setIsDirty(true);
-  }, []);
-
-  const handleInsertVariable = useCallback((token: PersonalizationToken) => {
-    setBody((prev) => {
-      const { body: next } = insertVariableAtCursor(
-        prev,
-        bodySelectionStart,
-        bodySelectionEnd,
-        token,
-      );
-      return next;
-    });
-    setIsDirty(true);
-  }, [bodySelectionStart, bodySelectionEnd]);
-
   const handleSelectAudience = useCallback(async (option: AudienceOption) => {
     setAudienceName(option.name);
     setIsDirty(true);
-    // Fast path: the marketing_audiences row already exists from a prior
-    // navigation via the Brand/Event Blasts CTAs.
     if (option.existing_audience_id !== null) {
       setAudienceId(option.existing_audience_id);
       return;
     }
-    // Slow path: this is the operator's first time picking this kind+target
-    // from the picker. Lazy-seed the marketing_audiences row now so the
-    // composer can save drafts + schedule sends against a real audience_id.
     if (accountId === null || brandId === null) return;
     try {
       const id = option.kind === "brand_buyers"
@@ -576,14 +507,6 @@ export default function ComposeCampaignRoute(): React.ReactElement {
     setIsDirty(true);
   }, []);
 
-  const onSelectionChange = useCallback(
-    (event: NativeSyntheticEvent<TextInputSelectionChangeEventData>) => {
-      setBodySelectionStart(event.nativeEvent.selection.start);
-      setBodySelectionEnd(event.nativeEvent.selection.end);
-    },
-    [],
-  );
-
   const scheduledLabel = sendMode === "now"
     ? "Send immediately"
     : scheduledForIso.length > 0
@@ -607,10 +530,6 @@ export default function ComposeCampaignRoute(): React.ReactElement {
     );
   }
 
-  // Reference selection state so it's read (suppresses unused warning while
-  // keeping it available for future cursor-aware token insertion).
-  void bodySelectionStart;
-
   return (
     <View style={styles.host}>
       <ComposerHeader
@@ -619,7 +538,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
         onSaveDraft={() => {
           void handleSaveDraft();
         }}
-        saveDraftDisabled={!isDirty && campaignId !== null}
+        saveDraftDisabled={!isDirty}
       />
       <Toast
         visible={errorBanner !== null}
@@ -631,11 +550,11 @@ export default function ComposeCampaignRoute(): React.ReactElement {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={styles.kavHost}
       >
-        <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
+        {/* Stage F.7: NO ScrollView around the editor — pell's WebView
+            inside a ScrollView blocks taps on iOS (RN WebView gesture
+            conflict). Flex column instead: Who fixed, Editor flex:1,
+            When+Compliance fixed below editor. */}
+        <View style={styles.whoRow}>
           <ComposerStepWho
             audienceName={audienceName}
             reachableEmail={reach?.reachable_email ?? null}
@@ -643,75 +562,64 @@ export default function ComposeCampaignRoute(): React.ReactElement {
             onOpenPicker={() => setShowAudiencePicker(true)}
             disabled={brandId === null}
           />
-          {isDirty && audienceId === null && brandId !== null ? (
-            <View style={styles.draftCaption}>
-              <Text style={styles.draftCaptionText}>
-                Pick an audience above to save your draft.
-              </Text>
-            </View>
-          ) : null}
+          {/* F.9m: "Pick an audience above to save your draft." caption
+              removed per operator directive — unnecessary noise. The
+              Save-draft button being disabled (header) communicates the
+              same state without taking layout space. */}
+        </View>
 
-          <ComposerStepWhat
-            channel={channel}
-            onChannelChange={(kind) => {
-              setChannel(kind);
-              setIsDirty(true);
-            }}
-            subject={subject}
-            onSubjectChange={onSubjectChange}
-            body={body}
-            onBodyChange={onBodyChange}
-            onSelectionChange={onSelectionChange}
-            onInsertEventCard={() => setShowEventInserter(true)}
-            onOpenPreview={() => setShowPreview(true)}
-            onInsertVariable={handleInsertVariable}
-          />
+        <ComposerV2Editor
+          ref={editorHandleRef}
+          initialBodyHtml={body}
+          subject={subject}
+          onSubjectChange={onSubjectChange}
+          onBodyChange={onBodyChange}
+          editable={!scheduleMutation.isPending}
+          brandEvents={brandEvents}
+          templates={templates}
+          previewVariables={previewVariables}
+          brandName={brandName}
+          currentDraftIsDirty={isDirty}
+          onErrorToast={(msg) => setErrorBanner(msg)}
+        />
 
-          <EmbeddedEventChips
-            events={embeddedEventDetails}
-            onRemove={handleRemoveEmbeddedEvent}
-          />
-
-          <ComposerStepWhen
-            mode={sendMode}
-            onModeChange={(mode) => {
-              setSendMode(mode);
-              setIsDirty(true);
-            }}
-            scheduledForIso={scheduledForIso}
-            onScheduledForChange={(value) => {
-              setScheduledForIso(value);
-              setIsDirty(true);
-            }}
-          />
-
-          {/* Compact compliance notice — replaces the verbose Step 4 card
-              per operator feedback. The brand From line, reply-to,
-              unsubscribe behaviour, and address are all auto-handled. */}
-          <View style={styles.complianceNotice}>
-            <Text style={styles.complianceText}>
-              From <Text style={styles.complianceStrong}>{brandName ?? "your brand"}</Text>
-              {" · "}Unsubscribe link auto-added{" · "}
-              <Text style={styles.complianceMuted}>
-                {brandAddress !== null ? brandAddress : "Set brand address in profile"}
-              </Text>
-            </Text>
-          </View>
-        </ScrollView>
-
+        {/* F.10b: 3-button footer (Preview / Send Now / Schedule).
+            - Preview opens the EmailPreviewPane modal (inbox view).
+            - Send Now sets sendMode=now and opens the review sheet (NOT
+              immediate send — operator confirms inside the review).
+            - Schedule opens the date+time picker, then on continue sets
+              sendMode=schedule + scheduledForIso and opens the review
+              sheet. The review sheet's existing "Schedule" CTA fires
+              handleConfirmSchedule. */}
         <ComposerFooter
-          onSaveDraft={() => {
-            void handleSaveDraft();
+          onPreview={() => setShowPreview(true)}
+          onSendNow={() => {
+            // F.10c hard-guard: refuse to open the review sheet if the
+            // core fields aren't filled. Mirrors the disabled state on
+            // the button but defends against any case where the disabled
+            // visual slips (e.g. rapid taps mid-state-update).
+            const missing = missingFieldsLabel();
+            if (missing !== null) {
+              setErrorBanner(missing);
+              return;
+            }
+            setSendMode("now");
+            setShowReview(true);
           }}
-          saveDraftDisabled={!isDirty && campaignId !== null}
-          saveDraftLabel="Save draft"
-          onReview={() => setShowReview(true)}
-          reviewDisabled={validationIssues.length > 0}
+          sendNowDisabled={coreFooterDisabled}
+          onSchedule={() => {
+            const missing = missingFieldsLabel();
+            if (missing !== null) {
+              setErrorBanner(missing);
+              return;
+            }
+            setShowSchedulePicker(true);
+          }}
+          scheduleDisabled={coreFooterDisabled}
           submitting={scheduleMutation.isPending}
         />
 
-        {/* Sub-sheets MUST render inside this parent KeyboardAvoidingView,
-            which is itself inside the route. See
+        {/* Sub-sheets MUST render inside this parent KeyboardAvoidingView per
             feedback_rn_sub_sheet_must_render_inside_parent.md. */}
         <AudiencePickerSheet
           visible={showAudiencePicker}
@@ -721,31 +629,6 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           onClose={() => setShowAudiencePicker(false)}
           onSelect={handleSelectAudience}
         />
-        <EventCardInserter
-          visible={showEventInserter}
-          brandId={brandId}
-          onClose={() => setShowEventInserter(false)}
-          onSelect={handleInsertEventCard}
-        />
-        <Sheet
-          visible={showPreview}
-          onClose={() => setShowPreview(false)}
-          snapPoint="full"
-        >
-          <EmailPreviewPane
-            subject={subject}
-            bodyHtml={body}
-            variables={previewVariables}
-            brandName={brandName}
-            brandHeaderImageUrl={
-              currentBrand !== null &&
-                currentBrand.coverMediaType !== "video"
-                ? currentBrand.coverMediaUrl ?? null
-                : null
-            }
-            embeddedEvents={embeddedEventDetails}
-          />
-        </Sheet>
         <ComposerReviewSheet
           visible={showReview}
           audienceName={audienceName}
@@ -758,6 +641,71 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           onClose={() => setShowReview(false)}
           onConfirm={handleConfirmSchedule}
         />
+        <SchedulePickerSheet
+          visible={showSchedulePicker}
+          initialIso={scheduledForIso}
+          onClose={() => setShowSchedulePicker(false)}
+          onContinue={(iso) => {
+            // F.10b race fix: iOS won't present a second Modal while the
+            // first one is mid-dismiss. Closing the picker and opening
+            // the review sheet in the same state batch leaves the UI
+            // frozen behind an invisible backdrop. Defer the review open
+            // by ~350ms — past the Sheet primitive's dismiss animation.
+            setSendMode("schedule");
+            setScheduledForIso(iso);
+            setShowSchedulePicker(false);
+            setTimeout(() => {
+              setShowReview(true);
+            }, 350);
+          }}
+        />
+        {/* F.10b: Inbox preview modal — renders the email exactly as the
+            buyer will receive it (FROM/SUBJECT chrome, brand banner OR
+            Mingla logo, variable-substituted body, inline event cards,
+            unsubscribe footer). */}
+        <Modal
+          visible={showPreview}
+          animationType="slide"
+          presentationStyle="pageSheet"
+          onRequestClose={() => setShowPreview(false)}
+        >
+          <View style={styles.previewModal}>
+            <View style={styles.previewHeader}>
+              <Text style={styles.previewTitle}>Inbox preview</Text>
+              <Pressable
+                onPress={() => setShowPreview(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Close preview"
+                hitSlop={8}
+                style={({ pressed }) => [
+                  styles.previewDone,
+                  pressed ? styles.previewDonePressed : null,
+                ]}
+              >
+                <Text style={styles.previewDoneLabel}>Done</Text>
+              </Pressable>
+            </View>
+            <EmailPreviewPane
+              subject={subject}
+              bodyHtml={body}
+              variables={previewVariables}
+              brandName={brandName}
+              brandHeaderImageUrl={
+                currentBrand?.coverMediaType !== "video"
+                  ? (currentBrand?.coverMediaUrl ?? null)
+                  : null
+              }
+              embeddedEvents={brandEvents.filter((e) =>
+                extractEmbeddedEventIds(body).includes(e.id),
+              )}
+            />
+          </View>
+        </Modal>
+        {/* F.9: TemplatePreviewDrawer and InsertionBar moved back inside
+            ComposerV2Editor (merged toolbar position requires them
+            adjacent to subject + body). compose.tsx no longer mounts
+            them directly. */}
+
         <ComposerSentConfirmation
           visible={showSentConfirmation}
           isSendNow={isSendNowConfirmation}
@@ -777,6 +725,9 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   );
 }
 
+// V1's body_text was derived via the same stripHtml regex. Stage F keeps it
+// as a local helper so the token-string → plain-text fallback is identical to
+// what marketing-send reads on the server side.
 function stripHtml(input: string): string {
   return input.replace(/<[^>]+>/g, "");
 }
@@ -789,46 +740,52 @@ const styles = StyleSheet.create({
   kavHost: {
     flex: 1,
   },
-  scrollContent: {
-    paddingHorizontal: spacing.md,
-    paddingBottom: 140,
-    gap: spacing.lg,
-  },
   centerHost: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
   },
-  complianceNotice: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: 8,
-    backgroundColor: "rgba(255, 255, 255, 0.04)",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(255, 255, 255, 0.08)",
-  },
-  complianceText: {
-    ...typography.bodySm,
-    color: textTokens.tertiary,
-  },
-  complianceStrong: {
-    color: textTokens.primary,
-    fontWeight: "600",
-  },
-  complianceMuted: {
-    color: textTokens.tertiary,
-    fontStyle: "italic",
-  },
-  draftCaption: {
+  // F.9b: even-rhythm spacing — every section gets paddingV: spacing.xs.
+  whoRow: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
-    borderRadius: 8,
-    backgroundColor: "rgba(245, 158, 11, 0.12)",
-    borderLeftWidth: 3,
-    borderLeftColor: "#f59e0b",
+    gap: spacing.xxs,
   },
-  draftCaptionText: {
-    ...typography.bodySm,
-    color: textTokens.primary,
+  // F.10b: Preview modal chrome — light "inbox" canvas behind the sheet,
+  // white header with title + orange Done button. EmailPreviewPane fills
+  // the rest.
+  previewModal: {
+    flex: 1,
+    backgroundColor: "#F5F5F7",
+  },
+  previewHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: "#FFFFFF",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#ECECEE",
+  },
+  previewTitle: {
+    ...typography.bodyLg,
+    color: "#0F1115",
+    fontWeight: "700",
+  },
+  previewDone: {
+    minHeight: 36,
+    paddingHorizontal: spacing.md,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  previewDonePressed: {
+    opacity: 0.6,
+  },
+  previewDoneLabel: {
+    ...typography.body,
+    color: "#F47C20",
+    fontWeight: "700",
   },
 });

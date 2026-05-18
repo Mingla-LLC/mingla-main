@@ -43,6 +43,9 @@ export const ComposerHeader: React.FC<ComposerHeaderProps> = ({
         <Icon name="arrowL" size={24} color={textTokens.primary} />
       </Pressable>
       <Text style={styles.title} numberOfLines={1}>{title}</Text>
+      {/* F.9: Save-draft restored to header (canonical placement per
+          operator directive). Bottom row reserved for Send-now /
+          Review-&-schedule CTAs only. */}
       <Pressable
         onPress={onSaveDraft}
         disabled={saveDraftDisabled === true}
@@ -74,13 +77,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    minHeight: 56,
+    paddingVertical: spacing.xs, // F.9b even rhythm
+    minHeight: 44,
     gap: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth, // F.9b: separator
+    borderBottomColor: "rgba(255, 255, 255, 0.06)",
   },
   iconBtn: {
-    width: 44,
-    height: 44,
+    width: 36, // F.8: was 44 (still hits 44pt total with hitSlop)
+    height: 36,
     borderRadius: radius.full,
     alignItems: "center",
     justifyContent: "center",

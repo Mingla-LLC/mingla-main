@@ -1,0 +1,76 @@
+# ORCH-0864 [Marketing Composer V2] — Android live-fire flow.
+#
+# Same assertions as the iOS variant — single shared TenTap WebView so
+# behaviour is identical at the asserted level. Separate flow file because
+# the device UDID is different and Maestro's `--device` flag is per-run.
+#
+# Run after Stage H EAS Android build:
+#   ~/.maestro/bin/maestro --device <android-emu-id> \
+#     test mingla-business/maestro/orch-0864-composer-v2-android.yaml
+#
+# Asserts: SC-15-Android (Android-specific keyboard avoidance), SC-10
+# (bar always visible above the Android soft keyboard).
+appId: com.mingla.business
+---
+- launchApp:
+    clearState: false
+    permissions:
+      notifications: allow
+
+- tapOn:
+    text: "Marketing"
+- tapOn:
+    text: "Campaigns"
+- tapOn:
+    text: "New campaign"
+- assertVisible: "New campaign"
+
+# Bar visible on cold composer load.
+- assertVisible:
+    id: "composer-v2-insertion-bar"
+- assertVisible:
+    id: "composer-v2-pill-event"
+- assertVisible:
+    id: "composer-v2-pill-personalize"
+- assertVisible:
+    id: "composer-v2-pill-overflow"
+
+- tapOn:
+    text: "Pick an audience"
+    optional: true
+- tapOn:
+    text: "All brand buyers"
+    optional: true
+
+- tapOn:
+    id: "composer-v2-pill-event"
+- tapOn:
+    index: 0
+    id: "composer-v2-event-card-.*"
+
+- tapOn:
+    id: "composer-v2-subject"
+- inputText: "Save your seat!"
+
+- tapOn:
+    id: "composer-v2-pill-personalize"
+- tapOn:
+    id: "composer-v2-token-first_name"
+
+# Android-specific: keyboard listener + 16pt margin keep bar above
+# soft keyboard. After typing, bar must still be findable.
+- inputText: "  — looking forward to seeing you there."
+- assertVisible:
+    id: "composer-v2-insertion-bar"
+
+- tapOn:
+    text: "Save draft"
+
+# Round-trip — open Campaigns, reopen saved draft.
+- back
+- tapOn:
+    text: "Save your seat!"
+    optional: true
+- assertVisible:
+    id: "composer-v2-insertion-bar"
+- takeScreenshot: orch-0864-roundtrip-android.png

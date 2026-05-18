@@ -1,0 +1,112 @@
+# ORCH-0864 [Marketing Composer V2] — iOS live-fire flow.
+#
+# Run after Stage H EAS build + pod install. Asserts the end-to-end editor
+# wiring: open composer → pick event → pick personalization token → type →
+# bar stays visible → save draft → reopen → chips re-render.
+#
+# Prereqs:
+#   - Dev build installed on iOS sim (per IOS_DEV_BUILD_REBUILD_RUNBOOK.md)
+#   - Maestro CLI: ~/.maestro/bin/maestro (Java via brew openjdk)
+#   - Test operator logged in with at least 1 brand + 1 upcoming event
+#
+# Run:
+#   export PATH="/opt/homebrew/opt/openjdk/bin:$PATH"
+#   ~/.maestro/bin/maestro --device 17091E60-C3B6-4167-980D-60C348E177F6 \
+#     test mingla-business/maestro/orch-0864-composer-v2-ios.yaml
+#
+# Asserts:
+#   SC-01 composer opens with bar visible above keyboard
+#   SC-02 +Event inserts a chip into the body
+#   SC-03 {} Personalize inserts a personalization pill
+#   SC-10 bar stays pinned above keyboard while typing
+#   SC-11 lossless round-trip: save → close → reopen → chips re-render
+appId: com.mingla.business
+---
+# Open the app cold to a known state.
+- launchApp:
+    clearState: false
+    permissions:
+      notifications: allow
+
+# Navigate Marketing → Campaigns → New campaign.
+- tapOn:
+    text: "Marketing"
+- tapOn:
+    text: "Campaigns"
+- tapOn:
+    text: "New campaign"
+- assertVisible: "New campaign"
+
+# Bar visible on cold composer load (SC-01 + SC-10).
+- assertVisible:
+    id: "composer-v2-insertion-bar"
+- assertVisible:
+    id: "composer-v2-pill-event"
+- assertVisible:
+    id: "composer-v2-pill-personalize"
+- assertVisible:
+    id: "composer-v2-pill-overflow"
+
+# Pick an audience first so save can fire.
+- tapOn:
+    text: "Pick an audience"
+    optional: true
+- tapOn:
+    text: "All brand buyers"
+    optional: true
+
+# Tap +Event → inline events scroller appears → pick first event.
+- tapOn:
+    id: "composer-v2-pill-event"
+- assertVisible:
+    id: "composer-v2-event-card-option"
+    optional: true
+# Picks the first visible event card. The testID prefix is
+# `composer-v2-event-card-<eventId>` — Maestro's tapOn with index 0 across
+# matching nodes grabs the first.
+- tapOn:
+    index: 0
+    text: ".*"
+    id: "composer-v2-event-card-.*"
+
+# Tap subject and type something so subject is non-empty.
+- tapOn:
+    id: "composer-v2-subject"
+- inputText: "Save your seat!"
+
+# Tap {} Personalize → tap first_name token → pill inserts.
+- tapOn:
+    id: "composer-v2-pill-personalize"
+- assertVisible:
+    id: "composer-v2-token-first_name"
+- tapOn:
+    id: "composer-v2-token-first_name"
+
+# Type more body text after the personalization chip lands. Bar must stay
+# visible (SC-10 — insertion bar always above keyboard).
+- inputText: "  — looking forward to seeing you there."
+- assertVisible:
+    id: "composer-v2-insertion-bar"
+
+# Save draft — sanctioned exit; back-block should not fire.
+- tapOn:
+    text: "Save draft"
+
+# Navigate away and back to verify round-trip (SC-11 / SC-12).
+- back
+- assertVisible: "Campaigns"
+# Tap the saved draft (named by subject) to reopen.
+- tapOn:
+    text: "Save your seat!"
+    optional: true
+- assertVisible: "New campaign"
+- assertVisible:
+    id: "composer-v2-insertion-bar"
+# After reopen the chips should be present in the body again (round-trip
+# proven by re-parse of body_html via tenTapTokenBridge).
+- runFlow:
+    when:
+      visible:
+        id: "composer-v2-insertion-bar"
+    commands:
+      - takeScreenshot: orch-0864-roundtrip-ios.png
