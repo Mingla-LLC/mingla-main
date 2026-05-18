@@ -5,11 +5,11 @@
 import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const fromMock = jest.fn() as any;
+const rpcMock = jest.fn() as any;
 
 jest.mock("../supabase", () => ({
   supabase: {
-    from: (...args: unknown[]) => fromMock(...args),
+    rpc: (...args: unknown[]) => rpcMock(...args),
   },
 }));
 
@@ -22,34 +22,36 @@ import { placePoolHasNameMatch } from "../venueSearchService";
 
 describe("placePoolHasNameMatch", () => {
   beforeEach(() => {
-    fromMock.mockReset();
+    rpcMock.mockReset();
   });
 
   test("returns false for short query without hitting DB", async () => {
     const r = await placePoolHasNameMatch("x");
     expect(r).toBe(false);
-    expect(fromMock).not.toHaveBeenCalled();
+    expect(rpcMock).not.toHaveBeenCalled();
   });
 
-  test("returns true when a row is returned", async () => {
-    const limitMock = jest.fn(() =>
-      Promise.resolve({ data: [{ id: "p1" }], error: null }),
-    );
-    const eqMock = jest.fn(() => ({ limit: limitMock }));
-    const ilikeMock = jest.fn(() => ({ eq: eqMock }));
-    const selectMock = jest.fn(() => ({ ilike: ilikeMock }));
-    fromMock.mockReturnValue({
-      select: selectMock,
-    });
+  test("returns true when RPC reports a match", async () => {
+    rpcMock.mockResolvedValue({ data: true, error: null });
     const r = await placePoolHasNameMatch("Cafe Nero");
     expect(r).toBe(true);
-    expect(fromMock).toHaveBeenCalledWith("place_pool");
+    expect(rpcMock).toHaveBeenCalledWith("biz_place_pool_name_contains", {
+      p_query: "Cafe Nero",
+    });
+  });
+
+  test("escapes ILIKE metacharacters via server RPC", async () => {
+    rpcMock.mockResolvedValue({ data: false, error: null });
+    await placePoolHasNameMatch("100%_off");
+    expect(rpcMock).toHaveBeenCalledWith("biz_place_pool_name_contains", {
+      p_query: "100%_off",
+    });
   });
 });
 
 describe("upsertBrandHours", () => {
   beforeEach(() => {
-    fromMock.mockReset();
+    rpcMock.mockReset();
   });
 
   test("throws when hours length !== 7", async () => {
@@ -65,26 +67,8 @@ describe("upsertBrandHours", () => {
     ).rejects.toThrow("expected 7 weekday rows");
   });
 
-  test("delete then insert 7 rows on happy path", async () => {
-    const selectMock = jest.fn(() =>
-      Promise.resolve({
-        data: [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({ weekday })),
-        error: null,
-      }),
-    );
-    const insertMock = jest.fn(() => ({ select: selectMock }));
-    const deleteEqMock = jest.fn(() => Promise.resolve({ error: null }));
-    const deleteMock = jest.fn(() => ({ eq: deleteEqMock }));
-
-    let brandHoursCalls = 0;
-    fromMock.mockImplementation((table: unknown) => {
-      if (table !== "brand_hours") return {};
-      brandHoursCalls += 1;
-      if (brandHoursCalls === 1) {
-        return { delete: deleteMock };
-      }
-      return { insert: insertMock };
-    });
+  test("calls biz_upsert_brand_hours RPC on happy path", async () => {
+    rpcMock.mockResolvedValue({ data: null, error: null });
 
     const hours = [
       { weekday: 0, openTime: "09:00", closeTime: "17:00", isClosed: false },
@@ -98,24 +82,15 @@ describe("upsertBrandHours", () => {
 
     await upsertBrandHours("brand-1", hours);
 
-    expect(deleteMock).toHaveBeenCalled();
-    expect(deleteEqMock).toHaveBeenCalledWith("brand_id", "brand-1");
-    expect(insertMock).toHaveBeenCalledWith(
-      expect.arrayContaining([
-        expect.objectContaining({
-          brand_id: "brand-1",
-          weekday: 0,
-          is_closed: false,
-          open_time: "09:00:00",
-          close_time: "17:00:00",
-        }),
-        expect.objectContaining({
-          weekday: 6,
-          is_closed: true,
-          open_time: null,
-          close_time: null,
-        }),
-      ]),
+    expect(rpcMock).toHaveBeenCalledWith(
+      "biz_upsert_brand_hours",
+      expect.objectContaining({
+        p_brand_id: "brand-1",
+        p_hours: expect.arrayContaining([
+          expect.objectContaining({ weekday: 0, is_closed: false }),
+          expect.objectContaining({ weekday: 6, is_closed: true }),
+        ]),
+      }),
     );
   });
 });

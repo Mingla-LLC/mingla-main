@@ -46,6 +46,7 @@ export default function VenueCreateRoute(): React.ReactElement {
   const [phase, setPhase] = useState<Phase>("gate");
   const [checkingPool, setCheckingPool] = useState(false);
   const [poolNote, setPoolNote] = useState<string | null>(null);
+  const [coverWarning, setCoverWarning] = useState<string | null>(null);
 
   useEffect(() => {
     reset();
@@ -105,7 +106,10 @@ export default function VenueCreateRoute(): React.ReactElement {
     return (
       <VenueCreatorWizard
         onClose={handleClose}
-        onDone={() => setPhase("success")}
+        onDone={(warning) => {
+          setCoverWarning(warning ?? null);
+          setPhase("success");
+        }}
       />
     );
   }
@@ -118,6 +122,9 @@ export default function VenueCreateRoute(): React.ReactElement {
           <Text style={styles.successBody}>
             Pending review. We usually approve venues within 4 business hours.
           </Text>
+          {coverWarning !== null ? (
+            <Text style={styles.successWarning}>{coverWarning}</Text>
+          ) : null}
           <Button
             label="Done"
             variant="primary"
@@ -258,5 +265,11 @@ const styles = StyleSheet.create({
     fontSize: typography.body.fontSize,
     color: textTokens.secondary,
     lineHeight: 22,
+  },
+  successWarning: {
+    fontSize: typography.body.fontSize,
+    color: textTokens.secondary,
+    lineHeight: 22,
+    marginTop: spacing.sm,
   },
 });

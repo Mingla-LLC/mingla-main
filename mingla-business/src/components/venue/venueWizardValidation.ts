@@ -31,7 +31,9 @@ export function venueStepError(
         if (o.length === 0 || c.length === 0) {
           return "Open and close times are required for open days.";
         }
-        if (o >= c) return "Close time must be after open time for each open day.";
+        if (o >= c) {
+          return "Close must be after open on each day. Overnight hours (e.g. 10pm–2am) aren’t supported yet — use closed days or adjust times.";
+        }
       }
       return null;
     }

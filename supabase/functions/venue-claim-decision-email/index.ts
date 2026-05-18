@@ -1,8 +1,8 @@
 /**
- * Ve1 — transactional email when a venue brand is submitted (pending_review).
- * Invoked from mingla-business `createVenueBrandPendingReview` after RPC success.
+ * Ve1 — notify venue operator when an admin approves or rejects a claim.
+ * Invoked from mingla-admin ClaimsPage after `biz_review_venue_claim`.
  *
- * Auth: caller JWT must own the brand (account_id = auth.uid()).
+ * Auth: caller must pass `is_admin_user()` (admin JWT).
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -43,11 +43,24 @@ serve(async (req) => {
 
     const body = await req.json().catch(() => null) as {
       brand_id?: string;
+      decision?: string;
+      rejection_reason?: string;
     } | null;
+
     const brandId =
       typeof body?.brand_id === "string" ? body.brand_id.trim() : "";
+    const decision =
+      typeof body?.decision === "string" ? body.decision.trim() : "";
+    const rejectionReason =
+      typeof body?.rejection_reason === "string"
+        ? body.rejection_reason.trim()
+        : "";
+
     if (brandId.length === 0) {
       return json({ error: "brand_id required" }, 400);
+    }
+    if (decision !== "approved" && decision !== "rejected") {
+      return json({ error: "decision must be approved or rejected" }, 400);
     }
 
     const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -55,6 +68,12 @@ serve(async (req) => {
     });
     const { data: { user }, error: userErr } = await userClient.auth.getUser();
     if (userErr || !user) return json({ error: "Unauthorized" }, 401);
+
+    const { data: isAdmin, error: adminErr } = await userClient.rpc(
+      "is_admin_user",
+    );
+    if (adminErr) return json({ error: adminErr.message }, 500);
+    if (isAdmin !== true) return json({ error: "Forbidden" }, 403);
 
     const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const { data: brandRow, error: brandErr } = await admin
@@ -65,27 +84,34 @@ serve(async (req) => {
 
     if (brandErr) return json({ error: brandErr.message }, 500);
     if (!brandRow) return json({ error: "Brand not found" }, 404);
-    if (brandRow.account_id !== user.id) {
-      return json({ error: "Forbidden" }, 403);
+
+    const expectedStatus = decision === "approved" ? "verified" : "rejected";
+    if (brandRow.claim_status !== expectedStatus) {
+      return json({ error: "Brand claim status mismatch" }, 400);
     }
-    if (brandRow.claim_status !== "pending_review") {
-      return json({ error: "Not a pending venue submission" }, 400);
+
+    const { data: ownerAuth, error: ownerErr } = await admin.auth.admin
+      .getUserById(brandRow.account_id as string);
+    if (ownerErr) {
+      return json({ error: ownerErr.message }, 500);
     }
 
     const to =
-      (typeof user.email === "string" && user.email.length > 0
-        ? user.email
+      (typeof ownerAuth.user?.email === "string" &&
+          ownerAuth.user.email.length > 0
+        ? ownerAuth.user.email
         : null) ??
       (typeof brandRow.contact_email === "string" &&
           brandRow.contact_email.length > 0
         ? brandRow.contact_email
         : null);
+
     if (!to) {
       return json({ skipped: true, reason: "no_recipient_email" }, 200);
     }
 
     if (!RESEND_API_KEY) {
-      console.warn("[venue-claim-submitted-email] RESEND_API_KEY missing");
+      console.warn("[venue-claim-decision-email] RESEND_API_KEY missing");
       return json({ skipped: true, reason: "resend_not_configured" }, 200);
     }
 
@@ -108,12 +134,23 @@ serve(async (req) => {
       );
     }
 
-    const title = "Venue submitted — we’re reviewing it";
-    const paragraphs = [
-      `Thanks for submitting ${brandRow.name as string}.`,
-      "Your venue is under review. We typically respond within 4 business hours.",
-      "We’ll email you when it’s approved or if we need more information.",
-    ];
+    const brandName = brandRow.name as string;
+    const approved = decision === "approved";
+    const title = approved
+      ? "Your venue is live on Mingla"
+      : "Update on your venue submission";
+    const paragraphs = approved
+      ? [
+        `Good news — ${brandName} has been approved.`,
+        "Your venue profile is now visible to guests. Sign in to Mingla Business to manage events and your profile.",
+      ]
+      : [
+        `We couldn't approve ${brandName} at this time.`,
+        rejectionReason.length > 0
+          ? `Reason: ${rejectionReason}`
+          : "Our team will follow up if we need more information.",
+        "You can submit a new claim with updated details when you're ready.",
+      ];
 
     const rendered = renderTransactionalEmail({
       variant: "generic_notification",
@@ -148,7 +185,7 @@ serve(async (req) => {
 
     return json({ ok: true }, 200);
   } catch (e) {
-    console.error("[venue-claim-submitted-email]", e);
+    console.error("[venue-claim-decision-email]", e);
     return json(
       { error: e instanceof Error ? e.message : String(e) },
       500,

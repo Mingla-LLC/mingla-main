@@ -52,7 +52,8 @@ const STEPPER_STEPS: StepperStep[] = [
 ];
 
 export interface VenueCreatorWizardProps {
-  onDone: () => void;
+  /** Optional warning when venue was created but cover upload failed. */
+  onDone: (coverWarning?: string | null) => void;
   onClose: () => void;
 }
 
@@ -141,24 +142,30 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
         hours: st.hours,
       });
 
+      let coverWarning: string | null = null;
       const firstUri = st.photoUris[0];
       if (firstUri !== undefined) {
-        const up = await uploadBrandCover(
-          brand.id,
-          { uri: firstUri },
-          {},
-        );
-        await updateBrandMutation.mutateAsync({
-          brandId: brand.id,
-          accountId: user.id,
-          existingDescription: existingDesc,
-          patch: {
-            coverMediaUrl: up.publicUrl,
-            coverMediaType: up.mediaType === "gif" ? "gif" : "image",
-          },
-        });
+        try {
+          const up = await uploadBrandCover(
+            brand.id,
+            { uri: firstUri },
+            {},
+          );
+          await updateBrandMutation.mutateAsync({
+            brandId: brand.id,
+            accountId: user.id,
+            existingDescription: existingDesc,
+            patch: {
+              coverMediaUrl: up.publicUrl,
+              coverMediaType: up.mediaType === "gif" ? "gif" : "image",
+            },
+          });
+        } catch {
+          coverWarning =
+            "Your venue was submitted, but we couldn't save the cover photo. You can add one after approval.";
+        }
       }
-      onDone();
+      onDone(coverWarning);
     } catch (e) {
       if (e instanceof SlugCollisionError) {
         setSlugCollision(

@@ -41,6 +41,8 @@ export function ClaimsPage() {
   const [hours, setHours] = useState([]);
   const [hoursLoading, setHoursLoading] = useState(false);
   const [acting, setActing] = useState(false);
+  const [rejectOpen, setRejectOpen] = useState(false);
+  const [rejectReason, setRejectReason] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -101,21 +103,36 @@ export function ClaimsPage() {
     setHours([]);
   };
 
+  const notifyDecision = async (brandId, decision, rejectionReason = "") => {
+    try {
+      const { error } = await supabase.functions.invoke(
+        "venue-claim-decision-email",
+        {
+          body: {
+            brand_id: brandId,
+            decision,
+            rejection_reason: rejectionReason,
+          },
+        },
+      );
+      if (error) {
+        console.warn("[ClaimsPage] decision email", error.message);
+      }
+    } catch (e) {
+      console.warn("[ClaimsPage] decision email", e);
+    }
+  };
+
   const approve = async () => {
     if (!detail) return;
     setActing(true);
     try {
-      const { data: auth } = await supabase.auth.getUser();
-      const uid = auth?.user?.id ?? null;
-      const { error } = await supabase
-        .from("brands")
-        .update({
-          claim_status: "verified",
-          verified_at: new Date().toISOString(),
-          verified_by: uid,
-        })
-        .eq("id", detail.id);
+      const { error } = await supabase.rpc("biz_review_venue_claim", {
+        p_brand_id: detail.id,
+        p_action: "approve",
+      });
       if (error) throw error;
+      await notifyDecision(detail.id, "approved");
       addToast({ variant: "info", title: "Venue approved" });
       closeDetail();
       await load();
@@ -130,16 +147,32 @@ export function ClaimsPage() {
     }
   };
 
+  const openReject = () => {
+    setRejectReason("");
+    setRejectOpen(true);
+  };
+
   const reject = async () => {
     if (!detail) return;
+    const reason = rejectReason.trim();
+    if (reason.length === 0) {
+      addToast({
+        variant: "warning",
+        title: "Rejection reason required",
+        description: "Add a short note for the operator email.",
+      });
+      return;
+    }
     setActing(true);
     try {
-      const { error } = await supabase
-        .from("brands")
-        .update({ claim_status: "rejected" })
-        .eq("id", detail.id);
+      const { error } = await supabase.rpc("biz_review_venue_claim", {
+        p_brand_id: detail.id,
+        p_action: "reject",
+      });
       if (error) throw error;
+      await notifyDecision(detail.id, "rejected", reason);
       addToast({ variant: "info", title: "Venue rejected" });
+      setRejectOpen(false);
       closeDetail();
       await load();
     } catch (e) {
@@ -296,11 +329,42 @@ export function ClaimsPage() {
           <Button variant="secondary" onClick={closeDetail} disabled={acting}>
             Close
           </Button>
-          <Button variant="danger" onClick={() => void reject()} disabled={acting}>
+          <Button variant="danger" onClick={openReject} disabled={acting}>
             Reject
           </Button>
           <Button variant="primary" onClick={() => void approve()} disabled={acting}>
             Approve
+          </Button>
+        </ModalFooter>
+      </Modal>
+
+      <Modal
+        open={rejectOpen}
+        onClose={() => setRejectOpen(false)}
+        title="Reject venue claim"
+      >
+        <ModalBody>
+          <p className="text-sm text-[var(--color-text-secondary)] mb-3">
+            This is emailed to the operator. They can submit again after rejection.
+          </p>
+          <textarea
+            className="w-full min-h-[100px] rounded-lg border border-white/10 bg-white/5 p-3 text-sm text-[var(--color-text-primary)]"
+            placeholder="Why is this claim being rejected?"
+            value={rejectReason}
+            onChange={(e) => setRejectReason(e.target.value)}
+            disabled={acting}
+          />
+        </ModalBody>
+        <ModalFooter>
+          <Button
+            variant="secondary"
+            onClick={() => setRejectOpen(false)}
+            disabled={acting}
+          >
+            Cancel
+          </Button>
+          <Button variant="danger" onClick={() => void reject()} disabled={acting}>
+            Confirm reject
           </Button>
         </ModalFooter>
       </Modal>

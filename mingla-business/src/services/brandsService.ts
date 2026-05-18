@@ -209,13 +209,6 @@ export async function getBrandHours(brandId: string): Promise<BrandHourEntry[]> 
   }));
 }
 
-function timeToDb(t: string | null): string | null {
-  if (t === null || t.trim() === "") return null;
-  const s = t.trim();
-  if (s.length === 5) return `${s}:00`;
-  return s;
-}
-
 /**
  * Replaces all `brand_hours` rows for a brand (expects exactly 7 weekdays).
  * Callers must hold brand admin-plus; mirrors the RPC insert shape.
@@ -227,29 +220,11 @@ export async function upsertBrandHours(
   if (hours.length !== 7) {
     throw new Error("upsertBrandHours: expected 7 weekday rows");
   }
-  const deleteResp = await supabase
-    .from("brand_hours")
-    // I-MUTATION-ROWCOUNT-WAIVER: Ve1 — DELETE-then-INSERT pattern; rowcount intentionally not verified (zero rows is the valid initial-create case).
-    .delete()
-    .eq("brand_id", brandId);
-  if (deleteResp.error !== null) throw deleteResp.error;
-
-  const rows = hours.map((e) => ({
-    brand_id: brandId,
-    weekday: e.weekday,
-    open_time: e.isClosed ? null : timeToDb(e.openTime),
-    close_time: e.isClosed ? null : timeToDb(e.closeTime),
-    is_closed: e.isClosed,
-  }));
-
-  const { data, error: insError } = await supabase
-    .from("brand_hours")
-    .insert(rows)
-    .select("weekday");
-  if (insError !== null) throw insError;
-  if ((data?.length ?? 0) !== 7) {
-    throw new Error("upsertBrandHours: insert returned unexpected row count");
-  }
+  const { error } = await supabase.rpc("biz_upsert_brand_hours", {
+    p_brand_id: brandId,
+    p_hours: brandHoursToRpcPayload(hours),
+  });
+  if (error !== null) throw error;
 }
 
 async function invokeVenueClaimSubmittedEmail(brandId: string): Promise<void> {
