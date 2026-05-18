@@ -155,6 +155,8 @@ export const VenueStep4Hours: React.FC<VenueStep4HoursProps> = ({
               <Pressable
                 style={styles.timeBtn}
                 onPress={() => openPicker(row.weekday, "open", row)}
+                accessibilityRole="button"
+                accessibilityLabel={`Pick ${DAY_NAMES[row.weekday]} opening time`}
               >
                 <Text style={styles.timeLbl}>Opens</Text>
                 <Text style={styles.timeVal}>{row.openTime ?? "—"}</Text>
@@ -162,6 +164,8 @@ export const VenueStep4Hours: React.FC<VenueStep4HoursProps> = ({
               <Pressable
                 style={styles.timeBtn}
                 onPress={() => openPicker(row.weekday, "close", row)}
+                accessibilityRole="button"
+                accessibilityLabel={`Pick ${DAY_NAMES[row.weekday]} closing time`}
               >
                 <Text style={styles.timeLbl}>Closes</Text>
                 <Text style={styles.timeVal}>{row.closeTime ?? "—"}</Text>
