@@ -21,7 +21,7 @@ import {
   typography,
 } from "../../../src/constants/designSystem";
 import { useCurrentBrand } from "../../../src/hooks/useCurrentBrand";
-import { useTrip } from "../../../src/hooks/useTrips";
+import { useTrip, useSoftDeleteTrip } from "../../../src/hooks/useTrips";
 import { TripCreatorWizard } from "../../../src/components/trip/TripCreatorWizard";
 
 export default function TripEditRoute(): React.ReactElement {
@@ -31,6 +31,9 @@ export default function TripEditRoute(): React.ReactElement {
 
   const tripQuery = useTrip(typeof eventId === "string" ? eventId : null);
   const currentBrand = useCurrentBrand();
+  // ORCH-0874 [Trip surfaces visual parity with Events]: wire useSoftDeleteTrip
+  // for the wizard's create-mode-dirty discard ConfirmDialog (chrome X handler).
+  const softDeleteMutation = useSoftDeleteTrip();
 
   if (typeof eventId !== "string" || eventId.length === 0) {
     return (
@@ -84,6 +87,15 @@ export default function TripEditRoute(): React.ReactElement {
     );
   }
 
+  // ORCH-0874: derive isCreateMode — true for freshly-created draft trips
+  // that haven't been edited yet (no title, no days, no inclusions). Drives
+  // wizard chrome X discard semantics per SPEC §3.3.5/§3.3.6.
+  const isCreateMode =
+    trip.status === "draft" &&
+    trip.title.length === 0 &&
+    trip.days.length === 0 &&
+    trip.inclusions.length === 0;
+
   return (
     <TripCreatorWizard
       trip={trip}
@@ -93,6 +105,13 @@ export default function TripEditRoute(): React.ReactElement {
         name: currentBrand.displayName,
         bio: currentBrand.bio ?? null,
         coverMediaUrl: currentBrand.coverMediaUrl ?? null,
+      }}
+      isCreateMode={isCreateMode}
+      onDiscardTrip={async () => {
+        await softDeleteMutation.mutateAsync({
+          eventId: trip.id,
+          brandId: trip.brandId,
+        });
       }}
       onPublished={(published) => {
         router.replace(`/trip/${published.id}` as never);
