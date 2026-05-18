@@ -125,6 +125,15 @@ function tripToStep4Draft(trip: Trip): Step4Draft {
     priceMajor: tier === undefined ? "" : (tier.priceCents / 100).toFixed(2),
     currency: tier?.currency ?? "USD",
     capacity: trip.businessTrip.capacity,
+    // ORCH-0873 [Tr3 Stage 2 UI]: derive payment plan from
+    // trip_pricing_tiers.tier_metadata.installments (extracted in
+    // tripsService.mapTripPricingTier). Locked-state derivation requires
+    // a separate query for installment-plan booking count — for the
+    // wizard's purposes we use a conservative default of false (un-locked).
+    // Future small ORCH may add a useTripInstallmentBookingCount hook to
+    // surface the true locked state in the wizard.
+    paymentPlan: tier?.installmentSchedule ?? null,
+    paymentPlanLocked: false,
   };
 }
 
@@ -311,6 +320,11 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
         tierName: step4Draft.tierName.trim() || "Standard",
         priceCents: Math.round(priceMajor * 100),
         capacity: step1Draft.capacity ?? 1,
+        // ORCH-0873 [Tr3 Stage 2 UI]: persist payment plan to
+        // trip_pricing_tiers.tier_metadata.installments. Null → remove key
+        // (single-payment trip); object → set the JSONB key. The cron +
+        // Stage 1b finalize key off the JSONB presence/shape.
+        installmentSchedule: step4Draft.paymentPlan,
       },
     });
   }, [step4Draft, step1Draft.capacity, trip.id, updatePricingMutation]);
