@@ -227,11 +227,12 @@ export async function upsertBrandHours(
   if (hours.length !== 7) {
     throw new Error("upsertBrandHours: expected 7 weekday rows");
   }
-  const { error: delError } = await supabase
+  const deleteResp = await supabase
     .from("brand_hours")
+    // I-MUTATION-ROWCOUNT-WAIVER: Ve1 — DELETE-then-INSERT pattern; rowcount intentionally not verified (zero rows is the valid initial-create case).
     .delete()
     .eq("brand_id", brandId);
-  if (delError !== null) throw delError;
+  if (deleteResp.error !== null) throw deleteResp.error;
 
   const rows = hours.map((e) => ({
     brand_id: brandId,
@@ -241,8 +242,14 @@ export async function upsertBrandHours(
     is_closed: e.isClosed,
   }));
 
-  const { error: insError } = await supabase.from("brand_hours").insert(rows);
+  const { data, error: insError } = await supabase
+    .from("brand_hours")
+    .insert(rows)
+    .select("weekday");
   if (insError !== null) throw insError;
+  if ((data?.length ?? 0) !== 7) {
+    throw new Error("upsertBrandHours: insert returned unexpected row count");
+  }
 }
 
 async function invokeVenueClaimSubmittedEmail(brandId: string): Promise<void> {

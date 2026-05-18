@@ -66,7 +66,13 @@ describe("upsertBrandHours", () => {
   });
 
   test("delete then insert 7 rows on happy path", async () => {
-    const insertMock = jest.fn(() => Promise.resolve({ error: null }));
+    const selectMock = jest.fn(() =>
+      Promise.resolve({
+        data: [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({ weekday })),
+        error: null,
+      }),
+    );
+    const insertMock = jest.fn(() => ({ select: selectMock }));
     const deleteEqMock = jest.fn(() => Promise.resolve({ error: null }));
     const deleteMock = jest.fn(() => ({ eq: deleteEqMock }));
 
