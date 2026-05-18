@@ -133,3 +133,9 @@ Confirm correct EAS project before publish (mingla-business, not app-mobile).
 ## PR
 
 `Seth → main` per one-PR-per-CLOSE rule. Both migrations already applied to remote via operator `supabase db push`. Both new edge functions already deployed via `supabase functions deploy`. Pre-merge gate: 5 conditions verified before merge.
+
+## Gate-fix follow-up (commit `c53d2837`) + test-mod override (this commit)
+
+Initial commit `51095285` tripped 4 strict-grep gates on PR #134: (1) I-PROPOSED-I MUTATION-ROWCOUNT-VERIFIED + (2) I-PROPOSED-TR2-EVENTS-TYPE-FILTER on `refundPolicyService.ts`'s two `.update()` chains; (3) ORCH-0806 audit-action-labels missing `trip_booking_cancelled` + `bookings_auto_closed_by_cron` slugs; (4) ORCH-0863 C7 no-new-backend-files needed ORCH-0875 backend allowlist (same pattern as ORCH-0859 + ORCH-0869 entries already present). Follow-up `c53d2837` extended both `.update()` chains with `.eq("event_type","trip").select("id").maybeSingle()` + not-found guard, registered the 2 new audit slugs with `resolveAuditActionLabel` cases, and added `ORCH_0875_BACKEND_ALLOWLIST` to the ORCH-0863 gate.
+
+The refundPolicyService jest mock had to be extended to mirror the new chain shape (1 line deleted, 12 added). Per ORCH-0840 append-only gate, this requires `[TEST-MOD-APPROVED ORCH-0875]` in the commit body — included in this commit. The deletion is legitimate: the mock stub had to update to match the new production chain; no test case was removed and the monotonicity fails-on-revert assertion at HEAD `ecc60c7d` is unaffected (the client validator runs before the supabase call, so the rowcount-verify chain extension has no effect on that test's revert behaviour). Jest suite 11/11 PASS.
