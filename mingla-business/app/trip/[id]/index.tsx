@@ -21,16 +21,27 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 
 import {
   accent,
+  glass,
   radius as radiusTokens,
   semantic,
   spacing,
   text as textTokens,
   typography,
 } from "../../../src/constants/designSystem";
+import { ConfirmDialog } from "../../../src/components/ui/ConfirmDialog";
+import { EventCoverMedia } from "../../../src/components/ui/EventCoverMedia";
+import { GlassCard } from "../../../src/components/ui/GlassCard";
 import { Icon } from "../../../src/components/ui/Icon";
+import { IconChrome } from "../../../src/components/ui/IconChrome";
 import { SafeScreen } from "../../../src/components/ui/SafeScreen";
+import { ShareModal } from "../../../src/components/ui/ShareModal";
 import { Toast } from "../../../src/components/ui/Toast";
-import { useTrip } from "../../../src/hooks/useTrips";
+// ORCH-0874 [Trip surfaces visual parity with Events]: hero + action grid +
+// header right-slot share/moreH + manage menu + cancel-trip CTA.
+import { ActionTile } from "../../../src/components/event/ActionTile";
+import { TripManageMenu } from "../../../src/components/trip/TripManageMenu";
+import { Button } from "../../../src/components/ui/Button";
+import { useTrip, useSoftDeleteTrip } from "../../../src/hooks/useTrips";
 import { useTripOrders } from "../../../src/hooks/useTripOrders";
 // ORCH-0873 [Tr3 Stage 2 UI] — Money tab data.
 import {
@@ -97,6 +108,13 @@ export default function TripDashboardRoute(): React.ReactElement {
       setToast({ visible: true, kind: toastKind, message });
     },
   });
+  // ORCH-0874 [Trip surfaces visual parity with Events]: header right-slot
+  // share + moreH state, plus cancel-trip dialog state.
+  const [shareModalVisible, setShareModalVisible] = useState<boolean>(false);
+  const [manageMenuVisible, setManageMenuVisible] = useState<boolean>(false);
+  const [cancelDialogVisible, setCancelDialogVisible] = useState<boolean>(false);
+  const [cancelSubmitting, setCancelSubmitting] = useState<boolean>(false);
+  const softDeleteMutation = useSoftDeleteTrip();
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
   const toggleExpanded = useCallback((orderId: string): void => {
     setExpandedOrders((prev) => {
@@ -208,6 +226,8 @@ export default function TripDashboardRoute(): React.ReactElement {
 
   return (
     <SafeScreen style={styles.host}>
+      {/* ORCH-0874: header — back + title + share IconChrome + moreH IconChrome.
+          Inline "Edit" Pressable removed (Edit moves to action grid). */}
       <View style={styles.header}>
         <Pressable
           onPress={() => router.back()}
@@ -221,50 +241,118 @@ export default function TripDashboardRoute(): React.ReactElement {
         <Text style={styles.headerTitle} numberOfLines={1}>
           {trip.title}
         </Text>
-        {/* ORCH-0859 REWORK 4 (operator smoke item #2): Edit button on
-            operator dashboard so both draft AND published trips have an
-            edit path. Routes to wizard host; wizard loads existing trip
-            via useTrip and populates all 5 steps. For published trips
-            re-tapping Publish updates all fields except slug (slug-
-            immutability already enforced by biz_prevent_event_slug_change
-            trigger from ORCH-0763 + dual-flag fix from REWORK 3). */}
-        {/* ORCH-0859 REWORK 4 (operator smoke item #2): Edit button on
-            operator dashboard so both draft AND published trips have an
-            edit path. Routes to wizard host; wizard loads existing trip
-            via useTrip and populates all 5 steps. For published trips
-            re-tapping Publish updates all fields except slug (slug-
-            immutability already enforced by biz_prevent_event_slug_change
-            trigger from ORCH-0763 + dual-flag fix from REWORK 3). */}
-        <Pressable
-          onPress={() => router.push(`/trip/${trip.id}/edit` as never)}
-          accessibilityRole="button"
-          accessibilityLabel={
-            trip.status === "draft"
-              ? "Continue editing trip"
-              : "Edit published trip"
-          }
-          style={styles.editBtn}
-          hitSlop={8}
-          testID="trip-dashboard-edit"
-        >
-          <Text style={styles.editBtnText}>Edit</Text>
-        </Pressable>
+        <View style={styles.headerRightSlot}>
+          {trip.brandSlug !== null && trip.brandSlug.length > 0 ? (
+            <IconChrome
+              icon="share"
+              size={36}
+              onPress={() => setShareModalVisible(true)}
+              accessibilityLabel="Share trip"
+            />
+          ) : null}
+          <IconChrome
+            icon="moreH"
+            size={36}
+            onPress={() => setManageMenuVisible(true)}
+            accessibilityLabel="Trip options"
+          />
+        </View>
       </View>
 
-      {/* Status pill */}
-      <View style={styles.pillRow}>
-        <View
-          style={[
-            styles.statusPill,
-            trip.status === "scheduled" || trip.status === "live"
-              ? styles.statusPillLive
-              : styles.statusPillDraft,
-          ]}
-        >
-          <Text style={styles.statusPillText}>
-            {trip.status === "draft" ? "Draft" : "Published"}
+      {/* ORCH-0874: hero — full-width cover + gradient overlay + status pill
+          + 24pt title overlay + 13pt date/destination subline. EventCoverMedia
+          is content-agnostic; coverHue derived from trip.id when no media. */}
+      <View style={styles.hero}>
+        <EventCoverMedia
+          hue={(function () {
+            let h = 0;
+            for (let i = 0; i < trip.id.length; i += 1) {
+              h = (h * 31 + trip.id.charCodeAt(i)) | 0;
+            }
+            return Math.abs(h) % 360;
+          })()}
+          mediaUrl={trip.coverMediaUrl}
+          mediaType={trip.coverMediaType}
+          radius={24}
+          label=""
+          height={200}
+        />
+        <View style={styles.heroOverlay} pointerEvents="none" />
+        <View style={styles.heroContent} pointerEvents="none">
+          <View
+            style={[
+              styles.statusPill,
+              trip.status === "scheduled" || trip.status === "live"
+                ? styles.statusPillLive
+                : styles.statusPillDraft,
+            ]}
+          >
+            <Text style={styles.statusPillText}>
+              {trip.status === "draft" ? "Draft" : "Published"}
+            </Text>
+          </View>
+          <Text style={styles.heroTitle} numberOfLines={2}>
+            {trip.title}
+          </Text>
+          <Text style={styles.heroSubline} numberOfLines={1}>
+            {(function (): string {
+              const start = trip.businessTrip.startAt;
+              const end = trip.businessTrip.endAt;
+              const dest = trip.businessTrip.destinationLocationText;
+              let datesLabel = "";
+              if (start !== null) {
+                try {
+                  const fmt = new Intl.DateTimeFormat(undefined, {
+                    month: "short",
+                    day: "numeric",
+                  });
+                  datesLabel = `${fmt.format(new Date(start))}${
+                    end !== null ? `–${fmt.format(new Date(end))}` : ""
+                  }`;
+                } catch {
+                  datesLabel = "";
+                }
+              }
+              if (datesLabel.length > 0 && dest !== null && dest.length > 0) {
+                return `${datesLabel} · ${dest}`;
+              }
+              return datesLabel.length > 0 ? datesLabel : dest ?? "Date TBD";
+            })()}
           </Text>
         </View>
+      </View>
+
+      {/* ORCH-0874: action grid — View public page (ORCH-0867 fold), Brand
+          page, Marketing blasts, Edit trip (primary). Replaces the inline
+          Edit pill in the prior header. */}
+      <View style={styles.actionGrid}>
+        {trip.brandSlug !== null && trip.brandSlug.length > 0 ? (
+          <ActionTile
+            icon="eye"
+            label="View public page"
+            onPress={() =>
+              router.push(`/t/${trip.brandSlug}/${trip.slug}` as never)
+            }
+          />
+        ) : null}
+        {trip.brandSlug !== null && trip.brandSlug.length > 0 ? (
+          <ActionTile
+            icon="user"
+            label="Brand page"
+            onPress={() => router.push(`/b/${trip.brandSlug}` as never)}
+          />
+        ) : null}
+        <ActionTile
+          icon="send"
+          label="Marketing blasts"
+          onPress={() => router.push(`/event/${trip.id}/blasts` as never)}
+        />
+        <ActionTile
+          icon="edit"
+          label={trip.status === "draft" ? "Continue editing" : "Edit trip"}
+          primary
+          onPress={() => router.push(`/trip/${trip.id}/edit` as never)}
+        />
       </View>
 
       {/* Tabs */}
@@ -407,7 +495,107 @@ export default function TripDashboardRoute(): React.ReactElement {
             onEditTripPricing={() => router.push(`/trip/${eventId}/edit` as never)}
           />
         )}
+
+        {/* ORCH-0874: Cancel trip CTA below tab content. Only shown for trips
+            that are still active (not already ended or cancelled). Mirrors
+            event/[id]/index.tsx:770-784 ghost-button bottom pattern. */}
+        {trip.status !== "ended" && trip.status !== "cancelled" ? (
+          <View style={styles.cancelTripWrap}>
+            <Button
+              label="Cancel trip"
+              variant="ghost"
+              size="md"
+              onPress={() => setCancelDialogVisible(true)}
+              fullWidth
+              testID="trip-dashboard-cancel-cta"
+            />
+          </View>
+        ) : null}
       </ScrollView>
+
+      {/* ORCH-0874: TripManageMenu (right-slot moreH opens this) */}
+      <TripManageMenu
+        visible={manageMenuVisible}
+        onClose={() => setManageMenuVisible(false)}
+        onShare={() => setShareModalVisible(true)}
+        onEdit={() => router.push(`/trip/${trip.id}/edit` as never)}
+        onViewPublic={() => {
+          if (trip.brandSlug !== null && trip.brandSlug.length > 0) {
+            router.push(`/t/${trip.brandSlug}/${trip.slug}` as never);
+          }
+        }}
+        onCancelTrip={() => setCancelDialogVisible(true)}
+        canCancelTrip={
+          trip.status !== "draft" &&
+          trip.status !== "ended" &&
+          trip.status !== "cancelled"
+        }
+      />
+
+      {/* ORCH-0874: ShareModal — opened from header share IconChrome or
+          TripManageMenu share row */}
+      {trip.brandSlug !== null && trip.brandSlug.length > 0 ? (
+        <ShareModal
+          visible={shareModalVisible}
+          onClose={() => setShareModalVisible(false)}
+          url={`https://business.usemingla.com/t/${trip.brandSlug}/${trip.slug}`}
+          title={`${trip.title} on Mingla`}
+          description={
+            trip.description !== null && trip.description.length > 0
+              ? trip.description.slice(0, 200)
+              : trip.title
+          }
+        />
+      ) : null}
+
+      {/* ORCH-0874: Cancel-trip ConfirmDialog (typeToConfirm) */}
+      <ConfirmDialog
+        visible={cancelDialogVisible}
+        onClose={() => {
+          if (cancelSubmitting) return;
+          setCancelDialogVisible(false);
+        }}
+        onConfirm={async () => {
+          setCancelSubmitting(true);
+          try {
+            await softDeleteMutation.mutateAsync({
+              eventId: trip.id,
+              brandId: trip.brandId,
+            });
+            setCancelDialogVisible(false);
+            setToast({
+              visible: true,
+              kind: "info",
+              message: "Trip cancelled.",
+            });
+            // Route back so the operator sees the updated list.
+            setTimeout(() => router.back(), 300);
+          } catch (e) {
+            setToast({
+              visible: true,
+              kind: "error",
+              message:
+                e instanceof Error
+                  ? e.message
+                  : "Couldn't cancel trip. Try again.",
+            });
+          } finally {
+            setCancelSubmitting(false);
+          }
+        }}
+        title="Cancel this trip?"
+        description="Buyers will be notified and refunds processed in a future release. This can't be undone."
+        variant="typeToConfirm"
+        confirmText={trip.title.length > 0 ? trip.title : trip.slug}
+        confirmLabel="Cancel trip"
+        cancelLabel="Keep trip live"
+        confirmLoading={cancelSubmitting}
+        confirmDisabled={cancelSubmitting}
+        closeDisabled={cancelSubmitting}
+        destructive
+        testID="trip-dashboard-cancel-dialog"
+      />
+
       <Toast
         visible={toast.visible}
         kind={toast.kind}
@@ -469,6 +657,63 @@ const styles = StyleSheet.create({
     fontSize: typography.body.fontSize,
     fontWeight: "600",
     color: accent.warm,
+  },
+  // ORCH-0874 [Trip surfaces visual parity with Events]
+  headerRightSlot: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  hero: {
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.md,
+    borderRadius: 24,
+    overflow: "hidden",
+    position: "relative",
+  },
+  heroOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(12, 14, 18, 0.35)",
+  },
+  heroContent: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    padding: spacing.md,
+    gap: 4,
+  },
+  heroTitle: {
+    fontSize: 24,
+    fontWeight: "700",
+    letterSpacing: -0.2,
+    color: textTokens.inverse,
+    textShadowColor: "rgba(0, 0, 0, 0.6)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+    marginTop: spacing.xs,
+  },
+  heroSubline: {
+    fontSize: 13,
+    color: "rgba(255, 255, 255, 0.85)",
+    textShadowColor: "rgba(0, 0, 0, 0.5)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  actionGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.md,
+  },
+  cancelTripWrap: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.lg,
   },
   headerTitle: {
     flex: 1,

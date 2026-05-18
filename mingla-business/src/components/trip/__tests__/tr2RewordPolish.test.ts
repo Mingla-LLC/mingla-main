@@ -78,24 +78,37 @@ describe("ORCH-0859 REWORK 2 — item 3 (events service excludes trips)", () => 
     // Implementation reality: view doesn't expose event_type, so the fix
     // does a follow-up `events.in("id", ids)` query to discover trip ids
     // and filters client-side. Pin both halves.
+    //
+    // ORCH-0874 [Trip surfaces visual parity with Events] tester QA report
+    // P3-FIND-1: regex widened to also match aliased form `const t = r.event_type;
+    // if (t === "trip")` which the implementation uses for null-coalescing.
+    // Functional invariant unchanged (still strict-equality string check on
+    // the per-row event_type column value). [TEST-MOD-APPROVED ORCH-0874]
     const fnBlock = BUSINESS_EVENTS_SOURCE.match(
       /export const fetchBusinessEventsForBrand[^]*?^\};/m,
     );
     expect(fnBlock).not.toBeNull();
     expect(fnBlock?.[0]).toMatch(/from\("events"\)/);
-    expect(fnBlock?.[0]).toMatch(/event_type.*===\s*["']trip["']/);
+    expect(fnBlock?.[0]).toMatch(/(r\.event_type|t)\s*===\s*["']trip["']/);
     expect(fnBlock?.[0]).toMatch(/filter\(.*tripIds/);
   });
 });
 
-describe("ORCH-0859 REWORK 2 — item 4 (drafts get edit path)", () => {
-  test("hub/trips routes drafts to /trip/{id}/edit and others to /trip/{id}", () => {
-    expect(HUB_TRIPS_SOURCE).toMatch(/trip\.status === ["']draft["']/);
-    expect(HUB_TRIPS_SOURCE).toMatch(/\/trip\/\$\{trip\.id\}\/edit/);
-    expect(HUB_TRIPS_SOURCE).toMatch(/\/trip\/\$\{trip\.id\}`/);
-    // Operator must see a different accessibility label for drafts vs
-    // published so screen readers convey the action.
-    expect(HUB_TRIPS_SOURCE).toMatch(/Continue editing/);
+describe("ORCH-0859 REWORK 2 — item 4 (drafts get edit path) — updated for ORCH-0874", () => {
+  // ORCH-0874 [Trip surfaces visual parity with Events] refactored the
+  // inline `/trip/${trip.id}/edit` / `/trip/${trip.id}` routing in
+  // hub/trips.tsx to use the canonical `routeForEventRowDefensive` helper
+  // per I-PROPOSED-TR2-ROUTE-BY-EVENT-TYPE invariant (ORCH-0865 [trips-leak
+  // + routeForEventRow helper] established this pattern). Functional
+  // behaviour preserved — the helper routes drafts to /trip/{id}/edit and
+  // non-drafts to /trip/{id}. The behavioural verification lives in
+  // `TripVisualParity_adversarial.test.ts` A-01 which exercises
+  // `routeForEventRowDefensive` directly and confirms the routing output.
+  // [TEST-MOD-APPROVED ORCH-0874]
+  test("hub/trips routes via routeForEventRowDefensive helper (post-ORCH-0874)", () => {
+    expect(HUB_TRIPS_SOURCE).toMatch(/routeForEventRowDefensive/);
+    expect(HUB_TRIPS_SOURCE).toMatch(/event_type:\s*["']trip["']/);
+    expect(HUB_TRIPS_SOURCE).toMatch(/status:\s*trip\.status/);
   });
 });
 
@@ -128,12 +141,17 @@ describe("ORCH-0859 REWORK 2 — items 2 + 6 (wizard SafeArea + step progress)",
     expect(WIZARD_SOURCE).toMatch(/paddingTop:\s*insets\.top/);
   });
 
-  test("wizard renders visible 5-segment progress indicator", () => {
-    expect(WIZARD_SOURCE).toMatch(/testID="trip-wizard-progress"/);
+  // ORCH-0874 [Trip surfaces visual parity with Events] SC-05 EXPLICITLY
+  // removes the 4pt anonymous progress segments in favour of the `Stepper`
+  // primitive with named pill chips, mirroring EventCreatorWizard chrome.
+  // Functional invariant preserved (5-step progress visible to operator);
+  // implementation moved from anonymous segments to named Stepper.
+  // New contract verified in `TripVisualParity.test.ts` SC-05.
+  // [TEST-MOD-APPROVED ORCH-0874]
+  test("wizard renders named Stepper primitive (post-ORCH-0874)", () => {
+    expect(WIZARD_SOURCE).toMatch(/<Stepper[^>]*steps=\{?STEPPER_STEPS/);
     expect(WIZARD_SOURCE).toMatch(/STEP_COUNT\s*=\s*5/);
-    // Three distinct visual states: complete / current / upcoming.
-    expect(WIZARD_SOURCE).toMatch(/progressComplete/);
-    expect(WIZARD_SOURCE).toMatch(/progressCurrent/);
-    expect(WIZARD_SOURCE).toMatch(/progressUpcoming/);
+    // No more anonymous 4pt segments — superseded by named pill chips.
+    expect(WIZARD_SOURCE).not.toMatch(/progressSegment/);
   });
 });
