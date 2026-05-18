@@ -19,15 +19,19 @@
  * user-typed value to the service.
  */
 
-import React from "react";
-import { StyleSheet, Text, TextInput, View } from "react-native";
+import React, { useCallback, useState } from "react";
+import { Pressable, StyleSheet, Switch, Text, TextInput, View } from "react-native";
 
 import {
+  accent,
   radius as radiusTokens,
+  semantic,
   spacing,
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
+import { ConfirmDialog } from "../ui/ConfirmDialog";
+import { PaymentPlanEditor, type TripInstallmentSchedule } from "./PaymentPlanEditor";
 
 export interface Step4Draft {
   tierName: string;
@@ -40,6 +44,17 @@ export interface Step4Draft {
    */
   currency: string;
   capacity: number | null; // read-only mirror from Step 1
+  /**
+   * ORCH-0873 [Tr3 Stage 2 UI] — payment plan schedule (Tr3). Null when
+   * the trip is single-payment. Persisted to
+   * trip_pricing_tiers.tier_metadata.installments via updateTripPricing.
+   */
+  paymentPlan: TripInstallmentSchedule | null;
+  /**
+   * ORCH-0873 — true when at least one installment-plan booking has been
+   * made on this trip; locks the editor into read-only banner v3 (Q6).
+   */
+  paymentPlanLocked: boolean;
 }
 
 export interface TripCreatorStep4PricingProps {
@@ -56,11 +71,44 @@ export const TripCreatorStep4Pricing: React.FC<TripCreatorStep4PricingProps> = (
   onChange,
   disabled,
 }) => {
+  const [confirmRemoveOpen, setConfirmRemoveOpen] = useState(false);
+  const priceCents = Math.round((parseFloat(draft.priceMajor) || 0) * 100);
+  const planEnabled = draft.paymentPlan !== null;
+
+  // ORCH-0873 default schedule when toggle flips on: 25% deposit + 2 future
+  // installments at 50%/25% pct at 30/60 days (matches DESIGN §3 Mockup A
+  // initial state).
+  const handleTogglePlan = useCallback(
+    (next: boolean) => {
+      if (next === planEnabled) return;
+      if (next) {
+        onChange({
+          paymentPlan: {
+            deposit_pct: 25,
+            installments: [
+              { ordinal: 1, pct: 50, days_after_booking: 30 },
+              { ordinal: 2, pct: 25, days_after_booking: 60 },
+            ],
+          },
+        });
+        return;
+      }
+      // Toggle-off requires confirm — destroying a configured plan is
+      // destructive (the planner loses their schedule). Per DESIGN §3.
+      setConfirmRemoveOpen(true);
+    },
+    [onChange, planEnabled],
+  );
+
+  const handleConfirmRemovePlan = useCallback(() => {
+    setConfirmRemoveOpen(false);
+    onChange({ paymentPlan: null });
+  }, [onChange]);
+
   return (
     <View style={styles.host}>
       <Text style={styles.helper}>
-        Single full-price tier in this milestone. Installment plans + multi-tier
-        pricing arrive in the next milestone.
+        Single full-price tier in this milestone. Optional payment plan below.
       </Text>
 
       <View style={styles.fieldGroup}>
@@ -119,6 +167,63 @@ export const TripCreatorStep4Pricing: React.FC<TripCreatorStep4PricingProps> = (
       <Text style={styles.footnote}>
         Currency comes from your brand setup and can&apos;t be changed here.
       </Text>
+
+      {/* ORCH-0873 [Tr3 Stage 2 UI] — Payment plan toggle + editor */}
+      <View style={styles.paymentPlanSection}>
+        <Pressable
+          accessibilityRole="switch"
+          accessibilityLabel="Payment plan toggle"
+          accessibilityState={{
+            checked: planEnabled,
+            disabled: disabled === true || draft.paymentPlanLocked,
+          }}
+          onPress={() => {
+            if (disabled === true || draft.paymentPlanLocked) return;
+            handleTogglePlan(!planEnabled);
+          }}
+          style={styles.paymentPlanToggleRow}
+        >
+          <View style={styles.paymentPlanToggleLeft}>
+            <Text style={styles.paymentPlanTitle}>Payment plan</Text>
+            <Text style={styles.paymentPlanSubtitle}>
+              {draft.paymentPlanLocked
+                ? "Locked — at least one buyer has booked under this schedule."
+                : planEnabled
+                  ? "Buyer pays a deposit at booking; remaining installments auto-charge on schedule."
+                  : "Collect a deposit at booking, then auto-charge installments on a schedule you set."}
+            </Text>
+          </View>
+          <Switch
+            value={planEnabled}
+            onValueChange={handleTogglePlan}
+            disabled={disabled === true || draft.paymentPlanLocked}
+            trackColor={{ false: "rgba(255,255,255,0.16)", true: accent.warm }}
+            thumbColor="#ffffff"
+            ios_backgroundColor="rgba(255,255,255,0.16)"
+            accessibilityLabel="Payment plan toggle switch"
+          />
+        </Pressable>
+        {planEnabled || draft.paymentPlanLocked ? (
+          <PaymentPlanEditor
+            value={draft.paymentPlan}
+            onChange={(next) => onChange({ paymentPlan: next })}
+            totalAmountCents={priceCents}
+            currency={draft.currency}
+            locked={draft.paymentPlanLocked}
+          />
+        ) : null}
+      </View>
+
+      <ConfirmDialog
+        visible={confirmRemoveOpen}
+        title="Remove payment plan?"
+        description="This trip will revert to single payment. Your current schedule will be discarded."
+        confirmLabel="Remove plan"
+        variant="simple"
+        destructive
+        onConfirm={handleConfirmRemovePlan}
+        onClose={() => setConfirmRemoveOpen(false)}
+      />
     </View>
   );
 };
@@ -193,6 +298,41 @@ const styles = StyleSheet.create({
     color: textTokens.tertiary,
     fontStyle: "italic",
   },
+  // ORCH-0873 [Tr3 Stage 2 UI] payment plan section styles
+  paymentPlanSection: {
+    marginTop: spacing.md,
+    gap: spacing.md,
+  },
+  paymentPlanToggleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radiusTokens.md,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.08)",
+    backgroundColor: "rgba(255, 255, 255, 0.02)",
+    minHeight: 56,
+  },
+  paymentPlanToggleLeft: {
+    flex: 1,
+    paddingRight: spacing.md,
+  },
+  paymentPlanTitle: {
+    fontSize: typography.body.fontSize,
+    fontWeight: "600",
+    color: textTokens.primary,
+  },
+  paymentPlanSubtitle: {
+    fontSize: typography.caption.fontSize,
+    color: textTokens.tertiary,
+    marginTop: 2,
+  },
 });
+
+// Reference the imported semantic token to keep tree-shaking honest in case
+// of future styling additions.
+void semantic;
 
 export default TripCreatorStep4Pricing;

@@ -40,6 +40,28 @@ export interface TripPricingTier {
   currency: string;
   quantityTotal: number | null;
   isUnlimited: boolean;
+  /**
+   * ORCH-0873 [Tr3 Stage 2 UI] — extracted from
+   * tier_metadata.installments JSONB for convenient typed access by the
+   * trip wizard's PaymentPlanEditor. Null when the trip has no payment
+   * plan configured.
+   */
+  installmentSchedule: TripInstallmentScheduleData | null;
+}
+
+/**
+ * ORCH-0873 — payment plan schedule shape persisted under
+ * trip_pricing_tiers.tier_metadata.installments per
+ * SPEC_ORCH-0869 §3.1.
+ */
+export interface TripInstallmentScheduleData {
+  deposit_pct: number;
+  installments: Array<{
+    ordinal: number;
+    pct: number;
+    days_after_booking?: number;
+    fixed_date?: string;
+  }>;
 }
 
 export interface TripInclusion {
@@ -124,6 +146,16 @@ export interface TripPricingPatch {
    * `ticket_currency_must_match_event_currency` on autosave.
    */
   currency?: string;
+  /**
+   * ORCH-0873 [Tr3 Stage 2 UI] — payment plan schedule. Persisted to
+   * trip_pricing_tiers.tier_metadata.installments JSONB key per
+   * SPEC_ORCH-0869 §3.1 (Tr2-reserved location chosen over the brief's
+   * superseded ticket_types.installment_schedule proposal). When null OR
+   * absent, the tier_metadata.installments key is REMOVED from the
+   * existing tier_metadata object (single-payment trip). The cron + Stage
+   * 1b finalize key off the JSONB presence/shape.
+   */
+  installmentSchedule?: TripInstallmentScheduleData | null;
 }
 
 export class SlugCollisionError extends Error {
@@ -221,17 +253,61 @@ function mapTripPricingTier(
   row: TripPricingTierRow,
   ticketType: TicketTypeRow | undefined,
 ): TripPricingTier {
+  const metadata = (row.tier_metadata ?? {}) as Record<string, unknown>;
   return {
     id: row.id,
     eventId: row.event_id,
     ticketTypeId: row.ticket_type_id,
     tierName: row.tier_name,
-    tierMetadata: row.tier_metadata ?? {},
+    tierMetadata: metadata,
     priceCents: ticketType?.price_cents ?? 0,
     currency: ticketType?.currency ?? "",
     quantityTotal: ticketType?.quantity_total ?? null,
     isUnlimited: ticketType?.is_unlimited ?? false,
+    installmentSchedule: extractInstallmentSchedule(metadata),
   };
+}
+
+/**
+ * ORCH-0873 [Tr3 Stage 2 UI] — extract typed installment schedule from
+ * tier_metadata JSONB. Returns null on missing key / malformed shape;
+ * the wizard's PaymentPlanEditor treats null as "single-payment trip".
+ */
+function extractInstallmentSchedule(
+  metadata: Record<string, unknown>,
+): TripInstallmentScheduleData | null {
+  const raw = metadata.installments;
+  if (raw === null || raw === undefined || typeof raw !== "object") return null;
+  const obj = raw as Record<string, unknown>;
+  const depositPct = obj.deposit_pct;
+  const installments = obj.installments;
+  if (typeof depositPct !== "number" || !Array.isArray(installments)) {
+    return null;
+  }
+  const cleanInstallments = installments
+    .map((inst, i) => {
+      if (typeof inst !== "object" || inst === null) return null;
+      const r = inst as Record<string, unknown>;
+      const ordinal =
+        typeof r.ordinal === "number" ? r.ordinal : i + 1;
+      const pct = typeof r.pct === "number" ? r.pct : 0;
+      const days =
+        typeof r.days_after_booking === "number"
+          ? r.days_after_booking
+          : undefined;
+      const fixed =
+        typeof r.fixed_date === "string" ? r.fixed_date : undefined;
+      if (days === undefined && fixed === undefined) return null;
+      return {
+        ordinal,
+        pct,
+        ...(days !== undefined ? { days_after_booking: days } : {}),
+        ...(fixed !== undefined ? { fixed_date: fixed } : {}),
+      };
+    })
+    .filter((x): x is TripInstallmentScheduleData["installments"][number] => x !== null);
+  if (cleanInstallments.length === 0) return null;
+  return { deposit_pct: depositPct, installments: cleanInstallments };
 }
 
 function readBusinessTrip(theme: Record<string, unknown> | null): TripBusinessTrip {
@@ -657,10 +733,30 @@ export async function updateTripPricing(
     throw new Error("updateTripPricing: ticket_types update returned null");
   }
 
-  // Update tier name (metadata stays empty in Tr2)
+  // ORCH-0873 [Tr3 Stage 2 UI]: merge installmentSchedule into
+  // tier_metadata.installments JSONB key. Null → REMOVE the key
+  // (single-payment trip); object → SET the key. Other tier_metadata
+  // keys (any future extensions) are preserved.
+  const existingMetadata =
+    (tierRow.tier_metadata ?? {}) as Record<string, unknown>;
+  let nextMetadata: Record<string, unknown> = existingMetadata;
+  if ("installmentSchedule" in patch) {
+    const { installments: _stripExistingKey, ...metadataWithoutInstallments } =
+      existingMetadata as Record<string, unknown> & { installments?: unknown };
+    if (patch.installmentSchedule === null || patch.installmentSchedule === undefined) {
+      nextMetadata = metadataWithoutInstallments;
+    } else {
+      nextMetadata = {
+        ...metadataWithoutInstallments,
+        installments: patch.installmentSchedule,
+      };
+    }
+  }
+
+  // Update tier name + metadata
   const { data: tierUpdated, error: tierUpdateError } = await supabase
     .from("trip_pricing_tiers")
-    .update({ tier_name: patch.tierName })
+    .update({ tier_name: patch.tierName, tier_metadata: nextMetadata })
     .eq("id", tierRow.id)
     .select()
     .single();
