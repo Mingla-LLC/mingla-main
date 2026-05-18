@@ -116,35 +116,54 @@ export const ComposerStepWhen: React.FC<ComposerStepWhenProps> = ({
 
   return (
     <View style={styles.host}>
-      <Text style={styles.stepLabel} accessibilityRole="header">STEP 3 — WHEN</Text>
-      <Pressable
-        onPress={() => onModeChange("now")}
-        accessibilityRole="radio"
-        accessibilityLabel="Send now"
-        accessibilityState={{ selected: mode === "now" }}
-        style={({ pressed }) => [
-          styles.radioRow,
-          mode === "now" ? styles.radioRowActive : null,
-          pressed ? styles.radioRowPressed : null,
-        ]}
+      {/* F.8: dropped "STEP 3 — WHEN" label + replaced two large radio rows
+          with a compact 2-pill segmented control per ORCH-0864 brief. */}
+      <View
+        style={styles.segmented}
+        accessibilityRole="radiogroup"
+        accessibilityLabel="When to send"
       >
-        <View style={[styles.radio, mode === "now" ? styles.radioActive : null]} />
-        <Text style={styles.radioLabel}>Send now</Text>
-      </Pressable>
-      <Pressable
-        onPress={() => onModeChange("schedule")}
-        accessibilityRole="radio"
-        accessibilityLabel="Schedule for later"
-        accessibilityState={{ selected: mode === "schedule" }}
-        style={({ pressed }) => [
-          styles.radioRow,
-          mode === "schedule" ? styles.radioRowActive : null,
-          pressed ? styles.radioRowPressed : null,
-        ]}
-      >
-        <View style={[styles.radio, mode === "schedule" ? styles.radioActive : null]} />
-        <Text style={styles.radioLabel}>Schedule</Text>
-      </Pressable>
+        <Pressable
+          onPress={() => onModeChange("now")}
+          accessibilityRole="radio"
+          accessibilityLabel="Send now"
+          accessibilityState={{ selected: mode === "now" }}
+          style={({ pressed }) => [
+            styles.segmentedPill,
+            mode === "now" ? styles.segmentedPillActive : null,
+            pressed ? styles.segmentedPillPressed : null,
+          ]}
+        >
+          <Text
+            style={[
+              styles.segmentedLabel,
+              mode === "now" ? styles.segmentedLabelActive : null,
+            ]}
+          >
+            Send now
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={() => onModeChange("schedule")}
+          accessibilityRole="radio"
+          accessibilityLabel="Schedule for later"
+          accessibilityState={{ selected: mode === "schedule" }}
+          style={({ pressed }) => [
+            styles.segmentedPill,
+            mode === "schedule" ? styles.segmentedPillActive : null,
+            pressed ? styles.segmentedPillPressed : null,
+          ]}
+        >
+          <Text
+            style={[
+              styles.segmentedLabel,
+              mode === "schedule" ? styles.segmentedLabelActive : null,
+            ]}
+          >
+            Schedule
+          </Text>
+        </Pressable>
+      </View>
       {mode === "schedule" ? (
         <View style={styles.scheduleHost}>
           <View style={styles.pillRow}>
@@ -221,44 +240,37 @@ const styles = StyleSheet.create({
   host: {
     gap: spacing.xs,
   },
-  stepLabel: {
-    ...typography.labelCap,
-    color: textTokens.tertiary,
-    marginBottom: spacing.xs,
-  },
-  radioRow: {
+  // F.8: compact segmented control replacing two large radio rows.
+  segmented: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    minHeight: 44,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.lg,
+    borderRadius: radius.full,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: glass.border.profileBase,
     backgroundColor: glass.tint.profileBase,
+    padding: 2,
   },
-  radioRowActive: {
-    borderColor: accent.border,
-    backgroundColor: "rgba(235, 120, 37, 0.12)",
+  segmentedPill: {
+    flex: 1,
+    minHeight: 36,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radius.full,
   },
-  radioRowPressed: {
+  segmentedPillActive: {
+    backgroundColor: "rgba(235, 120, 37, 0.42)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: accent.warm,
+  },
+  segmentedPillPressed: {
     opacity: 0.85,
   },
-  radio: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: textTokens.secondary,
+  segmentedLabel: {
+    ...typography.bodySm,
+    color: textTokens.secondary,
+    fontWeight: "600",
   },
-  radioActive: {
-    borderColor: accent.warm,
-    backgroundColor: accent.warm,
-  },
-  radioLabel: {
-    ...typography.body,
+  segmentedLabelActive: {
     color: textTokens.primary,
-    fontWeight: "500",
   },
   scheduleHost: {
     gap: spacing.sm,
@@ -270,10 +282,10 @@ const styles = StyleSheet.create({
   },
   pickerPill: {
     flex: 1,
-    minHeight: 56,
+    minHeight: 44, // F.8: was 56
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.lg,
+    paddingVertical: spacing.xs, // F.8: was spacing.sm
+    borderRadius: radius.md, // F.8: was radius.lg
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: glass.border.profileBase,
     backgroundColor: glass.tint.profileBase,
