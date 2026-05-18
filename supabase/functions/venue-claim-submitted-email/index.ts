@@ -126,6 +126,7 @@ serve(async (req) => {
       },
     });
 
+    // no-attachment: Ve1 venue submission confirmation is plain transactional HTML only.
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {

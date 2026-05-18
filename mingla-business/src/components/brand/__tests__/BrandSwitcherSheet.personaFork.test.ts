@@ -61,8 +61,7 @@ describe("ORCH-0855 — BrandSwitcherSheet persona-fork structural contract", ()
     expect(tripBlockMatch![1]).toBe("compass");
   });
 
-  // SC-04 locked pre-Ve1; skipped after Ve1 enabled the place card (see Ve1 tests below).
-  test.skip("'A place' persona is disabled (Ve1 hasn't shipped — SC-04)", () => {
+  test("'A place' persona is disabled (Ve1 hasn't shipped — SC-04)", () => {
     const placeBlockMatch = sheetSource.match(
       /id: "place"[\s\S]*?disabled: (true|false)/,
     );
@@ -101,23 +100,5 @@ describe("ORCH-0855 — BrandSwitcherSheet persona-fork structural contract", ()
   test("TripBrandWizard and PersonaPickerCards are imported", () => {
     expect(sheetSource).toMatch(/import.*PersonaPickerCards.*PersonaDef/);
     expect(sheetSource).toMatch(/import.*TripBrandWizard/);
-  });
-
-  // Ve1 (ORCH-0099): place persona enabled — additive contract; SC-04 above is historical.
-  test("Ve1 — 'A place' persona enabled and routes to /venue/create", () => {
-    const placeBlockMatch = sheetSource.match(
-      /id: "place"[\s\S]*?disabled: (true|false)/,
-    );
-    expect(placeBlockMatch).not.toBeNull();
-    expect(placeBlockMatch![1]).toBe("false");
-    expect(sheetSource).toMatch(
-      /id: "place"[\s\S]*?router\.push\("\/venue\/create"/,
-    );
-  });
-
-  test("Ve1 — imports expo-router useRouter for venue onboarding", () => {
-    expect(sheetSource).toMatch(
-      /import\s*\{[^}]*useRouter[^}]*\}\s*from\s*["']expo-router["']/,
-    );
   });
 });
