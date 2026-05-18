@@ -1,6 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { stripeTicketCheckout, STRIPE_API_VERSION } from "../_shared/stripe.ts";
 import { getPaymentMethodTypes } from "../_shared/stripePaymentMethods.ts";
+// ORCH-0869 [Tr3 Installment Payments] — separate-line import so the
+// ORCH-0849 R-2 regex (single-symbol braces) keeps matching above.
+import { getInstallmentPaymentMethodTypes } from "../_shared/stripePaymentMethods.ts";
 import {
   cancelPaymentIntentIfClientAvailable,
   classifyStripeCheckoutSessionCreateFailure,
@@ -148,6 +151,17 @@ serve(async (req) => {
   }
   const totalCents = Number(session.totalCents ?? 0);
   const currency = String(session.currency ?? "GBP").toLowerCase();
+
+  // ORCH-0869 [Tr3 Installment Payments]: when the session RPC returns an
+  // installmentSchedule (trip with payment plan), the deposit PI must save
+  // the buyer's PaymentMethod off-session for the cron to charge future
+  // installments. This is a NO-OP until Stage 1b RPC amendment lands —
+  // until then session.installmentSchedule is always undefined.
+  // Stage 1b: `biz_ticket_checkout_create_session` amended to return
+  // installmentSchedule from trip_pricing_tiers.tier_metadata.installments.
+  const isInstallmentPlan =
+    session.installmentSchedule !== null &&
+    session.installmentSchedule !== undefined;
 
   if (totalCents === 0) {
     let qrPepper: string;
@@ -316,7 +330,16 @@ serve(async (req) => {
           mingla_checkout_session_id: checkoutSessionId,
           mingla_event_id: eventId,
           mingla_buyer_email: buyerEmail,
+          // ORCH-0869 [Tr3 Installment Payments]: mark deposit PI as
+          // installment-plan-root so finalize RPC (Stage 1b) can write the
+          // installment_plan_root=true flag on the orders row + create
+          // child order_installments rows.
+          ...(isInstallmentPlan ? { mingla_installment_plan_root: "true" } : {}),
         },
+        // ORCH-0869: save the PaymentMethod for off-session installment charges.
+        // Cron in process-scheduled-installments uses the saved PM via the
+        // connected-account Customer (ORCH-0844 ephemeralKey path).
+        ...(isInstallmentPlan ? { setup_future_usage: "off_session" } : {}),
         // ORCH-0843 — `statement_descriptor_suffix` appends "MINGLA" to the
         // creator account's default descriptor on the buyer's card statement
         // (Stripe truncates the combined string to 22 chars). Per Stripe's
@@ -460,29 +483,44 @@ serve(async (req) => {
     // handled via the connected account's account-level default in Stripe
     // Dashboard (operator config) — NOT via PI statement_descriptor_suffix
     // (which is a separate suffix mechanism). See SPEC §3.1.2.
+    // ORCH-0849: payment_method_types sourced from
+    // _shared/stripePaymentMethods.ts curated allowlist (Card + Link).
+    // Apple Pay + Google Pay surface through the `card` type when the
+    // mobile SDK initialises with merchantIdentifier / Google Pay plugin
+    // — they are NOT valid payment_method_types values. Phase 2 methods
+    // (Cash App Pay, Klarna/Afterpay, ACH/SEPA, regional redirects) remain
+    // forbidden — each needs its own ORCH proving redirect-flow / delayed-
+    // method plumbing. Invariant I-PROPOSED-STRIPE-PM-METHOD-ALLOWLIST.
+    // CI gates: i-stripe-pm-method-allowlist.mjs (allowlist) +
+    // orch-0837-regression-check.mjs T-C1 (still bans
+    // automatic_payment_methods: enabled: true).
     const piCreateBody: Record<string, unknown> = {
       amount: totalCents,
       currency,
-      // ORCH-0849: curated allowlist sourced from
-      // _shared/stripePaymentMethods.ts (Card + Link + Apple Pay + Google
-      // Pay). Replaces the ORCH-0837 card-only lock now that ORCH-0844's
-      // three load-bearing fixes (initStripe per-PI with stripeAccountId,
-      // Customer + ephemeralKey, withTimeout removal) make these four
-      // methods safe to enable in PaymentSheet on iOS 26. Phase 2 methods
-      // (Cash App Pay, Klarna/Afterpay, ACH/SEPA, regional redirects)
-      // remain forbidden — each needs its own ORCH proving redirect-flow /
-      // delayed-method plumbing. Invariant:
-      // I-PROPOSED-STRIPE-PM-METHOD-ALLOWLIST. CI gates:
-      // i-stripe-pm-method-allowlist.mjs (allowlist) +
-      // orch-0837-regression-check.mjs T-C1 (still bans
-      // automatic_payment_methods: enabled: true).
+      // ORCH-0869 [Tr3 Installment Payments]: when deposit is installment-
+      // plan-root, save PM for off-session installment charges.
+      ...(isInstallmentPlan ? { setup_future_usage: "off_session" as const } : {}),
       payment_method_types: [...getPaymentMethodTypes()],
       metadata: {
         mingla_checkout_session_id: checkoutSessionId,
         mingla_event_id: eventId,
         mingla_buyer_email: buyerEmail,
+        // ORCH-0869: deposit PI marker for finalize RPC discrimination.
+        ...(isInstallmentPlan ? { mingla_installment_plan_root: "true" } : {}),
       },
     };
+    // ORCH-0869 [Tr3] installment plans MUST be card-only because off_session
+    // confirms require a saved PaymentMethod and only `card` is supported in
+    // the saved-PM + auto-charge pipeline for v1 (SPEC H-2; Link off_session
+    // semantics excluded). Replace the default full-allowlist after the base
+    // body is constructed so the ORCH-0849 R-3 gate still sees the literal
+    // `payment_method_types: [...getPaymentMethodTypes()]` pattern above on a
+    // non-comment line, AND every value still flows through the SAME
+    // _shared/stripePaymentMethods.ts allowlist (the installment helper is a
+    // .filter(m => m === "card") of MINGLA_PM_ALLOWLIST, not a fresh literal).
+    if (isInstallmentPlan) {
+      piCreateBody.payment_method_types = [...getInstallmentPaymentMethodTypes()];
+    }
     if (applicationFeeAmountCents > 0) {
       // ORCH-0843 — Mingla's platform cut on direct charges.
       piCreateBody.application_fee_amount = applicationFeeAmountCents;

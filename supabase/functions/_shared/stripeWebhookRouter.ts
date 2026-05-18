@@ -9,6 +9,13 @@ import {
   getBrandPaymentManagerUserIds,
 } from "./stripeEdgeAuth.ts";
 import { qrTokenPepper } from "./ticketCheckout.ts";
+// ORCH-0869 [Tr3 Installment Payments]: discriminator + handlers for
+// installment PaymentIntent events. See SPEC §3.2.3.
+import {
+  isInstallmentPaymentIntentEvent,
+  handleInstallmentPaymentSucceeded,
+  handleInstallmentPaymentFailed,
+} from "./installmentWebhookHandlers.ts";
 import {
   getKycRemediationForRequirements,
   mapPayoutFailureCode,
@@ -762,6 +769,19 @@ async function handleTicketCheckoutPaymentIntent(
     const methodType = typeof paymentMethodTypes[0] === "string"
       ? paymentMethodTypes[0]
       : objectString(paymentIntent, "payment_method");
+    // ORCH-0869 Stage 1b: when the deposit PI metadata carries
+    // mingla_installment_plan_root='true', pass the Stripe Customer + saved
+    // PaymentMethod IDs through to the finalize RPC so the cron has what it
+    // needs to charge installments off-session. Non-installment PIs leave
+    // these params NULL/false and the legacy finalize path runs unchanged.
+    const piMetadata = (paymentIntent.metadata as Record<string, unknown> | undefined) ?? {};
+    const isInstallmentPlanRoot = piMetadata["mingla_installment_plan_root"] === "true";
+    const stripeCustomerId = isInstallmentPlanRoot
+      ? objectString(paymentIntent, "customer")
+      : null;
+    const savedPaymentMethodId = isInstallmentPlanRoot
+      ? objectString(paymentIntent, "payment_method")
+      : null;
     const { data: finalized, error: finalizeError } = await supabase.rpc(
       "biz_ticket_checkout_finalize",
       {
@@ -770,6 +790,9 @@ async function handleTicketCheckoutPaymentIntent(
         p_stripe_charge_id: latestCharge ? objectString(latestCharge, "id") : null,
         p_stripe_payment_method_type: methodType,
         p_qr_token_pepper: qrTokenPepper(),
+        p_stripe_customer_id_on_connected_account: stripeCustomerId,
+        p_saved_payment_method_id: savedPaymentMethodId,
+        p_installment_plan_root: isInstallmentPlanRoot,
       },
     );
     if (finalizeError) throw new Error(`ticket checkout finalize failed: ${finalizeError.message}`);
@@ -987,7 +1010,22 @@ export async function routeStripeEvent(
     case "payment_intent.succeeded":
     case "payment_intent.payment_failed":
     case "payment_intent.canceled":
-      brandId = await handleTicketCheckoutPaymentIntent(supabase, event);
+      // ORCH-0869 [Tr3 Installment Payments]: discriminate by metadata.
+      // Installment PIs (created by process-scheduled-installments cron) carry
+      // `mingla_installment_id` in metadata. Route to installment handlers
+      // instead of the ticket-checkout finalize path.
+      if (isInstallmentPaymentIntentEvent(event)) {
+        if (event.type === "payment_intent.succeeded") {
+          brandId = await handleInstallmentPaymentSucceeded(supabase, event);
+        } else if (event.type === "payment_intent.payment_failed") {
+          brandId = await handleInstallmentPaymentFailed(supabase, event);
+        }
+        // payment_intent.canceled for installment PIs: no-op (Tr3 doesn't cancel
+        // installment PIs; cancellation is operator-driven via plan cancellation
+        // which writes status='cancelled' directly on the ledger row).
+      } else {
+        brandId = await handleTicketCheckoutPaymentIntent(supabase, event);
+      }
       break;
     // ORCH-0790: web Stripe Checkout Session completion. Records the
     // PaymentIntent id against our session so payment_intent.succeeded

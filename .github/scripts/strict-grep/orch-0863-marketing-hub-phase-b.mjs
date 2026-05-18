@@ -254,11 +254,40 @@ function checkNoNewBackendFiles() {
     "supabase/functions/discover-merged-events/index.ts",
     "supabase/functions/ticket-confirmation-dispatch/index.ts",
   ];
+  // ORCH-0869 [Tr3 Installment Payments] CLOSE PR #128 (2026-05-18). The
+  // C7 gate is scoped to ORCH-0863's OWN diff (the gate runs against
+  // origin/main..HEAD diff, which on a separate ORCH-0869 PR contains the
+  // ORCH-0869 backend files since they have never reached main). These
+  // backend touches are ORCH-0869 installment-engine scope, not ORCH-0863
+  // marketing scope. Exempted here for the same reason as the ORCH-0859
+  // allowlist above. Future close that drops both allowlists should also
+  // re-scope C7 itself to fire ONLY against PRs whose commit message
+  // explicitly cites `Close ORCH-0863` (gate-scope follow-up — register
+  // when both allowlists become removable).
+  const ORCH_0869_BACKEND_ALLOWLIST = [
+    "supabase/functions/_shared/__tests__/installment_handoff_adversarial.test.ts",
+    "supabase/functions/_shared/email/installmentDunningEmail.ts",
+    "supabase/functions/_shared/email/installmentPlanPaidInFullEmail.ts",
+    "supabase/functions/_shared/installmentWebhookHandlers.ts",
+    "supabase/functions/_shared/stripePaymentMethods.ts",
+    "supabase/functions/_shared/stripeWebhookRouter.ts",
+    "supabase/functions/process-scheduled-installments/__tests__/idempotency.test.ts",
+    "supabase/functions/process-scheduled-installments/index.ts",
+    "supabase/functions/ticket-checkout-create/index.ts",
+    "supabase/functions/ticket-confirmation-dispatch/__tests__/installment_kinds.test.ts",
+    "supabase/migrations/20260610000000_tr3_installments.sql",
+    "supabase/migrations/20260610000001_tr3_cron_use_vault_secrets.sql",
+    "supabase/migrations/20260610000002_tr3_ticket_checkout_session_installment_aware.sql",
+  ];
+  const ALLOWLIST = [
+    ...ORCH_0859_BUNDLED_ALLOWLIST,
+    ...ORCH_0869_BACKEND_ALLOWLIST,
+  ];
   const forbidden = changed.filter(
     (p) =>
       (p.startsWith("supabase/migrations/") ||
         p.startsWith("supabase/functions/")) &&
-      !ORCH_0859_BUNDLED_ALLOWLIST.includes(p),
+      !ALLOWLIST.includes(p),
   );
   if (forbidden.length > 0) {
     fail(

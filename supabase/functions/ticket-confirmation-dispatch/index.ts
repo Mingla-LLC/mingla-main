@@ -41,6 +41,10 @@ import { buildTicketPdf } from "../_shared/ticketPdf.ts";
 // event_type='trip' — event_type='event' path unchanged.
 import { renderTripConfirmationEmail } from "../_shared/email/tripConfirmationEmail.ts";
 import { buildCalendarLinks } from "../_shared/email/calendar.ts";
+// ORCH-0869 (Tr3) Stage 1b: installment-kind renderers. Routed via body.kind
+// from installmentWebhookHandlers.ts and process-scheduled-installments.
+import { renderInstallmentDunningEmail } from "../_shared/email/installmentDunningEmail.ts";
+import { renderInstallmentPlanPaidInFullEmail } from "../_shared/email/installmentPlanPaidInFullEmail.ts";
 import {
   type BuyerContext,
   orderCancelledToGenericBody,
@@ -271,6 +275,168 @@ function buildRenderContext(args: {
   return { bodyInput, ticketsForPdf };
 }
 
+// ORCH-0869 (Tr3) Stage 1b helpers — kind-routed installment email senders.
+// Shared shape: fetch order + event + brand once, render the appropriate
+// template, send via Resend with NO attachments + NO calendar link (dunning
+// and paid-in-full are notification emails, not ticket emails).
+
+interface InstallmentEmailOrderJoin {
+  id: string;
+  buyer_name: string | null;
+  buyer_email: string | null;
+  total_cents: number;
+  currency: string;
+  events: {
+    title: string | null;
+    brand_id: string;
+    brands: {
+      name: string | null;
+      contact_email: string | null;
+    };
+  };
+}
+
+async function fetchInstallmentEmailContext(
+  supabase: ReturnType<typeof serviceClient>,
+  orderId: string,
+): Promise<InstallmentEmailOrderJoin | null> {
+  const { data, error } = await supabase
+    .from("orders")
+    .select(`
+      id,
+      buyer_name,
+      buyer_email,
+      total_cents,
+      currency,
+      events!inner (
+        title,
+        brand_id,
+        brands!inner ( name, contact_email )
+      )
+    `)
+    .eq("id", orderId)
+    .maybeSingle();
+  if (error || data === null) return null;
+  return data as unknown as InstallmentEmailOrderJoin;
+}
+
+async function handleInstallmentDunning(
+  supabase: ReturnType<typeof serviceClient>,
+  orderId: string,
+  body: Record<string, unknown>,
+): Promise<Response> {
+  const installmentId = typeof body.installmentId === "string" ? body.installmentId : "";
+  if (installmentId === "") {
+    return jsonResponse({ error: "installment_id_required" }, 400);
+  }
+  const ordinal = Number(body.installmentOrdinal ?? 0);
+  const failureReason = typeof body.failureReason === "string"
+    ? body.failureReason
+    : "payment_failed_no_detail";
+
+  const order = await fetchInstallmentEmailContext(supabase, orderId);
+  if (order === null) return jsonResponse({ error: "order_not_found" }, 404);
+  if (order.buyer_email === null || order.buyer_email === "") {
+    // Buyers without an email on file silently no-op rather than error —
+    // the order still exists, the dispatcher should not 500 the webhook
+    // handler upstream.
+    return jsonResponse({ kind: "installment_dunning", skipped: "no_buyer_email" });
+  }
+
+  const { data: installment, error: installmentError } = await supabase
+    .from("order_installments")
+    .select("id, ordinal, amount_cents, currency, retry_count, next_retry_at")
+    .eq("id", installmentId)
+    .maybeSingle();
+  if (installmentError !== null || installment === null) {
+    return jsonResponse({ error: "installment_not_found" }, 404);
+  }
+  const inst = installment as {
+    id: string;
+    ordinal: number;
+    amount_cents: number;
+    currency: string;
+    retry_count: number;
+    next_retry_at: string | null;
+  };
+
+  const rendered = renderInstallmentDunningEmail({
+    recipient: { name: order.buyer_name, email: order.buyer_email },
+    trip: { title: order.events.title ?? "your trip" },
+    installment: {
+      ordinal: Number(inst.ordinal ?? ordinal),
+      amountCents: Number(inst.amount_cents),
+      currency: inst.currency,
+      failureReason,
+      retryCount: Number(inst.retry_count ?? 0),
+      nextRetryAt: inst.next_retry_at,
+    },
+    brand: {
+      name: order.events.brands.name ?? "your host",
+      contactEmail: order.events.brands.contact_email,
+    },
+    order: { shortId: shortId(order.id) },
+  });
+
+  assertNotResendSandbox(rendered.from);
+  const sent = await sendResendEmailWithAttachment({
+    from: formatSenderHeader(rendered.from),
+    to: order.buyer_email,
+    subject: rendered.subject,
+    html: rendered.html,
+    text: rendered.text,
+    attachments: [],
+  });
+
+  return jsonResponse({
+    kind: "installment_dunning",
+    orderId,
+    installmentId,
+    providerMessageId: sent.id,
+  });
+}
+
+async function handleInstallmentPaidInFull(
+  supabase: ReturnType<typeof serviceClient>,
+  orderId: string,
+): Promise<Response> {
+  const order = await fetchInstallmentEmailContext(supabase, orderId);
+  if (order === null) return jsonResponse({ error: "order_not_found" }, 404);
+  if (order.buyer_email === null || order.buyer_email === "") {
+    return jsonResponse({ kind: "installment_plan_paid_in_full", skipped: "no_buyer_email" });
+  }
+
+  const rendered = renderInstallmentPlanPaidInFullEmail({
+    recipient: { name: order.buyer_name, email: order.buyer_email },
+    trip: { title: order.events.title ?? "your trip" },
+    brand: {
+      name: order.events.brands.name ?? "your host",
+      contactEmail: order.events.brands.contact_email,
+    },
+    order: {
+      shortId: shortId(order.id),
+      totalCents: Number(order.total_cents ?? 0),
+      currency: order.currency ?? "GBP",
+    },
+  });
+
+  assertNotResendSandbox(rendered.from);
+  const sent = await sendResendEmailWithAttachment({
+    from: formatSenderHeader(rendered.from),
+    to: order.buyer_email,
+    subject: rendered.subject,
+    html: rendered.html,
+    text: rendered.text,
+    attachments: [],
+  });
+
+  return jsonResponse({
+    kind: "installment_plan_paid_in_full",
+    orderId,
+    providerMessageId: sent.id,
+  });
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: ticketCorsHeaders });
@@ -288,6 +454,29 @@ serve(async (req) => {
   if (!orderId) return jsonResponse({ error: "order_id_required" }, 400);
 
   const supabase = serviceClient();
+
+  // ORCH-0869 (Tr3) Stage 1b: kind-based routing. When `kind` is one of the
+  // Tr3 installment kinds, bypass the legacy ticket_order_notifications
+  // polling loop and render+send directly. Non-installment kinds (the legacy
+  // ticket-confirmation flow used by every existing caller) fall through to
+  // the existing implementation unchanged.
+  const kind = typeof body.kind === "string" ? body.kind : null;
+  if (kind === "installment_dunning") {
+    return await handleInstallmentDunning(supabase, orderId, body);
+  }
+  if (kind === "installment_plan_paid_in_full") {
+    return await handleInstallmentPaidInFull(supabase, orderId);
+  }
+  if (kind !== null) {
+    // Defensive: unknown kind. Surface as 400 so the caller's logs make the
+    // misroute obvious — silent fall-through to legacy would render a ticket
+    // confirmation email for a webhook that meant something else entirely.
+    return jsonResponse(
+      { error: "unknown_kind", kind },
+      400,
+    );
+  }
+
   const { data: orderRaw, error: orderError } = await supabase
     .from("orders")
     .select(`

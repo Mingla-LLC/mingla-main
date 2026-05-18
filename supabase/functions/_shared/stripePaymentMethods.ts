@@ -47,3 +47,20 @@ export type MinglaPaymentMethod = (typeof MINGLA_PM_ALLOWLIST)[number];
 export function getPaymentMethodTypes(): readonly MinglaPaymentMethod[] {
   return MINGLA_PM_ALLOWLIST;
 }
+
+/**
+ * ORCH-0869 [Tr3 Installment Payments] — installment-plan PIs MUST be
+ * card-only because off_session confirms require a saved PaymentMethod
+ * and only `card` is supported in the saved-PM + auto-charge pipeline
+ * for v1. This is a filtered subset of the curated allowlist (NOT a
+ * hardcoded literal), preserving ORCH-0849 invariant
+ * I-PROPOSED-STRIPE-PM-METHOD-ALLOWLIST: every payment_method_types
+ * value still flows through this module.
+ *
+ * Investigation H-2 (SPEC_ORCH-0869 §3.2.2): Link off_session reuse
+ * semantics are out of scope for Tr3 v1; future ORCH can lift the
+ * card-only restriction.
+ */
+export function getInstallmentPaymentMethodTypes(): readonly MinglaPaymentMethod[] {
+  return MINGLA_PM_ALLOWLIST.filter((m) => m === "card");
+}
