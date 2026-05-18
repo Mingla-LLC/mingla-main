@@ -1,13 +1,20 @@
-# ORCH-0822 — Twilio Toll-Free Verification Rejection & Resubmit
+# Twilio Toll-Free Verification Rejection & Resubmit
+
+> **Note on filename ORCH-ID:** This filename uses the `ORCH-0822` prefix as a historical label from the 2026-05-13 orchestrator session that opened the Twilio TFV thread. The canonical `ORCH-0822` row in `WORLD_MAP.md` is a different work item (Ari MVP post-close hardening — cross-tenant probe + Android parity + rate-limit trip-test), still open at the time of writing. This artifact is an informal Twilio operations log, not a WORLD_MAP-registered ORCH. Do not promote a row in WORLD_MAP from this file.
+>
+> **Status: CLOSED (operator-directed 2026-05-18) as a Twilio ops thread** — patch v2 accepted by Twilio, status `PENDING_REVIEW`, edit window open until 2026-05-26. If Twilio re-rejects, re-open this artifact; do not file a new ORCH unless the cause is a code-side fix.
 
 - Opened: 2026-05-13
+- Closed (ops): 2026-05-18 — patch v2 PENDING_REVIEW with Twilio
 - Owner: orchestrator (Claude)
 - Phone: `+18882505351`
 - Phone SID: `PN932653656902e1231cd5ef3e6dba2c01`
 - Verification SID: `HH09152453d554fc707570f31994ddda0f`
 - Status (initial): `TWILIO_REJECTED` (date_updated 2026-05-13T14:34:21Z)
-- Status (post-patch): `PENDING_REVIEW` (date_updated 2026-05-13)
-- Edit window: open until `2026-05-21T00:00:00Z`
+- Status (post-patch v1): `PENDING_REVIEW` (date_updated 2026-05-13)
+- Status (round 2): `TWILIO_REJECTED` again (date_updated 2026-05-18T15:12:07Z) — only code 30507 remaining; 30482 + 30496 cleared
+- Status (post-patch v2): `PENDING_REVIEW` (date_updated 2026-05-18, this orchestrator session)
+- Edit window: open until `2026-05-26T00:00:00Z`
 
 ## Twilio rejection reasons (verbatim)
 
@@ -78,3 +85,63 @@ Low–medium. The three rejection reasons are now addressed with verifiable evid
 1. Confirm `seth@usemingla.com` MX/inbox is live and monitored.
 2. Skim `/privacy-policy/` and `/terms-of-service/` on `usemingla.com` — ensure both mention SMS, opt-in, STOP, and frequency. If absent, add a short SMS section to each (pre-emptive fix for a potential third-pass rejection).
 3. Wait for Twilio review. Re-poll on 2026-05-16.
+
+## 2026-05-18 — Round 2 rejection + Round 2 patch
+
+Round 2 rejection (returned on 2026-05-18T15:12:07Z, before this orchestrator session opened):
+
+| Code | Reason |
+|---|---|
+| 30507 | Opt-In Does Not Match the Use Case |
+
+Codes 30482 and 30496 cleared from round 1. Only 30507 returned.
+
+### Round 2 root cause
+
+The opt-in proof image at the Supabase URL is the Mingla "What's your number?" phone-entry screen. Its consent text promises **exactly three** message types:
+
+> "I agree to receive texts from Mingla, including verification codes, friend invitations, and experience reminders. Msg & data rates may apply. Reply STOP to opt out or HELP for help."
+
+The round-1 `use_case_summary` invented a fourth promise — "material updates" / "confirmations" — that does not appear anywhere on the consent form. Twilio's reviewer reads the form text literally and flagged the mismatch.
+
+Note: `opt_in_type=WEB_FORM` is acceptable to Twilio even though the screenshot is a native mobile-app screen — operator confirmed this is not the blocker. The blocker was the literal-text mismatch between consent copy and declared use case.
+
+### Round 2 patch applied (this session)
+
+`POST https://messaging.twilio.com/v1/Tollfree/Verifications/HH09152453d554fc707570f31994ddda0f`
+
+| Field | Before (round 1, rejected) | After (round 2, this session) |
+|---|---|---|
+| `use_case_summary` | "Mingla sends transactional SMS to users who opt in inside the Mingla mobile app … (a) one-time verification codes for phone-number sign-in (2FA), (b) account notifications such as friend pair-up invitations **and confirmations**, and (c) event reminders **and material updates** for experiences the user has saved or booked." | "Mingla sends transactional SMS only to users who opt in by checking the consent box on the phone-entry screen in the Mingla mobile app (see opt-in proof image). Only the three message types promised in the consent text are sent: (a) verification codes for phone sign-in, (b) friend invitations when another Mingla user invites the recipient to pair up, and (c) reminders for experiences the user has saved or booked. No promotional or marketing content. Reply STOP to opt out, HELP for help." |
+
+Length: 492 chars (Twilio's TFV `use_case_summary` field rejects ~1100-char drafts with a 400 "Invalid use case summary" — observed cap is in the 500-char range).
+
+Everything else unchanged:
+- `opt_in_image_urls` — Supabase PNG, 200 OK, 175 KB
+- `opt_in_type` — `WEB_FORM` (operator-confirmed OK for mobile-app form)
+- `opt_in_keywords` — `START`, `YES`
+- `opt_in_confirmation_message` — already mirrors the form's three promises word-for-word
+- `use_case_categories` — `TWO_FACTOR_AUTHENTICATION`, `ACCOUNT_NOTIFICATIONS`, `EVENTS`; each now maps 1-to-1 to one promise on the form
+
+### Round 2 Twilio response (key fields)
+
+```
+status: PENDING_REVIEW
+error_code: null
+rejection_reason: null
+rejection_reasons: null
+edit_allowed: true
+edit_expiration: 2026-05-26T00:00:00Z
+```
+
+### Polling cadence
+
+Re-poll on 2026-05-21 and again on 2026-05-25 (24 h before edit-window close):
+
+```
+curl -u "$TWILIO_ACCOUNT_SID:$TWILIO_AUTH_TOKEN" \
+  https://messaging.twilio.com/v1/Tollfree/Verifications/HH09152453d554fc707570f31994ddda0f
+```
+
+If `TWILIO_APPROVED` → close ORCH-0822 [Twilio TFV Rejection & Resubmit], update `twilio-values.md` with approval date.
+If `TWILIO_REJECTED` again with the same 30507 → escalate to operator; the form copy itself may need to be tightened (e.g., remove "experience reminders" if Mingla wants to drop the EVENTS category, or expand the form copy to mention the broader scope).
