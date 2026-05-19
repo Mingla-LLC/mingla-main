@@ -236,8 +236,15 @@ COMMENT ON TABLE public.trip_intake_schemas IS
 -- Section 4 — trip_intake_files storage bucket + RLS policies
 -- I-PROPOSED-TR5-INTAKE-FILE-RLS-ANON-WRITE-PLANNER-READ enforcement.
 -- ============================================================
-INSERT INTO storage.buckets (id, name, public)
-VALUES ('trip_intake_files', 'trip_intake_files', false)
+-- HOTFIX 2026-05-19: CI's storage.buckets baseline lacks the `public` column
+-- (some local supabase baselines ship a stripped-down storage schema). The
+-- default for `public` is `false` which matches our intent (private bucket;
+-- buyer access only via signed URLs from trip-intake-upload-signed-url, +
+-- planner access via supabase.storage.createSignedUrl in TravelerIntake-
+-- AnswerCard). Remote bucket already exists from Phase 1 apply, so the
+-- ON CONFLICT clause makes this a no-op on remote regardless.
+INSERT INTO storage.buckets (id, name)
+VALUES ('trip_intake_files', 'trip_intake_files')
 ON CONFLICT (id) DO NOTHING;
 
 -- Anon buyer can INSERT under own path (signed-URL signed by edge function
