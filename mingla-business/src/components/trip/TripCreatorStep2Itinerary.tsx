@@ -23,6 +23,16 @@ export interface TripCreatorStep2ItineraryProps {
   days: TripDayDraft[];
   onChange: (days: TripDayDraft[]) => void;
   disabled?: boolean;
+  /**
+   * ORCH-0876 — present when the operator is editing a published trip with
+   * confirmed bookings. The server's refund-gate rejects day-count drops
+   * with `days_dropped_with_sales`; the editor remains writable so authors
+   * can re-word narratives (additive), and the parent surface owns the
+   * pre-flight UX rejection.
+   */
+  editMode?: {
+    totalConfirmedOrders: number;
+  };
 }
 
 export const TripCreatorStep2Itinerary: React.FC<TripCreatorStep2ItineraryProps> = ({

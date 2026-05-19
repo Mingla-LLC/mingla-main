@@ -61,6 +61,18 @@ export interface TripCreatorStep4PricingProps {
   draft: Step4Draft;
   onChange: (patch: Partial<Step4Draft>) => void;
   disabled?: boolean;
+  /**
+   * ORCH-0876 — present when the operator is editing a published trip.
+   * `soldCountForTier` is the confirmed-order count against the single
+   * default tier. When > 0, price is rendered read-only with a
+   * "Refund first" hint because the server's refund-gate rejects
+   * `tier_price_change_with_sales`. Tier-name and payment-plan toggles
+   * remain editable (additive). Mirrors the event-side
+   * `editMode.soldCountByTier` pattern.
+   */
+  editMode?: {
+    soldCountForTier: number;
+  };
 }
 
 const INPUT_BORDER = "rgba(255, 255, 255, 0.12)";
@@ -70,10 +82,15 @@ export const TripCreatorStep4Pricing: React.FC<TripCreatorStep4PricingProps> = (
   draft,
   onChange,
   disabled,
+  editMode,
 }) => {
   const [confirmRemoveOpen, setConfirmRemoveOpen] = useState(false);
   const priceCents = Math.round((parseFloat(draft.priceMajor) || 0) * 100);
   const planEnabled = draft.paymentPlan !== null;
+  // ORCH-0876 — read-only price when at least one confirmed booking exists
+  // for this tier. Server-side `tier_price_change_with_sales` blocks any
+  // attempt; this just removes the editable affordance for clarity.
+  const priceLocked = (editMode?.soldCountForTier ?? 0) > 0;
 
   // ORCH-0873 default schedule when toggle flips on: 25% deposit + 2 future
   // installments at 50%/25% pct at 30/60 days (matches DESIGN §3 Mockup A
@@ -128,24 +145,30 @@ export const TripCreatorStep4Pricing: React.FC<TripCreatorStep4PricingProps> = (
       <View style={styles.priceRow}>
         <View style={[styles.fieldGroup, { flex: 2 }]}>
           <Text style={styles.fieldLabel}>Price per spot</Text>
-          <TextInput
-            value={draft.priceMajor}
-            onChangeText={(v) => {
-              // Allow digits + single decimal point only
-              const clean = v.replace(/[^0-9.]/g, "");
-              const parts = clean.split(".");
-              const normalized =
-                parts.length > 2 ? parts[0] + "." + parts.slice(1).join("") : clean;
-              onChange({ priceMajor: normalized });
-            }}
-            placeholder="50.00"
-            placeholderTextColor={textTokens.tertiary}
-            keyboardType="decimal-pad"
-            editable={!disabled}
-            accessibilityLabel="Price per spot"
-            style={styles.textInput}
-            testID="trip-step4-price"
-          />
+          {priceLocked ? (
+            <View style={styles.readonlyField} testID="trip-step4-price-readonly">
+              <Text style={styles.readonlyValue}>{draft.priceMajor || "—"}</Text>
+            </View>
+          ) : (
+            <TextInput
+              value={draft.priceMajor}
+              onChangeText={(v) => {
+                // Allow digits + single decimal point only
+                const clean = v.replace(/[^0-9.]/g, "");
+                const parts = clean.split(".");
+                const normalized =
+                  parts.length > 2 ? parts[0] + "." + parts.slice(1).join("") : clean;
+                onChange({ priceMajor: normalized });
+              }}
+              placeholder="50.00"
+              placeholderTextColor={textTokens.tertiary}
+              keyboardType="decimal-pad"
+              editable={!disabled}
+              accessibilityLabel="Price per spot"
+              style={styles.textInput}
+              testID="trip-step4-price"
+            />
+          )}
         </View>
         <View style={[styles.fieldGroup, { flex: 1 }]}>
           <Text style={styles.fieldLabel}>Currency</Text>
@@ -167,6 +190,15 @@ export const TripCreatorStep4Pricing: React.FC<TripCreatorStep4PricingProps> = (
       <Text style={styles.footnote}>
         Currency comes from your brand setup and can&apos;t be changed here.
       </Text>
+
+      {priceLocked ? (
+        <Text style={styles.lockedHint} testID="trip-step4-price-locked-hint">
+          Existing travelers are protected at the price they paid. Refund
+          all {editMode?.soldCountForTier ?? 0} buyer
+          {(editMode?.soldCountForTier ?? 0) === 1 ? "" : "s"} before changing
+          this price (or add a new tier at the new price).
+        </Text>
+      ) : null}
 
       {/* ORCH-0873 [Tr3 Stage 2 UI] — Payment plan toggle + editor */}
       <View style={styles.paymentPlanSection}>
@@ -297,6 +329,17 @@ const styles = StyleSheet.create({
     fontSize: typography.caption.fontSize,
     color: textTokens.tertiary,
     fontStyle: "italic",
+  },
+  lockedHint: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: accent.warm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    backgroundColor: "rgba(235, 120, 37, 0.08)",
+    borderRadius: radiusTokens.sm,
+    borderWidth: 1,
+    borderColor: "rgba(235, 120, 37, 0.32)",
   },
   // ORCH-0873 [Tr3 Stage 2 UI] payment plan section styles
   paymentPlanSection: {

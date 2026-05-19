@@ -833,6 +833,179 @@ export interface SoftDeleteResult {
   reason?: "has_confirmed_orders";
 }
 
+// ============================================================
+// ORCH-0876 — updateLiveTripFields + LiveTripPatch + TripCoverPatch
+// ============================================================
+//
+// Server-side atomic patch writer for published trips. Calls the
+// `biz_update_live_trip(p_event_id, p_patch, p_reason)` RPC which validates
+// auth + reason length + event_type + status + permission, runs an 8-path
+// refund-gate, applies the patch across `events` + `trip_days` +
+// `trip_inclusions` + `trip_pricing_tiers` + `ticket_types` in a single
+// transaction, and inserts a `trip_edit_log` row.
+//
+// F-17 architecture LEAPFROG: events use a client-side Zustand store for
+// most published-edit writes (`useLiveEventStore.updateLiveEventFields`).
+// Trips skip that tech debt entirely — every write here goes to the DB.
+//
+// Audit-test invariant: `updateLiveTripFields` MUST route through the
+// `biz_update_live_trip` RPC (event_type='trip' enforced server-side).
+
+export interface TripCoverPatch {
+  cover_media_url: string | null;
+  cover_media_type: "image" | "video" | "gif" | null;
+  cover_media_provider: string | null;
+  cover_media_source_url: string | null;
+  cover_media_credit: string | null;
+  cover_media_credit_url: string | null;
+  cover_media_alt: string | null;
+}
+
+export interface TripPricingTierInput {
+  ticket_type_id: string;
+  tier_name?: string;
+  tier_metadata?: Record<string, unknown>;
+  price_cents?: number;
+}
+
+/**
+ * Patch shape consumed by `biz_update_live_trip` RPC. Every key is
+ * optional — only present keys are applied. JSONB keys use snake_case to
+ * match SQL conventions; TS callers serialize via `JSON.stringify(patch)`
+ * implicitly via supabase.rpc.
+ */
+export interface LiveTripPatch {
+  title?: string;
+  description?: string | null;
+  theme?: {
+    business_trip?: Partial<TripBusinessTrip>;
+  };
+  days?: TripDayInput[];
+  inclusions?: TripInclusionInput[];
+  pricing_tiers?: TripPricingTierInput[];
+  cover_media_url?: string | null;
+  cover_media_type?: "image" | "video" | "gif" | null;
+  cover_media_provider?: string | null;
+  cover_media_source_url?: string | null;
+  cover_media_credit?: string | null;
+  cover_media_credit_url?: string | null;
+  cover_media_alt?: string | null;
+}
+
+export type UpdateLiveTripRejectReason =
+  | "missing_edit_reason"
+  | "invalid_edit_reason"
+  | "trip_not_found"
+  | "trip_not_editable_status"
+  | "capacity_below_sold"
+  | "tier_delete_with_sales"
+  | "tier_price_change_with_sales"
+  | "dates_shifted_with_sales"
+  | "days_dropped_with_sales"
+  | "inclusions_removed_with_sales";
+
+export type UpdateLiveTripResult =
+  | {
+      ok: true;
+      editLogEntryId: string;
+      severity: "additive" | "material";
+      changedKeys: string[];
+      affectedOrderCount: number;
+    }
+  | {
+      ok: false;
+      reason: UpdateLiveTripRejectReason;
+      affectedOrderCount?: number;
+      droppedDates?: string[];
+      droppedInclusions?: string[];
+    };
+
+export class UpdateLiveTripPermissionError extends Error {
+  constructor(public code: "event_not_a_trip" | "insufficient_event_permission" | "authentication_required") {
+    super(code);
+    this.name = "UpdateLiveTripPermissionError";
+  }
+}
+
+/**
+ * Calls the server-side `biz_update_live_trip` RPC. Server enforces
+ * event_type='trip'; client receives:
+ *   - {ok: true, editLogEntryId, severity, changedKeys, affectedOrderCount}
+ *     on successful patch
+ *   - {ok: false, reason, affectedOrderCount?, droppedDates?, droppedInclusions?}
+ *     on validation reject (8 refund-gate reasons + missing/invalid reason +
+ *     trip_not_found + trip_not_editable_status)
+ *
+ * Throws UpdateLiveTripPermissionError for auth/type/permission failures
+ * (which the RPC raises as SQL exceptions, not result rows).
+ */
+export async function updateLiveTripFields(
+  eventId: string,
+  patch: LiveTripPatch,
+  reason: string,
+): Promise<UpdateLiveTripResult> {
+  // ORCH-0876: route through biz_update_live_trip RPC (audit-test enforced).
+  const { data, error } = await supabase.rpc("biz_update_live_trip", {
+    p_event_id: eventId,
+    p_patch: patch as Record<string, unknown>,
+    p_reason: reason,
+  });
+
+  if (error !== null) {
+    // Server-side exceptions (auth/type/permission) come back as SQL errors.
+    // RPC body raises:
+    //   - 'authentication_required'
+    //   - 'event_not_a_trip'
+    //   - 'insufficient_event_permission'
+    const code = error.message;
+    if (
+      code === "event_not_a_trip" ||
+      code === "insufficient_event_permission" ||
+      code === "authentication_required"
+    ) {
+      throw new UpdateLiveTripPermissionError(code);
+    }
+    throw error;
+  }
+
+  if (data === null || typeof data !== "object") {
+    throw new Error("updateLiveTripFields: RPC returned null/non-object");
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const raw = data as Record<string, any>;
+  if (raw.ok === true) {
+    return {
+      ok: true,
+      editLogEntryId: String(raw.edit_log_entry_id),
+      severity: raw.severity as "additive" | "material",
+      changedKeys: Array.isArray(raw.changed_keys)
+        ? (raw.changed_keys as string[])
+        : [],
+      affectedOrderCount:
+        typeof raw.affected_order_count === "number"
+          ? raw.affected_order_count
+          : 0,
+    };
+  }
+  return {
+    ok: false,
+    reason: raw.reason as UpdateLiveTripRejectReason,
+    affectedOrderCount:
+      typeof raw.affected_order_count === "number"
+        ? raw.affected_order_count
+        : undefined,
+    droppedDates: Array.isArray(raw.dropped_dates)
+      ? (raw.dropped_dates as string[])
+      : undefined,
+    droppedInclusions: Array.isArray(raw.dropped_inclusions)
+      ? (raw.dropped_inclusions as string[])
+      : undefined,
+  };
+}
+
+// ---------------------- softDeleteTrip ----------------------
+
 export async function softDeleteTrip(eventId: string): Promise<SoftDeleteResult> {
   // Reject if confirmed orders exist (mirror softDeleteBrand pattern)
   const { count, error: countError } = await supabase

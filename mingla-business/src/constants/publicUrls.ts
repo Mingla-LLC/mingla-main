@@ -57,6 +57,31 @@ export const checkoutPublicPath = (eventId: string): string =>
 export const checkoutPublicUrl = (eventId: string): string =>
   `${BUSINESS_PUBLIC_ORIGIN}${checkoutPublicPath(eventId)}`;
 
+// ORCH-0876: trip-specific buyer-anon checkout chain. Event-side
+// /checkout/[eventId]/* hard-rejects trips by audit-test invariant
+// (eventType.filter.audit.test.ts). Trips have their own chain at
+// /checkout-trip/[tripEventId]/{_layout,index,buyer,payment,confirm}.tsx.
+export const tripCheckoutPath = (tripEventId: string): string =>
+  `/checkout-trip/${requireSegment(tripEventId, "tripEventId")}`;
+
+export const tripCheckoutUrl = (tripEventId: string): string =>
+  `${BUSINESS_PUBLIC_ORIGIN}${tripCheckoutPath(tripEventId)}`;
+
+// ORCH-0876: public trip page path helper (mirror of eventPublicPath).
+export const tripPublicPath = (input: {
+  brandSlug: string;
+  tripSlug: string;
+}): string =>
+  `/t/${requireSegment(input.brandSlug, "brandSlug")}/${requireSegment(
+    input.tripSlug,
+    "tripSlug",
+  )}`;
+
+export const tripPublicUrl = (input: {
+  brandSlug: string;
+  tripSlug: string;
+}): string => `${BUSINESS_PUBLIC_ORIGIN}${tripPublicPath(input)}`;
+
 export const eventOgImageUrl = (input: {
   eventId: string;
   coverMediaUrl?: string | null;

@@ -15,6 +15,12 @@ const fail = (message) => {
 
 const requiredFiles = [
   "mingla-business/src/components/event/CreatorStep4Cover.tsx",
+  // ORCH-0876 [Trip CRUD + Purchase Flow Completion — Full Event↔Trip Parity]
+  // SPEC v2 Q3: extract shared `<CoverPicker>` consumed by 3 sites (event
+  // Step4 wrapper, trip Step1Basics, EditPublishedTripScreen). The provider
+  // search + provider-metadata tokens now live in CoverPicker.tsx; event
+  // Step4 is a thin wrapper that forwards via the picker.
+  "mingla-business/src/components/ui/CoverPicker.tsx",
   "mingla-business/src/services/giphyEventCoverService.ts",
   "mingla-business/src/services/__tests__/giphyEventCoverService.test.ts",
   "mingla-business/src/services/pexelsEventCoverService.ts",
@@ -29,6 +35,11 @@ for (const path of requiredFiles) {
 }
 
 const step4 = read("mingla-business/src/components/event/CreatorStep4Cover.tsx");
+const coverPicker = read("mingla-business/src/components/ui/CoverPicker.tsx");
+// ORCH-0876: the event-side cover provider invariant is now satisfied when
+// EITHER CreatorStep4Cover OR the shared CoverPicker it composes carries the
+// tokens. Combined source for the substring checks below.
+const eventCoverComposite = step4 + "\n" + coverPicker;
 const giphy = read("mingla-business/src/services/giphyEventCoverService.ts");
 const pexelsClient = read("mingla-business/src/services/pexelsEventCoverService.ts");
 const pexelsEdge = read("supabase/functions/event-cover-pexels-search/index.ts");
@@ -53,11 +64,11 @@ for (const token of forbiddenStep4) {
   }
 }
 
-if (!step4.includes("searchGiphyEventCovers") || !step4.includes("searchPexelsEventCovers")) {
-  fail("CreatorStep4Cover must expose GIPHY and Pexels provider search.");
+if (!eventCoverComposite.includes("searchGiphyEventCovers") || !eventCoverComposite.includes("searchPexelsEventCovers")) {
+  fail("CreatorStep4Cover (or its shared CoverPicker) must expose GIPHY and Pexels provider search.");
 }
-if (!step4.includes("coverMediaProvider") || !step4.includes("coverMediaCredit")) {
-  fail("CreatorStep4Cover must persist provider metadata with cover selections.");
+if (!eventCoverComposite.includes("coverMediaProvider") || !eventCoverComposite.includes("coverMediaCredit")) {
+  fail("CreatorStep4Cover (or its shared CoverPicker) must persist provider metadata with cover selections.");
 }
 if (!giphy.includes("https://api.giphy.com/v1/gifs/search")) {
   fail("GIPHY adapter must use direct client GIF search.");

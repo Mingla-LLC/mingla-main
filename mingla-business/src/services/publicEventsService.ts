@@ -569,3 +569,203 @@ export const getPublicBrandBySlug = async (
     ),
   };
 };
+
+// ============================================================
+// ORCH-0876 — getPublicTripById
+// ============================================================
+//
+// Trip-only resolver. Lives ALONGSIDE getPublicEventById (which keeps its
+// trip-rejection probe per ORCH-0859 REWORK 3 audit). Mirrors
+// usePublicTripBySlug's query shape (`mingla-business/src/hooks/usePublicTripBySlug.ts`)
+// but resolves by event-row-id instead of brand/trip slug pair. Used by
+// the new `/checkout-trip/[tripEventId]/*` chain to load a published trip
+// for the buyer-facing surface.
+//
+// Audit-test invariant: this function MUST pin `.eq("event_type", "trip")`.
+// See mingla-business/src/services/__tests__/eventType.filter.audit.test.ts
+// (extended by ORCH-0876).
+
+import type {
+  Trip,
+  TripDay,
+  TripInclusion,
+  TripPricingTier,
+} from "./tripsService";
+
+export interface PublicTripBrand {
+  id: string;
+  slug: string;
+  name: string;
+  bio: string | null;
+  coverMediaUrl: string | null;
+}
+
+export interface PublicTripDetail {
+  trip: Trip;
+  brand: PublicTripBrand;
+}
+
+export const getPublicTripById = async (
+  tripEventId: string,
+): Promise<PublicTripDetail | null> => {
+  // 1. Resolve trip row — pins event_type='trip' + scheduled/live + not deleted.
+  // orch-strict-grep-allow events-type-filter — ORCH-0876: trip-only resolver
+  const eventResp = await supabase
+    .from("events")
+    .select("*")
+    .eq("id", tripEventId)
+    .eq("event_type", "trip")
+    .in("status", ["scheduled", "live"])
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (eventResp.error !== null) throw eventResp.error;
+  if (eventResp.data === null) return null;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const event = eventResp.data as any;
+  const brandId = event.brand_id as string;
+
+  // 2. Resolve brand
+  const brandResp = await supabase
+    .from("brands")
+    .select("id, slug, name, description, cover_media_url")
+    .eq("id", brandId)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (brandResp.error !== null) throw brandResp.error;
+  if (brandResp.data === null) return null;
+
+  const brand = brandResp.data;
+
+  // 3. Sidecar tables — anon-readable via published-only RLS
+  const [daysResp, tiersResp, inclusionsResp, ticketsResp] = await Promise.all([
+    supabase
+      .from("trip_days")
+      .select("*")
+      .eq("event_id", tripEventId)
+      .order("ordinal"),
+    supabase
+      .from("trip_pricing_tiers")
+      .select("*")
+      .eq("event_id", tripEventId),
+    supabase
+      .from("trip_inclusions")
+      .select("*")
+      .eq("event_id", tripEventId)
+      .order("kind")
+      .order("ordinal"),
+    supabase
+      .from("ticket_types")
+      .select("*")
+      .eq("event_id", tripEventId)
+      .is("deleted_at", null),
+  ]);
+  if (daysResp.error !== null) throw daysResp.error;
+  if (tiersResp.error !== null) throw tiersResp.error;
+  if (inclusionsResp.error !== null) throw inclusionsResp.error;
+  if (ticketsResp.error !== null) throw ticketsResp.error;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const days = (daysResp.data ?? []) as any[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const tiers = (tiersResp.data ?? []) as any[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const inclusions = (inclusionsResp.data ?? []) as any[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const tickets = (ticketsResp.data ?? []) as any[];
+
+  const ticketsById = new Map(tickets.map((tt) => [tt.id, tt]));
+  const bt =
+    (event.theme?.business_trip as Record<string, unknown> | undefined) ?? {};
+
+  const trip: Trip = {
+    id: event.id,
+    brandId: event.brand_id,
+    brandSlug: brand.slug,
+    title: event.title,
+    description: event.description,
+    slug: event.slug,
+    status: event.status,
+    visibility: event.visibility,
+    publishedAt: event.published_at,
+    timezone: event.timezone,
+    coverMediaUrl: event.cover_media_url,
+    coverMediaType: event.cover_media_type,
+    businessTrip: {
+      startAt: typeof bt.startAt === "string" ? bt.startAt : null,
+      endAt: typeof bt.endAt === "string" ? bt.endAt : null,
+      destinationPlaceId:
+        typeof bt.destinationPlaceId === "string"
+          ? bt.destinationPlaceId
+          : null,
+      destinationLocationText:
+        typeof bt.destinationLocationText === "string"
+          ? bt.destinationLocationText
+          : null,
+      destinationLat:
+        typeof bt.destinationLat === "number" ? bt.destinationLat : null,
+      destinationLng:
+        typeof bt.destinationLng === "number" ? bt.destinationLng : null,
+      capacity: typeof bt.capacity === "number" ? bt.capacity : null,
+    },
+    days: days.map(
+      (d): TripDay => ({
+        id: d.id,
+        eventId: d.event_id,
+        ordinal: d.ordinal,
+        title: d.title,
+        narrative: d.narrative,
+        date: d.date,
+        stops: Array.isArray(d.stops) ? d.stops : [],
+      }),
+    ),
+    pricingTiers: tiers.map((t): TripPricingTier => {
+      const tt = ticketsById.get(t.ticket_type_id);
+      const installmentSchedule =
+        (t.tier_metadata?.installments as
+          | TripPricingTier["installmentSchedule"]
+          | undefined) ?? null;
+      return {
+        id: t.id,
+        eventId: t.event_id,
+        ticketTypeId: t.ticket_type_id,
+        tierName: t.tier_name,
+        tierMetadata: t.tier_metadata ?? {},
+        priceCents: tt?.price_cents ?? 0,
+        currency: tt?.currency ?? "",
+        quantityTotal: tt?.quantity_total ?? null,
+        isUnlimited: tt?.is_unlimited ?? false,
+        installmentSchedule,
+      };
+    }),
+    inclusions: inclusions.map(
+      (i): TripInclusion => ({
+        id: i.id,
+        eventId: i.event_id,
+        kind: i.kind,
+        item: i.item,
+        ordinal: i.ordinal,
+      }),
+    ),
+    createdAt: event.created_at,
+    updatedAt: event.updated_at,
+    // ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] fields — read directly
+    // off events row; defaults match Trip type contract.
+    refundPolicy:
+      (event.refund_policy as Trip["refundPolicy"] | undefined) ?? null,
+    bookingDeadline: event.booking_deadline ?? null,
+    bookingsClosed: event.bookings_closed === true,
+    bookingsClosedAt: event.bookings_closed_at ?? null,
+  };
+
+  return {
+    trip,
+    brand: {
+      id: brand.id,
+      slug: brand.slug,
+      name: brand.name,
+      bio: brand.description ?? null,
+      coverMediaUrl: brand.cover_media_url ?? null,
+    },
+  };
+};

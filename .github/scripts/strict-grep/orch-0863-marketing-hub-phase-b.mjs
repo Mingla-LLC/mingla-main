@@ -325,12 +325,22 @@ function checkNoNewBackendFiles() {
     "supabase/functions/ticket-pdf-fetch/index.ts",
     "supabase/migrations/20260615000000_orch_0877_patch_event_when_rpc.sql",
   ];
+  // ORCH-0876 [Trip CRUD + Purchase Flow Completion — Full Event↔Trip Parity]
+  // bundled Path A PR #137 (2026-05-19). C7 is scoped to ORCH-0863 marketing;
+  // this backend touch is the single migration that creates the
+  // `trip_edit_log` table + `biz_trip_sold_count_by_tier`/
+  // `biz_trip_has_web_purchases` helpers + `biz_update_live_trip` RPC with
+  // 8-path refund-gate. No edge function touches.
+  const ORCH_0876_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260616000000_orch_0876_trip_published_edit.sql",
+  ];
   const ALLOWLIST = [
     ...ORCH_0859_BUNDLED_ALLOWLIST,
     ...ORCH_0869_BACKEND_ALLOWLIST,
     ...ORCH_0875_BACKEND_ALLOWLIST,
     ...ORCH_0099_VE1_BACKEND_ALLOWLIST,
     ...ORCH_0877_BACKEND_ALLOWLIST,
+    ...ORCH_0876_BACKEND_ALLOWLIST,
   ];
   const forbidden = changed.filter(
     (p) =>

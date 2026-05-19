@@ -116,6 +116,9 @@ describe("ORCH-0859 REWORK 3 — events_type filter audit (event-only callers)",
 
 describe("ORCH-0859 REWORK 3 — events_type filter audit (trip-only defensive)", () => {
   const TRIPS = read("services/tripsService.ts");
+  // ORCH-0876 — needed by the getPublicTripById clause below. Same source
+  // as the first describe block's PUBLIC_EVENTS; declared per-block scope.
+  const PUBLIC_EVENTS = read("services/publicEventsService.ts");
 
   test("tripsService.getTrip pins event_type='trip'", () => {
     const fn = TRIPS.match(/export async function getTrip[^]*?^\}/m);
@@ -148,6 +151,58 @@ describe("ORCH-0859 REWORK 3 — events_type filter audit (trip-only defensive)"
       nextExport === -1 ? TRIPS.length : nextExport,
     );
     expect(fnSource).toMatch(/\.eq\("event_type",\s*"trip"\)/);
+  });
+
+  // ============================================================
+  // ORCH-0876 extension — 3 new clauses
+  // ============================================================
+  // (a) getPublicTripById (trip-only public-by-id resolver) MUST pin
+  //     `.eq("event_type", "trip")`. Inverse of getPublicEventById's
+  //     trip-rejection probe.
+  // (b) updateLiveTripFields service MUST route through the
+  //     `biz_update_live_trip` RPC (the RPC itself enforces event_type='trip'
+  //     server-side via RAISE EXCEPTION 'event_not_a_trip').
+  // (c) The migration body MUST contain `event_type <> 'trip'` enforcement
+  //     and the matching `RAISE EXCEPTION 'event_not_a_trip'` line.
+  //
+  // Defense-in-depth: any future refactor that bypasses the RPC OR removes
+  // the SQL enforcement will fail this test.
+
+  test("publicEventsService.getPublicTripById pins event_type='trip'", () => {
+    const fn = PUBLIC_EVENTS.match(/getPublicTripById[^]*?^\};/m);
+    expect(fn).not.toBeNull();
+    expect(fn?.[0]).toMatch(/\.eq\("event_type",\s*"trip"\)/);
+  });
+
+  test("tripsService.updateLiveTripFields routes through biz_update_live_trip RPC", () => {
+    const idx = TRIPS.indexOf("export async function updateLiveTripFields");
+    expect(idx).toBeGreaterThan(-1);
+    const nextExport = TRIPS.indexOf("export ", idx + 1);
+    const fnSource = TRIPS.slice(
+      idx,
+      nextExport === -1 ? TRIPS.length : nextExport,
+    );
+    expect(fnSource).toMatch(/supabase\.rpc\(["']biz_update_live_trip["']/);
+  });
+
+  test("ORCH-0876 migration body enforces event_type='trip' + raises event_not_a_trip", () => {
+    const migration = readFileSync(
+      join(
+        __dirname,
+        "..",
+        "..",
+        "..",
+        "..",
+        "supabase",
+        "migrations",
+        "20260616000000_orch_0876_trip_published_edit.sql",
+      ),
+      "utf8",
+    );
+    // Body must check the event_type at runtime
+    expect(migration).toMatch(/v_event\.event_type\s*<>\s*'trip'/);
+    // And raise the specific exception when violated
+    expect(migration).toMatch(/RAISE EXCEPTION\s+'event_not_a_trip'/);
   });
 });
 

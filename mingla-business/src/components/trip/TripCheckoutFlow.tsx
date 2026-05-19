@@ -1,14 +1,18 @@
 /**
- * TripCheckoutFlow — buyer-side trip checkout entry. Tr2 (ORCH-0859).
+ * TripCheckoutFlow — buyer-side trip checkout entry. Tr2 (ORCH-0859),
+ * route-corrected by ORCH-0876 [Trip CRUD + Purchase Flow Completion].
  *
  * Renders a tier picker (Tr2 ships single tier — auto-selects), then
- * navigates to the existing event-buyer-checkout chain at
- * `/checkout/{tripEventId}/*` via router.push.
+ * navigates to the trip-specific buyer-checkout chain at
+ * `/checkout-trip/{tripEventId}/*` via router.push.
  *
- * Per SPEC §4.9 + investigation G-1: the underlying ticket-checkout-create
- * edge function is event_type-agnostic. Trip orders route via brand's
- * stripe_connect_id, exactly like paid events do today. Tr2 buyer flow
- * reuses the existing /checkout chain end-to-end.
+ * ORCH-0876 correction: Tr2's "reuse /checkout chain end-to-end" assumption
+ * was invalidated by ORCH-0859 REWORK 3 — `getPublicEventById` hard-rejects
+ * trip rows by design (audit-enforced at
+ * `mingla-business/src/services/__tests__/eventType.filter.audit.test.ts`).
+ * Trips therefore route into their own buyer chain. The underlying
+ * `biz_ticket_checkout_create_session` RPC remains shared (it branches on
+ * `event_type='trip'` per Tr3 [ORCH-0869 Installment Payments] migration).
  *
  * This component exists so trip-specific entry copy ("Reserve your spot on
  * X") can diverge from event copy without duplicating the buyer-info →
@@ -57,9 +61,12 @@ export const TripCheckoutFlow: React.FC<TripCheckoutFlowProps> = ({
   const tier = trip.pricingTiers[0];
 
   const handleReserve = (): void => {
-    // Route into the existing event-buyer checkout chain. The underlying
-    // edge function is event_type-agnostic per investigation G-1.
-    router.push(`/checkout/${trip.id}` as never);
+    // ORCH-0876: trip-specific chain. Event-side /checkout/[eventId]/*
+    // hard-rejects trips by audit-test invariant — see
+    // mingla-business/src/services/__tests__/eventType.filter.audit.test.ts.
+    // The underlying biz_ticket_checkout_create_session RPC stays shared
+    // (branches on event_type='trip' per Tr3 [ORCH-0869] migration).
+    router.push(`/checkout-trip/${trip.id}` as never);
   };
 
   if (tier === undefined) {
