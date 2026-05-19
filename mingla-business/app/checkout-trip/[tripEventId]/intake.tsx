@@ -69,6 +69,9 @@ import {
 } from "../../../src/constants/designSystem";
 import { useCart, useCartTotals } from "../../../src/components/checkout/CartContext";
 import { useTripIntakeSchemasByEvent } from "../../../src/hooks/useIntakeSchema";
+import { usePublicTripById } from "../../../src/hooks/usePublicTripById";
+import { projectInstallmentSchedule } from "../../../src/utils/installmentScheduleProjection";
+import { InstallmentScheduleDisplay } from "../../../src/components/trip/InstallmentScheduleDisplay";
 import {
   uploadIntakeFile,
   validateAnswerAgainstSchema,
@@ -110,6 +113,30 @@ export default function TripIntakeScreen(): React.ReactElement {
   const schemasQuery = useTripIntakeSchemasByEvent(tripEventId ?? "", {
     enabled: tripEventId !== null,
   });
+
+  // ORCH-0882 [Render Payment Plan Disclosure on Trip Buyer + Planner
+  // Surfaces] — surface the deposit + installment schedule above the
+  // intake forms so buyers see what they'll be agreeing to pay while
+  // they fill required questions. Per SPEC Q3: aggregate = FIRST
+  // plan-active tier in cart. Component returns null when no cart line
+  // has a plan.
+  const publicTripQuery = usePublicTripById(tripEventId);
+  const projectedSchedule = useMemo(() => {
+    const trip = publicTripQuery.data?.trip;
+    if (trip === undefined) return null;
+    for (const line of lines) {
+      const sourceTier = trip.pricingTiers.find(
+        (t) => t.ticketTypeId === line.ticketTypeId,
+      );
+      if (
+        sourceTier !== undefined &&
+        sourceTier.installmentSchedule !== null
+      ) {
+        return projectInstallmentSchedule(sourceTier, new Date());
+      }
+    }
+    return null;
+  }, [publicTripQuery.data, lines]);
 
   // Determine which cart tiers have schemas. Stable order matching cart line order.
   const tiersWithSchemas = useMemo<
@@ -438,6 +465,20 @@ export default function TripIntakeScreen(): React.ReactElement {
         keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
       >
+        {/* ORCH-0882 — payment plan disclosure above the intake form so
+            buyers see the deposit + future-installment schedule while
+            filling required questions. Renders null when no cart line
+            has a plan. */}
+        {projectedSchedule !== null ? (
+          <View style={styles.planDisclosureWrap}>
+            <InstallmentScheduleDisplay
+              schedule={projectedSchedule}
+              variant="buyer"
+              isProjection={true}
+            />
+          </View>
+        ) : null}
+
         {/* Validation summary banner */}
         {showValidationBanner && missingCount > 0 ? (
           <GlassCard
@@ -632,6 +673,12 @@ const styles = StyleSheet.create({
     borderColor: semantic.error,
     borderWidth: 1,
     backgroundColor: semantic.errorTint,
+    marginBottom: spacing.lg,
+  },
+  // ORCH-0882 — wrap so the schedule card sits with consistent vertical
+  // breathing room above the validation banner / tier eyebrow.
+  planDisclosureWrap: {
+    width: "100%",
     marginBottom: spacing.lg,
   },
   validationRow: {

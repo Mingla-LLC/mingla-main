@@ -37,6 +37,7 @@ import { tripPublicPath } from "../../../src/constants/publicUrls";
 import { usePublicTripById } from "../../../src/hooks/usePublicTripById";
 import { formatCurrency } from "../../../src/utils/currency";
 import type { TripPricingTier } from "../../../src/services/tripsService";
+import { projectInstallmentSchedule } from "../../../src/utils/installmentScheduleProjection";
 import type {
   TicketAvailableAt,
   TicketStub,
@@ -46,6 +47,7 @@ import type {
 import { Button } from "../../../src/components/ui/Button";
 import { EmptyState } from "../../../src/components/ui/EmptyState";
 import { EventCoverMedia } from "../../../src/components/ui/EventCoverMedia";
+import { InstallmentScheduleDisplay } from "../../../src/components/trip/InstallmentScheduleDisplay";
 
 import {
   useCart,
@@ -322,22 +324,45 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
         {tickets.map((ticket) => {
           const line = lines.find((l) => l.ticketTypeId === ticket.id);
           const qty = line?.quantity ?? 0;
+          // ORCH-0882 — find the source TripPricingTier for this ticket
+          // (mapped through tierToTicketStub above) to get the schedule
+          // template. Per-tier per-line render: only show when qty >= 1
+          // AND the tier has a plan configured.
+          const sourceTier: TripPricingTier | undefined =
+            trip.pricingTiers.find((t) => t.ticketTypeId === ticket.id);
+          const projectedSchedule =
+            sourceTier !== undefined
+              ? projectInstallmentSchedule(sourceTier, new Date())
+              : null;
           return (
-            <QuantityRow
-              key={ticket.id}
-              ticket={ticket}
-              quantity={qty}
-              onQuantityChange={(next): void =>
-                setLineQuantity({
-                  ticketTypeId: ticket.id,
-                  ticketName: ticket.name,
-                  unitPrice: ticket.priceGbp ?? 0,
-                  currency: ticket.currency ?? trip.pricingTiers[0]?.currency ?? "USD",
-                  isFree: ticket.isFree,
-                  quantity: next,
-                })
-              }
-            />
+            <View key={ticket.id} style={styles.tierWrap}>
+              <QuantityRow
+                ticket={ticket}
+                quantity={qty}
+                onQuantityChange={(next): void =>
+                  setLineQuantity({
+                    ticketTypeId: ticket.id,
+                    ticketName: ticket.name,
+                    unitPrice: ticket.priceGbp ?? 0,
+                    currency:
+                      ticket.currency ??
+                      trip.pricingTiers[0]?.currency ??
+                      "USD",
+                    isFree: ticket.isFree,
+                    quantity: next,
+                  })
+                }
+              />
+              {projectedSchedule !== null && qty >= 1 ? (
+                <View style={styles.tierPlanWrap}>
+                  <InstallmentScheduleDisplay
+                    schedule={projectedSchedule}
+                    variant="buyer"
+                    isProjection={true}
+                  />
+                </View>
+              ) : null}
+            </View>
           );
         })}
       </ScrollView>
@@ -420,6 +445,17 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: textTokens.tertiary,
     letterSpacing: 1.4,
+    marginBottom: spacing.sm,
+  },
+  // ORCH-0882 — wrap each QuantityRow + its plan disclosure so spacing
+  // between tier rows stays consistent regardless of plan presence.
+  tierWrap: {
+    width: "100%",
+  },
+  // Tight vertical spacing between the QuantityRow and the plan card
+  // for the same tier.
+  tierPlanWrap: {
+    marginTop: spacing.xs,
     marginBottom: spacing.sm,
   },
   emptyWrap: {

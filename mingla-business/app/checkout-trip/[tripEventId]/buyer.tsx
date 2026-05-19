@@ -58,6 +58,8 @@ import {
 } from "../../../src/constants/designSystem";
 import { usePublicTripById } from "../../../src/hooks/usePublicTripById";
 import { useTripIntakeSchemasByEvent } from "../../../src/hooks/useIntakeSchema";
+import { projectInstallmentSchedule } from "../../../src/utils/installmentScheduleProjection";
+import { InstallmentScheduleDisplay } from "../../../src/components/trip/InstallmentScheduleDisplay";
 import { formatCurrency } from "../../../src/utils/currency";
 import { isValidE164, composeE164 } from "../../../src/utils/phone";
 import { createTicketCheckout } from "../../../src/services/ticketCheckoutService";
@@ -174,6 +176,25 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
   const trip = publicTripQuery.data?.trip ?? null;
   const { lines, buyer, setBuyer, recordResult } = useCart();
   const totals = useCartTotals();
+
+  // ORCH-0882 [Render Payment Plan Disclosure on Trip Buyer + Planner
+  // Surfaces] — FIRST plan-active tier aggregate per SPEC Q3. Renders
+  // null when no cart line has a plan.
+  const projectedSchedule = useMemo(() => {
+    if (trip === null) return null;
+    for (const line of lines) {
+      const sourceTier = trip.pricingTiers.find(
+        (t) => t.ticketTypeId === line.ticketTypeId,
+      );
+      if (
+        sourceTier !== undefined &&
+        sourceTier.installmentSchedule !== null
+      ) {
+        return projectInstallmentSchedule(sourceTier, new Date());
+      }
+    }
+    return null;
+  }, [trip, lines]);
 
   // ORCH-0880 [Tr5 Traveler Intake Forms] — fetch per-tier intake schemas to
   // decide whether to route Continue → /intake (before /payment) when any
@@ -428,6 +449,18 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
+        {/* ORCH-0882 — payment plan disclosure above the order summary so
+            buyers see the schedule before reviewing the price line. */}
+        {projectedSchedule !== null ? (
+          <View style={styles.planDisclosureWrap}>
+            <InstallmentScheduleDisplay
+              schedule={projectedSchedule}
+              variant="buyer"
+              isProjection={true}
+            />
+          </View>
+        ) : null}
+
         {/* Order summary recap */}
         <Pressable
           onPress={handleBack}
@@ -625,6 +658,8 @@ const styles = StyleSheet.create({
   scrollContent: { paddingHorizontal: spacing.lg, paddingTop: spacing.md },
   summaryWrap: { marginBottom: spacing.lg },
   summaryPressed: { opacity: 0.7 },
+  // ORCH-0882 — wrap for plan disclosure above order summary
+  planDisclosureWrap: { width: "100%", marginBottom: spacing.lg },
   summaryHeader: {
     flexDirection: "row",
     justifyContent: "space-between",

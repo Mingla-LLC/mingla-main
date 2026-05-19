@@ -1,18 +1,31 @@
 /**
- * ORCH-0873 [Tr3 Installment Payments Stage 2 UI] —
  * <InstallmentScheduleDisplay /> read-only schedule render.
  *
- * Per SPEC_ORCH-0873 §3.5.2 + DESIGN_ORCH-0873 §4. Renders on:
- *  - mingla-business/src/components/trip/TripCheckoutFlow.tsx (variant="planner")
- *  - mingla-business/app/checkout/[eventId]/index.tsx (variant="buyer", SC-5a)
- *  - mingla-business/app/checkout/[eventId]/buyer.tsx (variant="buyer", SC-5b)
- *  - mingla-business/app/checkout/[eventId]/payment.tsx (variant="buyer", SC-5c)
+ * **Canonical wiring targets (ORCH-0882 [Render Payment Plan Disclosure on
+ * Trip Buyer + Planner Surfaces], 2026-05-19 — supersedes ORCH-0873 stale
+ * targets):**
+ *  - `mingla-business/src/components/trip/TripCheckoutFlow.tsx` (variant="buyer")
+ *  - `mingla-business/app/checkout-trip/[tripEventId]/index.tsx` (per-tier, variant="buyer")
+ *  - `mingla-business/app/checkout-trip/[tripEventId]/intake.tsx` (variant="buyer")
+ *  - `mingla-business/app/checkout-trip/[tripEventId]/buyer.tsx` (variant="buyer")
+ *  - `mingla-business/app/checkout-trip/[tripEventId]/payment.tsx` (variant="buyer")
+ *  - `mingla-business/src/components/trip/EditPublishedTripScreen.tsx` Pricing accordion (variant="planner")
+ *  - `mingla-business/app/trip/[id]/index.tsx` MoneyTabBody header (variant="planner")
+ *
+ * The ORCH-0873 spec listed event-side `/checkout/[eventId]/*` routes; those
+ * are stale post-ORCH-0876 V2 [Trip CRUD + Purchase Flow Completion] which
+ * forked trip checkout into `/checkout-trip/[tripEventId]/*`.
  *
  * Currency-aware per Constitution #10 via Intl.NumberFormat.
  * Date formatting per Constitution #10 via Intl.DateTimeFormat.
  *
  * Empty state: returns null when schedule is null — caller layout
  * unchanged on non-installment trips.
+ *
+ * `isProjection`: when true, the rendered dates were computed from a
+ * `new Date()` anchor (pre-purchase contexts). Per Constitution #9, the
+ * buyer-variant reassurance copy explicitly labels the dates as projections
+ * so buyers know the actual booking moment will lock the schedule.
  */
 
 import React, { useMemo } from "react";
@@ -48,6 +61,16 @@ export interface InstallmentScheduleDisplayProps {
    * (planner already knows what their buyers will pay).
    */
   variant: "buyer" | "planner";
+  /**
+   * ORCH-0882 — when true, the rendered dates are projections from a
+   * `new Date()` anchor (pre-purchase contexts: public trip page, qty
+   * picker, intake, buyer details, payment screen, planner edit-preview,
+   * Money-tab header). The buyer-variant reassurance copy appends a
+   * clarifier so buyers know the actual booking moment locks the
+   * schedule. Constitution #9 — never silently present projected dates
+   * as committed.
+   */
+  isProjection?: boolean;
 }
 
 function formatCurrency(cents: number, currency: string): string {
@@ -77,7 +100,7 @@ function formatDate(iso: string): string {
 
 export const InstallmentScheduleDisplay: React.FC<
   InstallmentScheduleDisplayProps
-> = ({ schedule, variant }) => {
+> = ({ schedule, variant, isProjection = false }) => {
   const rows = useMemo(() => {
     if (schedule === null) return null;
     return {
@@ -144,6 +167,7 @@ export const InstallmentScheduleDisplay: React.FC<
           {installmentReassuranceText({
             depositFormatted: rows.depositFormatted,
             remainingFormatted: rows.remainingFormatted,
+            isProjection,
           })}
         </Text>
       ) : null}
