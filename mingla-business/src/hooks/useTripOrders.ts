@@ -25,6 +25,14 @@ export interface TripOrderRow {
   totalCents: number;
   currency: string;
   createdAt: string;
+  /**
+   * ORCH-0880 [Tr5 Traveler Intake Forms] — per-tier intake answers payload
+   * persisted by ticket-checkout-create when the buyer completed the
+   * intake step. Shape: array of `IntakeFormData` ({ ticket_type_id,
+   * schema_version_id, answers: {[questionId]: value} }). Null when the
+   * trip has no schemas OR the order predates Tr5.
+   */
+  intakeFormData: unknown | null;
 }
 
 interface OrderRow {
@@ -36,6 +44,7 @@ interface OrderRow {
   total_cents: number;
   currency: string;
   created_at: string;
+  intake_form_data: unknown | null;
 }
 
 const tripOrdersKey = (eventId: string) =>
@@ -56,7 +65,7 @@ export const useTripOrders = (
       const { data, error } = await supabase
         .from("orders")
         .select(
-          "id, buyer_name, buyer_email, buyer_phone, payment_status, total_cents, currency, created_at",
+          "id, buyer_name, buyer_email, buyer_phone, payment_status, total_cents, currency, created_at, intake_form_data",
         )
         .eq("event_id", eventId)
         .order("created_at", { ascending: false });
@@ -70,6 +79,7 @@ export const useTripOrders = (
         totalCents: row.total_cents,
         currency: row.currency,
         createdAt: row.created_at,
+        intakeFormData: row.intake_form_data,
       }));
     },
   });

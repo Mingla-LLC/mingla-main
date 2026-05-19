@@ -84,6 +84,8 @@ import {
 
 import { ChangeSummaryModal } from "../event/ChangeSummaryModal";
 import { EditAfterPublishTripBanner } from "./EditAfterPublishTripBanner";
+// ORCH-0880 [Tr5 Traveler Intake Forms] — new accordion section body.
+import { EditPublishedTripIntakeAccordion } from "./EditPublishedTripIntakeAccordion";
 
 import type {
   Trip,
@@ -133,6 +135,8 @@ type SectionKey =
   | "inclusions"
   | "pricing"
   | "cover"
+  // ORCH-0880 [Tr5 Traveler Intake Forms] — new accordion section.
+  | "intake"
   | "settings";
 
 interface SectionConfig {
@@ -146,6 +150,8 @@ const SECTIONS: readonly SectionConfig[] = [
   { key: "inclusions", label: "Inclusions" },
   { key: "pricing", label: "Pricing" },
   { key: "cover", label: "Cover" },
+  // ORCH-0880 — sits between Cover and Settings per DESIGN §6.
+  { key: "intake", label: "Intake form" },
   { key: "settings", label: "Settings" },
 ];
 
@@ -1071,6 +1077,18 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                 disabled={submitting}
               />
             </View>
+          );
+        case "intake":
+          // ORCH-0880 [Tr5 Traveler Intake Forms] — Intake form accordion
+          // body. Self-contained: owns its query, mutation, reason dialog,
+          // and toast. Per DESIGN §6 + I-PROPOSED-TR5-INTAKE-SCHEMA-EDIT-
+          // PERSISTS-TO-DB — writes route through biz_update_live_trip RPC
+          // with reason text (10-200 chars) via upsertTripIntakeSchema.
+          return (
+            <EditPublishedTripIntakeAccordion
+              eventId={trip.id}
+              ticketTypes={trip.pricingTiers}
+            />
           );
         case "settings":
           return (

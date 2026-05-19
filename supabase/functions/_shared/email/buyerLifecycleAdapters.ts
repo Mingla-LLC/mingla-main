@@ -341,3 +341,131 @@ function orderCancelledToGenericBodyTr4(
     cta: null,
   };
 }
+
+// ORCH-0880 [Tr5 Traveler Intake Forms] — re-answer notification.
+// Fired when a planner edits a tier's intake schema on a published trip and
+// the change touches a question with existing answers. Buyer is asked to
+// re-fill the affected questions. Email body lists the changed questions and
+// links to the buyer-fill route (`/booking/[orderId]/intake` — anon-tolerant
+// route with HMAC token-gated re-fill mode — to be added in Phase 4).
+
+export interface IntakeFormReAnswerRequiredPayloadShape {
+  template_key: "buyer_intake_form_re_answer_required";
+  /** ticket_type_id whose schema changed. Used to scope re-fill UI. */
+  ticket_type_id: string;
+  /** Tier display name (Standard / VIP / etc.). */
+  tier_name: string;
+  /** Schema version the buyer originally answered against. */
+  prior_schema_version_id: string;
+  /** Schema version after the planner's edit. */
+  current_schema_version_id: string;
+  /**
+   * Questions whose shape changed (added, removed, label/type/options/required
+   * mutated). The buyer is asked to re-confirm or re-answer these specifically.
+   * Each entry includes the new question's label for the email body so the
+   * buyer sees concrete copy ("Passport number" rather than just a uuid).
+   * `removed` lists labels of questions that disappeared so the buyer knows
+   * their prior answer is dropped.
+   */
+  changed_questions: Array<{
+    question_id: string;
+    label: string;
+    change_kind: "added" | "modified";
+  }>;
+  removed_question_labels?: string[];
+  /**
+   * Planner's reason text (10-200 chars) entered in the ChangeSummaryModal.
+   * Shown verbatim to the buyer for context.
+   */
+  reason: string;
+  /**
+   * Deep link buyer should tap to re-answer (Phase 4 wiring).
+   * Phase 2 may pass a placeholder; the email renderer surfaces it as the CTA.
+   */
+  refill_url?: string;
+}
+
+export function intakeFormReAnswerRequiredToGenericBody(
+  payload: IntakeFormReAnswerRequiredPayloadShape,
+  context: BuyerContext,
+): GenericBodyInput {
+  const title = `Please update your traveler details for ${context.eventTitle}`;
+
+  const paragraphs: string[] = [
+    greeting(context.buyerName),
+    `${context.brandName} updated the traveler intake form for your ${payload.tier_name} ticket on ${context.eventTitle}.`,
+  ];
+
+  const trimmedReason = payload.reason.trim();
+  if (trimmedReason.length > 0) {
+    paragraphs.push(`Reason given by the organizer: "${trimmedReason}"`);
+  }
+
+  // List changed questions (added + modified). Group additions first.
+  const added = payload.changed_questions.filter(
+    (q) => q.change_kind === "added",
+  );
+  const modified = payload.changed_questions.filter(
+    (q) => q.change_kind === "modified",
+  );
+
+  if (added.length > 0) {
+    paragraphs.push(
+      added.length === 1
+        ? `One new question was added:`
+        : `${added.length} new questions were added:`,
+    );
+    for (const q of added) {
+      paragraphs.push(`  • ${q.label}`);
+    }
+  }
+
+  if (modified.length > 0) {
+    paragraphs.push(
+      modified.length === 1
+        ? `One question was changed and needs to be re-answered:`
+        : `${modified.length} questions were changed and need to be re-answered:`,
+    );
+    for (const q of modified) {
+      paragraphs.push(`  • ${q.label}`);
+    }
+  }
+
+  if (
+    payload.removed_question_labels !== undefined &&
+    payload.removed_question_labels.length > 0
+  ) {
+    paragraphs.push(
+      payload.removed_question_labels.length === 1
+        ? `One question was removed (your prior answer was dropped):`
+        : `${payload.removed_question_labels.length} questions were removed (your prior answers were dropped):`,
+    );
+    for (const label of payload.removed_question_labels) {
+      paragraphs.push(`  • ${label}`);
+    }
+  }
+
+  paragraphs.push(
+    `Please update your answers as soon as you can so the organizer has the latest info.`,
+  );
+
+  const organizerEmail = context.organizerEmail;
+  if (typeof organizerEmail === "string" && organizerEmail.length > 0) {
+    paragraphs.push(
+      `Questions? Contact the organizer at ${organizerEmail}.`,
+    );
+  }
+
+  return {
+    variant: "generic_notification",
+    title,
+    paragraphs,
+    cta:
+      typeof payload.refill_url === "string" && payload.refill_url.length > 0
+        ? {
+            label: "Update your answers",
+            url: payload.refill_url,
+          }
+        : null,
+  };
+}

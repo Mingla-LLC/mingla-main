@@ -87,6 +87,15 @@ import {
   type PublishErrorState,
   mapPublishErrorToState,
 } from "./TripCreatorStep5Review";
+// ORCH-0880 [Tr5 Traveler Intake Forms] — NEW Step 6 component (intake
+// schema builder + live preview, per-tier scope).
+import { TripCreatorStep6Intake } from "./TripCreatorStep6Intake";
+// ORCH-0880 — per-tier intake schema query + mutation hooks.
+import {
+  useTripIntakeSchemasByEvent,
+  useUpsertTripIntakeSchema,
+} from "../../hooks/useIntakeSchema";
+import type { IntakeSchema } from "../../services/intakeSchemaService";
 import type { TripPreviewBrand } from "./TripPreview";
 
 export interface TripCreatorWizardProps {
@@ -111,7 +120,7 @@ export interface TripCreatorWizardProps {
   onExit: () => void;
 }
 
-type StepIndex = 1 | 2 | 3 | 4 | 5 | 6;
+type StepIndex = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
 const STEP_TITLES: Record<StepIndex, string> = {
   1: "Basics",
@@ -119,7 +128,8 @@ const STEP_TITLES: Record<StepIndex, string> = {
   3: "What's included",
   4: "Pricing",
   5: "Cancellation & deadline",
-  6: "Review",
+  6: "Traveler info",
+  7: "Review",
 };
 
 const STEP_SUBTITLES: Record<StepIndex, string> = {
@@ -128,13 +138,14 @@ const STEP_SUBTITLES: Record<StepIndex, string> = {
   3: "What's included and excluded",
   4: "Pricing and payment plan",
   5: "Refund tiers and when bookings close",
-  6: "Preview and publish",
+  6: "What to ask travelers before they pay",
+  7: "Preview and publish",
 };
 
-// ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — wizard grew from 5 to 6
-// steps per DESIGN_ORCH-0875 §2 DECISION A. Step 5 NEW (combined Cancellation
-// & deadline); Review moved to Step 6.
-const STEP_COUNT = 6;
+// ORCH-0880 [Tr5 Traveler Intake Forms] — wizard grew from 6 to 7 steps per
+// DESIGN_ORCH-0880 §3.1. Step 6 NEW (per-tier traveler intake schema
+// builder + live preview); Review moved to Step 7.
+const STEP_COUNT = 7;
 
 const STEPPER_STEPS: StepperStep[] = [
   { id: "step-1", label: STEP_TITLES[1] },
@@ -143,6 +154,7 @@ const STEPPER_STEPS: StepperStep[] = [
   { id: "step-4", label: STEP_TITLES[4] },
   { id: "step-5", label: STEP_TITLES[5] },
   { id: "step-6", label: STEP_TITLES[6] },
+  { id: "step-7", label: STEP_TITLES[7] },
 ];
 
 function tripToStep1Draft(trip: Trip): Step1Draft {
@@ -301,6 +313,17 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
   // & deadline) state. Seeded from trip's persisted refund_policy +
   // booking_deadline columns.
   const [step5Draft, setStep5Draft] = useState<Step5Draft>(tripToStep5Draft(trip));
+  // ORCH-0880 [Tr5 Traveler Intake Forms] — new Step 6 per-tier intake
+  // schema state. Map<ticketTypeId, IntakeSchema | null>. null = planner
+  // cleared the tier's schema (delete on autosave). Seeded from server
+  // via useTripIntakeSchemasByEvent (see useEffect below).
+  const [step6Draft, setStep6Draft] = useState<Map<string, IntakeSchema | null>>(
+    new Map(),
+  );
+  // Track which tier ids' schemas the planner has touched since last
+  // autosave; only these get upserted on autosaveStep6 to avoid
+  // re-bumping schema_version_id on untouched tiers.
+  const dirtyTierIdsRef = useRef<Set<string>>(new Set());
   const [publishError, setPublishError] = useState<PublishErrorState | null>(null);
   const [isAutosaving, setIsAutosaving] = useState<boolean>(false);
   const [autosaveError, setAutosaveError] = useState<boolean>(false);
@@ -360,6 +383,25 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
   // ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — Step 5 autosave hooks.
   const updateRefundPolicyMutation = useUpdateRefundPolicy();
   const updateBookingDeadlineMutation = useUpdateBookingDeadline();
+  // ORCH-0880 [Tr5 Traveler Intake Forms] — Step 6 query + mutation.
+  const intakeSchemasQuery = useTripIntakeSchemasByEvent(trip.id);
+  const upsertIntakeSchemaMutation = useUpsertTripIntakeSchema();
+
+  // Seed step6Draft from server-fetched schemas on first successful query.
+  // After that, server data drift is handled via React Query cache
+  // invalidation post-mutation; planner edits live in step6Draft until
+  // autosave flushes back to server.
+  const intakeSeededRef = useRef<boolean>(false);
+  useEffect(() => {
+    if (intakeSeededRef.current) return;
+    if (intakeSchemasQuery.data === undefined) return;
+    const seeded = new Map<string, IntakeSchema | null>();
+    for (const [tierId, schema] of intakeSchemasQuery.data.entries()) {
+      seeded.set(tierId, schema);
+    }
+    setStep6Draft(seeded);
+    intakeSeededRef.current = true;
+  }, [intakeSchemasQuery.data]);
 
   // Keep step4Draft.capacity in sync with step1Draft.capacity
   useEffect(() => {
@@ -530,6 +572,30 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
     updateBookingDeadlineMutation,
   ]);
 
+  // ORCH-0880 [Tr5 Traveler Intake Forms] — Step 6 autosave. Iterates the
+  // dirty-tier ref set, fires one upsertIntakeSchemaMutation per touched
+  // tier (skipStatusProbe=true since wizard is always operating on a draft
+  // trip), then clears the set. Mutations write directly to the
+  // trip_intake_schemas table via RLS policy `trip_intake_schemas_planner_
+  // all`; published-trip RPC path is reserved for EditPublishedTripScreen
+  // accordion (Phase 4 surface, NOT this wizard).
+  const autosaveStep6 = useCallback(async (): Promise<void> => {
+    const dirty = Array.from(dirtyTierIdsRef.current);
+    if (dirty.length === 0) return;
+    await Promise.all(
+      dirty.map((ticketTypeId) => {
+        const schema = step6Draft.get(ticketTypeId) ?? null;
+        return upsertIntakeSchemaMutation.mutateAsync({
+          eventId: trip.id,
+          ticketTypeId,
+          schema,
+          skipStatusProbe: true,
+        });
+      }),
+    );
+    dirtyTierIdsRef.current = new Set();
+  }, [step6Draft, trip.id, upsertIntakeSchemaMutation]);
+
   const autosaveCurrentStep = useCallback(async (): Promise<void> => {
     setIsAutosaving(true);
     setAutosaveError(false);
@@ -539,6 +605,7 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
       else if (step === 3) await autosaveStep3();
       else if (step === 4) await autosaveStep4();
       else if (step === 5) await autosaveStep5();
+      else if (step === 6) await autosaveStep6();
       setAutosaveSavedAt(new Date().toISOString());
     } catch (e) {
       setAutosaveError(true);
@@ -546,22 +613,30 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
     } finally {
       setIsAutosaving(false);
     }
-  }, [step, autosaveStep1, autosaveStep2, autosaveStep3, autosaveStep4, autosaveStep5]);
+  }, [
+    step,
+    autosaveStep1,
+    autosaveStep2,
+    autosaveStep3,
+    autosaveStep4,
+    autosaveStep5,
+    autosaveStep6,
+  ]);
 
   // ----- Navigation -----
   const handleNext = useCallback(async (): Promise<void> => {
     try {
       await autosaveCurrentStep();
       setPublishError(null);
-      // ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — wizard grew 5→6 steps.
-      setStep((s) => (s < 6 ? ((s + 1) as StepIndex) : s));
+      // ORCH-0880 [Tr5 Traveler Intake Forms] — wizard grew 6→7 steps.
+      setStep((s) => (s < 7 ? ((s + 1) as StepIndex) : s));
     } catch {
       setPublishError({
         code: "autosave_failed",
         message: "Couldn't save your changes. Check your connection and try again.",
-        // Step 6 is Review-only (no autosave) so this branch never fires at
-        // step === 6; clamp to satisfy the PublishErrorState.pointsToStep
-        // union (1..5) which predates Tr4's wizard step expansion.
+        // Step 7 is Review-only (no autosave) so this branch never fires at
+        // step === 7; clamp to satisfy the PublishErrorState.pointsToStep
+        // union (1..5) which predates the wizard step expansion.
         pointsToStep: (step >= 5 ? 5 : step) as 1 | 2 | 3 | 4 | 5,
       });
     }
@@ -582,9 +657,9 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
         code: "autosave_failed",
         message:
           "Couldn't save your changes. Check your connection and try again.",
-        // Step 6 is Review-only (no autosave) so this branch never fires at
-        // step === 6; clamp to satisfy the PublishErrorState.pointsToStep
-        // union (1..5) which predates Tr4's wizard step expansion.
+        // Step 7 is Review-only (no autosave) so this branch never fires at
+        // step === 7; clamp to satisfy the PublishErrorState.pointsToStep
+        // union (1..5) which predates the wizard step expansion.
         pointsToStep: (step >= 5 ? 5 : step) as 1 | 2 | 3 | 4 | 5,
       });
     }
@@ -880,8 +955,37 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
               disabled={submitting}
             />
           ) : null}
-          {/* ORCH-0875: Review moved from Step 5 to Step 6. */}
+          {/* ORCH-0880 [Tr5 Traveler Intake Forms] — Step 6 per-tier intake
+              schema builder + live preview. Per-tier state lives in step6Draft;
+              touch tracking lives in dirtyTierIdsRef so autosaveStep6 only
+              writes the tiers the planner actually changed. */}
           {step === 6 ? (
+            <TripCreatorStep6Intake
+              ticketTypes={trip.pricingTiers}
+              schemasByTier={
+                new Map(
+                  Array.from(step6Draft.entries()).filter(
+                    (entry): entry is [string, IntakeSchema] =>
+                      entry[1] !== null,
+                  ),
+                )
+              }
+              onSchemaChange={(ticketTypeId, next) => {
+                setStep6Draft((prev) => {
+                  const cloned = new Map(prev);
+                  cloned.set(ticketTypeId, next);
+                  return cloned;
+                });
+                dirtyTierIdsRef.current = new Set([
+                  ...dirtyTierIdsRef.current,
+                  ticketTypeId,
+                ]);
+              }}
+              disabled={submitting}
+            />
+          ) : null}
+          {/* ORCH-0880: Review moved from Step 6 to Step 7. */}
+          {step === 7 ? (
             <TripCreatorStep5Review
               trip={previewTrip}
               brand={brand}
@@ -912,10 +1016,11 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
               fullWidth
               testID="trip-wizard-footer-cta"
             />
-          ) : step === 6 ? (
-            // ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — Review (Publish)
-            // dock moved from Step 5 to Step 6. Step 5 falls through to the
-            // generic Back + Continue dock below.
+          ) : step === 7 ? (
+            // ORCH-0880 [Tr5 Traveler Intake Forms] — Review (Publish) dock
+            // moved from Step 6 to Step 7 (Step 6 NEW = traveler intake;
+            // Step 7 NEW = Review). Steps 2-6 fall through to the generic
+            // Back + Continue dock below.
             <View style={styles.dockButtonRow}>
               <View style={styles.dockBackCell}>
                 <Button

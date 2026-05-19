@@ -57,6 +57,7 @@ import {
   text as textTokens,
 } from "../../../src/constants/designSystem";
 import { usePublicTripById } from "../../../src/hooks/usePublicTripById";
+import { useTripIntakeSchemasByEvent } from "../../../src/hooks/useIntakeSchema";
 import { formatCurrency } from "../../../src/utils/currency";
 import { isValidE164, composeE164 } from "../../../src/utils/phone";
 import { createTicketCheckout } from "../../../src/services/ticketCheckoutService";
@@ -173,6 +174,23 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
   const trip = publicTripQuery.data?.trip ?? null;
   const { lines, buyer, setBuyer, recordResult } = useCart();
   const totals = useCartTotals();
+
+  // ORCH-0880 [Tr5 Traveler Intake Forms] — fetch per-tier intake schemas to
+  // decide whether to route Continue → /intake (before /payment) when any
+  // cart tier has a schema with ≥1 question. Buyer-anon route per
+  // `feedback_anon_buyer_routes.md` — query uses the anon-tolerant
+  // `trip_intake_schemas_anon_select` RLS policy from Phase 1 migration §3.
+  const intakeSchemasQuery = useTripIntakeSchemasByEvent(tripEventId ?? "", {
+    enabled: tripEventId !== null,
+  });
+  const hasAnyIntakeSchema = useMemo<boolean>(() => {
+    if (intakeSchemasQuery.data === undefined) return false;
+    for (const line of lines) {
+      const schema = intakeSchemasQuery.data.get(line.ticketTypeId);
+      if (schema !== undefined && schema.questions.length > 0) return true;
+    }
+    return false;
+  }, [intakeSchemasQuery.data, lines]);
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -307,6 +325,14 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
     if (tripEventId === null) return;
     setSubmitError(null);
     if (totals.isFree) {
+      // ORCH-0880 [Tr5 Traveler Intake Forms] — when free trip has intake
+      // schemas, the buyer must complete /intake BEFORE the free reservation
+      // is created (so intake_form_data is included in the createTicketCheckout
+      // call to satisfy I-PROPOSED-TR5-INTAKE-REQUIRED-BLOCKS-CHECKOUT).
+      if (hasAnyIntakeSchema) {
+        router.push(`/checkout-trip/${tripEventId}/intake` as never);
+        return;
+      }
       try {
         setSubmitting(true);
         // ORCH-0876: createTicketCheckout is event_type-agnostic — passes
@@ -345,11 +371,21 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
       }
       return;
     }
+    // ORCH-0880 [Tr5 Traveler Intake Forms] — paid trips with intake
+    // schemas route to /intake BEFORE /payment so buyer answers required
+    // questions before the Stripe Checkout Session is created (per
+    // I-PROPOSED-TR5-INTAKE-REQUIRED-BLOCKS-CHECKOUT gate in
+    // ticket-checkout-create).
+    if (hasAnyIntakeSchema) {
+      router.push(`/checkout-trip/${tripEventId}/intake` as never);
+      return;
+    }
     router.push(`/checkout-trip/${tripEventId}/payment` as never);
   }, [
     validation.isValid,
     tripEventId,
     totals.isFree,
+    hasAnyIntakeSchema,
     lines,
     buyer,
     recordResult,
