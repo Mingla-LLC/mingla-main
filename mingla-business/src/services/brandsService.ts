@@ -166,6 +166,7 @@ export interface CreateVenueBrandPendingInput {
   slug: string;
   tagline?: string;
   bio?: string;
+  placePoolId?: string | null;
   googlePlaceId: string;
   lat: number;
   lng: number;
@@ -267,6 +268,7 @@ export async function createVenueBrandPendingReview(
       p_cover_media_url: input.coverMediaUrl ?? "",
       p_cover_media_type: input.coverMediaType ?? "",
       p_hours: brandHoursToRpcPayload(input.hours),
+      p_place_pool_id: input.placePoolId ?? null,
     },
   );
 

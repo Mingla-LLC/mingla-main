@@ -21,9 +21,8 @@ describe("ORCH-0099 — BrandSwitcherSheet place persona (Ve1)", () => {
     );
     expect(placeBlockMatch).not.toBeNull();
     expect(placeBlockMatch![1]).toBe("false");
-    expect(sheetSource).toMatch(
-      /id: "place"[\s\S]*?router\.push\("\/venue\/create"/,
-    );
+    expect(sheetSource).toMatch(/openVenueCreateFromPool/);
+    expect(sheetSource).toMatch(/\/venue\/create/);
   });
 
   test("imports expo-router useRouter for venue onboarding", () => {

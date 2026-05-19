@@ -31,6 +31,10 @@ verify_jwt = false
 [functions.places-autocomplete]
 verify_jwt = true
 
+# Ve2 — place_pool name search for venue claim comparison (public-safe fields).
+[functions.claim-search-pool]
+verify_jwt = true
+
 # Ve1 — venue operator confirmation after biz_create_venue_brand_pending_review.
 [functions.venue-claim-submitted-email]
 verify_jwt = true

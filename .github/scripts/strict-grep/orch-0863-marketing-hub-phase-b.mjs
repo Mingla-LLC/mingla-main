@@ -306,6 +306,17 @@ function checkNoNewBackendFiles() {
     "supabase/migrations/20260613000000_ve1_physical_venue_brand_onboarding.sql",
     "supabase/migrations/20260614000000_ve1_pr_review_hardening.sql",
   ];
+  // ORCH-0100 [Ve2 Pool Match Comparison Flow] PR #142 (2026-05-19). C7 is
+  // scoped to ORCH-0863 marketing; these backend touches are Ve2 pool-match
+  // claim-search scope on the venue-claim track.
+  const ORCH_0100_VE2_BACKEND_ALLOWLIST = [
+    "supabase/functions/_shared/mapMinglaSlugToVenueCategory.ts",
+    "supabase/functions/_shared/poolMatchResponse.ts",
+    "supabase/functions/claim-search-pool/index.test.ts",
+    "supabase/functions/claim-search-pool/index.ts",
+    "supabase/migrations/20260618000000_ve2_pool_match_claim.sql",
+    "supabase/migrations/20260618000001_ve2_claim_search_rpc.sql",
+  ];
   // ORCH-0877 [Event end-time display + midnight-crossing single-day authoring]
   // PR #136 (2026-05-19). C7 is scoped to ORCH-0863 marketing; these backend
   // touches are end-time + cross-midnight + ICS Constitution #9 fix scope.
@@ -348,6 +359,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_0869_BACKEND_ALLOWLIST,
     ...ORCH_0875_BACKEND_ALLOWLIST,
     ...ORCH_0099_VE1_BACKEND_ALLOWLIST,
+    ...ORCH_0100_VE2_BACKEND_ALLOWLIST,
     ...ORCH_0877_BACKEND_ALLOWLIST,
     ...ORCH_0876_BACKEND_ALLOWLIST,
     ...ORCH_0879_BACKEND_ALLOWLIST,
