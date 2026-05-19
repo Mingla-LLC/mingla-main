@@ -909,6 +909,7 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
         if (router.canGoBack()) {
           router.back();
         } else {
+          // orch-strict-grep-allow route-by-event-type — EditPublishedTripScreen is dispatched only for event_type='trip' rows (app/trip/[id]/edit.tsx status-based dispatch at line 100), so `trip.id` is always a trip row id; `routeForEventRow()` would be a redundant indirection (ORCH-0876 [Trip CRUD + Purchase Flow Completion])
           router.replace(`/trip/${trip.id}` as never);
         }
       }, TOAST_NAV_DELAY_MS);
@@ -938,6 +939,7 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
     if (router.canGoBack()) {
       router.back();
     } else {
+      // orch-strict-grep-allow route-by-event-type — EditPublishedTripScreen is dispatched only for event_type='trip' rows (app/trip/[id]/edit.tsx status-based dispatch at line 100), so `trip.id` is always a trip row id; `routeForEventRow()` would be a redundant indirection (ORCH-0876 [Trip CRUD + Purchase Flow Completion])
       router.replace(`/trip/${trip.id}` as never);
     }
   }, [router, trip.id]);
