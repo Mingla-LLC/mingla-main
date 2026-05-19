@@ -8,7 +8,15 @@ import type {
   WhenMode,
 } from "../store/draftEventStore";
 import type { LiveEvent, LiveEventStatus } from "../store/liveEventStore";
-import type { Brand, BrandCustomLink, BrandLinks } from "../types/brand";
+import type {
+  Brand,
+  BrandCustomLink,
+  BrandHourEntry,
+  BrandLinks,
+  VenueCategory,
+} from "../types/brand";
+import { parseClaimedVenueHours } from "../utils/venuePublicHours";
+import { buildVenueGalleryPhotoUrls } from "../utils/venuePublicPhotos";
 import {
   asEventCoverMediaProvider,
   type EventCoverMediaProvider,
@@ -103,6 +111,47 @@ interface BusinessPublicBrandViewRow {
   updated_at: string;
 }
 
+/** Ve4 — row shape from `claimed_venues_public_view`. */
+export interface ClaimedVenuePublicViewRow {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  profile_photo_url: string | null;
+  profile_photo_type: "image" | "video" | "gif" | null;
+  social_links: unknown;
+  custom_links: unknown;
+  address: string | null;
+  city: string | null;
+  country_code: string | null;
+  lat: number | null;
+  lng: number | null;
+  cover_hue: number;
+  cover_media_url: string | null;
+  cover_media_type: "image" | "video" | "gif" | null;
+  kind: "physical";
+  venue_category: VenueCategory | null;
+  place_pool_id: string | null;
+  google_place_id: string | null;
+  created_at: string;
+  updated_at: string;
+  hours: unknown;
+  pool_photo_urls: string[] | null;
+}
+
+/** Ve4 — structured listing fields for verified physical venues. */
+export interface PublicVenueDetail {
+  isVerifiedVenue: true;
+  city: string | null;
+  countryCode: string | null;
+  lat: number | null;
+  lng: number | null;
+  venueCategory: VenueCategory | null;
+  googlePlaceId: string | null;
+  hours: BrandHourEntry[];
+  galleryPhotoUrls: string[];
+}
+
 interface TicketTypeRow {
   id: string;
   event_id: string;
@@ -141,6 +190,8 @@ export interface PublicEventDetail {
 export interface PublicBrandDetail {
   brand: PublicBrandRecord;
   events: PublicEventRecord[];
+  /** Present only for verified physical venues (Ve4). */
+  venue: PublicVenueDetail | null;
 }
 
 const asRecord = (value: unknown): JsonRecord =>
@@ -287,6 +338,72 @@ export const publicBrandViewRowToBrand = (
   tagline: undefined,
   links: asLinks(row.social_links, row.custom_links),
   displayAttendeeCount: row.display_attendee_count,
+});
+
+const asVenueCategory = (value: unknown): VenueCategory | null => {
+  if (
+    value === "restaurant" ||
+    value === "play" ||
+    value === "creative_and_arts"
+  ) {
+    return value;
+  }
+  return null;
+};
+
+export const claimedVenueRowToPublicVenue = (
+  row: ClaimedVenuePublicViewRow,
+): PublicVenueDetail => ({
+  isVerifiedVenue: true,
+  city: asStringOrNull(row.city),
+  countryCode: asStringOrNull(row.country_code),
+  lat: typeof row.lat === "number" ? row.lat : null,
+  lng: typeof row.lng === "number" ? row.lng : null,
+  venueCategory: asVenueCategory(row.venue_category),
+  googlePlaceId: asStringOrNull(row.google_place_id),
+  hours: parseClaimedVenueHours(row.hours),
+  galleryPhotoUrls: buildVenueGalleryPhotoUrls({
+    coverMediaUrl: row.cover_media_url,
+    profilePhotoUrl: row.profile_photo_url,
+    poolPhotoUrls: row.pool_photo_urls,
+  }),
+});
+
+export const claimedVenueRowToBrand = (
+  row: ClaimedVenuePublicViewRow,
+  eventCount = 0,
+): PublicBrandRecord => ({
+  id: row.id,
+  displayName: row.name,
+  slug: row.slug,
+  kind: "physical",
+  address: row.address,
+  coverHue: row.cover_hue,
+  coverMediaUrl: row.cover_media_url ?? undefined,
+  coverMediaType: row.cover_media_type ?? undefined,
+  profilePhotoType: row.profile_photo_type ?? undefined,
+  photo: row.profile_photo_url ?? undefined,
+  role: "owner",
+  stats: {
+    events: eventCount,
+    followers: 0,
+    rev: 0,
+    rev7d: 0,
+    attendees: 0,
+  },
+  currentLiveEvent: null,
+  bio: row.description ?? undefined,
+  tagline: undefined,
+  links: asLinks(row.social_links, row.custom_links),
+  displayAttendeeCount: false,
+  claimStatus: "verified",
+  city: asStringOrNull(row.city) ?? undefined,
+  countryCode: asStringOrNull(row.country_code) ?? undefined,
+  lat: typeof row.lat === "number" ? row.lat : undefined,
+  lng: typeof row.lng === "number" ? row.lng : undefined,
+  venueCategory: asVenueCategory(row.venue_category) ?? undefined,
+  googlePlaceId: asStringOrNull(row.google_place_id) ?? undefined,
+  placePoolId: row.place_pool_id ?? undefined,
 });
 
 const viewStatusToLiveStatus = (status: string): LiveEventStatus => {
@@ -515,18 +632,9 @@ export const getPublicEventById = async (
   return data === null ? null : detailFromRow(data as BusinessPublicEventViewRow);
 };
 
-export const getPublicBrandBySlug = async (
+const fetchPublicBrandEvents = async (
   brandSlug: string,
-): Promise<PublicBrandDetail | null> => {
-  const { data: brandData, error: brandError } = await supabase
-    .from("business_public_brands_view")
-    .select("*")
-    .eq("slug", brandSlug)
-    .maybeSingle();
-
-  if (brandError !== null) throw brandError;
-  if (brandData === null) return null;
-
+): Promise<PublicEventRecord[]> => {
   // orch-strict-grep-allow events-type-filter — view doesn't expose event_type; trip exclusion via probe below
   const { data, error } = await supabase
     .from("business_public_events_view")
@@ -559,14 +667,49 @@ export const getPublicBrandBySlug = async (
   }
 
   const eventTickets = await Promise.all(rows.map((row) => fetchTickets(row.id)));
+  return rows.map((row, idx) =>
+    publicEventViewRowToEvent(row, eventTickets[idx] ?? []),
+  );
+};
+
+export const getPublicBrandBySlug = async (
+  brandSlug: string,
+): Promise<PublicBrandDetail | null> => {
+  const { data: claimedVenue, error: claimedError } = await supabase
+    .from("claimed_venues_public_view")
+    .select("*")
+    .eq("slug", brandSlug)
+    .maybeSingle();
+
+  if (claimedError !== null) throw claimedError;
+
+  if (claimedVenue !== null) {
+    const venueRow = claimedVenue as ClaimedVenuePublicViewRow;
+    const events = await fetchPublicBrandEvents(brandSlug);
+    return {
+      brand: claimedVenueRowToBrand(venueRow, events.length),
+      venue: claimedVenueRowToPublicVenue(venueRow),
+      events,
+    };
+  }
+
+  const { data: brandData, error: brandError } = await supabase
+    .from("business_public_brands_view")
+    .select("*")
+    .eq("slug", brandSlug)
+    .maybeSingle();
+
+  if (brandError !== null) throw brandError;
+  if (brandData === null) return null;
+
+  const events = await fetchPublicBrandEvents(brandSlug);
   return {
     brand: publicBrandViewRowToBrand(
       brandData as BusinessPublicBrandViewRow,
-      rows.length,
+      events.length,
     ),
-    events: rows.map((row, idx) =>
-      publicEventViewRowToEvent(row, eventTickets[idx] ?? []),
-    ),
+    venue: null,
+    events,
   };
 };
 
