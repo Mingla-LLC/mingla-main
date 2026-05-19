@@ -704,23 +704,22 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
       <ScrollView
         ref={scrollViewRef}
         style={styles.kbAvoid}
-        contentContainerStyle={[
-          styles.body,
-          // paddingBottom = keyboard height (no buffer). Combined with
-          // a deferred scrollToEnd in the keyboardHeight effect, this
-          // lands the focused bottom-most input's bottom edge directly
-          // at the keyboard top — no visible gap.
-          keyboardHeight > 0 ? { paddingBottom: keyboardHeight } : null,
-        ]}
+        contentContainerStyle={styles.body}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
-        // automaticallyAdjustKeyboardInsets removed — it was adding a
-        // SECOND content inset = keyboard height on top of the manual
-        // paddingBottom, which doubled the visible space below the
-        // focused input. Manual control alone is sufficient now that
-        // scrollToEnd is correctly deferred to fire after the
-        // paddingBottom applies.
+        // ORCH-0884 follow-up #5 — restored `automaticallyAdjustKeyboardInsets`
+        // AND removed the manual `paddingBottom: keyboardHeight`. The
+        // prior version had only manual paddingBottom + deferred
+        // scrollToEnd; scrollToEnd works for the bottom-most form input
+        // but DOES NOT auto-scroll mid-form inputs into view. Operator-
+        // reported: Step 1 "Find a cover" GIPHY/Pexels search input
+        // stayed hidden behind keyboard. iOS 14+ auto-inset adjusts the
+        // contentInset = keyboard height AND auto-scrolls focused input
+        // above keyboard — no manual paddingBottom needed, so no
+        // double-pad. The scrollToEnd ref handlers still fire for
+        // bottom-input cases (defense in depth).
+        automaticallyAdjustKeyboardInsets
       >
         <Text style={styles.eyebrow}>
           Step {currentStep + 1} of {TOTAL_STEPS}

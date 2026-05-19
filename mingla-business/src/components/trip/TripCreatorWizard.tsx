@@ -897,12 +897,18 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
       {/* Body */}
       <ScrollView
         style={styles.kbAvoid}
-        contentContainerStyle={[
-          styles.body,
-          keyboardHeight > 0 ? { paddingBottom: keyboardHeight } : null,
-        ]}
+        contentContainerStyle={styles.body}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
+        // ORCH-0884 follow-up #5 — iOS-native keyboard inset adjustment.
+        // Operator-reported: Step 1 "Find a cover" GIPHY/Pexels search
+        // input stayed hidden behind keyboard. Manual paddingBottom alone
+        // doesn't auto-scroll the focused input above the keyboard. iOS
+        // 14+ `automaticallyAdjustKeyboardInsets` adds a content inset =
+        // keyboardHeight AND auto-scrolls focused input above keyboard.
+        // Replaces the manual `paddingBottom: keyboardHeight` (would
+        // double-pad with the native inset and leave visible dead space).
+        automaticallyAdjustKeyboardInsets
         showsVerticalScrollIndicator={false}
       >
         <Text style={styles.eyebrow}>
