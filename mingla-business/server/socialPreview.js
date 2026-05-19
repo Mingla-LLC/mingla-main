@@ -229,21 +229,40 @@ const fetchPublicEventById = async (eventId) => {
   return Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
 };
 
+const fetchPublicBrandEvents = async (brandSlug) => {
+  const eventRows = await requestJson("business_public_events_view", {
+    select: "*",
+    brand_slug: `eq.${brandSlug}`,
+    order: "published_at.desc.nullslast",
+  });
+  return Array.isArray(eventRows) ? eventRows : [];
+};
+
 const fetchPublicBrandBySlug = async (brandSlug) => {
+  const claimedRows = await requestJson("claimed_venues_public_view", {
+    select: "*",
+    slug: `eq.${brandSlug}`,
+    limit: "1",
+  });
+  const events = await fetchPublicBrandEvents(brandSlug);
+  if (Array.isArray(claimedRows) && claimedRows.length > 0) {
+    return {
+      brand: claimedRows[0],
+      venue: claimedRows[0],
+      events,
+    };
+  }
+
   const brandRows = await requestJson("business_public_brands_view", {
     select: "*",
     slug: `eq.${brandSlug}`,
     limit: "1",
   });
   if (!Array.isArray(brandRows) || brandRows.length === 0) return null;
-  const eventRows = await requestJson("business_public_events_view", {
-    select: "*",
-    brand_slug: `eq.${brandSlug}`,
-    order: "published_at.desc.nullslast",
-  });
   return {
     brand: brandRows[0],
-    events: Array.isArray(eventRows) ? eventRows : [],
+    venue: null,
+    events,
   };
 };
 
@@ -494,19 +513,35 @@ const chooseBrandFeatureEvent = (rows) => {
 
 const normalizeBrandPreviewInput = (input) => {
   if (Array.isArray(input)) {
-    return { brand: input[0] ?? null, events: input };
+    return { brand: input[0] ?? null, venue: null, events: input };
   }
   if (input !== null && typeof input === "object") {
     return {
       brand: input.brand ?? null,
+      venue: input.venue ?? null,
       events: Array.isArray(input.events) ? input.events : [],
     };
   }
-  return { brand: null, events: [] };
+  return { brand: null, venue: null, events: [] };
 };
 
+const brandListingTitle = (brandRow, venueRow) => {
+  const name = brandName(brandRow);
+  const city =
+    venueRow !== null &&
+    typeof venueRow === "object" &&
+    typeof venueRow.city === "string" &&
+    venueRow.city.trim().length > 0
+      ? venueRow.city.trim()
+      : null;
+  return city !== null ? `${name} · ${city}` : name;
+};
+
+const brandSeoTitle = (brandRow, venueRow) =>
+  `${brandListingTitle(brandRow, venueRow)} on Mingla`;
+
 const buildBrandOgCardProps = (input) => {
-  const { brand, events } = normalizeBrandPreviewInput(input);
+  const { brand, events, venue } = normalizeBrandPreviewInput(input);
   const featureEvent = chooseBrandFeatureEvent(events);
   const eventCount = events.length;
   const eventCountLabel = `${eventCount} event${eventCount === 1 ? "" : "s"}`;
@@ -527,7 +562,8 @@ const buildBrandOgCardProps = (input) => {
         ? eventCoverUrl(featureEvent)
         : null;
 
-  const title = brand !== null ? brandName(brand) : "Mingla Business";
+  const title =
+    brand !== null ? brandListingTitle(brand, venue) : "Mingla Business";
   const subtitle =
     (brand !== null ? brandDescriptionText(brand) : "") ||
     (brand
@@ -673,12 +709,16 @@ const renderTripHtml = (row) => {
 };
 
 const renderBrandHtml = (input) => {
-  const { brand, events } = normalizeBrandPreviewInput(input);
+  const { brand, events, venue } = normalizeBrandPreviewInput(input);
   const row = brand ?? events[0];
-  const title = `${brandName(row)} on Mingla`;
+  const title = brandSeoTitle(row, venue);
   const description = brandDescription(row, events.length);
   const canonicalUrl = brandPublicUrl(row);
   const imageUrl = brandImageUrl(row);
+  const isVerifiedVenue =
+    venue !== null &&
+    typeof venue === "object" &&
+    venue.kind === "physical";
   const cards = events
     .slice(0, 8)
     .map(
@@ -687,7 +727,10 @@ const renderBrandHtml = (input) => {
         <span>${escapeHtml(eventDescription(event))}</span>
       </a>`,
     )
-    .join("") || `<div class="card"><strong>No upcoming events yet</strong><span>Check back soon for new events from ${escapeHtml(brandName(row))}.</span></div>`;
+    .join("") ||
+    (isVerifiedVenue
+      ? `<div class="card"><strong>No upcoming events from this venue</strong><span>Check back soon for events from ${escapeHtml(brandName(row))}.</span></div>`
+      : `<div class="card"><strong>No upcoming events yet</strong><span>Check back soon for new events from ${escapeHtml(brandName(row))}.</span></div>`);
 
   return pageShell({
     title,
