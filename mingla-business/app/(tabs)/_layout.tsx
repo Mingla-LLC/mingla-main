@@ -18,6 +18,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BottomNav } from "../../src/components/ui/BottomNav";
 import type { BottomNavTab } from "../../src/components/ui/BottomNav";
+// ORCH-0885-A: DesktopCanvas wraps Slot children. On native + narrow web
+// (<1024px) it's a passthrough Fragment — zero layout cost. On web ≥1024px
+// it paints the Tier-1 ambient gradient + centres content inside a
+// max-width 640px column. Per SPEC_ORCH-0885-A §3.
+import { DesktopCanvas } from "../../src/components/ui/DesktopCanvas";
 import { canvas, spacing } from "../../src/constants/designSystem";
 
 const TABS: BottomNavTab[] = [
@@ -79,7 +84,9 @@ export default function TabsLayout(): React.ReactElement {
 
   return (
     <View style={styles.host}>
-      <Slot />
+      <DesktopCanvas>
+        <Slot />
+      </DesktopCanvas>
       {hideBottomNav ? null : (
         <View
           pointerEvents="box-none"

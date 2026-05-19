@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Mingla Business — Desktop Redesign Brainstorm</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root { --accent: #eb7825; }
+  html, body { background: #0c0e12; color: #f5f5f7; font-family: ui-sans-serif, system-ui, -apple-system, "SF Pro Text", "Inter", sans-serif; }
+  .accent { color: var(--accent); }
+  .bg-accent { background: var(--accent); }
+  .card { background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); transition: all .2s; }
+  .card:hover { background: rgba(255,255,255,.06); border-color: rgba(255,255,255,.15); transform: translateY(-2px); }
+  .preview-frame { background: linear-gradient(180deg, #1c1d22 0%, #0c0e12 100%); border: 1px solid rgba(255,255,255,.08); }
+  .canvas-bg {
+    background:
+      radial-gradient(80% 50% at 50% 0%, rgba(235,120,37,.06) 0%, transparent 60%),
+      radial-gradient(60% 60% at 10% 100%, rgba(120,80,200,.04) 0%, transparent 50%),
+      #0c0e12;
+  }
+</style>
+</head>
+<body class="min-h-screen canvas-bg">
+
+<div class="max-w-[1400px] mx-auto px-8 py-10">
+
+  <!-- Header -->
+  <div class="mb-10">
+    <div class="text-[11px] uppercase tracking-widest text-zinc-500 mb-2">Mingla Business · Desktop Redesign · Brainstorm 2026-05-19</div>
+    <h1 class="text-4xl font-semibold tracking-tight">Stop looking like a phone trapped on a desktop.</h1>
+    <p class="text-zinc-400 text-base mt-3 max-w-3xl leading-relaxed">
+      Mingla Business runs on iOS, Android, and the web via React Native. On a 27" monitor, the mobile layout
+      gets stretched and floats inside a sea of empty canvas. These mockups walk through three tiers of fixes —
+      from a 1-day visual lift to a full desktop-native interaction model — all while keeping the mobile
+      app pixel-identical.
+    </p>
+    <div class="flex items-center gap-4 mt-4 text-xs text-zinc-500">
+      <span>5 mockups · open each in your browser · annotated in yellow</span>
+    </div>
+  </div>
+
+  <!-- Mockup grid -->
+  <div class="grid grid-cols-2 gap-6">
+
+    <!-- Baseline -->
+    <a href="./00-today-baseline.html" class="card rounded-2xl overflow-hidden">
+      <div class="preview-frame h-64 relative flex items-center justify-center">
+        <div class="w-[120px] h-48 rounded-lg" style="background: #0c0e12; border: 1px solid rgba(255,255,255,.08);">
+          <div class="h-8 border-b border-white/5"></div>
+          <div class="p-2 space-y-1.5">
+            <div class="h-16 rounded bg-gradient-to-br from-orange-500 to-rose-600"></div>
+            <div class="grid grid-cols-3 gap-1">
+              <div class="h-6 rounded bg-white/5"></div>
+              <div class="h-6 rounded bg-white/5"></div>
+              <div class="h-6 rounded bg-white/5"></div>
+            </div>
+            <div class="h-3 rounded bg-white/5"></div>
+            <div class="h-3 rounded bg-white/5 w-3/4"></div>
+          </div>
+          <div class="px-2"><div class="h-6 rounded-full" style="background: var(--accent); opacity: .8;"></div></div>
+        </div>
+        <div class="absolute top-4 left-4 text-[10px] text-zinc-500 font-mono">today.html</div>
+        <div class="absolute top-4 right-4 text-[10px] px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400">baseline</div>
+      </div>
+      <div class="p-6">
+        <div class="text-[10px] uppercase tracking-widest text-zinc-500 mb-1">Mockup 0 · Baseline</div>
+        <div class="text-xl font-semibold mb-1">Today — mobile UI floating on desktop</div>
+        <p class="text-sm text-zinc-400">A 440px column with a glass bottom-tab capsule hovering hundreds of pixels above the actual browser bottom. Same layout iPhones see, zero desktop adaptation.</p>
+        <div class="mt-4 text-xs accent">View baseline →</div>
+      </div>
+    </a>
+
+    <!-- Tier 1 -->
+    <a href="./01-tier1-container-rail.html" class="card rounded-2xl overflow-hidden">
+      <div class="preview-frame h-64 relative">
+        <!-- mini side rail -->
+        <div class="absolute left-4 top-4 bottom-4 w-8 rounded bg-white/5 border border-white/10 flex flex-col items-center py-2 gap-1.5">
+          <div class="w-5 h-5 rounded bg-gradient-to-br from-orange-500 to-rose-600"></div>
+          <div class="w-5 h-5 rounded" style="background: rgba(235,120,37,.3);"></div>
+          <div class="w-5 h-5 rounded bg-white/5"></div>
+          <div class="w-5 h-5 rounded bg-white/5"></div>
+        </div>
+        <!-- mini content -->
+        <div class="absolute left-1/2 top-4 bottom-4 -translate-x-1/2 w-44 space-y-2">
+          <div class="h-20 rounded bg-gradient-to-br from-orange-500 to-rose-600"></div>
+          <div class="grid grid-cols-3 gap-1">
+            <div class="h-8 rounded bg-white/5"></div>
+            <div class="h-8 rounded bg-white/5"></div>
+            <div class="h-8 rounded bg-white/5"></div>
+          </div>
+          <div class="h-3 rounded bg-white/5"></div>
+          <div class="h-3 rounded bg-white/5 w-3/4"></div>
+          <div class="h-10 rounded bg-white/5"></div>
+        </div>
+        <div class="absolute top-4 right-4 text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400">tier 1 · ~2 days</div>
+      </div>
+      <div class="p-6">
+        <div class="text-[10px] uppercase tracking-widest text-zinc-500 mb-1">Mockup 1 · Tier 1</div>
+        <div class="text-xl font-semibold mb-1">Container fixes — max-width + side rail</div>
+        <p class="text-sm text-zinc-400">Centred 640px column, ambient brand canvas in the margins, bottom-tab capsule lifted to a left icon rail. Same screens, guarded by a width breakpoint. Mobile untouched.</p>
+        <div class="mt-4 text-xs accent">View Tier 1 →</div>
+      </div>
+    </a>
+
+    <!-- Tier 2 -->
+    <a href="./02-tier2-desktop-shell.html" class="card rounded-2xl overflow-hidden">
+      <div class="preview-frame h-64 relative">
+        <!-- sidebar -->
+        <div class="absolute left-4 top-4 bottom-4 w-20 rounded bg-white/5 border border-white/10"></div>
+        <!-- topbar -->
+        <div class="absolute left-28 top-4 right-4 h-6 rounded bg-white/5"></div>
+        <!-- list pane -->
+        <div class="absolute left-28 top-12 bottom-4 w-32 space-y-1.5">
+          <div class="h-8 rounded" style="background: rgba(235,120,37,.2); border-left: 3px solid var(--accent);"></div>
+          <div class="h-8 rounded bg-white/5"></div>
+          <div class="h-8 rounded bg-white/5"></div>
+          <div class="h-8 rounded bg-white/5"></div>
+          <div class="h-8 rounded bg-white/5"></div>
+        </div>
+        <!-- detail pane -->
+        <div class="absolute left-[252px] top-12 bottom-4 right-4 space-y-1.5 border-l border-white/10 pl-3">
+          <div class="h-14 rounded bg-gradient-to-br from-orange-500 to-rose-600"></div>
+          <div class="grid grid-cols-4 gap-1">
+            <div class="h-7 rounded bg-white/5"></div>
+            <div class="h-7 rounded bg-white/5"></div>
+            <div class="h-7 rounded bg-white/5"></div>
+            <div class="h-7 rounded bg-white/5"></div>
+          </div>
+          <div class="h-14 rounded bg-white/5"></div>
+          <div class="h-3 rounded bg-white/5"></div>
+        </div>
+        <div class="absolute top-4 right-4 text-[10px] px-2 py-0.5 rounded-full bg-orange-500/15 text-orange-400">tier 2 · ~1-2 weeks</div>
+      </div>
+      <div class="p-6">
+        <div class="text-[10px] uppercase tracking-widest text-zinc-500 mb-1">Mockup 2 · Tier 2</div>
+        <div class="text-xl font-semibold mb-1">Desktop shell + master-detail</div>
+        <p class="text-sm text-zinc-400">Persistent sidebar with sub-routes inline, global search, two-pane master-detail (list + selected detail), side sheets instead of bottom sheets, tables instead of card lists.</p>
+        <div class="mt-4 text-xs accent">View Tier 2 →</div>
+      </div>
+    </a>
+
+    <!-- Tier 3 -->
+    <a href="./03-tier3-power-features.html" class="card rounded-2xl overflow-hidden">
+      <div class="preview-frame h-64 relative">
+        <!-- compact sidebar -->
+        <div class="absolute left-4 top-4 bottom-4 w-6 rounded bg-white/5 border border-white/10"></div>
+        <!-- topbar -->
+        <div class="absolute left-12 top-4 right-32 h-5 rounded bg-white/5"></div>
+        <!-- bulk bar -->
+        <div class="absolute left-12 top-11 right-32 h-4 rounded" style="background: rgba(235,120,37,.15);"></div>
+        <!-- table -->
+        <div class="absolute left-12 top-17 bottom-4 right-32 space-y-1">
+          <div class="h-3 rounded bg-white/5"></div>
+          <div class="h-3 rounded" style="background: rgba(235,120,37,.15);"></div>
+          <div class="h-3 rounded bg-white/5"></div>
+          <div class="h-3 rounded" style="background: rgba(235,120,37,.15);"></div>
+          <div class="h-3 rounded" style="background: rgba(235,120,37,.15);"></div>
+          <div class="h-3 rounded bg-white/5"></div>
+          <div class="h-3 rounded bg-white/5"></div>
+        </div>
+        <!-- right rail -->
+        <div class="absolute right-4 top-4 bottom-4 w-24 rounded bg-white/5 border border-white/10 p-1.5 space-y-1.5">
+          <div class="h-10 rounded bg-white/5"></div>
+          <div class="h-6 rounded bg-white/5"></div>
+          <div class="h-6 rounded bg-white/5"></div>
+          <div class="h-12 rounded" style="background: rgba(235,120,37,.15);"></div>
+        </div>
+        <!-- command palette mini -->
+        <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-16 rounded bg-zinc-900 border border-white/20 shadow-2xl">
+          <div class="h-4 m-1 rounded bg-white/5"></div>
+          <div class="h-3 mx-1 rounded" style="background: rgba(235,120,37,.2);"></div>
+          <div class="h-3 mx-1 mt-1 rounded bg-white/5"></div>
+        </div>
+        <div class="absolute top-4 right-4 text-[10px] px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-400">tier 3 · additive</div>
+      </div>
+      <div class="p-6">
+        <div class="text-[10px] uppercase tracking-widest text-zinc-500 mb-1">Mockup 3 · Tier 3</div>
+        <div class="text-xl font-semibold mb-1">Power features — ⌘K, multi-select, right rail</div>
+        <p class="text-sm text-zinc-400">Command palette, bulk actions, keyboard navigation, drag-and-drop, persistent right-rail context. Each one independently shippable after Tier 2.</p>
+        <div class="mt-4 text-xs accent">View Tier 3 →</div>
+      </div>
+    </a>
+  </div>
+
+  <!-- How to view -->
+  <div class="mt-12 rounded-2xl border border-white/8 bg-white/[.02] p-8">
+    <div class="text-[10px] uppercase tracking-widest text-zinc-500 mb-2">How to view these</div>
+    <div class="grid grid-cols-3 gap-6 text-sm">
+      <div>
+        <div class="font-medium mb-1">1. Open in your browser</div>
+        <p class="text-zinc-400 text-xs leading-relaxed">From this folder: double-click <code class="text-orange-300">index.html</code>, or open <code class="text-orange-300">file:///Users/sethogieva/Desktop/mingla-main/Mingla_Artifacts/design/desktop-redesign/index.html</code>.</p>
+      </div>
+      <div>
+        <div class="font-medium mb-1">2. Resize to a desktop width</div>
+        <p class="text-zinc-400 text-xs leading-relaxed">Each mockup is laid out for a 1440-1600px window. The mockup itself simulates a browser window inside that.</p>
+      </div>
+      <div>
+        <div class="font-medium mb-1">3. Read the yellow annotations</div>
+        <p class="text-zinc-400 text-xs leading-relaxed">Each tier has yellow callout text pointing at the specific design move and why it matters. Click the tier cards above to walk through.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- What's NOT in these mockups -->
+  <div class="mt-6 rounded-2xl border border-white/8 bg-white/[.02] p-8">
+    <div class="text-[10px] uppercase tracking-widest text-zinc-500 mb-3">Out of scope for this brainstorm</div>
+    <ul class="space-y-2 text-sm text-zinc-400">
+      <li class="flex gap-3">
+        <span class="accent flex-shrink-0">·</span>
+        <span><span class="text-white font-medium">Buyer-anonymous web routes</span> (<code class="text-orange-300">/checkout/&#123;eventId&#125;</code>, <code class="text-orange-300">/e/&#123;brandSlug&#125;/&#123;eventSlug&#125;</code>, <code class="text-orange-300">/b/&#123;brandSlug&#125;</code>) — these are conversion-focused single-purpose pages, more like Stripe Checkout than a tool. They want their own narrow-column treatment, not a sidebar shell. Separate workstream.</span>
+      </li>
+      <li class="flex gap-3">
+        <span class="accent flex-shrink-0">·</span>
+        <span><span class="text-white font-medium">Tablet / landscape phone breakpoint (641–1023px)</span> — Tier 1's <code class="text-orange-300">isWideDesktop</code> guard fires at ≥1024px. Below that we keep the current mobile shell. A 3rd middle breakpoint is worth doing but is a separate spec.</span>
+      </li>
+      <li class="flex gap-3">
+        <span class="accent flex-shrink-0">·</span>
+        <span><span class="text-white font-medium">Mingla Admin (<code class="text-orange-300">mingla-admin/</code>)</span> — already a true desktop React+Vite app. Not in scope; only mingla-business needs desktop adaptation.</span>
+      </li>
+      <li class="flex gap-3">
+        <span class="accent flex-shrink-0">·</span>
+        <span><span class="text-white font-medium">Light mode</span> — these mockups are dark-only to match Mingla's current brand canvas. Light mode for desktop is a separate decision.</span>
+      </li>
+    </ul>
+  </div>
+
+  <!-- Footer -->
+  <div class="mt-12 text-center text-xs text-zinc-600">
+    Generated 2026-05-19 · Brainstorm artifact · No code modified · Mingla_Artifacts/design/desktop-redesign/
+  </div>
+
+</div>
+
+</body>
+</html>

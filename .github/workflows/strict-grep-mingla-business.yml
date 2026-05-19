@@ -97,6 +97,7 @@ on:
 #   - ORCH-0852 consumer-frozen (i-consumer-payment-flow-frozen.mjs) — consumer app nativeCheckoutFlow.ts + ExpandedBusinessEventSheet.tsx unchanged during ORCH-0852; identifier-substring fingerprint check
 #   - ORCH-0862 brand-delete-date-aware (i-brand-delete-blocking-date-aware.mjs) — softDeleteBrand Step 1 + useBrandCascadePreview both filter event_dates.end_at > now (I-PROPOSED-BRAND-DELETE-BLOCKING-DATE-AWARE; DISCOVERY-7 regression guard)
 #   - ORCH-0862 event-detail-cancel-no-nav (i-event-detail-cancel-no-navigation.mjs) — event/[id]/index.tsx handleCancelConfirm contains zero router.replace/push/back calls (Symptom A regression guard)
+#   - ORCH-0885-A (orch-0885-a-no-bottomnav-on-wide-desktop.mjs) — BottomNav imported only by (tabs)/_layout.tsx + desktop gate via useResponsiveLayout() only (I-NO-BOTTOMNAV-OUTSIDE-LAYOUT + I-DESKTOP-GATE-VIA-HOOK)
 #
 # Future gates to register (proposed but not yet implemented):
 #   - I-32 rank parity (Cycle 13a proposal)
@@ -1311,3 +1312,14 @@ jobs:
           node-version: "20"
       - name: Run ORCH-0880 file-rls-anon-write-planner-read gate
         run: node .github/scripts/strict-grep/i-proposed-tr5-file-rls-anon-write-planner-read.mjs
+
+  orch-0885-a-no-bottomnav-on-wide-desktop:
+    name: "ORCH-0885-A: No BottomNav outside (tabs)/_layout.tsx + desktop gate via hook only"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0885-A gate
+        run: node .github/scripts/strict-grep/orch-0885-a-no-bottomnav-on-wide-desktop.mjs
