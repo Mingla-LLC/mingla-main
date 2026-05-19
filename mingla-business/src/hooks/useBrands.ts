@@ -30,11 +30,13 @@ import { queryClient } from "../config/queryClient";
 import { eventOrdersKeys } from "./useEventOrders";
 import {
   createBrand,
+  createVenueBrandPendingReview,
   getBrands,
   getBrand,
   updateBrand,
   softDeleteBrand,
   type CreateBrandInput,
+  type CreateVenueBrandPendingInput,
   type SoftDeleteResult,
 } from "../services/brandsService";
 import type { Brand } from "../store/currentBrandStore";
@@ -529,11 +531,37 @@ export const useBrandCascadePreview = (
   });
 };
 
+// ----- Ve1: physical venue brand (pending review) ------------------------
+
+export interface CreateVenueBrandMutationInput extends CreateVenueBrandPendingInput {
+  accountId: string;
+}
+
+export interface UseCreateVenueBrandResult {
+  mutateAsync: (input: CreateVenueBrandMutationInput) => Promise<Brand>;
+  isPending: boolean;
+}
+
+export const useCreateVenueBrand = (): UseCreateVenueBrandResult => {
+  const queryClient = useQueryClient();
+  const mutation = useMutation<Brand, Error, CreateVenueBrandMutationInput>({
+    mutationFn: async ({
+      accountId: _accountId,
+      ...rest
+    }): Promise<Brand> => createVenueBrandPendingReview(rest, "owner"),
+    onSuccess: (_brand, { accountId }) => {
+      void queryClient.invalidateQueries({ queryKey: brandKeys.list(accountId) });
+    },
+  });
+  return { mutateAsync: mutation.mutateAsync, isPending: mutation.isPending };
+};
+
 // ----- Re-exports for convenience ---------------------------------------
 
 export { SlugCollisionError } from "../services/brandsService";
 export type {
   CreateBrandInput,
+  CreateVenueBrandPendingInput,
   SoftDeleteResult,
   SoftDeleteSuccess,
   SoftDeleteRejection,

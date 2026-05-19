@@ -15,6 +15,7 @@ import {
   BusinessAuthNotReadyError,
   toBusinessAuthNotReadyError,
 } from "../utils/authReadiness";
+import { assertBrandCanAuthorOfferings } from "./brandAuthoringGate";
 
 // ORCH-0841: include the post-ORCH-0824 top-level taxonomy + city + geo
 // columns so serverRowToDraft sees them on every fetch / autosave round-trip.
@@ -168,6 +169,7 @@ export const createServerDraft = async (
   sourceDraft?: DraftEvent,
 ): Promise<DraftEvent> => {
   const userId = await requireUserId();
+  await assertBrandCanAuthorOfferings(brandId);
   const now = new Date().toISOString();
   const effectiveCurrency =
     nullableCurrency(sourceDraft?.currency) ?? (await fetchBrandDefaultCurrency(brandId));

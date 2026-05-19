@@ -61,7 +61,8 @@ describe("ORCH-0855 — BrandSwitcherSheet persona-fork structural contract", ()
     expect(tripBlockMatch![1]).toBe("compass");
   });
 
-  test("'A place' persona is disabled (Ve1 hasn't shipped — SC-04)", () => {
+  // ORCH-0099 (Ve1): superseded by BrandSwitcherSheet.personaFork.ve1.test.ts.
+  test.skip("'A place' persona is disabled (Ve1 hasn't shipped — SC-04)", () => {
     const placeBlockMatch = sheetSource.match(
       /id: "place"[\s\S]*?disabled: (true|false)/,
     );

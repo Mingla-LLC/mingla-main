@@ -28,6 +28,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useRouter } from "expo-router";
 import {
   accent,
   glass,
@@ -50,6 +51,7 @@ import { Input } from "../ui/Input";
 import { TopSheet } from "../ui/TopSheet";
 import { PersonaPickerCards, type PersonaDef } from "./PersonaPickerCards";
 import { TripBrandWizard } from "./TripBrandWizard";
+import { useDraftVenueStore } from "../../store/draftVenueStore";
 
 export interface BrandSwitcherSheetProps {
   visible: boolean;
@@ -92,6 +94,8 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
   const { user } = useAuth();
   const createBrandMutation = useCreateBrand();
   const updateCreatorAccountMutation = useUpdateCreatorAccount();
+  const resetVenueDraft = useDraftVenueStore((s) => s.reset);
+  const router = useRouter();
 
   const initialMode: Mode = brandList.isTrueEmpty ? "persona" : "switch";
   const [mode, setMode] = useState<Mode>(initialMode);
@@ -198,19 +202,18 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
     setSubmitting(false);
   };
 
-  // ORCH-0855 (Tr1) — persona configuration. PersonaDef.id union locked
-  // per I-PROPOSED-TR1-PERSONA-INTERFACE (DRAFT → ACTIVE on CLOSE).
-  // "place" card disabled until Ve1 ships; "event" preserves today's flow
-  // verbatim via "popup-create" mode; "trip" opens TripBrandWizard.
+  // Ve1 — "A place" opens full-screen venue onboarding (place_pool gate + wizard).
   const personas: PersonaDef[] = [
     {
       id: "place",
       title: "A place",
       description: "I run a venue (restaurant, bar, gallery, studio)",
       icon: "location",
-      disabled: true,
+      disabled: false,
       onSelect: () => {
-        // Ve1 will wire this to open the venue claim flow.
+        resetVenueDraft();
+        onClose();
+        router.push("/venue/create" as never);
       },
       testID: "persona-place",
     },
