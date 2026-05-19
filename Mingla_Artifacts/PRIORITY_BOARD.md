@@ -545,6 +545,12 @@ ORCH-0390 (documentation truth sweep) is the active workstream. Phase 1 (dead co
 
 These don't displace the top 10 (all S0/S1 user-facing) but enter the "Fix Next" category.
 
+## Recently Closed (2026-05-19)
+
+| ID | Title | Status | Evidence |
+|----|-------|--------|----------|
+| ORCH-0882 | Render Payment Plan Disclosure on Trip Buyer + Planner Surfaces | closed A | QA CONDITIONAL PASS Grade A (operator-accepted live-fire deferral); 46 regression tests (24 implementor happy-path + 22 tester adversarial) with fails-on-revert at `cfee512f`; 3 DRAFT invariants ACTIVE; CI gate `i-proposed-tr3-plan-disclosure-on-every-buyer-touchpoint` registered. Report: `reports/QA_ORCH-0882_PAYMENT_PLAN_DISCLOSURE_RENDER_REPORT.md` |
+
 ## Recently Closed (2026-04-17 — ORCH-0460 Bundle)
 
 | ID | Title | Status | Evidence |

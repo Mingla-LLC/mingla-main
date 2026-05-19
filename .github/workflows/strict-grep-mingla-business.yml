@@ -1210,6 +1210,17 @@ jobs:
       - name: Run ORCH-0873 schedule-currency-pinned gate
         run: node .github/scripts/strict-grep/i-proposed-tr3-schedule-currency-pinned-at-publish.mjs
 
+  i-proposed-tr3-plan-disclosure-on-every-buyer-touchpoint:
+    name: "ORCH-0882 [Payment Plan Disclosure]: every plan-active trip buyer + planner surface imports InstallmentScheduleDisplay"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0882 plan-disclosure-on-every-buyer-touchpoint gate
+        run: node .github/scripts/strict-grep/i-proposed-tr3-plan-disclosure-on-every-buyer-touchpoint.mjs
+
   orch-0864-marketing-composer-v2:
     name: "ORCH-0864 [Marketing Composer V2]: TenTap single-renderer + body-not-TextInput + insertion-bar-always-visible + token-roundtrip-regex"
     runs-on: ubuntu-latest

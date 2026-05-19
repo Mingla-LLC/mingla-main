@@ -55,6 +55,8 @@ import { useNativeCheckoutFlow } from "../../../src/payments/nativeCheckoutFlow"
 import { Button } from "../../../src/components/ui/Button";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
 import { Toast } from "../../../src/components/ui/Toast";
+import { InstallmentScheduleDisplay } from "../../../src/components/trip/InstallmentScheduleDisplay";
+import { projectInstallmentSchedule } from "../../../src/utils/installmentScheduleProjection";
 
 import {
   useCart,
@@ -77,6 +79,35 @@ export default function CheckoutTripPaymentScreen(): React.ReactElement {
   const trip = publicTripQuery.data?.trip ?? null;
   const { lines, buyer, intakeFormData, setLineQuantity, setBuyer } = useCart();
   const totals = useCartTotals();
+
+  // ORCH-0882 [Render Payment Plan Disclosure on Trip Buyer + Planner
+  // Surfaces] — FIRST plan-active tier aggregate per SPEC Q3. Renders
+  // null when no cart line has a plan. Drives both the in-scroll
+  // schedule card AND the pre-Stripe banner + Pay-button copy change.
+  const projectedSchedule = React.useMemo(() => {
+    if (trip === null) return null;
+    for (const line of lines) {
+      const sourceTier = trip.pricingTiers.find(
+        (t) => t.ticketTypeId === line.ticketTypeId,
+      );
+      if (
+        sourceTier !== undefined &&
+        sourceTier.installmentSchedule !== null &&
+        line.quantity >= 1
+      ) {
+        // ORCH-0882 hotfix-2 — pass line.quantity so disclosure +
+        // banner + Pay-button all scale with cart (€500/tier × qty=2
+        // → €250 deposit, not €125).
+        return projectInstallmentSchedule(
+          sourceTier,
+          new Date(),
+          line.quantity,
+        );
+      }
+    }
+    return null;
+  }, [trip, lines]);
+  const isPlanActive = projectedSchedule !== null;
 
   // ORCH-0880 [Tr5 Traveler Intake Forms] — flatten per-tier intake answers
   // (keyed by ticket_type_id in CartContext) into the array shape expected
@@ -427,9 +458,15 @@ export default function CheckoutTripPaymentScreen(): React.ReactElement {
         style={styles.scroll}
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingBottom: insets.bottom + 140 },
+          // ORCH-0882 hotfix-2 — when the pre-Stripe plan banner is
+          // active inside the sticky bottom bar, it adds ~120pt of
+          // height (banner title + body + margin). Bumping the
+          // ScrollView's bottom padding so the PAYMENT redirect card
+          // at the bottom of scroll content isn't occluded behind the
+          // taller bottom bar.
+          { paddingBottom: insets.bottom + (isPlanActive ? 260 : 140) },
           keyboardHeight > 0
-            ? { paddingBottom: keyboardHeight + 140 }
+            ? { paddingBottom: keyboardHeight + (isPlanActive ? 260 : 140) }
             : null,
         ]}
         showsVerticalScrollIndicator={false}
@@ -463,6 +500,18 @@ export default function CheckoutTripPaymentScreen(): React.ReactElement {
           </View>
         </GlassCard>
 
+        {/* ORCH-0882 — payment plan schedule, between Order Summary and
+            Payment cards. Null-safe via component. */}
+        {projectedSchedule !== null ? (
+          <View style={styles.planDisclosureWrap}>
+            <InstallmentScheduleDisplay
+              schedule={projectedSchedule}
+              variant="buyer"
+              isProjection={true}
+            />
+          </View>
+        ) : null}
+
         <GlassCard variant="base" radius="lg" padding={spacing.md}>
           <Text style={styles.summaryLabel}>PAYMENT</Text>
           <Text style={styles.paymentCopy}>
@@ -486,6 +535,44 @@ export default function CheckoutTripPaymentScreen(): React.ReactElement {
           keyboardHeight > 0 ? styles.bottomBarHidden : null,
         ]}
       >
+        {/* ORCH-0882 — pre-Stripe disclosure banner. Renders directly
+            above the Pay button when cart has plan-active lines. Stripe's
+            hosted checkout only displays the deposit amount, so this is
+            the last in-product surface to set buyer expectations about
+            the deposit + future-installment auto-charge schedule.
+            Constitution #3 — no silent failures. */}
+        {isPlanActive && projectedSchedule !== null ? (
+          <View
+            style={styles.planBanner}
+            accessibilityRole="alert"
+            accessibilityLabel={`Payment plan active. You will be charged ${formatCurrency(projectedSchedule.depositCents, projectedSchedule.currency, true)} today. The remaining ${formatCurrency(projectedSchedule.fullPriceCents - projectedSchedule.depositCents, projectedSchedule.currency, true)} will auto-charge in ${projectedSchedule.installments.length} payments from the same card.`}
+          >
+            <Text style={styles.planBannerTitle}>Payment plan active</Text>
+            <Text style={styles.planBannerBody}>
+              You&rsquo;ll be charged{" "}
+              <Text style={styles.planBannerStrong}>
+                {formatCurrency(
+                  projectedSchedule.depositCents,
+                  projectedSchedule.currency,
+                  true,
+                )}
+              </Text>{" "}
+              today. The remaining{" "}
+              <Text style={styles.planBannerStrong}>
+                {formatCurrency(
+                  projectedSchedule.fullPriceCents -
+                    projectedSchedule.depositCents,
+                  projectedSchedule.currency,
+                  true,
+                )}
+              </Text>{" "}
+              will auto-charge in {projectedSchedule.installments.length}{" "}
+              payment
+              {projectedSchedule.installments.length === 1 ? "" : "s"} on the
+              dates above, from the card you enter next.
+            </Text>
+          </View>
+        ) : null}
         <View style={styles.totalRow}>
           <Text style={styles.totalLabel}>Total</Text>
           <Text style={styles.totalValue}>
@@ -493,14 +580,22 @@ export default function CheckoutTripPaymentScreen(): React.ReactElement {
           </Text>
         </View>
         <Button
-          label={`Pay ${formatCurrency(totals.total, totals.currency)}`}
+          label={
+            isPlanActive && projectedSchedule !== null
+              ? `Pay ${formatCurrency(projectedSchedule.depositCents, projectedSchedule.currency, true)} deposit`
+              : `Pay ${formatCurrency(totals.total, totals.currency)}`
+          }
           onPress={handlePay}
           variant="primary"
           size="lg"
           fullWidth
           loading={processing}
           disabled={processing}
-          accessibilityLabel={`Pay ${formatCurrency(totals.total, totals.currency)} with card`}
+          accessibilityLabel={
+            isPlanActive && projectedSchedule !== null
+              ? `Pay ${formatCurrency(projectedSchedule.depositCents, projectedSchedule.currency, true)} deposit with card`
+              : `Pay ${formatCurrency(totals.total, totals.currency)} with card`
+          }
         />
       </View>
 
@@ -594,6 +689,42 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#ef4444",
     fontWeight: "500",
+  },
+  // ORCH-0882 — wrap for schedule card between Order Summary + Payment
+  // cards in the ScrollView.
+  planDisclosureWrap: { width: "100%", marginBottom: spacing.lg },
+  // ORCH-0882 — pre-Stripe banner. Subtle accent.warm tint matching the
+  // existing trip-buyer accent system. flexGrow:0 + flexShrink:0 to
+  // honor `feedback_rn_scrollview_flex_grow_default_one_silent_footgun.md`
+  // since it sits inside the sticky bottom bar (a flex parent).
+  planBanner: {
+    flexGrow: 0,
+    flexShrink: 0,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.sm,
+    borderRadius: 12,
+    backgroundColor: "rgba(235, 120, 37, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(235, 120, 37, 0.45)",
+  },
+  planBannerTitle: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#eb7825",
+    letterSpacing: 0.6,
+    marginBottom: 4,
+    textTransform: "uppercase",
+  },
+  planBannerBody: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: textTokens.secondary,
+    fontWeight: "400",
+  },
+  planBannerStrong: {
+    color: textTokens.primary,
+    fontWeight: "700",
   },
   bottomBar: {
     position: "absolute",

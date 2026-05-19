@@ -18,17 +18,25 @@
  * height on small devices.
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Keyboard,
+  type KeyboardEvent,
+  Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
-import {
-  NestableDraggableFlatList,
-  NestableScrollContainer,
+// ORCH-0884 follow-up #2: swapped Nestable* primitives for standalone
+// DraggableFlatList + plain ScrollView. Nestable* triggers a ref.measureLayout
+// crash on iOS inside a Sheet-presented Modal (operator-reproduced 2026-05-19
+// on iPhone 17 Pro dev build). Standalone DraggableFlatList works inside a
+// regular ScrollView without the Provider chain. ChoiceConfig list is
+// bounded at MAX_OPTIONS=10, so virtualization overhead is negligible.
+import DraggableFlatList, {
   type RenderItemParams,
 } from "react-native-draggable-flatlist";
 
@@ -117,6 +125,34 @@ export const IntakeQuestionEditor: React.FC<IntakeQuestionEditorProps> = ({
       );
     }
   }, [visible, question, initialType]);
+
+  // ORCH-0884 follow-up #2 — Cycle 3 wizard root keyboard pattern, applied
+  // inside the editor's Sheet body. The Sheet primitive has no keyboard
+  // awareness (it renders a native Modal at the OS root layer); without
+  // this, the keyboard covers Placeholder hint + Options + Save button on
+  // any input below the fold. Per `feedback_keyboard_never_blocks_input.md`.
+  const [keyboardHeight, setKeyboardHeight] = useState<number>(0);
+  const scrollRef = useRef<ScrollView>(null);
+  useEffect(() => {
+    if (!visible) {
+      setKeyboardHeight(0);
+      return;
+    }
+    const showEvent =
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent =
+      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+    const showSub = Keyboard.addListener(showEvent, (e: KeyboardEvent): void => {
+      setKeyboardHeight(e.endCoordinates.height);
+    });
+    const hideSub = Keyboard.addListener(hideEvent, (): void => {
+      setKeyboardHeight(0);
+    });
+    return (): void => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, [visible]);
 
   // Confirm dialog state for type-switch (only when type change would clear
   // type-specific config like options or limits).
@@ -247,10 +283,21 @@ export const IntakeQuestionEditor: React.FC<IntakeQuestionEditorProps> = ({
       snapPoint={QUESTION_EDITOR_SHEET_HEIGHT}
       testID={testID ?? "intake-question-editor-sheet"}
     >
-      <NestableScrollContainer
-        contentContainerStyle={styles.scrollContent}
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={[
+          styles.scrollContent,
+          keyboardHeight > 0 ? { paddingBottom: keyboardHeight } : null,
+        ]}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
+        // ORCH-0884 follow-up #3 — auto-scroll focused TextInput above
+        // keyboard so Placeholder hint / Number-config fields below the
+        // fold are not hidden by the keyboard. iOS 14+. Combined with the
+        // paddingBottom above, this gives the full Cycle 3 wizard root
+        // keyboard pattern inside a Sheet body.
+        automaticallyAdjustKeyboardInsets
       >
         <Text style={styles.eyebrow} accessibilityRole="header">
           {isNewQuestion ? "NEW QUESTION" : "EDIT QUESTION"}
@@ -355,7 +402,7 @@ export const IntakeQuestionEditor: React.FC<IntakeQuestionEditorProps> = ({
             />
           </View>
         </View>
-      </NestableScrollContainer>
+      </ScrollView>
 
       {/* Type-switch confirm dialog */}
       <ConfirmDialog
@@ -473,11 +520,12 @@ const ChoiceConfig: React.FC<ChoiceConfigProps> = ({ draft, setDraft }) => {
       <Text style={styles.fieldLabel}>
         Options ({options.length}/{MAX_OPTIONS})
       </Text>
-      <NestableDraggableFlatList
+      <DraggableFlatList
         data={optionItems}
         keyExtractor={(item) => item.id}
         onDragEnd={handleDragEnd}
         activationDistance={8}
+        scrollEnabled={false}
         renderItem={({
           item,
           drag,

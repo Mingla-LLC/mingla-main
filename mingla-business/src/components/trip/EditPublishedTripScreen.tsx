@@ -122,6 +122,8 @@ import {
   TripCreatorStep4Pricing,
   type Step4Draft,
 } from "./TripCreatorStep4Pricing";
+import { InstallmentScheduleDisplay } from "./InstallmentScheduleDisplay";
+import { projectInstallmentSchedule } from "../../utils/installmentScheduleProjection";
 import type { TripDayDraft } from "./TripDayEditor";
 import type { InclusionDraft } from "./TripCreatorStep3Inclusions";
 import type { EventCoverMediaType } from "../../store/draftEventStore";
@@ -1049,13 +1051,51 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
             firstTier === undefined
               ? 0
               : (soldCountByTier[firstTier.ticketTypeId] ?? 0);
+          // ORCH-0882 [Render Payment Plan Disclosure on Trip Buyer +
+          // Planner Surfaces] — planner-variant live preview below the
+          // PaymentPlanEditor. Reads from `editState.pricing.paymentPlan`
+          // (edit-buffer) so planner sees the exact schedule their
+          // buyers will see, live-updating as they tweak deposit_pct or
+          // installment percentages. Falls back to firstTier price +
+          // currency for the projection inputs.
+          // priceMajor is the displayed-decimal string ("50.00"); parse
+          // to cents for the projection. Falls back to firstTier.priceCents
+          // when parse fails (NaN guard) so the preview never fabricates
+          // amounts from a half-typed input.
+          const parsedPriceMajor = parseFloat(editState.pricing.priceMajor);
+          const livePriceCents = Number.isFinite(parsedPriceMajor)
+            ? Math.round(parsedPriceMajor * 100)
+            : (firstTier?.priceCents ?? 0);
+          const plannerPreviewSchedule =
+            firstTier === undefined ||
+            editState.pricing.paymentPlan === null
+              ? null
+              : projectInstallmentSchedule(
+                  {
+                    priceCents: livePriceCents,
+                    currency: firstTier.currency,
+                    installmentSchedule: editState.pricing.paymentPlan,
+                  },
+                  new Date(),
+                );
           return (
-            <TripCreatorStep4Pricing
-              draft={editState.pricing}
-              onChange={handlePricingChange}
-              disabled={submitting}
-              editMode={{ soldCountForTier }}
-            />
+            <View>
+              <TripCreatorStep4Pricing
+                draft={editState.pricing}
+                onChange={handlePricingChange}
+                disabled={submitting}
+                editMode={{ soldCountForTier }}
+              />
+              {plannerPreviewSchedule !== null ? (
+                <View style={styles.plannerPlanPreviewWrap}>
+                  <InstallmentScheduleDisplay
+                    schedule={plannerPreviewSchedule}
+                    variant="planner"
+                    isProjection={true}
+                  />
+                </View>
+              ) : null}
+            </View>
           );
         }
         case "cover":
@@ -1410,6 +1450,13 @@ const styles = StyleSheet.create({
   },
   coverWrap: {
     paddingTop: spacing.sm,
+  },
+  // ORCH-0882 — planner-variant preview below PaymentPlanEditor in the
+  // Pricing accordion. Sibling card with consistent vertical breathing
+  // room so planner immediately sees what their buyers will see.
+  plannerPlanPreviewWrap: {
+    width: "100%",
+    marginTop: spacing.lg,
   },
   settingsWrap: {
     gap: spacing.md,

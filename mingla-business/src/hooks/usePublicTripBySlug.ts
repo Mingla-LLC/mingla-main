@@ -167,6 +167,16 @@ export const usePublicTripBySlug = (
         pricingTiers: tiers.map(
           (t): TripPricingTier => {
             const tt = ticketsById.get(t.ticket_type_id);
+            // ORCH-0882 [Render Payment Plan Disclosure on Trip Buyer +
+            // Planner Surfaces] hotfix — extract installmentSchedule from
+            // tier_metadata.installments. Mirrors `publicEventsService.ts:724`.
+            // Prior to this hotfix, the field was implicitly `undefined`
+            // (not `null`), bypassing the mapper's null-guard and crashing
+            // the public trip page on plan-active trips.
+            const installmentSchedule =
+              (t.tier_metadata?.installments as
+                | TripPricingTier["installmentSchedule"]
+                | undefined) ?? null;
             return {
               id: t.id,
               eventId: t.event_id,
@@ -177,6 +187,7 @@ export const usePublicTripBySlug = (
               currency: tt?.currency ?? "",
               quantityTotal: tt?.quantity_total ?? null,
               isUnlimited: tt?.is_unlimited ?? false,
+              installmentSchedule,
             };
           },
         ),
