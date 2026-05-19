@@ -30,6 +30,14 @@ function addDays(anchor: Date, days: number): Date {
  * Build a display-ready schedule from a tier + anchor date, or null when the
  * tier has no payment plan configured. Pure function — no side effects, no
  * `Date.now()` reads outside the caller-supplied anchor.
+ *
+ * Constitution #3 — defense-in-depth: returns null on every malformed-input
+ * variant (undefined schedule, missing `deposit_pct`, missing/non-array
+ * `installments`). Some upstream readers (e.g., `usePublicTripBySlug` prior
+ * to the ORCH-0882 hotfix) left `installmentSchedule` implicitly undefined
+ * rather than null; rather than crash, this mapper fails safe to "no plan."
+ * The strict-grep CI gate `i-proposed-tr3-plan-disclosure-on-every-buyer-touchpoint`
+ * + the regression test suite catch wiring regressions independently.
  */
 export function projectInstallmentSchedule(
   tier: Pick<
@@ -38,9 +46,19 @@ export function projectInstallmentSchedule(
   >,
   anchorDate: Date,
 ): InstallmentScheduleDisplaySchedule | null {
-  const schedule: TripInstallmentScheduleData | null =
+  const schedule: TripInstallmentScheduleData | null | undefined =
     tier.installmentSchedule;
-  if (schedule === null) return null;
+  // Shape guard — null, undefined, missing `deposit_pct`, or
+  // missing/non-array `installments` all fail safe to "no plan."
+  if (
+    schedule === null ||
+    schedule === undefined ||
+    typeof schedule !== "object" ||
+    typeof (schedule as { deposit_pct?: unknown }).deposit_pct !== "number" ||
+    !Array.isArray((schedule as { installments?: unknown }).installments)
+  ) {
+    return null;
+  }
 
   const fullPriceCents = tier.priceCents;
   const depositCents = Math.round(

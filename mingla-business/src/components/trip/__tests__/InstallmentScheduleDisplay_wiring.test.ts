@@ -53,6 +53,23 @@ function read(rel: string): string {
 //     data signal. Mirrors the strict-grep CI gate.
 // ---------------------------------------------------------------------------
 
+// ORCH-0882 hotfix — `usePublicTripBySlug` (the slug-based public trip page
+// hook) must extract `installmentSchedule` from `tier_metadata.installments`
+// or the mapper receives undefined and the public trip page crashes. The
+// slug-based hook had this gap pre-hotfix; the id-based hook didn't.
+describe("ORCH-0882 hotfix — usePublicTripBySlug extracts installmentSchedule", () => {
+  test("slug-based public trip hook extracts installmentSchedule from tier_metadata", () => {
+    const src = readFileSync(
+      join(REPO_ROOT, "src/hooks/usePublicTripBySlug.ts"),
+      "utf8",
+    );
+    // Must reference the data signal AND set the field on the returned
+    // TripPricingTier shape. Mirror of publicEventsService.ts pattern.
+    expect(src).toContain("installmentSchedule");
+    expect(src).toContain("tier_metadata?.installments");
+  });
+});
+
 describe("ORCH-0882 wiring — InstallmentScheduleDisplay on every plan-active surface", () => {
   const scopedFiles: Array<{ label: string; rel: string }> = [
     {
@@ -191,6 +208,36 @@ describe("projectInstallmentSchedule mapper — Constitution #9 no fabricated da
     expect(out).not.toBeNull();
     if (out === null) return;
     expect(out.installments[0].dueAt).toBe("2026-06-15T12:34:56.789Z");
+  });
+
+  // ORCH-0882 hotfix — defense-in-depth: mapper must not crash on
+  // malformed input. `usePublicTripBySlug` prior to the hotfix left
+  // installmentSchedule implicitly undefined; the mapper's strict
+  // `=== null` check missed this and crashed on `schedule.deposit_pct`.
+  // Constitution #3 — fail safe to "no plan" rather than crash.
+  test("hotfix: undefined schedule returns null (not crash)", () => {
+    const tier = {
+      priceCents: 100000,
+      currency: "USD",
+      installmentSchedule: undefined as unknown as TripPricingTier["installmentSchedule"],
+    } as Pick<TripPricingTier, "priceCents" | "currency" | "installmentSchedule">;
+    expect(projectInstallmentSchedule(tier, new Date())).toBeNull();
+  });
+  test("hotfix: missing deposit_pct returns null (not NaN amounts)", () => {
+    const tier = {
+      priceCents: 100000,
+      currency: "USD",
+      installmentSchedule: { installments: [] } as unknown as TripPricingTier["installmentSchedule"],
+    } as Pick<TripPricingTier, "priceCents" | "currency" | "installmentSchedule">;
+    expect(projectInstallmentSchedule(tier, new Date())).toBeNull();
+  });
+  test("hotfix: missing installments array returns null", () => {
+    const tier = {
+      priceCents: 100000,
+      currency: "USD",
+      installmentSchedule: { deposit_pct: 25 } as unknown as TripPricingTier["installmentSchedule"],
+    } as Pick<TripPricingTier, "priceCents" | "currency" | "installmentSchedule">;
+    expect(projectInstallmentSchedule(tier, new Date())).toBeNull();
   });
 
   test("UTC date math stable across DST boundary (Constitution #10)", () => {
