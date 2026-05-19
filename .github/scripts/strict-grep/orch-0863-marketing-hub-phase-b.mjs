@@ -334,6 +334,20 @@ function checkNoNewBackendFiles() {
   const ORCH_0102_VE4_BACKEND_ALLOWLIST = [
     "supabase/migrations/20260622000000_ve4_claimed_venues_public_view.sql",
   ];
+  // ORCH-0881 [Ve5 Menu AI Parser → Restaurant Experiences] PR #148 (2026-05-19).
+  // C7 is scoped to ORCH-0863 marketing; these backend touches are Ve5 hub
+  // experiences + Gemini menu parsing on the restaurant-venue track. C7 also
+  // flags MODIFIED backend files (not just new), so agentTools.ts +
+  // agent-confirm-action/index.ts are listed here too (existing files extended
+  // with the create_experience tool).
+  const ORCH_0881_VE5_BACKEND_ALLOWLIST = [
+    "supabase/functions/_shared/agentTools.ts",
+    "supabase/functions/_shared/geminiMenuParser.test.ts",
+    "supabase/functions/_shared/geminiMenuParser.ts",
+    "supabase/functions/agent-confirm-action/index.ts",
+    "supabase/functions/parse-restaurant-menu/index.ts",
+    "supabase/migrations/20260623000000_orch_0881_ve5_hub_pending_actions.sql",
+  ];
   // ORCH-0877 [Event end-time display + midnight-crossing single-day authoring]
   // PR #136 (2026-05-19). C7 is scoped to ORCH-0863 marketing; these backend
   // touches are end-time + cross-midnight + ICS Constitution #9 fix scope.
@@ -396,6 +410,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_0100_VE2_BACKEND_ALLOWLIST,
     ...ORCH_0101_VE3_BACKEND_ALLOWLIST,
     ...ORCH_0102_VE4_BACKEND_ALLOWLIST,
+    ...ORCH_0881_VE5_BACKEND_ALLOWLIST,
     ...ORCH_0877_BACKEND_ALLOWLIST,
     ...ORCH_0876_BACKEND_ALLOWLIST,
     ...ORCH_0879_BACKEND_ALLOWLIST,

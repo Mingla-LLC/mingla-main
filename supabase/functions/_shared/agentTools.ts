@@ -347,12 +347,133 @@ const updateEvent: AgentTool = {
 };
 
 // ----------------------------------------------------------------------------
+// 6. create_experience (ORCH-0881 Ve5)
+// ----------------------------------------------------------------------------
+
+const createExperience: AgentTool = {
+  name: "create_experience",
+  description:
+    "Create a single-intent venue experience under a verified restaurant brand. Publishes live and public immediately on accept.",
+  parameters: {
+    type: "object",
+    required: ["brand_id", "title", "narrative"],
+    properties: {
+      brand_id: { type: "string", description: "UUID of the venue brand" },
+      title: { type: "string", description: "Experience title (1-120 chars)" },
+      narrative: { type: "string", description: "Experience description (1-2000 chars)" },
+      suggested_price_min_cents: { type: "integer", description: "Optional minimum price in cents" },
+      suggested_price_max_cents: { type: "integer", description: "Optional maximum price in cents" },
+      currency: { type: "string", description: "3-letter ISO currency code" },
+      intent_tags: {
+        type: "array",
+        items: { type: "string" },
+        description: "Intent tags e.g. brunch, date-night",
+      },
+      confidence: { type: "number", description: "AI confidence 0-1" },
+    },
+  },
+  executor: async (args, client, userId) => {
+    if (!isUuid(args.brand_id)) {
+      throw new ToolError("INVALID_ARGS", "brand_id must be a uuid");
+    }
+    if (!isString(args.title) || args.title.length > 120) {
+      throw new ToolError("INVALID_ARGS", "title is required (1-120 chars)");
+    }
+    if (!isString(args.narrative) || args.narrative.length > 2000) {
+      throw new ToolError("INVALID_ARGS", "narrative is required (1-2000 chars)");
+    }
+
+    await assertBrandOwned(client, args.brand_id, userId);
+
+    const { data: brandRow, error: brandErr } = await client
+      .from("brands")
+      .select("kind, venue_category, claim_status, default_currency")
+      .eq("id", args.brand_id)
+      .maybeSingle();
+    if (brandErr) throw new ToolError("OWNERSHIP_CHECK_FAILED", brandErr.message);
+    if (!brandRow) throw new ToolError("OWNERSHIP_DENIED", "Brand not found");
+
+    const brand = brandRow as {
+      kind: string;
+      venue_category: string | null;
+      claim_status: string | null;
+      default_currency: string | null;
+    };
+    if (brand.kind !== "physical" || brand.venue_category !== "restaurant") {
+      throw new ToolError("INVALID_ARGS", "Experiences from menu require a verified Restaurant venue");
+    }
+    if (brand.claim_status !== "verified") {
+      throw new ToolError("INVALID_ARGS", "Venue must be verified before publishing experiences");
+    }
+
+    const currency = isString(args.currency)
+      ? args.currency.toUpperCase().slice(0, 3)
+      : (brand.default_currency ?? "GBP");
+
+    const intentTags: string[] = [];
+    if (Array.isArray(args.intent_tags)) {
+      for (const t of args.intent_tags) {
+        if (typeof t === "string" && t.trim()) intentTags.push(t.trim().slice(0, 40));
+      }
+    }
+
+    const slug = deriveSlug(args.title) || `experience-${Date.now()}`;
+    const theme = {
+      experience_meta: {
+        intent_tags: intentTags.slice(0, 12),
+        suggested_price_min_cents: typeof args.suggested_price_min_cents === "number"
+          ? Math.max(0, Math.round(args.suggested_price_min_cents))
+          : null,
+        suggested_price_max_cents: typeof args.suggested_price_max_cents === "number"
+          ? Math.max(0, Math.round(args.suggested_price_max_cents))
+          : null,
+        currency,
+        confidence: typeof args.confidence === "number"
+          ? Math.max(0, Math.min(1, args.confidence))
+          : null,
+        ai_source: "menu_snap",
+      },
+    };
+
+    const row = {
+      brand_id: args.brand_id,
+      created_by: userId,
+      title: args.title.trim(),
+      slug,
+      description: args.narrative.trim(),
+      event_type: "experience",
+      status: "live",
+      visibility: "public",
+      timezone: "UTC",
+      theme,
+    };
+
+    const { data, error } = await client
+      .from("events")
+      .insert(row)
+      .select("id, brand_id, title, slug, event_type, visibility, status, created_at")
+      .single();
+    if (error) {
+      if ((error as { code?: string }).code === "23505") {
+        throw new ToolError(
+          "SLUG_TAKEN",
+          `An experience titled "${args.title}" already exists under that brand. Try a small variation.`,
+        );
+      }
+      throw new ToolError("WRITE_FAILED", error.message);
+    }
+    return { event: data };
+  },
+};
+
+// ----------------------------------------------------------------------------
 // Registry
 // ----------------------------------------------------------------------------
 
 export const AGENT_TOOLS: AgentTool[] = [
   createBrand,
   createEvent,
+  createExperience,
   listBrands,
   listEvents,
   updateEvent,
