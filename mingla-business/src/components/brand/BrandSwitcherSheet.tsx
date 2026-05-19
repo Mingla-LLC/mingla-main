@@ -49,7 +49,10 @@ import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
 import { TopSheet } from "../ui/TopSheet";
+import { usePoolMatchSearch } from "../../hooks/usePoolMatchSearch";
+import { prefillDraftFromPoolMatch } from "../../utils/prefillDraftFromPoolMatch";
 import { PersonaPickerCards, type PersonaDef } from "./PersonaPickerCards";
+import { PoolMatchCard } from "./PoolMatchCard";
 import { TripBrandWizard } from "./TripBrandWizard";
 import { useDraftVenueStore } from "../../store/draftVenueStore";
 
@@ -95,18 +98,28 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
   const createBrandMutation = useCreateBrand();
   const updateCreatorAccountMutation = useUpdateCreatorAccount();
   const resetVenueDraft = useDraftVenueStore((s) => s.reset);
+  const patchVenueDraft = useDraftVenueStore((s) => s.patch);
   const router = useRouter();
 
   const initialMode: Mode = brandList.isTrueEmpty ? "persona" : "switch";
   const [mode, setMode] = useState<Mode>(initialMode);
+  const [venueSearchName, setVenueSearchName] = useState("");
   const [displayName, setDisplayName] = useState<string>("Lonely Moth");
   const [submitting, setSubmitting] = useState<boolean>(false);
   // Cycle 17e-A: inline slug-collision error per Decision 11 hybrid UX
   const [slugError, setSlugError] = useState<string | null>(null);
 
+  const {
+    match: poolMatch,
+    loading: poolSearchLoading,
+    error: poolSearchError,
+    clearError: clearPoolSearchError,
+  } = usePoolMatchSearch(venueSearchName);
+
   useEffect(() => {
     if (visible) {
       setMode(brandList.isTrueEmpty ? "persona" : "switch");
+      setVenueSearchName("");
       setDisplayName("Lonely Moth");
       setSubmitting(false);
       setSlugError(null);
@@ -202,7 +215,36 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
     setSubmitting(false);
   };
 
-  // Ve1 — "A place" opens full-screen venue onboarding (place_pool gate + wizard).
+  const openVenueCreateFromPool = (): void => {
+    resetVenueDraft();
+    if (poolMatch !== null) {
+      patchVenueDraft(prefillDraftFromPoolMatch(poolMatch));
+    } else {
+      const n = venueSearchName.trim();
+      patchVenueDraft({ workingName: n, displayName: n });
+    }
+    onClose();
+    router.push(
+      (poolMatch !== null ? "/venue/create?pool=1" : "/venue/create") as never,
+    );
+  };
+
+  const handlePoolMatchYes = (): void => {
+    openVenueCreateFromPool();
+  };
+
+  const handlePoolMatchNo = (): void => {
+    const n = venueSearchName.trim();
+    resetVenueDraft();
+    patchVenueDraft({ workingName: n, displayName: n, placePoolId: null });
+    clearPoolSearchError();
+  };
+
+  const handlePoolMatchSkip = (): void => {
+    handlePoolMatchNo();
+  };
+
+  // Ve1+Ve2 — "A place" opens venue onboarding; pool match can skip ahead via card.
   const personas: PersonaDef[] = [
     {
       id: "place",
@@ -211,9 +253,7 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
       icon: "location",
       disabled: false,
       onSelect: () => {
-        resetVenueDraft();
-        onClose();
-        router.push("/venue/create" as never);
+        openVenueCreateFromPool();
       },
       testID: "persona-place",
     },
@@ -336,7 +376,41 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
                 {brands.length > 0 ? "Choose a brand type" : "What kind of brand?"}
               </Text>
             </View>
-            <PersonaPickerCards personas={personas} testID="persona-picker" />
+            <ScrollView
+              style={styles.personaScroll}
+              contentContainerStyle={styles.personaScrollContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={styles.venueSearchBlock}>
+                <Text style={styles.venueSearchLabel}>
+                  Starting with a venue? Search our directory
+                </Text>
+                <Input
+                  variant="text"
+                  value={venueSearchName}
+                  onChangeText={setVenueSearchName}
+                  placeholder="Venue name"
+                  accessibilityLabel="Venue name search"
+                  testID="venue-name-search-input"
+                />
+                {poolSearchLoading ? (
+                  <Text style={styles.poolSearchHint}>Searching…</Text>
+                ) : null}
+                {poolSearchError !== null ? (
+                  <Text style={styles.poolSearchError}>{poolSearchError}</Text>
+                ) : null}
+                {poolMatch !== null ? (
+                  <PoolMatchCard
+                    match={poolMatch}
+                    onYes={handlePoolMatchYes}
+                    onNo={handlePoolMatchNo}
+                    onSkip={handlePoolMatchSkip}
+                  />
+                ) : null}
+              </View>
+              <PersonaPickerCards personas={personas} testID="persona-picker" />
+            </ScrollView>
           </>
         ) : mode === "trip-create" ? (
           // ORCH-0855 (Tr1) — trip-planner wizard. Mounted inside this TopSheet
@@ -465,6 +539,29 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
     paddingBottom: spacing.md,
+  },
+  personaScroll: {
+    flex: 1,
+  },
+  personaScrollContent: {
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.md,
+  },
+  venueSearchBlock: {
+    gap: spacing.sm,
+  },
+  venueSearchLabel: {
+    fontSize: typography.bodySm.fontSize,
+    color: textTokens.secondary,
+  },
+  poolSearchHint: {
+    fontSize: typography.caption.fontSize,
+    color: textTokens.tertiary,
+  },
+  poolSearchError: {
+    fontSize: typography.caption.fontSize,
+    color: "#EF4444",
   },
   brandRowOuter: {
     flexDirection: "row",
