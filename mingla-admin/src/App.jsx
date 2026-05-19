@@ -26,6 +26,7 @@ import { SignalLibraryPage } from "./pages/SignalLibraryPage";
 import { PhotoLabelingPage } from "./pages/PhotoLabelingPage";
 import { PhotoScorerPage } from "./pages/PhotoScorerPage";
 import { PlaceIntelligenceTrialPage } from "./pages/PlaceIntelligenceTrialPage";
+import { ClaimsPage } from "./pages/ClaimsPage";
 // ORCH-0640 ch08: AIValidationPage + CardPoolManagementPage DELETED.
 //   - Rules Filter tab rehomed to SignalLibraryPage via tab prop (ORCH-0640 DEC-045).
 //   - Seed / Refresh tabs rehomed to SeedPage.
@@ -40,6 +41,7 @@ const PAGES = {
   tables: TableBrowserPage,
   seed: SeedPage,
   placepool: PlacePoolManagementPage,
+  claims: ClaimsPage,
   // ORCH-0671: 'photos' route deleted — getTabFromHash falls back to 'overview' via PAGES[hash] guard.
   feedback: BetaFeedbackPage,
   reports: ReportsPage,

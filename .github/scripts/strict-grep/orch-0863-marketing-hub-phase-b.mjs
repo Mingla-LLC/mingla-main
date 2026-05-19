@@ -297,10 +297,20 @@ function checkNoNewBackendFiles() {
     "supabase/migrations/20260612000000_tr4_refund_tiers_booking_deadline.sql",
     "supabase/migrations/20260612000001_tr4_revoke_rpc_anon_grants.sql",
   ];
+  // ORCH-0099 [Ve1 Physical Venue Brand Onboarding] PR #135 (2026-05-18). C7 is
+  // scoped to ORCH-0863 marketing; these backend touches are Ve1 venue-claim
+  // scope bundled on the same branch as marketing work.
+  const ORCH_0099_VE1_BACKEND_ALLOWLIST = [
+    "supabase/functions/venue-claim-decision-email/index.ts",
+    "supabase/functions/venue-claim-submitted-email/index.ts",
+    "supabase/migrations/20260613000000_ve1_physical_venue_brand_onboarding.sql",
+    "supabase/migrations/20260614000000_ve1_pr_review_hardening.sql",
+  ];
   const ALLOWLIST = [
     ...ORCH_0859_BUNDLED_ALLOWLIST,
     ...ORCH_0869_BACKEND_ALLOWLIST,
     ...ORCH_0875_BACKEND_ALLOWLIST,
+    ...ORCH_0099_VE1_BACKEND_ALLOWLIST,
   ];
   const forbidden = changed.filter(
     (p) =>

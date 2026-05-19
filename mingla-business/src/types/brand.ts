@@ -298,4 +298,38 @@ export type Brand = {
    * Existing profile_photo_url defaults to image semantics when this is undefined.
    */
   profilePhotoType?: "image" | "video" | "gif";
+  /**
+   * Ve1 — venue claim lifecycle for physical brands. Popup/trip_planner
+   * typically stay `"none"`. Pending venues cannot publish public profile
+   * or create events/trips until verified.
+   */
+  claimStatus?: BrandClaimStatus;
+  /** Ve1 — Google Place ID when captured during venue onboarding. */
+  googlePlaceId?: string;
+  lat?: number;
+  lng?: number;
+  city?: string;
+  countryCode?: string;
+  /** Ve1 — Restaurant / Play / Creative & Arts from venue onboarding. */
+  venueCategory?: VenueCategory;
+  /** Ve1+ — linked place_pool row after Ve2 match. */
+  placePoolId?: string;
 };
+
+/** Ve1 — `brands.claim_status` + optional UI-only states. */
+export type BrandClaimStatus =
+  | "none"
+  | "pending_review"
+  | "verified"
+  | "rejected";
+
+export type VenueCategory = "restaurant" | "play" | "creative_and_arts";
+
+/** Ve1 — one row in `brand_hours` (weekday 0 = Monday … 6 = Sunday). */
+export interface BrandHourEntry {
+  weekday: number;
+  /** "HH:MM" or "HH:MM:SS"; null when closed. */
+  openTime: string | null;
+  closeTime: string | null;
+  isClosed: boolean;
+}

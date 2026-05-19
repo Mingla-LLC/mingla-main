@@ -96,6 +96,9 @@ export type {
   BrandContact,
   BrandCustomLink,
   BrandLinks,
+  BrandClaimStatus,
+  VenueCategory,
+  BrandHourEntry,
 } from "../types/brand";
 
 import type { Brand } from "../types/brand";

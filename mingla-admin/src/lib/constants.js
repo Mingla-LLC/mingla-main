@@ -152,6 +152,7 @@ export const NAV_GROUPS = [
     label: "Content",
     items: [
       { id: "content", label: "Moderation", icon: "Layers" },
+      { id: "claims", label: "Venue claims", icon: "ClipboardList" },
     ],
   },
   {
