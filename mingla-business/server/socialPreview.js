@@ -176,6 +176,16 @@ const eventOgFallbackUrl = (row) =>
 const brandOgFallbackUrl = (row) =>
   `${PUBLIC_ORIGIN}/og/brand/${encodeURIComponent(brandSlug(row))}.png`;
 
+const tripPublicPath = (row) =>
+  `/t/${encodeURIComponent(row.brand_slug)}/${encodeURIComponent(row.slug)}`;
+
+const tripPublicUrl = (row) => `${PUBLIC_ORIGIN}${tripPublicPath(row)}`;
+
+const tripOgFallbackUrl = (row) =>
+  `${PUBLIC_ORIGIN}/og/trip/${encodeURIComponent(row.id)}.png`;
+
+const tripImageUrl = (row) => tripOgFallbackUrl(row);
+
 const eventImageUrl = (row) => eventOgFallbackUrl(row);
 
 const brandImageUrl = (row) => brandOgFallbackUrl(row);
@@ -237,10 +247,55 @@ const fetchPublicBrandBySlug = async (brandSlug) => {
   };
 };
 
+const isTripRow = (row) => {
+  if (row === null || typeof row !== "object") return false;
+  const theme =
+    row.public_theme !== null &&
+    typeof row.public_theme === "object" &&
+    !Array.isArray(row.public_theme)
+      ? row.public_theme
+      : {};
+  return (
+    theme.business_trip !== null &&
+    typeof theme.business_trip === "object" &&
+    !Array.isArray(theme.business_trip)
+  );
+};
+
+const fetchPublicTripBySlug = async (brandSlug, tripSlug) => {
+  const rows = await requestJson("business_public_events_view", {
+    select: "*",
+    brand_slug: `eq.${brandSlug}`,
+    slug: `eq.${tripSlug}`,
+    limit: "1",
+  });
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+  const row = rows[0];
+  return isTripRow(row) ? row : null;
+};
+
+const fetchPublicTripById = async (tripId) => {
+  const rows = await requestJson("business_public_events_view", {
+    select: "*",
+    id: `eq.${tripId}`,
+    limit: "1",
+  });
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+  const row = rows[0];
+  return isTripRow(row) ? row : null;
+};
+
 const eventDescription = (row) =>
   truncate(
     row.description ||
       `Get tickets for ${row.title} by ${row.brand_name} on Mingla.`,
+    200,
+  );
+
+const tripDescription = (row) =>
+  truncate(
+    row.description ||
+      `Reserve your spot on ${row.title} by ${row.brand_name} on Mingla.`,
     200,
   );
 
@@ -310,6 +365,95 @@ const buildEventOgCardProps = (row) => {
     subtitle,
     kicker,
     coverUrl: row !== null && row !== undefined ? eventCoverUrl(row) : null,
+    dateLabel,
+    locationLabel,
+    textFit: buildOgTextFit({
+      cardKind: "event",
+      title,
+      subtitle,
+      primaryChip: dateLabel,
+      secondaryChip: locationLabel,
+      accentLabel: kicker,
+    }),
+  };
+};
+
+const tripBusinessThemeBlock = (row) => {
+  if (row === null || typeof row !== "object") return {};
+  const theme =
+    row.public_theme !== null &&
+    typeof row.public_theme === "object" &&
+    !Array.isArray(row.public_theme)
+      ? row.public_theme
+      : {};
+  return theme.business_trip !== null &&
+    typeof theme.business_trip === "object" &&
+    !Array.isArray(theme.business_trip)
+    ? theme.business_trip
+    : {};
+};
+
+const tripStartIso = (row) => {
+  const bt = tripBusinessThemeBlock(row);
+  return typeof bt.startAt === "string" ? bt.startAt : "";
+};
+
+const tripEndIso = (row) => {
+  const bt = tripBusinessThemeBlock(row);
+  return typeof bt.endAt === "string" ? bt.endAt : "";
+};
+
+const tripDestinationLabel = (row) => {
+  const bt = tripBusinessThemeBlock(row);
+  return typeof bt.destinationLocationText === "string"
+    ? bt.destinationLocationText
+    : "";
+};
+
+const formatTripDate = (value) => {
+  const iso = asText(value);
+  if (iso.length === 0) return "";
+  const parsed = new Date(iso);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return new Intl.DateTimeFormat("en", {
+    dateStyle: "medium",
+    timeZone: "UTC",
+  }).format(parsed);
+};
+
+const tripDateLabel = (row) => {
+  const startLabel = formatTripDate(tripStartIso(row));
+  const endLabel = formatTripDate(tripEndIso(row));
+  if (startLabel.length === 0) return "Dates to be announced";
+  if (endLabel.length === 0 || endLabel === startLabel) return startLabel;
+  return `${startLabel} - ${endLabel}`;
+};
+
+const tripCoverUrl = (row) =>
+  isAbsoluteHttpUrl(row.cover_media_url) && row.cover_media_type !== "video"
+    ? row.cover_media_url
+    : null;
+
+const buildTripOgCardProps = (row) => {
+  const title = row?.title || "Mingla trip";
+  const subtitle =
+    row?.description ||
+    (row?.brand_name
+      ? `Hosted by ${row.brand_name}`
+      : "Discover trips on Mingla.");
+  const kicker = row?.brand_name || "Mingla Business";
+  const dateLabel =
+    row !== null && row !== undefined
+      ? tripDateLabel(row)
+      : "Dates to be announced";
+  const locationLabel =
+    row !== null && row !== undefined ? tripDestinationLabel(row) : "";
+  return {
+    cardKind: "event",
+    title,
+    subtitle,
+    kicker,
+    coverUrl: row !== null && row !== undefined ? tripCoverUrl(row) : null,
     dateLabel,
     locationLabel,
     textFit: buildOgTextFit({
@@ -488,6 +632,40 @@ const renderEventHtml = (row) => {
           ${location ? `<span class="pill">${escapeHtml(location)}</span>` : ""}
         </div>
         <a class="cta" href="${escapeHtml(`${PUBLIC_ORIGIN}/checkout/${encodeURIComponent(row.id)}`)}">Get tickets</a>
+      </div>
+      ${media}
+    </section>`,
+  });
+};
+
+const renderTripHtml = (row) => {
+  const title = `${row.title} by ${row.brand_name} | Mingla`;
+  const description = tripDescription(row);
+  const canonicalUrl = tripPublicUrl(row);
+  const imageUrl = tripImageUrl(row);
+  const location = tripDestinationLabel(row);
+  const dateLabel = tripDateLabel(row);
+  const media =
+    isAbsoluteHttpUrl(row.cover_media_url) && row.cover_media_type !== "video"
+      ? `<img class="media" src="${escapeHtml(row.cover_media_url)}" alt="${escapeHtml(row.title)} trip cover" />`
+      : `<img class="media" src="${escapeHtml(tripOgFallbackUrl(row))}" alt="${escapeHtml(row.title)} trip preview" />`;
+
+  return pageShell({
+    title,
+    description,
+    canonicalUrl,
+    imageUrl,
+    type: "website",
+    body: `<section class="hero has-media">
+      <div>
+        <h1>${escapeHtml(row.title)}</h1>
+        <p>${escapeHtml(description)}</p>
+        <div class="meta">
+          <span class="pill">${escapeHtml(row.brand_name)}</span>
+          <span class="pill">${escapeHtml(dateLabel)}</span>
+          ${location ? `<span class="pill">${escapeHtml(location)}</span>` : ""}
+        </div>
+        <a class="cta" href="${escapeHtml(canonicalUrl)}">View trip</a>
       </div>
       ${media}
     </section>`,
@@ -824,6 +1002,7 @@ module.exports = {
   brandPublicUrl,
   buildBrandOgCardProps,
   buildEventOgCardProps,
+  buildTripOgCardProps,
   buildOgTextFit,
   escapeHtml,
   eventDescription,
@@ -832,11 +1011,17 @@ module.exports = {
   fetchPublicBrandBySlug,
   fetchPublicEventById,
   fetchPublicEventBySlug,
+  fetchPublicTripById,
+  fetchPublicTripBySlug,
   firstQueryValue,
   renderBrandHtml,
   renderEventHtml,
+  renderTripHtml,
   renderNotFoundHtml,
   renderOgPng,
   sendHtml,
   sendPng,
+  tripDescription,
+  tripImageUrl,
+  tripPublicUrl,
 };
