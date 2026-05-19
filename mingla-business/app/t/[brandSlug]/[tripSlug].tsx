@@ -104,14 +104,23 @@ export default function PublicTripRoute(): React.ReactElement {
   }
 
   if (query.isError) {
+    // ORCH-0879: surface PostgrestError.message (Supabase errors are
+    // { code, message, details, hint } objects, NOT JS Error instances).
+    // The previous JS-Error-only check fell back to the generic
+    // "Check your connection" string, hiding real failures like
+    // "42501 permission denied for table brands".
+    const rawError: unknown = query.error;
+    const errorMessage =
+      rawError !== null &&
+      typeof rawError === "object" &&
+      "message" in rawError &&
+      typeof (rawError as { message: unknown }).message === "string"
+        ? (rawError as { message: string }).message
+        : "Check your connection and try again.";
     return (
       <View style={styles.stateHost}>
         <Text style={styles.stateTitle}>Couldn&rsquo;t load trip</Text>
-        <Text style={styles.stateText}>
-          {query.error instanceof Error
-            ? query.error.message
-            : "Check your connection and try again."}
-        </Text>
+        <Text style={styles.stateText}>{errorMessage}</Text>
       </View>
     );
   }

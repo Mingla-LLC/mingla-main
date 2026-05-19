@@ -334,6 +334,15 @@ function checkNoNewBackendFiles() {
   const ORCH_0876_BACKEND_ALLOWLIST = [
     "supabase/migrations/20260616000000_orch_0876_trip_published_edit.sql",
   ];
+  // ORCH-0879 [Public trip page "Couldn't load trip" — anon brand cover
+  // GRANT gap] PR #140 (2026-05-19). C7 is scoped to ORCH-0863 marketing;
+  // this backend touch is the single migration that extends per-column anon
+  // SELECT grants on public.brands to include cover_media_url +
+  // cover_media_type (the two columns added in Cycle 17e-A but never granted
+  // to anon), unblocking /t/<brand>/<trip> and /checkout-trip/<tripEventId>.
+  const ORCH_0879_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260617000000_orch_0879_anon_brand_cover_grant.sql",
+  ];
   const ALLOWLIST = [
     ...ORCH_0859_BUNDLED_ALLOWLIST,
     ...ORCH_0869_BACKEND_ALLOWLIST,
@@ -341,6 +350,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_0099_VE1_BACKEND_ALLOWLIST,
     ...ORCH_0877_BACKEND_ALLOWLIST,
     ...ORCH_0876_BACKEND_ALLOWLIST,
+    ...ORCH_0879_BACKEND_ALLOWLIST,
   ];
   const forbidden = changed.filter(
     (p) =>
