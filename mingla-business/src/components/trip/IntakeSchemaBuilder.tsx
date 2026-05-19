@@ -104,10 +104,27 @@ export const IntakeSchemaBuilder: React.FC<IntakeSchemaBuilderProps> = ({
   }, [schema]);
 
   // Open editor for new question of the picked type.
+  //
+  // ORCH-0884 [IntakeTypePickerSheet height + sibling-Modal race]: defer the
+  // editor's mount+visible-true transition until after the picker's close
+  // animation completes (~280ms = Sheet's UNMOUNT_DELAY_MS). Picker and
+  // Editor are sibling Sheets (NOT nested per
+  // feedback_rn_sub_sheet_must_render_inside_parent.md). When both Modals
+  // are mounted at the OS root layer simultaneously, the newer Modal
+  // (Editor) gets visually blocked by the older Modal (Picker still in
+  // close animation) — app appears frozen, touches route to the invisible
+  // Editor. The 300ms delay (just over UNMOUNT_DELAY_MS=280ms) ensures the
+  // Picker's Modal fully unmounts before the Editor's Modal mounts.
   const handleTypePickerSelect = useCallback(
     (type: IntakeQuestionType) => {
       setTypePickerOpen(false);
-      setEditorState({ visible: true, question: null, initialType: type });
+      setTimeout(() => {
+        setEditorState({
+          visible: true,
+          question: null,
+          initialType: type,
+        });
+      }, 300);
     },
     [],
   );

@@ -24,7 +24,7 @@
  */
 
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import {
   accent,
@@ -67,7 +67,17 @@ const TYPE_CARDS: TypeCard[] = [
 
 // Compact-ish content-fit snap. 7 cards + header + handle + helper. Sheet
 // clamps to [120, 95% screen] so this is safe on small viewports.
-const TYPE_PICKER_SHEET_HEIGHT = 520;
+// ORCH-0884 [IntakeTypePickerSheet height + sibling-Modal race]: bumped
+// 520→640 to fit all 7 cards. The 520 snap measured short of the actual
+// content height (~556pt: 4 rows × 110pt cards + 3 × 8pt gaps + ~50pt header
+// + ~14pt drag handle + ~28pt Sheet body padding). On iPhone 17 Pro the
+// 36pt overflow clipped the File upload card's bottom half off-screen,
+// making the card unreachable. 640pt gives ~84pt of headroom over measured
+// content. Sheet's internal clamp keeps it ≤ 95% screen so this is safe on
+// small devices. Plus the grid is now wrapped in ScrollView for defense
+// in depth: smaller screens (iPhone SE) still render every card via scroll
+// when 640pt exceeds 95% screen.
+const TYPE_PICKER_SHEET_HEIGHT = 640;
 
 export const IntakeTypePickerSheet: React.FC<IntakeTypePickerSheetProps> = ({
   visible,
@@ -90,7 +100,12 @@ export const IntakeTypePickerSheet: React.FC<IntakeTypePickerSheetProps> = ({
           Choose what travelers need to provide.
         </Text>
 
-        <View style={styles.grid}>
+        <ScrollView
+          style={styles.gridScroll}
+          contentContainerStyle={styles.grid}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
           {TYPE_CARDS.map((card) => (
             <Pressable
               key={card.type}
@@ -124,7 +139,7 @@ export const IntakeTypePickerSheet: React.FC<IntakeTypePickerSheetProps> = ({
               </GlassCard>
             </Pressable>
           ))}
-        </View>
+        </ScrollView>
       </View>
     </Sheet>
   );
@@ -149,10 +164,19 @@ const styles = StyleSheet.create({
     color: textTokens.tertiary,
     marginBottom: spacing.md,
   },
+  gridScroll: {
+    // ORCH-0884: ScrollView wrapper for defense in depth on small devices.
+    // flexShrink: 1 ensures the ScrollView respects the Sheet's body bounds
+    // and scrolls overflow rather than competing for height.
+    flexShrink: 1,
+  },
   grid: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: spacing.sm,
+    // ORCH-0884: padding at bottom so the last card row never butts against
+    // the Sheet's body padding when scrolled all the way down.
+    paddingBottom: spacing.md,
   },
   cellPress: {
     minHeight: 88,
