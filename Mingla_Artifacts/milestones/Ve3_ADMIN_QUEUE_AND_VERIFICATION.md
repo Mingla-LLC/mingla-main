@@ -3,7 +3,7 @@
 > **Track:** Track 2 — Physical venues
 > **Duration:** 1 week
 > **Depends on:** Ve1, Ve2 (in TestFlight)
-> **Status:** locked, not started
+> **Status:** implemented on branch `feat/ve3-admin-claims` (queue at `#/claims`)
 
 ---
 
@@ -63,17 +63,18 @@ The phone-callback validation is the identity proof for physical venues (in cont
 ## 4. Files Touched
 
 **New:**
-- `mingla-admin/src/pages/AdminClaimsQueue.jsx`
-- `mingla-admin/src/components/ClaimRow.jsx`
-- `mingla-admin/src/components/ClaimDetailPanel.jsx`
+- `mingla-admin/src/pages/ClaimsPage.jsx` (extended; route `#/claims`)
+- `mingla-admin/src/components/claims/ClaimRow.jsx`
 - `mingla-admin/src/services/adminClaimsService.js`
-- `supabase/functions/admin-approve-claim/index.ts`
-- `supabase/functions/admin-reject-claim/index.ts`
+- `mingla-admin/src/lib/claimsPhone.js`
+- `supabase/functions/admin-review-venue-claim/index.ts`
 - `supabase/functions/_shared/email/claimApprovedEmail.ts`
 - `supabase/functions/_shared/email/claimRejectedEmail.ts`
 
 **Modified:**
-- `mingla-business/src/services/venueClaimService.ts` (handle the status change pull on the operator side)
+- `mingla-business/src/services/venueClaimService.ts` + `venueClaimBannerLogic.ts`
+- `mingla-business/app/(tabs)/hub/_layout.tsx` (claim status banner)
+- `supabase/migrations/20260619000000_ve3_admin_claim_review.sql`
 
 ---
 

@@ -60,4 +60,8 @@ export const ACTION_LABELS = {
   "place.stale_bulk_deactivate": "Bulk deactivated stale places",
   "place.batch_refresh": "Batch refreshed stale places",
   "place.refresh_single": "Refreshed single place",
+  "claim.mark_called": "Marked venue claim as called",
+  "claim.approve": "Approved venue claim",
+  "claim.reject": "Rejected venue claim",
+  "claim.need_more_info": "Requested more info on venue claim",
 };

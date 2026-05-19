@@ -304,6 +304,12 @@ export type Brand = {
    * or create events/trips until verified.
    */
   claimStatus?: BrandClaimStatus;
+  /** Ve3 — admin rejection note when claim_status is rejected. */
+  rejectionReason?: string;
+  /** Ve3 — admin requested more info; claim stays pending_review. */
+  claimFollowUpAt?: string;
+  /** Ve3 — set when another claim for same google_place_id was approved. */
+  duplicateOfBrandId?: string;
   /** Ve1 — Google Place ID when captured during venue onboarding. */
   googlePlaceId?: string;
   lat?: number;

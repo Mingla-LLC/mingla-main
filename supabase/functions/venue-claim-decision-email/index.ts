@@ -7,12 +7,15 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { buildClaimApprovedEmail } from "../_shared/email/claimApprovedEmail.ts";
+import { buildClaimRejectedEmail } from "../_shared/email/claimRejectedEmail.ts";
 import {
   assertNotResendSandbox,
   EMAIL_SENDERS,
   formatSenderHeader,
   renderTransactionalEmail,
 } from "../_shared/email/index.ts";
+import { defaultVenuePublicUrl } from "../_shared/email/claimApprovedEmail.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -78,7 +81,9 @@ serve(async (req) => {
     const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const { data: brandRow, error: brandErr } = await admin
       .from("brands")
-      .select("id, name, account_id, claim_status, contact_email")
+      .select(
+        "id, name, slug, account_id, claim_status, contact_email, rejection_reason",
+      )
       .eq("id", brandId)
       .maybeSingle();
 
@@ -136,31 +141,27 @@ serve(async (req) => {
 
     const brandName = brandRow.name as string;
     const approved = decision === "approved";
-    const title = approved
-      ? "Your venue is live on Mingla"
-      : "Update on your venue submission";
-    const paragraphs = approved
-      ? [
-        `Good news — ${brandName} has been approved.`,
-        "Your venue profile is now visible to guests. Sign in to Mingla Business to manage events and your profile.",
-      ]
-      : [
-        `We couldn't approve ${brandName} at this time.`,
-        rejectionReason.length > 0
-          ? `Reason: ${rejectionReason}`
-          : "Our team will follow up if we need more information.",
-        "You can submit a new claim with updated details when you're ready.",
-      ];
+    const slug = typeof brandRow.slug === "string" ? brandRow.slug : "";
+    const persistedReason =
+      (typeof brandRow.rejection_reason === "string" &&
+          brandRow.rejection_reason.length > 0
+        ? brandRow.rejection_reason
+        : rejectionReason);
+
+    const bodyInput = approved
+      ? buildClaimApprovedEmail({
+        brandName,
+        publicVenueUrl: defaultVenuePublicUrl(slug),
+      })
+      : buildClaimRejectedEmail({
+        brandName,
+        rejectionReason: persistedReason,
+      });
 
     const rendered = renderTransactionalEmail({
       variant: "generic_notification",
       recipient: { name: null, email: to },
-      body: {
-        variant: "generic_notification",
-        title,
-        paragraphs,
-        cta: null,
-      },
+      body: bodyInput,
     });
 
     // no-attachment: Ve1 approve/reject operator notice has no PDF or file payload.

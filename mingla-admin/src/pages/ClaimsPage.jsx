@@ -1,8 +1,8 @@
 /**
- * Ve1 — Venue claims queue (physical brands pending_review).
+ * Ve3 — Venue claims queue (physical brands pending_review).
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ClipboardList } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { SectionCard } from "../components/ui/Card";
@@ -11,7 +11,14 @@ import { Badge } from "../components/ui/Badge";
 import { Modal, ModalBody, ModalFooter } from "../components/ui/Modal";
 import { Spinner } from "../components/ui/Spinner";
 import { useToast } from "../context/ToastContext";
-import { formatDateTime } from "../lib/formatters";
+import { logAdminAction } from "../lib/auditLog";
+import { resolveClaimDisplayPhone, formatPhoneHref } from "../lib/claimsPhone";
+import { ClaimRow } from "../components/claims/ClaimRow";
+import {
+  groupClaimsByGooglePlaceId,
+  listPendingClaims,
+  reviewClaim,
+} from "../services/adminClaimsService";
 
 const CAT_LABELS = {
   restaurant: "Restaurant",
@@ -20,18 +27,6 @@ const CAT_LABELS = {
 };
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-
-function slaLabel(createdAt) {
-  const start = new Date(createdAt).getTime();
-  const due = start + 4 * 60 * 60 * 1000;
-  const ms = due - Date.now();
-  if (ms <= 0) return { text: "Past 4h window", tone: "warning" };
-  const m = Math.floor(ms / 60000);
-  const h = Math.floor(m / 60);
-  const mm = m % 60;
-  const text = h > 0 ? `${h}h ${mm}m remaining` : `${mm}m remaining`;
-  return { text, tone: "info" };
-}
 
 export function ClaimsPage() {
   const { addToast } = useToast();
@@ -44,21 +39,16 @@ export function ClaimsPage() {
   const [rejectOpen, setRejectOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
 
+  const duplicateGroups = useMemo(
+    () => groupClaimsByGooglePlaceId(rows),
+    [rows],
+  );
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("brands")
-        .select(
-          "id,name,slug,venue_category,city,country_code,address,created_at,contact_email,contact_phone,description,google_place_id,lat,lng,cover_media_url",
-        )
-        .eq("kind", "physical")
-        .eq("claim_status", "pending_review")
-        .is("deleted_at", null)
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-      setRows(data ?? []);
+      const data = await listPendingClaims();
+      setRows(data);
     } catch (e) {
       addToast({
         variant: "error",
@@ -103,43 +93,45 @@ export function ClaimsPage() {
     setHours([]);
   };
 
-  const notifyDecision = async (brandId, decision, rejectionReason = "") => {
-    try {
-      const { error } = await supabase.functions.invoke(
-        "venue-claim-decision-email",
-        {
-          body: {
-            brand_id: brandId,
-            decision,
-            rejection_reason: rejectionReason,
-          },
-        },
-      );
-      if (error) {
-        console.warn("[ClaimsPage] decision email", error.message);
-      }
-    } catch (e) {
-      console.warn("[ClaimsPage] decision email", e);
-    }
-  };
-
-  const approve = async () => {
+  const runReview = async (action, opts = {}) => {
     if (!detail) return;
     setActing(true);
     try {
-      const { error } = await supabase.rpc("biz_review_venue_claim", {
-        p_brand_id: detail.id,
-        p_action: "approve",
+      const data = await reviewClaim(detail.id, action, opts);
+      await logAdminAction(`claim.${action}`, "venue_claim", detail.id, {
+        result: data?.result ?? null,
       });
-      if (error) throw error;
-      await notifyDecision(detail.id, "approved");
-      addToast({ variant: "info", title: "Venue approved" });
-      closeDetail();
-      await load();
+      if (action === "mark_called") {
+        addToast({ variant: "info", title: "Marked as called" });
+        setDetail((d) =>
+          d ? { ...d, marked_called_at: new Date().toISOString() } : d,
+        );
+      } else if (action === "need_more_info") {
+        addToast({ variant: "info", title: "Follow-up flagged" });
+        closeDetail();
+        await load();
+      } else if (action === "approve") {
+        const dup = data?.result?.duplicate_flagged_count ?? 0;
+        addToast({
+          variant: "info",
+          title: "Venue approved",
+          description:
+            dup > 0
+              ? `${dup} duplicate claim(s) flagged for review`
+              : undefined,
+        });
+        closeDetail();
+        await load();
+      } else if (action === "reject") {
+        addToast({ variant: "info", title: "Venue rejected" });
+        setRejectOpen(false);
+        closeDetail();
+        await load();
+      }
     } catch (e) {
       addToast({
         variant: "error",
-        title: "Approve failed",
+        title: "Action failed",
         description: e?.message ?? String(e),
       });
     } finally {
@@ -152,8 +144,7 @@ export function ClaimsPage() {
     setRejectOpen(true);
   };
 
-  const reject = async () => {
-    if (!detail) return;
+  const confirmReject = async () => {
     const reason = rejectReason.trim();
     if (reason.length === 0) {
       addToast({
@@ -163,28 +154,20 @@ export function ClaimsPage() {
       });
       return;
     }
-    setActing(true);
-    try {
-      const { error } = await supabase.rpc("biz_review_venue_claim", {
-        p_brand_id: detail.id,
-        p_action: "reject",
-      });
-      if (error) throw error;
-      await notifyDecision(detail.id, "rejected", reason);
-      addToast({ variant: "info", title: "Venue rejected" });
-      setRejectOpen(false);
-      closeDetail();
-      await load();
-    } catch (e) {
-      addToast({
-        variant: "error",
-        title: "Reject failed",
-        description: e?.message ?? String(e),
-      });
-    } finally {
-      setActing(false);
-    }
+    await runReview("reject", { rejectionReason: reason });
   };
+
+  const phoneInfo = detail ? resolveClaimDisplayPhone(detail) : null;
+  const tel = phoneInfo ? formatPhoneHref(phoneInfo.phone) : null;
+  const mapsUri = detail
+    ? (detail.place_pool?.google_maps_uri ??
+      (detail.google_place_id
+        ? `https://www.google.com/maps/search/?api=1&query_place_id=${encodeURIComponent(detail.google_place_id)}`
+        : null))
+    : null;
+  const isDuplicateOfApproved = Boolean(detail?.duplicate_of_brand_id);
+  const canApprove =
+    Boolean(detail?.marked_called_at) && !isDuplicateOfApproved;
 
   return (
     <div className="p-6 space-y-6 max-w-6xl mx-auto">
@@ -195,7 +178,7 @@ export function ClaimsPage() {
             Venue claims
           </h1>
           <p className="text-sm text-[var(--color-text-secondary)]">
-            Physical brands awaiting verification (Ve1)
+            Physical brands awaiting phone verification (Ve3)
           </p>
         </div>
         <Button variant="secondary" className="ml-auto" onClick={() => void load()}>
@@ -203,7 +186,10 @@ export function ClaimsPage() {
         </Button>
       </div>
 
-      <SectionCard title={`Queue (${rows.length})`} subtitle="Submitted venue brands">
+      <SectionCard
+        title={`Queue (${rows.length})`}
+        subtitle="Oldest first · call venue then approve"
+      >
         {loading ? (
           <div className="flex justify-center py-12">
             <Spinner />
@@ -218,37 +204,25 @@ export function ClaimsPage() {
               <thead>
                 <tr className="border-b border-white/10 text-left text-[var(--color-text-tertiary)]">
                   <th className="py-2 pr-4">Name</th>
-                  <th className="py-2 pr-4">Category</th>
-                  <th className="py-2 pr-4">City</th>
+                  <th className="py-2 pr-4">Address</th>
+                  <th className="py-2 pr-4">Phone</th>
+                  <th className="py-2 pr-4">Flags</th>
                   <th className="py-2 pr-4">Submitted</th>
                   <th className="py-2 pr-4">SLA</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((r) => {
-                  const sla = slaLabel(r.created_at);
+                  const gid = r.google_place_id?.trim?.();
+                  const siblings = gid ? duplicateGroups.get(gid) ?? [] : [];
                   return (
-                    <tr
+                    <ClaimRow
                       key={r.id}
-                      className="border-b border-white/5 hover:bg-white/[0.04] cursor-pointer"
-                      onClick={() => openDetail(r)}
-                    >
-                      <td className="py-3 pr-4 font-medium text-[var(--color-text-primary)]">
-                        {r.name}
-                      </td>
-                      <td className="py-3 pr-4 text-[var(--color-text-secondary)]">
-                        {CAT_LABELS[r.venue_category] ?? r.venue_category ?? "—"}
-                      </td>
-                      <td className="py-3 pr-4 text-[var(--color-text-secondary)]">
-                        {[r.city, r.country_code].filter(Boolean).join(", ") || "—"}
-                      </td>
-                      <td className="py-3 pr-4 text-[var(--color-text-secondary)] whitespace-nowrap">
-                        {formatDateTime(r.created_at)}
-                      </td>
-                      <td className="py-3 pr-4">
-                        <Badge variant={sla.tone}>{sla.text}</Badge>
-                      </td>
-                    </tr>
+                      row={r}
+                      hasDuplicateSiblings={siblings.length > 1}
+                      isDuplicateOfApproved={Boolean(r.duplicate_of_brand_id)}
+                      onSelect={() => openDetail(r)}
+                    />
                   );
                 })}
               </tbody>
@@ -261,6 +235,23 @@ export function ClaimsPage() {
         <ModalBody>
           {!detail ? null : (
             <div className="space-y-4 text-sm">
+              {isDuplicateOfApproved ? (
+                <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-amber-100">
+                  Duplicate of an approved claim for this Google place. Reject unless
+                  the venue confirms this signup is theirs.
+                </div>
+              ) : null}
+              <div className="flex flex-wrap gap-2">
+                {detail.place_pool_id ? (
+                  <Badge variant="brand">Pool match</Badge>
+                ) : null}
+                {detail.marked_called_at ? (
+                  <Badge variant="success">Called</Badge>
+                ) : null}
+                {detail.claim_follow_up_at ? (
+                  <Badge variant="warning">Follow-up requested</Badge>
+                ) : null}
+              </div>
               <div className="grid grid-cols-2 gap-2">
                 <div className="text-[var(--color-text-tertiary)]">Slug</div>
                 <div>{detail.slug}</div>
@@ -280,12 +271,45 @@ export function ClaimsPage() {
                 <div>{detail.address || "—"}</div>
               </div>
               <div>
-                <div className="text-[var(--color-text-tertiary)] mb-1">Contact</div>
+                <div className="text-[var(--color-text-tertiary)] mb-1">Phone to dial</div>
                 <div>
-                  {[detail.contact_email, detail.contact_phone].filter(Boolean).join(" · ") ||
-                    "—"}
+                  {phoneInfo?.phone ? (
+                    tel ? (
+                      <a href={tel} className="text-[var(--color-brand-400)] underline">
+                        {phoneInfo.phone}
+                      </a>
+                    ) : (
+                      phoneInfo.phone
+                    )
+                  ) : (
+                    "—"
+                  )}
+                  {phoneInfo?.source === "pool" ? (
+                    <span className="ml-2 text-xs text-[var(--color-text-tertiary)]">
+                      (Google-listed)
+                    </span>
+                  ) : null}
                 </div>
+                {phoneInfo?.note ? (
+                  <p className="text-xs text-amber-200/90 mt-1">{phoneInfo.note}</p>
+                ) : null}
               </div>
+              <div>
+                <div className="text-[var(--color-text-tertiary)] mb-1">Contact email</div>
+                <div>{detail.contact_email || "—"}</div>
+              </div>
+              {mapsUri ? (
+                <div>
+                  <a
+                    href={mapsUri}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[var(--color-brand-400)] underline"
+                  >
+                    Open in Google Maps
+                  </a>
+                </div>
+              ) : null}
               <div>
                 <div className="text-[var(--color-text-tertiary)] mb-1">Description</div>
                 <div className="whitespace-pre-wrap">{detail.description || "—"}</div>
@@ -329,12 +353,38 @@ export function ClaimsPage() {
           <Button variant="secondary" onClick={closeDetail} disabled={acting}>
             Close
           </Button>
+          <Button
+            variant="secondary"
+            onClick={() => void runReview("need_more_info")}
+            disabled={acting}
+          >
+            Need more info
+          </Button>
           <Button variant="danger" onClick={openReject} disabled={acting}>
             Reject
           </Button>
-          <Button variant="primary" onClick={() => void approve()} disabled={acting}>
-            Approve
-          </Button>
+          {!detail?.marked_called_at ? (
+            <Button
+              variant="secondary"
+              onClick={() => void runReview("mark_called")}
+              disabled={acting}
+            >
+              Mark as called
+            </Button>
+          ) : (
+            <Button
+              variant="primary"
+              onClick={() => void runReview("approve")}
+              disabled={acting || !canApprove}
+              title={
+                isDuplicateOfApproved
+                  ? "Resolve duplicate — reject this claim first"
+                  : undefined
+              }
+            >
+              Approve
+            </Button>
+          )}
         </ModalFooter>
       </Modal>
 
@@ -363,7 +413,7 @@ export function ClaimsPage() {
           >
             Cancel
           </Button>
-          <Button variant="danger" onClick={() => void reject()} disabled={acting}>
+          <Button variant="danger" onClick={() => void confirmReject()} disabled={acting}>
             Confirm reject
           </Button>
         </ModalFooter>
