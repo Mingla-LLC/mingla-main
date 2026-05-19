@@ -87,6 +87,9 @@ const row = (patch: Record<string, unknown> = {}): Record<string, unknown> => ({
   status: "scheduled",
   published_at: "2026-05-08T18:30:00.000Z",
   timezone: "Europe/London",
+  master_start_at: "2026-05-08T19:00:00.000Z",
+  master_end_at: "2026-05-08T21:30:00.000Z",
+  master_timezone: "Europe/Paris",
   created_at: "2026-05-08T18:00:00.000Z",
   updated_at: "2026-05-08T18:30:00.000Z",
   public_theme: {
@@ -222,6 +225,9 @@ describe("public event view mapper", () => {
   test("keeps Date TBD when the saved public payload lacks a valid date", () => {
     const event = publicEventViewRowToEvent(
       row({
+        master_start_at: null,
+        master_end_at: null,
+        master_timezone: null,
         public_theme: {
           business_event: {
             whenMode: "single",
@@ -238,6 +244,10 @@ describe("public event view mapper", () => {
 
 describe("public brand lookup", () => {
   test("returns a real empty brand instead of null when no public event rows exist", async () => {
+    const claimedQuery = queryBuilder("maybeSingle", {
+      data: null,
+      error: null,
+    });
     const brandQuery = queryBuilder("maybeSingle", {
       data: brandRow(),
       error: null,
@@ -247,6 +257,7 @@ describe("public brand lookup", () => {
       error: null,
     });
     mockFrom.mockImplementation((table) => {
+      if (table === "claimed_venues_public_view") return claimedQuery;
       if (table === "business_public_brands_view") return brandQuery;
       if (table === "business_public_events_view") return eventsQuery;
       throw new Error(`Unexpected table ${String(table)}`);
@@ -277,24 +288,33 @@ describe("public brand lookup", () => {
     expect(detail?.events).toEqual([]);
     expect(brandQuery.eq).toHaveBeenCalledWith("slug", "brand-3");
     expect(eventsQuery.eq).toHaveBeenCalledWith("brand_slug", "brand-3");
-    expect(mockFrom).toHaveBeenCalledTimes(2);
+    expect(mockFrom).toHaveBeenCalledTimes(3);
   });
 
   test("returns null only when the brand profile row is missing", async () => {
+    const claimedQuery = queryBuilder("maybeSingle", {
+      data: null,
+      error: null,
+    });
     const brandQuery = queryBuilder("maybeSingle", {
       data: null,
       error: null,
     });
     mockFrom.mockImplementation((table) => {
+      if (table === "claimed_venues_public_view") return claimedQuery;
       if (table === "business_public_brands_view") return brandQuery;
       throw new Error(`Unexpected table ${String(table)}`);
     });
 
     await expect(getPublicBrandBySlug("missing-brand")).resolves.toBeNull();
-    expect(mockFrom).toHaveBeenCalledTimes(1);
+    expect(mockFrom).toHaveBeenCalledTimes(2);
   });
 
   test("keeps populated brand events and ticket fetches public-event-backed", async () => {
+    const claimedQuery = queryBuilder("maybeSingle", {
+      data: null,
+      error: null,
+    });
     const brandQuery = queryBuilder("maybeSingle", {
       data: brandRow({ slug: "test-stripe", name: "Test Stripe" }),
       error: null,
@@ -303,6 +323,15 @@ describe("public brand lookup", () => {
       data: [row()],
       error: null,
     });
+    const eventTypesQuery = {
+      select: jest.fn(() => eventTypesQuery),
+      in: jest.fn(() =>
+        Promise.resolve({
+          data: [{ id: "event-1", event_type: "event" }],
+          error: null,
+        }),
+      ),
+    };
     const ticketsQuery = queryBuilder("order", {
       data: [
         {
@@ -333,8 +362,10 @@ describe("public brand lookup", () => {
       error: null,
     });
     mockFrom.mockImplementation((table) => {
+      if (table === "claimed_venues_public_view") return claimedQuery;
       if (table === "business_public_brands_view") return brandQuery;
       if (table === "business_public_events_view") return eventsQuery;
+      if (table === "events") return eventTypesQuery;
       if (table === "ticket_types") return ticketsQuery;
       throw new Error(`Unexpected table ${String(table)}`);
     });
