@@ -109,7 +109,10 @@ import {
 // ORCH-0824 hotfix (Option B): post-publish RPC for the 5 new taxonomy
 // + city fields. Bridges the local-only EditPublishedScreen save flow to
 // the events DB row so legacy events become Discover-eligible after edit.
-import { patchPublishedEventTaxonomy } from "../../services/businessEvents";
+import {
+  patchPublishedEventTaxonomy,
+  patchPublishedEventWhen,
+} from "../../services/businessEvents";
 import { businessEventKeys } from "../../hooks/useBusinessEvents";
 import { publicEventKeys } from "../../hooks/usePublicEvents";
 import { useEventHasWebPurchases } from "../../hooks/useEventOrders";
@@ -777,6 +780,98 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
           }
         }, TOAST_NAV_DELAY_MS);
         return;
+      }
+
+      // ORCH-0877 (Path B) — When-section edits route through the new
+      // `business_patch_event_when` RPC BEFORE the local Zustand mutation
+      // so the server-side event_dates row is rewritten and buyers see
+      // the corrected times. Closes the ORCH-0704 v2 Zustand-only gap.
+      // Server-success-then-local pattern: RPC failure aborts; local
+      // updateLiveEventFields runs only after the server commit succeeds
+      // so the audit log + notification stack stay in sync with the DB.
+      const whenPatchPresent =
+        patch.whenMode !== undefined ||
+        patch.date !== undefined ||
+        patch.doorsOpen !== undefined ||
+        patch.endsAt !== undefined ||
+        patch.timezone !== undefined ||
+        patch.recurrenceRule !== undefined ||
+        patch.multiDates !== undefined;
+      if (whenPatchPresent) {
+        if (liveEvent.serverEventId === null) {
+          setSubmitting(false);
+          setModal((prev) => ({ ...prev, visible: false }));
+          showToast(
+            "Save failed because this event is missing its server id.",
+          );
+          return;
+        }
+        // Build the When payload by composing patch keys over the live
+        // event values. Patch wins on every When field; falls through to
+        // live values for fields the operator didn't touch.
+        const finalWhenMode = patch.whenMode ?? liveEvent.whenMode;
+        const finalTimezone = patch.timezone ?? liveEvent.timezone;
+        const finalDate = patch.date !== undefined ? patch.date : liveEvent.date;
+        const finalDoorsOpen =
+          patch.doorsOpen !== undefined ? patch.doorsOpen : liveEvent.doorsOpen;
+        const finalEndsAt =
+          patch.endsAt !== undefined ? patch.endsAt : liveEvent.endsAt;
+        const finalRecurrenceRule =
+          patch.recurrenceRule !== undefined
+            ? patch.recurrenceRule
+            : liveEvent.recurrenceRule;
+        const finalMultiDates =
+          patch.multiDates !== undefined
+            ? patch.multiDates
+            : liveEvent.multiDates;
+
+        try {
+          await patchPublishedEventWhen({
+            eventId: liveEvent.serverEventId,
+            whenPayload: {
+              whenMode: finalWhenMode,
+              timezone: finalTimezone,
+              when: {
+                date: finalDate,
+                doorsOpen: finalDoorsOpen,
+                endsAt: finalEndsAt,
+              },
+              multiDates: finalMultiDates,
+              recurrenceRule: finalRecurrenceRule,
+            },
+            reason: validation.trimmedReason,
+            clientRevision: null,
+          });
+          invalidateServerEventCaches();
+        } catch (error) {
+          setSubmitting(false);
+          setModal((prev) => ({ ...prev, visible: false }));
+          const code =
+            error instanceof Error ? error.message : "patch_event_when_failed";
+          const message =
+            code === "missing_edit_reason" || code === "invalid_edit_reason"
+              ? "Add a brief reason (10–200 characters) for this change."
+              : code === "insufficient_event_permission"
+                ? "You don't have permission to edit this event."
+                : code === "event_not_editable_status"
+                  ? "This event can't be edited — it may be ended or cancelled."
+                  : code === "event_deleted"
+                    ? "This event was deleted."
+                    : code === "event_date_required"
+                      ? "Set the event date before saving."
+                      : code === "event_end_must_differ_from_start"
+                        ? "End time must differ from start time."
+                        : code === "when_mode_drops_active_date" ||
+                            code === "recurrence_drops_occurrence" ||
+                            code === "multi_date_remove_with_sales"
+                          ? "This change would drop a date with active tickets. Cancel or refund those tickets first."
+                          : code === "stale_client_revision" ||
+                              code === "event_not_editable_race"
+                            ? "Someone else updated this event. Tap to reload."
+                            : "Couldn't save your changes. Tap to try again.";
+          showToast(message);
+          return;
+        }
       }
 
       const result = updateLiveEventFields(

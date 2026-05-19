@@ -135,15 +135,58 @@ export function computeMasterStartAtUtc(event: LiveEvent): string | null {
 }
 
 /**
+ * ORCH-0877 — Compute the end-instant of an event with smart-infer for
+ * cross-midnight events. Returns UTC ISO. Returns null if inputs are
+ * incomplete or timezone parsing fails. NEVER fabricates (Constitution #9).
+ *
+ * Smart-infer rule: when `endsAt` time-of-day ≤ `doorsOpen` time-of-day,
+ * we treat `endsAt` as falling on the NEXT calendar day (e.g., doors 10 PM,
+ * ends 2 AM = same nightlife event ending the next morning). Otherwise the
+ * event is same-day.
+ *
+ * Used by `computeMasterEndAtUtc` as the legacy fallback when the persisted
+ * `masterEndAtUtc` field is absent. Also used at wizard commit time so the
+ * client-side draft model carries a correct UTC end-instant before the
+ * server-side publish RPC runs.
+ */
+export function computeEndsAtUtcWithSmartInfer(
+  date: string | null,
+  doorsOpen: string | null,
+  endsAt: string | null,
+  timezone: string | null,
+): string | null {
+  if (date === null || endsAt === null) return null;
+  const tz = timezone || "UTC";
+  const endsTime = /^\d{2}:\d{2}$/.test(endsAt) ? `${endsAt}:00` : endsAt;
+  const candidate = localWallClockToUtcInstant(`${date}T${endsTime}`, tz);
+  if (candidate === null) return null;
+
+  if (doorsOpen === null) return candidate;
+  const doorsTime = /^\d{2}:\d{2}$/.test(doorsOpen) ? `${doorsOpen}:00` : doorsOpen;
+  const startInstant = localWallClockToUtcInstant(`${date}T${doorsTime}`, tz);
+  if (startInstant === null) return candidate;
+
+  // Smart-infer: end ≤ start in UTC terms → wrap to next day.
+  // Byte-identical semantic to publish RPC midnight-wrap at
+  // supabase/migrations/20260604000001_orch_0824_publish_rpc.sql:292-294
+  // and ORCH-0877 patch RPC at 20260613000000_orch_0877_patch_event_when_rpc.sql:184-186.
+  if (Date.parse(candidate) <= Date.parse(startInstant)) {
+    const wrapped = new Date(Date.parse(candidate) + 24 * 60 * 60 * 1000);
+    return wrapped.toISOString();
+  }
+  return candidate;
+}
+
+/**
  * Compute the master END instant of a LiveEvent as a UTC ISO timestamp.
  *
  * Sources, in order of preference:
  *   1. `event.masterEndAtUtc` if hydrated from `event_dates.end_at`
- *      (preferred — exact authoritative value; field currently unset by any
- *      hydration site per ORCH-0850 pre-flight grep, but reserved for the
- *      future server-projection extension)
- *   2. `event.date + event.endsAt` parsed in `event.timezone`
- *      (best-effort from display fields when hydrated field absent)
+ *      (preferred — exact authoritative value; populated as of ORCH-0877
+ *      by `publicEventViewRowToEvent` and `businessEvents.eventFromPublish*`)
+ *   2. ORCH-0877 — `computeEndsAtUtcWithSmartInfer(date, doorsOpen, endsAt, tz)`
+ *      (legacy persisted LiveEvents without masterEndAtUtc; smart-infer
+ *      detects cross-midnight events automatically)
  *   3. `event.date + "T23:59:59"` parsed in `event.timezone` (last-resort
  *      fallback; assumes event runs until end of its local calendar day)
  *
@@ -152,9 +195,10 @@ export function computeMasterStartAtUtc(event: LiveEvent): string | null {
  * declare past on the time-axis alone"; the canonical `isEventPast` helper
  * separately short-circuits on status='ended' / endedAt !== null.
  *
- * Established by ORCH-0850 [End-not-start parity systemic]. Mirrors
- * `computeMasterStartAtUtc` for the end-instant case; enforces
- * I-PROPOSED-EVENT-LIFECYCLE-SINGLE-HELPER for past-decision math.
+ * Established by ORCH-0850 [End-not-start parity systemic]; ORCH-0877
+ * repairs the legacy fallback to use smart-infer so cross-midnight events
+ * (Web-authored before mobile picker fix) are no longer misclassified as
+ * past 20+ hours before they start. Mirrors `computeMasterStartAtUtc`.
  */
 export function computeMasterEndAtUtc(event: LiveEvent): string | null {
   const direct = (event as LiveEvent & { masterEndAtUtc?: string | null })
@@ -163,16 +207,13 @@ export function computeMasterEndAtUtc(event: LiveEvent): string | null {
     return direct;
   }
   if (event.date === null) return null;
+  const smartInferred = computeEndsAtUtcWithSmartInfer(
+    event.date,
+    event.doorsOpen,
+    event.endsAt,
+    event.timezone,
+  );
+  if (smartInferred !== null) return smartInferred;
   const tz = event.timezone || "UTC";
-  if (typeof event.endsAt === "string" && event.endsAt.length > 0) {
-    const endsTime = /^\d{2}:\d{2}$/.test(event.endsAt)
-      ? `${event.endsAt}:00`
-      : event.endsAt;
-    const candidate = localWallClockToUtcInstant(
-      `${event.date}T${endsTime}`,
-      tz,
-    );
-    if (candidate !== null) return candidate;
-  }
   return localWallClockToUtcInstant(`${event.date}T23:59:59`, tz);
 }

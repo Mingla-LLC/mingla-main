@@ -220,6 +220,9 @@ function buildRenderContext(args: {
   }>;
   masterDate: {
     start_at: string | null;
+    // ORCH-0877 — master end_at carried into the email body input so the
+    // ticket confirmation can render a real date range + ICS DTEND.
+    end_at: string | null;
     timezone: string | null;
   } | null;
 }): RenderContext {
@@ -245,6 +248,10 @@ function buildRenderContext(args: {
       locationText: order.events.location_text ?? null,
       isOnline: Boolean(order.events.is_online),
       startAt: masterDate?.start_at ?? null,
+      // ORCH-0877 — carry the real master end_at into the email body so the
+      // date line renders as a true range and the ICS attachment gets a
+      // real DTEND (closes the 3-hour fabrication Constitution #9 violation).
+      endAt: masterDate?.end_at ?? null,
       timezone: eventTimezone,
     },
     brand: {
@@ -550,7 +557,13 @@ serve(async (req) => {
       ticket_types: { name: string | null };
     }>,
     masterDate: (masterDate ?? null) as
-      | { start_at: string | null; timezone: string | null }
+      | {
+        start_at: string | null;
+        // ORCH-0877 — end_at carried through to email body (already selected
+        // at line 541; type narrowed here so buildRenderContext compiles).
+        end_at: string | null;
+        timezone: string | null;
+      }
       | null,
   });
 
@@ -644,6 +657,8 @@ serve(async (req) => {
       event: {
         title: context.bodyInput.event.title,
         startAtIso: context.bodyInput.event.startAt,
+        // ORCH-0877 — propagate master end_at into the PDF date line.
+        endAtIso: context.bodyInput.event.endAt,
         timezone: context.bodyInput.event.timezone,
         locationText: context.bodyInput.event.locationText,
         brandName: context.bodyInput.brand.name,
@@ -781,7 +796,9 @@ serve(async (req) => {
           const calendarLinks = buildCalendarLinks({
             title: context.bodyInput.event.title,
             startAtIso: context.bodyInput.event.startAt,
-            endAtIso: null,
+            // ORCH-0877 — pass real master end_at instead of fabricating a
+            // 3h default. Closes the latent Constitution #9 violation.
+            endAtIso: context.bodyInput.event.endAt,
             locationText: context.bodyInput.event.locationText,
             isOnline: context.bodyInput.event.isOnline,
             description:

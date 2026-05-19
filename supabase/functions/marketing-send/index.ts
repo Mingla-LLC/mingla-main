@@ -461,6 +461,10 @@ function buildVariables(
     event_date: primaryEvent?.date_label ?? null,
     event_time: null,
     doors_open: null,
+    // ORCH-0877 — ends_at variable mirrors the EmbeddedEvent's ends_at_label
+    // (e.g., "Ends 11 PM" same-day, "Ends Sun 2 AM" cross-midnight). Null
+    // when source has no end time (Constitution #9 — no fabrication).
+    ends_at: primaryEvent?.ends_at_label ?? null,
     event_url: primaryEvent?.url ?? null,
     spots_left: null,
     previous_event_name: contact.last_event_name,
@@ -471,7 +475,7 @@ function buildVariables(
 
 function substituteString(template: string, variables: MarketingVariables): string {
   return template.replace(
-    /\{(first_name|event_name|event_date|event_time|doors_open|brand_name|event_url|spots_left|previous_event_name|next_event_name|event_id)\}/g,
+    /\{(first_name|event_name|event_date|event_time|doors_open|ends_at|brand_name|event_url|spots_left|previous_event_name|next_event_name|event_id)\}/g,
     (_match, key: string) => {
       const v = (variables as unknown as Record<string, string | null>)[key];
       return v ?? "";
@@ -490,7 +494,7 @@ async function loadEmbeddedEvents(
   // cover lives in cover_media_url, not cover_image_url).
   const { data: eventsData, error: eventsErr } = await supabase
     .from("events_with_master_date_view")
-    .select("id, title, location_text, cover_media_url, cover_media_type, master_start_at, slug, brand_id")
+    .select("id, title, location_text, cover_media_url, cover_media_type, master_start_at, master_end_at, master_timezone, slug, brand_id")
     .in("id", ids);
   if (eventsErr) throw new Error(`events_load:${eventsErr.message}`);
   const eventRows = (eventsData ?? []) as Array<{
@@ -500,6 +504,10 @@ async function loadEmbeddedEvents(
     cover_media_url: string | null;
     cover_media_type: string | null;
     master_start_at: string | null;
+    // ORCH-0877 — master end-time + timezone for cross-midnight aware
+    // ends_at_label rendering on the marketing event card.
+    master_end_at: string | null;
+    master_timezone: string | null;
     slug: string | null;
     brand_id: string;
   }>;
@@ -552,6 +560,13 @@ async function loadEmbeddedEvents(
           day: "numeric",
         })
         : null,
+      // ORCH-0877 — "Ends 11 PM" same-day, "Ends Sun 2 AM" cross-midnight.
+      // Null when source end_at is missing (Constitution #9).
+      ends_at_label: buildEndsAtLabel(
+        r.master_start_at,
+        r.master_end_at,
+        r.master_timezone,
+      ),
       location_label: r.location_text,
       cover_image_url: r.cover_media_url,
       cover_media_type: coverType,
@@ -570,6 +585,61 @@ async function loadEmbeddedEvents(
  * future suffix patterns ("acme-team@", "acme-receipts@", etc.) without
  * blowing past the limit.
  */
+/**
+ * ORCH-0877 — produce an end-time sub-line for the marketing event card.
+ *
+ * Returns:
+ *   - null when start or end is missing/invalid (Constitution #9 — no fabrication).
+ *   - "Ends 11 PM" when start + end fall on the same calendar day in the
+ *     event's timezone.
+ *   - "Ends Sun 2 AM" when end is on a later calendar day than start
+ *     (cross-midnight events).
+ *
+ * Uses `en-US` locale to match the existing `date_label` locale on this
+ * surface; if/when Mingla unifies locale per-recipient this helper should
+ * follow.
+ */
+function buildEndsAtLabel(
+  startAtIso: string | null,
+  endAtIso: string | null,
+  timezone: string | null,
+): string | null {
+  if (!startAtIso || !endAtIso) return null;
+  const start = new Date(startAtIso);
+  const end = new Date(endAtIso);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
+  const tz = timezone && timezone.length > 0 ? timezone : "UTC";
+
+  try {
+    const dayKey = (d: Date): string =>
+      new Intl.DateTimeFormat("en-CA", {
+        timeZone: tz,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(d);
+
+    const time = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(end)
+      .replace(/\bam\b/g, "AM")
+      .replace(/\bpm\b/g, "PM");
+
+    if (dayKey(start) === dayKey(end)) {
+      return `Ends ${time}`;
+    }
+    const weekday = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      weekday: "short",
+    }).format(end);
+    return `Ends ${weekday} ${time}`;
+  } catch {
+    return null;
+  }
+}
+
 function slugifyBrandForEmail(input: string | null | undefined): string {
   const raw = (input ?? "").toLowerCase().trim();
   // Replace non-alphanumeric runs with nothing (collapses spaces, accents,

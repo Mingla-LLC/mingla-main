@@ -474,6 +474,11 @@ export const serverRowToDraft = (row: ServerDraftEventRow): DraftEvent => {
     date: asStringOrNull(when.date),
     doorsOpen: asStringOrNull(when.doorsOpen),
     endsAt: asStringOrNull(when.endsAt),
+    // ORCH-0877 — recomputed by the consuming layer when needed; on initial
+    // server-row → draft conversion we leave this null because the master
+    // event_dates row carries the real end_at (caller can pass through the
+    // server projection if available).
+    endsAtUtc: null,
     timezone:
       asStringOrNull(when.timezone) ?? row.timezone ?? "Europe/London",
     recurrenceRule:

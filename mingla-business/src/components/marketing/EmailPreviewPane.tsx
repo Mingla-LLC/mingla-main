@@ -50,6 +50,11 @@ export interface PreviewEmbeddedEvent {
   id: string;
   title: string;
   date_label?: string | null;
+  /**
+   * ORCH-0877 — end-time sub-line for the chip preview. Renders below the
+   * date chip as a separate muted line. Null = no sub-line (Constitution #9).
+   */
+  ends_at_label?: string | null;
   cover_image_url?: string | null;
   /** Skips cover img when `'video'` — mirrors socialPreview.js rule. */
   cover_media_type?: "image" | "video" | "gif" | null;
@@ -213,6 +218,11 @@ const PreviewEventCard: React.FC<PreviewEventCardProps> = ({ event }) => {
               <Text style={cardStyles.locationChip}>{event.location_label}</Text>
             ) : null}
           </View>
+        ) : null}
+        {/* ORCH-0877 — end-time sub-line below the chip row. Muted orange,
+            weight 500. Mirrors the server-side renderEventCard sub-line. */}
+        {event?.ends_at_label ? (
+          <Text style={cardStyles.endsAtLine}>{event.ends_at_label}</Text>
         ) : null}
         <Text style={cardStyles.title} numberOfLines={2}>
           {event?.title ?? "Featured event"}
@@ -396,6 +406,16 @@ const cardStyles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
     overflow: "hidden",
+  },
+  // ORCH-0877 — end-time sub-line below the chip row. Muted orange,
+  // weight 500. Mirrors the server-side `renderEventCard` `<p>` in
+  // marketingEmailRender.ts so chip preview ≈ delivered email.
+  endsAtLine: {
+    marginTop: 4,
+    marginBottom: 8,
+    fontSize: 13,
+    fontWeight: "500",
+    color: ORANGE_MUTED,
   },
   title: {
     fontSize: 20,

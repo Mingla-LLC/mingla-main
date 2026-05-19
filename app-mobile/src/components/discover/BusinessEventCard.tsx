@@ -33,6 +33,8 @@ import { Image as ExpoImage } from "expo-image";
 import * as Haptics from "expo-haptics";
 
 import type { BusinessEventCard as BusinessEventCardData } from "../../types/mergedDiscover";
+// ORCH-0877 — centralized consumer-side date formatter.
+import { formatEventDateChip } from "../../utils/eventDateDisplay";
 
 interface BusinessEventCardProps {
   data: BusinessEventCardData;
@@ -41,23 +43,9 @@ interface BusinessEventCardProps {
   onPress: (data: BusinessEventCardData) => void;
 }
 
-const formatDateChip = (
-  masterDateUtc: string | null,
-  timezone: string,
-): string => {
-  if (!masterDateUtc) return "Soon";
-  try {
-    const d = new Date(masterDateUtc);
-    return new Intl.DateTimeFormat(undefined, {
-      weekday: "short",
-      day: "numeric",
-      month: "short",
-      timeZone: timezone || "UTC",
-    }).format(d);
-  } catch {
-    return "Soon";
-  }
-};
+// ORCH-0877 — formatDateChip replaced by centralized
+// `formatEventDateChip` from app-mobile/src/utils/eventDateDisplay.ts.
+// I-14 single-source; cross-midnight aware via the shared helper.
 
 const heroColorFromHue = (hue: number): string => {
   // Hue-driven band; matches the EventCover.tsx pattern from mingla-business.
@@ -121,7 +109,11 @@ const BusinessEventCardImpl: React.FC<BusinessEventCardProps> = ({
         </Text>
         <View style={styles.infoChipMeta}>
           <Text style={styles.infoChipDate} numberOfLines={1}>
-            {formatDateChip(data.masterDateUtc, data.timezone)}
+            {formatEventDateChip({
+              masterDateUtc: data.masterDateUtc,
+              masterEndAtUtc: data.masterEndAtUtc,
+              timezone: data.timezone,
+            })}
           </Text>
           {venueLine.length > 0 ? (
             <>

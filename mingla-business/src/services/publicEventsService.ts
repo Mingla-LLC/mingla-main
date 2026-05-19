@@ -363,6 +363,12 @@ export const publicEventViewRowToEvent = (
     date: startSplit.date,
     doorsOpen: startSplit.time,
     endsAt: endSplit.time,
+    // ORCH-0877 — full UTC instants from the matview master_* columns.
+    // Source of truth for cross-midnight display and ORCH-0850 lifecycle
+    // math. When non-null these take precedence over the smart-infer
+    // fallback in `computeMasterEndAtUtc`.
+    masterStartAtUtc: row.master_start_at,
+    masterEndAtUtc: row.master_end_at,
     timezone: dateTimezone,
     recurrenceRule:
       businessEvent.recurrenceRule === null ||

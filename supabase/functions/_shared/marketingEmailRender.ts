@@ -40,6 +40,10 @@ export interface MarketingVariables {
   event_date: string | null;
   event_time: string | null;
   doors_open: string | null;
+  // ORCH-0877 — end-of-event time variable. Templates may include {ends_at}
+  // to render the close time alongside doors_open. Null when source is null
+  // (Constitution #9 — no fabrication).
+  ends_at: string | null;
   brand_name: string;
   event_url: string | null;
   spots_left: string | null;
@@ -52,6 +56,12 @@ export interface EmbeddedEvent {
   id: string;
   title: string;
   date_label: string | null;
+  // ORCH-0877 — end-time label rendered as a sub-line below the date chip
+  // in renderEventCard. Null = render no sub-line (Constitution #9). For
+  // same-day events this is just the end time (e.g. "Ends 11 PM"); for
+  // cross-midnight events it carries the next-day weekday (e.g.
+  // "Ends Sun 2 AM").
+  ends_at_label: string | null;
   location_label: string | null;
   cover_image_url: string | null;
   /**
@@ -96,7 +106,7 @@ export interface RenderMarketingEmailResult {
   links: RenderedLink[];
 }
 
-const VARIABLE_RE = /\{(first_name|event_name|event_date|event_time|doors_open|brand_name|event_url|spots_left|previous_event_name|next_event_name|event_id)\}/g;
+const VARIABLE_RE = /\{(first_name|event_name|event_date|event_time|doors_open|ends_at|brand_name|event_url|spots_left|previous_event_name|next_event_name|event_id)\}/g;
 const EVENT_TOKEN_RE = /\{\{event:([0-9a-fA-F-]{36})\}\}/g;
 // href= followed by single or double quoted URL. We do NOT rewrite
 // `mailto:` or anchor (`#…`) links — only http/https destinations.
@@ -199,6 +209,9 @@ export function renderMarketingEmail(
 function renderEventCard(event: EmbeddedEvent): string {
   const title = escapeHtml(event.title);
   const date = escapeHtml(event.date_label ?? "");
+  // ORCH-0877 — end-time sub-line (separate from the date chip per SPEC
+  // §4.10 for legibility). Empty string when null — no fabrication.
+  const endsAt = escapeHtml(event.ends_at_label ?? "");
   const location = escapeHtml(event.location_label ?? "");
   const url = escapeHtml(event.url);
   // Mingla design tokens from socialPreview.js
@@ -244,6 +257,13 @@ function renderEventCard(event: EmbeddedEvent): string {
     ? `<span style="display:inline-block;padding:7px 14px;border-radius:999px;background:${ORANGE_TINT};color:${ORANGE_MUTED};font-size:13px;font-weight:600;margin-bottom:8px;">${location}</span>`
     : "";
 
+  // ORCH-0877 — end-time sub-line. Renders BELOW the chip row, ABOVE the
+  // title, only when ends_at_label is non-empty. Muted ink, smaller weight
+  // so the chips + title stay the visual anchor.
+  const endsAtLine = endsAt.length > 0
+    ? `<p style="margin:0 0 12px 0;font-size:13px;font-weight:500;color:${ORANGE_MUTED};">${endsAt}</p>`
+    : "";
+
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;border:1px solid ${ORANGE_BORDER};border-radius:20px;overflow:hidden;background:${CREAM};">
     ${coverImg}
     <tr>
@@ -259,6 +279,7 @@ function renderEventCard(event: EmbeddedEvent): string {
           </tr>
         </table>
         ${dateChip || locationChip ? `<div style="margin:0 0 14px 0;">${dateChip}${locationChip}</div>` : ""}
+        ${endsAtLine}
         <h2 style="margin:0 0 18px 0;font-size:22px;line-height:1.25;color:${INK};font-weight:800;letter-spacing:-0.3px;">${title}</h2>
         <table role="presentation" cellpadding="0" cellspacing="0" border="0">
           <tr>

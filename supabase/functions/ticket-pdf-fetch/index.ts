@@ -63,6 +63,8 @@ interface TicketRow {
 
 interface EventDateRow {
   start_at: string | null;
+  // ORCH-0877 — end-instant for cross-midnight aware PDF date line.
+  end_at: string | null;
   timezone: string | null;
 }
 
@@ -108,7 +110,7 @@ async function lazyBackfillPdf(
 
   const { data: masterDate } = await supabase
     .from("event_dates")
-    .select("start_at, timezone")
+    .select("start_at, end_at, timezone")
     .eq("event_id", event.id)
     .eq("is_master", true)
     .maybeSingle();
@@ -118,6 +120,9 @@ async function lazyBackfillPdf(
     event: {
       title: event.title ?? "your event",
       startAtIso: md?.start_at ?? null,
+      // ORCH-0877 — propagate master end_at into the PDF date line so
+      // cross-midnight events render correctly on the downloaded ticket.
+      endAtIso: md?.end_at ?? null,
       timezone: (md?.timezone && md.timezone.length > 0
         ? md.timezone
         : event.timezone) ?? "UTC",

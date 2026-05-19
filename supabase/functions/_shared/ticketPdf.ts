@@ -19,6 +19,10 @@ export interface TicketPdfInput {
   event: {
     title: string;
     startAtIso: string | null;
+    // ORCH-0877 — end-instant ISO for cross-midnight aware date-line on the
+    // PDF ticket. Null when the event has no master end_at (Constitution #9
+    // — no fabrication; renders start only).
+    endAtIso: string | null;
     timezone: string;
     locationText: string | null;
     brandName: string;
@@ -93,7 +97,11 @@ export async function buildTicketPdf(
   const fontBold = await pdf.embedFont(StandardFonts.HelveticaBold);
   const fontItalic = await pdf.embedFont(StandardFonts.HelveticaOblique);
 
-  const dateLine = formatEventDateLine(input.event.startAtIso, input.event.timezone);
+  const dateLine = formatEventDateLine(
+    input.event.startAtIso,
+    input.event.endAtIso,
+    input.event.timezone,
+  );
 
   // Try to embed the wordmark. Failures fall back to the text "Mingla".
   let logoImage: Awaited<ReturnType<typeof pdf.embedPng>> | null = null;
