@@ -92,9 +92,17 @@ export default function CheckoutTripPaymentScreen(): React.ReactElement {
       );
       if (
         sourceTier !== undefined &&
-        sourceTier.installmentSchedule !== null
+        sourceTier.installmentSchedule !== null &&
+        line.quantity >= 1
       ) {
-        return projectInstallmentSchedule(sourceTier, new Date());
+        // ORCH-0882 hotfix-2 — pass line.quantity so disclosure +
+        // banner + Pay-button all scale with cart (€500/tier × qty=2
+        // → €250 deposit, not €125).
+        return projectInstallmentSchedule(
+          sourceTier,
+          new Date(),
+          line.quantity,
+        );
       }
     }
     return null;
@@ -450,9 +458,15 @@ export default function CheckoutTripPaymentScreen(): React.ReactElement {
         style={styles.scroll}
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingBottom: insets.bottom + 140 },
+          // ORCH-0882 hotfix-2 — when the pre-Stripe plan banner is
+          // active inside the sticky bottom bar, it adds ~120pt of
+          // height (banner title + body + margin). Bumping the
+          // ScrollView's bottom padding so the PAYMENT redirect card
+          // at the bottom of scroll content isn't occluded behind the
+          // taller bottom bar.
+          { paddingBottom: insets.bottom + (isPlanActive ? 260 : 140) },
           keyboardHeight > 0
-            ? { paddingBottom: keyboardHeight + 140 }
+            ? { paddingBottom: keyboardHeight + (isPlanActive ? 260 : 140) }
             : null,
         ]}
         showsVerticalScrollIndicator={false}
@@ -531,7 +545,7 @@ export default function CheckoutTripPaymentScreen(): React.ReactElement {
           <View
             style={styles.planBanner}
             accessibilityRole="alert"
-            accessibilityLabel={`Payment plan active. You will be charged ${formatCurrency(projectedSchedule.depositCents, projectedSchedule.currency)} today. The remaining ${formatCurrency(projectedSchedule.fullPriceCents - projectedSchedule.depositCents, projectedSchedule.currency)} will auto-charge in ${projectedSchedule.installments.length} payments from the same card.`}
+            accessibilityLabel={`Payment plan active. You will be charged ${formatCurrency(projectedSchedule.depositCents, projectedSchedule.currency, true)} today. The remaining ${formatCurrency(projectedSchedule.fullPriceCents - projectedSchedule.depositCents, projectedSchedule.currency, true)} will auto-charge in ${projectedSchedule.installments.length} payments from the same card.`}
           >
             <Text style={styles.planBannerTitle}>Payment plan active</Text>
             <Text style={styles.planBannerBody}>
@@ -540,6 +554,7 @@ export default function CheckoutTripPaymentScreen(): React.ReactElement {
                 {formatCurrency(
                   projectedSchedule.depositCents,
                   projectedSchedule.currency,
+                  true,
                 )}
               </Text>{" "}
               today. The remaining{" "}
@@ -548,6 +563,7 @@ export default function CheckoutTripPaymentScreen(): React.ReactElement {
                   projectedSchedule.fullPriceCents -
                     projectedSchedule.depositCents,
                   projectedSchedule.currency,
+                  true,
                 )}
               </Text>{" "}
               will auto-charge in {projectedSchedule.installments.length}{" "}
@@ -566,7 +582,7 @@ export default function CheckoutTripPaymentScreen(): React.ReactElement {
         <Button
           label={
             isPlanActive && projectedSchedule !== null
-              ? `Pay ${formatCurrency(projectedSchedule.depositCents, projectedSchedule.currency)} deposit`
+              ? `Pay ${formatCurrency(projectedSchedule.depositCents, projectedSchedule.currency, true)} deposit`
               : `Pay ${formatCurrency(totals.total, totals.currency)}`
           }
           onPress={handlePay}
@@ -577,7 +593,7 @@ export default function CheckoutTripPaymentScreen(): React.ReactElement {
           disabled={processing}
           accessibilityLabel={
             isPlanActive && projectedSchedule !== null
-              ? `Pay ${formatCurrency(projectedSchedule.depositCents, projectedSchedule.currency)} deposit with card`
+              ? `Pay ${formatCurrency(projectedSchedule.depositCents, projectedSchedule.currency, true)} deposit with card`
               : `Pay ${formatCurrency(totals.total, totals.currency)} with card`
           }
         />

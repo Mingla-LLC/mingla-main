@@ -188,9 +188,16 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
       );
       if (
         sourceTier !== undefined &&
-        sourceTier.installmentSchedule !== null
+        sourceTier.installmentSchedule !== null &&
+        line.quantity >= 1
       ) {
-        return projectInstallmentSchedule(sourceTier, new Date());
+        // ORCH-0882 hotfix-2 — pass line.quantity for cart-scaled
+        // disclosure.
+        return projectInstallmentSchedule(
+          sourceTier,
+          new Date(),
+          line.quantity,
+        );
       }
     }
     return null;

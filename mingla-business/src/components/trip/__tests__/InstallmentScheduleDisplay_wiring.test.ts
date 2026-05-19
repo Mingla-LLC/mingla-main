@@ -240,6 +240,77 @@ describe("projectInstallmentSchedule mapper — Constitution #9 no fabricated da
     expect(projectInstallmentSchedule(tier, new Date())).toBeNull();
   });
 
+  // ORCH-0882 hotfix-2 — quantity multiplier: mapper must scale priceCents
+  // by qty BEFORE deposit math. Operator-reported bug: qty picker at qty=2
+  // (subtotal €1,000) still showed €125 deposit (single-unit math) instead
+  // of €250.
+  test("hotfix-2: quantityMultiplier=2 doubles depositCents + amounts", () => {
+    const tier: Pick<
+      TripPricingTier,
+      "priceCents" | "currency" | "installmentSchedule"
+    > = {
+      priceCents: 50000, // €500/tier
+      currency: "EUR",
+      installmentSchedule: {
+        deposit_pct: 25,
+        installments: [
+          { ordinal: 1, pct: 50, days_after_booking: 30 },
+          { ordinal: 2, pct: 25, days_after_booking: 60 },
+        ],
+      },
+    };
+    const out = projectInstallmentSchedule(tier, new Date("2026-06-01Z"), 2);
+    expect(out).not.toBeNull();
+    if (out === null) return;
+    // qty=2 × €500 = €1,000 (100000 cents)
+    expect(out.fullPriceCents).toBe(100000);
+    // 25% of €1,000 = €250 (NOT €125)
+    expect(out.depositCents).toBe(25000);
+    expect(out.installments[0].amountCents).toBe(50000); // 50% of €1,000 = €500
+    expect(out.installments[1].amountCents).toBe(25000); // 25% of €1,000 = €250
+  });
+  test("hotfix-2: quantityMultiplier defaults to 1 when omitted", () => {
+    const tier: Pick<
+      TripPricingTier,
+      "priceCents" | "currency" | "installmentSchedule"
+    > = {
+      priceCents: 50000,
+      currency: "EUR",
+      installmentSchedule: {
+        deposit_pct: 25,
+        installments: [{ ordinal: 1, pct: 75, days_after_booking: 30 }],
+      },
+    };
+    const out = projectInstallmentSchedule(tier, new Date("2026-06-01Z"));
+    expect(out).not.toBeNull();
+    if (out === null) return;
+    expect(out.fullPriceCents).toBe(50000);
+    expect(out.depositCents).toBe(12500);
+  });
+  test("hotfix-2: invalid quantityMultiplier (NaN, 0, negative, fractional) falls back to 1", () => {
+    const tier: Pick<
+      TripPricingTier,
+      "priceCents" | "currency" | "installmentSchedule"
+    > = {
+      priceCents: 50000,
+      currency: "EUR",
+      installmentSchedule: {
+        deposit_pct: 50,
+        installments: [{ ordinal: 1, pct: 50, days_after_booking: 30 }],
+      },
+    };
+    for (const badQty of [NaN, 0, -1, 0.5, Infinity, -Infinity]) {
+      const out = projectInstallmentSchedule(
+        tier,
+        new Date("2026-06-01Z"),
+        badQty,
+      );
+      expect(out).not.toBeNull();
+      if (out === null) continue;
+      expect(out.fullPriceCents).toBe(50000); // unchanged from qty=1
+    }
+  });
+
   test("UTC date math stable across DST boundary (Constitution #10)", () => {
     // 2026-03-08 is US DST spring-forward (where applicable). UTC math
     // must be DST-agnostic — display layer handles locale presentation.

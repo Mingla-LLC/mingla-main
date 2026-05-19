@@ -130,9 +130,16 @@ export default function TripIntakeScreen(): React.ReactElement {
       );
       if (
         sourceTier !== undefined &&
-        sourceTier.installmentSchedule !== null
+        sourceTier.installmentSchedule !== null &&
+        line.quantity >= 1
       ) {
-        return projectInstallmentSchedule(sourceTier, new Date());
+        // ORCH-0882 hotfix-2 — pass line.quantity so disclosure scales
+        // with cart (€500/tier × qty=2 → €250 deposit, not €125).
+        return projectInstallmentSchedule(
+          sourceTier,
+          new Date(),
+          line.quantity,
+        );
       }
     }
     return null;

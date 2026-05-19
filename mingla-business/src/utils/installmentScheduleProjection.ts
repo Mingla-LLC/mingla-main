@@ -38,6 +38,13 @@ function addDays(anchor: Date, days: number): Date {
  * rather than null; rather than crash, this mapper fails safe to "no plan."
  * The strict-grep CI gate `i-proposed-tr3-plan-disclosure-on-every-buyer-touchpoint`
  * + the regression test suite catch wiring regressions independently.
+ *
+ * `quantityMultiplier` (default 1) — caller-supplied integer count of how
+ * many units of this tier the buyer has selected. The mapper multiplies the
+ * tier's single-unit `priceCents` by this value BEFORE deposit/installment
+ * math so the disclosure matches the buyer's actual cart total, not the
+ * per-unit list price. Planner-variant render sites (template previews)
+ * pass 1; buyer-variant render sites pass the cart line's quantity.
  */
 export function projectInstallmentSchedule(
   tier: Pick<
@@ -45,6 +52,7 @@ export function projectInstallmentSchedule(
     "priceCents" | "currency" | "installmentSchedule"
   >,
   anchorDate: Date,
+  quantityMultiplier: number = 1,
 ): InstallmentScheduleDisplaySchedule | null {
   const schedule: TripInstallmentScheduleData | null | undefined =
     tier.installmentSchedule;
@@ -60,7 +68,14 @@ export function projectInstallmentSchedule(
     return null;
   }
 
-  const fullPriceCents = tier.priceCents;
+  // Defensive: clamp quantityMultiplier to integer ≥ 1 so a malformed
+  // upstream value (NaN, negative, 0, fractional) doesn't fabricate or
+  // zero-out amounts.
+  const qty =
+    Number.isFinite(quantityMultiplier) && quantityMultiplier >= 1
+      ? Math.floor(quantityMultiplier)
+      : 1;
+  const fullPriceCents = tier.priceCents * qty;
   const depositCents = Math.round(
     (fullPriceCents * schedule.deposit_pct) / 100,
   );

@@ -327,12 +327,14 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
           // ORCH-0882 — find the source TripPricingTier for this ticket
           // (mapped through tierToTicketStub above) to get the schedule
           // template. Per-tier per-line render: only show when qty >= 1
-          // AND the tier has a plan configured.
+          // AND the tier has a plan configured. Pass `qty` so the
+          // disclosure scales with cart quantity (€500/tier × qty=2 →
+          // €250 deposit, not €125).
           const sourceTier: TripPricingTier | undefined =
             trip.pricingTiers.find((t) => t.ticketTypeId === ticket.id);
           const projectedSchedule =
-            sourceTier !== undefined
-              ? projectInstallmentSchedule(sourceTier, new Date())
+            sourceTier !== undefined && qty >= 1
+              ? projectInstallmentSchedule(sourceTier, new Date(), qty)
               : null;
           return (
             <View key={ticket.id} style={styles.tierWrap}>

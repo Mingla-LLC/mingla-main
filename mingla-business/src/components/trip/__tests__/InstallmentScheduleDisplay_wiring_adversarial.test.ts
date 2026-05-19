@@ -421,3 +421,118 @@ describe("A-10: banner copy uses formatCurrency (Constitution #10)", () => {
     expect(cleaned).not.toMatch(/[$£€]/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// A-11 (hotfix-2) — payment.tsx formatCurrency calls on cents-shape values
+// MUST use minor:true. Operator-reported bug: Pay button showed €12,500
+// for a €1,000 cart total (100× inflation) because formatCurrency was
+// called without the minor flag.
+// ---------------------------------------------------------------------------
+
+describe("A-11 (hotfix-2): cents-shape formatCurrency calls use minor:true", () => {
+  test("every formatCurrency call on depositCents/installments amount/fullPriceCents passes minor:true", () => {
+    const src = read("app/checkout-trip/[tripEventId]/payment.tsx");
+    // Find every formatCurrency(...) call. For each call body that
+    // references a cents-suffix identifier (depositCents,
+    // fullPriceCents, amountCents) — that argument is in CENTS, so
+    // the call MUST include `, true` for the minor-unit flag.
+    //
+    // Multi-line calls are common in JSX, so we match across
+    // newlines via [\s\S]. Conservative balanced-paren matching
+    // would be ideal but for our shape (no nested function calls
+    // inside formatCurrency) `[^)]` across newlines suffices.
+    const calls =
+      src.match(/formatCurrency\([\s\S]*?\)/g) ?? [];
+    expect(calls.length).toBeGreaterThan(0);
+    let centsShapeChecked = 0;
+    for (const call of calls) {
+      const isCentsShape =
+        /depositCents|fullPriceCents|amountCents/.test(call) &&
+        !/installments\.length/.test(call);
+      if (isCentsShape) {
+        centsShapeChecked += 1;
+        // Must contain `, true` BEFORE the closing paren — the
+        // minor-unit flag. Allow trailing comma + whitespace.
+        expect(call).toMatch(/,\s*true\s*,?\s*\)/);
+      }
+    }
+    // Sanity: we must have actually checked at least one cents-shape
+    // call (otherwise the test passes vacuously).
+    expect(centsShapeChecked).toBeGreaterThanOrEqual(3);
+  });
+  test("totals.total formatCurrency call does NOT use minor:true (CartContext is major units)", () => {
+    const src = read("app/checkout-trip/[tripEventId]/payment.tsx");
+    // The no-plan fallback Pay-button label uses totals.total (major
+    // units from CartContext). It must NOT pass minor:true or the
+    // amount would be 100× under-displayed.
+    const totalsCalls =
+      src.match(/formatCurrency\(\s*totals\.total[^)]*\)/g) ?? [];
+    expect(totalsCalls.length).toBeGreaterThanOrEqual(2); // visible + a11y
+    for (const call of totalsCalls) {
+      expect(call).not.toMatch(/,\s*true\s*\)/);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A-12 (hotfix-2) — ScrollView paddingBottom scales when banner is active.
+// Operator-reported bug: PAYMENT redirect copy occluded behind taller
+// bottom bar.
+// ---------------------------------------------------------------------------
+
+describe("A-12 (hotfix-2): ScrollView paddingBottom scales with isPlanActive", () => {
+  test("paddingBottom uses conditional on isPlanActive (not a hardcoded 140)", () => {
+    const src = read("app/checkout-trip/[tripEventId]/payment.tsx");
+    // The ScrollView contentContainerStyle must reference isPlanActive
+    // in its paddingBottom computation — otherwise the banner occludes
+    // content. Looking for the ternary pattern.
+    const scrollContentMatch = src.match(
+      /contentContainerStyle=\{\[[\s\S]+?paddingBottom:[\s\S]+?isPlanActive[\s\S]+?\]\}/,
+    );
+    expect(scrollContentMatch).not.toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A-13 (hotfix-2) — buyer render sites pass cart-line quantity to mapper.
+// Operator-reported bug: qty picker at qty=2 still showed single-unit
+// schedule (€125 deposit instead of €250).
+// ---------------------------------------------------------------------------
+
+describe("A-13 (hotfix-2): buyer render sites pass quantity to mapper", () => {
+  const sites = [
+    {
+      label: "checkout-trip/index.tsx (per-tier qty picker)",
+      rel: "app/checkout-trip/[tripEventId]/index.tsx",
+    },
+    {
+      label: "checkout-trip/intake.tsx (aggregate)",
+      rel: "app/checkout-trip/[tripEventId]/intake.tsx",
+    },
+    {
+      label: "checkout-trip/buyer.tsx (aggregate)",
+      rel: "app/checkout-trip/[tripEventId]/buyer.tsx",
+    },
+    {
+      label: "checkout-trip/payment.tsx (aggregate)",
+      rel: "app/checkout-trip/[tripEventId]/payment.tsx",
+    },
+  ];
+  for (const { label, rel } of sites) {
+    test(`${label} passes quantity (3rd arg) to projectInstallmentSchedule`, () => {
+      const src = read(rel);
+      // Find every projectInstallmentSchedule( call and assert at
+      // least one passes a 3rd argument (qty). Pattern allows
+      // line.quantity OR qty bare identifier (index.tsx uses `qty`).
+      const calls =
+        src.match(
+          /projectInstallmentSchedule\([\s\S]+?,\s*new Date\(\)[\s\S]+?\)/g,
+        ) ?? [];
+      expect(calls.length).toBeGreaterThan(0);
+      const hasQtyArg = calls.some((c) =>
+        /new Date\(\)\s*,\s*(line\.quantity|qty)/.test(c),
+      );
+      expect(hasQtyArg).toBe(true);
+    });
+  }
+});
