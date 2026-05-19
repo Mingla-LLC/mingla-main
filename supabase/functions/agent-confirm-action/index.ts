@@ -85,7 +85,7 @@ Deno.serve(async (req) => {
   // Load the pending action
   const { data: pending, error: pendingErr } = await userClient
     .from("agent_pending_actions")
-    .select("id, conversation_id, tool_name, tool_args, status, expires_at")
+    .select("id, conversation_id, tool_name, tool_args, status, expires_at, source")
     .eq("id", body.pending_action_id)
     .eq("user_id", userId)
     .maybeSingle();
@@ -106,20 +106,22 @@ Deno.serve(async (req) => {
     if (cancelErr) {
       return errorResponse(500, "INTERNAL", `Cancel failed: ${cancelErr.message}`);
     }
-    // Log a tool message capturing the cancellation
-    await userClient.from("agent_messages").insert({
-      conversation_id: pending.conversation_id,
-      user_id: userId,
-      role: "tool",
-      content: { text: "" },
-      tool_results: {
-        tool_name: pending.tool_name,
-        pending_action_id: pending.id,
-        outcome: "cancelled",
-      },
-      prompt_version: PROMPT_VERSION,
-      model_version: ARI_MODEL_VERSION,
-    });
+    // Ari-only audit trail in agent_messages (Hub proposals have no conversation).
+    if (pending.conversation_id) {
+      await userClient.from("agent_messages").insert({
+        conversation_id: pending.conversation_id,
+        user_id: userId,
+        role: "tool",
+        content: { text: "" },
+        tool_results: {
+          tool_name: pending.tool_name,
+          pending_action_id: pending.id,
+          outcome: "cancelled",
+        },
+        prompt_version: PROMPT_VERSION,
+        model_version: ARI_MODEL_VERSION,
+      });
+    }
     return jsonResponse(200, { kind: "cancelled", pending_action_id: pending.id });
   }
 
@@ -174,21 +176,22 @@ Deno.serve(async (req) => {
       .from("agent_pending_actions")
       .update({ status: "failed", failure_reason: reason })
       .eq("id", pending.id);
-    // Log a failure tool message
-    await userClient.from("agent_messages").insert({
-      conversation_id: pending.conversation_id,
-      user_id: userId,
-      role: "tool",
-      content: { text: "" },
-      tool_results: {
-        tool_name: tool.name,
-        pending_action_id: pending.id,
-        outcome: "failed",
-        reason,
-      },
-      prompt_version: PROMPT_VERSION,
-      model_version: ARI_MODEL_VERSION,
-    });
+    if (pending.conversation_id) {
+      await userClient.from("agent_messages").insert({
+        conversation_id: pending.conversation_id,
+        user_id: userId,
+        role: "tool",
+        content: { text: "" },
+        tool_results: {
+          tool_name: tool.name,
+          pending_action_id: pending.id,
+          outcome: "failed",
+          reason,
+        },
+        prompt_version: PROMPT_VERSION,
+        model_version: ARI_MODEL_VERSION,
+      });
+    }
     if (err instanceof ToolError) {
       // 4xx = recoverable validation errors that the user can resolve by
       // adjusting their request (rename the brand, pick a different event,
@@ -216,28 +219,25 @@ Deno.serve(async (req) => {
     console.error("[agent-confirm-action] Failed to mark executed:", doneErr.message);
   }
 
-  // Log the tool result as an agent_messages row
-  await userClient.from("agent_messages").insert({
-    conversation_id: pending.conversation_id,
-    user_id: userId,
-    role: "tool",
-    content: { text: "" },
-    tool_results: {
-      tool_name: tool.name,
-      pending_action_id: pending.id,
-      outcome: "executed",
-      result,
-    },
-    prompt_version: PROMPT_VERSION,
-    model_version: ARI_MODEL_VERSION,
-  });
+  if (pending.conversation_id) {
+    await userClient.from("agent_messages").insert({
+      conversation_id: pending.conversation_id,
+      user_id: userId,
+      role: "tool",
+      content: { text: "" },
+      tool_results: {
+        tool_name: tool.name,
+        pending_action_id: pending.id,
+        outcome: "executed",
+        result,
+      },
+      prompt_version: PROMPT_VERSION,
+      model_version: ARI_MODEL_VERSION,
+    });
+  }
 
-  // Optional: a brief assistant follow-up message generated server-side.
-  // Skipping the second Gemini call for MVP — the client renders a success
-  // ribbon and Ari's next turn will pick up the result. This keeps the
-  // confirm flow snappy.
   const followupText = buildFollowupText(tool.name, result);
-  if (followupText) {
+  if (followupText && pending.conversation_id) {
     await userClient.from("agent_messages").insert({
       conversation_id: pending.conversation_id,
       user_id: userId,
@@ -269,6 +269,10 @@ function buildFollowupText(toolName: string, result: unknown): string | undefine
     }
     if (toolName === "update_event") {
       return `Updated. Anything else to change?`;
+    }
+    if (toolName === "create_experience") {
+      const title = (result as any)?.event?.title;
+      return title ? `Published experience "${title}" to your venue.` : undefined;
     }
   } catch {
     // ignore
