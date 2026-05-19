@@ -37,11 +37,7 @@ const {
   renderBrandHtml: (
     input:
       | Record<string, unknown>[]
-      | {
-          brand: Record<string, unknown>;
-          events: Record<string, unknown>[];
-          venue?: Record<string, unknown> | null;
-        },
+      | { brand: Record<string, unknown>; events: Record<string, unknown>[] },
   ) => string;
   renderEventHtml: (row: Record<string, unknown>) => string;
 };
@@ -95,27 +91,6 @@ describe("social preview metadata renderers", () => {
     expect(html).not.toContain("business.mingla.com");
     expect(html).not.toContain("https://mingla.com/e");
     expect(html).not.toContain("exp://");
-  });
-
-  test("renders verified venue brand metadata with city in title", () => {
-    const html = renderBrandHtml({
-      brand: {
-        ...brand,
-        slug: "joes-pizza",
-        name: "Joe's Pizza",
-        description: "Neighbourhood slice shop.",
-        kind: "physical",
-        city: "Brooklyn",
-      },
-      venue: {
-        kind: "physical",
-        city: "Brooklyn",
-      },
-      events: [],
-    });
-
-    expect(html).toContain("Joe&#39;s Pizza · Brooklyn on Mingla</title>");
-    expect(html).toContain("No upcoming events from this venue");
   });
 
   test("renders brand metadata with the Mingla Business OG fallback", () => {

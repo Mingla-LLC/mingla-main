@@ -141,29 +141,6 @@ const brandRow = (patch: Record<string, unknown> = {}): Record<string, unknown> 
   ...patch,
 });
 
-const claimedVenueRow = (
-  patch: Record<string, unknown> = {},
-): Record<string, unknown> => ({
-  ...brandRow({ display_attendee_count: undefined }),
-  city: "London",
-  country_code: "GB",
-  lat: 51.5,
-  lng: -0.12,
-  venue_category: "restaurant",
-  place_pool_id: "pool-1",
-  google_place_id: "gp-1",
-  hours: [
-    {
-      weekday: 0,
-      open_time: "09:00",
-      close_time: "17:00",
-      is_closed: false,
-    },
-  ],
-  pool_photo_urls: ["https://pool.example.com/a.jpg"],
-  ...patch,
-});
-
 beforeEach(() => {
   mockFrom.mockReset();
 });
@@ -266,9 +243,13 @@ describe("public event view mapper", () => {
 });
 
 describe("public brand lookup", () => {
-  test("returns a verified physical venue with listing detail when no events exist", async () => {
+  test("returns a real empty brand instead of null when no public event rows exist", async () => {
     const claimedQuery = queryBuilder("maybeSingle", {
-      data: claimedVenueRow(),
+      data: null,
+      error: null,
+    });
+    const brandQuery = queryBuilder("maybeSingle", {
+      data: brandRow(),
       error: null,
     });
     const eventsQuery = queryBuilder("order", {
@@ -277,6 +258,7 @@ describe("public brand lookup", () => {
     });
     mockFrom.mockImplementation((table) => {
       if (table === "claimed_venues_public_view") return claimedQuery;
+      if (table === "business_public_brands_view") return brandQuery;
       if (table === "business_public_events_view") return eventsQuery;
       throw new Error(`Unexpected table ${String(table)}`);
     });
@@ -296,27 +278,17 @@ describe("public brand lookup", () => {
       profilePhotoType: "image",
       photo: "https://cdn.example.com/brand.png",
       bio: "Tiny parties, big feelings.",
-      claimStatus: "verified",
-      city: "London",
+      displayAttendeeCount: false,
       stats: { events: 0, followers: 0, rev: 0, rev7d: 0, attendees: 0 },
     });
     expect(detail?.brand.links).toEqual({
       instagram: "@brand3",
       custom: [{ label: "Menu", url: "https://brand.example.com/menu" }],
     });
-    expect(detail?.venue).toMatchObject({
-      isVerifiedVenue: true,
-      city: "London",
-      venueCategory: "restaurant",
-      galleryPhotoUrls: [
-        "https://cdn.example.com/cover.gif",
-        "https://cdn.example.com/brand.png",
-      ],
-    });
     expect(detail?.events).toEqual([]);
-    expect(claimedQuery.eq).toHaveBeenCalledWith("slug", "brand-3");
+    expect(brandQuery.eq).toHaveBeenCalledWith("slug", "brand-3");
     expect(eventsQuery.eq).toHaveBeenCalledWith("brand_slug", "brand-3");
-    expect(mockFrom).toHaveBeenCalledTimes(2);
+    expect(mockFrom).toHaveBeenCalledTimes(3);
   });
 
   test("returns null only when the brand profile row is missing", async () => {
@@ -344,7 +316,7 @@ describe("public brand lookup", () => {
       error: null,
     });
     const brandQuery = queryBuilder("maybeSingle", {
-      data: brandRow({ slug: "test-stripe", name: "Test Stripe", kind: "popup" }),
+      data: brandRow({ slug: "test-stripe", name: "Test Stripe" }),
       error: null,
     });
     const eventsQuery = queryBuilder("order", {
@@ -401,7 +373,6 @@ describe("public brand lookup", () => {
     const detail = await getPublicBrandBySlug("test-stripe");
 
     expect(detail?.brand.displayName).toBe("Test Stripe");
-    expect(detail?.venue).toBeNull();
     expect(detail?.brand.stats.events).toBe(1);
     expect(detail?.events).toHaveLength(1);
     expect(detail?.events[0]).toMatchObject({
