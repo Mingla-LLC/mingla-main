@@ -22,7 +22,7 @@ import { Stack } from "expo-router";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { focusManager, QueryClientProvider } from "@tanstack/react-query";
-import * as Sentry from "@sentry/react-native";
+import * as Sentry from "../src/diagnostics/sentry";
 import * as SplashScreen from "expo-splash-screen";
 
 import { AuthProvider, useAuth } from "../src/context/AuthContext";

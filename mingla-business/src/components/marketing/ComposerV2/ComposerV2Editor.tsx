@@ -45,7 +45,7 @@ import {
   type NativeSyntheticEvent,
   type TextInputSelectionChangeEventData,
 } from "react-native";
-import { RichEditor, actions } from "react-native-pell-rich-editor";
+import { RichEditor, actions } from "./richEditor";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
