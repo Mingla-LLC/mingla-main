@@ -156,6 +156,7 @@ serve(async (req) => {
           body: bodyInput,
         });
 
+        // no-attachment: Ve3 approve/reject operator notice has no PDF or file payload.
         const res = await fetch("https://api.resend.com/emails", {
           method: "POST",
           headers: {

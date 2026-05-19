@@ -317,6 +317,17 @@ function checkNoNewBackendFiles() {
     "supabase/migrations/20260618000000_ve2_pool_match_claim.sql",
     "supabase/migrations/20260618000001_ve2_claim_search_rpc.sql",
   ];
+  // ORCH-0101 [Ve3 Admin Queue + Verification Workflow] PR #143 (2026-05-19).
+  // C7 is scoped to ORCH-0863 marketing; these backend touches are Ve3
+  // venue-claim admin review scope (claim orchestrator + migration).
+  const ORCH_0101_VE3_BACKEND_ALLOWLIST = [
+    "supabase/functions/_shared/email/claimApprovedEmail.ts",
+    "supabase/functions/_shared/email/claimRejectedEmail.ts",
+    "supabase/functions/admin-review-venue-claim/index.test.ts",
+    "supabase/functions/admin-review-venue-claim/index.ts",
+    "supabase/functions/admin-review-venue-claim/reviewLogic.ts",
+    "supabase/migrations/20260619000000_ve3_admin_claim_review.sql",
+  ];
   // ORCH-0877 [Event end-time display + midnight-crossing single-day authoring]
   // PR #136 (2026-05-19). C7 is scoped to ORCH-0863 marketing; these backend
   // touches are end-time + cross-midnight + ICS Constitution #9 fix scope.
@@ -360,6 +371,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_0875_BACKEND_ALLOWLIST,
     ...ORCH_0099_VE1_BACKEND_ALLOWLIST,
     ...ORCH_0100_VE2_BACKEND_ALLOWLIST,
+    ...ORCH_0101_VE3_BACKEND_ALLOWLIST,
     ...ORCH_0877_BACKEND_ALLOWLIST,
     ...ORCH_0876_BACKEND_ALLOWLIST,
     ...ORCH_0879_BACKEND_ALLOWLIST,
