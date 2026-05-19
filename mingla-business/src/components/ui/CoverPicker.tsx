@@ -30,6 +30,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Image,
+  Keyboard,
+  type KeyboardEvent,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -189,6 +192,34 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   const [searchError, setSearchError] = useState<string | null>(null);
   const [giphyResults, setGiphyResults] = useState<GiphyCoverSearchResult[]>([]);
   const [pexelsResults, setPexelsResults] = useState<PexelsCoverSearchResult[]>([]);
+
+  // ORCH-0884 follow-up #8 — operator-reported: GIPHY/Pexels search input
+  // bottom is still covered by the keyboard even with KAV + auto-inset
+  // applied at the wizard level. Root cause: CoverPicker sits at the end
+  // of the wizard's Step 1 form, so when iOS auto-scrolls, there's no
+  // content below the search input — iOS can't scroll the input higher
+  // than the natural end-of-content position.
+  // Fix: when keyboard appears, render a tall spacer View below the
+  // CoverPicker's content equal to keyboardHeight + 200pt. That gives
+  // iOS the room it needs to scroll the search input fully above the
+  // keyboard (cursor visible, not at the keyboard edge).
+  const [keyboardHeight, setKeyboardHeight] = useState<number>(0);
+  useEffect(() => {
+    const showEvent =
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent =
+      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+    const showSub = Keyboard.addListener(showEvent, (e: KeyboardEvent): void => {
+      setKeyboardHeight(e.endCoordinates.height);
+    });
+    const hideSub = Keyboard.addListener(hideEvent, (): void => {
+      setKeyboardHeight(0);
+    });
+    return (): void => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   const selectedCredit = eventCoverProviderCreditLabel({
     provider: localCover.coverMediaProvider,
@@ -563,6 +594,11 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
             )}
           </ScrollView>
         </View>
+      ) : null}
+      {/* ORCH-0884 follow-up #8 — keyboard scroll-room spacer. See state
+          declaration above for full rationale. */}
+      {keyboardHeight > 0 && supportsSearch ? (
+        <View style={{ height: keyboardHeight + 400 }} pointerEvents="none" />
       ) : null}
     </View>
   );
