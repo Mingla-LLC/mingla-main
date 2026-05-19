@@ -28,4 +28,23 @@ describe("Ve2 migration contract", () => {
     expect(sql).toContain("p_place_pool_id uuid");
     expect(sql).toContain("place_pool_google_place_id_mismatch");
   });
+
+  test("claim search RPC is service_role only", () => {
+    const sql = readFileSync(
+      join(
+        __dirname,
+        "..",
+        "..",
+        "..",
+        "..",
+        "supabase",
+        "migrations",
+        "20260618000001_ve2_claim_search_rpc.sql",
+      ),
+      "utf8",
+    );
+    expect(sql).toContain("biz_search_place_pool_for_claim");
+    expect(sql).toContain("GRANT EXECUTE");
+    expect(sql).toContain("service_role");
+  });
 });
