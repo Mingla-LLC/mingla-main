@@ -328,6 +328,12 @@ function checkNoNewBackendFiles() {
     "supabase/functions/admin-review-venue-claim/reviewLogic.ts",
     "supabase/migrations/20260619000000_ve3_admin_claim_review.sql",
   ];
+  // ORCH-0102 [Ve4 Public Venue Page + Verified Badge] PR #146 (2026-05-19).
+  // C7 is scoped to ORCH-0863 marketing; this backend touch is the Ve4
+  // claimed_venues_public_view migration on the venue-claim track.
+  const ORCH_0102_VE4_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260622000000_ve4_claimed_venues_public_view.sql",
+  ];
   // ORCH-0877 [Event end-time display + midnight-crossing single-day authoring]
   // PR #136 (2026-05-19). C7 is scoped to ORCH-0863 marketing; these backend
   // touches are end-time + cross-midnight + ICS Constitution #9 fix scope.
@@ -389,6 +395,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_0099_VE1_BACKEND_ALLOWLIST,
     ...ORCH_0100_VE2_BACKEND_ALLOWLIST,
     ...ORCH_0101_VE3_BACKEND_ALLOWLIST,
+    ...ORCH_0102_VE4_BACKEND_ALLOWLIST,
     ...ORCH_0877_BACKEND_ALLOWLIST,
     ...ORCH_0876_BACKEND_ALLOWLIST,
     ...ORCH_0879_BACKEND_ALLOWLIST,
