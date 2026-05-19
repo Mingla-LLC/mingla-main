@@ -67,7 +67,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   title: {
-    ...typography.subhead,
+    ...typography.bodySm,
     fontWeight: "600",
     marginBottom: spacing.xs,
     color: textTokens.primary,
