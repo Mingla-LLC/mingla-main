@@ -35,6 +35,14 @@ import {
 } from "../../constants/designSystem";
 import type { EditSeverity } from "../../store/eventEditLogStore";
 import type { FieldDiff, TicketDiff } from "../../utils/liveEventAdapter";
+// ORCH-0876 [Trip CRUD + Purchase Flow Completion]: generalized to render
+// trip-shape diffs (days / inclusions / pricing tiers) alongside events'
+// existing ticket diffs. All new props are optional + backward-compatible.
+import type {
+  TripDayDiff,
+  TripInclusionDiff,
+  TripPricingTierDiff,
+} from "../../utils/tripAdapter";
 
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
@@ -46,11 +54,21 @@ const REASON_MAX = 200;
 export interface ChangeSummaryModalProps {
   visible: boolean;
   diffs: FieldDiff[];
-  /** When patch.tickets changed, expand per-tier diffs in their own row. */
+  /** When patch.tickets changed (events), expand per-tier diffs in their own row. */
   ticketDiffs?: TicketDiff[];
+  // ORCH-0876 trip-shape diffs (optional — only set by trip-side consumers):
+  /** When patch.days changed (trips), expand per-day diffs. */
+  tripDayDiffs?: TripDayDiff[];
+  /** When patch.inclusions changed (trips), expand per-inclusion diffs. */
+  tripInclusionDiffs?: TripInclusionDiff[];
+  /** When patch.pricing_tiers changed (trips), expand per-tier diffs. */
+  tripPricingTierDiffs?: TripPricingTierDiff[];
   severity: EditSeverity;
   /** Drives the "and SMS" copy in the footer note. */
   webPurchasePresent: boolean;
+  /** Optional label override for the entity type (default "event"). Trips
+   *  pass "trip" so the subhead + footer + log-history copy read naturally. */
+  entityLabel?: "event" | "trip";
   onClose: () => void;
   /** Called with the trimmed reason (10..200 chars validated by parent). */
   onConfirm: (reason: string) => void;
@@ -62,8 +80,12 @@ export const ChangeSummaryModal: React.FC<ChangeSummaryModalProps> = ({
   visible,
   diffs,
   ticketDiffs,
+  tripDayDiffs,
+  tripInclusionDiffs,
+  tripPricingTierDiffs,
   severity,
   webPurchasePresent,
+  entityLabel = "event",
   onClose,
   onConfirm,
   submitting = false,
@@ -94,7 +116,7 @@ export const ChangeSummaryModal: React.FC<ChangeSummaryModalProps> = ({
 
   const footerCopy = ((): string => {
     if (severity === "additive") {
-      return "Changes will be logged in your event's edit history. No buyer notification.";
+      return `Changes will be logged in your ${entityLabel}'s edit history. No buyer notification.`;
     }
     if (severity === "material") {
       return webPurchasePresent
@@ -129,6 +151,10 @@ export const ChangeSummaryModal: React.FC<ChangeSummaryModalProps> = ({
               {diffs.map((diff) => {
                 const isMaterial = diff.severity === "material";
                 const isTicketsRow = diff.fieldKey === "tickets";
+                // ORCH-0876: trip-shape sub-renderer dispatch keys.
+                const isTripDaysRow = diff.fieldKey === "days";
+                const isTripInclusionsRow = diff.fieldKey === "inclusions";
+                const isTripPricingTiersRow = diff.fieldKey === "pricing_tiers";
                 return (
                   <View
                     key={diff.fieldKey}
@@ -157,6 +183,22 @@ export const ChangeSummaryModal: React.FC<ChangeSummaryModalProps> = ({
                       ticketDiffs !== undefined &&
                       ticketDiffs.length > 0 ? (
                         <TicketsDiffSubRenderer ticketDiffs={ticketDiffs} />
+                      ) : isTripDaysRow &&
+                        tripDayDiffs !== undefined &&
+                        tripDayDiffs.length > 0 ? (
+                        <TripDaysDiffSubRenderer tripDayDiffs={tripDayDiffs} />
+                      ) : isTripInclusionsRow &&
+                        tripInclusionDiffs !== undefined &&
+                        tripInclusionDiffs.length > 0 ? (
+                        <TripInclusionsDiffSubRenderer
+                          tripInclusionDiffs={tripInclusionDiffs}
+                        />
+                      ) : isTripPricingTiersRow &&
+                        tripPricingTierDiffs !== undefined &&
+                        tripPricingTierDiffs.length > 0 ? (
+                        <TripPricingTierDiffSubRenderer
+                          tripPricingTierDiffs={tripPricingTierDiffs}
+                        />
                       ) : (
                         <View style={styles.diffValuesRow}>
                           <Text style={styles.oldValue} numberOfLines={2}>
@@ -334,6 +376,164 @@ const TicketsDiffSubRenderer: React.FC<TicketsDiffSubRendererProps> = ({
       return (
         <Text key={td.ticketId} style={styles.ticketSubLine}>
           <Text style={styles.ticketSubKindUpdated}>Updated</Text>: {td.ticketName}{" "}
+          <Text style={styles.ticketSubFields}>— {fieldList}</Text>
+        </Text>
+      );
+    })}
+  </View>
+);
+
+// ============================================================
+// ORCH-0876 [Trip CRUD + Purchase Flow Completion] — trip-shape sub-renderers
+// ============================================================
+// Mirror the TicketsDiffSubRenderer pattern for trip days, inclusions, and
+// pricing tiers. All three render a vertically-stacked list of
+// "Added/Removed/Updated: <name>" lines using the same kind-color tokens
+// (added: green, removed: red, updated: warm-accent).
+
+interface TripDaysDiffSubRendererProps {
+  tripDayDiffs: TripDayDiff[];
+}
+
+const TripDaysDiffSubRenderer: React.FC<TripDaysDiffSubRendererProps> = ({
+  tripDayDiffs,
+}) => (
+  <View style={styles.ticketsSubList}>
+    {tripDayDiffs.map((d) => {
+      const dayLabel = `Day ${d.ordinal}${
+        (d.newTitle ?? d.oldTitle) !== null
+          ? ` · ${d.newTitle ?? d.oldTitle ?? ""}`
+          : ""
+      }`;
+      if (d.status === "added") {
+        return (
+          <Text key={`day-${d.ordinal}`} style={styles.ticketSubLine}>
+            <Text style={styles.ticketSubKindAdded}>Added</Text>: {dayLabel}
+          </Text>
+        );
+      }
+      if (d.status === "removed") {
+        return (
+          <Text key={`day-${d.ordinal}`} style={styles.ticketSubLine}>
+            <Text style={styles.ticketSubKindRemoved}>Removed</Text>: {dayLabel}
+          </Text>
+        );
+      }
+      // modified
+      const changedFields: string[] = [];
+      if (d.oldTitle !== d.newTitle) changedFields.push("Title");
+      if ((d.oldNarrative ?? null) !== (d.newNarrative ?? null)) {
+        changedFields.push("Narrative");
+      }
+      const fieldList =
+        changedFields.length > 0 ? changedFields.join(", ") : "(no field detail)";
+      return (
+        <Text key={`day-${d.ordinal}`} style={styles.ticketSubLine}>
+          <Text style={styles.ticketSubKindUpdated}>Updated</Text>: {dayLabel}{" "}
+          <Text style={styles.ticketSubFields}>— {fieldList}</Text>
+        </Text>
+      );
+    })}
+  </View>
+);
+
+interface TripInclusionsDiffSubRendererProps {
+  tripInclusionDiffs: TripInclusionDiff[];
+}
+
+const TripInclusionsDiffSubRenderer: React.FC<
+  TripInclusionsDiffSubRendererProps
+> = ({ tripInclusionDiffs }) => (
+  <View style={styles.ticketsSubList}>
+    {tripInclusionDiffs.map((d) => {
+      const itemLabel = `${(d.newKind ?? d.oldKind ?? "").toUpperCase()}: ${
+        d.newItem ?? d.oldItem ?? ""
+      }`;
+      if (d.status === "added") {
+        return (
+          <Text key={`inc-${d.key}`} style={styles.ticketSubLine}>
+            <Text style={styles.ticketSubKindAdded}>Added</Text>: {itemLabel}
+          </Text>
+        );
+      }
+      if (d.status === "removed") {
+        return (
+          <Text key={`inc-${d.key}`} style={styles.ticketSubLine}>
+            <Text style={styles.ticketSubKindRemoved}>Removed</Text>:{" "}
+            {itemLabel}
+          </Text>
+        );
+      }
+      // modified — rare; inclusion keys are (kind, item) pairs which means
+      // same-key is byte-identical. This branch is reachable only if the
+      // diff computer evolves to allow same-key item rewording.
+      return (
+        <Text key={`inc-${d.key}`} style={styles.ticketSubLine}>
+          <Text style={styles.ticketSubKindUpdated}>Updated</Text>: {itemLabel}
+        </Text>
+      );
+    })}
+  </View>
+);
+
+interface TripPricingTierDiffSubRendererProps {
+  tripPricingTierDiffs: TripPricingTierDiff[];
+}
+
+const formatCentsMinor = (
+  cents: number | null,
+  currency: string = "USD",
+): string => {
+  if (cents === null) return "—";
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency,
+    }).format(cents / 100);
+  } catch {
+    return `${(cents / 100).toFixed(2)} ${currency}`;
+  }
+};
+
+const TripPricingTierDiffSubRenderer: React.FC<
+  TripPricingTierDiffSubRendererProps
+> = ({ tripPricingTierDiffs }) => (
+  <View style={styles.ticketsSubList}>
+    {tripPricingTierDiffs.map((d) => {
+      const tierLabel = d.newName ?? d.oldName ?? "Tier";
+      if (d.status === "added") {
+        return (
+          <Text key={`tier-${d.ticketTypeId}`} style={styles.ticketSubLine}>
+            <Text style={styles.ticketSubKindAdded}>Added</Text>: {tierLabel}{" "}
+            <Text style={styles.ticketSubFields}>
+              — {formatCentsMinor(d.newPriceCents)}
+            </Text>
+          </Text>
+        );
+      }
+      if (d.status === "removed") {
+        return (
+          <Text key={`tier-${d.ticketTypeId}`} style={styles.ticketSubLine}>
+            <Text style={styles.ticketSubKindRemoved}>Removed</Text>:{" "}
+            {tierLabel}
+          </Text>
+        );
+      }
+      // modified
+      const changedFields: string[] = [];
+      if (d.oldName !== d.newName) {
+        changedFields.push(`Name: ${d.oldName ?? "—"} → ${d.newName ?? "—"}`);
+      }
+      if (d.oldPriceCents !== d.newPriceCents) {
+        changedFields.push(
+          `Price: ${formatCentsMinor(d.oldPriceCents)} → ${formatCentsMinor(d.newPriceCents)}`,
+        );
+      }
+      const fieldList =
+        changedFields.length > 0 ? changedFields.join(", ") : "(no field detail)";
+      return (
+        <Text key={`tier-${d.ticketTypeId}`} style={styles.ticketSubLine}>
+          <Text style={styles.ticketSubKindUpdated}>Updated</Text>: {tierLabel}{" "}
           <Text style={styles.ticketSubFields}>— {fieldList}</Text>
         </Text>
       );

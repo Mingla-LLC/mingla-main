@@ -43,6 +43,10 @@ import {
   type TripInclusionInput,
   type TripPricingPatch,
   type SoftDeleteResult,
+  // ORCH-0876: published-trip atomic patch via biz_update_live_trip RPC
+  updateLiveTripFields,
+  type LiveTripPatch,
+  type UpdateLiveTripResult,
 } from "../services/tripsService";
 
 // ---------------------- Query key factory ----------------------
@@ -304,6 +308,63 @@ export const useSoftDeleteTrip = (): UseMutationResult<
     },
     onError: (error, { eventId }) => {
       console.error("[useSoftDeleteTrip] failed", {
+        message: error.message,
+        eventId,
+      });
+    },
+  });
+};
+
+// ---------------------- useUpdateLiveTripFields (ORCH-0876) ----------------------
+
+/**
+ * Server-side atomic patch for published trips. Mirrors event-side
+ * `useLiveEventStore.updateLiveEventFields` SHAPE but goes server-side
+ * via `biz_update_live_trip` RPC (F-17 leapfrog — trips skip events'
+ * Zustand-only-write tech debt).
+ *
+ * Returns the discriminated `UpdateLiveTripResult` from the RPC:
+ *   - ok: true  → invalidate trip caches + return editLogEntryId + severity
+ *   - ok: false → caller surfaces refund-gate dialog with reason
+ *
+ * Caller responsibility: fire `notifyTripChanged(...)` on `ok: true` with
+ * appropriate channel flags from `tripChangeNotifier.deriveTripChannelFlags`.
+ */
+export interface UpdateLiveTripFieldsInput {
+  eventId: string;
+  patch: LiveTripPatch;
+  reason: string;
+}
+
+export const useUpdateLiveTripFields = (): UseMutationResult<
+  UpdateLiveTripResult,
+  Error,
+  UpdateLiveTripFieldsInput
+> => {
+  const queryClient = useQueryClient();
+  return useMutation<UpdateLiveTripResult, Error, UpdateLiveTripFieldsInput>({
+    mutationFn: async ({ eventId, patch, reason }) =>
+      updateLiveTripFields(eventId, patch, reason),
+    onSuccess: (result, { eventId }) => {
+      // Only invalidate on actual successful patch — refund-gate rejections
+      // do NOT mutate the trip, so cache stays valid.
+      if (result.ok) {
+        queryClient.invalidateQueries({ queryKey: tripKeys.detail(eventId) });
+        // Public-by-id + public-by-slug caches stale immediately so the
+        // public trip page reflects within staleTime.
+        queryClient.invalidateQueries({
+          queryKey: ["public-trips", "detail-by-id", eventId],
+        });
+        queryClient.invalidateQueries({
+          queryKey: [...tripKeys.public()],
+        });
+      }
+    },
+    onError: (error, { eventId }) => {
+      // SQL exceptions (auth/type/permission) come through here; refund-gate
+      // rejections come back as result.ok=false (NOT an error). Both surface
+      // via the caller's onSuccess/onError handlers; do NOT silently swallow.
+      console.error("[useUpdateLiveTripFields] failed", {
         message: error.message,
         eventId,
       });

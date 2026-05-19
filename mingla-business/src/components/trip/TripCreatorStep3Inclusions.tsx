@@ -34,6 +34,15 @@ export interface TripCreatorStep3InclusionsProps {
   items: InclusionDraft[];
   onChange: (items: InclusionDraft[]) => void;
   disabled?: boolean;
+  /**
+   * ORCH-0876 — present when the operator is editing a published trip with
+   * confirmed bookings. The server's refund-gate rejects inclusion removals
+   * with `inclusions_removed_with_sales`; additions remain additive and the
+   * parent surface owns the pre-flight UX rejection on Save.
+   */
+  editMode?: {
+    totalConfirmedOrders: number;
+  };
 }
 
 const INPUT_BORDER = "rgba(255, 255, 255, 0.12)";

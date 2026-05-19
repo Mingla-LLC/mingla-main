@@ -1,15 +1,26 @@
 /**
- * /trip/[id]/edit — wizard host route. Tr2 (ORCH-0859).
+ * /trip/[id]/edit — status-based dispatch host (ORCH-0876).
  *
- * Loads the trip by id via useTrip + resolves the current brand for
- * preview branding, then mounts TripCreatorWizard. On successful publish
- * (TripCreatorWizard.onPublished) router.replace's to the operator trip
- * dashboard at /trip/{id}.
+ * Loads the trip by id, then routes to one of three operator-side editors
+ * based on `trip.status`:
  *
- * Per SPEC §4.10 file 12 + §7 Step 5.
+ *   - "draft"                 → TripCreatorWizard (create-mode UX,
+ *                               autosave per step transition, Publish dock)
+ *   - "scheduled" | "live"    → EditPublishedTripScreen (sectioned
+ *                               accordion + Save dock + refund-gate via
+ *                               biz_update_live_trip RPC)
+ *   - "ended" | "cancelled"   → read-only empty state with "Back to trip"
+ *
+ * Mirrors the event-side routing pattern at `app/event/[id]/edit.tsx`:
+ * the published-edit experience is a different component from the
+ * create wizard, not a flag on the same component, so the operator's
+ * mental model + the technical architecture (server-side atomic patch
+ * via RPC vs. client autosave on step transition) stay aligned.
+ *
+ * Per SPEC §4.10 + §7 (ORCH-0876 v2 full parity).
  */
 
-// orch-strict-grep-allow safearea-on-fullscreen-routes — main render delegates to TripCreatorWizard which applies `paddingTop: insets.top` at TripCreatorWizard.tsx:396 (proven safe on sim screenshot 08-trip-edit.png). The inline loading / error / not-found early-return states render bare `<View>` for brief moments during the trip query resolve — transient flash is acceptable; not worth wrapping each early-return state. Per ORCH-0859 [Tr2 Minimum Viable Trip] REWORK 5b 2026-05-17.
+// orch-strict-grep-allow safearea-on-fullscreen-routes — main render delegates to TripCreatorWizard or EditPublishedTripScreen which apply `paddingTop: insets.top` themselves (proven safe on sim screenshots). Inline loading / error / not-found early-return states render bare `<View>` for brief moments during the trip query resolve — transient flash is acceptable; not worth wrapping each early-return state. Per ORCH-0859 [Tr2 Minimum Viable Trip] REWORK 5b 2026-05-17.
 
 import React from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
@@ -23,6 +34,8 @@ import {
 import { useCurrentBrand } from "../../../src/hooks/useCurrentBrand";
 import { useTrip, useSoftDeleteTrip } from "../../../src/hooks/useTrips";
 import { TripCreatorWizard } from "../../../src/components/trip/TripCreatorWizard";
+import { EditPublishedTripScreen } from "../../../src/components/trip/EditPublishedTripScreen";
+import { Button } from "../../../src/components/ui/Button";
 
 export default function TripEditRoute(): React.ReactElement {
   const router = useRouter();
@@ -87,6 +100,43 @@ export default function TripEditRoute(): React.ReactElement {
     );
   }
 
+  // ORCH-0876 — status-based dispatch.
+  if (trip.status === "scheduled" || trip.status === "live") {
+    return <EditPublishedTripScreen trip={trip} />;
+  }
+
+  if (trip.status === "ended" || trip.status === "cancelled") {
+    return (
+      <View style={styles.host}>
+        <Text style={styles.title}>
+          {trip.status === "ended"
+            ? "This trip has ended"
+            : "This trip is cancelled"}
+        </Text>
+        <Text style={styles.body}>
+          {trip.status === "ended"
+            ? "Edits aren't allowed after a trip ends — buyer records and reports stay frozen for accuracy."
+            : "Edits aren't allowed once a trip is cancelled. You can still see traveler details and refunds from the trip page."}
+        </Text>
+        <Button
+          label="Back to trip"
+          variant="primary"
+          size="md"
+          onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace(`/trip/${trip.id}` as never);
+            }
+          }}
+          accessibilityLabel="Back to trip"
+          testID="trip-edit-readonly-back"
+        />
+      </View>
+    );
+  }
+
+  // Default: draft → wizard (create-mode UX).
   // ORCH-0874: derive isCreateMode — true for freshly-created draft trips
   // that haven't been edited yet (no title, no days, no inclusions). Drives
   // wizard chrome X discard semantics per SPEC §3.3.5/§3.3.6.

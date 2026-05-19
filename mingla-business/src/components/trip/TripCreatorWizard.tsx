@@ -155,6 +155,14 @@ function tripToStep1Draft(trip: Trip): Step1Draft {
     destinationLat: trip.businessTrip.destinationLat,
     destinationLng: trip.businessTrip.destinationLng,
     capacity: trip.businessTrip.capacity,
+    // ORCH-0876 — cover media seeded from current trip row.
+    coverMediaUrl: trip.coverMediaUrl,
+    coverMediaType:
+      trip.coverMediaType === "image" ||
+      trip.coverMediaType === "video" ||
+      trip.coverMediaType === "gif"
+        ? trip.coverMediaType
+        : null,
   };
 }
 
@@ -220,7 +228,10 @@ function isTripWizardPristine(
     step1Draft.destinationLocationText !== initStep1.destinationLocationText ||
     step1Draft.destinationLat !== initStep1.destinationLat ||
     step1Draft.destinationLng !== initStep1.destinationLng ||
-    step1Draft.capacity !== initStep1.capacity
+    step1Draft.capacity !== initStep1.capacity ||
+    // ORCH-0876 — cover fields part of Step 1 draft now.
+    step1Draft.coverMediaUrl !== initStep1.coverMediaUrl ||
+    step1Draft.coverMediaType !== initStep1.coverMediaType
   ) {
     return false;
   }
@@ -453,6 +464,11 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
           destinationLng: step1Draft.destinationLng,
           capacity: step1Draft.capacity,
         },
+        // ORCH-0876 — cover fields persist alongside basics. CoverPicker
+        // emits patches synchronously into draft state; this writes them
+        // to the events row on Continue / Back / Close (edit mode).
+        coverMediaUrl: step1Draft.coverMediaUrl,
+        coverMediaType: step1Draft.coverMediaType,
       },
     });
   }, [step1Draft, trip.id, trip.brandId, updateBasicsMutation]);
@@ -543,16 +559,36 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
       setPublishError({
         code: "autosave_failed",
         message: "Couldn't save your changes. Check your connection and try again.",
-        pointsToStep: step,
+        // Step 6 is Review-only (no autosave) so this branch never fires at
+        // step === 6; clamp to satisfy the PublishErrorState.pointsToStep
+        // union (1..5) which predates Tr4's wizard step expansion.
+        pointsToStep: (step >= 5 ? 5 : step) as 1 | 2 | 3 | 4 | 5,
       });
     }
   }, [autosaveCurrentStep, step]);
 
-  const handleStepBack = useCallback((): void => {
+  // ORCH-0876 — Back now autosaves before stepping back, mirroring
+  // event wizard semantics so unsaved Step N edits aren't lost when the
+  // operator returns to Step N-1. Autosave failure stays on the current
+  // step with the persistent autosave-error banner; user can retry.
+  const handleStepBack = useCallback(async (): Promise<void> => {
     if (step <= 1) return;
-    setStep((s) => (s > 1 ? ((s - 1) as StepIndex) : s));
-    setPublishError(null);
-  }, [step]);
+    try {
+      await autosaveCurrentStep();
+      setStep((s) => (s > 1 ? ((s - 1) as StepIndex) : s));
+      setPublishError(null);
+    } catch {
+      setPublishError({
+        code: "autosave_failed",
+        message:
+          "Couldn't save your changes. Check your connection and try again.",
+        // Step 6 is Review-only (no autosave) so this branch never fires at
+        // step === 6; clamp to satisfy the PublishErrorState.pointsToStep
+        // union (1..5) which predates Tr4's wizard step expansion.
+        pointsToStep: (step >= 5 ? 5 : step) as 1 | 2 | 3 | 4 | 5,
+      });
+    }
+  }, [autosaveCurrentStep, step]);
 
   // ----- ORCH-0874 handleClose (chrome X) — branches on isCreateMode + pristine -----
   const handleClose = useCallback((): void => {
@@ -588,8 +624,19 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
         setDiscardDialogVisible(true);
       }
     } else {
-      // Edit mode — silent exit (autosave semantics).
-      onExit();
+      // Edit mode — ORCH-0876: autosave any unsaved Step N edits before
+      // exit so the operator doesn't lose changes when tapping the
+      // chrome X. Autosave failure does NOT block exit (the persistent
+      // autosave-error banner already surfaced); the user already chose
+      // to leave.
+      void (async (): Promise<void> => {
+        try {
+          await autosaveCurrentStep();
+        } catch {
+          // Silent — banner already flagged the failure; exit anyway.
+        }
+        onExit();
+      })();
     }
   }, [
     isCreateMode,
@@ -601,6 +648,7 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
     trip,
     onDiscardTrip,
     onExit,
+    autosaveCurrentStep,
   ]);
 
   const handleCloseDiscardDialog = useCallback((): void => {
@@ -675,6 +723,24 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
       showToast(discardError);
     }
   }, [discardError, showToast]);
+
+  // ORCH-0876 — edit-mode "Saved" toast: when the operator is editing an
+  // already-published trip's draft fields via this wizard (rare — published
+  // trips route through EditPublishedTripScreen for the full Save flow),
+  // surface a transient confirmation each time autosave succeeds so the
+  // operator knows their change persisted. Skip in create mode (the dock
+  // copy + subtitle "Saved" indicator already cover that path).
+  const prevAutosaveSavedAtRef = useRef<string | null>(autosaveSavedAt);
+  useEffect(() => {
+    if (
+      !isCreateMode &&
+      autosaveSavedAt !== null &&
+      autosaveSavedAt !== prevAutosaveSavedAtRef.current
+    ) {
+      showToast("Saved");
+    }
+    prevAutosaveSavedAtRef.current = autosaveSavedAt;
+  }, [autosaveSavedAt, isCreateMode, showToast]);
 
   // ----- Render -----
   const submitting = isAutosaving || publishMutation.isPending;
@@ -776,6 +842,9 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
               draft={step1Draft}
               onChange={(patch) => setStep1Draft((s) => ({ ...s, ...patch }))}
               disabled={submitting}
+              brandId={trip.brandId}
+              tripEventId={trip.id}
+              onShowToast={showToast}
             />
           ) : null}
           {step === 2 ? (
@@ -854,7 +923,9 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
                   variant="ghost"
                   size="md"
                   leadingIcon="chevL"
-                  onPress={handleStepBack}
+                  onPress={() => {
+                    void handleStepBack();
+                  }}
                   disabled={submitting}
                   fullWidth
                 />
@@ -885,7 +956,9 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
                   label="Back"
                   variant="ghost"
                   size="md"
-                  onPress={handleStepBack}
+                  onPress={() => {
+                    void handleStepBack();
+                  }}
                   disabled={submitting}
                   fullWidth
                 />

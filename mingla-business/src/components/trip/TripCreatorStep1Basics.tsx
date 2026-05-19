@@ -34,6 +34,8 @@ import {
 } from "../../constants/designSystem";
 import { Button } from "../ui/Button";
 import { AddressAutocompleteInput } from "../event/AddressAutocompleteInput";
+import { CoverPicker, type CoverPatch } from "../ui/CoverPicker";
+import type { EventCoverMediaType } from "../../store/draftEventStore";
 
 export interface Step1Draft {
   title: string;
@@ -44,12 +46,29 @@ export interface Step1Draft {
   destinationLat: number | null;
   destinationLng: number | null;
   capacity: number | null;
+  /**
+   * ORCH-0876 — cover media for the trip (mirror of the events table
+   * cover_media_* column family). Wired through CoverPicker at the bottom
+   * of Step 1. autosaveStep1 persists `coverMediaUrl` + `coverMediaType`
+   * via updateTripBasics (the other 5 metadata fields are non-essential
+   * at create time; full 7-field support lives on EditPublishedTripScreen
+   * via the biz_update_live_trip RPC).
+   */
+  coverMediaUrl: string | null;
+  coverMediaType: EventCoverMediaType | null;
 }
 
 export interface TripCreatorStep1BasicsProps {
   draft: Step1Draft;
   onChange: (patch: Partial<Step1Draft>) => void;
   disabled?: boolean;
+  /**
+   * ORCH-0876 — trip context required by CoverPicker. brandId + tripEventId
+   * pin the storage path; without these the picker can't upload.
+   */
+  brandId: string;
+  tripEventId: string;
+  onShowToast?: (msg: string) => void;
 }
 
 const INPUT_BORDER = "rgba(255, 255, 255, 0.12)";
@@ -112,7 +131,25 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
   draft,
   onChange,
   disabled,
+  brandId,
+  tripEventId,
+  onShowToast,
 }) => {
+  const handleCoverChange = useCallback(
+    (patch: CoverPatch): void => {
+      onChange({
+        coverMediaUrl: patch.coverMediaUrl,
+        coverMediaType: patch.coverMediaType,
+      });
+    },
+    [onChange],
+  );
+  const handleCoverToast = useCallback(
+    (msg: string): void => {
+      if (onShowToast !== undefined) onShowToast(msg);
+    },
+    [onShowToast],
+  );
   const [pickerMode, setPickerMode] = useState<PickerMode>(null);
   const [tempPickerValue, setTempPickerValue] = useState<Date | null>(null);
 
@@ -346,6 +383,28 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
           accessibilityLabel="Trip capacity"
           style={styles.textInput}
           testID="trip-step1-capacity"
+        />
+      </View>
+
+      {/* Cover (ORCH-0876 — shared CoverPicker; emits 7-field patch but
+          Step 1 persists url + type via updateTripBasics. EditPublishedTripScreen
+          handles the full 7-field patch via biz_update_live_trip.) */}
+      <View style={styles.fieldGroup}>
+        <Text style={styles.fieldLabel}>Cover</Text>
+        <CoverPicker
+          brandId={brandId}
+          eventRowId={tripEventId}
+          initialMediaUrl={draft.coverMediaUrl}
+          initialMediaType={draft.coverMediaType}
+          initialProvider={null}
+          initialSourceUrl={null}
+          initialCredit={null}
+          initialCreditUrl={null}
+          initialAlt={null}
+          onCoverChange={handleCoverChange}
+          onShowToast={handleCoverToast}
+          providers={["upload", "giphy", "pexels"]}
+          disabled={disabled}
         />
       </View>
 
