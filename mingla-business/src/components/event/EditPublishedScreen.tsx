@@ -1082,6 +1082,13 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
           },
         ]}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        // ORCH-0884 follow-up #4 — iOS auto-scroll focused TextInput above
+        // the keyboard so bottom fields aren't hidden. Complements the
+        // existing pendingScrollToBottomRef logic; auto-scroll handles the
+        // common case (tap any input) while scrollToBottom is the explicit
+        // fallback some onFocus handlers wire for the section's last input.
+        automaticallyAdjustKeyboardInsets
         showsVerticalScrollIndicator={false}
       >
         <EditAfterPublishBanner />

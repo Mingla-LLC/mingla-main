@@ -1232,6 +1232,13 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
           },
         ]}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        // ORCH-0884 follow-up #4 — iOS auto-scroll the focused TextInput
+        // above the keyboard so bottom fields (notes, ticket-tier inputs,
+        // pricing fields) aren't hidden when the keyboard appears. iOS
+        // 14+. The paddingBottom above provides scrollable headroom; this
+        // prop makes the scroll happen automatically on focus.
+        automaticallyAdjustKeyboardInsets
         showsVerticalScrollIndicator={false}
       >
         <EditAfterPublishTripBanner />
