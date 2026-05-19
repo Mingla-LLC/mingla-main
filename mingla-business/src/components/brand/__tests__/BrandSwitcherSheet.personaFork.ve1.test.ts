@@ -1,7 +1,8 @@
 /**
- * ORCH-0099 [Ve1] + Ve2 pool match — place persona and venue create routing.
+ * ORCH-0099 [Ve1 Physical Venue Brand Onboarding] — place persona enabled.
  *
- * Additive contract alongside ORCH-0855 personaFork.test.ts.
+ * Additive contract alongside ORCH-0855 personaFork.test.ts (SC-04 skipped there
+ * with [TEST-MOD-APPROVED ORCH-0099] once Ve1 ships).
  */
 
 import { describe, expect, test } from "@jest/globals";
@@ -22,12 +23,6 @@ describe("ORCH-0099 — BrandSwitcherSheet place persona (Ve1)", () => {
     expect(placeBlockMatch![1]).toBe("false");
     expect(sheetSource).toMatch(/openVenueCreateFromPool/);
     expect(sheetSource).toMatch(/\/venue\/create/);
-  });
-
-  test("Ve2 pool match search in persona mode", () => {
-    expect(sheetSource).toContain("usePoolMatchSearch");
-    expect(sheetSource).toContain("PoolMatchCard");
-    expect(sheetSource).toContain("venue-name-search-input");
   });
 
   test("imports expo-router useRouter for venue onboarding", () => {
