@@ -167,9 +167,26 @@ const ORCH_0824_PATCH_KEYS = new Set<keyof EditableLiveEventFields>([
   "address",
 ]);
 
+// ORCH-0877 Path B: keys whose patches now have a server-side mutation
+// path via the new `business_patch_event_when(uuid, jsonb, text, integer)`
+// RPC. When the patch touches ONLY these (or these + cover media + ORCH-0824
+// fields), the `disableLocalSaveReason` gate is lifted because the server
+// side IS reachable. Closes the ORCH-0704 v2 Zustand-only save gap that
+// silently kept post-publish When edits off buyers' phones.
+const ORCH_0877_WHEN_PATCH_KEYS = new Set<keyof EditableLiveEventFields>([
+  "whenMode",
+  "date",
+  "doorsOpen",
+  "endsAt",
+  "timezone",
+  "recurrenceRule",
+  "multiDates",
+]);
+
 const SERVER_EDITABLE_PATCH_KEYS = new Set<keyof EditableLiveEventFields>([
   ...COVER_MEDIA_PATCH_KEYS,
   ...ORCH_0824_PATCH_KEYS,
+  ...ORCH_0877_WHEN_PATCH_KEYS,
 ]);
 
 const sleep = (ms: number): Promise<void> =>
@@ -755,37 +772,12 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         }
       }
 
-      // ORCH-0824 hotfix: unified early-return for server-editable-only
-      // patches when the local Zustand event isn't available
-      // (disableLocalSaveReason is set when liveEvent === null at the
-      // route layer, i.e., the user is editing a server-loaded event).
-      // Both cover-media and ORCH-0824 taxonomy/city have completed
-      // server-side at this point; the local updateLiveEventFields would
-      // fail with `event_not_found` because there's no Zustand row to
-      // mutate. Skip it cleanly with a success toast + navigate.
-      if (
-        disableLocalSaveReason !== undefined &&
-        isServerEditableOnlyPatch(patch)
-      ) {
-        invalidateServerEventCaches();
-        setSubmitting(false);
-        setModal((prev) => ({ ...prev, visible: false }));
-        showToast("Saved. Live now.");
-        setTimeout(() => {
-          if (router.canGoBack()) {
-            router.back();
-          } else {
-            // orch-strict-grep-allow route-by-event-type — EditPublishedScreen.tsx edits events only; liveEvent.id is always an event id (ORCH-0859 [Tr2] REWORK 5b)
-            router.replace(`/event/${liveEvent.id}` as never);
-          }
-        }, TOAST_NAV_DELAY_MS);
-        return;
-      }
-
       // ORCH-0877 (Path B) — When-section edits route through the new
-      // `business_patch_event_when` RPC BEFORE the local Zustand mutation
-      // so the server-side event_dates row is rewritten and buyers see
-      // the corrected times. Closes the ORCH-0704 v2 Zustand-only gap.
+      // `business_patch_event_when` RPC BEFORE both the unified server-
+      // editable early-return AND the local Zustand mutation, so the
+      // server-side event_dates row is rewritten and buyers see the
+      // corrected times. Mirrors the placement of cover-media + ORCH-0824
+      // taxonomy blocks above. Closes the ORCH-0704 v2 Zustand-only gap.
       // Server-success-then-local pattern: RPC failure aborts; local
       // updateLiveEventFields runs only after the server commit succeeds
       // so the audit log + notification stack stay in sync with the DB.
@@ -872,6 +864,34 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
           showToast(message);
           return;
         }
+      }
+
+      // ORCH-0824 hotfix: unified early-return for server-editable-only
+      // patches when the local Zustand event isn't available
+      // (disableLocalSaveReason is set when liveEvent === null at the
+      // route layer, i.e., the user is editing a server-loaded event).
+      // Cover-media, ORCH-0824 taxonomy/city, AND ORCH-0877 Path B When-
+      // section RPC have all completed server-side at this point; the
+      // local updateLiveEventFields would fail with `event_not_found`
+      // because there's no Zustand row to mutate. Skip it cleanly with a
+      // success toast + navigate.
+      if (
+        disableLocalSaveReason !== undefined &&
+        isServerEditableOnlyPatch(patch)
+      ) {
+        invalidateServerEventCaches();
+        setSubmitting(false);
+        setModal((prev) => ({ ...prev, visible: false }));
+        showToast("Saved. Live now.");
+        setTimeout(() => {
+          if (router.canGoBack()) {
+            router.back();
+          } else {
+            // orch-strict-grep-allow route-by-event-type — EditPublishedScreen.tsx edits events only; liveEvent.id is always an event id (ORCH-0859 [Tr2] REWORK 5b)
+            router.replace(`/event/${liveEvent.id}` as never);
+          }
+        }, TOAST_NAV_DELAY_MS);
+        return;
       }
 
       const result = updateLiveEventFields(
