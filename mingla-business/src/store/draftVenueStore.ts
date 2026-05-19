@@ -8,6 +8,8 @@ import type { BrandHourEntry, VenueCategory } from "../types/brand";
 import { defaultBrandHoursWeek } from "../utils/venueBrandHours";
 
 export interface DraftVenueState {
+  /** Ve2 — set when operator accepts a pool match card */
+  placePoolId: string | null;
   /** Business / venue name typed at the place_pool gate */
   workingName: string;
   venueCategory: VenueCategory | null;
@@ -28,6 +30,7 @@ export interface DraftVenueState {
 }
 
 const initial: DraftVenueState = {
+  placePoolId: null,
   workingName: "",
   venueCategory: null,
   displayName: "",

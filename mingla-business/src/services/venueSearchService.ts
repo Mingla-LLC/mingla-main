@@ -1,6 +1,6 @@
 /**
- * Ve1 — detect whether a typed venue name likely exists in consumer place_pool.
- * Ve2 will own fuzzy match / claim UX; Ve1 only needs a coarse gate for the fork.
+ * Ve1 legacy — boolean place_pool name probe (biz_place_pool_name_contains).
+ * Ve2 claim UX uses poolSearchService + claim-search-pool instead.
  */
 
 import { supabase } from "./supabase";
