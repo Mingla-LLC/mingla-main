@@ -17,8 +17,15 @@
 
 import React, { useCallback, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import {
-  NestableDraggableFlatList,
+// ORCH-0884 follow-up #2: switched from NestableDraggableFlatList to
+// standalone DraggableFlatList. The wizard wraps Step 6 in a plain
+// ScrollView (TripCreatorWizard.tsx:898) which is NOT a
+// NestableScrollContainer, so NestableDraggableFlatList crashes here
+// with `useSafeNestableScrollContainerContext must be called within a
+// NestableScrollContainerContext.Provider`. Standalone DraggableFlatList
+// has no Provider dependency. List is bounded at MAX_QUESTIONS=20, so
+// virtualization overhead inside the outer ScrollView is negligible.
+import DraggableFlatList, {
   type RenderItemParams,
 } from "react-native-draggable-flatlist";
 
@@ -241,11 +248,12 @@ export const IntakeSchemaBuilder: React.FC<IntakeSchemaBuilderProps> = ({
           you need.
         </Text>
       ) : (
-        <NestableDraggableFlatList
+        <DraggableFlatList
           data={questions}
           keyExtractor={(item) => item.id}
           onDragEnd={handleDragEnd}
           activationDistance={8}
+          scrollEnabled={false}
           renderItem={({
             item,
             drag,

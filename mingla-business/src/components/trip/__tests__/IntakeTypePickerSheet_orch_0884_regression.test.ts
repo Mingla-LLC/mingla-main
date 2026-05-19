@@ -112,3 +112,86 @@ describe("ORCH-0884 Fix B — IntakeTypePickerSheet snap height", () => {
     expect(src).toMatch(/<\/ScrollView>/);
   });
 });
+
+describe("ORCH-0884 follow-up #2 — Nestable* primitives swapped for standalone variants", () => {
+  test("IntakeSchemaBuilder uses standalone DraggableFlatList, not NestableDraggableFlatList", () => {
+    const src = readFileSync(SCHEMA_BUILDER_PATH, "utf8");
+    // The wizard wraps Step 6 in a plain ScrollView, NOT a
+    // NestableScrollContainer. Using NestableDraggableFlatList crashes at
+    // runtime with `useSafeNestableScrollContainerContext must be called
+    // within a NestableScrollContainerContext.Provider`. Standalone
+    // DraggableFlatList has no Provider dependency.
+    expect(src).toMatch(
+      /import DraggableFlatList,\s*\{[\s\S]*?\}\s*from\s*["']react-native-draggable-flatlist["']/,
+    );
+    // The element itself must be DraggableFlatList, not NestableDraggableFlatList.
+    // Comment mentions of "NestableDraggableFlatList" are allowed (history),
+    // but the JSX element MUST be the standalone variant.
+    expect(src).not.toMatch(/<NestableDraggableFlatList/);
+    expect(src).toMatch(/<DraggableFlatList[\s\S]*?scrollEnabled=\{false\}/);
+  });
+
+  test("IntakeQuestionEditor uses ScrollView + standalone DraggableFlatList, not Nestable*", () => {
+    const editorPath = path.join(
+      __dirname,
+      "..",
+      "IntakeQuestionEditor.tsx",
+    );
+    const src = readFileSync(editorPath, "utf8");
+    // Nestable* JSX elements MUST NOT appear (comments still allowed).
+    expect(src).not.toMatch(/<NestableScrollContainer/);
+    expect(src).not.toMatch(/<NestableDraggableFlatList/);
+    // The sheet body must be wrapped in a regular ScrollView.
+    expect(src).toMatch(/<ScrollView[\s\S]*?keyboardShouldPersistTaps=["']handled["']/);
+    // ChoiceConfig must use standalone DraggableFlatList with scrollEnabled={false}.
+    expect(src).toMatch(/<DraggableFlatList[\s\S]*?scrollEnabled=\{false\}/);
+  });
+
+  test("Sheet primitive is keyboard-aware (slides panel up by keyboardHeight)", () => {
+    // Root fix: the Sheet primitive itself listens for Keyboard events and
+    // shifts the panel up (negative translateY) so its contents stay visible
+    // above the keyboard. Without this, EVERY Sheet with TextInputs has the
+    // keyboard-blocking bug (Giphy/Pexels search in BrandCoverPickerSheet
+    // was the operator-reported instance; placeholder hint in
+    // IntakeQuestionEditor was the other). Fixing once at the primitive
+    // level fixes ALL Sheet consumers.
+    const sheetPath = path.join(
+      __dirname,
+      "..",
+      "..",
+      "ui",
+      "Sheet.tsx",
+    );
+    const src = readFileSync(sheetPath, "utf8");
+    // Imports the Keyboard API.
+    expect(src).toMatch(/Keyboard,/);
+    // Registers a keyboard-show listener.
+    expect(src).toMatch(/Keyboard\.addListener\(\s*showEvent/);
+    // openY is computed as -keyboardHeight (panel slides UP by keyboard height).
+    expect(src).toMatch(/const\s+openY\s*=\s*-keyboardHeight/);
+    // sheetHeight clamps to available space above keyboard.
+    expect(src).toMatch(/availableHeight\s*=[\s\S]*?keyboardHeight/);
+  });
+
+  test("IntakeQuestionEditor applies Cycle 3 wizard root keyboard pattern", () => {
+    // Per feedback_keyboard_never_blocks_input.md: TextInputs inside a Sheet
+    // would be covered by the keyboard because Sheet primitive has no
+    // keyboard awareness. The editor MUST register keyboardWillShow /
+    // keyboardWillHide listeners and apply dynamic paddingBottom to its
+    // ScrollView's contentContainerStyle, mirroring TripCreatorWizard.tsx.
+    const editorPath = path.join(
+      __dirname,
+      "..",
+      "IntakeQuestionEditor.tsx",
+    );
+    const src = readFileSync(editorPath, "utf8");
+    // Imports the Keyboard API from react-native.
+    expect(src).toMatch(/import[\s\S]*?Keyboard[\s\S]*?from\s*["']react-native["']/);
+    // Registers a keyboard-show listener (keyboardWillShow on iOS).
+    expect(src).toMatch(/Keyboard\.addListener\(\s*showEvent/);
+    // Applies dynamic paddingBottom on the ScrollView contentContainerStyle.
+    expect(src).toMatch(
+      /keyboardHeight\s*>\s*0\s*\?\s*\{\s*paddingBottom:\s*keyboardHeight\s*\}/,
+    );
+  });
+});
