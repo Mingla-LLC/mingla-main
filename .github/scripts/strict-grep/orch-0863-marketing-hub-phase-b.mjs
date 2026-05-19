@@ -306,11 +306,31 @@ function checkNoNewBackendFiles() {
     "supabase/migrations/20260613000000_ve1_physical_venue_brand_onboarding.sql",
     "supabase/migrations/20260614000000_ve1_pr_review_hardening.sql",
   ];
+  // ORCH-0877 [Event end-time display + midnight-crossing single-day authoring]
+  // PR #136 (2026-05-19). C7 is scoped to ORCH-0863 marketing; these backend
+  // touches are end-time + cross-midnight + ICS Constitution #9 fix scope.
+  const ORCH_0877_BACKEND_ALLOWLIST = [
+    "supabase/functions/_shared/dateTimeSplit.ts",
+    "supabase/functions/_shared/email/__tests__/calendar.test.ts",
+    "supabase/functions/_shared/email/__tests__/dateLine.test.ts",
+    "supabase/functions/_shared/email/calendar.ts",
+    "supabase/functions/_shared/email/dateLine.ts",
+    "supabase/functions/_shared/email/ticketBody.ts",
+    "supabase/functions/_shared/email/types.ts",
+    "supabase/functions/_shared/marketingEmailRender.ts",
+    "supabase/functions/_shared/ticketPdf.ts",
+    "supabase/functions/discover-merged-events/index.ts",
+    "supabase/functions/marketing-send/index.ts",
+    "supabase/functions/ticket-confirmation-dispatch/index.ts",
+    "supabase/functions/ticket-pdf-fetch/index.ts",
+    "supabase/migrations/20260615000000_orch_0877_patch_event_when_rpc.sql",
+  ];
   const ALLOWLIST = [
     ...ORCH_0859_BUNDLED_ALLOWLIST,
     ...ORCH_0869_BACKEND_ALLOWLIST,
     ...ORCH_0875_BACKEND_ALLOWLIST,
     ...ORCH_0099_VE1_BACKEND_ALLOWLIST,
+    ...ORCH_0877_BACKEND_ALLOWLIST,
   ];
   const forbidden = changed.filter(
     (p) =>
