@@ -47,6 +47,13 @@ import { TripManageMenu } from "../../../src/components/trip/TripManageMenu";
 import { Button } from "../../../src/components/ui/Button";
 import { useTrip, useSoftDeleteTrip } from "../../../src/hooks/useTrips";
 import { useTripOrders } from "../../../src/hooks/useTripOrders";
+// ORCH-0880 [Tr5 Traveler Intake Forms] — Travelers tab card extension.
+import { useTripIntakeSchemasByEvent } from "../../../src/hooks/useIntakeSchema";
+import {
+  TravelerIntakeAnswerCard,
+  TravelerTierChip,
+} from "../../../src/components/trip/TravelerIntakeAnswerCard";
+import type { IntakeAnswerValue } from "../../../src/services/intakeSchemaService";
 // ORCH-0873 [Tr3 Stage 2 UI] — Money tab data.
 import {
   useInstallmentsForBrandTrips,
@@ -90,6 +97,13 @@ export default function TripDashboardRoute(): React.ReactElement {
 
   const tripQuery = useTrip(typeof eventId === "string" ? eventId : null);
   const ordersQuery = useTripOrders(typeof eventId === "string" ? eventId : null);
+  // ORCH-0880 [Tr5 Traveler Intake Forms] — per-tier intake schemas for the
+  // Travelers tab card extension. Empty Map when no schemas exist; the card
+  // gracefully renders nothing in that case.
+  const intakeSchemasQuery = useTripIntakeSchemasByEvent(
+    typeof eventId === "string" ? eventId : "",
+    { enabled: typeof eventId === "string" },
+  );
   // ORCH-0873 [Tr3 Stage 2 UI] — Money tab installment ledger.
   const brandId = tripQuery.data?.brandId ?? null;
   const [moneyFilter, setMoneyFilter] = useState<MoneyFilter>("all");
@@ -466,24 +480,63 @@ export default function TripDashboardRoute(): React.ReactElement {
                 </Text>
               </View>
             ) : (
-              (ordersQuery.data ?? []).map((o) => (
-                <View key={o.id} style={styles.travelerRow}>
-                  <View style={styles.travelerTextCol}>
-                    <Text style={styles.travelerName}>
-                      {o.buyerName ?? o.buyerEmail ?? "Anonymous"}
-                    </Text>
-                    {o.buyerEmail !== null ? (
-                      <Text style={styles.travelerEmail}>{o.buyerEmail}</Text>
-                    ) : null}
+              (ordersQuery.data ?? []).map((o) => {
+                // ORCH-0880 [Tr5 Traveler Intake Forms] — resolve schema +
+                // answers per traveler. Each order's intake_form_data is an
+                // array (one entry per tier the buyer purchased; first entry
+                // wins for the per-traveler card since orders today =
+                // 1 traveler 1 tier in the typical case). Tier chip hides
+                // when trip has only 1 ticket tier.
+                const intakeArray = Array.isArray(o.intakeFormData)
+                  ? (o.intakeFormData as Array<{
+                      ticket_type_id?: string;
+                      schema_version_id?: string;
+                      answers?: Record<string, IntakeAnswerValue>;
+                    }>)
+                  : [];
+                const intakeEntry = intakeArray[0] ?? null;
+                const ticketTypeId = intakeEntry?.ticket_type_id ?? null;
+                const intakeSchema =
+                  ticketTypeId !== null && intakeSchemasQuery.data !== undefined
+                    ? intakeSchemasQuery.data.get(ticketTypeId) ?? null
+                    : null;
+                const tier =
+                  ticketTypeId !== null
+                    ? trip.pricingTiers.find(
+                        (t) => t.ticketTypeId === ticketTypeId,
+                      ) ?? null
+                    : null;
+                const tierChipHidden = trip.pricingTiers.length <= 1;
+                return (
+                  <View key={o.id} style={styles.travelerRow}>
+                    <View style={styles.travelerTextCol}>
+                      <Text style={styles.travelerName}>
+                        {o.buyerName ?? o.buyerEmail ?? "Anonymous"}
+                      </Text>
+                      {o.buyerEmail !== null ? (
+                        <Text style={styles.travelerEmail}>{o.buyerEmail}</Text>
+                      ) : null}
+                      {/* ORCH-0880 — collapsible intake-form-answers section. */}
+                      <TravelerIntakeAnswerCard
+                        schema={intakeSchema}
+                        answers={intakeEntry?.answers ?? null}
+                      />
+                    </View>
+                    <View style={styles.travelerMeta}>
+                      {tier !== null && !tierChipHidden ? (
+                        <TravelerTierChip
+                          tierName={tier.tierName}
+                          hidden={tierChipHidden}
+                        />
+                      ) : null}
+                      <Text style={styles.travelerStatus}>{o.paymentStatus}</Text>
+                      <Text style={styles.travelerAmount}>
+                        {formatCurrency(o.totalCents, o.currency)}
+                      </Text>
+                    </View>
                   </View>
-                  <View style={styles.travelerMeta}>
-                    <Text style={styles.travelerStatus}>{o.paymentStatus}</Text>
-                    <Text style={styles.travelerAmount}>
-                      {formatCurrency(o.totalCents, o.currency)}
-                    </Text>
-                  </View>
-                </View>
-              ))
+                );
+              })
             )}
           </>
         ) : (

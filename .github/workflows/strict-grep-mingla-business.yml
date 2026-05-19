@@ -1255,3 +1255,36 @@ jobs:
           node-version: "20"
       - name: Run ORCH-0875 refund-cascade-monotonicity gate
         run: node .github/scripts/strict-grep/i-proposed-tr4-refund-cascade-monotonicity.mjs
+
+  i-proposed-tr5-schema-valid-at-write:
+    name: "ORCH-0880 [Tr5]: intake schema writes flow through canonical service/RPC"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0880 schema-valid-at-write gate
+        run: node .github/scripts/strict-grep/i-proposed-tr5-schema-valid-at-write.mjs
+
+  i-proposed-tr5-required-blocks-checkout:
+    name: "ORCH-0880 [Tr5]: required intake questions block ticket-checkout-create"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0880 required-blocks-checkout gate
+        run: node .github/scripts/strict-grep/i-proposed-tr5-required-blocks-checkout.mjs
+
+  i-proposed-tr5-file-rls-anon-write-planner-read:
+    name: "ORCH-0880 [Tr5]: trip_intake_files bucket RLS policies present"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0880 file-rls-anon-write-planner-read gate
+        run: node .github/scripts/strict-grep/i-proposed-tr5-file-rls-anon-write-planner-read.mjs

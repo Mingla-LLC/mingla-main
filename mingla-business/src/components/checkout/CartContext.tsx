@@ -101,6 +101,16 @@ export interface CartState {
   buyer: BuyerDetails;
   /** Populated by Cycle 8b after stub Stripe / free-skip path. */
   result: OrderResult | null;
+  /**
+   * ORCH-0880 [Tr5 Traveler Intake Forms] — per-tier intake answers keyed by
+   * `ticket_type_id`. Populated by the intake route between buyer and
+   * payment when the trip has intake schemas. Each entry persists
+   * `{ ticket_type_id, schema_version_id, answers }` per
+   * `intakeSchemaService.IntakeFormData`. Stored as a plain Record so the
+   * value is JSON-serialisable (multi-tier carts can hold one entry per
+   * tier). Cleared by RESET; otherwise lives for the cart lifetime.
+   */
+  intakeFormData: Record<string, unknown>;
 }
 
 // ---- Reducer --------------------------------------------------------
@@ -118,6 +128,8 @@ type CartAction =
     }
   | { type: "SET_BUYER"; patch: Partial<BuyerDetails> }
   | { type: "RECORD_RESULT"; result: OrderResult }
+  | { type: "SET_INTAKE_TIER"; ticketTypeId: string; data: unknown }
+  | { type: "CLEAR_INTAKE_TIER"; ticketTypeId: string }
   | { type: "RESET" };
 
 const EMPTY_BUYER: BuyerDetails = {
@@ -131,6 +143,7 @@ const INITIAL_STATE: CartState = {
   lines: [],
   buyer: EMPTY_BUYER,
   result: null,
+  intakeFormData: {},
 };
 
 const reducer = (state: CartState, action: CartAction): CartState => {
@@ -184,6 +197,19 @@ const reducer = (state: CartState, action: CartAction): CartState => {
       return { ...state, buyer: { ...state.buyer, ...action.patch } };
     case "RECORD_RESULT":
       return { ...state, result: action.result };
+    case "SET_INTAKE_TIER":
+      return {
+        ...state,
+        intakeFormData: {
+          ...state.intakeFormData,
+          [action.ticketTypeId]: action.data,
+        },
+      };
+    case "CLEAR_INTAKE_TIER": {
+      const next = { ...state.intakeFormData };
+      delete next[action.ticketTypeId];
+      return { ...state, intakeFormData: next };
+    }
     case "RESET":
       return INITIAL_STATE;
     default: {
@@ -207,6 +233,14 @@ export interface CartContextValue extends CartState {
   }) => void;
   setBuyer: (patch: Partial<BuyerDetails>) => void;
   recordResult: (result: OrderResult) => void;
+  /**
+   * ORCH-0880 [Tr5 Traveler Intake Forms] — save/replace one tier's intake
+   * form payload. `data` should be an `IntakeFormData` per
+   * intakeSchemaService (typed as `unknown` here to avoid a circular
+   * import; consumers should pass the typed value).
+   */
+  setIntakeTierData: (ticketTypeId: string, data: unknown) => void;
+  clearIntakeTierData: (ticketTypeId: string) => void;
   reset: () => void;
 }
 
@@ -242,6 +276,17 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
     dispatch({ type: "RECORD_RESULT", result });
   }, []);
 
+  // ORCH-0880 [Tr5 Traveler Intake Forms] — per-tier intake answer setters.
+  const setIntakeTierData = useCallback(
+    (ticketTypeId: string, data: unknown): void => {
+      dispatch({ type: "SET_INTAKE_TIER", ticketTypeId, data });
+    },
+    [],
+  );
+  const clearIntakeTierData = useCallback((ticketTypeId: string): void => {
+    dispatch({ type: "CLEAR_INTAKE_TIER", ticketTypeId });
+  }, []);
+
   const reset = useCallback((): void => {
     dispatch({ type: "RESET" });
   }, []);
@@ -252,9 +297,19 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
       setLineQuantity,
       setBuyer,
       recordResult,
+      setIntakeTierData,
+      clearIntakeTierData,
       reset,
     }),
-    [state, setLineQuantity, setBuyer, recordResult, reset],
+    [
+      state,
+      setLineQuantity,
+      setBuyer,
+      recordResult,
+      setIntakeTierData,
+      clearIntakeTierData,
+      reset,
+    ],
   );
 
   return <CartCtx.Provider value={value}>{children}</CartCtx.Provider>;

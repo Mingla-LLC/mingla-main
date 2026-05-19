@@ -42,6 +42,30 @@ function isCheckoutLine(value: unknown): value is CheckoutLine {
   );
 }
 
+// ORCH-0880 [Tr5 Traveler Intake Forms] — answer-empty predicate. Mirror of
+// `intakeSchemaService.isAnswerEmpty` in `mingla-business/src/services/`.
+// Per Constitution #13 (exclusion consistency) the answer-empty rule MUST
+// behave identically in DB (validate_trip_intake_schema) + client validator +
+// edge fn (this) so all 3 layers agree on what "missing required answer"
+// means.
+function isIntakeAnswerEmpty(type: string, answer: unknown): boolean {
+  if (answer === undefined || answer === null) return true;
+  switch (type) {
+    case "short_text":
+    case "long_text":
+    case "single_choice":
+    case "date":
+    case "number":
+      return typeof answer !== "string" || answer.trim().length === 0;
+    case "multi_choice":
+      return !Array.isArray(answer) || answer.length === 0;
+    case "file_upload":
+      return !Array.isArray(answer) || answer.length === 0;
+    default:
+      return true;
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: ticketCorsHeaders });
   if (req.method !== "POST") return jsonResponse({ error: "method_not_allowed" }, 405);
@@ -135,6 +159,100 @@ serve(async (req) => {
       },
       403,
     );
+  }
+
+  // ORCH-0880 [Tr5 Traveler Intake Forms] — per-tier intake gate.
+  // I-PROPOSED-TR5-INTAKE-REQUIRED-BLOCKS-CHECKOUT (DRAFT) — for each tier
+  // in the buyer's cart, look up trip_intake_schemas. If a tier has schema
+  // with ≥1 required question, the body MUST include intake_form_data for
+  // that tier with all required questions answered AND a schema_version_id
+  // matching the current row.
+  // Body shape per SPEC §15.4 + intakeSchemaService.IntakeFormData:
+  //   intake_form_data: [
+  //     { ticket_type_id, schema_version_id, answers: {[questionId]: value} }
+  //   ]
+  // Trip-only effect; single-event flow unchanged (no event-side intake forms).
+  if (tripGateRow?.event_type === "trip") {
+    const intakeBody = Array.isArray(body.intake_form_data)
+      ? (body.intake_form_data as Array<Record<string, unknown>>)
+      : [];
+
+    // Pull schemas for every ticket_type_id present in the cart.
+    const ticketTypeIds = Array.from(
+      new Set(lines.map((line) => line.ticketTypeId)),
+    );
+    if (ticketTypeIds.length > 0) {
+      const { data: schemaRows, error: schemaErr } = await supabase
+        .from("trip_intake_schemas")
+        .select("ticket_type_id, schema, schema_version_id")
+        .eq("event_id", eventId)
+        .in("ticket_type_id", ticketTypeIds);
+      if (schemaErr !== null) {
+        console.error("[ticket-checkout-create] intake schema lookup failed", schemaErr);
+        return jsonResponse(
+          { error: "intake_schema_lookup_failed", detail: schemaErr.message },
+          500,
+        );
+      }
+
+      for (const row of schemaRows ?? []) {
+        const schema = row.schema as
+          | { questions?: Array<{ id?: string; type?: string; required?: boolean }> }
+          | null;
+        const schemaVersionId = row.schema_version_id as string;
+        const ticketTypeId = row.ticket_type_id as string;
+        if (schema === null || !Array.isArray(schema.questions)) continue;
+
+        const requiredQuestionIds = schema.questions
+          .filter((q) => q.required === true && typeof q.id === "string")
+          .map((q) => q.id as string);
+
+        const submitted = intakeBody.find(
+          (entry) => entry.ticket_type_id === ticketTypeId,
+        ) as
+          | { schema_version_id?: string; answers?: Record<string, unknown> }
+          | undefined;
+
+        // Required gate: if schema has required questions, body MUST contain
+        // intake_form_data for this tier with all required questions answered.
+        if (requiredQuestionIds.length > 0) {
+          const answers = submitted?.answers ?? {};
+          const missingIds: string[] = [];
+          for (const q of schema.questions) {
+            if (q.required !== true || typeof q.id !== "string") continue;
+            const value = answers[q.id];
+            if (isIntakeAnswerEmpty(q.type ?? "", value)) {
+              missingIds.push(q.id);
+            }
+          }
+          if (missingIds.length > 0) {
+            return jsonResponse(
+              {
+                error: "intake_form_required",
+                ticket_type_id: ticketTypeId,
+                missing_question_ids: missingIds,
+              },
+              400,
+            );
+          }
+        }
+
+        // Schema-version freshness check: if buyer submitted intake_form_data
+        // for this tier, the schema_version_id MUST match the current row
+        // (planner may have edited schema mid-checkout, invalidating answers).
+        if (submitted !== undefined && submitted.schema_version_id !== schemaVersionId) {
+          return jsonResponse(
+            {
+              error: "intake_schema_stale",
+              ticket_type_id: ticketTypeId,
+              current_schema_version_id: schemaVersionId,
+              submitted_schema_version_id: submitted.schema_version_id ?? null,
+            },
+            409,
+          );
+        }
+      }
+    }
   }
 
   const idempotencyKey =

@@ -354,6 +354,23 @@ function checkNoNewBackendFiles() {
   const ORCH_0879_BACKEND_ALLOWLIST = [
     "supabase/migrations/20260617000000_orch_0879_anon_brand_cover_grant.sql",
   ];
+  // ORCH-0880 [Tr5 Traveler Intake Forms] CLOSE PR #TBD (2026-05-19+).
+  // Same scoping rationale as prior allowlists: these backend touches are
+  // ORCH-0880 intake-form scope, not ORCH-0863 marketing scope. Phase 1 ships
+  // the migration + 3 modified edge fn touches; Phase 2 adds the new
+  // trip-intake-upload-signed-url edge function (deferred-with-tests to a
+  // later phase). cron-purge-canceled-intake-data deferred to ORCH-0881
+  // follow-up per Phase 1 scope decision.
+  const ORCH_0880_BACKEND_ALLOWLIST = [
+    "supabase/functions/_shared/email/buyerLifecycleAdapters.ts",
+    "supabase/functions/ticket-checkout-create/index.ts",
+    "supabase/functions/ticket-confirmation-dispatch/index.ts",
+    "supabase/functions/trip-intake-upload-signed-url/index.ts",
+    "supabase/functions/trip-intake-upload-signed-url/__tests__/contract_invariants.test.ts",
+    "supabase/functions/trip-intake-upload-signed-url/__tests__/adversarial_security.test.ts",
+    "supabase/migrations/20260620000000_orch_0880_tr5_traveler_intake_forms.sql",
+    "supabase/migrations/20260621000000_orch_0880_phase2_intake_re_answer_trigger.sql",
+  ];
   const ALLOWLIST = [
     ...ORCH_0859_BUNDLED_ALLOWLIST,
     ...ORCH_0869_BACKEND_ALLOWLIST,
@@ -363,6 +380,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_0877_BACKEND_ALLOWLIST,
     ...ORCH_0876_BACKEND_ALLOWLIST,
     ...ORCH_0879_BACKEND_ALLOWLIST,
+    ...ORCH_0880_BACKEND_ALLOWLIST,
   ];
   const forbidden = changed.filter(
     (p) =>

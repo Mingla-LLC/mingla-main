@@ -90,6 +90,14 @@ export const KNOWN_STATIC_SLUGS: readonly string[] = [
   // row) and process-booking-deadlines cron (per auto-close batch).
   "trip_booking_cancelled",
   "bookings_auto_closed_by_cron",
+  // ORCH-0880 [Tr5 Traveler Intake Forms] — per-tier intake schema edit +
+  // re-answer notification dispatch + 30d GDPR purge cron audit slugs.
+  // Emitted by biz_update_live_trip extension (schema edits) + cron-purge-
+  // canceled-intake-data (deferred to ORCH-0881 follow-up per Phase 1 scope)
+  // + ticket-confirmation-dispatch (re-answer notification fan-out).
+  "trip_intake_schema_edited",
+  "intake_form_data_purged",
+  "buyer_intake_form_re_answer_required",
 ];
 
 const humanizeSlug = (slug: string): string => {
@@ -285,6 +293,28 @@ export const resolveAuditActionLabel = (action: string): AuditActionLabel => {
         detail: "Trip's booking deadline passed; hourly cron flipped bookings_closed=true.",
         category: "ops",
         iconHint: "settings",
+      };
+    // ORCH-0880 [Tr5 Traveler Intake Forms] — schema edit + purge + re-answer.
+    case "trip_intake_schema_edited":
+      return {
+        title: "Intake form edited",
+        detail: "Planner edited a tier's traveler intake form schema on a published trip; affected travelers asked to re-answer.",
+        category: "orders",
+        iconHint: "ticket",
+      };
+    case "intake_form_data_purged":
+      return {
+        title: "Intake answers purged",
+        detail: "30-day post-cancel GDPR-style retention window expired; canceled-order intake answers + uploaded files removed.",
+        category: "ops",
+        iconHint: "shield",
+      };
+    case "buyer_intake_form_re_answer_required":
+      return {
+        title: "Re-answer requested",
+        detail: "Schema change on a tier with existing answers triggered re-answer notification to affected travelers.",
+        category: "orders",
+        iconHint: "ticket",
       };
   }
 

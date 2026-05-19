@@ -75,8 +75,21 @@ export default function CheckoutTripPaymentScreen(): React.ReactElement {
 
   const publicTripQuery = usePublicTripById(tripEventId);
   const trip = publicTripQuery.data?.trip ?? null;
-  const { lines, buyer, setLineQuantity, setBuyer } = useCart();
+  const { lines, buyer, intakeFormData, setLineQuantity, setBuyer } = useCart();
   const totals = useCartTotals();
+
+  // ORCH-0880 [Tr5 Traveler Intake Forms] — flatten per-tier intake answers
+  // (keyed by ticket_type_id in CartContext) into the array shape expected
+  // by ticket-checkout-create. Empty when buyer is purchasing tiers without
+  // schemas OR when the intake step hasn't run yet.
+  const intakeFormDataArray: unknown[] = React.useMemo(() => {
+    const out: unknown[] = [];
+    for (const ticketTypeId of Object.keys(intakeFormData)) {
+      const entry = intakeFormData[ticketTypeId];
+      if (entry !== undefined && entry !== null) out.push(entry);
+    }
+    return out;
+  }, [intakeFormData]);
 
   // Web Stripe-cancel-return sessionStorage restore (mirror ORCH-0789/0790).
   const [restoreChecked, setRestoreChecked] = useState<boolean>(
@@ -204,6 +217,14 @@ export default function CheckoutTripPaymentScreen(): React.ReactElement {
           buyer,
           lines,
           surface,
+          // ORCH-0880 [Tr5 Traveler Intake Forms] — per-tier intake answers
+          // gathered by /checkout-trip/[tripEventId]/intake.tsx and stored
+          // in CartContext. Edge fn gates HTTP 400 intake_form_required +
+          // 409 intake_schema_stale; on stale, payment.tsx surfaces a Toast
+          // + routes back to /intake (rare — schema rarely changes mid-pay).
+          ...(intakeFormDataArray.length > 0
+            ? { intakeFormData: intakeFormDataArray }
+            : {}),
         });
         if (checkout.kind !== "requires_web_redirect") {
           throw new Error("Hosted checkout did not return a redirect URL.");

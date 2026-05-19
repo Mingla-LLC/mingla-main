@@ -47,6 +47,8 @@ import { renderInstallmentDunningEmail } from "../_shared/email/installmentDunni
 import { renderInstallmentPlanPaidInFullEmail } from "../_shared/email/installmentPlanPaidInFullEmail.ts";
 import {
   type BuyerContext,
+  intakeFormReAnswerRequiredToGenericBody,
+  type IntakeFormReAnswerRequiredPayloadShape,
   orderCancelledToGenericBody,
   type OrderCancelledPayloadShape,
   refundIssuedToGenericBody,
@@ -906,6 +908,51 @@ serve(async (req) => {
           subject: cancelEmail.subject,
           html: cancelEmail.html,
           text: cancelEmail.text,
+          attachments: [],
+        });
+        await supabase.from("ticket_order_notifications").update({
+          status: "sent",
+          provider: "resend",
+          provider_message_id: sent.id,
+          sent_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }).eq("id", notification.id);
+        outcomes.push({ channel: notification.channel, status: "sent", templateKey });
+      } else if (templateKey === "buyer_intake_form_re_answer_required") {
+        // ORCH-0880 [Tr5 Traveler Intake Forms] — re-answer notification via
+        // generic_notification adapter. Email-only in v1 (push deferred to a
+        // follow-up once push token plumbing for anon buyers exists).
+        // Triggered by the `tg_trip_intake_schemas_re_answer_dispatch` trigger
+        // after planner edits a published-trip tier's schema in a way that
+        // changes question shape; the trigger INSERTs a ticket_order_
+        // notifications row per affected order which this dispatcher then
+        // delivers via the standard ORCH-0788 retry-cron loop.
+        if (notification.channel !== "email") {
+          await supabase.from("ticket_order_notifications").update({
+            status: "skipped",
+            last_error: "channel_not_supported_for_template",
+            updated_at: new Date().toISOString(),
+          }).eq("id", notification.id);
+          outcomes.push({ channel: notification.channel, status: "skipped", templateKey });
+          continue;
+        }
+        const reAnswerBody = intakeFormReAnswerRequiredToGenericBody(
+          rawPayload as unknown as IntakeFormReAnswerRequiredPayloadShape,
+          buyerContext,
+        );
+        const reAnswerEmail = renderTransactionalEmail({
+          variant: "generic_notification",
+          recipient: { name: order.buyer_name, email: order.buyer_email ?? "" },
+          body: reAnswerBody,
+          sender: EMAIL_SENDERS.tickets,
+        });
+        assertNotResendSandbox(reAnswerEmail.from);
+        const sent = await sendResendEmailWithAttachment({
+          from: formatSenderHeader(reAnswerEmail.from),
+          to: notification.recipient,
+          subject: reAnswerEmail.subject,
+          html: reAnswerEmail.html,
+          text: reAnswerEmail.text,
           attachments: [],
         });
         await supabase.from("ticket_order_notifications").update({

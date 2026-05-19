@@ -19,6 +19,21 @@ export interface TicketCheckoutCreateInput {
    *    mingla-business:// return-URL custom scheme.
    */
   surface?: "native" | "web" | "mobile-web";
+  /**
+   * ORCH-0880 [Tr5 Traveler Intake Forms] — per-tier intake answers when the
+   * trip has intake schemas. One entry per tier in the cart that has a schema
+   * with ≥1 required question; the edge function gates HTTP 400
+   * `intake_form_required` (with `missing_question_ids`) and HTTP 409
+   * `intake_schema_stale` (with `current_schema_version_id`).
+   *
+   * Shape mirrors `intakeSchemaService.IntakeFormData`:
+   *   { ticket_type_id, schema_version_id, answers: {[questionId]: value} }
+   *
+   * Typed as `unknown[]` here to avoid a service↔service circular import;
+   * callers pass typed `IntakeFormData[]`. Omitting is safe for events +
+   * trips without schemas.
+   */
+  intakeFormData?: unknown[];
 }
 
 export interface TicketCheckoutRequiresPayment {
@@ -118,6 +133,13 @@ export const createTicketCheckout = async (
     // ORCH-0790: omit surface when undefined so the edge function applies its
     // own "native" default — older mobile builds never send this field.
     ...(input.surface !== undefined ? { surface: input.surface } : {}),
+    // ORCH-0880 [Tr5 Traveler Intake Forms]: forward per-tier intake answers
+    // when present. Edge function gates required-question completeness +
+    // schema-version freshness per Phase 2 ticket-checkout-create §164-256.
+    // Omit when empty so non-intake flows preserve byte-identical request shape.
+    ...(input.intakeFormData !== undefined && input.intakeFormData.length > 0
+      ? { intake_form_data: input.intakeFormData }
+      : {}),
   });
 
 export const getTicketCheckoutStatus = async (
