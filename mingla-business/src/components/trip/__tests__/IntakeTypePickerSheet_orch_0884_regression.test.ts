@@ -11,9 +11,19 @@
  *   (UNMOUNT_DELAY_MS=280ms). If the editor's Sheet is mounted with
  *   visible=true immediately, both Modals are competing at the OS root
  *   layer and the newer (editor) Modal gets visually blocked → app appears
- *   frozen → buyer never sees the editor. The fix wraps the setEditorState
- *   call in a setTimeout with a delay ≥ 280ms so the picker's Modal fully
- *   unmounts before the editor's Modal mounts.
+ *   frozen → buyer never sees the editor.
+ *
+ *   Initial Fix A used setTimeout(300ms). Operator live-fire on iPhone 17
+ *   Pro dev build proved 300ms insufficient: iOS UIKit's UIViewController
+ *   dismiss takes 150-200ms of additional native frames AFTER React's
+ *   280ms unmount → editor presented while picker still mid-dismiss →
+ *   editor silently dropped from presentation queue → invisible scrim
+ *   intercepted next "+ Add question" tap → app appeared frozen.
+ *
+ *   Final fix bumps delay to 500ms (well past iOS UIKit dismiss
+ *   completion). The test enforces the 500ms floor so a future revert to
+ *   300ms (which compiles + passes type-check + passes the old
+ *   ">=280ms" assertion) fails this gate.
  *
  * Fix B — IntakeTypePickerSheet snap height:
  *   The numeric snapPoint=520 measured short of actual content height
@@ -43,10 +53,12 @@ const TYPE_PICKER_PATH = path.join(
 );
 
 describe("ORCH-0884 Fix A — sibling-Modal race in handleTypePickerSelect", () => {
-  test("IntakeSchemaBuilder.handleTypePickerSelect wraps setEditorState in setTimeout >= 280ms", () => {
+  test("IntakeSchemaBuilder.handleTypePickerSelect wraps setEditorState in setTimeout >= 500ms", () => {
     const src = readFileSync(SCHEMA_BUILDER_PATH, "utf8");
-    // Locate the handleTypePickerSelect callback body
-    const handlerIdx = src.indexOf("handleTypePickerSelect");
+    // Locate the handleTypePickerSelect callback DECLARATION (not a
+    // comment mention). The leading "const " anchor skips JSDoc / inline
+    // comment references to the handler name.
+    const handlerIdx = src.indexOf("const handleTypePickerSelect");
     expect(handlerIdx).toBeGreaterThan(0);
     // Scan ~1500 chars after the handler start for the fix pattern
     const window = src.slice(handlerIdx, handlerIdx + 1500);
@@ -54,14 +66,25 @@ describe("ORCH-0884 Fix A — sibling-Modal race in handleTypePickerSelect", () 
     expect(window).toMatch(/setTypePickerOpen\(false\)/);
     expect(window).toMatch(/setTimeout\s*\(/);
     expect(window).toMatch(/setEditorState\s*\(\s*\{[\s\S]*visible:\s*true/);
-    // Extract the setTimeout delay (last numeric argument)
-    const delayMatch = window.match(
-      /setTimeout\(\s*\(\s*\)\s*=>\s*\{[\s\S]*?setEditorState[\s\S]*?\}\s*,\s*(\d+)\s*\)/,
+    // The delay must reference the EDITOR_OPEN_DELAY_MS module constant
+    // (or be a numeric literal >= 500). Resolve EDITOR_OPEN_DELAY_MS by
+    // scanning the file for its declaration.
+    const constMatch = src.match(
+      /const\s+EDITOR_OPEN_DELAY_MS\s*=\s*(\d+)/,
     );
-    expect(delayMatch).not.toBeNull();
-    const delayMs = parseInt(delayMatch![1], 10);
-    // Sheet primitive's UNMOUNT_DELAY_MS = 280ms; fix must be >= that
-    expect(delayMs).toBeGreaterThanOrEqual(280);
+    expect(constMatch).not.toBeNull();
+    const delayMs = parseInt(constMatch![1], 10);
+    // Operator live-fire on iPhone 17 Pro proved 300ms insufficient: iOS
+    // UIKit dismiss takes additional frames past Sheet's 280ms unmount.
+    // 500ms floor enforced so a revert to the original 300ms fails here.
+    expect(delayMs).toBeGreaterThanOrEqual(500);
+    // And the setTimeout call site must use the constant (so a future
+    // edit to the constant cascades correctly). The arrow function body
+    // contains setEditorState({ ... }) with its own commas/braces, so we
+    // match non-greedy across the multi-line callback.
+    expect(window).toMatch(
+      /setTimeout\(\s*\(\s*\)\s*=>\s*\{[\s\S]*?setEditorState[\s\S]*?\}\s*,\s*EDITOR_OPEN_DELAY_MS\s*\)/,
+    );
   });
 });
 
@@ -87,5 +110,88 @@ describe("ORCH-0884 Fix B — IntakeTypePickerSheet snap height", () => {
     expect(src).toMatch(/<ScrollView[\s\S]*?contentContainerStyle=\{styles\.grid\}/);
     // Closing </ScrollView> tag present
     expect(src).toMatch(/<\/ScrollView>/);
+  });
+});
+
+describe("ORCH-0884 follow-up #2 — Nestable* primitives swapped for standalone variants", () => {
+  test("IntakeSchemaBuilder uses standalone DraggableFlatList, not NestableDraggableFlatList", () => {
+    const src = readFileSync(SCHEMA_BUILDER_PATH, "utf8");
+    // The wizard wraps Step 6 in a plain ScrollView, NOT a
+    // NestableScrollContainer. Using NestableDraggableFlatList crashes at
+    // runtime with `useSafeNestableScrollContainerContext must be called
+    // within a NestableScrollContainerContext.Provider`. Standalone
+    // DraggableFlatList has no Provider dependency.
+    expect(src).toMatch(
+      /import DraggableFlatList,\s*\{[\s\S]*?\}\s*from\s*["']react-native-draggable-flatlist["']/,
+    );
+    // The element itself must be DraggableFlatList, not NestableDraggableFlatList.
+    // Comment mentions of "NestableDraggableFlatList" are allowed (history),
+    // but the JSX element MUST be the standalone variant.
+    expect(src).not.toMatch(/<NestableDraggableFlatList/);
+    expect(src).toMatch(/<DraggableFlatList[\s\S]*?scrollEnabled=\{false\}/);
+  });
+
+  test("IntakeQuestionEditor uses ScrollView + standalone DraggableFlatList, not Nestable*", () => {
+    const editorPath = path.join(
+      __dirname,
+      "..",
+      "IntakeQuestionEditor.tsx",
+    );
+    const src = readFileSync(editorPath, "utf8");
+    // Nestable* JSX elements MUST NOT appear (comments still allowed).
+    expect(src).not.toMatch(/<NestableScrollContainer/);
+    expect(src).not.toMatch(/<NestableDraggableFlatList/);
+    // The sheet body must be wrapped in a regular ScrollView.
+    expect(src).toMatch(/<ScrollView[\s\S]*?keyboardShouldPersistTaps=["']handled["']/);
+    // ChoiceConfig must use standalone DraggableFlatList with scrollEnabled={false}.
+    expect(src).toMatch(/<DraggableFlatList[\s\S]*?scrollEnabled=\{false\}/);
+  });
+
+  test("Sheet primitive is keyboard-aware (slides panel up by keyboardHeight)", () => {
+    // Root fix: the Sheet primitive itself listens for Keyboard events and
+    // shifts the panel up (negative translateY) so its contents stay visible
+    // above the keyboard. Without this, EVERY Sheet with TextInputs has the
+    // keyboard-blocking bug (Giphy/Pexels search in BrandCoverPickerSheet
+    // was the operator-reported instance; placeholder hint in
+    // IntakeQuestionEditor was the other). Fixing once at the primitive
+    // level fixes ALL Sheet consumers.
+    const sheetPath = path.join(
+      __dirname,
+      "..",
+      "..",
+      "ui",
+      "Sheet.tsx",
+    );
+    const src = readFileSync(sheetPath, "utf8");
+    // Imports the Keyboard API.
+    expect(src).toMatch(/Keyboard,/);
+    // Registers a keyboard-show listener.
+    expect(src).toMatch(/Keyboard\.addListener\(\s*showEvent/);
+    // openY is computed as -keyboardHeight (panel slides UP by keyboard height).
+    expect(src).toMatch(/const\s+openY\s*=\s*-keyboardHeight/);
+    // sheetHeight clamps to available space above keyboard.
+    expect(src).toMatch(/availableHeight\s*=[\s\S]*?keyboardHeight/);
+  });
+
+  test("IntakeQuestionEditor applies Cycle 3 wizard root keyboard pattern", () => {
+    // Per feedback_keyboard_never_blocks_input.md: TextInputs inside a Sheet
+    // would be covered by the keyboard because Sheet primitive has no
+    // keyboard awareness. The editor MUST register keyboardWillShow /
+    // keyboardWillHide listeners and apply dynamic paddingBottom to its
+    // ScrollView's contentContainerStyle, mirroring TripCreatorWizard.tsx.
+    const editorPath = path.join(
+      __dirname,
+      "..",
+      "IntakeQuestionEditor.tsx",
+    );
+    const src = readFileSync(editorPath, "utf8");
+    // Imports the Keyboard API from react-native.
+    expect(src).toMatch(/import[\s\S]*?Keyboard[\s\S]*?from\s*["']react-native["']/);
+    // Registers a keyboard-show listener (keyboardWillShow on iOS).
+    expect(src).toMatch(/Keyboard\.addListener\(\s*showEvent/);
+    // Applies dynamic paddingBottom on the ScrollView contentContainerStyle.
+    expect(src).toMatch(
+      /keyboardHeight\s*>\s*0\s*\?\s*\{\s*paddingBottom:\s*keyboardHeight\s*\}/,
+    );
   });
 });

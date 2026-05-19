@@ -44,6 +44,11 @@ import { ActionTile } from "../../../src/components/event/ActionTile";
 // path) + spec §3.5.3.
 import { RefundPreviewSheet } from "../../../src/components/trip/RefundPreviewSheet";
 import { TripManageMenu } from "../../../src/components/trip/TripManageMenu";
+import {
+  InstallmentScheduleDisplay,
+  type InstallmentScheduleDisplaySchedule,
+} from "../../../src/components/trip/InstallmentScheduleDisplay";
+import { projectInstallmentSchedule } from "../../../src/utils/installmentScheduleProjection";
 import { Button } from "../../../src/components/ui/Button";
 import { useTrip, useSoftDeleteTrip } from "../../../src/hooks/useTrips";
 import { useTripOrders } from "../../../src/hooks/useTripOrders";
@@ -541,16 +546,32 @@ export default function TripDashboardRoute(): React.ReactElement {
           </>
         ) : (
           // ORCH-0873 [Tr3 Stage 2 UI] — Money tab
-          <MoneyTabBody
-            installmentsQuery={installmentsQuery}
-            moneyData={moneyData}
-            moneyFilter={moneyFilter}
-            setMoneyFilter={setMoneyFilter}
-            expandedOrders={expandedOrders}
-            toggleExpanded={toggleExpanded}
-            retryMutation={retryMutation}
-            onEditTripPricing={() => router.push(`/trip/${eventId}/edit` as never)}
-          />
+          // ORCH-0882 [Render Payment Plan Disclosure on Trip Buyer +
+          // Planner Surfaces] — derive planner-variant schedule template
+          // from the first pricing tier so MoneyTabBody can render the
+          // schedule header above the per-buyer ledger.
+          (() => {
+            const firstTier = trip.pricingTiers[0];
+            const plannerScheduleHeader =
+              firstTier === undefined
+                ? null
+                : projectInstallmentSchedule(firstTier, new Date());
+            return (
+              <MoneyTabBody
+                installmentsQuery={installmentsQuery}
+                moneyData={moneyData}
+                moneyFilter={moneyFilter}
+                setMoneyFilter={setMoneyFilter}
+                expandedOrders={expandedOrders}
+                toggleExpanded={toggleExpanded}
+                retryMutation={retryMutation}
+                onEditTripPricing={() =>
+                  router.push(`/trip/${eventId}/edit` as never)
+                }
+                plannerScheduleHeader={plannerScheduleHeader}
+              />
+            );
+          })()
         )}
 
         {/* ORCH-0874: Cancel trip CTA below tab content. Only shown for trips
@@ -905,6 +926,13 @@ const styles = StyleSheet.create({
   tabBadgeAtRisk: {
     color: semantic.error,
   },
+  // ORCH-0882 — planner-variant schedule template header wrapper. Sits
+  // above the filter chip row when bookings exist, above the empty
+  // state when none.
+  plannerScheduleHeaderWrap: {
+    width: "100%",
+    marginBottom: spacing.md,
+  },
   moneyFilterRow: {
     flexDirection: "row",
     gap: spacing.sm,
@@ -1074,6 +1102,14 @@ interface MoneyTabBodyProps {
   toggleExpanded: (orderId: string) => void;
   retryMutation: ReturnType<typeof useRetryInstallment>;
   onEditTripPricing: () => void;
+  /**
+   * ORCH-0882 [Render Payment Plan Disclosure on Trip Buyer + Planner
+   * Surfaces] — projected schedule for the trip's first pricing tier, or
+   * null if the trip has no payment plan configured. Drives the
+   * planner-variant schedule template header rendered above the filter
+   * chip row and the empty-state messaging.
+   */
+  plannerScheduleHeader: InstallmentScheduleDisplaySchedule | null;
 }
 
 function statusPillStyle(status: OrderInstallmentStatus): {
@@ -1147,6 +1183,7 @@ const MoneyTabBody: React.FC<MoneyTabBodyProps> = ({
   toggleExpanded,
   retryMutation,
   onEditTripPricing,
+  plannerScheduleHeader,
 }) => {
   // ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — orderId of the row whose
   // cancel sheet is currently open. NULL = no sheet visible. Mutating this
@@ -1179,26 +1216,53 @@ const MoneyTabBody: React.FC<MoneyTabBodyProps> = ({
   }
   if (moneyData.orderIds.length === 0) {
     return (
-      <View style={styles.emptyState}>
-        <Icon name="pound" size={32} color={textTokens.tertiary} />
-        <Text style={styles.emptyText}>No bookings on payment plans yet.</Text>
-        <Text style={styles.emptyText}>
-          When buyers book this trip with a payment plan, their installment
-          schedule shows up here.
-        </Text>
-        <Pressable
-          onPress={onEditTripPricing}
-          accessibilityRole="button"
-          accessibilityLabel="Edit trip pricing"
-          style={styles.moneyRetryBtn}
-        >
-          <Text style={styles.moneyRetryBtnText}>Edit trip pricing</Text>
-        </Pressable>
+      <View>
+        {/* ORCH-0882 — planner-variant schedule template above the empty
+            state so the planner can see what plan is currently
+            configured even before any buyer books. Renders null when
+            the trip has no plan. */}
+        {plannerScheduleHeader !== null ? (
+          <View style={styles.plannerScheduleHeaderWrap}>
+            <InstallmentScheduleDisplay
+              schedule={plannerScheduleHeader}
+              variant="planner"
+              isProjection={true}
+            />
+          </View>
+        ) : null}
+        <View style={styles.emptyState}>
+          <Icon name="pound" size={32} color={textTokens.tertiary} />
+          <Text style={styles.emptyText}>No bookings on payment plans yet.</Text>
+          <Text style={styles.emptyText}>
+            When buyers book this trip with a payment plan, their installment
+            schedule shows up here.
+          </Text>
+          <Pressable
+            onPress={onEditTripPricing}
+            accessibilityRole="button"
+            accessibilityLabel="Edit trip pricing"
+            style={styles.moneyRetryBtn}
+          >
+            <Text style={styles.moneyRetryBtnText}>Edit trip pricing</Text>
+          </Pressable>
+        </View>
       </View>
     );
   }
   return (
     <>
+      {/* ORCH-0882 — planner-variant schedule template header above the
+          filter chip row. Always visible when the trip has a plan; null
+          when no plan configured. */}
+      {plannerScheduleHeader !== null ? (
+        <View style={styles.plannerScheduleHeaderWrap}>
+          <InstallmentScheduleDisplay
+            schedule={plannerScheduleHeader}
+            variant="planner"
+            isProjection={true}
+          />
+        </View>
+      ) : null}
       <View style={styles.moneyFilterRow}>
         <Pressable
           onPress={() => setMoneyFilter("all")}

@@ -19,7 +19,7 @@
  * payment → confirmation chain.
  */
 
-import React from "react";
+import React, { useMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 
@@ -33,6 +33,8 @@ import {
 import { Icon } from "../ui/Icon";
 import type { Trip } from "../../services/tripsService";
 import type { TripPreviewBrand } from "./TripPreview";
+import { InstallmentScheduleDisplay } from "./InstallmentScheduleDisplay";
+import { projectInstallmentSchedule } from "../../utils/installmentScheduleProjection";
 
 export interface TripCheckoutFlowProps {
   trip: Trip;
@@ -59,6 +61,18 @@ export const TripCheckoutFlow: React.FC<TripCheckoutFlowProps> = ({
 }) => {
   const router = useRouter();
   const tier = trip.pricingTiers[0];
+
+  // ORCH-0882 [Render Payment Plan Disclosure on Trip Buyer + Planner
+  // Surfaces] — project the schedule template using a now() anchor.
+  // `installmentSchedule === null` short-circuits the render (component
+  // returns null on null schedule).
+  const projectedSchedule = useMemo(
+    () =>
+      tier === undefined
+        ? null
+        : projectInstallmentSchedule(tier, new Date()),
+    [tier],
+  );
 
   const handleReserve = (): void => {
     // ORCH-0876: trip-specific chain. Event-side /checkout/[eventId]/*
@@ -95,6 +109,19 @@ export const TripCheckoutFlow: React.FC<TripCheckoutFlowProps> = ({
           <Icon name="check" size={14} color={accent.warm} />
         </View>
       </View>
+
+      {/* ORCH-0882 — buyer-facing payment plan disclosure. Component
+          returns null when projectedSchedule is null (tier has no plan),
+          so layout stays identical for trips without plans. */}
+      {projectedSchedule !== null ? (
+        <View style={styles.planWrap}>
+          <InstallmentScheduleDisplay
+            schedule={projectedSchedule}
+            variant="buyer"
+            isProjection={true}
+          />
+        </View>
+      ) : null}
 
       <Pressable
         onPress={handleReserve}
@@ -160,6 +187,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderRadius: 14,
     backgroundColor: "rgba(235, 120, 37, 0.16)",
+  },
+  // ORCH-0882 — wrapper so the schedule card sits between the tier card
+  // and the Reserve CTA with consistent vertical spacing.
+  planWrap: {
+    width: "100%",
   },
   cta: {
     paddingVertical: spacing.md,

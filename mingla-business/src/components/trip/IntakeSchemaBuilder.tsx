@@ -17,8 +17,15 @@
 
 import React, { useCallback, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import {
-  NestableDraggableFlatList,
+// ORCH-0884 follow-up #2: switched from NestableDraggableFlatList to
+// standalone DraggableFlatList. The wizard wraps Step 6 in a plain
+// ScrollView (TripCreatorWizard.tsx:898) which is NOT a
+// NestableScrollContainer, so NestableDraggableFlatList crashes here
+// with `useSafeNestableScrollContainerContext must be called within a
+// NestableScrollContainerContext.Provider`. Standalone DraggableFlatList
+// has no Provider dependency. List is bounded at MAX_QUESTIONS=20, so
+// virtualization overhead inside the outer ScrollView is negligible.
+import DraggableFlatList, {
   type RenderItemParams,
 } from "react-native-draggable-flatlist";
 
@@ -57,6 +64,14 @@ export interface IntakeSchemaBuilderProps {
 }
 
 const MAX_QUESTIONS = 20;
+
+// ORCH-0884: gap between picker-close-trigger and editor-open-trigger.
+// Sheet's internal UNMOUNT_DELAY_MS is 280ms; iOS UIKit dismiss takes
+// additional frames. 500ms gives a safe buffer past both, preventing
+// the sibling-Modal presentation race that left the editor invisible
+// but mounted (intercepting touches) on operator's iPhone 17 Pro live
+// fire. See handleTypePickerSelect for the full reasoning.
+const EDITOR_OPEN_DELAY_MS = 500;
 
 const TYPE_PILL_LABELS: Record<IntakeQuestionType, string> = {
   short_text: "SHORT TEXT",
@@ -107,14 +122,23 @@ export const IntakeSchemaBuilder: React.FC<IntakeSchemaBuilderProps> = ({
   //
   // ORCH-0884 [IntakeTypePickerSheet height + sibling-Modal race]: defer the
   // editor's mount+visible-true transition until after the picker's close
-  // animation completes (~280ms = Sheet's UNMOUNT_DELAY_MS). Picker and
-  // Editor are sibling Sheets (NOT nested per
-  // feedback_rn_sub_sheet_must_render_inside_parent.md). When both Modals
-  // are mounted at the OS root layer simultaneously, the newer Modal
-  // (Editor) gets visually blocked by the older Modal (Picker still in
-  // close animation) — app appears frozen, touches route to the invisible
-  // Editor. The 300ms delay (just over UNMOUNT_DELAY_MS=280ms) ensures the
-  // Picker's Modal fully unmounts before the Editor's Modal mounts.
+  // animation completes AND iOS UIKit's presentation queue drains. Picker
+  // and Editor are sibling Sheets (NOT nested per
+  // feedback_rn_sub_sheet_must_render_inside_parent.md). Each Sheet wraps a
+  // native iOS Modal which calls UIViewController.present/dismiss. iOS
+  // UIKit serializes these — calling present while a dismiss is in flight
+  // queues or silently drops the new presentation. The Sheet's internal
+  // UNMOUNT_DELAY_MS=280ms is when React unmounts the Modal, but iOS
+  // native dismiss takes additional frames (~150-200ms) to complete.
+  //
+  // Initial Fix A used setTimeout(300ms). Operator live-fire on iPhone 17
+  // Pro dev build proved 300ms insufficient: editor mounted in React but
+  // not presented by iOS → invisible scrim intercepted next "+ Add
+  // question" tap → app appeared frozen.
+  //
+  // Final fix: 500ms gap (well past iOS dismiss completion). The buffer
+  // is invisible to users — they tap an option and see the editor open
+  // half a second later, which feels like a normal sheet transition.
   const handleTypePickerSelect = useCallback(
     (type: IntakeQuestionType) => {
       setTypePickerOpen(false);
@@ -124,7 +148,7 @@ export const IntakeSchemaBuilder: React.FC<IntakeSchemaBuilderProps> = ({
           question: null,
           initialType: type,
         });
-      }, 300);
+      }, EDITOR_OPEN_DELAY_MS);
     },
     [],
   );
@@ -224,11 +248,12 @@ export const IntakeSchemaBuilder: React.FC<IntakeSchemaBuilderProps> = ({
           you need.
         </Text>
       ) : (
-        <NestableDraggableFlatList
+        <DraggableFlatList
           data={questions}
           keyExtractor={(item) => item.id}
           onDragEnd={handleDragEnd}
           activationDistance={8}
+          scrollEnabled={false}
           renderItem={({
             item,
             drag,
