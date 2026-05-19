@@ -9,6 +9,7 @@
   "rewrites": [
     { "source": "/og/event/:eventId.png", "destination": "/api/og-event?eventId=:eventId" },
     { "source": "/og/brand/:brandSlug.png", "destination": "/api/og-brand?brandSlug=:brandSlug" },
+    { "source": "/og/trip/:tripId.png", "destination": "/api/og-trip?tripId=:tripId" },
     {
       "source": "/e/:brandSlug/:eventSlug",
       "has": [
@@ -19,6 +20,17 @@
         }
       ],
       "destination": "/api/public-event?brandSlug=:brandSlug&eventSlug=:eventSlug"
+    },
+    {
+      "source": "/t/:brandSlug/:tripSlug",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": "(.*)(facebookexternalhit|Twitterbot|Slackbot|Discordbot|WhatsApp|LinkedInBot|TelegramBot|Applebot|bot|crawler|spider)(.*)"
+        }
+      ],
+      "destination": "/api/public-trip?brandSlug=:brandSlug&tripSlug=:tripSlug"
     },
     {
       "source": "/b/:brandSlug",
@@ -33,6 +45,7 @@
     },
     { "source": "/stripe-onboarding-return", "destination": "/stripe-onboarding-return.html" },
     { "source": "/e/:brandSlug/:eventSlug", "destination": "/e/[brandSlug]/[eventSlug]" },
+    { "source": "/t/:brandSlug/:tripSlug", "destination": "/t/[brandSlug]/[tripSlug]" },
     { "source": "/b/:brandSlug", "destination": "/b/[brandSlug]" },
     { "source": "/checkout/:eventId", "destination": "/checkout/[eventId]" },
     { "source": "/checkout/:eventId/:step", "destination": "/checkout/[eventId]/:step" }
