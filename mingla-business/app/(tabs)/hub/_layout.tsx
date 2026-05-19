@@ -25,6 +25,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BrandDeleteSheet } from "../../../src/components/brand/BrandDeleteSheet";
 import { BrandSwitcherSheet } from "../../../src/components/brand/BrandSwitcherSheet";
 import { HubSubNav } from "../../../src/components/hub/HubSubNav";
+import { VenueClaimStatusBanner } from "../../../src/components/brand/VenueClaimStatusBanner";
+import { useCurrentBrand } from "../../../src/hooks/useCurrentBrand";
+import { useVenueClaimRefresh } from "../../../src/hooks/useVenueClaimRefresh";
 import { IconChrome } from "../../../src/components/ui/IconChrome";
 import { TopBar } from "../../../src/components/ui/TopBar";
 import { UniversalCreatorSheet } from "../../../src/components/ui/UniversalCreatorSheet";
@@ -39,6 +42,8 @@ export default function HubTabLayout(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const setCurrentBrand = useCurrentBrandStore((s) => s.setCurrentBrand);
+  const currentBrand = useCurrentBrand();
+  useVenueClaimRefresh();
 
   const [brandSheetVisible, setBrandSheetVisible] = useState<boolean>(false);
   const [isUniversalCreatorOpen, setIsUniversalCreatorOpen] = useState<boolean>(false);
@@ -96,6 +101,7 @@ export default function HubTabLayout(): React.ReactElement {
         />
       </View>
       <HubSubNav />
+      <VenueClaimStatusBanner brand={currentBrand} />
       <Slot />
       <BrandSwitcherSheet
         visible={brandSheetVisible}

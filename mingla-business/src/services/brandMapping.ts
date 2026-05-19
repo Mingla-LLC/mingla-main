@@ -62,6 +62,9 @@ export interface BrandRow {
   city?: string | null;
   country_code?: string | null;
   claim_status?: BrandClaimStatus | null;
+  rejection_reason?: string | null;
+  claim_follow_up_at?: string | null;
+  duplicate_of_brand_id?: string | null;
   verified_at?: string | null;
   verified_by?: string | null;
   venue_category?: VenueCategory | null;
@@ -262,6 +265,9 @@ export function mapBrandRowToUi(row: BrandRow, options: MapBrandRowToUiOptions):
     // has actually set it. Undefined means "currency not set" — do not imply GBP.
     defaultCurrency: row.default_currency || undefined,
     claimStatus: (row.claim_status as BrandClaimStatus | undefined) ?? "none",
+    rejectionReason: row.rejection_reason?.trim() || undefined,
+    claimFollowUpAt: row.claim_follow_up_at ?? undefined,
+    duplicateOfBrandId: row.duplicate_of_brand_id ?? undefined,
     googlePlaceId: row.google_place_id ?? undefined,
     lat: row.lat ?? undefined,
     lng: row.lng ?? undefined,
