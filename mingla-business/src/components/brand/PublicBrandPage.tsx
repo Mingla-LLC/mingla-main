@@ -67,9 +67,10 @@ import {
   brandPublicUrl,
   eventPublicPath,
 } from "../../constants/publicUrls";
-import { useAuth } from "../../context/AuthContext";
-import { useBrandList, type Brand } from "../../store/currentBrandStore";
+import type { PublicVenueDetail } from "../../services/publicEventsService";
+import type { Brand } from "../../store/currentBrandStore";
 import type { LiveEvent } from "../../store/liveEventStore";
+import type { VenueCategory } from "../../types/brand";
 import { formatCurrencyRound } from "../../utils/currency";
 import { formatDraftDateLine } from "../../utils/eventDateDisplay";
 
@@ -79,6 +80,10 @@ import { Icon, type IconName } from "../ui/Icon";
 import { IconChrome } from "../ui/IconChrome";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { ShareModal } from "../ui/ShareModal";
+import { VerifiedBadge } from "./VerifiedBadge";
+import { VenueHoursTable } from "./VenueHoursTable";
+import { VenueLocationPreview } from "./VenueLocationPreview";
+import { VenuePhotoGallery } from "./VenuePhotoGallery";
 // ORCH-0850 [End-not-start parity systemic]: route Upcoming / Past memo
 // predicates through the canonical helper. Pre-0850 memos used
 // `new Date(e.date).getTime()` with a `Date.now() - 24h` cutoff — the same
@@ -90,7 +95,15 @@ import { computeMasterEndAtUtc } from "../../utils/eventDateMath";
 interface PublicBrandPageProps {
   brand: Brand;
   events: LiveEvent[];
+  /** Ve4 — verified physical venue listing fields; null for popup/trip brands. */
+  venue?: PublicVenueDetail | null;
 }
+
+const VENUE_CATEGORY_LABELS: Record<VenueCategory, string> = {
+  restaurant: "Restaurant",
+  play: "Play",
+  creative_and_arts: "Creative & Arts",
+};
 
 type Tab = "upcoming" | "past" | "about";
 
@@ -104,11 +117,10 @@ const canonicalUrl = (brand: Brand): string =>
 export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   brand,
   events,
+  venue = null,
 }) => {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { user } = useAuth();
-  const userBrands = useBrandList();
   const [activeTab, setActiveTab] = useState<Tab>("upcoming");
   const [shareModalVisible, setShareModalVisible] = useState<boolean>(false);
   // ORCH-0805 — track cover media load failure so the hero falls back to the
@@ -119,14 +131,17 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
     setCoverMediaFailed(false);
   }, [coverMediaUrl]);
 
-  // Founder-aware close chrome: shown only when the visitor owns this
-  // brand. Forward-compat — when B-cycle wires real auth + useBrandList
-  // filters to user-owned brands, this check becomes precise. Today,
-  // useBrandList returns all stub brands so it resolves to "isSignedIn".
-  const ownsThisBrand = useMemo<boolean>(() => {
-    if (user === null) return false;
-    return userBrands.some((b) => b.id === brand.id);
-  }, [user, userBrands, brand.id]);
+  const isVerifiedVenue = venue?.isVerifiedVenue === true;
+  const pageTitle =
+    isVerifiedVenue && venue.city !== null
+      ? `${brand.displayName} · ${venue.city} on Mingla`
+      : `${brand.displayName} on Mingla`;
+  const metaDescription =
+    brand.bio?.slice(0, 160) ??
+    brand.tagline ??
+    (isVerifiedVenue && venue.city !== null
+      ? `${brand.displayName} in ${venue.city}`
+      : brand.displayName);
 
   // ORCH-0850: upcoming = not past AND not cancelled.
   // The pre-0850 24h cutoff was a band-aid for the UTC-midnight bug class;
@@ -161,13 +176,6 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   const verifiedHostSinceYear = useMemo<number | null>(() => null, []);
   const publicEventCount = events.length;
   const showStatsCard = publicEventCount > 0;
-
-  const handleClose = useCallback((): void => {
-    // Cycle 7 FX3: route to founder brand profile, NOT all the way to
-    // Account tab. Founder lands on /brand/{brand.id} where they can
-    // Edit, Team, Stripe, etc. From there native back returns to Account.
-    router.replace(`/brand/${brand.id}` as never);
-  }, [router, brand.id]);
 
   const handleEventCardPress = useCallback(
     (event: LiveEvent): void => {
@@ -221,18 +229,13 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
           a registered origin URL (DEC-071); rendering Head there throws. */}
       {Platform.OS === "web" ? (
         <Head>
-          <title>{brand.displayName} on Mingla</title>
-          <meta
-            name="description"
-            content={
-              brand.bio?.slice(0, 160) ?? brand.tagline ?? brand.displayName
-            }
-          />
-          <meta property="og:title" content={brand.displayName} />
+          <title>{pageTitle}</title>
+          <meta name="description" content={metaDescription} />
+          <meta property="og:title" content={pageTitle} />
           <meta
             property="og:description"
             content={
-              brand.bio?.slice(0, 200) ?? brand.tagline ?? brand.displayName
+              brand.bio?.slice(0, 200) ?? brand.tagline ?? metaDescription
             }
           />
           <meta property="og:url" content={canonicalUrl(brand)} />
@@ -315,16 +318,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
         style={[styles.floatingChrome, { top: insets.top + spacing.sm }]}
         pointerEvents="box-none"
       >
-        {ownsThisBrand ? (
-          <IconChrome
-            icon="close"
-            size={40}
-            onPress={handleClose}
-            accessibilityLabel="Close"
-          />
-        ) : (
-          <View />
-        )}
+        <View />
         <IconChrome
           icon="share"
           size={40}
@@ -352,6 +346,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
             style={styles.heroAvatarCentered}
           />
           <Text style={styles.brandNameCentered}>{brand.displayName}</Text>
+          {isVerifiedVenue ? <VerifiedBadge /> : null}
           {identitySubline !== null ? (
             <Text style={styles.handleLineCentered}>{identitySubline}</Text>
           ) : null}
@@ -372,6 +367,33 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
           onPress={handleSocialPress}
           compact
         />
+
+        {isVerifiedVenue && venue !== null ? (
+          <GlassCard
+            variant="elevated"
+            radius="lg"
+            padding={spacing.md}
+            style={styles.venueCard}
+          >
+            {venue.venueCategory !== null ? (
+              <View style={styles.categoryRow}>
+                <View style={styles.categoryChip}>
+                  <Text style={styles.categoryChipLabel}>
+                    {VENUE_CATEGORY_LABELS[venue.venueCategory]}
+                  </Text>
+                </View>
+              </View>
+            ) : null}
+            <VenueLocationPreview
+              address={brand.address ?? null}
+              city={venue.city}
+              lat={venue.lat}
+              lng={venue.lng}
+            />
+            <VenueHoursTable hours={venue.hours} />
+            <VenuePhotoGallery photoUrls={venue.galleryPhotoUrls} />
+          </GlassCard>
+        ) : null}
 
         {/* Stats card (only when ≥1 non-zero stat) */}
         {showStatsCard ? (
@@ -418,6 +440,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
           <UpcomingTab
             events={upcomingEvents}
             brand={brand}
+            isVerifiedVenue={isVerifiedVenue}
             onEventPress={handleEventCardPress}
             onSocialPress={handleSocialPress}
           />
@@ -485,22 +508,26 @@ const TabButton: React.FC<TabButtonProps> = ({
 interface UpcomingTabProps {
   events: LiveEvent[];
   brand: Brand;
+  isVerifiedVenue: boolean;
   onEventPress: (e: LiveEvent) => void;
   onSocialPress: (url: string) => void;
 }
 
 const UpcomingTab: React.FC<UpcomingTabProps> = ({
   events,
-  brand,
+  isVerifiedVenue,
   onEventPress,
-  onSocialPress,
 }) => {
   if (events.length === 0) {
     // Cycle 7 FX2: socials moved to permanent slot below bio (above tabs),
     // so the empty-tab copy doesn't need to repeat them here.
     return (
       <View style={styles.emptyTabWrap}>
-        <Text style={styles.emptyTabTitle}>No upcoming events yet</Text>
+        <Text style={styles.emptyTabTitle}>
+          {isVerifiedVenue
+            ? "No upcoming events from this venue"
+            : "No upcoming events yet"}
+        </Text>
       </View>
     );
   }
@@ -871,6 +898,29 @@ const styles = StyleSheet.create({
   },
   statsCard: {
     marginBottom: spacing.md,
+  },
+  venueCard: {
+    marginTop: spacing.md,
+    gap: spacing.md,
+    width: "100%",
+  },
+  categoryRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.xs,
+  },
+  categoryChip: {
+    paddingVertical: 4,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radiusTokens.full,
+    backgroundColor: accent.tint,
+    borderWidth: 1,
+    borderColor: accent.border,
+  },
+  categoryChipLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: accent.warm,
   },
   statsRow: {
     flexDirection: "row",
