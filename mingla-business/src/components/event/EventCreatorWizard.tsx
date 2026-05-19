@@ -619,6 +619,9 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
       brandDefaultCurrency: brand?.defaultCurrency ?? null,
       coverMediaApplyMode: "draft_auto" as const,
       onCoverVideoProcessingChange: setCoverVideoProcessing,
+      // ORCH-0884 follow-up #9 — threaded down to CoverPicker for
+      // explicit scroll-on-focus of GIPHY/Pexels search input.
+      parentScrollRef: scrollViewRef,
     };
     switch (currentStep) {
       case 0:

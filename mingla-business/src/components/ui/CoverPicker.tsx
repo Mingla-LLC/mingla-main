@@ -27,8 +27,9 @@
  * Per SPEC_ORCH-0876_V2_FULL_PARITY §9.1.
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  findNodeHandle,
   Image,
   Keyboard,
   type KeyboardEvent,
@@ -113,6 +114,16 @@ export interface CoverPickerProps {
    *  show only upload tab). */
   providers?: ReadonlyArray<CoverProvider>;
   disabled?: boolean;
+  /** ORCH-0884 follow-up #9 — optional parent ScrollView ref. When the
+   *  GIPHY/Pexels search TextInput focuses, CoverPicker uses this ref to
+   *  call `scrollResponderScrollNativeHandleToKeyboard` with extra offset
+   *  so the input lands FULLY above the keyboard (not just top edge).
+   *  Without this, iOS's auto-scroll only puts input.top above
+   *  keyboard.top — input bottom + cursor stay under the autocomplete bar. */
+  parentScrollRef?: React.RefObject<ScrollView | null>;
+  /** Extra pixels to scroll above the input bottom (e.g., for autocomplete
+   *  bar). Defaults to 80pt. */
+  keyboardScrollExtraOffset?: number;
 }
 
 const DEFAULT_PROVIDERS: ReadonlyArray<CoverProvider> = ["upload", "giphy", "pexels"];
@@ -132,6 +143,8 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   onShowToast,
   providers = DEFAULT_PROVIDERS,
   disabled = false,
+  parentScrollRef,
+  keyboardScrollExtraOffset = 80,
 }) => {
   const { isAuthReady } = useAuth();
   const [uploading, setUploading] = useState(false);
@@ -192,6 +205,42 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   const [searchError, setSearchError] = useState<string | null>(null);
   const [giphyResults, setGiphyResults] = useState<GiphyCoverSearchResult[]>([]);
   const [pexelsResults, setPexelsResults] = useState<PexelsCoverSearchResult[]>([]);
+
+  // ORCH-0884 follow-up #9 — explicit scroll-on-focus for the search
+  // TextInput. iOS's auto-scroll-on-focus only positions input.top above
+  // keyboard.top — input.bottom (cursor) stays at or below the keyboard
+  // edge, covered by the autocomplete suggestion bar. After iOS does its
+  // auto-scroll, we trigger an ADDITIONAL scroll via the parent
+  // ScrollView's scrollResponderScrollNativeHandleToKeyboard with
+  // keyboardScrollExtraOffset (default 80pt) so the input sits comfortably
+  // above the keyboard.
+  const searchInputRef = useRef<TextInput | null>(null);
+  const handleSearchFocus = useCallback((): void => {
+    if (parentScrollRef?.current === undefined || parentScrollRef === undefined) {
+      return;
+    }
+    // Wait for iOS keyboard show + auto-scroll to complete before our
+    // additional scroll. 300ms covers keyboard appearance + initial scroll.
+    setTimeout(() => {
+      const scrollResponder =
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (parentScrollRef.current as any)?.getScrollResponder?.();
+      const handle = findNodeHandle(searchInputRef.current);
+      if (
+        scrollResponder !== undefined &&
+        scrollResponder !== null &&
+        typeof scrollResponder.scrollResponderScrollNativeHandleToKeyboard ===
+          "function" &&
+        handle !== null
+      ) {
+        scrollResponder.scrollResponderScrollNativeHandleToKeyboard(
+          handle,
+          keyboardScrollExtraOffset,
+          true,
+        );
+      }
+    }, 300);
+  }, [parentScrollRef, keyboardScrollExtraOffset]);
 
   // ORCH-0884 follow-up #8 — operator-reported: GIPHY/Pexels search input
   // bottom is still covered by the keyboard even with KAV + auto-inset
@@ -531,6 +580,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
           </View>
           <View style={styles.searchRow}>
             <TextInput
+              ref={searchInputRef}
               value={query}
               onChangeText={setQuery}
               placeholder={
@@ -543,6 +593,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
               onSubmitEditing={() => {
                 void runProviderSearch();
               }}
+              onFocus={handleSearchFocus}
               style={styles.searchInput}
               editable={!disabled}
             />

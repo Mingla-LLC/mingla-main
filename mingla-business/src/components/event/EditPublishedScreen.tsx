@@ -962,6 +962,9 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         brandDefaultCurrency: liveEvent.currency ?? null,
         coverMediaApplyMode: "published_manual" as const,
         onCoverVideoProcessingChange: setCoverVideoProcessing,
+        // ORCH-0884 follow-up #9 — passed to CoverPicker for explicit
+        // scroll-on-focus of GIPHY/Pexels search input.
+        parentScrollRef: scrollViewRef,
       };
       switch (key) {
         case "basics":

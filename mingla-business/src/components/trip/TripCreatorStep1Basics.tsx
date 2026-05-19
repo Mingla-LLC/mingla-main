@@ -69,6 +69,9 @@ export interface TripCreatorStep1BasicsProps {
   brandId: string;
   tripEventId: string;
   onShowToast?: (msg: string) => void;
+  /** ORCH-0884 follow-up #9 — passed through to <CoverPicker> for
+   *  explicit scroll-on-focus of the GIPHY/Pexels search input. */
+  parentScrollRef?: React.RefObject<import("react-native").ScrollView | null>;
 }
 
 const INPUT_BORDER = "rgba(255, 255, 255, 0.12)";
@@ -134,6 +137,7 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
   brandId,
   tripEventId,
   onShowToast,
+  parentScrollRef,
 }) => {
   const handleCoverChange = useCallback(
     (patch: CoverPatch): void => {
@@ -405,6 +409,7 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
           onShowToast={handleCoverToast}
           providers={["upload", "giphy", "pexels"]}
           disabled={disabled}
+          parentScrollRef={parentScrollRef}
         />
       </View>
 

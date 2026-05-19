@@ -357,6 +357,10 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
   // keyboard is visible.
   const [keyboardVisible, setKeyboardVisible] = useState<boolean>(false);
   const [keyboardHeight, setKeyboardHeight] = useState<number>(0);
+  // ORCH-0884 follow-up #9 — ScrollView ref passed to TripCreatorStep1Basics
+  // → CoverPicker so the GIPHY/Pexels search TextInput can trigger an
+  // explicit scroll-on-focus past iOS's auto-scroll position.
+  const scrollViewRef = useRef<ScrollView | null>(null);
   useEffect(() => {
     const showEvent =
       Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
@@ -912,6 +916,7 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
         keyboardVerticalOffset={0}
       >
       <ScrollView
+        ref={scrollViewRef}
         style={styles.kbAvoid}
         contentContainerStyle={styles.body}
         keyboardShouldPersistTaps="handled"
@@ -933,6 +938,7 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
               brandId={trip.brandId}
               tripEventId={trip.id}
               onShowToast={showToast}
+              parentScrollRef={scrollViewRef}
             />
           ) : null}
           {step === 2 ? (
