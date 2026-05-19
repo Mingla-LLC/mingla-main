@@ -103,6 +103,12 @@ export const convertDraftToLiveEvent = (
     date: draft.date,
     doorsOpen: draft.doorsOpen,
     endsAt: draft.endsAt,
+    // ORCH-0877 — carry the smart-inferred UTC end-instant from draft into
+    // live. After publish the server-projection mappers overwrite both
+    // master*Utc fields with the canonical event_dates values; this is the
+    // bridge value for the brief moment between publish and refetch.
+    masterStartAtUtc: null,
+    masterEndAtUtc: draft.endsAtUtc,
     timezone: draft.timezone,
     recurrenceRule: draft.recurrenceRule,
     multiDates: draft.multiDates,

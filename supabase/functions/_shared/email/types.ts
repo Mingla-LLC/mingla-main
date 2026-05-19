@@ -21,6 +21,10 @@ export interface TicketBodyInput {
     locationText: string | null;
     isOnline: boolean;
     startAt: string | null;
+    // ORCH-0877 — end time for the event date range. Null when the event has
+    // no master end_at (legacy / draft / data-loss cases). When null the email
+    // renders start-only and the ICS attachment omits DTEND (Constitution #9).
+    endAt: string | null;
     timezone: string;
   };
   brand: {

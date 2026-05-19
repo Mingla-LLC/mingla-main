@@ -35,6 +35,8 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 
 import type { BusinessEventCard } from "../../types/mergedDiscover";
+// ORCH-0877 — centralized consumer-side date formatter.
+import { formatEventDateLine } from "../../utils/eventDateDisplay";
 import { useAppStore } from "../../store/appStore";
 import { usePublicEventTickets } from "../../hooks/usePublicEventTickets";
 import {
@@ -61,25 +63,10 @@ interface ExpandedBusinessEventSheetProps {
 const SHEET_SNAP_POINTS = glass.bottomSheet.snapPoints as unknown as (string | number)[];
 const SHEET_INITIAL_INDEX = 1; // open at the 90% snap (full view)
 
-const formatDateLine = (
-  masterDateUtc: string | null,
-  timezone: string,
-): string => {
-  if (!masterDateUtc) return "Date to be announced";
-  try {
-    const d = new Date(masterDateUtc);
-    return new Intl.DateTimeFormat("en-US", {
-      weekday: "short",
-      day: "numeric",
-      month: "short",
-      hour: "numeric",
-      minute: "2-digit",
-      timeZone: timezone || "UTC",
-    }).format(d).toUpperCase();
-  } catch {
-    return masterDateUtc;
-  }
-};
+// ORCH-0877 — formatDateLine replaced by centralized `formatEventDateLine`
+// from app-mobile/src/utils/eventDateDisplay.ts. The shared helper renders
+// cross-midnight events with weekday prefix on both sides (Sat 18 May ·
+// 10 PM – Sun 19 May · 2 AM) and same-day events as a single inline range.
 
 // ORCH-0846: exported so the regression test suite can verify the mapping
 // in isolation (the BottomSheet host is not mountable in Jest).
@@ -93,7 +80,11 @@ export const mapCardToPublicEvent = (
   brandSlug: card.brandSlug,
   eventSlug: card.eventSlug,
   description: card.description ?? "",
-  dateLine: formatDateLine(card.masterDateUtc, card.timezone),
+  dateLine: formatEventDateLine({
+    masterDateUtc: card.masterDateUtc,
+    masterEndAtUtc: card.masterEndAtUtc,
+    timezone: card.timezone,
+  }),
   dateSubline: null,
   datesList: [],
   status: "published",

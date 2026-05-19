@@ -35,6 +35,9 @@ import {
 
 import { generateDraftId } from "../utils/draftEventId";
 import { convertDraftToLiveEvent } from "../utils/liveEventConverter";
+// ORCH-0877 — smart-infer helper used for v10→v11 persist backfill of the
+// new endsAtUtc field on legacy drafts.
+import { computeEndsAtUtcWithSmartInfer } from "../utils/eventDateMath";
 import {
   draftClientRevision,
   shouldApplyServerDraft,
@@ -254,6 +257,17 @@ export interface DraftEvent {
   doorsOpen: string | null;
   /** HH:mm 24-hour. */
   endsAt: string | null;
+  /**
+   * ORCH-0877 — derived UTC end-instant via smart-infer (next-day wrap when
+   * endsAt time < doorsOpen time). Recomputed at every wizard commit of
+   * (date | doorsOpen | endsAt | timezone) via `computeEndsAtUtcWithSmartInfer`.
+   * Null when any of the four inputs is null (draft is incomplete).
+   *
+   * Persisted on the draft so the LiveEvent hydration after publish can
+   * carry the same calendar-day awareness to the display layer; persist
+   * migrator v10 → v11 backfills via smart-infer for legacy drafts.
+   */
+  endsAtUtc: string | null;
   /** Default = device timezone (Europe/London fallback). */
   timezone: string;
   /** Non-null only when whenMode === "recurring". NEW Cycle 4. */
@@ -373,6 +387,9 @@ const DEFAULT_DRAFT_FIELDS: Omit<
   date: null,
   doorsOpen: null,
   endsAt: null,
+  // ORCH-0877 — recomputed by CreatorStep2When on every wizard commit.
+  // Null until the four inputs (date, doorsOpen, endsAt, timezone) are all set.
+  endsAtUtc: null,
   timezone: "Europe/London",
   recurrenceRule: null,
   multiDates: null,
@@ -654,7 +671,11 @@ const persistOptions: PersistOptions<DraftEventState, PersistedState> = {
   name: "mingla-business.draftEvent.v1",
   storage: createJSONStorage(() => AsyncStorage),
   partialize: (state): PersistedState => ({ drafts: state.drafts }),
-  version: 10,
+  // ORCH-0877 — v10 → v11 backfills the new optional endsAtUtc field on
+  // legacy drafts via smart-infer (date + doorsOpen + endsAt + timezone).
+  // Drafts missing any of the four inputs default to endsAtUtc: null —
+  // no data loss; wizard recomputes on next commit.
+  version: 11,
   migrate: (persistedState, version): PersistedState => {
     if (version < 1) {
       return { drafts: [] };
@@ -720,6 +741,25 @@ const persistOptions: PersistOptions<DraftEventState, PersistedState> = {
     if (version === 9) {
       const v9 = persistedState as { drafts: DraftEvent[] };
       return { drafts: v9.drafts.map(withProviderMetadataDefaults) };
+    }
+    if (version === 10) {
+      // ORCH-0877 — v10 → v11: backfill endsAtUtc on legacy drafts via
+      // smart-infer (cross-midnight aware). Drafts where any input is null
+      // default to endsAtUtc: null.
+      const v10 = persistedState as {
+        drafts: Array<Omit<DraftEvent, "endsAtUtc">>;
+      };
+      return {
+        drafts: v10.drafts.map((draft): DraftEvent => ({
+          ...draft,
+          endsAtUtc: computeEndsAtUtcWithSmartInfer(
+            draft.date,
+            draft.doorsOpen,
+            draft.endsAt,
+            draft.timezone,
+          ),
+        })),
+      };
     }
     return persistedState as PersistedState;
   },

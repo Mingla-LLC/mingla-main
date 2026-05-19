@@ -39,6 +39,11 @@ import {
   isSubsetOf,
 } from "../_shared/eventTaxonomy.ts";
 import { parseLocalStartEndDateTime } from "../_shared/timezone.ts";
+// ORCH-0877 — populate doorsOpenLocal + endsAtLocal on BusinessEventCard so
+// the consumer-mobile date-line formatter can render cross-midnight events
+// correctly. masterEndAtUtc carries the full UTC timestamp for client-side
+// calendar-day comparison.
+import { splitTimestampInTz } from "../_shared/dateTimeSplit.ts";
 import {
   extractVenueName,
   extractBusinessEventFormat,
@@ -93,6 +98,10 @@ interface BusinessEventCard {
   coverMediaType: "image" | "video" | "gif" | null;
   coverHue: number;
   masterDateUtc: string | null;
+  // ORCH-0877 — UTC end instant for cross-midnight resolution on the
+  // consumer side. Mirrors masterDateUtc shape; null when source end_at
+  // is missing or invalid.
+  masterEndAtUtc: string | null;
   doorsOpenLocal: string | null;
   endsAtLocal: string | null;
   timezone: string;
@@ -404,6 +413,18 @@ serve(async (req: Request): Promise<Response> => {
       const masterDate = (row.event_dates ?? []).find(
         (ed: RawRow) => ed?.is_master === true,
       );
+      // ORCH-0877 — derive local time strings from the master event_dates
+      // row using the event's own timezone. Cross-midnight events get a
+      // non-null masterEndAtUtc that lets the client compare calendar days.
+      const eventTz: string = row.timezone ?? masterDate?.timezone ?? "UTC";
+      const startSplit = splitTimestampInTz(
+        masterDate?.start_at ?? null,
+        eventTz,
+      );
+      const endSplit = splitTimestampInTz(
+        masterDate?.end_at ?? null,
+        eventTz,
+      );
       const activeTickets = (row.ticket_types ?? []).filter(
         (tt: RawRow) =>
           tt && tt.deleted_at == null && tt.is_hidden !== true && tt.is_disabled !== true,
@@ -434,8 +455,14 @@ serve(async (req: Request): Promise<Response> => {
         coverMediaType: row.cover_media_type ?? null,
         coverHue: extractCoverHue(row.theme),
         masterDateUtc: masterDate?.start_at ?? null,
-        doorsOpenLocal: null, // derivable from master_start_at; client formats with timezone
-        endsAtLocal: null,
+        // ORCH-0877 — was hard-coded null pre-fix (with a TODO comment
+        // saying "derivable on client"). Now populated server-side so the
+        // consumer-mobile centralized formatter can render the local time
+        // range directly. masterEndAtUtc carries the full UTC end-instant
+        // for client-side calendar-day comparison.
+        masterEndAtUtc: masterDate?.end_at ?? null,
+        doorsOpenLocal: startSplit.time,
+        endsAtLocal: endSplit.time,
         timezone: row.timezone ?? "UTC",
         // ORCH-0846: parity with brand-side publicEventsService.toPublicEventBySlug.
         // Resolve venueName from theme.business_event.venueName, falling

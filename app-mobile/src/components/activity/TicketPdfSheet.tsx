@@ -45,6 +45,8 @@ import * as WebBrowser from "expo-web-browser";
 import { Icon } from "../ui/Icon";
 import type { BusinessEventCalendarRow } from "../../services/calendarService";
 import { TicketService } from "../../services/ticketService";
+// ORCH-0877 — centralized consumer-side date formatter.
+import { formatEventDateLine } from "../../utils/eventDateDisplay";
 
 interface TicketPdfSheetProps {
   visible: boolean;
@@ -72,24 +74,9 @@ function buildMapsUrl(
     : `geo:${lat},${lng}?q=${lat},${lng}(${q})`;
 }
 
-const formatLocalDate = (
-  masterDateUtc: string | null,
-  timezone: string,
-): string => {
-  if (!masterDateUtc) return "Date to be announced";
-  try {
-    return new Intl.DateTimeFormat("en-US", {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-      timeZone: timezone || "UTC",
-    }).format(new Date(masterDateUtc));
-  } catch {
-    return masterDateUtc;
-  }
-};
+// ORCH-0877 — formatLocalDate replaced by centralized `formatEventDateLine`
+// from app-mobile/src/utils/eventDateDisplay.ts. PDF sheet has room for
+// full date + time range.
 
 // Sheet inner padding (matches styles.card.paddingHorizontal). Used to
 // compute the full-width-per-page QR carousel.
@@ -176,7 +163,13 @@ export const TicketPdfSheet: React.FC<TicketPdfSheetProps> = ({
     );
   }, [entry.publicBuyerUrl]);
 
-  const dateLine = formatLocalDate(entry.masterDateUtc, entry.timezone);
+  const dateLine = formatEventDateLine({
+    masterDateUtc: entry.masterDateUtc,
+    // ORCH-0877 — calendar service uses the pre-ORCH-0853 field name
+    // `masterDateEndUtc`; alias to the centralized helper's masterEndAtUtc.
+    masterEndAtUtc: entry.masterDateEndUtc,
+    timezone: entry.timezone,
+  });
 
   const renderVenue = (): React.ReactNode => {
     if (entry.venue.isOnline) {

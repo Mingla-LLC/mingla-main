@@ -1,14 +1,20 @@
-// ORCH-0785 follow-up — Add-to-Calendar helpers.
+// ORCH-0785 follow-up / ORCH-0877 — Add-to-Calendar helpers.
 // Builds Google Calendar + Outlook web-compose URLs and a minimal RFC-5545
 // .ics payload. The .ics is delivered as a second attachment so Apple Mail /
 // any calendar-aware client gets a one-tap "Add to Calendar" affordance.
 //
 // Defensive defaults: if event start is null, every helper returns null and
 // the email simply omits the calendar block. We never fabricate times.
+//
+// ORCH-0877: removed the 3-hour DEFAULT_DURATION_HOURS fabrication. Per
+// Constitution #9 (no fabricated data) the ICS attachment NEVER invents an
+// end time. When endAtIso is null/invalid we omit DTEND from the .ics
+// (RFC 5545 permits DTSTART-only events). For Google/Outlook URL params we
+// use start=end (0-duration) rather than a 3-hour fake — those clients
+// render a placeholder the user can edit. Closes the latent Constitution
+// #9 violation flagged in the ORCH-0877 investigation.
 
 import { escapeHtml } from "./escape.ts";
-
-const DEFAULT_DURATION_HOURS = 3;
 
 interface CalendarEventInput {
   title: string;
@@ -66,12 +72,14 @@ export function buildCalendarLinks(
   const endIso = input.endAtIso ?? null;
   const end = endIso ? new Date(endIso) : null;
   const endValid = end !== null && !Number.isNaN(end.getTime());
-  const effectiveEnd = endValid
-    ? end!
-    : new Date(start.getTime() + DEFAULT_DURATION_HOURS * 60 * 60 * 1000);
 
   const startCompact = formatUtcCompact(start);
-  const endCompact = formatUtcCompact(effectiveEnd);
+  // ORCH-0877 — when end is null/invalid we use start for URL params
+  // (0-duration in Google/Outlook web compose so the user can edit), and
+  // omit DTEND from the ICS entirely below.
+  const endCompact = endValid
+    ? formatUtcCompact(end!)
+    : startCompact;
   const location = input.isOnline
     ? "Online event"
     : (input.locationText ?? "");
@@ -91,7 +99,7 @@ export function buildCalendarLinks(
     rru: "addevent",
     subject: input.title,
     startdt: start.toISOString(),
-    enddt: effectiveEnd.toISOString(),
+    enddt: endValid ? end!.toISOString() : start.toISOString(),
     body: input.description,
     location,
   });
@@ -112,7 +120,9 @@ export function buildCalendarLinks(
     `UID:${uid}`,
     `DTSTAMP:${dtstamp}`,
     `DTSTART:${startCompact}`,
-    `DTEND:${endCompact}`,
+    // ORCH-0877 — DTEND only when end is real. RFC 5545 permits
+    // DTSTART-only VEVENTs. Constitution #9 (no fabrication).
+    ...(endValid ? [`DTEND:${formatUtcCompact(end!)}`] : []),
     foldIcsLine(`SUMMARY:${icsEscape(input.title)}`),
     foldIcsLine(`DESCRIPTION:${icsEscape(input.description)}`),
     foldIcsLine(`LOCATION:${icsEscape(location)}`),

@@ -63,6 +63,10 @@ export const liveEventToEditableDraft = (e: LiveEvent): DraftEvent => ({
   date: e.date,
   doorsOpen: e.doorsOpen,
   endsAt: e.endsAt,
+  // ORCH-0877 — propagate the smart-inferred UTC end-instant from the live
+  // event into the draft so cross-midnight wrap survives the edit-published
+  // round-trip until the next refetch populates `masterEndAtUtc` again.
+  endsAtUtc: e.masterEndAtUtc ?? null,
   timezone: e.timezone,
   recurrenceRule: e.recurrenceRule,
   multiDates: e.multiDates,

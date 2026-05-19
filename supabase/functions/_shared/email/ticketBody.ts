@@ -56,7 +56,11 @@ function renderLocationLine(event: TicketBodyInput["event"]): string {
 }
 
 function renderDateLine(event: TicketBodyInput["event"]): string {
-  const dateLine = formatEventDateLine(event.startAt, event.timezone);
+  const dateLine = formatEventDateLine(
+    event.startAt,
+    event.endAt,
+    event.timezone,
+  );
   if (!dateLine) return "";
   return `<p style="margin:6px 0 0 0;font-size:14px;color:${BRAND_MUTED};">${
     escapeHtml(dateLine)
@@ -122,7 +126,9 @@ function renderCalendarSection(input: TicketBodyInput): string {
   const links = buildCalendarLinks({
     title: input.event.title,
     startAtIso: input.event.startAt,
-    endAtIso: null,
+    // ORCH-0877 — pass real master end_at instead of fabricating a 3h default.
+    // Closes Constitution #9 violation flagged in ORCH-0877 investigation.
+    endAtIso: input.event.endAt,
     locationText: input.event.locationText,
     isOnline: input.event.isOnline,
     description:
@@ -141,6 +147,7 @@ export function renderTicketBody(input: TicketBodyInput): {
   const copy = ticketCopyFor(input.variant);
   const dateLine = formatEventDateLine(
     input.event.startAt,
+    input.event.endAt,
     input.event.timezone,
   );
   const heroHtml = renderHero(input);

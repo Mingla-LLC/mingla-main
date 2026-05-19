@@ -193,6 +193,20 @@ export interface LiveEvent {
   date: string | null;
   doorsOpen: string | null;
   endsAt: string | null;
+  /**
+   * ORCH-0877 — server-projected UTC instants for master event_dates row.
+   * Populated by `publicEventViewRowToEvent` and `businessEventViewRowToEvent`
+   * mappers from `business_*_events_view.master_start_at` / `master_end_at`.
+   * Optional on the type for back-compat with persisted Zustand LiveEvents
+   * from pre-ORCH-0877 builds. Persist migrator hydrates these on rehydrate
+   * via `computeMasterStartAtUtc` / `computeMasterEndAtUtc`.
+   *
+   * When both are non-null they are the canonical source of truth for
+   * cross-midnight rendering and lifecycle past-decision math. When absent,
+   * `computeMasterEndAtUtc` falls back to smart-infer per ORCH-0850 hook.
+   */
+  masterStartAtUtc?: string | null;
+  masterEndAtUtc?: string | null;
   timezone: string;
   recurrenceRule: RecurrenceRule | null;
   multiDates: MultiDateEntry[] | null;
@@ -370,7 +384,13 @@ const persistOptions: PersistOptions<LiveEventState, PersistedState> = {
   // device. Storage key name retained (`mingla-business.liveEvent.v1`)
   // so the v4→v5 migrator runs on existing users.
   partialize: (_state): PersistedState => ({ events: [] }),
-  version: 5,
+  // ORCH-0877 — bumped from v5 → v6 to mark the LiveEvent shape extension
+  // (added optional masterStartAtUtc + masterEndAtUtc). Because partialize
+  // already drops the server snapshot on every persist (post-ORCH-0862),
+  // the v5 → v6 migrator is functionally a no-op — React Query rehydrates
+  // the in-memory store from the server view (which now projects
+  // master_start_at + master_end_at) on next mount.
+  version: 6,
   migrate: (persistedState, version): PersistedState => {
     if (version < 1) {
       return { events: [] };
@@ -392,9 +412,12 @@ const persistOptions: PersistOptions<LiveEventState, PersistedState> = {
     }
     if (version === 4) {
       // ORCH-0862 — v4 → v5: drop the persisted server snapshot.
-      // React Query re-hydrates in-memory state via
-      // useBusinessEventsForBrand on next mount. Any v4 events array is
-      // discarded; no data loss because the rows live on the server.
+      return { events: [] };
+    }
+    if (version === 5) {
+      // ORCH-0877 — v5 → v6: drop the persisted server snapshot so the
+      // re-hydrate populates the new optional masterStartAtUtc + masterEndAtUtc
+      // fields from the widened view projection.
       return { events: [] };
     }
     return persistedState as PersistedState;

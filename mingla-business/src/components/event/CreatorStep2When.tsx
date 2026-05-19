@@ -57,7 +57,13 @@ import {
   formatTermination,
   weekdayOfIso,
 } from "../../utils/recurrenceRule";
-import { formatLongDate } from "../../utils/eventDateDisplay";
+import {
+  formatLongDate,
+  formatSingleDateLine,
+} from "../../utils/eventDateDisplay";
+// ORCH-0877 — smart-infer helper for cross-midnight-aware draft commits +
+// preview-line wrap visualization.
+import { computeEndsAtUtcWithSmartInfer } from "../../utils/eventDateMath";
 import {
   formatTimezoneLabel,
   formatTimezoneOffset,
@@ -242,12 +248,43 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
 
   const commitPickerValue = useCallback(
     (mode: PickerMode, d: Date): void => {
+      // ORCH-0877 — every commit of date / doorsOpen / endsAt recomputes the
+      // smart-inferred UTC end-instant so the draft carries cross-midnight
+      // awareness through publish (consumed by liveEventConverter and the
+      // server publish RPC which apply the SAME midnight-wrap logic).
       if (mode === "date") {
-        updateDraft({ date: isoFromDate(d) });
+        const newDate = isoFromDate(d);
+        updateDraft({
+          date: newDate,
+          endsAtUtc: computeEndsAtUtcWithSmartInfer(
+            newDate,
+            draft.doorsOpen,
+            draft.endsAt,
+            draft.timezone,
+          ),
+        });
       } else if (mode === "doorsOpen") {
-        updateDraft({ doorsOpen: hhmmFromDate(d) });
+        const newDoors = hhmmFromDate(d);
+        updateDraft({
+          doorsOpen: newDoors,
+          endsAtUtc: computeEndsAtUtcWithSmartInfer(
+            draft.date,
+            newDoors,
+            draft.endsAt,
+            draft.timezone,
+          ),
+        });
       } else if (mode === "endsAt") {
-        updateDraft({ endsAt: hhmmFromDate(d) });
+        const newEnds = hhmmFromDate(d);
+        updateDraft({
+          endsAt: newEnds,
+          endsAtUtc: computeEndsAtUtcWithSmartInfer(
+            draft.date,
+            draft.doorsOpen,
+            newEnds,
+            draft.timezone,
+          ),
+        });
       } else if (mode === "untilDate" && draft.recurrenceRule !== null) {
         updateDraft({
           recurrenceRule: {
@@ -257,7 +294,14 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
         });
       }
     },
-    [updateDraft, draft.recurrenceRule],
+    [
+      updateDraft,
+      draft.recurrenceRule,
+      draft.date,
+      draft.doorsOpen,
+      draft.endsAt,
+      draft.timezone,
+    ],
   );
 
   const handleOpenPicker = useCallback(
@@ -349,14 +393,11 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
       if (draft.date !== null && isDateToday(draft.date)) return new Date();
       return undefined;
     }
-    if (pickerMode === "endsAt" && draft.doorsOpen !== null) {
-      const min = new Date();
-      const parts = draft.doorsOpen.split(":");
-      const h = Number(parts[0]) || 0;
-      const m = Number(parts[1]) || 0;
-      min.setHours(h, m + 1, 0, 0);
-      return min;
-    }
+    // ORCH-0877 — endsAt picker accepts any HH:MM. Smart-infer at commit
+    // boundary detects cross-midnight (endsAt <= doorsOpen → wrap to next
+    // day) and stamps the draft's endsAtUtc accordingly. The wizard preview
+    // line above the duration label renders the resulting cross-midnight
+    // string so the operator visually confirms before publishing.
     return undefined;
   }, [pickerMode, draft.date, draft.doorsOpen]);
 
@@ -375,6 +416,33 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
     if (m === 0) return `${h}h event`;
     return `${h}h ${m}m event`;
   }, [draft.doorsOpen, draft.endsAt]);
+
+  // ORCH-0877 — wizard preview line above the duration label. Renders the
+  // canonical formatter output ("Sat 18 May · 10 PM – Sun 19 May · 2 AM" on
+  // cross-midnight; "Sat 18 May · 10 PM – 11 PM" same-day) so the operator
+  // visually confirms the wrap before publish. Null when any input missing.
+  const eventTimeRangeLabel = useMemo<string | null>(() => {
+    if (
+      draft.date === null ||
+      draft.doorsOpen === null ||
+      draft.endsAt === null
+    ) {
+      return null;
+    }
+    return formatSingleDateLine(
+      draft.date,
+      draft.doorsOpen,
+      draft.endsAt,
+      // Pass null for the UTC fields here — wizard preview uses the
+      // smart-infer fallback in formatSingleDateLine. The persisted
+      // endsAtUtc lives on the draft but doesn't carry the start UTC
+      // counterpart, so we let the formatter recompute via time-of-day
+      // comparison for visual rendering.
+      null,
+      null,
+      draft.timezone,
+    );
+  }, [draft.date, draft.doorsOpen, draft.endsAt, draft.timezone]);
 
   // ---- Mode switching ----
   // applyModeSwitch is the SINGLE entry point that touches whenMode.
@@ -878,6 +946,12 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
               ) : null}
             </View>
           </View>
+
+          {eventTimeRangeLabel !== null ? (
+            <Text style={styles.eventTimeRangeLabel}>
+              {eventTimeRangeLabel}
+            </Text>
+          ) : null}
 
           {durationLabel !== null ? (
             <View style={styles.durationRow}>
@@ -1748,6 +1822,20 @@ const styles = StyleSheet.create({
     lineHeight: typography.caption.lineHeight,
     color: accent.warm,
     fontWeight: "500",
+  },
+  // ORCH-0877 — wizard preview line (above duration row). Per ui-ux-pro-max
+  // preflight 2026-05-18: weight 500 (presence over duration but below
+  // pickers), neutral semantic.textPrimary (visual cue carried by the
+  // weekday-prefix in the string itself, not by color flicker), tight
+  // vertical rhythm.
+  eventTimeRangeLabel: {
+    fontSize: typography.body.fontSize,
+    lineHeight: typography.body.lineHeight,
+    color: textTokens.primary,
+    fontWeight: "500",
+    paddingHorizontal: spacing.xs,
+    marginTop: spacing.sm,
+    marginBottom: spacing.xs,
   },
 
   // Multi-date list ----------------------------------------------------

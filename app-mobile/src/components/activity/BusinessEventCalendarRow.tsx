@@ -25,6 +25,8 @@ import { Image as ExpoImage } from "expo-image";
 import { Icon } from "../ui/Icon";
 import type { BusinessEventCalendarRow as BusinessEventRow } from "../../services/calendarService";
 import TicketPdfSheet from "./TicketPdfSheet";
+// ORCH-0877 — centralized consumer-side date formatter.
+import { formatEventLocalRange } from "../../utils/eventDateDisplay";
 
 interface BusinessEventCalendarRowProps {
   entry: BusinessEventRow;
@@ -36,24 +38,9 @@ interface BusinessEventCalendarRowProps {
   };
 }
 
-const formatLocalDate = (
-  masterDateUtc: string | null,
-  timezone: string,
-): string => {
-  if (!masterDateUtc) return "Date to be announced";
-  try {
-    return new Intl.DateTimeFormat("en-US", {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-      timeZone: timezone || "UTC",
-    }).format(new Date(masterDateUtc));
-  } catch {
-    return masterDateUtc;
-  }
-};
+// ORCH-0877 — formatLocalDate replaced by centralized `formatEventLocalRange`
+// from app-mobile/src/utils/eventDateDisplay.ts. Compact range with arrow
+// when end is present; degrades to start-only otherwise.
 
 const BusinessEventCalendarRow: React.FC<BusinessEventCalendarRowProps> = ({
   entry,
@@ -69,7 +56,13 @@ const BusinessEventCalendarRow: React.FC<BusinessEventCalendarRowProps> = ({
     setSheetVisible(false);
   }, []);
 
-  const dateLine = formatLocalDate(entry.masterDateUtc, entry.timezone);
+  const dateLine = formatEventLocalRange({
+    masterDateUtc: entry.masterDateUtc,
+    // ORCH-0877 — calendar service uses the pre-ORCH-0853 field name
+    // `masterDateEndUtc`; alias to the centralized helper's masterEndAtUtc.
+    masterEndAtUtc: entry.masterDateEndUtc,
+    timezone: entry.timezone,
+  });
   const subtitle = entry.brandName
     ? `${entry.brandName} · ${dateLine}`
     : dateLine;

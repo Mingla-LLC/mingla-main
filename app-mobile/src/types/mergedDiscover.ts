@@ -31,6 +31,13 @@ export interface BusinessEventCard {
   coverHue: number;
   // Date / venue
   masterDateUtc: string | null;
+  /**
+   * ORCH-0877 — full UTC end-instant populated by `discover-merged-events`
+   * from `event_dates.end_at`. Source of truth for cross-midnight rendering
+   * (consumer formatters compare calendar-day in event timezone). Optional
+   * for back-compat with payloads from edge functions running pre-0877.
+   */
+  masterEndAtUtc?: string | null;
   doorsOpenLocal: string | null;
   endsAtLocal: string | null;
   timezone: string;

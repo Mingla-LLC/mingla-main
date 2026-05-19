@@ -393,6 +393,9 @@ const eventFromRow = (
     date: startSplit.date,
     doorsOpen: startSplit.time,
     endsAt: endSplit.time,
+    // ORCH-0877 — full UTC instants from the matview master_* columns.
+    masterStartAtUtc: row.master_start_at,
+    masterEndAtUtc: row.master_end_at,
     timezone: dateTimezone,
     recurrenceRule:
       businessEvent.recurrenceRule === null ||
@@ -755,6 +758,79 @@ export const patchPublishedEventTaxonomy = async (
   const response = data as PatchEventTaxonomyResponse | null;
   if (response === null) {
     throw new Error("patch_event_taxonomy_empty_response");
+  }
+  return response;
+};
+
+// ─── ORCH-0877 — When-section server-write RPC ───────────────────────
+
+/**
+ * ORCH-0877 — `business_patch_event_when` RPC input.
+ *
+ * Mirrors the publish RPC's `business_event.when` payload shape so the
+ * server-side midnight-wrap logic is byte-identical to publish. Allows
+ * operators to correct endsAt / doorsOpen / date / timezone on already-
+ * published events with the change persisting to `event_dates` (closes
+ * the ORCH-0704 v2 [Full edit-after-publish] Zustand-only gap for When
+ * fields).
+ *
+ * Buyer-protection (CONSERVATIVE): server rejects whenMode / recurrence /
+ * multi-date structural changes when sold>0. Time-only edits (endsAt,
+ * doorsOpen, timezone) always succeed regardless of sold count.
+ */
+export interface PatchEventWhenInput {
+  eventId: string;
+  whenPayload: {
+    whenMode: "single" | "multi_date" | "recurring";
+    timezone: string;
+    when: {
+      date: string | null;
+      doorsOpen: string | null;
+      endsAt: string | null;
+    } | null;
+    multiDates: MultiDateEntry[] | null;
+    recurrenceRule: unknown;
+  };
+  reason: string;
+  clientRevision: number | null;
+}
+
+export interface PatchEventWhenResponse {
+  event: Record<string, unknown>;
+  when_mode: "single" | "multi_date" | "recurring";
+  sold_count: number;
+  updated_at: string;
+}
+
+/**
+ * ORCH-0877 — patch the When section of a published event.
+ *
+ * On error, throws a plain Error whose message is the RPC's raised code so
+ * the UI can map to user-friendly toast copy. See
+ * `Mingla_Artifacts/specs/SPEC_ORCH-0877_EVENT_END_TIME_DISPLAY_AND_MIDNIGHT_CROSSING.md`
+ * §4.1 for the full 14-code error map (not_authenticated, event_not_found,
+ * event_deleted, event_not_editable_status, insufficient_event_permission,
+ * missing_edit_reason, invalid_edit_reason, stale_client_revision,
+ * event_date_required, event_end_must_differ_from_start,
+ * when_mode_drops_active_date, recurrence_drops_occurrence,
+ * multi_date_remove_with_sales, event_not_editable_race).
+ */
+export const patchPublishedEventWhen = async (
+  input: PatchEventWhenInput,
+): Promise<PatchEventWhenResponse> => {
+  const { data, error } = await supabase.rpc("business_patch_event_when", {
+    p_event_id: input.eventId,
+    p_when_payload: input.whenPayload,
+    p_reason: input.reason,
+    p_client_revision: input.clientRevision,
+  });
+  if (error !== null) {
+    const code = error.message ?? "patch_event_when_failed";
+    throw new Error(code);
+  }
+  const response = data as PatchEventWhenResponse | null;
+  if (response === null) {
+    throw new Error("patch_event_when_empty_response");
   }
   return response;
 };
