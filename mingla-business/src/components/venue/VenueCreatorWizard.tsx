@@ -72,6 +72,7 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
   const [submitErr, setSubmitErr] = useState<string | null>(null);
 
   const draft = useDraftVenueStore();
+  const poolLinked = draft.placePoolId !== null;
 
   const goNext = useCallback((): void => {
     const e = venueStepError(step, draft);
@@ -120,12 +121,16 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
       }
       setShowErr(false);
       const existingDesc = joinBrandDescription(st.tagline, st.description);
+      const firstUri = st.photoUris[0];
+      const remoteCover =
+        firstUri !== undefined && firstUri.startsWith("https://");
       const brand = await createVenue.mutateAsync({
         accountId: user.id,
         name: st.displayName.trim(),
         slug: st.slug.trim(),
         tagline: st.tagline.trim() || undefined,
         bio: st.description.trim(),
+        placePoolId: st.placePoolId,
         googlePlaceId: st.googlePlaceId,
         lat: st.lat,
         lng: st.lng,
@@ -137,14 +142,13 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
           email: st.contactEmail.trim() || undefined,
           phone: st.contactPhone.trim() || undefined,
         },
-        coverMediaUrl: null,
-        coverMediaType: null,
+        coverMediaUrl: remoteCover ? firstUri : null,
+        coverMediaType: remoteCover ? "image" : null,
         hours: st.hours,
       });
 
       let coverWarning: string | null = null;
-      const firstUri = st.photoUris[0];
-      if (firstUri !== undefined) {
+      if (firstUri !== undefined && !remoteCover) {
         try {
           const up = await uploadBrandCover(
             brand.id,
@@ -238,6 +242,12 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
 
       <Stepper steps={STEPPER_STEPS} currentIndex={step} />
 
+      {poolLinked ? (
+        <Text style={styles.poolBanner}>
+          Prefilled from our directory — review each step before you submit.
+        </Text>
+      ) : null}
+
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={{
@@ -299,6 +309,13 @@ const styles = StyleSheet.create({
     fontSize: typography.caption.fontSize,
     color: textTokens.tertiary,
     marginTop: 2,
+  },
+  poolBanner: {
+    fontSize: typography.caption.fontSize,
+    color: textTokens.secondary,
+    textAlign: "center",
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.sm,
   },
   scroll: {
     flex: 1,
