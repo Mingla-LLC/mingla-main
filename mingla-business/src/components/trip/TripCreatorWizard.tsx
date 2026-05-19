@@ -25,6 +25,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   Keyboard,
   type KeyboardEvent,
+  KeyboardAvoidingView,
   Platform,
   ScrollView,
   StyleSheet,
@@ -894,21 +895,27 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
         ) : null}
       </View>
 
-      {/* Body */}
+      {/* Body — ORCH-0884 follow-up #7: canonical KeyboardAvoidingView
+          pattern. Prior attempts (auto-inset + manual paddingBottom) left
+          the focused input HALF-COVERED by the keyboard because iOS's
+          auto-scroll only puts the input TOP above the keyboard, not the
+          full input. KeyboardAvoidingView with behavior="padding" shrinks
+          the visible area by keyboardHeight so the ScrollView naturally
+          fits its content above the keyboard. iOS's
+          scrollResponderScrollNativeHandleToKeyboard then has a smaller
+          visible area to scroll within, putting the focused input fully
+          visible. keyboardVerticalOffset accounts for the chrome height
+          above this view. */}
+      <KeyboardAvoidingView
+        style={styles.kbAvoid}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={0}
+      >
       <ScrollView
         style={styles.kbAvoid}
         contentContainerStyle={styles.body}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
-        // ORCH-0884 follow-up #5 — iOS-native keyboard inset adjustment.
-        // Operator-reported: Step 1 "Find a cover" GIPHY/Pexels search
-        // input stayed hidden behind keyboard. Manual paddingBottom alone
-        // doesn't auto-scroll the focused input above the keyboard. iOS
-        // 14+ `automaticallyAdjustKeyboardInsets` adds a content inset =
-        // keyboardHeight AND auto-scrolls focused input above keyboard.
-        // Replaces the manual `paddingBottom: keyboardHeight` (would
-        // double-pad with the native inset and leave visible dead space).
-        automaticallyAdjustKeyboardInsets
         showsVerticalScrollIndicator={false}
       >
         <Text style={styles.eyebrow}>
@@ -1000,6 +1007,7 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
           ) : null}
         </View>
       </ScrollView>
+      </KeyboardAvoidingView>
 
       {/* Dock — sleek floating glass card. Hidden when keyboard up. */}
       {keyboardVisible ? null : (

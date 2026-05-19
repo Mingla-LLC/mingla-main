@@ -704,21 +704,23 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
       <ScrollView
         ref={scrollViewRef}
         style={styles.kbAvoid}
-        contentContainerStyle={styles.body}
+        contentContainerStyle={[
+          styles.body,
+          // ORCH-0884 follow-up #6 — operator-reported: GIPHY/Pexels
+          // search input still half-covered by keyboard after follow-up
+          // #5. iOS's `automaticallyAdjustKeyboardInsets` only scrolls
+          // until the input's top edge clears the keyboard; the cursor
+          // ends up at the keyboard edge or below. Adding manual
+          // `paddingBottom = keyboardHeight + 200` gives iOS extra room
+          // to scroll the input fully above the keyboard. Slight double-
+          // pad is acceptable; functional priority > cosmetic.
+          keyboardHeight > 0
+            ? { paddingBottom: keyboardHeight + 200 }
+            : null,
+        ]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
-        // ORCH-0884 follow-up #5 — restored `automaticallyAdjustKeyboardInsets`
-        // AND removed the manual `paddingBottom: keyboardHeight`. The
-        // prior version had only manual paddingBottom + deferred
-        // scrollToEnd; scrollToEnd works for the bottom-most form input
-        // but DOES NOT auto-scroll mid-form inputs into view. Operator-
-        // reported: Step 1 "Find a cover" GIPHY/Pexels search input
-        // stayed hidden behind keyboard. iOS 14+ auto-inset adjusts the
-        // contentInset = keyboard height AND auto-scrolls focused input
-        // above keyboard — no manual paddingBottom needed, so no
-        // double-pad. The scrollToEnd ref handlers still fire for
-        // bottom-input cases (defense in depth).
         automaticallyAdjustKeyboardInsets
       >
         <Text style={styles.eyebrow}>

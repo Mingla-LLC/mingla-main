@@ -1225,19 +1225,19 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
         contentContainerStyle={[
           styles.scrollContent,
           {
+            // ORCH-0884 follow-up #6 — bumped buffer from 120 to 200pt
+            // when keyboard is up. Operator-confirmed: prior 120pt left
+            // the focused input's cursor right at the keyboard edge or
+            // below (half-covered). 200pt gives iOS's auto-scroll enough
+            // room to position the input fully above the keyboard.
             paddingBottom:
               keyboardHeight > 0
-                ? keyboardHeight + 120
+                ? keyboardHeight + 200
                 : insets.bottom + 120,
           },
         ]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
-        // ORCH-0884 follow-up #4 — iOS auto-scroll the focused TextInput
-        // above the keyboard so bottom fields (notes, ticket-tier inputs,
-        // pricing fields) aren't hidden when the keyboard appears. iOS
-        // 14+. The paddingBottom above provides scrollable headroom; this
-        // prop makes the scroll happen automatically on focus.
         automaticallyAdjustKeyboardInsets
         showsVerticalScrollIndicator={false}
       >
