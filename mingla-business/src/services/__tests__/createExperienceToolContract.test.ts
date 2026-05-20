@@ -27,4 +27,12 @@ describe("create_experience tool contract", () => {
     expect(source).toMatch(/visibility:\s*"public"/);
     expect(source).toMatch(/experience_meta/);
   });
+
+  test("supports Play venue category with activities_snap and capacity fields", () => {
+    expect(source).toMatch(/venueCategory !== "restaurant" && venueCategory !== "play"/);
+    expect(source).toMatch(/activities_snap/);
+    expect(source).toMatch(/capacity_min/);
+    expect(source).toMatch(/suggested_time_of_day/);
+    expect(source).toMatch(/filterPlayIntentTags/);
+  });
 });

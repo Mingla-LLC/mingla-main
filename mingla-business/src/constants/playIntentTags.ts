@@ -11,3 +11,20 @@ export const PLAY_INTENT_TAGS = [
 ] as const;
 
 export type PlayIntentTag = (typeof PLAY_INTENT_TAGS)[number];
+
+const PLAY_INTENT_SET = new Set<string>(PLAY_INTENT_TAGS);
+
+/** Filters tags to Play allowlist (mirrors server playIntentTags.ts). */
+export function filterPlayIntentTags(raw: unknown): PlayIntentTag[] {
+  if (!Array.isArray(raw)) return [];
+  const out: PlayIntentTag[] = [];
+  for (const t of raw) {
+    if (typeof t !== "string") continue;
+    const normalized = t.trim().toLowerCase().replace(/\s+/g, "_");
+    if (PLAY_INTENT_SET.has(normalized) && !out.includes(normalized as PlayIntentTag)) {
+      out.push(normalized as PlayIntentTag);
+    }
+    if (out.length >= 12) break;
+  }
+  return out;
+}

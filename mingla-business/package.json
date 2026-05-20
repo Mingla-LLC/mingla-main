@@ -37,7 +37,8 @@
     "test:orch-0784": "node ../.github/scripts/strict-grep/orch-0784-event-list-sales-summary-visibility.mjs && npx jest eventSalesSummary.test",
     "test:orch-0786": "node ../.github/scripts/strict-grep/orch-0786-creator-avatar-upload-integrity.mjs && npx jest creatorAvatarService.test creatorAvatarRules.test creatorAvatarFileReader.test edit-profile.avatar.test",
     "test:orch-0823": "npx jest Input.variantBehaviour.test",
-    "test:orch-0881": "node ../.github/scripts/strict-grep/i-ve5-parse-menu-user-jwt-only.mjs && npx jest ve5MigrationContract.test canGenerateExperiencesFromMenu.test experiencesService.test createExperienceToolContract.test"
+    "test:orch-0881": "node ../.github/scripts/strict-grep/i-ve5-parse-menu-user-jwt-only.mjs && npx jest ve5MigrationContract.test canGenerateExperiencesFromMenu.test experiencesService.test createExperienceToolContract.test",
+    "test:orch-0882": "node ../.github/scripts/strict-grep/i-ve6-parse-play-user-jwt-only.mjs && npx jest playIntentTags.test geminiActivitiesParser.contract.test createExperienceToolContract.test experiencesService.test"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
