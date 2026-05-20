@@ -101,6 +101,10 @@ import type { PreviewVariables } from "../../../../src/services/marketing/market
 import { useCurrentBrand } from "../../../../src/hooks/useCurrentBrand";
 import { useAuth } from "../../../../src/context/AuthContext";
 import { useResponsiveLayout } from "../../../../src/hooks/useResponsiveLayout";
+// ORCH-0891 M3 D-3 — wire the M2-shipped composer keyboard shortcuts.
+// On native this resolves to the no-op `.ts` sibling; web picks the
+// .web.ts implementation that installs the global keydown listener.
+import { useComposerKeyboardShortcuts } from "../../../../src/hooks/useComposerKeyboardShortcuts";
 
 export default function ComposeCampaignRoute(): React.ReactElement {
   const router = useRouter();
@@ -521,6 +525,64 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           minute: "2-digit",
         })
       : "Pick a time";
+
+  // ORCH-0891 M3 D-3: install web composer keyboard shortcuts. Hook is
+  // unconditional (Rules of Hooks) and a no-op on native. Handlers are
+  // stable closures over the same setters used by the footer buttons.
+  // ⌘P is intentionally no-op on wide-desktop (the preview pane is
+  // permanent — no toggle target); narrow web opens the Modal.
+  useComposerKeyboardShortcuts({
+    onBold: (): void => {
+      editorHandleRef.current?.toggleBold();
+    },
+    onItalic: (): void => {
+      editorHandleRef.current?.toggleItalic();
+    },
+    onLink: (): void => {
+      editorHandleRef.current?.toggleLink();
+    },
+    onSendNow: (): void => {
+      const missing = missingFieldsLabel();
+      if (missing !== null) {
+        setErrorBanner(missing);
+        return;
+      }
+      if (coreFooterDisabled) return;
+      setSendMode("now");
+      setShowReview(true);
+    },
+    onTogglePreview: (): void => {
+      if (isWideDesktop) return;
+      setShowPreview((prev) => !prev);
+    },
+    onToggleDrawer: (): void => {
+      editorHandleRef.current?.toggleTemplateDrawer();
+    },
+    onCloseAny: (): void => {
+      // Esc closes any open Modal/Sheet — in priority order so closing
+      // the topmost surface first feels natural to a keyboard user.
+      if (showSentConfirmation) {
+        setShowSentConfirmation(false);
+        return;
+      }
+      if (showReview) {
+        setShowReview(false);
+        return;
+      }
+      if (showSchedulePicker) {
+        setShowSchedulePicker(false);
+        return;
+      }
+      if (showAudiencePicker) {
+        setShowAudiencePicker(false);
+        return;
+      }
+      if (showPreview) {
+        setShowPreview(false);
+        return;
+      }
+    },
+  });
 
   // Pre-fill loading skeleton
   if (audienceParam !== null && audienceId === null && errorBanner === null) {

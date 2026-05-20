@@ -58,6 +58,11 @@ export const ComposerFooter: React.FC<ComposerFooterProps> = ({
   const insets = useSafeAreaInsets();
   const { isWideDesktop } = useResponsiveLayout();
   const disabledByMutation = submitting === true;
+  // ORCH-0891 M3 D-2: hide Preview button on wide-desktop. The
+  // permanent right-hand EmailPreviewPane mounted by ComposerCanvas.web
+  // makes the Modal-based Preview button redundant — the inbox view is
+  // already live on screen as the operator types. Native + narrow web
+  // still render the button (their preview is the Modal).
   return (
     <View
       style={[
@@ -69,21 +74,22 @@ export const ComposerFooter: React.FC<ComposerFooterProps> = ({
         },
       ]}
     >
-      <Pressable
-        onPress={onPreview}
-        disabled={disabledByMutation}
-        accessibilityRole="button"
-        accessibilityLabel="Preview email"
-        accessibilityState={{ disabled: disabledByMutation }}
-        style={({ pressed }) => [
-          styles.ghostBtn,
-          isWideDesktop ? styles.desktopFlatBtn : null,
-          pressed ? styles.ghostBtnPressed : null,
-          disabledByMutation ? styles.btnDisabled : null,
-        ]}
-      >
-        <Text style={styles.ghostBtnLabel}>Preview</Text>
-      </Pressable>
+      {isWideDesktop ? null : (
+        <Pressable
+          onPress={onPreview}
+          disabled={disabledByMutation}
+          accessibilityRole="button"
+          accessibilityLabel="Preview email"
+          accessibilityState={{ disabled: disabledByMutation }}
+          style={({ pressed }) => [
+            styles.ghostBtn,
+            pressed ? styles.ghostBtnPressed : null,
+            disabledByMutation ? styles.btnDisabled : null,
+          ]}
+        >
+          <Text style={styles.ghostBtnLabel}>Preview</Text>
+        </Pressable>
+      )}
       <Pressable
         onPress={onSendNow}
         disabled={sendNowDisabled || disabledByMutation}
