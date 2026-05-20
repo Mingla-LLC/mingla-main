@@ -20,7 +20,6 @@ import {
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { CampaignCard } from "../../../../src/components/marketing/CampaignCard";
 import {
@@ -39,6 +38,7 @@ import {
 } from "../../../../src/constants/designSystem";
 import { useAuth } from "../../../../src/context/AuthContext";
 import { useCampaigns } from "../../../../src/hooks/marketing/useCampaigns";
+import { useStickyFooterOffset } from "../../../../src/hooks/useStickyFooterOffset";
 import {
   cancelScheduled,
   deleteDraft,
@@ -47,7 +47,7 @@ import type { CampaignStatus } from "../../../../src/types/marketing";
 
 export default function MarketingCampaignsRoute(): React.ReactElement {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
+  const fabOffset = useStickyFooterOffset();
   const { user } = useAuth();
   const accountId = user?.id ?? null;
   const [filter, setFilter] = useState<CampaignFilter>("all");
@@ -103,8 +103,13 @@ export default function MarketingCampaignsRoute(): React.ReactElement {
   return (
     <View style={styles.host}>
       <CampaignFilterPills active={filter} onChange={setFilter} />
-      {campaignsQuery.isLoading && campaigns.length === 0 ? (
-        <View style={styles.centerHost}>
+      {/* ORCH-0889: disabled-query (auth-bootstrap) and first-fetch both
+          render the spinner. The old guard `isLoading && campaigns.length
+          === 0` mis-fired during the web auth-bootstrap window and fell
+          through to "Your first campaign starts here" — falsely
+          communicating a terminal state. Per I-DISABLED-QUERY-IS-LOADING. */}
+      {!campaignsQuery.hasResolved && !campaignsQuery.isError ? (
+        <View style={styles.centerHost} testID="campaigns-spinner">
           <ActivityIndicator size="small" color={textTokens.secondary} />
         </View>
       ) : campaignsQuery.isError ? (
@@ -146,10 +151,7 @@ export default function MarketingCampaignsRoute(): React.ReactElement {
         accessibilityLabel="New campaign"
         style={({ pressed }) => [
           styles.fab,
-          // BottomNav owns its own safe-area inset internally; lift the FAB
-          // above the nav (~72pt visible) + the safe-area inset + a comfy
-          // 24pt breathing gap so it never feels cramped against the nav.
-          { bottom: insets.bottom + 96 },
+          { bottom: fabOffset },
           pressed ? styles.fabPressed : null,
         ]}
       >

@@ -128,7 +128,6 @@ export const CreatorStep1Basics: React.FC<StepBodyProps> = ({
   updateDraft,
   errors,
   showErrors,
-  scrollToBottom,
 }) => {
   const nameError = showErrors ? errorForKey(errors, "name") : undefined;
   const descError = showErrors ? errorForKey(errors, "description") : undefined;
@@ -273,11 +272,6 @@ export const CreatorStep1Basics: React.FC<StepBodyProps> = ({
           <TextInput
             value={draft.description}
             onChangeText={(v) => updateDraft({ description: v })}
-            // Multiline TextInput on iOS doesn't trigger reliable
-            // scroll-into-view from `automaticallyAdjustKeyboardInsets`,
-            // so on focus we manually scroll the wizard to the bottom
-            // (Description is the last field on Step 1).
-            onFocus={scrollToBottom}
             placeholder="What's the vibe? Doors, dress code, sound system, who it's for…"
             placeholderTextColor={textTokens.quaternary}
             multiline

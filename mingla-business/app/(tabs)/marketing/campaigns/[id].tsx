@@ -22,7 +22,7 @@ import {
   View,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useStickyFooterOffset } from "../../../../src/hooks/useStickyFooterOffset";
 
 import { EmptyState } from "../../../../src/components/ui/EmptyState";
 import { Icon } from "../../../../src/components/ui/Icon";
@@ -107,7 +107,7 @@ function maskEmail(email: string | null): string {
 
 export default function CampaignReportRoute(): React.ReactElement {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
+  const bottomChromeInset = useStickyFooterOffset();
   const params = useLocalSearchParams<{ id: string | string[] }>();
   const idParam = Array.isArray(params.id) ? params.id[0] : params.id;
   const campaignId =
@@ -134,7 +134,9 @@ export default function CampaignReportRoute(): React.ReactElement {
     );
   }
 
-  if (reportQuery.isLoading && reportQuery.data === undefined) {
+  // ORCH-0889: disabled-query + first-fetch both render the spinner.
+  // Per I-DISABLED-QUERY-IS-LOADING.
+  if (!reportQuery.hasResolved && !reportQuery.isError) {
     return (
       <View style={styles.host}>
         <Header onBack={handleBack} title="Campaign" />
@@ -170,9 +172,12 @@ export default function CampaignReportRoute(): React.ReactElement {
       <ScrollView
         contentContainerStyle={[
           styles.scrollContent,
-          // Clear the BottomNav (~72pt visible) + safe-area inset + a 24pt
-          // breathing gap so the last recipient row scrolls into view.
-          { paddingBottom: insets.bottom + 96 },
+          // ORCH-0889: bottom inset comes from useStickyFooterOffset so the
+          // last recipient row clears the mobile BottomNav capsule on
+          // native + narrow web AND avoids extra empty gutter on wide-
+          // desktop (where the BottomNav is replaced by the fixed-left
+          // rail and insets.bottom is 0).
+          { paddingBottom: bottomChromeInset },
         ]}
         showsVerticalScrollIndicator={false}
       >
@@ -375,8 +380,9 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: spacing.md,
-    // paddingBottom is injected per-render via insets.bottom + 96 so the
-    // last recipient row clears the floating BottomNav.
+    // paddingBottom is injected per-render via useStickyFooterOffset()
+    // (ORCH-0889) so the last recipient row clears the floating
+    // BottomNav on mobile and the canvas bottom on wide-desktop.
     gap: spacing.md,
   },
   heroCard: {

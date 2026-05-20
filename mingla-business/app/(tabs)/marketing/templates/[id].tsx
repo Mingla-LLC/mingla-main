@@ -24,6 +24,7 @@ import {
 } from "react-native";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useStickyFooterOffset } from "../../../../src/hooks/useStickyFooterOffset";
 
 import { EmptyState } from "../../../../src/components/ui/EmptyState";
 import { Icon } from "../../../../src/components/ui/Icon";
@@ -52,6 +53,7 @@ export default function TemplateDetailRoute(): React.ReactElement {
   const router = useRouter();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
+  const fabOffset = useStickyFooterOffset();
   const params = useLocalSearchParams<{ id: string | string[] }>();
   const rawId = Array.isArray(params.id) ? params.id[0] : params.id;
   const templateId = typeof rawId === "string" && rawId.length > 0 ? rawId : null;
@@ -240,8 +242,11 @@ export default function TemplateDetailRoute(): React.ReactElement {
     return unsubscribe;
   }, [navigation, isDirty, performSave, router]);
 
-  // Loading
-  if (!isNewMode && templateQuery.isLoading && templateQuery.data === undefined) {
+  // ORCH-0889: disabled-query + first-fetch both render the spinner.
+  // The `templates/new` sentinel keeps `enabled: false` on the hook
+  // forever — `isNewMode` already short-circuits that branch above, so
+  // here we only block on edit-mode loads. Per I-DISABLED-QUERY-IS-LOADING.
+  if (!isNewMode && !templateQuery.hasResolved && !templateQuery.isError) {
     return (
       <View style={styles.host}>
         <Header onBack={handleBack} title="Template" rightSlot={null} />
@@ -385,10 +390,11 @@ export default function TemplateDetailRoute(): React.ReactElement {
       </KeyboardAvoidingView>
 
       {/* Floating primary CTA — matches the Overview / Campaigns / Templates
-          FAB pattern (position: absolute, right + bottom: insets.bottom + 96,
-          accent.warm-tinted pill). Visible in every mode; tap handler routes
-          to composer with template pre-fill (and auto-saves first when
-          editable / new and dirty). */}
+          FAB pattern. ORCH-0889: bottom offset comes from
+          useStickyFooterOffset so the CTA clears the mobile BottomNav
+          capsule on native + narrow web AND sits flush with the canvas
+          bottom on wide-desktop (where the BottomNav is replaced by the
+          fixed-left rail). */}
       <Pressable
         onPress={() => { void handleUse(); }}
         accessibilityRole="button"
@@ -396,7 +402,7 @@ export default function TemplateDetailRoute(): React.ReactElement {
         accessibilityHint="Opens the campaign composer with this template loaded"
         style={({ pressed }) => [
           styles.fab,
-          { bottom: insets.bottom + 96 },
+          { bottom: fabOffset },
           pressed ? styles.fabPressed : null,
         ]}
         disabled={saveBusy}
@@ -514,8 +520,8 @@ const styles = StyleSheet.create({
     color: semantic.error,
   },
   // Floating CTA — exact-same shape as the Overview / Campaigns / Templates
-  // list FABs (position: absolute, right: spacing.md, bottom: insets.bottom +
-  // 96 to clear the floating BottomNav capsule, accent.warm-tinted pill).
+  // list FABs (position: absolute, right: spacing.md, bottom from
+  // useStickyFooterOffset per ORCH-0889, accent.warm-tinted pill).
   fab: {
     position: "absolute",
     right: spacing.md,

@@ -87,11 +87,12 @@ export interface InsertionBarProps {
   onInsertImage: () => void;
   onOpenTemplateDrawer: () => void;
 
-  /** Stage F.9: merged toolbar — Bold / Italic / Link sit BEFORE +Event
-   * in the same row. These callbacks fire the pell sendAction(actions.X)
-   * commands from the editor host. */
+  /** Stage F.9: merged toolbar — Bold / Italic / Underline / Link sit
+   * BEFORE +Event in the same row. These callbacks run focus-then-
+   * execCommand JS in the editor's WebView via commandDOM. */
   onToggleBold: () => void;
   onToggleItalic: () => void;
+  onToggleUnderline: () => void;
   onToggleLink: () => void;
 
   /** Optional style override on the root for embedding in keyboard accessory. */
@@ -113,6 +114,7 @@ export function InsertionBar(props: InsertionBarProps): React.ReactElement {
     onOpenTemplateDrawer,
     onToggleBold,
     onToggleItalic,
+    onToggleUnderline,
     onToggleLink,
     style,
   } = props;
@@ -199,6 +201,16 @@ export function InsertionBar(props: InsertionBarProps): React.ReactElement {
           desktopFlat={isWideDesktop}
         />
         <Pill
+          label="U"
+          accessibilityLabel="Underline"
+          active={false}
+          onPress={onToggleUnderline}
+          compact
+          underline
+          testID="composer-v2-format-underline"
+          desktopFlat={isWideDesktop}
+        />
+        <Pill
           label="Link"
           accessibilityLabel="Insert link"
           active={false}
@@ -258,6 +270,7 @@ interface PillProps {
   primary?: boolean;
   compact?: boolean;
   italic?: boolean;
+  underline?: boolean;
   testID?: string;
   desktopFlat?: boolean;
 }
@@ -271,6 +284,7 @@ function Pill(props: PillProps): React.ReactElement {
     primary,
     compact,
     italic,
+    underline,
     testID,
     desktopFlat,
   } = props;
@@ -297,6 +311,7 @@ function Pill(props: PillProps): React.ReactElement {
           styles.pillText,
           primary === true ? styles.pillTextPrimary : styles.pillTextNeutral,
           italic === true ? styles.pillTextItalic : null,
+          underline === true ? styles.pillTextUnderline : null,
         ]}
       >
         {label}
@@ -484,6 +499,9 @@ const styles = StyleSheet.create({
   },
   pillTextItalic: {
     fontStyle: "italic",
+  },
+  pillTextUnderline: {
+    textDecorationLine: "underline",
   },
 
   // Events panel

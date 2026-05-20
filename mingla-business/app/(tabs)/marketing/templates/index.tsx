@@ -16,7 +16,6 @@ import {
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { EmptyState } from "../../../../src/components/ui/EmptyState";
 import { Icon } from "../../../../src/components/ui/Icon";
@@ -31,10 +30,11 @@ import {
 import { useAuth } from "../../../../src/context/AuthContext";
 import { useStarterTemplates } from "../../../../src/hooks/marketing/useStarterTemplates";
 import { useUserTemplates } from "../../../../src/hooks/marketing/useUserTemplates";
+import { useStickyFooterOffset } from "../../../../src/hooks/useStickyFooterOffset";
 
 export default function MarketingTemplatesRoute(): React.ReactElement {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
+  const fabOffset = useStickyFooterOffset();
   const { user } = useAuth();
   const accountId = user?.id ?? null;
   const starterQuery = useStarterTemplates();
@@ -124,7 +124,7 @@ export default function MarketingTemplatesRoute(): React.ReactElement {
         accessibilityLabel="New template"
         style={({ pressed }) => [
           styles.fab,
-          { bottom: insets.bottom + 96 },
+          { bottom: fabOffset },
           pressed ? styles.fabPressed : null,
         ]}
       >
