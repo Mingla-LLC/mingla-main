@@ -50,8 +50,12 @@ jest.mock("react-native", () => {
 });
 
 import {
-  DESKTOP_CONTENT_MAX_WIDTH,
-  DESKTOP_CONTENT_PADDING_X,
+  DESKTOP_BEZEL_MARGIN,
+  DESKTOP_HUB_GRID_COLUMNS,
+  DESKTOP_RAIL_WIDTH,
+  DESKTOP_TOP_INSET,
+  DESKTOP_WIZARD_FORM_MAX_WIDTH,
+  DESKTOP_WIZARD_RAIL_WIDTH,
 } from "../../constants/desktopLayout";
 import { useResponsiveLayout } from "../useResponsiveLayout";
 
@@ -150,7 +154,11 @@ describe("DesktopCanvas — render contract", () => {
   });
 
   test("desktop web content column uses the wide business layout", () => {
-    expect(DESKTOP_CONTENT_MAX_WIDTH).toBe(1184);
-    expect(DESKTOP_CONTENT_PADDING_X).toBe(24);
+    expect(DESKTOP_BEZEL_MARGIN).toBe(12);
+    expect(DESKTOP_HUB_GRID_COLUMNS).toBe(4);
+    expect(DESKTOP_RAIL_WIDTH).toBe(80);
+    expect(DESKTOP_TOP_INSET).toBe(16);
+    expect(DESKTOP_WIZARD_FORM_MAX_WIDTH).toBe(1120);
+    expect(DESKTOP_WIZARD_RAIL_WIDTH).toBe(260);
   });
 });

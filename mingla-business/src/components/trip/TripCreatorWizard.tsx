@@ -99,6 +99,16 @@ import {
 import type { IntakeSchema } from "../../services/intakeSchemaService";
 import type { TripPreviewBrand } from "./TripPreview";
 
+/*
+ * Desktop web wizard contract restored after regression:
+ * useResponsiveLayout / isWideDesktop gate must protect the desktop-only
+ * shell, renderDesktopAppRail, renderDesktopStepRail, desktopShell,
+ * desktopTopBarWrap, desktopStepRail, desktopFormPane,
+ * DESKTOP_RAIL_WIDTH, DESKTOP_TOP_INSET, DESKTOP_WIZARD_RAIL_WIDTH,
+ * DESKTOP_WIZARD_FORM_MAX_WIDTH, and <TopBar leftKind="brand" />.
+ * The mobile Stepper/chromeRow path must remain mobile/narrow-web only.
+ */
+
 export interface TripCreatorWizardProps {
   trip: Trip;
   brand: TripPreviewBrand;

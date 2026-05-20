@@ -18,20 +18,16 @@
  *   bottom via flex spacer), and no glass-capsule chrome.
  *
  * # Active-state tokens (SPEC §7 + /ui-ux-pro-max pre-flight decision)
- * Active tab background: `rgba(255,255,255,0.05)` (mock 01 line 70
- * `bg-white/5`). Border: `rgba(255,255,255,0.10)` (mock line 70
- * `border-white/10`). Outer ring: 2px `accent.glow` via `box-shadow` /
- * RN `shadowColor` token from `designSystem.shadows.glassChromeActive`.
- * Icon stroke + label color: `accent.warm` (#eb7825). Inactive icons:
- * `#b9b9c2` (mock line 76 stroke). Inactive labels: `#a1a1aa` (Tailwind
- * zinc-400, mock `text-zinc-400` line 76).
+ * Active tab background: translucent white glass with a restrained warm
+ * border. The selected state uses a small, low-opacity warm shadow instead
+ * of the old large orange halo, so the rail reads as sleek chrome rather
+ * than a fuzzy glow. Icon stroke + label color: `accent.warm` (#eb7825).
+ * Inactive icons: `#b9b9c2`. Inactive labels: `#a1a1aa`.
  *
- * /ui-ux-pro-max pre-flight rationale (2026-05-19): the mock chose a soft
- * white-wash + glow ring (not a full accent.tint fill like the mobile
- * capsule) because the rail sits on the ambient gradient — a strong
- * accent.tint fill would compete with the gradient's own warm wash. The
- * mobile capsule's stronger fill is needed because it lives on glass
- * chrome that has no inherent warm tone.
+ * /ui-ux-pro-max iteration (2026-05-19): the temporary "M" gradient badge
+ * was replaced with the official Mingla Business logo asset, and the active
+ * tab was tightened after operator feedback that the glow looked too
+ * heavy/AI-generated.
  *
  * # Invariants honoured
  * - I-DESKTOP-GATE-VIA-HOOK — gates exclusively via `useResponsiveLayout()`.
@@ -48,6 +44,7 @@
 
 import React, { useCallback } from "react";
 import {
+  Image,
   Pressable,
   StyleSheet,
   Text,
@@ -55,14 +52,13 @@ import {
   type StyleProp,
   type ViewStyle,
 } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
 
 import {
   accent,
-  shadows,
   spacing,
   typography,
 } from "../../constants/designSystem";
+import { DESKTOP_RAIL_WIDTH } from "../../constants/desktopLayout";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 
 import { BottomNav as MobileBottomNav } from "./BottomNav";
@@ -84,25 +80,19 @@ export interface BottomNavProps {
 }
 
 // Rail geometry constants — mock 01 lines 68 + 70.
-const RAIL_WIDTH = 80;
 const TAB_SIZE = 48;
 const TAB_RADIUS = 16;
 const ICON_SIZE = 20;
 const BRAND_MARK_SIZE = 40;
-const BRAND_MARK_RADIUS = 12;
 
 // Active / inactive colour tokens — see file header for /ui-ux-pro-max
 // pre-flight rationale and verbatim mock-01 sourcing.
-const ACTIVE_BG = "rgba(255, 255, 255, 0.05)";
-const ACTIVE_BORDER = "rgba(255, 255, 255, 0.10)";
+const ACTIVE_BG = "rgba(255, 255, 255, 0.055)";
+const ACTIVE_BORDER = "rgba(235, 120, 37, 0.45)";
 const INACTIVE_ICON = "#b9b9c2";
 const INACTIVE_LABEL = "#a1a1aa";
 const RAIL_RIGHT_BORDER = "rgba(255, 255, 255, 0.05)";
-
-// Brand-mark gradient — Tailwind `from-orange-500` to `to-rose-600`
-// (mock line 69), resolved to hex so the implementor does not improvise.
-const BRAND_MARK_GRADIENT_START = "#F4811F";
-const BRAND_MARK_GRADIENT_END = "#E11D48";
+const MINGLA_BUSINESS_LOGO = require("../../../assets/brand/mingla-business-logo.png") as number;
 
 export const BottomNav: React.FC<BottomNavProps> = ({
   tabs,
@@ -162,16 +152,14 @@ const DesktopRail: React.FC<DesktopRailProps> = ({ tabs, active, onChange, testI
       style={styles.rail}
       accessibilityRole="tablist"
     >
-      {/* Brand-mark badge (top of rail). 40×40, gradient from orange-500
-          to rose-600, centred bold "M". Mock 01 line 69. */}
-      <LinearGradient
-        colors={[BRAND_MARK_GRADIENT_START, BRAND_MARK_GRADIENT_END]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.brandMark}
-      >
-        <Text style={styles.brandMarkLetter}>M</Text>
-      </LinearGradient>
+      <View style={styles.brandMark}>
+        <Image
+          source={MINGLA_BUSINESS_LOGO}
+          style={styles.brandLogo}
+          resizeMode="contain"
+          accessibilityIgnoresInvertColors
+        />
+      </View>
 
       {/* Primary tabs (Home / Hub / Ari / Blast / any future non-account tab). */}
       {primaryTabs.map((tab) => (
@@ -226,7 +214,7 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     bottom: 0,
-    width: RAIL_WIDTH,
+    width: DESKTOP_RAIL_WIDTH,
     flexDirection: "column",
     alignItems: "center",
     paddingVertical: spacing.lg,
@@ -241,16 +229,13 @@ const styles = StyleSheet.create({
   brandMark: {
     width: BRAND_MARK_SIZE,
     height: BRAND_MARK_SIZE,
-    borderRadius: BRAND_MARK_RADIUS,
     marginBottom: spacing.md,
     alignItems: "center",
     justifyContent: "center",
   },
-  brandMarkLetter: {
-    color: "#ffffff",
-    fontSize: 18,
-    fontWeight: "700",
-    letterSpacing: 0,
+  brandLogo: {
+    width: BRAND_MARK_SIZE,
+    height: BRAND_MARK_SIZE,
   },
   tab: {
     width: TAB_SIZE,
@@ -265,10 +250,10 @@ const styles = StyleSheet.create({
   tabActive: {
     backgroundColor: ACTIVE_BG,
     borderColor: ACTIVE_BORDER,
-    // 2px accent.glow outer ring — mock 01 line 70 `box-shadow: 0 0 0 2px
-    // var(--accent-glow)`. Use the existing token from designSystem so we
-    // don't fork shadow values.
-    ...shadows.glassChromeActive,
+    shadowColor: accent.warm,
+    shadowOpacity: 0.16,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
   },
   tabLabel: {
     fontSize: 9,

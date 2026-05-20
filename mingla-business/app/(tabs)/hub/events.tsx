@@ -39,7 +39,9 @@ import {
   text as textTokens,
   typography,
 } from "../../../src/constants/designSystem";
+import { DESKTOP_HUB_GRID_COLUMNS } from "../../../src/constants/desktopLayout";
 import { useCurrentBrand } from "../../../src/hooks/useCurrentBrand";
+import { useResponsiveLayout } from "../../../src/hooks/useResponsiveLayout";
 import {
   useDraftEventStore,
   useDraftsForBrand,
@@ -122,6 +124,7 @@ interface PillSpec {
 export default function EventsTab(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { isWideDesktop } = useResponsiveLayout();
   const currentBrand = useCurrentBrand();
   useServerDraftsForBrand(currentBrand?.id ?? null);
   const businessEventsQuery = useBusinessEventsForBrand(currentBrand?.id ?? null);
@@ -578,17 +581,21 @@ export default function EventsTab(): React.ReactElement {
             ) : null}
           </GlassCard>
         ) : currentBrand !== null ? (
-          <View style={styles.list}>
+          <View style={[styles.list, isWideDesktop && styles.desktopListGrid]}>
             {filteredItems.map((item) => (
-              <EventListCard
+              <View
                 key={item.key}
-                event={item.event}
-                kind={item.kind}
-                brand={currentBrand}
-                status={item.status}
-                onOpen={() => handleOpenItem(item)}
-                onManageOpen={() => handleManageOpen(item)}
-              />
+                style={isWideDesktop ? styles.desktopListCell : undefined}
+              >
+                <EventListCard
+                  event={item.event}
+                  kind={item.kind}
+                  brand={currentBrand}
+                  status={item.status}
+                  onOpen={() => handleOpenItem(item)}
+                  onManageOpen={() => handleManageOpen(item)}
+                />
+              </View>
             ))}
           </View>
         ) : null}
@@ -821,6 +828,15 @@ const styles = StyleSheet.create({
   },
   list: {
     gap: spacing.sm,
+  },
+  desktopListGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
+  desktopListCell: {
+    width: `${100 / DESKTOP_HUB_GRID_COLUMNS}%`,
+    paddingRight: spacing.sm,
   },
   emptyTitle: {
     fontSize: typography.h3.fontSize,

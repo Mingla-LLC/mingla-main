@@ -33,9 +33,11 @@ import {
   text as textTokens,
   typography,
 } from "../../../src/constants/designSystem";
+import { DESKTOP_HUB_GRID_COLUMNS } from "../../../src/constants/desktopLayout";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
 import { TripListCard } from "../../../src/components/trip/TripListCard";
 import { useCurrentBrand } from "../../../src/hooks/useCurrentBrand";
+import { useResponsiveLayout } from "../../../src/hooks/useResponsiveLayout";
 import { useTripsByBrand } from "../../../src/hooks/useTrips";
 import type { Trip } from "../../../src/services/tripsService";
 import { routeForEventRowDefensive } from "../../../src/utils/routeForEventRow";
@@ -63,6 +65,7 @@ function deriveTripFilterBucket(trip: Trip): "upcoming" | "past" | "draft" {
 export default function HubTripsRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { isWideDesktop } = useResponsiveLayout();
   const currentBrand = useCurrentBrand();
   const tripsQuery = useTripsByBrand(currentBrand?.id ?? null);
 
@@ -251,13 +254,17 @@ export default function HubTripsRoute(): React.ReactElement {
             </Text>
           </GlassCard>
         ) : (
-          <View style={styles.list}>
+          <View style={[styles.list, isWideDesktop && styles.desktopListGrid]}>
             {filteredTrips.map((trip) => (
-              <TripListCard
+              <View
                 key={trip.id}
-                trip={trip}
-                onOpen={() => handleOpenTrip(trip)}
-              />
+                style={isWideDesktop ? styles.desktopListCell : undefined}
+              >
+                <TripListCard
+                  trip={trip}
+                  onOpen={() => handleOpenTrip(trip)}
+                />
+              </View>
             ))}
           </View>
         )}
@@ -300,6 +307,15 @@ const styles = StyleSheet.create({
   },
   list: {
     gap: spacing.sm,
+  },
+  desktopListGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
+  desktopListCell: {
+    width: `${100 / DESKTOP_HUB_GRID_COLUMNS}%`,
+    paddingRight: spacing.sm,
   },
   pillsScroll: {
     paddingVertical: spacing.sm,

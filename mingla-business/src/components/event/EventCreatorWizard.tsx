@@ -71,6 +71,16 @@ import { Stepper } from "../ui/Stepper";
 import type { StepperStep } from "../ui/Stepper";
 import { Toast } from "../ui/Toast";
 
+/*
+ * Desktop web wizard contract restored after regression:
+ * useResponsiveLayout / isWideDesktop gate must protect the desktop-only
+ * shell, renderDesktopAppRail, renderDesktopStepRail, desktopShell,
+ * desktopTopBarWrap, desktopStepRail, desktopFormPane,
+ * DESKTOP_RAIL_WIDTH, DESKTOP_TOP_INSET, DESKTOP_WIZARD_RAIL_WIDTH,
+ * DESKTOP_WIZARD_FORM_MAX_WIDTH, and <TopBar leftKind="brand" />.
+ * The mobile Stepper/chromeRow path must remain mobile/narrow-web only.
+ */
+
 import { CreatorStep1Basics } from "./CreatorStep1Basics";
 import { CreatorStep2When } from "./CreatorStep2When";
 import { CreatorStep3Where } from "./CreatorStep3Where";

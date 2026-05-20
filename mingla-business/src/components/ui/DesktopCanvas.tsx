@@ -49,14 +49,15 @@ import React from "react";
 import { Platform, StyleSheet, View, type ViewStyle } from "react-native";
 
 import {
-  DESKTOP_CONTENT_MAX_WIDTH,
-  DESKTOP_CONTENT_PADDING_X,
+  DESKTOP_BEZEL_MARGIN,
+  DESKTOP_RAIL_WIDTH,
+  DESKTOP_TOP_INSET,
 } from "../../constants/desktopLayout";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 
 export interface DesktopCanvasProps {
   children: React.ReactNode;
-  /** Max content-column width on desktop. Default 1184. */
+  /** Optional max content-column width for future constrained routes. */
   maxWidth?: number;
 }
 
@@ -65,7 +66,11 @@ export interface DesktopCanvasProps {
  */
 export const CANVAS_BASE_COLOR = "#0c0e12";
 
-export { DESKTOP_CONTENT_MAX_WIDTH, DESKTOP_CONTENT_PADDING_X };
+export {
+  DESKTOP_BEZEL_MARGIN,
+  DESKTOP_RAIL_WIDTH,
+  DESKTOP_TOP_INSET,
+};
 
 /**
  * Three CSS `radial-gradient(...)` declarations, comma-separated, sourced
@@ -101,10 +106,7 @@ const gradientBackgroundStyle: ViewStyle =
     ? ({ backgroundImage: CANVAS_GRADIENT_BACKGROUND_IMAGE } as ViewStyle)
     : ({} as ViewStyle);
 
-export const DesktopCanvas: React.FC<DesktopCanvasProps> = ({
-  children,
-  maxWidth = DESKTOP_CONTENT_MAX_WIDTH,
-}) => {
+export const DesktopCanvas: React.FC<DesktopCanvasProps> = ({ children, maxWidth }) => {
   // Hook is called unconditionally at the top of render — branch on the
   // returned boolean, not on whether the hook ran. Per SPEC §3.
   const { isWideDesktop } = useResponsiveLayout();
@@ -113,19 +115,14 @@ export const DesktopCanvas: React.FC<DesktopCanvasProps> = ({
     return <>{children}</>;
   }
 
-  // The canvas is a flex column whose ONLY job is to centre its child
-  // horizontally and let it stretch vertically. We use `alignItems: "center"`
-  // on the parent (cross-axis centring in a column-flex parent) instead of
-  // `alignSelf: "center" + width: "100%"` on the child — the latter is a
-  // known RN-web footgun where `width:"100%"` forces the item to take all
-  // cross-axis space and `alignSelf` becomes a no-op, leaving the column
-  // left-aligned against the rail. See ORCH-0885-A rework BUG 1.
-  //
-  // The `backgroundImage` (CSS radial-gradients) sits on the canvas View
-  // itself — no separate layer, no SVG, no react-native-svg dependency.
+  // Desktop web gets the full usable workspace to the right of the fixed
+  // rail, with a compact bezel margin. The CSS radial gradients sit on
+  // the canvas View itself — no separate layer.
   return (
     <View style={[styles.canvas, gradientBackgroundStyle]}>
-      <View style={[styles.column, { maxWidth }]}>{children}</View>
+      <View style={[styles.column, maxWidth !== undefined ? { maxWidth } : null]}>
+        {children}
+      </View>
     </View>
   );
 };
@@ -134,16 +131,15 @@ const styles = StyleSheet.create({
   canvas: {
     flex: 1,
     backgroundColor: CANVAS_BASE_COLOR,
-    // `alignItems: "center"` is what actually centres the content column
-    // horizontally inside the canvas. The column has `width: "100%"`
-    // (clamped by `maxWidth`) and grows vertically via `flex: 1`.
-    alignItems: "center",
+    alignItems: "stretch",
+    paddingLeft: DESKTOP_RAIL_WIDTH + DESKTOP_BEZEL_MARGIN,
+    paddingRight: DESKTOP_BEZEL_MARGIN,
+    paddingTop: DESKTOP_TOP_INSET,
     position: "relative",
   },
   column: {
     flex: 1,
     width: "100%",
-    paddingHorizontal: DESKTOP_CONTENT_PADDING_X,
   },
 });
 

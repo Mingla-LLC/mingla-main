@@ -24,7 +24,9 @@ import {
   text as textTokens,
   typography,
 } from "../../../src/constants/designSystem";
+import { DESKTOP_HUB_GRID_COLUMNS } from "../../../src/constants/desktopLayout";
 import { useCurrentBrand } from "../../../src/hooks/useCurrentBrand";
+import { useResponsiveLayout } from "../../../src/hooks/useResponsiveLayout";
 import { useExperiencesByBrand } from "../../../src/hooks/useExperiencesByBrand";
 import { usePendingExperiences } from "../../../src/hooks/usePendingExperiences";
 import type { MenuFilePayload } from "../../../src/services/experienceGenerationService";
@@ -33,6 +35,7 @@ import { canGenerateExperiencesFromMenu } from "../../../src/utils/canGenerateEx
 type HubPhase = "idle" | "parsing" | "review";
 
 export default function HubExperiencesRoute(): React.ReactElement {
+  const { isWideDesktop } = useResponsiveLayout();
   const currentBrand = useCurrentBrand();
   const brandId = currentBrand?.id ?? null;
   const canSnap = canGenerateExperiencesFromMenu(currentBrand);
@@ -205,21 +208,29 @@ export default function HubExperiencesRoute(): React.ReactElement {
             </Text>
           </GlassCard>
         ) : (
-          experiences.map((exp) => (
-            <View key={exp.id} style={styles.expCard}>
-            <GlassCard variant="elevated" padding={spacing.md}>
-              <Text style={styles.expTitle}>{exp.title}</Text>
-              {exp.description !== null && (
-                <Text style={styles.expBody} numberOfLines={3}>
-                  {exp.description}
-                </Text>
-              )}
-              {exp.intentTags.length > 0 && (
-                <Text style={styles.expTags}>{exp.intentTags.join(" · ")}</Text>
-              )}
-            </GlassCard>
-            </View>
-          ))
+          <View style={[styles.expList, isWideDesktop && styles.desktopListGrid]}>
+            {experiences.map((exp) => (
+              <View
+                key={exp.id}
+                style={[
+                  styles.expCard,
+                  isWideDesktop && styles.desktopListCell,
+                ]}
+              >
+                <GlassCard variant="elevated" padding={spacing.md}>
+                  <Text style={styles.expTitle}>{exp.title}</Text>
+                  {exp.description !== null && (
+                    <Text style={styles.expBody} numberOfLines={3}>
+                      {exp.description}
+                    </Text>
+                  )}
+                  {exp.intentTags.length > 0 && (
+                    <Text style={styles.expTags}>{exp.intentTags.join(" · ")}</Text>
+                  )}
+                </GlassCard>
+              </View>
+            ))}
+          </View>
         )}
       </ScrollView>
 
@@ -293,6 +304,18 @@ const styles = StyleSheet.create({
     color: textTokens.primary,
   },
   listLoader: { marginVertical: spacing.lg },
+  expList: {
+    gap: spacing.sm,
+  },
+  desktopListGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
+  desktopListCell: {
+    width: `${100 / DESKTOP_HUB_GRID_COLUMNS}%`,
+    paddingRight: spacing.sm,
+  },
   expCard: { marginBottom: spacing.sm },
   expTitle: {
     fontSize: typography.body.fontSize,
