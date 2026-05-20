@@ -575,6 +575,7 @@ export const ComposerV2Editor = forwardRef<ComposerV2EditorHandle, ComposerV2Edi
             onPress={handleLinkPromptCancel}
             accessibilityLabel="Dismiss link prompt"
           >
+            {/* orch-strict-grep-allow pressable-no-label — tap-trap card: absorbs taps so they don't bubble to the backdrop dismiss handler. Not user-actionable; inner controls (TextInput, buttons) carry their own labels. */}
             <Pressable style={styles.linkPromptCard} onPress={() => undefined}>
               <Text style={styles.linkPromptTitle}>Insert link</Text>
               <Text style={styles.linkPromptBody}>

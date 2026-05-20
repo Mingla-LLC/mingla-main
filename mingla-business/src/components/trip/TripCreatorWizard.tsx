@@ -1015,6 +1015,7 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
       {/* Chrome row: [Close X] [Stepper] [step counter] */}
       {isWideDesktop ? (
         <View style={styles.desktopTopBarWrap}>
+          {/* orch-strict-grep-allow leftKind-brand-rightSlot — wizard chrome replaces (not composes with) the primary-tab [search,bell] cluster; default cluster is semantically wrong inside a modal creator. Per ORCH-0894 desktop layout polish. */}
           <TopBar
             leftKind="brand"
             rightSlot={

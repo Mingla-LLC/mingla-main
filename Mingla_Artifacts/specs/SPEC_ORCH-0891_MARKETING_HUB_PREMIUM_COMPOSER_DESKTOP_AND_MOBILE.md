@@ -5,7 +5,7 @@
 **Author:** Claude `mingla-forensics`
 **Linked investigation:** [`Mingla_Artifacts/reports/INVESTIGATION_ORCH-0891_MARKETING_HUB_PREMIUM_COMPOSER_DESKTOP_AND_MOBILE.md`](../reports/INVESTIGATION_ORCH-0891_MARKETING_HUB_PREMIUM_COMPOSER_DESKTOP_AND_MOBILE.md)
 **Parent meta-ORCH:** [`Mingla_Artifacts/reports/INVESTIGATION_ORCH-0885_DESKTOP_REDESIGN.md`](../reports/INVESTIGATION_ORCH-0885_DESKTOP_REDESIGN.md)
-**Wave-1 baseline this supersedes:** [`Mingla_Artifacts/reports/IMPLEMENTATION_ORCH-0889_MARKETING_TAB_DESKTOP_WEB_FIT_AND_FINISH.md`](../reports/IMPLEMENTATION_ORCH-0889_MARKETING_TAB_DESKTOP_WEB_FIT_AND_FINISH.md)
+**Wave-1 baseline this supersedes:** `Mingla_Artifacts/reports/IMPLEMENTATION_ORCH-0889_MARKETING_TAB_DESKTOP_WEB_FIT_AND_FINISH.md` (in-flight at time of dispatch — citation only until ORCH-0889 promotes to main)
 **Severity:** S1-high
 **Estimated implementor effort:** 2–3 weeks (3 internal milestones, one PR at the end)
 **Operator-authorized bundle absorbs:** ORCH-0885-C [Composer Tiptap swap] + ORCH-0885-D-1 [⌘K palette, Marketing scope] + ORCH-0885-D-3 [Right rail, composer preview scope] + ORCH-0885-D-4 [Keyboard nav, composer + ⌘K scope] + a new Marketing mobile polish strand. **Does NOT absorb:** ORCH-0885-B (Hub master-detail) + ORCH-0885-D-2 (multi-select on event orders) — both Hub-scope, separate ORCHs.
