@@ -13,5 +13,7 @@ describe("experiencesService contract", () => {
   test("filters events by event_type experience", () => {
     expect(source).toMatch(/\.eq\("event_type",\s*"experience"\)/);
     expect(source).toMatch(/experience_meta/);
+    expect(source).toMatch(/capacity_min/);
+    expect(source).toMatch(/suggested_time_of_day/);
   });
 });

@@ -1,5 +1,5 @@
 // @ts-ignore — Deno ESM import
-import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import type { StripeClient } from "./stripe.ts";
 import { STRIPE_API_VERSION } from "./stripe.ts";
 import { generateIdempotencyKey } from "./idempotency.ts";

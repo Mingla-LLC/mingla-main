@@ -63,6 +63,7 @@ on:
 #   - I-ARI-NO-OKLCH (i-ari-no-oklch.mjs) — Ari mobile surface must use HSL/hex/rgb only; no oklch/color-mix/lab (ORCH-0821)
 #   - I-ARI-USER-JWT-ONLY (i-ari-user-jwt-only.mjs) — Ari edge fn handlers must use caller JWT, not service role (ORCH-0821)
 #   - I-VE5-PARSE-MENU-USER-JWT-ONLY (i-ve5-parse-menu-user-jwt-only.mjs) — parse-restaurant-menu uses caller JWT only (ORCH-0881)
+#   - I-VE6-PARSE-PLAY-USER-JWT-ONLY (i-ve6-parse-play-user-jwt-only.mjs) — parse-play-activities uses caller JWT only (ORCH-0882)
 #   - ORCH-0776 (orch-0776-video-processing-status-bridge.mjs) — event cover video processing status bridge
 #   - ORCH-0776D (orch-0776d-cancelled-at-schema.mjs) — event cover video cancelled_at schema/code parity
 #   - ORCH-0777 (orch-0777-ticket-checkout-production.mjs) — production ticket checkout + organizer order visibility
@@ -814,6 +815,17 @@ jobs:
           node-version: "20"
       - name: Run I-VE5-PARSE-MENU-USER-JWT-ONLY gate
         run: node .github/scripts/strict-grep/i-ve5-parse-menu-user-jwt-only.mjs
+
+  i-ve6-parse-play-user-jwt-only:
+    name: "I-VE6-PARSE-PLAY-USER-JWT-ONLY: parse-play-activities never references service role"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run I-VE6-PARSE-PLAY-USER-JWT-ONLY gate
+        run: node .github/scripts/strict-grep/i-ve6-parse-play-user-jwt-only.mjs
 
   orch-0824-event-category-frozen:
     name: "ORCH-0824: events.category writes blocked (I-PROPOSED-EVENT-CATEGORY-FROZEN)"
