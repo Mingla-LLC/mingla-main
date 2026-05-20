@@ -1,6 +1,7 @@
 # CLOSE ORCH-0894 — Business Desktop Web Layout Lock-In
 
 Date: 2026-05-19
+Follow-up close amendment: 2026-05-20
 Working tree: `/Users/sethogieva/Desktop/mingla-main` on branch `Seth`
 Surface: `mingla-business` Expo web only
 
@@ -21,6 +22,8 @@ Mingla Business desktop web now uses the available workspace more cleanly withou
 - Wizard desktop nav rail items are real `Pressable` controls with accessible labels.
 - Wizard rail navigation uses `router.replace(...)` so clicking a rail item exits the wizard route.
 - Wizard rail has explicit top interaction layering (`zIndex: 20`, `elevation: 20`) so the visible rail can receive clicks.
+- 2026-05-20 follow-up: Home desktop Upcoming now has a bounded nested scroll region (`desktopOuterScroll`, `desktopUpcomingPane`, `desktopUpcomingList`) so the KPI/header area stays fixed while the four-column Upcoming grid scrolls.
+- 2026-05-20 follow-up: Home desktop Upcoming grid has explicit breathing room below the `Upcoming` header via `marginTop: spacing.sm`.
 
 ## Verification
 
@@ -58,6 +61,24 @@ git diff --check -- mingla-business/src/components/event/EventCreatorWizard.tsx 
 ```
 
 Result: pass.
+
+2026-05-20 follow-up verification:
+
+```bash
+cd mingla-business
+npx jest 'src/components/__tests__/desktopWebLayoutContracts.test.ts'
+```
+
+Result:
+
+```text
+PASS src/components/__tests__/desktopWebLayoutContracts.test.ts
+
+Test Suites: 1 passed, 1 total
+Tests:       6 passed, 6 total
+```
+
+Operator runtime confirmation: "it works" on 2026-05-20 after the nested Home Upcoming scroll fix.
 
 ## Scoped Files
 

@@ -45,9 +45,15 @@ describe("desktop web layout contracts", () => {
     expect(source).toContain("getActiveEventsKpiSub");
     expect(source).toContain("desktopKpiGrid");
     expect(source).toContain("desktopUpcomingPane");
+    expect(source).toContain("desktopOuterScroll");
+    expect(source).toContain("desktopUpcomingList");
     expect(source).toContain("desktopEventsGrid");
     expect(source).toContain("scrollEnabled={!isWideDesktop}");
     expect(source).toContain("scrollEnabled={isWideDesktop}");
+    expect(source).toContain("flexGrow: 1");
+    expect(source).toContain("marginTop: spacing.sm");
+    expect(source).toContain("minHeight: 0");
+    expect(source).toContain('overflow: "hidden"');
     expect(source).toContain("gap: 0");
     expect(source).toContain("marginHorizontal: -spacing.xs");
     expect(source).toContain("paddingHorizontal: spacing.xs");

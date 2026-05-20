@@ -361,6 +361,7 @@ export default function HomeTab(): React.ReactElement {
       </View>
 
       <ScrollView
+        style={isWideDesktop ? styles.desktopOuterScroll : undefined}
         scrollEnabled={!isWideDesktop}
         contentContainerStyle={[
           styles.scroll,
@@ -566,14 +567,15 @@ export default function HomeTab(): React.ReactElement {
                 </Pressable>
               </View>
 
-            <ScrollView
-              scrollEnabled={isWideDesktop}
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={[
-                styles.eventsCol,
-                isWideDesktop && styles.desktopEventsGrid,
-              ]}
-            >
+              <ScrollView
+                style={isWideDesktop ? styles.desktopUpcomingList : undefined}
+                scrollEnabled={isWideDesktop}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={[
+                  styles.eventsCol,
+                  isWideDesktop && styles.desktopEventsGrid,
+                ]}
+              >
               {eventSummary.activeItems.length === 0 ? (
                 <GlassCard variant="base" padding={spacing.lg}>
                   <Text style={styles.emptyTitle}>No upcoming events</Text>
@@ -704,7 +706,7 @@ export default function HomeTab(): React.ReactElement {
                   );
                 })
               )}
-            </ScrollView>
+              </ScrollView>
             </View>
 
           </>
@@ -760,8 +762,13 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xl * 4,
     gap: spacing.md,
   },
+  desktopOuterScroll: {
+    flex: 1,
+  },
   desktopScroll: {
+    flex: 1,
     flexGrow: 1,
+    minHeight: 0,
     paddingHorizontal: 0,
     paddingTop: spacing.sm,
     paddingBottom: 0,
@@ -778,6 +785,12 @@ const styles = StyleSheet.create({
   desktopUpcomingPane: {
     flex: 1,
     minHeight: 0,
+    overflow: "hidden",
+  },
+  desktopUpcomingList: {
+    flex: 1,
+    minHeight: 0,
+    marginTop: spacing.sm,
   },
   toastWrap: {
     position: "absolute",
