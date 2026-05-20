@@ -33,19 +33,20 @@ import React, {
   useState,
 } from "react";
 import {
-  Alert,
   Keyboard,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   useWindowDimensions,
   View,
   type NativeSyntheticEvent,
   type TextInputSelectionChangeEventData,
 } from "react-native";
-import { RichEditor, actions } from "./richEditor";
+import { RichEditor, type RichEditorHandle } from "./richEditor";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
@@ -81,6 +82,60 @@ import { useResponsiveLayout } from "../../../hooks/useResponsiveLayout";
 // merged into InsertionBar (now mounted inside this editor between the
 // subject row and the body card per operator F.9 directive).
 
+/**
+ * Builds a JS snippet that refocuses pell's contenteditable and runs
+ * `document.execCommand(cmd)`. Used for Bold / Italic. Pell's
+ * `sendAction(actions.setBold)` runs the same execCommand internally
+ * but goes through a message bridge that races with the WebView losing
+ * focus when a native Pressable in the toolbar is tapped — by the time
+ * the message arrives, the contenteditable is blurred and execCommand
+ * no-ops. Running it via `commandDOM` (which posts a raw JS string into
+ * the WebView and evaluates it synchronously) lets us refocus first.
+ */
+const focusExecJs = (cmd: string): string => `(function(){
+  var ce = document.querySelector('[contenteditable="true"]');
+  if (!ce) return;
+  if (document.activeElement !== ce) ce.focus();
+  document.execCommand(${JSON.stringify(cmd)});
+})();`;
+
+/**
+ * Builds a JS snippet that inserts an `<a href>` at the caret (or wraps
+ * the current selection if there is one). Same focus-restoration pattern
+ * as focusExecJs so it works after the native LinkPromptModal closed
+ * (which also blurs the WebView).
+ */
+const insertLinkJs = (url: string): string => {
+  const j = JSON.stringify(url);
+  return `(function(){
+    var ce = document.querySelector('[contenteditable="true"]');
+    if (!ce) return;
+    if (document.activeElement !== ce) ce.focus();
+    var sel = window.getSelection();
+    if (sel && sel.toString().length > 0) {
+      document.execCommand('createLink', false, ${j});
+    } else {
+      var u = ${j}.replace(/"/g, '&quot;');
+      document.execCommand('insertHTML', false, '<a href="' + u + '">' + ${j} + '</a>');
+    }
+  })();`;
+};
+
+const DIVIDER_HTML =
+  '<hr style="border:none;border-top:1px solid rgba(255,255,255,0.18);margin:12px 0;" />';
+
+/**
+ * Normalizes a user-typed URL: trims, prepends `https://` if no scheme,
+ * preserves explicit `http://` / `mailto:`. Returns empty string for
+ * empty input (caller treats as a no-op).
+ */
+const normalizeUrl = (raw: string): string => {
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) return "";
+  if (/^(https?:\/\/|mailto:)/i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+};
+
 export interface ComposerV2EditorHandle {
   insertEvent: (event: EventCardOption) => void;
   insertPersonalization: (token: PersonalizationToken) => void;
@@ -89,6 +144,7 @@ export interface ComposerV2EditorHandle {
   /** Stage F.9 — merged-toolbar formatting commands. */
   toggleBold: () => void;
   toggleItalic: () => void;
+  toggleUnderline: () => void;
   toggleLink: () => void;
 }
 
@@ -123,7 +179,7 @@ export const ComposerV2Editor = forwardRef<ComposerV2EditorHandle, ComposerV2Edi
       onErrorToast,
     } = props;
 
-    const richEditorRef = useRef<RichEditor>(null);
+    const richEditorRef = useRef<RichEditorHandle>(null);
     const { isWideDesktop } = useResponsiveLayout();
 
     // Stage F.7b: compute a concrete numeric height for pell's WebView.
@@ -228,37 +284,23 @@ export const ComposerV2Editor = forwardRef<ComposerV2EditorHandle, ComposerV2Edi
           richEditorRef.current?.insertHTML(html);
         },
         // Stage F.9 merged-toolbar formatting commands.
+        // Bold/Italic go through commandDOM (raw JS into the WebView)
+        // because pell's message-bridge sendAction races with the
+        // native Pressable taking focus from the WebView — by the time
+        // sendAction's setBold arrives, the contenteditable is blurred
+        // and execCommand no-ops. focusExecJs refocuses first.
         toggleBold: (): void => {
-          richEditorRef.current?.sendAction(actions.setBold, "result");
+          richEditorRef.current?.commandDOM(focusExecJs("bold"));
         },
         toggleItalic: (): void => {
-          richEditorRef.current?.sendAction(actions.setItalic, "result");
+          richEditorRef.current?.commandDOM(focusExecJs("italic"));
+        },
+        toggleUnderline: (): void => {
+          richEditorRef.current?.commandDOM(focusExecJs("underline"));
         },
         toggleLink: (): void => {
-          if (Platform.OS === "ios") {
-            Alert.prompt(
-              "Insert link",
-              "Paste the URL the selected text should link to.",
-              [
-                { text: "Cancel", style: "cancel" },
-                {
-                  text: "Insert",
-                  onPress: (url?: string) => {
-                    const trimmed = (url ?? "").trim();
-                    if (trimmed.length === 0) return;
-                    richEditorRef.current?.insertLink(trimmed, trimmed);
-                  },
-                },
-              ],
-              "plain-text",
-              "",
-            );
-          } else {
-            Alert.alert(
-              "Insert link",
-              "Link entry on Android coming soon — iOS supports Alert.prompt.",
-            );
-          }
+          setLinkPromptValue("");
+          setLinkPromptVisible(true);
         },
       }),
       [onBodyChange, onSubjectChange],
@@ -317,39 +359,41 @@ export const ComposerV2Editor = forwardRef<ComposerV2EditorHandle, ComposerV2Edi
       [],
     );
 
+    // Link prompt — cross-platform Modal (replaces iOS Alert.prompt and
+    // the Android "coming soon" alert). Same UX on both platforms.
+    const [linkPromptVisible, setLinkPromptVisible] = useState(false);
+    const [linkPromptValue, setLinkPromptValue] = useState("");
+
     const handleToggleBoldLocal = useCallback((): void => {
-      richEditorRef.current?.sendAction(actions.setBold, "result");
+      richEditorRef.current?.commandDOM(focusExecJs("bold"));
     }, []);
 
     const handleToggleItalicLocal = useCallback((): void => {
-      richEditorRef.current?.sendAction(actions.setItalic, "result");
+      richEditorRef.current?.commandDOM(focusExecJs("italic"));
+    }, []);
+
+    const handleToggleUnderlineLocal = useCallback((): void => {
+      richEditorRef.current?.commandDOM(focusExecJs("underline"));
     }, []);
 
     const handleToggleLinkLocal = useCallback((): void => {
-      if (Platform.OS === "ios") {
-        Alert.prompt(
-          "Insert link",
-          "Paste the URL the selected text should link to.",
-          [
-            { text: "Cancel", style: "cancel" },
-            {
-              text: "Insert",
-              onPress: (url?: string) => {
-                const trimmed = (url ?? "").trim();
-                if (trimmed.length === 0) return;
-                richEditorRef.current?.insertLink(trimmed, trimmed);
-              },
-            },
-          ],
-          "plain-text",
-          "",
-        );
-      } else {
-        Alert.alert(
-          "Insert link",
-          "Link entry on Android coming soon — iOS supports Alert.prompt.",
-        );
-      }
+      setLinkPromptValue("");
+      setLinkPromptVisible(true);
+    }, []);
+
+    const handleLinkPromptCancel = useCallback((): void => {
+      setLinkPromptVisible(false);
+    }, []);
+
+    const handleLinkPromptSubmit = useCallback((): void => {
+      const url = normalizeUrl(linkPromptValue);
+      setLinkPromptVisible(false);
+      if (url.length === 0) return;
+      richEditorRef.current?.commandDOM(insertLinkJs(url));
+    }, [linkPromptValue]);
+
+    const handleInsertDividerLocal = useCallback((): void => {
+      richEditorRef.current?.insertHTML(DIVIDER_HTML);
     }, []);
 
     const handleApplyTemplateReplaceLocal = useCallback(
@@ -452,15 +496,14 @@ export const ComposerV2Editor = forwardRef<ComposerV2EditorHandle, ComposerV2Edi
           onInsertEvent={handleInsertEventLocal}
           onInsertPersonalization={handleInsertPersonalizationLocal}
           onOpenLink={handleToggleLinkLocal}
-          onInsertDivider={() =>
-            onErrorToast("Dividers coming in a future update.")
-          }
+          onInsertDivider={handleInsertDividerLocal}
           onInsertImage={() =>
             onErrorToast("Image insertion coming in a future update.")
           }
           onOpenTemplateDrawer={() => setShowTemplateDrawer(true)}
           onToggleBold={handleToggleBoldLocal}
           onToggleItalic={handleToggleItalicLocal}
+          onToggleUnderline={handleToggleUnderlineLocal}
           onToggleLink={handleToggleLinkLocal}
         />
 
@@ -525,6 +568,77 @@ export const ComposerV2Editor = forwardRef<ComposerV2EditorHandle, ComposerV2Edi
           onApplyReplace={handleApplyTemplateReplaceLocal}
           onApplyAtCursor={handleApplyTemplateAtCursorLocal}
         />
+
+        {/* Cross-platform link prompt. Replaces iOS Alert.prompt (which
+            doesn't exist on Android). Same UX on both platforms; URL is
+            normalized with https:// prefix if no scheme present. */}
+        <Modal
+          visible={linkPromptVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={handleLinkPromptCancel}
+        >
+          <Pressable
+            style={styles.linkPromptBackdrop}
+            onPress={handleLinkPromptCancel}
+            accessibilityLabel="Dismiss link prompt"
+          >
+            <Pressable style={styles.linkPromptCard} onPress={() => undefined}>
+              <Text style={styles.linkPromptTitle}>Insert link</Text>
+              <Text style={styles.linkPromptBody}>
+                Paste the URL the selected text should link to.
+              </Text>
+              <TextInput
+                value={linkPromptValue}
+                onChangeText={setLinkPromptValue}
+                placeholder="https://example.com"
+                placeholderTextColor="rgba(255, 255, 255, 0.42)"
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="url"
+                returnKeyType="done"
+                onSubmitEditing={handleLinkPromptSubmit}
+                autoFocus
+                style={styles.linkPromptInput}
+                accessibilityLabel="Link URL"
+                testID="composer-v2-link-prompt-input"
+              />
+              <View style={styles.linkPromptActions}>
+                <Pressable
+                  onPress={handleLinkPromptCancel}
+                  style={({ pressed }) => [
+                    styles.linkPromptButton,
+                    pressed ? styles.linkPromptButtonPressed : null,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Cancel link insertion"
+                >
+                  <Text style={styles.linkPromptButtonLabel}>Cancel</Text>
+                </Pressable>
+                <Pressable
+                  onPress={handleLinkPromptSubmit}
+                  style={({ pressed }) => [
+                    styles.linkPromptButton,
+                    styles.linkPromptButtonPrimary,
+                    pressed ? styles.linkPromptButtonPressed : null,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Insert link"
+                  testID="composer-v2-link-prompt-submit"
+                >
+                  <Text
+                    style={[
+                      styles.linkPromptButtonLabel,
+                      styles.linkPromptButtonLabelPrimary,
+                    ]}
+                  >
+                    Insert
+                  </Text>
+                </Pressable>
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
 
       </View>
     );
@@ -662,5 +776,77 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: "#F47C20",
     fontWeight: "700",
+  },
+
+  // Link prompt modal — dark glass card centered over a dim backdrop.
+  linkPromptBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.62)",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: spacing.lg,
+  },
+  linkPromptCard: {
+    width: "100%",
+    maxWidth: 420,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: glass.border.profileElevated,
+    backgroundColor: "rgba(20, 22, 28, 0.98)",
+    padding: spacing.lg,
+    gap: spacing.sm,
+  },
+  linkPromptTitle: {
+    ...typography.bodyLg,
+    color: textTokens.primary,
+    fontWeight: "700",
+  },
+  linkPromptBody: {
+    ...typography.bodySm,
+    color: textTokens.secondary,
+  },
+  linkPromptInput: {
+    minHeight: 44,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: glass.border.profileElevated,
+    backgroundColor: glass.tint.profileBase,
+    color: textTokens.primary,
+    fontSize: 15,
+    marginTop: spacing.xs,
+  },
+  linkPromptActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: spacing.xs,
+    marginTop: spacing.sm,
+  },
+  linkPromptButton: {
+    minHeight: 44,
+    minWidth: 88,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.full,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: glass.border.chrome,
+    backgroundColor: glass.tint.badge.idle,
+  },
+  linkPromptButtonPrimary: {
+    backgroundColor: accent.tint,
+    borderColor: accent.border,
+  },
+  linkPromptButtonPressed: {
+    opacity: 0.7,
+  },
+  linkPromptButtonLabel: {
+    ...typography.buttonMd,
+    color: textTokens.secondary,
+  },
+  linkPromptButtonLabelPrimary: {
+    color: textTokens.primary,
   },
 });

@@ -35,7 +35,15 @@ export interface PreviewBlock {
 
 const VAR_RE =
   /\{(first_name|event_name|event_date|event_time|doors_open|brand_name|event_url|spots_left|previous_event_name|next_event_name|event_id)\}/g;
-const EVENT_TOKEN_RE = /\{\{event:([0-9a-fA-F-]{36})\}\}/g;
+// ORCH-0891 M1: optionally capture the `|size` suffix introduced by the
+// Tiptap composer rewrite + tenTapTokenBridge extension. The preview-side
+// event card already renders at a fixed size; the size info is captured
+// for forward-compat (M2 wires size-aware preview rendering) but ignored
+// by the current paragraph/event_card splitter. Backwards-compat preserved:
+// legacy `{{event:UUID}}` tokens (no suffix) still match.
+//   Group 1: UUID (36 chars hex/dash)
+//   Group 2: size if present, else undefined (compact | medium | large)
+const EVENT_TOKEN_RE = /\{\{event:([0-9a-fA-F-]{36})(?:\|(compact|medium|large))?\}\}/g;
 
 export function substituteVariables(
   template: string,

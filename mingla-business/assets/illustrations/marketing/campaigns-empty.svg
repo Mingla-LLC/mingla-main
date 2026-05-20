@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" fill="none" role="img" aria-labelledby="campaigns-empty-title">
+  <title id="campaigns-empty-title">A paper plane mid-flight — your first campaign starts here</title>
+
+  <!-- ORCH-0891 §8 — Campaigns empty-state.
+       Concept: paper plane in flight with a curved motion trail underneath
+       suggesting the path from "now" → "out". Primary stroke (plane body +
+       trail) in accent.warm; supporting strokes (fold line + ambient
+       sparkle dots) in text.quaternary.
+       Viewport 160x160 with 24pt internal padding. -->
+
+  <!-- Motion trail: a long curved dashed arc from bottom-left up to plane -->
+  <path d="M 30 130 Q 60 110 80 90 T 110 60"
+        stroke="rgba(255,255,255,0.32)"
+        stroke-width="1.5"
+        stroke-linecap="round"
+        stroke-dasharray="3 6"
+        fill="none"/>
+
+  <!-- Paper plane body — triangular silhouette pointing top-right -->
+  <!-- Plane is centered around (96, 56) rotated slightly upward -->
+  <g transform="translate(96, 56)">
+    <!-- Outer triangle: paper plane outline -->
+    <path d="M -28 16 L 32 -16 L 16 8 Z"
+          stroke="#eb7825" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+    <!-- Inner fold line: divides the plane along its center spine -->
+    <path d="M -28 16 L 16 8 L 12 -2"
+          stroke="rgba(255,255,255,0.32)" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+    <!-- Wing fold detail -->
+    <line x1="16" y1="8" x2="-8" y2="0" stroke="#eb7825" stroke-width="1.5" stroke-linecap="round"/>
+  </g>
+
+  <!-- Ambient sparkle dots (3 small accent.warm marks suggesting motion/joy) -->
+  <circle cx="44" cy="40" r="1.5" fill="#eb7825"/>
+  <circle cx="124" cy="32" r="1.5" fill="#eb7825"/>
+  <circle cx="138" cy="84" r="1.5" fill="#eb7825"/>
+
+  <!-- Subtle ground hint at very bottom (signals the "starts here" beginning) -->
+  <line x1="24" y1="138" x2="44" y2="138" stroke="rgba(255,255,255,0.32)" stroke-width="1.5" stroke-linecap="round"/>
+</svg>

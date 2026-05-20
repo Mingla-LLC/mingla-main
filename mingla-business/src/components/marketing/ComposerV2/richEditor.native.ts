@@ -26,3 +26,17 @@
  */
 
 export { RichEditor, actions } from "react-native-pell-rich-editor";
+
+// ORCH-0891 M1 — structural ref-handle type for cross-platform ref typing.
+// Pell's RichEditor class instance has all of these methods (and more);
+// the web side exports a forwardRef component with the same imperative
+// shape. Consumers (ComposerV2Editor) type the ref as
+// `useRef<RichEditorHandle>(null)` so the same code compiles on both
+// platforms.
+export interface RichEditorHandle {
+  commandDOM: (js: string) => void;
+  insertHTML: (html: string) => void;
+  setContentHTML: (html: string) => void;
+  sendAction: (action: string, name?: string, value?: unknown) => void;
+  insertLink: (text: string, url: string) => void;
+}

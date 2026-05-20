@@ -159,6 +159,51 @@ body, .pell-content {
 ::placeholder, .pell-content [data-placeholder]::before {
   color: rgba(255, 255, 255, 0.42);
 }
+
+/* ─── ORCH-0891 M1 fix: Tiptap editor focus styling ─────────────────────
+   Tiptap renders the editor body as a <div class="ProseMirror"
+   contenteditable="true">. Chrome paints a default blue focus rectangle
+   on contenteditable elements (and on each <p> child when active).
+   That rectangle clashes with Mingla's dark canvas. Suppress all default
+   browser focus outlines inside the editor; the editor pane's surrounding
+   border (set by richEditor.tsx host View) already provides the visual
+   container affordance. Caret stays orange (accent.warm) for brand parity.
+   ──────────────────────────────────────────────────────────────────── */
+.ProseMirror, .mingla-composer-editor {
+  caret-color: #eb7825;
+  outline: none;
+}
+.ProseMirror:focus,
+.ProseMirror:focus-visible,
+.mingla-composer-editor:focus,
+.mingla-composer-editor:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+.ProseMirror p,
+.ProseMirror p:focus,
+.ProseMirror p:focus-visible {
+  outline: none;
+  margin: 0 0 8px 0; /* paragraph spacing matches pell's contentCSSText */
+}
+.ProseMirror p:last-child {
+  margin-bottom: 0;
+}
+.ProseMirror::placeholder,
+.ProseMirror p.is-empty::before {
+  color: rgba(255, 255, 255, 0.42);
+}
+
+/* Tiptap's empty-paragraph placeholder pattern: when the editor is empty,
+   the first <p> has class "is-editor-empty" and a data-placeholder attr.
+   Show it via ::before pseudo-element. */
+.ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: rgba(255, 255, 255, 0.42);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
 `;
 
 /**
