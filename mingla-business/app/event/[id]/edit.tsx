@@ -53,6 +53,10 @@ import {
 import { createServerDraft } from "../../../src/services/eventDrafts";
 import { useAuth } from "../../../src/context/AuthContext";
 import { isBusinessAuthNotReadyError } from "../../../src/utils/authReadiness";
+// ORCH-0893 [Eager server-draft on creator entry — replace with client-id + lazy autosave]:
+// the migration from a client `d_<ts36>` id to a server-issued id is now
+// triggered by the first dirty autosave, not on route mount. Pure helper.
+import { isDraftDirty } from "../../../src/utils/draftDirtyCheck";
 
 const isLocalOnlyDraft = (draft: DraftEvent): boolean =>
   draft.id.startsWith("d_") || draft.serverSlug === null;
@@ -142,31 +146,10 @@ export default function EventEditRoute(): React.ReactElement {
   );
 
   useEffect(() => {
-    if (
-      !isEditPublished &&
-      draft !== null &&
-      draft.id.startsWith("d_") &&
-      migratingLegacyIdRef.current !== draft.id
-    ) {
-      if (!isAuthReady) return undefined;
-      migratingLegacyIdRef.current = draft.id;
-      void createServerDraft(draft.brandId, draft)
-        .then((serverDraft) => {
-          replaceDraft(draft.id, serverDraft);
-          router.replace(`/event/${serverDraft.id}/edit?step=${initialStep ?? 0}` as never);
-        })
-        .catch((error) => {
-          migratingLegacyIdRef.current = null;
-          if (isBusinessAuthNotReadyError(error)) {
-            return;
-          }
-          setToast({
-            visible: true,
-            message: "Could not sync this local draft yet.",
-          });
-        });
-      return undefined;
-    }
+    // ORCH-0893: the previous eager `d_<ts36>` → server-draft migration on
+    // mount has moved into the autosave wrapper below (gated on
+    // `isDraftDirty`). Untouched client-only drafts no longer insert a
+    // ghost row on mount.
     if (typeof idParam !== "string" || idParam.length === 0) {
       router.replace("/(tabs)/hub/events" as never);
       return;
@@ -228,6 +211,33 @@ export default function EventEditRoute(): React.ReactElement {
       !serverDraftQuery.isLoading &&
       !serverDraftQuery.isFetching
     ) {
+      // ORCH-0893 cycle 2 safety belt — before bouncing home for a
+      // missing d_<ts36> id, check if any cached brand-drafts list
+      // contains a server draft whose `legacyLocalDraftId === idParam`.
+      // This catches the case where some other migration path (the
+      // legacy loop in useServerDraftEvents.ts:86-142, or a parallel
+      // tab) swapped d_* → server uuid out from under us. Without this
+      // safety belt, the user sees "wizard shows up then immediately
+      // closes" instead of landing on their server-backed draft.
+      if (isLegacyLocalDraftId && typeof idParam === "string") {
+        const allDraftLists = queryClient.getQueriesData<DraftEvent[]>({
+          queryKey: eventDraftKeys.lists(),
+        });
+        for (const [, drafts] of allDraftLists) {
+          if (!Array.isArray(drafts)) continue;
+          const swapped = drafts.find(
+            (d) =>
+              (d as DraftEvent & { legacyLocalDraftId?: string })
+                .legacyLocalDraftId === idParam,
+          );
+          if (swapped !== undefined) {
+            router.replace(
+              `/event/${swapped.id}/edit?step=${initialStep ?? 0}` as never,
+            );
+            return undefined;
+          }
+        }
+      }
       // Draft not found — bounce home (existing behaviour).
       const t = setTimeout(() => {
         router.replace("/(tabs)/home" as never);
@@ -238,7 +248,9 @@ export default function EventEditRoute(): React.ReactElement {
   }, [
     idParam,
     isEditPublished,
+    isLegacyLocalDraftId,
     isAuthReady,
+    initialStep,
     draft,
     liveEvent,
     resolvedLiveEvent,
@@ -246,10 +258,8 @@ export default function EventEditRoute(): React.ReactElement {
     businessEventQuery.isFetching,
     businessEventQuery.data?.event,
     router,
-    replaceDraft,
     deleteDraft,
     queryClient,
-    initialStep,
     serverDraftQuery.isFetching,
     serverDraftQuery.isError,
     serverDraftQuery.isLoading,
@@ -316,6 +326,117 @@ export default function EventEditRoute(): React.ReactElement {
       await discardServerDraft.discardDraft(draftToDiscard);
     },
     [deleteDraft, discardServerDraft],
+  );
+
+  // ORCH-0893 [Eager server-draft on creator entry — replace with client-id + lazy autosave]:
+  // route-owned autosave wrapper. Three branches:
+  //   (a) `d_<ts36>` id + dirty → lazy-insert server draft via
+  //       `createServerDraft`, then `replaceDraft` swaps the client id
+  //       for the server id in Zustand, then `router.replace` updates
+  //       the URL without unmounting the wizard.
+  //   (b) `d_<ts36>` id + NOT dirty → no save. Prevents ghost-draft row
+  //       accumulation when the user backs out before typing.
+  //   (c) server id → existing `autosave.saveDraft` path.
+  //
+  // `migratingLegacyIdRef` dedupes concurrent migration attempts during
+  // the 800ms debounce window — only one `createServerDraft` is in flight
+  // for a given `d_*` id.
+  const handleAutosaveDraft = React.useCallback(
+    (incoming: DraftEvent): void => {
+      if (!incoming.id.startsWith("d_")) {
+        autosave.saveDraft(incoming);
+        return;
+      }
+      if (!isDraftDirty(incoming)) return;
+      if (migratingLegacyIdRef.current === incoming.id) return;
+      if (!isAuthReady) return;
+      migratingLegacyIdRef.current = incoming.id;
+      void createServerDraft(incoming.brandId, incoming)
+        .then((serverDraft) => {
+          // ORCH-0893 REWORK Part B — live-state merge race-guard.
+          // Between the createServerDraft call (which echoes the
+          // queue-time snapshot of `incoming`) and this resolve,
+          // the user may have continued typing into the d_<ts36>
+          // draft. Those keystrokes landed in Zustand against the
+          // OLD d_* id. A naive replaceDraft(d_id, serverDraft)
+          // would overwrite them with the queue-time snapshot.
+          //
+          // Fix: re-read the live draft from Zustand at resolve
+          // time and merge user-meaningful fields from the live
+          // state into the serverDraft payload before the swap.
+          // Server-issued fields (id, slug, created_by, server
+          // timestamps) stay from serverDraft; user fields stay
+          // from the live snapshot.
+          const liveDraft = useDraftEventStore
+            .getState()
+            .getDraft(incoming.id);
+          const mergedServerDraft = liveDraft
+            ? {
+                ...serverDraft,
+                name: liveDraft.name,
+                description: liveDraft.description,
+                coverMediaUrl: liveDraft.coverMediaUrl,
+                coverMediaType: liveDraft.coverMediaType,
+                coverMediaProvider: liveDraft.coverMediaProvider,
+                coverMediaSourceUrl: liveDraft.coverMediaSourceUrl,
+                coverMediaCredit: liveDraft.coverMediaCredit,
+                coverMediaCreditUrl: liveDraft.coverMediaCreditUrl,
+                coverMediaAlt: liveDraft.coverMediaAlt,
+                coverHue: liveDraft.coverHue,
+                format: liveDraft.format,
+                tickets: liveDraft.tickets,
+                date: liveDraft.date,
+                doorsOpen: liveDraft.doorsOpen,
+                endsAt: liveDraft.endsAt,
+                endsAtUtc: liveDraft.endsAtUtc,
+                venueName: liveDraft.venueName,
+                address: liveDraft.address,
+                city: liveDraft.city,
+                locationGeo: liveDraft.locationGeo,
+                onlineUrl: liveDraft.onlineUrl,
+                hideAddressUntilTicket: liveDraft.hideAddressUntilTicket,
+                lastStepReached: Math.max(
+                  liveDraft.lastStepReached,
+                  serverDraft.lastStepReached,
+                ),
+                partyTypes: liveDraft.partyTypes,
+                vibeTags: liveDraft.vibeTags,
+                musicGenres: liveDraft.musicGenres,
+                whenMode: liveDraft.whenMode,
+                multiDates: liveDraft.multiDates,
+                recurrenceRule: liveDraft.recurrenceRule,
+                timezone: liveDraft.timezone,
+              }
+            : serverDraft;
+          replaceDraft(incoming.id, mergedServerDraft);
+          queryClient.setQueryData(
+            eventDraftKeys.detail(mergedServerDraft.id),
+            mergedServerDraft,
+          );
+          router.replace(
+            `/event/${mergedServerDraft.id}/edit?step=${initialStep ?? 0}` as never,
+          );
+        })
+        .catch((error) => {
+          migratingLegacyIdRef.current = null;
+          if (isBusinessAuthNotReadyError(error)) {
+            // Will retry on next dirty save once auth lands.
+            return;
+          }
+          setToast({
+            visible: true,
+            message: "Couldn't save this draft. Tap Save again or check your connection.",
+          });
+        });
+    },
+    [
+      autosave,
+      isAuthReady,
+      initialStep,
+      queryClient,
+      replaceDraft,
+      router,
+    ],
   );
 
   // Cycle 9b-2 edit-published branch — render the focused edit screen
@@ -401,7 +522,7 @@ export default function EventEditRoute(): React.ReactElement {
       onExit={handleExit}
       onOpenPreview={handleOpenPreview}
       onOpenStripeOnboard={handleOpenStripe}
-      onAutosaveDraft={draft.id.startsWith("d_") ? undefined : autosave.saveDraft}
+      onAutosaveDraft={handleAutosaveDraft}
       onDiscardServerDraft={handleDiscardDraft}
       onPublishDraft={async (draftToPublish) => {
         const published = await publishServerDraft.publishDraft(draftToPublish);

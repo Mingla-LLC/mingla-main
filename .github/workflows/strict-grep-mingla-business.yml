@@ -1335,16 +1335,23 @@ jobs:
       - name: Run ORCH-0891 budget gate self-test
         run: node .github/scripts/strict-grep/orch-0891-marketing-performance-budget.mjs --self-test
 
-  # I-PROPOSED-CREATOR-ENTRY-IS-INSTANT job removed by ORCH-0891 close
-  # follow-up #3 (2026-05-20): script remains in-tree at
-  # .github/scripts/strict-grep/i-proposed-creator-entry-is-instant.mjs
-  # but the source fix it enforces (ORCH-0893 lazy server-draft on
-  # /create.tsx routes) has not landed on Seth — committed create.tsx
-  # files still contain useMutation/mutateAsync/useCreateServerDraft/
-  # useCreateTripDraft references that the gate flags. M3 implementor's
-  # b85d1393 commit erroneously registered this job alongside the
-  # legitimate orch-0891 budget gate. Re-register this job in the
-  # ORCH-0893 CLOSE PR once the source fix is committed.
+  # I-PROPOSED-CREATOR-ENTRY-IS-INSTANT job re-registered by ORCH-0893
+  # CLOSE 2026-05-20: source fix (3 cycles — instant mint + hydration
+  # gate + legacy-loop dirty gate + bounce-home safety belt) landed at
+  # commit b982f326 on Seth. Local gate run: exit 0, 3 files scanned,
+  # 0 violations. Original removal by ORCH-0891 close follow-up #3 was
+  # a deliberate holding pattern until the source fix shipped; now safe
+  # to enforce.
+  i-proposed-creator-entry-is-instant:
+    name: "I-PROPOSED-CREATOR-ENTRY-IS-INSTANT: no entry-blocking server mutation in app/**/create.tsx (ORCH-0893)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run I-PROPOSED-CREATOR-ENTRY-IS-INSTANT gate
+        run: node .github/scripts/strict-grep/i-proposed-creator-entry-is-instant.mjs
 
   orch-0892-no-bespoke-keyboard-plumbing:
     name: "ORCH-0892: no bespoke keyboard plumbing outside Sheet/ComposerV2/richEditor (informational, flips to BLOCK in ORCH-0892-C)"
