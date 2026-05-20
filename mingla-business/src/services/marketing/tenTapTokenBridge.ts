@@ -61,8 +61,15 @@ const PERSONALIZATION_TOKEN_RE = new RegExp(
   `\\{(${PERSONALIZATION_TOKENS.join("|")})\\}`,
   "g",
 );
+// ORCH-0891 M1 — extended to optionally capture a `|size` suffix:
+//   `{{event:UUID}}`           → legacy form (no size; defaults to medium)
+//   `{{event:UUID|compact}}`   → compact pill rendering
+//   `{{event:UUID|medium}}`    → explicit medium (same as legacy)
+//   `{{event:UUID|large}}`     → block-level hero card rendering
+// Capture group 1: UUID. Capture group 2: size if present, else undefined.
+// Backwards-compat preserved by making the size group optional.
 const EVENT_TOKEN_RE =
-  /\{\{event:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\}\}/gi;
+  /\{\{event:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\|(compact|medium|large))?\}\}/gi;
 
 // ─── Document shape (matches Tiptap/ProseMirror JSON) ──────────────────────
 
@@ -78,7 +85,11 @@ export type InlineNode =
       attrs: { token: PersonalizationToken };
       marks?: TextMark[];
     }
-  | { type: "eventChip"; attrs: { eventId: string }; marks?: TextMark[] }
+  | {
+      type: "eventChip";
+      attrs: { eventId: string; size?: "compact" | "medium" | "large" };
+      marks?: TextMark[];
+    }
   | { type: "hardBreak" };
 
 export type BlockNode = { type: "paragraph"; content?: InlineNode[] };
@@ -188,10 +199,17 @@ function parseInlineSegment(text: string): InlineNode[] {
       const eventMatch = EVENT_TOKEN_RE.exec(text);
       if (eventMatch !== null && eventMatch.index === i) {
         const t = top();
+        // ORCH-0891 M1: optional capture group 2 carries the size suffix.
+        // When absent, omit the attribute (legacy behavior preserved).
+        const eventId = eventMatch[1];
+        const size = eventMatch[2] as "compact" | "medium" | "large" | undefined;
+        const attrs = size === undefined
+          ? { eventId }
+          : { eventId, size };
         t.out.push(
           t.marks.length > 0
-            ? { type: "eventChip", attrs: { eventId: eventMatch[1] }, marks: [...t.marks] }
-            : { type: "eventChip", attrs: { eventId: eventMatch[1] } },
+            ? { type: "eventChip", attrs, marks: [...t.marks] }
+            : { type: "eventChip", attrs },
         );
         i += eventMatch[0].length;
         continue;
@@ -303,7 +321,12 @@ export function toBodyHtml(doc: TenTapDocument): string {
       if (node.type === "personalizationChip") {
         inlineParts.push(emitTextWithMarks(`{${node.attrs.token}}`, node.marks ?? []));
       } else if (node.type === "eventChip") {
-        inlineParts.push(emitTextWithMarks(`{{event:${node.attrs.eventId}}}`, node.marks ?? []));
+        // ORCH-0891 M1: emit `|size` suffix when set; omit when undefined.
+        // Legacy size-less chips emit `{{event:UUID}}` byte-identical.
+        const sizeSuffix = node.attrs.size === undefined ? "" : `|${node.attrs.size}`;
+        inlineParts.push(
+          emitTextWithMarks(`{{event:${node.attrs.eventId}${sizeSuffix}}}`, node.marks ?? []),
+        );
       } else if (node.type === "hardBreak") {
         inlineParts.push("\n");
       } else {
@@ -375,7 +398,7 @@ export function docToHtml(doc: TenTapDocument): string {
         const inner = renderPersonalizationChip(node.attrs.token);
         inlineParts.push(wrapMarks(inner, node.marks ?? []));
       } else if (node.type === "eventChip") {
-        const inner = renderEventChipPlaceholder(node.attrs.eventId);
+        const inner = renderEventChipPlaceholder(node.attrs.eventId, node.attrs.size);
         inlineParts.push(wrapMarks(inner, node.marks ?? []));
       } else if (node.type === "hardBreak") {
         inlineParts.push("<br>");
@@ -433,7 +456,15 @@ export function htmlToTokenString(html: string): string {
     /<span\b[^>]*?\bdata-token="([a-z_]+)"[^>]*>[\s\S]*?<\/span>/gi,
     (_, token: string) => `{${token}}`,
   );
-  // Event chips: capture data-event-id.
+  // Event chips: capture data-event-id AND optional data-size.
+  // ORCH-0891 M1: when data-size is present, emit `{{event:UUID|size}}`;
+  // when absent, emit `{{event:UUID}}` (legacy form preserved byte-identical).
+  // The two regexes are run in order: the first matches chips WITH data-size
+  // (anywhere in the span attrs); the second matches chips without — fall-through.
+  out = out.replace(
+    /<span\b(?=[^>]*?\bdata-event-id="([0-9a-f-]+)")(?=[^>]*?\bdata-size="(compact|medium|large)")[^>]*>[\s\S]*?<\/span>/gi,
+    (_match, id: string, size: string) => `{{event:${id}|${size}}}`,
+  );
   out = out.replace(
     /<span\b[^>]*?\bdata-event-id="([0-9a-f-]+)"[^>]*>[\s\S]*?<\/span>/gi,
     (_, id: string) => `{{event:${id}}}`,
@@ -481,15 +512,22 @@ function renderPersonalizationChip(token: PersonalizationToken): string {
   );
 }
 
-function renderEventChipPlaceholder(eventId: string): string {
+function renderEventChipPlaceholder(
+  eventId: string,
+  size?: "compact" | "medium" | "large",
+): string {
   // The full chip render (title, date, cover) requires runtime brand-event
   // lookup. At doc→html time we don't have that data, so emit a minimal
   // chip stub with just the event-id. The host (ComposerV2Editor)
   // re-renders chips with full title/date via insertHTML on every fresh
   // insert; this stub is only the format pell stores between session loads.
+  //
+  // ORCH-0891 M1: optional `size` attribute. Omitted when undefined to
+  // preserve byte-identical output for legacy size-less drafts.
+  const sizeAttr = size === undefined ? "" : ` data-size="${size}"`;
   return (
     `<span class="mingla-event-chip" contenteditable="false"` +
-    ` data-event-id="${eventId}" data-cta="tickets">▣ Event</span>`
+    ` data-event-id="${eventId}" data-cta="tickets"${sizeAttr}>▣ Event</span>`
   );
 }
 

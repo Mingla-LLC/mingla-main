@@ -962,6 +962,9 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         brandDefaultCurrency: liveEvent.currency ?? null,
         coverMediaApplyMode: "published_manual" as const,
         onCoverVideoProcessingChange: setCoverVideoProcessing,
+        // ORCH-0892-A: legacy CoverPicker scroll-ref prop removed.
+        // CoverPicker now uses the keyboard-controller library's KAV wrap.
+        // scrollViewRef remains for the Cycle 3 wizard root pattern.
       };
       switch (key) {
         case "basics":
@@ -1075,13 +1078,17 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         contentContainerStyle={[
           styles.scrollContent,
           {
+            // ORCH-0884 follow-up #6 — bumped buffer from 120 to 200pt
+            // when keyboard is up. Same fix as EditPublishedTripScreen.
             paddingBottom:
               keyboardHeight > 0
-                ? keyboardHeight + 120
+                ? keyboardHeight + 200
                 : insets.bottom + 120,
           },
         ]}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        automaticallyAdjustKeyboardInsets
         showsVerticalScrollIndicator={false}
       >
         <EditAfterPublishBanner />

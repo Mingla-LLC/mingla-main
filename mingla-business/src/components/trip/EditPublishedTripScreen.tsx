@@ -1225,13 +1225,20 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
         contentContainerStyle={[
           styles.scrollContent,
           {
+            // ORCH-0884 follow-up #6 — bumped buffer from 120 to 200pt
+            // when keyboard is up. Operator-confirmed: prior 120pt left
+            // the focused input's cursor right at the keyboard edge or
+            // below (half-covered). 200pt gives iOS's auto-scroll enough
+            // room to position the input fully above the keyboard.
             paddingBottom:
               keyboardHeight > 0
-                ? keyboardHeight + 120
+                ? keyboardHeight + 200
                 : insets.bottom + 120,
           },
         ]}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        automaticallyAdjustKeyboardInsets
         showsVerticalScrollIndicator={false}
       >
         <EditAfterPublishTripBanner />

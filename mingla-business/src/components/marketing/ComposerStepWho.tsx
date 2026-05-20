@@ -14,6 +14,7 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 
 export interface ComposerStepWhoProps {
   audienceName: string | null;
@@ -30,6 +31,7 @@ export const ComposerStepWho: React.FC<ComposerStepWhoProps> = ({
   onOpenPicker,
   disabled,
 }) => {
+  const { isWideDesktop } = useResponsiveLayout();
   const isEmpty = audienceName === null;
   const reachText =
     totalAudience !== null && reachableEmail !== null
@@ -51,6 +53,8 @@ export const ComposerStepWho: React.FC<ComposerStepWhoProps> = ({
         style={({ pressed }) => [
           styles.picker,
           isEmpty ? styles.pickerEmpty : styles.pickerFilled,
+          isWideDesktop ? styles.desktopPicker : null,
+          isWideDesktop && !isEmpty ? styles.desktopPickerFilled : null,
           pressed && disabled !== true ? styles.pickerPressed : null,
           disabled === true ? styles.pickerDisabled : null,
         ]}
@@ -92,6 +96,13 @@ const styles = StyleSheet.create({
   pickerFilled: {
     borderColor: accent.border,
     backgroundColor: "rgba(235, 120, 37, 0.12)",
+  },
+  desktopPicker: {
+    borderColor: "rgba(255, 255, 255, 0.11)",
+    backgroundColor: "transparent",
+  },
+  desktopPickerFilled: {
+    borderColor: "rgba(235, 120, 37, 0.5)",
   },
   pickerPressed: {
     opacity: 0.85,

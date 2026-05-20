@@ -17,18 +17,43 @@ describe("server-backed draft lifecycle guards", () => {
     expect(source).not.toContain("canConvertDraftToLiveEvent(liveDraft)");
   });
 
-  test("create route waits for a server draft id before navigation", () => {
+  // [TEST-MOD-APPROVED ORCH-0893] (rework 2026-05-20) — supersedes the prior
+  // [TEST-MOD-APPROVED ORCH-0893] revision which pinned `createClientDraft(...)`
+  // as a subscribed Zustand selector reference. The rework switched to
+  // `useDraftEventStore.getState().createDraft(...)` directly (hydration-safe;
+  // no subscription staleness) AND added a `hasHydrated()` gate to fix the
+  // operator-reported "wizard shows up then closes" bug caused by Zustand
+  // persist hydration overwriting the just-minted d_<ts36> draft.
+  test("create route mints client-id via getState() after hydration AND replaces to /event/{d_id}/edit?step=0 (ORCH-0893 rework)", () => {
     const source = repoFile("app/event/create.tsx");
 
     const authGuardIndex = source.indexOf("if (!isAuthReady");
-    const createIndex = source.indexOf("createDraft(currentBrandId)");
-    const navigationIndex = source.indexOf("`/event/${newDraft.id}/edit?step=0`");
+    const hydratedGateIndex = source.indexOf("if (!hydrated)");
+    const createGetStateIndex = source.indexOf(
+      "useDraftEventStore.getState().createDraft(currentBrandId)",
+    );
+    const navigationIndex = source.indexOf("`/event/${draft.id}/edit?step=0`");
 
     expect(authGuardIndex).toBeGreaterThan(-1);
-    expect(createIndex).toBeGreaterThan(-1);
-    expect(createIndex).toBeGreaterThan(authGuardIndex);
-    expect(navigationIndex).toBeGreaterThan(createIndex);
-    expect(source).toContain("isBusinessAuthNotReadyError");
+    expect(hydratedGateIndex).toBeGreaterThan(-1);
+    expect(createGetStateIndex).toBeGreaterThan(-1);
+    expect(navigationIndex).toBeGreaterThan(-1);
+
+    // Order:
+    // 1. auth guard FIRST (no point hydrating if auth isn't ready)
+    // 2. hydrated gate BEFORE the createDraft (prevents the persist-replace race)
+    // 3. createDraft (getState() form) BEFORE the router.replace
+    expect(hydratedGateIndex).toBeGreaterThan(authGuardIndex);
+    expect(createGetStateIndex).toBeGreaterThan(hydratedGateIndex);
+    expect(navigationIndex).toBeGreaterThan(createGetStateIndex);
+
+    // Hydration subscription must be present.
+    expect(source).toContain("useDraftEventStore.persist.hasHydrated()");
+    expect(source).toContain("useDraftEventStore.persist.onFinishHydration");
+
+    // Pre-rework forbidden tokens must NOT appear.
+    expect(source).not.toContain("useCreateServerDraft");
+    expect(source).not.toContain("isBusinessAuthNotReadyError");
   });
 
   test("edit and preview routes do not redirect while server draft hydration is loading", () => {
@@ -90,7 +115,15 @@ describe("server-backed draft lifecycle guards", () => {
     expect(editSource).toContain("staleServerDraft");
     expect(editSource).toContain("serverDraftQuery.data === null");
     expect(editSource).toContain("!draft.id.startsWith(\"d_\")");
-    expect(editSource).toContain("onAutosaveDraft={draft.id.startsWith(\"d_\") ? undefined : autosave.saveDraft}");
+    // [TEST-MOD-APPROVED ORCH-0893] — the pre-ORCH-0893 wiring
+    // `onAutosaveDraft={draft.id.startsWith("d_") ? undefined : autosave.saveDraft}`
+    // is replaced by a route-owned wrapper `handleAutosaveDraft` that routes
+    // `d_*` drafts through `createServerDraft` on first dirty save (lazy
+    // insert) and `autosave.saveDraft` thereafter. The new wiring is
+    // `onAutosaveDraft={handleAutosaveDraft}`.
+    expect(editSource).toContain("onAutosaveDraft={handleAutosaveDraft}");
+    expect(editSource).toContain("handleAutosaveDraft");
+    expect(editSource).toContain("isDraftDirty");
     expect(editSource).toContain("This draft is no longer editable.");
 
     expect(previewSource).toContain("staleServerDraft");

@@ -33,22 +33,24 @@ import React, {
   useState,
 } from "react";
 import {
-  Alert,
   Keyboard,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   useWindowDimensions,
   View,
   type NativeSyntheticEvent,
   type TextInputSelectionChangeEventData,
 } from "react-native";
-import { RichEditor, actions } from "react-native-pell-rich-editor";
+import { RichEditor, actions, type RichEditorHandle } from "./richEditor";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
+  accent,
   glass,
   radius,
   spacing,
@@ -67,6 +69,7 @@ import type { MarketingTemplateRow } from "../../../types/marketing";
 import {
   COMPOSER_CHIP_CSS,
   COMPOSER_CHIP_X_HANDLER_JS,
+  COMPOSER_SELECTION_TRACKER_JS,
   eventChipHtml,
   personalizationChipHtml,
 } from "./composerChipHtml";
@@ -75,9 +78,25 @@ import type { InsertionBarState } from "./InsertionBarState";
 import { PERSONALIZATION_OPTIONS } from "./InsertionBarState";
 import { TemplatePreviewDrawer } from "./TemplatePreviewDrawer";
 import type { PreviewVariables } from "../../../services/marketing/marketingRenderingService";
+import { useResponsiveLayout } from "../../../hooks/useResponsiveLayout";
 // Stage F.9: SelectionFormattingTooltip removed — its B/I/Link pills
 // merged into InsertionBar (now mounted inside this editor between the
 // subject row and the body card per operator F.9 directive).
+
+const DIVIDER_HTML =
+  '<hr style="border:none;border-top:1px solid rgba(255,255,255,0.18);margin:12px 0;" />';
+
+/**
+ * Normalizes a user-typed URL: trims, prepends `https://` if no scheme,
+ * preserves explicit `http://` / `mailto:`. Returns empty string for
+ * empty input (caller treats as a no-op).
+ */
+const normalizeUrl = (raw: string): string => {
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) return "";
+  if (/^(https?:\/\/|mailto:)/i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+};
 
 export interface ComposerV2EditorHandle {
   insertEvent: (event: EventCardOption) => void;
@@ -87,7 +106,14 @@ export interface ComposerV2EditorHandle {
   /** Stage F.9 — merged-toolbar formatting commands. */
   toggleBold: () => void;
   toggleItalic: () => void;
+  toggleUnderline: () => void;
   toggleLink: () => void;
+  /**
+   * ORCH-0891 M3 — toggles the right-rail TemplatePreviewDrawer so the
+   * ⌘D keyboard shortcut can drive it from compose.tsx without owning
+   * the drawer state itself.
+   */
+  toggleTemplateDrawer: () => void;
 }
 
 export interface ComposerV2EditorProps {
@@ -121,7 +147,8 @@ export const ComposerV2Editor = forwardRef<ComposerV2EditorHandle, ComposerV2Edi
       onErrorToast,
     } = props;
 
-    const richEditorRef = useRef<RichEditor>(null);
+    const richEditorRef = useRef<RichEditorHandle>(null);
+    const { isWideDesktop } = useResponsiveLayout();
 
     // Stage F.7b: compute a concrete numeric height for pell's WebView.
     // Pell's WebView with `flex:1` collapses to 0 height inside a flex
@@ -161,11 +188,15 @@ export const ComposerV2Editor = forwardRef<ComposerV2EditorHandle, ComposerV2Edi
     // stops touching the home-indicator area visually. Body now claims
     // ~400pt on iPhone Pro (was ~432pt) — still very usable.
     const CHROME_CONTENT_PX = 376;
-    const bodyHeight = Math.max(
-      120, // F.9e: keyboard-up minimum (small but still usable to see what
-      //         was just typed). When keyboard's closed, body is ~432pt.
-      windowHeight - insets.top - insets.bottom - CHROME_CONTENT_PX - keyboardHeight,
-    );
+    const rawBodyHeight =
+      windowHeight - insets.top - insets.bottom - CHROME_CONTENT_PX - keyboardHeight;
+    const bodyHeight = isWideDesktop
+      ? Math.max(400, Math.min(rawBodyHeight - 44, 700))
+      : Math.max(
+          120, // F.9e: keyboard-up minimum (small but still usable to see what
+          //         was just typed). When keyboard's closed, body is ~432pt.
+          rawBodyHeight,
+        );
 
     // Initial HTML rendered into the editor once at mount. Subsequent body_html
     // changes from the parent are NOT pushed back into the editor (would
@@ -183,6 +214,11 @@ export const ComposerV2Editor = forwardRef<ComposerV2EditorHandle, ComposerV2Edi
         `var s=document.createElement('style');s.innerHTML=\`${css}\`;document.head.appendChild(s);`,
       );
       richEditorRef.current?.commandDOM(COMPOSER_CHIP_X_HANDLER_JS);
+      // Saves contenteditable selection on every selectionchange so the
+      // toolbar's focus-then-exec JS can restore it before execCommand,
+      // and binds Cmd/Ctrl+U → execCommand('underline') (not native on
+      // iOS WKWebView). See COMPOSER_SELECTION_TRACKER_JS docs.
+      richEditorRef.current?.commandDOM(COMPOSER_SELECTION_TRACKER_JS);
     }, []);
 
     const handleBodyHtmlChange = useCallback(
@@ -191,6 +227,12 @@ export const ComposerV2Editor = forwardRef<ComposerV2EditorHandle, ComposerV2Edi
       },
       [onBodyChange],
     );
+
+    // ORCH-0891 M3 — drawer state must be declared BEFORE the imperative
+    // handle so `toggleTemplateDrawer` can call `setShowTemplateDrawer`.
+    // F.9 InsertionBar local state moved here for the same reason.
+    const [barState, setBarState] = useState<InsertionBarState>("closed");
+    const [showTemplateDrawer, setShowTemplateDrawer] = useState(false);
 
     // ─── Imperative handle: parent drives inserts + formatting ────────────
     useImperativeHandle(
@@ -221,37 +263,32 @@ export const ComposerV2Editor = forwardRef<ComposerV2EditorHandle, ComposerV2Edi
           richEditorRef.current?.insertHTML(html);
         },
         // Stage F.9 merged-toolbar formatting commands.
+        // Route through sendAction so BOTH platforms work:
+        //   - pell (iOS/Android): sendAction posts a message to the
+        //     WebView; pell's bridge runs focusCurrent() then exec(cmd)
+        //     when name === 'result' (editor.js:697-702).
+        //   - Tiptap (web): the web RichEditor shim maps sendAction
+        //     'bold' / 'italic' / 'underline' onto
+        //     editor.chain().focus().toggleX().run() (richEditor.tsx).
+        // The previous commandDOM-based path silently no-op'd on web
+        // because the web shim's commandDOM is intentionally a no-op
+        // (richEditor.tsx:312-314 — Tiptap doesn't have an iframe to
+        // inject JS into).
         toggleBold: (): void => {
           richEditorRef.current?.sendAction(actions.setBold, "result");
         },
         toggleItalic: (): void => {
           richEditorRef.current?.sendAction(actions.setItalic, "result");
         },
+        toggleUnderline: (): void => {
+          richEditorRef.current?.sendAction(actions.setUnderline, "result");
+        },
         toggleLink: (): void => {
-          if (Platform.OS === "ios") {
-            Alert.prompt(
-              "Insert link",
-              "Paste the URL the selected text should link to.",
-              [
-                { text: "Cancel", style: "cancel" },
-                {
-                  text: "Insert",
-                  onPress: (url?: string) => {
-                    const trimmed = (url ?? "").trim();
-                    if (trimmed.length === 0) return;
-                    richEditorRef.current?.insertLink(trimmed, trimmed);
-                  },
-                },
-              ],
-              "plain-text",
-              "",
-            );
-          } else {
-            Alert.alert(
-              "Insert link",
-              "Link entry on Android coming soon — iOS supports Alert.prompt.",
-            );
-          }
+          setLinkPromptValue("");
+          setLinkPromptVisible(true);
+        },
+        toggleTemplateDrawer: (): void => {
+          setShowTemplateDrawer((prev) => !prev);
         },
       }),
       [onBodyChange, onSubjectChange],
@@ -284,9 +321,9 @@ export const ComposerV2Editor = forwardRef<ComposerV2EditorHandle, ComposerV2Edi
 
     const subjectTokens = useMemo(() => PERSONALIZATION_OPTIONS, []);
 
-    // F.9: InsertionBar local state — bar sits between subject and body.
-    const [barState, setBarState] = useState<InsertionBarState>("closed");
-    const [showTemplateDrawer, setShowTemplateDrawer] = useState(false);
+    // F.9: InsertionBar local state — declared above the imperative
+    // handle now (ORCH-0891 M3) so toggleTemplateDrawer can reach
+    // setShowTemplateDrawer.
 
     const handleInsertEventLocal = useCallback(
       (event: EventCardOption): void => {
@@ -310,6 +347,11 @@ export const ComposerV2Editor = forwardRef<ComposerV2EditorHandle, ComposerV2Edi
       [],
     );
 
+    // Link prompt — cross-platform Modal (replaces iOS Alert.prompt and
+    // the Android "coming soon" alert). Same UX on both platforms.
+    const [linkPromptVisible, setLinkPromptVisible] = useState(false);
+    const [linkPromptValue, setLinkPromptValue] = useState("");
+
     const handleToggleBoldLocal = useCallback((): void => {
       richEditorRef.current?.sendAction(actions.setBold, "result");
     }, []);
@@ -318,31 +360,32 @@ export const ComposerV2Editor = forwardRef<ComposerV2EditorHandle, ComposerV2Edi
       richEditorRef.current?.sendAction(actions.setItalic, "result");
     }, []);
 
+    const handleToggleUnderlineLocal = useCallback((): void => {
+      richEditorRef.current?.sendAction(actions.setUnderline, "result");
+    }, []);
+
     const handleToggleLinkLocal = useCallback((): void => {
-      if (Platform.OS === "ios") {
-        Alert.prompt(
-          "Insert link",
-          "Paste the URL the selected text should link to.",
-          [
-            { text: "Cancel", style: "cancel" },
-            {
-              text: "Insert",
-              onPress: (url?: string) => {
-                const trimmed = (url ?? "").trim();
-                if (trimmed.length === 0) return;
-                richEditorRef.current?.insertLink(trimmed, trimmed);
-              },
-            },
-          ],
-          "plain-text",
-          "",
-        );
-      } else {
-        Alert.alert(
-          "Insert link",
-          "Link entry on Android coming soon — iOS supports Alert.prompt.",
-        );
-      }
+      setLinkPromptValue("");
+      setLinkPromptVisible(true);
+    }, []);
+
+    const handleLinkPromptCancel = useCallback((): void => {
+      setLinkPromptVisible(false);
+    }, []);
+
+    const handleLinkPromptSubmit = useCallback((): void => {
+      const url = normalizeUrl(linkPromptValue);
+      setLinkPromptVisible(false);
+      if (url.length === 0) return;
+      // insertLink is implemented on BOTH platforms:
+      //   - pell (iOS/Android): wraps current selection in <a href>
+      //   - Tiptap (web): inserts <a> at cursor with URL text if no
+      //     selection, else wraps selection (richEditor.tsx insertLink).
+      richEditorRef.current?.insertLink(url, url);
+    }, [linkPromptValue]);
+
+    const handleInsertDividerLocal = useCallback((): void => {
+      richEditorRef.current?.insertHTML(DIVIDER_HTML);
     }, []);
 
     const handleApplyTemplateReplaceLocal = useCallback(
@@ -396,7 +439,11 @@ export const ComposerV2Editor = forwardRef<ComposerV2EditorHandle, ComposerV2Edi
             accessibilityState={{ expanded: subjectPersonalizeOpen }}
             style={({ pressed }) => [
               styles.subjectPersonalize,
+              isWideDesktop ? styles.desktopSubjectPersonalize : null,
               subjectPersonalizeOpen ? styles.subjectPersonalizeActive : null,
+              isWideDesktop && subjectPersonalizeOpen
+                ? styles.desktopSubjectPersonalizeActive
+                : null,
               pressed ? styles.subjectPersonalizePressed : null,
             ]}
             testID="composer-v2-subject-personalize"
@@ -441,15 +488,14 @@ export const ComposerV2Editor = forwardRef<ComposerV2EditorHandle, ComposerV2Edi
           onInsertEvent={handleInsertEventLocal}
           onInsertPersonalization={handleInsertPersonalizationLocal}
           onOpenLink={handleToggleLinkLocal}
-          onInsertDivider={() =>
-            onErrorToast("Dividers coming in a future update.")
-          }
+          onInsertDivider={handleInsertDividerLocal}
           onInsertImage={() =>
             onErrorToast("Image insertion coming in a future update.")
           }
           onOpenTemplateDrawer={() => setShowTemplateDrawer(true)}
           onToggleBold={handleToggleBoldLocal}
           onToggleItalic={handleToggleItalicLocal}
+          onToggleUnderline={handleToggleUnderlineLocal}
           onToggleLink={handleToggleLinkLocal}
         />
 
@@ -472,7 +518,11 @@ export const ComposerV2Editor = forwardRef<ComposerV2EditorHandle, ComposerV2Edi
             directly to WKWebView. WKWebView focuses the contenteditable
             natively. iOS keyboard appears. No bridge involvement. */}
         <View
-          style={[styles.bodyHost, { height: bodyHeight }]}
+          style={[
+            styles.bodyHost,
+            isWideDesktop ? styles.desktopBodyHost : null,
+            { height: bodyHeight },
+          ]}
           testID="composer-v2-body-host"
           accessibilityLabel="Tap to start writing"
         >
@@ -510,6 +560,78 @@ export const ComposerV2Editor = forwardRef<ComposerV2EditorHandle, ComposerV2Edi
           onApplyReplace={handleApplyTemplateReplaceLocal}
           onApplyAtCursor={handleApplyTemplateAtCursorLocal}
         />
+
+        {/* Cross-platform link prompt. Replaces iOS Alert.prompt (which
+            doesn't exist on Android). Same UX on both platforms; URL is
+            normalized with https:// prefix if no scheme present. */}
+        <Modal
+          visible={linkPromptVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={handleLinkPromptCancel}
+        >
+          <Pressable
+            style={styles.linkPromptBackdrop}
+            onPress={handleLinkPromptCancel}
+            accessibilityLabel="Dismiss link prompt"
+          >
+            {/* orch-strict-grep-allow pressable-no-label — tap-trap card: absorbs taps so they don't bubble to the backdrop dismiss handler. Not user-actionable; inner controls (TextInput, buttons) carry their own labels. */}
+            <Pressable style={styles.linkPromptCard} onPress={() => undefined}>
+              <Text style={styles.linkPromptTitle}>Insert link</Text>
+              <Text style={styles.linkPromptBody}>
+                Paste the URL the selected text should link to.
+              </Text>
+              <TextInput
+                value={linkPromptValue}
+                onChangeText={setLinkPromptValue}
+                placeholder="https://example.com"
+                placeholderTextColor="rgba(255, 255, 255, 0.42)"
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="url"
+                returnKeyType="done"
+                onSubmitEditing={handleLinkPromptSubmit}
+                autoFocus
+                style={styles.linkPromptInput}
+                accessibilityLabel="Link URL"
+                testID="composer-v2-link-prompt-input"
+              />
+              <View style={styles.linkPromptActions}>
+                <Pressable
+                  onPress={handleLinkPromptCancel}
+                  style={({ pressed }) => [
+                    styles.linkPromptButton,
+                    pressed ? styles.linkPromptButtonPressed : null,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Cancel link insertion"
+                >
+                  <Text style={styles.linkPromptButtonLabel}>Cancel</Text>
+                </Pressable>
+                <Pressable
+                  onPress={handleLinkPromptSubmit}
+                  style={({ pressed }) => [
+                    styles.linkPromptButton,
+                    styles.linkPromptButtonPrimary,
+                    pressed ? styles.linkPromptButtonPressed : null,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Insert link"
+                  testID="composer-v2-link-prompt-submit"
+                >
+                  <Text
+                    style={[
+                      styles.linkPromptButtonLabel,
+                      styles.linkPromptButtonLabelPrimary,
+                    ]}
+                  >
+                    Insert
+                  </Text>
+                </Pressable>
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
 
       </View>
     );
@@ -551,6 +673,14 @@ const styles = StyleSheet.create({
   },
   subjectPersonalizeActive: {
     backgroundColor: glass.tint.profileElevated,
+  },
+  desktopSubjectPersonalize: {
+    backgroundColor: "transparent",
+    borderColor: "rgba(255, 255, 255, 0.13)",
+  },
+  desktopSubjectPersonalizeActive: {
+    backgroundColor: "transparent",
+    borderColor: accent.border,
   },
   subjectPersonalizePressed: {
     opacity: 0.7,
@@ -596,6 +726,14 @@ const styles = StyleSheet.create({
     borderColor: glass.border.profileElevated,
     backgroundColor: glass.tint.profileElevated,
   },
+  desktopBodyHost: {
+    marginTop: spacing.md,
+    marginBottom: spacing.md,
+    borderRadius: radius.lg,
+    borderColor: "rgba(255, 255, 255, 0.11)",
+    backgroundColor: "rgba(8, 9, 12, 0.52)",
+    overflow: "hidden",
+  },
   // F.10: Preview modal chrome — dark canvas behind the sheet, light
   // header strip with title + Done button. EmailPreviewPane fills the rest.
   previewModal: {
@@ -631,5 +769,77 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: "#F47C20",
     fontWeight: "700",
+  },
+
+  // Link prompt modal — dark glass card centered over a dim backdrop.
+  linkPromptBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.62)",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: spacing.lg,
+  },
+  linkPromptCard: {
+    width: "100%",
+    maxWidth: 420,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: glass.border.profileElevated,
+    backgroundColor: "rgba(20, 22, 28, 0.98)",
+    padding: spacing.lg,
+    gap: spacing.sm,
+  },
+  linkPromptTitle: {
+    ...typography.bodyLg,
+    color: textTokens.primary,
+    fontWeight: "700",
+  },
+  linkPromptBody: {
+    ...typography.bodySm,
+    color: textTokens.secondary,
+  },
+  linkPromptInput: {
+    minHeight: 44,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: glass.border.profileElevated,
+    backgroundColor: glass.tint.profileBase,
+    color: textTokens.primary,
+    fontSize: 15,
+    marginTop: spacing.xs,
+  },
+  linkPromptActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: spacing.xs,
+    marginTop: spacing.sm,
+  },
+  linkPromptButton: {
+    minHeight: 44,
+    minWidth: 88,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.full,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: glass.border.chrome,
+    backgroundColor: glass.tint.badge.idle,
+  },
+  linkPromptButtonPrimary: {
+    backgroundColor: accent.tint,
+    borderColor: accent.border,
+  },
+  linkPromptButtonPressed: {
+    opacity: 0.7,
+  },
+  linkPromptButtonLabel: {
+    ...typography.buttonMd,
+    color: textTokens.secondary,
+  },
+  linkPromptButtonLabelPrimary: {
+    color: textTokens.primary,
   },
 });

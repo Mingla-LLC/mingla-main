@@ -37,6 +37,15 @@ import {
   TextInput,
   View,
 } from "react-native";
+// ORCH-0892-A v2 (post-QA rework Path A): KeyboardAvoidingView imported
+// from the wrapper at src/wrappers/. The wrapper's .native.tsx variant
+// re-exports the library's KAV (frame-perfect on iOS+Android); the
+// .tsx variant re-exports react-native's KAV (works on web). This
+// wraps the GIPHY/Pexels search section so the search input + cursor
+// lift above the iOS keyboard + autocomplete bar. Supersedes
+// ORCH-0884 follow-ups #8 (400pt spacer) and #9 (dead scrollResponder
+// call) which are both deleted. Per SPEC_ORCH-0892-A §7.6 + QA §11.
+import { KeyboardAvoidingView } from "../../wrappers/KeyboardAvoidingView";
 import * as ImagePicker from "expo-image-picker";
 
 import {
@@ -189,6 +198,13 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   const [searchError, setSearchError] = useState<string | null>(null);
   const [giphyResults, setGiphyResults] = useState<GiphyCoverSearchResult[]>([]);
   const [pexelsResults, setPexelsResults] = useState<PexelsCoverSearchResult[]>([]);
+
+  // ORCH-0892-A: prior ORCH-0884 follow-ups #8 + #9 (Keyboard listener
+  // with 400pt spacer + dead scroll-responder call) DELETED. Both were
+  // workarounds for keyboard covering the GIPHY/Pexels search input.
+  // The Fabric-compatible fix is the keyboard-controller library's
+  // <KeyboardAvoidingView behavior="padding"> wrap around the search
+  // section below. Supersedes ORCH-0888 if pilot confirms.
 
   const selectedCredit = eventCoverProviderCreditLabel({
     provider: localCover.coverMediaProvider,
@@ -476,93 +492,100 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
         ) : null}
       </View>
 
-      {/* GIPHY + Pexels search (only renders if at least one is enabled) */}
+      {/* GIPHY + Pexels search (only renders if at least one is enabled).
+          ORCH-0892-A: wrapped in <KeyboardAvoidingView behavior="padding">
+          from react-native-keyboard-controller. The library lifts the
+          focused search input above the iOS keyboard + autocomplete bar
+          natively, replacing the deleted ORCH-0884 #8 spacer hack and
+          #9 dead scrollResponder call. Per SPEC_ORCH-0892-A §7.6. */}
       {supportsSearch ? (
-        <View style={styles.field}>
-          <Text style={styles.fieldLabel}>Find a cover</Text>
-          <View style={styles.providerTabs}>
-            {supportsGiphy ? (
-              <ProviderTabButton
-                label="GIPHY"
-                active={providerTab === "giphy"}
-                onPress={() => setProviderTab("giphy")}
-                disabled={disabled}
-              />
-            ) : null}
-            {supportsPexels ? (
-              <ProviderTabButton
-                label="Pexels"
-                active={providerTab === "pexels"}
-                onPress={() => setProviderTab("pexels")}
-                disabled={disabled}
-              />
-            ) : null}
-          </View>
-          <View style={styles.searchRow}>
-            <TextInput
-              value={query}
-              onChangeText={setQuery}
-              placeholder={
-                providerTab === "giphy"
-                  ? "Search GIFs"
-                  : "Search landscape photos"
-              }
-              placeholderTextColor={textTokens.tertiary}
-              returnKeyType="search"
-              onSubmitEditing={() => {
-                void runProviderSearch();
-              }}
-              style={styles.searchInput}
-              editable={!disabled}
-            />
-            <Button
-              label="Search"
-              variant="secondary"
-              size="md"
-              shape="square"
-              onPress={() => {
-                void runProviderSearch();
-              }}
-              loading={searchStatus === "loading"}
-              disabled={searchStatus === "loading" || disabled}
-              style={styles.searchButton}
-            />
-          </View>
-          {searchError !== null ? (
-            <Text accessibilityRole="alert" style={styles.mediaErrorText}>
-              {searchError}
-            </Text>
-          ) : null}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.providerResults}
-          >
-            {currentResults.map((result) =>
-              providerTab === "giphy" ? (
-                <ProviderResultTile
-                  key={`giphy-${result.id}`}
-                  imageUrl={(result as GiphyCoverSearchResult).previewUrl}
-                  label={(result as GiphyCoverSearchResult).alt ?? "GIPHY GIF"}
-                  credit="GIPHY"
-                  onPress={() => selectGiphy(result as GiphyCoverSearchResult)}
+        <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={0}>
+          <View style={styles.field}>
+            <Text style={styles.fieldLabel}>Find a cover</Text>
+            <View style={styles.providerTabs}>
+              {supportsGiphy ? (
+                <ProviderTabButton
+                  label="GIPHY"
+                  active={providerTab === "giphy"}
+                  onPress={() => setProviderTab("giphy")}
+                  disabled={disabled}
                 />
-              ) : (
-                <ProviderResultTile
-                  key={`pexels-${(result as PexelsCoverSearchResult).id}`}
-                  imageUrl={(result as PexelsCoverSearchResult).mediaUrl}
-                  label={
-                    (result as PexelsCoverSearchResult).alt ?? "Pexels photo"
-                  }
-                  credit={(result as PexelsCoverSearchResult).credit}
-                  onPress={() =>
-                    selectPexels(result as PexelsCoverSearchResult)
-                  }
+              ) : null}
+              {supportsPexels ? (
+                <ProviderTabButton
+                  label="Pexels"
+                  active={providerTab === "pexels"}
+                  onPress={() => setProviderTab("pexels")}
+                  disabled={disabled}
                 />
-              ),
-            )}
-          </ScrollView>
-        </View>
+              ) : null}
+            </View>
+            <View style={styles.searchRow}>
+              <TextInput
+                value={query}
+                onChangeText={setQuery}
+                placeholder={
+                  providerTab === "giphy"
+                    ? "Search GIFs"
+                    : "Search landscape photos"
+                }
+                placeholderTextColor={textTokens.tertiary}
+                returnKeyType="search"
+                onSubmitEditing={() => {
+                  void runProviderSearch();
+                }}
+                style={styles.searchInput}
+                editable={!disabled}
+              />
+              <Button
+                label="Search"
+                variant="secondary"
+                size="md"
+                shape="square"
+                onPress={() => {
+                  void runProviderSearch();
+                }}
+                loading={searchStatus === "loading"}
+                disabled={searchStatus === "loading" || disabled}
+                style={styles.searchButton}
+              />
+            </View>
+            {searchError !== null ? (
+              <Text accessibilityRole="alert" style={styles.mediaErrorText}>
+                {searchError}
+              </Text>
+            ) : null}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.providerResults}
+            >
+              {currentResults.map((result) =>
+                providerTab === "giphy" ? (
+                  <ProviderResultTile
+                    key={`giphy-${result.id}`}
+                    imageUrl={(result as GiphyCoverSearchResult).previewUrl}
+                    label={(result as GiphyCoverSearchResult).alt ?? "GIPHY GIF"}
+                    credit="GIPHY"
+                    onPress={() => selectGiphy(result as GiphyCoverSearchResult)}
+                  />
+                ) : (
+                  <ProviderResultTile
+                    key={`pexels-${(result as PexelsCoverSearchResult).id}`}
+                    imageUrl={(result as PexelsCoverSearchResult).mediaUrl}
+                    label={
+                      (result as PexelsCoverSearchResult).alt ?? "Pexels photo"
+                    }
+                    credit={(result as PexelsCoverSearchResult).credit}
+                    onPress={() =>
+                      selectPexels(result as PexelsCoverSearchResult)
+                    }
+                  />
+                ),
+              )}
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
       ) : null}
     </View>
   );

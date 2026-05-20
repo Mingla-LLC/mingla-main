@@ -55,6 +55,7 @@ import { ComposerStepWho } from "../../../../src/components/marketing/ComposerSt
 // Send-now lives in ComposerFooter left CTA). Keep SendMode type import.
 import { type SendMode } from "../../../../src/components/marketing/ComposerStepWhen";
 import { ComposerFooter } from "../../../../src/components/marketing/ComposerFooter";
+import { ComposerCanvas } from "../../../../src/components/marketing/ComposerV2/ComposerCanvas";
 import { EmailPreviewPane } from "../../../../src/components/marketing/EmailPreviewPane";
 import { SchedulePickerSheet } from "../../../../src/components/marketing/ComposerV2/SchedulePickerSheet";
 import {
@@ -72,6 +73,7 @@ import {
 // subject + body). compose.tsx no longer imports them directly.
 import {
   canvas,
+  radius,
   spacing,
   text as textTokens,
   typography,
@@ -98,10 +100,16 @@ import type { MarketingChannelKind } from "../../../../src/components/marketing/
 import type { PreviewVariables } from "../../../../src/services/marketing/marketingRenderingService";
 import { useCurrentBrand } from "../../../../src/hooks/useCurrentBrand";
 import { useAuth } from "../../../../src/context/AuthContext";
+import { useResponsiveLayout } from "../../../../src/hooks/useResponsiveLayout";
+// ORCH-0891 M3 D-3 — wire the M2-shipped composer keyboard shortcuts.
+// On native this resolves to the no-op `.ts` sibling; web picks the
+// .web.ts implementation that installs the global keydown listener.
+import { useComposerKeyboardShortcuts } from "../../../../src/hooks/useComposerKeyboardShortcuts";
 
 export default function ComposeCampaignRoute(): React.ReactElement {
   const router = useRouter();
   const navigation = useNavigation();
+  const { isWideDesktop } = useResponsiveLayout();
   const params = useLocalSearchParams<{ audience?: string; draft?: string; template?: string }>();
   // Memoize so the pre-fill useEffect's dep array doesn't re-trigger on every
   // render — parseAudienceParam returns a new object literal each call.
@@ -518,10 +526,68 @@ export default function ComposeCampaignRoute(): React.ReactElement {
         })
       : "Pick a time";
 
+  // ORCH-0891 M3 D-3: install web composer keyboard shortcuts. Hook is
+  // unconditional (Rules of Hooks) and a no-op on native. Handlers are
+  // stable closures over the same setters used by the footer buttons.
+  // ⌘P is intentionally no-op on wide-desktop (the preview pane is
+  // permanent — no toggle target); narrow web opens the Modal.
+  useComposerKeyboardShortcuts({
+    onBold: (): void => {
+      editorHandleRef.current?.toggleBold();
+    },
+    onItalic: (): void => {
+      editorHandleRef.current?.toggleItalic();
+    },
+    onLink: (): void => {
+      editorHandleRef.current?.toggleLink();
+    },
+    onSendNow: (): void => {
+      const missing = missingFieldsLabel();
+      if (missing !== null) {
+        setErrorBanner(missing);
+        return;
+      }
+      if (coreFooterDisabled) return;
+      setSendMode("now");
+      setShowReview(true);
+    },
+    onTogglePreview: (): void => {
+      if (isWideDesktop) return;
+      setShowPreview((prev) => !prev);
+    },
+    onToggleDrawer: (): void => {
+      editorHandleRef.current?.toggleTemplateDrawer();
+    },
+    onCloseAny: (): void => {
+      // Esc closes any open Modal/Sheet — in priority order so closing
+      // the topmost surface first feels natural to a keyboard user.
+      if (showSentConfirmation) {
+        setShowSentConfirmation(false);
+        return;
+      }
+      if (showReview) {
+        setShowReview(false);
+        return;
+      }
+      if (showSchedulePicker) {
+        setShowSchedulePicker(false);
+        return;
+      }
+      if (showAudiencePicker) {
+        setShowAudiencePicker(false);
+        return;
+      }
+      if (showPreview) {
+        setShowPreview(false);
+        return;
+      }
+    },
+  });
+
   // Pre-fill loading skeleton
   if (audienceParam !== null && audienceId === null && errorBanner === null) {
     return (
-      <View style={styles.host}>
+      <View style={[styles.host, isWideDesktop ? styles.desktopHost : null]}>
         <ComposerHeader title="New campaign" onBack={handleBack} onSaveDraft={() => {}} saveDraftDisabled />
         <View style={styles.centerHost}>
           <ActivityIndicator size="small" color={textTokens.secondary} />
@@ -531,7 +597,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   }
 
   return (
-    <View style={styles.host}>
+    <View style={[styles.host, isWideDesktop ? styles.desktopHost : null]}>
       <ComposerHeader
         title="New campaign"
         onBack={handleBack}
@@ -548,52 +614,55 @@ export default function ComposeCampaignRoute(): React.ReactElement {
       />
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
-        style={styles.kavHost}
+        style={[styles.kavHost, isWideDesktop ? styles.desktopKavHost : null]}
       >
-        {/* Stage F.7: NO ScrollView around the editor — pell's WebView
-            inside a ScrollView blocks taps on iOS (RN WebView gesture
-            conflict). Flex column instead: Who fixed, Editor flex:1,
-            When+Compliance fixed below editor. */}
-        <View style={styles.whoRow}>
-          <ComposerStepWho
-            audienceName={audienceName}
-            reachableEmail={reach?.reachable_email ?? null}
-            totalAudience={reach?.total ?? null}
-            onOpenPicker={() => setShowAudiencePicker(true)}
-            disabled={brandId === null}
-          />
-          {/* F.9m: "Pick an audience above to save your draft." caption
-              removed per operator directive — unnecessary noise. The
-              Save-draft button being disabled (header) communicates the
-              same state without taking layout space. */}
-        </View>
+        {/* ORCH-0891 M2: ComposerCanvas wraps the editor column with a
+            permanent right-hand EmailPreviewPane on wide-desktop. On
+            narrow web + native, the Canvas is a Fragment passthrough —
+            only the editor column renders, and the existing Modal-based
+            preview (triggered by ComposerFooter's Preview button) shows
+            on demand. Per SPEC §3.5.2 + DESIGN_SPEC §2. */}
+        <ComposerCanvas
+          editor={
+            <>
+              {/* Stage F.7: NO ScrollView around the editor — pell's WebView
+                  inside a ScrollView blocks taps on iOS (RN WebView gesture
+                  conflict). Flex column instead: Who fixed, Editor flex:1,
+                  When+Compliance fixed below editor. */}
+              <View style={[styles.whoRow, isWideDesktop ? styles.desktopWhoRow : null]}>
+                <ComposerStepWho
+                  audienceName={audienceName}
+                  reachableEmail={reach?.reachable_email ?? null}
+                  totalAudience={reach?.total ?? null}
+                  onOpenPicker={() => setShowAudiencePicker(true)}
+                  disabled={brandId === null}
+                />
+              </View>
 
-        <ComposerV2Editor
-          ref={editorHandleRef}
-          initialBodyHtml={body}
-          subject={subject}
-          onSubjectChange={onSubjectChange}
-          onBodyChange={onBodyChange}
-          editable={!scheduleMutation.isPending}
-          brandEvents={brandEvents}
-          templates={templates}
-          previewVariables={previewVariables}
-          brandName={brandName}
-          currentDraftIsDirty={isDirty}
-          onErrorToast={(msg) => setErrorBanner(msg)}
-        />
+              <ComposerV2Editor
+                ref={editorHandleRef}
+                initialBodyHtml={body}
+                subject={subject}
+                onSubjectChange={onSubjectChange}
+                onBodyChange={onBodyChange}
+                editable={!scheduleMutation.isPending}
+                brandEvents={brandEvents}
+                templates={templates}
+                previewVariables={previewVariables}
+                brandName={brandName}
+                currentDraftIsDirty={isDirty}
+                onErrorToast={(msg) => setErrorBanner(msg)}
+              />
 
-        {/* F.10b: 3-button footer (Preview / Send Now / Schedule).
-            - Preview opens the EmailPreviewPane modal (inbox view).
-            - Send Now sets sendMode=now and opens the review sheet (NOT
-              immediate send — operator confirms inside the review).
-            - Schedule opens the date+time picker, then on continue sets
-              sendMode=schedule + scheduledForIso and opens the review
-              sheet. The review sheet's existing "Schedule" CTA fires
-              handleConfirmSchedule. */}
-        <ComposerFooter
-          onPreview={() => setShowPreview(true)}
-          onSendNow={() => {
+              {/* F.10b: 3-button footer (Preview / Send Now / Schedule).
+                  ORCH-0891 M2 note: On wide-desktop the EmailPreviewPane
+                  is permanently visible in the right pane, so tapping
+                  the Preview button additionally opens the Modal on
+                  top — redundant but not broken. M3 may hide the
+                  Preview button on wide-desktop as a polish item. */}
+              <ComposerFooter
+                onPreview={() => setShowPreview(true)}
+                onSendNow={() => {
             // F.10c hard-guard: refuse to open the review sheet if the
             // core fields aren't filled. Mirrors the disabled state on
             // the button but defends against any case where the disabled
@@ -617,6 +686,27 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           }}
           scheduleDisabled={coreFooterDisabled}
           submitting={scheduleMutation.isPending}
+        />
+            </>
+          }
+          preview={
+            isWideDesktop ? (
+              <EmailPreviewPane
+                subject={subject}
+                bodyHtml={body}
+                variables={previewVariables}
+                brandName={brandName}
+                brandHeaderImageUrl={
+                  currentBrand?.coverMediaType !== "video"
+                    ? (currentBrand?.coverMediaUrl ?? null)
+                    : null
+                }
+                embeddedEvents={brandEvents.filter((e) =>
+                  extractEmbeddedEventIds(body).includes(e.id),
+                )}
+              />
+            ) : undefined
+          }
         />
 
         {/* Sub-sheets MUST render inside this parent KeyboardAvoidingView per
@@ -737,8 +827,21 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: canvas.discover,
   },
+  desktopHost: {
+    marginHorizontal: spacing.md,
+    marginTop: spacing.sm,
+    marginBottom: spacing.sm,
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255, 255, 255, 0.09)",
+    backgroundColor: "rgba(255, 255, 255, 0.018)",
+    overflow: "hidden",
+  },
   kavHost: {
     flex: 1,
+  },
+  desktopKavHost: {
+    backgroundColor: "transparent",
   },
   centerHost: {
     flex: 1,
@@ -750,6 +853,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
     gap: spacing.xxs,
+  },
+  desktopWhoRow: {
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xs,
   },
   // F.10b: Preview modal chrome — light "inbox" canvas behind the sheet,
   // white header with title + orange Done button. EmailPreviewPane fills

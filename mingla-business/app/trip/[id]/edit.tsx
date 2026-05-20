@@ -22,7 +22,7 @@
 
 // orch-strict-grep-allow safearea-on-fullscreen-routes — main render delegates to TripCreatorWizard or EditPublishedTripScreen which apply `paddingTop: insets.top` themselves (proven safe on sim screenshots). Inline loading / error / not-found early-return states render bare `<View>` for brief moments during the trip query resolve — transient flash is acceptable; not worth wrapping each early-return state. Per ORCH-0859 [Tr2 Minimum Viable Trip] REWORK 5b 2026-05-17.
 
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
@@ -32,7 +32,11 @@ import {
   typography,
 } from "../../../src/constants/designSystem";
 import { useCurrentBrand } from "../../../src/hooks/useCurrentBrand";
-import { useTrip, useSoftDeleteTrip } from "../../../src/hooks/useTrips";
+import {
+  useTrip,
+  useSoftDeleteTrip,
+  useCreateTripDraft,
+} from "../../../src/hooks/useTrips";
 import { TripCreatorWizard } from "../../../src/components/trip/TripCreatorWizard";
 import { EditPublishedTripScreen } from "../../../src/components/trip/EditPublishedTripScreen";
 import { Button } from "../../../src/components/ui/Button";
@@ -42,11 +46,54 @@ export default function TripEditRoute(): React.ReactElement {
   const params = useLocalSearchParams<{ id: string | string[] }>();
   const eventId = Array.isArray(params.id) ? params.id[0] : params.id;
 
-  const tripQuery = useTrip(typeof eventId === "string" ? eventId : null);
+  // ORCH-0893 [Eager server-draft on creator entry — replace with client-id + lazy autosave]:
+  // when the dynamic segment is a client-only `d_<ts36>` id minted by
+  // `/trip/create.tsx`, the server has no matching row yet. Trigger
+  // `createTripDraft` eagerly on mount and `router.replace` to the
+  // server-issued id. This is the NARROWED-SCOPE trip behaviour
+  // (eager-on-mount, NOT first-edit-triggered) — see SPEC §15 +
+  // DISC-0893-TRIP-FIRST-EDIT for the follow-up that moves this to
+  // first-edit-triggered like the event side.
+  const isClientOnlyId =
+    typeof eventId === "string" && eventId.startsWith("d_");
+
   const currentBrand = useCurrentBrand();
+  const createTripDraftMutation = useCreateTripDraft();
+  const tripMigratingIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!isClientOnlyId || typeof eventId !== "string") return;
+    if (currentBrand === null) return;
+    if (currentBrand.kind !== "trip_planner") return;
+    if (tripMigratingIdRef.current === eventId) return;
+    tripMigratingIdRef.current = eventId;
+    void createTripDraftMutation
+      .mutateAsync({ brandId: currentBrand.id })
+      .then((trip) => {
+        router.replace(`/trip/${trip.id}/edit` as never);
+      })
+      .catch(() => {
+        tripMigratingIdRef.current = null;
+      });
+  }, [currentBrand, createTripDraftMutation, eventId, isClientOnlyId, router]);
+
+  const tripQuery = useTrip(
+    typeof eventId === "string" && !isClientOnlyId ? eventId : null,
+  );
   // ORCH-0874 [Trip surfaces visual parity with Events]: wire useSoftDeleteTrip
   // for the wizard's create-mode-dirty discard ConfirmDialog (chrome X handler).
   const softDeleteMutation = useSoftDeleteTrip();
+
+  if (isClientOnlyId) {
+    // ORCH-0893: migration in flight — placeholder until `router.replace`
+    // hands the route the server-issued id.
+    return (
+      <View style={styles.host}>
+        <ActivityIndicator />
+        <Text style={styles.body}>Setting up your trip…</Text>
+      </View>
+    );
+  }
 
   if (typeof eventId !== "string" || eventId.length === 0) {
     return (

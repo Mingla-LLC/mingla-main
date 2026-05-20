@@ -24,7 +24,6 @@
 import React, { useCallback, useMemo, useState } from "react";
 import {
   Image as RNImage,
-  KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
@@ -33,6 +32,11 @@ import {
   TextInput,
   View,
 } from "react-native";
+// ORCH-0892-A v2 (post-QA rework Path A): KeyboardAvoidingView imported
+// from the wrapper at src/wrappers/. Metro picks .tsx (react-native KAV)
+// on web and .native.tsx (library KAV) on iOS+Android, keeping the
+// library out of the web bundle. Per SPEC_ORCH-0892-A §7.4 + QA §11.
+import { KeyboardAvoidingView } from "../../wrappers/KeyboardAvoidingView";
 import { Image as ExpoImage } from "expo-image";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 

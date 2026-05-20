@@ -25,6 +25,7 @@
 import React, { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
+import { useRouter } from "expo-router";
 
 import {
   shadows,
@@ -33,6 +34,7 @@ import {
   typography,
 } from "../../constants/designSystem";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 
 import { GlassChrome } from "./GlassChrome";
 import { Icon } from "./Icon";
@@ -142,7 +144,21 @@ export const TopBar: React.FC<TopBarProps> = ({
   style,
 }) => {
   const currentBrand = useCurrentBrand();
+  const router = useRouter();
+  const { isWideDesktop } = useResponsiveLayout();
   const [toast, setToast] = useState<ToastState | null>(null);
+
+  // Desktop top-bar layout (web ≥1024px, default-cluster consumers only):
+  // `extraRightSlot` (typically the "+" CTA) moves to an absolutely-positioned
+  // centre slot; right cluster gains an Account IconChrome after the bell.
+  // Gate: isWideDesktop + rightSlot === undefined (respect any consumer
+  // that fully replaces the right slot — back routes, BrandEdit Save, etc.).
+  // Mobile + narrow web + rightSlot consumers: render byte-identical to today.
+  const useDesktopLayout = isWideDesktop && rightSlot === undefined;
+
+  const handleAccountTap = (): void => {
+    router.push("/(tabs)/account" as never);
+  };
 
   const handleBrandTap = (): void => {
     // Cycle 1+ override per DEC-079: caller supplies real handler (typically
@@ -220,11 +236,33 @@ export const TopBar: React.FC<TopBarProps> = ({
       >
         <View style={styles.barInner}>
           <View style={styles.leftSlot}>{renderLeft()}</View>
+          {/* Centre slot — absolutely positioned + pointerEvents="box-none"
+              so it doesn't intercept taps destined for left/right clusters.
+              Only mounts when desktop layout is active AND extraRightSlot
+              is non-null (otherwise empty overlay = no visual change). */}
+          {useDesktopLayout && extraRightSlot !== undefined ? (
+            <View style={styles.centerSlot} pointerEvents="box-none">
+              {extraRightSlot}
+            </View>
+          ) : null}
           <View style={styles.rightSlot}>
             {rightSlot !== undefined ? rightSlot : (
               <View style={styles.rightCluster}>
                 <DefaultRightSlotInner unreadCount={unreadCount} />
-                {extraRightSlot}
+                {/* On desktop, Account moves from the rail to here; the +
+                    button that would have been here moves to centerSlot
+                    above. On mobile/narrow-web, render exactly as today
+                    (extraRightSlot appended). */}
+                {useDesktopLayout ? (
+                  <IconChrome
+                    icon="user"
+                    size={36}
+                    onPress={handleAccountTap}
+                    accessibilityLabel="Account"
+                  />
+                ) : (
+                  extraRightSlot
+                )}
               </View>
             )}
           </View>
@@ -262,6 +300,18 @@ const styles = StyleSheet.create({
   },
   rightSlot: {
     flexShrink: 0,
+  },
+  // Desktop-only centre slot. Absolutely positioned so it spans the full
+  // bar width regardless of left/right cluster widths, guaranteeing the
+  // child renders at the visual horizontal centre of the bar.
+  centerSlot: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    alignItems: "center",
+    justifyContent: "center",
   },
   rightCluster: {
     flexDirection: "row",

@@ -12,7 +12,7 @@
  */
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as Sentry from "@sentry/react-native";
+import * as Sentry from "../diagnostics/sentry";
 
 // Cycle 2 / ORCH-0743 (RC-2) — every store's persist `name:` literal MUST
 // appear here. Out-of-sync entries cause the LIVE blob to be reported as

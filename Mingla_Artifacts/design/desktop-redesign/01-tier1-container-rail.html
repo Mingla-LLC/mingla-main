@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Mingla Business — Tier 1: Container + Side Rail</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root {
+    --canvas: #0c0e12;
+    --canvas-2: #141113;
+    --accent: #eb7825;
+    --accent-glow: rgba(235,120,37,.35);
+    --glass-chrome: rgba(255,255,255,.04);
+    --glass-card: rgba(255,255,255,.04);
+    --glass-border: rgba(255,255,255,.08);
+    --text-hi: #f5f5f7;
+    --text-mid: #b9b9c2;
+    --text-low: #6e6e78;
+  }
+  html, body { background: #1c1d22; color: var(--text-hi); font-family: ui-sans-serif, system-ui, -apple-system, "SF Pro Text", "Inter", sans-serif; }
+  .browser-frame { background: linear-gradient(180deg, #2b2c33 0%, #1c1d22 100%); }
+  .browser-bar { background: #2b2c33; }
+  .browser-dot { width: 12px; height: 12px; border-radius: 999px; }
+  .glass-chrome { background: rgba(18,20,26,.6); backdrop-filter: blur(20px); border: 1px solid var(--glass-border); }
+  .glass-card { background: var(--glass-card); border: 1px solid var(--glass-border); }
+  .accent { color: var(--accent); }
+  .bg-accent { background: var(--accent); }
+  /* Tier-1 background: a quiet ambient gradient instead of the stranded black column */
+  .canvas-bg {
+    background:
+      radial-gradient(80% 50% at 50% 0%, rgba(235,120,37,.08) 0%, transparent 60%),
+      radial-gradient(60% 60% at 10% 100%, rgba(120,80,200,.06) 0%, transparent 50%),
+      radial-gradient(60% 60% at 90% 100%, rgba(50,180,200,.05) 0%, transparent 50%),
+      #0c0e12;
+  }
+  .annotation { position: absolute; font-family: ui-monospace, "SF Mono", monospace; font-size: 11px; color: #ffcc00; }
+</style>
+</head>
+<body class="min-h-screen p-6">
+
+<!-- Page header -->
+<div class="max-w-[1600px] mx-auto mb-4">
+  <div class="flex items-center justify-between">
+    <div>
+      <div class="text-[11px] uppercase tracking-widest text-zinc-500 mb-1">Mockup 1 of 3 · Tier 1 — Container Fixes</div>
+      <h1 class="text-2xl font-semibold">Stops looking like a phone. ~1–2 days of work. Zero mobile risk.</h1>
+      <p class="text-zinc-400 text-sm mt-1">Max-width content column · brand-ambient canvas in the margins · bottom-tab capsule replaced by a left icon rail at ≥1024px · bottom sheets become centred floating cards. Same screens, same React Native tree, guarded by <code class="text-orange-300">Platform.OS === 'web' &amp;&amp; width &gt;= 1024</code>.</p>
+    </div>
+    <a href="./index.html" class="text-xs px-3 py-1.5 rounded-full border border-zinc-700 hover:border-zinc-500">← Index</a>
+  </div>
+</div>
+
+<!-- Browser frame -->
+<div class="max-w-[1600px] mx-auto rounded-2xl overflow-hidden shadow-2xl browser-frame">
+  <div class="browser-bar h-10 flex items-center px-4 gap-2 border-b border-black/40">
+    <div class="flex gap-2">
+      <div class="browser-dot bg-[#ff5f57]"></div>
+      <div class="browser-dot bg-[#febc2e]"></div>
+      <div class="browser-dot bg-[#28c840]"></div>
+    </div>
+    <div class="ml-4 flex-1 max-w-2xl mx-auto bg-[#1c1d22] rounded-md px-3 py-1 text-xs text-zinc-400">business.usemingla.com</div>
+  </div>
+
+  <!-- App body -->
+  <div class="canvas-bg relative" style="height: 900px;">
+    <div class="flex h-full">
+      <!-- LEFT ICON RAIL (replaces bottom-tab capsule on web) -->
+      <aside class="w-[80px] flex-shrink-0 flex flex-col items-center py-6 gap-2 border-r border-white/5">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-rose-600 mb-4 flex items-center justify-center font-bold">M</div>
+        <button class="w-12 h-12 rounded-2xl flex flex-col items-center justify-center gap-0.5 bg-white/5 border border-white/10" style="box-shadow: 0 0 0 2px var(--accent-glow);">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#eb7825" stroke-width="2"><path d="M3 12L12 3l9 9"/><path d="M5 10v10h14V10"/></svg>
+          <span class="text-[9px] accent font-medium">Home</span>
+        </button>
+        <button class="w-12 h-12 rounded-2xl flex flex-col items-center justify-center gap-0.5 hover:bg-white/5">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#b9b9c2" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9h18M8 3v4M16 3v4"/></svg>
+          <span class="text-[9px] text-zinc-400">Hub</span>
+        </button>
+        <button class="w-12 h-12 rounded-2xl flex flex-col items-center justify-center gap-0.5 hover:bg-white/5">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#b9b9c2" stroke-width="2"><path d="M12 2l2 6 6 2-6 2-2 6-2-6-6-2 6-2z"/></svg>
+          <span class="text-[9px] text-zinc-400">Ari</span>
+        </button>
+        <button class="w-12 h-12 rounded-2xl flex flex-col items-center justify-center gap-0.5 hover:bg-white/5 relative">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#b9b9c2" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4z"/></svg>
+          <span class="text-[9px] text-zinc-400">Blast</span>
+          <span class="absolute top-1.5 right-2 w-1.5 h-1.5 rounded-full bg-accent"></span>
+        </button>
+        <div class="flex-1"></div>
+        <button class="w-12 h-12 rounded-2xl flex flex-col items-center justify-center gap-0.5 hover:bg-white/5">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#b9b9c2" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7"/></svg>
+          <span class="text-[9px] text-zinc-400">Me</span>
+        </button>
+      </aside>
+
+      <!-- CENTRED CONTENT (max-width) -->
+      <main class="flex-1 overflow-y-auto relative">
+        <div class="max-w-[640px] mx-auto px-8 py-6">
+
+          <!-- Top header (brand switcher + actions) -->
+          <div class="flex items-center justify-between mb-6">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-full bg-gradient-to-br from-orange-500 to-rose-500"></div>
+              <div>
+                <div class="text-[11px] text-zinc-500">Brand</div>
+                <div class="text-sm font-medium flex items-center gap-1">Casa Nova Lagos <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></div>
+              </div>
+            </div>
+            <div class="flex items-center gap-2">
+              <button class="w-9 h-9 rounded-full glass-chrome flex items-center justify-center text-zinc-300">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+              </button>
+              <button class="w-9 h-9 rounded-full glass-chrome flex items-center justify-center text-zinc-300 relative">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 10-12 0v3.2c0 .53-.21 1.04-.59 1.4L4 17h5"/></svg>
+                <span class="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-accent"></span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Hero card -->
+          <div class="rounded-2xl overflow-hidden glass-card">
+            <div class="h-48 bg-gradient-to-br from-orange-500 via-rose-500 to-fuchsia-700 relative">
+              <div class="absolute top-3 left-3 px-3 py-1 rounded-full bg-black/40 text-white text-[11px]">LIVE TONIGHT</div>
+            </div>
+            <div class="p-5">
+              <div class="text-xl font-semibold">Afro-House Rooftop Vol. 12</div>
+              <div class="text-xs text-zinc-400 mt-1">Sat, May 25 · 9:00 PM · Casa Nova Lagos</div>
+              <div class="flex items-center gap-3 mt-4">
+                <div class="flex-1"><div class="text-[11px] text-zinc-500">Sold</div><div class="text-base font-medium">142 / 200</div></div>
+                <div class="flex-1"><div class="text-[11px] text-zinc-500">Revenue</div><div class="text-base font-medium">₦2.1M</div></div>
+                <div class="flex-1"><div class="text-[11px] text-zinc-500">Checked in</div><div class="text-base font-medium">28</div></div>
+                <button class="px-4 py-2 rounded-full bg-accent text-white text-xs font-semibold">Manage</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Stat row -->
+          <div class="mt-5 grid grid-cols-3 gap-3">
+            <div class="rounded-xl glass-card p-4">
+              <div class="text-[10px] text-zinc-500 uppercase tracking-wider">Today</div>
+              <div class="text-2xl font-semibold mt-1">₦480k</div>
+              <div class="text-[11px] text-emerald-400 mt-0.5">+18% vs avg</div>
+            </div>
+            <div class="rounded-xl glass-card p-4">
+              <div class="text-[10px] text-zinc-500 uppercase tracking-wider">Check-ins</div>
+              <div class="text-2xl font-semibold mt-1">28</div>
+              <div class="text-[11px] text-zinc-400 mt-0.5">of 142 sold</div>
+            </div>
+            <div class="rounded-xl glass-card p-4">
+              <div class="text-[10px] text-zinc-500 uppercase tracking-wider">Ari unread</div>
+              <div class="text-2xl font-semibold mt-1">4</div>
+              <div class="text-[11px] accent mt-0.5">View →</div>
+            </div>
+          </div>
+
+          <!-- Upcoming events list -->
+          <div class="mt-6">
+            <div class="flex items-center justify-between mb-3">
+              <div class="text-sm font-medium">Upcoming events</div>
+              <div class="text-[11px] text-zinc-500">See all →</div>
+            </div>
+            <div class="space-y-2">
+              <div class="flex items-center gap-4 rounded-xl glass-card p-3 hover:border-white/20 cursor-pointer">
+                <div class="w-14 h-14 rounded-lg bg-gradient-to-br from-indigo-500 to-cyan-500 flex-shrink-0"></div>
+                <div class="flex-1 min-w-0">
+                  <div class="text-sm font-medium truncate">Sunday Brunch · Live Sax</div>
+                  <div class="text-[11px] text-zinc-500">Sun May 26 · 12 PM · 38 / 80 sold</div>
+                </div>
+                <div class="text-[11px] text-emerald-400">On sale</div>
+              </div>
+              <div class="flex items-center gap-4 rounded-xl glass-card p-3 hover:border-white/20 cursor-pointer">
+                <div class="w-14 h-14 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-500 flex-shrink-0"></div>
+                <div class="flex-1 min-w-0">
+                  <div class="text-sm font-medium truncate">Wine + Vinyl Wednesdays</div>
+                  <div class="text-[11px] text-zinc-500">Wed May 29 · 7 PM · 12 / 40 sold</div>
+                </div>
+                <div class="text-[11px] text-emerald-400">On sale</div>
+              </div>
+              <div class="flex items-center gap-4 rounded-xl glass-card p-3 hover:border-white/20 cursor-pointer">
+                <div class="w-14 h-14 rounded-lg bg-gradient-to-br from-amber-500 to-orange-600 flex-shrink-0"></div>
+                <div class="flex-1 min-w-0">
+                  <div class="text-sm font-medium truncate">June Long-Weekend Pool Party</div>
+                  <div class="text-[11px] text-zinc-500">Sat Jun 1 · 4 PM · Draft</div>
+                </div>
+                <div class="text-[11px] text-zinc-400">Draft</div>
+              </div>
+              <div class="flex items-center gap-4 rounded-xl glass-card p-3 hover:border-white/20 cursor-pointer">
+                <div class="w-14 h-14 rounded-lg bg-gradient-to-br from-fuchsia-500 to-pink-600 flex-shrink-0"></div>
+                <div class="flex-1 min-w-0">
+                  <div class="text-sm font-medium truncate">Mid-Year Members Mixer</div>
+                  <div class="text-[11px] text-zinc-500">Fri Jun 14 · 8 PM · 0 / 120 sold</div>
+                </div>
+                <div class="text-[11px] text-zinc-400">Scheduled</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Annotations -->
+        <div class="absolute top-32 right-12 max-w-[180px] text-right">
+          <div class="annotation">↘ ambient gradient fills the margins instead of empty black</div>
+        </div>
+        <div class="absolute bottom-12 right-12 max-w-[180px] text-right">
+          <div class="annotation">↘ centred 640px content column — readable line length, no stretched cards</div>
+        </div>
+      </main>
+    </div>
+
+    <!-- Annotation: rail -->
+    <div class="absolute top-6 left-[100px] max-w-[200px]">
+      <div class="annotation">← bottom-tab capsule lifted to a left icon rail</div>
+    </div>
+  </div>
+</div>
+
+<!-- Wins / cost row -->
+<div class="max-w-[1600px] mx-auto mt-6 grid grid-cols-3 gap-4 text-sm">
+  <div class="rounded-xl border border-emerald-900/40 bg-emerald-950/20 p-4">
+    <div class="text-[10px] uppercase tracking-widest text-emerald-400 mb-1">Win</div>
+    <div class="font-medium mb-1">App feels intentional on desktop</div>
+    <p class="text-zinc-400">Margins read as designed canvas, not abandonment. Brand-ambient gradient hints at warmth without competing with content.</p>
+  </div>
+  <div class="rounded-xl border border-emerald-900/40 bg-emerald-950/20 p-4">
+    <div class="text-[10px] uppercase tracking-widest text-emerald-400 mb-1">Win</div>
+    <div class="font-medium mb-1">Mobile is bit-identical</div>
+    <p class="text-zinc-400">All new layout is guarded by <code class="text-orange-300">width &gt;= 1024</code>. iPhone / Android renders the existing 5-tab capsule unchanged. Cross-Surface parity rule satisfied.</p>
+  </div>
+  <div class="rounded-xl border border-emerald-900/40 bg-emerald-950/20 p-4">
+    <div class="text-[10px] uppercase tracking-widest text-emerald-400 mb-1">Cost</div>
+    <div class="font-medium mb-1">~1–2 days, 1 ORCH, 1 PR</div>
+    <p class="text-zinc-400">New <code class="text-orange-300">useResponsiveLayout()</code> hook · max-width wrapper around <code class="text-orange-300">(tabs)/_layout</code> children · vertical-rail variant of <code class="text-orange-300">BottomNav</code>. No screen-level changes.</p>
+  </div>
+</div>
+
+<div class="max-w-[1600px] mx-auto mt-6 flex gap-3">
+  <a href="./00-today-baseline.html" class="px-4 py-2 rounded-full border border-zinc-700 text-sm">← Baseline</a>
+  <a href="./02-tier2-desktop-shell.html" class="px-4 py-2 rounded-full bg-accent text-white text-sm font-medium">Tier 2 → Desktop shell →</a>
+  <a href="./03-tier3-power-features.html" class="px-4 py-2 rounded-full border border-zinc-700 text-sm">Tier 3 → Power features</a>
+</div>
+
+</body>
+</html>
