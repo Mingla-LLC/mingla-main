@@ -1108,7 +1108,6 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
               brandId={trip.brandId}
               tripEventId={trip.id}
               onShowToast={showToast}
-              parentScrollRef={scrollViewRef}
             />
           ) : null}
           {step === 2 ? (

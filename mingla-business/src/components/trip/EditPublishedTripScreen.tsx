@@ -1115,7 +1115,6 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                 onShowToast={showToast}
                 providers={["upload", "giphy", "pexels"]}
                 disabled={submitting}
-                parentScrollRef={scrollViewRef}
               />
             </View>
           );

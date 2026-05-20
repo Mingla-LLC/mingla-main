@@ -23,7 +23,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Keyboard,
-  KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
@@ -32,6 +31,10 @@ import {
   TextInput,
   View,
 } from "react-native";
+// ORCH-0892-A v2 (post-QA rework Path A): KeyboardAvoidingView imported
+// from the wrapper at src/wrappers/. Keyboard import retained for
+// Keyboard.dismiss() at line 144. Per SPEC_ORCH-0892-A §7.5 + QA §11.
+import { KeyboardAvoidingView } from "../../wrappers/KeyboardAvoidingView";
 import { useRouter } from "expo-router";
 import {
   radius as radiusTokens,

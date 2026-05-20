@@ -65,10 +65,9 @@ export interface StepBodyProps {
   coverMediaApplyMode?: "draft_auto" | "published_manual";
   /** Lets parent flows block publish/save while a video cover is still processing. */
   onCoverVideoProcessingChange?: (isProcessing: boolean) => void;
-  /** ORCH-0884 follow-up #9 — wizard ScrollView ref, threaded down to
-   *  CoverPicker so the GIPHY/Pexels search input can trigger an explicit
-   *  scroll-on-focus past iOS's auto-scroll position. */
-  parentScrollRef?: React.RefObject<import("react-native").ScrollView | null>;
+  // ORCH-0892-A: legacy wizard-scroll-ref prop removed. CoverPicker
+  // now relies on the keyboard-controller library's KeyboardAvoidingView
+  // wrap for search-input visibility above the keyboard.
 }
 
 export const errorForKey = (

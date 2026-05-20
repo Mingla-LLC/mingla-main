@@ -31,7 +31,6 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
   draft,
   updateDraft,
   onShowToast,
-  parentScrollRef,
 }) => {
   const handleCoverChange = useCallback(
     (patch: CoverPatch): void => {
@@ -66,7 +65,6 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
           onCoverChange={handleCoverChange}
           onShowToast={onShowToast}
           providers={["upload", "giphy", "pexels"]}
-          parentScrollRef={parentScrollRef}
         />
       </View>
     </View>

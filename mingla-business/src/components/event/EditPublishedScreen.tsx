@@ -962,9 +962,9 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         brandDefaultCurrency: liveEvent.currency ?? null,
         coverMediaApplyMode: "published_manual" as const,
         onCoverVideoProcessingChange: setCoverVideoProcessing,
-        // ORCH-0884 follow-up #9 — passed to CoverPicker for explicit
-        // scroll-on-focus of GIPHY/Pexels search input.
-        parentScrollRef: scrollViewRef,
+        // ORCH-0892-A: legacy CoverPicker scroll-ref prop removed.
+        // CoverPicker now uses the keyboard-controller library's KAV wrap.
+        // scrollViewRef remains for the Cycle 3 wizard root pattern.
       };
       switch (key) {
         case "basics":

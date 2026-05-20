@@ -27,13 +27,9 @@
  * Per SPEC_ORCH-0876_V2_FULL_PARITY §9.1.
  */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  findNodeHandle,
   Image,
-  Keyboard,
-  type KeyboardEvent,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -41,6 +37,15 @@ import {
   TextInput,
   View,
 } from "react-native";
+// ORCH-0892-A v2 (post-QA rework Path A): KeyboardAvoidingView imported
+// from the wrapper at src/wrappers/. The wrapper's .native.tsx variant
+// re-exports the library's KAV (frame-perfect on iOS+Android); the
+// .tsx variant re-exports react-native's KAV (works on web). This
+// wraps the GIPHY/Pexels search section so the search input + cursor
+// lift above the iOS keyboard + autocomplete bar. Supersedes
+// ORCH-0884 follow-ups #8 (400pt spacer) and #9 (dead scrollResponder
+// call) which are both deleted. Per SPEC_ORCH-0892-A §7.6 + QA §11.
+import { KeyboardAvoidingView } from "../../wrappers/KeyboardAvoidingView";
 import * as ImagePicker from "expo-image-picker";
 
 import {
@@ -114,16 +119,6 @@ export interface CoverPickerProps {
    *  show only upload tab). */
   providers?: ReadonlyArray<CoverProvider>;
   disabled?: boolean;
-  /** ORCH-0884 follow-up #9 — optional parent ScrollView ref. When the
-   *  GIPHY/Pexels search TextInput focuses, CoverPicker uses this ref to
-   *  call `scrollResponderScrollNativeHandleToKeyboard` with extra offset
-   *  so the input lands FULLY above the keyboard (not just top edge).
-   *  Without this, iOS's auto-scroll only puts input.top above
-   *  keyboard.top — input bottom + cursor stay under the autocomplete bar. */
-  parentScrollRef?: React.RefObject<ScrollView | null>;
-  /** Extra pixels to scroll above the input bottom (e.g., for autocomplete
-   *  bar). Defaults to 80pt. */
-  keyboardScrollExtraOffset?: number;
 }
 
 const DEFAULT_PROVIDERS: ReadonlyArray<CoverProvider> = ["upload", "giphy", "pexels"];
@@ -143,8 +138,6 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   onShowToast,
   providers = DEFAULT_PROVIDERS,
   disabled = false,
-  parentScrollRef,
-  keyboardScrollExtraOffset = 80,
 }) => {
   const { isAuthReady } = useAuth();
   const [uploading, setUploading] = useState(false);
@@ -206,69 +199,12 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   const [giphyResults, setGiphyResults] = useState<GiphyCoverSearchResult[]>([]);
   const [pexelsResults, setPexelsResults] = useState<PexelsCoverSearchResult[]>([]);
 
-  // ORCH-0884 follow-up #9 — explicit scroll-on-focus for the search
-  // TextInput. iOS's auto-scroll-on-focus only positions input.top above
-  // keyboard.top — input.bottom (cursor) stays at or below the keyboard
-  // edge, covered by the autocomplete suggestion bar. After iOS does its
-  // auto-scroll, we trigger an ADDITIONAL scroll via the parent
-  // ScrollView's scrollResponderScrollNativeHandleToKeyboard with
-  // keyboardScrollExtraOffset (default 80pt) so the input sits comfortably
-  // above the keyboard.
-  const searchInputRef = useRef<TextInput | null>(null);
-  const handleSearchFocus = useCallback((): void => {
-    if (parentScrollRef?.current === undefined || parentScrollRef === undefined) {
-      return;
-    }
-    // Wait for iOS keyboard show + auto-scroll to complete before our
-    // additional scroll. 300ms covers keyboard appearance + initial scroll.
-    setTimeout(() => {
-      const scrollResponder =
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (parentScrollRef.current as any)?.getScrollResponder?.();
-      const handle = findNodeHandle(searchInputRef.current);
-      if (
-        scrollResponder !== undefined &&
-        scrollResponder !== null &&
-        typeof scrollResponder.scrollResponderScrollNativeHandleToKeyboard ===
-          "function" &&
-        handle !== null
-      ) {
-        scrollResponder.scrollResponderScrollNativeHandleToKeyboard(
-          handle,
-          keyboardScrollExtraOffset,
-          true,
-        );
-      }
-    }, 300);
-  }, [parentScrollRef, keyboardScrollExtraOffset]);
-
-  // ORCH-0884 follow-up #8 — operator-reported: GIPHY/Pexels search input
-  // bottom is still covered by the keyboard even with KAV + auto-inset
-  // applied at the wizard level. Root cause: CoverPicker sits at the end
-  // of the wizard's Step 1 form, so when iOS auto-scrolls, there's no
-  // content below the search input — iOS can't scroll the input higher
-  // than the natural end-of-content position.
-  // Fix: when keyboard appears, render a tall spacer View below the
-  // CoverPicker's content equal to keyboardHeight + 200pt. That gives
-  // iOS the room it needs to scroll the search input fully above the
-  // keyboard (cursor visible, not at the keyboard edge).
-  const [keyboardHeight, setKeyboardHeight] = useState<number>(0);
-  useEffect(() => {
-    const showEvent =
-      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
-    const hideEvent =
-      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
-    const showSub = Keyboard.addListener(showEvent, (e: KeyboardEvent): void => {
-      setKeyboardHeight(e.endCoordinates.height);
-    });
-    const hideSub = Keyboard.addListener(hideEvent, (): void => {
-      setKeyboardHeight(0);
-    });
-    return (): void => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, []);
+  // ORCH-0892-A: prior ORCH-0884 follow-ups #8 + #9 (Keyboard listener
+  // with 400pt spacer + dead scroll-responder call) DELETED. Both were
+  // workarounds for keyboard covering the GIPHY/Pexels search input.
+  // The Fabric-compatible fix is the keyboard-controller library's
+  // <KeyboardAvoidingView behavior="padding"> wrap around the search
+  // section below. Supersedes ORCH-0888 if pilot confirms.
 
   const selectedCredit = eventCoverProviderCreditLabel({
     provider: localCover.coverMediaProvider,
@@ -556,100 +492,100 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
         ) : null}
       </View>
 
-      {/* GIPHY + Pexels search (only renders if at least one is enabled) */}
+      {/* GIPHY + Pexels search (only renders if at least one is enabled).
+          ORCH-0892-A: wrapped in <KeyboardAvoidingView behavior="padding">
+          from react-native-keyboard-controller. The library lifts the
+          focused search input above the iOS keyboard + autocomplete bar
+          natively, replacing the deleted ORCH-0884 #8 spacer hack and
+          #9 dead scrollResponder call. Per SPEC_ORCH-0892-A §7.6. */}
       {supportsSearch ? (
-        <View style={styles.field}>
-          <Text style={styles.fieldLabel}>Find a cover</Text>
-          <View style={styles.providerTabs}>
-            {supportsGiphy ? (
-              <ProviderTabButton
-                label="GIPHY"
-                active={providerTab === "giphy"}
-                onPress={() => setProviderTab("giphy")}
-                disabled={disabled}
-              />
-            ) : null}
-            {supportsPexels ? (
-              <ProviderTabButton
-                label="Pexels"
-                active={providerTab === "pexels"}
-                onPress={() => setProviderTab("pexels")}
-                disabled={disabled}
-              />
-            ) : null}
-          </View>
-          <View style={styles.searchRow}>
-            <TextInput
-              ref={searchInputRef}
-              value={query}
-              onChangeText={setQuery}
-              placeholder={
-                providerTab === "giphy"
-                  ? "Search GIFs"
-                  : "Search landscape photos"
-              }
-              placeholderTextColor={textTokens.tertiary}
-              returnKeyType="search"
-              onSubmitEditing={() => {
-                void runProviderSearch();
-              }}
-              onFocus={handleSearchFocus}
-              style={styles.searchInput}
-              editable={!disabled}
-            />
-            <Button
-              label="Search"
-              variant="secondary"
-              size="md"
-              shape="square"
-              onPress={() => {
-                void runProviderSearch();
-              }}
-              loading={searchStatus === "loading"}
-              disabled={searchStatus === "loading" || disabled}
-              style={styles.searchButton}
-            />
-          </View>
-          {searchError !== null ? (
-            <Text accessibilityRole="alert" style={styles.mediaErrorText}>
-              {searchError}
-            </Text>
-          ) : null}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.providerResults}
-          >
-            {currentResults.map((result) =>
-              providerTab === "giphy" ? (
-                <ProviderResultTile
-                  key={`giphy-${result.id}`}
-                  imageUrl={(result as GiphyCoverSearchResult).previewUrl}
-                  label={(result as GiphyCoverSearchResult).alt ?? "GIPHY GIF"}
-                  credit="GIPHY"
-                  onPress={() => selectGiphy(result as GiphyCoverSearchResult)}
+        <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={0}>
+          <View style={styles.field}>
+            <Text style={styles.fieldLabel}>Find a cover</Text>
+            <View style={styles.providerTabs}>
+              {supportsGiphy ? (
+                <ProviderTabButton
+                  label="GIPHY"
+                  active={providerTab === "giphy"}
+                  onPress={() => setProviderTab("giphy")}
+                  disabled={disabled}
                 />
-              ) : (
-                <ProviderResultTile
-                  key={`pexels-${(result as PexelsCoverSearchResult).id}`}
-                  imageUrl={(result as PexelsCoverSearchResult).mediaUrl}
-                  label={
-                    (result as PexelsCoverSearchResult).alt ?? "Pexels photo"
-                  }
-                  credit={(result as PexelsCoverSearchResult).credit}
-                  onPress={() =>
-                    selectPexels(result as PexelsCoverSearchResult)
-                  }
+              ) : null}
+              {supportsPexels ? (
+                <ProviderTabButton
+                  label="Pexels"
+                  active={providerTab === "pexels"}
+                  onPress={() => setProviderTab("pexels")}
+                  disabled={disabled}
                 />
-              ),
-            )}
-          </ScrollView>
-        </View>
-      ) : null}
-      {/* ORCH-0884 follow-up #8 — keyboard scroll-room spacer. See state
-          declaration above for full rationale. */}
-      {keyboardHeight > 0 && supportsSearch ? (
-        <View style={{ height: keyboardHeight + 400 }} pointerEvents="none" />
+              ) : null}
+            </View>
+            <View style={styles.searchRow}>
+              <TextInput
+                value={query}
+                onChangeText={setQuery}
+                placeholder={
+                  providerTab === "giphy"
+                    ? "Search GIFs"
+                    : "Search landscape photos"
+                }
+                placeholderTextColor={textTokens.tertiary}
+                returnKeyType="search"
+                onSubmitEditing={() => {
+                  void runProviderSearch();
+                }}
+                style={styles.searchInput}
+                editable={!disabled}
+              />
+              <Button
+                label="Search"
+                variant="secondary"
+                size="md"
+                shape="square"
+                onPress={() => {
+                  void runProviderSearch();
+                }}
+                loading={searchStatus === "loading"}
+                disabled={searchStatus === "loading" || disabled}
+                style={styles.searchButton}
+              />
+            </View>
+            {searchError !== null ? (
+              <Text accessibilityRole="alert" style={styles.mediaErrorText}>
+                {searchError}
+              </Text>
+            ) : null}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.providerResults}
+            >
+              {currentResults.map((result) =>
+                providerTab === "giphy" ? (
+                  <ProviderResultTile
+                    key={`giphy-${result.id}`}
+                    imageUrl={(result as GiphyCoverSearchResult).previewUrl}
+                    label={(result as GiphyCoverSearchResult).alt ?? "GIPHY GIF"}
+                    credit="GIPHY"
+                    onPress={() => selectGiphy(result as GiphyCoverSearchResult)}
+                  />
+                ) : (
+                  <ProviderResultTile
+                    key={`pexels-${(result as PexelsCoverSearchResult).id}`}
+                    imageUrl={(result as PexelsCoverSearchResult).mediaUrl}
+                    label={
+                      (result as PexelsCoverSearchResult).alt ?? "Pexels photo"
+                    }
+                    credit={(result as PexelsCoverSearchResult).credit}
+                    onPress={() =>
+                      selectPexels(result as PexelsCoverSearchResult)
+                    }
+                  />
+                ),
+              )}
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
       ) : null}
     </View>
   );

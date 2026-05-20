@@ -31,6 +31,7 @@ scaffold rewrite needed.
 | I-PROPOSED-X | `i-proposed-x-web-deprecation.mjs` | META-ORCH-0744 | `Mingla_Artifacts/INVARIANT_REGISTRY.md` I-PROPOSED-X |
 | ORCH-0783 | `orch-0783-event-cover-image-provider-pivot.mjs` | ORCH-0783 | `Mingla_Artifacts/specs/SPEC_ORCH-0783_EVENT_COVER_IMAGE_PROVIDER_PIVOT.md` |
 | I-NO-BOTTOMNAV-OUTSIDE-LAYOUT + I-DESKTOP-GATE-VIA-HOOK | `orch-0885-a-no-bottomnav-on-wide-desktop.mjs` | ORCH-0885-A | `Mingla_Artifacts/specs/SPEC_ORCH-0885-A_TIER_1_DESKTOP_CONTAINER_RAIL.md` §6 + §10 |
+| I-PROPOSED-KEYBOARD-LIBRARY-ONLY (DRAFT) | `orch-0892-no-bespoke-keyboard-plumbing.mjs` | ORCH-0892-A | `Mingla_Artifacts/specs/SPEC_ORCH-0892-A_KEYBOARD_CONTROLLER_INSTALL_AND_3_SCREEN_PILOT.md` §6 + §10 + §13 — INFORMATIONAL until ORCH-0892-C flips to BLOCK |
 
 ## Future gates (proposed but not yet implemented)
 

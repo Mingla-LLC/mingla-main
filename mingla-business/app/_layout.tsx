@@ -38,6 +38,11 @@ import { useCurrentBrandId } from "../src/store/currentBrandStore";
 // and StripeProviderWrapper.tsx on web (passthrough Fragment). Per
 // SPEC_ORCH-0849 §3.4.3 + invariant I-PROPOSED-STRIPE-PAYMENTSHEET-PARITY.
 import { StripeProviderWrapper } from "../src/payments/StripeProviderWrapper";
+// ORCH-0892-A: KeyboardRoot wraps every downstream surface so
+// react-native-keyboard-controller primitives can subscribe to native
+// keyboard events. Web variant is a passthrough Fragment (library has no
+// web entry point). Per SPEC_ORCH-0892-A §7.3.
+import { KeyboardRoot } from "../src/wrappers/KeyboardRoot";
 import { initializeAppsFlyer } from "../src/services/appsFlyerService";
 import { mixpanelService } from "../src/services/mixpanelService";
 import { revenueCatService } from "../src/services/revenueCatService";
@@ -241,7 +246,17 @@ export default function RootLayout(): React.ReactElement {
                 app-mobile/app/_layout.tsx:72-83. Invariant
                 I-PROPOSED-STRIPE-PAYMENTSHEET-PARITY (ORCH-0849). */}
             <StripeProviderWrapper>
-              <RootLayoutInner />
+              {/* ORCH-0892-A: KeyboardRoot mounted INSIDE
+                  StripeProviderWrapper (Stripe's PaymentSheet renders via
+                  UIViewController bypassing React tree — no library
+                  interaction) and OUTSIDE RootLayoutInner's ErrorBoundary
+                  (library-resolution failures are dev-build problems that
+                  should crash early, not be caught by the user-facing
+                  fallback). On web KeyboardRoot is a passthrough Fragment
+                  so this position is moot. Per SPEC_ORCH-0892-A §7.3. */}
+              <KeyboardRoot>
+                <RootLayoutInner />
+              </KeyboardRoot>
             </StripeProviderWrapper>
           </AuthProvider>
         </QueryClientProvider>

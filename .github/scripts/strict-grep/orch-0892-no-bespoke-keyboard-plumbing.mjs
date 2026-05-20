@@ -66,6 +66,10 @@ const SAFELIST = new Set([
   "mingla-business/src/components/marketing/ComposerV2/richEditor.native.ts",
   "mingla-business/src/components/marketing/ComposerV2/richEditor.tsx",
   "mingla-business/src/wrappers/KeyboardRoot.native.tsx",
+  // ORCH-0892-A v2 (post-QA rework Path A): the new KAV wrapper pair.
+  // The .native.tsx variant legitimately imports KAV from the library.
+  // The .tsx (web) variant imports from 'react-native' — not flagged.
+  "mingla-business/src/wrappers/KeyboardAvoidingView.native.tsx",
 ]);
 
 function walkSourceFiles(dir, out = []) {

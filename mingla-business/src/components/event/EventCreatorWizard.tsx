@@ -652,9 +652,10 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
       brandDefaultCurrency: brand?.defaultCurrency ?? null,
       coverMediaApplyMode: "draft_auto" as const,
       onCoverVideoProcessingChange: setCoverVideoProcessing,
-      // ORCH-0884 follow-up #9 — threaded down to CoverPicker for
-      // explicit scroll-on-focus of GIPHY/Pexels search input.
-      parentScrollRef: scrollViewRef,
+      // ORCH-0892-A: legacy CoverPicker scroll-ref prop removed.
+      // CoverPicker now uses the keyboard-controller library's KAV wrap.
+      // scrollViewRef remains for the Cycle 3 wizard root pattern
+      // (scrollToBottom on input focus).
     };
     switch (currentStep) {
       case 0:
