@@ -348,6 +348,19 @@ function checkNoNewBackendFiles() {
     "supabase/functions/parse-restaurant-menu/index.ts",
     "supabase/migrations/20260623000000_orch_0881_ve5_hub_pending_actions.sql",
   ];
+  // Ve6 [Activities AI Parser → Play Experiences] PR #149 (2026-05-20). C7 is
+  // scoped to ORCH-0863 marketing; these backend touches are Ve6 hub
+  // experiences + Gemini activities parsing on the play-venue track.
+  const ORCH_VE6_PLAY_ACTIVITIES_BACKEND_ALLOWLIST = [
+    "supabase/functions/_shared/agentTools.ts",
+    "supabase/functions/_shared/geminiActivitiesParser.test.ts",
+    "supabase/functions/_shared/geminiActivitiesParser.ts",
+    "supabase/functions/_shared/playIntentTags.ts",
+    "supabase/functions/parse-play-activities/index.ts",
+    // Pin @supabase/supabase-js@2.45.4 + CI retry for esm.sh 522 flakes (PR #149).
+    "supabase/functions/_shared/stripeEdgeAuth.ts",
+    "supabase/functions/_shared/stripeWebhookRouter.ts",
+  ];
   // ORCH-0877 [Event end-time display + midnight-crossing single-day authoring]
   // PR #136 (2026-05-19). C7 is scoped to ORCH-0863 marketing; these backend
   // touches are end-time + cross-midnight + ICS Constitution #9 fix scope.
@@ -411,6 +424,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_0101_VE3_BACKEND_ALLOWLIST,
     ...ORCH_0102_VE4_BACKEND_ALLOWLIST,
     ...ORCH_0881_VE5_BACKEND_ALLOWLIST,
+    ...ORCH_VE6_PLAY_ACTIVITIES_BACKEND_ALLOWLIST,
     ...ORCH_0877_BACKEND_ALLOWLIST,
     ...ORCH_0876_BACKEND_ALLOWLIST,
     ...ORCH_0879_BACKEND_ALLOWLIST,
