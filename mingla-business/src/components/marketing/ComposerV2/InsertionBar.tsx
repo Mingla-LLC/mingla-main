@@ -49,6 +49,7 @@ import {
   text as textTokens,
   typography,
 } from "../../../constants/designSystem";
+import { useResponsiveLayout } from "../../../hooks/useResponsiveLayout";
 import type { PersonalizationToken } from "../../../services/marketing/tenTapTokenBridge";
 import type { EventCardOption } from "../../../services/marketing/brandEvents";
 import {
@@ -115,6 +116,7 @@ export function InsertionBar(props: InsertionBarProps): React.ReactElement {
     onToggleLink,
     style,
   } = props;
+  const { isWideDesktop } = useResponsiveLayout();
 
   const toggle = useCallback(
     (panel: Exclude<InsertionBarState, "closed">): void => {
@@ -184,6 +186,7 @@ export function InsertionBar(props: InsertionBarProps): React.ReactElement {
           onPress={onToggleBold}
           compact
           testID="composer-v2-format-bold"
+          desktopFlat={isWideDesktop}
         />
         <Pill
           label="I"
@@ -193,6 +196,7 @@ export function InsertionBar(props: InsertionBarProps): React.ReactElement {
           compact
           italic
           testID="composer-v2-format-italic"
+          desktopFlat={isWideDesktop}
         />
         <Pill
           label="Link"
@@ -201,6 +205,7 @@ export function InsertionBar(props: InsertionBarProps): React.ReactElement {
           onPress={onToggleLink}
           compact
           testID="composer-v2-format-link"
+          desktopFlat={isWideDesktop}
         />
         <Pill
           label="+ Event"
@@ -209,6 +214,7 @@ export function InsertionBar(props: InsertionBarProps): React.ReactElement {
           primary
           onPress={() => toggle("events-open")}
           testID="composer-v2-pill-event"
+          desktopFlat={isWideDesktop}
         />
         <Pill
           label="Personalize"
@@ -216,6 +222,7 @@ export function InsertionBar(props: InsertionBarProps): React.ReactElement {
           active={state === "personalize-open"}
           onPress={() => toggle("personalize-open")}
           testID="composer-v2-pill-personalize"
+          desktopFlat={isWideDesktop}
         />
         <Pill
           label="⋮"
@@ -224,6 +231,7 @@ export function InsertionBar(props: InsertionBarProps): React.ReactElement {
           onPress={() => toggle("overflow-open")}
           compact
           testID="composer-v2-pill-overflow"
+          desktopFlat={isWideDesktop}
         />
       </ScrollView>
 
@@ -251,10 +259,21 @@ interface PillProps {
   compact?: boolean;
   italic?: boolean;
   testID?: string;
+  desktopFlat?: boolean;
 }
 
 function Pill(props: PillProps): React.ReactElement {
-  const { label, accessibilityLabel, active, onPress, primary, compact, italic, testID } = props;
+  const {
+    label,
+    accessibilityLabel,
+    active,
+    onPress,
+    primary,
+    compact,
+    italic,
+    testID,
+    desktopFlat,
+  } = props;
   return (
     <Pressable
       onPress={onPress}
@@ -266,7 +285,9 @@ function Pill(props: PillProps): React.ReactElement {
         styles.pill,
         compact === true ? styles.pillCompact : null,
         primary === true ? styles.pillPrimary : styles.pillNeutral,
+        desktopFlat === true ? styles.pillDesktopFlat : null,
         active ? styles.pillActive : null,
+        desktopFlat === true && active ? styles.pillDesktopFlatActive : null,
         pressed ? styles.pillPressed : null,
       ]}
       testID={testID}
@@ -437,9 +458,17 @@ const styles = StyleSheet.create({
     backgroundColor: glass.tint.badge.idle,
     borderColor: glass.border.chrome,
   },
+  pillDesktopFlat: {
+    backgroundColor: "transparent",
+    borderColor: "rgba(255, 255, 255, 0.13)",
+  },
   pillActive: {
     backgroundColor: accent.glow,
     borderColor: accent.warm,
+  },
+  pillDesktopFlatActive: {
+    backgroundColor: "transparent",
+    borderColor: "rgba(235, 120, 37, 0.62)",
   },
   pillPressed: {
     opacity: 0.7,

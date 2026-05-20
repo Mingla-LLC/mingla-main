@@ -24,6 +24,7 @@ import type { BottomNavTab } from "../../src/components/ui/BottomNav";
 // max-width 640px column. Per SPEC_ORCH-0885-A §3.
 import { DesktopCanvas } from "../../src/components/ui/DesktopCanvas";
 import { canvas, spacing } from "../../src/constants/designSystem";
+import { useResponsiveLayout } from "../../src/hooks/useResponsiveLayout";
 
 const TABS: BottomNavTab[] = [
   { id: "home", icon: "home", label: "Home" },
@@ -69,13 +70,14 @@ export default function TabsLayout(): React.ReactElement {
   const router = useRouter();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
+  const { isWideDesktop } = useResponsiveLayout();
 
   const activeId = useMemo(() => detectActiveTab(pathname), [pathname]);
 
-  // Focused authoring surfaces hide the BottomNav so the route's own
-  // sticky footer (e.g. ComposerFooter's Save draft + Review & schedule)
-  // isn't covered. Currently: marketing composer (ORCH-0815-B).
-  const hideBottomNav = pathname.includes("/campaigns/compose");
+  // Focused authoring surfaces hide the mobile bottom capsule so the route's
+  // own sticky footer is not covered. Desktop web keeps the left rail visible
+  // as persistent app chrome.
+  const hideBottomNav = pathname.includes("/campaigns/compose") && !isWideDesktop;
 
   const handleChange = (id: string): void => {
     // Expo Router resolves /(tabs)/<id> to /<id> at runtime.

@@ -49,6 +49,7 @@ import { RichEditor, actions } from "./richEditor";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
+  accent,
   glass,
   radius,
   spacing,
@@ -75,6 +76,7 @@ import type { InsertionBarState } from "./InsertionBarState";
 import { PERSONALIZATION_OPTIONS } from "./InsertionBarState";
 import { TemplatePreviewDrawer } from "./TemplatePreviewDrawer";
 import type { PreviewVariables } from "../../../services/marketing/marketingRenderingService";
+import { useResponsiveLayout } from "../../../hooks/useResponsiveLayout";
 // Stage F.9: SelectionFormattingTooltip removed — its B/I/Link pills
 // merged into InsertionBar (now mounted inside this editor between the
 // subject row and the body card per operator F.9 directive).
@@ -122,6 +124,7 @@ export const ComposerV2Editor = forwardRef<ComposerV2EditorHandle, ComposerV2Edi
     } = props;
 
     const richEditorRef = useRef<RichEditor>(null);
+    const { isWideDesktop } = useResponsiveLayout();
 
     // Stage F.7b: compute a concrete numeric height for pell's WebView.
     // Pell's WebView with `flex:1` collapses to 0 height inside a flex
@@ -161,11 +164,15 @@ export const ComposerV2Editor = forwardRef<ComposerV2EditorHandle, ComposerV2Edi
     // stops touching the home-indicator area visually. Body now claims
     // ~400pt on iPhone Pro (was ~432pt) — still very usable.
     const CHROME_CONTENT_PX = 376;
-    const bodyHeight = Math.max(
-      120, // F.9e: keyboard-up minimum (small but still usable to see what
-      //         was just typed). When keyboard's closed, body is ~432pt.
-      windowHeight - insets.top - insets.bottom - CHROME_CONTENT_PX - keyboardHeight,
-    );
+    const rawBodyHeight =
+      windowHeight - insets.top - insets.bottom - CHROME_CONTENT_PX - keyboardHeight;
+    const bodyHeight = isWideDesktop
+      ? Math.max(400, Math.min(rawBodyHeight - 44, 700))
+      : Math.max(
+          120, // F.9e: keyboard-up minimum (small but still usable to see what
+          //         was just typed). When keyboard's closed, body is ~432pt.
+          rawBodyHeight,
+        );
 
     // Initial HTML rendered into the editor once at mount. Subsequent body_html
     // changes from the parent are NOT pushed back into the editor (would
@@ -396,7 +403,11 @@ export const ComposerV2Editor = forwardRef<ComposerV2EditorHandle, ComposerV2Edi
             accessibilityState={{ expanded: subjectPersonalizeOpen }}
             style={({ pressed }) => [
               styles.subjectPersonalize,
+              isWideDesktop ? styles.desktopSubjectPersonalize : null,
               subjectPersonalizeOpen ? styles.subjectPersonalizeActive : null,
+              isWideDesktop && subjectPersonalizeOpen
+                ? styles.desktopSubjectPersonalizeActive
+                : null,
               pressed ? styles.subjectPersonalizePressed : null,
             ]}
             testID="composer-v2-subject-personalize"
@@ -472,7 +483,11 @@ export const ComposerV2Editor = forwardRef<ComposerV2EditorHandle, ComposerV2Edi
             directly to WKWebView. WKWebView focuses the contenteditable
             natively. iOS keyboard appears. No bridge involvement. */}
         <View
-          style={[styles.bodyHost, { height: bodyHeight }]}
+          style={[
+            styles.bodyHost,
+            isWideDesktop ? styles.desktopBodyHost : null,
+            { height: bodyHeight },
+          ]}
           testID="composer-v2-body-host"
           accessibilityLabel="Tap to start writing"
         >
@@ -552,6 +567,14 @@ const styles = StyleSheet.create({
   subjectPersonalizeActive: {
     backgroundColor: glass.tint.profileElevated,
   },
+  desktopSubjectPersonalize: {
+    backgroundColor: "transparent",
+    borderColor: "rgba(255, 255, 255, 0.13)",
+  },
+  desktopSubjectPersonalizeActive: {
+    backgroundColor: "transparent",
+    borderColor: accent.border,
+  },
   subjectPersonalizePressed: {
     opacity: 0.7,
   },
@@ -595,6 +618,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: glass.border.profileElevated,
     backgroundColor: glass.tint.profileElevated,
+  },
+  desktopBodyHost: {
+    marginTop: spacing.md,
+    marginBottom: spacing.md,
+    borderRadius: radius.lg,
+    borderColor: "rgba(255, 255, 255, 0.11)",
+    backgroundColor: "rgba(8, 9, 12, 0.52)",
+    overflow: "hidden",
   },
   // F.10: Preview modal chrome — dark canvas behind the sheet, light
   // header strip with title + Done button. EmailPreviewPane fills the rest.

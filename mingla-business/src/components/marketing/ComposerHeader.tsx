@@ -14,6 +14,7 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 
 export interface ComposerHeaderProps {
   title?: string;
@@ -28,6 +29,8 @@ export const ComposerHeader: React.FC<ComposerHeaderProps> = ({
   onSaveDraft,
   saveDraftDisabled,
 }) => {
+  const { isWideDesktop } = useResponsiveLayout();
+
   return (
     <View style={styles.host}>
       <Pressable
@@ -36,6 +39,7 @@ export const ComposerHeader: React.FC<ComposerHeaderProps> = ({
         accessibilityLabel="Back"
         style={({ pressed }) => [
           styles.iconBtn,
+          isWideDesktop ? styles.desktopIconBtn : null,
           pressed ? styles.iconBtnPressed : null,
         ]}
         hitSlop={8}
@@ -53,6 +57,7 @@ export const ComposerHeader: React.FC<ComposerHeaderProps> = ({
         accessibilityLabel="Save draft"
         style={({ pressed }) => [
           styles.saveBtn,
+          isWideDesktop ? styles.desktopSaveBtn : null,
           pressed && saveDraftDisabled !== true ? styles.saveBtnPressed : null,
           saveDraftDisabled === true ? styles.saveBtnDisabled : null,
         ]}
@@ -96,6 +101,10 @@ const styles = StyleSheet.create({
   iconBtnPressed: {
     opacity: 0.78,
   },
+  desktopIconBtn: {
+    backgroundColor: "transparent",
+    borderColor: "rgba(255, 255, 255, 0.14)",
+  },
   title: {
     ...typography.bodyLg,
     color: textTokens.primary,
@@ -112,6 +121,9 @@ const styles = StyleSheet.create({
   },
   saveBtnPressed: {
     opacity: 0.78,
+  },
+  desktopSaveBtn: {
+    minHeight: 36,
   },
   saveBtnDisabled: {
     opacity: 0.4,

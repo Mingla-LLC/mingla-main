@@ -72,6 +72,7 @@ import {
 // subject + body). compose.tsx no longer imports them directly.
 import {
   canvas,
+  radius,
   spacing,
   text as textTokens,
   typography,
@@ -98,10 +99,12 @@ import type { MarketingChannelKind } from "../../../../src/components/marketing/
 import type { PreviewVariables } from "../../../../src/services/marketing/marketingRenderingService";
 import { useCurrentBrand } from "../../../../src/hooks/useCurrentBrand";
 import { useAuth } from "../../../../src/context/AuthContext";
+import { useResponsiveLayout } from "../../../../src/hooks/useResponsiveLayout";
 
 export default function ComposeCampaignRoute(): React.ReactElement {
   const router = useRouter();
   const navigation = useNavigation();
+  const { isWideDesktop } = useResponsiveLayout();
   const params = useLocalSearchParams<{ audience?: string; draft?: string; template?: string }>();
   // Memoize so the pre-fill useEffect's dep array doesn't re-trigger on every
   // render — parseAudienceParam returns a new object literal each call.
@@ -521,7 +524,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   // Pre-fill loading skeleton
   if (audienceParam !== null && audienceId === null && errorBanner === null) {
     return (
-      <View style={styles.host}>
+      <View style={[styles.host, isWideDesktop ? styles.desktopHost : null]}>
         <ComposerHeader title="New campaign" onBack={handleBack} onSaveDraft={() => {}} saveDraftDisabled />
         <View style={styles.centerHost}>
           <ActivityIndicator size="small" color={textTokens.secondary} />
@@ -531,7 +534,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   }
 
   return (
-    <View style={styles.host}>
+    <View style={[styles.host, isWideDesktop ? styles.desktopHost : null]}>
       <ComposerHeader
         title="New campaign"
         onBack={handleBack}
@@ -548,13 +551,13 @@ export default function ComposeCampaignRoute(): React.ReactElement {
       />
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
-        style={styles.kavHost}
+        style={[styles.kavHost, isWideDesktop ? styles.desktopKavHost : null]}
       >
         {/* Stage F.7: NO ScrollView around the editor — pell's WebView
             inside a ScrollView blocks taps on iOS (RN WebView gesture
             conflict). Flex column instead: Who fixed, Editor flex:1,
             When+Compliance fixed below editor. */}
-        <View style={styles.whoRow}>
+        <View style={[styles.whoRow, isWideDesktop ? styles.desktopWhoRow : null]}>
           <ComposerStepWho
             audienceName={audienceName}
             reachableEmail={reach?.reachable_email ?? null}
@@ -737,8 +740,21 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: canvas.discover,
   },
+  desktopHost: {
+    marginHorizontal: spacing.md,
+    marginTop: spacing.sm,
+    marginBottom: spacing.sm,
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255, 255, 255, 0.09)",
+    backgroundColor: "rgba(255, 255, 255, 0.018)",
+    overflow: "hidden",
+  },
   kavHost: {
     flex: 1,
+  },
+  desktopKavHost: {
+    backgroundColor: "transparent",
   },
   centerHost: {
     flex: 1,
@@ -750,6 +766,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
     gap: spacing.xxs,
+  },
+  desktopWhoRow: {
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xs,
   },
   // F.10b: Preview modal chrome — light "inbox" canvas behind the sheet,
   // white header with title + orange Done button. EmailPreviewPane fills

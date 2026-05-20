@@ -45,4 +45,45 @@ describe("desktop web layout contracts", () => {
     expect(source).toContain("scrollEnabled={!isWideDesktop}");
     expect(source).toContain("scrollEnabled={isWideDesktop}");
   });
+
+  it("keeps the desktop rail visible on the marketing composer", () => {
+    const source = read("app/(tabs)/_layout.tsx");
+
+    expect(source).toContain("useResponsiveLayout");
+    expect(source).toContain(
+      'pathname.includes("/campaigns/compose") && !isWideDesktop',
+    );
+  });
+
+  it("keeps the marketing composer desktop surface flat and unified", () => {
+    const routeSource = read("app/(tabs)/marketing/campaigns/compose.tsx");
+    const footerSource = read("src/components/marketing/ComposerFooter.tsx");
+    const editorSource = read("src/components/marketing/ComposerV2/ComposerV2Editor.tsx");
+    const insertionBarSource = read("src/components/marketing/ComposerV2/InsertionBar.tsx");
+
+    expect(routeSource).toContain("useResponsiveLayout");
+    expect(routeSource).toContain("desktopHost");
+    expect(footerSource).toContain("desktopFlatBtn");
+    expect(footerSource).toContain("desktopPrimaryBtnEnabled");
+    expect(editorSource).toContain("desktopBodyHost");
+    expect(editorSource).toContain("desktopSubjectPersonalize");
+    expect(insertionBarSource).toContain("pillDesktopFlat");
+    expect(insertionBarSource).toContain("pillDesktopFlatActive");
+  });
+
+  it("locks the desktop marketing composer vertical rhythm", () => {
+    const routeSource = read("app/(tabs)/marketing/campaigns/compose.tsx");
+    const footerSource = read("src/components/marketing/ComposerFooter.tsx");
+    const editorSource = read("src/components/marketing/ComposerV2/ComposerV2Editor.tsx");
+
+    expect(routeSource).toContain("marginBottom: spacing.sm");
+    expect(footerSource).toContain('position: "absolute"');
+    expect(footerSource).toContain("bottom: spacing.sm");
+    expect(footerSource).toContain("paddingBottom: isWideDesktop ? 0");
+    expect(editorSource).toContain("Math.max(400, Math.min(rawBodyHeight - 44, 700))");
+    expect(editorSource).toContain("marginTop: spacing.md");
+    expect(editorSource).toContain("marginBottom: spacing.md");
+    expect(editorSource).toContain("borderRadius: radius.lg");
+    expect(editorSource).toContain('overflow: "hidden"');
+  });
 });
