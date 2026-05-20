@@ -65,6 +65,9 @@ export interface StepBodyProps {
   coverMediaApplyMode?: "draft_auto" | "published_manual";
   /** Lets parent flows block publish/save while a video cover is still processing. */
   onCoverVideoProcessingChange?: (isProcessing: boolean) => void;
+  // ORCH-0892-A: legacy wizard-scroll-ref prop removed. CoverPicker
+  // now relies on the keyboard-controller library's KeyboardAvoidingView
+  // wrap for search-input visibility above the keyboard.
 }
 
 export const errorForKey = (

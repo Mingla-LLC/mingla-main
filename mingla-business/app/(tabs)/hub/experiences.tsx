@@ -25,7 +25,9 @@ import {
   text as textTokens,
   typography,
 } from "../../../src/constants/designSystem";
+import { DESKTOP_HUB_GRID_COLUMNS } from "../../../src/constants/desktopLayout";
 import { useCurrentBrand } from "../../../src/hooks/useCurrentBrand";
+import { useResponsiveLayout } from "../../../src/hooks/useResponsiveLayout";
 import { useExperiencesByBrand } from "../../../src/hooks/useExperiencesByBrand";
 import {
   usePendingExperiences,
@@ -117,6 +119,7 @@ function ExperienceGenerationSurface({
   canSnap,
   SnapInput,
 }: ExperienceGenerationSurfaceProps): React.ReactElement {
+  const { isWideDesktop } = useResponsiveLayout();
   const experiencesQuery = useExperiencesByBrand(brandId);
   const {
     pending,
@@ -230,24 +233,32 @@ function ExperienceGenerationSurface({
             <Text style={styles.emptyBody}>{copy.emptyListHint}</Text>
           </GlassCard>
         ) : (
-          experiences.map((exp) => {
-            const meta = formatExperienceMeta(exp);
-            return (
-              <View key={exp.id} style={styles.expCard}>
-                <GlassCard variant="elevated" padding={spacing.md}>
-                  <Text style={styles.expTitle}>{exp.title}</Text>
-                  {exp.description !== null && (
-                    <Text style={styles.expBody} numberOfLines={3}>
-                      {exp.description}
-                    </Text>
-                  )}
-                  {meta !== null && (
-                    <Text style={styles.expTags}>{meta}</Text>
-                  )}
-                </GlassCard>
-              </View>
-            );
-          })
+          <View style={[styles.expList, isWideDesktop && styles.desktopListGrid]}>
+            {experiences.map((exp) => {
+              const meta = formatExperienceMeta(exp);
+              return (
+                <View
+                  key={exp.id}
+                  style={[
+                    styles.expCard,
+                    isWideDesktop && styles.desktopListCell,
+                  ]}
+                >
+                  <GlassCard variant="elevated" padding={spacing.md}>
+                    <Text style={styles.expTitle}>{exp.title}</Text>
+                    {exp.description !== null && (
+                      <Text style={styles.expBody} numberOfLines={3}>
+                        {exp.description}
+                      </Text>
+                    )}
+                    {meta !== null && (
+                      <Text style={styles.expTags}>{meta}</Text>
+                    )}
+                  </GlassCard>
+                </View>
+              );
+            })}
+          </View>
         )}
       </ScrollView>
 
@@ -410,6 +421,20 @@ const styles = StyleSheet.create({
     color: textTokens.primary,
   },
   listLoader: { marginVertical: spacing.lg },
+  expList: {
+    gap: spacing.sm,
+  },
+  desktopListGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 0,
+    marginHorizontal: -spacing.xs,
+  },
+  desktopListCell: {
+    width: `${100 / DESKTOP_HUB_GRID_COLUMNS}%`,
+    paddingHorizontal: spacing.xs,
+    marginBottom: spacing.sm,
+  },
   expCard: { marginBottom: spacing.sm },
   expTitle: {
     fontSize: typography.body.fontSize,

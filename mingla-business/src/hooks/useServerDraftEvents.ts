@@ -24,6 +24,13 @@ import {
   isBusinessAuthNotReadyError,
   requireBusinessAuthReady,
 } from "../utils/authReadiness";
+// ORCH-0893 cycle 2 [Eager server-draft on creator entry — replace with
+// client-id + lazy autosave]: gate the legacy d_<ts36> migration loop on
+// `isDraftDirty` so freshly-minted untouched drafts from /event/create
+// are NOT auto-migrated out from under the edit route. The autosave
+// wrapper at app/event/[id]/edit.tsx handles dirty d_* drafts via its
+// own first-edit-triggered lazy insert.
+import { isDraftDirty } from "../utils/draftDirtyCheck";
 
 const STALE_TIME_MS = 30 * 1000;
 const DISABLED_KEY = ["event-drafts-disabled"] as const;
@@ -104,7 +111,20 @@ export const useServerDraftsForBrand = (
         .filter((id): id is string => id !== null),
     );
     localDrafts
-      .filter((draft) => draft.brandId === brandId && draft.id.startsWith("d_"))
+      .filter(
+        (draft) =>
+          draft.brandId === brandId &&
+          draft.id.startsWith("d_") &&
+          // ORCH-0893 cycle 2: skip untouched d_* drafts. /event/create
+          // mints a fresh d_<ts36> synchronously then router.replace's to
+          // /event/[id]/edit; if the legacy loop migrates it before the
+          // user types anything, replaceDraft removes d_* from Zustand
+          // and the edit route's bounce-home guard fires ("wizard shows
+          // up then immediately closes"). The autosave wrapper at
+          // app/event/[id]/edit.tsx handles dirty d_* drafts via its
+          // own first-edit-triggered createServerDraft path.
+          isDraftDirty(draft),
+      )
       .forEach((draft) => {
         if (
           migratedLegacyIds.has(draft.id) ||

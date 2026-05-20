@@ -1,0 +1,438 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Mingla Business — Tier 2: Desktop Shell + Master-Detail</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root {
+    --canvas: #0c0e12;
+    --canvas-2: #141113;
+    --accent: #eb7825;
+    --accent-glow: rgba(235,120,37,.35);
+    --accent-tint: rgba(235,120,37,.18);
+    --glass-card: rgba(255,255,255,.04);
+    --glass-border: rgba(255,255,255,.08);
+    --text-hi: #f5f5f7;
+    --text-mid: #b9b9c2;
+    --text-low: #6e6e78;
+  }
+  html, body { background: #1c1d22; color: var(--text-hi); font-family: ui-sans-serif, system-ui, -apple-system, "SF Pro Text", "Inter", sans-serif; }
+  .browser-frame { background: linear-gradient(180deg, #2b2c33 0%, #1c1d22 100%); }
+  .browser-bar { background: #2b2c33; }
+  .browser-dot { width: 12px; height: 12px; border-radius: 999px; }
+  .accent { color: var(--accent); }
+  .bg-accent { background: var(--accent); }
+  .glass-card { background: var(--glass-card); border: 1px solid var(--glass-border); }
+  .canvas-bg { background: #0c0e12; }
+  .sidebar-bg { background: #0a0c10; border-right: 1px solid var(--glass-border); }
+  .topbar-bg { background: rgba(10,12,16,.7); backdrop-filter: blur(20px); border-bottom: 1px solid var(--glass-border); }
+  .panel-divide { border-left: 1px solid var(--glass-border); }
+  .nav-item { color: var(--text-mid); transition: all .15s; }
+  .nav-item:hover { background: rgba(255,255,255,.04); color: var(--text-hi); }
+  .nav-item.active { background: var(--accent-tint); color: var(--accent); }
+  .nav-item.active .nav-icon { color: var(--accent); }
+  .annotation { position: absolute; font-family: ui-monospace, "SF Mono", monospace; font-size: 11px; color: #ffcc00; }
+  .selected-row { background: var(--accent-tint); border-left: 3px solid var(--accent); }
+</style>
+</head>
+<body class="min-h-screen p-6">
+
+<div class="max-w-[1600px] mx-auto mb-4">
+  <div class="flex items-center justify-between">
+    <div>
+      <div class="text-[11px] uppercase tracking-widest text-zinc-500 mb-1">Mockup 2 of 3 · Tier 2 — Desktop Shell + Master-Detail</div>
+      <h1 class="text-2xl font-semibold">Stops being a phone app on a screen. Starts feeling like a tool.</h1>
+      <p class="text-zinc-400 text-sm mt-1">Persistent left sidebar (collapsible, with sub-routes inline) · top header (brand switcher / global search / notifications / profile) · two-pane master-detail · side sheets instead of bottom sheets. Shown: Hub → Events with the editor open beside the list.</p>
+    </div>
+    <a href="./index.html" class="text-xs px-3 py-1.5 rounded-full border border-zinc-700 hover:border-zinc-500">← Index</a>
+  </div>
+</div>
+
+<div class="max-w-[1600px] mx-auto rounded-2xl overflow-hidden shadow-2xl browser-frame">
+  <!-- Browser chrome -->
+  <div class="browser-bar h-10 flex items-center px-4 gap-2 border-b border-black/40">
+    <div class="flex gap-2">
+      <div class="browser-dot bg-[#ff5f57]"></div>
+      <div class="browser-dot bg-[#febc2e]"></div>
+      <div class="browser-dot bg-[#28c840]"></div>
+    </div>
+    <div class="ml-4 flex-1 max-w-2xl mx-auto bg-[#1c1d22] rounded-md px-3 py-1 text-xs text-zinc-400">business.usemingla.com/hub/events</div>
+  </div>
+
+  <div class="canvas-bg relative flex" style="height: 920px;">
+
+    <!-- LEFT SIDEBAR (expanded) -->
+    <aside class="sidebar-bg w-[240px] flex-shrink-0 flex flex-col">
+      <!-- Brand switcher -->
+      <div class="p-3 border-b border-white/5">
+        <button class="w-full flex items-center gap-3 p-2 rounded-xl hover:bg-white/5">
+          <div class="w-9 h-9 rounded-lg bg-gradient-to-br from-orange-500 to-rose-500 flex-shrink-0"></div>
+          <div class="flex-1 min-w-0 text-left">
+            <div class="text-[10px] text-zinc-500 uppercase tracking-wider">Brand</div>
+            <div class="text-sm font-medium truncate">Casa Nova Lagos</div>
+          </div>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6e6e78" stroke-width="2"><path d="M7 10l5 5 5-5"/></svg>
+        </button>
+      </div>
+
+      <!-- Nav -->
+      <nav class="flex-1 px-2 py-3 overflow-y-auto space-y-0.5">
+        <a class="nav-item flex items-center gap-3 px-3 py-2 rounded-lg text-sm">
+          <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12L12 3l9 9"/><path d="M5 10v10h14V10"/></svg>
+          Home
+        </a>
+
+        <div class="pt-1">
+          <a class="nav-item active flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium">
+            <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9h18M8 3v4M16 3v4"/></svg>
+            Hub
+            <svg class="ml-auto" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 10l5 5 5-5"/></svg>
+          </a>
+          <div class="ml-3 pl-5 border-l border-white/10 mt-1 space-y-0.5">
+            <a class="nav-item flex items-center justify-between px-3 py-1.5 rounded-md text-xs font-medium bg-white/5 text-white">Events <span class="text-[10px] accent">12</span></a>
+            <a class="nav-item flex items-center justify-between px-3 py-1.5 rounded-md text-xs">Experiences <span class="text-[10px] text-zinc-500">2</span></a>
+            <a class="nav-item flex items-center justify-between px-3 py-1.5 rounded-md text-xs">Trips <span class="text-[10px] text-zinc-500">3</span></a>
+          </div>
+        </div>
+
+        <a class="nav-item flex items-center gap-3 px-3 py-2 rounded-lg text-sm mt-1">
+          <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 10v6M4.2 4.2l4.3 4.3m7 7l4.3 4.3M1 12h6m10 0h6M4.2 19.8l4.3-4.3m7-7l4.3-4.3"/></svg>
+          Ari
+          <span class="ml-auto px-1.5 rounded-full bg-accent text-white text-[10px]">4</span>
+        </a>
+
+        <a class="nav-item flex items-center gap-3 px-3 py-2 rounded-lg text-sm">
+          <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4z"/></svg>
+          Blast
+        </a>
+
+        <!-- Section divider -->
+        <div class="pt-4 pb-1 px-3 text-[10px] uppercase tracking-widest text-zinc-600">Brand operations</div>
+
+        <a class="nav-item flex items-center gap-3 px-3 py-2 rounded-lg text-sm">
+          <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>
+          Orders
+          <span class="ml-auto text-[10px] text-zinc-500">238</span>
+        </a>
+        <a class="nav-item flex items-center gap-3 px-3 py-2 rounded-lg text-sm">
+          <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
+          Guests
+        </a>
+        <a class="nav-item flex items-center gap-3 px-3 py-2 rounded-lg text-sm">
+          <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+          Scanners
+        </a>
+        <a class="nav-item flex items-center gap-3 px-3 py-2 rounded-lg text-sm">
+          <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><path d="M9 22V12h6v10"/></svg>
+          Venue &amp; Door
+        </a>
+        <a class="nav-item flex items-center gap-3 px-3 py-2 rounded-lg text-sm">
+          <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+          Team
+        </a>
+      </nav>
+
+      <!-- Footer / user -->
+      <div class="p-3 border-t border-white/5">
+        <button class="w-full flex items-center gap-3 p-2 rounded-xl hover:bg-white/5">
+          <div class="w-9 h-9 rounded-full bg-gradient-to-br from-emerald-500 to-cyan-500"></div>
+          <div class="flex-1 min-w-0 text-left">
+            <div class="text-sm font-medium truncate">Seth Ogieva</div>
+            <div class="text-[11px] text-zinc-500">Owner</div>
+          </div>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6e6e78" stroke-width="2"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+        </button>
+      </div>
+    </aside>
+
+    <!-- MAIN AREA -->
+    <main class="flex-1 flex flex-col min-w-0">
+      <!-- Top bar -->
+      <div class="topbar-bg h-14 flex items-center px-5 gap-4">
+        <div class="flex items-center gap-2 text-sm text-zinc-400">
+          <span>Hub</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+          <span class="text-white">Events</span>
+        </div>
+        <div class="flex-1 max-w-md mx-4">
+          <div class="relative">
+            <svg class="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+            <input class="w-full bg-white/5 border border-white/10 rounded-lg pl-9 pr-12 py-1.5 text-sm placeholder-zinc-500 focus:outline-none focus:border-white/20" placeholder="Search events, orders, guests…"/>
+            <div class="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-zinc-500 border border-white/10 px-1.5 py-0.5 rounded">⌘K</div>
+          </div>
+        </div>
+        <div class="ml-auto flex items-center gap-2">
+          <button class="px-3 py-1.5 rounded-lg bg-accent text-white text-sm font-medium flex items-center gap-1.5">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+            New event
+          </button>
+          <button class="w-9 h-9 rounded-lg flex items-center justify-center hover:bg-white/5 text-zinc-400 relative">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 10-12 0v3.2c0 .53-.21 1.04-.59 1.4L4 17h5"/></svg>
+            <span class="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-accent"></span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Two-pane master-detail -->
+      <div class="flex-1 flex min-h-0">
+
+        <!-- LIST PANE -->
+        <section class="w-[380px] flex-shrink-0 flex flex-col">
+          <!-- Filter bar -->
+          <div class="px-4 py-3 border-b border-white/5 flex items-center gap-2">
+            <button class="px-3 py-1 rounded-full text-xs bg-white/10 text-white">All <span class="text-zinc-400 ml-1">12</span></button>
+            <button class="px-3 py-1 rounded-full text-xs text-zinc-400 hover:bg-white/5">On sale <span class="ml-1">4</span></button>
+            <button class="px-3 py-1 rounded-full text-xs text-zinc-400 hover:bg-white/5">Drafts <span class="ml-1">3</span></button>
+            <button class="px-3 py-1 rounded-full text-xs text-zinc-400 hover:bg-white/5">Past <span class="ml-1">5</span></button>
+            <button class="ml-auto w-7 h-7 rounded-md hover:bg-white/5 flex items-center justify-center text-zinc-400">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M7 12h10M11 18h2"/></svg>
+            </button>
+          </div>
+
+          <!-- List -->
+          <div class="flex-1 overflow-y-auto py-1">
+            <!-- Selected row -->
+            <div class="selected-row flex items-center gap-3 px-4 py-3 cursor-pointer">
+              <div class="w-12 h-12 rounded-lg bg-gradient-to-br from-orange-500 via-rose-500 to-fuchsia-700 flex-shrink-0"></div>
+              <div class="flex-1 min-w-0">
+                <div class="text-sm font-medium truncate">Afro-House Rooftop Vol. 12</div>
+                <div class="text-[11px] text-zinc-400">Sat May 25 · 9 PM</div>
+                <div class="flex items-center gap-2 mt-1">
+                  <div class="text-[10px] accent">LIVE TONIGHT</div>
+                  <div class="text-[10px] text-zinc-500">142 / 200</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Other rows -->
+            <div class="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-white/5">
+              <div class="w-12 h-12 rounded-lg bg-gradient-to-br from-indigo-500 to-cyan-500 flex-shrink-0"></div>
+              <div class="flex-1 min-w-0">
+                <div class="text-sm truncate">Sunday Brunch · Live Sax</div>
+                <div class="text-[11px] text-zinc-500">Sun May 26 · 12 PM</div>
+                <div class="text-[10px] text-emerald-400 mt-1">On sale · 38 / 80</div>
+              </div>
+            </div>
+            <div class="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-white/5">
+              <div class="w-12 h-12 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-500 flex-shrink-0"></div>
+              <div class="flex-1 min-w-0">
+                <div class="text-sm truncate">Wine + Vinyl Wednesdays</div>
+                <div class="text-[11px] text-zinc-500">Wed May 29 · 7 PM</div>
+                <div class="text-[10px] text-emerald-400 mt-1">On sale · 12 / 40</div>
+              </div>
+            </div>
+            <div class="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-white/5">
+              <div class="w-12 h-12 rounded-lg bg-gradient-to-br from-amber-500 to-orange-600 flex-shrink-0"></div>
+              <div class="flex-1 min-w-0">
+                <div class="text-sm truncate">June Long-Weekend Pool Party</div>
+                <div class="text-[11px] text-zinc-500">Sat Jun 1 · 4 PM</div>
+                <div class="text-[10px] text-zinc-400 mt-1">Draft</div>
+              </div>
+            </div>
+            <div class="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-white/5">
+              <div class="w-12 h-12 rounded-lg bg-gradient-to-br from-fuchsia-500 to-pink-600 flex-shrink-0"></div>
+              <div class="flex-1 min-w-0">
+                <div class="text-sm truncate">Mid-Year Members Mixer</div>
+                <div class="text-[11px] text-zinc-500">Fri Jun 14 · 8 PM</div>
+                <div class="text-[10px] text-zinc-400 mt-1">Scheduled · 0 / 120</div>
+              </div>
+            </div>
+            <div class="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-white/5">
+              <div class="w-12 h-12 rounded-lg bg-gradient-to-br from-violet-500 to-indigo-600 flex-shrink-0"></div>
+              <div class="flex-1 min-w-0">
+                <div class="text-sm truncate">Solstice Open Decks</div>
+                <div class="text-[11px] text-zinc-500">Fri Jun 21 · 10 PM</div>
+                <div class="text-[10px] text-zinc-400 mt-1">Draft</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- DETAIL PANE -->
+        <section class="flex-1 panel-divide overflow-y-auto min-w-0">
+          <!-- Hero -->
+          <div class="relative">
+            <div class="h-56 bg-gradient-to-br from-orange-500 via-rose-500 to-fuchsia-700 relative">
+              <div class="absolute top-4 left-4 px-3 py-1 rounded-full bg-black/40 text-white text-xs font-medium">LIVE TONIGHT · 8h to doors</div>
+              <div class="absolute bottom-4 left-6">
+                <div class="text-3xl font-semibold tracking-tight">Afro-House Rooftop Vol. 12</div>
+                <div class="text-sm text-zinc-200 mt-1">Sat May 25 · 9:00 PM · Casa Nova Lagos · Victoria Island</div>
+              </div>
+              <div class="absolute top-4 right-4 flex gap-2">
+                <button class="px-3 py-1.5 rounded-lg bg-black/40 text-white text-xs flex items-center gap-1.5">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><path d="M16 6l-4-4-4 4M12 2v13"/></svg>
+                  Share
+                </button>
+                <button class="px-3 py-1.5 rounded-lg bg-white text-black text-xs font-medium">Edit details</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tabs + stats -->
+          <div class="px-6 pt-4 border-b border-white/5">
+            <div class="flex items-center gap-1">
+              <button class="px-3 py-2 text-sm font-medium border-b-2 border-accent text-white">Overview</button>
+              <button class="px-3 py-2 text-sm text-zinc-400 hover:text-white">Orders <span class="ml-1 text-[11px] text-zinc-500">142</span></button>
+              <button class="px-3 py-2 text-sm text-zinc-400 hover:text-white">Guests</button>
+              <button class="px-3 py-2 text-sm text-zinc-400 hover:text-white">Tickets</button>
+              <button class="px-3 py-2 text-sm text-zinc-400 hover:text-white">Comp &amp; refund</button>
+              <button class="px-3 py-2 text-sm text-zinc-400 hover:text-white">Analytics</button>
+            </div>
+          </div>
+
+          <div class="p-6 space-y-5">
+            <!-- Stat grid -->
+            <div class="grid grid-cols-4 gap-3">
+              <div class="rounded-xl glass-card p-4">
+                <div class="text-[10px] text-zinc-500 uppercase tracking-wider">Sold</div>
+                <div class="text-2xl font-semibold mt-1">142</div>
+                <div class="text-[11px] text-zinc-400">of 200 · 71%</div>
+                <div class="mt-2 h-1 rounded-full bg-white/10 overflow-hidden"><div class="h-full bg-accent" style="width:71%"></div></div>
+              </div>
+              <div class="rounded-xl glass-card p-4">
+                <div class="text-[10px] text-zinc-500 uppercase tracking-wider">Revenue</div>
+                <div class="text-2xl font-semibold mt-1">₦2.1M</div>
+                <div class="text-[11px] text-emerald-400">+₦480k today</div>
+              </div>
+              <div class="rounded-xl glass-card p-4">
+                <div class="text-[10px] text-zinc-500 uppercase tracking-wider">Checked in</div>
+                <div class="text-2xl font-semibold mt-1">28</div>
+                <div class="text-[11px] text-zinc-400">of 142 sold</div>
+              </div>
+              <div class="rounded-xl glass-card p-4">
+                <div class="text-[10px] text-zinc-500 uppercase tracking-wider">Refund risk</div>
+                <div class="text-2xl font-semibold mt-1">3</div>
+                <div class="text-[11px] text-orange-400">Review →</div>
+              </div>
+            </div>
+
+            <!-- Sales trend -->
+            <div class="rounded-xl glass-card p-5">
+              <div class="flex items-center justify-between mb-4">
+                <div>
+                  <div class="text-sm font-medium">Sales over the last 14 days</div>
+                  <div class="text-[11px] text-zinc-500">Peak sales day: Tue May 21 · 38 tickets</div>
+                </div>
+                <div class="flex gap-1">
+                  <button class="px-2 py-1 text-[11px] rounded text-zinc-400 hover:bg-white/5">7d</button>
+                  <button class="px-2 py-1 text-[11px] rounded bg-white/10 text-white">14d</button>
+                  <button class="px-2 py-1 text-[11px] rounded text-zinc-400 hover:bg-white/5">All</button>
+                </div>
+              </div>
+              <!-- Faux chart -->
+              <svg viewBox="0 0 600 140" class="w-full h-32">
+                <defs>
+                  <linearGradient id="g1" x1="0" x2="0" y1="0" y2="1">
+                    <stop offset="0" stop-color="#eb7825" stop-opacity=".4"/>
+                    <stop offset="1" stop-color="#eb7825" stop-opacity="0"/>
+                  </linearGradient>
+                </defs>
+                <path d="M0 120 L40 110 L80 95 L120 100 L160 85 L200 78 L240 60 L280 65 L320 50 L360 55 L400 40 L440 38 L480 28 L520 20 L560 18 L600 12 L600 140 L0 140 Z" fill="url(#g1)"/>
+                <path d="M0 120 L40 110 L80 95 L120 100 L160 85 L200 78 L240 60 L280 65 L320 50 L360 55 L400 40 L440 38 L480 28 L520 20 L560 18 L600 12" stroke="#eb7825" stroke-width="2" fill="none"/>
+                <g fill="#6e6e78" font-size="10" font-family="ui-monospace">
+                  <text x="0" y="138">May 11</text>
+                  <text x="280" y="138">May 18</text>
+                  <text x="560" y="138">May 25</text>
+                </g>
+              </svg>
+            </div>
+
+            <!-- Recent orders -->
+            <div class="rounded-xl glass-card overflow-hidden">
+              <div class="flex items-center justify-between px-5 py-3 border-b border-white/5">
+                <div class="text-sm font-medium">Latest orders</div>
+                <button class="text-[11px] text-zinc-400 hover:text-white">View all 142 →</button>
+              </div>
+              <table class="w-full text-sm">
+                <thead class="bg-white/5">
+                  <tr class="text-[10px] uppercase tracking-wider text-zinc-500">
+                    <th class="text-left px-5 py-2">Buyer</th>
+                    <th class="text-left px-5 py-2">Tier</th>
+                    <th class="text-left px-5 py-2">Qty</th>
+                    <th class="text-left px-5 py-2">Amount</th>
+                    <th class="text-left px-5 py-2">When</th>
+                    <th class="text-left px-5 py-2">Status</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-white/5">
+                  <tr class="hover:bg-white/5">
+                    <td class="px-5 py-2.5"><div class="font-medium">Tunde Bakare</div><div class="text-[11px] text-zinc-500">+234 80…</div></td>
+                    <td class="px-5 py-2.5">VIP</td>
+                    <td class="px-5 py-2.5">2</td>
+                    <td class="px-5 py-2.5 font-mono">₦40,000</td>
+                    <td class="px-5 py-2.5 text-zinc-400">12m ago</td>
+                    <td class="px-5 py-2.5"><span class="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400">Paid</span></td>
+                  </tr>
+                  <tr class="hover:bg-white/5">
+                    <td class="px-5 py-2.5"><div class="font-medium">Adaora Eze</div><div class="text-[11px] text-zinc-500">+234 81…</div></td>
+                    <td class="px-5 py-2.5">GA</td>
+                    <td class="px-5 py-2.5">4</td>
+                    <td class="px-5 py-2.5 font-mono">₦32,000</td>
+                    <td class="px-5 py-2.5 text-zinc-400">37m ago</td>
+                    <td class="px-5 py-2.5"><span class="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400">Paid</span></td>
+                  </tr>
+                  <tr class="hover:bg-white/5">
+                    <td class="px-5 py-2.5"><div class="font-medium">Kunle Akinyemi</div><div class="text-[11px] text-zinc-500">+234 70…</div></td>
+                    <td class="px-5 py-2.5">VIP</td>
+                    <td class="px-5 py-2.5">1</td>
+                    <td class="px-5 py-2.5 font-mono">₦20,000</td>
+                    <td class="px-5 py-2.5 text-zinc-400">1h ago</td>
+                    <td class="px-5 py-2.5"><span class="text-[11px] px-2 py-0.5 rounded-full bg-orange-500/15 text-orange-400">Pending</span></td>
+                  </tr>
+                  <tr class="hover:bg-white/5">
+                    <td class="px-5 py-2.5"><div class="font-medium">Chioma Nwosu</div><div class="text-[11px] text-zinc-500">+234 90…</div></td>
+                    <td class="px-5 py-2.5">GA</td>
+                    <td class="px-5 py-2.5">2</td>
+                    <td class="px-5 py-2.5 font-mono">₦16,000</td>
+                    <td class="px-5 py-2.5 text-zinc-400">2h ago</td>
+                    <td class="px-5 py-2.5"><span class="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400">Paid</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <!-- Annotations -->
+    <div class="absolute" style="top:60px; left:250px; max-width:200px;">
+      <div class="annotation">← persistent sidebar · sub-routes expand inline</div>
+    </div>
+    <div class="absolute" style="top:140px; left:640px; max-width:200px;">
+      <div class="annotation">↑ list pane · click a row → detail updates without nav</div>
+    </div>
+    <div class="absolute" style="top:60px; right:80px; max-width:200px; text-align:right;">
+      <div class="annotation">↘ global search + ⌘K + persistent CTA</div>
+    </div>
+  </div>
+</div>
+
+<!-- Wins / cost row -->
+<div class="max-w-[1600px] mx-auto mt-6 grid grid-cols-3 gap-4 text-sm">
+  <div class="rounded-xl border border-emerald-900/40 bg-emerald-950/20 p-4">
+    <div class="text-[10px] uppercase tracking-widest text-emerald-400 mb-1">Win</div>
+    <div class="font-medium mb-1">Master-detail flow</div>
+    <p class="text-zinc-400">Pick an event from the list, see the editor and live stats beside it. No nav, no back button, no losing your place. Same pattern works for Orders, Guests, Team, Marketing.</p>
+  </div>
+  <div class="rounded-xl border border-emerald-900/40 bg-emerald-950/20 p-4">
+    <div class="text-[10px] uppercase tracking-widest text-emerald-400 mb-1">Win</div>
+    <div class="font-medium mb-1">Information density</div>
+    <p class="text-zinc-400">Orders as a table on desktop, cards on mobile. 4 stat tiles vs 3. 14-day trend chart visible without scrolling. Real estate finally pays back.</p>
+  </div>
+  <div class="rounded-xl border border-orange-900/40 bg-orange-950/20 p-4">
+    <div class="text-[10px] uppercase tracking-widest text-orange-400 mb-1">Cost / risk</div>
+    <div class="font-medium mb-1">~1–2 weeks · designer pass needed</div>
+    <p class="text-zinc-400">Master-detail requires routing rework (URL-driven selection so the right pane is bookmarkable). Sub-sheet primitives need a side-anchored variant. Cross-Surface parity rule still in force — all behind <code class="text-orange-300">isWideDesktop</code>.</p>
+  </div>
+</div>
+
+<div class="max-w-[1600px] mx-auto mt-6 flex gap-3">
+  <a href="./00-today-baseline.html" class="px-4 py-2 rounded-full border border-zinc-700 text-sm">← Baseline</a>
+  <a href="./01-tier1-container-rail.html" class="px-4 py-2 rounded-full border border-zinc-700 text-sm">← Tier 1</a>
+  <a href="./03-tier3-power-features.html" class="px-4 py-2 rounded-full bg-accent text-white text-sm font-medium">Tier 3 → Power features →</a>
+</div>
+
+</body>
+</html>

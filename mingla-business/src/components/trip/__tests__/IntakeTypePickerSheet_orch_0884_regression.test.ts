@@ -173,6 +173,36 @@ describe("ORCH-0884 follow-up #2 — Nestable* primitives swapped for standalone
     expect(src).toMatch(/availableHeight\s*=[\s\S]*?keyboardHeight/);
   });
 
+  test("EditPublishedTripScreen + EditPublishedScreen ScrollViews auto-scroll focused input above keyboard", () => {
+    // Operator-reported: "fields at the bottom" of the edit trip / edit event
+    // wizards get covered by the keyboard. The Cycle 3 pattern (Keyboard
+    // listener + paddingBottom) gives scrollable headroom but doesn't force
+    // auto-scroll the focused input above the keyboard. Adding
+    // `automaticallyAdjustKeyboardInsets` makes iOS auto-adjust contentInset
+    // on focus (iOS 14+). Combined with the existing paddingBottom, this
+    // delivers the full "input never hidden" guarantee.
+    const tripEditPath = path.join(
+      __dirname,
+      "..",
+      "EditPublishedTripScreen.tsx",
+    );
+    const eventEditPath = path.join(
+      __dirname,
+      "..",
+      "..",
+      "event",
+      "EditPublishedScreen.tsx",
+    );
+    const tripSrc = readFileSync(tripEditPath, "utf8");
+    const eventSrc = readFileSync(eventEditPath, "utf8");
+    expect(tripSrc).toMatch(/automaticallyAdjustKeyboardInsets/);
+    expect(eventSrc).toMatch(/automaticallyAdjustKeyboardInsets/);
+    // Also assert keyboardDismissMode=on-drag (so swiping over keyboard
+    // dismisses it without explicit "Done" tap).
+    expect(tripSrc).toMatch(/keyboardDismissMode=["']on-drag["']/);
+    expect(eventSrc).toMatch(/keyboardDismissMode=["']on-drag["']/);
+  });
+
   test("IntakeQuestionEditor applies Cycle 3 wizard root keyboard pattern", () => {
     // Per feedback_keyboard_never_blocks_input.md: TextInputs inside a Sheet
     // would be covered by the keyboard because Sheet primitive has no

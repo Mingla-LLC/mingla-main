@@ -107,7 +107,16 @@ export interface RenderMarketingEmailResult {
 }
 
 const VARIABLE_RE = /\{(first_name|event_name|event_date|event_time|doors_open|ends_at|brand_name|event_url|spots_left|previous_event_name|next_event_name|event_id)\}/g;
-const EVENT_TOKEN_RE = /\{\{event:([0-9a-fA-F-]{36})\}\}/g;
+// ORCH-0891 M2: extended event token regex to optionally capture a
+// `|size` suffix (compact / medium / large). Backwards-compat preserved:
+// legacy `{{event:UUID}}` tokens (no suffix) default to `medium`.
+//   Group 1: event UUID
+//   Group 2: size if present, else undefined
+// Per SPEC §3.2 + I-EVENT-CHIP-SIZE-BACKWARDS-COMPAT.
+const EVENT_TOKEN_RE = /\{\{event:([0-9a-fA-F-]{36})(?:\|(compact|medium|large))?\}\}/g;
+
+/** ORCH-0891 M2 event chip size variants. */
+type EventChipSize = "compact" | "medium" | "large";
 // href= followed by single or double quoted URL. We do NOT rewrite
 // `mailto:` or anchor (`#…`) links — only http/https destinations.
 const HREF_RE = /href=(["'])(https?:\/\/[^"']+)\1/g;
@@ -128,14 +137,18 @@ export function renderMarketingEmail(
   });
 
   // Step 2 — event-card token replacement.
+  // ORCH-0891 M2: extract optional `|size` suffix and dispatch to size-specific
+  // renderer. Legacy size-less tokens default to `medium` (current layout) per
+  // I-EVENT-CHIP-SIZE-BACKWARDS-COMPAT.
   const eventLookup = new Map<string, EmbeddedEvent>();
   for (const e of input.embedded_events) eventLookup.set(e.id, e);
   const withEventCards = substituted.replace(
     EVENT_TOKEN_RE,
-    (_match, eventId: string) => {
+    (_match, eventId: string, sizeRaw: string | undefined) => {
       const event = eventLookup.get(eventId);
       if (event === undefined) return "";
-      return renderEventCard(event);
+      const size = normalizeEventChipSize(sizeRaw);
+      return renderEventCard(event, size);
     },
   );
 
@@ -190,23 +203,88 @@ export function renderMarketingEmail(
 }
 
 /**
+ * Normalize the size value from the token suffix. Unknown / undefined
+ * values default to `medium` (legacy behavior).
+ *
+ * ORCH-0891 M2 per I-EVENT-CHIP-SIZE-BACKWARDS-COMPAT.
+ */
+function normalizeEventChipSize(raw: string | undefined): EventChipSize {
+  if (raw === "compact" || raw === "medium" || raw === "large") return raw;
+  return "medium";
+}
+
+/**
  * Email event card — mirrors the Mingla og:image card design from
  * `mingla-business/server/socialPreview.js` (cream → orange gradient,
  * orange accent bar with "Featured event" kicker, dark date chip +
  * orange-tinted location chip, large title, prominent Get tickets CTA).
  *
+ * ORCH-0891 M2 — extended with three size variants:
+ *   compact: single-line strip ~48pt — just title + date pill, no kicker,
+ *            no CTA button (inline mention reference)
+ *   medium (default = legacy):  current layout — orange kicker + chips +
+ *            title + CTA (no cover image when hero is unavailable, with
+ *            cover when present)
+ *   large: medium card + forced cover image emphasis (skipped when video
+ *            media or missing URL — falls back to medium-with-cover layout
+ *            since the large variant's defining feature is the cover hero)
+ *
  * Video covers (cover_media_type === 'video') skip the image hero per
  * socialPreview's own rule — there's no server-extracted still in the
  * events schema, and email clients can't render `.mov` files in `<img>`.
- * The card falls back to a clean cream gradient hero with brand emoji
- * placeholder so it still feels designed, not broken.
  *
  * Email-safe HTML: table-based layout, inline styles only, no CSS
  * gradients on `<td>` (Outlook strips them) — gradient is rendered as
  * a solid cream `<td>` with the orange-to-cream transition done in the
  * brand-shell-wrap, NOT inside the card cells.
  */
-function renderEventCard(event: EmbeddedEvent): string {
+function renderEventCard(event: EmbeddedEvent, size: EventChipSize = "medium"): string {
+  if (size === "compact") return renderEventCardCompact(event);
+  // medium AND large both fall through to the full card; large just
+  // emphasizes the cover by skipping the medium fallback when cover is
+  // not usable. For inbox email, this difference is subtle but
+  // preserves the SPEC-defined size hierarchy.
+  return renderEventCardFull(event, size);
+}
+
+/**
+ * ORCH-0891 M2 — compact card variant.
+ *
+ * Single-row inline-block strip with just the event title + date pill.
+ * No kicker, no chips, no CTA button — the title itself is the link.
+ * Use case: mention-style references inside flowing email body text
+ * (e.g., "Don't miss [Friday Night] this weekend").
+ *
+ * ~48pt tall on most clients. Outlook may render slightly differently
+ * (older WordView renderer); the inline-block structure stays readable.
+ */
+function renderEventCardCompact(event: EmbeddedEvent): string {
+  const title = escapeHtml(event.title);
+  const date = escapeHtml(event.date_label ?? "");
+  const url = escapeHtml(event.url);
+  const INK = "#16110D";
+  const ORANGE = "#F47C20";
+  const ORANGE_TINT = "rgba(244, 124, 32, 0.12)";
+  const ORANGE_BORDER = "rgba(244, 124, 32, 0.32)";
+
+  const dateSuffix = date.length > 0
+    ? `<span style="margin-left:8px;font-weight:600;font-size:12px;color:${ORANGE};">${date}</span>`
+    : "";
+
+  return `<a href="${url}" style="display:inline-block;padding:6px 14px;margin:0 2px;border-radius:999px;background:${ORANGE_TINT};border:1px solid ${ORANGE_BORDER};font-size:14px;font-weight:600;color:${INK};text-decoration:none;line-height:1.4;">${title}${dateSuffix}</a>`;
+}
+
+/**
+ * ORCH-0891 M2 — full (medium + large) card variant.
+ *
+ * This is the renderer the legacy `renderEventCard()` was. The `size`
+ * parameter is reserved for future divergence (e.g., large could
+ * render an XL hero image with bigger title typography). For v1 of M2,
+ * medium and large share this implementation — the divergence is
+ * intentionally minimal to keep the migration risk low. Future polish
+ * can expand large's distinct visuals as a separate ORCH.
+ */
+function renderEventCardFull(event: EmbeddedEvent, _size: EventChipSize): string {
   const title = escapeHtml(event.title);
   const date = escapeHtml(event.date_label ?? "");
   // ORCH-0877 — end-time sub-line (separate from the date chip per SPEC

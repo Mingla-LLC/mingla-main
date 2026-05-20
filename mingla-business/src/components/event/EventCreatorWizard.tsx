@@ -27,14 +27,17 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Image,
   Keyboard,
   type KeyboardEvent,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
@@ -46,6 +49,14 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
+import {
+  DESKTOP_BEZEL_MARGIN,
+  DESKTOP_RAIL_WIDTH,
+  DESKTOP_TOP_INSET,
+  DESKTOP_WIZARD_FORM_MAX_WIDTH,
+  DESKTOP_WIZARD_RAIL_WIDTH,
+} from "../../constants/desktopLayout";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import {
   type Brand,
   type BrandStripeStatus,
@@ -66,10 +77,22 @@ import { expandRecurrenceToDates } from "../../utils/recurrenceRule";
 import { Button } from "../ui/Button";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { GlassCard } from "../ui/GlassCard";
+import { Icon } from "../ui/Icon";
 import { IconChrome } from "../ui/IconChrome";
 import { Stepper } from "../ui/Stepper";
 import type { StepperStep } from "../ui/Stepper";
+import { TopBar } from "../ui/TopBar";
 import { Toast } from "../ui/Toast";
+
+/*
+ * Desktop web wizard contract restored after regression:
+ * useResponsiveLayout / isWideDesktop gate must protect the desktop-only
+ * shell, renderDesktopAppRail, renderDesktopStepRail, desktopShell,
+ * desktopTopBarWrap, desktopStepRail, desktopFormPane,
+ * DESKTOP_RAIL_WIDTH, DESKTOP_TOP_INSET, DESKTOP_WIZARD_RAIL_WIDTH,
+ * DESKTOP_WIZARD_FORM_MAX_WIDTH, and <TopBar leftKind="brand" />.
+ * The mobile Stepper/chromeRow path must remain mobile/narrow-web only.
+ */
 
 import { CreatorStep1Basics } from "./CreatorStep1Basics";
 import { CreatorStep2When } from "./CreatorStep2When";
@@ -96,6 +119,14 @@ const STEPPER_STEPS: StepperStep[] = STEP_DEFS.map((s, i) => ({
   id: `step-${i}`,
   label: s.title,
 }));
+
+const MINGLA_BUSINESS_LOGO = require("../../../assets/brand/mingla-business-logo.png") as number;
+const DESKTOP_WIZARD_NAV_ITEMS = [
+  { label: "Home", icon: "home", href: "/(tabs)/home", active: false },
+  { label: "Hub", icon: "calendar", href: "/(tabs)/hub/events", active: true },
+  { label: "Ari", icon: "sparkle", href: "/(tabs)/ari", active: false },
+  { label: "Blast", icon: "send", href: "/(tabs)/marketing", active: false },
+] as const;
 
 const isLocalOnlyDraft = (draft: DraftEvent): boolean =>
   draft.id.startsWith("d_") || draft.serverSlug === null;
@@ -168,6 +199,8 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   serverSaveState,
 }) => {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const { isWideDesktop } = useResponsiveLayout();
 
   // We re-read draft from store on every render so updateDraft patches
   // are reflected immediately. The `initialDraft` prop is only used for
@@ -619,6 +652,10 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
       brandDefaultCurrency: brand?.defaultCurrency ?? null,
       coverMediaApplyMode: "draft_auto" as const,
       onCoverVideoProcessingChange: setCoverVideoProcessing,
+      // ORCH-0892-A: legacy CoverPicker scroll-ref prop removed.
+      // CoverPicker now uses the keyboard-controller library's KAV wrap.
+      // scrollViewRef remains for the Cycle 3 wizard root pattern
+      // (scrollToBottom on input focus).
     };
     switch (currentStep) {
       case 0:
@@ -647,29 +684,162 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
     }
   };
 
-  return (
-    <View style={[styles.host, { paddingTop: insets.top, backgroundColor: canvas.discover }]}>
-      {/* Chrome */}
-      <View style={styles.chromeRow}>
-        <IconChrome
-          icon="close"
-          size={36}
-          onPress={handleClose}
-          accessibilityLabel="Close wizard"
+  const handleDesktopRailNavigate = useCallback(
+    (href: string): void => {
+      router.replace(href as never);
+    },
+    [router],
+  );
+
+  const renderDesktopAppRail = (): React.ReactElement => (
+    <View style={styles.desktopAppRail}>
+      <View style={styles.desktopRailBrandMark}>
+        <Image
+          source={MINGLA_BUSINESS_LOGO}
+          style={styles.desktopRailLogo}
+          resizeMode="contain"
+          accessibilityIgnoresInvertColors
         />
-        <View style={styles.stepperWrap}>
-          <Stepper
-            steps={STEPPER_STEPS}
-            currentIndex={currentStep}
-            showCaption={false}
+      </View>
+      {DESKTOP_WIZARD_NAV_ITEMS.map((item) => (
+        <Pressable
+          key={item.label}
+          onPress={() => handleDesktopRailNavigate(item.href)}
+          accessibilityRole="button"
+          accessibilityLabel={`Go to ${item.label}`}
+          style={[
+            styles.desktopRailItem,
+            item.active ? styles.desktopRailItemActive : null,
+          ]}
+        >
+          <Icon
+            name={item.icon}
+            size={22}
+            color={item.active ? accent.warm : textTokens.tertiary}
           />
-        </View>
-        <Text style={styles.stepCounter}>
-          {currentStep + 1}/{TOTAL_STEPS}
+          <Text
+            style={[
+              styles.desktopRailItemText,
+              item.active ? styles.desktopRailItemTextActive : null,
+            ]}
+          >
+            {item.label}
+          </Text>
+        </Pressable>
+      ))}
+    </View>
+  );
+
+  const renderDesktopStepRail = (): React.ReactElement => (
+    <GlassCard
+      variant="base"
+      padding={spacing.md}
+      radius="lg"
+      style={styles.desktopStepRail}
+    >
+      <View style={styles.desktopStepRailHeader}>
+        <Text style={styles.desktopStepEyebrow}>Create event</Text>
+        <Text style={styles.desktopStepRailTitle} numberOfLines={2}>
+          {liveDraft.name.trim().length > 0 ? liveDraft.name : "Untitled event"}
+        </Text>
+        <Text style={styles.desktopStepRailSub} numberOfLines={1}>
+          {brand?.displayName ?? "Brand"} · Draft saved
         </Text>
       </View>
+      <View style={styles.desktopStepList}>
+        {STEP_DEFS.map((step, index) => {
+          const active = index === currentStep;
+          return (
+            <View
+              key={step.title}
+              style={[styles.desktopStepItem, active ? styles.desktopStepItemActive : null]}
+            >
+              <View
+                style={[
+                  styles.desktopStepIndex,
+                  active ? styles.desktopStepIndexActive : null,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.desktopStepIndexText,
+                    active ? styles.desktopStepIndexTextActive : null,
+                  ]}
+                >
+                  {index + 1}
+                </Text>
+              </View>
+              <View style={styles.desktopStepCopy}>
+                <Text
+                  style={[
+                    styles.desktopStepTitle,
+                    active ? styles.desktopStepTitleActive : null,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {step.title}
+                </Text>
+                <Text style={styles.desktopStepSub} numberOfLines={1}>
+                  {step.subtitle}
+                </Text>
+              </View>
+            </View>
+          );
+        })}
+      </View>
+    </GlassCard>
+  );
+
+  return (
+    <View
+      style={[
+        styles.host,
+        {
+          paddingTop: isWideDesktop ? 0 : insets.top,
+          backgroundColor: canvas.discover,
+        },
+      ]}
+    >
+      {isWideDesktop ? renderDesktopAppRail() : null}
+      {/* Chrome */}
+      {isWideDesktop ? (
+        <View style={styles.desktopTopBarWrap}>
+          {/* orch-strict-grep-allow leftKind-brand-rightSlot — wizard chrome replaces (not composes with) the primary-tab [search,bell] cluster; default cluster is semantically wrong inside a modal creator. Per ORCH-0894 desktop layout polish. */}
+          <TopBar
+            leftKind="brand"
+            rightSlot={
+              <IconChrome
+                icon="close"
+                size={36}
+                onPress={handleClose}
+                accessibilityLabel="Close wizard"
+              />
+            }
+          />
+        </View>
+      ) : (
+        <View style={styles.chromeRow}>
+          <IconChrome
+            icon="close"
+            size={36}
+            onPress={handleClose}
+            accessibilityLabel="Close wizard"
+          />
+          <View style={styles.stepperWrap}>
+            <Stepper
+              steps={STEPPER_STEPS}
+              currentIndex={currentStep}
+              showCaption={false}
+            />
+          </View>
+          <Text style={styles.stepCounter}>
+            {currentStep + 1}/{TOTAL_STEPS}
+          </Text>
+        </View>
+      )}
 
       {/* Brand subtitle */}
+      {isWideDesktop ? null : (
       <View style={styles.subtitleRow}>
         <Text style={styles.subtitle}>
           {brand?.displayName ?? "Brand"} · Step {currentStep + 1} of {TOTAL_STEPS}
@@ -691,6 +861,11 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
           </Text>
         ) : null}
       </View>
+      )}
+
+      <View style={isWideDesktop ? styles.desktopShell : styles.mobileShell}>
+        {isWideDesktop ? renderDesktopStepRail() : null}
+        <View style={isWideDesktop ? styles.desktopFormPane : styles.mobileFormPane}>
 
       {/* Body — keyboard handling:
           - iOS: relies on the ScrollView's `automaticallyAdjustKeyboardInsets`
@@ -706,21 +881,19 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
         style={styles.kbAvoid}
         contentContainerStyle={[
           styles.body,
-          // paddingBottom = keyboard height (no buffer). Combined with
-          // a deferred scrollToEnd in the keyboardHeight effect, this
-          // lands the focused bottom-most input's bottom edge directly
-          // at the keyboard top — no visible gap.
-          keyboardHeight > 0 ? { paddingBottom: keyboardHeight } : null,
+          // Step 4 (Cover) needs the +200 overshoot for the GIPHY/Pexels
+          // search input inside CoverPicker (ORCH-0884 follow-up #6).
+          // All other steps rely on iOS's `automaticallyAdjustKeyboardInsets`
+          // for flush positioning — adding extra padding there pushes
+          // focused inputs way above the keyboard.
+          keyboardHeight > 0 && currentStep === 3
+            ? { paddingBottom: keyboardHeight + 200 }
+            : null,
         ]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
-        // automaticallyAdjustKeyboardInsets removed — it was adding a
-        // SECOND content inset = keyboard height on top of the manual
-        // paddingBottom, which doubled the visible space below the
-        // focused input. Manual control alone is sufficient now that
-        // scrollToEnd is correctly deferred to fire after the
-        // paddingBottom applies.
+        automaticallyAdjustKeyboardInsets
       >
         <Text style={styles.eyebrow}>
           Step {currentStep + 1} of {TOTAL_STEPS}
@@ -806,6 +979,8 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
         )}
       </GlassCard>
       )}
+        </View>
+      </View>
 
       {/* Overlays — at root for I-13 portal contract */}
       <ConfirmDialog
@@ -860,6 +1035,161 @@ const styles = StyleSheet.create({
   },
   kbAvoid: {
     flex: 1,
+  },
+  mobileShell: {
+    flex: 1,
+  },
+  mobileFormPane: {
+    flex: 1,
+  },
+  desktopAppRail: {
+    position: "absolute",
+    zIndex: 20,
+    elevation: 20,
+    top: 0,
+    left: 0,
+    bottom: 0,
+    width: DESKTOP_RAIL_WIDTH,
+    alignItems: "center",
+    paddingTop: spacing.xl,
+    gap: spacing.sm,
+    borderRightWidth: StyleSheet.hairlineWidth,
+    borderRightColor: "rgba(255, 255, 255, 0.06)",
+  },
+  desktopRailBrandMark: {
+    width: 42,
+    height: 42,
+    marginBottom: spacing.md,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  desktopRailLogo: {
+    width: 42,
+    height: 42,
+  },
+  desktopRailItem: {
+    width: 56,
+    height: 56,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 2,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "transparent",
+  },
+  desktopRailItemActive: {
+    backgroundColor: "rgba(255, 255, 255, 0.055)",
+    borderColor: "rgba(235, 120, 37, 0.45)",
+  },
+  desktopRailItemText: {
+    fontSize: 9,
+    lineHeight: 11,
+    fontWeight: "700",
+    color: textTokens.tertiary,
+  },
+  desktopRailItemTextActive: {
+    color: accent.warm,
+  },
+  desktopTopBarWrap: {
+    paddingTop: DESKTOP_TOP_INSET,
+    paddingLeft: DESKTOP_RAIL_WIDTH + DESKTOP_BEZEL_MARGIN,
+    paddingRight: DESKTOP_BEZEL_MARGIN,
+    paddingBottom: spacing.sm,
+  },
+  desktopShell: {
+    flex: 1,
+    flexDirection: "row",
+    gap: spacing.md,
+    paddingLeft: DESKTOP_RAIL_WIDTH + DESKTOP_BEZEL_MARGIN,
+    paddingRight: DESKTOP_BEZEL_MARGIN,
+    paddingBottom: DESKTOP_BEZEL_MARGIN,
+  },
+  desktopStepRail: {
+    width: DESKTOP_WIZARD_RAIL_WIDTH,
+    flexShrink: 0,
+  },
+  desktopStepRailHeader: {
+    marginBottom: spacing.lg,
+  },
+  desktopStepEyebrow: {
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 1.4,
+    textTransform: "uppercase",
+    color: accent.warm,
+    marginBottom: spacing.sm,
+  },
+  desktopStepRailTitle: {
+    fontSize: typography.h3.fontSize,
+    lineHeight: typography.h3.lineHeight,
+    fontWeight: typography.h3.fontWeight,
+    color: textTokens.primary,
+  },
+  desktopStepRailSub: {
+    marginTop: spacing.xs,
+    fontSize: typography.caption.fontSize,
+    color: textTokens.tertiary,
+  },
+  desktopStepList: {
+    gap: spacing.sm,
+  },
+  desktopStepItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    padding: spacing.sm,
+    borderRadius: 12,
+  },
+  desktopStepItemActive: {
+    backgroundColor: "rgba(235, 120, 37, 0.18)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(235, 120, 37, 0.45)",
+  },
+  desktopStepIndex: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: glass.tint.profileBase,
+  },
+  desktopStepIndexActive: {
+    backgroundColor: accent.warm,
+  },
+  desktopStepIndexText: {
+    fontSize: typography.caption.fontSize,
+    fontWeight: "800",
+    color: textTokens.tertiary,
+  },
+  desktopStepIndexTextActive: {
+    color: textTokens.inverse,
+  },
+  desktopStepCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  desktopStepTitle: {
+    fontSize: typography.bodySm.fontSize,
+    fontWeight: "700",
+    color: textTokens.tertiary,
+  },
+  desktopStepTitleActive: {
+    color: textTokens.primary,
+  },
+  desktopStepSub: {
+    marginTop: 2,
+    fontSize: typography.caption.fontSize,
+    color: textTokens.quaternary,
+  },
+  desktopFormPane: {
+    flex: 1,
+    maxWidth: DESKTOP_WIZARD_FORM_MAX_WIDTH,
+    minWidth: 0,
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255, 255, 255, 0.08)",
+    backgroundColor: "rgba(255, 255, 255, 0.018)",
+    overflow: "hidden",
   },
   chromeRow: {
     flexDirection: "row",

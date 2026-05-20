@@ -32,7 +32,7 @@ jest.mock("@react-native-async-storage/async-storage", () => ({
 
 // Sentry breadcrumb is fire-and-forget telemetry; mock to a no-op so we don't
 // trigger production SDK calls during unit tests.
-jest.mock("@sentry/react-native", () => ({
+jest.mock("../../diagnostics/sentry", () => ({
   addBreadcrumb: jest.fn(),
 }));
 

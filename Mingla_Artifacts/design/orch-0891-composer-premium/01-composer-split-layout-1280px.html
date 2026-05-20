@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ORCH-0891 — Composer Split Layout at 1280px</title>
+<style>
+  /* ─── Mingla token mirror (designSystem.ts values) ────────────────── */
+  :root {
+    --accent-warm: #eb7825;
+    --accent-glow: rgba(235, 120, 37, 0.35);
+    --accent-tint: rgba(235, 120, 37, 0.28);
+    --accent-border: rgba(235, 120, 37, 0.55);
+    --canvas: #0c0e12;
+    --glass-base: rgba(255, 255, 255, 0.04);
+    --glass-elevated: rgba(255, 255, 255, 0.06);
+    --border-base: rgba(255, 255, 255, 0.08);
+    --border-elevated: rgba(255, 255, 255, 0.12);
+    --text-primary: rgba(255, 255, 255, 0.96);
+    --text-secondary: rgba(255, 255, 255, 0.72);
+    --text-tertiary: rgba(255, 255, 255, 0.52);
+    --text-quaternary: rgba(255, 255, 255, 0.32);
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+    --radius-xl: 24px;
+    --radius-full: 999px;
+    --space-xxs: 2px;
+    --space-xs: 4px;
+    --space-sm: 8px;
+    --space-md: 16px;
+    --space-lg: 24px;
+    --space-xl: 32px;
+    --rail-width: 80px;
+    --bezel-margin: 12px;
+    --top-inset: 16px;
+    --ease-out: cubic-bezier(0.33, 1, 0.68, 1);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; }
+
+  body {
+    background:
+      radial-gradient(80% 50% at 50% 0%, rgba(235, 120, 37, 0.08) 0%, transparent 60%),
+      radial-gradient(60% 60% at 10% 100%, rgba(120, 80, 200, 0.06) 0%, transparent 50%),
+      radial-gradient(60% 60% at 90% 100%, rgba(50, 180, 200, 0.05) 0%, transparent 50%),
+      var(--canvas);
+    color: var(--text-primary);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    overflow: hidden;
+  }
+
+  /* ─── Layout — fixed left rail + canvas content ────────────────────── */
+  .layout {
+    display: flex;
+    height: 100vh;
+    width: 100vw;
+  }
+
+  .rail {
+    width: var(--rail-width);
+    border-right: 1px solid rgba(255, 255, 255, 0.05);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: var(--space-lg) 0;
+    gap: var(--space-sm);
+    flex-shrink: 0;
+  }
+
+  .rail-brand {
+    width: 40px;
+    height: 40px;
+    border-radius: var(--radius-md);
+    background: linear-gradient(135deg, #F4811F, #E11D48);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: var(--space-md);
+  }
+
+  .rail-tab {
+    width: 48px;
+    height: 48px;
+    border-radius: var(--radius-lg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 2px;
+    color: #b9b9c2;
+    font-size: 9px;
+    cursor: pointer;
+  }
+  .rail-tab[data-active="true"] {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    color: var(--accent-warm);
+    box-shadow: 0 0 0 2px var(--accent-glow);
+  }
+  .rail-tab svg { width: 20px; height: 20px; }
+  .rail-spacer { flex: 1; }
+
+  .canvas {
+    flex: 1;
+    padding: var(--top-inset) var(--bezel-margin) var(--bezel-margin) var(--bezel-margin);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+    min-width: 0;
+  }
+
+  /* ─── TopBar ─────────────────────────────────────────────────────────── */
+  .topbar {
+    height: 56px;
+    background: rgba(12, 14, 18, 0.55);
+    backdrop-filter: blur(28px);
+    border: 1px solid var(--border-elevated);
+    border-radius: var(--radius-lg);
+    padding: 0 var(--space-md);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+  .topbar-left { display: flex; align-items: center; gap: var(--space-sm); }
+  .topbar-brand-name { color: var(--text-primary); font-size: 18px; font-weight: 600; }
+  .topbar-chev { color: var(--text-tertiary); font-size: 14px; }
+  .topbar-right { display: flex; align-items: center; gap: var(--space-sm); }
+  .topbar-iconchrome {
+    width: 36px; height: 36px; border-radius: var(--radius-sm);
+    background: rgba(255, 255, 255, 0.04); border: 1px solid var(--border-base);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-secondary);
+  }
+
+  /* ─── SubNav ─────────────────────────────────────────────────────────── */
+  .subnav { display: flex; gap: var(--space-xs); flex-shrink: 0; }
+  .subnav-pill {
+    padding: var(--space-xs) var(--space-md);
+    border-radius: var(--radius-full);
+    border: 1px solid transparent;
+    color: var(--text-tertiary);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .subnav-pill[data-active="true"] {
+    background: var(--accent-tint);
+    border-color: var(--accent-border);
+    color: var(--accent-warm);
+  }
+
+  /* ─── Composer Canvas (3-pane when drawer open; 2-pane otherwise) ───── */
+  .composer-canvas {
+    display: flex;
+    flex-direction: row;
+    gap: var(--space-md);
+    flex: 1;
+    min-height: 0;
+  }
+
+  .editor-pane {
+    flex: 48%;
+    background: var(--glass-base);
+    border: 1px solid var(--border-base);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.30);
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .drawer-pane {
+    width: 320px;
+    background: var(--glass-elevated);
+    border: 1px solid var(--border-elevated);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.42);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  .preview-pane {
+    flex: 32%;
+    background: var(--glass-base);
+    border: 1px solid var(--border-base);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.30);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ─── Editor pane contents ────────────────────────────────────────── */
+  .composer-header {
+    padding: var(--space-md);
+    border-bottom: 1px solid var(--border-base);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .composer-header-title { color: var(--text-primary); font-size: 16px; font-weight: 600; }
+  .composer-header-save {
+    padding: var(--space-xs) var(--space-md);
+    background: var(--accent-tint);
+    border: 1px solid var(--accent-border);
+    border-radius: var(--radius-full);
+    color: var(--accent-warm);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .composer-who {
+    padding: var(--space-sm) var(--space-md);
+    display: flex; align-items: center; gap: var(--space-sm);
+    color: var(--text-secondary); font-size: 13px;
+    border-bottom: 1px solid var(--border-base);
+  }
+  .composer-who-pill {
+    padding: var(--space-xs) var(--space-sm);
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: var(--radius-full);
+    color: var(--text-primary); font-size: 12px; font-weight: 500;
+  }
+
+  .subject-row {
+    padding: var(--space-sm) var(--space-md);
+    display: flex; gap: var(--space-sm); align-items: center;
+    border-bottom: 1px solid var(--border-base);
+  }
+  .subject-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    font-size: 15px;
+    outline: none;
+    padding: var(--space-xs) 0;
+  }
+  .subject-input::placeholder { color: var(--text-tertiary); }
+  .subject-personalize {
+    width: 32px; height: 32px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border-base);
+    border-radius: var(--radius-sm);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-secondary); font-family: monospace;
+    cursor: pointer;
+  }
+
+  /* ─── Formatting toolbar (Strand 2 — desktop horizontal) ──────────── */
+  .toolbar {
+    height: 44px;
+    background: var(--glass-elevated);
+    border-bottom: 1px solid var(--border-base);
+    padding: 0 var(--space-sm);
+    display: flex; align-items: center; gap: var(--space-xs);
+  }
+  .toolbar-group { display: flex; gap: var(--space-xxs); }
+  .toolbar-sep { width: 1px; height: 24px; background: var(--border-base); margin: 0 var(--space-xs); }
+  .toolbar-spacer { flex: 1; }
+  .toolbar-btn {
+    width: 32px; height: 32px;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text-secondary);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 600;
+    cursor: pointer;
+    transition: background 120ms var(--ease-out), border-color 120ms var(--ease-out), color 120ms var(--ease-out);
+  }
+  .toolbar-btn:hover { background: rgba(255, 255, 255, 0.06); }
+  .toolbar-btn[data-active="true"] {
+    background: var(--accent-tint);
+    border-color: var(--accent-border);
+    color: var(--accent-warm);
+  }
+
+  /* ─── Editor body ─────────────────────────────────────────────────── */
+  .editor-body {
+    flex: 1;
+    padding: var(--space-md);
+    color: var(--text-primary);
+    font-size: 15px;
+    line-height: 1.55;
+    overflow-y: auto;
+  }
+  .editor-body p { margin-bottom: var(--space-sm); }
+
+  /* ─── Chip styles (mirrors composerChipHtml.ts) ──────────────────── */
+  .mingla-personalization-chip {
+    display: inline-block;
+    padding: 1px 8px;
+    margin: 0 1px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(235, 120, 37, 0.45);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-primary);
+    user-select: none;
+    white-space: nowrap;
+    vertical-align: middle;
+    line-height: 1.4;
+  }
+  .mingla-personalization-chip::before { content: "{ "; opacity: 0.6; }
+  .mingla-personalization-chip::after { content: " }"; opacity: 0.6; }
+
+  .mingla-event-chip {
+    display: inline-block;
+    padding: 1px 8px;
+    margin: 0 1px;
+    border-radius: 999px;
+    background: rgba(235, 120, 37, 0.16);
+    border: 1px solid rgba(235, 120, 37, 0.55);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+    user-select: none;
+    vertical-align: baseline;
+    white-space: nowrap;
+    line-height: 1.4;
+    position: relative;
+  }
+  .mingla-event-chip .mingla-chip-glyph {
+    color: var(--accent-warm);
+    font-size: 12px;
+    margin-right: 4px;
+  }
+  /* Size picker (ORCH-0891 §6) */
+  .mingla-event-chip .mingla-chip-size-picker {
+    display: none;
+    margin-left: 6px;
+    gap: 2px;
+    vertical-align: middle;
+  }
+  .mingla-event-chip:hover .mingla-chip-size-picker {
+    display: inline-flex;
+  }
+  .mingla-chip-size-picker button {
+    width: 18px; height: 18px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    color: rgba(255, 255, 255, 0.70);
+    font-size: 10px; font-weight: 600;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    cursor: pointer;
+    padding: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    transition: background 120ms var(--ease-out), border-color 120ms var(--ease-out), color 120ms var(--ease-out);
+  }
+  .mingla-chip-size-picker button:hover {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.18);
+    color: rgba(255, 255, 255, 0.92);
+  }
+  .mingla-chip-size-picker button[data-active="true"] {
+    background: rgba(235, 120, 37, 0.50);
+    border-color: var(--accent-warm);
+    color: #ffffff;
+  }
+
+  /* ─── Composer footer ─────────────────────────────────────────────── */
+  .composer-footer {
+    padding: var(--space-sm) var(--space-md);
+    border-top: 1px solid var(--border-base);
+    display: flex; gap: var(--space-sm); align-items: center;
+  }
+  .composer-footer-btn {
+    padding: var(--space-sm) var(--space-md);
+    border-radius: var(--radius-full);
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border-base);
+    color: var(--text-primary);
+    font-size: 13px; font-weight: 600;
+    cursor: pointer;
+  }
+  .composer-footer-btn-primary {
+    background: rgba(235, 120, 37, 0.42);
+    border-color: var(--accent-border);
+    color: var(--text-primary);
+    margin-left: auto;
+  }
+  .composer-footer-shortcut {
+    margin-left: var(--space-xs);
+    color: var(--text-tertiary);
+    font-size: 11px;
+    font-family: ui-monospace, monospace;
+  }
+
+  /* ─── Drawer pane contents ───────────────────────────────────────── */
+  .drawer-header {
+    height: 56px;
+    padding: 0 var(--space-md);
+    display: flex; justify-content: space-between; align-items: center;
+    border-bottom: 1px solid var(--border-base);
+  }
+  .drawer-title { color: var(--text-primary); font-size: 16px; font-weight: 600; }
+  .drawer-close {
+    width: 32px; height: 32px;
+    background: transparent;
+    border: none;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    font-size: 18px;
+  }
+  .drawer-body { flex: 1; overflow-y: auto; padding: var(--space-xs) var(--space-sm); }
+  .drawer-section-label {
+    padding: var(--space-sm) var(--space-sm) var(--space-xs);
+    color: var(--text-tertiary);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 600;
+  }
+  .template-row {
+    display: flex;
+    gap: var(--space-sm);
+    align-items: center;
+    padding: var(--space-sm);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    margin-bottom: var(--space-xxs);
+    transition: background 120ms var(--ease-out);
+  }
+  .template-row:hover { background: rgba(255, 255, 255, 0.04); }
+  .template-thumb {
+    width: 48px; height: 48px;
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: var(--radius-sm);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--accent-warm);
+    font-size: 18px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+  .template-meta { flex: 1; min-width: 0; }
+  .template-name { color: var(--text-primary); font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .template-sub { color: var(--text-tertiary); font-size: 12px; margin-top: 2px; }
+
+  /* ─── Preview pane contents (mirrors EmailPreviewPane) ──────────── */
+  .preview-canvas {
+    flex: 1;
+    background: #F5F5F7;
+    padding: var(--space-md);
+    overflow-y: auto;
+  }
+  .preview-frame {
+    background: #FFFFFF;
+    border: 1px solid #ECECEE;
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    max-width: 100%;
+  }
+  .preview-from {
+    padding: var(--space-md);
+    border-bottom: 1px solid #ECECEE;
+  }
+  .preview-from-name { color: #0F1115; font-size: 13px; font-weight: 600; }
+  .preview-from-line { color: #5B6172; font-size: 12px; margin-top: 2px; }
+  .preview-subject {
+    padding: var(--space-md);
+    color: #16110D; font-size: 18px; font-weight: 700;
+    border-bottom: 1px solid #ECECEE;
+  }
+  .preview-body {
+    padding: var(--space-md);
+    color: #16110D; font-size: 14px; line-height: 1.55;
+  }
+  .preview-event-card {
+    margin-top: var(--space-md);
+    background: linear-gradient(135deg, #FFF7EF, #FFE3C8);
+    border: 1px solid rgba(244, 124, 32, 0.22);
+    border-radius: var(--radius-md);
+    padding: var(--space-md);
+    display: flex; flex-direction: column; gap: var(--space-xs);
+  }
+  .preview-event-kicker {
+    color: #9A430D; font-size: 10px;
+    text-transform: uppercase; letter-spacing: 0.1em; font-weight: 700;
+  }
+  .preview-event-title { color: #16110D; font-size: 16px; font-weight: 700; }
+  .preview-event-meta { display: flex; gap: var(--space-xs); margin-top: var(--space-xs); }
+  .preview-event-pill {
+    padding: 2px var(--space-xs);
+    border-radius: var(--radius-sm);
+    background: rgba(244, 124, 32, 0.18);
+    color: #9A430D; font-size: 11px; font-weight: 600;
+  }
+  .preview-event-cta {
+    margin-top: var(--space-sm);
+    background: #F47C20; color: #fff;
+    padding: var(--space-xs) var(--space-md);
+    border-radius: var(--radius-full);
+    font-size: 13px; font-weight: 700;
+    display: inline-block;
+    align-self: flex-start;
+  }
+
+  /* ─── Annotation overlays (mock-only — implementor ignores these) ── */
+  .annotation {
+    position: absolute;
+    background: rgba(0, 0, 0, 0.8);
+    color: #fff;
+    padding: var(--space-xs) var(--space-sm);
+    border-radius: var(--radius-sm);
+    font-size: 11px;
+    font-family: ui-monospace, monospace;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+
+<div class="layout">
+
+  <!-- Left rail (existing ORCH-0885-A pattern) -->
+  <div class="rail">
+    <div class="rail-brand">M</div>
+    <div class="rail-tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 9.5L12 3l9 6.5V21H3z"/></svg>Home</div>
+    <div class="rail-tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/></svg>Hub</div>
+    <div class="rail-tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3c-3 4-7 6-7 11a7 7 0 0 0 14 0c0-5-4-7-7-11z"/></svg>Ari</div>
+    <div class="rail-tab" data-active="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 2L11 13M22 2L15 22L11 13L2 9L22 2z"/></svg>Blast</div>
+    <div class="rail-spacer"></div>
+  </div>
+
+  <!-- Canvas (right of rail) -->
+  <div class="canvas">
+
+    <!-- TopBar -->
+    <div class="topbar">
+      <div class="topbar-left">
+        <div class="topbar-brand-name">Acme Productions</div>
+        <div class="topbar-chev">▾</div>
+      </div>
+      <div class="topbar-right">
+        <div class="topbar-iconchrome">🔔</div>
+        <div class="topbar-iconchrome">👤</div>
+      </div>
+    </div>
+
+    <!-- SubNav (Marketing) -->
+    <div class="subnav">
+      <div class="subnav-pill">Overview</div>
+      <div class="subnav-pill">Audiences</div>
+      <div class="subnav-pill" data-active="true">Campaigns</div>
+      <div class="subnav-pill">Templates</div>
+    </div>
+
+    <!-- 3-pane composer canvas (drawer open) -->
+    <div class="composer-canvas">
+
+      <!-- EDITOR PANE -->
+      <div class="editor-pane">
+        <div class="composer-header">
+          <div class="composer-header-title">New campaign</div>
+          <div class="composer-header-save">Save draft</div>
+        </div>
+
+        <div class="composer-who">
+          To
+          <div class="composer-who-pill">All Acme buyers · 432 reachable</div>
+        </div>
+
+        <div class="subject-row">
+          <input class="subject-input" type="text" placeholder="Subject…" value="Hey {first_name}, Friday's lineup just dropped"/>
+          <div class="subject-personalize">{ }</div>
+        </div>
+
+        <!-- Desktop horizontal toolbar (Strand 2) -->
+        <div class="toolbar">
+          <div class="toolbar-group">
+            <button class="toolbar-btn" title="Bold ⌘B"><b>B</b></button>
+            <button class="toolbar-btn" data-active="true" title="Italic ⌘I"><i>I</i></button>
+            <button class="toolbar-btn" title="Link ⌘K">⤓</button>
+          </div>
+          <div class="toolbar-sep"></div>
+          <div class="toolbar-group">
+            <button class="toolbar-btn" title="Insert event">+</button>
+            <button class="toolbar-btn" title="Insert variable">{ }</button>
+          </div>
+          <div class="toolbar-spacer"></div>
+          <button class="toolbar-btn" title="Templates ⌘D">📑</button>
+        </div>
+
+        <!-- Editor body — Tiptap-rendered with chips -->
+        <div class="editor-body">
+          <p>
+            Hey <span class="mingla-personalization-chip" contenteditable="false" data-token="first_name">first_name</span>&nbsp;,
+          </p>
+          <p>
+            Friday's lineup just dropped — three rooms, three vibes. Come grab tickets before they're gone.
+          </p>
+          <p>
+            Featured this week:
+            <span class="mingla-event-chip" contenteditable="false" data-event-id="abc-123" data-size="medium">
+              <span class="mingla-chip-glyph">▣</span>Friday Night, Three Rooms
+              <span class="mingla-chip-size-picker" contenteditable="false">
+                <button aria-label="Compact size">S</button>
+                <button aria-label="Medium size" data-active="true">M</button>
+                <button aria-label="Large size">L</button>
+              </span>
+            </span>&nbsp;
+          </p>
+          <p>
+            See you on the floor,
+          </p>
+          <p>
+            <span class="mingla-personalization-chip" contenteditable="false" data-token="brand_name">brand_name</span>
+          </p>
+        </div>
+
+        <div class="composer-footer">
+          <div class="composer-footer-btn">Preview <span class="composer-footer-shortcut">⌘P</span></div>
+          <div class="composer-footer-btn">Schedule</div>
+          <div class="composer-footer-btn composer-footer-btn-primary">Send now <span class="composer-footer-shortcut">⌘↵</span></div>
+        </div>
+      </div>
+
+      <!-- DRAWER PANE (Strand 4 — right-rail when open) -->
+      <div class="drawer-pane">
+        <div class="drawer-header">
+          <div class="drawer-title">Templates</div>
+          <button class="drawer-close" aria-label="Close templates">×</button>
+        </div>
+        <div class="drawer-body">
+          <div class="drawer-section-label">Starter Pack</div>
+          <div class="template-row">
+            <div class="template-thumb">W</div>
+            <div class="template-meta">
+              <div class="template-name">Welcome to the family</div>
+              <div class="template-sub">Starter · 5 variables</div>
+            </div>
+          </div>
+          <div class="template-row">
+            <div class="template-thumb">E</div>
+            <div class="template-meta">
+              <div class="template-name">Event reminder</div>
+              <div class="template-sub">Starter · 4 variables</div>
+            </div>
+          </div>
+          <div class="template-row">
+            <div class="template-thumb">T</div>
+            <div class="template-meta">
+              <div class="template-name">Thanks for coming</div>
+              <div class="template-sub">Starter · 3 variables</div>
+            </div>
+          </div>
+          <div class="drawer-section-label">Your Templates</div>
+          <div class="template-row">
+            <div class="template-thumb">F</div>
+            <div class="template-meta">
+              <div class="template-name">Friday teaser</div>
+              <div class="template-sub">Custom · Edited 3d ago</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PREVIEW PANE (Strand 2 — live email preview) -->
+      <div class="preview-pane">
+        <div class="preview-canvas">
+          <div class="preview-frame">
+            <div class="preview-from">
+              <div class="preview-from-name">Acme Productions</div>
+              <div class="preview-from-line">to seth@usemingla.com</div>
+            </div>
+            <div class="preview-subject">Hey Seth, Friday's lineup just dropped</div>
+            <div class="preview-body">
+              <p>Hey Seth,</p>
+              <p style="margin-top: 8px;">Friday's lineup just dropped — three rooms, three vibes. Come grab tickets before they're gone.</p>
+              <p style="margin-top: 8px;">Featured this week:</p>
+              <div class="preview-event-card">
+                <div class="preview-event-kicker">Featured Event</div>
+                <div class="preview-event-title">Friday Night, Three Rooms</div>
+                <div class="preview-event-meta">
+                  <div class="preview-event-pill">Fri · Aug 15</div>
+                  <div class="preview-event-pill">Bowery</div>
+                </div>
+                <div class="preview-event-cta">Get tickets</div>
+              </div>
+              <p style="margin-top: 12px;">See you on the floor,</p>
+              <p>Acme Productions</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

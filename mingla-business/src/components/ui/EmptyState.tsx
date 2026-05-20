@@ -18,6 +18,9 @@ import {
   typography,
 } from "../../constants/designSystem";
 
+import { MarketingEmptyIllustration } from "../marketing/MarketingEmptyIllustration";
+import type { MarketingIllustrationKey } from "../marketing/MarketingEmptyIllustration";
+
 import { Button } from "./Button";
 import type { ButtonVariant } from "./Button";
 import { Icon } from "./Icon";
@@ -32,6 +35,12 @@ export interface EmptyStateCta {
 export interface EmptyStateProps {
   /** Either an icon name (renders 48px) or a custom React node. */
   illustration?: IconName | React.ReactNode;
+  /**
+   * ORCH-0891 M3 — Marketing-specific SVG illustration. When provided,
+   * takes precedence over `illustration`. Renders a 120pt inline-SVG
+   * via `react-native-svg`.
+   */
+  illustrationKey?: MarketingIllustrationKey;
   title: string;
   description?: string;
   cta?: EmptyStateCta;
@@ -40,12 +49,14 @@ export interface EmptyStateProps {
 }
 
 const ILLUSTRATION_SIZE = 48;
+const MARKETING_ILLUSTRATION_SIZE = 120;
 
 const isIconName = (value: IconName | React.ReactNode): value is IconName =>
   typeof value === "string";
 
 export const EmptyState: React.FC<EmptyStateProps> = ({
   illustration,
+  illustrationKey,
   title,
   description,
   cta,
@@ -54,7 +65,14 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
 }) => {
   return (
     <View testID={testID} style={[styles.container, style]}>
-      {illustration !== undefined ? (
+      {illustrationKey !== undefined ? (
+        <View style={styles.illustration}>
+          <MarketingEmptyIllustration
+            illustration={illustrationKey}
+            size={MARKETING_ILLUSTRATION_SIZE}
+          />
+        </View>
+      ) : illustration !== undefined ? (
         <View style={styles.illustration}>
           {isIconName(illustration) ? (
             <Icon

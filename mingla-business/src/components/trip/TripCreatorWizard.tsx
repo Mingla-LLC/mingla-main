@@ -23,14 +23,18 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Image,
   Keyboard,
   type KeyboardEvent,
+  KeyboardAvoidingView,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
@@ -42,12 +46,22 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
+import {
+  DESKTOP_BEZEL_MARGIN,
+  DESKTOP_RAIL_WIDTH,
+  DESKTOP_TOP_INSET,
+  DESKTOP_WIZARD_FORM_MAX_WIDTH,
+  DESKTOP_WIZARD_RAIL_WIDTH,
+} from "../../constants/desktopLayout";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { Button } from "../ui/Button";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { GlassCard } from "../ui/GlassCard";
+import { Icon } from "../ui/Icon";
 import { IconChrome } from "../ui/IconChrome";
 import { Stepper } from "../ui/Stepper";
 import type { StepperStep } from "../ui/Stepper";
+import { TopBar } from "../ui/TopBar";
 import { Toast } from "../ui/Toast";
 import {
   useUpdateTripBasics,
@@ -97,6 +111,16 @@ import {
 } from "../../hooks/useIntakeSchema";
 import type { IntakeSchema } from "../../services/intakeSchemaService";
 import type { TripPreviewBrand } from "./TripPreview";
+
+/*
+ * Desktop web wizard contract restored after regression:
+ * useResponsiveLayout / isWideDesktop gate must protect the desktop-only
+ * shell, renderDesktopAppRail, renderDesktopStepRail, desktopShell,
+ * desktopTopBarWrap, desktopStepRail, desktopFormPane,
+ * DESKTOP_RAIL_WIDTH, DESKTOP_TOP_INSET, DESKTOP_WIZARD_RAIL_WIDTH,
+ * DESKTOP_WIZARD_FORM_MAX_WIDTH, and <TopBar leftKind="brand" />.
+ * The mobile Stepper/chromeRow path must remain mobile/narrow-web only.
+ */
 
 export interface TripCreatorWizardProps {
   trip: Trip;
@@ -156,6 +180,14 @@ const STEPPER_STEPS: StepperStep[] = [
   { id: "step-6", label: STEP_TITLES[6] },
   { id: "step-7", label: STEP_TITLES[7] },
 ];
+
+const MINGLA_BUSINESS_LOGO = require("../../../assets/brand/mingla-business-logo.png") as number;
+const DESKTOP_WIZARD_NAV_ITEMS = [
+  { label: "Home", icon: "home", href: "/(tabs)/home", active: false },
+  { label: "Hub", icon: "calendar", href: "/(tabs)/hub/trips", active: true },
+  { label: "Ari", icon: "sparkle", href: "/(tabs)/ari", active: false },
+  { label: "Blast", icon: "send", href: "/(tabs)/marketing", active: false },
+] as const;
 
 function tripToStep1Draft(trip: Trip): Step1Draft {
   return {
@@ -302,6 +334,8 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
   onExit,
 }) => {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const { isWideDesktop } = useResponsiveLayout();
   const [step, setStep] = useState<StepIndex>(1);
   const [step1Draft, setStep1Draft] = useState<Step1Draft>(tripToStep1Draft(trip));
   const [daysDraft, setDaysDraft] = useState<TripDayDraft[]>(tripToDaysDraft(trip));
@@ -356,6 +390,10 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
   // keyboard is visible.
   const [keyboardVisible, setKeyboardVisible] = useState<boolean>(false);
   const [keyboardHeight, setKeyboardHeight] = useState<number>(0);
+  // ORCH-0884 follow-up #9 — ScrollView ref passed to TripCreatorStep1Basics
+  // → CoverPicker so the GIPHY/Pexels search TextInput can trigger an
+  // explicit scroll-on-focus past iOS's auto-scroll position.
+  const scrollViewRef = useRef<ScrollView | null>(null);
   useEffect(() => {
     const showEvent =
       Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
@@ -856,31 +894,163 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
     return `${prefix ? prefix + ". " : ""}Buyers can book immediately. You can edit details after publishing.`;
   }, [step1Draft.destinationLocationText, step1Draft.startAt, step1Draft.endAt]);
 
-  return (
-    <View
-      style={[styles.host, { paddingTop: insets.top, backgroundColor: canvas.discover }]}
-    >
-      {/* Chrome row: [Close X] [Stepper] [step counter] */}
-      <View style={styles.chromeRow}>
-        <IconChrome
-          icon="close"
-          size={36}
-          onPress={handleClose}
-          accessibilityLabel="Close wizard"
+  const handleDesktopRailNavigate = useCallback(
+    (href: string): void => {
+      router.replace(href as never);
+    },
+    [router],
+  );
+
+  const renderDesktopAppRail = (): React.ReactElement => (
+    <View style={styles.desktopAppRail}>
+      <View style={styles.desktopRailBrandMark}>
+        <Image
+          source={MINGLA_BUSINESS_LOGO}
+          style={styles.desktopRailLogo}
+          resizeMode="contain"
+          accessibilityIgnoresInvertColors
         />
-        <View style={styles.stepperWrap}>
-          <Stepper
-            steps={STEPPER_STEPS}
-            currentIndex={stepIdx}
-            showCaption={false}
+      </View>
+      {DESKTOP_WIZARD_NAV_ITEMS.map((item) => (
+        <Pressable
+          key={item.label}
+          onPress={() => handleDesktopRailNavigate(item.href)}
+          accessibilityRole="button"
+          accessibilityLabel={`Go to ${item.label}`}
+          style={[
+            styles.desktopRailItem,
+            item.active ? styles.desktopRailItemActive : null,
+          ]}
+        >
+          <Icon
+            name={item.icon}
+            size={22}
+            color={item.active ? accent.warm : textTokens.tertiary}
           />
-        </View>
-        <Text style={styles.stepCounter} testID="trip-wizard-step-counter">
-          {step}/{STEP_COUNT}
+          <Text
+            style={[
+              styles.desktopRailItemText,
+              item.active ? styles.desktopRailItemTextActive : null,
+            ]}
+          >
+            {item.label}
+          </Text>
+        </Pressable>
+      ))}
+    </View>
+  );
+
+  const renderDesktopStepRail = (): React.ReactElement => (
+    <GlassCard
+      variant="base"
+      padding={spacing.md}
+      radius="lg"
+      style={styles.desktopStepRail}
+    >
+      <View style={styles.desktopStepRailHeader}>
+        <Text style={styles.desktopStepEyebrow}>Create trip</Text>
+        <Text style={styles.desktopStepRailTitle} numberOfLines={2}>
+          {step1Draft.title.trim().length > 0 ? step1Draft.title : "Untitled trip"}
+        </Text>
+        <Text style={styles.desktopStepRailSub} numberOfLines={1}>
+          {brand.name} · Draft saved
         </Text>
       </View>
+      <View style={styles.desktopStepList}>
+        {STEPPER_STEPS.map((stepDef, index) => {
+          const stepNumber = (index + 1) as StepIndex;
+          const active = stepNumber === step;
+          return (
+            <View
+              key={stepDef.id}
+              style={[styles.desktopStepItem, active ? styles.desktopStepItemActive : null]}
+            >
+              <View
+                style={[
+                  styles.desktopStepIndex,
+                  active ? styles.desktopStepIndexActive : null,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.desktopStepIndexText,
+                    active ? styles.desktopStepIndexTextActive : null,
+                  ]}
+                >
+                  {stepNumber}
+                </Text>
+              </View>
+              <View style={styles.desktopStepCopy}>
+                <Text
+                  style={[
+                    styles.desktopStepTitle,
+                    active ? styles.desktopStepTitleActive : null,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {STEP_TITLES[stepNumber]}
+                </Text>
+                <Text style={styles.desktopStepSub} numberOfLines={1}>
+                  {STEP_SUBTITLES[stepNumber]}
+                </Text>
+              </View>
+            </View>
+          );
+        })}
+      </View>
+    </GlassCard>
+  );
+
+  return (
+    <View
+      style={[
+        styles.host,
+        {
+          paddingTop: isWideDesktop ? 0 : insets.top,
+          backgroundColor: canvas.discover,
+        },
+      ]}
+    >
+      {isWideDesktop ? renderDesktopAppRail() : null}
+      {/* Chrome row: [Close X] [Stepper] [step counter] */}
+      {isWideDesktop ? (
+        <View style={styles.desktopTopBarWrap}>
+          {/* orch-strict-grep-allow leftKind-brand-rightSlot — wizard chrome replaces (not composes with) the primary-tab [search,bell] cluster; default cluster is semantically wrong inside a modal creator. Per ORCH-0894 desktop layout polish. */}
+          <TopBar
+            leftKind="brand"
+            rightSlot={
+              <IconChrome
+                icon="close"
+                size={36}
+                onPress={handleClose}
+                accessibilityLabel="Close wizard"
+              />
+            }
+          />
+        </View>
+      ) : (
+        <View style={styles.chromeRow}>
+          <IconChrome
+            icon="close"
+            size={36}
+            onPress={handleClose}
+            accessibilityLabel="Close wizard"
+          />
+          <View style={styles.stepperWrap}>
+            <Stepper
+              steps={STEPPER_STEPS}
+              currentIndex={stepIdx}
+              showCaption={false}
+            />
+          </View>
+          <Text style={styles.stepCounter} testID="trip-wizard-step-counter">
+            {step}/{STEP_COUNT}
+          </Text>
+        </View>
+      )}
 
       {/* Subtitle row: "{brand.name} · Step N of 5" + autosave state */}
+      {isWideDesktop ? null : (
       <View style={styles.subtitleRow}>
         <Text style={styles.subtitle}>
           {brand.name} · Step {step} of {STEP_COUNT}
@@ -893,14 +1063,32 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
           </Text>
         ) : null}
       </View>
+      )}
 
-      {/* Body */}
-      <ScrollView
+      <View style={isWideDesktop ? styles.desktopShell : styles.mobileShell}>
+        {isWideDesktop ? renderDesktopStepRail() : null}
+        <View style={isWideDesktop ? styles.desktopFormPane : styles.mobileFormPane}>
+
+      {/* Body — canonical KeyboardAvoidingView pattern (ORCH-0884 follow-up
+          #7). Prior attempts (auto-inset + manual paddingBottom alone) left
+          the focused input HALF-COVERED by the keyboard because iOS's
+          auto-scroll only puts the input TOP above the keyboard, not the
+          full input. KeyboardAvoidingView with behavior="padding" shrinks
+          the visible area by keyboardHeight so the ScrollView naturally
+          fits its content above the keyboard. iOS's
+          scrollResponderScrollNativeHandleToKeyboard then has a smaller
+          visible area to scroll within, putting the focused input fully
+          visible. keyboardVerticalOffset accounts for the chrome height
+          above this view. */}
+      <KeyboardAvoidingView
         style={styles.kbAvoid}
-        contentContainerStyle={[
-          styles.body,
-          keyboardHeight > 0 ? { paddingBottom: keyboardHeight } : null,
-        ]}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={0}
+      >
+      <ScrollView
+        ref={scrollViewRef}
+        style={styles.kbAvoid}
+        contentContainerStyle={styles.body}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
@@ -994,6 +1182,7 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
           ) : null}
         </View>
       </ScrollView>
+      </KeyboardAvoidingView>
 
       {/* Dock — sleek floating glass card. Hidden when keyboard up. */}
       {keyboardVisible ? null : (
@@ -1086,6 +1275,8 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
           )}
         </GlassCard>
       )}
+        </View>
+      </View>
 
       {/* Overlays at root — discard ConfirmDialog, publish ConfirmDialog, Toast wrap */}
       <ConfirmDialog
@@ -1136,6 +1327,161 @@ const styles = StyleSheet.create({
   },
   kbAvoid: {
     flex: 1,
+  },
+  mobileShell: {
+    flex: 1,
+  },
+  mobileFormPane: {
+    flex: 1,
+  },
+  desktopAppRail: {
+    position: "absolute",
+    zIndex: 20,
+    elevation: 20,
+    top: 0,
+    left: 0,
+    bottom: 0,
+    width: DESKTOP_RAIL_WIDTH,
+    alignItems: "center",
+    paddingTop: spacing.xl,
+    gap: spacing.sm,
+    borderRightWidth: StyleSheet.hairlineWidth,
+    borderRightColor: "rgba(255, 255, 255, 0.06)",
+  },
+  desktopRailBrandMark: {
+    width: 42,
+    height: 42,
+    marginBottom: spacing.md,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  desktopRailLogo: {
+    width: 42,
+    height: 42,
+  },
+  desktopRailItem: {
+    width: 56,
+    height: 56,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 2,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "transparent",
+  },
+  desktopRailItemActive: {
+    backgroundColor: "rgba(255, 255, 255, 0.055)",
+    borderColor: "rgba(235, 120, 37, 0.45)",
+  },
+  desktopRailItemText: {
+    fontSize: 9,
+    lineHeight: 11,
+    fontWeight: "700",
+    color: textTokens.tertiary,
+  },
+  desktopRailItemTextActive: {
+    color: accent.warm,
+  },
+  desktopTopBarWrap: {
+    paddingTop: DESKTOP_TOP_INSET,
+    paddingLeft: DESKTOP_RAIL_WIDTH + DESKTOP_BEZEL_MARGIN,
+    paddingRight: DESKTOP_BEZEL_MARGIN,
+    paddingBottom: spacing.sm,
+  },
+  desktopShell: {
+    flex: 1,
+    flexDirection: "row",
+    gap: spacing.md,
+    paddingLeft: DESKTOP_RAIL_WIDTH + DESKTOP_BEZEL_MARGIN,
+    paddingRight: DESKTOP_BEZEL_MARGIN,
+    paddingBottom: DESKTOP_BEZEL_MARGIN,
+  },
+  desktopStepRail: {
+    width: DESKTOP_WIZARD_RAIL_WIDTH,
+    flexShrink: 0,
+  },
+  desktopStepRailHeader: {
+    marginBottom: spacing.lg,
+  },
+  desktopStepEyebrow: {
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 1.4,
+    textTransform: "uppercase",
+    color: accent.warm,
+    marginBottom: spacing.sm,
+  },
+  desktopStepRailTitle: {
+    fontSize: typography.h3.fontSize,
+    lineHeight: typography.h3.lineHeight,
+    fontWeight: typography.h3.fontWeight,
+    color: textTokens.primary,
+  },
+  desktopStepRailSub: {
+    marginTop: spacing.xs,
+    fontSize: typography.caption.fontSize,
+    color: textTokens.tertiary,
+  },
+  desktopStepList: {
+    gap: spacing.sm,
+  },
+  desktopStepItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    padding: spacing.sm,
+    borderRadius: 12,
+  },
+  desktopStepItemActive: {
+    backgroundColor: "rgba(235, 120, 37, 0.18)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(235, 120, 37, 0.45)",
+  },
+  desktopStepIndex: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: glass.tint.profileBase,
+  },
+  desktopStepIndexActive: {
+    backgroundColor: accent.warm,
+  },
+  desktopStepIndexText: {
+    fontSize: typography.caption.fontSize,
+    fontWeight: "800",
+    color: textTokens.tertiary,
+  },
+  desktopStepIndexTextActive: {
+    color: textTokens.inverse,
+  },
+  desktopStepCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  desktopStepTitle: {
+    fontSize: typography.bodySm.fontSize,
+    fontWeight: "700",
+    color: textTokens.tertiary,
+  },
+  desktopStepTitleActive: {
+    color: textTokens.primary,
+  },
+  desktopStepSub: {
+    marginTop: 2,
+    fontSize: typography.caption.fontSize,
+    color: textTokens.quaternary,
+  },
+  desktopFormPane: {
+    flex: 1,
+    maxWidth: DESKTOP_WIZARD_FORM_MAX_WIDTH,
+    minWidth: 0,
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255, 255, 255, 0.08)",
+    backgroundColor: "rgba(255, 255, 255, 0.018)",
+    overflow: "hidden",
   },
   chromeRow: {
     flexDirection: "row",

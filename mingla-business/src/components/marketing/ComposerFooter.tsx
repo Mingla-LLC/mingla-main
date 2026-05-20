@@ -26,6 +26,7 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 
 export interface ComposerFooterProps {
   /** Preview button — opens inbox preview modal. Always enabled. */
@@ -55,31 +56,40 @@ export const ComposerFooter: React.FC<ComposerFooterProps> = ({
   submitting,
 }) => {
   const insets = useSafeAreaInsets();
+  const { isWideDesktop } = useResponsiveLayout();
   const disabledByMutation = submitting === true;
+  // ORCH-0891 M3 D-2: hide Preview button on wide-desktop. The
+  // permanent right-hand EmailPreviewPane mounted by ComposerCanvas.web
+  // makes the Modal-based Preview button redundant — the inbox view is
+  // already live on screen as the operator types. Native + narrow web
+  // still render the button (their preview is the Modal).
   return (
     <View
       style={[
         styles.host,
+        isWideDesktop ? styles.desktopHost : null,
         {
           paddingTop: spacing.md,
-          paddingBottom: insets.bottom + spacing.lg,
+          paddingBottom: isWideDesktop ? 0 : insets.bottom + spacing.lg,
         },
       ]}
     >
-      <Pressable
-        onPress={onPreview}
-        disabled={disabledByMutation}
-        accessibilityRole="button"
-        accessibilityLabel="Preview email"
-        accessibilityState={{ disabled: disabledByMutation }}
-        style={({ pressed }) => [
-          styles.ghostBtn,
-          pressed ? styles.ghostBtnPressed : null,
-          disabledByMutation ? styles.btnDisabled : null,
-        ]}
-      >
-        <Text style={styles.ghostBtnLabel}>Preview</Text>
-      </Pressable>
+      {isWideDesktop ? null : (
+        <Pressable
+          onPress={onPreview}
+          disabled={disabledByMutation}
+          accessibilityRole="button"
+          accessibilityLabel="Preview email"
+          accessibilityState={{ disabled: disabledByMutation }}
+          style={({ pressed }) => [
+            styles.ghostBtn,
+            pressed ? styles.ghostBtnPressed : null,
+            disabledByMutation ? styles.btnDisabled : null,
+          ]}
+        >
+          <Text style={styles.ghostBtnLabel}>Preview</Text>
+        </Pressable>
+      )}
       <Pressable
         onPress={onSendNow}
         disabled={sendNowDisabled || disabledByMutation}
@@ -90,6 +100,7 @@ export const ComposerFooter: React.FC<ComposerFooterProps> = ({
         }}
         style={({ pressed }) => [
           styles.lightBtn,
+          isWideDesktop ? styles.desktopAccentOutlineBtn : null,
           pressed && !sendNowDisabled && !disabledByMutation
             ? styles.lightBtnPressed
             : null,
@@ -111,6 +122,12 @@ export const ComposerFooter: React.FC<ComposerFooterProps> = ({
           scheduleDisabled || disabledByMutation
             ? styles.primaryBtnDisabled
             : styles.primaryBtnEnabled,
+          isWideDesktop && (scheduleDisabled || disabledByMutation)
+            ? styles.desktopFlatBtn
+            : null,
+          isWideDesktop && !scheduleDisabled && !disabledByMutation
+            ? styles.desktopPrimaryBtnEnabled
+            : null,
           pressed && !scheduleDisabled && !disabledByMutation
             ? styles.primaryBtnPressed
             : null,
@@ -137,6 +154,13 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     paddingHorizontal: spacing.md,
   },
+  desktopHost: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: spacing.sm,
+    paddingTop: spacing.sm,
+  },
   btnDisabled: {
     opacity: 0.4,
   },
@@ -159,6 +183,10 @@ const styles = StyleSheet.create({
     ...typography.buttonMd,
     color: textTokens.primary,
     fontWeight: "600",
+  },
+  desktopFlatBtn: {
+    backgroundColor: "transparent",
+    borderColor: "rgba(255, 255, 255, 0.13)",
   },
   // F.10b — Send Now light-tinted button (middle). Primary-light: orange
   // tint at lower opacity than the rightmost Schedule primary, so the
@@ -183,6 +211,10 @@ const styles = StyleSheet.create({
     color: textTokens.primary,
     fontWeight: "600",
   },
+  desktopAccentOutlineBtn: {
+    backgroundColor: "transparent",
+    borderColor: "rgba(235, 120, 37, 0.58)",
+  },
   // F.10b — Schedule primary button (rightmost). Solid orange fill.
   primaryBtn: {
     flex: 1,
@@ -194,6 +226,11 @@ const styles = StyleSheet.create({
   },
   primaryBtnEnabled: {
     backgroundColor: "rgba(235, 120, 37, 0.42)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: accent.warm,
+  },
+  desktopPrimaryBtnEnabled: {
+    backgroundColor: accent.warm,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: accent.warm,
   },

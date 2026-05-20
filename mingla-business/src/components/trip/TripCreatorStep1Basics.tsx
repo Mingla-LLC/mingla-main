@@ -69,6 +69,8 @@ export interface TripCreatorStep1BasicsProps {
   brandId: string;
   tripEventId: string;
   onShowToast?: (msg: string) => void;
+  // ORCH-0892-A: legacy wizard-scroll-ref prop removed. CoverPicker now
+  // uses the keyboard-controller library's KAV wrap instead.
 }
 
 const INPUT_BORDER = "rgba(255, 255, 255, 0.12)";

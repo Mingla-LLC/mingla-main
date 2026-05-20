@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Mingla Business — Today on Desktop (Baseline)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root {
+    --canvas: #0c0e12;
+    --canvas-2: #141113;
+    --canvas-deep: #08090c;
+    --accent: #eb7825;
+    --accent-glow: rgba(235,120,37,.35);
+    --accent-tint: rgba(235,120,37,.28);
+    --glass-chrome: rgba(12,14,18,.48);
+    --glass-card: rgba(255,255,255,.04);
+    --glass-border: rgba(255,255,255,.08);
+    --text-hi: #f5f5f7;
+    --text-mid: #b9b9c2;
+    --text-low: #6e6e78;
+  }
+  html, body { background: #1c1d22; color: var(--text-hi); font-family: ui-sans-serif, system-ui, -apple-system, "SF Pro Text", "Inter", sans-serif; }
+  .browser-frame { background: linear-gradient(180deg, #2b2c33 0%, #1c1d22 100%); }
+  .browser-bar { background: #2b2c33; }
+  .browser-dot { width: 12px; height: 12px; border-radius: 999px; }
+  .phone-trapped { background: var(--canvas); }
+  .glass-chrome { background: var(--glass-chrome); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid var(--glass-border); }
+  .glass-card { background: var(--glass-card); border: 1px solid var(--glass-border); }
+  .accent { color: var(--accent); }
+  .bg-accent { background: var(--accent); }
+  .ring-accent { box-shadow: 0 0 0 2px var(--accent-glow); }
+  .empty-margin { background:
+    radial-gradient(circle at 20% 30%, rgba(255,255,255,.02) 0, transparent 40%),
+    radial-gradient(circle at 80% 70%, rgba(255,255,255,.02) 0, transparent 40%),
+    #1c1d22;
+  }
+  .pill { padding: 6px 12px; border-radius: 999px; font-size: 12px; }
+  .annotation { position: absolute; font-family: ui-monospace, "SF Mono", monospace; font-size: 11px; color: #ffcc00; }
+  .annotation-line { border: 1px dashed #ffcc00; }
+</style>
+</head>
+<body class="min-h-screen p-6">
+
+<!-- Page header -->
+<div class="max-w-[1600px] mx-auto mb-4">
+  <div class="flex items-center justify-between">
+    <div>
+      <div class="text-[11px] uppercase tracking-widest text-zinc-500 mb-1">Mockup 0 of 3 · Baseline</div>
+      <h1 class="text-2xl font-semibold">Today on Desktop — the Mobile App, Stretched</h1>
+      <p class="text-zinc-400 text-sm mt-1">A 27" browser window rendering the mingla-business RN app via react-native-web. Same screens as iOS. Bottom-tab capsule. Single column floating in empty space.</p>
+    </div>
+    <a href="./index.html" class="text-xs px-3 py-1.5 rounded-full border border-zinc-700 hover:border-zinc-500">← Index</a>
+  </div>
+</div>
+
+<!-- Browser frame -->
+<div class="max-w-[1600px] mx-auto rounded-2xl overflow-hidden shadow-2xl browser-frame">
+  <!-- Browser chrome -->
+  <div class="browser-bar h-10 flex items-center px-4 gap-2 border-b border-black/40">
+    <div class="flex gap-2">
+      <div class="browser-dot bg-[#ff5f57]"></div>
+      <div class="browser-dot bg-[#febc2e]"></div>
+      <div class="browser-dot bg-[#28c840]"></div>
+    </div>
+    <div class="ml-4 flex-1 max-w-2xl mx-auto bg-[#1c1d22] rounded-md px-3 py-1 text-xs text-zinc-400">business.usemingla.com</div>
+  </div>
+
+  <!-- App body -->
+  <div class="empty-margin relative" style="height: 900px;">
+    <!-- Annotation: empty side margin -->
+    <div class="absolute top-32 left-12 max-w-[180px]">
+      <div class="annotation">↓ ~480px of empty canvas on each side</div>
+    </div>
+    <div class="absolute top-32 right-12 max-w-[180px] text-right">
+      <div class="annotation">empty canvas →</div>
+    </div>
+
+    <!-- Centred mobile-width column -->
+    <div class="relative mx-auto" style="width: 440px; height: 100%; background: var(--canvas);">
+      <!-- Status-bar emulation -->
+      <div class="h-9 flex items-center justify-between px-5 text-xs text-zinc-500">
+        <span>9:41</span>
+        <span class="flex gap-1.5"><span>●●●</span><span>WiFi</span><span>100%</span></span>
+      </div>
+
+      <!-- Home header -->
+      <div class="px-5 pt-2 pb-4">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <div class="w-9 h-9 rounded-full bg-gradient-to-br from-orange-500 to-rose-500"></div>
+            <div>
+              <div class="text-xs text-zinc-500">Brand</div>
+              <div class="text-sm font-medium">Casa Nova Lagos ▾</div>
+            </div>
+          </div>
+          <button class="w-9 h-9 rounded-full glass-chrome flex items-center justify-center text-zinc-300">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 10-12 0v3.2c0 .53-.21 1.04-.59 1.4L4 17h5"/><path d="M9 17a3 3 0 006 0"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Hero card (event) -->
+      <div class="px-5">
+        <div class="rounded-2xl overflow-hidden glass-card">
+          <div class="h-44 bg-gradient-to-br from-orange-500 via-rose-500 to-fuchsia-700 relative">
+            <div class="absolute top-3 left-3 pill bg-black/40 text-white">LIVE TONIGHT</div>
+          </div>
+          <div class="p-4">
+            <div class="text-lg font-semibold">Afro-House Rooftop Vol. 12</div>
+            <div class="text-xs text-zinc-400 mt-1">Sat, May 25 · 9:00 PM · Casa Nova Lagos</div>
+            <div class="flex items-center gap-2 mt-4">
+              <div class="flex-1"><div class="text-[11px] text-zinc-500">Sold</div><div class="text-base font-medium">142 / 200</div></div>
+              <div class="flex-1"><div class="text-[11px] text-zinc-500">Revenue</div><div class="text-base font-medium">₦2.1M</div></div>
+              <button class="px-4 py-2 rounded-full bg-accent text-white text-xs font-semibold">Manage</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Stat strip -->
+      <div class="px-5 mt-4 grid grid-cols-3 gap-3">
+        <div class="rounded-xl glass-card p-3">
+          <div class="text-[10px] text-zinc-500 uppercase tracking-wider">Today</div>
+          <div class="text-xl font-semibold mt-1">₦480k</div>
+          <div class="text-[10px] text-emerald-400 mt-0.5">+18%</div>
+        </div>
+        <div class="rounded-xl glass-card p-3">
+          <div class="text-[10px] text-zinc-500 uppercase tracking-wider">Check-ins</div>
+          <div class="text-xl font-semibold mt-1">28</div>
+          <div class="text-[10px] text-zinc-400 mt-0.5">of 142</div>
+        </div>
+        <div class="rounded-xl glass-card p-3">
+          <div class="text-[10px] text-zinc-500 uppercase tracking-wider">Unread</div>
+          <div class="text-xl font-semibold mt-1">4</div>
+          <div class="text-[10px] text-orange-400 mt-0.5">Ari</div>
+        </div>
+      </div>
+
+      <!-- Upcoming events list -->
+      <div class="px-5 mt-5">
+        <div class="flex items-center justify-between mb-2">
+          <div class="text-sm font-medium">Upcoming</div>
+          <div class="text-[11px] text-zinc-500">See all →</div>
+        </div>
+        <div class="space-y-2">
+          <div class="flex items-center gap-3 rounded-xl glass-card p-3">
+            <div class="w-12 h-12 rounded-lg bg-gradient-to-br from-indigo-500 to-cyan-500"></div>
+            <div class="flex-1 min-w-0">
+              <div class="text-sm truncate">Sunday Brunch · Live Sax</div>
+              <div class="text-[11px] text-zinc-500">Sun May 26 · 12 PM</div>
+            </div>
+            <div class="text-[11px] text-zinc-400">38 sold</div>
+          </div>
+          <div class="flex items-center gap-3 rounded-xl glass-card p-3">
+            <div class="w-12 h-12 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-500"></div>
+            <div class="flex-1 min-w-0">
+              <div class="text-sm truncate">Wine + Vinyl Wednesdays</div>
+              <div class="text-[11px] text-zinc-500">Wed May 29 · 7 PM</div>
+            </div>
+            <div class="text-[11px] text-zinc-400">12 sold</div>
+          </div>
+          <div class="flex items-center gap-3 rounded-xl glass-card p-3">
+            <div class="w-12 h-12 rounded-lg bg-gradient-to-br from-amber-500 to-orange-600"></div>
+            <div class="flex-1 min-w-0">
+              <div class="text-sm truncate">June Long-Weekend Pool Party</div>
+              <div class="text-[11px] text-zinc-500">Sat Jun 1 · 4 PM</div>
+            </div>
+            <div class="text-[11px] text-zinc-400">Draft</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottom-nav glass capsule -->
+      <div class="absolute bottom-4 left-1/2 -translate-x-1/2 glass-chrome rounded-full px-3 py-2 flex items-center gap-1" style="width: 380px;">
+        <button class="flex-1 py-2 rounded-full flex flex-col items-center gap-0.5">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#eb7825" stroke-width="2"><path d="M3 12L12 3l9 9"/><path d="M5 10v10h14V10"/></svg>
+          <span class="text-[10px] accent font-medium">Home</span>
+        </button>
+        <button class="flex-1 py-2 rounded-full flex flex-col items-center gap-0.5">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6e6e78" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9h18M8 3v4M16 3v4"/></svg>
+          <span class="text-[10px] text-zinc-500">Hub</span>
+        </button>
+        <button class="flex-1 py-2 rounded-full flex flex-col items-center gap-0.5">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6e6e78" stroke-width="2"><path d="M12 2l2 6 6 2-6 2-2 6-2-6-6-2 6-2z"/></svg>
+          <span class="text-[10px] text-zinc-500">Ari</span>
+        </button>
+        <button class="flex-1 py-2 rounded-full flex flex-col items-center gap-0.5">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6e6e78" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4z"/></svg>
+          <span class="text-[10px] text-zinc-500">Blast</span>
+        </button>
+        <button class="flex-1 py-2 rounded-full flex flex-col items-center gap-0.5">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6e6e78" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7"/></svg>
+          <span class="text-[10px] text-zinc-500">Account</span>
+        </button>
+      </div>
+
+      <!-- Annotation: bottom tab floating mid-air -->
+      <div class="absolute" style="bottom: 80px; right: -240px; width: 220px;">
+        <div class="annotation">← Bottom-tab capsule sits hundreds of pixels above the actual browser bottom edge</div>
+      </div>
+    </div>
+
+    <!-- Annotation: column width -->
+    <div class="absolute bottom-6 left-1/2 -translate-x-1/2 text-center">
+      <div class="annotation">↑ 440px content column · same layout as iPhone 14 Pro · 0 desktop adaptation</div>
+    </div>
+  </div>
+</div>
+
+<!-- Problems list -->
+<div class="max-w-[1600px] mx-auto mt-6 grid grid-cols-3 gap-4 text-sm">
+  <div class="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
+    <div class="text-[10px] uppercase tracking-widest text-orange-400 mb-1">Problem 1</div>
+    <div class="font-medium mb-1">Stranded column</div>
+    <p class="text-zinc-400">A 440px column with 480px of empty canvas on each side. Looks like the app never finished loading.</p>
+  </div>
+  <div class="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
+    <div class="text-[10px] uppercase tracking-widest text-orange-400 mb-1">Problem 2</div>
+    <div class="font-medium mb-1">Wasted real estate</div>
+    <p class="text-zinc-400">On a 1440px display, &gt;65% of pixels are unused. A desktop user can't see more events at once, can't compare orders side-by-side, can't open a detail without losing the list.</p>
+  </div>
+  <div class="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
+    <div class="text-[10px] uppercase tracking-widest text-orange-400 mb-1">Problem 3</div>
+    <div class="font-medium mb-1">Mobile-only interaction model</div>
+    <p class="text-zinc-400">Bottom-tabs only make sense on a thumb-reachable phone. Bottom sheets travel 800px to appear. No ⌘K, no keyboard nav, no multi-select, no drag-and-drop.</p>
+  </div>
+</div>
+
+<div class="max-w-[1600px] mx-auto mt-6 flex gap-3">
+  <a href="./01-tier1-container-rail.html" class="px-4 py-2 rounded-full bg-accent text-white text-sm font-medium">Tier 1 → Container fixes →</a>
+  <a href="./02-tier2-desktop-shell.html" class="px-4 py-2 rounded-full border border-zinc-700 text-sm">Tier 2 → Desktop shell</a>
+  <a href="./03-tier3-power-features.html" class="px-4 py-2 rounded-full border border-zinc-700 text-sm">Tier 3 → Power features</a>
+</div>
+
+</body>
+</html>

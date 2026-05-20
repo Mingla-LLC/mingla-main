@@ -20,7 +20,7 @@
 
 import React, { useCallback, type RefObject } from "react";
 import { Alert, Platform, Pressable, StyleSheet, Text, View } from "react-native";
-import { RichEditor, actions } from "react-native-pell-rich-editor";
+import { RichEditor, actions } from "./richEditor";
 
 import {
   glass,

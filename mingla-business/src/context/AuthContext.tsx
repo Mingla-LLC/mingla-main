@@ -50,6 +50,19 @@ import {
 // QueryClientProvider in app/_layout.tsx.
 import { queryClient } from "../config/queryClient";
 
+// ORCH-0887-A [Auth getSession Promise.race timeout] — close indefinite
+// loader hang on business-web. SPEC §2.1: constant inline at top of
+// AuthContext.tsx, NO authConstants.ts extraction (single consumer).
+// SPEC §2.3: 3000ms is generous upper bound (8x slower than expected
+// worst case; catches stalled promises without false-positives on slow
+// networks). I-AUTH-BOOTSTRAP-TIMEOUT (NEW invariant per ORCH-0887-A).
+export const AUTH_BOOTSTRAP_TIMEOUT_MS = 3000;
+// SPEC §2.1: Symbol sentinel (NOT { __timedOut: true } flag) —
+// referentially unique, impossible to collide with any legitimate
+// getSession() return shape.
+const AUTH_BOOTSTRAP_TIMEOUT = Symbol("auth-bootstrap-timeout");
+type AuthBootstrapTimeout = typeof AUTH_BOOTSTRAP_TIMEOUT;
+
 const webClientId =
   Constants.expoConfig?.extra?.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ||
   process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
@@ -138,6 +151,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // ORCH-0808 — fires af_complete_registration / af_login at most once per
   // auth session lifecycle. Reset on SIGNED_OUT so the next sign-in re-fires.
   const afEventFiredRef = useRef(false);
+  // ORCH-0887-A [Auth getSession Promise.race timeout] — set true when the
+  // bootstrap Promise.race resolves to the timeout sentinel. SPEC §3.3 / §4
+  // decision (b) ref-guarded skip. READ by the onAuthStateChange listener:
+  // a late-arriving INITIAL_SESSION event after timeout is the original
+  // getSession() Promise resolving against the live Supabase client; if we
+  // honoured it we would flash anon→home and re-fire ensureCreatorAccount +
+  // analytics-identities. Any subsequent non-INITIAL_SESSION event clears
+  // the gate so the listener resumes normal processing.
+  const bootstrapTimedOutRef = useRef(false);
 
   useEffect(() => {
     let mounted = true;
@@ -146,10 +168,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (__DEV__) {
         console.info("[auth] bootstrap-start");
       }
+      // ORCH-0887-A [Auth getSession Promise.race timeout] — close the
+      // indefinite loader hang. SPEC §2.2: race getSession() against a
+      // 3s timeout. On timeout, fall through as anon (silent — SPEC §3
+      // Option A: NO toast, NO retry CTA, NO authError surfaced; user
+      // sees BusinessWelcomeScreen and can sign in normally). The
+      // console.warn satisfies I-NO-SILENT-FAILURES. SPEC §6: no
+      // Platform.OS gate — timeout is universal (essentially never
+      // fires on native; safety net only).
+      type GetSessionResult = Awaited<
+        ReturnType<typeof supabase.auth.getSession>
+      >;
+      const timeoutPromise = new Promise<AuthBootstrapTimeout>((resolve) => {
+        setTimeout(() => resolve(AUTH_BOOTSTRAP_TIMEOUT), AUTH_BOOTSTRAP_TIMEOUT_MS);
+      });
+      const raceResult: GetSessionResult | AuthBootstrapTimeout =
+        await Promise.race([supabase.auth.getSession(), timeoutPromise]);
+      if (raceResult === AUTH_BOOTSTRAP_TIMEOUT) {
+        console.warn(
+          `[auth] bootstrap-timeout: getSession() did not resolve within ${AUTH_BOOTSTRAP_TIMEOUT_MS}ms — falling through as anon`,
+        );
+        if (!mounted) return;
+        bootstrapTimedOutRef.current = true;
+        setAuthError(null);
+        setSession(null);
+        setUser(null);
+        setLoading(false);
+        return;
+      }
       const {
         data: { session: s },
         error,
-      } = await supabase.auth.getSession();
+      } = raceResult;
       if (!mounted) return;
       if (error) {
         console.warn("[auth] getSession", error.message);
@@ -205,6 +255,52 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (_event, s) => {
       if (!mounted) return;
+      // ORCH-0887-A-2 [Late-resolution defense — expand to TOKEN_REFRESHED +
+      // USER_UPDATED]: brutal Playwright test against live Chromium proved
+      // Supabase v2 fires TOKEN_REFRESHED (not INITIAL_SESSION) when a hung
+      // refresh-token request eventually succeeds after bootstrap-timeout.
+      // Any PASSIVE event post-timeout is a late echo of the failed
+      // bootstrap — ignore it. Only explicit user-intent events (SIGNED_IN /
+      // SIGNED_OUT) clear the gate so a normal login post-timeout proceeds.
+      // Honouring a passive late echo would flash anon→home and re-fire
+      // ensureCreatorAccount + analytics-identities. Originally
+      // INITIAL_SESSION-only per ORCH-0887-A rework / SPEC §3.3 Option (b);
+      // expanded to TOKEN_REFRESHED + USER_UPDATED post brutal-test feedback.
+      if (bootstrapTimedOutRef.current) {
+        const isPassiveLateEcho =
+          _event === "INITIAL_SESSION" ||
+          _event === "TOKEN_REFRESHED" ||
+          _event === "USER_UPDATED";
+        if (_event === "INITIAL_SESSION") {
+          if (__DEV__) {
+            console.warn(
+              "[auth] late INITIAL_SESSION after bootstrap-timeout — ignoring (ORCH-0887-A-2)",
+            );
+          }
+          return;
+        }
+        if (_event === "TOKEN_REFRESHED") {
+          if (__DEV__) {
+            console.warn(
+              "[auth] late TOKEN_REFRESHED after bootstrap-timeout — ignoring (ORCH-0887-A-2)",
+            );
+          }
+          return;
+        }
+        if (_event === "USER_UPDATED") {
+          if (__DEV__) {
+            console.warn(
+              "[auth] late USER_UPDATED after bootstrap-timeout — ignoring (ORCH-0887-A-2)",
+            );
+          }
+          return;
+        }
+        // Guard reads isPassiveLateEcho so the union remains the single
+        // source of truth (TypeScript checks all three branches above match);
+        // unreachable in practice because each event has its own return.
+        if (isPassiveLateEcho) return;
+        bootstrapTimedOutRef.current = false;
+      }
       if (__DEV__) {
         console.info("[auth] auth-event", {
           event: _event,

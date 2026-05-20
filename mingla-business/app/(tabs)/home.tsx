@@ -45,6 +45,7 @@ import {
 } from "../../src/store/currentBrandStore";
 import { useCurrentBrand } from "../../src/hooks/useCurrentBrand";
 import { useCurrentBrandRecovery } from "../../src/hooks/useCurrentBrandRecovery";
+import { useResponsiveLayout } from "../../src/hooks/useResponsiveLayout";
 import { brandKeys, useBrands } from "../../src/hooks/useBrands";
 import { eventOrdersKeys } from "../../src/hooks/useEventOrders";
 import { useServerDraftsForBrand } from "../../src/hooks/useServerDraftEvents";
@@ -71,6 +72,7 @@ import { useEventSalesSummaries } from "../../src/hooks/useEventOrders";
 
 import { formatCurrencyRound } from "../../src/utils/currency";
 import { formatDraftDateLine } from "../../src/utils/eventDateDisplay";
+import { getActiveEventsKpiSub } from "../../src/utils/homeKpiPresentation";
 import { formatRelativeTime } from "../../src/utils/relativeTime";
 
 interface ToastState {
@@ -124,6 +126,7 @@ const getLiveEventFromItem = (
 export default function HomeTab(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { isWideDesktop } = useResponsiveLayout();
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const brandsQuery = useBrands(user?.id ?? null);
@@ -358,7 +361,12 @@ export default function HomeTab(): React.ReactElement {
       </View>
 
       <ScrollView
-        contentContainerStyle={styles.scroll}
+        style={isWideDesktop ? styles.desktopOuterScroll : undefined}
+        scrollEnabled={!isWideDesktop}
+        contentContainerStyle={[
+          styles.scroll,
+          isWideDesktop && styles.desktopScroll,
+        ]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
@@ -467,92 +475,107 @@ export default function HomeTab(): React.ReactElement {
                 </GlassCard>
               </View>
             ) : null}
-            {primaryLiveEvent !== null ? (
-              <GlassCard variant="elevated" padding={spacing.lg}>
-                <View style={styles.heroLiveTagRow}>
-                  <Pill variant="live" livePulse>
-                    Live now
-                  </Pill>
-                </View>
-                <Text style={styles.heroEventName}>
-                  {getEventName(primaryLiveEvent.name, "Untitled event")}
-                </Text>
-                <Text style={styles.heroEventDate}>
-                  {formatDraftDateLine(primaryLiveEvent)}
-                </Text>
-                <View style={styles.heroAmountRow}>
-                  <Text style={styles.heroAmountSold}>
-                    {liveHeroMetrics.revenueLabel}
-                  </Text>
-                  <Text style={styles.heroAmountGoal}> revenue</Text>
-                </View>
-                {liveHeroMetrics.capacity !== null ? (
-                  <View style={styles.progressBarTrack}>
-                    <View
-                      style={[
-                        styles.progressBarFill,
-                        {
-                          width: `${Math.round(
-                            liveHeroMetrics.progress * 100,
-                          )}%`,
-                        },
-                      ]}
-                    />
-                  </View>
-                ) : null}
-                <View style={styles.heroStatRow}>
-                  <View style={styles.heroStatCell}>
-                    <Text style={styles.heroStatValue}>
-                      {liveHeroMetrics.soldValue}
+            <View style={isWideDesktop ? styles.desktopKpiGrid : undefined}>
+              <View style={isWideDesktop ? styles.desktopKpiCell : undefined}>
+                {primaryLiveEvent !== null ? (
+                  <GlassCard variant="elevated" padding={spacing.lg}>
+                    <View style={styles.heroLiveTagRow}>
+                      <Pill variant="live" livePulse>
+                        Live now
+                      </Pill>
+                    </View>
+                    <Text style={styles.heroEventName}>
+                      {getEventName(primaryLiveEvent.name, "Untitled event")}
                     </Text>
-                    <Text style={styles.heroStatLabel}>Tickets sold</Text>
-                  </View>
-                  <View style={styles.heroStatCell}>
-                    <Text style={styles.heroStatValue}>
-                      {formatCapacityLabel(primaryLiveEvent)}
+                    <Text style={styles.heroEventDate}>
+                      {formatDraftDateLine(primaryLiveEvent)}
                     </Text>
-                    <Text style={styles.heroStatLabel}>Capacity</Text>
-                  </View>
-                  <View style={styles.heroStatCell}>
-                    <Text style={styles.heroStatValue}>—</Text>
-                    <Text style={styles.heroStatLabel}>Scanned</Text>
-                  </View>
-                </View>
-              </GlassCard>
-            ) : (
-              <KpiTile
-                label="Last 7 days"
-                value={
-                  currentBrand.defaultCurrency !== undefined
-                    ? formatCurrencyRound(
-                        // ORCH-0816 — windowed 7-day GMV. Lifetime stays on
-                        // BrandProfileView's "GMV / all time" tile.
-                        currentBrand.stats.rev7d,
-                        currentBrand.defaultCurrency,
-                      )
-                    : "—"
-                }
-              />
-            )}
+                    <View style={styles.heroAmountRow}>
+                      <Text style={styles.heroAmountSold}>
+                        {liveHeroMetrics.revenueLabel}
+                      </Text>
+                      <Text style={styles.heroAmountGoal}> revenue</Text>
+                    </View>
+                    {liveHeroMetrics.capacity !== null ? (
+                      <View style={styles.progressBarTrack}>
+                        <View
+                          style={[
+                            styles.progressBarFill,
+                            {
+                              width: `${Math.round(
+                                liveHeroMetrics.progress * 100,
+                              )}%`,
+                            },
+                          ]}
+                        />
+                      </View>
+                    ) : null}
+                    <View style={styles.heroStatRow}>
+                      <View style={styles.heroStatCell}>
+                        <Text style={styles.heroStatValue}>
+                          {liveHeroMetrics.soldValue}
+                        </Text>
+                        <Text style={styles.heroStatLabel}>Tickets sold</Text>
+                      </View>
+                      <View style={styles.heroStatCell}>
+                        <Text style={styles.heroStatValue}>
+                          {formatCapacityLabel(primaryLiveEvent)}
+                        </Text>
+                        <Text style={styles.heroStatLabel}>Capacity</Text>
+                      </View>
+                      <View style={styles.heroStatCell}>
+                        <Text style={styles.heroStatValue}>—</Text>
+                        <Text style={styles.heroStatLabel}>Scanned</Text>
+                      </View>
+                    </View>
+                  </GlassCard>
+                ) : (
+                  <KpiTile
+                    label="Last 7 days"
+                    value={
+                      currentBrand.defaultCurrency !== undefined
+                        ? formatCurrencyRound(
+                            // ORCH-0816 — windowed 7-day GMV. Lifetime stays on
+                            // BrandProfileView's "GMV / all time" tile.
+                            currentBrand.stats.rev7d,
+                            currentBrand.defaultCurrency,
+                          )
+                        : "—"
+                    }
+                  />
+                )}
+              </View>
 
-            <KpiTile
-              label="Active events"
-              value={eventSummary.counts.active}
-              sub={formatActiveEventsSub(eventSummary.counts)}
-            />
-
-            <View style={styles.sectionHeaderRow}>
-              <Text style={styles.sectionTitle}>Upcoming</Text>
-              <Pressable
-                onPress={handleSeeAllEvents}
-                accessibilityRole="link"
-                accessibilityLabel="See all upcoming events"
-              >
-                <Text style={styles.sectionLink}>See all</Text>
-              </Pressable>
+              <View style={isWideDesktop ? styles.desktopKpiCell : undefined}>
+                <KpiTile
+                  label="Active events"
+                  value={eventSummary.counts.active}
+                  sub={getActiveEventsKpiSub(eventSummary.counts, isWideDesktop)}
+                />
+              </View>
             </View>
 
-            <View style={styles.eventsCol}>
+            <View style={isWideDesktop ? styles.desktopUpcomingPane : undefined}>
+              <View style={styles.sectionHeaderRow}>
+                <Text style={styles.sectionTitle}>Upcoming</Text>
+                <Pressable
+                  onPress={handleSeeAllEvents}
+                  accessibilityRole="link"
+                  accessibilityLabel="See all upcoming events"
+                >
+                  <Text style={styles.sectionLink}>See all</Text>
+                </Pressable>
+              </View>
+
+              <ScrollView
+                style={isWideDesktop ? styles.desktopUpcomingList : undefined}
+                scrollEnabled={isWideDesktop}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={[
+                  styles.eventsCol,
+                  isWideDesktop && styles.desktopEventsGrid,
+                ]}
+              >
               {eventSummary.activeItems.length === 0 ? (
                 <GlassCard variant="base" padding={spacing.lg}>
                   <Text style={styles.emptyTitle}>No upcoming events</Text>
@@ -570,8 +593,11 @@ export default function HomeTab(): React.ReactElement {
                   if (item.kind === "draft") {
                     const draft = item.event as DraftEvent;
                     return (
-                      <Pressable
+                      <View
                         key={item.key}
+                        style={isWideDesktop ? styles.desktopEventCell : undefined}
+                      >
+                      <Pressable
                         onPress={() => handleOpenDraft(draft)}
                         accessibilityRole="button"
                         accessibilityLabel={`Resume draft: ${
@@ -608,6 +634,7 @@ export default function HomeTab(): React.ReactElement {
                           <Text style={styles.eventSoldLabel}>resume</Text>
                         </View>
                       </Pressable>
+                      </View>
                     );
                   }
 
@@ -627,8 +654,11 @@ export default function HomeTab(): React.ReactElement {
                   const isLive = item.status === "live";
 
                   return (
-                    <Pressable
+                    <View
                       key={item.key}
+                      style={isWideDesktop ? styles.desktopEventCell : undefined}
+                    >
+                    <Pressable
                       onPress={() => handleOpenLiveEvent(event)}
                       accessibilityRole="button"
                       accessibilityLabel={`Open event: ${
@@ -672,9 +702,11 @@ export default function HomeTab(): React.ReactElement {
                         </Text>
                       </View>
                     </Pressable>
+                    </View>
                   );
                 })
               )}
+              </ScrollView>
             </View>
 
           </>
@@ -729,6 +761,36 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.lg,
     paddingBottom: spacing.xl * 4,
     gap: spacing.md,
+  },
+  desktopOuterScroll: {
+    flex: 1,
+  },
+  desktopScroll: {
+    flex: 1,
+    flexGrow: 1,
+    minHeight: 0,
+    paddingHorizontal: 0,
+    paddingTop: spacing.sm,
+    paddingBottom: 0,
+  },
+  desktopKpiGrid: {
+    flexDirection: "row",
+    gap: spacing.sm,
+    flexShrink: 0,
+  },
+  desktopKpiCell: {
+    flex: 1,
+    minWidth: 0,
+  },
+  desktopUpcomingPane: {
+    flex: 1,
+    minHeight: 0,
+    overflow: "hidden",
+  },
+  desktopUpcomingList: {
+    flex: 1,
+    minHeight: 0,
+    marginTop: spacing.sm,
   },
   toastWrap: {
     position: "absolute",
@@ -868,6 +930,18 @@ const styles = StyleSheet.create({
   // Event rows ----------------------------------------------------------
   eventsCol: {
     gap: spacing.sm,
+  },
+  desktopEventsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 0,
+    marginHorizontal: -spacing.xs,
+    paddingBottom: spacing.lg,
+  },
+  desktopEventCell: {
+    width: "25%",
+    paddingHorizontal: spacing.xs,
+    marginBottom: spacing.sm,
   },
   eventRow: {
     flexDirection: "row",

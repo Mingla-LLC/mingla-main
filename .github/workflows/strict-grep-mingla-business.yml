@@ -98,6 +98,7 @@ on:
 #   - ORCH-0852 consumer-frozen (i-consumer-payment-flow-frozen.mjs) — consumer app nativeCheckoutFlow.ts + ExpandedBusinessEventSheet.tsx unchanged during ORCH-0852; identifier-substring fingerprint check
 #   - ORCH-0862 brand-delete-date-aware (i-brand-delete-blocking-date-aware.mjs) — softDeleteBrand Step 1 + useBrandCascadePreview both filter event_dates.end_at > now (I-PROPOSED-BRAND-DELETE-BLOCKING-DATE-AWARE; DISCOVERY-7 regression guard)
 #   - ORCH-0862 event-detail-cancel-no-nav (i-event-detail-cancel-no-navigation.mjs) — event/[id]/index.tsx handleCancelConfirm contains zero router.replace/push/back calls (Symptom A regression guard)
+#   - ORCH-0885-A (orch-0885-a-no-bottomnav-on-wide-desktop.mjs) — BottomNav imported only by (tabs)/_layout.tsx + desktop gate via useResponsiveLayout() only (I-NO-BOTTOMNAV-OUTSIDE-LAYOUT + I-DESKTOP-GATE-VIA-HOOK)
 #
 # Future gates to register (proposed but not yet implemented):
 #   - I-32 rank parity (Cycle 13a proposal)
@@ -1323,3 +1324,54 @@ jobs:
           node-version: "20"
       - name: Run ORCH-0880 file-rls-anon-write-planner-read gate
         run: node .github/scripts/strict-grep/i-proposed-tr5-file-rls-anon-write-planner-read.mjs
+
+  orch-0885-a-no-bottomnav-on-wide-desktop:
+    name: "ORCH-0885-A: No BottomNav outside (tabs)/_layout.tsx + desktop gate via hook only"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0885-A gate
+        run: node .github/scripts/strict-grep/orch-0885-a-no-bottomnav-on-wide-desktop.mjs
+
+  orch-0891-marketing-performance-budget:
+    name: "ORCH-0891: Marketing performance budget detector self-test (composer <= 280KB gz)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0891 budget gate self-test
+        run: node .github/scripts/strict-grep/orch-0891-marketing-performance-budget.mjs --self-test
+
+  # I-PROPOSED-CREATOR-ENTRY-IS-INSTANT job re-registered by ORCH-0893
+  # CLOSE 2026-05-20: source fix (3 cycles — instant mint + hydration
+  # gate + legacy-loop dirty gate + bounce-home safety belt) landed at
+  # commit b982f326 on Seth. Local gate run: exit 0, 3 files scanned,
+  # 0 violations. Original removal by ORCH-0891 close follow-up #3 was
+  # a deliberate holding pattern until the source fix shipped; now safe
+  # to enforce.
+  i-proposed-creator-entry-is-instant:
+    name: "I-PROPOSED-CREATOR-ENTRY-IS-INSTANT: no entry-blocking server mutation in app/**/create.tsx (ORCH-0893)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run I-PROPOSED-CREATOR-ENTRY-IS-INSTANT gate
+        run: node .github/scripts/strict-grep/i-proposed-creator-entry-is-instant.mjs
+
+  orch-0892-no-bespoke-keyboard-plumbing:
+    name: "ORCH-0892: no bespoke keyboard plumbing outside Sheet/ComposerV2/richEditor (informational, flips to BLOCK in ORCH-0892-C)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0892 keyboard-plumbing informational gate
+        run: node .github/scripts/strict-grep/orch-0892-no-bespoke-keyboard-plumbing.mjs

@@ -1,15 +1,28 @@
 /**
- * /trip/create — entry route for the trip-planner wizard. Tr2 (ORCH-0859).
+ * /trip/create — instant-mount trip wizard entry (ORCH-0893
+ * [Eager server-draft on creator entry — replace with client-id + lazy autosave]).
  *
- * Creates a draft event_type='trip' row via tripsService.createTripDraft +
- * router.replace's to /trip/{id}/edit so the back-stack doesn't include
- * the create route (operators can't accidentally re-trigger create by
- * tapping back).
+ * Mints a client-side `d_<ts36>` id synchronously via `generateDraftId`
+ * and immediately `router.replace`s to `/trip/{d_id}/edit`. No
+ * entry-blocking server mutation on this route.
  *
- * Gated on current brand kind='trip_planner' (per Tr2 §8 hard guard +
- * SPEC §4.10) — non-trip-planner brands routed away with friendly toast.
+ * Gated on current brand kind='trip_planner' per I-PROPOSED-TR1-KIND-IMMUTABLE +
+ * Tr2 §8 hard guard (per `feedback_brand_kind_immutable_post_create.md`).
  *
- * Per SPEC §4.10 file 9 + §7 Step 5.
+ * Narrowed-scope note (per ORCH-0893 implementation report): on the trip
+ * side, the lazy server-insert is still triggered eagerly by
+ * `/trip/[id]/edit.tsx` on `d_*` mount, NOT on first user-meaningful
+ * edit. Wiring first-edit-triggered behaviour for trips requires
+ * modifying the trip wizard's six per-step autosave hooks
+ * (useUpdateTripBasics, useUpdateTripPricing, useUpsertTripDays,
+ * useUpsertTripInclusions, useUpdateRefundPolicy, useUpdateBookingDeadline,
+ * useUpsertIntakeSchema) — out of scope per SPEC §15
+ * "DO NOT touch TripCreatorWizard.tsx step internals". Follow-up:
+ * DISC-0893-TRIP-FIRST-EDIT (see implementation report).
+ *
+ * Supersedes the Tr2 (ORCH-0859) eager `useCreateTripDraft.mutateAsync`
+ * call on this route. The mutation hook still exists and is now called
+ * from `/trip/[id]/edit.tsx` on `d_*` mount.
  */
 
 import React, { useEffect, useRef, useState } from "react";
@@ -23,12 +36,11 @@ import {
 } from "../../src/constants/designSystem";
 import { SafeScreen } from "../../src/components/ui/SafeScreen";
 import { useCurrentBrand } from "../../src/hooks/useCurrentBrand";
-import { useCreateTripDraft } from "../../src/hooks/useTrips";
+import { generateDraftId } from "../../src/utils/draftEventId";
 
 export default function TripCreateRoute(): React.ReactElement {
   const router = useRouter();
   const currentBrand = useCurrentBrand();
-  const createTripDraft = useCreateTripDraft();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const startedRef = useRef<boolean>(false);
 
@@ -46,22 +58,11 @@ export default function TripCreateRoute(): React.ReactElement {
     }
 
     startedRef.current = true;
-    void (async () => {
-      try {
-        const trip = await createTripDraft.mutateAsync({
-          brandId: currentBrand.id,
-        });
-        // router.replace so /trip/create isn't in the back-stack
-        router.replace(`/trip/${trip.id}/edit` as never);
-      } catch (e) {
-        setErrorMessage(
-          e instanceof Error
-            ? `Couldn't start the trip wizard: ${e.message}`
-            : "Couldn't start the trip wizard. Try again.",
-        );
-      }
-    })();
-  }, [currentBrand, createTripDraft, router]);
+    // ORCH-0893: synchronous client-side id, no server round-trip.
+    // I-PROPOSED-CREATOR-ENTRY-IS-INSTANT.
+    const clientId = generateDraftId();
+    router.replace(`/trip/${clientId}/edit` as never);
+  }, [currentBrand, router]);
 
   if (currentBrand === null) {
     return (
@@ -84,7 +85,7 @@ export default function TripCreateRoute(): React.ReactElement {
   return (
     <SafeScreen style={styles.host}>
       <ActivityIndicator />
-      <Text style={styles.body}>Setting up your trip…</Text>
+      <Text style={styles.body}>Loading…</Text>
     </SafeScreen>
   );
 }

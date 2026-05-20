@@ -12,13 +12,25 @@
  */
 
 import React, { useMemo } from "react";
-import { StyleSheet, View } from "react-native";
+import { Platform, StyleSheet, View } from "react-native";
 import { Slot, useRouter, usePathname } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BottomNav } from "../../src/components/ui/BottomNav";
 import type { BottomNavTab } from "../../src/components/ui/BottomNav";
+// ORCH-0885-A: DesktopCanvas wraps Slot children. On native + narrow web
+// (<1024px) it's a passthrough Fragment — zero layout cost. On web ≥1024px
+// it paints the Tier-1 ambient gradient + centres content inside a
+// max-width 640px column. Per SPEC_ORCH-0885-A §3.
+import { DesktopCanvas } from "../../src/components/ui/DesktopCanvas";
 import { canvas, spacing } from "../../src/constants/designSystem";
+import { useResponsiveLayout } from "../../src/hooks/useResponsiveLayout";
+
+// ORCH-0891 M2: ⌘K command palette. Metro picks
+// `CommandPalette.web.tsx` on web (cmdk-backed dialog with global ⌘K
+// keydown listener) and `CommandPalette.tsx` on native (null stub).
+// Same `.tsx + .web.tsx` Metro split pattern as `richEditor.tsx` from M1.
+import { CommandPalette } from "../../src/components/ui/CommandPalette";
 
 const TABS: BottomNavTab[] = [
   { id: "home", icon: "home", label: "Home" },
@@ -64,13 +76,14 @@ export default function TabsLayout(): React.ReactElement {
   const router = useRouter();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
+  const { isWideDesktop } = useResponsiveLayout();
 
   const activeId = useMemo(() => detectActiveTab(pathname), [pathname]);
 
-  // Focused authoring surfaces hide the BottomNav so the route's own
-  // sticky footer (e.g. ComposerFooter's Save draft + Review & schedule)
-  // isn't covered. Currently: marketing composer (ORCH-0815-B).
-  const hideBottomNav = pathname.includes("/campaigns/compose");
+  // Focused authoring surfaces hide the mobile bottom capsule so the route's
+  // own sticky footer is not covered. Desktop web keeps the left rail visible
+  // as persistent app chrome.
+  const hideBottomNav = pathname.includes("/campaigns/compose") && !isWideDesktop;
 
   const handleChange = (id: string): void => {
     // Expo Router resolves /(tabs)/<id> to /<id> at runtime.
@@ -79,7 +92,9 @@ export default function TabsLayout(): React.ReactElement {
 
   return (
     <View style={styles.host}>
-      <Slot />
+      <DesktopCanvas>
+        <Slot />
+      </DesktopCanvas>
       {hideBottomNav ? null : (
         <View
           pointerEvents="box-none"
@@ -94,6 +109,13 @@ export default function TabsLayout(): React.ReactElement {
           <BottomNav tabs={TABS} active={activeId} onChange={handleChange} />
         </View>
       )}
+      {/* ORCH-0891 M2: CommandPalette mounts on wide-desktop only. The
+          underlying CommandPalette.web.tsx installs the global ⌘K
+          keydown listener internally; the wrapper is null on native.
+          We render it unconditionally at the layout root — the
+          isWideDesktop gate inside the palette itself decides whether
+          to actually open. Native: noop (CommandPalette.tsx is null). */}
+      {Platform.OS === "web" && isWideDesktop ? <CommandPalette /> : null}
     </View>
   );
 }

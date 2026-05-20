@@ -1,24 +1,31 @@
 /**
- * /event/create — wizard entry from Home "Build a new event" CTA (J-E1).
+ * /event/create — instant-mount wizard entry (ORCH-0893
+ * [Eager server-draft on creator entry — replace with client-id + lazy autosave]).
  *
- * Reads currentBrand at mount. If null → bounces to /(tabs)/home.
- * Otherwise creates a server-backed draft, then router.replace to
- * /event/{newId}/edit?step=0. The replace (not push)
- * means back from Step 1 returns to /(tabs)/home directly — no /create
- * stack frame to land on.
+ * Mints a client-side `d_<ts36>` draft id via the synchronous Zustand
+ * `useDraftEventStore.createDraft(brandId)` action and immediately
+ * `router.replace`s to `/event/{d_id}/edit?step=0`. No entry-blocking
+ * server mutation. The server-side `events` row is created lazily by
+ * `app/event/[id]/edit.tsx` on the first user-meaningful edit (per
+ * `isDraftDirty` in `src/utils/draftDirtyCheck.ts`).
  *
- * Format-agnostic ID resolver per Cycle 2 invariant I-11 (the new id
- * is whatever generateDraftId produces — d_<ts36>; route resolves it
- * via find()).
+ * Per I-PROPOSED-CREATOR-ENTRY-IS-INSTANT (DRAFT — flips to ACTIVE on
+ * ORCH-0893 close). Per I-11 format-agnostic ID resolver: the `d_*` id
+ * format flows through `useDraftById` resolver unchanged.
  *
- * Host-bg cascade per Cycle 2 invariant I-12 — but this route never
- * renders permanent chrome; it redirects in useEffect with a Spinner
- * placeholder for the brief redirect moment.
+ * The placeholder host exists ONLY for the brief auth-readiness wait
+ * window. On a warm session the route mounts, the useEffect fires, and
+ * `router.replace` runs in the same tick — the user never sees this
+ * page past the first paint.
  *
- * Per Cycle 3 spec §3.5 route 1.
+ * Supersedes the Cycle 3 spec §3.5 route 1 eager-mutation pattern
+ * (4-round-trip chain) and the ORCH-0743 cold-start redirect-loop
+ * fix's eager-mutation usage from this route. The server-draft
+ * mutation hook still exists in `useServerDraftEvents.ts` and is
+ * called from the edit route's lazy-insert trigger.
  */
 
-import React, { useEffect } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -31,52 +38,74 @@ import {
 } from "../../src/constants/designSystem";
 import { Spinner } from "../../src/components/ui/Spinner";
 import { useCurrentBrandId } from "../../src/store/currentBrandStore";
-import { useCreateServerDraft } from "../../src/hooks/useServerDraftEvents";
+import { useDraftEventStore } from "../../src/store/draftEventStore";
 import { useAuth } from "../../src/context/AuthContext";
-import { isBusinessAuthNotReadyError } from "../../src/utils/authReadiness";
 import { useCurrentBrandRecovery } from "../../src/hooks/useCurrentBrandRecovery";
 
 export default function EventCreateRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  // Cycle 2 / ORCH-0743 (C2 + C3): use synchronous useCurrentBrandId from
-  // Zustand instead of the async useCurrentBrand wrapper. Eliminates the
-  // cold-start + deep-link redirect-loop where the wrapper returned null
-  // during the React Query fetch window before this effect could resolve.
   const currentBrandId = useCurrentBrandId();
   const { isAuthReady } = useAuth();
   const currentBrandRecovery = useCurrentBrandRecovery();
-  const { createDraft, error } = useCreateServerDraft();
-  const [hasStarted, setHasStarted] = React.useState<boolean>(false);
+  const startedRef = useRef<boolean>(false);
+
+  // ORCH-0893 REWORK Part A — Zustand persist hydration gate.
+  // Pre-rework, `/event/create` minted the d_<ts36> draft synchronously
+  // and `router.replace`d in the same tick. If the user tapped before
+  // `useDraftEventStore`'s persist middleware finished hydrating from
+  // AsyncStorage / localStorage, the just-minted draft was OVERWRITTEN
+  // when hydration completed and `setState(persisted, true)` REPLACED
+  // the in-memory state. The next route (`event/[id]/edit.tsx`) then
+  // saw `draft === null` for `d_<ts36>` and the existing bounce-home
+  // guard fired → "wizard shows up then immediately closes."
+  //
+  // Pre-ORCH-0893 was masked because the eager server-draft chain
+  // ran ~600ms-1.5s, by which time hydration had completed.
+  //
+  // Fix: wait for `useDraftEventStore.persist.hasHydrated()` before
+  // calling createDraft. Zustand v5 exposes `hasHydrated()` synchronously
+  // and `onFinishHydration(cb)` as a subscription for the async case.
+  const [hydrated, setHydrated] = useState<boolean>(() =>
+    useDraftEventStore.persist.hasHydrated(),
+  );
 
   useEffect(() => {
-    if (hasStarted) return;
+    if (hydrated) return undefined;
+    const unsub = useDraftEventStore.persist.onFinishHydration(() => {
+      setHydrated(true);
+    });
+    // Defensive re-check: hydration may complete between the initial
+    // `hasHydrated()` read and this effect mount (rare microtask race).
+    if (useDraftEventStore.persist.hasHydrated()) {
+      setHydrated(true);
+    }
+    return unsub;
+  }, [hydrated]);
+
+  useEffect(() => {
+    if (startedRef.current) return;
     if (!isAuthReady || currentBrandRecovery.isResolving) return;
+    // ORCH-0893 REWORK Part A: do not mint a client-side draft until
+    // Zustand persist hydration has completed — otherwise the persisted
+    // state overwrites the just-minted draft and the edit route
+    // bounces home.
+    if (!hydrated) return;
     if (currentBrandId === null) {
       router.replace("/(tabs)/home" as never);
       return;
     }
-    setHasStarted(true);
-    void createDraft(currentBrandId)
-      .then((newDraft) => {
-        router.replace(`/event/${newDraft.id}/edit?step=0` as never);
-      })
-      .catch((createError) => {
-        if (isBusinessAuthNotReadyError(createError)) {
-          if (__DEV__) {
-            console.info("[event/create] draft-create-auth-not-ready", {
-              authStatus: createError.authStatus,
-              code: createError.code,
-            });
-          }
-        }
-        setHasStarted(false);
-      });
+    startedRef.current = true;
+    // Use `getState().createDraft(...)` instead of a subscribed selector
+    // so we read the CURRENT post-hydration store and write the new draft
+    // into the post-hydration state directly — no subscription staleness,
+    // no risk of the persisted state replacing our write.
+    const draft = useDraftEventStore.getState().createDraft(currentBrandId);
+    router.replace(`/event/${draft.id}/edit?step=0` as never);
   }, [
     currentBrandId,
-    createDraft,
     currentBrandRecovery.isResolving,
-    hasStarted,
+    hydrated,
     isAuthReady,
     router,
   ]);
@@ -93,9 +122,9 @@ export default function EventCreateRoute(): React.ReactElement {
         <Text style={styles.label}>
           {!isAuthReady || currentBrandRecovery.isResolving
             ? "Finishing sign-in…"
-            : error === null || isBusinessAuthNotReadyError(error)
-              ? "Starting a new event…"
-              : "Couldn't start this draft. Retrying…"}
+            : !hydrated
+              ? "Getting things ready…"
+              : "Loading…"}
         </Text>
       </View>
     </View>
