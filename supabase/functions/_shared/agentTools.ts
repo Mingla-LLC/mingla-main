@@ -11,6 +11,7 @@
 
 // deno-lint-ignore-file no-explicit-any
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
+import { filterPlayIntentTags } from "./playIntentTags.ts";
 
 export interface AgentTool {
   name: string;
@@ -350,10 +351,15 @@ const updateEvent: AgentTool = {
 // 6. create_experience (ORCH-0881 Ve5)
 // ----------------------------------------------------------------------------
 
+function asOptionalCapacity(v: unknown): number | null {
+  if (typeof v !== "number" || !Number.isFinite(v) || v < 1) return null;
+  return Math.round(v);
+}
+
 const createExperience: AgentTool = {
   name: "create_experience",
   description:
-    "Create a single-intent venue experience under a verified restaurant brand. Publishes live and public immediately on accept.",
+    "Create a single-intent venue experience under a verified physical venue (Restaurant or Play). Publishes live and public immediately on accept.",
   parameters: {
     type: "object",
     required: ["brand_id", "title", "narrative"],
@@ -367,8 +373,11 @@ const createExperience: AgentTool = {
       intent_tags: {
         type: "array",
         items: { type: "string" },
-        description: "Intent tags e.g. brunch, date-night",
+        description: "Intent tags (restaurant or Play vocabulary)",
       },
+      capacity_min: { type: "integer", description: "Play: minimum group size" },
+      capacity_max: { type: "integer", description: "Play: maximum group size" },
+      suggested_time_of_day: { type: "string", description: "Play: e.g. Friday evening" },
       confidence: { type: "number", description: "AI confidence 0-1" },
     },
   },
@@ -399,8 +408,15 @@ const createExperience: AgentTool = {
       claim_status: string | null;
       default_currency: string | null;
     };
-    if (brand.kind !== "physical" || brand.venue_category !== "restaurant") {
-      throw new ToolError("INVALID_ARGS", "Experiences from menu require a verified Restaurant venue");
+    const venueCategory = brand.venue_category;
+    if (brand.kind !== "physical") {
+      throw new ToolError("INVALID_ARGS", "Experiences require a verified physical venue");
+    }
+    if (venueCategory !== "restaurant" && venueCategory !== "play") {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "Experiences require a Restaurant or Play venue category",
+      );
     }
     if (brand.claim_status !== "verified") {
       throw new ToolError("INVALID_ARGS", "Venue must be verified before publishing experiences");
@@ -410,30 +426,58 @@ const createExperience: AgentTool = {
       ? args.currency.toUpperCase().slice(0, 3)
       : (brand.default_currency ?? "GBP");
 
-    const intentTags: string[] = [];
-    if (Array.isArray(args.intent_tags)) {
+    let intentTags: string[] = [];
+    if (venueCategory === "play") {
+      intentTags = filterPlayIntentTags(args.intent_tags);
+    } else if (Array.isArray(args.intent_tags)) {
       for (const t of args.intent_tags) {
         if (typeof t === "string" && t.trim()) intentTags.push(t.trim().slice(0, 40));
+      }
+      intentTags = intentTags.slice(0, 12);
+    }
+
+    let capacityMin: number | null = null;
+    let capacityMax: number | null = null;
+    let suggestedTimeOfDay: string | null = null;
+    if (venueCategory === "play") {
+      capacityMin = asOptionalCapacity(args.capacity_min);
+      capacityMax = asOptionalCapacity(args.capacity_max);
+      if (capacityMin !== null && capacityMax !== null && capacityMin > capacityMax) {
+        const swap = capacityMin;
+        capacityMin = capacityMax;
+        capacityMax = swap;
+      }
+      if (isString(args.suggested_time_of_day)) {
+        suggestedTimeOfDay = args.suggested_time_of_day.trim().slice(0, 80);
       }
     }
 
     const slug = deriveSlug(args.title) || `experience-${Date.now()}`;
-    const theme = {
-      experience_meta: {
-        intent_tags: intentTags.slice(0, 12),
-        suggested_price_min_cents: typeof args.suggested_price_min_cents === "number"
-          ? Math.max(0, Math.round(args.suggested_price_min_cents))
-          : null,
-        suggested_price_max_cents: typeof args.suggested_price_max_cents === "number"
-          ? Math.max(0, Math.round(args.suggested_price_max_cents))
-          : null,
-        currency,
-        confidence: typeof args.confidence === "number"
-          ? Math.max(0, Math.min(1, args.confidence))
-          : null,
-        ai_source: "menu_snap",
-      },
+    const experienceMeta: Record<string, unknown> = {
+      intent_tags: intentTags,
+      suggested_price_min_cents: typeof args.suggested_price_min_cents === "number"
+        ? Math.max(0, Math.round(args.suggested_price_min_cents))
+        : null,
+      suggested_price_max_cents: typeof args.suggested_price_max_cents === "number"
+        ? Math.max(0, Math.round(args.suggested_price_max_cents))
+        : null,
+      currency,
+      confidence: typeof args.confidence === "number"
+        ? Math.max(0, Math.min(1, args.confidence))
+        : null,
+      ai_source: venueCategory === "play" ? "activities_snap" : "menu_snap",
     };
+    if (venueCategory === "play") {
+      experienceMeta.capacity_min = capacityMin;
+      experienceMeta.capacity_max = capacityMax;
+      experienceMeta.suggested_time_of_day = suggestedTimeOfDay;
+      experienceMeta.ai_metadata = {
+        generator: "parse-play-activities",
+        confidence: experienceMeta.confidence,
+      };
+    }
+
+    const theme = { experience_meta: experienceMeta };
 
     const row = {
       brand_id: args.brand_id,

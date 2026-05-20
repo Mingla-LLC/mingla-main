@@ -17,6 +17,9 @@ export interface VenueExperience {
   priceMinCents: number | null;
   priceMaxCents: number | null;
   currency: string | null;
+  capacityMin: number | null;
+  capacityMax: number | null;
+  suggestedTimeOfDay: string | null;
 }
 
 interface EventRow {
@@ -56,6 +59,11 @@ function mapExperience(row: EventRow): VenueExperience {
       ? meta.suggested_price_max_cents
       : null,
     currency: typeof meta.currency === "string" ? meta.currency : null,
+    capacityMin: typeof meta.capacity_min === "number" ? meta.capacity_min : null,
+    capacityMax: typeof meta.capacity_max === "number" ? meta.capacity_max : null,
+    suggestedTimeOfDay: typeof meta.suggested_time_of_day === "string"
+      ? meta.suggested_time_of_day
+      : null,
   };
 }
 

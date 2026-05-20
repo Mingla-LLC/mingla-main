@@ -113,12 +113,22 @@ jobs:
           STRIPE_WEBHOOK_SECRET_PLATFORM: "whsec_test_platform"
           STRIPE_WEBHOOK_SECRET_PREVIOUS: ""
         run: |
-          deno test \
-            --allow-env \
-            --allow-net \
-            --no-check \
-            supabase/functions/_shared/__tests__/stripeIpAllowlist.test.ts \
-            supabase/functions/_shared/__tests__/stripeKycRemediation.test.ts \
-            supabase/functions/_shared/__tests__/stripeKycReminderSchedule.test.ts \
-            supabase/functions/_shared/__tests__/stripeWebhookRouter.test.ts \
+          set -euo pipefail
+          DENO_TEST_FILES=(
+            supabase/functions/_shared/__tests__/stripeIpAllowlist.test.ts
+            supabase/functions/_shared/__tests__/stripeKycRemediation.test.ts
+            supabase/functions/_shared/__tests__/stripeKycReminderSchedule.test.ts
+            supabase/functions/_shared/__tests__/stripeWebhookRouter.test.ts
             supabase/functions/_shared/__tests__/stripeWebhookSignature.test.ts
+          )
+          for attempt in 1 2 3; do
+            if deno test --allow-env --allow-net --no-check "${DENO_TEST_FILES[@]}"; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "Stripe Deno tests failed after 3 attempts (esm.sh flake?)"
+              exit 1
+            fi
+            echo "Stripe Deno tests failed (attempt ${attempt}), retrying in 10s..."
+            sleep 10
+          done

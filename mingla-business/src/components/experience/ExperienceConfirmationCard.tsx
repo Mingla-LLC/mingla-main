@@ -22,6 +22,22 @@ export interface ExperienceConfirmationCardProps {
   onReject: () => void;
 }
 
+function formatCapacity(args: Record<string, unknown>): string | null {
+  const min = args.capacity_min;
+  const max = args.capacity_max;
+  if (typeof min === "number" && typeof max === "number" && min > 0 && max > 0) {
+    if (min === max) return `Up to ${max} people`;
+    return `${min}–${max} people`;
+  }
+  if (typeof max === "number" && max > 0) {
+    return `Up to ${max} people`;
+  }
+  if (typeof min === "number" && min > 0) {
+    return `From ${min} people`;
+  }
+  return null;
+}
+
 function formatPriceRange(args: Record<string, unknown>): string | null {
   const min = args.suggested_price_min_cents;
   const max = args.suggested_price_max_cents;
@@ -53,6 +69,11 @@ export const ExperienceConfirmationCard: React.FC<ExperienceConfirmationCardProp
   }, [args.intent_tags]);
 
   const priceLabel = formatPriceRange(args);
+  const capacityLabel = formatCapacity(args);
+  const timeOfDay =
+    typeof args.suggested_time_of_day === "string" && args.suggested_time_of_day.trim()
+      ? args.suggested_time_of_day.trim()
+      : null;
 
   const buildEditedArgs = (): Record<string, unknown> => ({
     ...args,
@@ -91,6 +112,12 @@ export const ExperienceConfirmationCard: React.FC<ExperienceConfirmationCardProp
             <Text style={styles.title}>{title}</Text>
             <Text style={styles.narrative}>{narrative}</Text>
           </>
+        )}
+        {capacityLabel !== null && (
+          <Text style={styles.meta}>{capacityLabel}</Text>
+        )}
+        {timeOfDay !== null && (
+          <Text style={styles.meta}>{timeOfDay}</Text>
         )}
         {priceLabel !== null && (
           <Text style={styles.meta}>{priceLabel}</Text>

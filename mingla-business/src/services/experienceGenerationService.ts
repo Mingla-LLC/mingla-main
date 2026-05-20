@@ -9,10 +9,13 @@ import {
 } from "./agentChatService";
 import { supabase } from "./supabase";
 
-export interface MenuFilePayload {
+export interface ExperienceFilePayload {
   mime_type: "image/jpeg" | "image/png" | "application/pdf";
   data_base64: string;
 }
+
+/** @deprecated Use ExperienceFilePayload */
+export type MenuFilePayload = ExperienceFilePayload;
 
 export interface PendingExperienceProposal {
   id: string;
@@ -28,22 +31,47 @@ export type ParseMenuResponse =
   }
   | { kind: "error"; code: string; message: string };
 
-export async function parseRestaurantMenu(args: {
-  brand_id: string;
-  files: MenuFilePayload[];
-}): Promise<ParseMenuResponse> {
-  const { data, error } = await supabase.functions.invoke<ParseMenuResponse>(
-    "parse-restaurant-menu",
+export type ParseExperienceResponse = ParseMenuResponse;
+
+async function invokeExperienceParser(
+  functionName: "parse-restaurant-menu" | "parse-play-activities",
+  args: { brand_id: string; files: ExperienceFilePayload[] },
+  fallbackMessage: string,
+): Promise<ParseExperienceResponse> {
+  const { data, error } = await supabase.functions.invoke<ParseExperienceResponse>(
+    functionName,
     { body: args },
   );
   if (error) {
-    const message = error.message ?? "Couldn't read your menu — try again";
+    const message = error.message ?? fallbackMessage;
     return { kind: "error", code: "EDGE_ERROR", message };
   }
   if (!data) {
     return { kind: "error", code: "EMPTY", message: "Empty response from server" };
   }
   return data;
+}
+
+export async function parseRestaurantMenu(args: {
+  brand_id: string;
+  files: ExperienceFilePayload[];
+}): Promise<ParseExperienceResponse> {
+  return invokeExperienceParser(
+    "parse-restaurant-menu",
+    args,
+    "Couldn't read your menu — try again",
+  );
+}
+
+export async function parsePlayActivities(args: {
+  brand_id: string;
+  files: ExperienceFilePayload[];
+}): Promise<ParseExperienceResponse> {
+  return invokeExperienceParser(
+    "parse-play-activities",
+    args,
+    "Couldn't read your activities list — try again",
+  );
 }
 
 export interface HubPendingExperienceRow {
