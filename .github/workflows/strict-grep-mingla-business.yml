@@ -63,6 +63,7 @@ on:
 #   - I-ARI-NO-OKLCH (i-ari-no-oklch.mjs) — Ari mobile surface must use HSL/hex/rgb only; no oklch/color-mix/lab (ORCH-0821)
 #   - I-ARI-USER-JWT-ONLY (i-ari-user-jwt-only.mjs) — Ari edge fn handlers must use caller JWT, not service role (ORCH-0821)
 #   - I-VE5-PARSE-MENU-USER-JWT-ONLY (i-ve5-parse-menu-user-jwt-only.mjs) — parse-restaurant-menu uses caller JWT only (ORCH-0881)
+#   - I-VE6-PARSE-PLAY-USER-JWT-ONLY (i-ve6-parse-play-user-jwt-only.mjs) — parse-play-activities uses caller JWT only (ORCH-0882)
 #   - ORCH-0776 (orch-0776-video-processing-status-bridge.mjs) — event cover video processing status bridge
 #   - ORCH-0776D (orch-0776d-cancelled-at-schema.mjs) — event cover video cancelled_at schema/code parity
 #   - ORCH-0777 (orch-0777-ticket-checkout-production.mjs) — production ticket checkout + organizer order visibility
