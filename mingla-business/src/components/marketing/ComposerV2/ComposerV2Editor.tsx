@@ -46,7 +46,7 @@ import {
   type NativeSyntheticEvent,
   type TextInputSelectionChangeEventData,
 } from "react-native";
-import { RichEditor, type RichEditorHandle } from "./richEditor";
+import { RichEditor, actions, type RichEditorHandle } from "./richEditor";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
@@ -69,6 +69,7 @@ import type { MarketingTemplateRow } from "../../../types/marketing";
 import {
   COMPOSER_CHIP_CSS,
   COMPOSER_CHIP_X_HANDLER_JS,
+  COMPOSER_SELECTION_TRACKER_JS,
   eventChipHtml,
   personalizationChipHtml,
 } from "./composerChipHtml";
@@ -81,45 +82,6 @@ import { useResponsiveLayout } from "../../../hooks/useResponsiveLayout";
 // Stage F.9: SelectionFormattingTooltip removed — its B/I/Link pills
 // merged into InsertionBar (now mounted inside this editor between the
 // subject row and the body card per operator F.9 directive).
-
-/**
- * Builds a JS snippet that refocuses pell's contenteditable and runs
- * `document.execCommand(cmd)`. Used for Bold / Italic. Pell's
- * `sendAction(actions.setBold)` runs the same execCommand internally
- * but goes through a message bridge that races with the WebView losing
- * focus when a native Pressable in the toolbar is tapped — by the time
- * the message arrives, the contenteditable is blurred and execCommand
- * no-ops. Running it via `commandDOM` (which posts a raw JS string into
- * the WebView and evaluates it synchronously) lets us refocus first.
- */
-const focusExecJs = (cmd: string): string => `(function(){
-  var ce = document.querySelector('[contenteditable="true"]');
-  if (!ce) return;
-  if (document.activeElement !== ce) ce.focus();
-  document.execCommand(${JSON.stringify(cmd)});
-})();`;
-
-/**
- * Builds a JS snippet that inserts an `<a href>` at the caret (or wraps
- * the current selection if there is one). Same focus-restoration pattern
- * as focusExecJs so it works after the native LinkPromptModal closed
- * (which also blurs the WebView).
- */
-const insertLinkJs = (url: string): string => {
-  const j = JSON.stringify(url);
-  return `(function(){
-    var ce = document.querySelector('[contenteditable="true"]');
-    if (!ce) return;
-    if (document.activeElement !== ce) ce.focus();
-    var sel = window.getSelection();
-    if (sel && sel.toString().length > 0) {
-      document.execCommand('createLink', false, ${j});
-    } else {
-      var u = ${j}.replace(/"/g, '&quot;');
-      document.execCommand('insertHTML', false, '<a href="' + u + '">' + ${j} + '</a>');
-    }
-  })();`;
-};
 
 const DIVIDER_HTML =
   '<hr style="border:none;border-top:1px solid rgba(255,255,255,0.18);margin:12px 0;" />';
@@ -146,6 +108,12 @@ export interface ComposerV2EditorHandle {
   toggleItalic: () => void;
   toggleUnderline: () => void;
   toggleLink: () => void;
+  /**
+   * ORCH-0891 M3 — toggles the right-rail TemplatePreviewDrawer so the
+   * ⌘D keyboard shortcut can drive it from compose.tsx without owning
+   * the drawer state itself.
+   */
+  toggleTemplateDrawer: () => void;
 }
 
 export interface ComposerV2EditorProps {
@@ -246,6 +214,11 @@ export const ComposerV2Editor = forwardRef<ComposerV2EditorHandle, ComposerV2Edi
         `var s=document.createElement('style');s.innerHTML=\`${css}\`;document.head.appendChild(s);`,
       );
       richEditorRef.current?.commandDOM(COMPOSER_CHIP_X_HANDLER_JS);
+      // Saves contenteditable selection on every selectionchange so the
+      // toolbar's focus-then-exec JS can restore it before execCommand,
+      // and binds Cmd/Ctrl+U → execCommand('underline') (not native on
+      // iOS WKWebView). See COMPOSER_SELECTION_TRACKER_JS docs.
+      richEditorRef.current?.commandDOM(COMPOSER_SELECTION_TRACKER_JS);
     }, []);
 
     const handleBodyHtmlChange = useCallback(
@@ -254,6 +227,12 @@ export const ComposerV2Editor = forwardRef<ComposerV2EditorHandle, ComposerV2Edi
       },
       [onBodyChange],
     );
+
+    // ORCH-0891 M3 — drawer state must be declared BEFORE the imperative
+    // handle so `toggleTemplateDrawer` can call `setShowTemplateDrawer`.
+    // F.9 InsertionBar local state moved here for the same reason.
+    const [barState, setBarState] = useState<InsertionBarState>("closed");
+    const [showTemplateDrawer, setShowTemplateDrawer] = useState(false);
 
     // ─── Imperative handle: parent drives inserts + formatting ────────────
     useImperativeHandle(
@@ -284,23 +263,32 @@ export const ComposerV2Editor = forwardRef<ComposerV2EditorHandle, ComposerV2Edi
           richEditorRef.current?.insertHTML(html);
         },
         // Stage F.9 merged-toolbar formatting commands.
-        // Bold/Italic go through commandDOM (raw JS into the WebView)
-        // because pell's message-bridge sendAction races with the
-        // native Pressable taking focus from the WebView — by the time
-        // sendAction's setBold arrives, the contenteditable is blurred
-        // and execCommand no-ops. focusExecJs refocuses first.
+        // Route through sendAction so BOTH platforms work:
+        //   - pell (iOS/Android): sendAction posts a message to the
+        //     WebView; pell's bridge runs focusCurrent() then exec(cmd)
+        //     when name === 'result' (editor.js:697-702).
+        //   - Tiptap (web): the web RichEditor shim maps sendAction
+        //     'bold' / 'italic' / 'underline' onto
+        //     editor.chain().focus().toggleX().run() (richEditor.tsx).
+        // The previous commandDOM-based path silently no-op'd on web
+        // because the web shim's commandDOM is intentionally a no-op
+        // (richEditor.tsx:312-314 — Tiptap doesn't have an iframe to
+        // inject JS into).
         toggleBold: (): void => {
-          richEditorRef.current?.commandDOM(focusExecJs("bold"));
+          richEditorRef.current?.sendAction(actions.setBold, "result");
         },
         toggleItalic: (): void => {
-          richEditorRef.current?.commandDOM(focusExecJs("italic"));
+          richEditorRef.current?.sendAction(actions.setItalic, "result");
         },
         toggleUnderline: (): void => {
-          richEditorRef.current?.commandDOM(focusExecJs("underline"));
+          richEditorRef.current?.sendAction(actions.setUnderline, "result");
         },
         toggleLink: (): void => {
           setLinkPromptValue("");
           setLinkPromptVisible(true);
+        },
+        toggleTemplateDrawer: (): void => {
+          setShowTemplateDrawer((prev) => !prev);
         },
       }),
       [onBodyChange, onSubjectChange],
@@ -333,9 +321,9 @@ export const ComposerV2Editor = forwardRef<ComposerV2EditorHandle, ComposerV2Edi
 
     const subjectTokens = useMemo(() => PERSONALIZATION_OPTIONS, []);
 
-    // F.9: InsertionBar local state — bar sits between subject and body.
-    const [barState, setBarState] = useState<InsertionBarState>("closed");
-    const [showTemplateDrawer, setShowTemplateDrawer] = useState(false);
+    // F.9: InsertionBar local state — declared above the imperative
+    // handle now (ORCH-0891 M3) so toggleTemplateDrawer can reach
+    // setShowTemplateDrawer.
 
     const handleInsertEventLocal = useCallback(
       (event: EventCardOption): void => {
@@ -365,15 +353,15 @@ export const ComposerV2Editor = forwardRef<ComposerV2EditorHandle, ComposerV2Edi
     const [linkPromptValue, setLinkPromptValue] = useState("");
 
     const handleToggleBoldLocal = useCallback((): void => {
-      richEditorRef.current?.commandDOM(focusExecJs("bold"));
+      richEditorRef.current?.sendAction(actions.setBold, "result");
     }, []);
 
     const handleToggleItalicLocal = useCallback((): void => {
-      richEditorRef.current?.commandDOM(focusExecJs("italic"));
+      richEditorRef.current?.sendAction(actions.setItalic, "result");
     }, []);
 
     const handleToggleUnderlineLocal = useCallback((): void => {
-      richEditorRef.current?.commandDOM(focusExecJs("underline"));
+      richEditorRef.current?.sendAction(actions.setUnderline, "result");
     }, []);
 
     const handleToggleLinkLocal = useCallback((): void => {
@@ -389,7 +377,11 @@ export const ComposerV2Editor = forwardRef<ComposerV2EditorHandle, ComposerV2Edi
       const url = normalizeUrl(linkPromptValue);
       setLinkPromptVisible(false);
       if (url.length === 0) return;
-      richEditorRef.current?.commandDOM(insertLinkJs(url));
+      // insertLink is implemented on BOTH platforms:
+      //   - pell (iOS/Android): wraps current selection in <a href>
+      //   - Tiptap (web): inserts <a> at cursor with URL text if no
+      //     selection, else wraps selection (richEditor.tsx insertLink).
+      richEditorRef.current?.insertLink(url, url);
     }, [linkPromptValue]);
 
     const handleInsertDividerLocal = useCallback((): void => {
