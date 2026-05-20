@@ -1,5 +1,5 @@
 /**
- * /hub/experiences — ORCH-0881 Ve5 Menu AI Parser → Restaurant Experiences.
+ * /hub/experiences — Ve5 Restaurant menu + Ve6 Play activities AI parsers.
  */
 
 import React, { useCallback, useState } from "react";
@@ -12,6 +12,7 @@ import {
   View,
 } from "react-native";
 
+import { ActivitiesSnapInput } from "../../../src/components/experience/ActivitiesSnapInput";
 import { ExperienceReviewCards } from "../../../src/components/experience/ExperienceReviewCards";
 import { MenuSnapInput } from "../../../src/components/experience/MenuSnapInput";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
@@ -26,26 +27,105 @@ import {
 } from "../../../src/constants/designSystem";
 import { useCurrentBrand } from "../../../src/hooks/useCurrentBrand";
 import { useExperiencesByBrand } from "../../../src/hooks/useExperiencesByBrand";
-import { usePendingExperiences } from "../../../src/hooks/usePendingExperiences";
-import type { MenuFilePayload } from "../../../src/services/experienceGenerationService";
+import {
+  usePendingExperiences,
+  type ExperienceParseMode,
+} from "../../../src/hooks/usePendingExperiences";
+import type { ExperienceFilePayload } from "../../../src/services/experienceGenerationService";
+import type { VenueExperience } from "../../../src/services/experiencesService";
+import { canGenerateExperiencesFromActivities } from "../../../src/utils/canGenerateExperiencesFromActivities";
 import { canGenerateExperiencesFromMenu } from "../../../src/utils/canGenerateExperiencesFromMenu";
 
 type HubPhase = "idle" | "parsing" | "review";
 
-export default function HubExperiencesRoute(): React.ReactElement {
-  const currentBrand = useCurrentBrand();
-  const brandId = currentBrand?.id ?? null;
-  const canSnap = canGenerateExperiencesFromMenu(currentBrand);
+interface GenerationCopy {
+  ctaTitle: string;
+  ctaBody: string;
+  ctaA11y: string;
+  loadingText: string;
+  emptyParseToast: string;
+  parseErrorFallback: string;
+  emptyListHint: string;
+  unverifiedHint: string;
+}
 
+const RESTAURANT_COPY: GenerationCopy = {
+  ctaTitle: "Snap your menu to generate experiences",
+  ctaBody:
+    "AI reads your menu and suggests offerings you can accept, edit, or reject.",
+  ctaA11y: "Snap your menu to generate experiences",
+  loadingText: "Reading your menu\u2026",
+  emptyParseToast:
+    "We couldn't find menu items in that file. Try a clearer photo of your menu.",
+  parseErrorFallback: "Couldn't read your menu. Try again.",
+  emptyListHint: "No experiences yet. Snap your menu to generate your first ones.",
+  unverifiedHint:
+    "Once Mingla verifies your venue claim, you can generate experiences from your menu here.",
+};
+
+const PLAY_COPY: GenerationCopy = {
+  ctaTitle: "Generate from your activities",
+  ctaBody:
+    "AI reads your activities or packages list and suggests experiences you can accept, edit, or reject.",
+  ctaA11y: "Generate experiences from your activities list",
+  loadingText: "Reading your activities\u2026",
+  emptyParseToast:
+    "We couldn't find activities in that file. Try a clearer photo of your activities list.",
+  parseErrorFallback: "Couldn't read your activities list. Try again.",
+  emptyListHint:
+    "No experiences yet. Generate from your activities list to create your first ones.",
+  unverifiedHint:
+    "Once Mingla verifies your venue claim, you can generate experiences from your activities list here.",
+};
+
+function formatExperienceMeta(exp: VenueExperience): string | null {
+  const parts: string[] = [];
+  if (exp.capacityMin !== null && exp.capacityMax !== null) {
+    parts.push(
+      exp.capacityMin === exp.capacityMax
+        ? `Up to ${exp.capacityMax} people`
+        : `${exp.capacityMin}\u2013${exp.capacityMax} people`,
+    );
+  } else if (exp.capacityMax !== null) {
+    parts.push(`Up to ${exp.capacityMax} people`);
+  }
+  if (exp.suggestedTimeOfDay) {
+    parts.push(exp.suggestedTimeOfDay);
+  }
+  if (exp.intentTags.length > 0) {
+    parts.push(exp.intentTags.join(" \u00b7 "));
+  }
+  return parts.length > 0 ? parts.join(" \u00b7 ") : null;
+}
+
+interface ExperienceGenerationSurfaceProps {
+  brandId: string;
+  parseMode: ExperienceParseMode;
+  copy: GenerationCopy;
+  canSnap: boolean;
+  SnapInput: React.ComponentType<{
+    visible: boolean;
+    onCancel: () => void;
+    onFilesReady: (files: ExperienceFilePayload[]) => void;
+  }>;
+}
+
+function ExperienceGenerationSurface({
+  brandId,
+  parseMode,
+  copy,
+  canSnap,
+  SnapInput,
+}: ExperienceGenerationSurfaceProps): React.ReactElement {
   const experiencesQuery = useExperiencesByBrand(brandId);
   const {
     pending,
-    parseMenu,
+    parseFiles,
     isParsing,
     confirm,
     reject,
     isConfirming,
-  } = usePendingExperiences(brandId);
+  } = usePendingExperiences(brandId, parseMode);
 
   const [snapSheetVisible, setSnapSheetVisible] = useState(false);
   const [phase, setPhase] = useState<HubPhase>("idle");
@@ -55,32 +135,30 @@ export default function HubExperiencesRoute(): React.ReactElement {
   const showReview = phase === "review" || pending.length > 0;
 
   const handleFilesReady = useCallback(
-    async (files: MenuFilePayload[]) => {
+    async (files: ExperienceFilePayload[]) => {
       setSnapSheetVisible(false);
       setPhase("parsing");
       try {
-        const result = await parseMenu(files);
+        const result = await parseFiles(files);
         if (result.kind === "error") {
           setToast(result.message);
           setPhase("idle");
           return;
         }
         if (result.experiences_count === 0) {
-          setToast(
-            "We couldn't find menu items in that file. Try a clearer photo of your menu.",
-          );
+          setToast(copy.emptyParseToast);
           setPhase("idle");
           return;
         }
         setPhase("review");
       } catch (e) {
         setToast(
-          e instanceof Error ? e.message : "Couldn't read your menu. Try again.",
+          e instanceof Error ? e.message : copy.parseErrorFallback,
         );
         setPhase("idle");
       }
     },
-    [parseMenu],
+    [copy.emptyParseToast, copy.parseErrorFallback, parseFiles],
   );
 
   const handleAcceptAll = useCallback(async () => {
@@ -95,55 +173,6 @@ export default function HubExperiencesRoute(): React.ReactElement {
     setToast("Experiences published to your venue.");
   }, [confirm, pending]);
 
-  if (currentBrand === null) {
-    return (
-      <View style={styles.stateHost}>
-        <Text style={styles.body}>Select a brand to see its experiences.</Text>
-      </View>
-    );
-  }
-
-  if (currentBrand.kind === "physical" && currentBrand.claimStatus !== "verified") {
-    return (
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <GlassCard variant="elevated" padding={spacing.lg}>
-          <Text style={styles.emptyTitle}>Experiences are for verified physical venues</Text>
-          <Text style={styles.emptyBody}>
-            Once Mingla verifies your venue claim, you can generate experiences from your
-            menu here.
-          </Text>
-        </GlassCard>
-      </ScrollView>
-    );
-  }
-
-  if (currentBrand.kind === "physical" && currentBrand.venueCategory !== "restaurant") {
-    return (
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <GlassCard variant="elevated" padding={spacing.lg}>
-          <Text style={styles.emptyTitle}>Restaurant menu snap coming for your category</Text>
-          <Text style={styles.emptyBody}>
-            Play and Creative &amp; Arts venues get their own AI parsers in upcoming
-            releases. For now, experiences for restaurants use menu photography.
-          </Text>
-        </GlassCard>
-      </ScrollView>
-    );
-  }
-
-  if (currentBrand.kind !== "physical") {
-    return (
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <GlassCard variant="elevated" padding={spacing.lg}>
-          <Text style={styles.emptyTitle}>Experiences are for verified physical venues</Text>
-          <Text style={styles.emptyBody}>
-            Switch to a verified restaurant venue to generate single-intent experiences.
-          </Text>
-        </GlassCard>
-      </ScrollView>
-    );
-  }
-
   return (
     <>
       <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -157,19 +186,17 @@ export default function HubExperiencesRoute(): React.ReactElement {
               isParsing && styles.ctaDisabled,
             ]}
             accessibilityRole="button"
-            accessibilityLabel="Snap your menu to generate experiences"
+            accessibilityLabel={copy.ctaA11y}
           >
-            <Text style={styles.ctaTitle}>Snap your menu to generate experiences</Text>
-            <Text style={styles.ctaBody}>
-              AI reads your menu and suggests offerings you can accept, edit, or reject.
-            </Text>
+            <Text style={styles.ctaTitle}>{copy.ctaTitle}</Text>
+            <Text style={styles.ctaBody}>{copy.ctaBody}</Text>
           </Pressable>
         )}
 
         {(phase === "parsing" || isParsing) && (
           <View style={styles.loadingRow}>
             <ActivityIndicator color={accent.warm} />
-            <Text style={styles.loadingText}>Reading your menu&hellip;</Text>
+            <Text style={styles.loadingText}>{copy.loadingText}</Text>
           </View>
         )}
 
@@ -200,30 +227,31 @@ export default function HubExperiencesRoute(): React.ReactElement {
           <ActivityIndicator style={styles.listLoader} />
         ) : experiences.length === 0 ? (
           <GlassCard variant="elevated" padding={spacing.lg}>
-            <Text style={styles.emptyBody}>
-              No experiences yet. Snap your menu to generate your first ones.
-            </Text>
+            <Text style={styles.emptyBody}>{copy.emptyListHint}</Text>
           </GlassCard>
         ) : (
-          experiences.map((exp) => (
-            <View key={exp.id} style={styles.expCard}>
-            <GlassCard variant="elevated" padding={spacing.md}>
-              <Text style={styles.expTitle}>{exp.title}</Text>
-              {exp.description !== null && (
-                <Text style={styles.expBody} numberOfLines={3}>
-                  {exp.description}
-                </Text>
-              )}
-              {exp.intentTags.length > 0 && (
-                <Text style={styles.expTags}>{exp.intentTags.join(" · ")}</Text>
-              )}
-            </GlassCard>
-            </View>
-          ))
+          experiences.map((exp) => {
+            const meta = formatExperienceMeta(exp);
+            return (
+              <View key={exp.id} style={styles.expCard}>
+                <GlassCard variant="elevated" padding={spacing.md}>
+                  <Text style={styles.expTitle}>{exp.title}</Text>
+                  {exp.description !== null && (
+                    <Text style={styles.expBody} numberOfLines={3}>
+                      {exp.description}
+                    </Text>
+                  )}
+                  {meta !== null && (
+                    <Text style={styles.expTags}>{meta}</Text>
+                  )}
+                </GlassCard>
+              </View>
+            );
+          })
         )}
       </ScrollView>
 
-      <MenuSnapInput
+      <SnapInput
         visible={snapSheetVisible}
         onCancel={() => setSnapSheetVisible(false)}
         onFilesReady={(files) => void handleFilesReady(files)}
@@ -236,6 +264,95 @@ export default function HubExperiencesRoute(): React.ReactElement {
         onDismiss={() => setToast(null)}
       />
     </>
+  );
+}
+
+export default function HubExperiencesRoute(): React.ReactElement {
+  const currentBrand = useCurrentBrand();
+
+  if (currentBrand === null) {
+    return (
+      <View style={styles.stateHost}>
+        <Text style={styles.body}>Select a brand to see its experiences.</Text>
+      </View>
+    );
+  }
+
+  if (currentBrand.kind === "physical" && currentBrand.claimStatus !== "verified") {
+    return (
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        <GlassCard variant="elevated" padding={spacing.lg}>
+          <Text style={styles.emptyTitle}>Experiences are for verified physical venues</Text>
+          <Text style={styles.emptyBody}>
+            {currentBrand.venueCategory === "play"
+              ? PLAY_COPY.unverifiedHint
+              : RESTAURANT_COPY.unverifiedHint}
+          </Text>
+        </GlassCard>
+      </ScrollView>
+    );
+  }
+
+  if (currentBrand.kind === "physical" && currentBrand.venueCategory === "restaurant") {
+    return (
+      <ExperienceGenerationSurface
+        brandId={currentBrand.id}
+        parseMode="menu"
+        copy={RESTAURANT_COPY}
+        canSnap={canGenerateExperiencesFromMenu(currentBrand)}
+        SnapInput={MenuSnapInput}
+      />
+    );
+  }
+
+  if (currentBrand.kind === "physical" && currentBrand.venueCategory === "play") {
+    return (
+      <ExperienceGenerationSurface
+        brandId={currentBrand.id}
+        parseMode="activities"
+        copy={PLAY_COPY}
+        canSnap={canGenerateExperiencesFromActivities(currentBrand)}
+        SnapInput={ActivitiesSnapInput}
+      />
+    );
+  }
+
+  if (currentBrand.kind === "physical" && currentBrand.venueCategory === "creative_and_arts") {
+    return (
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        <GlassCard variant="elevated" padding={spacing.lg}>
+          <Text style={styles.emptyTitle}>Schedule snap coming soon</Text>
+          <Text style={styles.emptyBody}>
+            Creative &amp; Arts venues will get schedule-based AI experience generation in an
+            upcoming release.
+          </Text>
+        </GlassCard>
+      </ScrollView>
+    );
+  }
+
+  if (currentBrand.kind !== "physical") {
+    return (
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        <GlassCard variant="elevated" padding={spacing.lg}>
+          <Text style={styles.emptyTitle}>Experiences are for verified physical venues</Text>
+          <Text style={styles.emptyBody}>
+            Switch to a verified physical venue to generate single-intent experiences.
+          </Text>
+        </GlassCard>
+      </ScrollView>
+    );
+  }
+
+  return (
+    <ScrollView contentContainerStyle={styles.scrollContent}>
+      <GlassCard variant="elevated" padding={spacing.lg}>
+        <Text style={styles.emptyTitle}>Experiences unavailable for this venue</Text>
+        <Text style={styles.emptyBody}>
+          This venue category does not support AI experience generation yet.
+        </Text>
+      </GlassCard>
+    </ScrollView>
   );
 }
 

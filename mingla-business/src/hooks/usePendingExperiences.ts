@@ -15,8 +15,9 @@ import {
   parseRestaurantMenu,
   rejectExperienceProposal,
   type HubPendingExperienceRow,
-  type MenuFilePayload,
-  type ParseMenuResponse,
+  parsePlayActivities,
+  type ExperienceFilePayload,
+  type ParseExperienceResponse,
 } from "../services/experienceGenerationService";
 import { experienceKeys } from "./useExperiencesByBrand";
 
@@ -25,7 +26,12 @@ export const pendingExperienceKeys = {
   byBrand: (brandId: string) => [...pendingExperienceKeys.all, brandId] as const,
 };
 
-export function usePendingExperiences(brandId: string | null) {
+export type ExperienceParseMode = "menu" | "activities";
+
+export function usePendingExperiences(
+  brandId: string | null,
+  parseMode: ExperienceParseMode = "menu",
+) {
   const qc = useQueryClient();
 
   const pendingQuery = useQuery<HubPendingExperienceRow[]>({
@@ -36,8 +42,10 @@ export function usePendingExperiences(brandId: string | null) {
   });
 
   const parseMutation = useMutation({
-    mutationFn: (files: MenuFilePayload[]) =>
-      parseRestaurantMenu({ brand_id: brandId!, files }),
+    mutationFn: (files: ExperienceFilePayload[]) =>
+      parseMode === "activities"
+        ? parsePlayActivities({ brand_id: brandId!, files })
+        : parseRestaurantMenu({ brand_id: brandId!, files }),
     onSuccess: (response) => {
       if (response.kind === "ok" && brandId) {
         qc.invalidateQueries({ queryKey: pendingExperienceKeys.byBrand(brandId) });
@@ -65,8 +73,8 @@ export function usePendingExperiences(brandId: string | null) {
     },
   });
 
-  const parseMenu = useCallback(
-    async (files: MenuFilePayload[]): Promise<ParseMenuResponse> =>
+  const parseFiles = useCallback(
+    async (files: ExperienceFilePayload[]): Promise<ParseExperienceResponse> =>
       parseMutation.mutateAsync(files),
     [parseMutation],
   );
@@ -74,7 +82,9 @@ export function usePendingExperiences(brandId: string | null) {
   return {
     pending: pendingQuery.data ?? [],
     isLoadingPending: pendingQuery.isLoading,
-    parseMenu,
+    parseFiles,
+    /** @deprecated Use parseFiles */
+    parseMenu: parseFiles,
     isParsing: parseMutation.isPending,
     confirm: confirmMutation.mutateAsync,
     reject: rejectMutation.mutateAsync,
