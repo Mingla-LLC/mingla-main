@@ -204,6 +204,102 @@ body, .pell-content {
   height: 0;
   pointer-events: none;
 }
+
+/* ─── ORCH-0891 M2: Chip size variants (compact/medium/large) ─────────
+   In-editor chip rendering changes by size:
+   - compact: small inline pill, smaller font, no glyph (mention-style)
+   - medium (default): current rendering — pill with ▣ glyph + title
+   - large: block-level hero card — full-width, ↗ trailing arrow
+   Per DESIGN_SPEC §10. Email-side rendering handled separately by
+   marketingEmailRender.ts (M2 server-side extension). ────────────── */
+
+.mingla-event-chip[data-size="compact"] {
+  padding: 1px 6px;
+  font-size: 12px;
+  background: rgba(235, 120, 37, 0.08);
+  border-color: rgba(235, 120, 37, 0.35);
+}
+.mingla-event-chip[data-size="compact"] .mingla-chip-glyph {
+  display: none;
+}
+
+/* Medium: default — no override needed (base .mingla-event-chip styles apply) */
+
+.mingla-event-chip[data-size="large"] {
+  display: block;
+  padding: 12px;
+  margin: 8px 0;
+  border-radius: 12px;
+  background: rgba(235, 120, 37, 0.10);
+  border: 1px solid rgba(235, 120, 37, 0.40);
+  font-size: 14px;
+  line-height: 1.45;
+}
+.mingla-event-chip[data-size="large"] .mingla-chip-glyph {
+  display: inline-block;
+  font-size: 16px;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.mingla-event-chip[data-size="large"]::after {
+  content: " ↗";
+  color: rgba(235, 120, 37, 0.70);
+  font-weight: 600;
+  margin-left: 6px;
+}
+
+/* ─── ORCH-0891 M2: Chip size picker (S/M/L buttons) ────────────────
+   Picker appears on hover OR focus-within (Tab navigation reveals it
+   for keyboard users). 3 buttons inside an inline-flex container.
+   Per DESIGN_SPEC §6. ──────────────────────────────────────────── */
+
+.mingla-event-chip .mingla-chip-size-picker {
+  display: none;
+  margin-left: 6px;
+  gap: 2px;
+  vertical-align: middle;
+}
+.mingla-event-chip:hover .mingla-chip-size-picker,
+.mingla-event-chip:focus-within .mingla-chip-size-picker {
+  display: inline-flex;
+}
+
+.mingla-chip-size-picker button {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  color: rgba(255, 255, 255, 0.70);
+  font-size: 10px;
+  font-weight: 600;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  cursor: pointer;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 120ms cubic-bezier(0.33, 1, 0.68, 1),
+              border-color 120ms cubic-bezier(0.33, 1, 0.68, 1),
+              color 120ms cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+.mingla-chip-size-picker button:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.mingla-chip-size-picker button[data-active="true"] {
+  background: rgba(235, 120, 37, 0.50);
+  border-color: #eb7825;
+  color: #ffffff;
+}
+
+.mingla-chip-size-picker button:focus-visible {
+  outline: 2px solid rgba(235, 120, 37, 0.35);
+  outline-offset: 1px;
+}
 `;
 
 /**
@@ -277,6 +373,55 @@ export const COMPOSER_CHIP_BACKSPACE_HANDLER_JS = `
  * Alias retained for any in-flight callers; safe to remove on next pass.
  */
 export const COMPOSER_CHIP_X_HANDLER_JS = COMPOSER_CHIP_BACKSPACE_HANDLER_JS;
+
+/**
+ * Saves the current contenteditable selection to `window.__minglaSavedRange`
+ * on every `selectionchange`, and installs a Cmd/Ctrl+U keymap that runs
+ * `document.execCommand('underline')`.
+ *
+ * Why this exists:
+ *   - Toolbar pill taps (B/I/U/Link) live in native React Native Pressables
+ *     OUTSIDE the WebView. When a Pressable handles the tap, iOS may
+ *     drop the contenteditable's first-responder and `window.getSelection()`
+ *     becomes empty inside the WebView. Pell's own `saveSelection()` only
+ *     runs on `oninput` events — so highlighting text without typing leaves
+ *     pell with NO saved selection to restore on the next message, and
+ *     `focusCurrent()` → `editor.content.focus()` collapses the selection.
+ *     This tracker saves the live range on every `selectionchange` so the
+ *     toolbar's focus-then-exec JS can restore it before `execCommand`.
+ *   - Cmd+B / Cmd+I are natively bound by iOS WKWebView in contenteditable
+ *     contexts. Cmd+U is NOT — Safari/WebKit only auto-binds bold/italic.
+ *     We install a `keydown` listener that intercepts Cmd/Ctrl+U and runs
+ *     `execCommand('underline')` so the keyboard shortcut works for parity
+ *     with the toolbar pill.
+ *
+ * Idempotent via `window.__minglaSelTrackerInstalled` flag.
+ */
+export const COMPOSER_SELECTION_TRACKER_JS = `
+(function(){
+  if (window.__minglaSelTrackerInstalled) return;
+  window.__minglaSelTrackerInstalled = true;
+  window.__minglaSavedRange = null;
+  document.addEventListener('selectionchange', function(){
+    var sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+    var range = sel.getRangeAt(0);
+    var ce = document.querySelector('[contenteditable="true"]');
+    if (!ce) return;
+    if (ce.contains(range.commonAncestorContainer)) {
+      window.__minglaSavedRange = range.cloneRange();
+    }
+  });
+  document.addEventListener('keydown', function(e){
+    var key = (e.key || '').toLowerCase();
+    var meta = e.metaKey || e.ctrlKey;
+    if (meta && key === 'u') {
+      e.preventDefault();
+      document.execCommand('underline');
+    }
+  }, true);
+})();
+`;
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 

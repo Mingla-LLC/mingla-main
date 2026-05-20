@@ -55,6 +55,7 @@ import { ComposerStepWho } from "../../../../src/components/marketing/ComposerSt
 // Send-now lives in ComposerFooter left CTA). Keep SendMode type import.
 import { type SendMode } from "../../../../src/components/marketing/ComposerStepWhen";
 import { ComposerFooter } from "../../../../src/components/marketing/ComposerFooter";
+import { ComposerCanvas } from "../../../../src/components/marketing/ComposerV2/ComposerCanvas";
 import { EmailPreviewPane } from "../../../../src/components/marketing/EmailPreviewPane";
 import { SchedulePickerSheet } from "../../../../src/components/marketing/ComposerV2/SchedulePickerSheet";
 import {
@@ -553,50 +554,53 @@ export default function ComposeCampaignRoute(): React.ReactElement {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={[styles.kavHost, isWideDesktop ? styles.desktopKavHost : null]}
       >
-        {/* Stage F.7: NO ScrollView around the editor — pell's WebView
-            inside a ScrollView blocks taps on iOS (RN WebView gesture
-            conflict). Flex column instead: Who fixed, Editor flex:1,
-            When+Compliance fixed below editor. */}
-        <View style={[styles.whoRow, isWideDesktop ? styles.desktopWhoRow : null]}>
-          <ComposerStepWho
-            audienceName={audienceName}
-            reachableEmail={reach?.reachable_email ?? null}
-            totalAudience={reach?.total ?? null}
-            onOpenPicker={() => setShowAudiencePicker(true)}
-            disabled={brandId === null}
-          />
-          {/* F.9m: "Pick an audience above to save your draft." caption
-              removed per operator directive — unnecessary noise. The
-              Save-draft button being disabled (header) communicates the
-              same state without taking layout space. */}
-        </View>
+        {/* ORCH-0891 M2: ComposerCanvas wraps the editor column with a
+            permanent right-hand EmailPreviewPane on wide-desktop. On
+            narrow web + native, the Canvas is a Fragment passthrough —
+            only the editor column renders, and the existing Modal-based
+            preview (triggered by ComposerFooter's Preview button) shows
+            on demand. Per SPEC §3.5.2 + DESIGN_SPEC §2. */}
+        <ComposerCanvas
+          editor={
+            <>
+              {/* Stage F.7: NO ScrollView around the editor — pell's WebView
+                  inside a ScrollView blocks taps on iOS (RN WebView gesture
+                  conflict). Flex column instead: Who fixed, Editor flex:1,
+                  When+Compliance fixed below editor. */}
+              <View style={[styles.whoRow, isWideDesktop ? styles.desktopWhoRow : null]}>
+                <ComposerStepWho
+                  audienceName={audienceName}
+                  reachableEmail={reach?.reachable_email ?? null}
+                  totalAudience={reach?.total ?? null}
+                  onOpenPicker={() => setShowAudiencePicker(true)}
+                  disabled={brandId === null}
+                />
+              </View>
 
-        <ComposerV2Editor
-          ref={editorHandleRef}
-          initialBodyHtml={body}
-          subject={subject}
-          onSubjectChange={onSubjectChange}
-          onBodyChange={onBodyChange}
-          editable={!scheduleMutation.isPending}
-          brandEvents={brandEvents}
-          templates={templates}
-          previewVariables={previewVariables}
-          brandName={brandName}
-          currentDraftIsDirty={isDirty}
-          onErrorToast={(msg) => setErrorBanner(msg)}
-        />
+              <ComposerV2Editor
+                ref={editorHandleRef}
+                initialBodyHtml={body}
+                subject={subject}
+                onSubjectChange={onSubjectChange}
+                onBodyChange={onBodyChange}
+                editable={!scheduleMutation.isPending}
+                brandEvents={brandEvents}
+                templates={templates}
+                previewVariables={previewVariables}
+                brandName={brandName}
+                currentDraftIsDirty={isDirty}
+                onErrorToast={(msg) => setErrorBanner(msg)}
+              />
 
-        {/* F.10b: 3-button footer (Preview / Send Now / Schedule).
-            - Preview opens the EmailPreviewPane modal (inbox view).
-            - Send Now sets sendMode=now and opens the review sheet (NOT
-              immediate send — operator confirms inside the review).
-            - Schedule opens the date+time picker, then on continue sets
-              sendMode=schedule + scheduledForIso and opens the review
-              sheet. The review sheet's existing "Schedule" CTA fires
-              handleConfirmSchedule. */}
-        <ComposerFooter
-          onPreview={() => setShowPreview(true)}
-          onSendNow={() => {
+              {/* F.10b: 3-button footer (Preview / Send Now / Schedule).
+                  ORCH-0891 M2 note: On wide-desktop the EmailPreviewPane
+                  is permanently visible in the right pane, so tapping
+                  the Preview button additionally opens the Modal on
+                  top — redundant but not broken. M3 may hide the
+                  Preview button on wide-desktop as a polish item. */}
+              <ComposerFooter
+                onPreview={() => setShowPreview(true)}
+                onSendNow={() => {
             // F.10c hard-guard: refuse to open the review sheet if the
             // core fields aren't filled. Mirrors the disabled state on
             // the button but defends against any case where the disabled
@@ -620,6 +624,27 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           }}
           scheduleDisabled={coreFooterDisabled}
           submitting={scheduleMutation.isPending}
+        />
+            </>
+          }
+          preview={
+            isWideDesktop ? (
+              <EmailPreviewPane
+                subject={subject}
+                bodyHtml={body}
+                variables={previewVariables}
+                brandName={brandName}
+                brandHeaderImageUrl={
+                  currentBrand?.coverMediaType !== "video"
+                    ? (currentBrand?.coverMediaUrl ?? null)
+                    : null
+                }
+                embeddedEvents={brandEvents.filter((e) =>
+                  extractEmbeddedEventIds(body).includes(e.id),
+                )}
+              />
+            ) : undefined
+          }
         />
 
         {/* Sub-sheets MUST render inside this parent KeyboardAvoidingView per

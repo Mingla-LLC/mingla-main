@@ -73,8 +73,21 @@ function checkFile(file) {
       reason: `missing required class name "${contract.requiredClass}"`,
     });
   }
-  // Every chip must have contenteditable="false" so the editor treats it as atomic.
-  if (!source.includes(`contenteditable: "false"`) && !source.includes(`contenteditable="false"`)) {
+  // Every chip must mark the rendered DOM as `contenteditable="false"` so the
+  // editor treats it as atomic. Accept three source forms:
+  //   - HTML attr:        `contenteditable="false"` (Tiptap renderHTML attrs)
+  //   - Object literal:   `contenteditable: "false"` (Tiptap mergeAttributes)
+  //   - React JSX prop:   `contentEditable={false}` OR `contentEditable="false"`
+  //                       (React NodeView wrappers — ORCH-0891 M2)
+  // React's camelCase form gets compiled to the lowercase HTML attribute at
+  // render time, so all forms produce the same DOM output the backspace
+  // handler relies on.
+  const hasContentEditableFalse =
+    source.includes(`contenteditable: "false"`) ||
+    source.includes(`contenteditable="false"`) ||
+    source.includes(`contentEditable={false}`) ||
+    source.includes(`contentEditable="false"`);
+  if (!hasContentEditableFalse) {
     violations.push({
       file: path.relative(repoRoot, file),
       reason: `missing contenteditable="false" (chips must be atomic — required for backspace handler)`,

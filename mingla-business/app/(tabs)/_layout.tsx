@@ -12,7 +12,7 @@
  */
 
 import React, { useMemo } from "react";
-import { StyleSheet, View } from "react-native";
+import { Platform, StyleSheet, View } from "react-native";
 import { Slot, useRouter, usePathname } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -25,6 +25,12 @@ import type { BottomNavTab } from "../../src/components/ui/BottomNav";
 import { DesktopCanvas } from "../../src/components/ui/DesktopCanvas";
 import { canvas, spacing } from "../../src/constants/designSystem";
 import { useResponsiveLayout } from "../../src/hooks/useResponsiveLayout";
+
+// ORCH-0891 M2: ⌘K command palette. Metro picks
+// `CommandPalette.web.tsx` on web (cmdk-backed dialog with global ⌘K
+// keydown listener) and `CommandPalette.tsx` on native (null stub).
+// Same `.tsx + .web.tsx` Metro split pattern as `richEditor.tsx` from M1.
+import { CommandPalette } from "../../src/components/ui/CommandPalette";
 
 const TABS: BottomNavTab[] = [
   { id: "home", icon: "home", label: "Home" },
@@ -103,6 +109,13 @@ export default function TabsLayout(): React.ReactElement {
           <BottomNav tabs={TABS} active={activeId} onChange={handleChange} />
         </View>
       )}
+      {/* ORCH-0891 M2: CommandPalette mounts on wide-desktop only. The
+          underlying CommandPalette.web.tsx installs the global ⌘K
+          keydown listener internally; the wrapper is null on native.
+          We render it unconditionally at the layout root — the
+          isWideDesktop gate inside the palette itself decides whether
+          to actually open. Native: noop (CommandPalette.tsx is null). */}
+      {Platform.OS === "web" && isWideDesktop ? <CommandPalette /> : null}
     </View>
   );
 }

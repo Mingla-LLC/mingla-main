@@ -61,12 +61,14 @@ import { EditorContent, useEditor } from "@tiptap/react";
 import type { Editor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { Link } from "@tiptap/extension-link";
+import Underline from "@tiptap/extension-underline";
 
 import {
   COMPOSER_CHIP_BACKSPACE_HANDLER_JS,
   COMPOSER_CHIP_CSS,
 } from "./composerChipHtml";
-import { EventChip, type EventChipSize } from "./tiptapNodes/EventChip.web";
+import { type EventChipSize } from "./tiptapNodes/EventChip.web";
+import { EventChipWithResize } from "./tiptapNodes/EventChipResizable.web";
 import { PersonalizationChip } from "./tiptapNodes/PersonalizationChip.web";
 
 /**
@@ -252,11 +254,20 @@ export const RichEditor = React.forwardRef<RichEditorHandle, RichEditorProps>(
           blockquote: false,
           horizontalRule: false,
         }),
+        // Tiptap StarterKit ships Bold + Italic but NOT Underline. The U
+        // pill in the toolbar (and Cmd/Ctrl+U keymap, bound automatically
+        // by this extension) require it to be registered explicitly.
+        Underline,
         Link.configure({
           openOnClick: false,
           HTMLAttributes: {},
         }),
-        EventChip,
+        // M2: EventChipWithResize extends the base EventChip with a
+        // ReactNodeViewRenderer that mounts the S/M/L size picker on
+        // hover/focus. Serialization (getHTML) still uses the base
+        // node's renderHTML — round-trip through htmlToTokenString
+        // unaffected. Per SPEC §3.5.5 + DESIGN_SPEC §6.
+        EventChipWithResize,
         PersonalizationChip,
       ],
       content: initialContent,
@@ -330,6 +341,9 @@ export const RichEditor = React.forwardRef<RichEditorHandle, RichEditorProps>(
               return;
             case "italic":
               editor.chain().focus().toggleItalic().run();
+              return;
+            case "underline":
+              editor.chain().focus().toggleUnderline().run();
               return;
             // Other actions (heading, list, sub/superscript, etc.):
             // graceful no-op. Composer doesn't expose them in V1.
