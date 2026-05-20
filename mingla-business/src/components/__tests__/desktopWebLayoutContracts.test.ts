@@ -31,6 +31,10 @@ describe("desktop web layout contracts", () => {
       expect(source).toContain("DESKTOP_HUB_GRID_COLUMNS");
       expect(source).toContain("desktopListGrid");
       expect(source).toContain("desktopListCell");
+      expect(source).toContain("gap: 0");
+      expect(source).toContain("marginHorizontal: -spacing.xs");
+      expect(source).toContain("paddingHorizontal: spacing.xs");
+      expect(source).not.toContain("paddingRight: spacing.sm");
     }
   });
 
@@ -44,6 +48,10 @@ describe("desktop web layout contracts", () => {
     expect(source).toContain("desktopEventsGrid");
     expect(source).toContain("scrollEnabled={!isWideDesktop}");
     expect(source).toContain("scrollEnabled={isWideDesktop}");
+    expect(source).toContain("gap: 0");
+    expect(source).toContain("marginHorizontal: -spacing.xs");
+    expect(source).toContain("paddingHorizontal: spacing.xs");
+    expect(source).toContain("marginBottom: spacing.sm");
   });
 
   it("keeps the desktop rail visible on the marketing composer", () => {

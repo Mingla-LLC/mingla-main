@@ -921,12 +921,14 @@ const styles = StyleSheet.create({
   desktopEventsGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.sm,
+    gap: 0,
+    marginHorizontal: -spacing.xs,
     paddingBottom: spacing.lg,
   },
   desktopEventCell: {
     width: "25%",
-    paddingRight: spacing.sm,
+    paddingHorizontal: spacing.xs,
+    marginBottom: spacing.sm,
   },
   eventRow: {
     flexDirection: "row",

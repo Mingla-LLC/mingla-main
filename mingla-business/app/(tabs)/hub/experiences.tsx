@@ -310,11 +310,13 @@ const styles = StyleSheet.create({
   desktopListGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.sm,
+    gap: 0,
+    marginHorizontal: -spacing.xs,
   },
   desktopListCell: {
     width: `${100 / DESKTOP_HUB_GRID_COLUMNS}%`,
-    paddingRight: spacing.sm,
+    paddingHorizontal: spacing.xs,
+    marginBottom: spacing.sm,
   },
   expCard: { marginBottom: spacing.sm },
   expTitle: {
