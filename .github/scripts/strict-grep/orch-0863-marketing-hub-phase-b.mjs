@@ -402,6 +402,20 @@ function checkNoNewBackendFiles() {
     "supabase/migrations/20260620000000_orch_0880_tr5_traveler_intake_forms.sql",
     "supabase/migrations/20260621000000_orch_0880_phase2_intake_re_answer_trigger.sql",
   ];
+  // ORCH-0891 [Marketing Hub Premium Composer + Desktop Power Features + Mobile
+  // Polish] CLOSE PR #150 (2026-05-20). C7 is scoped to ORCH-0863 marketing;
+  // ORCH-0891 is the follow-on marketing composer overhaul (Tiptap + premium
+  // animation + desktop power features + mobile polish), and its M2 milestone
+  // ships a Deno test alongside the modified marketingEmailRender.ts to
+  // exercise the new compact/medium/large event-chip size variants. The
+  // implementation file itself was already allowed via ORCH-0877's allowlist;
+  // this entry adds the M2 size-variant test that exercises it. ORCH-0815-B
+  // already touched marketingEmailRender.ts under its own Phase A scope, and
+  // ORCH-0877 added the file to its allowlist; we extend by adding the new
+  // ORCH-0891 M2 size-variant Deno test.
+  const ORCH_0891_BACKEND_ALLOWLIST = [
+    "supabase/functions/_shared/marketingEmailRender.eventChipSize.test.ts",
+  ];
   const ALLOWLIST = [
     ...ORCH_0859_BUNDLED_ALLOWLIST,
     ...ORCH_0869_BACKEND_ALLOWLIST,
@@ -415,6 +429,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_0876_BACKEND_ALLOWLIST,
     ...ORCH_0879_BACKEND_ALLOWLIST,
     ...ORCH_0880_BACKEND_ALLOWLIST,
+    ...ORCH_0891_BACKEND_ALLOWLIST,
   ];
   const forbidden = changed.filter(
     (p) =>
