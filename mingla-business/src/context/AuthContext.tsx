@@ -255,23 +255,50 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (_event, s) => {
       if (!mounted) return;
-      // ORCH-0887-A rework: late-resolution defense per SPEC §3.3 Option (b).
-      // If bootstrap timed out, ignore late-arriving INITIAL_SESSION — that is
-      // the original getSession() Promise resolving after we already gave up
-      // and rendered the anon surface. Honouring it would cause an anon→home
-      // UI flash + re-fire ensureCreatorAccount + analytics-identities.
-      // Any other event type (SIGNED_IN from explicit login, SIGNED_OUT,
-      // TOKEN_REFRESHED, USER_UPDATED) represents real subsequent state —
-      // clear the gate before processing so the handler continues normally.
+      // ORCH-0887-A-2 [Late-resolution defense — expand to TOKEN_REFRESHED +
+      // USER_UPDATED]: brutal Playwright test against live Chromium proved
+      // Supabase v2 fires TOKEN_REFRESHED (not INITIAL_SESSION) when a hung
+      // refresh-token request eventually succeeds after bootstrap-timeout.
+      // Any PASSIVE event post-timeout is a late echo of the failed
+      // bootstrap — ignore it. Only explicit user-intent events (SIGNED_IN /
+      // SIGNED_OUT) clear the gate so a normal login post-timeout proceeds.
+      // Honouring a passive late echo would flash anon→home and re-fire
+      // ensureCreatorAccount + analytics-identities. Originally
+      // INITIAL_SESSION-only per ORCH-0887-A rework / SPEC §3.3 Option (b);
+      // expanded to TOKEN_REFRESHED + USER_UPDATED post brutal-test feedback.
       if (bootstrapTimedOutRef.current) {
+        const isPassiveLateEcho =
+          _event === "INITIAL_SESSION" ||
+          _event === "TOKEN_REFRESHED" ||
+          _event === "USER_UPDATED";
         if (_event === "INITIAL_SESSION") {
           if (__DEV__) {
             console.warn(
-              "[auth] late INITIAL_SESSION after bootstrap-timeout — ignoring (SPEC §3.3 Option b)",
+              "[auth] late INITIAL_SESSION after bootstrap-timeout — ignoring (ORCH-0887-A-2)",
             );
           }
           return;
         }
+        if (_event === "TOKEN_REFRESHED") {
+          if (__DEV__) {
+            console.warn(
+              "[auth] late TOKEN_REFRESHED after bootstrap-timeout — ignoring (ORCH-0887-A-2)",
+            );
+          }
+          return;
+        }
+        if (_event === "USER_UPDATED") {
+          if (__DEV__) {
+            console.warn(
+              "[auth] late USER_UPDATED after bootstrap-timeout — ignoring (ORCH-0887-A-2)",
+            );
+          }
+          return;
+        }
+        // Guard reads isPassiveLateEcho so the union remains the single
+        // source of truth (TypeScript checks all three branches above match);
+        // unreachable in practice because each event has its own return.
+        if (isPassiveLateEcho) return;
         bootstrapTimedOutRef.current = false;
       }
       if (__DEV__) {

@@ -466,4 +466,85 @@ describe("ORCH-0887-A — AuthContext.tsx source-text structural assertions (Sur
     },
     5000,
   );
+
+  // ────────────────────────────────────────────────────────────────────
+  // ORCH-0887-A-2 [Late-resolution defense — expand to TOKEN_REFRESHED +
+  // USER_UPDATED] — brutal Playwright test against live Chromium proved
+  // Supabase v2 fires TOKEN_REFRESHED (not INITIAL_SESSION) when a hung
+  // refresh-token request eventually succeeds after bootstrap-timeout.
+  // Observed sequence: @7023ms bootstrap-timeout fires → @9006ms refresh
+  // resolves → Supabase emits `event: TOKEN_REFRESHED, hasSession: true`.
+  // The v1 listener guard caught INITIAL_SESSION only, so TOKEN_REFRESHED
+  // flowed through and the UI flashed welcome→home.
+  //
+  // Cases 17-18 below assert the expanded passive-event ignore-set lives
+  // in AuthContext.tsx. Fails-on-revert: removing TOKEN_REFRESHED or
+  // USER_UPDATED from the `isPassiveLateEcho` check (back to
+  // INITIAL_SESSION-only) makes one of these expects fail immediately.
+  // ────────────────────────────────────────────────────────────────────
+
+  it(
+    "Case 17 — TOKEN_REFRESHED post-timeout is treated as a passive late echo and ignored (ORCH-0887-A-2: brutal Playwright proved Supabase v2 fires this event, not INITIAL_SESSION, when a hung refresh-token request eventually succeeds after bootstrap-timeout)",
+    () => {
+      // The expanded passive-event ignore-set must list TOKEN_REFRESHED as
+      // one of the events caught by the late-echo guard. Pattern: the
+      // literal `_event === "TOKEN_REFRESHED"` appears INSIDE the
+      // `if (bootstrapTimedOutRef.current)` block (within ~600 chars).
+      const tokenRefreshedGuardPattern =
+        /if \(bootstrapTimedOutRef\.current\)\s*\{\s*[\s\S]{0,600}?_event === ["']TOKEN_REFRESHED["']/;
+      expect(AUTH_CONTEXT_SOURCE).toMatch(tokenRefreshedGuardPattern);
+
+      // I-NO-SILENT-FAILURES: the skip path for TOKEN_REFRESHED warns
+      // explicitly so silent late-resolution drops are observable in dev
+      // console. The literal string is the fails-on-revert anchor.
+      expect(AUTH_CONTEXT_SOURCE).toMatch(
+        /late TOKEN_REFRESHED after bootstrap-timeout/,
+      );
+
+      // The ORCH-0887-A-2 citation appears in the warn line (or its
+      // adjacent comment block) so the source-of-truth for this expansion
+      // is grep-discoverable from the warn string itself.
+      expect(AUTH_CONTEXT_SOURCE).toMatch(/ORCH-0887-A-2/);
+    },
+    5000,
+  );
+
+  it(
+    "Case 18 — USER_UPDATED post-timeout is treated as a passive late echo and ignored (ORCH-0887-A-2: USER_UPDATED is another passive Supabase v2 event that can fire as a late echo of the original bootstrap, e.g. when refresh resolves and Supabase emits user metadata changes — must not flash the UI either)",
+    () => {
+      // The expanded passive-event ignore-set must list USER_UPDATED as
+      // one of the events caught by the late-echo guard. Pattern: the
+      // literal `_event === "USER_UPDATED"` appears INSIDE the
+      // `if (bootstrapTimedOutRef.current)` block (within ~700 chars,
+      // wider window since it comes after TOKEN_REFRESHED).
+      const userUpdatedGuardPattern =
+        /if \(bootstrapTimedOutRef\.current\)\s*\{\s*[\s\S]{0,700}?_event === ["']USER_UPDATED["']/;
+      expect(AUTH_CONTEXT_SOURCE).toMatch(userUpdatedGuardPattern);
+
+      // I-NO-SILENT-FAILURES: the skip path for USER_UPDATED warns
+      // explicitly. The literal string is the fails-on-revert anchor.
+      expect(AUTH_CONTEXT_SOURCE).toMatch(
+        /late USER_UPDATED after bootstrap-timeout/,
+      );
+
+      // Cross-check: all three passive events appear in the guard. SIGNED_IN
+      // and SIGNED_OUT MUST NOT appear inside the isPassiveLateEcho check
+      // (they are user-intent events and must clear the gate + process
+      // normally). Confirm by isolating the guard block and asserting
+      // SIGNED_IN/SIGNED_OUT are absent from it.
+      const guardBlockMatch = AUTH_CONTEXT_SOURCE.match(
+        /const isPassiveLateEcho =[\s\S]{0,400}?;/,
+      );
+      expect(guardBlockMatch).not.toBeNull();
+      if (guardBlockMatch) {
+        const guardBlock = guardBlockMatch[0];
+        expect(guardBlock).toMatch(/INITIAL_SESSION/);
+        expect(guardBlock).toMatch(/TOKEN_REFRESHED/);
+        expect(guardBlock).toMatch(/USER_UPDATED/);
+        expect(guardBlock).not.toMatch(/SIGNED_IN/);
+        expect(guardBlock).not.toMatch(/SIGNED_OUT/);
+      }
+    },
+    5000,
+  );
 });
