@@ -97,7 +97,7 @@ interface ConnectionsPageProps {
   onInitialPanelHandled?: () => void;
 }
 
-const CONNECTIONS_CACHE_VERSION = "v1";
+const CONNECTIONS_CACHE_VERSION = "v2-orch-0898-group-metadata";
 
 const getConversationsCacheKey = (userId: string) =>
   `mingla:connections:conversations:${CONNECTIONS_CACHE_VERSION}:${userId}`;
@@ -713,19 +713,42 @@ function ConnectionsPageRefactored({
 
       if (convError) throw new Error(convError);
 
-      // Batch-fetch all participant profiles
+      // Batch-fetch all participant profiles and session names. ORCH-0898 group-chat
+      // rows should carry conversations.name, but older/backfilled rows can have it
+      // missing; session_id -> collaboration_sessions.name is the canonical fallback.
       const allParticipantIds = new Set<string>();
-      (rawConversations || []).forEach((conv) =>
-        conv.participants.forEach((p) => allParticipantIds.add(p.user_id))
-      );
+      const groupSessionIds = new Set<string>();
+      (rawConversations || []).forEach((conv) => {
+        conv.participants.forEach((p) => allParticipantIds.add(p.user_id));
+        const sessionId = (conv as { session_id?: string | null }).session_id;
+        if (conv.type === 'group' && sessionId) {
+          groupSessionIds.add(sessionId);
+        }
+      });
 
-      const { data: allProfiles } = await supabase
-        .from("profiles")
-        .select("id, display_name, username, first_name, last_name, avatar_url")
-        .in("id", Array.from(allParticipantIds));
+      const [profilesResult, sessionsResult] = await Promise.all([
+        allParticipantIds.size > 0
+          ? supabase
+              .from("profiles")
+              .select("id, display_name, username, first_name, last_name, avatar_url")
+              .in("id", Array.from(allParticipantIds))
+          : Promise.resolve({ data: [] as any[], error: null }),
+        groupSessionIds.size > 0
+          ? supabase
+              .from("collaboration_sessions")
+              .select("id, name")
+              .in("id", Array.from(groupSessionIds))
+          : Promise.resolve({ data: [] as any[], error: null }),
+      ]);
+
+      if (profilesResult.error) throw profilesResult.error;
+      if (sessionsResult.error) throw sessionsResult.error;
 
       const profilesMap = new Map(
-        (allProfiles || []).map((p) => [p.id, p])
+        (profilesResult.data || []).map((p) => [p.id, p])
+      );
+      const sessionNameMap = new Map(
+        (sessionsResult.data || []).map((s) => [s.id, s.name])
       );
 
       // Transform to Conversation type (matching useMessages format for ChatListItem).
@@ -747,6 +770,11 @@ function ConnectionsPageRefactored({
           };
         });
 
+        const sessionId = (conv as { session_id?: string | null }).session_id ?? null;
+        const conversationName = (conv as { name?: string | null }).name?.trim()
+          || (sessionId ? sessionNameMap.get(sessionId)?.trim() : undefined)
+          || null;
+
         return {
           id: conv.id,
           created_by: conv.created_by ?? '',
@@ -757,8 +785,8 @@ function ConnectionsPageRefactored({
           messages: [],
           // ORCH-0898 group-chat extras (consumed by ChatListItem):
           type: conv.type,
-          name: (conv as { name?: string | null }).name ?? null,
-          session_id: (conv as { session_id?: string | null }).session_id ?? null,
+          name: conversationName,
+          session_id: sessionId,
         };
       });
 
@@ -1028,9 +1056,26 @@ function ConnectionsPageRefactored({
     };
     const isGroupConversation = conversationMeta.type === 'group';
     const otherParticipant = conversation.participants.find((p) => p.id !== user.id);
-    const rawName = isGroupConversation
-      ? conversationMeta.name?.trim() || 'Group chat'
+    let rawName = isGroupConversation
+      ? conversationMeta.name?.trim() || ''
       : getDisplayName(otherParticipant);
+
+    if (isGroupConversation && !rawName && conversationMeta.session_id) {
+      try {
+        const { data: session } = await supabase
+          .from('collaboration_sessions')
+          .select('name')
+          .eq('id', conversationMeta.session_id)
+          .maybeSingle();
+        rawName = session?.name?.trim() || '';
+      } catch (e) {
+        console.warn('[ConnectionsPage] Failed to resolve group chat session name:', e);
+      }
+    }
+
+    if (isGroupConversation && !rawName) {
+      rawName = 'Collaboration chat';
+    }
 
     // Clean email-like names
     const cleanedName = !isGroupConversation && rawName.includes("@")

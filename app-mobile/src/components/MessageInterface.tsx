@@ -192,6 +192,12 @@ export default function MessageInterface({
   const headerParticipantCount = friend.participantCount ?? headerParticipants.length;
   const visibleHeaderParticipants = headerParticipants.slice(0, 3);
 
+  useEffect(() => {
+    if (isGroupChat) {
+      setShowMoreOptionsMenu(false);
+    }
+  }, [isGroupChat]);
+
   const getHeaderParticipantName = (participant: NonNullable<Friend["participants"]>[number]): string =>
     cleanName(participant.name || participant.username || "User");
 
@@ -1612,7 +1618,7 @@ export default function MessageInterface({
 
       {/* More options bottom sheet — ORCH-0435 */}
       <Modal
-        visible={showMoreOptionsMenu}
+        visible={!isGroupChat && showMoreOptionsMenu}
         transparent
         animationType="slide"
         onRequestClose={() => setShowMoreOptionsMenu(false)}

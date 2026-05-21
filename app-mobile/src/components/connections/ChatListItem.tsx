@@ -119,7 +119,7 @@ export function ChatListItem({
     : [];
 
   const displayName = isGroup
-    ? conversation.name?.trim() || 'Group chat'
+    ? conversation.name?.trim() || 'Collaboration chat'
     : getDisplayName(otherParticipant);
 
   // Clean email-like names (direct path only — group names are user-set + don't contain emails).

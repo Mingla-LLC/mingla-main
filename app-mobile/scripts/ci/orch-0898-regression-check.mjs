@@ -311,17 +311,24 @@ check(
 check(
   "T-15 ConnectionsPage opens group conversations with session name + participant metadata, not DM fallback",
   connectionsPageSrc !== null &&
+    /CONNECTIONS_CACHE_VERSION = "v2-orch-0898-group-metadata"/.test(connectionsPageSrc) &&
+    /\.from\("collaboration_sessions"\)[\s\S]*?\.select\("id, name"\)/.test(connectionsPageSrc) &&
+    /const sessionNameMap = new Map/.test(connectionsPageSrc) &&
+    /sessionNameMap\.get\(sessionId\)\?\.trim\(\)/.test(connectionsPageSrc) &&
     /const isGroupConversation = conversationMeta\.type === 'group'/.test(connectionsPageSrc) &&
-    /conversationMeta\.name\?\.trim\(\) \|\| 'Group chat'/.test(connectionsPageSrc) &&
+    /conversationMeta\.name\?\.trim\(\) \|\| ''/.test(connectionsPageSrc) &&
+    /\.from\('collaboration_sessions'\)[\s\S]*?\.select\('name'\)/.test(connectionsPageSrc) &&
+    /rawName = session\?\.name\?\.trim\(\) \|\| ''/.test(connectionsPageSrc) &&
     /conversationType: isGroupConversation \? 'group' : 'direct'/.test(connectionsPageSrc) &&
     /participantCount: isGroupConversation \? conversation\.participants\.length : undefined/.test(connectionsPageSrc) &&
     /participants: isGroupConversation[\s\S]*?conversation\.participants\.map/.test(connectionsPageSrc) &&
     /if \(!isGroupConversation\) \{[\s\S]*?blockService\.hasBlockBetween/.test(connectionsPageSrc),
   "Selecting a group conversation from the Friends tab MUST carry the group conversation shape into" +
     " MessageInterface: session/conversation name as activeChat.name, conversationType='group'," +
-    " participantCount, participant profiles for the avatar stack, and no DM block/friendship/profile" +
-    " checks against a fake other participant. This is the fails-on-revert guard for the on-the-fly" +
-    " ORCH-0898 header fix.",
+    " participantCount, participant profiles for the avatar stack, a cache version that invalidates" +
+    " pre-ORCH-0898 rows, collaboration_sessions.name fallback for null conversations.name, and no" +
+    " DM block/friendship/profile checks against a fake other participant. This is the fails-on-revert" +
+    " guard for the on-the-fly ORCH-0898 header fix.",
 );
 
 check(
@@ -333,10 +340,12 @@ check(
     /styles\.groupHeaderAvatarStack/.test(messageInterfaceSrc) &&
     /styles\.groupParticipantCount/.test(messageInterfaceSrc) &&
     /headerParticipantCount === 1 \? "person" : "people"/.test(messageInterfaceSrc) &&
+    /useEffect\(\(\) => \{[\s\S]*?if \(isGroupChat\)[\s\S]*?setShowMoreOptionsMenu\(false\)/.test(messageInterfaceSrc) &&
+    /visible=\{!isGroupChat && showMoreOptionsMenu\}/.test(messageInterfaceSrc) &&
     /!\s*isGroupChat && \(\s*<TouchableOpacity[\s\S]*?setShowMoreOptionsMenu/.test(messageInterfaceSrc),
   "MessageInterface MUST branch on friend.conversationType === 'group' and render the group header" +
     " as the collaboration/session name + stacked participant avatars + `N people in chat`, while" +
-    " hiding the one-on-one friend action menu for group chats.",
+    " hiding and hard-disabling the one-on-one friend action menu for group chats.",
 );
 
 check(
