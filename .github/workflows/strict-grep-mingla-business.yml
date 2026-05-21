@@ -1375,3 +1375,25 @@ jobs:
           node-version: "20"
       - name: Run ORCH-0892 keyboard-plumbing informational gate
         run: node .github/scripts/strict-grep/orch-0892-no-bespoke-keyboard-plumbing.mjs
+
+  orch-0909-positional-shared-deck-regression:
+    name: "ORCH-0909: positional shared-deck regression gates"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0909 regression check
+        run: node app-mobile/scripts/ci/orch-0909-regression-check.mjs
+
+  orch-0909-positional-shared-deck-adversarial:
+    name: "ORCH-0909: positional shared-deck adversarial gates"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0909 adversarial check
+        run: node app-mobile/scripts/ci/orch-0909-adversarial-check.mjs

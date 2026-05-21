@@ -76,15 +76,13 @@ export interface DeckParams {
   excludeCardIds?: string[];
   dateWindows?: string[];  // ORCH-0446: array of date windows for AND intersection (collab only)
   sessionId?: string;      // ORCH-0902: required for mode='collab'; routes to deterministic-v2 edge path.
-  /** ORCH-0902 CR-1: 'collab' triggers the deterministic-v2 collab branch in
-   *  fetchDeck. Body sent to discover-cards is ONLY { session_id, expected_deck_version }
+  /** ORCH-0909: 'collab' triggers the positional shared-deck branch in
+   *  fetchDeck. Body sent to discover-cards is ONLY { session_id, current_position }
    *  — no client-supplied location/categories/etc. Solo (or undefined) runs
    *  the existing per-client-aggregated path unchanged. */
   mode?: 'solo' | 'collab';
-  /** ORCH-0902 CR-3: pinned deck_version for the collab v2 fetch. Sent as
-   *  expected_deck_version; server returns HTTP 409 if it differs from the
-   *  session's current deck_version (rare race; client refetches on bump). */
-  deckVersion?: number;
+  /** ORCH-0909: participant cursor before requesting the next shared position. */
+  currentPosition?: number;
 }
 
 /**
@@ -360,13 +358,13 @@ class DeckService {
     onPartialReady?: (cards: Recommendation[], meta: { source: PartialDeliverySource }) => void,
   ): Promise<DeckResponse> {
     // ────────────────────────────────────────────────────────────────────
-    // ORCH-0902 CR-1: collab deterministic-v2 fetch path.
+    // ORCH-0909: collab positional shared-deck fetch path.
     //
-    // Collab decks send ONLY { session_id, expected_deck_version } — no
+    // Collab decks send ONLY { session_id, current_position } — no
     // client-aggregated location/categories/etc. Server reads aggregation
-    // via pg_aggregate_collab_prefs and returns cards + deck_version. There
-    // is no curated parallel path for collab in v2; the spec does not
-    // include curated stops in the union-of-circles serving model.
+    // via pg_aggregate_collab_prefs and returns the next shared card.
+    // There is no curated parallel path for collab in v2; the spec does not
+    // include curated stops in the intersection serving model.
     //
     // This branch returns directly; the solo code below runs unchanged.
     // ────────────────────────────────────────────────────────────────────
@@ -765,17 +763,16 @@ class DeckService {
   }
 
   /**
-   * ORCH-0902 CR-1 collab deterministic-v2 fetch. Sends ONLY
-   * { session_id, expected_deck_version } to discover-cards. Server runs
-   * pg_aggregate_collab_prefs, builds the union-of-circles query, sorts by
-   * place_id.localeCompare for byte-identical ordering across participants,
-   * and returns { cards, deck_version, deck_params_hash }.
+   * ORCH-0909 collab positional fetch. Sends ONLY
+   * { session_id, current_position } to discover-cards. Server reads the
+   * caller's cursor, generates or reads the next positional row, and returns
+   * a single card for that shared deck position.
    *
    * Single HTTP call, no curated parallel path (collab v2 does not interleave
    * curated experiences with category venues; that pattern is solo-only).
    *
    * `onPartialReady` is accepted for interface parity with the solo fetcher
-   * but NOT called — v2 returns the final deck atomically per CR-1.
+   * but NOT called — positional fetches are single-card responses.
    */
   private async fetchCollabDeckV2(
     params: DeckParams,
@@ -803,9 +800,7 @@ class DeckService {
         trackedInvoke('discover-cards', {
           body: {
             session_id: sessionId,
-            ...(typeof params.deckVersion === 'number'
-              ? { expected_deck_version: params.deckVersion }
-              : {}),
+            current_position: params.currentPosition ?? 0,
           },
         }),
         timeoutPromise,
@@ -815,9 +810,6 @@ class DeckService {
         const msg =
           typeof error === 'string' ? error : (error as any)?.message || 'Unknown error';
         const status = (error as any)?.context?.status;
-        // 409 = deck_version_mismatch — surface as pipeline-error so the
-        // hook refetches once the realtime deck_version update lands and the
-        // pinned version updates accordingly.
         const serverPath: DeckServerPath =
           status === 401 ? 'auth-required' : 'pipeline-error';
         console.warn(`[DeckService/collab-v2] discover-cards error status=${status}:`, msg);
@@ -834,10 +826,14 @@ class DeckService {
           : 'pipeline';
 
       const cards = ((data?.cards as any[]) ?? []).map(unifiedCardToRecommendation);
+      const deadEndReason =
+        data?.dead_end === true && typeof data?.reason === 'string'
+          ? data.reason
+          : undefined;
 
       if (__DEV__) {
         console.log(
-          `[DeckService/collab-v2] session=${sessionId} deck_version=${data?.deck_version} cards=${cards.length} path=${serverPath}`,
+          `[DeckService/collab-v2] session=${sessionId} position=${data?.position} cards=${cards.length} path=${serverPath} deadEnd=${deadEndReason ?? 'none'}`,
         );
       }
 
@@ -849,6 +845,7 @@ class DeckService {
         // Collab v2 returns the FULL deck in one shot; no pagination.
         hasMore: false,
         serverPath,
+        curatedEmptyReason: deadEndReason as any,
       };
     } catch (err) {
       if (err instanceof DeckFetchError) throw err;

@@ -70,6 +70,7 @@ import { getTierLimits } from '../constants/tierLimits';
 import { useCreatorTier } from '../hooks/useCreatorTier';
 import { CustomPaywallScreen } from './CustomPaywallScreen';
 import type { GatedFeature } from '../hooks/useFeatureGate';
+import NoGpsBanner from './collab/NoGpsBanner';
 
 function getTimeOfDay(): string {
   const hour = new Date().getHours();
@@ -450,6 +451,7 @@ export default function SwipeableCards({
     // analytics dimension + retry routing in the new UI states.
     showPipelineErrorToast,
     serverPath,
+    collabDeckDeadEndReason,
     // ORCH-0490 Phase 2.3: expansion signal. True when a deck swap is a
     // same-context pref-change expansion (new cards streaming into the same
     // mode+session), so the wipe below is suppressed even when new IDs are
@@ -606,6 +608,10 @@ export default function SwipeableCards({
     isBoardSession && resolvedSessionId ? resolvedSessionId : undefined
   );
   const boardPreferences = boardSessionResult?.preferences || null;
+  const myParticipantPrefs =
+    user?.id && (boardSessionResult?.session as any)?.participant_prefs
+      ? (boardSessionResult.session as any).participant_prefs[user.id]
+      : null;
 
   // ORCH-0902 CR-6: visible-but-not-binding dismissed sheet — server-sourced
   // list of left-swipes by ANY participant in this session, attributed by
@@ -1867,6 +1873,7 @@ export default function SwipeableCards({
       const titleKey = isEmpty
         ? 'cards:swipeable.no_matches_title'
         : 'cards:swipeable.seen_everything';
+      const isIntersectionEmpty = isBoardSession && collabDeckDeadEndReason === 'intersection_empty';
 
       return (
         <>
@@ -1879,9 +1886,13 @@ export default function SwipeableCards({
                   color="#eb7825"
                 />
               </View>
-              <Text style={styles.emptyDeckTitle}>{t(titleKey)}</Text>
+              <Text style={styles.emptyDeckTitle}>
+                {isIntersectionEmpty ? 'You are too far apart' : t(titleKey)}
+              </Text>
               <Text style={styles.emptyDeckSubtitle}>
-                {isEmpty
+                {isIntersectionEmpty
+                  ? 'Try increasing travel time so everyone has overlapping options.'
+                  : isEmpty
                   ? t('cards:swipeable.no_matches_subtitle')
                   : (() => {
                       const hour = new Date().getHours();
@@ -2144,6 +2155,8 @@ export default function SwipeableCards({
       <StatusBar barStyle="dark-content" backgroundColor="white" />
       <View style={styles.container}>
         <View ref={coachDeckRef} collapsable={false} style={styles.cardContainer}>
+          {isBoardSession && <NoGpsBanner participantPrefs={myParticipantPrefs} />}
+
           {/* ORCH-0474: Pipeline-error toast — only when stale cards remain
               visible. Deck continues to render underneath so the user can keep
               swiping what they have while they retry. Dismissible via retry. */}
