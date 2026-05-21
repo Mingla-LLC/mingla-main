@@ -497,6 +497,25 @@ export function useAppHandlers(state: any) {
         resetDeckHistory(newHashStr);
       }
 
+      // ORCH-0904 (2026-05-21): if the solo Apply path snapshotted fresh GPS coords
+      // (via PreferencesSheet.handleApplyPreferences mirror of collab's lines 861-871),
+      // write them into the userLocation React Query cache BEFORE bumping the refresh
+      // key. The deck refetch fires after the bump and reads useUserLocation; without
+      // this synchronous cache write, the 5-min staleTime serves cached pre-Apply
+      // coordinates, anchoring the deck to where the user WAS. setQueryData is
+      // synchronous; race-free vs invalidateQueries. See
+      // Mingla_Artifacts/reports/INVESTIGATION_ORCH-0904_SOLO_MODE_STALE_GPS.md §9.
+      if (
+        preferences.useGpsLocation === true &&
+        typeof preferences.freshGpsLat === 'number' &&
+        typeof preferences.freshGpsLng === 'number'
+      ) {
+        queryClient.setQueryData(
+          ['userLocation', user.id, 'solo', null, null, null, true],
+          { lat: preferences.freshGpsLat, lng: preferences.freshGpsLng },
+        );
+      }
+
       // Preferences refresh key
       if (setPreferencesRefreshKey) {
         setPreferencesRefreshKey((prev: number) => prev + 1);
