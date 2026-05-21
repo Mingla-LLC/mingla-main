@@ -123,3 +123,4 @@ Mingla_Artifacts/reports/orch-*-qa/
 Mingla_Artifacts/reports/orch-*-retest*.log
 Mingla_Artifacts/reports/*.mov
 Mingla_Artifacts/evidence/**/*.mov
+vercel-token.md
