@@ -903,8 +903,33 @@ export default function PreferencesSheet({
             onClose?.();
           }
         } else {
+          // ORCH-0904 (2026-05-21): solo-mode GPS snapshot at Apply — mirrors the
+          // collab branch's pattern at lines 861-871. Without this, the deck refetch
+          // reads useUserLocation's 5-min-stale React Query cache and anchors to
+          // pre-move coordinates while user is mobile (e.g. driving). See
+          // Mingla_Artifacts/reports/INVESTIGATION_ORCH-0904_SOLO_MODE_STALE_GPS.md.
+          let soloFreshGpsLat: number | null = null;
+          let soloFreshGpsLng: number | null = null;
+          if (useGpsLocation && selectedCoords?.lat == null) {
+            try {
+              const gps = await enhancedLocationService.getCurrentLocation();
+              if (gps) {
+                soloFreshGpsLat = gps.latitude;
+                soloFreshGpsLng = gps.longitude;
+              }
+            } catch {
+              // GPS failed — proceed without fresh coords. `useUserLocation` will
+              // fall through to its existing 13s timeout + last-known fallback chain.
+            }
+          }
           if (onSave) {
-            await Promise.resolve(onSave(preferences));
+            await Promise.resolve(
+              onSave({
+                ...preferences,
+                freshGpsLat: soloFreshGpsLat,
+                freshGpsLng: soloFreshGpsLng,
+              }),
+            );
           }
         }
         // ORCH-0699 D-OBS-4: Record EFFECTIVE counts/arrays so analytics match
