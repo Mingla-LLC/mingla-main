@@ -550,6 +550,52 @@ export const RecommendationsProvider: React.FC<
   // rejoin restores the same version (CR-4 resume).
   const [pinnedDeckVersion, setPinnedDeckVersion] = useState<number | null>(null);
 
+  // ORCH-0902 CR-1+CR-3+CR-5: pinnedDeckVersion transition effect.
+  //
+  // Three cases handled:
+  //   (a) First entry: pinnedDeckVersion === null AND session.deck_version > 0
+  //       → pin to the current server version so the React Query hook can
+  //       enable and fetch V_n. This unlocks "curating your lineup" once
+  //       ≥2 participants have accepted and the trigger has bumped
+  //       deck_version from 0 → 1.
+  //   (b) Exhaustion + new version: user finished V_n AND server has minted
+  //       V_{n+1} → advance to V_latest, clear local state, let the hook's
+  //       query key change cause a refetch.
+  //   (c) Anything else: hold pinnedDeckVersion steady (CR-3 — no
+  //       mid-deck yank).
+  //
+  // Without this effect, pinnedDeckVersion stays null forever, collabDeckParams
+  // returns null, the hook stays disabled, and the user sees "curating your
+  // lineup" forever — the exact bug the operator surfaced 2026-05-21 post-PR
+  // #154 merge.
+  useEffect(() => {
+    if (!isCollaborationMode) return;
+    const sessionRow = boardSessionResult?.session;
+    if (!sessionRow) return;
+    const serverVersion = sessionRow.deck_version ?? 0;
+    if (serverVersion <= 0) return; // below CR-8 acceptedCount<2 threshold
+
+    // Case (a): first entry — pin to current server version.
+    if (pinnedDeckVersion === null) {
+      setPinnedDeckVersion(serverVersion);
+      return;
+    }
+
+    // Case (b): exhaustion + new version → advance.
+    if (serverVersion > pinnedDeckVersion && isExhausted) {
+      setPinnedDeckVersion(serverVersion);
+      // Clear local accumulated state so the new V_{n+1} renders fresh.
+      // The React Query key change (via the deckVersion discriminant) will
+      // trigger a refetch automatically.
+    }
+  }, [
+    isCollaborationMode,
+    boardSessionResult?.session,
+    boardSessionResult?.session?.deck_version,
+    pinnedDeckVersion,
+    isExhausted,
+  ]);
+
   // ── ORCH-0902 CR-1: collab deck params (server-aggregated) ──────────────
   // Client-side aggregation was retired by CR-9. The collab fetch sends ONLY
   // { session_id, expected_deck_version } to discover-cards. This memo just
