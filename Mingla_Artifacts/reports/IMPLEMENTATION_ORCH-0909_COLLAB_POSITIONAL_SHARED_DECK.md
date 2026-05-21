@@ -58,27 +58,29 @@ Blocked / partial:
 
 ## Regression Test Receipts
 
-Commit hash caveat: no scoped commit was created because the shared `Seth` checkout already contains many unrelated dirty/untracked ORCH-0908 and artifact changes. The tests below passed in the working tree over base commit `7e3fec45`; the exact fails-on-revert commit hash must be filled by CLOSE after staging only scoped ORCH-0909 files.
+**Scoped commit:** `2a9478eda05fe8ab06465dbfd9db00d3eeda59b3` on branch `Seth` (16 files: 15 scoped ORCH-0909 + 1 REVIEW report).
 
-| Test | Gate | Result | Fails-on-revert receipt |
+**Fails-on-revert protocol executed 2026-05-21** by Claude `mingla-orchestrator` after REVIEW APPROVED. For each test, the named anchor was sed-reverted in the source file, the test was re-run via `node app-mobile/scripts/ci/orch-0909-{regression,adversarial}-check.mjs`, the target test was confirmed to transition PASS → FAIL, the file was restored via `git checkout HEAD -- <file>`, and the working tree was verified clean via `git diff --quiet HEAD`. Post-restore confirmation: all 17 tests PASS on the committed tree (regression 9/9 + adversarial 8/8, zero FAILs across both).
+
+| Test | Anchor reverted | Result | Fails-on-revert receipt |
 |---|---|---:|---|
-| T-IMP-01 positional table | Deno + Node | PASS | working tree over `7e3fec45`; commit pending |
-| T-IMP-02 joiner frontier | Deno + Node | PASS | working tree over `7e3fec45`; commit pending |
-| T-IMP-03 intersection/no cap | Deno + Node | PASS | working tree over `7e3fec45`; commit pending |
-| T-IMP-04 live dead-end no row | Deno + Node | PASS | working tree over `7e3fec45`; commit pending |
-| T-IMP-05 atomic accept | Deno + Node | PASS | working tree over `7e3fec45`; commit pending |
-| T-IMP-06 no-GPS banner | Deno + Node | PASS | working tree over `7e3fec45`; commit pending |
-| T-IMP-07 single-shot reset | Deno + Node | PASS | working tree over `7e3fec45`; commit pending |
-| T-IMP-08 old pinning absent | Deno + Node | PASS | working tree over `7e3fec45`; commit pending |
-| T-IMP-09 old request param absent | Deno + Node | PASS | working tree over `7e3fec45`; commit pending |
-| T-ADV-01 concurrent race | Deno + Node | PASS | working tree over `7e3fec45`; commit pending |
-| T-ADV-02 replay cursor | Deno + Node | PASS | working tree over `7e3fec45`; commit pending |
-| T-ADV-03 late GPS resolution | Deno + Node | PASS | working tree over `7e3fec45`; commit pending |
-| T-ADV-04 51st participant | Deno + Node | PASS | working tree over `7e3fec45`; commit pending |
-| T-ADV-05 old client 410 | Deno + Node | PASS | working tree over `7e3fec45`; commit pending |
-| T-ADV-06 forbidden access | Deno + Node | PASS | working tree over `7e3fec45`; commit pending |
-| T-ADV-07 inactive place retention | Deno + Node | PASS | working tree over `7e3fec45`; commit pending |
-| T-ADV-08 live dead-end revival | Deno + Node | PASS | working tree over `7e3fec45`; commit pending |
+| T-IMP-01 positional table | `PRIMARY KEY (session_id, position)` in migration | PASS | fails-on-revert verified at `2a9478ed` |
+| T-IMP-02 joiner frontier | `MAX(current_position)` in `accept_session_with_prefs` | PASS | fails-on-revert verified at `2a9478ed` |
+| T-IMP-03 intersection/no cap | `query_servable_places_by_signal_intersection` function name | PASS | fails-on-revert verified at `2a9478ed` |
+| T-IMP-04 live dead-end no row | `dead_end: true` in edge dead-end block | PASS | fails-on-revert verified at `2a9478ed` |
+| T-IMP-05 atomic accept | `accept_session_with_prefs` RPC call in invite service | PASS | fails-on-revert verified at `2a9478ed` |
+| T-IMP-06 no-GPS banner | banner copy "We're having trouble getting your location" | PASS | fails-on-revert verified at `2a9478ed` |
+| T-IMP-07 single-shot reset | `SET current_position = 0` reset clause (second-pass revert; first-pass was substring-resistant) | PASS | fails-on-revert verified at `2a9478ed` |
+| T-IMP-08 old pinning absent | re-introduced `pinnedDeckVersion` symbol in RecommendationsContext (negative-assertion test) | PASS | fails-on-revert verified at `2a9478ed` |
+| T-IMP-09 old request param absent | re-introduced `expected_deck_version` symbol in edge function (negative-assertion test) | PASS | fails-on-revert verified at `2a9478ed` |
+| T-ADV-01 concurrent race | `insertRes.error.code !== '23505'` guard in edge | PASS | fails-on-revert verified at `2a9478ed` |
+| T-ADV-02 replay cursor | `server wins` comment in cursor-divergence handler | PASS | fails-on-revert verified at `2a9478ed` |
+| T-ADV-03 late GPS resolution | `custom_lat: userLocation.lat` in RecommendationsContext upsert | PASS | fails-on-revert verified at `2a9478ed` |
+| T-ADV-04 51st participant | `CREATE EXTENSION IF NOT EXISTS postgis` in migration | PASS | fails-on-revert verified at `2a9478ed` |
+| T-ADV-05 old client 410 | `collab_legacy_client_unsupported` error class in edge | PASS | fails-on-revert verified at `2a9478ed` |
+| T-ADV-06 forbidden access | `forbidden_not_accepted_participant` error path in edge | PASS | fails-on-revert verified at `2a9478ed` |
+| T-ADV-07 inactive place retention | `ON DELETE RESTRICT` constraint on `session_deck_cards.card_id` FK | PASS | fails-on-revert verified at `2a9478ed` |
+| T-ADV-08 live dead-end revival | `current_position: params.position - 1` cursor-non-advance in dead-end block | PASS | fails-on-revert verified at `2a9478ed` |
 
 ## Deploy Notes
 
