@@ -585,20 +585,14 @@ export class RealtimeService {
           dispatch('onParticipantUpdated', payload.new);
         }
       )
-      // Preference changes — triggers deck refresh for all participants
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'board_session_preferences',
-          filter: `session_id=eq.${sessionId}`,
-        },
-        (payload) => {
-          if (__DEV__) logger.realtime(`${sessionId} | * board_session_preferences`);
-          dispatch('onPreferencesChanged', payload.new as any, payload.old as any);
-        }
-      )
+      // ORCH-0908 hotfix (2026-05-21): board_session_preferences realtime
+      // subscription removed. The table never existed in production
+      // (verified via information_schema.tables). Realtime publications
+      // skip non-existent tables silently, so this never delivered events.
+      // Participant pref changes are now propagated via the ORCH-0902
+      // collaboration_sessions trigger which bumps deck_version and fires
+      // onSessionUpdated; downstream React Query cache invalidation drives
+      // the deck refresh.
       // Card lock-in detection (board_saved_cards UPDATE with is_locked change)
       .on(
         "postgres_changes",

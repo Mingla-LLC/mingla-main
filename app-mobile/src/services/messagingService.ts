@@ -74,6 +74,20 @@ export interface CardPayload {
   description?: string;          // capped 500 chars at trim
   highlights?: string[];         // cap 5 × 80 chars at trim
   matchScore?: number;
+
+  // ── ORCH-0908: lock-in metadata (present iff card was shared via lock-and-schedule) ──
+  /** Discriminator — when set, MessageBubble + ExpandedCardModal render the locked-in banner + Add-to-Calendar CTA. */
+  lockInEvent?: 'card_locked_and_scheduled';
+  /** ISO timestamp the card was locked-in for. Mirrors selectedDateTime for ExpandedCardModal time-of-day rendering. */
+  scheduledAt?: string;
+  /** Locked-in duration in minutes (15-1440). */
+  durationMinutes?: number;
+  /** Profile UUID of the user who locked the card. Resolved to display name at render time. */
+  lockerUserId?: string;
+  /** board_saved_cards.id — used to look up calendar_entries for per-viewer "Added ✓" state on the Add-to-Calendar CTA. */
+  savedCardId?: string;
+  /** collaboration_sessions.id — used for "View session" affordance on the locked card. */
+  sessionId?: string;
 }
 
 export interface DirectMessage {
@@ -86,12 +100,27 @@ export interface DirectMessage {
   file_name?: string;
   file_size?: number;
   card_payload?: CardPayload;  // ORCH-0667: present iff message_type = 'card'
+  mentions?: Array<MentionEntry | string>;
+  card_tags?: CardTagEntry[];
   reply_to_id?: string | null;
   created_at: string;
   updated_at?: string;
   deleted_at?: string | null;
   sender_name?: string;
   is_read?: boolean;
+  isSystem?: boolean;
+}
+
+export interface MentionEntry {
+  userId: string;
+  displayName: string;
+  startOffset: number;
+  endOffset: number;
+}
+
+export interface CardTagEntry {
+  savedCardId: string;
+  cardPayload: CardPayload;
 }
 
 /**
@@ -705,13 +734,18 @@ export class MessagingService {
     conversationId: string,
     senderId: string,
     content: string,
-    messageType: 'text' | 'image' | 'video' | 'file' = 'text',
+    messageType: 'text' | 'image' | 'video' | 'file' | 'card' = 'text',
     fileUrl?: string,
     fileName?: string,
     fileSize?: number,
-    replyToId?: string
+    replyToId?: string,
+    mentions: MentionEntry[] = [],
+    cardTags: CardTagEntry[] = []
   ): Promise<{ message: DirectMessage | null; error: string | null }> {
     try {
+      const validatedMentions = this.validateMentionEntries(mentions);
+      const validatedCardTags = this.validateCardTagEntries(cardTags);
+
       // Note: Server-side RLS will also enforce block check, but this provides faster feedback
       const { data, error } = await supabase
         .from('messages')
@@ -723,6 +757,8 @@ export class MessagingService {
           file_url: fileUrl,
           file_name: fileName,
           file_size: fileSize,
+          mentions: validatedMentions,
+          card_tags: validatedCardTags,
           ...(replyToId ? { reply_to_id: replyToId } : {}),
         })
         .select()
@@ -741,10 +777,15 @@ export class MessagingService {
 
       const enrichedMessage = await this.enrichMessage(data, senderId);
 
-      // Send notifications to recipients (non-blocking)
-      this.sendMessageNotifications(conversationId, senderId, enrichedMessage).catch(err =>
-        console.error('Error sending notifications:', err)
-      );
+      // Send notifications to recipients (non-blocking). Mentioned recipients get the
+      // higher-priority mention notification only; everyone else receives the normal
+      // message notification. This prevents duplicate push rows for one message.
+      this.sendPartitionedMessageNotifications(
+        conversationId,
+        senderId,
+        enrichedMessage,
+        validatedMentions,
+      ).catch(err => console.error('Error sending notifications:', err));
 
       return { message: enrichedMessage, error: null };
     } catch (error: any) {
@@ -776,6 +817,46 @@ export class MessagingService {
       // Fall through to default — RLS may block the read too; either way we surface a sensible toast.
     }
     return 'Cannot send message to this user';
+  }
+
+  private validateMentionEntries(mentions: MentionEntry[]): MentionEntry[] {
+    if (mentions.length > 10) {
+      throw new Error('Messages can include at most 10 mentions');
+    }
+
+    return mentions.map((mention) => {
+      if (!mention.userId || !mention.displayName) {
+        throw new Error('Mention entries require userId and displayName');
+      }
+      if (
+        !Number.isInteger(mention.startOffset) ||
+        !Number.isInteger(mention.endOffset) ||
+        mention.startOffset < 0 ||
+        mention.endOffset <= mention.startOffset
+      ) {
+        throw new Error('Mention entries require valid non-negative offsets');
+      }
+      return mention;
+    });
+  }
+
+  private validateCardTagEntries(cardTags: CardTagEntry[]): CardTagEntry[] {
+    if (cardTags.length > 5) {
+      throw new Error('Messages can include at most 5 card tags');
+    }
+
+    return cardTags.map((cardTag) => {
+      if (!cardTag.savedCardId) {
+        throw new Error('Card tag entries require savedCardId');
+      }
+      if (!cardTag.cardPayload?.id || !cardTag.cardPayload?.title) {
+        throw new Error('Card tag payloads require id and title');
+      }
+      return {
+        savedCardId: cardTag.savedCardId,
+        cardPayload: trimCardPayload(cardTag.cardPayload),
+      };
+    });
   }
 
   /**
@@ -1084,7 +1165,11 @@ export class MessagingService {
   }
 
   /**
-   * Enrich message with sender name and read status
+   * Enrich message with sender name and read status.
+   * ORCH-0908: sender_id === null marks the row as a system message
+   * (generated by rpc_admin_lock_card / rpc_admin_schedule_locked_card and
+   * any future ORCH that writes lifecycle announcements into the chat).
+   * MessageBubble.tsx:156 renders isSystem rows centered + muted with no chrome.
    */
   private async enrichMessage(message: any, userId: string): Promise<DirectMessage> {
     const senderName = await this.getSenderName(message.sender_id);
@@ -1101,12 +1186,14 @@ export class MessagingService {
       ...message,
       sender_name: senderName,
       is_read: !!readData,
+      isSystem: message.sender_id === null,
     };
   }
 
   /**
    * Lightweight enrichment for real-time messages — skips read-status query
-   * (a message that just arrived is unread by definition)
+   * (a message that just arrived is unread by definition).
+   * ORCH-0908: same isSystem rule as enrichMessage.
    */
   private async enrichMessageRealtime(message: any): Promise<DirectMessage> {
     const senderName = await this.getSenderName(message.sender_id);
@@ -1115,6 +1202,7 @@ export class MessagingService {
       ...message,
       sender_name: senderName,
       is_read: false,
+      isSystem: message.sender_id === null,
     };
   }
 
@@ -1126,20 +1214,65 @@ export class MessagingService {
    * Previously this called `send-message-email` which only sent a push — no DB row,
    * no in-app notification, no preference/quiet-hours checks.
    */
+  private async fetchConversationParticipantsExcluding(
+    conversationId: string,
+    senderId: string,
+  ): Promise<string[]> {
+    const { data: participants, error } = await supabase
+      .from('conversation_participants')
+      .select('user_id')
+      .eq('conversation_id', conversationId)
+      .neq('user_id', senderId);
+
+    if (error || !participants) {
+      return [];
+    }
+
+    return participants.map((participant: { user_id: string }) => participant.user_id);
+  }
+
+  private async sendPartitionedMessageNotifications(
+    conversationId: string,
+    senderId: string,
+    message: DirectMessage,
+    mentions: MentionEntry[],
+  ): Promise<void> {
+    const allRecipients = await this.fetchConversationParticipantsExcluding(conversationId, senderId);
+    if (allRecipients.length === 0) return;
+
+    const mentionedSet = new Set(mentions.map((mention) => mention.userId));
+    const mentionedRecipients = allRecipients.filter((userId) => mentionedSet.has(userId));
+    const regularRecipients = allRecipients.filter((userId) => !mentionedSet.has(userId));
+
+    if (mentionedRecipients.length > 0) {
+      supabase.functions.invoke('notify-message', {
+        body: {
+          type: 'message_mention',
+          senderId,
+          conversationId,
+          messageId: message.id,
+          mentionedUserIds: mentionedRecipients,
+          messagePreview: message.content.slice(0, 100),
+        },
+      }).catch((err) =>
+        console.warn('[messagingService] message_mention fan-out failed', err)
+      );
+    }
+
+    if (regularRecipients.length > 0) {
+      await this.sendMessageNotifications(conversationId, senderId, message, regularRecipients);
+    }
+  }
+
   private async sendMessageNotifications(
     conversationId: string,
     senderId: string,
-    message: DirectMessage
+    message: DirectMessage,
+    restrictToUserIds?: string[]
   ): Promise<void> {
     try {
-      // Get conversation participants (excluding sender)
-      const { data: participants, error: participantsError } = await supabase
-        .from('conversation_participants')
-        .select('user_id')
-        .eq('conversation_id', conversationId)
-        .neq('user_id', senderId);
-
-      if (participantsError || !participants || participants.length === 0) {
+      const recipientIds = restrictToUserIds ?? await this.fetchConversationParticipantsExcluding(conversationId, senderId);
+      if (recipientIds.length === 0) {
         return;
       }
 
@@ -1163,13 +1296,13 @@ export class MessagingService {
       //   2. Push notification via OneSignal (with deepLink for tap-to-navigate)
       //   3. Notification preference checks + quiet hours
       //   4. Idempotency (2-min bucket prevents duplicate notifications)
-      for (const participant of participants) {
+      for (const recipientId of recipientIds) {
         supabase.functions.invoke('notify-message', {
           body: {
             type: 'direct_message',
             senderId,
             conversationId,
-            recipientId: participant.user_id,
+            recipientId,
             messagePreview,
           },
         }).catch((err) =>

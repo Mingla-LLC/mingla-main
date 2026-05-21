@@ -303,6 +303,59 @@ class BoardSessionService {
   }
 
   /**
+   * ORCH-0908 (rework 2026-05-21): atomic lock-and-schedule. Replaces the
+   * earlier split lockCardManually + scheduleLockedCard methods.
+   *
+   * Creator/admin-only. Locks the card AND writes scheduled_at + duration
+   * AND mints V_{n+1} (excluding this card forever) AND flips session.status
+   * back to 'active' for the next round AND posts a chat message attributed
+   * to the locker, all in one server transaction. The chat message uses
+   * message_type='card' so it renders as an expandable card with the
+   * locker's name (sender_id = locker's user_id, not NULL).
+   *
+   * Throws on auth failure, validation error, or RPC error. Returns the
+   * RPC response payload for cache invalidation + push fire-and-forget.
+   */
+  static async lockAndScheduleCard(
+    sessionId: string,
+    savedCardId: string,
+    scheduledAt: Date,
+    durationMinutes: number,
+  ): Promise<{
+    status: "locked_and_scheduled";
+    saved_card_id: string;
+    session_id: string;
+    scheduled_at: string;
+    duration_minutes: number;
+    updated_participant_count: number;
+    new_deck_version: number;
+    locker_user_id: string;
+  }> {
+    const { data, error } = await supabase.rpc(
+      "rpc_admin_lock_and_schedule_card",
+      {
+        p_session_id: sessionId,
+        p_saved_card_id: savedCardId,
+        p_scheduled_at: scheduledAt.toISOString(),
+        p_duration_minutes: durationMinutes,
+      },
+    );
+    if (error) {
+      throw new Error(`ORCH-0908: lock-and-schedule failed — ${error.message}`);
+    }
+    return data as {
+      status: "locked_and_scheduled";
+      saved_card_id: string;
+      session_id: string;
+      scheduled_at: string;
+      duration_minutes: number;
+      updated_participant_count: number;
+      new_deck_version: number;
+      locker_user_id: string;
+    };
+  }
+
+  /**
    * Get icon name for board type
    */
   private static getIconForType(type: string): string {

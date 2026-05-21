@@ -51,7 +51,11 @@ export interface AcceptInviteParams {
  *  3. Upsert user into session_participants with has_accepted=true
  *  4. If ≥2 participants accepted → activate session + create board
  *  5. Add accepted participants as board collaborators
- *  6. Seed the acceptor's board_session_preferences from their solo prefs
+ *  6. (Historical — removed 2026-05-21 by ORCH-0908 hotfix) the prior step
+ *     seeded board_session_preferences from solo prefs; that table never
+ *     existed in production. Per-participant prefs now flow through
+ *     collaboration_sessions.participant_prefs JSONB and are aggregated
+ *     server-side by pg_aggregate_collab_prefs (ORCH-0902).
  */
 export async function acceptCollaborationInvite(
   params: AcceptInviteParams
@@ -144,77 +148,45 @@ export async function acceptCollaborationInvite(
     ? sessionData[0]?.name ?? 'Session'
     : sessionData?.name ?? 'Session';
 
-  // ── Step 2: Mark invite accepted ────────────────────────────────────────
+  // ── Step 2: Atomic accept + participant cursor + prefs/GPS ─────────────
+  const { data: soloPrefs } = await supabase
+    .from('preferences')
+    .select('*')
+    .eq('profile_id', userId)
+    .maybeSingle();
 
-  const { error: updateError } = await supabase
-    .from('collaboration_invites')
-    .update({ status: 'accepted' })
-    .eq('id', resolvedInvite.id)
-    .eq('invited_user_id', userId);
+  const { data: acceptData, error: acceptError } = await supabase.rpc(
+    'accept_session_with_prefs',
+    {
+      p_session_id: sessionId,
+      p_invite_id: resolvedInvite.id,
+      p_lat: soloPrefs?.custom_lat ?? null,
+      p_lng: soloPrefs?.custom_lng ?? null,
+      p_categories: soloPrefs?.categories?.length
+        ? soloPrefs.categories
+        : ['nature', 'drinks_and_music', 'icebreakers'],
+      p_intents: soloPrefs?.intents ?? [],
+      p_travel_mode: soloPrefs?.travel_mode ?? 'walking',
+      p_travel_constraint_value: soloPrefs?.travel_constraint_value ?? 30,
+      p_date_option: soloPrefs?.date_option ?? null,
+      p_datetime_pref: soloPrefs?.datetime_pref ?? null,
+      p_selected_dates: soloPrefs?.selected_dates ?? null,
+      p_use_gps_location: soloPrefs?.use_gps_location ?? true,
+      p_custom_location: soloPrefs?.custom_location ?? null,
+      p_intent_toggle: soloPrefs?.intent_toggle ?? true,
+      p_category_toggle: soloPrefs?.category_toggle ?? true,
+    },
+  );
 
-  if (updateError) {
+  if (acceptError || acceptData?.success !== true) {
     return {
       success: false,
       sessionId,
       sessionName,
       boardId: null,
       inviteId: resolvedInvite.id,
-      error: 'Failed to accept invite.',
+      error: acceptError?.message ?? 'Failed to accept invite.',
     };
-  }
-
-  // ── Step 3: Upsert user as accepted participant ─────────────────────────
-  // MUST happen before prefs RPC — the RPC validates has_accepted = true.
-
-  const { error: participantError } = await supabase
-    .from('session_participants')
-    .upsert(
-      {
-        session_id: sessionId,
-        user_id: userId,
-        has_accepted: true,
-        joined_at: new Date().toISOString(),
-      },
-      { onConflict: 'session_id,user_id' }
-    );
-
-  if (participantError) {
-    console.error('[collaborationInviteService] Error adding participant:', participantError);
-  }
-
-  // ── Step 4: Write acceptor's prefs to session JSONB (ORCH-0446) ─────
-  // Atomic RPC merge — safe for concurrent writes, no read-modify-write race.
-  // Runs after participant upsert so the RPC's has_accepted validation passes.
-  try {
-    const { data: soloPrefs } = await supabase
-      .from('preferences')
-      .select('*')
-      .eq('profile_id', userId)
-      .maybeSingle();
-
-    await supabase.rpc('upsert_participant_prefs', {
-      p_session_id: sessionId,
-      p_user_id: userId,
-      p_prefs: {
-        categories: soloPrefs?.categories?.length ? soloPrefs.categories : ['nature', 'drinks_and_music', 'icebreakers'],
-        intents: soloPrefs?.intents ?? [],
-        travel_mode: soloPrefs?.travel_mode ?? 'walking',
-        travel_constraint_type: 'time',
-        travel_constraint_value: soloPrefs?.travel_constraint_value ?? 30,
-        date_option: soloPrefs?.date_option ?? null,
-        datetime_pref: soloPrefs?.datetime_pref ?? null,
-        selected_dates: soloPrefs?.selected_dates ?? null,
-        use_gps_location: soloPrefs?.use_gps_location ?? true,
-        custom_location: soloPrefs?.custom_location ?? null,
-        custom_lat: soloPrefs?.custom_lat ?? null,
-        custom_lng: soloPrefs?.custom_lng ?? null,
-        intent_toggle: soloPrefs?.intent_toggle ?? true,
-        category_toggle: soloPrefs?.category_toggle ?? true,
-      },
-    });
-  } catch (err) {
-    console.error('[collaborationInviteService] Preference write failed:', err);
-    // Non-blocking: deck aggregation falls back to empty prefs for this user
   }
 
   // Notify other participants that this user joined (fire-and-forget).

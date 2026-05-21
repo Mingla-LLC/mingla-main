@@ -11,6 +11,7 @@ import {
   Image,
   NativeSyntheticEvent,
   NativeScrollEvent,
+  Alert,
 } from "react-native";
 import { useTranslation } from 'react-i18next';
 import { Icon } from "../ui/Icon";
@@ -20,6 +21,8 @@ import type { CuratedStop } from '../../types/curatedExperience';
 import { useSessionVoting } from "../../hooks/useSessionVoting";
 import { supabase } from "../../services/supabase";
 import { getReadableCategoryName } from "../../utils/categoryUtils";
+import * as Haptics from "expo-haptics";
+import LockedCardSchedulingSheet from "../session/LockedCardSchedulingSheet";
 
 const CURATED_ICON_MAP: Record<string, string> = {
   'Adventurous':   'compass-outline',
@@ -57,6 +60,9 @@ interface SwipeableSessionCardsProps {
     currency: string;
     measurementSystem: "Metric" | "Imperial";
   };
+  // ORCH-0908: admin/creator gating for the "Lock it in" button.
+  // Pulled from useBoardSession at the SessionViewModal level and forwarded down.
+  isAdmin?: boolean;
 }
 
 const getIconComponent = (iconName: string) => {
@@ -98,7 +104,19 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
   onViewDetails,
   loading = false,
   accountPreferences,
+  isAdmin = false,
 }) => {
+  // ORCH-0908 rework (2026-05-21): tapping "Lock it in" no longer fires an
+  // RPC. Instead it opens LockedCardSchedulingSheet, which embeds the
+  // date/time picker → summary confirm step → atomic
+  // rpc_admin_lock_and_schedule_card. The card disappears from this list
+  // when is_locked flips to true (filtered by the parent).
+  const [cardToLock, setCardToLock] = useState<SavedCard | null>(null);
+
+  const handleLockIn = useCallback(async (card: SavedCard) => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setCardToLock(card);
+  }, []);
   const { t } = useTranslation(['common']);
   const scrollRef = useRef<ScrollView | null>(null);
   const [scrollPosition, setScrollPosition] = useState(0);
@@ -292,6 +310,22 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
                       {rsvpCount.userRSVP === "yes" ? "RSVP'd" : "RSVP"}
                     </Text>
                   </TouchableOpacity>
+                  {/* ORCH-0908 rework (2026-05-21): admin/creator Lock-it-in CTA.
+                      Tap opens the two-step scheduling sheet (date pick → summary
+                      confirm → atomic rpc_admin_lock_and_schedule_card). No RPC
+                      fires until the user confirms in the summary step.
+                      Hidden when is_locked=true (the card disappears from the
+                      saved-cards list anyway via the parent's filter). */}
+                  {isAdmin && !isCardLocked && (
+                    <TouchableOpacity
+                      style={styles.lockInButton}
+                      onPress={() => handleLockIn(card)}
+                      accessibilityLabel="Lock it in as the group's plan"
+                    >
+                      <Icon name="lock-closed" size={13} color="#FFFFFF" />
+                      <Text style={styles.lockInButtonText}>Lock it in</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
                 {likedByLabel && (
                   <Text style={styles.likedByText}>{likedByLabel}</Text>
@@ -551,6 +585,21 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
           </TouchableOpacity>
         )}
       </View>
+
+      {/* ORCH-0908 rework: two-step scheduling sheet mounts here so it can
+          read cardToLock state set by the per-card Lock-it-in button.
+          Opens with date picker → summary confirm → atomic RPC. */}
+      {cardToLock && (
+        <LockedCardSchedulingSheet
+          visible={cardToLock !== null}
+          onClose={() => setCardToLock(null)}
+          sessionId={sessionId}
+          savedCardId={cardToLock.id}
+          cardData={cardToLock.card_data || cardToLock.experience_data || null}
+          currentUserId={userId}
+          onLockedAndScheduled={() => setCardToLock(null)}
+        />
+      )}
     </View>
   );
 };
@@ -882,6 +931,24 @@ const styles = StyleSheet.create({
   },
   rsvpButtonTextActive: {
     color: "white",
+  },
+  // ORCH-0908: admin/creator "Lock it in" button. Filled amber to match the
+  // chat banner + session-pill lock badge color family. Icon + text inline.
+  lockInButton: {
+    flex: 1.4,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    backgroundColor: "#F59E0B",
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 18,
+  },
+  lockInButtonText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#FFFFFF",
   },
   likedByText: {
     fontSize: 12,

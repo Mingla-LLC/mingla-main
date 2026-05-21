@@ -73,6 +73,10 @@ export interface CollaborationSession {
     username?: string;
     avatar?: string;
   };
+  // ORCH-0908: raw session lifecycle status, surfaced for pill badge rendering.
+  // status='locked' shows a lock-icon badge on the pill to signal "plan locked in"
+  // until the cycle restarts (status flips back to 'active' via schedule-confirm).
+  status?: 'pending' | 'active' | 'voting' | 'locked' | 'completed' | 'archived' | 'dormant';
 }
 
 interface CollaborationSessionsProps {
@@ -562,6 +566,10 @@ export default function CollaborationSessions({
     const isSentInvite = session.type === 'sent-invite';
     const isReceivedInvite = session.type === 'received-invite';
     const isInvite = isSentInvite || isReceivedInvite;
+    // ORCH-0908: pill shows a lock-icon badge while session is in 'locked' status
+    // (between Lock-In and Schedule-Confirm). Invite-state pills take precedence
+    // (a locked session can't simultaneously be in invite state).
+    const isLocked = !isInvite && session.status === 'locked';
 
     return (
       <TouchableOpacity
@@ -591,6 +599,11 @@ export default function CollaborationSessions({
               size={7}
               color="#fff"
             />
+          </View>
+        )}
+        {isLocked && (
+          <View style={styles.lockedBadge}>
+            <Icon name="lock-closed" size={7} color="#fff" />
           </View>
         )}
       </TouchableOpacity>
@@ -1362,6 +1375,22 @@ const styles = StyleSheet.create({
   },
   inviteBadgePending: {
     backgroundColor: '#9CA3AF',
+  },
+  // ORCH-0908: lock-icon badge shown on the pill while session.status='locked'.
+  // Mirrors inviteBadge positioning (top-right corner of the pill) but uses an
+  // amber background to visually match the chat banner LockedPlanBanner.
+  lockedBadge: {
+    position: 'absolute',
+    top: -3,
+    right: -3,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: '#F59E0B',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
   },
   // Create session bottom sheet styles
   createSheetOverlay: {

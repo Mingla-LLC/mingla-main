@@ -11,7 +11,9 @@ export interface CalendarEntryRecord {
   source: string;
   card_data: Record<string, unknown>;
   status: string;
-  scheduled_at: string;
+  // ORCH-0908 hotfix (2026-05-21): NULL when a collab card is locked-in
+  // but admin has not yet scheduled it via rpc_admin_schedule_locked_card.
+  scheduled_at: string | null;
   duration_minutes: number | null;
 }
 
@@ -82,9 +84,22 @@ export function useCollaborationCalendar(
     };
   }, [sessionId, handleCardLocked]);
 
-  // Sync to device calendar
+  // Sync to device calendar.
+  // ORCH-0908 hotfix (2026-05-21): guards against NULL scheduled_at.
+  // After lock-in, calendar_entries.scheduled_at is NULL until the admin
+  // picks a date via rpc_admin_schedule_locked_card. Skip device-calendar
+  // write until the row has a real scheduled_at (Constitution #9 + matches
+  // SessionViewModal's modal which only offers this CTA for the admin-with-
+  // current-time fallback flow, or for non-admin after admin scheduled).
   const syncToDeviceCalendar = useCallback(
     async (entry: CalendarEntryRecord) => {
+      if (!entry.scheduled_at) {
+        console.warn(
+          '[useCollaborationCalendar] syncToDeviceCalendar: skipping — scheduled_at is null (waiting for admin to schedule)'
+        );
+        setShowCalendarPrompt(false);
+        return;
+      }
       const cardData = entry.card_data || {};
       const scheduledAt = new Date(entry.scheduled_at);
       const durationMinutes = entry.duration_minutes || 60;

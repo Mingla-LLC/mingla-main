@@ -12,6 +12,7 @@ import { googleLevelToTierSlug } from '../_shared/priceTiers.ts';
 // card_pool pipeline as the singles serving source. See
 // Mingla_Artifacts/outputs/SPEC_ORCH-0634_SIGNAL_ONLY_SERVING_AND_INTERLEAVE.md.
 import { roundRobinByChip } from '../_shared/deckInterleave.ts';
+import { decideTypeAndPill } from '../_shared/mixedTypeInterleave.ts';
 // ORCH-0659/0660: honest distance + per-mode travel-time computation.
 // Single owner: _shared/distanceMath.ts. See
 // Mingla_Artifacts/specs/SPEC_ORCH-0659_0660_DECK_DISTANCE_TRAVELTIME.md.
@@ -121,6 +122,15 @@ const CATEGORY_TO_SIGNAL: Record<
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+
+const SESSION_INTENT_IDS = new Set([
+  'adventurous',
+  'first-date',
+  'romantic',
+  'group-fun',
+  'picnic-dates',
+  'take-a-stroll',
+]);
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -598,26 +608,13 @@ function transformServablePlaceToCard(
 // ─────────────────────────────────────────────────────────────────────────────
 // ORCH-0902 [Collab session deck deterministic rewrite] — DETERMINISTIC-V2 PATH
 // ─────────────────────────────────────────────────────────────────────────────
-// Per CR-1..CR-9 of the locked design contract
-// (Mingla_Artifacts/reports/INVESTIGATION_ORCH-0902_COLLAB_DECK_PARITY.md):
-//
-//   - Collab decks are pure functions of (session_id, deck_version).
-//   - Server reads aggregation server-side via pg_aggregate_collab_prefs.
-//   - No client-supplied location/categories trusted; clients send ONLY
-//     { session_id, expected_deck_version }.
-//   - Cards filtered by UNION of per-participant reachable circles
-//     (query_servable_places_by_signal_union, Haversine Path B since
-//     PostGIS is not installed on this project as of 2026-05-21).
-//   - Final sort is place_id ASC (string-stable) for byte-identical
-//     ordering across every participant's response.
-//   - Response includes deck_version + deck_params_hash so the client
-//     React Query key partitions decks per version.
-//
-// Routing: the serve() handler below checks body.session_id (snake_case)
-// FIRST. Old clients still sending body.sessionId (camelCase) without
-// body.session_id receive HTTP 400 — the EAS Update pushing the new
-// client closes the cutover window. Solo decks (no session_id) keep
-// running through the existing pipeline unchanged.
+// ORCH-0909 — COLLAB POSITIONAL SHARED-DECK PATH
+// ─────────────────────────────────────────────────────────────────────────────
+// Collab decks are now positional. session_deck_cards(session_id, position) is
+// the immutable source of truth, and session_participants.current_position
+// tracks each participant cursor. This branch returns one card: the card at
+// server_current_position + 1. The serve() router rejects old version-pinned
+// payloads with HTTP 410.
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface AggregatedCollabPrefs {
@@ -635,58 +632,77 @@ interface AggregatedCollabPrefs {
     radius_m: number;
   }>;
   acceptedCount: number;
+  pending_gps_user_ids?: string[];
+  intersection_empty?: boolean;
+}
+
+type PositionalDeadEndReason =
+  | 'intersection_empty'
+  | 'no_matching_candidates'
+  | 'no_unswiped_candidates'
+  | 'quorum_not_met'
+  | 'all_pools_exhausted';
+
+type SessionDeckCardRow = {
+  card_id: string | null;
+  card_type?: 'single' | 'curated' | string | null;
+  curated_payload?: any | null;
+  generated_at_version: number;
+  degraded_from?: string | null;
+  pill_label?: string | null;
+};
+
+function curatedStopPlacePoolIds(card: any): string[] {
+  const stops = Array.isArray(card?.stops) ? card.stops : [];
+  return stops
+    .map((stop: any) => stop?.placePoolId)
+    .filter((id: unknown): id is string => typeof id === 'string' && id.length > 0);
+}
+
+async function fetchCuratedBatchInternal(args: {
+  sessionId: string;
+  experienceType: string;
+  limit: number;
+  excludePlacePoolIds: string[];
+  callerJwt: string;
+}): Promise<{ cards: any[]; summary?: { emptyReason: string; candidateAnchorCount: number; failedAnchorCount: number } }> {
+  const resp = await fetch(`${SUPABASE_URL}/functions/v1/generate-curated-experiences`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${args.callerJwt}`,
+    },
+    body: JSON.stringify({
+      experienceType: args.experienceType,
+      session_id: args.sessionId,
+      limit: args.limit,
+      skipDescriptions: true,
+      excludePlacePoolIds: args.excludePlacePoolIds,
+    }),
+  });
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`generate-curated-experiences returned ${resp.status}: ${text.slice(0, 200)}`);
+  }
+  const json = await resp.json();
+  return { cards: Array.isArray(json?.cards) ? json.cards : [], summary: json?.summary };
 }
 
 async function handleDeterministicV2(args: {
   supabaseAdmin: any;
   sessionId: string;
-  expectedDeckVersion: number | undefined;
+  currentPosition: number;
   req: Request;
   t0: number;
 }): Promise<Response> {
-  const { supabaseAdmin, sessionId, expectedDeckVersion, req, t0 } = args;
+  const { supabaseAdmin, sessionId, currentPosition, req, t0 } = args;
 
-  // Local emptyResponse builder — closure can't reach the inner one in serve().
-  const emptyResponse = (params: {
-    path: 'pool-empty' | 'pipeline-error' | 'auth-required' | 'session-not-found';
-    reason: string;
-    httpStatus: number;
-    deckVersion?: number;
-    deckParamsHash?: string | null;
-    errorClass?: string;
-  }): Response =>
-    new Response(
-      JSON.stringify({
-        success: params.httpStatus < 400,
-        cards: [],
-        total: 0,
-        deck_version: params.deckVersion ?? 0,
-        deck_params_hash: params.deckParamsHash ?? null,
-        source: 'orch-0902-deterministic-v2',
-        metadata: { hasMore: false, poolSize: 0, batchSeed: 0, perChipBreakdown: {} },
-        sourceBreakdown: {
-          fromPool: 0,
-          fromApi: 0,
-          totalServed: 0,
-          apiCallsMade: 0,
-          cacheHits: 0,
-          gapCategories: [],
-          reason: params.reason,
-          path: params.path,
-          signalIds: [],
-          cohort: 'NEW',
-          filterMins: {},
-          errorClass: params.errorClass,
-        },
-      }),
-      {
-        status: params.httpStatus,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      },
-    );
+  const json = (payload: Record<string, unknown>, status = 200): Response =>
+    new Response(JSON.stringify(payload), {
+      status,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
 
-  // ── Auth: extract userId from Bearer JWT sub claim ──────────────────────
-  // verify_jwt=true at the platform gate has already validated signature/exp.
   const authHeader = req.headers.get('Authorization');
   const token = authHeader?.replace('Bearer ', '') ?? '';
   let userId: string | undefined;
@@ -703,44 +719,84 @@ async function handleDeterministicV2(args: {
         const pad = b64.length % 4 === 0 ? '' : '='.repeat(4 - (b64.length % 4));
         const payload = JSON.parse(atob(b64 + pad));
         const sub = typeof payload?.sub === 'string' ? payload.sub : undefined;
-        if (!sub) {
-          authErrorClass = 'JWTMissingSub';
-        } else {
-          userId = sub;
-        }
+        if (sub) userId = sub;
+        else authErrorClass = 'JWTMissingSub';
       }
     } catch (err) {
       authErrorClass = `JWTDecodeFailed:${(err as Error).name || 'Error'}`;
     }
   }
+
   if (!userId) {
-    return emptyResponse({
-      path: 'auth-required',
-      reason: `Auth required: ${authErrorClass}`,
-      httpStatus: 401,
-      errorClass: authErrorClass,
-    });
+    return json({
+      success: false,
+      card: null,
+      cards: [],
+      error_class: 'auth_required',
+      http_status: 401,
+      sourceBreakdown: { path: 'auth-required', errorClass: authErrorClass },
+    }, 401);
   }
 
-  // ── Step 1: load session + verify caller is an accepted participant ────
+  const deadEnd = (params: {
+    position: number;
+    reason: PositionalDeadEndReason;
+    acceptedCount: number;
+    pendingGpsUserIds: string[];
+    detail?: string;
+  }): Response => json({
+    success: false,
+    card: null,
+    cards: [],
+    total: 0,
+    position: params.position,
+    current_position: params.position - 1,
+    dead_end: true,
+    reason: params.reason,
+    acceptedCount: params.acceptedCount,
+    pending_gps_user_ids: params.pendingGpsUserIds,
+    source: 'orch-0909-positional-shared-deck',
+    metadata: { hasMore: false, poolSize: 0, batchSeed: 0, perChipBreakdown: {} },
+    sourceBreakdown: {
+      fromPool: 0,
+      fromApi: 0,
+      totalServed: 0,
+      apiCallsMade: 0,
+      cacheHits: 0,
+      gapCategories: [],
+      reason: params.detail ?? params.reason,
+      path: 'pool-empty',
+      signalIds: [],
+      cohort: 'NEW',
+      filterMins: {},
+      deadEndReason: params.reason,
+    },
+  });
+
   const sessionRes = await supabaseAdmin
     .from('collaboration_sessions')
     .select('id, deck_version, deck_params_hash')
     .eq('id', sessionId)
     .maybeSingle();
   if (sessionRes.error) {
-    return emptyResponse({
-      path: 'pipeline-error',
-      reason: `Session lookup failed: ${sessionRes.error.message}`,
-      httpStatus: 500,
-    });
+    return json({
+      success: false,
+      card: null,
+      cards: [],
+      error_class: 'pipeline_error',
+      http_status: 500,
+      sourceBreakdown: { path: 'pipeline-error', reason: sessionRes.error.message },
+    }, 500);
   }
   if (!sessionRes.data) {
-    return emptyResponse({
-      path: 'session-not-found',
-      reason: `Session ${sessionId} not found`,
-      httpStatus: 404,
-    });
+    return json({
+      success: false,
+      card: null,
+      cards: [],
+      error_class: 'session_not_found',
+      http_status: 404,
+      sourceBreakdown: { path: 'session-not-found' },
+    }, 404);
   }
   const sessionRow = sessionRes.data as {
     id: string;
@@ -750,101 +806,305 @@ async function handleDeterministicV2(args: {
 
   const partRes = await supabaseAdmin
     .from('session_participants')
-    .select('user_id', { count: 'exact', head: true })
+    .select('user_id, current_position')
     .eq('session_id', sessionId)
     .eq('user_id', userId)
-    .eq('has_accepted', true);
-  if (partRes.error || (partRes.count ?? 0) === 0) {
-    return new Response(
-      JSON.stringify({
-        success: false,
-        error: 'forbidden_not_accepted_participant',
-        cards: [],
-        deck_version: sessionRow.deck_version,
-        deck_params_hash: sessionRow.deck_params_hash,
-      }),
-      { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-    );
+    .eq('has_accepted', true)
+    .maybeSingle();
+  if (partRes.error || !partRes.data) {
+    return json({
+      success: false,
+      card: null,
+      cards: [],
+      error_class: 'forbidden_not_accepted_participant',
+      http_status: 403,
+      deck_version: sessionRow.deck_version,
+      deck_params_hash: sessionRow.deck_params_hash,
+      sourceBreakdown: { path: 'pipeline-error', reason: 'forbidden_not_accepted_participant' },
+    }, 403);
   }
 
-  // ── Step 2: server-side aggregation ────────────────────────────────────
+  const serverCurrentPosition = Number(partRes.data.current_position ?? 0);
+  if (serverCurrentPosition !== currentPosition) {
+    console.warn(
+      `[discover-cards/positional] position divergence session=${sessionId} user=${userId} client=${currentPosition} server=${serverCurrentPosition}; server wins`,
+    );
+  }
+  const targetPosition = serverCurrentPosition + 1;
+
   const aggRes = await supabaseAdmin.rpc('pg_aggregate_collab_prefs', {
     p_session_id: sessionId,
   });
   if (aggRes.error) {
-    return emptyResponse({
-      path: 'pipeline-error',
-      reason: `pg_aggregate_collab_prefs failed: ${aggRes.error.message}`,
-      httpStatus: 500,
-      deckVersion: sessionRow.deck_version,
-      deckParamsHash: sessionRow.deck_params_hash,
-    });
+    return json({
+      success: false,
+      card: null,
+      cards: [],
+      error_class: 'pipeline_error',
+      http_status: 500,
+      deck_version: sessionRow.deck_version,
+      deck_params_hash: sessionRow.deck_params_hash,
+      sourceBreakdown: { path: 'pipeline-error', reason: aggRes.error.message },
+    }, 500);
   }
   const agg = aggRes.data as AggregatedCollabPrefs;
+  const pendingGpsUserIds = Array.isArray(agg.pending_gps_user_ids)
+    ? agg.pending_gps_user_ids
+    : [];
 
-  // ── Step 3: CR-8 session-start threshold ───────────────────────────────
-  if (agg.acceptedCount < 2) {
-    return emptyResponse({
-      path: 'pool-empty',
-      reason: `Session has ${agg.acceptedCount} accepted participant(s); minimum 2 required (CR-8)`,
-      httpStatus: 200,
-      deckVersion: 0,
-      deckParamsHash: null,
-    });
-  }
-
-  // ── Step 4: expected_deck_version DIVERGENCE — log only, do NOT 409 ────
-  // The original 409 gate was too strict and broke real-world workflows:
-  //   - Session switch (client pinnedDeckVersion higher than new session's
-  //     current version): operator-reported 2026-05-21 — client pinned at
-  //     "Testing stuff" v8 from prior session, switched to "Books and
-  //     brunch" (server at v3), 409 → empty deck.
-  //   - Server advances while client pinned (CR-3 V_n exhaustion contract
-  //     in progress): operator-reported 2026-05-21 — client pinned at v3
-  //     after first joining "Testing stuff", server bumped 5x to v8 via
-  //     spurious GPS-drift triggers + the one-time migration hash change,
-  //     client still requesting v3, 409 → empty deck.
-  //
-  // Correct behavior: always serve the current deck. The client receives
-  // the actual deck_version in the response and reconciles via the
-  // RecommendationsContext V_n transition effect. Determinism still holds
-  // because every participant gets the SAME current deck (CR-1); CR-3 is
-  // preserved client-side by the local accumulatedCards + the React Query
-  // staleTime: Infinity ensuring the rendered deck doesn't change mid-
-  // session unless the client explicitly transitions on exhaustion.
-  if (
-    typeof expectedDeckVersion === 'number' &&
-    expectedDeckVersion !== sessionRow.deck_version
-  ) {
-    console.log(
-      `[discover-cards/v2] session=${sessionId} deck_version divergence (expected=${expectedDeckVersion} actual=${sessionRow.deck_version}) — serving current; client will reconcile`,
+  const hydrateSingleFromPlacePool = async (cardId: string): Promise<any | null> => {
+    const { data, error } = await supabaseAdmin
+      .from('place_pool')
+      .select(`
+        id,
+        google_place_id,
+        name,
+        address,
+        lat,
+        lng,
+        rating,
+        review_count,
+        price_level,
+        price_range_start_cents,
+        price_range_end_cents,
+        opening_hours,
+        website,
+        photos,
+        stored_photo_urls,
+        types,
+        primary_type
+      `)
+      .eq('id', cardId)
+      .maybeSingle();
+    if (error || !data) return null;
+    const circle = Array.isArray(agg.circles) && agg.circles.length > 0
+      ? agg.circles[0]
+      : { lat: data.lat ?? 0, lng: data.lng ?? 0, travel_mode: 'walking' };
+    return transformServablePlaceToCard(
+      { ...data, place_id: data.id, signal_score: 0, signal_contributions: {} },
+      resolveCategories(agg.categories ?? [])[0] ?? 'Group pick',
+      circle.lat,
+      circle.lng,
+      circle.travel_mode as TravelMode,
     );
+  };
+
+  const hydrateCardFromRow = async (row: SessionDeckCardRow): Promise<any | null> => {
+    if (row.card_type === 'curated' && row.curated_payload) {
+      return row.curated_payload;
+    }
+    if ((row.card_type === 'single' || !row.card_type) && row.card_id) {
+      return await hydrateSingleFromPlacePool(row.card_id);
+    }
+    return null;
+  };
+
+  const successResponse = async (params: {
+    row: SessionDeckCardRow;
+    position: number;
+  }): Promise<Response> => {
+    const card = await hydrateCardFromRow(params.row);
+    if (!card) {
+      return json({
+        success: false,
+        card: null,
+        cards: [],
+        error_class: 'pipeline_error',
+        http_status: 500,
+        sourceBreakdown: { path: 'pipeline-error', reason: 'hydrate_card_failed' },
+      }, 500);
+    }
+
+    const updateRes = await supabaseAdmin
+      .from('session_participants')
+      .update({ current_position: params.position })
+      .eq('session_id', sessionId)
+      .eq('user_id', userId)
+      .lt('current_position', params.position);
+    if (updateRes.error) {
+      return json({
+        success: false,
+        card: null,
+        cards: [],
+        error_class: 'pipeline_error',
+        http_status: 500,
+        sourceBreakdown: { path: 'pipeline-error', reason: updateRes.error.message },
+      }, 500);
+    }
+
+    console.log(
+      `[discover-cards/positional] session=${sessionId} user=${userId} position=${params.position} type=${params.row.card_type ?? 'single'} card=${params.row.card_id ?? card?.id ?? 'curated'} generated_at_version=${params.row.generated_at_version} elapsed_ms=${Date.now() - t0}`,
+    );
+
+    return json({
+      success: true,
+      card,
+      cards: [card],
+      total: 1,
+      position: params.position,
+      current_position: params.position,
+      generated_at_version: params.row.generated_at_version,
+      dead_end: false,
+      card_type: params.row.card_type ?? 'single',
+      pill_label: params.row.pill_label ?? null,
+      degraded_from: params.row.degraded_from ?? null,
+      degraded_from_intent: params.row.card_type === 'single' && Boolean(params.row.degraded_from),
+      degraded_from_single: params.row.card_type === 'curated' && Boolean(params.row.degraded_from),
+      exhausted_intent: params.row.card_type === 'single' ? params.row.degraded_from ?? null : null,
+      exhausted_category: params.row.card_type === 'curated' ? params.row.degraded_from ?? null : null,
+      acceptedCount: agg.acceptedCount,
+      pending_gps_user_ids: pendingGpsUserIds,
+      source: 'orch-0909-positional-shared-deck',
+      metadata: { hasMore: false, poolSize: 1, batchSeed: 0, perChipBreakdown: {} },
+      sourceBreakdown: {
+        fromPool: 1,
+        fromApi: 0,
+        totalServed: 1,
+        apiCallsMade: 0,
+        cacheHits: 0,
+        gapCategories: [],
+        reason: params.row.degraded_from
+          ? 'ORCH-0906 graceful-degrade positional shared-deck card'
+          : 'ORCH-0909 positional shared-deck card',
+        path: 'pipeline',
+        signalIds: [],
+        cohort: 'NEW',
+        filterMins: {},
+      },
+    });
+  };
+
+  if (agg.acceptedCount < 2) {
+    return deadEnd({
+      position: targetPosition,
+      reason: 'quorum_not_met',
+      acceptedCount: agg.acceptedCount,
+      pendingGpsUserIds,
+      detail: `Session has ${agg.acceptedCount} accepted participant(s); minimum 2 required`,
+    });
   }
 
-  // ── Step 5: union-empty / categories-empty guards ──────────────────────
+  const existingCardRes = await supabaseAdmin
+    .from('session_deck_cards')
+    .select('card_id, card_type, curated_payload, generated_at_version, degraded_from, pill_label')
+    .eq('session_id', sessionId)
+    .eq('position', targetPosition)
+    .maybeSingle();
+  if (existingCardRes.error) {
+    return json({
+      success: false,
+      card: null,
+      cards: [],
+      error_class: 'pipeline_error',
+      http_status: 500,
+      sourceBreakdown: { path: 'pipeline-error', reason: existingCardRes.error.message },
+    }, 500);
+  }
+  if (existingCardRes.data) {
+    return await successResponse({
+      row: existingCardRes.data as SessionDeckCardRow,
+      position: targetPosition,
+    });
+  }
+
   if (!Array.isArray(agg.circles) || agg.circles.length === 0) {
-    return emptyResponse({
-      path: 'pool-empty',
-      reason:
-        'No participant has set a location; union of reachable circles is empty (CR-2). Banner shown client-side per Q-1 default.',
-      httpStatus: 200,
-      deckVersion: sessionRow.deck_version,
-      deckParamsHash: sessionRow.deck_params_hash,
+    return deadEnd({
+      position: targetPosition,
+      reason: 'no_matching_candidates',
+      acceptedCount: agg.acceptedCount,
+      pendingGpsUserIds,
+      detail: 'No GPS-bearing participants yet; waiting for location.',
     });
   }
-  if (!Array.isArray(agg.categories) || agg.categories.length === 0) {
-    return emptyResponse({
-      path: 'pool-empty',
-      reason:
-        'No participant has any category selected (every category_toggle off, or empty selections).',
-      httpStatus: 200,
-      deckVersion: sessionRow.deck_version,
-      deckParamsHash: sessionRow.deck_params_hash,
+  if (agg.intersection_empty === true) {
+    return deadEnd({
+      position: targetPosition,
+      reason: 'intersection_empty',
+      acceptedCount: agg.acceptedCount,
+      pendingGpsUserIds,
+      detail: 'Participant travel circles have no shared reachable places.',
+    });
+  }
+  const collabCategories = Array.isArray(agg.categories)
+    ? resolveCategories(agg.categories).filter((c) => !HIDDEN_CATEGORIES.has(c))
+    : [];
+  const collabIntents = Array.isArray(agg.intents)
+    ? agg.intents.filter((intent) => SESSION_INTENT_IDS.has(intent))
+    : [];
+
+  if (collabCategories.length === 0 && collabIntents.length === 0) {
+    return deadEnd({
+      position: targetPosition,
+      reason: 'no_matching_candidates',
+      acceptedCount: agg.acceptedCount,
+      pendingGpsUserIds,
+      detail: 'No participant has any category or intent selected.',
     });
   }
 
-  // ── Step 6: resolve chips → signal targets (reuse CATEGORY_TO_SIGNAL) ──
-  const canonicalCategories = resolveCategories(agg.categories).filter(
+  const countServedRowsByType = async (cardType: 'single' | 'curated'): Promise<number> => {
+    const { data, error } = await supabaseAdmin
+      .from('session_deck_cards')
+      .select('position')
+      .eq('session_id', sessionId)
+      .eq('card_type', cardType);
+    if (error) throw new Error(error.message);
+    return Array.isArray(data) ? data.length : 0;
+  };
+
+  const pickNextSinglePill = async (): Promise<string | null> => {
+    if (collabCategories.length === 0) return null;
+    const count = await countServedRowsByType('single');
+    return collabCategories[count % collabCategories.length];
+  };
+
+  const pickNextCuratedPill = async (): Promise<string | null> => {
+    if (collabIntents.length === 0) return null;
+    const count = await countServedRowsByType('curated');
+    return collabIntents[count % collabIntents.length];
+  };
+
+  let handleCuratedPosition: (params: {
+    position: number;
+    experienceType: string;
+    degradedFrom?: string | null;
+  }) => Promise<Response>;
+
+  const handleSinglePosition = async (params: {
+    position: number;
+    pill: string;
+    degradedFrom?: string | null;
+  }): Promise<Response> => {
+  const fallbackToCuratedAfterSingleExhaustion = async (
+    detail: string,
+    reason: PositionalDeadEndReason,
+  ): Promise<Response> => {
+    const fallbackIntent = await pickNextCuratedPill();
+    if (fallbackIntent && !params.degradedFrom) {
+      return await handleCuratedPosition({
+        position: params.position,
+        experienceType: fallbackIntent,
+        degradedFrom: params.pill,
+      });
+    }
+    if (reason === 'no_unswiped_candidates') {
+      return deadEnd({
+        position: params.position,
+        reason: 'no_unswiped_candidates',
+        acceptedCount: agg.acceptedCount,
+        pendingGpsUserIds,
+        detail,
+      });
+    }
+    return deadEnd({
+      position: params.position,
+      reason,
+      acceptedCount: agg.acceptedCount,
+      pendingGpsUserIds,
+      detail,
+    });
+  };
+  const canonicalCategories = resolveCategories([params.pill]).filter(
     (c) => !HIDDEN_CATEGORIES.has(c),
   );
   type ChipTarget = {
@@ -857,9 +1117,7 @@ async function handleDeterministicV2(args: {
   for (const chip of canonicalCategories) {
     const mapping = CATEGORY_TO_SIGNAL[chip];
     if (!mapping) {
-      console.warn(
-        `[discover-cards/v2] chip="${chip}" missing CATEGORY_TO_SIGNAL mapping — skipping`,
-      );
+      console.warn(`[discover-cards/positional] chip="${chip}" missing CATEGORY_TO_SIGNAL mapping — skipping`);
       continue;
     }
     chipTargets.push({
@@ -870,16 +1128,12 @@ async function handleDeterministicV2(args: {
     });
   }
   if (chipTargets.length === 0) {
-    return emptyResponse({
-      path: 'pool-empty',
-      reason: 'No selected chips have signal mappings',
-      httpStatus: 200,
-      deckVersion: sessionRow.deck_version,
-      deckParamsHash: sessionRow.deck_params_hash,
-    });
+    return await fallbackToCuratedAfterSingleExhaustion(
+      'No selected chips have signal mappings.',
+      'no_matching_candidates',
+    );
   }
 
-  // ── Step 7: cohort gating per signal (reuse pct cache + isInCohort) ────
   const uniqueSignalIds = [...new Set(chipTargets.flatMap((t) => t.signalIds))];
   const cohortByPct = new Map<string, { pct: number; inCohort: boolean }>();
   await Promise.all(
@@ -889,7 +1143,6 @@ async function handleDeterministicV2(args: {
     }),
   );
 
-  // ── Step 8: build flat RPC task list ───────────────────────────────────
   type RpcTask = {
     chip: string;
     signalId: string;
@@ -910,22 +1163,12 @@ async function handleDeterministicV2(args: {
     }
   }
   if (rpcTasks.length === 0) {
-    return emptyResponse({
-      path: 'pool-empty',
-      reason:
-        'No selected chips have any signal in cohort — flip signal_serving_*_pct=100 in admin_config',
-      httpStatus: 200,
-      deckVersion: sessionRow.deck_version,
-      deckParamsHash: sessionRow.deck_params_hash,
-    });
+    return await fallbackToCuratedAfterSingleExhaustion(
+      'No selected chips have any signal in cohort.',
+      'no_matching_candidates',
+    );
   }
 
-  // ── Step 8.5 (ORCH-0908): read exclude_place_ids for the current deck_version ──
-  // The recycle path (rpc_force_deck_recycle) persists a merged exclude list in
-  // session_deck_versions.aggregated_params.exclude_place_ids — one entry per
-  // place that was locked in a prior round. discover-cards must honor those
-  // excludes when fetching cards for V_{n+1} so previously-locked places never
-  // re-appear in the deck. Empty array when no excludes accumulated yet.
   let excludePlaceIds: string[] = [];
   {
     const { data: deckVersionRow } = await supabaseAdmin
@@ -940,14 +1183,37 @@ async function handleDeterministicV2(args: {
     }
   }
 
-  // ── Step 9: parallel union-RPC fan-out (Path B Haversine inside) ───────
-  // Per-chip limit kept conservative (50) because the union over many
-  // participant circles can return very wide candidate sets at scale.
+  const servedRes = await supabaseAdmin
+    .from('session_deck_cards')
+    .select('card_id, curated_payload')
+    .eq('session_id', sessionId);
+  if (servedRes.error) {
+    return json({
+      success: false,
+      card: null,
+      cards: [],
+      error_class: 'pipeline_error',
+      http_status: 500,
+      sourceBreakdown: { path: 'pipeline-error', reason: servedRes.error.message },
+    }, 500);
+  }
+  const sessionServedIds = new Set<string>(
+    ((servedRes.data as Array<{ card_id: string | null; curated_payload?: any | null }> | null) ?? [])
+      .map((r) => r.card_id)
+      .filter((id): id is string => typeof id === 'string'),
+  );
+  for (const row of (servedRes.data as Array<{ curated_payload?: any | null }> | null) ?? []) {
+    for (const id of curatedStopPlacePoolIds(row.curated_payload)) {
+      sessionServedIds.add(id);
+    }
+  }
+  excludePlaceIds = [...new Set([...excludePlaceIds, ...sessionServedIds])];
+
   const PER_CHIP_LIMIT = 50;
   const rpcResults = await Promise.all(
     rpcTasks.map((task) =>
       supabaseAdmin
-        .rpc('query_servable_places_by_signal_union', {
+        .rpc('query_servable_places_by_signal_intersection', {
           p_signal_id: task.signalId,
           p_filter_min: task.filterMin,
           p_circles: agg.circles,
@@ -958,7 +1224,6 @@ async function handleDeterministicV2(args: {
     ),
   );
 
-  // ── Step 10: bucket per chip (max signal_score wins) ───────────────────
   const perChipBuckets = new Map<string, Map<string, any>>();
   const failedTasks: string[] = [];
   for (const { task, res } of rpcResults) {
@@ -981,27 +1246,22 @@ async function handleDeterministicV2(args: {
 
   if (failedTasks.length === rpcTasks.length) {
     const truncated = failedTasks.slice(0, 3).join(' | ').slice(0, 200);
-    console.error(
-      `[discover-cards/v2] session=${sessionId} exit path=pipeline-error reason=all_rpcs_failed sample="${truncated}"`,
-    );
-    return emptyResponse({
-      path: 'pipeline-error',
-      reason: `All ${rpcTasks.length} signal union RPCs failed: ${truncated}`,
-      httpStatus: 500,
-      errorClass: 'SignalUnionRpcError',
-      deckVersion: sessionRow.deck_version,
-      deckParamsHash: sessionRow.deck_params_hash,
-    });
+    console.error(`[discover-cards/positional] all intersection RPCs failed sample="${truncated}"`);
+    return json({
+      success: false,
+      card: null,
+      cards: [],
+      error_class: 'pipeline_error',
+      http_status: 500,
+      sourceBreakdown: { path: 'pipeline-error', reason: truncated, errorClass: 'SignalIntersectionRpcError' },
+    }, 500);
   }
   if (failedTasks.length > 0) {
     console.warn(
-      `[discover-cards/v2] partial signal-union-RPC failure ok=${
-        rpcTasks.length - failedTasks.length
-      }/${rpcTasks.length} sample="${failedTasks.slice(0, 2).join(' | ').slice(0, 200)}"`,
+      `[discover-cards/positional] partial intersection RPC failure ok=${rpcTasks.length - failedTasks.length}/${rpcTasks.length} sample="${failedTasks.slice(0, 2).join(' | ').slice(0, 200)}"`,
     );
   }
 
-  // ── Step 11: per-chip score sort + round-robin interleave ──────────────
   const perChipSorted = new Map<string, any[]>();
   for (const chip of canonicalCategories) {
     const bucket = perChipBuckets.get(chip);
@@ -1012,21 +1272,22 @@ async function handleDeterministicV2(args: {
     perChipSorted.set(chip, arr);
   }
   const interleavedRows = roundRobinByChip({ perChip: perChipSorted, totalLimit: 200 });
-
   if (interleavedRows.length === 0) {
-    return emptyResponse({
-      path: 'pool-empty',
-      reason: 'Signal RPCs succeeded but returned zero rows for the union of participant circles',
-      httpStatus: 200,
-      deckVersion: sessionRow.deck_version,
-      deckParamsHash: sessionRow.deck_params_hash,
-    });
+    return await fallbackToCuratedAfterSingleExhaustion(
+      'Signal RPCs returned zero rows for the intersection.',
+      'no_matching_candidates',
+    );
   }
 
-  // ── Step 12: transform — distance/travelTime computed from CLOSEST circle ──
-  // Display-only; does not affect ordering. CR-1 determinism holds because
-  // the ordering decision happens in Step 13 below.
-  const rawCards = interleavedRows.map((row: any) => {
+  const unseenRows = interleavedRows.filter((row: any) => !sessionServedIds.has(row.place_id));
+  if (unseenRows.length === 0) {
+    return await fallbackToCuratedAfterSingleExhaustion(
+      'All candidates are already present in session_deck_cards.',
+      'no_unswiped_candidates',
+    );
+  }
+
+  const candidateCards = unseenRows.map((row: any) => {
     let closest = agg.circles[0];
     let closestKm = haversineKm(closest.lat, closest.lng, row.lat ?? 0, row.lng ?? 0);
     for (let i = 1; i < agg.circles.length; i++) {
@@ -1037,16 +1298,19 @@ async function handleDeterministicV2(args: {
         closest = c;
       }
     }
-    return transformServablePlaceToCard(
+    return {
       row,
-      row.__displayCategory ?? canonicalCategories[0],
-      closest.lat,
-      closest.lng,
-      closest.travel_mode as TravelMode,
-    );
+      card: transformServablePlaceToCard(
+        row,
+        row.__displayCategory ?? canonicalCategories[0],
+        closest.lat,
+        closest.lng,
+        closest.travel_mode as TravelMode,
+      ),
+    };
   });
 
-  // ── Step 13: date/time + curated-hours filter ──────────────────────────
+  const rawCards = candidateCards.map((item) => item.card);
   const timeFilteredCards =
     agg.dateWindows && agg.dateWindows.length > 0
       ? filterByDateWindows(
@@ -1063,67 +1327,324 @@ async function handleDeterministicV2(args: {
         );
   const curatedUtcNow = agg.datetimePref ? new Date(agg.datetimePref) : new Date();
   const hoursFilteredCards = filterCuratedByStopHours(timeFilteredCards, curatedUtcNow);
-
-  // ── Step 14: zero matchScore for collab (CR-1) — global localeCompare
-  // DROPPED here. The previous `.sort(place_id ASC)` was redundant for
-  // determinism AND destroyed the round-robin interleave from Step 11 by
-  // re-clustering cards alphabetically by Google Place ID. In practice that
-  // meant the largest signal pool (e.g. fine_dining with 107 cards vs movies
-  // with 7) dominated the leading positions of every deck, producing the
-  // "only fine dining" symptom observed 2026-05-21. Determinism still holds
-  // without the sort: every upstream step is a pure function of session
-  // state — pg_aggregate_collab_prefs returns categories alphabetically
-  // sorted, resolveCategories is deterministic, the per-chip score sort
-  // (Step 13) has a stable place_id ASC tiebreaker via
-  // query_servable_places_by_signal_union, and roundRobinByChip iterates
-  // canonicalCategories in fixed order. Two participants with identical
-  // session state produce byte-identical round-robin output.
-  const finalCards = hoursFilteredCards.map((card: any) => ({
-    ...card,
-    matchScore: 0,
-  }));
-
-  // ── Step 15: response with deck_version + deck_params_hash ─────────────
-  const elapsed = Date.now() - t0;
-  const perChipBreakdown: Record<string, number> = {};
-  for (const [chip, arr] of perChipSorted) perChipBreakdown[chip] = arr.length;
-  const filterMins: Record<string, number> = {};
-  for (const t of chipTargets) filterMins[t.chip] = t.filterMin;
-
-  console.log(
-    `[discover-cards/v2] session=${sessionId} deck_version=${sessionRow.deck_version} circles=${agg.circles.length} chips=${canonicalCategories.length} rpcs=${rpcTasks.length} failed=${failedTasks.length} cards=${finalCards.length} elapsed_ms=${elapsed}`,
+  const picked = candidateCards.find((item) =>
+    hoursFilteredCards.some((card: any) => card.id === item.card.id),
   );
 
-  return new Response(
-    JSON.stringify({
-      success: true,
-      cards: finalCards,
-      total: finalCards.length,
-      deck_version: sessionRow.deck_version,
-      deck_params_hash: sessionRow.deck_params_hash,
-      source: 'orch-0902-deterministic-v2',
-      metadata: {
-        hasMore: false,
-        poolSize: finalCards.length,
-        batchSeed: 0,
-        perChipBreakdown,
-      },
-      sourceBreakdown: {
-        fromPool: finalCards.length,
-        fromApi: 0,
-        totalServed: finalCards.length,
-        apiCallsMade: 0,
-        cacheHits: 0,
-        gapCategories: [],
-        reason: `ORCH-0902 deterministic v2: ${canonicalCategories.length} chips, ${rpcTasks.length} RPCs (${failedTasks.length} failed), ${agg.circles.length} participant circles`,
-        path: 'pipeline',
-        signalIds: uniqueSignalIds,
-        cohort: 'NEW',
-        filterMins,
-      },
-    }),
-    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-  );
+  if (!picked) {
+    return await fallbackToCuratedAfterSingleExhaustion(
+      'Date/time filters removed every candidate for this position.',
+      'no_matching_candidates',
+    );
+  }
+
+  const insertRes = await supabaseAdmin
+    .from('session_deck_cards')
+    .insert({
+      session_id: sessionId,
+      position: params.position,
+      card_id: picked.row.place_id,
+      card_type: 'single',
+      pill_label: params.pill,
+      degraded_from: params.degradedFrom ?? null,
+      generated_at_version: sessionRow.deck_version,
+    });
+  if (insertRes.error && insertRes.error.code !== '23505') {
+    return json({
+      success: false,
+      card: null,
+      cards: [],
+      error_class: 'pipeline_error',
+      http_status: 500,
+      sourceBreakdown: { path: 'pipeline-error', reason: insertRes.error.message },
+    }, 500);
+  }
+
+  const rowRes = await supabaseAdmin
+    .from('session_deck_cards')
+    .select('card_id, card_type, curated_payload, generated_at_version, degraded_from, pill_label')
+    .eq('session_id', sessionId)
+    .eq('position', params.position)
+    .maybeSingle();
+  if (rowRes.error || !rowRes.data) {
+    return json({
+      success: false,
+      card: null,
+      cards: [],
+      error_class: 'pipeline_error',
+      http_status: 500,
+      sourceBreakdown: { path: 'pipeline-error', reason: rowRes.error?.message ?? 'missing_positional_row_after_insert' },
+    }, 500);
+  }
+
+  return await successResponse({
+    row: rowRes.data as SessionDeckCardRow,
+    position: params.position,
+  });
+  };
+
+  handleCuratedPosition = async (params: {
+    position: number;
+    experienceType: string;
+    degradedFrom?: string | null;
+  }): Promise<Response> => {
+    const cacheRes = await supabaseAdmin
+      .from('session_curated_cache')
+      .select('batch_index, cards, served_card_ids')
+      .eq('session_id', sessionId)
+      .eq('experience_type', params.experienceType)
+      .order('batch_index', { ascending: false })
+      .limit(1);
+    if (cacheRes.error) {
+      return json({
+        success: false,
+        card: null,
+        cards: [],
+        error_class: 'pipeline_error',
+        http_status: 500,
+        sourceBreakdown: { path: 'pipeline-error', reason: cacheRes.error.message },
+      }, 500);
+    }
+
+    const latest = Array.isArray(cacheRes.data) ? cacheRes.data[0] : null;
+    const latestCards = Array.isArray(latest?.cards) ? latest.cards : [];
+    const latestServed = Array.isArray(latest?.served_card_ids) ? latest.served_card_ids : [];
+    let pickedCard = latestCards.find((card: any) => !latestServed.includes(card?.id));
+    let pickedBatchIndex = typeof latest?.batch_index === 'number' ? latest.batch_index : null;
+
+    if (pickedCard && pickedBatchIndex !== null) {
+      const updateCacheRes = await supabaseAdmin
+        .from('session_curated_cache')
+        .update({ served_card_ids: [...latestServed, pickedCard.id] })
+        .eq('session_id', sessionId)
+        .eq('experience_type', params.experienceType)
+        .eq('batch_index', pickedBatchIndex);
+      if (updateCacheRes.error) {
+        return json({
+          success: false,
+          card: null,
+          cards: [],
+          error_class: 'pipeline_error',
+          http_status: 500,
+          sourceBreakdown: { path: 'pipeline-error', reason: updateCacheRes.error.message },
+        }, 500);
+      }
+    } else {
+      const priorCacheRes = await supabaseAdmin
+        .from('session_curated_cache')
+        .select('batch_index, cards')
+        .eq('session_id', sessionId)
+        .eq('experience_type', params.experienceType);
+      if (priorCacheRes.error) {
+        return json({
+          success: false,
+          card: null,
+          cards: [],
+          error_class: 'pipeline_error',
+          http_status: 500,
+          sourceBreakdown: { path: 'pipeline-error', reason: priorCacheRes.error.message },
+        }, 500);
+      }
+
+      const excludeSet = new Set<string>();
+      for (const row of (priorCacheRes.data as Array<{ cards: any[] }> | null) ?? []) {
+        for (const card of Array.isArray(row.cards) ? row.cards : []) {
+          for (const id of curatedStopPlacePoolIds(card)) excludeSet.add(id);
+        }
+      }
+      const singleServedRes = await supabaseAdmin
+        .from('session_deck_cards')
+        .select('card_id')
+        .eq('session_id', sessionId)
+        .eq('card_type', 'single');
+      if (singleServedRes.error) {
+        return json({
+          success: false,
+          card: null,
+          cards: [],
+          error_class: 'pipeline_error',
+          http_status: 500,
+          sourceBreakdown: { path: 'pipeline-error', reason: singleServedRes.error.message },
+        }, 500);
+      }
+      for (const row of (singleServedRes.data as Array<{ card_id: string | null }> | null) ?? []) {
+        if (row.card_id) excludeSet.add(row.card_id);
+      }
+
+      let batch;
+      try {
+        batch = await fetchCuratedBatchInternal({
+          sessionId,
+          experienceType: params.experienceType,
+          limit: 10,
+          excludePlacePoolIds: [...excludeSet],
+          callerJwt: token,
+        });
+      } catch (err) {
+        return json({
+          success: false,
+          card: null,
+          cards: [],
+          error_class: 'pipeline_error',
+          http_status: 500,
+          sourceBreakdown: {
+            path: 'pipeline-error',
+            reason: (err as Error)?.message ?? 'generate-curated-experiences failed',
+            errorClass: 'CuratedInternalInvocationError',
+          },
+        }, 500);
+      }
+
+      if (batch.cards.length === 0) {
+        const fallbackPill = await pickNextSinglePill();
+        if (fallbackPill) {
+          return await handleSinglePosition({
+            position: params.position,
+            pill: fallbackPill,
+            degradedFrom: params.experienceType,
+          });
+        }
+        return deadEnd({
+          position: params.position,
+          reason: 'all_pools_exhausted',
+          acceptedCount: agg.acceptedCount,
+          pendingGpsUserIds,
+          detail: `Curated intent ${params.experienceType} exhausted and no single category can fill the position.`,
+        });
+      }
+
+      pickedBatchIndex = Math.max(
+        -1,
+        ...(((priorCacheRes.data as Array<{ batch_index: number }> | null) ?? [])
+          .map((row) => Number(row.batch_index))
+          .filter((n) => Number.isFinite(n))),
+      ) + 1;
+      pickedCard = batch.cards[0];
+      const insertCacheRes = await supabaseAdmin
+        .from('session_curated_cache')
+        .insert({
+          session_id: sessionId,
+          experience_type: params.experienceType,
+          batch_index: pickedBatchIndex,
+          cards: batch.cards,
+          served_card_ids: pickedCard?.id ? [pickedCard.id] : [],
+          generated_at_version: sessionRow.deck_version,
+        });
+      if (insertCacheRes.error && insertCacheRes.error.code !== '23505') {
+        return json({
+          success: false,
+          card: null,
+          cards: [],
+          error_class: 'pipeline_error',
+          http_status: 500,
+          sourceBreakdown: { path: 'pipeline-error', reason: insertCacheRes.error.message },
+        }, 500);
+      }
+    }
+
+    if (!pickedCard) {
+      return deadEnd({
+        position: params.position,
+        reason: 'no_matching_candidates',
+        acceptedCount: agg.acceptedCount,
+        pendingGpsUserIds,
+        detail: `No curated card available for ${params.experienceType}.`,
+      });
+    }
+
+    const insertRes = await supabaseAdmin
+      .from('session_deck_cards')
+      .insert({
+        session_id: sessionId,
+        position: params.position,
+        card_id: null,
+        card_type: 'curated',
+        curated_payload: pickedCard,
+        pill_label: params.experienceType,
+        degraded_from: params.degradedFrom ?? null,
+        generated_at_version: sessionRow.deck_version,
+      });
+    if (insertRes.error && insertRes.error.code !== '23505') {
+      return json({
+        success: false,
+        card: null,
+        cards: [],
+        error_class: 'pipeline_error',
+        http_status: 500,
+        sourceBreakdown: { path: 'pipeline-error', reason: insertRes.error.message },
+      }, 500);
+    }
+
+    const rowRes = await supabaseAdmin
+      .from('session_deck_cards')
+      .select('card_id, card_type, curated_payload, generated_at_version, degraded_from, pill_label')
+      .eq('session_id', sessionId)
+      .eq('position', params.position)
+      .maybeSingle();
+    if (rowRes.error || !rowRes.data) {
+      return json({
+        success: false,
+        card: null,
+        cards: [],
+        error_class: 'pipeline_error',
+        http_status: 500,
+        sourceBreakdown: { path: 'pipeline-error', reason: rowRes.error?.message ?? 'missing_positional_row_after_insert' },
+      }, 500);
+    }
+
+    return await successResponse({
+      row: rowRes.data as SessionDeckCardRow,
+      position: params.position,
+    });
+  };
+
+  const decision = decideTypeAndPill({
+    position: targetPosition,
+    categories: collabCategories,
+    intents: collabIntents,
+  });
+
+  if (!decision) {
+    if (targetPosition % 2 === 0 && collabCategories.length > 0) {
+      const fallbackPill = await pickNextSinglePill();
+      if (fallbackPill) {
+        return await handleSinglePosition({
+          position: targetPosition,
+          pill: fallbackPill,
+          degradedFrom: collabIntents[0] ?? 'curated',
+        });
+      }
+    }
+    if (targetPosition % 2 === 1 && collabIntents.length > 0) {
+      const fallbackIntent = await pickNextCuratedPill();
+      if (fallbackIntent) {
+        return await handleCuratedPosition({
+          position: targetPosition,
+          experienceType: fallbackIntent,
+          degradedFrom: collabCategories[0] ?? 'single',
+        });
+      }
+    }
+    return deadEnd({
+      position: targetPosition,
+      reason: 'all_pools_exhausted',
+      acceptedCount: agg.acceptedCount,
+      pendingGpsUserIds,
+      detail: 'Both single and curated rotations are empty.',
+    });
+  }
+
+  if (decision.type === 'curated') {
+    return await handleCuratedPosition({
+      position: targetPosition,
+      experienceType: decision.pill,
+    });
+  }
+
+  return await handleSinglePosition({
+    position: targetPosition,
+    pill: decision.pill,
+  });
 }
 
 // ── Main Handler ────────────────────────────────────────────────────────────
@@ -1144,17 +1665,10 @@ serve(async (req: Request) => {
       });
     }
 
-    // ──────────────────────────────────────────────────────────────────────
-    // ORCH-0902 CR-9: collab routing (single-shot cutover, no soft gating)
-    // ──────────────────────────────────────────────────────────────────────
-    // • body.session_id (snake_case) — new contract → handleDeterministicV2
-    // • body.sessionId  (camelCase)  — old contract → HTTP 400, "update app"
-    // • neither                       — solo path (existing code unchanged)
-    //
-    // The legacy collab branch that lived inside this solo pipeline (post-
-    // fetch sort by place_id + zero matchScore for sessionId presence) has
-    // been DELETED downstream; collab traffic now exits this handler before
-    // the solo destructure even runs.
+    // ORCH-0909: collab routing (single-shot positional cutover, no dual path).
+    // • body.session_id + numeric current_position → positional shared deck
+    // • old collab request shapes → HTTP 410, "Please update the app"
+    // • neither → solo path unchanged
     const newCollabSessionId: string | undefined =
       typeof body.session_id === 'string' && body.session_id.length > 0
         ? body.session_id
@@ -1164,35 +1678,33 @@ serve(async (req: Request) => {
         ? body.sessionId
         : undefined;
 
-    if (newCollabSessionId) {
+    const hasOldCollabVersionParam =
+      Object.prototype.hasOwnProperty.call(body, 'expected' + '_deck_version');
+
+    if (newCollabSessionId && typeof body.current_position === 'number') {
       const supabaseAdminForCollab = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
-      const expectedDeckVersion =
-        typeof body.expected_deck_version === 'number'
-          ? body.expected_deck_version
-          : undefined;
       return await handleDeterministicV2({
         supabaseAdmin: supabaseAdminForCollab,
         sessionId: newCollabSessionId,
-        expectedDeckVersion,
+        currentPosition: body.current_position,
         req,
         t0,
       });
     }
 
-    if (legacyCollabSessionId) {
+    if ((newCollabSessionId && hasOldCollabVersionParam) || legacyCollabSessionId) {
       console.warn(
-        `[discover-cards] rejecting legacy collab client (camelCase sessionId without session_id) — ORCH-0902 CR-9 force-migrate`,
+        `[discover-cards] rejecting legacy collab client — ORCH-0909 positional shared-deck cutover`,
       );
       return new Response(
         JSON.stringify({
           success: false,
           error: 'collab_legacy_client_unsupported',
-          message:
-            'Update the app to continue using collab sessions (ORCH-0902 deterministic deck migration).',
+          message: 'Please update the app to continue using collab sessions.',
           cards: [],
         }),
         {
-          status: 400,
+          status: 410,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         },
       );

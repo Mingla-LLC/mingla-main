@@ -455,6 +455,34 @@ function checkNoNewBackendFiles() {
     // deck_version. Same ORCH scope as the rewrite above.
     "supabase/migrations/20260627000000_orch_0902_round_gps_in_aggregation_hash.sql",
   ];
+  // ORCH-0908 [Collab session lifecycle + chat @-mention + #-tag cards] PR #158
+  // (2026-05-21). C7 is scoped to ORCH-0863 marketing; these backend touches are
+  // the atomic lock-and-schedule RPC, V_{n+1} recycle, card_payload flatten +
+  // backfill, notify-session-lock fire-and-forget, and notify-message
+  // mention/mute patch on the collab-lifecycle track.
+  const ORCH_0908_BACKEND_ALLOWLIST = [
+    "supabase/functions/notify-message/index.ts",
+    "supabase/functions/notify-session-lock/index.ts",
+    "supabase/migrations/20260626000000_orch_0908_admin_lock_schedule_recycle.sql",
+    "supabase/migrations/20260628000000_orch_0908_hotfix_calendar_trigger_dead_ref.sql",
+    "supabase/migrations/20260629000000_orch_0908_combined_lock_schedule.sql",
+    "supabase/migrations/20260630000000_orch_0908_card_payload_flatten.sql",
+    "supabase/migrations/20260702000000_orch_0908_chat_card_tags.sql",
+  ];
+  // ORCH-0909 [Collab positional shared-deck rewrite] + ORCH-0906 [single ↔
+  // intent 1:1 interleave] PR #158 bundle (2026-05-21). C7 is scoped to
+  // ORCH-0863 marketing; these backend touches are the positional-shared-deck
+  // architecture replacing pinnedDeckVersion + the mixed-type interleave shared
+  // helper on the collab-deck-determinism track.
+  const ORCH_0909_0906_BACKEND_ALLOWLIST = [
+    "supabase/functions/_shared/mixedTypeInterleave.ts",
+    "supabase/functions/_shared/signalRankFetch.ts",
+    "supabase/functions/discover-cards/__tests__/orch_0906_mixed_type_interleave.test.ts",
+    "supabase/functions/discover-cards/__tests__/orch_0909_adversarial.test.ts",
+    "supabase/functions/discover-cards/__tests__/orch_0909_positional_shared_deck.test.ts",
+    "supabase/migrations/20260701000000_orch_0909_positional_shared_deck.sql",
+    "supabase/migrations/20260703000000_orch_0906_session_deck_cards_mixed_type.sql",
+  ];
   const ALLOWLIST = [
     ...ORCH_0859_BUNDLED_ALLOWLIST,
     ...ORCH_0869_BACKEND_ALLOWLIST,
@@ -472,6 +500,8 @@ function checkNoNewBackendFiles() {
     ...ORCH_0891_BACKEND_ALLOWLIST,
     ...ORCH_0898_BACKEND_ALLOWLIST,
     ...ORCH_0902_0903_BACKEND_ALLOWLIST,
+    ...ORCH_0908_BACKEND_ALLOWLIST,
+    ...ORCH_0909_0906_BACKEND_ALLOWLIST,
   ];
   const forbidden = changed.filter(
     (p) =>

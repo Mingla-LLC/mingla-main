@@ -43,11 +43,9 @@ export interface DeckQueryKeyParams {
   mode?: 'solo' | 'collab';
   /** ORCH-0490 Phase 2.3: required when mode === 'collab'. Ignored otherwise. */
   sessionId?: string;
-  /** ORCH-0902 CR-1: required when mode === 'collab'. The pinned deck_version
-   *  that this participant is currently consuming. Drives cache partitioning
-   *  per (session_id, deck_version). 0 means "no deck yet" (below CR-8 ≥2
-   *  accepted threshold) — the hook should be disabled in that case. */
-  deckVersion?: number;
+  /** ORCH-0909: required when mode === 'collab'. Server-authoritative cursor
+   *  before the next swipe. Drives one-card positional fetches. */
+  currentPosition?: number;
   lat: number;
   lng: number;
   categories: string[];
@@ -62,17 +60,16 @@ export interface DeckQueryKeyParams {
 }
 
 export function buildDeckQueryKey(params: DeckQueryKeyParams): readonly unknown[] {
-  // ORCH-0902 CR-1: collab key shape is tiny — only (sessionId, deckVersion).
+  // ORCH-0909: collab key shape is tiny — only (sessionId, currentPosition).
   // No location, categories, travelMode, etc. — those are all derived from
-  // session state on the server. Two clients passing the same sessionId +
-  // deckVersion get byte-identical decks; the key partitions by version so
-  // a deck-version bump triggers a cache miss + refetch.
+  // session state on the server. Each cursor advance fetches exactly one
+  // positional shared-deck card.
   if (params.mode === 'collab') {
     return [
       'deck-cards',
       'collab',
       params.sessionId ?? null,
-      params.deckVersion ?? 0,
+      params.currentPosition ?? 0,
     ] as const;
   }
 
@@ -133,11 +130,8 @@ interface UseDeckCardsParams {
    *  key shape (`['deck-cards', mode, sessionId ?? null, ...]`). Absent for
    *  flag-off callers — key shape reverts to pre-2.3 legacy. */
   mode?: 'solo' | 'collab';
-  /** ORCH-0902 CR-1: required when mode === 'collab'. The pinned deck_version
-   *  the participant is currently consuming (see RecommendationsContext V_n
-   *  exhaustion state machine). 0 disables the hook (below CR-8 ≥2 accepted
-   *  threshold). */
-  deckVersion?: number;
+  /** ORCH-0909: required when mode === 'collab'. Current positional cursor. */
+  currentPosition?: number;
 }
 
 export interface UseDeckCardsResult {
@@ -177,11 +171,9 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
   const isCollab = params.mode === 'collab';
   const isEnabled =
     enabled &&
-    (isCollab
-      ? !!params.sessionId && (params.deckVersion ?? 0) > 0
-      : location !== null);
+    (isCollab ? !!params.sessionId : location !== null);
 
-  // Build query key. For collab the key is tiny — (sessionId, deckVersion).
+  // Build query key. For collab the key is tiny — (sessionId, currentPosition).
   // For solo + legacy the key includes location/category/travel/etc. as before.
   // On cold start before location resolves, use lastKnownQueryKey (from persisted
   // session state, proximity-checked) to read hydrated cache instantly. ORCH-0391.
@@ -190,7 +182,7 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
     queryKey = buildDeckQueryKey({
       mode: 'collab',
       sessionId: params.sessionId,
-      deckVersion: params.deckVersion ?? 0,
+      currentPosition: params.currentPosition ?? 0,
       // Solo fields below are ignored by the collab branch in buildDeckQueryKey.
       lat: 0,
       lng: 0,

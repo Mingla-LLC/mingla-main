@@ -23,7 +23,6 @@ import { computePrefsHash, normalizeDateTime } from "../utils/cardConverters";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAppStore } from "../store/appStore";
 import { Recommendation } from "../types/recommendation";
-import { aggregateCollabPrefs } from '../utils/sessionPrefsUtils';
 import { normalizeCategoryArray } from '../utils/categoryUtils';
 // ORCH-0490 Phase 2.3: per-context deck state registry + feature flag.
 import { FEATURE_FLAG_PER_CONTEXT_DECK_STATE } from "../config/featureFlags";
@@ -121,6 +120,7 @@ interface RecommendationsContextType {
    *  machine routing inside SwipeableCards. Undefined when the hook hasn't
    *  resolved yet (loading, disabled, or pre-first-fetch). */
   serverPath?: import('../services/deckService').DeckServerPath;
+  collabDeckDeadEndReason?: string;
   /** ORCH-0490 Phase 2.3: expansion signal. True when the current deck swap
    *  is a same-context pref expansion (not a mode/session switch). Drives
    *  SwipeableCards' decision to preserve swipe state vs reset on deck
@@ -541,118 +541,49 @@ export const RecommendationsProvider: React.FC<
     isLoadingPreferences,
   ]);
 
-  // ── ORCH-0902 CR-1: V_n exhaustion state machine ───────────────────────
-  // pinnedDeckVersion tracks WHICH version this participant is currently
-  // consuming. May lag behind session.deck_version after a pref change;
-  // advances to session.deck_version only when the user has exhausted V_n
-  // (last-card swipe). null = "no deck pinned yet" (first entry).
-  // Persisted into deckStateRegistry via the context-switch effect so a
-  // rejoin restores the same version (CR-4 resume).
-  const [pinnedDeckVersion, setPinnedDeckVersion] = useState<number | null>(null);
+  // ── ORCH-0909: collab positional cursor ────────────────────────────────
+  // Server state is authoritative. Each accepted participant has a
+  // session_participants.current_position cursor; every swipe asks the edge
+  // function for the next card at current_position + 1.
+  const [currentPosition, setCurrentPosition] = useState(0);
+  const currentSessionRef = useRef<string | null>(null);
 
-  // ORCH-0902 follow-up (operator-reported 2026-05-21 + sim-verified): the
-  // session this pinnedDeckVersion was set FOR. pinnedDeckVersion is a single
-  // useState across the whole context, but the user can switch between collab
-  // sessions (e.g. tapping a different pill). Without scoping, switching from
-  // session A (deck_version=5) to session B (deck_version=2) leaves
-  // pinnedDeckVersion=5, the request key sends expected_deck_version=5 to a
-  // server that holds session B at v2, the edge function returns HTTP 409
-  // deck_version_mismatch, and the client logs
-  // "DeckFetchError: discover-cards (collab v2) failed: Edge Function
-  // returned a non-2xx status code" + renders the EMPTY state.
-  const pinnedDeckVersionSessionRef = useRef<string | null>(null);
-
-  // ORCH-0902 CR-1+CR-3+CR-5: pinnedDeckVersion transition effect.
-  //
-  // Three cases handled:
-  //   (a) First entry: pinnedDeckVersion === null AND session.deck_version > 0
-  //       → pin to the current server version so the React Query hook can
-  //       enable and fetch V_n. This unlocks "curating your lineup" once
-  //       ≥2 participants have accepted and the trigger has bumped
-  //       deck_version from 0 → 1.
-  //   (b) Exhaustion + new version: user finished V_n AND server has minted
-  //       V_{n+1} → advance to V_latest, clear local state, let the hook's
-  //       query key change cause a refetch.
-  //   (c) Anything else: hold pinnedDeckVersion steady (CR-3 — no
-  //       mid-deck yank).
-  //
-  // Without this effect, pinnedDeckVersion stays null forever, collabDeckParams
-  // returns null, the hook stays disabled, and the user sees "curating your
-  // lineup" forever — the exact bug the operator surfaced 2026-05-21 post-PR
-  // #154 merge.
   useEffect(() => {
     if (!isCollaborationMode) return;
     const sessionRow = boardSessionResult?.session;
-    if (!sessionRow) return;
-    const serverVersion = sessionRow.deck_version ?? 0;
-    if (serverVersion <= 0) return; // below CR-8 acceptedCount<2 threshold
+    if (!sessionRow || !user?.id) return;
+    const participants = Array.isArray(sessionRow.participants) ? sessionRow.participants : [];
+    const me = participants.find((p: any) => p.user_id === user.id);
+    const serverPosition = Number(me?.current_position ?? 0);
 
-    // Case (a'): session switched. pinnedDeckVersion was set for a DIFFERENT
-    // session — reset to the new session's current server version + clear
-    // local state. Otherwise the next discover-cards request would send the
-    // prior session's expected_deck_version against the new session and the
-    // edge function would return HTTP 409 deck_version_mismatch.
-    if (pinnedDeckVersionSessionRef.current !== sessionRow.id) {
-      pinnedDeckVersionSessionRef.current = sessionRow.id;
-      setPinnedDeckVersion(serverVersion);
+    if (currentSessionRef.current !== sessionRow.id) {
+      currentSessionRef.current = sessionRow.id;
       accumulatedCardsRef.current = [];
       sessionServedIdsRef.current = new Set();
       setRecommendations([]);
       setIsExhausted(false);
-      return;
     }
 
-    // Case (a): first entry — pin to current server version.
-    if (pinnedDeckVersion === null) {
-      setPinnedDeckVersion(serverVersion);
-      return;
-    }
+    setCurrentPosition(serverPosition);
+  }, [isCollaborationMode, boardSessionResult?.session, boardSessionResult?.session?.participants, user?.id]);
 
-    // Case (b): exhaustion + new version → advance AND clear local state.
-    // The previous version of this branch advanced pinnedDeckVersion but
-    // left accumulatedCardsRef + sessionServedIdsRef populated with V_n's
-    // cards and removedCards full of V_n's swiped IDs. When V_{n+1}'s
-    // fresh cards arrived from the refetch, the deck-rendering filter
-    // dropped them all because they were "already swiped" → empty deck UI.
-    // Operator-reported 2026-05-21 ("No spots match right now" after every
-    // pref-apply); sim-verified that cold-restart cleared the bug.
-    if (serverVersion > pinnedDeckVersion && isExhausted) {
-      setPinnedDeckVersion(serverVersion);
-      accumulatedCardsRef.current = [];
-      sessionServedIdsRef.current = new Set();
-      setRecommendations([]);
-      setIsExhausted(false);
-      // React Query key changes via the deckVersion discriminant — refetch
-      // happens automatically; cleared local state means new cards render
-      // without being filtered against stale dismissals.
-    }
-  }, [
-    isCollaborationMode,
-    boardSessionResult?.session,
-    boardSessionResult?.session?.deck_version,
-    pinnedDeckVersion,
-    isExhausted,
-  ]);
-
-  // ── ORCH-0902 CR-1: collab deck params (server-aggregated) ──────────────
-  // Client-side aggregation was retired by CR-9. The collab fetch sends ONLY
-  // { session_id, expected_deck_version } to discover-cards. This memo just
-  // surfaces the pinned version + session metadata for the hook below; the
-  // actual aggregation happens server-side in pg_aggregate_collab_prefs.
+  // ── ORCH-0909: collab deck params (server-aggregated) ─────────────────
+  // Client-side aggregation remains retired. The collab fetch sends ONLY
+  // { session_id, current_position } to discover-cards; SQL aggregation
+  // happens server-side in pg_aggregate_collab_prefs.
   const collabDeckParams = useMemo(() => {
     const sessionRow = boardSessionResult?.session;
     if (!isCollaborationMode || !sessionRow) return null;
-    if (pinnedDeckVersion === null || pinnedDeckVersion === 0) return null;
     return {
       sessionId: sessionRow.id,
-      deckVersion: pinnedDeckVersion,
+      currentPosition,
       deckParamsHash: sessionRow.deck_params_hash ?? null,
     };
-  }, [isCollaborationMode, boardSessionResult?.session, pinnedDeckVersion]);
+  }, [isCollaborationMode, boardSessionResult?.session, currentPosition]);
 
   // ── Solo Deck Hook (existing useDeckCards, only for solo mode) ────────
   // ORCH-0902 CR-7: collab no longer reads collabDeckParams.location (the
-  // shape changed to {sessionId, deckVersion, deckParamsHash}). For collab,
+  // shape changed to {sessionId, currentPosition, deckParamsHash}). For collab,
   // server reads location from session state via pg_aggregate_collab_prefs;
   // the activeDeckLocation here only matters for the (dead) legacyDeck path
   // and as a not-null gate signal for solo. Falling back to userLocation
@@ -670,9 +601,9 @@ export const RecommendationsProvider: React.FC<
 
   // ORCH-0902 CR-7: activeDeckParams now has two shapes:
   //   solo  → { categories, intents, ... } from stableDeckParams
-  //   collab → { sessionId, deckVersion, deckParamsHash } from new memo
+  //   collab → { sessionId, currentPosition, deckParamsHash } from new memo
   // Stability key partitions accordingly — solo uses categories/intents,
-  // collab uses (sessionId, deckVersion) as the fingerprint.
+  // collab uses (sessionId, currentPosition) as the fingerprint.
   const currentParamsKey = activeDeckParams
     ? isSoloMode
       ? JSON.stringify([
@@ -681,7 +612,7 @@ export const RecommendationsProvider: React.FC<
         ])
       : JSON.stringify([
           (activeDeckParams as { sessionId?: string }).sessionId,
-          (activeDeckParams as { deckVersion?: number }).deckVersion,
+          (activeDeckParams as { currentPosition?: number }).currentPosition,
         ])
     : null;
 
@@ -787,19 +718,16 @@ export const RecommendationsProvider: React.FC<
     lastKnownQueryKey: isSoloMode ? lastDeckKey : null,
   });
 
-  // ORCH-0902 CR-1: flag-on COLLAB hook — slim deterministic-v2 contract.
-  // Sends ONLY { mode, sessionId, deckVersion } to useDeckCards. All other
+  // ORCH-0909: flag-on COLLAB hook — slim positional contract.
+  // Sends ONLY { mode, sessionId, currentPosition } to useDeckCards. All other
   // params (location/categories/intents/travelMode/etc.) were retired by
   // CR-7 — the server reads them from session state via the new SQL
   // aggregation function. The query key partitions per (sessionId,
-  // deckVersion) so a deck_version bump triggers a cache miss + refetch.
-  // The pinnedDeckVersion buffer (CR-3 V_n exhaustion) ensures the hook
-  // STAYS on the user's current version until they swipe past the last
-  // card; the transition effect below lifts it when they exhaust V_n.
+  // currentPosition) so each swipe pulls the next shared position.
   const flagCollabDeck = useDeckCards({
     mode: 'collab',
     sessionId: collabDeckParams?.sessionId,
-    deckVersion: collabDeckParams?.deckVersion ?? 0,
+    currentPosition: collabDeckParams?.currentPosition ?? 0,
     // The fields below are required by the legacy UseDeckCardsParams shape
     // but ignored by the collab branch in buildDeckQueryKey + the collab
     // branch in deckService.fetchDeck. Safe defaults.
@@ -814,7 +742,6 @@ export const RecommendationsProvider: React.FC<
     enabled: FEATURE_FLAG_PER_CONTEXT_DECK_STATE &&
       isCollaborationMode &&
       !!collabDeckParams &&
-      collabDeckParams.deckVersion > 0 &&
       !isWaitingForSessionResolution &&
       isDeckParamsStable &&
       batchSeedReady,
@@ -865,7 +792,7 @@ export const RecommendationsProvider: React.FC<
       // path (one-time skeleton). Acceptable for dark-ship rollout.
       // ORCH-0902 CR-7: this branch is solo-only (isSoloMode check above);
       // read categories/intents from the solo source directly to avoid the
-      // collab-shape `{sessionId, deckVersion, ...}` union creeping in.
+      // collab-shape `{sessionId, currentPosition, ...}` union creeping in.
       const soloParams = stableDeckParams;
       const key = buildDeckQueryKey({
         ...(FEATURE_FLAG_PER_CONTEXT_DECK_STATE ? { mode: 'solo' as const } : {}),
@@ -1011,7 +938,7 @@ export const RecommendationsProvider: React.FC<
       setHasCompletedFetchForCurrentMode(false);
       setRecommendations(EMPTY_CARDS);
       setHasMoreCards(true);
-      setIsRefreshingAfterPrefChange(true);
+      setIsRefreshingAfterPrefChange(isCollaborationMode ? false : true);
       setDismissedCards([]);
       accumulatedCardsRef.current = [];
       // HF-003 fix: clear dismissed cards from AsyncStorage on preference change
@@ -1085,8 +1012,15 @@ export const RecommendationsProvider: React.FC<
   // ORCH-0902 CR-1: collab v2 returns the FULL deck atomically (no
   // pagination), so this prefetch path is SOLO-only now. Collab early-returns.
   const handleDeckCardProgress = useCallback((currentIndex: number, total: number) => {
-    if (!activeDeckLocation || !activeDeckParams) return;
-    if (isCollaborationMode) return;  // ORCH-0902: no prefetch in collab v2
+    if (!activeDeckParams) return;
+    if (isCollaborationMode) {
+      // ORCH-0909: collab fetches one positional card per swipe. Advancing
+      // the local cursor changes the React Query key and pulls the next
+      // shared position; the edge function also persists this cursor.
+      setCurrentPosition((prev) => prev + 1);
+      return;
+    }
+    if (!activeDeckLocation) return;
     const remainingCards = total - currentIndex - 1;
 
     // When 8 or fewer cards remain, prefetch next page (once per page)
@@ -1332,13 +1266,19 @@ export const RecommendationsProvider: React.FC<
         }
       } else if (deckCards.length === 0 && isDeckBatchLoaded && !isDeckFetching && !isModeTransitioning) {
         // Genuinely empty — no cards available for current page.
-        // Only clear recommendations if accumulated stack is also empty.
-        if (accumulatedCardsRef.current.length === 0) {
+        // ORCH-0909: collab positional dead-ends are server verdicts for the
+        // next position. Clear the prior one-card recommendation so the deck
+        // can render the smart empty state instead of local exhaustion.
+        if (isCollaborationMode && soloServerPath === 'pool-empty') {
+          accumulatedCardsRef.current = [];
+          sessionServedIdsRef.current = new Set();
+          setRecommendations(prev => prev.length === 0 ? prev : EMPTY_CARDS);
+        } else if (accumulatedCardsRef.current.length === 0) {
           setRecommendations(prev => prev.length === 0 ? prev : EMPTY_CARDS);
         }
       }
     }
-  }, [deckCards, isDeckBatchLoaded, isDeckFetching, isExhausted, isSoloMode, isCollaborationMode, batchSeed, isModeTransitioning, deckHasMore, isDeckPlaceholder, currentContextKey, registry, currentContext]);
+  }, [deckCards, isDeckBatchLoaded, isDeckFetching, isExhausted, isSoloMode, isCollaborationMode, batchSeed, isModeTransitioning, deckHasMore, isDeckPlaceholder, currentContextKey, registry, currentContext, soloServerPath]);
 
   // ── Mode Transition Handling ────────────────────────────────────────────
   const previousModeRef = useRef<string | undefined>(undefined);
@@ -1910,6 +1850,9 @@ export const RecommendationsProvider: React.FC<
     // ORCH-0474
     showPipelineErrorToast,
     serverPath: soloServerPath,
+    collabDeckDeadEndReason: isCollaborationMode
+      ? soloCuratedEmptyReason
+      : undefined,
     // ORCH-0490 Phase 2.3: expansion signal consumed by SwipeableCards.
     // Undefined under flag-off (Phase 2.3 feature flag off) — consumers
     // must handle undefined as "no signal, use legacy heuristic."

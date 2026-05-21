@@ -154,6 +154,16 @@ export interface ExpandedCardData {
   priceTier?: PriceTierSlug;
   tip?: string | null;
   shoppingList?: string[];
+  // ORCH-0908: locked-in card metadata (set when a card was shared via lock-and-schedule).
+  // Carried from CardPayload.lockInEvent + scheduledAt + lockerUserId + savedCardId.
+  // ExpandedCardModal renders the LockedInBanner + Add-to-Calendar CTA when lockInEvent is present.
+  lockInEvent?: 'card_locked_and_scheduled';
+  scheduledAt?: string;
+  durationMinutes?: number;
+  lockerUserId?: string;
+  savedCardId?: string;
+  sessionId?: string;
+
   // Night Out-specific data
   nightOutData?: {
     eventName: string;

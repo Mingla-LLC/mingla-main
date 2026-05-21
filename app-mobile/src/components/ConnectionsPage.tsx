@@ -28,7 +28,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Icon } from "./ui/Icon";
 import { useFriends, Friend as UseFriend } from "../hooks/useFriends";
 import { useAppStore } from "../store/appStore";
-import { messagingService, DirectMessage } from "../services/messagingService";
+import { messagingService, DirectMessage, MentionEntry, CardTagEntry } from "../services/messagingService";
 import { blockService, BlockReason } from "../services/blockService";
 import { muteService } from "../services/muteService";
 import { reportService, ReportReason } from "../services/reportService";
@@ -1008,10 +1008,13 @@ function ConnectionsPageRefactored({
       fileName: msg.file_name,
       fileSize: msg.file_size?.toString(),
       cardPayload: msg.card_payload,  // ORCH-0667
+      mentions: msg.mentions,
+      cardTags: msg.card_tags,
       isMe: msg.sender_id === userId,
       unread: !msg.is_read && msg.sender_id !== userId,
       isRead: msg.is_read ?? false,
       replyToId: msg.reply_to_id ?? undefined,
+      isSystem: msg.isSystem,
     }),
     []
   );
@@ -1795,7 +1798,9 @@ function ConnectionsPageRefactored({
     content: string,
     type: "text" | "image" | "video" | "file",
     file?: any,
-    replyToId?: string
+    replyToId?: string,
+    mentions: MentionEntry[] = [],
+    cardTags: CardTagEntry[] = [],
   ) => {
     if (!activeChat || !user?.id) return;
 
@@ -1839,7 +1844,7 @@ function ConnectionsPageRefactored({
       }
 
       const { message: sentMsg, error: sendError } = await messagingService.sendMessage(
-        newConvId, user.id, content, type, firstFileUrl, firstFileName, firstFileSize, replyToId
+        newConvId, user.id, content, type, firstFileUrl, firstFileName, firstFileSize, replyToId, mentions, cardTags
       );
 
       if (sendError || !sentMsg) {
@@ -1944,6 +1949,8 @@ function ConnectionsPageRefactored({
       isMe: true,
       unread: false,
       replyToId,
+      mentions,
+      cardTags,
     };
 
     setMessages((prev) => [...prev, optimisticMsg]);
@@ -1967,6 +1974,8 @@ function ConnectionsPageRefactored({
               file_url: fileUrl,
               file_name: fileName,
               file_size: fileSize,
+              mentions,
+              card_tags: cardTags,
               created_at: now,
               sender_name: "Me",
               is_read: true,
@@ -1987,7 +1996,9 @@ function ConnectionsPageRefactored({
           fileUrl,
           fileName,
           fileSize,
-          replyToId
+          replyToId,
+          mentions,
+          cardTags,
         );
 
       if (sendError || !sentMessage) {

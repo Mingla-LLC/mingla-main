@@ -1581,11 +1581,27 @@ const CalendarTab = ({
                 </View>
               </View>
 
-              {/* Solo Plan Badge */}
+              {/* ORCH-0908: Source Badge — uses collaborationBadge styles for collab entries
+                  (previously hardcoded soloBadge regardless of source, leaving the
+                  collaborationBadge + collaborationText styles at lines 819-826 as dead code). */}
               <View style={styles.statusIndicators}>
-                <View style={[styles.sessionBadge, styles.soloBadge]}>
-                  <Icon name="eye" size={12} color="#1e40af" />
-                  <Text style={[styles.sourceText, styles.soloText]}>
+                <View
+                  style={[
+                    styles.sessionBadge,
+                    entry.source === "solo" ? styles.soloBadge : styles.collaborationBadge,
+                  ]}
+                >
+                  <Icon
+                    name={entry.source === "solo" ? "eye" : "people"}
+                    size={12}
+                    color={entry.source === "solo" ? "#1e40af" : "#7c3aed"}
+                  />
+                  <Text
+                    style={[
+                      styles.sourceText,
+                      entry.source === "solo" ? styles.soloText : styles.collaborationText,
+                    ]}
+                  >
                     {entry.source === "solo"
                       ? t('activity:calendarTab.soloDiscovery')
                       : `${entry.sessionName}`}

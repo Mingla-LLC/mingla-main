@@ -1,14 +1,14 @@
 /**
- * ORCH-0902 [Collab session deck deterministic rewrite] — DEPRECATED.
+ * ORCH-0909 [Collab positional shared-deck rewrite] — DEPRECATED.
  *
  * `aggregateCollabPrefs` and the legacy MOST-PERMISSIVE / MAX / midpoint
  * aggregation rules were RETIRED by CR-9 (full single-shot cutover,
  * 2026-05-21). All aggregation now happens server-side in the SQL function
  * `pg_aggregate_collab_prefs(session_id)`, called by the `discover-cards`
- * edge function's deterministic-v2 path.
+ * edge function's positional shared-deck path.
  *
  * Client code MUST NOT call this function. The collab deck fetch payload
- * is now exactly `{ session_id, expected_deck_version }` — no aggregation
+ * is now exactly `{ session_id, current_position }` — no aggregation
  * happens client-side at all (CR-1 determinism contract).
  *
  * This stub is retained for ONE release cycle so any forgotten import

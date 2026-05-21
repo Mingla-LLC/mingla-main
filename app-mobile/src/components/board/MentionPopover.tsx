@@ -31,9 +31,13 @@ export const MentionPopover: React.FC<MentionPopoverProps> = ({
     return null;
   }
 
-  // When keyboardHeight is 0, the popover is rendered inside a relative anchor
-  // above the input bar — no offset needed. Otherwise, use legacy absolute positioning.
-  const bottomOffset = keyboardHeight ? keyboardHeight + 48 + 8 : 0;
+  // When the parent already handles keyboard avoidance (e.g. unified chat in
+  // MessageInterface lifts the entire container by iosKeyboardLift), pass
+  // keyboardHeight=0 and the popover sits 60px above the parent's bottom —
+  // just above the input bar with a small gap. When the parent does NOT handle
+  // keyboard avoidance (e.g. legacy BoardDiscussionTab), pass the live
+  // keyboardHeight and the popover lifts above the keyboard + input bar.
+  const bottomOffset = keyboardHeight ? keyboardHeight + 48 + 8 : 60;
 
   const getParticipantDisplayName = (participant: Participant): string => {
     const { display_name, first_name, last_name, username } = participant.profiles ?? {};
@@ -123,7 +127,7 @@ const styles = StyleSheet.create({
   popover: {
     backgroundColor: 'white',
     borderRadius: 12,
-    maxHeight: 180,
+    maxHeight: 280,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.1,
@@ -148,7 +152,7 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   list: {
-    maxHeight: 140,
+    maxHeight: 240,
   },
   participantItem: {
     flexDirection: 'row',

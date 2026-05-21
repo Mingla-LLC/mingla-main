@@ -411,7 +411,10 @@ export function UserManagementPage() {
       { table: "board_typing_indicators", column: "user_id" },
       { table: "board_user_swipe_states", column: "user_id" },
       { table: "board_participant_presence", column: "user_id" },
-      { table: "board_session_preferences", column: "user_id" },
+      // ORCH-0908 hotfix (2026-05-21): board_session_preferences removed
+      // — table never existed in production. Per-participant prefs now
+      // live in collaboration_sessions.participant_prefs JSONB which is
+      // automatically cleaned up via session_participants cascade.
       { table: "board_threads", column: "user_id" },
       { table: "activity_history", column: "user_id" },
       { table: "collaboration_invites", column: "inviter_id" },
