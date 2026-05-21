@@ -71,12 +71,14 @@ Parent ORCH-0909 receipts are unchanged and remain valid: all 17 tests were fail
 |---|---|---|
 | T-IMP-01..T-IMP-09 | ORCH-0909 parent | fails-on-revert verified at `2a9478ed` |
 | T-ADV-01..T-ADV-08 | ORCH-0909 parent | fails-on-revert verified at `2a9478ed` |
-| T-IMP-10 mixed deck rows support single + curated payloads | ORCH-0906 amendment | fails-on-revert verified at `18e6b792` (anchor: removed `ALTER COLUMN card_id DROP NOT NULL` from amendment migration → test FAIL; restored → PASS) |
-| T-IMP-11 deterministic single-intent round-robin helper | ORCH-0906 amendment | fails-on-revert verified at `18e6b792` (anchor: broke `position % 2 === 0` in `mixedTypeInterleave.ts` → test FAIL; restored → PASS) |
-| T-ADV-09 curated exhaustion gracefully degrades to singles | ORCH-0906 amendment | fails-on-revert verified at `18e6b792` (anchor: removed `degraded_from text NULL` column from amendment migration → test FAIL; restored → PASS) |
-| T-ADV-10 curated internal 5xx is clean pipeline_error | ORCH-0906 amendment | fails-on-revert verified at `18e6b792` (anchor: renamed `CuratedInternalInvocationError` in edge fn → test FAIL; restored → PASS) |
+| T-IMP-10 mixed deck rows support single + curated payloads | ORCH-0906 amendment | fails-on-revert verified at `43c7aed0` (anchor: removed `ALTER COLUMN card_id DROP NOT NULL` from amendment migration → test FAIL; restored → PASS) |
+| T-IMP-11 deterministic single-intent round-robin helper | ORCH-0906 amendment | fails-on-revert verified at `43c7aed0` (anchor: broke `position % 2 === 0` in `mixedTypeInterleave.ts` → test FAIL; restored → PASS) |
+| T-ADV-09 curated exhaustion gracefully degrades to singles | ORCH-0906 amendment | fails-on-revert verified at `43c7aed0` (anchor: removed `degraded_from text NULL` column from amendment migration → test FAIL; restored → PASS) |
+| T-ADV-10 curated internal 5xx is clean pipeline_error | ORCH-0906 amendment | fails-on-revert verified at `43c7aed0` (anchor: renamed `CuratedInternalInvocationError` to a wholly-different symbol `CIInvocFailureClassX` in edge fn — substring-resistant revert required because suffix-renames like `*_RENAMED` are still `.includes()`-matched by the assertion → test FAIL; restored → PASS) |
 
 **All 21 tests (17 parent + 4 amendment) now have valid `fails-on-revert` receipts at their respective commit SHAs. ORCH-0840 [Regression-test enforcement + append-only CI] Step 0.5 gate CLEARED for the bundle.**
+
+**Receipt correction history (2026-05-21, Claude `mingla-tester` Path A):** The 4 amendment tests (T-IMP-10, T-IMP-11, T-ADV-09, T-ADV-10) were initially documented as fails-on-revert verified at `18e6b792`, but pre-test audit by `mingla-tester` found the amendment-test hunks were never staged into that commit — they existed only as working-tree modifications, so the receipts were unbacked. The hunks were staged and committed at `43c7aed0` (`ORCH-0909 + ORCH-0906 bundle: stage missing amendment regression tests`); all 4 fails-on-revert protocols were re-executed against the production-code anchors at that new SHA. T-ADV-10 additionally required a non-substring-included symbol rename to actually fail (suffix-rename `*_RENAMED` left the original substring intact, so `.includes("CuratedInternalInvocationError")` still matched — a stronger anchor `CIInvocFailureClassX` was used). No production-code or migration change in this correction commit.
 
 ## Risks / Review Notes
 
