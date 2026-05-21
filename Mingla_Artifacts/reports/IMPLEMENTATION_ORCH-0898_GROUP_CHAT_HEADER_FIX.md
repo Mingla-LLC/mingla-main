@@ -17,6 +17,10 @@ Operator reported the UI still showed literal "Group chat" and still exposed the
 
 Operator reported the UI still showed "Collaboration chat" and the group-chat header menu was missing. Root cause was lower in the data contract: `messagingService.getConversations()` selected `*` from `conversations` but dropped `name`, `session_id`, and `linked_entity_type` while constructing the returned `Conversation[]`, so `ConnectionsPage` could not resolve `collaboration_sessions.name`. This rework preserves those metadata fields in both conversation fetch paths, carries `collaboration_sessions.created_by` for settings permissions, and renders `BoardSettingsDropdown` from the group chat header ellipsis with the session name and participants while keeping the direct-message menu gated to direct chats.
 
+## Follow-Up Rework 3 2026-05-21
+
+Operator reported that the members area in the collaboration settings sheet opened from chat did not scroll. Root cause was the bottom sheet shell: the scrollable member list was nested inside the inner sheet `Pressable`, which can claim responder gestures before `ScrollView` gets the pan. This rework separates the close backdrop into its own absolute `Pressable`, changes the sheet body to a plain `View`, and bounds the member `ScrollView` with `flexShrink`, `contentContainerStyle`, and `nestedScrollEnabled`.
+
 ## Changes
 
 | Area | Files | Change |
@@ -24,8 +28,9 @@ Operator reported the UI still showed "Collaboration chat" and the group-chat he
 | Chat list | `app-mobile/src/components/connections/ChatListItem.tsx` | Keeps `conversation.name` as the group row title and prefixes group previews with `sender_name`. |
 | Open path | `app-mobile/src/components/ConnectionsPage.tsx` | Detects `conversation.type === 'group'`, passes `conversationType`, `sessionId`, `participantCount`, and participant profile metadata into `MessageInterface`, resolves missing names from `collaboration_sessions.name`, invalidates stale cached rows, and skips DM-only block/friendship/profile probes for group chats. |
 | Header UI | `app-mobile/src/components/MessageInterface.tsx` | Renders group chat header as session name + stacked participant avatars + `N people in chat`; keeps the header ellipsis visible for group chats and opens the collaboration-session `BoardSettingsDropdown`, while keeping the one-on-one friend action menu gated to direct chats. |
+| Settings sheet | `app-mobile/src/components/board/BoardSettingsDropdown.tsx` | Makes the members list scrollable by removing the nested inner `Pressable` responder trap and using a bounded `ScrollView`. |
 | Types | `app-mobile/src/hooks/useMessages.ts`, `app-mobile/src/services/connectionsService.ts`, `app-mobile/src/services/messagingService.ts` | Widens local chat types to carry ORCH-0898 group metadata through the existing RN surface. |
-| Regression | `app-mobile/scripts/ci/orch-0898-regression-check.mjs` | Adds T-15/T-16/T-17 to lock the group open-path metadata, group header, and sender-prefixed group preview contracts. |
+| Regression | `app-mobile/scripts/ci/orch-0898-regression-check.mjs` | Adds T-15/T-16/T-17/T-18 to lock the group open-path metadata, group header, sender-prefixed group preview, and settings-sheet scroll container contracts. |
 
 ## Verification
 

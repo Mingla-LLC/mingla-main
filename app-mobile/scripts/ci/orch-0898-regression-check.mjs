@@ -53,6 +53,7 @@ const useSessionDiscussionSrc = read("app-mobile/src/hooks/useSessionDiscussion.
 const chatListItemSrc = read("app-mobile/src/components/connections/ChatListItem.tsx");
 const connectionsPageSrc = read("app-mobile/src/components/ConnectionsPage.tsx");
 const messageInterfaceSrc = read("app-mobile/src/components/MessageInterface.tsx");
+const boardSettingsDropdownSrc = read("app-mobile/src/components/board/BoardSettingsDropdown.tsx");
 const discussionMessageBubbleSrc = read("app-mobile/src/components/discussion/MessageBubble.tsx");
 const chatMessageBubbleSrc = read("app-mobile/src/components/chat/MessageBubble.tsx");
 
@@ -368,6 +369,19 @@ check(
     /messagePreview = `\$\{lastMessage\.sender_name\}: \$\{messagePreview\}`/.test(chatListItemSrc),
   "Friends-tab group rows MUST keep the session-name title and show sender-prefixed previews so" +
     " group chats remain scannable next to direct messages.",
+);
+
+check(
+  "T-18 BoardSettingsDropdown members sheet uses a gesture-safe scroll container",
+  boardSettingsDropdownSrc !== null &&
+    /<View style=\{styles\.sheetOverlay\}>[\s\S]*?<Pressable style=\{styles\.sheetBackdrop\} onPress=\{onClose\} \/>[\s\S]*?<View style=\{styles\.sheetContainer\}>/.test(boardSettingsDropdownSrc) &&
+    !/<Pressable style=\{styles\.sheetContainer\}/.test(boardSettingsDropdownSrc) &&
+    /<ScrollView[\s\S]*?style=\{styles\.sheetScroll\}[\s\S]*?contentContainerStyle=\{styles\.sheetScrollContent\}[\s\S]*?nestedScrollEnabled/.test(boardSettingsDropdownSrc) &&
+    /sheetScroll:\s*\{[\s\S]*?flexShrink: 1/.test(boardSettingsDropdownSrc),
+  "BoardSettingsDropdown MUST NOT nest the scrollable members list inside the inner sheet Pressable." +
+    " It must use a separate backdrop Pressable, a plain View sheet container, and a bounded/shrinkable" +
+    " ScrollView with contentContainerStyle + nestedScrollEnabled so member rows can scroll in the" +
+    " collaboration-session sheet opened from group chat.",
 );
 
 // ─── Report ────────────────────────────────────────────────────────────────────

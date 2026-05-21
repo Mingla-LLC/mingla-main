@@ -480,8 +480,9 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
           animationType="slide"
           onRequestClose={onClose}
         >
-          <Pressable style={styles.sheetOverlay} onPress={onClose}>
-            <Pressable style={styles.sheetContainer} onPress={() => {}}>
+          <View style={styles.sheetOverlay}>
+            <Pressable style={styles.sheetBackdrop} onPress={onClose} />
+            <View style={styles.sheetContainer}>
               {/* Handle */}
               <View style={styles.sheetHandleRow}>
                 <View style={styles.sheetHandle} />
@@ -554,8 +555,10 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
 
               <ScrollView
                 style={styles.sheetScroll}
+                contentContainerStyle={styles.sheetScrollContent}
                 showsVerticalScrollIndicator={false}
                 bounces={false}
+                nestedScrollEnabled
                 keyboardShouldPersistTaps="handled"
               >
                 {/* ORCH-0520: Invite section — creators + admins only */}
@@ -793,8 +796,8 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
                   </TouchableOpacity>
                 )}
               </View>
-            </Pressable>
-          </Pressable>
+            </View>
+          </View>
         </Modal>
       )}
 
@@ -809,12 +812,16 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0, 0, 0, 0.4)",
     justifyContent: "flex-end",
   },
+  sheetBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
   sheetContainer: {
     backgroundColor: "white",
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     maxHeight: "80%",
     paddingBottom: 34,
+    zIndex: 1,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.1,
@@ -834,6 +841,10 @@ const styles = StyleSheet.create({
   },
   sheetScroll: {
     paddingHorizontal: 4,
+    flexShrink: 1,
+  },
+  sheetScrollContent: {
+    paddingBottom: 8,
   },
 
   // --- Menu items ---
