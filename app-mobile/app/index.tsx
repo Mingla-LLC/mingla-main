@@ -2834,10 +2834,17 @@ function AppContent() {
               onClose={() => {
                 logger.action('Close collab preferences');
                 setShowCollabPreferences(false);
-                // ORCH-0446B: Bump refreshKey so RecommendationsContext re-reads
-                // the updated participant_prefs from DB (its useBoardSession instance
-                // is separate from PreferencesSheet's — needs an explicit signal).
-                setPreferencesRefreshKey((k: number) => k + 1);
+                // ORCH-0902 follow-up (2026-05-21): the ORCH-0446B refreshKey
+                // bump is retired. Under CR-1+CR-3+CR-9 the deck is driven by
+                // `collaboration_sessions.deck_version`; the server-side
+                // recompute_deck_version_after_prefs_change trigger bumps it
+                // only on a real hash change, and RecommendationsContext's
+                // deck-version transition effect honors CR-3 ("each client
+                // finishes V_n before transitioning"). Unconditionally
+                // resetting the local deck on every sheet close (including
+                // cancel/backdrop dismiss) wiped recommendations even when
+                // nothing changed — visible to operator as "No spots match
+                // right now" the moment the sheet closed.
               }}
               sessionId={currentSessionId}
               sessionName={currentMode ?? "solo"}
