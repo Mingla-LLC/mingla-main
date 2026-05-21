@@ -793,20 +793,31 @@ async function handleDeterministicV2(args: {
     });
   }
 
-  // ── Step 4: optimistic concurrency — expected_deck_version mismatch ────
+  // ── Step 4: expected_deck_version DIVERGENCE — log only, do NOT 409 ────
+  // The original 409 gate was too strict and broke real-world workflows:
+  //   - Session switch (client pinnedDeckVersion higher than new session's
+  //     current version): operator-reported 2026-05-21 — client pinned at
+  //     "Testing stuff" v8 from prior session, switched to "Books and
+  //     brunch" (server at v3), 409 → empty deck.
+  //   - Server advances while client pinned (CR-3 V_n exhaustion contract
+  //     in progress): operator-reported 2026-05-21 — client pinned at v3
+  //     after first joining "Testing stuff", server bumped 5x to v8 via
+  //     spurious GPS-drift triggers + the one-time migration hash change,
+  //     client still requesting v3, 409 → empty deck.
+  //
+  // Correct behavior: always serve the current deck. The client receives
+  // the actual deck_version in the response and reconciles via the
+  // RecommendationsContext V_n transition effect. Determinism still holds
+  // because every participant gets the SAME current deck (CR-1); CR-3 is
+  // preserved client-side by the local accumulatedCards + the React Query
+  // staleTime: Infinity ensuring the rendered deck doesn't change mid-
+  // session unless the client explicitly transitions on exhaustion.
   if (
     typeof expectedDeckVersion === 'number' &&
     expectedDeckVersion !== sessionRow.deck_version
   ) {
-    return new Response(
-      JSON.stringify({
-        success: false,
-        error: 'deck_version_mismatch',
-        cards: [],
-        deck_version: sessionRow.deck_version,
-        deck_params_hash: sessionRow.deck_params_hash,
-      }),
-      { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+    console.log(
+      `[discover-cards/v2] session=${sessionId} deck_version divergence (expected=${expectedDeckVersion} actual=${sessionRow.deck_version}) — serving current; client will reconcile`,
     );
   }
 
@@ -909,6 +920,26 @@ async function handleDeterministicV2(args: {
     });
   }
 
+  // ── Step 8.5 (ORCH-0908): read exclude_place_ids for the current deck_version ──
+  // The recycle path (rpc_force_deck_recycle) persists a merged exclude list in
+  // session_deck_versions.aggregated_params.exclude_place_ids — one entry per
+  // place that was locked in a prior round. discover-cards must honor those
+  // excludes when fetching cards for V_{n+1} so previously-locked places never
+  // re-appear in the deck. Empty array when no excludes accumulated yet.
+  let excludePlaceIds: string[] = [];
+  {
+    const { data: deckVersionRow } = await supabaseAdmin
+      .from('session_deck_versions')
+      .select('aggregated_params')
+      .eq('session_id', sessionId)
+      .eq('deck_version', sessionRow.deck_version)
+      .maybeSingle();
+    const rawExcludes = (deckVersionRow as any)?.aggregated_params?.exclude_place_ids;
+    if (Array.isArray(rawExcludes)) {
+      excludePlaceIds = rawExcludes.filter((v): v is string => typeof v === 'string');
+    }
+  }
+
   // ── Step 9: parallel union-RPC fan-out (Path B Haversine inside) ───────
   // Per-chip limit kept conservative (50) because the union over many
   // participant circles can return very wide candidate sets at scale.
@@ -920,7 +951,7 @@ async function handleDeterministicV2(args: {
           p_signal_id: task.signalId,
           p_filter_min: task.filterMin,
           p_circles: agg.circles,
-          p_exclude_place_ids: [],
+          p_exclude_place_ids: excludePlaceIds,
           p_limit: PER_CHIP_LIMIT,
         })
         .then((res: any) => ({ task, res })),
