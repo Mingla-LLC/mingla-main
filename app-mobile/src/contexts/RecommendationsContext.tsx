@@ -550,6 +550,18 @@ export const RecommendationsProvider: React.FC<
   // rejoin restores the same version (CR-4 resume).
   const [pinnedDeckVersion, setPinnedDeckVersion] = useState<number | null>(null);
 
+  // ORCH-0902 follow-up (operator-reported 2026-05-21 + sim-verified): the
+  // session this pinnedDeckVersion was set FOR. pinnedDeckVersion is a single
+  // useState across the whole context, but the user can switch between collab
+  // sessions (e.g. tapping a different pill). Without scoping, switching from
+  // session A (deck_version=5) to session B (deck_version=2) leaves
+  // pinnedDeckVersion=5, the request key sends expected_deck_version=5 to a
+  // server that holds session B at v2, the edge function returns HTTP 409
+  // deck_version_mismatch, and the client logs
+  // "DeckFetchError: discover-cards (collab v2) failed: Edge Function
+  // returned a non-2xx status code" + renders the EMPTY state.
+  const pinnedDeckVersionSessionRef = useRef<string | null>(null);
+
   // ORCH-0902 CR-1+CR-3+CR-5: pinnedDeckVersion transition effect.
   //
   // Three cases handled:
@@ -575,18 +587,44 @@ export const RecommendationsProvider: React.FC<
     const serverVersion = sessionRow.deck_version ?? 0;
     if (serverVersion <= 0) return; // below CR-8 acceptedCount<2 threshold
 
+    // Case (a'): session switched. pinnedDeckVersion was set for a DIFFERENT
+    // session — reset to the new session's current server version + clear
+    // local state. Otherwise the next discover-cards request would send the
+    // prior session's expected_deck_version against the new session and the
+    // edge function would return HTTP 409 deck_version_mismatch.
+    if (pinnedDeckVersionSessionRef.current !== sessionRow.id) {
+      pinnedDeckVersionSessionRef.current = sessionRow.id;
+      setPinnedDeckVersion(serverVersion);
+      accumulatedCardsRef.current = [];
+      sessionServedIdsRef.current = new Set();
+      setRecommendations([]);
+      setIsExhausted(false);
+      return;
+    }
+
     // Case (a): first entry — pin to current server version.
     if (pinnedDeckVersion === null) {
       setPinnedDeckVersion(serverVersion);
       return;
     }
 
-    // Case (b): exhaustion + new version → advance.
+    // Case (b): exhaustion + new version → advance AND clear local state.
+    // The previous version of this branch advanced pinnedDeckVersion but
+    // left accumulatedCardsRef + sessionServedIdsRef populated with V_n's
+    // cards and removedCards full of V_n's swiped IDs. When V_{n+1}'s
+    // fresh cards arrived from the refetch, the deck-rendering filter
+    // dropped them all because they were "already swiped" → empty deck UI.
+    // Operator-reported 2026-05-21 ("No spots match right now" after every
+    // pref-apply); sim-verified that cold-restart cleared the bug.
     if (serverVersion > pinnedDeckVersion && isExhausted) {
       setPinnedDeckVersion(serverVersion);
-      // Clear local accumulated state so the new V_{n+1} renders fresh.
-      // The React Query key change (via the deckVersion discriminant) will
-      // trigger a refetch automatically.
+      accumulatedCardsRef.current = [];
+      sessionServedIdsRef.current = new Set();
+      setRecommendations([]);
+      setIsExhausted(false);
+      // React Query key changes via the deckVersion discriminant — refetch
+      // happens automatically; cleared local state means new cards render
+      // without being filtered against stale dismissals.
     }
   }, [
     isCollaborationMode,

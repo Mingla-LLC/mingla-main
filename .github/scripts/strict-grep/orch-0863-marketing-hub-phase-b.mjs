@@ -449,6 +449,11 @@ function checkNoNewBackendFiles() {
     "supabase/functions/discover-cards/index.ts",
     "supabase/functions/generate-curated-experiences/index.ts",
     "supabase/migrations/20260625000000_orch_0902_collab_deck_deterministic_rewrite.sql",
+    // ORCH-0902 follow-up (2026-05-21): GPS-rounding migration that
+    // replaces pg_aggregate_collab_prefs to ROUND lat/lng to 4 decimals
+    // (~11m precision) so meter-level GPS drift doesn't thrash
+    // deck_version. Same ORCH scope as the rewrite above.
+    "supabase/migrations/20260627000000_orch_0902_round_gps_in_aggregation_hash.sql",
   ];
   const ALLOWLIST = [
     ...ORCH_0859_BUNDLED_ALLOWLIST,

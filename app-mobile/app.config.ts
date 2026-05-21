@@ -9,7 +9,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     [
       "@react-native-google-signin/google-signin",
       {
-        iosUrlScheme: `com.googleusercontent.apps.${process.env.GOOGLE_IOS_CLIENT_ID ?? "169132274606-k622epnsdbthemkatrctjpadcke6un46"}`,
+        iosUrlScheme: `com.googleusercontent.apps.${(process.env.GOOGLE_IOS_CLIENT_ID ?? "169132274606-k622epnsdbthemkatrctjpadcke6un46").replace(/\.apps\.googleusercontent\.com$/, "")}`,
       },
     ],
     "expo-localization",
