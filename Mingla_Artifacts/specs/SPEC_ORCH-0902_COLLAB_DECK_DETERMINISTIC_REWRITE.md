@@ -1193,7 +1193,7 @@ CREATE TABLE public.session_deck_versions (
 
 - **Locked contract:** [`Mingla_Artifacts/reports/INVESTIGATION_ORCH-0902_COLLAB_DECK_PARITY.md`](../reports/INVESTIGATION_ORCH-0902_COLLAB_DECK_PARITY.md) — CR-1..CR-8
 - **Deep investigation:** [`Mingla_Artifacts/reports/INVESTIGATION_ORCH-0902_DEEP_COLLAB_DECK_CURRENT_STATE.md`](../reports/INVESTIGATION_ORCH-0902_DEEP_COLLAB_DECK_CURRENT_STATE.md)
-- **Dispatch prompt:** [`Mingla_Artifacts/prompts/INVESTIGATOR_SPEC_ORCH-0902_COLLAB_DECK_DETERMINISTIC_REWRITE.md`](../prompts/INVESTIGATOR_SPEC_ORCH-0902_COLLAB_DECK_DETERMINISTIC_REWRITE.md)
+- **Dispatch prompt:** `Mingla_Artifacts/prompts/INVESTIGATOR_SPEC_ORCH-0902_COLLAB_DECK_DETERMINISTIC_REWRITE.md` (PRIVATE_PROMPT_NOT_VERSIONED)
 - **Durable memory:** `~/.claude/projects/-Users-sethogieva-Desktop-mingla-main/memory/feedback_collab_deck_determinism_contract.md`
 
 ---

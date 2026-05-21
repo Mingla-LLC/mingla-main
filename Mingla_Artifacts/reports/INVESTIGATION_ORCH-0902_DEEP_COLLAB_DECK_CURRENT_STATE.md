@@ -3,7 +3,7 @@
 **Mode:** INVESTIGATE
 **Date:** 2026-05-21
 **Investigator:** Claude `mingla-forensics` (executing dispatch from Claude `mingla-orchestrator`)
-**Dispatch:** [`Mingla_Artifacts/prompts/INVESTIGATOR_SPEC_ORCH-0902_COLLAB_DECK_DETERMINISTIC_REWRITE.md`](../prompts/INVESTIGATOR_SPEC_ORCH-0902_COLLAB_DECK_DETERMINISTIC_REWRITE.md)
+**Dispatch:** `Mingla_Artifacts/prompts/INVESTIGATOR_SPEC_ORCH-0902_COLLAB_DECK_DETERMINISTIC_REWRITE.md` (PRIVATE_PROMPT_NOT_VERSIONED)
 **Locked contract:** [`Mingla_Artifacts/reports/INVESTIGATION_ORCH-0902_COLLAB_DECK_PARITY.md`](INVESTIGATION_ORCH-0902_COLLAB_DECK_PARITY.md) — CR-1..CR-8 (operator-confirmed 2026-05-21)
 **Affected Surfaces:** Consumer iOS, Consumer Android (`app-mobile/`) + Supabase backend
 **Surfaces explicitly NOT in scope:** business-iOS, business-Android, admin-web, business-web-preview, buyer-web (no collab session surface)
