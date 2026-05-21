@@ -89,3 +89,12 @@ verify_jwt = false
 # storage RLS layer (anon-write-own per migration §4). NO JWT required.
 [functions.trip-intake-upload-signed-url]
 verify_jwt = false
+
+# ORCH-0897 — direct user send path and cron/service-role path both provide
+# Authorization headers. Keep JWT verification enabled at the function gateway.
+[functions.marketing-send]
+verify_jwt = true
+
+# ORCH-0897 — consumer-app post-install claim flow. Must be auth-gated.
+[functions.claim-pending-trip-chat-participation]
+verify_jwt = true

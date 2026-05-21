@@ -52,6 +52,7 @@ import {
   readCheckoutResumePayload,
 } from "../../../src/components/checkout/checkoutPersistence";
 import { TicketQrCarousel } from "../../../src/components/checkout/TicketQrCarousel";
+import { DownloadMinglaCta } from "../../../src/components/checkout/DownloadMinglaCta";
 import { confirmTicketCheckout } from "../../../src/services/ticketCheckoutService";
 import { useOrderRealtimeSubscription } from "../../../src/hooks/useOrderRealtimeSubscription";
 
@@ -473,6 +474,12 @@ export default function CheckoutConfirmScreen(): React.ReactElement {
             />
           ) : null}
         </GlassCard>
+
+        <DownloadMinglaCta
+          orderId={result.orderId}
+          eventName={event.name.trim().length > 0 ? event.name : "your event"}
+          eventType={(event as { event_type?: string }).event_type === "trip" ? "trip" : "event"}
+        />
 
         {/* Wallet pass buttons removed per ORCH-0852 — future ORCH-XXXX
             [Wallet pass issuance] will reintroduce when .pkpass + Google

@@ -371,6 +371,11 @@ export default function TripDashboardRoute(): React.ReactElement {
           onPress={() => router.push(`/event/${trip.id}/blasts` as never)}
         />
         <ActionTile
+          icon="chat"
+          label="Group chat"
+          onPress={() => router.push(`/event/${trip.id}/group-chat` as never)}
+        />
+        <ActionTile
           icon="edit"
           label={trip.status === "draft" ? "Continue editing" : "Edit trip"}
           primary

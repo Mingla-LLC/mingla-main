@@ -686,6 +686,12 @@ export default function EventDetailScreen(): React.ReactElement {
             onPress={handleBlasts}
           />
           <ActionTile
+            icon="chat"
+            label="Group chat"
+            sub="Read + reply + moderate"
+            onPress={() => router.push(`/event/${event.id}/group-chat` as never)}
+          />
+          <ActionTile
             icon="eye"
             label="Public page"
             onPress={handleViewPublic}
