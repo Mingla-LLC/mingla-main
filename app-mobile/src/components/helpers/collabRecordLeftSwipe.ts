@@ -44,7 +44,10 @@ export async function collabRecordLeftSwipe({
     sessionId,
     experienceId: card.id,
     userId,
-    cardData: null,
+    // Empty object — RecordSwipeAndCheckMatchParams typed Record<string, unknown>;
+    // the check_mutual_like trigger short-circuits on swipe_state != 'swiped_right'
+    // so card_data is never read for left swipes regardless.
+    cardData: {},
     swipeDirection: 'left',
   });
 

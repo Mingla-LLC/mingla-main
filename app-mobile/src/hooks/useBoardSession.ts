@@ -21,6 +21,14 @@ export interface BoardSession {
   created_at: string;
   last_activity_at?: string;
   participants?: any[];
+  /** ORCH-0902 CR-3: monotonically increasing deck version. 0 means no deck
+   *  minted yet (below CR-8 acceptedCount<2 threshold). Bumped server-side by
+   *  the recompute_deck_version_after_update trigger on every params change,
+   *  participant accept, or participant leave. Flows here via onSessionUpdated. */
+  deck_version?: number;
+  /** ORCH-0902 CR-1: SHA-256 hex of the canonical aggregated deck params.
+   *  Optional for display; the deck_version is the load-bearing discriminant. */
+  deck_params_hash?: string | null;
 }
 
 export interface BoardSessionPreferences {
@@ -348,9 +356,15 @@ export const useBoardSession = (sessionId?: string) => {
               participants: [...existing, participant],
             };
           });
-          // ORCH-0438: New participant → re-evaluate deck (may cross ≥2 accepted threshold)
+          // ORCH-0438: New participant → reload session to refresh participants
+          // list + participant_prefs. The dead ['session-deck', sessionId] cache
+          // invalidation (ORCH-0446 deleted that query key's producer) was
+          // removed by ORCH-0902 CR-9. Under the deterministic-v2 model the
+          // new participant joining triggers a DB trigger that bumps
+          // collaboration_sessions.deck_version; the resulting UPDATE flows
+          // through onSessionUpdated below and propagates the new version to
+          // every subscriber.
           if (sessionId) {
-            queryClient.invalidateQueries({ queryKey: ['session-deck', sessionId] });
             loadSession(sessionId);
           }
         },
@@ -394,17 +408,21 @@ export const useBoardSession = (sessionId?: string) => {
         },
         onPreferencesChanged: () => {
           if (capturedSessionId !== stableSessionIdRef.current) return;
-          // ORCH-0446: Re-read session JSONB. This updates allParticipantPreferences,
-          // which triggers collabDeckParams recompute in RecommendationsContext,
-          // which changes the React Query key → auto-fetch new deck. No manual invalidation needed.
+          // ORCH-0446: Re-read session JSONB so allParticipantPreferences updates.
+          // ORCH-0902 CR-3: this no longer drives the React Query key (collab
+          // aggregation moved server-side; query key is now (sessionId,
+          // deck_version) only). The deck refetch is triggered by the
+          // collaboration_sessions trigger bumping deck_version, which flows
+          // through onSessionUpdated and the V_n exhaustion state machine in
+          // RecommendationsContext decides when to transition.
           if (sessionId) {
             loadSession(sessionId);
           }
         },
-        onDeckRegenerated: () => {
-          // ORCH-0446: No-op. generate-session-deck is deleted. session_decks table is gone.
-          // Deck re-fetch is handled by collabDeckParams change → React Query key change.
-        },
+        // ORCH-0902: onDeckRegenerated callback removed (the underlying
+        // session_decks INSERT subscription was deleted from realtimeService
+        // in the same change; the callback type was removed from
+        // BoardSessionCallbacks interface).
         onSessionDeleted: () => {
           if (capturedSessionId !== stableSessionIdRef.current) return;
           setSession(null);
