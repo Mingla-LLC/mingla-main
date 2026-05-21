@@ -1201,6 +1201,9 @@ export default function MessageInterface({
                 <MessageBubble
                   message={{
                     id: item.message.id,
+                    senderName: item.message.isMe
+                      ? (currentUserName || item.message.senderName || 'You')
+                      : cleanName(item.message.senderName || friend.name),
                     content: item.message.content,
                     timestamp: item.message.timestamp,
                     type: item.message.type,

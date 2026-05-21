@@ -384,6 +384,23 @@ check(
     " collaboration-session sheet opened from group chat.",
 );
 
+check(
+  "T-19 Message bubbles render sender names inside every user bubble",
+  messageInterfaceSrc !== null &&
+    chatMessageBubbleSrc !== null &&
+    discussionMessageBubbleSrc !== null &&
+    /senderName\?: string/.test(chatMessageBubbleSrc) &&
+    /style=\{\[\s*styles\.senderName,\s*isMe \? styles\.senderNameSent : styles\.senderNameReceived/.test(chatMessageBubbleSrc) &&
+    /message\.senderName\?\.trim\(\) \|\| \(isMe \? 'You' : 'Unknown'\)/.test(chatMessageBubbleSrc) &&
+    /senderName: item\.message\.isMe[\s\S]*?currentUserName[\s\S]*?item\.message\.senderName[\s\S]*?cleanName\(item\.message\.senderName \|\| friend\.name\)/.test(messageInterfaceSrc) &&
+    /style=\{\[\s*styles\.senderName,\s*isOwnMessage \? styles\.senderNameOwn : styles\.senderNameOther/.test(discussionMessageBubbleSrc) &&
+    /<Text[\s\S]*?numberOfLines=\{1\}[\s\S]*?>\s*\{senderName\}\s*<\/Text>/.test(discussionMessageBubbleSrc) &&
+    !/\/\* Sender name for other users \*\//.test(discussionMessageBubbleSrc),
+  "All non-system chat/discussion message bubbles must include the sender name inside the bubble" +
+    " itself for sent and received messages. MessageInterface must pass the real transformed" +
+    " senderName into the shared chat bubble so group messages do not fall back to the session name.",
+);
+
 // ─── Report ────────────────────────────────────────────────────────────────────
 
 console.log("\nORCH-0898 regression check (happy-path, structural)\n");

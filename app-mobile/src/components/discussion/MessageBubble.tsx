@@ -216,11 +216,6 @@ function MessageBubbleComponent({
           isOwnMessage ? styles.bubbleContainerOwn : styles.bubbleContainerOther,
         ]}
       >
-        {/* Sender name for other users */}
-        {!isOwnMessage && (
-          <Text style={styles.senderName}>{senderName}</Text>
-        )}
-
         {/* Bubble */}
         <TouchableOpacity
           activeOpacity={0.8}
@@ -234,6 +229,16 @@ function MessageBubbleComponent({
               isOwnMessage ? styles.bubbleOwn : styles.bubbleOther,
             ]}
           >
+            <Text
+              style={[
+                styles.senderName,
+                isOwnMessage ? styles.senderNameOwn : styles.senderNameOther,
+              ]}
+              numberOfLines={1}
+            >
+              {senderName}
+            </Text>
+
             {/* Reply quote block */}
             {message.reply_to && (
               <ReplyQuoteBlock
@@ -367,8 +372,13 @@ const styles = StyleSheet.create({
   senderName: {
     ...typography.xs,
     fontWeight: "600",
-    color: colors.gray[700],
     marginBottom: 2,
+  },
+  senderNameOwn: {
+    color: "rgba(255,255,255,0.78)",
+  },
+  senderNameOther: {
+    color: colors.gray[700],
   },
   bubble: {
     paddingHorizontal: 10,

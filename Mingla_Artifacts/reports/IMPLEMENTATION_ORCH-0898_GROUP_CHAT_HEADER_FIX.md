@@ -21,6 +21,10 @@ Operator reported the UI still showed "Collaboration chat" and the group-chat he
 
 Operator reported that the members area in the collaboration settings sheet opened from chat did not scroll. Root cause was the bottom sheet shell: the scrollable member list was nested inside the inner sheet `Pressable`, which can claim responder gestures before `ScrollView` gets the pan. This rework separates the close backdrop into its own absolute `Pressable`, changes the sheet body to a plain `View`, and bounds the member `ScrollView` with `flexShrink`, `contentContainerStyle`, and `nestedScrollEnabled`.
 
+## Follow-Up Rework 4 2026-05-21
+
+Operator requested sender names on all message bubbles. This rework adds an in-bubble sender label to the shared chat `MessageBubble` for both sent and received messages, passes the real transformed `senderName` from `MessageInterface` so group messages show the person instead of the session title, and moves the collaboration discussion bubble sender label inside the bubble for own and other messages.
+
 ## Changes
 
 | Area | Files | Change |
@@ -29,8 +33,9 @@ Operator reported that the members area in the collaboration settings sheet open
 | Open path | `app-mobile/src/components/ConnectionsPage.tsx` | Detects `conversation.type === 'group'`, passes `conversationType`, `sessionId`, `participantCount`, and participant profile metadata into `MessageInterface`, resolves missing names from `collaboration_sessions.name`, invalidates stale cached rows, and skips DM-only block/friendship/profile probes for group chats. |
 | Header UI | `app-mobile/src/components/MessageInterface.tsx` | Renders group chat header as session name + stacked participant avatars + `N people in chat`; keeps the header ellipsis visible for group chats and opens the collaboration-session `BoardSettingsDropdown`, while keeping the one-on-one friend action menu gated to direct chats. |
 | Settings sheet | `app-mobile/src/components/board/BoardSettingsDropdown.tsx` | Makes the members list scrollable by removing the nested inner `Pressable` responder trap and using a bounded `ScrollView`. |
+| Message bubbles | `app-mobile/src/components/chat/MessageBubble.tsx`, `app-mobile/src/components/discussion/MessageBubble.tsx`, `app-mobile/src/components/MessageInterface.tsx` | Shows sender names inside all non-system sent/received bubbles and passes the actual per-message sender name through the chat render path. |
 | Types | `app-mobile/src/hooks/useMessages.ts`, `app-mobile/src/services/connectionsService.ts`, `app-mobile/src/services/messagingService.ts` | Widens local chat types to carry ORCH-0898 group metadata through the existing RN surface. |
-| Regression | `app-mobile/scripts/ci/orch-0898-regression-check.mjs` | Adds T-15/T-16/T-17/T-18 to lock the group open-path metadata, group header, sender-prefixed group preview, and settings-sheet scroll container contracts. |
+| Regression | `app-mobile/scripts/ci/orch-0898-regression-check.mjs` | Adds T-15/T-16/T-17/T-18/T-19 to lock the group open-path metadata, group header, sender-prefixed group preview, settings-sheet scroll container, and in-bubble sender-name contracts. |
 
 ## Verification
 

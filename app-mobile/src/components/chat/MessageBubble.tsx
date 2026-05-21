@@ -11,6 +11,7 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 interface MessageData {
   id: string;
+  senderName?: string;
   content: string;
   timestamp: string;
   type: 'text' | 'image' | 'video' | 'file' | 'card';
@@ -198,6 +199,16 @@ export function MessageBubble({ message, isMe, groupPosition, showTimestamp, isR
             !isDelivered && !isFailed && styles.bubbleSending,
           ]}
         >
+          <Text
+            style={[
+              styles.senderName,
+              isMe ? styles.senderNameSent : styles.senderNameReceived,
+            ]}
+            numberOfLines={1}
+          >
+            {message.senderName?.trim() || (isMe ? 'You' : 'Unknown')}
+          </Text>
+
           {/* Reply quote block (Wave 2 will wire data; renders when replyTo prop is provided) */}
           {replyTo && (
             <ReplyQuoteBlock
@@ -384,6 +395,18 @@ const styles = StyleSheet.create({
   messageText: {
     fontSize: typography.md.fontSize,
     lineHeight: 21,
+  },
+  senderName: {
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: fontWeights.semibold,
+    marginBottom: 4,
+  },
+  senderNameSent: {
+    color: 'rgba(255,255,255,0.78)',
+  },
+  senderNameReceived: {
+    color: colors.text.tertiary,
   },
   textSent: {
     color: colors.text.inverse,
