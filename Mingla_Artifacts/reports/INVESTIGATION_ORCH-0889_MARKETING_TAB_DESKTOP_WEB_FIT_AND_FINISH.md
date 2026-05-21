@@ -100,9 +100,9 @@ User Symptom (Blast tab unusable on web)
 
 ### 🔴 RC-1 — Disabled-query mis-paint across Marketing Overview / Audiences / Campaigns
 
-**File + line — Overview:** [`mingla-business/app/(tabs)/marketing/index.tsx:61-90`](../../mingla-business/app/(tabs)/marketing/index.tsx#L61-L90)
-**File + line — Audiences:** [`mingla-business/app/(tabs)/marketing/audiences/index.tsx:83-123`](../../mingla-business/app/(tabs)/marketing/audiences/index.tsx#L83-L123)
-**File + line — Campaigns:** [`mingla-business/app/(tabs)/marketing/campaigns/index.tsx:106-126`](../../mingla-business/app/(tabs)/marketing/campaigns/index.tsx#L106-L126)
+**File + line — Overview:** [`mingla-business/app/(tabs)/marketing/index.tsx:61-90`](../../mingla-business/app/%28tabs%29/marketing/index.tsx#L61-L90)
+**File + line — Audiences:** [`mingla-business/app/(tabs)/marketing/audiences/index.tsx:83-123`](../../mingla-business/app/%28tabs%29/marketing/audiences/index.tsx#L83-L123)
+**File + line — Campaigns:** [`mingla-business/app/(tabs)/marketing/campaigns/index.tsx:106-126`](../../mingla-business/app/%28tabs%29/marketing/campaigns/index.tsx#L106-L126)
 
 **Exact code (Overview, representative — all three follow the same shape):**
 
@@ -203,9 +203,9 @@ export class RichEditor extends React.Component<any> {
 ### 🟠 CF-1 — FAB / sticky-footer pinned to mobile bottom-nav offset on every Marketing route
 
 **File + line:**
-- [`marketing/index.tsx:163`](../../mingla-business/app/(tabs)/marketing/index.tsx#L163) — `{ bottom: insets.bottom + 96 }`
-- [`marketing/campaigns/index.tsx:152`](../../mingla-business/app/(tabs)/marketing/campaigns/index.tsx#L152) — same
-- [`marketing/templates/index.tsx:127`](../../mingla-business/app/(tabs)/marketing/templates/index.tsx#L127) — same
+- [`marketing/index.tsx:163`](../../mingla-business/app/%28tabs%29/marketing/index.tsx#L163) — `{ bottom: insets.bottom + 96 }`
+- [`marketing/campaigns/index.tsx:152`](../../mingla-business/app/%28tabs%29/marketing/campaigns/index.tsx#L152) — same
+- [`marketing/templates/index.tsx:127`](../../mingla-business/app/%28tabs%29/marketing/templates/index.tsx#L127) — same
 
 **Exact code:**
 ```tsx
@@ -235,9 +235,9 @@ style={({ pressed }) => [
 ### 🟡 HF-1 — Double top inset on wide-desktop
 
 **Files:**
-- [`app/(tabs)/_layout.tsx:87-89`](../../mingla-business/app/(tabs)/_layout.tsx#L87-L89) — `<DesktopCanvas><Slot /></DesktopCanvas>`
+- [`app/(tabs)/_layout.tsx:87-89`](../../mingla-business/app/%28tabs%29/_layout.tsx#L87-L89) — `<DesktopCanvas><Slot /></DesktopCanvas>`
 - [`src/components/ui/DesktopCanvas.tsx:130-139`](../../mingla-business/src/components/ui/DesktopCanvas.tsx#L130-L139) — `paddingTop: DESKTOP_TOP_INSET` (16pt)
-- [`app/(tabs)/marketing/_layout.tsx:48-49`](../../mingla-business/app/(tabs)/marketing/_layout.tsx#L48-L49) — `<View style={[styles.host, { paddingTop: insets.top }]}>`
+- [`app/(tabs)/marketing/_layout.tsx:48-49`](../../mingla-business/app/%28tabs%29/marketing/_layout.tsx#L48-L49) — `<View style={[styles.host, { paddingTop: insets.top }]}>`
 
 **What it does:** On wide-desktop the DesktopCanvas adds a 16pt paddingTop; the marketing _layout then adds another `insets.top` (typically 0 on desktop web because browsers have no top safe area). Net result: 16pt on most desktop browsers, more on browsers that report a top safe area. Not broken, but the TopBar is closer to the canvas-top than the rail's brand-mark badge by exactly that delta — visually misaligned in the desktop redesign mocks.
 
@@ -285,7 +285,7 @@ The original ORCH-0885 investigation already concluded Tiptap is the recommended
 
 ### 🔵 OB-2 — Templates index demonstrates the right loading-state pattern
 
-[`marketing/templates/index.tsx:55-78`](../../mingla-business/app/(tabs)/marketing/templates/index.tsx#L55-L78) checks `starterQuery.isLoading && data === undefined` for the spinner branch, then falls through to error/empty. BUT because `useStarterTemplates()` is **always enabled** (no accountId gate — see [`useStarterTemplates.ts:18-36`](../../mingla-business/src/hooks/marketing/useStarterTemplates.ts#L18-L36)), the disabled-query trap doesn't fire there. The starter section reliably shows a spinner during fetch and then the seeded templates. The user-templates section gracefully empty-states because `useUserTemplates(null)` returns `data: []` only after the user query has actually run.
+[`marketing/templates/index.tsx:55-78`](../../mingla-business/app/%28tabs%29/marketing/templates/index.tsx#L55-L78) checks `starterQuery.isLoading && data === undefined` for the spinner branch, then falls through to error/empty. BUT because `useStarterTemplates()` is **always enabled** (no accountId gate — see [`useStarterTemplates.ts:18-36`](../../mingla-business/src/hooks/marketing/useStarterTemplates.ts#L18-L36)), the disabled-query trap doesn't fire there. The starter section reliably shows a spinner during fetch and then the seeded templates. The user-templates section gracefully empty-states because `useUserTemplates(null)` returns `data: []` only after the user query has actually run.
 
 **Implication:** The fix for RC-1 (Overview/Audiences/Campaigns) is well-precedented locally — Templates shows that "always-enabled queries paint correctly, disabled queries don't". The Wave-1 fix patches the three disabled-query callsites to treat `enabled: false` as loading.
 

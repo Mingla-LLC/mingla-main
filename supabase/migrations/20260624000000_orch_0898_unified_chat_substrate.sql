@@ -428,7 +428,12 @@ ON CONFLICT (conversation_id, user_id) DO NOTHING;
 
 -- Step 7d: Backfill messages from board_messages. Two-pass because reply_to_id needs ID translation.
 -- Pass 1: build a temp ID-map table with PRE-COMPUTED new uuids so we can translate reply_to_id.
-CREATE TEMP TABLE _orch_0898_msg_id_map ON COMMIT DROP AS
+-- TEMP table without ON COMMIT DROP — psql CI runner executes each top-level
+-- statement in its own implicit transaction, so ON COMMIT DROP would drop the
+-- table immediately after creation. Without the clause, the temp table lives
+-- for the duration of the psql session (the whole migration file).
+-- Explicit DROP TABLE at end of Step 7e cleans up.
+CREATE TEMP TABLE _orch_0898_msg_id_map AS
 SELECT
   bm.id AS board_message_id,
   gen_random_uuid() AS new_message_id,
@@ -489,6 +494,10 @@ WHERE NOT EXISTS (
   WHERE existing.message_id = map.new_message_id
     AND existing.user_id = bmr.user_id
 );
+
+-- Drop the temp ID-map table now that all backfill passes are done.
+-- (Required because we removed ON COMMIT DROP — see Step 7d comment.)
+DROP TABLE IF EXISTS _orch_0898_msg_id_map;
 
 -- Step 7f: Row-count assertions (RAISE EXCEPTION on mismatch — rolls back entire migration).
 DO $$

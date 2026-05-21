@@ -626,6 +626,8 @@ export class RealtimeService {
       // Replaces the previous session_decks INSERT listener (ORCH-0446
       // deleted the underlying table); that callback (onDeckRegenerated)
       // is removed from the interface in the same change.
+      // REALTIME-INERT-OK: ORCH-0902 board_user_swipe_states not yet in
+      // publication; ORCH-0902 close adds ALTER PUBLICATION ADD TABLE.
       .on(
         "postgres_changes",
         {

@@ -429,6 +429,15 @@ function checkNoNewBackendFiles() {
   const ORCH_0891_BACKEND_ALLOWLIST = [
     "supabase/functions/_shared/marketingEmailRender.eventChipSize.test.ts",
   ];
+  // ORCH-0898 [Consumer collab session → Friends-tab group chat] CLOSE PR #152
+  // (2026-05-21). Bundled with ORCH-0892-A + ORCH-0892-B v2 + ORCH-0893 +
+  // ORCH-0894 + ORCH-0901 per operator-named bundle exception. C7 is scoped to
+  // ORCH-0863 marketing; these backend touches are ORCH-0898 chat substrate
+  // unification (conversations + messages + notify-message canonical types).
+  const ORCH_0898_BACKEND_ALLOWLIST = [
+    "supabase/functions/notify-message/index.ts",
+    "supabase/migrations/20260624000000_orch_0898_unified_chat_substrate.sql",
+  ];
   const ALLOWLIST = [
     ...ORCH_0859_BUNDLED_ALLOWLIST,
     ...ORCH_0869_BACKEND_ALLOWLIST,
@@ -444,6 +453,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_0879_BACKEND_ALLOWLIST,
     ...ORCH_0880_BACKEND_ALLOWLIST,
     ...ORCH_0891_BACKEND_ALLOWLIST,
+    ...ORCH_0898_BACKEND_ALLOWLIST,
   ];
   const forbidden = changed.filter(
     (p) =>
