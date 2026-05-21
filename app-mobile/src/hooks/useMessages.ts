@@ -33,6 +33,9 @@ export interface Message {
 
 export interface Conversation {
   id: string;
+  type?: 'direct' | 'group';
+  name?: string | null;
+  session_id?: string | null;
   created_by: string;
   created_at: string;
   participants: {

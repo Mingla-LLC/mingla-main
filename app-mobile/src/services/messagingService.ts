@@ -211,6 +211,9 @@ export function trimCardPayload(card: any): CardPayload {
 export interface Conversation {
   id: string;
   type: 'direct' | 'group';
+  name?: string | null;
+  session_id?: string | null;
+  linked_entity_type?: 'direct' | 'session' | 'trip';
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -519,71 +522,117 @@ export class MessagingService {
    */
   async getConversations(userId: string): Promise<{ conversations: Conversation[]; error: string | null }> {
     try {
-      // Get conversation IDs where user is a participant
-      const { data: participantData, error: participantError } = await supabase
-        .from('conversation_participants')
-        .select('conversation_id')
-        .eq('user_id', userId);
+      // ORCH-0901: Two-level RLS-filtered fetch. Do NOT re-introduce per-conversation
+      // loops with await supabase.from(...) here — verified by orch-0901-regression-check.mjs
+      // and locked by SPEC_ORCH-0901 §3.1. Re-introducing the legacy 2+5N pattern will
+      // fail CI.
+      //
+      // Level 1 (parallel via Promise.all):
+      //   Q1: conversations + participants + last-message (with embedded read_status).
+      //   Q2: unread-count helper across all the user's non-self / NULL-sender messages.
+      //       Uses .or() to defeat the .neq() nullable-column footgun (see
+      //       feedback_supabase_neq_null.md) so post-ORCH-0898 NULL-sender system
+      //       messages correctly count as unread.
+      // Level 2:
+      //   Q3: batch profile fetch for unique last-message senders (warms cache).
+      //
+      // Total: ≤2 sequential Supabase round-trips on cold-load.
 
-      if (participantError) throw participantError;
-
-      if (!participantData || participantData.length === 0) {
-        return { conversations: [], error: null };
-      }
-
-      const conversationIds = participantData.map(p => p.conversation_id);
-
-      // Get conversations with participants and last message
-      const { data: conversationsData, error: conversationsError } = await supabase
+      const conversationsPromise = supabase
         .from('conversations')
         .select(`
           *,
-          participants:conversation_participants(*)
+          participants:conversation_participants(id, conversation_id, user_id, joined_at, last_read_at),
+          last_message:messages(
+            id, conversation_id, sender_id, content, message_type,
+            file_url, file_name, file_size, card_payload, reply_to_id,
+            created_at, updated_at, deleted_at,
+            read_status:message_reads(user_id)
+          )
         `)
-        .in('id', conversationIds)
-        .order('last_message_at', { ascending: false, nullsFirst: false });
+        .is('last_message.deleted_at', null)
+        .order('last_message_at', { ascending: false, nullsFirst: false })
+        .order('created_at', { referencedTable: 'last_message', ascending: false })
+        .limit(1, { referencedTable: 'last_message' });
 
-      if (conversationsError) throw conversationsError;
+      const unreadPromise = supabase
+        .from('messages')
+        .select('id, conversation_id, message_reads(user_id)')
+        .or(`sender_id.neq.${userId},sender_id.is.null`)
+        .is('deleted_at', null);
 
-      // Get last messages for each conversation
+      const [conversationsResult, unreadResult] = await Promise.all([
+        conversationsPromise,
+        unreadPromise,
+      ]);
+
+      if (conversationsResult.error) throw conversationsResult.error;
+      if (unreadResult.error) throw unreadResult.error;
+
+      const unreadByConv = new Map<string, number>();
+      for (const msg of unreadResult.data || []) {
+        const reads = ((msg as any).message_reads || []) as Array<{ user_id: string }>;
+        const isReadByMe = reads.some((r) => r.user_id === userId);
+        if (!isReadByMe) {
+          unreadByConv.set(
+            msg.conversation_id,
+            (unreadByConv.get(msg.conversation_id) || 0) + 1
+          );
+        }
+      }
+
+      const senderIds = new Set<string>();
+      for (const conv of conversationsResult.data || []) {
+        const raw = Array.isArray((conv as any).last_message)
+          ? (conv as any).last_message[0]
+          : (conv as any).last_message;
+        if (raw?.sender_id) senderIds.add(raw.sender_id);
+      }
+      if (senderIds.size > 0) {
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, display_name, username, first_name, last_name')
+          .in('id', Array.from(senderIds));
+        for (const p of profiles || []) {
+          const name = getDisplayName(p, 'Unknown');
+          this.senderProfileCache.set(p.id, { name, cachedAt: Date.now() });
+        }
+      }
+
       const conversations: Conversation[] = [];
-      for (const conv of conversationsData || []) {
-        const { data: lastMessage } = await supabase
-          .from('messages')
-          .select('*')
-          .eq('conversation_id', conv.id)
-          .is('deleted_at', null)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .single();
-
-        // Get unread count
-        const { data: unreadMessages } = await supabase
-          .from('messages')
-          .select('id')
-          .eq('conversation_id', conv.id)
-          .neq('sender_id', userId)
-          .is('deleted_at', null);
-
-        let unreadCount = 0;
-        if (unreadMessages && unreadMessages.length > 0) {
-          const messageIds = unreadMessages.map(m => m.id);
-          const { data: readMessages } = await supabase
-            .from('message_reads')
-            .select('message_id')
-            .in('message_id', messageIds)
-            .eq('user_id', userId);
-
-          const readMessageIds = new Set(readMessages?.map(r => r.message_id) || []);
-          unreadCount = messageIds.filter(id => !readMessageIds.has(id)).length;
+      for (const conv of conversationsResult.data || []) {
+        const lastMessageRaw = Array.isArray((conv as any).last_message)
+          ? (conv as any).last_message[0]
+          : (conv as any).last_message;
+        let lastMessage: DirectMessage | undefined;
+        if (lastMessageRaw) {
+          const reads = (lastMessageRaw.read_status || []) as Array<{ user_id: string }>;
+          const cachedSender = lastMessageRaw.sender_id
+            ? this.senderProfileCache.get(lastMessageRaw.sender_id)
+            : null;
+          const senderName = cachedSender?.name
+            ?? (lastMessageRaw.sender_id ? 'Unknown' : 'Deleted User');
+          const { read_status, ...messageFields } = lastMessageRaw as any;
+          lastMessage = {
+            ...messageFields,
+            sender_name: senderName,
+            is_read: reads.some((r) => r.user_id === userId),
+          };
         }
 
-        const enrichedMessage = lastMessage ? await this.enrichMessage(lastMessage, userId) : undefined;
-
         conversations.push({
-          ...conv,
-          last_message: enrichedMessage,
-          unread_count: unreadCount,
+          id: conv.id,
+          type: (conv as any).type,
+          name: (conv as any).name ?? null,
+          session_id: (conv as any).session_id ?? null,
+          linked_entity_type: (conv as any).linked_entity_type ?? undefined,
+          created_by: (conv as any).created_by,
+          created_at: conv.created_at,
+          updated_at: (conv as any).updated_at,
+          last_message_at: (conv as any).last_message_at,
+          participants: (conv as any).participants || [],
+          last_message: lastMessage,
+          unread_count: unreadByConv.get(conv.id) || 0,
         });
       }
 
@@ -680,24 +729,122 @@ export class MessagingService {
         .single();
 
       if (error) {
-        // Check if error is due to blocking (RLS violation)
+        // RLS violation (42501): either a block (DM context) OR broadcast-only enforcement
+        // (Tr6 trip context — ORCH-0898 messages_broadcast_only_enforcement RESTRICTIVE policy).
+        // Disambiguate via a follow-up read of the conversation row to surface the right toast.
         if (error.code === '42501' || error.message?.includes('policy')) {
-          return { message: null, error: 'Cannot send message to this user' };
+          const broadcastErrorText = await this.translateInsertRlsError(conversationId);
+          return { message: null, error: broadcastErrorText };
         }
         throw error;
       }
 
       const enrichedMessage = await this.enrichMessage(data, senderId);
-      
+
       // Send notifications to recipients (non-blocking)
-      this.sendMessageNotifications(conversationId, senderId, enrichedMessage).catch(err => 
+      this.sendMessageNotifications(conversationId, senderId, enrichedMessage).catch(err =>
         console.error('Error sending notifications:', err)
       );
-      
+
       return { message: enrichedMessage, error: null };
     } catch (error: any) {
       console.error('Error sending message:', error);
       return { message: null, error: error.message };
+    }
+  }
+
+  /**
+   * ORCH-0898: translates a 42501 RLS violation on messages INSERT into a user-friendly
+   * error. Reads the conversation row to determine whether the rejection is due to
+   * broadcast-only enforcement (Tr6 trip context) or block-based RLS (DM context).
+   *
+   * Falls back to the generic DM error if the lookup fails — RLS-correct behavior
+   * (read returns 0 rows for a non-participant, so we can't always determine the cause).
+   */
+  private async translateInsertRlsError(conversationId: string): Promise<string> {
+    try {
+      const { data: conv } = await supabase
+        .from('conversations')
+        .select('linked_entity_type, is_broadcast_only')
+        .eq('id', conversationId)
+        .maybeSingle();
+
+      if (conv?.linked_entity_type === 'trip' && conv?.is_broadcast_only === true) {
+        return "Only the planner can post in this trip's chat";
+      }
+    } catch {
+      // Fall through to default — RLS may block the read too; either way we surface a sensible toast.
+    }
+    return 'Cannot send message to this user';
+  }
+
+  /**
+   * ORCH-0898: returns the group conversation linked to a collaboration session. The conversation
+   * is eagerly created by the `ensure_group_conversation_on_session_create` DB trigger at session
+   * INSERT time, so this method is typically just a lookup. Returns null + error if the trigger
+   * hasn't fired (e.g., pre-migration session without backfilled conversation — should not happen
+   * post-ORCH-0898 migration).
+   */
+  async getOrCreateGroupConversationForSession(
+    sessionId: string,
+  ): Promise<{ conversation: Conversation | null; error: string | null }> {
+    try {
+      const { data: conv, error } = await supabase
+        .from('conversations')
+        .select(`
+          id, type, name, session_id, linked_entity_type, created_by, created_at, updated_at, last_message_at,
+          participants:conversation_participants(id, conversation_id, user_id, joined_at, last_read_at)
+        `)
+        .eq('session_id', sessionId)
+        .eq('linked_entity_type', 'session')
+        .maybeSingle();
+
+      if (error) throw error;
+      if (!conv) {
+        return { conversation: null, error: 'Group conversation not found for this session' };
+      }
+
+      return {
+        conversation: {
+          id: conv.id,
+          type: conv.type as 'direct' | 'group',
+          name: conv.name ?? null,
+          session_id: conv.session_id ?? null,
+          linked_entity_type: conv.linked_entity_type as 'direct' | 'session' | 'trip' | undefined,
+          created_by: conv.created_by,
+          created_at: conv.created_at,
+          updated_at: conv.updated_at,
+          last_message_at: conv.last_message_at ?? undefined,
+          participants: (conv.participants as any[]) || [],
+        },
+        error: null,
+      };
+    } catch (error: any) {
+      console.error('Error getting group conversation for session:', error);
+      return { conversation: null, error: error.message };
+    }
+  }
+
+  /**
+   * ORCH-0898: removes the current user from a group conversation. Used by the Friends-tab
+   * group-chat swipe-leave action. RLS-gated to own row only (user_id = auth.uid()).
+   */
+  async leaveGroupConversation(
+    conversationId: string,
+    userId: string,
+  ): Promise<{ error: string | null }> {
+    try {
+      const { error } = await supabase
+        .from('conversation_participants')
+        .delete()
+        .eq('conversation_id', conversationId)
+        .eq('user_id', userId);
+
+      if (error) throw error;
+      return { error: null };
+    } catch (error: any) {
+      console.error('Error leaving group conversation:', error);
+      return { error: error.message };
     }
   }
 
@@ -1073,4 +1220,3 @@ export class MessagingService {
 }
 
 export const messagingService = new MessagingService();
-

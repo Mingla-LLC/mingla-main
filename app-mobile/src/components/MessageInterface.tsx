@@ -32,6 +32,7 @@ import { ReplyPreviewBar } from "./chat/ReplyPreviewBar";
 import { SwipeableMessage } from "./chat/SwipeableMessage";
 import { DoubleTapHeart } from "./chat/DoubleTapHeart";
 import { ChatStatusLine } from "./chat/ChatStatusLine";
+import { BoardSettingsDropdown } from "./board/BoardSettingsDropdown";
 import { groupMessages, GroupedMessage } from "../utils/messageGrouping";
 import { DirectMessage, messagingService, CardPayload } from "../services/messagingService";
 import { cardPayloadToExpandedCardData } from "../services/cardPayloadAdapter";  // ORCH-0685
@@ -85,6 +86,19 @@ interface Friend {
   lastSeen?: string;
   mutualFriends?: number;
   isMuted?: boolean;
+  conversationType?: "direct" | "group";
+  sessionId?: string | null;
+  sessionCreatorId?: string | null;
+  isSessionAdmin?: boolean;
+  notificationsMuted?: boolean;
+  participantCount?: number;
+  participants?: {
+    id: string;
+    name?: string;
+    username?: string;
+    avatar_url?: string;
+    is_online?: boolean;
+  }[];
 }
 
 interface MessageInterfaceProps {
@@ -136,6 +150,10 @@ interface MessageInterfaceProps {
   onBroadcastReceive: (msg: DirectMessage) => void;
   isOffline?: boolean;
   onViewProfile?: (userId: string) => void;
+  onSessionNameUpdated?: (sessionId: string, newName: string) => void;
+  onGroupSessionExited?: (sessionId: string) => void;
+  onGroupSessionDeleted?: (sessionId: string) => void;
+  onGroupParticipantsChange?: () => void;
 }
 
 export default function MessageInterface({
@@ -164,6 +182,10 @@ export default function MessageInterface({
   onBroadcastReceive,
   isOffline = false,
   onViewProfile,
+  onSessionNameUpdated,
+  onGroupSessionExited,
+  onGroupSessionDeleted,
+  onGroupParticipantsChange,
 }: MessageInterfaceProps) {
   const { t } = useTranslation(['chat', 'common']);
   // Helper function to clean email-like names
@@ -176,6 +198,47 @@ export default function MessageInterface({
     }
     return name.trim();
   };
+  const isGroupChat = friend.conversationType === "group";
+  const headerTitle = cleanName(friend.name);
+  const headerParticipants = friend.participants || [];
+  const headerParticipantCount = friend.participantCount ?? headerParticipants.length;
+  const visibleHeaderParticipants = headerParticipants.slice(0, 3);
+  const groupSettingsParticipants = useMemo(
+    () =>
+      headerParticipants.map((participant) => ({
+        user_id: participant.id,
+        session_id: friend.sessionId ?? "",
+        has_accepted: true,
+        is_admin: participant.id === friend.sessionCreatorId,
+        notifications_muted: participant.id === currentUserId
+          ? friend.notificationsMuted ?? false
+          : false,
+        profiles: {
+          id: participant.id,
+          username: participant.username,
+          display_name: participant.name,
+          avatar_url: participant.avatar_url,
+        },
+      })),
+    [
+      currentUserId,
+      friend.notificationsMuted,
+      friend.sessionCreatorId,
+      friend.sessionId,
+      headerParticipants,
+    ],
+  );
+
+  const getHeaderParticipantName = (participant: NonNullable<Friend["participants"]>[number]): string =>
+    cleanName(participant.name || participant.username || "User");
+
+  const getHeaderInitials = (name: string): string =>
+    name
+      .split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase()
+      .substring(0, 2) || "?";
 
   const [newMessage, setNewMessage] = useState("");
   const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
@@ -826,6 +889,36 @@ export default function MessageInterface({
     );
   };
 
+  const handleExitGroupSession = useCallback(() => {
+    if (!friend.sessionId || !currentUserId) return;
+
+    Alert.alert(
+      "Leave session?",
+      "You will leave this collaboration session and its chat.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Leave",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const { error } = await supabase
+                .from("session_participants")
+                .delete()
+                .eq("session_id", friend.sessionId)
+                .eq("user_id", currentUserId);
+              if (error) throw error;
+              onGroupSessionExited?.(friend.sessionId!);
+            } catch (error: any) {
+              console.error("[MessageInterface] Failed to leave group session:", error);
+              Alert.alert("Could not leave session", error?.message || "Please try again.");
+            }
+          },
+        },
+      ],
+    );
+  }, [currentUserId, friend.sessionId, onGroupSessionExited]);
+
   // ORCH-0620 composer position:
   //   - inputBottomOffset: nav clearance so the composer floats above the bottom
   //     nav when the keyboard is closed. On Android, + ANDROID_NAV_OVERLAP_FIX
@@ -881,42 +974,81 @@ export default function MessageInterface({
 
           <TouchableOpacity
             style={styles.avatarContainer}
-            onPress={() => onViewProfile?.(friend.id)}
-            disabled={!onViewProfile}
+            onPress={() => {
+              if (!isGroupChat) onViewProfile?.(friend.id);
+            }}
+            disabled={isGroupChat || !onViewProfile}
             activeOpacity={0.8}
-            accessibilityLabel={`View ${cleanName(friend.name)}'s profile`}
+            accessibilityLabel={isGroupChat ? `${headerTitle} participants` : `View ${headerTitle}'s profile`}
             accessibilityRole="button"
           >
-            {friend.avatar ? (
-              <ImageWithFallback
-                source={{ uri: friend.avatar }}
-                style={styles.avatar}
-              />
+            {isGroupChat ? (
+              <View style={styles.groupHeaderAvatarStack}>
+                {visibleHeaderParticipants.length === 0 ? (
+                  <View style={styles.groupHeaderAvatarPlaceholder}>
+                    <Text style={styles.avatarText}>{getHeaderInitials(headerTitle)}</Text>
+                  </View>
+                ) : (
+                  visibleHeaderParticipants.map((participant, index) => {
+                    const participantName = getHeaderParticipantName(participant);
+                    return (
+                      <View
+                        key={participant.id}
+                        style={[
+                          styles.groupHeaderAvatarSegment,
+                          {
+                            left: index * 12,
+                            zIndex: visibleHeaderParticipants.length - index,
+                          },
+                        ]}
+                      >
+                        {participant.avatar_url ? (
+                          <ImageWithFallback
+                            source={{ uri: participant.avatar_url }}
+                            style={styles.groupHeaderAvatarImage}
+                          />
+                        ) : (
+                          <Text style={styles.avatarText}>
+                            {getHeaderInitials(participantName)}
+                          </Text>
+                        )}
+                      </View>
+                    );
+                  })
+                )}
+              </View>
+            ) : friend.avatar ? (
+              <ImageWithFallback source={{ uri: friend.avatar }} style={styles.avatar} />
             ) : (
               <View style={styles.avatarPlaceholder}>
                 <Text style={styles.avatarText}>
-                  {cleanName(friend.name)
-                    .split(" ")
-                    .map((n) => n[0])
-                    .join("")}
+                  {getHeaderInitials(headerTitle)}
                 </Text>
               </View>
             )}
-            {isOtherOnline && <View style={styles.onlineIndicator} />}
+            {!isGroupChat && isOtherOnline && <View style={styles.onlineIndicator} />}
           </TouchableOpacity>
 
           <TouchableOpacity
             style={styles.userInfo}
-            onPress={() => onViewProfile?.(friend.id)}
-            disabled={!onViewProfile}
+            onPress={() => {
+              if (!isGroupChat) onViewProfile?.(friend.id);
+            }}
+            disabled={isGroupChat || !onViewProfile}
             activeOpacity={0.7}
           >
-            <Text style={styles.userName}>{cleanName(friend.name)}</Text>
-            <ChatStatusLine
-              isOnline={isOtherOnline}
-              isTyping={isOtherTyping}
-              lastSeenAt={otherLastSeen}
-            />
+            <Text style={styles.userName} numberOfLines={1}>{headerTitle}</Text>
+            {isGroupChat ? (
+              <Text style={styles.groupParticipantCount} numberOfLines={1}>
+                {headerParticipantCount} {headerParticipantCount === 1 ? "person" : "people"} in chat
+              </Text>
+            ) : (
+              <ChatStatusLine
+                isOnline={isOtherOnline}
+                isTyping={isOtherTyping}
+                lastSeenAt={otherLastSeen}
+              />
+            )}
           </TouchableOpacity>
 
           {/* More button — far right */}
@@ -1069,6 +1201,9 @@ export default function MessageInterface({
                 <MessageBubble
                   message={{
                     id: item.message.id,
+                    senderName: item.message.isMe
+                      ? (currentUserName || item.message.senderName || 'You')
+                      : cleanName(item.message.senderName || friend.name),
                     content: item.message.content,
                     timestamp: item.message.timestamp,
                     type: item.message.type,
@@ -1543,9 +1678,30 @@ export default function MessageInterface({
           (Animated.View, not native Modal portal). The notifications panel below
           (around line 1632) remains as the canonical single mount point. */}
 
+      <BoardSettingsDropdown
+        visible={Boolean(isGroupChat && showMoreOptionsMenu && friend.sessionId)}
+        onClose={() => setShowMoreOptionsMenu(false)}
+        sessionId={friend.sessionId ?? ""}
+        sessionName={headerTitle}
+        sessionCreatorId={friend.sessionCreatorId ?? undefined}
+        currentUserId={currentUserId ?? undefined}
+        isAdmin={friend.isSessionAdmin ?? (!!currentUserId && friend.sessionCreatorId === currentUserId)}
+        notificationsMuted={friend.notificationsMuted ?? false}
+        participants={groupSettingsParticipants}
+        onExitBoard={handleExitGroupSession}
+        onSessionDeleted={() => {
+          setShowMoreOptionsMenu(false);
+          if (friend.sessionId) onGroupSessionDeleted?.(friend.sessionId);
+        }}
+        onSessionNameUpdated={(newName) => {
+          if (friend.sessionId) onSessionNameUpdated?.(friend.sessionId, newName);
+        }}
+        onParticipantsChange={onGroupParticipantsChange}
+      />
+
       {/* More options bottom sheet — ORCH-0435 */}
       <Modal
-        visible={showMoreOptionsMenu}
+        visible={!isGroupChat && showMoreOptionsMenu}
         transparent
         animationType="slide"
         onRequestClose={() => setShowMoreOptionsMenu(false)}
@@ -1708,6 +1864,37 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     fontSize: 14,
   },
+  groupHeaderAvatarStack: {
+    width: 64,
+    height: 40,
+    position: "relative",
+  },
+  groupHeaderAvatarSegment: {
+    position: "absolute",
+    top: 0,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#eb7825",
+    borderWidth: 2,
+    borderColor: "rgba(12, 14, 18, 1)",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  groupHeaderAvatarPlaceholder: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#eb7825",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  groupHeaderAvatarImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+  },
   onlineIndicator: {
     position: "absolute",
     bottom: 0,
@@ -1730,6 +1917,11 @@ const styles = StyleSheet.create({
   userStatus: {
     fontSize: 14,
     color: "rgba(255, 255, 255, 0.6)",
+  },
+  groupParticipantCount: {
+    fontSize: 13,
+    color: "rgba(255, 255, 255, 0.62)",
+    marginTop: 2,
   },
   headerActions: {
     flexDirection: "row",

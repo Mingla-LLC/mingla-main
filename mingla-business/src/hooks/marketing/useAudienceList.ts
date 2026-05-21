@@ -33,6 +33,12 @@ export interface UseAudienceListState {
   reachLoading: boolean;
   isLoading: boolean;
   isError: boolean;
+  /**
+   * True once the underlying audiences query has resolved at least one
+   * fetch. `false` while `enabled: false` (auth bootstrap). Per
+   * I-DISABLED-QUERY-IS-LOADING (ORCH-0889).
+   */
+  hasResolved: boolean;
   refetch: UseQueryResult<AudienceListEntry[]>["refetch"];
 }
 
@@ -116,8 +122,17 @@ export function useAudienceList(
       reachLoading,
       isLoading: query.isLoading,
       isError: query.isError,
+      hasResolved: query.isFetched,
       refetch: query.refetch,
     }),
-    [query.data, query.isLoading, query.isError, query.refetch, reach, reachLoading],
+    [
+      query.data,
+      query.isLoading,
+      query.isError,
+      query.isFetched,
+      query.refetch,
+      reach,
+      reachLoading,
+    ],
   );
 }

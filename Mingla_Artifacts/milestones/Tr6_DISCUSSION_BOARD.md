@@ -1,9 +1,13 @@
 # Tr6 — Discussion Board / Group Chat
 
+> **⚠ SUPERSEDED BY ORCH-0898 SPEC (2026-05-21)** — operator approved 2026-05-20 substrate convergence: Tr6's per-trip group chat inherits the unified `conversations` + `messages` substrate that ORCH-0898 [Consumer collab session → Friends-tab group chat] builds. The `event_threads` + `event_thread_messages` schema in §5 below is HISTORICAL and will NOT ship — see `Mingla_Artifacts/specs/SPEC_ORCH-0898_COLLAB_GROUP_CHAT.md` §3.1 for the live schema (new columns on `conversations` + `messages` instead of new tables). The `has_thread_access` SECURITY DEFINER helper in §5 is also superseded; ORCH-0898 uses inline EXISTS RLS predicates per the RLS-RETURNING-OWNER-GAP discipline. Tr6's other scope (`trip_documents` storage bucket, Ari summarization tool, Documents tab UI, "Join the trip chat" affordance, auto-create-thread-on-booking trigger) remains intact and ships in a separate ORCH-0897 SPEC after ORCH-0898 lands. **Tr6 SPEC dispatch is BLOCKED on ORCH-0898 SPEC review approval + the unified-substrate migration being operator-applied.** Original §5 schema preserved below for historical reference + audit trail only.
+>
+> **Additional correction:** §5 below references a table called `brand_members`. The actual table is `brand_team_members` (active-membership predicate: `accepted_at IS NOT NULL AND removed_at IS NULL`). ORCH-0898 SPEC §1.4 + §3.1 uses the correct name throughout.
+
 > **Track:** Track 1 — Trip planners
 > **Duration:** 2 weeks
 > **Depends on:** Tr2 (in TestFlight; thread attaches to trip)
-> **Status:** locked, not started
+> **Status:** SUPERSEDED 2026-05-21 by ORCH-0898 SPEC — see banner above. Original status was "locked, not started".
 
 ---
 

@@ -429,6 +429,27 @@ function checkNoNewBackendFiles() {
   const ORCH_0891_BACKEND_ALLOWLIST = [
     "supabase/functions/_shared/marketingEmailRender.eventChipSize.test.ts",
   ];
+  // ORCH-0898 [Consumer collab session → Friends-tab group chat] CLOSE PR #152
+  // (2026-05-21). Bundled with ORCH-0892-A + ORCH-0892-B v2 + ORCH-0893 +
+  // ORCH-0894 + ORCH-0901 per operator-named bundle exception. C7 is scoped to
+  // ORCH-0863 marketing; these backend touches are ORCH-0898 chat substrate
+  // unification (conversations + messages + notify-message canonical types).
+  const ORCH_0898_BACKEND_ALLOWLIST = [
+    "supabase/functions/notify-message/index.ts",
+    "supabase/migrations/20260624000000_orch_0898_unified_chat_substrate.sql",
+  ];
+  // ORCH-0902 + ORCH-0903 [Collab deck deterministic rewrite + travel-time
+  // speed unification] bundled into PR #152 via concurrent Codex work landing
+  // on Seth between ORCH-0898 close commit and PR open. C7 is scoped to
+  // ORCH-0863 marketing; these backend touches are ORCH-0902 deck-deterministic
+  // rewrite + ORCH-0903 discover-cards travel-time unification scope.
+  const ORCH_0902_0903_BACKEND_ALLOWLIST = [
+    "supabase/functions/_shared/distanceMath.ts",
+    "supabase/functions/discover-cards/__tests__/orch_0903_travel_time_contract.test.ts",
+    "supabase/functions/discover-cards/index.ts",
+    "supabase/functions/generate-curated-experiences/index.ts",
+    "supabase/migrations/20260625000000_orch_0902_collab_deck_deterministic_rewrite.sql",
+  ];
   const ALLOWLIST = [
     ...ORCH_0859_BUNDLED_ALLOWLIST,
     ...ORCH_0869_BACKEND_ALLOWLIST,
@@ -444,6 +465,8 @@ function checkNoNewBackendFiles() {
     ...ORCH_0879_BACKEND_ALLOWLIST,
     ...ORCH_0880_BACKEND_ALLOWLIST,
     ...ORCH_0891_BACKEND_ALLOWLIST,
+    ...ORCH_0898_BACKEND_ALLOWLIST,
+    ...ORCH_0902_0903_BACKEND_ALLOWLIST,
   ];
   const forbidden = changed.filter(
     (p) =>

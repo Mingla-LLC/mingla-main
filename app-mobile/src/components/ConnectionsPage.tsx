@@ -97,7 +97,7 @@ interface ConnectionsPageProps {
   onInitialPanelHandled?: () => void;
 }
 
-const CONNECTIONS_CACHE_VERSION = "v1";
+const CONNECTIONS_CACHE_VERSION = "v2-orch-0898-group-metadata";
 
 const getConversationsCacheKey = (userId: string) =>
   `mingla:connections:conversations:${CONNECTIONS_CACHE_VERSION}:${userId}`;
@@ -673,6 +673,7 @@ function ConnectionsPageRefactored({
       });
 
       const contentCandidates = [
+        conv.name || "",
         conv.last_message?.content || "",
         conv.last_message?.message_type === "image" ? "photo image" : "",
         conv.last_message?.message_type === "file" ? "file attachment document" : "",
@@ -690,10 +691,12 @@ function ConnectionsPageRefactored({
     try {
       setError(null);
 
-      // Hard 10-second timeout: messagingService.getConversations runs 4N sequential
-      // Supabase queries with no built-in timeout. When the app returns from background,
-      // the OS suspends inflight connections and Supabase hangs silently — the finally
-      // block would never fire, leaving conversationsLoading stuck at true forever.
+      // Hard 10-second timeout: belt-and-suspenders safety net. Post-ORCH-0901,
+      // messagingService.getConversations runs at most 2 sequential RLS-filtered Supabase
+      // round-trips (Q1+Q2 in parallel + optional Q3 batch-profile-fetch) — down from the
+      // ~5N+3 sequential queries it used to run — but background-suspended connections
+      // can still hang any single round-trip, and the timeout prevents conversationsLoading
+      // from getting stuck at true forever. See SPEC_ORCH-0901 §3.2.
       const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(() => {
           const err = new Error('getConversations timed out after 10s');
@@ -710,22 +713,52 @@ function ConnectionsPageRefactored({
 
       if (convError) throw new Error(convError);
 
-      // Batch-fetch all participant profiles
+      // Batch-fetch all participant profiles and session names. ORCH-0898 group-chat
+      // rows should carry conversations.name, but older/backfilled rows can have it
+      // missing; session_id -> collaboration_sessions.name is the canonical fallback.
       const allParticipantIds = new Set<string>();
-      (rawConversations || []).forEach((conv) =>
-        conv.participants.forEach((p) => allParticipantIds.add(p.user_id))
-      );
+      const groupSessionIds = new Set<string>();
+      (rawConversations || []).forEach((conv) => {
+        conv.participants.forEach((p) => allParticipantIds.add(p.user_id));
+        const sessionId = (conv as { session_id?: string | null }).session_id;
+        if (conv.type === 'group' && sessionId) {
+          groupSessionIds.add(sessionId);
+        }
+      });
 
-      const { data: allProfiles } = await supabase
-        .from("profiles")
-        .select("id, display_name, username, first_name, last_name, avatar_url")
-        .in("id", Array.from(allParticipantIds));
+      const [profilesResult, sessionsResult] = await Promise.all([
+        allParticipantIds.size > 0
+          ? supabase
+              .from("profiles")
+              .select("id, display_name, username, first_name, last_name, avatar_url")
+              .in("id", Array.from(allParticipantIds))
+          : Promise.resolve({ data: [] as any[], error: null }),
+        groupSessionIds.size > 0
+          ? supabase
+              .from("collaboration_sessions")
+              .select("id, name, created_by")
+              .in("id", Array.from(groupSessionIds))
+          : Promise.resolve({ data: [] as any[], error: null }),
+      ]);
+
+      if (profilesResult.error) throw profilesResult.error;
+      if (sessionsResult.error) throw sessionsResult.error;
 
       const profilesMap = new Map(
-        (allProfiles || []).map((p) => [p.id, p])
+        (profilesResult.data || []).map((p) => [p.id, p])
+      );
+      const sessionMetaMap = new Map(
+        (sessionsResult.data || []).map((s) => [
+          s.id,
+          { name: s.name as string | null, created_by: s.created_by as string | null },
+        ])
       );
 
-      // Transform to Conversation type (matching useMessages format for ChatListItem)
+      // Transform to Conversation type (matching useMessages format for ChatListItem).
+      // ORCH-0898: the transform now passes `type`, `name`, `session_id` through as
+      // optional extra fields. ChatListItem's ChatListItemConversation type intersection
+      // picks them up for the group-vs-direct render branch. The base useMessages
+      // Conversation type stays unchanged (locked for ORCH-0900 scope).
       const transformed: Conversation[] = (rawConversations || []).map((conv) => {
         const participants = conv.participants.map((p) => {
           const profile = profilesMap.get(p.user_id);
@@ -740,6 +773,12 @@ function ConnectionsPageRefactored({
           };
         });
 
+        const sessionId = (conv as { session_id?: string | null }).session_id ?? null;
+        const sessionMeta = sessionId ? sessionMetaMap.get(sessionId) : null;
+        const conversationName = (conv as { name?: string | null }).name?.trim()
+          || sessionMeta?.name?.trim()
+          || null;
+
         return {
           id: conv.id,
           created_by: conv.created_by ?? '',
@@ -748,6 +787,11 @@ function ConnectionsPageRefactored({
           last_message: conv.last_message as unknown as ConvMessage | undefined,
           unread_count: conv.unread_count || 0,
           messages: [],
+          // ORCH-0898 group-chat extras (consumed by ChatListItem):
+          type: conv.type,
+          name: conversationName,
+          session_id: sessionId,
+          sessionCreatorId: sessionMeta?.created_by ?? null,
         };
       });
 
@@ -1010,26 +1054,68 @@ function ConnectionsPageRefactored({
   const handleSelectConversation = async (conversation: Conversation) => {
     if (!user?.id) return;
 
+    const conversationMeta = conversation as Conversation & {
+      type?: 'direct' | 'group';
+      name?: string | null;
+      session_id?: string | null;
+      sessionCreatorId?: string | null;
+    };
+    const isGroupConversation = conversationMeta.type === 'group';
     const otherParticipant = conversation.participants.find((p) => p.id !== user.id);
-    const rawName = getDisplayName(otherParticipant);
+    let rawName = isGroupConversation
+      ? conversationMeta.name?.trim() || ''
+      : getDisplayName(otherParticipant);
+    let sessionCreatorId = isGroupConversation ? conversationMeta.sessionCreatorId ?? null : null;
+
+    if (isGroupConversation && (!rawName || !sessionCreatorId) && conversationMeta.session_id) {
+      try {
+        const { data: session } = await supabase
+          .from('collaboration_sessions')
+          .select('name, created_by')
+          .eq('id', conversationMeta.session_id)
+          .maybeSingle();
+        rawName = rawName || session?.name?.trim() || '';
+        sessionCreatorId = session?.created_by ?? sessionCreatorId;
+      } catch (e) {
+        console.warn('[ConnectionsPage] Failed to resolve group chat session name:', e);
+      }
+    }
+
+    if (isGroupConversation && !rawName) {
+      rawName = 'Collaboration chat';
+    }
 
     // Clean email-like names
-    const cleanedName = rawName.includes("@")
+    const cleanedName = !isGroupConversation && rawName.includes("@")
       ? rawName.substring(0, rawName.indexOf("@")).trim()
       : rawName;
 
     const friend: Friend = {
-      id: otherParticipant?.id || "",
+      id: isGroupConversation ? conversation.id : otherParticipant?.id || "",
       name: cleanedName,
-      username: otherParticipant?.username || "unknown",
-      avatar: otherParticipant?.avatar_url,
+      username: isGroupConversation ? "group" : otherParticipant?.username || "unknown",
+      avatar: isGroupConversation ? undefined : otherParticipant?.avatar_url,
       status: "offline",
-      isOnline: otherParticipant?.is_online || false,
+      isOnline: isGroupConversation ? false : otherParticipant?.is_online || false,
+      conversationType: isGroupConversation ? 'group' : 'direct',
+      sessionId: conversationMeta.session_id ?? null,
+      sessionCreatorId,
+      isSessionAdmin: isGroupConversation ? sessionCreatorId === user.id : undefined,
+      participantCount: isGroupConversation ? conversation.participants.length : undefined,
+      participants: isGroupConversation
+        ? conversation.participants.map((p) => ({
+            id: p.id,
+            name: getDisplayName(p, p.username || 'User'),
+            username: p.username,
+            avatar_url: p.avatar_url,
+            is_online: p.is_online,
+          }))
+        : undefined,
     };
 
     // Synchronous block check from cached blocked-users list (React Query).
     // No network call — tap opens immediately. Server RLS enforces at send time.
-    const isBlockedByMe = blockedUsers.some((b) => b.id === friend.id);
+    const isBlockedByMe = isGroupConversation ? false : blockedUsers.some((b) => b.id === friend.id);
     setActiveChatIsBlocked(isBlockedByMe);
 
     // Start optimistic (assume connected). The background server query below
@@ -1047,45 +1133,47 @@ function ConnectionsPageRefactored({
     // Background bidirectional check — fire-and-forget, guarded against stale results.
     // If the user switches chats before this resolves, the result is discarded.
     const capturedFriendId = friend.id;
-    blockService.hasBlockBetween(friend.id)
-      .then((hasBlock) => {
-        if (latestSelectedChatRef.current === capturedFriendId && hasBlock !== isBlockedByMe) {
-          setActiveChatIsBlocked(hasBlock);
+    if (!isGroupConversation) {
+      blockService.hasBlockBetween(friend.id)
+        .then((hasBlock) => {
+          if (latestSelectedChatRef.current === capturedFriendId && hasBlock !== isBlockedByMe) {
+            setActiveChatIsBlocked(hasBlock);
+          }
+        })
+        .catch(() => {}); // Server enforces at send time via RLS
+
+      // Background check: is the other user's account deleted/inactive? (ORCH-0357)
+      Promise.resolve(
+        supabase
+          .from('profiles')
+          .select('active')
+          .eq('id', friend.id)
+          .single()
+      ).then(({ data: otherProfile }) => {
+        if (latestSelectedChatRef.current === capturedFriendId) {
+          setActiveChatIsDeletedAccount(otherProfile?.active === false || !otherProfile);
         }
-      })
-      .catch(() => {}); // Server enforces at send time via RLS
+      }).catch(() => {}); // Fail silently — input area defaults to visible
 
-    // Background check: is the other user's account deleted/inactive? (ORCH-0357)
-    Promise.resolve(
-      supabase
-        .from('profiles')
-        .select('active')
-        .eq('id', friend.id)
-        .single()
-    ).then(({ data: otherProfile }) => {
-      if (latestSelectedChatRef.current === capturedFriendId) {
-        setActiveChatIsDeletedAccount(otherProfile?.active === false || !otherProfile);
-      }
-    }).catch(() => {}); // Fail silently — input area defaults to visible
-
-    // Background friendship re-check (ORCH-0360) — handles re-friended users.
-    // The synchronous check above uses the cached friends list which may be stale.
-    // This server query catches cases where friendship was restored after unfriending.
-    Promise.resolve(
-      supabase
-        .from('friends')
-        .select('id')
-        .or(`and(user_id.eq.${user!.id},friend_user_id.eq.${friend.id}),and(user_id.eq.${friend.id},friend_user_id.eq.${user!.id})`)
-        .eq('status', 'accepted')
-        .limit(1)
-    ).then(({ data: friendshipData }) => {
-      if (latestSelectedChatRef.current === capturedFriendId) {
-        const isFriendNow = friendshipData && friendshipData.length > 0;
-        // Server is the single source of truth for unfriended state (ORCH-0360 rework).
-        // Set true only when server confirms NOT friends and NOT blocked.
-        setActiveChatIsUnfriended(!isFriendNow && !isBlockedByMe);
-      }
-    }).catch(() => {}); // Fail silently — optimistic false stays
+      // Background friendship re-check (ORCH-0360) — handles re-friended users.
+      // The synchronous check above uses the cached friends list which may be stale.
+      // This server query catches cases where friendship was restored after unfriending.
+      Promise.resolve(
+        supabase
+          .from('friends')
+          .select('id')
+          .or(`and(user_id.eq.${user!.id},friend_user_id.eq.${friend.id}),and(user_id.eq.${friend.id},friend_user_id.eq.${user!.id})`)
+          .eq('status', 'accepted')
+          .limit(1)
+      ).then(({ data: friendshipData }) => {
+        if (latestSelectedChatRef.current === capturedFriendId) {
+          const isFriendNow = friendshipData && friendshipData.length > 0;
+          // Server is the single source of truth for unfriended state (ORCH-0360 rework).
+          // Set true only when server confirms NOT friends and NOT blocked.
+          setActiveChatIsUnfriended(!isFriendNow && !isBlockedByMe);
+        }
+      }).catch(() => {}); // Fail silently — optimistic false stays
+    }
 
     setCurrentConversationId(conversation.id);
 
@@ -1686,6 +1774,22 @@ function ConnectionsPageRefactored({
     }
   }, [currentConversationId, user?.id, fetchConversations]);
 
+  const handleGroupSessionNameUpdated = useCallback((sessionId: string, newName: string) => {
+    setActiveChat((prev) =>
+      prev?.sessionId === sessionId ? { ...prev, name: newName } : prev
+    );
+    setConversations((prev) =>
+      prev.map((conv) => {
+        const meta = conv as Conversation & { session_id?: string | null; name?: string | null };
+        return meta.session_id === sessionId ? { ...conv, name: newName } : conv;
+      })
+    );
+  }, []);
+
+  const handleGroupSessionRemoved = useCallback((_sessionId: string) => {
+    handleBackFromMessage();
+  }, [handleBackFromMessage]);
+
   // ── Send message ─────────────────────────────────────────
   const handleSendMessage = async (
     content: string,
@@ -2260,6 +2364,12 @@ function ConnectionsPageRefactored({
             onBroadcastReceive={handleBroadcastReceive}
             isOffline={isOffline}
             onViewProfile={onNavigateToFriendProfile}
+            onSessionNameUpdated={handleGroupSessionNameUpdated}
+            onGroupSessionExited={handleGroupSessionRemoved}
+            onGroupSessionDeleted={handleGroupSessionRemoved}
+            onGroupParticipantsChange={() => {
+              if (user?.id) fetchConversations(user.id);
+            }}
           />
         </View>
 

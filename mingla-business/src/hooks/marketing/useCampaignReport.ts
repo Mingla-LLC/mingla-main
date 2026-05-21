@@ -18,6 +18,11 @@ export interface UseCampaignReportState {
   data: CampaignReport | undefined;
   isLoading: boolean;
   isError: boolean;
+  /**
+   * True once the query has resolved at least one fetch. `false` while
+   * `enabled: false`. Per I-DISABLED-QUERY-IS-LOADING (ORCH-0889).
+   */
+  hasResolved: boolean;
   refetch: UseQueryResult<CampaignReport>["refetch"];
 }
 
@@ -38,8 +43,9 @@ export function useCampaignReport(
       data: query.data,
       isLoading: query.isLoading,
       isError: query.isError,
+      hasResolved: query.isFetched,
       refetch: query.refetch,
     }),
-    [query.data, query.isLoading, query.isError, query.refetch],
+    [query.data, query.isLoading, query.isError, query.isFetched, query.refetch],
   );
 }

@@ -14,10 +14,23 @@ import { Icon } from "../ui/Icon";
 import { Conversation } from "../../hooks/useMessages";
 import { getDisplayName } from "../../utils/getDisplayName";
 
+/**
+ * ORCH-0898: extended Conversation shape with type + name + session_id so ChatListItem
+ * can branch on direct vs group rendering. The base `Conversation` (from useMessages —
+ * locked for ORCH-0900 scope) stays unchanged; the extra fields are optional and
+ * populated by ConnectionsPage's transform layer for post-ORCH-0898 group conversations.
+ * Direct conversations leave them undefined; ChatListItem renders the legacy direct path.
+ */
+export type ChatListItemConversation = Conversation & {
+  type?: 'direct' | 'group';
+  name?: string | null;
+  session_id?: string | null;
+};
+
 interface ChatListItemProps {
-  conversation: Conversation;
+  conversation: ChatListItemConversation;
   currentUserId: string;
-  onPress: (conversation: Conversation) => void;
+  onPress: (conversation: ChatListItemConversation) => void;
   isMuted?: boolean;
   onAvatarPress?: (userId: string) => void;
   /** ORCH-0435: Pair status for the other participant */
@@ -90,17 +103,31 @@ export function ChatListItem({
   onDelete,
 }: ChatListItemProps) {
   const { t } = useTranslation(['chat', 'common']);
-  // Find the other participant (for direct conversations)
+
+  // ORCH-0898: group vs direct branch. Group conversations have `type === 'group'` (passed
+  // through by ConnectionsPage transform from messagingService.getConversations server-shape).
+  // Direct conversations either omit `type` (legacy field) or have `type === 'direct'`.
+  const isGroup = conversation.type === 'group';
+
+  // For direct conversations: find the other participant; for group conversations: collect
+  // up to 3 non-self participants for the multi-avatar stack.
   const otherParticipant = conversation.participants.find(
-    (p) => p.id !== currentUserId
+    (p) => p.id !== currentUserId,
   );
+  const groupAvatarParticipants = isGroup
+    ? conversation.participants.filter((p) => p.id !== currentUserId).slice(0, 3)
+    : [];
 
-  const displayName = getDisplayName(otherParticipant);
+  const displayName = isGroup
+    ? conversation.name?.trim() || 'Collaboration chat'
+    : getDisplayName(otherParticipant);
 
-  // Clean email-like names
-  const cleanedName = displayName.includes("@")
-    ? displayName.substring(0, displayName.indexOf("@")).trim()
-    : displayName;
+  // Clean email-like names (direct path only — group names are user-set + don't contain emails).
+  const cleanedName = isGroup
+    ? displayName
+    : displayName.includes('@')
+      ? displayName.substring(0, displayName.indexOf('@')).trim()
+      : displayName;
 
   const lastMessage = conversation.last_message;
   const unreadCount = conversation.unread_count || 0;
@@ -118,6 +145,9 @@ export function ChatListItem({
       messagePreview =
         content.length > 40 ? content.substring(0, 40) + "..." : content;
     }
+  }
+  if (isGroup && messagePreview && lastMessage?.sender_name) {
+    messagePreview = `${lastMessage.sender_name}: ${messagePreview}`;
   }
 
   // Timestamp
@@ -183,32 +213,76 @@ export function ChatListItem({
         style={styles.container}
         activeOpacity={0.7}
       >
-        {/* Avatar */}
-        <TouchableOpacity
-          style={styles.avatarContainer}
-          onPress={() => {
-            if (onAvatarPress && otherParticipant?.id) {
-              onAvatarPress(otherParticipant.id);
-            } else {
-              onPress(conversation);
-            }
-          }}
-          activeOpacity={0.7}
-        >
-          <View
-            style={[
-              styles.avatar,
-              {
-                backgroundColor: getAvatarColor(
-                  otherParticipant?.id || conversation.id
-                ),
-              },
-            ]}
+        {/* Avatar — ORCH-0898 branches on conversation.type */}
+        {isGroup ? (
+          // Group: multi-avatar stack (up to 3 participants in a layered fan).
+          // Tapping opens the conversation (no per-participant route for groups in v1).
+          <TouchableOpacity
+            style={styles.avatarContainer}
+            onPress={() => onPress(conversation)}
+            activeOpacity={0.7}
+            accessibilityLabel={t('chat:groupChatAvatarLabel', { defaultValue: 'Group chat with {{count}} people', count: conversation.participants.length })}
           >
-            <Text style={styles.avatarText}>{getInitials(cleanedName)}</Text>
-          </View>
-          {otherParticipant?.is_online && <View style={styles.onlineDot} />}
-        </TouchableOpacity>
+            <View style={styles.groupAvatarStack}>
+              {groupAvatarParticipants.length === 0 ? (
+                // Fallback: empty group (host hasn't accepted anyone yet) — single placeholder avatar.
+                <View
+                  style={[
+                    styles.avatar,
+                    { backgroundColor: getAvatarColor(conversation.id) },
+                  ]}
+                >
+                  <Text style={styles.avatarText}>{getInitials(cleanedName)}</Text>
+                </View>
+              ) : (
+                groupAvatarParticipants.map((p, idx) => (
+                  <View
+                    key={p.id}
+                    style={[
+                      styles.avatar,
+                      styles.groupAvatarSegment,
+                      {
+                        backgroundColor: getAvatarColor(p.id),
+                        // Layer offset — successive avatars shift right by half-width.
+                        left: idx * 14,
+                        zIndex: groupAvatarParticipants.length - idx,
+                      },
+                    ]}
+                  >
+                    <Text style={styles.avatarText}>{getInitials(getDisplayName(p))}</Text>
+                  </View>
+                ))
+              )}
+            </View>
+          </TouchableOpacity>
+        ) : (
+          // Direct: single avatar (legacy render — unchanged).
+          <TouchableOpacity
+            style={styles.avatarContainer}
+            onPress={() => {
+              if (onAvatarPress && otherParticipant?.id) {
+                onAvatarPress(otherParticipant.id);
+              } else {
+                onPress(conversation);
+              }
+            }}
+            activeOpacity={0.7}
+          >
+            <View
+              style={[
+                styles.avatar,
+                {
+                  backgroundColor: getAvatarColor(
+                    otherParticipant?.id || conversation.id
+                  ),
+                },
+              ]}
+            >
+              <Text style={styles.avatarText}>{getInitials(cleanedName)}</Text>
+            </View>
+            {otherParticipant?.is_online && <View style={styles.onlineDot} />}
+          </TouchableOpacity>
+        )}
 
         {/* Content */}
         <View style={styles.content}>
@@ -241,8 +315,9 @@ export function ChatListItem({
           ) : null}
         </View>
 
-        {/* Pair/Unpair button — centered in row (ORCH-0435) */}
-        {pairStatus === 'paired' && onUnpairPress && (
+        {/* Pair/Unpair button — centered in row (ORCH-0435).
+            ORCH-0898: HIDDEN for group conversations (pairing is a 1-on-1 social-graph concept). */}
+        {!isGroup && pairStatus === 'paired' && onUnpairPress && (
           <TouchableOpacity
             onPress={() => { if (otherParticipant?.id) onUnpairPress(otherParticipant.id); }}
             style={styles.unpairBtn}
@@ -252,7 +327,7 @@ export function ChatListItem({
             <Text style={styles.unpairBtnText}>Unpair</Text>
           </TouchableOpacity>
         )}
-        {pairStatus === 'unpaired' && onPairPress && (
+        {!isGroup && pairStatus === 'unpaired' && onPairPress && (
           <TouchableOpacity
             onPress={() => { if (otherParticipant?.id) onPairPress(otherParticipant.id); }}
             disabled={pairLoading}
@@ -269,7 +344,7 @@ export function ChatListItem({
             )}
           </TouchableOpacity>
         )}
-        {pairStatus === 'pending' && (
+        {!isGroup && pairStatus === 'pending' && (
           <TouchableOpacity
             style={styles.pendingPairBadge}
             onPress={() => { if (otherParticipant?.id) onPendingPairPress?.(otherParticipant.id); }}
@@ -325,6 +400,21 @@ const styles = StyleSheet.create({
     color: "#ffffff",
     fontSize: 18,
     fontWeight: "600",
+  },
+  // ORCH-0898: layered fan stack of up to 3 participant avatars for group conversations.
+  groupAvatarStack: {
+    width: 78, // accommodates 3 × 50px avatars with 14px overlap = 50 + 2*14 = 78
+    height: 50,
+    position: 'relative',
+  },
+  groupAvatarSegment: {
+    position: 'absolute',
+    top: 0,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    borderWidth: 2,
+    borderColor: '#ffffff',
   },
   onlineDot: {
     position: "absolute",

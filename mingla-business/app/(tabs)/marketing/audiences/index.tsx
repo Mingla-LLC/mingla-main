@@ -80,9 +80,15 @@ export default function MarketingAudiencesRoute(): React.ReactElement {
     [accountId, router],
   );
 
-  if (listState.isLoading && listState.entries.length === 0) {
+  // ORCH-0889: disabled-query (auth-bootstrap) and first-fetch states
+  // both render the skeleton. The old guard `isLoading && entries.length
+  // === 0` mis-fired during the web auth-bootstrap window (React Query
+  // reports `isLoading: false` when `enabled: false`) and fell through to
+  // the "No buyers yet." empty-state — falsely communicating a terminal
+  // state. Per I-DISABLED-QUERY-IS-LOADING.
+  if (!listState.hasResolved && !listState.isError) {
     return (
-      <View style={styles.host}>
+      <View style={styles.host} testID="audiences-skeleton">
         <ScrollView contentContainerStyle={styles.scrollContent}>
           <Text style={styles.sectionLabel}>YOUR AUDIENCES</Text>
           <Text style={styles.sectionCaption}>Auto-updated as people buy tickets.</Text>

@@ -20,7 +20,6 @@ import {
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { EmptyState } from "../../../src/components/ui/EmptyState";
 import { Icon } from "../../../src/components/ui/Icon";
@@ -36,10 +35,11 @@ import {
 } from "../../../src/constants/designSystem";
 import { useAuth } from "../../../src/context/AuthContext";
 import { useMarketingOverview } from "../../../src/hooks/marketing/useMarketingOverview";
+import { useStickyFooterOffset } from "../../../src/hooks/useStickyFooterOffset";
 
 export default function MarketingOverviewRoute(): React.ReactElement {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
+  const fabOffset = useStickyFooterOffset();
   const { user } = useAuth();
   const accountId = user?.id ?? null;
   const overviewQuery = useMarketingOverview(accountId);
@@ -55,12 +55,16 @@ export default function MarketingOverviewRoute(): React.ReactElement {
     [router],
   );
 
-  // Loading first paint (no cache): show skeleton-like layout (metric cards
-  // with dim placeholders) instead of a full-screen spinner — preserves
-  // the layout so the eye doesn't jump.
-  if (overviewQuery.isLoading && overviewQuery.data === undefined) {
+  // ORCH-0889: disabled-query (auth-bootstrap) state must render the
+  // skeleton, NOT the error empty-state. React Query reports
+  // `isLoading: false` when `enabled: false`, so the old guard
+  // `isLoading && data === undefined` mis-fired during the 4-8s web
+  // auth-bootstrap window and showed "Couldn't load metrics" for users
+  // whose data was fine. Correct gate: `!hasResolved && !isError` →
+  // loading; otherwise pass through. Per I-DISABLED-QUERY-IS-LOADING.
+  if (!overviewQuery.hasResolved && !overviewQuery.isError) {
     return (
-      <View style={styles.host}>
+      <View style={styles.host} testID="overview-skeleton">
         <ScrollView contentContainerStyle={styles.scrollContent}>
           <View style={styles.headlineCardSkeleton}>
             <ActivityIndicator size="small" color={textTokens.secondary} />
@@ -160,7 +164,7 @@ export default function MarketingOverviewRoute(): React.ReactElement {
         accessibilityLabel="New campaign"
         style={({ pressed }) => [
           styles.fab,
-          { bottom: insets.bottom + 96 },
+          { bottom: fabOffset },
           pressed ? styles.fabPressed : null,
         ]}
       >

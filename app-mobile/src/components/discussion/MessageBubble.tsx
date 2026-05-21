@@ -133,6 +133,22 @@ function MessageBubbleComponent({
   isLastOwnMessage,
   onScrollToMessage,
 }: MessageBubbleProps) {
+  // ORCH-0898: system-message render branch — messages with NULL sender (e.g., ORCH-0899
+  // "Plan another outing" round-start announcements) render as a centered muted row with
+  // no avatar, no reactions, no replies, no swipe actions. The NULL-sender unread fix
+  // shipped by ORCH-0901 commit bb74655b already counts these toward unread badges.
+  // Detect via message.user_id === null (legacy board_messages shape) — the unified
+  // substrate's sender_id maps to user_id via the useSessionDiscussion adapter layer.
+  if (message.user_id === null || message.user_id === undefined) {
+    return (
+      <View style={systemRowStyles.systemMessageRow} accessibilityRole="text" accessibilityLabel={`System message: ${message.content}`}>
+        <Text style={systemRowStyles.systemMessageText} numberOfLines={3}>
+          {message.content}
+        </Text>
+      </View>
+    );
+  }
+
   const reactions = message.reactions ?? [];
   const readBy = message.read_by ?? [];
   const senderName = getDisplayName(message.user, '') || participantNames[message.user_id] || "Unknown";
@@ -200,11 +216,6 @@ function MessageBubbleComponent({
           isOwnMessage ? styles.bubbleContainerOwn : styles.bubbleContainerOther,
         ]}
       >
-        {/* Sender name for other users */}
-        {!isOwnMessage && (
-          <Text style={styles.senderName}>{senderName}</Text>
-        )}
-
         {/* Bubble */}
         <TouchableOpacity
           activeOpacity={0.8}
@@ -218,6 +229,16 @@ function MessageBubbleComponent({
               isOwnMessage ? styles.bubbleOwn : styles.bubbleOther,
             ]}
           >
+            <Text
+              style={[
+                styles.senderName,
+                isOwnMessage ? styles.senderNameOwn : styles.senderNameOther,
+              ]}
+              numberOfLines={1}
+            >
+              {senderName}
+            </Text>
+
             {/* Reply quote block */}
             {message.reply_to && (
               <ReplyQuoteBlock
@@ -294,6 +315,24 @@ function MessageBubbleComponent({
 const MessageBubble = React.memo(MessageBubbleComponent);
 export default MessageBubble;
 
+// ORCH-0898: system-message render styles (centered, muted, no chrome).
+const systemRowStyles = StyleSheet.create({
+  systemMessageRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    marginBottom: 8,
+  },
+  systemMessageText: {
+    fontSize: 12,
+    color: '#9ca3af',
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
+});
+
 const styles = StyleSheet.create({
   messageRow: {
     flexDirection: "row",
@@ -333,8 +372,13 @@ const styles = StyleSheet.create({
   senderName: {
     ...typography.xs,
     fontWeight: "600",
-    color: colors.gray[700],
     marginBottom: 2,
+  },
+  senderNameOwn: {
+    color: "rgba(255,255,255,0.78)",
+  },
+  senderNameOther: {
+    color: colors.gray[700],
   },
   bubble: {
     paddingHorizontal: 10,

@@ -17,6 +17,12 @@ export interface UseTemplateState {
   data: MarketingTemplateRow | null | undefined;
   isLoading: boolean;
   isError: boolean;
+  /**
+   * True once the query has resolved at least one fetch. `false` while
+   * `enabled: false` (the `templates/new` sentinel route, or templateId
+   * not yet provided). Per I-DISABLED-QUERY-IS-LOADING (ORCH-0889).
+   */
+  hasResolved: boolean;
   refetch: UseQueryResult<MarketingTemplateRow | null>["refetch"];
 }
 
@@ -42,8 +48,9 @@ export function useTemplate(
       data: query.data,
       isLoading: query.isLoading,
       isError: query.isError,
+      hasResolved: query.isFetched,
       refetch: query.refetch,
     }),
-    [query.data, query.isLoading, query.isError, query.refetch],
+    [query.data, query.isLoading, query.isError, query.isFetched, query.refetch],
   );
 }

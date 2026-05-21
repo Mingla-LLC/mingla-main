@@ -12,6 +12,19 @@ export interface Friend {
   lastSeen?: string;
   mutualFriends?: number;
   isMuted?: boolean;
+  conversationType?: 'direct' | 'group';
+  sessionId?: string | null;
+  sessionCreatorId?: string | null;
+  isSessionAdmin?: boolean;
+  notificationsMuted?: boolean;
+  participantCount?: number;
+  participants?: {
+    id: string;
+    name?: string;
+    username?: string;
+    avatar_url?: string;
+    is_online?: boolean;
+  }[];
 }
 
 export interface Message {

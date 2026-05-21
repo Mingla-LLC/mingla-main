@@ -17,6 +17,14 @@ export interface UseMarketingOverviewState {
   data: MarketingOverviewSnapshot | undefined;
   isLoading: boolean;
   isError: boolean;
+  /**
+   * True once the query has resolved at least one fetch (success OR error).
+   * `false` while `enabled: false` (auth bootstrap) AND while the first
+   * fetch is in flight. Consumers must treat
+   * `!hasResolved && !isError` as a loading state — see
+   * I-DISABLED-QUERY-IS-LOADING (ORCH-0889).
+   */
+  hasResolved: boolean;
   refetch: UseQueryResult<MarketingOverviewSnapshot>["refetch"];
 }
 
@@ -37,8 +45,9 @@ export function useMarketingOverview(
       data: query.data,
       isLoading: query.isLoading,
       isError: query.isError,
+      hasResolved: query.isFetched,
       refetch: query.refetch,
     }),
-    [query.data, query.isLoading, query.isError, query.refetch],
+    [query.data, query.isLoading, query.isError, query.isFetched, query.refetch],
   );
 }
