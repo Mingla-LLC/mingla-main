@@ -1,5 +1,6 @@
 import { BoardCardService } from '../../services/boardCardService';
 import { mixpanelService } from '../../services/mixpanelService';
+import { buildCardDataPayload } from './collabSaveCard';
 import type { Recommendation } from '../../types/recommendation';
 
 /**
@@ -17,9 +18,12 @@ import type { Recommendation } from '../../types/recommendation';
  *
  * Differences vs. collabSaveCard (right-swipe path):
  *   - swipeDirection: 'left'
- *   - cardData: null (no need to populate; left-swipes never promote to
- *     board_saved_cards; the card_data column is only read by the
- *     check_mutual_like trigger which short-circuits for left-swipes)
+ *   - cardData: full payload via buildCardDataPayload (same shape as
+ *     right-swipes). check_mutual_like short-circuits for left-swipes so
+ *     this payload is never read by the trigger, but useSessionDismissedCards
+ *     reads it to render attribution rows for cards OTHER participants
+ *     passed on — including cards the current user hasn't seen yet, which
+ *     have no local Recommendation to fall back on. ORCH-0902 CR-6.
  *   - No provisional toast (UX: dismissal is silent)
  *   - No match notification path
  *   - No "It's a match!" upgrade
@@ -44,10 +48,12 @@ export async function collabRecordLeftSwipe({
     sessionId,
     experienceId: card.id,
     userId,
-    // Empty object — RecordSwipeAndCheckMatchParams typed Record<string, unknown>;
-    // the check_mutual_like trigger short-circuits on swipe_state != 'swiped_right'
-    // so card_data is never read for left swipes regardless.
-    cardData: {},
+    // ORCH-0902 CR-6: full card payload, same shape as collabSaveCard.
+    // Trigger short-circuits for left-swipes (never written to
+    // board_saved_cards), but useSessionDismissedCards reads this back to
+    // render the visible-but-not-binding dismissed sheet — including cards
+    // the current viewer has not yet seen in their own deck.
+    cardData: buildCardDataPayload(card),
     swipeDirection: 'left',
   });
 
