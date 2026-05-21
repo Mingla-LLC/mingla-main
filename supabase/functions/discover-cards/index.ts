@@ -1033,11 +1033,24 @@ async function handleDeterministicV2(args: {
   const curatedUtcNow = agg.datetimePref ? new Date(agg.datetimePref) : new Date();
   const hoursFilteredCards = filterCuratedByStopHours(timeFilteredCards, curatedUtcNow);
 
-  // ── Step 14: final CR-1 deterministic sort: place_id ASC + zero matchScore ─
-  const finalCards = hoursFilteredCards
-    .slice()
-    .sort((a: any, b: any) => (a.id ?? '').localeCompare(b.id ?? ''))
-    .map((card: any) => ({ ...card, matchScore: 0 }));
+  // ── Step 14: zero matchScore for collab (CR-1) — global localeCompare
+  // DROPPED here. The previous `.sort(place_id ASC)` was redundant for
+  // determinism AND destroyed the round-robin interleave from Step 11 by
+  // re-clustering cards alphabetically by Google Place ID. In practice that
+  // meant the largest signal pool (e.g. fine_dining with 107 cards vs movies
+  // with 7) dominated the leading positions of every deck, producing the
+  // "only fine dining" symptom observed 2026-05-21. Determinism still holds
+  // without the sort: every upstream step is a pure function of session
+  // state — pg_aggregate_collab_prefs returns categories alphabetically
+  // sorted, resolveCategories is deterministic, the per-chip score sort
+  // (Step 13) has a stable place_id ASC tiebreaker via
+  // query_servable_places_by_signal_union, and roundRobinByChip iterates
+  // canonicalCategories in fixed order. Two participants with identical
+  // session state produce byte-identical round-robin output.
+  const finalCards = hoursFilteredCards.map((card: any) => ({
+    ...card,
+    matchScore: 0,
+  }));
 
   // ── Step 15: response with deck_version + deck_params_hash ─────────────
   const elapsed = Date.now() - t0;
