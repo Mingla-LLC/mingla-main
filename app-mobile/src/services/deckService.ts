@@ -513,6 +513,12 @@ class DeckService {
 
     const curatedPromise: Promise<Recommendation[][]> = (async () => {
       if (curatedPills.length === 0) return [];
+      // ORCH-0902 CR-1: location is optional on DeckParams (collab path
+      // doesn't send it). The curated experiences service requires a location
+      // (it's signal-anchored). Solo always supplies one; if absent we skip
+      // curated entirely.
+      if (!params.location) return [];
+      const curatedLocation = params.location;
       return Promise.all(
         curatedPills.map(async (pill): Promise<Recommendation[]> => {
           try {
@@ -522,7 +528,7 @@ class DeckService {
             // verdict (pool_empty | no_viable_anchor | pipeline_error).
             const response = await curatedExperiencesService.generateCuratedExperiences({
               experienceType: pill.id as any,
-              location: params.location,
+              location: curatedLocation,
               travelMode: params.travelMode,
               travelConstraintType: params.travelConstraintType,
               travelConstraintValue: params.travelConstraintValue,
@@ -756,6 +762,109 @@ class DeckService {
       serverPath: finalServerPath,
       curatedEmptyReason,
     };
+  }
+
+  /**
+   * ORCH-0902 CR-1 collab deterministic-v2 fetch. Sends ONLY
+   * { session_id, expected_deck_version } to discover-cards. Server runs
+   * pg_aggregate_collab_prefs, builds the union-of-circles query, sorts by
+   * place_id.localeCompare for byte-identical ordering across participants,
+   * and returns { cards, deck_version, deck_params_hash }.
+   *
+   * Single HTTP call, no curated parallel path (collab v2 does not interleave
+   * curated experiences with category venues; that pattern is solo-only).
+   *
+   * `onPartialReady` is accepted for interface parity with the solo fetcher
+   * but NOT called — v2 returns the final deck atomically per CR-1.
+   */
+  private async fetchCollabDeckV2(
+    params: DeckParams,
+    _onPartialReady?: (cards: Recommendation[], meta: { source: PartialDeliverySource }) => void,
+  ): Promise<DeckResponse> {
+    const sessionId = params.sessionId;
+    if (!sessionId) {
+      throw new DeckFetchError(
+        'fetchCollabDeckV2 called without sessionId — caller must enforce mode==="collab" && sessionId guard',
+        'pipeline-error',
+      );
+    }
+
+    let fetchTimer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        fetchTimer = setTimeout(() => {
+          const err = new Error('discover-cards (collab v2) timed out after 15s');
+          err.name = 'AbortError';
+          reject(err);
+        }, 15000);
+      });
+
+      const { data, error } = await Promise.race([
+        trackedInvoke('discover-cards', {
+          body: {
+            session_id: sessionId,
+            ...(typeof params.deckVersion === 'number'
+              ? { expected_deck_version: params.deckVersion }
+              : {}),
+          },
+        }),
+        timeoutPromise,
+      ]);
+
+      if (error) {
+        const msg =
+          typeof error === 'string' ? error : (error as any)?.message || 'Unknown error';
+        const status = (error as any)?.context?.status;
+        // 409 = deck_version_mismatch — surface as pipeline-error so the
+        // hook refetches once the realtime deck_version update lands and the
+        // pinned version updates accordingly.
+        const serverPath: DeckServerPath =
+          status === 401 ? 'auth-required' : 'pipeline-error';
+        console.warn(`[DeckService/collab-v2] discover-cards error status=${status}:`, msg);
+        throw new DeckFetchError(`discover-cards (collab v2) failed: ${msg}`, serverPath);
+      }
+
+      const rawPath = data?.sourceBreakdown?.path;
+      const serverPath: DeckServerPath =
+        rawPath === 'pipeline' ||
+        rawPath === 'pool-empty' ||
+        rawPath === 'auth-required' ||
+        rawPath === 'pipeline-error'
+          ? rawPath
+          : 'pipeline';
+
+      const cards = ((data?.cards as any[]) ?? []).map(unifiedCardToRecommendation);
+
+      if (__DEV__) {
+        console.log(
+          `[DeckService/collab-v2] session=${sessionId} deck_version=${data?.deck_version} cards=${cards.length} path=${serverPath}`,
+        );
+      }
+
+      return {
+        cards,
+        deckMode: 'mixed',
+        activePills: [],
+        total: cards.length,
+        // Collab v2 returns the FULL deck in one shot; no pagination.
+        hasMore: false,
+        serverPath,
+      };
+    } catch (err) {
+      if (err instanceof DeckFetchError) throw err;
+      if ((err as any)?.name === 'AbortError') {
+        throw new DeckFetchError(
+          'discover-cards (collab v2) timed out after 15s',
+          'pipeline-error',
+        );
+      }
+      throw new DeckFetchError(
+        (err as Error)?.message || 'discover-cards (collab v2) failed',
+        'pipeline-error',
+      );
+    } finally {
+      if (fetchTimer) clearTimeout(fetchTimer);
+    }
   }
 
 }

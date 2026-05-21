@@ -172,31 +172,56 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
   const { location, enabled, ...restParams } = params;
   const queryClient = useQueryClient();
 
-  const isEnabled = enabled && location !== null;
+  // ORCH-0902 CR-1: collab mode does NOT require location (server reads
+  // everything from session state). Solo mode still requires location.
+  const isCollab = params.mode === 'collab';
+  const isEnabled =
+    enabled &&
+    (isCollab
+      ? !!params.sessionId && (params.deckVersion ?? 0) > 0
+      : location !== null);
 
-  // Build query key using the shared function — guarantees identical key shape
-  // between this hook and onboarding prefetch (ORCH-0386).
+  // Build query key. For collab the key is tiny — (sessionId, deckVersion).
+  // For solo + legacy the key includes location/category/travel/etc. as before.
   // On cold start before location resolves, use lastKnownQueryKey (from persisted
   // session state, proximity-checked) to read hydrated cache instantly. ORCH-0391.
-  const queryKey = location
-    ? buildDeckQueryKey({
-        // ORCH-0490 Phase 2.3: thread mode + sessionId for new key shape.
-        // Undefined when flag-off caller doesn't provide them — legacy shape.
-        mode: params.mode,
-        sessionId: params.sessionId,
-        lat: location.lat,
-        lng: location.lng,
-        categories: params.categories,
-        intents: params.intents ?? [],
-        travelMode: params.travelMode,
-        travelConstraintType: params.travelConstraintType,
-        travelConstraintValue: params.travelConstraintValue,
-        datetimePref: params.datetimePref,
-        dateOption: params.dateOption,
-        batchSeed: params.batchSeed,
-        excludeCardIds: params.excludeCardIds,
-      })
-    : (params.lastKnownQueryKey ?? ['deck-cards', null]);
+  let queryKey: readonly unknown[];
+  if (isCollab) {
+    queryKey = buildDeckQueryKey({
+      mode: 'collab',
+      sessionId: params.sessionId,
+      deckVersion: params.deckVersion ?? 0,
+      // Solo fields below are ignored by the collab branch in buildDeckQueryKey.
+      lat: 0,
+      lng: 0,
+      categories: [],
+      intents: [],
+      travelMode: '',
+      travelConstraintType: '',
+      travelConstraintValue: 0,
+      batchSeed: 0,
+    });
+  } else if (location) {
+    queryKey = buildDeckQueryKey({
+      // ORCH-0490 Phase 2.3: thread mode + sessionId for new key shape.
+      // Undefined when flag-off caller doesn't provide them — legacy shape.
+      mode: params.mode,
+      sessionId: params.sessionId,
+      lat: location.lat,
+      lng: location.lng,
+      categories: params.categories,
+      intents: params.intents ?? [],
+      travelMode: params.travelMode,
+      travelConstraintType: params.travelConstraintType,
+      travelConstraintValue: params.travelConstraintValue,
+      datetimePref: params.datetimePref,
+      dateOption: params.dateOption,
+      batchSeed: params.batchSeed,
+      excludeCardIds: params.excludeCardIds,
+    });
+  } else {
+    queryKey = params.lastKnownQueryKey ?? ['deck-cards', null];
+  }
 
   const query = useQuery<DeckResponse>({
     queryKey,

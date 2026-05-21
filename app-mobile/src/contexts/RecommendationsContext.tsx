@@ -541,35 +541,40 @@ export const RecommendationsProvider: React.FC<
     isLoadingPreferences,
   ]);
 
-  // ── Collaboration deck params (union of all participants) ─────────────
+  // ── ORCH-0902 CR-1: V_n exhaustion state machine ───────────────────────
+  // pinnedDeckVersion tracks WHICH version this participant is currently
+  // consuming. May lag behind session.deck_version after a pref change;
+  // advances to session.deck_version only when the user has exhausted V_n
+  // (last-card swipe). null = "no deck pinned yet" (first entry).
+  // Persisted into deckStateRegistry via the context-switch effect so a
+  // rejoin restores the same version (CR-4 resume).
+  const [pinnedDeckVersion, setPinnedDeckVersion] = useState<number | null>(null);
+
+  // ── ORCH-0902 CR-1: collab deck params (server-aggregated) ──────────────
+  // Client-side aggregation was retired by CR-9. The collab fetch sends ONLY
+  // { session_id, expected_deck_version } to discover-cards. This memo just
+  // surfaces the pinned version + session metadata for the hook below; the
+  // actual aggregation happens server-side in pg_aggregate_collab_prefs.
   const collabDeckParams = useMemo(() => {
-    if (!isCollaborationMode || !allParticipantPrefs || allParticipantPrefs.length === 0) {
-      return null;
-    }
-
-    // ORCH-0446: Corrected aggregation with proper algorithms
-    const aggregated = aggregateCollabPrefs(allParticipantPrefs);
-
-    if (aggregated.categories.length === 0 && aggregated.intents.length === 0) return null;
-
+    const sessionRow = boardSessionResult?.session;
+    if (!isCollaborationMode || !sessionRow) return null;
+    if (pinnedDeckVersion === null || pinnedDeckVersion === 0) return null;
     return {
-      categories: aggregated.categories,
-      intents: aggregated.intents,
-      travelMode: aggregated.travelMode,
-      travelConstraintType: aggregated.travelConstraintType,
-      travelConstraintValue: aggregated.travelConstraintValue,
-      datetimePref: aggregated.datetimePref,
-      dateOption: aggregated.dateOption,
-      dateWindows: aggregated.dateWindows, // ORCH-0446: for AND date logic
-      location: aggregated.location,
+      sessionId: sessionRow.id,
+      deckVersion: pinnedDeckVersion,
+      deckParamsHash: sessionRow.deck_params_hash ?? null,
     };
-  }, [isCollaborationMode, allParticipantPrefs]);
+  }, [isCollaborationMode, boardSessionResult?.session, pinnedDeckVersion]);
 
   // ── Solo Deck Hook (existing useDeckCards, only for solo mode) ────────
+  // ORCH-0902 CR-7: collab no longer reads collabDeckParams.location (the
+  // shape changed to {sessionId, deckVersion, deckParamsHash}). For collab,
+  // server reads location from session state via pg_aggregate_collab_prefs;
+  // the activeDeckLocation here only matters for the (dead) legacyDeck path
+  // and as a not-null gate signal for solo. Falling back to userLocation
+  // keeps the gate semantics intact.
   const activeDeckParams = isSoloMode ? stableDeckParams : collabDeckParams;
-  const activeDeckLocation = isSoloMode
-    ? userLocation
-    : (collabDeckParams?.location ?? userLocation);
+  const activeDeckLocation = userLocation;
 
   // ── Guard: defer deck query until params are stable for 1 tick ──────
   // During mode transitions, activeDeckParams can flicker null → value → same value
@@ -579,8 +584,21 @@ export const RecommendationsProvider: React.FC<
   const deckParamsStableRef = useRef(false);
   const prevDeckParamsRef = useRef<string | null>(null);
 
+  // ORCH-0902 CR-7: activeDeckParams now has two shapes:
+  //   solo  → { categories, intents, ... } from stableDeckParams
+  //   collab → { sessionId, deckVersion, deckParamsHash } from new memo
+  // Stability key partitions accordingly — solo uses categories/intents,
+  // collab uses (sessionId, deckVersion) as the fingerprint.
   const currentParamsKey = activeDeckParams
-    ? JSON.stringify([activeDeckParams.categories, activeDeckParams.intents])
+    ? isSoloMode
+      ? JSON.stringify([
+          (activeDeckParams as { categories?: string[] }).categories ?? [],
+          (activeDeckParams as { intents?: string[] }).intents ?? [],
+        ])
+      : JSON.stringify([
+          (activeDeckParams as { sessionId?: string }).sessionId,
+          (activeDeckParams as { deckVersion?: number }).deckVersion,
+        ])
     : null;
 
   useEffect(() => {
@@ -601,25 +619,20 @@ export const RecommendationsProvider: React.FC<
 
   // ── Mode-aware preference resolution ────────────────────────────────
   // In solo mode: read from userPrefs (current user's DB preferences).
-  // In collab mode: read from collabDeckParams (aggregated group consensus).
-  // Categories and intents already come from activeDeckParams — this extends
-  // the same pattern to budget, travel, and datetime fields.
+  // ORCH-0902 CR-7: in collab mode, none of these flow to the server anymore
+  // (discover-cards reads everything from session state via
+  // pg_aggregate_collab_prefs). The values below only feed the (dead) legacy
+  // hook and the flag-on solo hook for cache-warming. We default to user
+  // prefs in collab mode so the solo cache stays consistent with the user's
+  // own choices when they toggle back to solo.
 
-  const effectiveTravelMode = isCollaborationMode && collabDeckParams
-    ? collabDeckParams.travelMode
-    : userPrefs?.travel_mode ?? 'walking';
+  const effectiveTravelMode = userPrefs?.travel_mode ?? 'walking';
 
-  const effectiveTravelConstraintValue = isCollaborationMode && collabDeckParams
-    ? collabDeckParams.travelConstraintValue
-    : userPrefs?.travel_constraint_value ?? 30;
+  const effectiveTravelConstraintValue = userPrefs?.travel_constraint_value ?? 30;
 
-  const effectiveDatetimePref = isCollaborationMode && collabDeckParams
-    ? (collabDeckParams.datetimePref ?? undefined)
-    : userPrefs?.datetime_pref ?? undefined;
+  const effectiveDatetimePref = userPrefs?.datetime_pref ?? undefined;
 
-  // dateOption: collab aggregation doesn't compute this (solo-only UI concept).
-  // For collab, pass 'today' so the edge function uses datetimePref-based filtering.
-  const effectiveDateOption = isCollaborationMode ? 'today' : (userPrefs?.date_option ?? 'today');
+  const effectiveDateOption = userPrefs?.date_option ?? 'today';
 
   // ── ORCH-0490 Phase 2.3: Parallel deck hooks (flag-on) + legacy hook (flag-off) ──
   //
@@ -638,10 +651,16 @@ export const RecommendationsProvider: React.FC<
 
   // Legacy hook — flag-off path. Preserves pre-2.3 unified solo+collab behavior.
   // [TRANSITIONAL] deletable on flag exit condition per featureFlags.ts.
+  // ORCH-0902 CR-7: under FEATURE_FLAG_PER_CONTEXT_DECK_STATE=true (current
+  // production), this hook never runs. The collab-only fields below are
+  // stubbed to safe defaults — they would only matter if the flag flipped
+  // false for emergency rollback, in which case the legacy aggregation path
+  // is broken anyway (aggregateCollabPrefs now throws). See deprecation stub
+  // at app-mobile/src/utils/sessionPrefsUtils.ts.
   const legacyDeck = useDeckCards({
     location: activeDeckLocation,
-    categories: activeDeckParams?.categories ?? [],
-    intents: activeDeckParams?.intents ?? [],
+    categories: isSoloMode ? (stableDeckParams?.categories ?? []) : [],
+    intents: isSoloMode ? (stableDeckParams?.intents ?? []) : [],
     travelMode: effectiveTravelMode,
     travelConstraintType: 'time' as const,
     travelConstraintValue: effectiveTravelConstraintValue,
@@ -649,7 +668,7 @@ export const RecommendationsProvider: React.FC<
     dateOption: effectiveDateOption,
     batchSeed,
     enabled: !FEATURE_FLAG_PER_CONTEXT_DECK_STATE &&
-      (isSoloMode || isCollaborationMode) &&
+      isSoloMode &&  // ORCH-0902 CR-7: legacy path is solo-only now
       !!activeDeckLocation &&
       activeDeckParams !== null &&
       isDeckParamsStable &&
@@ -657,8 +676,6 @@ export const RecommendationsProvider: React.FC<
       batchSeedReady,
     excludeCardIds: [],
     lastKnownQueryKey: lastDeckKey,
-    dateWindows: isCollaborationMode ? (collabDeckParams as any)?.dateWindows : undefined,
-    sessionId: isCollaborationMode ? resolvedSessionId ?? undefined : undefined,
     // No `mode` field — legacy key shape.
   });
 
@@ -686,33 +703,38 @@ export const RecommendationsProvider: React.FC<
     lastKnownQueryKey: isSoloMode ? lastDeckKey : null,
   });
 
-  // Flag-on COLLAB hook. Enabled when we're actively in a collab session
-  // with resolved params. One hook instance serves whichever collab session
-  // is active — the query key's sessionId discriminant keeps cache entries
-  // separate across sessions.
+  // ORCH-0902 CR-1: flag-on COLLAB hook — slim deterministic-v2 contract.
+  // Sends ONLY { mode, sessionId, deckVersion } to useDeckCards. All other
+  // params (location/categories/intents/travelMode/etc.) were retired by
+  // CR-7 — the server reads them from session state via the new SQL
+  // aggregation function. The query key partitions per (sessionId,
+  // deckVersion) so a deck_version bump triggers a cache miss + refetch.
+  // The pinnedDeckVersion buffer (CR-3 V_n exhaustion) ensures the hook
+  // STAYS on the user's current version until they swipe past the last
+  // card; the transition effect below lifts it when they exhaust V_n.
   const flagCollabDeck = useDeckCards({
     mode: 'collab',
-    sessionId: resolvedSessionId ?? undefined,
-    location: isCollaborationMode
-      ? (collabDeckParams?.location ?? userLocation)
-      : null,
-    categories: isCollaborationMode ? (collabDeckParams?.categories ?? []) : [],
-    intents: isCollaborationMode ? (collabDeckParams?.intents ?? []) : [],
-    travelMode: collabDeckParams?.travelMode ?? 'walking',
+    sessionId: collabDeckParams?.sessionId,
+    deckVersion: collabDeckParams?.deckVersion ?? 0,
+    // The fields below are required by the legacy UseDeckCardsParams shape
+    // but ignored by the collab branch in buildDeckQueryKey + the collab
+    // branch in deckService.fetchDeck. Safe defaults.
+    location: null,
+    categories: [],
+    intents: [],
+    travelMode: 'walking',
     travelConstraintType: 'time' as const,
-    travelConstraintValue: collabDeckParams?.travelConstraintValue ?? 30,
-    datetimePref: collabDeckParams?.datetimePref ?? undefined,
+    travelConstraintValue: 30,
     dateOption: 'today',
     batchSeed,
     enabled: FEATURE_FLAG_PER_CONTEXT_DECK_STATE &&
       isCollaborationMode &&
-      !!resolvedSessionId &&
       !!collabDeckParams &&
+      collabDeckParams.deckVersion > 0 &&
       !isWaitingForSessionResolution &&
       isDeckParamsStable &&
       batchSeedReady,
     excludeCardIds: [],
-    dateWindows: (collabDeckParams as any)?.dateWindows,
   });
 
   // Active-deck selection: one flag branch, one mode branch within the flag-on.
@@ -757,12 +779,16 @@ export const RecommendationsProvider: React.FC<
       // (e.g. OTA rolling the flag to true for prod), the first cold launch
       // post-flip sees a shape mismatch and cold-starts through the fetch
       // path (one-time skeleton). Acceptable for dark-ship rollout.
+      // ORCH-0902 CR-7: this branch is solo-only (isSoloMode check above);
+      // read categories/intents from the solo source directly to avoid the
+      // collab-shape `{sessionId, deckVersion, ...}` union creeping in.
+      const soloParams = stableDeckParams;
       const key = buildDeckQueryKey({
         ...(FEATURE_FLAG_PER_CONTEXT_DECK_STATE ? { mode: 'solo' as const } : {}),
         lat: activeDeckLocation.lat,
         lng: activeDeckLocation.lng,
-        categories: activeDeckParams.categories,
-        intents: activeDeckParams.intents,
+        categories: soloParams?.categories ?? [],
+        intents: soloParams?.intents ?? [],
         travelMode: effectiveTravelMode,
         travelConstraintType: 'time',
         travelConstraintValue: effectiveTravelConstraintValue,
@@ -972,8 +998,11 @@ export const RecommendationsProvider: React.FC<
   // (Batch history and navigation removed — cards accumulate in flat array)
 
   // ── Pre-fetch next page when 8 or fewer cards remain ─────────────────
+  // ORCH-0902 CR-1: collab v2 returns the FULL deck atomically (no
+  // pagination), so this prefetch path is SOLO-only now. Collab early-returns.
   const handleDeckCardProgress = useCallback((currentIndex: number, total: number) => {
     if (!activeDeckLocation || !activeDeckParams) return;
+    if (isCollaborationMode) return;  // ORCH-0902: no prefetch in collab v2
     const remainingCards = total - currentIndex - 1;
 
     // When 8 or fewer cards remain, prefetch next page (once per page)
@@ -985,18 +1014,17 @@ export const RecommendationsProvider: React.FC<
       // by the deck cards sync effect and appended to recommendations.
       setBatchSeed(nextSeed);
 
-      // ORCH-0446/0636: both solo and collab prefetch via deckService under the
-      // shared deck-cards query key — useDeckCards consumes the same key for
-      // both modes (see flagSoloDeck / flagCollabDeck above). The retired
-      // server-side collab deck hook + helper type were deleted in ORCH-0446;
-      // this removes the dead collab-specific branch that still referenced them.
-      const prefetchCategories = activeDeckParams.categories ?? [];
-      const prefetchIntents = activeDeckParams.intents ?? [];
-      const prefetchTravelMode = isSoloMode ? (userPrefs?.travel_mode ?? 'walking') : (collabDeckParams?.travelMode ?? 'walking');
+      // ORCH-0902 CR-7: solo-only prefetch. Read solo params directly from
+      // stableDeckParams (the typed source) rather than the union-typed
+      // activeDeckParams to satisfy TypeScript.
+      const soloParams = stableDeckParams;
+      const prefetchCategories = soloParams?.categories ?? [];
+      const prefetchIntents = soloParams?.intents ?? [];
+      const prefetchTravelMode = userPrefs?.travel_mode ?? 'walking';
       const prefetchConstraintType = 'time' as const;
-      const prefetchConstraintValue = isSoloMode ? (userPrefs?.travel_constraint_value ?? 30) : (collabDeckParams?.travelConstraintValue ?? 30);
-      const prefetchDateOption = isSoloMode ? (userPrefs?.date_option ?? 'today') : 'today';
-      const rawDatetimePref = isSoloMode ? userPrefs?.datetime_pref : (collabDeckParams?.datetimePref ?? undefined);
+      const prefetchConstraintValue = userPrefs?.travel_constraint_value ?? 30;
+      const prefetchDateOption = userPrefs?.date_option ?? 'today';
+      const rawDatetimePref = userPrefs?.datetime_pref;
       // Normalize to ISO string to match useDeckCards query key format
       const prefetchDatetimePref = rawDatetimePref
         ? normalizeDateTime(rawDatetimePref)
@@ -1787,7 +1815,14 @@ export const RecommendationsProvider: React.FC<
     sessionSwipedCards,
     isExhausted,
     deckUIState,
-    collabTravelMode: isCollaborationMode ? (collabDeckParams?.travelMode ?? null) : null,
+    // ORCH-0902 CR-7: "collab travel mode" is no longer a session-level
+    // aggregated concept (each participant has their own personal reachable
+    // circle now). Card distance/travel-time fields are computed server-side
+    // from the closest-circle to each card. Consumers (SwipeableCards,
+    // ExpandedCardModal) already fall back to the current user's own
+    // travel mode when this is null — that fallback is now the source of
+    // truth for display.
+    collabTravelMode: null,
     // ORCH-0474
     showPipelineErrorToast,
     serverPath: soloServerPath,

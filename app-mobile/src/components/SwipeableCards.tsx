@@ -47,6 +47,8 @@ import { BoardCardService } from "../services/boardCardService";
 // Used by primary swipe gesture AND the 3 non-gesture save callsites so ALL
 // collab right-swipes go through one code path.
 import { collabSaveCard } from "./helpers/collabSaveCard";
+import { collabRecordLeftSwipe } from "./helpers/collabRecordLeftSwipe";
+import { useSessionDismissedCards } from "../hooks/useSessionDismissedCards";
 import { recordCardSwipe, recordCardExpand } from "../services/cardEngagementService";
 import { useSessionManagement } from "../hooks/useSessionManagement";
 import { useBoardSession } from "../hooks/useBoardSession";
@@ -604,6 +606,16 @@ export default function SwipeableCards({
     isBoardSession && resolvedSessionId ? resolvedSessionId : undefined
   );
   const boardPreferences = boardSessionResult?.preferences || null;
+
+  // ORCH-0902 CR-6: visible-but-not-binding dismissed sheet — server-sourced
+  // list of left-swipes by ANY participant in this session, attributed by
+  // name. Hook is enabled only in collab mode (sessionId truthy). Returns []
+  // for solo. Realtime subscription piggybacks on the existing
+  // board_session:{sessionId} channel via onSwipeRecorded.
+  const collabDismissedRows = useSessionDismissedCards(
+    isBoardSession && resolvedSessionId ? resolvedSessionId : null,
+    user?.id ?? null,
+  );
 
   // Use ref to store current recommendations for PanResponder
   const recommendationsRef = useRef<Recommendation[]>([]);
@@ -1592,25 +1604,17 @@ export default function SwipeableCards({
               t,
             });
           } else {
-            // Left-swipe: record swipe state so other participants see the
-            // user opted out. Uses the same atomic RPC with direction='left';
-            // the RPC short-circuits past the match-detection branch and
-            // returns `{matched: false, reason: 'left_swipe'}`.
-            try {
-              await BoardCardService.recordSwipeAndCheckMatch({
-                sessionId: resolvedSessionId,
-                experienceId: card.id,
-                userId: user.id,
-                cardData: {}, // left-swipes don't need payload
-                swipeDirection: 'left',
-              });
-            } catch (leftErr) {
-              console.warn(
-                '[handleSwipe] left-swipe RPC failed:',
-                leftErr
-              );
-              // Non-fatal — continue with UI updates
-            }
+            // Left-swipe: record swipe state via the shared collab helper
+            // so OTHER participants see this user passed on the card
+            // (ORCH-0902 CR-6 visible-but-not-binding dismissal). The helper
+            // writes the full card payload — useSessionDismissedCards reads
+            // it back to render attribution even for cards the viewer
+            // hasn't seen yet. Soft-fails are logged but don't block UI.
+            await collabRecordLeftSwipe({
+              card,
+              sessionId: resolvedSessionId,
+              userId: user.id,
+            });
           }
         }
       } else {
@@ -1920,6 +1924,7 @@ export default function SwipeableCards({
             onClose={() => setDismissedSheetVisible(false)}
             dismissedCards={dismissedCards}
             sessionSwipedCards={sessionSwipedCards}
+            collabDismissedRows={collabDismissedRows}
             onSave={handleSaveDismissedCard}
             onCardPress={handleDismissedCardPress}
           />
@@ -2543,6 +2548,7 @@ export default function SwipeableCards({
         onClose={() => setDismissedSheetVisible(false)}
         dismissedCards={dismissedCards}
         sessionSwipedCards={sessionSwipedCards}
+        collabDismissedRows={collabDismissedRows}
         onSave={handleSaveDismissedCard}
         onCardPress={handleDismissedCardPress}
       />

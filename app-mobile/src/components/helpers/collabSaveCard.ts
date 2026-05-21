@@ -15,8 +15,13 @@ import type { Recommendation } from '../../types/recommendation';
  * rendering works unchanged. Curated experiences add extra fields.
  *
  * Undefined values are stripped from JSONB automatically by Supabase.
+ *
+ * ORCH-0902 CR-6: exported so collabRecordLeftSwipe can write the same
+ * payload shape — useSessionDismissedCards reads card_data to render the
+ * visible-but-not-binding "Sarah passed on this" attribution row, including
+ * cards the current user has not yet seen in their own deck.
  */
-function buildCardDataPayload(card: Recommendation): Record<string, unknown> {
+export function buildCardDataPayload(card: Recommendation): Record<string, unknown> {
   // Cast to any only for optional fields not in Recommendation type but
   // commonly present on cards in practice (priceTier, website, placeId,
   // curated-specific fields). These are the same optional fields the
