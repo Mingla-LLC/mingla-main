@@ -4,14 +4,14 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import {
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+// ORCH-0892-B v2: ScrollView via SmartScrollView wrapper (KAS native /
+// passthrough web). KeyboardAvoidingView removed. Per SPEC §7.F.
+import { ScrollView } from "../../src/wrappers/SmartScrollView";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -176,10 +176,7 @@ export default function VenueCreateRoute(): React.ReactElement {
   }
 
   return (
-    <KeyboardAvoidingView
-      style={[styles.root, { paddingTop: insets.top }]}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-    >
+    <View style={[styles.root, { paddingTop: insets.top }]}>
       <View style={styles.chrome}>
         <IconChrome
           icon="chevL"
@@ -257,7 +254,7 @@ export default function VenueCreateRoute(): React.ReactElement {
           </>
         )}
       </ScrollView>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 

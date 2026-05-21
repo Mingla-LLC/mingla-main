@@ -3577,3 +3577,23 @@ Two strict-grep gates run together:
 **Source:** SPEC `Mingla_Artifacts/specs/SPEC_ORCH-0892-A_KEYBOARD_CONTROLLER_INSTALL_AND_3_SCREEN_PILOT.md` §10. Investigation `Mingla_Artifacts/reports/INVESTIGATION_ORCH-0892_KEYBOARD_AVOIDANCE_LIBRARY_PILOT.md` §5 + §6.
 
 **EXIT condition:** Permanent. The pre-library state had 27+ surfaces in `mingla-business/` using three distinct keyboard-handling mechanisms often layered on the same screen (Cycle 3 wizard root pattern + KAV + `automaticallyAdjustKeyboardInsets`), with ORCH-0884 [keyboard handling regression] alone shipping 5 sequential follow-up patches. The library standardises to one mechanism; the gate prevents drift back. SAFELIST evolves only via new SPECs + operator approval per `feedback_strict_grep_registry_pattern.md`.
+
+**Update post-ORCH-0892-B v2 close (2026-05-21):** SAFELIST swapped: removed `KeyboardAvoidingView.native.tsx` (file deleted in ORCH-0892-B teardown); added `SmartScrollView.native.tsx` + `useKeyboardIsVisible.native.ts` (new wrapper indirection pair — same passthrough pattern). 4 forbidden patterns now (the 3 original + the new 4th below). 8 WARN sites cleared (gate now PASS at 0). Companion invariant I-PROPOSED-SMART-SCROLLVIEW-WRAPPER-ONLY (DRAFT) below.
+
+---
+
+### I-PROPOSED-SMART-SCROLLVIEW-WRAPPER-ONLY — SCROLLVIEW-VIA-SMART-WRAPPER-ONLY (DRAFT — flips ACTIVE on ORCH-0892-C close)
+
+**Status:** DRAFT — codified by ORCH-0892-B v2 [App-wide keyboard avoidance via SmartScrollView wrapper + Sheet primitive rewrite] close 2026-05-21. Flips ACTIVE on ORCH-0892-C [gate INFORMATIONAL→BLOCK + invariant promote] close.
+
+**Statement:** Every `ScrollView` import in `mingla-business/src/` and `mingla-business/app/` that contains a `TextInput` child MUST come from the SmartScrollView wrapper at `mingla-business/src/wrappers/SmartScrollView.{tsx,native.tsx}`, NOT from `react-native`. The wrapper resolves to `react-native-keyboard-controller`'s `KeyboardAwareScrollView` on iOS/Android (auto-scrolls focused TextInput exactly 12pt above keyboard via library worklets) and to plain `react-native`'s `ScrollView` on web (passthrough — web has no soft keyboard). This makes the keyboard-avoidance behavior automatic for every form-screen and prevents missed-screen regressions structurally.
+
+**SAFELIST (7 files; carve-outs):** identical to I-PROPOSED-KEYBOARD-LIBRARY-ONLY's SAFELIST plus the two new wrapper natives (`SmartScrollView.native.tsx` + `useKeyboardIsVisible.native.ts`) which legitimately import from the library. Per-file inline exemption: `// orch-strict-grep-allow orch-0892 — <reason>` within 3 lines. Currently approved inline-allowlisted files: `Input.tsx` (picker dropdown ScrollView, not form content), `BusinessWelcomeScreen.tsx` (anchored sign-in layout has no ScrollView; uses JS-side keyboardPad until ORCH-0892-Bz [useKeyboardHeightJs wrapper hook] lands).
+
+**Enforcement:**
+1. **Strict-grep CI gate** `.github/scripts/strict-grep/orch-0892-no-bespoke-keyboard-plumbing.mjs` 4th pattern (added in ORCH-0892-B v2): `import { ... ScrollView ... } from "react-native"` in any file containing a `TextInput` identifier — flag unless inline-allowlisted. Currently INFORMATIONAL; flips to BLOCK at ORCH-0892-C.
+2. **Implementor regression-test gate** at `mingla-business/src/wrappers/__tests__/KeyboardRoot.test.tsx` — T-V2-FORM (19 form-screens × 2 assertions = 38 row tests asserting SmartScrollView import + no bare ScrollView from RN), T-V2-LISTENER (6 Template-B files), T-V2-SHEET-CONSUMER (14 sheet consumers). Tester adversarial at `KeyboardRoot.sweep.v2.adversarial.test.tsx`: TA-V2-1 (repo-wide enumeration), TA-V2-2 (web bundle library-leak), TA-V2-3 (allowlist hygiene).
+
+**Source:** SPEC `Mingla_Artifacts/specs/SPEC_ORCH-0892-B_v2_SMART_SCROLLVIEW_AND_SHEET_REWRITE.md` §10. Investigation `Mingla_Artifacts/reports/INVESTIGATION_ORCH-0892-B_v2_GLOBAL_SHIFTER.md` §6. CLOSE banner: `WORLD_MAP.md` 2026-05-21 entry.
+
+**EXIT condition:** Permanent. The wrapper indirection mechanism is the universal-coverage enforcer — any new form-screen that imports bare `ScrollView` from `react-native` trips the gate at CI. SAFELIST evolves only via new SPECs + operator approval per `feedback_strict_grep_registry_pattern.md`.

@@ -4,13 +4,13 @@
 
 import React, { useCallback, useState } from "react";
 import {
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+// ORCH-0892-B v2: ScrollView via SmartScrollView wrapper. KeyboardAvoidingView
+// removed. Per SPEC §7.F.
+import { ScrollView } from "../../wrappers/SmartScrollView";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
@@ -221,10 +221,7 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
   })();
 
   return (
-    <KeyboardAvoidingView
-      style={[styles.root, { paddingTop: insets.top }]}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-    >
+    <View style={[styles.root, { paddingTop: insets.top }]}>
       <View style={styles.chrome}>
         <IconChrome
           icon="x"
@@ -280,7 +277,7 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
           </View>
         </View>
       ) : null}
-    </KeyboardAvoidingView>
+    </View>
   );
 };
 

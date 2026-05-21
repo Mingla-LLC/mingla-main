@@ -37,8 +37,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
   Dimensions,
-  Keyboard,
-  type KeyboardEvent,
   Modal,
   Platform,
   Pressable,
@@ -163,51 +161,26 @@ export const Sheet: React.FC<SheetProps> = ({
           screenHeight * MAX_SNAP_RATIO,
         )
       : screenHeight * SNAP_RATIOS[snapPoint];
-  // ORCH-0884 follow-up #3 — keyboard-aware Sheet positioning.
-  // When the soft keyboard appears, slide the panel UP by keyboardHeight
-  // so its contents (TextInputs, action buttons) stay visible above the
-  // keyboard. Without this, focus-deep TextInputs (Giphy/Pexels search in
-  // BrandCoverPickerSheet; Placeholder hint in IntakeQuestionEditor) end
-  // up hidden behind the keyboard. Per
-  // `feedback_keyboard_never_blocks_input.md`. This is a Sheet-primitive-
-  // level fix so EVERY Sheet consumer benefits automatically.
-  const [keyboardHeight, setKeyboardHeight] = useState<number>(0);
-  useEffect(() => {
-    if (!visible) {
-      setKeyboardHeight(0);
-      return;
-    }
-    const showEvent =
-      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
-    const hideEvent =
-      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
-    const showSub = Keyboard.addListener(showEvent, (e: KeyboardEvent): void => {
-      setKeyboardHeight(e.endCoordinates.height);
-    });
-    const hideSub = Keyboard.addListener(hideEvent, (): void => {
-      setKeyboardHeight(0);
-    });
-    return (): void => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, [visible]);
 
-  // When keyboard is up, ensure the panel still fits ABOVE the keyboard.
-  // Reserve 40pt top margin so the panel never butts against the status
-  // bar / notch. If the originally-requested sheet height would extend
-  // past the available space, clamp it so the panel shrinks to fit.
-  const KEYBOARD_TOP_MARGIN = 40;
-  const availableHeight =
-    keyboardHeight > 0
-      ? screenHeight - keyboardHeight - KEYBOARD_TOP_MARGIN
-      : screenHeight * MAX_SNAP_RATIO;
-  const sheetHeight = Math.min(requestedSheetHeight, availableHeight);
+  // ORCH-0892-B v2: Sheet primitive no longer owns keyboard handling. The
+  // panel rests at its designed snap point regardless of keyboard state.
+  // Sheet consumers with TextInputs use SmartScrollView for their internal
+  // body ScrollView — KAS (react-native-keyboard-controller) scrolls the
+  // focused input above the keyboard within that consumer's own scrollable.
+  // Sheet panel + header + handle stay put.
+  //
+  // Per SPEC_ORCH-0892-B_v2 §7.E + operator clarification 2026-05-20:
+  // "Sheet drops keyboard logic entirely; consumers migrate their own
+  // ScrollView." Supersedes ORCH-0884 follow-up #3.
+  const sheetHeight = Math.min(
+    requestedSheetHeight,
+    screenHeight * MAX_SNAP_RATIO,
+  );
 
   const closedY = sheetHeight; // pushed fully off-screen
-  // When keyboard is up, raise the panel by keyboardHeight (negative
-  // translateY pushes the panel UP from its docked bottom position).
-  const openY = -keyboardHeight;
+  // ORCH-0892-B v2: panel rests at its docked position (translateY = 0
+  // when open). No keyboard-driven panel translate.
+  const openY = 0;
 
   // Lazy-mount: keep the Sheet out of the View tree when not visible to
   // prevent inline-render leaks (Sub-phase E.4 / ORCH-BIZ-0a-E12). Stay

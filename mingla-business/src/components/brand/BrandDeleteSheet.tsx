@@ -32,12 +32,13 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
+// ORCH-0892-B v2: ScrollView via SmartScrollView wrapper. Per SPEC §7.F.
+import { ScrollView } from "../../wrappers/SmartScrollView";
 
 import {
   accent,
@@ -176,9 +177,6 @@ export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
-        // Per `feedback_keyboard_never_blocks_input` — iOS native auto-inset
-        // keeps the type-to-confirm input visible above keyboard.
-        automaticallyAdjustKeyboardInsets
       >
         {step === "warn" ? (
           <View>

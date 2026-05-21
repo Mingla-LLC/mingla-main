@@ -260,14 +260,19 @@ export default function BusinessWelcomeScreen({
     return () => backHandler.remove();
   }, [onBack]);
 
-  // Cycle 15 — keyboard listener for dynamic bottom padding so TextInput stays
-  // visible above the soft keyboard on native (memory rule
-  // feedback_keyboard_never_blocks_input). Web uses CSS layout natively.
+  // Sign-in screen has no ScrollView (bottom-anchored action zone with
+  // email/OTP inputs at viewport bottom). SmartScrollView/KAS doesn't fit
+  // — wrapping would change anchored → scrollable layout. JS-side
+  // keyboardPad remains until a `useKeyboardHeightJs()` wrapper hook is
+  // added (ORCH-0892-Bz follow-up; Discovery for Orchestrator).
+  // Per SPEC_ORCH-0892-B_v2 §7.F deviation note.
   useEffect(() => {
     if (Platform.OS === "web") return;
+    // orch-strict-grep-allow orch-0892 — anchored sign-in (no ScrollView)
     const showSub = Keyboard.addListener("keyboardDidShow", (e) => {
       setKeyboardPad(e.endCoordinates.height);
     });
+    // orch-strict-grep-allow orch-0892 — anchored sign-in (no ScrollView)
     const hideSub = Keyboard.addListener("keyboardDidHide", () => {
       setKeyboardPad(0);
     });
