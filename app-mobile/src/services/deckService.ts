@@ -61,7 +61,9 @@ export function mergeCardsByIdPreservingOrder(
 }
 
 export interface DeckParams {
-  location: { lat: number; lng: number };
+  /** Required for solo mode; ignored / optional for collab mode (server reads
+   *  location from session state via pg_aggregate_collab_prefs per ORCH-0902 CR-1). */
+  location?: { lat: number; lng: number };
   categories: string[];
   intents?: string[];
   travelMode: string;
@@ -73,7 +75,16 @@ export interface DeckParams {
   limit?: number;
   excludeCardIds?: string[];
   dateWindows?: string[];  // ORCH-0446: array of date windows for AND intersection (collab only)
-  sessionId?: string;      // ORCH-0446: optional, for analytics tracking (collab only)
+  sessionId?: string;      // ORCH-0902: required for mode='collab'; routes to deterministic-v2 edge path.
+  /** ORCH-0902 CR-1: 'collab' triggers the deterministic-v2 collab branch in
+   *  fetchDeck. Body sent to discover-cards is ONLY { session_id, expected_deck_version }
+   *  — no client-supplied location/categories/etc. Solo (or undefined) runs
+   *  the existing per-client-aggregated path unchanged. */
+  mode?: 'solo' | 'collab';
+  /** ORCH-0902 CR-3: pinned deck_version for the collab v2 fetch. Sent as
+   *  expected_deck_version; server returns HTTP 409 if it differs from the
+   *  session's current deck_version (rare race; client refetches on bump). */
+  deckVersion?: number;
 }
 
 /**
@@ -348,6 +359,21 @@ class DeckService {
     params: DeckParams,
     onPartialReady?: (cards: Recommendation[], meta: { source: PartialDeliverySource }) => void,
   ): Promise<DeckResponse> {
+    // ────────────────────────────────────────────────────────────────────
+    // ORCH-0902 CR-1: collab deterministic-v2 fetch path.
+    //
+    // Collab decks send ONLY { session_id, expected_deck_version } — no
+    // client-aggregated location/categories/etc. Server reads aggregation
+    // via pg_aggregate_collab_prefs and returns cards + deck_version. There
+    // is no curated parallel path for collab in v2; the spec does not
+    // include curated stops in the union-of-circles serving model.
+    //
+    // This branch returns directly; the solo code below runs unchanged.
+    // ────────────────────────────────────────────────────────────────────
+    if (params.mode === 'collab' && params.sessionId) {
+      return this.fetchCollabDeckV2(params, onPartialReady);
+    }
+
     const { pills, categoryFilters } = this.resolvePills(params.categories, params.intents);
     const limit = params.limit ?? 20;
     let hasMoreFromEdge = true;

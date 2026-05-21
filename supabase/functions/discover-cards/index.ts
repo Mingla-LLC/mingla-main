@@ -15,7 +15,7 @@ import { roundRobinByChip } from '../_shared/deckInterleave.ts';
 // ORCH-0659/0660: honest distance + per-mode travel-time computation.
 // Single owner: _shared/distanceMath.ts. See
 // Mingla_Artifacts/specs/SPEC_ORCH-0659_0660_DECK_DISTANCE_TRAVELTIME.md.
-import { haversineKm, estimateTravelMinutes, type TravelMode } from '../_shared/distanceMath.ts';
+import { haversineKm, estimateTravelMinutes, radiusKmForConstraint, type TravelMode } from '../_shared/distanceMath.ts';
 
 // ─── ORCH-0588 Slice 1: cohort cache for signal-serving rollout ───────────────
 // Module-scoped 60s cache for the admin-config cohort pct. 60s = balance between
@@ -128,14 +128,9 @@ const corsHeaders = {
 };
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
-const SPEED_KMH: Record<string, number> = {
-  walking: 4.5,
-  driving: 100,
-  transit: 20,
-  public_transit: 20,
-  bicycling: 14,
-  biking: 14,
-};
+// ORCH-0903 (2026-05-21): local SPEED_KMH deleted; radius math now uses
+// the unified TRAVEL_CONFIG via radiusKmForConstraint() from
+// _shared/distanceMath.ts. See ORCH-0903 close banner in WORLD_MAP.md.
 
 // ── DateTime Filter ─────────────────────────────────────────────────────────
 
@@ -600,6 +595,493 @@ function transformServablePlaceToCard(
   };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ORCH-0902 [Collab session deck deterministic rewrite] — DETERMINISTIC-V2 PATH
+// ─────────────────────────────────────────────────────────────────────────────
+// Per CR-1..CR-9 of the locked design contract
+// (Mingla_Artifacts/reports/INVESTIGATION_ORCH-0902_COLLAB_DECK_PARITY.md):
+//
+//   - Collab decks are pure functions of (session_id, deck_version).
+//   - Server reads aggregation server-side via pg_aggregate_collab_prefs.
+//   - No client-supplied location/categories trusted; clients send ONLY
+//     { session_id, expected_deck_version }.
+//   - Cards filtered by UNION of per-participant reachable circles
+//     (query_servable_places_by_signal_union, Haversine Path B since
+//     PostGIS is not installed on this project as of 2026-05-21).
+//   - Final sort is place_id ASC (string-stable) for byte-identical
+//     ordering across every participant's response.
+//   - Response includes deck_version + deck_params_hash so the client
+//     React Query key partitions decks per version.
+//
+// Routing: the serve() handler below checks body.session_id (snake_case)
+// FIRST. Old clients still sending body.sessionId (camelCase) without
+// body.session_id receive HTTP 400 — the EAS Update pushing the new
+// client closes the cutover window. Solo decks (no session_id) keep
+// running through the existing pipeline unchanged.
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface AggregatedCollabPrefs {
+  categories: string[];
+  intents: string[];
+  dateWindows: string[];
+  selectedDates: string[];
+  datetimePref: string | null;
+  circles: Array<{
+    user_id: string;
+    lat: number;
+    lng: number;
+    travel_mode: string;
+    time_min: number;
+    radius_m: number;
+  }>;
+  acceptedCount: number;
+}
+
+async function handleDeterministicV2(args: {
+  supabaseAdmin: any;
+  sessionId: string;
+  expectedDeckVersion: number | undefined;
+  req: Request;
+  t0: number;
+}): Promise<Response> {
+  const { supabaseAdmin, sessionId, expectedDeckVersion, req, t0 } = args;
+
+  // Local emptyResponse builder — closure can't reach the inner one in serve().
+  const emptyResponse = (params: {
+    path: 'pool-empty' | 'pipeline-error' | 'auth-required' | 'session-not-found';
+    reason: string;
+    httpStatus: number;
+    deckVersion?: number;
+    deckParamsHash?: string | null;
+    errorClass?: string;
+  }): Response =>
+    new Response(
+      JSON.stringify({
+        success: params.httpStatus < 400,
+        cards: [],
+        total: 0,
+        deck_version: params.deckVersion ?? 0,
+        deck_params_hash: params.deckParamsHash ?? null,
+        source: 'orch-0902-deterministic-v2',
+        metadata: { hasMore: false, poolSize: 0, batchSeed: 0, perChipBreakdown: {} },
+        sourceBreakdown: {
+          fromPool: 0,
+          fromApi: 0,
+          totalServed: 0,
+          apiCallsMade: 0,
+          cacheHits: 0,
+          gapCategories: [],
+          reason: params.reason,
+          path: params.path,
+          signalIds: [],
+          cohort: 'NEW',
+          filterMins: {},
+          errorClass: params.errorClass,
+        },
+      }),
+      {
+        status: params.httpStatus,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      },
+    );
+
+  // ── Auth: extract userId from Bearer JWT sub claim ──────────────────────
+  // verify_jwt=true at the platform gate has already validated signature/exp.
+  const authHeader = req.headers.get('Authorization');
+  const token = authHeader?.replace('Bearer ', '') ?? '';
+  let userId: string | undefined;
+  let authErrorClass: string | undefined;
+  if (!token) {
+    authErrorClass = 'MissingAuthorizationHeader';
+  } else {
+    try {
+      const parts = token.split('.');
+      if (parts.length !== 3) {
+        authErrorClass = 'MalformedJWT';
+      } else {
+        const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+        const pad = b64.length % 4 === 0 ? '' : '='.repeat(4 - (b64.length % 4));
+        const payload = JSON.parse(atob(b64 + pad));
+        const sub = typeof payload?.sub === 'string' ? payload.sub : undefined;
+        if (!sub) {
+          authErrorClass = 'JWTMissingSub';
+        } else {
+          userId = sub;
+        }
+      }
+    } catch (err) {
+      authErrorClass = `JWTDecodeFailed:${(err as Error).name || 'Error'}`;
+    }
+  }
+  if (!userId) {
+    return emptyResponse({
+      path: 'auth-required',
+      reason: `Auth required: ${authErrorClass}`,
+      httpStatus: 401,
+      errorClass: authErrorClass,
+    });
+  }
+
+  // ── Step 1: load session + verify caller is an accepted participant ────
+  const sessionRes = await supabaseAdmin
+    .from('collaboration_sessions')
+    .select('id, deck_version, deck_params_hash')
+    .eq('id', sessionId)
+    .maybeSingle();
+  if (sessionRes.error) {
+    return emptyResponse({
+      path: 'pipeline-error',
+      reason: `Session lookup failed: ${sessionRes.error.message}`,
+      httpStatus: 500,
+    });
+  }
+  if (!sessionRes.data) {
+    return emptyResponse({
+      path: 'session-not-found',
+      reason: `Session ${sessionId} not found`,
+      httpStatus: 404,
+    });
+  }
+  const sessionRow = sessionRes.data as {
+    id: string;
+    deck_version: number;
+    deck_params_hash: string | null;
+  };
+
+  const partRes = await supabaseAdmin
+    .from('session_participants')
+    .select('user_id', { count: 'exact', head: true })
+    .eq('session_id', sessionId)
+    .eq('user_id', userId)
+    .eq('has_accepted', true);
+  if (partRes.error || (partRes.count ?? 0) === 0) {
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error: 'forbidden_not_accepted_participant',
+        cards: [],
+        deck_version: sessionRow.deck_version,
+        deck_params_hash: sessionRow.deck_params_hash,
+      }),
+      { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+    );
+  }
+
+  // ── Step 2: server-side aggregation ────────────────────────────────────
+  const aggRes = await supabaseAdmin.rpc('pg_aggregate_collab_prefs', {
+    p_session_id: sessionId,
+  });
+  if (aggRes.error) {
+    return emptyResponse({
+      path: 'pipeline-error',
+      reason: `pg_aggregate_collab_prefs failed: ${aggRes.error.message}`,
+      httpStatus: 500,
+      deckVersion: sessionRow.deck_version,
+      deckParamsHash: sessionRow.deck_params_hash,
+    });
+  }
+  const agg = aggRes.data as AggregatedCollabPrefs;
+
+  // ── Step 3: CR-8 session-start threshold ───────────────────────────────
+  if (agg.acceptedCount < 2) {
+    return emptyResponse({
+      path: 'pool-empty',
+      reason: `Session has ${agg.acceptedCount} accepted participant(s); minimum 2 required (CR-8)`,
+      httpStatus: 200,
+      deckVersion: 0,
+      deckParamsHash: null,
+    });
+  }
+
+  // ── Step 4: optimistic concurrency — expected_deck_version mismatch ────
+  if (
+    typeof expectedDeckVersion === 'number' &&
+    expectedDeckVersion !== sessionRow.deck_version
+  ) {
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error: 'deck_version_mismatch',
+        cards: [],
+        deck_version: sessionRow.deck_version,
+        deck_params_hash: sessionRow.deck_params_hash,
+      }),
+      { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+    );
+  }
+
+  // ── Step 5: union-empty / categories-empty guards ──────────────────────
+  if (!Array.isArray(agg.circles) || agg.circles.length === 0) {
+    return emptyResponse({
+      path: 'pool-empty',
+      reason:
+        'No participant has set a location; union of reachable circles is empty (CR-2). Banner shown client-side per Q-1 default.',
+      httpStatus: 200,
+      deckVersion: sessionRow.deck_version,
+      deckParamsHash: sessionRow.deck_params_hash,
+    });
+  }
+  if (!Array.isArray(agg.categories) || agg.categories.length === 0) {
+    return emptyResponse({
+      path: 'pool-empty',
+      reason:
+        'No participant has any category selected (every category_toggle off, or empty selections).',
+      httpStatus: 200,
+      deckVersion: sessionRow.deck_version,
+      deckParamsHash: sessionRow.deck_params_hash,
+    });
+  }
+
+  // ── Step 6: resolve chips → signal targets (reuse CATEGORY_TO_SIGNAL) ──
+  const canonicalCategories = resolveCategories(agg.categories).filter(
+    (c) => !HIDDEN_CATEGORIES.has(c),
+  );
+  type ChipTarget = {
+    chip: string;
+    displayCategory: string;
+    signalIds: string[];
+    filterMin: number;
+  };
+  const chipTargets: ChipTarget[] = [];
+  for (const chip of canonicalCategories) {
+    const mapping = CATEGORY_TO_SIGNAL[chip];
+    if (!mapping) {
+      console.warn(
+        `[discover-cards/v2] chip="${chip}" missing CATEGORY_TO_SIGNAL mapping — skipping`,
+      );
+      continue;
+    }
+    chipTargets.push({
+      chip,
+      displayCategory: mapping.displayCategory,
+      signalIds: [...mapping.signalIds],
+      filterMin: mapping.filterMin,
+    });
+  }
+  if (chipTargets.length === 0) {
+    return emptyResponse({
+      path: 'pool-empty',
+      reason: 'No selected chips have signal mappings',
+      httpStatus: 200,
+      deckVersion: sessionRow.deck_version,
+      deckParamsHash: sessionRow.deck_params_hash,
+    });
+  }
+
+  // ── Step 7: cohort gating per signal (reuse pct cache + isInCohort) ────
+  const uniqueSignalIds = [...new Set(chipTargets.flatMap((t) => t.signalIds))];
+  const cohortByPct = new Map<string, { pct: number; inCohort: boolean }>();
+  await Promise.all(
+    uniqueSignalIds.map(async (sig) => {
+      const pct = await getSignalServingPct(supabaseAdmin, sig);
+      cohortByPct.set(sig, { pct, inCohort: isInCohort(userId!, pct) });
+    }),
+  );
+
+  // ── Step 8: build flat RPC task list ───────────────────────────────────
+  type RpcTask = {
+    chip: string;
+    signalId: string;
+    filterMin: number;
+    displayCategory: string;
+  };
+  const rpcTasks: RpcTask[] = [];
+  for (const t of chipTargets) {
+    for (const sig of t.signalIds) {
+      if (cohortByPct.get(sig)?.inCohort) {
+        rpcTasks.push({
+          chip: t.chip,
+          signalId: sig,
+          filterMin: t.filterMin,
+          displayCategory: t.displayCategory,
+        });
+      }
+    }
+  }
+  if (rpcTasks.length === 0) {
+    return emptyResponse({
+      path: 'pool-empty',
+      reason:
+        'No selected chips have any signal in cohort — flip signal_serving_*_pct=100 in admin_config',
+      httpStatus: 200,
+      deckVersion: sessionRow.deck_version,
+      deckParamsHash: sessionRow.deck_params_hash,
+    });
+  }
+
+  // ── Step 9: parallel union-RPC fan-out (Path B Haversine inside) ───────
+  // Per-chip limit kept conservative (50) because the union over many
+  // participant circles can return very wide candidate sets at scale.
+  const PER_CHIP_LIMIT = 50;
+  const rpcResults = await Promise.all(
+    rpcTasks.map((task) =>
+      supabaseAdmin
+        .rpc('query_servable_places_by_signal_union', {
+          p_signal_id: task.signalId,
+          p_filter_min: task.filterMin,
+          p_circles: agg.circles,
+          p_exclude_place_ids: [],
+          p_limit: PER_CHIP_LIMIT,
+        })
+        .then((res: any) => ({ task, res })),
+    ),
+  );
+
+  // ── Step 10: bucket per chip (max signal_score wins) ───────────────────
+  const perChipBuckets = new Map<string, Map<string, any>>();
+  const failedTasks: string[] = [];
+  for (const { task, res } of rpcResults) {
+    if (res.error) {
+      failedTasks.push(`${task.chip}/${task.signalId}: ${res.error.message}`);
+      continue;
+    }
+    let bucket = perChipBuckets.get(task.chip);
+    if (!bucket) {
+      bucket = new Map<string, any>();
+      perChipBuckets.set(task.chip, bucket);
+    }
+    for (const row of (res.data as any[]) ?? []) {
+      const existing = bucket.get(row.place_id);
+      if (!existing || Number(row.signal_score) > Number(existing.signal_score)) {
+        bucket.set(row.place_id, { ...row, __displayCategory: task.displayCategory });
+      }
+    }
+  }
+
+  if (failedTasks.length === rpcTasks.length) {
+    const truncated = failedTasks.slice(0, 3).join(' | ').slice(0, 200);
+    console.error(
+      `[discover-cards/v2] session=${sessionId} exit path=pipeline-error reason=all_rpcs_failed sample="${truncated}"`,
+    );
+    return emptyResponse({
+      path: 'pipeline-error',
+      reason: `All ${rpcTasks.length} signal union RPCs failed: ${truncated}`,
+      httpStatus: 500,
+      errorClass: 'SignalUnionRpcError',
+      deckVersion: sessionRow.deck_version,
+      deckParamsHash: sessionRow.deck_params_hash,
+    });
+  }
+  if (failedTasks.length > 0) {
+    console.warn(
+      `[discover-cards/v2] partial signal-union-RPC failure ok=${
+        rpcTasks.length - failedTasks.length
+      }/${rpcTasks.length} sample="${failedTasks.slice(0, 2).join(' | ').slice(0, 200)}"`,
+    );
+  }
+
+  // ── Step 11: per-chip score sort + round-robin interleave ──────────────
+  const perChipSorted = new Map<string, any[]>();
+  for (const chip of canonicalCategories) {
+    const bucket = perChipBuckets.get(chip);
+    if (!bucket || bucket.size === 0) continue;
+    const arr = [...bucket.values()].sort(
+      (a, b) => Number(b.signal_score ?? 0) - Number(a.signal_score ?? 0),
+    );
+    perChipSorted.set(chip, arr);
+  }
+  const interleavedRows = roundRobinByChip({ perChip: perChipSorted, totalLimit: 200 });
+
+  if (interleavedRows.length === 0) {
+    return emptyResponse({
+      path: 'pool-empty',
+      reason: 'Signal RPCs succeeded but returned zero rows for the union of participant circles',
+      httpStatus: 200,
+      deckVersion: sessionRow.deck_version,
+      deckParamsHash: sessionRow.deck_params_hash,
+    });
+  }
+
+  // ── Step 12: transform — distance/travelTime computed from CLOSEST circle ──
+  // Display-only; does not affect ordering. CR-1 determinism holds because
+  // the ordering decision happens in Step 13 below.
+  const rawCards = interleavedRows.map((row: any) => {
+    let closest = agg.circles[0];
+    let closestKm = haversineKm(closest.lat, closest.lng, row.lat ?? 0, row.lng ?? 0);
+    for (let i = 1; i < agg.circles.length; i++) {
+      const c = agg.circles[i];
+      const d = haversineKm(c.lat, c.lng, row.lat ?? 0, row.lng ?? 0);
+      if (d < closestKm) {
+        closestKm = d;
+        closest = c;
+      }
+    }
+    return transformServablePlaceToCard(
+      row,
+      row.__displayCategory ?? canonicalCategories[0],
+      closest.lat,
+      closest.lng,
+      closest.travel_mode as TravelMode,
+    );
+  });
+
+  // ── Step 13: date/time + curated-hours filter ──────────────────────────
+  const timeFilteredCards =
+    agg.dateWindows && agg.dateWindows.length > 0
+      ? filterByDateWindows(
+          rawCards,
+          agg.dateWindows,
+          agg.datetimePref ?? undefined,
+          agg.selectedDates ?? undefined,
+        )
+      : filterByDateTime(
+          rawCards,
+          agg.datetimePref ?? undefined,
+          'today',
+          agg.selectedDates ?? undefined,
+        );
+  const curatedUtcNow = agg.datetimePref ? new Date(agg.datetimePref) : new Date();
+  const hoursFilteredCards = filterCuratedByStopHours(timeFilteredCards, curatedUtcNow);
+
+  // ── Step 14: final CR-1 deterministic sort: place_id ASC + zero matchScore ─
+  const finalCards = hoursFilteredCards
+    .slice()
+    .sort((a: any, b: any) => (a.id ?? '').localeCompare(b.id ?? ''))
+    .map((card: any) => ({ ...card, matchScore: 0 }));
+
+  // ── Step 15: response with deck_version + deck_params_hash ─────────────
+  const elapsed = Date.now() - t0;
+  const perChipBreakdown: Record<string, number> = {};
+  for (const [chip, arr] of perChipSorted) perChipBreakdown[chip] = arr.length;
+  const filterMins: Record<string, number> = {};
+  for (const t of chipTargets) filterMins[t.chip] = t.filterMin;
+
+  console.log(
+    `[discover-cards/v2] session=${sessionId} deck_version=${sessionRow.deck_version} circles=${agg.circles.length} chips=${canonicalCategories.length} rpcs=${rpcTasks.length} failed=${failedTasks.length} cards=${finalCards.length} elapsed_ms=${elapsed}`,
+  );
+
+  return new Response(
+    JSON.stringify({
+      success: true,
+      cards: finalCards,
+      total: finalCards.length,
+      deck_version: sessionRow.deck_version,
+      deck_params_hash: sessionRow.deck_params_hash,
+      source: 'orch-0902-deterministic-v2',
+      metadata: {
+        hasMore: false,
+        poolSize: finalCards.length,
+        batchSeed: 0,
+        perChipBreakdown,
+      },
+      sourceBreakdown: {
+        fromPool: finalCards.length,
+        fromApi: 0,
+        totalServed: finalCards.length,
+        apiCallsMade: 0,
+        cacheHits: 0,
+        gapCategories: [],
+        reason: `ORCH-0902 deterministic v2: ${canonicalCategories.length} chips, ${rpcTasks.length} RPCs (${failedTasks.length} failed), ${agg.circles.length} participant circles`,
+        path: 'pipeline',
+        signalIds: uniqueSignalIds,
+        cohort: 'NEW',
+        filterMins,
+      },
+    }),
+    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+  );
+}
+
 // ── Main Handler ────────────────────────────────────────────────────────────
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -618,6 +1100,61 @@ serve(async (req: Request) => {
       });
     }
 
+    // ──────────────────────────────────────────────────────────────────────
+    // ORCH-0902 CR-9: collab routing (single-shot cutover, no soft gating)
+    // ──────────────────────────────────────────────────────────────────────
+    // • body.session_id (snake_case) — new contract → handleDeterministicV2
+    // • body.sessionId  (camelCase)  — old contract → HTTP 400, "update app"
+    // • neither                       — solo path (existing code unchanged)
+    //
+    // The legacy collab branch that lived inside this solo pipeline (post-
+    // fetch sort by place_id + zero matchScore for sessionId presence) has
+    // been DELETED downstream; collab traffic now exits this handler before
+    // the solo destructure even runs.
+    const newCollabSessionId: string | undefined =
+      typeof body.session_id === 'string' && body.session_id.length > 0
+        ? body.session_id
+        : undefined;
+    const legacyCollabSessionId: string | undefined =
+      typeof body.sessionId === 'string' && body.sessionId.length > 0
+        ? body.sessionId
+        : undefined;
+
+    if (newCollabSessionId) {
+      const supabaseAdminForCollab = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+      const expectedDeckVersion =
+        typeof body.expected_deck_version === 'number'
+          ? body.expected_deck_version
+          : undefined;
+      return await handleDeterministicV2({
+        supabaseAdmin: supabaseAdminForCollab,
+        sessionId: newCollabSessionId,
+        expectedDeckVersion,
+        req,
+        t0,
+      });
+    }
+
+    if (legacyCollabSessionId) {
+      console.warn(
+        `[discover-cards] rejecting legacy collab client (camelCase sessionId without session_id) — ORCH-0902 CR-9 force-migrate`,
+      );
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'collab_legacy_client_unsupported',
+          message:
+            'Update the app to continue using collab sessions (ORCH-0902 deterministic deck migration).',
+          cards: [],
+        }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        },
+      );
+    }
+
+    // ── Solo path: existing code unchanged ─────────────────────────────────
     const {
       categories: rawCategories = [],
       location,
@@ -629,8 +1166,8 @@ serve(async (req: Request) => {
       batchSeed = 0,
       limit = 200,
       excludeCardIds: rawExcludeCardIds = [],
-      dateWindows,  // ORCH-0446: array of date windows for AND intersection (collab only)
-      sessionId,    // ORCH-0446: optional, for analytics logging (collab only)
+      dateWindows,  // ORCH-0446: array of date windows (legacy; unused in solo)
+      sessionId,    // legacy field; always undefined here post-ORCH-0902 routing
     } = body;
 
     // Accept all string IDs — can be Google Place IDs or card_pool UUIDs
@@ -665,7 +1202,7 @@ serve(async (req: Request) => {
       );
     }
 
-    console.log(`[discover-cards] Request: categories=[${categories}], batchSeed=${batchSeed}, limit=${limit}, mode=${travelMode}${sessionId ? `, session=${sessionId}` : ''}${dateWindows ? `, dateWindows=[${dateWindows}]` : ''}`);
+    console.log(`[discover-cards] solo request: categories=[${categories}], batchSeed=${batchSeed}, limit=${limit}, mode=${travelMode}${dateWindows ? `, dateWindows=[${dateWindows}]` : ''}`);
 
     const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
@@ -726,8 +1263,15 @@ serve(async (req: Request) => {
     // Save-gating is handled client-side (free users can view but not save).
 
     // ── Calculate search radius from travel constraint ────────────────────
-    const maxDistKm = (travelConstraintValue / 60) * (SPEED_KMH[travelMode] || 4.5) * 1.3;
-    const radiusMeters = Math.min(Math.max(Math.round(maxDistKm * 1000), 500), 50000);
+    // ORCH-0903 (2026-05-21): radius computed from the unified TRAVEL_CONFIG
+    // via radiusKmForConstraint(). Singles passes generosity=1.5 (50% wider
+    // candidate pool than honest user cap — post-filter at line ~985 trims
+    // back to user's stated constraint). Clamp ceiling bumped 50→100 km so
+    // 45-60 min driving constraints can serve genuinely-long-range cards
+    // when they exist; post-filter still enforces honest cap. Curated uses
+    // generosity=1.0 (see generate-curated-experiences/index.ts).
+    const maxDistKm = radiusKmForConstraint(travelConstraintValue, travelMode, 1.5);
+    const radiusMeters = Math.min(Math.max(Math.round(maxDistKm * 1000), 500), 100000);
 
     // ORCH-0634: scorePoolCards removed. The new signal-serving path uses
     // signal_score as matchScore directly — re-scoring with chip-match heuristics
@@ -986,29 +1530,46 @@ serve(async (req: Request) => {
       console.warn(`[discover-cards] ${_placesMissingCoords}/${rawCards.length} places had null lat/lng — distance/travelTime set to null`);
     }
 
+    // ORCH-0903 (2026-05-21): post-radius display-aware filter. The
+    // user's travelConstraintValue is the binding ceiling on displayed
+    // travel-time. The candidate radius above is intentionally wider
+    // (generosity=1.5×) than the honest user cap so round-robin
+    // interleave has depth — this filter trims any candidate whose
+    // computed display value exceeds the cap. Null-coord cards (travelTimeMin
+    // === null) PASS because I-DECK-CARD-CONTRACT-DISTANCE-AND-TIME hides
+    // the badge on mobile and the user has no displayed value to compare
+    // against. Filter and display cannot disagree because both read from
+    // TRAVEL_CONFIG in _shared/distanceMath.ts.
+    const constraintFilteredCards = rawCards.filter(
+      (card: any) =>
+        card.travelTimeMin === null || card.travelTimeMin <= travelConstraintValue,
+    );
+    const _droppedByTravelTimeFilter = rawCards.length - constraintFilteredCards.length;
+    if (_droppedByTravelTimeFilter > 0) {
+      console.log(`[discover-cards] travel-time post-filter dropped ${_droppedByTravelTimeFilter}/${rawCards.length} cards exceeding ${travelConstraintValue}-min ${travelMode} cap`);
+    }
+
     // Step 10: date/time + curated-hours filter (preserved from legacy path).
     const timeFilteredCards = dateWindows && dateWindows.length > 0
-      ? filterByDateWindows(rawCards, dateWindows, datetimePref, selectedDates)
-      : filterByDateTime(rawCards, datetimePref, dateOption, selectedDates);
+      ? filterByDateWindows(constraintFilteredCards, dateWindows, datetimePref, selectedDates)
+      : filterByDateTime(constraintFilteredCards, datetimePref, dateOption, selectedDates);
     const curatedUtcNow = datetimePref ? new Date(datetimePref) : new Date();
     const hoursFilteredCards = filterCuratedByStopHours(timeFilteredCards, curatedUtcNow);
 
-    // Step 11: preserve collab deterministic order (zero out matchScore) OR
-    // keep signal-score ranked order for solo. We DO NOT call scorePoolCards
-    // here because the signal_score IS the match score — re-scoring would
-    // throw away the signal ranking in favor of chip-match heuristics.
-    const finalCards = sessionId
-      ? hoursFilteredCards
-          .sort((a: any, b: any) => (a.id ?? '').localeCompare(b.id ?? ''))
-          .map((card: any) => ({ ...card, matchScore: 0 }))
-      : hoursFilteredCards;
+    // Step 11: keep signal-score ranked order. ORCH-0902 CR-9: legacy collab
+    // branch (place_id sort + zero matchScore for sessionId presence) was
+    // DELETED — collab traffic exits at the top of the handler via
+    // handleDeterministicV2 before this code runs. We do NOT call scorePoolCards
+    // because the signal_score IS the match score; re-scoring would throw
+    // away signal ranking in favor of chip-match heuristics.
+    const finalCards = hoursFilteredCards;
 
     const elapsed = Date.now() - t0;
     const perChipBreakdown: Record<string, number> = {};
     for (const [chip, arr] of perChipSorted) perChipBreakdown[chip] = arr.length;
     const filterMins: Record<string, number> = {};
     for (const t of chipTargets) filterMins[t.chip] = t.filterMin;
-    console.log(`[discover-cards] exit path=pipeline source=signal-serving-v2-multi-chip chips=${categories.length} rpcs=${rpcTasks.length} failed=${failedTasks.length} pre=${rawCards.length} post=${finalCards.length} elapsed_ms=${elapsed} mode=${sessionId ? 'collab' : 'solo'}`);
+    console.log(`[discover-cards] exit path=pipeline source=signal-serving-v2-multi-chip chips=${categories.length} rpcs=${rpcTasks.length} failed=${failedTasks.length} pre=${rawCards.length} post=${finalCards.length} elapsed_ms=${elapsed} mode=solo`);
 
     return new Response(JSON.stringify({
       success: true,
@@ -1033,6 +1594,7 @@ serve(async (req: Request) => {
         signalIds: uniqueSignalIds,
         cohort: 'NEW',
         filterMins,
+        droppedByTravelTimeFilter: _droppedByTravelTimeFilter,  // ORCH-0903 telemetry
       },
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 

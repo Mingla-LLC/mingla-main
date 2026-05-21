@@ -3,7 +3,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SEEDING_CATEGORY_MAP } from '../_shared/seedingCategories.ts';
 import { googleLevelToTierSlug, slugMeetsMinimum } from '../_shared/priceTiers.ts';
 import { timeoutFetch } from '../_shared/timeoutFetch.ts';
-import { haversineKm, estimateTravelMinutes } from '../_shared/distanceMath.ts';
+import { haversineKm, estimateTravelMinutes, radiusKmForConstraint } from '../_shared/distanceMath.ts';
 // ORCH-0707: signal-rank helper + maps moved to _shared/signalRankFetch.ts
 // (single source of truth shared with stopAlternatives.ts).
 import {
@@ -582,12 +582,12 @@ async function generateCardsForType(
   limit: number,
   skipDescriptions: boolean,
 ): Promise<{ cards: any[]; summary?: CuratedSummary }> {
-  const TRAVEL_SPEEDS_KMH: Record<string, number> = {
-    walking: 4.5, biking: 14, transit: 20, driving: 35,
-  };
-  const speedKmh = TRAVEL_SPEEDS_KMH[travelMode] ?? 4.5;
-  const radiusMeters = Math.round((speedKmh * 1000 / 60) * travelConstraintValue);
-  const clampedRadius = Math.min(Math.max(radiusMeters, 500), 50000);
+  // ORCH-0903 (2026-05-21): curated path uses unified TRAVEL_CONFIG via
+  // radiusKmForConstraint(generosity=1.0). Curated multi-stop trips need
+  // tight, honest radius because the user traverses every stop — wider
+  // generosity would yield trips with ridiculous total durations.
+  const maxDistKm = radiusKmForConstraint(travelConstraintValue, travelMode, 1.0);
+  const clampedRadius = Math.min(Math.max(Math.round(maxDistKm * 1000), 500), 50000);
 
   // Determine if this type uses reverse-anchor (Picnic: find park first)
   const hasReverseAnchor = typeDef.stops.some(s => s.reverseAnchor);
@@ -1245,12 +1245,10 @@ serve(async (req) => {
     }
 
     // Compute radius
-    const TRAVEL_SPEEDS_KMH: Record<string, number> = {
-      walking: 4.5, biking: 14, transit: 20, driving: 35,
-    };
-    const speedKmh = TRAVEL_SPEEDS_KMH[travelMode] ?? 4.5;
-    const radiusMeters = Math.round((speedKmh * 1000 / 60) * travelConstraintValue);
-    const clampedRadius = Math.min(Math.max(radiusMeters, 500), 50000);
+    // ORCH-0903 (2026-05-21): curated path uses unified TRAVEL_CONFIG via
+    // radiusKmForConstraint(generosity=1.0). See _shared/distanceMath.ts.
+    const maxDistKm = radiusKmForConstraint(travelConstraintValue, travelMode, 1.0);
+    const clampedRadius = Math.min(Math.max(Math.round(maxDistKm * 1000), 500), 50000);
 
     // ORCH-0640: Pool-first optimization blocks REMOVED. They read card_pool,
     // which is dropped. All curated generation now flows through

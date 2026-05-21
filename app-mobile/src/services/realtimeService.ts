@@ -54,7 +54,12 @@ interface BoardSessionCallbacks {
   onParticipantUpdated?: (participant: any) => void;
   onSessionUpdated?: (session: any) => void;
   onPreferencesChanged?: (newPrefs: any, oldPrefs: any) => void;
-  onDeckRegenerated?: (deckPayload: any) => void;
+  // ORCH-0902 CR-6: fires on INSERT into board_user_swipe_states for the
+  // session. Receivers should filter by `row.swipe_state` if they only care
+  // about one direction (e.g. useSessionDismissedCards listens only for
+  // 'swiped_left'). The legacy onDeckRegenerated callback (paired with the
+  // deleted session_decks INSERT subscription) was removed in the same change.
+  onSwipeRecorded?: (row: any) => void;
   onCardLocked?: (savedCardId: string, lockedAt: string) => void;
   onSessionDeleted?: (session: any) => void;
   // ORCH-0558: Fires on board_votes INSERT when a vote is attached to a
@@ -612,18 +617,26 @@ export class RealtimeService {
           }
         }
       )
-      // Session deck regeneration — all participants refetch when new deck is generated
+      // ORCH-0902 CR-6: visible-but-not-binding dismissed-sheet sync. Fires
+      // on EVERY swipe insert (both 'swiped_left' and 'swiped_right');
+      // useSessionDismissedCards filters client-side to listen only for
+      // 'swiped_left' rows. The match-quorum side still flows through
+      // onCardSaved (board_saved_cards INSERT) which is unchanged.
+      //
+      // Replaces the previous session_decks INSERT listener (ORCH-0446
+      // deleted the underlying table); that callback (onDeckRegenerated)
+      // is removed from the interface in the same change.
       .on(
         "postgres_changes",
         {
           event: "INSERT",
           schema: "public",
-          table: "session_decks",
+          table: "board_user_swipe_states",
           filter: `session_id=eq.${sessionId}`,
         },
         (payload) => {
-          if (__DEV__) logger.realtime(`${sessionId} | INSERT session_decks`);
-          dispatch('onDeckRegenerated', payload.new);
+          if (__DEV__) logger.realtime(`${sessionId} | INSERT board_user_swipe_states`, { swipe_state: (payload.new as any)?.swipe_state });
+          dispatch('onSwipeRecorded', payload.new);
         }
       )
       // Session updates

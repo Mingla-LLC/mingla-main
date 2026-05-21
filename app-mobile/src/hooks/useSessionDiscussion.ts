@@ -162,6 +162,10 @@ export function useSessionDiscussion(
           queryClient.invalidateQueries({ queryKey: discussionKeys.messages(conversationId) });
         },
       )
+      // REALTIME-INERT-OK: ORCH-0898 direct_message_reactions is not in the
+      // supabase_realtime publication; reactions UI is queued for a follow-up
+      // ORCH (subscription is intentionally inert until then so the follow-up
+      // only needs an ALTER PUBLICATION + reactions schema).
       .on(
         'postgres_changes',
         {

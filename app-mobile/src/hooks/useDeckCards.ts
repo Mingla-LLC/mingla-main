@@ -43,6 +43,11 @@ export interface DeckQueryKeyParams {
   mode?: 'solo' | 'collab';
   /** ORCH-0490 Phase 2.3: required when mode === 'collab'. Ignored otherwise. */
   sessionId?: string;
+  /** ORCH-0902 CR-1: required when mode === 'collab'. The pinned deck_version
+   *  that this participant is currently consuming. Drives cache partitioning
+   *  per (session_id, deck_version). 0 means "no deck yet" (below CR-8 ≥2
+   *  accepted threshold) — the hook should be disabled in that case. */
+  deckVersion?: number;
   lat: number;
   lng: number;
   categories: string[];
@@ -57,6 +62,23 @@ export interface DeckQueryKeyParams {
 }
 
 export function buildDeckQueryKey(params: DeckQueryKeyParams): readonly unknown[] {
+  // ORCH-0902 CR-1: collab key shape is tiny — only (sessionId, deckVersion).
+  // No location, categories, travelMode, etc. — those are all derived from
+  // session state on the server. Two clients passing the same sessionId +
+  // deckVersion get byte-identical decks; the key partitions by version so
+  // a deck-version bump triggers a cache miss + refetch.
+  if (params.mode === 'collab') {
+    return [
+      'deck-cards',
+      'collab',
+      params.sessionId ?? null,
+      params.deckVersion ?? 0,
+    ] as const;
+  }
+
+  // Solo + legacy path: location/category/travel-mode/etc. enter the key as
+  // before. Server still computes the deck per these params, no determinism
+  // contract applies here.
   const roundedLat = Math.round(params.lat * 1000) / 1000;
   const roundedLng = Math.round(params.lng * 1000) / 1000;
   const nd = params.datetimePref
@@ -77,14 +99,9 @@ export function buildDeckQueryKey(params: DeckQueryKeyParams): readonly unknown[
     [...(params.excludeCardIds ?? [])].sort().join(','),
   ];
 
-  // ORCH-0490 Phase 2.3: new key shape when mode is provided.
-  if (params.mode !== undefined) {
-    return [
-      'deck-cards',
-      params.mode,
-      params.mode === 'collab' ? params.sessionId ?? null : null,
-      ...tail,
-    ] as const;
+  // ORCH-0490 Phase 2.3: new key shape when mode='solo' explicitly.
+  if (params.mode === 'solo') {
+    return ['deck-cards', 'solo', null, ...tail] as const;
   }
 
   // Pre-2.3 legacy key shape — preserved for flag-off callers.
@@ -116,6 +133,11 @@ interface UseDeckCardsParams {
    *  key shape (`['deck-cards', mode, sessionId ?? null, ...]`). Absent for
    *  flag-off callers — key shape reverts to pre-2.3 legacy. */
   mode?: 'solo' | 'collab';
+  /** ORCH-0902 CR-1: required when mode === 'collab'. The pinned deck_version
+   *  the participant is currently consuming (see RecommendationsContext V_n
+   *  exhaustion state machine). 0 disables the hook (below CR-8 ≥2 accepted
+   *  threshold). */
+  deckVersion?: number;
 }
 
 export interface UseDeckCardsResult {

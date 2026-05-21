@@ -38,6 +38,17 @@ export interface DeckState {
   currentCardIndex: number;
   removedCards: Set<string>;
   lastQueryKey: readonly unknown[] | null;
+  /**
+   * ORCH-0902 CR-4 (resume rule): for collab contexts, the deck_version this
+   * participant is currently consuming. `null` means "no deck pinned yet"
+   * (first entry into the session). On rejoin, the hook reads this value and
+   * passes it to useDeckCards so the user sees V_n where they left off — NOT
+   * V_latest. The state machine in RecommendationsContext bumps this to
+   * `session.deck_version` only after the user swipes past the last V_n card
+   * (CR-3 V_n exhaustion rule). Solo contexts ignore this field; it stays
+   * null.
+   */
+  pinnedDeckVersion: number | null;
 }
 
 /**
@@ -63,6 +74,7 @@ function createEmptyDeckState(): DeckState {
     currentCardIndex: 0,
     removedCards: new Set<string>(),
     lastQueryKey: null,
+    pinnedDeckVersion: null,
   };
 }
 
