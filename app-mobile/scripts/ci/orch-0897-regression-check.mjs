@@ -73,7 +73,7 @@ check(
   migration !== null &&
     /CREATE TABLE IF NOT EXISTS public\.pending_trip_chat_claims/.test(migration) &&
     /claim_token text NOT NULL UNIQUE/.test(migration) &&
-    /encode\((extensions\.)?gen_random_bytes\(24\), 'base64url'\)/.test(migration),
+    /extensions\.gen_random_bytes\(24\)/.test(migration),
   "Pending claim table and 24-byte random token generation must exist.",
 );
 

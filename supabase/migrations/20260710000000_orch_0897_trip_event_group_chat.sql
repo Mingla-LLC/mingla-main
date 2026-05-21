@@ -199,7 +199,9 @@ BEGIN
   END IF;
 
   IF p_buyer_email IS NOT NULL AND length(trim(p_buyer_email)) > 0 THEN
-    v_claim_token := encode(extensions.gen_random_bytes(24), 'base64url');
+    -- Postgres encode() supports only base64/hex/escape; build base64url by translating + and / to URL-safe forms.
+    -- 24 input bytes -> 32 char output, no '=' padding (24 % 3 == 0).
+    v_claim_token := translate(encode(extensions.gen_random_bytes(24), 'base64'), '+/', '-_');
     INSERT INTO public.pending_trip_chat_claims (
       order_id, event_id, buyer_email, claim_token
     ) VALUES (
@@ -696,7 +698,7 @@ WHERE o.buyer_user_id IS NOT NULL
 ON CONFLICT (conversation_id, user_id) DO NOTHING;
 
 INSERT INTO public.pending_trip_chat_claims (order_id, event_id, buyer_email, claim_token)
-SELECT DISTINCT o.id, o.event_id, lower(trim(o.buyer_email)), encode(extensions.gen_random_bytes(24), 'base64url')
+SELECT DISTINCT o.id, o.event_id, lower(trim(o.buyer_email)), translate(encode(extensions.gen_random_bytes(24), 'base64'), '+/', '-_')
 FROM public.orders o
 JOIN public.events e ON e.id = o.event_id
 WHERE e.event_type IN ('event', 'trip')
