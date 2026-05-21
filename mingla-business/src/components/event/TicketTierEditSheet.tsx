@@ -12,12 +12,13 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
+// ORCH-0892-B v2: ScrollView via SmartScrollView wrapper. Per SPEC §7.F.
+import { ScrollView } from "../../wrappers/SmartScrollView";
 import DateTimePicker, {
   type DateTimePickerEvent,
 } from "@react-native-community/datetimepicker";
@@ -666,11 +667,6 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}
-          // iOS native: scrolls focused input into view above keyboard.
-          // Combined with NO manual keyboardHeight padding to avoid the
-          // double-padding that broke Cycle 3 wizard root. Works for any
-          // input position (Name top, Password mid, MinQty near bottom).
-          automaticallyAdjustKeyboardInsets
         >
           <Text style={styles.sheetTitle}>
             {isEditMode ? "Edit ticket" : "Add ticket type"}

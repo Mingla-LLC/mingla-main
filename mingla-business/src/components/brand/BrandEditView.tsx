@@ -26,17 +26,19 @@ import {
   Image as RNImage,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
-// ORCH-0892-A v2 (post-QA rework Path A): KeyboardAvoidingView imported
-// from the wrapper at src/wrappers/. Metro picks .tsx (react-native KAV)
-// on web and .native.tsx (library KAV) on iOS+Android, keeping the
-// library out of the web bundle. Per SPEC_ORCH-0892-A §7.4 + QA §11.
-import { KeyboardAvoidingView } from "../../wrappers/KeyboardAvoidingView";
+// ORCH-0892-B v2: ScrollView routed through the SmartScrollView wrapper.
+// On native, resolves to KeyboardAwareScrollView (library) which scrolls
+// the focused TextInput exactly 12pt above the keyboard. On web, resolves
+// to react-native's plain ScrollView (no soft keyboard there). Wrapper
+// indirection keeps the keyboard library out of the web bundle.
+// Per SPEC_ORCH-0892-B_v2 §7.D. KeyboardAvoidingView wrapper from
+// ORCH-0892-A is DELETED — KAS supersedes it functionally.
+import { ScrollView } from "../../wrappers/SmartScrollView";
 import { Image as ExpoImage } from "expo-image";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -420,10 +422,6 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
         />
       </View>
 
-      <KeyboardAvoidingView
-        style={styles.kbWrap}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-      >
         <ScrollView
           contentContainerStyle={[
             styles.scroll,
@@ -818,7 +816,6 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
             </View>
           ) : null}
         </ScrollView>
-      </KeyboardAvoidingView>
 
       <ConfirmDialog
         visible={discardDialogVisible}

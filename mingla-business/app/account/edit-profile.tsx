@@ -20,14 +20,15 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Image,
-  Keyboard,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
+// ORCH-0892-B v2: ScrollView via SmartScrollView wrapper. Keyboard listener
+// + keyboardVisible state + auto-insets all DELETED. Per SPEC §7.F.
+import { ScrollView } from "../../src/wrappers/SmartScrollView";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
@@ -69,7 +70,6 @@ export default function EditProfileRoute(): React.ReactElement {
   const [name, setName] = useState<string>("");
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState<boolean>(false);
-  const [keyboardVisible, setKeyboardVisible] = useState<boolean>(false);
   const [toast, setToast] = useState<{ visible: boolean; message: string }>({
     visible: false,
     message: "",
@@ -110,19 +110,8 @@ export default function EditProfileRoute(): React.ReactElement {
     }
   }, [account]);
 
-  // Keyboard listener for memory rule feedback_keyboard_never_blocks_input
-  useEffect(() => {
-    const showSub = Keyboard.addListener("keyboardDidShow", () =>
-      setKeyboardVisible(true),
-    );
-    const hideSub = Keyboard.addListener("keyboardDidHide", () =>
-      setKeyboardVisible(false),
-    );
-    return () => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, []);
+  // ORCH-0892-B v2: keyboard listener + keyboardVisible state DELETED.
+  // KAS via SmartScrollView handles focused-input scroll automatically.
 
   const provider = useMemo<"google" | "apple" | "unknown">(() => {
     const p = user?.app_metadata?.provider;
@@ -305,14 +294,10 @@ export default function EditProfileRoute(): React.ReactElement {
         style={styles.scroll}
         contentContainerStyle={[
           styles.scrollContent,
-          {
-            paddingBottom:
-              insets.bottom + (keyboardVisible ? spacing.xl * 4 : spacing.xl),
-          },
+          { paddingBottom: insets.bottom + spacing.xl },
         ]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
-        automaticallyAdjustKeyboardInsets
         showsVerticalScrollIndicator={false}
       >
         {/* Avatar section */}

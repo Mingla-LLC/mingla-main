@@ -17,12 +17,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
+// ORCH-0892-B v2: ScrollView via SmartScrollView wrapper. Per SPEC §7.F.
+import { ScrollView } from "../../wrappers/SmartScrollView";
 
 import {
   accent,
@@ -198,7 +199,6 @@ export const AddCompGuestSheet: React.FC<AddCompGuestSheetProps> = ({
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}
-          automaticallyAdjustKeyboardInsets
         >
           {/* Name */}
           <View style={styles.fieldGroup}>

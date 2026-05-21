@@ -25,16 +25,18 @@ import {
   Keyboard,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
-// ORCH-0892-A v2 (post-QA rework Path A): KeyboardAvoidingView imported
-// from the wrapper at src/wrappers/. Keyboard import retained for
-// Keyboard.dismiss() at line 144. Per SPEC_ORCH-0892-A §7.5 + QA §11.
-import { KeyboardAvoidingView } from "../../wrappers/KeyboardAvoidingView";
+// ORCH-0892-B v2: ScrollView routed through SmartScrollView wrapper. On
+// native, resolves to KeyboardAwareScrollView (library) which scrolls the
+// focused TextInput exactly 12pt above the keyboard. On web, plain RN
+// ScrollView (passthrough). Keyboard import retained for Keyboard.dismiss().
+// KeyboardAvoidingView wrapper from ORCH-0892-A DELETED — KAS supersedes.
+// Per SPEC_ORCH-0892-B_v2 §7.D.
+import { ScrollView } from "../../wrappers/SmartScrollView";
 import { useRouter } from "expo-router";
 import {
   radius as radiusTokens,
@@ -230,11 +232,7 @@ export const TripBrandWizard: React.FC<TripBrandWizardProps> = ({
             : "Continue to Stripe";
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-      style={styles.host}
-      testID={testID}
-    >
+    <View style={styles.host} testID={testID}>
       <View style={styles.header}>
         <Pressable
           onPress={onBack}
@@ -329,7 +327,7 @@ export const TripBrandWizard: React.FC<TripBrandWizardProps> = ({
           }}
         />
       ) : null}
-    </KeyboardAvoidingView>
+    </View>
   );
 };
 

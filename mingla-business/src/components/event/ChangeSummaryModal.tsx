@@ -18,12 +18,13 @@
 import React, { useCallback, useEffect, useState } from "react";
 import {
   Platform,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
+// ORCH-0892-B v2: ScrollView via SmartScrollView wrapper. Per SPEC §7.F.
+import { ScrollView } from "../../wrappers/SmartScrollView";
 
 import {
   accent,
@@ -140,8 +141,6 @@ export const ChangeSummaryModal: React.FC<ChangeSummaryModalProps> = ({
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}
-          // iOS native: scrolls focused TextInput above keyboard.
-          automaticallyAdjustKeyboardInsets
         >
           {/* Diff list */}
           {diffs.length === 0 ? (

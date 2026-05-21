@@ -25,15 +25,17 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   Image,
   Keyboard,
-  type KeyboardEvent,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+// ORCH-0892-B v2: ScrollView via SmartScrollView wrapper. Keyboard listener
+// + KeyboardAvoidingView wrap DELETED. KAS handles focused-input scroll.
+// useKeyboardIsVisible() preserves dock-hide UX. Keyboard import retained
+// for Keyboard.dismiss(). Per SPEC §7.F.
+import { ScrollView } from "../../wrappers/SmartScrollView";
+import { useKeyboardIsVisible } from "../../wrappers/useKeyboardIsVisible";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -383,35 +385,16 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
     setToast((p) => ({ ...p, visible: false }));
   }, []);
 
-  // ORCH-0874: keyboard listener pattern (mirrors EventCreatorWizard:262-312).
-  // Replaces prior KeyboardAvoidingView. paddingBottom = keyboardHeight on
-  // ScrollView contentContainerStyle so the focused bottom-most input sits
-  // immediately above the keyboard with no visible gap; dock hides while
-  // keyboard is visible.
-  const [keyboardVisible, setKeyboardVisible] = useState<boolean>(false);
-  const [keyboardHeight, setKeyboardHeight] = useState<number>(0);
+  // ORCH-0892-B v2: keyboard listener + keyboardVisible/keyboardHeight state
+  // DELETED. KAS via SmartScrollView handles focused-input scroll. dock-hide
+  // UX preserved via useKeyboardIsVisible() wrapper hook. Per SPEC §7.F.
+  const keyboardVisible = useKeyboardIsVisible();
   // ORCH-0884 follow-up #9 — ScrollView ref passed to TripCreatorStep1Basics
   // → CoverPicker so the GIPHY/Pexels search TextInput can trigger an
-  // explicit scroll-on-focus past iOS's auto-scroll position.
+  // explicit scroll-on-focus past iOS's auto-scroll position. Retained
+  // for ORCH-0892-B v2 — KAS scrolls via its own animated ref; this JS-side
+  // ref is unused by KAS but kept for the CoverPicker drilldown prop chain.
   const scrollViewRef = useRef<ScrollView | null>(null);
-  useEffect(() => {
-    const showEvent =
-      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
-    const hideEvent =
-      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
-    const showSub = Keyboard.addListener(showEvent, (e: KeyboardEvent): void => {
-      setKeyboardVisible(true);
-      setKeyboardHeight(e.endCoordinates.height);
-    });
-    const hideSub = Keyboard.addListener(hideEvent, (): void => {
-      setKeyboardVisible(false);
-      setKeyboardHeight(0);
-    });
-    return (): void => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, []);
 
   const updateBasicsMutation = useUpdateTripBasics();
   const upsertDaysMutation = useUpsertTripDays();
@@ -1069,22 +1052,12 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
         {isWideDesktop ? renderDesktopStepRail() : null}
         <View style={isWideDesktop ? styles.desktopFormPane : styles.mobileFormPane}>
 
-      {/* Body — canonical KeyboardAvoidingView pattern (ORCH-0884 follow-up
-          #7). Prior attempts (auto-inset + manual paddingBottom alone) left
-          the focused input HALF-COVERED by the keyboard because iOS's
-          auto-scroll only puts the input TOP above the keyboard, not the
-          full input. KeyboardAvoidingView with behavior="padding" shrinks
-          the visible area by keyboardHeight so the ScrollView naturally
-          fits its content above the keyboard. iOS's
-          scrollResponderScrollNativeHandleToKeyboard then has a smaller
-          visible area to scroll within, putting the focused input fully
-          visible. keyboardVerticalOffset accounts for the chrome height
-          above this view. */}
-      <KeyboardAvoidingView
-        style={styles.kbAvoid}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        keyboardVerticalOffset={0}
-      >
+      {/* ORCH-0892-B v2: KeyboardAvoidingView wrap DELETED. SmartScrollView
+          (KAS on native) computes overlap = (focused field bottom) -
+          (visibleHeight - keyboardHeight - bottomOffset) and scrolls
+          exactly that amount so the focused TextInput sits ~12pt above
+          the keyboard. Chrome (header + dock) renders OUTSIDE this
+          ScrollView so it stays stationary. Per SPEC §7.F. */}
       <ScrollView
         ref={scrollViewRef}
         style={styles.kbAvoid}
@@ -1182,7 +1155,6 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
           ) : null}
         </View>
       </ScrollView>
-      </KeyboardAvoidingView>
 
       {/* Dock — sleek floating glass card. Hidden when keyboard up. */}
       {keyboardVisible ? null : (

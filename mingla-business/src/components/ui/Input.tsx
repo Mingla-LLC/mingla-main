@@ -23,6 +23,10 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+// Picker dropdown overlay (scrolls dropdown option list inside an
+// absolute-positioned modal, not form content). Parent screen's
+// SmartScrollView handles keyboard avoidance for the TextInput.
+// orch-strict-grep-allow orch-0892 — dropdown ScrollView, not form scroll
 import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import type {
   StyleProp,

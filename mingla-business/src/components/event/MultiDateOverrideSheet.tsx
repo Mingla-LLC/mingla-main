@@ -25,16 +25,16 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Keyboard,
-  type KeyboardEvent,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
+// ORCH-0892-B v2: ScrollView via SmartScrollView wrapper. Keyboard listener
+// + state DELETED. Per SPEC §7.F.
+import { ScrollView } from "../../wrappers/SmartScrollView";
 import DateTimePicker, {
   type DateTimePickerEvent,
 } from "@react-native-community/datetimepicker";
@@ -146,52 +146,16 @@ export const MultiDateOverrideSheet: React.FC<MultiDateOverrideSheetProps> = ({
   const startTimeInputRef = useRef<HTMLInputElement | null>(null);
   const endTimeInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Keyboard awareness (per global rule).
-  const [keyboardHeight, setKeyboardHeight] = useState<number>(0);
+  // ORCH-0892-B v2: keyboard listener + deferred scroll plumbing DELETED.
+  // KAS via SmartScrollView handles focused-input scroll automatically.
+  // requestScrollToEnd retained as passthrough for onFocus child callbacks.
   const scrollRef = useRef<ScrollView | null>(null);
-  const pendingScrollRef = useRef<boolean>(false);
-
-  useEffect(() => {
-    const showEvent =
-      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
-    const hideEvent =
-      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
-    const showSub = Keyboard.addListener(showEvent, (e: KeyboardEvent): void => {
-      setKeyboardHeight(e.endCoordinates.height);
-    });
-    const hideSub = Keyboard.addListener(hideEvent, (): void => {
-      setKeyboardHeight(0);
-    });
-    return (): void => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, []);
-
-  // Deferred scroll-to-focused-input (Cycle 3 wizard root pattern).
-  // When a TextInput's onFocus fires, we mark a pending scroll. Once
-  // keyboardHeight rises AND the new paddingBottom has applied, we
-  // scrollToEnd inside requestAnimationFrame so the focused field
-  // sits flush above the keyboard.
-  useEffect(() => {
-    if (keyboardHeight > 0 && pendingScrollRef.current) {
-      requestAnimationFrame((): void => {
-        scrollRef.current?.scrollToEnd({ animated: true });
-      });
-    }
-    if (keyboardHeight === 0) {
-      pendingScrollRef.current = false;
-    }
-  }, [keyboardHeight]);
 
   const requestScrollToEnd = useCallback((): void => {
-    pendingScrollRef.current = true;
-    if (keyboardHeight > 0) {
-      requestAnimationFrame((): void => {
-        scrollRef.current?.scrollToEnd({ animated: true });
-      });
-    }
-  }, [keyboardHeight]);
+    requestAnimationFrame((): void => {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    });
+  }, []);
 
   // Sync local state when sheet opens with an entry.
   useEffect(() => {
@@ -318,12 +282,7 @@ export const MultiDateOverrideSheet: React.FC<MultiDateOverrideSheetProps> = ({
         style={styles.scroll}
         contentContainerStyle={[
           styles.sheetContent,
-          {
-            paddingBottom:
-              keyboardHeight > 0
-                ? keyboardHeight + spacing.md
-                : insets.bottom + spacing.md,
-          },
+          { paddingBottom: insets.bottom + spacing.md },
         ]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"

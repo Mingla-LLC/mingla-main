@@ -40,15 +40,16 @@ import React, {
   useState,
 } from "react";
 import {
-  Keyboard,
-  type KeyboardEvent,
-  Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+// ORCH-0892-B v2: ScrollView via SmartScrollView wrapper. Keyboard listener
+// + state + auto-insets DELETED. useKeyboardIsVisible() preserves dock-hide.
+// Per SPEC §7.F.
+import { ScrollView } from "../../wrappers/SmartScrollView";
+import { useKeyboardIsVisible } from "../../wrappers/useKeyboardIsVisible";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
@@ -287,53 +288,18 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
     setToast({ visible: true, message });
   }, []);
 
-  // ---- Keyboard handling (Cycle 3 wizard root pattern) ----
-  const [keyboardVisible, setKeyboardVisible] = useState<boolean>(false);
-  const [keyboardHeight, setKeyboardHeight] = useState<number>(0);
+  // ORCH-0892-B v2: keyboard listener + state DELETED. KAS via
+  // SmartScrollView handles focused-input scroll. dock-hide preserved
+  // via useKeyboardIsVisible(). scrollToBottom retained as passthrough
+  // for child-callback compatibility (KAS refines focus-scroll on top).
+  const keyboardVisible = useKeyboardIsVisible();
   const scrollViewRef = useRef<ScrollView | null>(null);
-  const pendingScrollToBottomRef = useRef<boolean>(false);
-
-  useEffect(() => {
-    const showEvent =
-      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
-    const hideEvent =
-      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
-    const showSub = Keyboard.addListener(
-      showEvent,
-      (e: KeyboardEvent): void => {
-        setKeyboardVisible(true);
-        setKeyboardHeight(e.endCoordinates.height);
-      },
-    );
-    const hideSub = Keyboard.addListener(hideEvent, (): void => {
-      setKeyboardVisible(false);
-      setKeyboardHeight(0);
-    });
-    return (): void => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, []);
 
   const scrollToBottom = useCallback((): void => {
-    pendingScrollToBottomRef.current = true;
-    if (keyboardHeight > 0) {
-      requestAnimationFrame((): void => {
-        scrollViewRef.current?.scrollToEnd({ animated: true });
-      });
-    }
-  }, [keyboardHeight]);
-
-  useEffect(() => {
-    if (keyboardHeight > 0 && pendingScrollToBottomRef.current) {
-      requestAnimationFrame((): void => {
-        scrollViewRef.current?.scrollToEnd({ animated: true });
-      });
-    }
-    if (keyboardHeight === 0) {
-      pendingScrollToBottomRef.current = false;
-    }
-  }, [keyboardHeight]);
+    requestAnimationFrame((): void => {
+      scrollViewRef.current?.scrollToEnd({ animated: true });
+    });
+  }, []);
 
   // ---- Sold-count context (ORCH-0704: stub returns zeros; 9c flips live) ----
   const soldCountCtx = useMemo(
@@ -1077,18 +1043,10 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         style={styles.scroll}
         contentContainerStyle={[
           styles.scrollContent,
-          {
-            // ORCH-0884 follow-up #6 — bumped buffer from 120 to 200pt
-            // when keyboard is up. Same fix as EditPublishedTripScreen.
-            paddingBottom:
-              keyboardHeight > 0
-                ? keyboardHeight + 200
-                : insets.bottom + 120,
-          },
+          { paddingBottom: insets.bottom + 120 },
         ]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
-        automaticallyAdjustKeyboardInsets
         showsVerticalScrollIndicator={false}
       >
         <EditAfterPublishBanner />

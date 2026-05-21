@@ -15,12 +15,15 @@ import {
   ActivityIndicator,
   Image,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
+// ORCH-0892-B v2: ScrollView via SmartScrollView wrapper. Sheet primitive
+// no longer auto-translates the panel; sheet consumers own keyboard
+// avoidance via KAS in their body ScrollView. Per SPEC §7.D + §7.F.
+import { ScrollView } from "../../wrappers/SmartScrollView";
 import * as ImagePicker from "expo-image-picker";
 
 import { Button } from "../ui/Button";
