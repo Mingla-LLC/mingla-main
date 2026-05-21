@@ -4,7 +4,7 @@
 
 **Investigator:** Claude `mingla-forensics` 2026-05-21
 **Working tree:** `/Users/sethogieva/Desktop/mingla-main` on branch `Seth`
-**Dispatch:** [`Mingla_Artifacts/prompts/INVESTIGATOR_SPEC_ORCH-0904_SOLO_MODE_STALE_GPS.md`](../prompts/INVESTIGATOR_SPEC_ORCH-0904_SOLO_MODE_STALE_GPS.md)
+**Dispatch:** `Mingla_Artifacts/prompts/INVESTIGATOR_SPEC_ORCH-0904_SOLO_MODE_STALE_GPS.md` (PRIVATE_PROMPT_NOT_VERSIONED — `prompts/` is private per ARTIFACT_MANIFEST)
 **Confidence:** `root cause probable` — source mechanism fully proven from file:line evidence; sim live-fire repro deferred to TEST phase per operator authorization (2026-05-21). Named blocker: lack of test sign-in credentials + impracticality of scripting the multi-step apply-move-apply Maestro flow from this skill session. Phase 0.A sim verification will run at tester phase with operator sign-in.
 
 ---
