@@ -363,8 +363,8 @@ class DeckService {
     // Collab decks send ONLY { session_id, current_position } — no
     // client-aggregated location/categories/etc. Server reads aggregation
     // via pg_aggregate_collab_prefs and returns the next shared card.
-    // There is no curated parallel path for collab in v2; the spec does not
-    // include curated stops in the intersection serving model.
+    // ORCH-0906: collab now receives single and curated cards from the same
+    // positional endpoint; the server decides the card type for each position.
     //
     // This branch returns directly; the solo code below runs unchanged.
     // ────────────────────────────────────────────────────────────────────
@@ -768,8 +768,8 @@ class DeckService {
    * caller's cursor, generates or reads the next positional row, and returns
    * a single card for that shared deck position.
    *
-   * Single HTTP call, no curated parallel path (collab v2 does not interleave
-   * curated experiences with category venues; that pattern is solo-only).
+   * ORCH-0906 keeps this a single HTTP call; the server interleaves single
+   * places and curated experiences inside the positional shared-deck response.
    *
    * `onPartialReady` is accepted for interface parity with the solo fetcher
    * but NOT called — positional fetches are single-card responses.

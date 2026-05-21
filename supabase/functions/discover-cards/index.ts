@@ -12,6 +12,7 @@ import { googleLevelToTierSlug } from '../_shared/priceTiers.ts';
 // card_pool pipeline as the singles serving source. See
 // Mingla_Artifacts/outputs/SPEC_ORCH-0634_SIGNAL_ONLY_SERVING_AND_INTERLEAVE.md.
 import { roundRobinByChip } from '../_shared/deckInterleave.ts';
+import { decideTypeAndPill } from '../_shared/mixedTypeInterleave.ts';
 // ORCH-0659/0660: honest distance + per-mode travel-time computation.
 // Single owner: _shared/distanceMath.ts. See
 // Mingla_Artifacts/specs/SPEC_ORCH-0659_0660_DECK_DISTANCE_TRAVELTIME.md.
@@ -121,6 +122,15 @@ const CATEGORY_TO_SIGNAL: Record<
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+
+const SESSION_INTENT_IDS = new Set([
+  'adventurous',
+  'first-date',
+  'romantic',
+  'group-fun',
+  'picnic-dates',
+  'take-a-stroll',
+]);
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -630,7 +640,53 @@ type PositionalDeadEndReason =
   | 'intersection_empty'
   | 'no_matching_candidates'
   | 'no_unswiped_candidates'
-  | 'quorum_not_met';
+  | 'quorum_not_met'
+  | 'all_pools_exhausted';
+
+type SessionDeckCardRow = {
+  card_id: string | null;
+  card_type?: 'single' | 'curated' | string | null;
+  curated_payload?: any | null;
+  generated_at_version: number;
+  degraded_from?: string | null;
+  pill_label?: string | null;
+};
+
+function curatedStopPlacePoolIds(card: any): string[] {
+  const stops = Array.isArray(card?.stops) ? card.stops : [];
+  return stops
+    .map((stop: any) => stop?.placePoolId)
+    .filter((id: unknown): id is string => typeof id === 'string' && id.length > 0);
+}
+
+async function fetchCuratedBatchInternal(args: {
+  sessionId: string;
+  experienceType: string;
+  limit: number;
+  excludePlacePoolIds: string[];
+  callerJwt: string;
+}): Promise<{ cards: any[]; summary?: { emptyReason: string; candidateAnchorCount: number; failedAnchorCount: number } }> {
+  const resp = await fetch(`${SUPABASE_URL}/functions/v1/generate-curated-experiences`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${args.callerJwt}`,
+    },
+    body: JSON.stringify({
+      experienceType: args.experienceType,
+      session_id: args.sessionId,
+      limit: args.limit,
+      skipDescriptions: true,
+      excludePlacePoolIds: args.excludePlacePoolIds,
+    }),
+  });
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`generate-curated-experiences returned ${resp.status}: ${text.slice(0, 200)}`);
+  }
+  const json = await resp.json();
+  return { cards: Array.isArray(json?.cards) ? json.cards : [], summary: json?.summary };
+}
 
 async function handleDeterministicV2(args: {
   supabaseAdmin: any;
@@ -796,7 +852,7 @@ async function handleDeterministicV2(args: {
     ? agg.pending_gps_user_ids
     : [];
 
-  const hydrateCard = async (cardId: string): Promise<any | null> => {
+  const hydrateSingleFromPlacePool = async (cardId: string): Promise<any | null> => {
     const { data, error } = await supabaseAdmin
       .from('place_pool')
       .select(`
@@ -833,12 +889,21 @@ async function handleDeterministicV2(args: {
     );
   };
 
+  const hydrateCardFromRow = async (row: SessionDeckCardRow): Promise<any | null> => {
+    if (row.card_type === 'curated' && row.curated_payload) {
+      return row.curated_payload;
+    }
+    if ((row.card_type === 'single' || !row.card_type) && row.card_id) {
+      return await hydrateSingleFromPlacePool(row.card_id);
+    }
+    return null;
+  };
+
   const successResponse = async (params: {
-    cardId: string;
+    row: SessionDeckCardRow;
     position: number;
-    generatedAtVersion: number;
   }): Promise<Response> => {
-    const card = await hydrateCard(params.cardId);
+    const card = await hydrateCardFromRow(params.row);
     if (!card) {
       return json({
         success: false,
@@ -868,7 +933,7 @@ async function handleDeterministicV2(args: {
     }
 
     console.log(
-      `[discover-cards/positional] session=${sessionId} user=${userId} position=${params.position} card=${params.cardId} generated_at_version=${params.generatedAtVersion} elapsed_ms=${Date.now() - t0}`,
+      `[discover-cards/positional] session=${sessionId} user=${userId} position=${params.position} type=${params.row.card_type ?? 'single'} card=${params.row.card_id ?? card?.id ?? 'curated'} generated_at_version=${params.row.generated_at_version} elapsed_ms=${Date.now() - t0}`,
     );
 
     return json({
@@ -878,8 +943,15 @@ async function handleDeterministicV2(args: {
       total: 1,
       position: params.position,
       current_position: params.position,
-      generated_at_version: params.generatedAtVersion,
+      generated_at_version: params.row.generated_at_version,
       dead_end: false,
+      card_type: params.row.card_type ?? 'single',
+      pill_label: params.row.pill_label ?? null,
+      degraded_from: params.row.degraded_from ?? null,
+      degraded_from_intent: params.row.card_type === 'single' && Boolean(params.row.degraded_from),
+      degraded_from_single: params.row.card_type === 'curated' && Boolean(params.row.degraded_from),
+      exhausted_intent: params.row.card_type === 'single' ? params.row.degraded_from ?? null : null,
+      exhausted_category: params.row.card_type === 'curated' ? params.row.degraded_from ?? null : null,
       acceptedCount: agg.acceptedCount,
       pending_gps_user_ids: pendingGpsUserIds,
       source: 'orch-0909-positional-shared-deck',
@@ -891,7 +963,9 @@ async function handleDeterministicV2(args: {
         apiCallsMade: 0,
         cacheHits: 0,
         gapCategories: [],
-        reason: 'ORCH-0909 positional shared-deck card',
+        reason: params.row.degraded_from
+          ? 'ORCH-0906 graceful-degrade positional shared-deck card'
+          : 'ORCH-0909 positional shared-deck card',
         path: 'pipeline',
         signalIds: [],
         cohort: 'NEW',
@@ -912,7 +986,7 @@ async function handleDeterministicV2(args: {
 
   const existingCardRes = await supabaseAdmin
     .from('session_deck_cards')
-    .select('card_id, generated_at_version')
+    .select('card_id, card_type, curated_payload, generated_at_version, degraded_from, pill_label')
     .eq('session_id', sessionId)
     .eq('position', targetPosition)
     .maybeSingle();
@@ -928,9 +1002,8 @@ async function handleDeterministicV2(args: {
   }
   if (existingCardRes.data) {
     return await successResponse({
-      cardId: existingCardRes.data.card_id,
+      row: existingCardRes.data as SessionDeckCardRow,
       position: targetPosition,
-      generatedAtVersion: existingCardRes.data.generated_at_version,
     });
   }
 
@@ -952,17 +1025,86 @@ async function handleDeterministicV2(args: {
       detail: 'Participant travel circles have no shared reachable places.',
     });
   }
-  if (!Array.isArray(agg.categories) || agg.categories.length === 0) {
+  const collabCategories = Array.isArray(agg.categories)
+    ? resolveCategories(agg.categories).filter((c) => !HIDDEN_CATEGORIES.has(c))
+    : [];
+  const collabIntents = Array.isArray(agg.intents)
+    ? agg.intents.filter((intent) => SESSION_INTENT_IDS.has(intent))
+    : [];
+
+  if (collabCategories.length === 0 && collabIntents.length === 0) {
     return deadEnd({
       position: targetPosition,
       reason: 'no_matching_candidates',
       acceptedCount: agg.acceptedCount,
       pendingGpsUserIds,
-      detail: 'No participant has any category selected.',
+      detail: 'No participant has any category or intent selected.',
     });
   }
 
-  const canonicalCategories = resolveCategories(agg.categories).filter(
+  const countServedRowsByType = async (cardType: 'single' | 'curated'): Promise<number> => {
+    const { data, error } = await supabaseAdmin
+      .from('session_deck_cards')
+      .select('position')
+      .eq('session_id', sessionId)
+      .eq('card_type', cardType);
+    if (error) throw new Error(error.message);
+    return Array.isArray(data) ? data.length : 0;
+  };
+
+  const pickNextSinglePill = async (): Promise<string | null> => {
+    if (collabCategories.length === 0) return null;
+    const count = await countServedRowsByType('single');
+    return collabCategories[count % collabCategories.length];
+  };
+
+  const pickNextCuratedPill = async (): Promise<string | null> => {
+    if (collabIntents.length === 0) return null;
+    const count = await countServedRowsByType('curated');
+    return collabIntents[count % collabIntents.length];
+  };
+
+  let handleCuratedPosition: (params: {
+    position: number;
+    experienceType: string;
+    degradedFrom?: string | null;
+  }) => Promise<Response>;
+
+  const handleSinglePosition = async (params: {
+    position: number;
+    pill: string;
+    degradedFrom?: string | null;
+  }): Promise<Response> => {
+  const fallbackToCuratedAfterSingleExhaustion = async (
+    detail: string,
+    reason: PositionalDeadEndReason,
+  ): Promise<Response> => {
+    const fallbackIntent = await pickNextCuratedPill();
+    if (fallbackIntent && !params.degradedFrom) {
+      return await handleCuratedPosition({
+        position: params.position,
+        experienceType: fallbackIntent,
+        degradedFrom: params.pill,
+      });
+    }
+    if (reason === 'no_unswiped_candidates') {
+      return deadEnd({
+        position: params.position,
+        reason: 'no_unswiped_candidates',
+        acceptedCount: agg.acceptedCount,
+        pendingGpsUserIds,
+        detail,
+      });
+    }
+    return deadEnd({
+      position: params.position,
+      reason,
+      acceptedCount: agg.acceptedCount,
+      pendingGpsUserIds,
+      detail,
+    });
+  };
+  const canonicalCategories = resolveCategories([params.pill]).filter(
     (c) => !HIDDEN_CATEGORIES.has(c),
   );
   type ChipTarget = {
@@ -986,13 +1128,10 @@ async function handleDeterministicV2(args: {
     });
   }
   if (chipTargets.length === 0) {
-    return deadEnd({
-      position: targetPosition,
-      reason: 'no_matching_candidates',
-      acceptedCount: agg.acceptedCount,
-      pendingGpsUserIds,
-      detail: 'No selected chips have signal mappings.',
-    });
+    return await fallbackToCuratedAfterSingleExhaustion(
+      'No selected chips have signal mappings.',
+      'no_matching_candidates',
+    );
   }
 
   const uniqueSignalIds = [...new Set(chipTargets.flatMap((t) => t.signalIds))];
@@ -1024,13 +1163,10 @@ async function handleDeterministicV2(args: {
     }
   }
   if (rpcTasks.length === 0) {
-    return deadEnd({
-      position: targetPosition,
-      reason: 'no_matching_candidates',
-      acceptedCount: agg.acceptedCount,
-      pendingGpsUserIds,
-      detail: 'No selected chips have any signal in cohort.',
-    });
+    return await fallbackToCuratedAfterSingleExhaustion(
+      'No selected chips have any signal in cohort.',
+      'no_matching_candidates',
+    );
   }
 
   let excludePlaceIds: string[] = [];
@@ -1049,7 +1185,7 @@ async function handleDeterministicV2(args: {
 
   const servedRes = await supabaseAdmin
     .from('session_deck_cards')
-    .select('card_id')
+    .select('card_id, curated_payload')
     .eq('session_id', sessionId);
   if (servedRes.error) {
     return json({
@@ -1062,8 +1198,16 @@ async function handleDeterministicV2(args: {
     }, 500);
   }
   const sessionServedIds = new Set<string>(
-    ((servedRes.data as Array<{ card_id: string }> | null) ?? []).map((r) => r.card_id),
+    ((servedRes.data as Array<{ card_id: string | null; curated_payload?: any | null }> | null) ?? [])
+      .map((r) => r.card_id)
+      .filter((id): id is string => typeof id === 'string'),
   );
+  for (const row of (servedRes.data as Array<{ curated_payload?: any | null }> | null) ?? []) {
+    for (const id of curatedStopPlacePoolIds(row.curated_payload)) {
+      sessionServedIds.add(id);
+    }
+  }
+  excludePlaceIds = [...new Set([...excludePlaceIds, ...sessionServedIds])];
 
   const PER_CHIP_LIMIT = 50;
   const rpcResults = await Promise.all(
@@ -1129,24 +1273,18 @@ async function handleDeterministicV2(args: {
   }
   const interleavedRows = roundRobinByChip({ perChip: perChipSorted, totalLimit: 200 });
   if (interleavedRows.length === 0) {
-    return deadEnd({
-      position: targetPosition,
-      reason: 'no_matching_candidates',
-      acceptedCount: agg.acceptedCount,
-      pendingGpsUserIds,
-      detail: 'Signal RPCs returned zero rows for the intersection.',
-    });
+    return await fallbackToCuratedAfterSingleExhaustion(
+      'Signal RPCs returned zero rows for the intersection.',
+      'no_matching_candidates',
+    );
   }
 
   const unseenRows = interleavedRows.filter((row: any) => !sessionServedIds.has(row.place_id));
   if (unseenRows.length === 0) {
-    return deadEnd({
-      position: targetPosition,
-      reason: 'no_unswiped_candidates',
-      acceptedCount: agg.acceptedCount,
-      pendingGpsUserIds,
-      detail: 'All candidates are already present in session_deck_cards.',
-    });
+    return await fallbackToCuratedAfterSingleExhaustion(
+      'All candidates are already present in session_deck_cards.',
+      'no_unswiped_candidates',
+    );
   }
 
   const candidateCards = unseenRows.map((row: any) => {
@@ -1194,21 +1332,21 @@ async function handleDeterministicV2(args: {
   );
 
   if (!picked) {
-    return deadEnd({
-      position: targetPosition,
-      reason: 'no_matching_candidates',
-      acceptedCount: agg.acceptedCount,
-      pendingGpsUserIds,
-      detail: 'Date/time filters removed every candidate for this position.',
-    });
+    return await fallbackToCuratedAfterSingleExhaustion(
+      'Date/time filters removed every candidate for this position.',
+      'no_matching_candidates',
+    );
   }
 
   const insertRes = await supabaseAdmin
     .from('session_deck_cards')
     .insert({
       session_id: sessionId,
-      position: targetPosition,
+      position: params.position,
       card_id: picked.row.place_id,
+      card_type: 'single',
+      pill_label: params.pill,
+      degraded_from: params.degradedFrom ?? null,
       generated_at_version: sessionRow.deck_version,
     });
   if (insertRes.error && insertRes.error.code !== '23505') {
@@ -1224,9 +1362,9 @@ async function handleDeterministicV2(args: {
 
   const rowRes = await supabaseAdmin
     .from('session_deck_cards')
-    .select('card_id, generated_at_version')
+    .select('card_id, card_type, curated_payload, generated_at_version, degraded_from, pill_label')
     .eq('session_id', sessionId)
-    .eq('position', targetPosition)
+    .eq('position', params.position)
     .maybeSingle();
   if (rowRes.error || !rowRes.data) {
     return json({
@@ -1240,9 +1378,272 @@ async function handleDeterministicV2(args: {
   }
 
   return await successResponse({
-    cardId: rowRes.data.card_id,
+    row: rowRes.data as SessionDeckCardRow,
+    position: params.position,
+  });
+  };
+
+  handleCuratedPosition = async (params: {
+    position: number;
+    experienceType: string;
+    degradedFrom?: string | null;
+  }): Promise<Response> => {
+    const cacheRes = await supabaseAdmin
+      .from('session_curated_cache')
+      .select('batch_index, cards, served_card_ids')
+      .eq('session_id', sessionId)
+      .eq('experience_type', params.experienceType)
+      .order('batch_index', { ascending: false })
+      .limit(1);
+    if (cacheRes.error) {
+      return json({
+        success: false,
+        card: null,
+        cards: [],
+        error_class: 'pipeline_error',
+        http_status: 500,
+        sourceBreakdown: { path: 'pipeline-error', reason: cacheRes.error.message },
+      }, 500);
+    }
+
+    const latest = Array.isArray(cacheRes.data) ? cacheRes.data[0] : null;
+    const latestCards = Array.isArray(latest?.cards) ? latest.cards : [];
+    const latestServed = Array.isArray(latest?.served_card_ids) ? latest.served_card_ids : [];
+    let pickedCard = latestCards.find((card: any) => !latestServed.includes(card?.id));
+    let pickedBatchIndex = typeof latest?.batch_index === 'number' ? latest.batch_index : null;
+
+    if (pickedCard && pickedBatchIndex !== null) {
+      const updateCacheRes = await supabaseAdmin
+        .from('session_curated_cache')
+        .update({ served_card_ids: [...latestServed, pickedCard.id] })
+        .eq('session_id', sessionId)
+        .eq('experience_type', params.experienceType)
+        .eq('batch_index', pickedBatchIndex);
+      if (updateCacheRes.error) {
+        return json({
+          success: false,
+          card: null,
+          cards: [],
+          error_class: 'pipeline_error',
+          http_status: 500,
+          sourceBreakdown: { path: 'pipeline-error', reason: updateCacheRes.error.message },
+        }, 500);
+      }
+    } else {
+      const priorCacheRes = await supabaseAdmin
+        .from('session_curated_cache')
+        .select('batch_index, cards')
+        .eq('session_id', sessionId)
+        .eq('experience_type', params.experienceType);
+      if (priorCacheRes.error) {
+        return json({
+          success: false,
+          card: null,
+          cards: [],
+          error_class: 'pipeline_error',
+          http_status: 500,
+          sourceBreakdown: { path: 'pipeline-error', reason: priorCacheRes.error.message },
+        }, 500);
+      }
+
+      const excludeSet = new Set<string>();
+      for (const row of (priorCacheRes.data as Array<{ cards: any[] }> | null) ?? []) {
+        for (const card of Array.isArray(row.cards) ? row.cards : []) {
+          for (const id of curatedStopPlacePoolIds(card)) excludeSet.add(id);
+        }
+      }
+      const singleServedRes = await supabaseAdmin
+        .from('session_deck_cards')
+        .select('card_id')
+        .eq('session_id', sessionId)
+        .eq('card_type', 'single');
+      if (singleServedRes.error) {
+        return json({
+          success: false,
+          card: null,
+          cards: [],
+          error_class: 'pipeline_error',
+          http_status: 500,
+          sourceBreakdown: { path: 'pipeline-error', reason: singleServedRes.error.message },
+        }, 500);
+      }
+      for (const row of (singleServedRes.data as Array<{ card_id: string | null }> | null) ?? []) {
+        if (row.card_id) excludeSet.add(row.card_id);
+      }
+
+      let batch;
+      try {
+        batch = await fetchCuratedBatchInternal({
+          sessionId,
+          experienceType: params.experienceType,
+          limit: 10,
+          excludePlacePoolIds: [...excludeSet],
+          callerJwt: token,
+        });
+      } catch (err) {
+        return json({
+          success: false,
+          card: null,
+          cards: [],
+          error_class: 'pipeline_error',
+          http_status: 500,
+          sourceBreakdown: {
+            path: 'pipeline-error',
+            reason: (err as Error)?.message ?? 'generate-curated-experiences failed',
+            errorClass: 'CuratedInternalInvocationError',
+          },
+        }, 500);
+      }
+
+      if (batch.cards.length === 0) {
+        const fallbackPill = await pickNextSinglePill();
+        if (fallbackPill) {
+          return await handleSinglePosition({
+            position: params.position,
+            pill: fallbackPill,
+            degradedFrom: params.experienceType,
+          });
+        }
+        return deadEnd({
+          position: params.position,
+          reason: 'all_pools_exhausted',
+          acceptedCount: agg.acceptedCount,
+          pendingGpsUserIds,
+          detail: `Curated intent ${params.experienceType} exhausted and no single category can fill the position.`,
+        });
+      }
+
+      pickedBatchIndex = Math.max(
+        -1,
+        ...(((priorCacheRes.data as Array<{ batch_index: number }> | null) ?? [])
+          .map((row) => Number(row.batch_index))
+          .filter((n) => Number.isFinite(n))),
+      ) + 1;
+      pickedCard = batch.cards[0];
+      const insertCacheRes = await supabaseAdmin
+        .from('session_curated_cache')
+        .insert({
+          session_id: sessionId,
+          experience_type: params.experienceType,
+          batch_index: pickedBatchIndex,
+          cards: batch.cards,
+          served_card_ids: pickedCard?.id ? [pickedCard.id] : [],
+          generated_at_version: sessionRow.deck_version,
+        });
+      if (insertCacheRes.error && insertCacheRes.error.code !== '23505') {
+        return json({
+          success: false,
+          card: null,
+          cards: [],
+          error_class: 'pipeline_error',
+          http_status: 500,
+          sourceBreakdown: { path: 'pipeline-error', reason: insertCacheRes.error.message },
+        }, 500);
+      }
+    }
+
+    if (!pickedCard) {
+      return deadEnd({
+        position: params.position,
+        reason: 'no_matching_candidates',
+        acceptedCount: agg.acceptedCount,
+        pendingGpsUserIds,
+        detail: `No curated card available for ${params.experienceType}.`,
+      });
+    }
+
+    const insertRes = await supabaseAdmin
+      .from('session_deck_cards')
+      .insert({
+        session_id: sessionId,
+        position: params.position,
+        card_id: null,
+        card_type: 'curated',
+        curated_payload: pickedCard,
+        pill_label: params.experienceType,
+        degraded_from: params.degradedFrom ?? null,
+        generated_at_version: sessionRow.deck_version,
+      });
+    if (insertRes.error && insertRes.error.code !== '23505') {
+      return json({
+        success: false,
+        card: null,
+        cards: [],
+        error_class: 'pipeline_error',
+        http_status: 500,
+        sourceBreakdown: { path: 'pipeline-error', reason: insertRes.error.message },
+      }, 500);
+    }
+
+    const rowRes = await supabaseAdmin
+      .from('session_deck_cards')
+      .select('card_id, card_type, curated_payload, generated_at_version, degraded_from, pill_label')
+      .eq('session_id', sessionId)
+      .eq('position', params.position)
+      .maybeSingle();
+    if (rowRes.error || !rowRes.data) {
+      return json({
+        success: false,
+        card: null,
+        cards: [],
+        error_class: 'pipeline_error',
+        http_status: 500,
+        sourceBreakdown: { path: 'pipeline-error', reason: rowRes.error?.message ?? 'missing_positional_row_after_insert' },
+      }, 500);
+    }
+
+    return await successResponse({
+      row: rowRes.data as SessionDeckCardRow,
+      position: params.position,
+    });
+  };
+
+  const decision = decideTypeAndPill({
     position: targetPosition,
-    generatedAtVersion: rowRes.data.generated_at_version,
+    categories: collabCategories,
+    intents: collabIntents,
+  });
+
+  if (!decision) {
+    if (targetPosition % 2 === 0 && collabCategories.length > 0) {
+      const fallbackPill = await pickNextSinglePill();
+      if (fallbackPill) {
+        return await handleSinglePosition({
+          position: targetPosition,
+          pill: fallbackPill,
+          degradedFrom: collabIntents[0] ?? 'curated',
+        });
+      }
+    }
+    if (targetPosition % 2 === 1 && collabIntents.length > 0) {
+      const fallbackIntent = await pickNextCuratedPill();
+      if (fallbackIntent) {
+        return await handleCuratedPosition({
+          position: targetPosition,
+          experienceType: fallbackIntent,
+          degradedFrom: collabCategories[0] ?? 'single',
+        });
+      }
+    }
+    return deadEnd({
+      position: targetPosition,
+      reason: 'all_pools_exhausted',
+      acceptedCount: agg.acceptedCount,
+      pendingGpsUserIds,
+      detail: 'Both single and curated rotations are empty.',
+    });
+  }
+
+  if (decision.type === 'curated') {
+    return await handleCuratedPosition({
+      position: targetPosition,
+      experienceType: decision.pill,
+    });
+  }
+
+  return await handleSinglePosition({
+    position: targetPosition,
+    pill: decision.pill,
   });
 }
 

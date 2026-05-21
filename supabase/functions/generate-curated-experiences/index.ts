@@ -581,6 +581,7 @@ async function generateCardsForType(
   travelConstraintValue: number,
   limit: number,
   skipDescriptions: boolean,
+  excludePlacePoolIds: string[] = [],
 ): Promise<{ cards: any[]; summary?: CuratedSummary }> {
   // ORCH-0903 (2026-05-21): curated path uses unified TRAVEL_CONFIG via
   // radiusKmForConstraint(generosity=1.0). Curated multi-stop trips need
@@ -631,6 +632,7 @@ async function generateCardsForType(
       radiusMeters: fetchRadius,
       limit: fetchLimit ?? 50,
       requiredTypes: typeFilter,
+      excludePlaceIds: excludePlacePoolIds,
     });
   };
 
@@ -1175,7 +1177,11 @@ serve(async (req) => {
       limit = 20,
       session_id,
       batchSeed = 0,
+      excludePlacePoolIds = [],
     } = body;
+    if (!Array.isArray(excludePlacePoolIds)) {
+      excludePlacePoolIds = [];
+    }
     const warmPool = body.warmPool ?? false;
 
     if (warmPool && !body.skipDescriptions) {
@@ -1264,6 +1270,7 @@ serve(async (req) => {
       typeDef,
       location.lat, location.lng, budgetMax, travelMode,
       travelConstraintValue, generateLimit, skipDescriptions,
+      excludePlacePoolIds.filter((v: unknown): v is string => typeof v === 'string' && v.length > 0),
     );
 
     console.log(`[curated-v2] Generated ${cards.length} ${experienceType} cards`);

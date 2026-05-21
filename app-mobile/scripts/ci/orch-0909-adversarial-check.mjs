@@ -12,7 +12,9 @@ const checks = [];
 const check = (name, pass, detail) => checks.push({ name, pass, detail });
 
 const migration = read("supabase/migrations/20260701000000_orch_0909_positional_shared_deck.sql");
+const amendmentMigration = read("supabase/migrations/20260703000000_orch_0906_session_deck_cards_mixed_type.sql");
 const edge = read("supabase/functions/discover-cards/index.ts");
+const curated = read("supabase/functions/generate-curated-experiences/index.ts");
 const context = read("app-mobile/src/contexts/RecommendationsContext.tsx");
 
 check("T-ADV-01 concurrent frontier conflict handled", /insertRes\.error\.code !== '23505'/.test(edge), "Duplicate insert at same position must read winner row.");
@@ -24,6 +26,8 @@ check("T-ADV-06 forbidden access checked", /forbidden_not_accepted_participant/.
 check("T-ADV-07 card row survives inactive place", /ON DELETE RESTRICT/.test(migration), "Historical deck card rows must restrict place deletion.");
 const deadEndBody = edge.slice(edge.indexOf("const deadEnd ="), edge.indexOf("const sessionRes ="));
 check("T-ADV-08 live dead-end no persisted row", /current_position: params\.position - 1/.test(deadEndBody) && !/session_deck_cards|insert/.test(deadEndBody), "Dead-end must leave cursor retryable and not insert a row.");
+check("T-ADV-09 curated exhaustion gracefully degrades to singles", /degraded_from text NULL/.test(amendmentMigration) && /degraded_from_intent/.test(edge) && /exhausted_intent/.test(edge) && /all_pools_exhausted/.test(edge), "When curated returns zero cards, server must fill with singles where possible and mark degraded_from.");
+check("T-ADV-10 curated internal 5xx is a clean pipeline error", /fetchCuratedBatchInternal/.test(edge) && /generate-curated-experiences returned/.test(edge) && /CuratedInternalInvocationError/.test(edge) && /excludePlacePoolIds/.test(curated), "Curated edge-function failure must surface as pipeline_error and the generator must accept cross-batch excludes.");
 
 let ok = true;
 for (const c of checks) {

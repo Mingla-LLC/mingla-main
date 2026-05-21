@@ -12,7 +12,9 @@ const checks = [];
 const check = (name, pass, detail) => checks.push({ name, pass, detail });
 
 const migration = read("supabase/migrations/20260701000000_orch_0909_positional_shared_deck.sql");
+const amendmentMigration = read("supabase/migrations/20260703000000_orch_0906_session_deck_cards_mixed_type.sql");
 const edge = read("supabase/functions/discover-cards/index.ts");
+const mixedInterleave = read("supabase/functions/_shared/mixedTypeInterleave.ts");
 const context = read("app-mobile/src/contexts/RecommendationsContext.tsx");
 const invite = read("app-mobile/src/services/collaborationInviteService.ts");
 const banner = read("app-mobile/src/components/collab/NoGpsBanner.tsx");
@@ -27,6 +29,8 @@ check("T-IMP-06 no-GPS banner", /We're having trouble getting your location/.tes
 check("T-IMP-07 single-shot reset", /SET current_position = 0/.test(migration) && /WHERE has_accepted = true/.test(migration), "Migration must reset in-flight cursors.");
 check("T-IMP-08 retired pinning symbol absent", !context.includes("pinned" + "DeckVersion"), "RecommendationsContext must not contain old version-pinning state.");
 check("T-IMP-09 old request param absent in edge", !edge.includes("expected" + "_deck_version"), "discover-cards must not contain the retired request param.");
+check("T-IMP-10 mixed deck rows support single and curated payloads", /ALTER COLUMN card_id DROP NOT NULL/.test(amendmentMigration) && /card_type IN \('single', 'curated'\)/.test(amendmentMigration) && /sdc_exactly_one_payload/.test(amendmentMigration) && /curated_payload/.test(edge), "ORCH-0906 must store single rows by card_id and curated rows by curated_payload.");
+check("T-IMP-11 deterministic single-intent round-robin helper", /position % 2 === 0/.test(mixedInterleave) && /intents\[intentIndex % intents\.length\]/.test(mixedInterleave) && /categories\[singleIndex % categories\.length\]/.test(mixedInterleave), "Mixed-type interleave helper must implement odd singles, even curated, independent per-pill rotation.");
 
 let ok = true;
 for (const c of checks) {

@@ -26,6 +26,7 @@ export interface SignalRankParams {
   radiusMeters: number;
   limit: number;
   requiredTypes?: string[]; // ORCH-0601: optional sub-filter (e.g., 'hiking_area','museum')
+  excludePlaceIds?: string[]; // ORCH-0906: session-wide place_pool.id exclusions for curated batches
 }
 
 // Shape preserved verbatim from the original row-mapping output, MINUS the
@@ -169,6 +170,7 @@ export async function fetchSinglesForSignalRank(
     radiusMeters,
     limit,
     requiredTypes,
+    excludePlaceIds,
   } = params;
 
   const latDelta = radiusMeters / 111320;
@@ -195,7 +197,11 @@ export async function fetchSinglesForSignalRank(
   }
   if (!rankedPairs || rankedPairs.length === 0) return [];
 
-  const rankedIds = (rankedPairs as Array<{ place_id: string; rank_score: number }>).map((p) => p.place_id);
+  const excluded = new Set((excludePlaceIds ?? []).filter(Boolean));
+  const rankedIds = (rankedPairs as Array<{ place_id: string; rank_score: number }>)
+    .map((p) => p.place_id)
+    .filter((id) => !excluded.has(id));
+  if (rankedIds.length === 0) return [];
   const rankScoreById = new Map<string, number>();
   for (const p of (rankedPairs as Array<{ place_id: string; rank_score: number }>)) {
     rankScoreById.set(p.place_id, Number(p.rank_score));
