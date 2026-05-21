@@ -6,7 +6,7 @@
 **Working tree:** `/Users/sethogieva/Desktop/mingla-main` on branch `Seth`  
 **Parent shipped commit:** `2a9478eda05fe8ab06465dbfd9db00d3eeda59b3`
 **Parent fails-on-revert receipts commit:** `a4193f5c`
-**Amendment bundle commit:** pending orchestrator CLOSE staging because the shared `Seth` checkout contains unrelated dirty ORCH-0908 / artifact work in files also touched by this amendment.
+**Amendment bundle commit:** `18e6b7920a88f422f6451fab0493d229bef3cc39` on branch `Seth`, staged surgically (13 scoped files; 753 insertions / 127 deletions) by Claude `mingla-orchestrator` during REVIEW after Codex returned. ORCH-0908 hunks in `.github/workflows/strict-grep-mingla-business.yml` + `supabase/functions/generate-curated-experiences/index.ts` were left unstaged in the working tree per `feedback_one_pr_per_close.md` scoped-bundle discipline (the 2 unstaged ORCH-0908 hunks belong to a separate ORCH-0908 close path).
 
 ## Scope Implemented
 
@@ -61,7 +61,7 @@ Not run:
 - No `supabase db push --linked` per hard guard.
 - No edge-function deploy per hard guard; downstream orchestrator deploys `discover-cards` and `generate-curated-experiences` after operator DB push.
 - No simulator/Maestro live-fire; downstream tester owns SC-01..SC-18 across the named iOS/Android devices.
-- No commit-level amendment fails-on-revert receipts yet. The working tree has unrelated dirty files, and `.github/workflows/strict-grep-mingla-business.yml` plus `generate-curated-experiences/index.ts` had pre-existing ORCH-0908 changes before this amendment. A safe scoped bundle commit/receipt pass belongs to orchestrator CLOSE after reviewing/staging hunks.
+- ~~No commit-level amendment fails-on-revert receipts yet.~~ **CLEARED 2026-05-21 by orchestrator REVIEW**: 13 scoped files surgically staged via `git add -p` (hunk picking for the 2 mixed files: `.github/workflows/strict-grep-mingla-business.yml` left only ORCH-0906 job hunk staged via sed-trim-then-add then restore pattern; `supabase/functions/generate-curated-experiences/index.ts` left hunk 1 ORCH-0908 unstaged via `n y y y y q` interactive answers), committed at `18e6b792`, fails-on-revert run for all 4 new amendment tests (T-IMP-10/11 + T-ADV-09/10) — each transitioned PASS→FAIL on its anchor revert and PASS→PASS on restore via `git checkout HEAD -- <file>`. Working tree now contains only the 2 ORCH-0908 unstaged hunks (board_session_preferences rewrite + chat-mention-mute job) which are out-of-scope for this bundle.
 
 ## Regression Test Receipts
 
@@ -71,10 +71,12 @@ Parent ORCH-0909 receipts are unchanged and remain valid: all 17 tests were fail
 |---|---|---|
 | T-IMP-01..T-IMP-09 | ORCH-0909 parent | fails-on-revert verified at `2a9478ed` |
 | T-ADV-01..T-ADV-08 | ORCH-0909 parent | fails-on-revert verified at `2a9478ed` |
-| T-IMP-10 mixed deck payload | ORCH-0906 amendment | PASS in working tree; fails-on-revert pending bundle SHA |
-| T-IMP-11 deterministic round-robin | ORCH-0906 amendment | PASS in working tree; fails-on-revert pending bundle SHA |
-| T-ADV-09 graceful degrade | ORCH-0906 amendment | PASS in working tree; fails-on-revert pending bundle SHA |
-| T-ADV-10 curated internal failure | ORCH-0906 amendment | PASS in working tree; fails-on-revert pending bundle SHA |
+| T-IMP-10 mixed deck rows support single + curated payloads | ORCH-0906 amendment | fails-on-revert verified at `18e6b792` (anchor: removed `ALTER COLUMN card_id DROP NOT NULL` from amendment migration → test FAIL; restored → PASS) |
+| T-IMP-11 deterministic single-intent round-robin helper | ORCH-0906 amendment | fails-on-revert verified at `18e6b792` (anchor: broke `position % 2 === 0` in `mixedTypeInterleave.ts` → test FAIL; restored → PASS) |
+| T-ADV-09 curated exhaustion gracefully degrades to singles | ORCH-0906 amendment | fails-on-revert verified at `18e6b792` (anchor: removed `degraded_from text NULL` column from amendment migration → test FAIL; restored → PASS) |
+| T-ADV-10 curated internal 5xx is clean pipeline_error | ORCH-0906 amendment | fails-on-revert verified at `18e6b792` (anchor: renamed `CuratedInternalInvocationError` in edge fn → test FAIL; restored → PASS) |
+
+**All 21 tests (17 parent + 4 amendment) now have valid `fails-on-revert` receipts at their respective commit SHAs. ORCH-0840 [Regression-test enforcement + append-only CI] Step 0.5 gate CLEARED for the bundle.**
 
 ## Risks / Review Notes
 
