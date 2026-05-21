@@ -896,6 +896,8 @@ export const RecommendationsProvider: React.FC<
     // category that returns zero server results on entry is mislabelled as
     // "You've seen everything available" — a lie.
     const userHasBeenServedCards = batchSeed > 0 || accumulatedCardsRef.current.length > 0;
+    const hasExplicitCollabDeadEnd =
+      !isCollaborationMode || soloCuratedEmptyReason !== undefined || soloServerPath === 'pool-empty';
     if (
       userHasBeenServedCards &&
       deckCards.length === 0 &&
@@ -903,11 +905,12 @@ export const RecommendationsProvider: React.FC<
       isDeckBatchLoaded &&
       !isDeckFetching &&
       !isModeTransitioning &&
-      !isRefreshingAfterPrefChange  // ORCH-0451: guard now effective — flag no longer prematurely cleared
+      !isRefreshingAfterPrefChange &&  // ORCH-0451: guard now effective — flag no longer prematurely cleared
+      hasExplicitCollabDeadEnd
     ) {
       setIsExhausted(true);
     }
-  }, [deckHasMore, deckCards.length, isDeckBatchLoaded, isDeckFetching, isModeTransitioning, isRefreshingAfterPrefChange, batchSeed]);
+  }, [deckHasMore, deckCards.length, isDeckBatchLoaded, isDeckFetching, isModeTransitioning, isRefreshingAfterPrefChange, batchSeed, isCollaborationMode, soloCuratedEmptyReason, soloServerPath]);
 
   // Reset prefetchFiredRef when batchSeed changes
   useEffect(() => {
@@ -1269,7 +1272,7 @@ export const RecommendationsProvider: React.FC<
         // ORCH-0909: collab positional dead-ends are server verdicts for the
         // next position. Clear the prior one-card recommendation so the deck
         // can render the smart empty state instead of local exhaustion.
-        if (isCollaborationMode && soloServerPath === 'pool-empty') {
+        if (isCollaborationMode && (soloServerPath === 'pool-empty' || soloCuratedEmptyReason !== undefined)) {
           accumulatedCardsRef.current = [];
           sessionServedIdsRef.current = new Set();
           setRecommendations(prev => prev.length === 0 ? prev : EMPTY_CARDS);
@@ -1278,7 +1281,7 @@ export const RecommendationsProvider: React.FC<
         }
       }
     }
-  }, [deckCards, isDeckBatchLoaded, isDeckFetching, isExhausted, isSoloMode, isCollaborationMode, batchSeed, isModeTransitioning, deckHasMore, isDeckPlaceholder, currentContextKey, registry, currentContext, soloServerPath]);
+  }, [deckCards, isDeckBatchLoaded, isDeckFetching, isExhausted, isSoloMode, isCollaborationMode, batchSeed, isModeTransitioning, deckHasMore, isDeckPlaceholder, currentContextKey, registry, currentContext, soloServerPath, soloCuratedEmptyReason]);
 
   // ── Mode Transition Handling ────────────────────────────────────────────
   const previousModeRef = useRef<string | undefined>(undefined);
@@ -1575,8 +1578,10 @@ export const RecommendationsProvider: React.FC<
 
   // ── Error Computation ───────────────────────────────────────────────────
   // Solo mode: detect when deck has genuinely loaded 0 cards (not just loading)
+  const hasExplicitEmptyVerdict =
+    !isCollaborationMode || soloServerPath === 'pool-empty' || soloCuratedEmptyReason !== undefined;
   const deckEmpty = (isSoloMode || isCollaborationMode) && isDeckBatchLoaded && deckCards.length === 0
-    && !isDeckFetching && !isDeckLoading;
+    && !isDeckFetching && !isDeckLoading && hasExplicitEmptyVerdict;
 
   const error = deckEmpty
     ? "no_matches"
@@ -1758,7 +1763,7 @@ export const RecommendationsProvider: React.FC<
       recommendations.length === 0 &&
       !isModeTransitioning &&
       (soloServerPath === 'pool-empty' ||
-        (isDeckBatchLoaded && !deckHasMore) ||
+        (!isCollaborationMode && isDeckBatchLoaded && !deckHasMore) ||
         soloCuratedEmptyReason !== undefined)
     ) {
       return { type: 'EMPTY' };

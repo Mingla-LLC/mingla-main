@@ -227,6 +227,34 @@ export function unifiedCardToRecommendation(card: any): Recommendation {
   };
 }
 
+function isCuratedPayload(card: any): boolean {
+  return (
+    card?.cardType === 'curated' ||
+    (Array.isArray(card?.stops) &&
+      typeof card?.experienceType === 'string' &&
+      typeof card?.tagline === 'string')
+  );
+}
+
+function isSinglePlacePayload(card: any): boolean {
+  return (
+    typeof card?.lat === 'number' ||
+    typeof card?.lng === 'number' ||
+    typeof card?.placeId === 'string' ||
+    typeof card?.image === 'string'
+  );
+}
+
+export function discoverCardsPayloadToRecommendations(data: any): Recommendation[] {
+  const isCuratedEnvelope = data?.card_type === 'curated';
+  return ((data?.cards as any[]) ?? []).map((card) => {
+    if (isCuratedPayload(card) || (isCuratedEnvelope && !isSinglePlacePayload(card))) {
+      return { ...card, cardType: 'curated' } as unknown as Recommendation;
+    }
+    return unifiedCardToRecommendation(card);
+  });
+}
+
 class DeckService {
   private resolvePills(categories: string[], dedicatedIntents?: string[]): {
     pills: DeckPill[];
@@ -442,7 +470,7 @@ class DeckService {
           ]);
 
           if (!error && data?.cards) {
-            const cards = (data.cards as any[]).map(unifiedCardToRecommendation);
+            const cards = discoverCardsPayloadToRecommendations(data);
             hasMoreFromEdge = data.metadata?.hasMore ?? true;
             // ORCH-0474: Capture serverPath discriminant from the response.
             const rawPath = data.sourceBreakdown?.path;
@@ -825,7 +853,7 @@ class DeckService {
           ? rawPath
           : 'pipeline';
 
-      const cards = ((data?.cards as any[]) ?? []).map(unifiedCardToRecommendation);
+      const cards = discoverCardsPayloadToRecommendations(data);
       const deadEndReason =
         data?.dead_end === true && typeof data?.reason === 'string'
           ? data.reason
