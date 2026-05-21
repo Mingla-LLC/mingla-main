@@ -261,6 +261,7 @@ function buildRenderContext(args: {
       profilePhotoUrl: order.events.brands.profile_photo_url ?? null,
     },
     order: {
+      id: order.id,
       shortId: shortId(order.id),
       totalCents: Number(order.total_cents ?? 0),
       currency: order.currency ?? "GBP",
@@ -639,6 +640,7 @@ serve(async (req) => {
           profilePhotoUrl: context.bodyInput.brand.profilePhotoUrl,
         },
         order: {
+          id: context.bodyInput.order.id,
           shortId: context.bodyInput.order.shortId,
           totalCents: order.total_cents,
           currency: order.currency,

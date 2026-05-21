@@ -209,6 +209,26 @@ check(
   "Backfill must assert counts and must not include experience.",
 );
 
+const tripConfirmationEmail = read("supabase/functions/_shared/email/tripConfirmationEmail.ts");
+const ticketConfirmationDispatch = read("supabase/functions/ticket-confirmation-dispatch/index.ts");
+
+check(
+  "T-16 trip confirmation email includes the Download Mingla orders chat CTA",
+  tripConfirmationEmail !== null &&
+    /renderDownloadAppCta/.test(tripConfirmationEmail) &&
+    /usemingla\.com\/orders\/\$\{escapeHtml\(orderId\)\}\/chat/.test(tripConfirmationEmail) &&
+    /Join your \$\{chatLabel\} chat in the Mingla app/.test(tripConfirmationEmail),
+  "Trip email body must include the app/chat CTA URL and trip/event copy branch.",
+);
+
+check(
+  "T-17 ticket confirmation dispatch passes full order UUID into email render inputs",
+  ticketConfirmationDispatch !== null &&
+    /const bodyInput: TicketBodyInput = \{[\s\S]*?order: \{[\s\S]*?id: order\.id,[\s\S]*?shortId: shortId\(order\.id\)/.test(ticketConfirmationDispatch) &&
+    /renderTripConfirmationEmail\(\{[\s\S]*?order: \{[\s\S]*?id: context\.bodyInput\.order\.id,[\s\S]*?shortId: context\.bodyInput\.order\.shortId/.test(ticketConfirmationDispatch),
+  "Both event and trip email paths must pass the full order UUID alongside the shortId.",
+);
+
 const failed = checks.filter((c) => !c.pass);
 for (const c of checks) {
   console.log(`${c.pass ? "PASS" : "FAIL"} ${c.name}`);

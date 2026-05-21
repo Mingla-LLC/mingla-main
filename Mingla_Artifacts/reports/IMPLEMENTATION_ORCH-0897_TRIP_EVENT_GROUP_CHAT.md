@@ -111,14 +111,77 @@ Remote migration check via `mcp__supabase__list_migrations` showed the remote mi
 
 | Item | Status |
 |---|---|
-| Remote migration + edge deploy | Deferred until operator applies `20260710000000_orch_0897_trip_event_group_chat` and confirms via `mcp__supabase__list_migrations`. |
+| Remote migration + edge deploy | Original implementation deferred both. Rework deploy ran only `ticket-confirmation-dispatch`; no DB push was run. |
 | Tester adversarial checks | Required next: `app-mobile/scripts/ci/orch-0897-adversarial-check.mjs`, cross-trip and cross-event RLS isolation, broadcast-only INSERT smoke, removal visibility, and soft-delete visibility. |
 | Native deep link delivery | `app-mobile/app.json` Android intent filters now include `/orders` and `/chat`; native config changes require release-owner validation, not just OTA. |
 | iOS AASA `/orders/*/chat` | Operator-owned downstream per SPEC §14 step 16. |
-| Trip confirmation email template | Event ticket email CTA is implemented in `ticketBody.ts`; separate trip confirmation email template exists outside the listed email scope and should be handled in a follow-up if the operator wants the identical CTA in trip-specific confirmations. |
-| Email `{orderId}` source | `ticketBody.ts` uses `order.id` when present and falls back to `shortId`; the current render context may not always include the full UUID without widening into shared dispatch/type files. |
+| Trip confirmation email template | Resolved in rework: trip confirmation email now includes the Download Mingla chat CTA. |
+| Email `{orderId}` source | Resolved in rework: event and trip email render inputs now carry full `order.id` alongside `shortId`. |
 | Marketing sender identity | `marketing_campaigns` in this branch exposes `account_id`, not `created_by`; blast chat sender uses `campaign.account_id` and is documented for tester/orchestrator scrutiny. |
+
+## Rework
+
+Date: 2026-05-21
+Source: Claude `mingla-tester` CONDITIONAL PASS report at `Mingla_Artifacts/reports/QA_ORCH-0897_TRIP_EVENT_GROUP_CHAT_REPORT.md` §3
+Status: **implemented and verified**
+
+| Finding | Fix receipt |
+|---|---|
+| F-1 (P1) trip confirmation email missing Download Mingla CTA | `supabase/functions/_shared/email/tripConfirmationEmail.ts:52` adds full `order.id` to trip email input; `:116` adds `renderDownloadAppCta(orderId, eventType)` with trip/event copy branch; `:123` renders `https://usemingla.com/orders/${orderId}/chat`; `:248` inserts the orange CTA between receipt/trip details and footer; `:284` adds the plain-text trip chat URL. |
+| F-2 (P1) email CTA URL used 8-char shortId instead of full UUID | `supabase/functions/_shared/email/types.ts:35` adds typed `TicketBodyInput.order.id`; `supabase/functions/ticket-confirmation-dispatch/index.ts:264` passes `id: order.id` into the event render context; `supabase/functions/ticket-confirmation-dispatch/index.ts:643` passes `id: context.bodyInput.order.id` into `renderTripConfirmationEmail`. Existing `ticketBody.ts` fallback now receives the typed UUID path without touching the guarded file. |
+
+Regression additions:
+
+```text
+app-mobile/scripts/ci/orch-0897-regression-check.mjs:212
+T-16 trip confirmation email includes the Download Mingla orders chat CTA
+
+app-mobile/scripts/ci/orch-0897-regression-check.mjs:224
+T-17 ticket confirmation dispatch passes full order UUID into email render inputs
+```
+
+Verification:
+
+```text
+node app-mobile/scripts/ci/orch-0897-regression-check.mjs
+ORCH-0897 regression check passed: 17/17
+
+/Users/sethogieva/.deno/bin/deno check supabase/functions/ticket-confirmation-dispatch/index.ts
+PASS
+
+/Users/sethogieva/.deno/bin/deno check supabase/functions/_shared/email/tripConfirmationEmail.ts
+PASS
+
+/Users/sethogieva/.deno/bin/deno test supabase/functions/ticket-confirmation-dispatch --allow-read --allow-env --allow-net --no-check
+ok | 12 passed | 0 failed
+
+git diff --check
+PASS
+```
+
+Fails-on-revert:
+
+```text
+Temporary detached worktree at f31baa74 with only the updated ORCH-0897 regression script injected:
+node app-mobile/scripts/ci/orch-0897-regression-check.mjs
+FAIL T-16 trip confirmation email includes the Download Mingla orders chat CTA
+FAIL T-17 ticket confirmation dispatch passes full order UUID into email render inputs
+ORCH-0897 regression check failed: 2/17
+```
+
+Deploy:
+
+```text
+/Users/sethogieva/bin/supabase functions deploy ticket-confirmation-dispatch --project-ref gqnoajqerqhnvulmnyvv
+Deployed Functions on project gqnoajqerqhnvulmnyvv: ticket-confirmation-dispatch
+```
+
+Deploy guard receipts:
+
+- `supabase db push`: not run.
+- `claim-pending-trip-chat-participation`: not redeployed.
+- `marketing-send`: not redeployed.
 
 ## Handoff
 
-NEXT HANDOFF: Claude `mingla-forensics` TEST mode should run independent QA from `/Users/sethogieva/Desktop/mingla-main-orch-0897` on branch `orch-0897-impl`, create `app-mobile/scripts/ci/orch-0897-adversarial-check.mjs`, verify cross-trip + cross-event RLS isolation, and produce `Mingla_Artifacts/reports/QA_ORCH-0897_TRIP_EVENT_GROUP_CHAT.md`. Do not deploy edge functions until the operator confirms the remote `20260710000000` migration is applied.
+NEXT HANDOFF: Claude `mingla-tester` RETEST mode should run narrow verification from `/Users/sethogieva/Desktop/mingla-main-orch-0897` on branch `orch-0897-impl`, reading `Mingla_Artifacts/reports/QA_ORCH-0897_TRIP_EVENT_GROUP_CHAT_REPORT.md` §3 and this implementation report's §Rework. Verify F-1 and F-2 are satisfied, rerun `app-mobile/scripts/ci/orch-0897-regression-check.mjs` for T-01..T-17, and confirm no regression on the other 15 SCs. Do not redeploy edge functions, do not run `supabase db push`, and do not touch `claim-pending-trip-chat-participation` or `marketing-send`. Produce the narrow retest update at `Mingla_Artifacts/reports/QA_ORCH-0897_TRIP_EVENT_GROUP_CHAT_REPORT.md`; after RETEST PASS, route to Claude `mingla-orchestrator` for CLOSE.
