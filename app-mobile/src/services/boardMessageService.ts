@@ -1,3 +1,20 @@
+/**
+ * @deprecated ORCH-0898 [Consumer collab session → Friends-tab group chat] migrated the
+ * collab Discussions tab chat substrate from `board_messages` to the unified `messages`
+ * table (linked via `conversations.session_id`). This 901-line service is RETAINED for 1
+ * release as a transitional legacy adapter for any pre-ORCH-0898 caller that hasn't
+ * migrated yet.
+ *
+ * The new canonical service is `messagingService.ts`. The new canonical hook is the
+ * post-ORCH-0898 `useSessionDiscussion.ts` which reads from `messages` via `messagingService`.
+ *
+ * AFTER ORCH-0902 [board* services consolidation] CLOSES, this file will be deleted.
+ *
+ * NO NEW CALL SITES should be added. If you're reading this and considering adding a new
+ * write or new feature here, STOP and add it to `messagingService.ts` instead. The legacy
+ * read paths still work during the dual-read window so existing UI continues to function;
+ * new code targets the unified substrate.
+ */
 import { supabase } from './supabase';
 import { realtimeService } from './realtimeService';
 

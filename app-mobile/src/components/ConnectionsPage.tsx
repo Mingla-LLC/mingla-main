@@ -673,6 +673,7 @@ function ConnectionsPageRefactored({
       });
 
       const contentCandidates = [
+        conv.name || "",
         conv.last_message?.content || "",
         conv.last_message?.message_type === "image" ? "photo image" : "",
         conv.last_message?.message_type === "file" ? "file attachment document" : "",
@@ -727,7 +728,11 @@ function ConnectionsPageRefactored({
         (allProfiles || []).map((p) => [p.id, p])
       );
 
-      // Transform to Conversation type (matching useMessages format for ChatListItem)
+      // Transform to Conversation type (matching useMessages format for ChatListItem).
+      // ORCH-0898: the transform now passes `type`, `name`, `session_id` through as
+      // optional extra fields. ChatListItem's ChatListItemConversation type intersection
+      // picks them up for the group-vs-direct render branch. The base useMessages
+      // Conversation type stays unchanged (locked for ORCH-0900 scope).
       const transformed: Conversation[] = (rawConversations || []).map((conv) => {
         const participants = conv.participants.map((p) => {
           const profile = profilesMap.get(p.user_id);
@@ -750,6 +755,10 @@ function ConnectionsPageRefactored({
           last_message: conv.last_message as unknown as ConvMessage | undefined,
           unread_count: conv.unread_count || 0,
           messages: [],
+          // ORCH-0898 group-chat extras (consumed by ChatListItem):
+          type: conv.type,
+          name: (conv as { name?: string | null }).name ?? null,
+          session_id: (conv as { session_id?: string | null }).session_id ?? null,
         };
       });
 
@@ -1012,26 +1021,46 @@ function ConnectionsPageRefactored({
   const handleSelectConversation = async (conversation: Conversation) => {
     if (!user?.id) return;
 
+    const conversationMeta = conversation as Conversation & {
+      type?: 'direct' | 'group';
+      name?: string | null;
+      session_id?: string | null;
+    };
+    const isGroupConversation = conversationMeta.type === 'group';
     const otherParticipant = conversation.participants.find((p) => p.id !== user.id);
-    const rawName = getDisplayName(otherParticipant);
+    const rawName = isGroupConversation
+      ? conversationMeta.name?.trim() || 'Group chat'
+      : getDisplayName(otherParticipant);
 
     // Clean email-like names
-    const cleanedName = rawName.includes("@")
+    const cleanedName = !isGroupConversation && rawName.includes("@")
       ? rawName.substring(0, rawName.indexOf("@")).trim()
       : rawName;
 
     const friend: Friend = {
-      id: otherParticipant?.id || "",
+      id: isGroupConversation ? conversation.id : otherParticipant?.id || "",
       name: cleanedName,
-      username: otherParticipant?.username || "unknown",
-      avatar: otherParticipant?.avatar_url,
+      username: isGroupConversation ? "group" : otherParticipant?.username || "unknown",
+      avatar: isGroupConversation ? undefined : otherParticipant?.avatar_url,
       status: "offline",
-      isOnline: otherParticipant?.is_online || false,
+      isOnline: isGroupConversation ? false : otherParticipant?.is_online || false,
+      conversationType: isGroupConversation ? 'group' : 'direct',
+      sessionId: conversationMeta.session_id ?? null,
+      participantCount: isGroupConversation ? conversation.participants.length : undefined,
+      participants: isGroupConversation
+        ? conversation.participants.map((p) => ({
+            id: p.id,
+            name: getDisplayName(p, p.username || 'User'),
+            username: p.username,
+            avatar_url: p.avatar_url,
+            is_online: p.is_online,
+          }))
+        : undefined,
     };
 
     // Synchronous block check from cached blocked-users list (React Query).
     // No network call — tap opens immediately. Server RLS enforces at send time.
-    const isBlockedByMe = blockedUsers.some((b) => b.id === friend.id);
+    const isBlockedByMe = isGroupConversation ? false : blockedUsers.some((b) => b.id === friend.id);
     setActiveChatIsBlocked(isBlockedByMe);
 
     // Start optimistic (assume connected). The background server query below
@@ -1049,45 +1078,47 @@ function ConnectionsPageRefactored({
     // Background bidirectional check — fire-and-forget, guarded against stale results.
     // If the user switches chats before this resolves, the result is discarded.
     const capturedFriendId = friend.id;
-    blockService.hasBlockBetween(friend.id)
-      .then((hasBlock) => {
-        if (latestSelectedChatRef.current === capturedFriendId && hasBlock !== isBlockedByMe) {
-          setActiveChatIsBlocked(hasBlock);
+    if (!isGroupConversation) {
+      blockService.hasBlockBetween(friend.id)
+        .then((hasBlock) => {
+          if (latestSelectedChatRef.current === capturedFriendId && hasBlock !== isBlockedByMe) {
+            setActiveChatIsBlocked(hasBlock);
+          }
+        })
+        .catch(() => {}); // Server enforces at send time via RLS
+
+      // Background check: is the other user's account deleted/inactive? (ORCH-0357)
+      Promise.resolve(
+        supabase
+          .from('profiles')
+          .select('active')
+          .eq('id', friend.id)
+          .single()
+      ).then(({ data: otherProfile }) => {
+        if (latestSelectedChatRef.current === capturedFriendId) {
+          setActiveChatIsDeletedAccount(otherProfile?.active === false || !otherProfile);
         }
-      })
-      .catch(() => {}); // Server enforces at send time via RLS
+      }).catch(() => {}); // Fail silently — input area defaults to visible
 
-    // Background check: is the other user's account deleted/inactive? (ORCH-0357)
-    Promise.resolve(
-      supabase
-        .from('profiles')
-        .select('active')
-        .eq('id', friend.id)
-        .single()
-    ).then(({ data: otherProfile }) => {
-      if (latestSelectedChatRef.current === capturedFriendId) {
-        setActiveChatIsDeletedAccount(otherProfile?.active === false || !otherProfile);
-      }
-    }).catch(() => {}); // Fail silently — input area defaults to visible
-
-    // Background friendship re-check (ORCH-0360) — handles re-friended users.
-    // The synchronous check above uses the cached friends list which may be stale.
-    // This server query catches cases where friendship was restored after unfriending.
-    Promise.resolve(
-      supabase
-        .from('friends')
-        .select('id')
-        .or(`and(user_id.eq.${user!.id},friend_user_id.eq.${friend.id}),and(user_id.eq.${friend.id},friend_user_id.eq.${user!.id})`)
-        .eq('status', 'accepted')
-        .limit(1)
-    ).then(({ data: friendshipData }) => {
-      if (latestSelectedChatRef.current === capturedFriendId) {
-        const isFriendNow = friendshipData && friendshipData.length > 0;
-        // Server is the single source of truth for unfriended state (ORCH-0360 rework).
-        // Set true only when server confirms NOT friends and NOT blocked.
-        setActiveChatIsUnfriended(!isFriendNow && !isBlockedByMe);
-      }
-    }).catch(() => {}); // Fail silently — optimistic false stays
+      // Background friendship re-check (ORCH-0360) — handles re-friended users.
+      // The synchronous check above uses the cached friends list which may be stale.
+      // This server query catches cases where friendship was restored after unfriending.
+      Promise.resolve(
+        supabase
+          .from('friends')
+          .select('id')
+          .or(`and(user_id.eq.${user!.id},friend_user_id.eq.${friend.id}),and(user_id.eq.${friend.id},friend_user_id.eq.${user!.id})`)
+          .eq('status', 'accepted')
+          .limit(1)
+      ).then(({ data: friendshipData }) => {
+        if (latestSelectedChatRef.current === capturedFriendId) {
+          const isFriendNow = friendshipData && friendshipData.length > 0;
+          // Server is the single source of truth for unfriended state (ORCH-0360 rework).
+          // Set true only when server confirms NOT friends and NOT blocked.
+          setActiveChatIsUnfriended(!isFriendNow && !isBlockedByMe);
+        }
+      }).catch(() => {}); // Fail silently — optimistic false stays
+    }
 
     setCurrentConversationId(conversation.id);
 

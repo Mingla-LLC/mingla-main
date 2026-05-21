@@ -85,6 +85,16 @@ interface Friend {
   lastSeen?: string;
   mutualFriends?: number;
   isMuted?: boolean;
+  conversationType?: "direct" | "group";
+  sessionId?: string | null;
+  participantCount?: number;
+  participants?: {
+    id: string;
+    name?: string;
+    username?: string;
+    avatar_url?: string;
+    is_online?: boolean;
+  }[];
 }
 
 interface MessageInterfaceProps {
@@ -176,6 +186,22 @@ export default function MessageInterface({
     }
     return name.trim();
   };
+  const isGroupChat = friend.conversationType === "group";
+  const headerTitle = cleanName(friend.name);
+  const headerParticipants = friend.participants || [];
+  const headerParticipantCount = friend.participantCount ?? headerParticipants.length;
+  const visibleHeaderParticipants = headerParticipants.slice(0, 3);
+
+  const getHeaderParticipantName = (participant: NonNullable<Friend["participants"]>[number]): string =>
+    cleanName(participant.name || participant.username || "User");
+
+  const getHeaderInitials = (name: string): string =>
+    name
+      .split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase()
+      .substring(0, 2) || "?";
 
   const [newMessage, setNewMessage] = useState("");
   const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
@@ -881,53 +907,94 @@ export default function MessageInterface({
 
           <TouchableOpacity
             style={styles.avatarContainer}
-            onPress={() => onViewProfile?.(friend.id)}
-            disabled={!onViewProfile}
+            onPress={() => {
+              if (!isGroupChat) onViewProfile?.(friend.id);
+            }}
+            disabled={isGroupChat || !onViewProfile}
             activeOpacity={0.8}
-            accessibilityLabel={`View ${cleanName(friend.name)}'s profile`}
+            accessibilityLabel={isGroupChat ? `${headerTitle} participants` : `View ${headerTitle}'s profile`}
             accessibilityRole="button"
           >
-            {friend.avatar ? (
-              <ImageWithFallback
-                source={{ uri: friend.avatar }}
-                style={styles.avatar}
-              />
+            {isGroupChat ? (
+              <View style={styles.groupHeaderAvatarStack}>
+                {visibleHeaderParticipants.length === 0 ? (
+                  <View style={styles.groupHeaderAvatarPlaceholder}>
+                    <Text style={styles.avatarText}>{getHeaderInitials(headerTitle)}</Text>
+                  </View>
+                ) : (
+                  visibleHeaderParticipants.map((participant, index) => {
+                    const participantName = getHeaderParticipantName(participant);
+                    return (
+                      <View
+                        key={participant.id}
+                        style={[
+                          styles.groupHeaderAvatarSegment,
+                          {
+                            left: index * 12,
+                            zIndex: visibleHeaderParticipants.length - index,
+                          },
+                        ]}
+                      >
+                        {participant.avatar_url ? (
+                          <ImageWithFallback
+                            source={{ uri: participant.avatar_url }}
+                            style={styles.groupHeaderAvatarImage}
+                          />
+                        ) : (
+                          <Text style={styles.avatarText}>
+                            {getHeaderInitials(participantName)}
+                          </Text>
+                        )}
+                      </View>
+                    );
+                  })
+                )}
+              </View>
+            ) : friend.avatar ? (
+              <ImageWithFallback source={{ uri: friend.avatar }} style={styles.avatar} />
             ) : (
               <View style={styles.avatarPlaceholder}>
                 <Text style={styles.avatarText}>
-                  {cleanName(friend.name)
-                    .split(" ")
-                    .map((n) => n[0])
-                    .join("")}
+                  {getHeaderInitials(headerTitle)}
                 </Text>
               </View>
             )}
-            {isOtherOnline && <View style={styles.onlineIndicator} />}
+            {!isGroupChat && isOtherOnline && <View style={styles.onlineIndicator} />}
           </TouchableOpacity>
 
           <TouchableOpacity
             style={styles.userInfo}
-            onPress={() => onViewProfile?.(friend.id)}
-            disabled={!onViewProfile}
+            onPress={() => {
+              if (!isGroupChat) onViewProfile?.(friend.id);
+            }}
+            disabled={isGroupChat || !onViewProfile}
             activeOpacity={0.7}
           >
-            <Text style={styles.userName}>{cleanName(friend.name)}</Text>
-            <ChatStatusLine
-              isOnline={isOtherOnline}
-              isTyping={isOtherTyping}
-              lastSeenAt={otherLastSeen}
-            />
+            <Text style={styles.userName} numberOfLines={1}>{headerTitle}</Text>
+            {isGroupChat ? (
+              <Text style={styles.groupParticipantCount} numberOfLines={1}>
+                {headerParticipantCount} {headerParticipantCount === 1 ? "person" : "people"} in chat
+              </Text>
+            ) : (
+              <ChatStatusLine
+                isOnline={isOtherOnline}
+                isTyping={isOtherTyping}
+                lastSeenAt={otherLastSeen}
+              />
+            )}
           </TouchableOpacity>
 
           {/* More button — far right */}
-          <TouchableOpacity
-            onPress={() => setShowMoreOptionsMenu(!showMoreOptionsMenu)}
-            style={styles.headerMoreBtn}
-            activeOpacity={0.7}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Icon name="ellipsis-vertical" size={20} color="rgba(255, 255, 255, 0.72)" />
-          </TouchableOpacity>
+          {!isGroupChat && (
+            <TouchableOpacity
+              onPress={() => setShowMoreOptionsMenu(!showMoreOptionsMenu)}
+              style={styles.headerMoreBtn}
+              activeOpacity={0.7}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Icon name="ellipsis-vertical" size={20} color="rgba(255, 255, 255, 0.72)" />
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Bottom Row: Action Icons */}
@@ -1708,6 +1775,37 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     fontSize: 14,
   },
+  groupHeaderAvatarStack: {
+    width: 64,
+    height: 40,
+    position: "relative",
+  },
+  groupHeaderAvatarSegment: {
+    position: "absolute",
+    top: 0,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#eb7825",
+    borderWidth: 2,
+    borderColor: "rgba(12, 14, 18, 1)",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  groupHeaderAvatarPlaceholder: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#eb7825",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  groupHeaderAvatarImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+  },
   onlineIndicator: {
     position: "absolute",
     bottom: 0,
@@ -1730,6 +1828,11 @@ const styles = StyleSheet.create({
   userStatus: {
     fontSize: 14,
     color: "rgba(255, 255, 255, 0.6)",
+  },
+  groupParticipantCount: {
+    fontSize: 13,
+    color: "rgba(255, 255, 255, 0.62)",
+    marginTop: 2,
   },
   headerActions: {
     flexDirection: "row",

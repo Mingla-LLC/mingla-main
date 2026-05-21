@@ -20,6 +20,11 @@ interface MessageData {
   cardPayload?: CardPayload;  // ORCH-0667
   isMe: boolean;
   failed?: boolean;
+  // ORCH-0898: set true when the upstream message has sender_id === null (e.g., ORCH-0899
+  // "Plan another outing" round-start announcements). Renders as a centered muted system
+  // row with no chrome (no reactions, no replies, no swipe actions). The data-transform
+  // layer that builds MessageData populates this from messages.sender_id === null.
+  isSystem?: boolean;
 }
 
 interface ReplyToData {
@@ -143,6 +148,20 @@ const BORDER_RADIUS = {
 
 export function MessageBubble({ message, isMe, groupPosition, showTimestamp, isRead, replyTo, onScrollToMessage, onCardBubbleTap }: MessageBubbleProps) {
   const { t } = useTranslation(['chat', 'common']);
+
+  // ORCH-0898: system-message render branch — messages with no sender (ORCH-0899
+  // "Plan another outing" round-start announcements, etc.) render as a centered muted
+  // row with no chrome. Bypasses all the bubble + avatar + reactions + reply UI.
+  if (message.isSystem) {
+    return (
+      <View style={chatSystemRowStyles.row} accessibilityRole="text" accessibilityLabel={`System message: ${message.content}`}>
+        <Text style={chatSystemRowStyles.text} numberOfLines={3}>
+          {message.content}
+        </Text>
+      </View>
+    );
+  }
+
   const borderRadius = BORDER_RADIUS[isMe ? 'sent' : 'received'][groupPosition];
   const isGroupEnd = groupPosition === 'last' || groupPosition === 'solo';
   const isDelivered = !message.id.startsWith('temp-');
@@ -471,5 +490,23 @@ const styles = StyleSheet.create({
     fontSize: 11,
     opacity: 0.7,
     marginTop: 2,
+  },
+});
+
+// ORCH-0898: system-message render styles (centered, muted, no chrome).
+const chatSystemRowStyles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    marginBottom: 8,
+  },
+  text: {
+    fontSize: 12,
+    color: '#9ca3af',
+    textAlign: 'center',
+    fontStyle: 'italic',
   },
 });

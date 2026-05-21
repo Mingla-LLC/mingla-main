@@ -43,7 +43,9 @@
     "test:orch-0839-a-meta": "node ./scripts/ci/orch-0839-a-meta-items-consistent.mjs",
     "test:orch-0839-a-cache-removed": "node ./scripts/ci/orch-0839-a-mobile-cache-removed.mjs",
     "test:orch-0901": "node ./scripts/ci/orch-0901-regression-check.mjs",
-    "test:orch-0901-adv": "node ./scripts/ci/orch-0901-adversarial-check.mjs"
+    "test:orch-0901-adv": "node ./scripts/ci/orch-0901-adversarial-check.mjs",
+    "test:orch-0898": "node ./scripts/ci/orch-0898-regression-check.mjs",
+    "test:orch-0898-adv": "node ./scripts/ci/orch-0898-adversarial-check.mjs"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",

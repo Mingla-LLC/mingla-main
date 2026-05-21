@@ -211,6 +211,9 @@ export function trimCardPayload(card: any): CardPayload {
 export interface Conversation {
   id: string;
   type: 'direct' | 'group';
+  name?: string | null;
+  session_id?: string | null;
+  linked_entity_type?: 'direct' | 'session' | 'trip';
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -723,24 +726,119 @@ export class MessagingService {
         .single();
 
       if (error) {
-        // Check if error is due to blocking (RLS violation)
+        // RLS violation (42501): either a block (DM context) OR broadcast-only enforcement
+        // (Tr6 trip context — ORCH-0898 messages_broadcast_only_enforcement RESTRICTIVE policy).
+        // Disambiguate via a follow-up read of the conversation row to surface the right toast.
         if (error.code === '42501' || error.message?.includes('policy')) {
-          return { message: null, error: 'Cannot send message to this user' };
+          const broadcastErrorText = await this.translateInsertRlsError(conversationId);
+          return { message: null, error: broadcastErrorText };
         }
         throw error;
       }
 
       const enrichedMessage = await this.enrichMessage(data, senderId);
-      
+
       // Send notifications to recipients (non-blocking)
-      this.sendMessageNotifications(conversationId, senderId, enrichedMessage).catch(err => 
+      this.sendMessageNotifications(conversationId, senderId, enrichedMessage).catch(err =>
         console.error('Error sending notifications:', err)
       );
-      
+
       return { message: enrichedMessage, error: null };
     } catch (error: any) {
       console.error('Error sending message:', error);
       return { message: null, error: error.message };
+    }
+  }
+
+  /**
+   * ORCH-0898: translates a 42501 RLS violation on messages INSERT into a user-friendly
+   * error. Reads the conversation row to determine whether the rejection is due to
+   * broadcast-only enforcement (Tr6 trip context) or block-based RLS (DM context).
+   *
+   * Falls back to the generic DM error if the lookup fails — RLS-correct behavior
+   * (read returns 0 rows for a non-participant, so we can't always determine the cause).
+   */
+  private async translateInsertRlsError(conversationId: string): Promise<string> {
+    try {
+      const { data: conv } = await supabase
+        .from('conversations')
+        .select('linked_entity_type, is_broadcast_only')
+        .eq('id', conversationId)
+        .maybeSingle();
+
+      if (conv?.linked_entity_type === 'trip' && conv?.is_broadcast_only === true) {
+        return "Only the planner can post in this trip's chat";
+      }
+    } catch {
+      // Fall through to default — RLS may block the read too; either way we surface a sensible toast.
+    }
+    return 'Cannot send message to this user';
+  }
+
+  /**
+   * ORCH-0898: returns the group conversation linked to a collaboration session. The conversation
+   * is eagerly created by the `ensure_group_conversation_on_session_create` DB trigger at session
+   * INSERT time, so this method is typically just a lookup. Returns null + error if the trigger
+   * hasn't fired (e.g., pre-migration session without backfilled conversation — should not happen
+   * post-ORCH-0898 migration).
+   */
+  async getOrCreateGroupConversationForSession(
+    sessionId: string,
+  ): Promise<{ conversation: Conversation | null; error: string | null }> {
+    try {
+      const { data: conv, error } = await supabase
+        .from('conversations')
+        .select(`
+          id, type, created_by, created_at, updated_at, last_message_at,
+          participants:conversation_participants(id, conversation_id, user_id, joined_at, last_read_at)
+        `)
+        .eq('session_id', sessionId)
+        .eq('linked_entity_type', 'session')
+        .maybeSingle();
+
+      if (error) throw error;
+      if (!conv) {
+        return { conversation: null, error: 'Group conversation not found for this session' };
+      }
+
+      return {
+        conversation: {
+          id: conv.id,
+          type: conv.type as 'direct' | 'group',
+          created_by: conv.created_by,
+          created_at: conv.created_at,
+          updated_at: conv.updated_at,
+          last_message_at: conv.last_message_at ?? undefined,
+          participants: (conv.participants as any[]) || [],
+        },
+        error: null,
+      };
+    } catch (error: any) {
+      console.error('Error getting group conversation for session:', error);
+      return { conversation: null, error: error.message };
+    }
+  }
+
+  /**
+   * ORCH-0898: removes the current user from a group conversation. Used by the Friends-tab
+   * group-chat swipe-leave action. RLS-gated to own row only (user_id = auth.uid()).
+   */
+  async leaveGroupConversation(
+    conversationId: string,
+    userId: string,
+  ): Promise<{ error: string | null }> {
+    try {
+      const { error } = await supabase
+        .from('conversation_participants')
+        .delete()
+        .eq('conversation_id', conversationId)
+        .eq('user_id', userId);
+
+      if (error) throw error;
+      return { error: null };
+    } catch (error: any) {
+      console.error('Error leaving group conversation:', error);
+      return { error: error.message };
     }
   }
 
@@ -1116,4 +1214,3 @@ export class MessagingService {
 }
 
 export const messagingService = new MessagingService();
-
