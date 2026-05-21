@@ -623,6 +623,9 @@ export class MessagingService {
         conversations.push({
           id: conv.id,
           type: (conv as any).type,
+          name: (conv as any).name ?? null,
+          session_id: (conv as any).session_id ?? null,
+          linked_entity_type: (conv as any).linked_entity_type ?? undefined,
           created_by: (conv as any).created_by,
           created_at: conv.created_at,
           updated_at: (conv as any).updated_at,
@@ -789,7 +792,7 @@ export class MessagingService {
       const { data: conv, error } = await supabase
         .from('conversations')
         .select(`
-          id, type, created_by, created_at, updated_at, last_message_at,
+          id, type, name, session_id, linked_entity_type, created_by, created_at, updated_at, last_message_at,
           participants:conversation_participants(id, conversation_id, user_id, joined_at, last_read_at)
         `)
         .eq('session_id', sessionId)
@@ -805,6 +808,9 @@ export class MessagingService {
         conversation: {
           id: conv.id,
           type: conv.type as 'direct' | 'group',
+          name: conv.name ?? null,
+          session_id: conv.session_id ?? null,
+          linked_entity_type: conv.linked_entity_type as 'direct' | 'session' | 'trip' | undefined,
           created_by: conv.created_by,
           created_at: conv.created_at,
           updated_at: conv.updated_at,

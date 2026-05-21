@@ -32,6 +32,7 @@ import { ReplyPreviewBar } from "./chat/ReplyPreviewBar";
 import { SwipeableMessage } from "./chat/SwipeableMessage";
 import { DoubleTapHeart } from "./chat/DoubleTapHeart";
 import { ChatStatusLine } from "./chat/ChatStatusLine";
+import { BoardSettingsDropdown } from "./board/BoardSettingsDropdown";
 import { groupMessages, GroupedMessage } from "../utils/messageGrouping";
 import { DirectMessage, messagingService, CardPayload } from "../services/messagingService";
 import { cardPayloadToExpandedCardData } from "../services/cardPayloadAdapter";  // ORCH-0685
@@ -87,6 +88,9 @@ interface Friend {
   isMuted?: boolean;
   conversationType?: "direct" | "group";
   sessionId?: string | null;
+  sessionCreatorId?: string | null;
+  isSessionAdmin?: boolean;
+  notificationsMuted?: boolean;
   participantCount?: number;
   participants?: {
     id: string;
@@ -146,6 +150,10 @@ interface MessageInterfaceProps {
   onBroadcastReceive: (msg: DirectMessage) => void;
   isOffline?: boolean;
   onViewProfile?: (userId: string) => void;
+  onSessionNameUpdated?: (sessionId: string, newName: string) => void;
+  onGroupSessionExited?: (sessionId: string) => void;
+  onGroupSessionDeleted?: (sessionId: string) => void;
+  onGroupParticipantsChange?: () => void;
 }
 
 export default function MessageInterface({
@@ -174,6 +182,10 @@ export default function MessageInterface({
   onBroadcastReceive,
   isOffline = false,
   onViewProfile,
+  onSessionNameUpdated,
+  onGroupSessionExited,
+  onGroupSessionDeleted,
+  onGroupParticipantsChange,
 }: MessageInterfaceProps) {
   const { t } = useTranslation(['chat', 'common']);
   // Helper function to clean email-like names
@@ -191,12 +203,31 @@ export default function MessageInterface({
   const headerParticipants = friend.participants || [];
   const headerParticipantCount = friend.participantCount ?? headerParticipants.length;
   const visibleHeaderParticipants = headerParticipants.slice(0, 3);
-
-  useEffect(() => {
-    if (isGroupChat) {
-      setShowMoreOptionsMenu(false);
-    }
-  }, [isGroupChat]);
+  const groupSettingsParticipants = useMemo(
+    () =>
+      headerParticipants.map((participant) => ({
+        user_id: participant.id,
+        session_id: friend.sessionId ?? "",
+        has_accepted: true,
+        is_admin: participant.id === friend.sessionCreatorId,
+        notifications_muted: participant.id === currentUserId
+          ? friend.notificationsMuted ?? false
+          : false,
+        profiles: {
+          id: participant.id,
+          username: participant.username,
+          display_name: participant.name,
+          avatar_url: participant.avatar_url,
+        },
+      })),
+    [
+      currentUserId,
+      friend.notificationsMuted,
+      friend.sessionCreatorId,
+      friend.sessionId,
+      headerParticipants,
+    ],
+  );
 
   const getHeaderParticipantName = (participant: NonNullable<Friend["participants"]>[number]): string =>
     cleanName(participant.name || participant.username || "User");
@@ -858,6 +889,36 @@ export default function MessageInterface({
     );
   };
 
+  const handleExitGroupSession = useCallback(() => {
+    if (!friend.sessionId || !currentUserId) return;
+
+    Alert.alert(
+      "Leave session?",
+      "You will leave this collaboration session and its chat.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Leave",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const { error } = await supabase
+                .from("session_participants")
+                .delete()
+                .eq("session_id", friend.sessionId)
+                .eq("user_id", currentUserId);
+              if (error) throw error;
+              onGroupSessionExited?.(friend.sessionId!);
+            } catch (error: any) {
+              console.error("[MessageInterface] Failed to leave group session:", error);
+              Alert.alert("Could not leave session", error?.message || "Please try again.");
+            }
+          },
+        },
+      ],
+    );
+  }, [currentUserId, friend.sessionId, onGroupSessionExited]);
+
   // ORCH-0620 composer position:
   //   - inputBottomOffset: nav clearance so the composer floats above the bottom
   //     nav when the keyboard is closed. On Android, + ANDROID_NAV_OVERLAP_FIX
@@ -991,16 +1052,14 @@ export default function MessageInterface({
           </TouchableOpacity>
 
           {/* More button — far right */}
-          {!isGroupChat && (
-            <TouchableOpacity
-              onPress={() => setShowMoreOptionsMenu(!showMoreOptionsMenu)}
-              style={styles.headerMoreBtn}
-              activeOpacity={0.7}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Icon name="ellipsis-vertical" size={20} color="rgba(255, 255, 255, 0.72)" />
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity
+            onPress={() => setShowMoreOptionsMenu(!showMoreOptionsMenu)}
+            style={styles.headerMoreBtn}
+            activeOpacity={0.7}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Icon name="ellipsis-vertical" size={20} color="rgba(255, 255, 255, 0.72)" />
+          </TouchableOpacity>
         </View>
 
         {/* Bottom Row: Action Icons */}
@@ -1615,6 +1674,27 @@ export default function MessageInterface({
           DO NOT re-introduce — toasts now render naturally above @gorhom/bottom-sheet
           (Animated.View, not native Modal portal). The notifications panel below
           (around line 1632) remains as the canonical single mount point. */}
+
+      <BoardSettingsDropdown
+        visible={Boolean(isGroupChat && showMoreOptionsMenu && friend.sessionId)}
+        onClose={() => setShowMoreOptionsMenu(false)}
+        sessionId={friend.sessionId ?? ""}
+        sessionName={headerTitle}
+        sessionCreatorId={friend.sessionCreatorId ?? undefined}
+        currentUserId={currentUserId ?? undefined}
+        isAdmin={friend.isSessionAdmin ?? (!!currentUserId && friend.sessionCreatorId === currentUserId)}
+        notificationsMuted={friend.notificationsMuted ?? false}
+        participants={groupSettingsParticipants}
+        onExitBoard={handleExitGroupSession}
+        onSessionDeleted={() => {
+          setShowMoreOptionsMenu(false);
+          if (friend.sessionId) onGroupSessionDeleted?.(friend.sessionId);
+        }}
+        onSessionNameUpdated={(newName) => {
+          if (friend.sessionId) onSessionNameUpdated?.(friend.sessionId, newName);
+        }}
+        onParticipantsChange={onGroupParticipantsChange}
+      />
 
       {/* More options bottom sheet — ORCH-0435 */}
       <Modal

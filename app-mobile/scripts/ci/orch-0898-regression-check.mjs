@@ -132,15 +132,21 @@ check(
 // ─── T-06 (SC-04/05) Service layer: messagingService.getOrCreateGroupConversationForSession ─
 
 check(
-  "T-06 messagingService.ts exports getOrCreateGroupConversationForSession + leaveGroupConversation",
+  "T-06 messagingService.ts exports group conversation helpers and preserves session metadata",
   messagingServiceSrc !== null &&
     /async getOrCreateGroupConversationForSession\(\s*sessionId: string,\s*\)/.test(messagingServiceSrc) &&
+    /id, type, name, session_id, linked_entity_type, created_by/.test(messagingServiceSrc) &&
     /\.eq\('session_id', sessionId\)[\s\S]*?\.eq\('linked_entity_type', 'session'\)/.test(messagingServiceSrc) &&
+    /name: conv\.name \?\? null/.test(messagingServiceSrc) &&
+    /session_id: conv\.session_id \?\? null/.test(messagingServiceSrc) &&
+    /name: \(conv as any\)\.name \?\? null/.test(messagingServiceSrc) &&
+    /session_id: \(conv as any\)\.session_id \?\? null/.test(messagingServiceSrc) &&
     /async leaveGroupConversation\(\s*conversationId: string,\s*userId: string,\s*\)/.test(messagingServiceSrc),
   "messagingService MUST export getOrCreateGroupConversationForSession(sessionId) using the new" +
     " conversations.session_id + linked_entity_type='session' columns to look up the session's group" +
-    " conversation, plus leaveGroupConversation(conversationId, userId) for the Friends-tab swipe-leave" +
-    " action. SPEC §3.3.",
+    " conversation, must preserve name/session_id/linked_entity_type in both getConversations and" +
+    " getOrCreateGroupConversationForSession results, plus leaveGroupConversation(conversationId," +
+    " userId) for the Friends-tab swipe-leave action. SPEC §3.3.",
 );
 
 // ─── T-07 (SC-05/06) useSessionDiscussion reads from messages via messagingService ─
@@ -312,14 +318,15 @@ check(
   "T-15 ConnectionsPage opens group conversations with session name + participant metadata, not DM fallback",
   connectionsPageSrc !== null &&
     /CONNECTIONS_CACHE_VERSION = "v2-orch-0898-group-metadata"/.test(connectionsPageSrc) &&
-    /\.from\("collaboration_sessions"\)[\s\S]*?\.select\("id, name"\)/.test(connectionsPageSrc) &&
-    /const sessionNameMap = new Map/.test(connectionsPageSrc) &&
-    /sessionNameMap\.get\(sessionId\)\?\.trim\(\)/.test(connectionsPageSrc) &&
+    /\.from\("collaboration_sessions"\)[\s\S]*?\.select\("id, name, created_by"\)/.test(connectionsPageSrc) &&
+    /const sessionMetaMap = new Map/.test(connectionsPageSrc) &&
+    /sessionMeta\?\.name\?\.trim\(\)/.test(connectionsPageSrc) &&
     /const isGroupConversation = conversationMeta\.type === 'group'/.test(connectionsPageSrc) &&
     /conversationMeta\.name\?\.trim\(\) \|\| ''/.test(connectionsPageSrc) &&
-    /\.from\('collaboration_sessions'\)[\s\S]*?\.select\('name'\)/.test(connectionsPageSrc) &&
-    /rawName = session\?\.name\?\.trim\(\) \|\| ''/.test(connectionsPageSrc) &&
+    /\.from\('collaboration_sessions'\)[\s\S]*?\.select\('name, created_by'\)/.test(connectionsPageSrc) &&
+    /rawName = rawName \|\| session\?\.name\?\.trim\(\) \|\| ''/.test(connectionsPageSrc) &&
     /conversationType: isGroupConversation \? 'group' : 'direct'/.test(connectionsPageSrc) &&
+    /sessionCreatorId,/.test(connectionsPageSrc) &&
     /participantCount: isGroupConversation \? conversation\.participants\.length : undefined/.test(connectionsPageSrc) &&
     /participants: isGroupConversation[\s\S]*?conversation\.participants\.map/.test(connectionsPageSrc) &&
     /if \(!isGroupConversation\) \{[\s\S]*?blockService\.hasBlockBetween/.test(connectionsPageSrc),
@@ -332,20 +339,26 @@ check(
 );
 
 check(
-  "T-16 MessageInterface renders group chat header with title, avatar stack, and people count",
+  "T-16 MessageInterface renders group chat header and session settings menu",
   messageInterfaceSrc !== null &&
+    /import \{ BoardSettingsDropdown \} from "\.\/board\/BoardSettingsDropdown"/.test(messageInterfaceSrc) &&
     /const isGroupChat = friend\.conversationType === "group"/.test(messageInterfaceSrc) &&
     /const headerTitle = cleanName\(friend\.name\)/.test(messageInterfaceSrc) &&
     /const headerParticipantCount = friend\.participantCount \?\? headerParticipants\.length/.test(messageInterfaceSrc) &&
     /styles\.groupHeaderAvatarStack/.test(messageInterfaceSrc) &&
     /styles\.groupParticipantCount/.test(messageInterfaceSrc) &&
     /headerParticipantCount === 1 \? "person" : "people"/.test(messageInterfaceSrc) &&
-    /useEffect\(\(\) => \{[\s\S]*?if \(isGroupChat\)[\s\S]*?setShowMoreOptionsMenu\(false\)/.test(messageInterfaceSrc) &&
+    /<BoardSettingsDropdown[\s\S]*?visible=\{Boolean\(isGroupChat && showMoreOptionsMenu && friend\.sessionId\)\}/.test(messageInterfaceSrc) &&
+    /sessionName=\{headerTitle\}/.test(messageInterfaceSrc) &&
+    /participants=\{groupSettingsParticipants\}/.test(messageInterfaceSrc) &&
+    /onExitBoard=\{handleExitGroupSession\}/.test(messageInterfaceSrc) &&
     /visible=\{!isGroupChat && showMoreOptionsMenu\}/.test(messageInterfaceSrc) &&
-    /!\s*isGroupChat && \(\s*<TouchableOpacity[\s\S]*?setShowMoreOptionsMenu/.test(messageInterfaceSrc),
+    !/useEffect\(\(\) => \{[\s\S]*?if \(isGroupChat\)[\s\S]*?setShowMoreOptionsMenu\(false\)/.test(messageInterfaceSrc) &&
+    !/!\s*isGroupChat && \(\s*<TouchableOpacity[\s\S]*?setShowMoreOptionsMenu/.test(messageInterfaceSrc),
   "MessageInterface MUST branch on friend.conversationType === 'group' and render the group header" +
-    " as the collaboration/session name + stacked participant avatars + `N people in chat`, while" +
-    " hiding and hard-disabling the one-on-one friend action menu for group chats.",
+    " as the collaboration/session name + stacked participant avatars + `N people in chat`. The" +
+    " header ellipsis must stay visible for groups and open BoardSettingsDropdown with the session" +
+    " name/participants instead of the one-on-one friend action menu.",
 );
 
 check(

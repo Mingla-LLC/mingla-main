@@ -14,6 +14,9 @@ export interface Friend {
   isMuted?: boolean;
   conversationType?: 'direct' | 'group';
   sessionId?: string | null;
+  sessionCreatorId?: string | null;
+  isSessionAdmin?: boolean;
+  notificationsMuted?: boolean;
   participantCount?: number;
   participants?: {
     id: string;

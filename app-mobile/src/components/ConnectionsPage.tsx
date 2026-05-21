@@ -736,7 +736,7 @@ function ConnectionsPageRefactored({
         groupSessionIds.size > 0
           ? supabase
               .from("collaboration_sessions")
-              .select("id, name")
+              .select("id, name, created_by")
               .in("id", Array.from(groupSessionIds))
           : Promise.resolve({ data: [] as any[], error: null }),
       ]);
@@ -747,8 +747,11 @@ function ConnectionsPageRefactored({
       const profilesMap = new Map(
         (profilesResult.data || []).map((p) => [p.id, p])
       );
-      const sessionNameMap = new Map(
-        (sessionsResult.data || []).map((s) => [s.id, s.name])
+      const sessionMetaMap = new Map(
+        (sessionsResult.data || []).map((s) => [
+          s.id,
+          { name: s.name as string | null, created_by: s.created_by as string | null },
+        ])
       );
 
       // Transform to Conversation type (matching useMessages format for ChatListItem).
@@ -771,8 +774,9 @@ function ConnectionsPageRefactored({
         });
 
         const sessionId = (conv as { session_id?: string | null }).session_id ?? null;
+        const sessionMeta = sessionId ? sessionMetaMap.get(sessionId) : null;
         const conversationName = (conv as { name?: string | null }).name?.trim()
-          || (sessionId ? sessionNameMap.get(sessionId)?.trim() : undefined)
+          || sessionMeta?.name?.trim()
           || null;
 
         return {
@@ -787,6 +791,7 @@ function ConnectionsPageRefactored({
           type: conv.type,
           name: conversationName,
           session_id: sessionId,
+          sessionCreatorId: sessionMeta?.created_by ?? null,
         };
       });
 
@@ -1053,21 +1058,24 @@ function ConnectionsPageRefactored({
       type?: 'direct' | 'group';
       name?: string | null;
       session_id?: string | null;
+      sessionCreatorId?: string | null;
     };
     const isGroupConversation = conversationMeta.type === 'group';
     const otherParticipant = conversation.participants.find((p) => p.id !== user.id);
     let rawName = isGroupConversation
       ? conversationMeta.name?.trim() || ''
       : getDisplayName(otherParticipant);
+    let sessionCreatorId = isGroupConversation ? conversationMeta.sessionCreatorId ?? null : null;
 
-    if (isGroupConversation && !rawName && conversationMeta.session_id) {
+    if (isGroupConversation && (!rawName || !sessionCreatorId) && conversationMeta.session_id) {
       try {
         const { data: session } = await supabase
           .from('collaboration_sessions')
-          .select('name')
+          .select('name, created_by')
           .eq('id', conversationMeta.session_id)
           .maybeSingle();
-        rawName = session?.name?.trim() || '';
+        rawName = rawName || session?.name?.trim() || '';
+        sessionCreatorId = session?.created_by ?? sessionCreatorId;
       } catch (e) {
         console.warn('[ConnectionsPage] Failed to resolve group chat session name:', e);
       }
@@ -1091,6 +1099,8 @@ function ConnectionsPageRefactored({
       isOnline: isGroupConversation ? false : otherParticipant?.is_online || false,
       conversationType: isGroupConversation ? 'group' : 'direct',
       sessionId: conversationMeta.session_id ?? null,
+      sessionCreatorId,
+      isSessionAdmin: isGroupConversation ? sessionCreatorId === user.id : undefined,
       participantCount: isGroupConversation ? conversation.participants.length : undefined,
       participants: isGroupConversation
         ? conversation.participants.map((p) => ({
@@ -1764,6 +1774,22 @@ function ConnectionsPageRefactored({
     }
   }, [currentConversationId, user?.id, fetchConversations]);
 
+  const handleGroupSessionNameUpdated = useCallback((sessionId: string, newName: string) => {
+    setActiveChat((prev) =>
+      prev?.sessionId === sessionId ? { ...prev, name: newName } : prev
+    );
+    setConversations((prev) =>
+      prev.map((conv) => {
+        const meta = conv as Conversation & { session_id?: string | null; name?: string | null };
+        return meta.session_id === sessionId ? { ...conv, name: newName } : conv;
+      })
+    );
+  }, []);
+
+  const handleGroupSessionRemoved = useCallback((_sessionId: string) => {
+    handleBackFromMessage();
+  }, [handleBackFromMessage]);
+
   // ── Send message ─────────────────────────────────────────
   const handleSendMessage = async (
     content: string,
@@ -2338,6 +2364,12 @@ function ConnectionsPageRefactored({
             onBroadcastReceive={handleBroadcastReceive}
             isOffline={isOffline}
             onViewProfile={onNavigateToFriendProfile}
+            onSessionNameUpdated={handleGroupSessionNameUpdated}
+            onGroupSessionExited={handleGroupSessionRemoved}
+            onGroupSessionDeleted={handleGroupSessionRemoved}
+            onGroupParticipantsChange={() => {
+              if (user?.id) fetchConversations(user.id);
+            }}
           />
         </View>
 
