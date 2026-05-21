@@ -14,14 +14,15 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  KeyboardAvoidingView,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+// ORCH-0892-B v2: ScrollView routed through SmartScrollView wrapper.
+// KeyboardAvoidingView removed. Per SPEC_ORCH-0892-B_v2 §7.F.
+import { ScrollView } from "../../../../src/wrappers/SmartScrollView";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -346,11 +347,8 @@ export default function TemplateDetailRoute(): React.ReactElement {
   return (
     <View style={styles.host}>
       <Header onBack={handleBack} title={headerTitle} rightSlot={headerRight} />
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        style={styles.kavHost}
-      >
         <ScrollView
+          style={styles.kavHost}
           contentContainerStyle={[
             styles.scrollContent,
             { paddingBottom: insets.bottom + 120 },
@@ -382,7 +380,6 @@ export default function TemplateDetailRoute(): React.ReactElement {
             </Pressable>
           ) : null}
         </ScrollView>
-      </KeyboardAvoidingView>
 
       {/* Floating primary CTA — matches the Overview / Campaigns / Templates
           FAB pattern (position: absolute, right + bottom: insets.bottom + 96,

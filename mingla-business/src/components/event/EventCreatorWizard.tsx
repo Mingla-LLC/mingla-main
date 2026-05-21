@@ -29,14 +29,17 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   Image,
   Keyboard,
-  type KeyboardEvent,
-  Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+// ORCH-0892-B v2: ScrollView via SmartScrollView wrapper. Keyboard listener
+// + keyboardVisible/keyboardHeight state + auto-insets DELETED. KAS handles
+// focused-input scroll. useKeyboardIsVisible() preserves dock-hide UX.
+// Keyboard import retained for Keyboard.dismiss(). Per SPEC §7.F.
+import { ScrollView } from "../../wrappers/SmartScrollView";
+import { useKeyboardIsVisible } from "../../wrappers/useKeyboardIsVisible";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -235,8 +238,10 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   // typing so it doesn't take space between focused input and keyboard,
   // (b) apply dynamic paddingBottom to the ScrollView so manual scroll
   // can position bottom-most inputs above the keyboard.
-  const [keyboardVisible, setKeyboardVisible] = useState<boolean>(false);
-  const [keyboardHeight, setKeyboardHeight] = useState<number>(0);
+  // ORCH-0892-B v2: keyboardVisible/keyboardHeight state DELETED.
+  // useKeyboardIsVisible() preserves dock-hide UX (line ~915). KAS via
+  // SmartScrollView handles focused-input scroll.
+  const keyboardVisible = useKeyboardIsVisible();
   const latestDraftRef = useRef<DraftEvent>(liveDraft);
   const clientRevisionRef = useRef<number>(liveDraft.clientRevision ?? 0);
   const lastStepSyncKeyRef = useRef<string | null>(null);
@@ -292,57 +297,19 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   // landing the focused input far above the keyboard with a huge gap.
   const pendingScrollToBottomRef = useRef<boolean>(false);
 
-  useEffect(() => {
-    const showEvent =
-      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
-    const hideEvent =
-      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
-    const showSub = Keyboard.addListener(showEvent, (e: KeyboardEvent): void => {
-      setKeyboardVisible(true);
-      setKeyboardHeight(e.endCoordinates.height);
-    });
-    const hideSub = Keyboard.addListener(hideEvent, (): void => {
-      setKeyboardVisible(false);
-      setKeyboardHeight(0);
-    });
-    return (): void => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, []);
-
-  // Mark the wizard's intent to scroll its body to the bottom. The
-  // actual scroll runs in a keyboardHeight effect once the keyboard
-  // is visible AND the ScrollView's paddingBottom has applied. This
-  // avoids a race where scrollToEnd fires before the content has
-  // grown to its full keyboard-padded height.
+  // ORCH-0892-B v2: keyboard listener + keyboardHeight-driven
+  // scrollToBottom plumbing DELETED. KAS via SmartScrollView computes
+  // focused-input overlap and scrolls precisely above the keyboard
+  // automatically. scrollToBottom is preserved as a passthrough so
+  // child components (CreatorStep1Basics on Description focus, etc.)
+  // can still request a scrollToEnd explicitly — KAS's per-focus
+  // scroll then refines from that position. pendingScrollToBottomRef
+  // retained as a kept-for-future hook; safe no-op when unused.
   const scrollToBottom = useCallback((): void => {
-    pendingScrollToBottomRef.current = true;
-    // If keyboard is already up (rare — e.g. user re-focuses an input
-    // while keyboard remains up), scroll immediately.
-    if (keyboardHeight > 0) {
-      requestAnimationFrame((): void => {
-        scrollViewRef.current?.scrollToEnd({ animated: true });
-      });
-    }
-  }, [keyboardHeight]);
-
-  // Once the keyboard has risen + paddingBottom has applied, scroll
-  // to end if a step body requested it. Reset the flag on keyboard
-  // dismiss so a subsequent focus correctly triggers a new scroll.
-  useEffect(() => {
-    if (keyboardHeight > 0 && pendingScrollToBottomRef.current) {
-      // requestAnimationFrame defers one frame so layout has time to
-      // recompute against the new paddingBottom; without it, the
-      // scrollToEnd uses the previous content height.
-      requestAnimationFrame((): void => {
-        scrollViewRef.current?.scrollToEnd({ animated: true });
-      });
-    }
-    if (keyboardHeight === 0) {
-      pendingScrollToBottomRef.current = false;
-    }
-  }, [keyboardHeight]);
+    requestAnimationFrame((): void => {
+      scrollViewRef.current?.scrollToEnd({ animated: true });
+    });
+  }, []);
 
   const stripeStatus: BrandStripeStatus =
     brand?.stripeStatus ?? "not_connected";
@@ -867,33 +834,20 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
         {isWideDesktop ? renderDesktopStepRail() : null}
         <View style={isWideDesktop ? styles.desktopFormPane : styles.mobileFormPane}>
 
-      {/* Body — keyboard handling:
-          - iOS: relies on the ScrollView's `automaticallyAdjustKeyboardInsets`
-            (iOS 14+ native auto-inset). When a TextInput inside the
-            ScrollView gains focus, iOS adds a content inset = keyboard
-            height and auto-scrolls the focused input into view. No
-            KeyboardAvoidingView (which double-padded with this prop and
-            left visible bottom space when the keyboard was open).
-          - Android: relies on `android:windowSoftInputMode="adjustResize"`
-            (Expo default) — system pushes content up natively. */}
+      {/* ORCH-0892-B v2: SmartScrollView (KAS on native) computes precise
+          overlap between focused TextInput bottom edge and keyboard top,
+          and scrolls exactly that amount. Replaces the old
+          automaticallyAdjustKeyboardInsets + paddingBottom-overshoot
+          approach which was unreliable in nested layouts. Chrome (chromeRow
+          + subtitleRow + dock) renders OUTSIDE this ScrollView so it stays
+          stationary. Per SPEC §7.F. */}
       <ScrollView
         ref={scrollViewRef}
         style={styles.kbAvoid}
-        contentContainerStyle={[
-          styles.body,
-          // Step 4 (Cover) needs the +200 overshoot for the GIPHY/Pexels
-          // search input inside CoverPicker (ORCH-0884 follow-up #6).
-          // All other steps rely on iOS's `automaticallyAdjustKeyboardInsets`
-          // for flush positioning — adding extra padding there pushes
-          // focused inputs way above the keyboard.
-          keyboardHeight > 0 && currentStep === 3
-            ? { paddingBottom: keyboardHeight + 200 }
-            : null,
-        ]}
+        contentContainerStyle={styles.body}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
-        automaticallyAdjustKeyboardInsets
       >
         <Text style={styles.eyebrow}>
           Step {currentStep + 1} of {TOTAL_STEPS}

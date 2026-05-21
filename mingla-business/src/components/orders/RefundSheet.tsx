@@ -23,12 +23,13 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
+// ORCH-0892-B v2: ScrollView via SmartScrollView wrapper. Per SPEC §7.F.
+import { ScrollView } from "../../wrappers/SmartScrollView";
 
 import {
   accent,
@@ -260,7 +261,6 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}
-          automaticallyAdjustKeyboardInsets
         >
           {mode === "full" ? (
             <View style={styles.summaryCard}>

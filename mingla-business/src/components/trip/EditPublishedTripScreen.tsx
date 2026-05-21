@@ -49,17 +49,18 @@ import React, {
   useState,
 } from "react";
 import {
-  Keyboard,
-  type KeyboardEvent,
-  Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Switch,
   Text,
   TextInput,
   View,
 } from "react-native";
+// ORCH-0892-B v2: ScrollView via SmartScrollView wrapper. Keyboard listener
+// + state + auto-insets DELETED. useKeyboardIsVisible() preserves dock-hide.
+// Per SPEC §7.F.
+import { ScrollView } from "../../wrappers/SmartScrollView";
+import { useKeyboardIsVisible } from "../../wrappers/useKeyboardIsVisible";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 
@@ -529,32 +530,10 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
     setToast({ visible: true, message });
   }, []);
 
-  // ---- Keyboard handling (Cycle 3 wizard root pattern) ----
-  const [keyboardVisible, setKeyboardVisible] = useState<boolean>(false);
-  const [keyboardHeight, setKeyboardHeight] = useState<number>(0);
+  // ORCH-0892-B v2: keyboard listener + state DELETED. KAS via
+  // SmartScrollView handles focused-input scroll. dock-hide via hook.
+  const keyboardVisible = useKeyboardIsVisible();
   const scrollViewRef = useRef<ScrollView | null>(null);
-
-  useEffect(() => {
-    const showEvent =
-      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
-    const hideEvent =
-      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
-    const showSub = Keyboard.addListener(
-      showEvent,
-      (e: KeyboardEvent): void => {
-        setKeyboardVisible(true);
-        setKeyboardHeight(e.endCoordinates.height);
-      },
-    );
-    const hideSub = Keyboard.addListener(hideEvent, (): void => {
-      setKeyboardVisible(false);
-      setKeyboardHeight(0);
-    });
-    return (): void => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, []);
 
   // ---- Web purchases predicate (drives SMS-channel flag) ----
   const hasWebPurchaseOrders = useTripHasWebPurchases(trip.id);
@@ -1224,21 +1203,10 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
         style={styles.scroll}
         contentContainerStyle={[
           styles.scrollContent,
-          {
-            // ORCH-0884 follow-up #6 — bumped buffer from 120 to 200pt
-            // when keyboard is up. Operator-confirmed: prior 120pt left
-            // the focused input's cursor right at the keyboard edge or
-            // below (half-covered). 200pt gives iOS's auto-scroll enough
-            // room to position the input fully above the keyboard.
-            paddingBottom:
-              keyboardHeight > 0
-                ? keyboardHeight + 200
-                : insets.bottom + 120,
-          },
+          { paddingBottom: insets.bottom + 120 },
         ]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
-        automaticallyAdjustKeyboardInsets
         showsVerticalScrollIndicator={false}
       >
         <EditAfterPublishTripBanner />

@@ -38,7 +38,6 @@ import {
   ActivityIndicator,
   Alert,
   Keyboard,
-  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -46,6 +45,11 @@ import {
   Text,
   View,
 } from "react-native";
+// ORCH-0892-B v2: ScrollView routed through SmartScrollView wrapper (KAS
+// on native, plain RN ScrollView on web). KeyboardAvoidingView removed —
+// KAS scrolls the focused TextInput exactly above the keyboard. Per
+// SPEC_ORCH-0892-B_v2 §7.F.
+import { ScrollView } from "../../../../src/wrappers/SmartScrollView";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 
 import { Toast } from "../../../../src/components/ui/Toast";
@@ -612,8 +616,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
         message={errorBanner ?? ""}
         onDismiss={() => setErrorBanner(null)}
       />
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      <View
         style={[styles.kavHost, isWideDesktop ? styles.desktopKavHost : null]}
       >
         {/* ORCH-0891 M2: ComposerCanvas wraps the editor column with a
@@ -810,7 +813,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
             router.replace("/(tabs)/marketing/campaigns" as never);
           }}
         />
-      </KeyboardAvoidingView>
+      </View>
     </View>
   );
 }

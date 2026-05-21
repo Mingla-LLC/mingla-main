@@ -10,7 +10,9 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { StyleSheet, Text, TextInput, View } from "react-native";
+// ORCH-0892-B v2: ScrollView via SmartScrollView wrapper. Per SPEC §7.F.
+import { ScrollView } from "../../../../src/wrappers/SmartScrollView";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 

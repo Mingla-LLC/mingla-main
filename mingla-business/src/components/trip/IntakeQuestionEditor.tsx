@@ -20,16 +20,15 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Keyboard,
-  type KeyboardEvent,
-  Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
+// ORCH-0892-B v2: ScrollView via SmartScrollView wrapper. Keyboard listener
+// + state DELETED. Per SPEC §7.F.
+import { ScrollView } from "../../wrappers/SmartScrollView";
 // ORCH-0884 follow-up #2: swapped Nestable* primitives for standalone
 // DraggableFlatList + plain ScrollView. Nestable* triggers a ref.measureLayout
 // crash on iOS inside a Sheet-presented Modal (operator-reproduced 2026-05-19
@@ -131,28 +130,10 @@ export const IntakeQuestionEditor: React.FC<IntakeQuestionEditorProps> = ({
   // awareness (it renders a native Modal at the OS root layer); without
   // this, the keyboard covers Placeholder hint + Options + Save button on
   // any input below the fold. Per `feedback_keyboard_never_blocks_input.md`.
-  const [keyboardHeight, setKeyboardHeight] = useState<number>(0);
+  // ORCH-0892-B v2: keyboard listener + keyboardHeight state DELETED.
+  // KAS via SmartScrollView handles focused-input scroll automatically
+  // for this sheet's body. Per SPEC §7.F.
   const scrollRef = useRef<ScrollView>(null);
-  useEffect(() => {
-    if (!visible) {
-      setKeyboardHeight(0);
-      return;
-    }
-    const showEvent =
-      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
-    const hideEvent =
-      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
-    const showSub = Keyboard.addListener(showEvent, (e: KeyboardEvent): void => {
-      setKeyboardHeight(e.endCoordinates.height);
-    });
-    const hideSub = Keyboard.addListener(hideEvent, (): void => {
-      setKeyboardHeight(0);
-    });
-    return (): void => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, [visible]);
 
   // Confirm dialog state for type-switch (only when type change would clear
   // type-specific config like options or limits).
@@ -285,19 +266,10 @@ export const IntakeQuestionEditor: React.FC<IntakeQuestionEditorProps> = ({
     >
       <ScrollView
         ref={scrollRef}
-        contentContainerStyle={[
-          styles.scrollContent,
-          keyboardHeight > 0 ? { paddingBottom: keyboardHeight } : null,
-        ]}
+        contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
-        // ORCH-0884 follow-up #3 — auto-scroll focused TextInput above
-        // keyboard so Placeholder hint / Number-config fields below the
-        // fold are not hidden by the keyboard. iOS 14+. Combined with the
-        // paddingBottom above, this gives the full Cycle 3 wizard root
-        // keyboard pattern inside a Sheet body.
-        automaticallyAdjustKeyboardInsets
       >
         <Text style={styles.eyebrow} accessibilityRole="header">
           {isNewQuestion ? "NEW QUESTION" : "EDIT QUESTION"}

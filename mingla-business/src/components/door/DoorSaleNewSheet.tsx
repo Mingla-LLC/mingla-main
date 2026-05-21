@@ -38,12 +38,13 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
+// ORCH-0892-B v2: ScrollView via SmartScrollView wrapper. Per SPEC §7.F.
+import { ScrollView } from "../../wrappers/SmartScrollView";
 
 import {
   accent,
@@ -342,7 +343,6 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}
-          automaticallyAdjustKeyboardInsets
         >
           {/* TESTING MODE banner (mirror Cycle 11 ORCH-0711 pattern) */}
           <View style={styles.banner}>

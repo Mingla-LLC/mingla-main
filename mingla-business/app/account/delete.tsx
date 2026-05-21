@@ -30,13 +30,16 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Keyboard,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
+// ORCH-0892-B v2: ScrollView via SmartScrollView wrapper (KAS native /
+// passthrough web). Keyboard listener + keyboardVisible state + dynamic
+// padBottom + auto-insets prop all DELETED — KAS handles focused-input
+// scroll automatically. Per SPEC §7.F.
+import { ScrollView } from "../../src/wrappers/SmartScrollView";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -94,25 +97,14 @@ export default function DeleteAccountRoute(): React.ReactElement {
 
   const [step, setStep] = useState<DeleteStep>(1);
   const [confirmEmailInput, setConfirmEmailInput] = useState<string>("");
-  const [keyboardVisible, setKeyboardVisible] = useState<boolean>(false);
   const [toast, setToast] = useState<{ visible: boolean; message: string }>({
     visible: false,
     message: "",
   });
 
-  // Keyboard listener for memory rule feedback_keyboard_never_blocks_input
-  useEffect(() => {
-    const showSub = Keyboard.addListener("keyboardDidShow", () =>
-      setKeyboardVisible(true),
-    );
-    const hideSub = Keyboard.addListener("keyboardDidHide", () =>
-      setKeyboardVisible(false),
-    );
-    return () => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, []);
+  // ORCH-0892-B v2: keyboard listener + keyboardVisible state DELETED.
+  // KAS (via SmartScrollView wrapper) handles focused-input scroll
+  // automatically. Per SPEC §7.F.
 
   const provider = useMemo<"google" | "apple" | "unknown">(() => {
     const p = user?.app_metadata?.provider;
@@ -222,14 +214,10 @@ export default function DeleteAccountRoute(): React.ReactElement {
         style={styles.scroll}
         contentContainerStyle={[
           styles.scrollContent,
-          {
-            paddingBottom:
-              insets.bottom + (keyboardVisible ? spacing.xl * 4 : spacing.xl),
-          },
+          { paddingBottom: insets.bottom + spacing.xl },
         ]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
-        automaticallyAdjustKeyboardInsets
         showsVerticalScrollIndicator={false}
       >
         {step === 1 ? (

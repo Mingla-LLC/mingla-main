@@ -61,15 +61,20 @@ const SKIP_DIRS = new Set([
 ]);
 
 const SAFELIST = new Set([
+  // ORCH-0892-B v2: Sheet.tsx legitimately imports KeyboardAwareScrollView
+  // from the library — it's the single owner of sheet body keyboard handling
+  // (panel translate / height clamp deleted; KAS does scroll-to-focused).
   "mingla-business/src/components/ui/Sheet.tsx",
   "mingla-business/src/components/marketing/ComposerV2/ComposerV2Editor.tsx",
   "mingla-business/src/components/marketing/ComposerV2/richEditor.native.ts",
   "mingla-business/src/components/marketing/ComposerV2/richEditor.tsx",
   "mingla-business/src/wrappers/KeyboardRoot.native.tsx",
-  // ORCH-0892-A v2 (post-QA rework Path A): the new KAV wrapper pair.
-  // The .native.tsx variant legitimately imports KAV from the library.
-  // The .tsx (web) variant imports from 'react-native' — not flagged.
-  "mingla-business/src/wrappers/KeyboardAvoidingView.native.tsx",
+  // ORCH-0892-B v2 (supersedes ORCH-0892-A KAV wrapper): SmartScrollView
+  // native variant re-exports KeyboardAwareScrollView; useKeyboardIsVisible
+  // native variant delegates to library useKeyboardState. The web variants
+  // import from 'react-native' only — not flagged.
+  "mingla-business/src/wrappers/SmartScrollView.native.tsx",
+  "mingla-business/src/wrappers/useKeyboardIsVisible.native.ts",
 ]);
 
 function walkSourceFiles(dir, out = []) {
@@ -125,6 +130,16 @@ const RE_KAV_FROM_RN_NAMED =
   /import\s+\{[^}]*\bKeyboardAvoidingView\b[^}]*\}\s+from\s+["']react-native["']/;
 
 const RE_AUTO_INSETS = /automaticallyAdjustKeyboardInsets\s*=\s*\{?\s*true/;
+
+// ORCH-0892-B v2 4th pattern: ScrollView imported from 'react-native' in a
+// file that also contains a TextInput — must come from the SmartScrollView
+// wrapper so KAS (KeyboardAwareScrollView on native) handles focused-input
+// scrolling. Universal-coverage enforcer — prevents future form-screens
+// from sneaking in a bare ScrollView import and inheriting the unreliable
+// per-screen keyboard plumbing pattern this ORCH eliminates.
+const RE_SCROLLVIEW_FROM_RN_NAMED =
+  /import\s+\{[^}]*\bScrollView\b[^}]*\}\s+from\s+["']react-native["']/;
+const RE_TEXTINPUT_PRESENT = /\bTextInput\b/;
 
 function hasInlineAllowlist(content, lineIndex) {
   // Accept allowlist comment within 3 lines above or below the match.
@@ -202,6 +217,24 @@ for (const root of SCAN_ROOTS) {
           line: lineIdx + 1,
           pattern: "automaticallyAdjustKeyboardInsets={true}",
           fix: "Wrap parent in <KeyboardAwareScrollView from 'react-native-keyboard-controller'> — automaticallyAdjustKeyboardInsets is iOS-only and fragile in nested layouts.",
+        });
+      }
+    }
+
+    // ORCH-0892-B v2 4th pattern: ScrollView imported from 'react-native'
+    // in a file that contains a TextInput — must come from SmartScrollView
+    // wrapper. Universal-coverage enforcer for form screens.
+    if (
+      RE_SCROLLVIEW_FROM_RN_NAMED.test(stripped) &&
+      RE_TEXTINPUT_PRESENT.test(stripped)
+    ) {
+      const lineIdx = findFirstLineMatching(raw, RE_SCROLLVIEW_FROM_RN_NAMED);
+      if (!hasInlineAllowlist(raw, lineIdx)) {
+        warnings.push({
+          path: relPath,
+          line: lineIdx + 1,
+          pattern: "ScrollView imported from 'react-native' in a file containing TextInput",
+          fix: "Import ScrollView from '@/wrappers/SmartScrollView' (correct relative path per file depth) — wrapper resolves to KeyboardAwareScrollView on native (focused TextInput auto-scrolls above keyboard) and plain ScrollView on web (passthrough).",
         });
       }
     }

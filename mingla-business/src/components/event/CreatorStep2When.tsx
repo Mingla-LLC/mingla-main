@@ -22,12 +22,13 @@ import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
+// ORCH-0892-B v2: ScrollView via SmartScrollView wrapper. Per SPEC §7.F.
+import { ScrollView } from "../../wrappers/SmartScrollView";
 import DateTimePicker, {
   type DateTimePickerEvent,
 } from "@react-native-community/datetimepicker";

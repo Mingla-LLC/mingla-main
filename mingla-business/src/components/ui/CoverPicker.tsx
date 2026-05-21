@@ -31,21 +31,20 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Image,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
-// ORCH-0892-A v2 (post-QA rework Path A): KeyboardAvoidingView imported
-// from the wrapper at src/wrappers/. The wrapper's .native.tsx variant
-// re-exports the library's KAV (frame-perfect on iOS+Android); the
-// .tsx variant re-exports react-native's KAV (works on web). This
-// wraps the GIPHY/Pexels search section so the search input + cursor
-// lift above the iOS keyboard + autocomplete bar. Supersedes
-// ORCH-0884 follow-ups #8 (400pt spacer) and #9 (dead scrollResponder
-// call) which are both deleted. Per SPEC_ORCH-0892-A §7.6 + QA §11.
-import { KeyboardAvoidingView } from "../../wrappers/KeyboardAvoidingView";
+// ORCH-0892-B v2: ScrollView routed through SmartScrollView wrapper.
+// On native, resolves to KeyboardAwareScrollView (library) which scrolls
+// the focused TextInput (e.g. the GIPHY/Pexels search input) exactly
+// 12pt above the keyboard. On web, plain RN ScrollView. KAS supersedes
+// ORCH-0892-A's <KeyboardAvoidingView> wrap which has been removed; also
+// supersedes ORCH-0884 follow-ups #8 (400pt spacer) and #9 (dead
+// scrollResponder call) which remain deleted. Per SPEC_ORCH-0892-B_v2
+// §7.D + §15 (ORCH-0888 supersession verdict).
+import { ScrollView } from "../../wrappers/SmartScrollView";
 import * as ImagePicker from "expo-image-picker";
 
 import {
@@ -493,13 +492,14 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       </View>
 
       {/* GIPHY + Pexels search (only renders if at least one is enabled).
-          ORCH-0892-A: wrapped in <KeyboardAvoidingView behavior="padding">
-          from react-native-keyboard-controller. The library lifts the
-          focused search input above the iOS keyboard + autocomplete bar
-          natively, replacing the deleted ORCH-0884 #8 spacer hack and
-          #9 dead scrollResponder call. Per SPEC_ORCH-0892-A §7.6. */}
+          ORCH-0892-B v2: <KeyboardAvoidingView> wrap removed. Keyboard
+          avoidance for the search input now flows through the parent
+          screen / Sheet consumer's SmartScrollView (KAS) which scrolls
+          the focused TextInput exactly above the keyboard. ORCH-0884
+          follow-ups #8 (400pt spacer) and #9 (dead scrollResponder)
+          remain DELETED. Per SPEC_ORCH-0892-B_v2 §7.D. */}
       {supportsSearch ? (
-        <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={0}>
+        <View>
           <View style={styles.field}>
             <Text style={styles.fieldLabel}>Find a cover</Text>
             <View style={styles.providerTabs}>
@@ -585,7 +585,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
               )}
             </ScrollView>
           </View>
-        </KeyboardAvoidingView>
+        </View>
       ) : null}
     </View>
   );
