@@ -4,12 +4,14 @@ const root = new URL("../../../..", import.meta.url).pathname;
 const read = async (rel: string) => await Deno.readTextFile(`${root}/${rel}`);
 const migrationPath =
   "supabase/migrations/20260701000000_orch_0909_positional_shared_deck.sql";
+const amendmentMigrationPath =
+  "supabase/migrations/20260703000000_orch_0906_session_deck_cards_mixed_type.sql";
 
 Deno.test("T-ADV-01: concurrent frontier race is resolved by insert conflict then read", async () => {
   const edge = await read("supabase/functions/discover-cards/index.ts");
   assert(edge.includes(".insert({"));
   assert(edge.includes("insertRes.error.code !== '23505'"));
-  assert(edge.includes(".select('card_id, generated_at_version')"));
+  assert(edge.includes(".select('card_id, card_type, curated_payload, generated_at_version, degraded_from, pill_label')"));
 });
 
 Deno.test("T-ADV-02: replayed client cursor loses to server cursor", async () => {
@@ -58,4 +60,24 @@ Deno.test("T-ADV-08: live dead-end revival is possible because no sentinel row e
   assert(deadEndBody.includes("current_position: params.position - 1"));
   assert(!/session_deck_cards|insert/.test(deadEndBody));
   assert(edge.includes("Date/time filters removed every candidate"));
+});
+
+Deno.test("T-ADV-09: curated exhaustion gracefully degrades before full dead-end", async () => {
+  const sql = await read(amendmentMigrationPath);
+  const edge = await read("supabase/functions/discover-cards/index.ts");
+  assert(sql.includes("degraded_from text NULL"));
+  assert(edge.includes("degraded_from_intent"));
+  assert(edge.includes("exhausted_intent"));
+  assert(edge.includes("batch.cards.length === 0"));
+  assert(edge.includes("all_pools_exhausted"));
+});
+
+Deno.test("T-ADV-10: curated internal failure surfaces as pipeline_error", async () => {
+  const edge = await read("supabase/functions/discover-cards/index.ts");
+  const curated = await read("supabase/functions/generate-curated-experiences/index.ts");
+  assert(edge.includes("fetchCuratedBatchInternal"));
+  assert(edge.includes("generate-curated-experiences returned"));
+  assert(edge.includes("CuratedInternalInvocationError"));
+  assert(edge.includes("error_class: 'pipeline_error'"));
+  assert(curated.includes("excludePlacePoolIds"));
 });

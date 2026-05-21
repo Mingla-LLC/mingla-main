@@ -5,6 +5,8 @@ const read = async (rel: string) => await Deno.readTextFile(`${root}/${rel}`);
 
 const migrationPath =
   "supabase/migrations/20260701000000_orch_0909_positional_shared_deck.sql";
+const amendmentMigrationPath =
+  "supabase/migrations/20260703000000_orch_0906_session_deck_cards_mixed_type.sql";
 
 Deno.test("T-IMP-01: positional deck table enforces one card per session position", async () => {
   const sql = await read(migrationPath);
@@ -74,4 +76,34 @@ Deno.test("T-IMP-09: discover-cards rejects old collab payloads and uses positio
   assert(edge.includes("current_position"));
   assert(edge.includes("status: 410"));
   assertEquals(edge.includes("expected" + "_deck_version"), false);
+});
+
+Deno.test("T-IMP-10: mixed deck rows support single and curated payloads", async () => {
+  const sql = await read(amendmentMigrationPath);
+  const edge = await read("supabase/functions/discover-cards/index.ts");
+  assert(sql.includes("ALTER COLUMN card_id DROP NOT NULL"));
+  assert(sql.includes("card_type IN ('single', 'curated')"));
+  assert(sql.includes("sdc_exactly_one_payload"));
+  assert(sql.includes("curated_payload jsonb"));
+  assert(edge.includes("card_type: 'curated'"));
+  assert(edge.includes("curated_payload: pickedCard"));
+});
+
+Deno.test("T-IMP-11: deterministic round-robin helper alternates odd singles and even curated", async () => {
+  const helper = await import("../../_shared/mixedTypeInterleave.ts");
+  const categories = ["brunch", "fine_dining", "icebreakers", "movies", "nature", "play"];
+  const intents = ["group-fun", "romantic"];
+  const sequence = Array.from({ length: 20 }, (_, i) =>
+    helper.decideTypeAndPill({ position: i + 1, categories, intents }),
+  );
+  assertEquals(sequence.map((d: any) => d?.type), [
+    "single", "curated", "single", "curated", "single", "curated", "single", "curated", "single", "curated",
+    "single", "curated", "single", "curated", "single", "curated", "single", "curated", "single", "curated",
+  ]);
+  assertEquals(sequence.filter((d: any) => d?.type === "single").map((d: any) => d.pill), [
+    "brunch", "fine_dining", "icebreakers", "movies", "nature", "play", "brunch", "fine_dining", "icebreakers", "movies",
+  ]);
+  assertEquals(sequence.filter((d: any) => d?.type === "curated").map((d: any) => d.pill), [
+    "group-fun", "romantic", "group-fun", "romantic", "group-fun", "romantic", "group-fun", "romantic", "group-fun", "romantic",
+  ]);
 });
