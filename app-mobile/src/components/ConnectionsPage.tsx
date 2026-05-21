@@ -690,10 +690,12 @@ function ConnectionsPageRefactored({
     try {
       setError(null);
 
-      // Hard 10-second timeout: messagingService.getConversations runs 4N sequential
-      // Supabase queries with no built-in timeout. When the app returns from background,
-      // the OS suspends inflight connections and Supabase hangs silently — the finally
-      // block would never fire, leaving conversationsLoading stuck at true forever.
+      // Hard 10-second timeout: belt-and-suspenders safety net. Post-ORCH-0901,
+      // messagingService.getConversations runs at most 2 sequential RLS-filtered Supabase
+      // round-trips (Q1+Q2 in parallel + optional Q3 batch-profile-fetch) — down from the
+      // ~5N+3 sequential queries it used to run — but background-suspended connections
+      // can still hang any single round-trip, and the timeout prevents conversationsLoading
+      // from getting stuck at true forever. See SPEC_ORCH-0901 §3.2.
       const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(() => {
           const err = new Error('getConversations timed out after 10s');
