@@ -581,12 +581,23 @@ export const RecommendationsProvider: React.FC<
       return;
     }
 
-    // Case (b): exhaustion + new version → advance.
+    // Case (b): exhaustion + new version → advance AND clear local state.
+    // The previous version of this branch advanced pinnedDeckVersion but
+    // left accumulatedCardsRef + sessionServedIdsRef populated with V_n's
+    // cards and removedCards full of V_n's swiped IDs. When V_{n+1}'s
+    // fresh cards arrived from the refetch, the deck-rendering filter
+    // dropped them all because they were "already swiped" → empty deck UI.
+    // Operator-reported 2026-05-21 ("No spots match right now" after every
+    // pref-apply); sim-verified that cold-restart cleared the bug.
     if (serverVersion > pinnedDeckVersion && isExhausted) {
       setPinnedDeckVersion(serverVersion);
-      // Clear local accumulated state so the new V_{n+1} renders fresh.
-      // The React Query key change (via the deckVersion discriminant) will
-      // trigger a refetch automatically.
+      accumulatedCardsRef.current = [];
+      sessionServedIdsRef.current = new Set();
+      setRecommendations([]);
+      setIsExhausted(false);
+      // React Query key changes via the deckVersion discriminant — refetch
+      // happens automatically; cleared local state means new cards render
+      // without being filtered against stale dismissals.
     }
   }, [
     isCollaborationMode,
