@@ -3554,9 +3554,9 @@ Two strict-grep gates run together:
 
 **EXIT condition:** Permanent. Eager server-mutation on entry is a recurring anti-pattern when developers wire creator routes by analogy with "load this server resource on mount" patterns (which are correct for view/edit routes but wrong for create routes). The gate plus the new invariant make the wrong pattern impossible to land silently.
 
-### I-PROPOSED-KEYBOARD-LIBRARY-ONLY — KEYBOARD-AVOIDANCE-VIA-LIBRARY-ONLY (DRAFT — flips ACTIVE on ORCH-0892-C close)
+### I-PROPOSED-KEYBOARD-LIBRARY-ONLY — KEYBOARD-AVOIDANCE-VIA-LIBRARY-ONLY (ACTIVE since ORCH-0892-C close 2026-05-21)
 
-**Status:** DRAFT — codified by ORCH-0892-A [`react-native-keyboard-controller` install + root `.web.tsx` passthrough + 3-screen pilot on mingla-business] close 2026-05-20. Flips ACTIVE on ORCH-0892-C [gate promotion] close after ORCH-0892-B [sweep] removes all remaining bespoke keyboard-plumbing sites.
+**Status:** ACTIVE since ORCH-0892-C [gate promotion + invariant promote] close 2026-05-21. Codified by ORCH-0892-A [`react-native-keyboard-controller` install + root `.web.tsx` passthrough + 3-screen pilot on mingla-business] close 2026-05-20 as DRAFT. Sweep landed via ORCH-0892-B v2 [App-wide keyboard avoidance via SmartScrollView wrapper + Sheet primitive rewrite] close 2026-05-21 (PR #151) clearing all WARN sites. Gate flipped from INFORMATIONAL (exit 0) to BLOCKING (exit 1) by ORCH-0892-C this close — any future PR introducing one of the 4 forbidden patterns outside the SAFELIST + inline allowlist will fail CI.
 
 **Statement:** All keyboard-avoidance code in `mingla-business/` MUST flow through `react-native-keyboard-controller` primitives (`KeyboardAvoidingView`, `KeyboardAwareScrollView`, `KeyboardStickyView`, `KeyboardToolbar`, `useReanimatedKeyboardAnimation`, `useKeyboardHandler`). The following patterns are FORBIDDEN outside the explicit SAFELIST: (1) `Keyboard.addListener` on `keyboardWillShow` / `keyboardDidShow` / `keyboardWillHide` / `keyboardDidHide` events for layout-affecting purposes (driving `paddingBottom`, `translateY`, etc.) — `Keyboard.dismiss()` remains permitted; (2) import of `KeyboardAvoidingView` from `'react-native'` — must import from `'react-native-keyboard-controller'` instead; (3) `automaticallyAdjustKeyboardInsets={true}` prop on any ScrollView or fork.
 
@@ -3578,13 +3578,13 @@ Two strict-grep gates run together:
 
 **EXIT condition:** Permanent. The pre-library state had 27+ surfaces in `mingla-business/` using three distinct keyboard-handling mechanisms often layered on the same screen (Cycle 3 wizard root pattern + KAV + `automaticallyAdjustKeyboardInsets`), with ORCH-0884 [keyboard handling regression] alone shipping 5 sequential follow-up patches. The library standardises to one mechanism; the gate prevents drift back. SAFELIST evolves only via new SPECs + operator approval per `feedback_strict_grep_registry_pattern.md`.
 
-**Update post-ORCH-0892-B v2 close (2026-05-21):** SAFELIST swapped: removed `KeyboardAvoidingView.native.tsx` (file deleted in ORCH-0892-B teardown); added `SmartScrollView.native.tsx` + `useKeyboardIsVisible.native.ts` (new wrapper indirection pair — same passthrough pattern). 4 forbidden patterns now (the 3 original + the new 4th below). 8 WARN sites cleared (gate now PASS at 0). Companion invariant I-PROPOSED-SMART-SCROLLVIEW-WRAPPER-ONLY (DRAFT) below.
+**Update post-ORCH-0892-B v2 close (2026-05-21) + post-ORCH-0892-C close (2026-05-21):** SAFELIST swapped: removed `KeyboardAvoidingView.native.tsx` (file deleted in ORCH-0892-B teardown); added `SmartScrollView.native.tsx` + `useKeyboardIsVisible.native.ts` (new wrapper indirection pair — same passthrough pattern). 4 forbidden patterns now (the 3 original + the new 4th below). 8 WARN sites cleared (gate PASS at 0). Companion invariant I-PROPOSED-SMART-SCROLLVIEW-WRAPPER-ONLY (ACTIVE) below.
 
 ---
 
-### I-PROPOSED-SMART-SCROLLVIEW-WRAPPER-ONLY — SCROLLVIEW-VIA-SMART-WRAPPER-ONLY (DRAFT — flips ACTIVE on ORCH-0892-C close)
+### I-PROPOSED-SMART-SCROLLVIEW-WRAPPER-ONLY — SCROLLVIEW-VIA-SMART-WRAPPER-ONLY (ACTIVE since ORCH-0892-C close 2026-05-21)
 
-**Status:** DRAFT — codified by ORCH-0892-B v2 [App-wide keyboard avoidance via SmartScrollView wrapper + Sheet primitive rewrite] close 2026-05-21. Flips ACTIVE on ORCH-0892-C [gate INFORMATIONAL→BLOCK + invariant promote] close.
+**Status:** ACTIVE since ORCH-0892-C [gate promotion + invariant promote] close 2026-05-21. Codified by ORCH-0892-B v2 close 2026-05-21 as DRAFT (PR #151). Gate's 4th pattern (`ScrollView` from `'react-native'` in TextInput-bearing file) now BLOCKS CI — any future PR introducing a bare `ScrollView` import in a form-screen file will fail until the file migrates to `SmartScrollView` wrapper or earns an inline allowlist exemption.
 
 **Statement:** Every `ScrollView` import in `mingla-business/src/` and `mingla-business/app/` that contains a `TextInput` child MUST come from the SmartScrollView wrapper at `mingla-business/src/wrappers/SmartScrollView.{tsx,native.tsx}`, NOT from `react-native`. The wrapper resolves to `react-native-keyboard-controller`'s `KeyboardAwareScrollView` on iOS/Android (auto-scrolls focused TextInput exactly 12pt above keyboard via library worklets) and to plain `react-native`'s `ScrollView` on web (passthrough — web has no soft keyboard). This makes the keyboard-avoidance behavior automatic for every form-screen and prevents missed-screen regressions structurally.
 

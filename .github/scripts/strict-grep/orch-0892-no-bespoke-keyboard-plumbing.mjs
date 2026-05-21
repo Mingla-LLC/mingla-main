@@ -2,12 +2,13 @@
 /* eslint-disable no-console */
 /**
  * ORCH-0892 [App-wide keyboard avoidance — react-native-keyboard-controller
- * pilot on mingla-business] — INFORMATIONAL gate (exit 0 always; emits
- * WARN lines for review). Mirrors orch-0861-sibling-scrollview-flexgrow-zero
- * structure.
+ * pilot on mingla-business] — BLOCKING gate (exit 1 on violation, exit 0
+ * on PASS; emits WARN lines on every run for visibility). Mirrors
+ * orch-0861-sibling-scrollview-flexgrow-zero structure.
  *
- * Invariant under enforcement: I-PROPOSED-KEYBOARD-LIBRARY-ONLY (DRAFT —
- * flips ACTIVE on ORCH-0892-C [gate promotion] close). All keyboard-
+ * Invariants under enforcement: I-PROPOSED-KEYBOARD-LIBRARY-ONLY (ACTIVE
+ * since ORCH-0892-C close 2026-05-21) + I-PROPOSED-SMART-SCROLLVIEW-WRAPPER-ONLY
+ * (ACTIVE since ORCH-0892-C close 2026-05-21). All keyboard-
  * avoidance code in mingla-business/ MUST flow through
  * react-native-keyboard-controller primitives. Three patterns are
  * forbidden outside the explicit SAFELIST:
@@ -33,9 +34,10 @@
  * within 3 lines of the offending pattern suppresses the WARN. Mirrors
  * the // ORCH-0861-OK: convention.
  *
- * **Mode:** INFORMATIONAL (exit 0 always). Promotion to FAIL (exit 1)
- * happens in ORCH-0892-C [gate promotion] after ORCH-0892-B [sweep]
- * removes all current violations.
+ * **Mode:** BLOCKING (exit 1 on violation, exit 0 on PASS).
+ * Promoted from INFORMATIONAL by ORCH-0892-C [gate promotion + invariant
+ * promote] close 2026-05-21 after ORCH-0892-B [sweep] cleared all WARN
+ * sites and SmartScrollView wrapper became the canonical pattern.
  */
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -263,15 +265,21 @@ for (const w of warnings) {
 }
 
 console.log(
-  "Each WARN above is a CANDIDATE for the ORCH-0892-B [sweep] migration.\n" +
-    "Allowlist mechanism: add `// orch-strict-grep-allow orch-0892 — <reason>`\n" +
-    "within 3 lines of the offending pattern to suppress (per file).\n",
+  "Each WARN above is a BLOCKER (this gate exits 1 post-ORCH-0892-C). Either\n" +
+    "(a) migrate the file to SmartScrollView wrapper (and use library primitives\n" +
+    "    for any other keyboard-related code), or\n" +
+    "(b) add `// orch-strict-grep-allow orch-0892 — <one-line reason>` within 3\n" +
+    "    lines of the offending pattern to suppress (per-file allowlist; needs\n" +
+    "    operator approval before merge).\n",
 );
 console.log(
-  "Promotion: this gate currently exits 0 (INFORMATIONAL). ORCH-0892-C\n" +
-    "[gate promotion] flips it to exit 1 on violation after the sweep\n" +
-    "clears all current WARN sites.\n",
+  "This gate is BLOCKING (exit 1). PR will fail CI until every WARN site\n" +
+    "above is either (a) migrated to SmartScrollView / library primitives,\n" +
+    "or (b) inline-allowlisted with `// orch-strict-grep-allow orch-0892 — <reason>`\n" +
+    "within 3 lines of the offending pattern (per file).\n",
 );
 
-// Informational only — never fails CI in ORCH-0892-A.
-process.exit(0);
+// BLOCKING — fails CI on any violation. Promoted from INFORMATIONAL by
+// ORCH-0892-C close 2026-05-21. Per I-PROPOSED-KEYBOARD-LIBRARY-ONLY +
+// I-PROPOSED-SMART-SCROLLVIEW-WRAPPER-ONLY (both ACTIVE).
+process.exit(warnings.length > 0 ? 1 : 0);
