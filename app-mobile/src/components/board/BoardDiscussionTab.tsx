@@ -36,6 +36,8 @@ import { CardPreview } from "../chat/CardPreview";
 import { SwipeableMessage } from "../chat/SwipeableMessage";
 import { DoubleTapHeart } from "../chat/DoubleTapHeart";
 import * as Haptics from "expo-haptics";
+import LockedPlanBanner from "./LockedPlanBanner";
+import { supabase } from "../../services/supabase";
 
 interface SavedCard {
   id: string;
@@ -86,6 +88,15 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
     top: number;
   }>({ visible: false, messageId: "", top: 0 });
   const [replyingTo, setReplyingTo] = useState<BoardMessage | null>(null);
+  // ORCH-0908: locked-plan banner data — current locked card + scheduled_at for current user.
+  // Re-fetches when realtime fires onCardLocked (via existing board_session subscription)
+  // or on focus / mount. Hidden until both card and scheduled_at are present
+  // (Constitution #9 — no fabricated data; placeholder schedules from auto-lock cascade
+  // would not pass the check inside LockedPlanBanner anyway).
+  const [lockedPlan, setLockedPlan] = useState<{
+    cardTitle: string;
+    scheduledAtIso: string | null;
+  } | null>(null);
   const scrollViewRef = useRef<ScrollView>(null);
   const inputRef = useRef<TextInput>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -531,6 +542,48 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
   useEffect(() => {
     if (!sessionId) return;
 
+    // ORCH-0908: refetch locked-plan banner data. Runs on mount, after onCardLocked
+    // realtime fires, and after onSessionUpdated (e.g., status flip on cycle restart).
+    const refetchLockedPlan = async () => {
+      if (!sessionId || !user?.id) return;
+      try {
+        const { data: card } = await supabase
+          .from("board_saved_cards")
+          .select("id, card_data, locked_at")
+          .eq("session_id", sessionId)
+          .eq("is_locked", true)
+          .order("locked_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (!card) {
+          setLockedPlan(null);
+          return;
+        }
+        const { data: entry } = await supabase
+          .from("calendar_entries")
+          .select("scheduled_at")
+          .eq("board_card_id", card.id)
+          .eq("user_id", user.id)
+          .eq("source", "collaboration")
+          .maybeSingle();
+        const cardData = (card as any).card_data as { title?: string } | null;
+        const cardTitle =
+          (cardData?.title && typeof cardData.title === "string"
+            ? cardData.title
+            : null) || "Locked-in plan";
+        setLockedPlan({
+          cardTitle,
+          scheduledAtIso: (entry as any)?.scheduled_at ?? null,
+        });
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn("[ORCH-0908] refetchLockedPlan failed:", msg);
+      }
+    };
+
+    // Initial fetch
+    void refetchLockedPlan();
+
     const callbacks = {
       onMessage: (message: any) => {
         setMessages((prev) => {
@@ -560,6 +613,15 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
         setTimeout(() => {
           scrollViewRef.current?.scrollToEnd({ animated: true });
         }, 100);
+      },
+      // ORCH-0908: re-fetch locked-plan banner when a card is locked or the
+      // session lifecycle changes (e.g., status flips back to 'active' on
+      // schedule-confirm / cycle restart).
+      onCardLocked: () => {
+        void refetchLockedPlan();
+      },
+      onSessionUpdated: () => {
+        void refetchLockedPlan();
       },
       onTypingStart: (userId: string) => {
         if (userId !== user?.id) {
@@ -613,6 +675,15 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
       dismissOnTap={false}
       bottomOffset={Platform.OS === 'ios' ? insets.bottom : 0}
     >
+      {/* ORCH-0908: Pinned locked-plan banner. Hides itself when there is no
+          locked card OR no scheduled_at yet (Constitution #9 — no fabricated
+          display data). Shows above the message list, does not scroll with it. */}
+      {lockedPlan && (
+        <LockedPlanBanner
+          cardTitle={lockedPlan.cardTitle}
+          scheduledAtIso={lockedPlan.scheduledAtIso}
+        />
+      )}
       {/* Messages List */}
       <ScrollView
         ref={scrollViewRef}

@@ -204,10 +204,15 @@ export default function SessionViewModal({
 
       setLoadingCards(true);
       try {
+        // ORCH-0908 rework (2026-05-21): exclude locked cards from the
+        // saved-cards list. Once admin locks-and-schedules a card, it
+        // moves to the calendar (and the chat banner / chat card message)
+        // and is no longer a candidate for the active swipe round.
         const { data, error } = await supabase
           .from("board_saved_cards")
           .select("*")
           .eq("session_id", sessionId)
+          .eq("is_locked", false)
           .order("saved_at", { ascending: false })
           .range(page * CARDS_PER_PAGE, (page + 1) * CARDS_PER_PAGE - 1);
 
@@ -787,6 +792,7 @@ export default function SessionViewModal({
                     onViewDetails={handleViewCardDetails}
                     loading={loadingCards}
                     accountPreferences={accountPreferences}
+                    isAdmin={isAdmin}
                   />
                 </View>
               )}
@@ -885,32 +891,13 @@ export default function SessionViewModal({
             dateTimePreferences={shareData.dateTimePreferences}
           />
         )}
-        {/* Calendar Prompt Modal */}
-        {showCalendarPrompt && lockedCalendarEntry && (
-          <Modal visible={showCalendarPrompt} transparent animationType="fade">
-            <View style={styles.calendarPromptOverlay}>
-              <View style={styles.calendarPromptCard}>
-                <Icon name="calendar" size={40} color="#10B981" />
-                <Text style={styles.calendarPromptTitle}>Plan Locked In!</Text>
-                <Text style={styles.calendarPromptText}>
-                  Everyone is attending. Add this to your calendar?
-                </Text>
-                <TouchableOpacity
-                  style={styles.calendarPromptButton}
-                  onPress={() => syncToDeviceCalendar(lockedCalendarEntry)}
-                >
-                  <Text style={styles.calendarPromptButtonText}>Add to Calendar</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.calendarPromptDismiss}
-                  onPress={dismissCalendarPrompt}
-                >
-                  <Text style={styles.calendarPromptDismissText}>Maybe Later</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </Modal>
-        )}
+        {/* ORCH-0908 rework (2026-05-21): post-lock modal removed.
+            The scheduling sheet now lives inside SwipeableSessionCards and
+            opens directly from the Lock-it-in button (two-step: date pick
+            → summary confirm → atomic RPC). No post-lock modal needed —
+            the chat card message + chat banner + auto-device-calendar-add
+            (via the realtime listener in useSocialRealtime) handle the
+            "what just happened" announcement for all participants. */}
 
           </SafeAreaView>
         </View>
@@ -1094,53 +1081,10 @@ const styles = StyleSheet.create({
     backgroundColor: "white",
     overflow: "visible",
   },
-  calendarPromptOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 32,
-  },
-  calendarPromptCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 20,
-    padding: 28,
-    alignItems: "center",
-    width: "100%",
-    maxWidth: 320,
-    gap: 12,
-  },
-  calendarPromptTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#1e293b",
-  },
-  calendarPromptText: {
-    fontSize: 14,
-    color: "#6B7280",
-    textAlign: "center",
-    lineHeight: 20,
-  },
-  calendarPromptButton: {
-    backgroundColor: "#10B981",
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 10,
-    width: "100%",
-    alignItems: "center",
-    marginTop: 4,
-  },
-  calendarPromptButtonText: {
-    color: "#FFFFFF",
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  calendarPromptDismiss: {
-    paddingVertical: 8,
-  },
-  calendarPromptDismissText: {
-    color: "#9CA3AF",
-    fontSize: 14,
-    fontWeight: "500",
-  },
+  // ORCH-0908 rework (2026-05-21): calendarPrompt* styles removed.
+  // They powered the "Plan Locked In!" modal which is no longer rendered.
+  // The new flow uses LockedCardSchedulingSheet (own styles, mounted in
+  // SwipeableSessionCards) + chat card message (MessageBubble's card-bubble
+  // path from ORCH-0667) + LockedPlanBanner (own styles, mounted in
+  // BoardDiscussionTab).
 });

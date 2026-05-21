@@ -2,6 +2,8 @@ import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../services/supabase";
 import { pairingKeys } from "./usePairings";
+import { DeviceCalendarService } from "../services/deviceCalendarService";
+import { CalendarService } from "../services/calendarService";
 
 /**
  * Subscribes to realtime changes on social tables and invalidates
@@ -113,8 +115,52 @@ export function useSocialRealtime(
           table: "calendar_entries",
           filter: `user_id=eq.${userId}`,
         },
-        () => {
+        async (payload: any) => {
           queryClient.invalidateQueries({ queryKey: ["calendarEntries"] });
+
+          // ORCH-0908 rework (2026-05-21): auto-add collab entries to device
+          // calendar when they receive a real scheduled_at via the
+          // rpc_admin_lock_and_schedule_card path. Best-effort — silently
+          // skips when permissions are denied; the chat card message's
+          // "Add to Calendar" button is the manual fallback.
+          //
+          // Guards:
+          //   - source='collaboration' (avoid auto-adding solo entries,
+          //     which already have their own explicit schedule flow)
+          //   - scheduled_at set (skip the trigger-inserted placeholder
+          //     pending rows where scheduled_at IS NULL)
+          //   - device_calendar_event_id NULL (idempotent — never re-add)
+          //   - event INSERT or UPDATE (handles both initial insert from
+          //     the trigger AND the schedule RPC's overwrite that flips
+          //     status pending→confirmed with the real scheduled_at)
+          const row = payload?.new;
+          if (
+            row &&
+            row.source === "collaboration" &&
+            row.scheduled_at &&
+            !row.device_calendar_event_id
+          ) {
+            try {
+              const event = DeviceCalendarService.createEventFromCard(
+                row.card_data || {},
+                new Date(row.scheduled_at),
+                row.duration_minutes || 120,
+              );
+              const deviceEventId =
+                await DeviceCalendarService.addEventToDeviceCalendar(event);
+              if (deviceEventId) {
+                await CalendarService.updateEntry(row.id, userId, {
+                  device_calendar_event_id: deviceEventId,
+                });
+              }
+            } catch (err: unknown) {
+              const msg = err instanceof Error ? err.message : String(err);
+              console.warn(
+                "[ORCH-0908] auto-add to device calendar failed:",
+                msg,
+              );
+            }
+          }
         }
       )
       // pair_requests: incoming pair requests (receiver sees new/changed requests)

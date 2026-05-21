@@ -48,7 +48,7 @@ export const CardTagPopover: React.FC<CardTagPopoverProps> = ({
 
   // When keyboardHeight is 0, the popover is rendered inside a relative anchor
   // above the input bar — no offset needed. Otherwise, use legacy absolute positioning.
-  const bottomOffset = keyboardHeight ? keyboardHeight + 48 + 8 : 0;
+  const bottomOffset = keyboardHeight ? keyboardHeight + 48 + 8 : 60;
 
   const getCardTitle = (card: SavedCard): string => {
     const data = card.card_data || card.experience_data || {};
@@ -140,7 +140,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
-    maxHeight: 180,
+    maxHeight: 320,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.12,
@@ -173,7 +173,7 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   list: {
-    maxHeight: 140,
+    maxHeight: 280,
   },
   cardItem: {
     flexDirection: 'row',

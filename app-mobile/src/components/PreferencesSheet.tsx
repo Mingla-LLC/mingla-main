@@ -79,7 +79,10 @@ interface PreferencesSheetProps {
     currency: string;
     measurementSystem: "Metric" | "Imperial";
   };
-  // Collaboration mode props - when provided, loads/saves from board_session_preferences
+  // Collaboration mode props — when provided, loads/saves participant prefs into
+  // collaboration_sessions.participant_prefs JSONB (the old board_session_preferences
+  // table was removed; per-participant prefs now flow through ORCH-0902's
+  // pg_aggregate_collab_prefs).
   sessionId?: string;
   sessionName?: string;
 }

@@ -532,6 +532,12 @@ export function useAppState() {
 
     return calendarEntriesRaw
       .filter((record) => !record.archived_at) // Exclude archived entries
+      // ORCH-0908 hotfix (2026-05-21): exclude rows with NULL scheduled_at
+      // — these are locked-in collab cards awaiting admin scheduling
+      // (Constitution #9 — no fabricated dates). The Calendar tab now
+      // renders these via a separate "pending" surface if/when added;
+      // for now they're hidden from the active-events list.
+      .filter((record) => record.scheduled_at != null)
       .map((record) => {
         const cardData = record.card_data || {};
         const scheduledDate = new Date(record.scheduled_at);

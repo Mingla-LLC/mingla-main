@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { getDisplayName } from '../utils/getDisplayName';
+import type { CardTagEntry, MentionEntry } from './messagingService';
 
 export interface Friend {
   id: string;
@@ -38,11 +39,14 @@ export interface Message {
   fileName?: string;
   fileSize?: string;
   cardPayload?: any;  // ORCH-0667: CardPayload — typed loosely here to avoid circular import
+  mentions?: Array<MentionEntry | string>;
+  cardTags?: CardTagEntry[];
   isMe: boolean;
   unread?: boolean;
   failed?: boolean;
   isRead?: boolean;
   replyToId?: string;
+  isSystem?: boolean;
 }
 
 export interface Conversation {

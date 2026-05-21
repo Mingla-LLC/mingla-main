@@ -15,6 +15,7 @@
 import { useState, useCallback } from 'react';
 import { getDisplayName } from '../utils/getDisplayName';
 import { supabase } from '../services/supabase';
+import type { CardTagEntry, MentionEntry } from '../services/messagingService';
 
 export interface Message {
   id: string;
@@ -26,6 +27,8 @@ export interface Message {
   file_name?: string;
   file_size?: number;
   card_payload?: any;  // ORCH-0667: CardPayload — typed loosely to avoid circular import
+  mentions?: Array<MentionEntry | string>;
+  card_tags?: CardTagEntry[];
   created_at: string;
   sender_name?: string;
   is_read: boolean;

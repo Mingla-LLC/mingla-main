@@ -27,17 +27,24 @@ import { useKeyboard } from "../hooks/useKeyboard";
 import { useChatPresence } from "../hooks/useChatPresence";
 import { useBroadcastReceiver } from "../hooks/useBroadcastReceiver";
 import { MessageBubble } from "./chat/MessageBubble";
+import { ChatInputChipsLayer } from "./chat/ChatInputChipsLayer";
 import { MessageContextMenu } from "./chat/MessageContextMenu";
 import { ReplyPreviewBar } from "./chat/ReplyPreviewBar";
 import { SwipeableMessage } from "./chat/SwipeableMessage";
 import { DoubleTapHeart } from "./chat/DoubleTapHeart";
 import { ChatStatusLine } from "./chat/ChatStatusLine";
 import { BoardSettingsDropdown } from "./board/BoardSettingsDropdown";
+import { MentionPopover } from "./board/MentionPopover";
+import { CardTagPopover } from "./board/CardTagPopover";
+import type { Participant } from "./board/ParticipantAvatars";
 import { groupMessages, GroupedMessage } from "../utils/messageGrouping";
-import { DirectMessage, messagingService, CardPayload } from "../services/messagingService";
+import { DirectMessage, messagingService, CardPayload, MentionEntry, CardTagEntry } from "../services/messagingService";
 import { cardPayloadToExpandedCardData } from "../services/cardPayloadAdapter";  // ORCH-0685
 import { savedCardsService } from "../services/savedCardsService";  // ORCH-0685
 import { useSavedCards } from "../hooks/useSavedCards";
+import { useConversationParticipants } from "../hooks/useConversationParticipants";
+import { useChatCardTagSource } from "../hooks/useChatCardTagSource";
+import { useChatInputController } from "../hooks/useChatInputController";
 import ExpandedCardModal from "./ExpandedCardModal";  // ORCH-0667
 import type { ExpandedCardData } from "../types/expandedCardTypes";  // ORCH-0685
 import { useTranslation } from 'react-i18next';
@@ -68,11 +75,14 @@ interface Message {
   fileName?: string;
   fileSize?: string;
   cardPayload?: CardPayload;  // ORCH-0667
+  mentions?: Array<MentionEntry | string>;
+  cardTags?: CardTagEntry[];
   isMe: boolean;
   unread?: boolean;
   failed?: boolean;
   isRead?: boolean;
   replyToId?: string;
+  isSystem?: boolean;
 }
 
 interface Friend {
@@ -108,7 +118,9 @@ interface MessageInterfaceProps {
     content: string,
     type: "text" | "image" | "video" | "file",
     file?: File,
-    replyToId?: string
+    replyToId?: string,
+    mentions?: MentionEntry[],
+    cardTags?: CardTagEntry[],
   ) => void;
   messages: Message[];
   /**
@@ -240,7 +252,6 @@ export default function MessageInterface({
       .toUpperCase()
       .substring(0, 2) || "?";
 
-  const [newMessage, setNewMessage] = useState("");
   const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
   const [selectedFile, setSelectedFile] = useState<any>(null);
   const [previewUrl, setPreviewUrl] = useState<string>("");
@@ -259,6 +270,58 @@ export default function MessageInterface({
   const [isSavingSharedCard, setIsSavingSharedCard] = useState(false);
   const [sharedCardIsSaved, setSharedCardIsSaved] = useState(false);
   const savedCardsQuery = useSavedCards(currentUserId ?? undefined);
+  const participantsQuery = useConversationParticipants(conversationId, currentUserId);
+  const chatCardTagSource = useChatCardTagSource({
+    conversationType: isGroupChat ? "group" : "direct",
+    sessionId: friend.sessionId ?? null,
+    currentUserId,
+  });
+  const chatController = useChatInputController({
+    participants: participantsQuery.data ?? [],
+    cardTagSource: chatCardTagSource.data,
+  });
+  const newMessage = chatController.text;
+
+  const mentionPopoverParticipants: Participant[] = useMemo(
+    () =>
+      chatController.filteredParticipants.map((participant) => ({
+        id: participant.userId,
+        user_id: participant.userId,
+        session_id: friend.sessionId ?? "",
+        has_accepted: true,
+        profiles: {
+          id: participant.userId,
+          username: participant.username ?? "",
+          display_name: participant.displayName,
+          avatar_url: participant.avatarUrl ?? undefined,
+        },
+      })),
+    [chatController.filteredParticipants, friend.sessionId],
+  );
+
+  const cardTagPopoverCards = useMemo(
+    () =>
+      chatController.filteredCards.map((card) => ({
+        id: card.savedCardId,
+        card_data: {
+          id: card.cardPayload.id,
+          title: card.cardPayload.title,
+          category: card.cardPayload.category ?? undefined,
+          categoryIcon: card.cardPayload.categoryIcon,
+          image: card.cardPayload.image ?? undefined,
+          images: card.cardPayload.images,
+        },
+        experience_data: {
+          id: card.cardPayload.id,
+          title: card.cardPayload.title,
+          category: card.cardPayload.category ?? undefined,
+          categoryIcon: card.cardPayload.categoryIcon,
+          image: card.cardPayload.image ?? undefined,
+          images: card.cardPayload.images,
+        },
+      })),
+    [chatController.filteredCards],
+  );
 
   // ORCH-0685 cycle-3 (Pattern F): derive sharedCardIsSaved from the cached
   // saves list so already-saved chat cards open with the "Saved" button on
@@ -460,6 +523,7 @@ export default function MessageInterface({
   const handleSendMessage = () => {
     if (newMessage.trim() || selectedFile) {
       const replyToId = replyingTo?.messageId;
+      const { content, mentions, cardTags } = chatController.serializeForSend();
       setReplyingTo(null); // Clear reply state immediately
 
       if (selectedFile) {
@@ -470,17 +534,19 @@ export default function MessageInterface({
             ? "video"
             : "file";
         onSendMessage(
-          newMessage.trim() || selectedFile.name || "Media",
+          content || selectedFile.name || "Media",
           fileType,
           selectedFile,
-          replyToId
+          replyToId,
+          mentions,
+          cardTags,
         );
         setSelectedFile(null);
         setPreviewUrl("");
       } else {
-        onSendMessage(newMessage.trim(), "text", undefined, replyToId);
+        onSendMessage(content, "text", undefined, replyToId, mentions, cardTags);
       }
-      setNewMessage("");
+      chatController.reset();
       stopTyping();
       HapticFeedback.light();
     }
@@ -1211,8 +1277,11 @@ export default function MessageInterface({
                     fileName: item.message.fileName,
                     fileSize: item.message.fileSize,
                     cardPayload: item.message.cardPayload,  // ORCH-0667
+                    mentions: item.message.mentions,
+                    cardTags: item.message.cardTags,
                     isMe: item.message.isMe,
                     failed: item.message.failed,
+                    isSystem: item.message.isSystem,
                   }}
                   onCardBubbleTap={(payload) => {
                     // ORCH-0685: typed conversion replaces unsafe `any` cast (Constitution #12 fix).
@@ -1220,6 +1289,11 @@ export default function MessageInterface({
                     setShowExpandedCardFromChat(true);
                     // ORCH-0685 cycle-3: sharedCardIsSaved now derived via useEffect against
                     // savedCardsQuery.data — no manual reset needed.
+                  }}
+                  onMentionTap={onViewProfile}
+                  onCardTagTap={(cardTag) => {
+                    setExpandedCardFromChat(cardPayloadToExpandedCardData(cardTag.cardPayload));
+                    setShowExpandedCardFromChat(true);
                   }}
                   isMe={item.message.isMe}
                   groupPosition={item.groupPosition}
@@ -1436,6 +1510,30 @@ export default function MessageInterface({
             />
           </View>
         )}
+        <MentionPopover
+          visible={chatController.activePopover?.type === "mention"}
+          participants={mentionPopoverParticipants}
+          onSelectParticipant={(participant) => {
+            chatController.onSelectMention({
+              userId: participant.user_id,
+              displayName: participant.profiles?.display_name || participant.profiles?.username || "Unknown",
+              username: participant.profiles?.username ?? null,
+              avatarUrl: participant.profiles?.avatar_url ?? null,
+            });
+          }}
+          onClose={chatController.closePopover}
+          keyboardHeight={0}
+        />
+        <CardTagPopover
+          visible={chatController.activePopover?.type === "card"}
+          cards={cardTagPopoverCards}
+          onSelectCard={(card) => {
+            const candidate = chatController.filteredCards.find((item) => item.savedCardId === card.id);
+            if (candidate) chatController.onSelectCardTag(candidate);
+          }}
+          onClose={chatController.closePopover}
+          keyboardHeight={0}
+        />
         <View style={styles.inputCapsule}>
           <BlurView
             intensity={glass.chrome.blur.intensity}
@@ -1522,22 +1620,33 @@ export default function MessageInterface({
               ref={inputRef}
               value={newMessage}
               onChangeText={(text) => {
-                setNewMessage(text);
+                chatController.onChangeText(text);
                 if (text.length > 0) {
                   startTyping();
                 } else {
                   stopTyping();
                 }
               }}
+              onKeyPress={chatController.onKeyPress}
+              onSelectionChange={chatController.onSelectionChange}
               onBlur={stopTyping}
               placeholder={
                 selectedFile ? t('chat:addCaption') : t('chat:typeMessage')
               }
               placeholderTextColor="rgba(255, 255, 255, 0.4)"
-              style={styles.messageInput}
-              multiline={false}
+              style={[
+                styles.messageInput,
+                // ORCH-0908: hide the raw TextInput text whenever chips exist
+                // so the absolute-positioned ChatInputChipsLayer overlay is the
+                // only visible content. Caret + selection still work normally.
+                chatController.chipRanges.length > 0 && { color: 'transparent' },
+              ]}
+              multiline={true}
               maxLength={1000}
             />
+            {chatController.chipRanges.length > 0 && (
+              <ChatInputChipsLayer text={newMessage} chipRanges={chatController.chipRanges} />
+            )}
           </TouchableOpacity>
 
           {/* Separator — cutout between text field and send */}
@@ -2365,12 +2474,15 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   messageInput: {
+    flex: 1,
     fontSize: 16,
+    lineHeight: 20,
     color: "#FFFFFF",
     padding: 0,
     margin: 0,
     includeFontPadding: false,
     textAlignVertical: "center",
+    maxHeight: 72,
   },
   sendButton: {
     width: 40,

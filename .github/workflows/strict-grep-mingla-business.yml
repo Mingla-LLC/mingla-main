@@ -1408,3 +1408,14 @@ jobs:
           node-version: "20"
       - name: Run ORCH-0906 comment gate
         run: node app-mobile/scripts/ci/orch-0906-no-resurrected-solo-only-comment-check.mjs
+
+  orch-0908-chat-mention-mute-respected:
+    name: "ORCH-0908: chat mention mute respected"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0908 mention mute gate
+        run: node .github/scripts/strict-grep/orch-0908-chat-mention-mute-respected.mjs

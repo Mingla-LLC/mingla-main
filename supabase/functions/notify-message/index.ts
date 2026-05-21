@@ -213,7 +213,11 @@ async function handleUnifiedMention(
     .eq("id", conversationId)
     .maybeSingle();
 
-  const convName = conv?.name ?? "a chat";
+  const titleConvName = conv?.name && conv.name.trim() !== ""
+    ? conv.name
+    : conv?.type === "group"
+      ? "your group chat"
+      : "your chat";
   const isGroup = conv?.type === "group";
 
   let deepLink = `mingla://chat/${conversationId}?type=${conv?.type ?? "direct"}&messageId=${messageId}`;
@@ -223,17 +227,39 @@ async function handleUnifiedMention(
     deepLink = `mingla://chat/${conversationId}?type=group&eventId=${conv.event_id}&messageId=${messageId}`;
   }
 
-  const dispatches = mentionedUserIds.map((mentionedUserId) =>
+  const dedupedMentionedUserIds = [...new Set(mentionedUserIds)].filter((uid) => uid !== senderId);
+
+  // ORCH-0908 I-PROPOSED-CHAT-MENTION-MUTE-RESPECTED: conversation-level mute
+  // suppresses push delivery for mentioned users while preserving the in-app
+  // notification row inserted by notify-dispatch.
+  const { data: muteRows, error: muteErr } = await adminClient
+    .from("conversation_participants")
+    .select("user_id, notifications_muted")
+    .eq("conversation_id", conversationId)
+    .in("user_id", dedupedMentionedUserIds);
+
+  if (muteErr) {
+    console.warn("[notify-message] mention mute lookup failed:", muteErr);
+  }
+
+  const mutedSet = new Set(
+    ((muteRows ?? []) as { user_id: string; notifications_muted: boolean }[])
+      .filter((row) => row.notifications_muted === true)
+      .map((row) => row.user_id),
+  );
+
+  const dispatches = dedupedMentionedUserIds.map((mentionedUserId) =>
     callNotifyDispatch(supabaseUrl, serviceRoleKey, {
       userId: mentionedUserId,
       type: "board_message_mention",
-      title: `${senderName} mentioned you`,
-      body: truncate(`in "${convName}": ${messagePreview || ""}`, 100),
+      title: `${senderName} mentioned you in "${titleConvName}"`,
+      body: truncate(messagePreview || "", 100),
       data: { deepLink },
       actorId: senderId,
       relatedId: messageId,
       relatedType: "message",
       idempotencyKey: `mention:${messageId}:${mentionedUserId}`,
+      skipPush: mutedSet.has(mentionedUserId),
       pushOverrides: {
         androidChannelId: "messages",
       },
@@ -241,7 +267,7 @@ async function handleUnifiedMention(
   );
 
   await Promise.allSettled(dispatches);
-  return { notified: mentionedUserIds.length };
+  return { notified: dedupedMentionedUserIds.length };
 }
 
 serve(async (req) => {

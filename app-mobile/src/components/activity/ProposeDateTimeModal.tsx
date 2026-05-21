@@ -703,10 +703,14 @@ export default function ProposeDateTimeModal({
                   </TouchableOpacity>
                 </View>
               </View>
+              {/* ORCH-0908 (2026-05-21): switched from display="spinner" (wheel)
+                  to display="inline" (calendar grid) per operator feedback —
+                  the wheel-style days picker was hard to scan. iOS 14+ renders
+                  a tap-to-select month grid which is the standard iOS pattern. */}
               <DateTimePicker
                 value={customDate}
                 mode="date"
-                display="spinner"
+                display="inline"
                 onChange={handleDatePickerChange}
                 minimumDate={new Date()}
                 style={pickerModalStyles.picker}

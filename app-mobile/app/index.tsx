@@ -697,6 +697,9 @@ function AppContent() {
         participantDetails: participantDetails.length > 0 ? participantDetails : undefined,
         createdAt: board.createdAt ? new Date(board.createdAt) : undefined,
         invitedBy: board.inviterProfile || undefined,
+        // ORCH-0908: forward raw lifecycle status so CollaborationSessions can
+        // render a lock-icon badge while session.status='locked'.
+        status: board.status,
       };
     });
   }, [boardsSessions, user?.id]);

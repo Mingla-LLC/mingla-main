@@ -46,72 +46,126 @@ const SESSION_INTENT_IDS = new Set([
 ]);
 
 // ORCH-0434: budgetMin/budgetMax removed from return type.
+//
+// ORCH-0908 hotfix (2026-05-21): rewritten to call the ORCH-0902 SQL helper
+// pg_aggregate_collab_prefs instead of the dead table board_session_preferences
+// (which never existed in production). The SQL helper reads from
+// collaboration_sessions.participant_prefs JSONB + session_participants and
+// returns a canonical aggregated jsonb already used by discover-cards/v2.
+//
+// Return-shape preserved exactly so downstream callers (generateCardsForType,
+// keep-warm, get-person-hero-cards) are unaffected.
+//
+// Mapping from pg_aggregate_collab_prefs JSONB to this function's contract:
+//   - categories            ← agg.categories filtered to exclude SESSION_INTENT_IDS
+//   - experienceTypes       ← agg.intents (or fallback to categories matching SESSION_INTENT_IDS)
+//   - travelMode            ← most common across agg.circles[].travel_mode
+//   - travelConstraintValue ← MIN across agg.circles[].time_min (most restrictive wins)
+//   - datetimePref          ← agg.datetimePref (earliest among accepted participants)
+//   - location              ← centroid of agg.circles[].lat/lng (or null if no circles)
 async function aggregateSessionPreferences(sessionId: string): Promise<{
   categories: string[];
   experienceTypes: string[];
+  budgetMin: number;
+  budgetMax: number;
   travelMode: string;
   travelConstraintValue: number;
   datetimePref?: string;
   location: { lat: number; lng: number } | null;
 }> {
-  const { data: allPrefs, error } = await supabaseAdmin
-    .from('board_session_preferences')
-    .select('*')
-    .eq('session_id', sessionId);
-
-  if (error || !allPrefs || allPrefs.length === 0) {
-    throw new Error(`No preferences found for session ${sessionId}`);
-  }
-
-  // ORCH-0434: budgetMin/budgetMax removed from aggregation.
-
-  const allCats = new Set<string>();
-  const allIntents = new Set<string>();
-  allPrefs.forEach(p => {
-    if (Array.isArray(p.categories)) p.categories.forEach((c: string) => allCats.add(c));
-    if (Array.isArray(p.intents)) p.intents.forEach((i: string) => allIntents.add(i));
-  });
-  const categories = [...allCats].filter(c => !SESSION_INTENT_IDS.has(c));
-  const experienceTypes = allIntents.size > 0
-    ? [...allIntents]
-    : [...allCats].filter(c => SESSION_INTENT_IDS.has(c));
-
-  const modeCounts: Record<string, number> = {};
-  allPrefs.forEach(p => {
-    const m = p.travel_mode || 'walking';
-    modeCounts[m] = (modeCounts[m] || 0) + 1;
-  });
-  const travelMode = Object.entries(modeCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || 'walking';
-
-  const travelConstraintValue = Math.min(
-    ...allPrefs.map(p => p.travel_constraint_value ?? 30)
+  const { data: agg, error } = await (supabaseAdmin as any).rpc(
+    'pg_aggregate_collab_prefs',
+    { p_session_id: sessionId },
   );
 
-  const datetimes = allPrefs.map(p => p.datetime_pref).filter(Boolean).sort();
-  const datetimePref = datetimes[0] || undefined;
-
-  const locations: { lat: number; lng: number }[] = [];
-  for (const pref of allPrefs) {
-    if (!pref.location) continue;
-    const coordMatch = pref.location.trim().match(/^(-?\d+\.?\d*),\s*(-?\d+\.?\d*)$/);
-    if (coordMatch) {
-      const lat = parseFloat(coordMatch[1]);
-      const lng = parseFloat(coordMatch[2]);
-      if (!isNaN(lat) && !isNaN(lng)) locations.push({ lat, lng });
-    }
+  if (error || !agg) {
+    throw new Error(
+      `pg_aggregate_collab_prefs failed for session ${sessionId}: ${error?.message ?? 'no data'}`,
+    );
   }
+
+  // pg_aggregate_collab_prefs returns empty arrays when acceptedCount < 2
+  // (CR-8 session-start threshold). Treat as "no preferences" to preserve
+  // the original throw-on-empty contract.
+  const acceptedCount =
+    typeof (agg as Record<string, unknown>).acceptedCount === 'number'
+      ? ((agg as Record<string, unknown>).acceptedCount as number)
+      : 0;
+  if (acceptedCount === 0) {
+    throw new Error(
+      `No preferences found for session ${sessionId} (acceptedCount=0)`,
+    );
+  }
+
+  const aggCats = Array.isArray((agg as Record<string, unknown>).categories)
+    ? ((agg as Record<string, unknown>).categories as string[])
+    : [];
+  const aggIntents = Array.isArray((agg as Record<string, unknown>).intents)
+    ? ((agg as Record<string, unknown>).intents as string[])
+    : [];
+  const aggCircles = Array.isArray((agg as Record<string, unknown>).circles)
+    ? ((agg as Record<string, unknown>).circles as Array<{
+        user_id: string;
+        lat: number;
+        lng: number;
+        travel_mode: string;
+        time_min: number;
+        radius_m: number;
+      }>)
+    : [];
+  const aggDatetimePref =
+    typeof (agg as Record<string, unknown>).datetimePref === 'string'
+      ? ((agg as Record<string, unknown>).datetimePref as string)
+      : undefined;
+
+  const categories = aggCats.filter((c) => !SESSION_INTENT_IDS.has(c));
+  const experienceTypes =
+    aggIntents.length > 0
+      ? aggIntents
+      : aggCats.filter((c) => SESSION_INTENT_IDS.has(c));
+
+  // Most common travel_mode across participant circles (mode aggregation
+  // preserved from the original logic).
+  const modeCounts: Record<string, number> = {};
+  for (const circle of aggCircles) {
+    const m = circle.travel_mode || 'walking';
+    modeCounts[m] = (modeCounts[m] || 0) + 1;
+  }
+  const travelMode =
+    Object.entries(modeCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ||
+    'walking';
+
+  // MIN of time_min across circles — most restrictive participant wins
+  // (matches pre-ORCH-0902 semantics that the old aggregation followed).
+  const travelConstraintValue =
+    aggCircles.length > 0
+      ? Math.min(...aggCircles.map((c) => c.time_min ?? 30))
+      : 30;
+
+  const datetimePref = aggDatetimePref;
+
+  // Centroid of participant circles (each circle is one participant's
+  // location). Per-participant union vs centroid is a tradeoff: the
+  // ORCH-0902 deck-v2 path uses true union via Haversine; curated cards
+  // still use a centroid because the curated multi-stop pipeline needs
+  // a single anchor point. Acceptable simplification.
   let location: { lat: number; lng: number } | null = null;
-  if (locations.length > 0) {
+  if (aggCircles.length > 0) {
     location = {
-      lat: locations.reduce((s, l) => s + l.lat, 0) / locations.length,
-      lng: locations.reduce((s, l) => s + l.lng, 0) / locations.length,
+      lat: aggCircles.reduce((s, c) => s + c.lat, 0) / aggCircles.length,
+      lng: aggCircles.reduce((s, c) => s + c.lng, 0) / aggCircles.length,
     };
   }
 
   return {
-    categories, experienceTypes,
-    travelMode, travelConstraintValue,
-    datetimePref, location,
+    categories,
+    experienceTypes,
+    budgetMin: 0,
+    budgetMax: 150,
+    travelMode,
+    travelConstraintValue,
+    datetimePref,
+    location,
   };
 }
 

@@ -5,7 +5,8 @@ import { Icon } from '../ui/Icon';
 import { colors, typography, fontWeights, radius, spacing } from '../../constants/designSystem';
 import { MentionChip } from './MentionChip';
 import { ReplyQuoteBlock } from './ReplyQuoteBlock';
-import type { CardPayload } from '../../services/messagingService';
+import { ChatCardChip } from './ChatCardChip';
+import type { CardPayload, CardTagEntry, MentionEntry } from '../../services/messagingService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -19,6 +20,8 @@ interface MessageData {
   fileName?: string;
   fileSize?: string;
   cardPayload?: CardPayload;  // ORCH-0667
+  mentions?: Array<MentionEntry | string>;
+  cardTags?: CardTagEntry[];
   isMe: boolean;
   failed?: boolean;
   // ORCH-0898: set true when the upstream message has sender_id === null (e.g., ORCH-0899
@@ -45,19 +48,73 @@ interface MessageBubbleProps {
   replyTo?: ReplyToData;
   onScrollToMessage?: (messageId: string) => void;
   onCardBubbleTap?: (payload: CardPayload) => void;  // ORCH-0667
+  onMentionTap?: (userId: string) => void;
+  onCardTagTap?: (cardTag: CardTagEntry) => void;
 }
 
-/** Check if content has @mentions. */
-function hasMentions(content: string): boolean {
-  return /@[\w]/.test(content);
+function isStructuredMention(entry: MentionEntry | string): entry is MentionEntry {
+  return typeof entry !== 'string';
 }
 
 /**
  * Render message content with @mention chips.
  * Returns a View (flex-wrap) when mentions present, plain Text otherwise.
  */
-function renderContentWithMentions(content: string, isMe: boolean): React.ReactElement {
-  if (!hasMentions(content)) {
+function renderContentWithMentions(
+  content: string,
+  mentions: Array<MentionEntry | string> | undefined,
+  isMe: boolean,
+  onMentionTap?: (userId: string) => void,
+): React.ReactElement {
+  const mentionEntries = Array.isArray(mentions) ? mentions : [];
+  const structuredMentions = mentionEntries
+    .filter(isStructuredMention)
+    .filter((mention) =>
+      Number.isInteger(mention.startOffset) &&
+      Number.isInteger(mention.endOffset) &&
+      mention.startOffset >= 0 &&
+      mention.endOffset > mention.startOffset &&
+      mention.startOffset < content.length,
+    )
+    .sort((a, b) => a.startOffset - b.startOffset);
+
+  if (structuredMentions.length > 0) {
+    const parts: React.ReactNode[] = [];
+    let lastIndex = 0;
+
+    structuredMentions.forEach((mention, index) => {
+      const start = Math.max(mention.startOffset, lastIndex);
+      const end = Math.min(mention.endOffset, content.length);
+      if (start > lastIndex) {
+        parts.push(
+          <Text key={`t-${lastIndex}`} style={[styles.messageText, isMe ? styles.textSent : styles.textReceived]}>
+            {content.slice(lastIndex, start)}
+          </Text>
+        );
+      }
+      parts.push(
+        <MentionChip
+          key={`m-${mention.userId}-${index}`}
+          name={mention.displayName || 'unknown'}
+          variant={isMe ? 'sent' : 'received'}
+          onPress={onMentionTap ? () => onMentionTap(mention.userId) : undefined}
+        />
+      );
+      lastIndex = end;
+    });
+
+    if (lastIndex < content.length) {
+      parts.push(
+        <Text key={`t-${lastIndex}`} style={[styles.messageText, isMe ? styles.textSent : styles.textReceived]}>
+          {content.slice(lastIndex)}
+        </Text>
+      );
+    }
+
+    return <View style={styles.contentWithMentions}>{parts}</View>;
+  }
+
+  if (!/@[\w]/.test(content)) {
     return (
       <Text style={[styles.messageText, isMe ? styles.textSent : styles.textReceived]}>
         {content}
@@ -147,7 +204,18 @@ const BORDER_RADIUS = {
   },
 } as const;
 
-export function MessageBubble({ message, isMe, groupPosition, showTimestamp, isRead, replyTo, onScrollToMessage, onCardBubbleTap }: MessageBubbleProps) {
+export function MessageBubble({
+  message,
+  isMe,
+  groupPosition,
+  showTimestamp,
+  isRead,
+  replyTo,
+  onScrollToMessage,
+  onCardBubbleTap,
+  onMentionTap,
+  onCardTagTap,
+}: MessageBubbleProps) {
   const { t } = useTranslation(['chat', 'common']);
 
   // ORCH-0898: system-message render branch — messages with no sender (ORCH-0899
@@ -221,7 +289,24 @@ export function MessageBubble({ message, isMe, groupPosition, showTimestamp, isR
             />
           )}
 
-          {message.type === 'text' && renderContentWithMentions(message.content, isMe)}
+          {message.type === 'text' && (
+            <>
+              {renderContentWithMentions(message.content, message.mentions, isMe, onMentionTap)}
+              {(message.cardTags ?? []).map((cardTag) => (
+                <ChatCardChip
+                  key={cardTag.savedCardId}
+                  cardTag={cardTag}
+                  onPress={(tag) => {
+                    if (onCardTagTap) {
+                      onCardTagTap(tag);
+                    } else {
+                      onCardBubbleTap?.(tag.cardPayload);
+                    }
+                  }}
+                />
+              ))}
+            </>
+          )}
 
           {message.type === 'image' && message.fileUrl && (
             <View style={styles.mediaContainer}>
@@ -266,15 +351,41 @@ export function MessageBubble({ message, isMe, groupPosition, showTimestamp, isR
           )}
 
           {/* ORCH-0667: shared saved-card bubble */}
-          {message.type === 'card' && message.cardPayload && (
+          {message.type === 'card' && message.cardPayload && (() => {
+            // ORCH-0908: defensive legacy-payload normalizer. The first cut of
+            // the combined lock-and-schedule RPC nested the card under
+            // card_payload.card_data; migration 20260630000000 flattens it +
+            // backfills existing rows, but if any nested row slips through we
+            // still render correctly by reading from .card_data as a fallback.
+            const raw = message.cardPayload as any;
+            const legacy = raw.card_data && typeof raw.card_data === 'object' ? raw.card_data : null;
+            const cp = {
+              ...message.cardPayload,
+              image: raw.image ?? legacy?.image ?? null,
+              title: raw.title ?? legacy?.title ?? 'Saved experience',
+              category: raw.category ?? legacy?.category ?? null,
+              lockInEvent: raw.lockInEvent
+                ?? (raw.event === 'card_locked_and_scheduled' ? 'card_locked_and_scheduled' : undefined),
+              scheduledAt: raw.scheduledAt ?? raw.scheduled_at ?? undefined,
+            };
+            return (
             <TouchableOpacity
               onPress={() => onCardBubbleTap?.(message.cardPayload!)}
               activeOpacity={0.85}
               style={styles.cardBubbleContainer}
             >
-              {message.cardPayload.image ? (
+              {/* ORCH-0908: locked-in banner — only when card was shared via lock-and-schedule */}
+              {cp.lockInEvent === 'card_locked_and_scheduled' && cp.scheduledAt && (
+                <View style={styles.cardBubbleLockedBanner}>
+                  <Icon name="lock-closed" size={12} color="#fff" />
+                  <Text style={styles.cardBubbleLockedBannerText} numberOfLines={1}>
+                    {`Locked in · ${new Date(cp.scheduledAt).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`}
+                  </Text>
+                </View>
+              )}
+              {cp.image ? (
                 <Image
-                  source={{ uri: message.cardPayload.image }}
+                  source={{ uri: cp.image }}
                   style={styles.cardBubbleImage}
                   resizeMode="cover"
                 />
@@ -288,12 +399,12 @@ export function MessageBubble({ message, isMe, groupPosition, showTimestamp, isR
                   style={[styles.cardBubbleTitle, isMe ? styles.textSent : styles.textReceived]}
                   numberOfLines={2}
                 >
-                  {message.cardPayload.title}
+                  {cp.title}
                 </Text>
-                {message.cardPayload.category ? (
+                {cp.category ? (
                   <View style={styles.cardBubbleChip}>
                     <Text style={styles.cardBubbleChipText} numberOfLines={1}>
-                      {message.cardPayload.category}
+                      {cp.category}
                     </Text>
                   </View>
                 ) : null}
@@ -304,7 +415,8 @@ export function MessageBubble({ message, isMe, groupPosition, showTimestamp, isR
                 </Text>
               </View>
             </TouchableOpacity>
-          )}
+            );
+          })()}
 
           {/* ORCH-0667: defense-in-depth — card-type message with missing payload */}
           {message.type === 'card' && !message.cardPayload && (
@@ -513,6 +625,21 @@ const styles = StyleSheet.create({
     fontSize: 11,
     opacity: 0.7,
     marginTop: 2,
+  },
+  // ORCH-0908: locked-in card banner
+  cardBubbleLockedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: 'hsl(28, 80%, 45%)',
+  },
+  cardBubbleLockedBannerText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: fontWeights.semibold,
+    color: '#fff',
   },
 });
 

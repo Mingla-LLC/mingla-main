@@ -12,6 +12,7 @@ import {
   Animated,
   LayoutAnimation,
   PanResponder,
+  Modal as RNModal,
 } from "react-native";
 import BottomSheet, {
   BottomSheetScrollView,
@@ -59,7 +60,145 @@ import { colors } from "../constants/colors";
 import { glass } from "../constants/designSystem";
 import { SCREEN_HEIGHT } from "../utils/responsive";
 import { useIsPlaceOpen } from "../hooks/useIsPlaceOpen";
+// ORCH-0908: lock-in banner + Add-to-Calendar CTA
+import { DeviceCalendarService } from "../services/deviceCalendarService";
+import { CalendarService } from "../services/calendarService";
+import { supabase } from "../services/supabase";
+import { useAppStore } from "../store/appStore";
 
+
+// ============================================================================
+// ORCH-0908 — LockedInBanner: shown at top of ExpandedCardModal when a card
+// was shared via lock-and-schedule. Renders the scheduled date/time + an
+// Add-to-Calendar CTA that flips to "Added ✓" once the viewer's
+// calendar_entries row has device_calendar_event_id set.
+// ============================================================================
+function LockedInBanner({ card }: { card: ExpandedCardData }) {
+  const { user } = useAppStore();
+  const userId = user?.id ?? null;
+  const [deviceCalEventId, setDeviceCalEventId] = useState<string | null>(null);
+  const [calendarEntryId, setCalendarEntryId] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+
+  // Look up the viewer's calendar_entries row for this saved card. We need
+  // both the calendar_entries.id (to UPDATE later) and the device event id
+  // (so the CTA can flip to "Added").
+  useEffect(() => {
+    if (!card.lockInEvent || !card.savedCardId || !userId) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from('calendar_entries')
+        .select('id, device_calendar_event_id')
+        .eq('board_card_id', card.savedCardId)
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (cancelled || !data) return;
+      setCalendarEntryId(data.id as string);
+      if (data.device_calendar_event_id) {
+        setDeviceCalEventId(data.device_calendar_event_id as string);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [card.lockInEvent, card.savedCardId, userId]);
+
+  if (card.lockInEvent !== 'card_locked_and_scheduled' || !card.scheduledAt) return null;
+
+  const scheduled = new Date(card.scheduledAt);
+  const dateLabel = scheduled.toLocaleString(undefined, {
+    weekday: 'short', month: 'short', day: 'numeric',
+    hour: 'numeric', minute: '2-digit',
+  });
+  const alreadyAdded = !!deviceCalEventId;
+
+  const handleAddToCalendar = async () => {
+    if (alreadyAdded || adding || !userId || !card.savedCardId) return;
+    setAdding(true);
+    try {
+      const event = DeviceCalendarService.createEventFromCard(
+        {
+          id: card.id,
+          title: card.title,
+          category: card.category,
+          address: card.address,
+          location: card.location,
+        },
+        scheduled,
+        card.durationMinutes || 60,
+      );
+      const newDeviceEventId = await DeviceCalendarService.addEventToDeviceCalendar(event);
+      if (newDeviceEventId) {
+        setDeviceCalEventId(newDeviceEventId);
+        // Persist on calendar_entries so other surfaces (and the realtime
+        // auto-add in useSocialRealtime) know the viewer already has it.
+        if (calendarEntryId) {
+          await CalendarService.updateEntry(calendarEntryId, userId, {
+            device_calendar_event_id: newDeviceEventId,
+          });
+        }
+      }
+    } catch (err) {
+      // Swallow — surface via no-state-change so the user can retry.
+      console.warn('[ORCH-0908] Add-to-calendar failed', err);
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  return (
+    <View style={lockedBannerStyles.container}>
+      <View style={lockedBannerStyles.row}>
+        <Icon name="lock-closed" size={16} color="#fff" />
+        <Text style={lockedBannerStyles.label} numberOfLines={1}>
+          {`Locked in · ${dateLabel}`}
+        </Text>
+      </View>
+      <TouchableOpacity
+        onPress={handleAddToCalendar}
+        disabled={alreadyAdded || adding}
+        style={[
+          lockedBannerStyles.cta,
+          alreadyAdded && lockedBannerStyles.ctaDone,
+        ]}
+        activeOpacity={0.8}
+      >
+        <Icon
+          name={alreadyAdded ? 'checkmark-circle' : 'calendar-outline'}
+          size={14}
+          color={alreadyAdded ? 'hsl(140, 50%, 35%)' : 'hsl(28, 80%, 45%)'}
+        />
+        <Text style={[
+          lockedBannerStyles.ctaText,
+          alreadyAdded && lockedBannerStyles.ctaDoneText,
+        ]}>
+          {alreadyAdded ? 'Added' : adding ? 'Adding…' : 'Add to Calendar'}
+        </Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+const lockedBannerStyles = StyleSheet.create({
+  container: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: 'hsl(28, 80%, 45%)',
+    gap: 12,
+  },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
+  label: { color: '#fff', fontSize: 13, fontWeight: '600', flex: 1 },
+  cta: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 10, paddingVertical: 6,
+    backgroundColor: '#fff', borderRadius: 16,
+  },
+  ctaDone: { backgroundColor: 'rgba(255,255,255,0.85)' },
+  ctaText: { color: 'hsl(28, 80%, 45%)', fontSize: 12, fontWeight: '600' },
+  ctaDoneText: { color: 'hsl(140, 50%, 35%)' },
+});
 
 const curatedStyles = StyleSheet.create({
   container: {
@@ -1600,6 +1739,18 @@ export default function ExpandedCardModal({
   };
 
   return (
+    // ORCH-0908 fix (2026-05-21): wrap BottomSheet in RN Modal so it renders
+    // on the OS overlay layer — above the bottom tab bar + chat input that
+    // were bleeding through underneath the sheet (snapPoint-relative position
+    // was correct; z-stacking was wrong because BottomSheet renders inline in
+    // its parent tree, while the tab bar is a sibling in the App.tsx tree).
+    <RNModal
+      visible={visible}
+      transparent
+      animationType="none"
+      onRequestClose={onClose}
+      statusBarTranslucent
+    >
     <BottomSheet
       ref={bottomSheetRef}
       index={visible ? 1 : -1}
@@ -1663,6 +1814,9 @@ export default function ExpandedCardModal({
           { paddingBottom: Math.max(insets.bottom, 16) },
         ]}
       >
+            {/* ORCH-0908: locked-in banner — renders for ANY card type (curated/event/place) when shared via lock-and-schedule */}
+            {card && <LockedInBanner card={card} />}
+
             {/* ===== Curated Experience Plan ===== */}
             {isCuratedCard && curatedCard && Array.isArray(curatedCard.stops) && (
               <>
@@ -2064,6 +2218,7 @@ export default function ExpandedCardModal({
         />
       )}
     </BottomSheet>
+    </RNModal>
   );
 }
 
