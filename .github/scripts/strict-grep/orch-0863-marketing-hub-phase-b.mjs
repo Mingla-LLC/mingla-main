@@ -551,6 +551,26 @@ function checkNoNewBackendFiles() {
     "supabase/migrations/20260723000000_orch_0914_manual_buyer_reminders.sql",
     "supabase/migrations/20260723000001_orch_0914_manual_charge_installment.sql",
   ];
+  // ORCH-0921 [Trip payment-plan finalize silently drops `installment_plan_root`
+  // + child installments — €375/order revenue leak] PR #172 (2026-05-22). C7 is
+  // scoped to ORCH-0863 marketing; these backend touches are ORCH-0921's
+  // compare-and-correct migration on `biz_ticket_checkout_finalize`, the two
+  // patched edge function callers (ticket-checkout-confirm + reconcile-stuck-
+  // checkouts now pass all 8 RPC params instead of 5), and 6 regression tests
+  // (3 implementor happy-path + 3 tester adversarial). Allow exactly these
+  // backend paths so the marketing no-backend-files guard does not block
+  // ORCH-0921.
+  const ORCH_0921_BACKEND_ALLOWLIST = [
+    "supabase/functions/_shared/__tests__/orch_0921_compare_and_correct.test.ts",
+    "supabase/functions/_shared/__tests__/orch_0921_compare_and_correct_adversarial.test.ts",
+    "supabase/functions/reconcile-stuck-checkouts/__tests__/orch_0921_installment_params.test.ts",
+    "supabase/functions/reconcile-stuck-checkouts/__tests__/orch_0921_installment_params_adversarial.test.ts",
+    "supabase/functions/reconcile-stuck-checkouts/index.ts",
+    "supabase/functions/ticket-checkout-confirm/__tests__/orch_0921_installment_params.test.ts",
+    "supabase/functions/ticket-checkout-confirm/__tests__/orch_0921_installment_params_adversarial.test.ts",
+    "supabase/functions/ticket-checkout-confirm/index.ts",
+    "supabase/migrations/20260724000000_orch_0921_finalize_compare_and_correct.sql",
+  ];
   const ALLOWLIST = [
     ...ORCH_0859_BUNDLED_ALLOWLIST,
     ...ORCH_0869_BACKEND_ALLOWLIST,
@@ -575,6 +595,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_0910_BACKEND_ALLOWLIST,
     ...ORCH_0911_BACKEND_ALLOWLIST,
     ...ORCH_0914_BACKEND_ALLOWLIST,
+    ...ORCH_0921_BACKEND_ALLOWLIST,
   ];
   const forbidden = changed.filter(
     (p) =>
