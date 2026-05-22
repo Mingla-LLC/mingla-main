@@ -58,7 +58,11 @@ const SCOPED_FILES = [
   "mingla-business/app/checkout-trip/[tripEventId]/buyer.tsx",
   "mingla-business/app/checkout-trip/[tripEventId]/payment.tsx",
   "mingla-business/src/components/trip/EditPublishedTripScreen.tsx",
-  "mingla-business/app/trip/[id]/index.tsx",
+  // ORCH-0913 [Trip dashboard tile-grid parity]: Money tab content lifted
+  // from `mingla-business/app/trip/[id]/index.tsx` (now a 7-tile grid with a
+  // Money tile that routes to the dedicated page below). The InstallmentScheduleDisplay
+  // disclosure follows the content — invariant scope shifts to the Money route.
+  "mingla-business/app/trip/[id]/money/index.tsx",
 ];
 
 const REQUIRED_MARKERS = ["InstallmentScheduleDisplay", "installmentSchedule"];

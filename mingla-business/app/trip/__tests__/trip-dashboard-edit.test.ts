@@ -1,6 +1,6 @@
 /**
- * ORCH-0859 [Tr2 Minimum Viable Trip] REWORK 4 — operator dashboard
- * Edit button regression test.
+ * ORCH-0859 [Tr2 Minimum Viable Trip] REWORK 4 + ORCH-0913 — operator
+ * dashboard Edit affordance regression test.
  *
  * Operator's RETEST 4 smoke surfaced: no way to edit a trip in either
  * draft or published phase from the operator dashboard. REWORK 4 adds
@@ -11,8 +11,8 @@
  * enforced by biz_prevent_event_slug_change trigger from ORCH-0763 +
  * dual-flag fix from ORCH-0859 REWORK 3).
  *
- * Fails-on-revert: removing the Edit Pressable or its router.push
- * causes the source-grep assertions below to fail.
+ * ORCH-0913 moved Edit from the header Pressable into the primary action
+ * tile. The route contract remains /trip/{id}/edit.
  */
 
 import { readFileSync } from "node:fs";
@@ -26,8 +26,10 @@ const DASHBOARD_SRC = readFileSync(
 );
 
 describe("ORCH-0859 REWORK 4 — operator dashboard Edit affordance", () => {
-  test("renders an Edit Pressable in the header with testID 'trip-dashboard-edit'", () => {
-    expect(DASHBOARD_SRC).toMatch(/testID="trip-dashboard-edit"/);
+  test("renders Edit as a primary dashboard action tile", () => {
+    expect(DASHBOARD_SRC).toMatch(
+      /<ActionTile[\s\S]*?icon="edit"[\s\S]*?primary[\s\S]*?router\.push\(\s*`\/trip\/\$\{trip\.id\}\/edit`/,
+    );
   });
 
   test("Edit Pressable routes to /trip/{trip.id}/edit regardless of status", () => {
@@ -39,15 +41,13 @@ describe("ORCH-0859 REWORK 4 — operator dashboard Edit affordance", () => {
     );
   });
 
-  test("Edit Pressable has status-aware accessibilityLabel", () => {
-    // Different label for draft vs published — operator-facing UX.
-    expect(DASHBOARD_SRC).toMatch(/Continue editing trip/);
-    expect(DASHBOARD_SRC).toMatch(/Edit published trip/);
+  test("Edit tile label is status-aware", () => {
+    expect(DASHBOARD_SRC).toMatch(/Continue editing/);
+    expect(DASHBOARD_SRC).toMatch(/Edit trip/);
   });
 
-  test("Edit button text reads 'Edit'", () => {
-    // Pin the user-visible copy.
-    expect(DASHBOARD_SRC).toMatch(/<Text style=\{styles\.editBtnText\}>Edit<\/Text>/);
+  test("Edit primary-tile divergence is documented", () => {
+    expect(DASHBOARD_SRC).toContain("[ORCH-0913 deliberate divergence from event]");
   });
 });
 
