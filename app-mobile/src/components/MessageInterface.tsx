@@ -33,6 +33,7 @@ import { ReplyPreviewBar } from "./chat/ReplyPreviewBar";
 import { SwipeableMessage } from "./chat/SwipeableMessage";
 import { DoubleTapHeart } from "./chat/DoubleTapHeart";
 import { ChatStatusLine } from "./chat/ChatStatusLine";
+import { TripCountdownBanner } from "./chat/TripCountdownBanner";
 import { BoardSettingsDropdown } from "./board/BoardSettingsDropdown";
 import { MentionPopover } from "./board/MentionPopover";
 import { CardTagPopover } from "./board/CardTagPopover";
@@ -98,6 +99,8 @@ interface Friend {
   isMuted?: boolean;
   conversationType?: "direct" | "group";
   sessionId?: string | null;
+  eventId?: string | null;
+  linkedEntityType?: "direct" | "session" | "trip" | "event" | null;
   sessionCreatorId?: string | null;
   isSessionAdmin?: boolean;
   notificationsMuted?: boolean;
@@ -1188,6 +1191,12 @@ export default function MessageInterface({
           </View>
         </View> */}
       </View>
+
+      {isGroupChat &&
+      friend.eventId &&
+      (friend.linkedEntityType === "trip" || friend.linkedEntityType === "event") ? (
+        <TripCountdownBanner eventId={friend.eventId} />
+      ) : null}
 
       {/* Messages */}
       {messages.length === 0 ? (

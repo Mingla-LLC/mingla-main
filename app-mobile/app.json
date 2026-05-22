@@ -55,6 +55,16 @@
               "scheme": "https",
               "host": "usemingla.com",
               "pathPrefix": "/board"
+            },
+            {
+              "scheme": "https",
+              "host": "usemingla.com",
+              "pathPrefix": "/orders"
+            },
+            {
+              "scheme": "https",
+              "host": "usemingla.com",
+              "pathPrefix": "/chat"
             }
           ],
           "category": [

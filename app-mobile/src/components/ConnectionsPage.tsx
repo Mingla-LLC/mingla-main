@@ -95,6 +95,8 @@ interface ConnectionsPageProps {
   /** When set (e.g. Profile "Friends" stat), auto-open this panel on mount; cleared via onInitialPanelHandled */
   initialPanel?: "friends" | "add" | "blocked" | null;
   onInitialPanelHandled?: () => void;
+  deepLinkParams?: Record<string, string> | null;
+  onDeepLinkHandled?: () => void;
 }
 
 const CONNECTIONS_CACHE_VERSION = "v2-orch-0898-group-metadata";
@@ -291,6 +293,8 @@ function ConnectionsPageRefactored({
   initialPanel,
   onInitialPanelHandled,
   isTabVisible,
+  deepLinkParams,
+  onDeepLinkHandled,
 }: ConnectionsPageProps) {
   // ORCH-0679 Wave 2A: Dev-only render counter (I-TAB-PROPS-STABLE verification).
   const renderCountRef = React.useRef(0);
@@ -791,6 +795,8 @@ function ConnectionsPageRefactored({
           type: conv.type,
           name: conversationName,
           session_id: sessionId,
+          event_id: (conv as any).event_id ?? null,
+          linked_entity_type: (conv as any).linked_entity_type ?? undefined,
           sessionCreatorId: sessionMeta?.created_by ?? null,
         };
       });
@@ -1061,6 +1067,8 @@ function ConnectionsPageRefactored({
       type?: 'direct' | 'group';
       name?: string | null;
       session_id?: string | null;
+      event_id?: string | null;
+      linked_entity_type?: 'direct' | 'session' | 'trip' | 'event';
       sessionCreatorId?: string | null;
     };
     const isGroupConversation = conversationMeta.type === 'group';
@@ -1102,6 +1110,8 @@ function ConnectionsPageRefactored({
       isOnline: isGroupConversation ? false : otherParticipant?.is_online || false,
       conversationType: isGroupConversation ? 'group' : 'direct',
       sessionId: conversationMeta.session_id ?? null,
+      eventId: conversationMeta.event_id ?? null,
+      linkedEntityType: conversationMeta.linked_entity_type ?? null,
       sessionCreatorId,
       isSessionAdmin: isGroupConversation ? sessionCreatorId === user.id : undefined,
       participantCount: isGroupConversation ? conversation.participants.length : undefined,
@@ -1431,6 +1441,67 @@ function ConnectionsPageRefactored({
     setMessages([]);
     setCurrentConversationId(null);
   }, [openDirectMessageWithUserId, user?.id, showMessageInterface, activeChat?.id]);
+
+  // ── Open trip/event group chat from deep links ───────────────────────────
+  useEffect(() => {
+    if (!deepLinkParams || !user?.id) return;
+    if (deepLinkParams.tab !== 'messages') return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        let conversationId = deepLinkParams.conversationId ?? null;
+        if (!conversationId && deepLinkParams.claimPendingTripChats === 'true') {
+          const { conversations: claimed, error } = await messagingService.claimPendingTripChats(
+            deepLinkParams.claimToken || undefined,
+          );
+          if (error) throw new Error(error);
+          conversationId = claimed[0]?.conversation_id ?? null;
+        }
+
+        let rawConversation = conversationId
+          ? conversations.find((conv) => conv.id === conversationId)
+          : null;
+
+        if (!rawConversation && deepLinkParams.eventId) {
+          const { conversation, error } =
+            await messagingService.getOrCreateGroupConversationForEvent(deepLinkParams.eventId);
+          if (error) throw new Error(error);
+          if (conversation) {
+            rawConversation = {
+              id: conversation.id,
+              created_by: conversation.created_by ?? '',
+              created_at: conversation.created_at,
+              participants: conversation.participants.map((p) => ({
+                id: p.user_id,
+                username: 'user',
+              })),
+              last_message: conversation.last_message as unknown as ConvMessage | undefined,
+              unread_count: conversation.unread_count ?? 0,
+              messages: [],
+              type: conversation.type,
+              name: conversation.name ?? 'Trip chat',
+              event_id: conversation.event_id ?? deepLinkParams.eventId,
+              linked_entity_type: conversation.linked_entity_type,
+            } as Conversation;
+          }
+        }
+
+        if (!cancelled && rawConversation) {
+          await handleSelectConversation(rawConversation);
+          onDeepLinkHandled?.();
+        }
+      } catch (err) {
+        console.warn('[ConnectionsPage] Failed to open trip/event chat deep link:', err);
+        if (!cancelled) onDeepLinkHandled?.();
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- conversations read once per deep-link handoff
+  }, [deepLinkParams, user?.id]);
 
   // handlePickFriend awaits getOrCreate; we only clear the pending id after that completes.
   // Refs keep latest conversations/dbFriends without re-running this effect when lists update

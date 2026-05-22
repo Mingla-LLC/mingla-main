@@ -1954,7 +1954,16 @@ function AppContent() {
         console.error("Error stack:", error.stack);
         // Don't show alert - let the app continue, session might still be created
       }
+      return;
     }
+
+    const action = parseDeepLink(url);
+    executeDeepLink(action, {
+      setCurrentPage: setCurrentPage as (page: string) => void,
+      setPendingSessionOpen,
+      setShowPaywall: (show: boolean) => setShowPaywall(show),
+      setDeepLinkParams: (params: Record<string, string>) => setDeepLinkParams(params),
+    });
   };
 
   // Fetch unread message count on app load (excluding muted users)
@@ -2160,6 +2169,10 @@ function AppContent() {
 
   const discoverDeepLinkParams = useMemo(
     () => (currentPage === 'discover' ? deepLinkParams : null),
+    [currentPage, deepLinkParams]
+  );
+  const connectionsDeepLinkParams = useMemo(
+    () => (currentPage === 'connections' ? deepLinkParams : null),
     [currentPage, deepLinkParams]
   );
 
@@ -2447,6 +2460,8 @@ function AppContent() {
             onOpenDirectMessageHandled={() => setPendingOpenDmUserId(null)}
             initialPanel={pendingConnectionsPanel}
             onInitialPanelHandled={() => setPendingConnectionsPanel(null)}
+            deepLinkParams={connectionsDeepLinkParams}
+            onDeepLinkHandled={handleDeepLinkHandled}
           />
         );
       case "likes":
@@ -2715,6 +2730,8 @@ function AppContent() {
                                       onOpenDirectMessageHandled={handleOpenDirectMessageHandled}
                                       initialPanel={pendingConnectionsPanel}
                                       onInitialPanelHandled={handleInitialPanelHandled}
+                                      deepLinkParams={connectionsDeepLinkParams}
+                                      onDeepLinkHandled={handleDeepLinkHandled}
                                     />
                                   );
                                 case 'saved':

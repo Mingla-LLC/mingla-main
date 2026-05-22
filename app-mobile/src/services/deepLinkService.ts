@@ -26,9 +26,14 @@ export interface NavigationHandlers {
 
 export function parseDeepLink(url: string): NavigationAction | null {
   try {
-    // Parse mingla:// URLs
-    const withoutScheme = url.replace(/^mingla:\/\//, '');
-    const [pathPart, queryPart] = withoutScheme.split('?');
+    const normalized = (() => {
+      if (/^https?:\/\//i.test(url)) {
+        const parsed = new URL(url);
+        return `${parsed.pathname.replace(/^\/+/, '')}${parsed.search}`;
+      }
+      return url.replace(/^mingla:\/\//, '');
+    })();
+    const [pathPart, queryPart] = normalized.split('?');
     const pathSegments = pathPart.split('/').filter(Boolean);
     const params: Record<string, string> = {};
 
@@ -60,6 +65,31 @@ export function parseDeepLink(url: string): NavigationAction | null {
           page: 'connections',
           params: { tab: 'messages', conversationId: pathSegments[1], ...params },
         };
+      case 'chat':
+        return {
+          page: 'connections',
+          params: {
+            tab: 'messages',
+            conversationId: pathSegments[1],
+            eventId: params.eventId,
+            chatType: params.type ?? 'group',
+            ...params,
+          },
+        };
+      case 'orders':
+        if (pathSegments[1] && pathSegments[2] === 'chat') {
+          return {
+            page: 'connections',
+            params: {
+              tab: 'messages',
+              orderId: pathSegments[1],
+              claimToken: params.token,
+              claimPendingTripChats: 'true',
+              ...params,
+            },
+          };
+        }
+        return null;
       case 'calendar':
         return {
           page: 'likes',

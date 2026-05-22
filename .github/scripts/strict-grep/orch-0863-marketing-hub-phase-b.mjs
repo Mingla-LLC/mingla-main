@@ -483,6 +483,22 @@ function checkNoNewBackendFiles() {
     "supabase/migrations/20260701000000_orch_0909_positional_shared_deck.sql",
     "supabase/migrations/20260703000000_orch_0906_session_deck_cards_mixed_type.sql",
   ];
+  // ORCH-0897 [Trips + Events Group Chat — auto-created consumer-app collab
+  // session + business-app Group Chat tile + blast→chat wiring] PR #160
+  // (2026-05-21). C7 is scoped to ORCH-0863 marketing; these backend touches
+  // are ORCH-0897 trip+event chat substrate extension scope (new claim edge
+  // function + new migration + extensions to existing email + dispatcher +
+  // marketing-send for blast→chat fan-out). Substrate inherits ORCH-0898's
+  // conversations+messages, so no new chat-message tables.
+  const ORCH_0897_BACKEND_ALLOWLIST = [
+    "supabase/functions/_shared/email/ticketBody.ts",
+    "supabase/functions/_shared/email/tripConfirmationEmail.ts",
+    "supabase/functions/_shared/email/types.ts",
+    "supabase/functions/claim-pending-trip-chat-participation/index.ts",
+    "supabase/functions/marketing-send/index.ts",
+    "supabase/functions/ticket-confirmation-dispatch/index.ts",
+    "supabase/migrations/20260710000000_orch_0897_trip_event_group_chat.sql",
+  ];
   const ALLOWLIST = [
     ...ORCH_0859_BUNDLED_ALLOWLIST,
     ...ORCH_0869_BACKEND_ALLOWLIST,
@@ -502,6 +518,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_0902_0903_BACKEND_ALLOWLIST,
     ...ORCH_0908_BACKEND_ALLOWLIST,
     ...ORCH_0909_0906_BACKEND_ALLOWLIST,
+    ...ORCH_0897_BACKEND_ALLOWLIST,
   ];
   const forbidden = changed.filter(
     (p) =>
