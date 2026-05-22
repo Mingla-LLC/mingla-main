@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Pressable,
   StyleSheet,
   Text,
@@ -14,6 +15,7 @@ import {
 // orch-strict-grep-allow orch-0892 — chat composer needs sticky-above-keyboard lift
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import * as ImagePicker from "expo-image-picker";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import { useRouter } from "expo-router";
 
@@ -21,6 +23,7 @@ import { accent, glass, radius, spacing, text as textTokens } from "../../consta
 import { supabase } from "../../services/supabase";
 import { useEventGroupChat } from "../../hooks/useEventGroupChat";
 import { useEventGroupChatModeration } from "../../hooks/useEventGroupChatModeration";
+import type { PlannerImageAttachment } from "../../services/groupChatService";
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { SafeScreen } from "../ui/SafeScreen";
@@ -36,6 +39,7 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId }) => {
   const chat = useEventGroupChat(eventId);
   const moderation = useEventGroupChatModeration(chat.conversation?.id ?? null);
   const [composer, setComposer] = useState("");
+  const [attachment, setAttachment] = useState<PlannerImageAttachment | null>(null);
   const [sending, setSending] = useState(false);
   const [moderationOpen, setModerationOpen] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -53,17 +57,48 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId }) => {
 
   const handleSend = async () => {
     const content = composer.trim();
-    if (content.length === 0) return;
+    if (content.length === 0 && attachment === null) return;
     setSending(true);
     try {
-      const result = await chat.postMessage(content);
+      const result = await chat.postMessage(content, attachment);
       if (result.error) throw new Error(result.error);
       setComposer("");
+      setAttachment(null);
     } catch (err) {
       Alert.alert("Message failed", err instanceof Error ? err.message : "Try again.");
     } finally {
       setSending(false);
     }
+  };
+
+  const handlePickImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert(
+        "Photo access needed",
+        "Grant Mingla access to your photos in iOS Settings to attach an image.",
+      );
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: "images",
+      allowsEditing: false,
+      quality: 0.7,
+      allowsMultipleSelection: false,
+    });
+    if (result.canceled || result.assets.length === 0) return;
+    const asset = result.assets[0];
+    const ext = asset.uri.split(".").pop()?.toLowerCase() || "jpg";
+    setAttachment({
+      uri: asset.uri,
+      name: asset.fileName ?? `image_${Date.now()}.${ext}`,
+      type: asset.mimeType ?? `image/${ext === "jpg" ? "jpeg" : ext}`,
+      size: asset.fileSize ?? 0,
+    });
+  };
+
+  const handleClearAttachment = () => {
+    setAttachment(null);
   };
 
   const handleToggleBroadcast = async (value: boolean) => {
@@ -141,6 +176,8 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId }) => {
             {sortedMessages.map((message) => {
               const mine = message.sender_id === currentUserId;
               const blast = message.marketing_campaign_id !== null;
+              const hasImage = message.message_type === "image" && message.file_url !== null;
+              const hasCaption = message.content.length > 0;
               return (
                 <View
                   key={message.id}
@@ -150,9 +187,25 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId }) => {
                     blast && styles.messageRowBlast,
                   ]}
                 >
-                  <Text style={[styles.messageText, mine && styles.messageTextMine]}>
-                    {message.content}
-                  </Text>
+                  {hasImage ? (
+                    <Image
+                      source={{ uri: message.file_url ?? undefined }}
+                      style={styles.messageImage}
+                      resizeMode="cover"
+                      accessibilityLabel={message.file_name ?? "Attached image"}
+                    />
+                  ) : null}
+                  {hasCaption ? (
+                    <Text
+                      style={[
+                        styles.messageText,
+                        mine && styles.messageTextMine,
+                        hasImage && styles.messageTextWithImage,
+                      ]}
+                    >
+                      {message.content}
+                    </Text>
+                  ) : null}
                   <View style={styles.messageMetaRow}>
                     <Text style={styles.messageMeta}>
                       {new Date(message.created_at).toLocaleString()}
@@ -171,16 +224,43 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId }) => {
           </ScrollView>
 
           <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={0}>
+            {attachment ? (
+              <View style={styles.attachmentPreview}>
+                <Image
+                  source={{ uri: attachment.uri }}
+                  style={styles.attachmentPreviewImage}
+                  resizeMode="cover"
+                  accessibilityLabel="Selected image preview"
+                />
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Remove attachment"
+                  onPress={handleClearAttachment}
+                  style={styles.attachmentRemove}
+                >
+                  <Icon name="close" size={14} color={textTokens.primary} />
+                </Pressable>
+              </View>
+            ) : null}
             <View
               style={[
                 styles.composer,
                 { paddingBottom: Math.max(insets.bottom, 0) + spacing.lg },
               ]}
             >
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Attach image"
+                onPress={handlePickImage}
+                style={styles.attachButton}
+                disabled={sending}
+              >
+                <Icon name="plus" size={20} color={textTokens.primary} />
+              </Pressable>
               <TextInput
                 value={composer}
                 onChangeText={setComposer}
-                placeholder="Write a reply"
+                placeholder={attachment ? "Add a caption (optional)" : "Write a reply"}
                 placeholderTextColor={textTokens.tertiary}
                 style={styles.input}
                 multiline
@@ -190,7 +270,7 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId }) => {
                 leadingIcon="send"
                 onPress={handleSend}
                 loading={sending}
-                disabled={composer.trim().length === 0 || sending}
+                disabled={(composer.trim().length === 0 && attachment === null) || sending}
               />
             </View>
           </KeyboardAvoidingView>
@@ -293,6 +373,15 @@ const styles = StyleSheet.create({
   messageTextMine: {
     color: textTokens.inverse,
   },
+  messageTextWithImage: {
+    marginTop: spacing.sm,
+  },
+  messageImage: {
+    width: "100%",
+    aspectRatio: 4 / 3,
+    borderRadius: radius.sm,
+    backgroundColor: "rgba(0,0,0,0.2)",
+  },
   messageMetaRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -312,6 +401,43 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.md,
+  },
+  attachButton: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.md,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: glass.tint.profileBase,
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+  },
+  attachmentPreview: {
+    marginHorizontal: spacing.md,
+    marginTop: spacing.sm,
+    width: 120,
+    height: 120,
+    borderRadius: radius.md,
+    overflow: "hidden",
+    position: "relative",
+    backgroundColor: glass.tint.profileBase,
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+  },
+  attachmentPreviewImage: {
+    width: "100%",
+    height: "100%",
+  },
+  attachmentRemove: {
+    position: "absolute",
+    top: 6,
+    right: 6,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   input: {
     flex: 1,
