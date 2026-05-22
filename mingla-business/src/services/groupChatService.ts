@@ -19,6 +19,25 @@ export interface EventGroupMessage {
   content: string;
   created_at: string;
   marketing_campaign_id: string | null;
+  /** 'text' | 'image' | 'video' | 'file' | 'card' per messages.message_type CHECK constraint. */
+  message_type: string;
+  /** Public URL into the `messages` storage bucket for image/video/file attachments. NULL for plain text. */
+  file_url: string | null;
+  file_name: string | null;
+  file_size: number | null;
+}
+
+/**
+ * Local picked-asset shape for image uploads. Mirrors the consumer-side
+ * pattern at ConnectionsPage.tsx:2210-2259. `uri` is the local file path
+ * from expo-image-picker; `name` + `type` + `size` come from the picker
+ * result.
+ */
+export interface PlannerImageAttachment {
+  uri: string;
+  name: string;
+  type: string;
+  size: number;
 }
 
 export interface EventGroupParticipant {
@@ -63,18 +82,65 @@ export async function getEventGroupChat(eventId: string): Promise<{
 export async function postPlannerMessage(
   conversationId: string,
   content: string,
+  attachment?: PlannerImageAttachment | null,
 ): Promise<{ messageId: string | null; error: string | null }> {
   const { data: auth } = await supabase.auth.getUser();
   const userId = auth.user?.id ?? null;
   if (userId === null) return { messageId: null, error: "Not signed in" };
+
+  let fileUrl: string | null = null;
+  let fileName: string | null = null;
+  let fileSize: number | null = null;
+  let messageType: "text" | "image" = "text";
+
+  if (attachment) {
+    // Mirror consumer-side pattern at app-mobile/src/components/ConnectionsPage.tsx:2210-2259.
+    // Path format `<conversation_id>/<file>` is what the messages-bucket storage RLS
+    // expects — `is_message_conversation_participant((storage.foldername(name))[1], auth.uid())`.
+    const ext =
+      attachment.name.split(".").pop()?.toLowerCase() ||
+      (attachment.type.startsWith("image/") ? "jpg" : "bin");
+    const safeExt = ext.replace(/[^a-z0-9]/g, "") || "jpg";
+    const filePath = `${conversationId}/${userId}_${Date.now()}.${safeExt}`;
+    const contentType = attachment.type.startsWith("image/")
+      ? attachment.type
+      : "image/jpeg";
+
+    const formData = new FormData();
+    formData.append("file", {
+      uri: attachment.uri,
+      type: contentType,
+      name: attachment.name,
+    } as unknown as Blob);
+
+    const { error: uploadError } = await supabase.storage
+      .from("messages")
+      .upload(filePath, formData, { contentType, upsert: false });
+    if (uploadError) {
+      return { messageId: null, error: `Upload failed: ${uploadError.message}` };
+    }
+    const { data: urlData } = supabase.storage.from("messages").getPublicUrl(filePath);
+    fileUrl = urlData.publicUrl;
+    fileName = attachment.name;
+    fileSize = attachment.size || null;
+    messageType = "image";
+  }
+
+  const trimmed = content.trim();
+  if (messageType === "text" && trimmed.length === 0) {
+    return { messageId: null, error: "Message is empty." };
+  }
 
   const { data, error } = await supabase
     .from("messages")
     .insert({
       conversation_id: conversationId,
       sender_id: userId,
-      content,
-      message_type: "text",
+      content: trimmed,
+      message_type: messageType,
+      file_url: fileUrl,
+      file_name: fileName,
+      file_size: fileSize,
     })
     .select("id")
     .single();
@@ -88,7 +154,9 @@ export async function listMessages(
 ): Promise<{ messages: EventGroupMessage[]; error: string | null }> {
   const { data, error } = await supabase
     .from("messages")
-    .select("id, sender_id, content, created_at, marketing_campaign_id")
+    .select(
+      "id, sender_id, content, created_at, marketing_campaign_id, message_type, file_url, file_name, file_size",
+    )
     .eq("conversation_id", conversationId)
     .is("deleted_at", null)
     .order("created_at", { ascending: true })
