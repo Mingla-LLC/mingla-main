@@ -34,16 +34,18 @@ export async function getEventGroupChat(eventId: string): Promise<{
 }> {
   // JOIN events so the header shows the live event title (auto-updates on rename)
   // rather than the cached conversation.name snapshot from auto-create trigger time.
+  // Note: events table column is `title`, NOT `name` — verified against
+  // supabase/migrations/20260505000000_baseline_squash_orch_0729.sql:7796.
   const { data, error } = await supabase
     .from("conversations")
-    .select("id, name, is_broadcast_only, is_enabled, events!event_id(name)")
+    .select("id, name, is_broadcast_only, is_enabled, events!event_id(title)")
     .eq("event_id", eventId)
     .in("linked_entity_type", ["trip", "event"])
     .maybeSingle();
   if (error) return { conversation: null, error: error.message };
   if (data === null) return { conversation: null, error: null };
   const eventName =
-    (data as { events?: { name?: string | null } | null }).events?.name?.trim() ||
+    (data as { events?: { title?: string | null } | null }).events?.title?.trim() ||
     data.name?.trim() ||
     "Group chat";
   return {
