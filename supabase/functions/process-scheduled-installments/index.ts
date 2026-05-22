@@ -3,9 +3,11 @@
  *
  * Per SPEC §3.2.1.
  *
- * CONTRACT (per I-PROPOSED-TR3-INSTALLMENT-PI-VIA-CRON-OWNER):
- * - This file is the SINGLE OWNER of installment PI creation. No other code
- *   path may create a PaymentIntent that carries metadata `mingla_installment_id`.
+ * CONTRACT (per I-PROPOSED-MANUAL-INSTALLMENT-ACTION-VIA-SHARED-HELPER):
+ * - This cron calls the shared `_shared/installments/createInstallmentPI.ts`
+ *   helper, which is the SINGLE OWNER of installment PI creation. No other
+ *   code path may create a PaymentIntent that carries metadata
+ *   `mingla_installment_id`.
  * - PI metadata MUST include mingla_installment_id, mingla_installment_ordinal,
  *   mingla_order_id, mingla_brand_id (webhook router discriminates on these).
  * - Idempotency key MUST include retry_count so each retry attempt is
@@ -27,61 +29,23 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 // @ts-ignore — Deno ESM import
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { stripeTicketCheckout } from "../_shared/stripe.ts";
-import { writeAudit } from "../_shared/audit.ts";
+import {
+  createInstallmentPI,
+  MAX_RETRY_ATTEMPTS,
+  type BrandRow,
+  type InstallmentRow,
+  type OrderRow,
+  type StripeAccount,
+} from "../_shared/installments/createInstallmentPI.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
-const MINGLA_APPLICATION_FEE_RATE = 0.015 as const;
-const MAX_RETRY_ATTEMPTS = 3 as const;
 const DEFAULT_BATCH_LIMIT = 500 as const;
-
-// Retry cadence (per SPEC §3.2.1 + Open Polish §9): Day-3 then Day-7 then at-risk.
-const RETRY_INTERVAL_HOURS_BY_RETRY_COUNT = {
-  1: 72,   // first retry 3 days after initial fail
-  2: 168,  // second retry 7 days after first retry
-  // After retry_count=3, no next_retry_at; at_risk=true.
-} as const;
-
-type InstallmentRow = {
-  id: string;
-  order_id: string;
-  ordinal: number;
-  amount_cents: number;
-  currency: string;
-  due_at: string;
-  status: string;
-  retry_count: number;
-  stripe_payment_intent_id: string | null;
-};
-
-type OrderRow = {
-  id: string;
-  event_id: string;
-  // orders has NO brand_id column — brand reachable via orders.event_id ->
-  // events.brand_id. Cron fetches brand_id from a separate events query.
-  stripe_customer_id_on_connected_account: string | null;
-  saved_payment_method_id: string | null;
-  buyer_user_id: string | null;
-  buyer_email: string;
-  at_risk: boolean;
-};
 
 type EventRow = {
   id: string;
   brand_id: string;
-};
-
-type BrandRow = {
-  id: string;
-  contact_email: string | null;
-  name: string;
-};
-
-type StripeAccount = {
-  brand_id: string;
-  stripe_account_id: string;
 };
 
 type ProcessResult = {
@@ -97,236 +61,6 @@ function jsonResponse(body: unknown, status = 200): Response {
     status,
     headers: { "Content-Type": "application/json" },
   });
-}
-
-function nextRetryAtFor(retryCount: number): string | null {
-  const hours = RETRY_INTERVAL_HOURS_BY_RETRY_COUNT[
-    retryCount as keyof typeof RETRY_INTERVAL_HOURS_BY_RETRY_COUNT
-  ];
-  if (hours === undefined) return null;
-  return new Date(Date.now() + hours * 3600 * 1000).toISOString();
-}
-
-async function fireDunningEmail(
-  supabase: SupabaseClient,
-  installment: InstallmentRow,
-  order: OrderRow,
-  brand: BrandRow,
-  failureReason: string,
-): Promise<void> {
-  // Dispatch via the existing ticket-confirmation-dispatch pipeline. The
-  // dispatcher routes by event_type and email_kind. For Tr3 dunning, the
-  // kind is 'installment_dunning' (handled in installmentDunningEmail.ts —
-  // imported by the dispatcher via the shared email index).
-  try {
-    if (SUPABASE_URL === undefined || SUPABASE_SERVICE_ROLE_KEY === undefined) {
-      return;
-    }
-    await fetch(`${SUPABASE_URL}/functions/v1/ticket-confirmation-dispatch`, {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        kind: "installment_dunning",
-        orderId: order.id,
-        installmentId: installment.id,
-        installmentOrdinal: installment.ordinal,
-        amountCents: installment.amount_cents,
-        currency: installment.currency,
-        failureReason,
-        brandContactEmail: brand.contact_email,
-        brandName: brand.name,
-      }),
-    });
-  } catch (err) {
-    console.error(
-      "[process-scheduled-installments] dunning email dispatch failed",
-      err instanceof Error ? err.message : err,
-    );
-    // Non-fatal — webhook on next failed attempt will retry the dispatch.
-  }
-}
-
-async function processInstallment(
-  supabase: SupabaseClient,
-  installment: InstallmentRow,
-  order: OrderRow,
-  brand: BrandRow,
-  stripeAccount: StripeAccount,
-  dryRun: boolean,
-): Promise<{
-  outcome: "collected" | "failed" | "skipped" | "at_risk_flagged";
-  reason?: string;
-}> {
-  // Guard: order must have saved PM + Customer on connected account
-  if (
-    order.stripe_customer_id_on_connected_account === null ||
-    order.saved_payment_method_id === null
-  ) {
-    // Cannot charge without saved PM — mark as failed with clear reason.
-    if (!dryRun) {
-      await supabase
-        .from("order_installments")
-        .update({
-          status: "failed",
-          failed_at: new Date().toISOString(),
-          failure_reason: "saved_payment_method_missing",
-          retry_count: installment.retry_count + 1,
-          next_retry_at: null, // no retry — operator must contact buyer
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", installment.id)
-        .eq("status", "scheduled");
-    }
-    return { outcome: "failed", reason: "saved_payment_method_missing" };
-  }
-
-  // Cron is conditional on order not already being at_risk.
-  if (order.at_risk) {
-    return { outcome: "skipped", reason: "order_at_risk_no_more_retries" };
-  }
-
-  if (dryRun) {
-    console.log(
-      `[process-scheduled-installments] DRY RUN — would charge installment ${installment.id} (order ${installment.order_id} ordinal ${installment.ordinal}) for ${installment.amount_cents} ${installment.currency}`,
-    );
-    return { outcome: "collected", reason: "dry_run" };
-  }
-
-  const stripe = stripeTicketCheckout();
-  const applicationFeeAmountCents = Math.round(
-    installment.amount_cents * MINGLA_APPLICATION_FEE_RATE,
-  );
-
-  // Idempotency key includes retry_count so each retry attempt is independently
-  // idempotent. Stripe returns existing PI on duplicate; new PI on next retry.
-  // Format `installment:{order_id}:{ordinal}:{retry_count}` is intentional per
-  // SPEC §3.2.1 (retry-aware uniqueness) — diverges from the canonical
-  // `{brand_id}:{op}:{epoch_ms}` shape because the cron must produce a
-  // DETERMINISTIC key per (installment, attempt) so concurrent cron + webhook
-  // arrivals never double-charge. The key IS passed at the call below (line
-  // ~30 down via the request-options second arg); the I-PROPOSED-R gate
-  // looks within ~10 lines of the create( call and so does not see it.
-  const idempotencyKey = `installment:${installment.order_id}:${installment.ordinal}:${installment.retry_count}`;
-
-  try {
-    // orch-strict-grep-allow stripe-no-idempotency-key — idempotencyKey IS passed via the request-options second arg (~30 lines below); SPEC §3.2.1 retry-aware format diverges from generateIdempotencyKey's epoch-ms shape because cron + webhook need deterministic per-(installment,attempt) keys to prevent double-charge.
-    // @ts-ignore — Stripe SDK namespace runtime-provided in Deno.
-    const pi = await stripe.paymentIntents.create(
-      {
-        amount: installment.amount_cents,
-        currency: installment.currency.toLowerCase(),
-        customer: order.stripe_customer_id_on_connected_account,
-        payment_method: order.saved_payment_method_id,
-        confirm: true,
-        off_session: true,
-        payment_method_types: ["card"], // installment plans card-only (SPEC §3.2.2)
-        ...(applicationFeeAmountCents > 0
-          ? { application_fee_amount: applicationFeeAmountCents }
-          : {}),
-        metadata: {
-          mingla_installment_id: installment.id,
-          mingla_installment_ordinal: String(installment.ordinal),
-          mingla_order_id: order.id,
-          mingla_brand_id: brand.id,
-        },
-      },
-      {
-        idempotencyKey,
-        stripeAccount: stripeAccount.stripe_account_id,
-      },
-    );
-
-    // Stripe accepted the PI. The webhook handler will write status=collected
-    // when payment_intent.succeeded fires. For sync-confirm PIs (the typical
-    // case with off_session card charges that succeed without 3DS), the PI
-    // may already be in 'succeeded' status here. Either way, the webhook is
-    // authoritative — we ONLY write the PI id here, not the success state.
-    await supabase
-      .from("order_installments")
-      .update({
-        stripe_payment_intent_id: pi.id,
-        // Reset failure fields in case this is a retry
-        failed_at: null,
-        failure_reason: null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", installment.id);
-
-    await writeAudit(supabase, {
-      user_id: null,
-      brand_id: brand.id,
-      event_id: order.event_id,
-      action: "tr3.installment_pi_created",
-      target_type: "order_installment",
-      target_id: installment.id,
-      after: {
-        ordinal: installment.ordinal,
-        amount_cents: installment.amount_cents,
-        stripe_payment_intent_id: pi.id,
-        retry_count: installment.retry_count,
-      },
-    });
-
-    return { outcome: "collected", reason: "pi_created" };
-  } catch (err) {
-    const stripeErr = err as { message?: string; code?: string; type?: string; statusCode?: number };
-    const reason = `${stripeErr.code ?? stripeErr.type ?? "unknown"}:${stripeErr.message ?? ""}`.slice(0, 500);
-    const nextRetryCount = installment.retry_count + 1;
-    const willBeAtRisk = nextRetryCount >= MAX_RETRY_ATTEMPTS;
-    const nextRetryAt = willBeAtRisk ? null : nextRetryAtFor(nextRetryCount);
-
-    // Atomic-ish update — predicate on status='scheduled' so a concurrent
-    // cron run cannot double-write.
-    await supabase
-      .from("order_installments")
-      .update({
-        status: "failed",
-        failed_at: new Date().toISOString(),
-        failure_reason: reason,
-        retry_count: nextRetryCount,
-        next_retry_at: nextRetryAt,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", installment.id)
-      .eq("status", "scheduled");
-
-    if (willBeAtRisk) {
-      await supabase
-        .from("orders")
-        .update({
-          at_risk: true,
-          at_risk_since: new Date().toISOString(),
-        })
-        .eq("id", order.id)
-        .eq("at_risk", false);
-    }
-
-    await writeAudit(supabase, {
-      user_id: null,
-      brand_id: brand.id,
-      event_id: order.event_id,
-      action: "tr3.installment_pi_failed",
-      target_type: "order_installment",
-      target_id: installment.id,
-      after: {
-        ordinal: installment.ordinal,
-        retry_count: nextRetryCount,
-        next_retry_at: nextRetryAt,
-        failure_reason: reason,
-        at_risk_flipped: willBeAtRisk,
-      },
-    });
-
-    // Fire dunning email. Non-fatal — logged + audit captures.
-    await fireDunningEmail(supabase, installment, order, brand, reason);
-
-    return willBeAtRisk
-      ? { outcome: "at_risk_flagged", reason }
-      : { outcome: "failed", reason };
-  }
 }
 
 serve(async (req: Request) => {
@@ -474,14 +208,16 @@ serve(async (req: Request) => {
         continue;
       }
 
-      const outcome = await processInstallment(
+      const outcome = await createInstallmentPI({
+        installmentId: installment.id,
+        brandId,
         supabase,
         installment,
-        order as OrderRow,
-        brand as BrandRow,
-        stripeAccount as StripeAccount,
+        order: order as OrderRow,
+        brand: brand as BrandRow,
+        stripeAccount: stripeAccount as StripeAccount,
         dryRun,
-      );
+      });
 
       switch (outcome.outcome) {
         case "collected":

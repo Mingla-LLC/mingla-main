@@ -79,7 +79,10 @@ export default function TripTravelersRoute(): React.ReactElement {
         <TopBar
           leftKind="back"
           title="Travelers"
-          onBack={() => router.push(`/trip/${eventId}` as never)}
+          onBack={() => {
+            if (router.canGoBack()) router.back();
+            else router.replace(`/trip/${eventId}` as never);
+          }}
           rightSlot={null}
         />
         <EmptyState
@@ -106,7 +109,10 @@ export default function TripTravelersRoute(): React.ReactElement {
       <TopBar
         leftKind="back"
         title="Travelers"
-        onBack={() => router.push(`/trip/${eventId}` as never)}
+        onBack={() => {
+          if (router.canGoBack()) router.back();
+          else router.replace(`/trip/${eventId}` as never);
+        }}
         rightSlot={null}
       />
       <ScrollView

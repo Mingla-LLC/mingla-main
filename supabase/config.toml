@@ -95,6 +95,13 @@ verify_jwt = false
 [functions.marketing-send]
 verify_jwt = true
 
+# ORCH-0914 — organiser-triggered installment actions; RPCs read auth.uid().
+[functions.manual-charge-installment]
+verify_jwt = true
+
+[functions.send-installment-reminder]
+verify_jwt = true
+
 # ORCH-0897 — consumer-app post-install claim flow. Must be auth-gated.
 [functions.claim-pending-trip-chat-participation]
 verify_jwt = true

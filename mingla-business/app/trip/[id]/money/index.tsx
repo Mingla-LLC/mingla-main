@@ -1,8 +1,8 @@
 /**
- * /trip/[id]/money — ORCH-0913 dedicated Money route.
+ * /trip/[id]/money — ORCH-0914 dedicated Money route redesign.
  *
- * Lifted from the former trip-dashboard Money tab body. ORCH-0914 can now
- * redesign this content without changing the dashboard tile structure.
+ * Shows organiser-visible traveller payment-plan progress as a responsive
+ * table/card surface with manual charge + reminder actions.
  */
 
 import React, { useCallback, useMemo, useState } from "react";
@@ -28,12 +28,23 @@ import { Icon } from "../../../../src/components/ui/Icon";
 import { SafeScreen } from "../../../../src/components/ui/SafeScreen";
 import { Toast } from "../../../../src/components/ui/Toast";
 import { TopBar } from "../../../../src/components/ui/TopBar";
+import { ConfirmDialog } from "../../../../src/components/ui/ConfirmDialog";
 import { RefundPreviewSheet } from "../../../../src/components/trip/RefundPreviewSheet";
 import {
   InstallmentScheduleDisplay,
   type InstallmentScheduleDisplaySchedule,
 } from "../../../../src/components/trip/InstallmentScheduleDisplay";
-import { useInstallmentsForBrandTrips, useRetryInstallment } from "../../../../src/hooks/useOrderInstallments";
+import {
+  useInstallmentsForBrandTrips,
+  useRetryInstallment,
+} from "../../../../src/hooks/useOrderInstallments";
+import {
+  useChargeInstallmentNow,
+  useRecentReminderForOrder,
+  useSendInstallmentReminder,
+} from "../../../../src/hooks/useManualInstallmentActions";
+import { useResponsiveLayout } from "../../../../src/hooks/useResponsiveLayout";
+import { useTripOrders } from "../../../../src/hooks/useTripOrders";
 import { useTrip } from "../../../../src/hooks/useTrips";
 import type {
   OrderInstallmentForBrand,
@@ -42,6 +53,23 @@ import type {
 import { projectInstallmentSchedule } from "../../../../src/utils/installmentScheduleProjection";
 
 type MoneyFilter = "all" | "atRisk";
+type LastChargeStatus = OrderInstallmentStatus | "at_risk";
+
+interface TravelerMoneyRow {
+  orderId: string;
+  buyerName: string | null;
+  buyerEmail: string | null;
+  orderTotalCents: number;
+  currency: string;
+  orderAtRisk: boolean;
+  installments: OrderInstallmentForBrand[];
+  isPaidInFull: boolean;
+  paidToDateCents: number;
+  outstandingCents: number;
+  nextInstallment: OrderInstallmentForBrand | null;
+  lastChargeStatus: LastChargeStatus;
+  planSchedule: InstallmentScheduleDisplaySchedule | null;
+}
 
 function formatCurrency(cents: number, currency: string): string {
   try {
@@ -66,7 +94,14 @@ function formatMoneyDate(iso: string): string {
   }
 }
 
-function statusPillStyle(status: OrderInstallmentStatus): {
+function buyerLabel(row: {
+  buyerName: string | null;
+  buyerEmail: string | null;
+}): string {
+  return row.buyerName ?? row.buyerEmail ?? "Anonymous";
+}
+
+function statusPillStyle(status: LastChargeStatus): {
   pill: object;
   text: object;
 } {
@@ -77,6 +112,7 @@ function statusPillStyle(status: OrderInstallmentStatus): {
         text: styles.moneyStatusPillTextCollected,
       };
     case "failed":
+    case "at_risk":
       return {
         pill: styles.moneyStatusPillFailed,
         text: styles.moneyStatusPillTextFailed,
@@ -89,8 +125,10 @@ function statusPillStyle(status: OrderInstallmentStatus): {
   }
 }
 
-function statusLabel(status: OrderInstallmentStatus): string {
+function statusLabel(status: LastChargeStatus): string {
   switch (status) {
+    case "at_risk":
+      return "At risk";
     case "scheduled":
       return "Scheduled";
     case "collected":
@@ -116,11 +154,68 @@ function friendlyFailureCopy(raw: string | null): string {
   return "Payment failed. Buyer may need to update their card.";
 }
 
+function mostRecentAttempted(
+  rows: OrderInstallmentForBrand[],
+): OrderInstallmentForBrand | null {
+  const attempted = rows
+    .filter((row) => row.collectedAt !== null || row.failedAt !== null)
+    .sort((a, b) => {
+      const aTime = new Date(a.collectedAt ?? a.failedAt ?? 0).getTime();
+      const bTime = new Date(b.collectedAt ?? b.failedAt ?? 0).getTime();
+      return bTime - aTime;
+    });
+  return attempted[0] ?? null;
+}
+
+function deriveInstallmentRow(rows: OrderInstallmentForBrand[]): TravelerMoneyRow {
+  const sortedRows = [...rows].sort((a, b) => a.ordinal - b.ordinal);
+  const head = sortedRows[0];
+  const paidToDateCents = sortedRows
+    .filter((row) => row.status === "collected")
+    .reduce((sum, row) => sum + row.amountCents, 0);
+  const outstandingCents = Math.max(0, head.orderTotalCents - paidToDateCents);
+  const nextInstallment = sortedRows
+    .filter((row) => row.status === "scheduled" || row.status === "failed")
+    .sort((a, b) => a.dueAt.localeCompare(b.dueAt))[0] ?? null;
+  const attempted = mostRecentAttempted(sortedRows);
+  const totalInstallmentCents = sortedRows.reduce(
+    (sum, row) => sum + row.amountCents,
+    0,
+  );
+  const depositCents = Math.max(0, head.orderTotalCents - totalInstallmentCents);
+  return {
+    orderId: head.orderId,
+    buyerName: head.buyerName,
+    buyerEmail: head.buyerEmail,
+    orderTotalCents: head.orderTotalCents,
+    currency: head.currency,
+    orderAtRisk: head.orderAtRisk,
+    installments: sortedRows,
+    isPaidInFull: false,
+    paidToDateCents,
+    outstandingCents,
+    nextInstallment,
+    lastChargeStatus: head.orderAtRisk ? "at_risk" : attempted?.status ?? "scheduled",
+    planSchedule: {
+      fullPriceCents: head.orderTotalCents,
+      depositCents,
+      currency: head.currency,
+      installments: sortedRows.map((row) => ({
+        ordinal: row.ordinal,
+        pct: 0,
+        amountCents: row.amountCents,
+        dueAt: row.dueAt,
+      })),
+    },
+  };
+}
+
 export default function TripMoneyRoute(): React.ReactElement {
   const router = useRouter();
   const params = useLocalSearchParams<{ id: string | string[] }>();
   const eventId = Array.isArray(params.id) ? params.id[0] : params.id;
   const tripQuery = useTrip(typeof eventId === "string" ? eventId : null);
+  const ordersQuery = useTripOrders(typeof eventId === "string" ? eventId : null);
   const brandId = tripQuery.data?.brandId ?? null;
   const [moneyFilter, setMoneyFilter] = useState<MoneyFilter>("all");
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
@@ -134,13 +229,20 @@ export default function TripMoneyRoute(): React.ReactElement {
     tripEventId: typeof eventId === "string" ? eventId : undefined,
     atRiskOnly: moneyFilter === "atRisk",
   });
-  const retryMutation = useRetryInstallment({
-    onMessage: ({ kind, message }) => {
-      const toastKind: "success" | "warn" | "error" | "info" =
-        kind === "warning" ? "warn" : kind;
-      setToast({ visible: true, kind: toastKind, message });
-    },
-  });
+  const toastMessage = useCallback((input: {
+    kind: "success" | "warning" | "error";
+    message: string;
+  }) => {
+    setToast({
+      visible: true,
+      kind: input.kind === "warning" ? "warn" : input.kind,
+      message: input.message,
+    });
+  }, []);
+  const retryMutation = useRetryInstallment({ onMessage: toastMessage });
+  const chargeNowMutation = useChargeInstallmentNow({ onMessage: toastMessage });
+  const sendReminderMutation = useSendInstallmentReminder({ onMessage: toastMessage });
+
   const toggleExpanded = useCallback((orderId: string): void => {
     setExpandedOrders((prev) => {
       const next = new Set(prev);
@@ -151,36 +253,45 @@ export default function TripMoneyRoute(): React.ReactElement {
   }, []);
 
   const moneyData = useMemo(() => {
-    if (installmentsQuery.data === undefined) return null;
+    if (installmentsQuery.data === undefined || ordersQuery.data === undefined) {
+      return null;
+    }
     const rowsByOrder = new Map<string, OrderInstallmentForBrand[]>();
     for (const row of installmentsQuery.data) {
       const arr = rowsByOrder.get(row.orderId) ?? [];
       arr.push(row);
       rowsByOrder.set(row.orderId, arr);
     }
-    const orderIds = [...rowsByOrder.keys()].sort((a, b) => {
-      const ra = rowsByOrder.get(a)![0];
-      const rb = rowsByOrder.get(b)![0];
-      if (ra.orderAtRisk !== rb.orderAtRisk) return ra.orderAtRisk ? -1 : 1;
-      const nextA = rowsByOrder
-        .get(a)!
-        .filter((i) => i.status === "scheduled" || i.status === "failed")
-        .map((i) => i.dueAt)
-        .sort()[0] ?? "";
-      const nextB = rowsByOrder
-        .get(b)!
-        .filter((i) => i.status === "scheduled" || i.status === "failed")
-        .map((i) => i.dueAt)
-        .sort()[0] ?? "";
-      return nextA.localeCompare(nextB);
-    });
-    const atRiskOrderCount = new Set(
-      installmentsQuery.data
-        .filter((r) => r.orderAtRisk)
-        .map((r) => r.orderId),
-    ).size;
-    return { rowsByOrder, orderIds, atRiskOrderCount };
-  }, [installmentsQuery.data]);
+    const installmentRows = [...rowsByOrder.values()].map(deriveInstallmentRow);
+    const paidInFullRows = ordersQuery.data
+      .filter((order) => !rowsByOrder.has(order.id))
+      .filter((order) => order.paymentStatus === "paid")
+      .map<TravelerMoneyRow>((order) => ({
+        orderId: order.id,
+        buyerName: order.buyerName,
+        buyerEmail: order.buyerEmail,
+        orderTotalCents: order.totalCents,
+        currency: order.currency,
+        orderAtRisk: false,
+        installments: [],
+        isPaidInFull: true,
+        paidToDateCents: order.totalCents,
+        outstandingCents: 0,
+        nextInstallment: null,
+        lastChargeStatus: "collected",
+        planSchedule: null,
+      }));
+    const rows = [...installmentRows, ...paidInFullRows]
+      .filter((row) => moneyFilter === "all" || row.orderAtRisk)
+      .sort((a, b) => {
+        if (a.orderAtRisk !== b.orderAtRisk) return a.orderAtRisk ? -1 : 1;
+        const nextA = a.nextInstallment?.dueAt ?? "9999";
+        const nextB = b.nextInstallment?.dueAt ?? "9999";
+        return nextA.localeCompare(nextB);
+      });
+    const atRiskOrderCount = installmentRows.filter((row) => row.orderAtRisk).length;
+    return { rows, atRiskOrderCount };
+  }, [installmentsQuery.data, moneyFilter, ordersQuery.data]);
 
   if (typeof eventId !== "string" || eventId.length === 0) {
     return (
@@ -227,7 +338,10 @@ export default function TripMoneyRoute(): React.ReactElement {
       <TopBar
         leftKind="back"
         title="Money"
-        onBack={() => router.push(`/trip/${eventId}` as never)}
+        onBack={() => {
+          if (router.canGoBack()) router.back();
+          else router.replace(`/trip/${eventId}` as never);
+        }}
         rightSlot={null}
       />
       <ScrollView
@@ -236,12 +350,15 @@ export default function TripMoneyRoute(): React.ReactElement {
       >
         <MoneyRouteBody
           installmentsQuery={installmentsQuery}
+          ordersQuery={ordersQuery}
           moneyData={moneyData}
           moneyFilter={moneyFilter}
           setMoneyFilter={setMoneyFilter}
           expandedOrders={expandedOrders}
           toggleExpanded={toggleExpanded}
           retryMutation={retryMutation}
+          chargeNowMutation={chargeNowMutation}
+          sendReminderMutation={sendReminderMutation}
           onEditTripPricing={() => router.push(`/trip/${eventId}/edit` as never)}
           plannerScheduleHeader={plannerScheduleHeader}
         />
@@ -258,9 +375,9 @@ export default function TripMoneyRoute(): React.ReactElement {
 
 interface MoneyRouteBodyProps {
   installmentsQuery: ReturnType<typeof useInstallmentsForBrandTrips>;
+  ordersQuery: ReturnType<typeof useTripOrders>;
   moneyData: {
-    rowsByOrder: Map<string, OrderInstallmentForBrand[]>;
-    orderIds: string[];
+    rows: TravelerMoneyRow[];
     atRiskOrderCount: number;
   } | null;
   moneyFilter: MoneyFilter;
@@ -268,40 +385,51 @@ interface MoneyRouteBodyProps {
   expandedOrders: Set<string>;
   toggleExpanded: (orderId: string) => void;
   retryMutation: ReturnType<typeof useRetryInstallment>;
+  chargeNowMutation: ReturnType<typeof useChargeInstallmentNow>;
+  sendReminderMutation: ReturnType<typeof useSendInstallmentReminder>;
   onEditTripPricing: () => void;
   plannerScheduleHeader: InstallmentScheduleDisplaySchedule | null;
 }
 
 const MoneyRouteBody: React.FC<MoneyRouteBodyProps> = ({
   installmentsQuery,
+  ordersQuery,
   moneyData,
   moneyFilter,
   setMoneyFilter,
   expandedOrders,
   toggleExpanded,
   retryMutation,
+  chargeNowMutation,
+  sendReminderMutation,
   onEditTripPricing,
   plannerScheduleHeader,
 }) => {
-  const [cancelSheetOrderId, setCancelSheetOrderId] = useState<string | null>(
-    null,
-  );
-  if (installmentsQuery.isLoading || moneyData === null) {
+  const { width } = useResponsiveLayout();
+  const isPhoneLayout = width > 0 && width <= 480;
+  const [cancelSheetOrderId, setCancelSheetOrderId] = useState<string | null>(null);
+  const [pendingAtRiskCharge, setPendingAtRiskCharge] =
+    useState<TravelerMoneyRow | null>(null);
+
+  if (installmentsQuery.isLoading || ordersQuery.isLoading || moneyData === null) {
     return (
       <View style={{ paddingVertical: spacing.xl, alignItems: "center" }}>
         <ActivityIndicator />
       </View>
     );
   }
-  if (installmentsQuery.isError) {
+  if (installmentsQuery.isError || ordersQuery.isError) {
     return (
       <View style={styles.emptyState}>
         <Icon name="bell" size={32} color={semantic.error} />
-        <Text style={styles.emptyText}>Couldn&apos;t load installments.</Text>
+        <Text style={styles.emptyText}>Couldn&apos;t load bookings.</Text>
         <Pressable
-          onPress={() => installmentsQuery.refetch()}
+          onPress={() => {
+            void installmentsQuery.refetch();
+            void ordersQuery.refetch();
+          }}
           accessibilityRole="button"
-          accessibilityLabel="Retry loading installments"
+          accessibilityLabel="Retry loading money table"
           style={styles.moneyRetryBtn}
         >
           <Text style={styles.moneyRetryBtnText}>Retry</Text>
@@ -309,7 +437,7 @@ const MoneyRouteBody: React.FC<MoneyRouteBodyProps> = ({
       </View>
     );
   }
-  if (moneyData.orderIds.length === 0) {
+  if (moneyData.rows.length === 0) {
     return (
       <View>
         {plannerScheduleHeader !== null ? (
@@ -323,10 +451,9 @@ const MoneyRouteBody: React.FC<MoneyRouteBodyProps> = ({
         ) : null}
         <View style={styles.emptyState}>
           <Icon name="pound" size={32} color={textTokens.tertiary} />
-          <Text style={styles.emptyText}>No bookings on payment plans yet.</Text>
+          <Text style={styles.emptyText}>No bookings to show yet.</Text>
           <Text style={styles.emptyText}>
-            When buyers book this trip with a payment plan, their installment
-            schedule shows up here.
+            Payment-plan and paid-in-full travellers will appear here.
           </Text>
           <Pressable
             onPress={onEditTripPricing}
@@ -340,6 +467,19 @@ const MoneyRouteBody: React.FC<MoneyRouteBodyProps> = ({
       </View>
     );
   }
+
+  const confirmAtRiskCharge = (): void => {
+    if (pendingAtRiskCharge?.nextInstallment === null || pendingAtRiskCharge === null) {
+      setPendingAtRiskCharge(null);
+      return;
+    }
+    chargeNowMutation.mutate({
+      installmentId: pendingAtRiskCharge.nextInstallment.id,
+      atRiskOverride: true,
+    });
+    setPendingAtRiskCharge(null);
+  };
+
   return (
     <>
       {plannerScheduleHeader !== null ? (
@@ -356,7 +496,7 @@ const MoneyRouteBody: React.FC<MoneyRouteBodyProps> = ({
           onPress={() => setMoneyFilter("all")}
           accessibilityRole="button"
           accessibilityState={{ selected: moneyFilter === "all" }}
-          accessibilityLabel={`All bookings, ${moneyData.orderIds.length}`}
+          accessibilityLabel={`All bookings, ${moneyData.rows.length}`}
           style={[
             styles.moneyFilterChip,
             moneyFilter === "all" && styles.moneyFilterChipActive,
@@ -368,7 +508,7 @@ const MoneyRouteBody: React.FC<MoneyRouteBodyProps> = ({
               moneyFilter === "all" && styles.moneyFilterChipTextActive,
             ]}
           >
-            All bookings · {moneyData.orderIds.length}
+            All bookings · {moneyData.rows.length}
           </Text>
         </Pressable>
         {moneyData.atRiskOrderCount > 0 ? (
@@ -395,129 +535,57 @@ const MoneyRouteBody: React.FC<MoneyRouteBodyProps> = ({
           </Pressable>
         ) : null}
       </View>
-      {moneyData.orderIds.map((orderId) => {
-        const rows = moneyData.rowsByOrder.get(orderId) ?? [];
-        if (rows.length === 0) return null;
-        const head = rows[0];
-        const paidCount = rows.filter((r) => r.status === "collected").length;
-        const collectedCents = rows
-          .filter((r) => r.status === "collected")
-          .reduce((s, r) => s + r.amountCents, 0);
-        const nextDue = rows
-          .filter((r) => r.status === "scheduled" || r.status === "failed")
-          .map((r) => r.dueAt)
-          .sort()[0];
-        const expanded = expandedOrders.has(orderId);
-        return (
-          <View key={orderId} style={styles.moneyBookingRow}>
-            <Pressable
-              onPress={() => toggleExpanded(orderId)}
-              accessibilityRole="button"
-              accessibilityState={{ expanded }}
-              accessibilityLabel={`${head.buyerName ?? "Buyer"}, ${paidCount}/${rows.length} installments paid${head.orderAtRisk ? ", at risk" : ""}, next due ${nextDue !== undefined ? formatMoneyDate(nextDue) : "none"}`}
-              accessibilityHint="Tap to see installment ledger"
-            >
-              <View style={styles.moneyBookingHeader}>
-                <Text style={styles.moneyBookingName}>
-                  {head.buyerName ?? head.buyerEmail ?? "Anonymous"}
-                </Text>
-                <Text style={styles.moneyInstallmentAmount}>
-                  {paidCount} / {rows.length} paid ·{" "}
-                  {formatCurrency(collectedCents, head.currency)}
-                </Text>
-              </View>
-              <Text style={styles.moneyBookingMeta}>
-                {nextDue !== undefined
-                  ? `Next due ${formatMoneyDate(nextDue)}`
-                  : "Fully paid"}
-              </Text>
-              {head.orderAtRisk ? (
-                <View style={styles.moneyAtRiskPill}>
-                  <Text style={styles.moneyAtRiskPillText}>At risk</Text>
-                </View>
-              ) : null}
-            </Pressable>
-            {expanded ? (
-              <>
-                <View style={styles.moneyDivider} />
-                {rows.map((inst) => {
-                  const pillStyle = statusPillStyle(inst.status);
-                  return (
-                    <View
-                      key={inst.id}
-                      style={{ marginBottom: spacing.xs }}
-                      accessibilityRole="text"
-                      accessibilityLabel={`Installment ${inst.ordinal}, ${formatCurrency(inst.amountCents, inst.currency)}, ${statusLabel(inst.status)}, due ${formatMoneyDate(inst.dueAt)}`}
-                    >
-                      <View style={styles.moneyInstallmentRow}>
-                        <Text style={styles.moneyInstallmentLabel}>
-                          Installment {inst.ordinal} ·{" "}
-                          {formatMoneyDate(inst.dueAt)}
-                        </Text>
-                        <Text style={styles.moneyInstallmentAmount}>
-                          {formatCurrency(inst.amountCents, inst.currency)}
-                        </Text>
-                        <View
-                          style={[styles.moneyStatusPill, pillStyle.pill]}
-                        >
-                          <Text
-                            style={[
-                              styles.moneyStatusPillText,
-                              pillStyle.text,
-                            ]}
-                          >
-                            {statusLabel(inst.status)}
-                          </Text>
-                        </View>
-                      </View>
-                      {inst.status === "failed" ? (
-                        <>
-                          <Text style={styles.moneyFailureReason}>
-                            {friendlyFailureCopy(inst.failureReason)}
-                          </Text>
-                          <Pressable
-                            onPress={() => retryMutation.mutate(inst.id)}
-                            disabled={retryMutation.isPending}
-                            accessibilityRole="button"
-                            accessibilityLabel={`Retry installment ${inst.ordinal} for ${head.buyerName ?? "buyer"}`}
-                            accessibilityHint="Queues a charge attempt on the next cron run"
-                            accessibilityState={{
-                              disabled: retryMutation.isPending,
-                            }}
-                            style={[
-                              styles.moneyRetryBtn,
-                              retryMutation.isPending &&
-                                styles.moneyRetryBtnDisabled,
-                            ]}
-                          >
-                            <Text style={styles.moneyRetryBtnText}>
-                              {retryMutation.isPending
-                                ? "Retrying..."
-                                : "Retry now"}
-                            </Text>
-                          </Pressable>
-                        </>
-                      ) : null}
-                    </View>
-                  );
-                })}
-                <View style={styles.moneyDivider} />
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={`Cancel and refund ${head.buyerName ?? "buyer"}'s booking`}
-                  accessibilityHint="Opens cancellation preview with refund amount and reason field"
-                  style={styles.moneyRefundBtn}
-                  onPress={() => setCancelSheetOrderId(orderId)}
-                >
-                  <Text style={styles.moneyRefundBtnText}>
-                    Cancel &amp; refund
-                  </Text>
-                </Pressable>
-              </>
-            ) : null}
+
+      {isPhoneLayout ? (
+        <View style={styles.phoneList}>
+          {moneyData.rows.map((row) => (
+            <TravelerMoneyRowCard
+              key={row.orderId}
+              row={row}
+              expanded={expandedOrders.has(row.orderId)}
+              onToggle={() => toggleExpanded(row.orderId)}
+              retryMutation={retryMutation}
+              chargeNowMutation={chargeNowMutation}
+              sendReminderMutation={sendReminderMutation}
+              onAtRiskCharge={() => setPendingAtRiskCharge(row)}
+              onCancel={() => setCancelSheetOrderId(row.orderId)}
+            />
+          ))}
+        </View>
+      ) : (
+        <View style={styles.moneyTable}>
+          <View style={[styles.moneyTableRow, styles.moneyTableHeader]}>
+            {["Buyer", "Plan", "Paid-to-date", "Outstanding", "Next installment", "Last status", "Actions"].map((label) => (
+              <Text key={label} style={styles.moneyTableHeaderText}>{label}</Text>
+            ))}
           </View>
-        );
-      })}
+          {moneyData.rows.map((row) => (
+            <TravelerMoneyTableRow
+              key={row.orderId}
+              row={row}
+              expanded={expandedOrders.has(row.orderId)}
+              onToggle={() => toggleExpanded(row.orderId)}
+              retryMutation={retryMutation}
+              chargeNowMutation={chargeNowMutation}
+              sendReminderMutation={sendReminderMutation}
+              onAtRiskCharge={() => setPendingAtRiskCharge(row)}
+              onCancel={() => setCancelSheetOrderId(row.orderId)}
+            />
+          ))}
+        </View>
+      )}
+
+      <ConfirmDialog
+        visible={pendingAtRiskCharge !== null}
+        onClose={() => setPendingAtRiskCharge(null)}
+        onConfirm={confirmAtRiskCharge}
+        title="Buyer is at-risk"
+        description="Proceeding will create a new Stripe charge attempt anyway. Are you sure?"
+        confirmLabel="Charge anyway"
+        cancelLabel="Cancel"
+        destructive={true}
+        confirmLoading={chargeNowMutation.isPending}
+      />
 
       <RefundPreviewSheet
         visible={cancelSheetOrderId !== null}
@@ -525,8 +593,264 @@ const MoneyRouteBody: React.FC<MoneyRouteBodyProps> = ({
         onClose={() => setCancelSheetOrderId(null)}
         onCancelled={() => {
           void installmentsQuery.refetch();
+          void ordersQuery.refetch();
         }}
       />
+    </>
+  );
+};
+
+interface TravelerRowProps {
+  row: TravelerMoneyRow;
+  expanded: boolean;
+  onToggle: () => void;
+  retryMutation: ReturnType<typeof useRetryInstallment>;
+  chargeNowMutation: ReturnType<typeof useChargeInstallmentNow>;
+  sendReminderMutation: ReturnType<typeof useSendInstallmentReminder>;
+  onAtRiskCharge: () => void;
+  onCancel: () => void;
+}
+
+const TravelerMoneyRowCard: React.FC<TravelerRowProps> = (props) => {
+  const { row, expanded, onToggle } = props;
+  return (
+    <View style={styles.moneyBookingRow}>
+      <Pressable
+        onPress={onToggle}
+        accessibilityRole="button"
+        accessibilityState={{ expanded }}
+        accessibilityLabel={`${buyerLabel(row)}, paid ${formatCurrency(row.paidToDateCents, row.currency)} of ${formatCurrency(row.orderTotalCents, row.currency)}, ${statusLabel(row.lastChargeStatus)}`}
+        accessibilityHint="Tap to see installment ledger"
+      >
+        <View style={styles.moneyBookingHeader}>
+          <Text style={styles.moneyBookingName}>{buyerLabel(row)}</Text>
+          <Icon name={expanded ? "chevU" : "chevD"} size={18} color={textTokens.secondary} />
+        </View>
+        <View style={styles.phoneMetricGrid}>
+          <MoneyMetric label="Plan" value={<PlanCell row={row} />} />
+          <MoneyMetric
+            label="Paid-to-date"
+            value={`${formatCurrency(row.paidToDateCents, row.currency)} / ${formatCurrency(row.orderTotalCents, row.currency)}`}
+          />
+          <MoneyMetric
+            label="Outstanding"
+            value={`${formatCurrency(row.outstandingCents, row.currency)} left`}
+          />
+          <MoneyMetric label="Next inst" value={formatNextInstallment(row)} />
+        </View>
+        <StatusPill status={row.lastChargeStatus} />
+      </Pressable>
+      <RowActions {...props} />
+      <ExpandedLedger {...props} />
+    </View>
+  );
+};
+
+const TravelerMoneyTableRow: React.FC<TravelerRowProps> = (props) => {
+  const { row, expanded, onToggle } = props;
+  return (
+    <View style={styles.moneyTableRowWrap}>
+      <Pressable
+        onPress={onToggle}
+        accessibilityRole="button"
+        accessibilityState={{ expanded }}
+        style={styles.moneyTableRow}
+      >
+        <View style={styles.tableCell}>
+          <Text style={styles.moneyBookingName}>{buyerLabel(row)}</Text>
+          <Text style={styles.moneyBookingMeta}>{row.buyerEmail ?? ""}</Text>
+        </View>
+        <View style={styles.tableCell}><PlanCell row={row} /></View>
+        <Text style={styles.tableCellText}>
+          {formatCurrency(row.paidToDateCents, row.currency)} / {formatCurrency(row.orderTotalCents, row.currency)}
+        </Text>
+        <Text style={styles.tableCellText}>
+          {formatCurrency(row.outstandingCents, row.currency)} left
+        </Text>
+        <Text style={styles.tableCellText}>{formatNextInstallment(row)}</Text>
+        <View style={styles.tableCell}><StatusPill status={row.lastChargeStatus} /></View>
+        <View style={styles.tableCell}>
+          <RowActions {...props} compact={true} />
+        </View>
+      </Pressable>
+      <ExpandedLedger {...props} />
+    </View>
+  );
+};
+
+const PlanCell: React.FC<{ row: TravelerMoneyRow }> = ({ row }) => {
+  if (row.isPaidInFull) {
+    return <Text style={styles.tableCellText}>Paid in full</Text>;
+  }
+  return (
+    <InstallmentScheduleDisplay
+      schedule={row.planSchedule}
+      variant="cell"
+      isProjection={false}
+    />
+  );
+};
+
+const MoneyMetric: React.FC<{
+  label: string;
+  value: string | React.ReactElement;
+}> = ({ label, value }) => (
+  <View style={styles.phoneMetric}>
+    <Text style={styles.phoneMetricLabel}>{label}</Text>
+    {typeof value === "string" ? (
+      <Text style={styles.phoneMetricValue}>{value}</Text>
+    ) : value}
+  </View>
+);
+
+const StatusPill: React.FC<{ status: LastChargeStatus }> = ({ status }) => {
+  const pillStyle = statusPillStyle(status);
+  return (
+    <View style={[styles.moneyStatusPill, pillStyle.pill]}>
+      <Text style={[styles.moneyStatusPillText, pillStyle.text]}>
+        {statusLabel(status)}
+      </Text>
+    </View>
+  );
+};
+
+function formatNextInstallment(row: TravelerMoneyRow): string {
+  if (row.nextInstallment === null) return "—";
+  return `${formatMoneyDate(row.nextInstallment.dueAt)} · ${formatCurrency(row.nextInstallment.amountCents, row.nextInstallment.currency)}`;
+}
+
+const RowActions: React.FC<TravelerRowProps & { compact?: boolean }> = ({
+  row,
+  chargeNowMutation,
+  sendReminderMutation,
+  onAtRiskCharge,
+  compact = false,
+}) => {
+  const recentReminder = useRecentReminderForOrder(row.orderId);
+  const canCharge = row.nextInstallment !== null && !row.isPaidInFull;
+  const reminderDisabled = row.isPaidInFull ||
+    recentReminder.data !== null ||
+    recentReminder.isLoading ||
+    sendReminderMutation.isPending;
+  const reminderCopy = row.isPaidInFull
+    ? "No reminder needed — paid in full"
+    : recentReminder.data !== null
+      ? "Already reminded in the past 24h"
+      : "Send reminder";
+  return (
+    <View style={[styles.actionRow, compact && styles.actionRowCompact]}>
+      <Pressable
+        onPress={() => {
+          if (row.nextInstallment === null) return;
+          if (row.orderAtRisk) {
+            onAtRiskCharge();
+            return;
+          }
+          chargeNowMutation.mutate({
+            installmentId: row.nextInstallment.id,
+            atRiskOverride: false,
+          });
+        }}
+        disabled={!canCharge || chargeNowMutation.isPending}
+        accessibilityRole="button"
+        accessibilityLabel={`Charge now for ${buyerLabel(row)}`}
+        accessibilityState={{ disabled: !canCharge || chargeNowMutation.isPending }}
+        style={[
+          styles.moneyActionBtn,
+          (!canCharge || chargeNowMutation.isPending) && styles.moneyRetryBtnDisabled,
+        ]}
+      >
+        <Text style={styles.moneyRetryBtnText}>Charge now</Text>
+      </Pressable>
+      <Pressable
+        onPress={() => sendReminderMutation.mutate({ orderId: row.orderId })}
+        disabled={reminderDisabled}
+        accessibilityRole="button"
+        accessibilityLabel={reminderCopy}
+        accessibilityState={{ disabled: reminderDisabled }}
+        style={[
+          styles.moneyActionBtnSecondary,
+          reminderDisabled && styles.moneyRetryBtnDisabled,
+        ]}
+      >
+        <Text style={styles.moneyActionBtnSecondaryText}>{reminderCopy}</Text>
+      </Pressable>
+    </View>
+  );
+};
+
+const ExpandedLedger: React.FC<TravelerRowProps> = ({
+  row,
+  expanded,
+  retryMutation,
+  onCancel,
+}) => {
+  if (!expanded) return null;
+  return (
+    <>
+      <View style={styles.moneyDivider} />
+      {row.installments.length > 0 ? row.installments.map((inst) => {
+        const pillStyle = statusPillStyle(inst.status);
+        return (
+          <View
+            key={inst.id}
+            style={{ marginBottom: spacing.xs }}
+            accessibilityRole="text"
+            accessibilityLabel={`Installment ${inst.ordinal}, ${formatCurrency(inst.amountCents, inst.currency)}, ${statusLabel(inst.status)}, due ${formatMoneyDate(inst.dueAt)}`}
+          >
+            <View style={styles.moneyInstallmentRow}>
+              <Text style={styles.moneyInstallmentLabel}>
+                Installment {inst.ordinal} · {formatMoneyDate(inst.dueAt)}
+              </Text>
+              <Text style={styles.moneyInstallmentAmount}>
+                {formatCurrency(inst.amountCents, inst.currency)}
+              </Text>
+              <View style={[styles.moneyStatusPill, pillStyle.pill]}>
+                <Text style={[styles.moneyStatusPillText, pillStyle.text]}>
+                  {statusLabel(inst.status)}
+                </Text>
+              </View>
+            </View>
+            {inst.status === "failed" ? (
+              <>
+                <Text style={styles.moneyFailureReason}>
+                  {friendlyFailureCopy(inst.failureReason)}
+                </Text>
+                <Pressable
+                  onPress={() => retryMutation.mutate(inst.id)}
+                  disabled={retryMutation.isPending}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Retry installment ${inst.ordinal} for ${buyerLabel(row)}`}
+                  accessibilityHint="Queues a charge attempt on the next cron run"
+                  accessibilityState={{ disabled: retryMutation.isPending }}
+                  style={[
+                    styles.moneyRetryBtn,
+                    retryMutation.isPending && styles.moneyRetryBtnDisabled,
+                  ]}
+                >
+                  <Text style={styles.moneyRetryBtnText}>
+                    {retryMutation.isPending ? "Retrying..." : "Retry now"}
+                  </Text>
+                </Pressable>
+              </>
+            ) : null}
+          </View>
+        );
+      }) : (
+        <Text style={styles.moneyBookingMeta}>
+          Paid in full at booking. No installment ledger for this traveller.
+        </Text>
+      )}
+      <View style={styles.moneyDivider} />
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Cancel and refund ${buyerLabel(row)}'s booking`}
+        accessibilityHint="Opens cancellation preview with refund amount and reason field"
+        style={styles.moneyRefundBtn}
+        onPress={onCancel}
+      >
+        <Text style={styles.moneyRefundBtnText}>Cancel &amp; refund</Text>
+      </Pressable>
     </>
   );
 };
@@ -603,18 +927,22 @@ const styles = StyleSheet.create({
   moneyFilterChipTextAtRisk: {
     color: semantic.error,
   },
+  phoneList: {
+    gap: spacing.md,
+  },
   moneyBookingRow: {
     padding: spacing.md,
     borderRadius: radiusTokens.md,
     backgroundColor: "rgba(255, 255, 255, 0.03)",
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.08)",
-    gap: spacing.xs,
+    gap: spacing.sm,
   },
   moneyBookingHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    gap: spacing.sm,
   },
   moneyBookingName: {
     fontSize: typography.body.fontSize,
@@ -626,18 +954,70 @@ const styles = StyleSheet.create({
     color: textTokens.secondary,
     marginTop: 2,
   },
-  moneyAtRiskPill: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-    borderRadius: radiusTokens.sm,
-    backgroundColor: "rgba(239, 68, 68, 0.18)",
-    alignSelf: "flex-start",
-    marginTop: spacing.xs,
+  phoneMetricGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+    marginTop: spacing.sm,
   },
-  moneyAtRiskPillText: {
+  phoneMetric: {
+    width: "48%",
+    minHeight: 64,
+    padding: spacing.sm,
+    borderRadius: radiusTokens.sm,
+    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    gap: 2,
+  },
+  phoneMetricLabel: {
+    color: textTokens.tertiary,
     fontSize: typography.caption.fontSize,
-    color: semantic.error,
     fontWeight: "600",
+  },
+  phoneMetricValue: {
+    color: textTokens.primary,
+    fontSize: typography.bodySm.fontSize,
+    fontWeight: "600",
+  },
+  moneyTable: {
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.08)",
+    borderRadius: radiusTokens.md,
+    overflow: "hidden",
+  },
+  moneyTableRowWrap: {
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255, 255, 255, 0.08)",
+  },
+  moneyTableRow: {
+    flexDirection: "row",
+    alignItems: "stretch",
+    minHeight: 76,
+    backgroundColor: "rgba(255, 255, 255, 0.03)",
+  },
+  moneyTableHeader: {
+    minHeight: 40,
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
+  },
+  moneyTableHeaderText: {
+    flex: 1,
+    padding: spacing.sm,
+    color: textTokens.secondary,
+    fontSize: typography.caption.fontSize,
+    fontWeight: "700",
+  },
+  tableCell: {
+    flex: 1,
+    padding: spacing.sm,
+    justifyContent: "center",
+    minWidth: 0,
+  },
+  tableCellText: {
+    flex: 1,
+    padding: spacing.sm,
+    color: textTokens.primary,
+    fontSize: typography.bodySm.fontSize,
+    fontWeight: "600",
+    alignSelf: "center",
   },
   moneyInstallmentRow: {
     flexDirection: "row",
@@ -661,6 +1041,8 @@ const styles = StyleSheet.create({
     borderRadius: radiusTokens.sm,
     minWidth: 80,
     alignItems: "center",
+    alignSelf: "flex-start",
+    marginTop: spacing.xs,
   },
   moneyStatusPillScheduled: {
     backgroundColor: "rgba(255, 255, 255, 0.08)",
@@ -682,6 +1064,40 @@ const styles = StyleSheet.create({
   moneyStatusPillTextFailed: {
     color: semantic.error,
   },
+  actionRow: {
+    flexDirection: "row",
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  actionRowCompact: {
+    flexDirection: "column",
+    marginTop: 0,
+  },
+  moneyActionBtn: {
+    minHeight: 40,
+    borderRadius: radiusTokens.md,
+    backgroundColor: accent.warm,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: spacing.md,
+    flex: 1,
+  },
+  moneyActionBtnSecondary: {
+    minHeight: 40,
+    borderRadius: radiusTokens.md,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.14)",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: spacing.md,
+    flex: 1,
+  },
+  moneyActionBtnSecondaryText: {
+    fontSize: typography.caption.fontSize,
+    fontWeight: "700",
+    color: textTokens.primary,
+    textAlign: "center",
+  },
   moneyRetryBtn: {
     marginTop: spacing.xs,
     minHeight: 44,
@@ -698,6 +1114,7 @@ const styles = StyleSheet.create({
     fontSize: typography.bodySm.fontSize,
     fontWeight: "600",
     color: textTokens.inverse,
+    textAlign: "center",
   },
   moneyFailureReason: {
     fontSize: typography.caption.fontSize,

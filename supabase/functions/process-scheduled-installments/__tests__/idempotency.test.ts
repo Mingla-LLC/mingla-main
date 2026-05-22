@@ -30,13 +30,24 @@ import {
 const CRON_SOURCE = await Deno.readTextFile(
   new URL("../index.ts", import.meta.url),
 );
+const HELPER_SOURCE = await Deno.readTextFile(
+  new URL("../../_shared/installments/createInstallmentPI.ts", import.meta.url),
+);
 const WEBHOOK_HANDLER_SOURCE = await Deno.readTextFile(
   new URL("../../_shared/installmentWebhookHandlers.ts", import.meta.url),
 );
 
+Deno.test("ORCH-0914 cron: delegates per-installment PI creation to shared helper", () => {
+  assertStringIncludes(CRON_SOURCE, "createInstallmentPI({");
+  assertStringIncludes(
+    CRON_SOURCE,
+    "../_shared/installments/createInstallmentPI.ts",
+  );
+});
+
 Deno.test("ORCH-0869 cron: idempotency key includes retry_count (per SPEC §6 T-04)", () => {
   assertMatch(
-    CRON_SOURCE,
+    HELPER_SOURCE,
     /idempotency[Kk]ey\s*=\s*`installment:\$\{installment\.order_id\}:\$\{installment\.ordinal\}:\$\{installment\.retry_count\}`/,
     "Cron idempotency key MUST include retry_count so each retry attempt is independently idempotent at Stripe. Without this, retry 2 reuses retry 1's key and Stripe returns the failed PI instead of creating a new attempt.",
   );
@@ -45,28 +56,28 @@ Deno.test("ORCH-0869 cron: idempotency key includes retry_count (per SPEC §6 T-
 Deno.test("ORCH-0869 cron: PI create carries 4 metadata keys for webhook discrimination", () => {
   // mingla_installment_id is the discriminator the webhook router uses.
   assertStringIncludes(
-    CRON_SOURCE,
+    HELPER_SOURCE,
     "mingla_installment_id: installment.id",
     "metadata.mingla_installment_id is the load-bearing discriminator for the webhook router.",
   );
-  assertStringIncludes(CRON_SOURCE, "mingla_installment_ordinal");
-  assertStringIncludes(CRON_SOURCE, "mingla_order_id: order.id");
-  assertStringIncludes(CRON_SOURCE, "mingla_brand_id: brand.id");
+  assertStringIncludes(HELPER_SOURCE, "mingla_installment_ordinal");
+  assertStringIncludes(HELPER_SOURCE, "mingla_order_id: order.id");
+  assertStringIncludes(HELPER_SOURCE, "mingla_brand_id: brand.id");
 });
 
 Deno.test("ORCH-0869 cron: at-risk flag flips at retry_count >= MAX_RETRY_ATTEMPTS (per SPEC AC #9)", () => {
   assertMatch(
-    CRON_SOURCE,
+    HELPER_SOURCE,
     /MAX_RETRY_ATTEMPTS\s*=\s*3/,
     "MAX_RETRY_ATTEMPTS = 3 per brief AC #9.",
   );
   assertMatch(
-    CRON_SOURCE,
+    HELPER_SOURCE,
     /willBeAtRisk\s*=\s*nextRetryCount\s*>=\s*MAX_RETRY_ATTEMPTS/,
     "at_risk flips when nextRetryCount >= MAX_RETRY_ATTEMPTS, NOT when retry_count alone exceeds.",
   );
   assertStringIncludes(
-    CRON_SOURCE,
+    HELPER_SOURCE,
     "at_risk: true",
     "Orders update must set at_risk: true when willBeAtRisk.",
   );
@@ -78,22 +89,22 @@ Deno.test("ORCH-0869 cron: every PI create uses Stripe-Account header (direct ch
   // invariant: installment PIs must be direct charges on the connected
   // account, not platform charges.
   assertMatch(
-    CRON_SOURCE,
+    HELPER_SOURCE,
     /stripeAccount:\s*stripeAccount\.stripe_account_id/,
     "PI create must pass stripeAccount: stripeAccount.stripe_account_id as the third-arg request option.",
   );
 });
 
 Deno.test("ORCH-0869 cron: PI create uses off_session + saved PM contract", () => {
-  assertStringIncludes(CRON_SOURCE, "off_session: true");
-  assertStringIncludes(CRON_SOURCE, "confirm: true");
+  assertStringIncludes(HELPER_SOURCE, "off_session: true");
+  assertStringIncludes(HELPER_SOURCE, "confirm: true");
   assertMatch(
-    CRON_SOURCE,
+    HELPER_SOURCE,
     /customer:\s*order\.stripe_customer_id_on_connected_account/,
     "PI must attach to the connected-account Customer (ORCH-0844).",
   );
   assertMatch(
-    CRON_SOURCE,
+    HELPER_SOURCE,
     /payment_method:\s*order\.saved_payment_method_id/,
     "PI must use the saved PaymentMethod from booking (setup_future_usage:off_session at deposit time).",
   );
@@ -101,7 +112,7 @@ Deno.test("ORCH-0869 cron: PI create uses off_session + saved PM contract", () =
 
 Deno.test("ORCH-0869 cron: card-only payment_method_types for installments (SPEC H-2)", () => {
   assertMatch(
-    CRON_SOURCE,
+    HELPER_SOURCE,
     /payment_method_types:\s*\["card"\]/,
     "Installment PIs MUST be card-only; Link off-session reuse semantics excluded from v1.",
   );
@@ -109,12 +120,12 @@ Deno.test("ORCH-0869 cron: card-only payment_method_types for installments (SPEC
 
 Deno.test("ORCH-0869 cron: application_fee_amount per ORCH-0843 rate", () => {
   assertMatch(
-    CRON_SOURCE,
+    HELPER_SOURCE,
     /MINGLA_APPLICATION_FEE_RATE\s*=\s*0\.015/,
     "Mingla platform cut = 1.5% per ORCH-0843 hardcoded rate; installments inherit.",
   );
   assertMatch(
-    CRON_SOURCE,
+    HELPER_SOURCE,
     /application_fee_amount:\s*applicationFeeAmountCents/,
     "application_fee_amount must route Mingla cut on every installment PI.",
   );
@@ -122,12 +133,12 @@ Deno.test("ORCH-0869 cron: application_fee_amount per ORCH-0843 rate", () => {
 
 Deno.test("ORCH-0869 cron: retry cadence Day-3 then Day-7 (per SPEC §3.2.1)", () => {
   assertMatch(
-    CRON_SOURCE,
+    HELPER_SOURCE,
     /1:\s*72/,
     "retry_count 1 → 72 hours = Day-3 retry per SPEC.",
   );
   assertMatch(
-    CRON_SOURCE,
+    HELPER_SOURCE,
     /2:\s*168/,
     "retry_count 2 → 168 hours = Day-7 retry per SPEC.",
   );
