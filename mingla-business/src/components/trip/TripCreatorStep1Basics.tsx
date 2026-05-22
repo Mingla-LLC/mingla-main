@@ -250,7 +250,6 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
         <View style={[styles.fieldGroup, styles.dateField]}>
           <Text style={styles.fieldLabel}>Start date</Text>
           {Platform.OS === "web" ? (
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             React.createElement("input" as any, {
               type: "date",
               value: isoToHtml5Date(draft.startAt),
@@ -302,7 +301,6 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
         <View style={[styles.fieldGroup, styles.dateField]}>
           <Text style={styles.fieldLabel}>End date</Text>
           {Platform.OS === "web" ? (
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             React.createElement("input" as any, {
               type: "date",
               value: isoToHtml5Date(draft.endAt),
@@ -477,7 +475,6 @@ const webDateInputStyle = {
 const styles = StyleSheet.create({
   host: {
     gap: spacing.md,
-    paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
   },
   helper: {

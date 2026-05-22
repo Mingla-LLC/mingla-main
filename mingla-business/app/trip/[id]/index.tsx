@@ -15,7 +15,6 @@ import React, { useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -24,7 +23,6 @@ import {
 import { useLocalSearchParams, useRouter } from "expo-router";
 
 import {
-  radius as radiusTokens,
   spacing,
   text as textTokens,
   typography,
@@ -32,10 +30,10 @@ import {
 import { ConfirmDialog } from "../../../src/components/ui/ConfirmDialog";
 import { EventCoverMedia } from "../../../src/components/ui/EventCoverMedia";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
-import { Icon } from "../../../src/components/ui/Icon";
 import { IconChrome } from "../../../src/components/ui/IconChrome";
 import { SafeScreen } from "../../../src/components/ui/SafeScreen";
 import { ShareModal } from "../../../src/components/ui/ShareModal";
+import { TopBar } from "../../../src/components/ui/TopBar";
 import { Toast } from "../../../src/components/ui/Toast";
 // ORCH-0874 [Trip surfaces visual parity with Events]: hero + action grid +
 // header right-slot share/moreH + manage menu + cancel-trip CTA.
@@ -310,37 +308,32 @@ export default function TripDashboardRoute(): React.ReactElement {
 
   return (
     <SafeScreen style={styles.host}>
-      {/* ORCH-0874: header — back + title + share IconChrome + moreH IconChrome.
-          Inline "Edit" Pressable removed (Edit moves to action grid). */}
-      <View style={styles.header}>
-        <Pressable
-          onPress={() => router.back()}
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-          style={styles.backBtn}
-          hitSlop={8}
-        >
-          <Icon name="chevL" size={20} color={textTokens.primary} />
-        </Pressable>
-        <Text style={styles.headerTitle} numberOfLines={1}>
-          {trip.title}
-        </Text>
-        <View style={styles.headerRightSlot}>
-          {trip.brandSlug !== null && trip.brandSlug.length > 0 ? (
-            <IconChrome
-              icon="share"
-              size={36}
-              onPress={() => setShareModalVisible(true)}
-              accessibilityLabel="Share trip"
-            />
-          ) : null}
-          <IconChrome
-            icon="moreH"
-            size={36}
-            onPress={() => setManageMenuVisible(true)}
-            accessibilityLabel="Trip options"
-          />
-        </View>
+      {/* ORCH-0913-B: share the event dashboard TopBar shell so trip detail
+          width/chrome tracks event/[id] instead of carrying a bespoke header. */}
+      <View style={styles.headerWrap}>
+        <TopBar
+          leftKind="back"
+          onBack={() => router.back()}
+          title={trip.title}
+          rightSlot={
+            <View style={styles.headerRightSlot}>
+              {trip.brandSlug !== null && trip.brandSlug.length > 0 ? (
+                <IconChrome
+                  icon="share"
+                  size={36}
+                  onPress={() => setShareModalVisible(true)}
+                  accessibilityLabel="Share trip"
+                />
+              ) : null}
+              <IconChrome
+                icon="moreH"
+                size={36}
+                onPress={() => setManageMenuVisible(true)}
+                accessibilityLabel="Trip options"
+              />
+            </View>
+          }
+        />
       </View>
 
       {/* ORCH-0913-A: ScrollView wraps hero + action grid + sections + cancel CTA
@@ -354,6 +347,7 @@ export default function TripDashboardRoute(): React.ReactElement {
       <ScrollView
         style={styles.body}
         contentContainerStyle={styles.bodyContent}
+        showsVerticalScrollIndicator={false}
       >
       {/* ORCH-0874: hero — full-width cover + gradient overlay + status pill
           + 24pt title overlay + 13pt date/destination subline. EventCoverMedia
@@ -628,23 +622,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   bodyContent: {
-    padding: spacing.lg,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xl,
     gap: spacing.md,
   },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.md,
-    gap: spacing.sm,
-  },
-  backBtn: {
-    width: 36,
-    height: 36,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radiusTokens.sm,
+  headerWrap: {
+    paddingHorizontal: spacing.md,
   },
   // ORCH-0874 [Trip surfaces visual parity with Events]
   headerRightSlot: {
@@ -653,8 +637,6 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   hero: {
-    marginHorizontal: spacing.lg,
-    marginBottom: spacing.md,
     borderRadius: 24,
     overflow: "hidden",
     position: "relative",
@@ -704,8 +686,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.md,
   },
   sectionLabel: {
     fontSize: 11,
@@ -734,15 +714,6 @@ const styles = StyleSheet.create({
     color: textTokens.tertiary,
   },
   cancelTripWrap: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.lg,
-  },
-  headerTitle: {
-    flex: 1,
-    textAlign: "center",
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    marginTop: spacing.xl,
   },
 });
