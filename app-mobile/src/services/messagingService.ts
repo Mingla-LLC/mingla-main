@@ -88,6 +88,45 @@ export interface CardPayload {
   savedCardId?: string;
   /** collaboration_sessions.id — used for "View session" affordance on the locked card. */
   sessionId?: string;
+
+  // ── ORCH-0910: intent (curated) card fields ───────────────────────────
+  /** Card shape discriminator. Absent or 'single' = single-place card; 'curated' = multi-stop intent. */
+  cardType?: 'curated' | 'single';
+  /** Multi-stop itinerary. Only set when cardType === 'curated'. Trimmed per TrimmedCuratedStop shape. */
+  stops?: TrimmedCuratedStop[];
+  /** Intent tagline (e.g., "A leisurely museum-to-restaurant evening"). */
+  tagline?: string;
+  /** Intent total price range — min. */
+  totalPriceMin?: number;
+  /** Intent total price range — max. */
+  totalPriceMax?: number;
+  /** Intent total estimated duration (all stops + travel). */
+  estimatedDurationMinutes?: number;
+}
+
+/**
+ * ORCH-0910: minimum viable per-stop fields for an intent card in the 5KB chat payload budget.
+ * Stricter subset of CuratedStop — drops imageUrls[1..N] and openingHours to fit.
+ * Kept fields are the minimum needed by ExpandedCardModal's curated render branch.
+ */
+export interface TrimmedCuratedStop {
+  stopNumber: number;
+  placeName: string;
+  placeId: string;
+  imageUrl: string | null;
+  lat: number;
+  lng: number;
+  priceLevelLabel: string;
+  priceTier: string;
+  rating: number;
+  estimatedDurationMinutes: number;
+  // Soft fields kept if size budget allows; dropped in order per trimCardPayload.
+  stopLabel?: 'Start Here' | 'Then' | 'End With' | 'Explore' | 'Optional';
+  placeType?: string;
+  aiDescription?: string;
+  travelModeFromPreviousStop?: string | null;
+  address?: string;
+  travelTimeFromPreviousStopMin?: number | null;
 }
 
 export interface DirectMessage {
@@ -128,13 +167,18 @@ export interface CardTagEntry {
  * ORCH-0667 + ORCH-0685: trim a SavedCardModel to a CardPayload, enforcing
  * the <5KB budget.
  *
- * Drop order under pressure (v2 — extended for ORCH-0685):
+ * Drop order under pressure (v3 — extended for ORCH-0685 + ORCH-0910):
  *   matchFactors → socialStats → tags → openingHours → highlights →
- *   description → images → address
+ *   description → images → address → tagline → stops[].aiDescription →
+ *   stops[].placeType → stops[].travelModeFromPreviousStop →
+ *   stops[].stopLabel → stops[].address → stops[].travelTimeFromPreviousStopMin →
+ *   tail-end stops
  * Required fields {id, title, category, image} are NEVER dropped.
  * NEW fields with hard render dependencies (location, placeId, categoryIcon)
  * are also never dropped — without them, ExpandedCardModal sections silently
  * skip (defeats the entire ORCH-0685 fix).
+ * ORCH-0910: curated cards synthesize top-level image from stops[].imageUrl,
+ * preserve cardType + minimum stop shape, and still honor the 5KB budget.
  *
  * FORBIDDEN FIELDS — do NOT extract under any circumstance:
  *   - travelTime, travelTimeMin, distance, distanceKm, distance_km
@@ -160,6 +204,40 @@ export function trimCardPayload(card: any): CardPayload {
   }
   if (typeof card.categoryIcon === 'string' && card.categoryIcon.length > 0) {
     trimmed.categoryIcon = card.categoryIcon;
+  }
+
+  // [ORCH-0910] Curated card detection + intent-specific fields.
+  const isCurated = card.cardType === 'curated' || Array.isArray(card.stops);
+  if (isCurated) {
+    trimmed.cardType = 'curated';
+    if (!trimmed.image) {
+      const firstStopImage = card.stops?.find?.((s: any) => typeof s?.imageUrl === 'string' && s.imageUrl.length > 0)?.imageUrl;
+      if (firstStopImage) trimmed.image = firstStopImage;
+    }
+    if (typeof card.tagline === 'string' && card.tagline.length > 0) trimmed.tagline = card.tagline;
+    if (typeof card.totalPriceMin === 'number') trimmed.totalPriceMin = card.totalPriceMin;
+    if (typeof card.totalPriceMax === 'number') trimmed.totalPriceMax = card.totalPriceMax;
+    if (typeof card.estimatedDurationMinutes === 'number') trimmed.estimatedDurationMinutes = card.estimatedDurationMinutes;
+    if (Array.isArray(card.stops) && card.stops.length > 0) {
+      trimmed.stops = card.stops.map((s: any, idx: number): TrimmedCuratedStop => ({
+        stopNumber: typeof s.stopNumber === 'number' ? s.stopNumber : idx + 1,
+        placeName: String(s.placeName ?? '').slice(0, 100),
+        placeId: String(s.placeId ?? ''),
+        imageUrl: typeof s.imageUrl === 'string' && s.imageUrl.length > 0 ? s.imageUrl : null,
+        lat: Number(s.lat) || 0,
+        lng: Number(s.lng) || 0,
+        priceLevelLabel: String(s.priceLevelLabel ?? '').slice(0, 32),
+        priceTier: String(s.priceTier ?? ''),
+        rating: Number(s.rating) || 0,
+        estimatedDurationMinutes: Number(s.estimatedDurationMinutes) || 45,
+        stopLabel: typeof s.stopLabel === 'string' ? s.stopLabel : undefined,
+        placeType: typeof s.placeType === 'string' ? s.placeType.slice(0, 80) : undefined,
+        aiDescription: typeof s.aiDescription === 'string' ? s.aiDescription.slice(0, 300) : undefined,
+        travelModeFromPreviousStop: typeof s.travelModeFromPreviousStop === 'string' ? s.travelModeFromPreviousStop : null,
+        address: typeof s.address === 'string' ? s.address.slice(0, 200) : undefined,
+        travelTimeFromPreviousStopMin: typeof s.travelTimeFromPreviousStopMin === 'number' ? s.travelTimeFromPreviousStopMin : null,
+      }));
+    }
   }
 
   // [ORCH-0685 DEC-1] Soft-render fields (drop in size-guard order if budget exceeded).
@@ -216,8 +294,9 @@ export function trimCardPayload(card: any): CardPayload {
   }
   if (typeof card.matchScore === 'number') trimmed.matchScore = card.matchScore;
 
-  // [ORCH-0685 §6.3] Size guard — drop optional fields in reverse priority if over budget.
-  // 'location', 'placeId', 'categoryIcon' are NOT in dropOrder — they unlock 3 modal sections.
+  // ORCH-0685 §6.3 + ORCH-0910 — drop optional fields in reverse priority if over budget.
+  // 'location', 'placeId', 'categoryIcon', 'image', 'cardType' are NOT in dropOrder.
+  // For curated cards: drop stop-soft-fields BEFORE dropping whole stops.
   const dropOrder: (keyof CardPayload)[] = [
     'matchFactors',
     'socialStats',
@@ -227,11 +306,42 @@ export function trimCardPayload(card: any): CardPayload {
     'description',
     'images',
     'address',
+    'tagline',
   ];
   let size = JSON.stringify(trimmed).length;
   for (const key of dropOrder) {
     if (size <= 5120) break;
     delete trimmed[key];
+    size = JSON.stringify(trimmed).length;
+  }
+
+  // ORCH-0910 — curated-specific drop order on stops[] subfields.
+  if (Array.isArray(trimmed.stops) && size > 5120) {
+    trimmed.stops = trimmed.stops.map(s => ({ ...s, aiDescription: undefined }));
+    size = JSON.stringify(trimmed).length;
+  }
+  if (Array.isArray(trimmed.stops) && size > 5120) {
+    trimmed.stops = trimmed.stops.map(s => ({ ...s, placeType: undefined }));
+    size = JSON.stringify(trimmed).length;
+  }
+  if (Array.isArray(trimmed.stops) && size > 5120) {
+    trimmed.stops = trimmed.stops.map(s => ({ ...s, travelModeFromPreviousStop: undefined }));
+    size = JSON.stringify(trimmed).length;
+  }
+  if (Array.isArray(trimmed.stops) && size > 5120) {
+    trimmed.stops = trimmed.stops.map(s => ({ ...s, stopLabel: undefined }));
+    size = JSON.stringify(trimmed).length;
+  }
+  if (Array.isArray(trimmed.stops) && size > 5120) {
+    trimmed.stops = trimmed.stops.map(s => ({ ...s, address: undefined }));
+    size = JSON.stringify(trimmed).length;
+  }
+  if (Array.isArray(trimmed.stops) && size > 5120) {
+    trimmed.stops = trimmed.stops.map(s => ({ ...s, travelTimeFromPreviousStopMin: undefined }));
+    size = JSON.stringify(trimmed).length;
+  }
+  while (Array.isArray(trimmed.stops) && trimmed.stops.length > 1 && size > 5120) {
+    trimmed.stops = trimmed.stops.slice(0, -1);
     size = JSON.stringify(trimmed).length;
   }
 

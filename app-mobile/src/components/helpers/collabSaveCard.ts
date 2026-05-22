@@ -71,6 +71,13 @@ export function buildCardDataPayload(card: Recommendation): Record<string, unkno
           pairingKey: c.pairingKey,
           experienceType: c.experienceType,
           shoppingList: c.shoppingList,
+          // ORCH-0910: synthesize honest top-level image fields from stops so
+          // lock-in chat payloads and expanded sheets can render curated cards.
+          image: (c.stops as any[] | undefined)?.find?.(s => typeof s?.imageUrl === 'string' && s.imageUrl.length > 0)?.imageUrl,
+          images: (c.stops as any[] | undefined)
+            ?.map(s => s?.imageUrl)
+            .filter((url): url is string => typeof url === 'string' && url.length > 0)
+            .slice(0, 6),
         }
       : {}),
   };

@@ -13,8 +13,9 @@
  *   - matchFactors, socialStats: zero-valued objects (modal does not render
  *     today; forward-positioned per ORCH-0685.D-5 deferral)
  *   - fullDescription: falls back to description (CardPayload only carries one)
- *   - strollData, picnicData, nightOutData, cardType: undefined
- *     (modal's regular layout is reached for chat-shared cards)
+ *   - strollData, picnicData, nightOutData: undefined (chat-share doesn't carry these)
+ *   - cardType + stops: passed through when present (ORCH-0910 — unlocks the modal's
+ *     isCuratedCard branch for chat-shared intent cards)
  */
 import type { CardPayload } from './messagingService';
 import type { ExpandedCardData } from '../types/expandedCardTypes';
@@ -30,6 +31,7 @@ export function cardPayloadToExpandedCardData(p: CardPayload): ExpandedCardData 
   const legacy = raw.card_data && typeof raw.card_data === 'object' ? raw.card_data : {};
   const f = <T,>(key: string, fallback?: T): T => (raw[key] ?? legacy[key] ?? fallback) as T;
   const scheduledAt = raw.scheduledAt ?? raw.scheduled_at ?? undefined;
+  const cardType = (raw.cardType ?? legacy.cardType) === 'curated' ? 'curated' : undefined;
   return {
     id: f('id', ''),
     title: f('title', 'Saved experience'),
@@ -75,5 +77,13 @@ export function cardPayloadToExpandedCardData(p: CardPayload): ExpandedCardData 
     lockerUserId: raw.lockerUserId ?? raw.locker_user_id,
     savedCardId: raw.savedCardId ?? raw.saved_card_id,
     sessionId: raw.sessionId ?? raw.session_id,
+    // ORCH-0910: pass curated/intent fields through so ExpandedCardModal's
+    // isCuratedCard branch fires for chat-mounted intent cards.
+    cardType,
+    stops: raw.stops ?? legacy.stops,
+    tagline: raw.tagline ?? legacy.tagline,
+    totalPriceMin: raw.totalPriceMin ?? legacy.totalPriceMin,
+    totalPriceMax: raw.totalPriceMax ?? legacy.totalPriceMax,
+    estimatedDurationMinutes: raw.estimatedDurationMinutes ?? legacy.estimatedDurationMinutes,
   };
 }
