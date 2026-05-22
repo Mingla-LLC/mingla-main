@@ -653,6 +653,7 @@ const TravelerMoneyTableRow: React.FC<TravelerRowProps> = (props) => {
       <Pressable
         onPress={onToggle}
         accessibilityRole="button"
+        accessibilityLabel={`${buyerLabel(row)}, ${expanded ? "collapse" : "expand"} payment details`}
         accessibilityState={{ expanded }}
         style={styles.moneyTableRow}
       >
