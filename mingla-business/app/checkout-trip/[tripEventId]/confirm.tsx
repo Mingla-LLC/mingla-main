@@ -308,13 +308,32 @@ export default function CheckoutTripConfirmScreen(): React.ReactElement {
 
   const totalTickets = carouselTickets.length;
 
-  // ORCH-0852 pending state — calm "Confirming…" hero.
-  if (
-    Platform.OS === "web" &&
-    result === null &&
-    realtimePending &&
-    trip !== null
-  ) {
+  if (result === null) {
+    if (Platform.OS === "web") {
+      const win = (globalThis as unknown as { location?: { search?: string } });
+      const hasCs = /[?&]cs=/.test(win.location?.search ?? "");
+      if (hasCs) {
+        // ORCH-0911: render from first paint on ?cs= arrival, independent
+        // of trip/realtimePending state. ORCH-0852 auto-resolution remains.
+        return (
+          <View style={styles.host}>
+            <View style={[styles.hero, { paddingTop: insets.top + spacing.xl }]}>
+              <View style={styles.checkBadge}>
+                <Icon name="check" size={36} color={textTokens.primary} />
+              </View>
+              <Text style={styles.heroTitle}>Confirming your reservation…</Text>
+              <Text style={styles.heroEmail} numberOfLines={3}>
+                Payment received. Your tickets will appear here in a moment.
+              </Text>
+            </View>
+          </View>
+        );
+      }
+    }
+    return <View style={styles.host} />;
+  }
+
+  if (trip === null) {
     return (
       <View style={styles.host}>
         <View style={[styles.hero, { paddingTop: insets.top + spacing.xl }]}>
@@ -328,10 +347,6 @@ export default function CheckoutTripConfirmScreen(): React.ReactElement {
         </View>
       </View>
     );
-  }
-
-  if (trip === null || result === null) {
-    return <View style={styles.host} />;
   }
 
   const dateLine = formatTripDateLine(

@@ -427,9 +427,12 @@ serve(async (req) => {
         );
         return jsonResponse({ error: "web_base_url_missing" }, 500);
       }
+      // ORCH-0911: branch buyer-web confirm/payment URLs on event_type.
+      const isTrip = tripGateRow?.event_type === "trip";
+      const surfacePath = isTrip ? "checkout-trip" : "checkout";
       successUrl =
-        `${baseUrl}/checkout/${eventId}/confirm?cs={CHECKOUT_SESSION_ID}`;
-      cancelUrl = `${baseUrl}/checkout/${eventId}/payment`;
+        `${baseUrl}/${surfacePath}/${eventId}/confirm?cs={CHECKOUT_SESSION_ID}`;
+      cancelUrl = `${baseUrl}/${surfacePath}/${eventId}/payment`;
     } else {
       // ORCH-0839-B: mobile-hosted Checkout returns to the native app via a
       // custom-scheme deep link. expo-web-browser.openAuthSessionAsync

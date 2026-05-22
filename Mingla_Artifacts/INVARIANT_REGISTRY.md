@@ -7,6 +7,28 @@
 
 ---
 
+## ACTIVE (post ORCH-0911 [Buyer-web checkout confirm black screen] CLOSE 2026-05-22)
+
+Two new invariants flipped DRAFT → ACTIVE at the ORCH-0911 close after tester PASS verdict P0:0 P1:0 P2:0 P3:0 P4:1, with happy-path + adversarial regression tests committed at real paths and fails-on-revert verified at pre-fix parent `868e3277`.
+
+### I-BUYER-WEB-CONFIRM-HAS-LOADING-STATE
+
+**Rule.** Buyer-anon-web confirm screens (`mingla-business/app/checkout/[eventId]/confirm.tsx` and `mingla-business/app/checkout-trip/[tripEventId]/confirm.tsx`) MUST render a non-bare-View loading state from the first paint whenever the URL contains `?cs=` AND `result === null`, INDEPENDENT of `event`/`trip` query state and INDEPENDENT of `realtimePending`. A pure-color blank `<View style={styles.host} />` is FORBIDDEN on the `?cs=…` arrival path. The bare-host fall-through is permitted ONLY on the non-`?cs=` defensive-redirect path (so the existing redirect-bounce window stays uninterrupted on non-resume arrivals).
+
+**Why.** Pre-ORCH-0911 every buyer who completed Stripe-hosted Checkout for a trip row landed on a permanent black screen because (a) the success_url routed them to the event-confirm screen which rejects trip rows, and (b) even on the correct screen, the initial mount window before `event` and `result` populated rendered as a bare `<View style={{flex:1, backgroundColor:"#0c0e12"}} />`. Buyers paid but had no visible affordance and no path forward. Honest loading state is non-negotiable on the surface a buyer lands on after handing over their money.
+
+**Enforcement.** Source-pattern tests at `mingla-business/app/checkout/[eventId]/__tests__/orch_0911_confirm_loading_state.test.tsx` + `orch_0911_confirm_loading_state.adversarial.test.tsx` (event side) and `mingla-business/app/checkout-trip/[tripEventId]/__tests__/orch_0911_trip_confirm_loading_state.test.tsx` + `orch_0911_trip_confirm_loading_state.adversarial.test.tsx` (trip side). The adversarial files pin (a) the hasCs gate reads ONLY the URL search string and NOT sessionStorage / readCheckoutResumePayload, (b) the new hero is nested INSIDE the `Platform.OS === "web"` block so non-web preserves the bare host shell, (c) the pre-fix `realtimePending && event/trip !== null` gating block is GONE from active source, (d) no retry button / help link / dead-end fallback UI was introduced (preserves ORCH-0852 architectural ban). Append-only enforcement via `.github/workflows/tests-append-only.yml`. Future modifications require `[TEST-MOD-APPROVED ORCH-NNNN]` token in the commit body.
+
+### I-CHECKOUT-SUCCESS-URL-MATCHES-EVENT-TYPE
+
+**Rule.** `supabase/functions/ticket-checkout-create/index.ts` MUST build Stripe Checkout `success_url` and `cancel_url` against the buyer-anon-web path matching the row's `event_type`. Trip rows (`tripGateRow.event_type === "trip"`) → `${baseUrl}/checkout-trip/${eventId}/confirm?cs={CHECKOUT_SESSION_ID}` and `${baseUrl}/checkout-trip/${eventId}/payment`. Event rows OR null/undefined `event_type` → `${baseUrl}/checkout/${eventId}/confirm?cs={CHECKOUT_SESSION_ID}` and `${baseUrl}/checkout/${eventId}/payment`. The `mobile-web` surface (`surface === "mobile-web"`) custom-scheme deep link is EXEMPT — it is event/trip-agnostic by design (single deep-link return route per ORCH-0839-B) and MUST NOT interpolate `surfacePath`. Any future surface added to the `surface === "web" || "mobile-web"` block MUST handle the branching with the same strict-equality discriminator (`tripGateRow?.event_type === "trip"`); fuzzy matchers, case-insensitive compares, or whitespace-trimmed compares are forbidden.
+
+**Why.** Pre-ORCH-0911 the success_url was hardcoded to `/checkout/${eventId}/confirm` for ALL web checkouts regardless of event_type. Trip buyers paid Stripe, got redirected by Stripe to the event-confirm screen, which deliberately returns `null` for trip rows from the events-only public view → permanent black render. The fix requires `tripGateRow` to be loaded BEFORE the URL builder runs (already true at line 138-149 for booking-deadline enforcement) and routed via a strict-equality discriminator.
+
+**Enforcement.** Source-pattern + functional tests at `supabase/functions/ticket-checkout-create/__tests__/orch_0911_success_url_branching.test.ts` (5 happy-path tests) + `orch_0911_success_url_branching.adversarial.test.ts` (4 adversarial tests). Adversarial pins: (TA-01) `surfacePath` does NOT leak into mobile-web URL strings, (TA-02) 20 malformed `event_type` values (uppercase, whitespace, empty, numeric, boolean, type-adjacent strings) all defensively route to event path, (TA-03) tripGateRow load-order invariant — `.select("event_type, bookings_closed, booking_deadline")` source offset is `<` than the `const isTrip = tripGateRow?.event_type === "trip";` line source offset, (TA-04) old hardcoded `${baseUrl}/checkout/${eventId}/confirm` literal is GONE from active source (subtract-before-adding). Verified via `deno test --allow-read supabase/functions/ticket-checkout-create/__tests__/`. Append-only via `.github/workflows/tests-append-only.yml`.
+
+---
+
 ## ACTIVE (post ORCH-0859 [Tr2 Minimum Viable Trip] CLOSE 2026-05-17 — covering ORCH-0866 [SafeArea drift + SafeScreen wrapper] + ORCH-0865 [trips-leak + routeForEventRow helper])
 
 Three new invariants introduced by ORCH-0866 + ORCH-0865 structural fix. All three flipped DRAFT → ACTIVE at CLOSE after operator pixel-confirmed RETEST 5 PASS + tester 17/17 adversarial PASS at REWORK 5b state + 3 CI gates report 0/0/0 violations across 49+382+399 scanned files.
