@@ -74,8 +74,12 @@ const KPI_SRC = readFileSync(KPI_PATH, "utf8");
 // Carve out the action grid to scope tile-destination assertions —
 // onPress handlers elsewhere in the file (manage menu, share modal, cancel
 // dialog) MUST NOT contaminate destination-route assertions.
+//
+// ORCH-0913-A: ScrollView moved up to wrap hero + action grid. Terminator
+// marker switched from `<ScrollView` to `<TripDetailKpiCard` (now the
+// element that follows the action grid's closing View).
 const ACTION_GRID_MATCH = DASHBOARD_SRC.match(
-  /<View style=\{styles\.actionGrid\}>([\s\S]*?)<\/View>\s*\n\s*<ScrollView/,
+  /<View style=\{styles\.actionGrid\}>([\s\S]*?)<\/View>\s*\n\s*<TripDetailKpiCard/,
 );
 const ACTION_GRID = ACTION_GRID_MATCH?.[1] ?? "";
 

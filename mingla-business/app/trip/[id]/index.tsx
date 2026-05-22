@@ -343,6 +343,18 @@ export default function TripDashboardRoute(): React.ReactElement {
         </View>
       </View>
 
+      {/* ORCH-0913-A: ScrollView wraps hero + action grid + sections + cancel CTA
+          so the entire page scrolls together — only the TopBar header above
+          stays fixed. Matches event/[id]/index.tsx:618 boundary (single
+          ScrollView starting immediately after the fixed header). Prior to
+          ORCH-0913-A the hero and action grid were OUTSIDE the ScrollView,
+          which broke parity with event dashboard and left short-viewport
+          devices unable to reach the bottom sections without losing the
+          tiles. */}
+      <ScrollView
+        style={styles.body}
+        contentContainerStyle={styles.bodyContent}
+      >
       {/* ORCH-0874: hero — full-width cover + gradient overlay + status pill
           + 24pt title overlay + 13pt date/destination subline. EventCoverMedia
           is content-agnostic; coverHue derived from trip.id when no media. */}
@@ -450,10 +462,6 @@ export default function TripDashboardRoute(): React.ReactElement {
         />
       </View>
 
-      <ScrollView
-        style={styles.body}
-        contentContainerStyle={styles.bodyContent}
-      >
         <TripDetailKpiCard
           revenueLabel={formatCurrency(totalRevenue, primaryCurrency)}
           spotsLabel={spotsLabel}
