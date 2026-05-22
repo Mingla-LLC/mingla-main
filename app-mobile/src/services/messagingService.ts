@@ -103,6 +103,7 @@ export interface DirectMessage {
   mentions?: Array<MentionEntry | string>;
   card_tags?: CardTagEntry[];
   reply_to_id?: string | null;
+  marketing_campaign_id?: string | null;
   created_at: string;
   updated_at?: string;
   deleted_at?: string | null;
@@ -244,6 +245,7 @@ export interface Conversation {
   session_id?: string | null;
   event_id?: string | null;
   linked_entity_type?: 'direct' | 'session' | 'trip' | 'event';
+  is_broadcast_only?: boolean;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -576,7 +578,7 @@ export class MessagingService {
           last_message:messages(
             id, conversation_id, sender_id, content, message_type,
             file_url, file_name, file_size, card_payload, reply_to_id,
-            created_at, updated_at, deleted_at,
+            marketing_campaign_id, created_at, updated_at, deleted_at,
             read_status:message_reads(user_id)
           )
         `)
@@ -657,6 +659,7 @@ export class MessagingService {
           session_id: (conv as any).session_id ?? null,
           event_id: (conv as any).event_id ?? null,
           linked_entity_type: (conv as any).linked_entity_type ?? undefined,
+          is_broadcast_only: Boolean((conv as any).is_broadcast_only),
           created_by: (conv as any).created_by,
           created_at: conv.created_at,
           updated_at: (conv as any).updated_at,
@@ -923,6 +926,7 @@ export class MessagingService {
         .from('conversations')
         .select(`
           id, type, name, event_id, linked_entity_type, created_by, created_at, updated_at, last_message_at,
+          is_broadcast_only,
           participants:conversation_participants(id, conversation_id, user_id, joined_at, last_read_at)
         `)
         .eq('event_id', eventId)
@@ -941,6 +945,7 @@ export class MessagingService {
           name: conv.name ?? null,
           event_id: conv.event_id ?? null,
           linked_entity_type: conv.linked_entity_type as 'direct' | 'session' | 'trip' | 'event' | undefined,
+          is_broadcast_only: Boolean((conv as any).is_broadcast_only),
           created_by: conv.created_by,
           created_at: conv.created_at,
           updated_at: conv.updated_at,

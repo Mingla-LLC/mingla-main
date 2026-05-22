@@ -48,6 +48,7 @@ import { useToast } from "./ToastManager";
 import { showMutationError } from "../utils/showMutationError";
 import { getDisplayName } from "../utils/getDisplayName";
 import { useTranslation } from 'react-i18next';
+import type { BusinessEventCard } from "../types/mergedDiscover";
 
 // Sub-components
 import { ChatListItem } from "./connections/ChatListItem";
@@ -72,6 +73,173 @@ import PairRequestModal from "./PairRequestModal";
 import IncomingPairRequestCard from "./IncomingPairRequestCard";
 import { usePairingPills, useIncomingPairRequests, useSendPairRequest, useCancelPairRequest, useCancelPairInvite, useAcceptPairRequest, useDeclinePairRequest, useUnpair } from "../hooks/usePairings";
 import type { PairRequest } from "../services/pairingService";
+
+const BUSINESS_BUYER_DOMAIN = "https://business.mingla.app";
+
+type GroupEventMeta = {
+  id: string;
+  title: string | null;
+  slug: string | null;
+  brandId: string | null;
+  brandName: string | null;
+  brandSlug: string | null;
+  brandAccountId: string | null;
+  coverMediaUrl: string | null;
+  publicCard: BusinessEventCard | null;
+};
+
+async function fetchAttendableEventIdsForUser(
+  eventIds: string[],
+  userId: string,
+): Promise<Set<string>> {
+  if (eventIds.length === 0) return new Set();
+
+  const { data, error } = await supabase
+    .from('orders')
+    .select('event_id')
+    .eq('buyer_user_id', userId)
+    .in('event_id', eventIds)
+    .in('payment_status', ['paid', 'partial_refund']);
+
+  if (error) throw error;
+  return new Set((data || []).map((order: any) => order.event_id).filter(Boolean));
+}
+
+function getThemeObject(value: unknown): Record<string, any> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, any>
+    : {};
+}
+
+function extractCoverHue(theme: unknown): number {
+  const raw = getThemeObject(theme).coverHue;
+  const hue = typeof raw === 'number' ? raw : Number(raw);
+  return Number.isFinite(hue) && hue >= 0 && hue < 360 ? hue : 25;
+}
+
+function extractBusinessEventFormat(theme: unknown, isOnline: boolean): BusinessEventCard['format'] {
+  const raw = getThemeObject(getThemeObject(theme).business_event).format;
+  if (raw === 'online') return 'online';
+  if (raw === 'hybrid') return 'hybrid';
+  return isOnline ? 'online' : 'in-person';
+}
+
+function extractVenueName(theme: unknown, locationText: string | null): string | null {
+  const raw = getThemeObject(getThemeObject(theme).business_event).venueName;
+  return typeof raw === 'string' && raw.trim().length > 0 ? raw.trim() : locationText;
+}
+
+function extractHideAddressUntilTicket(theme: unknown): boolean {
+  return getThemeObject(getThemeObject(theme).business_event).hideAddressUntilTicket === true;
+}
+
+function parseLocationGeo(value: unknown): { lat: number; lng: number } | null {
+  const geo = getThemeObject(value);
+  const lat = Number(geo.lat);
+  const lng = Number(geo.lng);
+  return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+}
+
+async function fetchGroupEventMetaByIds(eventIds: string[]): Promise<Map<string, GroupEventMeta>> {
+  if (eventIds.length === 0) return new Map();
+
+  const { data: events, error: eventsError } = await supabase
+    .from('business_public_events_view')
+    .select(`
+      id, brand_id, brand_slug, brand_name, brand_profile_photo_url,
+      title, description, slug, cover_media_url, cover_media_type,
+      master_start_at, master_end_at, master_timezone, timezone,
+      location_text, is_online, city, location_geo, public_theme, currency,
+      party_types, vibe_tags, music_genres
+    `)
+    .in('id', eventIds);
+
+  if (eventsError) throw eventsError;
+
+  const brandIds = Array.from(new Set((events || []).map((event: any) => event.brand_id).filter(Boolean)));
+  const { data: brands, error: brandsError } = brandIds.length > 0
+    ? await supabase
+        .from('brands')
+        .select('id, name, slug, account_id')
+        .in('id', brandIds)
+    : { data: [] as any[], error: null };
+
+  if (brandsError) throw brandsError;
+
+  const brandsById = new Map((brands || []).map((brand: any) => [brand.id, brand]));
+  return new Map(
+    (events || []).map((event: any) => {
+      const brand = event.brand_id ? brandsById.get(event.brand_id) : null;
+      return [
+        event.id,
+        {
+          id: event.id,
+          title: event.title ?? null,
+          slug: event.slug ?? null,
+          brandId: event.brand_id ?? null,
+          brandName: brand?.name ?? null,
+          brandSlug: brand?.slug ?? null,
+          brandAccountId: brand?.account_id ?? null,
+          coverMediaUrl: event.cover_media_url ?? null,
+          publicCard: {
+            eventId: event.id,
+            brandId: event.brand_id ?? '',
+            brandSlug: event.brand_slug ?? brand?.slug ?? '',
+            brandName: event.brand_name ?? brand?.name ?? 'Mingla',
+            brandProfilePhotoUrl: event.brand_profile_photo_url ?? null,
+            eventSlug: event.slug ?? '',
+            title: event.title ?? 'Event',
+            description: event.description ?? null,
+            coverMediaUrl: event.cover_media_url ?? null,
+            coverMediaType: event.cover_media_type ?? null,
+            coverHue: extractCoverHue(event.public_theme),
+            masterDateUtc: event.master_start_at ?? null,
+            masterEndAtUtc: event.master_end_at ?? null,
+            doorsOpenLocal: null,
+            endsAtLocal: null,
+            timezone: event.master_timezone ?? event.timezone ?? 'UTC',
+            venueName: extractVenueName(event.public_theme, event.location_text ?? null),
+            city: event.city ?? null,
+            address: event.location_text ?? null,
+            hideAddressUntilTicket: extractHideAddressUntilTicket(event.public_theme),
+            format: extractBusinessEventFormat(event.public_theme, Boolean(event.is_online)),
+            locationGeo: parseLocationGeo(event.location_geo),
+            partyTypes: Array.isArray(event.party_types) ? event.party_types : [],
+            vibeTags: Array.isArray(event.vibe_tags) ? event.vibe_tags : [],
+            musicGenres: Array.isArray(event.music_genres) ? event.music_genres : [],
+            priceMin: null,
+            priceMax: null,
+            currency: event.currency ?? 'GBP',
+            publicBuyerUrl: buildGroupEventPublicUrl(
+              {
+                id: event.id,
+                title: event.title ?? null,
+                slug: event.slug ?? null,
+                brandId: event.brand_id ?? null,
+                brandName: event.brand_name ?? brand?.name ?? null,
+                brandSlug: event.brand_slug ?? brand?.slug ?? null,
+                brandAccountId: brand?.account_id ?? null,
+                coverMediaUrl: event.cover_media_url ?? null,
+                publicCard: null,
+              },
+              'event',
+            ) ?? '',
+          },
+        },
+      ];
+    }),
+  );
+}
+
+function buildGroupEventPublicUrl(
+  meta: GroupEventMeta | null | undefined,
+  linkedEntityType: 'direct' | 'session' | 'trip' | 'event' | null | undefined,
+): string | null {
+  if (!meta?.brandSlug || !meta.slug) return null;
+  const routePrefix = linkedEntityType === 'trip' ? 't' : 'e';
+  return `${BUSINESS_BUYER_DOMAIN}/${routePrefix}/${meta.brandSlug}/${meta.slug}`;
+}
+
 interface ConnectionsPageProps {
   isTabVisible?: boolean;
   onShareSavedCard?: (friend: any, suppressNotification?: boolean) => void;
@@ -722,15 +890,21 @@ function ConnectionsPageRefactored({
       // missing; session_id -> collaboration_sessions.name is the canonical fallback.
       const allParticipantIds = new Set<string>();
       const groupSessionIds = new Set<string>();
+      const groupEventIds = new Set<string>();
       (rawConversations || []).forEach((conv) => {
         conv.participants.forEach((p) => allParticipantIds.add(p.user_id));
         const sessionId = (conv as { session_id?: string | null }).session_id;
         if (conv.type === 'group' && sessionId) {
           groupSessionIds.add(sessionId);
         }
+        const eventId = (conv as { event_id?: string | null }).event_id;
+        const linkedEntityType = (conv as { linked_entity_type?: string | null }).linked_entity_type;
+        if (conv.type === 'group' && eventId && (linkedEntityType === 'trip' || linkedEntityType === 'event')) {
+          groupEventIds.add(eventId);
+        }
       });
 
-      const [profilesResult, sessionsResult] = await Promise.all([
+      const [profilesResult, sessionsResult, eventMetaMap, attendingEventIds] = await Promise.all([
         allParticipantIds.size > 0
           ? supabase
               .from("profiles")
@@ -743,6 +917,14 @@ function ConnectionsPageRefactored({
               .select("id, name, created_by")
               .in("id", Array.from(groupSessionIds))
           : Promise.resolve({ data: [] as any[], error: null }),
+        fetchGroupEventMetaByIds(Array.from(groupEventIds)).catch((error) => {
+          console.warn('[ConnectionsPage] Failed to batch-resolve group chat event metadata:', error);
+          return new Map<string, GroupEventMeta>();
+        }),
+        fetchAttendableEventIdsForUser(Array.from(groupEventIds), userId).catch((error) => {
+          console.error('[ConnectionsPage] Failed to verify event/trip chat attendance:', error);
+          return new Set<string>();
+        }),
       ]);
 
       if (profilesResult.error) throw profilesResult.error;
@@ -763,7 +945,19 @@ function ConnectionsPageRefactored({
       // optional extra fields. ChatListItem's ChatListItemConversation type intersection
       // picks them up for the group-vs-direct render branch. The base useMessages
       // Conversation type stays unchanged (locked for ORCH-0900 scope).
-      const transformed: Conversation[] = (rawConversations || []).map((conv) => {
+      const visibleConversations = (rawConversations || []).filter((conv) => {
+        const eventId = (conv as { event_id?: string | null }).event_id ?? null;
+        const linkedEntityType = (conv as { linked_entity_type?: string | null }).linked_entity_type;
+        const isEventOrTripChat =
+          conv.type === 'group' &&
+          !!eventId &&
+          (linkedEntityType === 'trip' || linkedEntityType === 'event');
+
+        if (!isEventOrTripChat) return true;
+        return attendingEventIds.has(eventId);
+      });
+
+      const transformed: Conversation[] = visibleConversations.map((conv) => {
         const participants = conv.participants.map((p) => {
           const profile = profilesMap.get(p.user_id);
           return {
@@ -778,8 +972,19 @@ function ConnectionsPageRefactored({
         });
 
         const sessionId = (conv as { session_id?: string | null }).session_id ?? null;
+        const eventId = (conv as { event_id?: string | null }).event_id ?? null;
+        const linkedEntityType = (conv as { linked_entity_type?: 'direct' | 'session' | 'trip' | 'event' }).linked_entity_type;
         const sessionMeta = sessionId ? sessionMetaMap.get(sessionId) : null;
-        const conversationName = (conv as { name?: string | null }).name?.trim()
+        const eventMeta = eventId ? eventMetaMap.get(eventId) : null;
+        const eventPublicUrl = buildGroupEventPublicUrl(eventMeta, linkedEntityType);
+        const eventPublicCard = eventMeta?.publicCard
+          ? {
+              ...eventMeta.publicCard,
+              publicBuyerUrl: eventPublicUrl ?? eventMeta.publicCard.publicBuyerUrl,
+            }
+          : null;
+        const conversationName = eventMeta?.title?.trim()
+          || (conv as { name?: string | null }).name?.trim()
           || sessionMeta?.name?.trim()
           || null;
 
@@ -795,9 +1000,15 @@ function ConnectionsPageRefactored({
           type: conv.type,
           name: conversationName,
           session_id: sessionId,
-          event_id: (conv as any).event_id ?? null,
-          linked_entity_type: (conv as any).linked_entity_type ?? undefined,
+          event_id: eventId,
+          linked_entity_type: linkedEntityType ?? undefined,
           sessionCreatorId: sessionMeta?.created_by ?? null,
+          is_broadcast_only: Boolean((conv as any).is_broadcast_only),
+          eventBrandName: eventMeta?.brandName ?? null,
+          eventBrandAccountId: eventMeta?.brandAccountId ?? null,
+          eventCoverMediaUrl: eventMeta?.coverMediaUrl ?? null,
+          eventPublicUrl,
+          eventPublicCard,
         };
       });
 
@@ -1016,6 +1227,7 @@ function ConnectionsPageRefactored({
       cardPayload: msg.card_payload,  // ORCH-0667
       mentions: msg.mentions,
       cardTags: msg.card_tags,
+      marketingCampaignId: msg.marketing_campaign_id ?? null,
       isMe: msg.sender_id === userId,
       unread: !msg.is_read && msg.sender_id !== userId,
       isRead: msg.is_read ?? false,
@@ -1070,6 +1282,12 @@ function ConnectionsPageRefactored({
       event_id?: string | null;
       linked_entity_type?: 'direct' | 'session' | 'trip' | 'event';
       sessionCreatorId?: string | null;
+      eventBrandName?: string | null;
+      eventBrandAccountId?: string | null;
+      eventCoverMediaUrl?: string | null;
+      eventPublicUrl?: string | null;
+      eventPublicCard?: BusinessEventCard | null;
+      is_broadcast_only?: boolean;
     };
     const isGroupConversation = conversationMeta.type === 'group';
     const otherParticipant = conversation.participants.find((p) => p.id !== user.id);
@@ -1077,6 +1295,11 @@ function ConnectionsPageRefactored({
       ? conversationMeta.name?.trim() || ''
       : getDisplayName(otherParticipant);
     let sessionCreatorId = isGroupConversation ? conversationMeta.sessionCreatorId ?? null : null;
+    let eventBrandName = isGroupConversation ? conversationMeta.eventBrandName ?? null : null;
+    let eventBrandAccountId = isGroupConversation ? conversationMeta.eventBrandAccountId ?? null : null;
+    let eventCoverMediaUrl = isGroupConversation ? conversationMeta.eventCoverMediaUrl ?? null : null;
+    let eventPublicUrl = isGroupConversation ? conversationMeta.eventPublicUrl ?? null : null;
+    let eventPublicCard = isGroupConversation ? conversationMeta.eventPublicCard ?? null : null;
 
     if (isGroupConversation && (!rawName || !sessionCreatorId) && conversationMeta.session_id) {
       try {
@@ -1089,6 +1312,29 @@ function ConnectionsPageRefactored({
         sessionCreatorId = session?.created_by ?? sessionCreatorId;
       } catch (e) {
         console.warn('[ConnectionsPage] Failed to resolve group chat session name:', e);
+      }
+    }
+
+    if (
+      isGroupConversation &&
+      conversationMeta.event_id &&
+      (conversationMeta.linked_entity_type === 'trip' || conversationMeta.linked_entity_type === 'event')
+    ) {
+      try {
+        const eventMeta = (await fetchGroupEventMetaByIds([conversationMeta.event_id])).get(conversationMeta.event_id);
+        rawName = eventMeta?.title?.trim() || rawName;
+        eventBrandName = eventMeta?.brandName ?? eventBrandName;
+        eventBrandAccountId = eventMeta?.brandAccountId ?? eventBrandAccountId;
+        eventCoverMediaUrl = eventMeta?.coverMediaUrl ?? eventCoverMediaUrl;
+        eventPublicUrl = buildGroupEventPublicUrl(eventMeta, conversationMeta.linked_entity_type) ?? eventPublicUrl;
+        eventPublicCard = eventMeta?.publicCard
+          ? {
+              ...eventMeta.publicCard,
+              publicBuyerUrl: eventPublicUrl ?? eventMeta.publicCard.publicBuyerUrl,
+            }
+          : eventPublicCard;
+      } catch (e) {
+        console.warn('[ConnectionsPage] Failed to resolve group chat event metadata:', e);
       }
     }
 
@@ -1113,6 +1359,12 @@ function ConnectionsPageRefactored({
       eventId: conversationMeta.event_id ?? null,
       linkedEntityType: conversationMeta.linked_entity_type ?? null,
       sessionCreatorId,
+      eventBrandName,
+      eventBrandAccountId,
+      eventCoverMediaUrl,
+      eventPublicUrl,
+      eventPublicCard,
+      isBroadcastOnly: Boolean(conversationMeta.is_broadcast_only),
       isSessionAdmin: isGroupConversation ? sessionCreatorId === user.id : undefined,
       participantCount: isGroupConversation ? conversation.participants.length : undefined,
       participants: isGroupConversation
@@ -2022,6 +2274,7 @@ function ConnectionsPageRefactored({
       replyToId,
       mentions,
       cardTags,
+      marketingCampaignId: null,
     };
 
     setMessages((prev) => [...prev, optimisticMsg]);
@@ -2047,6 +2300,7 @@ function ConnectionsPageRefactored({
               file_size: fileSize,
               mentions,
               card_tags: cardTags,
+              marketing_campaign_id: null,
               created_at: now,
               sender_name: "Me",
               is_read: true,

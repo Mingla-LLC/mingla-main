@@ -55,6 +55,7 @@ interface ExpandedBusinessEventSheetProps {
   visible: boolean;
   data: BusinessEventCard;
   onClose: () => void;
+  bottomContentInset?: number;
 }
 
 // ORCH-0828 REWORK: canonical bottomSheet snapPoints from design tokens,
@@ -120,6 +121,7 @@ export const ExpandedBusinessEventSheet: React.FC<ExpandedBusinessEventSheetProp
   visible,
   data,
   onClose,
+  bottomContentInset = 32,
 }) => {
   const sheetRef = useRef<BottomSheet>(null);
   const user = useAppStore((s) => s.user);
@@ -362,7 +364,10 @@ export const ExpandedBusinessEventSheet: React.FC<ExpandedBusinessEventSheetProp
       >
         <BottomSheetScrollView
           style={styles.sheetScroll}
-          contentContainerStyle={styles.sheetScrollContent}
+          contentContainerStyle={[
+            styles.sheetScrollContent,
+            { paddingBottom: Math.max(32, bottomContentInset) },
+          ]}
         >
           <PublicEventPage
             event={publicEvent}
@@ -413,4 +418,3 @@ const styles = StyleSheet.create({
 });
 
 export default ExpandedBusinessEventSheet;
-

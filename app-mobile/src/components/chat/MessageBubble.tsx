@@ -22,6 +22,7 @@ interface MessageData {
   cardPayload?: CardPayload;  // ORCH-0667
   mentions?: Array<MentionEntry | string>;
   cardTags?: CardTagEntry[];
+  marketingCampaignId?: string | null;
   isMe: boolean;
   failed?: boolean;
   // ORCH-0898: set true when the upstream message has sender_id === null (e.g., ORCH-0899
