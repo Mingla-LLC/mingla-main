@@ -1215,7 +1215,7 @@ jobs:
         run: node .github/scripts/strict-grep/i-event-detail-cancel-no-navigation.mjs
 
   i-proposed-tr3-installment-pi-via-cron-owner:
-    name: "ORCH-0869 [Tr3]: installment PI creation owned by cron edge function"
+    name: "ORCH-0869/0914 [Tr3]: installment PI creation owned by shared helper"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -1224,6 +1224,17 @@ jobs:
           node-version: "20"
       - name: Run ORCH-0869 installment-PI-via-cron-owner gate
         run: node .github/scripts/strict-grep/i-proposed-tr3-installment-pi-via-cron-owner.mjs
+
+  i-proposed-manual-installment-action-via-shared-helper:
+    name: "ORCH-0914 [Trip Money]: manual installment actions route through shared PI helper"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0914 manual installment shared-helper gate
+        run: node .github/scripts/strict-grep/i-proposed-manual-installment-action-via-shared-helper.mjs
 
   i-proposed-tr3-installment-customer-durability:
     name: "ORCH-0873 [Tr3 Stage 2 UI]: Stripe Customer + saved PM not deletable while installments pending"

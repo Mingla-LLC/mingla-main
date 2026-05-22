@@ -2,9 +2,9 @@
 /**
  * I-PROPOSED-TR3-INSTALLMENT-PI-VIA-CRON-OWNER strict-grep gate.
  *
- * Enforces ORCH-0869 [Tr3 Installment Payments] invariant: installment
- * PaymentIntent creation may ONLY originate from
- * `supabase/functions/process-scheduled-installments/index.ts`. Any other
+ * Enforces ORCH-0869 [Tr3 Installment Payments] invariant as superseded by
+ * ORCH-0914: installment PaymentIntent creation may ONLY originate from
+ * `_shared/installments/createInstallmentPI.ts`. Any other
  * file that creates a Stripe PaymentIntent carrying metadata
  * `mingla_installment_id` is FORBIDDEN unless allowlisted.
  *
@@ -43,8 +43,9 @@ const OWNER_FILE = join(
   REPO_ROOT,
   "supabase",
   "functions",
-  "process-scheduled-installments",
-  "index.ts",
+  "_shared",
+  "installments",
+  "createInstallmentPI.ts",
 );
 
 const ALLOWLIST_TAG = "orch-strict-grep-allow tr3-installment-pi-via-cron-owner";
@@ -102,11 +103,11 @@ function checkFile(file) {
     violations += 1;
     const rel = relative(REPO_ROOT, file);
     console.error(
-      `✗ ${rel}:${i + 1} — installment PaymentIntent.create outside the owner file (process-scheduled-installments/index.ts)`,
+      `✗ ${rel}:${i + 1} — installment PaymentIntent.create outside the owner file (_shared/installments/createInstallmentPI.ts)`,
     );
     console.error(`    > ${lines[i].trim()}`);
     console.error(
-      `    fix: route through process-scheduled-installments (the documented single owner per I-PROPOSED-TR3-INSTALLMENT-PI-VIA-CRON-OWNER)`,
+      `    fix: route through _shared/installments/createInstallmentPI.ts (the documented single owner per I-PROPOSED-MANUAL-INSTALLMENT-ACTION-VIA-SHARED-HELPER)`,
     );
     console.error(
       `    OR add allowlist comment within 5 lines above: // ${ALLOWLIST_TAG} — <reason>`,

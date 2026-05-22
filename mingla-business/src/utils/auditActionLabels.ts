@@ -85,6 +85,11 @@ export const KNOWN_STATIC_SLUGS: readonly string[] = [
   "tr3.installment_pi_failed",
   "tr3.installment_collected",
   "tr3.installment_failed_webhook",
+  // ORCH-0914 [Trip Money tab redesign] — operator-initiated installment
+  // actions emitted by biz_manual_charge_installment +
+  // biz_send_installment_reminder RPCs.
+  "INSTALLMENT_CHARGED_MANUALLY",
+  "INSTALLMENT_REMINDER_SENT",
   // ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — cancel + auto-close
   // lifecycle audit actions emitted by cancel-trip-booking (per-cancel audit
   // row) and process-booking-deadlines cron (per auto-close batch).
@@ -278,6 +283,20 @@ export const resolveAuditActionLabel = (action: string): AuditActionLabel => {
         detail: "Stripe webhook reported installment PaymentIntent failure; retry cadence applied or at-risk flagged.",
         category: "orders",
         iconHint: "pound",
+      };
+    case "INSTALLMENT_CHARGED_MANUALLY":
+      return {
+        title: "Installment charged manually",
+        detail: "An organiser triggered an immediate installment charge attempt.",
+        category: "orders",
+        iconHint: "pound",
+      };
+    case "INSTALLMENT_REMINDER_SENT":
+      return {
+        title: "Installment reminder sent",
+        detail: "An organiser sent a manual reminder to the traveller.",
+        category: "orders",
+        iconHint: "ticket",
       };
     // ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — cancel + auto-close.
     case "trip_booking_cancelled":

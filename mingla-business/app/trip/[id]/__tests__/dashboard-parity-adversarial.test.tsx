@@ -261,10 +261,22 @@ describe("ORCH-0913 trip dashboard parity — ADVERSARIAL", () => {
   // render"; we check that back from them goes to trip dashboard root, not
   // deeper into the navigation stack or to event side) ---
 
-  test("T-A12 Travelers + Money routes back-button navigates to /trip/<id> (not /event/<id>, not router.back() into prior route)", () => {
-    expect(TRAVELERS_SRC).toMatch(/router\.push\(`\/trip\/\$\{eventId\}`/);
-    expect(TRAVELERS_SRC).not.toMatch(/router\.push\(`\/event/);
-    expect(MONEY_SRC).toMatch(/router\.push\(`\/trip\/\$\{eventId\}`/);
-    expect(MONEY_SRC).not.toMatch(/router\.push\(`\/event/);
+  // [TEST-MOD-APPROVED ORCH-0919] — original assertion encoded the buggy
+  // router.push(/trip/${eventId}) fallback as contract. ORCH-0919 replaced
+  // that fallback with a canGoBack-guarded router.back(); else router.replace
+  // pattern so the second back tap correctly pops out to the trips list
+  // instead of landing back on the sub-page. New assertion pins the fix
+  // shape: canGoBack guard present + router.back() called + router.replace
+  // fallback targets /trip/${eventId} (still not /event/${eventId}).
+  test("T-A12 Travelers + Money routes back-button uses canGoBack guard + router.back() + /trip/<id> replace fallback (post-ORCH-0919)", () => {
+    expect(TRAVELERS_SRC).toContain("router.canGoBack()");
+    expect(TRAVELERS_SRC).toContain("router.back()");
+    expect(TRAVELERS_SRC).toMatch(/router\.replace\(`\/trip\/\$\{eventId\}` as never\)/);
+    expect(TRAVELERS_SRC).not.toMatch(/router\.replace\(`\/event/);
+
+    expect(MONEY_SRC).toContain("router.canGoBack()");
+    expect(MONEY_SRC).toContain("router.back()");
+    expect(MONEY_SRC).toMatch(/router\.replace\(`\/trip\/\$\{eventId\}` as never\)/);
+    expect(MONEY_SRC).not.toMatch(/router\.replace\(`\/event/);
   });
 });

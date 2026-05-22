@@ -44,13 +44,13 @@ export interface InstallmentScheduleDisplaySchedule {
   depositCents: number;
   /** 3-letter ISO 4217 currency code from the trip. */
   currency: string;
-  installments: Array<{
+  installments: {
     ordinal: number;
     pct: number;
     amountCents: number;
     /** ISO 8601 UTC. */
     dueAt: string;
-  }>;
+  }[];
 }
 
 export interface InstallmentScheduleDisplayProps {
@@ -59,8 +59,9 @@ export interface InstallmentScheduleDisplayProps {
    * "buyer" renders the buyer-facing layout WITH the reassurance copy.
    * "planner" renders the same layout WITHOUT the reassurance copy
    * (planner already knows what their buyers will pay).
+   * "cell" renders a compact one-line summary for dense planner tables.
    */
-  variant: "buyer" | "planner";
+  variant: "buyer" | "planner" | "cell";
   /**
    * ORCH-0882 — when true, the rendered dates are projections from a
    * `new Date()` anchor (pre-purchase contexts: public trip page, qty
@@ -126,6 +127,19 @@ export const InstallmentScheduleDisplay: React.FC<
   }, [schedule]);
 
   if (rows === null || schedule === null) return null;
+
+  if (variant === "cell") {
+    const amounts = rows.installments.map((inst) => inst.amount).join(" / ");
+    return (
+      <Text
+        accessibilityRole="text"
+        accessibilityLabel={`Payment plan: ${rows.installments.length} installments, ${amounts}`}
+        style={styles.cellText}
+      >
+        {rows.installments.length} installments: {amounts}
+      </Text>
+    );
+  }
 
   return (
     <View
@@ -216,6 +230,12 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: "700",
     textAlign: "right",
+  },
+  cellText: {
+    color: textTokens.primary,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "600",
   },
   reassurance: {
     color: textTokens.secondary,
