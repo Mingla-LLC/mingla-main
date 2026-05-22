@@ -124,37 +124,55 @@ export async function setBroadcastOnly(
   conversationId: string,
   isBroadcastOnly: boolean,
 ): Promise<{ error: string | null }> {
-  const { error } = await supabase
+  // I-PROPOSED-I: chain .select("id") so RLS-denied updates surface as 0-row, not silent success.
+  const { data, error } = await supabase
     .from("conversations")
     .update({
       is_broadcast_only: isBroadcastOnly,
       updated_at: new Date().toISOString(),
     })
-    .eq("id", conversationId);
-  return { error: error?.message ?? null };
+    .eq("id", conversationId)
+    .select("id");
+  if (error) return { error: error.message };
+  if (!data || data.length === 0) {
+    return { error: "Not allowed to toggle broadcast-only on this conversation." };
+  }
+  return { error: null };
 }
 
 export async function removeParticipant(
   conversationId: string,
   userId: string,
 ): Promise<{ error: string | null }> {
-  const { error } = await supabase
+  // I-PROPOSED-I: chain .select("user_id") so RLS-denied deletes surface as 0-row, not silent success.
+  const { data, error } = await supabase
     .from("conversation_participants")
     .delete()
     .eq("conversation_id", conversationId)
-    .eq("user_id", userId);
-  return { error: error?.message ?? null };
+    .eq("user_id", userId)
+    .select("user_id");
+  if (error) return { error: error.message };
+  if (!data || data.length === 0) {
+    return { error: "Not allowed to remove this participant or participant already removed." };
+  }
+  return { error: null };
 }
 
 export async function deleteMessage(
   messageId: string,
 ): Promise<{ error: string | null }> {
-  const { error } = await supabase
+  // I-PROPOSED-I: chain .select("id") so RLS-denied soft-deletes surface as 0-row, not silent success.
+  const { data, error } = await supabase
     .from("messages")
     .update({
       deleted_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })
-    .eq("id", messageId);
-  return { error: error?.message ?? null };
+    .eq("id", messageId)
+    .select("id");
+  if (error) return { error: error.message };
+  if (!data || data.length === 0) {
+    return { error: "Not allowed to delete this message or message already deleted." };
+  }
+  return { error: null };
 }
