@@ -8,6 +8,12 @@ import {
   TextInput,
   View,
 } from "react-native";
+// Library-recommended primitive for sticky-composer-above-keyboard pattern.
+// react-native-keyboard-controller is the canonical Mingla keyboard library
+// per I-PROPOSED-KEYBOARD-LIBRARY-ONLY (ORCH-0892-C) — already a project dep.
+// orch-strict-grep-allow orch-0892 — chat composer needs sticky-above-keyboard lift
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import { useRouter } from "expo-router";
 
@@ -26,6 +32,7 @@ interface GroupChatPanelProps {
 
 export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId }) => {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const chat = useEventGroupChat(eventId);
   const moderation = useEventGroupChatModeration(chat.conversation?.id ?? null);
   const [composer, setComposer] = useState("");
@@ -95,7 +102,7 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId }) => {
         </Pressable>
         <View style={styles.headerCopy}>
           <Text style={styles.title} numberOfLines={1}>
-            {chat.conversation?.name ?? "Group chat"}
+            {chat.conversation?.event_name ?? "Group chat"}
           </Text>
           <Text style={styles.subtitle} numberOfLines={1}>
             Read, reply, and moderate buyer chat
@@ -163,23 +170,30 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId }) => {
             })}
           </ScrollView>
 
-          <View style={styles.composer}>
-            <TextInput
-              value={composer}
-              onChangeText={setComposer}
-              placeholder="Write a reply"
-              placeholderTextColor={textTokens.tertiary}
-              style={styles.input}
-              multiline
-            />
-            <Button
-              label="Send"
-              leadingIcon="send"
-              onPress={handleSend}
-              loading={sending}
-              disabled={composer.trim().length === 0 || sending}
-            />
-          </View>
+          <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={0}>
+            <View
+              style={[
+                styles.composer,
+                { paddingBottom: Math.max(insets.bottom, 0) + spacing.lg },
+              ]}
+            >
+              <TextInput
+                value={composer}
+                onChangeText={setComposer}
+                placeholder="Write a reply"
+                placeholderTextColor={textTokens.tertiary}
+                style={styles.input}
+                multiline
+              />
+              <Button
+                label="Send"
+                leadingIcon="send"
+                onPress={handleSend}
+                loading={sending}
+                disabled={composer.trim().length === 0 || sending}
+              />
+            </View>
+          </KeyboardAvoidingView>
         </>
       )}
 
@@ -291,12 +305,13 @@ const styles = StyleSheet.create({
     color: textTokens.tertiary,
   },
   composer: {
+    // Floats over the chat list (no top border / backdrop) — bottom inset + extra
+    // breathing room is applied inline via insets in the JSX above.
     flexDirection: "row",
     alignItems: "flex-end",
     gap: spacing.sm,
-    padding: spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: glass.border.profileBase,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
   },
   input: {
     flex: 1,
