@@ -39,8 +39,12 @@ const HERO_PILL_SRC = readFileSync(
   "utf8",
 );
 
+// ORCH-0913-A: ScrollView moved up to wrap hero + action grid (full-page
+// scroll parity with event dashboard). The actionGrid block is now followed
+// directly by the KPI strip (no intervening <ScrollView>). Terminator marker
+// updated accordingly.
 const actionGrid = DASHBOARD_SRC.match(
-  /<View style=\{styles\.actionGrid\}>([\s\S]*?)<\/View>\s*\n\s*<ScrollView/,
+  /<View style=\{styles\.actionGrid\}>([\s\S]*?)<\/View>\s*\n\s*<TripDetailKpiCard/,
 )?.[1] ?? "";
 
 const actionTileLabels = Array.from(
@@ -78,8 +82,12 @@ describe("ORCH-0913 trip dashboard parity", () => {
   });
 
   test("T-06 KPI strip renders directly beneath action grid", () => {
+    // ORCH-0913-A: ScrollView now wraps hero + action grid + KPI + sections,
+    // so the action grid's closing </View> is followed directly by
+    // <TripDetailKpiCard> with no intervening <ScrollView>. Assertion still
+    // pins KPI immediately after grid and PRICING TIERS after KPI.
     expect(DASHBOARD_SRC).toMatch(
-      /<\/View>\s*<ScrollView[\s\S]*?<TripDetailKpiCard[\s\S]*?<Text style=\{styles\.sectionLabel\}>PRICING TIERS<\/Text>/,
+      /<\/View>\s*<TripDetailKpiCard[\s\S]*?<Text style=\{styles\.sectionLabel\}>PRICING TIERS<\/Text>/,
     );
   });
 
