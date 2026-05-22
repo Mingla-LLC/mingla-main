@@ -507,6 +507,16 @@ function checkNoNewBackendFiles() {
   const CONVERSATION_RLS_RECURSION_HOTFIX_ALLOWLIST = [
     "supabase/migrations/20260704000000_hotfix_conversation_rls_recursion.sql",
   ];
+  // ORCH-0910 [Chat-mounted card expanded sheet parity — single + intent,
+  // bubble + sheet] PR #165 (2026-05-22). C7 is scoped to ORCH-0863 marketing;
+  // this backend touch is the ORCH-0910 data-only backfill migration that
+  // synthesizes top-level image + cardType='curated' on legacy curated rows
+  // in messages.card_payload and board_saved_cards.card_data. Already applied
+  // to remote 2026-05-22 (1+1 rows healed). Allow exactly this filename so the
+  // marketing no-backend-files guard does not block the unrelated chat parity fix.
+  const ORCH_0910_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260722000000_orch_0910_chat_intent_card_backfill.sql",
+  ];
   const ALLOWLIST = [
     ...ORCH_0859_BUNDLED_ALLOWLIST,
     ...ORCH_0869_BACKEND_ALLOWLIST,
@@ -528,6 +538,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_0909_0906_BACKEND_ALLOWLIST,
     ...ORCH_0897_BACKEND_ALLOWLIST,
     ...CONVERSATION_RLS_RECURSION_HOTFIX_ALLOWLIST,
+    ...ORCH_0910_BACKEND_ALLOWLIST,
   ];
   const forbidden = changed.filter(
     (p) =>
