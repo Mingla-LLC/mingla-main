@@ -3,12 +3,12 @@ import {
   ActivityIndicator,
   Alert,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
+import { ScrollView } from "../../wrappers/SmartScrollView";
 import { useRouter } from "expo-router";
 
 import { accent, glass, radius, spacing, text as textTokens } from "../../constants/designSystem";
