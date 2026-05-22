@@ -36,28 +36,49 @@ const check = (name, pass, detail) => {
   checks.push({ name, pass, detail });
 };
 
-// ─── T-B0: LogBox import present in app/_layout.tsx ──────────────────────
+// ─── T-B0: LogBox import present in the side-effect module ──────────────
+//
+// ORCH-0896 [Stripe forwardRef RedBox under React 19.1] superseded the
+// original ORCH-0835 [bundled Discover/LogBox/Stripe card-only fix] location:
+// LogBox.ignoreLogs moved from app/_layout.tsx (which fired AFTER the Stripe
+// import due to ES module hoisting) to a side-effect module at
+// src/diagnostics/silenceStripeForwardRef.ts whose top-level statement runs
+// at the importing file's import position — armed BEFORE the Stripe import.
+// See: app-mobile/scripts/ci/orch-0896-regression-check.mjs for the
+// dedicated import-order check (T-S02).
 
 const layout = readMaybe(path.join(root, "app/_layout.tsx"));
+const sideEffect = readMaybe(
+  path.join(root, "src/diagnostics/silenceStripeForwardRef.ts"),
+);
 
 check(
-  "T-B0 app/_layout.tsx imports LogBox from react-native",
-  layout !== null &&
+  "T-B0 silenceStripeForwardRef.ts imports LogBox from react-native (post-ORCH-0896 location)",
+  sideEffect !== null &&
     /import\s+\{[^}]*\bLogBox\b[^}]*\}\s+from\s+["']react-native["']/.test(
-      layout,
+      sideEffect,
     ),
-  "app/_layout.tsx MUST import LogBox from react-native to enable the warning filter for the Stripe RN forwardRef defect.",
+  "src/diagnostics/silenceStripeForwardRef.ts MUST import LogBox from react-native — the canonical post-ORCH-0896 location for the Stripe forwardRef filter.",
 );
 
 // ─── T-B1: LogBox.ignoreLogs called with forwardRef regex ────────────────
 
 check(
-  "T-B1 app/_layout.tsx calls LogBox.ignoreLogs with the forwardRef regex pattern",
-  layout !== null &&
+  "T-B1 silenceStripeForwardRef.ts calls LogBox.ignoreLogs with the forwardRef regex pattern",
+  sideEffect !== null &&
     /LogBox\.ignoreLogs\(\s*\[[\s\S]{0,200}?\/forwardRef render functions accept exactly two parameters\//.test(
-      layout,
+      sideEffect,
     ),
-  "app/_layout.tsx MUST register the regex `/forwardRef render functions accept exactly two parameters/` in LogBox.ignoreLogs so the Stripe RN 0.65.1 PaymentMethodMessagingElement warning stops cluttering Metro logs.",
+  "src/diagnostics/silenceStripeForwardRef.ts MUST register the regex `/forwardRef render functions accept exactly two parameters/` in LogBox.ignoreLogs so the Stripe RN 0.65.1 PaymentMethodMessagingElement warning stops cluttering Metro logs.",
+);
+
+// ─── T-B2 (ORCH-0896): _layout.tsx imports the side-effect module ────────
+
+check(
+  "T-B2 app/_layout.tsx imports the silenceStripeForwardRef side-effect module (ORCH-0896 wiring)",
+  layout !== null &&
+    /import\s+["']\.\.\/src\/diagnostics\/silenceStripeForwardRef["']/.test(layout),
+  "Without this import the side-effect module never evaluates and the filter never registers. Side-effect-only modules MUST be imported (no named imports needed).",
 );
 
 // ─── Report ────────────────────────────────────────────────────────────────

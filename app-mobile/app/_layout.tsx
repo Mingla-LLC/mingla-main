@@ -1,24 +1,19 @@
 import '../src/i18n'  // Must be first — initializes i18next before any component renders
+// ORCH-0896 [Stripe forwardRef RedBox under React 19.1]: this side-effect file
+// MUST import BEFORE @mingla/payments-native (and any other module that pulls
+// @stripe/stripe-react-native). ES module imports hoist — the previous
+// `LogBox.ignoreLogs([...])` at this file's top level (post-imports) fired
+// AFTER the Stripe module had already emitted its forwardRef error, so the
+// dev-menu Console Error overlay still surfaced on every launch. Moving the
+// filter into a side-effect file imported at the FIRST import position arms
+// the filter before the Stripe import evaluates.
+// Originally tracked as DISC-QA-0892-A-RETEST-2-2 from ORCH-0892-A close.
+// See app-mobile/src/diagnostics/silenceStripeForwardRef.ts for full rationale.
+import '../src/diagnostics/silenceStripeForwardRef'
 import { Stack } from "expo-router";
 import * as Sentry from '@sentry/react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { LogBox } from "react-native";
 import { StripeNativeProvider } from "@mingla/payments-native";
-
-// ORCH-0836: silence the Stripe RN 0.65.1 forwardRef warning emitted at module
-// load by PaymentMethodMessagingElement.js — that file uses
-// `forwardRef(function(_ref){...})` (one parameter) which React 19.1.0's
-// stricter dev-mode arity check rejects. The component is NEVER rendered in
-// Mingla code (verified by grep across packages/, app-mobile/src/,
-// app-mobile/app/). The warning is informational noise that crowds out real
-// diagnostic logs during development. This filter is third-party-warning
-// specific and does NOT mask Mingla-side errors (the regex is anchored to
-// the exact Stripe message). Remove once Stripe ships 0.66+ with the
-// malformed forwardRef call fixed.
-// See INVESTIGATION_ORCH-0836_STRIPE_FORWARDREF_REACT19_INCOMPAT.md.
-LogBox.ignoreLogs([
-  /forwardRef render functions accept exactly two parameters/,
-]);
 
 // ORCH-0679 Wave 2B-2: SINGLE source of truth for Sentry init.
 // I-SENTRY-SINGLE-INIT — duplicate Sentry.init in app/index.tsx was deleted as
