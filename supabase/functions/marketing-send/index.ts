@@ -341,6 +341,7 @@ async function sendEmail(
   // 3. Per-recipient send loop.
   const subject = campaign.channel_payload.subject ?? "";
   const bodyHtml = campaign.channel_payload.body_html ?? "";
+  const bodyText = campaign.channel_payload.body_text ?? "";
   let previewSkipped = 0;
   let sent = 0;
 
@@ -445,7 +446,109 @@ async function sendEmail(
     }
   }
 
+  try {
+    await writeBlastIntoEventChat(supabase, campaign, audience, {
+      subject,
+      bodyHtml,
+      bodyText,
+    });
+  } catch (err) {
+    console.error(
+      `[ORCH-0897] marketing-send chat fan-out threw for campaign=${campaign.id}: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+
   return { recipients: sent + previewSkipped, preview_skipped: previewSkipped };
+}
+
+async function writeBlastIntoEventChat(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  campaign: CampaignRow,
+  audience: AudienceRow,
+  contentInput: { subject: string; bodyHtml: string; bodyText: string },
+): Promise<void> {
+  if (audience.query_definition.kind !== "event_buyers") return;
+
+  const eventId = audience.query_definition.event_id;
+  const { data: conversation, error: conversationError } = await supabase
+    .from("conversations")
+    .select("id")
+    .eq("event_id", eventId)
+    .in("linked_entity_type", ["trip", "event"])
+    .maybeSingle();
+
+  if (conversationError) {
+    console.warn(
+      `[ORCH-0897] marketing-send: conversation lookup failed for event_id=${eventId}: ${conversationError.message}`,
+    );
+    return;
+  }
+  if (conversation === null) {
+    console.warn(
+      `[ORCH-0897] marketing-send: no group chat for event_id=${eventId}; skipping chat fan-out`,
+    );
+    return;
+  }
+
+  const content = buildBlastChatContent(campaign.name, contentInput);
+  if (content.trim().length === 0) {
+    console.warn(
+      `[ORCH-0897] marketing-send: empty campaign body for campaign=${campaign.id}; skipping chat fan-out`,
+    );
+    return;
+  }
+
+  const { error: messageError } = await supabase
+    .from("messages")
+    .insert({
+      conversation_id: conversation.id,
+      sender_id: campaign.account_id,
+      content,
+      message_type: "text",
+      marketing_campaign_id: campaign.id,
+    });
+
+  if (messageError) {
+    const isDuplicate =
+      messageError.code === "23505" ||
+      messageError.message?.includes("messages_unique_blast_per_conversation");
+    if (!isDuplicate) {
+      console.error(
+        `[ORCH-0897] marketing-send chat fan-out failed campaign=${campaign.id}: ${messageError.message}`,
+      );
+    }
+  }
+}
+
+function buildBlastChatContent(
+  campaignName: string,
+  input: { subject: string; bodyHtml: string; bodyText: string },
+): string {
+  const body = input.bodyText.trim().length > 0
+    ? input.bodyText
+    : stripHtml(input.bodyHtml);
+  const title = input.subject.trim().length > 0 ? input.subject : campaignName;
+  return [`Announcement: ${title}`, body.trim()].filter(Boolean).join("\n\n");
+}
+
+function stripHtml(html: string): string {
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/\s+\n/g, "\n")
+    .replace(/\n\s+/g, "\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
 }
 
 function buildVariables(

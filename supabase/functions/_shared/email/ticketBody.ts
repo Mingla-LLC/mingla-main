@@ -138,6 +138,19 @@ function renderCalendarSection(input: TicketBodyInput): string {
   return renderCalendarBlockHtml(links);
 }
 
+function renderDownloadAppCta(input: TicketBodyInput): string {
+  const orderId =
+    (input.order as TicketBodyInput["order"] & { id?: string }).id ??
+      input.order.shortId;
+  return `<div style="margin-top:32px;padding:24px;background:#FFF5EC;border-radius:12px;border:1px solid #FFD9B8;text-align:center;">
+    <p style="margin:0;font-size:15px;color:#6B5A47;">Join your event chat in the Mingla app</p>
+    <a href="https://usemingla.com/orders/${escapeHtml(orderId)}/chat"
+       style="display:inline-block;margin-top:12px;padding:12px 24px;background:${BRAND_ORANGE};color:white;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px;">
+      Open in Mingla
+    </a>
+  </div>`;
+}
+
 export function renderTicketBody(input: TicketBodyInput): {
   html: string;
   text: string;
@@ -183,7 +196,8 @@ export function renderTicketBody(input: TicketBodyInput): {
     ${renderTicketBlock(input.order, copy.attachmentBadge)}
     ${renderLineItems(input.order)}
     ${orderShortLineHtml}
-    ${renderCalendarSection(input)}`;
+    ${renderCalendarSection(input)}
+    ${renderDownloadAppCta(input)}`;
 
   const totalText = input.order.totalCents > 0
     ? formatMoneyFromCents(input.order.totalCents, input.order.currency)
@@ -204,6 +218,7 @@ export function renderTicketBody(input: TicketBodyInput): {
     `Total: ${totalText}`,
     "",
     `Order #${input.order.shortId}`,
+    `Join your event chat in the Mingla app: https://usemingla.com/orders/${(input.order as TicketBodyInput["order"] & { id?: string }).id ?? input.order.shortId}/chat`,
     "",
     "Your tickets are attached as a PDF — each one has a unique QR code for entry.",
   ].filter((line) => line !== null && line !== undefined);

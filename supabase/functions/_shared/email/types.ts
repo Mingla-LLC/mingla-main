@@ -32,6 +32,7 @@ export interface TicketBodyInput {
     profilePhotoUrl: string | null;
   };
   order: {
+    id: string;
     shortId: string;
     totalCents: number;
     currency: string;

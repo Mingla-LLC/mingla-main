@@ -7,6 +7,7 @@ import {
   ScrollView,
   ActivityIndicator,
   Image,
+  Linking,
   StyleSheet,
   Alert,
 } from 'react-native'
@@ -16,6 +17,7 @@ import { useTranslation } from 'react-i18next'
 import { Icon } from '../ui/Icon'
 
 import { useSessionManagement, SessionParticipantInput } from '../../hooks/useSessionManagement'
+import { usePendingTripChatClaims } from '../../hooks/usePendingTripChatClaims'
 import { AddedFriend, CreatedSession } from '../../types/onboarding'
 import { SessionInvite } from '../../types'
 import { supabase } from '../../services/supabase'
@@ -71,6 +73,7 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
   const [pendingCollabInvites, setPendingCollabInvites] = useState<SessionInvite[]>([])
   const [loadingInvites, setLoadingInvites] = useState(false)
   const [processingInviteId, setProcessingInviteId] = useState<string | null>(null)
+  const [processingClaimId, setProcessingClaimId] = useState<string | null>(null)
 
   // Session management
   const {
@@ -81,6 +84,11 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
     pendingInvites,
     loading: sessionsLoading,
   } = useSessionManagement()
+  const {
+    claims: pendingTripChatClaims,
+    loading: loadingTripChatClaims,
+    claim: claimPendingTripChats,
+  } = usePendingTripChatClaims()
 
   // Load pending collaboration invites on mount
   useEffect(() => {
@@ -296,6 +304,33 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
       console.error('Error declining all invites:', err)
     }
   }, [pendingCollabInvites, declineInvite])
+
+  const handleClaimTripChat = useCallback(
+    async (eventId: string) => {
+      if (processingClaimId) return
+      setProcessingClaimId(eventId)
+      try {
+        const result = await claimPendingTripChats()
+        const conversation = result.conversations.find((item) => item.event_id === eventId)
+          ?? result.conversations[0]
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+        onActionTaken()
+        if (conversation) {
+          Linking.openURL(
+            `mingla://chat/${conversation.conversation_id}?type=group&eventId=${conversation.event_id}`,
+          ).catch((err) => {
+            console.warn('Error opening claimed trip chat:', err)
+          })
+        }
+      } catch (err) {
+        console.error('Error claiming trip chat:', err)
+        Alert.alert(t('common:error'), err instanceof Error ? err.message : 'Could not join this chat')
+      } finally {
+        setProcessingClaimId(null)
+      }
+    },
+    [claimPendingTripChats, onActionTaken, processingClaimId, t],
+  )
 
   const hasSelectedFriends = selectedFriendKeys.size > 0
   const canCreateSession = hasSelectedFriends && sessionName.trim().length > 0
@@ -529,6 +564,49 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
         </View>
       )}
 
+      {(loadingTripChatClaims || pendingTripChatClaims.length > 0) && (
+        <View style={styles.tripClaimsSection}>
+          <Text style={styles.sectionLabel}>Your trip and event chats</Text>
+          {loadingTripChatClaims ? (
+            <View style={styles.loadingSection}>
+              <ActivityIndicator size="small" color={colors.primary[500]} />
+              <Text style={styles.loadingText}>Loading chats…</Text>
+            </View>
+          ) : null}
+          {pendingTripChatClaims.map((claim) => (
+            <View key={claim.event_id} style={styles.claimCard}>
+              <View style={styles.inviteCardHeader}>
+                <View style={styles.inviteIconContainer}>
+                  <Icon name="chatbubble-outline" size={20} color={colors.primary[500]} />
+                </View>
+                <View style={styles.inviteCardInfo}>
+                  <Text style={styles.inviteCardName} numberOfLines={1}>
+                    {claim.event_name}
+                  </Text>
+                  <Text style={styles.inviteCardFrom} numberOfLines={1}>
+                    Join the buyer group chat
+                  </Text>
+                </View>
+              </View>
+              <Pressable
+                style={[
+                  styles.inviteJoinButton,
+                  processingClaimId === claim.event_id && styles.inviteButtonProcessing,
+                ]}
+                onPress={() => handleClaimTripChat(claim.event_id)}
+                disabled={!!processingClaimId}
+              >
+                {processingClaimId === claim.event_id ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.inviteJoinButtonText}>Join chat</Text>
+                )}
+              </Pressable>
+            </View>
+          ))}
+        </View>
+      )}
+
       {/* Empty state */}
       {addedFriends.length === 0 && (
         <View style={styles.emptyState}>
@@ -726,6 +804,9 @@ const styles = StyleSheet.create({
   invitesSection: {
     marginBottom: spacing.lg,
   },
+  tripClaimsSection: {
+    marginBottom: spacing.lg,
+  },
   bulkActions: {
     flexDirection: 'row',
     gap: spacing.sm,
@@ -750,6 +831,15 @@ const styles = StyleSheet.create({
   },
   inviteCard: {
     backgroundColor: colors.primary[50],
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.primary[200],
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    ...shadows.sm,
+  },
+  claimCard: {
+    backgroundColor: colors.background.primary,
     borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: colors.primary[200],

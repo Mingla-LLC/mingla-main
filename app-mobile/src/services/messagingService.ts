@@ -242,7 +242,8 @@ export interface Conversation {
   type: 'direct' | 'group';
   name?: string | null;
   session_id?: string | null;
-  linked_entity_type?: 'direct' | 'session' | 'trip';
+  event_id?: string | null;
+  linked_entity_type?: 'direct' | 'session' | 'trip' | 'event';
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -654,6 +655,7 @@ export class MessagingService {
           type: (conv as any).type,
           name: (conv as any).name ?? null,
           session_id: (conv as any).session_id ?? null,
+          event_id: (conv as any).event_id ?? null,
           linked_entity_type: (conv as any).linked_entity_type ?? undefined,
           created_by: (conv as any).created_by,
           created_at: conv.created_at,
@@ -810,8 +812,11 @@ export class MessagingService {
         .eq('id', conversationId)
         .maybeSingle();
 
-      if (conv?.linked_entity_type === 'trip' && conv?.is_broadcast_only === true) {
-        return "Only the planner can post in this trip's chat";
+      if (
+        (conv?.linked_entity_type === 'trip' || conv?.linked_entity_type === 'event') &&
+        conv?.is_broadcast_only === true
+      ) {
+        return "Only the planner can post in this chat";
       }
     } catch {
       // Fall through to default — RLS may block the read too; either way we surface a sensible toast.
@@ -891,7 +896,7 @@ export class MessagingService {
           type: conv.type as 'direct' | 'group',
           name: conv.name ?? null,
           session_id: conv.session_id ?? null,
-          linked_entity_type: conv.linked_entity_type as 'direct' | 'session' | 'trip' | undefined,
+          linked_entity_type: conv.linked_entity_type as 'direct' | 'session' | 'trip' | 'event' | undefined,
           created_by: conv.created_by,
           created_at: conv.created_at,
           updated_at: conv.updated_at,
@@ -903,6 +908,93 @@ export class MessagingService {
     } catch (error: any) {
       console.error('Error getting group conversation for session:', error);
       return { conversation: null, error: error.message };
+    }
+  }
+
+  /**
+   * ORCH-0897: returns the group conversation linked to a trip/event. The
+   * database owns creation; this method is lookup-only.
+   */
+  async getOrCreateGroupConversationForEvent(
+    eventId: string,
+  ): Promise<{ conversation: Conversation | null; error: string | null }> {
+    try {
+      const { data: conv, error } = await supabase
+        .from('conversations')
+        .select(`
+          id, type, name, event_id, linked_entity_type, created_by, created_at, updated_at, last_message_at,
+          participants:conversation_participants(id, conversation_id, user_id, joined_at, last_read_at)
+        `)
+        .eq('event_id', eventId)
+        .in('linked_entity_type', ['trip', 'event'])
+        .maybeSingle();
+
+      if (error) throw error;
+      if (!conv) {
+        return { conversation: null, error: 'Group conversation not found for this event' };
+      }
+
+      return {
+        conversation: {
+          id: conv.id,
+          type: conv.type as 'direct' | 'group',
+          name: conv.name ?? null,
+          event_id: conv.event_id ?? null,
+          linked_entity_type: conv.linked_entity_type as 'direct' | 'session' | 'trip' | 'event' | undefined,
+          created_by: conv.created_by,
+          created_at: conv.created_at,
+          updated_at: conv.updated_at,
+          last_message_at: conv.last_message_at ?? undefined,
+          participants: (conv.participants as any[]) || [],
+        },
+        error: null,
+      };
+    } catch (error: any) {
+      console.error('Error getting group conversation for event:', error);
+      return { conversation: null, error: error.message };
+    }
+  }
+
+  async fetchPendingChatClaims(): Promise<{
+    claims: Array<{ event_id: string; event_name: string; cover_url?: string | null }>;
+    error: string | null;
+  }> {
+    try {
+      const { data, error } = await supabase.functions.invoke('claim-pending-trip-chat-participation', {
+        body: { preview: true },
+      });
+      if (error) throw error;
+      const claims = Array.isArray((data as any)?.claims) ? (data as any).claims : [];
+      return { claims, error: null };
+    } catch (error: any) {
+      console.error('Error fetching pending trip chat claims:', error);
+      return { claims: [], error: error.message ?? 'Failed to load pending chat claims' };
+    }
+  }
+
+  async claimPendingTripChats(claimToken?: string): Promise<{
+    claimed: number;
+    conversations: Array<{ conversation_id: string; event_id: string; event_name: string }>;
+    error: string | null;
+  }> {
+    try {
+      const { data, error } = await supabase.functions.invoke('claim-pending-trip-chat-participation', {
+        body: claimToken ? { claim_token: claimToken } : {},
+      });
+      if (error) throw error;
+      const conversations = Array.isArray((data as any)?.claimed) ? (data as any).claimed : [];
+      return {
+        claimed: Number((data as any)?.count ?? conversations.length),
+        conversations,
+        error: null,
+      };
+    } catch (error: any) {
+      console.error('Error claiming pending trip chats:', error);
+      return {
+        claimed: 0,
+        conversations: [],
+        error: error.message ?? 'Failed to join trip chats',
+      };
     }
   }
 

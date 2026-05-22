@@ -721,6 +721,9 @@ export default function SwipeableCards({
   // out removedCards locally. effectiveUIState accounts for that local filtering.
   const effectiveUIState: DeckUIState = React.useMemo(() => {
     if (deckUIState.type === 'LOADED' && availableRecommendations.length === 0) {
+      if (isBoardSession && !collabDeckDeadEndReason) {
+        return { type: 'INITIAL_LOADING' };
+      }
       // ORCH-0469 / ORCH-0472: If context reports LOADED, recommendations.length > 0
       // (see RecommendationsContext.tsx:1218). When every served card is in
       // removedCards, the user has swiped through everything they were served — that
@@ -734,7 +737,7 @@ export default function SwipeableCards({
       return { type: 'EXHAUSTED' };
     }
     return deckUIState;
-  }, [deckUIState, availableRecommendations.length]);
+  }, [deckUIState, availableRecommendations.length, isBoardSession, collabDeckDeadEndReason]);
 
   // ── Prefetch next 2 card images for instant swipe transitions ──
   // When the current card changes, prefetch the images for the next 2 cards.
