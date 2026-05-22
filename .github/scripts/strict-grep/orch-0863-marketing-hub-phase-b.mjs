@@ -531,6 +531,26 @@ function checkNoNewBackendFiles() {
     "supabase/functions/ticket-checkout-create/__tests__/orch_0911_success_url_branching.test.ts",
     "supabase/functions/ticket-checkout-create/__tests__/orch_0911_success_url_branching.adversarial.test.ts",
   ];
+  // ORCH-0914 [Trip Money tab redesign — organiser visibility into each traveller's
+  // payment-plan progress] PR #170 (2026-05-22) + ORCH-0920 strict-grep hot-fix PR #171
+  // (2026-05-22). C7 is scoped to ORCH-0863 marketing; these backend touches are
+  // ORCH-0914's manual-charge-installment + send-installment-reminder edge functions,
+  // their shared helper + email template, and the manual-buyer-reminders + manual-charge
+  // RPC migrations. The PR #171 hot-fix only added a // no-attachment opt-out comment
+  // to send-installment-reminder/index.ts to satisfy ORCH-0785-A. Allow exactly these
+  // backend paths so the marketing no-backend-files guard does not block ORCH-0914.
+  const ORCH_0914_BACKEND_ALLOWLIST = [
+    "supabase/functions/_shared/email/installmentReminderEmail.ts",
+    "supabase/functions/_shared/installments/createInstallmentPI.ts",
+    "supabase/functions/manual-charge-installment/__tests__/manual_charge_test.ts",
+    "supabase/functions/manual-charge-installment/index.ts",
+    "supabase/functions/send-installment-reminder/__tests__/send_reminder_test.ts",
+    "supabase/functions/send-installment-reminder/index.ts",
+    "supabase/functions/process-scheduled-installments/__tests__/idempotency.test.ts",
+    "supabase/functions/process-scheduled-installments/index.ts",
+    "supabase/migrations/20260723000000_orch_0914_manual_buyer_reminders.sql",
+    "supabase/migrations/20260723000001_orch_0914_manual_charge_installment.sql",
+  ];
   const ALLOWLIST = [
     ...ORCH_0859_BUNDLED_ALLOWLIST,
     ...ORCH_0869_BACKEND_ALLOWLIST,
@@ -554,6 +574,7 @@ function checkNoNewBackendFiles() {
     ...CONVERSATION_RLS_RECURSION_HOTFIX_ALLOWLIST,
     ...ORCH_0910_BACKEND_ALLOWLIST,
     ...ORCH_0911_BACKEND_ALLOWLIST,
+    ...ORCH_0914_BACKEND_ALLOWLIST,
   ];
   const forbidden = changed.filter(
     (p) =>

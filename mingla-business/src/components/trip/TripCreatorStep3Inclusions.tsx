@@ -13,8 +13,6 @@ import {
   TextInput,
   View,
 } from "react-native";
-// ORCH-0892-B v2: ScrollView via SmartScrollView wrapper. Per SPEC §7.F.
-import { ScrollView } from "../../wrappers/SmartScrollView";
 
 import {
   accent,
@@ -76,11 +74,7 @@ export const TripCreatorStep3Inclusions: React.FC<TripCreatorStep3InclusionsProp
   };
 
   return (
-    <ScrollView
-      style={styles.host}
-      contentContainerStyle={styles.contentContainer}
-      keyboardShouldPersistTaps="handled"
-    >
+    <View style={styles.host}>
       <Text style={styles.helper}>
         What&rsquo;s included in the price, and what isn&rsquo;t.
       </Text>
@@ -200,16 +194,12 @@ export const TripCreatorStep3Inclusions: React.FC<TripCreatorStep3InclusionsProp
           </Pressable>
         </View>
       </View>
-    </ScrollView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   host: {
-    flex: 1,
-  },
-  contentContainer: {
-    paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
     paddingBottom: spacing.lg,
     gap: spacing.lg,

@@ -1,21 +1,20 @@
 /**
- * TripCreatorWizard — host component for the 5-step trip-planner wizard.
+ * TripCreatorWizard — host component for the 7-step trip-planner wizard.
  * Tr2 (ORCH-0859). Chrome rewritten in ORCH-0874 [Trip surfaces visual
  * parity with Events] per SPEC §3.3.5 + DESIGN §3.3 to mirror
  * EventCreatorWizard chrome:
  *
  *   - Chrome row: [Close X (always)] + [named Stepper] + [step counter]
- *   - Subtitle row: "{brand.name} · Step N of 5" + autosave-state text
- *   - Body: eyebrow + 26pt step title + 14pt subtitle (above step content)
- *   - Floating glass dock: Step 1 = single Continue; Steps 2-4 = Back+Continue;
- *     Step 5 = Back+Publish. Dock hides when keyboard up.
+ *   - Subtitle row: "{brand.name} · Step N of 7" + current title/subtitle
+ *     + autosave-state text
+ *   - Floating glass dock: Step 1 = single Continue; Steps 2-6 = Back+Continue;
+ *     Step 7 = Back+Publish. Dock hides when keyboard up.
  *   - handleClose branches on isCreateMode + pristine:
  *     - Create + pristine: discard trip immediately + onExit
  *     - Create + dirty: show ConfirmDialog ("Discard this trip?")
  *     - Edit: silent onExit (autosave semantics)
  *   - Publish flow: ConfirmDialog ("Publish trip?") before mutation
- *   - Keyboard: explicit Keyboard.addListener + dynamic paddingBottom
- *     (replaces prior KeyboardAvoidingView per SPEC §3.3.5)
+ *   - Keyboard: SmartScrollView/KAS owns focused-input scrolling
  *
  * Spec: Mingla_Artifacts/specs/SPEC_ORCH-0874_TRIP_VISUAL_PARITY_WITH_EVENTS.md
  * Design: Mingla_Artifacts/design/DESIGN_ORCH-0874_TRIP_VISUAL_PARITY_WITH_EVENTS.md
@@ -24,7 +23,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Image,
-  Keyboard,
   Pressable,
   StyleSheet,
   Text,
@@ -32,8 +30,7 @@ import {
 } from "react-native";
 // ORCH-0892-B v2: ScrollView via SmartScrollView wrapper. Keyboard listener
 // + KeyboardAvoidingView wrap DELETED. KAS handles focused-input scroll.
-// useKeyboardIsVisible() preserves dock-hide UX. Keyboard import retained
-// for Keyboard.dismiss(). Per SPEC §7.F.
+// useKeyboardIsVisible() preserves dock-hide UX. Per SPEC §7.F.
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import { useKeyboardIsVisible } from "../../wrappers/useKeyboardIsVisible";
 import { useRouter } from "expo-router";
@@ -370,7 +367,7 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
   const [isDiscarding, setIsDiscarding] = useState<boolean>(false);
   const [discardError, setDiscardError] = useState<string | null>(null);
 
-  // ORCH-0874: publish ConfirmDialog state (Step 5 publish tap).
+  // ORCH-0874: publish ConfirmDialog state (Step 7 publish tap).
   const [publishConfirmVisible, setPublishConfirmVisible] = useState<boolean>(false);
 
   // ORCH-0874: toast for transient feedback (discard error, etc.).
@@ -1032,12 +1029,14 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
         </View>
       )}
 
-      {/* Subtitle row: "{brand.name} · Step N of 5" + autosave state */}
+      {/* Subtitle row: "{brand.name} · Step N of 7" + active-step title. */}
       {isWideDesktop ? null : (
       <View style={styles.subtitleRow}>
         <Text style={styles.subtitle}>
           {brand.name} · Step {step} of {STEP_COUNT}
         </Text>
+        <Text style={styles.mobileStepTitle}>{stepTitle}</Text>
+        <Text style={styles.mobileStepSub}>{stepSubtitle}</Text>
         {autosaveStateText.length > 0 ? (
           <Text
             style={[styles.saveState, autosaveError && styles.saveStateError]}
@@ -1066,12 +1065,6 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
         keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.eyebrow}>
-          STEP {step} OF {STEP_COUNT}
-        </Text>
-        <Text style={styles.stepTitle}>{stepTitle}</Text>
-        <Text style={styles.stepSub}>{stepSubtitle}</Text>
-
         <View style={styles.stepBodyWrap}>
           {step === 1 ? (
             <TripCreatorStep1Basics
@@ -1481,8 +1474,21 @@ const styles = StyleSheet.create({
     fontSize: typography.caption.fontSize,
     color: textTokens.tertiary,
   },
+  mobileStepTitle: {
+    marginTop: spacing.md,
+    fontSize: 28,
+    lineHeight: 34,
+    fontWeight: "700",
+    color: textTokens.primary,
+  },
+  mobileStepSub: {
+    marginTop: 4,
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+    color: textTokens.secondary,
+  },
   saveState: {
-    marginTop: 2,
+    marginTop: spacing.xs,
     fontSize: typography.caption.fontSize,
     color: textTokens.quaternary,
   },
@@ -1491,31 +1497,11 @@ const styles = StyleSheet.create({
   },
   body: {
     paddingHorizontal: spacing.md + 8,
-    paddingTop: spacing.md,
+    paddingTop: 0,
     paddingBottom: spacing.xl,
   },
-  eyebrow: {
-    fontSize: 11,
-    fontWeight: "700",
-    letterSpacing: 1.4,
-    textTransform: "uppercase",
-    color: accent.warm,
-    marginBottom: 6,
-  },
-  stepTitle: {
-    fontSize: 26,
-    fontWeight: "700",
-    letterSpacing: -0.2,
-    color: textTokens.primary,
-    marginBottom: 6,
-  },
-  stepSub: {
-    fontSize: 14,
-    color: textTokens.secondary,
-    marginBottom: spacing.lg,
-  },
   stepBodyWrap: {
-    // step body content
+    width: "100%",
   },
   dock: {
     marginHorizontal: spacing.md,

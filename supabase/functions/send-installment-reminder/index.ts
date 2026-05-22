@@ -54,6 +54,7 @@ async function sendEmail(input: {
   if (!key) return "failed";
   try {
     assertNotResendSandbox(EMAIL_SENDERS.system);
+    // no-attachment: installment reminders are transactional text/HTML only — no PDFs, no QR, no ICS.
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {

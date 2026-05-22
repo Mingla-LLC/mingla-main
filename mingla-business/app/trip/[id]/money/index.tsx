@@ -337,7 +337,7 @@ export default function TripMoneyRoute(): React.ReactElement {
     <SafeScreen style={styles.host}>
       <TopBar
         leftKind="back"
-        title="Money"
+        title="Payments"
         onBack={() => {
           if (router.canGoBack()) router.back();
           else router.replace(`/trip/${eventId}` as never);
@@ -653,6 +653,7 @@ const TravelerMoneyTableRow: React.FC<TravelerRowProps> = (props) => {
       <Pressable
         onPress={onToggle}
         accessibilityRole="button"
+        accessibilityLabel={`${buyerLabel(row)}, ${expanded ? "collapse" : "expand"} payment details`}
         accessibilityState={{ expanded }}
         style={styles.moneyTableRow}
       >

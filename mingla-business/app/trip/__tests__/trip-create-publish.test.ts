@@ -2,7 +2,7 @@
  * ORCH-0859 [Tr2 Minimum Viable Trip] — trip wizard create+publish contract.
  *
  * Asserts the wizard's binding structural contracts via source-grep:
- *   - Wizard has all 5 step components mounted
+ *   - Wizard has all 7 step components mounted
  *   - Wizard host calls all 4 autosave mutations + publish mutation
  *   - Wizard host KeyboardAvoidingView wraps body (feedback_keyboard_never_blocks_input)
  *   - /trip/create gates on kind='trip_planner'
@@ -29,13 +29,31 @@ const editSource = readFileSync(
   join(__dirname, "..", "[id]", "edit.tsx"),
   "utf-8",
 );
+const step2Source = readFileSync(
+  join(__dirname, "..", "..", "..", "src", "components", "trip", "TripCreatorStep2Itinerary.tsx"),
+  "utf-8",
+);
+const step3Source = readFileSync(
+  join(__dirname, "..", "..", "..", "src", "components", "trip", "TripCreatorStep3Inclusions.tsx"),
+  "utf-8",
+);
+const step4Source = readFileSync(
+  join(__dirname, "..", "..", "..", "src", "components", "trip", "TripCreatorStep4Pricing.tsx"),
+  "utf-8",
+);
+const reviewSource = readFileSync(
+  join(__dirname, "..", "..", "..", "src", "components", "trip", "TripCreatorStep5Review.tsx"),
+  "utf-8",
+);
 
 describe("ORCH-0859 — trip create + wizard + publish contract", () => {
-  test("TripCreatorWizard mounts all 5 step components", () => {
+  test("TripCreatorWizard mounts all 7 step components", () => {
     expect(wizardSource).toMatch(/<TripCreatorStep1Basics/);
     expect(wizardSource).toMatch(/<TripCreatorStep2Itinerary/);
     expect(wizardSource).toMatch(/<TripCreatorStep3Inclusions/);
     expect(wizardSource).toMatch(/<TripCreatorStep4Pricing/);
+    expect(wizardSource).toMatch(/<TripCreatorStep5Policy/);
+    expect(wizardSource).toMatch(/<TripCreatorStep6Intake/);
     expect(wizardSource).toMatch(/<TripCreatorStep5Review/);
   });
 
@@ -51,8 +69,33 @@ describe("ORCH-0859 — trip create + wizard + publish contract", () => {
     expect(wizardSource).toMatch(/KeyboardAvoidingView/);
   });
 
-  test("TripCreatorWizard step 5 publish button uses handlePublish handler", () => {
-    expect(wizardSource).toMatch(/step === 5 \? handlePublish : handleNext/);
+  test("TripCreatorWizard step 7 publish button uses handlePublishTap handler", () => {
+    // [TEST-MOD-APPROVED ORCH-0919] Refreshes stale pre-ORCH-0880 step-5
+    // assertion to the current 7-step wizard shape.
+    expect(wizardSource).toMatch(
+      /step === 7[\s\S]{0,1200}onPress=\{handlePublishTap\}/,
+    );
+  });
+
+  test("TripCreatorWizard header owns step title and body does not repeat it", () => {
+    expect(wizardSource).toMatch(
+      /<Text style=\{styles\.mobileStepTitle\}>\{stepTitle\}<\/Text>/,
+    );
+    expect(wizardSource).toMatch(
+      /<Text style=\{styles\.mobileStepSub\}>\{stepSubtitle\}<\/Text>/,
+    );
+    expect(wizardSource).not.toMatch(/STEP \{step\} OF \{STEP_COUNT\}/);
+    expect(wizardSource).not.toMatch(/styles\.eyebrow/);
+  });
+
+  test("TripCreatorWizard steps 2-7 do not add nested wizard-body side padding", () => {
+    expect(step2Source).not.toMatch(/paddingHorizontal:\s*spacing\.lg/);
+    expect(step2Source).not.toMatch(/contentContainerStyle=\{styles\.contentContainer\}/);
+    expect(step3Source).not.toMatch(/paddingHorizontal:\s*spacing\.lg/);
+    expect(step3Source).not.toMatch(/contentContainerStyle=\{styles\.contentContainer\}/);
+    expect(step4Source).not.toMatch(/host:[\s\S]{0,80}paddingHorizontal:\s*spacing\.lg/);
+    expect(reviewSource).toMatch(/contentPadding=\{0\}/);
+    expect(reviewSource).not.toMatch(/paddingHorizontal:\s*spacing\.lg/);
   });
 
   test("/trip/create gates on currentBrand.kind === 'trip_planner'", () => {

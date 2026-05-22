@@ -61,10 +61,12 @@ describe("ORCH-0913 trip dashboard parity", () => {
     expect(DASHBOARD_SRC).not.toMatch(/\bsetTab\b|\btab ===/);
   });
 
+  // [TEST-MOD-APPROVED ORCH-0920] — second tile label changed "Money" → "Payments"
+  // (cosmetic refresh, icon also changed "pound" → "receipt"; route + ordering preserved).
   test("T-02 Dashboard renders 7 action tiles in locked order", () => {
     expect(actionTileLabels).toEqual([
       "Travelers",
-      "Money",
+      "Payments",
       "Blasts",
       "Group chat",
       "Public page",

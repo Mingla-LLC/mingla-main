@@ -7,7 +7,7 @@
  */
 
 import React from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
   accent,
@@ -65,11 +65,7 @@ export const TripCreatorStep2Itinerary: React.FC<TripCreatorStep2ItineraryProps>
   };
 
   return (
-    <ScrollView
-      style={styles.host}
-      contentContainerStyle={styles.contentContainer}
-      keyboardShouldPersistTaps="handled"
-    >
+    <View style={styles.host}>
       <Text style={styles.helper}>
         Add a card per day. Travelers see this on the public trip page.
       </Text>
@@ -110,16 +106,12 @@ export const TripCreatorStep2Itinerary: React.FC<TripCreatorStep2ItineraryProps>
         <Icon name="plus" size={16} color={accent.warm} />
         <Text style={styles.addBtnText}>Add a day</Text>
       </Pressable>
-    </ScrollView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   host: {
-    flex: 1,
-  },
-  contentContainer: {
-    paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
     paddingBottom: spacing.lg,
     gap: spacing.md,

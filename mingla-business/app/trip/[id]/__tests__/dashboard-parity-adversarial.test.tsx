@@ -111,10 +111,12 @@ describe("ORCH-0913 trip dashboard parity — ADVERSARIAL", () => {
     );
   });
 
-  test("T-A02 Money tile navigates to /trip/<id>/money, NOT /event/<id>/reconciliation", () => {
+  // [TEST-MOD-APPROVED ORCH-0920] — tile label changed "Money" → "Payments"
+  // (route preserved at /trip/<id>/money; only the user-facing label + icon changed).
+  test("T-A02 Payments tile navigates to /trip/<id>/money, NOT /event/<id>/reconciliation", () => {
     expect(ACTION_GRID).toContain("/trip/${trip.id}/money");
     expect(ACTION_GRID).not.toMatch(
-      /label="Money"[\s\S]*?\/event\/\$\{trip\.id\}\/reconciliation/,
+      /label="Payments"[\s\S]*?\/event\/\$\{trip\.id\}\/reconciliation/,
     );
   });
 
