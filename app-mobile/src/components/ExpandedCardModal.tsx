@@ -54,7 +54,7 @@ import InAppBrowserModal from "./InAppBrowserModal";
 import { ExpandedBusinessEventSheet } from "./expandedCard/ExpandedBusinessEventSheet";
 import { PicnicShoppingList } from './PicnicShoppingList';
 import { useReplaceStop } from '../hooks/useReplaceStop';
-import { replaceStopInCard, StopAlternative } from '../utils/mutateCuratedCard';
+import { estimateTravelMinutes, haversineKm, replaceStopInCard, StopAlternative } from '../utils/mutateCuratedCard';
 import * as Haptics from 'expo-haptics';
 import { colors } from "../constants/colors";
 import { glass } from "../constants/designSystem";
@@ -65,6 +65,7 @@ import { DeviceCalendarService } from "../services/deviceCalendarService";
 import { CalendarService } from "../services/calendarService";
 import { supabase } from "../services/supabase";
 import { useAppStore } from "../store/appStore";
+import { useUserLocation } from "../hooks/useUserLocation";
 
 
 // ============================================================================
@@ -1384,13 +1385,18 @@ export default function ExpandedCardModal({
   const card = target?.kind === "nightOut" ? target.data : null;
   const businessEvent = target?.kind === "businessEvent" ? target.data : null;
   const { t } = useTranslation(['cards', 'common']);
+  const { user } = useAppStore();
+  const viewerLocationQuery = useUserLocation(user?.id, currentMode);
+  const viewerLoc = viewerLocationQuery.data;
   const { updateCardStrollData, collabTravelMode } = useRecommendations();
   // In collaboration mode, use the group's aggregated travel mode (majority vote).
   // In solo mode, fall back to the user's own preference.
-  const effectiveTravelMode = collabTravelMode ?? userPreferences?.travel_mode;
+  const effectiveTravelMode = collabTravelMode ?? userPreferences?.travel_mode ?? 'driving';
   const [weatherData, setWeatherData] = useState<WeatherData | null>(null);
   const [busynessData, setBusynessData] = useState<BusynessData | null>(null);
   const [bookingOptions, setBookingOptions] = useState<BookingOption[]>([]);
+  const [viewerTravelTime, setViewerTravelTime] = useState<string | null>(null);
+  const [viewerDistance, setViewerDistance] = useState<number | null>(null);
   const [loadingWeather, setLoadingWeather] = useState(false);
   const [loadingBusyness, setLoadingBusyness] = useState(false);
   const [loadingBooking, setLoadingBooking] = useState(false);
@@ -1439,11 +1445,39 @@ export default function ExpandedCardModal({
       setWeatherData(null);
       setBusynessData(null);
       setBookingOptions([]);
+      setViewerTravelTime(null);
+      setViewerDistance(null);
       setStrollData(undefined);
       setPicnicData(undefined);
       setSeatMapFailed(false);
     }
-  }, [visible, card]);
+  }, [visible, card, viewerLoc?.lat, viewerLoc?.lng, effectiveTravelMode]);
+
+  const computeViewerTravelForChatMount = () => {
+    if (!card) return;
+    const isChatMounted = !!(card as any).lockInEvent || (!card.travelTime && !card.distance);
+    if (!isChatMounted || viewerLoc?.lat == null || viewerLoc?.lng == null) {
+      setViewerDistance(null);
+      setViewerTravelTime(null);
+      return;
+    }
+
+    const isCurated = (card as any).cardType === 'curated';
+    const firstStop = isCurated ? (card as any).stops?.[0] : null;
+    const targetLat = isCurated ? firstStop?.lat ?? card.location?.lat : card.location?.lat;
+    const targetLng = isCurated ? firstStop?.lng ?? card.location?.lng : card.location?.lng;
+
+    if (typeof targetLat !== 'number' || typeof targetLng !== 'number') {
+      setViewerDistance(null);
+      setViewerTravelTime(null);
+      return;
+    }
+
+    const distKm = haversineKm(viewerLoc.lat, viewerLoc.lng, targetLat, targetLng);
+    const minutes = estimateTravelMinutes(distKm, effectiveTravelMode);
+    setViewerDistance(Math.round(distKm * 10) / 10);
+    setViewerTravelTime(`${minutes} min`);
+  };
 
   const fetchAdditionalData = async () => {
     if (!card) return;
@@ -1488,6 +1522,7 @@ export default function ExpandedCardModal({
           setLoadingBusyness(false);
         }
       }
+      computeViewerTravelForChatMount();
       return; // Still return — skip booking fetch (curated cards have per-stop links)
     }
 
@@ -1519,7 +1554,8 @@ export default function ExpandedCardModal({
           card.location.lat,
           card.location.lng,
           card.address,
-          (card as any).source?.placeId,
+          // ORCH-0910: chat-mounted cards carry placeId at top level; deck-mounted cards may carry it under .source.
+          (card.placeId ?? (card as any).source?.placeId),
           card.category,
           weather?.utcOffsetSeconds
         );
@@ -1530,6 +1566,8 @@ export default function ExpandedCardModal({
         setLoadingBusyness(false);
       }
     }
+
+    computeViewerTravelForChatMount();
 
     // Fetch booking options
     if (card.location) {
@@ -1847,7 +1885,7 @@ export default function ExpandedCardModal({
                 <BusynessSection
                   busynessData={busynessData}
                   loading={loadingBusyness}
-                  travelTime={undefined}
+                  travelTime={viewerTravelTime ?? undefined}
                 />
 
                 {/* Animated Timeline for Curated Cards */}
@@ -1857,7 +1895,7 @@ export default function ExpandedCardModal({
                     title={curatedCard.title}
                     address={curatedCard.stops[0]?.address}
                     priceRange={curatedCard.totalPriceMin === 0 && curatedCard.totalPriceMax === 0 ? t('cards:swipeable.free') : `${formatCurrency(curatedCard.totalPriceMin, accountPreferences?.currency || 'USD')}–${formatCurrency(curatedCard.totalPriceMax, accountPreferences?.currency || 'USD')}`}
-                    travelTime={curatedCard.stops[0]?.travelTimeFromUserMin != null && curatedCard.stops[0].travelTimeFromUserMin > 0 ? `${Math.round(curatedCard.stops[0].travelTimeFromUserMin)} min` : undefined}
+                    travelTime={viewerTravelTime ?? (curatedCard.stops[0]?.travelTimeFromUserMin != null && curatedCard.stops[0].travelTimeFromUserMin > 0 ? `${Math.round(curatedCard.stops[0].travelTimeFromUserMin)} min` : undefined)}
                     strollTimeline={curatedStopsToTimeline(curatedCard.stops)}
                     routeDuration={curatedCard.estimatedDurationMinutes}
                   />
@@ -1913,9 +1951,9 @@ export default function ExpandedCardModal({
                   categoryIcon={card.categoryIcon || getCategoryIcon(card.category)}
                   tags={card.tags}
                   rating={card.rating}
-                  distance={card.distance}
-                  travelTime={card.travelTime}
-                  travelMode={card.travelMode ?? userPreferences?.travel_mode}
+                  distance={viewerDistance != null ? `${viewerDistance} km` : card.distance}
+                  travelTime={viewerTravelTime ?? card.travelTime}
+                  travelMode={card.travelMode ?? effectiveTravelMode}
                   measurementSystem={accountPreferences?.measurementSystem}
                   priceRange={card.priceRange}
                   priceTier={card.priceTier}
@@ -2018,7 +2056,7 @@ export default function ExpandedCardModal({
                 <BusynessSection
                   busynessData={busynessData}
                   loading={loadingBusyness}
-                  travelTime={card.travelTime ?? undefined}
+                  travelTime={viewerTravelTime ?? card.travelTime ?? undefined}
                 />
 
                 {/* Practical Details Section */}
@@ -2127,7 +2165,7 @@ export default function ExpandedCardModal({
                     title={card.title}
                     address={card.address}
                     priceRange={card.priceRange}
-                    travelTime={card.travelTime ?? undefined}
+                    travelTime={viewerTravelTime ?? card.travelTime ?? undefined}
                     strollTimeline={strollData.timeline}
                     routeDuration={strollData.route?.duration}
                     currency={accountPreferences?.currency}
@@ -2141,7 +2179,7 @@ export default function ExpandedCardModal({
                     title={card.title}
                     address={card.address}
                     priceRange={card.priceRange}
-                    travelTime={card.travelTime ?? undefined}
+                    travelTime={viewerTravelTime ?? card.travelTime ?? undefined}
                     strollTimeline={picnicData.timeline}
                     routeDuration={picnicData.route?.duration}
                     currency={accountPreferences?.currency}

@@ -368,7 +368,13 @@ export function MessageBubble({
               lockInEvent: raw.lockInEvent
                 ?? (raw.event === 'card_locked_and_scheduled' ? 'card_locked_and_scheduled' : undefined),
               scheduledAt: raw.scheduledAt ?? raw.scheduled_at ?? undefined,
+              cardType: raw.cardType ?? legacy?.cardType,
+              stops: raw.stops ?? legacy?.stops,
             };
+            const isIntentCard = cp.cardType === 'curated' || (Array.isArray((cp as any).stops) && (cp as any).stops.length > 0);
+            const intentStopCount = isIntentCard ? ((cp as any).stops?.length ?? 0) : 0;
+            const intentHeroImage = isIntentCard ? ((cp as any).stops?.[0]?.imageUrl ?? cp.image) : cp.image;
+            const effectiveImage = isIntentCard ? intentHeroImage : cp.image;
             return (
             <TouchableOpacity
               onPress={() => onCardBubbleTap?.(message.cardPayload!)}
@@ -384,17 +390,27 @@ export function MessageBubble({
                   </Text>
                 </View>
               )}
-              {cp.image ? (
-                <Image
-                  source={{ uri: cp.image }}
-                  style={styles.cardBubbleImage}
-                  resizeMode="cover"
-                />
-              ) : (
-                <View style={[styles.cardBubbleImage, styles.cardBubblePlaceholder]}>
-                  <Icon name="bookmark" size={24} color={isMe ? 'rgba(255,255,255,0.7)' : colors.text.tertiary} />
-                </View>
-              )}
+              <View style={styles.cardBubbleImageWrap}>
+                {effectiveImage ? (
+                  <Image
+                    source={{ uri: effectiveImage }}
+                    style={styles.cardBubbleImage}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <View style={[styles.cardBubbleImage, styles.cardBubblePlaceholder]}>
+                    <Icon name="bookmark" size={24} color={isMe ? 'rgba(255,255,255,0.7)' : colors.text.tertiary} />
+                  </View>
+                )}
+                {isIntentCard && intentStopCount > 0 && (
+                  <View style={styles.cardBubbleIntentChip}>
+                    <Icon name="arrow-forward" size={10} color="#fff" />
+                    <Text style={styles.cardBubbleIntentChipText} numberOfLines={1}>
+                      {`${intentStopCount} stops`}
+                    </Text>
+                  </View>
+                )}
+              </View>
               <View style={styles.cardBubbleBody}>
                 <Text
                   style={[styles.cardBubbleTitle, isMe ? styles.textSent : styles.textReceived]}
@@ -598,6 +614,9 @@ const styles = StyleSheet.create({
     aspectRatio: 16 / 10,
     backgroundColor: 'rgba(0,0,0,0.08)',
   },
+  cardBubbleImageWrap: {
+    position: 'relative',
+  },
   cardBubblePlaceholder: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -626,6 +645,23 @@ const styles = StyleSheet.create({
     fontSize: 11,
     opacity: 0.7,
     marginTop: 2,
+  },
+  cardBubbleIntentChip: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  cardBubbleIntentChipText: {
+    fontSize: 11,
+    fontWeight: fontWeights.semibold,
+    color: '#fff',
   },
   // ORCH-0908: locked-in card banner
   cardBubbleLockedBanner: {
