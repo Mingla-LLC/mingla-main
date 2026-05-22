@@ -517,6 +517,20 @@ function checkNoNewBackendFiles() {
   const ORCH_0910_BACKEND_ALLOWLIST = [
     "supabase/migrations/20260722000000_orch_0910_chat_intent_card_backfill.sql",
   ];
+  // ORCH-0911 [Buyer-web checkout confirm screen renders black on ?cs=… arrival]
+  // PR #166 (2026-05-22). C7 is scoped to ORCH-0863 marketing; these backend
+  // touches are ORCH-0911 buyer-web checkout fix: happy-path Deno test +
+  // adversarial Deno test for the ticket-checkout-create edge function's new
+  // event_type-based success_url/cancel_url branching. The edge function
+  // source itself (index.ts) is an EDIT not a NEW file so C7 wouldn't catch
+  // it; only the two new __tests__ files need allowlisting. Edge function
+  // already deployed v77 to remote 2026-05-22. Allow exactly these filenames
+  // so the marketing no-backend-files guard does not block the unrelated
+  // buyer-web confirm fix.
+  const ORCH_0911_BACKEND_ALLOWLIST = [
+    "supabase/functions/ticket-checkout-create/__tests__/orch_0911_success_url_branching.test.ts",
+    "supabase/functions/ticket-checkout-create/__tests__/orch_0911_success_url_branching.adversarial.test.ts",
+  ];
   const ALLOWLIST = [
     ...ORCH_0859_BUNDLED_ALLOWLIST,
     ...ORCH_0869_BACKEND_ALLOWLIST,
@@ -539,6 +553,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_0897_BACKEND_ALLOWLIST,
     ...CONVERSATION_RLS_RECURSION_HOTFIX_ALLOWLIST,
     ...ORCH_0910_BACKEND_ALLOWLIST,
+    ...ORCH_0911_BACKEND_ALLOWLIST,
   ];
   const forbidden = changed.filter(
     (p) =>
