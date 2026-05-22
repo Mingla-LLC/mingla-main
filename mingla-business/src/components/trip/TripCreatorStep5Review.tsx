@@ -72,6 +72,7 @@ export const TripCreatorStep5Review: React.FC<TripCreatorStep5ReviewProps> = ({
           trip={trip}
           brand={brand}
           showCta={false}
+          contentPadding={0}
           testID="trip-step5-preview"
         />
       </View>
@@ -171,7 +172,6 @@ const styles = StyleSheet.create({
     fontSize: typography.bodySm.fontSize,
     lineHeight: typography.bodySm.lineHeight,
     color: textTokens.secondary,
-    paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
     paddingBottom: spacing.md,
   },

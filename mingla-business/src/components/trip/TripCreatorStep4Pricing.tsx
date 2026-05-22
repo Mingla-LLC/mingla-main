@@ -263,7 +263,6 @@ export const TripCreatorStep4Pricing: React.FC<TripCreatorStep4PricingProps> = (
 const styles = StyleSheet.create({
   host: {
     gap: spacing.md,
-    paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
   },
   helper: {

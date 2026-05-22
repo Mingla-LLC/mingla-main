@@ -56,6 +56,8 @@ export interface TripPreviewProps {
   brand: TripPreviewBrand;
   /** When true, render the "Reserve my spot" CTA. False for wizard preview. */
   showCta?: boolean;
+  /** Optional body padding override for framed parent surfaces like the wizard. */
+  contentPadding?: number;
   /** Fired when buyer taps the CTA. Required when showCta=true. */
   onReserveTap?: () => void;
   testID?: string;
@@ -96,6 +98,7 @@ export const TripPreview: React.FC<TripPreviewProps> = ({
   trip,
   brand,
   showCta = false,
+  contentPadding = spacing.lg,
   onReserveTap,
   testID,
 }) => {
@@ -118,7 +121,7 @@ export const TripPreview: React.FC<TripPreviewProps> = ({
         </View>
       )}
 
-      <View style={styles.body}>
+      <View style={[styles.body, { padding: contentPadding }]}>
         {/* Title + brand byline */}
         <Text style={styles.title}>{trip.title}</Text>
         <Text style={styles.brandByline}>by {brand.name}</Text>
