@@ -221,4 +221,97 @@ ORCH-0897 [Trips + Events Group Chat] returned from TEST with **CONDITIONAL PASS
 
 ---
 
-**Report complete.**
+## §11 RETEST (2026-05-21, narrow scope) — verdict PASS (promoted from CONDITIONAL PASS)
+
+**Mode:** Claude `mingla-tester` — narrow RETEST focused on Codex rework commit `76a94407` addressing F-1 + F-2.
+
+**Scope (sim-exempt per Phase 0.A — edge-function + email template + types only):** narrow re-verification of F-1 (trip email Download Mingla CTA) + F-2 (full UUID flowing into render inputs at both event and trip render paths), plus regression-on-prior-tests check, plus fails-on-revert verification of new T-16/T-17.
+
+### §11.1 Rework verification matrix
+
+| Item | Expected | Actual | Status |
+|------|----------|--------|--------|
+| F-1 helper exists | `renderDownloadAppCta(orderId, eventType)` in `tripConfirmationEmail.ts` | line 116-127 — helper with eventType discriminator ("trip" vs "event") | ✅ |
+| F-1 HTML CTA uses full UUID | `usemingla.com/orders/${escapeHtml(orderId)}/chat` with `escapeHtml` for safety | line 123 (HTML), invoked at line 248 with `input.order.id` | ✅ |
+| F-1 plain-text CTA uses full UUID | `https://usemingla.com/orders/${input.order.id}/chat` in text body | line 284 | ✅ |
+| F-2 types.ts shape extension | `id: string` added BEFORE `shortId: string` (not replacing) | `types.ts:35` `id: string;` + line 36 `shortId: string;` — type contract extended, not broken | ✅ |
+| F-2 dispatcher event branch | `id: order.id` added to `bodyInput.order` at line 263-278 | line 264 `id: order.id,` + line 265 `shortId: shortId(order.id),` — both populated | ✅ |
+| F-2 dispatcher trip branch | `id: context.bodyInput.order.id` added to `renderTripConfirmationEmail` invocation at line 638-648 | line 643 `id: context.bodyInput.order.id,` + line 644 `shortId: context.bodyInput.order.shortId,` — both populated through to trip renderer | ✅ |
+| Out-of-scope `order: { shortId only }` shapes preserved | Line 391 `renderInstallmentPlanPaidInFullEmail` and line 670 PDF render input — these are not chat-CTA-bearing paths | Verified untouched — correctly scoped | ✅ |
+
+### §11.2 Regression-suite re-runs
+
+```text
+$ node app-mobile/scripts/ci/orch-0897-regression-check.mjs
+... 17 cases ...
+ORCH-0897 regression check passed: 17/17
+```
+
+Including:
+- `PASS T-16 trip confirmation email includes the Download Mingla orders chat CTA`
+- `PASS T-17 ticket confirmation dispatch passes full order UUID into email render inputs`
+
+```text
+$ node app-mobile/scripts/ci/orch-0897-adversarial-check.mjs
+... 17 cases ...
+ORCH-0897 adversarial check passed: 17/17
+```
+
+No regression on T-01..T-15 happy-path or TA-01..TA-15 adversarial.
+
+### §11.3 Append-only enforcement
+
+`git diff f31baa74..HEAD -- app-mobile/scripts/ci/orch-0897-regression-check.mjs` shows ONLY +20 lines added at line 209 (after the existing T-15 block). Zero modifications to T-01..T-15 lines. ORCH-0840 [Regression-test enforcement + append-only CI] append-only contract honored.
+
+### §11.4 Fails-on-revert (independently verified this turn)
+
+Tester swapped `tripConfirmationEmail.ts`, `ticket-confirmation-dispatch/index.ts`, and `_shared/email/types.ts` to their pre-rework `f31baa74` contents using `git show f31baa74:<path>`. Re-ran the regression script:
+
+```text
+FAIL T-16 trip confirmation email includes the Download Mingla orders chat CTA
+FAIL T-17 ticket confirmation dispatch passes full order UUID into email render inputs
+ORCH-0897 regression check failed: 2/17
+```
+
+Restored rework files → 17/17 PASS. Confirms T-16 + T-17 genuinely exercise the rework contract (not testing tautology).
+
+### §11.5 Deploy guards verified
+
+`mcp__supabase__list_edge_functions` MCP query confirms:
+- `ticket-confirmation-dispatch`: **v70** (was v69 pre-rework) — exactly 1 bump, `verify_jwt: true` preserved
+- `claim-pending-trip-chat-participation`: v1 (unchanged from prior turn)
+- `marketing-send`: v39 (unchanged from prior turn)
+- Migration `20260710000000_orch_0897_trip_event_group_chat` unchanged on remote
+
+Codex respected the deploy carve-out exactly — only the file actually edited (`ticket-confirmation-dispatch/index.ts`) was redeployed.
+
+### §11.6 RETEST severity counts (replaces §1 prior counts)
+
+| Severity | Pre-rework | RETEST | Delta |
+|----------|------------|--------|-------|
+| P0 — CRITICAL | 0 | 0 | — |
+| P1 — HIGH | 2 (F-1, F-2) | **0** | **−2 RESOLVED** |
+| P2 — MEDIUM | 0 | 0 | — |
+| P3 — LOW | 1 (F-3) | 1 (F-3) | unchanged (informational for CLOSE — Android intentFilter native build) |
+| P4 — NOTE | 2 (F-4, F-5) | 2 (F-4, F-5) | unchanged (F-4 pre-existing duplicate policies + F-5 UI live-fire deferred to operator smoke) |
+
+### §11.7 RETEST verdict
+
+**PASS — promoted from CONDITIONAL PASS.**
+
+All Step 0.5 gate components satisfied:
+- (a) Implementor happy-path: `app-mobile/scripts/ci/orch-0897-regression-check.mjs` 17/17 PASS; `fails-on-revert verified at b76467755e07^` per IMPLEMENTATION report §1 + tester re-verification at `f31baa74` for the appended T-16/T-17 this turn (2/17 fail with pre-rework source files)
+- (b) Tester adversarial: `app-mobile/scripts/ci/orch-0897-adversarial-check.mjs` 17/17 PASS attacking 15 different angles than implementor's happy-path (fails-on-revert: 13/17 fail when migration emptied, per §1)
+- (c) Both test files present in `git diff origin/main...HEAD --name-only`: confirmed via `git log` — happy-path in commit `b7646775` (Codex original) + T-16/T-17 in `76a94407` (Codex rework); adversarial in `f31baa74` (tester original)
+
+UI live-fire (F-5) remains deferred to operator-driven 6-step smoke flow in §8 — unchanged from prior verdict; sim-gate exemption still applies for the backend-only rework scope.
+
+### §11.8 Next handoff (REVISED)
+
+NEXT HANDOFF — paste into Claude `mingla-orchestrator`:
+
+ORCH-0897 [Trips + Events Group Chat] narrow RETEST returned **PASS** (promoted from CONDITIONAL PASS) after Codex rework commit `76a94407` addressed both P1s. P0:0 / P1:0 / P2:0 / P3:1 (F-3 Android native build informational) / P4:2 (F-4 + F-5 unchanged). All Step 0.5 gate components satisfied: implementor happy-path 17/17 PASS with fails-on-revert verified at `b76467755e07^` (original) + `f31baa74` (T-16/T-17 specifically — pre-rework source files cause exactly the 2 new tests to fail; restored = 17/17), tester adversarial 17/17 PASS with fails-on-revert verified at empty-migration (13/17 fail), append-only enforcement honored (T-16/T-17 are pure +20-line append after T-15, zero modifications to T-01..T-15). Edge function deploy guard verified via MCP: `ticket-confirmation-dispatch` v69→v70 (one bump, only that function), `claim-pending-trip-chat-participation` v1 unchanged, `marketing-send` v39 unchanged, `verify_jwt: true` preserved on all. Migration `20260710000000` unchanged on remote. Full RETEST detail at `Mingla_Artifacts/reports/QA_ORCH-0897_TRIP_EVENT_GROUP_CHAT_REPORT.md` §11. Working tree: `/Users/sethogieva/Desktop/mingla-main-orch-0897` on branch `orch-0897-impl`. Latest commit chain: `b7646775` Codex impl → `b394f881` impl report → `67a4e20d` migration hotfix 1 → `f74e5e5a` migration hotfix 2 → `f31baa74` tester original verdict + adversarial → `76a94407` Codex rework F-1+F-2+T-16+T-17 → tester RETEST commit (this turn). Downstream routing: proceed to CLOSE — Step 0.5 gate SATISFIED so no operator-acceptance gate needed, single PR `orch-0897-impl → main` with mandatory 5-condition pre-merge gate, then EAS OTA publish for JS bundles + Android native build queued per F-3 informational, operator-owned `apple-app-site-association` deploy per SPEC §14 step 16 for the `/orders/*/chat` universal-link path. Note operator-driven 6-step UI smoke in §8 remains the path to promote UI verdict from `suspected` to `proven` post-EAS-publish.
+
+---
+
+**Report complete (RETEST appended 2026-05-21).**
