@@ -48,6 +48,7 @@
     "test:orch-0898-adv": "node ./scripts/ci/orch-0898-adversarial-check.mjs",
     "test:orch-0904": "node ./scripts/ci/orch-0904-regression-check.mjs",
     "test:orch-0906-client-hotfix": "node ./scripts/ci/orch-0906-client-hotfix-regression-check.mjs",
+    "test:conversation-rls-hotfix": "node ./scripts/ci/hotfix-conversation-rls-recursion-check.mjs",
     "test:orch-0909": "node ./scripts/ci/orch-0909-regression-check.mjs",
     "test:orch-0909-adv": "node ./scripts/ci/orch-0909-adversarial-check.mjs",
     "test:orch-0908-chat": "node ./scripts/ci/orch-0908-chat-mention-card-tag-check.mjs",
