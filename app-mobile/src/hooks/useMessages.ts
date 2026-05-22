@@ -16,6 +16,7 @@ import { useState, useCallback } from 'react';
 import { getDisplayName } from '../utils/getDisplayName';
 import { supabase } from '../services/supabase';
 import type { CardTagEntry, MentionEntry } from '../services/messagingService';
+import type { BusinessEventCard } from '../types/mergedDiscover';
 
 export interface Message {
   id: string;
@@ -29,6 +30,7 @@ export interface Message {
   card_payload?: any;  // ORCH-0667: CardPayload — typed loosely to avoid circular import
   mentions?: Array<MentionEntry | string>;
   card_tags?: CardTagEntry[];
+  marketing_campaign_id?: string | null;
   created_at: string;
   sender_name?: string;
   is_read: boolean;
@@ -39,6 +41,14 @@ export interface Conversation {
   type?: 'direct' | 'group';
   name?: string | null;
   session_id?: string | null;
+  event_id?: string | null;
+  linked_entity_type?: 'direct' | 'session' | 'trip' | 'event';
+  is_broadcast_only?: boolean;
+  eventBrandName?: string | null;
+  eventBrandAccountId?: string | null;
+  eventCoverMediaUrl?: string | null;
+  eventPublicUrl?: string | null;
+  eventPublicCard?: BusinessEventCard | null;
   created_by: string;
   created_at: string;
   participants: {

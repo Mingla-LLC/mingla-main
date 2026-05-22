@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
 import { getDisplayName } from '../utils/getDisplayName';
 import type { CardTagEntry, MentionEntry } from './messagingService';
+import type { BusinessEventCard } from '../types/mergedDiscover';
 
 export interface Friend {
   id: string;
@@ -18,6 +19,12 @@ export interface Friend {
   eventId?: string | null;
   linkedEntityType?: 'direct' | 'session' | 'trip' | 'event' | null;
   sessionCreatorId?: string | null;
+  eventBrandName?: string | null;
+  eventBrandAccountId?: string | null;
+  eventCoverMediaUrl?: string | null;
+  eventPublicUrl?: string | null;
+  eventPublicCard?: BusinessEventCard | null;
+  isBroadcastOnly?: boolean;
   isSessionAdmin?: boolean;
   notificationsMuted?: boolean;
   participantCount?: number;
@@ -48,6 +55,7 @@ export interface Message {
   failed?: boolean;
   isRead?: boolean;
   replyToId?: string;
+  marketingCampaignId?: string | null;
   isSystem?: boolean;
 }
 

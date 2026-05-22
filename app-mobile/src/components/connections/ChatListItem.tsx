@@ -1,4 +1,4 @@
-import React, { useRef, useCallback } from "react";
+import React, { useRef, useCallback, useState } from "react";
 import {
   Text,
   View,
@@ -7,12 +7,14 @@ import {
   ActivityIndicator,
   Animated,
   Platform,
+  Image,
 } from "react-native";
 import { Swipeable } from "react-native-gesture-handler";
 import { useTranslation } from 'react-i18next';
 import { Icon } from "../ui/Icon";
 import { Conversation } from "../../hooks/useMessages";
 import { getDisplayName } from "../../utils/getDisplayName";
+import type { BusinessEventCard } from "../../types/mergedDiscover";
 
 /**
  * ORCH-0898: extended Conversation shape with type + name + session_id so ChatListItem
@@ -25,6 +27,13 @@ export type ChatListItemConversation = Conversation & {
   type?: 'direct' | 'group';
   name?: string | null;
   session_id?: string | null;
+  event_id?: string | null;
+  linked_entity_type?: 'direct' | 'session' | 'trip' | 'event';
+  eventBrandName?: string | null;
+  eventBrandAccountId?: string | null;
+  eventCoverMediaUrl?: string | null;
+  eventPublicCard?: BusinessEventCard | null;
+  is_broadcast_only?: boolean;
 };
 
 interface ChatListItemProps {
@@ -88,6 +97,35 @@ function getAvatarColor(_seed: string): string {
   return "#eb7825";
 }
 
+function formatEventListDate(card?: BusinessEventCard | null): string | null {
+  const value = card?.masterDateUtc;
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleDateString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function formatEventListCountdown(card?: BusinessEventCard | null): string | null {
+  const value = card?.masterDateUtc;
+  if (!value) return null;
+  const start = new Date(value);
+  if (Number.isNaN(start.getTime())) return null;
+
+  const now = new Date();
+  const startDay = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const diffDays = Math.round((startDay.getTime() - today.getTime()) / 86400000);
+
+  if (diffDays < 0) return "Past";
+  if (diffDays === 0) return "Today";
+  if (diffDays === 1) return "Tomorrow";
+  return `${diffDays}d out`;
+}
+
 export function ChatListItem({
   conversation,
   currentUserId,
@@ -108,6 +146,11 @@ export function ChatListItem({
   // through by ConnectionsPage transform from messagingService.getConversations server-shape).
   // Direct conversations either omit `type` (legacy field) or have `type === 'direct'`.
   const isGroup = conversation.type === 'group';
+  const isTripEventGroup =
+    isGroup && (conversation.linked_entity_type === 'trip' || conversation.linked_entity_type === 'event');
+  const isCollaborationGroup = isGroup && !isTripEventGroup;
+  const isBroadcastOnly = isTripEventGroup && conversation.is_broadcast_only === true;
+  const eventKind = conversation.linked_entity_type === 'trip' ? 'Trip' : 'Event';
 
   // For direct conversations: find the other participant; for group conversations: collect
   // up to 3 non-self participants for the multi-avatar stack.
@@ -132,6 +175,14 @@ export function ChatListItem({
   const lastMessage = conversation.last_message;
   const unreadCount = conversation.unread_count || 0;
   const hasUnread = unreadCount > 0 && !isMuted;
+  const eventDate = formatEventListDate(conversation.eventPublicCard);
+  const eventCountdown = formatEventListCountdown(conversation.eventPublicCard);
+  const eventDefaultPreview = [eventCountdown, eventDate].filter(Boolean).join(" · ");
+  const collaborationDefaultPreview =
+    conversation.participants.length > 1
+      ? `${conversation.participants.length} people planning together`
+      : "Collaboration space ready";
+  const directDefaultPreview = "Start the conversation";
 
   // Message preview
   let messagePreview = "";
@@ -147,8 +198,29 @@ export function ChatListItem({
     }
   }
   if (isGroup && messagePreview && lastMessage?.sender_name) {
-    messagePreview = `${lastMessage.sender_name}: ${messagePreview}`;
+    const brandName = conversation.eventBrandName?.trim();
+    const brandSenderName =
+      isTripEventGroup &&
+      brandName &&
+      (
+        (lastMessage as any).marketing_campaign_id ||
+        (conversation.eventBrandAccountId && lastMessage.sender_id === conversation.eventBrandAccountId)
+      )
+        ? brandName
+        : null;
+    messagePreview = `${brandSenderName ?? lastMessage.sender_name}: ${messagePreview}`;
   }
+  const fallbackPreview = isTripEventGroup
+    ? eventDefaultPreview || (isBroadcastOnly ? `${conversation.eventBrandName?.trim() || 'Organiser'} updates only` : `${eventKind} broadcast ready`)
+    : isCollaborationGroup
+      ? collaborationDefaultPreview
+      : directDefaultPreview;
+
+  const rowMetaLabel = isTripEventGroup
+    ? "Broadcast"
+    : isCollaborationGroup
+      ? "Collab session"
+      : null;
 
   // Timestamp
   const timestamp = lastMessage?.created_at
@@ -156,6 +228,15 @@ export function ChatListItem({
     : "";
 
   const swipeableRef = useRef<Swipeable>(null);
+  const [isSwipeInteracting, setIsSwipeInteracting] = useState(false);
+
+  const hideTrailingChromeForSwipe = useCallback(() => {
+    setIsSwipeInteracting(true);
+  }, []);
+
+  const restoreTrailingChromeAfterSwipe = useCallback(() => {
+    setIsSwipeInteracting(false);
+  }, []);
 
   const renderRightActions = useCallback(
     (_progress: Animated.AnimatedInterpolation<number>, dragX: Animated.AnimatedInterpolation<number>) => {
@@ -207,92 +288,146 @@ export function ChatListItem({
       renderRightActions={renderRightActions}
       overshootRight={false}
       friction={2}
+      onSwipeableOpenStartDrag={hideTrailingChromeForSwipe}
+      onSwipeableWillOpen={hideTrailingChromeForSwipe}
+      onSwipeableClose={restoreTrailingChromeAfterSwipe}
     >
       <TouchableOpacity
         onPress={() => onPress(conversation)}
-        style={styles.container}
+        style={[
+          styles.container,
+          isTripEventGroup && styles.eventContainer,
+          isCollaborationGroup && styles.collaborationContainer,
+          !isGroup && styles.directContainer,
+        ]}
         activeOpacity={0.7}
       >
-        {/* Avatar — ORCH-0898 branches on conversation.type */}
-        {isGroup ? (
-          // Group: multi-avatar stack (up to 3 participants in a layered fan).
-          // Tapping opens the conversation (no per-participant route for groups in v1).
-          <TouchableOpacity
-            style={styles.avatarContainer}
-            onPress={() => onPress(conversation)}
-            activeOpacity={0.7}
-            accessibilityLabel={t('chat:groupChatAvatarLabel', { defaultValue: 'Group chat with {{count}} people', count: conversation.participants.length })}
-          >
-            <View style={styles.groupAvatarStack}>
-              {groupAvatarParticipants.length === 0 ? (
-                // Fallback: empty group (host hasn't accepted anyone yet) — single placeholder avatar.
+        <View style={styles.avatarColumn}>
+          {/* Avatar — ORCH-0898 branches on conversation.type */}
+          {isGroup ? (
+            // Group: multi-avatar stack (up to 3 participants in a layered fan).
+            // Tapping opens the conversation (no per-participant route for groups in v1).
+            <TouchableOpacity
+              style={styles.avatarContainer}
+              onPress={() => onPress(conversation)}
+              activeOpacity={0.7}
+              accessibilityLabel={t('chat:groupChatAvatarLabel', { defaultValue: 'Group chat with {{count}} people', count: conversation.participants.length })}
+            >
+              <View style={[styles.groupAvatarStack, isTripEventGroup && styles.eventGroupAvatarStack]}>
+                {conversation.eventCoverMediaUrl ? (
+                  <Image
+                    source={{ uri: conversation.eventCoverMediaUrl }}
+                    style={[styles.avatar, styles.groupCoverAvatar, styles.eventCoverAvatar]}
+                    resizeMode="cover"
+                  />
+                ) : groupAvatarParticipants.length === 0 ? (
+                  // Fallback: empty group (host hasn't accepted anyone yet) — single placeholder avatar.
+                  <View
+                    style={[
+                      styles.avatar,
+                      { backgroundColor: getAvatarColor(conversation.id) },
+                    ]}
+                  >
+                    <Text style={styles.avatarText}>{getInitials(cleanedName)}</Text>
+                  </View>
+                ) : (
+                  groupAvatarParticipants.map((p, idx) => (
+                    <View
+                      key={p.id}
+                      style={[
+                        styles.avatar,
+                        styles.groupAvatarSegment,
+                        {
+                          backgroundColor: getAvatarColor(p.id),
+                          // Layer offset — successive avatars shift right by half-width.
+                          left: idx * 14,
+                          zIndex: groupAvatarParticipants.length - idx,
+                        },
+                      ]}
+                    >
+                      {p.avatar_url ? (
+                        <Image
+                          source={{ uri: p.avatar_url }}
+                          style={styles.groupAvatarImage}
+                          resizeMode="cover"
+                        />
+                      ) : (
+                        <Text style={styles.avatarText}>{getInitials(getDisplayName(p))}</Text>
+                      )}
+                    </View>
+                  ))
+                )}
+              </View>
+            </TouchableOpacity>
+          ) : (
+            // Direct: single avatar.
+            <TouchableOpacity
+              style={styles.avatarContainer}
+              onPress={() => {
+                if (onAvatarPress && otherParticipant?.id) {
+                  onAvatarPress(otherParticipant.id);
+                } else {
+                  onPress(conversation);
+                }
+              }}
+              activeOpacity={0.7}
+            >
+              {otherParticipant?.avatar_url ? (
+                <Image
+                  source={{ uri: otherParticipant.avatar_url }}
+                  style={[styles.avatar, styles.directAvatarImage]}
+                  resizeMode="cover"
+                />
+              ) : (
                 <View
                   style={[
                     styles.avatar,
-                    { backgroundColor: getAvatarColor(conversation.id) },
+                    {
+                      backgroundColor: getAvatarColor(
+                        otherParticipant?.id || conversation.id
+                      ),
+                    },
                   ]}
                 >
                   <Text style={styles.avatarText}>{getInitials(cleanedName)}</Text>
                 </View>
-              ) : (
-                groupAvatarParticipants.map((p, idx) => (
-                  <View
-                    key={p.id}
-                    style={[
-                      styles.avatar,
-                      styles.groupAvatarSegment,
-                      {
-                        backgroundColor: getAvatarColor(p.id),
-                        // Layer offset — successive avatars shift right by half-width.
-                        left: idx * 14,
-                        zIndex: groupAvatarParticipants.length - idx,
-                      },
-                    ]}
-                  >
-                    <Text style={styles.avatarText}>{getInitials(getDisplayName(p))}</Text>
-                  </View>
-                ))
               )}
-            </View>
-          </TouchableOpacity>
-        ) : (
-          // Direct: single avatar (legacy render — unchanged).
-          <TouchableOpacity
-            style={styles.avatarContainer}
-            onPress={() => {
-              if (onAvatarPress && otherParticipant?.id) {
-                onAvatarPress(otherParticipant.id);
-              } else {
-                onPress(conversation);
-              }
-            }}
-            activeOpacity={0.7}
-          >
-            <View
-              style={[
-                styles.avatar,
-                {
-                  backgroundColor: getAvatarColor(
-                    otherParticipant?.id || conversation.id
-                  ),
-                },
-              ]}
-            >
-              <Text style={styles.avatarText}>{getInitials(cleanedName)}</Text>
-            </View>
-            {otherParticipant?.is_online && <View style={styles.onlineDot} />}
-          </TouchableOpacity>
-        )}
+              {otherParticipant?.is_online && <View style={styles.onlineDot} />}
+            </TouchableOpacity>
+          )}
+        </View>
 
         {/* Content */}
         <View style={styles.content}>
           <View style={styles.nameRow}>
             <Text
-              style={[styles.name, hasUnread && styles.nameBold]}
+              style={[
+                styles.name,
+                isTripEventGroup && styles.eventName,
+                hasUnread && styles.nameBold,
+              ]}
               numberOfLines={1}
             >
               {cleanedName}
             </Text>
+            {rowMetaLabel ? (
+              <View
+                style={[
+                  styles.rowTypePill,
+                  isTripEventGroup && styles.eventTypePill,
+                  isSwipeInteracting && styles.trailingRowElementHidden,
+                ]}
+              >
+                <Icon
+                  name={isTripEventGroup ? "megaphone" : "users"}
+                  size={11}
+                  color={isTripEventGroup ? "#ffffff" : "#f97316"}
+                />
+                <Text style={[styles.rowTypePillText, isTripEventGroup && styles.eventTypePillText]}>
+                  {rowMetaLabel}
+                </Text>
+              </View>
+            ) : null}
             {isMuted && (
               <Icon name="volume-mute" size={13} color="#9ca3af" style={styles.muteIcon} />
             )}
@@ -305,13 +440,21 @@ export function ChatListItem({
             )}
           </View>
           <Text
-            style={[styles.preview, hasUnread && styles.previewBold]}
+            style={[
+              styles.preview,
+              isTripEventGroup && styles.eventPreview,
+              isCollaborationGroup && styles.collaborationPreview,
+              hasUnread && styles.previewBold,
+              isSwipeInteracting && styles.trailingRowElementHidden,
+            ]}
             numberOfLines={1}
           >
-            {messagePreview || t('chat:noMessagesYet')}
+            {messagePreview || fallbackPreview || t('chat:noMessagesYet')}
           </Text>
           {timestamp ? (
-            <Text style={styles.seenAgo}>{timestamp}</Text>
+            <Text style={[styles.seenAgo, isSwipeInteracting && styles.trailingRowElementHidden]}>
+              {timestamp}
+            </Text>
           ) : null}
         </View>
 
@@ -320,7 +463,7 @@ export function ChatListItem({
         {!isGroup && pairStatus === 'paired' && onUnpairPress && (
           <TouchableOpacity
             onPress={() => { if (otherParticipant?.id) onUnpairPress(otherParticipant.id); }}
-            style={styles.unpairBtn}
+            style={[styles.unpairBtn, isSwipeInteracting && styles.trailingRowElementHidden]}
             activeOpacity={0.7}
           >
             <Icon name="star" size={14} color="#10b981" />
@@ -331,7 +474,7 @@ export function ChatListItem({
           <TouchableOpacity
             onPress={() => { if (otherParticipant?.id) onPairPress(otherParticipant.id); }}
             disabled={pairLoading}
-            style={styles.pairBtn}
+            style={[styles.pairBtn, isSwipeInteracting && styles.trailingRowElementHidden]}
             activeOpacity={0.7}
           >
             {pairLoading ? (
@@ -346,7 +489,7 @@ export function ChatListItem({
         )}
         {!isGroup && pairStatus === 'pending' && (
           <TouchableOpacity
-            style={styles.pendingPairBadge}
+            style={[styles.pendingPairBadge, isSwipeInteracting && styles.trailingRowElementHidden]}
             onPress={() => { if (otherParticipant?.id) onPendingPairPress?.(otherParticipant.id); }}
             activeOpacity={0.7}
           >
@@ -364,30 +507,47 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 14,
-    paddingVertical: 12,
-    marginHorizontal: 12,
+    paddingVertical: 18,
+    marginHorizontal: 10,
     marginVertical: 4,
-    borderRadius: 16,
-    backgroundColor: '#ffffff',
+    minHeight: 100,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255, 255, 255, 0.075)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.10)',
     ...Platform.select({
       ios: {
-        backgroundColor: 'rgba(255, 255, 255, 0.70)',
-        borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.45)',
-        shadowColor: 'rgba(0, 0, 0, 0.06)',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 1,
+        shadowColor: '#000000',
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.12,
         shadowRadius: 12,
       },
       android: {
-        backgroundColor: '#ffffff',
+        backgroundColor: 'rgba(255, 255, 255, 0.09)',
         elevation: 2,
       },
     }),
   },
+  directContainer: {
+    backgroundColor: 'rgba(255, 255, 255, 0.085)',
+  },
+  collaborationContainer: {
+    backgroundColor: 'rgba(255, 255, 255, 0.07)',
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+  },
+  eventContainer: {
+    backgroundColor: 'rgba(249, 115, 22, 0.085)',
+    borderColor: 'rgba(249, 115, 22, 0.24)',
+  },
+  avatarColumn: {
+    width: 82,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 14,
+    flexShrink: 0,
+  },
   avatarContainer: {
     position: "relative",
-    marginRight: 12,
   },
   avatar: {
     width: 50,
@@ -407,6 +567,10 @@ const styles = StyleSheet.create({
     height: 50,
     position: 'relative',
   },
+  eventGroupAvatarStack: {
+    width: 56,
+    height: 56,
+  },
   groupAvatarSegment: {
     position: 'absolute',
     top: 0,
@@ -415,6 +579,28 @@ const styles = StyleSheet.create({
     borderRadius: 25,
     borderWidth: 2,
     borderColor: '#ffffff',
+    overflow: 'hidden',
+  },
+  groupAvatarImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 25,
+  },
+  groupCoverAvatar: {
+    borderWidth: 2,
+    borderColor: '#ffffff',
+    overflow: 'hidden',
+  },
+  eventCoverAvatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.88)',
+  },
+  directAvatarImage: {
+    borderWidth: 2,
+    borderColor: "#ffffff",
   },
   onlineDot: {
     position: "absolute",
@@ -435,17 +621,46 @@ const styles = StyleSheet.create({
   nameRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 2,
+    marginBottom: 8,
   },
   name: {
     fontSize: 16,
-    fontWeight: "500",
-    color: "#111827",
+    fontWeight: "700",
+    color: "#f8fafc",
     flex: 1,
     marginRight: 6,
   },
+  eventName: {
+    fontWeight: "700",
+    color: "#fff7ed",
+  },
   nameBold: {
     fontWeight: "700",
+  },
+  rowTypePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    borderRadius: 999,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    backgroundColor: "rgba(255, 255, 255, 0.07)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.12)",
+    marginRight: 6,
+  },
+  eventTypePill: {
+    backgroundColor: "rgba(249, 115, 22, 0.14)",
+    borderColor: "rgba(249, 115, 22, 0.28)",
+  },
+  rowTypePillText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "rgba(255, 255, 255, 0.72)",
+    letterSpacing: 0,
+  },
+  eventTypePillText: {
+    color: "#fed7aa",
   },
   pairBtn: {
     flexDirection: "row",
@@ -497,6 +712,9 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#9ca3af",
   },
+  trailingRowElementHidden: {
+    opacity: 0,
+  },
   metaRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -506,17 +724,25 @@ const styles = StyleSheet.create({
   },
   seenAgo: {
     fontSize: 11,
-    fontWeight: "500",
-    color: "#b0b5bc",
+    fontWeight: "600",
+    color: "rgba(255, 255, 255, 0.36)",
     marginTop: 2,
   },
   preview: {
     fontSize: 14,
-    color: "#6b7280",
+    color: "rgba(255, 255, 255, 0.56)",
+    lineHeight: 18,
+  },
+  eventPreview: {
+    color: "#fdba74",
+    fontWeight: "600",
+  },
+  collaborationPreview: {
+    color: "rgba(255, 255, 255, 0.58)",
   },
   previewBold: {
     fontWeight: "600",
-    color: "#111827",
+    color: "#f8fafc",
   },
   unreadBadge: {
     minWidth: 20,

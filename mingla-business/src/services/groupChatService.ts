@@ -3,6 +3,12 @@ import { supabase } from "./supabase";
 export interface EventGroupConversation {
   id: string;
   name: string;
+  /**
+   * Live event title fetched at read-time. Use THIS in the header — `name` is a
+   * cached snapshot from when the auto-create trigger fired, which becomes stale
+   * if the planner later renames the event (e.g., "Untitled draft" → "Beach Party").
+   */
+  event_name: string;
   is_broadcast_only: boolean;
   is_enabled: boolean;
 }
@@ -26,18 +32,27 @@ export async function getEventGroupChat(eventId: string): Promise<{
   conversation: EventGroupConversation | null;
   error: string | null;
 }> {
+  // JOIN events so the header shows the live event title (auto-updates on rename)
+  // rather than the cached conversation.name snapshot from auto-create trigger time.
+  // Note: events table column is `title`, NOT `name` — verified against
+  // supabase/migrations/20260505000000_baseline_squash_orch_0729.sql:7796.
   const { data, error } = await supabase
     .from("conversations")
-    .select("id, name, is_broadcast_only, is_enabled")
+    .select("id, name, is_broadcast_only, is_enabled, events!event_id(title)")
     .eq("event_id", eventId)
     .in("linked_entity_type", ["trip", "event"])
     .maybeSingle();
   if (error) return { conversation: null, error: error.message };
   if (data === null) return { conversation: null, error: null };
+  const eventName =
+    (data as { events?: { title?: string | null } | null }).events?.title?.trim() ||
+    data.name?.trim() ||
+    "Group chat";
   return {
     conversation: {
       id: data.id,
       name: data.name ?? "Group chat",
+      event_name: eventName,
       is_broadcast_only: Boolean(data.is_broadcast_only),
       is_enabled: Boolean(data.is_enabled),
     },

@@ -47,7 +47,9 @@ import { useConversationParticipants } from "../hooks/useConversationParticipant
 import { useChatCardTagSource } from "../hooks/useChatCardTagSource";
 import { useChatInputController } from "../hooks/useChatInputController";
 import ExpandedCardModal from "./ExpandedCardModal";  // ORCH-0667
+import { ExpandedBusinessEventSheet } from "./expandedCard/ExpandedBusinessEventSheet";
 import type { ExpandedCardData } from "../types/expandedCardTypes";  // ORCH-0685
+import type { BusinessEventCard } from "../types/mergedDiscover";
 import { useTranslation } from 'react-i18next';
 import { HapticFeedback } from "../utils/hapticFeedback";
 import { colors as dsColors, spacing as dsSpacing, glass } from "../constants/designSystem";
@@ -64,6 +66,10 @@ const INPUT_AREA_VERTICAL_PADDING = 6;
 const INPUT_CAPSULE_MARGIN_BOTTOM = 14;
 /** ORCH-0600: intrinsic height of the glass input capsule (padding + 40pt controls). */
 const INPUT_CAPSULE_HEIGHT = 56;
+/** Bottom read-only broadcast pill height; used to keep chat bubbles and sheets above it. */
+const BROADCAST_COMPOSER_NOTICE_HEIGHT = 56;
+const BROADCAST_COMPOSER_NOTICE_BOTTOM_GAP = 14;
+const BROADCAST_COMPOSER_NOTICE_CONTENT_GAP = 12;
 
 interface Message {
   id: string;
@@ -83,6 +89,7 @@ interface Message {
   failed?: boolean;
   isRead?: boolean;
   replyToId?: string;
+  marketingCampaignId?: string | null;
   isSystem?: boolean;
 }
 
@@ -102,6 +109,12 @@ interface Friend {
   eventId?: string | null;
   linkedEntityType?: "direct" | "session" | "trip" | "event" | null;
   sessionCreatorId?: string | null;
+  eventBrandName?: string | null;
+  eventBrandAccountId?: string | null;
+  eventCoverMediaUrl?: string | null;
+  eventPublicUrl?: string | null;
+  eventPublicCard?: BusinessEventCard | null;
+  isBroadcastOnly?: boolean;
   isSessionAdmin?: boolean;
   notificationsMuted?: boolean;
   participantCount?: number;
@@ -214,10 +227,33 @@ export default function MessageInterface({
     return name.trim();
   };
   const isGroupChat = friend.conversationType === "group";
+  const isTripEventGroupChat =
+    isGroupChat && (friend.linkedEntityType === "trip" || friend.linkedEntityType === "event");
   const headerTitle = cleanName(friend.name);
-  const headerParticipants = friend.participants || [];
+  const headerParticipants = useMemo(() => friend.participants ?? [], [friend.participants]);
   const headerParticipantCount = friend.participantCount ?? headerParticipants.length;
   const visibleHeaderParticipants = headerParticipants.slice(0, 3);
+  const eventAudienceKind = friend.linkedEntityType === "trip" ? "travelling" : "attending";
+  const eventAudienceTitle = friend.linkedEntityType === "trip" ? "Travellers" : "Attendees";
+  const eventAudienceSubtitle = `${headerParticipantCount} ${eventAudienceKind}`;
+  const getMessageSenderName = (msg: Message): string => {
+    const brandName = friend.eventBrandName?.trim();
+    const brandAccountId = friend.eventBrandAccountId?.trim();
+    if (
+      isTripEventGroupChat &&
+      brandName &&
+      (
+        msg.marketingCampaignId ||
+        (brandAccountId && msg.senderId === brandAccountId)
+      )
+    ) {
+      return brandName;
+    }
+
+    return msg.isMe
+      ? (currentUserName || msg.senderName || 'You')
+      : cleanName(msg.senderName || friend.name);
+  };
   const groupSettingsParticipants = useMemo(
     () =>
       headerParticipants.map((participant) => ({
@@ -262,6 +298,7 @@ export default function MessageInterface({
   const [isProcessingFile, setIsProcessingFile] = useState(false);
   const [showImagePreview, setShowImagePreview] = useState(false);
   const [showMoreOptionsMenu, setShowMoreOptionsMenu] = useState(false);
+  const [showEventAudienceSheet, setShowEventAudienceSheet] = useState(false);
   // ORCH-0667: shared-card picker state
   const [showSavedCardPicker, setShowSavedCardPicker] = useState(false);
   const [pickerSubmittingCardId, setPickerSubmittingCardId] = useState<string | null>(null);
@@ -269,6 +306,7 @@ export default function MessageInterface({
   // Populated via cardPayloadToExpandedCardData helper (cardPayloadAdapter.ts).
   const [expandedCardFromChat, setExpandedCardFromChat] = useState<ExpandedCardData | null>(null);
   const [showExpandedCardFromChat, setShowExpandedCardFromChat] = useState(false);
+  const [showGroupEventSheet, setShowGroupEventSheet] = useState(false);
   // ORCH-0685: Save handler state (CF-2 dead-tap fix).
   const [isSavingSharedCard, setIsSavingSharedCard] = useState(false);
   const [sharedCardIsSaved, setSharedCardIsSaved] = useState(false);
@@ -1030,6 +1068,44 @@ export default function MessageInterface({
     ? INPUT_CAPSULE_MARGIN_BOTTOM
     : bottomNavTotalHeight + INPUT_CAPSULE_MARGIN_BOTTOM + ANDROID_NAV_OVERLAP_FIX;
   const finalInputBottom = inputBottomOffset + iosKeyboardLift + androidManualLift;
+  const isBroadcastOnlyConsumerChannel = isTripEventGroupChat && friend.isBroadcastOnly === true;
+  const broadcastComposerNoticeBottom = bottomNavTotalHeight + BROADCAST_COMPOSER_NOTICE_BOTTOM_GAP;
+  const broadcastComposerContentClearance =
+    broadcastComposerNoticeBottom +
+    BROADCAST_COMPOSER_NOTICE_HEIGHT +
+    BROADCAST_COMPOSER_NOTICE_CONTENT_GAP;
+  const showComposer =
+    !isBlocked &&
+    !isUnfriended &&
+    !isDeletedAccount &&
+    !isBroadcastOnlyConsumerChannel;
+  const messageListBottomClearance = showComposer
+    ? finalInputBottom + INPUT_CAPSULE_HEIGHT + 8
+    : isBroadcastOnlyConsumerChannel
+      ? broadcastComposerContentClearance
+      : bottomNavTotalHeight + 24;
+  const channelLabel = friend.linkedEntityType === "trip" ? "Trip broadcast channel" : "Event broadcast channel";
+  const channelDetail = isBroadcastOnlyConsumerChannel
+    ? `Only ${friend.eventBrandName?.trim() || "the organiser"} can post updates here`
+    : `Updates from ${friend.eventBrandName?.trim() || "the organiser"} and attendees`;
+  const channelLine = isBroadcastOnlyConsumerChannel
+    ? `${friend.linkedEntityType === "trip" ? "Trip" : "Event"} broadcast · ${friend.eventBrandName?.trim() || "Organiser"} only`
+    : `${friend.linkedEntityType === "trip" ? "Trip" : "Event"} channel · ${friend.eventBrandName?.trim() || "Organiser"} + attendees`;
+
+  const handleHeaderMorePress = () => {
+    if (isTripEventGroupChat) {
+      setShowMoreOptionsMenu(false);
+      setShowEventAudienceSheet(true);
+      return;
+    }
+
+    setShowMoreOptionsMenu(!showMoreOptionsMenu);
+  };
+
+  const handleOpenAudienceProfile = (participantId: string) => {
+    setShowEventAudienceSheet(false);
+    onViewProfile?.(participantId);
+  };
 
   return (
     <View style={styles.container}>
@@ -1051,7 +1127,12 @@ export default function MessageInterface({
             accessibilityLabel={isGroupChat ? `${headerTitle} participants` : `View ${headerTitle}'s profile`}
             accessibilityRole="button"
           >
-            {isGroupChat ? (
+            {isGroupChat && friend.eventCoverMediaUrl ? (
+              <ImageWithFallback
+                source={{ uri: friend.eventCoverMediaUrl }}
+                style={[styles.avatar, styles.groupCoverAvatar]}
+              />
+            ) : isGroupChat ? (
               <View style={styles.groupHeaderAvatarStack}>
                 {visibleHeaderParticipants.length === 0 ? (
                   <View style={styles.groupHeaderAvatarPlaceholder}>
@@ -1109,7 +1190,9 @@ export default function MessageInterface({
             <Text style={styles.userName} numberOfLines={1}>{headerTitle}</Text>
             {isGroupChat ? (
               <Text style={styles.groupParticipantCount} numberOfLines={1}>
-                {headerParticipantCount} {headerParticipantCount === 1 ? "person" : "people"} in chat
+                {isTripEventGroupChat
+                  ? eventAudienceSubtitle
+                  : `${headerParticipantCount} ${headerParticipantCount === 1 ? "person" : "people"} in chat`}
               </Text>
             ) : (
               <ChatStatusLine
@@ -1122,10 +1205,16 @@ export default function MessageInterface({
 
           {/* More button — far right */}
           <TouchableOpacity
-            onPress={() => setShowMoreOptionsMenu(!showMoreOptionsMenu)}
+            onPress={handleHeaderMorePress}
             style={styles.headerMoreBtn}
             activeOpacity={0.7}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel={
+              isTripEventGroupChat
+                ? `View ${eventAudienceTitle.toLowerCase()}`
+                : "Open chat options"
+            }
           >
             <Icon name="ellipsis-vertical" size={20} color="rgba(255, 255, 255, 0.72)" />
           </TouchableOpacity>
@@ -1192,10 +1281,36 @@ export default function MessageInterface({
         </View> */}
       </View>
 
-      {isGroupChat &&
-      friend.eventId &&
-      (friend.linkedEntityType === "trip" || friend.linkedEntityType === "event") ? (
-        <TripCountdownBanner eventId={friend.eventId} />
+      {isTripEventGroupChat ? (
+        <View style={styles.eventChannelHeaderStack}>
+          {friend.eventId ? (
+            <TripCountdownBanner
+              eventId={friend.eventId}
+              onPress={friend.eventPublicCard ? () => setShowGroupEventSheet(true) : undefined}
+              stackedWithChannel
+            />
+          ) : null}
+          {friend.eventId ? <View style={styles.eventChannelHeaderDivider} /> : null}
+          <View
+            style={[
+              styles.broadcastChannelBanner,
+              isBroadcastOnlyConsumerChannel && styles.broadcastOnlyChannelBanner,
+            ]}
+            accessibilityRole="text"
+            accessibilityLabel={`${channelLabel}. ${channelDetail}`}
+          >
+            <View style={styles.broadcastChannelIconShell}>
+              <Icon
+                name={isBroadcastOnlyConsumerChannel ? "megaphone" : "chatbubbles"}
+                size={17}
+                color="#ffffff"
+              />
+            </View>
+            <Text style={styles.broadcastChannelLine} numberOfLines={1}>
+              {channelLine}
+            </Text>
+          </View>
+        </View>
       ) : null}
 
       {/* Messages */}
@@ -1203,11 +1318,17 @@ export default function MessageInterface({
         <View style={[styles.messagesContainer, { justifyContent: "center" }]}>
           <View style={styles.emptyState}>
             <View style={styles.emptyStateIcon}>
-              <Icon name="chatbubble" size={32} color="#eb7825" />
+              <Icon
+                name={isTripEventGroupChat ? (isBroadcastOnlyConsumerChannel ? "megaphone" : "chatbubbles") : "chatbubble"}
+                size={32}
+                color="#eb7825"
+              />
             </View>
-            <Text style={styles.emptyStateTitle}>{t('chat:startConversation')}</Text>
+            <Text style={styles.emptyStateTitle}>
+              {isTripEventGroupChat ? channelLabel : t('chat:startConversation')}
+            </Text>
             <Text style={styles.emptyStateText}>
-              {t('chat:sendMessageTo', { name: cleanName(friend.name) })}
+              {isTripEventGroupChat ? channelDetail : t('chat:sendMessageTo', { name: cleanName(friend.name) })}
             </Text>
           </View>
         </View>
@@ -1244,7 +1365,7 @@ export default function MessageInterface({
               onReply={() => {
                 setReplyingTo({
                   messageId: item.message.id,
-                  senderName: item.message.isMe ? (currentUserName || 'You') : cleanName(friend.name),
+                  senderName: getMessageSenderName(item.message),
                   content: item.message.content,
                   isMe: item.message.isMe,
                 });
@@ -1276,9 +1397,7 @@ export default function MessageInterface({
                 <MessageBubble
                   message={{
                     id: item.message.id,
-                    senderName: item.message.isMe
-                      ? (currentUserName || item.message.senderName || 'You')
-                      : cleanName(item.message.senderName || friend.name),
+                    senderName: getMessageSenderName(item.message),
                     content: item.message.content,
                     timestamp: item.message.timestamp,
                     type: item.message.type,
@@ -1288,6 +1407,7 @@ export default function MessageInterface({
                     cardPayload: item.message.cardPayload,  // ORCH-0667
                     mentions: item.message.mentions,
                     cardTags: item.message.cardTags,
+                    marketingCampaignId: item.message.marketingCampaignId,
                     isMe: item.message.isMe,
                     failed: item.message.failed,
                     isSystem: item.message.isSystem,
@@ -1312,7 +1432,7 @@ export default function MessageInterface({
                     const ref = messageMap.get(item.message.replyToId!);
                     if (!ref) return { senderName: '', content: '', isDeleted: true, messageId: item.message.replyToId };
                     return {
-                      senderName: ref.isMe ? (currentUserName || 'You') : cleanName(friend.name),
+                      senderName: getMessageSenderName(ref),
                       content: ref.content,
                       imageUrl: ref.type === 'image' ? ref.fileUrl : undefined,
                       messageId: ref.id,
@@ -1336,7 +1456,7 @@ export default function MessageInterface({
               // the VISUAL BOTTOM clearance after the scaleY:-1 flip. Clears the
               // composer capsule (which sits at `finalInputBottom` above the
               // window's bottom edge) + INPUT_CAPSULE_HEIGHT + 8pt breathing.
-              paddingTop: finalInputBottom + INPUT_CAPSULE_HEIGHT + 8,
+              paddingTop: messageListBottomClearance,
             },
           ]}
           keyboardShouldPersistTaps="handled"
@@ -1362,7 +1482,7 @@ export default function MessageInterface({
           if (msg) {
             setReplyingTo({
               messageId: msg.id,
-              senderName: msg.isMe ? (currentUserName || 'You') : cleanName(friend.name),
+              senderName: getMessageSenderName(msg),
               content: msg.content,
               isMe: msg.isMe,
             });
@@ -1495,13 +1615,22 @@ export default function MessageInterface({
         </View>
       )}
 
+      {isBroadcastOnlyConsumerChannel && !isBlocked && !isUnfriended && !isDeletedAccount && (
+        <View style={[styles.broadcastComposerNotice, { bottom: broadcastComposerNoticeBottom }]}>
+          <Icon name="lock-closed" size={16} color="rgba(255, 255, 255, 0.82)" />
+          <Text style={styles.broadcastComposerNoticeText}>
+            {`Broadcast-only: ${friend.eventBrandName?.trim() || "the organiser"} is posting updates here.`}
+          </Text>
+        </View>
+      )}
+
       {/* Input Area - Floating glass capsule. ORCH-0610 forensic fix: bottom
           is a STATIC value keyed off keyboardVisible (not an Animated.add).
           When keyboard opens, the capsule is positioned at keyboardHeight + 8
           from screen bottom — above the keyboard. OS `adjustPan` sees the
           focused input is already visible above the keyboard and does NOT pan
           the window, so the header stays at its original position. */}
-      {!isBlocked && !isUnfriended && !isDeletedAccount && (
+      {showComposer && (
       <View
         style={[
           styles.inputCapsuleWrap,
@@ -1790,6 +1919,105 @@ export default function MessageInterface({
         />
       )}
 
+      {showGroupEventSheet && friend.eventPublicCard ? (
+        <ExpandedBusinessEventSheet
+          visible={showGroupEventSheet}
+          data={friend.eventPublicCard}
+          onClose={() => setShowGroupEventSheet(false)}
+          bottomContentInset={
+            isBroadcastOnlyConsumerChannel
+              ? broadcastComposerContentClearance
+              : bottomNavTotalHeight + 32
+          }
+        />
+      ) : null}
+
+      <Modal
+        visible={Boolean(isTripEventGroupChat && showEventAudienceSheet)}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowEventAudienceSheet(false)}
+      >
+        <TouchableOpacity
+          style={styles.eventAudienceOverlay}
+          activeOpacity={1}
+          onPress={() => setShowEventAudienceSheet(false)}
+        />
+        <View style={[styles.eventAudienceSheet, { paddingBottom: safeInsets.bottom + 24 }]}>
+          <View style={styles.chatSheetHandle} />
+          <View style={styles.eventAudienceSheetHeader}>
+            <View style={styles.eventAudienceIconShell}>
+              <Icon
+                name={friend.linkedEntityType === "trip" ? "map" : "people"}
+                size={18}
+                color="#ffffff"
+              />
+            </View>
+            <View style={styles.eventAudienceHeaderCopy}>
+              <Text style={styles.eventAudienceTitle}>{eventAudienceTitle}</Text>
+              <Text style={styles.eventAudienceSubtitle}>
+                {eventAudienceSubtitle} · {friend.linkedEntityType === "trip" ? "Trip broadcast" : "Event broadcast"}
+              </Text>
+            </View>
+          </View>
+
+          <ScrollView
+            style={styles.eventAudienceList}
+            contentContainerStyle={styles.eventAudienceListContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {headerParticipants.length > 0 ? (
+              headerParticipants.map((participant) => {
+                const participantName = getHeaderParticipantName(participant);
+                const canOpenProfile = Boolean(onViewProfile && participant.id);
+                return (
+                  <TouchableOpacity
+                    key={participant.id}
+                    style={styles.eventAudienceRow}
+                    activeOpacity={canOpenProfile ? 0.72 : 1}
+                    disabled={!canOpenProfile}
+                    onPress={() => handleOpenAudienceProfile(participant.id)}
+                    accessibilityRole={canOpenProfile ? "button" : "text"}
+                    accessibilityLabel={`View ${participantName} profile`}
+                  >
+                    {participant.avatar_url ? (
+                      <ImageWithFallback
+                        source={{ uri: participant.avatar_url }}
+                        style={styles.eventAudienceAvatar}
+                      />
+                    ) : (
+                      <View style={styles.eventAudienceAvatarFallback}>
+                        <Text style={styles.eventAudienceAvatarText}>
+                          {getHeaderInitials(participantName)}
+                        </Text>
+                      </View>
+                    )}
+                    <View style={styles.eventAudienceRowCopy}>
+                      <Text style={styles.eventAudienceName} numberOfLines={1}>
+                        {participantName}
+                      </Text>
+                      <Text style={styles.eventAudienceRole} numberOfLines={1}>
+                        {friend.linkedEntityType === "trip" ? "Traveller" : "Attendee"}
+                      </Text>
+                    </View>
+                    {canOpenProfile ? (
+                      <Icon name="chevron-forward" size={18} color="rgba(255, 255, 255, 0.42)" />
+                    ) : null}
+                  </TouchableOpacity>
+                );
+              })
+            ) : (
+              <View style={styles.eventAudienceEmpty}>
+                <Text style={styles.eventAudienceEmptyTitle}>No {eventAudienceTitle.toLowerCase()} yet</Text>
+                <Text style={styles.eventAudienceEmptyText}>
+                  People who join this {friend.linkedEntityType === "trip" ? "trip" : "event"} will appear here.
+                </Text>
+              </View>
+            )}
+          </ScrollView>
+        </View>
+      </Modal>
+
       {/* [ORCH-0696 F-13 lock-in] Shape 2a Modal hack deleted post-bottom-sheet
           conversion verified by operator live-fire on iOS + Android (2026-04-29).
           DO NOT re-introduce — toasts now render naturally above @gorhom/bottom-sheet
@@ -1969,6 +2197,10 @@ const styles = StyleSheet.create({
     height: 40,
     borderRadius: 20,
   },
+  groupCoverAvatar: {
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.18)",
+  },
   avatarPlaceholder: {
     width: 40,
     height: 40,
@@ -2040,6 +2272,50 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "rgba(255, 255, 255, 0.62)",
     marginTop: 2,
+  },
+  eventChannelHeaderStack: {
+    backgroundColor: "#f97316",
+    borderBottomLeftRadius: 28,
+    borderBottomRightRadius: 28,
+    overflow: "hidden",
+    shadowColor: "#f97316",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.16,
+    shadowRadius: 18,
+    elevation: 5,
+  },
+  eventChannelHeaderDivider: {
+    height: StyleSheet.hairlineWidth,
+    marginHorizontal: 24,
+    backgroundColor: "rgba(255, 255, 255, 0.22)",
+  },
+  broadcastChannelBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 24,
+    paddingTop: 12,
+    paddingBottom: 16,
+    backgroundColor: "transparent",
+  },
+  broadcastOnlyChannelBanner: {
+    backgroundColor: "transparent",
+  },
+  broadcastChannelIconShell: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.16)",
+  },
+  broadcastChannelLine: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#FFFFFF",
+    lineHeight: 20,
   },
   headerActions: {
     flexDirection: "row",
@@ -2390,6 +2666,29 @@ const styles = StyleSheet.create({
     left: 12,
     right: 12,
     zIndex: 60,
+  },
+  broadcastComposerNotice: {
+    position: "absolute",
+    left: 24,
+    right: 24,
+    zIndex: 55,
+    minHeight: BROADCAST_COMPOSER_NOTICE_HEIGHT,
+    borderRadius: 22,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.14)",
+  },
+  broadcastComposerNoticeText: {
+    flex: 1,
+    minWidth: 0,
+    color: "rgba(255, 255, 255, 0.78)",
+    fontSize: 13,
+    fontWeight: "600",
   },
   replyPreviewWrap: {
     marginBottom: 6,
@@ -2786,6 +3085,123 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginLeft: "auto",
+  },
+  eventAudienceOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.52)",
+  },
+  eventAudienceSheet: {
+    backgroundColor: "#111418",
+    borderTopLeftRadius: 26,
+    borderTopRightRadius: 26,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    borderWidth: 1,
+    borderBottomWidth: 0,
+    borderColor: "rgba(255, 255, 255, 0.10)",
+  },
+  eventAudienceSheetHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingBottom: 18,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255, 255, 255, 0.08)",
+  },
+  eventAudienceIconShell: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#f97316",
+  },
+  eventAudienceHeaderCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  eventAudienceTitle: {
+    fontSize: 20,
+    fontWeight: "800",
+    color: "#ffffff",
+    letterSpacing: 0,
+  },
+  eventAudienceSubtitle: {
+    marginTop: 3,
+    fontSize: 13,
+    fontWeight: "600",
+    color: "rgba(255, 255, 255, 0.58)",
+  },
+  eventAudienceList: {
+    maxHeight: Math.min(SCREEN_HEIGHT * 0.52, 430),
+  },
+  eventAudienceListContent: {
+    paddingTop: 10,
+    paddingBottom: 4,
+  },
+  eventAudienceRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    minHeight: 64,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255, 255, 255, 0.06)",
+  },
+  eventAudienceAvatar: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.32)",
+  },
+  eventAudienceAvatarFallback: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#eb7825",
+  },
+  eventAudienceAvatarText: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#ffffff",
+  },
+  eventAudienceRowCopy: {
+    flex: 1,
+    minWidth: 0,
+    marginLeft: 12,
+    marginRight: 10,
+  },
+  eventAudienceName: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#f8fafc",
+  },
+  eventAudienceRole: {
+    marginTop: 3,
+    fontSize: 12,
+    fontWeight: "600",
+    color: "rgba(255, 255, 255, 0.48)",
+  },
+  eventAudienceEmpty: {
+    alignItems: "center",
+    paddingVertical: 28,
+    paddingHorizontal: 16,
+  },
+  eventAudienceEmptyTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#ffffff",
+    textAlign: "center",
+  },
+  eventAudienceEmptyText: {
+    marginTop: 6,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "500",
+    color: "rgba(255, 255, 255, 0.56)",
+    textAlign: "center",
   },
   chatSheetOverlay: {
     flex: 1,
