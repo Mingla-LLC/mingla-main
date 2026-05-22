@@ -100,6 +100,7 @@ on:
 #   - ORCH-0862 event-detail-cancel-no-nav (i-event-detail-cancel-no-navigation.mjs) — event/[id]/index.tsx handleCancelConfirm contains zero router.replace/push/back calls (Symptom A regression guard)
 #   - ORCH-0885-A (orch-0885-a-no-bottomnav-on-wide-desktop.mjs) — BottomNav imported only by (tabs)/_layout.tsx + desktop gate via useResponsiveLayout() only (I-NO-BOTTOMNAV-OUTSIDE-LAYOUT + I-DESKTOP-GATE-VIA-HOOK)
 #   - ORCH-0913 (orch-0913-no-tabs-on-dashboards.mjs) — event/trip dashboards keep tile-grid + section-beneath structure; no tab strips
+#   - I-PROPOSED-FINALIZE-CALLERS-PASS-INSTALLMENT-PARAMS (i-proposed-finalize-callers-pass-installment-params.mjs) — paid biz_ticket_checkout_finalize callers pass installment-plan params (ORCH-0921)
 #
 # Future gates to register (proposed but not yet implemented):
 #   - I-32 rank parity (Cycle 13a proposal)
@@ -1235,6 +1236,17 @@ jobs:
           node-version: "20"
       - name: Run ORCH-0914 manual installment shared-helper gate
         run: node .github/scripts/strict-grep/i-proposed-manual-installment-action-via-shared-helper.mjs
+
+  i-proposed-finalize-callers-pass-installment-params:
+    name: "ORCH-0921 [Trip Money]: finalize callers pass installment-plan params"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0921 finalize caller installment-param gate
+        run: node .github/scripts/strict-grep/i-proposed-finalize-callers-pass-installment-params.mjs
 
   i-proposed-tr3-installment-customer-durability:
     name: "ORCH-0873 [Tr3 Stage 2 UI]: Stripe Customer + saved PM not deletable while installments pending"

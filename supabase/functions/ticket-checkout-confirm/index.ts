@@ -76,23 +76,25 @@ async function fetchOrderPayload(
     total_cents: number | null;
     currency: string | null;
   },
-): Promise<{
-  orderId: string;
-  checkoutSessionId: string;
-  eventId: string;
-  paymentStatus: "paid";
-  totalCents: number;
-  currency: string;
-  taxAmountCents: number;
-  tickets: Array<{
-    ticketId: string;
-    ticketTypeId: string;
-    ticketName: string;
-    qrPayload: string;
-    status: string;
-  }>;
-  notificationStatus: "queued";
-} | null> {
+): Promise<
+  {
+    orderId: string;
+    checkoutSessionId: string;
+    eventId: string;
+    paymentStatus: "paid";
+    totalCents: number;
+    currency: string;
+    taxAmountCents: number;
+    tickets: Array<{
+      ticketId: string;
+      ticketTypeId: string;
+      ticketName: string;
+      qrPayload: string;
+      status: string;
+    }>;
+    notificationStatus: "queued";
+  } | null
+> {
   const { data: tickets, error: ticketError } = await supabase
     .from("tickets")
     .select(`
@@ -105,7 +107,10 @@ async function fetchOrderPayload(
     .eq("order_id", session.order_id)
     .order("created_at", { ascending: true });
   if (ticketError) {
-    console.error("[ticket-checkout-confirm] ticket lookup failed", ticketError.message);
+    console.error(
+      "[ticket-checkout-confirm] ticket lookup failed",
+      ticketError.message,
+    );
     return null;
   }
 
@@ -152,10 +157,12 @@ serve(async (req) => {
   } catch {
     return jsonResponse({ error: "invalid_json" }, 400);
   }
-  const checkoutSessionId =
-    typeof body.checkoutSessionId === "string" ? body.checkoutSessionId : "";
-  const buyerStatusToken =
-    typeof body.buyerStatusToken === "string" ? body.buyerStatusToken : "";
+  const checkoutSessionId = typeof body.checkoutSessionId === "string"
+    ? body.checkoutSessionId
+    : "";
+  const buyerStatusToken = typeof body.buyerStatusToken === "string"
+    ? body.buyerStatusToken
+    : "";
   if (checkoutSessionId.length === 0) {
     return jsonResponse({ error: "checkout_session_required" }, 400);
   }
@@ -220,6 +227,9 @@ serve(async (req) => {
     status?: string;
     payment_method_types?: string[];
     charges?: { data?: Array<{ id?: string }> };
+    customer?: unknown;
+    payment_method?: unknown;
+    metadata?: Record<string, unknown>;
   };
   try {
     const stripe = stripeTicketCheckout();
@@ -239,15 +249,16 @@ serve(async (req) => {
     return jsonResponse({ error: "stripe_unavailable" }, 502);
   }
 
-  const piStatus = typeof paymentIntent.status === "string" ? paymentIntent.status : "";
+  const piStatus = typeof paymentIntent.status === "string"
+    ? paymentIntent.status
+    : "";
   if (piStatus === "succeeded") {
     const paymentMethodType =
       Array.isArray(paymentIntent.payment_method_types) &&
-      typeof paymentIntent.payment_method_types[0] === "string"
+        typeof paymentIntent.payment_method_types[0] === "string"
         ? paymentIntent.payment_method_types[0]
         : null;
-    const latestChargeId =
-      paymentIntent.charges?.data?.[0]?.id ?? null;
+    const latestChargeId = paymentIntent.charges?.data?.[0]?.id ?? null;
 
     let pepper: string;
     try {
@@ -260,6 +271,24 @@ serve(async (req) => {
       return jsonResponse({ error: "qr_token_pepper_missing" }, 500);
     }
 
+    // ORCH-0921: pass installment-plan params through so payment-plan trip
+    // checkouts get their installments scheduled. Mirror the webhook router's
+    // pattern at stripeWebhookRouter.ts:778-784. Non-installment PIs leave
+    // these params null/false and the legacy finalize path runs unchanged.
+    const piMetadata =
+      (paymentIntent.metadata as Record<string, unknown> | undefined) ?? {};
+    const isInstallmentPlanRoot =
+      piMetadata["mingla_installment_plan_root"] === "true";
+    const stripeCustomerId = isInstallmentPlanRoot
+      ? (typeof paymentIntent.customer === "string"
+        ? paymentIntent.customer
+        : null)
+      : null;
+    const savedPaymentMethodId = isInstallmentPlanRoot
+      ? (typeof paymentIntent.payment_method === "string"
+        ? paymentIntent.payment_method
+        : null)
+      : null;
     const { error: finalizeError } = await supabase.rpc(
       "biz_ticket_checkout_finalize",
       {
@@ -268,6 +297,9 @@ serve(async (req) => {
         p_stripe_charge_id: latestChargeId,
         p_stripe_payment_method_type: paymentMethodType,
         p_qr_token_pepper: pepper,
+        p_stripe_customer_id_on_connected_account: stripeCustomerId,
+        p_saved_payment_method_id: savedPaymentMethodId,
+        p_installment_plan_root: isInstallmentPlanRoot,
       },
     );
     if (finalizeError) {

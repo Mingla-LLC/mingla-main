@@ -39,12 +39,16 @@ serve(async (req) => {
 
   const { data: sessions, error: listError } = await supabase
     .from("ticket_checkout_sessions")
-    .select("id, stripe_payment_intent_id, stripe_account_id, brand_id, buyer_email")
+    .select(
+      "id, stripe_payment_intent_id, stripe_account_id, brand_id, buyer_email",
+    )
     .eq("status", "processing_payment")
     .not("stripe_payment_intent_id", "is", null);
 
   if (listError) {
-    return new Response(JSON.stringify({ error: listError.message }), { status: 500 });
+    return new Response(JSON.stringify({ error: listError.message }), {
+      status: 500,
+    });
   }
 
   const results: Array<Record<string, unknown>> = [];
@@ -57,7 +61,9 @@ serve(async (req) => {
       // orch-strict-grep-allow stripe-no-idempotency-key — read-only retrieve (no side effects, no state mutation); idempotency keys protect mutating ops (create/update/capture), not GETs. This is a one-shot historical reconcile that just reads PI status to drive the local finalize RPC.
       const pi = stripeAccountId
         // @ts-ignore — Stripe SDK signature
-        ? await stripe.paymentIntents.retrieve(piId, { stripeAccount: stripeAccountId }) // orch-strict-grep-allow stripe-no-idempotency-key — read-only retrieve
+        ? await stripe.paymentIntents.retrieve(piId, {
+          stripeAccount: stripeAccountId,
+        }) // orch-strict-grep-allow stripe-no-idempotency-key — read-only retrieve
         // @ts-ignore
         : await stripe.paymentIntents.retrieve(piId); // orch-strict-grep-allow stripe-no-idempotency-key — read-only retrieve
 
@@ -66,11 +72,34 @@ serve(async (req) => {
         continue;
       }
 
-      const charges = (pi as unknown as { charges?: { data?: Array<{ id: string }> } }).charges;
-      const chargeId = charges?.data?.[0]?.id ?? (pi as unknown as { latest_charge?: string }).latest_charge ?? null;
-      const pmTypes = Array.isArray(pi.payment_method_types) ? pi.payment_method_types : [];
+      const charges =
+        (pi as unknown as { charges?: { data?: Array<{ id: string }> } })
+          .charges;
+      const chargeId = charges?.data?.[0]?.id ??
+        (pi as unknown as { latest_charge?: string }).latest_charge ?? null;
+      const pmTypes = Array.isArray(pi.payment_method_types)
+        ? pi.payment_method_types
+        : [];
       const methodType = (pmTypes[0] as string | undefined) ?? "card";
 
+      // ORCH-0921: pass installment-plan params through so payment-plan trip
+      // checkouts get their installments scheduled even on the recovery path.
+      const piMetadata = (pi.metadata as Record<string, unknown> | undefined) ??
+        {};
+      const isInstallmentPlanRoot =
+        piMetadata["mingla_installment_plan_root"] === "true";
+      const stripeCustomerId = isInstallmentPlanRoot
+        ? (typeof (pi as unknown as { customer?: unknown }).customer ===
+            "string"
+          ? String((pi as unknown as { customer: string }).customer)
+          : null)
+        : null;
+      const savedPaymentMethodId = isInstallmentPlanRoot
+        ? (typeof (pi as unknown as { payment_method?: unknown })
+            .payment_method === "string"
+          ? String((pi as unknown as { payment_method: string }).payment_method)
+          : null)
+        : null;
       const { data: finalized, error: finalizeError } = await supabase.rpc(
         "biz_ticket_checkout_finalize",
         {
@@ -79,6 +108,9 @@ serve(async (req) => {
           p_stripe_charge_id: chargeId,
           p_stripe_payment_method_type: methodType,
           p_qr_token_pepper: pepper,
+          p_stripe_customer_id_on_connected_account: stripeCustomerId,
+          p_saved_payment_method_id: savedPaymentMethodId,
+          p_installment_plan_root: isInstallmentPlanRoot,
         },
       );
 
@@ -88,11 +120,19 @@ serve(async (req) => {
       }
 
       const orderId =
-        typeof (finalized as Record<string, unknown> | null)?.orderId === "string"
+        typeof (finalized as Record<string, unknown> | null)?.orderId ===
+            "string"
           ? String((finalized as Record<string, unknown>).orderId)
           : null;
 
-      results.push({ sessionId, piId, orderId, chargeId, methodType, status: "finalized" });
+      results.push({
+        sessionId,
+        piId,
+        orderId,
+        chargeId,
+        methodType,
+        status: "finalized",
+      });
 
       // Skip notification dispatch for historical reconciliation — these are
       // test purchases; the operator doesn't want spam emails/SMS for old
@@ -107,12 +147,16 @@ serve(async (req) => {
   }
 
   return new Response(
-    JSON.stringify({
-      reconciled: results.filter((r) => r.status === "finalized").length,
-      skipped: results.filter((r) => r.skip).length,
-      errors: results.filter((r) => r.error).length,
-      results,
-    }, null, 2),
+    JSON.stringify(
+      {
+        reconciled: results.filter((r) => r.status === "finalized").length,
+        skipped: results.filter((r) => r.skip).length,
+        errors: results.filter((r) => r.error).length,
+        results,
+      },
+      null,
+      2,
+    ),
     { headers: { "content-type": "application/json" } },
   );
 });

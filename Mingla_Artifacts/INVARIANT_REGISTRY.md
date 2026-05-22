@@ -7,6 +7,24 @@
 
 ---
 
+## ACTIVE (post ORCH-0921 [Trip payment-plan finalize silently drops `installment_plan_root` + child installments — €375/order revenue leak] CLOSE 2026-05-22)
+
+One new invariant flipped DRAFT → ACTIVE at the ORCH-0921 close after tester CONDITIONAL PASS verdict P0:0 P1:0 P2:0 P3:1 P4:3 with operator-accepted SC-18 deferral. 9 implementor happy-path tests + 20 tester adversarial tests committed at real paths; fails-on-revert verified by implementor at pre-fix `0169b4a360cfb678799c1691b01c25dc8b106509`.
+
+### I-PROPOSED-FINALIZE-CALLERS-PASS-INSTALLMENT-PARAMS
+
+**Rule:** Every `supabase.rpc('biz_ticket_checkout_finalize', ...)` invocation under `supabase/functions/` MUST include `p_installment_plan_root` in the call payload (either as a derived boolean value or with an explicit `// orch-strict-grep-allow finalize-no-plan-root — <reason>` opt-out comment in the surrounding 5 lines). The corresponding `p_stripe_customer_id_on_connected_account` + `p_saved_payment_method_id` MUST also be passed when `p_installment_plan_root=true`. This prevents future drift where a new caller silently defaults the param to `false` and drops the installment-plan persistence for trip payment-plan checkouts.
+
+**Why it exists:** ORCH-0869 Stage 1B (2026-05-17/18) shipped 3 callers of `biz_ticket_checkout_finalize`: webhook router (correct, 8 params) + sync-confirm (broken, 5 params) + reconcile (broken, 5 params). The implementor flagged the 2 broken callers as "Stage 1c follow-up" but the follow-up ORCH was never opened. Every payment-plan trip booking from 2026-05-17 through 2026-05-22 silently lost 75% of revenue (Stripe charged the deposit; the order was created at deposit amount; the installments INSERT branch was guarded behind `IF p_installment_plan_root AND v_schedule IS NOT NULL` which always evaluated FALSE; the cron `process-scheduled-installments` never saw the installments to charge). Discovered 2026-05-22 by operator via the new ORCH-0914 [Trip Money tab redesign] Money tab smoke. One known production leaker (€375, Seth-from-Somethingelse on The DC Adventure) backfilled at ORCH-0921 close.
+
+**Enforcement:** Strict-grep CI gate at `.github/scripts/strict-grep/i-proposed-finalize-callers-pass-installment-params.mjs`. Scans every `.ts` file under `supabase/functions/` (excluding `__tests__/`) for `biz_ticket_checkout_finalize` RPC invocations and requires `p_installment_plan_root` to appear in the surrounding 30-line window. Allowlist for the existing `ticket-checkout-create` zero-cost free-checkout finalize call shape (does not produce orders that need installments). Registered as a job in `.github/workflows/strict-grep-mingla-business.yml`.
+
+**Regression test:** `.github/scripts/strict-grep/i-proposed-finalize-callers-pass-installment-params.test.mjs` (2 Node tests — positive scan of the post-fix codebase exits 0; synthetic violator fixture causes the gate to exit 1). Adversarial coverage at `supabase/functions/ticket-checkout-confirm/__tests__/orch_0921_installment_params_adversarial.test.ts` TA-C01..TA-C06 (6 tests on the confirm caller payload shape) + `supabase/functions/reconcile-stuck-checkouts/__tests__/orch_0921_installment_params_adversarial.test.ts` TA-R01..TA-R05 (5 tests on the reconcile caller payload shape). The migration's compare-and-correct branch is additionally protected by `supabase/functions/_shared/__tests__/orch_0921_compare_and_correct_adversarial.test.ts` TA-S01..TA-S09 (9 tests on the schema-level guard invariants).
+
+**Scanned 2026-05-22 at CLOSE:** 190 files, 4 finalize callers detected, 1 free-caller skip (`ticket-checkout-create`), 0 violations.
+
+---
+
 ## ACTIVE (post ORCH-0911 [Buyer-web checkout confirm black screen] CLOSE 2026-05-22)
 
 Two new invariants flipped DRAFT → ACTIVE at the ORCH-0911 close after tester PASS verdict P0:0 P1:0 P2:0 P3:0 P4:1, with happy-path + adversarial regression tests committed at real paths and fails-on-revert verified at pre-fix parent `868e3277`.
