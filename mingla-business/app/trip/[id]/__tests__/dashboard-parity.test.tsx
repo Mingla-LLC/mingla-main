@@ -39,6 +39,10 @@ const HERO_PILL_SRC = readFileSync(
   "utf8",
 );
 
+function styleBlock(source: string, styleName: string): string {
+  return source.match(new RegExp(`${styleName}: \\{[^}]*\\}`))?.[0] ?? "";
+}
+
 // ORCH-0913-A: ScrollView moved up to wrap hero + action grid (full-page
 // scroll parity with event dashboard). The actionGrid block is now followed
 // directly by the KPI strip (no intervening <ScrollView>). Terminator marker
@@ -167,5 +171,30 @@ describe("ORCH-0913 trip dashboard parity", () => {
     expect(DASHBOARD_SRC).toContain('textShadowColor: "rgba(0, 0, 0, 0.6)"');
     expect(DASHBOARD_SRC).toContain("textShadowOffset: { width: 0, height: 1 }");
     expect(DASHBOARD_SRC).toContain("textShadowRadius: 4");
+  });
+
+  test("T-19 Dashboard width matches event detail: TopBar shell + single md gutter", () => {
+    expect(DASHBOARD_SRC).toContain(
+      'import { TopBar } from "../../../src/components/ui/TopBar"',
+    );
+    expect(DASHBOARD_SRC).toMatch(
+      /<TopBar[\s\S]*?leftKind="back"[\s\S]*?title=\{trip\.title\}/,
+    );
+
+    const bodyContent = styleBlock(DASHBOARD_SRC, "bodyContent");
+    expect(bodyContent).toContain("paddingHorizontal: spacing.md");
+    expect(bodyContent).toContain("paddingTop: spacing.md");
+    expect(bodyContent).not.toContain("padding: spacing.lg");
+
+    expect(styleBlock(DASHBOARD_SRC, "headerWrap")).toContain(
+      "paddingHorizontal: spacing.md",
+    );
+    expect(styleBlock(DASHBOARD_SRC, "hero")).not.toContain("marginHorizontal");
+    expect(styleBlock(DASHBOARD_SRC, "actionGrid")).not.toContain(
+      "paddingHorizontal",
+    );
+    expect(styleBlock(DASHBOARD_SRC, "cancelTripWrap")).not.toContain(
+      "paddingHorizontal",
+    );
   });
 });
