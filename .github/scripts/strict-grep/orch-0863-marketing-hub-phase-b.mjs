@@ -499,6 +499,14 @@ function checkNoNewBackendFiles() {
     "supabase/functions/ticket-confirmation-dispatch/index.ts",
     "supabase/migrations/20260710000000_orch_0897_trip_event_group_chat.sql",
   ];
+  // HOTFIX-CONVERSATION-RLS-RECURSION-CLEAN PR #161 (2026-05-21). C7 is scoped
+  // to ORCH-0863 marketing, but this PR is an operator-dispatched security
+  // hotfix for recursive conversations RLS policies. Allow exactly this
+  // migration so the marketing no-backend-files guard does not block the
+  // unrelated RLS recursion fix.
+  const CONVERSATION_RLS_RECURSION_HOTFIX_ALLOWLIST = [
+    "supabase/migrations/20260704000000_hotfix_conversation_rls_recursion.sql",
+  ];
   const ALLOWLIST = [
     ...ORCH_0859_BUNDLED_ALLOWLIST,
     ...ORCH_0869_BACKEND_ALLOWLIST,
@@ -519,6 +527,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_0908_BACKEND_ALLOWLIST,
     ...ORCH_0909_0906_BACKEND_ALLOWLIST,
     ...ORCH_0897_BACKEND_ALLOWLIST,
+    ...CONVERSATION_RLS_RECURSION_HOTFIX_ALLOWLIST,
   ];
   const forbidden = changed.filter(
     (p) =>
