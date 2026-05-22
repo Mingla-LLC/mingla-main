@@ -350,18 +350,33 @@ export default function CheckoutConfirmScreen(): React.ReactElement {
 
   const totalTickets = carouselTickets.length;
 
-  // ORCH-0852: web buyer's sync confirm returned `pending` (or errored).
-  // Realtime subscription is now listening for the webhook backup. Render
-  // a calm "Confirming your tickets…" hero — NO retry button, NO help
-  // link, NO dead-end fallback. The Realtime push will swap this for the
-  // full order render as soon as ticket_checkout_sessions.order_id is
-  // populated server-side (typical wait: 0-5s; p99: <30s).
-  if (
-    Platform.OS === "web" &&
-    result === null &&
-    realtimePending &&
-    event !== null
-  ) {
+  if (result === null) {
+    if (Platform.OS === "web") {
+      const win = (globalThis as unknown as { location?: { search?: string } });
+      const hasCs = /[?&]cs=/.test(win.location?.search ?? "");
+      if (hasCs) {
+        // ORCH-0911: render from first paint on ?cs= arrival, independent
+        // of event/realtimePending state. ORCH-0852 auto-resolution remains.
+        return (
+          <View style={styles.host}>
+            <View style={[styles.hero, { paddingTop: insets.top + spacing.xl }]}>
+              <View style={styles.checkBadge}>
+                <Icon name="check" size={36} color={textTokens.primary} />
+              </View>
+              <Text style={styles.heroTitle}>Confirming your tickets…</Text>
+              <Text style={styles.heroEmail} numberOfLines={3}>
+                Payment received. Your tickets will appear here in a moment.
+              </Text>
+            </View>
+          </View>
+        );
+      }
+    }
+    // Non-?cs= path: defensive redirect is firing.
+    return <View style={styles.host} />;
+  }
+
+  if (event === null) {
     return (
       <View style={styles.host}>
         <View style={[styles.hero, { paddingTop: insets.top + spacing.xl }]}>
@@ -375,12 +390,6 @@ export default function CheckoutConfirmScreen(): React.ReactElement {
         </View>
       </View>
     );
-  }
-
-  // Render an empty shell while the defensive useEffect redirects (or the
-  // web resume is still polling).
-  if (event === null || result === null) {
-    return <View style={styles.host} />;
   }
 
   return (
