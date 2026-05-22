@@ -410,8 +410,8 @@ export default function TripDashboardRoute(): React.ReactElement {
           onPress={() => router.push(`/trip/${trip.id}/travelers` as never)}
         />
         <ActionTile
-          icon="pound"
-          label="Money"
+          icon="receipt"
+          label="Payments"
           sub={
             (moneyData?.atRiskOrderCount ?? 0) > 0
               ? `${moneyData?.atRiskOrderCount} at risk`
