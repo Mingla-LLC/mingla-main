@@ -16,6 +16,13 @@
  * Per Cycle 16a SPEC §3.1.1.
  */
 
+// ORCH-0896 [Stripe forwardRef RedBox under React 19.1]: side-effect import
+// MUST come BEFORE any module that pulls @stripe/stripe-react-native (via
+// StripeProviderWrapper below). ES module imports hoist — registering
+// LogBox.ignoreLogs after the Stripe import fires too late and the
+// dev-menu Console Error still surfaces on every launch. See
+// src/diagnostics/silenceStripeForwardRef.ts for full rationale.
+import "../src/diagnostics/silenceStripeForwardRef";
 import React, { useEffect, useRef, useState } from "react";
 import { AppState, type AppStateStatus } from "react-native";
 import { Stack } from "expo-router";
