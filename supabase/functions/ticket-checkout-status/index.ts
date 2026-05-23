@@ -5,6 +5,7 @@ import {
   sha256Hex,
   ticketCorsHeaders,
 } from "../_shared/ticketCheckout.ts";
+import { qrPayloadToDataUrl } from "../_shared/ticketQrImage.ts";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: ticketCorsHeaders });
@@ -74,13 +75,14 @@ serve(async (req) => {
       totalCents: session.total_cents,
       currency: String(session.currency ?? "GBP").trim(),
       taxAmountCents,
-      tickets: (tickets ?? []).map((ticket: Record<string, unknown>) => ({
+      tickets: await Promise.all((tickets ?? []).map(async (ticket: Record<string, unknown>) => ({
         ticketId: ticket.id,
         ticketTypeId: ticket.ticket_type_id,
         ticketName: (ticket.ticket_types as { name?: string } | null)?.name ?? "Ticket",
         qrPayload: ticket.qr_code,
+        qrImageDataUrl: await qrPayloadToDataUrl(String(ticket.qr_code ?? "")),
         status: ticket.status,
-      })),
+      }))),
       notificationStatus: "queued",
     },
   });

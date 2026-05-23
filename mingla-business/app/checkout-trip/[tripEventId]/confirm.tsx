@@ -357,6 +357,7 @@ export default function CheckoutTripConfirmScreen(): React.ReactElement {
       ticketId: ticket.ticketId,
       ticketName: ticket.ticketName,
       qrPayload: ticket.qrPayload,
+      qrImageDataUrl: ticket.qrImageDataUrl,
     }));
   }, [result]);
 

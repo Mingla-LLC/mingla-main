@@ -11,8 +11,9 @@
  * Per Cycle 11 SPEC §4.9 (J-S8).
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
+  Image,
   Platform,
   ScrollView,
   StyleSheet,
@@ -21,7 +22,6 @@ import {
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from "react-native";
-import QRCode from "react-native-qrcode-svg";
 
 import {
   accent,
@@ -36,6 +36,11 @@ export interface CarouselTicket {
   ticketName: string;
   /** Server-issued QR payload. Older local previews fall back to buildQrPayload. */
   qrPayload?: string;
+  /** ORCH-0932 — server-rendered PNG data URI. When present, carousel renders
+   * this via <Image>; this is the production path. When absent (local
+   * preview, legacy cached response), carousel renders a placeholder of the
+   * correct dimensions so layout stays stable. */
+  qrImageDataUrl?: string;
 }
 
 export interface TicketQrCarouselProps {
@@ -61,25 +66,19 @@ export const TicketQrCarousel: React.FC<TicketQrCarouselProps> = ({
   // multi-page render is gated on pageWidth > 0 so the first paint always uses
   // a measured width.
   const [pageWidth, setPageWidth] = useState<number>(0);
-  // ORCH-0930 (2026-05-23) — client-only-mount guard for <QRCode>. The
-  // `react-native-qrcode-svg` lib's SVG output on Expo SDK 54 web export
-  // produces a build-time/static-HTML render that differs from the
-  // post-hydration client render — React aborts the subtree with
-  // minified error #418 ("Hydration failed because the initial UI does
-  // not match what was rendered on the server"). Playwright forensic
-  // harness 2026-05-23 confirmed: confirm.tsx flow works end-to-end,
-  // order data populates, page chrome renders, but svgCount=1 (not 4
-  // for 4 tickets) and pageerror surfaces #418 — the carousel's <QRCode>
-  // subtree is the one bailing. Fix: defer the <QRCode> mount until
-  // after the first client effect tick. Render a placeholder of the
-  // correct dimensions in the meantime so the layout doesn't shift.
-  // Native (iOS/Android) is unaffected because they don't SSR;
-  // initial mounted=false → useEffect fires synchronously on first
-  // mount → mounted=true → render is identical to pre-fix native behavior.
-  const [mounted, setMounted] = useState<boolean>(false);
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  // ORCH-0932 (2026-05-23) — server-rendered QR images replace the
+  // client-side <QRCode> SVG. The `react-native-qrcode-svg` lib's SVG
+  // output on Expo SDK 54 web export failed to render at all on Safari +
+  // Chrome (carousel host mounted but SVG subtree was absent from DOM,
+  // pageerror=React #418). ORCH-0930 tried three hydration-gate
+  // workarounds (v1 component mount-guard, v2 parent useEffect gate, v3
+  // useState initializer gate) and ALL failed — confirming the bug was
+  // in the SVG generation itself, not in hydration timing. The edge fn
+  // `ticket-checkout-confirm` now returns `qrImageDataUrl` (base64 PNG
+  // data URI generated server-side via `npm:qrcode` — same pipeline
+  // already used for the printed PDF QR). RN `<Image source={{ uri }}>`
+  // renders the data URI reliably on web, iOS, and Android with zero
+  // runtime SVG dependency.
 
   const total = tickets.length;
   const isMulti = total > 1;
@@ -108,6 +107,7 @@ export const TicketQrCarousel: React.FC<TicketQrCarouselProps> = ({
       tickets.map((t, i) => ({
         ...t,
         payload: t.qrPayload ?? buildQrPayload(orderId, t.ticketId),
+        imageDataUrl: t.qrImageDataUrl,
         index: i,
       })),
     [orderId, tickets],
@@ -121,13 +121,12 @@ export const TicketQrCarousel: React.FC<TicketQrCarouselProps> = ({
     return (
       <View style={styles.singleWrap}>
         <View style={styles.qrInner}>
-          {/* ORCH-0930: client-only mount guard, see comment on `mounted` state above. */}
-          {mounted ? (
-            <QRCode
-              value={single.payload}
-              size={qrSize}
-              color="#000000"
-              backgroundColor="#ffffff"
+          {/* ORCH-0932: server-rendered PNG via <Image>. See `qrImageDataUrl` comment above. */}
+          {single.imageDataUrl !== undefined && single.imageDataUrl.length > 0 ? (
+            <Image
+              source={{ uri: single.imageDataUrl }}
+              style={{ width: qrSize, height: qrSize }}
+              accessibilityLabel="Ticket QR code"
             />
           ) : (
             <View style={{ width: qrSize, height: qrSize, backgroundColor: "#ffffff" }} />
@@ -167,13 +166,12 @@ export const TicketQrCarousel: React.FC<TicketQrCarouselProps> = ({
             style={[styles.page, { width: pageWidth }]}
           >
             <View style={styles.qrInner}>
-              {/* ORCH-0930: client-only mount guard, see comment on `mounted` state above. */}
-              {mounted ? (
-                <QRCode
-                  value={p.payload}
-                  size={qrSize}
-                  color="#000000"
-                  backgroundColor="#ffffff"
+              {/* ORCH-0932: server-rendered PNG via <Image>. See `qrImageDataUrl` comment above. */}
+              {p.imageDataUrl !== undefined && p.imageDataUrl.length > 0 ? (
+                <Image
+                  source={{ uri: p.imageDataUrl }}
+                  style={{ width: qrSize, height: qrSize }}
+                  accessibilityLabel={`Ticket ${p.index + 1} of ${total} QR code`}
                 />
               ) : (
                 <View style={{ width: qrSize, height: qrSize, backgroundColor: "#ffffff" }} />

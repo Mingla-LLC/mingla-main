@@ -51,6 +51,7 @@ import {
   sha256Hex,
   ticketCorsHeaders,
 } from "../_shared/ticketCheckout.ts";
+import { qrPayloadToDataUrl } from "../_shared/ticketQrImage.ts";
 
 interface ConfirmRequest {
   checkoutSessionId: string;
@@ -90,6 +91,8 @@ async function fetchOrderPayload(
       ticketTypeId: string;
       ticketName: string;
       qrPayload: string;
+      /** ORCH-0932 — server-rendered PNG data URI; carousel uses this on web. */
+      qrImageDataUrl: string;
       status: string;
     }>;
     notificationStatus: "queued";
@@ -129,16 +132,17 @@ async function fetchOrderPayload(
     totalCents: Number(session.total_cents ?? 0),
     currency: String(session.currency ?? "USD").trim(),
     taxAmountCents,
-    tickets: (tickets ?? []).map((ticket) => {
+    tickets: await Promise.all((tickets ?? []).map(async (ticket) => {
       const row = ticket as unknown as TicketRow;
       return {
         ticketId: row.id,
         ticketTypeId: row.ticket_type_id,
         ticketName: row.ticket_types?.name ?? "Ticket",
         qrPayload: row.qr_code,
+        qrImageDataUrl: await qrPayloadToDataUrl(row.qr_code),
         status: row.status,
       };
-    }),
+    })),
     notificationStatus: "queued",
   };
 }

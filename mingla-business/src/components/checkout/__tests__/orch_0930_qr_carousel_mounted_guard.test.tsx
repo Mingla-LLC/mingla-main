@@ -1,29 +1,29 @@
 /**
- * ORCH-0930 [TicketQrCarousel React #418 hydration mismatch on Expo web
- * export] regression test — happy path.
+ * ORCH-0930 / ORCH-0932 — TicketQrCarousel server-side QR image contract.
  *
- * Bug: `react-native-qrcode-svg` produces SVG output that differs between
- * Expo SDK 54 web-export static HTML (build-time) and post-hydration
- * client render → React aborts the subtree with minified error #418
- * ("Hydration failed because the initial UI does not match what was
- * rendered on the server"). Playwright forensic harness 2026-05-23
- * confirmed: confirm.tsx flow works end-to-end, order data populates,
- * page chrome renders, but svgCount=1 not 4 (for 4-ticket order) and
- * pageerror surfaces React #418 — the carousel's <QRCode> subtree is
- * the one bailing.
+ * Bug history:
+ *   - ORCH-0930 v1 (component mount-guard inside TicketQrCarousel): FAILED
+ *   - ORCH-0930 v2 (parent useEffect+setHydrated gate in confirm.tsx): FAILED
+ *   - ORCH-0930 v3 (parent useState initializer with typeof window check): FAILED
+ * All three failures shared the same DOM signature: carousel host mounts
+ * (visible thin strip), but the `react-native-qrcode-svg` <QRCode> SVG
+ * subtree never appears in the DOM. Operator screenshot 2026-05-23 after v3
+ * deploy (commit 8f1609e3 READY on Vercel) confirmed the strip pattern was
+ * unchanged across all three hydration-gate variants. Proves the bug is in
+ * client-side SVG generation on Expo SDK 54 web export, not hydration
+ * timing.
  *
- * Fix: client-only-mount guard around every <QRCode> render. Defer the
- * mount until after the first client effect tick (mounted state flips
- * false → true in useEffect). Native (iOS/Android) is unaffected
- * because they don't SSR; mounted=false → useEffect fires synchronously
- * on first mount → mounted=true → render is identical to pre-fix
- * native behavior.
+ * Fix (ORCH-0932): server-side PNG generation via `_shared/ticketQrImage.ts`
+ * (using `https://esm.sh/qrcode@1.5.4?bundle` — same pipeline already used
+ * for the printed PDF QR in `_shared/ticketPdf.ts`). Edge fns
+ * `ticket-checkout-confirm` + `ticket-checkout-status` now include
+ * `qrImageDataUrl` (base64 PNG data URI) on every ticket. TicketQrCarousel
+ * renders the URI via RN `<Image source={{ uri }} />` — zero SVG runtime
+ * dependency. Parent-level isClient gate in confirm.tsx remains as defense
+ * in depth against the original ORCH-0928 sessionStorage recovery race.
  *
- * Pattern: source-string assertion (matches the orch_0911 +
- * orch_0928 sibling tests under app/checkout-trip/[tripEventId]/
- * __tests__/). The repo does not install @testing-library/react-native
- * so component-tree assertions are not feasible; instead we pin the
- * mounted-guard contract at source level.
+ * Pattern: source-string assertion (matches the orch_0911 + orch_0928
+ * sibling tests under app/checkout-trip/[tripEventId]/__tests__/).
  */
 
 import { readFileSync } from "node:fs";
@@ -43,58 +43,56 @@ function stripComments(value: string): string {
 
 const activeSource = stripComments(source);
 
-describe("ORCH-0930 — TicketQrCarousel client-only-mount guard", () => {
-  it("HP-1: imports useEffect (was previously only useCallback/useMemo/useState)", () => {
+describe("ORCH-0932 — TicketQrCarousel server-side QR <Image> contract", () => {
+  it("HP-1: imports Image from react-native (renders QR via <Image source={{uri}}>)", () => {
     expect(activeSource).toMatch(
-      /import\s+React,\s*\{[^}]*\buseEffect\b[^}]*\}\s+from\s+["']react["']/,
+      /import\s*\{[^}]*\bImage\b[^}]*\}\s+from\s+["']react-native["']/,
     );
   });
 
-  it("HP-2: declares `mounted` state initialized to false", () => {
+  it("HP-2: does NOT import from react-native-qrcode-svg (server-side path replaces it)", () => {
+    expect(activeSource).not.toMatch(/from\s+["']react-native-qrcode-svg["']/);
+    expect(activeSource).not.toMatch(/<QRCode\b/);
+  });
+
+  it("HP-3: CarouselTicket interface declares optional qrImageDataUrl field", () => {
     expect(activeSource).toMatch(
-      /const\s+\[\s*mounted\s*,\s*setMounted\s*\]\s*=\s*useState<boolean>\(\s*false\s*\)/,
+      /qrImageDataUrl\s*\?\s*:\s*string/,
     );
   });
 
-  it("HP-3: useEffect flips mounted to true (synchronous on client mount, never on SSR)", () => {
-    // Match `useEffect(() => { setMounted(true); }, []);` with optional
-    // whitespace + braces/no-braces single-expression styles.
-    expect(activeSource).toMatch(
-      /useEffect\(\(\)\s*=>\s*\{\s*setMounted\(true\);?\s*\},\s*\[\s*\]\s*\)/,
+  it("HP-4: renders <Image source={{ uri: ... }}> sites guarded by `imageDataUrl !== undefined && imageDataUrl.length > 0`", () => {
+    const imageUsages = activeSource.match(/<Image\s+source=\{\{\s*uri:\s*[a-zA-Z.]+imageDataUrl/g);
+    expect(imageUsages).not.toBeNull();
+    expect((imageUsages ?? []).length).toBe(2);
+
+    const guards = activeSource.match(
+      /imageDataUrl\s*!==\s*undefined\s*&&\s*[a-zA-Z.]+imageDataUrl\.length\s*>\s*0/g,
     );
+    expect(guards).not.toBeNull();
+    expect((guards ?? []).length).toBe(2);
   });
 
-  it("HP-4: both <QRCode> usages are wrapped in `mounted ? <QRCode .../> : <View>` ternary", () => {
-    // Count the QRCode usages — should be exactly 2 (single-ticket + multi-ticket page).
-    const qrUsages = activeSource.match(/<QRCode\b/g);
-    expect(qrUsages).not.toBeNull();
-    expect((qrUsages ?? []).length).toBe(2);
-
-    // Count the mounted-guard wrappers — should also be exactly 2.
-    const mountedGuards = activeSource.match(/mounted\s*\?\s*\(?\s*<QRCode/g);
-    expect(mountedGuards).not.toBeNull();
-    expect((mountedGuards ?? []).length).toBe(2);
-  });
-
-  it("HP-5: placeholder Views render explicit qrSize dimensions when not mounted (no layout shift)", () => {
-    // Each mounted-guard ternary's false branch should be a <View> with
-    // width: qrSize, height: qrSize so the layout doesn't shift when the
-    // QR mounts. Match the View placeholder shape.
+  it("HP-5: placeholder Views still render explicit qrSize dimensions when imageDataUrl absent (no layout shift)", () => {
     const placeholders = activeSource.match(
       /<View\s+style=\{\{\s*width:\s*qrSize\s*,\s*height:\s*qrSize/g,
     );
     expect(placeholders).not.toBeNull();
     expect((placeholders ?? []).length).toBe(2);
   });
+
+  it("HP-6 (adversarial — anti-regression vs ORCH-0930 v1): mount-guard `mounted` state + useEffect MUST NOT exist (proven insufficient + replaced)", () => {
+    // The component-level mount-guard was the v1 fix; it failed because the
+    // bug was in SVG generation, not hydration. Re-introducing this state
+    // would indicate someone reverted to a known-broken approach.
+    expect(activeSource).not.toMatch(
+      /const\s+\[\s*mounted\s*,\s*setMounted\s*\]\s*=\s*useState<boolean>\(\s*false\s*\)/,
+    );
+    expect(activeSource).not.toMatch(/setMounted\(true\)/);
+  });
 });
 
-describe("ORCH-0930 v2 — parent-level hydration gate (confirm.tsx)", () => {
-  // v1 (component-level mount guard inside TicketQrCarousel) was insufficient:
-  // Playwright forensic 2026-05-23 with v1 deployed showed the carousel still
-  // wipes (svgCount=1, hasCarousel=false, React error #418). The hydration
-  // mismatch must fire BEFORE the component-level mount-guard runs. v2 adds
-  // a PARENT-level hydration gate in each confirm.tsx route that defers
-  // mounting the entire <TicketQrCarousel> until after first client effect.
+describe("ORCH-0932 — parent-level threading of qrImageDataUrl through confirm.tsx", () => {
   const tripConfirm = readFileSync(
     join(__dirname, "../../../../app/checkout-trip/[tripEventId]/confirm.tsx"),
     "utf8",
@@ -114,28 +112,46 @@ describe("ORCH-0930 v2 — parent-level hydration gate (confirm.tsx)", () => {
   const tripActive = stripCommentsLocal(tripConfirm);
   const eventActive = stripCommentsLocal(eventConfirm);
 
-  it("HP-6 (trip): confirm.tsx has an `isClient` state via useState initializer that resolves at render time (ORCH-0930 v3)", () => {
+  it("HP-7 (trip): carouselTickets mapper threads qrImageDataUrl from server response", () => {
+    expect(tripActive).toMatch(
+      /qrImageDataUrl:\s*ticket\.qrImageDataUrl/,
+    );
+  });
+
+  it("HP-8 (event): carouselTickets mapper threads qrImageDataUrl from server response", () => {
+    expect(eventActive).toMatch(
+      /qrImageDataUrl:\s*ticket\.qrImageDataUrl/,
+    );
+  });
+
+  it("HP-9 (trip — preserved from ORCH-0930 v3): isClient parent gate remains as defense in depth for ORCH-0928 recovery race", () => {
     expect(tripActive).toMatch(
       /const\s+\[\s*isClient\s*\]\s*=\s*useState<boolean>\(\s*\(\)\s*=>\s*typeof\s+window\s*!==\s*["']undefined["']\s*\)/,
     );
-    // Negative: must NOT use the v2 useEffect+setHydrated pattern that
-    // failed because React #418 recovery cycles prevented the effect
-    // from firing.
-    expect(tripActive).not.toMatch(/setHydrated\(true\)/);
-  });
-
-  it("HP-7 (trip): <TicketQrCarousel> mount is gated on `isClient && totalTickets > 0`", () => {
     expect(tripActive).toMatch(
       /\{\s*isClient\s*&&\s*totalTickets\s*>\s*0\s*\?\s*\(?\s*<TicketQrCarousel/,
     );
   });
 
-  it("HP-8 (event): confirm.tsx mirrors the isClient gate", () => {
+  it("HP-10 (event — preserved from ORCH-0930 v3): isClient parent gate remains as defense in depth", () => {
     expect(eventActive).toMatch(
       /const\s+\[\s*isClient\s*\]\s*=\s*useState<boolean>\(\s*\(\)\s*=>\s*typeof\s+window\s*!==\s*["']undefined["']\s*\)/,
     );
     expect(eventActive).toMatch(
       /\{\s*isClient\s*&&\s*totalTickets\s*>\s*0\s*\?\s*\(?\s*<TicketQrCarousel/,
     );
+  });
+});
+
+describe("ORCH-0932 — OrderResult schema exposes qrImageDataUrl to consumers", () => {
+  const cartContext = readFileSync(
+    join(__dirname, "../CartContext.tsx"),
+    "utf8",
+  );
+
+  it("HP-11: OrderResult.tickets includes optional qrImageDataUrl field", () => {
+    // The field is optional in the type to preserve back-compat with any
+    // cached/legacy responses; carousel handles absence with a placeholder.
+    expect(cartContext).toMatch(/qrImageDataUrl\?\s*:\s*string/);
   });
 });

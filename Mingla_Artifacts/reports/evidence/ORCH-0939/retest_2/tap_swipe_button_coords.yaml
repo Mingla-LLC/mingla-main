@@ -1,7 +1,0 @@
-appId: com.mingla.app.v2
-name: orch0939_retest2_tap_swipe_button_coords
----
-- tapOn:
-    point: "50%,17%"
-- waitForAnimationToEnd:
-    timeout: 3000
