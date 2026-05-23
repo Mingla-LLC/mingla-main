@@ -68,23 +68,40 @@ CREATE TRIGGER tr_collaboration_sessions_broadcast_session_updated
   FOR EACH ROW
   EXECUTE FUNCTION public.notify_session_updated_via_broadcast();
 
-ALTER TABLE realtime.messages ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "session_participants_can_receive_board_session_broadcasts"
-  ON realtime.messages;
-
-CREATE POLICY "session_participants_can_receive_board_session_broadcasts"
-  ON realtime.messages
-  FOR SELECT
-  TO authenticated
-  USING (
-    extension = 'broadcast'
-    AND topic LIKE 'board_session:%'
-    AND public.is_session_participant(
-      substring(topic FROM length('board_session:') + 1)::uuid,
-      auth.uid()
-    )
-  );
+-- realtime.messages RLS + policy. Wrapped in a DO block with schema-existence
+-- guard so this migration applies cleanly in CI/baseline environments that
+-- run stock Postgres without the Supabase Realtime extension (the `realtime`
+-- schema is provisioned by the Supabase Realtime Go server, not by a
+-- Postgres extension). On production Supabase the table exists and the
+-- block runs verbatim; on bare-metal Postgres the block is a no-op.
+DO $orch0931$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.tables
+    WHERE table_schema = 'realtime' AND table_name = 'messages'
+  ) THEN
+    EXECUTE 'ALTER TABLE realtime.messages ENABLE ROW LEVEL SECURITY';
+    EXECUTE 'DROP POLICY IF EXISTS "session_participants_can_receive_board_session_broadcasts" ON realtime.messages';
+    EXECUTE $policy$
+      CREATE POLICY "session_participants_can_receive_board_session_broadcasts"
+        ON realtime.messages
+        FOR SELECT
+        TO authenticated
+        USING (
+          extension = 'broadcast'
+          AND topic LIKE 'board_session:%'
+          AND public.is_session_participant(
+            substring(topic FROM length('board_session:') + 1)::uuid,
+            auth.uid()
+          )
+        )
+    $policy$;
+  ELSE
+    RAISE NOTICE 'Skipping realtime.messages RLS + policy — realtime schema not present (CI/baseline env)';
+  END IF;
+END
+$orch0931$;
 
 COMMENT ON FUNCTION public.notify_session_updated_via_broadcast() IS
   'ORCH-0931: broadcasts a "session_updated" event to topic board_session:<id> when '
@@ -94,8 +111,21 @@ COMMENT ON FUNCTION public.notify_session_updated_via_broadcast() IS
   'in realtime.send are swallowed by design (RAISE WARNING) so a realtime outage cannot '
   'block the underlying collaboration_sessions UPDATE.';
 
-COMMENT ON POLICY "session_participants_can_receive_board_session_broadcasts" ON realtime.messages IS
-  'ORCH-0931: authorizes session participants to receive private broadcasts on '
-  'topic board_session:<session_id>. Topic format MUST be "board_session:<UUID>". '
-  'Non-participants and anon role are denied. INSERT/UPDATE/DELETE on '
-  'realtime.messages remain default-denied - the trigger function is the only writer.';
+-- COMMENT ON POLICY guarded behind the same schema-existence check.
+DO $orch0931_comment$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.tables
+    WHERE table_schema = 'realtime' AND table_name = 'messages'
+  ) THEN
+    EXECUTE $comment$
+      COMMENT ON POLICY "session_participants_can_receive_board_session_broadcasts" ON realtime.messages IS
+        'ORCH-0931: authorizes session participants to receive private broadcasts on '
+        'topic board_session:<session_id>. Topic format MUST be "board_session:<UUID>". '
+        'Non-participants and anon role are denied. INSERT/UPDATE/DELETE on '
+        'realtime.messages remain default-denied - the trigger function is the only writer.'
+    $comment$;
+  END IF;
+END
+$orch0931_comment$;
