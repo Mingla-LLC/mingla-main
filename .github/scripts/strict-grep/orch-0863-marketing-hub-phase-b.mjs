@@ -582,7 +582,16 @@ function checkNoNewBackendFiles() {
     "supabase/functions/ticket-checkout-create/__tests__/orch-0925-installment-customer-attachment.test.ts",
     "supabase/functions/ticket-checkout-create/index.ts",
   ];
+  // ORCH-0933 [Profile "Your Circle" social graph section] CLOSE PR #181
+  // (2026-05-23). C7 is scoped to ORCH-0863 marketing; these backend touches
+  // are the get_user_circle SECURITY DEFINER RPC + ambiguity fix on the
+  // consumer-Profile social-graph track. No edge function touches.
+  const ORCH_0933_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260724000002_orch_0933_get_user_circle_rpc.sql",
+    "supabase/migrations/20260724000003_orch_0933_get_user_circle_rpc_ambiguity_fix.sql",
+  ];
   const ALLOWLIST = [
+    ...ORCH_0933_BACKEND_ALLOWLIST,
     ...ORCH_0859_BUNDLED_ALLOWLIST,
     ...ORCH_0869_BACKEND_ALLOWLIST,
     ...ORCH_0875_BACKEND_ALLOWLIST,
