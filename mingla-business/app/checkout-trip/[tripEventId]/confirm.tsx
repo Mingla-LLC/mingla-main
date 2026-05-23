@@ -102,6 +102,21 @@ export default function CheckoutTripConfirmScreen(): React.ReactElement {
     buyerStatusToken: string;
   } | null>(null);
   const exitingViaCtaRef = useRef<boolean>(false);
+  // ORCH-0930 v2 (2026-05-23) — parent-level hydration gate for the
+  // TicketQrCarousel mount. Playwright forensic 2026-05-23 with the
+  // ORCH-0930 v1 component-level mount-guard deployed showed the
+  // carousel still wipes (svgCount=1, hasCarousel=false, pageerror
+  // #418). The hydration mismatch must fire BEFORE the v1 component
+  // mount-guard runs (likely from the placeholder View shape itself
+  // not matching the Expo Router static-export skeleton). This v2
+  // gate defers the entire carousel mount until after the initial
+  // client hydration completes — `hydrated` starts false (matches
+  // the static-export pre-render: nothing) and flips true after the
+  // first useEffect tick on the client, well after hydration.
+  const [hydrated, setHydrated] = useState<boolean>(false);
+  useEffect(() => {
+    setHydrated(true);
+  }, []);
 
   // ----- Native back guard -----
   useEffect(() => {
@@ -469,14 +484,20 @@ export default function CheckoutTripConfirmScreen(): React.ReactElement {
           </Text>
         </GlassCard>
 
-        {/* QR carousel */}
+        {/* QR carousel — gated on `hydrated` (ORCH-0930 v2) so the
+            mount happens entirely client-side, after the initial Expo
+            Router hydration completes. Server skeleton: empty card.
+            Client first render (pre-effect tick): empty card too —
+            matches skeleton. After first effect tick: full carousel
+            mounts client-only. No hydration comparison ever runs on
+            the carousel subtree → no React #418. */}
         <GlassCard
           variant="base"
           radius="lg"
           padding={spacing.md}
           style={styles.qrCard}
         >
-          {totalTickets > 0 ? (
+          {hydrated && totalTickets > 0 ? (
             <TicketQrCarousel
               orderId={result.orderId}
               tickets={carouselTickets}
