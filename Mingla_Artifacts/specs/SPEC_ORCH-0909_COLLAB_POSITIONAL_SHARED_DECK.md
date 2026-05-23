@@ -1084,7 +1084,7 @@ Content (DRAFT until ORCH-0909 close):
 Under the "Product Positioning (Non-Negotiable)" section:
 
 > ```
-> - [Collab deck = positional shared deck](feedback_collab_per_client_version_pinning_decommissioned.md) — ORCH-0909 retired per-client version-pinning; positional `session_deck_cards` is canonical; INTERSECTION geographic semantic; atomic accept-with-prefs RPC. (status: ACTIVE post-ORCH-0909 close)
+> - `Collab deck = positional shared deck` (file removed per META-ORCH-0929) — ORCH-0909 retired per-client version-pinning; positional `session_deck_cards` is canonical; INTERSECTION geographic semantic; atomic accept-with-prefs RPC. (status: ACTIVE post-ORCH-0909 close)
 > ```
 
 ### 13.3 Update existing memory `feedback_collab_deck_determinism_contract.md` (Step 5c)
