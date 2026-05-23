@@ -295,13 +295,26 @@ export default function CheckoutTripConfirmScreen(): React.ReactElement {
     if (result !== null) return;
     if (Platform.OS === "web") {
       const win = (globalThis as unknown as {
-        location?: { search?: string };
+        location?: { search?: string; hash?: string };
         sessionStorage?: Storage;
       });
       const search = win.location?.search ?? "";
+      // ORCH-0928 (2026-05-23) — the sync-confirm useEffect above can recover
+      // from missing sessionStorage via the URL fragment (#csi=…&bst=…) that
+      // ticket-checkout-create now appends to success_url. The bounce here
+      // must also recognise that recovery path: if `?cs=` is present AND
+      // EITHER sessionStorage payload OR a `csi`+`bst` URL fragment exists,
+      // we have valid checkout-confirm context — DO NOT bounce away. Prior
+      // bug (live-fire-confirmed 2026-05-23 ~07:33 UTC, Costain test order):
+      // bounce raced ahead of the async confirmTicketCheckout call and
+      // navigated to /checkout-trip/{tripEventId} before recovery completed,
+      // producing a "blank" dark host screen on the trip-cart page.
+      const hash = win.location?.hash ?? "";
+      const hasFragmentRecovery = /csi=[^&]+/.test(hash) && /bst=[^&]+/.test(hash);
       if (
         /[?&]cs=/.test(search) &&
-        readCheckoutResumePayload(win.sessionStorage, tripEventId) !== null
+        (readCheckoutResumePayload(win.sessionStorage, tripEventId) !== null ||
+          hasFragmentRecovery)
       ) {
         return;
       }
