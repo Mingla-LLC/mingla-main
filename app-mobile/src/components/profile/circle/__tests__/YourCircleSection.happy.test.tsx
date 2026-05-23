@@ -46,19 +46,39 @@ function runYourCircleSectionHappyTest() {
   assert.equal(people.filter((person) => person.tier === 'extended').length, 2);
 
   const gridSource = read('app-mobile/src/components/profile/circle/CircleGrid.tsx');
+  assert.match(gridSource, /const ROWS_PER_COLUMN = 3;/);
+  assert.match(gridSource, /GRID_HEIGHT/);
   assert.match(gridSource, /Math\.floor\(index \/ ROWS_PER_COLUMN\)/);
   assert.match(gridSource, /index % ROWS_PER_COLUMN/);
+  assert.match(gridSource, /width: CIRCLE_TILE_WIDTH/);
+  assert.match(gridSource, /removeClippedSubviews=\{false\}/);
   assert.match(gridSource, /FlatList/);
 
   const avatarSource = read('app-mobile/src/components/profile/circle/CircleAvatarTile.tsx');
+  assert.match(avatarSource, /export const CIRCLE_AVATAR_DIAMETER = 58;/);
+  assert.match(avatarSource, /export const CIRCLE_TILE_WIDTH = 184;/);
+  assert.match(avatarSource, /LinearGradient/);
+  assert.doesNotMatch(avatarSource, /glassHalo/);
+  assert.match(avatarSource, /backgroundColor: 'transparent'/);
+  assert.match(avatarSource, /glassHighlight/);
+  assert.match(avatarSource, /const relationshipLabel = person\.relationshipLabel/);
+  assert.doesNotMatch(avatarSource, /Mingla connection/);
+  assert.match(avatarSource, /styles\.labelGroup/);
+  assert.match(avatarSource, /styles\.nameText/);
+  assert.match(avatarSource, /styles\.relationshipText/);
   assert.match(avatarSource, /close:\s*colors\.primary\[500\]/);
   assert.match(avatarSource, /friend:\s*colors\.success\[500\]/);
   assert.match(avatarSource, /extended:\s*colors\.gray\[500\]/);
   assert.match(avatarSource, /person\.hasBusinessApp \? <BusinessBadge hasBusinessApp=\{person\.hasBusinessApp\} \/> : null/);
 
+  const sectionSource = read('app-mobile/src/components/profile/circle/YourCircleSection.tsx');
+  assert.match(sectionSource, /height: 252/);
+
   const serviceSource = read('app-mobile/src/services/circleService.ts');
   assert.match(serviceSource, /supabase\.rpc\('get_user_circle'/);
   assert.doesNotMatch(serviceSource, /\.from\(['"](friends|pairings|orders)['"]\)/);
+  assert.match(serviceSource, /relationship_label/);
+  assert.match(serviceSource, /relationshipSource/);
 }
 
 if (require.main === module) {

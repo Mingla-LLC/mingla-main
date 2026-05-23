@@ -54,7 +54,6 @@ export const YourCircleSection: React.FC<YourCircleSectionProps> = ({
       <View style={styles.header}>
         <View>
           <Text style={styles.title}>Your Circle</Text>
-          <Text style={styles.subtitle}>Close friends, friends, and people you meet at Mingla</Text>
         </View>
       </View>
 
@@ -91,7 +90,7 @@ export const YourCircleSection: React.FC<YourCircleSectionProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    height: 180,
+    height: 252,
   },
   header: {
     minHeight: 24,
@@ -106,15 +105,8 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     fontWeight: fontWeights.bold,
   },
-  subtitle: {
-    marginTop: 2,
-    color: colors.gray[300],
-    fontSize: 12,
-    lineHeight: 16,
-    fontWeight: fontWeights.medium,
-  },
   errorBox: {
-    height: 148,
+    height: 214,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 18,

@@ -1,4 +1,11 @@
 export type CircleTier = 'close' | 'friend' | 'extended';
+export type CircleRelationshipSource =
+  | 'paired'
+  | 'friend'
+  | 'friend_of_friend'
+  | 'co_attendee'
+  | 'mixed';
+export type CircleRelationshipContextType = 'user' | 'event' | 'trip';
 
 export interface CirclePerson {
   userId: string;
@@ -7,6 +14,12 @@ export interface CirclePerson {
   username: string | null;
   avatarUrl: string | null;
   hasBusinessApp: boolean;
+  relationshipSource: CircleRelationshipSource;
+  relationshipLabel: string;
+  relationshipContextType: CircleRelationshipContextType | null;
+  relationshipContextId: string | null;
+  relationshipContextTitle: string | null;
+  relationshipSourceCount: number;
   sortScore: number;
 }
 
