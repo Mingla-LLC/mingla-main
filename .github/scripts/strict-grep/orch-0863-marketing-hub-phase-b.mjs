@@ -590,8 +590,17 @@ function checkNoNewBackendFiles() {
     "supabase/migrations/20260724000002_orch_0933_get_user_circle_rpc.sql",
     "supabase/migrations/20260724000003_orch_0933_get_user_circle_rpc_ambiguity_fix.sql",
   ];
+  // ORCH-0940 [Profile Circle event connection mapping — truthful relationship-source
+  // labels] CLOSE PR #183 (2026-05-23). Follow-up to ORCH-0933. C7 is scoped to
+  // ORCH-0863 marketing; this backend touch extends the get_user_circle RPC return
+  // signature with 6 safe relationship-metadata fields on the consumer-Profile
+  // social-graph track. No edge function touches.
+  const ORCH_0940_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260724000005_profile_circle_relationship_source.sql",
+  ];
   const ALLOWLIST = [
     ...ORCH_0933_BACKEND_ALLOWLIST,
+    ...ORCH_0940_BACKEND_ALLOWLIST,
     ...ORCH_0859_BUNDLED_ALLOWLIST,
     ...ORCH_0869_BACKEND_ALLOWLIST,
     ...ORCH_0875_BACKEND_ALLOWLIST,
