@@ -92,6 +92,11 @@ export interface OrderResult {
     ticketTypeId?: string;
     ticketName: string;
     qrPayload: string;
+    /** ORCH-0932 — server-rendered PNG data URI; carousel renders this via
+     * <Image> on web (client-side react-native-qrcode-svg failed on Expo
+     * SDK 54 web export; see ORCH-0930). Optional for legacy/cached
+     * responses; carousel skips QR render when absent. */
+    qrImageDataUrl?: string;
     status: string;
   }>;
 }

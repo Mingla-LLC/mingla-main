@@ -609,10 +609,25 @@ function checkNoNewBackendFiles() {
     "supabase/functions/ticket-checkout-create/__tests__/orch_0928_success_url_query_string.test.ts",
     "supabase/functions/ticket-checkout-create/index.ts",
   ];
+  // ORCH-0932 [Server-side QR image generation] CLOSE 2026-05-23. Three
+  // client-side ORCH-0930 hydration-gate attempts (v1 component mount-guard,
+  // v2 parent useEffect, v3 useState initializer) all failed in production
+  // because `react-native-qrcode-svg` itself fails to render on Expo SDK 54
+  // web export. Pivot: server-rendered PNG via shared helper (same npm
+  // qrcode pipeline already used by ticketPdf.ts) + RN <Image> on the
+  // carousel. Touches the shared helper, both confirm/status edge fns, and
+  // their tests. No verify_jwt change required.
+  const ORCH_0932_BACKEND_ALLOWLIST = [
+    "supabase/functions/_shared/ticketQrImage.ts",
+    "supabase/functions/_shared/__tests__/ticketQrImage.test.ts",
+    "supabase/functions/ticket-checkout-confirm/index.ts",
+    "supabase/functions/ticket-checkout-status/index.ts",
+  ];
   const ALLOWLIST = [
     ...ORCH_0933_BACKEND_ALLOWLIST,
     ...ORCH_0940_BACKEND_ALLOWLIST,
     ...ORCH_0930_0928_LOCKIN_BACKEND_ALLOWLIST,
+    ...ORCH_0932_BACKEND_ALLOWLIST,
     ...ORCH_0859_BUNDLED_ALLOWLIST,
     ...ORCH_0869_BACKEND_ALLOWLIST,
     ...ORCH_0875_BACKEND_ALLOWLIST,
