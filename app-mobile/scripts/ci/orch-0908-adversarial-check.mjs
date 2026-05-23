@@ -78,7 +78,6 @@ const boardSessionService = read("app-mobile/src/services/boardSessionService.ts
 const swipeable = read("app-mobile/src/components/board/SwipeableSessionCards.tsx");
 const sessionViewModal = read("app-mobile/src/components/SessionViewModal.tsx");
 const boardDiscussionTab = read("app-mobile/src/components/board/BoardDiscussionTab.tsx");
-const collabSessions = read("app-mobile/src/components/CollaborationSessions.tsx");
 const messagingService = read("app-mobile/src/services/messagingService.ts");
 const lockedBanner = read("app-mobile/src/components/board/LockedPlanBanner.tsx");
 const schedSheet = read(
@@ -124,7 +123,6 @@ const schedSheet = read(
     swipeable,
     sessionViewModal,
     boardDiscussionTab,
-    collabSessions,
     schedSheet,
     lockedBanner,
   ];

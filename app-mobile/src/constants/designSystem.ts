@@ -405,7 +405,7 @@ export const glass = {
   },
 
   // ORCH-0589 — Floating glass chrome (top bar + session switcher + bottom nav).
-  // Sibling to glass.badge. Consumed by GlassIconButton, GlassSessionSwitcher,
+  // Sibling to glass.badge. Consumed by GlassIconButton and compact controls,
   // GlassBottomNav, GlassTopBar. Values locked by SPEC_ORCH-0589 §13.
   chrome: {
     blur: {
@@ -463,7 +463,7 @@ export const glass = {
     // take action." Border style is `dashed` for visual distinction from inactive
     // (no border) and active (solid orange). If `dashed` renders poorly on a target
     // platform, fallback is `solid` with `borderColor` at slightly higher alpha.
-    // Pixel-matches legacy CollaborationSessions.inviteBadge geometry (size 14,
+    // Pixel-matches legacy invite-badge geometry (size 14,
     // radius 7, offset -3, 1.5px border, 7px icon) for behavioral continuity with
     // the pre-ORCH-0589 pill-bar design.
     pending: {

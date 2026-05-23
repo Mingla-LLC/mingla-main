@@ -65,6 +65,8 @@ export interface PhoneInputProps {
   labels: PhoneInputLabels;
   /** Optional theme overrides. Defaults match app-mobile onboarding (LIGHT). */
   theme?: PhoneInputTheme;
+  /** iOS phone-pad has no native return key; hosts can opt out of the accessory toolbar. */
+  showDoneAccessory?: boolean;
 }
 
 export const PhoneInput: React.FC<PhoneInputProps> = ({
@@ -77,6 +79,7 @@ export const PhoneInput: React.FC<PhoneInputProps> = ({
   iconRenderer,
   labels,
   theme,
+  showDoneAccessory = true,
 }) => {
   const [focused, setFocused] = useState(false);
   const [pickerVisible, setPickerVisible] = useState(false);
@@ -216,7 +219,7 @@ export const PhoneInput: React.FC<PhoneInputProps> = ({
           onSubmitEditing={Keyboard.dismiss}
           blurOnSubmit
           inputAccessoryViewID={
-            Platform.OS === "ios" ? PHONE_ACCESSORY_ID : undefined
+            Platform.OS === "ios" && showDoneAccessory ? PHONE_ACCESSORY_ID : undefined
           }
           accessibilityLabel={labels.phoneInputAccessibilityLabel}
         />
@@ -236,7 +239,7 @@ export const PhoneInput: React.FC<PhoneInputProps> = ({
         />
       ) : null}
 
-      {Platform.OS === "ios" ? (
+      {Platform.OS === "ios" && showDoneAccessory ? (
         <InputAccessoryView nativeID={PHONE_ACCESSORY_ID}>
           <View style={accessoryBarStyle}>
             <TouchableOpacity

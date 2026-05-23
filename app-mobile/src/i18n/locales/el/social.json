@@ -120,7 +120,6 @@
   "blockUserMenu": "Αποκλεισμός Χρήστη",
   "reportUserMenu": "Αναφορά Χρήστη",
   "noMessagesYet": "Δεν υπάρχουν μηνύματα ακόμα",
-
   "holiday.loading_recommendations": "Φόρτωση προτάσεων...",
   "holiday.getting_location": "Εντοπισμός τοποθεσίας σου...",
   "holiday.couldnt_load": "Αδυναμία φόρτωσης προτάσεων",
@@ -148,5 +147,22 @@
   "holiday.visited": "Επισκέφτηκε",
   "holiday.unknown_place": "Άγνωστο μέρος",
   "holiday.birthday_event": "Γενέθλια {{name}}",
-  "holiday.reminder_notes": "Υπενθύμιση από το Mingla — {{event}}"
+  "holiday.reminder_notes": "Υπενθύμιση από το Mingla — {{event}}",
+  "friendsActionChooserTitle": "What do you want to do?",
+  "friendsActionChooserCreateGroupChat": "Create a group chat",
+  "friendsActionChooserAddFriend": "Add a friend",
+  "friendsActionChooserPlusButtonA11y": "Add a friend or start a group chat",
+  "friendsActionChooserCreateDisabledPaywall": "Pro plan required",
+  "createGroupChatSheetTitle": "Create a group chat",
+  "createGroupChatNamePlaceholder": "What's this group about?",
+  "createGroupChatFriendsLabel": "Invite friends",
+  "createGroupChatSubmit": "Create",
+  "startSwipingCta": "Start swiping together",
+  "collabDeckSheetTitle": "Find a spot together",
+  "pendingInviteAccept": "Accept",
+  "pendingInviteDecline": "Decline",
+  "pendingInviteRowSubtitle": "{{name}} invited you to swipe together",
+  "leaveSessionMenuItem": "Leave session",
+  "leaveSessionConfirmTitle": "Leave this session?",
+  "leaveSessionConfirmBody": "You'll stop seeing new cards together. The chat stays."
 }

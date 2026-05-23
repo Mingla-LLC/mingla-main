@@ -3637,3 +3637,60 @@ Two strict-grep gates run together:
 **Source:** SPEC `Mingla_Artifacts/specs/SPEC_ORCH-0892-B_v2_SMART_SCROLLVIEW_AND_SHEET_REWRITE.md` §10. Investigation `Mingla_Artifacts/reports/INVESTIGATION_ORCH-0892-B_v2_GLOBAL_SHIFTER.md` §6. CLOSE banner: `WORLD_MAP.md` 2026-05-21 entry.
 
 **EXIT condition:** Permanent. The wrapper indirection mechanism is the universal-coverage enforcer — any new form-screen that imports bare `ScrollView` from `react-native` trips the gate at CI. SAFELIST evolves only via new SPECs + operator approval per `feedback_strict_grep_registry_pattern.md`.
+
+
+---
+
+### I-PROPOSED-META-0929-CHOOSER-DISMISS-BEFORE-OPEN
+
+**Statement:** The Friends `+` chooser sheet (`app-mobile/src/components/connections/FriendsActionChooserSheet.tsx`) MUST dismiss itself via local state mutation BEFORE triggering any downstream sheet (PairRequestModal / CreateGroupChatSheet / PaywallSheet), and the downstream trigger MUST be deferred to the next frame via `requestAnimationFrame`. Synchronous trigger without rAF defer = sibling-mounted native Modal layering violation (Cycle-13a precedent per `feedback_rn_sub_sheet_must_render_inside_parent.md`) — the downstream Modal renders but is visually blocked by the dismissing chooser Modal on iOS.
+
+**Why:** Native iOS Modal sibling-mounting at the OS root layer means the second Modal mounted gets visually blocked while the first is dismissing. The chooser is a routing sheet — it must fully unmount before the next route lands.
+
+**Enforcement:** Tester adversarial test `app-mobile/src/components/connections/__tests__/FriendsActionChooserSheet.adversarial.test.tsx` (T-ADV-1) mocks `requestAnimationFrame` to no-op and asserts that PairRequestModal / CreateGroupChatSheet / Paywall are NOT visible after their respective chooser-option taps. Removing the rAF defer in production flips the assertion and the test FAILS. Protective comment lives at the option-row handlers inside FriendsActionChooserSheet.tsx.
+
+**Source:** SPEC `Mingla_Artifacts/specs/SPEC_META-ORCH-0929_COLLAB_DECKS_IN_GROUP_CHAT_HOME_SOLO_ONLY.md` §3.2.4 + §8 + §11.
+
+**EXIT condition:** Permanent — load-bearing for any RN bottom-sheet chooser pattern.
+
+---
+
+### I-PROPOSED-META-0929-COLLAB-DECK-SINGLE-MOUNT
+
+**Statement:** The `<SwipeableCards>` component is mounted in collab mode (i.e., with `sessionIdOverride` truthy) by EXACTLY ONE React tree at any time: `app-mobile/src/components/connections/CollabDeckSheet.tsx`. No other component, page, screen, sheet, or hook may pass `sessionIdOverride=` to `<SwipeableCards>`.
+
+**Why:** Multiple collab-mode mounts compete for the same `RecommendationsContext` collab branch state, the same `useBoardSession` realtime subscription, the same `discover-cards/handleDeterministicV2` swipe round-trips, and the same `session_deck_cards` position tracking. Two mounts = race conditions, duplicated server calls, divergent local card-state. Single-mount is the architectural simplification META-ORCH-0929 delivers.
+
+**Enforcement:** Strict-grep CI gate `meta-0929-collab-deck-single-mount` — `grep -rn "sessionIdOverride=" app-mobile/src` must return matches ONLY inside `CollabDeckSheet.tsx`. Currently passes with single match at `CollabDeckSheet.tsx:116`. Tester adversarial test `CollabDeckSheet.adversarial.test.tsx` (T-ADV-2) simulates a mount registry rejecting a second mount attempt for the same sessionId.
+
+**Source:** SPEC §4.3 + §8.
+
+**EXIT condition:** Permanent.
+
+---
+
+### I-PROPOSED-META-0929-HOME-IS-SOLO-ONLY
+
+**Statement:** `app-mobile/src/components/HomePage.tsx` must NOT pass `currentMode=` or `sessionIdOverride=` to `<SwipeableCards>`. The Home deck is always solo, locked to the authenticated user. Mode awareness on Home is forbidden; collab mode lives ONLY inside CollabDeckSheet (per I-PROPOSED-META-0929-COLLAB-DECK-SINGLE-MOUNT).
+
+**Why:** Pre-META, Home was the swipe surface for BOTH solo and collab via mode-prop branching driven by `GlassSessionSwitcher` pills. Operator directive 2026-05-23: Home is for solo planning, locked to the user; collab decks spin up inside group chat. Strict separation of render surfaces prevents mode-collision bugs, eliminates the "Deck open elsewhere" mutex, and simplifies the prop chain by ~16 props.
+
+**Enforcement:** Strict-grep CI gate `meta-0929-home-is-solo-only` — `grep -nE "currentMode=|sessionIdOverride=" app-mobile/src/components/HomePage.tsx` must return zero matches.
+
+**Source:** SPEC §5.2.4 + §8 + Investigation §3 Finding 1.
+
+**EXIT condition:** Permanent.
+
+---
+
+### I-PROPOSED-META-0929-NO-GLOBAL-ACTIVE-SESSION
+
+**Statement:** `app-mobile/app/index.tsx` must NOT declare `currentSessionId`, `sessionModalTrigger`, `pendingSessionOpen`, `inviteModalTrigger`, or `currentMode` state. Per-chat session state lives ONLY in the chat row's `friend.sessionId` field on the conversation list / MessageInterface; there is no global "active collab session" at the app level.
+
+**Why:** Pre-META, `app/index.tsx` carried a global "which session is the user currently in" mental model that drove HomePage's mode + the SessionSwitcher pills + invite/session modals. With Home solo-only and collab decks scoped to per-chat MessageInterface instances, the global state is dead weight that confuses readers and creates double-source-of-truth risk with the per-chat sessionId. Each group chat is independent — users implicitly context-switch by tabbing between chats.
+
+**Enforcement:** Strict-grep CI gate `meta-0929-no-global-active-session` — `grep -nE "const \[currentSessionId|const \[sessionModalTrigger|const \[pendingSessionOpen|const \[inviteModalTrigger|const \[currentMode" app-mobile/app/index.tsx` must return zero matches.
+
+**Source:** SPEC §3 Q9 + §5.4.1 + §8 + Investigation §3 Discovery D.
+
+**EXIT condition:** Permanent.

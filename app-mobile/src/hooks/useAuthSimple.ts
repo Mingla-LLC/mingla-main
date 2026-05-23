@@ -7,6 +7,7 @@ import {
 } from "@react-native-google-signin/google-signin";
 import * as AppleAuthentication from "expo-apple-authentication";
 import { supabase } from "../services/supabase";
+import { realtimeService } from "../services/realtimeService";
 import { useAppStore } from "../store/appStore";
 import { User } from "../types";
 import { logger } from "../utils/logger";
@@ -89,6 +90,14 @@ export const useAuthSimple = () => {
 
         if (session?.user) {
           logger.auth('Session found', { userId: session.user.id, email: session.user.email });
+          // ORCH-0926: hand the user's JWT to realtime so postgres_changes events
+          // on RLS-gated tables (collaboration_sessions, session_participants)
+          // pass the SELECT policy and actually get delivered. Without this,
+          // the websocket runs as the anon role and RLS silently drops every
+          // event whose row predicate references auth.uid().
+          if (session.access_token) {
+            await supabase.realtime.setAuth(session.access_token);
+          }
           if (mounted) {
             setAuth(session.user as User);
             // Clear loading immediately once we have a valid session.
@@ -305,6 +314,17 @@ export const useAuthSimple = () => {
       }
 
       if (session?.user) {
+        // ORCH-0926: keep realtime auth in sync with the current access token
+        // across sign-in, user-switch, and TOKEN_REFRESHED events, then rebind
+        // RLS-gated postgres_changes channels on token-changing auth events so
+        // the channel JOIN carries the current JWT.
+        if (session.access_token) {
+          void Promise.resolve(supabase.realtime.setAuth(session.access_token)).catch(() => {});
+          if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+            void realtimeService.rebindAuthenticatedChannels();
+          }
+        }
+
         const previousUser = useAppStore.getState().user;
         if (previousUser?.id && previousUser.id !== session.user.id) {
           void performPrivateAuthCleanup({
@@ -343,6 +363,12 @@ export const useAuthSimple = () => {
           // Guard against multiple instances firing simultaneously
           if (_isHandlingSignOut) return;
           _isHandlingSignOut = true;
+          // ORCH-0926: drop the user JWT from realtime on sign-out so the
+          // websocket reverts to anon (Constitutional #6: logout clears
+          // everything). The next user's sign-in re-authenticates via the
+          // session-restore branch above.
+          void Promise.resolve(supabase.realtime.setAuth('')).catch(() => {});
+          realtimeService.unsubscribeAll();
           void performPrivateAuthCleanup({ reason: 'auth-state-signed-out', currentUserId: null });
           if (mounted) {
             setAuth(null);

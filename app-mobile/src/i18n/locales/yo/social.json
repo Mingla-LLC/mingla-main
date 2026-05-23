@@ -120,7 +120,6 @@
   "blockUserMenu": "Dí Olùlò",
   "reportUserMenu": "Ṣe Ìròyìn Olùlò",
   "noMessagesYet": "Kò sí ìfiránṣẹ́ sí i",
-
   "holiday.loading_recommendations": "Ń gbéyọ àwọn ìṣedúró...",
   "holiday.getting_location": "Ń gba ibi rẹ...",
   "holiday.couldnt_load": "Kò lè gbéyọ àwọn ìṣedúró",
@@ -148,5 +147,22 @@
   "holiday.visited": "A ti ṣàbẹ̀wò",
   "holiday.unknown_place": "Ibi àìmọ̀",
   "holiday.birthday_event": "Ọjọ́ ìbí {{name}}",
-  "holiday.reminder_notes": "Ìránnilétí láti Mingla — {{event}}"
+  "holiday.reminder_notes": "Ìránnilétí láti Mingla — {{event}}",
+  "friendsActionChooserTitle": "What do you want to do?",
+  "friendsActionChooserCreateGroupChat": "Create a group chat",
+  "friendsActionChooserAddFriend": "Add a friend",
+  "friendsActionChooserPlusButtonA11y": "Add a friend or start a group chat",
+  "friendsActionChooserCreateDisabledPaywall": "Pro plan required",
+  "createGroupChatSheetTitle": "Create a group chat",
+  "createGroupChatNamePlaceholder": "What's this group about?",
+  "createGroupChatFriendsLabel": "Invite friends",
+  "createGroupChatSubmit": "Create",
+  "startSwipingCta": "Start swiping together",
+  "collabDeckSheetTitle": "Find a spot together",
+  "pendingInviteAccept": "Accept",
+  "pendingInviteDecline": "Decline",
+  "pendingInviteRowSubtitle": "{{name}} invited you to swipe together",
+  "leaveSessionMenuItem": "Leave session",
+  "leaveSessionConfirmTitle": "Leave this session?",
+  "leaveSessionConfirmBody": "You'll stop seeing new cards together. The chat stays."
 }

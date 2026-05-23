@@ -21,7 +21,6 @@ import { useFriends } from "../src/hooks/useFriends";
 import ErrorBoundary from "../src/components/ErrorBoundary";
 import HomePage from "../src/components/HomePage";
 import DiscoverScreen from "../src/components/DiscoverScreen";
-import { CollaborationSession, getInitials, Friend } from "../src/components/CollaborationSessions";
 import PreferencesSheet from "../src/components/PreferencesSheet";
 import ProfilePage from "../src/components/ProfilePage";
 import WelcomeScreen from "../src/components/signIn/WelcomeScreen";
@@ -40,7 +39,6 @@ import { ToastContainer } from "../src/components/ui/ToastContainer";
 import { toastManager } from "../src/components/ui/Toast";
 import { ToastProvider } from "../src/components/ToastManager";
 import { useAppStore } from "../src/store/appStore";
-import { useBoardSession } from "../src/hooks/useBoardSession";
 import { messagingService } from "../src/services/messagingService";
 import { BoardMessageService } from "../src/services/boardMessageService";
 import { muteService } from "../src/services/muteService";
@@ -70,8 +68,6 @@ import AppLoadingScreen from '../src/components/AppLoadingScreen';
 
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { queryClient, asyncStoragePersister } from "../src/config/queryClient";
-import { SessionService } from "../src/services/sessionService";
-import { BoardInviteService } from "../src/services/boardInviteService";
 import { BoardSessionService } from "../src/services/boardSessionService";
 import { supabase } from "../src/services/supabase";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -95,6 +91,14 @@ import {
   dismissCollaborationInviteNotifications,
   type ServerNotification,
 } from "../src/hooks/useNotifications";
+
+type Friend = {
+  id: string;
+  name?: string;
+  username?: string;
+  avatar?: string | null;
+  status?: string;
+};
 
 const TAB_BAR_ICON_SIZE = ms(20);
 
@@ -194,9 +198,6 @@ function AppContent() {
     setShowShareModal,
     shareData,
     setShareData,
-    currentMode,
-    setCurrentMode,
-    initialSessionId,
     preSelectedFriend,
     setPreSelectedFriend,
     activeSessionData,
@@ -246,26 +247,17 @@ function AppContent() {
     setOnboardingData,
   } = state;
 
-  // Seed from storage so the pill bar highlights immediately on first render.
-  // initialSessionId is loaded from AsyncStorage in AppStateManager alongside currentMode.
-  // useState only captures the initial value at first render; the effect below syncs
-  // the stored value once it arrives (it's null until AsyncStorage resolves).
-  const [currentSessionId, setCurrentSessionId] = useState<string | null>(
-    initialSessionId
-  );
-  useEffect(() => {
-    if (initialSessionId !== null && currentSessionId === null) {
-      setCurrentSessionId(initialSessionId);
-    }
-  }, [initialSessionId, currentSessionId]);
   const [totalUnreadMessages, setTotalUnreadMessages] = useState<number>(0);
   const [totalUnreadBoardMessages, setTotalUnreadBoardMessages] =
     useState<number>(0);
   const [isCreatingSession, setIsCreatingSession] = useState<boolean>(false);
   const [showPaywall, setShowPaywall] = useState<boolean>(false);
-  const [pendingSessionOpen, setPendingSessionOpen] = useState<string | null>(null);
   const [pendingOpenDmUserId, setPendingOpenDmUserId] = useState<string | null>(null);
   const [pendingConnectionsPanel, setPendingConnectionsPanel] = useState<"friends" | "add" | "blocked" | null>(null);
+  const [collabPreferencesTarget, setCollabPreferencesTarget] = useState<{
+    sessionId: string;
+    sessionName: string;
+  } | null>(null);
 
   // Pending experience reviews — shows review modal after scheduled experiences
   const { pendingReview, showReviewModal, dismissReview, recheckPending } = usePostExperienceCheck();
@@ -278,8 +270,6 @@ function AppContent() {
   // like isAuthenticated are not.
   const userIdRef = useRef<string | undefined>(undefined);
   userIdRef.current = user?.id;
-  const currentSessionIdRef = useRef<string | null>(null);
-  currentSessionIdRef.current = currentSessionId;
   // Generation counter for refreshAllSessions() concurrency protection.
   // Declared here (top of component) so it persists stably across renders and is
   // visible to any future developer extracting refreshAllSessions to a custom hook.
@@ -467,7 +457,6 @@ function AppContent() {
         const action = parseDeepLink(deepLink);
         executeDeepLink(action, {
           setCurrentPage: setCurrentPage as (page: string) => void,
-          setPendingSessionOpen,
           setShowPaywall: (show: boolean) => setShowPaywall(show),
           setDeepLinkParams: (params: Record<string, string>) => setDeepLinkParams(params),
         });
@@ -647,17 +636,12 @@ function AppContent() {
     });
 
     // ORCH-0448D: Foreground push handler — reacts to pushes while app is active.
-    // Handles session_deleted: switches partner to solo immediately.
+    // Session-deleted pushes now display only; collab decks live in their group chat.
     // Uses refs to avoid stale closure over state.
     const removeForeground = onForegroundNotification((data, prevent, display) => {
       if (data.type === 'session_deleted') {
-        const deletedSessionId = data.sessionId as string | undefined;
-        // Only switch if we're in the deleted session
-        if (deletedSessionId && currentSessionIdRef.current === deletedSessionId) {
-          display(); // Show the push notification so user knows why they were switched
-          handleSoloSelect();
-          return;
-        }
+        display();
+        return;
       }
       // All other notification types: show the system banner as normal
       display();
@@ -668,41 +652,6 @@ function AppContent() {
       removeForeground();
     };
   }, []);
-
-  // Transform boardsSessions to CollaborationSession format for the sessions bar
-  const collaborationSessions: CollaborationSession[] = useMemo(() => {
-    return (boardsSessions || []).map((board: any) => {
-      let sessionType: 'active' | 'sent-invite' | 'received-invite' = 'active';
-      if (board.status === 'pending') {
-        const isCreator = board.creatorId === user?.id || board.created_by === user?.id;
-        sessionType = isCreator ? 'sent-invite' : 'received-invite';
-      }
-
-      // Build participant details for the invite modal
-      const participantDetails = (board.participants || [])
-        .filter((p: any) => p.id !== user?.id && p.user_id !== user?.id)
-        .map((p: any) => ({
-          id: p.id || p.user_id,
-          name: p.name || 'Invited',
-          avatar: p.avatar || p.avatar_url || undefined,
-          hasAccepted: p.has_accepted ?? (p.status === 'online'),
-        }));
-
-      return {
-        id: board.id || board.session_id,
-        name: board.name,
-        initials: getInitials(board.name),
-        type: sessionType,
-        participants: board.participants?.length || 0,
-        participantDetails: participantDetails.length > 0 ? participantDetails : undefined,
-        createdAt: board.createdAt ? new Date(board.createdAt) : undefined,
-        invitedBy: board.inviterProfile || undefined,
-        // ORCH-0908: forward raw lifecycle status so CollaborationSessions can
-        // render a lock-icon badge while session.status='locked'.
-        status: board.status,
-      };
-    });
-  }, [boardsSessions, user?.id]);
 
   // Load all sessions (including pending invites) on mount
   useEffect(() => {
@@ -816,7 +765,6 @@ function AppContent() {
       } else {
         executeDeepLink(action, {
           setCurrentPage: setCurrentPage as (page: string) => void,
-          setPendingSessionOpen,
           setShowPaywall: (show: boolean) => setShowPaywall(show),
           setDeepLinkParams: (params: Record<string, string>) => setDeepLinkParams(params),
         });
@@ -1088,7 +1036,6 @@ function AppContent() {
       const action = parseDeepLink(deepLink);
       executeDeepLink(action, {
         setCurrentPage: setCurrentPage as (page: string) => void,
-        setPendingSessionOpen,
         setShowPaywall: (show: boolean) => setShowPaywall(show),
         setDeepLinkParams: (params: Record<string, string>) => setDeepLinkParams(params),
       });
@@ -1100,21 +1047,11 @@ function AppContent() {
     if (type.startsWith('friend_') || type.startsWith('pair_') || type.startsWith('link_')) {
       setCurrentPage('connections');
     } else if (type.startsWith('collaboration_') || type.startsWith('session_')) {
-      const sessionId = notification.data?.sessionId as string;
-      if (sessionId) {
-        setPendingSessionOpen(sessionId);
-      }
-      setCurrentPage('home');
+      setCurrentPage('connections');
     } else if (type.startsWith('direct_message_')) {
       setCurrentPage('connections');
     } else if (type.startsWith('board_message_') || type.startsWith('board_card_')) {
-      const sessionId = notification.data?.sessionId as string;
-      if (sessionId) {
-        setPendingSessionOpen(sessionId);
-        setCurrentPage('home');
-      } else {
-        setCurrentPage('home');
-      }
+      setCurrentPage('home');
     } else if (type.startsWith('calendar_')) {
       setCurrentPage('likes');
     } else if (type === 'weekly_digest') {
@@ -1129,31 +1066,9 @@ function AppContent() {
     setViewingFriendProfileId,
     setPendingConnectionsPanel,
     setPendingOpenDmUserId,
-    setPendingSessionOpen,
     setShowPaywall,
     setDeepLinkParams,
   ]);
-
-  // Session handlers for the CollaborationSessions bar
-  // ORCH-0679 Wave 2.5: useCallback-wrapped. handlers.handleModeChange is
-  // accessed via handlersRef.current to avoid the unstable handlers dep
-  // (TS-1.5 — AppHandlers fix deferred).
-  const handleSessionSelect = useCallback((sessionId: string | null) => {
-    logger.action('Session selected', { sessionId });
-    if (sessionId) {
-      const session = boardsSessions?.find((s: any) => s.id === sessionId || s.session_id === sessionId);
-      if (session) {
-        handlersRef.current.handleModeChange(session.name);
-        setCurrentSessionId(sessionId);
-      }
-    }
-  }, [boardsSessions, setCurrentSessionId]);
-
-  const handleSoloSelect = useCallback(() => {
-    logger.action('Solo mode selected');
-    handlersRef.current.handleModeChange('solo');
-    setCurrentSessionId(null);
-  }, [setCurrentSessionId]);
 
   // Helper function to refresh all sessions (active + pending)
   // ORCH-0679 Wave 2A: useCallback-wrapped so its identity is stable across renders.
@@ -1386,8 +1301,8 @@ function AppContent() {
   // ORCH-0679 Wave 2.5: useCallback-wrapped. Body uses handlers.handleModeChange
   // via handlersRef.current; refreshAllSessions is already useCallback-wrapped
   // from Wave 2A. Other deps are setState setters (React-stable) and user?.id.
-  const handleCreateSession = useCallback(async (sessionName: string, selectedFriends: Friend[] = [], phoneInvitees?: { phoneE164: string }[]) => {
-    if (!user?.id) return;
+  const handleCreateGroupChat = useCallback(async (sessionName: string, selectedFriends: Friend[] = [], phoneInvitees?: { phoneE164: string }[]) => {
+    if (!user?.id) throw new Error('You must be signed in to create a group chat.');
     logger.action('Create session pressed', { name: sessionName, friendCount: selectedFriends.length });
     setIsCreatingSession(true);
     let createdSessionId: string | null = null;
@@ -1408,7 +1323,7 @@ function AppContent() {
 
       if (hasDuplicate) {
         toastManager.error('A collaboration session already exists with that name.');
-        return;
+        throw new Error('A collaboration session already exists with that name.');
       }
 
       // Clean up any ghost sessions with this name (created by user but no participant record)
@@ -1574,6 +1489,12 @@ function AppContent() {
       // Refresh all sessions (active + pending)
       await refreshAllSessions({ showLoading: true });
 
+      const { conversation, error: conversationError } =
+        await messagingService.getOrCreateGroupConversationForSession(session.id);
+      if (conversationError || !conversation?.id) {
+        throw new Error(conversationError || 'Group chat was created but the conversation was not found.');
+      }
+
       // Show success toast
       const friendCount = selectedFriends.length;
       const message = friendCount > 0 
@@ -1581,9 +1502,7 @@ function AppContent() {
         : `Session "${sessionName}" created successfully!`;
       toastManager.success(message);
 
-      // Switch to the new session
-      handlersRef.current.handleModeChange(sessionName);
-      setCurrentSessionId(session.id);
+      return { conversationId: conversation.id, sessionId: session.id };
     } catch (error) {
       console.error('Error creating session:', error);
       // Roll back the ghost session if it was inserted before the failure
@@ -1593,19 +1512,18 @@ function AppContent() {
         });
       }
       toastManager.error('Failed to create session. Please try again.');
+      throw error;
     } finally {
       setIsCreatingSession(false);
     }
-  }, [user?.id, refreshAllSessions, setIsCreatingSession, setCurrentSessionId]);
+  }, [user?.id, refreshAllSessions, setIsCreatingSession]);
 
-  // ORCH-0679 Wave 2.5: useCallback-wrapped. Calls handleSessionSelect (now
-  // useCallback'd) — its identity is stable so safe in dep array.
-  const handleAcceptInvite = useCallback(async (sessionId: string) => {
+  const handleAcceptInvite = useCallback(async (sessionId: string, inviteId?: string) => {
     if (!user?.id) return;
     logger.action('Accept invite pressed', { sessionId });
     try {
       const { acceptCollaborationInvite } = await import('../src/services/collaborationInviteService');
-      const result = await acceptCollaborationInvite({ userId: user.id, sessionId });
+      const result = await acceptCollaborationInvite({ userId: user.id, sessionId, inviteId });
 
       if (!result.success) {
         toastManager.error(result.error ?? 'Failed to accept invite.');
@@ -1620,25 +1538,19 @@ function AppContent() {
       // Refresh all sessions so the pill bar reflects the new active session
       await refreshAllSessions({ showLoading: true });
       toastManager.success(`Joined "${result.sessionName}" successfully!`);
-
-      // Auto-enter the session and open the modal
-      if (result.sessionId) {
-        handleSessionSelect(result.sessionId);
-        setPendingSessionOpen(result.sessionId);
-      }
     } catch (error) {
       console.error('Error accepting invite:', error);
       toastManager.error('Failed to accept invite.');
     }
-  }, [user?.id, queryClient, refreshAllSessions, handleSessionSelect, setPendingSessionOpen]);
+  }, [user?.id, queryClient, refreshAllSessions]);
 
   // ORCH-0679 Wave 2.5: useCallback-wrapped.
-  const handleDeclineInvite = useCallback(async (sessionId: string) => {
+  const handleDeclineInvite = useCallback(async (sessionId: string, inviteId?: string) => {
     if (!user?.id) return;
     logger.action('Decline invite pressed', { sessionId });
     try {
       const { declineCollaborationInvite } = await import('../src/services/collaborationInviteService');
-      const result = await declineCollaborationInvite({ userId: user.id, sessionId });
+      const result = await declineCollaborationInvite({ userId: user.id, sessionId, inviteId });
 
       if (!result.success) {
         toastManager.error(result.error ?? 'Failed to decline invite.');
@@ -1660,134 +1572,6 @@ function AppContent() {
       toastManager.error('Failed to decline invite.');
     }
   }, [user?.id, queryClient, refreshAllSessions]);
-
-  // ORCH-0679 Wave 2.5: useCallback-wrapped.
-  const handleCancelInvite = useCallback(async (sessionId: string) => {
-    if (!user?.id) return;
-    logger.action('Cancel invite pressed', { sessionId });
-    try {
-      // Step 1: Delete the session. CASCADE atomically removes participants,
-      // invites, prefs, and all child rows in one statement. This is the
-      // primary operation — everything else is a safety net.
-      const { data: deleted, error } = await supabase
-        .from('collaboration_sessions')
-        .delete()
-        .eq('id', sessionId)
-        .eq('created_by', user.id)
-        .select('id');
-
-      if (error) {
-        console.error('[CancelInvite] DB error:', error.message);
-        throw error;
-      }
-
-      if (!deleted || deleted.length === 0) {
-        // DELETE matched 0 rows — session already gone or user isn't creator.
-        // Clean up any orphaned invites/participants as a safety net.
-        console.warn('[CancelInvite] No rows deleted — cleaning up orphans. sessionId:', sessionId);
-
-        await supabase
-          .from('collaboration_invites')
-          .update({ status: 'cancelled' })
-          .eq('session_id', sessionId)
-          .eq('status', 'pending');
-
-        await supabase
-          .from('session_participants')
-          .delete()
-          .eq('session_id', sessionId);
-      }
-
-      // Step 2: Refresh sessions to update the pill bar
-      await refreshAllSessions({ showLoading: true });
-      toastManager.success('Invite cancelled.');
-    } catch (error) {
-      console.error('[CancelInvite] Error:', error);
-      toastManager.error('Failed to cancel invite.');
-    }
-  }, [user?.id, refreshAllSessions]);
-
-  // ORCH-0437: Invite more people to an existing pending session
-  // ORCH-0679 Wave 2.5: useCallback-wrapped.
-  const handleInviteMoreToSession = useCallback(async (sessionId: string, friend: { id: string; name: string; username?: string; avatar?: string }) => {
-    if (!user?.id) return;
-    logger.action('Invite more to session', { sessionId, friendId: friend.id });
-    try {
-      const friendUserId = friend.id;
-
-      // Get friend's email
-      const { data: friendProfile } = await supabase
-        .from('profiles')
-        .select('email')
-        .eq('id', friendUserId)
-        .single();
-
-      // Add as participant (not accepted yet)
-      const { error: participantError } = await supabase
-        .from('session_participants')
-        .insert({
-          session_id: sessionId,
-          user_id: friendUserId,
-          has_accepted: false,
-        });
-
-      if (participantError) {
-        if (participantError.code === '23505') {
-          toastManager.info(`${friend.name} is already invited.`);
-        } else {
-          console.error('Error adding participant:', participantError);
-          toastManager.error('Failed to add collaborator.');
-        }
-        return;
-      }
-
-      // Create invite
-      const { data: sessionData } = await supabase
-        .from('collaboration_sessions')
-        .select('name')
-        .eq('id', sessionId)
-        .single();
-
-      const { data: inviteData, error: inviteError } = await supabase
-        .from('collaboration_invites')
-        .insert({
-          session_id: sessionId,
-          inviter_id: user.id,
-          invited_user_id: friendUserId,
-          status: 'pending',
-        })
-        .select('id')
-        .single();
-
-      if (inviteError) {
-        console.error('Error creating invite:', inviteError);
-      }
-
-      // Send notification
-      if (friendProfile?.email && inviteData) {
-        try {
-          await supabase.functions.invoke('send-collaboration-invite', {
-            body: {
-              inviterId: user.id,
-              invitedUserId: friendUserId,
-              invitedUserEmail: friendProfile.email,
-              sessionId,
-              sessionName: sessionData?.name || 'a session',
-              inviteId: inviteData.id,
-            },
-          });
-        } catch (emailErr) {
-          console.error('Failed to send invite notification:', emailErr);
-        }
-      }
-
-      await refreshAllSessions({ showLoading: false });
-      toastManager.success(`Invited ${friend.name}!`);
-    } catch (error) {
-      console.error('Error inviting to session:', error);
-      toastManager.error('Failed to send invite.');
-    }
-  }, [user?.id, refreshAllSessions]);
 
   // Handle deep links for OAuth callback + Stripe redirect-flow completion.
   // ORCH-0837: route incoming URLs to Stripe's handleURLCallback FIRST so any
@@ -1960,7 +1744,6 @@ function AppContent() {
     const action = parseDeepLink(url);
     executeDeepLink(action, {
       setCurrentPage: setCurrentPage as (page: string) => void,
-      setPendingSessionOpen,
       setShowPaywall: (show: boolean) => setShowPaywall(show),
       setDeepLinkParams: (params: Record<string, string>) => setDeepLinkParams(params),
     });
@@ -2034,54 +1817,6 @@ function AppContent() {
   }, [isAuthenticated, user?.id]);
 
 
-  // Verify / resolve session ID when in collaboration mode.
-  // The stored sessionId (via initialSessionId) gives instant pill highlighting;
-  // this effect confirms it against the database and corrects if stale.
-  // The `cancelled` flag prevents a slow DB response from overwriting a mode
-  // switch the user made while the request was in-flight.
-  useEffect(() => {
-    let cancelled = false;
-
-    const getSessionId = async () => {
-      if (currentMode === "solo" || currentMode === null) {
-        setCurrentSessionId(null);
-        return;
-      }
-
-      if (!user?.id) {
-        setCurrentSessionId(null);
-        return;
-      }
-
-      // Verify against database
-      const activeSession = await SessionService.getActiveSession(user.id);
-      if (cancelled) return;
-
-      if (activeSession) {
-        setCurrentSessionId(activeSession.sessionId);
-      } else {
-        // Fallback: find session by name
-        const { data: sessions } = await supabase
-          .from("collaboration_sessions")
-          .select("id")
-          .eq("name", currentMode)
-          .limit(1);
-
-        if (cancelled) return;
-
-        if (sessions && sessions.length > 0) {
-          setCurrentSessionId(sessions[0].id);
-        } else {
-          // Session no longer exists — fall back to solo
-          setCurrentSessionId(null);
-        }
-      }
-    };
-
-    getSessionId();
-    return () => { cancelled = true; };
-  }, [currentMode, user?.id]);
-
   // ─── ORCH-0679 Wave 2.6 — Hot-fix: hooks moved here from after early returns ───
   // Wave 2A originally placed these AFTER `if (!_hasHydrated...) return` (line ~2026
   // post-Wave-2.5), `if (showOnboardingFlow...)`, `if (!isAuthenticated)`, and
@@ -2131,32 +1866,26 @@ function AppContent() {
   const handleShowQRCode = useCallback((entryId: string) => {
     console.log("Showing QR code for:", entryId);
   }, []);
-  const handleUpdateBoardSession = useCallback((board: any) => {
-    console.log("Updating board session:", board);
-  }, []);
-
   // ── State-touching handlers ──
   const handleResetCards = useCallback(() => {
     setRemovedCardIds([]);
   }, [setRemovedCardIds]);
-
-  const handleOpenSessionHandled = useCallback(() => {
-    setPendingSessionOpen(null);
-  }, [setPendingSessionOpen]);
 
   const handleOpenPreferences = useCallback(() => {
     logger.action('Open preferences pressed');
     setShowPreferences(true);
   }, [setShowPreferences]);
 
-  const handleOpenCollabPreferences = useCallback(() => {
+  const handleOpenCollabPreferences = useCallback((sessionId?: string, sessionName?: string) => {
     logger.action('Open collab preferences pressed');
-    setShowCollabPreferences(true);
+    if (sessionId) {
+      setCollabPreferencesTarget({
+        sessionId,
+        sessionName: sessionName || 'Collaboration session',
+      });
+      setShowCollabPreferences(true);
+    }
   }, [setShowCollabPreferences]);
-
-  const handleSessionStateChangedShowLoading = useCallback(() => {
-    refreshAllSessions({ showLoading: true });
-  }, [refreshAllSessions]);
 
   const handleOpenChatWithUserFromDiscover = useCallback((friendUserId: string) => {
     setPendingOpenDmUserId(friendUserId);
@@ -2179,10 +1908,6 @@ function AppContent() {
   const handleDeepLinkHandled = useCallback(() => {
     setDeepLinkParams(null);
   }, [setDeepLinkParams]);
-
-  const handleCreateSessionFromConnections = useCallback(async () => {
-    await refreshAllSessions({ showLoading: true });
-  }, [refreshAllSessions]);
 
   const handleFriendAccepted = useCallback(() => {
     refreshAllSessions({ showLoading: false });
@@ -2262,10 +1987,6 @@ function AppContent() {
   const stableHandleReportUser = useCallback(
     (friend: any, suppressNotification?: boolean, reason?: string, details?: string): void =>
       handlersRef.current.handleReportUser(friend, suppressNotification, reason, details),
-    []
-  );
-  const stableHandleModeChange = useCallback(
-    (mode: "solo" | string): Promise<void> => handlersRef.current.handleModeChange(mode),
     []
   );
   const stableHandleRemoveFromCalendar = useCallback(
@@ -2355,10 +2076,6 @@ function AppContent() {
               setShowPreferences(true);
             }}
 
-            onOpenCollabPreferences={() => { logger.action('Open collab preferences pressed'); setShowCollabPreferences(true) }}
-            currentMode={currentMode ?? "solo"}
-            boardsSessions={boardsSessions}
-
             userPreferences={userPreferences}
             accountPreferences={{
               currency: accountPreferences?.currency || "USD",
@@ -2380,22 +2097,8 @@ function AppContent() {
             onResetCards={() => setRemovedCardIds([])}
             generateNewMockCard={() => console.log("Generate new card")}
             refreshKey={preferencesRefreshKey}
-            collaborationSessions={collaborationSessions}
-            selectedSessionId={currentSessionId}
-            onSessionSelect={handleSessionSelect}
-            onSoloSelect={handleSoloSelect}
-            onCreateSession={handleCreateSession}
-            onAcceptInvite={handleAcceptInvite}
-            onDeclineInvite={handleDeclineInvite}
-            onCancelInvite={handleCancelInvite}
-            onInviteMoreToSession={handleInviteMoreToSession}
-            onSessionStateChanged={() => refreshAllSessions({ showLoading: true })}
-            availableFriends={availableFriendsForSessions}
-            isCreatingSession={isCreatingSession}
             onNotificationNavigate={handleNotificationNavigate}
             userId={user?.id}
-            openSessionId={pendingSessionOpen}
-            onOpenSessionHandled={() => setPendingSessionOpen(null)}
           />
         );
       case "discover":
@@ -2417,7 +2120,6 @@ function AppContent() {
             deepLinkParams={currentPage === 'discover' ? deepLinkParams : null}
             onDeepLinkHandled={() => setDeepLinkParams(null)}
             onOpenPreferences={() => setShowPreferences(true)}
-            onOpenSession={(sessionId) => setCurrentSessionId(sessionId)}
           />
         );
       case "saved":
@@ -2449,14 +2151,15 @@ function AppContent() {
             onPurchaseComplete={handlePurchaseComplete}
             boardsSessions={boardsSessions}
             onRefreshSessions={refreshAllSessions}
-            currentMode={currentMode ?? "solo"}
-            onModeChange={handlers.handleModeChange}
-            onUpdateBoardSession={(board: any) => {
-              console.log("Updating board session:", board);
-            }}
-            onCreateSession={async () => {
-              await refreshAllSessions({ showLoading: true });
-            }}
+            onCreateGroupChat={handleCreateGroupChat}
+            onAcceptPendingInvite={handleAcceptInvite}
+            onDeclinePendingInvite={handleDeclineInvite}
+            availableFriendsForCreate={availableFriendsForSessions}
+            isCreatingGroupChat={isCreatingSession}
+            userPreferences={userPreferences}
+            savedCards={savedCards}
+            onOpenPreferences={() => setShowPreferences(true)}
+            onOpenCollabPreferences={handleOpenCollabPreferences}
             onUnreadCountChange={setTotalUnreadMessages}
             onNavigateToFriendProfile={(userId: string) => setViewingFriendProfileId(userId)}
             onFriendAccepted={() => refreshAllSessions({ showLoading: false })}
@@ -2530,10 +2233,6 @@ function AppContent() {
               setShowPreferences(true);
             }}
 
-            onOpenCollabPreferences={() => { logger.action('Open collab preferences pressed'); setShowCollabPreferences(true) }}
-            currentMode={currentMode ?? "solo"}
-            boardsSessions={boardsSessions}
-
             userPreferences={userPreferences}
             accountPreferences={{
               currency: accountPreferences?.currency || "USD",
@@ -2554,22 +2253,8 @@ function AppContent() {
             removedCardIds={removedCardIds}
             onResetCards={() => setRemovedCardIds([])}
             generateNewMockCard={() => console.log("Generate new card")}
-            collaborationSessions={collaborationSessions}
-            selectedSessionId={currentSessionId}
-            onSessionSelect={handleSessionSelect}
-            onSoloSelect={handleSoloSelect}
-            onCreateSession={handleCreateSession}
-            onAcceptInvite={handleAcceptInvite}
-            onDeclineInvite={handleDeclineInvite}
-            onCancelInvite={handleCancelInvite}
-            onInviteMoreToSession={handleInviteMoreToSession}
-            onSessionStateChanged={() => refreshAllSessions({ showLoading: true })}
-            availableFriends={availableFriendsForSessions}
-            isCreatingSession={isCreatingSession}
             onNotificationNavigate={handleNotificationNavigate}
             userId={user?.id}
-            openSessionId={pendingSessionOpen}
-            onOpenSessionHandled={() => setPendingSessionOpen(null)}
           />
         );
     }
@@ -2598,10 +2283,10 @@ function AppContent() {
       <ToastProvider>
         <CardsCacheProvider>
           <RecommendationsProvider
-            currentMode={currentMode ?? "solo"}
+            currentMode="solo"
             refreshKey={preferencesRefreshKey}
-            persistedSessionId={currentSessionId}
-            onSessionLost={handleSoloSelect}
+            persistedSessionId={null}
+            onSessionLost={() => {}}
           >
             <MobileFeaturesProvider>
               <NavigationProvider>
@@ -2666,11 +2351,7 @@ function AppContent() {
                                 case 'home':
                                   return (
                                     <HomePage
-                                      isTabVisible={true}
                                       onOpenPreferences={handleOpenPreferences}
-                                      onOpenCollabPreferences={handleOpenCollabPreferences}
-                                      currentMode={currentMode ?? "solo"}
-                                      boardsSessions={boardsSessions}
                                       userPreferences={userPreferences}
                                       accountPreferences={accountPreferencesMemo}
                                       onAddToCalendar={handleAddToCalendar}
@@ -2682,22 +2363,8 @@ function AppContent() {
                                       onResetCards={handleResetCards}
                                       generateNewMockCard={handleGenerateNewMockCard}
                                       refreshKey={preferencesRefreshKey}
-                                      collaborationSessions={collaborationSessions}
-                                      selectedSessionId={currentSessionId}
-                                      onSessionSelect={handleSessionSelect}
-                                      onSoloSelect={handleSoloSelect}
-                                      onCreateSession={handleCreateSession}
-                                      onAcceptInvite={handleAcceptInvite}
-                                      onDeclineInvite={handleDeclineInvite}
-                                      onCancelInvite={handleCancelInvite}
-                                      onInviteMoreToSession={handleInviteMoreToSession}
-                                      onSessionStateChanged={handleSessionStateChangedShowLoading}
-                                      availableFriends={availableFriendsForSessions}
-                                      isCreatingSession={isCreatingSession}
                                       onNotificationNavigate={handleNotificationNavigate}
                                       userId={user?.id}
-                                      openSessionId={pendingSessionOpen}
-                                      onOpenSessionHandled={handleOpenSessionHandled}
                                     />
                                   );
                                 case 'discover':
@@ -2727,10 +2394,15 @@ function AppContent() {
                                       onPurchaseComplete={handlePurchaseComplete}
                                       boardsSessions={boardsSessions}
                                       onRefreshSessions={refreshAllSessions}
-                                      currentMode={currentMode ?? "solo"}
-                                      onModeChange={stableHandleModeChange}
-                                      onUpdateBoardSession={handleUpdateBoardSession}
-                                      onCreateSession={handleCreateSessionFromConnections}
+                                      onCreateGroupChat={handleCreateGroupChat}
+                                      onAcceptPendingInvite={handleAcceptInvite}
+                                      onDeclinePendingInvite={handleDeclineInvite}
+                                      availableFriendsForCreate={availableFriendsForSessions}
+                                      isCreatingGroupChat={isCreatingSession}
+                                      userPreferences={userPreferences}
+                                      savedCards={savedCards}
+                                      onOpenPreferences={handleOpenPreferences}
+                                      onOpenCollabPreferences={handleOpenCollabPreferences}
                                       onUnreadCountChange={setTotalUnreadMessages}
                                       onNavigateToFriendProfile={handleViewFriendProfile}
                                       onFriendAccepted={handleFriendAccepted}
@@ -2855,13 +2527,14 @@ function AppContent() {
                   </View>
                 </ErrorBoundary>
 
-                {showCollabPreferences && currentMode !== "solo" && currentSessionId ? (
+                {showCollabPreferences && collabPreferencesTarget ? (
           <ErrorBoundary>
             <PreferencesSheet
               visible={true}
               onClose={() => {
                 logger.action('Close collab preferences');
                 setShowCollabPreferences(false);
+                setCollabPreferencesTarget(null);
                 // ORCH-0902 follow-up (2026-05-21): the ORCH-0446B refreshKey
                 // bump is retired. Under CR-1+CR-3+CR-9 the deck is driven by
                 // `collaboration_sessions.deck_version`; the server-side
@@ -2874,8 +2547,8 @@ function AppContent() {
                 // nothing changed — visible to operator as "No spots match
                 // right now" the moment the sheet closed.
               }}
-              sessionId={currentSessionId}
-              sessionName={currentMode ?? "solo"}
+              sessionId={collabPreferencesTarget.sessionId}
+              sessionName={collabPreferencesTarget.sessionName}
               accountPreferences={{
                 currency: accountPreferences?.currency || "USD",
                 measurementSystem:

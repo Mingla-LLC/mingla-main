@@ -1636,22 +1636,34 @@ export const RecommendationsProvider: React.FC<
       // Don't double-invalidate here (causes duplicate fetch). Just mark collab active.
       prevCollabModeRef.current = true;
     } else if (prevCollabParamsRef.current !== null && prevCollabParamsRef.current !== paramsKey) {
-      // Collab params changed (preference update) — invalidate session deck
-      // ORCH-0446: session-deck queries no longer exist. Deck uses deck-cards key.
+      // ORCH-0923: collab params changed (preference update on this client OR
+      // realtime-propagated change from another participant). Invalidate the
+      // deck-cards query so React Query refetches at the current position.
       //
-      // ORCH-0490 Phase 2.3 (CF-2.3-9): under flag-on the invalidate + batchSeed
-      // reset are NO-OPs. New aggregated params produce a different query key,
-      // which naturally causes a cache miss in React Query; `placeholderData`
-      // keepPrevious keeps old cards visible during fetch; the sync effect
-      // (CF-2.3-8) does append-not-replace on superset, fresh-seed on non-
-      // superset. Phase 2.6 will add a realtime signal here that sets
-      // `isDeckExpandingWithinContext=true` so non-superset collab realtime
-      // pref propagation preserves position. Flag-off preserves legacy wipe.
-      // [TRANSITIONAL] — deletable at flag exit condition.
-      if (!FEATURE_FLAG_PER_CONTEXT_DECK_STATE) {
-        queryClient.invalidateQueries({ queryKey: ['deck-cards'] });
-        setBatchSeed(0);
-      }
+      // Why this must fire under FEATURE_FLAG_PER_CONTEXT_DECK_STATE=true: the
+      // flag-on collab query key from buildDeckQueryKey is
+      // ['deck-cards', 'collab', sessionId, currentPosition] — it does NOT
+      // include deck_params_hash. The prior Phase 2.3 comment claimed
+      // "new aggregated params produce a different query key, which naturally
+      // causes a cache miss" — that is false for collab. Without an explicit
+      // invalidate, a cached dead-end response (e.g. intersection_empty) at
+      // the current position stays painted forever; once a participant moves
+      // back into overlap the server-side state heals but the client never
+      // refetches because nothing in the key changed.
+      //
+      // Safety: only fires when JSON.stringify(collabDeckParams) actually
+      // differs (so non-pref session row updates like last_activity_at are
+      // ignored — they don't change deck_params_hash). The DB trigger only
+      // bumps deck_params_hash when the aggregated-prefs hash genuinely
+      // differs. Frozen cards at lower positions still serve their original
+      // deck_version from session_deck_cards (V_n contract preserved). The
+      // setBatchSeed(0) reset is collab-irrelevant (batchSeed is unused in
+      // the collab branch of buildDeckQueryKey) and is dropped.
+      console.log('[ORCH-0923-DIAG] collab params changed, invalidating deck-cards', {
+        prev: prevCollabParamsRef.current,
+        next: paramsKey,
+      });
+      queryClient.invalidateQueries({ queryKey: ['deck-cards'] });
     }
     prevCollabParamsRef.current = paramsKey;
   }, [isCollaborationMode, collabDeckParams, queryClient]);

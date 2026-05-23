@@ -120,7 +120,6 @@
   "blockUserMenu": "사용자 차단",
   "reportUserMenu": "사용자 신고",
   "noMessagesYet": "아직 메시지가 없습니다",
-
   "holiday.loading_recommendations": "추천 로딩 중...",
   "holiday.getting_location": "위치 확인 중...",
   "holiday.couldnt_load": "추천을 불러올 수 없습니다",
@@ -148,5 +147,22 @@
   "holiday.visited": "방문함",
   "holiday.unknown_place": "알 수 없는 장소",
   "holiday.birthday_event": "{{name}}의 생일",
-  "holiday.reminder_notes": "Mingla 알림 — {{event}}"
+  "holiday.reminder_notes": "Mingla 알림 — {{event}}",
+  "friendsActionChooserTitle": "What do you want to do?",
+  "friendsActionChooserCreateGroupChat": "Create a group chat",
+  "friendsActionChooserAddFriend": "Add a friend",
+  "friendsActionChooserPlusButtonA11y": "Add a friend or start a group chat",
+  "friendsActionChooserCreateDisabledPaywall": "Pro plan required",
+  "createGroupChatSheetTitle": "Create a group chat",
+  "createGroupChatNamePlaceholder": "What's this group about?",
+  "createGroupChatFriendsLabel": "Invite friends",
+  "createGroupChatSubmit": "Create",
+  "startSwipingCta": "Start swiping together",
+  "collabDeckSheetTitle": "Find a spot together",
+  "pendingInviteAccept": "Accept",
+  "pendingInviteDecline": "Decline",
+  "pendingInviteRowSubtitle": "{{name}} invited you to swipe together",
+  "leaveSessionMenuItem": "Leave session",
+  "leaveSessionConfirmTitle": "Leave this session?",
+  "leaveSessionConfirmBody": "You'll stop seeing new cards together. The chat stays."
 }

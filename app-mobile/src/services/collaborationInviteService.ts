@@ -2,7 +2,7 @@
  * collaborationInviteService — Shared logic for accepting/declining collaboration invites.
  *
  * This service is the SINGLE source of truth for invite acceptance.
- * Both the pill-bar path (CollaborationSessions → index.tsx) and the
+ * Both chat-row invite handling and the
  * notifications path (NotificationsModal → useNotifications) call
  * these functions. Keeping one implementation prevents the two paths
  * from drifting (the original bug: the notifications path only marked
@@ -29,7 +29,7 @@ export interface AcceptInviteResult {
  * Params for acceptCollaborationInvite.
  *
  * Two entry points supply different identifiers:
- * - Pill-bar path knows the sessionId (CollaborationSessions passes it).
+ * - Chat-list path knows the sessionId.
  * - Notifications path knows the inviteId (notification.data.inviteId).
  *
  * Exactly one of { inviteId, sessionId } must be provided.
