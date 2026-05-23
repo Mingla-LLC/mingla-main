@@ -247,6 +247,10 @@ interface ConnectionsPageProps {
   onBlockUser?: (friend: any, suppressNotification?: boolean) => void;
   onReportUser?: (friend: any, suppressNotification?: boolean) => void;
   accountPreferences?: any;
+  onCardLike?: (card: any) => Promise<boolean>;
+  onAddToCalendar?: (experienceData: any) => void;
+  onShareCard?: (card: any) => void;
+  onPurchaseComplete?: (experienceData: any, purchaseOption: any) => void;
   boardsSessions?: any[];
   /** ORCH-0666: refreshes the home/session list after add-to-session mutation. */
   onRefreshSessions?: (options?: { showLoading?: boolean }) => Promise<void>;
@@ -447,6 +451,10 @@ function ConnectionsPageRefactored({
   onBlockUser,
   onReportUser,
   accountPreferences,
+  onCardLike,
+  onAddToCalendar,
+  onShareCard,
+  onPurchaseComplete,
   boardsSessions = [],
   onRefreshSessions,
   currentMode = "solo",
@@ -2686,6 +2694,11 @@ function ConnectionsPageRefactored({
             onReportUser={handleReportUser}
             boardsSessions={boardsSessions}
             currentMode={currentMode}
+            accountPreferences={accountPreferences}
+            onCardLike={onCardLike}
+            onAddToCalendar={onAddToCalendar}
+            onShareCard={onShareCard}
+            onPurchaseComplete={onPurchaseComplete}
             onModeChange={onModeChange}
             onUpdateBoardSession={onUpdateBoardSession}
             onCreateSession={onCreateSession}

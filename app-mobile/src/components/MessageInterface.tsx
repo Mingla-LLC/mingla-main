@@ -34,6 +34,7 @@ import { SwipeableMessage } from "./chat/SwipeableMessage";
 import { DoubleTapHeart } from "./chat/DoubleTapHeart";
 import { ChatStatusLine } from "./chat/ChatStatusLine";
 import { TripCountdownBanner } from "./chat/TripCountdownBanner";
+import { CollabSessionChatBanners } from "./chat/CollabSessionChatBanners";
 import { BoardSettingsDropdown } from "./board/BoardSettingsDropdown";
 import { MentionPopover } from "./board/MentionPopover";
 import { CardTagPopover } from "./board/CardTagPopover";
@@ -159,6 +160,10 @@ interface MessageInterfaceProps {
   onCreateSession?: (newSession: any) => void;
   availableFriends?: Friend[];
   accountPreferences?: any;
+  onCardLike?: (card: any) => Promise<boolean>;
+  onAddToCalendar?: (experienceData: any) => void;
+  onShareCard?: (card: any) => void;
+  onPurchaseComplete?: (experienceData: any, purchaseOption: any) => void;
   isBlocked?: boolean;
   isUnfriended?: boolean;
   isDeletedAccount?: boolean;
@@ -200,6 +205,11 @@ export default function MessageInterface({
   onUpdateBoardSession,
   onCreateSession,
   availableFriends = [],
+  accountPreferences,
+  onCardLike,
+  onAddToCalendar,
+  onShareCard,
+  onPurchaseComplete,
   isBlocked = false,
   isUnfriended = false,
   isDeletedAccount = false,
@@ -229,6 +239,8 @@ export default function MessageInterface({
   const isGroupChat = friend.conversationType === "group";
   const isTripEventGroupChat =
     isGroupChat && (friend.linkedEntityType === "trip" || friend.linkedEntityType === "event");
+  const isCollabSessionGroupChat =
+    isGroupChat && friend.linkedEntityType === "session" && !!friend.sessionId;
   const headerTitle = cleanName(friend.name);
   const headerParticipants = useMemo(() => friend.participants ?? [], [friend.participants]);
   const headerParticipantCount = friend.participantCount ?? headerParticipants.length;
@@ -1311,6 +1323,19 @@ export default function MessageInterface({
             </Text>
           </View>
         </View>
+      ) : null}
+
+      {isCollabSessionGroupChat ? (
+        <CollabSessionChatBanners
+          sessionId={friend.sessionId!}
+          currentUserId={currentUserId}
+          boardsSessions={boardsSessions}
+          accountPreferences={accountPreferences}
+          onCardLike={onCardLike}
+          onAddToCalendar={onAddToCalendar}
+          onShareCard={onShareCard}
+          onPurchaseComplete={onPurchaseComplete}
+        />
       ) : null}
 
       {/* Messages */}

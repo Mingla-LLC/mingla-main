@@ -1,8 +1,8 @@
-import { BoardCardService } from '../../services/boardCardService';
-import { notifyMatch } from '../../services/boardNotificationService';
-import { mixpanelService } from '../../services/mixpanelService';
-import { toastManager } from '../ui/Toast';
-import type { Recommendation } from '../../types/recommendation';
+import { BoardCardService } from "../../services/boardCardService";
+import { notifyMatch } from "../../services/boardNotificationService";
+import { mixpanelService } from "../../services/mixpanelService";
+import { toastManager } from "../ui/Toast";
+import type { Recommendation } from "../../types/recommendation";
 
 /**
  * ORCH-0558 v3: Build the card_data JSONB payload persisted on
@@ -21,7 +21,9 @@ import type { Recommendation } from '../../types/recommendation';
  * visible-but-not-binding "Sarah passed on this" attribution row, including
  * cards the current user has not yet seen in their own deck.
  */
-export function buildCardDataPayload(card: Recommendation): Record<string, unknown> {
+export function buildCardDataPayload(
+  card: Recommendation,
+): Record<string, unknown> {
   // Cast to any only for optional fields not in Recommendation type but
   // commonly present on cards in practice (priceTier, website, placeId,
   // curated-specific fields). These are the same optional fields the
@@ -60,7 +62,7 @@ export function buildCardDataPayload(card: Recommendation): Record<string, unkno
     tags: c.tags,
     strollData: c.strollData,
     picnicData: c.picnicData,
-    ...(c.cardType === 'curated'
+    ...(c.cardType === "curated"
       ? {
           cardType: c.cardType,
           stops: c.stops,
@@ -73,10 +75,14 @@ export function buildCardDataPayload(card: Recommendation): Record<string, unkno
           shoppingList: c.shoppingList,
           // ORCH-0910: synthesize honest top-level image fields from stops so
           // lock-in chat payloads and expanded sheets can render curated cards.
-          image: (c.stops as any[] | undefined)?.find?.(s => typeof s?.imageUrl === 'string' && s.imageUrl.length > 0)?.imageUrl,
+          image: (c.stops as any[] | undefined)?.find?.(
+            (s) => typeof s?.imageUrl === "string" && s.imageUrl.length > 0,
+          )?.imageUrl,
           images: (c.stops as any[] | undefined)
-            ?.map(s => s?.imageUrl)
-            .filter((url): url is string => typeof url === 'string' && url.length > 0)
+            ?.map((s) => s?.imageUrl)
+            .filter(
+              (url): url is string => typeof url === "string" && url.length > 0,
+            )
             .slice(0, 6),
         }
       : {}),
@@ -145,12 +151,14 @@ export async function collabSaveCard({
   // 1. Provisional toast — fire-and-forget, must not throw.
   try {
     toastManager.show(
-      t('swipeable.liked_waiting', { defaultValue: 'Liked — waiting for others' }),
-      'success',
-      2000
+      t("swipeable.liked_waiting", {
+        defaultValue: "Liked — waiting for others",
+      }),
+      "success",
+      2000,
     );
   } catch (toastErr) {
-    console.warn('[collabSaveCard] toast show failed (provisional):', toastErr);
+    console.warn("[collabSaveCard] toast show failed (provisional):", toastErr);
   }
 
   // 2. Atomic RPC — swipe + match detection in one round-trip.
@@ -159,48 +167,58 @@ export async function collabSaveCard({
     experienceId: card.id,
     userId,
     cardData: buildCardDataPayload(card),
-    swipeDirection: 'right',
+    swipeDirection: "right",
   });
 
   if (result.error) {
-    console.error('[collabSaveCard] RPC failed:', result.error);
+    console.error("[collabSaveCard] RPC failed:", result.error);
     try {
       toastManager.show(
-        t('swipeable.save_failed', { defaultValue: "Couldn't save — tap to retry" }),
-        'error',
-        3000
+        t("swipeable.save_failed", {
+          defaultValue: "Couldn't save — tap to retry",
+        }),
+        "error",
+        3000,
       );
     } catch (toastErr) {
-      console.warn('[collabSaveCard] toast show failed (error path):', toastErr);
+      console.warn(
+        "[collabSaveCard] toast show failed (error path):",
+        toastErr,
+      );
     }
     try {
-      mixpanelService.track('Collab Match RPC Error', {
+      mixpanelService.track("Collab Match RPC Error", {
         session_id: sessionId,
         experience_id: card.id,
-        reason: result.reason ?? 'unknown',
+        reason: result.reason ?? "unknown",
         error_message: result.error.message,
       });
     } catch (telErr) {
-      console.warn('[collabSaveCard] telemetry failed (error path):', telErr);
+      console.warn("[collabSaveCard] telemetry failed (error path):", telErr);
     }
-    return { tracked: false, matched: false, error: result.error, reason: result.reason };
+    return {
+      tracked: false,
+      matched: false,
+      error: result.error,
+      reason: result.reason,
+    };
   }
 
   // 3. Telemetry: attempt recorded by server; client mirrors the outcome.
   try {
-    mixpanelService.track('Collab Match Attempt', {
+    mixpanelService.track("Collab Match Attempt", {
       session_id: sessionId,
       experience_id: card.id,
-      swipe_direction: 'right',
+      swipe_direction: "right",
     });
   } catch (telErr) {
-    console.warn('[collabSaveCard] telemetry failed (attempt):', telErr);
+    console.warn("[collabSaveCard] telemetry failed (attempt):", telErr);
   }
 
   // 4. On match: fire notifyMatch (writes in-app row via notify-dispatch +
   //    push). Match toast upgrade for the matcher's own device.
   if (result.matched && result.savedCardId && result.matchedUserIds) {
-    const cardTitle = result.cardTitle || card.title || 'a spot';
+    const cardTitle = result.cardTitle || card.title || "a spot";
 
     notifyMatch({
       sessionId,
@@ -212,36 +230,36 @@ export async function collabSaveCard({
 
     try {
       toastManager.show(
-        t('swipeable.match_toast', {
+        t("swipeable.match_toast", {
           defaultValue: `It's a match! 🎉 ${cardTitle}`,
           cardTitle,
         }),
-        'success',
-        4000
+        "success",
+        4000,
       );
     } catch (toastErr) {
-      console.warn('[collabSaveCard] toast show failed (match):', toastErr);
+      console.warn("[collabSaveCard] toast show failed (match):", toastErr);
     }
 
     try {
-      mixpanelService.track('Collab Match Promotion Success', {
+      mixpanelService.track("Collab Match Promotion Success", {
         session_id: sessionId,
         experience_id: card.id,
         saved_card_id: result.savedCardId,
         matched_user_ids_count: result.matchedUserIds.length,
       });
     } catch (telErr) {
-      console.warn('[collabSaveCard] telemetry failed (match):', telErr);
+      console.warn("[collabSaveCard] telemetry failed (match):", telErr);
     }
   } else {
     try {
-      mixpanelService.track('Collab Match Promotion Skipped', {
+      mixpanelService.track("Collab Match Promotion Skipped", {
         session_id: sessionId,
         experience_id: card.id,
-        reason: result.reason ?? 'unknown',
+        reason: result.reason ?? "unknown",
       });
     } catch (telErr) {
-      console.warn('[collabSaveCard] telemetry failed (skipped):', telErr);
+      console.warn("[collabSaveCard] telemetry failed (skipped):", telErr);
     }
   }
 
