@@ -16,7 +16,7 @@ export const CircleEmptyState: React.FC = () => (
 
 const styles = StyleSheet.create({
   container: {
-    height: 148,
+    height: 214,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 10,

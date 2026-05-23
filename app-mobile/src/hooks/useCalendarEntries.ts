@@ -7,6 +7,7 @@ import {
   ConsumerCalendarEntry,
   BusinessEventCalendarRow,
 } from "../services/calendarService";
+import { circleKeys } from "./queryKeys";
 
 const fetchCalendarEntries = async (
   userId: string | undefined
@@ -77,8 +78,9 @@ export const useBusinessEventOrders = (userId: string | undefined) => {
 // ORCH-0851 H-1: Supabase realtime subscription on `orders` filtered by
 // `buyer_user_id=eq.<userId>`. Closes the 1–5s post-purchase staleness
 // window on the consumer Tickets/Calendar tab by invalidating the
-// `["businessEventOrders", userId]` cache on every INSERT/UPDATE/DELETE
-// for the signed-in buyer. The existing `refetchOnWindowFocus: true` on
+// `["businessEventOrders", userId]` and Circle caches on every
+// INSERT/UPDATE/DELETE for the signed-in buyer. The existing
+// `refetchOnWindowFocus: true` on
 // `useBusinessEventOrders` and the 3-attempt-over-3-seconds invalidate
 // loop in `ExpandedBusinessEventSheet.handleBuy` remain as fallbacks if
 // realtime fails to connect. Pattern mirrors `useNotifications` realtime
@@ -101,6 +103,7 @@ export const useOrdersRealtimeSubscription = (userId: string | undefined): void 
         },
         () => {
           queryClient.invalidateQueries({ queryKey: ["businessEventOrders", userId] });
+          queryClient.invalidateQueries({ queryKey: circleKeys.all });
         }
       )
       .subscribe();
@@ -169,4 +172,3 @@ export const useConsumerCalendar = (userId: string | undefined) => {
     retry: false,                 // explicit polling lives in ExpandedBusinessEventSheet success branch
   });
 };
-

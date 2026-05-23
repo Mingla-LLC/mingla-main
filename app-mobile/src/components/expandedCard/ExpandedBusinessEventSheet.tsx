@@ -39,6 +39,7 @@ import type { BusinessEventCard } from "../../types/mergedDiscover";
 import { formatEventDateLine } from "../../utils/eventDateDisplay";
 import { useAppStore } from "../../store/appStore";
 import { usePublicEventTickets } from "../../hooks/usePublicEventTickets";
+import { circleKeys } from "../../hooks/queryKeys";
 import {
   useNativeCheckoutFlow,
   type NativeCheckoutOutcome,
@@ -267,6 +268,7 @@ export const ExpandedBusinessEventSheet: React.FC<ExpandedBusinessEventSheetProp
         queryClient.invalidateQueries({
           queryKey: ["businessEventOrders", userId],
         });
+        queryClient.invalidateQueries({ queryKey: circleKeys.all });
         if (payload.totalCents > 0) {
           let attempts = 0;
           const interval = setInterval(() => {
@@ -274,6 +276,7 @@ export const ExpandedBusinessEventSheet: React.FC<ExpandedBusinessEventSheetProp
             queryClient.invalidateQueries({
               queryKey: ["businessEventOrders", userId],
             });
+            queryClient.invalidateQueries({ queryKey: circleKeys.all });
             if (attempts >= 3) clearInterval(interval);
           }, 1000);
         }

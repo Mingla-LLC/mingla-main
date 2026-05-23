@@ -10,10 +10,17 @@ import { colors } from '../../../constants/designSystem';
 import type { CirclePerson } from '../../../types/circle';
 import {
   CIRCLE_AVATAR_DIAMETER,
+  CIRCLE_TILE_WIDTH,
   CircleAvatarTile,
 } from './CircleAvatarTile';
 
 const ROWS_PER_COLUMN = 3;
+const ROW_GAP = 12;
+const VERTICAL_PADDING = 8;
+const GRID_HEIGHT =
+  CIRCLE_AVATAR_DIAMETER * ROWS_PER_COLUMN +
+  ROW_GAP * (ROWS_PER_COLUMN - 1) +
+  VERTICAL_PADDING * 2;
 
 interface CircleGridProps {
   people: CirclePerson[];
@@ -79,6 +86,7 @@ export const CircleGrid: React.FC<CircleGridProps> = ({
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={styles.content}
       style={styles.list}
+      removeClippedSubviews={false}
       onEndReached={hasMore && !isLoading && !isLoadingMore ? onEndReached : undefined}
       onEndReachedThreshold={0.5}
       windowSize={5}
@@ -98,26 +106,29 @@ export const CircleGrid: React.FC<CircleGridProps> = ({
 
 const styles = StyleSheet.create({
   list: {
-    height: CIRCLE_AVATAR_DIAMETER * 3 + 16,
+    height: GRID_HEIGHT,
+    overflow: 'visible',
   },
   content: {
-    gap: 12,
-    paddingRight: 2,
+    alignItems: 'center',
+    gap: 14,
+    paddingVertical: VERTICAL_PADDING,
+    paddingRight: 8,
   },
   column: {
-    width: CIRCLE_AVATAR_DIAMETER,
-    gap: 8,
+    width: CIRCLE_TILE_WIDTH,
+    gap: ROW_GAP,
   },
   rowSpacer: {
-    width: CIRCLE_AVATAR_DIAMETER,
+    width: CIRCLE_TILE_WIDTH,
     height: CIRCLE_AVATAR_DIAMETER,
   },
   loadingMoreColumn: {
-    width: CIRCLE_AVATAR_DIAMETER,
-    height: CIRCLE_AVATAR_DIAMETER * 3 + 16,
+    width: CIRCLE_TILE_WIDTH,
+    height: GRID_HEIGHT,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 12,
+    marginLeft: 14,
   },
 });
 

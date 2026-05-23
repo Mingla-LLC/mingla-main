@@ -45,6 +45,12 @@ function loadCircleServiceWithSupabase(supabase) {
 }
 
 function makeRow(overrides) {
+  const labels = {
+    close: { source: 'paired', label: 'Close friend' },
+    friend: { source: 'friend', label: 'Friend' },
+    extended: { source: 'co_attendee', label: 'Also going to Supper Club' },
+  };
+  const relationship = labels[overrides.tier] ?? labels.extended;
   return {
     user_id: overrides.user_id,
     tier: overrides.tier,
@@ -52,6 +58,24 @@ function makeRow(overrides) {
     username: overrides.username ?? null,
     avatar_url: overrides.avatar_url ?? null,
     has_business_app: overrides.has_business_app ?? false,
+    relationship_source: Object.prototype.hasOwnProperty.call(overrides, 'relationship_source')
+      ? overrides.relationship_source
+      : relationship.source,
+    relationship_label: Object.prototype.hasOwnProperty.call(overrides, 'relationship_label')
+      ? overrides.relationship_label
+      : relationship.label,
+    relationship_context_type: Object.prototype.hasOwnProperty.call(overrides, 'relationship_context_type')
+      ? overrides.relationship_context_type
+      : null,
+    relationship_context_id: Object.prototype.hasOwnProperty.call(overrides, 'relationship_context_id')
+      ? overrides.relationship_context_id
+      : null,
+    relationship_context_title: Object.prototype.hasOwnProperty.call(overrides, 'relationship_context_title')
+      ? overrides.relationship_context_title
+      : null,
+    relationship_source_count: Object.prototype.hasOwnProperty.call(overrides, 'relationship_source_count')
+      ? overrides.relationship_source_count
+      : 1,
     sort_score: overrides.sort_score ?? 0,
   };
 }
@@ -188,26 +212,26 @@ async function testEmptyStateWhenRpcReturnsEmptyArray() {
 }
 
 function testRpcImpersonation42501() {
-  const migrationSource = read('supabase/migrations/20260724000002_orch_0933_get_user_circle_rpc.sql');
+  const migrationSource = read('supabase/migrations/20260724000005_profile_circle_relationship_source.sql');
   assert.match(migrationSource, /v_caller uuid := auth\.uid\(\)/);
   assert.match(migrationSource, /v_caller IS NULL OR v_caller <> p_viewer_user_id/);
   assert.match(migrationSource, /USING ERRCODE = '42501'/);
 }
 
 function testBlockedUserExclusion() {
-  const migrationSource = read('supabase/migrations/20260724000002_orch_0933_get_user_circle_rpc.sql');
+  const migrationSource = read('supabase/migrations/20260724000005_profile_circle_relationship_source.sql');
   assert.match(migrationSource, /NOT EXISTS \(\s*SELECT 1\s*FROM public\.friends fb/s);
   assert.match(migrationSource, /fb\.user_id = p_viewer_user_id/);
   assert.match(migrationSource, /fb\.friend_user_id = c\.other_id/);
   assert.match(migrationSource, /fb\.status = 'blocked'/);
   assert.match(migrationSource, /fb\.deleted_at IS NULL/);
+  assert.match(migrationSource, /FROM public\.friends rb/s);
+  assert.match(migrationSource, /rb\.user_id = c\.other_id/);
+  assert.match(migrationSource, /rb\.friend_user_id = p_viewer_user_id/);
 }
 
 function testConsumerAppOnlyFilterAndBusinessOnlyExclusion() {
-  const migrationSource = [
-    read('supabase/migrations/20260724000002_orch_0933_get_user_circle_rpc.sql'),
-    read('supabase/migrations/20260724000003_orch_0933_get_user_circle_rpc_ambiguity_fix.sql'),
-  ].join('\n');
+  const migrationSource = read('supabase/migrations/20260724000005_profile_circle_relationship_source.sql');
   assert.match(migrationSource, /consumer_users AS \(\s*SELECT DISTINCT ad\.user_id\s*FROM public\.appsflyer_devices ad\s*WHERE ad\.app = 'consumer'\s*\)/s);
   assert.match(migrationSource, /dual_app_users AS \(\s*SELECT DISTINCT ad\.user_id\s*FROM public\.appsflyer_devices ad\s*WHERE ad\.app = 'business'\s*\)/s);
   assert.match(migrationSource, /WHERE c\.other_id IN \(SELECT \w+\.user_id FROM consumer_users \w+\)/);
@@ -216,6 +240,116 @@ function testConsumerAppOnlyFilterAndBusinessOnlyExclusion() {
     migrationSource,
     /\bIN \(SELECT user_id FROM (consumer_users|dual_app_users)\)/,
     'PL/pgSQL RETURNS TABLE output column user_id makes unqualified SELECT user_id ambiguous',
+  );
+}
+
+async function testRelationshipSourceMappingAndGenericLabelRemoval() {
+  const supabase = {
+    rpc: async () => ({
+      data: [
+        makeRow({
+          user_id: 'event-user',
+          tier: 'extended',
+          display_name: 'Event User',
+          relationship_source: 'co_attendee',
+          relationship_label: 'Also going to Supper Club',
+          relationship_context_type: 'event',
+          relationship_context_id: 'event-1',
+          relationship_context_title: 'Supper Club',
+          relationship_source_count: 2,
+          sort_score: 3,
+        }),
+        makeRow({
+          user_id: 'friend-of-friend',
+          tier: 'extended',
+          display_name: 'FoF User',
+          relationship_source: 'friend_of_friend',
+          relationship_label: 'Friend of Maya',
+          relationship_context_type: 'user',
+          relationship_context_id: 'maya',
+          relationship_context_title: 'Maya',
+          sort_score: 2,
+        }),
+        makeRow({
+          user_id: 'legacy-extended-source',
+          tier: 'extended',
+          display_name: 'Legacy User',
+          relationship_source: null,
+          relationship_label: null,
+          sort_score: 1,
+        }),
+      ],
+      error: null,
+    }),
+    from: () => {
+      throw new Error('supabase.from must not be called');
+    },
+  };
+
+  const { fetchUserCircle } = loadCircleServiceWithSupabase(supabase);
+  const people = await fetchUserCircle('viewer-user');
+
+  assert.equal(people.length, 3);
+  assert.equal(people[0].relationshipSource, 'co_attendee');
+  assert.equal(people[0].relationshipLabel, 'Also going to Supper Club');
+  assert.equal(people[0].relationshipContextType, 'event');
+  assert.equal(people[0].relationshipContextId, 'event-1');
+  assert.equal(people[0].relationshipContextTitle, 'Supper Club');
+  assert.equal(people[0].relationshipSourceCount, 2);
+  assert.equal(people[1].relationshipSource, 'friend_of_friend');
+  assert.equal(people[1].relationshipLabel, 'Friend of Maya');
+  assert.equal(people[2].userId, 'legacy-extended-source');
+  assert.equal(people[2].relationshipSource, 'mixed');
+  assert.equal(people[2].relationshipLabel, 'Connected through Mingla');
+
+  const avatarSource = read('app-mobile/src/components/profile/circle/CircleAvatarTile.tsx');
+  assert.match(avatarSource, /person\.relationshipLabel/);
+  assert.doesNotMatch(avatarSource, /Mingla connection/);
+}
+
+function testRelationshipSourceRpcContract() {
+  const migrationSource = read('supabase/migrations/20260724000005_profile_circle_relationship_source.sql');
+
+  assert.match(migrationSource, /relationship_source\s+text/);
+  assert.match(migrationSource, /relationship_label\s+text/);
+  assert.match(migrationSource, /relationship_context_type\s+text/);
+  assert.match(migrationSource, /relationship_context_id\s+uuid/);
+  assert.match(migrationSource, /relationship_context_title\s+text/);
+  assert.match(migrationSource, /relationship_source_count\s+int/);
+  assert.match(migrationSource, /tier_coattendee_event_matches AS/);
+  assert.match(migrationSource, /o2\.payment_status = 'paid'/);
+  assert.match(migrationSource, /o2\.buyer_user_id IS NOT NULL/);
+  assert.match(migrationSource, /'Also going to ' \|\| e\.title/);
+  assert.match(migrationSource, /'Also attended ' \|\| e\.title/);
+  assert.match(migrationSource, /'Friend of ' \|\| tf\.mutual_friend_name/);
+  assert.match(migrationSource, /CASE WHEN ter\.source_type_count > 1 THEN 'mixed'/);
+  assert.doesNotMatch(migrationSource, /^\s*(order_id|ticket_id|buyer_email|buyer_name|buyer_phone|stripe_payment_intent_id)\s+/m);
+}
+
+function testRelationshipSourceMigrationUsesPostRemoteHeadVersion() {
+  const migrationsDir = path.join(repoRoot, 'supabase/migrations');
+  const migrations = fs.readdirSync(migrationsDir);
+
+  assert.ok(
+    migrations.includes('20260724000005_profile_circle_relationship_source.sql'),
+    'profile circle relationship-source migration must use a version after linked remote head 20260724000004',
+  );
+  assert.ok(
+    !migrations.includes('20260724000004_profile_circle_relationship_source.sql'),
+    'colliding 20260724000004 profile circle migration must not remain in the local chain',
+  );
+}
+
+function testPurchaseInvalidatesCircle() {
+  const sheetSource = read('app-mobile/src/components/expandedCard/ExpandedBusinessEventSheet.tsx');
+  const hookSource = read('app-mobile/src/hooks/useCalendarEntries.ts');
+
+  assert.match(sheetSource, /import \{ circleKeys \} from "\.\.\/\.\.\/hooks\/queryKeys"/);
+  assert.match(sheetSource, /queryClient\.invalidateQueries\(\{ queryKey: circleKeys\.all \}\)/);
+  assert.match(hookSource, /import \{ circleKeys \} from "\.\/queryKeys"/);
+  assert.match(
+    hookSource,
+    /useOrdersRealtimeSubscription[\s\S]*?queryClient\.invalidateQueries\(\{ queryKey: circleKeys\.all \}\)/,
   );
 }
 
@@ -234,15 +368,27 @@ function testAvatarTapUsesCanonicalAppProfileOwner() {
   assert.match(appIndexSource, /onMessage=\{\(userId\) => \{\s*setViewingFriendProfileId\(null\);\s*setPendingOpenDmUserId\(userId\);\s*setCurrentPage\("connections"\);/s);
 }
 
+function testYourCircleHeaderHasNoSubtitle() {
+  const sectionSource = read('app-mobile/src/components/profile/circle/YourCircleSection.tsx');
+
+  assert.match(sectionSource, />Your Circle</);
+  assert.doesNotMatch(sectionSource, /Close friends, friends, and people you meet at Mingla/);
+}
+
 async function runYourCircleSectionAdversarialTest() {
   await testTierDeterministicWithSameUserInBothTiers();
   await testBadgeOnlyOnDualAppFlag();
   await testRpcSoleOwnerSpyOnFrom();
   await testEmptyStateWhenRpcReturnsEmptyArray();
+  await testRelationshipSourceMappingAndGenericLabelRemoval();
   testRpcImpersonation42501();
   testBlockedUserExclusion();
   testConsumerAppOnlyFilterAndBusinessOnlyExclusion();
+  testRelationshipSourceRpcContract();
+  testRelationshipSourceMigrationUsesPostRemoteHeadVersion();
+  testPurchaseInvalidatesCircle();
   testAvatarTapUsesCanonicalAppProfileOwner();
+  testYourCircleHeaderHasNoSubtitle();
 }
 
 if (require.main === module) {

@@ -6,13 +6,15 @@ import {
   View,
 } from 'react-native';
 import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import { colors, fontWeights } from '../../../constants/designSystem';
 import { Icon } from '../../ui/Icon';
 import type { CirclePerson, CircleTier } from '../../../types/circle';
 
-export const CIRCLE_AVATAR_DIAMETER = 44;
-export const CIRCLE_RING_THICKNESS = 2.5;
-export const CIRCLE_BADGE_DIAMETER = 16;
+export const CIRCLE_AVATAR_DIAMETER = 58;
+export const CIRCLE_RING_THICKNESS = 3;
+export const CIRCLE_BADGE_DIAMETER = 20;
+export const CIRCLE_TILE_WIDTH = 184;
 
 export const CIRCLE_TIER_RING_COLORS: Record<CircleTier, string> = {
   close: colors.primary[500], // circle.tier.close.ring
@@ -60,6 +62,7 @@ export const CircleAvatarTile: React.FC<CircleAvatarTileProps> = ({
   const [imageFailed, setImageFailed] = useState(false);
   const displayName = useMemo(() => getDisplayName(person), [person]);
   const initials = useMemo(() => getInitials(person), [person]);
+  const relationshipLabel = person.relationshipLabel;
   const ringColor = CIRCLE_TIER_RING_COLORS[person.tier];
   const innerSize = size - ringThickness * 2;
 
@@ -69,7 +72,7 @@ export const CircleAvatarTile: React.FC<CircleAvatarTileProps> = ({
       style={styles.tile}
       testID={`circle-avatar-tile-${person.userId}`}
       accessibilityRole="button"
-      accessibilityLabel={`View ${displayName}'s profile`}
+      accessibilityLabel={`View ${displayName}'s profile, ${relationshipLabel}`}
     >
       <View
         style={[
@@ -100,7 +103,8 @@ export const CircleAvatarTile: React.FC<CircleAvatarTileProps> = ({
             onError={() => setImageFailed(true)}
           />
         ) : (
-          <View
+          <LinearGradient
+            colors={['rgba(249, 115, 22, 0.96)', 'rgba(124, 45, 18, 0.92)']}
             style={[
               styles.initialsAvatar,
               {
@@ -113,9 +117,23 @@ export const CircleAvatarTile: React.FC<CircleAvatarTileProps> = ({
             <Text style={[styles.initialsText, { fontSize: size * 0.34 }]}>
               {initials}
             </Text>
-          </View>
+          </LinearGradient>
         )}
+        <LinearGradient
+          colors={['rgba(255, 255, 255, 0.34)', 'rgba(255, 255, 255, 0.08)', 'rgba(255, 255, 255, 0)']}
+          locations={[0, 0.46, 1]}
+          style={[styles.glassHighlight, { borderRadius: size / 2 }]}
+          pointerEvents="none"
+        />
         {person.hasBusinessApp ? <BusinessBadge hasBusinessApp={person.hasBusinessApp} /> : null}
+      </View>
+      <View style={styles.labelGroup}>
+        <Text style={styles.nameText} numberOfLines={1}>
+          {displayName}
+        </Text>
+        <Text style={styles.relationshipText} numberOfLines={1}>
+          {relationshipLabel}
+        </Text>
       </View>
     </Pressable>
   );
@@ -123,41 +141,79 @@ export const CircleAvatarTile: React.FC<CircleAvatarTileProps> = ({
 
 const styles = StyleSheet.create({
   tile: {
-    width: CIRCLE_AVATAR_DIAMETER,
+    width: CIRCLE_TILE_WIDTH,
     height: CIRCLE_AVATAR_DIAMETER,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 10,
   },
   ring: {
     position: 'relative',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.background.primary,
+    backgroundColor: 'rgba(255, 255, 255, 0.10)',
+    shadowColor: '#eb7825',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.22,
+    shadowRadius: 12,
+    elevation: 5,
   },
   avatarImage: {
-    backgroundColor: colors.gray[200],
+    backgroundColor: 'transparent',
   },
   initialsAvatar: {
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.primary[600],
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.16)',
   },
   initialsText: {
     color: colors.text.inverse,
-    fontWeight: fontWeights.semibold,
+    fontWeight: fontWeights.bold,
+  },
+  glassHighlight: {
+    position: 'absolute',
+    top: 3,
+    left: 3,
+    right: 3,
+    height: CIRCLE_AVATAR_DIAMETER * 0.45,
+    opacity: 0.75,
   },
   businessBadge: {
     position: 'absolute',
-    right: -3,
-    bottom: -3,
+    right: -4,
+    bottom: -4,
     width: CIRCLE_BADGE_DIAMETER,
     height: CIRCLE_BADGE_DIAMETER,
     borderRadius: CIRCLE_BADGE_DIAMETER / 2,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.gray[900],
-    borderColor: colors.background.primary,
+    backgroundColor: 'rgba(17, 24, 39, 0.92)',
+    borderColor: 'rgba(255, 255, 255, 0.72)',
     borderWidth: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.28,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  labelGroup: {
+    flex: 1,
+    minWidth: 0,
+    justifyContent: 'center',
+  },
+  nameText: {
+    color: colors.text.inverse,
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: fontWeights.bold,
+  },
+  relationshipText: {
+    marginTop: 2,
+    color: 'rgba(255, 255, 255, 0.55)',
+    fontSize: 12,
+    lineHeight: 15,
+    fontWeight: fontWeights.medium,
   },
 });
 
