@@ -2443,6 +2443,10 @@ function AppContent() {
             onBlockUser={handlers.handleBlockUser}
             onReportUser={handlers.handleReportUser}
             accountPreferences={accountPreferences}
+            onCardLike={handlers.handleSaveCard}
+            onAddToCalendar={handleAddToCalendar}
+            onShareCard={handlers.handleShareCard}
+            onPurchaseComplete={handlePurchaseComplete}
             boardsSessions={boardsSessions}
             onRefreshSessions={refreshAllSessions}
             currentMode={currentMode ?? "solo"}
@@ -2717,6 +2721,10 @@ function AppContent() {
                                       onBlockUser={stableHandleBlockUser}
                                       onReportUser={stableHandleReportUser}
                                       accountPreferences={accountPreferences}
+                                      onCardLike={stableHandleSaveCard}
+                                      onAddToCalendar={handleAddToCalendar}
+                                      onShareCard={stableHandleShareCard}
+                                      onPurchaseComplete={handlePurchaseComplete}
                                       boardsSessions={boardsSessions}
                                       onRefreshSessions={refreshAllSessions}
                                       currentMode={currentMode ?? "solo"}

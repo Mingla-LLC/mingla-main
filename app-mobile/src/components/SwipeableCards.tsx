@@ -198,6 +198,11 @@ interface SwipeableCardsProps {
   onResetCards?: () => void;
   onOpenPreferences?: () => void;
   onOpenCollabPreferences?: () => void;
+  /**
+   * ORCH-0918: sheet-embedded collab decks must scope to the chat session
+   * even when the surrounding app mode points elsewhere.
+   */
+  sessionIdOverride?: string;
   generateNewMockCard?: () => any;
   onboardingData?: any;
   refreshKey?: number | string; // Key that changes to trigger refresh
@@ -413,6 +418,7 @@ export default function SwipeableCards({
   onResetCards,
   onOpenPreferences,
   onOpenCollabPreferences,
+  sessionIdOverride,
   generateNewMockCard,
   onboardingData,
   refreshKey,
@@ -580,6 +586,7 @@ export default function SwipeableCards({
   //
   // currentMode can be: "solo", a session name, or a session ID.
   const resolvedSessionId = React.useMemo(() => {
+    if (sessionIdOverride) return sessionIdOverride;
     if (currentMode === "solo") return null;
     const session = (boardsSessions || []).find(
       (s: any) =>
@@ -590,7 +597,7 @@ export default function SwipeableCards({
     return session
       ? ((session as any).session_id || session.id || null)
       : null;
-  }, [currentMode, boardsSessions]);
+  }, [currentMode, boardsSessions, sessionIdOverride]);
 
   // isWaitingForSessionResolution is now provided by RecommendationsContext
 

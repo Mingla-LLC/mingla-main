@@ -1,7 +1,7 @@
-import { BoardCardService } from '../../services/boardCardService';
-import { mixpanelService } from '../../services/mixpanelService';
-import { buildCardDataPayload } from './collabSaveCard';
-import type { Recommendation } from '../../types/recommendation';
+import { BoardCardService } from "../../services/boardCardService";
+import { mixpanelService } from "../../services/mixpanelService";
+import { buildCardDataPayload } from "./collabSaveCard";
+import type { Recommendation } from "../../types/recommendation";
 
 /**
  * ORCH-0902 CR-6 (visible-but-not-binding dismissal): Records a collab left-swipe
@@ -54,30 +54,33 @@ export async function collabRecordLeftSwipe({
     // render the visible-but-not-binding dismissed sheet — including cards
     // the current viewer has not yet seen in their own deck.
     cardData: buildCardDataPayload(card),
-    swipeDirection: 'left',
+    swipeDirection: "left",
   });
 
   if (result.error) {
-    console.warn('[collabRecordLeftSwipe] RPC failed (soft-fail):', result.error);
+    console.warn(
+      "[collabRecordLeftSwipe] RPC failed (soft-fail):",
+      result.error,
+    );
     try {
-      mixpanelService.track('Collab Left Swipe RPC Error', {
+      mixpanelService.track("Collab Left Swipe RPC Error", {
         session_id: sessionId,
         experience_id: card.id,
         error_message: result.error.message,
       });
     } catch (telErr) {
-      console.warn('[collabRecordLeftSwipe] telemetry failed:', telErr);
+      console.warn("[collabRecordLeftSwipe] telemetry failed:", telErr);
     }
     return { recorded: false, error: result.error };
   }
 
   try {
-    mixpanelService.track('Collab Left Swipe Recorded', {
+    mixpanelService.track("Collab Left Swipe Recorded", {
       session_id: sessionId,
       experience_id: card.id,
     });
   } catch (telErr) {
-    console.warn('[collabRecordLeftSwipe] telemetry failed:', telErr);
+    console.warn("[collabRecordLeftSwipe] telemetry failed:", telErr);
   }
 
   return { recorded: true };

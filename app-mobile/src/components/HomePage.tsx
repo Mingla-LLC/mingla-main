@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Text,
   View,
@@ -17,6 +17,7 @@ import FriendRequestsModal from "./FriendRequestsModal";
 import { useNotifications, ServerNotification } from "../hooks/useNotifications";
 import { parseDeepLink, executeDeepLink, NavigationHandlers } from "../services/deepLinkService";
 import { clearNotificationBadge } from '../services/oneSignalService';
+import { useSessionDeckMountStore } from "../store/sessionDeckMountStore";
 
 // Animation duration constant for consistency
 const ANIMATION_DURATION = 400;
@@ -69,6 +70,7 @@ interface HomePageProps {
 }
 
 function HomePage({
+  isTabVisible = true,
   onOpenPreferences,
   onOpenCollabPreferences,
   currentMode,
@@ -210,6 +212,33 @@ function HomePage({
   const coachSolo = useCoachMark(5, 18);
   // ORCH-0589 v2: sessionsOpacity + headerSlideAnim entrance animations removed —
   // the header they animated has been deleted; GlassTopBar owns its own enter motion.
+  const acquireDeckMount = useSessionDeckMountStore((state) => state.acquire);
+  const releaseDeckMount = useSessionDeckMountStore((state) => state.release);
+  const [canMountDeck, setCanMountDeck] = useState(true);
+  const homeDeckSessionId = useMemo(() => {
+    if (currentMode === "solo") return null;
+    const session = (boardsSessions || []).find(
+      (s: any) =>
+        s.id === currentMode ||
+        s.name === currentMode ||
+        s.session_id === currentMode ||
+        s.id === selectedSessionId ||
+        s.session_id === selectedSessionId,
+    );
+    return session ? (session.session_id || session.id || null) : selectedSessionId;
+  }, [boardsSessions, currentMode, selectedSessionId]);
+
+  useEffect(() => {
+    if (!isTabVisible || !homeDeckSessionId) {
+      setCanMountDeck(true);
+      return;
+    }
+    const acquired = acquireDeckMount(homeDeckSessionId, 'dedicated-screen');
+    setCanMountDeck(acquired);
+    return () => {
+      releaseDeckMount(homeDeckSessionId);
+    };
+  }, [acquireDeckMount, homeDeckSessionId, isTabVisible, releaseDeckMount]);
 
   return (
     <View style={styles.safeArea}>
@@ -321,25 +350,31 @@ function HomePage({
           )}
 
           <View style={styles.deckWrapper}>
-          <SwipeableCards
-            userPreferences={userPreferences}
-            accountPreferences={accountPreferences}
-            currentMode={currentMode}
-            boardsSessions={boardsSessions}
-            onAddToCalendar={onAddToCalendar}
-            onCardLike={onSaveCard || asyncNoop}
-            onShareCard={onShareCard}
-            onPurchaseComplete={onPurchaseComplete}
-            removedCardIds={removedCardIds}
-            onResetCards={onResetCards}
-            onOpenPreferences={onOpenPreferences}
-            onOpenCollabPreferences={onOpenCollabPreferences}
-            generateNewMockCard={generateNewMockCard}
-            onboardingData={onboardingData}
-            refreshKey={refreshKey}
-            savedCards={savedCards}
-            coachDeckRef={coachDeck.targetRef}
-          />
+          {canMountDeck ? (
+            <SwipeableCards
+              userPreferences={userPreferences}
+              accountPreferences={accountPreferences}
+              currentMode={currentMode}
+              boardsSessions={boardsSessions}
+              onAddToCalendar={onAddToCalendar}
+              onCardLike={onSaveCard || asyncNoop}
+              onShareCard={onShareCard}
+              onPurchaseComplete={onPurchaseComplete}
+              removedCardIds={removedCardIds}
+              onResetCards={onResetCards}
+              onOpenPreferences={onOpenPreferences}
+              onOpenCollabPreferences={onOpenCollabPreferences}
+              generateNewMockCard={generateNewMockCard}
+              onboardingData={onboardingData}
+              refreshKey={refreshKey}
+              savedCards={savedCards}
+              coachDeckRef={coachDeck.targetRef}
+            />
+          ) : (
+            <View style={styles.deckMutexNotice}>
+              <Text style={styles.deckMutexText}>Deck open elsewhere</Text>
+            </View>
+          )}
           </View>
         </View>
 
@@ -415,6 +450,17 @@ const styles = StyleSheet.create({
   deckWrapper: {
     flex: 1,
     width: '100%',
+  },
+  deckMutexNotice: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 24,
+  },
+  deckMutexText: {
+    color: "#ffffff",
+    fontSize: 15,
+    fontWeight: "600",
   },
   // ORCH-0589: sessionsAnimatedWrapper removed — the pill-bar wrapper it animated
   // is no longer rendered (CollaborationSessions runs in modalsOnlyMode).
