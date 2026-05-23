@@ -114,27 +114,28 @@ describe("ORCH-0930 v2 — parent-level hydration gate (confirm.tsx)", () => {
   const tripActive = stripCommentsLocal(tripConfirm);
   const eventActive = stripCommentsLocal(eventConfirm);
 
-  it("HP-6 (trip): confirm.tsx has a `hydrated` state that flips true on first useEffect", () => {
+  it("HP-6 (trip): confirm.tsx has an `isClient` state via useState initializer that resolves at render time (ORCH-0930 v3)", () => {
     expect(tripActive).toMatch(
-      /const\s+\[\s*hydrated\s*,\s*setHydrated\s*\]\s*=\s*useState<boolean>\(\s*false\s*\)/,
+      /const\s+\[\s*isClient\s*\]\s*=\s*useState<boolean>\(\s*\(\)\s*=>\s*typeof\s+window\s*!==\s*["']undefined["']\s*\)/,
     );
+    // Negative: must NOT use the v2 useEffect+setHydrated pattern that
+    // failed because React #418 recovery cycles prevented the effect
+    // from firing.
+    expect(tripActive).not.toMatch(/setHydrated\(true\)/);
+  });
+
+  it("HP-7 (trip): <TicketQrCarousel> mount is gated on `isClient && totalTickets > 0`", () => {
     expect(tripActive).toMatch(
-      /useEffect\(\(\)\s*=>\s*\{\s*setHydrated\(true\);?\s*\},\s*\[\s*\]\s*\)/,
+      /\{\s*isClient\s*&&\s*totalTickets\s*>\s*0\s*\?\s*\(?\s*<TicketQrCarousel/,
     );
   });
 
-  it("HP-7 (trip): <TicketQrCarousel> mount is gated on `hydrated && totalTickets > 0`", () => {
-    expect(tripActive).toMatch(
-      /\{\s*hydrated\s*&&\s*totalTickets\s*>\s*0\s*\?\s*\(?\s*<TicketQrCarousel/,
-    );
-  });
-
-  it("HP-8 (event): confirm.tsx mirrors the hydrated gate", () => {
+  it("HP-8 (event): confirm.tsx mirrors the isClient gate", () => {
     expect(eventActive).toMatch(
-      /const\s+\[\s*hydrated\s*,\s*setHydrated\s*\]\s*=\s*useState<boolean>\(\s*false\s*\)/,
+      /const\s+\[\s*isClient\s*\]\s*=\s*useState<boolean>\(\s*\(\)\s*=>\s*typeof\s+window\s*!==\s*["']undefined["']\s*\)/,
     );
     expect(eventActive).toMatch(
-      /\{\s*hydrated\s*&&\s*totalTickets\s*>\s*0\s*\?\s*\(?\s*<TicketQrCarousel/,
+      /\{\s*isClient\s*&&\s*totalTickets\s*>\s*0\s*\?\s*\(?\s*<TicketQrCarousel/,
     );
   });
 });
