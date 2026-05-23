@@ -1,0 +1,891 @@
+--------- beginning of main
+05-23 07:59:22.486 I/ReactNativeJS( 8308): Running "main" with {"rootTag":1,"initialProps":{},"fabric":true}
+05-23 07:59:24.205 E/ReactNativeJS( 8308): 'forwardRef render functions accept exactly two parameters: props and ref. %s', 'Did you forget to use the ref parameter?', { [Stack] name: 'Stack' }
+05-23 07:59:26.817 W/ReactNativeJS( 8308): '📊 Mixpanel disabled — EXPO_PUBLIC_MIXPANEL_TOKEN is not set. All analytics calls will be silent no-ops.', { [Stack] name: 'Stack' }
+05-23 07:59:27.733 W/ReactNativeJS( 8308): 'setLayoutAnimationEnabledExperimental is currently a no-op in the New Architecture.', { [Stack] name: 'Stack' }
+05-23 07:59:27.763 W/ReactNativeJS( 8308): 'setLayoutAnimationEnabledExperimental is currently a no-op in the New Architecture.', { [Stack] name: 'Stack' }
+05-23 07:59:27.840 W/ReactNativeJS( 8308): 'setLayoutAnimationEnabledExperimental is currently a no-op in the New Architecture.', { [Stack] name: 'Stack' }
+05-23 07:59:27.843 W/ReactNativeJS( 8308): 'setLayoutAnimationEnabledExperimental is currently a no-op in the New Architecture.', { [Stack] name: 'Stack' }
+05-23 07:59:27.876 W/ReactNativeJS( 8308): '[expo-av]: Expo AV has been deprecated and will be removed in SDK 54. Use the `expo-audio` and `expo-video` packages to replace the required functionality.', { [Stack] name: 'Stack' }
+05-23 07:59:28.204 W/ReactNativeJS( 8308): 'setLayoutAnimationEnabledExperimental is currently a no-op in the New Architecture.', { [Stack] name: 'Stack' }
+05-23 07:59:29.797 I/ReactNative( 8308): [GESTURE HANDLER] Initialize gesture handler for root view com.facebook.react.runtime.ReactSurfaceView{430df95 V.E...... .......D 0,0-1344,2992 #1}
+05-23 07:59:30.028 I/ReactNativeJS( 8308): [NAV] Render: AuthLoading screen | hydrated=true, authLoading=true
+05-23 07:59:30.045 I/ReactNativeJS( 8308): [AUTH] Initializing — fetching session...
+05-23 07:59:30.228 I/ReactNativeJS( 8308): [PUSH] initializeOneSignal() called
+05-23 07:59:30.354 I/ReactNativeJS( 8308): [PUSH] initialized
+05-23 07:59:30.355 I/ReactNativeJS( 8308): '[OneSignal] Calling loginToOneSignal for:', 'eff78416-0d36-4bca-b350-10a6c3f046cb'
+05-23 07:59:30.543 I/ReactNativeJS( 8308): [NAV] Screen: AuthLoading
+05-23 07:59:30.560 I/ReactNativeJS( 8308): [PUSH] login + optIn | userId="eff78416-0d36-4bca-b350-10a6c3f046cb"
+05-23 07:59:30.569 D/ReactNativeJS( 8308): [RevenueCat] ℹ️ Debug logging enabled
+05-23 07:59:30.578 D/ReactNativeJS( 8308): [RevenueCat] ℹ️ SDK Version - 9.23.1
+05-23 07:59:30.579 D/ReactNativeJS( 8308): [RevenueCat] ℹ️ Package name - com.mingla.app.v2
+05-23 07:59:30.579 D/ReactNativeJS( 8308): [RevenueCat] 👤 Initial App User ID - eff78416-0d36-4bca-b350-10a6c3f046cb
+05-23 07:59:30.579 D/ReactNativeJS( 8308): [RevenueCat] ℹ️ Purchases configured with response verification: DISABLED
+05-23 07:59:30.579 D/ReactNativeJS( 8308): [RevenueCat] 👤 Identifying App User ID: eff78416-0d36-4bca-b350-10a6c3f046cb
+05-23 07:59:30.579 D/ReactNativeJS( 8308): [RevenueCat] ℹ️ Deleting old synced subscriber attributes that don't belong to eff78416-0d36-4bca-b350-10a6c3f046cb
+05-23 07:59:30.579 D/ReactNativeJS( 8308): [RevenueCat] ℹ️ Listener set
+05-23 07:59:30.579 D/ReactNativeJS( 8308): [RevenueCat] ℹ️ Sending latest CustomerInfo to listener.
+05-23 07:59:30.655 I/ReactNativeJS( 8308): [NAV] Render: AuthLoading screen | hydrated=true, authLoading=true
+05-23 07:59:30.674 I/ReactNativeJS( 8308): '[AppsFlyer] SDK initialized:', 'Success'
+05-23 07:59:30.685 I/ReactNativeJS( 8308): 'Deep link received:', 'com.mingla.app.v2://expo-development-client/?url=http%3A%2F%2F10.0.2.2%3A8081'
+05-23 07:59:30.686 W/ReactNativeJS( 8308): '[deepLinkService] Unknown deep link path:', 'com.mingla.app.v2:'
+05-23 07:59:30.725 D/ReactNativeJS( 8308): [RevenueCat] ℹ️ Starting connection for com.android.billingclient.api.BillingClientImpl@cb092a9
+05-23 07:59:30.725 D/ReactNativeJS( 8308): [RevenueCat] ℹ️ App foregrounded
+05-23 07:59:30.726 D/ReactNativeJS( 8308): [RevenueCat] ℹ️ CustomerInfo cache is stale, updating from network in foreground.
+05-23 07:59:30.726 D/ReactNativeJS( 8308): [RevenueCat] Retrieving customer info with policy: FETCH_CURRENT
+05-23 07:59:30.737 D/ReactNativeJS( 8308): [RevenueCat] ℹ️ Updating pending purchase queue
+05-23 07:59:30.737 D/ReactNativeJS( 8308): [RevenueCat] ℹ️ Offerings cache is stale, updating from network in foreground
+05-23 07:59:30.737 D/ReactNativeJS( 8308): [RevenueCat] 😻 Start Offerings update from network.
+05-23 07:59:30.737 D/ReactNativeJS( 8308): [RevenueCat] Request already scheduled with jitter delay, adding existing callbacks to unjittered request with key: BackgroundAwareCallbackCacheKey(cacheKey=[/v1/subscribers/eff78416-0d36-4bca-b350-10a6c3f046cb/offerings], appInBackground=false)
+05-23 07:59:30.737 D/ReactNativeJS( 8308): [RevenueCat] ℹ️ Updating pending purchase queue
+05-23 07:59:30.737 D/ReactNativeJS( 8308): [RevenueCat] ℹ️ No subscriber attributes to synchronize.
+05-23 07:59:30.738 D/ReactNativeJS( 8308): [RevenueCat] ℹ️ Querying purchases
+05-23 07:59:30.738 I/ReactNativeJS( 8308): [AUTH] Auth state change: INITIAL_SESSION | hasSession=true, userId="eff78416-0d36-4bca-b350-10a6c3f046cb"
+05-23 07:59:30.739 I/ReactNativeJS( 8308): [STORE] set(user, isAuthenticated) | changed={"user":{"from":"{id, aud, role, email, …}","to":"{id, aud, role, email, …}"}}
+05-23 07:59:30.764 I/ReactNativeJS( 8308): [render-count] HomePage: 1
+05-23 07:59:33.706 I/ReactNativeJS( 8308): [Deck] Persisted deck key + location for cold-start cache
+05-23 07:59:33.965 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] check:', { isCollaborationMode: false,
+05-23 07:59:33.965 I/ReactNativeJS( 8308):   resolvedSessionId: undefined,
+05-23 07:59:33.965 I/ReactNativeJS( 8308):   sessionsLoading: false,
+05-23 07:59:33.965 I/ReactNativeJS( 8308):   sessionCount: 0,
+05-23 07:59:33.965 I/ReactNativeJS( 8308):   seenRef: false }
+05-23 07:59:34.373 I/ReactNativeJS( 8308): '[OneSignal] Calling loginToOneSignal for:', 'eff78416-0d36-4bca-b350-10a6c3f046cb'
+05-23 07:59:34.655 I/ReactNativeJS( 8308): [NAV] Page: home | userId="eff78416-0d36-4bca-b350-10a6c3f046cb"
+05-23 07:59:36.912 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] check:', { isCollaborationMode: false,
+05-23 07:59:36.912 I/ReactNativeJS( 8308):   resolvedSessionId: undefined,
+05-23 07:59:36.912 I/ReactNativeJS( 8308):   sessionsLoading: true,
+05-23 07:59:36.912 I/ReactNativeJS( 8308):   sessionCount: 0,
+05-23 07:59:36.912 I/ReactNativeJS( 8308):   seenRef: false }
+05-23 07:59:36.948 I/ReactNativeJS( 8308): [PUSH] login + optIn | userId="eff78416-0d36-4bca-b350-10a6c3f046cb"
+05-23 07:59:36.968 D/ReactNativeJS( 8308): [RevenueCat] ℹ️ Starting connection for com.android.billingclient.api.BillingClientImpl@cb092a9
+05-23 07:59:36.979 D/ReactNativeJS( 8308): [RevenueCat] ℹ️ Billing Service Setup finished for com.android.billingclient.api.BillingClientImpl@cb092a9
+05-23 07:59:36.981 D/ReactNativeJS( 8308): [RevenueCat] ℹ️ Updating pending purchase queue
+05-23 07:59:36.982 D/ReactNativeJS( 8308): [RevenueCat] ℹ️ Cleaning previously sent tokens
+05-23 07:59:36.983 D/ReactNativeJS( 8308): [RevenueCat] ℹ️ Tokens already posted: []
+05-23 07:59:36.985 D/ReactNativeJS( 8308): [RevenueCat] ℹ️ Saving tokens []
+05-23 07:59:36.985 D/ReactNativeJS( 8308): [RevenueCat] ℹ️ Tokens already posted: []
+05-23 07:59:37.187 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] check:', { isCollaborationMode: false,
+05-23 07:59:37.187 I/ReactNativeJS( 8308):   resolvedSessionId: undefined,
+05-23 07:59:37.187 I/ReactNativeJS( 8308):   sessionsLoading: true,
+05-23 07:59:37.187 I/ReactNativeJS( 8308):   sessionCount: 0,
+05-23 07:59:37.187 I/ReactNativeJS( 8308):   seenRef: false }
+05-23 07:59:37.191 D/ReactNativeJS( 8308): [RevenueCat] ℹ️ No pending purchases to sync
+05-23 07:59:37.199 D/ReactNativeJS( 8308): [RevenueCat] Request already scheduled with jitter delay, adding existing callbacks to unjittered request with key: BackgroundAwareCallbackCacheKey(cacheKey=[/v1/subscribers/eff78416-0d36-4bca-b350-10a6c3f046cb], appInBackground=false)
+05-23 07:59:37.200 D/ReactNativeJS( 8308): [RevenueCat] API request started: GET /v1/subscribers/eff78416-0d36-4bca-b350-10a6c3f046cb/offerings
+05-23 07:59:37.200 D/ReactNativeJS( 8308): [RevenueCat] API request completed with status: GET /v1/subscribers/eff78416-0d36-4bca-b350-10a6c3f046cb/offerings 304
+05-23 07:59:37.201 D/ReactNativeJS( 8308): [RevenueCat] ℹ️ Requesting products from the store with identifiers: mingla_plus_annual, mingla_plus_monthly, mingla_plus_weekly
+05-23 07:59:37.202 D/ReactNativeJS( 8308): [RevenueCat] ℹ️ Querying purchases
+05-23 07:59:37.202 D/ReactNativeJS( 8308): [RevenueCat] ℹ️ Querying purchases
+05-23 07:59:37.203 D/ReactNativeJS( 8308): [RevenueCat] API request started: GET /v1/subscribers/eff78416-0d36-4bca-b350-10a6c3f046cb
+05-23 07:59:37.204 D/ReactNativeJS( 8308): [RevenueCat] API request completed with status: GET /v1/subscribers/eff78416-0d36-4bca-b350-10a6c3f046cb 304
+05-23 07:59:37.204 D/ReactNativeJS( 8308): [RevenueCat] 😻 CustomerInfo updated from network.
+05-23 07:59:37.207 I/ReactNativeJS( 8308): [Deck] Cold-start proximity match — using persisted deck key
+05-23 07:59:37.210 I/ReactNativeJS( 8308): '[AppsFlyer] Customer user ID set:', 'Success'
+05-23 07:59:37.217 D/ReactNativeJS( 8308): [RevenueCat] Billing connected with country code: US
+05-23 07:59:37.218 D/ReactNativeJS( 8308): [RevenueCat] ℹ️ Products request finished for mingla_plus_annual, mingla_plus_monthly, mingla_plus_weekly
+05-23 07:59:37.219 D/ReactNativeJS( 8308): [RevenueCat] 💰 Retrieved productDetailsList: ProductDetails{jsonString='{"productId":"mingla_plus_annual","type":"subs","title":"Mingla Plus Annual (com.mingla.app.v2 (unreviewed))","name":"Mingla Plus Annual","localizedIn":["en-US"],"skuDetailsToken":"AEuhp4KXi4bAebcEhIlEmhBufIKk6eTaA5VIyQm2AaEZDaMn2Cl-A3oJPGy-mEuaRJCh","subscriptionOfferDetails":[{"offerIdToken":"AUOc0soaa2Buck8ZrLY8iJrDMGXZUkdPiHKNs8GW\/XtarAE9tcMWmdL9m73YffOi8Q3YMLGcNJmGxzw=","basePlanId":"annual","pricingPhases":[{"priceAmountMicros":39990000,"priceCurrencyCode":"USD","formattedPrice":"$39.99","billingPeriod":"P1Y","recurrenceMode":1}],"offerTags":[]}]}', parsedJson={"productId":"mingla_plus_annual","type":"subs","title":"Mingla Plus Annual (com.mingla.app.v2 (unreviewed))","name":"Mingla Plus Annual","localizedIn":["en-US"],"skuDetailsToken":"AEuhp4KXi4bAebcEhIlEmhBufIKk6eTaA5VIyQm2AaEZDaMn2Cl-A3oJPGy-mEuaRJCh","subscriptionOfferDetails":[{"offerIdToken":"AUOc0soaa2Buck8ZrLY8iJrDMGXZUkdPiHKNs8GW\/XtarAE9tcMWmdL9m73YffOi8Q3YMLGcNJmGxzw=","basePlanId":"annual","pricingPhases":[{"priceAmountMicros":39990000,"priceCurrencyCode":"USD","formattedPrice":"$39.99","billingPeriod":"P1Y","recurrenceMode":1}],"offerTags":[]}]}, productId='mingla_plus_annual', productType='subs', title='Mingla Plus Annual (com.mingla.app.v2 (unreviewed))', productDetailsToken='AEuhp4KXi4bAebcEhIlEmhBufIKk6eTaA5VIyQm2AaEZDaMn2Cl-A3oJPGy-mEuaRJCh', subscriptionOfferDetails=[com.android.billingclient.api.ProductDetails$SubscriptionOfferDetails@83ca404]}, ProductDetails{jsonString='{"productId":"mingla_plus_monthly","type":"subs","title":"Mingla Plus Monthly (com.mingla.app.v2 (unreviewed))","name":"Mingla Plus Monthly","localizedIn":["en-US"],"skuDetailsToken":"AEuhp4KZQ1UnIHuHUEJrwEkbLgrR_qgMulr6_2ffVf34e4fuYP5NiW5_BzXUmfn3HL-m","subscriptionOfferDetails":[{"offerIdToken":"AUOc0sqDacAnkzAhvtmsDlhKeAN1SYaE\/WFEJdz0kYnlVI1XIMtdgVE7LVxs\/FKj\/OthXYXFluGxE0RotFPt","basePlanId":"monthly","pricingPhases":[{"priceAmountMicros":4990000,"priceCurrencyCode":"USD","formattedPrice":"$4.99","billingPeriod":"P1M","recurrenceMode":1}],"offerTags":[]}]}', parsedJson={"productId":"mingla_plus_monthly","type":"subs","title":"Mingla Plus Monthly (com.mingla.app.v2 (unreviewed))","name":"Mingla Plus Monthly","localizedIn":["en-US"],"skuDetailsToken":"AEuhp4KZQ1UnIHuHUEJrwEkbLgrR_qgMulr6_2ffVf34e4fuYP5NiW5_BzXUmfn3HL-m","subscriptionOfferDetails":[{"offerIdToken":"AUOc0sqDacAnkzAhvtmsDlhKeAN1SYaE\/WFEJdz0kYnlVI1XIMtdgVE7LVxs\/FKj\/OthXYXFluGxE0RotFPt","basePlanId":"monthly","pricingPhases":[{"priceAmountMicros":4990000,"priceCurrencyCode":"USD","formattedPrice":"$4.99","billingPeriod":"P1M","recurrenceMode":1}],"offerTags":[]}]}, productId='mingla_plus_monthly', productType='subs', title='Mingla Plus Monthly (com.mingla.app.v2 (unreviewed))', productDetailsToken='AEuhp4KZQ1UnIHuHUEJrwEkbLgrR_qgMulr6_2ffVf34e4fuYP5NiW5_BzXUmfn3HL-m', subscriptionOfferDetails=[com.android.billingclient.api.ProductDetails$SubscriptionOfferDetails@ae33ded]}, ProductDetails{jsonString='{"productId":"mingla_plus_weekly","type":"subs","title":"Mingla Plus Weekly (com.mingla.app.v2 (unreviewed))","name":"Mingla Plus Weekly","localizedIn":["en-US"],"skuDetailsToken":"AEuhp4KLyg_i5b78iJL8Idm0OQS25jnpCmc5wlPNDq7xTPHMfuQsxRyhe6Ul8L-XJzB7","subscriptionOfferDetails":[{"offerIdToken":"AUOc0squvREnekOgRRD79yC5zPdt64urRuPvoFUIo9WrQzm92Yb+VbAjAasRLwoMBYdIfo9uW70Rj27oc9oSge7+biLG6yw=","basePlanId":"weekly-mingla","pricingPhases":[{"priceAmountMicros":1990000,"priceCurrencyCode":"USD","formattedPrice":"$1.99","billingPeriod":"P1W","recurrenceMode":1}],"offerTags":[]}]}', parsedJson={"productId":"mingla_plus_weekly","type":"subs","title":"Mingla Plus Weekly (com.mingla.app.v2 (unreviewed))","name":"Mingla Plus Weekly","localizedIn":["en-US"],"skuDetailsToken":"AEuhp4KLyg_i5b78iJL8Idm0OQS25jnpCmc5wlPNDq7xTPHMfuQsxRyhe6Ul8L-XJzB7","subscriptionOfferDetails":[{"offerIdToken":"AUOc0squvREnekOgRRD79yC5zPdt64urRuPvoFUIo9WrQzm92Yb+VbAjAasRLwoMBYdIfo9uW70Rj27oc9oSge7+biLG6yw=","basePlanId":"weekly-
+05-23 07:59:37.220 D/ReactNativeJS( 8308): [RevenueCat] 💰 mingla_plus_annual - ProductDetails{jsonString='{"productId":"mingla_plus_annual","type":"subs","title":"Mingla Plus Annual (com.mingla.app.v2 (unreviewed))","name":"Mingla Plus Annual","localizedIn":["en-US"],"skuDetailsToken":"AEuhp4KXi4bAebcEhIlEmhBufIKk6eTaA5VIyQm2AaEZDaMn2Cl-A3oJPGy-mEuaRJCh","subscriptionOfferDetails":[{"offerIdToken":"AUOc0soaa2Buck8ZrLY8iJrDMGXZUkdPiHKNs8GW\/XtarAE9tcMWmdL9m73YffOi8Q3YMLGcNJmGxzw=","basePlanId":"annual","pricingPhases":[{"priceAmountMicros":39990000,"priceCurrencyCode":"USD","formattedPrice":"$39.99","billingPeriod":"P1Y","recurrenceMode":1}],"offerTags":[]}]}', parsedJson={"productId":"mingla_plus_annual","type":"subs","title":"Mingla Plus Annual (com.mingla.app.v2 (unreviewed))","name":"Mingla Plus Annual","localizedIn":["en-US"],"skuDetailsToken":"AEuhp4KXi4bAebcEhIlEmhBufIKk6eTaA5VIyQm2AaEZDaMn2Cl-A3oJPGy-mEuaRJCh","subscriptionOfferDetails":[{"offerIdToken":"AUOc0soaa2Buck8ZrLY8iJrDMGXZUkdPiHKNs8GW\/XtarAE9tcMWmdL9m73YffOi8Q3YMLGcNJmGxzw=","basePlanId":"annual","pricingPhases":[{"priceAmountMicros":39990000,"priceCurrencyCode":"USD","formattedPrice":"$39.99","billingPeriod":"P1Y","recurrenceMode":1}],"offerTags":[]}]}, productId='mingla_plus_annual', productType='subs', title='Mingla Plus Annual (com.mingla.app.v2 (unreviewed))', productDetailsToken='AEuhp4KXi4bAebcEhIlEmhBufIKk6eTaA5VIyQm2AaEZDaMn2Cl-A3oJPGy-mEuaRJCh', subscriptionOfferDetails=[com.android.billingclient.api.ProductDetails$SubscriptionOfferDetails@83ca404]}
+05-23 07:59:37.221 D/ReactNativeJS( 8308): [RevenueCat] 💰 mingla_plus_monthly - ProductDetails{jsonString='{"productId":"mingla_plus_monthly","type":"subs","title":"Mingla Plus Monthly (com.mingla.app.v2 (unreviewed))","name":"Mingla Plus Monthly","localizedIn":["en-US"],"skuDetailsToken":"AEuhp4KZQ1UnIHuHUEJrwEkbLgrR_qgMulr6_2ffVf34e4fuYP5NiW5_BzXUmfn3HL-m","subscriptionOfferDetails":[{"offerIdToken":"AUOc0sqDacAnkzAhvtmsDlhKeAN1SYaE\/WFEJdz0kYnlVI1XIMtdgVE7LVxs\/FKj\/OthXYXFluGxE0RotFPt","basePlanId":"monthly","pricingPhases":[{"priceAmountMicros":4990000,"priceCurrencyCode":"USD","formattedPrice":"$4.99","billingPeriod":"P1M","recurrenceMode":1}],"offerTags":[]}]}', parsedJson={"productId":"mingla_plus_monthly","type":"subs","title":"Mingla Plus Monthly (com.mingla.app.v2 (unreviewed))","name":"Mingla Plus Monthly","localizedIn":["en-US"],"skuDetailsToken":"AEuhp4KZQ1UnIHuHUEJrwEkbLgrR_qgMulr6_2ffVf34e4fuYP5NiW5_BzXUmfn3HL-m","subscriptionOfferDetails":[{"offerIdToken":"AUOc0sqDacAnkzAhvtmsDlhKeAN1SYaE\/WFEJdz0kYnlVI1XIMtdgVE7LVxs\/FKj\/OthXYXFluGxE0RotFPt","basePlanId":"monthly","pricingPhases":[{"priceAmountMicros":4990000,"priceCurrencyCode":"USD","formattedPrice":"$4.99","billingPeriod":"P1M","recurrenceMode":1}],"offerTags":[]}]}, productId='mingla_plus_monthly', productType='subs', title='Mingla Plus Monthly (com.mingla.app.v2 (unreviewed))', productDetailsToken='AEuhp4KZQ1UnIHuHUEJrwEkbLgrR_qgMulr6_2ffVf34e4fuYP5NiW5_BzXUmfn3HL-m', subscriptionOfferDetails=[com.android.billingclient.api.ProductDetails$SubscriptionOfferDetails@ae33ded]}
+05-23 07:59:37.222 D/ReactNativeJS( 8308): [RevenueCat] 💰 mingla_plus_weekly - ProductDetails{jsonString='{"productId":"mingla_plus_weekly","type":"subs","title":"Mingla Plus Weekly (com.mingla.app.v2 (unreviewed))","name":"Mingla Plus Weekly","localizedIn":["en-US"],"skuDetailsToken":"AEuhp4KLyg_i5b78iJL8Idm0OQS25jnpCmc5wlPNDq7xTPHMfuQsxRyhe6Ul8L-XJzB7","subscriptionOfferDetails":[{"offerIdToken":"AUOc0squvREnekOgRRD79yC5zPdt64urRuPvoFUIo9WrQzm92Yb+VbAjAasRLwoMBYdIfo9uW70Rj27oc9oSge7+biLG6yw=","basePlanId":"weekly-mingla","pricingPhases":[{"priceAmountMicros":1990000,"priceCurrencyCode":"USD","formattedPrice":"$1.99","billingPeriod":"P1W","recurrenceMode":1}],"offerTags":[]}]}', parsedJson={"productId":"mingla_plus_weekly","type":"subs","title":"Mingla Plus Weekly (com.mingla.app.v2 (unreviewed))","name":"Mingla Plus Weekly","localizedIn":["en-US"],"skuDetailsToken":"AEuhp4KLyg_i5b78iJL8Idm0OQS25jnpCmc5wlPNDq7xTPHMfuQsxRyhe6Ul8L-XJzB7","subscriptionOfferDetails":[{"offerIdToken":"AUOc0squvREnekOgRRD79yC5zPdt64urRuPvoFUIo9WrQzm92Yb+VbAjAasRLwoMBYdIfo9uW70Rj27oc9oSge7+biLG6yw=","basePlanId":"weekly-mingla","pricingPhases":[{"priceAmountMicros":1990000,"priceCurrencyCode":"USD","formattedPrice":"$1.99","billingPeriod":"P1W","recurrenceMode":1}],"offerTags":[]}]}, productId='mingla_plus_weekly', productType='subs', title='Mingla Plus Weekly (com.mingla.app.v2 (unreviewed))', productDetailsToken='AEuhp4KLyg_i5b78iJL8Idm0OQS25jnpCmc5wlPNDq7xTPHMfuQsxRyhe6Ul8L-XJzB7', subscriptionOfferDetails=[com.android.billingclient.api.ProductDetails$SubscriptionOfferDetails@84b0eb3]}
+05-23 07:59:37.222 D/ReactNativeJS( 8308): [RevenueCat] ℹ️ Building offerings response with 3 products
+05-23 07:59:37.223 D/ReactNativeJS( 8308): [RevenueCat] OfferingImagePreDownloader: starting image download
+05-23 07:59:37.223 D/ReactNativeJS( 8308): [RevenueCat] ℹ️ Cleaning previously sent tokens
+05-23 07:59:37.223 D/ReactNativeJS( 8308): [RevenueCat] ℹ️ Tokens already posted: []
+05-23 07:59:37.223 D/ReactNativeJS( 8308): [RevenueCat] ℹ️ Saving tokens []
+05-23 07:59:37.224 D/ReactNativeJS( 8308): [RevenueCat] ℹ️ Cleaning previously sent tokens
+05-23 07:59:37.224 D/ReactNativeJS( 8308): [RevenueCat] ℹ️ Tokens already posted: []
+05-23 07:59:37.224 D/ReactNativeJS( 8308): [RevenueCat] ℹ️ Saving tokens []
+05-23 07:59:37.224 D/ReactNativeJS( 8308): [RevenueCat] ℹ️ Tokens already posted: []
+05-23 07:59:37.224 D/ReactNativeJS( 8308): [RevenueCat] ℹ️ No pending purchases to sync
+05-23 07:59:37.231 D/ReactNativeJS( 8308): [RevenueCat] ℹ️ Tokens already posted: []
+05-23 07:59:37.232 D/ReactNativeJS( 8308): [RevenueCat] ℹ️ No pending purchases to sync
+05-23 07:59:37.260 I/ReactNativeJS( 8308): '[AppsFlyer] Event logged (af_login):', 'Success'
+05-23 07:59:37.267 I/ReactNativeJS( 8308): '✅ Restored state from AsyncStorage - Index:', 0, 'Removed:', 0, ''
+05-23 07:59:37.328 D/ReactNativeJS( 8308): [RevenueCat] Retrieving customer info with policy: CACHED_OR_FETCHED
+05-23 07:59:37.329 D/ReactNativeJS( 8308): [RevenueCat] ℹ️ Vending CustomerInfo from cache.
+05-23 07:59:37.329 D/ReactNativeJS( 8308): [RevenueCat] ℹ️ Checking if cache is stale AppInBackground false
+05-23 07:59:37.353 D/ReactNativeJS( 8308): [RevenueCat] Retrieving customer info with policy: CACHED_OR_FETCHED
+05-23 07:59:37.358 D/ReactNativeJS( 8308): [RevenueCat] ℹ️ Vending CustomerInfo from cache.
+05-23 07:59:37.358 D/ReactNativeJS( 8308): [RevenueCat] ℹ️ Checking if cache is stale AppInBackground false
+05-23 07:59:39.087 I/ReactNativeJS( 8308): [QUERY] success revenuecat.customer-info | dataType="object"
+05-23 07:59:39.972 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] check:', { isCollaborationMode: false,
+05-23 07:59:39.972 I/ReactNativeJS( 8308):   resolvedSessionId: undefined,
+05-23 07:59:39.972 I/ReactNativeJS( 8308):   sessionsLoading: true,
+05-23 07:59:39.972 I/ReactNativeJS( 8308):   sessionCount: 0,
+05-23 07:59:39.972 I/ReactNativeJS( 8308):   seenRef: false }
+05-23 07:59:40.305 I/ReactNativeJS( 8308): [QUERY] success userPreferences.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="object"
+05-23 07:59:40.317 I/ReactNativeJS( 8308): [QUERY] success calendarEntries.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(0)"
+05-23 07:59:40.354 I/ReactNativeJS( 8308): [QUERY] success subscription.server-tier.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="string"
+05-23 07:59:40.366 I/ReactNativeJS( 8308): [QUERY] success subscription.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="object"
+05-23 07:59:40.368 I/ReactNativeJS( 8308): [QUERY] success notifications.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(0)"
+05-23 07:59:40.396 I/ReactNativeJS( 8308): [render-count] HomePage: 2
+05-23 07:59:40.736 I/ReactNativeJS( 8308): [QUERY] success friends.requests.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(0)"
+05-23 07:59:40.767 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] check:', { isCollaborationMode: false,
+05-23 07:59:40.767 I/ReactNativeJS( 8308):   resolvedSessionId: undefined,
+05-23 07:59:40.767 I/ReactNativeJS( 8308):   sessionsLoading: true,
+05-23 07:59:40.767 I/ReactNativeJS( 8308):   sessionCount: 0,
+05-23 07:59:40.767 I/ReactNativeJS( 8308):   seenRef: false }
+05-23 07:59:41.133 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] check:', { isCollaborationMode: false,
+05-23 07:59:41.133 I/ReactNativeJS( 8308):   resolvedSessionId: undefined,
+05-23 07:59:41.133 I/ReactNativeJS( 8308):   sessionsLoading: true,
+05-23 07:59:41.133 I/ReactNativeJS( 8308):   sessionCount: 0,
+05-23 07:59:41.133 I/ReactNativeJS( 8308):   seenRef: false }
+05-23 07:59:41.715 I/ReactNativeJS( 8308): [STORE] set(profile) | changed={"profile":{"from":"{id, email, display_name, username, …}","to":"{id, email, display_name, username, …}"}}
+05-23 07:59:42.024 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] check:', { isCollaborationMode: false,
+05-23 07:59:42.024 I/ReactNativeJS( 8308):   resolvedSessionId: undefined,
+05-23 07:59:42.024 I/ReactNativeJS( 8308):   sessionsLoading: true,
+05-23 07:59:42.024 I/ReactNativeJS( 8308):   sessionCount: 0,
+05-23 07:59:42.024 I/ReactNativeJS( 8308):   seenRef: false }
+05-23 07:59:42.028 I/ReactNativeJS( 8308): [NAV] Page: home | userId="eff78416-0d36-4bca-b350-10a6c3f046cb"
+05-23 07:59:42.091 I/ReactNativeJS( 8308): '[AppsFlyer] Customer user ID set:', 'Success'
+05-23 07:59:42.664 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] check:', { isCollaborationMode: false,
+05-23 07:59:42.664 I/ReactNativeJS( 8308):   resolvedSessionId: undefined,
+05-23 07:59:42.664 I/ReactNativeJS( 8308):   sessionsLoading: true,
+05-23 07:59:42.664 I/ReactNativeJS( 8308):   sessionCount: 0,
+05-23 07:59:42.664 I/ReactNativeJS( 8308):   seenRef: false }
+05-23 07:59:43.552 I/ReactNativeJS( 8308): [QUERY] success savedCards.list.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(8)"
+05-23 07:59:43.884 I/ReactNativeJS( 8308): [QUERY] success friends.list.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(1)"
+05-23 07:59:43.886 I/ReactNativeJS( 8308): [QUERY] success friends.blocked.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(0)"
+05-23 07:59:43.891 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] check:', { isCollaborationMode: false,
+05-23 07:59:43.891 I/ReactNativeJS( 8308):   resolvedSessionId: undefined,
+05-23 07:59:43.891 I/ReactNativeJS( 8308):   sessionsLoading: true,
+05-23 07:59:43.891 I/ReactNativeJS( 8308):   sessionCount: 0,
+05-23 07:59:43.891 I/ReactNativeJS( 8308):   seenRef: false }
+05-23 07:59:44.208 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] check:', { isCollaborationMode: false,
+05-23 07:59:44.208 I/ReactNativeJS( 8308):   resolvedSessionId: undefined,
+05-23 07:59:44.208 I/ReactNativeJS( 8308):   sessionsLoading: true,
+05-23 07:59:44.208 I/ReactNativeJS( 8308):   sessionCount: 0,
+05-23 07:59:44.208 I/ReactNativeJS( 8308):   seenRef: false }
+05-23 07:59:44.213 I/ReactNativeJS( 8308): [AppsFlyer] Device registered: android/1779398038008-5857650947071083922
+05-23 07:59:44.300 I/ReactNativeJS( 8308): [AUTH] Session found | userId="eff78416-0d36-4bca-b350-10a6c3f046cb", email="mingla@somethingelsegroup.com"
+05-23 07:59:44.303 I/ReactNativeJS( 8308): [STORE] set(user, isAuthenticated) | changed={"user":{"from":"{id, aud, role, email, …}","to":"{id, aud, role, email, …}"}}
+05-23 07:59:44.875 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] check:', { isCollaborationMode: false,
+05-23 07:59:44.875 I/ReactNativeJS( 8308):   resolvedSessionId: undefined,
+05-23 07:59:44.875 I/ReactNativeJS( 8308):   sessionsLoading: true,
+05-23 07:59:44.875 I/ReactNativeJS( 8308):   sessionCount: 0,
+05-23 07:59:44.875 I/ReactNativeJS( 8308):   seenRef: false }
+05-23 07:59:44.931 I/ReactNativeJS( 8308): [NAV] Page: home | userId="eff78416-0d36-4bca-b350-10a6c3f046cb"
+05-23 07:59:46.737 I/ReactNativeJS( 8308): '[SESSION_PILLS] loadUserSessions complete:', [ '5e646b7a-b641-4c6b-b4e8-508df4ed430b',
+05-23 07:59:46.737 I/ReactNativeJS( 8308):   '5ebf8afb-0793-4c9c-b76c-c914048bcf54',
+05-23 07:59:46.737 I/ReactNativeJS( 8308):   'daadd454-35a8-487d-ab25-bb595abc4635' ]
+05-23 07:59:46.741 I/ReactNativeJS( 8308): '[SESSION_PILLS] loadUserSessions complete:', [ '5e646b7a-b641-4c6b-b4e8-508df4ed430b',
+05-23 07:59:46.741 I/ReactNativeJS( 8308):   '5ebf8afb-0793-4c9c-b76c-c914048bcf54',
+05-23 07:59:46.741 I/ReactNativeJS( 8308):   'daadd454-35a8-487d-ab25-bb595abc4635' ]
+05-23 07:59:47.618 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] check:', { isCollaborationMode: false,
+05-23 07:59:47.618 I/ReactNativeJS( 8308):   resolvedSessionId: undefined,
+05-23 07:59:47.618 I/ReactNativeJS( 8308):   sessionsLoading: true,
+05-23 07:59:47.618 I/ReactNativeJS( 8308):   sessionCount: 0,
+05-23 07:59:47.618 I/ReactNativeJS( 8308):   seenRef: false }
+05-23 07:59:47.818 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] check:', { isCollaborationMode: false,
+05-23 07:59:47.818 I/ReactNativeJS( 8308):   resolvedSessionId: undefined,
+05-23 07:59:47.818 I/ReactNativeJS( 8308):   sessionsLoading: false,
+05-23 07:59:47.818 I/ReactNativeJS( 8308):   sessionCount: 3,
+05-23 07:59:47.818 I/ReactNativeJS( 8308):   seenRef: false }
+05-23 07:59:48.133 I/ReactNativeJS( 8308): '[DeckService] Input categories:', '["casual_food"]'
+05-23 07:59:48.133 I/ReactNativeJS( 8308): '[DeckService] Resolved pills:', '[{"id":"casual_food","type":"category"},{"id":"first-date","type":"curated"},{"id":"take-a-stroll","type":"curated"}]'
+05-23 07:59:48.136 I/ReactNativeJS( 8308): [EDGE] → discover-cards | body={"categories":["Casual"],"location":{"lat":37.4219983,"lng":-122.084},"travelMode":"driving","travelConstraintType":"time","travelConstraintValue":30,"datetimePref":"2026-04-12T22:28:55.925+00:00","dateOption":"this_weekend","batchSeed":0,"limit":200,"excludeCardIds":[]}
+05-23 07:59:48.152 I/ReactNativeJS( 8308): [EDGE] → generate-curated-experiences | body={"experienceType":"first-date","location":{"lat":37.4219983,"lng":-122.084},"travelMode":"driving","travelConstraintType":"time","travelConstraintValue":30,"datetimePref":"2026-04-12T22:28:55.925+00:00","batchSeed":0,"limit":200,"skipDescriptions":true}
+05-23 07:59:48.160 I/ReactNativeJS( 8308): [EDGE] → generate-curated-experiences | body={"experienceType":"take-a-stroll","location":{"lat":37.4219983,"lng":-122.084},"travelMode":"driving","travelConstraintType":"time","travelConstraintValue":30,"datetimePref":"2026-04-12T22:28:55.925+00:00","batchSeed":0,"limit":200,"skipDescriptions":true}
+05-23 07:59:48.165 I/ReactNativeJS( 8308): [AUTH] Profile loaded | displayName="Ethan Bennet", onboarding=true
+05-23 07:59:48.172 I/ReactNativeJS( 8308): [STORE] set(profile) | changed={"profile":{"from":"{id, email, display_name, username, …}","to":"{id, email, display_name, username, …}"}}
+05-23 07:59:48.624 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] check:', { isCollaborationMode: false,
+05-23 07:59:48.624 I/ReactNativeJS( 8308):   resolvedSessionId: undefined,
+05-23 07:59:48.624 I/ReactNativeJS( 8308):   sessionsLoading: false,
+05-23 07:59:48.624 I/ReactNativeJS( 8308):   sessionCount: 3,
+05-23 07:59:48.624 I/ReactNativeJS( 8308):   seenRef: false }
+05-23 07:59:48.629 I/ReactNativeJS( 8308): [NAV] Page: home | userId="eff78416-0d36-4bca-b350-10a6c3f046cb"
+05-23 07:59:48.902 I/ReactNativeJS( 8308): '[AppsFlyer] Customer user ID set:', 'Success'
+05-23 07:59:49.613 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] check:', { isCollaborationMode: false,
+05-23 07:59:49.613 I/ReactNativeJS( 8308):   resolvedSessionId: undefined,
+05-23 07:59:49.613 I/ReactNativeJS( 8308):   sessionsLoading: false,
+05-23 07:59:49.613 I/ReactNativeJS( 8308):   sessionCount: 3,
+05-23 07:59:49.613 I/ReactNativeJS( 8308):   seenRef: false }
+05-23 07:59:50.184 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] check:', { isCollaborationMode: false,
+05-23 07:59:50.184 I/ReactNativeJS( 8308):   resolvedSessionId: undefined,
+05-23 07:59:50.184 I/ReactNativeJS( 8308):   sessionsLoading: false,
+05-23 07:59:50.184 I/ReactNativeJS( 8308):   sessionCount: 3,
+05-23 07:59:50.184 I/ReactNativeJS( 8308):   seenRef: false }
+05-23 07:59:50.447 I/ReactNativeJS( 8308): [EDGE] ← generate-curated-experiences OK 2291ms | data="{\"cards\":[],\"experienceType\":\"first-date\",\"total\":0,\"generatedAt\":\"2026-05-23T11:59:49.762Z\",\"meta\":{\"totalResults\":0,\"totalCardsBuilt\":0,\"fromPool\":0,\"fromApi\":0,\"pipeline\":\"curated-v2\"},\"summary\":{\"emptyReason\":\"pool_empty\",\"candidateAnchorCount\":0,\"failedAnchorCount\":0}}"
+05-23 07:59:50.447 I/ReactNativeJS( 8308): [DeckService] Curated pill "first-date" → 0 cards (emptyReason=pool_empty)
+05-23 07:59:50.448 I/ReactNativeJS( 8308): [EDGE] ← generate-curated-experiences OK 2288ms | data="{\"cards\":[],\"experienceType\":\"take-a-stroll\",\"total\":0,\"generatedAt\":\"2026-05-23T11:59:49.886Z\",\"meta\":{\"totalResults\":0,\"totalCardsBuilt\":0,\"fromPool\":0,\"fromApi\":0,\"pipeline\":\"curated-v2\"},\"summary\":{\"emptyReason\":\"pool_empty\",\"candidateAnchorCount\":0,\"failedAnchorCount\":0}}"
+05-23 07:59:50.448 I/ReactNativeJS( 8308): [DeckService] Curated pill "take-a-stroll" → 0 cards (emptyReason=pool_empty)
+05-23 07:59:50.453 I/ReactNativeJS( 8308): [EDGE] ← discover-cards OK 2315ms | data="{\"cards\":[],\"total\":0,\"source\":\"pool\",\"metadata\":{\"hasMore\":false,\"poolSize\":0,\"batchSeed\":0},\"sourceBreakdown\":{\"fromPool\":0,\"fromApi\":0,\"totalServed\":0,\"apiCallsMade\":0,\"cacheHits\":0,\"gapCategories\":[\"Casual\"],\"reason\":\"Signal RPCs succeeded but returned zero rows — try widening radius or adding chips\",\"path\":\"pool-empty\"}}"
+05-23 07:59:50.455 I/ReactNativeJS( 8308): [DeckService] discover-cards → 0 cards (source: pool, hasMore: false)
+05-23 07:59:50.455 I/ReactNativeJS( 8308): [DeckService] SOURCE BREAKDOWN:
+05-23 07:59:50.455 I/ReactNativeJS( 8308):   Path: pool-empty
+05-23 07:59:50.455 I/ReactNativeJS( 8308):   From pool: 0 | From Google API: 0 | Total served: 0
+05-23 07:59:50.455 I/ReactNativeJS( 8308):   Google API calls: 0 | Cache hits: 0
+05-23 07:59:50.455 I/ReactNativeJS( 8308):   Gap-filled categories: Casual
+05-23 07:59:50.455 I/ReactNativeJS( 8308):   Reason: Signal RPCs succeeded but returned zero rows — try widening radius or adding chips
+05-23 07:59:50.455 I/ReactNativeJS( 8308): [DeckService] Fetched 3 pills in 2322ms, 0 cards total: casual_food, first-date, take-a-stroll
+05-23 07:59:50.456 W/ReactNativeJS( 8308): [Auth] Deck prefetch returned 0 cards — skipping cache (possible auth failure)
+05-23 07:59:50.476 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] check:', { isCollaborationMode: false,
+05-23 07:59:50.476 I/ReactNativeJS( 8308):   resolvedSessionId: undefined,
+05-23 07:59:50.476 I/ReactNativeJS( 8308):   sessionsLoading: false,
+05-23 07:59:50.476 I/ReactNativeJS( 8308):   sessionCount: 3,
+05-23 07:59:50.476 I/ReactNativeJS( 8308):   seenRef: false }
+05-23 07:59:51.140 I/ReactNativeJS( 8308): [QUERY] success friends.list.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(1)"
+05-23 07:59:51.203 I/ReactNativeJS( 8308): '[SESSION_PILLS] loadUserSessions complete:', [ '5e646b7a-b641-4c6b-b4e8-508df4ed430b',
+05-23 07:59:51.203 I/ReactNativeJS( 8308):   '5ebf8afb-0793-4c9c-b76c-c914048bcf54',
+05-23 07:59:51.203 I/ReactNativeJS( 8308):   'daadd454-35a8-487d-ab25-bb595abc4635' ]
+05-23 07:59:51.459 I/ReactNativeJS( 8308): '[SESSION_PILLS] loadUserSessions complete:', [ '5e646b7a-b641-4c6b-b4e8-508df4ed430b',
+05-23 07:59:51.459 I/ReactNativeJS( 8308):   '5ebf8afb-0793-4c9c-b76c-c914048bcf54',
+05-23 07:59:51.459 I/ReactNativeJS( 8308):   'daadd454-35a8-487d-ab25-bb595abc4635' ]
+05-23 07:59:51.933 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] check:', { isCollaborationMode: false,
+05-23 07:59:51.933 I/ReactNativeJS( 8308):   resolvedSessionId: undefined,
+05-23 07:59:51.933 I/ReactNativeJS( 8308):   sessionsLoading: false,
+05-23 07:59:51.933 I/ReactNativeJS( 8308):   sessionCount: 3,
+05-23 07:59:51.933 I/ReactNativeJS( 8308):   seenRef: false }
+05-23 08:00:30.871 I/ReactNativeJS( 8308): [QUERY] success friends.requests.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(0)"
+05-23 08:01:30.971 I/ReactNativeJS( 8308): [QUERY] success friends.requests.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(0)"
+05-23 08:02:30.831 I/ReactNativeJS( 8308): [QUERY] success friends.requests.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(0)"
+05-23 08:03:30.910 I/ReactNativeJS( 8308): [QUERY] success friends.requests.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(0)"
+05-23 08:04:31.143 I/ReactNativeJS( 8308): [QUERY] success friends.requests.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(0)"
+05-23 08:04:44.325 I/ReactNativeJS( 8308): [QUERY] success friends.blocked.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(0)"
+05-23 08:04:51.236 I/ReactNativeJS( 8308): [QUERY] success friends.list.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(1)"
+05-23 08:05:30.871 I/ReactNativeJS( 8308): [QUERY] success friends.requests.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(0)"
+05-23 08:05:56.168 I/ReactNativeJS( 8308): [ACTION] Tab pressed: connections
+05-23 08:05:56.271 I/ReactNativeJS( 8308): [render-count] ConnectionsPage: 1
+05-23 08:05:56.396 I/ReactNativeJS( 8308): [NAV] (init) → connections
+05-23 08:05:56.410 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] check:', { isCollaborationMode: false,
+05-23 08:05:56.410 I/ReactNativeJS( 8308):   resolvedSessionId: undefined,
+05-23 08:05:56.410 I/ReactNativeJS( 8308):   sessionsLoading: false,
+05-23 08:05:56.410 I/ReactNativeJS( 8308):   sessionCount: 3,
+05-23 08:05:56.410 I/ReactNativeJS( 8308):   seenRef: false }
+05-23 08:05:56.411 I/ReactNativeJS( 8308): [NAV] Page: connections | userId="eff78416-0d36-4bca-b350-10a6c3f046cb"
+05-23 08:05:56.414 I/ReactNativeJS( 8308): [render-count] ConnectionsPage: 2
+05-23 08:05:56.443 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] check:', { isCollaborationMode: false,
+05-23 08:05:56.443 I/ReactNativeJS( 8308):   resolvedSessionId: undefined,
+05-23 08:05:56.443 I/ReactNativeJS( 8308):   sessionsLoading: false,
+05-23 08:05:56.443 I/ReactNativeJS( 8308):   sessionCount: 3,
+05-23 08:05:56.443 I/ReactNativeJS( 8308):   seenRef: false }
+05-23 08:05:56.470 D/ReactNativeJS( 8308): [RevenueCat] Retrieving customer info with policy: CACHED_OR_FETCHED
+05-23 08:05:56.470 D/ReactNativeJS( 8308): [RevenueCat] ℹ️ Vending CustomerInfo from cache.
+05-23 08:05:56.470 D/ReactNativeJS( 8308): [RevenueCat] ℹ️ Checking if cache is stale AppInBackground false
+05-23 08:05:56.470 D/ReactNativeJS( 8308): [RevenueCat] ℹ️ CustomerInfo cache is stale, updating from network in foreground.
+05-23 08:05:56.470 D/ReactNativeJS( 8308): [RevenueCat] ℹ️ Updating pending purchase queue
+05-23 08:05:56.470 D/ReactNativeJS( 8308): [RevenueCat] ℹ️ Querying purchases
+05-23 08:05:56.471 I/ReactNativeJS( 8308): [render-count] ConnectionsPage: 3
+05-23 08:05:56.661 I/ReactNativeJS( 8308): [render-count] ConnectionsPage: 4
+05-23 08:05:56.892 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] check:', { isCollaborationMode: false,
+05-23 08:05:56.892 I/ReactNativeJS( 8308):   resolvedSessionId: undefined,
+05-23 08:05:56.892 I/ReactNativeJS( 8308):   sessionsLoading: false,
+05-23 08:05:56.892 I/ReactNativeJS( 8308):   sessionCount: 3,
+05-23 08:05:56.892 I/ReactNativeJS( 8308):   seenRef: false }
+05-23 08:05:56.904 I/ReactNativeJS( 8308): [QUERY] success revenuecat.customer-info | dataType="object"
+05-23 08:05:56.911 D/ReactNativeJS( 8308): [RevenueCat] ℹ️ Cleaning previously sent tokens
+05-23 08:05:56.911 D/ReactNativeJS( 8308): [RevenueCat] ℹ️ Tokens already posted: []
+05-23 08:05:56.911 D/ReactNativeJS( 8308): [RevenueCat] ℹ️ Saving tokens []
+05-23 08:05:56.912 D/ReactNativeJS( 8308): [RevenueCat] ℹ️ Tokens already posted: []
+05-23 08:05:56.912 D/ReactNativeJS( 8308): [RevenueCat] ℹ️ No pending purchases to sync
+05-23 08:05:56.912 D/ReactNativeJS( 8308): [RevenueCat] Request already scheduled with jitter delay, adding existing callbacks to unjittered request with key: BackgroundAwareCallbackCacheKey(cacheKey=[/v1/subscribers/eff78416-0d36-4bca-b350-10a6c3f046cb], appInBackground=false)
+05-23 08:05:57.073 D/ReactNativeJS( 8308): [RevenueCat] API request started: GET /v1/subscribers/eff78416-0d36-4bca-b350-10a6c3f046cb
+05-23 08:05:57.073 D/ReactNativeJS( 8308): [RevenueCat] API request completed with status: GET /v1/subscribers/eff78416-0d36-4bca-b350-10a6c3f046cb 304
+05-23 08:05:57.073 D/ReactNativeJS( 8308): [RevenueCat] 😻 CustomerInfo updated from network.
+05-23 08:05:57.097 I/ReactNativeJS( 8308): [QUERY] success subscription.server-tier.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="string"
+05-23 08:05:57.098 I/ReactNativeJS( 8308): [QUERY] success subscription.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="object"
+05-23 08:05:57.102 I/ReactNativeJS( 8308): [QUERY] success session-creation-gate.eff78416-0d36-4bca-b350-10a6c3f046cb.mingla_plus | dataType="object"
+05-23 08:05:57.352 I/ReactNativeJS( 8308): [QUERY] success pairings.incoming.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(0)"
+05-23 08:05:57.366 I/ReactNativeJS( 8308): [QUERY] success friends.requests.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(0)"
+05-23 08:05:57.427 I/ReactNativeJS( 8308): [QUERY] success friends.blocked.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(0)"
+05-23 08:05:57.472 I/ReactNativeJS( 8308): [QUERY] success friends.list.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(1)"
+05-23 08:05:57.473 I/ReactNativeJS( 8308): [render-count] ConnectionsPage: 5
+05-23 08:05:57.686 I/ReactNativeJS( 8308): [QUERY] success pairings.pills.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(1)"
+05-23 08:05:57.785 I/ReactNativeJS( 8308): [render-count] ConnectionsPage: 6
+05-23 08:06:22.720 I/ReactNativeJS( 8308): [render-count] ConnectionsPage: 7
+05-23 08:06:22.856 I/ReactNativeJS( 8308): [render-count] ConnectionsPage: 8
+05-23 08:06:22.921 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:06:23.279 I/ReactNativeJS( 8308): Subscribed to conversation: 7166fbff-61f9-4050-8261-7fb2872e9cfc
+05-23 08:06:23.324 I/ReactNativeJS( 8308): [REALTIME] subscribing to channel: board_session:daadd454-35a8-487d-ab25-bb595abc4635
+05-23 08:06:23.433 I/ReactNativeJS( 8308): [QUERY] success chat.card-tags.session.daadd454-35a8-487d-ab25-bb595abc4635 | dataType="Array(7)"
+05-23 08:06:23.456 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:06:23.589 I/ReactNativeJS( 8308): '[ORCH-0923-DIAG] board_session channel state', { sessionId: 'daadd454-35a8-487d-ab25-bb595abc4635',
+05-23 08:06:23.589 I/ReactNativeJS( 8308):   status: 'SUBSCRIBED',
+05-23 08:06:23.589 I/ReactNativeJS( 8308):   error: undefined }
+05-23 08:06:23.625 I/ReactNativeJS( 8308): [QUERY] success savedCards.daadd454-35a8-487d-ab25-bb595abc4635 | dataType="Array(2)"
+05-23 08:06:23.632 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:06:23.770 I/ReactNativeJS( 8308): [REALTIME] unsubscribing from channel: board_session:daadd454-35a8-487d-ab25-bb595abc4635
+05-23 08:06:23.771 I/ReactNativeJS( 8308): '[ORCH-0923-DIAG] board_session channel state', { sessionId: 'daadd454-35a8-487d-ab25-bb595abc4635',
+05-23 08:06:23.771 I/ReactNativeJS( 8308):   status: 'CLOSED',
+05-23 08:06:23.771 I/ReactNativeJS( 8308):   error: undefined }
+05-23 08:06:23.771 I/ReactNativeJS( 8308): [REALTIME] subscribing to channel: board_session:daadd454-35a8-487d-ab25-bb595abc4635
+05-23 08:06:23.785 I/ReactNativeJS( 8308): [QUERY] success savedCards.list.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(8)"
+05-23 08:06:23.787 I/ReactNativeJS( 8308): [QUERY] success scheduledCards.daadd454-35a8-487d-ab25-bb595abc4635 | dataType="Array(0)"
+05-23 08:06:23.787 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:06:23.804 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:06:23.871 I/ReactNativeJS( 8308): [render-count] ConnectionsPage: 9
+05-23 08:06:23.876 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:06:23.935 I/ReactNativeJS( 8308): '[ORCH-0923-DIAG] board_session channel state', { sessionId: 'daadd454-35a8-487d-ab25-bb595abc4635',
+05-23 08:06:23.935 I/ReactNativeJS( 8308):   status: 'SUBSCRIBED',
+05-23 08:06:23.935 I/ReactNativeJS( 8308):   error: undefined }
+05-23 08:06:27.952 I/ReactNativeJS( 8308): [QUERY] success pairings.pills.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(1)"
+05-23 08:06:28.099 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:06:29.025 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:06:30.756 I/ReactNativeJS( 8308): [QUERY] success friends.requests.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(0)"
+05-23 08:06:34.304 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:06:39.620 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:06:40.426 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:06:44.416 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:06:44.591 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] check:', { isCollaborationMode: true,
+05-23 08:06:44.591 I/ReactNativeJS( 8308):   resolvedSessionId: 'daadd454',
+05-23 08:06:44.591 I/ReactNativeJS( 8308):   sessionsLoading: false,
+05-23 08:06:44.591 I/ReactNativeJS( 8308):   sessionCount: 0,
+05-23 08:06:44.591 I/ReactNativeJS( 8308):   seenRef: false }
+05-23 08:06:44.593 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] sessionExists:', false, 'seenBefore:', false, 'sessionIds:', []
+05-23 08:06:44.593 I/ReactNativeJS( 8308): [HEALTH_MONITOR] Session not in list but never seen — waiting
+05-23 08:06:44.612 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] check:', { isCollaborationMode: true,
+05-23 08:06:44.612 I/ReactNativeJS( 8308):   resolvedSessionId: 'daadd454',
+05-23 08:06:44.612 I/ReactNativeJS( 8308):   sessionsLoading: true,
+05-23 08:06:44.612 I/ReactNativeJS( 8308):   sessionCount: 0,
+05-23 08:06:44.612 I/ReactNativeJS( 8308):   seenRef: false }
+05-23 08:06:44.613 I/ReactNativeJS( 8308): [HEALTH_MONITOR] skipping — sessions loading
+05-23 08:06:44.637 I/ReactNativeJS( 8308): [Deck] Cold-start proximity match — using persisted deck key
+05-23 08:06:44.703 I/ReactNativeJS( 8308): [REALTIME] unsubscribing from channel: board_session:daadd454-35a8-487d-ab25-bb595abc4635
+05-23 08:06:44.703 I/ReactNativeJS( 8308): '[ORCH-0923-DIAG] board_session channel state', { sessionId: 'daadd454-35a8-487d-ab25-bb595abc4635',
+05-23 08:06:44.703 I/ReactNativeJS( 8308):   status: 'CLOSED',
+05-23 08:06:44.703 I/ReactNativeJS( 8308):   error: undefined }
+05-23 08:06:44.703 I/ReactNativeJS( 8308): [REALTIME] subscribing to channel: board_session:daadd454-35a8-487d-ab25-bb595abc4635
+05-23 08:06:44.840 I/ReactNativeJS( 8308): '[ORCH-0923-DIAG] board_session channel state', { sessionId: 'daadd454-35a8-487d-ab25-bb595abc4635',
+05-23 08:06:44.840 I/ReactNativeJS( 8308):   status: 'SUBSCRIBED',
+05-23 08:06:44.840 I/ReactNativeJS( 8308):   error: undefined }
+05-23 08:06:44.908 I/ReactNativeJS( 8308): [QUERY] success calendarEntries.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(0)"
+05-23 08:06:44.920 I/ReactNativeJS( 8308): [QUERY] success userPreferences.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="object"
+05-23 08:06:44.959 W/ReactNativeJS( 8308): '[useSessionDismissedCards] query failed', { code: 'PGRST200',
+05-23 08:06:44.959 W/ReactNativeJS( 8308):   details: 'Searched for a foreign key relationship between \'board_user_swipe_states\' and \'user_id\' in the schema \'public\', but no matches were found.',
+05-23 08:06:44.959 W/ReactNativeJS( 8308):   hint: null,
+05-23 08:06:44.959 W/ReactNativeJS( 8308):   message: 'Could not find a relationship between \'board_user_swipe_states\' and \'user_id\' in the schema cache' }
+05-23 08:06:44.960 I/ReactNativeJS( 8308): [QUERY] success session-dismissed-cards.daadd454-35a8-487d-ab25-bb595abc4635 | dataType="Array(0)"
+05-23 08:06:44.966 I/ReactNativeJS( 8308): [REALTIME] unsubscribing from channel: board_session:daadd454-35a8-487d-ab25-bb595abc4635
+05-23 08:06:44.967 I/ReactNativeJS( 8308): '[ORCH-0923-DIAG] board_session channel state', { sessionId: 'daadd454-35a8-487d-ab25-bb595abc4635',
+05-23 08:06:44.967 I/ReactNativeJS( 8308):   status: 'CLOSED',
+05-23 08:06:44.967 I/ReactNativeJS( 8308):   error: undefined }
+05-23 08:06:44.972 I/ReactNativeJS( 8308): [REALTIME] subscribing to channel: board_session:daadd454-35a8-487d-ab25-bb595abc4635
+05-23 08:06:45.000 I/ReactNativeJS( 8308): [EDGE] → discover-cards | body={"session_id":"daadd454-35a8-487d-ab25-bb595abc4635","current_position":0}
+05-23 08:06:45.010 I/ReactNativeJS( 8308): [REALTIME] unsubscribing from channel: board_session:daadd454-35a8-487d-ab25-bb595abc4635
+05-23 08:06:45.011 I/ReactNativeJS( 8308): '[ORCH-0923-DIAG] board_session channel state', { sessionId: 'daadd454-35a8-487d-ab25-bb595abc4635',
+05-23 08:06:45.011 I/ReactNativeJS( 8308):   status: 'CLOSED',
+05-23 08:06:45.011 I/ReactNativeJS( 8308):   error: undefined }
+05-23 08:06:45.011 I/ReactNativeJS( 8308): [REALTIME] subscribing to channel: board_session:daadd454-35a8-487d-ab25-bb595abc4635
+05-23 08:06:45.041 I/ReactNativeJS( 8308): [EDGE] → discover-cards | body={"session_id":"daadd454-35a8-487d-ab25-bb595abc4635","current_position":44}
+05-23 08:06:45.042 I/ReactNativeJS( 8308): '[ORCH-0923-DIAG] collab params changed, invalidating deck-cards', { prev: '{"sessionId":"daadd454-35a8-487d-ab25-bb595abc4635","currentPosition":0,"deckParamsHash":"46cd137c1934d13511f62be1bd65f4573699964ba4c527847073079949eb6df7"}',
+05-23 08:06:45.042 I/ReactNativeJS( 8308):   next: '{"sessionId":"daadd454-35a8-487d-ab25-bb595abc4635","currentPosition":44,"deckParamsHash":"46cd137c1934d13511f62be1bd65f4573699964ba4c527847073079949eb6df7"}',
+05-23 08:06:45.042 I/ReactNativeJS( 8308):   sessionId: 'daadd454-35a8-487d-ab25-bb595abc4635' }
+05-23 08:06:45.086 I/ReactNativeJS( 8308): [REALTIME] unsubscribing from channel: board_session:daadd454-35a8-487d-ab25-bb595abc4635
+05-23 08:06:45.086 I/ReactNativeJS( 8308): '[ORCH-0923-DIAG] board_session channel state', { sessionId: 'daadd454-35a8-487d-ab25-bb595abc4635',
+05-23 08:06:45.086 I/ReactNativeJS( 8308):   status: 'CLOSED',
+05-23 08:06:45.086 I/ReactNativeJS( 8308):   error: undefined }
+05-23 08:06:45.086 I/ReactNativeJS( 8308): [REALTIME] subscribing to channel: board_session:daadd454-35a8-487d-ab25-bb595abc4635
+05-23 08:06:45.258 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:06:45.273 I/ReactNativeJS( 8308): '[SESSION_PILLS] loadUserSessions complete:', [ '5e646b7a-b641-4c6b-b4e8-508df4ed430b',
+05-23 08:06:45.273 I/ReactNativeJS( 8308):   '5ebf8afb-0793-4c9c-b76c-c914048bcf54',
+05-23 08:06:45.273 I/ReactNativeJS( 8308):   'daadd454-35a8-487d-ab25-bb595abc4635' ]
+05-23 08:06:45.288 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] check:', { isCollaborationMode: true,
+05-23 08:06:45.288 I/ReactNativeJS( 8308):   resolvedSessionId: 'daadd454',
+05-23 08:06:45.288 I/ReactNativeJS( 8308):   sessionsLoading: false,
+05-23 08:06:45.288 I/ReactNativeJS( 8308):   sessionCount: 3,
+05-23 08:06:45.288 I/ReactNativeJS( 8308):   seenRef: false }
+05-23 08:06:45.291 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] sessionExists:', true, 'seenBefore:', false, 'sessionIds:', [ '5e646b7a', '5ebf8afb', 'daadd454' ]
+05-23 08:06:45.326 I/ReactNativeJS( 8308): '[SESSION_PILLS] loadUserSessions complete:', [ '5e646b7a-b641-4c6b-b4e8-508df4ed430b',
+05-23 08:06:45.326 I/ReactNativeJS( 8308):   '5ebf8afb-0793-4c9c-b76c-c914048bcf54',
+05-23 08:06:45.326 I/ReactNativeJS( 8308):   'daadd454-35a8-487d-ab25-bb595abc4635' ]
+05-23 08:06:45.368 I/ReactNativeJS( 8308): '[ORCH-0923-DIAG] board_session channel state', { sessionId: 'daadd454-35a8-487d-ab25-bb595abc4635',
+05-23 08:06:45.368 I/ReactNativeJS( 8308):   status: 'SUBSCRIBED',
+05-23 08:06:45.368 I/ReactNativeJS( 8308):   error: undefined }
+05-23 08:06:45.573 I/ReactNativeJS( 8308): [EDGE] ← discover-cards OK 532ms | data="{\"success\":false,\"card\":null,\"cards\":[],\"total\":0,\"position\":45,\"current_position\":44,\"dead_end\":true,\"reason\":\"intersection_empty\",\"acceptedCount\":4,\"pending_gps_user_ids\":[],\"source\":\"orch-0909-positional-shared-deck\",\"metadata\":{\"hasMore\":false,\"poolSize\":0,\"batchSeed\":0,\"perChipBreakdown\":{}},\"sourceBreakdown\":{\"fromPool\":0,\"fromApi\":0,\"totalServed\":0,\"apiCallsMade\":0,\"cacheHits\":0,\"gapCategories\":[],\"reason\":\"Participant travel circles have no shared reachable places.\",\"path\":\"pool-empty\",\""
+05-23 08:06:45.573 I/ReactNativeJS( 8308): [DeckService/collab-v2] session=daadd454-35a8-487d-ab25-bb595abc4635 position=45 cards=0 path=pool-empty deadEnd=intersection_empty
+05-23 08:06:45.573 I/ReactNativeJS( 8308): [QUERY] success deck-cards.collab.daadd454-35a8-487d-ab25-bb595abc4635.44 | dataType="object"
+05-23 08:06:45.657 I/ReactNativeJS( 8308): [EDGE] ← discover-cards OK 657ms | data="{\"success\":false,\"card\":null,\"cards\":[],\"total\":0,\"position\":45,\"current_position\":44,\"dead_end\":true,\"reason\":\"intersection_empty\",\"acceptedCount\":4,\"pending_gps_user_ids\":[],\"source\":\"orch-0909-positional-shared-deck\",\"metadata\":{\"hasMore\":false,\"poolSize\":0,\"batchSeed\":0,\"perChipBreakdown\":{}},\"sourceBreakdown\":{\"fromPool\":0,\"fromApi\":0,\"totalServed\":0,\"apiCallsMade\":0,\"cacheHits\":0,\"gapCategories\":[],\"reason\":\"Participant travel circles have no shared reachable places.\",\"path\":\"pool-empty\",\""
+05-23 08:06:45.658 I/ReactNativeJS( 8308): [DeckService/collab-v2] session=daadd454-35a8-487d-ab25-bb595abc4635 position=45 cards=0 path=pool-empty deadEnd=intersection_empty
+05-23 08:06:45.659 I/ReactNativeJS( 8308): [QUERY] success deck-cards.collab.daadd454-35a8-487d-ab25-bb595abc4635.0 | dataType="object"
+05-23 08:06:45.662 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "filter-outline"', { [Stack] name: 'Stack' }
+05-23 08:06:50.538 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:06:55.890 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:06:58.097 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:06:58.275 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "filter-outline"', { [Stack] name: 'Stack' }
+05-23 08:06:58.327 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] check:', { isCollaborationMode: true,
+05-23 08:06:58.327 I/ReactNativeJS( 8308):   resolvedSessionId: 'daadd454',
+05-23 08:06:58.327 I/ReactNativeJS( 8308):   sessionsLoading: false,
+05-23 08:06:58.327 I/ReactNativeJS( 8308):   sessionCount: 3,
+05-23 08:06:58.327 I/ReactNativeJS( 8308):   seenRef: true }
+05-23 08:06:58.331 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] sessionExists:', true, 'seenBefore:', true, 'sessionIds:', [ '5e646b7a', '5ebf8afb', 'daadd454' ]
+05-23 08:06:58.720 I/ReactNativeJS( 8308): [QUERY] success pairings.pills.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(1)"
+05-23 08:07:01.171 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:07:06.423 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:07:10.006 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "filter-outline"', { [Stack] name: 'Stack' }
+05-23 08:07:10.523 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:07:10.648 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "filter-outline"', { [Stack] name: 'Stack' }
+05-23 08:07:10.721 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] check:', { isCollaborationMode: true,
+05-23 08:07:10.721 I/ReactNativeJS( 8308):   resolvedSessionId: 'daadd454',
+05-23 08:07:10.721 I/ReactNativeJS( 8308):   sessionsLoading: false,
+05-23 08:07:10.721 I/ReactNativeJS( 8308):   sessionCount: 3,
+05-23 08:07:10.721 I/ReactNativeJS( 8308):   seenRef: true }
+05-23 08:07:10.723 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] sessionExists:', true, 'seenBefore:', true, 'sessionIds:', [ '5e646b7a', '5ebf8afb', 'daadd454' ]
+05-23 08:07:11.585 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:07:16.956 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:07:22.337 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:07:27.688 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:07:28.114 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:07:28.192 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "filter-outline"', { [Stack] name: 'Stack' }
+05-23 08:07:28.312 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] check:', { isCollaborationMode: true,
+05-23 08:07:28.312 I/ReactNativeJS( 8308):   resolvedSessionId: 'daadd454',
+05-23 08:07:28.312 I/ReactNativeJS( 8308):   sessionsLoading: false,
+05-23 08:07:28.312 I/ReactNativeJS( 8308):   sessionCount: 3,
+05-23 08:07:28.312 I/ReactNativeJS( 8308):   seenRef: true }
+05-23 08:07:28.314 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] sessionExists:', true, 'seenBefore:', true, 'sessionIds:', [ '5e646b7a', '5ebf8afb', 'daadd454' ]
+05-23 08:07:28.985 I/ReactNativeJS( 8308): [QUERY] success pairings.pills.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(1)"
+05-23 08:07:29.495 I/ReactNativeJS( 8308): [REALTIME] daadd454-35a8-487d-ab25-bb595abc4635 | broadcast session_updated | deck_version=52
+05-23 08:07:29.496 I/ReactNativeJS( 8308): '[ORCH-0923-DIAG] onSessionUpdated fired', { sessionId: 'daadd454-35a8-487d-ab25-bb595abc4635',
+05-23 08:07:29.496 I/ReactNativeJS( 8308):   new_deck_version: 52,
+05-23 08:07:29.496 I/ReactNativeJS( 8308):   new_deck_params_hash: '46cd137c' }
+05-23 08:07:29.496 I/ReactNativeJS( 8308): '[ORCH-0923-DIAG] session_updated invalidating deck-cards', { sessionId: 'daadd454-35a8-487d-ab25-bb595abc4635' }
+05-23 08:07:29.498 I/ReactNativeJS( 8308): [EDGE] → discover-cards | body={"session_id":"daadd454-35a8-487d-ab25-bb595abc4635","current_position":44}
+05-23 08:07:29.500 I/ReactNativeJS( 8308): '[ORCH-0923-DIAG] onSessionUpdated fired', { sessionId: 'daadd454-35a8-487d-ab25-bb595abc4635',
+05-23 08:07:29.500 I/ReactNativeJS( 8308):   new_deck_version: 52,
+05-23 08:07:29.500 I/ReactNativeJS( 8308):   new_deck_params_hash: '46cd137c' }
+05-23 08:07:29.500 I/ReactNativeJS( 8308): '[ORCH-0923-DIAG] session_updated invalidating deck-cards', { sessionId: 'daadd454-35a8-487d-ab25-bb595abc4635' }
+05-23 08:07:29.501 I/ReactNativeJS( 8308): [EDGE] → discover-cards | body={"session_id":"daadd454-35a8-487d-ab25-bb595abc4635","current_position":44}
+05-23 08:07:29.503 I/ReactNativeJS( 8308): '[ORCH-0923-DIAG] onSessionUpdated fired', { sessionId: 'daadd454-35a8-487d-ab25-bb595abc4635',
+05-23 08:07:29.503 I/ReactNativeJS( 8308):   new_deck_version: 52,
+05-23 08:07:29.503 I/ReactNativeJS( 8308):   new_deck_params_hash: '46cd137c' }
+05-23 08:07:29.503 I/ReactNativeJS( 8308): '[ORCH-0923-DIAG] session_updated invalidating deck-cards', { sessionId: 'daadd454-35a8-487d-ab25-bb595abc4635' }
+05-23 08:07:29.504 I/ReactNativeJS( 8308): [EDGE] → discover-cards | body={"session_id":"daadd454-35a8-487d-ab25-bb595abc4635","current_position":44}
+05-23 08:07:29.510 I/ReactNativeJS( 8308): '[ORCH-0923-DIAG] onSessionUpdated fired', { sessionId: 'daadd454-35a8-487d-ab25-bb595abc4635',
+05-23 08:07:29.510 I/ReactNativeJS( 8308):   new_deck_version: 52,
+05-23 08:07:29.510 I/ReactNativeJS( 8308):   new_deck_params_hash: '46cd137c' }
+05-23 08:07:29.511 I/ReactNativeJS( 8308): '[ORCH-0923-DIAG] session_updated invalidating deck-cards', { sessionId: 'daadd454-35a8-487d-ab25-bb595abc4635' }
+05-23 08:07:29.512 I/ReactNativeJS( 8308): [EDGE] → discover-cards | body={"session_id":"daadd454-35a8-487d-ab25-bb595abc4635","current_position":44}
+05-23 08:07:29.520 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:07:29.563 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "filter-outline"', { [Stack] name: 'Stack' }
+05-23 08:07:29.604 I/ReactNativeJS( 8308): [EDGE] → discover-cards | body={"session_id":"bbab695c-2bf3-4754-a613-78f7541789ff","current_position":44}
+05-23 08:07:29.604 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] check:', { isCollaborationMode: true,
+05-23 08:07:29.604 I/ReactNativeJS( 8308):   resolvedSessionId: 'daadd454',
+05-23 08:07:29.604 I/ReactNativeJS( 8308):   sessionsLoading: false,
+05-23 08:07:29.604 I/ReactNativeJS( 8308):   sessionCount: 3,
+05-23 08:07:29.604 I/ReactNativeJS( 8308):   seenRef: true }
+05-23 08:07:29.605 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] sessionExists:', true, 'seenBefore:', true, 'sessionIds:', [ '5e646b7a', '5ebf8afb', 'daadd454' ]
+05-23 08:07:29.606 I/ReactNativeJS( 8308): '[ORCH-0923-DIAG] collab params changed, invalidating deck-cards', { prev: '{"sessionId":"daadd454-35a8-487d-ab25-bb595abc4635","currentPosition":44,"deckParamsHash":"46cd137c1934d13511f62be1bd65f4573699964ba4c527847073079949eb6df7"}',
+05-23 08:07:29.606 I/ReactNativeJS( 8308):   next: '{"sessionId":"bbab695c-2bf3-4754-a613-78f7541789ff","currentPosition":44,"deckParamsHash":"46cd137c1934d13511f62be1bd65f4573699964ba4c527847073079949eb6df7"}',
+05-23 08:07:29.606 I/ReactNativeJS( 8308):   sessionId: 'bbab695c-2bf3-4754-a613-78f7541789ff' }
+05-23 08:07:29.621 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "filter-outline"', { [Stack] name: 'Stack' }
+05-23 08:07:29.830 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:07:30.046 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "filter-outline"', { [Stack] name: 'Stack' }
+05-23 08:07:30.079 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] check:', { isCollaborationMode: true,
+05-23 08:07:30.079 I/ReactNativeJS( 8308):   resolvedSessionId: 'daadd454',
+05-23 08:07:30.079 I/ReactNativeJS( 8308):   sessionsLoading: false,
+05-23 08:07:30.079 I/ReactNativeJS( 8308):   sessionCount: 3,
+05-23 08:07:30.079 I/ReactNativeJS( 8308):   seenRef: true }
+05-23 08:07:30.090 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] sessionExists:', true, 'seenBefore:', true, 'sessionIds:', [ '5e646b7a', '5ebf8afb', 'daadd454' ]
+05-23 08:07:30.091 I/ReactNativeJS( 8308): '[ORCH-0923-DIAG] collab params changed, invalidating deck-cards', { prev: '{"sessionId":"bbab695c-2bf3-4754-a613-78f7541789ff","currentPosition":44,"deckParamsHash":"46cd137c1934d13511f62be1bd65f4573699964ba4c527847073079949eb6df7"}',
+05-23 08:07:30.091 I/ReactNativeJS( 8308):   next: '{"sessionId":"daadd454-35a8-487d-ab25-bb595abc4635","currentPosition":44,"deckParamsHash":"46cd137c1934d13511f62be1bd65f4573699964ba4c527847073079949eb6df7"}',
+05-23 08:07:30.091 I/ReactNativeJS( 8308):   sessionId: 'daadd454-35a8-487d-ab25-bb595abc4635' }
+05-23 08:07:30.093 I/ReactNativeJS( 8308): [EDGE] → discover-cards | body={"session_id":"daadd454-35a8-487d-ab25-bb595abc4635","current_position":44}
+05-23 08:07:30.105 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "filter-outline"', { [Stack] name: 'Stack' }
+05-23 08:07:30.130 I/ReactNativeJS( 8308): '[AppsFlyer] Event logged (preferences_updated):', 'Success'
+05-23 08:07:30.134 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "filter-outline"', { [Stack] name: 'Stack' }
+05-23 08:07:30.336 I/ReactNativeJS( 8308): [EDGE] ← discover-cards ERROR 732ms | error="Edge Function returned a non-2xx status code"
+05-23 08:07:30.336 W/ReactNativeJS( 8308): '[DeckService/collab-v2] discover-cards error status=404:', 'Edge Function returned a non-2xx status code'
+05-23 08:07:30.342 E/ReactNativeJS( 8308): [QUERY] ERROR deck-cards.collab.bbab695c-2bf3-4754-a613-78f7541789ff.44 | DeckFetchError: discover-cards (collab v2) failed: Edge Function returned a non-2xx status code
+05-23 08:07:30.344 I/ReactNativeJS( 8308): [QUERY] ERROR deck-cards.collab.bbab695c-2bf3-4754-a613-78f7541789ff.44 | error="discover-cards (collab v2) failed: Edge Function returned a non-2xx status code"
+05-23 08:07:30.347 I/ReactNativeJS( 8308): ================================================================================
+05-23 08:07:30.347 I/ReactNativeJS( 8308): [BREADCRUMBS] Error trigger: QUERY_ERROR: deck-cards.collab.bbab695c-2bf3-4754-a613-78f7541789ff.44
+05-23 08:07:30.347 I/ReactNativeJS( 8308): Last 30 actions:
+05-23 08:07:30.347 I/ReactNativeJS( 8308):   #01 [12:06:45.010] (   +0ms) [NETWORK] unsubscribing from channel: board_session:daadd454-35a8-487d-ab25-bb595abc4635
+05-23 08:07:30.347 I/ReactNativeJS( 8308):   #02 [12:06:45.011] (   +1ms) [NETWORK] subscribing to channel: board_session:daadd454-35a8-487d-ab25-bb595abc4635
+05-23 08:07:30.347 I/ReactNativeJS( 8308):   #03 [12:06:45.041] (  +30ms) [NETWORK] → discover-cards | body={"session_id":"daadd454-35a8-487d-ab25-bb595abc4635","current_position":44}
+05-23 08:07:30.347 I/ReactNativeJS( 8308):   #04 [12:06:45.086] (  +45ms) [NETWORK] unsubscribing from channel: board_session:daadd454-35a8-487d-ab25-bb595abc4635
+05-23 08:07:30.347 I/ReactNativeJS( 8308):   #05 [12:06:45.086] (   +0ms) [NETWORK] subscribing to channel: board_session:daadd454-35a8-487d-ab25-bb595abc4635
+05-23 08:07:30.347 I/ReactNativeJS( 8308):   #06 [12:06:45.258] ( +172ms) [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:07:30.347 I/ReactNativeJS( 8308):   #07 [12:06:45.573] ( +315ms) [NETWORK] ← discover-cards OK 532ms | data="{\"success\":false,\"card\":null,\"cards\":[],\"total\":0,\"position\":45,\"current_position\":44,\"dead_end\":true,\"reason\":\"intersection_empty\",\"acceptedCount\":4,\"pending_gps_user_ids\":[],\"source\":\"orch-0909-positional-shared-deck\",\"metadata\":{\"hasMore\":false,\"poolSize\":0,\"batchSeed\":0,\"perChipBreakdown\":{}},\"sourceBreakdown\":{\"fromPool\":0,\"fromApi\":0,\"totalServed\":0,\"apiCallsMade\":0,\"cacheHits\":0,\"gapCategories\":[],\"reason\":\"Participant travel circles have no shared reachable places.\",\"path\":\"pool-empty\",\""
+05-23 08:07:30.347 I/ReactNativeJS( 8308):   #08 [12:06:45.573] (   +0ms) [QUERY] success deck-cards.collab.daadd454-35a8-487d-ab25-bb595abc4635.44 | dataType="object"
+05-23 08:07:30.347 I/ReactNativeJS( 8308):   #09 [12:06:45.657] (  +84ms) [NETWORK] ← discover-cards OK 657ms | data="{\"success\":false,\"card\":null,\"cards\":[],\"total\":0,\"position\":45,\"current_position\":44,\"dead_end\":true,\"reason\":\"intersection_empty\",\"acceptedCount\":4,\"pending_gps_user_ids\":[],\"source\":\"orch-0909-positional-shared-deck\",\"metadata\":{\"hasMore\":false,\"poolSize\":0,\"batchSeed\":0,\"perChipBreakdown\":{}},\"sourceBreakdown\":{\"fromPool\":0,\"fromApi\":0,\"totalServed\":0,\"apiCallsMade\":0,\"cacheHits\":0,\"gapCategories\":[],\"reason\":\"Participant travel circles have no shared reachable places.\",\"path\":\"pool-empty\",\""
+05-23 08:07:30.347 I/ReactNativeJS( 8308):   #10 [12:06:45.659] (   +2ms) [QUERY] success deck-cards.collab.daadd454-35a8-487d-ab25-bb595abc4635.0 | dataType="object"
+05-23 08:07:30.347 I/ReactNativeJS( 8308):   #11 [12:06:50.538] (+4879ms) [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:07:30.347 I/ReactNativeJS( 8308):   #12 [12:06:55.890] (+5352ms) [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:07:30.347 I/ReactNativeJS( 8308):   #13 [12:06:58.720] (+2830ms) [QUERY] success pairings.pills.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(1)"
+05-23 08:07:30.347 I/ReactNativeJS( 8308):   #14 [12:07:01.171] (+2451ms) [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:07:30.347 I/ReactNativeJS( 8308):   #15 [12:07:06.423] (+5252ms) [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:07:30.347 I/ReactNativeJS( 8308):   #16 [12:07:11.586] (+5163ms) [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:07:30.347 I/ReactNativeJS( 8308):   #17 [12:07:16.956] (+5370ms) [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:07:30.347 I/ReactNativeJS( 8308):   #18 [12:07:22.337] (+5381ms) [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:07:30.347 I/ReactNativeJS( 8308):   #19 [12:07:27.688] (+5351ms) [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:07:30.347 I/ReactNativeJS( 8308):   #20 [12:07:28.985] (+1297ms) [QUERY] success pairings.pills.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(1)"
+05-23 08:07:30.347 I/ReactNativeJS( 8308):   #21 [12:07:29.495] ( +510ms) [NETWORK] daadd454-35a8-487d-ab25-bb595abc4635 | broadcast session_updated | deck_version=52
+05-23 08:07:30.347 I/ReactNativeJS( 8308):   #22 [12:07:29.498] (   +3ms) [NETWORK] → discover-cards | body={"session_id":"daadd454-35a8-487d-ab25-bb595abc4635","current_position":44}
+05-23 08:07:30.347 I/ReactNativeJS( 8308):   #23 [12:07:29.502] (   +4ms) [NETWORK] → discover-cards | body={"session_id":"daadd454-35a8-487d-ab25-bb595abc4635","current_position":44}
+05-23 08:07:30.347 I/ReactNativeJS( 8308):   #24 [12:07:29.504] (   +2ms) [NETWORK] → discover-cards | body={"session_id":"daadd454-35a8-487d-ab25-bb595abc4635","current_position":44}
+05-23 08:07:30.347 I/ReactNativeJS( 8308):   #25 [12:07:29.512] (   +8ms) [NETWORK] → discover-cards | body={"session_id":"daadd454-35a8-487d-ab25-bb595abc4635","current_position":44}
+05-23 08:07:30.347 I/ReactNativeJS( 8308):   #26 [12:07:29.604] (  +92ms) [NETWORK] → discover-cards | body={"session_id":"bbab695c-2bf3-4754-a613-78f7541789ff","current_position":44}
+05-23 08:07:30.347 I/ReactNativeJS( 8308):   #27 [12:07:30.093] ( +489ms) [NETWORK] → discover-cards | body={"session_id":"daadd454-35a8-487d-ab25-bb595abc4635","current_position":44}
+05-23 08:07:30.347 I/ReactNativeJS( 8308):   #28 [12:07:30.336] ( +243ms) [NETWORK] ← discover-cards ERROR 732ms | error="Edge Function returned a non-2xx status code"
+05-23 08:07:30.347 I/ReactNativeJS( 8308):   #29 [12:07:30.344] (   +8ms) [QUERY] ERROR deck-cards.collab.bbab695c-2bf3-4754-a613-78f7541789ff.44 | error="discover-cards (collab v2) failed: Edge Function returned a non-2xx status code"
+05-23 08:07:30.347 I/ReactNativeJS( 8308):   #30 [12:07:30.344] (   +0ms) [ERROR] Query failed: deck-cards.collab.bbab695c-2bf3-4754-a613-78f7541789ff.44 — discover-cards (collab v2) failed: Edge Function returned a non-2xx status code | queryKey="deck-cards.collab.bbab695c-2bf3-4754-a613-78f7541789ff.44"
+05-23 08:07:30.347 I/ReactNativeJS( 8308): ================================================================================
+05-23 08:07:31.102 I/ReactNativeJS( 8308): [EDGE] ← discover-cards OK 1599ms | data="{\"success\":false,\"card\":null,\"cards\":[],\"total\":0,\"position\":45,\"current_position\":44,\"dead_end\":true,\"reason\":\"intersection_empty\",\"acceptedCount\":4,\"pending_gps_user_ids\":[],\"source\":\"orch-0909-positional-shared-deck\",\"metadata\":{\"hasMore\":false,\"poolSize\":0,\"batchSeed\":0,\"perChipBreakdown\":{}},\"sourceBreakdown\":{\"fromPool\":0,\"fromApi\":0,\"totalServed\":0,\"apiCallsMade\":0,\"cacheHits\":0,\"gapCategories\":[],\"reason\":\"Participant travel circles have no shared reachable places.\",\"path\":\"pool-empty\",\""
+05-23 08:07:31.102 I/ReactNativeJS( 8308): [DeckService/collab-v2] session=daadd454-35a8-487d-ab25-bb595abc4635 position=45 cards=0 path=pool-empty deadEnd=intersection_empty
+05-23 08:07:31.254 I/ReactNativeJS( 8308): [EDGE] ← discover-cards OK 1750ms | data="{\"success\":false,\"card\":null,\"cards\":[],\"total\":0,\"position\":45,\"current_position\":44,\"dead_end\":true,\"reason\":\"intersection_empty\",\"acceptedCount\":4,\"pending_gps_user_ids\":[],\"source\":\"orch-0909-positional-shared-deck\",\"metadata\":{\"hasMore\":false,\"poolSize\":0,\"batchSeed\":0,\"perChipBreakdown\":{}},\"sourceBreakdown\":{\"fromPool\":0,\"fromApi\":0,\"totalServed\":0,\"apiCallsMade\":0,\"cacheHits\":0,\"gapCategories\":[],\"reason\":\"Participant travel circles have no shared reachable places.\",\"path\":\"pool-empty\",\""
+05-23 08:07:31.258 I/ReactNativeJS( 8308): [DeckService/collab-v2] session=daadd454-35a8-487d-ab25-bb595abc4635 position=45 cards=0 path=pool-empty deadEnd=intersection_empty
+05-23 08:07:31.258 I/ReactNativeJS( 8308): [EDGE] ← discover-cards OK 1746ms | data="{\"success\":false,\"card\":null,\"cards\":[],\"total\":0,\"position\":45,\"current_position\":44,\"dead_end\":true,\"reason\":\"intersection_empty\",\"acceptedCount\":4,\"pending_gps_user_ids\":[],\"source\":\"orch-0909-positional-shared-deck\",\"metadata\":{\"hasMore\":false,\"poolSize\":0,\"batchSeed\":0,\"perChipBreakdown\":{}},\"sourceBreakdown\":{\"fromPool\":0,\"fromApi\":0,\"totalServed\":0,\"apiCallsMade\":0,\"cacheHits\":0,\"gapCategories\":[],\"reason\":\"Participant travel circles have no shared reachable places.\",\"path\":\"pool-empty\",\""
+05-23 08:07:31.258 I/ReactNativeJS( 8308): [DeckService/collab-v2] session=daadd454-35a8-487d-ab25-bb595abc4635 position=45 cards=0 path=pool-empty deadEnd=intersection_empty
+05-23 08:07:31.259 I/ReactNativeJS( 8308): [QUERY] success friends.requests.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(0)"
+05-23 08:07:31.259 I/ReactNativeJS( 8308): [EDGE] ← discover-cards OK 1166ms | data="{\"success\":false,\"card\":null,\"cards\":[],\"total\":0,\"position\":45,\"current_position\":44,\"dead_end\":true,\"reason\":\"intersection_empty\",\"acceptedCount\":4,\"pending_gps_user_ids\":[],\"source\":\"orch-0909-positional-shared-deck\",\"metadata\":{\"hasMore\":false,\"poolSize\":0,\"batchSeed\":0,\"perChipBreakdown\":{}},\"sourceBreakdown\":{\"fromPool\":0,\"fromApi\":0,\"totalServed\":0,\"apiCallsMade\":0,\"cacheHits\":0,\"gapCategories\":[],\"reason\":\"Participant travel circles have no shared reachable places.\",\"path\":\"pool-empty\",\""
+05-23 08:07:31.259 I/ReactNativeJS( 8308): [DeckService/collab-v2] session=daadd454-35a8-487d-ab25-bb595abc4635 position=45 cards=0 path=pool-empty deadEnd=intersection_empty
+05-23 08:07:31.259 I/ReactNativeJS( 8308): [QUERY] success deck-cards.collab.daadd454-35a8-487d-ab25-bb595abc4635.44 | dataType="object"
+05-23 08:07:31.283 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "filter-outline"', { [Stack] name: 'Stack' }
+05-23 08:07:31.652 I/ReactNativeJS( 8308): [EDGE] ← discover-cards OK 2154ms | data="{\"success\":false,\"card\":null,\"cards\":[],\"total\":0,\"position\":45,\"current_position\":44,\"dead_end\":true,\"reason\":\"intersection_empty\",\"acceptedCount\":4,\"pending_gps_user_ids\":[],\"source\":\"orch-0909-positional-shared-deck\",\"metadata\":{\"hasMore\":false,\"poolSize\":0,\"batchSeed\":0,\"perChipBreakdown\":{}},\"sourceBreakdown\":{\"fromPool\":0,\"fromApi\":0,\"totalServed\":0,\"apiCallsMade\":0,\"cacheHits\":0,\"gapCategories\":[],\"reason\":\"Participant travel circles have no shared reachable places.\",\"path\":\"pool-empty\",\""
+05-23 08:07:31.652 I/ReactNativeJS( 8308): [DeckService/collab-v2] session=daadd454-35a8-487d-ab25-bb595abc4635 position=45 cards=0 path=pool-empty deadEnd=intersection_empty
+05-23 08:07:32.835 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:07:38.155 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:07:39.983 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:07:40.027 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "filter-outline"', { [Stack] name: 'Stack' }
+05-23 08:07:40.051 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] check:', { isCollaborationMode: true,
+05-23 08:07:40.051 I/ReactNativeJS( 8308):   resolvedSessionId: 'daadd454',
+05-23 08:07:40.051 I/ReactNativeJS( 8308):   sessionsLoading: false,
+05-23 08:07:40.051 I/ReactNativeJS( 8308):   sessionCount: 3,
+05-23 08:07:40.051 I/ReactNativeJS( 8308):   seenRef: true }
+05-23 08:07:40.052 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] sessionExists:', true, 'seenBefore:', true, 'sessionIds:', [ '5e646b7a', '5ebf8afb', 'daadd454' ]
+05-23 08:07:43.402 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:07:48.702 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:07:53.869 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:07:58.140 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:07:58.182 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "filter-outline"', { [Stack] name: 'Stack' }
+05-23 08:07:58.202 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] check:', { isCollaborationMode: true,
+05-23 08:07:58.202 I/ReactNativeJS( 8308):   resolvedSessionId: 'daadd454',
+05-23 08:07:58.202 I/ReactNativeJS( 8308):   sessionsLoading: false,
+05-23 08:07:58.202 I/ReactNativeJS( 8308):   sessionCount: 3,
+05-23 08:07:58.202 I/ReactNativeJS( 8308):   seenRef: true }
+05-23 08:07:58.202 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] sessionExists:', true, 'seenBefore:', true, 'sessionIds:', [ '5e646b7a', '5ebf8afb', 'daadd454' ]
+05-23 08:07:59.051 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:07:59.218 I/ReactNativeJS( 8308): [QUERY] success pairings.pills.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(1)"
+05-23 08:08:04.252 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:08:09.452 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:08:09.888 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:08:09.931 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "filter-outline"', { [Stack] name: 'Stack' }
+05-23 08:08:09.947 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] check:', { isCollaborationMode: true,
+05-23 08:08:09.947 I/ReactNativeJS( 8308):   resolvedSessionId: 'daadd454',
+05-23 08:08:09.947 I/ReactNativeJS( 8308):   sessionsLoading: false,
+05-23 08:08:09.947 I/ReactNativeJS( 8308):   sessionCount: 3,
+05-23 08:08:09.947 I/ReactNativeJS( 8308):   seenRef: true }
+05-23 08:08:09.947 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] sessionExists:', true, 'seenBefore:', true, 'sessionIds:', [ '5e646b7a', '5ebf8afb', 'daadd454' ]
+05-23 08:08:14.669 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:08:20.579 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:08:25.974 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:08:28.131 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:08:28.515 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "filter-outline"', { [Stack] name: 'Stack' }
+05-23 08:08:28.661 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] check:', { isCollaborationMode: true,
+05-23 08:08:28.661 I/ReactNativeJS( 8308):   resolvedSessionId: 'daadd454',
+05-23 08:08:28.661 I/ReactNativeJS( 8308):   sessionsLoading: false,
+05-23 08:08:28.661 I/ReactNativeJS( 8308):   sessionCount: 3,
+05-23 08:08:28.661 I/ReactNativeJS( 8308):   seenRef: true }
+05-23 08:08:28.663 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] sessionExists:', true, 'seenBefore:', true, 'sessionIds:', [ '5e646b7a', '5ebf8afb', 'daadd454' ]
+05-23 08:08:29.686 I/ReactNativeJS( 8308): [QUERY] success pairings.pills.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(1)"
+05-23 08:08:30.870 I/ReactNativeJS( 8308): [QUERY] success friends.requests.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(0)"
+05-23 08:08:31.137 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:08:33.078 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:08:33.647 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "filter-outline"', { [Stack] name: 'Stack' }
+05-23 08:08:33.837 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] check:', { isCollaborationMode: true,
+05-23 08:08:33.837 I/ReactNativeJS( 8308):   resolvedSessionId: 'daadd454',
+05-23 08:08:33.837 I/ReactNativeJS( 8308):   sessionsLoading: false,
+05-23 08:08:33.837 I/ReactNativeJS( 8308):   sessionCount: 3,
+05-23 08:08:33.837 I/ReactNativeJS( 8308):   seenRef: true }
+05-23 08:08:33.838 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] sessionExists:', true, 'seenBefore:', true, 'sessionIds:', [ '5e646b7a', '5ebf8afb', 'daadd454' ]
+05-23 08:08:34.452 I/ReactNativeJS( 8308): [REALTIME] daadd454-35a8-487d-ab25-bb595abc4635 | broadcast session_updated | deck_version=53
+05-23 08:08:34.453 I/ReactNativeJS( 8308): '[ORCH-0923-DIAG] onSessionUpdated fired', { sessionId: 'daadd454-35a8-487d-ab25-bb595abc4635',
+05-23 08:08:34.453 I/ReactNativeJS( 8308):   new_deck_version: 53,
+05-23 08:08:34.453 I/ReactNativeJS( 8308):   new_deck_params_hash: 'a3d20e25' }
+05-23 08:08:34.453 I/ReactNativeJS( 8308): '[ORCH-0923-DIAG] session_updated invalidating deck-cards', { sessionId: 'daadd454-35a8-487d-ab25-bb595abc4635' }
+05-23 08:08:34.491 I/ReactNativeJS( 8308): [EDGE] → discover-cards | body={"session_id":"daadd454-35a8-487d-ab25-bb595abc4635","current_position":44}
+05-23 08:08:34.494 I/ReactNativeJS( 8308): '[ORCH-0923-DIAG] onSessionUpdated fired', { sessionId: 'daadd454-35a8-487d-ab25-bb595abc4635',
+05-23 08:08:34.494 I/ReactNativeJS( 8308):   new_deck_version: 53,
+05-23 08:08:34.494 I/ReactNativeJS( 8308):   new_deck_params_hash: 'a3d20e25' }
+05-23 08:08:34.495 I/ReactNativeJS( 8308): '[ORCH-0923-DIAG] session_updated invalidating deck-cards', { sessionId: 'daadd454-35a8-487d-ab25-bb595abc4635' }
+05-23 08:08:34.496 I/ReactNativeJS( 8308): [EDGE] → discover-cards | body={"session_id":"daadd454-35a8-487d-ab25-bb595abc4635","current_position":44}
+05-23 08:08:34.499 I/ReactNativeJS( 8308): '[ORCH-0923-DIAG] onSessionUpdated fired', { sessionId: 'daadd454-35a8-487d-ab25-bb595abc4635',
+05-23 08:08:34.499 I/ReactNativeJS( 8308):   new_deck_version: 53,
+05-23 08:08:34.499 I/ReactNativeJS( 8308):   new_deck_params_hash: 'a3d20e25' }
+05-23 08:08:34.499 I/ReactNativeJS( 8308): '[ORCH-0923-DIAG] session_updated invalidating deck-cards', { sessionId: 'daadd454-35a8-487d-ab25-bb595abc4635' }
+05-23 08:08:34.500 I/ReactNativeJS( 8308): [EDGE] → discover-cards | body={"session_id":"daadd454-35a8-487d-ab25-bb595abc4635","current_position":44}
+05-23 08:08:34.506 I/ReactNativeJS( 8308): '[ORCH-0923-DIAG] onSessionUpdated fired', { sessionId: 'daadd454-35a8-487d-ab25-bb595abc4635',
+05-23 08:08:34.506 I/ReactNativeJS( 8308):   new_deck_version: 53,
+05-23 08:08:34.506 I/ReactNativeJS( 8308):   new_deck_params_hash: 'a3d20e25' }
+05-23 08:08:34.507 I/ReactNativeJS( 8308): '[ORCH-0923-DIAG] session_updated invalidating deck-cards', { sessionId: 'daadd454-35a8-487d-ab25-bb595abc4635' }
+05-23 08:08:34.508 I/ReactNativeJS( 8308): [EDGE] → discover-cards | body={"session_id":"daadd454-35a8-487d-ab25-bb595abc4635","current_position":44}
+05-23 08:08:34.536 I/ReactNativeJS( 8308): [REALTIME] daadd454-35a8-487d-ab25-bb595abc4635 | broadcast session_updated | deck_version=52
+05-23 08:08:34.538 I/ReactNativeJS( 8308): '[ORCH-0923-DIAG] onSessionUpdated fired', { sessionId: 'daadd454-35a8-487d-ab25-bb595abc4635',
+05-23 08:08:34.538 I/ReactNativeJS( 8308):   new_deck_version: 52,
+05-23 08:08:34.538 I/ReactNativeJS( 8308):   new_deck_params_hash: '46cd137c' }
+05-23 08:08:34.539 I/ReactNativeJS( 8308): '[ORCH-0923-DIAG] session_updated invalidating deck-cards', { sessionId: 'daadd454-35a8-487d-ab25-bb595abc4635' }
+05-23 08:08:34.545 I/ReactNativeJS( 8308): [EDGE] → discover-cards | body={"session_id":"daadd454-35a8-487d-ab25-bb595abc4635","current_position":44}
+05-23 08:08:34.554 I/ReactNativeJS( 8308): '[ORCH-0923-DIAG] onSessionUpdated fired', { sessionId: 'daadd454-35a8-487d-ab25-bb595abc4635',
+05-23 08:08:34.554 I/ReactNativeJS( 8308):   new_deck_version: 52,
+05-23 08:08:34.554 I/ReactNativeJS( 8308):   new_deck_params_hash: '46cd137c' }
+05-23 08:08:34.559 I/ReactNativeJS( 8308): '[ORCH-0923-DIAG] session_updated invalidating deck-cards', { sessionId: 'daadd454-35a8-487d-ab25-bb595abc4635' }
+05-23 08:08:34.581 I/ReactNativeJS( 8308): [EDGE] → discover-cards | body={"session_id":"daadd454-35a8-487d-ab25-bb595abc4635","current_position":44}
+05-23 08:08:34.586 I/ReactNativeJS( 8308): '[ORCH-0923-DIAG] onSessionUpdated fired', { sessionId: 'daadd454-35a8-487d-ab25-bb595abc4635',
+05-23 08:08:34.586 I/ReactNativeJS( 8308):   new_deck_version: 52,
+05-23 08:08:34.586 I/ReactNativeJS( 8308):   new_deck_params_hash: '46cd137c' }
+05-23 08:08:34.588 I/ReactNativeJS( 8308): '[ORCH-0923-DIAG] session_updated invalidating deck-cards', { sessionId: 'daadd454-35a8-487d-ab25-bb595abc4635' }
+05-23 08:08:34.594 I/ReactNativeJS( 8308): [EDGE] → discover-cards | body={"session_id":"daadd454-35a8-487d-ab25-bb595abc4635","current_position":44}
+05-23 08:08:34.599 I/ReactNativeJS( 8308): '[ORCH-0923-DIAG] onSessionUpdated fired', { sessionId: 'daadd454-35a8-487d-ab25-bb595abc4635',
+05-23 08:08:34.599 I/ReactNativeJS( 8308):   new_deck_version: 52,
+05-23 08:08:34.599 I/ReactNativeJS( 8308):   new_deck_params_hash: '46cd137c' }
+05-23 08:08:34.602 I/ReactNativeJS( 8308): '[ORCH-0923-DIAG] session_updated invalidating deck-cards', { sessionId: 'daadd454-35a8-487d-ab25-bb595abc4635' }
+05-23 08:08:34.603 I/ReactNativeJS( 8308): [EDGE] → discover-cards | body={"session_id":"daadd454-35a8-487d-ab25-bb595abc4635","current_position":44}
+05-23 08:08:34.634 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:08:34.749 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "filter-outline"', { [Stack] name: 'Stack' }
+05-23 08:08:34.820 I/ReactNativeJS( 8308): [EDGE] → discover-cards | body={"session_id":"cc03e7d5-0d5d-4357-b962-6d9f2c00dde6","current_position":44}
+05-23 08:08:34.826 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] check:', { isCollaborationMode: true,
+05-23 08:08:34.826 I/ReactNativeJS( 8308):   resolvedSessionId: 'daadd454',
+05-23 08:08:34.826 I/ReactNativeJS( 8308):   sessionsLoading: false,
+05-23 08:08:34.826 I/ReactNativeJS( 8308):   sessionCount: 3,
+05-23 08:08:34.826 I/ReactNativeJS( 8308):   seenRef: true }
+05-23 08:08:34.828 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] sessionExists:', true, 'seenBefore:', true, 'sessionIds:', [ '5e646b7a', '5ebf8afb', 'daadd454' ]
+05-23 08:08:34.832 I/ReactNativeJS( 8308): '[ORCH-0923-DIAG] collab params changed, invalidating deck-cards', { prev: '{"sessionId":"daadd454-35a8-487d-ab25-bb595abc4635","currentPosition":44,"deckParamsHash":"46cd137c1934d13511f62be1bd65f4573699964ba4c527847073079949eb6df7"}',
+05-23 08:08:34.832 I/ReactNativeJS( 8308):   next: '{"sessionId":"cc03e7d5-0d5d-4357-b962-6d9f2c00dde6","currentPosition":44,"deckParamsHash":"46cd137c1934d13511f62be1bd65f4573699964ba4c527847073079949eb6df7"}',
+05-23 08:08:34.832 I/ReactNativeJS( 8308):   sessionId: 'cc03e7d5-0d5d-4357-b962-6d9f2c00dde6' }
+05-23 08:08:34.878 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "filter-outline"', { [Stack] name: 'Stack' }
+05-23 08:08:35.612 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:08:35.723 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "filter-outline"', { [Stack] name: 'Stack' }
+05-23 08:08:35.754 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] check:', { isCollaborationMode: true,
+05-23 08:08:35.754 I/ReactNativeJS( 8308):   resolvedSessionId: 'daadd454',
+05-23 08:08:35.754 I/ReactNativeJS( 8308):   sessionsLoading: false,
+05-23 08:08:35.754 I/ReactNativeJS( 8308):   sessionCount: 3,
+05-23 08:08:35.754 I/ReactNativeJS( 8308):   seenRef: true }
+05-23 08:08:35.756 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] sessionExists:', true, 'seenBefore:', true, 'sessionIds:', [ '5e646b7a', '5ebf8afb', 'daadd454' ]
+05-23 08:08:36.288 I/ReactNativeJS( 8308): [EDGE] ← discover-cards OK 1788ms | data="{\"success\":false,\"card\":null,\"cards\":[],\"total\":0,\"position\":45,\"current_position\":44,\"dead_end\":true,\"reason\":\"intersection_empty\",\"acceptedCount\":4,\"pending_gps_user_ids\":[],\"source\":\"orch-0909-positional-shared-deck\",\"metadata\":{\"hasMore\":false,\"poolSize\":0,\"batchSeed\":0,\"perChipBreakdown\":{}},\"sourceBreakdown\":{\"fromPool\":0,\"fromApi\":0,\"totalServed\":0,\"apiCallsMade\":0,\"cacheHits\":0,\"gapCategories\":[],\"reason\":\"Participant travel circles have no shared reachable places.\",\"path\":\"pool-empty\",\""
+05-23 08:08:36.288 I/ReactNativeJS( 8308): [DeckService/collab-v2] session=daadd454-35a8-487d-ab25-bb595abc4635 position=45 cards=0 path=pool-empty deadEnd=intersection_empty
+05-23 08:08:36.355 I/ReactNativeJS( 8308): [EDGE] ← discover-cards OK 1859ms | data="{\"success\":false,\"card\":null,\"cards\":[],\"total\":0,\"position\":45,\"current_position\":44,\"dead_end\":true,\"reason\":\"intersection_empty\",\"acceptedCount\":4,\"pending_gps_user_ids\":[],\"source\":\"orch-0909-positional-shared-deck\",\"metadata\":{\"hasMore\":false,\"poolSize\":0,\"batchSeed\":0,\"perChipBreakdown\":{}},\"sourceBreakdown\":{\"fromPool\":0,\"fromApi\":0,\"totalServed\":0,\"apiCallsMade\":0,\"cacheHits\":0,\"gapCategories\":[],\"reason\":\"Participant travel circles have no shared reachable places.\",\"path\":\"pool-empty\",\""
+05-23 08:08:36.355 I/ReactNativeJS( 8308): [DeckService/collab-v2] session=daadd454-35a8-487d-ab25-bb595abc4635 position=45 cards=0 path=pool-empty deadEnd=intersection_empty
+05-23 08:08:36.432 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "filter-outline"', { [Stack] name: 'Stack' }
+05-23 08:08:36.474 I/ReactNativeJS( 8308): '[ORCH-0923-DIAG] collab params changed, invalidating deck-cards', { prev: '{"sessionId":"cc03e7d5-0d5d-4357-b962-6d9f2c00dde6","currentPosition":44,"deckParamsHash":"46cd137c1934d13511f62be1bd65f4573699964ba4c527847073079949eb6df7"}',
+05-23 08:08:36.474 I/ReactNativeJS( 8308):   next: '{"sessionId":"daadd454-35a8-487d-ab25-bb595abc4635","currentPosition":44,"deckParamsHash":"a3d20e25de4215415fb0e4c98c27235a7763bca8991bddc4f5928ff046ecd824"}',
+05-23 08:08:36.474 I/ReactNativeJS( 8308):   sessionId: 'daadd454-35a8-487d-ab25-bb595abc4635' }
+05-23 08:08:36.480 I/ReactNativeJS( 8308): [EDGE] → discover-cards | body={"session_id":"daadd454-35a8-487d-ab25-bb595abc4635","current_position":44}
+05-23 08:08:36.504 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "filter-outline"', { [Stack] name: 'Stack' }
+05-23 08:08:36.548 I/ReactNativeJS( 8308): [EDGE] ← discover-cards OK 2040ms | data="{\"success\":false,\"card\":null,\"cards\":[],\"total\":0,\"position\":45,\"current_position\":44,\"dead_end\":true,\"reason\":\"intersection_empty\",\"acceptedCount\":4,\"pending_gps_user_ids\":[],\"source\":\"orch-0909-positional-shared-deck\",\"metadata\":{\"hasMore\":false,\"poolSize\":0,\"batchSeed\":0,\"perChipBreakdown\":{}},\"sourceBreakdown\":{\"fromPool\":0,\"fromApi\":0,\"totalServed\":0,\"apiCallsMade\":0,\"cacheHits\":0,\"gapCategories\":[],\"reason\":\"Participant travel circles have no shared reachable places.\",\"path\":\"pool-empty\",\""
+05-23 08:08:36.549 I/ReactNativeJS( 8308): [DeckService/collab-v2] session=daadd454-35a8-487d-ab25-bb595abc4635 position=45 cards=0 path=pool-empty deadEnd=intersection_empty
+05-23 08:08:36.556 I/ReactNativeJS( 8308): [EDGE] ← discover-cards OK 2010ms | data="{\"success\":false,\"card\":null,\"cards\":[],\"total\":0,\"position\":45,\"current_position\":44,\"dead_end\":true,\"reason\":\"intersection_empty\",\"acceptedCount\":4,\"pending_gps_user_ids\":[],\"source\":\"orch-0909-positional-shared-deck\",\"metadata\":{\"hasMore\":false,\"poolSize\":0,\"batchSeed\":0,\"perChipBreakdown\":{}},\"sourceBreakdown\":{\"fromPool\":0,\"fromApi\":0,\"totalServed\":0,\"apiCallsMade\":0,\"cacheHits\":0,\"gapCategories\":[],\"reason\":\"Participant travel circles have no shared reachable places.\",\"path\":\"pool-empty\",\""
+05-23 08:08:36.558 I/ReactNativeJS( 8308): [DeckService/collab-v2] session=daadd454-35a8-487d-ab25-bb595abc4635 position=45 cards=0 path=pool-empty deadEnd=intersection_empty
+05-23 08:08:36.573 I/ReactNativeJS( 8308): [EDGE] ← discover-cards OK 1989ms | data="{\"success\":false,\"card\":null,\"cards\":[],\"total\":0,\"position\":45,\"current_position\":44,\"dead_end\":true,\"reason\":\"intersection_empty\",\"acceptedCount\":4,\"pending_gps_user_ids\":[],\"source\":\"orch-0909-positional-shared-deck\",\"metadata\":{\"hasMore\":false,\"poolSize\":0,\"batchSeed\":0,\"perChipBreakdown\":{}},\"sourceBreakdown\":{\"fromPool\":0,\"fromApi\":0,\"totalServed\":0,\"apiCallsMade\":0,\"cacheHits\":0,\"gapCategories\":[],\"reason\":\"Participant travel circles have no shared reachable places.\",\"path\":\"pool-empty\",\""
+05-23 08:08:36.573 I/ReactNativeJS( 8308): [DeckService/collab-v2] session=daadd454-35a8-487d-ab25-bb595abc4635 position=45 cards=0 path=pool-empty deadEnd=intersection_empty
+05-23 08:08:36.617 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "filter-outline"', { [Stack] name: 'Stack' }
+05-23 08:08:36.753 I/ReactNativeJS( 8308): [EDGE] ← discover-cards ERROR 1933ms | error="Edge Function returned a non-2xx status code"
+05-23 08:08:36.755 W/ReactNativeJS( 8308): '[DeckService/collab-v2] discover-cards error status=404:', 'Edge Function returned a non-2xx status code'
+05-23 08:08:36.757 E/ReactNativeJS( 8308): [QUERY] ERROR deck-cards.collab.cc03e7d5-0d5d-4357-b962-6d9f2c00dde6.44 | DeckFetchError: discover-cards (collab v2) failed: Edge Function returned a non-2xx status code
+05-23 08:08:36.757 I/ReactNativeJS( 8308): [QUERY] ERROR deck-cards.collab.cc03e7d5-0d5d-4357-b962-6d9f2c00dde6.44 | error="discover-cards (collab v2) failed: Edge Function returned a non-2xx status code"
+05-23 08:08:36.758 I/ReactNativeJS( 8308): ================================================================================
+05-23 08:08:36.758 I/ReactNativeJS( 8308): [BREADCRUMBS] Error trigger: QUERY_ERROR: deck-cards.collab.cc03e7d5-0d5d-4357-b962-6d9f2c00dde6.44
+05-23 08:08:36.758 I/ReactNativeJS( 8308): Last 30 actions:
+05-23 08:08:36.758 I/ReactNativeJS( 8308):   #01 [12:07:59.051] (   +0ms) [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:08:36.758 I/ReactNativeJS( 8308):   #02 [12:07:59.218] ( +167ms) [QUERY] success pairings.pills.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(1)"
+05-23 08:08:36.758 I/ReactNativeJS( 8308):   #03 [12:08:04.252] (+5034ms) [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:08:36.758 I/ReactNativeJS( 8308):   #04 [12:08:09.452] (+5200ms) [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:08:36.758 I/ReactNativeJS( 8308):   #05 [12:08:14.669] (+5217ms) [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:08:36.758 I/ReactNativeJS( 8308):   #06 [12:08:20.579] (+5910ms) [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:08:36.758 I/ReactNativeJS( 8308):   #07 [12:08:25.974] (+5395ms) [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:08:36.758 I/ReactNativeJS( 8308):   #08 [12:08:29.686] (+3712ms) [QUERY] success pairings.pills.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(1)"
+05-23 08:08:36.758 I/ReactNativeJS( 8308):   #09 [12:08:30.870] (+1184ms) [QUERY] success friends.requests.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(0)"
+05-23 08:08:36.758 I/ReactNativeJS( 8308):   #10 [12:08:31.137] ( +267ms) [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:08:36.758 I/ReactNativeJS( 8308):   #11 [12:08:34.452] (+3315ms) [NETWORK] daadd454-35a8-487d-ab25-bb595abc4635 | broadcast session_updated | deck_version=53
+05-23 08:08:36.758 I/ReactNativeJS( 8308):   #12 [12:08:34.491] (  +39ms) [NETWORK] → discover-cards | body={"session_id":"daadd454-35a8-487d-ab25-bb595abc4635","current_position":44}
+05-23 08:08:36.758 I/ReactNativeJS( 8308):   #13 [12:08:34.496] (   +5ms) [NETWORK] → discover-cards | body={"session_id":"daadd454-35a8-487d-ab25-bb595abc4635","current_position":44}
+05-23 08:08:36.758 I/ReactNativeJS( 8308):   #14 [12:08:34.500] (   +4ms) [NETWORK] → discover-cards | body={"session_id":"daadd454-35a8-487d-ab25-bb595abc4635","current_position":44}
+05-23 08:08:36.758 I/ReactNativeJS( 8308):   #15 [12:08:34.508] (   +8ms) [NETWORK] → discover-cards | body={"session_id":"daadd454-35a8-487d-ab25-bb595abc4635","current_position":44}
+05-23 08:08:36.758 I/ReactNativeJS( 8308):   #16 [12:08:34.536] (  +28ms) [NETWORK] daadd454-35a8-487d-ab25-bb595abc4635 | broadcast session_updated | deck_version=52
+05-23 08:08:36.758 I/ReactNativeJS( 8308):   #17 [12:08:34.545] (   +9ms) [NETWORK] → discover-cards | body={"session_id":"daadd454-35a8-487d-ab25-bb595abc4635","current_position":44}
+05-23 08:08:36.758 I/ReactNativeJS( 8308):   #18 [12:08:34.581] (  +36ms) [NETWORK] → discover-cards | body={"session_id":"daadd454-35a8-487d-ab25-bb595abc4635","current_position":44}
+05-23 08:08:36.758 I/ReactNativeJS( 8308):   #19 [12:08:34.594] (  +13ms) [NETWORK] → discover-cards | body={"session_id":"daadd454-35a8-487d-ab25-bb595abc4635","current_position":44}
+05-23 08:08:36.758 I/ReactNativeJS( 8308):   #20 [12:08:34.603] (   +9ms) [NETWORK] → discover-cards | body={"session_id":"daadd454-35a8-487d-ab25-bb595abc4635","current_position":44}
+05-23 08:08:36.758 I/ReactNativeJS( 8308):   #21 [12:08:34.820] ( +217ms) [NETWORK] → discover-cards | body={"session_id":"cc03e7d5-0d5d-4357-b962-6d9f2c00dde6","current_position":44}
+05-23 08:08:36.758 I/ReactNativeJS( 8308):   #22 [12:08:36.288] (+1468ms) [NETWORK] ← discover-cards OK 1788ms | data="{\"success\":false,\"card\":null,\"cards\":[],\"total\":0,\"position\":45,\"current_position\":44,\"dead_end\":true,\"reason\":\"intersection_empty\",\"acceptedCount\":4,\"pending_gps_user_ids\":[],\"source\":\"orch-0909-positional-shared-deck\",\"metadata\":{\"hasMore\":false,\"poolSize\":0,\"batchSeed\":0,\"perChipBreakdown\":{}},\"sourceBreakdown\":{\"fromPool\":0,\"fromApi\":0,\"totalServed\":0,\"apiCallsMade\":0,\"cacheHits\":0,\"gapCategories\":[],\"reason\":\"Participant travel circles have no shared reachable places.\",\"path\":\"pool-empty\",\""
+05-23 08:08:36.758 I/ReactNativeJS( 8308):   #23 [12:08:36.355] (  +67ms) [NETWORK] ← discover-cards OK 1859ms | data="{\"success\":false,\"card\":null,\"cards\":[],\"total\":0,\"position\":45,\"current_position\":44,\"dead_end\":true,\"reason\":\"intersection_empty\",\"acceptedCount\":4,\"pending_gps_user_ids\":[],\"source\":\"orch-0909-positional-shared-deck\",\"metadata\":{\"hasMore\":false,\"poolSize\":0,\"batchSeed\":0,\"perChipBreakdown\":{}},\"sourceBreakdown\":{\"fromPool\":0,\"fromApi\":0,\"totalServed\":0,\"apiCallsMade\":0,\"cacheHits\":0,\"gapCategories\":[],\"reason\":\"Participant travel circles have no shared reachable places.\",\"path\":\"pool-empty\",\""
+05-23 08:08:36.758 I/ReactNativeJS( 8308):   #24 [12:08:36.480] ( +125ms) [NETWORK] → discover-cards | body={"session_id":"daadd454-35a8-487d-ab25-bb595abc4635","current_position":44}
+05-23 08:08:36.758 I/ReactNativeJS( 8308):   #25 [12:08:36.548] (  +68ms) [NETWORK] ← discover-cards OK 2040ms | data="{\"success\":false,\"card\":null,\"cards\":[],\"total\":0,\"position\":45,\"current_position\":44,\"dead_end\":true,\"reason\":\"intersection_empty\",\"acceptedCount\":4,\"pending_gps_user_ids\":[],\"source\":\"orch-0909-positional-shared-deck\",\"metadata\":{\"hasMore\":false,\"poolSize\":0,\"batchSeed\":0,\"perChipBreakdown\":{}},\"sourceBreakdown\":{\"fromPool\":0,\"fromApi\":0,\"totalServed\":0,\"apiCallsMade\":0,\"cacheHits\":0,\"gapCategories\":[],\"reason\":\"Participant travel circles have no shared reachable places.\",\"path\":\"pool-empty\",\""
+05-23 08:08:36.758 I/ReactNativeJS( 8308):   #26 [12:08:36.556] (   +8ms) [NETWORK] ← discover-cards OK 2010ms | data="{\"success\":false,\"card\":null,\"cards\":[],\"total\":0,\"position\":45,\"current_position\":44,\"dead_end\":true,\"reason\":\"intersection_empty\",\"acceptedCount\":4,\"pending_gps_user_ids\":[],\"source\":\"orch-0909-positional-shared-deck\",\"metadata\":{\"hasMore\":false,\"poolSize\":0,\"batchSeed\":0,\"perChipBreakdown\":{}},\"sourceBreakdown\":{\"fromPool\":0,\"fromApi\":0,\"totalServed\":0,\"apiCallsMade\":0,\"cacheHits\":0,\"gapCategories\":[],\"reason\":\"Participant travel circles have no shared reachable places.\",\"path\":\"pool-empty\",\""
+05-23 08:08:36.758 I/ReactNativeJS( 8308):   #27 [12:08:36.573] (  +17ms) [NETWORK] ← discover-cards OK 1989ms | data="{\"success\":false,\"card\":null,\"cards\":[],\"total\":0,\"position\":45,\"current_position\":44,\"dead_end\":true,\"reason\":\"intersection_empty\",\"acceptedCount\":4,\"pending_gps_user_ids\":[],\"source\":\"orch-0909-positional-shared-deck\",\"metadata\":{\"hasMore\":false,\"poolSize\":0,\"batchSeed\":0,\"perChipBreakdown\":{}},\"sourceBreakdown\":{\"fromPool\":0,\"fromApi\":0,\"totalServed\":0,\"apiCallsMade\":0,\"cacheHits\":0,\"gapCategories\":[],\"reason\":\"Participant travel circles have no shared reachable places.\",\"path\":\"pool-empty\",\""
+05-23 08:08:36.758 I/ReactNativeJS( 8308):   #28 [12:08:36.754] ( +181ms) [NETWORK] ← discover-cards ERROR 1933ms | error="Edge Function returned a non-2xx status code"
+05-23 08:08:36.758 I/ReactNativeJS( 8308):   #29 [12:08:36.757] (   +3ms) [QUERY] ERROR deck-cards.collab.cc03e7d5-0d5d-4357-b962-6d9f2c00dde6.44 | error="discover-cards (collab v2) failed: Edge Function returned a non-2xx status code"
+05-23 08:08:36.758 I/ReactNativeJS( 8308):   #30 [12:08:36.757] (   +0ms) [ERROR] Query failed: deck-cards.collab.cc03e7d5-0d5d-4357-b962-6d9f2c00dde6.44 — discover-cards (collab v2) failed: Edge Function returned a non-2xx status code | queryKey="deck-cards.collab.cc03e7d5-0d5d-4357-b962-6d9f2c00dde6.44"
+05-23 08:08:36.758 I/ReactNativeJS( 8308): ================================================================================
+05-23 08:08:36.862 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:08:37.162 I/ReactNativeJS( 8308): [EDGE] ← discover-cards OK 2671ms | data="{\"success\":false,\"card\":null,\"cards\":[],\"total\":0,\"position\":45,\"current_position\":44,\"dead_end\":true,\"reason\":\"intersection_empty\",\"acceptedCount\":4,\"pending_gps_user_ids\":[],\"source\":\"orch-0909-positional-shared-deck\",\"metadata\":{\"hasMore\":false,\"poolSize\":0,\"batchSeed\":0,\"perChipBreakdown\":{}},\"sourceBreakdown\":{\"fromPool\":0,\"fromApi\":0,\"totalServed\":0,\"apiCallsMade\":0,\"cacheHits\":0,\"gapCategories\":[],\"reason\":\"Participant travel circles have no shared reachable places.\",\"path\":\"pool-empty\",\""
+05-23 08:08:37.162 I/ReactNativeJS( 8308): [DeckService/collab-v2] session=daadd454-35a8-487d-ab25-bb595abc4635 position=45 cards=0 path=pool-empty deadEnd=intersection_empty
+05-23 08:08:37.163 I/ReactNativeJS( 8308): [EDGE] ← discover-cards OK 2569ms | data="{\"success\":false,\"card\":null,\"cards\":[],\"total\":0,\"position\":45,\"current_position\":44,\"dead_end\":true,\"reason\":\"intersection_empty\",\"acceptedCount\":4,\"pending_gps_user_ids\":[],\"source\":\"orch-0909-positional-shared-deck\",\"metadata\":{\"hasMore\":false,\"poolSize\":0,\"batchSeed\":0,\"perChipBreakdown\":{}},\"sourceBreakdown\":{\"fromPool\":0,\"fromApi\":0,\"totalServed\":0,\"apiCallsMade\":0,\"cacheHits\":0,\"gapCategories\":[],\"reason\":\"Participant travel circles have no shared reachable places.\",\"path\":\"pool-empty\",\""
+05-23 08:08:37.163 I/ReactNativeJS( 8308): [DeckService/collab-v2] session=daadd454-35a8-487d-ab25-bb595abc4635 position=45 cards=0 path=pool-empty deadEnd=intersection_empty
+05-23 08:08:37.163 I/ReactNativeJS( 8308): [EDGE] ← discover-cards OK 2560ms | data="{\"success\":false,\"card\":null,\"cards\":[],\"total\":0,\"position\":45,\"current_position\":44,\"dead_end\":true,\"reason\":\"intersection_empty\",\"acceptedCount\":4,\"pending_gps_user_ids\":[],\"source\":\"orch-0909-positional-shared-deck\",\"metadata\":{\"hasMore\":false,\"poolSize\":0,\"batchSeed\":0,\"perChipBreakdown\":{}},\"sourceBreakdown\":{\"fromPool\":0,\"fromApi\":0,\"totalServed\":0,\"apiCallsMade\":0,\"cacheHits\":0,\"gapCategories\":[],\"reason\":\"Participant travel circles have no shared reachable places.\",\"path\":\"pool-empty\",\""
+05-23 08:08:37.163 I/ReactNativeJS( 8308): [DeckService/collab-v2] session=daadd454-35a8-487d-ab25-bb595abc4635 position=45 cards=0 path=pool-empty deadEnd=intersection_empty
+05-23 08:08:37.453 I/ReactNativeJS( 8308): [EDGE] ← discover-cards OK 972ms | data="{\"success\":false,\"card\":null,\"cards\":[],\"total\":0,\"position\":45,\"current_position\":44,\"dead_end\":true,\"reason\":\"intersection_empty\",\"acceptedCount\":4,\"pending_gps_user_ids\":[],\"source\":\"orch-0909-positional-shared-deck\",\"metadata\":{\"hasMore\":false,\"poolSize\":0,\"batchSeed\":0,\"perChipBreakdown\":{}},\"sourceBreakdown\":{\"fromPool\":0,\"fromApi\":0,\"totalServed\":0,\"apiCallsMade\":0,\"cacheHits\":0,\"gapCategories\":[],\"reason\":\"Participant travel circles have no shared reachable places.\",\"path\":\"pool-empty\",\""
+05-23 08:08:37.453 I/ReactNativeJS( 8308): [DeckService/collab-v2] session=daadd454-35a8-487d-ab25-bb595abc4635 position=45 cards=0 path=pool-empty deadEnd=intersection_empty
+05-23 08:08:37.458 I/ReactNativeJS( 8308): [QUERY] success deck-cards.collab.daadd454-35a8-487d-ab25-bb595abc4635.44 | dataType="object"
+05-23 08:08:38.087 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "filter-outline"', { [Stack] name: 'Stack' }
+05-23 08:08:39.790 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:08:39.898 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "filter-outline"', { [Stack] name: 'Stack' }
+05-23 08:08:39.944 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] check:', { isCollaborationMode: true,
+05-23 08:08:39.944 I/ReactNativeJS( 8308):   resolvedSessionId: 'daadd454',
+05-23 08:08:39.944 I/ReactNativeJS( 8308):   sessionsLoading: false,
+05-23 08:08:39.944 I/ReactNativeJS( 8308):   sessionCount: 3,
+05-23 08:08:39.944 I/ReactNativeJS( 8308):   seenRef: true }
+05-23 08:08:39.946 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] sessionExists:', true, 'seenBefore:', true, 'sessionIds:', [ '5e646b7a', '5ebf8afb', 'daadd454' ]
+05-23 08:08:40.423 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:08:40.517 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "filter-outline"', { [Stack] name: 'Stack' }
+05-23 08:08:40.561 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] check:', { isCollaborationMode: true,
+05-23 08:08:40.561 I/ReactNativeJS( 8308):   resolvedSessionId: 'daadd454',
+05-23 08:08:40.561 I/ReactNativeJS( 8308):   sessionsLoading: false,
+05-23 08:08:40.561 I/ReactNativeJS( 8308):   sessionCount: 3,
+05-23 08:08:40.561 I/ReactNativeJS( 8308):   seenRef: true }
+05-23 08:08:40.563 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] sessionExists:', true, 'seenBefore:', true, 'sessionIds:', [ '5e646b7a', '5ebf8afb', 'daadd454' ]
+05-23 08:08:42.145 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:08:47.657 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:08:52.852 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:08:57.998 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:08:58.046 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "filter-outline"', { [Stack] name: 'Stack' }
+05-23 08:08:58.077 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] check:', { isCollaborationMode: true,
+05-23 08:08:58.077 I/ReactNativeJS( 8308):   resolvedSessionId: 'daadd454',
+05-23 08:08:58.077 I/ReactNativeJS( 8308):   sessionsLoading: false,
+05-23 08:08:58.077 I/ReactNativeJS( 8308):   sessionCount: 3,
+05-23 08:08:58.077 I/ReactNativeJS( 8308):   seenRef: true }
+05-23 08:08:58.087 I/ReactNativeJS( 8308): '[HEALTH_MONITOR] sessionExists:', true, 'seenBefore:', true, 'sessionIds:', [ '5e646b7a', '5ebf8afb', 'daadd454' ]
+05-23 08:08:58.116 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:08:59.326 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:09:00.068 I/ReactNativeJS( 8308): [QUERY] success pairings.pills.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(1)"
+05-23 08:09:03.290 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:09:08.485 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:09:10.421 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:09:13.719 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:09:17.956 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:09:18.902 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:09:21.154 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:09:24.220 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:09:28.321 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:09:29.402 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:09:30.385 I/ReactNativeJS( 8308): [QUERY] success pairings.pills.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(1)"
+05-23 08:09:30.819 I/ReactNativeJS( 8308): [QUERY] success friends.requests.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(0)"
+05-23 08:09:34.570 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:09:39.819 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:09:40.147 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:09:45.019 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:09:50.352 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:09:55.675 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:09:58.382 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:10:00.855 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:10:00.910 I/ReactNativeJS( 8308): [QUERY] success pairings.pills.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(1)"
+05-23 08:10:06.198 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:10:10.216 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:10:11.503 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:10:16.787 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:10:22.124 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:10:27.505 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:10:28.417 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:10:31.040 I/ReactNativeJS( 8308): [QUERY] success friends.requests.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(0)"
+05-23 08:10:31.374 I/ReactNativeJS( 8308): [QUERY] success pairings.pills.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(1)"
+05-23 08:10:32.723 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:10:33.343 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:10:37.988 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:10:40.450 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:10:43.306 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:10:48.620 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:10:51.775 I/ReactNativeJS( 8308): [REALTIME] daadd454-35a8-487d-ab25-bb595abc4635 | broadcast session_updated | deck_version=53
+05-23 08:10:51.776 I/ReactNativeJS( 8308): '[ORCH-0923-DIAG] onSessionUpdated fired', { sessionId: 'daadd454-35a8-487d-ab25-bb595abc4635',
+05-23 08:10:51.776 I/ReactNativeJS( 8308):   new_deck_version: 53,
+05-23 08:10:51.776 I/ReactNativeJS( 8308):   new_deck_params_hash: 'a3d20e25' }
+05-23 08:10:51.776 I/ReactNativeJS( 8308): '[ORCH-0923-DIAG] session_updated invalidating deck-cards', { sessionId: 'daadd454-35a8-487d-ab25-bb595abc4635' }
+05-23 08:10:51.884 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:10:52.188 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:10:53.921 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:10:57.540 I/ReactNativeJS( 8308): [QUERY] success pairings.incoming.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(0)"
+05-23 08:10:57.621 I/ReactNativeJS( 8308): [QUERY] success friends.blocked.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(0)"
+05-23 08:10:57.686 I/ReactNativeJS( 8308): [QUERY] success friends.list.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(1)"
+05-23 08:10:58.362 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:10:59.139 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:11:01.773 I/ReactNativeJS( 8308): [QUERY] success pairings.pills.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(1)"
+05-23 08:11:03.314 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:11:04.049 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:11:04.281 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:11:04.773 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:11:09.951 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:11:10.188 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:11:15.788 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:11:21.002 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:11:26.268 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:11:28.569 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:11:30.938 I/ReactNativeJS( 8308): [QUERY] success friends.requests.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(0)"
+05-23 08:11:31.435 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:11:32.103 I/ReactNativeJS( 8308): [QUERY] success pairings.pills.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(1)"
+05-23 08:11:36.669 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:11:40.444 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:11:41.936 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:11:46.626 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:11:46.672 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:11:47.187 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:11:51.270 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:11:52.439 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:11:57.802 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:11:58.045 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:12:02.854 I/ReactNativeJS( 8308): [QUERY] success pairings.pills.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(1)"
+05-23 08:12:03.071 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:12:08.569 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:12:10.375 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:12:14.054 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:12:19.420 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:12:24.705 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:12:28.559 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:12:29.937 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:12:30.888 I/ReactNativeJS( 8308): [QUERY] success friends.requests.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(0)"
+05-23 08:12:33.341 I/ReactNativeJS( 8308): [QUERY] success pairings.pills.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(1)"
+05-23 08:12:35.123 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:12:40.319 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:12:40.640 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:12:45.921 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:12:51.204 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:12:56.521 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:12:58.517 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:13:01.873 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:13:03.789 I/ReactNativeJS( 8308): [QUERY] success pairings.pills.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(1)"
+05-23 08:13:07.171 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:13:10.430 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:13:12.507 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:13:17.853 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:13:23.173 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:13:28.425 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:13:28.650 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:13:30.970 I/ReactNativeJS( 8308): [QUERY] success friends.requests.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(0)"
+05-23 08:13:34.004 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:13:34.155 I/ReactNativeJS( 8308): [QUERY] success pairings.pills.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(1)"
+05-23 08:13:39.288 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:13:40.196 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:13:44.754 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:13:50.170 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:13:55.487 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:13:58.337 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:14:00.771 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:14:04.589 I/ReactNativeJS( 8308): [QUERY] success pairings.pills.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(1)"
+05-23 08:14:06.023 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:14:10.094 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:14:11.353 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:14:16.656 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:14:21.910 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:14:27.208 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:14:28.283 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:14:31.004 I/ReactNativeJS( 8308): [QUERY] success friends.requests.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(0)"
+05-23 08:14:32.372 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:14:35.020 I/ReactNativeJS( 8308): [QUERY] success pairings.pills.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(1)"
+05-23 08:14:37.639 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:14:40.550 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:14:42.989 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:14:48.340 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:14:53.554 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:14:58.176 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:14:58.803 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:15:04.072 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:15:05.337 I/ReactNativeJS( 8308): [QUERY] success pairings.pills.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(1)"
+05-23 08:15:09.303 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:15:09.996 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:15:14.554 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:15:19.820 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:15:25.075 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:15:28.155 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:15:30.457 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:15:30.940 I/ReactNativeJS( 8308): [QUERY] success friends.requests.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(0)"
+05-23 08:15:35.623 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"
+05-23 08:15:35.772 I/ReactNativeJS( 8308): [QUERY] success pairings.pills.eff78416-0d36-4bca-b350-10a6c3f046cb | dataType="Array(1)"
+05-23 08:15:40.443 W/ReactNativeJS( 8308): '[Icon] Unknown icon name: "heart-circle-outline"', { [Stack] name: 'Stack' }
+05-23 08:15:40.836 I/ReactNativeJS( 8308): [QUERY] success chat.participants.7166fbff-61f9-4050-8261-7fb2872e9cfc | dataType="Array(3)"

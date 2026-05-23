@@ -1,0 +1,66 @@
+08:04:07.401 [ INFO] maestro.cli.report.TestDebugReporter.logSystemInfo: Debug output path: /Users/sethogieva/Desktop/mingla-main/Mingla_Artifacts/reports/evidence/ORCH-0939/retest/maestro_simB_back
+08:04:07.402 [ INFO] MAESTRO.logSystemInfo: ---- System Info ----
+08:04:07.402 [ INFO] MAESTRO.logSystemInfo: Maestro Version: 2.5.1
+08:04:07.402 [ INFO] MAESTRO.logSystemInfo: CI: Undefined
+08:04:07.402 [ INFO] MAESTRO.logSystemInfo: OS Name: Mac OS X
+08:04:07.402 [ INFO] MAESTRO.logSystemInfo: OS Version: 26.4
+08:04:07.402 [ INFO] MAESTRO.logSystemInfo: Architecture: aarch64
+08:04:07.403 [ INFO] MAESTRO.logSystemInfo: Java Version: 21
+08:04:07.444 [ INFO] MAESTRO.logSystemInfo: Xcode Version: 26.4.1
+08:04:07.446 [ INFO] MAESTRO.logSystemInfo: Flutter Version: Undefined
+08:04:07.449 [ INFO] MAESTRO.logSystemInfo: Flutter Channel: Undefined
+08:04:07.449 [ INFO] MAESTRO.logSystemInfo: ---------------------
+08:04:07.784 [DEBUG] io.micrometer.common.util.internal.logging.InternalLoggerFactory.newDefaultFactory: Using SLF4J as the default logging framework
+08:04:09.193 [ INFO] maestro.cli.command.TestCommand.runShardSuite: [shard 1] Selected device F7ECAC25-2A98-4002-AD17-85AED17AB752 using port 7001 with execution plan ExecutionPlan(flowsToRun=[/Users/sethogieva/Desktop/mingla-main/Mingla_Artifacts/reports/evidence/ORCH-0939/retest/tap_back_top_left.yaml], sequence=FlowSequence(flows=[], continueOnFailure=true), workspaceConfig=WorkspaceConfig(flows=null, includeTags=null, excludeTags=null, executionOrder=null, baselineBranch=null, notifications=null, disableRetries=false, platform=PlatformConfiguration(android=AndroidConfiguration(disableAnimations=false), ios=IOSConfiguration(disableAnimations=false, snapshotKeyHonorModalViews=null)), testOutputDir=null))
+08:04:09.925 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+08:04:09.926 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+08:04:09.926 [TRACE] ios.xctest.XCTestIOSDevice.open: Opening a connection
+08:04:09.926 [TRACE] xcuitest.XCTestDriverClient.restartXCTestRunner: Restarting XCTest Runner (uninstalling, installing and starting)
+08:04:09.926 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+08:04:09.927 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+08:04:09.927 [TRACE] xcuitest.XCTestDriverClient.restartXCTestRunner: XCTest Runner uninstalled, will install and start it
+08:04:09.927 [ INFO] xcuitest.installer.LocalXCTestInstaller.start$lambda$3: start()
+08:04:09.927 [ INFO] xcuitest.installer.LocalXCTestInstaller.start$lambda$3: [Start] Install XCUITest runner on F7ECAC25-2A98-4002-AD17-85AED17AB752
+08:04:09.927 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+08:04:09.927 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+08:04:09.928 [ INFO] xcuitest.installer.IOSBuildProductsExtractor.extract: [Start] Writing build products
+08:04:09.949 [ INFO] xcuitest.installer.IOSBuildProductsExtractor.extract: [Done] Writing build products
+08:04:09.949 [ INFO] xcuitest.installer.IOSBuildProductsExtractor.extract: [Start] Writing maestro-driver-iosUITests-Runner app
+08:04:10.060 [ INFO] xcuitest.installer.IOSBuildProductsExtractor.extract: [Done] Writing maestro-driver-iosUITests-Runner app
+08:04:10.060 [ INFO] xcuitest.installer.IOSBuildProductsExtractor.extract: [Start] Writing maestro-driver-ios app
+08:04:10.064 [ INFO] xcuitest.installer.IOSBuildProductsExtractor.extract: [Done] Writing maestro-driver-ios app
+08:04:10.065 [ INFO] xcuitest.installer.LocalXCTestInstaller.startXCTestRunner: Installing driver with xcodebuild
+08:04:10.066 [ INFO] xcuitest.installer.LocalXCTestInstaller.startXCTestRunner: [Start] Running XcUITest with `xcodebuild test-without-building` with 7001 and config: IOSDriverConfig(prebuiltRunner=false, sourceDirectory=driver-iPhoneSimulator, context=CLI, snapshotKeyHonorModalViews=null)
+08:04:10.068 [ INFO] util.CommandLineUtils.runCommand: Running command line operation: [xcodebuild, test-without-building, -xctestrun, /var/folders/3r/07xt7j7s1hxgwddw4xsz4jqr0000gn/T/F7ECAC25-2A98-4002-AD17-85AED17AB75212750614805826414528/maestro-driver-ios-config.xctestrun, -destination, id=F7ECAC25-2A98-4002-AD17-85AED17AB752, -derivedDataPath, /var/folders/3r/07xt7j7s1hxgwddw4xsz4jqr0000gn/T/maestro_xctestrunner_xcodebuild_output15656582558723892921] with {TEST_RUNNER_PORT=7001}
+08:04:10.071 [ INFO] xcuitest.installer.LocalXCTestInstaller.startXCTestRunner: [Done] Running XcUITest with `xcodebuild test-without-building`
+08:04:10.071 [ INFO] xcuitest.installer.LocalXCTestInstaller.start$lambda$3: [Done] Install XCUITest runner on F7ECAC25-2A98-4002-AD17-85AED17AB752
+08:04:10.072 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+08:04:10.072 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+08:04:10.572 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+08:04:10.573 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+08:04:11.078 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+08:04:11.079 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+08:04:11.584 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+08:04:11.585 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+08:04:12.086 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+08:04:12.087 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+08:04:12.589 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+08:04:12.598 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Done] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+08:04:12.605 [ INFO] maestro.cli.runner.TestRunner.runSingle$lambda$0: Running flow tap_back_top_left.yaml...
+08:04:12.612 [ INFO] maestro.Maestro.cachedDeviceInfo_delegate$lambda$0: Getting device info
+08:04:12.707 [ INFO] maestro.Maestro.cachedDeviceInfo_delegate$lambda$0: Got device info: DeviceInfo(platform=IOS, widthPixels=1206, heightPixels=2622, widthGrid=402, heightGrid=874)
+08:04:12.736 [ INFO] maestro.cli.runner.MaestroCommandRunner.runCommands$lambda$0: Define variables RUNNING
+08:04:12.738 [ INFO] maestro.cli.runner.MaestroCommandRunner.runCommands$lambda$11: Define variables metadata CommandMetadata(numberOfRuns=null, evaluatedCommand=MaestroCommand(defineVariablesCommand=DefineVariablesCommand(env={MAESTRO_FILENAME=tap_back_top_left, MAESTRO_DEVICE_UDID=F7ECAC25-2A98-4002-AD17-85AED17AB752, MAESTRO_SHARD_ID=1, MAESTRO_SHARD_INDEX=0}, label=null, optional=false)), logMessages=[], insight=Insight(message=, level=NONE), aiReasoning=null, labeledCommand=null)
+08:04:12.738 [ INFO] maestro.cli.runner.MaestroCommandRunner.runCommands$lambda$2: Define variables COMPLETED
+08:04:12.739 [ INFO] maestro.cli.runner.MaestroCommandRunner.runCommands$lambda$0: Apply configuration RUNNING
+08:04:12.740 [ INFO] maestro.cli.runner.MaestroCommandRunner.runCommands$lambda$11: Apply configuration metadata CommandMetadata(numberOfRuns=null, evaluatedCommand=MaestroCommand(applyConfigurationCommand=ApplyConfigurationCommand(config=MaestroConfig(appId=com.mingla.app.v2, name=orch0939_retest_tap_back_top_left, tags=[], ext={}, onFlowStart=null, onFlowComplete=null, properties={}), label=null, optional=false)), logMessages=[], insight=Insight(message=, level=NONE), aiReasoning=null, labeledCommand=null)
+08:04:12.740 [ INFO] maestro.cli.runner.MaestroCommandRunner.runCommands$lambda$2: Apply configuration COMPLETED
+08:04:12.740 [ INFO] maestro.cli.runner.MaestroCommandRunner.runCommands$lambda$0: Tap on point (5%,10%) RUNNING
+08:04:12.740 [ INFO] maestro.cli.runner.MaestroCommandRunner.runCommands$lambda$11: Tap on point (5%,10%) metadata CommandMetadata(numberOfRuns=null, evaluatedCommand=MaestroCommand(tapOnPointV2Command=TapOnPointV2Command(point=5%,10%, retryIfNoChange=false, longPress=false, repeat=null, waitToSettleTimeoutMs=null, label=null, optional=false)), logMessages=[], insight=Insight(message=, level=NONE), aiReasoning=null, labeledCommand=null)
+08:04:12.753 [ INFO] maestro.Maestro.screenshotBasedTap-ogj28Uc: Try tapping at (20, 87) using hierarchy based logic for wait
+08:04:12.956 [ INFO] maestro.cli.runner.MaestroCommandRunner.runCommands$lambda$11: Tap on point (5%,10%) metadata CommandMetadata(numberOfRuns=null, evaluatedCommand=MaestroCommand(tapOnPointV2Command=TapOnPointV2Command(point=5%,10%, retryIfNoChange=false, longPress=false, repeat=null, waitToSettleTimeoutMs=null, label=null, optional=false)), logMessages=[], insight=Insight(message=, level=NONE), aiReasoning=null, labeledCommand=null)
+08:04:12.958 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to byte array
+08:04:12.958 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to output sink
+08:04:13.470 [ INFO] device.IOSDevice.invoke-F9mIFpk: Waiting for animation to end with timeout 3000
+08:04:16.390 [ INFO] maestro.Maestro.screenshotBasedTap-ogj28Uc: Something have changed in the UI judging by view hierarchy. Proceed.
+08:04:16.391 [ INFO] maestro.cli.runner.MaestroCommandRunner.runCommands$lambda$2: Tap on point (5%,10%) COMPLETED

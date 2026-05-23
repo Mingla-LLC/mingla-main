@@ -1,0 +1,7 @@
+appId: com.mingla.app.v2
+name: orch0939_retest2_cancel_apple_account
+---
+- tapOn:
+    point: "50%,92%"
+- waitForAnimationToEnd:
+    timeout: 3000

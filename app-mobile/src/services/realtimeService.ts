@@ -412,7 +412,7 @@ export class RealtimeService {
     };
 
     const channel = supabase
-      .channel(channelName)
+      .channel(channelName, { config: { private: true } })
       // Card saves
       .on(
         "postgres_changes",
@@ -706,19 +706,34 @@ export class RealtimeService {
           dispatch('onSwipeRecorded', payload.new);
         }
       )
-      // Session updates
+      // ORCH-0931: replace silently-dropped postgres_changes id=eq.<sessionId>
+      // binding with a broadcast event. The Postgres trigger
+      // tr_collaboration_sessions_broadcast_session_updated calls
+      // realtime.send() to topic board_session:<id> event session_updated
+      // whenever deck_version, deck_params_hash, or participant_prefs changes.
+      // Authorization is enforced by the RLS policy
+      // session_participants_can_receive_board_session_broadcasts on
+      // realtime.messages, participants-only via is_session_participant.
+      //
+      // Why broadcast and not postgres_changes: the supabase-realtime server
+      // silently drops postgres_changes bindings using a primary-key column
+      // filter. See INVESTIGATION_ORCH-0931.
+      //
+      // Why this event shape: payload is intentionally tiny; it is a
+      // cache-invalidation signal, not data delivery. Clients refetch via
+      // discover-cards. The deck_version + deck_params_hash let the client
+      // skip the refetch if its local hash matches, for example when it caused
+      // the change.
       .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "collaboration_sessions",
-          filter: `id=eq.${sessionId}`,
-        },
-        (payload) => {
-          if (__DEV__) logger.realtime(`${sessionId} | UPDATE collaboration_sessions`);
-          const newSession = payload.new as any;
-          dispatch('onSessionUpdated', newSession);
+        "broadcast",
+        { event: "session_updated" },
+        (envelope: any) => {
+          // realtime-js v2 wraps broadcast payloads as { event, type, payload }.
+          const data = envelope?.payload ?? envelope;
+          if (__DEV__) logger.realtime(`${sessionId} | broadcast session_updated`, {
+            deck_version: data?.deck_version,
+          });
+          dispatch('onSessionUpdated', data);
         }
       )
       // Session deleted
@@ -728,6 +743,8 @@ export class RealtimeService {
           event: "DELETE",
           schema: "public",
           table: "collaboration_sessions",
+          // TODO ORCH-####: PK-filter DELETE binding is known-dead under the
+          // ORCH-0931 supabase-realtime silent-drop bug; migrate in follow-up.
           filter: `id=eq.${sessionId}`,
         },
         (payload) => {

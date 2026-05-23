@@ -2179,7 +2179,7 @@ export default function MessageInterface({
           (Animated.View, not native Modal portal). The notifications panel below
           (around line 1632) remains as the canonical single mount point. */}
 
-      {isCollabSessionGroupChat ? (
+      {isCollabSessionGroupChat && showCollabDeckSheet && friend.sessionId ? (
         <CollabDeckSheet
           visible={showCollabDeckSheet}
           onClose={() => setShowCollabDeckSheet(false)}

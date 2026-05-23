@@ -1,0 +1,5 @@
+appId: com.mingla.app.v2
+name: orch0939_retest_tap_testing_stuff_visible_row
+---
+- tapOn:
+    point: "50%,52%"

@@ -1,0 +1,85 @@
+08:02:35.162 [ INFO] maestro.cli.report.TestDebugReporter.logSystemInfo: Debug output path: /Users/sethogieva/Desktop/mingla-main/Mingla_Artifacts/reports/evidence/ORCH-0939/retest/maestro_simB_tap_friends
+08:02:35.163 [ INFO] MAESTRO.logSystemInfo: ---- System Info ----
+08:02:35.163 [ INFO] MAESTRO.logSystemInfo: Maestro Version: 2.5.1
+08:02:35.163 [ INFO] MAESTRO.logSystemInfo: CI: Undefined
+08:02:35.163 [ INFO] MAESTRO.logSystemInfo: OS Name: Mac OS X
+08:02:35.163 [ INFO] MAESTRO.logSystemInfo: OS Version: 26.4
+08:02:35.163 [ INFO] MAESTRO.logSystemInfo: Architecture: aarch64
+08:02:35.164 [ INFO] MAESTRO.logSystemInfo: Java Version: 21
+08:02:35.209 [ INFO] MAESTRO.logSystemInfo: Xcode Version: 26.4.1
+08:02:35.211 [ INFO] MAESTRO.logSystemInfo: Flutter Version: Undefined
+08:02:35.214 [ INFO] MAESTRO.logSystemInfo: Flutter Channel: Undefined
+08:02:35.214 [ INFO] MAESTRO.logSystemInfo: ---------------------
+08:02:35.305 [DEBUG] io.micrometer.common.util.internal.logging.InternalLoggerFactory.newDefaultFactory: Using SLF4J as the default logging framework
+08:02:36.941 [ INFO] maestro.cli.command.TestCommand.runShardSuite: [shard 1] Selected device F7ECAC25-2A98-4002-AD17-85AED17AB752 using port 7001 with execution plan ExecutionPlan(flowsToRun=[/Users/sethogieva/Desktop/mingla-main/Mingla_Artifacts/reports/evidence/orch0931_retest2_tap_friends.yaml], sequence=FlowSequence(flows=[], continueOnFailure=true), workspaceConfig=WorkspaceConfig(flows=null, includeTags=null, excludeTags=null, executionOrder=null, baselineBranch=null, notifications=null, disableRetries=false, platform=PlatformConfiguration(android=AndroidConfiguration(disableAnimations=false), ios=IOSConfiguration(disableAnimations=false, snapshotKeyHonorModalViews=null)), testOutputDir=null))
+08:02:37.657 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+08:02:37.658 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+08:02:37.658 [TRACE] ios.xctest.XCTestIOSDevice.open: Opening a connection
+08:02:37.658 [TRACE] xcuitest.XCTestDriverClient.restartXCTestRunner: Restarting XCTest Runner (uninstalling, installing and starting)
+08:02:37.658 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+08:02:37.659 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+08:02:37.659 [TRACE] xcuitest.XCTestDriverClient.restartXCTestRunner: XCTest Runner uninstalled, will install and start it
+08:02:37.659 [ INFO] xcuitest.installer.LocalXCTestInstaller.start$lambda$3: start()
+08:02:37.659 [ INFO] xcuitest.installer.LocalXCTestInstaller.start$lambda$3: [Start] Install XCUITest runner on F7ECAC25-2A98-4002-AD17-85AED17AB752
+08:02:37.659 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+08:02:37.659 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+08:02:37.659 [ INFO] xcuitest.installer.IOSBuildProductsExtractor.extract: [Start] Writing build products
+08:02:37.681 [ INFO] xcuitest.installer.IOSBuildProductsExtractor.extract: [Done] Writing build products
+08:02:37.681 [ INFO] xcuitest.installer.IOSBuildProductsExtractor.extract: [Start] Writing maestro-driver-iosUITests-Runner app
+08:02:37.791 [ INFO] xcuitest.installer.IOSBuildProductsExtractor.extract: [Done] Writing maestro-driver-iosUITests-Runner app
+08:02:37.791 [ INFO] xcuitest.installer.IOSBuildProductsExtractor.extract: [Start] Writing maestro-driver-ios app
+08:02:37.794 [ INFO] xcuitest.installer.IOSBuildProductsExtractor.extract: [Done] Writing maestro-driver-ios app
+08:02:37.795 [ INFO] xcuitest.installer.LocalXCTestInstaller.startXCTestRunner: Installing driver with xcodebuild
+08:02:37.796 [ INFO] xcuitest.installer.LocalXCTestInstaller.startXCTestRunner: [Start] Running XcUITest with `xcodebuild test-without-building` with 7001 and config: IOSDriverConfig(prebuiltRunner=false, sourceDirectory=driver-iPhoneSimulator, context=CLI, snapshotKeyHonorModalViews=null)
+08:02:37.797 [ INFO] util.CommandLineUtils.runCommand: Running command line operation: [xcodebuild, test-without-building, -xctestrun, /var/folders/3r/07xt7j7s1hxgwddw4xsz4jqr0000gn/T/F7ECAC25-2A98-4002-AD17-85AED17AB75217144469948315910327/maestro-driver-ios-config.xctestrun, -destination, id=F7ECAC25-2A98-4002-AD17-85AED17AB752, -derivedDataPath, /var/folders/3r/07xt7j7s1hxgwddw4xsz4jqr0000gn/T/maestro_xctestrunner_xcodebuild_output15396385099153256055] with {TEST_RUNNER_PORT=7001}
+08:02:37.799 [ INFO] xcuitest.installer.LocalXCTestInstaller.startXCTestRunner: [Done] Running XcUITest with `xcodebuild test-without-building`
+08:02:37.799 [ INFO] xcuitest.installer.LocalXCTestInstaller.start$lambda$3: [Done] Install XCUITest runner on F7ECAC25-2A98-4002-AD17-85AED17AB752
+08:02:37.800 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+08:02:37.800 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+08:02:38.306 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+08:02:38.306 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+08:02:38.812 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+08:02:38.813 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+08:02:39.316 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+08:02:39.317 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+08:02:39.822 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+08:02:39.823 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+08:02:40.323 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+08:02:40.324 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+08:02:40.827 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+08:02:40.828 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+08:02:41.333 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+08:02:41.334 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+08:02:41.839 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+08:02:41.840 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+08:02:42.340 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+08:02:42.349 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Done] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+08:02:42.355 [ INFO] maestro.cli.runner.TestRunner.runSingle$lambda$0: Running flow orch0931_retest2_tap_friends.yaml...
+08:02:42.364 [ INFO] maestro.Maestro.cachedDeviceInfo_delegate$lambda$0: Getting device info
+08:02:42.520 [ INFO] maestro.Maestro.cachedDeviceInfo_delegate$lambda$0: Got device info: DeviceInfo(platform=IOS, widthPixels=1206, heightPixels=2622, widthGrid=402, heightGrid=874)
+08:02:42.560 [ INFO] maestro.cli.runner.MaestroCommandRunner.runCommands$lambda$0: Define variables RUNNING
+08:02:42.563 [ INFO] maestro.cli.runner.MaestroCommandRunner.runCommands$lambda$11: Define variables metadata CommandMetadata(numberOfRuns=null, evaluatedCommand=MaestroCommand(defineVariablesCommand=DefineVariablesCommand(env={MAESTRO_FILENAME=orch0931_retest2_tap_friends, MAESTRO_DEVICE_UDID=F7ECAC25-2A98-4002-AD17-85AED17AB752, MAESTRO_SHARD_ID=1, MAESTRO_SHARD_INDEX=0}, label=null, optional=false)), logMessages=[], insight=Insight(message=, level=NONE), aiReasoning=null, labeledCommand=null)
+08:02:42.563 [ INFO] maestro.cli.runner.MaestroCommandRunner.runCommands$lambda$2: Define variables COMPLETED
+08:02:42.564 [ INFO] maestro.cli.runner.MaestroCommandRunner.runCommands$lambda$0: Apply configuration RUNNING
+08:02:42.564 [ INFO] maestro.cli.runner.MaestroCommandRunner.runCommands$lambda$11: Apply configuration metadata CommandMetadata(numberOfRuns=null, evaluatedCommand=MaestroCommand(applyConfigurationCommand=ApplyConfigurationCommand(config=MaestroConfig(appId=com.mingla.app.v2, name=orch0931_retest2_tap_friends, tags=[], ext={}, onFlowStart=null, onFlowComplete=null, properties={}), label=null, optional=false)), logMessages=[], insight=Insight(message=, level=NONE), aiReasoning=null, labeledCommand=null)
+08:02:42.565 [ INFO] maestro.cli.runner.MaestroCommandRunner.runCommands$lambda$2: Apply configuration COMPLETED
+08:02:42.565 [ INFO] maestro.cli.runner.MaestroCommandRunner.runCommands$lambda$0: Tap on "Friends" RUNNING
+08:02:42.568 [ INFO] maestro.cli.runner.MaestroCommandRunner.runCommands$lambda$11: Tap on "Friends" metadata CommandMetadata(numberOfRuns=null, evaluatedCommand=MaestroCommand(tapOnElementCommand=TapOnElementCommand(selector=ElementSelector(textRegex=Friends, idRegex=null, size=null, below=null, above=null, leftOf=null, rightOf=null, containsChild=null, containsDescendants=null, traits=null, index=null, enabled=null, optional=false, selected=null, checked=null, focused=null, childOf=null, css=null), retryIfNoChange=false, waitUntilVisible=false, longPress=false, repeat=null, waitToSettleTimeoutMs=null, relativePoint=null, label=null, optional=false)), logMessages=[], insight=Insight(message=, level=NONE), aiReasoning=null, labeledCommand=null)
+08:02:42.822 [ INFO] maestro.cli.runner.MaestroCommandRunner.runCommands$lambda$11: Tap on "Friends" metadata CommandMetadata(numberOfRuns=null, evaluatedCommand=MaestroCommand(tapOnElementCommand=TapOnElementCommand(selector=ElementSelector(textRegex=Friends, idRegex=null, size=null, below=null, above=null, leftOf=null, rightOf=null, containsChild=null, containsDescendants=null, traits=null, index=null, enabled=null, optional=false, selected=null, checked=null, focused=null, childOf=null, css=null), retryIfNoChange=false, waitUntilVisible=false, longPress=false, repeat=null, waitToSettleTimeoutMs=null, relativePoint=null, label=null, optional=false)), logMessages=[], insight=Insight(message=, level=NONE), aiReasoning=null, labeledCommand=null)
+08:02:42.831 [ INFO] maestro.Maestro.tap-HgV9Ck0: Tapping on element:  UiElement(treeNode=TreeNode(attributes={accessibilityText=Friends, title=, value=, text=, hintText=, resource-id=, bounds=[164,796][237,858], enabled=true, focused=false, selected=false, checked=false}, children=[], clickable=null, enabled=true, focused=false, checked=false, selected=false), bounds=Bounds(x=164, y=796, width=73, height=62))
+08:02:42.832 [ INFO] device.IOSDevice.invoke-F9mIFpk: Waiting for animation to end with timeout 3000
+08:02:43.083 [ INFO] maestro.Maestro.tap-HgV9Ck0: Refreshed element
+08:02:43.085 [ INFO] maestro.Maestro.screenshotBasedTap-ogj28Uc: Try tapping at (200, 827) using hierarchy based logic for wait
+08:02:43.087 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to byte array
+08:02:43.087 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to output sink
+08:02:43.669 [ INFO] device.IOSDevice.invoke-F9mIFpk: Waiting for animation to end with timeout 3000
+08:02:44.499 [ INFO] maestro.Maestro.screenshotBasedTap-ogj28Uc: Something have changed in the UI judging by view hierarchy. Proceed.
+08:02:44.499 [ INFO] maestro.cli.runner.MaestroCommandRunner.runCommands$lambda$2: Tap on "Friends" COMPLETED
+08:02:44.500 [ INFO] maestro.cli.runner.MaestroCommandRunner.runCommands$lambda$0: Wait for animation to end within 3000 ms RUNNING
+08:02:44.501 [ INFO] maestro.cli.runner.MaestroCommandRunner.runCommands$lambda$11: Wait for animation to end within 3000 ms metadata CommandMetadata(numberOfRuns=null, evaluatedCommand=MaestroCommand(waitForAnimationToEndCommand=WaitForAnimationToEndCommand(timeout=3000, label=null, optional=false)), logMessages=[], insight=Insight(message=, level=NONE), aiReasoning=null, labeledCommand=null)
+08:02:44.502 [ INFO] maestro.Maestro.waitForAnimationToEnd$lambda$51: Waiting for animation to end with timeout 3000
+08:02:44.503 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to byte array
+08:02:44.503 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to output sink
+08:02:44.638 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to byte array
+08:02:44.638 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to output sink
+08:02:44.942 [ INFO] maestro.cli.runner.MaestroCommandRunner.runCommands$lambda$2: Wait for animation to end within 3000 ms COMPLETED

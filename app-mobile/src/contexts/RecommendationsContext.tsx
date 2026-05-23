@@ -66,6 +66,8 @@ export type DeckUIState =
 // useEffect dependency changes and cause infinite render loops.
 const EMPTY_CARDS: Recommendation[] = [];
 const EMPTY_PILLS: string[] = [];
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const getDefaultPreferences = (): UserPreferences => ({
   mode: "explore",
@@ -338,17 +340,27 @@ export const RecommendationsProvider: React.FC<
   }, [user?.id, currentMode]);
 
   // ── Session Resolution ──────────────────────────────────────────────────
-  // Priority: currentSession (live) > persisted UUID (AsyncStorage) > mode-as-UUID > name lookup.
+  // Priority: explicit/persisted UUID > mode-as-UUID > matching live/current
+  // session > name lookup. Sheet-scoped collab providers pass the visible
+  // session id as both persistedSessionId and currentMode; that explicit
+  // owner must not be overridden by the ambient global currentSession, which
+  // can still point at another chat while multiple collab surfaces exist.
   // The persisted UUID enables instant resolution on app reopen without waiting
   // for the full loadUserSessions() network round-trip (8 sequential queries).
   const resolvedSessionId = React.useMemo(() => {
     if (currentMode === "solo") return null;
-    if (currentSession?.id) return currentSession.id;
-    // Use the UUID persisted alongside the mode name in AsyncStorage
-    if (propPersistedSessionId) return propPersistedSessionId;
-    const uuidRegex =
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (uuidRegex.test(currentMode)) return currentMode;
+    // Use the UUID persisted alongside the mode name in AsyncStorage, or
+    // supplied directly by CollabDeckSheet's session-scoped provider.
+    if (propPersistedSessionId && UUID_REGEX.test(propPersistedSessionId)) {
+      return propPersistedSessionId;
+    }
+    if (UUID_REGEX.test(currentMode)) return currentMode;
+    if (
+      currentSession?.id &&
+      (currentSession.id === currentMode || currentSession.name === currentMode)
+    ) {
+      return currentSession.id;
+    }
     const session = availableSessions.find(
       (s) => s.id === currentMode || s.name === currentMode
     );
@@ -551,13 +563,22 @@ export const RecommendationsProvider: React.FC<
   useEffect(() => {
     if (!isCollaborationMode) return;
     const sessionRow = boardSessionResult?.session;
-    if (!sessionRow || !user?.id) return;
+    if (!sessionRow || !resolvedSessionId || !user?.id) return;
+    if (sessionRow.id !== resolvedSessionId) {
+      if (__DEV__) {
+        console.warn('[RecommendationsContext] Ignoring foreign board session row for collab cursor', {
+          resolvedSessionId,
+          rowSessionId: sessionRow.id,
+        });
+      }
+      return;
+    }
     const participants = Array.isArray(sessionRow.participants) ? sessionRow.participants : [];
     const me = participants.find((p: any) => p.user_id === user.id);
     const serverPosition = Number(me?.current_position ?? 0);
 
-    if (currentSessionRef.current !== sessionRow.id) {
-      currentSessionRef.current = sessionRow.id;
+    if (currentSessionRef.current !== resolvedSessionId) {
+      currentSessionRef.current = resolvedSessionId;
       accumulatedCardsRef.current = [];
       sessionServedIdsRef.current = new Set();
       setRecommendations([]);
@@ -565,7 +586,7 @@ export const RecommendationsProvider: React.FC<
     }
 
     setCurrentPosition(serverPosition);
-  }, [isCollaborationMode, boardSessionResult?.session, boardSessionResult?.session?.participants, user?.id]);
+  }, [isCollaborationMode, boardSessionResult?.session, boardSessionResult?.session?.participants, resolvedSessionId, user?.id]);
 
   // ── ORCH-0909: collab deck params (server-aggregated) ─────────────────
   // Client-side aggregation remains retired. The collab fetch sends ONLY
@@ -573,13 +594,22 @@ export const RecommendationsProvider: React.FC<
   // happens server-side in pg_aggregate_collab_prefs.
   const collabDeckParams = useMemo(() => {
     const sessionRow = boardSessionResult?.session;
-    if (!isCollaborationMode || !sessionRow) return null;
+    if (!isCollaborationMode || !sessionRow || !resolvedSessionId) return null;
+    if (sessionRow.id !== resolvedSessionId) {
+      if (__DEV__) {
+        console.warn('[RecommendationsContext] Ignoring foreign board session row for collab deck params', {
+          resolvedSessionId,
+          rowSessionId: sessionRow.id,
+        });
+      }
+      return null;
+    }
     return {
-      sessionId: sessionRow.id,
+      sessionId: resolvedSessionId,
       currentPosition,
       deckParamsHash: sessionRow.deck_params_hash ?? null,
     };
-  }, [isCollaborationMode, boardSessionResult?.session, currentPosition]);
+  }, [isCollaborationMode, boardSessionResult?.session, resolvedSessionId, currentPosition]);
 
   // ── Solo Deck Hook (existing useDeckCards, only for solo mode) ────────
   // ORCH-0902 CR-7: collab no longer reads collabDeckParams.location (the
@@ -1662,8 +1692,11 @@ export const RecommendationsProvider: React.FC<
       console.log('[ORCH-0923-DIAG] collab params changed, invalidating deck-cards', {
         prev: prevCollabParamsRef.current,
         next: paramsKey,
+        sessionId: collabDeckParams.sessionId,
       });
-      queryClient.invalidateQueries({ queryKey: ['deck-cards'] });
+      queryClient.invalidateQueries({
+        queryKey: ['deck-cards', 'collab', collabDeckParams.sessionId],
+      });
     }
     prevCollabParamsRef.current = paramsKey;
   }, [isCollaborationMode, collabDeckParams, queryClient]);
