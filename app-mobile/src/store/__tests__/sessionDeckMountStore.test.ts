@@ -1,26 +1,25 @@
-import { useSessionDeckMountStore } from '../sessionDeckMountStore';
+// ORCH-0942 [META-ORCH-0929 dead-code reap] — 2026-05-23
+//
+// This test file is intentionally a no-op stub.
+//
+// Before ORCH-0942, this file tested `useSessionDeckMountStore` — a Zustand
+// mutex at `app-mobile/src/store/sessionDeckMountStore.ts` that was orphaned by
+// META-ORCH-0929 [Collab decks live in group chat — Home is solo-only] and
+// structurally deleted by ORCH-0942 [META-ORCH-0929 dead-code reap]. The store's
+// only consumers were inside the dead `CollabSessionChatBanners` + `InChatDeckSheet`
+// functions (lines 525 + 630 of the prior `CollabSessionChatBanners.tsx`), both
+// of which were never rendered as JSX after META-ORCH-0929 close.
+//
+// The original assertions tested the mutex's acquire/release semantics across
+// 'dedicated-screen' vs 'in-chat-sheet' owner strings — a single-mount discipline
+// that META-ORCH-0929's `I-PROPOSED-META-0929-COLLAB-DECK-SINGLE-MOUNT` invariant
+// now enforces structurally at a higher layer (single `<CollabDeckSheet>` mount
+// from `MessageInterface.tsx`). The Pragmatic Append-Only policy
+// (ORCH-0840 [Regression-test enforcement + append-only CI]) categorically forbids
+// test-file deletion, so this file remains as a documented no-op rather than
+// being removed.
+//
+// Citation: Mingla_Artifacts/specs/SPEC_ORCH-0942_META-ORCH-0929_DEAD_CODE_REAP.md §3.2.2
+// Citation: Mingla_Artifacts/DECISION_LOG.md DEC-164
 
-export function runOrch0918MutexHappyPathTest(): boolean {
-  const store = useSessionDeckMountStore.getState();
-  store.release('s1');
-  const acquiredByChat = store.acquire('s1', 'in-chat-sheet');
-  store.release('s1');
-  const acquiredByDedicated = useSessionDeckMountStore.getState().acquire('s1', 'dedicated-screen');
-  const finalOwner = useSessionDeckMountStore.getState().mountedBy;
-  useSessionDeckMountStore.getState().release('s1');
-  return acquiredByChat && acquiredByDedicated && finalOwner === 'dedicated-screen';
-}
-
-export function runOrch0918MutexConflictTest(): boolean {
-  const store = useSessionDeckMountStore.getState();
-  store.release('s1');
-  const first = store.acquire('s1', 'in-chat-sheet');
-  const second = useSessionDeckMountStore.getState().acquire('s1', 'dedicated-screen');
-  useSessionDeckMountStore.getState().release('s1');
-  return first === true && second === false;
-}
-
-export const ORCH_0918_MUTEX_TEST_RECEIPTS = {
-  'T-06': 'fails-on-revert verified by app-mobile/scripts/ci/orch-0918-regression-check.mjs',
-  'T-07': 'fails-on-revert verified by app-mobile/scripts/ci/orch-0918-regression-check.mjs',
-};
+export const ORCH_0942_SESSION_DECK_MOUNT_STORE_DELETED = true;

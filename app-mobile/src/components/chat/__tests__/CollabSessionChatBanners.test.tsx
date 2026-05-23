@@ -1,38 +1,27 @@
-import {
-  CollabSessionChatBanners,
-  InChatDeckSheet,
-  SavedToSessionCardsSheet,
-} from "../CollabSessionChatBanners";
+// ORCH-0942 [META-ORCH-0929 dead-code reap] — 2026-05-23
+//
+// This test file is intentionally a no-op stub.
+//
+// Before ORCH-0942, this file tested `CollabSessionChatBanners` and
+// `InChatDeckSheet` — both exports of `app-mobile/src/components/chat/CollabSessionChatBanners.tsx`
+// that were orphaned by META-ORCH-0929 [Collab decks live in group chat — Home is solo-only]
+// and structurally deleted by ORCH-0942 [META-ORCH-0929 dead-code reap].
+//
+// The original assertions (`typeof CollabSessionChatBanners === "function"`,
+// `typeof InChatDeckSheet === "function"`, plus banner-visibility fixtures) targeted
+// code paths that no longer exist. The Pragmatic Append-Only policy
+// (ORCH-0840 [Regression-test enforcement + append-only CI]) categorically forbids
+// test-file deletion, so this file remains in the tree as a documented no-op
+// rather than being removed. Re-introducing the deleted symbols would also re-trip
+// the new forward-looking assertion in
+// `app-mobile/src/components/connections/__tests__/CollabDeckSheet.ghostSessionRegression.test.tsx`
+// (the inverse `assert.doesNotMatch(chatBanners, /InChatDeckSheet/, ...)`).
+//
+// If a future ORCH ever resurrects `CollabSessionChatBanners` or `InChatDeckSheet`,
+// open a new ORCH amending ORCH-0942's DEC-164 first, then re-author this file's
+// fixtures against the resurrected exports.
+//
+// Citation: Mingla_Artifacts/specs/SPEC_ORCH-0942_META-ORCH-0929_DEAD_CODE_REAP.md §3.4.1
+// Citation: Mingla_Artifacts/DECISION_LOG.md DEC-164
 
-export function runOrch0918BannerExportFixture(): boolean {
-  return (
-    typeof CollabSessionChatBanners === "function" &&
-    typeof InChatDeckSheet === "function" &&
-    typeof SavedToSessionCardsSheet === "function"
-  );
-}
-
-export function runOrch0918BannerVisibilityFixture() {
-  const shouldRenderSchedule = (count: number) => count > 0;
-  const shouldRenderSavedToSession = (savedCardsForLikesSheetLength: number) =>
-    savedCardsForLikesSheetLength > 0;
-  return {
-    scheduleHiddenOnEmpty: shouldRenderSchedule(0) === false,
-    scheduleRenderedWhenPopulated: shouldRenderSchedule(1) === true,
-    savedToSessionHiddenOnEmpty: shouldRenderSavedToSession(0) === false,
-    savedToSessionRenderedWhenPopulated: shouldRenderSavedToSession(1) === true,
-    savedToSessionCountSource: shouldRenderSavedToSession(2) === true,
-    deckAlwaysRendered: true,
-  };
-}
-
-export const ORCH_0918_BANNER_TEST_RECEIPTS = {
-  "T-08":
-    "fails-on-revert verified by app-mobile/scripts/ci/orch-0918-regression-check.mjs",
-  "T-09-rev":
-    "fails-on-revert verified by app-mobile/scripts/ci/orch-0918-regression-check.mjs",
-  "T-10":
-    "fails-on-revert verified by app-mobile/scripts/ci/orch-0918-regression-check.mjs",
-  "T-11":
-    "fails-on-revert verified by app-mobile/scripts/ci/orch-0918-regression-check.mjs",
-};
+export const ORCH_0942_DEAD_CODE_REAP_NO_OP = true;

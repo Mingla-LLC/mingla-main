@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Modal,
@@ -8,10 +8,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import {
-  SafeAreaView,
-  useSafeAreaInsets,
-} from "react-native-safe-area-context";
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetScrollView,
@@ -19,20 +15,13 @@ import BottomSheet, {
   type BottomSheetBackdropProps,
 } from "@gorhom/bottom-sheet";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import * as Haptics from "expo-haptics";
 import { Icon } from "../ui/Icon";
-import { toastManager } from "../ui/Toast";
 import ExpandedCardModal from "../ExpandedCardModal";
-import PreferencesSheet from "../PreferencesSheet";
-import SwipeableCards from "../SwipeableCards";
 import { SwipeableSessionCards } from "../board/SwipeableSessionCards";
-import { RecommendationsProvider } from "../../contexts/RecommendationsContext";
-import { useBoardSession } from "../../hooks/useBoardSession";
 import {
   useSessionScheduledCards,
   SessionScheduledCardRow,
 } from "../../hooks/useSessionScheduledCards";
-import { useSessionDeckMountStore } from "../../store/sessionDeckMountStore";
 import { realtimeService } from "../../services/realtimeService";
 import { supabase } from "../../services/supabase";
 import type { ExpandedCardData } from "../../types/expandedCardTypes";
@@ -252,48 +241,6 @@ function formatScheduledAt(value: string): string {
   }
 }
 
-function BannerRow({
-  icon,
-  iconColor,
-  backgroundColor,
-  title,
-  subtitle,
-  minHeight = 48,
-  accessibilityLabel,
-  onPress,
-}: {
-  icon: string;
-  iconColor: string;
-  backgroundColor: string;
-  title: string;
-  subtitle: string;
-  minHeight?: number;
-  accessibilityLabel: string;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel}
-      onPress={onPress}
-      style={[styles.banner, { backgroundColor, minHeight }]}
-    >
-      <View style={[styles.iconShell, { backgroundColor: iconColor }]}>
-        <Icon name={icon} size={17} color="#ffffff" />
-      </View>
-      <View style={styles.bannerText}>
-        <Text style={styles.bannerTitle} numberOfLines={1}>
-          {title}
-        </Text>
-        <Text style={styles.bannerSubtitle} numberOfLines={1}>
-          {subtitle}
-        </Text>
-      </View>
-      <Icon name="chevron-forward" size={20} color="#6b7280" />
-    </Pressable>
-  );
-}
-
 function CompactCollabBottomSheet({
   visible,
   onClose,
@@ -508,247 +455,7 @@ export function SavedToSessionCardsSheet({
   );
 }
 
-export function InChatDeckSheet({
-  visible,
-  onClose,
-  sessionId,
-  boardsSessions = [],
-  accountPreferences,
-  onCardLike,
-  onAddToCalendar,
-  onShareCard,
-  onPurchaseComplete,
-}: Omit<Props, "currentUserId"> & { visible: boolean; onClose: () => void }) {
-  const insets = useSafeAreaInsets();
-  const [showPrefsSheet, setShowPrefsSheet] = useState(false);
-  const { session, preferences } = useBoardSession(sessionId);
-  const release = useSessionDeckMountStore((state) => state.release);
-
-  useEffect(() => {
-    if (!visible) return;
-    return () => release(sessionId);
-  }, [visible, sessionId, release]);
-
-  const scopedBoardsSessions = useMemo(() => {
-    const found = boardsSessions.find(
-      (s: any) => s?.id === sessionId || s?.session_id === sessionId,
-    );
-    return found
-      ? boardsSessions
-      : [
-          {
-            id: sessionId,
-            session_id: sessionId,
-            name: session?.name || sessionId,
-          },
-          ...boardsSessions,
-        ];
-  }, [boardsSessions, session?.name, sessionId]);
-
-  const close = useCallback(() => {
-    setShowPrefsSheet(false);
-    release(sessionId);
-    onClose();
-  }, [onClose, release, sessionId]);
-
-  return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      presentationStyle="fullScreen"
-      onRequestClose={close}
-    >
-      <SafeAreaView style={styles.deckSheet}>
-        <View
-          style={[styles.deckHeader, { paddingTop: Math.max(insets.top, 8) }]}
-        >
-          <TouchableOpacity
-            onPress={close}
-            style={styles.headerButton}
-            accessibilityRole="button"
-            accessibilityLabel="Close swipe cards deck"
-          >
-            <Icon name="chevron-down" size={24} color="#111827" />
-          </TouchableOpacity>
-          <Text style={styles.deckTitle}>Swipe cards</Text>
-          <TouchableOpacity
-            onPress={() => setShowPrefsSheet(true)}
-            style={styles.headerButton}
-            accessibilityRole="button"
-            accessibilityLabel="Open session preferences"
-          >
-            <Icon name="settings-outline" size={22} color="#111827" />
-          </TouchableOpacity>
-        </View>
-        <View style={styles.deckBody} key={sessionId}>
-          <RecommendationsProvider currentMode={sessionId} key={sessionId}>
-            <SwipeableCards
-              key={sessionId}
-              sessionIdOverride={sessionId}
-              userPreferences={preferences}
-              accountPreferences={accountPreferences}
-              currentMode="collab"
-              boardsSessions={scopedBoardsSessions}
-              onCardLike={onCardLike || (async () => false)}
-              onAddToCalendar={onAddToCalendar}
-              onShareCard={onShareCard}
-              onPurchaseComplete={onPurchaseComplete}
-              onOpenCollabPreferences={() => setShowPrefsSheet(true)}
-            />
-          </RecommendationsProvider>
-        </View>
-        <PreferencesSheet
-          visible={showPrefsSheet}
-          onClose={() => setShowPrefsSheet(false)}
-          accountPreferences={accountPreferences}
-          sessionId={sessionId}
-          sessionName={session?.name}
-        />
-      </SafeAreaView>
-    </Modal>
-  );
-}
-
-export function CollabSessionChatBanners({
-  sessionId,
-  currentUserId,
-  boardsSessions,
-  accountPreferences,
-  onCardLike,
-  onAddToCalendar,
-  onShareCard,
-  onPurchaseComplete,
-}: Props) {
-  const [showScheduleSheet, setShowScheduleSheet] = useState(false);
-  const [showLikedSheet, setShowLikedSheet] = useState(false);
-  const [showDeckSheet, setShowDeckSheet] = useState(false);
-  const scheduled = useSessionScheduledCards(sessionId);
-  const { session, isAdmin } = useBoardSession(sessionId);
-  const participants = (session?.participants || []) as any[];
-  const { savedCards: savedCardsForLikesSheet, isLoading: savedCardsLoading } =
-    useSessionSavedCardsForSheet(sessionId);
-  const acquire = useSessionDeckMountStore((state) => state.acquire);
-
-  const openDeck = useCallback(async () => {
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    if (!acquire(sessionId, "in-chat-sheet")) {
-      toastManager.show(
-        "Deck open elsewhere — close it to swipe from chat.",
-        "warning",
-        3000,
-      );
-      return;
-    }
-    setShowDeckSheet(true);
-  }, [acquire, sessionId]);
-
-  return (
-    <View style={styles.stack} testID="collab-session-chat-banners">
-      {scheduled.rows.length > 0 ? (
-        <BannerRow
-          icon="lock-closed"
-          iconColor="#d97706"
-          backgroundColor="#FEF3C7"
-          title="Plans"
-          subtitle={`${scheduled.rows.length} scheduled`}
-          accessibilityLabel={`Plans: ${scheduled.rows.length} scheduled. Tap to view.`}
-          onPress={async () => {
-            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            setShowScheduleSheet(true);
-          }}
-        />
-      ) : null}
-      {savedCardsForLikesSheet.length > 0 ? (
-        <BannerRow
-          icon="heart-outline"
-          iconColor="#db2777"
-          backgroundColor="#FCE7F3"
-          title="Matches"
-          subtitle={`${savedCardsForLikesSheet.length} cards saved`}
-          accessibilityLabel={`Matches: ${savedCardsForLikesSheet.length} cards saved. Tap to view.`}
-          onPress={async () => {
-            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            setShowLikedSheet(true);
-          }}
-        />
-      ) : null}
-      <BannerRow
-        icon="albums-outline"
-        iconColor="#ea580c"
-        backgroundColor="#FED7AA"
-        title="Swipe cards together"
-        subtitle="Tap to open the deck"
-        minHeight={56}
-        accessibilityLabel="Open swipeable deck for this session."
-        onPress={openDeck}
-      />
-      <ScheduleSheet
-        visible={showScheduleSheet}
-        onClose={() => setShowScheduleSheet(false)}
-        sessionId={sessionId}
-        currentUserId={currentUserId}
-      />
-      <SavedToSessionCardsSheet
-        visible={showLikedSheet}
-        onClose={() => setShowLikedSheet(false)}
-        sessionId={sessionId}
-        currentUserId={currentUserId}
-        savedCards={savedCardsForLikesSheet}
-        savedCardsLoading={savedCardsLoading}
-        participantCount={participants.length}
-        accountPreferences={accountPreferences}
-        isAdmin={isAdmin}
-      />
-      {showDeckSheet ? (
-        <InChatDeckSheet
-          visible={showDeckSheet}
-          onClose={() => setShowDeckSheet(false)}
-          sessionId={sessionId}
-          boardsSessions={boardsSessions}
-          accountPreferences={accountPreferences}
-          onCardLike={onCardLike}
-          onAddToCalendar={onAddToCalendar}
-          onShareCard={onShareCard}
-          onPurchaseComplete={onPurchaseComplete}
-        />
-      ) : null}
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  stack: {
-    gap: 4,
-    paddingHorizontal: 14,
-    paddingTop: 8,
-    paddingBottom: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#e5e7eb",
-    backgroundColor: "#ffffff",
-  },
-  banner: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    gap: 10,
-  },
-  iconShell: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  bannerText: { flex: 1, minWidth: 0 },
-  bannerTitle: { color: "#111827", fontSize: 14, fontWeight: "700" },
-  bannerSubtitle: {
-    color: "#6b7280",
-    fontSize: 12,
-    fontWeight: "500",
-    marginTop: 1,
-  },
   loading: { paddingVertical: 28 },
   emptyState: {
     paddingHorizontal: 18,
@@ -816,28 +523,4 @@ const styles = StyleSheet.create({
     backgroundColor: "#f3f4f6",
   },
   savedCardsBody: { flex: 1, minHeight: 390 },
-  deckSheet: { flex: 1, backgroundColor: "#ffffff" },
-  deckHeader: {
-    minHeight: 56,
-    paddingHorizontal: 10,
-    paddingBottom: 8,
-    flexDirection: "row",
-    alignItems: "center",
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#e5e7eb",
-  },
-  headerButton: {
-    width: 44,
-    height: 44,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  deckTitle: {
-    flex: 1,
-    textAlign: "center",
-    color: "#111827",
-    fontSize: 17,
-    fontWeight: "700",
-  },
-  deckBody: { flex: 1 },
 });
