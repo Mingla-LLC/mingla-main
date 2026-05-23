@@ -467,8 +467,9 @@ serve(async (req) => {
       // direct charges with 400 StripeInvalidRequestError, see
       // https://docs.stripe.com/tax/connect/direct-charges). Stripe
       // Checkout auto-collects the buyer's billing address on the new
-      // Customer (created from customer_email) when automatic_tax is
-      // enabled, so jurisdiction lookup works without a customer_update
+      // Customer (created when customer_creation: "always" is set for
+      // installment plans, per ORCH-0925) when automatic_tax is enabled,
+      // so jurisdiction lookup works without a customer_update
       // block. (ORCH-0811 removed customer_update: it requires an
       // existing `customer` id and Stripe rejects the request with "You
       // cannot use customer_update without setting customer" when paired
@@ -538,12 +539,22 @@ serve(async (req) => {
           // replaces the SPEC §3.1.3 "PRESERVED VERBATIM" claim which was
           // SUPERSEDED by ORCH-0843 REWORK after QA caught the 400 in live.
           automatic_tax: { enabled: true },
-          // ORCH-0811 — customer_update is only valid alongside an existing
-          // `customer` id. Mingla creates a new Stripe Customer per buyer via
-          // customer_email, so Stripe rejects customer_update with "You cannot
-          // use customer_update without setting customer". Checkout auto-
-          // collects billing address on new Customers when automatic_tax is
-          // enabled, so removing this line preserves tax jurisdiction lookup.
+          // ORCH-0925 — installment plans MUST attach a Stripe Customer so
+          // the cron `process-scheduled-installments` can later charge the
+          // saved PaymentMethod off-session via `customer + payment_method`.
+          // Stripe's default `customer_creation: "if_required"` for
+          // `mode: "payment"` does NOT create a Customer just because
+          // `customer_email` is set — `setup_future_usage: "off_session"`
+          // alone saves the PM but leaves it orphaned (no Customer attached),
+          // which the cron cannot charge. Setting `customer_creation: "always"`
+          // forces Stripe to create the Customer + attach the PM post-checkout
+          // so `paymentIntent.customer` resolves to a real `cus_xxx`. Full-pay
+          // checkouts are unaffected (default remains `"if_required"`).
+          // ORCH-0811 customer_update note retained: customer_update would
+          // require a pre-existing `customer` id (which we don't have at
+          // create time), so it stays omitted; `automatic_tax.enabled: true`
+          // collects billing address on the new Customer for tax jurisdiction.
+          ...(isInstallmentPlan ? { customer_creation: "always" as const } : {}),
           customer_email: buyerEmail,
           success_url: successUrl,
           cancel_url: cancelUrl,
@@ -617,6 +628,122 @@ serve(async (req) => {
     });
   }
 
+  // ORCH-0844 (2026-05-15) + ORCH-0925 (2026-05-22) — Connect direct-charge
+  // mobile config + Customer attachment for installment plans.
+  //
+  // For full-pay flows this is non-fatal mobile config: PaymentSheet falls
+  // back to guest mode (null customer fields) on failure. For installment
+  // plans (ORCH-0925) this is FATAL: off-session installment charges require
+  // a real Customer with the saved PM attached, so missing customer/PM here
+  // means the cron `process-scheduled-installments` cannot charge later and
+  // the booking silently loses revenue. We attach `customer: customerId` to
+  // the deposit PI for installment plans so `setup_future_usage: "off_session"`
+  // correctly binds the PM to the Customer. Full-pay PIs do NOT receive
+  // `customer` (preserves existing behavior + Stripe Tax direct-charge shape).
+  //
+  // Block must run BEFORE paymentIntents.create so customerId is available
+  // for piCreateBody construction.
+  let customerId: string | null = null;
+  let customerEphemeralKeySecret: string | null = null;
+  let customerProvisioningError: unknown = null;
+  try {
+    const stripeForCustomer = stripeTicketCheckout();
+    // 3.2.3.a — Idempotent customer lookup by email on the CONNECTED ACCOUNT.
+    // The { stripeAccount } request option scopes the search to that account.
+    // orch-strict-grep-allow stripe-no-idempotency-key — read-only search; idempotency-key on Stripe search calls is rejected by the API (search is a query, not a mutation).
+    const searchResult = await stripeForCustomer.customers.search(
+      {
+        query: `email:'${buyerEmail.replace(/'/g, "\\'")}'`,
+        limit: 1,
+      },
+      { stripeAccount: stripeAccountId },
+    );
+    let customer = searchResult.data[0] ?? null;
+
+    if (customer === null) {
+      // 3.2.3.b — Idempotent creation by email-hashed idempotency-key.
+      const customerIdemKey =
+        `mingla_customer:${stripeAccountId}:${await sha256Hex(buyerEmail)}`;
+      customer = await stripeForCustomer.customers.create(
+        {
+          email: buyerEmail,
+          metadata: {
+            mingla_buyer_email: buyerEmail,
+            mingla_origin: "ticket_checkout_create_native",
+          },
+        },
+        {
+          idempotencyKey: customerIdemKey,
+          stripeAccount: stripeAccountId,
+        },
+      );
+    }
+    customerId = customer.id;
+
+    // 3.2.3.c — EphemeralKey for the mobile SDK, scoped to the connected
+    // account. apiVersion is the platform's pinned STRIPE_API_VERSION;
+    // ahead-of-SDK versions are non-fatal — the sheet still loads.
+    const ephemeralKeyIdemKey =
+      `mingla_ephkey:${stripeAccountId}:${customerId}:${Date.now()}`;
+    const ephemeralKey = await stripeForCustomer.ephemeralKeys.create(
+      { customer: customerId },
+      {
+        apiVersion: STRIPE_API_VERSION,
+        stripeAccount: stripeAccountId,
+        idempotencyKey: ephemeralKeyIdemKey,
+      },
+    );
+    customerEphemeralKeySecret = String(ephemeralKey.secret ?? "");
+    if (customerEphemeralKeySecret.length === 0) {
+      // defensive: empty secret — treat as failure (paired-or-absent invariant).
+      customerId = null;
+      customerEphemeralKeySecret = null;
+    }
+  } catch (customerErr) {
+    customerProvisioningError = customerErr;
+    customerId = null;
+    customerEphemeralKeySecret = null;
+  }
+
+  // ORCH-0925 — for installment plans, customer+PM is FATAL (off-session
+  // cron charge cannot proceed without it). For full-pay, fall back to
+  // guest-mode PaymentSheet (preserves ORCH-0844 behavior).
+  if (isInstallmentPlan && customerId === null) {
+    console.error(
+      "[ticket-checkout-create] installment plan customer provisioning failed",
+      customerProvisioningError instanceof Error
+        ? customerProvisioningError.message
+        : customerProvisioningError,
+    );
+    await supabase
+      .from("ticket_checkout_sessions")
+      .update({
+        status: "failed",
+        failed_at: new Date().toISOString(),
+        failure_reason: "installment_customer_provisioning_failed",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", checkoutSessionId);
+    return jsonResponse(
+      {
+        error: "installment_customer_provisioning_failed",
+        detail: customerProvisioningError instanceof Error
+          ? customerProvisioningError.message
+          : "unknown",
+      },
+      502,
+    );
+  }
+  if (!isInstallmentPlan && customerProvisioningError !== null) {
+    // Full-pay: log and continue in guest mode (ORCH-0844 behavior preserved).
+    console.warn(
+      "[ticket-checkout-create] customer+ephemeralKey creation failed; continuing in guest mode",
+      customerProvisioningError instanceof Error
+        ? customerProvisioningError.message
+        : customerProvisioningError,
+    );
+  }
+
   // ORCH-0804 / I-PROPOSED-BF — native PaymentIntent path is NOT tax-enabled
   // in v1. Stripe Tax on PaymentIntent requires pre-computing a tax_calculation
   // id via separate POST /v1/tax/calculations call. Material complexity.
@@ -655,6 +782,13 @@ serve(async (req) => {
       // ORCH-0869 [Tr3 Installment Payments]: when deposit is installment-
       // plan-root, save PM for off-session installment charges.
       ...(isInstallmentPlan ? { setup_future_usage: "off_session" as const } : {}),
+      // ORCH-0925: installment plans MUST attach a Stripe Customer so the
+      // saved PM binds to the Customer (cron later charges off-session via
+      // {customer, payment_method}). customerId is provisioned earlier in
+      // this handler (FATAL on failure for installment plans). Full-pay PIs
+      // do NOT receive a customer field (preserves ORCH-0843 direct-charge
+      // shape + ORCH-0844 guest-mode fallback).
+      ...(isInstallmentPlan && customerId !== null ? { customer: customerId } : {}),
       payment_method_types: [...getPaymentMethodTypes()],
       metadata: {
         mingla_checkout_session_id: checkoutSessionId,
@@ -733,89 +867,6 @@ serve(async (req) => {
       { error: "payment_session_persist_failed", detail: persistPaymentError.message },
       500,
     );
-  }
-
-  // ORCH-0844 (2026-05-15) — Connect direct-charge mobile config.
-  // After ORCH-0843 flipped every ticket PI to a direct charge on a
-  // connected account (via the third-arg `{ stripeAccount }` request
-  // option above), the mobile Stripe SDK must be initialised with the
-  // matching stripeAccountId before opening PaymentSheet — otherwise the
-  // SDK's mid-flow confirm call hits Stripe under the platform context,
-  // the connected-account client_secret is rejected with a 404, and on
-  // iOS 26 the native RCTPromiseResolveBlock fires twice (early-error +
-  // late-completion) which RN's TurboModule bridge logs as
-  // "tried to resolve a promise more than once".
-  //
-  // We additionally provision a Stripe Customer + ephemeralKey scoped to
-  // the connected account (third-arg { stripeAccount } request option)
-  // so PaymentSheet can render saved-PM UI. Both operations are NON-FATAL
-  // — on any error we fall back to guest mode (null customer fields) and
-  // PaymentSheet still works for one-off card payments. This preserves
-  // ticket-sale uptime even when Stripe's customers-API hiccups.
-  let customerId: string | null = null;
-  let customerEphemeralKeySecret: string | null = null;
-  try {
-    // 3.2.3.a — Idempotent customer lookup by email on the CONNECTED ACCOUNT.
-    // The { stripeAccount } request option scopes the search to that account.
-    // orch-strict-grep-allow stripe-no-idempotency-key — read-only search; idempotency-key on Stripe search calls is rejected by the API (search is a query, not a mutation).
-    const searchResult = await stripe.customers.search(
-      {
-        query: `email:'${buyerEmail.replace(/'/g, "\\'")}'`,
-        limit: 1,
-      },
-      { stripeAccount: stripeAccountId },
-    );
-    let customer = searchResult.data[0] ?? null;
-
-    if (customer === null) {
-      // 3.2.3.b — Idempotent creation by email-hashed idempotency-key.
-      const customerIdemKey =
-        `mingla_customer:${stripeAccountId}:${await sha256Hex(buyerEmail)}`;
-      customer = await stripe.customers.create(
-        {
-          email: buyerEmail,
-          metadata: {
-            mingla_buyer_email: buyerEmail,
-            mingla_origin: "ticket_checkout_create_native",
-          },
-        },
-        {
-          idempotencyKey: customerIdemKey,
-          stripeAccount: stripeAccountId,
-        },
-      );
-    }
-    customerId = customer.id;
-
-    // 3.2.3.c — EphemeralKey for the mobile SDK, scoped to the connected
-    // account. apiVersion is the platform's pinned STRIPE_API_VERSION;
-    // ahead-of-SDK versions are non-fatal — the sheet still loads.
-    const ephemeralKeyIdemKey =
-      `mingla_ephkey:${stripeAccountId}:${customerId}:${Date.now()}`;
-    const ephemeralKey = await stripe.ephemeralKeys.create(
-      { customer: customerId },
-      {
-        apiVersion: STRIPE_API_VERSION,
-        stripeAccount: stripeAccountId,
-        idempotencyKey: ephemeralKeyIdemKey,
-      },
-    );
-    customerEphemeralKeySecret = String(ephemeralKey.secret ?? "");
-    if (customerEphemeralKeySecret.length === 0) {
-      // defensive: empty secret — treat as failure (paired-or-absent invariant).
-      customerId = null;
-      customerEphemeralKeySecret = null;
-    }
-  } catch (customerErr) {
-    // Non-fatal: log and continue with null customer fields. Mobile SDK
-    // will init PaymentSheet in guest mode. This preserves the existing
-    // happy path even if Connect customer-creation breaks on Stripe's side.
-    console.warn(
-      "[ticket-checkout-create] customer+ephemeralKey creation failed; continuing in guest mode",
-      customerErr instanceof Error ? customerErr.message : customerErr,
-    );
-    customerId = null;
-    customerEphemeralKeySecret = null;
   }
 
   return jsonResponse({
