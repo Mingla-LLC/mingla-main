@@ -571,6 +571,17 @@ function checkNoNewBackendFiles() {
     "supabase/functions/ticket-checkout-confirm/index.ts",
     "supabase/migrations/20260724000000_orch_0921_finalize_compare_and_correct.sql",
   ];
+  // ORCH-0925 [ticket-checkout-create does not attach Stripe Customer to payment-plan PIs]
+  // PR #176 (2026-05-23). C7 is scoped to ORCH-0863 marketing; this backend touch is
+  // the Stripe Customer-attachment fix for installment-plan checkouts on the
+  // ticket-checkout-create edge fn + its happy-path + adversarial regression tests.
+  // ORCH-0925 close adds these paths to keep C7 green while ORCH-0863's hub guard
+  // continues to protect against accidental marketing-side backend regressions.
+  const ORCH_0925_BACKEND_ALLOWLIST = [
+    "supabase/functions/ticket-checkout-create/__tests__/orch-0925-installment-customer-attachment.adversarial.test.ts",
+    "supabase/functions/ticket-checkout-create/__tests__/orch-0925-installment-customer-attachment.test.ts",
+    "supabase/functions/ticket-checkout-create/index.ts",
+  ];
   const ALLOWLIST = [
     ...ORCH_0859_BUNDLED_ALLOWLIST,
     ...ORCH_0869_BACKEND_ALLOWLIST,
@@ -596,6 +607,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_0911_BACKEND_ALLOWLIST,
     ...ORCH_0914_BACKEND_ALLOWLIST,
     ...ORCH_0921_BACKEND_ALLOWLIST,
+    ...ORCH_0925_BACKEND_ALLOWLIST,
   ];
   const forbidden = changed.filter(
     (p) =>
