@@ -7,6 +7,68 @@
 
 ---
 
+## ACTIVE (post ORCH-0933 [Profile "Your Circle" social graph section] CLOSE 2026-05-23)
+
+Seven new invariants flipped DRAFT → ACTIVE at the ORCH-0933 close after tester retest 2 CONDITIONAL PASS verdict P0:0 P1:0 P2:4 P3:0 P4:2 with operator-accepted P2-001/P2-002/P2-003/P2-004. Happy-path regression at `app-mobile/src/components/profile/circle/__tests__/YourCircleSection.happy.test.tsx` with `fails-on-revert verified at daee4cdc` (column-0 became `[Alice, Dan, Grace]` under row-major simulation); adversarial regression at `YourCircleSection.adversarial.test.tsx` covering all 7 invariants. Two strict-grep CI gates landed: `G-CIRCLE-RPC-SOLE-OWNER` + `G-CIRCLE-BADGE-DUAL-APP`.
+
+### I-PROPOSED-YOUR-CIRCLE-CONSUMER-APP-FILTER
+
+**Rule:** Every avatar rendered in the consumer Profile "Your Circle" section MUST correspond to a `profiles.id` where `appsflyer_devices` has at least one row with `app='consumer'` for that user_id. Business-only users (and accounts without either app) MUST NOT appear in any tier.
+
+**Why it exists:** Per operator brief at ORCH-0933 intake — Your Circle is a social-graph view for consumer-app users. Surfacing business-only operators or accounts without the consumer app installed would mislead users about who they can interact with via Mingla consumer flows.
+
+**Enforcement:** Hard `WHERE c.other_id IN (SELECT user_id FROM consumer_users)` clause in the `get_user_circle` RPC final SELECT (`supabase/migrations/20260724000002_orch_0933_get_user_circle_rpc.sql`). Strict-grep gate `G-CIRCLE-RPC-SOLE-OWNER` at `.github/scripts/strict-grep/circle-rpc-sole-owner.sh` blocks client-side bypass.
+
+### I-PROPOSED-YOUR-CIRCLE-COLUMN-MAJOR-FILL
+
+**Rule:** The Your Circle grid fills column-by-column, top-to-bottom. Row-major fill is forbidden.
+
+**Why it exists:** Operator-confirmed at INTAKE — column-major fill produces the intended visual where the leftmost columns concentrate the strongest ties and the grid grows rightward. Row-major fill would distribute close friends across all three rows of column 0 and waste density.
+
+**Enforcement:** `Math.floor(index / 3)` column index + `index % 3` row index in `CircleGrid.tsx`. Happy-path regression test exercises a 7-person mixed-tier seed and asserts column-0 = `[Alice, Bob, Carol]`. Fails-on-revert proven at commit `daee4cdc` (`ORCH0933_SIMULATE_ROW_MAJOR=1` flag flips chunking to row-major and the test fails with column-0 = `[Alice, Dan, Grace]`).
+
+### I-PROPOSED-YOUR-CIRCLE-TIER-DETERMINISTIC
+
+**Rule:** Each user appears in EXACTLY ONE tier in Your Circle. Precedence: Close (paired) > Friend (direct accepted) > Extended (friends-of-friends ∪ co-attendees). A user who qualifies for multiple tiers appears in the strongest one only.
+
+**Why it exists:** Without precedence, the same person would render multiple times in the grid (e.g., a paired friend who is also a co-attendee), inflating the visible circle and confusing the tier-color signal.
+
+**Enforcement:** RPC tier CTEs use `NOT IN (SELECT other_id FROM tier_close)` and `NOT IN (SELECT other_id FROM tier_friend)` exclusions; service-layer `circleService.ts` defensively dedupes to strongest tier as a belt-and-braces guard. Adversarial regression test seeds a user labeled both `tier='close'` AND `tier='friend'` and asserts only ONE tile renders with close ring.
+
+### I-PROPOSED-YOUR-CIRCLE-BADGE-MEANS-DUAL-APP
+
+**Rule:** The briefcase badge on a Your Circle avatar renders IFF the user has rows in `appsflyer_devices` for BOTH `app='consumer'` AND `app='business'`. Never for consumer-only users, never for business-only users (business-only users don't appear at all per `I-PROPOSED-YOUR-CIRCLE-CONSUMER-APP-FILTER`).
+
+**Why it exists:** The badge signals "this person also runs a Mingla business" — useful context for users browsing their circle. False-positive badges (e.g., showing badge for brand admins, for verified accounts, for any other condition) would dilute the signal.
+
+**Enforcement:** RPC computes `has_business_app` per row via `c.other_id IN (SELECT user_id FROM dual_app_users)`. Render guard in `CircleAvatarTile.tsx` is exactly `{person.hasBusinessApp && <BusinessBadge />}` — no other condition. Strict-grep gate `G-CIRCLE-BADGE-DUAL-APP` at `.github/scripts/strict-grep/circle-badge-dual-app.sh` fails the build if any `briefcase` reference in `app-mobile/src/components/profile/circle/` is not gated by `hasBusinessApp`. Adversarial regression test seeds 5 people with `has_business_app=false` and asserts zero badges visible.
+
+### I-PROPOSED-YOUR-CIRCLE-RPC-SOLE-OWNER
+
+**Rule:** The `get_user_circle` SECURITY DEFINER RPC is the SOLE data path for the Your Circle section. Client code under `app-mobile/src/components/profile/circle/`, `app-mobile/src/hooks/useUserCircle.ts`, and `app-mobile/src/services/circleService.ts` MUST NOT independently query `friends`, `pairings`, or `orders` tables for circle composition. The only allowed Supabase access is `.rpc('get_user_circle', ...)`.
+
+**Why it exists:** `friends` and `orders` RLS policies (`auth.uid() = user_id` / `auth.uid() = buyer_user_id`) make friends-of-friends and co-attendees unreachable from the client. A SECURITY DEFINER RPC is the only path that can compute the union safely. Allowing direct table reads would either fail silently (RLS hides rows) or produce an incomplete circle that misleads the user.
+
+**Enforcement:** Strict-grep CI gate `G-CIRCLE-RPC-SOLE-OWNER` at `.github/scripts/strict-grep/circle-rpc-sole-owner.sh` scans the named scope for `.from('friends'|'pairings'|'orders')` patterns and fails the build on any match. Adversarial regression test spies on `supabase.from` during render and asserts only `supabase.rpc('get_user_circle', ...)` is invoked.
+
+### I-PROPOSED-YOUR-CIRCLE-BLOCKED-EXCLUDED
+
+**Rule:** Users whom the viewer has blocked (`friends.status='blocked'` with viewer as `user_id`) MUST NOT appear in any tier of Your Circle.
+
+**Why it exists:** A blocked user appearing in the circle would surface a social tie the viewer has explicitly chosen to sever — a privacy and trust failure. Block must propagate to every tier including extended-tier co-attendees and friends-of-friends.
+
+**Enforcement:** Final SELECT in `get_user_circle` RPC includes `AND NOT EXISTS (SELECT 1 FROM friends fb WHERE fb.user_id = p_viewer_user_id AND fb.friend_user_id = c.other_id AND fb.status = 'blocked' AND fb.deleted_at IS NULL)`. Adversarial regression test seeds a blocked-user row and asserts the user does not appear via direct service-layer call. Direct SQL invariant matrix verification deferred to ORCH-0934 (operator-accepted P2-001 — Supabase CLI auth blocked it during retest 2).
+
+### I-PROPOSED-YOUR-CIRCLE-NO-IMPERSONATION
+
+**Rule:** The `get_user_circle` RPC MUST reject every invocation where `auth.uid() <> p_viewer_user_id` with SQL errcode `42501` (insufficient_privilege). A viewer can only fetch their own circle, never another user's.
+
+**Why it exists:** SECURITY DEFINER functions run as the function owner (typically `postgres`/`service_role`-equivalent) and bypass RLS — without an explicit caller check, any authenticated user could fetch any other user's full social graph including extended-tier co-attendees.
+
+**Enforcement:** Guard at top of RPC body: `IF v_caller IS NULL OR v_caller <> p_viewer_user_id THEN RAISE EXCEPTION 'get_user_circle: unauthorized (caller=%, requested=%)', v_caller, p_viewer_user_id USING ERRCODE = '42501'; END IF;`. Adversarial regression test asserts service-layer surfaces the 42501; direct linked-DB call from tester retest 2 with caller `ac7f00ee-b87f-4eb8-86ea-772b9fc88afa` requesting viewer `c727...` returned `ERROR 42501 get_user_circle: unauthorized`.
+
+---
+
 ## ACTIVE (post ORCH-0921 [Trip payment-plan finalize silently drops `installment_plan_root` + child installments — €375/order revenue leak] CLOSE 2026-05-22)
 
 One new invariant flipped DRAFT → ACTIVE at the ORCH-0921 close after tester CONDITIONAL PASS verdict P0:0 P1:0 P2:0 P3:1 P4:3 with operator-accepted SC-18 deferral. 9 implementor happy-path tests + 20 tester adversarial tests committed at real paths; fails-on-revert verified by implementor at pre-fix `0169b4a360cfb678799c1691b01c25dc8b106509`.

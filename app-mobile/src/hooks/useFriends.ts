@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { supabase, trackedInvoke } from "../services/supabase";
 import { blockService } from "../services/blockService";
 import { useAppStore } from "../store/appStore";
+import { circleKeys } from "./queryKeys";
 import { getDisplayName } from "../utils/getDisplayName";
 import { logAppsFlyerEvent } from "../services/appsFlyerService";
 import { mixpanelService } from "../services/mixpanelService";
@@ -347,6 +348,7 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
 
         // Invalidate all friends caches (friends list + requests)
         await queryClient.invalidateQueries({ queryKey: friendsKeys.all });
+        await queryClient.invalidateQueries({ queryKey: circleKeys.all });
 
         // Clear the corresponding notification (fire-and-forget — DB trigger also handles this)
         if (userId) {
@@ -405,6 +407,7 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
         }
 
         await queryClient.invalidateQueries({ queryKey: friendsKeys.all });
+        await queryClient.invalidateQueries({ queryKey: circleKeys.all });
       } catch (error) {
         console.error("Error removing friend:", error);
         throw error;
@@ -424,6 +427,7 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
 
         // Invalidate all friends caches (friends list + blocked list)
         await queryClient.invalidateQueries({ queryKey: friendsKeys.all });
+        await queryClient.invalidateQueries({ queryKey: circleKeys.all });
       } catch (error) {
         console.error("Error blocking user:", error);
         throw error;

@@ -2218,6 +2218,7 @@ function AppContent() {
               setPendingConnectionsPanel("friends");
               setCurrentPage("connections");
             }}
+            onViewFriendProfile={handleViewFriendProfile}
             savedExperiences={savedCards?.length || 0}
             scheduledCount={calendarEntries?.length || 0}
             notificationsEnabled={notificationsEnabled}
@@ -2455,6 +2456,7 @@ function AppContent() {
                                       onUserIdentityUpdate={handleUserIdentityUpdate}
                                       onNavigateToActivity={stableHandleNavigateToActivity}
                                       onNavigateToConnections={handleNavigateToConnectionsFromProfile}
+                                      onViewFriendProfile={handleViewFriendProfile}
                                       savedExperiences={savedExperiencesCountMemo}
                                       scheduledCount={scheduledCountMemo}
                                       notificationsEnabled={notificationsEnabled}
