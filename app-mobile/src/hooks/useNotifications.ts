@@ -10,6 +10,7 @@ import { supabase } from '../services/supabase';
 import * as Haptics from 'expo-haptics';
 import { mixpanelService } from '../services/mixpanelService';
 import { clearNotificationBadge } from '../services/oneSignalService';
+import { circleKeys } from './queryKeys';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -501,6 +502,7 @@ export function useNotifications(
         // Invalidate friends + pairings cache (RPC may reveal hidden pair requests)
         queryClient.invalidateQueries({ queryKey: ['friends'] });
         queryClient.invalidateQueries({ queryKey: ['pairings'] });
+        queryClient.invalidateQueries({ queryKey: circleKeys.all });
         // Track in Mixpanel
         mixpanelService.trackFriendRequestAccepted({
           requestId,
@@ -553,6 +555,7 @@ export function useNotifications(
         const { acceptPairRequest: acceptPairSvc } = await import('../services/pairingService');
         const result = await acceptPairSvc(requestId);
         queryClient.invalidateQueries({ queryKey: ['pairings'] });
+        queryClient.invalidateQueries({ queryKey: circleKeys.all });
         // Fire-and-forget notification to the sender
         try {
           const senderId = result?.pairedWithUserId

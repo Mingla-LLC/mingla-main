@@ -1,0 +1,4 @@
+appId: com.mingla.app.v2
+---
+- launchApp
+- waitForAnimationToEnd

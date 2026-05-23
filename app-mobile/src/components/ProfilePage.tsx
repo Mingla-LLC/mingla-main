@@ -32,6 +32,7 @@ import { mixpanelService } from "../services/mixpanelService";
 import { useProfileInterests, useUpdateProfileInterests } from "../hooks/useProfileInterests";
 import ProfileHeroSection from "./profile/ProfileHeroSection";
 import ProfileInterestsSection from "./profile/ProfileInterestsSection";
+import { YourCircleSection } from "./profile/circle/YourCircleSection";
 import ProfileStatsRow from "./profile/ProfileStatsRow";
 import { fetchUserLevel } from "../services/userLevelService";
 import { userLevelKeys } from "../hooks/queryKeys";
@@ -53,6 +54,7 @@ interface ProfilePageProps {
   onUserIdentityUpdate?: (identity: any) => Promise<void>;
   onNavigateToActivity?: (tab: "saved" | "calendar") => void;
   onNavigateToConnections?: () => void;
+  onViewFriendProfile?: (userId: string) => void;
   isTabVisible?: boolean;
   savedExperiences?: number;
   scheduledCount?: number;
@@ -72,6 +74,7 @@ function ProfilePage({
   onUserIdentityUpdate,
   onNavigateToActivity,
   onNavigateToConnections,
+  onViewFriendProfile,
   isTabVisible,
   savedExperiences = 0,
   scheduledCount = 0,
@@ -459,7 +462,12 @@ function ProfilePage({
             />
           </GlassCard>
 
-          {/* 3. Stats bento card */}
+          {/* 3. Your Circle card */}
+          <GlassCard variant="base">
+            <YourCircleSection onViewProfile={onViewFriendProfile} />
+          </GlassCard>
+
+          {/* 4. Stats bento card */}
           <GlassCard variant="base">
             <Text style={styles.cardTitle}>{t('profile:page.stats_section')}</Text>
             <ProfileStatsRow
@@ -478,7 +486,7 @@ function ProfilePage({
             />
           </GlassCard>
 
-          {/* 4. Account card */}
+          {/* 5. Account card */}
           <GlassCard variant="base">
             <Text style={styles.cardTitle}>{t('profile:page.account_section')}</Text>
             <SettingsRow
@@ -500,10 +508,10 @@ function ProfilePage({
             </View>
           </GlassCard>
 
-          {/* 5. Beta feedback (conditional — retained styling for Phase 1; re-skin = ORCH-0634) */}
+          {/* 6. Beta feedback (conditional — retained styling for Phase 1; re-skin = ORCH-0634) */}
           <BetaFeedbackButton isTabVisible={isTabVisible} feedbackButtonRef={feedbackButtonRef} />
 
-          {/* 6. Footer card — legal + sign out + meta */}
+          {/* 7. Footer card — legal + sign out + meta */}
           <GlassCard variant="base">
             <View style={styles.legalRow}>
               <TouchableOpacity onPress={() => {

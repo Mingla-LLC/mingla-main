@@ -31,6 +31,14 @@ export const userLevelKeys = {
   level: (userId: string) => [...userLevelKeys.all, userId] as const,
 };
 
+export const circleKeys = {
+  all: ['circle'] as const,
+  forUser: (viewerUserId: string) =>
+    [...circleKeys.all, 'user', viewerUserId] as const,
+  page: (viewerUserId: string, limit: number, offset: number) =>
+    [...circleKeys.forUser(viewerUserId), { limit, offset }] as const,
+};
+
 export const personCardKeys = {
   all: ['personCards'] as const,
   hero: (pairedUserId: string, holidayKey: string) =>

@@ -102,6 +102,8 @@ on:
 #   - ORCH-0913 (orch-0913-no-tabs-on-dashboards.mjs) — event/trip dashboards keep tile-grid + section-beneath structure; no tab strips
 #   - I-PROPOSED-FINALIZE-CALLERS-PASS-INSTALLMENT-PARAMS (i-proposed-finalize-callers-pass-installment-params.mjs) — paid biz_ticket_checkout_finalize callers pass installment-plan params (ORCH-0921)
 #   - I-PROPOSED-ORCH-0925-INSTALLMENT-PLAN-ATTACHES-CUSTOMER (i-proposed-orch-0925-installment-plan-attaches-customer.mjs) — installment-plan Checkout Sessions + raw PaymentIntents attach a Stripe Customer (customer_creation:"always" or customer:<id>) so the cron can charge off-session (ORCH-0925)
+#   - G-CIRCLE-RPC-SOLE-OWNER (circle-rpc-sole-owner.sh) — Your Circle uses get_user_circle RPC as sole data path (ORCH-0933)
+#   - G-CIRCLE-BADGE-DUAL-APP (circle-badge-dual-app.sh) — Your Circle briefcase badge means dual-app user only (ORCH-0933)
 #
 # Future gates to register (proposed but not yet implemented):
 #   - I-32 rank parity (Cycle 13a proposal)
@@ -112,6 +114,22 @@ on:
 # .github/scripts/strict-grep/README.md.
 
 jobs:
+  circle-rpc-sole-owner:
+    name: "G-CIRCLE-RPC-SOLE-OWNER: Your Circle RPC sole owner"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run G-CIRCLE-RPC-SOLE-OWNER gate
+        run: bash .github/scripts/strict-grep/circle-rpc-sole-owner.sh
+
+  circle-badge-dual-app:
+    name: "G-CIRCLE-BADGE-DUAL-APP: briefcase means dual-app"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run G-CIRCLE-BADGE-DUAL-APP gate
+        run: bash .github/scripts/strict-grep/circle-badge-dual-app.sh
+
   orch-0913-no-tabs-on-dashboards:
     name: "ORCH-0913: no tab strips on dashboards"
     runs-on: ubuntu-latest

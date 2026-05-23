@@ -20,6 +20,7 @@ import { mixpanelService } from "../services/mixpanelService";
 import { useAppStore } from "../store/appStore";
 import { trackedInvoke } from "../services/supabase";
 import { dismissNotificationByEntity } from "./useNotifications";
+import { circleKeys } from "./queryKeys";
 
 // ── Query Keys ──────────────────────────────────────────────────────────────
 
@@ -157,6 +158,7 @@ export function useUnpair() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["pairings", "pills"] });
       queryClient.invalidateQueries({ queryKey: customHolidayKeys.all });
+      queryClient.invalidateQueries({ queryKey: circleKeys.all });
       mixpanelService.registerSuperProperties({ is_paired: false });
       mixpanelService.setUserProperties({ is_paired: false });
     },
@@ -281,6 +283,7 @@ export function useAcceptPairRequest() {
     onSettled: () => {
       // Always refetch to ensure server truth, regardless of success/failure
       queryClient.invalidateQueries({ queryKey: pairingKeys.prefix });
+      queryClient.invalidateQueries({ queryKey: circleKeys.all });
     },
   });
 }
