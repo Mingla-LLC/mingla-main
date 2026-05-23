@@ -623,11 +623,20 @@ function checkNoNewBackendFiles() {
     "supabase/functions/ticket-checkout-confirm/index.ts",
     "supabase/functions/ticket-checkout-status/index.ts",
   ];
+  // ORCH-0931 backfill 2026-05-23. The realtime-broadcast-session_updated
+  // migration was deployed to production via `supabase db push --linked`
+  // during ORCH-0931 close but the .sql file was never committed to git.
+  // This META-cleanup commit reconciles source-tree against remote so future
+  // migration baseline tests don't drift.
+  const ORCH_0931_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260724000001_orch_0931_realtime_broadcast_session_updated.sql",
+  ];
   const ALLOWLIST = [
     ...ORCH_0933_BACKEND_ALLOWLIST,
     ...ORCH_0940_BACKEND_ALLOWLIST,
     ...ORCH_0930_0928_LOCKIN_BACKEND_ALLOWLIST,
     ...ORCH_0932_BACKEND_ALLOWLIST,
+    ...ORCH_0931_BACKEND_ALLOWLIST,
     ...ORCH_0859_BUNDLED_ALLOWLIST,
     ...ORCH_0869_BACKEND_ALLOWLIST,
     ...ORCH_0875_BACKEND_ALLOWLIST,
