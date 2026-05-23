@@ -11,7 +11,7 @@
  * Per Cycle 11 SPEC §4.9 (J-S8).
  */
 
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Platform,
   ScrollView,
@@ -61,6 +61,25 @@ export const TicketQrCarousel: React.FC<TicketQrCarouselProps> = ({
   // multi-page render is gated on pageWidth > 0 so the first paint always uses
   // a measured width.
   const [pageWidth, setPageWidth] = useState<number>(0);
+  // ORCH-0930 (2026-05-23) — client-only-mount guard for <QRCode>. The
+  // `react-native-qrcode-svg` lib's SVG output on Expo SDK 54 web export
+  // produces a build-time/static-HTML render that differs from the
+  // post-hydration client render — React aborts the subtree with
+  // minified error #418 ("Hydration failed because the initial UI does
+  // not match what was rendered on the server"). Playwright forensic
+  // harness 2026-05-23 confirmed: confirm.tsx flow works end-to-end,
+  // order data populates, page chrome renders, but svgCount=1 (not 4
+  // for 4 tickets) and pageerror surfaces #418 — the carousel's <QRCode>
+  // subtree is the one bailing. Fix: defer the <QRCode> mount until
+  // after the first client effect tick. Render a placeholder of the
+  // correct dimensions in the meantime so the layout doesn't shift.
+  // Native (iOS/Android) is unaffected because they don't SSR;
+  // initial mounted=false → useEffect fires synchronously on first
+  // mount → mounted=true → render is identical to pre-fix native behavior.
+  const [mounted, setMounted] = useState<boolean>(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const total = tickets.length;
   const isMulti = total > 1;
@@ -102,12 +121,17 @@ export const TicketQrCarousel: React.FC<TicketQrCarouselProps> = ({
     return (
       <View style={styles.singleWrap}>
         <View style={styles.qrInner}>
-          <QRCode
-            value={single.payload}
-            size={qrSize}
-            color="#000000"
-            backgroundColor="#ffffff"
-          />
+          {/* ORCH-0930: client-only mount guard, see comment on `mounted` state above. */}
+          {mounted ? (
+            <QRCode
+              value={single.payload}
+              size={qrSize}
+              color="#000000"
+              backgroundColor="#ffffff"
+            />
+          ) : (
+            <View style={{ width: qrSize, height: qrSize, backgroundColor: "#ffffff" }} />
+          )}
         </View>
         <Text style={styles.caption}>Show this at the door</Text>
       </View>
@@ -143,12 +167,17 @@ export const TicketQrCarousel: React.FC<TicketQrCarouselProps> = ({
             style={[styles.page, { width: pageWidth }]}
           >
             <View style={styles.qrInner}>
-              <QRCode
-                value={p.payload}
-                size={qrSize}
-                color="#000000"
-                backgroundColor="#ffffff"
-              />
+              {/* ORCH-0930: client-only mount guard, see comment on `mounted` state above. */}
+              {mounted ? (
+                <QRCode
+                  value={p.payload}
+                  size={qrSize}
+                  color="#000000"
+                  backgroundColor="#ffffff"
+                />
+              ) : (
+                <View style={{ width: qrSize, height: qrSize, backgroundColor: "#ffffff" }} />
+              )}
             </View>
             <Text style={styles.label} numberOfLines={2}>
               Ticket {p.index + 1} of {total} — {p.ticketName}
