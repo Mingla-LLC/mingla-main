@@ -167,11 +167,37 @@ export default function CheckoutConfirmScreen(): React.ReactElement {
     if (result !== null) return;
     const win = (globalThis as unknown as {
       sessionStorage?: Storage;
-      location?: { search?: string };
+      location?: { search?: string; hash?: string };
     });
     const search = win.location?.search ?? "";
     if (!/[?&]cs=/.test(search)) return;
-    const payload = readCheckoutResumePayload(win.sessionStorage, eventId);
+    let payload = readCheckoutResumePayload(win.sessionStorage, eventId);
+    // ORCH-0928 (2026-05-23) — when sessionStorage payload is missing (Safari
+    // dropped it during cross-origin Stripe redirect, buyer opened URL in
+    // different tab, etc.), recover internal checkoutSessionId + buyerStatusToken
+    // from the URL fragment that ticket-checkout-create now appends to
+    // success_url. See parallel patch in checkout-trip/[tripEventId]/confirm.tsx.
+    if (payload === null) {
+      const hash = (win.location?.hash ?? "").replace(/^#/, "");
+      if (hash.length > 0) {
+        const params = new URLSearchParams(hash);
+        const csi = params.get("csi");
+        const bst = params.get("bst");
+        if (csi !== null && csi.length > 0 && bst !== null && bst.length > 0) {
+          payload = {
+            checkoutSessionId: csi,
+            buyerStatusToken: bst,
+            lines: [],
+            buyer: {
+              name: "",
+              email: "",
+              phone: "",
+              marketingOptIn: false,
+            },
+          };
+        }
+      }
+    }
     if (payload === null) return;
 
     // Restore cart context BEFORE the confirm so the summary + hero render
