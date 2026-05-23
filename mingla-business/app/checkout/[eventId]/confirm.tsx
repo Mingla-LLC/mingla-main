@@ -329,13 +329,21 @@ export default function CheckoutConfirmScreen(): React.ReactElement {
     if (result !== null) return;
     if (Platform.OS === "web") {
       const win = (globalThis as unknown as {
-        location?: { search?: string };
+        location?: { search?: string; hash?: string };
         sessionStorage?: Storage;
       });
       const search = win.location?.search ?? "";
+      // ORCH-0928 (2026-05-23) — see parallel patch in
+      // checkout-trip/[tripEventId]/confirm.tsx. The bounce must also
+      // recognise the URL-fragment recovery path (#csi=…&bst=…) so it
+      // doesn't synchronously navigate away before the async
+      // confirmTicketCheckout call resolves.
+      const hash = win.location?.hash ?? "";
+      const hasFragmentRecovery = /csi=[^&]+/.test(hash) && /bst=[^&]+/.test(hash);
       if (
         /[?&]cs=/.test(search) &&
-        readCheckoutResumePayload(win.sessionStorage, eventId) !== null
+        (readCheckoutResumePayload(win.sessionStorage, eventId) !== null ||
+          hasFragmentRecovery)
       ) {
         return;
       }

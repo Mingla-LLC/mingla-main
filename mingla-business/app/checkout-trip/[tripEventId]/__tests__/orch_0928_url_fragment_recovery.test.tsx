@@ -94,4 +94,34 @@ describe("ORCH-0928 — trip confirm URL fragment recovery (happy path)", () => 
     // guard. (Defensive lower bound — implementation may add more checks.)
     expect((guardMatches ?? []).length).toBeGreaterThanOrEqual(2);
   });
+
+  it("HP-6: Defensive bounce useEffect ALSO recognises URL-fragment recovery (so it doesn't race-bounce before async confirmTicketCheckout resolves)", () => {
+    // ORCH-0928 follow-up: the sync-confirm useEffect can recover from
+    // missing sessionStorage via #csi=&bst= fragment, but the Defensive
+    // Bounce useEffect at the bottom of the file fires synchronously on
+    // the same render cycle. If the bounce checks ONLY sessionStorage
+    // payload presence, it navigates away before recovery resolves —
+    // producing a "blank dark screen" on the cart route. Live-fire
+    // confirmed 2026-05-23 ~07:33 UTC on Costain test order. Bounce must
+    // suppress navigation when fragment recovery is possible.
+    // Use raw source (with comments) so the "Defensive bounce" landmark
+    // survives — stripComments removes the section comments.
+    const bounceWindow = source.slice(
+      source.indexOf("Defensive bounce"),
+      source.indexOf("Handlers", source.indexOf("Defensive bounce")),
+    );
+    expect(bounceWindow.length).toBeGreaterThan(0);
+    // Bounce should now check for the hash + csi/bst regex literals before
+    // firing router.replace.
+    expect(bounceWindow).toMatch(/win\.location\?\.hash/);
+    expect(bounceWindow).toMatch(/hasFragmentRecovery/);
+    expect(bounceWindow).toMatch(/csi=\[\^&\]\+/);
+    expect(bounceWindow).toMatch(/bst=\[\^&\]\+/);
+    // The bounce-suppression conditional must be an OR between
+    // readCheckoutResumePayload(...) !== null AND hasFragmentRecovery —
+    // either one keeps us on /confirm.
+    expect(bounceWindow).toMatch(
+      /readCheckoutResumePayload\([^)]+\)\s*!==\s*null\s*\|\|[\s\S]{0,80}hasFragmentRecovery/,
+    );
+  });
 });
