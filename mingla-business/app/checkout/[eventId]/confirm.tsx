@@ -90,13 +90,11 @@ export default function CheckoutConfirmScreen(): React.ReactElement {
     checkoutSessionId: string;
     buyerStatusToken: string;
   } | null>(null);
-  // ORCH-0930 v2 (2026-05-23) — parent-level hydration gate for
-  // TicketQrCarousel mount. See parallel patch in
-  // checkout-trip/[tripEventId]/confirm.tsx for the full rationale.
-  const [hydrated, setHydrated] = useState<boolean>(false);
-  useEffect(() => {
-    setHydrated(true);
-  }, []);
+  // ORCH-0930 v3 (2026-05-23) — useState initializer pattern. See
+  // parallel patch in checkout-trip/[tripEventId]/confirm.tsx for the
+  // full rationale (v2 useEffect was insufficient; React #418 recovery
+  // cycle prevented the effect from firing).
+  const [isClient] = useState<boolean>(() => typeof window !== "undefined");
   // Ref flag — flipped to true when buyer taps "Back to event." The
   // beforeRemove listener checks this and lets the navigation through
   // when set, so the explicit CTA exit isn't blocked by the same guard
@@ -509,9 +507,9 @@ export default function CheckoutConfirmScreen(): React.ReactElement {
           padding={spacing.md}
           style={styles.qrCard}
         >
-          {/* ORCH-0930 v2: hydration-gated mount; see parallel patch in
-              checkout-trip/[tripEventId]/confirm.tsx. */}
-          {hydrated && totalTickets > 0 ? (
+          {/* ORCH-0930 v3: isClient gate via useState initializer; see parallel
+              patch in checkout-trip/[tripEventId]/confirm.tsx. */}
+          {isClient && totalTickets > 0 ? (
             <TicketQrCarousel
               orderId={result.orderId}
               tickets={carouselTickets}
