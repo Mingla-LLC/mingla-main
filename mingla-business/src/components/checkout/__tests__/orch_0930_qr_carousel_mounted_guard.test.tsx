@@ -87,3 +87,54 @@ describe("ORCH-0930 — TicketQrCarousel client-only-mount guard", () => {
     expect((placeholders ?? []).length).toBe(2);
   });
 });
+
+describe("ORCH-0930 v2 — parent-level hydration gate (confirm.tsx)", () => {
+  // v1 (component-level mount guard inside TicketQrCarousel) was insufficient:
+  // Playwright forensic 2026-05-23 with v1 deployed showed the carousel still
+  // wipes (svgCount=1, hasCarousel=false, React error #418). The hydration
+  // mismatch must fire BEFORE the component-level mount-guard runs. v2 adds
+  // a PARENT-level hydration gate in each confirm.tsx route that defers
+  // mounting the entire <TicketQrCarousel> until after first client effect.
+  const tripConfirm = readFileSync(
+    join(__dirname, "../../../../app/checkout-trip/[tripEventId]/confirm.tsx"),
+    "utf8",
+  );
+  const eventConfirm = readFileSync(
+    join(__dirname, "../../../../app/checkout/[eventId]/confirm.tsx"),
+    "utf8",
+  );
+
+  function stripCommentsLocal(value: string): string {
+    return value
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^[ \t]*\/\/.*$/gm, "")
+      .replace(/[ \t]\/\/[^\n]*$/gm, "");
+  }
+
+  const tripActive = stripCommentsLocal(tripConfirm);
+  const eventActive = stripCommentsLocal(eventConfirm);
+
+  it("HP-6 (trip): confirm.tsx has a `hydrated` state that flips true on first useEffect", () => {
+    expect(tripActive).toMatch(
+      /const\s+\[\s*hydrated\s*,\s*setHydrated\s*\]\s*=\s*useState<boolean>\(\s*false\s*\)/,
+    );
+    expect(tripActive).toMatch(
+      /useEffect\(\(\)\s*=>\s*\{\s*setHydrated\(true\);?\s*\},\s*\[\s*\]\s*\)/,
+    );
+  });
+
+  it("HP-7 (trip): <TicketQrCarousel> mount is gated on `hydrated && totalTickets > 0`", () => {
+    expect(tripActive).toMatch(
+      /\{\s*hydrated\s*&&\s*totalTickets\s*>\s*0\s*\?\s*\(?\s*<TicketQrCarousel/,
+    );
+  });
+
+  it("HP-8 (event): confirm.tsx mirrors the hydrated gate", () => {
+    expect(eventActive).toMatch(
+      /const\s+\[\s*hydrated\s*,\s*setHydrated\s*\]\s*=\s*useState<boolean>\(\s*false\s*\)/,
+    );
+    expect(eventActive).toMatch(
+      /\{\s*hydrated\s*&&\s*totalTickets\s*>\s*0\s*\?\s*\(?\s*<TicketQrCarousel/,
+    );
+  });
+});
