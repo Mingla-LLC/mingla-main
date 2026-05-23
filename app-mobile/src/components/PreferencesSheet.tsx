@@ -688,8 +688,8 @@ export default function PreferencesSheet({
 
   // ORCH-0434: Form completion logic — location + date + pills + travel
   const isFormComplete = useMemo(() => {
-    // Location: GPS is always valid. Custom requires validated address (has coords = chip state)
-    const hasLocation = useGpsLocation || (searchLocation.length > 0 && selectedCoords !== null);
+    // Location: GPS is always valid. Custom text can be auto-resolved on Apply.
+    const hasLocation = useGpsLocation || searchLocation.trim().length > 0;
 
     // Every toggled-ON section must have at least 1 selection
     const intentsOk = !intentToggle || selectedIntents.length > 0;
@@ -713,7 +713,7 @@ export default function PreferencesSheet({
   // Per-section warnings — shown as orange pills on incomplete sections
   const sectionWarnings = useMemo(() => {
     if (isFormComplete) return { location: null, when: null, intents: null, categories: null, travelMode: null, travelLimit: null };
-    const hasLocation = useGpsLocation || (searchLocation.length > 0 && selectedCoords !== null);
+    const hasLocation = useGpsLocation || searchLocation.trim().length > 0;
     return {
       location: !hasLocation ? "Add a starting point" : null,
       when: selectedDateOption === null ? "Pick a date"
@@ -805,9 +805,56 @@ export default function PreferencesSheet({
     if (isSavingRef.current) return;
     isSavingRef.current = true;
 
+    let effectiveSearchLocation = searchLocation;
+    let effectiveSelectedCoords = selectedCoords;
+
+    // ORCH-0943 Fix B1: typed custom-location text must resolve to coords before
+    // either solo or collab save can proceed. State updates below are only for UI;
+    // payload construction uses these local variables to avoid React batching staleness.
+    if (
+      !useGpsLocation &&
+      searchLocation.trim().length > 0 &&
+      effectiveSelectedCoords === null
+    ) {
+      let resolvedSuggestion: AutocompleteSuggestion | null = null;
+      let resolvedCoords: { lat: number; lng: number } | null = null;
+
+      try {
+        const results = await geocodingService.autocomplete(searchLocation);
+        resolvedSuggestion = results[0] ?? null;
+        if (resolvedSuggestion) {
+          let coords = resolvedSuggestion.location ?? null;
+          if (!coords && resolvedSuggestion.placeId) {
+            coords = await geocodingService.getPlaceCoordinates(
+              resolvedSuggestion.placeId,
+            );
+          }
+          if (coords && Math.abs(coords.lat) <= 90 && Math.abs(coords.lng) <= 180) {
+            resolvedCoords = coords;
+          }
+        }
+      } catch (err) {
+        console.warn('[ORCH-0943] auto-resolve failed', err);
+      }
+
+      if (!resolvedSuggestion || !resolvedCoords) {
+        isSavingRef.current = false;
+        toastManager.warning('Tap a suggestion to set your location.', 3000);
+        return;
+      }
+
+      effectiveSearchLocation =
+        resolvedSuggestion.fullAddress ||
+        resolvedSuggestion.displayName ||
+        searchLocation.trim();
+      effectiveSelectedCoords = resolvedCoords;
+      setSearchLocation(effectiveSearchLocation);
+      setSelectedCoords(effectiveSelectedCoords);
+    }
+
     const customLocationValue = useGpsLocation
       ? null
-      : searchLocation || null;
+      : effectiveSearchLocation || null;
 
     // Normalize location fields for consistency
     const normalized = normalizePreferencesForSave({
@@ -831,11 +878,11 @@ export default function PreferencesSheet({
       constraintType,
       constraintValue,
       useLocation,
-      searchLocation,
+      searchLocation: effectiveSearchLocation,
       useGpsLocation: normalized.use_gps_location ?? useGpsLocation,
       custom_location: normalized.custom_location ?? customLocationValue,
-      custom_lat: selectedCoords?.lat ?? null,
-      custom_lng: selectedCoords?.lng ?? null,
+      custom_lat: effectiveSelectedCoords?.lat ?? null,
+      custom_lng: effectiveSelectedCoords?.lng ?? null,
       intentToggle,
       categoryToggle,
     };
@@ -858,8 +905,8 @@ export default function PreferencesSheet({
           // Solo passes location inline in API body (resolved at query time by useUserLocation).
           // Collab MUST persist coords to DB because the server aggregates multiple participants'
           // preferences server-side and can't access the device's GPS.
-          let collabLat: number | null = selectedCoords?.lat ?? null;
-          let collabLng: number | null = selectedCoords?.lng ?? null;
+          let collabLat: number | null = effectiveSelectedCoords?.lat ?? null;
+          let collabLng: number | null = effectiveSelectedCoords?.lng ?? null;
 
           if (useGpsLocation && collabLat == null) {
             try {
@@ -896,8 +943,8 @@ export default function PreferencesSheet({
 
           const dbPrefs = normalizePreferencesForSave(rawDbPrefs);
 
-          if (searchLocation) {
-            (dbPrefs as Record<string, unknown>).location = searchLocation;
+          if (effectiveSearchLocation) {
+            (dbPrefs as Record<string, unknown>).location = effectiveSearchLocation;
           }
 
           await updateBoardPreferences(dbPrefs);

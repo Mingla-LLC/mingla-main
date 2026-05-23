@@ -3756,3 +3756,13 @@ Two strict-grep gates run together:
 **Source:** SPEC §3 Q9 + §5.4.1 + §8 + Investigation §3 Discovery D.
 
 **EXIT condition:** Permanent.
+
+### I-PROPOSED-CUSTOM-COORDS-LOCKED-WHEN-CUSTOM-LOCATION-MODE
+
+**Statement:** No client may upsert `custom_lat` or `custom_lng` (in either solo `preferences` or session `collaboration_sessions.participant_prefs`) for a participant whose effective `use_gps_location` is `false`, UNLESS the same upsert payload also includes `custom_location` (full coherent save) OR the call site is structurally gated to skip the upsert when `use_gps_location !== true`.
+
+**Why:** Partial upserts that touch only `custom_lat/custom_lng` while leaving `custom_location` untouched cause text-vs-coords divergence. The deck aggregator reads coords for the per-participant reachable-circle computation while the UI shows the text — divergence means the user thinks they're in one city but the aggregator places them elsewhere. Confirmed root cause of Bug-3 / ORCH-0943; live data evidence at investigation report. Source: `INVESTIGATION_ORCH-0943_COLLAB_APPLY_COORD_CORRUPTION.md`.
+
+**Source:** SPEC `Mingla_Artifacts/specs/SPEC_ORCH-0943_COLLAB_APPLY_COORD_CORRUPTION.md` §3.5.1 + §5.2.
+
+**Enforced by:** strict-grep gate `.github/scripts/strict-grep/i-proposed-orch-0943-custom-coords-locked.mjs` (scans `app-mobile/src/` for `upsert_participant_prefs` and `PreferencesService.updateUserPreferences` call sites; flags any payload containing `custom_lat` or `custom_lng` without `custom_location` UNLESS the call site has an explicit `use_gps_location === true` guard within 10 lines above the call).

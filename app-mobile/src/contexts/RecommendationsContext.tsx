@@ -1435,11 +1435,16 @@ export const RecommendationsProvider: React.FC<
   // taps a session pill, currentMode changes instantly (synchronous) but
   // availableSessions hasn't refreshed yet — the session may not be in the list
   // until loadUserSessions() completes. Without this guard, the monitor
-  // ── ORCH-0446 R3.8: Update GPS on each collab session entry ──────────
+  // ── ORCH-0446 R3.8 + ORCH-0943 Fix A: Update GPS on each collab session entry
+  // ONLY when this participant is in GPS mode. Custom-location mode owns its
+  // custom_lat/custom_lng via Apply, so device GPS must not silently overwrite it.
   useEffect(() => {
     if (!isCollaborationMode || !resolvedSessionId || !userLocation || !user?.id) return;
 
-    // Atomic GPS update via RPC — deep merge preserves all other pref fields
+    const participantUseGps = boardSessionResult.preferences?.use_gps_location;
+    if (participantUseGps !== true) return;
+
+    // Atomic GPS update via RPC — valid only when GPS mode is authoritative.
     void Promise.resolve(supabase.rpc('upsert_participant_prefs', {
       p_session_id: resolvedSessionId,
       p_user_id: user.id,
@@ -1448,7 +1453,14 @@ export const RecommendationsProvider: React.FC<
         custom_lng: userLocation.lng,
       },
     })).catch(() => { /* Non-blocking GPS update */ });
-  }, [isCollaborationMode, resolvedSessionId, userLocation?.lat, userLocation?.lng, user?.id]);
+  }, [
+    isCollaborationMode,
+    resolvedSessionId,
+    userLocation?.lat,
+    userLocation?.lng,
+    user?.id,
+    boardSessionResult.preferences?.use_gps_location,
+  ]);
 
   // immediately kicks back to solo, creating an enter→exit→enter loop.
   //
