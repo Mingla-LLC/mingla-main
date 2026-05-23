@@ -217,10 +217,10 @@ export function runCollabDeckSheetGhostSessionRegressionTest() {
     /isCollabSessionGroupChat\s*&&\s*showCollabDeckSheet\s*&&\s*friend\.sessionId\s*\?\s*\(\s*<CollabDeckSheet/s,
     "MessageInterface must unmount CollabDeckSheet when the deck sheet is closed",
   );
-  assert.match(
+  assert.doesNotMatch(
     chatBanners,
-    /showDeckSheet\s*\?\s*\(\s*<InChatDeckSheet/s,
-    "CollabSessionChatBanners must unmount InChatDeckSheet when the deck sheet is closed",
+    /InChatDeckSheet/,
+    "InChatDeckSheet has been removed per ORCH-0942 — CollabSessionChatBanners must not re-introduce it",
   );
 }
 
