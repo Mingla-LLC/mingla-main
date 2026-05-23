@@ -271,24 +271,18 @@ serve(async (req) => {
       return jsonResponse({ error: "qr_token_pepper_missing" }, 500);
     }
 
-    // ORCH-0921: pass installment-plan params through so payment-plan trip
-    // checkouts get their installments scheduled. Mirror the webhook router's
-    // pattern at stripeWebhookRouter.ts:778-784. Non-installment PIs leave
-    // these params null/false and the legacy finalize path runs unchanged.
-    const piMetadata =
-      (paymentIntent.metadata as Record<string, unknown> | undefined) ?? {};
-    const isInstallmentPlanRoot =
-      piMetadata["mingla_installment_plan_root"] === "true";
-    const stripeCustomerId = isInstallmentPlanRoot
-      ? (typeof paymentIntent.customer === "string"
-        ? paymentIntent.customer
-        : null)
-      : null;
-    const savedPaymentMethodId = isInstallmentPlanRoot
-      ? (typeof paymentIntent.payment_method === "string"
-        ? paymentIntent.payment_method
-        : null)
-      : null;
+    // ORCH-0924 ROLLBACK of ORCH-0921 [Trip payment-plan finalize compare-and-correct]:
+    // Reverted to the pre-ORCH-0921 5-param shape because the strict customer/PM
+    // requirement on installment-plan finalize was producing HTTP 500s when
+    // paymentIntent.customer/payment_method came back null from Stripe (which
+    // happens for the Checkout Session payment-plan flow because
+    // ticket-checkout-create only sets customer_email + setup_future_usage —
+    // Stripe creates a Customer but doesn't always attach it to the PI's
+    // top-level .customer field). The 500 prevented order creation entirely,
+    // which is worse than the silent installment-drop ORCH-0921 was fixing.
+    // Real fix is ORCH-0925 [ticket-checkout-create must attach Stripe Customer
+    // to plan PIs explicitly] — once it ships, ORCH-0921 can re-ship.
+    // orch-strict-grep-allow finalize-no-plan-root — ORCH-0924 rollback of ORCH-0921; real fix is ORCH-0925
     const { error: finalizeError } = await supabase.rpc(
       "biz_ticket_checkout_finalize",
       {
@@ -297,9 +291,6 @@ serve(async (req) => {
         p_stripe_charge_id: latestChargeId,
         p_stripe_payment_method_type: paymentMethodType,
         p_qr_token_pepper: pepper,
-        p_stripe_customer_id_on_connected_account: stripeCustomerId,
-        p_saved_payment_method_id: savedPaymentMethodId,
-        p_installment_plan_root: isInstallmentPlanRoot,
       },
     );
     if (finalizeError) {
