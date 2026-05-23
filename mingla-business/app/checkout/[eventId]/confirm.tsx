@@ -167,35 +167,30 @@ export default function CheckoutConfirmScreen(): React.ReactElement {
     if (result !== null) return;
     const win = (globalThis as unknown as {
       sessionStorage?: Storage;
-      location?: { search?: string; hash?: string };
+      location?: { search?: string };
     });
     const search = win.location?.search ?? "";
     if (!/[?&]cs=/.test(search)) return;
     let payload = readCheckoutResumePayload(win.sessionStorage, eventId);
-    // ORCH-0928 (2026-05-23) — when sessionStorage payload is missing (Safari
-    // dropped it during cross-origin Stripe redirect, buyer opened URL in
-    // different tab, etc.), recover internal checkoutSessionId + buyerStatusToken
-    // from the URL fragment that ticket-checkout-create now appends to
-    // success_url. See parallel patch in checkout-trip/[tripEventId]/confirm.tsx.
+    // ORCH-0928 v2 (2026-05-23) — query-string recovery (v1 used URL
+    // fragment but Expo Router silently reformatted the URL — see
+    // parallel patch in checkout-trip/[tripEventId]/confirm.tsx).
     if (payload === null) {
-      const hash = (win.location?.hash ?? "").replace(/^#/, "");
-      if (hash.length > 0) {
-        const params = new URLSearchParams(hash);
-        const csi = params.get("csi");
-        const bst = params.get("bst");
-        if (csi !== null && csi.length > 0 && bst !== null && bst.length > 0) {
-          payload = {
-            checkoutSessionId: csi,
-            buyerStatusToken: bst,
-            lines: [],
-            buyer: {
-              name: "",
-              email: "",
-              phone: "",
-              marketingOptIn: false,
-            },
-          };
-        }
+      const params = new URLSearchParams(search);
+      const csi = params.get("csi");
+      const bst = params.get("bst");
+      if (csi !== null && csi.length > 0 && bst !== null && bst.length > 0) {
+        payload = {
+          checkoutSessionId: csi,
+          buyerStatusToken: bst,
+          lines: [],
+          buyer: {
+            name: "",
+            email: "",
+            phone: "",
+            marketingOptIn: false,
+          },
+        };
       }
     }
     if (payload === null) return;
@@ -329,21 +324,18 @@ export default function CheckoutConfirmScreen(): React.ReactElement {
     if (result !== null) return;
     if (Platform.OS === "web") {
       const win = (globalThis as unknown as {
-        location?: { search?: string; hash?: string };
+        location?: { search?: string };
         sessionStorage?: Storage;
       });
       const search = win.location?.search ?? "";
-      // ORCH-0928 (2026-05-23) — see parallel patch in
-      // checkout-trip/[tripEventId]/confirm.tsx. The bounce must also
-      // recognise the URL-fragment recovery path (#csi=…&bst=…) so it
-      // doesn't synchronously navigate away before the async
-      // confirmTicketCheckout call resolves.
-      const hash = win.location?.hash ?? "";
-      const hasFragmentRecovery = /csi=[^&]+/.test(hash) && /bst=[^&]+/.test(hash);
+      // ORCH-0928 v2 (2026-05-23) — see parallel patch in
+      // checkout-trip/[tripEventId]/confirm.tsx. Query-string recovery
+      // (v1 used URL fragment which Expo Router silently reformatted).
+      const hasQueryRecovery = /[?&]csi=[^&]+/.test(search) && /[?&]bst=[^&]+/.test(search);
       if (
         /[?&]cs=/.test(search) &&
         (readCheckoutResumePayload(win.sessionStorage, eventId) !== null ||
-          hasFragmentRecovery)
+          hasQueryRecovery)
       ) {
         return;
       }

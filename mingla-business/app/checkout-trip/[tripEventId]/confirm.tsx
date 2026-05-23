@@ -152,38 +152,41 @@ export default function CheckoutTripConfirmScreen(): React.ReactElement {
     if (result !== null) return;
     const win = (globalThis as unknown as {
       sessionStorage?: Storage;
-      location?: { search?: string; hash?: string };
+      location?: { search?: string };
     });
     const search = win.location?.search ?? "";
     if (!/[?&]cs=/.test(search)) return;
     let payload = readCheckoutResumePayload(win.sessionStorage, tripEventId);
-    // ORCH-0928 (2026-05-23) — when sessionStorage payload is missing (Safari
-    // dropped it during cross-origin Stripe redirect, buyer opened URL in
-    // different tab, etc.), recover internal checkoutSessionId + buyerStatusToken
-    // from the URL fragment that ticket-checkout-create now appends to
-    // success_url. Cart context (lines + buyer) cannot be recovered from the
-    // fragment; we synthesize an empty payload so the confirm flow can proceed
-    // — the rendered order summary uses server-returned order rows, not the
-    // cart context, so empty lines/buyer here doesn't affect the QR display.
+    // ORCH-0928 v2 (2026-05-23) — when sessionStorage payload is missing
+    // (Safari dropped it during cross-origin Stripe redirect, buyer opened
+    // URL in different tab, etc.), recover internal checkoutSessionId +
+    // buyerStatusToken from the URL query string params `csi` + `bst` that
+    // ticket-checkout-create now appends to success_url alongside `cs`.
+    // (v1 used URL fragment `#csi=…&bst=…` but Expo Router's web hydration
+    // silently reformatted the URL putting `?cs=…` INSIDE the fragment,
+    // breaking the `?cs=` regex check above. Query string is robust against
+    // that reformatting — verified via Playwright forensic harness
+    // 2026-05-23.) Cart context (lines + buyer) cannot be recovered from
+    // the URL; we synthesize an empty payload so the confirm flow can
+    // proceed — the rendered order summary uses server-returned order rows,
+    // not the cart context, so empty lines/buyer here doesn't affect the
+    // QR display.
     if (payload === null) {
-      const hash = (win.location?.hash ?? "").replace(/^#/, "");
-      if (hash.length > 0) {
-        const params = new URLSearchParams(hash);
-        const csi = params.get("csi");
-        const bst = params.get("bst");
-        if (csi !== null && csi.length > 0 && bst !== null && bst.length > 0) {
-          payload = {
-            checkoutSessionId: csi,
-            buyerStatusToken: bst,
-            lines: [],
-            buyer: {
-              name: "",
-              email: "",
-              phone: "",
-              marketingOptIn: false,
-            },
-          };
-        }
+      const params = new URLSearchParams(search);
+      const csi = params.get("csi");
+      const bst = params.get("bst");
+      if (csi !== null && csi.length > 0 && bst !== null && bst.length > 0) {
+        payload = {
+          checkoutSessionId: csi,
+          buyerStatusToken: bst,
+          lines: [],
+          buyer: {
+            name: "",
+            email: "",
+            phone: "",
+            marketingOptIn: false,
+          },
+        };
       }
     }
     if (payload === null) return;
@@ -295,26 +298,22 @@ export default function CheckoutTripConfirmScreen(): React.ReactElement {
     if (result !== null) return;
     if (Platform.OS === "web") {
       const win = (globalThis as unknown as {
-        location?: { search?: string; hash?: string };
+        location?: { search?: string };
         sessionStorage?: Storage;
       });
       const search = win.location?.search ?? "";
-      // ORCH-0928 (2026-05-23) — the sync-confirm useEffect above can recover
-      // from missing sessionStorage via the URL fragment (#csi=…&bst=…) that
-      // ticket-checkout-create now appends to success_url. The bounce here
-      // must also recognise that recovery path: if `?cs=` is present AND
-      // EITHER sessionStorage payload OR a `csi`+`bst` URL fragment exists,
-      // we have valid checkout-confirm context — DO NOT bounce away. Prior
-      // bug (live-fire-confirmed 2026-05-23 ~07:33 UTC, Costain test order):
-      // bounce raced ahead of the async confirmTicketCheckout call and
-      // navigated to /checkout-trip/{tripEventId} before recovery completed,
-      // producing a "blank" dark host screen on the trip-cart page.
-      const hash = win.location?.hash ?? "";
-      const hasFragmentRecovery = /csi=[^&]+/.test(hash) && /bst=[^&]+/.test(hash);
+      // ORCH-0928 v2 (2026-05-23) — recognise the query-string recovery
+      // path (`?cs=…&csi=…&bst=…`) so the bounce doesn't race ahead of the
+      // async confirmTicketCheckout call. v1 read csi+bst from URL fragment
+      // (#csi=…&bst=…) which Expo Router silently reformatted (Playwright
+      // forensic harness 2026-05-23 confirmed: search became empty, hash
+      // captured the full `?cs=…` portion). Query string is robust against
+      // the reformatting.
+      const hasQueryRecovery = /[?&]csi=[^&]+/.test(search) && /[?&]bst=[^&]+/.test(search);
       if (
         /[?&]cs=/.test(search) &&
         (readCheckoutResumePayload(win.sessionStorage, tripEventId) !== null ||
-          hasFragmentRecovery)
+          hasQueryRecovery)
       ) {
         return;
       }
