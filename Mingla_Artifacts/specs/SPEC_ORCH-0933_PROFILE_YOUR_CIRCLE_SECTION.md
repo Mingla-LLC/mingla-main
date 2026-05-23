@@ -569,7 +569,7 @@ Forbids any file under `app-mobile/src/components/profile/circle/` or `app-mobil
 # Enforces I-PROPOSED-YOUR-CIRCLE-RPC-SOLE-OWNER
 set -euo pipefail
 SCOPE="app-mobile/src/components/profile/circle app-mobile/src/hooks/useUserCircle.ts app-mobile/src/services/circleService.ts"
-PATTERN="\.from\(['\"](friends|pairings|orders)['\"]\)"
+PATTERN='\.from\(.(friends|pairings|orders).\)'
 hits=$(grep -rEn "$PATTERN" $SCOPE 2>/dev/null || true)
 if [ -n "$hits" ]; then
   echo "FAIL: Circle feature must use get_user_circle RPC, not direct table queries:"
