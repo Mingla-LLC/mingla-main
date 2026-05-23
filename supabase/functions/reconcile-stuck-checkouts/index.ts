@@ -82,24 +82,10 @@ serve(async (req) => {
         : [];
       const methodType = (pmTypes[0] as string | undefined) ?? "card";
 
-      // ORCH-0921: pass installment-plan params through so payment-plan trip
-      // checkouts get their installments scheduled even on the recovery path.
-      const piMetadata = (pi.metadata as Record<string, unknown> | undefined) ??
-        {};
-      const isInstallmentPlanRoot =
-        piMetadata["mingla_installment_plan_root"] === "true";
-      const stripeCustomerId = isInstallmentPlanRoot
-        ? (typeof (pi as unknown as { customer?: unknown }).customer ===
-            "string"
-          ? String((pi as unknown as { customer: string }).customer)
-          : null)
-        : null;
-      const savedPaymentMethodId = isInstallmentPlanRoot
-        ? (typeof (pi as unknown as { payment_method?: unknown })
-            .payment_method === "string"
-          ? String((pi as unknown as { payment_method: string }).payment_method)
-          : null)
-        : null;
+      // ORCH-0924 ROLLBACK of ORCH-0921 — see ticket-checkout-confirm/index.ts
+      // for the full rationale. Reverted to pre-ORCH-0921 5-param shape to
+      // unblock production. Real fix is ORCH-0925 [ticket-checkout-create
+      // must attach Stripe Customer to plan PIs explicitly].
       const { data: finalized, error: finalizeError } = await supabase.rpc(
         "biz_ticket_checkout_finalize",
         {
@@ -108,9 +94,6 @@ serve(async (req) => {
           p_stripe_charge_id: chargeId,
           p_stripe_payment_method_type: methodType,
           p_qr_token_pepper: pepper,
-          p_stripe_customer_id_on_connected_account: stripeCustomerId,
-          p_saved_payment_method_id: savedPaymentMethodId,
-          p_installment_plan_root: isInstallmentPlanRoot,
         },
       );
 
