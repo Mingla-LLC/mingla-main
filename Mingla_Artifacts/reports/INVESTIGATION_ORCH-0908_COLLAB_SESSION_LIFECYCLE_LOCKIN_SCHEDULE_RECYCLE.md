@@ -163,7 +163,7 @@ Per the `20260624000000_orch_0898_unified_chat_substrate.sql` migration:
 
 #### Mobile entry points
 
-**`CollaborationSessions.tsx`** ([1886 lines](../../app-mobile/src/components/CollaborationSessions.tsx)) — pill bar on HomePage. Per Explore-agent mapping (verified via targeted grep):
+**`CollaborationSessions.tsx`** (`1886 lines` (file removed per META-ORCH-0929)) — pill bar on HomePage. Per Explore-agent mapping (verified via targeted grep):
 - Receives `collaborationSessions` array as prop from `app/index.tsx:673` (built via `useMemo` from realtime-subscribed `boardsSessions`)
 - Per-pill render at lines 560-598; visually distinguishes invite vs active vs sent-invite **but NOT lifecycle phases** (planning/locked/scheduled — no UI exists)
 - Tap → opens `SessionViewModal` for active sessions or invite modal for pending invites (lines 337-351)

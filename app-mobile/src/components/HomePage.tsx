@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   Text,
   View,
@@ -9,28 +9,19 @@ import { LinearGradient } from "expo-linear-gradient";
 import { s, vs, ms } from "../utils/responsive";
 import SwipeableCards from "./SwipeableCards";
 import { useCoachMark } from "../hooks/useCoachMark";
-import CollaborationSessions, { CollaborationSession, Friend } from "./CollaborationSessions";
 import NotificationsModal from "./NotificationsModal";
 import { GlassTopBar } from "./GlassTopBar";
-import { GlassSessionSwitcher, type SessionSwitcherItem } from "./GlassSessionSwitcher";
 import FriendRequestsModal from "./FriendRequestsModal";
 import { useNotifications, ServerNotification } from "../hooks/useNotifications";
 import { parseDeepLink, executeDeepLink, NavigationHandlers } from "../services/deepLinkService";
 import { clearNotificationBadge } from '../services/oneSignalService';
-import { useSessionDeckMountStore } from "../store/sessionDeckMountStore";
 
 // Animation duration constant for consistency
 const ANIMATION_DURATION = 400;
 
 interface HomePageProps {
-  isTabVisible?: boolean;
   onOpenPreferences: () => void;
   onOpenCollabPreferences?: () => void;
-  currentMode: "solo" | string;
-  // ORCH-0532: authoritative session list from AppStateManager. Forwarded to
-  // SwipeableCards so its `resolvedSessionId` reads from the SAME source as
-  // AppHandlers.handleSaveCard, eliminating dual-source divergence (V2 §6).
-  boardsSessions?: any[];
   userPreferences?: any;
   accountPreferences?: {
     currency: string;
@@ -48,33 +39,15 @@ interface HomePageProps {
   refreshKey?: number | string;
   /** @deprecated ORCH-0589 v2 — no header to highlight. Kept in interface for backwards-compat with callers; ignored. */
   isHighlightingHeader?: boolean;
-  // Collaboration sessions props
-  collaborationSessions?: CollaborationSession[];
-  selectedSessionId?: string | null;
-  onSessionSelect?: (sessionId: string | null) => void;
-  onSoloSelect?: () => void;
-  onCreateSession?: (sessionName: string, selectedFriends: Friend[]) => void;
-  onAcceptInvite?: (sessionId: string) => void;
-  onDeclineInvite?: (sessionId: string) => void;
-  onCancelInvite?: (sessionId: string) => void;
-  onInviteMoreToSession?: (sessionId: string, friend: Friend) => void;
-  onSessionStateChanged?: () => void;
-  availableFriends?: Friend[];
-  isCreatingSession?: boolean;
   onNotificationNavigate?: (notification: ServerNotification) => void;
   // New V2 props
   userId?: string;
   onFriendAccepted?: () => void;
-  openSessionId?: string | null;
-  onOpenSessionHandled?: () => void;
 }
 
 function HomePage({
-  isTabVisible = true,
   onOpenPreferences,
   onOpenCollabPreferences,
-  currentMode,
-  boardsSessions = [],
   userPreferences,
   accountPreferences,
   onAddToCalendar,
@@ -88,24 +61,9 @@ function HomePage({
   onboardingData,
   refreshKey,
   isHighlightingHeader: _isHighlightingHeader, // ORCH-0589 v2: deprecated, see interface.
-  // Collaboration sessions props
-  collaborationSessions = [],
-  selectedSessionId = null,
-  onSessionSelect,
-  onSoloSelect,
-  onCreateSession,
-  onAcceptInvite,
-  onDeclineInvite,
-  onCancelInvite,
-  onInviteMoreToSession,
-  onSessionStateChanged,
-  availableFriends = [],
-  isCreatingSession = false,
   onNotificationNavigate,
   userId,
   onFriendAccepted,
-  openSessionId = null,
-  onOpenSessionHandled,
 }: HomePageProps) {
   // ORCH-0679 Wave 2A: Dev-only render counter (I-TAB-PROPS-STABLE verification).
   // Tap a different tab — only that tab should log. Hidden tabs MUST NOT log.
@@ -118,22 +76,6 @@ function HomePage({
   // Notifications modal state
   const [showNotificationsModal, setShowNotificationsModal] = useState(false);
   const [showFriendRequestsModal, setShowFriendRequestsModal] = useState(false);
-  const [inviteModalTrigger, setInviteModalTrigger] = useState<{
-    sessionId: string;
-    nonce: number;
-  } | null>(null);
-  // ORCH-0589 — nonce that bumps every time the user taps the GlassSessionSwitcher "+" pill.
-  // CollaborationSessions watches this to open its existing create-session flow.
-  const [createTriggerNonce, setCreateTriggerNonce] = useState<number>(0);
-
-  // ORCH-0589 v5 (T2 + T3): when the user taps a collab session pill (new OR re-tap),
-  // we set this state. `id` is fed to CollaborationSessions' `openSessionId` prop,
-  // which opens SessionViewModal. `nonce` ensures same-id re-taps re-fire the open
-  // (object-identity change → effective-openSessionId re-evaluates → CollabSessions
-  // useEffect re-runs). Cleared in `handleSessionModalHandled` after modal opens.
-  const [sessionModalTrigger, setSessionModalTrigger] = useState<
-    { id: string; nonce: number } | null
-  >(null);
 
   // V2 server-synced notifications hook
   const {
@@ -158,10 +100,9 @@ function HomePage({
     declineLinkRequest,
     pendingActions,
   } = useNotifications(userId, {
-    onCollaborationInviteResolved: onSessionStateChanged,
+    onCollaborationInviteResolved: undefined,
   });
 
-  const noop = useMemo(() => () => {}, []);
   const asyncNoop = useMemo(() => async (_card: any): Promise<boolean> => false, []);
 
   const handleOpenNotifications = useCallback(() => {
@@ -203,42 +144,10 @@ function HomePage({
   //         cutout traces the actual card bounds. Radius 36 = cutout radius 40 =
   //         glass.card.bezelRadius (40pt) — matches the iPhone-bezel card silhouette.
   // Step 2: GlassTopBar Preferences button via coachPrefsRef.
-  // Steps 4/5: hooks live here (CollaborationSessions runs in modalsOnlyMode on Home
-  //            so its pill bar never mounts). Refs forwarded into GlassSessionSwitcher.
   const coachDeck = useCoachMark(1, 36);
   const coachPrefs = useCoachMark(2, 20);
-  // Step 4: create pill is 32pt circle. Cutout width = 32 + 2*4 = 40, radius = 20 = circle.
-  const coachCreate = useCoachMark(4, 16);
-  const coachSolo = useCoachMark(5, 18);
   // ORCH-0589 v2: sessionsOpacity + headerSlideAnim entrance animations removed —
   // the header they animated has been deleted; GlassTopBar owns its own enter motion.
-  const acquireDeckMount = useSessionDeckMountStore((state) => state.acquire);
-  const releaseDeckMount = useSessionDeckMountStore((state) => state.release);
-  const [canMountDeck, setCanMountDeck] = useState(true);
-  const homeDeckSessionId = useMemo(() => {
-    if (currentMode === "solo") return null;
-    const session = (boardsSessions || []).find(
-      (s: any) =>
-        s.id === currentMode ||
-        s.name === currentMode ||
-        s.session_id === currentMode ||
-        s.id === selectedSessionId ||
-        s.session_id === selectedSessionId,
-    );
-    return session ? (session.session_id || session.id || null) : selectedSessionId;
-  }, [boardsSessions, currentMode, selectedSessionId]);
-
-  useEffect(() => {
-    if (!isTabVisible || !homeDeckSessionId) {
-      setCanMountDeck(true);
-      return;
-    }
-    const acquired = acquireDeckMount(homeDeckSessionId, 'dedicated-screen');
-    setCanMountDeck(acquired);
-    return () => {
-      releaseDeckMount(homeDeckSessionId);
-    };
-  }, [acquireDeckMount, homeDeckSessionId, isTabVisible, releaseDeckMount]);
 
   return (
     <View style={styles.safeArea}>
@@ -253,11 +162,7 @@ function HomePage({
           visible
           coachPrefsRef={coachPrefs.targetRef}
           onOpenPreferences={() => {
-            if (currentMode === "solo") {
-              onOpenPreferences();
-            } else {
-              onOpenCollabPreferences?.();
-            }
+            onOpenPreferences();
           }}
           onOpenNotifications={handleOpenNotifications}
           unreadNotifications={unreadNotificationCount}
@@ -266,46 +171,7 @@ function HomePage({
              pill already indicates the current mode by name; a second indicator
              on the Preferences icon was redundant noise. */
           notificationsActive={showNotificationsModal}
-          sessionSwitcher={
-            onSessionSelect && onSoloSelect ? (
-              <GlassSessionSwitcher
-                coachSoloRef={coachSolo.targetRef}
-                coachCreateRef={coachCreate.targetRef}
-                items={[
-                  { id: 'solo', label: 'Solo' },
-                  ...collaborationSessions
-                    .filter((s) => s.type === 'active')
-                    .map<SessionSwitcherItem>((s) => ({
-                      id: s.id,
-                      label: s.name,
-                    })),
-                ]}
-                activeId={currentMode === 'solo' || !selectedSessionId ? 'solo' : selectedSessionId}
-                onSelect={(id) => {
-                  if (id === 'solo') {
-                    // Solo pill: only fire if user is actually switching TO solo.
-                    // Re-tap on active Solo is a no-op (no modal for solo mode).
-                    if (currentMode !== 'solo') {
-                      onSoloSelect();
-                    }
-                  } else {
-                    // Collab pill: switch context AND open the session modal.
-                    // Works for new taps AND re-taps (nonce-backed trigger re-fires
-                    // CollaborationSessions' `openSessionId` useEffect each time).
-                    onSessionSelect(id);
-                    setSessionModalTrigger({ id, nonce: Date.now() });
-                  }
-                }}
-                onCreate={onCreateSession ? () => {
-                  // Signal CollaborationSessions (mounted below in modalsOnlyMode) to open
-                  // its create-session modal via nonce bump. This keeps all create-flow
-                  // state (friends picker, phone invite, paywall gate) inside the existing
-                  // component — we only trigger it from the new pill.
-                  setCreateTriggerNonce((n) => n + 1);
-                } : undefined}
-              />
-            ) : null
-          }
+          sessionSwitcher={null}
         />
 
 
@@ -317,45 +183,11 @@ function HomePage({
             pointerEvents="none"
           />
 
-          {/* ORCH-0589: CollaborationSessions runs in modalsOnlyMode — the visible pill bar
-              lives in the floating GlassTopBar above (via GlassSessionSwitcher). This component
-              is kept mounted to serve its create / invite / session-view / paywall modals.
-              The "+" pill in the top bar triggers the create flow via createTriggerNonce bump. */}
-          {onSessionSelect && onSoloSelect && onCreateSession && (
-            <CollaborationSessions
-              sessions={collaborationSessions}
-              currentMode={currentMode}
-              selectedSessionId={selectedSessionId}
-              onSessionSelect={onSessionSelect}
-              onSoloSelect={onSoloSelect}
-              onCreateSession={onCreateSession}
-              onAcceptInvite={onAcceptInvite || noop}
-              onDeclineInvite={onDeclineInvite || noop}
-              onCancelInvite={onCancelInvite || noop}
-              onInviteMoreToSession={onInviteMoreToSession}
-              onSessionStateChanged={onSessionStateChanged}
-              availableFriends={availableFriends}
-              isCreatingSession={isCreatingSession}
-              inviteModalTrigger={inviteModalTrigger}
-              openSessionId={sessionModalTrigger?.id ?? openSessionId}
-              onOpenSessionHandled={() => {
-                // ORCH-0589 v5 (T2/T3): clear our local trigger so future same-id
-                // re-taps re-fire CollaborationSessions' openSessionId useEffect.
-                setSessionModalTrigger(null);
-                onOpenSessionHandled?.();
-              }}
-              modalsOnlyMode
-              createTriggerNonce={createTriggerNonce}
-            />
-          )}
-
           <View style={styles.deckWrapper}>
-          {canMountDeck ? (
             <SwipeableCards
               userPreferences={userPreferences}
               accountPreferences={accountPreferences}
-              currentMode={currentMode}
-              boardsSessions={boardsSessions}
+              boardsSessions={[]}
               onAddToCalendar={onAddToCalendar}
               onCardLike={onSaveCard || asyncNoop}
               onShareCard={onShareCard}
@@ -370,11 +202,6 @@ function HomePage({
               savedCards={savedCards}
               coachDeckRef={coachDeck.targetRef}
             />
-          ) : (
-            <View style={styles.deckMutexNotice}>
-              <Text style={styles.deckMutexText}>Deck open elsewhere</Text>
-            </View>
-          )}
           </View>
         </View>
 
@@ -451,19 +278,6 @@ const styles = StyleSheet.create({
     flex: 1,
     width: '100%',
   },
-  deckMutexNotice: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 24,
-  },
-  deckMutexText: {
-    color: "#ffffff",
-    fontSize: 15,
-    fontWeight: "600",
-  },
-  // ORCH-0589: sessionsAnimatedWrapper removed — the pill-bar wrapper it animated
-  // is no longer rendered (CollaborationSessions runs in modalsOnlyMode).
   innerShadowTop: {
     position: "absolute",
     top: 0,

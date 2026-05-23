@@ -318,6 +318,7 @@ export const useBoardSession = (sessionId?: string) => {
 
     // Debounce: wait 300ms before subscribing to avoid thrashing
     const capturedSessionId = sessionId;
+    let cancelled = false;
     const timer = setTimeout(() => {
       stableSessionIdRef.current = sessionId;
 
@@ -327,6 +328,11 @@ export const useBoardSession = (sessionId?: string) => {
             console.warn('[useBoardSession] Ignoring stale event for session:', capturedSessionId);
             return;
           }
+          console.log('[ORCH-0923-DIAG] onSessionUpdated fired', {
+            sessionId: capturedSessionId,
+            new_deck_version: updatedSession?.deck_version,
+            new_deck_params_hash: updatedSession?.deck_params_hash?.slice(0, 8),
+          });
           setSession((prev) => (prev ? { ...prev, ...updatedSession } : null));
           // ORCH-0446B: Extract participant_prefs from realtime payload.
           // The old board_session_preferences table was deleted — onPreferencesChanged
@@ -433,13 +439,34 @@ export const useBoardSession = (sessionId?: string) => {
         },
       };
       boardCallbacksRef.current = callbacks;
-      realtimeService.subscribeToBoardSession(sessionId, callbacks);
+      void (async () => {
+        try {
+          const channel = await realtimeService.subscribeToBoardSession(capturedSessionId, callbacks);
+          if (cancelled || capturedSessionId !== stableSessionIdRef.current) {
+            realtimeService.unregisterBoardCallbacks(capturedSessionId, callbacks);
+            return;
+          }
+          if (!channel) {
+            boardCallbacksRef.current = null;
+            stableSessionIdRef.current = undefined;
+          }
+        } catch (err) {
+          console.error('[useBoardSession] Failed to subscribe to board session realtime:', err);
+          if (boardCallbacksRef.current === callbacks) {
+            boardCallbacksRef.current = null;
+          }
+          if (stableSessionIdRef.current === capturedSessionId) {
+            stableSessionIdRef.current = undefined;
+          }
+        }
+      })();
     }, 300);
 
     return () => {
+      cancelled = true;
       clearTimeout(timer);
     };
-  }, [sessionId]);
+  }, [sessionId, user?.id]);
 
   // Cleanup on unmount — unregister callbacks (safe — doesn't destroy channel)
   useEffect(() => {

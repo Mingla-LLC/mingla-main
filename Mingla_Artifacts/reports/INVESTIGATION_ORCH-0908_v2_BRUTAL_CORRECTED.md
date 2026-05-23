@@ -193,7 +193,7 @@ For each capability, three columns: **EXISTS** (file:line evidence), **PARTIAL**
 - No email on lock-in
 - No `notifications` table INSERT on lock-in
 - No system message inserted into the group chat on lock-in
-- No visual change on session pill when `status='locked'` — [`CollaborationSessions.tsx`](../../app-mobile/src/components/CollaborationSessions.tsx) doesn't read or branch on lock state
+- No visual change on session pill when `status='locked'` — ``CollaborationSessions.tsx`` (file removed per META-ORCH-0929) doesn't read or branch on lock state
 - No layout change in `SessionViewModal` when `status='locked'`
 
 ### Capability 10 — Auto-lock cascade (today's gang-consensus path)
@@ -226,7 +226,7 @@ For each capability, three columns: **EXISTS** (file:line evidence), **PARTIAL**
 ### Things that CHANGE (modifications to existing code)
 1. **Mint trigger expansion** — `recompute_deck_version_after_prefs_change` needs to ALSO fire on a new event (schedule-confirm). Either: (a) extend the trigger to fire on additional column changes, (b) call the trigger function directly from a new RPC, or (c) write a new sibling RPC `rpc_force_deck_recycle(session_id, exclude_place_ids[])` that increments deck_version and writes a new `session_deck_versions` row with the locked card excluded. Recommended: (c).
 2. **CalendarTab source-badge styling fix** — change [`CalendarTab.tsx:1586`](../../app-mobile/src/components/activity/CalendarTab.tsx#L1586) to apply `collaborationBadge` style when `entry.source === 'collaboration'` (5-line change; dead styles at 819-831 become live).
-3. **Session pill visual on `status='locked'`** — add a visual cue to [`CollaborationSessions.tsx`](../../app-mobile/src/components/CollaborationSessions.tsx) pill rendering. Pattern: lock-icon badge or color shift on the pill when session has a locked-in scheduled card.
+3. **Session pill visual on `status='locked'`** — add a visual cue to ``CollaborationSessions.tsx`` (file removed per META-ORCH-0929) pill rendering. Pattern: lock-icon badge or color shift on the pill when session has a locked-in scheduled card.
 4. **Delete the dead stub `handleScheduleFromSaved`** at [`app/index.tsx:2107-2109`](../../app-mobile/app/index.tsx#L2107-L2109) — or wire it properly. Discovery flagged; not strictly required.
 
 ### Things that get BUILT from scratch

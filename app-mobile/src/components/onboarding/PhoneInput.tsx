@@ -16,6 +16,7 @@ import {
   PhoneInput as PackagePhoneInput,
   type IconRenderer,
   type PhoneInputLabels,
+  type PhoneInputTheme,
 } from "@mingla/phone-input";
 
 import { Icon } from "../ui/Icon";
@@ -27,6 +28,8 @@ interface PhoneInputProps {
   onChangeCountry: (code: string) => void;
   error: string | null;
   disabled: boolean;
+  theme?: PhoneInputTheme;
+  showDoneAccessory?: boolean;
 }
 
 export const PhoneInput: React.FC<PhoneInputProps> = (props) => {

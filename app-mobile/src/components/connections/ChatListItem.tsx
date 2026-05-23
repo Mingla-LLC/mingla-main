@@ -34,6 +34,7 @@ export type ChatListItemConversation = Conversation & {
   eventCoverMediaUrl?: string | null;
   eventPublicCard?: BusinessEventCard | null;
   is_broadcast_only?: boolean;
+  isPendingCreatorCollab?: boolean;
 };
 
 interface ChatListItemProps {
@@ -149,6 +150,7 @@ export function ChatListItem({
   const isTripEventGroup =
     isGroup && (conversation.linked_entity_type === 'trip' || conversation.linked_entity_type === 'event');
   const isCollaborationGroup = isGroup && !isTripEventGroup;
+  const isPendingCreatorCollab = Boolean(conversation.isPendingCreatorCollab);
   const isBroadcastOnly = isTripEventGroup && conversation.is_broadcast_only === true;
   const eventKind = conversation.linked_entity_type === 'trip' ? 'Trip' : 'Event';
 
@@ -179,7 +181,9 @@ export function ChatListItem({
   const eventCountdown = formatEventListCountdown(conversation.eventPublicCard);
   const eventDefaultPreview = [eventCountdown, eventDate].filter(Boolean).join(" · ");
   const collaborationDefaultPreview =
-    conversation.participants.length > 1
+    isPendingCreatorCollab
+      ? "Waiting for at least one person to accept"
+      : conversation.participants.length > 1
       ? `${conversation.participants.length} people planning together`
       : "Collaboration space ready";
   const directDefaultPreview = "Start the conversation";
@@ -218,6 +222,8 @@ export function ChatListItem({
 
   const rowMetaLabel = isTripEventGroup
     ? "Broadcast"
+    : isPendingCreatorCollab
+      ? "Pending"
     : isCollaborationGroup
       ? "Collab session"
       : null;
@@ -297,6 +303,7 @@ export function ChatListItem({
         style={[
           styles.container,
           isTripEventGroup && styles.eventContainer,
+          isPendingCreatorCollab && styles.pendingCollabContainer,
           isCollaborationGroup && styles.collaborationContainer,
           !isGroup && styles.directContainer,
         ]}
@@ -534,6 +541,10 @@ const styles = StyleSheet.create({
   collaborationContainer: {
     backgroundColor: 'rgba(255, 255, 255, 0.07)',
     borderColor: 'rgba(255, 255, 255, 0.12)',
+  },
+  pendingCollabContainer: {
+    backgroundColor: 'rgba(249, 115, 22, 0.075)',
+    borderColor: 'rgba(249, 115, 22, 0.22)',
   },
   eventContainer: {
     backgroundColor: 'rgba(249, 115, 22, 0.085)',

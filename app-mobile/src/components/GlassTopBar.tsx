@@ -33,7 +33,7 @@ export type GlassTopBarProps = {
   onOpenNotifications: () => void;
   /** Null/0 hides the badge. */
   unreadNotifications: number;
-  /** Pre-rendered GlassSessionSwitcher so the host stays layout-only. */
+  /** Optional pre-rendered center control so the host stays layout-only. */
   sessionSwitcher: React.ReactNode;
   preferencesActive?: boolean;
   notificationsActive?: boolean;
@@ -157,52 +157,55 @@ export const GlassTopBar: React.FC<GlassTopBarProps> = ({
   const backdropCoreHeight =
     insets.top + c.row.topInset + c.button.size + c.backdrop.extraBottomPad;
   const backdropTotalHeight = backdropCoreHeight + c.backdrop.fadeHeight;
+  const hasCenterChrome = Boolean(sessionSwitcher);
 
   return (
     <>
       {/* ORCH-0589 v3 (R3): blurred header backdrop — contained glass canvas for the
           system status bar + Mingla chrome. Shares enter/exit animation values with
           the row below so both fade/slide together. */}
-      <Animated.View
-        pointerEvents="none"
-        style={[
-          styles.backdrop,
-          {
-            height: backdropTotalHeight,
-            opacity,
-            transform: [{ translateY }],
-          },
-        ]}
-      >
-        <View style={[StyleSheet.absoluteFill, { height: backdropCoreHeight }]}>
-          {useBackdropGlass ? (
-            <BlurView
-              intensity={c.backdrop.intensity}
-              tint="dark"
-              experimentalBlurMethod={
-                Platform.OS === 'android' ? 'dimezisBlurView' : undefined
-              }
-              style={StyleSheet.absoluteFill}
+      {hasCenterChrome ? (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.backdrop,
+            {
+              height: backdropTotalHeight,
+              opacity,
+              transform: [{ translateY }],
+            },
+          ]}
+        >
+          <View style={[StyleSheet.absoluteFill, { height: backdropCoreHeight }]}>
+            {useBackdropGlass ? (
+              <BlurView
+                intensity={c.backdrop.intensity}
+                tint="dark"
+                experimentalBlurMethod={
+                  Platform.OS === 'android' ? 'dimezisBlurView' : undefined
+                }
+                style={StyleSheet.absoluteFill}
+              />
+            ) : null}
+            <View
+              style={[StyleSheet.absoluteFill, { backgroundColor: c.backdrop.tint }]}
             />
-          ) : null}
-          <View
-            style={[StyleSheet.absoluteFill, { backgroundColor: c.backdrop.tint }]}
+          </View>
+          {/* Bottom edge fade: near-opaque tint → transparent so the backdrop's
+              bottom edge feathers into the card without a visible seam. */}
+          <LinearGradient
+            colors={[c.backdrop.tint, 'rgba(12,14,18,0)']}
+            locations={[0, 1]}
+            style={{
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              top: backdropCoreHeight,
+              height: c.backdrop.fadeHeight,
+            }}
           />
-        </View>
-        {/* Bottom edge fade: near-opaque tint → transparent so the backdrop's
-            bottom edge feathers into the card without a visible seam. */}
-        <LinearGradient
-          colors={[c.backdrop.tint, 'rgba(12,14,18,0)']}
-          locations={[0, 1]}
-          style={{
-            position: 'absolute',
-            left: 0,
-            right: 0,
-            top: backdropCoreHeight,
-            height: c.backdrop.fadeHeight,
-          }}
-        />
-      </Animated.View>
+        </Animated.View>
+      ) : null}
 
       {/* Top-bar row (existing) */}
       <Animated.View
@@ -226,6 +229,7 @@ export const GlassTopBar: React.FC<GlassTopBarProps> = ({
               onPress={onOpenPreferences}
               active={preferencesActive}
               accessibilityLabel="Preferences"
+              liquid={!hasCenterChrome}
             />
           </View>
           <View style={styles.center} pointerEvents="box-none">
@@ -237,6 +241,7 @@ export const GlassTopBar: React.FC<GlassTopBarProps> = ({
             active={notificationsActive}
             accessibilityLabel="Notifications"
             badge={unreadNotifications > 0 ? unreadNotifications : null}
+            liquid={!hasCenterChrome}
           />
         </View>
       </Animated.View>

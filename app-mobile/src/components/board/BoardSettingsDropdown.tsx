@@ -26,7 +26,7 @@ import { inviteByPhone } from "../../services/sessionInviteService";
 import { setSessionMute } from "../../services/sessionMuteService";
 import { InlineInviteFriendsList } from "./InlineInviteFriendsList";
 // ORCH-0520 v2: reuse existing phone-lookup hook for live warm/cold visual
-// (same pattern as AddFriendView.tsx:121 + CollaborationSessions.tsx:216)
+// (same pattern as AddFriendView.tsx:121)
 import { usePhoneLookup, useDebouncedValue } from "../../hooks/usePhoneLookup";
 
 interface Participant {
@@ -46,6 +46,15 @@ interface Participant {
     last_name?: string;
     avatar_url?: string;
   };
+}
+
+interface PendingSessionInviteRow {
+  id: string;
+  kind: "warm" | "cold";
+  userId?: string | null;
+  phoneE164?: string | null;
+  name: string;
+  avatarUrl?: string | null;
 }
 
 interface BoardSettingsDropdownProps {
@@ -87,6 +96,10 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
   const [deletingSession, setDeletingSession] = useState(false);
   const [exitingBoard, setExitingBoard] = useState(false);
   const [adminUsers, setAdminUsers] = useState<Set<string>>(new Set());
+  const [pendingInvites, setPendingInvites] = useState<PendingSessionInviteRow[]>([]);
+  const [pendingInviteIdsByUserId, setPendingInviteIdsByUserId] = useState<Record<string, string>>({});
+  const [loadingPendingInvites, setLoadingPendingInvites] = useState(false);
+  const [revokingInviteId, setRevokingInviteId] = useState<string | null>(null);
   const nameInputRef = useRef<TextInput>(null);
 
   // ORCH-0520: inline phone invite state
@@ -164,6 +177,91 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
 
   const isUserAdmin =
     currentUserId === sessionCreatorId || adminUsers.has(currentUserId || "");
+
+  const loadPendingInvites = useCallback(async () => {
+    if (!visible || !sessionId) {
+      setPendingInvites([]);
+      return;
+    }
+
+    setLoadingPendingInvites(true);
+    try {
+      const [warmResult, coldResult] = await Promise.all([
+        supabase
+          .from("collaboration_invites")
+          .select("id, invited_user_id, status")
+          .eq("session_id", sessionId)
+          .eq("status", "pending"),
+        supabase
+          .from("pending_session_invites")
+          .select("id, phone_e164, status")
+          .eq("session_id", sessionId)
+          .eq("status", "pending"),
+      ]);
+
+      if (warmResult.error) throw warmResult.error;
+      if (coldResult.error) throw coldResult.error;
+
+      const warmInvites = ((warmResult.data || []) as any[]);
+      const invitedUserIds = Array.from(
+        new Set(warmInvites.map((invite) => invite.invited_user_id).filter(Boolean)),
+      );
+      const { data: warmProfiles, error: warmProfilesError } = invitedUserIds.length > 0
+        ? await supabase
+            .from("profiles")
+            .select("id, username, display_name, first_name, last_name, avatar_url")
+            .in("id", invitedUserIds)
+        : { data: [] as any[], error: null };
+      if (warmProfilesError) throw warmProfilesError;
+      const warmProfilesById = new Map((warmProfiles || []).map((profile: any) => [profile.id, profile]));
+
+      const participantIds = new Set(participants.map((participant) => participant.user_id));
+      const acceptedParticipantIds = new Set(
+        participants
+          .filter((participant) => participant.has_accepted === true)
+          .map((participant) => participant.user_id),
+      );
+
+      const warmInviteMap: Record<string, string> = {};
+      for (const invite of warmInvites) {
+        if (invite.invited_user_id) warmInviteMap[invite.invited_user_id] = invite.id;
+      }
+      setPendingInviteIdsByUserId(warmInviteMap);
+
+      const warmRows: PendingSessionInviteRow[] = warmInvites
+        .filter((invite) => !acceptedParticipantIds.has(invite.invited_user_id))
+        .filter((invite) => !participantIds.has(invite.invited_user_id))
+        .map((invite) => {
+          const profile = warmProfilesById.get(invite.invited_user_id);
+          return {
+            id: invite.id,
+            kind: "warm" as const,
+            userId: invite.invited_user_id,
+            name: getDisplayName(profile, "Mingla friend"),
+            avatarUrl: profile?.avatar_url ?? null,
+          };
+        });
+
+      const coldRows: PendingSessionInviteRow[] = ((coldResult.data || []) as any[]).map((invite) => ({
+        id: invite.id,
+        kind: "cold" as const,
+        phoneE164: invite.phone_e164,
+        name: invite.phone_e164 || "Phone invite",
+      }));
+
+      setPendingInvites([...warmRows, ...coldRows]);
+    } catch (error) {
+      console.error("[BoardSettingsDropdown] Failed to load pending invites:", error);
+      setPendingInvites([]);
+      setPendingInviteIdsByUserId({});
+    } finally {
+      setLoadingPendingInvites(false);
+    }
+  }, [participants, sessionId, visible]);
+
+  useEffect(() => {
+    void loadPendingInvites();
+  }, [loadPendingInvites]);
 
   // --- Handlers: Board actions ---
 
@@ -468,6 +566,70 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
     [currentUserId, sessionId, sessionCreatorId, sessionName, onParticipantsChange, t]
   );
 
+  const handleRevokePendingInvite = useCallback(
+    (invite: PendingSessionInviteRow) => {
+      if (!currentUserId || !sessionId || !isUserAdmin) return;
+
+      Alert.alert(
+        "Revoke Invite",
+        `Revoke the pending invite for ${invite.name}?`,
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Revoke",
+            style: "destructive",
+            onPress: () => {
+              void (async () => {
+                try {
+                  setRevokingInviteId(invite.id);
+                  if (invite.kind === "cold") {
+                    const { error } = await supabase
+                      .from("pending_session_invites")
+                      .update({ status: "cancelled" })
+                      .eq("id", invite.id)
+                      .eq("session_id", sessionId);
+                    if (error) throw error;
+                  } else {
+                    let inviteDelete = supabase
+                      .from("collaboration_invites")
+                      .delete()
+                      .eq("session_id", sessionId);
+                    inviteDelete = invite.id.startsWith("participant:") && invite.userId
+                      ? inviteDelete.eq("invited_user_id", invite.userId).eq("status", "pending")
+                      : inviteDelete.eq("id", invite.id);
+
+                    const { error: inviteError } = await inviteDelete;
+                    if (inviteError) throw inviteError;
+
+                    if (invite.userId) {
+                      const { error: participantError } = await supabase
+                        .from("session_participants")
+                        .delete()
+                        .eq("session_id", sessionId)
+                        .eq("user_id", invite.userId)
+                        .eq("has_accepted", false);
+                      if (participantError) throw participantError;
+                    }
+                  }
+
+                  setPendingInvites((prev) => prev.filter((row) => row.id !== invite.id));
+                  onParticipantsChange?.();
+                  void loadPendingInvites();
+                } catch (err: any) {
+                  console.error("Error revoking invite:", err);
+                  Alert.alert("Error", err?.message || "Could not revoke invite.");
+                } finally {
+                  setRevokingInviteId(null);
+                }
+              })();
+            },
+          },
+        ]
+      );
+    },
+    [currentUserId, isUserAdmin, loadPendingInvites, onParticipantsChange, sessionId],
+  );
+
   if (!visible) return null;
 
   return (
@@ -684,7 +846,7 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
                 {/* Members Section */}
                 <View style={styles.membersSection}>
                   <Text style={styles.membersSectionTitle}>
-                    Members ({participants.length})
+                    Members ({participants.length + pendingInvites.length})
                   </Text>
                   {participants.map((participant) => {
                     const profile = participant.profiles;
@@ -692,8 +854,10 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
                     const originalName = getDisplayName(profile, "Unknown");
                     const displayName = isCurrentUser ? "You" : originalName;
                     const isCreator = participant.user_id === sessionCreatorId;
+                    const isPendingParticipant = participant.has_accepted === false;
                     const isParticipantAdmin =
                       isCreator || adminUsers.has(participant.user_id);
+                    const pendingInviteId = pendingInviteIdsByUserId[participant.user_id];
 
                     return (
                       <View
@@ -723,6 +887,12 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
                                   <Text style={styles.badgeText}>Admin</Text>
                                 </View>
                               )}
+                              {isPendingParticipant && (
+                                <View style={styles.pendingBadge}>
+                                  <Icon name="time-outline" size={10} color="#92400e" />
+                                  <Text style={styles.pendingBadgeText}>Pending</Text>
+                                </View>
+                              )}
                             </View>
                           </View>
                         </View>
@@ -730,38 +900,99 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
                         {/* Action buttons — admin can manage non-creator, non-self */}
                         {isUserAdmin && !isCreator && !isCurrentUser && (
                           <View style={styles.memberActions}>
-                            <TouchableOpacity
-                              style={[
-                                styles.memberActionBtn,
-                                isParticipantAdmin && styles.memberActionBtnActive,
-                              ]}
-                              onPress={() =>
-                                handleToggleAdmin(
-                                  participant.user_id,
-                                  originalName,
-                                  isParticipantAdmin
-                                )
-                              }
-                            >
-                              <Icon
-                                name="shield"
-                                size={16}
-                                color={isParticipantAdmin ? "#eb7825" : "#9CA3AF"}
-                              />
-                            </TouchableOpacity>
+                            {!isPendingParticipant ? (
+                              <TouchableOpacity
+                                style={[
+                                  styles.memberActionBtn,
+                                  isParticipantAdmin && styles.memberActionBtnActive,
+                                ]}
+                                onPress={() =>
+                                  handleToggleAdmin(
+                                    participant.user_id,
+                                    originalName,
+                                    isParticipantAdmin
+                                  )
+                                }
+                              >
+                                <Icon
+                                  name="shield"
+                                  size={16}
+                                  color={isParticipantAdmin ? "#eb7825" : "#9CA3AF"}
+                                />
+                              </TouchableOpacity>
+                            ) : null}
                             <TouchableOpacity
                               style={styles.memberActionBtn}
                               onPress={() =>
-                                handleRemoveMember(participant.user_id, originalName)
+                                isPendingParticipant
+                                  ? handleRevokePendingInvite({
+                                      id: pendingInviteId || `participant:${participant.user_id}`,
+                                      kind: "warm",
+                                      userId: participant.user_id,
+                                      name: originalName,
+                                      avatarUrl: profile?.avatar_url ?? null,
+                                    })
+                                  : handleRemoveMember(participant.user_id, originalName)
                               }
                             >
-                              <Icon name="user-minus" size={16} color="#EF4444" />
+                              <Icon
+                                name={isPendingParticipant ? "close" : "user-minus"}
+                                size={16}
+                                color="#EF4444"
+                              />
                             </TouchableOpacity>
                           </View>
                         )}
                       </View>
                     );
                   })}
+                  {loadingPendingInvites ? (
+                    <ActivityIndicator style={styles.pendingInvitesLoading} size="small" color="#eb7825" />
+                  ) : null}
+                  {pendingInvites.map((invite) => (
+                    <View key={`${invite.kind}-${invite.id}`} style={styles.memberRow}>
+                      <View style={styles.memberLeft}>
+                        <View style={[styles.memberAvatar, styles.pendingInviteAvatar]}>
+                          <Text style={styles.memberAvatarText}>
+                            {(invite.name || "?").charAt(0).toUpperCase()}
+                          </Text>
+                        </View>
+                        <View style={styles.memberInfo}>
+                          <View style={styles.memberNameRow}>
+                            <Text style={styles.memberName}>
+                              {truncateString(invite.name, 18)}
+                            </Text>
+                            <View style={styles.pendingBadge}>
+                              <Icon name="time-outline" size={10} color="#92400e" />
+                              <Text style={styles.pendingBadgeText}>
+                                {invite.kind === "cold" ? "SMS pending" : "Pending"}
+                              </Text>
+                            </View>
+                          </View>
+                        </View>
+                      </View>
+                      {isUserAdmin ? (
+                        <View style={styles.memberActions}>
+                          <TouchableOpacity
+                            style={[
+                              styles.memberActionBtn,
+                              revokingInviteId === invite.id ? styles.memberActionBtnDisabled : null,
+                            ]}
+                            disabled={revokingInviteId === invite.id}
+                            onPress={() => handleRevokePendingInvite(invite)}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Revoke invite for ${invite.name}`}
+                          >
+                            {revokingInviteId === invite.id ? (
+                              <ActivityIndicator size="small" color="#EF4444" />
+                            ) : (
+                              <Icon name="close" size={16} color="#EF4444" />
+                            )}
+                          </TouchableOpacity>
+                        </View>
+                      ) : null}
+                    </View>
+                  ))}
                 </View>
 
                 {/* Divider */}
@@ -944,6 +1175,20 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     borderRadius: 10,
   },
+  pendingBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    backgroundColor: "#FEF3C7",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  pendingBadgeText: {
+    fontSize: 10,
+    fontWeight: "600",
+    color: "#92400e",
+  },
   badgeText: {
     fontSize: 10,
     fontWeight: "600",
@@ -960,6 +1205,15 @@ const styles = StyleSheet.create({
   },
   memberActionBtnActive: {
     backgroundColor: "#FEF3C7",
+  },
+  memberActionBtnDisabled: {
+    opacity: 0.55,
+  },
+  pendingInviteAvatar: {
+    backgroundColor: "#9CA3AF",
+  },
+  pendingInvitesLoading: {
+    paddingVertical: 8,
   },
 
   // --- Action buttons (ORCH-0520 v2): fixed footer outside ScrollView ---

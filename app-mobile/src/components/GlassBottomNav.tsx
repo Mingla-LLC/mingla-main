@@ -334,7 +334,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   // ORCH-0589 v3 (R7): unified with session-pill active — white label on translucent
-  // orange glass (same tokens as glass.chrome.active.labelColor used in GlassSessionSwitcher).
+  // orange glass (same tokens as glass.chrome.active.labelColor).
   tabLabelActive: {
     color: glass.chrome.active.labelColor,
     fontWeight: '600',

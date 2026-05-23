@@ -1,7 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  FlatList,
   Modal,
   Pressable,
   StyleSheet,
@@ -13,6 +12,12 @@ import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
+import BottomSheet, {
+  BottomSheetBackdrop,
+  BottomSheetScrollView,
+  BottomSheetView,
+  type BottomSheetBackdropProps,
+} from "@gorhom/bottom-sheet";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import { Icon } from "../ui/Icon";
@@ -53,7 +58,7 @@ interface SheetProps {
   currentUserId: string | undefined | null;
 }
 
-interface SavedSessionCard {
+export interface SavedSessionCard {
   id: string;
   saved_card_id?: string;
   session_id: string;
@@ -66,6 +71,8 @@ interface SavedSessionCard {
 }
 
 const SAVED_CARDS_PAGE_SIZE = 20;
+const MATCHES_SHEET_SNAP_POINTS = ["62%", "88%"];
+const PLANS_SHEET_SNAP_POINTS = ["46%", "78%"];
 
 function cardTitle(
   cardData: Record<string, unknown> | null | undefined,
@@ -89,7 +96,7 @@ function cardImage(
   return null;
 }
 
-function useSessionSavedCardsForSheet(sessionId: string | null | undefined): {
+export function useSessionSavedCardsForSheet(sessionId: string | null | undefined): {
   savedCards: SavedSessionCard[];
   isLoading: boolean;
 } {
@@ -287,6 +294,82 @@ function BannerRow({
   );
 }
 
+function CompactCollabBottomSheet({
+  visible,
+  onClose,
+  title,
+  closeAccessibilityLabel,
+  snapPoints,
+  children,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  title: string;
+  closeAccessibilityLabel: string;
+  snapPoints: string[];
+  children: React.ReactNode;
+}) {
+  const sheetRef = useRef<BottomSheet>(null);
+
+  const handleSheetChange = useCallback(
+    (index: number) => {
+      if (index === -1) onClose();
+    },
+    [onClose],
+  );
+
+  const renderBackdrop = useCallback(
+    (props: BottomSheetBackdropProps) => (
+      <BottomSheetBackdrop
+        {...props}
+        appearsOnIndex={0}
+        disappearsOnIndex={-1}
+        opacity={0.48}
+        pressBehavior="close"
+      />
+    ),
+    [],
+  );
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="none"
+      onRequestClose={onClose}
+      statusBarTranslucent
+    >
+      <BottomSheet
+        ref={sheetRef}
+        index={visible ? 0 : -1}
+        snapPoints={snapPoints}
+        enablePanDownToClose
+        onChange={handleSheetChange}
+        backdropComponent={renderBackdrop}
+        backgroundStyle={styles.compactSheetBackground}
+        handleIndicatorStyle={styles.compactSheetHandle}
+      >
+        <BottomSheetView style={styles.compactSheetContent}>
+          <View style={styles.compactSheetHeader}>
+            <Text style={styles.compactSheetTitle} numberOfLines={1}>
+              {title}
+            </Text>
+            <TouchableOpacity
+              onPress={onClose}
+              style={styles.compactSheetCloseButton}
+              accessibilityRole="button"
+              accessibilityLabel={closeAccessibilityLabel}
+            >
+              <Icon name="close-outline" size={22} color="#6b7280" />
+            </TouchableOpacity>
+          </View>
+          {children}
+        </BottomSheetView>
+      </BottomSheet>
+    </Modal>
+  );
+}
+
 export function ScheduleSheet({ visible, onClose, sessionId }: SheetProps) {
   const { rows, isLoading, isError, refetch } =
     useSessionScheduledCards(sessionId);
@@ -295,88 +378,72 @@ export function ScheduleSheet({ visible, onClose, sessionId }: SheetProps) {
   );
 
   return (
-    <Modal
+    <CompactCollabBottomSheet
       visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
+      onClose={onClose}
+      title="Plans"
+      closeAccessibilityLabel="Close plans"
+      snapPoints={PLANS_SHEET_SNAP_POINTS}
     >
-      <View style={styles.modalOverlay}>
+      {isLoading ? (
+        <ActivityIndicator style={styles.loading} color="#eb7825" />
+      ) : isError ? (
         <Pressable
-          style={styles.backdrop}
-          onPress={onClose}
+          onPress={refetch}
+          style={styles.emptyState}
           accessibilityRole="button"
-          accessibilityLabel="Close locked-in plans"
-        />
-        <View style={styles.bottomSheet}>
-          <View style={styles.handleBar} />
-          <View style={styles.sheetHeader}>
-            <Text style={styles.sheetTitle}>Locked-in plans</Text>
-            <TouchableOpacity
-              onPress={onClose}
-              style={styles.iconButton}
-              accessibilityRole="button"
-              accessibilityLabel="Close locked-in plans"
-            >
-              <Icon name="close-outline" size={22} color="#6b7280" />
-            </TouchableOpacity>
-          </View>
-          {isLoading ? (
-            <ActivityIndicator style={styles.loading} color="#eb7825" />
-          ) : isError ? (
-            <Pressable
-              onPress={refetch}
-              style={styles.emptyState}
-              accessibilityRole="button"
-              accessibilityLabel="Retry loading locked-in plans"
-            >
-              <Text style={styles.emptyText}>
-                Could not load locked-in plans. Tap to retry.
-              </Text>
-            </Pressable>
-          ) : (
-            <FlatList
-              data={rows}
-              keyExtractor={(item) => item.savedCardId}
-              contentContainerStyle={styles.verticalListContent}
-              renderItem={({ item }: { item: SessionScheduledCardRow }) => (
-                <TouchableOpacity
-                  style={styles.scheduleRow}
-                  onPress={() => setExpandedCard(toExpandedCard(item.cardData))}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Open ${cardTitle(item.cardData)} scheduled for ${formatScheduledAt(item.scheduledAt)}`}
-                >
-                  <View style={styles.scheduleIcon}>
-                    <Icon name="lock-closed" size={15} color="#92400e" />
-                  </View>
-                  <View style={styles.rowText}>
-                    <Text style={styles.cardTitle} numberOfLines={1}>
-                      {cardTitle(item.cardData)}
-                    </Text>
-                    <Text style={styles.cardMeta} numberOfLines={1}>
-                      {formatScheduledAt(item.scheduledAt)}
-                    </Text>
-                    <Text style={styles.cardMeta} numberOfLines={1}>
-                      Locked in by {item.lockedByDisplayName || "someone"}
-                    </Text>
-                  </View>
-                  <Icon name="chevron-forward" size={18} color="#9ca3af" />
-                </TouchableOpacity>
-              )}
-            />
-          )}
+          accessibilityLabel="Retry loading plans"
+        >
+          <Text style={styles.emptyText}>
+            Could not load plans. Tap to retry.
+          </Text>
+        </Pressable>
+      ) : rows.length === 0 ? (
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyText}>No locked-in plans yet.</Text>
         </View>
-        <ExpandedCardModal
-          visible={!!expandedCard}
-          target={
-            expandedCard ? { kind: "nightOut", data: expandedCard } : null
-          }
-          onClose={() => setExpandedCard(null)}
-          onSave={() => {}}
-          currentMode="collab"
-        />
-      </View>
-    </Modal>
+      ) : (
+        <BottomSheetScrollView
+          contentContainerStyle={styles.verticalListContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {rows.map((item: SessionScheduledCardRow) => (
+            <TouchableOpacity
+              key={item.savedCardId}
+              style={styles.scheduleRow}
+              onPress={() => setExpandedCard(toExpandedCard(item.cardData))}
+              accessibilityRole="button"
+              accessibilityLabel={`Open ${cardTitle(item.cardData)} scheduled for ${formatScheduledAt(item.scheduledAt)}`}
+            >
+              <View style={styles.scheduleIcon}>
+                <Icon name="lock-closed" size={15} color="#92400e" />
+              </View>
+              <View style={styles.rowText}>
+                <Text style={styles.cardTitle} numberOfLines={1}>
+                  {cardTitle(item.cardData)}
+                </Text>
+                <Text style={styles.cardMeta} numberOfLines={1}>
+                  {formatScheduledAt(item.scheduledAt)}
+                </Text>
+                <Text style={styles.cardMeta} numberOfLines={1}>
+                  Locked in by {item.lockedByDisplayName || "someone"}
+                </Text>
+              </View>
+              <Icon name="chevron-forward" size={18} color="#9ca3af" />
+            </TouchableOpacity>
+          ))}
+        </BottomSheetScrollView>
+      )}
+      <ExpandedCardModal
+        visible={!!expandedCard}
+        target={
+          expandedCard ? { kind: "nightOut", data: expandedCard } : null
+        }
+        onClose={() => setExpandedCard(null)}
+        onSave={() => {}}
+        currentMode="collab"
+      />
+    </CompactCollabBottomSheet>
   );
 }
 
@@ -397,7 +464,6 @@ export function SavedToSessionCardsSheet({
   accountPreferences?: Props["accountPreferences"];
   isAdmin: boolean;
 }) {
-  const insets = useSafeAreaInsets();
   const [expandedCard, setExpandedCard] = useState<ExpandedCardData | null>(
     null,
   );
@@ -410,50 +476,35 @@ export function SavedToSessionCardsSheet({
   }, []);
 
   return (
-    <Modal
+    <CompactCollabBottomSheet
       visible={visible}
-      animationType="slide"
-      presentationStyle="fullScreen"
-      onRequestClose={onClose}
+      onClose={onClose}
+      title="Matches"
+      closeAccessibilityLabel="Close matches"
+      snapPoints={MATCHES_SHEET_SNAP_POINTS}
     >
-      <SafeAreaView style={styles.savedCardsSheet}>
-        <View
-          style={[styles.deckHeader, { paddingTop: Math.max(insets.top, 8) }]}
-        >
-          <TouchableOpacity
-            onPress={onClose}
-            style={styles.headerButton}
-            accessibilityRole="button"
-            accessibilityLabel="Close saved-to-session cards"
-          >
-            <Icon name="chevron-down" size={24} color="#111827" />
-          </TouchableOpacity>
-          <Text style={styles.deckTitle}>Saved to session</Text>
-          <View style={styles.headerButton} />
-        </View>
-        <View style={styles.savedCardsBody}>
-          <SwipeableSessionCards
-            cards={savedCards}
-            sessionId={sessionId}
-            userId={currentUserId ?? undefined}
-            participantCount={participantCount}
-            onViewDetails={openExpandedCardModal}
-            loading={savedCardsLoading}
-            accountPreferences={accountPreferences}
-            isAdmin={isAdmin}
-          />
-        </View>
-        <ExpandedCardModal
-          visible={!!expandedCard}
-          target={
-            expandedCard ? { kind: "nightOut", data: expandedCard } : null
-          }
-          onClose={() => setExpandedCard(null)}
-          onSave={() => {}}
-          currentMode="collab"
+      <BottomSheetView style={styles.savedCardsBody}>
+        <SwipeableSessionCards
+          cards={savedCards}
+          sessionId={sessionId}
+          userId={currentUserId ?? undefined}
+          participantCount={participantCount}
+          onViewDetails={openExpandedCardModal}
+          loading={savedCardsLoading}
+          accountPreferences={accountPreferences}
+          isAdmin={isAdmin}
         />
-      </SafeAreaView>
-    </Modal>
+      </BottomSheetView>
+      <ExpandedCardModal
+        visible={!!expandedCard}
+        target={
+          expandedCard ? { kind: "nightOut", data: expandedCard } : null
+        }
+        onClose={() => setExpandedCard(null)}
+        onSave={() => {}}
+        currentMode="collab"
+      />
+    </CompactCollabBottomSheet>
   );
 }
 
@@ -533,7 +584,6 @@ export function InChatDeckSheet({
           <RecommendationsProvider currentMode={sessionId} key={sessionId}>
             <SwipeableCards
               key={sessionId}
-              sessionIdOverride={sessionId}
               userPreferences={preferences}
               accountPreferences={accountPreferences}
               currentMode="collab"
@@ -598,9 +648,9 @@ export function CollabSessionChatBanners({
           icon="lock-closed"
           iconColor="#d97706"
           backgroundColor="#FEF3C7"
-          title="Locked-in plans"
+          title="Plans"
           subtitle={`${scheduled.rows.length} scheduled`}
-          accessibilityLabel={`Locked-in plans: ${scheduled.rows.length} scheduled. Tap to view.`}
+          accessibilityLabel={`Plans: ${scheduled.rows.length} scheduled. Tap to view.`}
           onPress={async () => {
             await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             setShowScheduleSheet(true);
@@ -612,9 +662,9 @@ export function CollabSessionChatBanners({
           icon="heart-outline"
           iconColor="#db2777"
           backgroundColor="#FCE7F3"
-          title="Saved to session"
+          title="Matches"
           subtitle={`${savedCardsForLikesSheet.length} cards saved`}
-          accessibilityLabel={`Saved to session: ${savedCardsForLikesSheet.length} cards saved. Tap to view.`}
+          accessibilityLabel={`Matches: ${savedCardsForLikesSheet.length} cards saved. Tap to view.`}
           onPress={async () => {
             await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             setShowLikedSheet(true);
@@ -696,41 +746,6 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     marginTop: 1,
   },
-  modalOverlay: { flex: 1, justifyContent: "flex-end" },
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(17,24,39,0.32)",
-  },
-  bottomSheet: {
-    maxHeight: "72%",
-    backgroundColor: "#ffffff",
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
-    paddingBottom: 18,
-  },
-  handleBar: {
-    alignSelf: "center",
-    width: 42,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "#d1d5db",
-    marginTop: 10,
-    marginBottom: 8,
-  },
-  sheetHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 18,
-    paddingBottom: 10,
-  },
-  sheetTitle: { fontSize: 18, fontWeight: "700", color: "#111827" },
-  iconButton: {
-    width: 44,
-    height: 44,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   loading: { paddingVertical: 28 },
   emptyState: {
     paddingHorizontal: 18,
@@ -760,8 +775,44 @@ const styles = StyleSheet.create({
   rowText: { flex: 1, minWidth: 0 },
   cardTitle: { color: "#111827", fontSize: 14, fontWeight: "700" },
   cardMeta: { color: "#6b7280", fontSize: 12, marginTop: 2 },
-  savedCardsSheet: { flex: 1, backgroundColor: "#ffffff" },
-  savedCardsBody: { flex: 1 },
+  compactSheetBackground: {
+    backgroundColor: "#ffffff",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+  },
+  compactSheetHandle: {
+    backgroundColor: "rgba(17,24,39,0.24)",
+    width: 44,
+  },
+  compactSheetContent: {
+    flex: 1,
+    paddingTop: 6,
+  },
+  compactSheetHeader: {
+    minHeight: 48,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 18,
+    paddingBottom: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#e5e7eb",
+  },
+  compactSheetTitle: {
+    flex: 1,
+    color: "#111827",
+    fontSize: 18,
+    fontWeight: "800",
+  },
+  compactSheetCloseButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#f3f4f6",
+  },
+  savedCardsBody: { flex: 1, minHeight: 390 },
   deckSheet: { flex: 1, backgroundColor: "#ffffff" },
   deckHeader: {
     minHeight: 56,

@@ -34,7 +34,16 @@ import { SwipeableMessage } from "./chat/SwipeableMessage";
 import { DoubleTapHeart } from "./chat/DoubleTapHeart";
 import { ChatStatusLine } from "./chat/ChatStatusLine";
 import { TripCountdownBanner } from "./chat/TripCountdownBanner";
-import { CollabSessionChatBanners } from "./chat/CollabSessionChatBanners";
+import {
+  SavedToSessionCardsSheet,
+  ScheduleSheet,
+  useSessionSavedCardsForSheet,
+} from "./chat/CollabSessionChatBanners";
+import { CollabDeckSheet } from "./connections/CollabDeckSheet";
+import {
+  getCollabChatHeaderActions,
+  type CollabChatHeaderActionId,
+} from "./connections/collabChatHeaderUtils";
 import { BoardSettingsDropdown } from "./board/BoardSettingsDropdown";
 import { MentionPopover } from "./board/MentionPopover";
 import { CardTagPopover } from "./board/CardTagPopover";
@@ -44,6 +53,8 @@ import { DirectMessage, messagingService, CardPayload, MentionEntry, CardTagEntr
 import { cardPayloadToExpandedCardData } from "../services/cardPayloadAdapter";  // ORCH-0685
 import { savedCardsService } from "../services/savedCardsService";  // ORCH-0685
 import { useSavedCards } from "../hooks/useSavedCards";
+import { useSessionScheduledCards } from "../hooks/useSessionScheduledCards";
+import { useBoardSession } from "../hooks/useBoardSession";
 import { useConversationParticipants } from "../hooks/useConversationParticipants";
 import { useChatCardTagSource } from "../hooks/useChatCardTagSource";
 import { useChatInputController } from "../hooks/useChatInputController";
@@ -153,17 +164,15 @@ interface MessageInterfaceProps {
   onRemoveFriend?: (friend: any, suppressNotification?: boolean) => void;
   onBlockUser?: (friend: any, suppressNotification?: boolean) => void;
   onReportUser?: (friend: any, suppressNotification?: boolean) => void;
-  boardsSessions?: any[];
-  currentMode?: "solo" | string;
-  onModeChange?: (mode: "solo" | string) => void;
-  onUpdateBoardSession?: (updatedBoard: any) => void;
-  onCreateSession?: (newSession: any) => void;
-  availableFriends?: Friend[];
   accountPreferences?: any;
+  userPreferences?: any;
+  savedCards?: any[];
   onCardLike?: (card: any) => Promise<boolean>;
   onAddToCalendar?: (experienceData: any) => void;
   onShareCard?: (card: any) => void;
   onPurchaseComplete?: (experienceData: any, purchaseOption: any) => void;
+  onOpenPreferences?: () => void;
+  onOpenCollabPreferences?: (sessionId?: string, sessionName?: string) => void;
   isBlocked?: boolean;
   isUnfriended?: boolean;
   isDeletedAccount?: boolean;
@@ -199,17 +208,14 @@ export default function MessageInterface({
   onRemoveFriend,
   onBlockUser,
   onReportUser,
-  boardsSessions = [],
-  currentMode = "solo",
-  onModeChange,
-  onUpdateBoardSession,
-  onCreateSession,
-  availableFriends = [],
   accountPreferences,
+  userPreferences,
+  savedCards = [],
   onCardLike,
   onAddToCalendar,
   onShareCard,
   onPurchaseComplete,
+  onOpenPreferences,
   isBlocked = false,
   isUnfriended = false,
   isDeletedAccount = false,
@@ -225,7 +231,7 @@ export default function MessageInterface({
   onGroupSessionDeleted,
   onGroupParticipantsChange,
 }: MessageInterfaceProps) {
-  const { t } = useTranslation(['chat', 'common']);
+  const { t } = useTranslation(['chat', 'common', 'social']);
   // Helper function to clean email-like names
   const cleanName = (name: string): string => {
     if (!name) return "Unknown";
@@ -266,32 +272,6 @@ export default function MessageInterface({
       ? (currentUserName || msg.senderName || 'You')
       : cleanName(msg.senderName || friend.name);
   };
-  const groupSettingsParticipants = useMemo(
-    () =>
-      headerParticipants.map((participant) => ({
-        user_id: participant.id,
-        session_id: friend.sessionId ?? "",
-        has_accepted: true,
-        is_admin: participant.id === friend.sessionCreatorId,
-        notifications_muted: participant.id === currentUserId
-          ? friend.notificationsMuted ?? false
-          : false,
-        profiles: {
-          id: participant.id,
-          username: participant.username,
-          display_name: participant.name,
-          avatar_url: participant.avatar_url,
-        },
-      })),
-    [
-      currentUserId,
-      friend.notificationsMuted,
-      friend.sessionCreatorId,
-      friend.sessionId,
-      headerParticipants,
-    ],
-  );
-
   const getHeaderParticipantName = (participant: NonNullable<Friend["participants"]>[number]): string =>
     cleanName(participant.name || participant.username || "User");
 
@@ -310,6 +290,9 @@ export default function MessageInterface({
   const [isProcessingFile, setIsProcessingFile] = useState(false);
   const [showImagePreview, setShowImagePreview] = useState(false);
   const [showMoreOptionsMenu, setShowMoreOptionsMenu] = useState(false);
+  const [showCollabDeckSheet, setShowCollabDeckSheet] = useState(false);
+  const [showCollabMatchesSheet, setShowCollabMatchesSheet] = useState(false);
+  const [showCollabPlansSheet, setShowCollabPlansSheet] = useState(false);
   const [showEventAudienceSheet, setShowEventAudienceSheet] = useState(false);
   // ORCH-0667: shared-card picker state
   const [showSavedCardPicker, setShowSavedCardPicker] = useState(false);
@@ -329,6 +312,68 @@ export default function MessageInterface({
     sessionId: friend.sessionId ?? null,
     currentUserId,
   });
+  const scheduledCardsQuery = useSessionScheduledCards(
+    isCollabSessionGroupChat ? friend.sessionId : null,
+  );
+  const { session: collabSession, isAdmin: isCollabSessionAdmin } = useBoardSession(
+    isCollabSessionGroupChat ? friend.sessionId ?? undefined : undefined,
+  );
+  const groupSettingsParticipants = useMemo(() => {
+    const collabParticipants = (collabSession?.participants as any[] | undefined) ?? [];
+    if (isCollabSessionGroupChat && collabParticipants.length > 0) {
+      return collabParticipants;
+    }
+
+    return headerParticipants.map((participant) => ({
+      user_id: participant.id,
+      session_id: friend.sessionId ?? "",
+      has_accepted: true,
+      is_admin: participant.id === friend.sessionCreatorId,
+      notifications_muted: participant.id === currentUserId
+        ? friend.notificationsMuted ?? false
+        : false,
+      profiles: {
+        id: participant.id,
+        username: participant.username,
+        display_name: participant.name,
+        avatar_url: participant.avatar_url,
+      },
+    }));
+  }, [
+    collabSession?.participants,
+    currentUserId,
+    friend.notificationsMuted,
+    friend.sessionCreatorId,
+    friend.sessionId,
+    headerParticipants,
+    isCollabSessionGroupChat,
+  ]);
+  const {
+    savedCards: matchedSessionCards,
+    isLoading: matchedSessionCardsLoading,
+  } = useSessionSavedCardsForSheet(
+    isCollabSessionGroupChat ? friend.sessionId : null,
+  );
+  const collabHeaderActions = useMemo(
+    () =>
+      isCollabSessionGroupChat
+        ? getCollabChatHeaderActions({
+            matchesCount: matchedSessionCards.length,
+            scheduledCount: scheduledCardsQuery.rows.length,
+            matchesLoading: matchedSessionCardsLoading,
+            scheduledLoading: scheduledCardsQuery.isLoading,
+          })
+        : [],
+    [
+      isCollabSessionGroupChat,
+      matchedSessionCards.length,
+      matchedSessionCardsLoading,
+      scheduledCardsQuery.isLoading,
+      scheduledCardsQuery.rows.length,
+    ],
+  );
+  const collabParticipantCount =
+    (collabSession?.participants as any[] | undefined)?.length || headerParticipantCount;
   const chatController = useChatInputController({
     participants: participantsQuery.data ?? [],
     cardTagSource: chatCardTagSource.data,
@@ -1012,12 +1057,12 @@ export default function MessageInterface({
     if (!friend.sessionId || !currentUserId) return;
 
     Alert.alert(
-      "Leave session?",
-      "You will leave this collaboration session and its chat.",
+      t("social:leaveSessionConfirmTitle"),
+      t("social:leaveSessionConfirmBody"),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: t("common:cancel"), style: "cancel" },
         {
-          text: "Leave",
+          text: t("social:leaveSessionMenuItem"),
           style: "destructive",
           onPress: async () => {
             try {
@@ -1036,7 +1081,7 @@ export default function MessageInterface({
         },
       ],
     );
-  }, [currentUserId, friend.sessionId, onGroupSessionExited]);
+  }, [currentUserId, friend.sessionId, onGroupSessionExited, t]);
 
   // ORCH-0620 composer position:
   //   - inputBottomOffset: nav clearance so the composer floats above the bottom
@@ -1114,6 +1159,19 @@ export default function MessageInterface({
     setShowMoreOptionsMenu(!showMoreOptionsMenu);
   };
 
+  const handleOpenCollabDeckView = (view: CollabChatHeaderActionId) => {
+    HapticFeedback.medium();
+    if (view === "matches") {
+      setShowCollabMatchesSheet(true);
+      return;
+    }
+    if (view === "plans") {
+      setShowCollabPlansSheet(true);
+      return;
+    }
+    setShowCollabDeckSheet(true);
+  };
+
   const handleOpenAudienceProfile = (participantId: string) => {
     setShowEventAudienceSheet(false);
     onViewProfile?.(participantId);
@@ -1124,30 +1182,27 @@ export default function MessageInterface({
       {/* Header */}
       <View style={[styles.header, { paddingTop: safeInsets.top + 8 }]}>
         {/* Top Row: Back button, Avatar, Name and Status */}
-        <View style={styles.headerTopRow}>
+        <View
+          style={[
+            styles.headerTopRow,
+            isCollabSessionGroupChat ? styles.collabHeaderTopRow : null,
+          ]}
+        >
           <TouchableOpacity onPress={onBack} style={styles.backButton}>
             <Icon name="arrow-back" size={24} color="rgba(255, 255, 255, 0.72)" />
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.avatarContainer}
-            onPress={() => {
-              if (!isGroupChat) onViewProfile?.(friend.id);
-            }}
-            disabled={isGroupChat || !onViewProfile}
-            activeOpacity={0.8}
-            accessibilityLabel={isGroupChat ? `${headerTitle} participants` : `View ${headerTitle}'s profile`}
-            accessibilityRole="button"
-          >
-            {isGroupChat && friend.eventCoverMediaUrl ? (
-              <ImageWithFallback
-                source={{ uri: friend.eventCoverMediaUrl }}
-                style={[styles.avatar, styles.groupCoverAvatar]}
-              />
-            ) : isGroupChat ? (
-              <View style={styles.groupHeaderAvatarStack}>
+          {isCollabSessionGroupChat ? (
+            <TouchableOpacity
+              style={styles.collabHeaderPill}
+              onPress={handleHeaderMorePress}
+              activeOpacity={0.76}
+              accessibilityRole="button"
+              accessibilityLabel={`Open ${headerTitle} options`}
+            >
+              <View style={[styles.groupHeaderAvatarStack, styles.collabHeaderAvatarStack]}>
                 {visibleHeaderParticipants.length === 0 ? (
-                  <View style={styles.groupHeaderAvatarPlaceholder}>
+                  <View style={[styles.groupHeaderAvatarPlaceholder, styles.collabHeaderAvatarPlaceholder]}>
                     <Text style={styles.avatarText}>{getHeaderInitials(headerTitle)}</Text>
                   </View>
                 ) : (
@@ -1158,8 +1213,10 @@ export default function MessageInterface({
                         key={participant.id}
                         style={[
                           styles.groupHeaderAvatarSegment,
+                          styles.collabHeaderAvatarSegment,
+                          index === 0 ? styles.collabHeaderLeadAvatar : null,
                           {
-                            left: index * 12,
+                            left: index * 14,
                             zIndex: visibleHeaderParticipants.length - index,
                           },
                         ]}
@@ -1167,10 +1224,10 @@ export default function MessageInterface({
                         {participant.avatar_url ? (
                           <ImageWithFallback
                             source={{ uri: participant.avatar_url }}
-                            style={styles.groupHeaderAvatarImage}
+                            style={styles.collabHeaderAvatarImage}
                           />
                         ) : (
-                          <Text style={styles.avatarText}>
+                          <Text style={styles.collabAvatarText}>
                             {getHeaderInitials(participantName)}
                           </Text>
                         )}
@@ -1179,58 +1236,144 @@ export default function MessageInterface({
                   })
                 )}
               </View>
-            ) : friend.avatar ? (
-              <ImageWithFallback source={{ uri: friend.avatar }} style={styles.avatar} />
-            ) : (
-              <View style={styles.avatarPlaceholder}>
-                <Text style={styles.avatarText}>
-                  {getHeaderInitials(headerTitle)}
+              <View style={styles.collabHeaderCopy}>
+                <Text style={[styles.userName, styles.collabUserName]} numberOfLines={1}>
+                  {headerTitle}
+                </Text>
+                <Text style={styles.groupParticipantCount} numberOfLines={1}>
+                  {headerParticipantCount} {headerParticipantCount === 1 ? "member" : "members"} · Collab session
                 </Text>
               </View>
-            )}
-            {!isGroupChat && isOtherOnline && <View style={styles.onlineIndicator} />}
-          </TouchableOpacity>
+              <Icon name="chevron-down" size={16} color="rgba(255, 255, 255, 0.58)" />
+            </TouchableOpacity>
+          ) : (
+            <>
+              <TouchableOpacity
+                style={styles.avatarContainer}
+                onPress={() => {
+                  if (!isGroupChat) onViewProfile?.(friend.id);
+                }}
+                disabled={isGroupChat || !onViewProfile}
+                activeOpacity={0.8}
+                accessibilityLabel={isGroupChat ? `${headerTitle} participants` : `View ${headerTitle}'s profile`}
+                accessibilityRole="button"
+              >
+                {isGroupChat && friend.eventCoverMediaUrl ? (
+                  <ImageWithFallback
+                    source={{ uri: friend.eventCoverMediaUrl }}
+                    style={[styles.avatar, styles.groupCoverAvatar]}
+                  />
+                ) : isGroupChat ? (
+                  <View style={styles.groupHeaderAvatarStack}>
+                    {visibleHeaderParticipants.length === 0 ? (
+                      <View style={styles.groupHeaderAvatarPlaceholder}>
+                        <Text style={styles.avatarText}>{getHeaderInitials(headerTitle)}</Text>
+                      </View>
+                    ) : (
+                      visibleHeaderParticipants.map((participant, index) => {
+                        const participantName = getHeaderParticipantName(participant);
+                        return (
+                          <View
+                            key={participant.id}
+                            style={[
+                              styles.groupHeaderAvatarSegment,
+                              {
+                                left: index * 12,
+                                zIndex: visibleHeaderParticipants.length - index,
+                              },
+                            ]}
+                          >
+                            {participant.avatar_url ? (
+                              <ImageWithFallback
+                                source={{ uri: participant.avatar_url }}
+                                style={styles.groupHeaderAvatarImage}
+                              />
+                            ) : (
+                              <Text style={styles.avatarText}>
+                                {getHeaderInitials(participantName)}
+                              </Text>
+                            )}
+                          </View>
+                        );
+                      })
+                    )}
+                  </View>
+                ) : friend.avatar ? (
+                  <ImageWithFallback source={{ uri: friend.avatar }} style={styles.avatar} />
+                ) : (
+                  <View style={styles.avatarPlaceholder}>
+                    <Text style={styles.avatarText}>
+                      {getHeaderInitials(headerTitle)}
+                    </Text>
+                  </View>
+                )}
+                {!isGroupChat && isOtherOnline && <View style={styles.onlineIndicator} />}
+              </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.userInfo}
-            onPress={() => {
-              if (!isGroupChat) onViewProfile?.(friend.id);
-            }}
-            disabled={isGroupChat || !onViewProfile}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.userName} numberOfLines={1}>{headerTitle}</Text>
-            {isGroupChat ? (
-              <Text style={styles.groupParticipantCount} numberOfLines={1}>
-                {isTripEventGroupChat
-                  ? eventAudienceSubtitle
-                  : `${headerParticipantCount} ${headerParticipantCount === 1 ? "person" : "people"} in chat`}
-              </Text>
-            ) : (
-              <ChatStatusLine
-                isOnline={isOtherOnline}
-                isTyping={isOtherTyping}
-                lastSeenAt={otherLastSeen}
-              />
-            )}
-          </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.userInfo}
+                onPress={() => {
+                  if (!isGroupChat) onViewProfile?.(friend.id);
+                }}
+                disabled={isGroupChat || !onViewProfile}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.userName} numberOfLines={1}>{headerTitle}</Text>
+                {isGroupChat ? (
+                  <Text style={styles.groupParticipantCount} numberOfLines={1}>
+                    {isTripEventGroupChat
+                      ? eventAudienceSubtitle
+                      : `${headerParticipantCount} ${headerParticipantCount === 1 ? "person" : "people"} in chat`}
+                  </Text>
+                ) : (
+                  <ChatStatusLine
+                    isOnline={isOtherOnline}
+                    isTyping={isOtherTyping}
+                    lastSeenAt={otherLastSeen}
+                  />
+                )}
+              </TouchableOpacity>
+            </>
+          )}
 
           {/* More button — far right */}
-          <TouchableOpacity
-            onPress={handleHeaderMorePress}
-            style={styles.headerMoreBtn}
-            activeOpacity={0.7}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            accessibilityRole="button"
-            accessibilityLabel={
-              isTripEventGroupChat
-                ? `View ${eventAudienceTitle.toLowerCase()}`
-                : "Open chat options"
-            }
-          >
-            <Icon name="ellipsis-vertical" size={20} color="rgba(255, 255, 255, 0.72)" />
-          </TouchableOpacity>
+          {!isCollabSessionGroupChat ? (
+            <TouchableOpacity
+              onPress={handleHeaderMorePress}
+              style={styles.headerMoreBtn}
+              activeOpacity={0.7}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel={
+                isTripEventGroupChat
+                  ? `View ${eventAudienceTitle.toLowerCase()}`
+                  : "Open chat options"
+              }
+            >
+              <Icon name="ellipsis-vertical" size={20} color="rgba(255, 255, 255, 0.72)" />
+            </TouchableOpacity>
+          ) : null}
         </View>
+
+        {isCollabSessionGroupChat ? (
+          <View style={styles.collabHeaderActionRow}>
+            {collabHeaderActions.map((action) => (
+              <TouchableOpacity
+                key={action.id}
+                onPress={() => handleOpenCollabDeckView(action.id)}
+                activeOpacity={0.76}
+                accessibilityRole="button"
+                accessibilityLabel={`${action.label} ${headerTitle}`}
+                style={styles.collabHeaderActionButton}
+              >
+                <Icon name={action.icon as any} size={19} color="#f97316" />
+                <Text style={styles.collabHeaderActionText} numberOfLines={1}>
+                  {action.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        ) : null}
 
         {/* Bottom Row: Action Icons */}
         {/* Commented out header icons temporarily */}
@@ -1323,19 +1466,6 @@ export default function MessageInterface({
             </Text>
           </View>
         </View>
-      ) : null}
-
-      {isCollabSessionGroupChat ? (
-        <CollabSessionChatBanners
-          sessionId={friend.sessionId!}
-          currentUserId={currentUserId}
-          boardsSessions={boardsSessions}
-          accountPreferences={accountPreferences}
-          onCardLike={onCardLike}
-          onAddToCalendar={onAddToCalendar}
-          onShareCard={onShareCard}
-          onPurchaseComplete={onPurchaseComplete}
-        />
       ) : null}
 
       {/* Messages */}
@@ -2049,6 +2179,45 @@ export default function MessageInterface({
           (Animated.View, not native Modal portal). The notifications panel below
           (around line 1632) remains as the canonical single mount point. */}
 
+      {isCollabSessionGroupChat ? (
+        <CollabDeckSheet
+          visible={showCollabDeckSheet}
+          onClose={() => setShowCollabDeckSheet(false)}
+          sessionId={friend.sessionId}
+          sessionName={headerTitle}
+          userPreferences={userPreferences}
+          accountPreferences={accountPreferences}
+          savedCards={savedCards}
+          onSaveCard={onCardLike}
+          onShareCard={onShareCard}
+          onAddToCalendar={onAddToCalendar}
+          onPurchaseComplete={onPurchaseComplete}
+          onOpenPreferences={onOpenPreferences}
+        />
+      ) : null}
+
+      {isCollabSessionGroupChat && friend.sessionId ? (
+        <>
+          <SavedToSessionCardsSheet
+            visible={showCollabMatchesSheet}
+            onClose={() => setShowCollabMatchesSheet(false)}
+            sessionId={friend.sessionId}
+            currentUserId={currentUserId}
+            savedCards={matchedSessionCards}
+            savedCardsLoading={matchedSessionCardsLoading}
+            participantCount={collabParticipantCount}
+            accountPreferences={accountPreferences}
+            isAdmin={isCollabSessionAdmin}
+          />
+          <ScheduleSheet
+            visible={showCollabPlansSheet}
+            onClose={() => setShowCollabPlansSheet(false)}
+            sessionId={friend.sessionId}
+            currentUserId={currentUserId}
+          />
+        </>
+      ) : null}
+
       <BoardSettingsDropdown
         visible={Boolean(isGroupChat && showMoreOptionsMenu && friend.sessionId)}
         onClose={() => setShowMoreOptionsMenu(false)}
@@ -2204,6 +2373,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 8,
   },
+  collabHeaderTopRow: {
+    marginBottom: 10,
+    paddingRight: 6,
+  },
   backButton: {
     width: 40,
     height: 40,
@@ -2216,6 +2389,9 @@ const styles = StyleSheet.create({
   avatarContainer: {
     position: "relative",
     marginRight: 12,
+  },
+  collabAvatarContainer: {
+    marginRight: 14,
   },
   avatar: {
     width: 40,
@@ -2244,6 +2420,10 @@ const styles = StyleSheet.create({
     height: 40,
     position: "relative",
   },
+  collabHeaderAvatarStack: {
+    width: 64,
+    height: 34,
+  },
   groupHeaderAvatarSegment: {
     position: "absolute",
     top: 0,
@@ -2257,6 +2437,16 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     overflow: "hidden",
   },
+  collabHeaderAvatarSegment: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 2,
+    borderColor: "rgba(12, 14, 18, 1)",
+  },
+  collabHeaderLeadAvatar: {
+    borderColor: "#f97316",
+  },
   groupHeaderAvatarPlaceholder: {
     width: 40,
     height: 40,
@@ -2265,10 +2455,28 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  collabHeaderAvatarPlaceholder: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 2,
+    borderColor: "#f97316",
+  },
   groupHeaderAvatarImage: {
     width: 40,
     height: 40,
     borderRadius: 20,
+  },
+  collabHeaderAvatarImage: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+  },
+  collabSingleAvatar: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    borderColor: "#f97316",
   },
   onlineIndicator: {
     position: "absolute",
@@ -2289,6 +2497,34 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#FFFFFF",
   },
+  collabUserName: {
+    fontSize: 16,
+    fontWeight: "700",
+    letterSpacing: 0,
+  },
+  collabAvatarText: {
+    color: "#FFFFFF",
+    fontWeight: "700",
+    fontSize: 11,
+  },
+  collabHeaderPill: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 50,
+    borderRadius: 25,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+    paddingLeft: 8,
+    paddingRight: 12,
+    backgroundColor: "rgba(255, 255, 255, 0.055)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.10)",
+  },
+  collabHeaderCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
   userStatus: {
     fontSize: 14,
     color: "rgba(255, 255, 255, 0.6)",
@@ -2297,6 +2533,29 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "rgba(255, 255, 255, 0.62)",
     marginTop: 2,
+  },
+  collabHeaderActionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 24,
+  },
+  collabHeaderActionButton: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 22,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 9,
+    backgroundColor: "rgba(255, 255, 255, 0.055)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.10)",
+  },
+  collabHeaderActionText: {
+    color: "rgba(255, 255, 255, 0.78)",
+    fontSize: 15,
+    fontWeight: "700",
   },
   eventChannelHeaderStack: {
     backgroundColor: "#f97316",

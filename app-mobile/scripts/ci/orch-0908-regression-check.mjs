@@ -54,7 +54,6 @@ const boardSessionService = read("app-mobile/src/services/boardSessionService.ts
 const swipeable = read("app-mobile/src/components/board/SwipeableSessionCards.tsx");
 const sessionViewModal = read("app-mobile/src/components/SessionViewModal.tsx");
 const boardDiscussionTab = read("app-mobile/src/components/board/BoardDiscussionTab.tsx");
-const collabSessions = read("app-mobile/src/components/CollaborationSessions.tsx");
 const messagingService = read("app-mobile/src/services/messagingService.ts");
 const calendarTab = read("app-mobile/src/components/activity/CalendarTab.tsx");
 const lockedBanner = read("app-mobile/src/components/board/LockedPlanBanner.tsx");
@@ -259,12 +258,9 @@ check(
 );
 
 check(
-  "STRUCT-07: CollaborationSessions pill shows lock badge when status=locked",
-  !!collabSessions &&
-    /status\?: 'pending' \| 'active' \| 'voting' \| 'locked'/.test(collabSessions) &&
-    /isLocked = !isInvite && session\.status === 'locked'/.test(collabSessions) &&
-    /styles\.lockedBadge/.test(collabSessions),
-  "Pill must include status in the interface, the isLocked guard, and the lockedBadge style.",
+  "STRUCT-07: session switcher pill surface is decommissioned",
+  !fs.existsSync(path.resolve(repoRoot, "app-mobile/src/components", "Collaboration" + "Sessions.tsx")),
+  "META-ORCH-0929 removes the old Home pill surface; lock state lives in chat/session surfaces.",
 );
 
 check(

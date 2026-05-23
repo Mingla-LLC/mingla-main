@@ -120,7 +120,6 @@
   "blockUserMenu": "Gbochie Onye Ọrụ",
   "reportUserMenu": "Kpesa Onye Ọrụ",
   "noMessagesYet": "Enweghị ozi",
-
   "holiday.loading_recommendations": "Na-ebugo atụmatụ...",
   "holiday.getting_location": "Na-enweta ebe gị...",
   "holiday.couldnt_load": "Enweghị ike ịbugo atụmatụ",
@@ -148,5 +147,22 @@
   "holiday.visited": "Agara",
   "holiday.unknown_place": "Ebe amaghị",
   "holiday.birthday_event": "Ụbọchị ọmụmụ {{name}}",
-  "holiday.reminder_notes": "Ncheta sitere na Mingla — {{event}}"
+  "holiday.reminder_notes": "Ncheta sitere na Mingla — {{event}}",
+  "friendsActionChooserTitle": "What do you want to do?",
+  "friendsActionChooserCreateGroupChat": "Create a group chat",
+  "friendsActionChooserAddFriend": "Add a friend",
+  "friendsActionChooserPlusButtonA11y": "Add a friend or start a group chat",
+  "friendsActionChooserCreateDisabledPaywall": "Pro plan required",
+  "createGroupChatSheetTitle": "Create a group chat",
+  "createGroupChatNamePlaceholder": "What's this group about?",
+  "createGroupChatFriendsLabel": "Invite friends",
+  "createGroupChatSubmit": "Create",
+  "startSwipingCta": "Start swiping together",
+  "collabDeckSheetTitle": "Find a spot together",
+  "pendingInviteAccept": "Accept",
+  "pendingInviteDecline": "Decline",
+  "pendingInviteRowSubtitle": "{{name}} invited you to swipe together",
+  "leaveSessionMenuItem": "Leave session",
+  "leaveSessionConfirmTitle": "Leave this session?",
+  "leaveSessionConfirmBody": "You'll stop seeing new cards together. The chat stays."
 }

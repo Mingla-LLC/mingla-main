@@ -120,7 +120,6 @@
   "blockUserMenu": "Sekat Pengguna",
   "reportUserMenu": "Laporkan Pengguna",
   "noMessagesYet": "Belum ada mesej",
-
   "holiday.loading_recommendations": "Memuatkan cadangan...",
   "holiday.getting_location": "Mendapatkan lokasi anda...",
   "holiday.couldnt_load": "Tidak dapat memuatkan cadangan",
@@ -148,5 +147,22 @@
   "holiday.visited": "Dilawati",
   "holiday.unknown_place": "Tempat tidak diketahui",
   "holiday.birthday_event": "Hari Jadi {{name}}",
-  "holiday.reminder_notes": "Peringatan dari Mingla — {{event}}"
+  "holiday.reminder_notes": "Peringatan dari Mingla — {{event}}",
+  "friendsActionChooserTitle": "What do you want to do?",
+  "friendsActionChooserCreateGroupChat": "Create a group chat",
+  "friendsActionChooserAddFriend": "Add a friend",
+  "friendsActionChooserPlusButtonA11y": "Add a friend or start a group chat",
+  "friendsActionChooserCreateDisabledPaywall": "Pro plan required",
+  "createGroupChatSheetTitle": "Create a group chat",
+  "createGroupChatNamePlaceholder": "What's this group about?",
+  "createGroupChatFriendsLabel": "Invite friends",
+  "createGroupChatSubmit": "Create",
+  "startSwipingCta": "Start swiping together",
+  "collabDeckSheetTitle": "Find a spot together",
+  "pendingInviteAccept": "Accept",
+  "pendingInviteDecline": "Decline",
+  "pendingInviteRowSubtitle": "{{name}} invited you to swipe together",
+  "leaveSessionMenuItem": "Leave session",
+  "leaveSessionConfirmTitle": "Leave this session?",
+  "leaveSessionConfirmBody": "You'll stop seeing new cards together. The chat stays."
 }

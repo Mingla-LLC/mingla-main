@@ -1,6 +1,6 @@
 import { supabase } from "./supabase";
-import { RealtimeChannel } from "@supabase/supabase-js";
-import { CollaborationSession, Board, Save } from "../types";
+import type { RealtimeChannel } from "@supabase/supabase-js";
+import type { CollaborationSession, Board } from "../types";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { logger } from "../utils/logger";
 
@@ -73,6 +73,7 @@ interface BoardSessionCallbacks {
 export class RealtimeService {
   private channels: Map<string, RealtimeChannel> = new Map();
   private boardSessionCallbackSets: Map<string, BoardSessionCallbacks[]> = new Map();
+  private authenticatedChannelTokens: Map<string, string> = new Map();
   private offlineQueue: QueuedAction[] = [];
   private isOnline: boolean = true;
   private queueProcessing: boolean = false;
@@ -276,12 +277,70 @@ export class RealtimeService {
   }
 
   unsubscribe(channelName: string) {
+    this.removeChannel(channelName, { preserveBoardCallbacks: false });
+  }
+
+  private removeChannel(
+    channelName: string,
+    options: { preserveBoardCallbacks?: boolean } = {}
+  ) {
     const channel = this.channels.get(channelName);
     if (channel) {
       if (__DEV__) logger.realtime(`unsubscribing from channel: ${channelName}`);
       supabase.removeChannel(channel);
       this.channels.delete(channelName);
-      this.boardSessionCallbackSets.delete(channelName);
+      this.authenticatedChannelTokens.delete(channelName);
+      if (!options.preserveBoardCallbacks) {
+        this.boardSessionCallbackSets.delete(channelName);
+      }
+    }
+  }
+
+  private isRlsGatedChannel(channelName: string): boolean {
+    return (
+      channelName.startsWith("board_session:") ||
+      channelName.startsWith("session:") ||
+      channelName.startsWith("board:")
+    );
+  }
+
+  private removeRlsGatedChannels() {
+    for (const channelName of Array.from(this.channels.keys())) {
+      if (this.isRlsGatedChannel(channelName)) {
+        this.removeChannel(channelName, { preserveBoardCallbacks: false });
+      }
+    }
+  }
+
+  async rebindAuthenticatedChannels(): Promise<void> {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    const accessToken = session?.access_token;
+    if (!accessToken) {
+      this.removeRlsGatedChannels();
+      return;
+    }
+
+    const boardSessionChannels = Array.from(this.channels.keys()).filter(
+      (channelName) => channelName.startsWith("board_session:")
+    );
+
+    for (const channelName of boardSessionChannels) {
+      if (this.authenticatedChannelTokens.get(channelName) === accessToken) {
+        continue;
+      }
+
+      const callbackSets = this.boardSessionCallbackSets.get(channelName) ?? [];
+      if (callbackSets.length === 0) {
+        this.removeChannel(channelName, { preserveBoardCallbacks: false });
+        continue;
+      }
+
+      const sessionId = channelName.slice("board_session:".length);
+      this.removeChannel(channelName, { preserveBoardCallbacks: true });
+      await this.subscribeToBoardSession(sessionId, null);
     }
   }
 
@@ -292,6 +351,7 @@ export class RealtimeService {
       supabase.removeChannel(channel);
     });
     this.channels.clear();
+    this.authenticatedChannelTokens.clear();
     this.boardSessionCallbackSets.clear();
   }
 
@@ -308,22 +368,33 @@ export class RealtimeService {
    * Subscribe to a board session for real-time collaboration
    * Handles: card saves, votes, RSVPs, messages, presence, typing indicators
    */
-  subscribeToBoardSession(
+  async subscribeToBoardSession(
     sessionId: string,
-    callbacks: BoardSessionCallbacks
-  ) {
+    callbacks: BoardSessionCallbacks | null
+  ): Promise<RealtimeChannel | null> {
     const channelName = `board_session:${sessionId}`;
 
-    // Register this set of callbacks
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    const accessToken = session?.access_token;
+    if (!accessToken) {
+      console.log('[ORCH-0926] subscribeToBoardSession deferred — no auth session', { sessionId });
+      return null;
+    }
+
+    await supabase.realtime.setAuth(accessToken);
+
     if (!this.boardSessionCallbackSets.has(channelName)) {
       this.boardSessionCallbackSets.set(channelName, []);
     }
-    this.boardSessionCallbackSets.get(channelName)!.push(callbacks);
+    if (callbacks) {
+      this.boardSessionCallbackSets.get(channelName)!.push(callbacks);
+    }
 
-    // If channel already exists, return it — new callbacks are already registered above
-    // and will be dispatched by the existing channel's event handlers.
     if (this.channels.has(channelName)) {
-      return this.channels.get(channelName);
+      this.removeChannel(channelName, { preserveBoardCallbacks: true });
     }
 
     if (__DEV__) logger.realtime(`subscribing to channel: ${channelName}`);
@@ -664,9 +735,12 @@ export class RealtimeService {
           dispatch('onSessionDeleted', payload.old);
         }
       )
-      .subscribe();
+      .subscribe((status: string, err?: Error) => {
+        console.log('[ORCH-0923-DIAG] board_session channel state', { sessionId, status, error: err?.message });
+      });
 
     this.channels.set(channelName, channel);
+    this.authenticatedChannelTokens.set(channelName, accessToken);
     return channel;
   }
 

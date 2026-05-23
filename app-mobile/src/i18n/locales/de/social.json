@@ -120,7 +120,6 @@
   "blockUserMenu": "Benutzer blockieren",
   "reportUserMenu": "Benutzer melden",
   "noMessagesYet": "Noch keine Nachrichten",
-
   "holiday.loading_recommendations": "Empfehlungen werden geladen...",
   "holiday.getting_location": "Standort wird ermittelt...",
   "holiday.couldnt_load": "Empfehlungen konnten nicht geladen werden",
@@ -148,5 +147,22 @@
   "holiday.visited": "Besucht",
   "holiday.unknown_place": "Unbekannter Ort",
   "holiday.birthday_event": "{{name}}s Geburtstag",
-  "holiday.reminder_notes": "Erinnerung von Mingla — {{event}}"
+  "holiday.reminder_notes": "Erinnerung von Mingla — {{event}}",
+  "friendsActionChooserTitle": "What do you want to do?",
+  "friendsActionChooserCreateGroupChat": "Create a group chat",
+  "friendsActionChooserAddFriend": "Add a friend",
+  "friendsActionChooserPlusButtonA11y": "Add a friend or start a group chat",
+  "friendsActionChooserCreateDisabledPaywall": "Pro plan required",
+  "createGroupChatSheetTitle": "Create a group chat",
+  "createGroupChatNamePlaceholder": "What's this group about?",
+  "createGroupChatFriendsLabel": "Invite friends",
+  "createGroupChatSubmit": "Create",
+  "startSwipingCta": "Start swiping together",
+  "collabDeckSheetTitle": "Find a spot together",
+  "pendingInviteAccept": "Accept",
+  "pendingInviteDecline": "Decline",
+  "pendingInviteRowSubtitle": "{{name}} invited you to swipe together",
+  "leaveSessionMenuItem": "Leave session",
+  "leaveSessionConfirmTitle": "Leave this session?",
+  "leaveSessionConfirmBody": "You'll stop seeing new cards together. The chat stays."
 }

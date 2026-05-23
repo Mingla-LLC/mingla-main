@@ -48,6 +48,8 @@ export type GlassIconButtonProps = {
   badge?: number | null;
   /** Override default button size. Defaults to c.button.size (44). */
   size?: number;
+  /** More transparent, refractive treatment for lone top-bar controls. */
+  liquid?: boolean;
 };
 
 const isAndroidPreBlur = Platform.OS === 'android' && Platform.Version < 31;
@@ -59,6 +61,7 @@ export const GlassIconButton: React.FC<GlassIconButtonProps> = ({
   accessibilityLabel,
   badge,
   size,
+  liquid = false,
 }) => {
   const [reduceTransparency, setReduceTransparency] = useState(false);
 
@@ -148,7 +151,15 @@ export const GlassIconButton: React.FC<GlassIconButtonProps> = ({
         shadowRadius: c.active.glowRadius,
         elevation: c.active.glowElevation,
       }
-    : {};
+    : liquid
+      ? {
+          shadowColor: '#ffffff',
+          shadowOffset: { width: 0, height: 10 },
+          shadowOpacity: 0.16,
+          shadowRadius: 18,
+          elevation: 8,
+        }
+      : {};
 
   const iconColor = active ? c.active.iconColor : c.inactive.iconColorStrong;
 
@@ -182,7 +193,7 @@ export const GlassIconButton: React.FC<GlassIconButtonProps> = ({
         accessibilityRole="button"
         accessibilityLabel={a11yLabel}
         accessibilityState={active ? { expanded: true } : undefined}
-        style={styles.pressable}
+        style={[styles.pressable, liquid ? styles.liquidPressable : null]}
       >
         {/* L1 — blur or solid fallback */}
         {useGlass ? (
@@ -206,7 +217,10 @@ export const GlassIconButton: React.FC<GlassIconButtonProps> = ({
         {useGlass ? (
           <View
             pointerEvents="none"
-            style={[StyleSheet.absoluteFill, { backgroundColor: c.tint.floor }]}
+            style={[
+              StyleSheet.absoluteFill,
+              { backgroundColor: liquid ? 'rgba(255, 255, 255, 0.075)' : c.tint.floor },
+            ]}
           />
         ) : null}
 
@@ -229,6 +243,12 @@ export const GlassIconButton: React.FC<GlassIconButtonProps> = ({
 
         {/* ORCH-0589 v4 (V5): top-highlight line removed — rendered as visible
             artifact on chrome scale. Full-perimeter hairline border remains. */}
+        {liquid ? (
+          <>
+            <View pointerEvents="none" style={styles.liquidHighlight} />
+            <View pointerEvents="none" style={styles.liquidInnerGlow} />
+          </>
+        ) : null}
 
         {/* L4 — active orange border override (on top of hairline border) */}
         {active ? (
@@ -289,6 +309,28 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: glass.chrome.border.hairline,
     overflow: 'hidden',
+  },
+  liquidPressable: {
+    borderColor: 'rgba(255, 255, 255, 0.18)',
+  },
+  liquidHighlight: {
+    position: 'absolute',
+    left: 7,
+    right: 7,
+    top: 5,
+    height: 1,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 255, 255, 0.42)',
+  },
+  liquidInnerGlow: {
+    position: 'absolute',
+    left: 1,
+    right: 1,
+    bottom: 1,
+    height: '48%',
+    borderBottomLeftRadius: glass.chrome.button.radius,
+    borderBottomRightRadius: glass.chrome.button.radius,
+    backgroundColor: 'rgba(255, 255, 255, 0.045)',
   },
   // ORCH-0589 v4 (V5): topHighlight style deleted.
   content: {
