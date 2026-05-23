@@ -598,9 +598,21 @@ function checkNoNewBackendFiles() {
   const ORCH_0940_BACKEND_ALLOWLIST = [
     "supabase/migrations/20260724000005_profile_circle_relationship_source.sql",
   ];
+  // ORCH-0930 [TicketQrCarousel React #418 hydration mismatch] + ORCH-0928-LOCKIN
+  // [success_url query-string recovery regression test] bundled into PR #184
+  // alongside ORCH-0942 (2026-05-23 operator-approved bundle). C7 is scoped to
+  // ORCH-0863 marketing; this backend touch is the ticket-checkout-create
+  // success_url shape regression test + the index.ts return-payload tweak that
+  // accompanies it. No edge function deploy required (test-only + minor index
+  // tweak; index.ts is already allow-listed under ORCH-0869/ORCH-0880/ORCH-0925).
+  const ORCH_0930_0928_LOCKIN_BACKEND_ALLOWLIST = [
+    "supabase/functions/ticket-checkout-create/__tests__/orch_0928_success_url_query_string.test.ts",
+    "supabase/functions/ticket-checkout-create/index.ts",
+  ];
   const ALLOWLIST = [
     ...ORCH_0933_BACKEND_ALLOWLIST,
     ...ORCH_0940_BACKEND_ALLOWLIST,
+    ...ORCH_0930_0928_LOCKIN_BACKEND_ALLOWLIST,
     ...ORCH_0859_BUNDLED_ALLOWLIST,
     ...ORCH_0869_BACKEND_ALLOWLIST,
     ...ORCH_0875_BACKEND_ALLOWLIST,
