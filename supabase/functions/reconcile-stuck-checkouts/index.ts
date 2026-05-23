@@ -86,6 +86,7 @@ serve(async (req) => {
       // for the full rationale. Reverted to pre-ORCH-0921 5-param shape to
       // unblock production. Real fix is ORCH-0925 [ticket-checkout-create
       // must attach Stripe Customer to plan PIs explicitly].
+      // orch-strict-grep-allow finalize-no-plan-root — ORCH-0924 rollback of ORCH-0921; real fix is ORCH-0925
       const { data: finalized, error: finalizeError } = await supabase.rpc(
         "biz_ticket_checkout_finalize",
         {

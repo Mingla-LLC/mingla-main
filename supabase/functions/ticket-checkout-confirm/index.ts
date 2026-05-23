@@ -282,6 +282,7 @@ serve(async (req) => {
     // which is worse than the silent installment-drop ORCH-0921 was fixing.
     // Real fix is ORCH-0925 [ticket-checkout-create must attach Stripe Customer
     // to plan PIs explicitly] — once it ships, ORCH-0921 can re-ship.
+    // orch-strict-grep-allow finalize-no-plan-root — ORCH-0924 rollback of ORCH-0921; real fix is ORCH-0925
     const { error: finalizeError } = await supabase.rpc(
       "biz_ticket_checkout_finalize",
       {
