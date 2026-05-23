@@ -45,16 +45,21 @@ describe("ORCH-0928 — trip confirm URL fragment recovery (happy path)", () => 
     );
   });
 
-  it("HP-2: when payload is null, code reads `window.location.hash` and parses with URLSearchParams", () => {
+  it("HP-2: when payload is null, code reads csi+bst from QUERY STRING (`search`) via URLSearchParams [ORCH-0928 v2 — was URL fragment in v1]", () => {
     const recoveryWindow = activeSource.slice(
       activeSource.indexOf("let payload = readCheckoutResumePayload"),
       activeSource.indexOf("if (payload === null) return;"),
     );
     expect(recoveryWindow).toContain("if (payload === null)");
-    expect(recoveryWindow).toContain("win.location?.hash");
-    expect(recoveryWindow).toContain("new URLSearchParams(hash)");
+    expect(recoveryWindow).toContain("new URLSearchParams(search)");
     expect(recoveryWindow).toMatch(/params\.get\(["']csi["']\)/);
     expect(recoveryWindow).toMatch(/params\.get\(["']bst["']\)/);
+    // Negative: must NOT read from hash (v1 approach) — Expo Router web
+    // hydration silently reformatted URL putting `?cs=…` inside the
+    // fragment, breaking hash-based recovery. Verified via Playwright
+    // forensic harness 2026-05-23.
+    expect(recoveryWindow).not.toContain("win.location?.hash");
+    expect(recoveryWindow).not.toContain("new URLSearchParams(hash)");
   });
 
   it("HP-3: recovery synthesizes a minimal payload with empty lines + buyer when csi+bst are present", () => {
@@ -95,33 +100,30 @@ describe("ORCH-0928 — trip confirm URL fragment recovery (happy path)", () => 
     expect((guardMatches ?? []).length).toBeGreaterThanOrEqual(2);
   });
 
-  it("HP-6: Defensive bounce useEffect ALSO recognises URL-fragment recovery (so it doesn't race-bounce before async confirmTicketCheckout resolves)", () => {
-    // ORCH-0928 follow-up: the sync-confirm useEffect can recover from
-    // missing sessionStorage via #csi=&bst= fragment, but the Defensive
+  it("HP-6: Defensive bounce useEffect ALSO recognises QUERY-STRING recovery (so it doesn't race-bounce before async confirmTicketCheckout resolves) [ORCH-0928 v2]", () => {
+    // ORCH-0928 v2: the sync-confirm useEffect recovers from missing
+    // sessionStorage via ?csi=&bst= query string, but the Defensive
     // Bounce useEffect at the bottom of the file fires synchronously on
     // the same render cycle. If the bounce checks ONLY sessionStorage
     // payload presence, it navigates away before recovery resolves —
     // producing a "blank dark screen" on the cart route. Live-fire
-    // confirmed 2026-05-23 ~07:33 UTC on Costain test order. Bounce must
-    // suppress navigation when fragment recovery is possible.
-    // Use raw source (with comments) so the "Defensive bounce" landmark
-    // survives — stripComments removes the section comments.
+    // confirmed 2026-05-23 (Costain + Radar + Carter test orders).
+    // Bounce must suppress navigation when query recovery is possible.
+    // v1 used URL fragment which Expo Router silently reformatted —
+    // verified via Playwright forensic harness.
     const bounceWindow = source.slice(
       source.indexOf("Defensive bounce"),
       source.indexOf("Handlers", source.indexOf("Defensive bounce")),
     );
     expect(bounceWindow.length).toBeGreaterThan(0);
-    // Bounce should now check for the hash + csi/bst regex literals before
-    // firing router.replace.
-    expect(bounceWindow).toMatch(/win\.location\?\.hash/);
-    expect(bounceWindow).toMatch(/hasFragmentRecovery/);
-    expect(bounceWindow).toMatch(/csi=\[\^&\]\+/);
-    expect(bounceWindow).toMatch(/bst=\[\^&\]\+/);
-    // The bounce-suppression conditional must be an OR between
-    // readCheckoutResumePayload(...) !== null AND hasFragmentRecovery —
-    // either one keeps us on /confirm.
+    expect(bounceWindow).toMatch(/hasQueryRecovery/);
+    expect(bounceWindow).toMatch(/\[\?&\]csi=\[\^&\]\+/);
+    expect(bounceWindow).toMatch(/\[\?&\]bst=\[\^&\]\+/);
     expect(bounceWindow).toMatch(
-      /readCheckoutResumePayload\([^)]+\)\s*!==\s*null\s*\|\|[\s\S]{0,80}hasFragmentRecovery/,
+      /readCheckoutResumePayload\([^)]+\)\s*!==\s*null\s*\|\|[\s\S]{0,80}hasQueryRecovery/,
     );
+    // Negative: v1 hash-based recovery shape must NOT be present.
+    expect(bounceWindow).not.toMatch(/win\.location\?\.hash/);
+    expect(bounceWindow).not.toMatch(/hasFragmentRecovery/);
   });
 });
