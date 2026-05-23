@@ -152,11 +152,40 @@ export default function CheckoutTripConfirmScreen(): React.ReactElement {
     if (result !== null) return;
     const win = (globalThis as unknown as {
       sessionStorage?: Storage;
-      location?: { search?: string };
+      location?: { search?: string; hash?: string };
     });
     const search = win.location?.search ?? "";
     if (!/[?&]cs=/.test(search)) return;
-    const payload = readCheckoutResumePayload(win.sessionStorage, tripEventId);
+    let payload = readCheckoutResumePayload(win.sessionStorage, tripEventId);
+    // ORCH-0928 (2026-05-23) — when sessionStorage payload is missing (Safari
+    // dropped it during cross-origin Stripe redirect, buyer opened URL in
+    // different tab, etc.), recover internal checkoutSessionId + buyerStatusToken
+    // from the URL fragment that ticket-checkout-create now appends to
+    // success_url. Cart context (lines + buyer) cannot be recovered from the
+    // fragment; we synthesize an empty payload so the confirm flow can proceed
+    // — the rendered order summary uses server-returned order rows, not the
+    // cart context, so empty lines/buyer here doesn't affect the QR display.
+    if (payload === null) {
+      const hash = (win.location?.hash ?? "").replace(/^#/, "");
+      if (hash.length > 0) {
+        const params = new URLSearchParams(hash);
+        const csi = params.get("csi");
+        const bst = params.get("bst");
+        if (csi !== null && csi.length > 0 && bst !== null && bst.length > 0) {
+          payload = {
+            checkoutSessionId: csi,
+            buyerStatusToken: bst,
+            lines: [],
+            buyer: {
+              name: "",
+              email: "",
+              phone: "",
+              marketingOptIn: false,
+            },
+          };
+        }
+      }
+    }
     if (payload === null) return;
 
     // Restore cart context BEFORE the confirm so the summary + hero render

@@ -430,8 +430,17 @@ serve(async (req) => {
       // ORCH-0911: branch buyer-web confirm/payment URLs on event_type.
       const isTrip = tripGateRow?.event_type === "trip";
       const surfacePath = isTrip ? "checkout-trip" : "checkout";
+      // ORCH-0928 (2026-05-23) — append `#csi=<internalSessionId>&bst=<buyerStatusToken>`
+      // URL fragment so confirm.tsx can recover when sessionStorage payload
+      // is missing (Safari cross-origin redirect drops sessionStorage, buyer
+      // opens URL in different tab, buyer revisits URL after closing original
+      // tab, cross-device share). URL fragments are NOT sent to server logs
+      // / Stripe / referrer headers (browser-local only), so this is safe to
+      // include even though it carries auth-bearing token. Client-side
+      // confirm.tsx reads window.location.hash and parses csi + bst as
+      // fallback when readCheckoutResumePayload returns null.
       successUrl =
-        `${baseUrl}/${surfacePath}/${eventId}/confirm?cs={CHECKOUT_SESSION_ID}`;
+        `${baseUrl}/${surfacePath}/${eventId}/confirm?cs={CHECKOUT_SESSION_ID}#csi=${checkoutSessionId}&bst=${buyerStatusToken}`;
       cancelUrl = `${baseUrl}/${surfacePath}/${eventId}/payment`;
     } else {
       // ORCH-0839-B: mobile-hosted Checkout returns to the native app via a
