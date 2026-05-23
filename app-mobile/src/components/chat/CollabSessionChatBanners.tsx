@@ -584,6 +584,7 @@ export function InChatDeckSheet({
           <RecommendationsProvider currentMode={sessionId} key={sessionId}>
             <SwipeableCards
               key={sessionId}
+              sessionIdOverride={sessionId}
               userPreferences={preferences}
               accountPreferences={accountPreferences}
               currentMode="collab"
@@ -698,17 +699,19 @@ export function CollabSessionChatBanners({
         accountPreferences={accountPreferences}
         isAdmin={isAdmin}
       />
-      <InChatDeckSheet
-        visible={showDeckSheet}
-        onClose={() => setShowDeckSheet(false)}
-        sessionId={sessionId}
-        boardsSessions={boardsSessions}
-        accountPreferences={accountPreferences}
-        onCardLike={onCardLike}
-        onAddToCalendar={onAddToCalendar}
-        onShareCard={onShareCard}
-        onPurchaseComplete={onPurchaseComplete}
-      />
+      {showDeckSheet ? (
+        <InChatDeckSheet
+          visible={showDeckSheet}
+          onClose={() => setShowDeckSheet(false)}
+          sessionId={sessionId}
+          boardsSessions={boardsSessions}
+          accountPreferences={accountPreferences}
+          onCardLike={onCardLike}
+          onAddToCalendar={onAddToCalendar}
+          onShareCard={onShareCard}
+          onPurchaseComplete={onPurchaseComplete}
+        />
+      ) : null}
     </View>
   );
 }

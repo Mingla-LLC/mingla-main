@@ -134,6 +134,18 @@ export const useBoardSession = (sessionId?: string) => {
           return;
         }
 
+        if (sessionResult.data.id !== id) {
+          console.warn('[useBoardSession] Ignoring mismatched session load result', {
+            requestedSessionId: id,
+            receivedSessionId: sessionResult.data.id,
+          });
+          setError('Received mismatched session data.');
+          setSessionValid(false);
+          setHasPermission(false);
+          setLoading(false);
+          return;
+        }
+
         if (participantsResult.error) {
           console.error("Error loading participants:", participantsResult.error);
         }
@@ -269,7 +281,7 @@ export const useBoardSession = (sessionId?: string) => {
         throw err;
       }
     },
-    [sessionId, user]
+    [sessionId, user, loadSession]
   );
 
   // Get invite link
@@ -328,22 +340,44 @@ export const useBoardSession = (sessionId?: string) => {
             console.warn('[useBoardSession] Ignoring stale event for session:', capturedSessionId);
             return;
           }
+          const updatedSessionId = updatedSession?.session_id ?? updatedSession?.id;
+          if (updatedSessionId && updatedSessionId !== capturedSessionId) {
+            console.warn('[useBoardSession] Ignoring foreign session_updated payload', {
+              subscribedSessionId: capturedSessionId,
+              payloadSessionId: updatedSessionId,
+            });
+            return;
+          }
           console.log('[ORCH-0923-DIAG] onSessionUpdated fired', {
             sessionId: capturedSessionId,
             new_deck_version: updatedSession?.deck_version,
             new_deck_params_hash: updatedSession?.deck_params_hash?.slice(0, 8),
           });
-          setSession((prev) => (prev ? { ...prev, ...updatedSession } : null));
-          // ORCH-0446B: Extract participant_prefs from realtime payload.
-          // The old board_session_preferences table was deleted — onPreferencesChanged
-          // no longer fires. This is now the only path for pref-change propagation.
-          if (updatedSession.participant_prefs) {
-            const rawPrefs = updatedSession.participant_prefs;
-            const allPrefs = Object.entries(rawPrefs).map(([uid, prefs]: [string, any]) => ({
-              user_id: uid,
-              ...prefs,
-            }));
-            setAllParticipantPreferences(allPrefs);
+          setSession((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  ...updatedSession,
+                  id: prev.id ?? capturedSessionId,
+                }
+              : null
+          );
+          // ORCH-0931: broadcast payload is a cache-invalidation signal, not a
+          // data delivery path. It deliberately omits participant_prefs, so
+          // invalidate active collab deck queries immediately, then refresh
+          // local allParticipantPreferences through the existing loadSession
+          // SELECT path. The direct invalidation covers hash-stable
+          // participant_prefs updates where RecommendationsContext's derived
+          // collab params do not change and therefore cannot trigger its
+          // params-change invalidation effect.
+          if (stableSessionIdRef.current === capturedSessionId) {
+            console.log('[ORCH-0923-DIAG] session_updated invalidating deck-cards', {
+              sessionId: capturedSessionId,
+            });
+            queryClient.invalidateQueries({
+              queryKey: ['deck-cards', 'collab', capturedSessionId],
+            });
+            void loadSession(capturedSessionId);
           }
         },
         onParticipantJoined: (participant: { user_id: string; [key: string]: unknown }) => {
@@ -466,7 +500,7 @@ export const useBoardSession = (sessionId?: string) => {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [sessionId, user?.id]);
+  }, [sessionId, user?.id, loadSession, queryClient]);
 
   // Cleanup on unmount — unregister callbacks (safe — doesn't destroy channel)
   useEffect(() => {
@@ -481,7 +515,7 @@ export const useBoardSession = (sessionId?: string) => {
 
   // Load session on mount or when sessionId or user changes
   useEffect(() => {
-    if (sessionId && user) {
+    if (sessionId && user?.id) {
       loadSession(sessionId);
     }
   }, [sessionId, user?.id, loadSession]);

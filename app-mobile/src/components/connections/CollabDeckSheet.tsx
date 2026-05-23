@@ -14,6 +14,7 @@ import { Icon } from "../ui/Icon";
 import { colors, fontWeights } from "../../constants/designSystem";
 import { s } from "../../utils/responsive";
 import { HapticFeedback } from "../../utils/hapticFeedback";
+import { RecommendationsProvider } from "../../contexts/RecommendationsContext";
 
 interface CollabDeckSheetProps {
   visible: boolean;
@@ -109,24 +110,35 @@ export function CollabDeckSheet({
         </View>
 
         <View style={styles.deck}>
-          <SwipeableCards
-            userPreferences={userPreferences}
-            accountPreferences={accountPreferences}
+          {/* ORCH-0939: keep CollabDeckSheet's deck inside a session-scoped
+              provider so SwipeableCards reads collab data instead of the
+              global currentMode="solo" provider used by Home Explore. */}
+          <RecommendationsProvider
             currentMode={sessionId}
-            sessionIdOverride={sessionId}
-            boardsSessions={[]}
-            onAddToCalendar={onAddToCalendar ?? noop}
-            onCardLike={onSaveCard ?? asyncNoop}
-            onShareCard={onShareCard}
-            onPurchaseComplete={onPurchaseComplete}
-            removedCardIds={[]}
-            onResetCards={noop}
-            onOpenPreferences={onOpenPreferences}
-            onOpenCollabPreferences={handleOpenPreferences}
-            generateNewMockCard={noop}
             refreshKey={0}
-            savedCards={savedCards}
-          />
+            persistedSessionId={sessionId}
+            onSessionLost={onClose}
+            key={sessionId}
+          >
+            <SwipeableCards
+              userPreferences={userPreferences}
+              accountPreferences={accountPreferences}
+              currentMode={sessionId}
+              sessionIdOverride={sessionId}
+              boardsSessions={[]}
+              onAddToCalendar={onAddToCalendar ?? noop}
+              onCardLike={onSaveCard ?? asyncNoop}
+              onShareCard={onShareCard}
+              onPurchaseComplete={onPurchaseComplete}
+              removedCardIds={[]}
+              onResetCards={noop}
+              onOpenPreferences={onOpenPreferences}
+              onOpenCollabPreferences={handleOpenPreferences}
+              generateNewMockCard={noop}
+              refreshKey={0}
+              savedCards={savedCards}
+            />
+          </RecommendationsProvider>
         </View>
         <PreferencesSheet
           visible={showPrefsSheet}
