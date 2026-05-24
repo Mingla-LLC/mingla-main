@@ -84,6 +84,67 @@ Implementor may READ any file in the repo for isolation purposes (no read restri
 
 **Scope check at re-implementation start:** before editing any newly-authorized file, implementor must restate the locked architecture (§5) and confirm the change being made is targeted at isolating/eliminating React #418, not at incidental refactor.
 
+**Amendment 3 (2026-05-24) — Root Expo Router shell + web config authorization (with discriminator-probe gate):**
+
+Source-only forensics by Claude `mingla-forensics` (INVESTIGATE mode, dispatched 2026-05-24 after Codex implementor blocked under Amendment 2 scope) reached `probable` confidence (not `proven` — no live runtime probe across the discriminator routes yet) that the React #418 source is the root Expo Router shell `mingla-business/app/_layout.tsx`. Evidence chain:
+
+1. **Per-tree layouts ruled out as sole source.** Both `mingla-business/app/checkout-trip/[tripEventId]/_layout.tsx` (34 lines) and `mingla-business/app/checkout/[eventId]/_layout.tsx` (37 lines) contain ONLY `<CartProvider><Stack screenOptions={{headerShown:false}}/></CartProvider>`. Already authorized under Amendment 2.
+2. **CartContext ruled out.** `mingla-business/src/components/checkout/CartContext.tsx` (370 lines) uses `useReducer` with a server-stable `INITIAL_STATE`, zero `typeof window`, zero `Date.now()`, zero `Math.random()`, zero `crypto`, zero `Intl.*`, zero `new Date()`. No SSR-vs-client divergence in CartContext render output. CartContext remains OUT OF SCOPE per the operator hard guard.
+3. **Root layout has the highest-density #418 surface in the chain.** `mingla-business/app/_layout.tsx:108` declares `const mountedAt = useRef(Date.now())` — `Date.now()` evaluated during render returns the static-export build time on SSR and the browser-clock time on client first render. Plus multiple `useState(false) + useEffect` patterns (splashHidden, brandFetchTimedOut, evictionRan, reapRan), env-gated branches (`sentryDsn`, `__DEV__`), and dynamic imports inside useEffect (lines 178-180, 204-206) — every one of these is a known #418-class pattern under Expo Router's `web.output: "static"` (confirmed at `mingla-business/app.json:72`).
+4. **Probe distribution matches root-layout suspicion.** Codex's 8/8 dynamic-checkout-route probe could equally reflect a root-layout fault OR a checkout-shared fault — distribution alone does NOT discriminate. The implementor must run the discriminator probe below to PROVE whether root or per-tree is the owner.
+
+§4 allowlist extended to authorize edits to the root Expo Router shell + the web/expo config files:
+
+| File | Reason added |
+|---|---|
+| `mingla-business/app/_layout.tsx` | Root Expo Router layout shared by every route in the app — highest-probability owner of cross-route React #418 under Expo's static web export. |
+| `mingla-business/app.json` | Expo Router web/static-export config (`"web": { "output": "static" }` at L72). Authorized for edits to web-output config, expo-router config, or favicon ONLY — no other plugin / permission / scheme / icon changes. |
+| `mingla-business/app.config.ts` | Build-time env-derived Expo config — known to evaluate at build vs runtime which can diverge under static export. Authorized for edits ONLY to changes targeted at #418 elimination (e.g., env-gated values that should be runtime-resolved). No other dependency, plugin, or build-target changes. |
+
+### MANDATORY discriminator probe (Amendment 3 hard requirement)
+
+**Before editing root `app/_layout.tsx`, `app.json`, or `app.config.ts`,** the implementor MUST run a Playwright probe that compares #418 firing across:
+
+- **Checkout group** (already-known-affected): at least 2 dynamic-checkout routes (e.g., `/checkout-trip/test-trip-id/confirm` and `/checkout/test-event-id/confirm`).
+- **Non-checkout group** (discriminator): at least 3 routes that do NOT pass through the per-tree checkout layouts. Suggested: `/` (root index), `/auth/sign-in` (or whichever auth route exists), and one tabs route under `(tabs)` (e.g., `/(tabs)/home` if present in the bundle).
+
+Capture `pageerror` matching `/Minified React error #418/` per route. Outcome interpretation:
+
+| Discriminator probe result | Verdict | Authorized action |
+|---|---|---|
+| Non-checkout routes ALSO fire #418 | App-wide fault confirmed; root layout (or its imports) is the owner. | Implementor MAY edit `app/_layout.tsx` + `app.json` + `app.config.ts` per Amendment 3. |
+| Non-checkout routes do NOT fire #418, checkout routes still do | Checkout-shared fault; root layout is NOT the owner. | Implementor MUST NOT edit root `_layout.tsx` / `app.json` / `app.config.ts`. STOP and request Amendment 4 — the bug is in a shared module reachable only from checkout layouts (likely `CartContext` despite source-only analysis ruling it out, OR a transitive import). |
+
+Record both probe runs (raw `pageerror` output + per-route boolean) in the implementation report under a new section "Amendment 3 discriminator probe" with the commit hash of the bundle probed.
+
+### Specific #418 isolation candidates inside root `app/_layout.tsx` (in priority order)
+
+If the discriminator confirms root-layout ownership, investigate these patterns in order — at least one is overwhelmingly likely to be the source:
+
+1. **`useRef(Date.now())` at L108** — render-time SSR/client divergence. Fix: move to `useRef<number | null>(null)` and set inside a `useEffect`, OR use `useRef(0)` and lazy-initialize.
+2. **Conditional `Sentry.init` at module-top L61-71** — `process.env.EXPO_PUBLIC_SENTRY_DSN` resolution differs between build-time-baked-into-bundle and client-runtime evaluation. Static export should freeze this at build; verify the bundle actually has a stable resolved value.
+3. **`SplashScreen.preventAutoHideAsync()` at module-top L75** — fires at module evaluation; can be asymmetric SSR vs client.
+4. **`useState(false) + useEffect` patterns** (splashHidden L109, brandFetchTimedOut L110, evictionRan L173, reapRan L199) — each is the canonical React-static-export #418 trigger if any conditional render depends on them; check whether `RootLayoutInner`'s returned JSX (just `<ErrorBoundary><Stack/></ErrorBoundary>` at L218-235 — STABLE) differs across states. Initial inspection suggests JSX is render-stable so these may be safe, but verify each via the DIAG instrumentation.
+5. **Dynamic imports inside useEffect L178-180, L204-206** — `await import(...)` resolves differently on web vs native; should not affect render output but verify.
+
+### Hard guards still in force
+
+No DB, no edge functions, no Stripe code, no `CartContext.tsx`, no `buildQrPayload`, no consumer mobile (`app-mobile/`), no admin (`mingla-admin/`), no QR schema, no Supabase migrations, no edge-function deploys. **Amendment 3 authorizes the root shell + web/expo config ONLY because source-only forensics identifies them as the highest-probability owner AND the discriminator probe gate prevents wasted edits if that probability turns out wrong.** Implementor MUST STOP and request Amendment 4 if the discriminator points elsewhere, OR if root-layout instrumentation reveals the #418 source is in an imported module (e.g., `AuthContext`, `StripeProviderWrapper`, `KeyboardRoot`, `ErrorBoundary`, `useBrand`, `useCurrentBrandRecovery`, `evictEndedEvents`, `reapOrphanStorageKeys`, `silenceStripeForwardRef`) — those imports are NOT authorized by Amendment 3.
+
+### Diagnostic protocol for Amendment 3
+
+Implementor's `[META-ORCH-0952-DIAG]` instrumentation MUST extend to wrap the root `<Stack>` at L234 in an error boundary that captures `error.message + info.componentStack`, AND log per-render mounts of `RootLayoutInner` (one DIAG line per render with `loading`, `currentBrandId`, `brandReady`, `splashHidden`, `evictionRan`, `reapRan` values) so the SSR-vs-client divergence can be reconstructed from console output. ALL DIAG markers + the temporary error boundary MUST be reaped before CLOSE — orchestrator Step 1.5 grep gate.
+
+### What gets preserved from Amendments 1 + 2
+
+All prior work stays in the branch: Playwright harness, `package.json`/lockfile, carousel rewrite, `qrCard` shrink-wrap fix, stale-comment cleanup, browser regression test infrastructure, route-tree files authorized in Amendment 2. Amendment 3 adds 3 new files; nothing is undone.
+
+### Pipeline contract reaffirmed
+
+After Amendment 3 work completes: orchestrator REVIEW → TEST (Claude `mingla-tester`, live matrix per BC-11) → CLOSE + worktree reap. If discriminator probe forces Amendment 4, implementor stops and re-dispatches to orchestrator with the probe evidence.
+
+**Confidence statement (Failure Honesty rule):** root cause `probable`, not `proven`. Source-only analysis identifies `mingla-business/app/_layout.tsx` as the highest-probability owner; runtime discriminator probe (Amendment 3 gate above) flips this to `proven` or redirects to Amendment 4.
+
 **OUT OF SCOPE — implementor MUST NOT edit:**
 
 - `tickets.qr_code` schema or any `supabase/migrations/`.
