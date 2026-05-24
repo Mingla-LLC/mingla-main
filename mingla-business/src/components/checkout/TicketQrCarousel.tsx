@@ -212,6 +212,17 @@ const PAGE_MIN_HEIGHT = 260;
 const styles = StyleSheet.create({
   host: {
     alignSelf: "stretch",
+    // ORCH-0951: explicit width breaks the pageWidth chicken-and-egg on RNW.
+    // Multi-ticket renders first as an empty bare <View style={styles.host}
+    // onLayout={handleLayout}/> awaiting onLayout. Without an explicit width,
+    // that empty View collapses to ~0 width inside a parent (`qrCard`) that
+    // uses `alignItems: "center"` — onLayout fires with width=0, pageWidth
+    // stays 0, the early-return loops forever, user sees only the
+    // minHeight=320 strip. width:"100%" forces the bare host to take full
+    // parent width on first paint regardless of parent alignment. Native
+    // ignores width:"100%" when no width constraint is present; behavior
+    // identical to pre-fix on iOS/Android.
+    width: "100%",
     alignItems: "center",
     paddingVertical: spacing.sm,
     gap: spacing.sm,
