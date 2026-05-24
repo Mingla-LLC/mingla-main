@@ -535,6 +535,13 @@ export default function TripIntakeScreen(): React.ReactElement {
           </View>
         ) : null}
 
+        {/* ORCH-0949 — one-line buyer-side context. Makes the per-ticket
+            contract explicit: organisers collect everything here, once,
+            before payment. */}
+        <Text style={styles.upfrontContext} testID="intake-upfront-context">
+          Fill in details for each traveler — one form per ticket.
+        </Text>
+
         <IntakeFormRenderer
           schema={activeTier.schema}
           ticketTypeId={activeTier.ticketTypeId}
@@ -701,6 +708,13 @@ const styles = StyleSheet.create({
   },
   tierEyebrowWrap: {
     marginBottom: spacing.lg,
+  },
+  // ORCH-0949 — one-line context just above the form.
+  upfrontContext: {
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+    color: textTokens.secondary,
+    marginBottom: spacing.md,
   },
   tierEyebrow: {
     fontSize: typography.labelCap.fontSize,

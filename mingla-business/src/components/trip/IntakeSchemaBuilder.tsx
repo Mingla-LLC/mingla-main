@@ -238,6 +238,24 @@ export const IntakeSchemaBuilder: React.FC<IntakeSchemaBuilderProps> = ({
 
   return (
     <View style={styles.container} testID={testID}>
+      {/* ORCH-0949 — upfront-clarity banner. Intake is the ONE moment the
+          planner collects info from each traveler; buyers fill it BEFORE
+          paying, once per ticket. Makes the contract explicit at build time
+          so planners don't ship incomplete schemas thinking they can "ask
+          later" (they can't — schema_version_id bumps re-trigger fills, but
+          the planner cannot re-prompt paid travelers out-of-band). */}
+      <View style={styles.upfrontBanner} testID="intake-upfront-banner">
+        <Text style={styles.upfrontBannerTitle}>
+          Ask EVERYTHING you need upfront
+        </Text>
+        <Text style={styles.upfrontBannerBody}>
+          This is the only moment you'll collect info from each traveler. They
+          fill it in BEFORE paying, once per ticket. Include everything you
+          need — full names, DOB, dietary, passport, emergency contacts. You
+          can't ask again after they've paid.
+        </Text>
+      </View>
+
       <Text style={styles.eyebrow}>
         INTAKE QUESTIONS ({questionCount})
       </Text>
@@ -505,6 +523,28 @@ export const IntakeSchemaBuilder: React.FC<IntakeSchemaBuilderProps> = ({
 const styles = StyleSheet.create({
   container: {
     gap: spacing.sm,
+  },
+  // ORCH-0949 — upfront-clarity banner styles.
+  upfrontBanner: {
+    backgroundColor: glass.tint.profileBase,
+    borderColor: accent.warm,
+    borderWidth: 1,
+    borderRadius: radius.md,
+    paddingVertical: spacing.sm + 2,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+    gap: spacing.xs,
+  },
+  upfrontBannerTitle: {
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+    fontWeight: "700",
+    color: textTokens.primary,
+  },
+  upfrontBannerBody: {
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+    color: textTokens.secondary,
   },
   eyebrow: {
     fontSize: typography.labelCap.fontSize,
