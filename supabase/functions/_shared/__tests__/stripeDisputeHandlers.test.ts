@@ -1,4 +1,5 @@
 import { assertEquals } from "https://deno.land/std@0.190.0/testing/asserts.ts";
+import { assertStringIncludes } from "https://deno.land/std@0.190.0/testing/asserts.ts";
 import { handleChargeDispute } from "../stripeDisputeHandlers.ts";
 
 type QueryResult = { data?: unknown; error?: { message: string } | null };
@@ -112,6 +113,26 @@ Deno.test("ORCH-0953 §3.3 — dispute.created upserts one row and dispatches co
     if (prior === undefined) Deno.env.delete("STRIPE_DISPUTE_ALERT_USERS");
     else Deno.env.set("STRIPE_DISPUTE_ALERT_USERS", prior);
   }
+});
+
+Deno.test("ORCH-0953 §3.3 — stripe_disputes migration declares schema, RLS, and policies", async () => {
+  const sql = await Deno.readTextFile(
+    new URL(
+      "../../../migrations/20260724000006_orch_0953_create_stripe_disputes.sql",
+      import.meta.url,
+    ),
+  );
+  assertStringIncludes(sql, "CREATE TABLE public.stripe_disputes");
+  assertStringIncludes(sql, "stripe_dispute_id text NOT NULL UNIQUE");
+  assertStringIncludes(
+    sql,
+    "ALTER TABLE public.stripe_disputes ENABLE ROW LEVEL SECURITY",
+  );
+  assertStringIncludes(sql, 'CREATE POLICY "service_role_all_stripe_disputes"');
+  assertStringIncludes(
+    sql,
+    'CREATE POLICY "brand_payment_managers_select_stripe_disputes"',
+  );
 });
 
 Deno.test("ORCH-0953 §3.3 — replaying the same dispute is idempotent", async () => {
