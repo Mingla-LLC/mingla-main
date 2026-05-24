@@ -56,6 +56,34 @@ The implementor MAY edit ONLY these files. Anything else is OUT OF SCOPE — if 
 
 **Amendment 1 (2026-05-24):** §4 allowlist extended to include `mingla-business/package.json` (devDep + scripts only) and the workspace lockfile, to unblock the `@playwright/test` install required by §7 and §11 step 2. No widening of behavioral scope; no other dependency edits permitted.
 
+**Amendment 2 (2026-05-24) — Dynamic checkout route-tree authorization for React #418 isolation:**
+
+Codex implementor blocked correctly after the layout/carousel fix shipped: browser test reaches the final assertion but `pageerror` still reports `Minified React error #418` on every dynamic checkout route in both trees (`index.tsx`, `intake.tsx` where present, `buyer.tsx`, `payment.tsx`, `confirm.tsx`, and the route's `_layout.tsx`), not just `confirm.tsx`. Probe evidence in `Mingla_Artifacts/reports/IMPLEMENTATION_META-ORCH-0952_BUYER_WEB_CONFIRM_PIPELINE.md` §"#418 Scope Probe" — 8 routes × `#418=1` across both `/checkout-trip/[tripEventId]/*` and `/checkout/[eventId]/*`. Source is upstream of the carousel block and shared across the dynamic checkout route shell.
+
+§4 allowlist extended to authorize edits to every file under the two dynamic checkout route trees:
+
+| File | Reason added |
+|---|---|
+| `mingla-business/app/checkout-trip/[tripEventId]/_layout.tsx` | Shared Expo Router layout for all trip-checkout pages; most likely #418 source (route-level hydration, font/dimension/context init, Stack.Screen options diverging between SSR and client). |
+| `mingla-business/app/checkout-trip/[tripEventId]/index.tsx` | Trip-checkout entry page; on probe `#418=1`; implementor may need to read/edit to isolate. |
+| `mingla-business/app/checkout-trip/[tripEventId]/intake.tsx` | Trip-checkout intake step; on probe path (parent route fires #418). |
+| `mingla-business/app/checkout-trip/[tripEventId]/buyer.tsx` | Trip-checkout buyer-info step; on probe `#418=1`. |
+| `mingla-business/app/checkout-trip/[tripEventId]/payment.tsx` | Trip-checkout payment step; on probe `#418=1`. |
+| `mingla-business/app/checkout/[eventId]/_layout.tsx` | Mirror of trip layout for event checkout; parity. |
+| `mingla-business/app/checkout/[eventId]/index.tsx` | Event-checkout entry; on probe `#418=1`. |
+| `mingla-business/app/checkout/[eventId]/buyer.tsx` | Event-checkout buyer step; on probe `#418=1`. |
+| `mingla-business/app/checkout/[eventId]/payment.tsx` | Event-checkout payment step; on probe `#418=1`. |
+
+Implementor may READ any file in the repo for isolation purposes (no read restriction), but may EDIT only the §4 allowlist (original list + Amendment 1 + Amendment 2 above). If isolation lands on a file outside the two dynamic checkout route trees — e.g., root `mingla-business/app/_layout.tsx`, a shared module under `mingla-business/src/`, an `expo-router` config, a font/loader at app root, or a provider above the route tree — implementor MUST STOP and request Amendment 3 with the specific file + the six-field evidence that pins #418 to it. Do NOT silently widen scope.
+
+**Hard guards still in force (operator directive, this amendment):** no DB, no edge functions, no Stripe code, no `CartContext.tsx`, no consumer mobile, no admin, no QR schema changes unless new evidence proves they are required. The amendment authorizes the route-tree files ONLY because the probe evidence pinpoints them.
+
+**Diagnostic protocol extension for Amendment 2:** implementor's error-boundary + DIAG instrumentation (per §5 React #418 isolation) should now wrap each affected route page or the route `_layout.tsx`, not just the confirm.tsx carousel block. All `[META-ORCH-0952-DIAG]` markers across the route tree must still be reaped before CLOSE per Step 1.5.
+
+**Carousel work already shipped is preserved:** the partial implementation (Playwright harness, carousel rewrite, `qrCard` shrink-wrap fix, stale-comment cleanup, browser-running regression test infrastructure) stays in the branch. Amendment 2 only adds new authorized files; nothing is undone.
+
+**Scope check at re-implementation start:** before editing any newly-authorized file, implementor must restate the locked architecture (§5) and confirm the change being made is targeted at isolating/eliminating React #418, not at incidental refactor.
+
 **OUT OF SCOPE — implementor MUST NOT edit:**
 
 - `tickets.qr_code` schema or any `supabase/migrations/`.
