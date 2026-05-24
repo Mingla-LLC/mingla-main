@@ -1,106 +1,243 @@
-# Mingla Working-Branch Strategy
+# Worktree Strategy
 
-**Date:** 2026-05-11  
-**Author:** Codex `orchestrator-mingla`  
-**Status:** ACTIVE — supersedes META-ORCH-0755 / DEC-135 per operator directive  
-**Branch authority:** `Seth` is the canonical working branch; `main` is the promotion branch after close.
+**Canonical owner:** orchestrator (Claude `mingla-orchestrator` or Codex `orchestrator-mingla` — full parity).
 
----
+**Effective:** 2026-05-24 (worktree-per-ORCH cutover).
 
-## Goal (operator directive)
-
-> "I want to remove the need to work on different working tree across all skills both Claude and Codex. I want to register that Seth is the working branch, and all work should be done there on the working tree. When close is done, we push to main. I also want outputs to contain a layman explanation for me if I have to do anything walking me through the steps."
-
-Plain meaning: Seth should not have to remember which `.worktrees/...` folder belongs to which agent. Every Claude and Codex skill should work from the same repo checkout on the same branch, explain what the operator has to do in normal language, and only promote finished, verified work to `main`.
+**Previous models superseded:**
+- 2026-05-11 — single-Seth shared-checkout model (this doc's predecessor).
+- 2026-04-26 — META-ORCH-0755 first attempt at worktree-per-ORCH (reverted 2026-05-11; the current model addresses every gap that drove that revert — see § Why this time is different).
 
 ---
 
-## Canonical strategy: One shared checkout on branch `Seth`
+## The rule
 
-| Location | Path / branch | Owner | What happens here |
-|----------|---------------|-------|-------------------|
-| **Shared working tree** | `/Users/sethogieva/Desktop/mingla-main` on branch `Seth` | All Claude and Codex Mingla skills | Investigation, specs, implementation, tests, scoped reports, prompts, product code, migrations, and artifact updates. |
-| **Promotion branch** | `main` | Codex `orchestrator-mingla` at CLOSE | Finished, evidence-backed work reaches `main` only through a GitHub PR from `Seth` after local checks and GitHub PR checks pass. |
-| **Legacy worktree registry** | `Mingla_Artifacts/WORKTREE_REGISTRY.md` | Codex `orchestrator-mingla` | Historical transition ledger only. Do not add new active worktree rows. |
+**Every ORCH gets its own git worktree** at `~/Desktop/mingla-orchs/<ORCH_ID>-[<short-kebab-label>]/` on a dedicated branch `<ORCH_ID>-<label>`, branched from `main`.
 
----
+`~/Desktop/mingla-main` is the **anchor checkout** — permanently parked on `main`, read-mostly, never edited directly. It exists to:
+- Provide a stable base for `git worktree add`
+- Hold the canonical `node_modules` for symlink-sharing
+- Serve as the operator's "see what's on production" reference
 
-## The four canonical rules
+Every PR opens from the per-ORCH branch directly to `main`. After merge, the CLOSE-owning orchestrator reaps the worktree + branch via `scripts/orch-worktree/reap.sh`.
 
-**Rule 1 — One branch, one working tree.**  
-All Mingla skills operate in `/Users/sethogieva/Desktop/mingla-main` on branch `Seth`. Do not create per-ORCH git worktrees. Do not ask the operator to open `.worktrees/<slug>/`.
-
-**Rule 2 — Scope by ORCH, not by filesystem.**  
-Multiple ORCHs may exist in the same checkout, so every agent must stage and commit only the files named by its dispatch/spec. Unrelated dirty files are preserved and explicitly excluded. Reports, prompts, specs, tests, code, migrations, and global indexes stay in the shared checkout.
-
-**Rule 3 — Close promotes `Seth` to `main` through a checked PR.**  
-When tester PASS or accepted CONDITIONAL PASS returns and close artifacts are synced, Codex `orchestrator-mingla` runs the scoped local checks, commits scoped close-out work on `Seth`, pushes `Seth` only after those local checks pass, opens a GitHub PR from `Seth` to `main`, waits for GitHub PR checks/statuses to pass, merges the PR, and returns to `Seth` for the next task. Direct local merge/push to `main` is forbidden unless the operator explicitly overrides the rule for that one incident.
-
-**Rule 4 — Outputs explain operator steps in layman terms.**  
-If Seth/the operator has to run a command, dispatch another skill, approve a risk, apply a migration, publish an OTA update, or do any manual check, the response must first explain the steps in plain English and then provide the exact command or handoff block.
+The `Seth` branch is **deleted forever** after this cutover commit lands. No new work goes on `Seth`. Anyone who needs the historical `Seth` state can reach it via `git log main` (every Seth PR squash-merged onto main).
 
 ---
 
-## Start / sync command
+## Day-to-day flow
 
-Use this before a new phase or when an agent might be in the wrong branch:
+### INTAKE — orchestrator spawns a worktree
 
 ```bash
-cd /Users/sethogieva/Desktop/mingla-main
-git fetch origin
-git checkout Seth
-git pull --ff-only origin Seth
-git status --short
-echo "Working tree ready at /Users/sethogieva/Desktop/mingla-main on branch Seth."
+scripts/orch-worktree/spawn.sh <ORCH_ID> <short-kebab-label>
 ```
 
-If the status output shows unrelated dirty work, do not revert it. Keep working only on the scoped files and call out the unrelated files in the report or close note.
-
----
-
-## Close / promote command
-
-Codex `orchestrator-mingla` runs or emits this after close evidence is complete:
-
+Example:
 ```bash
-cd /Users/sethogieva/Desktop/mingla-main
-git checkout Seth
-git status --short
-<run scoped local checks and confirm PASS>
-git add <scoped files only>
-git commit -m "Close ORCH-XXXX: <one-line summary>"
-git push origin Seth
-gh pr create --base main --head Seth --title "Close ORCH-XXXX: <one-line summary>" --body "<evidence summary + checks>"
-gh pr checks <PR number> --watch
-gh pr merge <PR number> --merge --delete-branch=false
-git fetch origin
-git checkout Seth
-git pull --ff-only origin Seth
+scripts/orch-worktree/spawn.sh orch-0946 paywall-tier-copy-refresh
 ```
 
-If local checks fail, do not push `Seth`; report the failing command and fix or dispatch rework. If the PR cannot be opened, GitHub checks fail, or merge is blocked, report the blocker, preserve the `Seth` commit SHA, and leave the repo on `Seth`. Do not delete any branch or worktree.
+Spawn does:
+1. Sync anchor with `origin/main` (fast-forward)
+2. `git worktree add ~/Desktop/mingla-orchs/orch-0946-[paywall-tier-copy-refresh] -b orch-0946-paywall-tier-copy-refresh main`
+3. Copy gitignored `.env*` files from anchor
+4. Symlink `node_modules` for each sub-project (saves ~5 min per spawn)
+5. Echo: worktree path, branch name, suggested Metro port, suggested sim assignment
+
+After spawn, every subsequent dispatch's prompt begins with `cd <worktree-path>`.
+
+### Per-phase dispatch — skill works inside the worktree
+
+- INVESTIGATE / SPEC / IMPLEMENT / TEST all happen inside the worktree.
+- Skills `cd` to the worktree path on entry.
+- Commits, branch ops, edge-fn deploys (orchestrator-owned) all happen from the worktree.
+- Tester operates the assigned sim only (one ORCH per sim/device when in parallel).
+
+### CLOSE Step 1.7 — orchestrator reaps the worktree
+
+After PR merges to main:
+```bash
+scripts/orch-worktree/reap.sh ~/Desktop/mingla-orchs/<ORCH_ID>-[<label>]
+```
+
+Reap does:
+1. Safety: refuse if worktree dirty (unless `--force`) or branch ahead of `origin/main`
+2. `git worktree remove`
+3. `git branch -D` local + `git push origin --delete` remote
+4. `git worktree prune`
+5. Echo reminder to operator: remove folder from VS Code workspace
+
+CLOSE banner cites: `Worktree reaped: <path> + branch <branch-name>`.
 
 ---
 
-## How skills consume this
+## Naming conventions
 
-| Skill | Required behavior |
-|-------|-------------------|
-| Codex `orchestrator-mingla` | Canonical close owner. Verifies branch `Seth`, writes prompts/artifacts, runs scoped local checks, commits scoped close work, pushes `Seth`, opens a PR to `main`, waits for GitHub checks, merges only when green, and explains operator steps in layman terms. |
-| Claude `mingla-orchestrator` | Parity mirror. Uses the same branch language and routes final close to Codex unless explicitly told otherwise. |
-| Claude `mingla-forensics` / Codex `forensic-mingla` | Investigate, spec, and test from `/Users/sethogieva/Desktop/mingla-main` on `Seth`; write reports/specs there. |
-| Codex `implementor-mingla` / Claude `mingla-implementor` | Implement from `/Users/sethogieva/Desktop/mingla-main` on `Seth`; stage only scoped files; include repo-running regression tests in the scoped commit. |
-| Claude `mingla-tester` / Codex `tester-mingla` | Verify from `/Users/sethogieva/Desktop/mingla-main` on `Seth`; write QA reports there; do not mutate implementation unless explicitly redirected. |
-| PMM/UI/product skills | Use the same branch when editing Mingla artifacts or product docs and include layman operator steps when the user must act. |
+| Pattern | Example |
+|---|---|
+| Worktree directory | `~/Desktop/mingla-orchs/orch-0946-[paywall-tier-copy-refresh]/` |
+| Branch | `orch-0946-paywall-tier-copy-refresh` |
+| META-ORCH worktree | `~/Desktop/mingla-orchs/meta-orch-0952-[buyer-web-confirm-deep-forensics]/` |
+| META-ORCH branch | `meta-orch-0952-buyer-web-confirm-deep-forensics` |
 
----
+Brackets in directory names are for human glance; git ignores them. Always quote paths in shell because `[` is a glob metacharacter.
 
-## Legacy worktree handling
-
-Existing `.worktrees/...` folders and rows in `Mingla_Artifacts/WORKTREE_REGISTRY.md` are legacy transition state. Do not open new rows. If old worktree content must be salvaged, the orchestrator should write an explicit migration/cleanup note and bring only reviewed scoped files into `Seth`.
+Short labels: kebab-case, ≤4 words, descriptive enough that the directory listing alone tells you what the ORCH is about.
 
 ---
 
-## Why this beats the retired model
+## Sim assignment matrix
 
-The retired per-ORCH model protected isolation but made the operator carry too much path and branch context across Claude and Codex. The new `Seth` model keeps every skill looking at the same files, makes handoffs easier, and still protects quality through scoped prompts, scoped staging, regression tests, evidence gates, and final promotion to `main` only after close.
+| Sim/Device | UDID/AVD | Default use |
+|---|---|---|
+| iPhone 17 Pro | `<UDID-A>` | Primary consumer/business iOS |
+| iPhone 16 | `<UDID-B>` | Secondary iOS |
+| Pixel 7 emu | `<AVD-name>` | Android-specific ORCH |
+| Operator's physical iPhone | n/a | Final human verification on every ORCH |
+
+Orchestrator picks next available at spawn; dispatch prompt names the sim explicitly. Backend-only ORCHs (edge fn / migration / RLS / CI) get `Sim: none — backend-only`.
+
+---
+
+## Metro port matrix
+
+| Port | Worktree |
+|---|---|
+| 8081 | First active ORCH (Expo default) |
+| 8082 | Second active ORCH |
+| 8083 | Third active ORCH |
+| 8084 | Fourth active ORCH |
+
+Spawn echoes the next-available port based on `git worktree list` count.
+
+---
+
+## node_modules — the symlink rule
+
+`spawn.sh` symlinks `node_modules` from the anchor into each worktree's sub-projects (~80% disk savings, ~5 min faster spawn).
+
+**If an ORCH touches `package.json` / `package-lock.json` / `pnpm-lock.yaml`:**
+1. Orchestrator detects at spawn (or implementor detects at first `npm install` failure)
+2. Remove the symlink: `rm <sub>/node_modules`
+3. Run real `npm install` in the worktree
+4. Flag in the implementation report under "Discoveries"
+
+The anchor's `node_modules` is the source of truth. If main updates deps mid-ORCH, the symlink resolves to the new version on next read.
+
+---
+
+## VS Code multi-root workspace
+
+**One-time setup** (post-cutover):
+1. Open `~/Desktop/mingla-main` in VS Code
+2. `File → Save Workspace As… → ~/mingla.code-workspace`
+3. Always open VS Code via that workspace file going forward
+
+**Per ORCH lifecycle:**
+- **Spawn:** `File → Add Folder to Workspace…` → pick new worktree dir. Source Control panel grows a new pane labeled with the branch name.
+- **Reap:** Right-click the folder in Explorer → `Remove Folder from Workspace`.
+
+**Mental model:** the workspace's folder list = your active ORCH inventory.
+
+`Mingla_Artifacts/WORKTREE_REGISTRY.md` is the canonical live ledger; VS Code's pane list mirrors it visually.
+
+---
+
+## Parallel ORCHs
+
+Each ORCH = its own worktree + its own sim + its own Metro port + its own PR branch. They don't collide on:
+- File edits (separate worktrees)
+- Dev servers (separate ports)
+- Sim installs (separate sims per ORCH when running in parallel)
+- PR conflicts (each merges independently)
+
+They DO serialize on:
+- **Edge function deploys** (production is single-target). The orchestrator deploys from THE worktree owning the implementation.
+- **Database migrations** (operator owns `supabase db push --linked`; only one push at a time).
+- **GitHub merges to main** (GitHub serializes naturally).
+
+---
+
+## Anti-patterns (forbidden post-cutover)
+
+- ❌ Editing files in `~/Desktop/mingla-main` (anchor is read-only).
+- ❌ Reusing the same worktree for a second ORCH.
+- ❌ Installing two ORCH builds (same bundle ID) on the same sim.
+- ❌ Symlinking `node_modules` into the anchor checkout.
+- ❌ Leaving a reaped worktree's folder in the VS Code workspace.
+- ❌ Force-reaping (`reap.sh --force`) without explicit operator confirmation.
+- ❌ Resurrecting the `Seth` branch (use a per-ORCH branch instead).
+
+---
+
+## Why this time is different (from the 2026-05-11 revert)
+
+The previous worktree-per-ORCH attempt (META-ORCH-0755) was reverted because of accumulated friction. The current rollout addresses every gap that drove that revert:
+
+| Past gap | Now addressed by |
+|---|---|
+| Manual setup overhead per ORCH | `spawn.sh` automation |
+| node_modules disk/time cost | Symlink-by-default rule |
+| Operator couldn't see all active worktrees | VS Code multi-root workspace + live `WORKTREE_REGISTRY.md` |
+| Sim collisions when running parallel ORCHs | Per-ORCH sim assignment (matrix above) |
+| Stranded worktrees on close | Mandatory `reap.sh` at CLOSE Step 1.7 |
+| Edge fn deploy split (which worktree deploys?) | Memory rule: orchestrator deploys from the implementation's worktree |
+| Codex/Claude parity confusion | Both orchestrators own the lifecycle symmetrically |
+
+---
+
+## Rollback path
+
+If the workflow proves worse in practice, rollback is:
+1. Revert this cutover commit on main
+2. Re-write `WORKTREE_STRATEGY.md` to the single-Seth model
+3. Update the memory rule `feedback_worktree_per_orch_workflow.md` to mark superseded
+4. Operator merges + cleans up active worktrees back onto a fresh `Seth` branch
+
+No data loss — every commit is on a remote branch + PR before the worktree gets reaped.
+
+---
+
+## Pre-merge gate (MANDATORY)
+
+Before merging any PR (per-ORCH branch → main), the orchestrator MUST verify ALL of:
+
+1. **All required GitHub checks GREEN.** Use `gh pr checks <PR#> --watch`. The bar is only the checks declared as required by branch protection / ruleset. Informational/non-required check failures (e.g. a Vercel preview rate-limited) do NOT block merge but MUST be called out in the merge-confirmation message.
+2. **No conflicts with main.** `mergeStateStatus != "DIRTY"`. If main moved, rebase or merge main into the per-ORCH branch first.
+3. **All review-required approvals collected.** If branch protection requires N reviewers and you only have N-1, do NOT bypass with `--admin` unless explicitly authorized for this incident.
+4. **Operator-confirmed.** Either operator explicitly says "merge" / "ship" / etc., OR the orchestrator has delegated end-to-end execution authority.
+5. **Vercel `[deploy]` tag present** in the commit subject if the ORCH touches any Vercel-built surface (`mingla-business/`, `mingla-admin/`, `mingla-marketing/`). See `feedback_vercel_deploy_gate.md`.
+6. **Strict-grep + Tests-Append-Only + Migrations-Baseline gates** all passed against the latest HEAD.
+
+If ANY gate fails, do NOT merge. Investigate root cause, fix, push, re-run.
+
+---
+
+## One-PR-per-CLOSE (MANDATORY)
+
+Every CLOSE opens its own PR from its per-ORCH branch to `main`. Bundling two or more ORCHs into a single PR is FORBIDDEN by default.
+
+**Rationale:**
+- Clean revert (`git revert <merge-sha>` removes exactly one ORCH)
+- Trivial `git bisect` when main breaks
+- 1-to-1 regression-test traceability (the ORCH-0840 Step 0.5 gate's two regression tests map to one PR diff)
+- Unambiguous `[TEST-MOD-APPROVED ORCH-NNNN]` override-token grammar
+- Focused CODEOWNERS review per ORCH
+- Parallel close-ability between Claude and Codex orchestrators without convoy merge-conflict cascades
+
+**Narrow exception (operator pre-approved bundles):** tightly-coupled ORCHs that must ship atomically — same migration with multiple consuming ORCHs, one bug intentionally split into 2 ORCH-IDs because of scope, hot-fix convoys — may ship as a bundle ONLY when the operator names every ORCH-ID being bundled at CLOSE-time and the PR title lists them all explicitly (e.g., `Close ORCH-0843 + ORCH-0844: <shared-bundle-reason>`).
+
+The orchestrator must justify the bundle in chat ("these two share a migration", "ORCH-X depends on ORCH-Y's schema") rather than bundling silently for convenience.
+
+---
+
+## Cross-references
+
+- Memory rule: `~/.claude/projects/-Users-sethogieva-Desktop-mingla-main/memory/feedback_worktree_per_orch_workflow.md`
+- Spawn script: `scripts/orch-worktree/spawn.sh`
+- Reap script: `scripts/orch-worktree/reap.sh`
+- Live registry: `Mingla_Artifacts/WORKTREE_REGISTRY.md`
+- Related rules: `feedback_orchestrator_cleans_worktree_on_close.md`, `feedback_close_commit_precommit_checks.md`, `feedback_sim_load_latest_bundle_before_test.md`
+- Skill enforcement: every Claude + Codex skill's "Working-Branch Discipline" stanza
+- Plan history: `~/.claude/plans/cosmic-swimming-teacup.md` (initial design)
