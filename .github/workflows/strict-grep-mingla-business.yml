@@ -1234,6 +1234,19 @@ jobs:
       - name: Run ORCH-0863 Marketing Hub Phase B gate
         run: node .github/scripts/strict-grep/orch-0863-marketing-hub-phase-b.mjs
 
+  orch-0948-waitlist-feature:
+    name: "ORCH-0948: waitlist confirm exclusion"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0948 waitlist confirm-exclusion gate
+        run: node .github/scripts/strict-grep/orch-0948-waitlist-feature.mjs
+
   i-brand-delete-blocking-date-aware:
     name: "ORCH-0862: brand-delete blocking filter is date-aware (I-PROPOSED-BRAND-DELETE-BLOCKING-DATE-AWARE / DISCOVERY-7)"
     runs-on: ubuntu-latest

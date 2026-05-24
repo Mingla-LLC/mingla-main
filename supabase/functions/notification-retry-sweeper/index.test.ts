@@ -2,7 +2,10 @@
 // Mirrors the pattern in refund-order/index.test.ts and cancel-order/index.test.ts.
 // Real integration verification is owned by Claude `mingla-forensics` (TEST mode).
 
-import { assert, assertFalse } from "https://deno.land/std@0.168.0/testing/asserts.ts";
+import {
+  assert,
+  assertFalse,
+} from "https://deno.land/std@0.168.0/testing/asserts.ts";
 
 const SOURCE = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
 
@@ -42,17 +45,29 @@ Deno.test("notification-retry-sweeper: bounded batch size 50 (thundering-herd gu
 Deno.test("notification-retry-sweeper: dispatches via dispatchTicketConfirmation (not raw fetch)", () => {
   assert(SOURCE.includes("dispatchTicketConfirmation"));
   // No inlined fetch to /functions/v1/ticket-confirmation-dispatch.
-  assertFalse(SOURCE.includes("fetch(`${supaUrl}/functions/v1/ticket-confirmation-dispatch"));
+  assertFalse(
+    SOURCE.includes(
+      "fetch(`${supaUrl}/functions/v1/ticket-confirmation-dispatch",
+    ),
+  );
 });
 
 Deno.test("notification-retry-sweeper: groups by order_id (one dispatcher call per affected order)", () => {
-  assert(SOURCE.includes("new Set(eligible.map"));
+  assert(SOURCE.includes("new Set("));
   assert(SOURCE.includes(".order_id"));
+});
+
+Deno.test("notification-retry-sweeper: dispatches null-order waitlist notifications by notificationId", () => {
+  assert(SOURCE.includes("dispatchTicketNotification"));
+  assert(SOURCE.includes('row.payload?.template_key === "waitlist_spot_open"'));
+  assert(SOURCE.includes("waitlistNotificationIds"));
 });
 
 Deno.test("notification-retry-sweeper: dispatcher failures are NON-FATAL (try/catch per order)", () => {
   // Per-order try/catch with results pushed in both branches.
-  assert(/results\.push\(\s*\{\s*orderId,\s*status:\s*"dispatched"/.test(SOURCE));
+  assert(
+    /results\.push\(\s*\{\s*orderId,\s*status:\s*"dispatched"/.test(SOURCE),
+  );
   assert(/results\.push\(\s*\{\s*orderId,\s*status:\s*"failed"/.test(SOURCE));
 });
 

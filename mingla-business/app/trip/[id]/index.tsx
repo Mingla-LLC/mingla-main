@@ -84,6 +84,7 @@ function tripTierToTicketStub(tier: TripPricingTier, index: number): TicketStub 
     approvalRequired: false,
     passwordProtected: false,
     password: null,
+    // ORCH-0948: trip waitlist deferred to a future ORCH — see SPEC §2 non-goal.
     waitlistEnabled: false,
     minPurchaseQty: 1,
     maxPurchaseQty: null,

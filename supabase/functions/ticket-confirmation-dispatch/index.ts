@@ -11,6 +11,8 @@
 //     generic_notification variant; sender override to EMAIL_SENDERS.tickets.
 //     No PDF, no calendar.
 //   - "buyer_order_cancelled" → same shape with cancel adapter.
+//   - "waitlist_spot_open" → renders a no-attachment claim-link email/SMS
+//     for waitlist_entries rows whose notification has no parent order.
 //   - Unknown template_key → immediate failed_terminal with
 //     last_error="unknown_template_key:<value>" (defensive, I-PROPOSED-BA).
 //
@@ -45,14 +47,16 @@ import { buildCalendarLinks } from "../_shared/email/calendar.ts";
 // from installmentWebhookHandlers.ts and process-scheduled-installments.
 import { renderInstallmentDunningEmail } from "../_shared/email/installmentDunningEmail.ts";
 import { renderInstallmentPlanPaidInFullEmail } from "../_shared/email/installmentPlanPaidInFullEmail.ts";
+import { renderWaitlistSpotOpenEmail } from "../_shared/email/templates/waitlistSpotOpen.ts";
+import { renderWaitlistSpotOpenSms } from "../_shared/sms/templates/waitlistSpotOpen.ts";
 import {
   type BuyerContext,
-  intakeFormReAnswerRequiredToGenericBody,
   type IntakeFormReAnswerRequiredPayloadShape,
-  orderCancelledToGenericBody,
+  intakeFormReAnswerRequiredToGenericBody,
   type OrderCancelledPayloadShape,
-  refundIssuedToGenericBody,
+  orderCancelledToGenericBody,
   type RefundIssuedPayloadShape,
+  refundIssuedToGenericBody,
 } from "../_shared/email/buyerLifecycleAdapters.ts";
 
 const MINGLA_LOGO_URL = Deno.env.get("MINGLA_LOGO_URL") ?? null;
@@ -127,7 +131,11 @@ async function sendTwilioMessage(
   }
   const statusSecret = Deno.env.get("TWILIO_STATUS_CALLBACK_SECRET");
   const statusCallback = statusSecret && Deno.env.get("SUPABASE_URL")
-    ? `${Deno.env.get("SUPABASE_URL")}/functions/v1/twilio-message-status?secret=${encodeURIComponent(statusSecret)}`
+    ? `${
+      Deno.env.get("SUPABASE_URL")
+    }/functions/v1/twilio-message-status?secret=${
+      encodeURIComponent(statusSecret)
+    }`
     : undefined;
   const params = new URLSearchParams({
     To: input.to,
@@ -203,8 +211,230 @@ interface RenderContext {
   }>;
 }
 
+interface NotificationRow {
+  id: string;
+  channel: string;
+  recipient: string;
+  status: string;
+  attempt_count: number | null;
+  payload: Record<string, unknown> | null;
+}
+
 function shortId(id: string): string {
   return String(id).slice(0, 8);
+}
+
+function publicBuyerBaseUrl(): string {
+  const raw = Deno.env.get("PUBLIC_BUYER_BASE_URL") ??
+    Deno.env.get("MINGLA_BUSINESS_WEB_URL") ??
+    "https://business.usemingla.com";
+  return raw.replace(/\/+$/, "");
+}
+
+async function markNotificationTerminal(
+  supabase: ReturnType<typeof serviceClient>,
+  notificationId: string,
+  lastError: string,
+): Promise<void> {
+  await supabase.from("ticket_order_notifications").update({
+    status: "failed_terminal",
+    last_error: lastError,
+    updated_at: new Date().toISOString(),
+  }).eq("id", notificationId);
+}
+
+async function deliverWaitlistSpotOpenNotification(
+  supabase: ReturnType<typeof serviceClient>,
+  notification: NotificationRow,
+): Promise<"sent" | "failed_terminal" | "skipped"> {
+  const payload = notification.payload ?? {};
+  const waitlistEntryId = typeof payload.waitlist_entry_id === "string"
+    ? payload.waitlist_entry_id
+    : "";
+  const eventId = typeof payload.event_id === "string" ? payload.event_id : "";
+  const ticketTypeId = typeof payload.ticket_type_id === "string"
+    ? payload.ticket_type_id
+    : "";
+  const qtyRequested = Number.isInteger(payload.qty_requested)
+    ? Number(payload.qty_requested)
+    : 1;
+  const inviteExpiresAt = typeof payload.invite_expires_at === "string"
+    ? payload.invite_expires_at
+    : new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+
+  if (!waitlistEntryId || !eventId || !ticketTypeId) {
+    await markNotificationTerminal(
+      supabase,
+      notification.id,
+      "waitlist_payload_invalid",
+    );
+    return "failed_terminal";
+  }
+
+  const { data: eventRaw, error: eventError } = await supabase
+    .from("events")
+    .select("id,title,brands!inner(id,name)")
+    .eq("id", eventId)
+    .maybeSingle();
+  if (eventError !== null || eventRaw === null) {
+    throw new ProviderSendError({
+      retryable: true,
+      detail: eventError?.message ?? "waitlist_event_not_found",
+      status: 0,
+    });
+  }
+
+  const { data: ticketTypeRaw, error: ticketTypeError } = await supabase
+    .from("ticket_types")
+    .select("id,name")
+    .eq("id", ticketTypeId)
+    .maybeSingle();
+  if (ticketTypeError !== null || ticketTypeRaw === null) {
+    throw new ProviderSendError({
+      retryable: true,
+      detail: ticketTypeError?.message ?? "waitlist_ticket_type_not_found",
+      status: 0,
+    });
+  }
+
+  const event = eventRaw as unknown as {
+    title: string | null;
+    brands: { name: string | null };
+  };
+  const ticketType = ticketTypeRaw as unknown as { name: string | null };
+  const claimUrl = `${publicBuyerBaseUrl()}/checkout/${eventId}?wl=${
+    encodeURIComponent(waitlistEntryId)
+  }`;
+
+  if (notification.channel === "email") {
+    const email = renderWaitlistSpotOpenEmail({
+      brand: { name: event.brands.name ?? "Mingla" },
+      event: { title: event.title ?? "your event" },
+      ticketType: { name: ticketType.name ?? "ticket" },
+      qtyRequested,
+      expiresAt: inviteExpiresAt,
+      claimUrl,
+    });
+    assertNotResendSandbox(EMAIL_SENDERS.tickets);
+    const sent = await sendResendEmailWithAttachment({
+      from: formatSenderHeader(EMAIL_SENDERS.tickets),
+      to: notification.recipient,
+      subject: email.subject,
+      html: email.html,
+      text: email.text,
+      attachments: [],
+    });
+    await supabase.from("ticket_order_notifications").update({
+      status: "sent",
+      provider: "resend",
+      provider_message_id: sent.id,
+      sent_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }).eq("id", notification.id);
+    return "sent";
+  }
+
+  if (notification.channel === "sms") {
+    const sent = await sendTwilioMessage({
+      to: notification.recipient,
+      body: renderWaitlistSpotOpenSms({
+        eventTitle: event.title ?? "your event",
+        ticketTypeName: ticketType.name ?? "ticket",
+        claimUrl,
+      }),
+    });
+    await supabase.from("ticket_order_notifications").update({
+      status: "sent",
+      provider: "twilio",
+      provider_message_id: sent.sid,
+      sent_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }).eq("id", notification.id);
+    return "sent";
+  }
+
+  await supabase.from("ticket_order_notifications").update({
+    status: "skipped",
+    last_error: "channel_not_supported_for_template",
+    updated_at: new Date().toISOString(),
+  }).eq("id", notification.id);
+  return "skipped";
+}
+
+async function handleWaitlistNotificationDispatch(
+  supabase: ReturnType<typeof serviceClient>,
+  notificationId: string,
+): Promise<Response> {
+  const { data, error } = await supabase
+    .from("ticket_order_notifications")
+    .select("id, channel, recipient, status, attempt_count, payload")
+    .eq("id", notificationId)
+    .maybeSingle();
+  if (error !== null || data === null) {
+    return jsonResponse(
+      { error: "notification_not_found", detail: error?.message },
+      404,
+    );
+  }
+
+  const notification = data as unknown as NotificationRow;
+  const rawPayload = notification.payload ?? {};
+  if (rawPayload.template_key !== "waitlist_spot_open") {
+    await markNotificationTerminal(
+      supabase,
+      notification.id,
+      `unknown_template_key:${String(rawPayload.template_key)}`,
+    );
+    return jsonResponse({
+      notificationId,
+      outcomes: [{
+        channel: notification.channel,
+        status: "failed_terminal",
+        templateKey: String(rawPayload.template_key),
+      }],
+    });
+  }
+
+  await supabase
+    .from("ticket_order_notifications")
+    .update({
+      status: "sending",
+      attempt_count: Number(notification.attempt_count ?? 0) + 1,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", notification.id);
+
+  try {
+    const status = await deliverWaitlistSpotOpenNotification(
+      supabase,
+      notification,
+    );
+    return jsonResponse({
+      notificationId,
+      outcomes: [{
+        channel: notification.channel,
+        status,
+        templateKey: "waitlist_spot_open",
+      }],
+    });
+  } catch (err) {
+    const attemptCount = Number(notification.attempt_count ?? 0) + 1;
+    const retryable = err instanceof ProviderSendError ? err.retryable : true;
+    const terminal = !retryable || attemptCount >= 3;
+    await supabase.from("ticket_order_notifications").update({
+      status: terminal ? "failed_terminal" : "failed_retryable",
+      last_error: err instanceof Error ? err.message : String(err),
+      updated_at: new Date().toISOString(),
+    }).eq("id", notification.id);
+    return jsonResponse({
+      notificationId,
+      outcomes: [{
+        channel: notification.channel,
+        status: terminal ? "failed_terminal" : "failed_retryable",
+        templateKey: "waitlist_spot_open",
+      }],
+    });
+  }
 }
 
 function buildRenderContext(args: {
@@ -230,9 +460,10 @@ function buildRenderContext(args: {
 }): RenderContext {
   const { order, lineItems, ticketRows, masterDate } = args;
   const eventTitle = order.events.title ?? "your event";
-  const eventTimezone = (masterDate?.timezone && masterDate.timezone.length > 0
-    ? masterDate.timezone
-    : order.events.timezone) ?? "UTC";
+  const eventTimezone =
+    (masterDate?.timezone && masterDate.timezone.length > 0
+      ? masterDate.timezone
+      : order.events.timezone) ?? "UTC";
   const variant: TicketBodyInput["variant"] = order.payment_method === "free"
     ? "ticket_confirmation_free"
     : "ticket_confirmation_paid";
@@ -338,7 +569,9 @@ async function handleInstallmentDunning(
   orderId: string,
   body: Record<string, unknown>,
 ): Promise<Response> {
-  const installmentId = typeof body.installmentId === "string" ? body.installmentId : "";
+  const installmentId = typeof body.installmentId === "string"
+    ? body.installmentId
+    : "";
   if (installmentId === "") {
     return jsonResponse({ error: "installment_id_required" }, 400);
   }
@@ -353,7 +586,10 @@ async function handleInstallmentDunning(
     // Buyers without an email on file silently no-op rather than error —
     // the order still exists, the dispatcher should not 500 the webhook
     // handler upstream.
-    return jsonResponse({ kind: "installment_dunning", skipped: "no_buyer_email" });
+    return jsonResponse({
+      kind: "installment_dunning",
+      skipped: "no_buyer_email",
+    });
   }
 
   const { data: installment, error: installmentError } = await supabase
@@ -416,7 +652,10 @@ async function handleInstallmentPaidInFull(
   const order = await fetchInstallmentEmailContext(supabase, orderId);
   if (order === null) return jsonResponse({ error: "order_not_found" }, 404);
   if (order.buyer_email === null || order.buyer_email === "") {
-    return jsonResponse({ kind: "installment_plan_paid_in_full", skipped: "no_buyer_email" });
+    return jsonResponse({
+      kind: "installment_plan_paid_in_full",
+      skipped: "no_buyer_email",
+    });
   }
 
   const rendered = renderInstallmentPlanPaidInFullEmail({
@@ -463,10 +702,16 @@ serve(async (req) => {
   }
 
   const body = await req.json().catch(() => ({}));
+  const supabase = serviceClient();
+  const notificationId = typeof body.notificationId === "string"
+    ? body.notificationId
+    : "";
+  if (notificationId) {
+    return await handleWaitlistNotificationDispatch(supabase, notificationId);
+  }
+
   const orderId = typeof body.orderId === "string" ? body.orderId : "";
   if (!orderId) return jsonResponse({ error: "order_id_required" }, 400);
-
-  const supabase = serviceClient();
 
   // ORCH-0869 (Tr3) Stage 1b: kind-based routing. When `kind` is one of the
   // Tr3 installment kinds, bypass the legacy ticket_order_notifications
@@ -529,7 +774,9 @@ serve(async (req) => {
 
   const { data: lineItems } = await supabase
     .from("order_line_items")
-    .select("quantity, unit_price_cents, total_cents, ticket_types!inner ( name )")
+    .select(
+      "quantity, unit_price_cents, total_cents, ticket_types!inner ( name )",
+    )
     .eq("order_id", orderId)
     .order("id", { ascending: true });
 
@@ -578,8 +825,8 @@ serve(async (req) => {
   const smsBody = isTrip
     ? `Mingla: you're booked on ${eventTitle}. Order ${shortId(order.id)}.`
     : `Mingla: your ${ticketCount} ticket${
-        ticketCount === 1 ? "" : "s"
-      } for ${eventTitle} are confirmed. Order ${shortId(order.id)}.`;
+      ticketCount === 1 ? "" : "s"
+    } for ${eventTitle} are confirmed. Order ${shortId(order.id)}.`;
 
   // Render email + PDF once per dispatch; reused across email ledger rows.
   let renderedEmail: ReturnType<typeof renderTransactionalEmail> | null = null;
@@ -614,8 +861,8 @@ serve(async (req) => {
         kind: "included" | "excluded";
         item: string;
       }>;
-      const themeBT =
-        ((order.events.theme as Record<string, unknown> | null)?.business_trip as
+      const themeBT = ((order.events.theme as Record<string, unknown> | null)
+        ?.business_trip as
           | Record<string, unknown>
           | undefined) ?? {};
       renderedEmail = renderTripConfirmationEmail({
@@ -625,12 +872,13 @@ serve(async (req) => {
         },
         trip: {
           title: context.bodyInput.event.title,
-          startAtIso: typeof themeBT.startAt === "string" ? themeBT.startAt : null,
+          startAtIso: typeof themeBT.startAt === "string"
+            ? themeBT.startAt
+            : null,
           endAtIso: typeof themeBT.endAt === "string" ? themeBT.endAt : null,
-          destinationText:
-            typeof themeBT.destinationLocationText === "string"
-              ? themeBT.destinationLocationText
-              : null,
+          destinationText: typeof themeBT.destinationLocationText === "string"
+            ? themeBT.destinationLocationText
+            : null,
           timezone: context.bodyInput.event.timezone,
           days: tripDays,
           inclusions: tripInclusions,
@@ -762,7 +1010,9 @@ serve(async (req) => {
     cardLast4: null,
   };
 
-  const outcomes: Array<{ channel: string; status: string; templateKey: string }> = [];
+  const outcomes: Array<
+    { channel: string; status: string; templateKey: string }
+  > = [];
   for (const notification of notifications ?? []) {
     // ORCH-0788 I-PROPOSED-BA: COALESCE template_key with legacy default.
     const rawPayload = (notification.payload ?? {}) as Record<string, unknown>;
@@ -842,7 +1092,11 @@ serve(async (req) => {
             updated_at: new Date().toISOString(),
           }).eq("id", notification.id);
         }
-        outcomes.push({ channel: notification.channel, status: "sent", templateKey });
+        outcomes.push({
+          channel: notification.channel,
+          status: "sent",
+          templateKey,
+        });
       } else if (templateKey === "buyer_refund_issued") {
         // ORCH-0788 §5: refund email via generic_notification adapter.
         // Email-only per SPEC §10.1 (CF-1 SMS deferred).
@@ -852,7 +1106,11 @@ serve(async (req) => {
             last_error: "channel_not_supported_for_template",
             updated_at: new Date().toISOString(),
           }).eq("id", notification.id);
-          outcomes.push({ channel: notification.channel, status: "skipped", templateKey });
+          outcomes.push({
+            channel: notification.channel,
+            status: "skipped",
+            templateKey,
+          });
           continue;
         }
         const refundBody = refundIssuedToGenericBody(
@@ -881,7 +1139,11 @@ serve(async (req) => {
           sent_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         }).eq("id", notification.id);
-        outcomes.push({ channel: notification.channel, status: "sent", templateKey });
+        outcomes.push({
+          channel: notification.channel,
+          status: "sent",
+          templateKey,
+        });
       } else if (templateKey === "buyer_order_cancelled") {
         // ORCH-0788 §5: cancel email via generic_notification adapter.
         if (notification.channel !== "email") {
@@ -890,7 +1152,11 @@ serve(async (req) => {
             last_error: "channel_not_supported_for_template",
             updated_at: new Date().toISOString(),
           }).eq("id", notification.id);
-          outcomes.push({ channel: notification.channel, status: "skipped", templateKey });
+          outcomes.push({
+            channel: notification.channel,
+            status: "skipped",
+            templateKey,
+          });
           continue;
         }
         const cancelBody = orderCancelledToGenericBody(
@@ -919,7 +1185,11 @@ serve(async (req) => {
           sent_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         }).eq("id", notification.id);
-        outcomes.push({ channel: notification.channel, status: "sent", templateKey });
+        outcomes.push({
+          channel: notification.channel,
+          status: "sent",
+          templateKey,
+        });
       } else if (templateKey === "buyer_intake_form_re_answer_required") {
         // ORCH-0880 [Tr5 Traveler Intake Forms] — re-answer notification via
         // generic_notification adapter. Email-only in v1 (push deferred to a
@@ -935,7 +1205,11 @@ serve(async (req) => {
             last_error: "channel_not_supported_for_template",
             updated_at: new Date().toISOString(),
           }).eq("id", notification.id);
-          outcomes.push({ channel: notification.channel, status: "skipped", templateKey });
+          outcomes.push({
+            channel: notification.channel,
+            status: "skipped",
+            templateKey,
+          });
           continue;
         }
         const reAnswerBody = intakeFormReAnswerRequiredToGenericBody(
@@ -964,7 +1238,17 @@ serve(async (req) => {
           sent_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         }).eq("id", notification.id);
-        outcomes.push({ channel: notification.channel, status: "sent", templateKey });
+        outcomes.push({
+          channel: notification.channel,
+          status: "sent",
+          templateKey,
+        });
+      } else if (templateKey === "waitlist_spot_open") {
+        const status = await deliverWaitlistSpotOpenNotification(
+          supabase,
+          notification as unknown as NotificationRow,
+        );
+        outcomes.push({ channel: notification.channel, status, templateKey });
       } else {
         // ORCH-0788 I-PROPOSED-BA defensive: unknown template_key flips to
         // failed_terminal immediately so the row surfaces visibly via the
@@ -975,7 +1259,11 @@ serve(async (req) => {
           last_error: `unknown_template_key:${templateKey}`,
           updated_at: new Date().toISOString(),
         }).eq("id", notification.id);
-        outcomes.push({ channel: notification.channel, status: "failed_terminal", templateKey });
+        outcomes.push({
+          channel: notification.channel,
+          status: "failed_terminal",
+          templateKey,
+        });
       }
     } catch (err) {
       const attemptCount = Number(notification.attempt_count ?? 0) + 1;

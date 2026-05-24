@@ -83,6 +83,11 @@ verify_jwt = false
 [functions.ticket-checkout-confirm]
 verify_jwt = false
 
+# ORCH-0948 — anon buyer waitlist signup. Function validates ticket/event
+# eligibility and writes via service-role; no direct anon table INSERT policy.
+[functions.waitlist-signup]
+verify_jwt = false
+
 # ORCH-0880 [Tr5 Traveler Intake Forms]: anon-tolerant signed-URL endpoint
 # per feedback_anon_buyer_routes.md. Buyer is anonymous when uploading intake
 # files; authentication happens at the trip/schema/question lookup layer +

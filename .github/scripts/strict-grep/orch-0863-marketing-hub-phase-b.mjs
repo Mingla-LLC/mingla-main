@@ -598,6 +598,26 @@ function checkNoNewBackendFiles() {
   const ORCH_0940_BACKEND_ALLOWLIST = [
     "supabase/migrations/20260724000005_profile_circle_relationship_source.sql",
   ];
+  // ORCH-0948 [Waitlist feature — schema + RPC + buyer-web CTA + planner
+  // notification] IMPLEMENT branch (2026-05-24). C7 is scoped to ORCH-0863
+  // marketing; these backend touches are waitlist schema/RPC, anon signup,
+  // ticket notification dispatch, retry-sweeper null-order dispatch support,
+  // and the implementor regression tests/templates for that feature.
+  const ORCH_0948_BACKEND_ALLOWLIST = [
+    "supabase/config.toml",
+    "supabase/functions/_shared/ticketCheckout.ts",
+    "supabase/functions/_shared/email/templates/waitlistSpotOpen.ts",
+    "supabase/functions/_shared/email/templates/__tests__/waitlistSpotOpen.test.ts",
+    "supabase/functions/_shared/sms/templates/waitlistSpotOpen.ts",
+    "supabase/functions/notification-retry-sweeper/index.ts",
+    "supabase/functions/notification-retry-sweeper/index.test.ts",
+    "supabase/functions/ticket-confirmation-dispatch/index.ts",
+    "supabase/functions/waitlist-signup/index.ts",
+    "supabase/functions/waitlist-signup/__tests__/signup-happy.test.ts",
+    "supabase/functions/waitlist-signup/__tests__/signup-dedupe.test.ts",
+    "supabase/migrations/20260724000006_orch_0948_waitlist_feature.sql",
+    "supabase/migrations/__tests__/orch_0948_waitlist_migration.test.ts",
+  ];
   // ORCH-0930 [TicketQrCarousel React #418 hydration mismatch] + ORCH-0928-LOCKIN
   // [success_url query-string recovery regression test] bundled into PR #184
   // alongside ORCH-0942 (2026-05-23 operator-approved bundle). C7 is scoped to
@@ -656,6 +676,7 @@ function checkNoNewBackendFiles() {
   const ALLOWLIST = [
     ...ORCH_0933_BACKEND_ALLOWLIST,
     ...ORCH_0940_BACKEND_ALLOWLIST,
+    ...ORCH_0948_BACKEND_ALLOWLIST,
     ...ORCH_0930_0928_LOCKIN_BACKEND_ALLOWLIST,
     ...ORCH_0932_BACKEND_ALLOWLIST,
     ...ORCH_0931_BACKEND_ALLOWLIST,

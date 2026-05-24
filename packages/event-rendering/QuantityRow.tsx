@@ -69,6 +69,7 @@ export interface QuantityRowTicket {
   maxPurchaseQty?: number | null;
   saleStartAt?: string | null;
   saleEndAt?: string | null;
+  waitlistEnabled?: boolean;
 }
 
 /**
@@ -131,13 +132,18 @@ export interface QuantityRowProps {
     style?: StyleProp<ViewStyle>;
   }>;
   /** Host's "+" icon renderer. The minus glyph is U+2212 (no icon needed). */
-  renderPlusIcon: (props: { size: number; color: string }) => React.ReactElement;
+  renderPlusIcon: (props: {
+    size: number;
+    color: string;
+  }) => React.ReactElement;
   /** Host's locale-aware money formatter (value in major units, ISO 4217 code). */
   formatCurrency: (value: number, currency: string) => string;
   /** Color tokens. Defaults mirror the mingla-business public buyer page. */
   theme?: QuantityRowTheme;
   /** Optional fallback when `ticket.currency` is undefined. Default "GBP". */
   fallbackCurrency?: string;
+  /** Called when a sold-out waitlist-enabled row is tapped. */
+  onJoinWaitlist?: (ticketId: string) => void;
 }
 
 export const QuantityRow: React.FC<QuantityRowProps> = ({
@@ -149,6 +155,7 @@ export const QuantityRow: React.FC<QuantityRowProps> = ({
   formatCurrency,
   theme,
   fallbackCurrency = "GBP",
+  onJoinWaitlist,
 }) => {
   const t: Required<QuantityRowTheme> = useMemo(
     () => ({ ...DEFAULT_THEME, ...(theme ?? {}) }),
@@ -183,6 +190,10 @@ export const QuantityRow: React.FC<QuantityRowProps> = ({
   const showXLeft =
     !ticket.isUnlimited && remainingCapacity > 0 && remainingCapacity <= 5;
   const isSoldOut = !ticket.isUnlimited && remainingCapacity === 0;
+  const canJoinWaitlist =
+    isSoldOut &&
+    ticket.waitlistEnabled === true &&
+    onJoinWaitlist !== undefined;
 
   const canDecrement = quantity > 0 && !isDisabled;
   const canIncrement = quantity < effectiveMax && !isDisabled && !isSoldOut;
@@ -215,6 +226,12 @@ export const QuantityRow: React.FC<QuantityRowProps> = ({
     onQuantityChange,
     triggerHaptic,
   ]);
+
+  const handleJoinWaitlist = useCallback((): void => {
+    if (!canJoinWaitlist || onJoinWaitlist === undefined) return;
+    triggerHaptic();
+    onJoinWaitlist(ticket.id);
+  }, [canJoinWaitlist, onJoinWaitlist, ticket.id, triggerHaptic]);
 
   // Render ------------------------------------------------------------------
   const priceText = ticket.isFree
@@ -273,9 +290,27 @@ export const QuantityRow: React.FC<QuantityRowProps> = ({
           </Text>
         </View>
         {isSoldOut ? (
-          <View style={soldOutBadgeStyle}>
-            <Text style={soldOutTextStyle}>Sold out</Text>
-          </View>
+          canJoinWaitlist ? (
+            <Pressable
+              onPress={handleJoinWaitlist}
+              accessibilityRole="button"
+              accessibilityLabel={`Join waitlist for ${ticket.name}`}
+              style={({ pressed }) => [
+                soldOutBadgeStyle,
+                styles.waitlistBadge,
+                pressed && styles.waitlistBadgePressed,
+              ]}
+              hitSlop={4}
+            >
+              <Text style={[soldOutTextStyle, { color: t.accent }]}>
+                Join waitlist
+              </Text>
+            </Pressable>
+          ) : (
+            <View style={soldOutBadgeStyle}>
+              <Text style={soldOutTextStyle}>Sold out</Text>
+            </View>
+          )
         ) : isDisabled ? null : (
           <View style={styles.stepperRow}>
             <Pressable
@@ -459,6 +494,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
     letterSpacing: 0.4,
+  },
+  waitlistBadge: {
+    backgroundColor: "rgba(235, 120, 37, 0.14)",
+    borderColor: "rgba(235, 120, 37, 0.36)",
+  },
+  waitlistBadgePressed: {
+    opacity: 0.72,
   },
 });
 

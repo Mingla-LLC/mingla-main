@@ -68,7 +68,9 @@ export async function userIdFromAuthHeader(
   const authHeader = req.headers.get("authorization");
   if (!authHeader) return null;
   const token = authHeader.replace(/^Bearer\s+/i, "").trim();
-  if (!token || token === Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")) return null;
+  if (!token || token === Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")) {
+    return null;
+  }
   const supabase = serviceClient();
   const { data, error } = await supabase.auth.getUser(token);
   if (error || !data.user) return null;
@@ -116,7 +118,9 @@ export async function sha256Hex(value: string): Promise<string> {
     .join("");
 }
 
-export async function dispatchTicketConfirmation(orderId: string): Promise<void> {
+export async function dispatchTicketConfirmation(
+  orderId: string,
+): Promise<void> {
   const url = Deno.env.get("SUPABASE_URL");
   const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   if (!url || !key) return;
@@ -131,6 +135,26 @@ export async function dispatchTicketConfirmation(orderId: string): Promise<void>
     });
   } catch (err) {
     console.error("[ticket-checkout] confirmation dispatch failed", err);
+  }
+}
+
+export async function dispatchTicketNotification(
+  notificationId: string,
+): Promise<void> {
+  const url = Deno.env.get("SUPABASE_URL");
+  const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!url || !key) return;
+  try {
+    await fetch(`${url}/functions/v1/ticket-confirmation-dispatch`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${key}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ notificationId }),
+    });
+  } catch (err) {
+    console.error("[ticket-checkout] notification dispatch failed", err);
   }
 }
 
@@ -181,7 +205,10 @@ export function classifyStripePaymentIntentCreateFailure(error: unknown): {
   detail: string;
   httpStatus: number;
 } {
-  return classifyStripeCreateFailure(error, "stripe_payment_intent_create_failed");
+  return classifyStripeCreateFailure(
+    error,
+    "stripe_payment_intent_create_failed",
+  );
 }
 
 // ORCH-0790: Web buyer checkout via Stripe Checkout Sessions. Same classification
@@ -191,28 +218,36 @@ export function classifyStripeCheckoutSessionCreateFailure(error: unknown): {
   detail: string;
   httpStatus: number;
 } {
-  return classifyStripeCreateFailure(error, "stripe_checkout_session_create_failed");
+  return classifyStripeCreateFailure(
+    error,
+    "stripe_checkout_session_create_failed",
+  );
 }
 
 function classifyStripeCreateFailure(
   error: unknown,
-  prefix: "stripe_payment_intent_create_failed" | "stripe_checkout_session_create_failed",
+  prefix:
+    | "stripe_payment_intent_create_failed"
+    | "stripe_checkout_session_create_failed",
 ): { detail: string; httpStatus: number } {
   const row = error && typeof error === "object"
     ? error as Record<string, unknown>
     : {};
   const statusCode = typeof row.statusCode === "number" ? row.statusCode : null;
-  const code = typeof row.code === "string" && /^[a-zA-Z0-9_.:-]{1,80}$/.test(row.code)
-    ? row.code
-    : null;
-  const type = typeof row.type === "string" && /^[a-zA-Z0-9_.:-]{1,80}$/.test(row.type)
-    ? row.type
-    : null;
+  const code =
+    typeof row.code === "string" && /^[a-zA-Z0-9_.:-]{1,80}$/.test(row.code)
+      ? row.code
+      : null;
+  const type =
+    typeof row.type === "string" && /^[a-zA-Z0-9_.:-]{1,80}$/.test(row.type)
+      ? row.type
+      : null;
   const reason = statusCode === 401 || statusCode === 403
     ? "stripe_key_or_capability_config"
     : statusCode === 400
     ? "stripe_request_or_account_config"
-    : statusCode === 429 || (typeof statusCode === "number" && statusCode >= 500)
+    : statusCode === 429 ||
+        (typeof statusCode === "number" && statusCode >= 500)
     ? "stripe_retryable"
     : prefix;
 
@@ -224,7 +259,11 @@ function classifyStripeCreateFailure(
       code,
       type,
     ].filter(Boolean).join(":"),
-    httpStatus: statusCode === 400 ? 409 : statusCode === 401 || statusCode === 403 ? 502 : 500,
+    httpStatus: statusCode === 400
+      ? 409
+      : statusCode === 401 || statusCode === 403
+      ? 502
+      : 500,
   };
 }
 
