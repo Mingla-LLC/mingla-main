@@ -51,6 +51,10 @@ The implementor MAY edit ONLY these files. Anything else is OUT OF SCOPE — if 
 | `mingla-business/src/components/checkout/__tests__/meta_orch_0952_carousel_adversarial.test.ts` (NEW — tester writes) | Tester's adversarial browser-running regression test. |
 | Test fixtures (NEW, implementor scope): a Playwright fixture / route harness file under `mingla-business/playwright/` (path implementor picks) that serves the exported buyer-web confirm route with mocked `ticket-checkout-confirm` and `ticket-checkout-status` responses for 1-ticket + N-ticket cases. | Required infrastructure for both regression tests. |
 | `mingla-business/playwright.config.ts` (NEW or extend) | Configure Chromium + WebKit + Firefox projects. |
+| `mingla-business/package.json` | Add `@playwright/test` to `devDependencies` AND add npm scripts the test contract needs (e.g. `test:browser`, `web:export`). No other dependency changes; no `dependencies` edits; no version bumps to existing packages. (Amendment 1 — 2026-05-24.) |
+| `mingla-business/package-lock.json` (or `pnpm-lock.yaml` / `yarn.lock` — whichever this workspace uses) | Lockfile update produced by the `npm install --save-dev @playwright/test` (or equivalent) command. Implementor commits the lockfile diff alongside `package.json`. (Amendment 1 — 2026-05-24.) |
+
+**Amendment 1 (2026-05-24):** §4 allowlist extended to include `mingla-business/package.json` (devDep + scripts only) and the workspace lockfile, to unblock the `@playwright/test` install required by §7 and §11 step 2. No widening of behavioral scope; no other dependency edits permitted.
 
 **OUT OF SCOPE — implementor MUST NOT edit:**
 
