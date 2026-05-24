@@ -7,7 +7,7 @@
 > Status: implemented, partially verified
 > Working tree: `/Users/sethogieva/Desktop/mingla-orchs/ORCH-0950-[trip-capacity-single-source]`
 > Branch: `ORCH-0950-trip-capacity-single-source`
-> Implementation commits: `14e532fa`, `d85b8e98`, `71dad12f`, `06de74b01f801fe77d304806ae5ded50c9062a7b`
+> Implementation commits: `14e532fa`, `d85b8e98`, `71dad12f`, `27a7ef8e57c7f6d26ccaf1330c66867ef8c50b39`
 > Fails-on-revert verified at `14e532fa`
 
 ## 1. Layman Summary
