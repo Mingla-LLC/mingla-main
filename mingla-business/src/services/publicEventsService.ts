@@ -544,6 +544,36 @@ export const publicEventViewRowToEvent = (
   };
 };
 
+/**
+ * ORCH-0946 — anon-callable RPC returning sold + remaining per ticket_type
+ * for one event. Used by both `fetchTickets` (event side) and
+ * `getPublicTripById` (trip side) to thread `remaining` through to the
+ * buyer-checkout sold-out gate. Falls back to an empty map on RPC error
+ * (sold-out gate is then a no-op, matching pre-ORCH-0946 behaviour — the
+ * checkout RPC still rejects oversold attempts as the last line of defence).
+ */
+const fetchTicketTypesRemaining = async (
+  eventId: string,
+): Promise<Map<string, number | null>> => {
+  const { data, error } = await supabase.rpc(
+    "pg_public_ticket_types_remaining",
+    { p_event_id: eventId },
+  );
+  if (error !== null) {
+    console.warn(
+      "[ORCH-0946] pg_public_ticket_types_remaining failed; sold-out gate degrades to checkout-RPC catch",
+      error,
+    );
+    return new Map();
+  }
+  const rows = (data ?? []) as Array<{
+    ticket_type_id: string;
+    sold: number;
+    remaining: number | null;
+  }>;
+  return new Map(rows.map((r) => [r.ticket_type_id, r.remaining]));
+};
+
 const fetchTickets = async (
   eventId: string,
 ): Promise<PublicTicketTypeRecord[]> => {
@@ -558,7 +588,17 @@ const fetchTickets = async (
     .order("display_order", { ascending: true });
 
   if (error !== null) throw error;
-  return ((data ?? []) as TicketTypeRow[]).map(ticketRowToTicketStub);
+  const stubs = ((data ?? []) as TicketTypeRow[]).map(ticketRowToTicketStub);
+  // ORCH-0946 — overwrite capacity with remaining so the buyer-checkout
+  // sold-out gate + QuantityRow "+" cap reflect what's actually bookable
+  // (not total tier capacity). Unlimited tiers keep capacity=null untouched.
+  const remainingById = await fetchTicketTypesRemaining(eventId);
+  return stubs.map((s) => {
+    if (s.isUnlimited) return s;
+    const remaining = remainingById.get(s.id);
+    if (remaining === undefined) return s;
+    return { ...s, capacity: remaining };
+  });
 };
 
 const detailFromRow = async (
@@ -817,6 +857,9 @@ export const getPublicTripById = async (
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const tickets = (ticketsResp.data ?? []) as any[];
 
+  // ORCH-0946 — remaining-capacity per ticket_type for the sold-out gate.
+  const remainingById = await fetchTicketTypesRemaining(tripEventId);
+
   const ticketsById = new Map(tickets.map((tt) => [tt.id, tt]));
   const bt =
     (event.theme?.business_trip as Record<string, unknown> | undefined) ?? {};
@@ -868,6 +911,11 @@ export const getPublicTripById = async (
         (t.tier_metadata?.installments as
           | TripPricingTier["installmentSchedule"]
           | undefined) ?? null;
+      const isUnlimited = tt?.is_unlimited ?? false;
+      // ORCH-0946 — null when unlimited or unknown; otherwise GREATEST(total - sold, 0).
+      const ticketsRemaining = isUnlimited
+        ? null
+        : (remainingById.get(t.ticket_type_id) ?? null);
       return {
         id: t.id,
         eventId: t.event_id,
@@ -877,7 +925,8 @@ export const getPublicTripById = async (
         priceCents: tt?.price_cents ?? 0,
         currency: tt?.currency ?? "",
         quantityTotal: tt?.quantity_total ?? null,
-        isUnlimited: tt?.is_unlimited ?? false,
+        ticketsRemaining,
+        isUnlimited,
         installmentSchedule,
       };
     }),

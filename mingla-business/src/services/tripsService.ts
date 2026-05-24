@@ -40,6 +40,14 @@ export interface TripPricingTier {
   priceCents: number;
   currency: string;
   quantityTotal: number | null;
+  /**
+   * ORCH-0946 — remaining bookable seats from `pg_public_ticket_types_remaining`.
+   * Null when `isUnlimited` is true OR when this tier was mapped outside the
+   * public-read path (e.g., admin draft loads via `mapTripPricingTier`).
+   * Buyer-checkout sold-out gate + QuantityRow "+" cap consume this;
+   * `quantityTotal` retains its prior meaning (total tier capacity).
+   */
+  ticketsRemaining: number | null;
   isUnlimited: boolean;
   /**
    * ORCH-0873 [Tr3 Stage 2 UI] — extracted from
@@ -277,6 +285,9 @@ function mapTripPricingTier(
     priceCents: ticketType?.price_cents ?? 0,
     currency: ticketType?.currency ?? "",
     quantityTotal: ticketType?.quantity_total ?? null,
+    // ORCH-0946 — admin/draft loads don't have a remaining-count source;
+    // public-read paths overwrite this via `getPublicTripById`.
+    ticketsRemaining: null,
     isUnlimited: ticketType?.is_unlimited ?? false,
     installmentSchedule: extractInstallmentSchedule(metadata),
   };

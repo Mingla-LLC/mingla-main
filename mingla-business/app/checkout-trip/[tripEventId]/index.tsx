@@ -67,7 +67,12 @@ const tierToTicketStub = (tier: TripPricingTier): TicketStub => ({
   name: tier.tierName,
   priceGbp: tier.priceCents > 0 ? tier.priceCents / 100 : null,
   currency: tier.currency,
-  capacity: tier.quantityTotal,
+  // ORCH-0946 — buyer-checkout sold-out gate + QuantityRow "+" cap need
+  // remaining bookable seats, not total tier capacity. `quantityTotal`
+  // never decreases as tickets sell, so before this fix the buyer could
+  // tap "+" all the way to the payment screen on a sold-out trip and only
+  // failed at the final 409 `ticket_capacity_exceeded`.
+  capacity: tier.ticketsRemaining ?? tier.quantityTotal,
   isFree: tier.priceCents === 0,
   isUnlimited: tier.isUnlimited,
   visibility: "public" as TicketVisibility,

@@ -119,6 +119,7 @@ const trip = (patch: Partial<Trip> = {}): Trip => ({
       priceCents: 150000,
       currency: "USD",
       quantityTotal: 12,
+      ticketsRemaining: null,
       isUnlimited: false,
       installmentSchedule: null,
     },
