@@ -639,6 +639,20 @@ function checkNoNewBackendFiles() {
   const ORCH_0946_BACKEND_ALLOWLIST = [
     "supabase/migrations/20260724000006_orch_0946_public_ticket_types_remaining.sql",
   ];
+
+  // ORCH-0947 [Trip dashboard Spots tile counts tickets, not orders]:
+  // new SECURITY DEFINER RPC biz_trip_tickets_sold(p_event_id) that mirrors
+  // the canonical capacity gate, so the planner dashboard's Spots KPI and
+  // Travelers subtitle match what the checkout RPC actually enforces. C7
+  // is scoped to ORCH-0863 marketing; this is an unrelated planner-dashboard
+  // data-integrity fix. The 0950 file is a source-reconcile copy of an
+  // already-applied-to-remote migration from a parallel worktree — required
+  // for `supabase db push --linked` to succeed from this branch.
+  const ORCH_0947_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260725000001_orch_0947_biz_trip_tickets_sold.sql",
+    "supabase/migrations/__tests__/biz_trip_tickets_sold.test.ts",
+    "supabase/migrations/20260725000000_orch_0950_trip_capacity_single_source.sql",
+  ];
   const ALLOWLIST = [
     ...ORCH_0933_BACKEND_ALLOWLIST,
     ...ORCH_0940_BACKEND_ALLOWLIST,
@@ -671,6 +685,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_0921_BACKEND_ALLOWLIST,
     ...ORCH_0925_BACKEND_ALLOWLIST,
     ...ORCH_0946_BACKEND_ALLOWLIST,
+    ...ORCH_0947_BACKEND_ALLOWLIST,
   ];
   const forbidden = changed.filter(
     (p) =>

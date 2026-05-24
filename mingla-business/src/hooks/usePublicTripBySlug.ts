@@ -215,6 +215,7 @@ export const usePublicTripBySlug = (
         bookingDeadline: event.booking_deadline ?? null,
         bookingsClosed: event.bookings_closed === true,
         bookingsClosedAt: event.bookings_closed_at ?? null,
+        ticketsSoldCount: 0,
       };
 
       return {

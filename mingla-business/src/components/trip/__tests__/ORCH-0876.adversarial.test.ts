@@ -131,6 +131,7 @@ const trip = (patch: Partial<Trip> = {}): Trip => ({
   bookingDeadline: null,
   bookingsClosed: false,
   bookingsClosedAt: null,
+  ticketsSoldCount: 0,
   ...patch,
 });
 

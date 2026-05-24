@@ -53,6 +53,10 @@ describe("ORCH-0859 — tripsService.publishTrip", () => {
       data: { event: { id: "trip-1" } },
       error: null,
     });
+    rpcMock.mockResolvedValueOnce({
+      data: 0,
+      error: null,
+    });
     // Mock getTrip's subsequent refresh
     const eventChain = {
       select: () => eventChain,
@@ -102,10 +106,14 @@ describe("ORCH-0859 — tripsService.publishTrip", () => {
 
     await publishTrip("trip-1", { title: "Test Trip", theme: {} });
 
-    expect(rpcMock).toHaveBeenCalledTimes(1);
+    expect(rpcMock).toHaveBeenCalledTimes(2);
     const [calledFn] = rpcMock.mock.calls[0] as [string, unknown];
     expect(calledFn).toBe("business_publish_trip_draft");
     expect(calledFn).not.toBe("business_publish_event_draft");
+    expect(rpcMock.mock.calls[1]).toEqual([
+      "biz_trip_tickets_sold",
+      { p_event_id: "trip-1" },
+    ]);
   });
 
   test("raises TripPublishValidationError on RPC error with real Postgrest shape", async () => {
