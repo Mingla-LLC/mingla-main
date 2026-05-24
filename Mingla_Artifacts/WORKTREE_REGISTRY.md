@@ -12,10 +12,9 @@ Reference: [WORKTREE_STRATEGY.md](WORKTREE_STRATEGY.md).
 
 ## Active worktrees
 
-_(empty — no ORCHs in flight as of cutover)_
-
 | Worktree path | Branch | ORCH-ID | Phase | Sim assigned | Metro port | Spawned | Owner |
 |---------------|--------|---------|-------|--------------|------------|---------|-------|
+| `~/Desktop/mingla-orchs/orch-0922-[cr6-rls-gap-rename-from-0920]/` | `orch-0922-cr6-rls-gap-rename-from-0920` | ORCH-0922 | CLOSE (artifact rename only — no code/migration/edge-fn) | none (docs-only) | 8083 | 2026-05-24 | Claude `mingla-orchestrator` |
 
 ---
 
