@@ -3797,6 +3797,15 @@ Two strict-grep gates run together:
 
 **Status:** ACTIVE — codified 2026-05-24 by ORCH-0945 [Collab deck dead-end UX polish] CLOSE.
 
+### I-COMMS-LEDGER-ENTRY-STANZA
+Every Claude skill `SKILL.md` and the repo-root `AGENTS.md` contain the literal heading `## Read the Comms Ledger on entry (MANDATORY)`. Enforced by `.github/scripts/strict-grep/meta-orch-0954-comms-ledger-stanza.mjs`. Codified META-ORCH-0954 2026-05-24.
+
+### I-COMMS-LEDGER-WRITE-ON-DISCOVERY
+Any skill that discovers something affecting another in-flight ORCH MUST add a `COMMS-NNNN` row to `/Users/sethogieva/Desktop/mingla-main/COMMS_LEDGER.md` in the same turn the discovery is made. Reviewer-enforced (no script). Codified META-ORCH-0954 2026-05-24.
+
+### I-RESPONSE-2-SECTION-SHAPE
+Every chat response from every skill uses Section A (what just happened) + Section B (handoff: B1 numbered Seth-todo / B2 paste paragraph for skill / B3 none). Section heading `## Standardized 2-Section Output (MANDATORY, every response, every turn)` present in every SKILL.md + AGENTS.md. Enforced by `.github/scripts/strict-grep/meta-orch-0954-comms-ledger-stanza.mjs`. Codified META-ORCH-0954 2026-05-24.
+
 ### I-PROPOSED-PREFS-SHEET-READ-ONLY-NO-WRITE — ORCH-0945 PREFERENCES SHEET READ-ONLY NO-WRITE
 
 **Statement:** When `PreferencesSheet` receives `viewParticipantId`, it must render that participant's preferences read-only and no code path may write preferences from that mode. `handleApplyPreferences` and every visible edit handler must short-circuit through the central `isEditable` guard.

@@ -10,6 +10,8 @@ on:
       - "supabase/migrations/**"
       - "supabase/functions/**"
       - "packages/**"
+      - ".claude/skills/**"
+      - "AGENTS.md"
       - ".github/scripts/strict-grep/**"
       - ".github/workflows/strict-grep-mingla-business.yml"
   push:
@@ -21,6 +23,8 @@ on:
       - "supabase/migrations/**"
       - "supabase/functions/**"
       - "packages/**"
+      - ".claude/skills/**"
+      - "AGENTS.md"
       - ".github/scripts/strict-grep/**"
       - ".github/workflows/strict-grep-mingla-business.yml"
 
@@ -109,6 +113,7 @@ on:
 #   - I-PROPOSED-PREFS-SHEET-READ-ONLY-NO-WRITE (i-proposed-orch-0945-prefs-sheet-read-only-no-write.mjs) — read-only PreferencesSheet mode cannot write participant prefs (ORCH-0945)
 #   - G-CIRCLE-RPC-SOLE-OWNER (circle-rpc-sole-owner.sh) — Your Circle uses get_user_circle RPC as sole data path (ORCH-0933)
 #   - G-CIRCLE-BADGE-DUAL-APP (circle-badge-dual-app.sh) — Your Circle briefcase badge means dual-app user only (ORCH-0933)
+#   - I-COMMS-LEDGER-ENTRY-STANZA + I-RESPONSE-2-SECTION-SHAPE (meta-orch-0954-comms-ledger-stanza.mjs) — every Claude SKILL.md + AGENTS.md carries ledger + 2-section output stanzas (META-ORCH-0954)
 #
 # Future gates to register (proposed but not yet implemented):
 #   - I-32 rank parity (Cycle 13a proposal)
@@ -1552,3 +1557,14 @@ jobs:
           node-version: "20"
       - name: Run ORCH-0945 prefs read-only no-write gate
         run: node .github/scripts/strict-grep/i-proposed-orch-0945-prefs-sheet-read-only-no-write.mjs
+
+  meta-orch-0954-comms-ledger-stanza:
+    name: "META-ORCH-0954: comms ledger stanza + 2-section output"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run META-ORCH-0954 stanza gate
+        run: node .github/scripts/strict-grep/meta-orch-0954-comms-ledger-stanza.mjs
