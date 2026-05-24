@@ -58,6 +58,7 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
   showErrors,
   editMode,
   canEditTicketPrice = true,
+  coverMediaEventId,
   brandDefaultCurrency,
 }) => {
   // ORCH-0704 v2 — sold-count map. Empty in create-flow + ORCH-0704 stub mode.
@@ -194,14 +195,14 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
       ? "Unlimited"
       : !hasDisplayCurrency
         ? "Currency not set"
-      : formatCurrencyRound(
-          draft.tickets.reduce(
-            (sum, t) =>
-              sum + (t.isFree ? 0 : (t.priceGbp ?? 0) * (t.capacity ?? 0)),
-            0,
-          ),
-          displayCurrency,
-        );
+        : formatCurrencyRound(
+            draft.tickets.reduce(
+              (sum, t) =>
+                sum + (t.isFree ? 0 : (t.priceGbp ?? 0) * (t.capacity ?? 0)),
+              0,
+            ),
+            displayCurrency,
+          );
 
   // Find the next available displayOrder for the new-ticket sheet.
   const nextOrder = nextDisplayOrder(draft.tickets);
@@ -307,6 +308,7 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
         }
         canEditPrice={canEditTicketPrice}
         eventCurrency={hasDisplayCurrency ? displayCurrency : undefined}
+        eventId={coverMediaEventId}
       />
 
       <ConfirmDialog

@@ -34,6 +34,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import {
   dispatchTicketConfirmation,
+  dispatchTicketNotification,
   jsonResponse,
   serviceClient,
   ticketCorsHeaders,
@@ -41,11 +42,12 @@ import {
 
 interface RetryableRow {
   id: string;
-  order_id: string;
+  order_id: string | null;
   status: string;
   attempt_count: number | null;
   updated_at: string;
   created_at: string;
+  payload: Record<string, unknown> | null;
 }
 
 const BATCH_LIMIT = 50;
@@ -89,7 +91,9 @@ serve(async (req) => {
 
   const { data: rows, error: queryError } = await supabase
     .from("ticket_order_notifications")
-    .select("id, order_id, status, attempt_count, updated_at, created_at")
+    .select(
+      "id, order_id, status, attempt_count, updated_at, created_at, payload",
+    )
     .in("status", ["failed_retryable", "pending"])
     .lt("attempt_count", MAX_ATTEMPTS)
     .order("updated_at", { ascending: true })
@@ -106,10 +110,22 @@ serve(async (req) => {
   const eligible = ((rows ?? []) as RetryableRow[]).filter((row) =>
     isEligible(row, nowMs)
   );
-  const uniqueOrderIds = [...new Set(eligible.map((r) => r.order_id))];
+  const waitlistNotificationIds = eligible
+    .filter((row) =>
+      row.order_id === null &&
+      row.payload?.template_key === "waitlist_spot_open"
+    )
+    .map((row) => row.id);
+  const uniqueOrderIds = [...new Set(eligible.map((r) => r.order_id))]
+    .filter((orderId): orderId is string => typeof orderId === "string");
 
   const results: Array<
-    { orderId: string; status: "dispatched" | "failed"; error?: string }
+    {
+      orderId?: string;
+      notificationId?: string;
+      status: "dispatched" | "failed";
+      error?: string;
+    }
   > = [];
 
   for (const orderId of uniqueOrderIds) {
@@ -126,10 +142,25 @@ serve(async (req) => {
     }
   }
 
+  for (const notificationId of waitlistNotificationIds) {
+    try {
+      await dispatchTicketNotification(notificationId);
+      results.push({ notificationId, status: "dispatched" });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(
+        `[notification-retry-sweeper] dispatch failed for notification ${notificationId}`,
+        message,
+      );
+      results.push({ notificationId, status: "failed", error: message });
+    }
+  }
+
   return jsonResponse({
     scanned,
     eligible: eligible.length,
     unique_orders: uniqueOrderIds.length,
+    unique_notifications: waitlistNotificationIds.length,
     results,
     swept_at: now.toISOString(),
   });

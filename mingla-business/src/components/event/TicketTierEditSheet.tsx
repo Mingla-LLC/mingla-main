@@ -38,6 +38,8 @@ import type {
   TicketStub,
   TicketVisibility,
 } from "../../store/draftEventStore";
+import { useEventWaitlist } from "../../hooks/useEventWaitlist";
+import type { EventWaitlistEntry } from "../../services/waitlistService";
 import { generateTicketId } from "../../utils/draftEventId";
 import { formatCurrency } from "../../utils/currency";
 
@@ -270,6 +272,47 @@ const ToggleRow: React.FC<ToggleRowProps> = ({
   </Pressable>
 );
 
+interface WaitlistEntriesSheetProps {
+  visible: boolean;
+  entries: EventWaitlistEntry[];
+  onClose: () => void;
+}
+
+const maskEmail = (email: string | null): string => {
+  if (email === null) return "No email";
+  const [local, domain] = email.split("@");
+  if (!local || !domain) return "Email hidden";
+  return `${local.slice(0, 1)}***@${domain}`;
+};
+
+const WaitlistEntryRow: React.FC<{ entry: EventWaitlistEntry }> = ({
+  entry,
+}) => (
+  <View style={styles.waitlistEntryRow}>
+    <View style={styles.waitlistEntryTextCol}>
+      <Text style={styles.waitlistEntryName}>{entry.name ?? "Anonymous"}</Text>
+      <Text style={styles.waitlistEntryMeta}>
+        {maskEmail(entry.email)} · Qty {entry.qtyRequested} · {entry.status}
+      </Text>
+    </View>
+  </View>
+);
+
+const WaitlistEntriesSheet: React.FC<WaitlistEntriesSheetProps> = ({
+  visible,
+  entries,
+  onClose,
+}) => (
+  <Sheet visible={visible} onClose={onClose} snapPoint="full">
+    <View style={styles.waitlistSheetBody}>
+      <Text style={styles.sheetTitle}>Waitlist signups</Text>
+      {entries.slice(0, 25).map((entry) => (
+        <WaitlistEntryRow key={entry.id} entry={entry} />
+      ))}
+    </View>
+  </Sheet>
+);
+
 // ---- TicketTierEditSheet (main export) ------------------------------
 
 export interface TicketTierEditSheetProps {
@@ -297,6 +340,8 @@ export interface TicketTierEditSheetProps {
   canEditPrice?: boolean;
   /** ISO 4217 event/brand currency used for price copy in the sheet. */
   eventCurrency?: string;
+  /** Supabase events.id for planner waitlist reads on saved tiers. */
+  eventId?: string | null;
 }
 
 export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
@@ -308,6 +353,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
   soldCount = 0,
   canEditPrice = true,
   eventCurrency,
+  eventId = null,
 }) => {
   // ORCH-0704 v2: when this tier has sales, lock price + isFree + isUnlimited
   // fields and surface the refund-first messaging.
@@ -341,9 +387,9 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
   const [saleEndAt, setSaleEndAt] = useState<string | null>(null);
   // Sale-period picker — bottom-docked inline (same pattern as
   // MultiDateOverrideSheet's time picker). NOT a nested Sheet.
-  const [salePickerMode, setSalePickerMode] = useState<
-    "start" | "end" | null
-  >(null);
+  const [salePickerMode, setSalePickerMode] = useState<"start" | "end" | null>(
+    null,
+  );
   const [salePickerTemp, setSalePickerTemp] = useState<Date | null>(null);
 
   // Web hidden input refs — tap row → showPicker()/.click() opens browser
@@ -369,6 +415,9 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
       ? formatCurrency(Number.parseFloat(priceText), priceCurrency)
       : "—";
   const [availSheetVisible, setAvailSheetVisible] = useState<boolean>(false);
+  const [waitlistEntriesSheetVisible, setWaitlistEntriesSheetVisible] =
+    useState<boolean>(false);
+  const eventWaitlistQuery = useEventWaitlist(eventId);
 
   // Keyboard awareness — handled natively via the ScrollView's
   // `automaticallyAdjustKeyboardInsets` prop below. iOS adds bottom
@@ -460,6 +509,14 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
     saleStartAt !== null &&
     saleEndAt !== null &&
     new Date(saleEndAt).getTime() <= new Date(saleStartAt).getTime();
+  const waitlistRow =
+    initial !== null
+      ? (eventWaitlistQuery.data?.find(
+          (row) => row.ticketTypeId === initial.id,
+        ) ?? null)
+      : null;
+  const waitlistTotal =
+    (waitlistRow?.waitingCount ?? 0) + (waitlistRow?.invitedCount ?? 0);
 
   // ORCH-0704 v2 — capacity floor inline validation when tier has sales.
   const parsedCapacityValue = parseInt(capacityText, 10);
@@ -507,8 +564,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
       }
       // Native (iOS/Android): existing Sheet/dialog flow.
       const initialIso = mode === "start" ? saleStartAt : saleEndAt;
-      const initial =
-        initialIso !== null ? new Date(initialIso) : new Date();
+      const initial = initialIso !== null ? new Date(initialIso) : new Date();
       setSalePickerTemp(initial);
       setSalePickerMode(mode);
     },
@@ -682,9 +738,9 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
                 </Text>
                 <Text style={styles.lockBannerBody}>
                   Existing buyers are protected at the price they paid. To
-                  change price or free/paid, refund those buyers first
-                  (then add a new tier). Other modifiers, description, and
-                  visibility can be edited.
+                  change price or free/paid, refund those buyers first (then add
+                  a new tier). Other modifiers, description, and visibility can
+                  be edited.
                 </Text>
               </View>
             </View>
@@ -778,7 +834,8 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
                   style={styles.textInput}
                   editable={!isPriceLocked}
                   accessibilityLabel={
-                    priceCurrency !== undefined && priceCurrency.trim().length > 0
+                    priceCurrency !== undefined &&
+                    priceCurrency.trim().length > 0
                       ? `Ticket price in ${priceCurrency.trim().toUpperCase()}`
                       : "Ticket price"
                   }
@@ -791,8 +848,8 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
                 </Text>
               ) : isPriceLocked ? (
                 <Text style={styles.helperHint}>
-                  Existing buyers locked at {lockedPriceLabel}. Change
-                  applies to new buyers only — refund first to change.
+                  Existing buyers locked at {lockedPriceLabel}. Change applies
+                  to new buyers only — refund first to change.
                 </Text>
               ) : null}
             </View>
@@ -838,8 +895,8 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
               </View>
               {capacityBelowSold ? (
                 <Text style={styles.helperError}>
-                  Cannot go below {soldCount} tickets sold. Increase capacity
-                  or refund existing buyers first.
+                  Cannot go below {soldCount} tickets sold. Increase capacity or
+                  refund existing buyers first.
                 </Text>
               ) : isPriceLocked ? (
                 <Text style={styles.helperHint}>
@@ -912,7 +969,9 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
                     if (value.length > 0) setPasswordConfigured(false);
                   }}
                   placeholder={
-                    passwordConfigured ? "Password already set" : "Min 4 characters"
+                    passwordConfigured
+                      ? "Password already set"
+                      : "Min 4 characters"
                   }
                   placeholderTextColor={textTokens.quaternary}
                   secureTextEntry={!passwordRevealed}
@@ -961,6 +1020,31 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
             <Text style={styles.helperError}>
               Unlimited tickets do not need a waitlist — turn one off.
             </Text>
+          ) : null}
+
+          {waitlistEnabled &&
+          initial !== null &&
+          waitlistRow !== null &&
+          waitlistTotal > 0 ? (
+            <View style={styles.waitlistPanel}>
+              <View style={styles.waitlistPanelHeader}>
+                <Text style={styles.waitlistPanelTitle}>
+                  Waitlist · {waitlistRow.waitingCount} waiting ·{" "}
+                  {waitlistRow.invitedCount} invited
+                </Text>
+                <Pressable
+                  onPress={() => setWaitlistEntriesSheetVisible(true)}
+                  accessibilityRole="button"
+                  accessibilityLabel="See all waitlist signups"
+                  hitSlop={8}
+                >
+                  <Text style={styles.waitlistSeeAll}>See all</Text>
+                </Pressable>
+              </View>
+              {waitlistRow.recent.slice(0, 5).map((entry) => (
+                <WaitlistEntryRow key={entry.id} entry={entry} />
+              ))}
+            </View>
           ) : null}
 
           {/* ───── Section: Purchase quantity ───── */}
@@ -1097,7 +1181,8 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
               </Text>
             ) : (
               <Text style={styles.helperHint}>
-                Leave blank for sales-open-immediately and sales-close-at-event-start.
+                Leave blank for sales-open-immediately and
+                sales-close-at-event-start.
               </Text>
             )}
           </View>
@@ -1209,7 +1294,9 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
             ref={saleStartInputRef}
             type="datetime-local"
             value={
-              saleStartAt !== null ? datetimeLocalFromDate(new Date(saleStartAt)) : ""
+              saleStartAt !== null
+                ? datetimeLocalFromDate(new Date(saleStartAt))
+                : ""
             }
             onChange={(e) => {
               const v = (e.target as unknown as { value: string }).value;
@@ -1226,7 +1313,9 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
             ref={saleEndInputRef}
             type="datetime-local"
             value={
-              saleEndAt !== null ? datetimeLocalFromDate(new Date(saleEndAt)) : ""
+              saleEndAt !== null
+                ? datetimeLocalFromDate(new Date(saleEndAt))
+                : ""
             }
             onChange={(e) => {
               const v = (e.target as unknown as { value: string }).value;
@@ -1260,6 +1349,12 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
           setAvailableAt(v);
           setAvailSheetVisible(false);
         }}
+      />
+
+      <WaitlistEntriesSheet
+        visible={waitlistEntriesSheetVisible}
+        entries={waitlistRow?.recent ?? []}
+        onClose={() => setWaitlistEntriesSheetVisible(false)}
       />
     </Sheet>
   );
@@ -1385,6 +1480,57 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 16,
     color: textTokens.secondary,
+  },
+  waitlistPanel: {
+    borderRadius: radiusTokens.md,
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+    backgroundColor: glass.tint.profileBase,
+    padding: spacing.md,
+    marginTop: spacing.xs,
+    marginBottom: spacing.md,
+    gap: spacing.sm,
+  },
+  waitlistPanelHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+  },
+  waitlistPanelTitle: {
+    flex: 1,
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+    fontWeight: "700",
+    color: textTokens.primary,
+  },
+  waitlistSeeAll: {
+    fontSize: typography.caption.fontSize,
+    fontWeight: "700",
+    color: accent.warm,
+  },
+  waitlistEntryRow: {
+    paddingVertical: spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: glass.border.profileBase,
+  },
+  waitlistEntryTextCol: {
+    gap: 2,
+  },
+  waitlistEntryName: {
+    fontSize: typography.bodySm.fontSize,
+    fontWeight: "600",
+    color: textTokens.primary,
+  },
+  waitlistEntryMeta: {
+    fontSize: typography.caption.fontSize,
+    color: textTokens.tertiary,
+  },
+  waitlistSheetBody: {
+    flex: 1,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    gap: spacing.sm,
   },
 
   // Picker rows

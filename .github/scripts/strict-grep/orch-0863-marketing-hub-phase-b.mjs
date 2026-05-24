@@ -598,6 +598,43 @@ function checkNoNewBackendFiles() {
   const ORCH_0940_BACKEND_ALLOWLIST = [
     "supabase/migrations/20260724000005_profile_circle_relationship_source.sql",
   ];
+  // ORCH-0948 [Waitlist feature — schema + RPC + buyer-web CTA + planner
+  // notification] IMPLEMENT branch (2026-05-24). C7 is scoped to ORCH-0863
+  // marketing; these backend touches are waitlist schema/RPC, anon signup,
+  // ticket notification dispatch, retry-sweeper null-order dispatch support,
+  // and the implementor regression tests/templates for that feature.
+  const ORCH_0948_BACKEND_ALLOWLIST = [
+    "supabase/config.toml",
+    "supabase/functions/_shared/ticketCheckout.ts",
+    "supabase/functions/_shared/email/templates/waitlistSpotOpen.ts",
+    "supabase/functions/_shared/email/templates/__tests__/waitlistSpotOpen.test.ts",
+    "supabase/functions/_shared/sms/templates/waitlistSpotOpen.ts",
+    "supabase/functions/notification-retry-sweeper/index.ts",
+    "supabase/functions/notification-retry-sweeper/index.test.ts",
+    "supabase/functions/ticket-confirmation-dispatch/index.ts",
+    "supabase/functions/ticket-confirmation-dispatch/__tests__/waitlist-spot-open.adversarial.test.ts",
+    "supabase/functions/waitlist-signup/index.ts",
+    "supabase/functions/waitlist-signup/__tests__/signup-happy.test.ts",
+    "supabase/functions/waitlist-signup/__tests__/signup-dedupe.test.ts",
+    "supabase/migrations/20260724000010_orch_0948_waitlist_feature.sql",
+    // Renamed from 20260724000006 → 20260724000010 by orchestrator pre-deploy
+    // to resolve version collision with remote-applied
+    // 20260724000006_orch_0946_public_ticket_types_remaining. Old filename kept
+    // in allowlist so post-rename git diff (deletion + addition) clears C7.
+    "supabase/migrations/20260724000006_orch_0948_waitlist_feature.sql",
+    "supabase/migrations/__tests__/orch_0948_waitlist_migration.test.ts",
+  ];
+  // ORCH-0948 deploy reconciliation (2026-05-24): these exact migration files
+  // were already applied remotely by their owning ORCHs after this worktree
+  // branched. They are carried here as source-reconciled remote-only history
+  // so ORCH-0948 can push its own migration without drift; ownership remains
+  // with ORCH-0946 / ORCH-0915 / ORCH-0950 / ORCH-0947.
+  const ORCH_0948_RECONCILED_REMOTE_MIGRATION_ALLOWLIST = [
+    "supabase/migrations/20260724000006_orch_0946_public_ticket_types_remaining.sql",
+    "supabase/migrations/20260724000007_orch_0915_pay_in_full_opt_out.sql",
+    "supabase/migrations/20260725000000_orch_0950_trip_capacity_single_source.sql",
+    "supabase/migrations/20260725000001_orch_0947_biz_trip_tickets_sold.sql",
+  ];
   // ORCH-0930 [TicketQrCarousel React #418 hydration mismatch] + ORCH-0928-LOCKIN
   // [success_url query-string recovery regression test] bundled into PR #184
   // alongside ORCH-0942 (2026-05-23 operator-approved bundle). C7 is scoped to
@@ -656,6 +693,8 @@ function checkNoNewBackendFiles() {
   const ALLOWLIST = [
     ...ORCH_0933_BACKEND_ALLOWLIST,
     ...ORCH_0940_BACKEND_ALLOWLIST,
+    ...ORCH_0948_BACKEND_ALLOWLIST,
+    ...ORCH_0948_RECONCILED_REMOTE_MIGRATION_ALLOWLIST,
     ...ORCH_0930_0928_LOCKIN_BACKEND_ALLOWLIST,
     ...ORCH_0932_BACKEND_ALLOWLIST,
     ...ORCH_0931_BACKEND_ALLOWLIST,

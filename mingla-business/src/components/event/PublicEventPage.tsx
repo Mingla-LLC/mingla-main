@@ -48,6 +48,7 @@ import { eventCoverProviderCreditLabel } from "../../types/eventCoverProvider";
 
 import { ShareModal } from "../ui/ShareModal";
 import { Toast } from "../ui/Toast";
+import { JoinWaitlistSheet } from "../waitlist/JoinWaitlistSheet";
 
 interface PublicEventPageAdapterProps {
   event: LiveEvent;
@@ -137,7 +138,9 @@ const mapLiveEventToPublicEvent = (event: LiveEvent): PublicEventProps => {
   };
 };
 
-const mapBrandToPublicBrand = (brand: Brand | null): PublicBrandProps | null => {
+const mapBrandToPublicBrand = (
+  brand: Brand | null,
+): PublicBrandProps | null => {
   if (brand === null) return null;
   return {
     id: brand.id,
@@ -166,6 +169,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
     visible: false,
     message: "",
   });
+  const [waitlistTicketId, setWaitlistTicketId] = useState<string | null>(null);
 
   // Founder-aware viewer role. Today useBrandList returns all stub brands
   // to any signed-in user (Cycle 1 pre-B-cycle), so this resolves to
@@ -178,11 +182,14 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
     // from the public page.
   }, [user, userBrands, event.brandId]);
 
-  const publicEvent = useMemo(
-    () => mapLiveEventToPublicEvent(event),
-    [event],
-  );
+  const publicEvent = useMemo(() => mapLiveEventToPublicEvent(event), [event]);
   const publicBrand = useMemo(() => mapBrandToPublicBrand(brand), [brand]);
+  const waitlistTicket = useMemo(
+    () =>
+      publicEvent.tickets.find((ticket) => ticket.id === waitlistTicketId) ??
+      null,
+    [publicEvent.tickets, waitlistTicketId],
+  );
 
   const showToast = useCallback((message: string): void => {
     setToast({ visible: true, message });
@@ -206,8 +213,8 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       onClaimFreeTicket: (_ticketId: string) => {
         router.push(checkoutPublicPath(event.id) as never);
       },
-      onJoinWaitlist: (_ticketId: string) => {
-        showToast("Waitlist invites land B5.");
+      onJoinWaitlist: (ticketId: string) => {
+        setWaitlistTicketId(ticketId);
       },
       onRequestApproval: (_ticketId: string) => {
         showToast("Approval flow lands Cycle 10 + B4.");
@@ -283,6 +290,13 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         url={canonicalUrl(event)}
         title={event.name}
         description={event.description.slice(0, 200)}
+      />
+
+      <JoinWaitlistSheet
+        visible={waitlistTicket !== null}
+        eventId={event.id}
+        ticket={waitlistTicket}
+        onClose={() => setWaitlistTicketId(null)}
       />
 
       <View style={styles.toastWrap} pointerEvents="box-none">

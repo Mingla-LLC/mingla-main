@@ -37,6 +37,7 @@ export interface QuantityRowProps {
   quantity: number;
   /** Caller dispatches; this component is fully controlled. */
   onQuantityChange: (next: number) => void;
+  onJoinWaitlist?: (ticketId: string) => void;
 }
 
 const MINGLA_BUSINESS_THEME: QuantityRowTheme = {
@@ -73,6 +74,7 @@ export const QuantityRow: React.FC<QuantityRowProps> = ({
   ticket,
   quantity,
   onQuantityChange,
+  onJoinWaitlist,
 }) => {
   const renderPlusIcon = useCallback(
     (iconProps: { size: number; color: string }) => (
@@ -96,6 +98,7 @@ export const QuantityRow: React.FC<QuantityRowProps> = ({
       maxPurchaseQty: ticket.maxPurchaseQty ?? null,
       saleStartAt: ticket.saleStartAt ?? null,
       saleEndAt: ticket.saleEndAt ?? null,
+      waitlistEnabled: ticket.waitlistEnabled,
     }),
     [ticket],
   );
@@ -110,6 +113,7 @@ export const QuantityRow: React.FC<QuantityRowProps> = ({
       formatCurrency={formatCurrency}
       theme={MINGLA_BUSINESS_THEME}
       fallbackCurrency="GBP"
+      onJoinWaitlist={onJoinWaitlist}
     />
   );
 };

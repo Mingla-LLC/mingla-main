@@ -50,6 +50,12 @@ Deno.test("notification-retry-sweeper: groups by order_id (one dispatcher call p
   assert(SOURCE.includes(".order_id"));
 });
 
+Deno.test("notification-retry-sweeper: dispatches null-order waitlist notifications by notificationId", () => {
+  assert(SOURCE.includes("dispatchTicketNotification"));
+  assert(SOURCE.includes('row.payload?.template_key === "waitlist_spot_open"'));
+  assert(SOURCE.includes("waitlistNotificationIds"));
+});
+
 Deno.test("notification-retry-sweeper: dispatcher failures are NON-FATAL (try/catch per order)", () => {
   // Per-order try/catch with results pushed in both branches.
   assert(/results\.push\(\s*\{\s*orderId,\s*status:\s*"dispatched"/.test(SOURCE));

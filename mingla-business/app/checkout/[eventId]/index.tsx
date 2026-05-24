@@ -16,13 +16,8 @@
 
 // orch-strict-grep-allow safearea-on-fullscreen-routes — design-intent full-bleed checkout header: insets.bottom IS applied (line 230 + 283) for home-indicator clearance; the top status-bar overlap with back arrow / "Get tickets" header / "1 OF 3" pill is the intended banner-style buyer aesthetic. Per ORCH-0859 [Tr2 Minimum Viable Trip] REWORK 5b operator design ruling 2026-05-17 (QA report §1) + pixel verification on iPhone 17 Pro Max sim (screenshot 18-CHECKOUT-INDEX.png).
 
-import React, { useCallback } from "react";
-import {
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import React, { useCallback, useState } from "react";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
@@ -48,6 +43,7 @@ import {
 } from "../../../src/components/checkout/CartContext";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
 import { QuantityRow } from "../../../src/components/checkout/QuantityRow";
+import { JoinWaitlistSheet } from "../../../src/components/waitlist/JoinWaitlistSheet";
 // ORCH-0850 [End-not-start parity systemic]: route the past gate through the
 // canonical helper. Pre-0850 local `computeIsPast` used `new Date(event.date)
 // + 24h < Date.now()` which fired at 8pm EDT on the start day for any
@@ -82,6 +78,7 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
 
   const { lines, setLineQuantity } = useCart();
   const totals = useCartTotals();
+  const [waitlistTicketId, setWaitlistTicketId] = useState<string | null>(null);
 
   const handleBack = useCallback((): void => {
     if (router.canGoBack()) {
@@ -172,9 +169,10 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
   const isPast = isEventPast(event, computeMasterEndAtUtc(event));
   const allSoldOut =
     visibleTickets.length > 0 &&
-    visibleTickets.every(
-      (t) => !t.isUnlimited && (t.capacity ?? 0) <= 0,
-    );
+    visibleTickets.every((t) => !t.isUnlimited && (t.capacity ?? 0) <= 0);
+  const hasWaitlistSoldOut = visibleTickets.some(
+    (t) => !t.isUnlimited && (t.capacity ?? 0) <= 0 && t.waitlistEnabled,
+  );
   const allUnavailable =
     visibleTickets.length > 0 &&
     visibleTickets.every(
@@ -183,8 +181,15 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
         ticketSalesEnded(t) ||
         (!t.isUnlimited && (t.capacity ?? 0) <= 0),
     );
+  const waitlistTicket =
+    visibleTickets.find((ticket) => ticket.id === waitlistTicketId) ?? null;
 
-  if (isPast || visibleTickets.length === 0 || allSoldOut || allUnavailable) {
+  if (
+    isPast ||
+    visibleTickets.length === 0 ||
+    (allSoldOut && !hasWaitlistSoldOut) ||
+    (allUnavailable && !hasWaitlistSoldOut)
+  ) {
     return (
       <View style={styles.host}>
         <CheckoutHeader
@@ -213,9 +218,7 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
     );
   }
 
-  const continueLabel = totals.isFree
-    ? "Reserve free ticket"
-    : "Continue";
+  const continueLabel = totals.isFree ? "Reserve free ticket" : "Continue";
 
   return (
     <View style={styles.host}>
@@ -263,6 +266,7 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
               key={ticket.id}
               ticket={ticket}
               quantity={qty}
+              onJoinWaitlist={setWaitlistTicketId}
               onQuantityChange={(next): void =>
                 setLineQuantity({
                   ticketTypeId: ticket.id,
@@ -311,6 +315,13 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
           }
         />
       </View>
+
+      <JoinWaitlistSheet
+        visible={waitlistTicket !== null}
+        eventId={event.id}
+        ticket={waitlistTicket}
+        onClose={() => setWaitlistTicketId(null)}
+      />
     </View>
   );
 }
