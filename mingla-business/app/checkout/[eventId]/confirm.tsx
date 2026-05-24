@@ -90,11 +90,18 @@ export default function CheckoutConfirmScreen(): React.ReactElement {
     checkoutSessionId: string;
     buyerStatusToken: string;
   } | null>(null);
-  // ORCH-0930 v3 (2026-05-23) — useState initializer pattern. See
-  // parallel patch in checkout-trip/[tripEventId]/confirm.tsx for the
-  // full rationale (v2 useEffect was insufficient; React #418 recovery
-  // cycle prevented the effect from firing).
-  const [isClient] = useState<boolean>(() => typeof window !== "undefined");
+  // ORCH-0951 v2 (2026-05-24) — REVERTS ORCH-0930 v3 back to
+  // useState(false) + useEffect setIsClient(true). See parallel patch in
+  // checkout-trip/[tripEventId]/confirm.tsx for the full rationale
+  // (v3's typeof-window initializer was the real root cause of the
+  // React #418 hydration mismatch that broke the multi-ticket carousel
+  // render on production; v2 makes SSR + client first render BOTH
+  // produce `null` → no mismatch → useEffect fires post-hydration → no
+  // React #418 → carousel mounts cleanly).
+  const [isClient, setIsClient] = useState<boolean>(false);
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
   // Ref flag — flipped to true when buyer taps "Back to event." The
   // beforeRemove listener checks this and lets the navigation through
   // when set, so the explicit CTA exit isn't blocked by the same guard

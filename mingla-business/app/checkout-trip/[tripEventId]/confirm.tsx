@@ -102,19 +102,30 @@ export default function CheckoutTripConfirmScreen(): React.ReactElement {
     buyerStatusToken: string;
   } | null>(null);
   const exitingViaCtaRef = useRef<boolean>(false);
-  // ORCH-0930 v3 (2026-05-23) — parent-level hydration gate via
-  // useState initializer. v2 used `useState(false) + useEffect(setTrue, [])`
-  // but Playwright forensic confirmed the carousel STILL never mounts on
-  // production after v2 deploy. Hypothesis: React's #418 hydration error
-  // recovery cycle resets the useEffect schedule before the effect
-  // fires, so `hydrated` stays false forever. v3 uses a useState
-  // initializer that resolves at render time — `typeof window !==
-  // "undefined"` is true on every client render (initial + re-render)
-  // and false at static-export build time. The carousel mount gate
-  // (`isClient && totalTickets > 0`) thus renders nothing during
-  // static-export pre-render (matches empty skeleton) AND renders the
-  // carousel on every client render (no effect dependency).
-  const [isClient] = useState<boolean>(() => typeof window !== "undefined");
+  // ORCH-0951 v2 (2026-05-24) — REVERTS ORCH-0930 v3 back to useState(false)
+  // + useEffect setIsClient(true). v3's typeof-window initializer was the
+  // REAL root cause of the React #418 hydration mismatch that broke the
+  // multi-ticket carousel render on production: the initializer returns
+  // `false` during SSR (static export, no window) but `true` on client
+  // first render (window exists). React's hydration pass sees `null` on
+  // SSR HTML vs `<TicketQrCarousel>` on client → mismatch → React aborts
+  // the carousel subtree → multi-ticket users see only the bare
+  // minHeight=320 strip (single-ticket "worked" because the simple
+  // <Image> subtree is hydration-recoverable; multi-ticket with
+  // onLayout-driven re-renders is not). Forensic confirmation:
+  // /tmp/orch-0928-forensic/probe-orch-0951-v2.js shows the bare host
+  // exists with width=0px, pageerror=React #418, and the full carousel
+  // subtree never mounts. v2 pattern (this fix) makes SSR + client first
+  // render BOTH produce `null` — no hydration mismatch — then the
+  // useEffect fires post-hydration and the carousel mounts cleanly via a
+  // regular re-render (no hydration check). The earlier belief that "v2
+  // failed because React #418 recovery prevented the effect from firing"
+  // was incorrect — v2 was masked by the unrelated SVG-generation bug
+  // that ORCH-0932 later fixed.
+  const [isClient, setIsClient] = useState<boolean>(false);
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   // ----- Native back guard -----
   useEffect(() => {
