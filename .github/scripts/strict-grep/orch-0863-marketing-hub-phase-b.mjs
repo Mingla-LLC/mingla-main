@@ -631,6 +631,14 @@ function checkNoNewBackendFiles() {
   const ORCH_0931_BACKEND_ALLOWLIST = [
     "supabase/migrations/20260724000001_orch_0931_realtime_broadcast_session_updated.sql",
   ];
+  // ORCH-0946 [Buyer-web sold-out gate] — anon-callable RPC for
+  // remaining-bookable per ticket_type so the buyer-checkout sold-out
+  // banner + QuantityRow "+" cap reflect what's actually bookable
+  // instead of total tier capacity. C7 is scoped to ORCH-0863 marketing;
+  // this is an unrelated buyer-web checkout fix.
+  const ORCH_0946_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260724000006_orch_0946_public_ticket_types_remaining.sql",
+  ];
   const ALLOWLIST = [
     ...ORCH_0933_BACKEND_ALLOWLIST,
     ...ORCH_0940_BACKEND_ALLOWLIST,
@@ -662,6 +670,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_0914_BACKEND_ALLOWLIST,
     ...ORCH_0921_BACKEND_ALLOWLIST,
     ...ORCH_0925_BACKEND_ALLOWLIST,
+    ...ORCH_0946_BACKEND_ALLOWLIST,
   ];
   const forbidden = changed.filter(
     (p) =>

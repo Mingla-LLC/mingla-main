@@ -186,6 +186,11 @@ export const usePublicTripBySlug = (
               priceCents: tt?.price_cents ?? 0,
               currency: tt?.currency ?? "",
               quantityTotal: tt?.quantity_total ?? null,
+              // ORCH-0946 — trip preview page (this hook) does not gate
+              // sold-out; the buyer-checkout page (`usePublicTripById`)
+              // does. Set null here; if the preview later adds a sold-out
+              // badge, wire `pg_public_ticket_types_remaining` here too.
+              ticketsRemaining: null,
               isUnlimited: tt?.is_unlimited ?? false,
               installmentSchedule,
             };
