@@ -10,7 +10,8 @@
  *
  * Severity model (operator-locked Q11):
  *   MATERIAL (notify buyers banner + email + SMS-if-web-purchases):
- *     - theme.business_trip.{startAt, endAt, destinationLocationText, capacity}
+ *     - theme.business_trip.{startAt, endAt, destinationLocationText}
+ *     - ticket_types.quantity_total
  *     - days (when count add/remove)
  *     - inclusions (when items removed; additions are additive)
  *     - pricing_tiers (when tier price changes; name/metadata-only is additive)
@@ -50,7 +51,7 @@ export const FIELD_LABELS: Record<string, string> = {
   "theme.business_trip.endAt": "End date",
   "theme.business_trip.destinationLocationText": "Destination",
   "theme.business_trip.destinationPlaceId": "Destination place",
-  "theme.business_trip.capacity": "Capacity",
+  "ticket_types.quantity_total": "Capacity",
   days: "Itinerary days",
   inclusions: "Inclusions",
   pricing_tiers: "Pricing tiers",
@@ -416,8 +417,8 @@ export const computeRichTripFieldDiffs = (
     }
     if (bt.capacity !== undefined && bt.capacity !== oldTrip.businessTrip.capacity) {
       out.push({
-        fieldKey: "theme.business_trip.capacity",
-        fieldLabel: labelOf("theme.business_trip.capacity"),
+        fieldKey: "ticket_types.quantity_total",
+        fieldLabel: labelOf("ticket_types.quantity_total"),
         oldValue: fmt(oldTrip.businessTrip.capacity),
         newValue: fmt(bt.capacity),
         severity: "material",

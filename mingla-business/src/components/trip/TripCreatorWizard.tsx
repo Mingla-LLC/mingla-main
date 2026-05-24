@@ -510,6 +510,7 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
 
   // ----- Autosave per step transition -----
   const autosaveStep1 = useCallback(async (): Promise<void> => {
+    const priceMajor = parseFloat(step4Draft.priceMajor) || 0;
     await updateBasicsMutation.mutateAsync({
       eventId: trip.id,
       brandId: trip.brandId,
@@ -522,7 +523,6 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
           destinationLocationText: step1Draft.destinationLocationText,
           destinationLat: step1Draft.destinationLat,
           destinationLng: step1Draft.destinationLng,
-          capacity: step1Draft.capacity,
         },
         // ORCH-0876 — cover fields persist alongside basics. CoverPicker
         // emits patches synchronously into draft state; this writes them
@@ -531,7 +531,23 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
         coverMediaType: step1Draft.coverMediaType,
       },
     });
-  }, [step1Draft, trip.id, trip.brandId, updateBasicsMutation]);
+    await updatePricingMutation.mutateAsync({
+      eventId: trip.id,
+      patch: {
+        tierName: step4Draft.tierName.trim() || "Standard",
+        priceCents: Math.round(priceMajor * 100),
+        capacity: step1Draft.capacity ?? 1,
+        installmentSchedule: step4Draft.paymentPlan,
+      },
+    });
+  }, [
+    step1Draft,
+    step4Draft,
+    trip.id,
+    trip.brandId,
+    updateBasicsMutation,
+    updatePricingMutation,
+  ]);
 
   const autosaveStep2 = useCallback(async (): Promise<void> => {
     await upsertDaysMutation.mutateAsync({

@@ -3806,6 +3806,18 @@ Any skill that discovers something affecting another in-flight ORCH MUST add a `
 ### I-RESPONSE-2-SECTION-SHAPE
 Every chat response from every skill uses Section A (what just happened) + Section B (handoff: B1 numbered Seth-todo / B2 paste paragraph for skill / B3 none). Section heading `## Standardized 2-Section Output (MANDATORY, every response, every turn)` present in every SKILL.md + AGENTS.md. Enforced by `.github/scripts/strict-grep/meta-orch-0954-comms-ledger-stanza.mjs`. Codified META-ORCH-0954 2026-05-24.
 
+### I-PROPOSED-TRIP-CAPACITY-SINGLE-SOURCE
+
+**Statement:** Trip capacity is stored ONLY in `ticket_types.quantity_total`. Code that writes or reads `events.theme.business_trip.capacity` for trip-capacity purposes is forbidden. Service-layer aliases such as `TripBusinessTrip.capacity` are permitted ONLY when they source the value from `ticket_types.quantity_total` via join.
+
+**Why:** ORCH-0950 exists because post-publish trip capacity edits wrote JSONB while buyer checkout enforced `ticket_types.quantity_total`, causing silent drift and false `ticket_capacity_exceeded` 409s after planners raised capacity.
+
+**Enforcement:** Strict-grep CI gate `.github/scripts/strict-grep/i-proposed-trip-capacity-single-source.mjs`, service guard in `mingla-business/src/services/tripsService.ts`, and migration `supabase/migrations/20260725000000_orch_0950_trip_capacity_single_source.sql`.
+
+**Source:** SPEC `Mingla_Artifacts/specs/SPEC_ORCH-0950_TRIP_CAPACITY_SINGLE_SOURCE.md` §9 and investigation `Mingla_Artifacts/reports/INVESTIGATION_ORCH-0950_TRIP_CAPACITY_DUAL_SOURCE.md`.
+
+**Status:** DRAFT — flips ACTIVE on ORCH-0950 CLOSE.
+
 ### I-PROPOSED-PREFS-SHEET-READ-ONLY-NO-WRITE — ORCH-0945 PREFERENCES SHEET READ-ONLY NO-WRITE
 
 **Statement:** When `PreferencesSheet` receives `viewParticipantId`, it must render that participant's preferences read-only and no code path may write preferences from that mode. `handleApplyPreferences` and every visible edit handler must short-circuit through the central `isEditable` guard.

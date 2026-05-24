@@ -242,3 +242,15 @@
 **Why:** META-ORCH-0952 PR #205 (merged `f62cfefb`) shipped two production-breaking failures the REVIEW missed: (a) 7 product-code files were uncommitted in the worktree across multiple deploys, so v58/59/60 of `ticket-checkout-confirm` shipped pre-rework code while Vercel kept building pre-rework web bundle from `main` — discovered by Seth's BC-11 test stuck at "Confirming…"; (b) the `app.json` `web.output: static→single` flip silently broke every non-root URL on production because `vercel.json` had 7 bracket-target rewrites depending on per-route HTML files only static-mode emits — discovered by Seth via `curl -I` on production after the merge. The REVIEW report for PR #205 even flagged the second issue as Discovery #1 ("broader than the buyer-web carousel scope... implications for SSR/static-route pre-rendering") but stopped at the flag without opening `vercel.json` to verify. Both failures are the same anti-pattern: trusting implementor claims without verifying downstream consequences.
 **How to apply:** Orchestrator REVIEW must produce verdict APPROVED only with a labeled section "Commit-hash verification" listing each claimed-changed file + its branch commit, AND for config-layer changes a labeled section "Dependency walk" listing each consumer + compatibility assessment.
 **Cross-references:** PR #205 `f62cfefb`, PR #206 hotfix `2c647592`, ORCH-0959 [Orchestrator REVIEW dependency-graph gap + append-only gate META-ORCH regex broadening] (registered as follow-up).
+
+---
+
+## DEC-166 — `ticket_types.quantity_total` is canonical trip capacity per ORCH-0950 (2026-05-24)
+
+**Decision:** `ticket_types.quantity_total` is the canonical trip-capacity column. `events.theme.business_trip.capacity` is decommissioned: stripped from all trip rows, removed from write paths, and guarded by CI against reintroduction.
+
+**Rationale:** Dual-source storage drifted silently on every post-publish capacity edit because `biz_update_live_trip` wrote only to JSONB while `biz_ticket_checkout_create_session` read only from the integer column. Buyer-web then hit `ticket_capacity_exceeded` 409s on trips whose planner thought capacity had been raised. Operator chose root-cause unification (Option D) over a soft-cutover column.
+
+**Supersedes:** The implicit dual-write assumption from ORCH-0824 [Trip publish], ORCH-0859 [Trip publish RPC fork], and ORCH-0876 [Trip published-edit].
+
+**Enforcement:** Migration `supabase/migrations/20260725000000_orch_0950_trip_capacity_single_source.sql`, strict-grep gate `.github/scripts/strict-grep/i-proposed-trip-capacity-single-source.mjs`, and service guard in `mingla-business/src/services/tripsService.ts`.

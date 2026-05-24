@@ -342,7 +342,10 @@ function extractInstallmentSchedule(
   return { deposit_pct: depositPct, installments: cleanInstallments };
 }
 
-function readBusinessTrip(theme: Record<string, unknown> | null): TripBusinessTrip {
+function readBusinessTrip(
+  theme: Record<string, unknown> | null,
+  ticketCapacity: number | null,
+): TripBusinessTrip {
   const bt = (theme?.business_trip as Record<string, unknown> | undefined) ?? {};
   return {
     startAt: typeof bt.startAt === "string" ? bt.startAt : null,
@@ -357,7 +360,7 @@ function readBusinessTrip(theme: Record<string, unknown> | null): TripBusinessTr
       typeof bt.destinationLat === "number" ? bt.destinationLat : null,
     destinationLng:
       typeof bt.destinationLng === "number" ? bt.destinationLng : null,
-    capacity: typeof bt.capacity === "number" ? bt.capacity : null,
+    capacity: ticketCapacity,
   };
 }
 
@@ -384,7 +387,10 @@ function mapTrip(
     timezone: event.timezone,
     coverMediaUrl: event.cover_media_url,
     coverMediaType: event.cover_media_type,
-    businessTrip: readBusinessTrip(event.theme),
+    businessTrip: readBusinessTrip(
+      event.theme,
+      ticketTypes[0]?.quantity_total ?? null,
+    ),
     days: days.map(mapTripDay),
     pricingTiers: tiers.map((t) =>
       mapTripPricingTier(t, ticketTypesById.get(t.ticket_type_id)),
@@ -632,6 +638,13 @@ export async function updateTripBasics(
 
   // theme.business_trip merge — read current, jsonb_set-style merge in JS
   if (patch.businessTrip !== undefined) {
+    if ((patch.businessTrip as Record<string, unknown>).capacity !== undefined) {
+      // orch-strict-grep-allow trip-capacity-defensive-throw
+      throw new Error(
+        "ORCH-0950: trip capacity must be routed through updateTripPricing, not updateTripBasics. " +
+          "Remove `capacity` from the businessTrip patch and call updateTripPricing instead.",
+      );
+    }
     // ORCH-0859 REWORK 3 (events-type-filter audit): defensive — trip-only.
     const current = await supabase
       .from("events")
