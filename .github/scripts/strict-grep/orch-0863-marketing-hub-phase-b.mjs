@@ -623,6 +623,17 @@ function checkNoNewBackendFiles() {
     "supabase/migrations/20260724000006_orch_0948_waitlist_feature.sql",
     "supabase/migrations/__tests__/orch_0948_waitlist_migration.test.ts",
   ];
+  // ORCH-0948 deploy reconciliation (2026-05-24): these exact migration files
+  // were already applied remotely by their owning ORCHs after this worktree
+  // branched. They are carried here as source-reconciled remote-only history
+  // so ORCH-0948 can push its own migration without drift; ownership remains
+  // with ORCH-0946 / ORCH-0915 / ORCH-0950 / ORCH-0947.
+  const ORCH_0948_RECONCILED_REMOTE_MIGRATION_ALLOWLIST = [
+    "supabase/migrations/20260724000006_orch_0946_public_ticket_types_remaining.sql",
+    "supabase/migrations/20260724000007_orch_0915_pay_in_full_opt_out.sql",
+    "supabase/migrations/20260725000000_orch_0950_trip_capacity_single_source.sql",
+    "supabase/migrations/20260725000001_orch_0947_biz_trip_tickets_sold.sql",
+  ];
   // ORCH-0930 [TicketQrCarousel React #418 hydration mismatch] + ORCH-0928-LOCKIN
   // [success_url query-string recovery regression test] bundled into PR #184
   // alongside ORCH-0942 (2026-05-23 operator-approved bundle). C7 is scoped to
@@ -682,6 +693,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_0933_BACKEND_ALLOWLIST,
     ...ORCH_0940_BACKEND_ALLOWLIST,
     ...ORCH_0948_BACKEND_ALLOWLIST,
+    ...ORCH_0948_RECONCILED_REMOTE_MIGRATION_ALLOWLIST,
     ...ORCH_0930_0928_LOCKIN_BACKEND_ALLOWLIST,
     ...ORCH_0932_BACKEND_ALLOWLIST,
     ...ORCH_0931_BACKEND_ALLOWLIST,
