@@ -7,7 +7,7 @@
 > Status: implemented, partially verified
 > Working tree: `/Users/sethogieva/Desktop/mingla-orchs/ORCH-0950-[trip-capacity-single-source]`
 > Branch: `ORCH-0950-trip-capacity-single-source`
-> Implementation commit: `14e532fa`
+> Implementation commits: `14e532fa`, `d85b8e98`, `71dad12f`, `06de74b01f801fe77d304806ae5ded50c9062a7b`
 > Fails-on-revert verified at `14e532fa`
 
 ## 1. Layman Summary
@@ -25,7 +25,7 @@ Trip capacity now has one canonical storage location: `ticket_types.quantity_tot
 
 - **In scope:** Atomic migration; strict-grep gate + self-test + workflow; service reader/guard; wizard autosave reroute; migration contract regression; client guard regression; invariant + decision log entries; ORCH-0863 backend allowlist.
 - **Out of scope:** `supabase db push`, edge function deploys, checkout RPC edits, ORCH-0946, ORCH-0947, UI redesign.
-- **Assumptions:** Trip model remains single tier; pre-flight migration probe aborts if current data violates that assumption.
+- **Assumptions:** Published/sellable trip model remains single tier; pre-flight migration probe aborts if scheduled/live data violates that assumption. Legacy incomplete drafts are excluded from the pre-flight tier probe because publish validation requires exactly one pricing row before a draft can become scheduled.
 
 ## 4. Files Read
 
@@ -54,7 +54,7 @@ Trip capacity now has one canonical storage location: `ticket_types.quantity_tot
 ### `supabase/migrations/20260725000000_orch_0950_trip_capacity_single_source.sql`
 
 - **Before:** Capacity could exist in both JSONB and ticket type integer columns. `biz_update_live_trip` wrote only JSONB; `business_publish_trip_draft` validated JSONB.
-- **After:** Pre-flight invariant probe, drift notice, MAX backfill, JSONB strip, post-strip verification, live-edit capacity write to `ticket_types.quantity_total`, publish validation from ticket type, comments updated.
+- **After:** Pre-flight invariant probe for published/sellable trips, drift notice, MAX backfill, JSONB strip across non-deleted trip rows, post-strip verification, live-edit capacity write to `ticket_types.quantity_total`, publish validation from ticket type, comments updated.
 - **Why:** Make checkout and planner edits share one canonical column.
 
 ### `mingla-business/src/services/tripsService.ts`
@@ -143,12 +143,13 @@ Trip capacity now has one canonical storage location: `ticket_types.quantity_tot
 | New strict-grep gate | `node .github/scripts/strict-grep/i-proposed-trip-capacity-single-source.mjs` | PASS | `files=1434 violations=0` |
 | Strict-grep self-test | `node .github/scripts/strict-grep/i-proposed-trip-capacity-single-source.test.mjs` | PASS | 4/4 |
 | ORCH-0863 backend allowlist gate | `node .github/scripts/strict-grep/orch-0863-marketing-hub-phase-b.mjs` | PASS | Existing script reports C1-C7 pass. |
-| Deno regression | `/Users/sethogieva/.deno/bin/deno test --allow-read supabase/functions/_test/orch_0950_trip_capacity_canonical.test.ts` | PASS | 5/5 |
+| Deno regression | `/Users/sethogieva/.deno/bin/deno test --allow-read supabase/functions/_test/orch_0950_trip_capacity_canonical.test.ts` | PASS | 6/6 |
 | Jest guard | `npx jest src/services/__tests__/tripsService.updateTripBasics.capacity_throws.test.ts --runInBand` from `mingla-business/` | PASS | 1/1 |
 | Diff whitespace | `git diff --check` | PASS | No whitespace errors. |
 | Full TS typecheck | `npx tsc --noEmit --pretty false` from `mingla-business/` | FAIL unrelated | Existing errors in checkout buyer pages, ComposerV2, IconChrome, native payments package resolution, shared packages, and older tests. |
 | Touched-file TS attempt | `npx tsc --noEmit ... src/services/tripsService.ts src/components/trip/TripCreatorWizard.tsx src/utils/tripAdapter.ts` | FAIL unrelated transitive | Errors came from imported existing files (`IconChrome`, `liveEventStore`, `eventCoverMediaRules`). |
-| Remote migration head check | `/Users/sethogieva/bin/supabase migration list --linked` | BLOCKED | CLI says project is not linked in this worktree. Local + `origin/main` heads are `20260724000005`, so `20260725000000` is monotonic. |
+| Remote migration head check | `/Users/sethogieva/bin/supabase migration list --linked` | PASS | No remote-only rows remain after ORCH-0946 reconciliation; `20260725000000` is local-only pending. |
+| Remote pre-flight data probe | Supabase MCP read-only SQL for scheduled/live trips | PASS | 3 sellable trips, 0 bad tier rows, 0 bad joined ticket type rows. |
 | Fails-on-revert | Temporarily changed migration `SET quantity_total = v_new_capacity` to `v_old_capacity`, reran Deno test, restored | FAIL proved | Deno T-02 failed, then passed again after restore. Fails-on-revert verified at `14e532fa`. |
 
 ## 13. Regression Surface
@@ -166,16 +167,21 @@ Trip capacity now has one canonical storage location: `ticket_types.quantity_tot
 | Migration not applied by implementor | DB still has old function/data until operator pushes | Operator runs `supabase db push --linked` | Deploy notes |
 | Full TS typecheck red before ORCH-0950 | Cannot claim full TS green | Separate owners fix pre-existing errors | Verification |
 | Live-fire unverified | UI/device parity not proven in this pass | Tester runs mandatory iOS/Android/buyer-web/DC-style gates | Downstream QA |
-| Remote migration list unavailable | Worktree not linked to Supabase project | Operator/orchestrator verifies via MCP after push | Deploy notes |
+| Legacy incomplete drafts | Three abandoned draft trip rows have zero pricing tiers | Migration excludes drafts from sellable pre-flight; publish RPC validates exact tier count before scheduled status | Remote pre-flight probe |
 
 ## 15. Discoveries For Orchestrator
 
 - `mingla-business/src/utils/tripAdapter.ts` still exposed the legacy JSONB capacity key in diff labels; fixed in scope because the new gate caught it and it is the same capacity contract.
+- Operator's first `supabase db push --linked` attempt aborted safely before writes because the initial pre-flight guard checked all non-deleted trip rows. Read-only Supabase probe found the three offenders were unpublished `draft`/`draft` "Untitled trip" rows with zero pricing rows; scheduled/live trips had zero violations. The unapplied migration was corrected to enforce the tier invariant only for published/sellable trips while still stripping JSONB capacity from every non-deleted trip row.
 - No new ORCH-0946 or ORCH-0947 work was performed.
 
 ## 16. Deploy Notes
 
-- **Migrations:** Operator applies `supabase/migrations/20260725000000_orch_0950_trip_capacity_single_source.sql` via `supabase db push --linked`. Do not use Codex for DB push.
+- **Migrations:** Operator applies `supabase/migrations/20260725000000_orch_0950_trip_capacity_single_source.sql` with the exact command below. Do not use Codex for DB push.
+
+```bash
+cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0950-[trip-capacity-single-source]" && /Users/sethogieva/bin/supabase db push --linked
+```
 - **Edge functions:** None touched; no deploy.
 - **Mobile OTA/native:** Business app code changed; ship through normal close/PR pipeline.
 - **Business/admin web:** Business web preview receives shared RN changes. Admin not touched.
@@ -188,12 +194,12 @@ ORCH-0950 canonicalize trip capacity
 
 Resolves: ORCH-0950
 Evidence: Deno ORCH-0950 migration test, Jest updateTripBasics guard, strict-grep gate/self-test
-Deploy: operator runs supabase db push --linked; no edge deploy
+Deploy: operator runs cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0950-[trip-capacity-single-source]" && /Users/sethogieva/bin/supabase db push --linked; no edge deploy
 ```
 
 ## Ready-To-Test Checklist
 
-1. Apply migration via `supabase db push --linked`; verify migration appears in Supabase migration list.
+1. Apply migration via `cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0950-[trip-capacity-single-source]" && /Users/sethogieva/bin/supabase db push --linked`; verify migration appears in Supabase migration list.
 2. SQL probe returns 0: `SELECT count(*) FROM events WHERE event_type='trip' AND deleted_at IS NULL AND (theme->'business_trip') ? 'capacity';`
 3. Create draft trip, edit Step 1 capacity, verify `ticket_types.quantity_total` changes.
 4. Publish trip, edit live capacity upward, verify `ticket_types.quantity_total` changes and JSONB capacity is absent.

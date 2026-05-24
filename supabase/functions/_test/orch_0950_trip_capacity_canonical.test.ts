@@ -28,6 +28,24 @@ const checkoutMigration = await Deno.readTextFile(
   ),
 );
 
+Deno.test("ORCH-0950 T-00 - pre-flight tier invariant applies to published/sellable trips", () => {
+  assertStringIncludes(
+    migration,
+    "AND e.status IN ('scheduled', 'live')",
+    "migration pre-flight must not abort on incomplete abandoned draft trips.",
+  );
+  assertStringIncludes(
+    migration,
+    "business_publish_trip_draft validates the 1:1 pricing row",
+    "draft exclusion must be paired with publish-time pricing validation.",
+  );
+  assertStringIncludes(
+    migration,
+    "published/sellable trip events have != 1 trip_pricing_tiers row",
+    "pre-flight error should identify the sellable-trip invariant.",
+  );
+});
+
 Deno.test("ORCH-0950 T-01 - migration reconciles drift to MAX and strips existing JSONB capacity", () => {
   assertMatch(
     migration,
