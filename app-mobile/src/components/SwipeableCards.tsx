@@ -71,6 +71,16 @@ import { useCreatorTier } from '../hooks/useCreatorTier';
 import { CustomPaywallScreen } from './CustomPaywallScreen';
 import type { GatedFeature } from '../hooks/useFeatureGate';
 import NoGpsBanner from './collab/NoGpsBanner';
+import {
+  buildCollabDeadEndBannerContent,
+  detectIntersectionOutlier,
+  formatLocationLabel,
+  formatParticipantName,
+  formatTravelDiagnostic,
+  normalizeParticipants,
+  postCollabDeadEndBanner,
+} from "../services/collabDeadEndBannerService";
+import type { CollabDeadEndReason } from "../services/deckService";
 
 function getTimeOfDay(): string {
   const hour = new Date().getHours();
@@ -458,6 +468,7 @@ export default function SwipeableCards({
     showPipelineErrorToast,
     serverPath,
     collabDeckDeadEndReason,
+    collabDeadEndPayload,
     // ORCH-0490 Phase 2.3: expansion signal. True when a deck swap is a
     // same-context pref-change expansion (new cards streaming into the same
     // mode+session), so the wipe below is suppressed even when new IDs are
@@ -615,6 +626,13 @@ export default function SwipeableCards({
     isBoardSession && resolvedSessionId ? resolvedSessionId : undefined
   );
   const boardPreferences = boardSessionResult?.preferences || null;
+  const collabParticipants = Array.isArray((boardSessionResult?.session as any)?.participants)
+    ? (boardSessionResult?.session as any).participants
+    : [];
+  const allParticipantPrefs =
+    (boardSessionResult?.session as any)?.participant_prefs ??
+    boardSessionResult?.allParticipantPreferences ??
+    null;
   const myParticipantPrefs =
     user?.id && (boardSessionResult?.session as any)?.participant_prefs
       ? (boardSessionResult.session as any).participant_prefs[user.id]
@@ -1686,6 +1704,105 @@ export default function SwipeableCards({
     }
   };
 
+  const handleNotifyGroup = useCallback(async (reason: CollabDeadEndReason) => {
+    if (!resolvedSessionId || !user?.id) return;
+    await postCollabDeadEndBanner({
+      sessionId: resolvedSessionId,
+      reason,
+      payload: collabDeadEndPayload,
+      participants: collabParticipants,
+      participantPrefs: allParticipantPrefs,
+      currentUserId: user.id,
+    });
+  }, [allParticipantPrefs, collabDeadEndPayload, collabParticipants, resolvedSessionId, user?.id]);
+
+  const getCollabDeadEndCopy = useCallback(() => {
+    const reason = (collabDeadEndPayload?.reason ?? collabDeckDeadEndReason) as CollabDeadEndReason | undefined;
+    if (!isBoardSession || !reason) return null;
+
+    const normalizedParticipants = normalizeParticipants(collabParticipants);
+    const namesById = new Map(normalizedParticipants.map((participant) => [participant.id, participant.name]));
+    const participantPrefs = allParticipantPrefs ?? {};
+    const detail = collabDeadEndPayload?.detail ?? '';
+    const pendingGpsIds = collabDeadEndPayload?.pendingGpsUserIds ?? [];
+    const pendingAcceptIds = normalizedParticipants
+      .filter((participant) => participant.hasAccepted === false)
+      .map((participant) => participant.id);
+    const nameList = (ids: string[]) => ids.map((id) => namesById.get(id) ?? 'A participant').join(', ');
+
+    switch (reason) {
+      case 'intersection_empty': {
+        const outlier = detectIntersectionOutlier(normalizedParticipants, participantPrefs);
+        if (outlier.mode === 'single') {
+          return {
+            reason,
+            title: `${namesById.get(outlier.userId) ?? 'Someone'} is too far from the group`,
+            subtitle: formatTravelDiagnostic(normalizedParticipants, participantPrefs),
+            showReviewDismissed: false,
+          };
+        }
+        return {
+          reason,
+          title: 'No location overlap yet',
+          subtitle: normalizedParticipants
+            .map((participant) => `${participant.name} in ${formatLocationLabel(participantPrefs[participant.id])}`)
+            .join(' · '),
+          showReviewDismissed: false,
+        };
+      }
+      case 'no_matching_candidates': {
+        const noGps = /no gps/i.test(detail) || pendingGpsIds.length > 0;
+        if (noGps) {
+          const pendingNames = pendingGpsIds.length > 0 ? nameList(pendingGpsIds) : 'someone';
+          return {
+            reason,
+            title: `Waiting for ${pendingNames} to share location`,
+            subtitle: `Waiting for ${pendingNames} to share location`,
+            showReviewDismissed: false,
+          };
+        }
+        return {
+          reason,
+          title: 'Pick some categories',
+          subtitle: 'Nobody has picked categories or intents yet',
+          showReviewDismissed: false,
+        };
+      }
+      case 'no_unswiped_candidates':
+        return {
+          reason,
+          title: "You've all seen everything for now",
+          subtitle: `${sessionSwipedCards.length} cards reviewed this session`,
+          showReviewDismissed: true,
+        };
+      case 'quorum_not_met': {
+        const needed = Math.max(1, normalizedParticipants.length - (collabDeadEndPayload?.acceptedCount ?? 0));
+        return {
+          reason,
+          title: `Waiting for ${needed} more to accept`,
+          subtitle: pendingAcceptIds.length > 0 ? `Pending: ${nameList(pendingAcceptIds)}` : 'Pending: invited friends',
+          showReviewDismissed: false,
+        };
+      }
+      case 'all_pools_exhausted':
+        return {
+          reason,
+          title: "You've exhausted today's options",
+          subtitle: 'Try a wider date window?',
+          showReviewDismissed: false,
+        };
+      default:
+        return null;
+    }
+  }, [
+    allParticipantPrefs,
+    collabDeadEndPayload,
+    collabDeckDeadEndReason,
+    collabParticipants,
+    isBoardSession,
+    sessionSwipedCards.length,
+  ]);
+
   // ORCH-0532: dismissed-sheet re-save path. In collab mode, route through the
   // shared helper (writes swipe-state, honors quorum trigger). In solo mode,
   // fire onCardLike (= handleSaveCard, now solo-only). Previously this callsite
@@ -1883,7 +2000,7 @@ export default function SwipeableCards({
       const titleKey = isEmpty
         ? 'cards:swipeable.no_matches_title'
         : 'cards:swipeable.seen_everything';
-      const isIntersectionEmpty = isBoardSession && collabDeckDeadEndReason === 'intersection_empty';
+      const collabDeadEndCopy = getCollabDeadEndCopy();
 
       return (
         <>
@@ -1897,12 +2014,11 @@ export default function SwipeableCards({
                 />
               </View>
               <Text style={styles.emptyDeckTitle}>
-                {isIntersectionEmpty ? 'You are too far apart' : t(titleKey)}
+                {collabDeadEndCopy?.title ?? t(titleKey)}
               </Text>
               <Text style={styles.emptyDeckSubtitle}>
-                {isIntersectionEmpty
-                  ? 'Try increasing travel time so everyone has overlapping options.'
-                  : isEmpty
+                {collabDeadEndCopy?.subtitle ??
+                  (isEmpty
                   ? t('cards:swipeable.no_matches_subtitle')
                   : (() => {
                       const hour = new Date().getHours();
@@ -1911,21 +2027,36 @@ export default function SwipeableCards({
                       return isLateNight
                         ? 'Most places are closing soon. Try "This Weekend" for more options.'
                         : t('cards:swipeable.shift_vibe');
-                    })()}
+                    })())}
               </Text>
 
               <View style={styles.emptyDeckActions}>
+                {collabDeadEndCopy && (
+                  <TouchableOpacity
+                    style={styles.emptyDeckButton}
+                    onPress={() => handleNotifyGroup(collabDeadEndCopy.reason)}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel="Notify the group"
+                  >
+                    <Icon name="chatbubble-ellipses-outline" size={16} color="#FFFFFF" />
+                    <Text style={styles.emptyDeckButtonText}>Notify the group</Text>
+                  </TouchableOpacity>
+                )}
+
                 <TouchableOpacity
-                  style={styles.emptyDeckButton}
+                  style={collabDeadEndCopy ? styles.emptyDeckOutlineButton : styles.emptyDeckButton}
                   onPress={handleOpenPreferences}
                   activeOpacity={0.7}
                 >
-                  <Icon name="options-outline" size={16} color="#FFFFFF" />
-                  <Text style={styles.emptyDeckButtonText}>{t('cards:swipeable.shift_preferences')}</Text>
+                  <Icon name="options-outline" size={16} color={collabDeadEndCopy ? "#eb7825" : "#FFFFFF"} />
+                  <Text style={collabDeadEndCopy ? styles.emptyDeckOutlineButtonText : styles.emptyDeckButtonText}>
+                    {t('cards:swipeable.shift_preferences')}
+                  </Text>
                 </TouchableOpacity>
 
                 {/* Only EXHAUSTED shows "Review all cards" — EMPTY has nothing to review. */}
-                {!isEmpty && sessionSwipedCards.length > 0 && (
+                {((!isEmpty && sessionSwipedCards.length > 0) || collabDeadEndCopy?.showReviewDismissed) && (
                   <TouchableOpacity
                     style={styles.emptyDeckOutlineButton}
                     onPress={() => setDismissedSheetVisible(true)}
@@ -1933,7 +2064,7 @@ export default function SwipeableCards({
                   >
                     <Icon name="time-outline" size={16} color="#eb7825" />
                     <Text style={styles.emptyDeckOutlineButtonText}>
-                      {t('cards:swipeable.review_all_cards')}
+                      {collabDeadEndCopy ? 'Review dismissed' : t('cards:swipeable.review_all_cards')}
                     </Text>
                   </TouchableOpacity>
                 )}

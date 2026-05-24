@@ -26,7 +26,8 @@ import { supabase } from "../services/supabase";
 import { useKeyboard } from "../hooks/useKeyboard";
 import { useChatPresence } from "../hooks/useChatPresence";
 import { useBroadcastReceiver } from "../hooks/useBroadcastReceiver";
-import { MessageBubble } from "./chat/MessageBubble";
+import { MessageBubble, type CollabSystemToken } from "./chat/MessageBubble";
+import PreferencesSheet, { type PreferencesSheetFocusSection } from "./PreferencesSheet";
 import { ChatInputChipsLayer } from "./chat/ChatInputChipsLayer";
 import { MessageContextMenu } from "./chat/MessageContextMenu";
 import { ReplyPreviewBar } from "./chat/ReplyPreviewBar";
@@ -293,6 +294,11 @@ export default function MessageInterface({
   const [showCollabDeckSheet, setShowCollabDeckSheet] = useState(false);
   const [showCollabMatchesSheet, setShowCollabMatchesSheet] = useState(false);
   const [showCollabPlansSheet, setShowCollabPlansSheet] = useState(false);
+  const [collabPrefsLink, setCollabPrefsLink] = useState<{
+    visible: boolean;
+    viewParticipantId?: string;
+    initialFocusSection?: PreferencesSheetFocusSection;
+  }>({ visible: false });
   const [showEventAudienceSheet, setShowEventAudienceSheet] = useState(false);
   // ORCH-0667: shared-card picker state
   const [showSavedCardPicker, setShowSavedCardPicker] = useState(false);
@@ -374,11 +380,53 @@ export default function MessageInterface({
   );
   const collabParticipantCount =
     (collabSession?.participants as any[] | undefined)?.length || headerParticipantCount;
+  const inputRef = useRef<TextInput>(null);
   const chatController = useChatInputController({
     participants: participantsQuery.data ?? [],
     cardTagSource: chatCardTagSource.data,
   });
   const newMessage = chatController.text;
+
+  const handleSystemTokenPress = useCallback((token: CollabSystemToken) => {
+    if (!isCollabSessionGroupChat || !friend.sessionId) return;
+
+    if (token.type === 'open-prefs-self') {
+      setCollabPrefsLink({
+        visible: true,
+        initialFocusSection: token.section,
+      });
+      return;
+    }
+
+    if (token.type === 'open-prefs') {
+      setCollabPrefsLink({
+        visible: true,
+        viewParticipantId: token.userId === currentUserId ? undefined : token.userId,
+        initialFocusSection: token.section,
+      });
+      return;
+    }
+
+    if (token.type === 'open-dismissed') {
+      setShowCollabDeckSheet(true);
+      return;
+    }
+
+    const participantName =
+      participantsQuery.data?.find((participant) => participant.userId === token.userId)?.displayName ||
+      headerParticipants.find((participant) => participant.id === token.userId)?.name ||
+      'friend';
+    chatController.setDraftText(`@${participantName} ${token.text}`);
+    setTimeout(() => inputRef.current?.focus?.(), 50);
+  }, [
+    chatController,
+    currentUserId,
+    friend.sessionId,
+    headerParticipants,
+    inputRef,
+    isCollabSessionGroupChat,
+    participantsQuery.data,
+  ]);
 
   const mentionPopoverParticipants: Participant[] = useMemo(
     () =>
@@ -454,7 +502,6 @@ export default function MessageInterface({
   } | null>(null);
   const [notifications, setNotifications] = useState<any[]>([]);
   const flatListRef = useRef<FlatList>(null);
-  const inputRef = useRef<TextInput>(null);
   const { bottomNavTotalHeight } = useAppLayout();
   // ORCH-0610 fix: Android overlap — the Mingla nav uses bottom: insets.bottom + 6
   // (see app/index.tsx CoachMarkNavigationGate) so its TOP edge is higher than
@@ -1514,6 +1561,39 @@ export default function MessageInterface({
                 <View style={styles.daySeparatorLine} />
               </View>
             ) : null;
+
+            if (item.message.isSystem) {
+              return (
+                <>
+                  <MessageBubble
+                    message={{
+                      id: item.message.id,
+                      senderName: getMessageSenderName(item.message),
+                      content: item.message.content,
+                      timestamp: item.message.timestamp,
+                      type: item.message.type,
+                      fileUrl: item.message.fileUrl,
+                      fileName: item.message.fileName,
+                      fileSize: item.message.fileSize,
+                      cardPayload: item.message.cardPayload,
+                      mentions: item.message.mentions,
+                      cardTags: item.message.cardTags,
+                      marketingCampaignId: item.message.marketingCampaignId,
+                      isMe: item.message.isMe,
+                      failed: item.message.failed,
+                      isSystem: item.message.isSystem,
+                    }}
+                    onSystemTokenPress={handleSystemTokenPress}
+                    isMe={item.message.isMe}
+                    groupPosition={item.groupPosition}
+                    showTimestamp={false}
+                    isRead={false}
+                  />
+                  {daySeparator}
+                </>
+              );
+            }
+
             return (
             <>
             <SwipeableMessage
@@ -1579,6 +1659,7 @@ export default function MessageInterface({
                     setExpandedCardFromChat(cardPayloadToExpandedCardData(cardTag.cardPayload));
                     setShowExpandedCardFromChat(true);
                   }}
+                  onSystemTokenPress={handleSystemTokenPress}
                   isMe={item.message.isMe}
                   groupPosition={item.groupPosition}
                   showTimestamp={revealedTimestampId === item.message.id}
@@ -2193,6 +2274,18 @@ export default function MessageInterface({
           onAddToCalendar={onAddToCalendar}
           onPurchaseComplete={onPurchaseComplete}
           onOpenPreferences={onOpenPreferences}
+        />
+      ) : null}
+
+      {isCollabSessionGroupChat && friend.sessionId ? (
+        <PreferencesSheet
+          visible={collabPrefsLink.visible}
+          onClose={() => setCollabPrefsLink({ visible: false })}
+          accountPreferences={accountPreferences}
+          sessionId={friend.sessionId}
+          sessionName={headerTitle}
+          viewParticipantId={collabPrefsLink.viewParticipantId}
+          initialFocusSection={collabPrefsLink.initialFocusSection}
         />
       ) : null}
 

@@ -105,6 +105,8 @@ on:
 #   - I-PROPOSED-ORCH-0939-COLLAB-DECK-HAS-PER-SESSION-PROVIDER (i-proposed-orch-0939-collab-deck-has-per-session-provider.mjs) — CollabDeckSheet wraps SwipeableCards in session-scoped RecommendationsProvider (ORCH-0939)
 #   - I-PROPOSED-ORCH-0931-NO-PK-FILTER-REALTIME (i-proposed-orch-0931-no-pk-filter-realtime.mjs) — postgres_changes listeners never use `id=eq.<uuid>` PK filter (silently dropped by supabase-realtime); use broadcast or non-PK filter (ORCH-0931)
 #   - I-PROPOSED-CUSTOM-COORDS-LOCKED-WHEN-CUSTOM-LOCATION-MODE (i-proposed-orch-0943-custom-coords-locked.mjs) — partial custom_lat/custom_lng client writes require GPS-mode guard or custom_location in same payload (ORCH-0943)
+#   - I-PROPOSED-DEAD-END-REASON-COVERAGE + I-PROPOSED-COLLAB-DEAD-END-PAYLOAD-PROPAGATED (i-proposed-orch-0945-dead-end-reason-coverage.mjs) — collab dead-end client handles all five reasons and propagates acceptedCount/pendingGpsUserIds (ORCH-0945)
+#   - I-PROPOSED-PREFS-SHEET-READ-ONLY-NO-WRITE (i-proposed-orch-0945-prefs-sheet-read-only-no-write.mjs) — read-only PreferencesSheet mode cannot write participant prefs (ORCH-0945)
 #   - G-CIRCLE-RPC-SOLE-OWNER (circle-rpc-sole-owner.sh) — Your Circle uses get_user_circle RPC as sole data path (ORCH-0933)
 #   - G-CIRCLE-BADGE-DUAL-APP (circle-badge-dual-app.sh) — Your Circle briefcase badge means dual-app user only (ORCH-0933)
 #
@@ -1528,3 +1530,25 @@ jobs:
           node-version: "20"
       - name: Run ORCH-0908 mention mute gate
         run: node .github/scripts/strict-grep/orch-0908-chat-mention-mute-respected.mjs
+
+  i-proposed-orch-0945-dead-end-reason-coverage:
+    name: "ORCH-0945: collab dead-end reason coverage + payload propagation"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0945 dead-end reason coverage gate
+        run: node .github/scripts/strict-grep/i-proposed-orch-0945-dead-end-reason-coverage.mjs
+
+  i-proposed-orch-0945-prefs-sheet-read-only-no-write:
+    name: "ORCH-0945: PreferencesSheet read-only cannot write"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0945 prefs read-only no-write gate
+        run: node .github/scripts/strict-grep/i-proposed-orch-0945-prefs-sheet-read-only-no-write.mjs

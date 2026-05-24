@@ -160,6 +160,7 @@ export interface UseDeckCardsResult {
    *  so RecommendationsContext routes to EMPTY UI state instead of stuck
    *  INITIAL_LOADING. `undefined` for non-empty/mixed/category-only decks. */
   curatedEmptyReason?: import('../types/curatedExperience').CuratedEmptyReason;
+  collabDeadEndPayload?: import('../services/deckService').CollabDeadEndPayload;
 }
 
 export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
@@ -250,6 +251,7 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
             // discriminant. During partial delivery we default to 'pipeline'
             // since partial success implies the pipeline responded with data.
             serverPath: prev?.serverPath ?? 'pipeline',
+            collabDeadEndPayload: prev?.collabDeadEndPayload,
           }));
           if (__DEV__) {
             console.log(`[useDeckCards] partial delivery: +${cards.length} cards from ${meta.source}`);
@@ -301,5 +303,6 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
     // (RecommendationsContext) can route to EMPTY UI state instead of
     // staying on INITIAL_LOADING. `undefined` for non-empty/mixed decks.
     curatedEmptyReason: query.data?.curatedEmptyReason,
-  }), [cards, activePills, query.data?.deckMode, query.data?.hasMore, query.data?.curatedEmptyReason, query.isLoading, query.isFetching, query.isPlaceholderData, hasData, query.error, query.refetch, resolvedServerPath]);
+    collabDeadEndPayload: query.data?.collabDeadEndPayload,
+  }), [cards, activePills, query.data?.deckMode, query.data?.hasMore, query.data?.curatedEmptyReason, query.data?.collabDeadEndPayload, query.isLoading, query.isFetching, query.isPlaceholderData, hasData, query.error, query.refetch, resolvedServerPath]);
 }
