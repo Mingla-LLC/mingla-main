@@ -116,13 +116,8 @@ serve(async (req) => {
       row.payload?.template_key === "waitlist_spot_open"
     )
     .map((row) => row.id);
-  const uniqueOrderIds = [
-    ...new Set(
-      eligible
-        .map((r) => r.order_id)
-        .filter((orderId): orderId is string => typeof orderId === "string"),
-    ),
-  ];
+  const uniqueOrderIds = [...new Set(eligible.map((r) => r.order_id))]
+    .filter((orderId): orderId is string => typeof orderId === "string");
 
   const results: Array<
     {
