@@ -216,3 +216,9 @@
 **Citation:** ORCH-0942 SPEC at `Mingla_Artifacts/specs/SPEC_ORCH-0942_META-ORCH-0929_DEAD_CODE_REAP.md`; investigation at `Mingla_Artifacts/reports/INVESTIGATION_ORCH-0942_META-ORCH-0929_DEAD_CODE_REAP.md`. Live-fire confirmation via Retest 4 evidence at `Mingla_Artifacts/reports/evidence/ORCH-0939/retest_4/` (2026-05-23 14:06:59 — 3 sims + operator physical iPhone exercised only the chat-header pill paths, never the dead chat-body banners).
 
 **Enforcement:** No new strict-grep gate required. META-ORCH-0929's existing `I-PROPOSED-META-0929-COLLAB-DECK-SINGLE-MOUNT` invariant + CI gate already enforces single-mount discipline; the structural deletion in ORCH-0942 makes accidental re-introduction impossible because there is no surviving JSX render pattern to copy from.
+
+## DEC-165 — Cross-chat comms ledger + universal 2-section response shape (META-ORCH-0954)
+**Date:** 2026-05-24
+**Decision:** Adopt a single canonical comms ledger at `/Users/sethogieva/Desktop/mingla-main/COMMS_LEDGER.md` on `main`, read by every skill on entry, written to on cross-ORCH discovery. Adopt an unconditional 2-section chat output (A: what just happened, including a labeled smoke-test sub-section when applicable; B: handoff in one of three variants). Both enforced by a single strict-grep CI gate across all 9 Claude SKILL.md files + repo-root AGENTS.md.
+**Why:** Parallel ORCHs had no programmatic warning channel; 4-section conditional shape produced drift across skills.
+**Cross-references:** `Mingla_Artifacts/INVESTIGATION_META-ORCH-0954_*.md`, `Mingla_Artifacts/specs/SPEC_META-ORCH-0954_*.md`, I-COMMS-LEDGER-ENTRY-STANZA, I-COMMS-LEDGER-WRITE-ON-DISCOVERY, I-RESPONSE-2-SECTION-SHAPE.
