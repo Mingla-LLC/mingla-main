@@ -3766,3 +3766,47 @@ Two strict-grep gates run together:
 **Source:** SPEC `Mingla_Artifacts/specs/SPEC_ORCH-0943_COLLAB_APPLY_COORD_CORRUPTION.md` §3.5.1 + §5.2.
 
 **Enforced by:** strict-grep gate `.github/scripts/strict-grep/i-proposed-orch-0943-custom-coords-locked.mjs` (scans `app-mobile/src/` for `upsert_participant_prefs` and `PreferencesService.updateUserPreferences` call sites; flags any payload containing `custom_lat` or `custom_lng` without `custom_location` UNLESS the call site has an explicit `use_gps_location === true` guard within 10 lines above the call).
+
+---
+
+### I-PROPOSED-DEAD-END-REASON-COVERAGE — ORCH-0945 COLLAB DEAD-END REASON COVERAGE
+
+**Statement:** Every value of the collab positional dead-end reason contract (`intersection_empty`, `no_matching_candidates`, `no_unswiped_candidates`, `quorum_not_met`, `all_pools_exhausted`) must have a dedicated client render branch in `app-mobile/src/components/SwipeableCards.tsx`. Generic fall-through copy for collab dead ends is forbidden because it hides the reason the group is blocked.
+
+**Why:** ORCH-0945 exists because five server-reported dead-end causes were collapsed into two generic mobile messages, leaving users unable to tell who needed to change location, accept, choose categories, review dismissed cards, or widen dates.
+
+**Enforcement:** Strict-grep CI gate `.github/scripts/strict-grep/i-proposed-orch-0945-dead-end-reason-coverage.mjs` registered in `.github/workflows/strict-grep-mingla-business.yml`. Regression test `app-mobile/src/components/__tests__/orch-0945-dead-end-render.test.tsx` covers T-01..T-07.
+
+**Source:** SPEC `Mingla_Artifacts/specs/SPEC_ORCH-0945_COLLAB_DECK_DEAD_END_UX_POLISH.md` §5 + §8.
+
+**EXIT condition:** Permanent.
+
+**Status:** ACTIVE — codified 2026-05-24 by ORCH-0945 [Collab deck dead-end UX polish] CLOSE after Codex `tester-mingla` PASS (P0/P1/P2/P3 = 0; P4 = 4) with LF-2 iOS + Android live-fire on `rerun-20260524-lf2-*` evidence.
+
+### I-PROPOSED-COLLAB-DEAD-END-PAYLOAD-PROPAGATED — ORCH-0945 COLLAB DEAD-END PAYLOAD PROPAGATED
+
+**Statement:** The `deckService` collab-v2 dead-end path must propagate `acceptedCount` and `pendingGpsUserIds` beside the legacy `curatedEmptyReason` string. Dropping these fields is forbidden because the UI needs them for quorum and GPS-gap diagnostics.
+
+**Why:** The investigation identified `deckService.ts` as the data choke point: the server already emitted the rich dead-end payload, but the client kept only `reason`.
+
+**Enforcement:** Shared strict-grep CI gate `.github/scripts/strict-grep/i-proposed-orch-0945-dead-end-reason-coverage.mjs` scans `app-mobile/src/services/deckService.ts` for `collabDeadEndPayload`, `acceptedCount`, and `pendingGpsUserIds`.
+
+**Source:** SPEC `Mingla_Artifacts/specs/SPEC_ORCH-0945_COLLAB_DECK_DEAD_END_UX_POLISH.md` §3.1 + §5.
+
+**EXIT condition:** Permanent.
+
+**Status:** ACTIVE — codified 2026-05-24 by ORCH-0945 [Collab deck dead-end UX polish] CLOSE.
+
+### I-PROPOSED-PREFS-SHEET-READ-ONLY-NO-WRITE — ORCH-0945 PREFERENCES SHEET READ-ONLY NO-WRITE
+
+**Statement:** When `PreferencesSheet` receives `viewParticipantId`, it must render that participant's preferences read-only and no code path may write preferences from that mode. `handleApplyPreferences` and every visible edit handler must short-circuit through the central `isEditable` guard.
+
+**Why:** ORCH-0945 adds deep links from chat banners into another participant's preferences. Those links must help the group inspect the blocker without allowing a participant to edit someone else's stored preferences.
+
+**Enforcement:** Strict-grep CI gate `.github/scripts/strict-grep/i-proposed-orch-0945-prefs-sheet-read-only-no-write.mjs` registered in `.github/workflows/strict-grep-mingla-business.yml`. Regression test `app-mobile/src/components/__tests__/orch-0945-prefs-sheet-read-only.test.tsx` checks props, read-only header, handler guards, hidden footer, and section focus.
+
+**Source:** SPEC `Mingla_Artifacts/specs/SPEC_ORCH-0945_COLLAB_DECK_DEAD_END_UX_POLISH.md` §3.7 + §5.
+
+**EXIT condition:** Permanent.
+
+**Status:** ACTIVE — codified 2026-05-24 by ORCH-0945 [Collab deck dead-end UX polish] CLOSE.
