@@ -287,9 +287,10 @@ export default function TripDashboardRoute(): React.ReactElement {
     );
   }
 
-  const travelersCount = (ordersQuery.data ?? []).filter(
-    (o) => o.paymentStatus !== "failed" && o.paymentStatus !== "cancelled",
-  ).length;
+  // ORCH-0947: read canonical tickets-sold count from the trip detail
+  // payload (server-derived via biz_trip_tickets_sold). Counting orders
+  // client-side underreports because most orders carry >1 ticket.
+  const ticketsSold = trip.ticketsSoldCount;
   const primaryCurrency =
     [...revenueByCurrency.entries()][0]?.[0] ??
     trip.pricingTiers[0]?.currency ??
@@ -297,8 +298,8 @@ export default function TripDashboardRoute(): React.ReactElement {
   const totalRevenue = revenueByCurrency.get(primaryCurrency) ?? 0;
   const spotsLabel =
     trip.businessTrip.capacity !== null
-      ? `${travelersCount} / ${trip.businessTrip.capacity}`
-      : `${travelersCount}`;
+      ? `${ticketsSold} / ${trip.businessTrip.capacity}`
+      : `${ticketsSold}`;
   const tripLifecycleStatus = deriveTripLifecycleStatus({
     status: trip.status,
     startAt: trip.businessTrip.startAt,
@@ -406,7 +407,7 @@ export default function TripDashboardRoute(): React.ReactElement {
         <ActionTile
           icon="users"
           label="Travelers"
-          sub={`${travelersCount} ${travelersCount === 1 ? "traveler" : "travelers"}`}
+          sub={`${ticketsSold} ${ticketsSold === 1 ? "traveler" : "travelers"}`}
           onPress={() => router.push(`/trip/${trip.id}/travelers` as never)}
         />
         <ActionTile

@@ -75,8 +75,8 @@ describe("ORCH-0913 trip dashboard parity", () => {
     ]);
   });
 
-  test("T-03 Travelers tile sub uses singular/plural correctly", () => {
-    expect(actionGrid).toContain('travelersCount === 1 ? "traveler" : "travelers"');
+  test("T-03 Travelers tile sub uses tickets-sold singular/plural correctly", () => {
+    expect(actionGrid).toContain('ticketsSold === 1 ? "traveler" : "travelers"');
   });
 
   test("T-04 Money tile sub absent when zero at-risk", () => {
@@ -99,12 +99,12 @@ describe("ORCH-0913 trip dashboard parity", () => {
 
   test("T-07 KPI strip Spots renders N / capacity when capacity set", () => {
     expect(DASHBOARD_SRC).toContain(
-      "`${travelersCount} / ${trip.businessTrip.capacity}`",
+      "`${ticketsSold} / ${trip.businessTrip.capacity}`",
     );
   });
 
   test("T-08 KPI strip Spots renders N when capacity null", () => {
-    expect(DASHBOARD_SRC).toContain("`$ {travelersCount}`".replace(" ", ""));
+    expect(DASHBOARD_SRC).toContain("`$ {ticketsSold}`".replace(" ", ""));
   });
 
   test("T-09 Recent Activity 5-stream merge includes real timestamped streams", () => {

@@ -117,6 +117,13 @@ export interface Trip {
   bookingDeadline: string | null;
   bookingsClosed: boolean;
   bookingsClosedAt: string | null;
+  /**
+   * ORCH-0947: count of tickets occupying a seat
+   * (status IN ('valid','used','transferred')) for this trip's
+   * ticket_types. Mirrors the checkout RPC capacity gate.
+   * Server-derived via biz_trip_tickets_sold(p_event_id).
+   */
+  ticketsSoldCount: number;
 }
 
 export interface CreateTripDraftInput {
@@ -361,6 +368,7 @@ function mapTrip(
   tiers: TripPricingTierRow[],
   inclusions: TripInclusionRow[],
   ticketTypes: TicketTypeRow[],
+  ticketsSoldCount: number,
 ): Trip {
   const ticketTypesById = new Map(ticketTypes.map((tt) => [tt.id, tt]));
   return {
@@ -394,6 +402,7 @@ function mapTrip(
     bookingDeadline: event.booking_deadline,
     bookingsClosed: event.bookings_closed === true,
     bookingsClosedAt: event.bookings_closed_at,
+    ticketsSoldCount,
   };
 }
 
@@ -503,12 +512,17 @@ export async function createTripDraft(
     [],
     [],
     [ticketRow as TicketTypeRow],
+    0,
   );
 }
 
 // ---------------------- getTrip ----------------------
 
 export async function getTrip(eventId: string): Promise<Trip | null> {
+  // ORCH-0947: ticketsSoldCount comes from biz_trip_tickets_sold RPC and
+  // mirrors the checkout-RPC capacity gate exactly. Do NOT replace with
+  // orders.count, order_line_items.quantity sum, or biz_trip_sold_count_by_tier
+  // -- those drift on per-ticket refunds, transfers, and voids.
   // ORCH-0859 REWORK 3 (events-type-filter audit): defensive — caller
   // knows it's a trip but pinning the filter ensures a misrouted id
   // for an event row doesn't accidentally render through trip mappers.
@@ -527,29 +541,33 @@ export async function getTrip(eventId: string): Promise<Trip | null> {
   const event = eventRow as any;
   const brandSlug = (event.brands?.slug as string | null) ?? null;
 
-  const [daysResp, tiersResp, inclusionsResp, ticketsResp] = await Promise.all([
-    supabase
-      .from("trip_days")
-      .select("*")
-      .eq("event_id", eventId)
-      .order("ordinal"),
-    supabase.from("trip_pricing_tiers").select("*").eq("event_id", eventId),
-    supabase
-      .from("trip_inclusions")
-      .select("*")
-      .eq("event_id", eventId)
-      .order("kind")
-      .order("ordinal"),
-    supabase
-      .from("ticket_types")
-      .select("*")
-      .eq("event_id", eventId)
-      .is("deleted_at", null),
-  ]);
+  const [daysResp, tiersResp, inclusionsResp, ticketsResp, soldResp] =
+    await Promise.all([
+      supabase
+        .from("trip_days")
+        .select("*")
+        .eq("event_id", eventId)
+        .order("ordinal"),
+      supabase.from("trip_pricing_tiers").select("*").eq("event_id", eventId),
+      supabase
+        .from("trip_inclusions")
+        .select("*")
+        .eq("event_id", eventId)
+        .order("kind")
+        .order("ordinal"),
+      supabase
+        .from("ticket_types")
+        .select("*")
+        .eq("event_id", eventId)
+        .is("deleted_at", null),
+      // ORCH-0947: canonical tickets-sold count for the Spots KPI tile.
+      supabase.rpc("biz_trip_tickets_sold", { p_event_id: eventId }),
+    ]);
   if (daysResp.error) throw daysResp.error;
   if (tiersResp.error) throw tiersResp.error;
   if (inclusionsResp.error) throw inclusionsResp.error;
   if (ticketsResp.error) throw ticketsResp.error;
+  if (soldResp.error) throw soldResp.error;
 
   return mapTrip(
     event as EventRow,
@@ -558,6 +576,7 @@ export async function getTrip(eventId: string): Promise<Trip | null> {
     (tiersResp.data ?? []) as TripPricingTierRow[],
     (inclusionsResp.data ?? []) as TripInclusionRow[],
     (ticketsResp.data ?? []) as TicketTypeRow[],
+    soldResp.data ?? 0,
   );
 }
 
@@ -592,7 +611,7 @@ export async function getTripsByBrand(brandId: string): Promise<Trip[]> {
   }
 
   return events.map((e) =>
-    mapTrip(e, null, [], [], [], ticketsByEvent.get(e.id) ?? []),
+    mapTrip(e, null, [], [], [], ticketsByEvent.get(e.id) ?? [], 0),
   );
 }
 
