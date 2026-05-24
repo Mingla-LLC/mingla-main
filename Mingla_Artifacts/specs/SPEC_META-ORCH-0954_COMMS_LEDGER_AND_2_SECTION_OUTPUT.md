@@ -332,8 +332,8 @@ Related: [[comms-ledger-required]].
 
 Add under "## Session Hygiene (Non-Negotiable)":
 ```markdown
-- [Comms ledger required on entry](feedback_comms_ledger_required.md) — Every skill reads `/Users/sethogieva/Desktop/mingla-main/COMMS_LEDGER.md` on entry + writes on cross-ORCH discovery. Strict-grep gate. Codified META-ORCH-0954 2026-05-24.
-- [2-section response format universal](feedback_response_2_section_universal.md) — Every chat response = Section A (what just happened) + Section B (handoff). Smoke-test = labeled sub-section in A when applicable. Supersedes 4-section conditional. Codified META-ORCH-0954 2026-05-24.
+- `[Comms ledger required on entry]` → `feedback_comms_ledger_required.md` — Every skill reads `/Users/sethogieva/Desktop/mingla-main/COMMS_LEDGER.md` on entry + writes on cross-ORCH discovery. Strict-grep gate. Codified META-ORCH-0954 2026-05-24.
+- `[2-section response format universal]` → `feedback_response_2_section_universal.md` — Every chat response = Section A (what just happened) + Section B (handoff). Smoke-test = labeled sub-section in A when applicable. Supersedes 4-section conditional. Codified META-ORCH-0954 2026-05-24.
 ```
 
 Update existing index line for `response-shape-conditional` to append `(SUPERSEDED 2026-05-24)`.
