@@ -101,6 +101,20 @@ export type DeckServerPath =
   | 'auth-required'
   | 'pipeline-error';
 
+export type CollabDeadEndReason =
+  | 'intersection_empty'
+  | 'no_matching_candidates'
+  | 'no_unswiped_candidates'
+  | 'quorum_not_met'
+  | 'all_pools_exhausted';
+
+export type CollabDeadEndPayload = {
+  reason: CollabDeadEndReason;
+  acceptedCount: number;
+  pendingGpsUserIds: string[];
+  detail?: string;
+};
+
 // ORCH-0677 RC-2: re-exported here for hook/context consumers. The canonical
 // definition lives in `types/curatedExperience` so service + hook share one
 // owner per truth (Constitution #2).
@@ -119,6 +133,7 @@ export interface DeckResponse {
   // `undefined` for mixed decks, decks with cards, or decks where the server
   // shape didn't include a summary (legacy or pre-fix edge fn).
   curatedEmptyReason?: CuratedEmptyReason;
+  collabDeadEndPayload?: CollabDeadEndPayload;
 }
 
 /**
@@ -858,6 +873,22 @@ class DeckService {
         data?.dead_end === true && typeof data?.reason === 'string'
           ? data.reason
           : undefined;
+      const collabDeadEndPayload: CollabDeadEndPayload | undefined =
+        data?.dead_end === true && isCollabDeadEndReason(data?.reason)
+          ? {
+              reason: data.reason,
+              acceptedCount: typeof data.acceptedCount === 'number' ? data.acceptedCount : 0,
+              pendingGpsUserIds: Array.isArray(data.pending_gps_user_ids)
+                ? data.pending_gps_user_ids.filter((id: unknown): id is string => typeof id === 'string')
+                : [],
+              detail:
+                typeof data.detail === 'string'
+                  ? data.detail
+                  : typeof data?.sourceBreakdown?.reason === 'string'
+                    ? data.sourceBreakdown.reason
+                    : undefined,
+            }
+          : undefined;
 
       if (__DEV__) {
         console.log(
@@ -874,6 +905,7 @@ class DeckService {
         hasMore: false,
         serverPath,
         curatedEmptyReason: deadEndReason as any,
+        collabDeadEndPayload,
       };
     } catch (err) {
       if (err instanceof DeckFetchError) throw err;
@@ -895,3 +927,13 @@ class DeckService {
 }
 
 export const deckService = new DeckService();
+
+function isCollabDeadEndReason(reason: unknown): reason is CollabDeadEndReason {
+  return (
+    reason === 'intersection_empty' ||
+    reason === 'no_matching_candidates' ||
+    reason === 'no_unswiped_candidates' ||
+    reason === 'quorum_not_met' ||
+    reason === 'all_pools_exhausted'
+  );
+}

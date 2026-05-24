@@ -51,7 +51,18 @@ interface MessageBubbleProps {
   onCardBubbleTap?: (payload: CardPayload) => void;  // ORCH-0667
   onMentionTap?: (userId: string) => void;
   onCardTagTap?: (cardTag: CardTagEntry) => void;
+  onSystemTokenPress?: (token: CollabSystemToken) => void;
 }
+
+export type CollabSystemToken =
+  | { type: 'open-prefs'; section: CollabSystemPrefSection; userId: string }
+  | { type: 'open-prefs-self'; section: CollabSystemPrefSection }
+  | { type: 'open-dismissed' }
+  | { type: 'compose-mention'; userId: string; text: string };
+
+type CollabSystemPrefSection = 'travel' | 'location' | 'categories' | 'dates';
+const SYSTEM_TOKEN_REGEX = /(\[\[[a-z\-]+(?::[a-zA-Z0-9\-_,]+)*\]\])/g;
+const VALID_PREF_SECTIONS = new Set(['travel', 'location', 'categories', 'dates']);
 
 function isStructuredMention(entry: MentionEntry | string): entry is MentionEntry {
   return typeof entry !== 'string';
@@ -216,6 +227,7 @@ export function MessageBubble({
   onCardBubbleTap,
   onMentionTap,
   onCardTagTap,
+  onSystemTokenPress,
 }: MessageBubbleProps) {
   const { t } = useTranslation(['chat', 'common']);
 
@@ -224,10 +236,8 @@ export function MessageBubble({
   // row with no chrome. Bypasses all the bubble + avatar + reactions + reply UI.
   if (message.isSystem) {
     return (
-      <View style={chatSystemRowStyles.row} accessibilityRole="text" accessibilityLabel={`System message: ${message.content}`}>
-        <Text style={chatSystemRowStyles.text} numberOfLines={3}>
-          {message.content}
-        </Text>
+      <View style={chatSystemRowStyles.row} accessible={false}>
+        {renderSystemBannerContent(message.content, onSystemTokenPress)}
       </View>
     );
   }
@@ -469,6 +479,78 @@ export function MessageBubble({
   );
 }
 
+export function parseCollabSystemToken(segment: string): CollabSystemToken | null {
+  const match = segment.match(/^\[\[([a-z\-]+)(?::([a-zA-Z0-9\-_,]+))?(?::([a-zA-Z0-9\-_,]+))?(?::([a-zA-Z0-9\-_,]+))?\]\]$/);
+  if (!match) return null;
+  const [, command, first, second, third] = match;
+
+  if (command === 'open-dismissed') {
+    return first ? null : { type: 'open-dismissed' };
+  }
+
+  if (command === 'open-prefs') {
+    if (first === 'self' && second && VALID_PREF_SECTIONS.has(second)) {
+      return { type: 'open-prefs-self', section: second as CollabSystemPrefSection };
+    }
+    if (first && second && VALID_PREF_SECTIONS.has(first)) {
+      return { type: 'open-prefs', section: first as CollabSystemPrefSection, userId: second };
+    }
+    return null;
+  }
+
+  if (command === 'compose-mention' && first && second) {
+    return {
+      type: 'compose-mention',
+      userId: first,
+      text: [second, third].filter(Boolean).join('_').replace(/_/g, ' '),
+    };
+  }
+
+  return null;
+}
+
+function renderSystemBannerContent(
+  content: string,
+  onSystemTokenPress?: (token: CollabSystemToken) => void,
+): React.ReactElement {
+  const parts = content.split(SYSTEM_TOKEN_REGEX).filter((part) => part.length > 0);
+  return (
+    <View style={chatSystemRowStyles.content}>
+      {parts.map((part, index) => {
+        const token = parseCollabSystemToken(part);
+        if (!token) {
+          return (
+            <Text key={`${part}-${index}`} style={chatSystemRowStyles.text}>
+              {part}
+            </Text>
+          );
+        }
+        const label = getSystemTokenLabel(token);
+        return (
+          <TouchableOpacity
+            key={`${part}-${index}`}
+            onPress={() => onSystemTokenPress?.(token)}
+            accessibilityRole="link"
+            accessibilityLabel={label}
+            testID={`collab-system-token-${token.type}`}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            disabled={!onSystemTokenPress}
+          >
+            <Text style={chatSystemRowStyles.link}>{label}</Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
+
+function getSystemTokenLabel(token: CollabSystemToken): string {
+  if (token.type === 'open-dismissed') return 'Review dismissed';
+  if (token.type === 'compose-mention') return 'Message them';
+  const section = token.section === 'categories' ? 'categories' : `${token.section} picks`;
+  return token.type === 'open-prefs-self' ? `Open your ${section}` : `Open ${section}`;
+}
+
 const styles = StyleSheet.create({
   spacingGroupEnd: {
     marginBottom: 6,
@@ -690,10 +772,23 @@ const chatSystemRowStyles = StyleSheet.create({
     paddingVertical: 10,
     marginBottom: 8,
   },
+  content: {
+    maxWidth: SCREEN_WIDTH - 48,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+  },
   text: {
     fontSize: 12,
     color: '#9ca3af',
     textAlign: 'center',
     fontStyle: 'italic',
+  },
+  link: {
+    fontSize: 12,
+    color: '#eb7825',
+    textAlign: 'center',
+    fontStyle: 'italic',
+    textDecorationLine: 'underline',
   },
 });

@@ -19,6 +19,7 @@ import { useUserPreferences } from "../hooks/useUserPreferences";
 import { useDeckCards, buildDeckQueryKey } from "../hooks/useDeckCards";
 import { cachedLocationSync } from "../hooks/useUserLocation";
 import { deckService } from "../services/deckService";
+import type { CollabDeadEndPayload } from "../services/deckService";
 import { computePrefsHash, normalizeDateTime } from "../utils/cardConverters";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAppStore } from "../store/appStore";
@@ -123,6 +124,7 @@ interface RecommendationsContextType {
    *  resolved yet (loading, disabled, or pre-first-fetch). */
   serverPath?: import('../services/deckService').DeckServerPath;
   collabDeckDeadEndReason?: string;
+  collabDeadEndPayload?: CollabDeadEndPayload;
   /** ORCH-0490 Phase 2.3: expansion signal. True when the current deck swap
    *  is a same-context pref expansion (not a mode/session switch). Drives
    *  SwipeableCards' decision to preserve swipe state vs reset on deck
@@ -797,6 +799,7 @@ export const RecommendationsProvider: React.FC<
   const soloDeckHasMore = activeDeck.hasMore;
   const soloDeckError = activeDeck.error;
   const soloServerPath = activeDeck.serverPath;
+  const collabDeadEndPayload = activeDeck.collabDeadEndPayload;
   // ORCH-0677 RC-2: when curated-only deck returns 0 cards, this carries the
   // server's verdict so the EMPTY branch can fire instead of stuck-loading.
   // Applies to both solo and collab — both flow through useDeckCards.
@@ -1914,6 +1917,9 @@ export const RecommendationsProvider: React.FC<
     serverPath: soloServerPath,
     collabDeckDeadEndReason: isCollaborationMode
       ? soloCuratedEmptyReason
+      : undefined,
+    collabDeadEndPayload: isCollaborationMode
+      ? collabDeadEndPayload
       : undefined,
     // ORCH-0490 Phase 2.3: expansion signal consumed by SwipeableCards.
     // Undefined under flag-off (Phase 2.3 feature flag off) — consumers

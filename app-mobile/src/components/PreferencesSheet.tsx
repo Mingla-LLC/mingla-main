@@ -64,6 +64,7 @@ import { normalizeCategoryArray } from '../utils/categoryUtils';
 import { colors } from '../constants/designSystem';
 
 type DateOptionId = 'today' | 'this_weekend' | 'pick_dates';
+export type PreferencesSheetFocusSection = 'travel' | 'location' | 'categories' | 'dates';
 
 const DATE_OPTIONS: { id: DateOptionId; labelKey: string }[] = [
   { id: 'today', labelKey: 'date_options.today' },
@@ -85,6 +86,8 @@ interface PreferencesSheetProps {
   // pg_aggregate_collab_prefs).
   sessionId?: string;
   sessionName?: string;
+  viewParticipantId?: string;
+  initialFocusSection?: PreferencesSheetFocusSection;
 }
 
 // Experience Types — 7 curated types (kebab-case IDs match edge function)
@@ -149,6 +152,8 @@ export default function PreferencesSheet({
   accountPreferences,
   sessionId,
   sessionName,
+  viewParticipantId,
+  initialFocusSection,
 }: PreferencesSheetProps) {
   const user = useAppStore((state) => state.user);
   const { profile, setProfile } = useAppStore();
@@ -168,25 +173,40 @@ export default function PreferencesSheet({
     isCollaborationMode,
     updateBoardPreferences,
   } = usePreferencesData(user?.id, sessionId, !!visible);
+  const boardSessionResult = useBoardSession(sessionId);
+  const viewedParticipantPrefs = viewParticipantId
+    ? ((boardSessionResult?.session as any)?.participant_prefs?.[viewParticipantId] ?? null)
+    : null;
+  const viewedParticipant = viewParticipantId
+    ? ((boardSessionResult?.session as any)?.participants ?? []).find((participant: any) => participant.user_id === viewParticipantId)
+    : null;
+  const viewedParticipantName =
+    viewedParticipant?.profiles?.first_name?.trim?.() ||
+    viewedParticipant?.profiles?.display_name?.trim?.() ||
+    'Participant';
+  const isEditable = !viewParticipantId;
+  const effectiveLoadedPreferences = viewParticipantId ? viewedParticipantPrefs : loadedPreferences;
+  const effectiveIsCollaborationMode = isCollaborationMode || !!viewParticipantId;
 
   // ORCH-0444: Guard — close preferences sheet if the collab session is deleted while open.
   // When the session is deleted, RecommendationsContext.onSessionLost switches to solo,
   // which changes currentMode, which eventually unmounts the collab UI. But the modal
   // may still be visible during the transition. This guard closes it immediately.
   useEffect(() => {
-    if (visible && sessionId && !preferencesLoading && isCollaborationMode === false) {
+    if (visible && sessionId && !viewParticipantId && !preferencesLoading && isCollaborationMode === false) {
       // sessionId was provided (we're in collab mode) but usePreferencesData says we're NOT
       // in collab mode — means the session was deleted or became unavailable. Close.
       onClose?.();
     }
-  }, [visible, sessionId, preferencesLoading, isCollaborationMode, onClose]);
+  }, [visible, sessionId, viewParticipantId, preferencesLoading, isCollaborationMode, onClose]);
 
   // ORCH-0446: Reset form state when sessionId changes to prevent stale state leaking
   // between sessions. Without this, switching from Session A to Session B would show
   // Session A's categories in Session B's preferences sheet.
   const prevSessionIdRef = useRef(sessionId);
+  const prevViewParticipantIdRef = useRef(viewParticipantId);
   useEffect(() => {
-    if (prevSessionIdRef.current !== sessionId) {
+    if (prevSessionIdRef.current !== sessionId || prevViewParticipantIdRef.current !== viewParticipantId) {
       setSelectedIntents([]);
       setSelectedCategories([]);
       setSelectedDateOption('today');
@@ -199,8 +219,9 @@ export default function PreferencesSheet({
       setSearchLocation('');
       setInitialPreferences(null);
       prevSessionIdRef.current = sessionId;
+      prevViewParticipantIdRef.current = viewParticipantId;
     }
-  }, [sessionId]);
+  }, [sessionId, viewParticipantId]);
 
   // Experience Types (Intents)
   const [selectedIntents, setSelectedIntents] = useState<string[]>([]);
@@ -269,6 +290,11 @@ export default function PreferencesSheet({
   const isSelectingSuggestion = useRef(false);
   const locationSectionRef = useRef<View>(null);
   const locationSectionY = useRef<number>(0);
+  const categoriesSectionRef = useRef<View>(null);
+  const categoriesSectionY = useRef<number>(0);
+  const travelSectionRef = useRef<View>(null);
+  const travelSectionY = useRef<number>(0);
+  const lastFocusedVisibleRef = useRef(false);
 
   // Loading states
   const [isSaving, setIsSaving] = useState(false);
@@ -286,6 +312,25 @@ export default function PreferencesSheet({
   useEffect(() => {
     AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion);
   }, []);
+
+  useEffect(() => {
+    if (!visible) {
+      lastFocusedVisibleRef.current = false;
+      return;
+    }
+    if (lastFocusedVisibleRef.current || !initialFocusSection) return;
+    lastFocusedVisibleRef.current = true;
+
+    const targetY =
+      initialFocusSection === 'travel'
+        ? travelSectionY.current
+        : initialFocusSection === 'categories'
+          ? categoriesSectionY.current
+          : locationSectionY.current;
+    setTimeout(() => {
+      scrollRef.current?.scrollTo?.({ y: Math.max(0, targetY - 16), animated: true });
+    }, 250);
+  }, [initialFocusSection, visible]);
 
   useEffect(() => {
     if (visible && !preferencesLoading) {
@@ -333,13 +378,13 @@ export default function PreferencesSheet({
 
   // Initialize state from loaded preferences
   useEffect(() => {
-    if (!loadedPreferences || preferencesLoading || !visible) {
+    if (!effectiveLoadedPreferences || preferencesLoading || !visible) {
       return;
     }
 
-    if (isCollaborationMode) {
+    if (effectiveIsCollaborationMode) {
       // Narrow type: in collab mode, preferences come from BoardSessionPreferences
-      const prefs = loadedPreferences as import('../hooks/useBoardSession').BoardSessionPreferences;
+      const prefs = effectiveLoadedPreferences as import('../hooks/useBoardSession').BoardSessionPreferences;
       // Load from board session preferences — intents and categories are separate DB columns
       const collabIntents = Array.isArray(prefs.intents) ? prefs.intents : [];
       setSelectedIntents(collabIntents);
@@ -415,54 +460,54 @@ export default function PreferencesSheet({
       });
     } else {
       // Load from solo preferences — intents and categories are separate DB columns
-      const soloIntents = Array.isArray((loadedPreferences).intents) ? (loadedPreferences).intents : [];
+      const soloIntents = Array.isArray((effectiveLoadedPreferences).intents) ? (effectiveLoadedPreferences).intents : [];
       setSelectedIntents(soloIntents);
       const soloCats = normalizeCategoryArray(
-        Array.isArray(loadedPreferences.categories) ? loadedPreferences.categories : []
+        Array.isArray(effectiveLoadedPreferences.categories) ? effectiveLoadedPreferences.categories : []
       );
       setSelectedCategories(soloCats);
 
-      if (loadedPreferences.travel_mode) {
-        setTravelMode(loadedPreferences.travel_mode);
+      if (effectiveLoadedPreferences.travel_mode) {
+        setTravelMode(effectiveLoadedPreferences.travel_mode);
       }
 
       // travel_constraint_type is always 'time' — no need to load from DB
-      if (loadedPreferences.travel_constraint_value !== undefined && loadedPreferences.travel_constraint_value !== null) {
-        setConstraintValue(loadedPreferences.travel_constraint_value);
+      if (effectiveLoadedPreferences.travel_constraint_value !== undefined && effectiveLoadedPreferences.travel_constraint_value !== null) {
+        setConstraintValue(effectiveLoadedPreferences.travel_constraint_value);
       }
 
       // Load toggle states
-      setIntentToggle(typeof loadedPreferences.intent_toggle === 'boolean' ? loadedPreferences.intent_toggle : true);
-      setCategoryToggle(typeof loadedPreferences.category_toggle === 'boolean' ? loadedPreferences.category_toggle : true);
+      setIntentToggle(typeof effectiveLoadedPreferences.intent_toggle === 'boolean' ? effectiveLoadedPreferences.intent_toggle : true);
+      setCategoryToggle(typeof effectiveLoadedPreferences.category_toggle === 'boolean' ? effectiveLoadedPreferences.category_toggle : true);
 
       // Load date option — ORCH-0434: new 3-option system with legacy compat
-      if (loadedPreferences.date_option) {
-        setSelectedDateOption(DB_TO_DATE_OPTION[loadedPreferences.date_option] || 'today');
+      if (effectiveLoadedPreferences.date_option) {
+        setSelectedDateOption(DB_TO_DATE_OPTION[effectiveLoadedPreferences.date_option] || 'today');
       }
 
       // Load selected dates (multi-day calendar)
-      const soloLoadedDates = Array.isArray(loadedPreferences.selected_dates) ? loadedPreferences.selected_dates : [];
+      const soloLoadedDates = Array.isArray(effectiveLoadedPreferences.selected_dates) ? effectiveLoadedPreferences.selected_dates : [];
       setSelectedDates(soloLoadedDates);
 
-      if (loadedPreferences.datetime_pref) {
-        const date = new Date(loadedPreferences.datetime_pref);
+      if (effectiveLoadedPreferences.datetime_pref) {
+        const date = new Date(effectiveLoadedPreferences.datetime_pref);
         if (!isNaN(date.getTime())) {
           setSelectedDate(date);
         }
       }
 
-      const gpsFlag = (loadedPreferences).use_gps_location ?? true;
+      const gpsFlag = (effectiveLoadedPreferences).use_gps_location ?? true;
       setUseGpsLocation(gpsFlag);
 
-      if (!gpsFlag && (loadedPreferences).custom_location) {
-        setSearchLocation((loadedPreferences).custom_location);
+      if (!gpsFlag && (effectiveLoadedPreferences).custom_location) {
+        setSearchLocation((effectiveLoadedPreferences).custom_location);
         setUseLocation("search");
         // Restore saved coordinates so they persist through re-saves
         // without requiring the user to re-select the address.
-        if ((loadedPreferences).custom_lat != null && (loadedPreferences).custom_lng != null) {
+        if ((effectiveLoadedPreferences).custom_lat != null && (effectiveLoadedPreferences).custom_lng != null) {
           setSelectedCoords({
-            lat: (loadedPreferences).custom_lat,
-            lng: (loadedPreferences).custom_lng,
+            lat: (effectiveLoadedPreferences).custom_lat,
+            lng: (effectiveLoadedPreferences).custom_lng,
           });
         }
       }
@@ -470,28 +515,29 @@ export default function PreferencesSheet({
       setInitialPreferences({
         selectedIntents: soloIntents,
         selectedCategories: soloCats,
-        selectedDateOption: loadedPreferences.date_option
-          ? DB_TO_DATE_OPTION[loadedPreferences.date_option] || 'today'
+        selectedDateOption: effectiveLoadedPreferences.date_option
+          ? DB_TO_DATE_OPTION[effectiveLoadedPreferences.date_option] || 'today'
           : 'today',
         selectedDates: soloLoadedDates,
-        intentToggle: typeof loadedPreferences.intent_toggle === 'boolean' ? loadedPreferences.intent_toggle : true,
-        categoryToggle: typeof loadedPreferences.category_toggle === 'boolean' ? loadedPreferences.category_toggle : true,
-        selectedDate: loadedPreferences.datetime_pref
-          ? new Date(loadedPreferences.datetime_pref)
+        intentToggle: typeof effectiveLoadedPreferences.intent_toggle === 'boolean' ? effectiveLoadedPreferences.intent_toggle : true,
+        categoryToggle: typeof effectiveLoadedPreferences.category_toggle === 'boolean' ? effectiveLoadedPreferences.category_toggle : true,
+        selectedDate: effectiveLoadedPreferences.datetime_pref
+          ? new Date(effectiveLoadedPreferences.datetime_pref)
           : null,
-        travelMode: loadedPreferences.travel_mode || "walking",
+        travelMode: effectiveLoadedPreferences.travel_mode || "walking",
         constraintType: 'time' as const,
-        constraintValue: loadedPreferences.travel_constraint_value || 30,
-        searchLocation: (loadedPreferences).custom_location || "",
+        constraintValue: effectiveLoadedPreferences.travel_constraint_value || 30,
+        searchLocation: (effectiveLoadedPreferences).custom_location || "",
       });
     }
-  }, [loadedPreferences, preferencesLoading, visible, isCollaborationMode]);
+  }, [effectiveLoadedPreferences, preferencesLoading, visible, effectiveIsCollaborationMode]);
 
   // All categories always visible — curated pills are independent of category pills
   const filteredCategories = categories;
 
   // Memoized callbacks — side effects kept outside updater to stay StrictMode-safe
   const handleIntentToggle = useCallback((id: string) => {
+    if (!isEditable) return;
     let blocked = false;
     setSelectedIntents((prev) => {
       if (prev.includes(id)) {
@@ -509,9 +555,10 @@ export default function PreferencesSheet({
       setMinSelectionMessage(true);
       setTimeout(() => setMinSelectionMessage(false), 2500);
     }
-  }, [categoryToggle]);
+  }, [categoryToggle, isEditable]);
 
   const handleCategoryToggle = useCallback((id: string) => {
+    if (!isEditable) return;
     let blocked = false;
     setSelectedCategories((prev) => {
       if (prev.includes(id)) {
@@ -529,36 +576,40 @@ export default function PreferencesSheet({
       setMinSelectionMessage(true);
       setTimeout(() => setMinSelectionMessage(false), 2500);
     }
-  }, [intentToggle]);
+  }, [intentToggle, isEditable]);
 
   // ORCH-0434: Date option handler (simplified — 3 options, no time slots)
   const handleDateOptionChange = useCallback((option: DateOptionId) => {
+    if (!isEditable) return;
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSelectedDateOption(option);
     if (option !== 'pick_dates') {
       setSelectedDates([]);
     }
-  }, []);
+  }, [isEditable]);
 
   // ORCH-0434: Toggle handlers with mutual exclusion guard
   const handleIntentToggleChange = useCallback((newValue: boolean) => {
+    if (!isEditable) return;
     if (!newValue && !categoryToggle) {
       toastManager.warning(t('preferences:experience_types.min_message'), 2000);
       return;
     }
     setIntentToggle(newValue);
-  }, [categoryToggle, t]);
+  }, [categoryToggle, isEditable, t]);
 
   const handleCategoryToggleChange = useCallback((newValue: boolean) => {
+    if (!isEditable) return;
     if (!newValue && !intentToggle) {
       toastManager.warning(t('preferences:categories.min_message'), 2000);
       return;
     }
     setCategoryToggle(newValue);
-  }, [intentToggle, t]);
+  }, [intentToggle, isEditable, t]);
 
   const handleLocationInputChange = useCallback((text: string) => {
+    if (!isEditable) return;
     setSearchLocation(text);
     setSelectedCoords(null);
 
@@ -585,16 +636,18 @@ export default function PreferencesSheet({
       setSuggestions([]);
       setShowSuggestions(false);
     }
-  }, []);
+  }, [isEditable]);
 
   const handleClearLocation = useCallback(() => {
+    if (!isEditable) return;
     setSearchLocation('');
     setSelectedCoords(null);
     setSuggestions([]);
     setShowSuggestions(false);
-  }, []);
+  }, [isEditable]);
 
   const handleSuggestionSelect = useCallback(async (suggestion: AutocompleteSuggestion) => {
+    if (!isEditable) return;
     if (isSelectingSuggestion.current) return;
     isSelectingSuggestion.current = true;
     setSearchLocation(suggestion.fullAddress || suggestion.displayName);
@@ -616,7 +669,7 @@ export default function PreferencesSheet({
     setTimeout(() => {
       isSelectingSuggestion.current = false;
     }, 300);
-  }, [user?.id, setProfile]);
+  }, [isEditable, user?.id, setProfile]);
 
   const handleInputBlur = useCallback(() => {
     setTimeout(() => {
@@ -628,6 +681,7 @@ export default function PreferencesSheet({
   }, []);
 
   const handleGpsToggle = useCallback((value: boolean) => {
+    if (!isEditable) return;
     setUseGpsLocation(value);
     if (value) {
       // Save custom location before clearing so toggle-off can restore it
@@ -642,7 +696,7 @@ export default function PreferencesSheet({
       setSearchLocation(savedCustomLocation.current.text);
       setSelectedCoords(savedCustomLocation.current.coords);
     }
-  }, [user?.id, setProfile]);
+  }, [isEditable, user?.id, setProfile]);
 
   const hasChanges = useMemo(() => {
     if (!initialPreferences) return true;
@@ -788,6 +842,7 @@ export default function PreferencesSheet({
   ]);
 
   const handleReset = useCallback(() => {
+    if (!isEditable) return;
     mixpanelService.trackPreferencesReset(isCollaborationMode);
     setSelectedIntents(defaultPreferences.selectedIntents);
     setSelectedCategories(defaultPreferences.selectedCategories);
@@ -799,9 +854,10 @@ export default function PreferencesSheet({
     setTravelMode(defaultPreferences.travelMode);
     setConstraintValue(defaultPreferences.constraintValue);
     setSearchLocation(defaultPreferences.searchLocation);
-  }, []);
+  }, [isCollaborationMode, isEditable]);
 
   const handleApplyPreferences = useCallback(async () => {
+    if (!isEditable) return;
     if (isSavingRef.current) return;
     isSavingRef.current = true;
 
@@ -1052,6 +1108,7 @@ export default function PreferencesSheet({
     useGpsLocation,
     selectedCoords,
     isCollaborationMode,
+    isEditable,
     updateBoardPreferences,
     user?.id,
     queryClient,
@@ -1066,7 +1123,14 @@ export default function PreferencesSheet({
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.titleContainer}>
-            {isCollaborationMode && sessionName ? (
+            {!isEditable ? (
+              <>
+                <Text style={styles.subtitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
+                  {viewedParticipantName}'s picks (read-only)
+                </Text>
+                <Text style={styles.sessionBannerHint}>View-only session preferences</Text>
+              </>
+            ) : isCollaborationMode && sessionName ? (
               <>
                 <Text style={styles.subtitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
                   {t('preferences:sheet.session_vibes', { name: sessionName })}
@@ -1094,7 +1158,12 @@ export default function PreferencesSheet({
           }}>
           <View
             ref={locationSectionRef}
-            style={[styles.section, { marginTop: 20 }]}  // First section: 20px
+            style={[
+              styles.section,
+              { marginTop: 20 },
+              !isEditable && styles.readOnlySection,
+              (initialFocusSection === 'location' || initialFocusSection === 'dates') && styles.focusedSection,
+            ]}
             onLayout={(event) => {
               const { y } = event.nativeEvent.layout;
               locationSectionY.current = y;
@@ -1106,6 +1175,7 @@ export default function PreferencesSheet({
               searchLocation={searchLocation}
               onLocationInputChange={handleLocationInputChange}
               onFocus={() => {
+                if (!isEditable) return;
                 setIsInputFocused(true);
                 if (suggestions.length > 0) {
                   setShowSuggestions(true);
@@ -1122,6 +1192,7 @@ export default function PreferencesSheet({
               onToggleGps={handleGpsToggle}
               isLocked={!canAccess('custom_starting_point')}
               onLockedTap={() => {
+                if (!isEditable) return;
                 setPaywallFeature('custom_starting_point');
                 setShowPaywall(true);
               }}
@@ -1145,8 +1216,9 @@ export default function PreferencesSheet({
                       isSelected && styles.datePillSelected,
                     ]}
                     activeOpacity={0.7}
+                    disabled={!isEditable}
                     accessibilityRole="button"
-                    accessibilityState={{ selected: isSelected }}
+                    accessibilityState={{ selected: isSelected, disabled: !isEditable }}
                     accessibilityLabel={t(`preferences:${option.labelKey}`)}
                   >
                     <Text
@@ -1166,7 +1238,7 @@ export default function PreferencesSheet({
               <View style={styles.calendarWrapper}>
                 <MultiDayCalendar
                   selectedDates={selectedDates}
-                  onDatesChange={setSelectedDates}
+                  onDatesChange={isEditable ? setSelectedDates : () => {}}
                 />
               </View>
             )}
@@ -1189,7 +1261,7 @@ export default function PreferencesSheet({
             title="See curated experiences?"
             isOn={intentToggle}
             onToggle={handleIntentToggleChange}
-            disabled={!categoryToggle}
+            disabled={!categoryToggle || !isEditable}
             warning={sectionWarnings.intents}
           >
             <ExperienceTypesSection
@@ -1199,6 +1271,7 @@ export default function PreferencesSheet({
               minMessage={minSelectionMessage}
               isCuratedLocked={false}
               onLockedTap={() => {
+                if (!isEditable) return;
                 setPaywallFeature('curated_cards');
                 setShowPaywall(true);
               }}
@@ -1212,11 +1285,21 @@ export default function PreferencesSheet({
             opacity: sectionAnims[2],
             transform: [{ translateY: sectionAnims[2].interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) }],
           }}>
+          <View
+            ref={categoriesSectionRef}
+            onLayout={(event) => {
+              categoriesSectionY.current = event.nativeEvent.layout.y;
+            }}
+            style={[
+              !isEditable && styles.readOnlySection,
+              initialFocusSection === 'categories' && styles.focusedSection,
+            ]}
+          >
           <ToggleSection
             title="See popular options?"
             isOn={categoryToggle}
             onToggle={handleCategoryToggleChange}
-            disabled={!intentToggle}
+            disabled={!intentToggle || !isEditable}
             warning={sectionWarnings.categories}
           >
             <CategoriesSection
@@ -1226,6 +1309,7 @@ export default function PreferencesSheet({
               minMessage={minSelectionMessage}
             />
           </ToggleSection>
+          </View>
 
           </Animated.View>
 
@@ -1234,12 +1318,22 @@ export default function PreferencesSheet({
             opacity: sectionAnims[3],
             transform: [{ translateY: sectionAnims[3].interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) }],
           }}>
-          <View style={styles.section}>
+          <View
+            ref={travelSectionRef}
+            style={[
+              styles.section,
+              !isEditable && styles.readOnlySection,
+              initialFocusSection === 'travel' && styles.focusedSection,
+            ]}
+            onLayout={(event) => {
+              travelSectionY.current = event.nativeEvent.layout.y;
+            }}
+          >
             <Text style={styles.sectionTitle}>How are you rolling?</Text>
             <TravelModeSection
               travelModes={travelModes}
               travelMode={travelMode}
-              onTravelModeChange={setTravelMode}
+              onTravelModeChange={isEditable ? setTravelMode : () => {}}
             />
           </View>
           </Animated.View>
@@ -1249,11 +1343,12 @@ export default function PreferencesSheet({
             opacity: sectionAnims[4],
             transform: [{ translateY: sectionAnims[4].interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) }],
           }}>
-          <View style={styles.section}>
+          <View style={[styles.section, !isEditable && styles.readOnlySection]}>
             <Text style={styles.sectionTitle}>How far?</Text>
             <TravelLimitSection
             constraintValue={constraintValue}
             onConstraintValueChange={(text) => {
+              if (!isEditable) return;
               const numericValue = text.replace(/[^0-9]/g, "");
               if (numericValue === "") {
                 setConstraintValue("");
@@ -1266,6 +1361,7 @@ export default function PreferencesSheet({
               }
             }}
             onFocus={() => {
+              if (!isEditable) return;
               // Force scroll to bottom so keyboard doesn't cover the input
               // The KeyboardAwareScrollView auto-scrolls on keyboard show,
               // but this ensures it works when keyboard is already open
@@ -1284,6 +1380,7 @@ export default function PreferencesSheet({
 
           </KeyboardAwareScrollView>
         {/* Apply Button */}
+        {isEditable && (
         <View
           style={[
             styles.footer,
@@ -1327,6 +1424,7 @@ export default function PreferencesSheet({
             </TouchableOpacity>
           </View>
         </View>
+        )}
       </View>
 
       </SafeAreaView>
@@ -1501,6 +1599,13 @@ const styles = StyleSheet.create({
     shadowOpacity: 1,
     shadowRadius: 24,
     elevation: 6,
+  },
+  readOnlySection: {
+    opacity: 0.85,
+  },
+  focusedSection: {
+    borderColor: '#eb7825',
+    borderWidth: 1.5,
   },
   sectionTitle: {
     fontSize: 14,
