@@ -612,6 +612,7 @@ function checkNoNewBackendFiles() {
     "supabase/functions/notification-retry-sweeper/index.ts",
     "supabase/functions/notification-retry-sweeper/index.test.ts",
     "supabase/functions/ticket-confirmation-dispatch/index.ts",
+    "supabase/functions/ticket-confirmation-dispatch/__tests__/waitlist-spot-open.adversarial.test.ts",
     "supabase/functions/waitlist-signup/index.ts",
     "supabase/functions/waitlist-signup/__tests__/signup-happy.test.ts",
     "supabase/functions/waitlist-signup/__tests__/signup-dedupe.test.ts",
