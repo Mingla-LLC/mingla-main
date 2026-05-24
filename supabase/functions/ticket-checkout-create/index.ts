@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { stripeTicketCheckout, STRIPE_API_VERSION } from "../_shared/stripe.ts";
 import { getPaymentMethodTypes } from "../_shared/stripePaymentMethods.ts";
+import { isNativePaidAllowedForBrand } from "../_shared/stripeTax.ts";
 // ORCH-0869 [Tr3 Installment Payments] — separate-line import so the
 // ORCH-0849 R-2 regex (single-symbol braces) keeps matching above.
 import { getInstallmentPaymentMethodTypes } from "../_shared/stripePaymentMethods.ts";
@@ -354,6 +355,37 @@ serve(async (req) => {
     : null;
   if (!stripeAccountId) {
     return jsonResponse({ error: "stripe_account_not_ready" }, 409);
+  }
+
+  let connectedAccountCountry: string | null = null;
+  if (surface === "native") {
+    const { data: stripeAccountRow, error: stripeAccountCountryError } = await supabase
+      .from("stripe_connect_accounts")
+      .select("country")
+      .eq("stripe_account_id", stripeAccountId)
+      .maybeSingle();
+    if (stripeAccountCountryError) {
+      console.error(
+        "[ticket-checkout-create] stripe account country lookup failed",
+        stripeAccountCountryError,
+      );
+      return jsonResponse(
+        {
+          error: "stripe_account_country_lookup_failed",
+          detail: stripeAccountCountryError.message,
+        },
+        500,
+      );
+    }
+    connectedAccountCountry = typeof stripeAccountRow?.country === "string"
+      ? stripeAccountRow.country
+      : null;
+    if (!isNativePaidAllowedForBrand(connectedAccountCountry)) {
+      return jsonResponse(
+        { error: "native_paid_not_allowed_in_region", retryWithSurface: "web" },
+        400,
+      );
+    }
   }
 
   // ORCH-0843 (2026-05-15) — Mingla platform application-fee formula.

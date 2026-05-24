@@ -78,6 +78,11 @@ type CheckoutCreateResponse =
     };
 
 const MERCHANT_DISPLAY_NAME = "Mingla";
+const NATIVE_REGION_GATE_MESSAGE =
+  "Native payment is not available in this region yet. Pay on the web to complete checkout.";
+
+export const isStripeGooglePayTestEnv = (): boolean =>
+  process.env.EAS_BUILD_PROFILE !== "production";
 
 export const useNativeCheckoutFlow = (): ((
   input: NativeCheckoutInput,
@@ -119,7 +124,12 @@ export const useNativeCheckoutFlow = (): ((
         error,
         "Couldn't start checkout. Tap to try again.",
       );
-      return { outcome: "failed", message };
+      return {
+        outcome: "failed",
+        message: message === "native_paid_not_allowed_in_region"
+          ? NATIVE_REGION_GATE_MESSAGE
+          : message,
+      };
     }
 
     if (!data) {
@@ -209,7 +219,7 @@ export const useNativeCheckoutFlow = (): ((
         },
         googlePay: {
           merchantCountryCode: "US",
-          testEnv: __DEV__,
+          testEnv: isStripeGooglePayTestEnv(),
           currencyCode: "usd",
         },
       });
