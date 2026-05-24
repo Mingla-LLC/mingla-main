@@ -29,7 +29,7 @@ const REQUIRED_FILES = {
   service: "mingla-business/src/services/ticketCheckoutService.ts",
   payment: "mingla-business/app/checkout-trip/[tripEventId]/payment.tsx",
   edge: "supabase/functions/ticket-checkout-create/index.ts",
-  migration: "supabase/migrations/20260724000006_orch_0915_pay_in_full_opt_out.sql",
+  migration: "supabase/migrations/20260724000007_orch_0915_pay_in_full_opt_out.sql",
 };
 
 function read(rel, root = REPO_ROOT) {

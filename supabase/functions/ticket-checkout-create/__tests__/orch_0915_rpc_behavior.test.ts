@@ -5,7 +5,7 @@ import {
 
 const migration = await Deno.readTextFile(
   new URL(
-    "../../../migrations/20260724000006_orch_0915_pay_in_full_opt_out.sql",
+    "../../../migrations/20260724000007_orch_0915_pay_in_full_opt_out.sql",
     import.meta.url,
   ),
 );
