@@ -31,6 +31,9 @@ export const useEventWaitlist = (
     const channelName = `event-waitlist-${eventId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const channel = supabase
       .channel(channelName)
+      // REALTIME-INERT-OK: ORCH-0958 follow-up to publish waitlist_entries to supabase_realtime.
+      // Until then, the planner panel falls back to React Query's 30s staleTime — degraded
+      // freshness, not broken. Subscription is silently no-op (gate I-PROPOSED-BV).
       .on(
         "postgres_changes",
         {

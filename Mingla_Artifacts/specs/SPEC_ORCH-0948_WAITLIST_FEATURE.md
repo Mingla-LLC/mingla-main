@@ -355,16 +355,16 @@ Add `waitlistEnabled?: boolean` to `PublicTicketProps` if not already present in
 
 ### 8.3 Buyer-web component — `mingla-business/src/components/waitlist/JoinWaitlistSheet.tsx` (new)
 
-Bottom-sheet modal (`Sheet` primitive — see [feedback_rn_sub_sheet_must_render_inside_parent](../../mingla-main/.claude/projects/-Users-sethogieva-Desktop-mingla-main/memory/feedback_rn_sub_sheet_must_render_inside_parent.md)). Renders inside parent sheet/page tree; never a Fragment sibling. Fields:
+Bottom-sheet modal (`Sheet` primitive — per Claude memory rule `feedback_rn_sub_sheet_must_render_inside_parent.md`). Renders inside parent sheet/page tree; never a Fragment sibling. Fields:
 
 - Email (TextInput, type="email-address", autocapitalize="none")
 - Phone (TextInput, type="phone-pad") — optional if email present, required if email empty
 - Name (optional)
 - Qty stepper (1–6 visible; clamps to `ticket.maxPurchaseQty ?? 6`)
 - Consent checkbox: "I'm OK with Mingla emailing or texting me only about this event's waitlist." Required true to enable Submit.
-- Submit calls `useJoinWaitlistMutation` (§8.4); on success show Toast "You're on the waitlist." (per [feedback_toast_needs_absolute_wrap](../../mingla-main/.claude/projects/-Users-sethogieva-Desktop-mingla-main/memory/feedback_toast_needs_absolute_wrap.md), wrap toast in absolute-positioned wrapper) and close. On 409 `already_waiting` show "You're already on the waitlist." and close. On other errors show toast "Couldn't add you to the waitlist. Try again." and keep sheet open.
+- Submit calls `useJoinWaitlistMutation` (§8.4); on success show Toast "You're on the waitlist." (per Claude memory rule `feedback_toast_needs_absolute_wrap.md` — wrap toast in absolute-positioned wrapper) and close. On 409 `already_waiting` show "You're already on the waitlist." and close. On other errors show toast "Couldn't add you to the waitlist. Try again." and keep sheet open.
 
-Keyboard-blocks-input rule applies — [feedback_keyboard_never_blocks_input](../../mingla-main/.claude/projects/-Users-sethogieva-Desktop-mingla-main/memory/feedback_keyboard_never_blocks_input.md). Mirror the Cycle 3 wizard root pattern (Keyboard listener + dynamic paddingBottom).
+Keyboard-blocks-input rule applies — Claude memory rule `feedback_keyboard_never_blocks_input.md`. Mirror the Cycle 3 wizard root pattern (Keyboard listener + dynamic paddingBottom).
 
 ### 8.4 Buyer-web service + hook
 
