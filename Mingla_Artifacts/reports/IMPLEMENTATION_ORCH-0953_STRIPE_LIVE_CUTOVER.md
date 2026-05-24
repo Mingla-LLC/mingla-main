@@ -63,7 +63,7 @@ Mingla now fails closed for live Stripe key mistakes, persists and routes Stripe
 - **Why:** SC-2 prevents sandbox publishable key in production builds.
 - **Approx lines changed:** 20.
 
-### `supabase/migrations/20260724000006_orch_0953_create_stripe_disputes.sql`
+### `supabase/migrations/20260726000000_orch_0953_create_stripe_disputes.sql`
 
 - **Before:** No dispute persistence table.
 - **After:** Creates `public.stripe_disputes`, indexes, RLS, service-role policy, brand payment-manager read policy.
@@ -187,6 +187,10 @@ Mingla now fails closed for live Stripe key mistakes, persists and routes Stripe
 | mingla-business Jest | `npx jest --runInBand src/__tests__/appConfig_pkLiveFailClose.test.ts __tests__/intentFilters_stripeReturnScheme.test.ts __tests__/googlePay_testEnvProductionGate.test.ts src/payments/__tests__/nativeCheckoutFlow_regionGateToast.test.tsx` | PASS, 6 tests | Ran from `mingla-business/`. |
 | Edge deploy bundle except tax dashboard | `deno check ticket-checkout-create stripe-webhook brand-stripe-onboard refund-order cancel-trip-booking` | PASS | Checks deploy-impact functions importing touched shared files. |
 | `brand-stripe-tax-dashboard-link` check | `deno check supabase/functions/brand-stripe-tax-dashboard-link/index.ts` | FAIL pre-existing | Type-only Supabase import mismatch at `index.ts:122` audit call; file not in implementation scope. |
+| ORCH-0953 migration version collision scan | `ls ~/Desktop/mingla-orchs/*/supabase/migrations/20260726000000*.sql 2>/dev/null` | PASS | Only ORCH-0953 owns `20260726000000_orch_0953_create_stripe_disputes.sql`. |
+| ORCH-0953 §3.3 rework regression | `/Users/sethogieva/.deno/bin/deno test --allow-env --allow-read supabase/functions/_shared/__tests__/stripeDisputeHandlers.test.ts` | PASS, 4 tests | Test now reads the renamed migration path. |
+| Per-ORCH migration preflight | `/Users/sethogieva/bin/supabase migration list --linked` from this worktree | BLOCKED | Worktree is not Supabase-linked: `Cannot find project ref`. |
+| Linked-anchor migration preflight fallback | `/Users/sethogieva/bin/supabase migration list --linked` from `/Users/sethogieva/Desktop/mingla-main` | BLOCKED | Remote-only `20260725000000` row exists; source-reconcile before `db push`. |
 | Diff hygiene | `git diff --check` | PASS | No whitespace errors. |
 
 ## 13. Regression Surface
@@ -203,7 +207,7 @@ Mingla now fails closed for live Stripe key mistakes, persists and routes Stripe
 |---|---|---|
 | §3.1 | `supabase/functions/_shared/__tests__/stripeBlueprintClient_failclose.test.ts` | `bc5935fc` by reverting `stripeBlueprintClient.ts`; test failed with `fallback_fetch_called`. |
 | §3.2 | `mingla-business/src/__tests__/appConfig_pkLiveFailClose.test.ts` | `bc5935fc` by reverting `mingla-business/app.config.ts`; Jest failed missing/non-live production cases. |
-| §3.3 | `supabase/functions/_shared/__tests__/stripeDisputeHandlers.test.ts` | `bc5935fc` by removing handler file; Deno failed module import. Migration shape additionally verified at `222daa04` by removing migration file; migration assertion failed. |
+| §3.3 | `supabase/functions/_shared/__tests__/stripeDisputeHandlers.test.ts` | `bc5935fc` by removing handler file; Deno failed module import. Migration shape additionally verified at `222daa04` by removing migration file; migration assertion failed. Rework receipt: this commit renames the migration to `20260726000000_orch_0953_create_stripe_disputes.sql`; collision scan should fail if the version reverts to `20260724000006`. |
 | §3.4 | `supabase/functions/_shared/__tests__/stripeWebhookRouter_eventList.test.ts` | `bc5935fc` by injecting `charge.succeeded`; Deno failed noisy-event assertion. |
 | §3.5 | `mingla-business/__tests__/intentFilters_stripeReturnScheme.test.ts` | `bc5935fc` by reverting `mingla-business/app.json`; Jest failed scheme assertion. |
 | §3.6 | `app-mobile/__tests__/intentFilters_stripeReturnScheme.test.ts` | `bc5935fc` by reverting `app-mobile/app.json`; Deno failed scheme assertion. |
@@ -216,7 +220,7 @@ Mingla now fails closed for live Stripe key mistakes, persists and routes Stripe
 
 | Item | Risk / temporary state | Exit condition | Location |
 |---|---|---|---|
-| Migration not applied | `stripe_disputes` table unavailable remotely until operator runs DB push | Operator runs `supabase db push --linked` | `supabase/migrations/20260724000006_orch_0953_create_stripe_disputes.sql` |
+| Migration handoff blocked by remote-only version | `stripe_disputes` table unavailable remotely; linked-anchor preflight shows remote-only `20260725000000` | Source-reconcile remote-only `20260725000000`, link/confirm the ORCH worktree, then run `supabase db push --linked` | `supabase/migrations/20260726000000_orch_0953_create_stripe_disputes.sql` |
 | Edge functions not deployed | Code not live until orchestrator deploys after migration | Orchestrator deploy checklist completed | §16 |
 | Dashboard/secrets not activated | Live cutover still blocked | Operator Phase A-E evidence pack | `EVIDENCE_PACK_ORCH-0953_LIVE_ACTIVATION.md` |
 | `brand-stripe-tax-dashboard-link` type check | Pre-existing Deno type mismatch could fail a full deploy-bundle check | Separate scoped fix or accepted known type-only gate | `supabase/functions/brand-stripe-tax-dashboard-link/index.ts:122` |
@@ -229,7 +233,11 @@ Mingla now fails closed for live Stripe key mistakes, persists and routes Stripe
 
 ## 17. Deploy Notes
 
-- **Migrations:** Operator must run `supabase db push --linked` for `20260724000006_orch_0953_create_stripe_disputes.sql`. Codex did not run any DB push.
+- **Migrations:** `20260726000000_orch_0953_create_stripe_disputes.sql` is the corrected ORCH-0953 migration filename. Codex did not run any DB push. Do not run the DB push until the remote-only `20260725000000` row shown by the linked-anchor preflight is source-reconciled and the ORCH worktree is linked or otherwise confirmed against the linked project.
+
+```bash
+cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0953-[stripe-live-cutover]" && /Users/sethogieva/bin/supabase db push --linked
+```
 - **Edge functions:** Orchestrator deploys after operator confirms migration apply:
   - `ticket-checkout-create` — imports new native region gate helper.
   - `stripe-webhook` — signature-failure alert hook and dispute router path.

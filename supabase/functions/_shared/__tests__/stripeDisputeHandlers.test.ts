@@ -118,7 +118,7 @@ Deno.test("ORCH-0953 §3.3 — dispute.created upserts one row and dispatches co
 Deno.test("ORCH-0953 §3.3 — stripe_disputes migration declares schema, RLS, and policies", async () => {
   const sql = await Deno.readTextFile(
     new URL(
-      "../../../migrations/20260724000006_orch_0953_create_stripe_disputes.sql",
+      "../../../migrations/20260726000000_orch_0953_create_stripe_disputes.sql",
       import.meta.url,
     ),
   );
