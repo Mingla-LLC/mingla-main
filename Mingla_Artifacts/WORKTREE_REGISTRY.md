@@ -36,7 +36,7 @@ Reference: [WORKTREE_STRATEGY.md](WORKTREE_STRATEGY.md).
 | Worktree path | Branch | ORCH-ID | Reaped | Merged via PR |
 |---------------|--------|---------|--------|---------------|
 | `~/Desktop/mingla-orchs/META-ORCH-0954-[cross-chat-comms-ledger-and-2-section-output]/` | `META-ORCH-0954-cross-chat-comms-ledger-and-2-section-output` | META-ORCH-0954 | 2026-05-24 | (pending PR merge) |
-| `~/Desktop/mingla-orchs/ORCH-0948-[waitlist-feature]/` | `ORCH-0948-waitlist-feature` | ORCH-0948 | 2026-05-24 | (PR# pending — fill on merge) |
+| `~/Desktop/mingla-orchs/ORCH-0948-[waitlist-feature]/` | `ORCH-0948-waitlist-feature` | ORCH-0948 | 2026-05-24 | PR #200 (squash 8b7b06e4) |
 
 _(populated as ORCHs close; older rows pruned to keep this short)_
 
