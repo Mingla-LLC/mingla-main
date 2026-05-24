@@ -615,6 +615,11 @@ function checkNoNewBackendFiles() {
     "supabase/functions/waitlist-signup/index.ts",
     "supabase/functions/waitlist-signup/__tests__/signup-happy.test.ts",
     "supabase/functions/waitlist-signup/__tests__/signup-dedupe.test.ts",
+    "supabase/migrations/20260724000010_orch_0948_waitlist_feature.sql",
+    // Renamed from 20260724000006 → 20260724000010 by orchestrator pre-deploy
+    // to resolve version collision with remote-applied
+    // 20260724000006_orch_0946_public_ticket_types_remaining. Old filename kept
+    // in allowlist so post-rename git diff (deletion + addition) clears C7.
     "supabase/migrations/20260724000006_orch_0948_waitlist_feature.sql",
     "supabase/migrations/__tests__/orch_0948_waitlist_migration.test.ts",
   ];

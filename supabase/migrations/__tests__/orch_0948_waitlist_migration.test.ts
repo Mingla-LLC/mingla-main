@@ -11,7 +11,7 @@ import {
 } from "https://deno.land/std@0.208.0/assert/mod.ts";
 
 const migration = await Deno.readTextFile(
-  new URL("../20260724000006_orch_0948_waitlist_feature.sql", import.meta.url),
+  new URL("../20260724000010_orch_0948_waitlist_feature.sql", import.meta.url),
 );
 
 Deno.test("T-WL-05: migration enforces DB-level waitlist contact dedupe", () => {
