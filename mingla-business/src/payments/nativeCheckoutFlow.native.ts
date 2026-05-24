@@ -44,6 +44,7 @@ export interface NativeCheckoutInput {
     phone: string;
     marketingOptIn?: boolean;
   };
+  paymentPlanChoice?: "full" | "installments";
   idempotencyKey?: string;
 }
 
@@ -175,6 +176,9 @@ export const useNativeCheckoutFlow = (): ((
             marketingOptIn: input.buyer.marketingOptIn === true,
           },
           lines: input.lines,
+          ...(input.paymentPlanChoice !== undefined
+            ? { payment_plan_choice: input.paymentPlanChoice }
+            : {}),
           ...(input.idempotencyKey !== undefined
             ? { idempotencyKey: input.idempotencyKey }
             : {}),

@@ -92,6 +92,7 @@ export function checkoutIdempotencyKey(input: {
   buyerEmail: string;
   buyerPhoneE164: string;
   lines: Array<{ ticketTypeId: string; quantity: number }>;
+  paymentPlanChoice?: "auto" | "full" | "installments";
 }): string {
   const lineKey = input.lines
     .map((line) => `${line.ticketTypeId}:${line.quantity}`)
@@ -103,6 +104,9 @@ export function checkoutIdempotencyKey(input: {
     input.buyerEmail.trim().toLowerCase(),
     input.buyerPhoneE164,
     lineKey,
+    ...(input.paymentPlanChoice !== undefined && input.paymentPlanChoice !== "auto"
+      ? [`choice:${input.paymentPlanChoice}`]
+      : []),
   ].join(":");
 }
 

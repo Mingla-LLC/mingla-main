@@ -16,6 +16,7 @@ export interface NativeCheckoutInput {
     phone: string;
     marketingOptIn?: boolean;
   };
+  paymentPlanChoice?: "full" | "installments";
   idempotencyKey?: string;
 }
 

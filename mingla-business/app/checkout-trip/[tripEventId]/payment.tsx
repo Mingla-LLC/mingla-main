@@ -28,6 +28,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Keyboard,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -67,6 +68,8 @@ import {
   writeCheckoutResumePayload,
 } from "../../../src/components/checkout/checkoutPersistence";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
+
+type PaymentPlanChoice = "full" | "installments";
 
 export default function CheckoutTripPaymentScreen(): React.ReactElement {
   const insets = useSafeAreaInsets();
@@ -108,6 +111,9 @@ export default function CheckoutTripPaymentScreen(): React.ReactElement {
     return null;
   }, [trip, lines]);
   const isPlanActive = projectedSchedule !== null;
+  const [paymentPlanChoice, setPaymentPlanChoice] =
+    useState<PaymentPlanChoice>("full");
+  const isUsingInstallments = isPlanActive && paymentPlanChoice === "installments";
 
   // ORCH-0880 [Tr5 Traveler Intake Forms] — flatten per-tier intake answers
   // (keyed by ticket_type_id in CartContext) into the array shape expected
@@ -256,6 +262,7 @@ export default function CheckoutTripPaymentScreen(): React.ReactElement {
           ...(intakeFormDataArray.length > 0
             ? { intakeFormData: intakeFormDataArray }
             : {}),
+          ...(isPlanActive ? { paymentPlanChoice: paymentPlanChoice } : {}),
         });
         if (checkout.kind !== "requires_web_redirect") {
           throw new Error("Hosted checkout did not return a redirect URL.");
@@ -320,6 +327,7 @@ export default function CheckoutTripPaymentScreen(): React.ReactElement {
           phone: buyer.phone,
           marketingOptIn: buyer.marketingOptIn === true,
         },
+        ...(isPlanActive ? { paymentPlanChoice: paymentPlanChoice } : {}),
       });
 
       mixpanelService.track("ticket_checkout_sheet_opened", {
@@ -421,7 +429,10 @@ export default function CheckoutTripPaymentScreen(): React.ReactElement {
     trip,
     tripEventId,
     lines,
+    intakeFormDataArray,
+    isPlanActive,
     nativeCheckout,
+    paymentPlanChoice,
     processing,
     router,
   ]);
@@ -500,9 +511,73 @@ export default function CheckoutTripPaymentScreen(): React.ReactElement {
           </View>
         </GlassCard>
 
+        {isPlanActive && projectedSchedule !== null ? (
+          <GlassCard
+            variant="base"
+            radius="lg"
+            padding={spacing.md}
+            style={styles.paymentChoiceCard}
+          >
+            <View
+              accessibilityRole="radiogroup"
+              accessibilityLabel="Payment option"
+            >
+              <Text style={styles.summaryLabel}>PAYMENT OPTION</Text>
+              <View style={styles.choiceSegment}>
+                <Pressable
+                  accessibilityRole="radio"
+                  accessibilityLabel={`Pay full ${formatCurrency(totals.total, totals.currency)} now`}
+                  accessibilityState={{ selected: paymentPlanChoice === "full" }}
+                  onPress={() => setPaymentPlanChoice("full")}
+                  style={[
+                    styles.choiceOption,
+                    paymentPlanChoice === "full" ? styles.choiceOptionSelected : null,
+                  ]}
+                >
+                  <Text style={styles.choiceTitle}>
+                    Pay full {formatCurrency(totals.total, totals.currency)} now
+                  </Text>
+                  <Text style={styles.choiceBody}>
+                    One charge today. No future installment bills for this booking.
+                  </Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="radio"
+                  accessibilityLabel={`Use payment plan, ${formatCurrency(projectedSchedule.depositCents, projectedSchedule.currency, true)} deposit today plus ${projectedSchedule.installments.length} future payments`}
+                  accessibilityState={{ selected: paymentPlanChoice === "installments" }}
+                  onPress={() => setPaymentPlanChoice("installments")}
+                  style={[
+                    styles.choiceOption,
+                    paymentPlanChoice === "installments"
+                      ? styles.choiceOptionSelected
+                      : null,
+                  ]}
+                >
+                  <Text style={styles.choiceTitle}>Use payment plan</Text>
+                  <Text style={styles.choiceBody}>
+                    {formatCurrency(
+                      projectedSchedule.depositCents,
+                      projectedSchedule.currency,
+                      true,
+                    )}{" "}
+                    deposit today + {projectedSchedule.installments.length} future
+                    payment
+                    {projectedSchedule.installments.length === 1 ? "" : "s"}.
+                  </Text>
+                </Pressable>
+              </View>
+              <Text style={styles.paymentTermsCopy}>
+                {paymentPlanChoice === "installments"
+                  ? `You'll be charged ${formatCurrency(projectedSchedule.depositCents, projectedSchedule.currency, true)} today. The remaining ${formatCurrency(projectedSchedule.fullPriceCents - projectedSchedule.depositCents, projectedSchedule.currency, true)} will auto-charge from the same card on the schedule shown. Cancellations follow the organiser's refund policy and may cancel future uncollected installments.`
+                  : `You'll be charged ${formatCurrency(totals.total, totals.currency)} today. No future installment bills will be scheduled for this booking. Cancellations follow the organiser's refund policy.`}
+              </Text>
+            </View>
+          </GlassCard>
+        ) : null}
+
         {/* ORCH-0882 — payment plan schedule, between Order Summary and
             Payment cards. Null-safe via component. */}
-        {projectedSchedule !== null ? (
+        {isUsingInstallments && projectedSchedule !== null ? (
           <View style={styles.planDisclosureWrap}>
             <InstallmentScheduleDisplay
               schedule={projectedSchedule}
@@ -541,7 +616,7 @@ export default function CheckoutTripPaymentScreen(): React.ReactElement {
             the last in-product surface to set buyer expectations about
             the deposit + future-installment auto-charge schedule.
             Constitution #3 — no silent failures. */}
-        {isPlanActive && projectedSchedule !== null ? (
+        {isPlanActive && projectedSchedule !== null && isUsingInstallments ? (
           <View
             style={styles.planBanner}
             accessibilityRole="alert"
@@ -573,6 +648,23 @@ export default function CheckoutTripPaymentScreen(): React.ReactElement {
             </Text>
           </View>
         ) : null}
+        {isPlanActive && projectedSchedule !== null && !isUsingInstallments ? (
+          <View
+            style={[styles.planBanner, styles.fullPayBanner]}
+            accessibilityRole="alert"
+            accessibilityLabel={`Paid in full today. You will be charged ${formatCurrency(totals.total, totals.currency)} today and no future installment bills will be scheduled.`}
+          >
+            <Text style={styles.planBannerTitle}>Paid in full today</Text>
+            <Text style={styles.planBannerBody}>
+              You&rsquo;ll be charged{" "}
+              <Text style={styles.planBannerStrong}>
+                {formatCurrency(totals.total, totals.currency)}
+              </Text>{" "}
+              today. No future installment bills will be scheduled for this
+              booking.
+            </Text>
+          </View>
+        ) : null}
         <View style={styles.totalRow}>
           <Text style={styles.totalLabel}>Total</Text>
           <Text style={styles.totalValue}>
@@ -581,7 +673,7 @@ export default function CheckoutTripPaymentScreen(): React.ReactElement {
         </View>
         <Button
           label={
-            isPlanActive && projectedSchedule !== null
+            isUsingInstallments && projectedSchedule !== null
               ? `Pay ${formatCurrency(projectedSchedule.depositCents, projectedSchedule.currency, true)} deposit`
               : `Pay ${formatCurrency(totals.total, totals.currency)}`
           }
@@ -592,7 +684,7 @@ export default function CheckoutTripPaymentScreen(): React.ReactElement {
           loading={processing}
           disabled={processing}
           accessibilityLabel={
-            isPlanActive && projectedSchedule !== null
+            isUsingInstallments && projectedSchedule !== null
               ? `Pay ${formatCurrency(projectedSchedule.depositCents, projectedSchedule.currency, true)} deposit with card`
               : `Pay ${formatCurrency(totals.total, totals.currency)} with card`
           }
@@ -684,6 +776,44 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: textTokens.quaternary,
   },
+  paymentChoiceCard: {
+    marginBottom: spacing.lg,
+  },
+  choiceSegment: {
+    gap: spacing.sm,
+  },
+  choiceOption: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.08)",
+    backgroundColor: "rgba(255, 255, 255, 0.03)",
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  choiceOptionSelected: {
+    borderColor: "rgba(235, 120, 37, 0.75)",
+    backgroundColor: "rgba(235, 120, 37, 0.12)",
+  },
+  choiceTitle: {
+    fontSize: 14,
+    lineHeight: 19,
+    color: textTokens.primary,
+    fontWeight: "700",
+  },
+  choiceBody: {
+    marginTop: 3,
+    fontSize: 12,
+    lineHeight: 17,
+    color: textTokens.secondary,
+    fontWeight: "400",
+  },
+  paymentTermsCopy: {
+    marginTop: spacing.sm,
+    fontSize: 12,
+    lineHeight: 18,
+    color: textTokens.tertiary,
+    fontWeight: "400",
+  },
   errorText: {
     marginTop: spacing.sm,
     fontSize: 12,
@@ -707,6 +837,10 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(235, 120, 37, 0.08)",
     borderWidth: 1,
     borderColor: "rgba(235, 120, 37, 0.45)",
+  },
+  fullPayBanner: {
+    backgroundColor: "rgba(34, 197, 94, 0.08)",
+    borderColor: "rgba(34, 197, 94, 0.45)",
   },
   planBannerTitle: {
     fontSize: 12,
