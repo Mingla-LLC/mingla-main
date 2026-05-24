@@ -14,7 +14,6 @@ Reference: [WORKTREE_STRATEGY.md](WORKTREE_STRATEGY.md).
 
 | Worktree path | Branch | ORCH-ID | Phase | Sim assigned | Metro port | Spawned | Owner |
 |---------------|--------|---------|-------|--------------|------------|---------|-------|
-| `~/Desktop/mingla-orchs/META-ORCH-0954-[cross-chat-comms-ledger-and-2-section-output]/` | `META-ORCH-0954-cross-chat-comms-ledger-and-2-section-output` | META-ORCH-0954 | INVESTIGATE (awaiting operator REVIEW) | no sim — process-only | 8087 | 2026-05-24 | mingla-orchestrator (claude) |
 
 ---
 
@@ -36,6 +35,7 @@ Reference: [WORKTREE_STRATEGY.md](WORKTREE_STRATEGY.md).
 
 | Worktree path | Branch | ORCH-ID | Reaped | Merged via PR |
 |---------------|--------|---------|--------|---------------|
+| `~/Desktop/mingla-orchs/META-ORCH-0954-[cross-chat-comms-ledger-and-2-section-output]/` | `META-ORCH-0954-cross-chat-comms-ledger-and-2-section-output` | META-ORCH-0954 | 2026-05-24 | (pending PR merge) |
 
 _(populated as ORCHs close; older rows pruned to keep this short)_
 
