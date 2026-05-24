@@ -14,7 +14,6 @@ Reference: [WORKTREE_STRATEGY.md](WORKTREE_STRATEGY.md).
 
 | Worktree path | Branch | ORCH-ID | Phase | Sim assigned | Metro port | Spawned | Owner |
 |---------------|--------|---------|-------|--------------|------------|---------|-------|
-| `~/Desktop/mingla-orchs/orch-0922-[cr6-rls-gap-rename-from-0920]/` | `orch-0922-cr6-rls-gap-rename-from-0920` | ORCH-0922 | CLOSE (artifact rename only — no code/migration/edge-fn) | none (docs-only) | 8083 | 2026-05-24 | Claude `mingla-orchestrator` |
 
 ---
 
@@ -24,9 +23,9 @@ Reference: [WORKTREE_STRATEGY.md](WORKTREE_STRATEGY.md).
 1. Append a row with worktree path, branch, ORCH-ID, current phase, assigned sim, Metro port, spawn date, ORCH owner skill.
 2. Commit the registry update alongside the first work commit in the new worktree.
 
-**On reap:**
-1. Remove the row.
-2. Commit the registry update in the CLOSE commit.
+**On reap (CLOSE Step 1.7):**
+1. The orchestrator MUST delete the row IN THE CLOSE COMMIT on the per-ORCH branch, BEFORE the PR is opened/merged. The merged commit on `main` therefore arrives WITHOUT the row.
+2. `reap.sh` removes the worktree + local/remote branch ONLY — it does NOT touch the registry on `main`. If the CLOSE commit forgot to delete the row, `main` ends up with a stale entry that will collide with the next parallel orchestrator's row add. Recovery is a separate cleanup PR — avoid this.
 
 **Live verification:** `git -C ~/Desktop/mingla-main worktree list` should always match the rows in this file (minus the anchor itself, which is always present and not registered here).
 
