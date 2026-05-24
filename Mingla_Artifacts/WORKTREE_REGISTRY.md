@@ -1,44 +1,58 @@
 # Worktree Registry
 
-Canonical owner: Codex `orchestrator-mingla`.
+**Canonical owner:** orchestrator (Claude `mingla-orchestrator` or Codex `orchestrator-mingla` — full parity).
 
-Status: LEGACY TRANSITION LEDGER as of 2026-05-11. New Mingla work no longer opens per-ORCH git worktrees. The canonical working location is `/Users/sethogieva/Desktop/mingla-main` on branch `Seth`; completed close work promotes from `Seth` to `main`.
+**Effective:** 2026-05-24 (worktree-per-ORCH cutover).
 
-Strategy reference: [WORKTREE_STRATEGY.md](WORKTREE_STRATEGY.md). This supersedes META-ORCH-0755 Step 8 / DEC-135 / I-PROPOSED-AC ONE_WORKTREE_PER_ORCH.
+**Purpose:** live ledger of currently-active per-ORCH worktrees. The orchestrator updates this file at spawn + reap. The operator's VS Code multi-root workspace folder list mirrors it visually.
 
----
-
-## Active legacy worktrees to migrate or clean up
-
-These rows existed before the 2026-05-11 branch-flow change. Do not route new work here. Before closing or deleting any legacy path, inspect it, preserve scoped evidence if still needed, and move only reviewed files into the `Seth` branch.
-
-| Legacy worktree path | Branch | ORCH-ID | Last known phase | Opened | Last sync | Owner | Migration / cleanup note |
-|----------------------|--------|---------|------------------|--------|-----------|-------|--------------------------|
-| `.worktrees/orch-0778-orch0777-web-export-stripe-import/` | `orch-0778-orch0777-web-export-stripe-import` | ORCH-0778 | CLOSE ready / operator commit+merge pending | 2026-05-10 | 2026-05-10 | Codex `orchestrator-mingla` | Legacy state from old model; inspect before migrating scoped files into `Seth`. |
-| `.worktrees/orch-0776-event-cover-video-processing-speed/` | `orch/0776-event-cover-video-processing-speed` | ORCH-0776 | TEST / retest prompt ready after Edge deploy | 2026-05-11 | 2026-05-11 | Claude `mingla-forensics` TEST mode | Legacy state from old model; inspect before migrating scoped files into `Seth`. |
-| `.worktrees/orch-0779-business-android-google-signin-developer-error/` | `orch/0779-business-android-google-signin-developer-error` | ORCH-0779 | CLOSED PASS / git lock-in pending | 2026-05-10 | 2026-05-11 | Codex `orchestrator-mingla` | Legacy state from old model; inspect before migrating scoped files into `Seth`. |
+Reference: [WORKTREE_STRATEGY.md](WORKTREE_STRATEGY.md).
 
 ---
 
-## Recently closed legacy worktrees
+## Active worktrees
 
-| Legacy worktree path | Branch | ORCH-ID | Closed | Merge SHA | CLOSE entry |
-|----------------------|--------|---------|--------|-----------|-------------|
-| `.worktrees/orch-0783-event-cover-image-provider-pivot/` | `orch/0783-event-cover-image-provider-pivot` | ORCH-0783 | 2026-05-11 | `6151201f` | `Mingla_Artifacts/CLOSE_NOTE_ORCH-0783.md` |
-| `.worktrees/orch-0781-clean-tree-stripe-web-import-regression/` | `orch/0781-clean-tree-stripe-web-import-regression` | ORCH-0781 | 2026-05-11 | `9b65912f` | `Mingla_Artifacts/CLOSE_NOTE_ORCH-0781.md` |
+_(empty — no ORCHs in flight as of cutover)_
 
----
-
-## New routing rule
-
-For every new Mingla dispatch, write:
-
-`Working tree: /Users/sethogieva/Desktop/mingla-main on branch Seth`
-
-Do not add new active rows to this registry. Use ORCH-specific reports, prompts, specs, close notes, and commit messages for tracking new work.
+| Worktree path | Branch | ORCH-ID | Phase | Sim assigned | Metro port | Spawned | Owner |
+|---------------|--------|---------|-------|--------------|------------|---------|-------|
 
 ---
 
-## Operator plain-English rule
+## How orchestrator maintains this
 
-When the operator has to do anything, explain it before the command. Example: "Seth, open the repo once, make sure it says branch `Seth`, then paste the next prompt into Claude. You do not need to choose a `.worktrees` folder anymore."
+**On spawn:**
+1. Append a row with worktree path, branch, ORCH-ID, current phase, assigned sim, Metro port, spawn date, ORCH owner skill.
+2. Commit the registry update alongside the first work commit in the new worktree.
+
+**On reap:**
+1. Remove the row.
+2. Commit the registry update in the CLOSE commit.
+
+**Live verification:** `git -C ~/Desktop/mingla-main worktree list` should always match the rows in this file (minus the anchor itself, which is always present and not registered here).
+
+---
+
+## Recently reaped (last 5 — for short-term audit trail)
+
+| Worktree path | Branch | ORCH-ID | Reaped | Merged via PR |
+|---------------|--------|---------|--------|---------------|
+
+_(populated as ORCHs close; older rows pruned to keep this short)_
+
+---
+
+## Legacy state (pre-2026-05-24 cutover)
+
+All pre-cutover worktrees from the META-ORCH-0755 era (2026-04-26 → 2026-05-11) were already cleaned up during the 2026-05-11 single-Seth model adoption. The `Seth` branch itself was deleted as part of this cutover commit. All historical work is reachable via `git log main`.
+
+No legacy worktree paths remain on disk.
+
+---
+
+## Cross-references
+
+- Strategy doc: [WORKTREE_STRATEGY.md](WORKTREE_STRATEGY.md)
+- Memory rule: `~/.claude/projects/-Users-sethogieva-Desktop-mingla-main/memory/feedback_worktree_per_orch_workflow.md`
+- Scripts: `scripts/orch-worktree/spawn.sh`, `scripts/orch-worktree/reap.sh`
+- Skill enforcement: every Claude + Codex skill's "Working-Branch Discipline" stanza
