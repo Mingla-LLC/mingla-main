@@ -124,21 +124,37 @@ describe("ORCH-0932 — parent-level threading of qrImageDataUrl through confirm
     );
   });
 
-  it("HP-9 (trip — preserved from ORCH-0930 v3): isClient parent gate remains as defense in depth for ORCH-0928 recovery race", () => {
+  it("HP-9 (trip — ORCH-0951 v2): isClient uses useState(false) + useEffect setIsClient(true) pattern (NOT v3's typeof-window initializer which caused React #418 hydration mismatch)", () => {
     expect(tripActive).toMatch(
-      /const\s+\[\s*isClient\s*\]\s*=\s*useState<boolean>\(\s*\(\)\s*=>\s*typeof\s+window\s*!==\s*["']undefined["']\s*\)/,
+      /const\s+\[\s*isClient\s*,\s*setIsClient\s*\]\s*=\s*useState<boolean>\(\s*false\s*\)/,
+    );
+    expect(tripActive).toMatch(
+      /useEffect\(\s*\(\)\s*=>\s*\{\s*setIsClient\(true\);?\s*\}\s*,\s*\[\s*\]\s*\)/,
     );
     expect(tripActive).toMatch(
       /\{\s*isClient\s*&&\s*totalTickets\s*>\s*0\s*\?\s*\(?\s*<TicketQrCarousel/,
+    );
+    // Anti-regression: must NOT re-introduce v3's typeof-window initializer
+    // (the root cause of the React #418 hydration mismatch — SSR=false,
+    // client first render=true → mismatch → React aborts the carousel subtree
+    // → multi-ticket users see only the bare minHeight=320 strip).
+    expect(tripActive).not.toMatch(
+      /useState<boolean>\(\s*\(\)\s*=>\s*typeof\s+window/,
     );
   });
 
-  it("HP-10 (event — preserved from ORCH-0930 v3): isClient parent gate remains as defense in depth", () => {
+  it("HP-10 (event — ORCH-0951 v2): mirrors the trip-side v2 pattern", () => {
     expect(eventActive).toMatch(
-      /const\s+\[\s*isClient\s*\]\s*=\s*useState<boolean>\(\s*\(\)\s*=>\s*typeof\s+window\s*!==\s*["']undefined["']\s*\)/,
+      /const\s+\[\s*isClient\s*,\s*setIsClient\s*\]\s*=\s*useState<boolean>\(\s*false\s*\)/,
+    );
+    expect(eventActive).toMatch(
+      /useEffect\(\s*\(\)\s*=>\s*\{\s*setIsClient\(true\);?\s*\}\s*,\s*\[\s*\]\s*\)/,
     );
     expect(eventActive).toMatch(
       /\{\s*isClient\s*&&\s*totalTickets\s*>\s*0\s*\?\s*\(?\s*<TicketQrCarousel/,
+    );
+    expect(eventActive).not.toMatch(
+      /useState<boolean>\(\s*\(\)\s*=>\s*typeof\s+window/,
     );
   });
 });
