@@ -793,6 +793,23 @@ function checkNoNewBackendFiles() {
     "supabase/functions/_shared/__tests__/stripeOpsAlertEmailRecipients.test.ts",
     "supabase/functions/_shared/__tests__/stripeOpsAlertEmailSandbox.test.ts",
   ];
+  // ORCH-0957 [Storage image transformation overage]: writes 384x384
+  // place-photo thumbnails, rewrites collage reads to non-metered object URLs,
+  // and adds the admin backfill edge function + Deno regression tests. The
+  // first two migrations below are source-reconciled remote-only history from
+  // ORCH-0950 / ORCH-0955 so this worktree can hand off a clean db push.
+  const ORCH_0957_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260725000002_orch_0950_expanded_scope_dashboard_coherence.sql",
+    "supabase/migrations/20260727000000_orch_0955_native_stripe_tax.sql",
+    "supabase/migrations/20260727000001_orch_0957_place_pool_thumbs_backfilled_at.sql",
+    "supabase/functions/_shared/imageCollage.ts",
+    "supabase/functions/_shared/imageCollage.test.ts",
+    "supabase/functions/_shared/photoStorageService.ts",
+    "supabase/functions/_shared/photoStorageService.test.ts",
+    "supabase/functions/backfill-place-photo-thumbs/index.ts",
+    "supabase/functions/backfill-place-photo-thumbs/index.test.ts",
+    "supabase/functions/_shared/__tests__/imageCollage.thumbFallback.test.ts",
+  ];
   // META-ORCH-0952 [Buyer-web confirm pipeline deep forensics] CLOSE 2026-05-25.
   // C7 is scoped to ORCH-0863 marketing; the META-ORCH-0952 self-heal rework
   // touched ticket-checkout-confirm/index.ts (already in ORCH-0932 allowlist
@@ -856,6 +873,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_0953_BACKEND_ALLOWLIST,
     ...ORCH_0955_BACKEND_ALLOWLIST,
     ...ORCH_0956_BACKEND_ALLOWLIST,
+    ...ORCH_0957_BACKEND_ALLOWLIST,
   ];
   const forbidden = changed.filter(
     (p) =>
