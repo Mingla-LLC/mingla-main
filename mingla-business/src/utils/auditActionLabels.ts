@@ -69,6 +69,10 @@ export const KNOWN_STATIC_SLUGS: readonly string[] = [
   "stripe_connect.webhook_ip_soft_fail",
   "stripe_connect.webhook_unhandled",
   "stripe_connect.kyc_stall_reminder_sent",
+  // ORCH-0954 [Embedded onboarding cutover + Stripe-managed risk] — audit
+  // emitted by brand-stripe-account-session after a successful Account
+  // Session mint for the embedded onboarding or account-management surface.
+  "stripe_connect.account_session_created",
   "order_cancelled",
   "order_refund_issued",
   "mingla_tos_accept",
@@ -126,6 +130,13 @@ export const resolveAuditActionLabel = (action: string): AuditActionLabel => {
     case "stripe_connect.onboard_initiated":
       return {
         title: "Started Stripe onboarding",
+        category: "stripe_connect",
+        iconHint: "bank",
+      };
+    case "stripe_connect.account_session_created":
+      return {
+        title: "Opened Stripe account management",
+        detail: "An embedded Account Session was minted for onboarding or account management.",
         category: "stripe_connect",
         iconHint: "bank",
       };
