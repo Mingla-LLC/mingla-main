@@ -17,7 +17,7 @@ import {
   getStripeWebhookSecretsFromEnv,
   verifyStripeWebhookSignature,
 } from "../_shared/stripeWebhookSignature.ts";
-import { dispatchNotification } from "../_shared/stripeEdgeAuth.ts";
+import { sendOpsAlertEmail } from "../_shared/stripeOpsAlertEmail.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -32,31 +32,33 @@ function plainResponse(body: unknown, status = 200): Response {
 
 export async function notifyWebhookSignatureFailure(
   signature: string | null,
-  effect: typeof dispatchNotification = dispatchNotification,
+  send: typeof sendOpsAlertEmail = sendOpsAlertEmail,
 ): Promise<number> {
-  const raw = Deno.env.get("STRIPE_WEBHOOK_FAILURE_ALERT_USERS") ?? "";
-  const userIds = Array.from(
-    new Set(raw.split(",").map((s) => s.trim()).filter(Boolean)),
-  );
-  if (userIds.length === 0) return 0;
-  for (const userId of userIds) {
-    await effect({
-      userId,
-      type: "stripe_webhook_signature_failure",
-      title: "Stripe webhook signature failed",
-      body: "Stripe webhook signature verification failed. Check live webhook signing secrets.",
-      data: {
-        event_id: signature?.slice(0, 20) ?? null,
-      },
-      relatedId: signature?.slice(0, 20) ?? null,
-      relatedType: "stripe_webhook_signature",
-      idempotencyKey: `stripe_webhook_signature_failure:${signature?.slice(0, 20) ?? "missing"}:${userId}`,
-    });
-  }
-  return userIds.length;
+  const raw = Deno.env.get("STRIPE_WEBHOOK_FAILURE_ALERT_EMAILS") ?? "";
+  const emails = raw.split(",").map((s) => s.trim()).filter(Boolean);
+  if (emails.length === 0) return 0;
+  const sigPrefix = signature?.slice(0, 20) ?? "missing";
+  const subject = "⚠️ [LIVE] Stripe webhook signature failure detected";
+  const paragraphs = [
+    "A Stripe webhook delivery failed signature verification.",
+    "This typically means the live webhook signing secret is wrong, the request is being replayed, or a third party is probing the endpoint.",
+    `Signature prefix: ${sigPrefix}`,
+    `Timestamp: ${new Date().toISOString()}`,
+    "Action: confirm STRIPE_WEBHOOK_SECRET_LIVE in Supabase secrets matches the active endpoint signing secret in Stripe Dashboard -> Developers -> Webhooks.",
+  ];
+  const result = await send({
+    subject,
+    paragraphs,
+    recipients: emails,
+    cta: {
+      label: "Open Stripe webhooks dashboard",
+      url: "https://dashboard.stripe.com/webhooks",
+    },
+  });
+  return result.succeeded;
 }
 
-serve(async (req) => {
+export async function stripeWebhookHandler(req: Request): Promise<Response> {
   if (req.method !== "POST") {
     return plainResponse({ error: "method_not_allowed" }, 405);
   }
@@ -80,14 +82,22 @@ serve(async (req) => {
   const stripe = stripeWebhook();
   let verified;
   try {
-    verified = await verifyStripeWebhookSignature(stripe, rawBody, signature, secrets);
+    verified = await verifyStripeWebhookSignature(
+      stripe,
+      rawBody,
+      signature,
+      secrets,
+    );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("[stripe-webhook] signature verification failed:", message);
     try {
       await notifyWebhookSignatureFailure(signature);
     } catch (notifyErr) {
-      console.error("[stripe-webhook] signature-failure alert failed:", notifyErr);
+      console.error(
+        "[stripe-webhook] signature-failure alert failed:",
+        notifyErr,
+      );
     }
     return plainResponse({ error: "invalid_signature", detail: message }, 400);
   }
@@ -98,10 +108,13 @@ serve(async (req) => {
   const ipAllowed = verifyStripeSourceIp(req);
   if (!ipAllowed) {
     const sourceIp = extractClientIp(req);
-    console.warn("[stripe-webhook] Stripe signature valid but source IP not allowlisted", {
-      sourceIp,
-      event_id: event.id,
-    });
+    console.warn(
+      "[stripe-webhook] Stripe signature valid but source IP not allowlisted",
+      {
+        sourceIp,
+        event_id: event.id,
+      },
+    );
     try {
       await writeAudit(supabase, {
         user_id: null,
@@ -134,14 +147,23 @@ serve(async (req) => {
     eventRowId = existingRow.id;
     priorRetryCount = Number(existingRow.retry_count ?? 0);
     if (existingRow.processed === true) {
-      return plainResponse({ status: "replayed_processed", event_id: event.id }, 200);
+      return plainResponse(
+        { status: "replayed_processed", event_id: event.id },
+        200,
+      );
     }
-    if (existingRow.retries_exhausted === true || priorRetryCount >= MAX_WEBHOOK_ATTEMPTS) {
+    if (
+      existingRow.retries_exhausted === true ||
+      priorRetryCount >= MAX_WEBHOOK_ATTEMPTS
+    ) {
       await supabase
         .from("payment_webhook_events")
         .update({ retries_exhausted: true })
         .eq("id", eventRowId);
-      return plainResponse({ status: "retries_exhausted", event_id: event.id }, 200);
+      return plainResponse(
+        { status: "retries_exhausted", event_id: event.id },
+        200,
+      );
     }
   } else {
     const { data: insertedRow, error: insertError } = await supabase
@@ -175,7 +197,8 @@ serve(async (req) => {
   }
 
   const nextRetryCount = priorRetryCount + 1;
-  const exhausted = processingError !== null && nextRetryCount >= MAX_WEBHOOK_ATTEMPTS;
+  const exhausted = processingError !== null &&
+    nextRetryCount >= MAX_WEBHOOK_ATTEMPTS;
   const updatePayload: Record<string, unknown> = {
     processed: processingError === null,
     processed_at: new Date().toISOString(),
@@ -188,7 +211,9 @@ serve(async (req) => {
     .from("payment_webhook_events")
     .update(updatePayload)
     .eq("id", eventRowId);
-  if (markError) console.error("[stripe-webhook] mark processed failed:", markError);
+  if (markError) {
+    console.error("[stripe-webhook] mark processed failed:", markError);
+  }
 
   return plainResponse({
     status: processingError === null ? "ok" : "processing_failed",
@@ -197,4 +222,8 @@ serve(async (req) => {
     signature_secret: verified.secretName,
     ip_allowed: ipAllowed,
   }, 200);
-});
+}
+
+if (Deno.env.get("DENO_TESTING") !== "1") {
+  serve(stripeWebhookHandler);
+}

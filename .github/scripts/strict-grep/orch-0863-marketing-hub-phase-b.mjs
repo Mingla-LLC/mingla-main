@@ -760,6 +760,17 @@ function checkNoNewBackendFiles() {
     "supabase/functions/brand-stripe-account-session/index.ts",
   ];
 
+  // ORCH-0956 [Stripe ops alerts → email]: swaps the OneSignal push-based
+  // dispute + webhook-signature-failure operator alerts shipped by ORCH-0953
+  // for Resend email sends. New shared helper + two adversarial test files.
+  // Modified files (stripeDisputeHandlers.ts, stripe-webhook/index.ts, and the
+  // ORCH-0953 dispute + signature-failure test files) are already covered by
+  // ORCH_0953_BACKEND_ALLOWLIST above; only the three NEW files are listed here.
+  const ORCH_0956_BACKEND_ALLOWLIST = [
+    "supabase/functions/_shared/stripeOpsAlertEmail.ts",
+    "supabase/functions/_shared/__tests__/stripeOpsAlertEmailRecipients.test.ts",
+    "supabase/functions/_shared/__tests__/stripeOpsAlertEmailSandbox.test.ts",
+  ];
   const ALLOWLIST = [
     ...ORCH_0954_BACKEND_ALLOWLIST,
     ...ORCH_0915_BACKEND_ALLOWLIST,
@@ -798,6 +809,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_0946_BACKEND_ALLOWLIST,
     ...ORCH_0947_BACKEND_ALLOWLIST,
     ...ORCH_0953_BACKEND_ALLOWLIST,
+    ...ORCH_0956_BACKEND_ALLOWLIST,
   ];
   const forbidden = changed.filter(
     (p) =>
