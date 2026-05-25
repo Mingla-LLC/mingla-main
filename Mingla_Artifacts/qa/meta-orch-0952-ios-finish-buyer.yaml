@@ -1,0 +1,9 @@
+appId: com.sethogieva.minglabusiness
+---
+- tapOn: "Done"
+- tapOn:
+    point: "195,430"
+- inputText: "qa-buyer@example.com"
+- tapOn: "Done"
+- tapOn:
+    point: "201,789"

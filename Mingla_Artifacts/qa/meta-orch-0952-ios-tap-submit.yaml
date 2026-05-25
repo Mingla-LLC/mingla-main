@@ -1,0 +1,4 @@
+appId: com.sethogieva.minglabusiness
+---
+- tapOn:
+    point: "201,789"

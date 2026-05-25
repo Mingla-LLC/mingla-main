@@ -1,0 +1,14 @@
+appId: com.sethogieva.minglabusiness
+---
+- tapOn:
+    point: "195,345"
+- inputText: "QA Buyer"
+- tapOn:
+    point: "195,430"
+- inputText: "qa-buyer@example.com"
+- tapOn:
+    point: "230,520"
+- inputText: "5551234567"
+- hideKeyboard
+- tapOn:
+    point: "201,789"

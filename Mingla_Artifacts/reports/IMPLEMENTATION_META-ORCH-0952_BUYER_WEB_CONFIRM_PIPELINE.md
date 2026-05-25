@@ -1,88 +1,116 @@
 # IMPLEMENTATION — META-ORCH-0952 Buyer-Web Confirm Pipeline
 
-**Status:** blocked before implementation completion  
+**Status:** implemented, partially verified  
 **Date:** 2026-05-24  
 **Worktree:** `/Users/sethogieva/Desktop/mingla-orchs/meta-orch-0952-[buyer-web-confirm-deep-forensics]`  
 **Branch:** `meta-orch-0952-buyer-web-confirm-deep-forensics`  
+**Bundle/branch commit probed:** `b8d5300aa0d3c09c979fe31a3452d89d70896c84`  
 **Spec:** `Mingla_Artifacts/specs/SPEC_META-ORCH-0952_BUYER_WEB_CONFIRM_PIPELINE.md`  
 **Investigation:** `Mingla_Artifacts/reports/INVESTIGATION_META-ORCH-0952_BUYER_WEB_CONFIRM_PIPELINE.md`
 
 ## Summary
 
-Implementation was stopped because React #418 is not isolated to the SPEC §4 confirm-page/carousel allowlist. After the carousel layout fix, the browser test proves the multi-ticket carousel mounts and has positive layout, but `pageerror` still reports `Minified React error #418`. A follow-up probe showed #418 fires on all tested dynamic checkout routes, including `/checkout-trip/test-trip-id`, `/checkout-trip/test-trip-id/buyer`, `/checkout-trip/test-trip-id/payment`, `/checkout/test-event-id`, `/checkout/test-event-id/buyer`, and `/checkout/test-event-id/payment`. Those routes/layouts are outside the SPEC §4 allowlist, so implementation must stop for a SPEC amendment before touching them.
+The buyer-web confirm carousel now passes the browser-running contract across Chromium, WebKit, and Firefox. Multi-ticket trip and event confirm pages mount the carousel with three QR images, positive width, dots, swipe hint, and zero React #418 pageerrors; the single-ticket guard renders one QR without carousel affordances.
 
-## Implemented Partial Changes
+The residual #418 source was Expo Router static web pre-render hydration, not DB/edge/Stripe/QR data. Amendment 3 discriminator runs showed #418 on checkout and non-checkout routes under `web.output: "static"`; switching `mingla-business/app.json` web output to `"single"` eliminated #418 on checkout and non-checkout controls. Root `app/_layout.tsx` also removes the render-time `useRef(Date.now())` candidate by initializing the timestamp in `useEffect`.
+
+Native SC-6 remains a manual tester gate, not a completed visual pass: iOS simulator was booted with an installed business app, and Android emulator was booted, but the Android business package was not installed and no native fixture path exists in this worktree to drive a paid 3-ticket confirm state. No native behavior code path was changed in `TicketQrCarousel`; native still gates multi-page render on numeric `pageWidth`.
+
+## Amendment 3 Discriminator Probe
+
+Gate rule: run before editing `mingla-business/app/_layout.tsx`, `mingla-business/app.json`, or `mingla-business/app.config.ts`.
+
+Bundle commit: `b8d5300aa0d3c09c979fe31a3452d89d70896c84`.
+
+Pre-edit probe command shape: `npm run web:export`, serve `web-build`, Playwright Chromium route probe with `page.on("pageerror")` matching `/Minified React error #418/`, 5s wait per route, two repeated runs.
+
+| Run | Group | Route | #418 |
+|---|---|---|---|
+| run-1 | checkout | `/checkout-trip/test-trip-id/confirm?cs=mock&csi=mock&bst=mock` | yes |
+| run-1 | checkout | `/checkout/test-event-id/confirm?cs=mock&csi=mock&bst=mock` | yes |
+| run-1 | non-checkout | `/` | no |
+| run-1 | non-checkout | `/auth` | yes |
+| run-1 | non-checkout | `/home` | yes |
+| run-2 | checkout | `/checkout-trip/test-trip-id/confirm?cs=mock&csi=mock&bst=mock` | yes |
+| run-2 | checkout | `/checkout/test-event-id/confirm?cs=mock&csi=mock&bst=mock` | yes |
+| run-2 | non-checkout | `/` | no |
+| run-2 | non-checkout | `/auth` | yes |
+| run-2 | non-checkout | `/home` | yes |
+
+Representative raw pageerror:
+
+```text
+Minified React error #418; visit https://react.dev/errors/418?args[]= for the full message or use the non-minified dev environment for full errors and additional helpful warnings.
+```
+
+Verdict: non-checkout routes also fired #418, so Amendment 3 authorized root shell/config edits.
+
+## #418 Isolation
+
+Temporary `[META-ORCH-0952-DIAG]` instrumentation was added to `RootLayoutInner` and the root Stack boundary. The trace showed root renders moving from `loading:true,currentBrandId:null,brandReady:false,splashHidden:false,evictionRan:false,reapRan:false` into client bootstrap before #418 surfaced; the Stack boundary did not catch a component throw.
+
+Isolation attempts:
+
+| Candidate | Result |
+|---|---|
+| `app/_layout.tsx useRef(Date.now())` | Hardened, but #418 still reproduced while `web.output` remained `static`. Kept because it removes a real SSR/client render-time divergence. |
+| Web safe-area initial metrics | Tried and removed; did not change #418. |
+| `app.json web.output` | Proven source. `static` reproduced #418; `single` eliminated #418 on checkout routes and `/auth` + `/home`. |
+
+Specific eliminating change (SC-9): `mingla-business/app.json` changed `"web": { "output": "static" }` to `"web": { "output": "single" }`, removing Expo Router static-route hydration for this app. The route test fixture was also widened from the synthetic Supabase host to `https://*.supabase.co/**` because the single export still embeds the configured project URL from app config.
+
+## Old To New Receipts
 
 | File | Old | New |
 |---|---|---|
-| `mingla-business/package.json` | No Playwright browser-test script/dependency. | Added `@playwright/test` devDependency, `web:export`, and `test:browser`. |
-| `mingla-business/package-lock.json` | No Playwright lock graph. | Added lockfile entries from `npm install --save-dev @playwright/test`. |
-| `mingla-business/playwright.config.ts` | Missing. | Added Chromium, WebKit, Firefox Playwright projects and export+static-server webServer. |
-| `mingla-business/playwright/meta-orch-0952-static-server.mjs` | Missing. | Added SPA static server for `web-build/`. |
-| `mingla-business/playwright/meta-orch-0952-fixtures.ts` | Missing. | Added mocked Supabase REST + `ticket-checkout-confirm/status` responses for trip/event and 1/3-ticket cases. |
-| `mingla-business/src/components/checkout/__tests__/meta_orch_0952_carousel_browser.test.ts` | Missing. | Added HP-01, HP-02, HP-03 browser-running regression test. |
-| `mingla-business/src/components/checkout/TicketQrCarousel.tsx` | Web multi-ticket render returned an empty measuring host while `pageWidth === 0`; pages always used numeric `pageWidth`; dots lacked stable labels. | Web multi-ticket render now mounts the full subtree immediately with percentage-width pages; native still preserves numeric `pageWidth` behavior; dots have stable accessible labels for browser assertions. |
-| `mingla-business/app/checkout-trip/[tripEventId]/confirm.tsx` | `qrCard` used `alignItems: "center"` and stale v3 comments. | Removed `qrCard.alignItems`, removed stale comments, and added a web outer client gate while investigating #418. |
+| `mingla-business/app.json` | Static Expo web output pre-rendered route HTML, causing React #418 hydration recovery on checkout and non-checkout routes. | Web output is `single`, so exported web routes hydrate as the client app without SSR route markup mismatch. No plugin, permission, scheme, icon, or build-target changes. |
+| `mingla-business/app/_layout.tsx` | `useRef(Date.now())` evaluated during render. | Timestamp ref initializes as `null` and is set in `useEffect`; splash elapsed calculation falls back safely if needed. |
+| `mingla-business/src/components/checkout/TicketQrCarousel.tsx` | Multi-ticket render returned an empty measuring host while `pageWidth === 0`; pages always used numeric width. | Web renders the full carousel subtree immediately with percentage-width pages; native keeps numeric `pageWidth` behavior and native-only early return. Dots now have stable labels for browser assertions. |
+| `mingla-business/app/checkout-trip/[tripEventId]/confirm.tsx` | `qrCard.alignItems: "center"` shrink-wrapped the carousel; stale ORCH-0930 v3 comments remained. | `qrCard` stretches children, stale comments removed, web confirm effects wait for client readiness. |
 | `mingla-business/app/checkout/[eventId]/confirm.tsx` | Same as trip route. | Same as trip route. |
+| `mingla-business/package.json` / `package-lock.json` | No Playwright browser-test dependency/scripts. | Added `@playwright/test`, `web:export`, and `test:browser`. |
+| `mingla-business/playwright.config.ts` | Missing. | Added Chromium, WebKit, Firefox projects and export + static server webServer. |
+| `mingla-business/playwright/meta-orch-0952-static-server.mjs` | Missing. | Added SPA static server with index fallback. |
+| `mingla-business/playwright/meta-orch-0952-fixtures.ts` | Missing. | Added mocked checkout confirm/status and Supabase REST fixtures; host wildcard matches the bundle's configured Supabase project. |
+| `mingla-business/src/components/checkout/__tests__/meta_orch_0952_carousel_browser.test.ts` | Missing. | Added HP-01, HP-02, HP-03 browser-running tests. |
+| `mingla-business/src/components/checkout/__tests__/orch_0930_qr_carousel_mounted_guard.test.tsx` | Source-string test that could pass while browser carousel failed. | Deleted. Test deletion approved for CLOSE body/report with `[TEST-MOD-APPROVED META-ORCH-0952]`. |
 
-## Verification Evidence
+## Verification
 
-### Red Baseline Before Product Fix
+| Gate | Result | Evidence |
+|---|---|---|
+| SC-1 HP-01 | PASS | `CI=1 npm run test:browser -- meta_orch_0952_carousel_browser.test.ts`: trip 3-ticket passed on Chromium, WebKit, Firefox. |
+| SC-2 HP-02 | PASS | Same command: event 3-ticket passed on Chromium, WebKit, Firefox. |
+| SC-3 HP-03 | PASS | Same command: trip 1-ticket passed on Chromium, WebKit, Firefox. |
+| SC-7 DIAG cleanup | PASS | `rg -n "META-ORCH-0952-DIAG|MetaOrch0952DiagBoundary" mingla-business app-mobile supabase/functions mingla-admin || true` returned zero matches. |
+| SC-8 stale comments | PASS | `rg -n "ORCH-0930 v3|useState initializer pattern" ...confirm.tsx` returned zero matches. |
+| Typecheck | Existing repo failures | `npm run typecheck -- --noEmit` failed on pre-existing unrelated TS errors in checkout buyer files, marketing rich editor, IconChrome, Sheet.web, missing `@mingla/payments-native`, and package typings. No new type errors were identified in the touched files. |
+| SC-6 native regression | Manual gate remains | iOS booted: `iPhone 17 Pro (17091E60-C3B6-4167-980D-60C348E177F6)` with installed `com.sethogieva.minglabusiness`. Android booted: `emulator-5554`, but `adb shell pm list packages com.sethogieva.minglabusiness` returned no package. No visual 3-ticket native confirm pass was completed. |
 
-Command:
-
-```sh
-cd mingla-business
-npm run test:browser -- meta_orch_0952_carousel_browser.test.ts
-```
-
-Result before product-code changes: 9 failed. HP-01/HP-02 failed on Chromium, WebKit, and Firefox because `getByLabel("Ticket QR carousel")` was not found. HP-03 failed on Chromium, WebKit, and Firefox because `Minified React error #418` was captured.
-
-### Partial Post-Fix Evidence
-
-Command:
-
-```sh
-cd mingla-business
-npm run test:browser -- meta_orch_0952_carousel_browser.test.ts --project=chromium
-```
-
-Result after layout changes: visual/layout assertions pass far enough to reach the final `react418Errors` assertion; all three Chromium cases still fail only because the captured array contains `Minified React error #418`.
-
-### #418 Scope Probe
-
-One-off Chromium probe against the exported bundle showed:
+Passing browser matrix output:
 
 ```text
-/checkout-trip/test-trip-id #418 1
-/checkout-trip/test-trip-id/buyer #418 1
-/checkout-trip/test-trip-id/payment #418 1
-/checkout-trip/test-trip-id/confirm #418 1
-/checkout/test-event-id #418 1
-/checkout/test-event-id/buyer #418 1
-/checkout/test-event-id/payment #418 1
-/checkout/test-event-id/confirm #418 1
+CI=1 npm run test:browser -- meta_orch_0952_carousel_browser.test.ts
+9 passed (29.3s)
 ```
 
-This means SC-9 cannot be completed inside the current allowlist. The source is upstream of the confirm carousel block and affects dynamic checkout route hydration generally.
+Fails-on-revert output:
 
-## Diagnostics Cleanup
-
-Temporary `[META-ORCH-0952-DIAG]` carousel render/onLayout loggers and confirm-page error boundaries were added during isolation, then removed after the out-of-scope #418 source was proven. Cleanup grep:
-
-```sh
-rg -n "META-ORCH-0952-DIAG|MetaOrch0952DiagBoundary" mingla-business app-mobile supabase/functions mingla-admin || true
+```text
+git stash push -m meta-orch-0952-fails-on-revert-check -- TicketQrCarousel.tsx confirm.tsx app/_layout.tsx app.json
+CI=1 npm run test:browser -- meta_orch_0952_carousel_browser.test.ts --grep "HP-0[12]"
+6 failed
 ```
 
-Result: zero matches.
+Fails-on-revert details: HP-01 and HP-02 failed on Chromium, WebKit, and Firefox with `Ticket QR carousel` not found. Fixed and reverted-test commit hash: `b8d5300aa0d3c09c979fe31a3452d89d70896c84` plus uncommitted scoped implementation. The temporary stash was popped and dropped after the failure proof.
 
-## Not Completed
+## Scope / Guards
 
-- Full SC-1/SC-2/SC-3 pass across Chromium, WebKit, and Firefox is blocked by cross-route React #418.
-- Fails-on-revert verification is not valid until #418 is fixed, because the suite still fails on the fixed worktree.
-- SC-6 native iOS/Android regression checks were not run because implementation stopped at the SPEC allowlist blocker.
-- The obsolete source-string test was not deleted.
+No DB, Supabase migrations, edge functions, Stripe code, `CartContext.tsx`, `buildQrPayload`, consumer mobile, admin, QR schema, or edge-function deploys were touched. `app.config.ts` was read only and not edited.
 
-## Required SPEC Amendment
+## Remaining Manual Gates
 
-Amend SPEC §4 to include the dynamic checkout route layer that owns the shared React #418 hydration source. The evidence above indicates the amended scope must cover more than the two confirm files and `TicketQrCarousel.tsx`; at minimum, the dynamic checkout route layouts and/or shared Expo Router checkout route shell need investigation and authorization before implementation continues.
+1. SC-6 native visual check: iOS simulator + Android emulator/dev build should verify a paid 3-ticket trip-confirm renders 3 swipeable QR cards with dots and hint.
+2. BC-11 physical iPhone Safari check after deploy remains downstream tester/operator scope.
+3. Tester adversarial resize test remains downstream `mingla-tester` scope per SPEC.
+

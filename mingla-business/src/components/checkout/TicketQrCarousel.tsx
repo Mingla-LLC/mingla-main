@@ -11,7 +11,7 @@
  * Per Cycle 11 SPEC §4.9 (J-S8).
  */
 
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Image,
   Platform,
@@ -57,14 +57,12 @@ export const TicketQrCarousel: React.FC<TicketQrCarouselProps> = ({
   tickets,
   qrSize = DEFAULT_QR_SIZE,
 }) => {
+  const scrollRef = useRef<ScrollView | null>(null);
   const [activeIndex, setActiveIndex] = useState<number>(0);
   // ORCH-0852: pageWidth must come from the carousel container's onLayout, NOT
-  // from Dimensions.get("window").width. On web (RNW), the carousel sits inside
-  // a padded GlassCard whose inner width is narrower than the window; using the
-  // window width seeded the initial render with oversized pages that triggered
-  // an overflow-y: hidden clip on the QR. Initial state is now 0 and the
-  // multi-page render is gated on pageWidth > 0 so the first paint always uses
-  // a measured width.
+  // from Dimensions.get("window").width. ORCH-0952 retest proved percentage
+  // web pages can shrink to QR-content width on Safari, so web and native both
+  // size pages numerically from this measured host width.
   const [pageWidth, setPageWidth] = useState<number>(0);
   // ORCH-0932 (2026-05-23) — server-rendered QR images replace the
   // client-side <QRCode> SVG. The `react-native-qrcode-svg` lib's SVG
@@ -102,6 +100,14 @@ export const TicketQrCarousel: React.FC<TicketQrCarouselProps> = ({
     [pageWidth, activeIndex, total],
   );
 
+  useEffect(() => {
+    if (pageWidth <= 0) return;
+    scrollRef.current?.scrollTo({
+      x: activeIndex * pageWidth,
+      animated: false,
+    });
+  }, [activeIndex, pageWidth]);
+
   const pages = useMemo(
     () =>
       tickets.map((t, i) => ({
@@ -137,9 +143,9 @@ export const TicketQrCarousel: React.FC<TicketQrCarouselProps> = ({
     );
   }
 
-  // ORCH-0852: before the host's onLayout fires we have no measured width; the
-  // first paint of the multi-page render needs that width to size each page.
-  // Render a bare host (which still publishes onLayout) until pageWidth > 0.
+  // Render only the full-width host until onLayout reports a usable width.
+  // The host's explicit width: "100%" prevents the old ORCH-0951 blank-strip
+  // loop while preserving full-width numeric pages on web and native.
   if (pageWidth === 0) {
     return <View style={styles.host} onLayout={handleLayout} />;
   }
@@ -147,6 +153,7 @@ export const TicketQrCarousel: React.FC<TicketQrCarouselProps> = ({
   return (
     <View style={styles.host} onLayout={handleLayout}>
       <ScrollView
+        ref={scrollRef}
         horizontal
         pagingEnabled
         showsHorizontalScrollIndicator={false}
@@ -188,6 +195,7 @@ export const TicketQrCarousel: React.FC<TicketQrCarouselProps> = ({
         {pages.map((p) => (
           <View
             key={p.ticketId}
+            accessibilityLabel={`Ticket QR carousel dot ${p.index + 1}`}
             style={[
               styles.dot,
               p.index === activeIndex && styles.dotActive,
@@ -212,16 +220,6 @@ const PAGE_MIN_HEIGHT = 260;
 const styles = StyleSheet.create({
   host: {
     alignSelf: "stretch",
-    // ORCH-0951: explicit width breaks the pageWidth chicken-and-egg on RNW.
-    // Multi-ticket renders first as an empty bare <View style={styles.host}
-    // onLayout={handleLayout}/> awaiting onLayout. Without an explicit width,
-    // that empty View collapses to ~0 width inside a parent (`qrCard`) that
-    // uses `alignItems: "center"` — onLayout fires with width=0, pageWidth
-    // stays 0, the early-return loops forever, user sees only the
-    // minHeight=320 strip. width:"100%" forces the bare host to take full
-    // parent width on first paint regardless of parent alignment. Native
-    // ignores width:"100%" when no width constraint is present; behavior
-    // identical to pre-fix on iOS/Android.
     width: "100%",
     alignItems: "center",
     paddingVertical: spacing.sm,
@@ -229,6 +227,8 @@ const styles = StyleSheet.create({
     minHeight: HOST_MIN_HEIGHT,
   },
   scrollWeb: {
+    alignSelf: "stretch",
+    width: "100%",
     height: HOST_MIN_HEIGHT - 32, // host minHeight minus paddingY + dots/swipeHint room
   },
   singleWrap: {
