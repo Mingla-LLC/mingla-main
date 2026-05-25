@@ -15,6 +15,10 @@ const tripsServiceSource = readFileSync(
   join(__dirname, "..", "tripsService.ts"),
   "utf-8",
 );
+const tripDashboardSource = readFileSync(
+  join(__dirname, "..", "..", "..", "app", "trip", "[id]", "index.tsx"),
+  "utf-8",
+);
 
 describe("ORCH-0950 expanded — dashboard reader canonical source scaffold", () => {
   test("readBusinessTrip accepts canonical date/destination inputs", () => {
@@ -43,6 +47,16 @@ describe("ORCH-0950 expanded — dashboard reader canonical source scaffold", ()
     expect(tripsServiceSource).toMatch(/readTripSoldCountsByTier/);
     expect(tripsServiceSource).toMatch(
       /supabase\.rpc\("biz_trip_tickets_sold_by_tier"/,
+    );
+  });
+
+  test("visible dashboard uses the ORCH-0950 display helpers", () => {
+    expect(tripDashboardSource).toMatch(/formatTripHeroSubline/);
+    expect(tripDashboardSource).toMatch(/formatTripSpotsLabel/);
+    expect(tripDashboardSource).toMatch(/resolveTripTierSoldCount/);
+    expect(tripDashboardSource).toMatch(/tripDashboardBundleProofTestID/);
+    expect(tripDashboardSource).toMatch(
+      /orch-0950-trip-dashboard-spots-value/,
     );
   });
 });

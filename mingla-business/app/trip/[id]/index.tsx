@@ -66,6 +66,12 @@ import {
   type TripPricingTier,
 } from "../../../src/services/tripsService";
 import type { EventCoverMediaType, TicketStub } from "../../../src/store/draftEventStore";
+import {
+  formatTripHeroSubline,
+  formatTripSpotsLabel,
+  resolveTripTierSoldCount,
+  tripDashboardBundleProofTestID,
+} from "../../../src/utils/tripDashboardDisplay";
 
 function formatCurrency(cents: number, currency: string): string {
   try {
@@ -303,10 +309,10 @@ export default function TripDashboardRoute(): React.ReactElement {
     trip.pricingTiers[0]?.currency ??
     "USD";
   const totalRevenue = revenueByCurrency.get(primaryCurrency) ?? 0;
-  const spotsLabel =
-    trip.businessTrip.capacity !== null
-      ? `${ticketsSold} / ${trip.businessTrip.capacity}`
-      : `${ticketsSold}`;
+  const spotsLabel = formatTripSpotsLabel(
+    ticketsSold,
+    trip.businessTrip.capacity,
+  );
   const tripLifecycleStatus = deriveTripLifecycleStatus({
     status: trip.status,
     startAt: trip.businessTrip.startAt,
@@ -315,7 +321,10 @@ export default function TripDashboardRoute(): React.ReactElement {
   const coverMediaType = normalizeCoverMediaType(trip.coverMediaType);
 
   return (
-    <SafeScreen style={styles.host}>
+    <SafeScreen
+      style={styles.host}
+      testID={tripDashboardBundleProofTestID(trip.id)}
+    >
       {/* ORCH-0913-B: share the event dashboard TopBar shell so trip detail
           width/chrome tracks event/[id] instead of carrying a bespoke header. */}
       <View style={styles.headerWrap}>
@@ -381,30 +390,16 @@ export default function TripDashboardRoute(): React.ReactElement {
           <Text style={styles.heroTitle} numberOfLines={2}>
             {trip.title}
           </Text>
-          <Text style={styles.heroSubline} numberOfLines={1}>
-            {(function (): string {
-              const start = trip.businessTrip.startAt;
-              const end = trip.businessTrip.endAt;
-              const dest = trip.businessTrip.destinationLocationText;
-              let datesLabel = "";
-              if (start !== null) {
-                try {
-                  const fmt = new Intl.DateTimeFormat(undefined, {
-                    month: "short",
-                    day: "numeric",
-                  });
-                  datesLabel = `${fmt.format(new Date(start))}${
-                    end !== null ? `–${fmt.format(new Date(end))}` : ""
-                  }`;
-                } catch {
-                  datesLabel = "";
-                }
-              }
-              if (datesLabel.length > 0 && dest !== null && dest.length > 0) {
-                return `${datesLabel} · ${dest}`;
-              }
-              return datesLabel.length > 0 ? datesLabel : dest ?? "Date TBD";
-            })()}
+          <Text
+            style={styles.heroSubline}
+            numberOfLines={1}
+            testID="orch-0950-trip-dashboard-hero-subline"
+          >
+            {formatTripHeroSubline({
+              startAt: trip.businessTrip.startAt,
+              endAt: trip.businessTrip.endAt,
+              destinationLocationText: trip.businessTrip.destinationLocationText,
+            })}
           </Text>
         </View>
       </View>
@@ -467,6 +462,7 @@ export default function TripDashboardRoute(): React.ReactElement {
         <TripDetailKpiCard
           revenueLabel={formatCurrency(totalRevenue, primaryCurrency)}
           spotsLabel={spotsLabel}
+          spotsValueTestID="orch-0950-trip-dashboard-spots-value"
         />
 
         <Text style={styles.sectionLabel}>PRICING TIERS</Text>
@@ -480,7 +476,15 @@ export default function TripDashboardRoute(): React.ReactElement {
               <EventDetailTicketTypeRow
                 key={tier.ticketTypeId}
                 ticket={tripTierToTicketStub(tier, index)}
-                soldCount={soldCountByTier.get(tier.ticketTypeId) ?? 0}
+                soldCount={resolveTripTierSoldCount({
+                  ticketTypeId: tier.ticketTypeId,
+                  soldCountByTier,
+                  tripTicketsSoldCount: ticketsSold,
+                  pricingTierCount: trip.pricingTiers.length,
+                })}
+                capacityTestID={
+                  `orch-0950-trip-dashboard-tier-capacity-${tier.ticketTypeId}`
+                }
               />
             ))}
           </View>

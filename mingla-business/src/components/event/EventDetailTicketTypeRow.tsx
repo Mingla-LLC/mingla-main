@@ -22,11 +22,13 @@ interface EventDetailTicketTypeRowProps {
   ticket: TicketStub;
   /** Cycle 9c — derived in parent from useOrderStore (per-tier live count). */
   soldCount: number;
+  capacityTestID?: string;
 }
 
 const EventDetailTicketTypeRowInner: React.FC<EventDetailTicketTypeRowProps> = ({
   ticket,
   soldCount,
+  capacityTestID,
 }) => {
   const sold = soldCount;
   const cap = ticket.isUnlimited
@@ -52,7 +54,9 @@ const EventDetailTicketTypeRowInner: React.FC<EventDetailTicketTypeRowProps> = (
             <Text style={styles.soldText}>SOLD OUT</Text>
           </View>
         ) : (
-          <Text style={styles.cap}>{capText}</Text>
+          <Text style={styles.cap} testID={capacityTestID}>
+            {capText}
+          </Text>
         )}
       </View>
     </View>
