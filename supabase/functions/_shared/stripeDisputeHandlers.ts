@@ -1,10 +1,10 @@
 // @ts-ignore — Deno ESM import
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { dispatchNotification } from "./stripeEdgeAuth.ts";
 import {
   postAppsFlyerS2SEvent,
   resolveBrandOwnerUserId,
 } from "./appsFlyerS2S.ts";
+import { sendOpsAlertEmail } from "./stripeOpsAlertEmail.ts";
 
 export interface StripeDisputeWebhookEvent {
   id: string;
@@ -14,16 +14,25 @@ export interface StripeDisputeWebhookEvent {
 }
 
 export interface DisputeHandlerEffects {
-  dispatchNotification: typeof dispatchNotification;
+  sendOpsAlertEmail: typeof sendOpsAlertEmail;
   postAppsFlyerS2SEvent: typeof postAppsFlyerS2SEvent;
   resolveBrandOwnerUserId: typeof resolveBrandOwnerUserId;
 }
 
 const defaultEffects: DisputeHandlerEffects = {
-  dispatchNotification,
+  sendOpsAlertEmail,
   postAppsFlyerS2SEvent,
   resolveBrandOwnerUserId,
 };
+
+function formatCurrencyAmount(amount: number, currency: string): string {
+  const zeroDecimal = new Set(["jpy", "krw", "vnd"]);
+  const lower = currency.toLowerCase();
+  const major = zeroDecimal.has(lower) ? amount : amount / 100;
+  return `${currency.toUpperCase()} ${
+    major.toFixed(zeroDecimal.has(lower) ? 0 : 2)
+  }`;
+}
 
 function stringValue(
   obj: Record<string, unknown>,
@@ -61,11 +70,9 @@ function evidenceDueBy(dispute: Record<string, unknown>): string | null {
   return dueBy === null ? null : new Date(dueBy * 1000).toISOString();
 }
 
-function alertUserIdsFromEnv(): string[] {
-  const raw = Deno.env.get("STRIPE_DISPUTE_ALERT_USERS") ?? "";
-  return Array.from(
-    new Set(raw.split(",").map((s) => s.trim()).filter(Boolean)),
-  );
+function alertEmailsFromEnv(): string[] {
+  const raw = Deno.env.get("STRIPE_DISPUTE_ALERT_EMAILS") ?? "";
+  return raw.split(",").map((s) => s.trim()).filter(Boolean);
 }
 
 async function brandIdForStripeAccount(
@@ -85,7 +92,7 @@ async function orderIdForDispute(
   supabase: SupabaseClient,
   input: { chargeId: string; paymentIntentId: string | null },
 ): Promise<string | null> {
-  let query = supabase
+  const query = supabase
     .from("orders")
     .select("id")
     .eq("stripe_charge_id", input.chargeId)
@@ -108,38 +115,136 @@ async function orderIdForDispute(
   return data?.id ?? null;
 }
 
+async function brandNameForBrandId(
+  supabase: SupabaseClient,
+  brandId: string,
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("brands")
+    .select("name")
+    .eq("id", brandId)
+    .maybeSingle();
+  if (error) {
+    console.warn("[stripe-dispute] brand name lookup failed", {
+      brandId,
+      error: error.message,
+    });
+    return null;
+  }
+  return (data?.name as string | undefined) ?? null;
+}
+
 async function alertDisputeCreated(
   input: {
-    brandId: string | null;
+    brandName: string | null;
     disputeId: string;
     amount: number;
     currency: string;
+    reason: string;
+    evidenceDueBy: string | null;
+    livemode: boolean;
     effects: DisputeHandlerEffects;
   },
 ): Promise<void> {
-  const userIds = alertUserIdsFromEnv();
-  if (userIds.length === 0) {
+  const emails = alertEmailsFromEnv();
+  if (emails.length === 0) {
     console.warn(
-      "[stripe-dispute] STRIPE_DISPUTE_ALERT_USERS missing; dispute persisted without operator notification",
+      "[stripe-dispute] STRIPE_DISPUTE_ALERT_EMAILS missing; dispute persisted without operator notification",
     );
     return;
   }
-  for (const userId of userIds) {
-    await input.effects.dispatchNotification({
-      userId,
-      brandId: input.brandId,
-      type: "stripe_dispute_created",
-      title: "Stripe dispute opened",
-      body:
-        `A ${input.currency.toUpperCase()} ${input.amount} dispute needs review.`,
-      data: {
-        stripe_dispute_id: input.disputeId,
-        amount: input.amount,
-        currency: input.currency,
+  const amountStr = formatCurrencyAmount(input.amount, input.currency);
+  const brand = input.brandName ?? "unknown brand";
+  const daysUntilDue = input.evidenceDueBy
+    ? Math.max(
+      0,
+      Math.ceil(
+        (new Date(input.evidenceDueBy).getTime() - Date.now()) / 86_400_000,
+      ),
+    )
+    : null;
+  const subject = daysUntilDue !== null
+    ? `🚨 [LIVE] Chargeback dispute — ${amountStr} on ${brand}, evidence due in ${daysUntilDue} day${
+      daysUntilDue === 1 ? "" : "s"
+    }`
+    : `🚨 [LIVE] Chargeback dispute — ${amountStr} on ${brand}`;
+  const paragraphs = [
+    "A new Stripe chargeback dispute requires your review.",
+    `Amount: ${amountStr}`,
+    `Brand: ${brand}`,
+    `Reason: ${input.reason}`,
+    input.evidenceDueBy
+      ? `Evidence due: ${input.evidenceDueBy}`
+      : "Evidence due: (not provided)",
+    `Dispute ID: ${input.disputeId}`,
+  ];
+  const dashboardBase = input.livemode
+    ? "https://dashboard.stripe.com/disputes"
+    : "https://dashboard.stripe.com/test/disputes";
+  try {
+    const result = await input.effects.sendOpsAlertEmail({
+      subject,
+      paragraphs,
+      recipients: emails,
+      cta: {
+        label: "Open in Stripe Dashboard",
+        url: `${dashboardBase}/${input.disputeId}`,
       },
-      relatedId: input.disputeId,
-      relatedType: "stripe_dispute",
-      idempotencyKey: `stripe_dispute_created:${input.disputeId}:${userId}`,
+    });
+    console.info("[stripe-dispute] dispute-created email alert result", {
+      disputeId: input.disputeId,
+      result,
+    });
+  } catch (err) {
+    console.error("[stripe-dispute] dispute-created email alert failed", {
+      disputeId: input.disputeId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+async function alertDisputeLost(
+  input: {
+    brandName: string | null;
+    disputeId: string;
+    amount: number;
+    currency: string;
+    livemode: boolean;
+    effects: DisputeHandlerEffects;
+  },
+): Promise<void> {
+  const emails = alertEmailsFromEnv();
+  if (emails.length === 0) return;
+  const amountStr = formatCurrencyAmount(input.amount, input.currency);
+  const brand = input.brandName ?? "unknown brand";
+  const subject = `❌ [LIVE] Chargeback LOST — ${amountStr} on ${brand}`;
+  const paragraphs = [
+    'A Stripe chargeback was closed with status "lost".',
+    `Amount: ${amountStr}`,
+    `Brand: ${brand}`,
+    `Dispute ID: ${input.disputeId}`,
+  ];
+  const dashboardBase = input.livemode
+    ? "https://dashboard.stripe.com/disputes"
+    : "https://dashboard.stripe.com/test/disputes";
+  try {
+    const result = await input.effects.sendOpsAlertEmail({
+      subject,
+      paragraphs,
+      recipients: emails,
+      cta: {
+        label: "Open in Stripe Dashboard",
+        url: `${dashboardBase}/${input.disputeId}`,
+      },
+    });
+    console.info("[stripe-dispute] dispute-lost email alert result", {
+      disputeId: input.disputeId,
+      result,
+    });
+  } catch (err) {
+    console.error("[stripe-dispute] dispute-lost email alert failed", {
+      disputeId: input.disputeId,
+      error: err instanceof Error ? err.message : String(err),
     });
   }
 }
@@ -200,6 +305,9 @@ export async function handleChargeDispute(
   const reason = stringValue(dispute, "reason") ?? "unknown";
   const isChargeRefundable = dispute.is_charge_refundable === true;
   const brandId = await brandIdForStripeAccount(supabase, stripeAccountId);
+  const brandName = brandId
+    ? await brandNameForBrandId(supabase, brandId)
+    : null;
   const orderId = await orderIdForDispute(supabase, {
     chargeId: stripeChargeId,
     paymentIntentId,
@@ -230,10 +338,13 @@ export async function handleChargeDispute(
 
   if (event.type === "charge.dispute.created") {
     await alertDisputeCreated({
-      brandId,
+      brandName,
       disputeId,
       amount,
       currency,
+      reason,
+      evidenceDueBy: evidenceDueBy(dispute),
+      livemode: dispute.livemode === true,
       effects,
     });
     await postDisputeAppsFlyerEvent(supabase, {
@@ -246,6 +357,14 @@ export async function handleChargeDispute(
     });
   }
   if (event.type === "charge.dispute.closed" && status === "lost") {
+    await alertDisputeLost({
+      brandName,
+      disputeId,
+      amount,
+      currency,
+      livemode: dispute.livemode === true,
+      effects,
+    });
     await postDisputeAppsFlyerEvent(supabase, {
       brandId,
       eventName: "dispute_lost",

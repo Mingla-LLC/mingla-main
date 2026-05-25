@@ -68,6 +68,68 @@ interface TicketRow {
   ticket_types: { name?: string } | null;
 }
 
+type StripePaymentIntentLike = {
+  id?: string;
+  status?: string;
+  payment_method_types?: string[];
+  charges?: { data?: Array<{ id?: string }> };
+  latest_charge?: string | { id?: string } | null;
+  customer?: unknown;
+  payment_method?: unknown;
+  metadata?: Record<string, unknown>;
+};
+
+type StripeCheckoutSessionLike = {
+  id?: string;
+  status?: string;
+  payment_status?: string;
+  payment_intent?: string | StripePaymentIntentLike | null;
+};
+
+function paymentIntentIdFromCheckoutSession(
+  checkoutSession: StripeCheckoutSessionLike,
+): string | null {
+  const ref = checkoutSession.payment_intent;
+  if (typeof ref === "string" && ref.length > 0) return ref;
+  if (
+    ref !== null &&
+    typeof ref === "object" &&
+    typeof ref.id === "string" &&
+    ref.id.length > 0
+  ) {
+    return ref.id;
+  }
+  return null;
+}
+
+function expandedPaymentIntentFromCheckoutSession(
+  checkoutSession: StripeCheckoutSessionLike,
+): StripePaymentIntentLike | null {
+  const ref = checkoutSession.payment_intent;
+  if (ref !== null && typeof ref === "object") return ref;
+  return null;
+}
+
+function latestChargeId(paymentIntent: StripePaymentIntentLike): string | null {
+  const firstCharge = paymentIntent.charges?.data?.[0]?.id;
+  if (typeof firstCharge === "string" && firstCharge.length > 0) {
+    return firstCharge;
+  }
+  const latestCharge = paymentIntent.latest_charge;
+  if (typeof latestCharge === "string" && latestCharge.length > 0) {
+    return latestCharge;
+  }
+  if (
+    latestCharge !== null &&
+    typeof latestCharge === "object" &&
+    typeof latestCharge.id === "string" &&
+    latestCharge.id.length > 0
+  ) {
+    return latestCharge.id;
+  }
+  return null;
+}
+
 async function fetchOrderPayload(
   supabase: ReturnType<typeof serviceClient>,
   session: {
@@ -179,7 +241,7 @@ serve(async (req) => {
   const { data: session, error: lookupError } = await supabase
     .from("ticket_checkout_sessions")
     .select(
-      "id, status, order_id, event_id, total_cents, currency, buyer_status_token_hash, stripe_payment_intent_id, stripe_account_id",
+      "id, status, order_id, event_id, total_cents, currency, buyer_status_token_hash, stripe_checkout_session_id, stripe_payment_intent_id, stripe_account_id",
     )
     .eq("id", checkoutSessionId)
     .maybeSingle();
@@ -214,8 +276,78 @@ serve(async (req) => {
   }
 
   // ---- Slow-path: verify Stripe PI status directly, then finalize. ----
-  const paymentIntentId = session.stripe_payment_intent_id;
+  let paymentIntentId = typeof session.stripe_payment_intent_id === "string" &&
+      session.stripe_payment_intent_id.length > 0
+    ? session.stripe_payment_intent_id
+    : null;
   const stripeAccountId = session.stripe_account_id;
+  let paymentIntentFromCheckoutSession: StripePaymentIntentLike | null = null;
+
+  if (
+    paymentIntentId === null &&
+    typeof stripeAccountId === "string" &&
+    stripeAccountId.length > 0 &&
+    typeof session.stripe_checkout_session_id === "string" &&
+    session.stripe_checkout_session_id.length > 0
+  ) {
+    try {
+      const stripe = stripeTicketCheckout();
+      const checkoutSession = await stripe.checkout.sessions.retrieve(
+        session.stripe_checkout_session_id,
+        { expand: ["payment_intent"] },
+        { stripeAccount: stripeAccountId },
+      ) as StripeCheckoutSessionLike;
+
+      if (checkoutSession.status === "expired") {
+        return jsonResponse({
+          checkoutSessionId: session.id,
+          status: "expired" as FinalizeStatus,
+          order: null,
+        });
+      }
+
+      if (
+        checkoutSession.payment_status !== "paid" &&
+        checkoutSession.status !== "complete"
+      ) {
+        return jsonResponse({
+          checkoutSessionId: session.id,
+          status: "pending" as FinalizeStatus,
+          order: null,
+        });
+      }
+
+      paymentIntentId = paymentIntentIdFromCheckoutSession(checkoutSession);
+      paymentIntentFromCheckoutSession =
+        expandedPaymentIntentFromCheckoutSession(checkoutSession);
+
+      if (paymentIntentId !== null) {
+        const { error: persistPaymentIntentError } = await supabase
+          .from("ticket_checkout_sessions")
+          .update({
+            stripe_payment_intent_id: paymentIntentId,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", session.id)
+          .is("stripe_payment_intent_id", null);
+        if (persistPaymentIntentError) {
+          console.warn(
+            "[ticket-checkout-confirm] checkout session PI persist failed",
+            session.id,
+            persistPaymentIntentError.message,
+          );
+        }
+      }
+    } catch (err) {
+      console.error(
+        "[ticket-checkout-confirm] checkout session retrieve failed",
+        session.stripe_checkout_session_id,
+        err instanceof Error ? err.message : String(err),
+      );
+      return jsonResponse({ error: "stripe_unavailable" }, 502);
+    }
+  }
+
   if (!paymentIntentId || !stripeAccountId) {
     // No PI tied to the session yet — checkout was created but the buyer
     // never returned from Stripe (or Stripe Checkout Session never minted a
@@ -227,23 +359,20 @@ serve(async (req) => {
     });
   }
 
-  let paymentIntent: {
-    status?: string;
-    payment_method_types?: string[];
-    charges?: { data?: Array<{ id?: string }> };
-    customer?: unknown;
-    payment_method?: unknown;
-    metadata?: Record<string, unknown>;
-  };
+  let paymentIntent: StripePaymentIntentLike;
   try {
-    const stripe = stripeTicketCheckout();
-    // orch-strict-grep-allow stripe-no-idempotency-key — paymentIntents.retrieve
-    // is a read-only Stripe API call; idempotency keys are scoped to mutating
-    // create/update operations per Stripe API conventions. Retrieve is safe to
-    // retry without a key since it returns the same resource verbatim.
-    paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId, {
-      stripeAccount: stripeAccountId,
-    }) as typeof paymentIntent;
+    if (paymentIntentFromCheckoutSession !== null) {
+      paymentIntent = paymentIntentFromCheckoutSession;
+    } else {
+      const stripe = stripeTicketCheckout();
+      // orch-strict-grep-allow stripe-no-idempotency-key — paymentIntents.retrieve
+      // is a read-only Stripe API call; idempotency keys are scoped to mutating
+      // create/update operations per Stripe API conventions. Retrieve is safe to
+      // retry without a key since it returns the same resource verbatim.
+      paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId, {
+        stripeAccount: stripeAccountId,
+      }) as StripePaymentIntentLike;
+    }
   } catch (err) {
     console.error(
       "[ticket-checkout-confirm] stripe retrieve failed",
@@ -262,7 +391,7 @@ serve(async (req) => {
         typeof paymentIntent.payment_method_types[0] === "string"
         ? paymentIntent.payment_method_types[0]
         : null;
-    const latestChargeId = paymentIntent.charges?.data?.[0]?.id ?? null;
+    const latestCharge = latestChargeId(paymentIntent);
 
     let pepper: string;
     try {
@@ -292,7 +421,7 @@ serve(async (req) => {
       {
         p_checkout_session_id: session.id,
         p_stripe_payment_intent_id: paymentIntentId,
-        p_stripe_charge_id: latestChargeId,
+        p_stripe_charge_id: latestCharge,
         p_stripe_payment_method_type: paymentMethodType,
         p_qr_token_pepper: pepper,
       },

@@ -205,7 +205,7 @@ async function syncAccount(
   const updatePayload: Record<string, unknown> = {
     brand_id: brandId,
     stripe_account_id: stripeAccountId,
-    controller_dashboard_type: "express",
+    controller_dashboard_type: "none",
     charges_enabled: account.charges_enabled === true,
     payouts_enabled: account.payouts_enabled === true,
     requirements,

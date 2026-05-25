@@ -1,0 +1,9 @@
+appId: com.sethogieva.minglabusiness
+---
+- tapOn:
+    point: "340,348"
+- tapOn:
+    point: "340,348"
+- tapOn:
+    point: "340,348"
+- tapOn: "Continue"

@@ -14,6 +14,7 @@ Reference: [WORKTREE_STRATEGY.md](WORKTREE_STRATEGY.md).
 
 | Worktree path | Branch | ORCH-ID | Phase | Sim assigned | Metro port | Spawned | Owner |
 |---------------|--------|---------|-------|--------------|------------|---------|-------|
+| `~/Desktop/mingla-orchs/meta-orch-0952-[buyer-web-confirm-deep-forensics]` | `meta-orch-0952-buyer-web-confirm-deep-forensics` | META-ORCH-0952 | INVESTIGATE | no sim — buyer-web (Playwright Chromium + Safari) | 8083 | 2026-05-24 | Claude `mingla-orchestrator` (dispatch) → Claude `mingla-forensics` (active) |
 
 ---
 
@@ -35,6 +36,7 @@ Reference: [WORKTREE_STRATEGY.md](WORKTREE_STRATEGY.md).
 
 | Worktree path | Branch | ORCH-ID | Reaped | Merged via PR |
 |---------------|--------|---------|--------|---------------|
+| `~/Desktop/mingla-orchs/ORCH-0956-[stripe-ops-alerts-email]/` | `ORCH-0956-stripe-ops-alerts-email` | ORCH-0956 | 2026-05-25 | PR #202 |
 | `~/Desktop/mingla-orchs/META-ORCH-0954-[cross-chat-comms-ledger-and-2-section-output]/` | `META-ORCH-0954-cross-chat-comms-ledger-and-2-section-output` | META-ORCH-0954 | 2026-05-24 | (pending PR merge) |
 | `~/Desktop/mingla-orchs/ORCH-0948-[waitlist-feature]/` | `ORCH-0948-waitlist-feature` | ORCH-0948 | 2026-05-24 | PR #200 (squash 8b7b06e4) |
 

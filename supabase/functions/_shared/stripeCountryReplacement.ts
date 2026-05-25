@@ -56,3 +56,11 @@ export function buildStripeOnboardLinkOperation(
   const country = requestedCountry.trim().toUpperCase();
   return `onboard_account_link:${country}:${stripeAccountId}`;
 }
+
+export function buildStripeAccountSessionOperation(
+  requestedCountry: string,
+  stripeAccountId: string,
+): string {
+  const country = requestedCountry.trim().toUpperCase();
+  return `account_session:${country}:${stripeAccountId}`;
+}

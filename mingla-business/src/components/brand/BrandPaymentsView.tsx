@@ -21,6 +21,7 @@
 import React, { useCallback, useMemo, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import * as WebBrowser from "expo-web-browser";
 
 import {
   accent,
@@ -60,9 +61,12 @@ import { BrandStripeDetachConfirmSheet } from "./BrandStripeDetachConfirmSheet";
 import { useBrandStripeStatus } from "../../hooks/useBrandStripeStatus";
 import { useBrandStripeBalances } from "../../hooks/useBrandStripeBalances";
 import { useBrandStripeTaxAccountSession } from "../../hooks/useBrandStripeTaxAccountSession";
+import { useBrandStripeAccountSession } from "../../hooks/useBrandStripeAccountSession";
 import { getEffectiveBrandStripeStatus } from "../../utils/stripeOnboardingOutcome";
 import { ACTIVE_STRIPE_BANNER_TITLE } from "../../utils/brandStripeUiState";
 import { majorFromMinor } from "../../utils/currency";
+
+const RETURN_DEEP_LINK = "mingla-business://onboarding-complete" as const;
 
 // Status-banner config table. ORCH-0764C requires active to render a visible
 // success confirmation; only truly unsupported statuses would be suppressed.
@@ -170,7 +174,25 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
   const stripeBalancesQuery = useBrandStripeBalances(brand?.id ?? null, {
     stripeStatus,
   });
+  // ORCH-0955 — Tax CTA opens new brand-stripe-tax-account-session that mints
+  // an AccountSession with tax_registrations + tax_settings GA components,
+  // rendered in the Mingla-hosted /connect-tax-registrations page via
+  // expo-web-browser. Replaces the legacy ORCH-0804 dashboard-link redirect
+  // (deleted; would have broken under ORCH-0954 dashboard:'none' cutover).
+  // ORCH-0955: brand is merchant of record; Stripe Tax for Platforms direct-
+  // charge handles the calc/commit/reverse 3-step inline on every native PI.
   const taxAccountSession = useBrandStripeTaxAccountSession();
+  // ORCH-0954 — Account management embedded-onboarding session for
+  // dashboard:'none' Stripe-managed-risk Connect controllers.
+  const accountSession = useBrandStripeAccountSession();
+  const handleOpenAccountManagement = useCallback(async (): Promise<void> => {
+    if (brand?.id === undefined || accountSession.isPending) return;
+    const result = await accountSession.mutateAsync({
+      brandId: brand.id,
+      surface: "account_management",
+    });
+    await WebBrowser.openAuthSessionAsync(result.targetUrl, RETURN_DEEP_LINK);
+  }, [accountSession, brand?.id]);
   const handleOpenTaxDashboard = useCallback((): void => {
     if (brand?.id === undefined || taxAccountSession.isPending) return;
     taxAccountSession.mutate(brand.id);
@@ -292,6 +314,52 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
         ]}
         showsVerticalScrollIndicator={false}
       >
+        {/* ORCH-0954 — Manage payouts & tax embedded account-management session,
+            for dashboard:'none' Stripe-managed-risk Connect controllers. */}
+        {stripeStatus === "active" || stripeStatus === "restricted"
+          ? (
+            <GlassCard
+              variant="base"
+              padding={spacing.md}
+              style={styles.manageStripeCard}
+            >
+              <View style={styles.manageStripeRow}>
+                <View style={styles.manageStripeIconCol}>
+                  <Icon name="bank" size={20} color={accent.warm} />
+                </View>
+                <View style={styles.manageStripeTextCol}>
+                  <Text style={styles.manageStripeTitle}>
+                    Manage payouts & tax
+                  </Text>
+                  <Text style={styles.manageStripeBody}>
+                    Update payout details and resolve Stripe account alerts.
+                  </Text>
+                  {accountSession.isError
+                    ? (
+                      <Text style={styles.manageStripeError}>
+                        Couldn{"’"}t open Stripe account management. Try again.
+                      </Text>
+                    )
+                    : null}
+                </View>
+              </View>
+              <View style={styles.manageStripeBtnRow}>
+                <Button
+                  label={accountSession.isPending
+                    ? "Opening Stripe..."
+                    : "Manage payouts & tax"}
+                  onPress={handleOpenAccountManagement}
+                  variant="primary"
+                  size="md"
+                  disabled={accountSession.isPending}
+                  leadingIcon="bank"
+                  accessibilityLabel="Manage payouts and tax"
+                />
+              </View>
+            </GlassCard>
+          )
+          : null}
+
         {/* SECTION A — Status Banner */}
         {bannerConfig !== null
           ? (
@@ -452,7 +520,15 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
           />
         </View>
 
-        {/* SECTION B.5 — ORCH-0955 embedded Tax tools. */}
+        {/* SECTION B.5 — ORCH-0955 embedded Tax tools.
+            Mints an AccountSession with tax_registrations + tax_settings
+            GA components, then opens the Mingla-hosted
+            /connect-tax-registrations page (via expo-web-browser) which
+            mounts both components inline. Replaces the legacy ORCH-0804
+            Stripe Express Dashboard login-link redirect (deleted; broke
+            under ORCH-0954 dashboard:'none' cutover). Brand is merchant
+            of record. Stripe Tax for Platforms direct-charge handles
+            calc/commit/reverse on every native PI. */}
         {stripeStatus === "active" && brand !== null
           ? (
             <GlassCard
@@ -742,6 +818,46 @@ const styles = StyleSheet.create({
     lineHeight: typography.caption.lineHeight,
     color: textTokens.secondary,
     marginTop: 4,
+  },
+
+  // ORCH-0954 — Embedded Stripe account-management entry ----------------
+  manageStripeCard: {
+    borderColor: accent.border,
+    borderWidth: 1,
+  },
+  manageStripeRow: {
+    flexDirection: "row",
+    gap: spacing.sm,
+  },
+  manageStripeIconCol: {
+    width: 26,
+    paddingTop: 2,
+  },
+  manageStripeTextCol: {
+    flex: 1,
+    minWidth: 0,
+  },
+  manageStripeTitle: {
+    fontSize: typography.body.fontSize,
+    lineHeight: typography.body.lineHeight,
+    fontWeight: "700",
+    color: textTokens.primary,
+    marginBottom: 2,
+  },
+  manageStripeBody: {
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+    color: textTokens.secondary,
+  },
+  manageStripeError: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: semantic.error,
+    marginTop: 4,
+  },
+  manageStripeBtnRow: {
+    marginTop: spacing.md,
+    flexDirection: "row",
   },
 
   // KPI tiles ------------------------------------------------------------

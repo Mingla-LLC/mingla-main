@@ -47,6 +47,7 @@ type StripeTaxFailure = {
   detail: string;
   httpStatus: number;
 };
+type PaymentPlanChoice = "auto" | "full" | "installments";
 // ORCH-0839-B (2026-05-14): widened to include "mobile-web" for the
 // mingla-business mobile hosted-Checkout pivot. "web" continues to emit
 // https://… success_url/cancel_url; "mobile-web" emits the
@@ -247,6 +248,16 @@ serve(async (req) => {
       body.taxCalculationId.length > 0
     ? body.taxCalculationId
     : null;
+  let paymentPlanChoice: PaymentPlanChoice = "auto";
+  if (body.payment_plan_choice !== undefined) {
+    if (
+      body.payment_plan_choice !== "full" &&
+      body.payment_plan_choice !== "installments"
+    ) {
+      return jsonResponse({ error: "payment_plan_choice_invalid" }, 400);
+    }
+    paymentPlanChoice = body.payment_plan_choice;
+  }
 
   if (!eventId) return jsonResponse({ error: "event_id_required" }, 400);
   if (buyerName.length < 2) {
@@ -455,7 +466,13 @@ serve(async (req) => {
   const idempotencyKey =
     typeof body.idempotencyKey === "string" && body.idempotencyKey.length > 0
       ? body.idempotencyKey
-      : checkoutIdempotencyKey({ eventId, buyerEmail, buyerPhoneE164, lines });
+      : checkoutIdempotencyKey({
+        eventId,
+        buyerEmail,
+        buyerPhoneE164,
+        lines,
+        paymentPlanChoice,
+      });
   const buyerStatusToken = randomBuyerStatusToken();
 
   const { data: sessionResult, error: sessionError } = await supabase.rpc(
@@ -471,11 +488,15 @@ serve(async (req) => {
       p_idempotency_key: idempotencyKey,
       p_expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
       p_application_fee_amount_cents: 0,
+      p_payment_plan_choice: paymentPlanChoice,
     },
   );
 
   if (sessionError || !sessionResult) {
     console.error("[ticket-checkout-create] session RPC failed", sessionError);
+    if (sessionError?.message?.includes("payment_plan_choice_invalid")) {
+      return jsonResponse({ error: "payment_plan_choice_invalid" }, 400);
+    }
     return jsonResponse(
       { error: "checkout_session_failed", detail: sessionError?.message },
       409,

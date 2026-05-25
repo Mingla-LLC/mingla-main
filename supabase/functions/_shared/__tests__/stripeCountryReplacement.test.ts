@@ -1,8 +1,7 @@
-import {
-  assertEquals,
-} from "https://deno.land/std@0.168.0/testing/asserts.ts";
+import { assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 
 import {
+  buildStripeAccountSessionOperation,
   buildStripeOnboardCreateOperation,
   buildStripeOnboardLinkOperation,
   decideStripeCountryReplacement,
@@ -52,5 +51,9 @@ Deno.test("stripe onboarding idempotency operations include country and account 
   assertEquals(
     buildStripeOnboardLinkOperation("US", "acct_new"),
     "onboard_account_link:US:acct_new",
+  );
+  assertEquals(
+    buildStripeAccountSessionOperation("gb", "acct_new"),
+    "account_session:GB:acct_new",
   );
 });

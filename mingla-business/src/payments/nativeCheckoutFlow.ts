@@ -24,6 +24,7 @@ export interface NativeCheckoutInput {
       country: string;
     };
   };
+  paymentPlanChoice?: "full" | "installments";
   idempotencyKey?: string;
   taxCalculationId?: string | null;
 }

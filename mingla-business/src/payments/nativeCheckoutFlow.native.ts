@@ -52,6 +52,7 @@ export interface NativeCheckoutInput {
       country: string;
     };
   };
+  paymentPlanChoice?: "full" | "installments";
   idempotencyKey?: string;
   taxCalculationId?: string | null;
 }
@@ -190,6 +191,9 @@ export const useNativeCheckoutFlow = (): (
           lines: input.lines,
           ...(input.taxCalculationId
             ? { taxCalculationId: input.taxCalculationId }
+            : {}),
+          ...(input.paymentPlanChoice !== undefined
+            ? { payment_plan_choice: input.paymentPlanChoice }
             : {}),
           ...(input.idempotencyKey !== undefined
             ? { idempotencyKey: input.idempotencyKey }

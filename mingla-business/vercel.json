@@ -44,13 +44,7 @@
       "destination": "/api/public-brand?brandSlug=:brandSlug"
     },
     { "source": "/stripe-onboarding-return", "destination": "/stripe-onboarding-return.html" },
-    { "source": "/e/:brandSlug/:eventSlug", "destination": "/e/[brandSlug]/[eventSlug]" },
-    { "source": "/t/:brandSlug/:tripSlug", "destination": "/t/[brandSlug]/[tripSlug]" },
-    { "source": "/b/:brandSlug", "destination": "/b/[brandSlug]" },
-    { "source": "/checkout/:eventId", "destination": "/checkout/[eventId]" },
-    { "source": "/checkout/:eventId/:step", "destination": "/checkout/[eventId]/:step" },
-    { "source": "/checkout-trip/:tripEventId", "destination": "/checkout-trip/[tripEventId]" },
-    { "source": "/checkout-trip/:tripEventId/:step", "destination": "/checkout-trip/[tripEventId]/:step" }
+    { "source": "/(.*)", "destination": "/" }
   ],
   "headers": [
     {

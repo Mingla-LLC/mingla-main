@@ -56,7 +56,25 @@ import { DownloadMinglaCta } from "../../../src/components/checkout/DownloadMing
 import { confirmTicketCheckout } from "../../../src/services/ticketCheckoutService";
 import { useOrderRealtimeSubscription } from "../../../src/hooks/useOrderRealtimeSubscription";
 
-export default function CheckoutConfirmScreen(): React.ReactElement {
+export default function CheckoutConfirmScreen(): React.ReactElement | null {
+  const [isClient, setIsClient] = useState<boolean>(false);
+  useEffect(() => {
+    const id = setTimeout(() => setIsClient(true), 0);
+    return (): void => {
+      clearTimeout(id);
+    };
+  }, []);
+
+  const clientReady = Platform.OS !== "web" || isClient;
+  if (!clientReady) return null;
+  return <CheckoutConfirmScreenInner isClient={clientReady} />;
+}
+
+function CheckoutConfirmScreenInner({
+  isClient,
+}: {
+  isClient: boolean;
+}): React.ReactElement | null {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const navigation = useNavigation();
@@ -90,18 +108,6 @@ export default function CheckoutConfirmScreen(): React.ReactElement {
     checkoutSessionId: string;
     buyerStatusToken: string;
   } | null>(null);
-  // ORCH-0951 v2 (2026-05-24) — REVERTS ORCH-0930 v3 back to
-  // useState(false) + useEffect setIsClient(true). See parallel patch in
-  // checkout-trip/[tripEventId]/confirm.tsx for the full rationale
-  // (v3's typeof-window initializer was the real root cause of the
-  // React #418 hydration mismatch that broke the multi-ticket carousel
-  // render on production; v2 makes SSR + client first render BOTH
-  // produce `null` → no mismatch → useEffect fires post-hydration → no
-  // React #418 → carousel mounts cleanly).
-  const [isClient, setIsClient] = useState<boolean>(false);
-  useEffect(() => {
-    setIsClient(true);
-  }, []);
   // Ref flag — flipped to true when buyer taps "Back to event." The
   // beforeRemove listener checks this and lets the navigation through
   // when set, so the explicit CTA exit isn't blocked by the same guard
@@ -131,6 +137,7 @@ export default function CheckoutConfirmScreen(): React.ReactElement {
   // ----- Web browser-back guard -----
   useEffect(() => {
     if (Platform.OS !== "web") return;
+    if (!isClient) return;
     const win = (globalThis as unknown as {
       window?: {
         addEventListener?: (
@@ -158,7 +165,7 @@ export default function CheckoutConfirmScreen(): React.ReactElement {
     return (): void => {
       win.removeEventListener?.("popstate", handler as unknown as (e: BeforeUnloadEvent) => void);
     };
-  }, []);
+  }, [isClient]);
 
   // ----- ORCH-0852: web Stripe Checkout sync confirm + Realtime fallback -----
   // On web, Stripe's success_url returns us here with ?cs=…, after a
@@ -175,6 +182,7 @@ export default function CheckoutConfirmScreen(): React.ReactElement {
   // leave the entry in place so a refresh can retry.
   useEffect(() => {
     if (Platform.OS !== "web") return;
+    if (!isClient) return;
     if (eventId === null) return;
     if (result !== null) return;
     const win = (globalThis as unknown as {
@@ -289,7 +297,7 @@ export default function CheckoutConfirmScreen(): React.ReactElement {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally
     // only runs when eventId / result first allow it; lines/buyer not in deps
     // because we read them once for the empty-check then restore.
-  }, [eventId, result]);
+  }, [eventId, result, isClient]);
 
   // ORCH-0852: Realtime safety net. Subscribes to ticket_checkout_sessions
   // UPDATE events filtered to the active session. When session.order_id
@@ -335,6 +343,7 @@ export default function CheckoutConfirmScreen(): React.ReactElement {
     if (eventId === null) return;
     if (result !== null) return;
     if (Platform.OS === "web") {
+      if (!isClient) return;
       const win = (globalThis as unknown as {
         location?: { search?: string };
         sessionStorage?: Storage;
@@ -354,7 +363,7 @@ export default function CheckoutConfirmScreen(): React.ReactElement {
       if (realtimePending) return;
     }
     router.replace(`/checkout/${eventId}` as never);
-  }, [result, eventId, router, realtimePending]);
+  }, [result, eventId, router, realtimePending, isClient]);
 
   // ----- Handlers -----
   const handleBackToEvent = useCallback((): void => {
@@ -392,7 +401,7 @@ export default function CheckoutConfirmScreen(): React.ReactElement {
   if (result === null) {
     if (Platform.OS === "web") {
       const win = (globalThis as unknown as { location?: { search?: string } });
-      const hasCs = /[?&]cs=/.test(win.location?.search ?? "");
+      const hasCs = isClient && /[?&]cs=/.test(win.location?.search ?? "");
       if (hasCs) {
         // ORCH-0911: render from first paint on ?cs= arrival, independent
         // of event/realtimePending state. ORCH-0852 auto-resolution remains.
@@ -515,8 +524,6 @@ export default function CheckoutConfirmScreen(): React.ReactElement {
           padding={spacing.md}
           style={styles.qrCard}
         >
-          {/* ORCH-0930 v3: isClient gate via useState initializer; see parallel
-              patch in checkout-trip/[tripEventId]/confirm.tsx. */}
           {isClient && totalTickets > 0 ? (
             <TicketQrCarousel
               orderId={result.orderId}
@@ -669,7 +676,6 @@ const styles = StyleSheet.create({
   },
   qrCard: {
     marginBottom: spacing.md,
-    alignItems: "center",
   },
   bottomBar: {
     position: "absolute",

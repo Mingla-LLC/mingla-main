@@ -23,7 +23,7 @@ export type BrandStripeStatus =
   | "restricted";
 
 export interface StartOnboardingResult {
-  client_secret: string | null;
+  client_secret: string;
   account_id: string;
   onboarding_url: string;
 }
@@ -52,7 +52,9 @@ export class BrandStripeCountryLockedError extends Error {
     reason?: string | null;
   }) {
     super(
-      `Stripe is connected for ${input.existingCountry ?? "this country"}. To use a different country or currency, create a new brand.`,
+      `Stripe is connected for ${
+        input.existingCountry ?? "this country"
+      }. To use a different country or currency, create a new brand.`,
     );
     this.name = "BrandStripeCountryLockedError";
     this.existingCountry = input.existingCountry ?? null;
@@ -87,14 +89,12 @@ function mapFunctionErrorPayload(payload: unknown): Error | null {
   if (!isRecord(payload)) return null;
   if (payload.error === "country_locked") {
     return new BrandStripeCountryLockedError({
-      existingCountry:
-        typeof payload.existing_country === "string"
-          ? payload.existing_country
-          : null,
-      requestedCountry:
-        typeof payload.requested_country === "string"
-          ? payload.requested_country
-          : null,
+      existingCountry: typeof payload.existing_country === "string"
+        ? payload.existing_country
+        : null,
+      requestedCountry: typeof payload.requested_country === "string"
+        ? payload.requested_country
+        : null,
       reason: typeof payload.reason === "string" ? payload.reason : null,
     });
   }
@@ -154,7 +154,9 @@ export async function startBrandStripeOnboarding(
   returnUrl: string,
   country = "GB",
 ): Promise<StartOnboardingResult> {
-  const { data, error } = await supabase.functions.invoke<StartOnboardingResult>(
+  const { data, error } = await supabase.functions.invoke<
+    StartOnboardingResult
+  >(
     "brand-stripe-onboard",
     { body: { brand_id: brandId, return_url: returnUrl, country } },
   );
@@ -188,10 +190,9 @@ export async function refreshBrandStripeStatus(
     "brand-stripe-refresh-status",
     {
       body: { brand_id: brandId },
-      headers:
-        typeof accessToken === "string" && accessToken.length > 0
-          ? { Authorization: `Bearer ${accessToken}` }
-          : undefined,
+      headers: typeof accessToken === "string" && accessToken.length > 0
+        ? { Authorization: `Bearer ${accessToken}` }
+        : undefined,
     },
   );
   if (error) {

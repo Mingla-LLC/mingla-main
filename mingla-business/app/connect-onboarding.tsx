@@ -31,6 +31,7 @@ import Constants from "expo-constants";
 import {
   ConnectAccountOnboarding,
   ConnectComponentsProvider,
+  ConnectNotificationBanner,
 } from "@stripe/react-connect-js";
 import { loadConnectAndInitialize } from "@stripe/connect-js";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -57,6 +58,7 @@ export default function ConnectOnboardingPage(): React.ReactElement {
 
   const [hasExited, setHasExited] = useState<boolean>(false);
   const [initError, setInitError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const stripeConnectInstance = useMemo(() => {
     if (typeof sessionClientSecret !== "string") return null;
@@ -94,7 +96,9 @@ export default function ConnectOnboardingPage(): React.ReactElement {
 
   const handleExit = (): void => {
     setHasExited(true);
-    if (typeof returnTo === "string" && returnTo.startsWith("mingla-business://")) {
+    if (
+      typeof returnTo === "string" && returnTo.startsWith("mingla-business://")
+    ) {
       // Native app deep link — redirect via window.location for cross-process navigation
       if (typeof window !== "undefined") {
         window.location.href = returnTo;
@@ -107,6 +111,36 @@ export default function ConnectOnboardingPage(): React.ReactElement {
     }
   };
 
+  const handleStepChange = (event: unknown): void => {
+    const step = typeof event === "object" && event !== null && "step" in event
+      ? String((event as { step?: unknown }).step ?? "unknown")
+      : "unknown";
+    console.info("[connect-onboarding] Stripe onboarding step changed", {
+      brandId,
+      step,
+    });
+    try {
+      window.localStorage.setItem(
+        "mingla:stripe-connect:last-onboarding-step",
+        JSON.stringify({ brandId, step, at: new Date().toISOString() }),
+      );
+    } catch {
+      // LocalStorage can be unavailable in hardened browsers; console breadcrumb remains.
+    }
+  };
+
+  const handleLoadError = (event: unknown): void => {
+    const message =
+      typeof event === "object" && event !== null && "error" in event
+        ? String(
+          (event as { error?: { message?: unknown } }).error?.message ?? "",
+        )
+        : "";
+    setLoadError(
+      message.length > 0 ? message : "Stripe couldn't load onboarding.",
+    );
+  };
+
   // Validation guards
   if (typeof sessionClientSecret !== "string") {
     return (
@@ -115,7 +149,8 @@ export default function ConnectOnboardingPage(): React.ReactElement {
           <h2 style={errorTitleStyle}>Invalid onboarding link</h2>
           <p style={errorBodyStyle}>
             This onboarding link is missing a required parameter. Return to
-            Mingla Business and tap &ldquo;Set up payments&rdquo; again to start fresh.
+            Mingla Business and tap &ldquo;Set up payments&rdquo; again to start
+            fresh.
           </p>
         </div>
       </div>
@@ -128,6 +163,17 @@ export default function ConnectOnboardingPage(): React.ReactElement {
         <div style={errorCardStyle}>
           <h2 style={errorTitleStyle}>Couldn&rsquo;t start onboarding</h2>
           <p style={errorBodyStyle}>{initError}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError !== null) {
+    return (
+      <div style={pageWrapperStyle}>
+        <div style={errorCardStyle}>
+          <h2 style={errorTitleStyle}>Couldn&rsquo;t load onboarding</h2>
+          <p style={errorBodyStyle}>{loadError}</p>
         </div>
       </div>
     );
@@ -160,7 +206,24 @@ export default function ConnectOnboardingPage(): React.ReactElement {
       </header>
       <main style={mainStyle}>
         <ConnectComponentsProvider connectInstance={stripeConnectInstance}>
-          <ConnectAccountOnboarding onExit={handleExit} />
+          <ConnectNotificationBanner
+            collectionOptions={{
+              fields: "eventually_due",
+              futureRequirements: "include",
+            }}
+          />
+          <ConnectAccountOnboarding
+            onExit={handleExit}
+            onStepChange={handleStepChange}
+            onLoadError={handleLoadError}
+            fullTermsOfServiceUrl="https://www.usemingla.com/terms-of-service/"
+            recipientTermsOfServiceUrl="https://www.usemingla.com/terms-of-service/"
+            privacyPolicyUrl="https://www.usemingla.com/privacy-policy/"
+            collectionOptions={{
+              fields: "eventually_due",
+              futureRequirements: "include",
+            }}
+          />
         </ConnectComponentsProvider>
       </main>
       <footer style={footerStyle}>

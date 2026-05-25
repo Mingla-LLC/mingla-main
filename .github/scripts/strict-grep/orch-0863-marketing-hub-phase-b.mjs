@@ -722,8 +722,10 @@ function checkNoNewBackendFiles() {
     "supabase/functions/ticket-checkout-create/__tests__/nativePaidRegionGate.test.ts",
     "supabase/functions/ticket-checkout-create/__tests__/nativeRegionGate_adversarial.test.ts",
   ];
-  // ORCH-0955 [Native Stripe Tax for Platforms] PR (2026-05-25). C7 is scoped to
-  // ORCH-0863 marketing; these backend touches are native Stripe Tax wiring.
+  // ORCH-0955 [Native Stripe Tax for Platforms] PR #208 (2026-05-25). C7 is
+  // scoped to ORCH-0863 marketing; these backend touches are native Stripe Tax
+  // wiring (3-step calc/commit/reverse + embedded Tax UI replacement + region
+  // gate decommission). Same scoping rationale as prior allowlists.
   const ORCH_0955_BACKEND_ALLOWLIST = [
     "supabase/functions/_shared/email/__tests__/shell.test.ts",
     "supabase/functions/_shared/email/ticketBody.ts",
@@ -742,7 +744,68 @@ function checkNoNewBackendFiles() {
     "supabase/migrations/20260725000002_orch_0950_expanded_scope_dashboard_coherence.sql",
     "supabase/migrations/20260727000000_orch_0955_native_stripe_tax.sql",
   ];
+
+  // ORCH-0915 [Buyer/traveller pay-in-full opt-out at payment-plan checkout]
+  // CLOSE PR #203 (2026-05-24). Migration 20260724000007 + ticket-checkout-
+  // create/index.ts are already in ORCH_0953_BACKEND_ALLOWLIST (operator db
+  // push batch). The 4 files below are the remaining ORCH-0915 backend
+  // touches: shared idempotency-key helper extension separating explicit
+  // full/installment sessions, plus the 3 ORCH-0915 test files (happy-path
+  // edge + RPC source + adversarial). Same scoping rationale as prior
+  // allowlists — these are ORCH-0915 scope, not ORCH-0863 marketing scope.
+  // Future close that drops the ORCH-0953 allowlist should also drop this.
+  const ORCH_0915_BACKEND_ALLOWLIST = [
+    "supabase/functions/_shared/ticketCheckout.ts",
+    "supabase/functions/ticket-checkout-create/__tests__/orch_0915_payment_plan_choice.test.ts",
+    "supabase/functions/ticket-checkout-create/__tests__/orch_0915_payment_plan_choice_adversarial.test.ts",
+    "supabase/functions/ticket-checkout-create/__tests__/orch_0915_rpc_behavior.test.ts",
+  ];
+
+  // ORCH-0954 [Embedded onboarding cutover + Stripe-managed risk] — Stripe
+  // platform controller flip (dashboard:express→none, losses+fees collectors
+  // application→stripe/account), new createAccountSession() helper + new
+  // brand-stripe-account-session edge function + 2 new test files. Existing
+  // stripeBlueprintClient/CountryReplacement/WebhookRouter test files updated
+  // to assert the new controller values (covered separately by ORCH-0840
+  // TEST-MOD-APPROVED token in commit body). No migrations.
+  const ORCH_0954_BACKEND_ALLOWLIST = [
+    "supabase/functions/_shared/stripeBlueprintClient.ts",
+    "supabase/functions/_shared/stripeCountryReplacement.ts",
+    "supabase/functions/_shared/stripeWebhookRouter.ts",
+    "supabase/functions/_shared/__tests__/stripeBlueprintClient.test.ts",
+    "supabase/functions/_shared/__tests__/stripeBlueprintClient_failclose.test.ts",
+    "supabase/functions/_shared/__tests__/stripeCountryReplacement.test.ts",
+    "supabase/functions/brand-stripe-onboard/index.ts",
+    "supabase/functions/brand-stripe-onboard/index.test.ts",
+    "supabase/functions/brand-stripe-onboard/__tests__/embeddedOnboarding.happy.test.ts",
+    "supabase/functions/brand-stripe-onboard/__tests__/embeddedOnboarding.adversarial.test.ts",
+    "supabase/functions/brand-stripe-account-session/index.ts",
+  ];
+
+  // ORCH-0956 [Stripe ops alerts → email]: swaps the OneSignal push-based
+  // dispute + webhook-signature-failure operator alerts shipped by ORCH-0953
+  // for Resend email sends. New shared helper + two adversarial test files.
+  // Modified files (stripeDisputeHandlers.ts, stripe-webhook/index.ts, and the
+  // ORCH-0953 dispute + signature-failure test files) are already covered by
+  // ORCH_0953_BACKEND_ALLOWLIST above; only the three NEW files are listed here.
+  const ORCH_0956_BACKEND_ALLOWLIST = [
+    "supabase/functions/_shared/stripeOpsAlertEmail.ts",
+    "supabase/functions/_shared/__tests__/stripeOpsAlertEmailRecipients.test.ts",
+    "supabase/functions/_shared/__tests__/stripeOpsAlertEmailSandbox.test.ts",
+  ];
+  // META-ORCH-0952 [Buyer-web confirm pipeline deep forensics] CLOSE 2026-05-25.
+  // C7 is scoped to ORCH-0863 marketing; the META-ORCH-0952 self-heal rework
+  // touched ticket-checkout-confirm/index.ts (already in ORCH-0932 allowlist
+  // above) and added a new Deno test exercising the awaiting_web_redirect +
+  // null PI Checkout-Session recovery path. This entry adds the new test file
+  // only; the index.ts touch is covered by ORCH-0932.
+  const META_ORCH_0952_BACKEND_ALLOWLIST = [
+    "supabase/functions/ticket-checkout-confirm/__tests__/orch_0952_web_checkout_session_fallback.test.ts",
+  ];
   const ALLOWLIST = [
+    ...META_ORCH_0952_BACKEND_ALLOWLIST,
+    ...ORCH_0954_BACKEND_ALLOWLIST,
+    ...ORCH_0915_BACKEND_ALLOWLIST,
     ...ORCH_0933_BACKEND_ALLOWLIST,
     ...ORCH_0940_BACKEND_ALLOWLIST,
     ...ORCH_0948_BACKEND_ALLOWLIST,
@@ -779,6 +842,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_0947_BACKEND_ALLOWLIST,
     ...ORCH_0953_BACKEND_ALLOWLIST,
     ...ORCH_0955_BACKEND_ALLOWLIST,
+    ...ORCH_0956_BACKEND_ALLOWLIST,
   ];
   const forbidden = changed.filter(
     (p) =>
