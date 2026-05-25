@@ -1,0 +1,8 @@
+bundle=/tmp/mingla-business-android-export-retest2/_expo/static/js/android/index-d41d8cd98f00b204e9800998ecf8427e.js
+node_modules/@stripe/react-connect-js=0
+node_modules/@stripe/connect-js=0
+@stripe/react-connect-js=5
+@stripe/connect-js=3
+src/shims/stripeConnectNativeStub.js=1
+__minglaNativeStub=1
+StripePushProvisioning=0
