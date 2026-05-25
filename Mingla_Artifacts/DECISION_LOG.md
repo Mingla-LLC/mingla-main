@@ -253,4 +253,20 @@
 
 **Supersedes:** The implicit dual-write assumption from ORCH-0824 [Trip publish], ORCH-0859 [Trip publish RPC fork], and ORCH-0876 [Trip published-edit].
 
-**Enforcement:** Migration `supabase/migrations/20260725000000_orch_0950_trip_capacity_single_source.sql`, strict-grep gate `.github/scripts/strict-grep/i-proposed-trip-capacity-single-source.mjs`, and service guard in `mingla-business/src/services/tripsService.ts`.
+**Enforcement:** Migration `supabase/migrations/20260725000000_orch_0950_trip_capacity_single_source.sql`, strict-grep gate `.github/scripts/strict-grep/i-proposed-trip-canonical-columns.mjs`, and service guard in `mingla-business/src/services/tripsService.ts`.
+
+## DEC-167 — Trip capacity, dates, and destination text are canonical SQL columns per ORCH-0950 expanded (2026-05-24)
+
+**Decision:** Trip capacity, trip dates, and trip destination text are stored only in `ticket_types.quantity_total`, `event_dates.start_at/end_at`, and `events.destination_text`. `events.theme.business_trip` remains for forward-compatible metadata, but capacity/date/destination text keys are stripped on publish/live edit and not used as dashboard truth.
+
+**Rationale:** The ORCH-0950 expanded investigation proved a partial JSONB patch wiped DC Adventure's destination and dates, leaving the dashboard with `Date TBD` even though canonical `event_dates` still had the trip window.
+
+**Enforcement:** Migration `supabase/migrations/20260725000002_orch_0950_expanded_scope_dashboard_coherence.sql`, service reader wiring in `mingla-business/src/services/tripsService.ts`, and strict-grep gate `.github/scripts/strict-grep/i-proposed-trip-canonical-columns.mjs`.
+
+## DEC-168 — Planner tier-card sold counts source from ticket rows per ORCH-0950 expanded (2026-05-24)
+
+**Decision:** Per-tier sold counts on the trip dashboard source from `biz_trip_tickets_sold_by_tier(p_event_id)`, which counts `tickets.status IN ('valid','used','transferred')` grouped by `ticket_type_id`, rather than counting orders client-side.
+
+**Rationale:** ORCH-0947 already corrected the Spots tile to count tickets instead of orders. ORCH-0950 expanded applies the same canonical-count rule to the pricing tier card so multi-ticket orders and transfers do not undercount sold seats.
+
+**Enforcement:** RPC `public.biz_trip_tickets_sold_by_tier(uuid)`, service function `readTripSoldCountsByTier`, React Query key `tripKeys.soldCountsByTier(eventId)`, and dashboard wiring in `mingla-business/app/trip/[id]/index.tsx`.

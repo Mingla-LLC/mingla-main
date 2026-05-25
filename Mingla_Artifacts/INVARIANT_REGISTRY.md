@@ -3812,9 +3812,33 @@ Every chat response from every skill uses Section A (what just happened) + Secti
 
 **Why:** ORCH-0950 exists because post-publish trip capacity edits wrote JSONB while buyer checkout enforced `ticket_types.quantity_total`, causing silent drift and false `ticket_capacity_exceeded` 409s after planners raised capacity.
 
-**Enforcement:** Strict-grep CI gate `.github/scripts/strict-grep/i-proposed-trip-capacity-single-source.mjs`, service guard in `mingla-business/src/services/tripsService.ts`, and migration `supabase/migrations/20260725000000_orch_0950_trip_capacity_single_source.sql`.
+**Enforcement:** Superseded by `I-PROPOSED-TRIP-CANONICAL-COLUMNS`, enforced by strict-grep CI gate `.github/scripts/strict-grep/i-proposed-trip-canonical-columns.mjs`, service guard in `mingla-business/src/services/tripsService.ts`, and migrations `supabase/migrations/20260725000000_orch_0950_trip_capacity_single_source.sql` + `supabase/migrations/20260725000002_orch_0950_expanded_scope_dashboard_coherence.sql`.
 
 **Source:** SPEC `Mingla_Artifacts/specs/SPEC_ORCH-0950_TRIP_CAPACITY_SINGLE_SOURCE.md` §9 and investigation `Mingla_Artifacts/reports/INVESTIGATION_ORCH-0950_TRIP_CAPACITY_DUAL_SOURCE.md`.
+
+**Status:** DRAFT — flips ACTIVE on ORCH-0950 CLOSE.
+
+### I-PROPOSED-TRIP-CANONICAL-COLUMNS
+
+**Statement:** Trip capacity is stored ONLY in `ticket_types.quantity_total`. Trip start/end dates are stored ONLY in `event_dates.start_at/end_at` on the single master row. Trip destination text is stored ONLY in `events.destination_text`. Code that writes or reads legacy `events.theme.business_trip` capacity/date/destination text fields for trip purposes is forbidden except the draft-to-publish bridge and compatibility aliases that source from canonical columns.
+
+**Why:** ORCH-0950 expanded scope proved the same dual-source bug class behind capacity also applied to dates and destination, and a shallow JSONB merge wiped DC Adventure's sibling fields.
+
+**Enforcement:** Strict-grep CI gate `.github/scripts/strict-grep/i-proposed-trip-canonical-columns.mjs`, service reader wiring in `mingla-business/src/services/tripsService.ts`, and migration `supabase/migrations/20260725000002_orch_0950_expanded_scope_dashboard_coherence.sql`.
+
+**Source:** SPEC `Mingla_Artifacts/specs/SPEC_ORCH-0950_EXPANDED_SCOPE_DASHBOARD_COHERENCE.md` and investigation `Mingla_Artifacts/reports/INVESTIGATION_ORCH-0950_EXPANDED_SCOPE_DASHBOARD_COHERENCE.md`.
+
+**Status:** DRAFT — flips ACTIVE on ORCH-0950 CLOSE.
+
+### I-PROPOSED-PARTIAL-PATCH-PRESERVES-SIBLINGS
+
+**Statement:** RPCs that accept JSONB patches where nested objects represent independent fields must deep-merge those nested objects instead of shallow-merging the parent.
+
+**Why:** `theme || (p_patch->'theme')` replaced the entire `business_trip` child object and destroyed sibling fields on partial edits.
+
+**Enforcement:** Strict-grep CI gate `.github/scripts/strict-grep/i-proposed-trip-canonical-columns.mjs` forbids the trip-RPC shallow merge literal in new migrations; ORCH-0950 expanded migration rewrites `biz_update_live_trip` with `jsonb_set(... existing_business_trip || patch_business_trip ...)`.
+
+**Source:** SPEC `Mingla_Artifacts/specs/SPEC_ORCH-0950_EXPANDED_SCOPE_DASHBOARD_COHERENCE.md` §8-§11.
 
 **Status:** DRAFT — flips ACTIVE on ORCH-0950 CLOSE.
 

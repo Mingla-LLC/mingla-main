@@ -21,6 +21,7 @@ import {
   View,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { useQuery } from "@tanstack/react-query";
 
 import {
   spacing,
@@ -51,12 +52,19 @@ import {
 } from "../../../src/components/trip/TripDetailHeroStatusPill";
 import { TripDetailKpiCard } from "../../../src/components/trip/TripDetailKpiCard";
 import { Button } from "../../../src/components/ui/Button";
-import { useTrip, useSoftDeleteTrip } from "../../../src/hooks/useTrips";
+import {
+  tripKeys,
+  useTrip,
+  useSoftDeleteTrip,
+} from "../../../src/hooks/useTrips";
 import { useTripOrders } from "../../../src/hooks/useTripOrders";
 // ORCH-0873 [Tr3 Stage 2 UI] — Money tab data.
 import { useInstallmentsForBrandTrips } from "../../../src/hooks/useOrderInstallments";
 import type { OrderInstallmentForBrand } from "../../../src/services/orderInstallmentsService";
-import type { TripPricingTier } from "../../../src/services/tripsService";
+import {
+  readTripSoldCountsByTier,
+  type TripPricingTier,
+} from "../../../src/services/tripsService";
 import type { EventCoverMediaType, TicketStub } from "../../../src/store/draftEventStore";
 
 function formatCurrency(cents: number, currency: string): string {
@@ -190,18 +198,16 @@ export default function TripDashboardRoute(): React.ReactElement {
     return map;
   }, [ordersQuery.data]);
 
-  const soldCountByTier = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const o of ordersQuery.data ?? []) {
-      if (o.paymentStatus === "failed" || o.paymentStatus === "cancelled") {
-        continue;
-      }
-      const tierId = getOrderTierId(o);
-      if (tierId === null) continue;
-      map.set(tierId, (map.get(tierId) ?? 0) + 1);
-    }
-    return map;
-  }, [ordersQuery.data]);
+  const soldCountsByTierQuery = useQuery({
+    queryKey:
+      typeof eventId === "string"
+        ? tripKeys.soldCountsByTier(eventId)
+        : ["trips", "__disabled__", "soldCountsByTier"],
+    queryFn: () => readTripSoldCountsByTier(eventId as string),
+    enabled: typeof eventId === "string" && eventId.length > 0,
+    staleTime: 30_000,
+  });
+  const soldCountByTier = soldCountsByTierQuery.data ?? new Map<string, number>();
 
   const recentActivity = useMemo<ActivityEvent[]>(() => {
     const events: ActivityEvent[] = [];

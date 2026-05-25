@@ -37,6 +37,7 @@ describe("ORCH-0859 — useTrips structural contract", () => {
     expect(useTripsSource).toMatch(/listByBrand:/);
     expect(useTripsSource).toMatch(/details:/);
     expect(useTripsSource).toMatch(/detail:/);
+    expect(useTripsSource).toMatch(/soldCountsByTier:/);
     expect(useTripsSource).toMatch(/publicBySlug:/);
   });
 

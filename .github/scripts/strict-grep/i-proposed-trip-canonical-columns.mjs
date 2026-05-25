@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 /**
- * I-PROPOSED-TRIP-CAPACITY-SINGLE-SOURCE strict-grep gate.
+ * I-PROPOSED-TRIP-CANONICAL-COLUMNS strict-grep gate.
  *
- * ORCH-0950: trip capacity is canonical in ticket_types.quantity_total.
- * New code must not reintroduce events.theme.business_trip.capacity as a
- * source of truth. Historical pre-cutover migrations are preserved as audit
- * trail; the ORCH-0950 cutover migration is allowed because it strips and
- * rewrites the old key.
+ * ORCH-0950 expanded: trip capacity, dates, and destination text are
+ * canonical in ticket_types.quantity_total, event_dates, and
+ * events.destination_text. New code must not reintroduce those
+ * events.theme.business_trip keys as source-of-truth readers/writers, and
+ * trip RPC migrations must not use the shallow theme merge that wiped sibling
+ * JSONB keys.
  */
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -27,9 +28,11 @@ const REPO_ROOT = requestedRoot
   ? (isAbsolute(requestedRoot) ? requestedRoot : resolve(process.cwd(), requestedRoot))
   : DEFAULT_ROOT;
 
-const CUTOVER_PREFIX = "20260725000000";
+const EXPANDED_PREFIX = "20260725000002";
 const CUTOVER_MIGRATION =
   "supabase/migrations/20260725000000_orch_0950_trip_capacity_single_source.sql";
+const EXPANDED_MIGRATION =
+  "supabase/migrations/20260725000002_orch_0950_expanded_scope_dashboard_coherence.sql";
 const ALLOWLIST_TAG = "orch-strict-grep-allow trip-capacity-defensive-throw";
 const ALLOWLIST_CONTEXT_LINES = 5;
 
@@ -58,6 +61,23 @@ const FORBIDDEN = [
   {
     label: "theme.business_trip.capacity",
     re: /theme\.business_trip\.capacity/g,
+  },
+  {
+    label: "theme || (p_patch->'theme')",
+    re: /theme\s*\|\|\s*\(p_patch->'theme'\)/g,
+    migrationsOnly: true,
+  },
+  {
+    label: "business_trip.startAt",
+    re: /business_trip\.startAt/g,
+  },
+  {
+    label: "business_trip.endAt",
+    re: /business_trip\.endAt/g,
+  },
+  {
+    label: "business_trip.destinationLocationText",
+    re: /business_trip\.destinationLocationText/g,
   },
 ];
 
@@ -99,11 +119,11 @@ function relPath(file) {
   return relative(REPO_ROOT, file).replaceAll("\\", "/");
 }
 
-function isMigrationBeforeCutover(rel) {
+function isHistoricalMigration(rel) {
   if (!rel.startsWith("supabase/migrations/")) return false;
   const filename = rel.split("/").at(-1) ?? "";
   const prefix = filename.slice(0, 14);
-  return /^\d{14}$/.test(prefix) && prefix < CUTOVER_PREFIX;
+  return /^\d{14}$/.test(prefix) && prefix < EXPANDED_PREFIX;
 }
 
 function hasAllowlistTag(lines, lineIndex) {
@@ -117,7 +137,8 @@ for (const scanRoot of SCAN_ROOTS) {
   for (const file of walk(absoluteRoot)) {
     const rel = relPath(file);
     if (rel === CUTOVER_MIGRATION) continue;
-    if (isMigrationBeforeCutover(rel)) continue;
+    if (rel === EXPANDED_MIGRATION) continue;
+    if (isHistoricalMigration(rel)) continue;
 
     let source;
     try {
@@ -133,11 +154,14 @@ for (const scanRoot of SCAN_ROOTS) {
       const line = lines[i] ?? "";
       if (hasAllowlistTag(lines, i)) continue;
       for (const forbidden of FORBIDDEN) {
+        if (forbidden.migrationsOnly === true && !rel.startsWith("supabase/migrations/")) {
+          continue;
+        }
         forbidden.re.lastIndex = 0;
         if (forbidden.re.test(line)) {
           violations += 1;
           console.error(
-            `x ${rel}:${i + 1} - forbidden trip-capacity JSONB reference (${forbidden.label}); use ticket_types.quantity_total`,
+            `x ${rel}:${i + 1} - forbidden trip canonical-column violation (${forbidden.label}); use ticket_types.quantity_total, event_dates, or events.destination_text`,
           );
         }
       }
@@ -147,11 +171,11 @@ for (const scanRoot of SCAN_ROOTS) {
 
 if (violations > 0) {
   console.error(
-    `I-PROPOSED-TRIP-CAPACITY-SINGLE-SOURCE: FAIL files=${filesScanned} violations=${violations}`,
+    `I-PROPOSED-TRIP-CANONICAL-COLUMNS: FAIL files=${filesScanned} violations=${violations}`,
   );
   process.exit(1);
 }
 
 console.log(
-  `I-PROPOSED-TRIP-CAPACITY-SINGLE-SOURCE: PASS files=${filesScanned} violations=0`,
+  `I-PROPOSED-TRIP-CANONICAL-COLUMNS: PASS files=${filesScanned} violations=0`,
 );

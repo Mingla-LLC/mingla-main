@@ -1,14 +1,15 @@
 # Implementation Report: Trip Capacity Single Source (ORCH-0950)
 
 > Date: 2026-05-24
-> Mode: Spec Execute
+> Mode: Spec Execute + P1 Rework
 > Spec: `Mingla_Artifacts/specs/SPEC_ORCH-0950_TRIP_CAPACITY_SINGLE_SOURCE.md`
 > Investigation: `Mingla_Artifacts/reports/INVESTIGATION_ORCH-0950_TRIP_CAPACITY_DUAL_SOURCE.md`
+> Rework source: `Mingla_Artifacts/reports/QA_ORCH-0950_TRIP_CAPACITY_SINGLE_SOURCE.md`
 > Status: implemented, partially verified
 > Working tree: `/Users/sethogieva/Desktop/mingla-orchs/ORCH-0950-[trip-capacity-single-source]`
 > Branch: `ORCH-0950-trip-capacity-single-source`
-> Implementation commits: `14e532fa`, `d85b8e98`, `71dad12f`, `27a7ef8e57c7f6d26ccaf1330c66867ef8c50b39`
-> Fails-on-revert verified at `14e532fa`
+> Implementation commits after P1 rebase: `96fdca0666fe68cca96ee04ae0c42f3905d74410`, `6684e52592a076efaf0823192b7acb9699106c19`, `ebd462c2aa2c75e457b0408f35115bafde1c838c`, `cde7fe0aa9dbd518fbf7b580387cd43cf0b70b82`
+> Fails-on-revert verified before rebase at `14e532fa`; equivalent rebased implementation commit is `96fdca0666fe68cca96ee04ae0c42f3905d74410`
 
 ## 1. Layman Summary
 
@@ -16,8 +17,8 @@ Trip capacity now has one canonical storage location: `ticket_types.quantity_tot
 
 ## 2. Request And Context
 
-- **Request:** Implement ORCH-0950 exactly from the spec and investigation.
-- **Source:** Operator-dispatched Codex `implementor-mingla`.
+- **Request:** Implement ORCH-0950 exactly from the spec and investigation; rework P1-001 from the QA report.
+- **Source:** Operator-dispatched Codex `implementor-mingla`; rework dispatched from tester FAIL.
 - **Affected surfaces:** Business iOS/Android/web-preview shared RN trip creator/edit flows; buyer-web checkout gate via unchanged checkout RPC; Postgres trip publish/live-edit RPCs.
 - **Related artifacts:** Spec and investigation above. Out-of-scope ORCH-0946 and ORCH-0947 were not touched.
 
@@ -47,7 +48,7 @@ Trip capacity now has one canonical storage location: `ticket_types.quantity_tot
 - **Cache impact:** No query keys changed. Existing trip invalidations remain.
 - **State boundaries:** No Zustand/AsyncStorage changes.
 - **Auth/RLS/security:** RPC auth/permission gates preserved; no new grants beyond existing function grants.
-- **Deploy path:** Operator applies migration with `supabase db push --linked`; no edge deploy.
+- **Deploy path:** No migration apply or edge deploy in this rework. ORCH-0950 migration version `20260725000000` is already local+remote in the linked migration ledger; future DB-push handoff is blocked until unrelated remote-only migration versions are source-reconciled.
 
 ## 6. Old To New Receipts
 
@@ -126,7 +127,7 @@ Trip capacity now has one canonical storage location: `ticket_types.quantity_tot
 - **Admin:** Not in scope.
 - **Public/web:** Checkout RPC unchanged and still reads ticket capacity.
 - **Solo/collab:** Not applicable.
-- **Gaps:** iOS sim, Android emu, buyer-web parity, and DC-Adventure-style live-fire remain tester/operator gates after DB push.
+- **Gaps:** iOS sim, Android emu, business-web preview, and DC-Adventure-style live-fire remain tester gates before CLOSE.
 
 ## 11. Cache And Persisted State Safety
 
@@ -140,7 +141,7 @@ Trip capacity now has one canonical storage location: `ticket_types.quantity_tot
 
 | Check | Command / method | Result | Notes |
 |---|---|---|---|
-| New strict-grep gate | `node .github/scripts/strict-grep/i-proposed-trip-capacity-single-source.mjs` | PASS | `files=1434 violations=0` |
+| New strict-grep gate | `node .github/scripts/strict-grep/i-proposed-trip-capacity-single-source.mjs` | PASS | Latest rework run: `files=1437 violations=0`. |
 | Strict-grep self-test | `node .github/scripts/strict-grep/i-proposed-trip-capacity-single-source.test.mjs` | PASS | 4/4 |
 | ORCH-0863 backend allowlist gate | `node .github/scripts/strict-grep/orch-0863-marketing-hub-phase-b.mjs` | PASS | Existing script reports C1-C7 pass. |
 | Deno regression | `/Users/sethogieva/.deno/bin/deno test --allow-read supabase/functions/_test/orch_0950_trip_capacity_canonical.test.ts` | PASS | 6/6 |
@@ -148,9 +149,24 @@ Trip capacity now has one canonical storage location: `ticket_types.quantity_tot
 | Diff whitespace | `git diff --check` | PASS | No whitespace errors. |
 | Full TS typecheck | `npx tsc --noEmit --pretty false` from `mingla-business/` | FAIL unrelated | Existing errors in checkout buyer pages, ComposerV2, IconChrome, native payments package resolution, shared packages, and older tests. |
 | Touched-file TS attempt | `npx tsc --noEmit ... src/services/tripsService.ts src/components/trip/TripCreatorWizard.tsx src/utils/tripAdapter.ts` | FAIL unrelated transitive | Errors came from imported existing files (`IconChrome`, `liveEventStore`, `eventCoverMediaRules`). |
-| Remote migration head check | `/Users/sethogieva/bin/supabase migration list --linked` | PASS | No remote-only rows remain after ORCH-0946 reconciliation; `20260725000000` is local-only pending. |
+| Remote migration ledger | `/Users/sethogieva/bin/supabase migration list --linked` | PARTIAL | ORCH-0950 `20260725000000` is local+remote, but unrelated remote-only versions `20260724000007`, `20260724000010`, and `20260725000001` exist. Do not emit a DB-push handoff until orchestrator source-reconciles them. |
 | Remote pre-flight data probe | Supabase MCP read-only SQL for scheduled/live trips | PASS | 3 sellable trips, 0 bad tier rows, 0 bad joined ticket type rows. |
 | Fails-on-revert | Temporarily changed migration `SET quantity_total = v_new_capacity` to `v_old_capacity`, reran Deno test, restored | FAIL proved | Deno T-02 failed, then passed again after restore. Fails-on-revert verified at `14e532fa`. |
+
+### P1-001 Rework Verification
+
+| Check | Command / method | Result | Notes |
+|---|---|---|---|
+| Base contains adjacent migration outside this PR | `git fetch origin main --quiet`; `git ls-tree -r --name-only origin/main supabase/migrations \| rg 'orch_0946\|20260724000006'` | PASS | `origin/main` contains `supabase/migrations/20260724000006_orch_0946_public_ticket_types_remaining.sql` from PR #197. |
+| Rebased ORCH-0950 onto current base | `git rebase origin/main --autostash` | PASS | Stale ORCH-0946-only reconciliation commit was skipped because base owns that file. |
+| Branch changed-file scope guard | `git diff --name-only origin/main...HEAD \| rg 'ORCH-0946\|ORCH-0947\|0946\|0947\|public_ticket_types_remaining\|pg_public_ticket_types_remaining' \|\| true` | PASS | No output. |
+| Added-line scope guard for adjacent migration/RPC symbols | `git diff -U0 origin/main...HEAD \| rg '^\+.*(public_ticket_types_remaining\|pg_public_ticket_types_remaining)' \|\| true` | PASS | No output. |
+| Rework strict-grep capacity gate | `node .github/scripts/strict-grep/i-proposed-trip-capacity-single-source.mjs` | PASS | `files=1437 violations=0`. |
+| Rework strict-grep self-test | `node .github/scripts/strict-grep/i-proposed-trip-capacity-single-source.test.mjs` | PASS | 4/4. |
+| Rework backend allowlist gate | `node .github/scripts/strict-grep/orch-0863-marketing-hub-phase-b.mjs` | PASS | C1-C7 pass; ORCH-0950 migration/test allowlist remains. |
+| Rework Deno regression | `/Users/sethogieva/.deno/bin/deno test --allow-read supabase/functions/_test/orch_0950_trip_capacity_canonical.test.ts` | PASS | 6/6. |
+| Rework Jest guard | `npx jest src/services/__tests__/tripsService.updateTripBasics.capacity_throws.test.ts --runInBand` from `mingla-business/` | PASS | 1/1. |
+| Rework diff whitespace | `git diff --check` | PASS | No output. |
 
 ## 13. Regression Surface
 
@@ -164,7 +180,8 @@ Trip capacity now has one canonical storage location: `ticket_types.quantity_tot
 
 | Item | Risk / temporary state | Exit condition | Location |
 |---|---|---|---|
-| Migration not applied by implementor | DB still has old function/data until operator pushes | Operator runs `supabase db push --linked` | Deploy notes |
+| Migration apply remains outside implementor | This rework did not run `supabase db push`; linked ledger already shows ORCH-0950 `20260725000000` local+remote | Tester/orchestrator confirm ledger and live behavior; do not run DB push from this rework | Deploy notes |
+| Unrelated remote-only migrations | Future migration push handoff is unsafe until remote-only versions `20260724000007`, `20260724000010`, and `20260725000001` are source-reconciled | Orchestrator source-reconciles those versions outside this P1 rework | Deploy notes |
 | Full TS typecheck red before ORCH-0950 | Cannot claim full TS green | Separate owners fix pre-existing errors | Verification |
 | Live-fire unverified | UI/device parity not proven in this pass | Tester runs mandatory iOS/Android/buyer-web/DC-style gates | Downstream QA |
 | Legacy incomplete drafts | Three abandoned draft trip rows have zero pricing tiers | Migration excludes drafts from sellable pre-flight; publish RPC validates exact tier count before scheduled status | Remote pre-flight probe |
@@ -173,15 +190,11 @@ Trip capacity now has one canonical storage location: `ticket_types.quantity_tot
 
 - `mingla-business/src/utils/tripAdapter.ts` still exposed the legacy JSONB capacity key in diff labels; fixed in scope because the new gate caught it and it is the same capacity contract.
 - Operator's first `supabase db push --linked` attempt aborted safely before writes because the initial pre-flight guard checked all non-deleted trip rows. Read-only Supabase probe found the three offenders were unpublished `draft`/`draft` "Untitled trip" rows with zero pricing rows; scheduled/live trips had zero violations. The unapplied migration was corrected to enforce the tier invariant only for published/sellable trips while still stripping JSONB capacity from every non-deleted trip row.
-- No new ORCH-0946 or ORCH-0947 work was performed.
+- P1-001 was reworked by rebasing onto `origin/main` after PR #197 landed the adjacent migration in base. The ORCH-0950 changed-file diff no longer includes that migration or RPC symbol.
 
 ## 16. Deploy Notes
 
-- **Migrations:** Operator applies `supabase/migrations/20260725000000_orch_0950_trip_capacity_single_source.sql` with the exact command below. Do not use Codex for DB push.
-
-```bash
-cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0950-[trip-capacity-single-source]" && /Users/sethogieva/bin/supabase db push --linked
-```
+- **Migrations:** No migration apply was run or authorized in this rework. Read-only `supabase migration list --linked` shows ORCH-0950 `20260725000000` is already present locally and remotely, while unrelated remote-only versions `20260724000007`, `20260724000010`, and `20260725000001` remain; do not hand off a DB-push command until orchestrator source-reconciles those rows.
 - **Edge functions:** None touched; no deploy.
 - **Mobile OTA/native:** Business app code changed; ship through normal close/PR pipeline.
 - **Business/admin web:** Business web preview receives shared RN changes. Admin not touched.
@@ -194,12 +207,12 @@ ORCH-0950 canonicalize trip capacity
 
 Resolves: ORCH-0950
 Evidence: Deno ORCH-0950 migration test, Jest updateTripBasics guard, strict-grep gate/self-test
-Deploy: operator runs cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0950-[trip-capacity-single-source]" && /Users/sethogieva/bin/supabase db push --linked; no edge deploy
+Deploy: no DB push or edge deploy in this rework; ORCH-0950 migration version is already local+remote in the linked ledger
 ```
 
 ## Ready-To-Test Checklist
 
-1. Apply migration via `cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0950-[trip-capacity-single-source]" && /Users/sethogieva/bin/supabase db push --linked`; verify migration appears in Supabase migration list.
+1. Confirm migration ledger still shows ORCH-0950 `20260725000000` as local+remote; do not run a DB push from this rework.
 2. SQL probe returns 0: `SELECT count(*) FROM events WHERE event_type='trip' AND deleted_at IS NULL AND (theme->'business_trip') ? 'capacity';`
 3. Create draft trip, edit Step 1 capacity, verify `ticket_types.quantity_total` changes.
 4. Publish trip, edit live capacity upward, verify `ticket_types.quantity_total` changes and JSONB capacity is absent.

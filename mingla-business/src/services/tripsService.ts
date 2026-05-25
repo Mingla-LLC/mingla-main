@@ -244,6 +244,7 @@ interface EventRow {
   timezone: string;
   cover_media_url: string | null;
   cover_media_type: string | null;
+  destination_text?: string | null;
   theme: Record<string, unknown> | null;
   event_type: "event" | "experience" | "trip";
   created_at: string;
@@ -254,6 +255,13 @@ interface EventRow {
   booking_deadline: string | null;
   bookings_closed: boolean | null;
   bookings_closed_at: string | null;
+}
+
+interface EventDateRow {
+  event_id: string;
+  start_at: string | null;
+  end_at: string | null;
+  is_master: boolean;
 }
 
 function mapTripDay(row: TripDayRow): TripDay {
@@ -345,17 +353,17 @@ function extractInstallmentSchedule(
 function readBusinessTrip(
   theme: Record<string, unknown> | null,
   ticketCapacity: number | null,
+  canonicalStartAt: string | null,
+  canonicalEndAt: string | null,
+  canonicalDestination: string | null,
 ): TripBusinessTrip {
   const bt = (theme?.business_trip as Record<string, unknown> | undefined) ?? {};
   return {
-    startAt: typeof bt.startAt === "string" ? bt.startAt : null,
-    endAt: typeof bt.endAt === "string" ? bt.endAt : null,
+    startAt: canonicalStartAt,
+    endAt: canonicalEndAt,
     destinationPlaceId:
       typeof bt.destinationPlaceId === "string" ? bt.destinationPlaceId : null,
-    destinationLocationText:
-      typeof bt.destinationLocationText === "string"
-        ? bt.destinationLocationText
-        : null,
+    destinationLocationText: canonicalDestination,
     destinationLat:
       typeof bt.destinationLat === "number" ? bt.destinationLat : null,
     destinationLng:
@@ -372,6 +380,7 @@ function mapTrip(
   inclusions: TripInclusionRow[],
   ticketTypes: TicketTypeRow[],
   ticketsSoldCount: number,
+  masterDate: EventDateRow | null = null,
 ): Trip {
   const ticketTypesById = new Map(ticketTypes.map((tt) => [tt.id, tt]));
   return {
@@ -390,6 +399,9 @@ function mapTrip(
     businessTrip: readBusinessTrip(
       event.theme,
       ticketTypes[0]?.quantity_total ?? null,
+      masterDate?.start_at ?? null,
+      masterDate?.end_at ?? null,
+      event.destination_text ?? null,
     ),
     days: days.map(mapTripDay),
     pricingTiers: tiers.map((t) =>
@@ -547,7 +559,7 @@ export async function getTrip(eventId: string): Promise<Trip | null> {
   const event = eventRow as any;
   const brandSlug = (event.brands?.slug as string | null) ?? null;
 
-  const [daysResp, tiersResp, inclusionsResp, ticketsResp, soldResp] =
+  const [daysResp, tiersResp, inclusionsResp, ticketsResp, datesResp, soldResp] =
     await Promise.all([
       supabase
         .from("trip_days")
@@ -566,6 +578,12 @@ export async function getTrip(eventId: string): Promise<Trip | null> {
         .select("*")
         .eq("event_id", eventId)
         .is("deleted_at", null),
+      supabase
+        .from("event_dates")
+        .select("event_id,start_at,end_at,is_master")
+        .eq("event_id", eventId)
+        .eq("is_master", true)
+        .maybeSingle(),
       // ORCH-0947: canonical tickets-sold count for the Spots KPI tile.
       supabase.rpc("biz_trip_tickets_sold", { p_event_id: eventId }),
     ]);
@@ -573,6 +591,7 @@ export async function getTrip(eventId: string): Promise<Trip | null> {
   if (tiersResp.error) throw tiersResp.error;
   if (inclusionsResp.error) throw inclusionsResp.error;
   if (ticketsResp.error) throw ticketsResp.error;
+  if (datesResp.error) throw datesResp.error;
   if (soldResp.error) throw soldResp.error;
 
   return mapTrip(
@@ -583,6 +602,7 @@ export async function getTrip(eventId: string): Promise<Trip | null> {
     (inclusionsResp.data ?? []) as TripInclusionRow[],
     (ticketsResp.data ?? []) as TicketTypeRow[],
     soldResp.data ?? 0,
+    (datesResp.data as EventDateRow | null) ?? null,
   );
 }
 
@@ -600,24 +620,43 @@ export async function getTripsByBrand(brandId: string): Promise<Trip[]> {
   const events = (data ?? []) as EventRow[];
   if (events.length === 0) return [];
 
-  // For list view, fetch tickets only (days/inclusions/tiers shown on detail).
+  // For list view, fetch tickets + master date only (days/inclusions/tiers shown on detail).
   const ids = events.map((e) => e.id);
-  const ticketsResp = await supabase
-    .from("ticket_types")
-    .select("*")
-    .in("event_id", ids)
-    .is("deleted_at", null);
+  const [ticketsResp, datesResp] = await Promise.all([
+    supabase
+      .from("ticket_types")
+      .select("*")
+      .in("event_id", ids)
+      .is("deleted_at", null),
+    supabase
+      .from("event_dates")
+      .select("event_id,start_at,end_at,is_master")
+      .in("event_id", ids)
+      .eq("is_master", true),
+  ]);
   if (ticketsResp.error) throw ticketsResp.error;
+  if (datesResp.error) throw datesResp.error;
   const tickets = (ticketsResp.data ?? []) as TicketTypeRow[];
+  const dates = (datesResp.data ?? []) as EventDateRow[];
   const ticketsByEvent = new Map<string, TicketTypeRow[]>();
   for (const tt of tickets) {
     const arr = ticketsByEvent.get(tt.event_id) ?? [];
     arr.push(tt);
     ticketsByEvent.set(tt.event_id, arr);
   }
+  const datesByEvent = new Map(dates.map((d) => [d.event_id, d]));
 
   return events.map((e) =>
-    mapTrip(e, null, [], [], [], ticketsByEvent.get(e.id) ?? [], 0),
+    mapTrip(
+      e,
+      null,
+      [],
+      [],
+      [],
+      ticketsByEvent.get(e.id) ?? [],
+      0,
+      datesByEvent.get(e.id) ?? null,
+    ),
   );
 }
 
@@ -648,11 +687,31 @@ export async function updateTripBasics(
     // ORCH-0859 REWORK 3 (events-type-filter audit): defensive — trip-only.
     const current = await supabase
       .from("events")
-      .select("theme")
+      .select("theme,status")
       .eq("id", eventId)
       .eq("event_type", "trip")
       .maybeSingle();
     if (current.error) throw current.error;
+    const bt = patch.businessTrip as Record<string, unknown>;
+    const currentStatus = current.data?.status as EventRow["status"] | undefined;
+    if (
+      currentStatus !== undefined &&
+      currentStatus !== "draft" &&
+      (bt.startAt !== undefined || bt.endAt !== undefined)
+    ) {
+      throw new Error(
+        "ORCH-0950 expanded: trip start/end must route through updateLiveTripFields (writes event_dates), not updateTripBasics.",
+      );
+    }
+    if (
+      currentStatus !== undefined &&
+      currentStatus !== "draft" &&
+      bt.destinationLocationText !== undefined
+    ) {
+      throw new Error(
+        "ORCH-0950 expanded: trip destination must route through updateLiveTripFields (writes events.destination_text), not updateTripBasics.",
+      );
+    }
     const currentTheme =
       (current.data?.theme as Record<string, unknown> | null) ?? {};
     const currentBusinessTrip =
@@ -838,6 +897,24 @@ export async function updateTripPricing(
     tierUpdated as TripPricingTierRow,
     ticketRow as TicketTypeRow,
   );
+}
+
+export async function readTripSoldCountsByTier(
+  eventId: string,
+): Promise<Map<string, number>> {
+  const { data, error } = await supabase.rpc("biz_trip_tickets_sold_by_tier", {
+    p_event_id: eventId,
+  });
+  if (error) throw error;
+
+  const map = new Map<string, number>();
+  for (const [ticketTypeId, value] of Object.entries(
+    (data ?? {}) as Record<string, unknown>,
+  )) {
+    const count = Number(value);
+    map.set(ticketTypeId, Number.isFinite(count) ? count : 0);
+  }
+  return map;
 }
 
 // ---------------------- publishTrip ----------------------
