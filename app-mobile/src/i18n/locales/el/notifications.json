@@ -2,14 +2,10 @@
   "header": {
     "title": "Ειδοποιήσεις",
     "unread": "{{count}} αδιάβαστες",
-    "markAllRead": "Σημείωση όλων ως αναγνωσμένα",
-    "clearAll": "Εκκαθάριση όλων"
-  },
-  "filters": {
-    "all": "Όλα",
-    "social": "Κοινωνικά",
-    "sessions": "Συνεδρίες",
-    "messages": "Μηνύματα"
+    "markAllRead": "Mark all as read",
+    "clearAll": "Εκκαθάριση όλων",
+    "subtitle": "Stay updated on what matters.",
+    "newCount": "{{count}} new"
   },
   "timeAgo": {
     "justNow": "Μόλις τώρα"
@@ -39,5 +35,11 @@
   },
   "offline": {
     "banner": "Είσαι εκτός σύνδεσης — εμφανίζονται αποθηκευμένες ειδοποιήσεις"
+  },
+  "categoryLabels": {
+    "social": "Social",
+    "sessions": "Plans",
+    "messages": "Chats",
+    "all": "System"
   }
 }

@@ -7,6 +7,42 @@
 
 ---
 
+## ACTIVE (post ORCH-0975 [Consumer notifications sheet redesign] CLOSE 2026-05-25)
+
+Three invariants flipped DRAFT → ACTIVE at the ORCH-0975 close. Tester CONDITIONAL PASS verdict P0:0 P1:0 P2:1 P3:0 P4:1 (P2-1 = Android emulator Pixel_8_Pro AVD System UI ANR during bundling — environment failure not sheet defect, accepted per RETEST REVIEW 5-axis rationale; P4-1 = iOS Maestro selector ambiguity where `assertNotVisible: "Notifications"` also matches the persistent top-bar bell `accessibilityLabel` in `GlassTopBar.tsx`, operator manually verified pan-down works on iOS). Implementor regression at `app-mobile/src/components/__tests__/NotificationsSheet.test.tsx` (Node-assertion pattern per app-mobile's existing convention) fails-on-revert verified at the IMPL part 2 commit introducing `NotificationsSheet.tsx` (revert via `git rm` produces `ENOENT`). Tester adversarial at `app-mobile/src/components/__tests__/NotificationsSheet.tester-adversarial.test.tsx` attacks the per-category-pill routing angle (F-1: `board_card_message` must route to Chats not Plans because the type-specific branch must come BEFORE the generic `board_card_*` sessions branch in `getFilterCategory()`). All 3 invariants enforced by a single new strict-grep CI script `.github/scripts/strict-grep/orch-0975-notifications-sheet.mjs` registered in `.github/workflows/strict-grep-mingla-business.yml` as `ORCH-0975: notifications sheet bottom-sheet invariant`. EAS-OTA-eligible (pure-JS, no native module).
+
+### I-ORCH-0975-NOTIFICATIONS-NO-RN-MODAL (ACTIVE post ORCH-0975 CLOSE)
+
+**Rule:** `app-mobile/src/components/NotificationsSheet.tsx` MUST NOT import `Modal` from `react-native`. The notifications sheet MUST use `@gorhom/bottom-sheet` v5 (`BottomSheet` + `BottomSheetBackdrop` + `BottomSheetSectionList` + `BottomSheetView`) so that the pan-down-to-close gesture works natively and the sheet sits inside the existing `GestureHandlerRootView` at `app-mobile/app/_layout.tsx:54`.
+
+**Why it exists:** Pre-ORCH-0975, the notifications sheet wrapped its content in RN `<Modal animationType="slide" transparent>` with a manual `<TouchableOpacity>` backdrop and a static drag-handle View — closing required tapping the × button or the backdrop, with no swipe-down gesture. Two production sheets (`TicketCartSheet.tsx` from ORCH-0847, `ExpandedBusinessEventSheet.tsx`) had already adopted `@gorhom/bottom-sheet` v5 with pan-down close. This invariant prevents a "simplifying" refactor from reverting to RN Modal and silently losing the gesture, or splitting the sheet across two sheet primitives.
+
+**Enforcement:** Gate C1 in `orch-0975-notifications-sheet.mjs` — fails if `NotificationsSheet.tsx` imports `Modal` from `react-native` OR if it does not import from `@gorhom/bottom-sheet`. CI job registered in `strict-grep-mingla-business.yml`.
+
+**Tests:** Implementor structural assertion suite at `app-mobile/src/components/__tests__/NotificationsSheet.test.tsx` SC-01..SC-06 (bottom-sheet open/close paths) + SC-26 (strict-grep gate runs green on branch). Tester adversarial at `app-mobile/src/components/__tests__/NotificationsSheet.tester-adversarial.test.tsx`.
+
+### I-ORCH-0975-NOTIFICATIONS-NO-FILTER-CHIPS (ACTIVE post ORCH-0975 CLOSE)
+
+**Rule:** The notification locale namespace at `app-mobile/src/i18n/locales/<lang>/notifications.json` MUST NOT contain a `filters` key. The notifications sheet renders a single chronological date-grouped list (Today / Yesterday / This Week / Earlier) with no per-category filter row. `getFilterCategory()` SURVIVES as a per-card pill-label helper but MUST NOT drive a top-of-sheet filter ScrollView or `activeFilter` state.
+
+**Why it exists:** Pre-ORCH-0975, a horizontal `<ScrollView>` of 4 filter chips (All / Social / Sessions / Messages) consumed ~64px of vertical sheet space and forced users to triage notifications by category before reading them. Operator wanted a single chronological list; this invariant prevents a "let's add a filter" refactor from re-introducing the chips and silently reverting the design.
+
+**Enforcement:** Gate C2 in `orch-0975-notifications-sheet.mjs` — fails if any of the 29 `notifications.json` locale files contain a top-level `filters` namespace.
+
+**Tests:** Implementor SC-07 (`queryByTestId('notifications-filter-chip')` returns null in render tree assertion).
+
+### I-ORCH-0975-NOTIFICATIONS-CATEGORY-LABELS-EXIST (ACTIVE post ORCH-0975 CLOSE)
+
+**Rule:** The notification locale namespace at `app-mobile/src/i18n/locales/<lang>/notifications.json` MUST contain a `categoryLabels` object with at least `social`, `sessions`, `messages`, and `all` keys. These keys power the per-card pill label that appears at the bottom of every notification card (operator's UI labels are "Social", "Plans", "Chats", "System" — mapping the internal `sessions/messages` enum keys to user-facing copy).
+
+**Why it exists:** The per-card category pill is the surviving visual signal of the deleted filter chips — without these locale keys, the pill renders as a key lookup miss and breaks the per-type matrix v1 contract.
+
+**Enforcement:** Gate C3 in `orch-0975-notifications-sheet.mjs` — fails if any of the 29 `notifications.json` locale files lack a `categoryLabels` object with `social` key.
+
+**Tests:** Implementor SC-23 (locale-shape assertion across all 29 files via strict-grep). Tester adversarial F-1 RETEST regression on `board_card_message` routing to the `messages` (Chats) pill confirms the per-card pill mapping holds across all 25 notification types in the per-type matrix.
+
+---
+
 ## ACTIVE (post ORCH-0974 [Home (mingla-business mobile) section lock + spacing] CLOSE 2026-05-25)
 
 One invariant flipped DRAFT → ACTIVE at the ORCH-0974 close. Tester CONDITIONAL PASS verdict P0:0 P1:0 P2:0 (native visual eyeball deferred per known ORCH-0971 [Worktree-per-ORCH live-fire infrastructure unblock] Expo Router welcome-fallback blocker — same conditional shape as ORCH-0954/0961/0962/0963 recent closes). Implementor happy-path T-01..T-06 at `mingla-business/app/(tabs)/__tests__/home.orch_0974.test.tsx` with `fails-on-revert verified at 3e638c926` (T-01 + T-02 + T-05 failed when outer ScrollView restored / paddingBottom reverted to 0 / small-phone carve-out removed; restore commit `60ff97b0d` returned green). Tester adversarial A-01..A-05 at `mingla-business/app/(tabs)/__tests__/home.orch_0974.adversarial.test.tsx` with `fails-on-revert verified at 809ebab1e` (A-01 pull-to-refresh-on-FlatList hidden-flaw guard fails when RefreshControl prop removed). 11/11 tests pass post-rebase onto `origin/main`; rebase resolved cleanly with no conflicts (lane-disjoint claim from INVESTIGATION §5 confirmed — ORCH-0973's top-bar lane and ORCH-0974's body lane did not overlap in `home.tsx`).

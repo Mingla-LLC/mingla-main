@@ -2,14 +2,10 @@
   "header": {
     "title": "Notificaciones",
     "unread": "{{count}} sin leer",
-    "markAllRead": "Marcar todo le\u00eddo",
-    "clearAll": "Borrar todo"
-  },
-  "filters": {
-    "all": "Todo",
-    "social": "Social",
-    "sessions": "Sesiones",
-    "messages": "Mensajes"
+    "markAllRead": "Mark all as read",
+    "clearAll": "Borrar todo",
+    "subtitle": "Stay updated on what matters.",
+    "newCount": "{{count}} new"
   },
   "timeAgo": {
     "justNow": "Ahora mismo"
@@ -25,19 +21,25 @@
     "decline": "Rechazar",
     "join": "Unirse",
     "upgrade": "Mejorar plan",
-    "review": "Rese\u00f1ar",
-    "actionFailed": "La acci\u00f3n fall\u00f3. Toca para reintentar."
+    "review": "Reseñar",
+    "actionFailed": "La acción falló. Toca para reintentar."
   },
   "emptyState": {
-    "title": "Est\u00e1s al d\u00eda",
-    "subtitle": "La nueva actividad aparecer\u00e1 aqu\u00ed."
+    "title": "Estás al día",
+    "subtitle": "La nueva actividad aparecerá aquí."
   },
   "errorState": {
-    "title": "Algo sali\u00f3 mal",
+    "title": "Algo salió mal",
     "subtitle": "No se pudieron cargar las notificaciones.",
     "tryAgain": "Intentar de nuevo"
   },
   "offline": {
-    "banner": "Est\u00e1s sin conexi\u00f3n \u2014 mostrando notificaciones en cach\u00e9"
+    "banner": "Estás sin conexión — mostrando notificaciones en caché"
+  },
+  "categoryLabels": {
+    "social": "Social",
+    "sessions": "Plans",
+    "messages": "Chats",
+    "all": "System"
   }
 }

@@ -2,14 +2,10 @@
   "header": {
     "title": "Ọkwa",
     "unread": "{{count}} agụghị",
-    "markAllRead": "Kee niile dị ka agụrụ",
-    "clearAll": "Hichapụ niile"
-  },
-  "filters": {
-    "all": "Niile",
-    "social": "Mmekọrịta",
-    "sessions": "Oge",
-    "messages": "Ozi"
+    "markAllRead": "Mark all as read",
+    "clearAll": "Hichapụ niile",
+    "subtitle": "Stay updated on what matters.",
+    "newCount": "{{count}} new"
   },
   "timeAgo": {
     "justNow": "Ugbu a"
@@ -39,5 +35,11 @@
   },
   "offline": {
     "banner": "Ị nọghị na ntanetị — na-egosi ọkwa echekwara"
+  },
+  "categoryLabels": {
+    "social": "Social",
+    "sessions": "Plans",
+    "messages": "Chats",
+    "all": "System"
   }
 }

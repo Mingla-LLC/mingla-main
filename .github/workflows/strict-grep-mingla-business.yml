@@ -117,6 +117,7 @@ on:
 #   - I-PROPOSED-CUSTOM-COORDS-LOCKED-WHEN-CUSTOM-LOCATION-MODE (i-proposed-orch-0943-custom-coords-locked.mjs) — partial custom_lat/custom_lng client writes require GPS-mode guard or custom_location in same payload (ORCH-0943)
 #   - I-PROPOSED-DEAD-END-REASON-COVERAGE + I-PROPOSED-COLLAB-DEAD-END-PAYLOAD-PROPAGATED (i-proposed-orch-0945-dead-end-reason-coverage.mjs) — collab dead-end client handles all five reasons and propagates acceptedCount/pendingGpsUserIds (ORCH-0945)
 #   - I-PROPOSED-PREFS-SHEET-READ-ONLY-NO-WRITE (i-proposed-orch-0945-prefs-sheet-read-only-no-write.mjs) — read-only PreferencesSheet mode cannot write participant prefs (ORCH-0945)
+#   - I-PROPOSED-ORCH-0975-NOTIFICATIONS-NO-RN-MODAL / NO-FILTER-CHIPS / CATEGORY-LABELS-EXIST (orch-0975-notifications-sheet.mjs) — notifications sheet uses bottom-sheet, not RN Modal, and filter locale keys stay deleted
 #   - G-CIRCLE-RPC-SOLE-OWNER (circle-rpc-sole-owner.sh) — Your Circle uses get_user_circle RPC as sole data path (ORCH-0933)
 #   - G-CIRCLE-BADGE-DUAL-APP (circle-badge-dual-app.sh) — Your Circle briefcase badge means dual-app user only (ORCH-0933)
 #   - I-COMMS-LEDGER-ENTRY-STANZA + I-RESPONSE-2-SECTION-SHAPE (meta-orch-0954-comms-ledger-stanza.mjs) — every Claude SKILL.md + AGENTS.md carries ledger + 2-section output stanzas (META-ORCH-0954)
@@ -211,6 +212,17 @@ jobs:
           node-version: "20"
       - name: Run ORCH-0974 home mobile lock pane gate
         run: node .github/scripts/strict-grep/orch-0974-home-mobile-lock-pane.mjs
+
+  orch-0975-notifications-sheet:
+    name: "ORCH-0975: notifications sheet bottom-sheet invariant"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0975 notifications sheet gate
+        run: node .github/scripts/strict-grep/orch-0975-notifications-sheet.mjs
 
   i37-topbar-default-cluster:
     name: "I-37: TopBar primary-tab default cluster"

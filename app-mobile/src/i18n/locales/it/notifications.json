@@ -2,14 +2,10 @@
   "header": {
     "title": "Notifiche",
     "unread": "{{count}} non lette",
-    "markAllRead": "Segna tutto come letto",
-    "clearAll": "Cancella tutto"
-  },
-  "filters": {
-    "all": "Tutti",
-    "social": "Social",
-    "sessions": "Sessioni",
-    "messages": "Messaggi"
+    "markAllRead": "Mark all as read",
+    "clearAll": "Cancella tutto",
+    "subtitle": "Stay updated on what matters.",
+    "newCount": "{{count}} new"
   },
   "timeAgo": {
     "justNow": "Proprio ora"
@@ -39,5 +35,11 @@
   },
   "offline": {
     "banner": "Sei offline — mostrando notifiche salvate"
+  },
+  "categoryLabels": {
+    "social": "Social",
+    "sessions": "Plans",
+    "messages": "Chats",
+    "all": "System"
   }
 }
