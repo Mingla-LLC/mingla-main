@@ -1,0 +1,11 @@
+appId: com.sethogieva.minglabusiness
+---
+- pressKey: Enter
+- tapOn:
+    point: "201,250"
+- scrollUntilVisible:
+    element:
+      text: "Reserve free spot"
+    direction: DOWN
+- tapOn:
+    point: "201,789"

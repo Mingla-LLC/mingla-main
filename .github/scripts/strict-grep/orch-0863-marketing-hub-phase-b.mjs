@@ -771,7 +771,17 @@ function checkNoNewBackendFiles() {
     "supabase/functions/_shared/__tests__/stripeOpsAlertEmailRecipients.test.ts",
     "supabase/functions/_shared/__tests__/stripeOpsAlertEmailSandbox.test.ts",
   ];
+  // META-ORCH-0952 [Buyer-web confirm pipeline deep forensics] CLOSE 2026-05-25.
+  // C7 is scoped to ORCH-0863 marketing; the META-ORCH-0952 self-heal rework
+  // touched ticket-checkout-confirm/index.ts (already in ORCH-0932 allowlist
+  // above) and added a new Deno test exercising the awaiting_web_redirect +
+  // null PI Checkout-Session recovery path. This entry adds the new test file
+  // only; the index.ts touch is covered by ORCH-0932.
+  const META_ORCH_0952_BACKEND_ALLOWLIST = [
+    "supabase/functions/ticket-checkout-confirm/__tests__/orch_0952_web_checkout_session_fallback.test.ts",
+  ];
   const ALLOWLIST = [
+    ...META_ORCH_0952_BACKEND_ALLOWLIST,
     ...ORCH_0954_BACKEND_ALLOWLIST,
     ...ORCH_0915_BACKEND_ALLOWLIST,
     ...ORCH_0933_BACKEND_ALLOWLIST,

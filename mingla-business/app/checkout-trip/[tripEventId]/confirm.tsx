@@ -77,7 +77,25 @@ const formatTripDateLine = (
   }
 };
 
-export default function CheckoutTripConfirmScreen(): React.ReactElement {
+export default function CheckoutTripConfirmScreen(): React.ReactElement | null {
+  const [isClient, setIsClient] = useState<boolean>(false);
+  useEffect(() => {
+    const id = setTimeout(() => setIsClient(true), 0);
+    return (): void => {
+      clearTimeout(id);
+    };
+  }, []);
+
+  const clientReady = Platform.OS !== "web" || isClient;
+  if (!clientReady) return null;
+  return <CheckoutTripConfirmScreenInner isClient={clientReady} />;
+}
+
+function CheckoutTripConfirmScreenInner({
+  isClient,
+}: {
+  isClient: boolean;
+}): React.ReactElement | null {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const navigation = useNavigation();
@@ -102,30 +120,6 @@ export default function CheckoutTripConfirmScreen(): React.ReactElement {
     buyerStatusToken: string;
   } | null>(null);
   const exitingViaCtaRef = useRef<boolean>(false);
-  // ORCH-0951 v2 (2026-05-24) — REVERTS ORCH-0930 v3 back to useState(false)
-  // + useEffect setIsClient(true). v3's typeof-window initializer was the
-  // REAL root cause of the React #418 hydration mismatch that broke the
-  // multi-ticket carousel render on production: the initializer returns
-  // `false` during SSR (static export, no window) but `true` on client
-  // first render (window exists). React's hydration pass sees `null` on
-  // SSR HTML vs `<TicketQrCarousel>` on client → mismatch → React aborts
-  // the carousel subtree → multi-ticket users see only the bare
-  // minHeight=320 strip (single-ticket "worked" because the simple
-  // <Image> subtree is hydration-recoverable; multi-ticket with
-  // onLayout-driven re-renders is not). Forensic confirmation:
-  // /tmp/orch-0928-forensic/probe-orch-0951-v2.js shows the bare host
-  // exists with width=0px, pageerror=React #418, and the full carousel
-  // subtree never mounts. v2 pattern (this fix) makes SSR + client first
-  // render BOTH produce `null` — no hydration mismatch — then the
-  // useEffect fires post-hydration and the carousel mounts cleanly via a
-  // regular re-render (no hydration check). The earlier belief that "v2
-  // failed because React #418 recovery prevented the effect from firing"
-  // was incorrect — v2 was masked by the unrelated SVG-generation bug
-  // that ORCH-0932 later fixed.
-  const [isClient, setIsClient] = useState<boolean>(false);
-  useEffect(() => {
-    setIsClient(true);
-  }, []);
 
   // ----- Native back guard -----
   useEffect(() => {
@@ -144,6 +138,7 @@ export default function CheckoutTripConfirmScreen(): React.ReactElement {
   // ----- Web browser-back guard -----
   useEffect(() => {
     if (Platform.OS !== "web") return;
+    if (!isClient) return;
     const win = (globalThis as unknown as {
       window?: {
         addEventListener?: (
@@ -167,11 +162,12 @@ export default function CheckoutTripConfirmScreen(): React.ReactElement {
     return (): void => {
       win.removeEventListener?.("popstate", handler as unknown as (e: BeforeUnloadEvent) => void);
     };
-  }, []);
+  }, [isClient]);
 
   // ----- ORCH-0852 web sync-confirm + Realtime fallback -----
   useEffect(() => {
     if (Platform.OS !== "web") return;
+    if (!isClient) return;
     if (tripEventId === null) return;
     if (result !== null) return;
     const win = (globalThis as unknown as {
@@ -284,7 +280,7 @@ export default function CheckoutTripConfirmScreen(): React.ReactElement {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tripEventId, result]);
+  }, [tripEventId, result, isClient]);
 
   // ----- Realtime safety net -----
   useOrderRealtimeSubscription({
@@ -321,6 +317,7 @@ export default function CheckoutTripConfirmScreen(): React.ReactElement {
     if (tripEventId === null) return;
     if (result !== null) return;
     if (Platform.OS === "web") {
+      if (!isClient) return;
       const win = (globalThis as unknown as {
         location?: { search?: string };
         sessionStorage?: Storage;
@@ -344,7 +341,7 @@ export default function CheckoutTripConfirmScreen(): React.ReactElement {
       if (realtimePending) return;
     }
     router.replace(`/checkout-trip/${tripEventId}` as never);
-  }, [result, tripEventId, router, realtimePending]);
+  }, [result, tripEventId, router, realtimePending, isClient]);
 
   // ----- Handlers -----
   const handleBackToTrip = useCallback((): void => {
@@ -377,7 +374,7 @@ export default function CheckoutTripConfirmScreen(): React.ReactElement {
   if (result === null) {
     if (Platform.OS === "web") {
       const win = (globalThis as unknown as { location?: { search?: string } });
-      const hasCs = /[?&]cs=/.test(win.location?.search ?? "");
+      const hasCs = isClient && /[?&]cs=/.test(win.location?.search ?? "");
       if (hasCs) {
         // ORCH-0911: render from first paint on ?cs= arrival, independent
         // of trip/realtimePending state. ORCH-0852 auto-resolution remains.
@@ -494,12 +491,7 @@ export default function CheckoutTripConfirmScreen(): React.ReactElement {
           </Text>
         </GlassCard>
 
-        {/* QR carousel — gated on `isClient` (ORCH-0930 v3 useState
-            initializer pattern). Static-export build-time render:
-            isClient=false → empty card matches skeleton. Every client
-            render: isClient=true → carousel mounts. No useEffect
-            dependency means the gate flips synchronously at the very
-            first client render, immune to React #418 recovery cycles. */}
+        {/* QR carousel mounts after hydration; the carousel itself owns sizing. */}
         <GlassCard
           variant="base"
           radius="lg"
@@ -641,7 +633,6 @@ const styles = StyleSheet.create({
   },
   qrCard: {
     marginBottom: spacing.md,
-    alignItems: "center",
   },
   bottomBar: {
     position: "absolute",

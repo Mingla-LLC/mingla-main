@@ -128,9 +128,11 @@ describe("ORCH-0932 — parent-level threading of qrImageDataUrl through confirm
     expect(tripActive).toMatch(
       /const\s+\[\s*isClient\s*,\s*setIsClient\s*\]\s*=\s*useState<boolean>\(\s*false\s*\)/,
     );
-    expect(tripActive).toMatch(
-      /useEffect\(\s*\(\)\s*=>\s*\{\s*setIsClient\(true\);?\s*\}\s*,\s*\[\s*\]\s*\)/,
-    );
+    // META-ORCH-0952 [TEST-MOD-APPROVED META-ORCH-0952]: the rework wraps
+    // setIsClient(true) in setTimeout(..., 0) + cleanup; both that shape and
+    // the bare v2 shape are acceptable. The invariant is "isClient flips to
+    // true inside a post-mount effect with empty deps", not the exact body.
+    expect(tripActive).toMatch(/useEffect\([\s\S]*?setIsClient\(true\)[\s\S]*?\}\s*,\s*\[\s*\]\s*\)/);
     expect(tripActive).toMatch(
       /\{\s*isClient\s*&&\s*totalTickets\s*>\s*0\s*\?\s*\(?\s*<TicketQrCarousel/,
     );
@@ -147,9 +149,8 @@ describe("ORCH-0932 — parent-level threading of qrImageDataUrl through confirm
     expect(eventActive).toMatch(
       /const\s+\[\s*isClient\s*,\s*setIsClient\s*\]\s*=\s*useState<boolean>\(\s*false\s*\)/,
     );
-    expect(eventActive).toMatch(
-      /useEffect\(\s*\(\)\s*=>\s*\{\s*setIsClient\(true\);?\s*\}\s*,\s*\[\s*\]\s*\)/,
-    );
+    // META-ORCH-0952 [TEST-MOD-APPROVED META-ORCH-0952]: see HP-9 rationale.
+    expect(eventActive).toMatch(/useEffect\([\s\S]*?setIsClient\(true\)[\s\S]*?\}\s*,\s*\[\s*\]\s*\)/);
     expect(eventActive).toMatch(
       /\{\s*isClient\s*&&\s*totalTickets\s*>\s*0\s*\?\s*\(?\s*<TicketQrCarousel/,
     );
