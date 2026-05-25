@@ -6,8 +6,8 @@
 **Branch:** `ORCH-0950-trip-capacity-single-source`  
 **Spec:** `Mingla_Artifacts/specs/SPEC_ORCH-0950_EXPANDED_SCOPE_DASHBOARD_COHERENCE.md`  
 **Investigation:** `Mingla_Artifacts/reports/INVESTIGATION_ORCH-0950_EXPANDED_SCOPE_DASHBOARD_COHERENCE.md`  
-**Implementation commit:** `c920cb86`  
-**Fails-on-revert verified at:** `c920cb86` — temporarily removed the `jsonb_set(... existing_business_trip || patch_business_trip ...)` deep-merge block and confirmed `orch_0950_expanded_partial_patch_preserves_siblings.test.ts` failed T-03, then restored and reran green.
+**Implementation commit:** `4949c178`  
+**Fails-on-revert verified at:** `4949c178` — temporarily removed the `jsonb_set(... existing_business_trip || patch_business_trip ...)` deep-merge block and confirmed `orch_0950_expanded_partial_patch_preserves_siblings.test.ts` failed T-03, then restored and reran green.
 
 ## Layman Summary
 
