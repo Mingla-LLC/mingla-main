@@ -23,7 +23,9 @@ import { eventDraftKeys } from "./useServerDraftEvents";
 import { publicEventKeys } from "./usePublicEvents";
 // ORCH-0965 — invalidate the home composite-upcoming cache on every event
 // mutation so the home dashboard reflects new lifecycle state on next render.
-import { upcomingKeys } from "./useUpcomingForBrand";
+// Imported from the keyless `upcomingKeys` module to avoid a require-cycle
+// (useUpcomingForBrand → useBusinessEvents → useUpcomingForBrand).
+import { upcomingKeys } from "./upcomingKeys";
 
 const STALE_TIME_MS = 30 * 1000;
 const DISABLED_KEY = ["business-events-disabled"] as const;

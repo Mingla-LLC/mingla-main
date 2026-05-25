@@ -30,9 +30,15 @@ import {
 } from "../utils/upcomingBuilder";
 import { useBusinessEventsForBrand } from "./useBusinessEvents";
 import { useTripsByBrand } from "./useTrips";
+import { upcomingKeys } from "./upcomingKeys";
 
 // Re-export types so existing consumers don't have to change imports.
 export type { UpcomingCounts, UpcomingItem, UpcomingKind, UpcomingStatus };
+// Re-export the key factory so consumers can `import { upcomingKeys } from
+// "./useUpcomingForBrand"` if they prefer the single-import ergonomic
+// (the canonical home is `./upcomingKeys` — required to break the
+// require-cycle through useBusinessEvents/useTrips).
+export { upcomingKeys };
 
 export interface UpcomingForBrand {
   items: UpcomingItem[];
@@ -42,12 +48,6 @@ export interface UpcomingForBrand {
   isError: boolean;
   errors: { events?: unknown; trips?: unknown };
 }
-
-export const upcomingKeys = {
-  all: ["upcoming"] as const,
-  forBrand: (brandId: string | null): readonly ["upcoming", string | null] =>
-    ["upcoming", brandId] as const,
-};
 
 export const useUpcomingForBrand = (
   brandId: string | null,

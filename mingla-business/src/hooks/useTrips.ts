@@ -24,7 +24,9 @@ import {
 } from "@tanstack/react-query";
 
 // ORCH-0965 — home composite-upcoming cache key.
-import { upcomingKeys } from "./useUpcomingForBrand";
+// Imported from the keyless `upcomingKeys` module to avoid a require-cycle
+// (useUpcomingForBrand → useTrips → useUpcomingForBrand).
+import { upcomingKeys } from "./upcomingKeys";
 import {
   createTripDraft,
   getTrip,
