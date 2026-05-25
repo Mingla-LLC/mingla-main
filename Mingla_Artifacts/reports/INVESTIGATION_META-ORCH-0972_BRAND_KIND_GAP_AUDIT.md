@@ -221,7 +221,7 @@ Classifications: DELETE | REPURPOSE | REGATE | RENAME | UPDATE-COPY | NO-CHANGE 
 
 **Operator requirement 2026-05-25:** Public brand page is redesigned with (a) "Upcoming" tab interleaving events + trips + experiences chronologically when ANY offerings exist, (b) per-type tabs (Events / Trips / Experiences) shown only when that bucket has non-empty data, (c) zero offerings → no tabs, just identity card + empty state.
 
-**Experience data model gap (blocks Phase 2 Q4):** experiences live in `events` table with `event_type='experience'` and NO occurrence date — see Dimension 7 finding. Phase 2 designer must decide (a) experiences appear in Upcoming with a new occurrence date field, OR (b) experiences appear only in Experiences tab. See Open Questions report Q4. **Q4 resolved 2026-05-25:** operator chose (a) IN with new occurrence-date field; Q9 chose JSON sub-field path (`theme.experience_meta.next_occurrence_at`).
+**Experience data model gap (catalogue note):** experiences live in `events` table with `event_type='experience'` and NO occurrence date today — see Dimension 7 finding. Operator resolved Q4 = experiences IN Upcoming and Q9 = JSON sub-fields in `theme.experience_meta` (`next_occurrence_at` + `venue_text`) per [OPEN_QUESTIONS report](./INVESTIGATION_META-ORCH-0972_OPEN_QUESTIONS.md). Phase 3 spec defines the exact JSON-field shape + indexing strategy; Phase 1 audit only catalogues the current absence.
 
 #### Post-Rebase Supplemental (verified 2026-05-25 — appended by forensics after worktree rebase onto `dd49d6d2b`)
 
