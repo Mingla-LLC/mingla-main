@@ -177,6 +177,14 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   const publicEventCount = events.length;
   const showStatsCard = publicEventCount > 0;
 
+  const handleClose = useCallback((): void => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace("/" as never);
+    }
+  }, [router]);
+
   const handleEventCardPress = useCallback(
     (event: LiveEvent): void => {
       // event.brandSlug is the FROZEN-at-publish slug — use it instead
@@ -313,17 +321,24 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
         <View style={styles.heroFade} />
       </View>
 
-      {/* Floating chrome — close (founder only) + share. */}
+      {/* Floating chrome — close + share. */}
       <View
         style={[styles.floatingChrome, { top: insets.top + spacing.sm }]}
         pointerEvents="box-none"
       >
-        <View />
+        <IconChrome
+          icon="close"
+          size={40}
+          onPress={handleClose}
+          accessibilityLabel="Close"
+          testID="orch-0961-public-brand-close"
+        />
         <IconChrome
           icon="share"
           size={40}
           onPress={() => setShareModalVisible(true)}
           accessibilityLabel="Share"
+          testID="orch-0961-public-brand-share"
         />
       </View>
 
