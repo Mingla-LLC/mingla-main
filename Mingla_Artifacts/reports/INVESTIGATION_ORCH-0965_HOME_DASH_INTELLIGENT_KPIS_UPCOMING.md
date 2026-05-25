@@ -346,6 +346,29 @@ All three root causes pass the five-layer check at confidence HIGH.
 
 ---
 
+## 10.5 Operator addition (2026-05-25 mid-investigation) — Scan QR affordance on live hero
+
+**Operator directive:** "when a live event shows up on the homepage, let the scan QR code show up which allows users to scan for that event."
+
+**Where the scanner lives today:** `mingla-business/app/event/[id]/scanner/index.tsx`. Single route. Launched from the event dashboard via `router.push(\`/event/${id}/scanner\`)` at [event/[id]/index.tsx:198](../../mingla-business/app/event/[id]/index.tsx#L198).
+
+**Per-kind availability (confirmed via `routeForEventRow.ts:21–30`):**
+- `event_type='event'` → has scanner at `/event/{id}/scanner`. **Scan affordance renders.**
+- `event_type='experience'` → routes to `/experience/coming-soon` stub (Ve series not shipped). **Scan affordance HIDDEN.**
+- `event_type='trip'` → routes to `/trip/{id}`. No scanner exists. **Scan affordance HIDDEN.**
+
+**SPEC requirement (binding):** When the live hero is rendered (`primaryLiveItem.status === 'live'`) AND the underlying kind is `event` (NOT experience, NOT trip), add a secondary action button "Scan QR codes" (or similar — designer to finalise copy) inside the GlassCard hero, below the 3-cell stat strip (or wherever the designer places it without disrupting the existing live-pulse + progress-bar layout). Tap routes to `/event/{primaryLiveItem.id}/scanner`. The affordance is hidden for experience-live and trip-live heroes — those kinds have no scanner today.
+
+**Accessibility:** action button needs `accessibilityRole="button"`, `accessibilityLabel="Scan tickets for {eventName}"`, and a `testID` for tester drivers (e.g. `home-live-hero-scan-button`).
+
+**Regression safety:** the action is purely additive to the existing live hero render block (home.tsx:481–531). When no live event exists OR the live hero's kind isn't `event`, the button is not rendered → byte-equivalent to today's behaviour. No new dependencies, no new permissions (camera permission is already requested by the scanner screen itself), no new routes.
+
+**Tester gate:** new SC must verify (a) scan button renders only on `event`-kind live hero, (b) tap navigates to `/event/{id}/scanner`, (c) no scan button on experience-live or trip-live heroes, (d) scan button is reachable via screen reader.
+
+This addition does NOT alter findings F-1 through F-8 above — it's a new requirement layered ONTO the live hero render. The rule ladder, tri-kind upcoming list, and KPI fixes are unchanged.
+
+---
+
 ## 11. Discoveries for Orchestrator (side issues — NOT in this ORCH's scope)
 
 - **D-1** — Q-O-6 above: if `currentBrand.stats.rev7d` excludes trip GMV, that's a separate backend bug deserving its own ORCH. Investigate at SPEC time; if confirmed broken, register as ORCH-NNNN.
