@@ -14,6 +14,7 @@ Reference: [WORKTREE_STRATEGY.md](WORKTREE_STRATEGY.md).
 
 | Worktree path | Branch | ORCH-ID | Phase | Sim assigned | Metro port | Spawned | Owner |
 |---------------|--------|---------|-------|--------------|------------|---------|-------|
+| `~/Desktop/mingla-orchs/ORCH-0955-[native-stripe-tax]/` | `ORCH-0955-native-stripe-tax` | ORCH-0955 | SPEC-dispatch | TBD | 8088 | 2026-05-24 | mingla-orchestrator+claude |
 
 ---
 

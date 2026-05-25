@@ -1,5 +1,24 @@
 # Agent Handoffs
 
+## 2026-05-24 — ORCH-0955 [Native Stripe Tax for Platforms] INVESTIGATE COMPLETE → SPEC DISPATCH
+
+**Pipeline this session (all in worktree `~/Desktop/mingla-orchs/ORCH-0955-[native-stripe-tax]/` on branch `ORCH-0955-native-stripe-tax`, rebased onto main HEAD `44c643c0` post-ORCH-0953 close):** Claude `mingla-orchestrator` (Seth manual spawn, INTAKE pre-existing at `Mingla_Artifacts/prompts/INTAKE_ORCH-0955_NATIVE_STRIPE_TAX.md`) → Claude `mingla-forensics` INVESTIGATE (operator clarified Q1=WebFetch+stripe-best-practices skill, Q2=all 10 findings + supabase MCP edge-function inventory + live `orders` schema probe; mid-flight discovered ORCH-0953 had NOT yet merged so branch was rebased and F-9 abandoned-concept assumption codified; operator then mid-flight confirmed "native paid is universal across Stripe-supported countries, no allowed_regions") → INVESTIGATE returned with 10 findings F-1..F-10 → operator pinged that ORCH-0953 just merged via PR #201 (commit `44c643c0`) → Claude `mingla-forensics` re-rebased + **Amendment 1** (A1.1..A1.8) supersedes F-1/F-2/F-4 line numbers + materially rewrites F-9 (gate now LIVE code, not abandoned concept; 3 disposition paths laid out, recommended (a) delete) + adds new questions 13 + 14 → Claude `mingla-orchestrator` REVIEW APPROVED (HIGH confidence; six-field evidence preserved across amendment) → decisions on 13/14 open questions locked by orchestrator + Q8 (`<ConnectTaxSettings>` co-mount) answered by operator → **SPEC DISPATCH (this commit).**
+
+**Comms ledger ack chain (COMMS-0001):** mingla-orchestrator+claude (ORCH-0954, originator) → mingla-forensics+claude (ORCH-0955, acked) → mingla-orchestrator+claude (ORCH-0955, acked this commit). Status remains OPEN until ORCH-0955 ships F-11 rewrite.
+
+**Artifacts (this dispatch):**
+- `Mingla_Artifacts/reports/INVESTIGATION_ORCH-0955_NATIVE_STRIPE_TAX.md` — 11 findings + Amendment 1
+- `Mingla_Artifacts/prompts/SPEC_ORCH-0955_NATIVE_STRIPE_TAX.md` — SPEC dispatch with 13 orchestrator decisions + Q8 operator decision + 4 deferred-to-SPEC items
+- `Mingla_Artifacts/WORKTREE_REGISTRY.md` — ORCH-0955 row added
+- `Mingla_Artifacts/WORLD_MAP.md` — issue-registry banner added
+- `Mingla_Artifacts/OPEN_INVESTIGATIONS.md` — investigation row added
+- `Mingla_Artifacts/AGENT_HANDOFFS.md` — this entry
+- `/Users/sethogieva/Desktop/mingla-main/COMMS_LEDGER.md` (anchor) — orchestrator ack appended
+
+**Next phase:** Claude `mingla-forensics` SPEC mode (per dispatch prompt). Routing after SPEC: REVIEW → IMPLEMENT (Codex `implementor-mingla` or Claude `mingla-implementor`) → REVIEW → DEPLOY → TEST → CLOSE.
+
+---
+
 ## 2026-05-24 — ORCH-0948 [Waitlist feature — schema + RPC + buyer-web "Join waitlist" CTA + planner notification when spot opens] CLOSED PASS Grade A
 
 **Pipeline executed (all in worktree `~/Desktop/mingla-orchs/ORCH-0948-[waitlist-feature]/` on branch `ORCH-0948-waitlist-feature`):** Claude `mingla-orchestrator` spawn → Claude `mingla-forensics` INVESTIGATE (reconciled intake's "no signups table" claim against pre-existing `public.waitlist_entries`; classified as missing-UI-on-partial-substrate + 3 latent backend gaps + ORCH-0946 soft-dep / META-ORCH-0952 exclusion) → Claude `mingla-forensics` SPEC (reuse-and-harden path; 12 SCs; 5 new invariants including I-WAITLIST-CONFIRM-EXCLUSION; 12 regression tests split 6 implementor / 6 tester) → Codex `implementor-mingla` IMPLEMENT (migration + 9 happy-path tests with `fails-on-revert verified at 4b734b1c`; flagged `notification-retry-sweeper` extension as orchestrator deploy decision) → Claude `mingla-orchestrator` REVIEW + reconciliation (migration version collision with applied ORCH-0946; renamed 06→10 + source-reconciled 4 sibling remote-only migrations into branch) → operator `supabase db push --linked --include-all` → Claude `mingla-orchestrator` DEPLOY (waitlist-signup new→v1, ticket-confirmation-dispatch 80→81, notification-retry-sweeper 50→51; `verify_jwt` preserved on existing two) → Claude `mingla-tester` TEST FAIL P1×2 (append-only gate + ORCH-0863 C7 allowlist) → Codex `implementor-mingla` REWORK (narrow scope-preserving patches, no test weakening) → Claude `mingla-tester` RETEST PASS P0:0 P1:0 P2:0 P3:0 P4:2 (8 gates all PASS) → Claude `mingla-orchestrator` CLOSE this turn.
