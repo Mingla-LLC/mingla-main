@@ -9,7 +9,7 @@
 
 ## ACTIVE (post ORCH-0963 [Public brand page business-case optimization (events vs. trip brands)] CLOSE 2026-05-25)
 
-One invariant flipped DRAFT → ACTIVE at the ORCH-0963 close. Tester CONDITIONAL PASS verdict P0:0 P1:0 P2:0 P3:1 P4:3 (P3-1 = D-LF-INFRA blocker registered as follow-up ORCH-0966; not a close blocker). Implementor happy-path 35 tests fails-on-revert verified at HEAD~1 on 3 tracks (Deno SQL + Jest service + Jest component). Tester adversarial T-10 at `mingla-business/src/components/brand/__tests__/TripMiniCard.cancelledTripLeak.adversarial.test.ts` fails-on-revert verified at commit `4d437b94c`. Migration applied 2026-05-25; RPC verified live via Mgmt API replay returning correct rows for `travelbrand` (DC Adventure spots_left=21 + The Sone spots_left=200) and 0 rows for non-trip-planner brands.
+One invariant flipped DRAFT → ACTIVE at the ORCH-0963 close. Tester CONDITIONAL PASS verdict P0:0 P1:0 P2:0 P3:1 P4:3 (P3-1 = D-LF-INFRA blocker registered as follow-up ORCH-0971; not a close blocker). Implementor happy-path 35 tests fails-on-revert verified at HEAD~1 on 3 tracks (Deno SQL + Jest service + Jest component). Tester adversarial T-10 at `mingla-business/src/components/brand/__tests__/TripMiniCard.cancelledTripLeak.adversarial.test.ts` fails-on-revert verified at commit `4d437b94c`. Migration applied 2026-05-25; RPC verified live via Mgmt API replay returning correct rows for `travelbrand` (DC Adventure spots_left=21 + The Sone spots_left=200) and 0 rows for non-trip-planner brands.
 
 ### I-PUBLIC-BRAND-KIND-BRANCHED (ACTIVE post ORCH-0963 CLOSE)
 
@@ -27,7 +27,51 @@ One invariant flipped DRAFT → ACTIVE at the ORCH-0963 close. Tester CONDITIONA
 
 The new SECURITY DEFINER RPC `pg_public_trips_by_brand(p_brand_slug)` (migration `20260728000000_orch_0963_pg_public_trips_by_brand.sql`) is the trip read path; it pins `b.kind = 'trip_planner'` server-side so accidental misuse against event brands returns the empty set. Sold-count formula mirrors `biz_trip_tickets_sold` (`tickets.status IN ('valid','used','transferred')`) so the trip-card spots-left value equals the value checkout enforces — preserving `I-TRIP-SPOTS-MIRRORS-CAPACITY-GATE`.
 
-**Tests:** T-01 (Deno SQL contract) + T-02 (Jest service mapping + dispatch) + T-03 (component branching) + T-04 (NextEventTeaser placement) — all happy-path with fails-on-revert verified. T-05 (null spots-left honesty) + T-06 (bookings-closed precedence) + T-07 (RPC anti-leak) + T-08 (pin-CTA count) + T-09 (past cap) — all adversarial.
+**Tests:** T-01 (Deno SQL contract) + T-02 (Jest service mapping + dispatch) + T-03 (component branching) + T-04 (NextEventTeaser placement) — all happy-path with fails-on-revert verified. T-05 (null spots-left honesty) + T-06 (bookings-closed precedence) + T-07 (RPC anti-leak) + T-08 (pin-CTA count) + T-09 (past cap) — all implementor adversarial. T-10 (cancelled-trip leak — tester adversarial, fails-on-revert at `4d437b94c`).
+
+---
+
+## ACTIVE (post ORCH-0965 [Home dashboard intelligent KPIs + tri-kind upcoming] CLOSE 2026-05-25)
+
+Three invariants flipped DRAFT → ACTIVE at the ORCH-0965 close after tester CONDITIONAL PASS verdict P0:0 P1:0 P2:1 P3:2 P4:3 (live-fire matrix deferred to post-merge smoke per operator-recommended path — 47/47 unit-test coverage + fails-on-revert + zero backend deployment risk). Implementor happy-path tests at `mingla-business/src/utils/__tests__/upcomingBuilder.test.ts` (22 tests) + `homeNextAction.test.ts` (14 tests) with `fails-on-revert verified at aca9182e9` (4 tests failed when `normaliseTripRow` returned null simulating the pre-fix trip-blind world). Tester adversarial at `mingla-business/src/utils/__tests__/upcomingBuilder.adversarial.test.ts` (11 tests across 7 distinct attack angles).
+
+### I-PROPOSED-HOME-UPCOMING-TRI-KIND-SOONEST-FIRST
+
+**Rule:** The brand-owner home Upcoming list (`mingla-business/app/(tabs)/home.tsx`) MUST surface items from all three offering kinds (`event` + `experience` + `trip`) plus local drafts via the single composer hook `useUpcomingForBrand`, sorted live-pinned then `startAtUtc` ascending across all remaining kinds and lifecycles, with past items (`endAtUtc < now`, or `startAtUtc + 24h < now` when end is unknown) excluded entirely, and drafts always at the bottom by `updatedAt` desc. Home MUST NOT directly import `fetchBusinessEventsForBrand`, `useBusinessEventsForBrand`, or `buildBrandEventSummary` — those are reserved for the events tab + consumer feed where the trip filter is the intended behaviour (Constitution #13 exclusion consistency).
+
+**Why it exists:** Pre-ORCH-0965 the home Upcoming list was trip-blind because `fetchBusinessEventsForBrand:478–509` filters `event_type='trip'` at the service layer (intentionally — events tab keeps it; consumer feed `discover-merged-events` keeps it). Home re-used that source, so a brand running 5 live trips read "0 active events" and the Upcoming list never showed trips. Sort was also bucket-first (live → upcoming → past → draft via `statusRank`), so a draft starting tomorrow ranked below an upcoming event three weeks out — not a true forward-looking timeline. Without this invariant, a future ORCH could re-introduce direct imports of the trip-blind source and silently re-burn the same failure mode.
+
+**Enforcement:** Strict-grep CI gate at `.github/scripts/strict-grep/orch-0965-home-uses-upcoming-hook.mjs` (registered in `strict-grep-mingla-business.yml`). The 115-line node script asserts three rules on home.tsx: (1) no forbidden imports of `fetchBusinessEventsForBrand` / `useBusinessEventsForBrand` / `buildBrandEventSummary`; (2) `useUpcomingForBrand` must be present; (3) CTA literals `"Plan a trip"` + `"Finish setting up Stripe"` may only live in the ladder file (`HomeNextActionCard.tsx` / `homeNextAction.ts`), never in home.tsx directly. Backed by 36 implementor unit tests at `upcomingBuilder.test.ts` + `homeNextAction.test.ts` (sort, past-exclusion, comparator units, counts accuracy) — fails-on-revert verified at `aca9182e9`. Adversarial coverage at `upcomingBuilder.adversarial.test.ts` (11 tests including referential transparency, past-boundary equality, malformed date handling, brand-switch isolation, deterministic rung output).
+
+### I-PROPOSED-HOME-SCAN-ACTION-EVENT-KIND-ONLY
+
+**Rule:** The "Scan QR codes" affordance inside the brand-owner home live hero (`home.tsx:heroScanAction`) MUST render iff `primaryLiveItem !== null && primaryLiveItem.kind === 'event'`. Trip-kind and experience-kind primary live items MUST NOT show a scan button — trips have no scanner today (multi-day check-in, not single-event door scanning) and experiences route to a `/experience/coming-soon` stub per `routeForEventRow.ts:21-30`. Tap routes to `/event/{primaryLiveItem.id}/scanner`, the same route used by the event dashboard at `event/[id]/index.tsx:198`.
+
+**Why it exists:** Operator-requested addition mid-investigation 2026-05-25 — when a live event renders in the hero, brand-owner needs one-tap access to the door scanner. Per-kind narrowing prevents accidentally surfacing a non-functional CTA for trips/experiences. Without this rule, a future ORCH expanding `primaryLiveItem.kind` filtering could expose the scan affordance to kinds that have no scanner, causing dead taps.
+
+**Enforcement:** Integration test SC-10/11/12 + T-INT-04/05/06 verifies the predicate output for each kind via `buildUpcomingItems` results (`primaryLiveItem.kind === 'event' | 'experience' | 'trip'`). Visual gate at live-fire T-LIVE-02 once the deferred sim matrix runs. Constitutional rule #1 (no dead taps) protects this at the audit layer.
+
+### I-PROPOSED-HOME-RULE-LADDER-SINGLE-OWNER
+
+**Rule:** The home dashboard's "best next action" recommendation MUST be derived exclusively from `pickHomeNextAction(brand, counts, drafts)` in `src/utils/homeNextAction.ts` and rendered exclusively via `<HomeNextActionCard>`. Kind-specific CTAs (e.g., the legacy ORCH-0855 trip-planner "Plan a trip" / "Finish setting up Stripe" inline block at the former `home.tsx:419-477`) MUST NOT live as parallel JSX inside `home.tsx`. The 4 rungs (Stripe-inactive / no-offerings / finish-draft / no-address) are the canonical ladder; future rungs extend `homeNextAction.ts` not `home.tsx`.
+
+**Why it exists:** Pre-ORCH-0965 `home.tsx` had an inline trip-planner CTA at lines 419–477 firing on `currentBrand.kind === 'trip_planner'`. The ORCH-0965 rule ladder absorbed it entirely (Stripe-inactive → rung 1; zero-offerings + trip_planner → rung 2). The inline block was DELETED in the same PR to avoid double-rendering. Without this invariant, a future ORCH could re-introduce a parallel kind-specific CTA, leading to the dashboard rendering both the ladder card AND a competing inline block on the same brand state.
+
+**Enforcement:** Strict-grep CI gate `orch-0965-home-uses-upcoming-hook.mjs` rule 3 forbids the literal CTA strings `"Plan a trip"` and `"Finish setting up Stripe"` in home.tsx — they must live only in the ladder file. Constitutional rule #8 (subtract before adding) requires the same single-owner discipline. T-IMPL-05 + T-IMPL-06 unit tests assert the ladder produces the correct CTAs for trip_planner vs popup/physical brands.
+
+---
+
+## ACTIVE (post ORCH-0962 [Brand-edit → public-brand field rendering — truthful bundle] CLOSE 2026-05-25)
+
+One invariant flipped DRAFT → ACTIVE at the ORCH-0962 close after tester CONDITIONAL PASS verdict P0:0 P1:0 P2:0 P3:0 P4:2 (60-second buyer-web eyeball is the only condition; data layer + structural source integrity proven via 23 unit tests + 7 live MCP column probes). Implementor happy-path T-01..T-09 at `mingla-business/src/services/__tests__/publicEventsService.orch_0962.test.ts` + `mingla-business/src/components/brand/__tests__/PublicBrandPage.orch_0962.test.ts` with `fails-on-revert verified at 52e37c2bc`. Tester adversarial A-01..A-05 at `mingla-business/src/services/__tests__/publicEventsService.orch_0962.adversarial.test.ts` with `fails-on-revert verified at b48df7064`.
+
+### I-PROPOSED-BRAND-FIELD-MAP-COVERAGE
+
+**Rule:** Every editable field on `mingla-business/src/components/brand/BrandEditView.tsx` whose value persists to a column in `brands` MUST be either (a) read by a public-page mapper in `mingla-business/src/services/publicEventsService.ts` AND rendered by `PublicBrandPage.tsx` (or its `AboutTab` / `SocialLinksRow`), OR (b) explicitly documented as "edit-only / not public" with a one-line comment in `BrandEditView.tsx`. New editable fields added to `BrandEditView` MUST update both the appropriate public view's SELECT list (`business_public_brands_view`, `claimed_venues_public_view`, or `business_public_events_view`) AND the matching mapper function, OR explicitly document the omission with rationale.
+
+**Why it exists:** ORCH-0962 [Brand-edit → public-brand field rendering — truthful bundle] investigated 22 Edit Brand inputs vs 3 public views + 3 mapper functions + the `PublicBrandPage` renderer and found 9 render-truth gaps across 5 distinct root-cause classes (SCHEMA-VIEW-DROPS, READ-MISSING, READ-WRONG-SHAPE, DEAD-WRITE, SURFACE-MISSING). The root cause of the class was: editable fields shipped over time without enforced end-to-end plumbing through view + mapper + renderer. Operators believed contact info, tagline, facebook, and linkedin were public because the write succeeded; nothing surfaced the silent failure downstream. Without this invariant, the next BrandEditView addition has the same shape.
+
+**Enforcement:** Strict-grep CI gate at `.github/scripts/strict-grep/orch-0962-brand-field-map-coverage.mjs` (registered in `.github/workflows/strict-grep-mingla-business.yml` as a standalone job per the registry pattern `feedback_strict_grep_registry_pattern.md`). The 72-line node script asserts: (a) contact_email + contact_phone present in both views + mapper (`extractBrandContact` + `row.contact_email` + `row.contact_phone`); (b) `splitBrandDescription` imported in service, `taglineCentered` + `bioLeadCentered` styles present in component; (c) facebook + linkedin entries present in both `BrandEditView` editor and `PublicBrandPage` renderer with `icon: "<key>"` token; (d) event-detail mapper reads `row.brand_kind` + `row.brand_address` + `row.brand_cover_media_url`; (e) verified-venue mapper reads `row.display_attendee_count`. Any future regression that breaks the plumbing chain fails this gate with a labelled bullet list of missing assertions.
 
 ---
 
@@ -3951,3 +3995,33 @@ Every chat response from every skill uses Section A (what just happened) + Secti
 **Enforcement:** browser regression tests at `mingla-business/src/components/checkout/__tests__/meta_orch_0952_carousel_browser.test.ts` (HP-01/02/03 across Chromium + WebKit + Firefox) + adversarial `meta_orch_0952_carousel_adversarial.test.ts` (viewport-resize-during-mount) are now part of the append-only CI test suite per ORCH-0840. Both tests immutable; modifications require `[TEST-MOD-APPROVED ORCH-0952]` token. Future buyer-web checkout-surface ORCHs (e.g., the deferred ORCH-0946/0947 polish batch under META-ORCH-0953) inherit this invariant — SPEC §6 (Test contract) must require equivalent browser-running coverage if touching `confirm.tsx`, `TicketQrCarousel.tsx`, root `app/_layout.tsx`, `app.json`, or per-route `_layout.tsx` files in the dynamic checkout trees.
 
 **Status:** flipped DRAFT → ACTIVE on META-ORCH-0952 CLOSE 2026-05-25 (PR #205 `f62cfefb` + hotfix PR #206 `2c647592`).
+
+### I-PROPOSED-CONTROLLER-PROPS-PINNED (ACTIVE — ratified by ORCH-0954 CLOSE 2026-05-25)
+
+**Invariant:** Stripe Connect account creation via `_shared/stripeBlueprintClient.ts` MUST use the named constant `STRIPE_MANAGED_RISK_CONTROLLER` with values `losses_collector: "stripe"`, `fees_collector: "stripe"`, `dashboard: "none"`. Hard-coded variants of these properties anywhere else in `supabase/functions/` are forbidden.
+
+**Why this matters:** ORCH-0954 shipped a P1 bug to production main where `fees_collector` was hard-coded to `"account"` (the Stripe Dashboard UI label, NOT a valid API enum). Pinning to a named constant + CI strict-grep prevents silent regression to invalid enum values.
+
+**Enforcement:** `.github/scripts/strict-grep/orch-0954-controller-props-pinned.mjs` registered in `.github/workflows/strict-grep-mingla-business.yml`.
+
+**Cross-references:** DEC-169, SPEC_ORCH-0954_AMENDMENT §A1, https://docs.stripe.com/connect/accounts-v2/connected-account-configuration.md.
+
+### I-PROPOSED-RAK-SCOPE-PINNED (ACTIVE — ratified by ORCH-0954 CLOSE 2026-05-25)
+
+**Invariant:** All Stripe API calls inside `supabase/functions/_shared/stripeBlueprintClient.ts` and its callers MUST use `envVarNames: ["STRIPE_RAK_ONBOARD"]` only. No `STRIPE_SECRET_KEY` fallback. Restricted API Key scope `account_sessions:write` is required and verified out-of-band by operator before each new function invocation in a new ORCH.
+
+**Why this matters:** ORCH-0953 added the RAK fail-close as production safety. ORCH-0954 extended it to the new `createAccountSession()` helper. Pinning forces every future Stripe ORCH to follow the same minimum-privilege key tier.
+
+**Enforcement:** `.github/scripts/strict-grep/orch-0954-rak-scope-pinned.mjs` registered in `.github/workflows/strict-grep-mingla-business.yml`.
+
+**Cross-references:** DEC-169, SPEC_ORCH-0954_AMENDMENT §A5, `feedback_stripe_rak_onboard_fail_close.md`.
+
+### I-PROPOSED-EXTERNAL-API-DOCS-VERIFIED (ACTIVE — ratified by ORCH-0954 CLOSE 2026-05-25)
+
+**Invariant:** Every external-API integration ORCH (Stripe, Supabase, OpenAI, Google Places, OneSignal, RevenueCat, Twilio, Resend, etc.) MUST cite the provider's canonical docs URL inline in SPEC §3 for every parameter, enum value, payload shape, and endpoint introduced or modified. For Stripe specifically, every Stripe-touching INVESTIGATE/SPEC/IMPLEMENT phase MUST invoke the `stripe-best-practices` skill before producing output.
+
+**Why this matters:** ORCH-0954 shipped 3 P1 Stripe bugs to production because no phase verified Stripe payloads against Stripe docs. Operator selected "account" on dashboard UI → forensics copied into SPEC → implementor coded it → REVIEW spot-checked code-matches-SPEC → tester hit real Stripe API and Stripe rejected. The failure traces to "trust inputs without independent verification against the external system."
+
+**Enforcement:** Memory rules `feedback_stripe_skill_mandatory.md` + `feedback_external_api_docs_verified.md`. CI strict-grep gate deferred to a future META-ORCH (out of ORCH-0954 scope).
+
+**Cross-references:** DEC-169, COMMS-0003, SPEC_ORCH-0954_AMENDMENT §A5.

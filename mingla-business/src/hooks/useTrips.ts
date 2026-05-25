@@ -23,6 +23,10 @@ import {
   type UseQueryResult,
 } from "@tanstack/react-query";
 
+// ORCH-0965 — home composite-upcoming cache key.
+// Imported from the keyless `upcomingKeys` module to avoid a require-cycle
+// (useUpcomingForBrand → useTrips → useUpcomingForBrand).
+import { upcomingKeys } from "./upcomingKeys";
 import {
   createTripDraft,
   getTrip,
@@ -123,6 +127,8 @@ export const useCreateTripDraft = (): UseCreateTripDraftResult => {
       queryClient.invalidateQueries({
         queryKey: tripKeys.listByBrand(trip.brandId),
       });
+      // ORCH-0965 — home composite-upcoming cache.
+      queryClient.invalidateQueries({ queryKey: upcomingKeys.all });
     },
     onError: (error, input) => {
       // Const #3: surface to UI via mutation.error subscription.
@@ -160,6 +166,8 @@ export const useUpdateTripBasics = (): UseMutationResult<
       queryClient.invalidateQueries({
         queryKey: tripKeys.listByBrand(brandId),
       });
+      // ORCH-0965 — home composite-upcoming cache.
+      queryClient.invalidateQueries({ queryKey: upcomingKeys.all });
     },
     onError: (error, { eventId }) => {
       console.error("[useUpdateTripBasics] failed", {
@@ -275,6 +283,8 @@ export const usePublishTrip = (): UseMutationResult<
       queryClient.invalidateQueries({
         queryKey: tripKeys.listByBrand(brandId),
       });
+      // ORCH-0965 — home composite-upcoming cache.
+      queryClient.invalidateQueries({ queryKey: upcomingKeys.all });
     },
     onError: (error, { eventId }) => {
       console.error("[usePublishTrip] failed", {

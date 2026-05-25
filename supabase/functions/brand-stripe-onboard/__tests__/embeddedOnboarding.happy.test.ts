@@ -2,9 +2,8 @@
  * ORCH-0954 happy-path regression for embedded onboarding cutover.
  *
  * Fails-on-revert verified at 316da320: temporarily reverting the controller
- * constant to losses_collector="application", fees_collector="application",
- * dashboard="express" failed this file with Actual "application" / Expected
- * "stripe".
+ * constant to dashboard="express" failed this file with Actual "express" /
+ * Expected "none". ORCH-0954 amendment rework separately pins fees_collector.
  */
 
 import {
@@ -21,7 +20,7 @@ Deno.test("ORCH-0954 — managed-risk controller constant is pinned", () => {
   );
   assertEquals(
     STRIPE_MANAGED_RISK_CONTROLLER.defaults.responsibilities.fees_collector,
-    "account",
+    "stripe",
   );
   assertEquals(STRIPE_MANAGED_RISK_CONTROLLER.dashboard, "none");
 });
@@ -35,8 +34,6 @@ Deno.test("ORCH-0954 — brand-stripe-onboard mints embedded Account Session and
   assertStringIncludes(source, "await createAccountSession({");
   assertStringIncludes(source, "account_onboarding");
   assertStringIncludes(source, "external_account_collection: true");
-  assertStringIncludes(source, 'fields: "eventually_due"');
-  assertStringIncludes(source, 'future_requirements: "include"');
   assertStringIncludes(source, 'controller_dashboard_type: "none"');
   assertStringIncludes(
     source,
@@ -58,5 +55,9 @@ Deno.test("ORCH-0954 — brand-stripe-onboard mints embedded Account Session and
   assert(
     !source.includes("client_secret: null"),
     "embedded onboarding response must include the real client_secret",
+  );
+  assert(
+    !source.includes("collection_options"),
+    "Account Session create payload must not send server-side collection_options",
   );
 });

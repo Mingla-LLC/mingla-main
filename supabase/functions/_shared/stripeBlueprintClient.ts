@@ -15,7 +15,7 @@ export const STRIPE_MANAGED_RISK_CONTROLLER = {
   defaults: {
     responsibilities: {
       losses_collector: "stripe",
-      fees_collector: "account",
+      fees_collector: "stripe",
     },
   },
   dashboard: "none",
@@ -46,10 +46,7 @@ export interface AccountSessionComponents {
     enabled: boolean;
     features?: {
       external_account_collection?: boolean;
-      collection_options?: {
-        fields?: "currently_due" | "eventually_due";
-        future_requirements?: "include" | "omit";
-      };
+      disable_stripe_user_authentication?: boolean;
     };
   };
   account_management?: {

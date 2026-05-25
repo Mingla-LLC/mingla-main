@@ -91,14 +91,14 @@ Deno.test("createRecipientAccount posts required Accounts v2 payload with bluepr
     assertEquals(body.defaults, {
       responsibilities: {
         losses_collector: "stripe",
-        fees_collector: "account",
+        fees_collector: "stripe",
       },
     });
     assertEquals(STRIPE_MANAGED_RISK_CONTROLLER, {
       defaults: {
         responsibilities: {
           losses_collector: "stripe",
-          fees_collector: "account",
+          fees_collector: "stripe",
         },
       },
       dashboard: "none",
@@ -118,10 +118,6 @@ Deno.test("createAccountSession posts Account Session payload with v1 Stripe ver
           enabled: true,
           features: {
             external_account_collection: true,
-            collection_options: {
-              fields: "eventually_due",
-              future_requirements: "include",
-            },
           },
         },
       },
@@ -144,10 +140,6 @@ Deno.test("createAccountSession posts Account Session payload with v1 Stripe ver
         enabled: true,
         features: {
           external_account_collection: true,
-          collection_options: {
-            fields: "eventually_due",
-            future_requirements: "include",
-          },
         },
       },
     });

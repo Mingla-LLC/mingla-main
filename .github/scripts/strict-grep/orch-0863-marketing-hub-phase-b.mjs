@@ -763,23 +763,32 @@ function checkNoNewBackendFiles() {
 
   // ORCH-0954 [Embedded onboarding cutover + Stripe-managed risk] — Stripe
   // platform controller flip (dashboard:express→none, losses+fees collectors
-  // application→stripe/account), new createAccountSession() helper + new
-  // brand-stripe-account-session edge function + 2 new test files. Existing
+  // application→stripe/stripe), new createAccountSession() helper + new
+  // brand-stripe-account-session edge function + shared business-web origin
+  // override validation + adversarial tests. P1-B remediation 2026-05-25
+  // adds: tester adversarial for origin override, ORCH-0954 migration
+  // updating the legacy account-type CHECK constraint to v2 dashboard values
+  // (full|express|none), and the matching migration test. Existing
   // stripeBlueprintClient/CountryReplacement/WebhookRouter test files updated
   // to assert the new controller values (covered separately by ORCH-0840
-  // TEST-MOD-APPROVED token in commit body). No migrations.
+  // TEST-MOD-APPROVED token in commit body).
   const ORCH_0954_BACKEND_ALLOWLIST = [
     "supabase/functions/_shared/stripeBlueprintClient.ts",
+    "supabase/functions/_shared/businessWebOrigin.ts",
     "supabase/functions/_shared/stripeCountryReplacement.ts",
     "supabase/functions/_shared/stripeWebhookRouter.ts",
     "supabase/functions/_shared/__tests__/stripeBlueprintClient.test.ts",
+    "supabase/functions/_shared/__tests__/stripeBlueprintClient.contract.test.ts",
     "supabase/functions/_shared/__tests__/stripeBlueprintClient_failclose.test.ts",
     "supabase/functions/_shared/__tests__/stripeCountryReplacement.test.ts",
+    "supabase/functions/_shared/__tests__/businessWebOrigin.adversarial.test.ts",
     "supabase/functions/brand-stripe-onboard/index.ts",
     "supabase/functions/brand-stripe-onboard/index.test.ts",
     "supabase/functions/brand-stripe-onboard/__tests__/embeddedOnboarding.happy.test.ts",
     "supabase/functions/brand-stripe-onboard/__tests__/embeddedOnboarding.adversarial.test.ts",
     "supabase/functions/brand-stripe-account-session/index.ts",
+    "supabase/migrations/20260727000002_orch_0954_controller_dashboard_type_check.sql",
+    "supabase/migrations/__tests__/orch_0954_controller_dashboard_type_check.test.ts",
   ];
 
   // ORCH-0956 [Stripe ops alerts → email]: swaps the OneSignal push-based
@@ -810,13 +819,23 @@ function checkNoNewBackendFiles() {
     "supabase/functions/backfill-place-photo-thumbs/index.test.ts",
     "supabase/functions/_shared/__tests__/imageCollage.thumbFallback.test.ts",
   ];
+  // ORCH-0962 [Brand-edit → public-brand field rendering — truthful bundle].
+  // C7 is scoped to ORCH-0863 marketing; ORCH-0962 backend touches are the
+  // public-view recreation migration (drop + CREATE OR REPLACE the three
+  // public brand/venue/event views with the new SELECT columns for G-01 /
+  // G-08 / G-09) plus the source-reconciled ORCH-0954 controller migration
+  // (`20260727000002`) which was remote-only history per implementor §6 line
+  // 61. No edge function source is touched.
+  const ORCH_0962_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260727000002_orch_0954_controller_dashboard_type_check.sql",
+    "supabase/migrations/20260727000003_orch_0962_brand_field_render_truthful.sql",
+  ];
   // ORCH-0963 [Public brand page business-case optimization (events vs. trip
   // brands)]: adds the anon-callable pg_public_trips_by_brand SECURITY DEFINER
-  // RPC + 2 Deno SQL contract tests (happy-path + adversarial). Two migrations
-  // marked `orch_0954_controller_dashboard_type_check` and
-  // `orch_0962_brand_field_render_truthful` are source-reconciled remote-only
-  // history from ORCH-0954 + ORCH-0962 so this worktree can hand off a clean
-  // db push.
+  // RPC + 2 Deno SQL contract tests (happy-path + adversarial). The two
+  // 20260727000002/003 migrations are also in ORCH_0962_BACKEND_ALLOWLIST above
+  // (source-reconciled from main into this branch); duplicate entries are
+  // harmless — the allowlist is a union.
   const ORCH_0963_BACKEND_ALLOWLIST = [
     "supabase/migrations/20260727000002_orch_0954_controller_dashboard_type_check.sql",
     "supabase/migrations/20260727000003_orch_0962_brand_field_render_truthful.sql",
@@ -888,6 +907,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_0955_BACKEND_ALLOWLIST,
     ...ORCH_0956_BACKEND_ALLOWLIST,
     ...ORCH_0957_BACKEND_ALLOWLIST,
+    ...ORCH_0962_BACKEND_ALLOWLIST,
     ...ORCH_0963_BACKEND_ALLOWLIST,
   ];
   const forbidden = changed.filter(

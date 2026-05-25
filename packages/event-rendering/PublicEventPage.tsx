@@ -142,6 +142,7 @@ export const PublicEventPage: React.FC<PublicEventPageProps> = ({
   brand,
   viewerRole,
   callbacks,
+  hideFloatingChrome = false,
 }) => {
   const [passwordUnlocked, setPasswordUnlocked] = useState<boolean>(false);
 
@@ -179,29 +180,36 @@ export const PublicEventPage: React.FC<PublicEventPageProps> = ({
       )}
 
       {/* Floating chrome — close (organizer only) + share. zIndex 3
-          floats above hero / banners / variant body. */}
-      <View style={styles.floatingChrome} pointerEvents="box-none">
-        {ownsThisEvent ? (
+          floats above hero / banners / variant body.
+
+          ORCH-0961 rework: hosts that render their own chrome (e.g. the
+          buyer-web public event adapter) pass `hideFloatingChrome` to
+          suppress this row so only one Share/Close exists in the DOM and
+          accessibility tree. */}
+      {hideFloatingChrome ? null : (
+        <View style={styles.floatingChrome} pointerEvents="box-none">
+          {ownsThisEvent ? (
+            <Pressable
+              onPress={callbacks.onClose}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
+              style={styles.chromeButton}
+            >
+              <Text style={styles.chromeIcon}>×</Text>
+            </Pressable>
+          ) : (
+            <View />
+          )}
           <Pressable
-            onPress={callbacks.onClose}
+            onPress={callbacks.onShare}
             accessibilityRole="button"
-            accessibilityLabel="Close"
+            accessibilityLabel="Share"
             style={styles.chromeButton}
           >
-            <Text style={styles.chromeIcon}>×</Text>
+            <Text style={styles.chromeIcon}>↗</Text>
           </Pressable>
-        ) : (
-          <View />
-        )}
-        <Pressable
-          onPress={callbacks.onShare}
-          accessibilityRole="button"
-          accessibilityLabel="Share"
-          style={styles.chromeButton}
-        >
-          <Text style={styles.chromeIcon}>↗</Text>
-        </Pressable>
-      </View>
+        </View>
+      )}
     </View>
   );
 };

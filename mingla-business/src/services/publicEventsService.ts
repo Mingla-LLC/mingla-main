@@ -21,6 +21,7 @@ import {
   asEventCoverMediaProvider,
   type EventCoverMediaProvider,
 } from "../types/eventCoverProvider";
+import { splitBrandDescription } from "./brandMapping";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -32,6 +33,9 @@ interface BusinessPublicEventViewRow {
   brand_description: string | null;
   brand_profile_photo_url: string | null;
   brand_display_attendee_count: boolean;
+  brand_kind: "physical" | "popup" | "trip_planner";
+  brand_address: string | null;
+  brand_cover_media_url: string | null;
   title: string;
   description: string | null;
   slug: string;
@@ -98,12 +102,15 @@ interface BusinessPublicBrandViewRow {
   name: string;
   description: string | null;
   profile_photo_url: string | null;
+  contact_email: string | null;
+  contact_phone: string | null;
   social_links: unknown;
   custom_links: unknown;
   display_attendee_count: boolean;
-  // ORCH-0963 F-3 fix: union widened to match schema constraint after ORCH-0855
-  // (`20260607000000_orch_0855_brands_kind_trip_planner.sql:28`). Runtime can
-  // return `'trip_planner'`; the page branches on this in PublicBrandPage.tsx.
+  // ORCH-0963 F-3 fix + ORCH-0962: union widened to match schema constraint after
+  // ORCH-0855 (`20260607000000_orch_0855_brands_kind_trip_planner.sql:28`).
+  // Runtime can return `'trip_planner'`; the page branches on this in
+  // PublicBrandPage.tsx (`isTripBrand`).
   kind: "physical" | "popup" | "trip_planner";
   address: string | null;
   cover_hue: number;
@@ -122,8 +129,11 @@ export interface ClaimedVenuePublicViewRow {
   description: string | null;
   profile_photo_url: string | null;
   profile_photo_type: "image" | "video" | "gif" | null;
+  contact_email: string | null;
+  contact_phone: string | null;
   social_links: unknown;
   custom_links: unknown;
+  display_attendee_count: boolean;
   address: string | null;
   city: string | null;
   country_code: string | null;
@@ -371,15 +381,31 @@ const asLinks = (
   return Object.keys(links).length > 0 ? links : undefined;
 };
 
+const extractBrandContact = (
+  email: string | null,
+  phone: string | null,
+): Brand["contact"] => {
+  const out: NonNullable<Brand["contact"]> = {};
+  if (typeof email === "string" && email.trim().length > 0) {
+    out.email = email;
+  }
+  if (typeof phone === "string" && phone.trim().length > 0) {
+    out.phone = phone;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+};
+
 const viewRowToBrand = (row: BusinessPublicEventViewRow): PublicBrandRecord => {
   const theme = asRecord(row.public_theme);
+  const { tagline, bio } = splitBrandDescription(row.brand_description);
   return {
     id: row.brand_id,
     displayName: row.brand_name,
     slug: row.brand_slug,
-    kind: "popup",
-    address: null,
+    kind: row.brand_kind,
+    address: row.brand_address,
     coverHue: asNumber(theme.brandCoverHue, asNumber(theme.coverHue, 25)),
+    coverMediaUrl: row.brand_cover_media_url ?? undefined,
     photo: row.brand_profile_photo_url ?? undefined,
     role: "owner",
     stats: {
@@ -390,8 +416,8 @@ const viewRowToBrand = (row: BusinessPublicEventViewRow): PublicBrandRecord => {
       attendees: 0,
     },
     currentLiveEvent: null,
-    bio: row.brand_description ?? undefined,
-    tagline: undefined,
+    bio,
+    tagline,
     links: asLinks(theme.brandLinks),
     displayAttendeeCount: row.brand_display_attendee_count,
   };
@@ -400,31 +426,35 @@ const viewRowToBrand = (row: BusinessPublicEventViewRow): PublicBrandRecord => {
 export const publicBrandViewRowToBrand = (
   row: BusinessPublicBrandViewRow,
   eventCount = 0,
-): PublicBrandRecord => ({
-  id: row.id,
-  displayName: row.name,
-  slug: row.slug,
-  kind: row.kind,
-  address: row.address,
-  coverHue: row.cover_hue,
-  coverMediaUrl: row.cover_media_url ?? undefined,
-  coverMediaType: row.cover_media_type ?? undefined,
-  profilePhotoType: row.profile_photo_type ?? undefined,
-  photo: row.profile_photo_url ?? undefined,
-  role: "owner",
-  stats: {
-    events: eventCount,
-    followers: 0,
-    rev: 0,
-    rev7d: 0,
-    attendees: 0,
-  },
-  currentLiveEvent: null,
-  bio: row.description ?? undefined,
-  tagline: undefined,
-  links: asLinks(row.social_links, row.custom_links),
-  displayAttendeeCount: row.display_attendee_count,
-});
+): PublicBrandRecord => {
+  const { tagline, bio } = splitBrandDescription(row.description);
+  return {
+    id: row.id,
+    displayName: row.name,
+    slug: row.slug,
+    kind: row.kind,
+    address: row.address,
+    coverHue: row.cover_hue,
+    coverMediaUrl: row.cover_media_url ?? undefined,
+    coverMediaType: row.cover_media_type ?? undefined,
+    profilePhotoType: row.profile_photo_type ?? undefined,
+    photo: row.profile_photo_url ?? undefined,
+    role: "owner",
+    stats: {
+      events: eventCount,
+      followers: 0,
+      rev: 0,
+      rev7d: 0,
+      attendees: 0,
+    },
+    currentLiveEvent: null,
+    bio,
+    tagline,
+    contact: extractBrandContact(row.contact_email, row.contact_phone),
+    links: asLinks(row.social_links, row.custom_links),
+    displayAttendeeCount: row.display_attendee_count,
+  };
+};
 
 const asVenueCategory = (value: unknown): VenueCategory | null => {
   if (
@@ -458,39 +488,43 @@ export const claimedVenueRowToPublicVenue = (
 export const claimedVenueRowToBrand = (
   row: ClaimedVenuePublicViewRow,
   eventCount = 0,
-): PublicBrandRecord => ({
-  id: row.id,
-  displayName: row.name,
-  slug: row.slug,
-  kind: "physical",
-  address: row.address,
-  coverHue: row.cover_hue,
-  coverMediaUrl: row.cover_media_url ?? undefined,
-  coverMediaType: row.cover_media_type ?? undefined,
-  profilePhotoType: row.profile_photo_type ?? undefined,
-  photo: row.profile_photo_url ?? undefined,
-  role: "owner",
-  stats: {
-    events: eventCount,
-    followers: 0,
-    rev: 0,
-    rev7d: 0,
-    attendees: 0,
-  },
-  currentLiveEvent: null,
-  bio: row.description ?? undefined,
-  tagline: undefined,
-  links: asLinks(row.social_links, row.custom_links),
-  displayAttendeeCount: false,
-  claimStatus: "verified",
-  city: asStringOrNull(row.city) ?? undefined,
-  countryCode: asStringOrNull(row.country_code) ?? undefined,
-  lat: typeof row.lat === "number" ? row.lat : undefined,
-  lng: typeof row.lng === "number" ? row.lng : undefined,
-  venueCategory: asVenueCategory(row.venue_category) ?? undefined,
-  googlePlaceId: asStringOrNull(row.google_place_id) ?? undefined,
-  placePoolId: row.place_pool_id ?? undefined,
-});
+): PublicBrandRecord => {
+  const { tagline, bio } = splitBrandDescription(row.description);
+  return {
+    id: row.id,
+    displayName: row.name,
+    slug: row.slug,
+    kind: "physical",
+    address: row.address,
+    coverHue: row.cover_hue,
+    coverMediaUrl: row.cover_media_url ?? undefined,
+    coverMediaType: row.cover_media_type ?? undefined,
+    profilePhotoType: row.profile_photo_type ?? undefined,
+    photo: row.profile_photo_url ?? undefined,
+    role: "owner",
+    stats: {
+      events: eventCount,
+      followers: 0,
+      rev: 0,
+      rev7d: 0,
+      attendees: 0,
+    },
+    currentLiveEvent: null,
+    bio,
+    tagline,
+    contact: extractBrandContact(row.contact_email, row.contact_phone),
+    links: asLinks(row.social_links, row.custom_links),
+    displayAttendeeCount: row.display_attendee_count,
+    claimStatus: "verified",
+    city: asStringOrNull(row.city) ?? undefined,
+    countryCode: asStringOrNull(row.country_code) ?? undefined,
+    lat: typeof row.lat === "number" ? row.lat : undefined,
+    lng: typeof row.lng === "number" ? row.lng : undefined,
+    venueCategory: asVenueCategory(row.venue_category) ?? undefined,
+    googlePlaceId: asStringOrNull(row.google_place_id) ?? undefined,
+    placePoolId: row.place_pool_id ?? undefined,
+  };
+};
 
 const viewStatusToLiveStatus = (status: string): LiveEventStatus => {
   if (

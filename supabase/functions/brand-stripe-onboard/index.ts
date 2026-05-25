@@ -40,6 +40,7 @@ import {
   createAccountSession,
   createRecipientAccount,
 } from "../_shared/stripeBlueprintClient.ts";
+import { resolveBusinessWebOrigin } from "../_shared/businessWebOrigin.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -67,6 +68,7 @@ interface OnboardRequestBody {
   brand_id: string;
   return_url: string;
   country: string;
+  business_web_origin_override?: string;
 }
 
 const UUID_REGEX =
@@ -76,13 +78,13 @@ function isValidUuid(s: unknown): s is string {
   return typeof s === "string" && UUID_REGEX.test(s);
 }
 
-function isValidReturnUrl(s: unknown): s is string {
+function isValidReturnUrl(s: unknown, businessWebOrigin: string): s is string {
   // B2a Path C V3 forensics C-2: was hardcoded to business.mingla.com (NXDOMAIN).
   // Now reads from env-backed ONBOARDING_PAGE_URL so the validation matches the
   // canonical platform URL whatever the operator configures.
   if (typeof s !== "string") return false;
   if (s.startsWith("mingla-business://")) return true;
-  if (s.startsWith(`${BUSINESS_WEB_ORIGIN}/`)) return true;
+  if (s.startsWith(`${businessWebOrigin}/`)) return true;
   return false;
 }
 
@@ -246,7 +248,19 @@ serve(async (req) => {
         400,
       );
     }
-    if (!isValidReturnUrl(body?.return_url)) {
+    const businessWebOriginResult = resolveBusinessWebOrigin({
+      configuredOrigin: BUSINESS_WEB_ORIGIN,
+      override: body?.business_web_origin_override,
+    });
+    if (!businessWebOriginResult.ok) {
+      return jsonResponse(
+        { error: "validation_error", detail: businessWebOriginResult.detail },
+        400,
+      );
+    }
+    const businessWebOrigin = businessWebOriginResult.origin;
+
+    if (!isValidReturnUrl(body?.return_url, businessWebOrigin)) {
       return jsonResponse(
         { error: "validation_error", detail: "return_url_invalid_scheme" },
         400,
@@ -686,10 +700,6 @@ serve(async (req) => {
             enabled: true,
             features: {
               external_account_collection: true,
-              collection_options: {
-                fields: "eventually_due",
-                future_requirements: "include",
-              },
             },
           },
         },
@@ -710,7 +720,7 @@ serve(async (req) => {
       );
     }
 
-    const onboardingUrl = `${BUSINESS_WEB_ORIGIN}/connect-onboarding` +
+    const onboardingUrl = `${businessWebOrigin}/connect-onboarding` +
       `?session=${encodeURIComponent(accountSession.client_secret)}` +
       `&brand_id=${encodeURIComponent(brand_id)}` +
       `&return_to=${encodeURIComponent(return_url)}`;

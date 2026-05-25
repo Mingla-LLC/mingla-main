@@ -13,6 +13,7 @@
 import { supabase } from "./supabase";
 // ORCH-0808 — organizer-funnel instrumentation.
 import { logAppsFlyerEvent } from "./appsFlyerService";
+import { businessWebOriginOverrideBody } from "./businessWebOriginOverride";
 
 declare const __DEV__: boolean | undefined;
 
@@ -158,7 +159,14 @@ export async function startBrandStripeOnboarding(
     StartOnboardingResult
   >(
     "brand-stripe-onboard",
-    { body: { brand_id: brandId, return_url: returnUrl, country } },
+    {
+      body: {
+        brand_id: brandId,
+        return_url: returnUrl,
+        country,
+        ...businessWebOriginOverrideBody(),
+      },
+    },
   );
   if (error) throw await unwrapFunctionError("brand-stripe-onboard", error);
   if (data === null) {
