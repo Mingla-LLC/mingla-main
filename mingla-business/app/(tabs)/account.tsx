@@ -353,7 +353,6 @@ const styles = StyleSheet.create({
   },
   barWrap: {
     paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
     paddingBottom: spacing.sm,
   },
   scroll: {
