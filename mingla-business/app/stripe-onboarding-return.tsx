@@ -1,6 +1,10 @@
 /**
  * /stripe-onboarding-return — HTTPS relay for Stripe hosted onboarding.
  *
+ * @deprecated ORCH-0954 / DEC-159 cuts new brands over to Mingla-hosted
+ * embedded onboarding. Keep this relay for legacy TEST hosted Account Link
+ * re-onboarding paths only.
+ *
  * Stripe Accounts v2 account links require HTTPS return and refresh URLs.
  * Native app schemes such as `mingla-business://...` are not accepted by
  * Stripe directly, so the edge function points Stripe here and passes the

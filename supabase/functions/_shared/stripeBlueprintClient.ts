@@ -7,7 +7,19 @@
  * separate because it governs SDK-backed v1/legacy Stripe surfaces.
  */
 
+import { STRIPE_API_VERSION } from "./stripe.ts";
+
 export const STRIPE_BLUEPRINT_API_VERSION = "2026-04-22.preview" as const;
+
+export const STRIPE_MANAGED_RISK_CONTROLLER = {
+  defaults: {
+    responsibilities: {
+      losses_collector: "stripe",
+      fees_collector: "account",
+    },
+  },
+  dashboard: "none",
+} as const;
 
 export interface StripeBlueprintRequestOptions {
   method: "POST";
@@ -15,6 +27,7 @@ export interface StripeBlueprintRequestOptions {
   body: Record<string, unknown>;
   idempotencyKey?: string;
   envVarNames: readonly string[];
+  apiVersion?: string;
 }
 
 export interface StripeV2Account {
@@ -26,6 +39,46 @@ export interface StripeV2AccountLink {
   id?: string;
   url: string;
   [key: string]: unknown;
+}
+
+export interface AccountSessionComponents {
+  account_onboarding?: {
+    enabled: boolean;
+    features?: {
+      external_account_collection?: boolean;
+      collection_options?: {
+        fields?: "currently_due" | "eventually_due";
+        future_requirements?: "include" | "omit";
+      };
+    };
+  };
+  account_management?: {
+    enabled: boolean;
+    features?: {
+      external_account_collection?: boolean;
+      disable_stripe_user_authentication?: boolean;
+    };
+  };
+  notification_banner?: {
+    enabled: boolean;
+    features?: {
+      external_account_collection?: boolean;
+      disable_stripe_user_authentication?: boolean;
+    };
+  };
+}
+
+export interface CreateAccountSessionInput {
+  accountId: string;
+  components: AccountSessionComponents;
+  idempotencyKey: string;
+}
+
+export interface StripeAccountSession {
+  client_secret: string;
+  expires_at: number;
+  components: Record<string, unknown>;
+  account: string;
 }
 
 function resolveStripeKey(envVarNames: readonly string[]): string {
@@ -65,7 +118,10 @@ export async function stripeBlueprintRequest<T>(
     Authorization: `Bearer ${key}`,
     "Content-Type": "application/json",
   });
-  headers.set("Stripe-Version", STRIPE_BLUEPRINT_API_VERSION);
+  headers.set(
+    "Stripe-Version",
+    options.apiVersion ?? STRIPE_BLUEPRINT_API_VERSION,
+  );
   if (options.idempotencyKey) {
     headers.set("Idempotency-Key", options.idempotencyKey);
   }
@@ -130,13 +186,7 @@ export function createRecipientAccount(
       },
       display_name: input.displayName,
       contact_email: input.contactEmail,
-      defaults: {
-        responsibilities: {
-          losses_collector: "application",
-          fees_collector: "application",
-        },
-      },
-      dashboard: "express",
+      ...STRIPE_MANAGED_RISK_CONTROLLER,
       include: [
         "configuration.merchant",
         "configuration.recipient",
@@ -147,6 +197,22 @@ export function createRecipientAccount(
       identity: {
         country: input.country,
       },
+    },
+  });
+}
+
+export function createAccountSession(
+  input: CreateAccountSessionInput,
+): Promise<StripeAccountSession> {
+  return stripeBlueprintRequest<StripeAccountSession>({
+    method: "POST",
+    path: "/v1/account_sessions",
+    envVarNames: ["STRIPE_RAK_ONBOARD"],
+    apiVersion: STRIPE_API_VERSION,
+    idempotencyKey: input.idempotencyKey,
+    body: {
+      account: input.accountId,
+      components: input.components,
     },
   });
 }

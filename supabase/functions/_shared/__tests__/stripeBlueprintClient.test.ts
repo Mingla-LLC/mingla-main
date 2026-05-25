@@ -3,10 +3,13 @@ import {
   assertEquals,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
+  createAccountSession,
   createRecipientAccount,
   createRecipientAccountLink,
   STRIPE_BLUEPRINT_API_VERSION,
+  STRIPE_MANAGED_RISK_CONTROLLER,
 } from "../stripeBlueprintClient.ts";
+import { STRIPE_API_VERSION } from "../stripe.ts";
 
 interface CapturedRequest {
   url: string;
@@ -30,6 +33,13 @@ function withStripeFetch(
     });
     const responseBody = String(url).endsWith("/account_links")
       ? { id: "link_123", url: "https://connect.stripe.com/setup/mock" }
+      : String(url).endsWith("/account_sessions")
+      ? {
+        client_secret: "acs_test_secret",
+        expires_at: 1_800_000_000,
+        components: {},
+        account: "acct_123",
+      }
       : { id: "acct_123" };
     return Promise.resolve(
       new Response(JSON.stringify(responseBody), { status: 200 }),
@@ -65,7 +75,7 @@ Deno.test("createRecipientAccount posts required Accounts v2 payload with bluepr
     const body = captured[0].body;
     assertEquals(body.display_name, "Mingla Test Brand");
     assertEquals(body.contact_email, "operator@example.com");
-    assertEquals(body.dashboard, "express");
+    assertEquals(body.dashboard, "none");
     assertEquals((body.identity as Record<string, unknown>).country, "GB");
     const configuration = body.configuration as Record<string, unknown>;
     assertEquals(
@@ -80,13 +90,68 @@ Deno.test("createRecipientAccount posts required Accounts v2 payload with bluepr
     );
     assertEquals(body.defaults, {
       responsibilities: {
-        losses_collector: "application",
-        fees_collector: "application",
+        losses_collector: "stripe",
+        fees_collector: "account",
       },
+    });
+    assertEquals(STRIPE_MANAGED_RISK_CONTROLLER, {
+      defaults: {
+        responsibilities: {
+          losses_collector: "stripe",
+          fees_collector: "account",
+        },
+      },
+      dashboard: "none",
     });
     assert(
       (body.include as string[]).includes("configuration.recipient"),
     );
+  });
+});
+
+Deno.test("createAccountSession posts Account Session payload with v1 Stripe version and RAK-only key", async () => {
+  await withStripeFetch(async (captured) => {
+    const session = await createAccountSession({
+      accountId: "acct_123",
+      components: {
+        account_onboarding: {
+          enabled: true,
+          features: {
+            external_account_collection: true,
+            collection_options: {
+              fields: "eventually_due",
+              future_requirements: "include",
+            },
+          },
+        },
+      },
+      idempotencyKey: "brand:account_session:test",
+    });
+
+    assertEquals(captured.length, 1);
+    assertEquals(
+      captured[0].url,
+      "https://api.stripe.com/v1/account_sessions",
+    );
+    const headers = new Headers(captured[0].init?.headers);
+    assertEquals(headers.get("Stripe-Version"), STRIPE_API_VERSION);
+    assertEquals(headers.get("Idempotency-Key"), "brand:account_session:test");
+
+    const body = captured[0].body;
+    assertEquals(body.account, "acct_123");
+    assertEquals(body.components, {
+      account_onboarding: {
+        enabled: true,
+        features: {
+          external_account_collection: true,
+          collection_options: {
+            fields: "eventually_due",
+            future_requirements: "include",
+          },
+        },
+      },
+    });
+    assertEquals(session.client_secret, "acs_test_secret");
   });
 });
 

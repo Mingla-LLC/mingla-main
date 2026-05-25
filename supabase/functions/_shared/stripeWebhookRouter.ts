@@ -12,9 +12,9 @@ import { qrTokenPepper } from "./ticketCheckout.ts";
 // ORCH-0869 [Tr3 Installment Payments]: discriminator + handlers for
 // installment PaymentIntent events. See SPEC §3.2.3.
 import {
-  isInstallmentPaymentIntentEvent,
-  handleInstallmentPaymentSucceeded,
   handleInstallmentPaymentFailed,
+  handleInstallmentPaymentSucceeded,
+  isInstallmentPaymentIntentEvent,
 } from "./installmentWebhookHandlers.ts";
 import { handleChargeDispute } from "./stripeDisputeHandlers.ts";
 import {
@@ -23,9 +23,9 @@ import {
 } from "./stripeKycRemediation.ts";
 // ORCH-0808 — AppsFlyer S2S poster for revenue + milestone events.
 import {
+  claimBrandMilestone,
   postAppsFlyerS2SEvent,
   resolveBrandOwnerUserId,
-  claimBrandMilestone,
 } from "./appsFlyerS2S.ts";
 
 export const STRIPE_ROUTED_EVENT_TYPES = [
@@ -87,7 +87,10 @@ export interface RouteStripeEventResult {
   brandId: string | null;
 }
 
-function objectString(obj: Record<string, unknown>, key: string): string | null {
+function objectString(
+  obj: Record<string, unknown>,
+  key: string,
+): string | null {
   const value = obj[key];
   return typeof value === "string" && value.length > 0 ? value : null;
 }
@@ -102,7 +105,9 @@ function accountIdForEvent(event: StripeWebhookEvent): string | null {
 }
 
 function char3(currency: unknown, fallback = "GBP"): string {
-  return (typeof currency === "string" && currency.length > 0 ? currency : fallback)
+  return (typeof currency === "string" && currency.length > 0
+    ? currency
+    : fallback)
     .trim()
     .toUpperCase()
     .padEnd(3, " ")
@@ -148,7 +153,10 @@ async function notifyBrandManagers(
     deepLink?: string | null;
   },
 ): Promise<void> {
-  const userIds = await getBrandPaymentManagerUserIds(supabase as never, input.brandId);
+  const userIds = await getBrandPaymentManagerUserIds(
+    supabase as never,
+    input.brandId,
+  );
   for (const userId of userIds) {
     await dispatchNotification({
       userId,
@@ -178,18 +186,22 @@ async function syncAccount(
     .select("brand_id, charges_enabled, payouts_enabled, requirements")
     .eq("stripe_account_id", stripeAccountId)
     .maybeSingle();
-  if (prior.error) throw new Error(`account prior lookup failed: ${prior.error.message}`);
+  if (prior.error) {
+    throw new Error(`account prior lookup failed: ${prior.error.message}`);
+  }
 
   const metadata = account.metadata as Record<string, unknown> | undefined;
   const brandId = prior.data?.brand_id ??
-    (typeof metadata?.mingla_brand_id === "string" ? metadata.mingla_brand_id : null);
+    (typeof metadata?.mingla_brand_id === "string"
+      ? metadata.mingla_brand_id
+      : null);
   if (!brandId) return null;
 
   const requirements = (account.requirements ?? {}) as Record<string, unknown>;
   const updatePayload: Record<string, unknown> = {
     brand_id: brandId,
     stripe_account_id: stripeAccountId,
-    controller_dashboard_type: "express",
+    controller_dashboard_type: "none",
     charges_enabled: account.charges_enabled === true,
     payouts_enabled: account.payouts_enabled === true,
     requirements,
@@ -208,7 +220,9 @@ async function syncAccount(
   const { error } = await supabase
     .from("stripe_connect_accounts")
     .upsert(updatePayload, { onConflict: "brand_id" });
-  if (error) throw new Error(`stripe_connect_accounts upsert failed: ${error.message}`);
+  if (error) {
+    throw new Error(`stripe_connect_accounts upsert failed: ${error.message}`);
+  }
 
   await writeAudit(supabase, {
     user_id: null,
@@ -279,7 +293,10 @@ async function refreshAccountById(
   // @ts-ignore — Stripe SDK Accounts namespace is runtime-provided.
   const account = await stripe.accounts.retrieve(stripeAccountId, {
     apiVersion: STRIPE_API_VERSION,
-    idempotencyKey: generateIdempotencyKey(keyOwner, "webhook_account_retrieve"),
+    idempotencyKey: generateIdempotencyKey(
+      keyOwner,
+      "webhook_account_retrieve",
+    ),
   });
   return syncAccount(supabase, account as Record<string, unknown>, eventId);
 }
@@ -289,7 +306,9 @@ async function handleExternalAccount(
   event: StripeWebhookEvent,
 ): Promise<string | null> {
   const stripeAccountId = accountIdForEvent(event);
-  if (!stripeAccountId) throw new Error(`${event.type} missing connected account id`);
+  if (!stripeAccountId) {
+    throw new Error(`${event.type} missing connected account id`);
+  }
   const brandId = await brandIdForStripeAccount(supabase, stripeAccountId);
   if (!brandId) return null;
 
@@ -302,7 +321,9 @@ async function handleExternalAccount(
       .from("stripe_external_accounts")
       .delete()
       .eq("stripe_external_account_id", externalId);
-    if (error) throw new Error(`external account delete failed: ${error.message}`);
+    if (error) {
+      throw new Error(`external account delete failed: ${error.message}`);
+    }
   } else {
     const { error } = await supabase
       .from("stripe_external_accounts")
@@ -311,10 +332,13 @@ async function handleExternalAccount(
           brand_id: brandId,
           stripe_account_id: stripeAccountId,
           stripe_external_account_id: externalId,
-          type: objectString(external, "object") === "card" ? "card" : "bank_account",
+          type: objectString(external, "object") === "card"
+            ? "card"
+            : "bank_account",
           last4: objectString(external, "last4"),
           currency: char3(external.currency),
-          country: (objectString(external, "country") ?? "GB").toUpperCase().slice(0, 2),
+          country: (objectString(external, "country") ?? "GB").toUpperCase()
+            .slice(0, 2),
           status: normalizeExternalAccountStatus(external.status),
           default_for_currency: external.default_for_currency === true,
           raw_payload: external,
@@ -322,18 +346,27 @@ async function handleExternalAccount(
         },
         { onConflict: "stripe_external_account_id" },
       );
-    if (error) throw new Error(`external account upsert failed: ${error.message}`);
+    if (error) {
+      throw new Error(`external account upsert failed: ${error.message}`);
+    }
 
-    if (normalizeExternalAccountStatus(external.status) === "verification_failed") {
+    if (
+      normalizeExternalAccountStatus(external.status) === "verification_failed"
+    ) {
       await notifyBrandManagers(supabase, {
         brandId,
         type: "stripe.bank_verification_failed",
         title: "Bank verification failed",
-        body: "Stripe could not verify the payout bank account. Re-verify it from Payments.",
-        data: { stripe_account_id: stripeAccountId, external_account_id: externalId },
+        body:
+          "Stripe could not verify the payout bank account. Re-verify it from Payments.",
+        data: {
+          stripe_account_id: stripeAccountId,
+          external_account_id: externalId,
+        },
         relatedId: externalId,
         relatedType: "stripe_external_account",
-        idempotencyKey: `stripe.bank_verification_failed:${externalId}:${event.id}`,
+        idempotencyKey:
+          `stripe.bank_verification_failed:${externalId}:${event.id}`,
         deepLink: `mingla-business://brand/${brandId}/payments`,
       });
     }
@@ -356,7 +389,9 @@ async function handlePayout(
   event: StripeWebhookEvent,
 ): Promise<string | null> {
   const stripeAccountId = accountIdForEvent(event);
-  if (!stripeAccountId) throw new Error(`${event.type} missing connected account id`);
+  if (!stripeAccountId) {
+    throw new Error(`${event.type} missing connected account id`);
+  }
   const brandId = await brandIdForStripeAccount(supabase, stripeAccountId);
   if (!brandId) return null;
 
@@ -386,7 +421,11 @@ async function handlePayout(
       type: "stripe.payout_failed",
       title: "Stripe payout failed",
       body: remediation,
-      data: { stripe_payout_id: payoutId, failure_code: failureCode, remediation },
+      data: {
+        stripe_payout_id: payoutId,
+        failure_code: failureCode,
+        remediation,
+      },
       relatedId: payoutId,
       relatedType: "payout",
       idempotencyKey: `stripe.payout_failed:${payoutId}:${failureCode}`,
@@ -449,25 +488,34 @@ async function handleDeauthorized(
   event: StripeWebhookEvent,
 ): Promise<string | null> {
   const stripeAccountId = accountIdForEvent(event);
-  if (!stripeAccountId) throw new Error("account.application.deauthorized missing account id");
+  if (!stripeAccountId) {
+    throw new Error("account.application.deauthorized missing account id");
+  }
   const brandId = await brandIdForStripeAccount(supabase, stripeAccountId);
   if (!brandId) return null;
 
   const { error } = await supabase
     .from("stripe_connect_accounts")
-    .update({ detached_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+    .update({
+      detached_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
     .eq("stripe_account_id", stripeAccountId);
-  if (error) throw new Error(`deauthorize soft detach failed: ${error.message}`);
+  if (error) {
+    throw new Error(`deauthorize soft detach failed: ${error.message}`);
+  }
 
   await notifyBrandManagers(supabase, {
     brandId,
     type: "stripe.account_deauthorized",
     title: "Stripe was disconnected",
-    body: "Stripe notified us that this brand's payout account was disconnected.",
+    body:
+      "Stripe notified us that this brand's payout account was disconnected.",
     data: { stripe_account_id: stripeAccountId },
     relatedId: stripeAccountId,
     relatedType: "stripe_connect_account",
-    idempotencyKey: `stripe.account_deauthorized:${stripeAccountId}:${event.id}`,
+    idempotencyKey:
+      `stripe.account_deauthorized:${stripeAccountId}:${event.id}`,
     deepLink: `mingla-business://brand/${brandId}/payments`,
   });
 
@@ -527,7 +575,9 @@ async function handleRefundEvent(
       .select("brand_id, detached_at")
       .eq("stripe_account_id", stripeAccountId)
       .maybeSingle();
-    if (error) throw new Error(`refund account lookup failed: ${error.message}`);
+    if (error) {
+      throw new Error(`refund account lookup failed: ${error.message}`);
+    }
     brandId = data?.brand_id ?? null;
     detachedAt = data?.detached_at ?? null;
   }
@@ -603,7 +653,9 @@ async function handleRefundEvent(
       p_stripe_refund_id: refundId,
       p_amount_cents: amountCents,
       p_currency: currency,
-      p_application_fee_refunded_cents: Number(refund.application_fee_refunded ?? 0),
+      p_application_fee_refunded_cents: Number(
+        refund.application_fee_refunded ?? 0,
+      ),
       p_idempotency_key_hint: idempotencyHint,
     },
   );
@@ -663,7 +715,10 @@ async function handleRefundEvent(
           body: JSON.stringify({ orderId }),
         });
       } catch (err) {
-        console.error("[stripe-webhook] refund dispatch failed (non-fatal)", err);
+        console.error(
+          "[stripe-webhook] refund dispatch failed (non-fatal)",
+          err,
+        );
       }
     }
   }
@@ -706,7 +761,9 @@ async function handleApplicationFee(
   const { error } = await supabase
     .from("mingla_revenue_log")
     .upsert(row, { onConflict: "stripe_application_fee_id" });
-  if (error) throw new Error(`mingla_revenue_log upsert failed: ${error.message}`);
+  if (error) {
+    throw new Error(`mingla_revenue_log upsert failed: ${error.message}`);
+  }
 
   await writeAudit(supabase, {
     user_id: null,
@@ -726,22 +783,29 @@ async function handleTicketCheckoutPaymentIntent(
 ): Promise<string | null> {
   const paymentIntent = event.data.object;
   const paymentIntentId = objectString(paymentIntent, "id");
-  if (!paymentIntentId) throw new Error(`${event.type} missing payment_intent.id`);
+  if (!paymentIntentId) {
+    throw new Error(`${event.type} missing payment_intent.id`);
+  }
 
   let { data: session, error: sessionError } = await supabase
     .from("ticket_checkout_sessions")
     .select("id, brand_id, event_id, order_id")
     .eq("stripe_payment_intent_id", paymentIntentId)
     .maybeSingle();
-  if (sessionError) throw new Error(`ticket checkout session lookup failed: ${sessionError.message}`);
+  if (sessionError) {
+    throw new Error(
+      `ticket checkout session lookup failed: ${sessionError.message}`,
+    );
+  }
   // ORCH-0790: web Checkout Sessions create the session row BEFORE the
   // PaymentIntent exists, so the initial lookup by PI id misses on the
   // first PI webhook. Fall back to the Mingla checkout session id
   // embedded in the PI metadata, and back-fill stripe_payment_intent_id
   // so subsequent webhooks short-circuit on the PI lookup.
   if (!session) {
-    const piMetadata =
-      paymentIntent.metadata as Record<string, unknown> | undefined;
+    const piMetadata = paymentIntent.metadata as
+      | Record<string, unknown>
+      | undefined;
     const mingleCheckoutSessionId =
       typeof piMetadata?.mingla_checkout_session_id === "string"
         ? piMetadata.mingla_checkout_session_id
@@ -773,7 +837,9 @@ async function handleTicketCheckoutPaymentIntent(
   if (!session) return null;
 
   if (event.type === "payment_intent.succeeded") {
-    const charges = paymentIntent.charges as { data?: Array<Record<string, unknown>> } | undefined;
+    const charges = paymentIntent.charges as {
+      data?: Array<Record<string, unknown>>;
+    } | undefined;
     const latestCharge = charges?.data?.[0] ?? null;
     const paymentMethodTypes = Array.isArray(paymentIntent.payment_method_types)
       ? paymentIntent.payment_method_types
@@ -786,8 +852,10 @@ async function handleTicketCheckoutPaymentIntent(
     // PaymentMethod IDs through to the finalize RPC so the cron has what it
     // needs to charge installments off-session. Non-installment PIs leave
     // these params NULL/false and the legacy finalize path runs unchanged.
-    const piMetadata = (paymentIntent.metadata as Record<string, unknown> | undefined) ?? {};
-    const isInstallmentPlanRoot = piMetadata["mingla_installment_plan_root"] === "true";
+    const piMetadata =
+      (paymentIntent.metadata as Record<string, unknown> | undefined) ?? {};
+    const isInstallmentPlanRoot =
+      piMetadata["mingla_installment_plan_root"] === "true";
     const stripeCustomerId = isInstallmentPlanRoot
       ? objectString(paymentIntent, "customer")
       : null;
@@ -799,7 +867,9 @@ async function handleTicketCheckoutPaymentIntent(
       {
         p_checkout_session_id: session.id,
         p_stripe_payment_intent_id: paymentIntentId,
-        p_stripe_charge_id: latestCharge ? objectString(latestCharge, "id") : null,
+        p_stripe_charge_id: latestCharge
+          ? objectString(latestCharge, "id")
+          : null,
         p_stripe_payment_method_type: methodType,
         p_qr_token_pepper: qrTokenPepper(),
         p_stripe_customer_id_on_connected_account: stripeCustomerId,
@@ -807,10 +877,15 @@ async function handleTicketCheckoutPaymentIntent(
         p_installment_plan_root: isInstallmentPlanRoot,
       },
     );
-    if (finalizeError) throw new Error(`ticket checkout finalize failed: ${finalizeError.message}`);
-    const orderId = typeof (finalized as Record<string, unknown> | null)?.orderId === "string"
-      ? String((finalized as Record<string, unknown>).orderId)
-      : null;
+    if (finalizeError) {
+      throw new Error(
+        `ticket checkout finalize failed: ${finalizeError.message}`,
+      );
+    }
+    const orderId =
+      typeof (finalized as Record<string, unknown> | null)?.orderId === "string"
+        ? String((finalized as Record<string, unknown>).orderId)
+        : null;
     if (orderId) {
       const url = Deno.env.get("SUPABASE_URL");
       const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -871,7 +946,10 @@ async function handleTicketCheckoutPaymentIntent(
       .update({
         status: "failed",
         updated_at: new Date().toISOString(),
-        metadata: { stripe_webhook_event_id: event.id, stripe_event_type: event.type },
+        metadata: {
+          stripe_webhook_event_id: event.id,
+          stripe_event_type: event.type,
+        },
       })
       .eq("id", session.id)
       .is("order_id", null);
@@ -998,7 +1076,12 @@ export async function routeStripeEvent(
     case "person.deleted": {
       const stripeAccountId = accountIdForEvent(event);
       if (stripeAccountId) {
-        brandId = await refreshAccountById(supabase, stripe, stripeAccountId, event.id);
+        brandId = await refreshAccountById(
+          supabase,
+          stripe,
+          stripeAccountId,
+          event.id,
+        );
       }
       break;
     }
