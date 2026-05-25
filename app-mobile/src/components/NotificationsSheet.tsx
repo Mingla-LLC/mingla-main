@@ -1,45 +1,54 @@
 /**
- * NotificationsModal — V2 Server-Synced Notification Center
+ * NotificationsSheet - V2 Server-Synced Notification Center (redesigned ORCH-0975)
  *
  * Complete redesign with:
- * - Filter tabs (All, Social, Sessions, Messages)
- * - Icon mapping per notification type
- * - Action buttons for actionable notifications
+ * - @gorhom/bottom-sheet v5 sheet chrome, not React Native Modal
+ * - Pan-down dismiss plus explicit close button for accessibility
+ * - Single chronological list, with filter chips intentionally removed
+ * - Ringed avatar/icon treatment, category pills, unread dots, and action buttons
  * - Date grouping (Today, Yesterday, This Week, Earlier)
  * - Loading / empty / error / offline states
- * - Deep link navigation on card tap
  */
-import React, { useMemo, useState, useCallback } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  Modal,
-  TouchableOpacity,
-  Dimensions,
-  SectionList,
   ActivityIndicator,
-  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Icon } from './ui/Icon';
+import BottomSheet, {
+  BottomSheetBackdrop,
+  type BottomSheetBackdropProps,
+  BottomSheetSectionList,
+  BottomSheetView,
+} from '@gorhom/bottom-sheet';
 import { useNetInfo } from '@react-native-community/netinfo';
-import { ImageWithFallback } from './figma/ImageWithFallback';
-import { colors, spacing, radius, shadows } from '../constants/designSystem';
-import type { ServerNotification } from '../hooks/useNotifications';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
-const SHEET_HEIGHT = SCREEN_HEIGHT * 0.88;
+import { ImageWithFallback } from './figma/ImageWithFallback';
+import { Icon, type IconName } from './ui/Icon';
+import { colors, glass, radius, spacing } from '../constants/designSystem';
+import type { ServerNotification } from '../hooks/useNotifications';
+
+const SHEET_SNAP_POINTS = ['88%'];
 const EMPTY_PENDING_SET = new Set<string>();
 
-// ── Filter categories ────────────────────────────────────────────────────────
+// ORCH-0975 - wraps @gorhom/bottom-sheet v5 (NOT RN Modal). Pan-down dismisses;
+// x is the redundant explicit affordance for VoiceOver. Filter chips are gone.
 
-type FilterTab = 'all' | 'social' | 'sessions' | 'messages';
+// -- Filter categories --------------------------------------------------------
 
-const FILTER_TAB_KEYS: FilterTab[] = ['all', 'social', 'sessions', 'messages'];
+type NotificationCategory = 'all' | 'social' | 'sessions' | 'messages';
 
-function getFilterCategory(type: string): FilterTab {
+function getFilterCategory(type: string): NotificationCategory {
   if (
     type.startsWith('friend_request_') ||
     type.startsWith('pair_request_')
@@ -62,10 +71,10 @@ function getFilterCategory(type: string): FilterTab {
   return 'all';
 }
 
-// ── Icon mapping ─────────────────────────────────────────────────────────────
+// -- Icon mapping -------------------------------------------------------------
 
 interface IconConfig {
-  name: string;
+  name: IconName;
   color: string;
 }
 
@@ -101,7 +110,7 @@ function getIconConfig(type: string): IconConfig {
   return NOTIFICATION_ICONS[type] ?? { name: 'notifications-outline', color: '#6B7280' };
 }
 
-// ── Actionable notification types ────────────────────────────────────────────
+// -- Actionable notification types -------------------------------------------
 
 const ACTIONABLE_TYPES: Record<string, { acceptKey: string; declineKey?: string }> = {
   friend_request_received: { acceptKey: 'actions.accept', declineKey: 'actions.decline' },
@@ -111,7 +120,7 @@ const ACTIONABLE_TYPES: Record<string, { acceptKey: string; declineKey?: string 
   visit_feedback_prompt: { acceptKey: 'actions.review' },
 };
 
-// ── Time formatting ──────────────────────────────────────────────────────────
+// -- Time formatting ----------------------------------------------------------
 
 function formatTimeAgo(isoTimestamp: string, t: (key: string, opts?: any) => string): string {
   const now = Date.now();
@@ -131,7 +140,7 @@ function formatTimeAgo(isoTimestamp: string, t: (key: string, opts?: any) => str
   return new Date(isoTimestamp).toLocaleDateString();
 }
 
-// ── Section grouping ─────────────────────────────────────────────────────────
+// -- Section grouping ---------------------------------------------------------
 
 function groupNotificationsByDate(
   notifications: ServerNotification[],
@@ -164,7 +173,7 @@ function groupNotificationsByDate(
   return sections;
 }
 
-// ── Avatar helpers ───────────────────────────────────────────────────────────
+// -- Avatar helpers -----------------------------------------------------------
 
 function getAvatarUrl(data: Record<string, unknown>): string | null {
   return (
@@ -191,9 +200,48 @@ function getInitials(data: Record<string, unknown>): string {
     .slice(0, 2);
 }
 
-// ── Props ────────────────────────────────────────────────────────────────────
+function renderTitleWithBoldActor(
+  title: string,
+  data: Record<string, unknown>,
+): React.ReactNode {
+  const explicitName =
+    (data?.inviterName as string | undefined) ||
+    (data?.senderName as string | undefined) ||
+    (data?.userName as string | undefined) ||
+    (data?.fromUserName as string | undefined) ||
+    null;
 
-interface NotificationsModalProps {
+  if (!explicitName || !title.includes(explicitName)) {
+    return (
+      <Text
+        style={styles.titleSemibold}
+        numberOfLines={2}
+        testID="notifications-title-semibold"
+      >
+        {title}
+      </Text>
+    );
+  }
+
+  const idx = title.indexOf(explicitName);
+  const before = title.slice(0, idx);
+  const after = title.slice(idx + explicitName.length);
+  return (
+    <Text
+      style={styles.titleSemibold}
+      numberOfLines={2}
+      testID="notifications-title-with-bold-actor"
+    >
+      {before}
+      <Text style={styles.titleBoldActor} testID="notifications-title-bold-actor">
+        {explicitName}
+      </Text>
+      {after}
+    </Text>
+  );
+}
+
+export interface NotificationsSheetProps {
   visible: boolean;
   onClose: () => void;
   notifications: ServerNotification[];
@@ -205,7 +253,6 @@ interface NotificationsModalProps {
   onMarkAsRead: (notificationId: string) => void;
   onDeleteNotification: (notificationId: string) => void;
   onNotificationTap: (notification: ServerNotification) => void;
-  // Action handlers
   onAcceptFriendRequest?: (requestId: string, notificationId: string) => Promise<void>;
   onDeclineFriendRequest?: (requestId: string, notificationId: string) => Promise<void>;
   onAcceptPairRequest?: (requestId: string, notificationId: string) => Promise<void>;
@@ -220,9 +267,7 @@ interface NotificationsModalProps {
   pendingActions?: Set<string>;
 }
 
-// ── Component ────────────────────────────────────────────────────────────────
-
-export default function NotificationsModal({
+export default function NotificationsSheet({
   visible,
   onClose,
   notifications,
@@ -240,37 +285,71 @@ export default function NotificationsModal({
   onDeclinePairRequest,
   onAcceptCollaborationInvite,
   onDeclineCollaborationInvite,
-  onAcceptLinkRequest,
-  onDeclineLinkRequest,
   onRefresh,
   onLoadMore,
   hasMore = false,
   pendingActions = EMPTY_PENDING_SET,
-}: NotificationsModalProps) {
+}: NotificationsSheetProps) {
   const { t } = useTranslation(['notifications', 'common']);
   const insets = useSafeAreaInsets();
   const netInfo = useNetInfo();
+  const sheetRef = useRef<BottomSheet>(null);
   const isOffline = netInfo.isConnected === false;
-  const [activeFilter, setActiveFilter] = useState<FilterTab>('all');
   const [failedImageIds, setFailedImageIds] = useState<Set<string>>(new Set());
   const [actionErrors, setActionErrors] = useState<Set<string>>(new Set());
 
-  // ── Filtered + grouped notifications ──
-  const filteredNotifications = useMemo(() => {
-    if (activeFilter === 'all') return notifications;
-    return notifications.filter((n) => getFilterCategory(n.type) === activeFilter);
-  }, [notifications, activeFilter]);
+  const sheetIndex = visible ? 0 : -1;
+
+  useEffect(() => {
+    if (visible) {
+      sheetRef.current?.snapToIndex(0);
+    } else {
+      sheetRef.current?.close();
+    }
+  }, [visible]);
 
   const sections = useMemo(
-    () => groupNotificationsByDate(filteredNotifications, t),
-    [filteredNotifications, t]
+    () => groupNotificationsByDate(notifications, t),
+    [notifications, t]
   );
+
+  const listContentStyle = useMemo(
+    () => [
+      styles.listContent,
+      { paddingBottom: Math.max(insets.bottom, 16) + 16 },
+    ],
+    [insets.bottom]
+  );
+
+  const handleSheetChange = useCallback(
+    (index: number): void => {
+      if (index === -1 && visible) {
+        onClose();
+      }
+    },
+    [onClose, visible]
+  );
+
+  const renderBackdrop = useCallback(
+    (props: BottomSheetBackdropProps) => (
+      <BottomSheetBackdrop
+        {...props}
+        appearsOnIndex={0}
+        disappearsOnIndex={-1}
+        pressBehavior="close"
+        opacity={0.32}
+      />
+    ),
+    []
+  );
+
+  const handleClosePress = useCallback(() => {
+    sheetRef.current?.close();
+  }, []);
 
   const handleImageError = useCallback((notificationId: string) => {
     setFailedImageIds((prev) => new Set(prev).add(notificationId));
   }, []);
-
-  // ── Action handlers ──
 
   const handleAccept = useCallback(
     async (notification: ServerNotification) => {
@@ -282,11 +361,6 @@ export default function NotificationsModal({
       });
 
       try {
-        // Entity ID resolution: check data JSONB first, then fall back to the
-        // notification.related_id DB column. notify-dispatch always stores the
-        // entity ID in related_id, so this fallback ensures action buttons work
-        // even when an edge function omits the ID from the data JSONB payload
-        // (e.g., send-pair-request's friend_request_received path).
         switch (type) {
           case 'friend_request_received':
             await onAcceptFriendRequest?.(
@@ -308,13 +382,11 @@ export default function NotificationsModal({
             break;
           case 'trial_ending':
           case 'visit_feedback_prompt':
-            // Single-action types: mark as read, close modal, navigate
             if (!notification.is_read) onMarkAsRead(notification.id);
             onClose();
             onNotificationTap(notification);
             break;
           default:
-            // For single-action types, tap navigates
             onNotificationTap(notification);
             break;
         }
@@ -326,7 +398,8 @@ export default function NotificationsModal({
       onAcceptFriendRequest,
       onAcceptPairRequest,
       onAcceptCollaborationInvite,
-      onAcceptLinkRequest,
+      onMarkAsRead,
+      onClose,
       onNotificationTap,
     ]
   );
@@ -369,102 +442,128 @@ export default function NotificationsModal({
       onDeclineFriendRequest,
       onDeclinePairRequest,
       onDeclineCollaborationInvite,
-      onDeclineLinkRequest,
     ]
   );
-
-  // ── Card tap ──
 
   const handleCardPress = useCallback(
     (notification: ServerNotification) => {
       const isActionable = !!ACTIONABLE_TYPES[notification.type];
       if (isActionable) {
-        // Actionable notifications (friend request, pair request, collab invite, etc.)
-        // must NOT be deleted on card tap — user needs the Accept/Decline buttons.
-        // Only mark as read so the unread indicator clears.
         if (!notification.is_read) {
           onMarkAsRead(notification.id);
         }
       } else {
-        // Non-actionable notifications: remove from list (user acknowledged by tapping)
         onDeleteNotification(notification.id);
       }
-      // Close modal + navigate
       onClose();
       onNotificationTap(notification);
     },
     [onDeleteNotification, onMarkAsRead, onClose, onNotificationTap]
   );
 
-  // ── Render notification card ──
+  const getCategoryPillConfig = useCallback(
+    (type: string) => {
+      const category = getFilterCategory(type);
+      const tokens = glass.notificationsSheet.categoryPill[category];
+      const label = t(`notifications:categoryLabels.${category}`);
+      return { ...tokens, label };
+    },
+    [t]
+  );
 
-  const renderNotification = ({ item }: { item: ServerNotification }) => {
-    const iconConfig = getIconConfig(item.type);
-    const actionConfig = ACTIONABLE_TYPES[item.type];
-    const isActionable = !!actionConfig;
-    const isPending = pendingActions.has(item.id);
-    const hasError = actionErrors.has(item.id);
-    const avatarUrl = getAvatarUrl(item.data || {});
-    const initials = getInitials(item.data || {});
-    const showAvatar = !!avatarUrl || item.actor_id != null;
+  const renderAvatar = useCallback(
+    (item: ServerNotification) => {
+      const iconConfig = getIconConfig(item.type);
+      const avatarUrl = getAvatarUrl(item.data || {});
+      const initials = getInitials(item.data || {});
+      const canRenderInitials = avatarUrl !== null && initials !== '?';
 
-    return (
-      <View style={styles.notificationCardWrapper}>
+      return (
+        <View
+          style={[
+            styles.avatarShell,
+            {
+              borderColor: item.is_read
+                ? glass.notificationsSheet.avatarRing.read
+                : glass.notificationsSheet.avatarRing.unread,
+            },
+          ]}
+        >
+          <View style={styles.avatarInner}>
+            {avatarUrl && !failedImageIds.has(item.id) ? (
+              <ImageWithFallback
+                source={{ uri: String(avatarUrl).trim() }}
+                style={styles.avatarImage}
+                onError={() => handleImageError(item.id)}
+                resizeMode="cover"
+              />
+            ) : canRenderInitials ? (
+              <View style={styles.initialsFallback}>
+                <Text style={styles.avatarInitials}>{initials}</Text>
+              </View>
+            ) : (
+              // ORCH-0975 v1: avatar URL comes from data.inviterAvatarUrl when present.
+              <View style={[styles.iconFallback, { backgroundColor: `${iconConfig.color}15` }]}>
+                <Icon name={iconConfig.name} size={24} color={iconConfig.color} />
+              </View>
+            )}
+          </View>
+          {!item.is_read && <View style={styles.avatarStatusDot} />}
+        </View>
+      );
+    },
+    [failedImageIds, handleImageError]
+  );
+
+  const renderNotification = useCallback(
+    ({ item }: { item: ServerNotification }) => {
+      const actionConfig = ACTIONABLE_TYPES[item.type];
+      const isActionable = !!actionConfig;
+      const isPending = pendingActions.has(item.id);
+      const hasError = actionErrors.has(item.id);
+      const categoryPill = getCategoryPillConfig(item.type);
+      const timeAgo = formatTimeAgo(item.created_at, t);
+
+      return (
         <TouchableOpacity
           style={[
             styles.notificationCard,
             !item.is_read && styles.notificationCardUnread,
           ]}
           onPress={() => handleCardPress(item)}
-          activeOpacity={0.7}
+          activeOpacity={0.85}
           disabled={isPending}
+          accessibilityRole="button"
+          accessibilityLabel={`${item.title}. ${item.body}. ${item.is_read ? 'Read' : 'Unread'}. ${timeAgo} ago`}
         >
-          {/* Left border for unread */}
-          {!item.is_read && <View style={styles.unreadLeftBorder} />}
+          {renderAvatar(item)}
 
-          {/* Avatar / Icon Section */}
-          <View style={styles.avatarSection}>
-            {showAvatar ? (
-              <View style={styles.avatarCircle}>
-                {avatarUrl && !failedImageIds.has(item.id) ? (
-                  <ImageWithFallback
-                    source={{ uri: String(avatarUrl).trim() }}
-                    style={styles.avatarImage}
-                    onError={() => handleImageError(item.id)}
-                    resizeMode="cover"
-                  />
-                ) : (
-                  <Text style={styles.avatarInitials}>{initials}</Text>
-                )}
-              </View>
-            ) : (
-              <View style={[styles.iconCircle, { backgroundColor: iconConfig.color + '15' }]}>
-                <Icon
-                  name={iconConfig.name}
-                  size={20}
-                  color={iconConfig.color}
-                />
-              </View>
-            )}
-            {!item.is_read && <View style={styles.unreadDot} />}
-          </View>
-
-          {/* Main Content */}
-          <View style={styles.mainContent}>
+          <View style={styles.cardContent}>
             <View style={styles.titleRow}>
-              <Text style={styles.notificationTitle} numberOfLines={1}>
-                {item.title}
+              <View style={styles.titleTextWrap}>
+                {renderTitleWithBoldActor(item.title, item.data || {})}
+              </View>
+              <Text style={styles.notificationTime}>{timeAgo}</Text>
+            </View>
+
+            {/* ORCH-0975 addendum: v1 renders body only; location-chain waits for structured data. */}
+            {!!item.body && (
+              <Text style={styles.notificationBody} numberOfLines={2}>
+                {item.body}
               </Text>
-              <Text style={styles.notificationTime}>
-                {formatTimeAgo(item.created_at, t)}
+            )}
+
+            <View
+              style={[styles.categoryPill, { backgroundColor: categoryPill.bg }]}
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+            >
+              <Icon name={categoryPill.icon} size={12} color={categoryPill.text} />
+              <Text style={[styles.categoryPillText, { color: categoryPill.text }]}>
+                {categoryPill.label}
               </Text>
             </View>
 
-            <Text style={styles.notificationBody} numberOfLines={2}>
-              {item.body}
-            </Text>
-
-            {/* Action buttons */}
             {isActionable && !isPending && (
               <View style={styles.actionButtons}>
                 <TouchableOpacity
@@ -473,7 +572,10 @@ export default function NotificationsModal({
                     e.stopPropagation?.();
                     handleAccept(item);
                   }}
-                  activeOpacity={0.7}
+                  activeOpacity={0.85}
+                  hitSlop={4}
+                  accessibilityRole="button"
+                  accessibilityLabel={t(`notifications:${actionConfig.acceptKey}`)}
                 >
                   <Text style={styles.acceptButtonText}>
                     {t(`notifications:${actionConfig.acceptKey}`)}
@@ -486,7 +588,10 @@ export default function NotificationsModal({
                       e.stopPropagation?.();
                       handleDecline(item);
                     }}
-                    activeOpacity={0.7}
+                    activeOpacity={0.85}
+                    hitSlop={4}
+                    accessibilityRole="button"
+                    accessibilityLabel={t(`notifications:${actionConfig.declineKey}`)}
                   >
                     <Text style={styles.declineButtonText}>
                       {t(`notifications:${actionConfig.declineKey}`)}
@@ -496,37 +601,49 @@ export default function NotificationsModal({
               </View>
             )}
 
-            {/* Pending spinner */}
             {isPending && (
-              <View style={styles.actionButtons}>
-                <ActivityIndicator size="small" color="#eb7825" />
+              <View style={styles.pendingRow}>
+                <ActivityIndicator size="small" color={colors.accent} />
               </View>
             )}
 
-            {/* Error state */}
             {hasError && !isPending && (
-              <Text style={styles.actionError}>{t('notifications:actions.actionFailed')}</Text>
+              <Text style={styles.actionError}>
+                {t('notifications:actions.actionFailed')}
+              </Text>
             )}
           </View>
+
+          {!item.is_read && (
+            <View
+              style={styles.unreadDotRight}
+              accessibilityElementsHidden
+              importantForAccessibility="no"
+            />
+          )}
         </TouchableOpacity>
-      </View>
-    );
-  };
-
-  // ── Section header ──
-
-  const renderSectionHeader = ({
-    section,
-  }: {
-    section: { title: string; data: ServerNotification[] };
-  }) => (
-    <View style={styles.sectionHeader}>
-      <Text style={styles.sectionHeaderText}>{section.title}</Text>
-      <View style={styles.sectionHeaderLine} />
-    </View>
+      );
+    },
+    [
+      actionErrors,
+      getCategoryPillConfig,
+      handleAccept,
+      handleCardPress,
+      handleDecline,
+      pendingActions,
+      renderAvatar,
+      t,
+    ]
   );
 
-  // ── Skeleton loader ──
+  const renderSectionHeader = useCallback(
+    ({ section }: { section: { title: string; data: ServerNotification[] } }) => (
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionHeaderText}>{section.title}</Text>
+      </View>
+    ),
+    []
+  );
 
   const renderSkeleton = () => (
     <View style={styles.skeletonContainer}>
@@ -536,574 +653,577 @@ export default function NotificationsModal({
           <View style={styles.skeletonContent}>
             <View style={styles.skeletonTitle} />
             <View style={styles.skeletonBody} />
-            <View style={styles.skeletonBodyShort} />
+            <View style={styles.skeletonPill} />
           </View>
         </View>
       ))}
     </View>
   );
 
-  // ── Render ──
+  const renderBody = () => {
+    if (isLoading && notifications.length === 0) return renderSkeleton();
+
+    if (isError) {
+      return (
+        <View style={styles.centerState}>
+          <Icon name="alert-circle-outline" size={48} color={colors.error[400]} />
+          <Text style={styles.centerTitle}>{t('notifications:errorState.title')}</Text>
+          <Text style={styles.centerSubtext}>{t('notifications:errorState.subtitle')}</Text>
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={onRefresh}
+            accessibilityRole="button"
+            accessibilityLabel={t('notifications:errorState.tryAgain')}
+          >
+            <Text style={styles.retryButtonText}>
+              {t('notifications:errorState.tryAgain')}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    if (notifications.length === 0 && !isOffline) {
+      return (
+        <View style={styles.centerState}>
+          <View style={styles.emptyIconCircle}>
+            <Icon name="notifications-outline" size={40} color={colors.gray[300]} />
+          </View>
+          <Text style={styles.centerTitle}>{t('notifications:emptyState.title')}</Text>
+          <Text style={styles.centerSubtext}>
+            {t('notifications:emptyState.subtitle')}
+          </Text>
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.notificationsBody}>
+        {isOffline && notifications.length > 0 && (
+          <View style={styles.offlineBanner}>
+            <Icon name="cloud-offline-outline" size={14} color={colors.gray[500]} />
+            <Text style={styles.offlineBannerText}>
+              {t('notifications:offline.banner')}
+            </Text>
+          </View>
+        )}
+        <BottomSheetSectionList
+          style={styles.sectionList}
+          sections={sections}
+          keyExtractor={(item: ServerNotification) => item.id}
+          renderItem={renderNotification}
+          renderSectionHeader={renderSectionHeader}
+          stickySectionHeadersEnabled={false}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={listContentStyle}
+          onEndReached={() => {
+            if (hasMore) onLoadMore?.();
+          }}
+          onEndReachedThreshold={0.3}
+          refreshing={false}
+          onRefresh={onRefresh}
+        />
+      </View>
+    );
+  };
+
+  const showMarkAllRead = unreadCount > 0;
+  const showClearAll = notifications.length > 0;
+  const showActionRow = showMarkAllRead || showClearAll;
 
   return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      transparent
-      onRequestClose={onClose}
-      statusBarTranslucent
+    <BottomSheet
+      ref={sheetRef}
+      index={sheetIndex}
+      snapPoints={SHEET_SNAP_POINTS}
+      enablePanDownToClose
+      onChange={handleSheetChange}
+      backdropComponent={renderBackdrop}
+      backgroundStyle={styles.sheetBackground}
+      handleIndicatorStyle={styles.handleIndicator}
     >
-      <View style={styles.sheetOverlay}>
-        {/* Tap backdrop to close */}
-        <TouchableOpacity
-          style={styles.backdropTouch}
-          activeOpacity={1}
-          onPress={onClose}
-        />
-
-        <View
-          style={[styles.sheetContent, { paddingBottom: Math.max(insets.bottom, 16) }]}
-        >
-          {/* Drag Handle */}
-          <View style={styles.dragHandleContainer}>
-            <View style={styles.dragHandle} />
-          </View>
-
-          {/* Header */}
-          <View style={styles.header}>
-            <View style={styles.headerLeft}>
-              <Text style={styles.headerTitle}>{t('notifications:header.title')}</Text>
+      <BottomSheetView style={styles.sheetContent}>
+        <View style={styles.header}>
+          <View style={styles.headerTitleRow}>
+            <View style={styles.headerTitleCluster}>
+              <Text style={styles.headerTitle}>
+                {t('notifications:header.title')}
+              </Text>
               {unreadCount > 0 && (
-                <Text style={styles.headerUnreadBadge}>{t('notifications:header.unread', { count: unreadCount })}</Text>
+                <View style={styles.newCountPill}>
+                  <Text style={styles.newCountText}>
+                    {t('notifications:header.newCount', { count: unreadCount })}
+                  </Text>
+                </View>
               )}
             </View>
-            <View style={styles.headerActions}>
-              {unreadCount > 0 && (
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={handleClosePress}
+              activeOpacity={0.85}
+              hitSlop={12}
+              accessibilityLabel="Close notifications"
+              accessibilityRole="button"
+            >
+              <Icon name="close" size={18} color={colors.gray[500]} />
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.headerSubtitle}>
+            {t('notifications:header.subtitle')}
+          </Text>
+
+          {showActionRow && (
+            <View style={styles.actionPillRow}>
+              {showMarkAllRead && (
                 <TouchableOpacity
-                  style={styles.headerActionButton}
+                  style={styles.actionPillHalf}
                   onPress={onMarkAllRead}
+                  activeOpacity={0.85}
+                  accessibilityLabel={t('notifications:header.markAllRead')}
+                  accessibilityHint="Marks every unread notification as read"
+                  accessibilityRole="button"
                 >
-                  <Icon name="checkmark-done-outline" size={16} color="#eb7825" />
-                  <Text style={styles.headerActionText}>{t('notifications:header.markAllRead')}</Text>
+                  <Icon name="checkmark-done" size={16} color={colors.accent} />
+                  <Text style={styles.markAllText}>
+                    {t('notifications:header.markAllRead')}
+                  </Text>
                 </TouchableOpacity>
               )}
-              {notifications.length > 0 && (
+
+              {showMarkAllRead && showClearAll && <View style={styles.actionDivider} />}
+
+              {showClearAll && (
                 <TouchableOpacity
-                  style={styles.headerActionButton}
+                  style={styles.actionPillHalf}
                   onPress={onClearAll}
+                  activeOpacity={0.85}
+                  accessibilityLabel={t('notifications:header.clearAll')}
+                  accessibilityHint="Removes all notifications"
+                  accessibilityRole="button"
                 >
-                  <Icon name="trash-outline" size={16} color={colors.gray[400]} />
-                  <Text style={[styles.headerActionText, { color: colors.gray[400] }]}>
+                  <Icon name="trash-outline" size={16} color={colors.gray[500]} />
+                  <Text style={styles.clearAllText}>
                     {t('notifications:header.clearAll')}
                   </Text>
                 </TouchableOpacity>
               )}
             </View>
-          </View>
-
-          {/* Filter Tabs — fixed vertical size; flexShrink:0 so list never compresses them */}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.filterTabsContainer}
-            style={styles.filterTabsScroll}
-            nestedScrollEnabled
-          >
-            {FILTER_TAB_KEYS.map((key) => (
-              <TouchableOpacity
-                key={key}
-                style={[
-                  styles.filterTab,
-                  activeFilter === key && styles.filterTabActive,
-                ]}
-                onPress={() => setActiveFilter(key)}
-                activeOpacity={0.7}
-              >
-                <Text
-                  style={[
-                    styles.filterTabText,
-                    activeFilter === key && styles.filterTabTextActive,
-                  ]}
-                >
-                  {t(`notifications:filters.${key}`)}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-
-          {/* Content — flex:1 + minHeight:0 so SectionList scrolls inside sheet without stealing filter height */}
-          <View style={styles.sheetMainBody}>
-            {isLoading ? (
-              renderSkeleton()
-            ) : isError ? (
-              <View style={styles.errorState}>
-                <Icon name="alert-circle-outline" size={48} color={colors.gray[300]} />
-                <Text style={styles.errorTitle}>{t('notifications:errorState.title')}</Text>
-                <Text style={styles.errorSubtext}>
-                  {t('notifications:errorState.subtitle')}
-                </Text>
-                <TouchableOpacity style={styles.retryButton} onPress={onRefresh}>
-                  <Text style={styles.retryButtonText}>{t('notifications:errorState.tryAgain')}</Text>
-                </TouchableOpacity>
-              </View>
-            ) : filteredNotifications.length === 0 && !isOffline ? (
-              <View style={styles.emptyState}>
-                <View style={styles.emptyIconCircle}>
-                  <Icon
-                    name="notifications-outline"
-                    size={40}
-                    color={colors.gray[300]}
-                  />
-                </View>
-                <Text style={styles.emptyStateTitle}>{t('notifications:emptyState.title')}</Text>
-                <Text style={styles.emptyStateSubtext}>
-                  {t('notifications:emptyState.subtitle')}
-                </Text>
-              </View>
-            ) : (
-              <View style={styles.notificationsListColumn}>
-                {isOffline && (
-                  <View style={styles.offlineBanner}>
-                    <Icon name="cloud-offline-outline" size={14} color="#6B7280" />
-                    <Text style={styles.offlineBannerText}>
-                      {t('notifications:offline.banner')}
-                    </Text>
-                  </View>
-                )}
-                <SectionList
-                  style={styles.sectionList}
-                  sections={sections}
-                  keyExtractor={(item) => item.id}
-                  renderItem={renderNotification}
-                  renderSectionHeader={renderSectionHeader}
-                  stickySectionHeadersEnabled={false}
-                  showsVerticalScrollIndicator={false}
-                  contentContainerStyle={styles.listContent}
-                  onEndReached={() => {
-                    if (hasMore) onLoadMore?.();
-                  }}
-                  onEndReachedThreshold={0.3}
-                  refreshing={false}
-                  onRefresh={onRefresh}
-                />
-              </View>
-            )}
-          </View>
+          )}
         </View>
-      </View>
-    </Modal>
+
+        {renderBody()}
+      </BottomSheetView>
+    </BottomSheet>
   );
 }
 
-// ── Styles ───────────────────────────────────────────────────────────────────
-
 const styles = StyleSheet.create({
-  sheetOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.35)',
-    justifyContent: 'flex-end',
+  sheetBackground: {
+    backgroundColor: glass.notificationsSheet.canvas,
+    borderTopLeftRadius: glass.notificationsSheet.topRadius,
+    borderTopRightRadius: glass.notificationsSheet.topRadius,
+    ...glass.bottomSheet.shadow,
   },
-  backdropTouch: {
-    flex: 1,
+  handleIndicator: {
+    backgroundColor: glass.notificationsSheet.handle.color,
+    width: glass.notificationsSheet.handle.width,
+    height: glass.notificationsSheet.handle.height,
+    borderRadius: glass.notificationsSheet.handle.radius,
   },
   sheetContent: {
-    height: SHEET_HEIGHT,
-    flexDirection: 'column',
-    backgroundColor: colors.background.primary,
-    borderTopLeftRadius: 36,
-    borderTopRightRadius: 36,
+    flex: 1,
+    backgroundColor: glass.notificationsSheet.canvas,
+    borderTopLeftRadius: glass.notificationsSheet.topRadius,
+    borderTopRightRadius: glass.notificationsSheet.topRadius,
     overflow: 'hidden',
-    ...shadows.xl,
   },
-  dragHandleContainer: {
-    alignItems: 'center',
-    paddingTop: 12,
-    paddingBottom: 4,
-  },
-  dragHandle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.gray[300],
-  },
-
-  // ── Header ──
   header: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.gray[100],
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 8,
   },
-  headerLeft: {
+  headerTitleRow: {
+    minHeight: 44,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
-    marginBottom: spacing.sm,
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  headerTitleCluster: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
   headerTitle: {
-    fontSize: 16,
+    flexShrink: 1,
+    fontSize: 28,
     fontWeight: '700',
-    color: colors.text.primary,
+    color: colors.gray[900],
+    letterSpacing: 0,
   },
-  headerUnreadBadge: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#eb7825',
+  newCountPill: {
+    flexShrink: 0,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: 'rgba(235, 120, 37, 0.10)',
   },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-  },
-  headerActionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  headerActionText: {
+  newCountText: {
     fontSize: 13,
-    fontWeight: '500',
-    color: '#eb7825',
+    fontWeight: '600',
+    color: colors.accent,
   },
-
-  sheetMainBody: {
+  closeButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.gray[100],
+  },
+  headerSubtitle: {
+    marginTop: 4,
+    fontSize: 15,
+    fontWeight: '400',
+    color: colors.gray[500],
+    lineHeight: 20,
+  },
+  actionPillRow: {
+    minHeight: 52,
+    marginTop: 18,
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    backgroundColor: 'rgba(243, 244, 246, 0.70)',
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  actionPillHalf: {
+    minHeight: 24,
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  actionDivider: {
+    width: 1,
+    height: 18,
+    backgroundColor: 'rgba(0, 0, 0, 0.08)',
+  },
+  markAllText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.accent,
+  },
+  clearAllText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.gray[500],
+  },
+  notificationsBody: {
     flex: 1,
     minHeight: 0,
   },
   sectionList: {
     flex: 1,
   },
-  notificationsListColumn: {
-    flex: 1,
-    minHeight: 0,
+  listContent: {
+    paddingTop: 0,
   },
-
-  // ── Filter Tabs ──
-  filterTabsScroll: {
-    flexGrow: 0,
-    flexShrink: 0,
-    minHeight: 52,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.gray[100],
-  },
-  filterTabsContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.md,
-    paddingVertical: 10,
-    gap: spacing.sm,
-    flexGrow: 0,
-  },
-  filterTab: {
-    minHeight: 40,
-    paddingHorizontal: 16,
-    paddingVertical: 0,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: colors.gray[300],
-    backgroundColor: 'transparent',
-    flexShrink: 0,
-  },
-  filterTabActive: {
-    backgroundColor: '#eb7825',
-    borderColor: '#eb7825',
-  },
-  filterTabText: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: colors.gray[500],
-  },
-  filterTabTextActive: {
-    color: colors.text.inverse,
-    fontWeight: '600',
-  },
-
-  // ── Section Header ──
   sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 6,
-    gap: 12,
+    marginLeft: 20,
+    marginTop: 24,
+    marginBottom: 12,
   },
   sectionHeaderText: {
     fontSize: 12,
     fontWeight: '700',
-    color: colors.gray[400],
+    color: 'rgba(0, 0, 0, 0.42)',
+    letterSpacing: 1.2,
     textTransform: 'uppercase',
-    letterSpacing: 0.6,
-  },
-  sectionHeaderLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: colors.gray[100],
-  },
-
-  // ── Notification Cards ──
-  listContent: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: 12,
-    paddingBottom: 24,
-  },
-  notificationCardWrapper: {
-    marginVertical: 4,
   },
   notificationCard: {
+    position: 'relative',
+    minHeight: 88,
+    marginHorizontal: 20,
+    marginBottom: 12,
+    paddingVertical: 16,
+    paddingLeft: 16,
+    paddingRight: 14,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: glass.notificationsSheet.cardBorder,
+    backgroundColor: '#FFFFFF',
     flexDirection: 'row',
     alignItems: 'flex-start',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    backgroundColor: colors.background.primary,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: colors.gray[100],
     gap: 12,
-    overflow: 'hidden',
+    ...glass.notificationsSheet.cardShadow,
   },
   notificationCardUnread: {
-    backgroundColor: colors.background.primary,
+    backgroundColor: glass.notificationsSheet.cardUnreadBg,
   },
-  unreadLeftBorder: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    width: 3,
-    backgroundColor: '#eb7825',
-    borderTopLeftRadius: 14,
-    borderBottomLeftRadius: 14,
+  avatarShell: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    borderWidth: glass.notificationsSheet.avatarRing.width,
+    padding: glass.notificationsSheet.avatarRing.gap,
+    backgroundColor: '#FFFFFF',
   },
-
-  // ── Avatar / Icon ──
-  avatarSection: {
-    position: 'relative',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: colors.primary[200],
-    backgroundColor: colors.primary[50],
+  avatarInner: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     overflow: 'hidden',
+    backgroundColor: '#FFFFFF',
   },
   avatarImage: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 22,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+  },
+  initialsFallback: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.accent,
   },
   avatarInitials: {
-    fontSize: 15,
+    fontSize: 18,
     fontWeight: '700',
-    color: '#ea6317',
+    color: '#FFFFFF',
   },
-  iconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+  iconFallback: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  unreadDot: {
+  avatarStatusDot: {
     position: 'absolute',
-    bottom: 0,
     right: 0,
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#eb7825',
-    borderWidth: 2,
-    borderColor: colors.background.primary,
+    bottom: 0,
+    width: glass.notificationsSheet.statusDot.size,
+    height: glass.notificationsSheet.statusDot.size,
+    borderRadius: glass.notificationsSheet.statusDot.size / 2,
+    backgroundColor: glass.notificationsSheet.statusDot.color,
+    borderColor: glass.notificationsSheet.statusDot.borderColor,
+    borderWidth: glass.notificationsSheet.statusDot.borderWidth,
   },
-
-  // ── Content ──
-  mainContent: {
+  cardContent: {
     flex: 1,
+    minWidth: 0,
+    paddingRight: 22,
   },
   titleRow: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 2,
+    alignItems: 'flex-start',
+    gap: 8,
   },
-  notificationTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.text.primary,
+  titleTextWrap: {
     flex: 1,
-    marginRight: spacing.sm,
+    minWidth: 0,
+  },
+  titleSemibold: {
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '600',
+    color: colors.gray[900],
+  },
+  titleBoldActor: {
+    fontWeight: '700',
   },
   notificationTime: {
-    fontSize: 11,
-    color: colors.gray[400],
+    flexShrink: 0,
+    fontSize: 13,
     fontWeight: '500',
+    color: colors.gray[400],
   },
   notificationBody: {
-    fontSize: 12,
-    color: colors.gray[500],
-    lineHeight: 16,
-    marginBottom: 4,
+    marginTop: 4,
+    fontSize: 14,
+    fontWeight: '400',
+    color: colors.gray[600],
+    lineHeight: 19,
   },
-
-  // ── Action Buttons ──
-  actionButtons: {
+  categoryPill: {
+    marginTop: 10,
+    alignSelf: 'flex-start',
     flexDirection: 'row',
-    gap: spacing.sm,
-    marginTop: spacing.xs,
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
   },
-  acceptButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    borderRadius: radius.sm,
-    backgroundColor: '#eb7825',
-  },
-  acceptButtonText: {
+  categoryPillText: {
     fontSize: 12,
     fontWeight: '600',
-    color: colors.text.inverse,
+  },
+  actionButtons: {
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  acceptButton: {
+    minHeight: 40,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: colors.accent,
+  },
+  acceptButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
   declineButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    borderRadius: radius.sm,
+    minHeight: 40,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 12,
     backgroundColor: colors.gray[100],
   },
   declineButtonText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.gray[500],
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.gray[700],
+  },
+  pendingRow: {
+    marginTop: 12,
+    alignItems: 'flex-start',
   },
   actionError: {
-    fontSize: 11,
+    marginTop: 8,
+    fontSize: 12,
     color: colors.error[500],
-    marginTop: 4,
   },
-
-  // ── Empty State ──
-  emptyState: {
+  unreadDotRight: {
+    position: 'absolute',
+    top: 18,
+    right: 12,
+    width: glass.notificationsSheet.unreadDotRight.size,
+    height: glass.notificationsSheet.unreadDotRight.size,
+    borderRadius: glass.notificationsSheet.unreadDotRight.size / 2,
+    backgroundColor: glass.notificationsSheet.unreadDotRight.color,
+  },
+  centerState: {
     flex: 1,
-    justifyContent: 'center',
+    minHeight: 360,
     alignItems: 'center',
+    justifyContent: 'center',
     paddingHorizontal: 40,
   },
   emptyIconCircle: {
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: colors.gray[50],
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 20,
+    backgroundColor: 'rgba(243, 244, 246, 0.60)',
   },
-  emptyStateTitle: {
-    fontSize: 18,
+  centerTitle: {
+    marginTop: 16,
+    fontSize: 17,
     fontWeight: '600',
-    color: colors.gray[700],
-    marginBottom: spacing.sm,
+    color: colors.gray[800],
   },
-  emptyStateSubtext: {
+  centerSubtext: {
+    marginTop: 6,
     fontSize: 14,
-    color: colors.gray[400],
-    textAlign: 'center',
+    color: colors.gray[500],
     lineHeight: 20,
-  },
-
-  // ── Error State ──
-  errorState: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 40,
-  },
-  errorTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.gray[700],
-    marginTop: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  errorSubtext: {
-    fontSize: 14,
-    color: colors.gray[400],
     textAlign: 'center',
-    marginBottom: spacing.lg,
   },
   retryButton: {
+    marginTop: spacing.lg,
     paddingHorizontal: 24,
     paddingVertical: 10,
     borderRadius: radius.md,
-    backgroundColor: '#eb7825',
+    backgroundColor: colors.accent,
   },
   retryButtonText: {
     fontSize: 14,
     fontWeight: '600',
-    color: colors.text.inverse,
+    color: '#FFFFFF',
   },
-
-  // ── Offline Banner ──
   offlineBanner: {
+    marginHorizontal: 20,
+    marginTop: 12,
+    marginBottom: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 8,
-    backgroundColor: '#F3F4F6',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-    flexShrink: 0,
+    gap: 8,
+    backgroundColor: colors.gray[100],
   },
   offlineBannerText: {
-    fontSize: 12,
-    color: '#6B7280',
+    fontSize: 13,
+    color: colors.gray[600],
   },
-
-  // ── Skeleton Loader ──
   skeletonContainer: {
     flex: 1,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
+    paddingHorizontal: 20,
+    paddingTop: 24,
     gap: 12,
   },
   skeletonCard: {
+    minHeight: 104,
     flexDirection: 'row',
     gap: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: glass.notificationsSheet.cardBorder,
+    backgroundColor: '#FFFFFF',
+    ...glass.notificationsSheet.cardShadow,
   },
   skeletonAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: colors.gray[100],
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(0, 0, 0, 0.06)',
   },
   skeletonContent: {
     flex: 1,
-    gap: 8,
   },
   skeletonTitle: {
-    width: '60%',
-    height: 12,
+    width: '70%',
+    height: 14,
     borderRadius: 4,
-    backgroundColor: colors.gray[100],
+    backgroundColor: 'rgba(0, 0, 0, 0.06)',
   },
   skeletonBody: {
     width: '90%',
-    height: 10,
+    height: 12,
+    marginTop: 8,
     borderRadius: 4,
-    backgroundColor: colors.gray[100],
+    backgroundColor: 'rgba(0, 0, 0, 0.06)',
   },
-  skeletonBodyShort: {
-    width: '50%',
-    height: 10,
-    borderRadius: 4,
-    backgroundColor: colors.gray[100],
+  skeletonPill: {
+    width: 60,
+    height: 22,
+    marginTop: 10,
+    borderRadius: 11,
+    backgroundColor: 'rgba(0, 0, 0, 0.06)',
   },
 });
+
+/** @deprecated Renamed to NotificationsSheet in ORCH-0975. */
+export { NotificationsSheet as NotificationsModal };
+
+/** @deprecated See NotificationsSheetProps. */
+export type NotificationsModalProps = NotificationsSheetProps;
