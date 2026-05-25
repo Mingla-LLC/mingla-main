@@ -722,6 +722,28 @@ function checkNoNewBackendFiles() {
     "supabase/functions/ticket-checkout-create/__tests__/nativePaidRegionGate.test.ts",
     "supabase/functions/ticket-checkout-create/__tests__/nativeRegionGate_adversarial.test.ts",
   ];
+  // ORCH-0955 [Native Stripe Tax for Platforms] PR #208 (2026-05-25). C7 is
+  // scoped to ORCH-0863 marketing; these backend touches are native Stripe Tax
+  // wiring (3-step calc/commit/reverse + embedded Tax UI replacement + region
+  // gate decommission). Same scoping rationale as prior allowlists.
+  const ORCH_0955_BACKEND_ALLOWLIST = [
+    "supabase/functions/_shared/email/__tests__/shell.test.ts",
+    "supabase/functions/_shared/email/ticketBody.ts",
+    "supabase/functions/_shared/email/types.ts",
+    "supabase/functions/_shared/stripe.ts",
+    "supabase/functions/_shared/stripeTax.ts",
+    "supabase/functions/_shared/stripeWebhookRouter.ts",
+    "supabase/functions/brand-stripe-tax-account-session/index.ts",
+    "supabase/functions/brand-stripe-tax-dashboard-link/index.ts",
+    "supabase/functions/refund-order/index.ts",
+    "supabase/functions/__tests__/orch_0955_native_stripe_tax.test.ts",
+    "supabase/functions/ticket-checkout-create/index.ts",
+    "supabase/functions/ticket-checkout-create/__tests__/nativePaidRegionGate.test.ts",
+    "supabase/functions/ticket-checkout-create/__tests__/nativeRegionGate_adversarial.test.ts",
+    "supabase/functions/ticket-confirmation-dispatch/index.ts",
+    "supabase/migrations/20260725000002_orch_0950_expanded_scope_dashboard_coherence.sql",
+    "supabase/migrations/20260727000000_orch_0955_native_stripe_tax.sql",
+  ];
 
   // ORCH-0915 [Buyer/traveller pay-in-full opt-out at payment-plan checkout]
   // CLOSE PR #203 (2026-05-24). Migration 20260724000007 + ticket-checkout-
@@ -819,6 +841,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_0946_BACKEND_ALLOWLIST,
     ...ORCH_0947_BACKEND_ALLOWLIST,
     ...ORCH_0953_BACKEND_ALLOWLIST,
+    ...ORCH_0955_BACKEND_ALLOWLIST,
     ...ORCH_0956_BACKEND_ALLOWLIST,
   ];
   const forbidden = changed.filter(

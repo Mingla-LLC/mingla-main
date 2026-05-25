@@ -172,6 +172,8 @@ interface OrderJoin {
   buyer_name: string | null;
   buyer_email: string | null;
   total_cents: number;
+  tax_amount_cents: number | null;
+  tax_breakdown: unknown[] | null;
   currency: string;
   payment_method: string | null;
   payment_status: string | null;
@@ -495,6 +497,10 @@ function buildRenderContext(args: {
       id: order.id,
       shortId: shortId(order.id),
       totalCents: Number(order.total_cents ?? 0),
+      taxAmountCents: Number(order.tax_amount_cents ?? 0),
+      taxBreakdown: Array.isArray(order.tax_breakdown)
+        ? order.tax_breakdown
+        : null,
       currency: order.currency ?? "GBP",
       buyerName: order.buyer_name,
       lineItems: (lineItems ?? []).map((li) => ({
@@ -551,6 +557,8 @@ async function fetchInstallmentEmailContext(
       buyer_name,
       buyer_email,
       total_cents,
+      tax_amount_cents,
+      tax_breakdown,
       currency,
       events!inner (
         title,

@@ -1617,3 +1617,22 @@ jobs:
           node-version: "20"
       - name: Run META-ORCH-0954 stanza gate
         run: node .github/scripts/strict-grep/meta-orch-0954-comms-ledger-stanza.mjs
+
+  orch-0955-native-stripe-tax:
+    name: "ORCH-0955: native Stripe Tax invariants"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0955 native tax coverage gate
+        run: node .github/scripts/strict-grep/orch-0955-native-tax-coverage.mjs
+      - name: Run ORCH-0955 tax commit gate
+        run: node .github/scripts/strict-grep/orch-0955-tax-commit-on-success.mjs
+      - name: Run ORCH-0955 tax reversal gate
+        run: node .github/scripts/strict-grep/orch-0955-tax-reversal-on-refund.mjs
+      - name: Run ORCH-0955 embedded tax UI gate
+        run: node .github/scripts/strict-grep/orch-0955-embedded-tax-ui.mjs
+      - name: Run ORCH-0955 region gate removal gate
+        run: node .github/scripts/strict-grep/orch-0955-region-gate-deleted.mjs

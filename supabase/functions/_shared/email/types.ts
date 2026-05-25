@@ -35,6 +35,8 @@ export interface TicketBodyInput {
     id: string;
     shortId: string;
     totalCents: number;
+    taxAmountCents?: number;
+    taxBreakdown?: unknown[] | null;
     currency: string;
     buyerName: string | null;
     lineItems: Array<{

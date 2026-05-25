@@ -223,6 +223,19 @@
 **Why:** Parallel ORCHs had no programmatic warning channel; 4-section conditional shape produced drift across skills.
 **Cross-references:** `Mingla_Artifacts/INVESTIGATION_META-ORCH-0954_*.md`, `Mingla_Artifacts/specs/SPEC_META-ORCH-0954_*.md`, I-COMMS-LEDGER-ENTRY-STANZA, I-COMMS-LEDGER-WRITE-ON-DISCOVERY, I-RESPONSE-2-SECTION-SHAPE.
 
+
+## DEC-166 — Native Stripe Tax universal + region gate decommissioned (ORCH-0955, 2026-05-25)
+
+**Decision A:** Native paid checkout is universal across all Stripe-supported countries. The `NATIVE_PAID_ALLOWED_REGIONS` env var + `_shared/stripeTax.ts` helper + `isNativePaidAllowedForBrand` gate + enforcement block at `ticket-checkout-create:360-389` + 4 gate test files are all DELETED. Stripe Tax for Platforms `tax.calculations.create` returns $0 for jurisdictions the connected account is not registered in, so unregistered buyers transparently pay face value with zero tax line — no UI surprise, no compliance gap.
+
+**Decision B:** `brand-stripe-tax-account-session` + Mingla-hosted page `mingla-business/app/connect-tax-registrations/index.tsx` mounting `<ConnectTaxRegistrations>` + `<ConnectTaxSettings>` GA embedded components is the canonical brand-side tax-config UI going forward. The old `brand-stripe-tax-dashboard-link` edge function (which redirected to Stripe Express Dashboard via `accounts.createLoginLink`) is DELETED — it would have broken under ORCH-0954's `controller.stripe_dashboard.type='none'` cutover.
+
+**Decision C:** Stripe API version remains pinned at `2026-04-22.dahlia` stable. The Tax-PI auto-integration path (`hooks[inputs][tax][calculation]`) requiring `.preview` was rejected to avoid the previously-documented Connect Accounts V1 controller-mode regression. Manual `tax.transactions.createFromCalculation` on webhook + manual `tax.transactions.createReversal` on refund is the canonical pattern.
+
+**Why:** Per operator decision 2026-05-24 ("native paid is what we launch with; native paid should be available in all Stripe countries so no need for allowed regions"). Region gate's purpose (protect brands from silently carrying tax liability) is satisfied by the Tax for Platforms wiring itself. Embedded Tax components are GA and operationally superior to the dashboard-link redirect.
+
+**Cross-references:** Investigation `Mingla_Artifacts/reports/INVESTIGATION_ORCH-0955_NATIVE_STRIPE_TAX.md` + Amendment 1; SPEC `Mingla_Artifacts/specs/SPEC_ORCH-0955_NATIVE_STRIPE_TAX.md`; CLOSE NOTE `Mingla_Artifacts/CLOSE_NOTE_ORCH-0955.md`; new invariants I-PROPOSED-NATIVE-TAX-COVERAGE + I-PROPOSED-TAX-COMMIT-ON-SUCCESS + I-PROPOSED-TAX-REVERSAL-ON-REFUND + I-PROPOSED-EMBEDDED-TAX-UI + I-PROPOSED-REGION-GATE-DELETED (codified in INVARIANT_REGISTRY this commit). Comms ledger: COMMS-0001 RESOLVED, COMMS-0002 + COMMS-0003 RESOLVED for ORCH-0955. Predecessor: DEC-154 (ORCH-0843 direct charges), ORCH-0953 region gate (now superseded). Operator sign-off: "both" (Q8 ConnectTax components decision 2026-05-24) + "you have full access execute this" (deploy authorization 2026-05-25).
+
 ---
 
 ## 2026-05-25 — DEC-178: Expo Router `web.output` flipped from `static` to `single` for mingla-business (META-ORCH-0952 [Buyer-web confirm pipeline deep forensics])

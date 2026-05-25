@@ -64,6 +64,10 @@ import {
   useCartTotals,
 } from "../../../src/components/checkout/CartContext";
 import {
+  CartTaxPreview,
+  type CartTaxPreviewResult,
+} from "../../../src/components/checkout/CartTaxPreview";
+import {
   readCheckoutResumePayload,
   writeCheckoutResumePayload,
 } from "../../../src/components/checkout/checkoutPersistence";
@@ -75,8 +79,9 @@ export default function CheckoutTripPaymentScreen(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const params = useLocalSearchParams<{ tripEventId: string }>();
-  const tripEventId =
-    typeof params.tripEventId === "string" ? params.tripEventId : null;
+  const tripEventId = typeof params.tripEventId === "string"
+    ? params.tripEventId
+    : null;
 
   const publicTripQuery = usePublicTripById(tripEventId);
   const trip = publicTripQuery.data?.trip ?? null;
@@ -140,6 +145,9 @@ export default function CheckoutTripPaymentScreen(): React.ReactElement {
   const [declineToast, setDeclineToast] = useState<boolean>(false);
   const [successToast, setSuccessToast] = useState<boolean>(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [taxPreview, setTaxPreview] = useState<CartTaxPreviewResult | null>(
+    null,
+  );
 
   const nativeCheckout = useNativeCheckoutFlow();
 
@@ -204,10 +212,12 @@ export default function CheckoutTripPaymentScreen(): React.ReactElement {
   const [keyboardHeight, setKeyboardHeight] = useState<number>(0);
   const scrollViewRef = useRef<ScrollView | null>(null);
   useEffect(() => {
-    const showEvent =
-      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
-    const hideEvent =
-      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+    const showEvent = Platform.OS === "ios"
+      ? "keyboardWillShow"
+      : "keyboardDidShow";
+    const hideEvent = Platform.OS === "ios"
+      ? "keyboardWillHide"
+      : "keyboardDidHide";
     const showSub = Keyboard.addListener(
       showEvent,
       (e: KeyboardEvent): void => {
@@ -235,6 +245,10 @@ export default function CheckoutTripPaymentScreen(): React.ReactElement {
   const handlePay = useCallback(async (): Promise<void> => {
     if (processing) return;
     if (tripEventId === null) return;
+    if (Platform.OS !== "web" && taxPreview === null) {
+      setPaymentError("Calculate tax before paying.");
+      return;
+    }
 
     if (Platform.OS === "web") {
       // ---------- WEB PATH ----------
@@ -290,10 +304,9 @@ export default function CheckoutTripPaymentScreen(): React.ReactElement {
         );
       } catch (error) {
         setProcessing(false);
-        const message =
-          error instanceof Error
-            ? error.message
-            : "Payment could not be completed. Please try again.";
+        const message = error instanceof Error
+          ? error.message
+          : "Payment could not be completed. Please try again.";
         setPaymentError(message);
         mixpanelService.track("ticket_checkout_failed", {
           surface,
@@ -307,6 +320,11 @@ export default function CheckoutTripPaymentScreen(): React.ReactElement {
     }
 
     // ---------- NATIVE PATH ----------
+    if (taxPreview === null) {
+      setPaymentError("Calculate tax before paying.");
+      return;
+    }
+    const readyTaxPreview = taxPreview;
     const surface: "native" = "native";
 
     try {
@@ -326,7 +344,9 @@ export default function CheckoutTripPaymentScreen(): React.ReactElement {
           email: buyer.email,
           phone: buyer.phone,
           marketingOptIn: buyer.marketingOptIn === true,
+          address: readyTaxPreview.address,
         },
+        taxCalculationId: readyTaxPreview.calculationId,
         ...(isPlanActive ? { paymentPlanChoice: paymentPlanChoice } : {}),
       });
 
@@ -367,7 +387,7 @@ export default function CheckoutTripPaymentScreen(): React.ReactElement {
         await Promise.race([
           confirmTicketCheckout(sessionId, ""),
           new Promise((_, reject) =>
-            setTimeout(() => reject(new Error("client_confirm_timeout")), 3000),
+            setTimeout(() => reject(new Error("client_confirm_timeout")), 3000)
           ),
         ]);
       } catch (confirmErr) {
@@ -380,8 +400,7 @@ export default function CheckoutTripPaymentScreen(): React.ReactElement {
           eventId: tripEventId,
           eventType: "trip",
           checkoutSessionId: sessionId,
-          reason:
-            confirmErr instanceof Error ? confirmErr.message : "unknown",
+          reason: confirmErr instanceof Error ? confirmErr.message : "unknown",
         });
       }
 
@@ -409,10 +428,9 @@ export default function CheckoutTripPaymentScreen(): React.ReactElement {
       }, 1200);
     } catch (error) {
       setProcessing(false);
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Payment could not be completed. Please try again.";
+      const message = error instanceof Error
+        ? error.message
+        : "Payment could not be completed. Please try again.";
       setPaymentError(message);
       mixpanelService.track("ticket_checkout_failed", {
         surface,
@@ -435,10 +453,24 @@ export default function CheckoutTripPaymentScreen(): React.ReactElement {
     paymentPlanChoice,
     processing,
     router,
+    taxPreview,
   ]);
+
+  const handleTaxPreviewChange = useCallback(
+    (result: CartTaxPreviewResult | null): void => {
+      setTaxPreview(result);
+      if (result !== null) setBuyer({ address: result.address });
+    },
+    [setBuyer],
+  );
+
+  const displayTotalCents = Platform.OS === "web" || taxPreview === null
+    ? totals.total
+    : taxPreview.totalCents;
 
   // Defensive shell while guards redirect.
   if (
+    tripEventId === null ||
     trip === null ||
     lines.length === 0 ||
     totals.isFree ||
@@ -498,7 +530,9 @@ export default function CheckoutTripPaymentScreen(): React.ReactElement {
                 {l.ticketName}
               </Text>
               <Text style={styles.summaryTotal}>
-                {l.isFree ? "Free" : formatCurrency(l.unitPrice * l.quantity, l.currency)}
+                {l.isFree
+                  ? "Free"
+                  : formatCurrency(l.unitPrice * l.quantity, l.currency)}
               </Text>
             </View>
           ))}
@@ -506,7 +540,7 @@ export default function CheckoutTripPaymentScreen(): React.ReactElement {
           <View style={styles.summaryTotalRow}>
             <Text style={styles.summaryTotalLabel}>Total</Text>
             <Text style={styles.summaryTotalValue}>
-              {formatCurrency(totals.total, totals.currency)}
+              {formatCurrency(displayTotalCents, totals.currency)}
             </Text>
           </View>
         </GlassCard>
@@ -587,19 +621,39 @@ export default function CheckoutTripPaymentScreen(): React.ReactElement {
           </View>
         ) : null}
 
+        {Platform.OS !== "web"
+          ? (
+            <GlassCard variant="base" radius="lg" padding={spacing.md}>
+              <CartTaxPreview
+                eventId={tripEventId}
+                lines={lines}
+                buyer={buyer}
+                currency={totals.currency}
+                disabled={processing}
+                onPreviewChange={handleTaxPreviewChange}
+              />
+            </GlassCard>
+          )
+          : null}
+
         <GlassCard variant="base" radius="lg" padding={spacing.md}>
           <Text style={styles.summaryLabel}>PAYMENT</Text>
           <Text style={styles.paymentCopy}>
-            You'll be redirected to Stripe to complete your purchase securely. Apple Pay and Google Pay are supported.
+            You'll be redirected to Stripe to complete your purchase securely.
+            Apple Pay and Google Pay are supported.
           </Text>
-          {checkoutSessionId !== null ? (
-            <Text style={styles.paymentMeta}>Session {checkoutSessionId.slice(0, 8)}</Text>
-          ) : null}
+          {checkoutSessionId !== null
+            ? (
+              <Text style={styles.paymentMeta}>
+                Session {checkoutSessionId.slice(0, 8)}
+              </Text>
+            )
+            : null}
         </GlassCard>
 
-        {paymentError !== null ? (
-          <Text style={styles.errorText}>{paymentError}</Text>
-        ) : null}
+        {paymentError !== null
+          ? <Text style={styles.errorText}>{paymentError}</Text>
+          : null}
       </ScrollView>
 
       {/* Sticky bottom bar */}
@@ -610,7 +664,8 @@ export default function CheckoutTripPaymentScreen(): React.ReactElement {
           keyboardHeight > 0 ? styles.bottomBarHidden : null,
         ]}
       >
-        {/* ORCH-0882 — pre-Stripe disclosure banner. Renders directly
+        {
+          /* ORCH-0882 — pre-Stripe disclosure banner. Renders directly
             above the Pay button when cart has plan-active lines. Stripe's
             hosted checkout only displays the deposit amount, so this is
             the last in-product surface to set buyer expectations about
@@ -668,26 +723,41 @@ export default function CheckoutTripPaymentScreen(): React.ReactElement {
         <View style={styles.totalRow}>
           <Text style={styles.totalLabel}>Total</Text>
           <Text style={styles.totalValue}>
-            {formatCurrency(totals.total, totals.currency)}
+            {formatCurrency(displayTotalCents, totals.currency)}
           </Text>
         </View>
         <Button
-          label={
-            isUsingInstallments && projectedSchedule !== null
-              ? `Pay ${formatCurrency(projectedSchedule.depositCents, projectedSchedule.currency, true)} deposit`
-              : `Pay ${formatCurrency(totals.total, totals.currency)}`
-          }
+          label={Platform.OS !== "web"
+            ? `Pay ${formatCurrency(displayTotalCents, totals.currency)}`
+            : isUsingInstallments && projectedSchedule !== null
+            ? `Pay ${
+              formatCurrency(
+                projectedSchedule.depositCents,
+                projectedSchedule.currency,
+                true,
+              )
+            } deposit`
+            : `Pay ${formatCurrency(totals.total, totals.currency)}`}
           onPress={handlePay}
           variant="primary"
           size="lg"
           fullWidth
           loading={processing}
-          disabled={processing}
-          accessibilityLabel={
-            isUsingInstallments && projectedSchedule !== null
-              ? `Pay ${formatCurrency(projectedSchedule.depositCents, projectedSchedule.currency, true)} deposit with card`
-              : `Pay ${formatCurrency(totals.total, totals.currency)} with card`
-          }
+          disabled={processing ||
+            (Platform.OS !== "web" && taxPreview === null)}
+          accessibilityLabel={Platform.OS !== "web"
+            ? `Pay ${
+              formatCurrency(displayTotalCents, totals.currency)
+            } with card`
+            : isUsingInstallments && projectedSchedule !== null
+            ? `Pay ${
+              formatCurrency(
+                projectedSchedule.depositCents,
+                projectedSchedule.currency,
+                true,
+              )
+            } deposit with card`
+            : `Pay ${formatCurrency(totals.total, totals.currency)} with card`}
         />
       </View>
 

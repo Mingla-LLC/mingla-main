@@ -30,8 +30,17 @@ export interface NativeCheckoutInput {
     email: string;
     phone: string;
     marketingOptIn?: boolean;
+    address: {
+      line1: string;
+      line2?: string;
+      city: string;
+      state?: string;
+      postal: string;
+      country: string;
+    };
   };
   idempotencyKey?: string;
+  taxCalculationId?: string | null;
 }
 
 export type NativeCheckoutOutcome =
@@ -50,6 +59,9 @@ type CheckoutCreateResponse =
       checkoutSessionId: string;
       buyerStatusToken: string;
       totalCents: number;
+      subtotalCents: number;
+      taxCents: number;
+      taxBreakdown: unknown[];
       currency: string;
       clientSecret: string;
       paymentIntentId: string;
@@ -78,8 +90,6 @@ type CheckoutCreateResponse =
     };
 
 const MERCHANT_DISPLAY_NAME = "Mingla";
-const NATIVE_REGION_GATE_MESSAGE =
-  "Native payment is not available in this region yet. Pay on the web to complete checkout.";
 
 export const isStripeGooglePayTestEnv = (): boolean =>
   process.env.EAS_BUILD_PROFILE !== "production";
@@ -110,8 +120,10 @@ export const useNativeCheckoutFlow = (): ((
             email: input.buyer.email,
             phone: input.buyer.phone,
             marketingOptIn: input.buyer.marketingOptIn === true,
+            address: input.buyer.address,
           },
           lines: input.lines,
+          ...(input.taxCalculationId ? { taxCalculationId: input.taxCalculationId } : {}),
           ...(input.idempotencyKey !== undefined
             ? { idempotencyKey: input.idempotencyKey }
             : {}),
@@ -126,9 +138,7 @@ export const useNativeCheckoutFlow = (): ((
       );
       return {
         outcome: "failed",
-        message: message === "native_paid_not_allowed_in_region"
-          ? NATIVE_REGION_GATE_MESSAGE
-          : message,
+        message,
       };
     }
 

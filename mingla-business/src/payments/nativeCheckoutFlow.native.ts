@@ -43,9 +43,18 @@ export interface NativeCheckoutInput {
     email: string;
     phone: string;
     marketingOptIn?: boolean;
+    address: {
+      line1: string;
+      line2?: string;
+      city: string;
+      state?: string;
+      postal: string;
+      country: string;
+    };
   };
   paymentPlanChoice?: "full" | "installments";
   idempotencyKey?: string;
+  taxCalculationId?: string | null;
 }
 
 export type NativeCheckoutOutcome =
@@ -55,38 +64,41 @@ export type NativeCheckoutOutcome =
 
 type CheckoutCreateResponse =
   | {
-      kind: "free_completed";
-      orderId: string;
-      buyerStatusToken?: string;
-    }
+    kind: "free_completed";
+    orderId: string;
+    buyerStatusToken?: string;
+  }
   | {
-      kind: "requires_payment";
-      checkoutSessionId: string;
-      buyerStatusToken: string;
-      totalCents: number;
-      currency: string;
-      clientSecret: string;
-      paymentIntentId: string;
-      publishableKey: string | null;
-      // ORCH-0844 Connect direct-charge config — see consumer mirror at
-      // app-mobile/src/payments/nativeCheckoutFlow.ts for full rationale.
-      // The mobile Stripe SDK MUST be re-initialised with stripeAccountId
-      // before initPaymentSheet, otherwise the confirm step hits Stripe
-      // under the platform context and the client_secret bound to the
-      // connected account is rejected (404 → double-resolve on iOS 26).
-      // customerId + customerEphemeralKeySecret are paired-or-absent.
-      stripeAccountId: string;
-      customerId: string | null;
-      customerEphemeralKeySecret: string | null;
-    }
+    kind: "requires_payment";
+    checkoutSessionId: string;
+    buyerStatusToken: string;
+    totalCents: number;
+    subtotalCents: number;
+    taxCents: number;
+    taxBreakdown: unknown[];
+    currency: string;
+    clientSecret: string;
+    paymentIntentId: string;
+    publishableKey: string | null;
+    // ORCH-0844 Connect direct-charge config — see consumer mirror at
+    // app-mobile/src/payments/nativeCheckoutFlow.ts for full rationale.
+    // The mobile Stripe SDK MUST be re-initialised with stripeAccountId
+    // before initPaymentSheet, otherwise the confirm step hits Stripe
+    // under the platform context and the client_secret bound to the
+    // connected account is rejected (404 → double-resolve on iOS 26).
+    // customerId + customerEphemeralKeySecret are paired-or-absent.
+    stripeAccountId: string;
+    customerId: string | null;
+    customerEphemeralKeySecret: string | null;
+  }
   | {
-      kind: "requires_web_redirect";
-      checkoutSessionId: string;
-      buyerStatusToken: string;
-      hostedCheckoutUrl: string | null;
-      totalCents: number;
-      currency: string;
-    };
+    kind: "requires_web_redirect";
+    checkoutSessionId: string;
+    buyerStatusToken: string;
+    hostedCheckoutUrl: string | null;
+    totalCents: number;
+    currency: string;
+  };
 
 const MERCHANT_DISPLAY_NAME = "Mingla";
 
@@ -109,8 +121,6 @@ const MERCHANT_DISPLAY_NAME = "Mingla";
 // for return-URL deep links.
 const BUSINESS_MERCHANT_IDENTIFIER = "merchant.com.sethogieva.minglabusiness";
 const BUSINESS_URL_SCHEME = "com.sethogieva.minglabusiness";
-const NATIVE_REGION_GATE_MESSAGE =
-  "Native payment is not available in this region yet. Pay on the web to complete checkout.";
 
 export const isStripeGooglePayTestEnv = (): boolean =>
   process.env.EAS_BUILD_PROFILE !== "production";
@@ -148,9 +158,9 @@ async function extractEdgeFunctionError(
   return typeof msg === "string" && msg.length > 0 ? msg : fallback;
 }
 
-export const useNativeCheckoutFlow = (): ((
+export const useNativeCheckoutFlow = (): (
   input: NativeCheckoutInput,
-) => Promise<NativeCheckoutOutcome>) => {
+) => Promise<NativeCheckoutOutcome> => {
   const { initPaymentSheet, presentPaymentSheet, isPaymentSheetSupported } =
     useStripePaymentSheet();
 
@@ -163,7 +173,9 @@ export const useNativeCheckoutFlow = (): ((
     }
 
     // 1. Create the checkout session on the server.
-    const { data, error } = await supabase.functions.invoke<CheckoutCreateResponse>(
+    const { data, error } = await supabase.functions.invoke<
+      CheckoutCreateResponse
+    >(
       "ticket-checkout-create",
       {
         body: {
@@ -174,8 +186,12 @@ export const useNativeCheckoutFlow = (): ((
             email: input.buyer.email,
             phone: input.buyer.phone,
             marketingOptIn: input.buyer.marketingOptIn === true,
+            address: input.buyer.address,
           },
           lines: input.lines,
+          ...(input.taxCalculationId
+            ? { taxCalculationId: input.taxCalculationId }
+            : {}),
           ...(input.paymentPlanChoice !== undefined
             ? { payment_plan_choice: input.paymentPlanChoice }
             : {}),
@@ -193,9 +209,7 @@ export const useNativeCheckoutFlow = (): ((
       );
       return {
         outcome: "failed",
-        message: message === "native_paid_not_allowed_in_region"
-          ? NATIVE_REGION_GATE_MESSAGE
-          : message,
+        message,
       };
     }
 
@@ -252,9 +266,9 @@ export const useNativeCheckoutFlow = (): ((
         // Paired-or-absent per edge function contract; absent → guest mode.
         ...(data.customerId && data.customerEphemeralKeySecret
           ? {
-              customerId: data.customerId,
-              customerEphemeralKeySecret: data.customerEphemeralKeySecret,
-            }
+            customerId: data.customerId,
+            customerEphemeralKeySecret: data.customerEphemeralKeySecret,
+          }
           : {}),
         // ORCH-0849 HOTFIX (2026-05-15): explicit applePay + googlePay
         // config blocks REQUIRED for the wallet buttons to render in
@@ -277,8 +291,7 @@ export const useNativeCheckoutFlow = (): ((
       if (initResult.error) {
         return {
           outcome: "failed",
-          message:
-            initResult.error.localizedMessage ??
+          message: initResult.error.localizedMessage ??
             initResult.error.message ??
             "Couldn't open payment sheet.",
         };
@@ -291,8 +304,7 @@ export const useNativeCheckoutFlow = (): ((
         }
         return {
           outcome: "failed",
-          message:
-            presentResult.error.localizedMessage ??
+          message: presentResult.error.localizedMessage ??
             presentResult.error.message ??
             "Payment failed.",
         };
