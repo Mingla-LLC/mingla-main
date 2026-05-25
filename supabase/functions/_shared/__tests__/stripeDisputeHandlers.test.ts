@@ -1,5 +1,8 @@
-import { assertEquals } from "https://deno.land/std@0.190.0/testing/asserts.ts";
-import { assertStringIncludes } from "https://deno.land/std@0.190.0/testing/asserts.ts";
+import {
+  assert,
+  assertEquals,
+  assertStringIncludes,
+} from "https://deno.land/std@0.190.0/testing/asserts.ts";
 import { handleChargeDispute } from "../stripeDisputeHandlers.ts";
 
 type QueryResult = { data?: unknown; error?: { message: string } | null };
@@ -294,6 +297,100 @@ Deno.test("ORCH-0956 T-03 — dispute.updated upserts without sending operator e
     );
     assertEquals(supabase.disputes.size, 1);
     assertEquals(alerts.length, 0);
+  } finally {
+    if (prior === undefined) Deno.env.delete("STRIPE_DISPUTE_ALERT_EMAILS");
+    else Deno.env.set("STRIPE_DISPUTE_ALERT_EMAILS", prior);
+  }
+});
+
+Deno.test("ORCH-0956 T-05 — missing dispute email env does not block upsert or AppsFlyer", async () => {
+  const prior = Deno.env.get("STRIPE_DISPUTE_ALERT_EMAILS");
+  const originalWarn = console.warn;
+  const warnings: string[] = [];
+  Deno.env.delete("STRIPE_DISPUTE_ALERT_EMAILS");
+  console.warn = ((message?: unknown) => {
+    warnings.push(String(message));
+  }) as typeof console.warn;
+  const supabase = new FakeSupabase();
+  const alerts: unknown[] = [];
+  const appsFlyerEvents: string[] = [];
+  try {
+    await handleChargeDispute(
+      supabase as never,
+      event("charge.dispute.created"),
+      {
+        sendOpsAlertEmail: ((input: unknown) => {
+          alerts.push(input);
+          return Promise.resolve({ attempted: 1, succeeded: 1, failed: 0 });
+        }) as never,
+        resolveBrandOwnerUserId: (() => Promise.resolve("owner-user")) as never,
+        postAppsFlyerS2SEvent: ((input: { eventName: string }) => {
+          appsFlyerEvents.push(input.eventName);
+          return Promise.resolve(true);
+        }) as never,
+      },
+    );
+    assertEquals(supabase.disputes.size, 1);
+    assertEquals(alerts.length, 0);
+    assertEquals(appsFlyerEvents, ["dispute_created"]);
+    assert(
+      warnings.some((warning) =>
+        warning.includes(
+          "STRIPE_DISPUTE_ALERT_EMAILS missing; dispute persisted without operator notification",
+        )
+      ),
+      "missing alert email env warning should be emitted",
+    );
+  } finally {
+    console.warn = originalWarn;
+    if (prior === undefined) Deno.env.delete("STRIPE_DISPUTE_ALERT_EMAILS");
+    else Deno.env.set("STRIPE_DISPUTE_ALERT_EMAILS", prior);
+  }
+});
+
+Deno.test("ORCH-0956 T-06 — missing dispute amount degrades without throwing", async () => {
+  const prior = Deno.env.get("STRIPE_DISPUTE_ALERT_EMAILS");
+  Deno.env.set("STRIPE_DISPUTE_ALERT_EMAILS", "ops@example.com");
+  const supabase = new FakeSupabase();
+  const alerts: {
+    subject: string;
+    paragraphs: string[];
+    recipients: string[];
+  }[] = [];
+  try {
+    await handleChargeDispute(
+      supabase as never,
+      event("charge.dispute.created", "needs_response", { amount: undefined }),
+      {
+        sendOpsAlertEmail: ((input: {
+          subject: string;
+          paragraphs: string[];
+          recipients: string[];
+        }) => {
+          alerts.push(input);
+          return Promise.resolve({
+            attempted: input.recipients.length,
+            succeeded: input.recipients.length,
+            failed: 0,
+          });
+        }) as never,
+        resolveBrandOwnerUserId: (() => Promise.resolve("owner-user")) as never,
+        postAppsFlyerS2SEvent: (() => Promise.resolve(true)) as never,
+      },
+    );
+    assertEquals(supabase.disputes.size, 1);
+    assertEquals(alerts.length, 1);
+    assert(
+      alerts[0].subject.includes("USD 0.00") ||
+        alerts[0].subject.includes("USD NaN.00"),
+      "malformed amount should degrade to an explicit currency amount",
+    );
+    assert(
+      alerts[0].paragraphs.some((paragraph) =>
+        paragraph === "Amount: USD 0.00" || paragraph === "Amount: USD NaN.00"
+      ),
+      "body should include the degraded amount",
+    );
   } finally {
     if (prior === undefined) Deno.env.delete("STRIPE_DISPUTE_ALERT_EMAILS");
     else Deno.env.set("STRIPE_DISPUTE_ALERT_EMAILS", prior);
