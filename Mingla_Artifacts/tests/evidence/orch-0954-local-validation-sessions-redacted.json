@@ -1,0 +1,31 @@
+{
+  "generated_at": "2026-05-25T07:13:27.966Z",
+  "mode": "TEST",
+  "validation_host": "http://127.0.0.1:8097 (local Expo static export route-mapping host)",
+  "email": "sethogieva+orch0954-interact-20260525071314@usemingla.com",
+  "slug": "orch0954-interact-20260525071314",
+  "signup": {
+    "ok": true,
+    "user_id": "78d9913f-4977-48d2-9723-3968b26bf3d0",
+    "has_session": "[REDACTED]"
+  },
+  "brand": {
+    "id": "c5f0d96b-8a8e-43e0-904a-e6d5863bc97c",
+    "name": "ORCH 0954 Interact 20260525071314",
+    "slug": "orch0954-interact-20260525071314",
+    "account_id": "78d9913f-4977-48d2-9723-3968b26bf3d0",
+    "contact_email": "sethogieva+orch0954-interact-20260525071314@usemingla.com"
+  },
+  "tos_accept": {
+    "accepted_at": "2026-05-25T07:13:15.531+00:00",
+    "version": "v3-pre-launch-placeholder"
+  },
+  "onboard": {
+    "client_secret": "[REDACTED]",
+    "account_id": "acct_1TashMPjlZrIpj6B",
+    "onboarding_url": "https://business.usemingla.com/connect-onboarding?session=[REDACTED_STRIPE_ACCOUNT_SESSION_SECRET]&brand_id=c5f0d96b-8a8e-43e0-904a-e6d5863bc97c&return_to=mingla-business%3A%2F%2Fonboarding-complete",
+    "has_client_secret": "[REDACTED]",
+    "has_onboarding_url": true
+  },
+  "account_management_session": "[REDACTED]"
+}

@@ -83,22 +83,42 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     // Cycle B2a Path C V3 — Stripe Connect publishable key. Used by the
     // Mingla-hosted connect-onboarding page (Path B host) when initialising
     // @stripe/connect-js. Publishable keys are public-by-design (ship in client
-    // bundle). ORCH-0953: production EAS builds fail-close unless EAS provides
-    // a pk_live_ value; non-production builds keep the deliberate sandbox fallback
-    // from MINGLA LLC sandbox account `acct_1TTnt1PjlZyAYA40` per V3 SPEC §13 A2.
+    // bundle). ORCH-0954 amendment: Vercel production requires pk_live_;
+    // Vercel preview/development and local dev require pk_test_ so TEST-mode
+    // embedded Account Sessions can render on preview without weakening prod.
     EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY: (() => {
       const fromEnv = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY;
-      const buildProfile = process.env.EAS_BUILD_PROFILE;
-      if (buildProfile === "production") {
+      const vercelEnv = process.env.VERCEL_ENV;
+      const sandboxFallback =
+        "pk_test_51TTnt1PjlZyAYA40f3kjmxF6uXjfEJKfFR25LiJpVqd7qw6TYfDqqKLcNamL3JGlD2vxh94Bzn4ciaqsMNN1PJ0C00oZVosOxd";
+      if (vercelEnv === "production") {
         if (!fromEnv || !fromEnv.startsWith("pk_live_")) {
           throw new Error(
-            "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY must be a pk_live_ value for production builds. Set it in EAS env.",
+            "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY must be a pk_live_ value for Vercel production builds.",
           );
         }
         return fromEnv;
       }
-      return fromEnv ??
-        "pk_test_51TTnt1PjlZyAYA40f3kjmxF6uXjfEJKfFR25LiJpVqd7qw6TYfDqqKLcNamL3JGlD2vxh94Bzn4ciaqsMNN1PJ0C00oZVosOxd";
+      if (vercelEnv === "preview" || vercelEnv === "development") {
+        if (!fromEnv || !fromEnv.startsWith("pk_test_")) {
+          throw new Error(
+            "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY must be a pk_test_ value for Vercel preview/development builds.",
+          );
+        }
+        return fromEnv;
+      }
+      if (vercelEnv !== undefined) {
+        throw new Error(
+          `Unsupported VERCEL_ENV "${vercelEnv}". Expected production, preview, development, or undefined.`,
+        );
+      }
+      const localValue = fromEnv ?? sandboxFallback;
+      if (!localValue.startsWith("pk_test_")) {
+        throw new Error(
+          "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY must be a pk_test_ value for local development.",
+        );
+      }
+      return localValue;
     })(),
     // B2a Path C V3 forensics R-1: canonical Mingla Business public web URL.
     // Single source of truth read by mingla-business/src/constants/platformUrl.ts.
