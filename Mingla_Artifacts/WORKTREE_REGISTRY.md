@@ -15,6 +15,7 @@ Reference: [WORKTREE_STRATEGY.md](WORKTREE_STRATEGY.md).
 | Worktree path | Branch | ORCH-ID | Phase | Sim assigned | Metro port | Spawned | Owner |
 |---------------|--------|---------|-------|--------------|------------|---------|-------|
 | `~/Desktop/mingla-orchs/meta-orch-0952-[buyer-web-confirm-deep-forensics]` | `meta-orch-0952-buyer-web-confirm-deep-forensics` | META-ORCH-0952 | INVESTIGATE | no sim — buyer-web (Playwright Chromium + Safari) | 8083 | 2026-05-24 | Claude `mingla-orchestrator` (dispatch) → Claude `mingla-forensics` (active) |
+| `~/Desktop/mingla-orchs/ORCH-0962-[brand-edit-public-render-audit]` | `ORCH-0962-brand-edit-public-render-audit` | ORCH-0962 | INVESTIGATE | iPhone 17 Pro (business) + iPhone 16 (consumer) + Android emu + buyer-web Chromium | 8083 | 2026-05-25 | Claude `mingla-orchestrator` (dispatch) → Claude `mingla-forensics` (next) |
 
 ---
 
