@@ -80,6 +80,10 @@ export const KNOWN_STATIC_SLUGS: readonly string[] = [
   // ORCH-0804 — Stripe Tax enablement on ticket Checkout Sessions.
   "stripe_tax.checkout_enabled",
   "stripe_tax.registration_link_opened",
+  // ORCH-0955 — embedded Tax AccountSession mint (replaces ORCH-0804
+  // dashboard-link redirect for the new Mingla-hosted /connect-tax-registrations
+  // page mounting <ConnectTaxRegistrations> + <ConnectTaxSettings>).
+  "stripe_tax.account_session_minted",
   // ORCH-0869 [Tr3 Installment Payments] — installment lifecycle audit
   // actions emitted by process-scheduled-installments cron edge function
   // (tr3.installment_pi_created + tr3.installment_pi_failed) and by the
@@ -263,6 +267,13 @@ export const resolveAuditActionLabel = (action: string): AuditActionLabel => {
       return {
         title: "Opened Stripe Tax dashboard",
         detail: "Brand admin opened Stripe Express Dashboard to manage tax registrations.",
+        category: "stripe_connect",
+        iconHint: "bank",
+      };
+    case "stripe_tax.account_session_minted":
+      return {
+        title: "Opened embedded Stripe Tax tools",
+        detail: "Brand admin opened the Mingla-hosted Tax registrations + settings page powered by Stripe embedded Connect components (ORCH-0955).",
         category: "stripe_connect",
         iconHint: "bank",
       };
