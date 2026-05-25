@@ -1,6 +1,6 @@
 # IMPLEMENTATION — ORCH-0950 Expanded Scope Dashboard Coherence
 
-**Status:** implemented, partially verified  
+**Status:** implemented and verified through post-migration DB probe; pending independent QA
 **Date:** 2026-05-25  
 **Worktree:** `/Users/sethogieva/Desktop/mingla-orchs/ORCH-0950-[trip-capacity-single-source]`  
 **Branch:** `ORCH-0950-trip-capacity-single-source`  
@@ -13,7 +13,7 @@
 
 The trip dashboard now reads the same database truth that checkout and publish use. Capacity stays in `ticket_types.quantity_total`, dates come from the master `event_dates` row, destination text gets a new `events.destination_text` column, and tier cards count actual tickets through a new RPC instead of counting orders.
 
-DC Adventure's destination cannot be recovered automatically because the legacy JSONB value is already gone. The remote probe shows the new column is not applied yet, the old destination value is `NULL`, and the post-migration expected state is therefore `destination_text = NULL` until Seth re-enters it on the fixed edit screen.
+DC Adventure's destination cannot be recovered automatically because the legacy JSONB value was already gone. The migration applied cleanly, the new `events.destination_text` column is `NULL` for that one scheduled trip as expected, and Seth must re-enter the destination on the fixed edit screen.
 
 ## Files Changed
 
@@ -61,6 +61,8 @@ DC Adventure's destination cannot be recovered automatically because the legacy 
 | Jest focused suite | PASS | 3 suites, 11 tests: capacity guard, dashboard reader scaffold, `useTrips` key factory. |
 | `git diff --check` | PASS | No whitespace errors. |
 | Full `mingla-business` TypeScript | FAIL pre-existing | Red in checkout buyer files, ComposerV2, native payments package resolution, shared packages, and legacy DraftEvent test fixtures; no ORCH-0950 touched-file errors appeared in the output. |
+| Remote migration ledger | PASS | MCP `list_migrations` shows `20260725000002 orch_0950_expanded_scope_dashboard_coherence` applied. |
+| Post-migration DC Adventure probe | PASS | DC Adventure now has canonical date/capacity state, no canonical JSONB residue, expected `destination_text = NULL`, and tier RPC count 71. |
 
 ## Live DB Probe
 
@@ -89,12 +91,41 @@ trips_missing_legacy_destination_after_wipe=1
 
 Interpretation: once the migration runs, DC Adventure will still have `events.destination_text = NULL` because the legacy source value is already absent. That is expected data loss; Seth re-enters the destination on the post-fix edit screen.
 
+Read-only Supabase probe after Seth applied the migration with `supabase db push --linked --include-all`:
+
+```text
+MCP migration ledger includes:
+20260725000002 orch_0950_expanded_scope_dashboard_coherence
+
+DC Adventure event_id=060d0483-50db-48d1-840b-73d9fc59356a
+title=The DC Adventure
+status=scheduled
+destination_text=NULL
+theme.business_trip={}
+has_canonical_jsonb_residue=false
+event_dates start_at=2026-08-17 00:00:00+00
+event_dates end_at=2026-08-22 23:59:59+00
+ticket_type_id=d9ec94b7-e1ee-42ad-aeca-cd9c1d8b440e
+quantity_total=102
+direct_tickets_sold=71
+biz_trip_tickets_sold_by_tier={"d9ec94b7-e1ee-42ad-aeca-cd9c1d8b440e":71}
+```
+
+Global post-migration residue probe:
+
+```text
+scheduled_live_destination_text_null=1
+trip_canonical_jsonb_residue=0
+```
+
+Interpretation: the post-migration database state matches the contract. The one remaining `destination_text = NULL` row is DC Adventure and represents expected historical destination loss; Seth re-enters it in the business edit screen.
+
 ## Deploy Notes
 
-Codex did not apply the migration and did not deploy edge functions. Because the spec-required migration filename is intentionally out-of-order relative to remote/local `20260726000000`, Seth must apply with `--include-all`:
+Codex did not apply the migration and did not deploy edge functions. Seth applied the migration successfully on 2026-05-25 with `--include-all` because the spec-required migration filename is intentionally out-of-order relative to remote/local `20260726000000`:
 
 ```bash
 cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0950-[trip-capacity-single-source]" && /Users/sethogieva/bin/supabase db push --linked --include-all
 ```
 
-After that, orchestrator should verify with `mcp__supabase__list_migrations`, Seth should re-enter DC Adventure destination, and tester should run the mandatory iOS Sim + business-web + Android live-fire matrix.
+MCP `list_migrations` verified the remote migration ledger after apply. Seth should re-enter DC Adventure destination, and tester should run the mandatory iOS Sim + business-web + Android live-fire matrix.
