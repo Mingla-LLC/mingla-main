@@ -15,20 +15,26 @@
  *   - Pre-fills buyer info from authenticated profile (name, email, phone)
  */
 
-import React, { useCallback, useMemo, useRef, useEffect, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { StyleSheet } from "react-native";
 import BottomSheet, {
-  BottomSheetScrollView,
   BottomSheetBackdrop,
   type BottomSheetBackdropProps,
+  BottomSheetScrollView,
 } from "@gorhom/bottom-sheet";
 import * as Haptics from "expo-haptics";
 
 import {
-  PublicEventPage,
-  type PublicEventCallbacks,
-  type PublicEventProps,
   type PublicBrandProps,
+  type PublicEventCallbacks,
+  PublicEventPage,
+  type PublicEventProps,
   type ViewerRole,
 } from "@mingla/event-rendering";
 
@@ -41,8 +47,8 @@ import { useAppStore } from "../../store/appStore";
 import { usePublicEventTickets } from "../../hooks/usePublicEventTickets";
 import { circleKeys } from "../../hooks/queryKeys";
 import {
-  useNativeCheckoutFlow,
   type NativeCheckoutOutcome,
+  useNativeCheckoutFlow,
 } from "../../payments/nativeCheckoutFlow";
 import { toastManager } from "../ui/Toast";
 import { glass } from "../../constants/designSystem";
@@ -62,7 +68,8 @@ interface ExpandedBusinessEventSheetProps {
 // ORCH-0828 REWORK: canonical bottomSheet snapPoints from design tokens,
 // matching the TM/place path at ExpandedCardModal.tsx:1606. Two snap points
 // give the user a natural 50% preview + 90% full gesture.
-const SHEET_SNAP_POINTS = glass.bottomSheet.snapPoints as unknown as (string | number)[];
+const SHEET_SNAP_POINTS = glass.bottomSheet
+  .snapPoints as unknown as (string | number)[];
 const SHEET_INITIAL_INDEX = 1; // open at the 90% snap (full view)
 
 // ORCH-0877 — formatDateLine replaced by centralized `formatEventDateLine`
@@ -101,12 +108,11 @@ export const mapCardToPublicEvent = (
   hideAddressUntilTicket: card.hideAddressUntilTicket,
   coverHue: card.coverHue,
   coverMediaUrl: card.coverMediaUrl,
-  coverMediaType:
-    card.coverMediaType === "image" ||
-    card.coverMediaType === "video" ||
-    card.coverMediaType === "gif"
-      ? card.coverMediaType
-      : null,
+  coverMediaType: card.coverMediaType === "image" ||
+      card.coverMediaType === "video" ||
+      card.coverMediaType === "gif"
+    ? card.coverMediaType
+    : null,
   coverCredit: null,
   tickets,
   currency: card.currency,
@@ -118,7 +124,9 @@ const mapCardToPublicBrand = (card: BusinessEventCard): PublicBrandProps => ({
   displayName: card.brandName,
 });
 
-export const ExpandedBusinessEventSheet: React.FC<ExpandedBusinessEventSheetProps> = ({
+export const ExpandedBusinessEventSheet: React.FC<
+  ExpandedBusinessEventSheetProps
+> = ({
   visible,
   data,
   onClose,
@@ -204,8 +212,7 @@ export const ExpandedBusinessEventSheet: React.FC<ExpandedBusinessEventSheetProp
         toastManager.show("Please sign in to get tickets.", "warning");
         return;
       }
-      const buyerName =
-        profile?.display_name?.trim() ||
+      const buyerName = profile?.display_name?.trim() ||
         user.email?.split("@")[0] ||
         "Guest";
       const buyerEmail = user.email ?? profile?.email ?? "";
@@ -239,7 +246,9 @@ export const ExpandedBusinessEventSheet: React.FC<ExpandedBusinessEventSheetProp
             email: buyerEmail,
             phone: buyerPhone,
             marketingOptIn: payload.marketingOptIn,
+            address: payload.address,
           },
+          taxCalculationId: payload.taxCalculationId,
         });
       } catch (err) {
         // ORCH-0829-B D-1 H-2: runNativeCheckout's contract is to return a
@@ -256,7 +265,9 @@ export const ExpandedBusinessEventSheet: React.FC<ExpandedBusinessEventSheetProp
       }
 
       if (result.outcome === "succeeded") {
-        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        void Haptics.notificationAsync(
+          Haptics.NotificationFeedbackType.Success,
+        );
         toastManager.show("Ticket secured! Check your calendar.", "success");
         sheetRef.current?.close();
 
@@ -380,20 +391,20 @@ export const ExpandedBusinessEventSheet: React.FC<ExpandedBusinessEventSheetProp
           />
         </BottomSheetScrollView>
       </BottomSheet>
-      {/* ORCH-0847 Phase C — multi-tier cart sheet. Renders as a sibling
+      {
+        /* ORCH-0847 Phase C — multi-tier cart sheet. Renders as a sibling
           @gorhom/bottom-sheet so it overlays the parent sheet without
-          competing for the same Modal root. */}
+          competing for the same Modal root. */
+      }
       <TicketCartSheet
         visible={cartSheetVisible}
         eventId={data.eventId}
         tickets={ticketsQuery.data}
         fallbackCurrency={data.currency}
         initialTicketTypeId={initialTicketTypeId}
-        buyerName={
-          profile?.display_name?.trim() ||
+        buyerName={profile?.display_name?.trim() ||
           user?.email?.split("@")[0] ||
-          "Guest"
-        }
+          "Guest"}
         buyerEmail={user?.email ?? profile?.email ?? ""}
         buyerPhone={profile?.phone ?? ""}
         isSubmitting={checkoutInFlight}

@@ -84,11 +84,22 @@ function renderLineItems(order: TicketBodyInput["order"]): string {
     }</td>
     </tr>`;
   }).join("");
+  const taxAmountCents = Number(order.taxAmountCents ?? 0);
+  const taxRow = taxAmountCents > 0
+    ? `<tr>
+      <td style="padding:10px 0;font-size:14px;color:${BRAND_MUTED};border-bottom:1px solid ${BRAND_BORDER};">Tax</td>
+      <td></td>
+      <td align="right" style="padding:10px 0;font-size:14px;color:${BRAND_INK};border-bottom:1px solid ${BRAND_BORDER};">${
+      escapeHtml(formatMoneyFromCents(taxAmountCents, order.currency))
+    }</td>
+    </tr>`
+    : "";
   const totalLabel = order.totalCents > 0
     ? formatMoneyFromCents(order.totalCents, order.currency)
     : "Free";
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:24px;border-top:1px solid ${BRAND_BORDER};">
     ${rows}
+    ${taxRow}
     <tr>
       <td style="padding:14px 0 0 0;font-size:15px;color:${BRAND_INK};font-weight:700;">Total</td>
       <td></td>
@@ -202,6 +213,14 @@ export function renderTicketBody(input: TicketBodyInput): {
   const totalText = input.order.totalCents > 0
     ? formatMoneyFromCents(input.order.totalCents, input.order.currency)
     : "Free";
+  const taxText = Number(input.order.taxAmountCents ?? 0) > 0
+    ? `Tax: ${
+      formatMoneyFromCents(
+        Number(input.order.taxAmountCents ?? 0),
+        input.order.currency,
+      )
+    }`
+    : null;
   const textLines = [
     copy.heading,
     "",
@@ -215,10 +234,14 @@ export function renderTicketBody(input: TicketBodyInput): {
         formatMoneyOrFree(li.totalCents, input.order.currency)
       }`
     ),
+    taxText,
     `Total: ${totalText}`,
     "",
     `Order #${input.order.shortId}`,
-    `Join your event chat in the Mingla app: https://usemingla.com/orders/${(input.order as TicketBodyInput["order"] & { id?: string }).id ?? input.order.shortId}/chat`,
+    `Join your event chat in the Mingla app: https://usemingla.com/orders/${
+      (input.order as TicketBodyInput["order"] & { id?: string }).id ??
+        input.order.shortId
+    }/chat`,
     "",
     "Your tickets are attached as a PDF — each one has a unique QR code for entry.",
   ].filter((line) => line !== null && line !== undefined);

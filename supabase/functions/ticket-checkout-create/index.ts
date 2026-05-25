@@ -1,20 +1,19 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { stripeTicketCheckout, STRIPE_API_VERSION } from "../_shared/stripe.ts";
+import { STRIPE_API_VERSION, stripeTicketCheckout } from "../_shared/stripe.ts";
 import { getPaymentMethodTypes } from "../_shared/stripePaymentMethods.ts";
-import { isNativePaidAllowedForBrand } from "../_shared/stripeTax.ts";
 // ORCH-0869 [Tr3 Installment Payments] — separate-line import so the
 // ORCH-0849 R-2 regex (single-symbol braces) keeps matching above.
 import { getInstallmentPaymentMethodTypes } from "../_shared/stripePaymentMethods.ts";
 import {
   cancelPaymentIntentIfClientAvailable,
+  checkoutIdempotencyKey,
   classifyStripeCheckoutSessionCreateFailure,
   classifyStripePaymentIntentCreateFailure,
-  checkoutIdempotencyKey,
   dispatchTicketConfirmation,
   jsonResponse,
-  randomBuyerStatusToken,
   normalizePhoneE164,
   qrTokenPepper,
+  randomBuyerStatusToken,
   serviceClient,
   sha256Hex,
   ticketCorsHeaders,
@@ -22,6 +21,27 @@ import {
 } from "../_shared/ticketCheckout.ts";
 
 type CheckoutLine = { ticketTypeId: string; quantity: number };
+type CheckoutMode = "create" | "preview";
+type BuyerAddress = {
+  line1: string;
+  line2?: string;
+  city: string;
+  state?: string;
+  postal: string;
+  country: string;
+};
+type TaxCalculationSummary = {
+  id: string;
+  amount_total: number;
+  tax_breakdown: unknown[];
+};
+type TaxLineItem = {
+  ticketTypeId: string;
+  ticketName: string;
+  quantity: number;
+  unitPriceCents: number;
+  totalCents: number;
+};
 // ORCH-0839-B (2026-05-14): widened to include "mobile-web" for the
 // mingla-business mobile hosted-Checkout pivot. "web" continues to emit
 // https://… success_url/cancel_url; "mobile-web" emits the
@@ -41,6 +61,59 @@ function isCheckoutLine(value: unknown): value is CheckoutLine {
     Number.isInteger(row.quantity) &&
     Number(row.quantity) > 0
   );
+}
+
+function optionalTrimmed(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function parseBuyerAddress(value: unknown): BuyerAddress | null {
+  if (value === null || typeof value !== "object") return null;
+  const input = value as Record<string, unknown>;
+  const line1 = optionalTrimmed(input.line1);
+  const city = optionalTrimmed(input.city);
+  const postal = optionalTrimmed(input.postal);
+  const country = optionalTrimmed(input.country);
+  if (!line1 || !city || !postal || !country) return null;
+  return {
+    line1,
+    ...(optionalTrimmed(input.line2)
+      ? { line2: optionalTrimmed(input.line2) }
+      : {}),
+    city,
+    ...(optionalTrimmed(input.state)
+      ? { state: optionalTrimmed(input.state) }
+      : {}),
+    postal,
+    country,
+  };
+}
+
+function validateBuyerAddress(address: BuyerAddress | null): string | null {
+  if (address === null) {
+    return "buyer.address.line1 is required for native paid checkout";
+  }
+  if (address.line1.length > 200) {
+    return "buyer.address.line1 must be 200 characters or fewer";
+  }
+  if (address.line2 && address.line2.length > 200) {
+    return "buyer.address.line2 must be 200 characters or fewer";
+  }
+  if (address.city.length > 100) {
+    return "buyer.address.city must be 100 characters or fewer";
+  }
+  if (address.state && address.state.length > 50) {
+    return "buyer.address.state must be 50 characters or fewer";
+  }
+  if (address.postal.length > 20) {
+    return "buyer.address.postal must be 20 characters or fewer";
+  }
+  if (!/^[A-Z]{2}$/.test(address.country)) {
+    return "country must match ISO-3166 alpha-2 uppercase";
+  }
+  return null;
 }
 
 // ORCH-0880 [Tr5 Traveler Intake Forms] — answer-empty predicate. Mirror of
@@ -68,8 +141,12 @@ function isIntakeAnswerEmpty(type: string, answer: unknown): boolean {
 }
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: ticketCorsHeaders });
-  if (req.method !== "POST") return jsonResponse({ error: "method_not_allowed" }, 405);
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: ticketCorsHeaders });
+  }
+  if (req.method !== "POST") {
+    return jsonResponse({ error: "method_not_allowed" }, 405);
+  }
 
   let body: Record<string, unknown>;
   try {
@@ -82,28 +159,64 @@ serve(async (req) => {
   // ORCH-0839-B: three-way discriminator. Unknown values fall through to
   // "native" to preserve backward compat with older mingla-business builds
   // that send no surface field (older builds: omitted → "native").
-  const surface: CheckoutSurface =
-    body.surface === "web"
-      ? "web"
-      : body.surface === "mobile-web"
-        ? "mobile-web"
-        : "native";
+  const surface: CheckoutSurface = body.surface === "web"
+    ? "web"
+    : body.surface === "mobile-web"
+    ? "mobile-web"
+    : "native";
   const buyer = (body.buyer ?? {}) as Record<string, unknown>;
   const buyerName = typeof buyer.name === "string" ? buyer.name.trim() : "";
-  const buyerEmail = typeof buyer.email === "string" ? buyer.email.trim().toLowerCase() : "";
+  const buyerEmail = typeof buyer.email === "string"
+    ? buyer.email.trim().toLowerCase()
+    : "";
   const buyerPhoneE164 = normalizePhoneE164(buyer.phone);
   const marketingOptIn = buyer.marketingOptIn === true;
-  const lines = Array.isArray(body.lines) ? body.lines.filter(isCheckoutLine) : [];
+  const buyerAddress = parseBuyerAddress(buyer.address);
+  const lines = Array.isArray(body.lines)
+    ? body.lines.filter(isCheckoutLine)
+    : [];
+  const mode: CheckoutMode = body.mode === "preview" ? "preview" : "create";
+  const clientTaxCalculationId = typeof body.taxCalculationId === "string" &&
+      body.taxCalculationId.length > 0
+    ? body.taxCalculationId
+    : null;
 
   if (!eventId) return jsonResponse({ error: "event_id_required" }, 400);
-  if (buyerName.length < 2) return jsonResponse({ error: "buyer_name_required" }, 400);
+  if (buyerName.length < 2) {
+    return jsonResponse({ error: "buyer_name_required" }, 400);
+  }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(buyerEmail)) {
     return jsonResponse({ error: "buyer_email_invalid" }, 400);
   }
   if (buyerPhoneE164 === null) {
     return jsonResponse({ error: "buyer_phone_required" }, 400);
   }
-  if (lines.length === 0) return jsonResponse({ error: "ticket_lines_required" }, 400);
+  if (lines.length === 0) {
+    return jsonResponse({ error: "ticket_lines_required" }, 400);
+  }
+  if (surface === "native" && mode === "create") {
+    const addressError = validateBuyerAddress(buyerAddress);
+    if (addressError !== null) {
+      return jsonResponse(
+        {
+          error: buyerAddress === null
+            ? "buyer_address_required"
+            : "buyer_address_invalid",
+          detail: addressError,
+        },
+        400,
+      );
+    }
+  }
+  if (surface === "native" && mode === "preview" && buyerAddress !== null) {
+    const addressError = validateBuyerAddress(buyerAddress);
+    if (addressError !== null) {
+      return jsonResponse(
+        { error: "buyer_address_invalid", detail: addressError },
+        400,
+      );
+    }
+  }
 
   const userId = await userIdFromAuthHeader(req);
   const supabase = serviceClient();
@@ -118,7 +231,10 @@ serve(async (req) => {
     .eq("event_id", eventId)
     .gt("end_at", new Date().toISOString());
   if (futureDateErr !== null) {
-    console.error("[ticket-checkout-create] event_dates lookup failed", futureDateErr);
+    console.error(
+      "[ticket-checkout-create] event_dates lookup failed",
+      futureDateErr,
+    );
     return jsonResponse(
       { error: "event_date_lookup_failed", detail: futureDateErr.message },
       500,
@@ -140,7 +256,10 @@ serve(async (req) => {
     .eq("id", eventId)
     .maybeSingle();
   if (tripGateErr !== null) {
-    console.error("[ticket-checkout-create] bookings_closed gate lookup failed", tripGateErr);
+    console.error(
+      "[ticket-checkout-create] bookings_closed gate lookup failed",
+      tripGateErr,
+    );
     return jsonResponse(
       { error: "event_lookup_failed", detail: tripGateErr.message },
       500,
@@ -189,7 +308,10 @@ serve(async (req) => {
         .eq("event_id", eventId)
         .in("ticket_type_id", ticketTypeIds);
       if (schemaErr !== null) {
-        console.error("[ticket-checkout-create] intake schema lookup failed", schemaErr);
+        console.error(
+          "[ticket-checkout-create] intake schema lookup failed",
+          schemaErr,
+        );
         return jsonResponse(
           { error: "intake_schema_lookup_failed", detail: schemaErr.message },
           500,
@@ -198,7 +320,11 @@ serve(async (req) => {
 
       for (const row of schemaRows ?? []) {
         const schema = row.schema as
-          | { questions?: Array<{ id?: string; type?: string; required?: boolean }> }
+          | {
+            questions?: Array<
+              { id?: string; type?: string; required?: boolean }
+            >;
+          }
           | null;
         const schemaVersionId = row.schema_version_id as string;
         const ticketTypeId = row.ticket_type_id as string;
@@ -241,7 +367,10 @@ serve(async (req) => {
         // Schema-version freshness check: if buyer submitted intake_form_data
         // for this tier, the schema_version_id MUST match the current row
         // (planner may have edited schema mid-checkout, invalidating answers).
-        if (submitted !== undefined && submitted.schema_version_id !== schemaVersionId) {
+        if (
+          submitted !== undefined &&
+          submitted.schema_version_id !== schemaVersionId
+        ) {
           return jsonResponse(
             {
               error: "intake_schema_stale",
@@ -296,14 +425,35 @@ serve(async (req) => {
     })
     .eq("id", checkoutSessionId);
   if (statusTokenError) {
-    console.error("[ticket-checkout-create] buyer status token persist failed", statusTokenError);
+    console.error(
+      "[ticket-checkout-create] buyer status token persist failed",
+      statusTokenError,
+    );
     return jsonResponse(
-      { error: "checkout_session_failed", detail: "buyer_status_token_persist_failed" },
+      {
+        error: "checkout_session_failed",
+        detail: "buyer_status_token_persist_failed",
+      },
       409,
     );
   }
   const totalCents = Number(session.totalCents ?? 0);
   const currency = String(session.currency ?? "GBP").toLowerCase();
+
+  if (surface === "native" && mode === "preview" && buyerAddress === null) {
+    return jsonResponse({
+      kind: "preview",
+      checkoutSessionId,
+      subtotalCents: totalCents,
+      taxCents: 0,
+      totalCents,
+      currency: String(session.currency ?? "GBP"),
+      taxBreakdown: [],
+      calculationId: null,
+      calculationExpiresAt: null,
+      addressMissing: true,
+    });
+  }
 
   // ORCH-0869 [Tr3 Installment Payments]: when the session RPC returns an
   // installmentSchedule (trip with payment plan), the deposit PI must save
@@ -312,8 +462,7 @@ serve(async (req) => {
   // until then session.installmentSchedule is always undefined.
   // Stage 1b: `biz_ticket_checkout_create_session` amended to return
   // installmentSchedule from trip_pricing_tiers.tier_metadata.installments.
-  const isInstallmentPlan =
-    session.installmentSchedule !== null &&
+  const isInstallmentPlan = session.installmentSchedule !== null &&
     session.installmentSchedule !== undefined;
 
   if (totalCents === 0) {
@@ -334,13 +483,18 @@ serve(async (req) => {
       },
     );
     if (finalizeError || !finalized) {
-      console.error("[ticket-checkout-create] free finalize failed", finalizeError);
+      console.error(
+        "[ticket-checkout-create] free finalize failed",
+        finalizeError,
+      );
       return jsonResponse(
         { error: "checkout_finalize_failed", detail: finalizeError?.message },
         409,
       );
     }
-    const orderId = String((finalized as Record<string, unknown>).orderId ?? "");
+    const orderId = String(
+      (finalized as Record<string, unknown>).orderId ?? "",
+    );
     if (orderId) await dispatchTicketConfirmation(orderId);
     return jsonResponse({
       kind: "free_completed",
@@ -355,37 +509,6 @@ serve(async (req) => {
     : null;
   if (!stripeAccountId) {
     return jsonResponse({ error: "stripe_account_not_ready" }, 409);
-  }
-
-  let connectedAccountCountry: string | null = null;
-  if (surface === "native") {
-    const { data: stripeAccountRow, error: stripeAccountCountryError } = await supabase
-      .from("stripe_connect_accounts")
-      .select("country")
-      .eq("stripe_account_id", stripeAccountId)
-      .maybeSingle();
-    if (stripeAccountCountryError) {
-      console.error(
-        "[ticket-checkout-create] stripe account country lookup failed",
-        stripeAccountCountryError,
-      );
-      return jsonResponse(
-        {
-          error: "stripe_account_country_lookup_failed",
-          detail: stripeAccountCountryError.message,
-        },
-        500,
-      );
-    }
-    connectedAccountCountry = typeof stripeAccountRow?.country === "string"
-      ? stripeAccountRow.country
-      : null;
-    if (!isNativePaidAllowedForBrand(connectedAccountCountry)) {
-      return jsonResponse(
-        { error: "native_paid_not_allowed_in_region", retryWithSurface: "web" },
-        400,
-      );
-    }
   }
 
   // ORCH-0843 (2026-05-15) — Mingla platform application-fee formula.
@@ -491,9 +614,10 @@ serve(async (req) => {
       cancelUrl =
         `mingla-business://checkout/return?cs={CHECKOUT_SESSION_ID}&eventId=${eventId}&status=cancel`;
     }
-    const eventName = typeof session.eventName === "string" && session.eventName.length > 0
-      ? session.eventName
-      : "Tickets";
+    const eventName =
+      typeof session.eventName === "string" && session.eventName.length > 0
+        ? session.eventName
+        : "Tickets";
 
     let stripeWeb: ReturnType<typeof stripeTicketCheckout>;
     let checkoutSession: { id: string; url: string | null };
@@ -531,7 +655,9 @@ serve(async (req) => {
           // installment-plan-root so finalize RPC (Stage 1b) can write the
           // installment_plan_root=true flag on the orders row + create
           // child order_installments rows.
-          ...(isInstallmentPlan ? { mingla_installment_plan_root: "true" } : {}),
+          ...(isInstallmentPlan
+            ? { mingla_installment_plan_root: "true" }
+            : {}),
         },
         // ORCH-0869: save the PaymentMethod for off-session installment charges.
         // Cron in process-scheduled-installments uses the saved PM via the
@@ -595,7 +721,9 @@ serve(async (req) => {
           // require a pre-existing `customer` id (which we don't have at
           // create time), so it stays omitted; `automatic_tax.enabled: true`
           // collects billing address on the new Customer for tax jurisdiction.
-          ...(isInstallmentPlan ? { customer_creation: "always" as const } : {}),
+          ...(isInstallmentPlan
+            ? { customer_creation: "always" as const }
+            : {}),
           customer_email: buyerEmail,
           success_url: successUrl,
           cancel_url: cancelUrl,
@@ -785,13 +913,121 @@ serve(async (req) => {
     );
   }
 
-  // ORCH-0804 / I-PROPOSED-BF — native PaymentIntent path is NOT tax-enabled
-  // in v1. Stripe Tax on PaymentIntent requires pre-computing a tax_calculation
-  // id via separate POST /v1/tax/calculations call. Material complexity.
-  // Deferred to ORCH-0804-A. Until then, only the web Checkout Session path
-  // above collects tax. Buyer using the native Payment Sheet today pays
-  // without tax; brand carries the tax compliance gap on those orders.
-  // Document in the ORCH-0804-A follow-up.
+  const lineItemsRaw = Array.isArray(session.lineItems)
+    ? session.lineItems
+    : Array.isArray(session.items)
+    ? session.items
+    : [];
+  const taxLineItems = (lineItemsRaw as Array<Record<string, unknown>>)
+    .map((line): TaxLineItem => ({
+      ticketTypeId: String(line.ticketTypeId ?? ""),
+      ticketName: String(line.ticketName ?? "Ticket"),
+      quantity: Number(line.quantity ?? 0),
+      unitPriceCents: Number(line.unitPriceCents ?? 0),
+      totalCents: Number(line.totalCents ?? 0),
+    }))
+    .filter((line) => line.ticketTypeId.length > 0 && line.totalCents > 0);
+
+  let taxCalculation: TaxCalculationSummary | null = null;
+  if (clientTaxCalculationId !== null) {
+    try {
+      const stripeForExistingTax = stripeTicketCheckout();
+      // @ts-ignore -- Stripe SDK Tax namespace is runtime-provided in Deno.
+      const existing = await stripeForExistingTax.tax.calculations.retrieve(
+        clientTaxCalculationId,
+        {},
+        { stripeAccount: stripeAccountId },
+      );
+      const expiresAt = Number(existing.expires_at ?? 0);
+      if (existing?.id && expiresAt > Math.floor(Date.now() / 1000)) {
+        taxCalculation = {
+          id: String(existing.id),
+          amount_total: Number(existing.amount_total ?? totalCents),
+          tax_breakdown: Array.isArray(existing.tax_breakdown)
+            ? existing.tax_breakdown
+            : [],
+        };
+      }
+    } catch {
+      taxCalculation = null;
+    }
+  }
+
+  if (taxCalculation === null) {
+    try {
+      const address = buyerAddress as BuyerAddress;
+      const stripeForTax = stripeTicketCheckout();
+      // @ts-ignore -- Stripe SDK Tax namespace is runtime-provided in Deno.
+      const fresh = await stripeForTax.tax.calculations.create(
+        {
+          currency,
+          line_items: taxLineItems.map((line) => ({
+            amount: line.totalCents,
+            reference: line.ticketName.slice(0, 200),
+            tax_code: "txcd_50010001",
+            tax_behavior: "exclusive" as const,
+          })),
+          customer_details: {
+            address: {
+              line1: address.line1,
+              ...(address.line2 ? { line2: address.line2 } : {}),
+              city: address.city,
+              ...(address.state ? { state: address.state } : {}),
+              postal_code: address.postal,
+              country: address.country,
+            },
+            address_source: "billing" as const,
+          },
+        },
+        { stripeAccount: stripeAccountId },
+      );
+      taxCalculation = {
+        id: String(fresh.id),
+        amount_total: Number(fresh.amount_total ?? totalCents),
+        tax_breakdown: Array.isArray(fresh.tax_breakdown)
+          ? fresh.tax_breakdown
+          : [],
+      };
+    } catch (taxErr) {
+      const detail = taxErr instanceof Error ? taxErr.message : String(taxErr);
+      console.error("[ticket-checkout-create] tax calculation failed", detail);
+      await supabase
+        .from("ticket_checkout_sessions")
+        .update({
+          status: "failed",
+          failed_at: new Date().toISOString(),
+          failure_reason: "tax_calculation_failed",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", checkoutSessionId);
+      return jsonResponse({ error: "tax_calculation_failed", detail }, 502);
+    }
+  }
+
+  const taxCents = Math.max(0, taxCalculation.amount_total - totalCents);
+  await supabase
+    .from("ticket_checkout_sessions")
+    .update({
+      tax_calculation_id: taxCalculation.id,
+      tax_amount_cents: taxCents,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", checkoutSessionId);
+
+  if (mode === "preview") {
+    return jsonResponse({
+      kind: "preview",
+      checkoutSessionId,
+      subtotalCents: totalCents,
+      taxCents,
+      totalCents: taxCalculation.amount_total,
+      currency: String(session.currency ?? "GBP"),
+      taxBreakdown: taxCalculation.tax_breakdown,
+      calculationId: taxCalculation.id,
+      calculationExpiresAt: null,
+    });
+  }
+
   let paymentIntent: {
     id: string;
     client_secret?: string | null;
@@ -818,23 +1054,28 @@ serve(async (req) => {
     // orch-0837-regression-check.mjs T-C1 (still bans
     // automatic_payment_methods: enabled: true).
     const piCreateBody: Record<string, unknown> = {
-      amount: totalCents,
+      amount: taxCalculation.amount_total,
       currency,
       // ORCH-0869 [Tr3 Installment Payments]: when deposit is installment-
       // plan-root, save PM for off-session installment charges.
-      ...(isInstallmentPlan ? { setup_future_usage: "off_session" as const } : {}),
+      ...(isInstallmentPlan
+        ? { setup_future_usage: "off_session" as const }
+        : {}),
       // ORCH-0925: installment plans MUST attach a Stripe Customer so the
       // saved PM binds to the Customer (cron later charges off-session via
       // {customer, payment_method}). customerId is provisioned earlier in
       // this handler (FATAL on failure for installment plans). Full-pay PIs
       // do NOT receive a customer field (preserves ORCH-0843 direct-charge
       // shape + ORCH-0844 guest-mode fallback).
-      ...(isInstallmentPlan && customerId !== null ? { customer: customerId } : {}),
+      ...(isInstallmentPlan && customerId !== null
+        ? { customer: customerId }
+        : {}),
       payment_method_types: [...getPaymentMethodTypes()],
       metadata: {
         mingla_checkout_session_id: checkoutSessionId,
         mingla_event_id: eventId,
         mingla_buyer_email: buyerEmail,
+        mingla_tax_calculation_id: taxCalculation.id,
         // ORCH-0869: deposit PI marker for finalize RPC discrimination.
         ...(isInstallmentPlan ? { mingla_installment_plan_root: "true" } : {}),
       },
@@ -849,7 +1090,9 @@ serve(async (req) => {
     // _shared/stripePaymentMethods.ts allowlist (the installment helper is a
     // .filter(m => m === "card") of MINGLA_PM_ALLOWLIST, not a fresh literal).
     if (isInstallmentPlan) {
-      piCreateBody.payment_method_types = [...getInstallmentPaymentMethodTypes()];
+      piCreateBody.payment_method_types = [
+        ...getInstallmentPaymentMethodTypes(),
+      ];
     }
     if (applicationFeeAmountCents > 0) {
       // ORCH-0843 — Mingla's platform cut on direct charges.
@@ -867,7 +1110,10 @@ serve(async (req) => {
     );
   } catch (err) {
     const failure = classifyStripePaymentIntentCreateFailure(err);
-    console.error("[ticket-checkout-create] payment intent create failed", failure.detail);
+    console.error(
+      "[ticket-checkout-create] payment intent create failed",
+      failure.detail,
+    );
     await supabase
       .from("ticket_checkout_sessions")
       .update({
@@ -896,16 +1142,25 @@ serve(async (req) => {
     })
     .eq("id", checkoutSessionId);
   if (persistPaymentError) {
-    console.error("[ticket-checkout-create] payment intent persist failed", persistPaymentError);
+    console.error(
+      "[ticket-checkout-create] payment intent persist failed",
+      persistPaymentError,
+    );
     if (stripe !== null) {
       try {
         await cancelPaymentIntentIfClientAvailable(stripe, paymentIntent.id);
       } catch (cancelError) {
-        console.error("[ticket-checkout-create] payment intent cancel failed", cancelError);
+        console.error(
+          "[ticket-checkout-create] payment intent cancel failed",
+          cancelError,
+        );
       }
     }
     return jsonResponse(
-      { error: "payment_session_persist_failed", detail: persistPaymentError.message },
+      {
+        error: "payment_session_persist_failed",
+        detail: persistPaymentError.message,
+      },
       500,
     );
   }
@@ -914,12 +1169,14 @@ serve(async (req) => {
     kind: "requires_payment",
     checkoutSessionId,
     buyerStatusToken,
-    totalCents,
+    totalCents: taxCalculation.amount_total,
+    subtotalCents: totalCents,
+    taxCents,
+    taxBreakdown: taxCalculation.tax_breakdown,
     currency: String(session.currency ?? "GBP"),
     clientSecret,
     paymentIntentId: paymentIntent.id,
-    publishableKey:
-      Deno.env.get("EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY") ??
+    publishableKey: Deno.env.get("EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY") ??
       Deno.env.get("STRIPE_PUBLISHABLE_KEY") ??
       null,
     // ORCH-0844 NEW: Connect direct-charge mobile config.

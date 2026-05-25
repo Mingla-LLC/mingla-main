@@ -59,7 +59,7 @@ import { BrandStripeDeadlineBanner } from "./BrandStripeDeadlineBanner";
 import { BrandStripeDetachConfirmSheet } from "./BrandStripeDetachConfirmSheet";
 import { useBrandStripeStatus } from "../../hooks/useBrandStripeStatus";
 import { useBrandStripeBalances } from "../../hooks/useBrandStripeBalances";
-import { useBrandStripeTaxDashboardLink } from "../../hooks/useBrandStripeTaxDashboardLink";
+import { useBrandStripeTaxAccountSession } from "../../hooks/useBrandStripeTaxAccountSession";
 import { getEffectiveBrandStripeStatus } from "../../utils/stripeOnboardingOutcome";
 import { ACTIVE_STRIPE_BANNER_TITLE } from "../../utils/brandStripeUiState";
 import { majorFromMinor } from "../../utils/currency";
@@ -170,16 +170,11 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
   const stripeBalancesQuery = useBrandStripeBalances(brand?.id ?? null, {
     stripeStatus,
   });
-  // ORCH-0804 — Tax & registrations CTA. Mutation opens Stripe Express
-  // Dashboard via createLoginLink so the brand admin can manage their
-  // Stripe Tax registrations (no RN <TaxSettings /> component yet — web
-  // only). Disclosed: brand is merchant of record; Stripe Tax adds ~0.5%
-  // on top of regular Stripe fees.
-  const taxDashboardLink = useBrandStripeTaxDashboardLink();
+  const taxAccountSession = useBrandStripeTaxAccountSession();
   const handleOpenTaxDashboard = useCallback((): void => {
-    if (brand?.id === undefined || taxDashboardLink.isPending) return;
-    taxDashboardLink.mutate(brand.id);
-  }, [brand?.id, taxDashboardLink]);
+    if (brand?.id === undefined || taxAccountSession.isPending) return;
+    taxAccountSession.mutate(brand.id);
+  }, [brand?.id, taxAccountSession]);
 
   // ORCH-0802 — Disconnect Stripe sheet visibility. Sheet is only ever
   // reachable from the Danger zone CTA below, which itself only renders
@@ -249,38 +244,35 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
   // ----- Populated state -----
 
   const liveBalances = stripeBalancesQuery.data;
-  const balanceCurrency = liveBalances?.currency ?? brand.defaultCurrency ?? null;
-  const availableDisplay =
-    liveBalances && balanceCurrency !== null
-      ? formatCurrency(
-          majorFromMinor(liveBalances.availableMinor, balanceCurrency),
-          balanceCurrency,
-        )
-      : "—";
-  const pendingDisplay =
-    liveBalances && balanceCurrency !== null
-      ? formatCurrency(
-          majorFromMinor(liveBalances.pendingMinor, balanceCurrency),
-          balanceCurrency,
-        )
-      : "—";
+  const balanceCurrency = liveBalances?.currency ?? brand.defaultCurrency ??
+    null;
+  const availableDisplay = liveBalances && balanceCurrency !== null
+    ? formatCurrency(
+      majorFromMinor(liveBalances.availableMinor, balanceCurrency),
+      balanceCurrency,
+    )
+    : "—";
+  const pendingDisplay = liveBalances && balanceCurrency !== null
+    ? formatCurrency(
+      majorFromMinor(liveBalances.pendingMinor, balanceCurrency),
+      balanceCurrency,
+    )
+    : "—";
   const balanceSub = liveBalances
     ? "Ready to pay out"
     : stripeStatus === "active"
-      ? "Balance unavailable"
-      : "Connect Stripe";
+    ? "Balance unavailable"
+    : "Connect Stripe";
   const lastPayoutAmount = sortedPayouts[0]?.amountGbp;
   const lastPayoutCurrency = sortedPayouts[0]?.currency;
-  const lastPayoutDisplay =
-    brand.lastPayoutAt !== undefined &&
-    lastPayoutAmount !== undefined &&
-    lastPayoutCurrency !== undefined
-      ? formatCurrency(lastPayoutAmount, lastPayoutCurrency)
-      : "—";
-  const lastPayoutSub =
-    brand.lastPayoutAt !== undefined
-      ? formatRelativeTime(brand.lastPayoutAt)
-      : "No payouts yet";
+  const lastPayoutDisplay = brand.lastPayoutAt !== undefined &&
+      lastPayoutAmount !== undefined &&
+      lastPayoutCurrency !== undefined
+    ? formatCurrency(lastPayoutAmount, lastPayoutCurrency)
+    : "—";
+  const lastPayoutSub = brand.lastPayoutAt !== undefined
+    ? formatRelativeTime(brand.lastPayoutAt)
+    : "No payouts yet";
 
   return (
     <View style={styles.host}>
@@ -301,113 +293,142 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
         showsVerticalScrollIndicator={false}
       >
         {/* SECTION A — Status Banner */}
-        {bannerConfig !== null ? (
-          <GlassCard
-            variant="base"
-            padding={spacing.md}
-            style={[
-              bannerConfig.destructive ? styles.bannerDestructive : null,
-              bannerConfig.success ? styles.bannerSuccess : null,
-            ]}
-          >
-            <View style={styles.bannerRow}>
-              <View
-                style={[
-                  styles.bannerIconWrap,
-                  bannerConfig.destructive && styles.bannerIconWrapDestructive,
-                  bannerConfig.success && styles.bannerIconWrapSuccess,
-                ]}
-              >
-                <Icon
-                  name={bannerConfig.icon}
-                  size={20}
-                  color={bannerConfig.iconColor}
-                />
+        {bannerConfig !== null
+          ? (
+            <GlassCard
+              variant="base"
+              padding={spacing.md}
+              style={[
+                bannerConfig.destructive ? styles.bannerDestructive : null,
+                bannerConfig.success ? styles.bannerSuccess : null,
+              ]}
+            >
+              <View style={styles.bannerRow}>
+                <View
+                  style={[
+                    styles.bannerIconWrap,
+                    bannerConfig.destructive &&
+                    styles.bannerIconWrapDestructive,
+                    bannerConfig.success && styles.bannerIconWrapSuccess,
+                  ]}
+                >
+                  <Icon
+                    name={bannerConfig.icon}
+                    size={20}
+                    color={bannerConfig.iconColor}
+                  />
+                </View>
+                <View style={styles.bannerTextCol}>
+                  <Text style={styles.bannerTitle}>{bannerConfig.title}</Text>
+                  <Text style={styles.bannerSub}>{bannerConfig.sub}</Text>
+                </View>
               </View>
-              <View style={styles.bannerTextCol}>
-                <Text style={styles.bannerTitle}>{bannerConfig.title}</Text>
-                <Text style={styles.bannerSub}>{bannerConfig.sub}</Text>
-              </View>
-            </View>
-            {bannerConfig.ctaLabel !== null && bannerConfig.ctaVariant !== null ? (
-              <View style={styles.bannerCtaRow}>
-                <Button
-                  label={bannerConfig.ctaLabel}
-                  onPress={onOpenOnboard}
-                  variant={bannerConfig.ctaVariant}
-                  size="md"
-                  fullWidth
-                  accessibilityLabel={bannerConfig.ctaLabel}
-                />
-              </View>
-            ) : null}
-          </GlassCard>
-        ) : null}
+              {bannerConfig.ctaLabel !== null &&
+                  bannerConfig.ctaVariant !== null
+                ? (
+                  <View style={styles.bannerCtaRow}>
+                    <Button
+                      label={bannerConfig.ctaLabel}
+                      onPress={onOpenOnboard}
+                      variant={bannerConfig.ctaVariant}
+                      size="md"
+                      fullWidth
+                      accessibilityLabel={bannerConfig.ctaLabel}
+                    />
+                  </View>
+                )
+                : null}
+            </GlassCard>
+          )
+          : null}
 
-        {stripeStatusQuery.isError ? (
-          <GlassCard variant="base" padding={spacing.md} style={styles.statusRefreshWarning}>
-            <Text style={styles.statusRefreshTitle}>Couldn{"’"}t refresh Stripe status</Text>
-            <Text style={styles.statusRefreshBody}>
-              Showing the last saved status. Continue verification will create a
-              fresh Stripe link.
-            </Text>
-          </GlassCard>
-        ) : null}
+        {stripeStatusQuery.isError
+          ? (
+            <GlassCard
+              variant="base"
+              padding={spacing.md}
+              style={styles.statusRefreshWarning}
+            >
+              <Text style={styles.statusRefreshTitle}>
+                Couldn{"’"}t refresh Stripe status
+              </Text>
+              <Text style={styles.statusRefreshBody}>
+                Showing the last saved status. Continue verification will create
+                a fresh Stripe link.
+              </Text>
+            </GlassCard>
+          )
+          : null}
 
-        {stripeBalancesQuery.isError ? (
-          <GlassCard variant="base" padding={spacing.md} style={styles.statusRefreshWarning}>
-            <Text style={styles.statusRefreshTitle}>Couldn{"’"}t refresh Stripe balance</Text>
-            <Text style={styles.statusRefreshBody}>
-              Balance unavailable until Stripe balance refresh works.
-            </Text>
-          </GlassCard>
-        ) : null}
+        {stripeBalancesQuery.isError
+          ? (
+            <GlassCard
+              variant="base"
+              padding={spacing.md}
+              style={styles.statusRefreshWarning}
+            >
+              <Text style={styles.statusRefreshTitle}>
+                Couldn{"’"}t refresh Stripe balance
+              </Text>
+              <Text style={styles.statusRefreshBody}>
+                Balance unavailable until Stripe balance refresh works.
+              </Text>
+            </GlassCard>
+          )
+          : null}
 
-        {/* SECTION A2 — V3 multi-country surfaces (Sub-C Session A + B).
+        {
+          /* SECTION A2 — V3 multi-country surfaces (Sub-C Session A + B).
             Deadline banner on top (within 7 days, urgent). KYC remediation
             card next (when status non-active and there's a requirement code).
             Bank verification status (when connected). Orphaned refunds at
-            the bottom (only for detached brands). */}
+            the bottom (only for detached brands). */
+        }
         {brand && stripeStatusQuery.data?.requirements
           ? (() => {
-              const reqs = stripeStatusQuery.data.requirements as
-                | { current_deadline?: number | null }
-                | undefined;
-              const deadline = reqs?.current_deadline ?? null;
-              return (
-                <BrandStripeDeadlineBanner
-                  deadline={deadline}
-                  onResolve={onOpenOnboard}
-                />
-              );
-            })()
+            const reqs = stripeStatusQuery.data.requirements as
+              | { current_deadline?: number | null }
+              | undefined;
+            const deadline = reqs?.current_deadline ?? null;
+            return (
+              <BrandStripeDeadlineBanner
+                deadline={deadline}
+                onResolve={onOpenOnboard}
+              />
+            );
+          })()
           : null}
 
         {brand && stripeStatus !== "active" && stripeStatus !== "not_connected"
           ? (() => {
-              const requirements =
-                (stripeStatusQuery.data?.requirements as
-                  | { disabled_reason?: string | null; currently_due?: readonly string[] | null; past_due?: readonly string[] | null }
-                  | undefined) ?? null;
-              return (
-                <BrandStripeKycRemediationCard
-                  requirements={requirements}
-                  onResolve={onOpenOnboard}
-                />
-              );
-            })()
+            const requirements = (stripeStatusQuery.data?.requirements as
+              | {
+                disabled_reason?: string | null;
+                currently_due?: readonly string[] | null;
+                past_due?: readonly string[] | null;
+              }
+              | undefined) ?? null;
+            return (
+              <BrandStripeKycRemediationCard
+                requirements={requirements}
+                onResolve={onOpenOnboard}
+              />
+            );
+          })()
           : null}
 
-        {brand && (stripeStatus === "active" || stripeStatus === "restricted") ? (
-          <BrandStripeBankSection
-            brandId={brand.id}
-            onResolve={onOpenOnboard}
-          />
-        ) : null}
+        {brand && (stripeStatus === "active" || stripeStatus === "restricted")
+          ? (
+            <BrandStripeBankSection
+              brandId={brand.id}
+              onResolve={onOpenOnboard}
+            />
+          )
+          : null}
 
-        {brand && stripeStatusQuery.data?.detached_at != null ? (
-          <BrandStripeOrphanedRefundsSection brandId={brand.id} />
-        ) : null}
+        {brand && stripeStatusQuery.data?.detached_at != null
+          ? <BrandStripeOrphanedRefundsSection brandId={brand.id} />
+          : null}
 
         {/* SECTION B — KPI Tiles (always rendered) */}
         <View style={styles.kpisRow}>
@@ -431,130 +452,132 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
           />
         </View>
 
-        {/* SECTION B.5 — ORCH-0804 Tax & registrations.
-            Brand opens Stripe Express Dashboard to register for Stripe Tax
-            in each jurisdiction they sell tickets in. Brand is the merchant
-            of record. Stripe Tax adds ~0.5% on top of regular Stripe fees,
-            billed to the brand. No RN <TaxSettings /> component exists yet
-            (https://docs.stripe.com/connect/supported-embedded-components —
-            Tax Settings is web-only GA as of 2026-05-12). When Stripe ships
-            the RN component, retire this CTA in favor of the embedded
-            component. */}
-        {stripeStatus === "active" && brand !== null ? (
-          <GlassCard
-            variant="base"
-            padding={spacing.md}
-            style={styles.taxCtaCard}
-          >
-            <View style={styles.taxCtaRow}>
-              <View style={styles.taxCtaIconCol}>
-                <Icon name="bank" size={20} color={accent.warm} />
-              </View>
-              <View style={styles.taxCtaTextCol}>
-                <Text style={styles.taxCtaTitle}>Tax & registrations</Text>
-                <Text style={styles.taxCtaBody}>
-                  Manage tax registrations in Stripe Dashboard. Stripe Tax
-                  adds about 0.5% on top of Stripe fees. You're the
-                  merchant of record.
-                </Text>
-                {taxDashboardLink.isError ? (
-                  <Text style={styles.taxCtaError}>
-                    Couldn't open Stripe. Try again.
+        {/* SECTION B.5 — ORCH-0955 embedded Tax tools. */}
+        {stripeStatus === "active" && brand !== null
+          ? (
+            <GlassCard
+              variant="base"
+              padding={spacing.md}
+              style={styles.taxCtaCard}
+            >
+              <View style={styles.taxCtaRow}>
+                <View style={styles.taxCtaIconCol}>
+                  <Icon name="bank" size={20} color={accent.warm} />
+                </View>
+                <View style={styles.taxCtaTextCol}>
+                  <Text style={styles.taxCtaTitle}>Tax & registrations</Text>
+                  <Text style={styles.taxCtaBody}>
+                    Manage tax registrations and settings in Stripe. Stripe Tax
+                    adds about 0.5% on top of Stripe fees. You're the merchant
+                    of record.
                   </Text>
-                ) : null}
+                  {taxAccountSession.isError
+                    ? (
+                      <Text style={styles.taxCtaError}>
+                        Couldn't open Stripe. Try again.
+                      </Text>
+                    )
+                    : null}
+                </View>
               </View>
-            </View>
-            <View style={styles.taxCtaBtnRow}>
-              <Button
-                label={
-                  taxDashboardLink.isPending
-                    ? "Opening Stripe…"
-                    : "Open Stripe Dashboard"
-                }
-                onPress={handleOpenTaxDashboard}
-                variant="secondary"
-                size="md"
-                disabled={taxDashboardLink.isPending}
-                leadingIcon="link"
-              />
-            </View>
-          </GlassCard>
-        ) : null}
+              <View style={styles.taxCtaBtnRow}>
+                <Button
+                  label={taxAccountSession.isPending
+                    ? "Opening Stripe..."
+                    : "Manage tax registrations"}
+                  onPress={handleOpenTaxDashboard}
+                  variant="secondary"
+                  size="md"
+                  disabled={taxAccountSession.isPending}
+                  leadingIcon="link"
+                />
+              </View>
+            </GlassCard>
+          )
+          : null}
 
         {/* SECTION C — Recent Payouts */}
         <Text style={styles.sectionLabel}>RECENT PAYOUTS</Text>
-        {sortedPayouts.length === 0 ? (
-          <GlassCard variant="base" padding={spacing.lg}>
-            <Text style={styles.emptyTitle}>No payouts yet</Text>
-            <Text style={styles.emptyBody}>
-              Payouts arrive here once you start selling tickets.
-            </Text>
-          </GlassCard>
-        ) : (
-          <GlassCard variant="base" padding={0}>
-            {sortedPayouts.map((payout, index) => {
-              const isLast = index === sortedPayouts.length - 1;
-              return (
-                <View
-                  key={payout.id}
-                  style={[styles.txnRow, !isLast && styles.txnRowDivider]}
-                >
-                  <View style={styles.txnLeftCol}>
-                    <Text style={styles.txnAmount}>
-                      {payout.currency.length > 0
-                        ? formatCurrency(payout.amountGbp, payout.currency)
-                        : "—"}
-                    </Text>
-                    <Text style={styles.txnSub}>
-                      {payout.status === "in_transit"
-                        ? "Arriving soon"
-                        : `Paid ${formatRelativeTime(payout.arrivedAt)}`}
-                    </Text>
-                  </View>
-                  <Pill variant={PAYOUT_PILL_VARIANT[payout.status]}>
-                    {PAYOUT_STATUS_LABEL[payout.status]}
-                  </Pill>
-                </View>
-              );
-            })}
-          </GlassCard>
-        )}
-
-        {/* SECTION D — Recent Refunds (skipped entirely when empty) */}
-        {sortedRefunds.length > 0 ? (
-          <>
-            <Text style={[styles.sectionLabel, styles.sectionLabelGap]}>
-              RECENT REFUNDS
-            </Text>
+        {sortedPayouts.length === 0
+          ? (
+            <GlassCard variant="base" padding={spacing.lg}>
+              <Text style={styles.emptyTitle}>No payouts yet</Text>
+              <Text style={styles.emptyBody}>
+                Payouts arrive here once you start selling tickets.
+              </Text>
+            </GlassCard>
+          )
+          : (
             <GlassCard variant="base" padding={0}>
-              {sortedRefunds.map((refund, index) => {
-                const isLast = index === sortedRefunds.length - 1;
+              {sortedPayouts.map((payout, index) => {
+                const isLast = index === sortedPayouts.length - 1;
                 return (
                   <View
-                    key={refund.id}
+                    key={payout.id}
                     style={[styles.txnRow, !isLast && styles.txnRowDivider]}
                   >
                     <View style={styles.txnLeftCol}>
-                      {/* Render-time minus prefix on positive amount per spec §6 + AC#27 */}
-                      <Text style={styles.txnAmountRefund}>
-                        {refund.currency.length > 0
-                          ? `−${formatCurrency(refund.amountGbp, refund.currency)}`
+                      <Text style={styles.txnAmount}>
+                        {payout.currency.length > 0
+                          ? formatCurrency(payout.amountGbp, payout.currency)
                           : "—"}
                       </Text>
-                      <Text style={styles.txnSub} numberOfLines={1}>
-                        {refund.eventTitle}
-                        {refund.reason !== undefined ? ` · ${refund.reason}` : ""}
+                      <Text style={styles.txnSub}>
+                        {payout.status === "in_transit"
+                          ? "Arriving soon"
+                          : `Paid ${formatRelativeTime(payout.arrivedAt)}`}
                       </Text>
                     </View>
-                    <Text style={styles.refundDate}>
-                      {formatRelativeTime(refund.refundedAt)}
-                    </Text>
+                    <Pill variant={PAYOUT_PILL_VARIANT[payout.status]}>
+                      {PAYOUT_STATUS_LABEL[payout.status]}
+                    </Pill>
                   </View>
                 );
               })}
             </GlassCard>
-          </>
-        ) : null}
+          )}
+
+        {/* SECTION D — Recent Refunds (skipped entirely when empty) */}
+        {sortedRefunds.length > 0
+          ? (
+            <>
+              <Text style={[styles.sectionLabel, styles.sectionLabelGap]}>
+                RECENT REFUNDS
+              </Text>
+              <GlassCard variant="base" padding={0}>
+                {sortedRefunds.map((refund, index) => {
+                  const isLast = index === sortedRefunds.length - 1;
+                  return (
+                    <View
+                      key={refund.id}
+                      style={[styles.txnRow, !isLast && styles.txnRowDivider]}
+                    >
+                      <View style={styles.txnLeftCol}>
+                        {/* Render-time minus prefix on positive amount per spec §6 + AC#27 */}
+                        <Text style={styles.txnAmountRefund}>
+                          {refund.currency.length > 0
+                            ? `−${
+                              formatCurrency(refund.amountGbp, refund.currency)
+                            }`
+                            : "—"}
+                        </Text>
+                        <Text style={styles.txnSub} numberOfLines={1}>
+                          {refund.eventTitle}
+                          {refund.reason !== undefined
+                            ? ` · ${refund.reason}`
+                            : ""}
+                        </Text>
+                      </View>
+                      <Text style={styles.refundDate}>
+                        {formatRelativeTime(refund.refundedAt)}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </GlassCard>
+            </>
+          )
+          : null}
 
         {/* SECTION E — Export CTA */}
         <View style={styles.exportRow}>
@@ -568,40 +591,46 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
           />
         </View>
 
-        {/* SECTION F — ORCH-0802 Danger zone: Disconnect Stripe.
+        {
+          /* SECTION F — ORCH-0802 Danger zone: Disconnect Stripe.
             Only rendered for active/restricted (the only states where
             there is a real connection to sever). Hidden for not_connected
             (nothing to disconnect) and onboarding (would strand the brand
-            mid-onboarding without a recovery path). */}
+            mid-onboarding without a recovery path). */
+        }
         {(stripeStatus === "active" || stripeStatus === "restricted") &&
-        brand !== null ? (
-          <View style={styles.dangerZone}>
-            <Text style={styles.dangerZoneTitle}>DANGER ZONE</Text>
-            <GlassCard variant="base" padding={spacing.md}>
-              <Text style={styles.dangerZoneBody}>
-                Disconnecting stops {brand.displayName} from selling
-                tickets. Existing buyers keep their tickets; refunds
-                remain visible under your refund history.
-              </Text>
-              <View style={styles.dangerZoneBtnRow}>
-                <Button
-                  label="Disconnect Stripe"
-                  onPress={handleOpenDetach}
-                  variant="destructive"
-                  size="md"
-                  leadingIcon="bank"
-                  accessibilityLabel={`Disconnect Stripe from ${brand.displayName}`}
-                />
-              </View>
-            </GlassCard>
-          </View>
-        ) : null}
+            brand !== null
+          ? (
+            <View style={styles.dangerZone}>
+              <Text style={styles.dangerZoneTitle}>DANGER ZONE</Text>
+              <GlassCard variant="base" padding={spacing.md}>
+                <Text style={styles.dangerZoneBody}>
+                  Disconnecting stops {brand.displayName}{" "}
+                  from selling tickets. Existing buyers keep their tickets;
+                  refunds remain visible under your refund history.
+                </Text>
+                <View style={styles.dangerZoneBtnRow}>
+                  <Button
+                    label="Disconnect Stripe"
+                    onPress={handleOpenDetach}
+                    variant="destructive"
+                    size="md"
+                    leadingIcon="bank"
+                    accessibilityLabel={`Disconnect Stripe from ${brand.displayName}`}
+                  />
+                </View>
+              </GlassCard>
+            </View>
+          )
+          : null}
       </ScrollView>
 
-      {/* ORCH-0802 — Detach confirmation sheet. Mounted outside the
+      {
+        /* ORCH-0802 — Detach confirmation sheet. Mounted outside the
           ScrollView so the modal overlay isn't clipped by the scroll
           frame. brandId/brandName are null-guarded — the sheet renders
-          null when either is missing. */}
+          null when either is missing. */
+      }
       <BrandStripeDetachConfirmSheet
         visible={detachSheetVisible}
         brandId={brand?.id ?? null}

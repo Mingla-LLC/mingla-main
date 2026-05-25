@@ -15,8 +15,17 @@ export interface NativeCheckoutInput {
     email: string;
     phone: string;
     marketingOptIn?: boolean;
+    address: {
+      line1: string;
+      line2?: string;
+      city: string;
+      state?: string;
+      postal: string;
+      country: string;
+    };
   };
   idempotencyKey?: string;
+  taxCalculationId?: string | null;
 }
 
 export type NativeCheckoutOutcome =
@@ -24,9 +33,9 @@ export type NativeCheckoutOutcome =
   | { outcome: "canceled" }
   | { outcome: "failed"; message: string };
 
-export const useNativeCheckoutFlow = (): ((
+export const useNativeCheckoutFlow = (): (
   input: NativeCheckoutInput,
-) => Promise<NativeCheckoutOutcome>) => {
+) => Promise<NativeCheckoutOutcome> => {
   return async (): Promise<NativeCheckoutOutcome> => ({
     outcome: "failed",
     message:

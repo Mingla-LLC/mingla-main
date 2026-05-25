@@ -51,6 +51,14 @@ export interface BuyerDetails {
   /** Required for production checkout. Edge functions normalise to E.164. */
   phone: string;
   marketingOptIn: boolean;
+  address?: {
+    line1: string;
+    line2?: string;
+    city: string;
+    state?: string;
+    postal: string;
+    country: string;
+  };
 }
 
 export type CheckoutPaymentMethod =
@@ -62,8 +70,8 @@ export type CheckoutPaymentMethod =
   // Door (Cycle 12 — operator route, ds_xxx sales).
   // I-29: door payment methods MUST NOT appear in /checkout buyer flow.
   | "cash"
-  | "card_reader"  // [TRANSITIONAL] B-cycle Stripe Terminal SDK — disabled in J-D3 picker
-  | "nfc"          // [TRANSITIONAL] B-cycle platform NFC — disabled in J-D3 picker
+  | "card_reader" // [TRANSITIONAL] B-cycle Stripe Terminal SDK — disabled in J-D3 picker
+  | "nfc" // [TRANSITIONAL] B-cycle platform NFC — disabled in J-D3 picker
   | "manual";
 
 export interface OrderResult {
@@ -122,15 +130,15 @@ export interface CartState {
 
 type CartAction =
   | {
-      type: "SET_LINE_QUANTITY";
-      ticketTypeId: string;
-      ticketName: string;
-      unitPrice: number;
-      unitPriceGbp?: number;
-      currency: string;
-      isFree: boolean;
-      quantity: number;
-    }
+    type: "SET_LINE_QUANTITY";
+    ticketTypeId: string;
+    ticketName: string;
+    unitPrice: number;
+    unitPriceGbp?: number;
+    currency: string;
+    isFree: boolean;
+    quantity: number;
+  }
   | { type: "SET_BUYER"; patch: Partial<BuyerDetails> }
   | { type: "RECORD_RESULT"; result: OrderResult }
   | { type: "SET_INTAKE_TIER"; ticketTypeId: string; data: unknown }
@@ -142,6 +150,13 @@ const EMPTY_BUYER: BuyerDetails = {
   email: "",
   phone: "",
   marketingOptIn: false,
+  address: {
+    line1: "",
+    city: "",
+    state: "",
+    postal: "",
+    country: "US",
+  },
 };
 
 const INITIAL_STATE: CartState = {
@@ -154,8 +169,15 @@ const INITIAL_STATE: CartState = {
 const reducer = (state: CartState, action: CartAction): CartState => {
   switch (action.type) {
     case "SET_LINE_QUANTITY": {
-      const { ticketTypeId, ticketName, unitPrice, unitPriceGbp, currency, isFree, quantity } =
-        action;
+      const {
+        ticketTypeId,
+        ticketName,
+        unitPrice,
+        unitPriceGbp,
+        currency,
+        isFree,
+        quantity,
+      } = action;
       const normalizedCurrency = currency.toUpperCase();
       const existingCurrency = state.lines[0]?.currency;
       if (
@@ -194,7 +216,7 @@ const reducer = (state: CartState, action: CartAction): CartState => {
       return {
         ...state,
         lines: state.lines.map((l) =>
-          l.ticketTypeId === ticketTypeId ? { ...l, quantity } : l,
+          l.ticketTypeId === ticketTypeId ? { ...l, quantity } : l
         ),
       };
     }
