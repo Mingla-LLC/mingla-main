@@ -12,7 +12,7 @@ class FakeQuery {
   private filters: Record<string, unknown> = {};
   private updatePayload: Record<string, unknown> | null = null;
 
-  select(): FakeQuery {
+  select(_columns?: string): FakeQuery {
     return this;
   }
   eq(column: string, value: unknown): FakeQuery {
@@ -27,20 +27,29 @@ class FakeQuery {
     this.updatePayload = payload;
     return this;
   }
-  async maybeSingle(): Promise<QueryResult> {
+  maybeSingle(): Promise<QueryResult> {
     if (this.table === "stripe_connect_accounts") {
-      return { data: { brand_id: this.db.brandId }, error: null };
+      return Promise.resolve({
+        data: { brand_id: this.db.brandId },
+        error: null,
+      });
     }
     if (this.table === "orders") {
       const byCharge = this.filters.stripe_charge_id === this.db.chargeId;
       const byPi =
         this.filters.stripe_payment_intent_id === this.db.paymentIntentId;
-      return {
+      return Promise.resolve({
         data: byCharge || byPi ? { id: this.db.orderId } : null,
         error: null,
-      };
+      });
     }
-    return { data: null, error: null };
+    if (this.table === "brands") {
+      return Promise.resolve({
+        data: { name: this.db.brandName },
+        error: null,
+      });
+    }
+    return Promise.resolve({ data: null, error: null });
   }
   then(resolve: (value: QueryResult) => void): Promise<void> {
     if (this.table === "stripe_disputes" && this.updatePayload) {
@@ -56,6 +65,7 @@ class FakeQuery {
 
 class FakeSupabase {
   brandId = "00000000-0000-4000-8000-000000000001";
+  brandName = "Acme Co";
   orderId = "00000000-0000-4000-8000-000000000002";
   chargeId = "ch_123";
   paymentIntentId = "pi_123";
@@ -66,7 +76,11 @@ class FakeSupabase {
   }
 }
 
-const event = (type: string, status = "needs_response") => ({
+const event = (
+  type: string,
+  status = "needs_response",
+  disputeOverrides: Record<string, unknown> = {},
+) => ({
   id: `evt_${type}`,
   type,
   account: "acct_connected",
@@ -81,37 +95,73 @@ const event = (type: string, status = "needs_response") => ({
       reason: "fraudulent",
       evidence_details: { due_by: 1_800_000_000 },
       is_charge_refundable: false,
+      livemode: true,
+      ...disputeOverrides,
     },
   },
 });
 
-Deno.test("ORCH-0953 §3.3 — dispute.created upserts one row and dispatches configured operator alerts", async () => {
-  const prior = Deno.env.get("STRIPE_DISPUTE_ALERT_USERS");
-  Deno.env.set("STRIPE_DISPUTE_ALERT_USERS", "user-a,user-b");
+Deno.test("ORCH-0956 T-01 — dispute.created upserts one row and sends configured operator email alerts", async () => {
+  const prior = Deno.env.get("STRIPE_DISPUTE_ALERT_EMAILS");
+  Deno.env.set(
+    "STRIPE_DISPUTE_ALERT_EMAILS",
+    "ops@example.com,ops2@example.com",
+  );
   const supabase = new FakeSupabase();
-  const notifications: unknown[] = [];
+  const alerts: {
+    subject: string;
+    paragraphs: string[];
+    recipients: string[];
+    cta?: { label: string; url: string } | null;
+  }[] = [];
   const appsFlyerEvents: string[] = [];
+  const dueBy = Math.floor(Date.now() / 1000) + 7 * 86_400;
   try {
     await handleChargeDispute(
       supabase as never,
-      event("charge.dispute.created"),
+      event("charge.dispute.created", "needs_response", {
+        evidence_details: { due_by: dueBy },
+      }),
       {
-        dispatchNotification: (async (input: unknown) => {
-          notifications.push(input);
+        sendOpsAlertEmail: ((input: {
+          subject: string;
+          paragraphs: string[];
+          recipients: string[];
+          cta?: { label: string; url: string } | null;
+        }) => {
+          alerts.push(input);
+          return Promise.resolve({
+            attempted: input.recipients.length,
+            succeeded: input.recipients.length,
+            failed: 0,
+          });
         }) as never,
-        resolveBrandOwnerUserId: (async () => "owner-user") as never,
-        postAppsFlyerS2SEvent: (async (input: { eventName: string }) => {
+        resolveBrandOwnerUserId: (() => Promise.resolve("owner-user")) as never,
+        postAppsFlyerS2SEvent: ((input: { eventName: string }) => {
           appsFlyerEvents.push(input.eventName);
-          return true;
+          return Promise.resolve(true);
         }) as never,
       },
     );
     assertEquals(supabase.disputes.size, 1);
-    assertEquals(notifications.length, 2);
+    assertEquals(alerts.length, 1);
+    assertStringIncludes(
+      alerts[0].subject,
+      "🚨 [LIVE] Chargeback dispute — USD 50.00 on Acme Co, evidence due in 7 days",
+    );
+    assertEquals(alerts[0].recipients, ["ops@example.com", "ops2@example.com"]);
+    assertStringIncludes(alerts[0].paragraphs.join("\n"), "Amount: USD 50.00");
+    assertStringIncludes(alerts[0].paragraphs.join("\n"), "Brand: Acme Co");
+    assertStringIncludes(alerts[0].paragraphs.join("\n"), "Reason: fraudulent");
+    assertStringIncludes(alerts[0].paragraphs.join("\n"), "Dispute ID: dp_123");
+    assertEquals(alerts[0].cta, {
+      label: "Open in Stripe Dashboard",
+      url: "https://dashboard.stripe.com/disputes/dp_123",
+    });
     assertEquals(appsFlyerEvents, ["dispute_created"]);
   } finally {
-    if (prior === undefined) Deno.env.delete("STRIPE_DISPUTE_ALERT_USERS");
-    else Deno.env.set("STRIPE_DISPUTE_ALERT_USERS", prior);
+    if (prior === undefined) Deno.env.delete("STRIPE_DISPUTE_ALERT_EMAILS");
+    else Deno.env.set("STRIPE_DISPUTE_ALERT_EMAILS", prior);
   }
 });
 
@@ -136,13 +186,18 @@ Deno.test("ORCH-0953 §3.3 — stripe_disputes migration declares schema, RLS, a
 });
 
 Deno.test("ORCH-0953 §3.3 — replaying the same dispute is idempotent", async () => {
-  const prior = Deno.env.get("STRIPE_DISPUTE_ALERT_USERS");
-  Deno.env.delete("STRIPE_DISPUTE_ALERT_USERS");
+  const prior = Deno.env.get("STRIPE_DISPUTE_ALERT_EMAILS");
+  Deno.env.delete("STRIPE_DISPUTE_ALERT_EMAILS");
   const supabase = new FakeSupabase();
   const effects = {
-    dispatchNotification: (async () => {}) as never,
-    resolveBrandOwnerUserId: (async () => null) as never,
-    postAppsFlyerS2SEvent: (async () => true) as never,
+    sendOpsAlertEmail: (() =>
+      Promise.resolve({
+        attempted: 0,
+        succeeded: 0,
+        failed: 0,
+      })) as never,
+    resolveBrandOwnerUserId: (() => Promise.resolve(null)) as never,
+    postAppsFlyerS2SEvent: (() => Promise.resolve(true)) as never,
   };
   try {
     await handleChargeDispute(
@@ -157,25 +212,90 @@ Deno.test("ORCH-0953 §3.3 — replaying the same dispute is idempotent", async 
     );
     assertEquals(supabase.disputes.size, 1);
   } finally {
-    if (prior === undefined) Deno.env.delete("STRIPE_DISPUTE_ALERT_USERS");
-    else Deno.env.set("STRIPE_DISPUTE_ALERT_USERS", prior);
+    if (prior === undefined) Deno.env.delete("STRIPE_DISPUTE_ALERT_EMAILS");
+    else Deno.env.set("STRIPE_DISPUTE_ALERT_EMAILS", prior);
   }
 });
 
-Deno.test("ORCH-0953 §3.3 — closed lost dispute posts dispute_lost AppsFlyer event", async () => {
+Deno.test("ORCH-0956 T-02 — closed lost dispute sends email alert and posts dispute_lost AppsFlyer event", async () => {
+  const prior = Deno.env.get("STRIPE_DISPUTE_ALERT_EMAILS");
+  Deno.env.set("STRIPE_DISPUTE_ALERT_EMAILS", "ops@example.com");
   const supabase = new FakeSupabase();
+  const alerts: {
+    subject: string;
+    paragraphs: string[];
+    recipients: string[];
+    cta?: { label: string; url: string } | null;
+  }[] = [];
   const appsFlyerEvents: string[] = [];
-  await handleChargeDispute(
-    supabase as never,
-    event("charge.dispute.closed", "lost"),
-    {
-      dispatchNotification: (async () => {}) as never,
-      resolveBrandOwnerUserId: (async () => "owner-user") as never,
-      postAppsFlyerS2SEvent: (async (input: { eventName: string }) => {
-        appsFlyerEvents.push(input.eventName);
-        return true;
-      }) as never,
-    },
-  );
-  assertEquals(appsFlyerEvents, ["dispute_lost"]);
+  try {
+    await handleChargeDispute(
+      supabase as never,
+      event("charge.dispute.closed", "lost"),
+      {
+        sendOpsAlertEmail: ((input: {
+          subject: string;
+          paragraphs: string[];
+          recipients: string[];
+          cta?: { label: string; url: string } | null;
+        }) => {
+          alerts.push(input);
+          return Promise.resolve({
+            attempted: input.recipients.length,
+            succeeded: input.recipients.length,
+            failed: 0,
+          });
+        }) as never,
+        resolveBrandOwnerUserId: (() => Promise.resolve("owner-user")) as never,
+        postAppsFlyerS2SEvent: ((input: { eventName: string }) => {
+          appsFlyerEvents.push(input.eventName);
+          return Promise.resolve(true);
+        }) as never,
+      },
+    );
+    assertEquals(alerts.length, 1);
+    assertEquals(
+      alerts[0].subject,
+      "❌ [LIVE] Chargeback LOST — USD 50.00 on Acme Co",
+    );
+    assertEquals(alerts[0].recipients, ["ops@example.com"]);
+    assertStringIncludes(
+      alerts[0].paragraphs.join("\n"),
+      'A Stripe chargeback was closed with status "lost".',
+    );
+    assertEquals(alerts[0].cta, {
+      label: "Open in Stripe Dashboard",
+      url: "https://dashboard.stripe.com/disputes/dp_123",
+    });
+    assertEquals(appsFlyerEvents, ["dispute_lost"]);
+  } finally {
+    if (prior === undefined) Deno.env.delete("STRIPE_DISPUTE_ALERT_EMAILS");
+    else Deno.env.set("STRIPE_DISPUTE_ALERT_EMAILS", prior);
+  }
+});
+
+Deno.test("ORCH-0956 T-03 — dispute.updated upserts without sending operator email alerts", async () => {
+  const prior = Deno.env.get("STRIPE_DISPUTE_ALERT_EMAILS");
+  Deno.env.set("STRIPE_DISPUTE_ALERT_EMAILS", "ops@example.com");
+  const supabase = new FakeSupabase();
+  const alerts: unknown[] = [];
+  try {
+    await handleChargeDispute(
+      supabase as never,
+      event("charge.dispute.updated"),
+      {
+        sendOpsAlertEmail: ((input: unknown) => {
+          alerts.push(input);
+          return Promise.resolve({ attempted: 1, succeeded: 1, failed: 0 });
+        }) as never,
+        resolveBrandOwnerUserId: (() => Promise.resolve("owner-user")) as never,
+        postAppsFlyerS2SEvent: (() => Promise.resolve(true)) as never,
+      },
+    );
+    assertEquals(supabase.disputes.size, 1);
+    assertEquals(alerts.length, 0);
+  } finally {
+    if (prior === undefined) Deno.env.delete("STRIPE_DISPUTE_ALERT_EMAILS");
+    else Deno.env.set("STRIPE_DISPUTE_ALERT_EMAILS", prior);
+  }
 });
