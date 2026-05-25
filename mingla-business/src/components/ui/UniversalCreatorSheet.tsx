@@ -5,8 +5,8 @@
  * Renders three options as tappable rows: Create event / Create experience /
  * Create trip. Each option routes:
  *   - "Create event" → `/event/create` (existing flow, unchanged)
- *   - "Create experience" → `/experience/coming-soon` (stub; Ve5+ ships real)
- *   - "Create trip or otherwise" → `/trip/coming-soon` (stub; Tr2+ ships real)
+ *   - "Create experience" → `/experience/create`
+ *   - "Create trip or otherwise" → `/trip/create`
  *
  * Uses TopSheet with `heightMode="compact"` (new in ORCH-0826) so the panel
  * fits the 3-row content rather than the 70% screen height BrandSwitcherSheet
@@ -69,7 +69,7 @@ const OPTIONS: readonly CreatorOption[] = [
     iconName: "sparkle",
     title: "Create experience",
     subtitle: "A single-intent offering for venues: brunch, tasting, class.",
-    route: "/experience/coming-soon",
+    route: "/experience/create",
     testID: "universal-creator-experience",
   },
   {

@@ -11,11 +11,13 @@ import {
   Text,
   View,
 } from "react-native";
+import { useRouter } from "expo-router";
 
 import { ActivitiesSnapInput } from "../../../src/components/experience/ActivitiesSnapInput";
 import { ExperienceReviewCards } from "../../../src/components/experience/ExperienceReviewCards";
 import { MenuSnapInput } from "../../../src/components/experience/MenuSnapInput";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
+import { Button } from "../../../src/components/ui/Button";
 import { Toast } from "../../../src/components/ui/Toast";
 import {
   accent,
@@ -60,7 +62,7 @@ const RESTAURANT_COPY: GenerationCopy = {
   emptyParseToast:
     "We couldn't find menu items in that file. Try a clearer photo of your menu.",
   parseErrorFallback: "Couldn't read your menu. Try again.",
-  emptyListHint: "No experiences yet. Snap your menu to generate your first ones.",
+  emptyListHint: "No experiences yet",
   unverifiedHint:
     "Once Mingla verifies your venue claim, you can generate experiences from your menu here.",
 };
@@ -74,8 +76,7 @@ const PLAY_COPY: GenerationCopy = {
   emptyParseToast:
     "We couldn't find activities in that file. Try a clearer photo of your activities list.",
   parseErrorFallback: "Couldn't read your activities list. Try again.",
-  emptyListHint:
-    "No experiences yet. Generate from your activities list to create your first ones.",
+  emptyListHint: "No experiences yet",
   unverifiedHint:
     "Once Mingla verifies your venue claim, you can generate experiences from your activities list here.",
 };
@@ -119,6 +120,7 @@ function ExperienceGenerationSurface({
   canSnap,
   SnapInput,
 }: ExperienceGenerationSurfaceProps): React.ReactElement {
+  const router = useRouter();
   const { isWideDesktop } = useResponsiveLayout();
   const experiencesQuery = useExperiencesByBrand(brandId);
   const {
@@ -231,6 +233,15 @@ function ExperienceGenerationSurface({
         ) : experiences.length === 0 ? (
           <GlassCard variant="elevated" padding={spacing.lg}>
             <Text style={styles.emptyBody}>{copy.emptyListHint}</Text>
+            <View style={styles.emptyCtaRow}>
+              <Button
+                label="Create experience"
+                onPress={() => router.push("/experience/create" as never)}
+                variant="primary"
+                size="md"
+                leadingIcon="sparkle"
+              />
+            </View>
           </GlassCard>
         ) : (
           <View style={[styles.expList, isWideDesktop && styles.desktopListGrid]}>
@@ -279,6 +290,7 @@ function ExperienceGenerationSurface({
 }
 
 export default function HubExperiencesRoute(): React.ReactElement {
+  const router = useRouter();
   const currentBrand = useCurrentBrand();
 
   if (currentBrand === null) {
@@ -317,11 +329,17 @@ export default function HubExperiencesRoute(): React.ReactElement {
     return (
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <GlassCard variant="elevated" padding={spacing.lg}>
-          <Text style={styles.emptyTitle}>Schedule snap coming soon</Text>
-          <Text style={styles.emptyBody}>
-            Creative &amp; Arts venues will get schedule-based AI experience generation in an
-            upcoming release.
-          </Text>
+          <Text style={styles.emptyTitle}>No experiences yet</Text>
+          <Text style={styles.emptyBody}>Create experience</Text>
+          <View style={styles.emptyCtaRow}>
+            <Button
+              label="Create experience"
+              onPress={() => router.push("/experience/create" as never)}
+              variant="primary"
+              size="md"
+              leadingIcon="sparkle"
+            />
+          </View>
         </GlassCard>
       </ScrollView>
     );
@@ -330,10 +348,17 @@ export default function HubExperiencesRoute(): React.ReactElement {
   return (
     <ScrollView contentContainerStyle={styles.scrollContent}>
       <GlassCard variant="elevated" padding={spacing.lg}>
-        <Text style={styles.emptyTitle}>Experiences unavailable for this venue</Text>
-        <Text style={styles.emptyBody}>
-          This venue category does not support AI experience generation yet.
-        </Text>
+        <Text style={styles.emptyTitle}>No experiences yet</Text>
+        <Text style={styles.emptyBody}>Create experience</Text>
+        <View style={styles.emptyCtaRow}>
+          <Button
+            label="Create experience"
+            onPress={() => router.push("/experience/create" as never)}
+            variant="primary"
+            size="md"
+            leadingIcon="sparkle"
+          />
+        </View>
       </GlassCard>
     </ScrollView>
   );
@@ -433,5 +458,9 @@ const styles = StyleSheet.create({
     fontSize: typography.body.fontSize,
     lineHeight: typography.body.lineHeight,
     color: textTokens.secondary,
+  },
+  emptyCtaRow: {
+    flexDirection: "row",
+    marginTop: spacing.md,
   },
 });

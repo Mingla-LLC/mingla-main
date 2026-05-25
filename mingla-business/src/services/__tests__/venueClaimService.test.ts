@@ -6,10 +6,9 @@ import {
 } from "../venueClaimBannerLogic";
 
 describe("venueClaimService", () => {
-  test("venueClaimBannerVariant for physical pending_review", () => {
+  test("venueClaimBannerVariant shows pending review without brand-kind gating", () => {
     expect(
       venueClaimBannerVariant({
-        kind: "physical",
         claim_status: "pending_review",
         rejection_reason: null,
         claim_follow_up_at: null,
@@ -20,7 +19,6 @@ describe("venueClaimService", () => {
   test("venueClaimBannerVariant for follow_up", () => {
     expect(
       venueClaimBannerVariant({
-        kind: "physical",
         claim_status: "pending_review",
         rejection_reason: null,
         claim_follow_up_at: "2026-05-19T12:00:00Z",
@@ -28,19 +26,20 @@ describe("venueClaimService", () => {
     ).toBe("follow_up");
   });
 
-  test("popup brands hide banner", () => {
+  test("venueClaimBannerVariant shows verified without brand-kind gating", () => {
     expect(
       venueClaimBannerVariant({
-        kind: "popup",
-        claim_status: "pending_review",
+        claim_status: "verified",
         rejection_reason: null,
         claim_follow_up_at: null,
       }),
-    ).toBeNull();
+    ).toBe("verified");
   });
 
-  test("venueClaimBannerCopy includes rejection reason", () => {
+  test("venueClaimBannerCopy uses locked rejected copy", () => {
     const copy = venueClaimBannerCopy("rejected", "Could not verify by phone");
-    expect(copy?.body).toBe("Could not verify by phone");
+    expect(copy?.body).toBe(
+      "Your venue claim was declined. Tap to see why or try a different venue.",
+    );
   });
 });

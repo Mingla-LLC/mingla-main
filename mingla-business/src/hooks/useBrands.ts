@@ -70,6 +70,10 @@ export const brandKeys = {
     brandId: string,
   ): readonly ["brands", "cascade-preview", string] =>
     [...brandKeys.all, "cascade-preview", brandId] as const,
+  offeringCounts: (
+    brandId: string,
+  ): readonly ["brand", string, "offeringCounts"] =>
+    ["brand", brandId, "offeringCounts"] as const,
 };
 
 const DISABLED_KEY = ["brands-disabled"] as const;

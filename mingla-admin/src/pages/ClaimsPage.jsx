@@ -17,6 +17,8 @@ import { ClaimRow } from "../components/claims/ClaimRow";
 import {
   groupClaimsByGooglePlaceId,
   listPendingClaims,
+  listRejectedClaims,
+  listVerifiedClaims,
   reviewClaim,
 } from "../services/adminClaimsService";
 
@@ -28,9 +30,22 @@ const CAT_LABELS = {
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
+const CLAIM_TABS = [
+  { id: "pending", label: "Pending review" },
+  { id: "verified", label: "Verified" },
+  { id: "rejected", label: "Rejected" },
+];
+
+const EMPTY_COPY = {
+  pending: "No claims waiting for review. Nice work.",
+  verified: "No verified venues yet.",
+  rejected: "No rejected claims.",
+};
+
 export function ClaimsPage() {
   const { addToast } = useToast();
   const [rows, setRows] = useState([]);
+  const [activeTab, setActiveTab] = useState("pending");
   const [loading, setLoading] = useState(true);
   const [detail, setDetail] = useState(null);
   const [hours, setHours] = useState([]);
@@ -47,7 +62,12 @@ export function ClaimsPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await listPendingClaims();
+      const data =
+        activeTab === "verified"
+          ? await listVerifiedClaims()
+          : activeTab === "rejected"
+            ? await listRejectedClaims()
+            : await listPendingClaims();
       setRows(data);
     } catch (e) {
       addToast({
@@ -59,7 +79,7 @@ export function ClaimsPage() {
     } finally {
       setLoading(false);
     }
-  }, [addToast]);
+  }, [activeTab, addToast]);
 
   useEffect(() => {
     void load();
@@ -175,10 +195,10 @@ export function ClaimsPage() {
         <ClipboardList className="h-8 w-8 text-[var(--color-brand-500)]" />
         <div>
           <h1 className="text-2xl font-semibold text-[var(--color-text-primary)]">
-            Venue claims
+            Venue Claims
           </h1>
           <p className="text-sm text-[var(--color-text-secondary)]">
-            Physical brands awaiting phone verification (Ve3)
+            Review venue claims by status.
           </p>
         </div>
         <Button variant="secondary" className="ml-auto" onClick={() => void load()}>
@@ -186,9 +206,30 @@ export function ClaimsPage() {
         </Button>
       </div>
 
+      <div className="flex flex-wrap gap-2">
+        {CLAIM_TABS.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => setActiveTab(tab.id)}
+            className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
+              activeTab === tab.id
+                ? "border-[var(--color-brand-500)] bg-[var(--color-brand-500)] text-white"
+                : "border-white/10 bg-white/5 text-[var(--color-text-secondary)] hover:bg-white/10"
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
       <SectionCard
-        title={`Queue (${rows.length})`}
-        subtitle="Oldest first · call venue then approve"
+        title={`${CLAIM_TABS.find((tab) => tab.id === activeTab)?.label ?? "Pending review"} (${rows.length})`}
+        subtitle={
+          activeTab === "pending"
+            ? "Oldest first · call venue then approve"
+            : "Reviewed venue claims"
+        }
       >
         {loading ? (
           <div className="flex justify-center py-12">
@@ -196,7 +237,7 @@ export function ClaimsPage() {
           </div>
         ) : rows.length === 0 ? (
           <p className="text-sm text-[var(--color-text-secondary)] py-8 text-center">
-            No pending venue claims.
+            {EMPTY_COPY[activeTab]}
           </p>
         ) : (
           <div className="overflow-x-auto">
@@ -391,7 +432,7 @@ export function ClaimsPage() {
       <Modal
         open={rejectOpen}
         onClose={() => setRejectOpen(false)}
-        title="Reject venue claim"
+        title="Why is this claim being declined?"
       >
         <ModalBody>
           <p className="text-sm text-[var(--color-text-secondary)] mb-3">
@@ -399,7 +440,7 @@ export function ClaimsPage() {
           </p>
           <textarea
             className="w-full min-h-[100px] rounded-lg border border-white/10 bg-white/5 p-3 text-sm text-[var(--color-text-primary)]"
-            placeholder="Why is this claim being rejected?"
+            placeholder="Why is this claim being declined?"
             value={rejectReason}
             onChange={(e) => setRejectReason(e.target.value)}
             disabled={acting}

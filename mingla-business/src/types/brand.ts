@@ -179,33 +179,11 @@ export type Brand = {
    * do NOT mutate this field directly.
    */
   slug: string;
-  /**
-   * Brand kind. Drives the persona-specific creation flow and downstream UX.
-   *   - "physical"     — brand owns/leases a venue. Public page renders address. (Ve1+)
-   *   - "popup"        — brand operates across multiple venues. No location shown. (today's default)
-   *   - "trip_planner" — multi-day trips. Stripe Connect REQUIRED at create time per DEC-4 (Tr1+, ORCH-0855).
-   *
-   * IMMUTABLE post-create for kind='trip_planner' (Tr1 lock-in per
-   * I-PROPOSED-TR1-KIND-IMMUTABLE — DISCOVERY-4 resolution). BrandEditView
-   * MUST NOT render a kind editor for trip-planner brands, and the kind
-   * toggle for legacy brands MUST NOT include 'trip_planner' as an option.
-   * Switching identity post-create would break Stripe-status gating,
-   * downstream RLS assumptions, and analytics funnels.
-   *
-   * Per I-1.2-BRAND-AS-CONTAINER (PROJECT_SPEC §54): kind is starting
-   * identity only — any brand can author any offering type via the
-   * universal "+" creator.
-   */
+  /** @deprecated META-ORCH-0972 — kind is removed from DB in Sub-C; this field will be deleted next. */
   kind: "physical" | "popup" | "trip_planner";
   /**
-   * Public-facing address for physical brands. Free-form string (matches
-   * the existing event-venue pattern). Only meaningful when
-   * `kind === "physical"`. UI hides the address input entirely when
-   * kind === "popup". When kind switches popup → physical, any previously-
-   * entered address is preserved and re-shown (don't clear).
-   *
-   * NEW in Cycle 7 schema v10. Optional — null even on physical brands
-   * means founder hasn't shared an address yet (clean omission, no fake).
+   * Optional public-facing address. Used to pre-fill experience venues and
+   * show an address on public surfaces when present.
    */
   address: string | null;
   /**

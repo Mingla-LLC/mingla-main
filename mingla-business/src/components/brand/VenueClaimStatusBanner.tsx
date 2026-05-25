@@ -25,18 +25,17 @@ interface VenueClaimStatusBannerProps {
 export function VenueClaimStatusBanner({
   brand,
 }: VenueClaimStatusBannerProps): React.ReactElement | null {
-  if (brand === null || brand === undefined || brand.kind !== "physical") {
+  if (brand === null || brand === undefined) {
     return null;
   }
 
   const variant = venueClaimBannerVariant({
-    kind: "physical",
     claim_status: brand.claimStatus ?? "none",
     rejection_reason: brand.rejectionReason ?? null,
     claim_follow_up_at: brand.claimFollowUpAt ?? null,
   });
 
-  if (variant === null || variant === "verified") {
+  if (variant === null) {
     return null;
   }
 

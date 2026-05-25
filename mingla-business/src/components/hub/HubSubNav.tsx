@@ -29,9 +29,10 @@ import {
 } from "../../constants/designSystem";
 
 export type HubSubTabId = "events" | "experiences" | "trips";
+export type HubDataDrivenTabId = HubSubTabId | "getstarted";
 
 interface HubSubTab {
-  readonly id: HubSubTabId;
+  readonly id: HubDataDrivenTabId;
   readonly label: string;
   readonly route: string;
 }
@@ -42,17 +43,63 @@ const SUB_TABS: readonly HubSubTab[] = [
   { id: "trips", label: "Trips", route: "/(tabs)/hub/trips" },
 ] as const;
 
-export const detectActiveSubTab = (pathname: string): HubSubTabId => {
+const LABELS: Record<HubDataDrivenTabId, string> = {
+  getstarted: "Get started",
+  events: "Events",
+  trips: "Trips",
+  experiences: "Experiences",
+};
+
+const ROUTES: Record<HubDataDrivenTabId, string> = {
+  getstarted: "/(tabs)/hub/getstarted",
+  events: "/(tabs)/hub/events",
+  trips: "/(tabs)/hub/trips",
+  experiences: "/(tabs)/hub/experiences",
+};
+
+export const detectActiveSubTab = (pathname: string): HubDataDrivenTabId => {
   const lower = pathname.toLowerCase();
+  if (lower.includes("/hub/getstarted")) return "getstarted";
   if (lower.includes("/hub/experiences")) return "experiences";
   if (lower.includes("/hub/trips")) return "trips";
   return "events"; // default: Events sub-route is the Hub landing
 };
 
-export const HubSubNav: React.FC = () => {
+export interface HubSubNavProps {
+  visibleTabs?: readonly HubDataDrivenTabId[];
+  counts?: Partial<Record<HubDataDrivenTabId, number>>;
+  loading?: boolean;
+  onTabPress?: (tab: HubDataDrivenTabId) => void;
+}
+
+export const HubSubNav: React.FC<HubSubNavProps> = ({
+  visibleTabs,
+  counts,
+  loading = false,
+  onTabPress,
+}) => {
   const router = useRouter();
   const pathname = usePathname();
   const activeId = detectActiveSubTab(pathname);
+  const tabs =
+    visibleTabs === undefined
+      ? SUB_TABS
+      : visibleTabs.map((id) => ({
+          id,
+          label: LABELS[id],
+          route: ROUTES[id],
+        }));
+
+  if (loading) {
+    return (
+      <View style={styles.host}>
+        <View style={styles.content}>
+          <View style={styles.shimmerPill} />
+          <View style={styles.shimmerPill} />
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.host}>
@@ -61,15 +108,19 @@ export const HubSubNav: React.FC = () => {
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.content}
       >
-        {SUB_TABS.map((tab) => {
+        {tabs.map((tab) => {
           const isActive = tab.id === activeId;
+          const count = counts?.[tab.id];
           return (
             <Pressable
               key={tab.id}
               accessibilityRole="tab"
               accessibilityLabel={`${tab.label} sub-tab`}
               accessibilityState={{ selected: isActive }}
-              onPress={() => router.push(tab.route as never)}
+              onPress={() => {
+                onTabPress?.(tab.id);
+                router.push(tab.route as never);
+              }}
               style={[
                 styles.pill,
                 isActive ? styles.pillActive : styles.pillInactive,
@@ -82,7 +133,9 @@ export const HubSubNav: React.FC = () => {
                   isActive ? styles.pillLabelActive : styles.pillLabelInactive,
                 ]}
               >
-                {tab.label}
+                {count !== undefined && tab.id !== "getstarted"
+                  ? `${tab.label} · ${count}`
+                  : tab.label}
               </Text>
             </Pressable>
           );
@@ -98,6 +151,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   content: {
+    flexDirection: "row",
     gap: spacing.sm,
   },
   pill: {
@@ -124,6 +178,14 @@ const styles = StyleSheet.create({
   },
   pillLabelInactive: {
     color: textTokens.secondary,
+  },
+  shimmerPill: {
+    width: 116,
+    height: 38,
+    borderRadius: 999,
+    backgroundColor: glass.tint.profileBase,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: glass.border.profileBase,
   },
 });
 
