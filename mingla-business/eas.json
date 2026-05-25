@@ -7,7 +7,13 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "channel": "production",
+      "channel": "development",
+      "android": {
+        "gradleCommand": ":app:assembleDebug"
+      },
+      "ios": {
+        "buildConfiguration": "Debug"
+      },
       "env": {
         "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       }
@@ -15,9 +21,13 @@
     "development-sim": {
       "developmentClient": true,
       "distribution": "internal",
-      "channel": "production",
+      "channel": "development",
+      "android": {
+        "gradleCommand": ":app:assembleDebug"
+      },
       "ios": {
-        "simulator": true
+        "simulator": true,
+        "buildConfiguration": "Debug"
       },
       "env": {
         "SENTRY_DISABLE_AUTO_UPLOAD": "true"
