@@ -5,7 +5,7 @@
 **Branch:** `ORCH-0953-stripe-live-cutover`
 **Author:** Claude `mingla-forensics` (SPEC mode)
 **Investigation source:** [`Mingla_Artifacts/reports/INVESTIGATION_ORCH-0953_STRIPE_LIVE_CUTOVER_AUDIT.md`](../reports/INVESTIGATION_ORCH-0953_STRIPE_LIVE_CUTOVER_AUDIT.md)
-**Dispatch source:** [`Mingla_Artifacts/prompts/SPEC_DISPATCH_ORCH-0953_STRIPE_LIVE_CUTOVER.md`](../prompts/SPEC_DISPATCH_ORCH-0953_STRIPE_LIVE_CUTOVER.md)
+**Dispatch source:** `Mingla_Artifacts/prompts/SPEC_DISPATCH_ORCH-0953_STRIPE_LIVE_CUTOVER.md` (PRIVATE_PROMPT_NOT_VERSIONED — prompts directory is gitignored per artifact manifest)
 **Confidence:** High — every contract below cites a six-field investigation finding or a confirmed code site at file:line.
 
 ---
