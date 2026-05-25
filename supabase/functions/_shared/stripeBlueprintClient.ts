@@ -107,7 +107,7 @@ export function createRecipientAccount(
   return stripeBlueprintRequest<StripeV2Account>({
     method: "POST",
     path: "/v2/core/accounts",
-    envVarNames: ["STRIPE_RAK_ONBOARD", "STRIPE_SECRET_KEY"],
+    envVarNames: ["STRIPE_RAK_ONBOARD"],
     idempotencyKey: input.idempotencyKey,
     body: {
       configuration: {
@@ -164,7 +164,7 @@ export function createRecipientAccountLink(
   return stripeBlueprintRequest<StripeV2AccountLink>({
     method: "POST",
     path: "/v2/core/account_links",
-    envVarNames: ["STRIPE_RAK_ONBOARD", "STRIPE_SECRET_KEY"],
+    envVarNames: ["STRIPE_RAK_ONBOARD"],
     idempotencyKey: input.idempotencyKey,
     body: {
       account: input.accountId,

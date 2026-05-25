@@ -108,6 +108,11 @@ const MERCHANT_DISPLAY_NAME = "Mingla";
 // for return-URL deep links.
 const BUSINESS_MERCHANT_IDENTIFIER = "merchant.com.sethogieva.minglabusiness";
 const BUSINESS_URL_SCHEME = "com.sethogieva.minglabusiness";
+const NATIVE_REGION_GATE_MESSAGE =
+  "Native payment is not available in this region yet. Pay on the web to complete checkout.";
+
+export const isStripeGooglePayTestEnv = (): boolean =>
+  process.env.EAS_BUILD_PROFILE !== "production";
 
 /**
  * Minimal edge-function-error extractor inline (mingla-business does not
@@ -182,7 +187,12 @@ export const useNativeCheckoutFlow = (): ((
         error,
         "Couldn't start checkout. Tap to try again.",
       );
-      return { outcome: "failed", message };
+      return {
+        outcome: "failed",
+        message: message === "native_paid_not_allowed_in_region"
+          ? NATIVE_REGION_GATE_MESSAGE
+          : message,
+      };
     }
 
     if (!data) {
@@ -256,7 +266,7 @@ export const useNativeCheckoutFlow = (): ((
         },
         googlePay: {
           merchantCountryCode: "US",
-          testEnv: __DEV__,
+          testEnv: isStripeGooglePayTestEnv(),
           currencyCode: "usd",
         },
       });

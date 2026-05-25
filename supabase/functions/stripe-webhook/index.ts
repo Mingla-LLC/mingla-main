@@ -17,6 +17,7 @@ import {
   getStripeWebhookSecretsFromEnv,
   verifyStripeWebhookSignature,
 } from "../_shared/stripeWebhookSignature.ts";
+import { dispatchNotification } from "../_shared/stripeEdgeAuth.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -27,6 +28,32 @@ function plainResponse(body: unknown, status = 200): Response {
     status,
     headers: { "Content-Type": "application/json" },
   });
+}
+
+export async function notifyWebhookSignatureFailure(
+  signature: string | null,
+  effect: typeof dispatchNotification = dispatchNotification,
+): Promise<number> {
+  const raw = Deno.env.get("STRIPE_WEBHOOK_FAILURE_ALERT_USERS") ?? "";
+  const userIds = Array.from(
+    new Set(raw.split(",").map((s) => s.trim()).filter(Boolean)),
+  );
+  if (userIds.length === 0) return 0;
+  for (const userId of userIds) {
+    await effect({
+      userId,
+      type: "stripe_webhook_signature_failure",
+      title: "Stripe webhook signature failed",
+      body: "Stripe webhook signature verification failed. Check live webhook signing secrets.",
+      data: {
+        event_id: signature?.slice(0, 20) ?? null,
+      },
+      relatedId: signature?.slice(0, 20) ?? null,
+      relatedType: "stripe_webhook_signature",
+      idempotencyKey: `stripe_webhook_signature_failure:${signature?.slice(0, 20) ?? "missing"}:${userId}`,
+    });
+  }
+  return userIds.length;
 }
 
 serve(async (req) => {
@@ -57,6 +84,11 @@ serve(async (req) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("[stripe-webhook] signature verification failed:", message);
+    try {
+      await notifyWebhookSignatureFailure(signature);
+    } catch (notifyErr) {
+      console.error("[stripe-webhook] signature-failure alert failed:", notifyErr);
+    }
     return plainResponse({ error: "invalid_signature", detail: message }, 400);
   }
 

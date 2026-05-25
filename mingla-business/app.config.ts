@@ -79,12 +79,23 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     // Cycle B2a Path C V3 — Stripe Connect publishable key. Used by the
     // Mingla-hosted connect-onboarding page (Path B host) when initialising
     // @stripe/connect-js. Publishable keys are public-by-design (ship in client
-    // bundle); operator MUST set EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY in EAS env
-    // for production builds. Test fallback is `pk_test_…` from the MINGLA LLC
-    // sandbox account `acct_1TTnt1PjlZyAYA40` per V3 SPEC §13 amendment A2.
-    EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY:
-      process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ??
-      "pk_test_51TTnt1PjlZyAYA40f3kjmxF6uXjfEJKfFR25LiJpVqd7qw6TYfDqqKLcNamL3JGlD2vxh94Bzn4ciaqsMNN1PJ0C00oZVosOxd",
+    // bundle). ORCH-0953: production EAS builds fail-close unless EAS provides
+    // a pk_live_ value; non-production builds keep the deliberate sandbox fallback
+    // from MINGLA LLC sandbox account `acct_1TTnt1PjlZyAYA40` per V3 SPEC §13 A2.
+    EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY: (() => {
+      const fromEnv = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY;
+      const buildProfile = process.env.EAS_BUILD_PROFILE;
+      if (buildProfile === "production") {
+        if (!fromEnv || !fromEnv.startsWith("pk_live_")) {
+          throw new Error(
+            "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY must be a pk_live_ value for production builds. Set it in EAS env.",
+          );
+        }
+        return fromEnv;
+      }
+      return fromEnv ??
+        "pk_test_51TTnt1PjlZyAYA40f3kjmxF6uXjfEJKfFR25LiJpVqd7qw6TYfDqqKLcNamL3JGlD2vxh94Bzn4ciaqsMNN1PJ0C00oZVosOxd";
+    })(),
     // B2a Path C V3 forensics R-1: canonical Mingla Business public web URL.
     // Single source of truth read by mingla-business/src/constants/platformUrl.ts.
     // Production canonical: https://business.usemingla.com (Vercel-hosted Expo Web export).

@@ -690,6 +690,38 @@ function checkNoNewBackendFiles() {
     "supabase/migrations/__tests__/biz_trip_tickets_sold.test.ts",
     "supabase/migrations/20260725000000_orch_0950_trip_capacity_single_source.sql",
   ];
+  // ORCH-0953 [Stripe live-mode cutover] CLOSE PR #201 (2026-05-24). C7 is scoped
+  // to ORCH-0863 marketing; these backend touches are ORCH-0953 Stripe live
+  // foundation scope (RAK fail-close, dispute table + handlers, native paid
+  // region gate, webhook router corrections, signature-failure alert). Includes
+  // source-reconciled migrations from ORCH-0915 + 0946 + 0947 + 0948 + 0950
+  // (those ORCHs' migrations were already on remote DB but absent from anchor
+  // main at PR #201 open time; reconciled into this branch to keep `supabase
+  // migration list --linked` clean for the ORCH-0953 db push). Duplicate
+  // migration entries with ORCH_0946/0947/0948 allowlists are harmless —
+  // .includes() on the merged array remains O(n) and dedupe is irrelevant.
+  const ORCH_0953_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260724000006_orch_0946_public_ticket_types_remaining.sql",
+    "supabase/migrations/20260724000007_orch_0915_pay_in_full_opt_out.sql",
+    "supabase/migrations/20260724000010_orch_0948_waitlist_feature.sql",
+    "supabase/migrations/20260725000000_orch_0950_trip_capacity_single_source.sql",
+    "supabase/migrations/20260725000001_orch_0947_biz_trip_tickets_sold.sql",
+    "supabase/migrations/20260726000000_orch_0953_create_stripe_disputes.sql",
+    "supabase/functions/_shared/stripeBlueprintClient.ts",
+    "supabase/functions/_shared/stripeDisputeHandlers.ts",
+    "supabase/functions/_shared/stripeTax.ts",
+    "supabase/functions/_shared/stripeWebhookRouter.ts",
+    "supabase/functions/_shared/__tests__/stripeBlueprintClient_failclose.test.ts",
+    "supabase/functions/_shared/__tests__/stripeDisputeHandlers.test.ts",
+    "supabase/functions/_shared/__tests__/stripeWebhookRouter.test.ts",
+    "supabase/functions/_shared/__tests__/stripeWebhookRouter_eventList.test.ts",
+    "supabase/functions/_shared/__tests__/stripeWebhookRouter_disputeAdversarial.test.ts",
+    "supabase/functions/stripe-webhook/index.ts",
+    "supabase/functions/stripe-webhook/__tests__/signatureFailureAlert.test.ts",
+    "supabase/functions/ticket-checkout-create/index.ts",
+    "supabase/functions/ticket-checkout-create/__tests__/nativePaidRegionGate.test.ts",
+    "supabase/functions/ticket-checkout-create/__tests__/nativeRegionGate_adversarial.test.ts",
+  ];
   const ALLOWLIST = [
     ...ORCH_0933_BACKEND_ALLOWLIST,
     ...ORCH_0940_BACKEND_ALLOWLIST,
@@ -725,6 +757,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_0925_BACKEND_ALLOWLIST,
     ...ORCH_0946_BACKEND_ALLOWLIST,
     ...ORCH_0947_BACKEND_ALLOWLIST,
+    ...ORCH_0953_BACKEND_ALLOWLIST,
   ];
   const forbidden = changed.filter(
     (p) =>

@@ -1,5 +1,5 @@
 // @ts-ignore — Deno ESM import
-import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import type { StripeClient } from "./stripe.ts";
 import { STRIPE_API_VERSION } from "./stripe.ts";
 import { generateIdempotencyKey } from "./idempotency.ts";
@@ -16,6 +16,7 @@ import {
   handleInstallmentPaymentSucceeded,
   handleInstallmentPaymentFailed,
 } from "./installmentWebhookHandlers.ts";
+import { handleChargeDispute } from "./stripeDisputeHandlers.ts";
 import {
   getKycRemediationForRequirements,
   mapPayoutFailureCode,
@@ -58,6 +59,17 @@ export const STRIPE_ROUTED_EVENT_TYPES = [
   // PaymentIntent id against our session so the payment_intent.succeeded
   // event arriving shortly after can finalise via the existing path.
   "checkout.session.completed",
+  // ORCH-0953: charge.succeeded, charge.failed, and payment_intent.processing
+  // are NOT routed and live webhook endpoints do NOT subscribe to them. The
+  // direct-charge model surfaces success/failure via payment_intent.succeeded /
+  // payment_intent.payment_failed. Delayed-payment methods are out of Phase 1
+  // scope (see DEC-158 — only card/link/apple_pay/google_pay enabled).
+  // ORCH-0953: dispute lifecycle — platform-liable Express direct-charge model
+  // (DEC-156) requires explicit dispute observability. Persisted to
+  // public.stripe_disputes by handlers in _shared/stripeDisputeHandlers.ts.
+  "charge.dispute.created",
+  "charge.dispute.updated",
+  "charge.dispute.closed",
 ] as const;
 
 export type RoutedStripeEventType = typeof STRIPE_ROUTED_EVENT_TYPES[number];
@@ -136,7 +148,7 @@ async function notifyBrandManagers(
     deepLink?: string | null;
   },
 ): Promise<void> {
-  const userIds = await getBrandPaymentManagerUserIds(supabase, input.brandId);
+  const userIds = await getBrandPaymentManagerUserIds(supabase as never, input.brandId);
   for (const userId of userIds) {
     await dispatchNotification({
       userId,
@@ -1033,6 +1045,11 @@ export async function routeStripeEvent(
     // existing handler. Idempotent: re-running this event is a no-op.
     case "checkout.session.completed":
       brandId = await handleCheckoutSessionCompleted(supabase, event);
+      break;
+    case "charge.dispute.created":
+    case "charge.dispute.updated":
+    case "charge.dispute.closed":
+      brandId = await handleChargeDispute(supabase, event);
       break;
     default:
       await writeAudit(supabase, {
