@@ -21,6 +21,11 @@ import {
 import type { Brand } from "../store/currentBrandStore";
 import { eventDraftKeys } from "./useServerDraftEvents";
 import { publicEventKeys } from "./usePublicEvents";
+// ORCH-0965 — invalidate the home composite-upcoming cache on every event
+// mutation so the home dashboard reflects new lifecycle state on next render.
+// Imported from the keyless `upcomingKeys` module to avoid a require-cycle
+// (useUpcomingForBrand → useBusinessEvents → useUpcomingForBrand).
+import { upcomingKeys } from "./upcomingKeys";
 
 const STALE_TIME_MS = 30 * 1000;
 const DISABLED_KEY = ["business-events-disabled"] as const;
@@ -78,6 +83,8 @@ const writePublishedEventCaches = (
   // order if a new event landed; that key write is shape-only (filter +
   // prepend) and the refetch is the safety net.
   queryClient.invalidateQueries({ queryKey: businessEventKeys.list(brandId) });
+  // ORCH-0965 — home composite-upcoming cache.
+  queryClient.invalidateQueries({ queryKey: upcomingKeys.all });
   queryClient.invalidateQueries({ queryKey: publicEventKeys.detailById(published.event.id) });
   queryClient.invalidateQueries({
     queryKey: publicEventKeys.detailBySlug(
