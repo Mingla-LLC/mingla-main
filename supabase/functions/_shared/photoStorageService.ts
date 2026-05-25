@@ -7,8 +7,11 @@
  */
 
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { Image, decode } from "https://deno.land/x/imagescript@1.2.17/mod.ts";
 
 const BUCKET = 'place-photos';
+const THUMB_SIZE = 384;
+const THUMB_JPEG_QUALITY = 80;
 
 const DEFAULT_PLACEHOLDER = 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&q=80';
 
@@ -54,6 +57,7 @@ export async function downloadAndStorePhotos(
 
   const storedUrls: string[] = [];
   const photosToProcess = photos.slice(0, MAX_PHOTOS);
+  let allUploadedThumbsSucceeded = true;
 
   // Sanitize googlePlaceId for use as a storage path (remove special chars)
   const safePlaceId = googlePlaceId.replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -108,6 +112,35 @@ export async function downloadAndStorePhotos(
         continue;
       }
 
+      // ORCH-0957: generate a pre-sized JPEG variant next to the original so
+      // collage composition can read through the non-metered object endpoint.
+      const thumbPath = `${safePlaceId}/${i}_thumb.jpg`;
+      try {
+        const decoded = await decode(new Uint8Array(imageData));
+        if (decoded instanceof Image) {
+          decoded.resize(THUMB_SIZE, THUMB_SIZE);
+          const thumbBytes = await decoded.encodeJPEG(THUMB_JPEG_QUALITY);
+          const { error: thumbUploadError } = await supabaseAdmin.storage
+            .from(BUCKET)
+            .upload(thumbPath, thumbBytes, {
+              contentType: 'image/jpeg',
+              upsert: true,
+              cacheControl: '31536000',
+            });
+          if (thumbUploadError) {
+            allUploadedThumbsSucceeded = false;
+            console.warn(`[photo-storage] Thumb upload failed for ${thumbPath}:`, thumbUploadError.message);
+          }
+        } else {
+          allUploadedThumbsSucceeded = false;
+          console.warn(`[photo-storage] Decoded as non-Image for ${storagePath}; thumb skipped`);
+        }
+      } catch (thumbErr) {
+        allUploadedThumbsSucceeded = false;
+        console.warn(`[photo-storage] Thumb generation failed for ${storagePath}:`,
+          thumbErr instanceof Error ? thumbErr.message : String(thumbErr));
+      }
+
       // Get public URL
       const { data: urlData } = supabaseAdmin.storage
         .from(BUCKET)
@@ -135,9 +168,13 @@ export async function downloadAndStorePhotos(
   // Update place_pool with stored URLs
   if (storedUrls.length > 0) {
     try {
+      const updatePayload: Record<string, unknown> = { stored_photo_urls: storedUrls };
+      if (allUploadedThumbsSucceeded) {
+        updatePayload.thumbs_backfilled_at = new Date().toISOString();
+      }
       const { error: updateErr } = await supabaseAdmin
         .from('place_pool')
-        .update({ stored_photo_urls: storedUrls })
+        .update(updatePayload)
         .eq('google_place_id', googlePlaceId);
 
       if (updateErr) {
