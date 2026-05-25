@@ -7,6 +7,20 @@
 
 ---
 
+## ACTIVE (post ORCH-0962 [Brand-edit → public-brand field rendering — truthful bundle] CLOSE 2026-05-25)
+
+One invariant flipped DRAFT → ACTIVE at the ORCH-0962 close after tester CONDITIONAL PASS verdict P0:0 P1:0 P2:0 P3:0 P4:2 (60-second buyer-web eyeball is the only condition; data layer + structural source integrity proven via 23 unit tests + 7 live MCP column probes). Implementor happy-path T-01..T-09 at `mingla-business/src/services/__tests__/publicEventsService.orch_0962.test.ts` + `mingla-business/src/components/brand/__tests__/PublicBrandPage.orch_0962.test.ts` with `fails-on-revert verified at 52e37c2bc`. Tester adversarial A-01..A-05 at `mingla-business/src/services/__tests__/publicEventsService.orch_0962.adversarial.test.ts` with `fails-on-revert verified at b48df7064`.
+
+### I-PROPOSED-BRAND-FIELD-MAP-COVERAGE
+
+**Rule:** Every editable field on `mingla-business/src/components/brand/BrandEditView.tsx` whose value persists to a column in `brands` MUST be either (a) read by a public-page mapper in `mingla-business/src/services/publicEventsService.ts` AND rendered by `PublicBrandPage.tsx` (or its `AboutTab` / `SocialLinksRow`), OR (b) explicitly documented as "edit-only / not public" with a one-line comment in `BrandEditView.tsx`. New editable fields added to `BrandEditView` MUST update both the appropriate public view's SELECT list (`business_public_brands_view`, `claimed_venues_public_view`, or `business_public_events_view`) AND the matching mapper function, OR explicitly document the omission with rationale.
+
+**Why it exists:** ORCH-0962 [Brand-edit → public-brand field rendering — truthful bundle] investigated 22 Edit Brand inputs vs 3 public views + 3 mapper functions + the `PublicBrandPage` renderer and found 9 render-truth gaps across 5 distinct root-cause classes (SCHEMA-VIEW-DROPS, READ-MISSING, READ-WRONG-SHAPE, DEAD-WRITE, SURFACE-MISSING). The root cause of the class was: editable fields shipped over time without enforced end-to-end plumbing through view + mapper + renderer. Operators believed contact info, tagline, facebook, and linkedin were public because the write succeeded; nothing surfaced the silent failure downstream. Without this invariant, the next BrandEditView addition has the same shape.
+
+**Enforcement:** Strict-grep CI gate at `.github/scripts/strict-grep/orch-0962-brand-field-map-coverage.mjs` (registered in `.github/workflows/strict-grep-mingla-business.yml` as a standalone job per the registry pattern `feedback_strict_grep_registry_pattern.md`). The 72-line node script asserts: (a) contact_email + contact_phone present in both views + mapper (`extractBrandContact` + `row.contact_email` + `row.contact_phone`); (b) `splitBrandDescription` imported in service, `taglineCentered` + `bioLeadCentered` styles present in component; (c) facebook + linkedin entries present in both `BrandEditView` editor and `PublicBrandPage` renderer with `icon: "<key>"` token; (d) event-detail mapper reads `row.brand_kind` + `row.brand_address` + `row.brand_cover_media_url`; (e) verified-venue mapper reads `row.display_attendee_count`. Any future regression that breaks the plumbing chain fails this gate with a labelled bullet list of missing assertions.
+
+---
+
 ## ACTIVE (post ORCH-0957 [Storage image transformation overage] CLOSE 2026-05-25)
 
 Two invariants flipped DRAFT → ACTIVE at the ORCH-0957 close after tester CONDITIONAL PASS verdict P0:0 P1:0 P2:0 P3:2 P4:4 (SC-5 deferred to billing-day +14 per spec + dispatch — not a close blocker). Implementor happy-path T-04 at `supabase/functions/_shared/imageCollage.test.ts` with `fails-on-revert verified at 1b32c3c0`. Tester adversarial T-05 at `supabase/functions/_shared/__tests__/imageCollage.thumbFallback.test.ts` with `fails-on-revert verified at 9f91f6448`.
