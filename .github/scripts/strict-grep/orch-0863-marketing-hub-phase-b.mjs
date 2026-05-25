@@ -739,7 +739,29 @@ function checkNoNewBackendFiles() {
     "supabase/functions/ticket-checkout-create/__tests__/orch_0915_rpc_behavior.test.ts",
   ];
 
+  // ORCH-0954 [Embedded onboarding cutover + Stripe-managed risk] — Stripe
+  // platform controller flip (dashboard:express→none, losses+fees collectors
+  // application→stripe/account), new createAccountSession() helper + new
+  // brand-stripe-account-session edge function + 2 new test files. Existing
+  // stripeBlueprintClient/CountryReplacement/WebhookRouter test files updated
+  // to assert the new controller values (covered separately by ORCH-0840
+  // TEST-MOD-APPROVED token in commit body). No migrations.
+  const ORCH_0954_BACKEND_ALLOWLIST = [
+    "supabase/functions/_shared/stripeBlueprintClient.ts",
+    "supabase/functions/_shared/stripeCountryReplacement.ts",
+    "supabase/functions/_shared/stripeWebhookRouter.ts",
+    "supabase/functions/_shared/__tests__/stripeBlueprintClient.test.ts",
+    "supabase/functions/_shared/__tests__/stripeBlueprintClient_failclose.test.ts",
+    "supabase/functions/_shared/__tests__/stripeCountryReplacement.test.ts",
+    "supabase/functions/brand-stripe-onboard/index.ts",
+    "supabase/functions/brand-stripe-onboard/index.test.ts",
+    "supabase/functions/brand-stripe-onboard/__tests__/embeddedOnboarding.happy.test.ts",
+    "supabase/functions/brand-stripe-onboard/__tests__/embeddedOnboarding.adversarial.test.ts",
+    "supabase/functions/brand-stripe-account-session/index.ts",
+  ];
+
   const ALLOWLIST = [
+    ...ORCH_0954_BACKEND_ALLOWLIST,
     ...ORCH_0915_BACKEND_ALLOWLIST,
     ...ORCH_0933_BACKEND_ALLOWLIST,
     ...ORCH_0940_BACKEND_ALLOWLIST,
