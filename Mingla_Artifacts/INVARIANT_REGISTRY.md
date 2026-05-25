@@ -3819,3 +3819,17 @@ Every chat response from every skill uses Section A (what just happened) + Secti
 **EXIT condition:** Permanent.
 
 **Status:** ACTIVE — codified 2026-05-24 by ORCH-0945 [Collab deck dead-end UX polish] CLOSE.
+
+---
+
+## ACTIVE (post META-ORCH-0952 [Buyer-web confirm pipeline deep forensics] CLOSE 2026-05-25)
+
+### I-BUYER-WEB-CAROUSEL-BROWSER-TESTED
+
+**Rule:** Any regression test asserting buyer-web checkout-confirm carousel behavior (and by extension, any buyer-web checkout dynamic-route hydration behavior under Expo Router's `web.output: "single"` mode) MUST run in a real browser (Playwright Chromium minimum; WebKit + Firefox strongly recommended) against the exported web bundle (`expo export -p web` output served locally OR equivalent harness). Source-string assertions (component-renders-without-crashing, imports-include-X, JSX-contains-Y) are insufficient as the sole coverage for this surface.
+
+**Why:** META-ORCH-0952 Q6 pattern analysis proved that 6 successive attempts (ORCH-0930 v1/v2/v3, ORCH-0932, ORCH-0951 v1/v2) shipped with green source-string tests while production browsers consistently showed a broken carousel. The bug class (RNW layout deadlock + React static-export hydration mismatch + parent shrink-wrap) cannot be detected by reading source — it requires a real browser layout engine + real React reconciler running on the production bundle.
+
+**Enforcement:** browser regression tests at `mingla-business/src/components/checkout/__tests__/meta_orch_0952_carousel_browser.test.ts` (HP-01/02/03 across Chromium + WebKit + Firefox) + adversarial `meta_orch_0952_carousel_adversarial.test.ts` (viewport-resize-during-mount) are now part of the append-only CI test suite per ORCH-0840. Both tests immutable; modifications require `[TEST-MOD-APPROVED ORCH-0952]` token. Future buyer-web checkout-surface ORCHs (e.g., the deferred ORCH-0946/0947 polish batch under META-ORCH-0953) inherit this invariant — SPEC §6 (Test contract) must require equivalent browser-running coverage if touching `confirm.tsx`, `TicketQrCarousel.tsx`, root `app/_layout.tsx`, `app.json`, or per-route `_layout.tsx` files in the dynamic checkout trees.
+
+**Status:** flipped DRAFT → ACTIVE on META-ORCH-0952 CLOSE 2026-05-25 (PR #205 `f62cfefb` + hotfix PR #206 `2c647592`).
