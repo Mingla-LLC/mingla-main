@@ -810,6 +810,20 @@ function checkNoNewBackendFiles() {
     "supabase/functions/backfill-place-photo-thumbs/index.test.ts",
     "supabase/functions/_shared/__tests__/imageCollage.thumbFallback.test.ts",
   ];
+  // ORCH-0963 [Public brand page business-case optimization (events vs. trip
+  // brands)]: adds the anon-callable pg_public_trips_by_brand SECURITY DEFINER
+  // RPC + 2 Deno SQL contract tests (happy-path + adversarial). Two migrations
+  // marked `orch_0954_controller_dashboard_type_check` and
+  // `orch_0962_brand_field_render_truthful` are source-reconciled remote-only
+  // history from ORCH-0954 + ORCH-0962 so this worktree can hand off a clean
+  // db push.
+  const ORCH_0963_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260727000002_orch_0954_controller_dashboard_type_check.sql",
+    "supabase/migrations/20260727000003_orch_0962_brand_field_render_truthful.sql",
+    "supabase/migrations/20260728000000_orch_0963_pg_public_trips_by_brand.sql",
+    "supabase/migrations/__tests__/pg_public_trips_by_brand.test.ts",
+    "supabase/migrations/__tests__/pg_public_trips_by_brand.antiLeak.adversarial.test.ts",
+  ];
   // META-ORCH-0952 [Buyer-web confirm pipeline deep forensics] CLOSE 2026-05-25.
   // C7 is scoped to ORCH-0863 marketing; the META-ORCH-0952 self-heal rework
   // touched ticket-checkout-confirm/index.ts (already in ORCH-0932 allowlist
@@ -874,6 +888,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_0955_BACKEND_ALLOWLIST,
     ...ORCH_0956_BACKEND_ALLOWLIST,
     ...ORCH_0957_BACKEND_ALLOWLIST,
+    ...ORCH_0963_BACKEND_ALLOWLIST,
   ];
   const forbidden = changed.filter(
     (p) =>

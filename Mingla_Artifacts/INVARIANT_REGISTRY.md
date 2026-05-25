@@ -7,6 +7,30 @@
 
 ---
 
+## DRAFT (pending ORCH-0963 [Public brand page business-case optimization (events vs. trip brands)] CLOSE)
+
+One invariant proposed by ORCH-0963; flips DRAFT → ACTIVE at CLOSE per orchestrator. SPEC at `Mingla_Artifacts/specs/SPEC_ORCH-0963_PUBLIC_BRAND_PAGE_EVENTS_VS_TRIP.md`. Implementor happy-path tests at `supabase/migrations/__tests__/pg_public_trips_by_brand.test.ts` + `mingla-business/src/services/__tests__/publicEventsService.tripFetch.test.ts` + 2 component source-grep contract tests; adversarial coverage at the 4 `*.adversarial.test.ts` files.
+
+### I-PROPOSED-PUBLIC-BRAND-KIND-BRANCHED (DRAFT — flips to ACTIVE on ORCH-0963 CLOSE)
+
+**Rule:** The public brand page render path (`/b/{brandSlug}` at `mingla-business/app/b/[brandSlug]/index.tsx` → `mingla-business/src/components/brand/PublicBrandPage.tsx`) MUST source content according to `brands.kind`:
+- `kind ∈ {'physical', 'popup'}` (event brands) → events array, never trips array. Tabs labelled "Upcoming / Past / About". First 3 upcoming-event cards carry the sticky "Buy tickets" pill (F-5 polish).
+- `kind = 'trip_planner'` → trips array, never events array. Tabs labelled "Trips / Past Trips / About". `<NextEventTeaser>` NEVER renders for trip-planner brands. Trip cards display capacity-honest spots-left per `I-TRIP-SPOTS-MIRRORS-CAPACITY-GATE`.
+
+**Why it exists:** Pre-ORCH-0963 `/b/{slug}` rendered identical event-shaped chrome (Upcoming/Past/About tabs) for every `brands.kind`. ORCH-0859 REWORK 3 filtered `event_type='trip'` rows out of the events list with the comment *"trips get their own surfaces on the brand page (not yet implemented)"* — leaving trip-planner brands with empty Upcoming/Past tabs even when they had live published trips (e.g., `travelbrand` had 32 trips + 2 public-scheduled but rendered zero content). Without this invariant, a future "simplifying" refactor could fold the two render paths together and either re-leak trips into the events tab OR leak events into the trips tab — both violating Constitution #9 (no fabricated affordances).
+
+**Enforcement:** Strict-grep CI gate at `.github/scripts/strict-grep/orch-0963-public-brand-kind-branched.mjs` (registered in `strict-grep-mingla-business.yml`). Four assertions:
+1. `PublicBrandPage.tsx` contains `brand.kind === "trip_planner"` branch.
+2. `publicEventsService.ts` contains `pg_public_trips_by_brand` RPC call.
+3. `publicEventsService.ts` `BusinessPublicBrandViewRow.kind` union includes `'trip_planner'`.
+4. No file under `mingla-business/src/` outside the allowlist (`publicEventsService.ts`, `businessEvents.ts`, `routeForEventRow.ts`) contains a positive `event_type === 'trip'` filter.
+
+The new SECURITY DEFINER RPC `pg_public_trips_by_brand(p_brand_slug)` (migration `20260728000000_orch_0963_pg_public_trips_by_brand.sql`) is the trip read path; it pins `b.kind = 'trip_planner'` server-side so accidental misuse against event brands returns the empty set. Sold-count formula mirrors `biz_trip_tickets_sold` (`tickets.status IN ('valid','used','transferred')`) so the trip-card spots-left value equals the value checkout enforces — preserving `I-TRIP-SPOTS-MIRRORS-CAPACITY-GATE`.
+
+**Tests:** T-01 (Deno SQL contract) + T-02 (Jest service mapping + dispatch) + T-03 (component branching) + T-04 (NextEventTeaser placement) — all happy-path with fails-on-revert verified. T-05 (null spots-left honesty) + T-06 (bookings-closed precedence) + T-07 (RPC anti-leak) + T-08 (pin-CTA count) + T-09 (past cap) — all adversarial.
+
+---
+
 ## ACTIVE (post ORCH-0957 [Storage image transformation overage] CLOSE 2026-05-25)
 
 Two invariants flipped DRAFT → ACTIVE at the ORCH-0957 close after tester CONDITIONAL PASS verdict P0:0 P1:0 P2:0 P3:2 P4:4 (SC-5 deferred to billing-day +14 per spec + dispatch — not a close blocker). Implementor happy-path T-04 at `supabase/functions/_shared/imageCollage.test.ts` with `fails-on-revert verified at 1b32c3c0`. Tester adversarial T-05 at `supabase/functions/_shared/__tests__/imageCollage.thumbFallback.test.ts` with `fails-on-revert verified at 9f91f6448`.

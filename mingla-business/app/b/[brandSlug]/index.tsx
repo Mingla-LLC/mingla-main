@@ -56,6 +56,7 @@ export default function PublicBrandRoute(): React.ReactElement {
     <PublicBrandPage
       brand={publicBrandQuery.data.brand}
       events={publicBrandQuery.data.events}
+      trips={publicBrandQuery.data.trips}
       venue={publicBrandQuery.data.venue}
     />
   );
