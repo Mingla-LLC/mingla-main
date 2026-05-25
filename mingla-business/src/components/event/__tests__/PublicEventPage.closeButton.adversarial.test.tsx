@@ -30,6 +30,7 @@ type ElementNode = {
     };
     onPress?: () => void;
     viewerRole?: string;
+    hideFloatingChrome?: boolean;
     children?: ElementNode | ElementNode[] | string | null;
   };
 };
@@ -325,6 +326,18 @@ describe("ORCH-0961 — PublicEventPage close callback adversarial coverage", ()
 
     expect(mockRouter.back).toHaveBeenCalledTimes(1);
     expect(mockRouter.replace).not.toHaveBeenCalled();
+  });
+
+  test("buyer-web adapter suppresses the shared renderer's floating chrome to avoid duplicate Share/Close (ORCH-0961 rework F-1)", () => {
+    const tree = renderPublicEventPage(eventFixture("frozen-brand"), brandFixture("live-brand"));
+    const sharedPage = getSharedPage(tree);
+
+    // The shared renderer always emits its own Close+Share row unless the
+    // host explicitly opts out. The buyer-web adapter must pass
+    // `hideFloatingChrome={true}` so only the adapter's IconChrome row exists
+    // in the DOM + accessibility tree. Reverting this prop reintroduces the
+    // duplicate Share button caught by tester F-1.
+    expect(sharedPage.props?.hideFloatingChrome).toBe(true);
   });
 
   test("founder public route keeps public close fallback instead of hub replacement", () => {

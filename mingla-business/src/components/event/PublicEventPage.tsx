@@ -297,6 +297,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         brand={publicBrand}
         viewerRole={viewerRole}
         callbacks={callbacks}
+        hideFloatingChrome
       />
 
       <View
@@ -308,12 +309,14 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           size={40}
           onPress={handleClose}
           accessibilityLabel="Close"
+          testID="orch-0961-public-event-close"
         />
         <IconChrome
           icon="share"
           size={40}
           onPress={handleShare}
           accessibilityLabel="Share"
+          testID="orch-0961-public-event-share"
         />
       </View>
 

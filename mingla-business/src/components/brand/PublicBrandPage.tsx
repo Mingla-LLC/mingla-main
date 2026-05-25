@@ -331,12 +331,14 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
           size={40}
           onPress={handleClose}
           accessibilityLabel="Close"
+          testID="orch-0961-public-brand-close"
         />
         <IconChrome
           icon="share"
           size={40}
           onPress={() => setShareModalVisible(true)}
           accessibilityLabel="Share"
+          testID="orch-0961-public-brand-share"
         />
       </View>
 

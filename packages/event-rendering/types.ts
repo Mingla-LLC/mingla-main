@@ -101,6 +101,15 @@ export interface PublicEventPageProps {
   brand: PublicBrandProps | null;
   viewerRole: ViewerRole;
   callbacks: PublicEventCallbacks;
+  /**
+   * When true, the shared renderer skips its built-in floating close/share
+   * chrome so a host adapter (e.g. the buyer-web public event route) can own
+   * the chrome itself without producing a duplicate Share/Close in the DOM and
+   * accessibility tree. Default `false` preserves existing app-mobile sheet
+   * + organizer-mode behavior. Added by ORCH-0961 rework after the buyer-web
+   * adapter started rendering its own IconChrome row.
+   */
+  hideFloatingChrome?: boolean;
 }
 
 export interface PublicEventNotFoundProps {
