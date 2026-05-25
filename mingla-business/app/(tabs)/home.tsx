@@ -20,7 +20,16 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import {
+  FlatList,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from "react-native";
 import { useRouter } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -29,6 +38,7 @@ import { BrandDeleteSheet } from "../../src/components/brand/BrandDeleteSheet";
 import { BrandSwitcherSheet } from "../../src/components/brand/BrandSwitcherSheet";
 import { HomeNextActionCard } from "../../src/components/home/HomeNextActionCard";
 import { HomeTripRow } from "../../src/components/home/HomeTripRow";
+import { UpcomingListItem } from "../../src/components/home/UpcomingListItem";
 import { EventCoverMedia } from "../../src/components/ui/EventCoverMedia";
 import { GlassCard } from "../../src/components/ui/GlassCard";
 import { Icon } from "../../src/components/ui/Icon";
@@ -55,7 +65,10 @@ import { useCurrentBrand } from "../../src/hooks/useCurrentBrand";
 import { useCurrentBrandRecovery } from "../../src/hooks/useCurrentBrandRecovery";
 import { useResponsiveLayout } from "../../src/hooks/useResponsiveLayout";
 import { brandKeys, useBrands } from "../../src/hooks/useBrands";
-import { eventOrdersKeys } from "../../src/hooks/useEventOrders";
+import {
+  eventOrdersKeys,
+  useEventSalesSummaries,
+} from "../../src/hooks/useEventOrders";
 import { useServerDraftsForBrand } from "../../src/hooks/useServerDraftEvents";
 import {
   upcomingKeys,
@@ -68,7 +81,6 @@ import type { Trip } from "../../src/services/tripsService";
 // ORCH-0865 REWORK 5 — canonical routing helper, ban hardcoded /event/{id}
 import { routeForEventRowDefensive } from "../../src/utils/routeForEventRow";
 import { pickHomeNextAction } from "../../src/utils/homeNextAction";
-import { useEventSalesSummaries } from "../../src/hooks/useEventOrders";
 
 import { formatCurrencyRound } from "../../src/utils/currency";
 import { formatDraftDateLine } from "../../src/utils/eventDateDisplay";
@@ -111,6 +123,7 @@ const formatCapacityLabel = (event: LiveEvent): string => {
 export default function HomeTab(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const dimensions = useWindowDimensions();
   const { isWideDesktop } = useResponsiveLayout();
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -367,6 +380,9 @@ export default function HomeTab(): React.ReactElement {
   const showScanAction =
     primaryLiveItem !== null && primaryLiveItem.kind === "event";
 
+  const isSmallPhoneWithLiveHero =
+    primaryLiveEvent !== null && dimensions.height <= 700;
+
   const handleScanPress = useCallback((): void => {
     if (primaryLiveItem === null || primaryLiveItem.kind !== "event") return;
     router.push(`/event/${primaryLiveItem.id}/scanner` as never);
@@ -390,19 +406,341 @@ export default function HomeTab(): React.ReactElement {
         />
       </View>
 
-      <ScrollView
-        style={isWideDesktop ? styles.desktopOuterScroll : undefined}
-        scrollEnabled={!isWideDesktop}
-        contentContainerStyle={[
-          styles.scroll,
-          isWideDesktop && styles.desktopScroll,
-        ]}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
-        }
-      >
-        {currentBrand === null ? (
+      {isWideDesktop ? (
+        <ScrollView
+          style={styles.desktopOuterScroll}
+          scrollEnabled={false}
+          contentContainerStyle={[styles.scroll, styles.desktopScroll]}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
+          }
+        >
+          {currentBrand === null ? (
+            <View style={styles.emptyCol}>
+              <GlassCard variant="elevated" padding={spacing.lg}>
+                <Text style={styles.greetingTier}>{greetingLabel()}</Text>
+                {hasNoBrands ? (
+                  <>
+                    <Text style={styles.emptyTitle}>No brands yet</Text>
+                    <Text style={styles.emptyBody}>
+                      Tap{" "}
+                      <Text style={styles.emptyChipName}>Create brand</Text>
+                      {" "}in the top bar to set up your first brand. You can
+                      edit it any time.
+                    </Text>
+                  </>
+                ) : hasBrandsButNoSelection ? (
+                  <>
+                    <Text style={styles.emptyTitle}>Choose a brand</Text>
+                    <Text style={styles.emptyBody}>
+                      We found your brands. Pick one from the top bar to continue.
+                    </Text>
+                    <Pressable
+                      onPress={handleOpenSwitcher}
+                      accessibilityRole="button"
+                      accessibilityLabel="Choose a brand"
+                      style={styles.emptyBuildAction}
+                    >
+                      <Icon name="chevD" size={16} color={accent.warm} />
+                      <Text style={styles.emptyBuildActionText}>
+                        Choose brand
+                      </Text>
+                    </Pressable>
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.emptyTitle}>Loading brands</Text>
+                    <Text style={styles.emptyBody}>
+                      Getting your brand workspace ready.
+                    </Text>
+                  </>
+                )}
+              </GlassCard>
+            </View>
+          ) : (
+            <>
+              {/* ORCH-0965 — rule-ladder card. Renders ABOVE the KPI grid when
+                  a rung fires AND no live offering is present (live hero takes
+                  precedence; if a brand is healthy enough to have a live event,
+                  the rule ladder yields the floor to that signal except for the
+                  physical-no-address rung which surfaces alongside). */}
+              {nextAction !== null && (upcoming.counts.live === 0 || nextAction.rung === 4) ? (
+                <HomeNextActionCard action={nextAction} onPress={handleNextActionPress} />
+              ) : null}
+              <View style={styles.desktopKpiGrid}>
+                <View style={styles.desktopKpiCell}>
+                  {primaryLiveEvent !== null ? (
+                    <GlassCard variant="elevated" padding={spacing.lg}>
+                      <View style={styles.heroLiveTagRow}>
+                        <Pill variant="live" livePulse>
+                          Live now
+                        </Pill>
+                      </View>
+                      <Text style={styles.heroEventName}>
+                        {getEventName(primaryLiveEvent.name, "Untitled event")}
+                      </Text>
+                      <Text style={styles.heroEventDate}>
+                        {formatDraftDateLine(primaryLiveEvent)}
+                      </Text>
+                      <View style={styles.heroAmountRow}>
+                        <Text style={styles.heroAmountSold}>
+                          {liveHeroMetrics.revenueLabel}
+                        </Text>
+                        <Text style={styles.heroAmountGoal}> revenue</Text>
+                      </View>
+                      {liveHeroMetrics.capacity !== null ? (
+                        <View style={styles.progressBarTrack}>
+                          <View
+                            style={[
+                              styles.progressBarFill,
+                              {
+                                width: `${Math.round(
+                                  liveHeroMetrics.progress * 100,
+                                )}%`,
+                              },
+                            ]}
+                          />
+                        </View>
+                      ) : null}
+                      <View style={styles.heroStatRow}>
+                        <View style={styles.heroStatCell}>
+                          <Text style={styles.heroStatValue}>
+                            {liveHeroMetrics.soldValue}
+                          </Text>
+                          <Text style={styles.heroStatLabel}>Tickets sold</Text>
+                        </View>
+                        <View style={styles.heroStatCell}>
+                          <Text style={styles.heroStatValue}>
+                            {formatCapacityLabel(primaryLiveEvent)}
+                          </Text>
+                          <Text style={styles.heroStatLabel}>Capacity</Text>
+                        </View>
+                        <View style={styles.heroStatCell}>
+                          <Text style={styles.heroStatValue}>—</Text>
+                          <Text style={styles.heroStatLabel}>Scanned</Text>
+                        </View>
+                      </View>
+                      {/* ORCH-0965 — scan-QR action. Event-kind hero only. */}
+                      {showScanAction ? (
+                        <Pressable
+                          onPress={handleScanPress}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Scan tickets for ${getEventName(primaryLiveEvent.name, "Untitled event")}`}
+                          style={styles.heroScanAction}
+                          testID="home-live-hero-scan-button"
+                        >
+                          <Icon name="qr" size={16} color={accent.warm} />
+                          <Text style={styles.heroScanActionText}>
+                            Scan QR codes
+                          </Text>
+                        </Pressable>
+                      ) : null}
+                    </GlassCard>
+                  ) : (
+                    <KpiTile
+                      label="Last 7 days"
+                      value={
+                        currentBrand.defaultCurrency !== undefined
+                          ? formatCurrencyRound(
+                              // ORCH-0816 — windowed 7-day GMV. Lifetime stays on
+                              // BrandProfileView's "GMV / all time" tile.
+                              currentBrand.stats.rev7d,
+                              currentBrand.defaultCurrency,
+                            )
+                          : "—"
+                      }
+                    />
+                  )}
+                </View>
+
+                <View style={styles.desktopKpiCell}>
+                  <KpiTile
+                    label="Active events"
+                    value={upcoming.counts.active}
+                    sub={getActiveEventsKpiSub(kpiCountsForSub, isWideDesktop)}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.desktopUpcomingPane}>
+                <View style={styles.sectionHeaderRow}>
+                  <Text style={styles.sectionTitle}>Upcoming</Text>
+                  <Pressable
+                    onPress={handleSeeAllEvents}
+                    accessibilityRole="link"
+                    accessibilityLabel="See all upcoming events"
+                  >
+                    <Text style={styles.sectionLink}>See all</Text>
+                  </Pressable>
+                </View>
+
+                <ScrollView
+                  style={styles.desktopUpcomingList}
+                  scrollEnabled={isWideDesktop}
+                  showsVerticalScrollIndicator={false}
+                  contentContainerStyle={[
+                    styles.eventsCol,
+                    styles.desktopEventsGrid,
+                  ]}
+                >
+                {upcoming.items.length === 0 ? (
+                  <GlassCard variant="base" padding={spacing.lg}>
+                    <Text style={styles.emptyTitle}>No upcoming events</Text>
+                    <Text style={styles.emptyBody}>
+                      Tap{" "}
+                      <Text style={styles.emptyEmphasis}>+</Text>
+                      {" "}in the top right to create your first event.
+                    </Text>
+                  </GlassCard>
+                ) : (
+                  upcoming.items.map((item) => {
+                    if (item.kind === "draft") {
+                      const draft = item.source as DraftEvent;
+                      return (
+                        <View
+                          key={item.key}
+                          style={styles.desktopEventCell}
+                        >
+                        <Pressable
+                          onPress={() => handleOpenDraft(draft)}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Resume draft: ${
+                            draft.name || "Untitled"
+                          }`}
+                          style={styles.eventRow}
+                        >
+                          <View style={styles.eventCoverWrap}>
+                            <EventCoverMedia
+                              hue={draft.coverHue}
+                              mediaUrl={draft.coverMediaUrl}
+                              mediaType={draft.coverMediaType}
+                              radius={12}
+                              label=""
+                              height={56}
+                              width={56}
+                            />
+                          </View>
+                          <View style={styles.eventTextCol}>
+                            <View style={styles.eventPillRow}>
+                              <Pill variant="draft">Draft</Pill>
+                            </View>
+                            <Text style={styles.eventTitle} numberOfLines={1}>
+                              {getEventName(draft.name, "Untitled draft")}
+                            </Text>
+                            <Text style={styles.eventWhen} numberOfLines={1}>
+                              {`Step ${draft.lastStepReached + 1} of 7 · ${formatRelativeTime(
+                                draft.updatedAt,
+                              )}`}
+                            </Text>
+                          </View>
+                          <View style={styles.eventSoldCol}>
+                            <Text style={styles.eventSoldValue}>—</Text>
+                            <Text style={styles.eventSoldLabel}>resume</Text>
+                          </View>
+                        </Pressable>
+                        </View>
+                      );
+                    }
+
+                    if (item.kind === "trip") {
+                      const trip = item.source as Trip;
+                      return (
+                        <View
+                          key={item.key}
+                          style={styles.desktopEventCell}
+                        >
+                          <HomeTripRow
+                            trip={trip}
+                            status={item.status === "live" ? "live" : "upcoming"}
+                            onPress={() => handleOpenTrip(trip)}
+                          />
+                        </View>
+                      );
+                    }
+
+                    // 'event' or 'experience' — rendered through the LiveEvent row JSX.
+                    const event = item.source as LiveEvent;
+                    const salesSummary = eventSalesSummaries[event.id];
+                    const soldLabel = salesSummary?.soldLabel ?? "0 sold";
+                    const rowSoldLabel =
+                      salesSummary?.finiteCapacity !== null && salesSummary !== undefined
+                        ? `${soldLabel} sold`
+                        : soldLabel;
+                    const revenueLabel =
+                      salesSummary?.revenueLabel ??
+                      formatCurrencyRound(
+                        0,
+                        event.currency ?? currentBrand.defaultCurrency ?? "GBP",
+                      );
+                    const isLive = item.status === "live";
+
+                    return (
+                      <View
+                        key={item.key}
+                        style={styles.desktopEventCell}
+                      >
+                      <Pressable
+                        onPress={() => handleOpenLiveEvent(event)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Open ${item.kind}: ${
+                          event.name || "Untitled"
+                        }. ${rowSoldLabel}. ${revenueLabel}.`}
+                        style={styles.eventRow}
+                      >
+                        <View style={styles.eventCoverWrap}>
+                          <EventCoverMedia
+                            hue={event.coverHue}
+                            mediaUrl={event.coverMediaUrl}
+                            mediaType={event.coverMediaType}
+                            radius={12}
+                            label=""
+                            height={56}
+                            width={56}
+                          />
+                        </View>
+                        <View style={styles.eventTextCol}>
+                          <View style={styles.eventPillRow}>
+                            <Pill
+                              variant={isLive ? "live" : "accent"}
+                              livePulse={isLive}
+                            >
+                              {isLive ? "Live" : "Upcoming"}
+                            </Pill>
+                          </View>
+                          <Text style={styles.eventTitle} numberOfLines={1}>
+                            {getEventName(event.name, "Untitled event")}
+                          </Text>
+                          <Text style={styles.eventWhen} numberOfLines={1}>
+                            {formatDraftDateLine(event)}
+                          </Text>
+                        </View>
+                        <View style={styles.eventSoldCol}>
+                          <Text style={styles.eventSoldValue}>
+                            {rowSoldLabel}
+                          </Text>
+                          <Text style={styles.eventRevenueValue}>
+                            {revenueLabel}
+                          </Text>
+                        </View>
+                      </Pressable>
+                      </View>
+                    );
+                  })
+                )}
+                </ScrollView>
+              </View>
+            </>
+          )}
+        </ScrollView>
+      ) : currentBrand === null ? (
+        <ScrollView
+          contentContainerStyle={styles.emptyScroll}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
+          }
+        >
           <View style={styles.emptyCol}>
             <GlassCard variant="elevated" padding={spacing.lg}>
               <Text style={styles.greetingTier}>{greetingLabel()}</Text>
@@ -444,282 +782,160 @@ export default function HomeTab(): React.ReactElement {
               )}
             </GlassCard>
           </View>
-        ) : (
-          <>
-            {/* ORCH-0965 — rule-ladder card. Renders ABOVE the KPI grid when
-                a rung fires AND no live offering is present (live hero takes
-                precedence; if a brand is healthy enough to have a live event,
-                the rule ladder yields the floor to that signal except for the
-                physical-no-address rung which surfaces alongside). */}
-            {nextAction !== null && (upcoming.counts.live === 0 || nextAction.rung === 4) ? (
+        </ScrollView>
+      ) : (
+        // orch-0974-lock-pane:begin-mobile-populated
+        <View style={styles.mobileBody}>
+          <View style={styles.lockedZone}>
+            {nextAction !== null && (upcoming.counts.live === 0 || nextAction.rung === 4) && !isSmallPhoneWithLiveHero ? (
               <HomeNextActionCard action={nextAction} onPress={handleNextActionPress} />
             ) : null}
-            <View style={isWideDesktop ? styles.desktopKpiGrid : undefined}>
-              <View style={isWideDesktop ? styles.desktopKpiCell : undefined}>
-                {primaryLiveEvent !== null ? (
-                  <GlassCard variant="elevated" padding={spacing.lg}>
-                    <View style={styles.heroLiveTagRow}>
-                      <Pill variant="live" livePulse>
-                        Live now
-                      </Pill>
-                    </View>
-                    <Text style={styles.heroEventName}>
-                      {getEventName(primaryLiveEvent.name, "Untitled event")}
-                    </Text>
-                    <Text style={styles.heroEventDate}>
-                      {formatDraftDateLine(primaryLiveEvent)}
-                    </Text>
-                    <View style={styles.heroAmountRow}>
-                      <Text style={styles.heroAmountSold}>
-                        {liveHeroMetrics.revenueLabel}
-                      </Text>
-                      <Text style={styles.heroAmountGoal}> revenue</Text>
-                    </View>
-                    {liveHeroMetrics.capacity !== null ? (
-                      <View style={styles.progressBarTrack}>
-                        <View
-                          style={[
-                            styles.progressBarFill,
-                            {
-                              width: `${Math.round(
-                                liveHeroMetrics.progress * 100,
-                              )}%`,
-                            },
-                          ]}
-                        />
-                      </View>
-                    ) : null}
-                    <View style={styles.heroStatRow}>
-                      <View style={styles.heroStatCell}>
-                        <Text style={styles.heroStatValue}>
-                          {liveHeroMetrics.soldValue}
-                        </Text>
-                        <Text style={styles.heroStatLabel}>Tickets sold</Text>
-                      </View>
-                      <View style={styles.heroStatCell}>
-                        <Text style={styles.heroStatValue}>
-                          {formatCapacityLabel(primaryLiveEvent)}
-                        </Text>
-                        <Text style={styles.heroStatLabel}>Capacity</Text>
-                      </View>
-                      <View style={styles.heroStatCell}>
-                        <Text style={styles.heroStatValue}>—</Text>
-                        <Text style={styles.heroStatLabel}>Scanned</Text>
-                      </View>
-                    </View>
-                    {/* ORCH-0965 — scan-QR action. Event-kind hero only. */}
-                    {showScanAction ? (
-                      <Pressable
-                        onPress={handleScanPress}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Scan tickets for ${getEventName(primaryLiveEvent.name, "Untitled event")}`}
-                        style={styles.heroScanAction}
-                        testID="home-live-hero-scan-button"
-                      >
-                        <Icon name="qr" size={16} color={accent.warm} />
-                        <Text style={styles.heroScanActionText}>
-                          Scan QR codes
-                        </Text>
-                      </Pressable>
-                    ) : null}
-                  </GlassCard>
-                ) : (
-                  <KpiTile
-                    label="Last 7 days"
-                    value={
-                      currentBrand.defaultCurrency !== undefined
-                        ? formatCurrencyRound(
-                            // ORCH-0816 — windowed 7-day GMV. Lifetime stays on
-                            // BrandProfileView's "GMV / all time" tile.
-                            currentBrand.stats.rev7d,
-                            currentBrand.defaultCurrency,
-                          )
-                        : "—"
-                    }
-                  />
-                )}
-              </View>
 
-              <View style={isWideDesktop ? styles.desktopKpiCell : undefined}>
-                <KpiTile
-                  label="Active events"
-                  value={upcoming.counts.active}
-                  sub={getActiveEventsKpiSub(kpiCountsForSub, isWideDesktop)}
-                />
-              </View>
-            </View>
-
-            <View style={isWideDesktop ? styles.desktopUpcomingPane : undefined}>
-              <View style={styles.sectionHeaderRow}>
-                <Text style={styles.sectionTitle}>Upcoming</Text>
-                <Pressable
-                  onPress={handleSeeAllEvents}
-                  accessibilityRole="link"
-                  accessibilityLabel="See all upcoming events"
-                >
-                  <Text style={styles.sectionLink}>See all</Text>
-                </Pressable>
-              </View>
-
-              <ScrollView
-                style={isWideDesktop ? styles.desktopUpcomingList : undefined}
-                scrollEnabled={isWideDesktop}
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={[
-                  styles.eventsCol,
-                  isWideDesktop && styles.desktopEventsGrid,
-                ]}
-              >
-              {upcoming.items.length === 0 ? (
-                <GlassCard variant="base" padding={spacing.lg}>
-                  <Text style={styles.emptyTitle}>No upcoming events</Text>
-                  <Text style={styles.emptyBody}>
-                    Tap{" "}
-                    <Text style={styles.emptyEmphasis}>+</Text>
-                    {" "}in the top right to create your first event.
+            <View style={styles.mobileKpiStack}>
+              {primaryLiveEvent !== null ? (
+                <GlassCard variant="elevated" padding={spacing.lg}>
+                  <View style={styles.heroLiveTagRow}>
+                    <Pill variant="live" livePulse>
+                      Live now
+                    </Pill>
+                  </View>
+                  <Text style={styles.heroEventName}>
+                    {getEventName(primaryLiveEvent.name, "Untitled event")}
                   </Text>
+                  <Text style={styles.heroEventDate}>
+                    {formatDraftDateLine(primaryLiveEvent)}
+                  </Text>
+                  <View style={styles.heroAmountRow}>
+                    <Text style={styles.heroAmountSold}>
+                      {liveHeroMetrics.revenueLabel}
+                    </Text>
+                    <Text style={styles.heroAmountGoal}> revenue</Text>
+                  </View>
+                  {liveHeroMetrics.capacity !== null ? (
+                    <View style={styles.progressBarTrack}>
+                      <View
+                        style={[
+                          styles.progressBarFill,
+                          {
+                            width: `${Math.round(
+                              liveHeroMetrics.progress * 100,
+                            )}%`,
+                          },
+                        ]}
+                      />
+                    </View>
+                  ) : null}
+                  <View style={styles.heroStatRow}>
+                    <View style={styles.heroStatCell}>
+                      <Text style={styles.heroStatValue}>
+                        {liveHeroMetrics.soldValue}
+                      </Text>
+                      <Text style={styles.heroStatLabel}>Tickets sold</Text>
+                    </View>
+                    <View style={styles.heroStatCell}>
+                      <Text style={styles.heroStatValue}>
+                        {formatCapacityLabel(primaryLiveEvent)}
+                      </Text>
+                      <Text style={styles.heroStatLabel}>Capacity</Text>
+                    </View>
+                    <View style={styles.heroStatCell}>
+                      <Text style={styles.heroStatValue}>—</Text>
+                      <Text style={styles.heroStatLabel}>Scanned</Text>
+                    </View>
+                  </View>
+                  {/* ORCH-0965 — scan-QR action. Event-kind hero only. */}
+                  {showScanAction ? (
+                    <Pressable
+                      onPress={handleScanPress}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Scan tickets for ${getEventName(primaryLiveEvent.name, "Untitled event")}`}
+                      style={styles.heroScanAction}
+                      testID="home-live-hero-scan-button"
+                    >
+                      <Icon name="qr" size={16} color={accent.warm} />
+                      <Text style={styles.heroScanActionText}>
+                        Scan QR codes
+                      </Text>
+                    </Pressable>
+                  ) : null}
                 </GlassCard>
               ) : (
-                upcoming.items.map((item) => {
-                  if (item.kind === "draft") {
-                    const draft = item.source as DraftEvent;
-                    return (
-                      <View
-                        key={item.key}
-                        style={isWideDesktop ? styles.desktopEventCell : undefined}
-                      >
-                      <Pressable
-                        onPress={() => handleOpenDraft(draft)}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Resume draft: ${
-                          draft.name || "Untitled"
-                        }`}
-                        style={styles.eventRow}
-                      >
-                        <View style={styles.eventCoverWrap}>
-                          <EventCoverMedia
-                            hue={draft.coverHue}
-                            mediaUrl={draft.coverMediaUrl}
-                            mediaType={draft.coverMediaType}
-                            radius={12}
-                            label=""
-                            height={56}
-                            width={56}
-                          />
-                        </View>
-                        <View style={styles.eventTextCol}>
-                          <View style={styles.eventPillRow}>
-                            <Pill variant="draft">Draft</Pill>
-                          </View>
-                          <Text style={styles.eventTitle} numberOfLines={1}>
-                            {getEventName(draft.name, "Untitled draft")}
-                          </Text>
-                          <Text style={styles.eventWhen} numberOfLines={1}>
-                            {`Step ${draft.lastStepReached + 1} of 7 · ${formatRelativeTime(
-                              draft.updatedAt,
-                            )}`}
-                          </Text>
-                        </View>
-                        <View style={styles.eventSoldCol}>
-                          <Text style={styles.eventSoldValue}>—</Text>
-                          <Text style={styles.eventSoldLabel}>resume</Text>
-                        </View>
-                      </Pressable>
-                      </View>
-                    );
+                <KpiTile
+                  label="Last 7 days"
+                  value={
+                    currentBrand.defaultCurrency !== undefined
+                      ? formatCurrencyRound(
+                          // ORCH-0816 — windowed 7-day GMV. Lifetime stays on
+                          // BrandProfileView's "GMV / all time" tile.
+                          currentBrand.stats.rev7d,
+                          currentBrand.defaultCurrency,
+                        )
+                      : "—"
                   }
-
-                  if (item.kind === "trip") {
-                    const trip = item.source as Trip;
-                    return (
-                      <View
-                        key={item.key}
-                        style={isWideDesktop ? styles.desktopEventCell : undefined}
-                      >
-                        <HomeTripRow
-                          trip={trip}
-                          status={item.status === "live" ? "live" : "upcoming"}
-                          onPress={() => handleOpenTrip(trip)}
-                        />
-                      </View>
-                    );
-                  }
-
-                  // 'event' or 'experience' — rendered through the LiveEvent row JSX.
-                  const event = item.source as LiveEvent;
-                  const salesSummary = eventSalesSummaries[event.id];
-                  const soldLabel = salesSummary?.soldLabel ?? "0 sold";
-                  const rowSoldLabel =
-                    salesSummary?.finiteCapacity !== null && salesSummary !== undefined
-                      ? `${soldLabel} sold`
-                      : soldLabel;
-                  const revenueLabel =
-                    salesSummary?.revenueLabel ??
-                    formatCurrencyRound(
-                      0,
-                      event.currency ?? currentBrand.defaultCurrency ?? "GBP",
-                    );
-                  const isLive = item.status === "live";
-
-                  return (
-                    <View
-                      key={item.key}
-                      style={isWideDesktop ? styles.desktopEventCell : undefined}
-                    >
-                    <Pressable
-                      onPress={() => handleOpenLiveEvent(event)}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Open ${item.kind}: ${
-                        event.name || "Untitled"
-                      }. ${rowSoldLabel}. ${revenueLabel}.`}
-                      style={styles.eventRow}
-                    >
-                      <View style={styles.eventCoverWrap}>
-                        <EventCoverMedia
-                          hue={event.coverHue}
-                          mediaUrl={event.coverMediaUrl}
-                          mediaType={event.coverMediaType}
-                          radius={12}
-                          label=""
-                          height={56}
-                          width={56}
-                        />
-                      </View>
-                      <View style={styles.eventTextCol}>
-                        <View style={styles.eventPillRow}>
-                          <Pill
-                            variant={isLive ? "live" : "accent"}
-                            livePulse={isLive}
-                          >
-                            {isLive ? "Live" : "Upcoming"}
-                          </Pill>
-                        </View>
-                        <Text style={styles.eventTitle} numberOfLines={1}>
-                          {getEventName(event.name, "Untitled event")}
-                        </Text>
-                        <Text style={styles.eventWhen} numberOfLines={1}>
-                          {formatDraftDateLine(event)}
-                        </Text>
-                      </View>
-                      <View style={styles.eventSoldCol}>
-                        <Text style={styles.eventSoldValue}>
-                          {rowSoldLabel}
-                        </Text>
-                        <Text style={styles.eventRevenueValue}>
-                          {revenueLabel}
-                        </Text>
-                      </View>
-                    </Pressable>
-                    </View>
-                  );
-                })
+                />
               )}
-              </ScrollView>
+
+              <KpiTile
+                label="Active events"
+                value={upcoming.counts.active}
+                sub={getActiveEventsKpiSub(kpiCountsForSub, isWideDesktop)}
+              />
             </View>
 
-          </>
-        )}
-      </ScrollView>
+            <View style={styles.mobileSectionHeaderRow}>
+              <Text style={styles.sectionTitle}>Upcoming</Text>
+              <Pressable
+                onPress={handleSeeAllEvents}
+                accessibilityRole="link"
+                accessibilityLabel="See all upcoming events"
+              >
+                <Text style={styles.sectionLink}>See all</Text>
+              </Pressable>
+            </View>
+          </View>
+
+          <FlatList
+            style={styles.mobileUpcomingList}
+            data={upcoming.items}
+            keyExtractor={(item) => item.key}
+            renderItem={({ item }) => (
+              <UpcomingListItem
+                item={item}
+                currentBrandCurrency={currentBrand.defaultCurrency}
+                eventSalesSummaries={eventSalesSummaries}
+                onOpenDraft={handleOpenDraft}
+                onOpenTrip={handleOpenTrip}
+                onOpenLiveEvent={handleOpenLiveEvent}
+              />
+            )}
+            ItemSeparatorComponent={() => (
+              <View style={styles.mobileUpcomingSep} />
+            )}
+            ListEmptyComponent={
+              <GlassCard variant="base" padding={spacing.lg}>
+                <Text style={styles.emptyTitle}>No upcoming events</Text>
+                <Text style={styles.emptyBody}>
+                  Tap{" "}
+                  <Text style={styles.emptyEmphasis}>+</Text>
+                  {" "}in the top right to create your first event.
+                </Text>
+              </GlassCard>
+            }
+            contentContainerStyle={styles.mobileUpcomingContent}
+            refreshControl={
+              <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
+            }
+            showsVerticalScrollIndicator={false}
+          />
+
+          {nextAction !== null && (upcoming.counts.live === 0 || nextAction.rung === 4) && isSmallPhoneWithLiveHero ? (
+            <View style={styles.smallPhoneLadderHost}>
+              <HomeNextActionCard action={nextAction} onPress={handleNextActionPress} />
+            </View>
+          ) : null}
+        </View>
+        // orch-0974-lock-pane:end-mobile-populated
+      )}
 
       <BrandSwitcherSheet
         visible={sheetVisible}
@@ -798,6 +1014,45 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 0,
     marginTop: spacing.sm,
+  },
+  emptyScroll: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.lg,
+    paddingBottom: spacing.xl * 4,
+  },
+  mobileBody: {
+    flex: 1,
+    minHeight: 0,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+  },
+  lockedZone: {
+    flexShrink: 0,
+  },
+  mobileKpiStack: {
+    gap: spacing.sm,
+  },
+  mobileSectionHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 0,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.md,
+  },
+  mobileUpcomingList: {
+    flex: 1,
+    minHeight: 0,
+  },
+  mobileUpcomingContent: {
+    paddingBottom: spacing.xl * 4,
+  },
+  mobileUpcomingSep: {
+    height: spacing.sm,
+  },
+  smallPhoneLadderHost: {
+    flexShrink: 0,
+    paddingTop: spacing.sm,
   },
   toastWrap: {
     position: "absolute",
