@@ -922,6 +922,9 @@ export default function HomeTab(): React.ReactElement {
               </GlassCard>
             }
             contentContainerStyle={styles.mobileUpcomingContent}
+            refreshControl={
+              <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
+            }
             showsVerticalScrollIndicator={false}
           />
 
