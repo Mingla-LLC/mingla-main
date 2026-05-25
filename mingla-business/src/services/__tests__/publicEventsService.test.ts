@@ -3,9 +3,11 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 
 const mockFrom = jest.fn();
+const mockRpc = jest.fn();
 jest.mock("../supabase", () => ({
   supabase: {
     from: (...args: unknown[]) => mockFrom(...args),
+    rpc: (...args: unknown[]) => mockRpc(...args),
   },
 }));
 
@@ -143,6 +145,8 @@ const brandRow = (patch: Record<string, unknown> = {}): Record<string, unknown> 
 
 beforeEach(() => {
   mockFrom.mockReset();
+  mockRpc.mockReset();
+  mockRpc.mockResolvedValue({ data: [], error: null } as never);
 });
 
 describe("public event view mapper", () => {
@@ -405,26 +409,30 @@ describe("public brand view mapper", () => {
   });
 });
 
-describe("ORCH-0767 public brand migration", () => {
-  test("exposes only the field-limited public brand read model", () => {
+describe("ORCH-0962 public brand migration", () => {
+  test("exposes contact fields without leaking internal brand fields", () => {
     const sql = readFileSync(
       path.join(
         __dirname,
         "../../../..",
-        "supabase/migrations/20260515000008_orch_0767_public_brand_profile_view.sql",
+        "supabase/migrations/20260727000003_orch_0962_brand_field_render_truthful.sql",
       ),
       "utf8",
     );
+    const businessBrandViewSql = sql.slice(
+      sql.indexOf("CREATE OR REPLACE VIEW public.business_public_brands_view"),
+      sql.indexOf("COMMENT ON VIEW public.business_public_brands_view"),
+    );
 
-    expect(sql).toContain("CREATE OR REPLACE VIEW public.business_public_brands_view");
-    expect(sql).toContain("b.slug");
-    expect(sql).toContain("b.cover_media_url");
+    expect(businessBrandViewSql).toContain("CREATE OR REPLACE VIEW public.business_public_brands_view");
+    expect(businessBrandViewSql).toContain("slug");
+    expect(businessBrandViewSql).toContain("cover_media_url");
+    expect(businessBrandViewSql).toMatch(/\bcontact_email\b/);
+    expect(businessBrandViewSql).toMatch(/\bcontact_phone\b/);
     expect(sql).toContain("GRANT SELECT ON public.business_public_brands_view");
-    expect(sql).not.toMatch(/\baccount_id\b/);
-    expect(sql).not.toMatch(/\bcontact_email\b/);
-    expect(sql).not.toMatch(/\bcontact_phone\b/);
-    expect(sql).not.toMatch(/\btax_settings\b/);
-    expect(sql).not.toMatch(/\bdefault_currency\b/);
-    expect(sql).not.toMatch(/\bstripe_/);
+    expect(businessBrandViewSql).not.toMatch(/\baccount_id\b/);
+    expect(businessBrandViewSql).not.toMatch(/\btax_settings\b/);
+    expect(businessBrandViewSql).not.toMatch(/\bdefault_currency\b/);
+    expect(businessBrandViewSql).not.toMatch(/\bstripe_/);
   });
 });

@@ -367,11 +367,12 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
           ) : null}
         </View>
 
-        {/* Tagline / bio (lead) — centered */}
+        {/* ORCH-0962 G-02 — render tagline and bio as distinct lines. */}
+        {brand.tagline !== undefined && brand.tagline.trim().length > 0 ? (
+          <Text style={styles.taglineCentered}>{brand.tagline}</Text>
+        ) : null}
         {brand.bio !== undefined && brand.bio.trim().length > 0 ? (
           <Text style={styles.bioLeadCentered}>{brand.bio}</Text>
-        ) : brand.tagline !== undefined && brand.tagline.trim().length > 0 ? (
-          <Text style={styles.bioLeadCentered}>{brand.tagline}</Text>
         ) : null}
 
         {/* Social icons row — Linktree-style icons-only, always visible.
@@ -683,11 +684,27 @@ const SocialLinksRow: React.FC<SocialLinksRowProps> = ({
         label: "X",
       });
     }
+    // ORCH-0962 G-03
+    if (links.facebook !== undefined && links.facebook.length > 0) {
+      out.push({
+        url: normalizeSocialUrl(links.facebook, "https://facebook.com/"),
+        icon: "facebook",
+        label: "Facebook",
+      });
+    }
     if (links.youtube !== undefined && links.youtube.length > 0) {
       out.push({
         url: normalizeSocialUrl(links.youtube, "https://youtube.com/@"),
         icon: "youtube",
         label: "YouTube",
+      });
+    }
+    // ORCH-0962 G-03 — full LinkedIn URLs pass through unchanged.
+    if (links.linkedin !== undefined && links.linkedin.length > 0) {
+      out.push({
+        url: normalizeSocialUrl(links.linkedin, "https://linkedin.com/in/"),
+        icon: "linkedin",
+        label: "LinkedIn",
       });
     }
     if (links.threads !== undefined && links.threads.length > 0) {
@@ -906,6 +923,19 @@ const styles = StyleSheet.create({
     color: textTokens.secondary,
     lineHeight: 22,
     marginBottom: spacing.md,
+    textAlign: "center",
+    maxWidth: 540,
+    alignSelf: "center",
+    paddingHorizontal: spacing.sm,
+  },
+  // ORCH-0962 G-02 — distinct centered tagline above the bio body.
+  taglineCentered: {
+    fontSize: 13,
+    fontWeight: "600",
+    letterSpacing: 0,
+    color: textTokens.tertiary,
+    lineHeight: 18,
+    marginBottom: spacing.xs,
     textAlign: "center",
     maxWidth: 540,
     alignSelf: "center",
