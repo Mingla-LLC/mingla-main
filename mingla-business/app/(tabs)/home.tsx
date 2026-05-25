@@ -787,7 +787,7 @@ export default function HomeTab(): React.ReactElement {
         // orch-0974-lock-pane:begin-mobile-populated
         <View style={styles.mobileBody}>
           <View style={styles.lockedZone}>
-            {nextAction !== null && (upcoming.counts.live === 0 || nextAction.rung === 4) && !isSmallPhoneWithLiveHero ? (
+            {nextAction !== null && (upcoming.counts.live === 0 || nextAction.rung === 4) ? (
               <HomeNextActionCard action={nextAction} onPress={handleNextActionPress} />
             ) : null}
 
@@ -894,7 +894,7 @@ export default function HomeTab(): React.ReactElement {
             </View>
           </View>
 
-          <FlatList
+          <ScrollView
             style={styles.mobileUpcomingList}
             data={upcoming.items}
             keyExtractor={(item) => item.key}
@@ -1038,7 +1038,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: 0,
     paddingTop: spacing.lg,
-    paddingBottom: spacing.md,
+    paddingBottom: 0,
   },
   mobileUpcomingList: {
     flex: 1,
