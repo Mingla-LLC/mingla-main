@@ -66,8 +66,12 @@ import {
   brandOgImageUrl,
   brandPublicUrl,
   eventPublicPath,
+  tripPublicPath,
 } from "../../constants/publicUrls";
-import type { PublicVenueDetail } from "../../services/publicEventsService";
+import type {
+  PublicTripCard,
+  PublicVenueDetail,
+} from "../../services/publicEventsService";
 import type { Brand } from "../../store/currentBrandStore";
 import type { LiveEvent } from "../../store/liveEventStore";
 import type { VenueCategory } from "../../types/brand";
@@ -95,6 +99,8 @@ import { computeMasterEndAtUtc } from "../../utils/eventDateMath";
 interface PublicBrandPageProps {
   brand: Brand;
   events: LiveEvent[];
+  /** ORCH-0963 — empty array for non-trip-planner brands; populated for trip_planner. */
+  trips: PublicTripCard[];
   /** Ve4 — verified physical venue listing fields; null for popup/trip brands. */
   venue?: PublicVenueDetail | null;
 }
@@ -105,9 +111,17 @@ const VENUE_CATEGORY_LABELS: Record<VenueCategory, string> = {
   creative_and_arts: "Creative & Arts",
 };
 
-type Tab = "upcoming" | "past" | "about";
+// ORCH-0963: primary = Upcoming (event-brand) | Trips (trip-brand)
+//            past    = Past (event-brand) | Past Trips (trip-brand)
+type Tab = "primary" | "past" | "about";
 
 const PAST_EVENT_CAP = 10;
+const PAST_TRIP_CAP = 10;
+
+// ORCH-0963 — pin the first N upcoming-event cards with a sticky "Buy tickets"
+// CTA pill for event-brands (F-5 above-the-fold polish). Trip-planner brands
+// don't get this — trip cards already make the join CTA implicit.
+const PINNED_CTA_CARD_COUNT = 3;
 
 const canonicalUrl = (brand: Brand): string =>
   brandPublicUrl(brand.slug);
@@ -117,11 +131,18 @@ const canonicalUrl = (brand: Brand): string =>
 export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   brand,
   events,
+  trips,
   venue = null,
 }) => {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<Tab>("upcoming");
+  // ORCH-0963 — kind-branched content surface. See
+  // I-PROPOSED-PUBLIC-BRAND-KIND-BRANCHED. brand.kind=trip_planner switches
+  // tabs to Trips/Past Trips and renders TripMiniCards; physical/popup keep
+  // Upcoming/Past with EventMiniCards + the new NextEventTeaser strip + sticky
+  // pinned CTA on the first 3 cards.
+  const isTripBrand = brand.kind === "trip_planner";
+  const [activeTab, setActiveTab] = useState<Tab>("primary");
   const [shareModalVisible, setShareModalVisible] = useState<boolean>(false);
   // ORCH-0805 — track cover media load failure so the hero falls back to the
   // hue gradient. Reset whenever the underlying URL changes.
@@ -169,13 +190,45 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
       .slice(0, PAST_EVENT_CAP);
   }, [events]);
 
+  // ORCH-0963 — trip memos. Empty arrays for non-trip-planner brands; the
+  // server-side dispatch already ensures `trips=[]` for those.
+  const upcomingTrips = useMemo<PublicTripCard[]>(() => {
+    if (!isTripBrand) return [];
+    return trips
+      .filter((t) => t.status === "scheduled" || t.status === "live")
+      .sort((a, b) => (a.startAt ?? "").localeCompare(b.startAt ?? ""));
+  }, [isTripBrand, trips]);
+
+  const pastTrips = useMemo<PublicTripCard[]>(() => {
+    if (!isTripBrand) return [];
+    return trips
+      .filter((t) => t.status === "ended")
+      .sort((a, b) => (b.endAt ?? "").localeCompare(a.endAt ?? ""))
+      .slice(0, PAST_TRIP_CAP);
+  }, [isTripBrand, trips]);
+
+  // ORCH-0963 — kind-aware tab labels + empty-state copy. Resolved once per
+  // render and passed to children to keep the swap site simple.
+  const primaryTabLabel = isTripBrand ? "Trips" : "Upcoming";
+  const pastTabLabel = isTripBrand ? "Past Trips" : "Past";
+  const primaryTabCount = isTripBrand
+    ? upcomingTrips.length
+    : upcomingEvents.length;
+  const pastTabCount = isTripBrand ? pastTrips.length : pastEvents.length;
+  const emptyPrimaryCopy = isTripBrand
+    ? "No upcoming trips yet"
+    : isVerifiedVenue
+      ? "No upcoming events from this venue"
+      : "No upcoming events yet";
+  const emptyPastCopy = isTripBrand
+    ? "No past trips to show"
+    : "No past events to show";
+
   // Cycle 13a (DEC-092): brand.members dropped. The "Verified host since YYYY"
   // pill on the public page is suppressed in 13a; restoring it is a B-cycle
   // task once `creator_accounts.created_at` (or brand_team_members.invited_at
   // for the owner row) is wired through React Query.
   const verifiedHostSinceYear = useMemo<number | null>(() => null, []);
-  const publicEventCount = events.length;
-  const showStatsCard = publicEventCount > 0;
 
   const handleClose = useCallback((): void => {
     if (router.canGoBack()) {
@@ -195,6 +248,21 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
         eventPublicPath({
           brandSlug: event.brandSlug,
           eventSlug: event.eventSlug,
+        }) as never,
+      );
+    },
+    [router],
+  );
+
+  // ORCH-0963 — trip card tap navigates to /t/{brandSlug}/{tripSlug}. Mirror
+  // handleEventCardPress: use trip.brandSlug (frozen at publish) over brand.slug
+  // for URL stability if the brand was renamed post-publish.
+  const handleTripCardPress = useCallback(
+    (trip: PublicTripCard): void => {
+      router.push(
+        tripPublicPath({
+          brandSlug: trip.brandSlug,
+          tripSlug: trip.slug,
         }) as never,
       );
     },
@@ -411,36 +479,33 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
           </GlassCard>
         ) : null}
 
-        {/* Stats card (only when ≥1 non-zero stat) */}
-        {showStatsCard ? (
-          <GlassCard
-            variant="elevated"
-            radius="lg"
-            padding={spacing.md}
-            style={styles.statsCard}
-          >
-            <View style={styles.statsRow}>
-              <View style={styles.statCol}>
-                <Text style={styles.statValue}>
-                  {formatStatNumber(publicEventCount)}
-                </Text>
-                <Text style={styles.statLabel}>EVENTS</Text>
-              </View>
-            </View>
-          </GlassCard>
+        {/* ORCH-0963 — stats card dropped per SC-12. The "EVENTS: N" tile carried
+            low information vs. the real-estate it consumed above the tab strip.
+            Tabs now sit higher; for event brands the NextEventTeaser below
+            replaces it with a higher-signal "next thing" pointer. */}
+
+        {/* ORCH-0963 — Next-event teaser strip (event-brands with an upcoming event).
+            F-5 above-the-fold polish: 1-line summary of the soonest upcoming
+            event sits BELOW the bio and ABOVE the tab strip. Trip-brands never
+            render this — the trip-cards-first IA already surfaces the next thing. */}
+        {!isTripBrand && upcomingEvents.length > 0 ? (
+          <NextEventTeaser
+            event={upcomingEvents[0]}
+            onPress={handleEventCardPress}
+          />
         ) : null}
 
-        {/* Tabs */}
+        {/* Tabs — ORCH-0963 kind-branched labels. */}
         <View style={styles.tabsRow}>
           <TabButton
-            label="Upcoming"
-            count={upcomingEvents.length}
-            active={activeTab === "upcoming"}
-            onPress={() => setActiveTab("upcoming")}
+            label={primaryTabLabel}
+            count={primaryTabCount}
+            active={activeTab === "primary"}
+            onPress={() => setActiveTab("primary")}
           />
           <TabButton
-            label="Past"
-            count={pastEvents.length}
+            label={pastTabLabel}
+            count={pastTabCount}
             active={activeTab === "past"}
             onPress={() => setActiveTab("past")}
           />
@@ -451,17 +516,38 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
           />
         </View>
 
-        {/* Tab body */}
-        {activeTab === "upcoming" ? (
-          <UpcomingTab
-            events={upcomingEvents}
-            brand={brand}
-            isVerifiedVenue={isVerifiedVenue}
-            onEventPress={handleEventCardPress}
-            onSocialPress={handleSocialPress}
-          />
+        {/* Tab body — ORCH-0963 kind-branched dispatch. */}
+        {activeTab === "primary" ? (
+          isTripBrand ? (
+            <UpcomingTripsTab
+              trips={upcomingTrips}
+              onTripPress={handleTripCardPress}
+              emptyCopy={emptyPrimaryCopy}
+            />
+          ) : (
+            <UpcomingEventsTab
+              events={upcomingEvents}
+              brand={brand}
+              isVerifiedVenue={isVerifiedVenue}
+              onEventPress={handleEventCardPress}
+              onSocialPress={handleSocialPress}
+              emptyCopy={emptyPrimaryCopy}
+            />
+          )
         ) : activeTab === "past" ? (
-          <PastTab events={pastEvents} onEventPress={handleEventCardPress} />
+          isTripBrand ? (
+            <PastTripsTab
+              trips={pastTrips}
+              onTripPress={handleTripCardPress}
+              emptyCopy={emptyPastCopy}
+            />
+          ) : (
+            <PastEventsTab
+              events={pastEvents}
+              onEventPress={handleEventCardPress}
+              emptyCopy={emptyPastCopy}
+            />
+          )
         ) : (
           <AboutTab brand={brand} onSocialPress={handleSocialPress} />
         )}
@@ -519,62 +605,129 @@ const TabButton: React.FC<TabButtonProps> = ({
   </Pressable>
 );
 
-// ---- UpcomingTab ----------------------------------------------------
+// ---- UpcomingEventsTab (was UpcomingTab pre-ORCH-0963) --------------
 
-interface UpcomingTabProps {
+interface UpcomingEventsTabProps {
   events: LiveEvent[];
   brand: Brand;
   isVerifiedVenue: boolean;
   onEventPress: (e: LiveEvent) => void;
   onSocialPress: (url: string) => void;
+  emptyCopy: string;
 }
 
-const UpcomingTab: React.FC<UpcomingTabProps> = ({
+const UpcomingEventsTab: React.FC<UpcomingEventsTabProps> = ({
   events,
-  isVerifiedVenue,
   onEventPress,
+  emptyCopy,
 }) => {
   if (events.length === 0) {
     // Cycle 7 FX2: socials moved to permanent slot below bio (above tabs),
     // so the empty-tab copy doesn't need to repeat them here.
     return (
       <View style={styles.emptyTabWrap}>
-        <Text style={styles.emptyTabTitle}>
-          {isVerifiedVenue
-            ? "No upcoming events from this venue"
-            : "No upcoming events yet"}
-        </Text>
+        <Text style={styles.emptyTabTitle}>{emptyCopy}</Text>
       </View>
     );
   }
   return (
     <View style={styles.eventList}>
-      {events.map((e) => (
-        <EventMiniCard key={e.id} event={e} onPress={onEventPress} />
+      {events.map((e, index) => (
+        // ORCH-0963 F-5 — pin sticky "Buy tickets" pill on the first 3 cards.
+        <EventMiniCard
+          key={e.id}
+          event={e}
+          onPress={onEventPress}
+          pinCta={index < PINNED_CTA_CARD_COUNT}
+        />
       ))}
     </View>
   );
 };
 
-// ---- PastTab --------------------------------------------------------
+// ---- PastEventsTab (was PastTab pre-ORCH-0963) ----------------------
 
-interface PastTabProps {
+interface PastEventsTabProps {
   events: LiveEvent[];
   onEventPress: (e: LiveEvent) => void;
+  emptyCopy: string;
 }
 
-const PastTab: React.FC<PastTabProps> = ({ events, onEventPress }) => {
+const PastEventsTab: React.FC<PastEventsTabProps> = ({
+  events,
+  onEventPress,
+  emptyCopy,
+}) => {
   if (events.length === 0) {
     return (
       <View style={styles.emptyTabWrap}>
-        <Text style={styles.emptyTabTitle}>No past events to show</Text>
+        <Text style={styles.emptyTabTitle}>{emptyCopy}</Text>
       </View>
     );
   }
   return (
     <View style={styles.eventList}>
       {events.map((e) => (
+        // ORCH-0963 — pinned CTA is upcoming-only; past cards never get it.
         <EventMiniCard key={e.id} event={e} onPress={onEventPress} past />
+      ))}
+    </View>
+  );
+};
+
+// ---- UpcomingTripsTab (ORCH-0963 new) -------------------------------
+
+interface UpcomingTripsTabProps {
+  trips: PublicTripCard[];
+  onTripPress: (t: PublicTripCard) => void;
+  emptyCopy: string;
+}
+
+const UpcomingTripsTab: React.FC<UpcomingTripsTabProps> = ({
+  trips,
+  onTripPress,
+  emptyCopy,
+}) => {
+  if (trips.length === 0) {
+    return (
+      <View style={styles.emptyTabWrap}>
+        <Text style={styles.emptyTabTitle}>{emptyCopy}</Text>
+      </View>
+    );
+  }
+  return (
+    <View style={styles.eventList}>
+      {trips.map((t) => (
+        <TripMiniCard key={t.id} trip={t} onPress={onTripPress} />
+      ))}
+    </View>
+  );
+};
+
+// ---- PastTripsTab (ORCH-0963 new) -----------------------------------
+
+interface PastTripsTabProps {
+  trips: PublicTripCard[];
+  onTripPress: (t: PublicTripCard) => void;
+  emptyCopy: string;
+}
+
+const PastTripsTab: React.FC<PastTripsTabProps> = ({
+  trips,
+  onTripPress,
+  emptyCopy,
+}) => {
+  if (trips.length === 0) {
+    return (
+      <View style={styles.emptyTabWrap}>
+        <Text style={styles.emptyTabTitle}>{emptyCopy}</Text>
+      </View>
+    );
+  }
+  return (
+    <View style={styles.eventList}>
+      {trips.map((t) => (
+        <TripMiniCard key={t.id} trip={t} onPress={onTripPress} past />
       ))}
     </View>
   );
@@ -747,12 +900,19 @@ interface EventMiniCardProps {
   event: LiveEvent;
   onPress: (e: LiveEvent) => void;
   past?: boolean;
+  /**
+   * ORCH-0963 F-5 — sticky "Buy tickets" pill in the bottom-right corner.
+   * Decorative for layout only — the full card remains the single hit target
+   * (preserves I-38: no separate 44pt touch target nested inside).
+   */
+  pinCta?: boolean;
 }
 
 const EventMiniCard: React.FC<EventMiniCardProps> = ({
   event,
   onPress,
   past = false,
+  pinCta = false,
 }) => {
   const dateLine = formatDraftDateLine(event);
   const minPrice = useMemo<string | null>(() => {
@@ -807,16 +967,282 @@ const EventMiniCard: React.FC<EventMiniCardProps> = ({
           <Text style={styles.eventPrice}>{minPrice}</Text>
         ) : null}
       </View>
+      {pinCta && !past ? (
+        <View
+          style={styles.eventBuyPill}
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+        >
+          <Text style={styles.eventBuyPillLabel} accessibilityLabel="Buy tickets">
+            Buy tickets
+          </Text>
+        </View>
+      ) : null}
+    </Pressable>
+  );
+};
+
+// ---- NextEventTeaser (ORCH-0963 new — event-brand above-the-fold polish) ----
+
+interface NextEventTeaserProps {
+  event: LiveEvent;
+  onPress: (e: LiveEvent) => void;
+}
+
+const NextEventTeaser: React.FC<NextEventTeaserProps> = ({ event, onPress }) => {
+  const dateLine = formatDraftDateLine(event);
+  const minPrice = useMemo<string | null>(() => {
+    // Mirror EventMiniCard pricing logic to preserve I-PROPOSED-PUBLIC-BRAND-KIND-BRANCHED
+    // honesty (no fabricated prices; null surfaces as omitted UI).
+    const visible = event.tickets.filter(
+      (t) => t.visibility !== "hidden" && !t.isFree,
+    );
+    if (visible.length === 0) {
+      return event.tickets.some((t) => t.visibility !== "hidden" && t.isFree)
+        ? "Free"
+        : null;
+    }
+    const prices = visible
+      .map((t) => t.priceGbp ?? 0)
+      .filter((p) => p > 0)
+      .sort((a, b) => a - b);
+    if (prices.length === 0) return null;
+    return `From ${formatCurrencyRound(prices[0], event.currency ?? "GBP")}`;
+  }, [event.currency, event.tickets]);
+
+  const eventName = event.name.length > 0 ? event.name : "Untitled event";
+  const bodyText =
+    minPrice !== null
+      ? `${dateLine} · ${eventName}  ·  ${minPrice}`
+      : `${dateLine} · ${eventName}`;
+
+  return (
+    <Pressable
+      onPress={() => onPress(event)}
+      accessibilityRole="button"
+      accessibilityLabel={`Next event ${eventName}`}
+      style={({ pressed }) => [
+        styles.nextTeaser,
+        pressed && styles.nextTeaserPressed,
+      ]}
+    >
+      <Text style={styles.nextTeaserLabel}>NEXT</Text>
+      <Text style={styles.nextTeaserBody} numberOfLines={1}>
+        {bodyText}
+      </Text>
+      <Text style={styles.nextTeaserArrow}>→</Text>
+    </Pressable>
+  );
+};
+
+// ---- TripMiniCard (ORCH-0963 new — trip-brand body card) -----------
+
+interface TripMiniCardProps {
+  trip: PublicTripCard;
+  onPress: (t: PublicTripCard) => void;
+  past?: boolean;
+}
+
+const TripMiniCard: React.FC<TripMiniCardProps> = ({
+  trip,
+  onPress,
+  past = false,
+}) => {
+  const dateLine = formatTripDateRange(trip.startAt, trip.endAt, trip.timezone);
+
+  const priceLabel = useMemo<string | null>(() => {
+    if (trip.minPriceCents !== null && trip.currency !== null) {
+      return `From ${formatCurrencyRound(trip.minPriceCents / 100, trip.currency)}`;
+    }
+    if (trip.hasFreeTier) return "Free";
+    return null;
+  }, [trip.minPriceCents, trip.currency, trip.hasFreeTier]);
+
+  // ORCH-0963 SC-2 honesty rules:
+  //   - null spotsLeft (unlimited capacity) → no badge, never "null spots left"
+  //   - 0 spotsLeft → "Sold out"
+  //   - 1..5 spotsLeft → "N spot/spots left" (scarcity prompt)
+  //   - >5 spotsLeft → no badge (non-scarce; visual noise)
+  // Adversarial T-05 + T-07 guard against regression.
+  const spotsLabel = useMemo<string | null>(() => {
+    if (trip.spotsLeft === null) return null;
+    if (trip.spotsLeft === 0) return "Sold out";
+    if (trip.spotsLeft <= 5) {
+      return `${trip.spotsLeft} ${trip.spotsLeft === 1 ? "spot" : "spots"} left`;
+    }
+    return null;
+  }, [trip.spotsLeft]);
+
+  // Deterministic hue fallback for cover-less trips (trips have no cover_hue
+  // column; events do). Per memory rule [[rn-color-formats]], use hsl() only —
+  // RN normalize-colors rejects oklch/lab/lch/color-mix silently.
+  const fallbackHue = useMemo<number>(() => hashHueFromString(trip.id), [trip.id]);
+
+  return (
+    <Pressable
+      onPress={() => onPress(trip)}
+      accessibilityRole="button"
+      accessibilityLabel={`Open trip ${trip.title}`}
+      style={({ pressed }) => [
+        styles.eventCard,
+        past && styles.eventCardPast,
+        pressed && styles.eventCardPressed,
+      ]}
+    >
+      <EventCoverMedia
+        hue={fallbackHue}
+        mediaUrl={trip.coverMediaUrl}
+        mediaType={trip.coverMediaType}
+        radius={12}
+        label=""
+        style={styles.eventCover}
+      />
+      <View style={styles.eventBody}>
+        {dateLine.length > 0 ? (
+          <Text style={styles.eventDate}>{dateLine}</Text>
+        ) : null}
+        <Text style={styles.eventTitle} numberOfLines={2}>
+          {trip.title.length > 0 ? trip.title : "Untitled trip"}
+        </Text>
+        {trip.destinationText !== null && trip.destinationText.length > 0 ? (
+          <Text style={styles.eventVenue} numberOfLines={1}>
+            {trip.destinationText}
+          </Text>
+        ) : null}
+        <View style={styles.tripFooterRow}>
+          {priceLabel !== null ? (
+            <Text style={styles.eventPrice}>{priceLabel}</Text>
+          ) : (
+            <View />
+          )}
+          {trip.bookingsClosed ? (
+            <View style={styles.tripBadgeClosed}>
+              <Text style={styles.tripBadgeLabel}>Booking closed</Text>
+            </View>
+          ) : spotsLabel !== null ? (
+            <View style={styles.tripBadgeScarce}>
+              <Text style={styles.tripBadgeLabel}>{spotsLabel}</Text>
+            </View>
+          ) : null}
+        </View>
+      </View>
     </Pressable>
   );
 };
 
 // ---- Helpers --------------------------------------------------------
 
-const formatStatNumber = (n: number): string => {
-  if (n < 1000) return String(n);
-  if (n < 10000) return `${(n / 1000).toFixed(1)}k`;
-  return `${Math.round(n / 1000)}k`;
+// ORCH-0963 — deterministic hue fallback for cover-less trips. Hash the trip
+// UUID into an integer 0-359 for `hsl(h, 60%, 45%)`. Same trip → same hue
+// across re-renders + reloads. Per memory rule [[rn-color-formats]] only
+// hsl/hex/rgb/hwb are RN-safe.
+const hashHueFromString = (s: string): number => {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  }
+  return h % 360;
+};
+
+// ORCH-0963 — format a trip date range from start_at + end_at + timezone.
+// Same-day → "Fri 19 Sep"; same-month → "19 – 22 Sep 2026"; cross-month →
+// "30 Sep – 3 Oct 2026"; cross-year → "30 Dec 2026 – 3 Jan 2027". Returns
+// empty string when either bound is null. Defensive guard: if end < start
+// (data corruption), renders start only.
+const formatTripDateRange = (
+  startAtIso: string | null,
+  endAtIso: string | null,
+  timezone: string | null,
+): string => {
+  if (startAtIso === null) return "";
+  const tz = timezone ?? "UTC";
+  const start = new Date(startAtIso);
+  if (Number.isNaN(start.getTime())) return "";
+  // No end → start-only
+  if (endAtIso === null) {
+    return start.toLocaleDateString("en-GB", {
+      timeZone: tz,
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+  }
+  const end = new Date(endAtIso);
+  if (Number.isNaN(end.getTime())) {
+    return start.toLocaleDateString("en-GB", {
+      timeZone: tz,
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+  }
+  // Defensive — end before start indicates data corruption; render start only.
+  if (end.getTime() < start.getTime()) {
+    return start.toLocaleDateString("en-GB", {
+      timeZone: tz,
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+  }
+  const startKey = start.toLocaleDateString("en-GB", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const endKey = end.toLocaleDateString("en-GB", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  // Same calendar day in timezone
+  if (startKey === endKey) {
+    return start.toLocaleDateString("en-GB", {
+      timeZone: tz,
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+    });
+  }
+  const startYear = start.toLocaleDateString("en-GB", {
+    timeZone: tz,
+    year: "numeric",
+  });
+  const endYear = end.toLocaleDateString("en-GB", {
+    timeZone: tz,
+    year: "numeric",
+  });
+  const startMonth = start.toLocaleDateString("en-GB", {
+    timeZone: tz,
+    month: "short",
+  });
+  const endMonth = end.toLocaleDateString("en-GB", {
+    timeZone: tz,
+    month: "short",
+  });
+  const startDay = start.toLocaleDateString("en-GB", {
+    timeZone: tz,
+    day: "numeric",
+  });
+  const endDay = end.toLocaleDateString("en-GB", {
+    timeZone: tz,
+    day: "numeric",
+  });
+  // Cross-year
+  if (startYear !== endYear) {
+    return `${startDay} ${startMonth} ${startYear} – ${endDay} ${endMonth} ${endYear}`;
+  }
+  // Cross-month, same year
+  if (startMonth !== endMonth) {
+    return `${startDay} ${startMonth} – ${endDay} ${endMonth} ${endYear}`;
+  }
+  // Same month, same year
+  return `${startDay} – ${endDay} ${endMonth} ${endYear}`;
 };
 
 const normalizeSocialUrl = (raw: string, base: string): string => {
@@ -941,9 +1367,10 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     paddingHorizontal: spacing.sm,
   },
-  statsCard: {
-    marginBottom: spacing.md,
-  },
+  // ORCH-0963: statsCard / statsRow / statCol / statValue / statLabel removed
+  // along with the EVENTS-count tile per SC-12. NextEventTeaser owns the
+  // above-fold "next thing" message for event brands; trip brands use the
+  // Trips tab badge for their count.
   venueCard: {
     marginTop: spacing.md,
     gap: spacing.md,
@@ -967,25 +1394,85 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: accent.warm,
   },
-  statsRow: {
+  // ORCH-0963 — NextEventTeaser strip styles. Sits between bio and tabs for
+  // event-brands. Horizontal pill, full width, 1-line body.
+  nextTeaser: {
     flexDirection: "row",
-    justifyContent: "space-around",
-  },
-  statCol: {
     alignItems: "center",
-    flex: 1,
+    gap: spacing.sm,
+    paddingVertical: 10,
+    paddingHorizontal: spacing.md,
+    borderRadius: radiusTokens.md,
+    backgroundColor: accent.tint,
+    borderWidth: 1,
+    borderColor: accent.border,
+    marginBottom: spacing.md,
   },
-  statValue: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: textTokens.primary,
+  nextTeaserPressed: {
+    opacity: 0.85,
   },
-  statLabel: {
+  nextTeaserLabel: {
     fontSize: 10,
-    color: textTokens.tertiary,
+    fontWeight: "700",
     letterSpacing: 1.4,
+    color: accent.warm,
+  },
+  nextTeaserBody: {
+    flex: 1,
+    fontSize: 13,
+    color: textTokens.primary,
+    fontWeight: "500",
+  },
+  nextTeaserArrow: {
+    fontSize: 16,
+    color: accent.warm,
+    fontWeight: "700",
+  },
+  // ORCH-0963 — EventMiniCard sticky "Buy tickets" pill (first 3 upcoming cards).
+  eventBuyPill: {
+    position: "absolute",
+    bottom: spacing.sm,
+    right: spacing.sm,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    backgroundColor: accent.warm,
+  },
+  eventBuyPillLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#0c0e12",
+    letterSpacing: 0.2,
+  },
+  // ORCH-0963 — TripMiniCard footer row (price-left, badge-right).
+  tripFooterRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 6,
+    gap: spacing.sm,
+  },
+  tripBadgeClosed: {
+    paddingVertical: 4,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radiusTokens.full,
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.16)",
+  },
+  tripBadgeScarce: {
+    paddingVertical: 4,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radiusTokens.full,
+    backgroundColor: accent.tint,
+    borderWidth: 1,
+    borderColor: accent.border,
+  },
+  tripBadgeLabel: {
+    fontSize: 11,
     fontWeight: "600",
-    marginTop: 2,
+    color: textTokens.primary,
+    letterSpacing: 0.2,
   },
   tabsRow: {
     flexDirection: "row",

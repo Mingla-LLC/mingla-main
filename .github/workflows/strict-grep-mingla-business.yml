@@ -178,6 +178,17 @@ jobs:
       - name: Run ORCH-0957 storage transform overage gate
         run: node .github/scripts/strict-grep/orch-0957-no-metered-place-photo-reads.mjs
 
+  orch-0963-public-brand-kind-branched:
+    name: "ORCH-0963: public brand page kind-branched"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0963 kind-branched gate
+        run: node .github/scripts/strict-grep/orch-0963-public-brand-kind-branched.mjs
+
   orch-0965-home-uses-upcoming-hook:
     name: "ORCH-0965: home dashboard uses tri-kind upcoming hook"
     runs-on: ubuntu-latest

@@ -107,6 +107,10 @@ interface BusinessPublicBrandViewRow {
   social_links: unknown;
   custom_links: unknown;
   display_attendee_count: boolean;
+  // ORCH-0963 F-3 fix + ORCH-0962: union widened to match schema constraint after
+  // ORCH-0855 (`20260607000000_orch_0855_brands_kind_trip_planner.sql:28`).
+  // Runtime can return `'trip_planner'`; the page branches on this in
+  // PublicBrandPage.tsx (`isTripBrand`).
   kind: "physical" | "popup" | "trip_planner";
   address: string | null;
   cover_hue: number;
@@ -198,10 +202,93 @@ export interface PublicEventDetail {
 
 export interface PublicBrandDetail {
   brand: PublicBrandRecord;
+  /** Empty array for trip-planner brands per ORCH-0963 kind-branched read. */
   events: PublicEventRecord[];
+  /** ORCH-0963 — empty array for physical/popup brands; populated for trip_planner. */
+  trips: PublicTripCard[];
   /** Present only for verified physical venues (Ve4). */
   venue: PublicVenueDetail | null;
 }
+
+// ============================================================
+// ORCH-0963 — public trips by brand (kind-branched read path)
+// ============================================================
+//
+// `pg_public_trips_by_brand` is an anon-callable SECURITY DEFINER RPC that
+// returns one row per public trip for a given brand slug, with pre-aggregated
+// spots_left + min_price_cents. Powers /b/{slug} when brand.kind='trip_planner'.
+// See `supabase/migrations/20260728000000_orch_0963_pg_public_trips_by_brand.sql`.
+
+/** ORCH-0963 — row shape from pg_public_trips_by_brand RPC. */
+export interface PublicTripCardRow {
+  trip_id: string;
+  trip_slug: string;
+  brand_slug: string;
+  title: string;
+  description: string | null;
+  destination_text: string | null;
+  cover_media_url: string | null;
+  cover_media_type: "image" | "video" | "gif" | null;
+  status: "scheduled" | "live" | "ended" | "cancelled";
+  start_at: string | null;
+  end_at: string | null;
+  timezone: string | null;
+  bookings_closed: boolean;
+  total_capacity: number | null;
+  tickets_sold: number;
+  spots_left: number | null;
+  min_price_cents: number | null;
+  currency: string | null;
+  has_free_tier: boolean;
+  published_at: string | null;
+}
+
+/** ORCH-0963 — UI-facing trip-card shape consumed by `<TripMiniCard>`. */
+export interface PublicTripCard {
+  id: string;
+  slug: string;
+  brandSlug: string;
+  title: string;
+  description: string | null;
+  destinationText: string | null;
+  coverMediaUrl: string | null;
+  coverMediaType: "image" | "video" | "gif" | null;
+  status: "scheduled" | "live" | "ended" | "cancelled";
+  startAt: string | null;
+  endAt: string | null;
+  timezone: string | null;
+  bookingsClosed: boolean;
+  totalCapacity: number | null;
+  ticketsSold: number;
+  spotsLeft: number | null;
+  minPriceCents: number | null;
+  currency: string | null;
+  hasFreeTier: boolean;
+  publishedAt: string | null;
+}
+
+export const tripRowToCard = (row: PublicTripCardRow): PublicTripCard => ({
+  id: row.trip_id,
+  slug: row.trip_slug,
+  brandSlug: row.brand_slug,
+  title: row.title,
+  description: row.description,
+  destinationText: row.destination_text,
+  coverMediaUrl: row.cover_media_url,
+  coverMediaType: row.cover_media_type,
+  status: row.status,
+  startAt: row.start_at,
+  endAt: row.end_at,
+  timezone: row.timezone,
+  bookingsClosed: row.bookings_closed,
+  totalCapacity: row.total_capacity,
+  ticketsSold: row.tickets_sold,
+  spotsLeft: row.spots_left,
+  minPriceCents: row.min_price_cents,
+  currency: row.currency,
+  hasFreeTier: row.has_free_tier,
+  publishedAt: row.published_at,
+});
 
 const asRecord = (value: unknown): JsonRecord =>
   value !== null && typeof value === "object" && !Array.isArray(value)
@@ -745,9 +832,25 @@ const fetchPublicBrandEvents = async (
   );
 };
 
+// ORCH-0963 — anon-callable bulk public-trips by brand. Powers /b/{slug} for
+// trip-planner brands. Backed by pg_public_trips_by_brand RPC (migration
+// 20260728000000). Returns [] for non-trip-planner brands by RPC construction.
+const fetchPublicBrandTrips = async (
+  brandSlug: string,
+): Promise<PublicTripCard[]> => {
+  // orch-strict-grep-allow events-type-filter — ORCH-0963 RPC pins event_type='trip' server-side via brand-kind guard
+  const { data, error } = await supabase
+    .rpc("pg_public_trips_by_brand", { p_brand_slug: brandSlug });
+
+  if (error !== null) throw error;
+  const rows = (data ?? []) as PublicTripCardRow[];
+  return rows.map(tripRowToCard);
+};
+
 export const getPublicBrandBySlug = async (
   brandSlug: string,
 ): Promise<PublicBrandDetail | null> => {
+  // 1. Verified-venue path (kind='physical' subset)
   const { data: claimedVenue, error: claimedError } = await supabase
     .from("claimed_venues_public_view")
     .select("*")
@@ -763,9 +866,12 @@ export const getPublicBrandBySlug = async (
       brand: claimedVenueRowToBrand(venueRow, events.length),
       venue: claimedVenueRowToPublicVenue(venueRow),
       events,
+      // ORCH-0963: verified venues are kind='physical' — never trip_planner.
+      trips: [],
     };
   }
 
+  // 2. Generic brand resolver
   const { data: brandData, error: brandError } = await supabase
     .from("business_public_brands_view")
     .select("*")
@@ -775,14 +881,24 @@ export const getPublicBrandBySlug = async (
   if (brandError !== null) throw brandError;
   if (brandData === null) return null;
 
-  const events = await fetchPublicBrandEvents(brandSlug);
+  const brandRow = brandData as BusinessPublicBrandViewRow;
+  // ORCH-0963 — kind-branched content load. Trip-planner brands fetch trips
+  // (events would always be empty per I-PROPOSED-TR2-ROUTE-BY-EVENT-TYPE);
+  // event brands fetch events. Each kind hits ONE of the two read paths,
+  // never both. See I-PROPOSED-PUBLIC-BRAND-KIND-BRANCHED.
+  const isTripPlanner = brandRow.kind === "trip_planner";
+  const [events, trips]: [PublicEventRecord[], PublicTripCard[]] = isTripPlanner
+    ? [[], await fetchPublicBrandTrips(brandSlug)]
+    : [await fetchPublicBrandEvents(brandSlug), []];
+
   return {
     brand: publicBrandViewRowToBrand(
-      brandData as BusinessPublicBrandViewRow,
-      events.length,
+      brandRow,
+      isTripPlanner ? trips.length : events.length,
     ),
     venue: null,
     events,
+    trips,
   };
 };
 

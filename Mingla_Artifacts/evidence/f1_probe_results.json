@@ -1,0 +1,71 @@
+[
+  {
+    "slug": "travelbrand",
+    "label": "trip-planner (32 trips, 2 public scheduled)",
+    "url": "https://business.usemingla.com/b/travelbrand",
+    "msToInteractive": 93723,
+    "title": "Business",
+    "ogTitle": null,
+    "ogDesc": null,
+    "ogImage": null,
+    "hasUpcomingTab": false,
+    "hasPastTab": false,
+    "hasAboutTab": false,
+    "noUpcomingEventsCopy": false,
+    "noPastEventsCopy": false,
+    "tripCardVisible": false,
+    "eventCardVisible": false,
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()"
+    ],
+    "visibleText": "Brand could not load\nRefresh this page or try the link again.",
+    "screenshot": "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0963-[public-brand-page-events-vs-trip]/Mingla_Artifacts/evidence/f1_travelbrand.png"
+  },
+  {
+    "slug": "leggothis",
+    "label": "popup event-brand (11 public events)",
+    "url": "https://business.usemingla.com/b/leggothis",
+    "msToInteractive": 93431,
+    "title": "Business",
+    "ogTitle": null,
+    "ogDesc": null,
+    "ogImage": null,
+    "hasUpcomingTab": false,
+    "hasPastTab": false,
+    "hasAboutTab": false,
+    "noUpcomingEventsCopy": false,
+    "noPastEventsCopy": false,
+    "tripCardVisible": false,
+    "eventCardVisible": false,
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()"
+    ],
+    "visibleText": "Brand could not load\nRefresh this page or try the link again.",
+    "screenshot": "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0963-[public-brand-page-events-vs-trip]/Mingla_Artifacts/evidence/f1_leggothis.png"
+  },
+  {
+    "slug": "perryssteakhousegrille",
+    "label": "physical-venue (0 public events)",
+    "url": "https://business.usemingla.com/b/perryssteakhousegrille",
+    "msToInteractive": 50905,
+    "title": "Business",
+    "ogTitle": null,
+    "ogDesc": null,
+    "ogImage": null,
+    "hasUpcomingTab": false,
+    "hasPastTab": false,
+    "hasAboutTab": false,
+    "noUpcomingEventsCopy": false,
+    "noPastEventsCopy": false,
+    "tripCardVisible": false,
+    "eventCardVisible": false,
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()"
+    ],
+    "visibleText": "Brand could not load\nRefresh this page or try the link again.",
+    "screenshot": "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0963-[public-brand-page-events-vs-trip]/Mingla_Artifacts/evidence/f1_perryssteakhousegrille.png"
+  }
+]
