@@ -47,44 +47,47 @@ const draft = (patch: Partial<DraftEvent> = {}): DraftEvent =>
 // code (Code Quality Contract); permitted here because the test does
 // not exercise any other field of DraftEvent.
 
-describe("ORCH-0965 pickHomeNextAction — rule ladder", () => {
-  test("T-IMPL-04 — Stripe not active → rung 1 regardless of other state", () => {
-    const brand = baseBrand({ stripeStatus: "not_connected" });
-    const result = pickHomeNextAction(brand, emptyCounts, []);
-    expect(result?.rung).toBe(1);
-    expect(result?.kind).toBe("stripe_inactive");
-    expect(result?.ctaRoute).toBe("/brand/brand-1/payments");
+const paidDraft = (): DraftEvent =>
+  draft({
+    tickets: [
+      {
+        isFree: false,
+        priceGbp: 25,
+      } as unknown as DraftEvent["tickets"][number],
+    ],
   });
 
-  test("T-IMPL-04b — Stripe not active even with offerings → still rung 1", () => {
+describe("META-ORCH-0972 pickHomeNextAction — universal authoring ladder", () => {
+  test("T-07 — Stripe inactive + zero paid drafts does not fire rung 1", () => {
     const brand = baseBrand({ stripeStatus: "not_connected" });
-    const counts: UpcomingCounts = { total: 5, active: 5, live: 2, upcoming: 2, draft: 1 };
-    const result = pickHomeNextAction(brand, counts, [draft()]);
-    expect(result?.rung).toBe(1);
-  });
-
-  test("T-IMPL-05 — Stripe active + 0 offerings + trip_planner → rung 2 'Plan a trip'", () => {
-    const brand = baseBrand({ kind: "trip_planner" });
     const result = pickHomeNextAction(brand, emptyCounts, []);
     expect(result?.rung).toBe(2);
     expect(result?.kind).toBe("no_offerings");
-    expect(result?.title).toBe("Plan a trip");
-    expect(result?.ctaRoute).toBe("/trip/create");
   });
 
-  test("T-IMPL-06 — Stripe active + 0 offerings + popup → rung 2 'Create your first event'", () => {
-    const brand = baseBrand({ kind: "popup" });
+  test("paid draft + Stripe inactive → rung 1", () => {
+    const brand = baseBrand({ stripeStatus: "not_connected" });
+    const counts: UpcomingCounts = { total: 1, active: 1, live: 0, upcoming: 0, draft: 1 };
+    const result = pickHomeNextAction(brand, counts, [paidDraft()]);
+    expect(result?.rung).toBe(1);
+    expect(result?.kind).toBe("stripe_inactive");
+    expect(result?.ctaRoute).toBe("/brand/brand-1/payments");
+    expect(result?.title).toBe("Connect Stripe to take payments");
+  });
+
+  test("Stripe inactive with only free draft → rung 3", () => {
+    const brand = baseBrand({ stripeStatus: "not_connected" });
+    const counts: UpcomingCounts = { total: 1, active: 1, live: 0, upcoming: 0, draft: 1 };
+    const result = pickHomeNextAction(brand, counts, [draft()]);
+    expect(result?.rung).toBe(3);
+  });
+
+  test("Stripe active + 0 offerings → universal chooser rung", () => {
+    const brand = baseBrand();
     const result = pickHomeNextAction(brand, emptyCounts, []);
     expect(result?.rung).toBe(2);
-    expect(result?.title).toBe("Create your first event");
+    expect(result?.title).toBe("What do you want to make first?");
     expect(result?.ctaRoute).toBe("/event/create");
-  });
-
-  test("T-IMPL-06b — Stripe active + 0 offerings + physical → rung 2 'Create your first event'", () => {
-    const brand = baseBrand({ kind: "physical", address: "1 Main St" });
-    const result = pickHomeNextAction(brand, emptyCounts, []);
-    expect(result?.rung).toBe(2);
-    expect(result?.title).toBe("Create your first event");
   });
 
   test("T-IMPL-07 — Stripe active + 0 live + 1 draft → rung 3 routing to most-recent draft", () => {
@@ -97,28 +100,20 @@ describe("ORCH-0965 pickHomeNextAction — rule ladder", () => {
     expect(result?.ctaRoute).toContain("draft-newer");
   });
 
-  test("T-IMPL-08 — Stripe active + 1 live + physical brand + no address → rung 4", () => {
-    const brand = baseBrand({ kind: "physical", address: null });
-    const counts: UpcomingCounts = { total: 1, active: 1, live: 1, upcoming: 0, draft: 0 };
-    const result = pickHomeNextAction(brand, counts, []);
-    expect(result?.rung).toBe(4);
-    expect(result?.kind).toBe("add_address");
-    expect(result?.ctaRoute).toBe("/brand/brand-1/edit");
-  });
-
-  test("T-IMPL-09 — Healthy state (stripe + 1 live + popup) → null", () => {
-    const brand = baseBrand({ kind: "popup" });
+  test("T-IMPL-08 — live offering + no address → null", () => {
+    const brand = baseBrand({ address: null });
     const counts: UpcomingCounts = { total: 1, active: 1, live: 1, upcoming: 0, draft: 0 };
     const result = pickHomeNextAction(brand, counts, []);
     expect(result).toBeNull();
   });
 
-  test("T-IMPL-09b — Healthy state (stripe + 1 live + physical with address) → null", () => {
-    const brand = baseBrand({ kind: "physical", address: "1 Main St" });
+  test("T-IMPL-09 — Healthy state (stripe + 1 live) → null", () => {
+    const brand = baseBrand();
     const counts: UpcomingCounts = { total: 1, active: 1, live: 1, upcoming: 0, draft: 0 };
     const result = pickHomeNextAction(brand, counts, []);
     expect(result).toBeNull();
   });
+
 });
 
 describe("ORCH-0965 pickHomeNextAction — adversarial (tester set)", () => {
@@ -135,29 +130,22 @@ describe("ORCH-0965 pickHomeNextAction — adversarial (tester set)", () => {
     expect(result?.ctaRoute).toMatch(/draft-(a|b)/);
   });
 
-  test("T-QA-06 — popup brand with no address → returns null at rung 4 (popup exempt)", () => {
-    const brand = baseBrand({ kind: "popup", address: null });
+  test("T-QA-07 — empty-string address does not create an address rung", () => {
+    const brand = baseBrand({ address: "" });
     const counts: UpcomingCounts = { total: 1, active: 1, live: 1, upcoming: 0, draft: 0 };
     const result = pickHomeNextAction(brand, counts, []);
     expect(result).toBeNull();
   });
 
-  test("T-QA-07 — empty-string address on physical brand → rung 4 fires (treated as null)", () => {
-    const brand = baseBrand({ kind: "physical", address: "" });
+  test("T-QA-07b — whitespace-only address does not create an address rung", () => {
+    const brand = baseBrand({ address: "   " });
     const counts: UpcomingCounts = { total: 1, active: 1, live: 1, upcoming: 0, draft: 0 };
     const result = pickHomeNextAction(brand, counts, []);
-    expect(result?.rung).toBe(4);
+    expect(result).toBeNull();
   });
 
-  test("T-QA-07b — whitespace-only address on physical brand → rung 4 fires (trimmed)", () => {
-    const brand = baseBrand({ kind: "physical", address: "   " });
-    const counts: UpcomingCounts = { total: 1, active: 1, live: 1, upcoming: 0, draft: 0 };
-    const result = pickHomeNextAction(brand, counts, []);
-    expect(result?.rung).toBe(4);
-  });
-
-  test("trip_planner with 1 draft + 0 live → rung 3 trip-typed route", () => {
-    const brand = baseBrand({ kind: "trip_planner" });
+  test("1 trip draft + 0 live → rung 3 trip-typed route", () => {
+    const brand = baseBrand();
     const counts: UpcomingCounts = { total: 1, active: 1, live: 0, upcoming: 0, draft: 1 };
     const tripDraft = draft({ id: "draft-trip-1" });
     (tripDraft as DraftEvent & { event_type?: string }).event_type = "trip";

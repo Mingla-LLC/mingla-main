@@ -9,6 +9,8 @@ import {
   type ActivitiesFileInput,
 } from "../_shared/geminiActivitiesParser.ts";
 
+// I-BRAND-UNIVERSAL-AUTHORING (META-ORCH-0972) — no kind gate.
+
 const MAX_TOTAL_BYTES = 10 * 1024 * 1024;
 const MAX_FILES = 5;
 const HUB_EXPIRY_HOURS = 24;
@@ -148,7 +150,7 @@ Deno.serve(async (req) => {
 
   const { data: brand, error: brandErr } = await userClient
     .from("brands")
-    .select("id, name, kind, venue_category, claim_status, default_currency, account_id")
+    .select("id, name, venue_category, default_currency, account_id")
     .eq("id", body.brand_id)
     .is("deleted_at", null)
     .maybeSingle();
@@ -159,13 +161,6 @@ Deno.serve(async (req) => {
   if (brand.account_id !== userId) {
     return errorResponse(403, "FORBIDDEN", "Brand not owned by caller");
   }
-  if (brand.kind !== "physical") {
-    return errorResponse(
-      403,
-      "BRAND_NOT_ELIGIBLE",
-      "Activities generation is for physical venues only",
-    );
-  }
   if (brand.venue_category !== "play") {
     return errorResponse(
       403,
@@ -173,15 +168,9 @@ Deno.serve(async (req) => {
       "Activities generation is for Play venues only",
     );
   }
-  if (brand.claim_status !== "verified") {
-    return errorResponse(
-      403,
-      "BRAND_NOT_VERIFIED",
-      "Venue must be verified before generating experiences",
-    );
-  }
 
   const defaultCurrency = (brand.default_currency as string | null)?.trim() || "GBP";
+  const temporaryCategory = "play";
 
   let parseResult;
   try {
@@ -223,6 +212,7 @@ Deno.serve(async (req) => {
       suggested_price_min_cents: exp.suggested_price_min_cents,
       suggested_price_max_cents: exp.suggested_price_max_cents,
       currency: exp.currency,
+      temporaryCategory,
       intent_tags: exp.intent_tags,
       capacity_min: exp.capacity_min,
       capacity_max: exp.capacity_max,

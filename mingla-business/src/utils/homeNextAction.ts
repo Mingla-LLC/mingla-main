@@ -4,10 +4,9 @@
  * home dashboard when the dashboard would otherwise be empty.
  *
  * Static rule ladder (first-match wins, top-to-bottom):
- *   1. Stripe not active            → Finish setting up Stripe
- *   2. Stripe active + zero offers   → kind-aware first-offering CTA
+ *   1. Paid draft + Stripe inactive → Connect Stripe
+ *   2. Zero offers                  → universal first-offering chooser
  *   3. Has draft, zero live          → Finish your draft (route to most-recent)
- *   4. Live + physical + no address  → Add your venue address
  *   else: null (healthy state — no card renders)
  *
  * Pure function. No hooks, no React. Unit-tested via
@@ -27,17 +26,24 @@ import type { UpcomingCounts } from "./upcomingBuilder";
 export type HomeNextActionKind =
   | "stripe_inactive"
   | "no_offerings"
-  | "finish_draft"
-  | "add_address";
+  | "finish_draft";
 
 export interface HomeNextActionRung {
-  rung: 1 | 2 | 3 | 4;
+  rung: 1 | 2 | 3;
   kind: HomeNextActionKind;
   title: string;
   body: string;
   ctaLabel: string;
   ctaRoute: string;
 }
+
+const hasAnyDraftPaidOffering = (drafts: DraftEvent[]): boolean =>
+  drafts.some((draft) =>
+    (draft.tickets ?? []).some((ticket) => {
+      if (ticket.isFree) return false;
+      return typeof ticket.priceGbp === "number" && ticket.priceGbp > 0;
+    }),
+  );
 
 /**
  * Pick the highest-priority next-action rung for the given brand state.
@@ -51,36 +57,26 @@ export function pickHomeNextAction(
   counts: UpcomingCounts,
   drafts: DraftEvent[],
 ): HomeNextActionRung | null {
-  // Rung 1 — Stripe not active.
-  if (brand.stripeStatus !== "active") {
+  // Rung 1 — Stripe upsell only after a paid draft exists.
+  if (brand.stripeStatus !== "active" && hasAnyDraftPaidOffering(drafts)) {
     return {
       rung: 1,
       kind: "stripe_inactive",
-      title: "Finish setting up Stripe",
-      body: "Mingla needs Stripe Connect to collect money. Finish setup to start selling.",
-      ctaLabel: "Continue Stripe setup",
+      title: "Connect Stripe to take payments",
+      body: "You have a paid offering ready to publish. Connect Stripe to start selling.",
+      ctaLabel: "Connect Stripe",
       ctaRoute: `/brand/${brand.id}/payments`,
     };
   }
 
-  // Rung 2 — Stripe active, zero offerings (no drafts, no live, no upcoming).
+  // Rung 2 — universal first-offering chooser.
   if (counts.total === 0) {
-    if (brand.kind === "trip_planner") {
-      return {
-        rung: 2,
-        kind: "no_offerings",
-        title: "Plan a trip",
-        body: "You're set up. Create your first trip to start selling.",
-        ctaLabel: "Plan a trip",
-        ctaRoute: "/trip/create",
-      };
-    }
     return {
       rung: 2,
       kind: "no_offerings",
-      title: "Create your first event",
-      body: "Your brand is ready. Create your first event to start selling tickets.",
-      ctaLabel: "Create event",
+      title: "What do you want to make first?",
+      body: "Mix and match anytime.",
+      ctaLabel: "Create",
       ctaRoute: "/event/create",
     };
   }
@@ -104,21 +100,6 @@ export function pickHomeNextAction(
         event_type: eventType,
         status: "draft",
       }),
-    };
-  }
-
-  // Rung 4 — Live offering exists but physical brand has no address.
-  if (
-    brand.kind === "physical" &&
-    (brand.address === null || brand.address.trim().length === 0)
-  ) {
-    return {
-      rung: 4,
-      kind: "add_address",
-      title: "Add your venue address",
-      body: "Add your address so people can find you and Mingla can recommend you locally.",
-      ctaLabel: "Edit brand",
-      ctaRoute: `/brand/${brand.id}/edit`,
     };
   }
 

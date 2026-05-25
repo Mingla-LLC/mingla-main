@@ -88,8 +88,6 @@ export type BrandTableInsert = {
   stripe_payouts_enabled?: boolean;
   stripe_charges_enabled?: boolean;
   // Cycle 17e-A — all optional (DB defaults handle absence).
-  // ORCH-0855 (Tr1) — kind union widened to include 'trip_planner'.
-  kind?: "physical" | "popup" | "trip_planner";
   address?: string | null;
   cover_hue?: number;
   cover_media_url?: string | null;
@@ -308,7 +306,6 @@ export function mapUiToBrandInsert(input: MapUiToBrandInsertInput): BrandTableIn
     row.display_attendee_count = brand.displayAttendeeCount;
   }
   // NEW Cycle 17e-A — only include when present on input (DB defaults handle absence).
-  if (brand.kind !== undefined) row.kind = brand.kind;
   if (brand.address !== undefined) row.address = brand.address;
   if (brand.coverHue !== undefined) row.cover_hue = brand.coverHue;
   if (brand.coverMediaUrl !== undefined) {
@@ -388,11 +385,10 @@ export function mapUiToBrandUpdatePatch(
   if (patch.displayAttendeeCount !== undefined) {
     out.display_attendee_count = patch.displayAttendeeCount;
   }
-  // NEW Cycle 17e-A — patches the 6 columns when present.
+  // NEW Cycle 17e-A — patches brand profile columns when present.
   // NB: slug NOT included in patch handling — trigger trg_brands_immutable_slug
   // forbids slug change per I-17. UI must not patch slug; if `patch.slug` is
   // ever passed, it's silently dropped here (defensive — no SQL throw).
-  if (patch.kind !== undefined) out.kind = patch.kind;
   if (patch.address !== undefined) out.address = patch.address;
   if (patch.coverHue !== undefined) out.cover_hue = patch.coverHue;
   if (patch.coverMediaUrl !== undefined) {

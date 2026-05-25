@@ -98,10 +98,9 @@ describe("ORCH-0859 — trip create + wizard + publish contract", () => {
     expect(reviewSource).not.toMatch(/paddingHorizontal:\s*spacing\.lg/);
   });
 
-  test("/trip/create gates on currentBrand.kind === 'trip_planner'", () => {
-    expect(createSource).toMatch(
-      /currentBrand\.kind\s*!==\s*"trip_planner"/,
-    );
+  test("/trip/create is universal for every brand", () => {
+    expect(createSource).not.toMatch(/currentBrand\.kind/);
+    expect(createSource).toMatch(/I-BRAND-UNIVERSAL-AUTHORING/);
   });
 
   test("/trip/create router.replaces to /trip/{id}/edit on success (clean back-stack)", () => {

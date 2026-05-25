@@ -289,22 +289,7 @@ export default function HubExperiencesRoute(): React.ReactElement {
     );
   }
 
-  if (currentBrand.kind === "physical" && currentBrand.claimStatus !== "verified") {
-    return (
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <GlassCard variant="elevated" padding={spacing.lg}>
-          <Text style={styles.emptyTitle}>Experiences are for verified physical venues</Text>
-          <Text style={styles.emptyBody}>
-            {currentBrand.venueCategory === "play"
-              ? PLAY_COPY.unverifiedHint
-              : RESTAURANT_COPY.unverifiedHint}
-          </Text>
-        </GlassCard>
-      </ScrollView>
-    );
-  }
-
-  if (currentBrand.kind === "physical" && currentBrand.venueCategory === "restaurant") {
+  if (currentBrand.venueCategory === "restaurant") {
     return (
       <ExperienceGenerationSurface
         brandId={currentBrand.id}
@@ -316,7 +301,7 @@ export default function HubExperiencesRoute(): React.ReactElement {
     );
   }
 
-  if (currentBrand.kind === "physical" && currentBrand.venueCategory === "play") {
+  if (currentBrand.venueCategory === "play") {
     return (
       <ExperienceGenerationSurface
         brandId={currentBrand.id}
@@ -328,7 +313,7 @@ export default function HubExperiencesRoute(): React.ReactElement {
     );
   }
 
-  if (currentBrand.kind === "physical" && currentBrand.venueCategory === "creative_and_arts") {
+  if (currentBrand.venueCategory === "creative_and_arts") {
     return (
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <GlassCard variant="elevated" padding={spacing.lg}>
@@ -336,19 +321,6 @@ export default function HubExperiencesRoute(): React.ReactElement {
           <Text style={styles.emptyBody}>
             Creative &amp; Arts venues will get schedule-based AI experience generation in an
             upcoming release.
-          </Text>
-        </GlassCard>
-      </ScrollView>
-    );
-  }
-
-  if (currentBrand.kind !== "physical") {
-    return (
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <GlassCard variant="elevated" padding={spacing.lg}>
-          <Text style={styles.emptyTitle}>Experiences are for verified physical venues</Text>
-          <Text style={styles.emptyBody}>
-            Switch to a verified physical venue to generate single-intent experiences.
           </Text>
         </GlassCard>
       </ScrollView>

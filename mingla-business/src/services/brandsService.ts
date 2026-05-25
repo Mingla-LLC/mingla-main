@@ -2,7 +2,7 @@
  * brandsService — Supabase brand CRUD service layer (Cycle 17e-A).
  *
  * Wires create + read + update + soft-delete against `public.brands` with the
- * new 6 columns (kind/address/cover_hue/cover_media_url/cover_media_type/
+ * new columns (address/cover_hue/cover_media_url/cover_media_type/
  * profile_photo_type) added by migration 20260506000000.
  *
  * Per SPEC §3.2 verbatim. Closes forensics F-A (root cause: phone-only CRUD)
@@ -89,10 +89,6 @@ export interface CreateBrandInput {
   accountId: string;
   name: string;
   slug: string;
-  // ORCH-0855 (Tr1) — union widened to admit 'trip_planner'. Migration
-  // 20260607000000 widened brands_kind_check at the DB level. Hook layer
-  // useCreateBrand passes input.kind through verbatim; no hook change.
-  kind: "physical" | "popup" | "trip_planner";
   address: string | null;
   coverHue: number;
   // Optional initial fields:
@@ -125,7 +121,6 @@ export async function createBrand(
     brand: {
       displayName: input.name,
       slug: input.slug,
-      kind: input.kind,
       address: input.address,
       coverHue: input.coverHue,
       bio: input.bio,

@@ -446,12 +446,8 @@ export default function HomeTab(): React.ReactElement {
           </View>
         ) : (
           <>
-            {/* ORCH-0965 — rule-ladder card. Renders ABOVE the KPI grid when
-                a rung fires AND no live offering is present (live hero takes
-                precedence; if a brand is healthy enough to have a live event,
-                the rule ladder yields the floor to that signal except for the
-                physical-no-address rung which surfaces alongside). */}
-            {nextAction !== null && (upcoming.counts.live === 0 || nextAction.rung === 4) ? (
+            {/* META-ORCH-0972 — rule-ladder card renders only before a live offering exists. */}
+            {nextAction !== null && upcoming.counts.live === 0 ? (
               <HomeNextActionCard action={nextAction} onPress={handleNextActionPress} />
             ) : null}
             <View style={isWideDesktop ? styles.desktopKpiGrid : undefined}>

@@ -154,7 +154,6 @@ export const TripBrandWizard: React.FC<TripBrandWizardProps> = ({
         accountId,
         name: trimmedName,
         slug: slugify(trimmedName),
-        kind: "trip_planner",
         address: null,
         coverHue: DEFAULT_COVER_HUE,
         bio: trimmedBio.length > 0 ? trimmedBio : undefined,

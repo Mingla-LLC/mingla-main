@@ -160,7 +160,6 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
         accountId: user.id,
         name: trimmedName,
         slug: slugify(trimmedName),
-        kind: "popup", // Cycle 7 v10 default — safer (no fake address)
         address: null,
         coverHue: 25, // Cycle 7 FX2 v11 default — warm orange
       });

@@ -35,9 +35,6 @@ export function computeDirtyFieldsPatch(
   if (draft.displayName !== original.displayName) {
     patch.displayName = draft.displayName;
   }
-  if (draft.kind !== original.kind) {
-    patch.kind = draft.kind;
-  }
   if (draft.address !== original.address) {
     patch.address = draft.address;
   }

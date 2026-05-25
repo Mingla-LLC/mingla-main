@@ -64,7 +64,6 @@ export default function TripEditRoute(): React.ReactElement {
   useEffect(() => {
     if (!isClientOnlyId || typeof eventId !== "string") return;
     if (currentBrand === null) return;
-    if (currentBrand.kind !== "trip_planner") return;
     if (tripMigratingIdRef.current === eventId) return;
     tripMigratingIdRef.current = eventId;
     void createTripDraftMutation

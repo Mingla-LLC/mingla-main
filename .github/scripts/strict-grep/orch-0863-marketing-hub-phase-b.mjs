@@ -852,6 +852,15 @@ function checkNoNewBackendFiles() {
   const META_ORCH_0952_BACKEND_ALLOWLIST = [
     "supabase/functions/ticket-checkout-confirm/__tests__/orch_0952_web_checkout_session_fallback.test.ts",
   ];
+  // META-ORCH-0972 [brand-kind decommission + universal feature access] Sub-A
+  // deletes legacy kind/claim gates from existing AI experience backend source.
+  // C7 is scoped to ORCH-0863 marketing; these backend touches are universal
+  // authoring scope and deploy later in Sub-D per the locked deploy split.
+  const ORCH_0972_BACKEND_ALLOWLIST = [
+    "supabase/functions/parse-restaurant-menu/index.ts",
+    "supabase/functions/parse-play-activities/index.ts",
+    "supabase/functions/_shared/agentTools.ts",
+  ];
 
   // ORCH-0950 [Trip capacity + dashboard coherence — EXPANDED SCOPE]. C7 is
   // scoped to ORCH-0863 marketing; these backend touches are the trip-capacity
@@ -866,6 +875,7 @@ function checkNoNewBackendFiles() {
   ];
   const ALLOWLIST = [
     ...META_ORCH_0952_BACKEND_ALLOWLIST,
+    ...ORCH_0972_BACKEND_ALLOWLIST,
     ...ORCH_0954_BACKEND_ALLOWLIST,
     ...ORCH_0915_BACKEND_ALLOWLIST,
     ...ORCH_0933_BACKEND_ALLOWLIST,

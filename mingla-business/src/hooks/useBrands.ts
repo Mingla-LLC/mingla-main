@@ -264,7 +264,7 @@ export const useCreateBrand = (): UseCreateBrandResult => {
         id: `_temp_${Date.now().toString(36)}`,
         displayName: input.name,
         slug: input.slug,
-        kind: input.kind,
+        kind: "popup",
         address: input.address,
         coverHue: input.coverHue,
         role: "owner",
