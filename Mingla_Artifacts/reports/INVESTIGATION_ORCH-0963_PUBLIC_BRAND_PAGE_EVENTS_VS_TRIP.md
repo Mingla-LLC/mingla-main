@@ -190,7 +190,17 @@ Spec direction outlined in §6 below. Three open questions surfaced for Seth bef
 
 ---
 
-## 7. Open Questions for Seth (before SPEC dispatch)
+## 7. Open Questions for Seth — LOCKED 2026-05-25
+
+**Decision 1 (architecture):** Single component, content-driven branching. `PublicBrandPage` stays one file and branches internally on `brands.kind` AND on the presence of `events[]` vs `trips[]` data. This minimizes merge surface against the parallel ORCH-0964 (theme customization) which also edits this file. SPEC will define a discriminated-union content prop (e.g., `content: { kind: 'events', events: LiveEvent[] } | { kind: 'trips', trips: PublicTripCard[] }`) so the body section knows exactly what to render without hunting for fields.
+
+**Decision 2 (event-brand IA polish bundled):** Yes — ship F-5 (push tickets above the fold via next-event teaser strip + sticky CTA on first 3 cards) in THIS ORCH alongside the trip-planner variant. One bigger PR, complete kind-aware redesign in one cycle.
+
+**Decision 3 (public-trips read path):** SECURITY DEFINER RPC. Mirrors the `biz_trip_tickets_sold(p_event_id)` pattern from ORCH-0947 (per `I-TRIP-SPOTS-MIRRORS-CAPACITY-GATE`). Pre-aggregates `min_price_cents`, `tickets_sold_count`, and `spots_left` server-side so trip cards don't need a chained-fetch waterfall. Working name: `pg_public_trips_by_brand(p_brand_slug TEXT)`. SPEC §3 will lock the exact return shape, RLS posture (SECURITY DEFINER + explicit visibility/status guards), and GRANT to `anon, authenticated`.
+
+(Original open questions preserved below for audit trail.)
+
+
 
 1. **Component-fork vs single-component-branched.** Two viable architectures:
    - **Option A (one component, kind prop-branched):** `PublicBrandPage` takes `{ brand, events, trips, venue }` with one of `events`/`trips` empty per kind. Smaller diff, easier to keep About-tab and chrome in lockstep, but ~150 lines of `brand.kind === 'trip_planner' ? ...` conditionals.
@@ -208,22 +218,27 @@ Spec direction outlined in §6 below. Three open questions surfaced for Seth bef
 
 ## 8. Discoveries for Orchestrator
 
-### D-1 — POTENTIAL P0: Headless Supabase 401 on production buyer-web SPA
+### D-1 — CLOSED: Headless probe artifact, not a real bug
 
-- **Symptom:** Playwright (chromium-1223, mobile UA, clean context) consistently received `401` from Supabase on the bundled REST calls for ALL 3 probed brand slugs (`travelbrand`, `leggothis`, `perryssteakhousegrille`) on `https://business.usemingla.com/b/{slug}`. Page rendered the `PublicBrandRoute:42-49` error state: "Brand could not load — Refresh this page or try the link again."
-- **Console excerpt (sanitized):** `Failed to load resource: the server responded with a status of 401 ()` (×2 per probe).
-- **Possible causes:**
-  - (a) Probe-context artifact: the SPA bundle expects a localStorage-bootstrapped anon token; clean context never had it. Real users on returning visits never hit this.
-  - (b) Bundled anon key has rotated/expired and a stale build is still serving.
-  - (c) Vercel edge or Supabase rate limiter blocking Playwright UA / fingerprint.
-- **Action requested:** Seth opens `https://business.usemingla.com/b/travelbrand` and `https://business.usemingla.com/b/leggothis` in his normal Safari + Chrome (incognito + non-incognito) and reports: does the page render brand + tabs, or the "Brand could not load" error? If error in incognito Chrome → P0, file as new ORCH. If renders fine → close as probe artifact, document for ORCH-0963 SPEC that live-fire on prod buyer-web requires either a real browser session or a Metro localhost dev server.
-- **Linked:** evidence file `Mingla_Artifacts/evidence/f1_probe_results.json` + screenshots `f1_*.png` in worktree.
+- **Original symptom:** Playwright (chromium-1223, mobile UA, clean context) consistently received `401` from Supabase on `/b/{slug}` for all 3 probed slugs. Rendered the "Brand could not load" error state.
+- **Resolution:** Seth confirmed 2026-05-25 that real users see the public brand pages normally. The URL + slugs used were correct (`https://business.usemingla.com/b/{leggothis|travelbrand|perryssteakhousegrille}`). The 401 was a probe-context artifact — likely Cloudflare/Vercel bot heuristic blocking the chromium-headless fingerprint, or a clean-context cold-start anon-token bootstrap issue. **No real-user impact; no follow-up ORCH needed.**
+- **SPEC implication:** during TEST phase, live-fire on prod buyer-web requires a real-browser session OR a localhost Metro dev-server (Playwright will hit the same 401 against prod). Tester should drive the local dev build for parity verification. Documented for the implementor + tester dispatches.
+- **Linked:** evidence retained at `Mingla_Artifacts/evidence/f1_probe_results.json` + `f1_*.png` for audit only.
 
 ### D-2 — Stale type `BusinessPublicBrandViewRow.kind` (folded into F-3, but flagged here so the implementor knows it's a one-line widen + a downstream type-narrow audit, not just a cosmetic fix).
 
 ### D-3 — `business_public_brands_view` is the only `/b/{slug}` brand read path and has no kind filter; verified `claimed_venues_public_view` filters to `kind='physical'` only. **No P0 here**, but flagged because a future ORCH that wants kind-specific public views (e.g., a `trip_planner_brands_public_view`) would need to coordinate with this resolution chain (the resolver tries `claimed_venues_public_view` first, falls back to `business_public_brands_view`).
 
 ### D-4 — ORCH-0962 [brand-edit public render audit] overlap warning. If the parallel orchestrator session there is editing `PublicBrandPage.tsx` or the public-brand resolver, the two ORCHs will collide. **Recommended action:** the orchestrator (Claude `mingla-orchestrator`) should write a COMMS-LEDGER entry once ORCH-0963 SPEC lands, naming the files that will change. Do this BEFORE handing ORCH-0963 to implementor.
+
+### D-5 — ORCH-0964 [public-page theme customization] active overlap on `PublicBrandPage.tsx`. **proven by reading ORCH-0964's dispatch.**
+
+Worktree `~/Desktop/mingla-orchs/ORCH-0964-[public-page-theme-customization]/` is in INVESTIGATE phase. Its dispatch (`Mingla_Artifacts/prompts/FORENSICS_INVESTIGATE_ORCH-0964_PUBLIC_PAGE_THEME_CUSTOMIZATION.md` lines 18 + 24-26) explicitly carves out scope:
+
+> "Surfaces in scope: buyer-web (/b/[brandSlug], /e/[brandSlug]/[eventSlug]) + consumer iOS + consumer Android."
+> "ORCH-0963 [Public brand page events-vs-trip] — overlapping render path; do NOT touch the events-vs-trip listing logic."
+
+**Both ORCHs will edit `PublicBrandPage.tsx`** — ORCH-0963 restructures the content body and adds the kind-aware trip surface; ORCH-0964 adds theme-token consumption (theme color + preset font + entrance animation). The two should merge cleanly if both ship Option A (single component with internal branching) — which is why Seth locked Decision #1 to "teach it to behave differently based on what content is available" 2026-05-25. **Action for orchestrator:** write COMMS-LEDGER entry (next COMMS-0005) naming `PublicBrandPage.tsx` + `publicEventsService.ts` as ORCH-0963's files-of-change; explicit understanding that ORCH-0964 implementor will rebase on whichever of {ORCH-0963, ORCH-0964} merges to main first. Skip the COMMS write from this skill because the anchor's COMMS_LEDGER has uncommitted acks from a parallel session (ORCH-0961/0962); orchestrator will see clean state at REVIEW time.
 
 ---
 
