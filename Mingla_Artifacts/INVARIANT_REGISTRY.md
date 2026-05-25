@@ -7,11 +7,11 @@
 
 ---
 
-## DRAFT (pending ORCH-0963 [Public brand page business-case optimization (events vs. trip brands)] CLOSE)
+## ACTIVE (post ORCH-0963 [Public brand page business-case optimization (events vs. trip brands)] CLOSE 2026-05-25)
 
-One invariant proposed by ORCH-0963; flips DRAFT → ACTIVE at CLOSE per orchestrator. SPEC at `Mingla_Artifacts/specs/SPEC_ORCH-0963_PUBLIC_BRAND_PAGE_EVENTS_VS_TRIP.md`. Implementor happy-path tests at `supabase/migrations/__tests__/pg_public_trips_by_brand.test.ts` + `mingla-business/src/services/__tests__/publicEventsService.tripFetch.test.ts` + 2 component source-grep contract tests; adversarial coverage at the 4 `*.adversarial.test.ts` files.
+One invariant flipped DRAFT → ACTIVE at the ORCH-0963 close. Tester CONDITIONAL PASS verdict P0:0 P1:0 P2:0 P3:1 P4:3 (P3-1 = D-LF-INFRA blocker registered as follow-up ORCH-0966; not a close blocker). Implementor happy-path 35 tests fails-on-revert verified at HEAD~1 on 3 tracks (Deno SQL + Jest service + Jest component). Tester adversarial T-10 at `mingla-business/src/components/brand/__tests__/TripMiniCard.cancelledTripLeak.adversarial.test.ts` fails-on-revert verified at commit `4d437b94c`. Migration applied 2026-05-25; RPC verified live via Mgmt API replay returning correct rows for `travelbrand` (DC Adventure spots_left=21 + The Sone spots_left=200) and 0 rows for non-trip-planner brands.
 
-### I-PROPOSED-PUBLIC-BRAND-KIND-BRANCHED (DRAFT — flips to ACTIVE on ORCH-0963 CLOSE)
+### I-PUBLIC-BRAND-KIND-BRANCHED (ACTIVE post ORCH-0963 CLOSE)
 
 **Rule:** The public brand page render path (`/b/{brandSlug}` at `mingla-business/app/b/[brandSlug]/index.tsx` → `mingla-business/src/components/brand/PublicBrandPage.tsx`) MUST source content according to `brands.kind`:
 - `kind ∈ {'physical', 'popup'}` (event brands) → events array, never trips array. Tabs labelled "Upcoming / Past / About". First 3 upcoming-event cards carry the sticky "Buy tickets" pill (F-5 polish).
