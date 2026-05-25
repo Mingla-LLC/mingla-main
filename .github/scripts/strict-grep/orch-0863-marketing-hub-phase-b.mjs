@@ -808,6 +808,7 @@ function checkNoNewBackendFiles() {
     "supabase/functions/_shared/photoStorageService.test.ts",
     "supabase/functions/backfill-place-photo-thumbs/index.ts",
     "supabase/functions/backfill-place-photo-thumbs/index.test.ts",
+    "supabase/functions/_shared/__tests__/imageCollage.thumbFallback.test.ts",
   ];
   // META-ORCH-0952 [Buyer-web confirm pipeline deep forensics] CLOSE 2026-05-25.
   // C7 is scoped to ORCH-0863 marketing; the META-ORCH-0952 self-heal rework
