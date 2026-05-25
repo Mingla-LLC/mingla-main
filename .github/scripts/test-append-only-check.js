@@ -58,7 +58,7 @@ const TEST_FILE_PATTERNS = [
   /(^|\/)__tests__\//,
 ];
 
-const MOD_TOKEN = /\[TEST-MOD-APPROVED ORCH-\d{4}(?:-[A-Z])?\]/;
+const MOD_TOKEN = /\[TEST-MOD-APPROVED (?:META-)?ORCH-\d{4}(?:-[A-Z])?\]/;
 const RENAME_TOKEN = /\[TEST-RENAME-APPROVED ORCH-\d{4}(?:-[A-Z])?\]/;
 
 function isTestPath(path) {
@@ -261,4 +261,29 @@ function main() {
   process.exit(failures > 0 ? 1 : 0);
 }
 
-main();
+function selfTest() {
+  const cases = [
+    { input: "[TEST-MOD-APPROVED ORCH-0840]", expect: true, label: "bare ORCH" },
+    { input: "[TEST-MOD-APPROVED ORCH-0840-A]", expect: true, label: "ORCH with suffix" },
+    { input: "[TEST-MOD-APPROVED META-ORCH-0952]", expect: true, label: "META-ORCH (ORCH-0959)" },
+    { input: "[TEST-MOD-APPROVED META-ORCH-0001-A]", expect: true, label: "META-ORCH with suffix (ORCH-0959)" },
+    { input: "[TEST-MOD-APPROVED FOO-0001]", expect: false, label: "wrong prefix" },
+    { input: "TEST-MOD-APPROVED ORCH-0840", expect: false, label: "missing brackets" },
+  ];
+  let failures = 0;
+  for (const c of cases) {
+    const got = MOD_TOKEN.test(c.input);
+    const ok = got === c.expect;
+    console.log(`${ok ? "✅" : "❌"} ${c.label}: input=${JSON.stringify(c.input)} got=${got} expected=${c.expect}`);
+    if (!ok) failures += 1;
+  }
+  console.log("");
+  console.log(`Self-test: ${cases.length - failures} passed, ${failures} failed.`);
+  process.exit(failures > 0 ? 1 : 0);
+}
+
+if (process.argv.includes("--self-test")) {
+  selfTest();
+} else {
+  main();
+}
