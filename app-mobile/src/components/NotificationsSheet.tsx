@@ -55,6 +55,9 @@ function getFilterCategory(type: string): NotificationCategory {
   ) {
     return 'social';
   }
+  if (type === 'board_card_message') {
+    return 'messages';
+  }
   if (
     type.startsWith('collaboration_') ||
     type.startsWith('session_') ||

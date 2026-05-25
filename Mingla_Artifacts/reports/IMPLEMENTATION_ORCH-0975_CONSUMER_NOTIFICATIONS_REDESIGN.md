@@ -4,6 +4,7 @@
 > Mode: Spec Execute
 > Spec: `Mingla_Artifacts/specs/SPEC_ORCH-0975_ADDENDUM_PER_TYPE_MATRIX.md`, `Mingla_Artifacts/specs/SPEC_ORCH-0975_CONSUMER_NOTIFICATIONS_REDESIGN.md`, `Mingla_Artifacts/design/DESIGN_ORCH-0975_CONSUMER_NOTIFICATIONS_REDESIGN.md`
 > Status: implemented, partially verified
+> Rework update: 2026-05-25 F-1 fixed and required local gates pass; iOS/Android/physical-iPhone parity remains tester-owned.
 
 ## 1. Layman Summary
 
@@ -218,6 +219,31 @@ The consumer notification center has been rebuilt as a modern bottom sheet. User
 - **Mobile OTA/native:** Pure JS/content change; EAS OTA publish required at CLOSE after tester pass.
 - **Business/admin web:** None.
 - **Env vars/secrets:** None.
+
+## 17. F-1 Rework Update (2026-05-25)
+
+### Scope
+
+Tester QA found one P1 mismatch: `board_card_message` rendered under Plans/Sessions because `getFilterCategory()` classified every `board_card_*` type before the Chats branch could apply. The rework is intentionally bounded to that finding.
+
+### Changes
+
+- `app-mobile/src/components/NotificationsSheet.tsx`: added a `type === 'board_card_message'` branch before the generic `board_card_*` sessions branch, so card comments resolve to `messages` while `board_card_saved`, `board_card_voted`, and `board_card_rsvp` still resolve to `sessions`.
+- `app-mobile/src/components/__tests__/NotificationsSheet.tester-adversarial.test.tsx`: corrected the tester matrix count assertion from `{ A: 18, B: 1, C: 6 }` to `{ A: 17, B: 1, C: 7 }`, matching the 25 rows declared in the same file and the system rows in the addendum matrix. This was required after the test advanced past the original F-1 assertion.
+
+### Verification
+
+| Check | Result |
+|---|---|
+| `node .github/scripts/strict-grep/orch-0975-notifications-sheet.mjs` | PASS |
+| `cd app-mobile && node src/components/__tests__/NotificationsSheet.test.tsx` | PASS |
+| `cd app-mobile && node src/components/__tests__/NotificationsSheet.tester-adversarial.test.tsx` | PASS |
+| `git diff --check` | PASS |
+| Forbidden-surface diff guard over `useNotifications.ts`, app-mobile package/native config, iOS/Android, workflows, and strict-grep files | PASS, `0` diff lines |
+
+### Remaining Gate
+
+Route back to tester for full iOS simulator, Android emulator with the consumer app installed, and physical iPhone pan-down parity. No PR was opened.
 
 ## Suggested Commit Message
 

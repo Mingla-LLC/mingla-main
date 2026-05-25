@@ -137,7 +137,7 @@ function runTesterAdversarialTest() {
     counts[archetype] = (counts[archetype] || 0) + 1;
     return counts;
   }, {});
-  assert.deepEqual(archetypeCounts, { A: 18, B: 1, C: 6 }, 'SC-36 archetype mix must match the addendum matrix');
+  assert.deepEqual(archetypeCounts, { A: 17, B: 1, C: 7 }, 'SC-36 archetype mix must match the addendum matrix');
 
   for (const fixture of EXTENSION_FIXTURES) {
     assert.equal(fixture.data.deepLink, `mingla://tester/${fixture.type}`, `${fixture.type} fixture must not fabricate extra structured fields`);
