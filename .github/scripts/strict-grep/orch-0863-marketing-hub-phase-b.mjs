@@ -819,6 +819,17 @@ function checkNoNewBackendFiles() {
     "supabase/functions/backfill-place-photo-thumbs/index.test.ts",
     "supabase/functions/_shared/__tests__/imageCollage.thumbFallback.test.ts",
   ];
+  // ORCH-0962 [Brand-edit → public-brand field rendering — truthful bundle].
+  // C7 is scoped to ORCH-0863 marketing; ORCH-0962 backend touches are the
+  // public-view recreation migration (drop + CREATE OR REPLACE the three
+  // public brand/venue/event views with the new SELECT columns for G-01 /
+  // G-08 / G-09) plus the source-reconciled ORCH-0954 controller migration
+  // (`20260727000002`) which was remote-only history per implementor §6 line
+  // 61. No edge function source is touched.
+  const ORCH_0962_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260727000002_orch_0954_controller_dashboard_type_check.sql",
+    "supabase/migrations/20260727000003_orch_0962_brand_field_render_truthful.sql",
+  ];
   // META-ORCH-0952 [Buyer-web confirm pipeline deep forensics] CLOSE 2026-05-25.
   // C7 is scoped to ORCH-0863 marketing; the META-ORCH-0952 self-heal rework
   // touched ticket-checkout-confirm/index.ts (already in ORCH-0932 allowlist
@@ -883,6 +894,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_0955_BACKEND_ALLOWLIST,
     ...ORCH_0956_BACKEND_ALLOWLIST,
     ...ORCH_0957_BACKEND_ALLOWLIST,
+    ...ORCH_0962_BACKEND_ALLOWLIST,
   ];
   const forbidden = changed.filter(
     (p) =>
