@@ -1,15 +1,100 @@
 # REVIEW — ORCH-0975 [Consumer notifications sheet redesign]
 
 **Reviewer:** Claude `mingla-orchestrator` (REVIEW mode)
-**Date:** 2026-05-25
+**Date Pass 1:** 2026-05-25 (NEEDS WORK)
+**Date Pass 2:** 2026-05-25 (APPROVED — after mechanical rework)
 **Worktree:** `~/Desktop/mingla-orchs/ORCH-0975-[consumer-notifications-redesign]/`
-**Branch:** `ORCH-0975-consumer-notifications-redesign`
+**Branch:** `ORCH-0975-consumer-notifications-redesign` (pushed to origin at `4f220a109`)
 **Implementation report:** `Mingla_Artifacts/reports/IMPLEMENTATION_ORCH-0975_CONSUMER_NOTIFICATIONS_REDESIGN.md`
 **Inputs reviewed against:** `specs/SPEC_ORCH-0975_ADDENDUM_PER_TYPE_MATRIX.md`, `specs/SPEC_ORCH-0975_CONSUMER_NOTIFICATIONS_REDESIGN.md`, `design/DESIGN_ORCH-0975_CONSUMER_NOTIFICATIONS_REDESIGN.md`
 
 ---
 
-## Verdict
+## Pass 2 — RE-REVIEW VERDICT: APPROVED
+
+**APPROVED for tester dispatch.** All blocking gaps from Pass 1 are RESOLVED. Substantive code review (which already passed in Pass 1) is unchanged. The implementor cleanly executed the mechanical rework as instructed: three atomic logical commits on the per-ORCH branch following Option B groupingfrom Pass 1's rework instruction, branch pushed to origin, fails-on-revert anchor re-verified against a real code-commit hash, implementation report §6 + §12 updated to cite the new hash, every hard guard from the orchestrator dispatch honoured (no code changes, no PR opened, no `WORKTREE_REGISTRY` row changes, no amendments to the 4 forensics commits).
+
+### Pass 2 — Commit-Hash Verification (MANDATORY, DEC-179)
+
+`git log --oneline main..HEAD` on the per-ORCH branch now shows:
+
+```
+4f220a109 ORCH-0975 IMPL part 3: strict-grep gate (C1/C2/C3) + implementation report
+d2fca61b3 ORCH-0975 IMPL part 2: NotificationsModal -> NotificationsSheet (@gorhom/bottom-sheet v5 + premium cards + Option C avatar + per-type matrix v1)
+299f08180 ORCH-0975 IMPL part 1: glass.notificationsSheet tokens + locale namespace shift (add subtitle/newCount/categoryLabels, delete filters)
+8713953a7 ORCH-0975 [Consumer notifications sheet redesign] REVIEW: NEEDS WORK (mechanical only)
+818b5f8b7 ORCH-0975 [Consumer notifications sheet redesign] SPEC ADDENDUM: per-type data matrix
+eaf6a5313 ORCH-0975 [Consumer notifications sheet redesign] SPEC + DESIGN
+10e4de3eb ORCH-0975 [Consumer notifications sheet redesign] INTAKE: WORLD_MAP + WORKTREE_REGISTRY rows
+```
+
+`git status --short` (excluding the expected `node_modules/` symlink orphans per the worktree-strategy node-modules symlink rule): **WORKING TREE CLEAN — zero uncommitted product files.**
+
+Per-commit inventory:
+
+| Commit | Files | Insertions | Deletions | Grouping verdict |
+|---|---|---|---|---|
+| `299f08180` | 30 (1 tokens + 29 locales) | +749 | −249 | ✅ Logical: pure additive infra layer (tokens + locale namespace shift) |
+| `d2fca61b3` | 4 (NotificationsSheet rewrite + HomePage + test + fixtures) | +948 | −542 | ✅ Logical: component layer (the actual visible redesign) |
+| `4f220a109` | 3 (strict-grep gate + workflow + implementation report) | +364 | −0 | ✅ Logical: CI gate + documentation layer |
+
+**Origin push confirmed:** `git ls-remote origin ORCH-0975-consumer-notifications-redesign` resolves to `4f220a10903173fa7ad9713a97ed3cb304de71b5` — the branch is reachable from any other clone (tester, CI, operator's other devices).
+
+**Forensics commits unamended (per hard guard):** `git rev-list --no-walk 818b5f8b7 eaf6a5313 10e4de3eb 8713953a7` resolves to the full hashes `818b5f8b746ea0ed31ec0e9586384a6013153b57` / `eaf6a531346dda277a4679f3c95e3ee700c529cf` / `10e4de3eb721b174de21e2ee29ce242b5fc7ae29` / `8713953a7b6608af22c59856be4236c4af722e0c`. Hashes match Pass 1's record byte-for-byte. No amendments.
+
+**No PR opened (per hard guard):** `gh pr list --head ORCH-0975-consumer-notifications-redesign --state all --json number,state,title` returns `[]`.
+
+**WORKTREE_REGISTRY row unchanged (per hard guard):** the ORCH-0975 row at `Mingla_Artifacts/WORKTREE_REGISTRY.md:18` still shows `Phase: SPEC (dispatch written)` and `Owner: Claude mingla-orchestrator (dispatch) → Claude mingla-forensics (pending)`. Orchestrator will update the phase + remove the row at CLOSE, not now.
+
+**Commit-Hash Verification verdict: PASS.**
+
+### Pass 2 — Fails-on-revert anchor re-verification
+
+Pass 1's blocker was that the cited anchor `818b5f8b746e` (the SPEC ADDENDUM commit) didn't contain code. Pass 2's updated implementation report cites:
+
+> §6 line 104: `Fails-on-revert anchor: d2fca61b37c8e328e31340281b05fed59e1fd86b`
+> §6 line 105: `Fails-on-revert evidence: Reverted app-mobile/src/components/NotificationsSheet.tsx to the pre-implementation state by git rm after git checkout main -- src/components/NotificationsSheet.tsx found no file; the regression failed with ENOENT, then restored from HEAD and passed again.`
+
+This is correct: `d2fca61b3` is the commit that introduces `NotificationsSheet.tsx` (per the per-commit inventory above — Commit 2 carries the file). Reverting via `git rm src/components/NotificationsSheet.tsx` simulates removing the implementation, the test then fails with `ENOENT` (file not found), restoring from `HEAD` restores the file and the test passes again. Mechanically valid fails-on-revert anchor.
+
+**Fails-on-revert verdict: PASS.**
+
+### Pass 2 — Live re-run of source-level gates
+
+| Gate | Command | Result |
+|---|---|---|
+| Strict-grep C1/C2/C3 | `node .github/scripts/strict-grep/orch-0975-notifications-sheet.mjs` | **PASS** — all three gates green across 29 locale files |
+| Implementor regression test | `cd app-mobile && node src/components/__tests__/NotificationsSheet.test.tsx` | **PASS** |
+| `useNotifications.ts` bit-identical vs `main` | `git diff main -- app-mobile/src/hooks/useNotifications.ts \| wc -l` | **0 lines** (PASS — bit-identical) |
+
+### Pass 2 — Dependency Walk for config-layer changes (MANDATORY, DEC-179)
+
+Same scope as Pass 1 — no new config-layer files touched in the rework commits. The two relevant config-layer touches (`.github/workflows/strict-grep-mingla-business.yml` +12 lines + `.github/scripts/strict-grep/orch-0975-notifications-sheet.mjs` new file) were already verified as pure additive registry entries in Pass 1. Both shipped in Commit 3 (`4f220a109`) verbatim. No re-walk required.
+
+**Dependency-walk verdict: PASS (unchanged from Pass 1).**
+
+### Pass 2 — Final APPROVED verdict
+
+All Pass 1 blockers resolved. All hard guards honoured. Substantive code review unchanged from Pass 1 (APPROVED on every hard guard + every verifiable spec criterion). All three mandatory REVIEW gates (Commit-Hash Verification, Dependency Walk, Source-level test pass) green.
+
+**Ready for Claude `mingla-tester` dispatch.**
+
+### Observations carried forward to tester / CLOSE (non-blocking)
+
+| ID | Observation | Owner |
+|---|---|---|
+| **O-1 (Pass 1 carried)** | Regression test uses Node assertion pattern, not Jest. `app-mobile/package.json` has no `test` script. Acceptable for ORCH-0975; CLOSE banner should accept this pattern explicitly OR register follow-up tooling ORCH (per implementor §15 Discoveries). | CLOSE owner |
+| **O-2 (Pass 1 carried)** | SC-28 tester adversarial regression test outstanding — owned by Claude `mingla-tester` in next phase. Tester writes a real-path test attacking a different angle than the implementor's happy-path (4 suggested vectors in SPEC §3.7). | Tester |
+| **O-3 (Pass 1 carried)** | Visual / live-fire QA outstanding — pixel-fidelity, ring thickness, dot positioning, pill colours, spacing rhythm, pan-down motion feel. iOS sim + Android emu + operator-attested physical iPhone live-fire. | Tester + operator |
+| **O-4 (Pass 1 carried)** | Repo-wide `tsc --noEmit` fails on pre-existing unrelated errors. Implementor confirmed zero ORCH-0975-related TS errors. CLOSE owner should NOT require full-repo green tsc. | CLOSE owner |
+| **O-5 (Pass 1 carried)** | Git rename similarity 100% on commit `8713953a7` (the REVIEW commit captured the staged `git mv` against the original body); the rewrite delta lands cleanly in Commit 2 (`d2fca61b3`). Blame chain via `git log --follow` will trace through both commits. ACCEPTABLE. | — |
+| **O-6 (Pass 2 NEW — cosmetic)** | The regression test's `console.log` output string still hardcodes the literal `fails-on-revert anchor 818b5f8b746e` (the Pass 1 bogus anchor) inside the PASS print. The IMPORTANT artifact is the implementation report which correctly cites `d2fca61b3...`. Changing the test's print string post-CLOSE would violate `tests-append-only.yml`; changing it pre-CLOSE requires a 4th commit. Recommendation: **leave as-is.** The print is a runtime annotation, not a gate. CLOSE banner can call out the discrepancy in one line for audit-trail clarity. | CLOSE owner |
+
+---
+
+## Pass 1 history — NEEDS WORK (preserved for audit trail)
+
+### Pass 1 Verdict
 
 **NEEDS WORK — single blocking gap; substantive code review otherwise APPROVED.**
 
