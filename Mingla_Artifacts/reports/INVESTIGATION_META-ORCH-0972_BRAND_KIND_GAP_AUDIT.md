@@ -89,6 +89,7 @@ Classifications: DELETE | REPURPOSE | REGATE | RENAME | UPDATE-COPY | NO-CHANGE 
 | [mingla-business/src/services/brandMapping.ts](mingla-business/src/services/brandMapping.ts) | 240–243 | `mapBrandRowToUi: kind: row.kind` passthrough | Row → UI map | DELETE | LOW |
 | [mingla-business/src/services/brandMapping.ts](mingla-business/src/services/brandMapping.ts) | 311 | `if (brand.kind !== undefined) row.kind = brand.kind` in insert mapper | UI → row map | DELETE | LOW |
 | [mingla-business/src/services/brandMapping.ts](mingla-business/src/services/brandMapping.ts) | 395 | `if (patch.kind !== undefined) out.kind = patch.kind` in update mapper | UI → row map | DELETE | LOW |
+| [mingla-business/src/utils/brandPatch.ts](mingla-business/src/utils/brandPatch.ts) | 38–40 | Dirty-patch helper: `if (draft.kind !== original.kind) { patch.kind = draft.kind }` — includes `kind` in update patches when brand-edit form changes the kind field | UI → patch dirty-field detection | DELETE (entire 3-line block; no kind field to dirty-patch) | LOW |
 | [BrandSwitcherSheet.personaFork.test.ts](mingla-business/src/components/brand/__tests__/BrandSwitcherSheet.personaFork.test.ts) | 93–99 | Asserts hardcoded `"popup"` literal + negative trip-planner literal | Test guard | DELETE | LOW |
 | BrandSwitcherSheet.personaFork.ve1.test.ts | (full) | Persona-fork test ve1 variant | Test | DELETE | LOW |
 | BrandSwitcherSheet.personaFork.ve2.test.ts | (full) | Persona-fork test ve2 variant | Test | DELETE | LOW |
@@ -153,7 +154,7 @@ Classifications: DELETE | REPURPOSE | REGATE | RENAME | UPDATE-COPY | NO-CHANGE 
 | Same file | 331 | `currentBrand.kind === "physical" && venueCategory === "creative_and_arts"` → "Schedule snap coming soon" | Same | REGATE | LOW |
 | Same file | 345 | `currentBrand.kind !== "physical"` → "Experiences are for verified physical venues" | Final else | DELETE (universal access) | MEDIUM |
 
-**Operator requirement 2026-05-25:** Hub tabs become data-driven — show only tabs whose bucket (events/trips/experiences) has content. Need new `useHubTabVisibility()` hook reading offering counts. Default-tab-when-multiple rule still open (Q3).
+**Current state (catalogue note):** Hub tab visibility is static — `_layout.tsx` mounts the 3-tab shell regardless of offering counts. No offering-count-aware visibility hook exists today. The operator-locked new model (data-driven visibility, tabs hidden when their bucket is empty) is a Phase 2/3 design problem, not a catalogue claim. Default-tab-when-multiple rule resolved post-audit (Q3 answered: sticky last-visited, Events on first ever visit).
 
 ### Dimension 7 — Offering creation flows
 
@@ -161,8 +162,10 @@ Classifications: DELETE | REPURPOSE | REGATE | RENAME | UPDATE-COPY | NO-CHANGE 
 |---|---|---|---|---|---|
 | [mingla-business/app/trip/create.tsx](mingla-business/app/trip/create.tsx) | 9 | Doc comment referencing I-PROPOSED-TR1-KIND-IMMUTABLE | Doc | UPDATE-COPY | LOW |
 | Same file | 52 | `if (currentBrand.kind !== "trip_planner") { setErrorMessage; return }` | Hard gate | DELETE | LOW |
+| [mingla-business/app/trip/[id]/edit.tsx](mingla-business/app/trip/%5Bid%5D/edit.tsx) | 67 | `if (currentBrand.kind !== "trip_planner") return;` — early-return inside `useEffect` that migrates a client-only trip-ID to a server draft via `createTripDraftMutation`. Non-trip-planner brands silently skip the migration. | Hard gate (early-return) | DELETE (universal authoring means the migration runs for any brand) | LOW |
 | `mingla-business/app/event/create*.tsx` | (full) | No brand.kind references found | None | NO-CHANGE | LOW |
 | [mingla-business/app/(tabs)/hub/experiences.tsx](mingla-business/app/(tabs)/hub/experiences.tsx) | 307–327 | Two snap inputs routed by venueCategory (restaurant→menu, play→activities) | Venue-type | REPURPOSE (keep venueCategory branching post-kind-removal) | LOW |
+| [mingla-business/src/components/ui/UniversalCreatorSheet.tsx](mingla-business/src/components/ui/UniversalCreatorSheet.tsx) | 79–80 | Comment in trip-persona entry: "/trip/create gates on currentBrand.kind === 'trip_planner' — non-trip-planner brands see an explainer (Tr2 §8 hard guard)". Stale once D7's `trip/create.tsx:52` gate is deleted. | Comment only | UPDATE-COPY | LOW |
 | [mingla-business/src/services/eventDrafts.ts](mingla-business/src/services/eventDrafts.ts) | 172 | Calls authoring gate (D3) | Indirect kind via D3 | DELETE (remove call per D3) | LOW |
 | [mingla-business/src/services/tripsService.ts](mingla-business/src/services/tripsService.ts) | 441 | Calls authoring gate (D3) | Indirect kind via D3 | DELETE (remove call per D3) | LOW |
 
@@ -212,7 +215,7 @@ Classifications: DELETE | REPURPOSE | REGATE | RENAME | UPDATE-COPY | NO-CHANGE 
 |---|---|---|
 | `PublicBrandPage.tsx` | `isTripBrand = brand.kind === "trip_planner"` constant; kind-branched tab labels ("Trips" / "Past Trips" instead of "Upcoming" / "Past"); `<TripMiniCard>` component; `<NextEventTeaser>` component; `formatTripDateRange` helper; hash-hue helper; sticky "Buy tickets" pill on first 3 EventMiniCards | `isTripBrand` constant DELETED; tab labels become data-driven; `<TripMiniCard>` + `<NextEventTeaser>` preserved as presentation primitives (reusable in new data-driven tabs); helpers preserved |
 | `publicEventsService.ts` | `BusinessPublicBrandViewRow.kind` widened to admit `"trip_planner"`; `PublicTripCardRow` + `PublicTripCard` types; `fetchPublicBrandTrips` function; `PublicBrandDetail.trips` field; kind-dispatch in `getPublicBrandBySlug` | Kind union DELETED; trip types preserved; `fetchPublicBrandTrips` preserved (used universally); dispatch logic REPURPOSED into parallel-fetch |
-| `supabase/migrations/20260728000000_orch_0963_pg_public_trips_by_brand.sql` | New SECURITY DEFINER anon RPC `pg_public_trips_by_brand(p_brand_slug)` with `WHERE b.kind = 'trip_planner'` brand-kind guard + canonical sold formula | RPC PRESERVED but rewritten: REMOVE the `WHERE b.kind = 'trip_planner'` brand-kind guard so it returns trip rows for ANY brand that has trips. New parallel RPC `pg_public_experiences_by_brand` (or unified `pg_public_brand_upcoming`) needed for Upcoming tab. |
+| `supabase/migrations/20260728000000_orch_0963_pg_public_trips_by_brand.sql` | New SECURITY DEFINER anon RPC `pg_public_trips_by_brand(p_brand_slug)` with `WHERE b.kind = 'trip_planner'` brand-kind guard + canonical sold formula | REPURPOSE (drop the single-line brand-kind guard so trip rows return for any brand). Note: there is NO public-read RPC for experiences today; the absence is a Phase 3 spec-scope finding, not a Phase 1 design proposal. |
 | `.github/scripts/strict-grep/orch-0963-public-brand-kind-branched.mjs` | New gate enforcing kind-branched IA: C1 PublicBrandPage contains `brand.kind === "trip_planner"`; C2 publicEventsService calls `pg_public_trips_by_brand`; C3 BusinessPublicBrandViewRow.kind admits `"trip_planner"`; C4 event-type filter only in allowlisted files | C1+C3 DELETED (kind branching gone); C2 PRESERVED (RPC still called universally); C4 PRESERVED (route segregation still applies). New gate enforces I-PUBLIC-PAGE-DATA-DRIVEN-TABS |
 | `Mingla_Artifacts/INVARIANT_REGISTRY.md` | New ACTIVE invariant `I-PUBLIC-BRAND-KIND-BRANCHED` | SUPERSEDED on META-ORCH-0972 CLOSE |
 

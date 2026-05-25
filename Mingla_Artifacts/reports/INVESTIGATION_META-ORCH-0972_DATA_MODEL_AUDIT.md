@@ -26,10 +26,7 @@ Every SQL object below was verified by grepping ALL migrations for the object na
 | [`20260506000000_brand_kind_address_cover_hue_media.sql`](supabase/migrations/20260506000000_brand_kind_address_cover_hue_media.sql) | `ADD COLUMN kind text NOT NULL DEFAULT 'popup' CHECK (kind IN ('physical','popup'))` | Superseded |
 | [`20260607000000_orch_0855_brands_kind_trip_planner.sql`](supabase/migrations/20260607000000_orch_0855_brands_kind_trip_planner.sql) | `DROP CONSTRAINT brands_kind_check; ADD CONSTRAINT brands_kind_check CHECK (kind IN ('physical','popup','trip_planner'))` | **CURRENT (verified latest)** |
 
-**Disposition:**
-- Phase 4 Sub-C migration 1: `ALTER TABLE public.brands DROP CONSTRAINT brands_kind_check;`
-- Phase 4 Sub-C migration 2 (one safe-deploy cycle later): `ALTER TABLE public.brands DROP COLUMN kind;`
-- Default value (`'popup'`) becomes moot once column is dropped; no rows need backfill (the column itself is leaving).
+**Disposition (current-state catalogue):** the `brands_kind_check` constraint and the `brands.kind` column are both removable once every code surface that reads `kind` is dropped or regated (Stage-1 surfaces enumerated below in the safety plan). Phase 3 spec defines the exact migration sequence and SQL; Phase 1 audit catalogues the dependency chain only. The default value (`'popup'`) is not a blocker — no rows require backfill because the column itself is removed, not transformed.
 
 ### A.2 `brands.claim_status` column
 
@@ -336,6 +333,9 @@ Stage 1 commits remove all CODE that reads `brand.kind`. After Stage 1 lands and
 16. **Phase 4 Sub-C** — REPURPOSE `PublicBrandPage.tsx` to data-driven tabs (D9)
 17. **Phase 4 Sub-C** — REPURPOSE `publicEventsService.ts` to parallel-fetch (D9)
 18. **Phase 4 Sub-C** — DELETE `BusinessPublicBrandViewRow.kind` TS union (D9)
+18.a. **Phase 4 Sub-B** — DELETE `mingla-business/app/trip/[id]/edit.tsx:67` `if (currentBrand.kind !== "trip_planner") return;` early-return inside the client-only-trip-ID migration effect (D7 / Codex REVIEW gap G1).
+18.b. **Phase 4 Sub-B** — DELETE `mingla-business/src/utils/brandPatch.ts:38-40` `if (draft.kind !== original.kind) { patch.kind = draft.kind }` dirty-field block (D1 / Codex REVIEW gap G2).
+18.c. **Phase 4 Sub-B** — UPDATE-COPY `mingla-business/src/components/ui/UniversalCreatorSheet.tsx:79-80` comment referencing the deleted `/trip/create` kind gate (D7 / Codex REVIEW gap G4).
 
 ### Stage 2 — Database views + RLS rewrites (DB changes; no column drop yet)
 
@@ -346,7 +346,7 @@ Stage 2 commits rewrite views and RLS so they don't reference `brands.kind`. Aft
 21. **Phase 4 Sub-C migration** — DROP/RECREATE `business_public_events_view` without `b.kind AS brand_kind` in SELECT (consumer read path needs update — Sub-D)
 22. **Phase 4 Sub-C migration** — DROP / REPLACE 3 RLS policies (brands public-read, brand_hours public-read, place_pool public-read) without `kind = 'physical'` predicate
 23. **Phase 4 Sub-C migration** — Rebase-aware: REWRITE `pg_public_trips_by_brand` RPC to drop `WHERE b.kind = 'trip_planner'` guard (returns trip rows for any brand)
-24. **Phase 4 Sub-C migration** — Create new RPC `pg_public_experiences_by_brand(p_brand_slug)` if experiences are to appear on public page (pending Q4)
+24. **(catalogue gap, not a plan step)** — No public-read RPC for experiences exists today. Operator answered Q4 = experiences IN Upcoming and Q9 = JSON sub-fields in `theme.experience_meta`; Phase 3 spec defines the exact new read path (RPC name, contract, JSON-field indexing strategy). Phase 1 audit only documents the current absence.
 
 ### Stage 3 — RPC rewrites
 
