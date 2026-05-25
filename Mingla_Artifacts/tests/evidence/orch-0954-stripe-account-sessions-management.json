@@ -1,0 +1,158 @@
+{
+  "object": "account_session",
+  "account": "acct_1TaqpFI0t0E6KJeG",
+  "client_secret": "[redacted: TEST Account Session client secret used for local screenshot attempt]",
+  "components": {
+    "account_management": {
+      "enabled": true,
+      "features": {
+        "disable_stripe_user_authentication": false,
+        "external_account_collection": true
+      }
+    },
+    "account_onboarding": {
+      "enabled": false,
+      "features": {
+        "disable_stripe_user_authentication": false,
+        "external_account_collection": true
+      }
+    },
+    "balance_report": {
+      "enabled": false,
+      "features": {}
+    },
+    "balances": {
+      "enabled": false,
+      "features": {
+        "disable_stripe_user_authentication": false,
+        "edit_payout_schedule": false,
+        "external_account_collection": false,
+        "instant_payouts": false,
+        "standard_payouts": false
+      }
+    },
+    "disputes_list": {
+      "enabled": false,
+      "features": {
+        "capture_payments": true,
+        "destination_on_behalf_of_charge_management": false,
+        "dispute_management": true,
+        "refund_management": true
+      }
+    },
+    "documents": {
+      "enabled": false,
+      "features": {}
+    },
+    "financial_account": {
+      "enabled": false,
+      "features": {
+        "disable_stripe_user_authentication": false,
+        "external_account_collection": false,
+        "money_movement": false,
+        "send_money": false,
+        "transfer_balance": false
+      }
+    },
+    "financial_account_transactions": {
+      "enabled": false,
+      "features": {
+        "card_spend_dispute_management": false
+      }
+    },
+    "instant_payouts_promotion": {
+      "enabled": false,
+      "features": {
+        "disable_stripe_user_authentication": false,
+        "external_account_collection": true,
+        "instant_payouts": false
+      }
+    },
+    "issuing_card": {
+      "enabled": false,
+      "features": {
+        "card_management": false,
+        "card_spend_dispute_management": false,
+        "cardholder_management": false,
+        "spend_control_management": false
+      }
+    },
+    "issuing_cards_list": {
+      "enabled": false,
+      "features": {
+        "card_management": false,
+        "card_spend_dispute_management": false,
+        "cardholder_management": false,
+        "disable_stripe_user_authentication": false,
+        "spend_control_management": false
+      }
+    },
+    "notification_banner": {
+      "enabled": true,
+      "features": {
+        "disable_stripe_user_authentication": false,
+        "external_account_collection": true
+      }
+    },
+    "payment_details": {
+      "enabled": false,
+      "features": {
+        "capture_payments": true,
+        "destination_on_behalf_of_charge_management": false,
+        "dispute_management": true,
+        "refund_management": true
+      }
+    },
+    "payment_disputes": {
+      "enabled": false,
+      "features": {
+        "destination_on_behalf_of_charge_management": false,
+        "dispute_management": true,
+        "refund_management": true
+      }
+    },
+    "payments": {
+      "enabled": false,
+      "features": {
+        "capture_payments": true,
+        "destination_on_behalf_of_charge_management": false,
+        "dispute_management": true,
+        "refund_management": true
+      }
+    },
+    "payout_details": {
+      "enabled": false,
+      "features": {}
+    },
+    "payout_reconciliation_report": {
+      "enabled": false,
+      "features": {}
+    },
+    "payouts": {
+      "enabled": false,
+      "features": {
+        "disable_stripe_user_authentication": false,
+        "edit_payout_schedule": false,
+        "external_account_collection": false,
+        "instant_payouts": false,
+        "standard_payouts": false
+      }
+    },
+    "payouts_list": {
+      "enabled": false,
+      "features": {}
+    },
+    "tax_registrations": {
+      "enabled": false,
+      "features": {}
+    },
+    "tax_settings": {
+      "enabled": false,
+      "features": {}
+    }
+  },
+  "expires_at": 1779686145,
+  "livemode": false,
+  "read_only": false,
+  "client_secret_redacted": "accs_secret__Ua...redacted"
+}

@@ -743,10 +743,13 @@ function checkNoNewBackendFiles() {
   // platform controller flip (dashboard:express→none, losses+fees collectors
   // application→stripe/stripe), new createAccountSession() helper + new
   // brand-stripe-account-session edge function + shared business-web origin
-  // override validation + 3 new test files. Existing
+  // override validation + adversarial tests. P1-B remediation 2026-05-25
+  // adds: tester adversarial for origin override, ORCH-0954 migration
+  // updating the legacy account-type CHECK constraint to v2 dashboard values
+  // (full|express|none), and the matching migration test. Existing
   // stripeBlueprintClient/CountryReplacement/WebhookRouter test files updated
   // to assert the new controller values (covered separately by ORCH-0840
-  // TEST-MOD-APPROVED token in commit body). No migrations.
+  // TEST-MOD-APPROVED token in commit body).
   const ORCH_0954_BACKEND_ALLOWLIST = [
     "supabase/functions/_shared/stripeBlueprintClient.ts",
     "supabase/functions/_shared/businessWebOrigin.ts",
@@ -756,11 +759,14 @@ function checkNoNewBackendFiles() {
     "supabase/functions/_shared/__tests__/stripeBlueprintClient.contract.test.ts",
     "supabase/functions/_shared/__tests__/stripeBlueprintClient_failclose.test.ts",
     "supabase/functions/_shared/__tests__/stripeCountryReplacement.test.ts",
+    "supabase/functions/_shared/__tests__/businessWebOrigin.adversarial.test.ts",
     "supabase/functions/brand-stripe-onboard/index.ts",
     "supabase/functions/brand-stripe-onboard/index.test.ts",
     "supabase/functions/brand-stripe-onboard/__tests__/embeddedOnboarding.happy.test.ts",
     "supabase/functions/brand-stripe-onboard/__tests__/embeddedOnboarding.adversarial.test.ts",
     "supabase/functions/brand-stripe-account-session/index.ts",
+    "supabase/migrations/20260727000002_orch_0954_controller_dashboard_type_check.sql",
+    "supabase/migrations/__tests__/orch_0954_controller_dashboard_type_check.test.ts",
   ];
 
   // ORCH-0956 [Stripe ops alerts → email]: swaps the OneSignal push-based
