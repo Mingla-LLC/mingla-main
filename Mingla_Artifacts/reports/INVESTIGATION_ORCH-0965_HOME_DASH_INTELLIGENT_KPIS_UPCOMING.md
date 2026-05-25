@@ -121,7 +121,7 @@ A draft with `startsAt=tomorrow` ranks 3; a live event ranks 0; an upcoming even
 
 | Field | Value |
 |---|---|
-| **Where** | [mingla-business/app/(tabs)/home.tsx:296–299, 549–555](../../mingla-business/app/(tabs)/home.tsx#L296-L299) |
+| **Where** | `mingla-business/app/(tabs)/home.tsx:296–299, 549–555` |
 | **Exact code** | `const eventSummary = useMemo(() => buildBrandEventSummary(liveEvents, drafts), [liveEvents, drafts]);` — and `liveEvents` is the merge of server (trip-stripped) + Zustand legacy. The Active events KpiTile binds to `eventSummary.counts.active`. |
 | **What it does** | Counts only events + experiences + local drafts. Trips are absent. A brand with 5 live trips + 0 events reads `0 active` on the KPI tile. |
 | **What it should do** | Sum across all three kinds. A trip counts toward `live` / `upcoming` / `past` by the same lifecycle logic events use. SPEC will decide whether the sub label "N live · M upcoming · K drafts" needs a kind breakdown (e.g., "3 live (1 event, 2 trips)") or stays kind-agnostic. |
@@ -132,7 +132,7 @@ A draft with `startsAt=tomorrow` ranks 3; a live event ranks 0; an upcoming even
 
 | Field | Value |
 |---|---|
-| **Where** | [mingla-business/app/(tabs)/home.tsx:300, 313–343, 480–531](../../mingla-business/app/(tabs)/home.tsx#L300) and [brandEventSummary.ts:94](../../mingla-business/src/utils/brandEventSummary.ts#L94) |
+| **Where** | `mingla-business/app/(tabs)/home.tsx:300, 313–343, 480–531` and [brandEventSummary.ts:94](../../mingla-business/src/utils/brandEventSummary.ts#L94) |
 | **Exact code** | `primaryLiveItem = activeItems.find((item) => item.status === "live") ?? null;` — returns the FIRST item in the lifecycle-sorted list whose status is `live`. Hero binds to `primaryLiveEvent` only. |
 | **What it does** | When a brand has 2+ simultaneous live events (or once F-1 is fixed, 2+ live items across events/trips/experiences), only one renders in the hero. The others fall into the Upcoming list as "Live" pill rows — visible but de-emphasised. |
 | **What it should do** | Open scope decision for SPEC (see §6 Q-O-5). Options: (a) carousel of live cards; (b) summary tile "N live now" → tap to expand; (c) keep current single-primary + a "+N more live" affordance; (d) accept current behaviour as fine for v1 and defer. |
@@ -143,7 +143,7 @@ A draft with `startsAt=tomorrow` ranks 3; a live event ranks 0; an upcoming even
 
 | Field | Value |
 |---|---|
-| **Where** | [mingla-business/app/(tabs)/home.tsx:579–590](../../mingla-business/app/(tabs)/home.tsx#L579-L590) (Upcoming empty); [419–477](../../mingla-business/app/(tabs)/home.tsx#L419-L477) (trip-planner CTA — partial precedent). |
+| **Where** | `mingla-business/app/(tabs)/home.tsx:579–590` (Upcoming empty); `home.tsx 419–477` (trip-planner CTA — partial precedent). |
 | **Exact code** | The Upcoming empty card hardcodes `"No upcoming events"` + `"Tap + in the top right to create your first event."` Regardless of brand kind, Stripe status, draft existence, etc. The KPI tile in the empty case is the `Last 7 days` zero. |
 | **What it does** | A brand with no Stripe connected, no published brand state, no offerings drafted gets a generic "create your first event" prompt — no signal-aware best-next-action. |
 | **What it should do** | A static rule ladder over readiness signals (see §5 Readiness inventory) renders ONE best-next-action card. The trip-planner CTA at lines 419–477 is the existing pattern to generalise. |
@@ -154,7 +154,7 @@ A draft with `startsAt=tomorrow` ranks 3; a live event ranks 0; an upcoming even
 
 | Field | Value |
 |---|---|
-| **Where** | [mingla-business/app/(tabs)/home.tsx:111–119](../../mingla-business/app/(tabs)/home.tsx#L111-L119) — `formatActiveEventsSub` (note: home.tsx actually delegates to `getActiveEventsKpiSub` at `homeKpiPresentation.ts:?`, but the bones are equivalent). |
+| **Where** | `mingla-business/app/(tabs)/home.tsx:111–119` — `formatActiveEventsSub` (note: home.tsx actually delegates to `getActiveEventsKpiSub` at `homeKpiPresentation.ts:?`, but the bones are equivalent). |
 | **Exact code** | `${counts.live} live · ${counts.upcoming} upcoming · ${counts.draft} ${counts.draft === 1 ? "draft" : "drafts"}` |
 | **What it does** | When trips enter the count, the sub-label still says "live / upcoming / drafts" — semantically correct, but the brand-owner can't tell what KIND of offering is contributing to the count. |
 | **What it should do** | Open question for SPEC — either accept "kind-agnostic counts" (simpler, recommended) or expose breakdowns (`3 live: 1 event · 2 trips`). |
@@ -165,7 +165,7 @@ A draft with `startsAt=tomorrow` ranks 3; a live event ranks 0; an upcoming even
 
 | Field | Value |
 |---|---|
-| **Where** | [mingla-business/app/(tabs)/home.tsx:419–477](../../mingla-business/app/(tabs)/home.tsx#L419-L477) |
+| **Where** | `mingla-business/app/(tabs)/home.tsx:419–477` |
 | **Exact code** | `{currentBrand.kind === "trip_planner" ? (<View style={styles.tripPlannerCtaWrap}><GlassCard ...><Text>{currentBrand.stripeStatus === "active" ? "Plan a trip" : "Finish setting up Stripe"}...</GlassCard></View>) : null}` |
 | **What it does** | Renders a brand-kind-aware best-next-action card ABOVE the KPI grid. Survives regression because it's purely additive (returns `null` for other kinds). |
 | **What it should do** | Generalise into a multi-signal rule ladder that covers all three kinds. The trip-planner case becomes the FIRST or SECOND rung of the new ladder, not a parallel card. |

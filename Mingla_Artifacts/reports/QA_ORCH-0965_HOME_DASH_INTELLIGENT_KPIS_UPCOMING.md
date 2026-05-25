@@ -63,7 +63,7 @@ What's still needed before final CLOSE: a 4-flow live-fire pass on iOS sim + And
 
 ### F-1 [P2] — Live hero does NOT render for live-trip-only brands (intended SPEC behaviour but undocumented in user-visible copy)
 
-**Where:** [mingla-business/app/(tabs)/home.tsx:271-275](../../mingla-business/app/(tabs)/home.tsx#L271-L275)
+**Where:** `mingla-business/app/(tabs)/home.tsx:271-275`
 
 ```typescript
 const primaryLiveEvent: LiveEvent | null =
@@ -85,7 +85,7 @@ const primaryLiveEvent: LiveEvent | null =
 
 ### F-2 [P3-1] — Rule-ladder render gate doesn't enforce SPEC SC-4 "live hero NOT rendered when Stripe inactive"
 
-**Where:** [mingla-business/app/(tabs)/home.tsx:454-455](../../mingla-business/app/(tabs)/home.tsx#L454-L455)
+**Where:** `mingla-business/app/(tabs)/home.tsx:454-455`
 
 ```typescript
 {nextAction !== null && (upcoming.counts.live === 0 || nextAction.rung === 4) ? (
