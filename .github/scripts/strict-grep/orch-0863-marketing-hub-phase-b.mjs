@@ -722,7 +722,25 @@ function checkNoNewBackendFiles() {
     "supabase/functions/ticket-checkout-create/__tests__/nativePaidRegionGate.test.ts",
     "supabase/functions/ticket-checkout-create/__tests__/nativeRegionGate_adversarial.test.ts",
   ];
+
+  // ORCH-0915 [Buyer/traveller pay-in-full opt-out at payment-plan checkout]
+  // CLOSE PR #203 (2026-05-24). Migration 20260724000007 + ticket-checkout-
+  // create/index.ts are already in ORCH_0953_BACKEND_ALLOWLIST (operator db
+  // push batch). The 4 files below are the remaining ORCH-0915 backend
+  // touches: shared idempotency-key helper extension separating explicit
+  // full/installment sessions, plus the 3 ORCH-0915 test files (happy-path
+  // edge + RPC source + adversarial). Same scoping rationale as prior
+  // allowlists — these are ORCH-0915 scope, not ORCH-0863 marketing scope.
+  // Future close that drops the ORCH-0953 allowlist should also drop this.
+  const ORCH_0915_BACKEND_ALLOWLIST = [
+    "supabase/functions/_shared/ticketCheckout.ts",
+    "supabase/functions/ticket-checkout-create/__tests__/orch_0915_payment_plan_choice.test.ts",
+    "supabase/functions/ticket-checkout-create/__tests__/orch_0915_payment_plan_choice_adversarial.test.ts",
+    "supabase/functions/ticket-checkout-create/__tests__/orch_0915_rpc_behavior.test.ts",
+  ];
+
   const ALLOWLIST = [
+    ...ORCH_0915_BACKEND_ALLOWLIST,
     ...ORCH_0933_BACKEND_ALLOWLIST,
     ...ORCH_0940_BACKEND_ALLOWLIST,
     ...ORCH_0948_BACKEND_ALLOWLIST,

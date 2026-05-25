@@ -20,6 +20,12 @@ export interface TicketCheckoutCreateInput {
    */
   surface?: "native" | "web" | "mobile-web";
   /**
+   * ORCH-0915 — trip checkout buyer choice for tiers that have a payment
+   * plan configured. Omitted by legacy callers/event checkout so the edge/RPC
+   * keep their backward-compatible "auto" behavior.
+   */
+  paymentPlanChoice?: "full" | "installments";
+  /**
    * ORCH-0880 [Tr5 Traveler Intake Forms] — per-tier intake answers when the
    * trip has intake schemas. One entry per tier in the cart that has a schema
    * with ≥1 required question; the edge function gates HTTP 400
@@ -133,6 +139,9 @@ export const createTicketCheckout = async (
     // ORCH-0790: omit surface when undefined so the edge function applies its
     // own "native" default — older mobile builds never send this field.
     ...(input.surface !== undefined ? { surface: input.surface } : {}),
+    ...(input.paymentPlanChoice !== undefined
+      ? { payment_plan_choice: input.paymentPlanChoice }
+      : {}),
     // ORCH-0880 [Tr5 Traveler Intake Forms]: forward per-tier intake answers
     // when present. Edge function gates required-question completeness +
     // schema-version freshness per Phase 2 ticket-checkout-create §164-256.

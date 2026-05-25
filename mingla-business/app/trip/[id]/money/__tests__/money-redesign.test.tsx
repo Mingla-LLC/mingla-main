@@ -117,6 +117,17 @@ describe("ORCH-0914 Money tab redesign — happy-path source contract", () => {
     expect(ROUTE).toContain("No reminder needed — paid in full");
   });
 
+  test("ORCH-0915 full-pay opt-out row renders paid-in-full truth with no installment actions", () => {
+    expect(ROUTE).toContain(".filter((order) => !rowsByOrder.has(order.id))");
+    expect(ROUTE).toContain('.filter((order) => order.paymentStatus === "paid")');
+    expect(ROUTE).toContain("isPaidInFull: true");
+    expect(ROUTE).toContain("paidToDateCents: order.totalCents");
+    expect(ROUTE).toContain("outstandingCents: 0");
+    expect(ROUTE).toContain("planSchedule: null");
+    expect(ROUTE).toContain("Paid in full at booking. No installment ledger for this traveller.");
+    expect(ROUTE).toContain("!row.isPaidInFull");
+  });
+
   test("fails-on-revert simulation: removing row actions breaks the contract", () => {
     const reverted = ROUTE
       .replaceAll("Charge now", "")
