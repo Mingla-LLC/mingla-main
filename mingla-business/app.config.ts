@@ -67,6 +67,10 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     // (D-NFC-OUTCOME = Option 3). No plugin entry required for auto-link.
     // If iOS NFC entitlement is needed for Cycle 13 door-mode, re-evaluate
     // with `expo-config-plugin-nfc-manager` (Option 1) at that time.
+    // ORCH-0950: generated Android New Architecture CMake must avoid
+    // React Native's bracket-unsafe generated-source glob so per-ORCH
+    // worktrees such as ORCH-0950-[trip-capacity-single-source] can build.
+    "./plugins/withAndroidBracketSafeCmake",
   ],
   extra: {
     ...config.extra,

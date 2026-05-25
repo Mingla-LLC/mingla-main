@@ -61,6 +61,8 @@ export const tripKeys = {
     [...tripKeys.all, "detail"] as const,
   detail: (eventId: string) =>
     [...tripKeys.details(), eventId] as const,
+  soldCountsByTier: (eventId: string) =>
+    [...tripKeys.detail(eventId), "soldCountsByTier"] as const,
   public: (): readonly ["trips", "public"] =>
     [...tripKeys.all, "public"] as const,
   publicBySlug: (brandSlug: string, tripSlug: string) =>
@@ -350,6 +352,9 @@ export const useUpdateLiveTripFields = (): UseMutationResult<
       // do NOT mutate the trip, so cache stays valid.
       if (result.ok) {
         queryClient.invalidateQueries({ queryKey: tripKeys.detail(eventId) });
+        queryClient.invalidateQueries({
+          queryKey: tripKeys.soldCountsByTier(eventId),
+        });
         // Public-by-id + public-by-slug caches stale immediately so the
         // public trip page reflects within staleTime.
         queryClient.invalidateQueries({

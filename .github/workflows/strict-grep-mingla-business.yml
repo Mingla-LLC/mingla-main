@@ -1326,6 +1326,19 @@ jobs:
       - name: Run ORCH-0921 finalize caller installment-param gate
         run: node .github/scripts/strict-grep/i-proposed-finalize-callers-pass-installment-params.mjs
 
+  trip-capacity-single-source:
+    name: "ORCH-0950 [Trip]: capacity, dates, and destination are canonical columns"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run I-PROPOSED-TRIP-CANONICAL-COLUMNS gate
+        run: node .github/scripts/strict-grep/i-proposed-trip-canonical-columns.mjs
+      - name: Self-test
+        run: node .github/scripts/strict-grep/i-proposed-trip-canonical-columns.test.mjs
+
   i-proposed-orch-0925-installment-plan-attaches-customer:
     name: "ORCH-0925 [Trip Money]: installment-plan checkouts attach Stripe Customer"
     runs-on: ubuntu-latest

@@ -802,6 +802,18 @@ function checkNoNewBackendFiles() {
   const META_ORCH_0952_BACKEND_ALLOWLIST = [
     "supabase/functions/ticket-checkout-confirm/__tests__/orch_0952_web_checkout_session_fallback.test.ts",
   ];
+
+  // ORCH-0950 [Trip capacity + dashboard coherence — EXPANDED SCOPE]. C7 is
+  // scoped to ORCH-0863 marketing; these backend touches are the trip-capacity
+  // canonical-columns migration set (v1 strip + v2 expanded dashboard coherence)
+  // plus the Deno regression tests asserting partial-patch sibling preservation.
+  // No edge function source is touched.
+  const ORCH_0950_BACKEND_ALLOWLIST = [
+    "supabase/functions/_test/orch_0950_trip_capacity_canonical.test.ts",
+    "supabase/functions/_test/orch_0950_expanded_partial_patch_preserves_siblings.test.ts",
+    "supabase/migrations/20260725000000_orch_0950_trip_capacity_single_source.sql",
+    "supabase/migrations/20260725000002_orch_0950_expanded_scope_dashboard_coherence.sql",
+  ];
   const ALLOWLIST = [
     ...META_ORCH_0952_BACKEND_ALLOWLIST,
     ...ORCH_0954_BACKEND_ALLOWLIST,
@@ -813,6 +825,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_0930_0928_LOCKIN_BACKEND_ALLOWLIST,
     ...ORCH_0932_BACKEND_ALLOWLIST,
     ...ORCH_0931_BACKEND_ALLOWLIST,
+    ...ORCH_0950_BACKEND_ALLOWLIST,
     ...ORCH_0859_BUNDLED_ALLOWLIST,
     ...ORCH_0869_BACKEND_ALLOWLIST,
     ...ORCH_0875_BACKEND_ALLOWLIST,
