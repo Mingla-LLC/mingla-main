@@ -296,6 +296,52 @@ export const glass = {
       elevation: 16,
     },
   },
+  // ORCH-0975 — Light-canvas notifications sheet tokens. Sibling to
+  // glass.bottomSheet (dark canvas, ExpandedCardModal / TicketCartSheet).
+  notificationsSheet: {
+    canvas: '#FFFFFF',
+    topRadius: 28,
+    backdropTint: 'rgba(0, 0, 0, 0.32)',
+    handle: {
+      color: 'rgba(0, 0, 0, 0.18)',
+      width: 36,
+      height: 4,
+      radius: 2,
+      marginTop: 8,
+      marginBottom: 12,
+    },
+    cardShadow: {
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.05,
+      shadowRadius: 8,
+      elevation: 2,
+    },
+    cardBorder: 'rgba(0, 0, 0, 0.06)',
+    cardUnreadBg: 'rgba(255, 247, 237, 0.6)',
+    avatarRing: {
+      unread: 'rgba(235, 120, 37, 0.35)',
+      read: 'rgba(0, 0, 0, 0.06)',
+      width: 2,
+      gap: 2,
+    },
+    statusDot: {
+      size: 12,
+      color: '#eb7825',
+      borderColor: '#FFFFFF',
+      borderWidth: 2,
+    },
+    unreadDotRight: {
+      size: 8,
+      color: '#eb7825',
+    },
+    categoryPill: {
+      social: { bg: 'rgba(235, 120, 37, 0.12)', text: '#eb7825', icon: 'people' as const },
+      sessions: { bg: 'rgba(59, 130, 246, 0.10)', text: '#2563eb', icon: 'calendar' as const },
+      messages: { bg: 'rgba(139, 92, 246, 0.10)', text: '#7c3aed', icon: 'chatbubble' as const },
+      all: { bg: 'rgba(107, 114, 128, 0.10)', text: '#4b5563', icon: 'notifications' as const },
+    },
+  } as const,
   surfaceElevated: {
     backgroundColor: 'rgba(255, 255, 255, 0.70)',
     borderColor: 'rgba(255, 255, 255, 0.45)',

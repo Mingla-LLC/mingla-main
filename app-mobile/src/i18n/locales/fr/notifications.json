@@ -2,14 +2,10 @@
   "header": {
     "title": "Notifications",
     "unread": "{{count}} non lues",
-    "markAllRead": "Tout marquer comme lu",
-    "clearAll": "Tout effacer"
-  },
-  "filters": {
-    "all": "Toutes",
-    "social": "Social",
-    "sessions": "Sessions",
-    "messages": "Messages"
+    "markAllRead": "Mark all as read",
+    "clearAll": "Tout effacer",
+    "subtitle": "Stay updated on what matters.",
+    "newCount": "{{count}} new"
   },
   "timeAgo": {
     "justNow": "À l'instant"
@@ -39,5 +35,11 @@
   },
   "offline": {
     "banner": "Vous êtes hors ligne — affichage des notifications en cache"
+  },
+  "categoryLabels": {
+    "social": "Social",
+    "sessions": "Plans",
+    "messages": "Chats",
+    "all": "System"
   }
 }
