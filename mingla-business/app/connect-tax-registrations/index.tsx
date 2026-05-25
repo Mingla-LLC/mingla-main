@@ -19,6 +19,7 @@ export default function ConnectTaxRegistrationsPage(): React.ReactElement {
     ? params.clientSecret[0]
     : params.clientSecret;
   const [initError, setInitError] = useState<string | null>(null);
+  const [embeddedLoadError, setEmbeddedLoadError] = useState(false);
 
   const stripeConnectInstance = useMemo(() => {
     if (typeof clientSecret !== "string" || clientSecret.length === 0) {
@@ -67,6 +68,15 @@ export default function ConnectTaxRegistrationsPage(): React.ReactElement {
     );
   }
 
+  if (embeddedLoadError) {
+    return (
+      <ErrorShell
+        title="Tax tools temporarily unavailable"
+        body="Close this window and try again from the app."
+      />
+    );
+  }
+
   if (stripeConnectInstance === null) {
     return (
       <div style={pageWrapperStyle}>
@@ -84,11 +94,15 @@ export default function ConnectTaxRegistrationsPage(): React.ReactElement {
         <ConnectComponentsProvider connectInstance={stripeConnectInstance}>
           <section style={sectionStyle}>
             <h2 style={sectionTitleStyle}>Tax registrations</h2>
-            <ConnectTaxRegistrations />
+            <ConnectTaxRegistrations
+              onLoadError={() => setEmbeddedLoadError(true)}
+            />
           </section>
           <section style={sectionStyle}>
             <h2 style={sectionTitleStyle}>Tax settings</h2>
-            <ConnectTaxSettings />
+            <ConnectTaxSettings
+              onLoadError={() => setEmbeddedLoadError(true)}
+            />
           </section>
         </ConnectComponentsProvider>
       </main>

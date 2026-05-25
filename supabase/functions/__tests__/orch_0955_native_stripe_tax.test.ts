@@ -26,6 +26,25 @@ Deno.test("T-IH-01 ticket-checkout-create calculates tax before native PI", () =
   assertStringIncludes(src, "applicationFeeAmountCents = Math.round");
 });
 
+Deno.test("T-IH-01b installment tax line items match the current charge", () => {
+  const src = read("supabase/functions/ticket-checkout-create/index.ts");
+  assertStringIncludes(src, "normalizeTaxLineItemsForCurrentCharge");
+  assertStringIncludes(src, 'ticketTypeId: "installment-deposit"');
+  assertStringIncludes(src, "totalCents: input.totalCents");
+  assertStringIncludes(
+    src,
+    "clientTaxCalculationId !== null && !isInstallmentPlan",
+  );
+});
+
+Deno.test("T-IH-01c unsupported tax countries return stable error code", () => {
+  const src = read("supabase/functions/ticket-checkout-create/index.ts");
+  assertStringIncludes(src, "classifyStripeTaxCalculationFailure");
+  assertStringIncludes(src, "tax_country_unsupported");
+  assertStringIncludes(src, "country_unsupported");
+  assertStringIncludes(src, "httpStatus: 422");
+});
+
 Deno.test("T-IH-02 preview mode returns preview shape without creating a PI", () => {
   const src = read("supabase/functions/ticket-checkout-create/index.ts");
   assertStringIncludes(src, 'mode === "preview"');
@@ -87,11 +106,25 @@ Deno.test("T-IH-07 account-session edge function mints embedded Tax client secre
   assertStringIncludes(src, "stripe_tax.account_session_minted");
 });
 
-Deno.test("T-IH-08 email receipt renders Tax before Total", () => {
+Deno.test("T-IH-07b embedded Tax UI renders component load errors", () => {
+  const src = read("mingla-business/app/connect-tax-registrations/index.tsx");
+  assertStringIncludes(src, "embeddedLoadError");
+  assertStringIncludes(src, "onLoadError={() => setEmbeddedLoadError(true)}");
+  assertStringIncludes(
+    src,
+    "Tax tools temporarily unavailable",
+  );
+  assertStringIncludes(src, "Close this window and try again from the app.");
+});
+
+Deno.test("T-IH-08 email receipt renders Tax before Total with jurisdictions", () => {
   const src = read("supabase/functions/_shared/email/ticketBody.ts");
   assertStringIncludes(src, "taxAmountCents");
   assert(src.indexOf("${taxRow}") < src.indexOf(">Total</td>"));
-  assertStringIncludes(src, "Tax:");
+  assertStringIncludes(src, "const taxText");
+  assertStringIncludes(src, "formatTaxJurisdictionLabels");
+  assertStringIncludes(src, "tax_rate_details");
+  assertStringIncludes(src, "jurisdiction");
 });
 
 Deno.test("T-IH-09 consumer CartTaxPreview invokes preview and renders tax", () => {
@@ -99,6 +132,11 @@ Deno.test("T-IH-09 consumer CartTaxPreview invokes preview and renders tax", () 
   assertStringIncludes(src, 'mode: "preview"');
   assertStringIncludes(src, "Calculate tax");
   assertStringIncludes(src, "Tax");
+  assertStringIncludes(src, "tax_country_unsupported");
+  assertStringIncludes(
+    src,
+    "Tax couldn't be calculated for this country. Choose a different billing country.",
+  );
 });
 
 Deno.test("T-IH-10 business CartTaxPreview mirrors consumer preview contract", () => {
@@ -108,6 +146,11 @@ Deno.test("T-IH-10 business CartTaxPreview mirrors consumer preview contract", (
   assertStringIncludes(src, 'mode: "preview"');
   assertStringIncludes(src, "Calculate tax");
   assertStringIncludes(src, "Tax");
+  assertStringIncludes(src, "tax_country_unsupported");
+  assertStringIncludes(
+    src,
+    "Tax couldn't be calculated for this country. Choose a different billing country.",
+  );
 });
 
 Deno.test("T-IH-11 BrandPaymentsView opens hosted embedded Tax route", () => {
@@ -148,6 +191,10 @@ Deno.test("T-IH-13 ORCH-0863 C7 allowlist includes ORCH-0955 backend files", () 
   assertStringIncludes(
     src,
     "supabase/migrations/20260727000000_orch_0955_native_stripe_tax.sql",
+  );
+  assertStringIncludes(
+    src,
+    "supabase/functions/__tests__/orch_0955_native_stripe_tax.test.ts",
   );
 });
 

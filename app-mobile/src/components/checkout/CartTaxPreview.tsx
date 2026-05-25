@@ -47,6 +47,29 @@ const money = (cents: number, currency: string): string =>
     cents / 100,
   );
 
+const TAX_COUNTRY_UNSUPPORTED_COPY =
+  "Tax couldn't be calculated for this country. Choose a different billing country.";
+
+async function taxPreviewErrorCopy(error: unknown): Promise<string> {
+  const ctx = (error as { context?: unknown } | null)?.context;
+  if (
+    ctx !== null &&
+    typeof ctx === "object" &&
+    typeof (ctx as { text?: () => Promise<string> }).text === "function"
+  ) {
+    try {
+      const raw = await (ctx as { text: () => Promise<string> }).text();
+      const parsed = JSON.parse(raw) as { error?: unknown };
+      if (parsed.error === "tax_country_unsupported") {
+        return TAX_COUNTRY_UNSUPPORTED_COPY;
+      }
+    } catch {
+      // Fall through to generic retry copy.
+    }
+  }
+  return "Couldn't calculate tax. Tap to retry.";
+}
+
 export const CartTaxPreview: React.FC<Props> = ({
   eventId,
   lines,
@@ -114,7 +137,7 @@ export const CartTaxPreview: React.FC<Props> = ({
     });
     setLoading(false);
     if (invokeError || !data) {
-      setError("Couldn't calculate tax. Tap to retry.");
+      setError(await taxPreviewErrorCopy(invokeError));
       onPreviewChange(null);
       return;
     }

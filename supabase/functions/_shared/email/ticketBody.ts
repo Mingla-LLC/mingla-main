@@ -85,9 +85,15 @@ function renderLineItems(order: TicketBodyInput["order"]): string {
     </tr>`;
   }).join("");
   const taxAmountCents = Number(order.taxAmountCents ?? 0);
+  const taxJurisdictions = formatTaxJurisdictionLabels(order.taxBreakdown);
+  const taxLabel = taxJurisdictions.length > 0
+    ? `Tax (${taxJurisdictions.join(", ")})`
+    : "Tax";
   const taxRow = taxAmountCents > 0
     ? `<tr>
-      <td style="padding:10px 0;font-size:14px;color:${BRAND_MUTED};border-bottom:1px solid ${BRAND_BORDER};">Tax</td>
+      <td style="padding:10px 0;font-size:14px;color:${BRAND_MUTED};border-bottom:1px solid ${BRAND_BORDER};">${
+      escapeHtml(taxLabel)
+    }</td>
       <td></td>
       <td align="right" style="padding:10px 0;font-size:14px;color:${BRAND_INK};border-bottom:1px solid ${BRAND_BORDER};">${
       escapeHtml(formatMoneyFromCents(taxAmountCents, order.currency))
@@ -108,6 +114,39 @@ function renderLineItems(order: TicketBodyInput["order"]): string {
   }</td>
     </tr>
   </table>`;
+}
+
+function formatTaxJurisdictionLabels(
+  breakdown: unknown[] | null | undefined,
+): string[] {
+  if (!Array.isArray(breakdown)) return [];
+  const labels: string[] = [];
+  for (const row of breakdown) {
+    if (row === null || typeof row !== "object") continue;
+    const record = row as Record<string, unknown>;
+    const jurisdiction = record.jurisdiction as
+      | Record<string, unknown>
+      | undefined;
+    const details = record.tax_rate_details as
+      | Record<string, unknown>
+      | undefined;
+    const directName = typeof jurisdiction?.display_name === "string"
+      ? jurisdiction.display_name
+      : typeof jurisdiction?.name === "string"
+      ? jurisdiction.name
+      : null;
+    const region = [
+      typeof details?.state === "string" ? details.state : null,
+      typeof details?.country === "string" ? details.country : null,
+    ].filter((part): part is string => part !== null && part.length > 0)
+      .join(" ");
+    const taxType = typeof details?.tax_type === "string"
+      ? details.tax_type.replace(/_/g, " ")
+      : null;
+    const label = directName ?? [region, taxType].filter(Boolean).join(" ");
+    if (label.length > 0 && !labels.includes(label)) labels.push(label);
+  }
+  return labels;
 }
 
 function renderTicketBlock(
@@ -213,8 +252,13 @@ export function renderTicketBody(input: TicketBodyInput): {
   const totalText = input.order.totalCents > 0
     ? formatMoneyFromCents(input.order.totalCents, input.order.currency)
     : "Free";
+  const taxJurisdictions = formatTaxJurisdictionLabels(
+    input.order.taxBreakdown,
+  );
   const taxText = Number(input.order.taxAmountCents ?? 0) > 0
-    ? `Tax: ${
+    ? `Tax${
+      taxJurisdictions.length > 0 ? ` (${taxJurisdictions.join(", ")})` : ""
+    }: ${
       formatMoneyFromCents(
         Number(input.order.taxAmountCents ?? 0),
         input.order.currency,

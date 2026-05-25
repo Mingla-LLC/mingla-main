@@ -8,7 +8,10 @@ import {
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 
 Deno.env.set("DENO_TESTING", "1");
-Deno.env.set("MINGLA_LOGO_URL", "https://usemingla.com/email-assets/mingla-logo.png");
+Deno.env.set(
+  "MINGLA_LOGO_URL",
+  "https://usemingla.com/email-assets/mingla-logo.png",
+);
 Deno.env.set("MINGLA_FOOTER_ADDRESS", "Mingla, hello@usemingla.com");
 Deno.env.set("RESEND_TICKET_FROM", "Mingla <tickets@usemingla.com>");
 Deno.env.set("RESEND_ADMIN_FROM", "Mingla <hello@usemingla.com>");
@@ -27,10 +30,12 @@ function ticketFixture(): RenderInput {
       locationText: "Brighton Marina",
       isOnline: false,
       startAt: "2026-06-12T18:00:00Z",
+      endAt: "2026-06-12T20:00:00Z",
       timezone: "Europe/London",
     },
     brand: { name: "Coastline Co", profilePhotoUrl: null },
     order: {
+      id: "order_fixture_123",
       shortId: "abcd1234",
       totalCents: 5000,
       currency: "GBP",
@@ -71,6 +76,25 @@ Deno.test("paid ticket render: shell wraps body with logo, footer, total", () =>
   assertStringIncludes(result.html, "QR in attached PDF");
   assert(!result.html.includes("dating app"));
   assert(result.subject.startsWith("Your Mingla tickets"));
+});
+
+Deno.test("paid ticket render: tax row includes jurisdiction labels", () => {
+  const fixture = ticketFixture();
+  const body = fixture.body as TicketBodyInput;
+  body.order.taxAmountCents = 725;
+  body.order.taxBreakdown = [
+    {
+      jurisdiction: { display_name: "New York State" },
+      tax_rate_details: { tax_type: "sales_tax", country: "US", state: "NY" },
+    },
+    {
+      jurisdiction: { display_name: "New York City" },
+      tax_rate_details: { tax_type: "sales_tax", country: "US", state: "NY" },
+    },
+  ];
+  const result = renderTransactionalEmail(fixture);
+  assertStringIncludes(result.html, "Tax (New York State, New York City)");
+  assertStringIncludes(result.text, "Tax (New York State, New York City):");
 });
 
 Deno.test("free ticket render: Total reads 'Free', subject starts with 'You're in'", () => {
@@ -142,7 +166,10 @@ Deno.test("generic_notification routes to system sender + renders paragraphs", (
       variant: "generic_notification",
       title: "Heads up",
       paragraphs: ["Para1", "Para2"],
-      cta: { label: "Open Mingla Business", url: "https://usemingla.com/business" },
+      cta: {
+        label: "Open Mingla Business",
+        url: "https://usemingla.com/business",
+      },
     },
   });
   assertEquals(result.from.address, "notifications@usemingla.com");
@@ -167,8 +194,7 @@ Deno.test("admin_compose routes to admin sender", () => {
 Deno.test("sender sandbox guard rejects @resend.dev sender (direct)", async () => {
   const { assertNotResendSandbox } = await import("../senders.ts");
   assertThrows(
-    () =>
-      assertNotResendSandbox({ name: "Mingla", address: "foo@resend.dev" }),
+    () => assertNotResendSandbox({ name: "Mingla", address: "foo@resend.dev" }),
     Error,
     "email_sender_resend_sandbox_forbidden",
   );

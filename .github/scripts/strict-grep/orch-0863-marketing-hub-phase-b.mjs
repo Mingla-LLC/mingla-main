@@ -733,6 +733,7 @@ function checkNoNewBackendFiles() {
     "supabase/functions/brand-stripe-tax-account-session/index.ts",
     "supabase/functions/brand-stripe-tax-dashboard-link/index.ts",
     "supabase/functions/refund-order/index.ts",
+    "supabase/functions/__tests__/orch_0955_native_stripe_tax.test.ts",
     "supabase/functions/ticket-checkout-create/index.ts",
     "supabase/functions/ticket-checkout-create/__tests__/nativePaidRegionGate.test.ts",
     "supabase/functions/ticket-checkout-create/__tests__/nativeRegionGate_adversarial.test.ts",

@@ -42,6 +42,11 @@ type TaxLineItem = {
   unitPriceCents: number;
   totalCents: number;
 };
+type StripeTaxFailure = {
+  error: "tax_calculation_failed" | "tax_country_unsupported";
+  detail: string;
+  httpStatus: number;
+};
 // ORCH-0839-B (2026-05-14): widened to include "mobile-web" for the
 // mingla-business mobile hosted-Checkout pivot. "web" continues to emit
 // https://… success_url/cancel_url; "mobile-web" emits the
@@ -114,6 +119,68 @@ function validateBuyerAddress(address: BuyerAddress | null): string | null {
     return "country must match ISO-3166 alpha-2 uppercase";
   }
   return null;
+}
+
+function classifyStripeTaxCalculationFailure(err: unknown): StripeTaxFailure {
+  const record = err as
+    | {
+      code?: unknown;
+      type?: unknown;
+      param?: unknown;
+      message?: unknown;
+      raw?: {
+        code?: unknown;
+        type?: unknown;
+        param?: unknown;
+        message?: unknown;
+      };
+    }
+    | null
+    | undefined;
+  const code = String(record?.code ?? record?.raw?.code ?? "").toLowerCase();
+  const type = String(record?.type ?? record?.raw?.type ?? "").toLowerCase();
+  const param = String(record?.param ?? record?.raw?.param ?? "").toLowerCase();
+  const detail = record?.message ?? record?.raw?.message;
+  const message = typeof detail === "string" ? detail : String(err);
+  const normalized = `${code} ${type} ${param} ${message}`.toLowerCase();
+  if (
+    normalized.includes("country_unsupported") ||
+    normalized.includes("unsupported country") ||
+    normalized.includes("country is not supported") ||
+    (param.includes("country") && normalized.includes("not supported"))
+  ) {
+    return {
+      error: "tax_country_unsupported",
+      detail: message,
+      httpStatus: 422,
+    };
+  }
+  return { error: "tax_calculation_failed", detail: message, httpStatus: 502 };
+}
+
+function normalizeTaxLineItemsForCurrentCharge(input: {
+  lineItems: TaxLineItem[];
+  isInstallmentPlan: boolean;
+  totalCents: number;
+}): TaxLineItem[] {
+  const sum = input.lineItems.reduce(
+    (total, line) => total + line.totalCents,
+    0,
+  );
+  if (
+    !input.isInstallmentPlan ||
+    input.totalCents <= 0 ||
+    sum === input.totalCents
+  ) {
+    return input.lineItems;
+  }
+  return [{
+    ticketTypeId: "installment-deposit",
+    ticketName: "Installment deposit",
+    quantity: 1,
+    unitPriceCents: input.totalCents,
+    totalCents: input.totalCents,
+  }];
 }
 
 // ORCH-0880 [Tr5 Traveler Intake Forms] — answer-empty predicate. Mirror of
@@ -918,7 +985,7 @@ serve(async (req) => {
     : Array.isArray(session.items)
     ? session.items
     : [];
-  const taxLineItems = (lineItemsRaw as Array<Record<string, unknown>>)
+  const rawTaxLineItems = (lineItemsRaw as Array<Record<string, unknown>>)
     .map((line): TaxLineItem => ({
       ticketTypeId: String(line.ticketTypeId ?? ""),
       ticketName: String(line.ticketName ?? "Ticket"),
@@ -927,9 +994,14 @@ serve(async (req) => {
       totalCents: Number(line.totalCents ?? 0),
     }))
     .filter((line) => line.ticketTypeId.length > 0 && line.totalCents > 0);
+  const taxLineItems = normalizeTaxLineItemsForCurrentCharge({
+    lineItems: rawTaxLineItems,
+    isInstallmentPlan,
+    totalCents,
+  });
 
   let taxCalculation: TaxCalculationSummary | null = null;
-  if (clientTaxCalculationId !== null) {
+  if (clientTaxCalculationId !== null && !isInstallmentPlan) {
     try {
       const stripeForExistingTax = stripeTicketCheckout();
       // @ts-ignore -- Stripe SDK Tax namespace is runtime-provided in Deno.
@@ -989,18 +1061,24 @@ serve(async (req) => {
           : [],
       };
     } catch (taxErr) {
-      const detail = taxErr instanceof Error ? taxErr.message : String(taxErr);
-      console.error("[ticket-checkout-create] tax calculation failed", detail);
+      const failure = classifyStripeTaxCalculationFailure(taxErr);
+      console.error(
+        "[ticket-checkout-create] tax calculation failed",
+        failure.detail,
+      );
       await supabase
         .from("ticket_checkout_sessions")
         .update({
           status: "failed",
           failed_at: new Date().toISOString(),
-          failure_reason: "tax_calculation_failed",
+          failure_reason: failure.error,
           updated_at: new Date().toISOString(),
         })
         .eq("id", checkoutSessionId);
-      return jsonResponse({ error: "tax_calculation_failed", detail }, 502);
+      return jsonResponse(
+        { error: failure.error, detail: failure.detail },
+        failure.httpStatus,
+      );
     }
   }
 
