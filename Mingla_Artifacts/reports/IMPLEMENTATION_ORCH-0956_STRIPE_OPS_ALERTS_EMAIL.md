@@ -95,7 +95,7 @@ Command:
 DENO_TESTING=1 SUPABASE_URL=https://example-test.supabase.co SUPABASE_SERVICE_ROLE_KEY=test-service-role-key-not-real STRIPE_WEBHOOK_SECRET=whsec_test STRIPE_WEBHOOK_SECRET_PLATFORM=whsec_test_platform STRIPE_WEBHOOK_SECRET_PREVIOUS= deno test --allow-env --allow-net --allow-read --no-check supabase/functions/_shared/__tests__/stripeIpAllowlist.test.ts supabase/functions/_shared/__tests__/stripeKycRemediation.test.ts supabase/functions/_shared/__tests__/stripeKycReminderSchedule.test.ts supabase/functions/_shared/__tests__/stripeWebhookRouter.test.ts supabase/functions/_shared/__tests__/stripeWebhookSignature.test.ts supabase/functions/_shared/__tests__/stripeDisputeHandlers.test.ts supabase/functions/stripe-webhook/__tests__/signatureFailureAlert.test.ts
 ```
 
-Result: **PASS** — `21 passed | 0 failed`.
+Result: **PASS** — `22 passed | 0 failed`.
 
 ### Deno check
 
@@ -126,7 +126,7 @@ Command:
 DENO_TESTING=1 deno test --allow-env --allow-net --allow-read --no-check supabase/functions/_shared/__tests__/ supabase/functions/stripe-webhook/__tests__/signatureFailureAlert.test.ts
 ```
 
-Result: **FAIL, unrelated existing tests** — `214 passed | 3 failed`.
+Result: **FAIL, unrelated existing tests** — `215 passed | 3 failed`.
 
 Failures were outside ORCH-0956 touched code:
 
