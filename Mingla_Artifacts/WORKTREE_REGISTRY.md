@@ -36,6 +36,7 @@ Reference: [WORKTREE_STRATEGY.md](WORKTREE_STRATEGY.md).
 
 | Worktree path | Branch | ORCH-ID | Reaped | Merged via PR |
 |---------------|--------|---------|--------|---------------|
+| `~/Desktop/mingla-orchs/0957-[storage-image-transform-overage]/` | `0957-storage-image-transform-overage` | ORCH-0957 | 2026-05-25 | (pending PR merge) |
 | `~/Desktop/mingla-orchs/ORCH-0950-[trip-capacity-single-source]/` | `ORCH-0950-trip-capacity-single-source` | ORCH-0950 | 2026-05-25 | (TBD on push) |
 | `~/Desktop/mingla-orchs/ORCH-0956-[stripe-ops-alerts-email]/` | `ORCH-0956-stripe-ops-alerts-email` | ORCH-0956 | 2026-05-25 | PR #202 |
 | `~/Desktop/mingla-orchs/META-ORCH-0954-[cross-chat-comms-ledger-and-2-section-output]/` | `META-ORCH-0954-cross-chat-comms-ledger-and-2-section-output` | META-ORCH-0954 | 2026-05-24 | (pending PR merge) |
