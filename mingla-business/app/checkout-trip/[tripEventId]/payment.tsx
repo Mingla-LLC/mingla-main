@@ -24,7 +24,13 @@
 
 // orch-strict-grep-allow safearea-on-fullscreen-routes — design-intent full-bleed checkout header mirror of /checkout/[eventId]/payment.tsx; insets.bottom IS applied (bottom dock) for home-indicator clearance; the top status-bar overlap with back arrow / payment-step header / "3 OF 3" pill is the intended banner-style buyer aesthetic.
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, {
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   Keyboard,
   Platform,
@@ -51,7 +57,7 @@ import {
   createTicketCheckout,
 } from "../../../src/services/ticketCheckoutService";
 import { mixpanelService } from "../../../src/services/mixpanelService";
-import { useNativeCheckoutFlow } from "../../../src/payments/nativeCheckoutFlow";
+import type { NativeCheckoutExecutor } from "../../../src/payments/NativeCheckoutPaymentBoundary";
 
 import { Button } from "../../../src/components/ui/Button";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
@@ -75,7 +81,29 @@ import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader"
 
 type PaymentPlanChoice = "full" | "installments";
 
+const NativeCheckoutPaymentBoundary = React.lazy(
+  () => import("../../../src/payments/NativeCheckoutPaymentBoundary"),
+);
+
 export default function CheckoutTripPaymentScreen(): React.ReactElement {
+  return (
+    <Suspense fallback={null}>
+      <NativeCheckoutPaymentBoundary>
+        {(nativeCheckout) => (
+          <CheckoutTripPaymentScreenContent nativeCheckout={nativeCheckout} />
+        )}
+      </NativeCheckoutPaymentBoundary>
+    </Suspense>
+  );
+}
+
+interface CheckoutTripPaymentScreenContentProps {
+  nativeCheckout: NativeCheckoutExecutor;
+}
+
+function CheckoutTripPaymentScreenContent({
+  nativeCheckout,
+}: CheckoutTripPaymentScreenContentProps): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const params = useLocalSearchParams<{ tripEventId: string }>();
@@ -148,8 +176,6 @@ export default function CheckoutTripPaymentScreen(): React.ReactElement {
   const [taxPreview, setTaxPreview] = useState<CartTaxPreviewResult | null>(
     null,
   );
-
-  const nativeCheckout = useNativeCheckoutFlow();
 
   // ----- Web sessionStorage restore -----
   useEffect(() => {

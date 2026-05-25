@@ -15,7 +15,7 @@
  *   2. merchantIdentifier + urlScheme are the business values
  *      ("merchant.com.mingla.business.v2" / "com.mingla.business.v2") to
  *      match the Stripe Dashboard registration AND the
- *      <StripeNativeProvider> mount at mingla-business/app/_layout.tsx.
+ *      <StripeNativeProvider> mount in the checkout payment route wrapper.
  *
  * Edge function response shape (requires_payment) is byte-identical to
  * what consumer consumes — same stripeAccountId + customerId +
@@ -104,7 +104,7 @@ const MERCHANT_DISPLAY_NAME = "Mingla";
 
 // ORCH-0849: business merchant identifier + URL scheme. Must match the
 // Stripe Dashboard registration AND the <StripeNativeProvider> mount in
-// mingla-business/app/_layout.tsx AND the Stripe plugin entry in
+// StripeProviderWrapper.native.tsx AND the Stripe plugin entry in
 // mingla-business/app.json. If any of these three drift, Apple Pay
 // silently disappears from PaymentSheet (NOT a crash post-ORCH-0844 —
 // just absent). CI gate i-stripe-paymentsheet-parity.mjs verifies the
@@ -235,7 +235,7 @@ export const useNativeCheckoutFlow = (): (
       //
       // initStripe REPLACES the prior SDK config (it does NOT merge), so we
       // re-pass merchantIdentifier + urlScheme. Values mirror the
-      // StripeNativeProvider mount at mingla-business/app/_layout.tsx; if
+        // StripeNativeProvider mount in the payment route wrapper; if
       // either changes, both call sites must change together. CI gate
       // i-stripe-paymentsheet-parity.mjs verifies the agreement.
       if (data.publishableKey && data.stripeAccountId) {

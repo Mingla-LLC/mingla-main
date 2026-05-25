@@ -17,11 +17,9 @@
  */
 
 // ORCH-0896 [Stripe forwardRef RedBox under React 19.1]: side-effect import
-// MUST come BEFORE any module that pulls @stripe/stripe-react-native (via
-// StripeProviderWrapper below). ES module imports hoist — registering
-// LogBox.ignoreLogs after the Stripe import fires too late and the
-// dev-menu Console Error still surfaces on every launch. See
-// src/diagnostics/silenceStripeForwardRef.ts for full rationale.
+// arms the LogBox filter before route-level checkout screens can pull
+// @stripe/stripe-react-native. See src/diagnostics/silenceStripeForwardRef.ts
+// for full rationale.
 import "../src/diagnostics/silenceStripeForwardRef";
 import React, { useEffect, useRef, useState } from "react";
 import { AppState, type AppStateStatus } from "react-native";
@@ -38,13 +36,6 @@ import { ErrorBoundary } from "../src/components/ui/ErrorBoundary";
 import { useCurrentBrandRecovery } from "../src/hooks/useCurrentBrandRecovery";
 import { useBrand } from "../src/hooks/useBrands";
 import { useCurrentBrandId } from "../src/store/currentBrandStore";
-// ORCH-0849 (2026-05-15): re-pivot from ORCH-0839-B Hosted Checkout to
-// native PaymentSheet, parity with consumer (app-mobile). Local wrapper
-// indirection keeps web-bundle safe (I-PROPOSED-AE / ORCH-0778) — Metro
-// picks StripeProviderWrapper.native.tsx on iOS/Android (real provider)
-// and StripeProviderWrapper.tsx on web (passthrough Fragment). Per
-// SPEC_ORCH-0849 §3.4.3 + invariant I-PROPOSED-STRIPE-PAYMENTSHEET-PARITY.
-import { StripeProviderWrapper } from "../src/payments/StripeProviderWrapper";
 // ORCH-0892-A: KeyboardRoot wraps every downstream surface so
 // react-native-keyboard-controller primitives can subscribe to native
 // keyboard events. Web variant is a passthrough Fragment (library has no
@@ -247,29 +238,13 @@ export default function RootLayout(): React.ReactElement {
       <SafeAreaProvider>
         <QueryClientProvider client={queryClient}>
           <AuthProvider>
-            {/* ORCH-0849: StripeProviderWrapper mounted above the navigation
-                tree. On native, the .native variant wraps with the real
-                <StripeNativeProvider> (business merchantIdentifier + URL
-                scheme baked in) so PaymentSheet inherits the configuration
-                on any checkout screen. On web, the bare-extension variant
-                is a passthrough Fragment — web buyers go through Stripe
-                Hosted Checkout (Platform.OS === "web" branch in
-                app/checkout/[eventId]/payment.tsx). Parity with consumer
-                app-mobile/app/_layout.tsx:72-83. Invariant
-                I-PROPOSED-STRIPE-PAYMENTSHEET-PARITY (ORCH-0849). */}
-            <StripeProviderWrapper>
-              {/* ORCH-0892-A: KeyboardRoot mounted INSIDE
-                  StripeProviderWrapper (Stripe's PaymentSheet renders via
-                  UIViewController bypassing React tree — no library
-                  interaction) and OUTSIDE RootLayoutInner's ErrorBoundary
-                  (library-resolution failures are dev-build problems that
-                  should crash early, not be caught by the user-facing
-                  fallback). On web KeyboardRoot is a passthrough Fragment
-                  so this position is moot. Per SPEC_ORCH-0892-A §7.3. */}
-              <KeyboardRoot>
-                <RootLayoutInner />
-              </KeyboardRoot>
-            </StripeProviderWrapper>
+            {/* ORCH-0892-A: KeyboardRoot wraps the app shell and stays OUTSIDE
+                RootLayoutInner's ErrorBoundary. Stripe's native provider is
+                intentionally route-scoped to checkout payment screens so Home
+                startup does not initialize the payment SDK. */}
+            <KeyboardRoot>
+              <RootLayoutInner />
+            </KeyboardRoot>
           </AuthProvider>
         </QueryClientProvider>
       </SafeAreaProvider>

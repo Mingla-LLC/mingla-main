@@ -1,0 +1,12 @@
+Captured: 2026-05-25T21:13:15Z
+
+adb devices -l:
+List of devices attached
+emulator-5554          device product:sdk_gphone64_arm64 model:sdk_gphone64_arm64 device:emu64a transport_id:4
+
+
+AVD name: Pixel_8_Pro
+Device model: sdk_gphone64_arm64
+Android release: 15
+WM size: Physical size: 1344x2992
+Launch URL: exp+mingla-business://expo-development-client/?url=http%3A%2F%2F10.0.2.2%3A8097
