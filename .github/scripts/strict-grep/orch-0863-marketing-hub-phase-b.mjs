@@ -725,6 +725,7 @@ function checkNoNewBackendFiles() {
   // ORCH-0955 [Native Stripe Tax for Platforms] PR (2026-05-25). C7 is scoped to
   // ORCH-0863 marketing; these backend touches are native Stripe Tax wiring.
   const ORCH_0955_BACKEND_ALLOWLIST = [
+    "supabase/functions/_shared/email/__tests__/shell.test.ts",
     "supabase/functions/_shared/email/ticketBody.ts",
     "supabase/functions/_shared/email/types.ts",
     "supabase/functions/_shared/stripe.ts",

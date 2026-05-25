@@ -3819,3 +3819,39 @@ Every chat response from every skill uses Section A (what just happened) + Secti
 **EXIT condition:** Permanent.
 
 **Status:** ACTIVE — codified 2026-05-24 by ORCH-0945 [Collab deck dead-end UX polish] CLOSE.
+
+
+### I-PROPOSED-NATIVE-TAX-COVERAGE (ACTIVE — ratified by ORCH-0955 CLOSE 2026-05-25)
+
+**Statement:** Every native PaymentIntent created in `supabase/functions/ticket-checkout-create/index.ts` MUST be preceded by `stripe.tax.calculations.create` against the same connected account (Stripe-Account header) before `stripe.paymentIntents.create` runs. The PI `amount` MUST equal the tax calculation `amount_total` (tax-inclusive); the calculation `id` MUST be carried forward via PI metadata key `mingla_tax_calculation_id`.
+**Enforcement:** strict-grep gate `.github/scripts/strict-grep/orch-0955-native-tax-coverage.mjs` + per-PR CI job.
+**Test:** implementor T-IH-01 + T-IH-02 at `supabase/functions/__tests__/orch_0955_native_stripe_tax.test.ts`.
+**Why:** Without this, native paid silently undercharges the buyer and the brand carries an uncollected tax liability.
+
+### I-PROPOSED-TAX-COMMIT-ON-SUCCESS (ACTIVE — ratified by ORCH-0955 CLOSE 2026-05-25)
+
+**Statement:** `supabase/functions/_shared/stripeWebhookRouter.ts` `handleTicketCheckoutPaymentIntent` MUST call `stripe.tax.transactions.createFromCalculation` when PI metadata carries `mingla_tax_calculation_id`. The call MUST be idempotency-keyed on `paymentIntentId` so webhook re-deliveries do not double-commit. The returned `transaction.id` MUST be persisted to `orders.stripe_tax_transaction_id` and `tax_breakdown` to `orders.tax_breakdown`. Failures are NON-FATAL (order is already finalized; tax record is recoverable).
+**Enforcement:** strict-grep gate `.github/scripts/strict-grep/orch-0955-tax-commit-on-success.mjs`.
+**Test:** implementor T-IH-03 + T-IH-06 at the regression suite.
+**Why:** Without commit, Stripe Tax reports show $0 collected for orders the buyer was charged tax on — brand-side compliance gap.
+
+### I-PROPOSED-TAX-REVERSAL-ON-REFUND (ACTIVE — ratified by ORCH-0955 CLOSE 2026-05-25)
+
+**Statement:** `supabase/functions/refund-order/index.ts` MUST call `stripe.tax.transactions.createReversal` inline-sync (after `stripe.refunds.create` succeeds, before `biz_refund_order_commit`) when `orders.stripe_tax_transaction_id IS NOT NULL`. `mode: 'full'` for full refunds; `mode: 'partial'` with per-line negative `line_items[]` for partial refunds. Reversal failure returns HTTP 502 with refund row marked `failed`. Backstop on `charge.refunded` / `refund.created` / `refund.updated` webhook handlers attempts reversal if inline-sync was skipped; idempotent.
+**Enforcement:** strict-grep gate `.github/scripts/strict-grep/orch-0955-tax-reversal-on-refund.mjs`.
+**Test:** implementor T-IH-04 + T-IH-05.
+**Why:** Without reversal, Stripe Tax reports overstate brand's collected tax (refunded portions still appear as collected) — brand over-reports liability.
+
+### I-PROPOSED-EMBEDDED-TAX-UI (ACTIVE — ratified by ORCH-0955 CLOSE 2026-05-25)
+
+**Statement:** Brand-side tax registrations + tax settings UI MUST go through `supabase/functions/brand-stripe-tax-account-session/index.ts` (calls `stripe.accountSessions.create` with `components: { tax_registrations: { enabled: true }, tax_settings: { enabled: true } }`) and `mingla-business/app/connect-tax-registrations/index.tsx` (mounts `@stripe/connect-js` + `<ConnectComponentsProvider>` + `<ConnectTaxRegistrations>` + `<ConnectTaxSettings>`). `mingla-business/src/components/brand/BrandPaymentsView.tsx` Tax CTA MUST invoke `useBrandStripeTaxAccountSession` and open the Mingla-hosted URL via `expo-web-browser.openAuthSessionAsync`. The legacy `brand-stripe-tax-dashboard-link` edge function + `stripeTaxDashboardLink` helper + `useBrandStripeTaxDashboardLink` hook + `brandStripeTaxDashboardLinkService` are DELETED and MUST NOT be re-introduced.
+**Enforcement:** strict-grep gate `.github/scripts/strict-grep/orch-0955-embedded-tax-ui.mjs` + ORCH-0804 gate updated to require new names.
+**Test:** implementor T-IH-07 + T-IH-11.
+**Why:** `accounts.createLoginLink` requires `controller.stripe_dashboard.type='express'` and breaks under ORCH-0954's `dashboard:'none'` cutover.
+
+### I-PROPOSED-REGION-GATE-DELETED (ACTIVE — ratified by ORCH-0955 CLOSE 2026-05-25)
+
+**Statement:** `supabase/functions/_shared/stripeTax.ts` MUST NOT exist. `NATIVE_PAID_ALLOWED_REGIONS` env var MUST NOT be referenced in any source file (including comments, configs, scripts under `.github/`, or app code under `app-mobile/` / `mingla-business/`). `isNativePaidAllowedForBrand` and `getNativePaidAllowedRegions` function names MUST NOT appear in repo code. The 4 ORCH-0953 gate-defending test files (`nativeRegionGate_adversarial.test.ts`, `nativePaidRegionGate.test.ts`, both `nativeCheckoutFlow_regionGateToast.test.tsx`) MUST NOT be re-introduced.
+**Enforcement:** strict-grep gate `.github/scripts/strict-grep/orch-0955-region-gate-deleted.mjs`. Supersedes any ORCH-0953 region-gate-defending gate.
+**Test:** implementor T-IH-12 + repo-wide legacy-token rg scan in QA retest 2 (returns zero hits).
+**Why:** Native paid is universal across Stripe-supported countries per operator decision 2026-05-24; the gate's purpose is subsumed by Stripe Tax for Platforms wiring (I-PROPOSED-NATIVE-TAX-COVERAGE + I-PROPOSED-TAX-COMMIT-ON-SUCCESS).

@@ -1,5 +1,34 @@
 # Agent Handoffs
 
+## 2026-05-25 — ORCH-0955 [Native Stripe Tax for Platforms] CLOSED PASS Grade A
+
+**Pipeline executed (worktree `~/Desktop/mingla-orchs/ORCH-0955-[native-stripe-tax]/` on branch `ORCH-0955-native-stripe-tax`):** Claude `mingla-orchestrator` (operator manual spawn, INTAKE pre-existing) → Claude `mingla-forensics` INVESTIGATE (resolved against post-ORCH-0953 main via Amendment 1; 11 findings F-1..F-11 HIGH confidence) → Claude `mingla-orchestrator` REVIEW APPROVED → Claude `mingla-forensics` SPEC (resolved 14 open questions: 13 orchestrator-locked + Q8 operator-locked; 16 success criteria + 5 new invariants + 28-row test matrix + Amendment A for COMMS-0002 ORCH-0863 C7 allowlist) → Codex `implementor-mingla` IMPLEMENT at `d2106b21` (41 files, +4612/-1214; ORCH-0840 happy-path T-IH-01..T-IH-13 with fails-on-revert at d2106b21) → Claude `mingla-orchestrator` REVIEW APPROVED at `d673f1d5` (spot-checked cross-ORCH gate touches legitimate; live DB probe confirmed zero pg_depend dependents on DROP+RECREATE'd RPCs) → operator `supabase db push --linked` (migration `20260727000000_orch_0955_native_stripe_tax.sql` applied 2026-05-25) → Claude `mingla-orchestrator` DEPLOY (5 edge functions: ticket-checkout-create v103→v110, refund-order v70→v76, brand-stripe-tax-account-session new→v1, ticket-confirmation-dispatch v91→v97, stripe-webhook v128→v137 with `verify_jwt: false` preserved) → Codex `tester-mingla` TEST (P0/P1 findings) → Codex `implementor-mingla` REWORK QA fixes → Codex `tester-mingla` RETEST 1 → Codex `implementor-mingla` REWORK (ORCH-0863 C7 allowlist for `shell.test.ts`) → Codex `tester-mingla` RETEST 2 PASS (P0:0 P1:0 P2:0 P3:0 P4:1; 17/17 ORCH-0955 regression tests + 10/10 email shell tests + all 5 strict-grep gates + ORCH-0804 + ORCH-0863 C7 all PASS at `122000e6`) → Codex `orchestrator-mingla` routed CLOSE to Claude → Claude `mingla-orchestrator` CLOSE this commit.
+
+**Step 0.5 satisfied:** implementor happy-path at `supabase/functions/__tests__/orch_0955_native_stripe_tax.test.ts` (17 tests, fails-on-revert verified at `d2106b21`); tester adversarial at `supabase/functions/_shared/email/__tests__/shell.test.ts` (10 tests attacking jurisdiction-label rendering + Tax-row scoping — different angle from implementor's payload-shape happy path). Both immutable per append-only CI.
+
+**Step 1.5 satisfied:** zero `[ORCH-0955-DIAG]` matches across all source dirs.
+
+**Step 5 Deprecation Extension EXECUTED** for the deleted `brand-stripe-tax-dashboard-link` edge function. Memory file pre-written + indexed; invariant `I-PROPOSED-EMBEDDED-TAX-UI` codified; decision-log entries added. Deployed function v65 left platform-resident (dead code; no callers; legacy-token scan returns zero hits in repo); formal platform deletion may follow in a future hygiene ORCH.
+
+**Comms ledger:** COMMS-0001 RESOLVED by this close (forensics + orchestrator + implementor + tester all acked + ORCH-0955 ships the rewrite). COMMS-0002 ack chain includes all ORCH-0955 sides (allowlist added in implementation commit). COMMS-0003 acked by orchestrator at CLOSE (Stripe docs URLs cited in SPEC §3 + tester verified embedded Tax components against Stripe API docs in retest 2).
+
+**Held separately pending Seth authorization:** Stripe TEST→LIVE secret flip per ORCH-0953's `Stripe-live-values.md` (gitignored) batch command. ORCH-0955 close does NOT include this; ships code + DB + edge deploys live on Supabase production but under Stripe TEST keys, ready for the secret-flip operation.
+
+**Artifacts (this CLOSE):**
+- `Mingla_Artifacts/reports/INVESTIGATION_ORCH-0955_NATIVE_STRIPE_TAX.md`
+- `Mingla_Artifacts/specs/SPEC_ORCH-0955_NATIVE_STRIPE_TAX.md`
+- `Mingla_Artifacts/reports/IMPLEMENTATION_ORCH-0955_NATIVE_STRIPE_TAX.md`
+- `Mingla_Artifacts/reports/IMPLEMENTATION_ORCH-0955_NATIVE_STRIPE_TAX_QA_FIXES.md`
+- `Mingla_Artifacts/reports/QA_ORCH-0955_NATIVE_STRIPE_TAX_REPORT.md`
+- `Mingla_Artifacts/reports/QA_ORCH-0955_NATIVE_STRIPE_TAX_RETEST_REPORT.md`
+- `Mingla_Artifacts/reports/QA_ORCH-0955_NATIVE_STRIPE_TAX_RETEST_2_REPORT.md`
+- `Mingla_Artifacts/reports/REVIEW_ORCH-0955_NATIVE_STRIPE_TAX.md`
+- `Mingla_Artifacts/CLOSE_NOTE_ORCH-0955.md` (this commit)
+
+**Worktree reaped post-merge.**
+
+---
+
 ## 2026-05-24 — ORCH-0955 [Native Stripe Tax for Platforms] INVESTIGATE COMPLETE → SPEC DISPATCH
 
 **Pipeline this session (all in worktree `~/Desktop/mingla-orchs/ORCH-0955-[native-stripe-tax]/` on branch `ORCH-0955-native-stripe-tax`, rebased onto main HEAD `44c643c0` post-ORCH-0953 close):** Claude `mingla-orchestrator` (Seth manual spawn, INTAKE pre-existing at `Mingla_Artifacts/prompts/INTAKE_ORCH-0955_NATIVE_STRIPE_TAX.md`) → Claude `mingla-forensics` INVESTIGATE (operator clarified Q1=WebFetch+stripe-best-practices skill, Q2=all 10 findings + supabase MCP edge-function inventory + live `orders` schema probe; mid-flight discovered ORCH-0953 had NOT yet merged so branch was rebased and F-9 abandoned-concept assumption codified; operator then mid-flight confirmed "native paid is universal across Stripe-supported countries, no allowed_regions") → INVESTIGATE returned with 10 findings F-1..F-10 → operator pinged that ORCH-0953 just merged via PR #201 (commit `44c643c0`) → Claude `mingla-forensics` re-rebased + **Amendment 1** (A1.1..A1.8) supersedes F-1/F-2/F-4 line numbers + materially rewrites F-9 (gate now LIVE code, not abandoned concept; 3 disposition paths laid out, recommended (a) delete) + adds new questions 13 + 14 → Claude `mingla-orchestrator` REVIEW APPROVED (HIGH confidence; six-field evidence preserved across amendment) → decisions on 13/14 open questions locked by orchestrator + Q8 (`<ConnectTaxSettings>` co-mount) answered by operator → **SPEC DISPATCH (this commit).**

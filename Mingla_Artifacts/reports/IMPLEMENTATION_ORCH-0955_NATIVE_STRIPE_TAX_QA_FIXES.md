@@ -5,9 +5,14 @@
 > Spec: `Mingla_Artifacts/reports/QA_ORCH-0955_NATIVE_STRIPE_TAX_REPORT.md`
 > Status: implemented, partially verified
 
+> Retest rework: `Mingla_Artifacts/reports/QA_ORCH-0955_NATIVE_STRIPE_TAX_RETEST_REPORT.md`
+> Retest status: P1-001 resolved locally; live deploy gate still held
+
 ## 1. Layman Summary
 
 The QA-blocking code defects are fixed in the ORCH-0955 branch. Native installment checkouts now calculate Stripe Tax against the deposit being charged now, embedded Stripe Tax tools show a recoverable error if the client secret cannot load, unsupported tax countries show specific buyer copy, and confirmation emails can show jurisdiction names in the tax row. The live stale `ticket-checkout-create` deployment was not redeployed because this dispatch explicitly forbids edge-function deploys without Seth authorizing that phase.
+
+Retest rework on 2026-05-25 fixed the remaining P1 CI blocker by adding `supabase/functions/_shared/email/__tests__/shell.test.ts` to the ORCH-0955 backend allowlist in the ORCH-0863 strict-grep script. C7 now passes in restored state, fails when that exact allowlist line is temporarily removed, and passes again after restore.
 
 ## 2. Request And Context
 
@@ -35,6 +40,7 @@ The QA-blocking code defects are fixed in the ORCH-0955 branch. Native installme
 | `mingla-business/src/components/checkout/CartTaxPreview.tsx` | Business tax preview | Generic invoke error copy only. |
 | `supabase/functions/_shared/email/ticketBody.ts` | Confirmation email body | Aggregate tax row ignored `taxBreakdown`. |
 | `.github/scripts/strict-grep/orch-0863-marketing-hub-phase-b.mjs` | CI blocker | ORCH-0955 test file missing from backend allowlist. |
+| `Mingla_Artifacts/reports/QA_ORCH-0955_NATIVE_STRIPE_TAX_RETEST_REPORT.md` | Controlling retest input | Remaining P1 was the missing shell email test in the ORCH-0955 backend allowlist. |
 | Stripe docs | Provider contract check | Tax calculations use `line_items.amount` as the line total; embedded Tax Settings and Tax Registrations are the documented components. |
 
 ## 5. Blast Radius
@@ -86,10 +92,10 @@ The QA-blocking code defects are fixed in the ORCH-0955 branch. Native installme
 
 ### `.github/scripts/strict-grep/orch-0863-marketing-hub-phase-b.mjs`
 
-- **Before:** C7 rejected `supabase/functions/__tests__/orch_0955_native_stripe_tax.test.ts`.
-- **After:** The ORCH-0955 test file is allowlisted.
+- **Before:** C7 initially rejected `supabase/functions/__tests__/orch_0955_native_stripe_tax.test.ts`, then the retest found it still rejected `supabase/functions/_shared/email/__tests__/shell.test.ts`.
+- **After:** Both ORCH-0955 backend test files are allowlisted, including the email shell jurisdiction regression.
 - **Why:** Removes the unrelated backend PR blocker while preserving C7 enforcement.
-- **Approx lines changed:** 1.
+- **Approx lines changed:** 2.
 
 ### Tests
 
@@ -114,7 +120,7 @@ The QA-blocking code defects are fixed in the ORCH-0955 branch. Native installme
 |---|---|---|---|
 | P0 stale checkout deploy gap | Code source ready; deploy command documented | Deploy intentionally not run | Partial |
 | P0 installment-plan overcharge | Edge tax line items normalize to deposit/current charge | ORCH-0955 Deno test; Deno check | Pass locally |
-| ORCH-0863 C7 allowlist failure | Test file allowlisted | Gate pass plus remove/restore negative check | Pass locally |
+| ORCH-0863 C7 allowlist failure | Native tax regression and email shell regression files allowlisted | Gate pass plus shell-test remove/restore negative check | Pass locally |
 | Embedded Tax load error | `onLoadError` wired for both components | ORCH-0955 Deno source test; targeted TS check | Pass locally |
 | Unsupported-country tax copy | Edge error code and both cart mappings added | ORCH-0955 Deno source test; targeted TS check | Pass locally |
 | Ticket email jurisdiction rendering | HTML/text render jurisdiction labels | Email shell Deno render test | Pass locally |
@@ -156,8 +162,8 @@ The QA-blocking code defects are fixed in the ORCH-0955 branch. Native installme
 | Edge typecheck | `/Users/sethogieva/.deno/bin/deno check supabase/functions/ticket-checkout-create/index.ts supabase/functions/refund-order/index.ts supabase/functions/brand-stripe-tax-account-session/index.ts supabase/functions/stripe-webhook/index.ts supabase/functions/ticket-confirmation-dispatch/index.ts` | PASS | Exit 0. |
 | ORCH-0955 regression | `/Users/sethogieva/.deno/bin/deno test --allow-read supabase/functions/__tests__/orch_0955_native_stripe_tax.test.ts` | PASS | 17 passed, 0 failed. |
 | Email jurisdiction render | `/Users/sethogieva/.deno/bin/deno test --allow-env supabase/functions/_shared/email/__tests__/shell.test.ts` | PASS | 10 passed, 0 failed. |
-| ORCH-0863 C7 restored | `node .github/scripts/strict-grep/orch-0863-marketing-hub-phase-b.mjs` | PASS | C7 now green. |
-| ORCH-0863 C7 remove check | Temporarily removed allowlist line, ran same script, restored line | PASS | Failed on `supabase/functions/__tests__/orch_0955_native_stripe_tax.test.ts`, then passed after restore. |
+| ORCH-0863 C7 restored | `node .github/scripts/strict-grep/orch-0863-marketing-hub-phase-b.mjs` | PASS | C7 green with 52 files changed total. Reran during retest rework after adding `shell.test.ts`; exit 0. |
+| ORCH-0863 C7 remove check | Temporarily removed `supabase/functions/_shared/email/__tests__/shell.test.ts`, ran same script, restored line | PASS | Failed exactly on `supabase/functions/_shared/email/__tests__/shell.test.ts`, then passed after restore. |
 | ORCH-0804 + ORCH-0955 strict-grep | `node` strict-grep scripts for ORCH-0804 and all five ORCH-0955 gates | PASS | All pass. |
 | Legacy source-token scan | `rg "brand-stripe-tax-dashboard-link|stripeTaxDashboardLink|native_paid_not_allowed_in_region|isNativePaidAllowedForBrand|NATIVE_PAID_ALLOWED_REGIONS|useBrandStripeTaxDashboardLink|brandStripeTaxDashboard" --glob '!Mingla_Artifacts/**' --glob '!COMMS_LEDGER.md' --glob '!node_modules/**' .` | PASS | No matches; `rg` exit 1 means no legacy tokens found. |
 | Targeted business TS | `npx tsc --noEmit --jsx react-jsx --esModuleInterop --moduleResolution node --module esnext --target esnext --lib dom,esnext --skipLibCheck app/connect-tax-registrations/index.tsx src/components/checkout/CartTaxPreview.tsx` | PASS | Exit 0. |
@@ -186,6 +192,7 @@ The QA-blocking code defects are fixed in the ORCH-0955 branch. Native installme
 ## 15. Discoveries For Orchestrator
 
 - No new cross-ORCH ledger entry was created. COMMS-0002 and COMMS-0003 were already the relevant cross-ORCH items.
+- Retest rework did not require a new comms-ledger entry because COMMS-0002 already covers the C7 backend PR blocker class and this remaining failure was ORCH-0955-specific.
 
 ## 16. Deploy Notes
 
