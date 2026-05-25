@@ -285,3 +285,28 @@
 **Rationale:** ORCH-0947 already corrected the Spots tile to count tickets instead of orders. ORCH-0950 expanded applies the same canonical-count rule to the pricing tier card so multi-ticket orders and transfers do not undercount sold seats.
 
 **Enforcement:** RPC `public.biz_trip_tickets_sold_by_tier(uuid)`, service function `readTripSoldCountsByTier`, React Query key `tripKeys.soldCountsByTier(eventId)`, and dashboard wiring in `mingla-business/app/trip/[id]/index.tsx`.
+
+## DEC-169 — Stripe Connect platform controller: Stripe-managed risk + seller-pays-processing + embedded onboarding (2026-05-25, originally promised as DEC-159 in SPEC_ORCH-0954_AMENDMENT)
+
+**Decision:** For all new Stripe Connect connected accounts created via `brand-stripe-onboard`, the platform controller properties are pinned at:
+- `losses_collector: "stripe"` (Stripe absorbs negative balances)
+- `fees_collector: "stripe"` (Stripe collects payment fees directly from connected account = seller pays processing)
+- `dashboard: "none"` (Mingla provides all UI via embedded components)
+
+**Source of truth:** https://docs.stripe.com/connect/accounts-v2/connected-account-configuration.md
+
+**Reverses:** DEC-156 (ORCH-0953 §10 platform-liable Express controller).
+**Re-affirms:** DEC-154 (Stripe-managed risk + embedded onboarding cost-benefit accepted).
+
+**Rationale:** Operator chose this configuration at the live Stripe Connect Platform Setup screen on 2026-05-24. Original SPEC §3.1 encoded the choice with `fees_collector: "account"` because the Stripe Dashboard UI labels the option "account" (referring to the connected account paying the fees). Stripe's API enum for the same semantics is `"stripe"` (Stripe collects payment fees directly FROM the connected account). The UI label and the API enum diverge — this is the specific failure mode that drove the creation of new memory rules `feedback_external_api_docs_verified.md` and `feedback_stripe_skill_mandatory.md` on 2026-05-25. This amended DEC corrects the encoding to match Stripe's API.
+
+**Numbering note:** SPEC_ORCH-0954_AMENDMENT §A6 reserved DEC-159 for this entry. Parallel ORCH closes (ORCH-0950 expanded, ORCH-0962, etc.) consumed DEC-159 through DEC-168 in the interim. This entry lands as DEC-169 to preserve sequence.
+
+**Cross-references:**
+- I-PROPOSED-EXTERNAL-API-DOCS-VERIFIED (proposed, flipping to ACTIVE per this CLOSE)
+- I-PROPOSED-CONTROLLER-PROPS-PINNED (DRAFT → ACTIVE)
+- I-PROPOSED-RAK-SCOPE-PINNED (DRAFT → ACTIVE)
+- COMMS-0001 (ORCH-0955 owns Tax dashboard rewrite under `dashboard:none`)
+- COMMS-0003 (external-API integration ORCHs cite provider docs URLs inline at SPEC time)
+
+**Enforcement:** Strict-grep gates `orch-0954-controller-props-pinned.mjs` + `orch-0954-rak-scope-pinned.mjs` registered in `.github/workflows/strict-grep-mingla-business.yml`. Constraint migration `supabase/migrations/20260727000002_orch_0954_controller_dashboard_type_check.sql` applied to remote DB (idempotent).

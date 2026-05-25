@@ -7,6 +7,20 @@
 
 ---
 
+## ACTIVE (post ORCH-0962 [Brand-edit → public-brand field rendering — truthful bundle] CLOSE 2026-05-25)
+
+One invariant flipped DRAFT → ACTIVE at the ORCH-0962 close after tester CONDITIONAL PASS verdict P0:0 P1:0 P2:0 P3:0 P4:2 (60-second buyer-web eyeball is the only condition; data layer + structural source integrity proven via 23 unit tests + 7 live MCP column probes). Implementor happy-path T-01..T-09 at `mingla-business/src/services/__tests__/publicEventsService.orch_0962.test.ts` + `mingla-business/src/components/brand/__tests__/PublicBrandPage.orch_0962.test.ts` with `fails-on-revert verified at 52e37c2bc`. Tester adversarial A-01..A-05 at `mingla-business/src/services/__tests__/publicEventsService.orch_0962.adversarial.test.ts` with `fails-on-revert verified at b48df7064`.
+
+### I-PROPOSED-BRAND-FIELD-MAP-COVERAGE
+
+**Rule:** Every editable field on `mingla-business/src/components/brand/BrandEditView.tsx` whose value persists to a column in `brands` MUST be either (a) read by a public-page mapper in `mingla-business/src/services/publicEventsService.ts` AND rendered by `PublicBrandPage.tsx` (or its `AboutTab` / `SocialLinksRow`), OR (b) explicitly documented as "edit-only / not public" with a one-line comment in `BrandEditView.tsx`. New editable fields added to `BrandEditView` MUST update both the appropriate public view's SELECT list (`business_public_brands_view`, `claimed_venues_public_view`, or `business_public_events_view`) AND the matching mapper function, OR explicitly document the omission with rationale.
+
+**Why it exists:** ORCH-0962 [Brand-edit → public-brand field rendering — truthful bundle] investigated 22 Edit Brand inputs vs 3 public views + 3 mapper functions + the `PublicBrandPage` renderer and found 9 render-truth gaps across 5 distinct root-cause classes (SCHEMA-VIEW-DROPS, READ-MISSING, READ-WRONG-SHAPE, DEAD-WRITE, SURFACE-MISSING). The root cause of the class was: editable fields shipped over time without enforced end-to-end plumbing through view + mapper + renderer. Operators believed contact info, tagline, facebook, and linkedin were public because the write succeeded; nothing surfaced the silent failure downstream. Without this invariant, the next BrandEditView addition has the same shape.
+
+**Enforcement:** Strict-grep CI gate at `.github/scripts/strict-grep/orch-0962-brand-field-map-coverage.mjs` (registered in `.github/workflows/strict-grep-mingla-business.yml` as a standalone job per the registry pattern `feedback_strict_grep_registry_pattern.md`). The 72-line node script asserts: (a) contact_email + contact_phone present in both views + mapper (`extractBrandContact` + `row.contact_email` + `row.contact_phone`); (b) `splitBrandDescription` imported in service, `taglineCentered` + `bioLeadCentered` styles present in component; (c) facebook + linkedin entries present in both `BrandEditView` editor and `PublicBrandPage` renderer with `icon: "<key>"` token; (d) event-detail mapper reads `row.brand_kind` + `row.brand_address` + `row.brand_cover_media_url`; (e) verified-venue mapper reads `row.display_attendee_count`. Any future regression that breaks the plumbing chain fails this gate with a labelled bullet list of missing assertions.
+
+---
+
 ## ACTIVE (post ORCH-0957 [Storage image transformation overage] CLOSE 2026-05-25)
 
 Two invariants flipped DRAFT → ACTIVE at the ORCH-0957 close after tester CONDITIONAL PASS verdict P0:0 P1:0 P2:0 P3:2 P4:4 (SC-5 deferred to billing-day +14 per spec + dispatch — not a close blocker). Implementor happy-path T-04 at `supabase/functions/_shared/imageCollage.test.ts` with `fails-on-revert verified at 1b32c3c0`. Tester adversarial T-05 at `supabase/functions/_shared/__tests__/imageCollage.thumbFallback.test.ts` with `fails-on-revert verified at 9f91f6448`.
@@ -3927,3 +3941,33 @@ Every chat response from every skill uses Section A (what just happened) + Secti
 **Enforcement:** browser regression tests at `mingla-business/src/components/checkout/__tests__/meta_orch_0952_carousel_browser.test.ts` (HP-01/02/03 across Chromium + WebKit + Firefox) + adversarial `meta_orch_0952_carousel_adversarial.test.ts` (viewport-resize-during-mount) are now part of the append-only CI test suite per ORCH-0840. Both tests immutable; modifications require `[TEST-MOD-APPROVED ORCH-0952]` token. Future buyer-web checkout-surface ORCHs (e.g., the deferred ORCH-0946/0947 polish batch under META-ORCH-0953) inherit this invariant — SPEC §6 (Test contract) must require equivalent browser-running coverage if touching `confirm.tsx`, `TicketQrCarousel.tsx`, root `app/_layout.tsx`, `app.json`, or per-route `_layout.tsx` files in the dynamic checkout trees.
 
 **Status:** flipped DRAFT → ACTIVE on META-ORCH-0952 CLOSE 2026-05-25 (PR #205 `f62cfefb` + hotfix PR #206 `2c647592`).
+
+### I-PROPOSED-CONTROLLER-PROPS-PINNED (ACTIVE — ratified by ORCH-0954 CLOSE 2026-05-25)
+
+**Invariant:** Stripe Connect account creation via `_shared/stripeBlueprintClient.ts` MUST use the named constant `STRIPE_MANAGED_RISK_CONTROLLER` with values `losses_collector: "stripe"`, `fees_collector: "stripe"`, `dashboard: "none"`. Hard-coded variants of these properties anywhere else in `supabase/functions/` are forbidden.
+
+**Why this matters:** ORCH-0954 shipped a P1 bug to production main where `fees_collector` was hard-coded to `"account"` (the Stripe Dashboard UI label, NOT a valid API enum). Pinning to a named constant + CI strict-grep prevents silent regression to invalid enum values.
+
+**Enforcement:** `.github/scripts/strict-grep/orch-0954-controller-props-pinned.mjs` registered in `.github/workflows/strict-grep-mingla-business.yml`.
+
+**Cross-references:** DEC-169, SPEC_ORCH-0954_AMENDMENT §A1, https://docs.stripe.com/connect/accounts-v2/connected-account-configuration.md.
+
+### I-PROPOSED-RAK-SCOPE-PINNED (ACTIVE — ratified by ORCH-0954 CLOSE 2026-05-25)
+
+**Invariant:** All Stripe API calls inside `supabase/functions/_shared/stripeBlueprintClient.ts` and its callers MUST use `envVarNames: ["STRIPE_RAK_ONBOARD"]` only. No `STRIPE_SECRET_KEY` fallback. Restricted API Key scope `account_sessions:write` is required and verified out-of-band by operator before each new function invocation in a new ORCH.
+
+**Why this matters:** ORCH-0953 added the RAK fail-close as production safety. ORCH-0954 extended it to the new `createAccountSession()` helper. Pinning forces every future Stripe ORCH to follow the same minimum-privilege key tier.
+
+**Enforcement:** `.github/scripts/strict-grep/orch-0954-rak-scope-pinned.mjs` registered in `.github/workflows/strict-grep-mingla-business.yml`.
+
+**Cross-references:** DEC-169, SPEC_ORCH-0954_AMENDMENT §A5, `feedback_stripe_rak_onboard_fail_close.md`.
+
+### I-PROPOSED-EXTERNAL-API-DOCS-VERIFIED (ACTIVE — ratified by ORCH-0954 CLOSE 2026-05-25)
+
+**Invariant:** Every external-API integration ORCH (Stripe, Supabase, OpenAI, Google Places, OneSignal, RevenueCat, Twilio, Resend, etc.) MUST cite the provider's canonical docs URL inline in SPEC §3 for every parameter, enum value, payload shape, and endpoint introduced or modified. For Stripe specifically, every Stripe-touching INVESTIGATE/SPEC/IMPLEMENT phase MUST invoke the `stripe-best-practices` skill before producing output.
+
+**Why this matters:** ORCH-0954 shipped 3 P1 Stripe bugs to production because no phase verified Stripe payloads against Stripe docs. Operator selected "account" on dashboard UI → forensics copied into SPEC → implementor coded it → REVIEW spot-checked code-matches-SPEC → tester hit real Stripe API and Stripe rejected. The failure traces to "trust inputs without independent verification against the external system."
+
+**Enforcement:** Memory rules `feedback_stripe_skill_mandatory.md` + `feedback_external_api_docs_verified.md`. CI strict-grep gate deferred to a future META-ORCH (out of ORCH-0954 scope).
+
+**Cross-references:** DEC-169, COMMS-0003, SPEC_ORCH-0954_AMENDMENT §A5.

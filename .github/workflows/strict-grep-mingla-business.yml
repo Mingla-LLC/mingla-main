@@ -106,7 +106,8 @@ on:
 #   - ORCH-0913 (orch-0913-no-tabs-on-dashboards.mjs) — event/trip dashboards keep tile-grid + section-beneath structure; no tab strips
 #   - ORCH-0947 (orch-0947-trip-spots-tickets-not-orders.mjs) — trip dashboard Spots/travelers numerator uses tickets-sold, not order-count travelersCount
 #   - ORCH-0957 (orch-0957-no-metered-place-photo-reads.mjs) — place-photos processing avoids Supabase Storage render endpoint except explicit legacy fallback
-#   - I-PROPOSED-CONTROLLER-PROPS-PINNED (orch-0954-controller-props-pinned.mjs) — Stripe Connect account create controller stays losses_collector=stripe, fees_collector=account, dashboard=none (ORCH-0954)
+#   - I-PROPOSED-BRAND-FIELD-MAP-COVERAGE (orch-0962-brand-field-map-coverage.mjs) — brand-edit persisted fields stay mapped into public brand views/mappers/renderers (ORCH-0962)
+#   - I-PROPOSED-CONTROLLER-PROPS-PINNED (orch-0954-controller-props-pinned.mjs) — Stripe Connect account create controller stays losses_collector=stripe, fees_collector=stripe, dashboard=none (ORCH-0954)
 #   - I-PROPOSED-RAK-SCOPE-PINNED (orch-0954-rak-scope-pinned.mjs) — Stripe blueprint helpers use STRIPE_RAK_ONBOARD only, including Account Sessions (ORCH-0954)
 #   - I-PROPOSED-FINALIZE-CALLERS-PASS-INSTALLMENT-PARAMS (i-proposed-finalize-callers-pass-installment-params.mjs) — paid biz_ticket_checkout_finalize callers pass installment-plan params (ORCH-0921)
 #   - I-PROPOSED-ORCH-0925-INSTALLMENT-PLAN-ATTACHES-CUSTOMER (i-proposed-orch-0925-installment-plan-attaches-customer.mjs) — installment-plan Checkout Sessions + raw PaymentIntents attach a Stripe Customer (customer_creation:"always" or customer:<id>) so the cron can charge off-session (ORCH-0925)
@@ -1672,3 +1673,14 @@ jobs:
         run: node .github/scripts/strict-grep/orch-0955-embedded-tax-ui.mjs
       - name: Run ORCH-0955 region gate removal gate
         run: node .github/scripts/strict-grep/orch-0955-region-gate-deleted.mjs
+
+  orch-0962-brand-field-map-coverage:
+    name: "ORCH-0962: brand field map coverage"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0962 brand field map coverage gate
+        run: node .github/scripts/strict-grep/orch-0962-brand-field-map-coverage.mjs

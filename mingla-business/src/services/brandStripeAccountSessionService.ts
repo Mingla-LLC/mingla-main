@@ -4,6 +4,7 @@
  */
 
 import { supabase } from "./supabase";
+import { businessWebOriginOverrideBody } from "./businessWebOriginOverride";
 
 export type BrandStripeAccountSessionSurface =
   | "account_management"
@@ -27,7 +28,13 @@ export async function fetchBrandStripeAccountSession(
 ): Promise<BrandStripeAccountSessionResult> {
   const { data, error } = await supabase.functions.invoke<RawResponse>(
     "brand-stripe-account-session",
-    { body: { brand_id: brandId, surface } },
+    {
+      body: {
+        brand_id: brandId,
+        surface,
+        ...businessWebOriginOverrideBody(),
+      },
+    },
   );
   if (error) throw error;
   if (data === null) {

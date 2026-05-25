@@ -17,8 +17,9 @@
 
 import React, { useCallback, useMemo, useState } from "react";
 import { Platform, View, StyleSheet } from "react-native";
-import { usePathname, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 import Head from "expo-router/head";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
   PublicEventPage as SharedPublicEventPage,
@@ -34,6 +35,7 @@ import {
   eventOgImageUrl,
   eventPublicUrl,
 } from "../../constants/publicUrls";
+import { spacing } from "../../constants/designSystem";
 import { useAuth } from "../../context/AuthContext";
 import { useBrandList, type Brand } from "../../store/currentBrandStore";
 import type { LiveEvent } from "../../store/liveEventStore";
@@ -48,6 +50,7 @@ import { eventCoverProviderCreditLabel } from "../../types/eventCoverProvider";
 
 import { ShareModal } from "../ui/ShareModal";
 import { Toast } from "../ui/Toast";
+import { IconChrome } from "../ui/IconChrome";
 import { JoinWaitlistSheet } from "../waitlist/JoinWaitlistSheet";
 
 interface PublicEventPageAdapterProps {
@@ -160,7 +163,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   brand,
 }) => {
   const router = useRouter();
-  const pathname = usePathname();
+  const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const userBrands = useBrandList();
 
@@ -199,14 +202,26 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
     setToast((prev) => ({ ...prev, visible: false }));
   }, []);
 
+  const handleClose = useCallback((): void => {
+    if (router.canGoBack()) {
+      router.back();
+    } else if (typeof brand?.slug === "string" && brand.slug.length > 0) {
+      router.replace(`/b/${brand.slug}` as never);
+    } else if (event.brandSlug.length > 0) {
+      router.replace(`/b/${event.brandSlug}` as never);
+    } else {
+      router.replace("/" as never);
+    }
+  }, [router, brand?.slug, event.brandSlug]);
+
+  const handleShare = useCallback((): void => {
+    setShareModalVisible(true);
+  }, []);
+
   const callbacks: PublicEventCallbacks = useMemo(
     () => ({
-      onClose: () => {
-        router.replace("/(tabs)/hub/events" as never);
-      },
-      onShare: () => {
-        setShareModalVisible(true);
-      },
+      onClose: handleClose,
+      onShare: handleShare,
       onBuyTicket: (_ticketId: string) => {
         router.push(checkoutPublicPath(event.id) as never);
       },
@@ -228,7 +243,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         return validPasswords.includes(password);
       },
     }),
-    [router, event.id, event.tickets, showToast],
+    [router, event.id, event.tickets, showToast, handleClose, handleShare],
   );
 
   return (
@@ -282,7 +297,28 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         brand={publicBrand}
         viewerRole={viewerRole}
         callbacks={callbacks}
+        hideFloatingChrome
       />
+
+      <View
+        style={[styles.floatingChrome, { top: insets.top + spacing.md }]}
+        pointerEvents="box-none"
+      >
+        <IconChrome
+          icon="close"
+          size={40}
+          onPress={handleClose}
+          accessibilityLabel="Close"
+          testID="orch-0961-public-event-close"
+        />
+        <IconChrome
+          icon="share"
+          size={40}
+          onPress={handleShare}
+          accessibilityLabel="Share"
+          testID="orch-0961-public-event-share"
+        />
+      </View>
 
       <ShareModal
         visible={shareModalVisible}
@@ -314,6 +350,14 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
 const styles = StyleSheet.create({
   host: {
     flex: 1,
+  },
+  floatingChrome: {
+    position: "absolute",
+    left: spacing.md,
+    right: spacing.md,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    zIndex: 4,
   },
   toastWrap: {
     position: "absolute",

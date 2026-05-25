@@ -1,0 +1,43 @@
+{
+  "orch_id": "ORCH-0954",
+  "mode": "TEST",
+  "validation_host": "http://127.0.0.1:8097",
+  "validation_host_type": "local Expo static export route-mapping host",
+  "generated_at": "2026-05-25T07:20:00Z",
+  "test_brand_id": "c5f0d96b-8a8e-43e0-904a-e6d5863bc97c",
+  "screenshots": {
+    "connect_account_onboarding_render": "Mingla_Artifacts/tests/evidence/orch-0954-local-validation-connect-onboarding.png",
+    "connect_account_onboarding_before_click": "Mingla_Artifacts/tests/evidence/orch-0954-local-validation-connect-onboarding-before-click.png",
+    "connect_account_onboarding_after_click": "Mingla_Artifacts/tests/evidence/orch-0954-local-validation-connect-onboarding-after-click.png",
+    "connect_account_management_render": "Mingla_Artifacts/tests/evidence/orch-0954-local-validation-connect-account-management.png",
+    "connect_account_management_before_click": "Mingla_Artifacts/tests/evidence/orch-0954-local-validation-connect-account-management-before-click.png",
+    "connect_account_management_after_click": "Mingla_Artifacts/tests/evidence/orch-0954-local-validation-connect-account-management-after-click.png"
+  },
+  "component_frames_observed": {
+    "connect_account_onboarding": "https://connect-js.stripe.com/ui_layer_6f8c680ffa08679a0dd9.html#embeddedComponent=stripe-connect-account-onboarding",
+    "connect_notification_banner_onboarding_route": "https://connect-js.stripe.com/ui_layer_6f8c680ffa08679a0dd9.html#embeddedComponent=stripe-connect-notification-banner",
+    "connect_account_management": "https://connect-js.stripe.com/ui_layer_6f8c680ffa08679a0dd9.html#embeddedComponent=stripe-connect-account-management",
+    "connect_notification_banner_management_route": "https://connect-js.stripe.com/ui_layer_6f8c680ffa08679a0dd9.html#embeddedComponent=stripe-connect-notification-banner"
+  },
+  "interaction_evidence": {
+    "onboarding_primary_button_click": {
+      "result": "Stripe accepted the click and emitted a step-change breadcrumb.",
+      "console_breadcrumb": "[connect-onboarding] Stripe onboarding step changed { step: stripe_user_authentication }",
+      "screenshot": "Mingla_Artifacts/tests/evidence/orch-0954-local-validation-connect-onboarding-after-click.png"
+    },
+    "account_management_primary_button_click": {
+      "result": "Stripe accepted the click and moved the embedded component button into loading state.",
+      "screenshot": "Mingla_Artifacts/tests/evidence/orch-0954-local-validation-connect-account-management-after-click.png"
+    }
+  },
+  "known_stripe_test_limitations": [
+    "The notification banner iframe mounted, but Stripe hid the visible banner on a not-yet-onboarded TEST account.",
+    "The account-management surface rendered Stripe's user-authentication prompt because the TEST account was not fully onboarded.",
+    "No Production Stripe or Vercel keys were used or changed."
+  ],
+  "secret_handling": {
+    "raw_account_session_urls": "/tmp/orch0954-local-validation-urls.json",
+    "repo_committed_session_file": "Mingla_Artifacts/tests/evidence/orch-0954-local-validation-sessions-redacted.json",
+    "repo_secret_scan": "No account-session client secrets, auth tokens, refresh tokens, or live Stripe key prefixes were found in the redacted session file."
+  }
+}
