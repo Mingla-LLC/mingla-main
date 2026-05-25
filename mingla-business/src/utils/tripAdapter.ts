@@ -10,7 +10,8 @@
  *
  * Severity model (operator-locked Q11):
  *   MATERIAL (notify buyers banner + email + SMS-if-web-purchases):
- *     - theme.business_trip.{startAt, endAt, destinationLocationText, capacity}
+ *     - event_dates.start_at / event_dates.end_at / events.destination_text
+ *     - ticket_types.quantity_total
  *     - days (when count add/remove)
  *     - inclusions (when items removed; additions are additive)
  *     - pricing_tiers (when tier price changes; name/metadata-only is additive)
@@ -46,11 +47,11 @@ export type TripEditSeverity = "additive" | "material";
 export const FIELD_LABELS: Record<string, string> = {
   title: "Trip name",
   description: "Description",
-  "theme.business_trip.startAt": "Start date",
-  "theme.business_trip.endAt": "End date",
-  "theme.business_trip.destinationLocationText": "Destination",
+  "event_dates.start_at": "Start date",
+  "event_dates.end_at": "End date",
+  "events.destination_text": "Destination",
   "theme.business_trip.destinationPlaceId": "Destination place",
-  "theme.business_trip.capacity": "Capacity",
+  "ticket_types.quantity_total": "Capacity",
   days: "Itinerary days",
   inclusions: "Inclusions",
   pricing_tiers: "Pricing tiers",
@@ -386,8 +387,8 @@ export const computeRichTripFieldDiffs = (
     const bt = patch.theme.business_trip;
     if (bt.startAt !== undefined && bt.startAt !== oldTrip.businessTrip.startAt) {
       out.push({
-        fieldKey: "theme.business_trip.startAt",
-        fieldLabel: labelOf("theme.business_trip.startAt"),
+        fieldKey: "event_dates.start_at",
+        fieldLabel: labelOf("event_dates.start_at"),
         oldValue: fmt(oldTrip.businessTrip.startAt),
         newValue: fmt(bt.startAt),
         severity: "material",
@@ -395,8 +396,8 @@ export const computeRichTripFieldDiffs = (
     }
     if (bt.endAt !== undefined && bt.endAt !== oldTrip.businessTrip.endAt) {
       out.push({
-        fieldKey: "theme.business_trip.endAt",
-        fieldLabel: labelOf("theme.business_trip.endAt"),
+        fieldKey: "event_dates.end_at",
+        fieldLabel: labelOf("event_dates.end_at"),
         oldValue: fmt(oldTrip.businessTrip.endAt),
         newValue: fmt(bt.endAt),
         severity: "material",
@@ -407,8 +408,8 @@ export const computeRichTripFieldDiffs = (
       bt.destinationLocationText !== oldTrip.businessTrip.destinationLocationText
     ) {
       out.push({
-        fieldKey: "theme.business_trip.destinationLocationText",
-        fieldLabel: labelOf("theme.business_trip.destinationLocationText"),
+        fieldKey: "events.destination_text",
+        fieldLabel: labelOf("events.destination_text"),
         oldValue: fmt(oldTrip.businessTrip.destinationLocationText),
         newValue: fmt(bt.destinationLocationText),
         severity: "material",
@@ -416,8 +417,8 @@ export const computeRichTripFieldDiffs = (
     }
     if (bt.capacity !== undefined && bt.capacity !== oldTrip.businessTrip.capacity) {
       out.push({
-        fieldKey: "theme.business_trip.capacity",
-        fieldLabel: labelOf("theme.business_trip.capacity"),
+        fieldKey: "ticket_types.quantity_total",
+        fieldLabel: labelOf("ticket_types.quantity_total"),
         oldValue: fmt(oldTrip.businessTrip.capacity),
         newValue: fmt(bt.capacity),
         severity: "material",

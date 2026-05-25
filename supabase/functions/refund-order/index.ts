@@ -121,8 +121,11 @@ serve(async (req: Request): Promise<Response> => {
     return jsonResponse({ error: "method_not_allowed" }, 405);
   }
 
-  const idempotencyKey = req.headers.get("Idempotency-Key") ?? req.headers.get("idempotency-key");
-  if (!idempotencyKey || idempotencyKey.length < 8 || idempotencyKey.length > 128) {
+  const idempotencyKey = req.headers.get("Idempotency-Key") ??
+    req.headers.get("idempotency-key");
+  if (
+    !idempotencyKey || idempotencyKey.length < 8 || idempotencyKey.length > 128
+  ) {
     return jsonResponse({ error: "idempotency_key_required" }, 400);
   }
 
@@ -135,10 +138,14 @@ serve(async (req: Request): Promise<Response> => {
 
   const orderId = typeof body.order_id === "string" ? body.order_id : "";
   const reason = typeof body.reason === "string" ? body.reason : "";
-  const lines = Array.isArray(body.lines) ? body.lines.filter(isRefundLine) : [];
+  const lines = Array.isArray(body.lines)
+    ? body.lines.filter(isRefundLine)
+    : [];
 
   if (!orderId) return jsonResponse({ error: "order_id_required" }, 400);
-  if (lines.length === 0) return jsonResponse({ error: "refund_lines_required" }, 400);
+  if (lines.length === 0) {
+    return jsonResponse({ error: "refund_lines_required" }, 400);
+  }
   if (reason.trim().length < 10 || reason.trim().length > 200) {
     return jsonResponse({ error: "reason_invalid_length" }, 400);
   }
@@ -155,26 +162,35 @@ serve(async (req: Request): Promise<Response> => {
   const supabaseAsUser = userClient(req);
 
   // Step 1: validate + insert pending refund row.
-  const { data: pendingResult, error: pendingError } = await supabaseAsUser.rpc("biz_refund_order", {
-    p_order_id: orderId,
-    p_lines: lines,
-    p_reason: reason,
-    p_idempotency_key: idempotencyKey,
-  });
+  const { data: pendingResult, error: pendingError } = await supabaseAsUser.rpc(
+    "biz_refund_order",
+    {
+      p_order_id: orderId,
+      p_lines: lines,
+      p_reason: reason,
+      p_idempotency_key: idempotencyKey,
+    },
+  );
 
   if (pendingError || !pendingResult) {
     const mapped = mapRpcErrorToHttp(pendingError?.message ?? "rpc_failed");
     console.error("[refund-order] biz_refund_order failed", mapped);
-    return jsonResponse({ error: mapped.code, detail: mapped.detail }, mapped.status);
+    return jsonResponse(
+      { error: mapped.code, detail: mapped.detail },
+      mapped.status,
+    );
   }
 
   const pending = pendingResult as Record<string, unknown>;
   const refundId = String(pending.refund_id ?? "");
   const amountCents = Number(pending.amount_cents ?? 0);
   const currency = String(pending.currency ?? "GBP");
-  const paymentIntentId =
-    typeof pending.stripe_payment_intent_id === "string" ? pending.stripe_payment_intent_id : null;
-  const applicationFeeAmountCents = Number(pending.application_fee_amount_cents ?? 0);
+  const paymentIntentId = typeof pending.stripe_payment_intent_id === "string"
+    ? pending.stripe_payment_intent_id
+    : null;
+  const applicationFeeAmountCents = Number(
+    pending.application_fee_amount_cents ?? 0,
+  );
   const isIdempotentReplay = pending.idempotent_replay === true;
 
   if (isIdempotentReplay) {
@@ -182,7 +198,9 @@ serve(async (req: Request): Promise<Response> => {
     // committed state if any and return it.
     const { data: existing } = await supabase
       .from("refunds")
-      .select("id, status, stripe_refund_id, application_fee_refunded_cents, processed_at")
+      .select(
+        "id, status, stripe_refund_id, application_fee_refunded_cents, processed_at",
+      )
       .eq("id", refundId)
       .maybeSingle();
     if (existing?.status === "succeeded") {
@@ -193,7 +211,8 @@ serve(async (req: Request): Promise<Response> => {
         currency,
         status: "succeeded",
         stripe_refund_id: existing.stripe_refund_id,
-        application_fee_refunded_cents: existing.application_fee_refunded_cents ?? 0,
+        application_fee_refunded_cents:
+          existing.application_fee_refunded_cents ?? 0,
         new_payment_status: pending.proposed_new_payment_status,
         processed_at: existing.processed_at,
         idempotent_replay: true,
@@ -204,7 +223,10 @@ serve(async (req: Request): Promise<Response> => {
 
   if (!paymentIntentId) {
     return jsonResponse(
-      { error: "missing_payment_intent", detail: "order has no stripe_payment_intent_id; cannot refund" },
+      {
+        error: "missing_payment_intent",
+        detail: "order has no stripe_payment_intent_id; cannot refund",
+      },
       422,
     );
   }
@@ -241,24 +263,32 @@ serve(async (req: Request): Promise<Response> => {
   // nested) or an array, depending on FK cardinality. Both `events` and
   // `brands` are single-row joins here; defensively normalise both shapes.
   type JoinedBrand = { stripe_connect_id?: string | null };
-  type JoinedEvents = { brand_id?: string | null; brands?: JoinedBrand | JoinedBrand[] | null };
+  type JoinedEvents = {
+    brand_id?: string | null;
+    brands?: JoinedBrand | JoinedBrand[] | null;
+  };
   const eventsJoined = (brandRow as Record<string, unknown>).events as
     | JoinedEvents
     | JoinedEvents[]
     | null;
-  const eventsRow = Array.isArray(eventsJoined) ? eventsJoined[0] ?? null : eventsJoined;
+  const eventsRow = Array.isArray(eventsJoined)
+    ? eventsJoined[0] ?? null
+    : eventsJoined;
   const brandsJoined = eventsRow?.brands ?? null;
-  const brandsRow = Array.isArray(brandsJoined) ? brandsJoined[0] ?? null : brandsJoined;
-  const connectedAccountId =
-    typeof brandsRow?.stripe_connect_id === "string" && brandsRow.stripe_connect_id.length > 0
-      ? brandsRow.stripe_connect_id
-      : null;
+  const brandsRow = Array.isArray(brandsJoined)
+    ? brandsJoined[0] ?? null
+    : brandsJoined;
+  const connectedAccountId = typeof brandsRow?.stripe_connect_id === "string" &&
+      brandsRow.stripe_connect_id.length > 0
+    ? brandsRow.stripe_connect_id
+    : null;
   if (!connectedAccountId) {
     console.error("[refund-order] brand has no stripe_connect_id", { orderId });
     return jsonResponse(
       {
         error: "missing_connected_account",
-        detail: "brand has no Stripe connected account; cannot refund (ORCH-0843 direct-charge)",
+        detail:
+          "brand has no Stripe connected account; cannot refund (ORCH-0843 direct-charge)",
       },
       422,
     );
@@ -322,9 +352,87 @@ serve(async (req: Request): Promise<Response> => {
       p_status: "failed",
     });
     return jsonResponse(
-      { error: "stripe_declined", detail: `stripe refund status=${stripeRefund.status}` },
+      {
+        error: "stripe_declined",
+        detail: `stripe refund status=${stripeRefund.status}`,
+      },
       502,
     );
+  }
+
+  const { data: orderTaxRow, error: orderTaxError } = await supabase
+    .from("orders")
+    .select("stripe_tax_transaction_id")
+    .eq("id", orderId)
+    .maybeSingle();
+  if (orderTaxError) {
+    console.error(
+      "[refund-order] tax transaction lookup failed",
+      orderTaxError.message,
+    );
+    return jsonResponse(
+      {
+        error: "stripe_tax_transaction_lookup_failed",
+        detail: orderTaxError.message,
+      },
+      500,
+    );
+  }
+
+  const originalTaxTransactionId =
+    typeof orderTaxRow?.stripe_tax_transaction_id === "string" &&
+      orderTaxRow.stripe_tax_transaction_id.length > 0
+      ? orderTaxRow.stripe_tax_transaction_id
+      : null;
+  let reversalTaxTransactionId: string | null = null;
+  if (originalTaxTransactionId !== null) {
+    try {
+      const stripeForTax = stripeTicketRefund();
+      const isFullRefund = pending.is_full_refund === true;
+      // @ts-ignore — Stripe SDK Tax namespace is runtime-provided in Deno.
+      const reversal = await stripeForTax.tax.transactions.createReversal(
+        {
+          mode: isFullRefund ? "full" : "partial",
+          original_transaction: originalTaxTransactionId,
+          reference: `mingla_refund:${refundId}`,
+          expand: ["line_items"],
+          ...(isFullRefund ? {} : {
+            line_items: lines.map((line) => ({
+              amount: -line.amount_cents,
+              reference: `line:${line.order_line_item_id}`,
+            })),
+          }),
+        },
+        {
+          stripeAccount: connectedAccountId,
+          idempotencyKey: `tax_reversal:${refundId}`,
+        },
+      );
+      reversalTaxTransactionId = String(reversal.id);
+    } catch (taxReversalErr) {
+      const detail = taxReversalErr instanceof Error
+        ? taxReversalErr.message
+        : String(taxReversalErr);
+      console.error(
+        "[refund-order] tax.transactions.createReversal failed",
+        detail,
+      );
+      await supabaseAsUser.rpc("biz_refund_order_commit", {
+        p_refund_id: refundId,
+        p_stripe_refund_id: stripeRefund.id,
+        p_application_fee_refunded_cents: 0,
+        p_status: "failed",
+      });
+      return jsonResponse(
+        {
+          error: "stripe_tax_reversal_failed",
+          detail,
+          refund_id: refundId,
+          stripe_refund_id: stripeRefund.id,
+        },
+        502,
+      );
+    }
   }
 
   // Step 3: commit the refund — advance orders.payment_status, void tickets, update cache.
@@ -339,13 +447,17 @@ serve(async (req: Request): Promise<Response> => {
       p_stripe_refund_id: stripeRefund.id,
       p_application_fee_refunded_cents: applicationFeeRefundedCents,
       p_status: "succeeded",
+      p_stripe_tax_transaction_id: reversalTaxTransactionId,
     },
   );
 
   if (commitError || !commitResult) {
     // Critical: Stripe succeeded but our commit failed. Webhook reconciliation will catch this.
     // We surface the error but the refund IS recorded with stripe_refund_id pending.
-    console.error("[refund-order] commit RPC failed after Stripe success", commitError);
+    console.error(
+      "[refund-order] commit RPC failed after Stripe success",
+      commitError,
+    );
     return jsonResponse(
       {
         error: "commit_failed_after_stripe_success",
@@ -369,7 +481,9 @@ serve(async (req: Request): Promise<Response> => {
     .maybeSingle();
 
   if (orderDetail?.buyer_email && orderDetail.buyer_email.length > 0) {
-    const { error: notifError } = await supabase.from("ticket_order_notifications").insert({
+    const { error: notifError } = await supabase.from(
+      "ticket_order_notifications",
+    ).insert({
       order_id: orderId,
       event_id: orderDetail.event_id,
       channel: "email",
@@ -388,7 +502,10 @@ serve(async (req: Request): Promise<Response> => {
       },
     });
     if (notifError) {
-      console.error("[refund-order] notification enqueue failed (non-fatal)", notifError.message);
+      console.error(
+        "[refund-order] notification enqueue failed (non-fatal)",
+        notifError.message,
+      );
     }
     // ORCH-0788: inline-dispatch so the buyer email goes out immediately
     // after the refund commits. Failure is NON-FATAL — the
@@ -396,7 +513,10 @@ serve(async (req: Request): Promise<Response> => {
     // Mirrors the working stripeWebhookRouter checkout-finalize pattern.
     await dispatchTicketConfirmation(orderId);
   } else {
-    console.warn("[refund-order] no buyer_email; skipping notification enqueue", { orderId });
+    console.warn(
+      "[refund-order] no buyer_email; skipping notification enqueue",
+      { orderId },
+    );
   }
 
   // Step 5: audit row.

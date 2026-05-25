@@ -39,23 +39,27 @@ import {
   View,
 } from "react-native";
 import BottomSheet, {
-  BottomSheetView,
-  BottomSheetScrollView,
   BottomSheetBackdrop,
   type BottomSheetBackdropProps,
+  BottomSheetScrollView,
+  BottomSheetView,
 } from "@gorhom/bottom-sheet";
 import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
+  type PublicTicketProps,
   QuantityRow,
   type QuantityRowTheme,
-  type PublicTicketProps,
 } from "@mingla/event-rendering";
 
 import { Icon } from "../ui/Icon";
+import {
+  CartTaxPreview,
+  type CartTaxPreviewResult,
+} from "../checkout/CartTaxPreview";
 import { ConsumerCartCard } from "./ConsumerCartCard";
-import { useTicketCart, type CartLineSeed } from "../../hooks/useTicketCart";
+import { type CartLineSeed, useTicketCart } from "../../hooks/useTicketCart";
 
 // ORCH-0847 Phase C — snap to ~92% so the sheet rises just above the
 // consumer app's bottom tab bar, leaving a thin backdrop strip at the
@@ -133,6 +137,8 @@ export interface TicketCartCheckoutPayload {
   lines: Array<{ ticketTypeId: string; quantity: number }>;
   marketingOptIn: boolean;
   totalCents: number;
+  taxCalculationId: string | null;
+  address: CartTaxPreviewResult["address"];
 }
 
 export interface TicketCartSheetProps {
@@ -169,9 +175,13 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
 }) => {
   const sheetRef = useRef<BottomSheet>(null);
   const insets = useSafeAreaInsets();
-  const { lines, totals, setLineQuantity, reset } =
-    useTicketCart(fallbackCurrency);
+  const { lines, totals, setLineQuantity, reset } = useTicketCart(
+    fallbackCurrency,
+  );
   const [marketingOptIn, setMarketingOptIn] = useState<boolean>(false);
+  const [taxPreview, setTaxPreview] = useState<CartTaxPreviewResult | null>(
+    null,
+  );
   const lastOpenSeedRef = useRef<string | null>(null);
 
   // Drive the sheet via declarative `index` prop — same pattern as
@@ -208,6 +218,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
       lastOpenSeedRef.current = null;
       reset();
       setMarketingOptIn(false);
+      setTaxPreview(null);
     }
   }, [
     visible,
@@ -245,16 +256,25 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   );
 
   const handleConfirm = useCallback((): void => {
-    if (totals.isEmpty || isSubmitting) return;
+    if (totals.isEmpty || isSubmitting || taxPreview === null) return;
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     onCheckout({
       lines: lines
         .filter((l) => l.quantity > 0)
         .map((l) => ({ ticketTypeId: l.ticketTypeId, quantity: l.quantity })),
       marketingOptIn,
-      totalCents: totals.totalCents,
+      totalCents: taxPreview.totalCents,
+      taxCalculationId: taxPreview.calculationId,
+      address: taxPreview.address,
     });
-  }, [totals, isSubmitting, lines, marketingOptIn, onCheckout]);
+  }, [
+    totals.isEmpty,
+    isSubmitting,
+    taxPreview,
+    lines,
+    marketingOptIn,
+    onCheckout,
+  ]);
 
   // Derived render-state per design §5.
   const visibleTickets = useMemo<PublicTicketProps[]>(() => {
@@ -264,14 +284,12 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
       .sort((a, b) => a.displayOrder - b.displayOrder);
   }, [tickets]);
 
-  const allSoldOut =
-    visibleTickets.length > 0 &&
+  const allSoldOut = visibleTickets.length > 0 &&
     visibleTickets.every(
       (t) => !t.isUnlimited && (t.capacity ?? 0) <= 0,
     );
 
-  const allUnavailable =
-    visibleTickets.length > 0 &&
+  const allUnavailable = visibleTickets.length > 0 &&
     visibleTickets.every(
       (t) =>
         t.visibility === "disabled" ||
@@ -279,26 +297,27 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
         (!t.isUnlimited && (t.capacity ?? 0) <= 0),
     );
 
-  const renderState = ((): "loading" | "empty" | "sold_out" | "sales_closed" | "populated" => {
-    if (tickets === undefined) return "loading";
-    if (visibleTickets.length === 0) return "empty";
-    if (allSoldOut) return "sold_out";
-    if (allUnavailable) return "sales_closed";
-    return "populated";
-  })();
+  const renderState =
+    ((): "loading" | "empty" | "sold_out" | "sales_closed" | "populated" => {
+      if (tickets === undefined) return "loading";
+      if (visibleTickets.length === 0) return "empty";
+      if (allSoldOut) return "sold_out";
+      if (allUnavailable) return "sales_closed";
+      return "populated";
+    })();
 
   const ctaLabel = totals.isEmpty
     ? "Add tickets above"
     : totals.isFree
-      ? "Claim Free Ticket"
-      : "Continue to Payment";
-  const ctaDisabled = totals.isEmpty || isSubmitting;
+    ? "Claim Free Ticket"
+    : "Continue to Payment";
+  const ctaDisabled = totals.isEmpty || isSubmitting || taxPreview === null;
 
   const subtotalValueText = totals.isEmpty
     ? "—"
     : totals.isFree
-      ? "Free"
-      : formatCentsCurrency(totals.totalCents, totals.currency);
+    ? "Free"
+    : formatCentsCurrency(totals.totalCents, totals.currency);
 
   const stickyBarStyle = useMemo(
     () => [styles.stickyBar, { paddingBottom: insets.bottom + 16 }],
@@ -316,11 +335,13 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
       backgroundStyle={styles.sheetBackground}
       handleIndicatorStyle={styles.handleIndicator}
     >
-      {/* Single BottomSheetView container — column flex with header at top,
+      {
+        /* Single BottomSheetView container — column flex with header at top,
           scroll/message body taking flex:1 in the middle, sticky bar pinned
           at bottom. Mixing siblings at the BottomSheet root caused the
           sticky bar to render above content; everything must nest inside one
-          flexed BottomSheetView. */}
+          flexed BottomSheetView. */
+      }
       <BottomSheetView style={styles.content}>
         {/* Header */}
         <View style={styles.headerRow}>
@@ -339,150 +360,187 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
           </Pressable>
         </View>
 
-        {/* Body — branches on render state, always claims flex:1 between
-            header and sticky bar. */}
-        {renderState === "loading" ? (
-          <View style={styles.bodyMessageWrap}>
-            <ActivityIndicator color="rgba(255,255,255,0.65)" />
-            <Text style={styles.bodyMessage}>Loading tickets…</Text>
-          </View>
-        ) : renderState === "empty" ? (
-          <View style={styles.bodyMessageWrap}>
-            <Text style={styles.bodyMessage}>
-              No tickets available for this event.
-            </Text>
-          </View>
-        ) : renderState === "sold_out" ? (
-          <View style={styles.bodyMessageWrap}>
-            <Text style={styles.bodyMessage}>
-              Sold out. Check back later.
-            </Text>
-          </View>
-        ) : renderState === "sales_closed" ? (
-          <View style={styles.bodyMessageWrap}>
-            <Text style={styles.bodyMessage}>
-              This event isn’t taking new tickets.
-            </Text>
-          </View>
-        ) : (
-          <BottomSheetScrollView
-            style={styles.scroll}
-            contentContainerStyle={styles.scrollContent}
-            showsVerticalScrollIndicator={false}
-          >
-            <Text style={styles.sectionLabel}>SELECT YOUR TICKETS</Text>
-            {visibleTickets.map((ticket) => {
-              const line = lines.find((l) => l.ticketTypeId === ticket.id);
-              const seed: CartLineSeed = {
-                ticketTypeId: ticket.id,
-                ticketName: ticket.name,
-                unitPriceCents: Math.round((ticket.priceGbp ?? 0) * 100),
-                currency: ticket.currency ?? fallbackCurrency,
-                isFree: ticket.isFree,
-              };
-              return (
-                <QuantityRow
-                  key={ticket.id}
-                  ticket={ticket}
-                  quantity={line?.quantity ?? 0}
-                  onQuantityChange={(next) => setLineQuantity(seed, next)}
-                  CardComponent={ConsumerCartCard}
-                  renderPlusIcon={(iconProps) => (
-                    <Icon
-                      name="add"
-                      size={iconProps.size}
-                      color={iconProps.color}
-                    />
-                  )}
-                  formatCurrency={formatMajorCurrency}
-                  theme={CONSUMER_TICKET_CART_THEME}
-                  fallbackCurrency={fallbackCurrency}
-                />
-              );
-            })}
-
-            {/* Marketing opt-in */}
-            <Pressable
-              onPress={() => setMarketingOptIn((v) => !v)}
-              accessibilityRole="checkbox"
-              accessibilityState={{ checked: marketingOptIn }}
-              accessibilityLabel="Email me about this organiser’s future events"
-              disabled={isSubmitting}
-              style={({ pressed }) => [
-                styles.checkboxRow,
-                pressed && styles.checkboxRowPressed,
-              ]}
+        {
+          /* Body — branches on render state, always claims flex:1 between
+            header and sticky bar. */
+        }
+        {renderState === "loading"
+          ? (
+            <View style={styles.bodyMessageWrap}>
+              <ActivityIndicator color="rgba(255,255,255,0.65)" />
+              <Text style={styles.bodyMessage}>Loading tickets…</Text>
+            </View>
+          )
+          : renderState === "empty"
+          ? (
+            <View style={styles.bodyMessageWrap}>
+              <Text style={styles.bodyMessage}>
+                No tickets available for this event.
+              </Text>
+            </View>
+          )
+          : renderState === "sold_out"
+          ? (
+            <View style={styles.bodyMessageWrap}>
+              <Text style={styles.bodyMessage}>
+                Sold out. Check back later.
+              </Text>
+            </View>
+          )
+          : renderState === "sales_closed"
+          ? (
+            <View style={styles.bodyMessageWrap}>
+              <Text style={styles.bodyMessage}>
+                This event isn’t taking new tickets.
+              </Text>
+            </View>
+          )
+          : (
+            <BottomSheetScrollView
+              style={styles.scroll}
+              contentContainerStyle={styles.scrollContent}
+              showsVerticalScrollIndicator={false}
             >
-              <View
-                style={[
-                  styles.checkboxBox,
-                  marketingOptIn && styles.checkboxBoxChecked,
+              <Text style={styles.sectionLabel}>SELECT YOUR TICKETS</Text>
+              {visibleTickets.map((ticket) => {
+                const line = lines.find((l) => l.ticketTypeId === ticket.id);
+                const seed: CartLineSeed = {
+                  ticketTypeId: ticket.id,
+                  ticketName: ticket.name,
+                  unitPriceCents: Math.round((ticket.priceGbp ?? 0) * 100),
+                  currency: ticket.currency ?? fallbackCurrency,
+                  isFree: ticket.isFree,
+                };
+                return (
+                  <QuantityRow
+                    key={ticket.id}
+                    ticket={ticket}
+                    quantity={line?.quantity ?? 0}
+                    onQuantityChange={(next: number) =>
+                      setLineQuantity(seed, next)}
+                    CardComponent={ConsumerCartCard}
+                    renderPlusIcon={(
+                      iconProps: { size: number; color: string },
+                    ) => (
+                      <Icon
+                        name="add"
+                        size={iconProps.size}
+                        color={iconProps.color}
+                      />
+                    )}
+                    formatCurrency={formatMajorCurrency}
+                    theme={CONSUMER_TICKET_CART_THEME}
+                    fallbackCurrency={fallbackCurrency}
+                  />
+                );
+              })}
+
+              {/* Marketing opt-in */}
+              <Pressable
+                onPress={() => setMarketingOptIn((v) => !v)}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: marketingOptIn }}
+                accessibilityLabel="Email me about this organiser’s future events"
+                disabled={isSubmitting}
+                style={({ pressed }) => [
+                  styles.checkboxRow,
+                  pressed && styles.checkboxRowPressed,
                 ]}
               >
-                {marketingOptIn ? (
-                  <Icon name="check" size={14} color="#ffffff" />
-                ) : null}
-              </View>
-              <Text style={styles.checkboxLabel}>
-                Email me about this organiser’s future events
-              </Text>
-            </Pressable>
+                <View
+                  style={[
+                    styles.checkboxBox,
+                    marketingOptIn && styles.checkboxBoxChecked,
+                  ]}
+                >
+                  {marketingOptIn
+                    ? <Icon name="check" size={14} color="#ffffff" />
+                    : null}
+                </View>
+                <Text style={styles.checkboxLabel}>
+                  Email me about this organiser’s future events
+                </Text>
+              </Pressable>
 
-            {/* Buyer recap */}
-            <ConsumerCartCard style={styles.recapCard}>
-              <Text style={styles.recapSectionLabel}>YOUR TICKET GOES TO</Text>
-              <View style={styles.recapBlock}>
-                <BuyerRow label="Name" value={buyerName} />
-                <BuyerRow label="Email" value={buyerEmail} />
-                <BuyerRow label="Phone" value={buyerPhone} />
-              </View>
-            </ConsumerCartCard>
-          </BottomSheetScrollView>
-        )}
+              {/* Buyer recap */}
+              <ConsumerCartCard style={styles.recapCard}>
+                <Text style={styles.recapSectionLabel}>
+                  YOUR TICKET GOES TO
+                </Text>
+                <View style={styles.recapBlock}>
+                  <BuyerRow label="Name" value={buyerName} />
+                  <BuyerRow label="Email" value={buyerEmail} />
+                  <BuyerRow label="Phone" value={buyerPhone} />
+                </View>
+              </ConsumerCartCard>
+              <CartTaxPreview
+                eventId={_eventId}
+                lines={lines
+                  .filter((l) => l.quantity > 0)
+                  .map((l) => ({
+                    ticketTypeId: l.ticketTypeId,
+                    quantity: l.quantity,
+                  }))}
+                buyer={{
+                  name: buyerName,
+                  email: buyerEmail,
+                  phone: buyerPhone,
+                  marketingOptIn,
+                }}
+                currency={totals.currency}
+                disabled={isSubmitting || totals.isEmpty}
+                onPreviewChange={setTaxPreview}
+              />
+            </BottomSheetScrollView>
+          )}
 
-        {/* Sticky bottom bar — pinned to bottom of BottomSheetView via
-            flex column layout (body above claims flex:1). */}
-        {renderState === "populated" ? (
-          <View style={stickyBarStyle}>
-            <View style={styles.subtotalRow}>
-              <Text style={styles.subtotalLabel}>Subtotal</Text>
-              <Text style={styles.subtotalValue}>{subtotalValueText}</Text>
+        {
+          /* Sticky bottom bar — pinned to bottom of BottomSheetView via
+            flex column layout (body above claims flex:1). */
+        }
+        {renderState === "populated"
+          ? (
+            <View style={stickyBarStyle}>
+              <View style={styles.subtotalRow}>
+                <Text style={styles.subtotalLabel}>Subtotal</Text>
+                <Text style={styles.subtotalValue}>{subtotalValueText}</Text>
+              </View>
+              <Pressable
+                onPress={handleConfirm}
+                disabled={ctaDisabled}
+                accessibilityRole="button"
+                accessibilityLabel={ctaLabel}
+                style={({ pressed }) => [
+                  styles.ctaButton,
+                  ctaDisabled && styles.ctaButtonDisabled,
+                  pressed && !ctaDisabled && styles.ctaButtonPressed,
+                ]}
+              >
+                {isSubmitting
+                  ? <ActivityIndicator color="#ffffff" />
+                  : <Text style={styles.ctaLabel}>{ctaLabel}</Text>}
+              </Pressable>
             </View>
-            <Pressable
-              onPress={handleConfirm}
-              disabled={ctaDisabled}
-              accessibilityRole="button"
-              accessibilityLabel={ctaLabel}
-              style={({ pressed }) => [
-                styles.ctaButton,
-                ctaDisabled && styles.ctaButtonDisabled,
-                pressed && !ctaDisabled && styles.ctaButtonPressed,
-              ]}
-            >
-              {isSubmitting ? (
-                <ActivityIndicator color="#ffffff" />
-              ) : (
-                <Text style={styles.ctaLabel}>{ctaLabel}</Text>
-              )}
-            </Pressable>
-          </View>
-        ) : renderState === "empty" ||
-          renderState === "sold_out" ||
-          renderState === "sales_closed" ? (
-          <View style={stickyBarStyle}>
-            <Pressable
-              onPress={handleCancel}
-              accessibilityRole="button"
-              accessibilityLabel="Close"
-              style={({ pressed }) => [
-                styles.ctaButton,
-                pressed && styles.ctaButtonPressed,
-              ]}
-            >
-              <Text style={styles.ctaLabel}>Close</Text>
-            </Pressable>
-          </View>
-        ) : null}
+          )
+          : renderState === "empty" ||
+              renderState === "sold_out" ||
+              renderState === "sales_closed"
+          ? (
+            <View style={stickyBarStyle}>
+              <Pressable
+                onPress={handleCancel}
+                accessibilityRole="button"
+                accessibilityLabel="Close"
+                style={({ pressed }) => [
+                  styles.ctaButton,
+                  pressed && styles.ctaButtonPressed,
+                ]}
+              >
+                <Text style={styles.ctaLabel}>Close</Text>
+              </Pressable>
+            </View>
+          )
+          : null}
       </BottomSheetView>
     </BottomSheet>
   );

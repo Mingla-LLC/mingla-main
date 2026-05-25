@@ -1,0 +1,5 @@
+appId: com.sethogieva.minglabusiness
+---
+- swipe:
+    start: "50%,70%"
+    end: "50%,42%"

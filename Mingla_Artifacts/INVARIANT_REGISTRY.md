@@ -7,6 +7,42 @@
 
 ---
 
+## ACTIVE (post ORCH-0962 [Brand-edit → public-brand field rendering — truthful bundle] CLOSE 2026-05-25)
+
+One invariant flipped DRAFT → ACTIVE at the ORCH-0962 close after tester CONDITIONAL PASS verdict P0:0 P1:0 P2:0 P3:0 P4:2 (60-second buyer-web eyeball is the only condition; data layer + structural source integrity proven via 23 unit tests + 7 live MCP column probes). Implementor happy-path T-01..T-09 at `mingla-business/src/services/__tests__/publicEventsService.orch_0962.test.ts` + `mingla-business/src/components/brand/__tests__/PublicBrandPage.orch_0962.test.ts` with `fails-on-revert verified at 52e37c2bc`. Tester adversarial A-01..A-05 at `mingla-business/src/services/__tests__/publicEventsService.orch_0962.adversarial.test.ts` with `fails-on-revert verified at b48df7064`.
+
+### I-PROPOSED-BRAND-FIELD-MAP-COVERAGE
+
+**Rule:** Every editable field on `mingla-business/src/components/brand/BrandEditView.tsx` whose value persists to a column in `brands` MUST be either (a) read by a public-page mapper in `mingla-business/src/services/publicEventsService.ts` AND rendered by `PublicBrandPage.tsx` (or its `AboutTab` / `SocialLinksRow`), OR (b) explicitly documented as "edit-only / not public" with a one-line comment in `BrandEditView.tsx`. New editable fields added to `BrandEditView` MUST update both the appropriate public view's SELECT list (`business_public_brands_view`, `claimed_venues_public_view`, or `business_public_events_view`) AND the matching mapper function, OR explicitly document the omission with rationale.
+
+**Why it exists:** ORCH-0962 [Brand-edit → public-brand field rendering — truthful bundle] investigated 22 Edit Brand inputs vs 3 public views + 3 mapper functions + the `PublicBrandPage` renderer and found 9 render-truth gaps across 5 distinct root-cause classes (SCHEMA-VIEW-DROPS, READ-MISSING, READ-WRONG-SHAPE, DEAD-WRITE, SURFACE-MISSING). The root cause of the class was: editable fields shipped over time without enforced end-to-end plumbing through view + mapper + renderer. Operators believed contact info, tagline, facebook, and linkedin were public because the write succeeded; nothing surfaced the silent failure downstream. Without this invariant, the next BrandEditView addition has the same shape.
+
+**Enforcement:** Strict-grep CI gate at `.github/scripts/strict-grep/orch-0962-brand-field-map-coverage.mjs` (registered in `.github/workflows/strict-grep-mingla-business.yml` as a standalone job per the registry pattern `feedback_strict_grep_registry_pattern.md`). The 72-line node script asserts: (a) contact_email + contact_phone present in both views + mapper (`extractBrandContact` + `row.contact_email` + `row.contact_phone`); (b) `splitBrandDescription` imported in service, `taglineCentered` + `bioLeadCentered` styles present in component; (c) facebook + linkedin entries present in both `BrandEditView` editor and `PublicBrandPage` renderer with `icon: "<key>"` token; (d) event-detail mapper reads `row.brand_kind` + `row.brand_address` + `row.brand_cover_media_url`; (e) verified-venue mapper reads `row.display_attendee_count`. Any future regression that breaks the plumbing chain fails this gate with a labelled bullet list of missing assertions.
+
+---
+
+## ACTIVE (post ORCH-0957 [Storage image transformation overage] CLOSE 2026-05-25)
+
+Two invariants flipped DRAFT → ACTIVE at the ORCH-0957 close after tester CONDITIONAL PASS verdict P0:0 P1:0 P2:0 P3:2 P4:4 (SC-5 deferred to billing-day +14 per spec + dispatch — not a close blocker). Implementor happy-path T-04 at `supabase/functions/_shared/imageCollage.test.ts` with `fails-on-revert verified at 1b32c3c0`. Tester adversarial T-05 at `supabase/functions/_shared/__tests__/imageCollage.thumbFallback.test.ts` with `fails-on-revert verified at 9f91f6448`.
+
+### I-NO-METERED-READ-ON-INGESTED-PHOTOS
+
+**Rule:** Any code path that reads photos from the `place-photos` Supabase Storage bucket for processing MUST use the non-metered `/storage/v1/object/public/` endpoint, NOT `/storage/v1/render/image/`. Pre-sized 384×384 JPEG thumbnails are written at ingest time (alongside the original) for sizing needs. The single exception is the legacy transform path retained behind `USE_PLACE_PHOTO_THUMBS=false` in `_shared/imageCollage.ts:88-111` — kept as an emergency revert lever, NOT a normal-operation path. The optional `THUMB_404_FALLBACK_TO_TRANSFORM=true` env var (default true) is also allowlisted for the bounded backfill window: it falls back to the legacy transform endpoint for a single fetch when a thumb is missing, then stops costing once the thumb lands.
+
+**Why it exists:** Pre-ORCH-0957 the place-intelligence collage pipeline (`supabase/functions/run-place-intelligence-trial/index.ts` → `_shared/imageCollage.ts:67-100`) rewrote every Supabase source photo URL to `/storage/v1/render/image/...?width=N&height=N&resize=cover`, charging Mingla one billable Image Transformation per unique source photo per billing period. 19 days into the billing cycle the meter showed 9,168 transforms vs the Pro plan's 100 included (~$45 overage today, ~$7,100/mo at 100× growth). Tier B fix shipped a pre-generation pipeline so the metered endpoint is no longer needed in the steady state. Without this invariant, a future ORCH could re-introduce a read-time transform call and silently re-burn the bill.
+
+**Enforcement:** Strict-grep CI gate at `.github/scripts/strict-grep/orch-0957-no-metered-place-photo-reads.mjs` (registered in `strict-grep-mingla-business.yml`). Scans every `.ts` file under `supabase/functions/` for `/storage/v1/render/image/` occurrences and fails the build on any match outside the explicitly-allowlisted legacy-fallback block in `_shared/imageCollage.ts`. Backed by T-04 unit test at `supabase/functions/_shared/imageCollage.test.ts` (cost-control contract: default Supabase URL rewrite returns `_thumb.jpg` via object endpoint with no `width=`/`height=`/`resize=` params) — fails-on-revert verified at `1b32c3c0`. Adversarial coverage at `supabase/functions/_shared/__tests__/imageCollage.thumbFallback.test.ts` T-05 (missing-thumb 404 fallback under both env settings) — fails-on-revert at `9f91f6448`.
+
+### I-EXTERNAL-API-DOCS-VERIFIED (broadened DRAFT → ACTIVE per Discovery D-1)
+
+**Rule (broadened from prior DRAFT in COMMS-0003):** Every external-API integration ORCH — Stripe, Supabase, OpenAI, Google Places, OneSignal, RevenueCat, Twilio, Resend, AppsFlyer, Mixpanel, Ticketmaster, BestTime, OpenWeatherMap, Distance Matrix, **and any newly-introduced provider** — MUST cite the provider's canonical docs URL inline in SPEC §3 for: (a) every parameter, enum, payload shape, and endpoint introduced or modified, **AND** (b) every metering rule, billing unit, pricing tier, rate limit, or cost trajectory that the integration touches. Dashboard UI labels are NOT API enums. Client-prop names do NOT imply server-API support. Cost projections must reference the provider's pricing page URL alongside the rule citation. For Stripe specifically, the `stripe-best-practices` skill MUST be invoked at SPEC start (memory rule `feedback_stripe_skill_mandatory.md`). Regression tests MUST either hit the real provider TEST API or mock with the provider's documented error shape AND assert payload schema — source-shape mocks alone are insufficient.
+
+**Why it exists (broadened):** Prior DRAFT (from COMMS-0003, ORCH-0954 [Embedded onboarding cutover]) scoped this to enums + payload shapes — born after ORCH-0954 shipped 3 P1 Stripe bugs to main `b2866f0e` because no phase verified Stripe payloads against actual docs. ORCH-0957 [Storage image transformation overage] revealed the same shape applies to METERING: ORCH-0737 v6 (2026-05-06) shipped a Supabase Storage transform URL rewrite for memory safety without modeling the per-image billing cost. The fix worked technically and introduced a $7,100/mo trajectory cost at 100× growth that nobody priced. Broadened scope catches both classes — wrong-shape integrations AND right-shape but costly integrations.
+
+**Enforcement:** SPEC review checklist additions (orchestrator REVIEW protocol): (1) "Are all external-API enums/payloads/endpoints cited with docs URLs?" (2) "Are all metering rules / billing units / cost trajectories cited with pricing-page URLs?" Both must pass for APPROVED verdict. Forensics SPEC mode references the broadened invariant in its Cross-Surface Impact section when an external API is touched. Documented in `feedback_external_api_docs_verified.md` (operator memory, scope to be updated post-CLOSE to reflect metering). No standalone CI gate (this is a process invariant enforced at REVIEW); audit trail lives in the SPEC files themselves which must show docs URLs in §3.
+
+---
+
 ## ACTIVE (post ORCH-0933 [Profile "Your Circle" social graph section] CLOSE 2026-05-23)
 
 Seven new invariants flipped DRAFT → ACTIVE at the ORCH-0933 close after tester retest 2 CONDITIONAL PASS verdict P0:0 P1:0 P2:4 P3:0 P4:2 with operator-accepted P2-001/P2-002/P2-003/P2-004. Happy-path regression at `app-mobile/src/components/profile/circle/__tests__/YourCircleSection.happy.test.tsx` with `fails-on-revert verified at daee4cdc` (column-0 became `[Alice, Dan, Grace]` under row-major simulation); adversarial regression at `YourCircleSection.adversarial.test.tsx` covering all 7 invariants. Two strict-grep CI gates landed: `G-CIRCLE-RPC-SOLE-OWNER` + `G-CIRCLE-BADGE-DUAL-APP`.
@@ -3806,6 +3842,42 @@ Any skill that discovers something affecting another in-flight ORCH MUST add a `
 ### I-RESPONSE-2-SECTION-SHAPE
 Every chat response from every skill uses Section A (what just happened) + Section B (handoff: B1 numbered Seth-todo / B2 paste paragraph for skill / B3 none). Section heading `## Standardized 2-Section Output (MANDATORY, every response, every turn)` present in every SKILL.md + AGENTS.md. Enforced by `.github/scripts/strict-grep/meta-orch-0954-comms-ledger-stanza.mjs`. Codified META-ORCH-0954 2026-05-24.
 
+### I-PROPOSED-TRIP-CAPACITY-SINGLE-SOURCE
+
+**Statement:** Trip capacity is stored ONLY in `ticket_types.quantity_total`. Code that writes or reads `events.theme.business_trip.capacity` for trip-capacity purposes is forbidden. Service-layer aliases such as `TripBusinessTrip.capacity` are permitted ONLY when they source the value from `ticket_types.quantity_total` via join.
+
+**Why:** ORCH-0950 exists because post-publish trip capacity edits wrote JSONB while buyer checkout enforced `ticket_types.quantity_total`, causing silent drift and false `ticket_capacity_exceeded` 409s after planners raised capacity.
+
+**Enforcement:** Superseded by `I-PROPOSED-TRIP-CANONICAL-COLUMNS`, enforced by strict-grep CI gate `.github/scripts/strict-grep/i-proposed-trip-canonical-columns.mjs`, service guard in `mingla-business/src/services/tripsService.ts`, and migrations `supabase/migrations/20260725000000_orch_0950_trip_capacity_single_source.sql` + `supabase/migrations/20260725000002_orch_0950_expanded_scope_dashboard_coherence.sql`.
+
+**Source:** SPEC `Mingla_Artifacts/specs/SPEC_ORCH-0950_TRIP_CAPACITY_SINGLE_SOURCE.md` §9 and investigation `Mingla_Artifacts/reports/INVESTIGATION_ORCH-0950_TRIP_CAPACITY_DUAL_SOURCE.md`.
+
+**Status:** DRAFT — flips ACTIVE on ORCH-0950 CLOSE.
+
+### I-PROPOSED-TRIP-CANONICAL-COLUMNS
+
+**Statement:** Trip capacity is stored ONLY in `ticket_types.quantity_total`. Trip start/end dates are stored ONLY in `event_dates.start_at/end_at` on the single master row. Trip destination text is stored ONLY in `events.destination_text`. Code that writes or reads legacy `events.theme.business_trip` capacity/date/destination text fields for trip purposes is forbidden except the draft-to-publish bridge and compatibility aliases that source from canonical columns.
+
+**Why:** ORCH-0950 expanded scope proved the same dual-source bug class behind capacity also applied to dates and destination, and a shallow JSONB merge wiped DC Adventure's sibling fields.
+
+**Enforcement:** Strict-grep CI gate `.github/scripts/strict-grep/i-proposed-trip-canonical-columns.mjs`, service reader wiring in `mingla-business/src/services/tripsService.ts`, and migration `supabase/migrations/20260725000002_orch_0950_expanded_scope_dashboard_coherence.sql`.
+
+**Source:** SPEC `Mingla_Artifacts/specs/SPEC_ORCH-0950_EXPANDED_SCOPE_DASHBOARD_COHERENCE.md` and investigation `Mingla_Artifacts/reports/INVESTIGATION_ORCH-0950_EXPANDED_SCOPE_DASHBOARD_COHERENCE.md`.
+
+**Status:** DRAFT — flips ACTIVE on ORCH-0950 CLOSE.
+
+### I-PROPOSED-PARTIAL-PATCH-PRESERVES-SIBLINGS
+
+**Statement:** RPCs that accept JSONB patches where nested objects represent independent fields must deep-merge those nested objects instead of shallow-merging the parent.
+
+**Why:** `theme || (p_patch->'theme')` replaced the entire `business_trip` child object and destroyed sibling fields on partial edits.
+
+**Enforcement:** Strict-grep CI gate `.github/scripts/strict-grep/i-proposed-trip-canonical-columns.mjs` forbids the trip-RPC shallow merge literal in new migrations; ORCH-0950 expanded migration rewrites `biz_update_live_trip` with `jsonb_set(... existing_business_trip || patch_business_trip ...)`.
+
+**Source:** SPEC `Mingla_Artifacts/specs/SPEC_ORCH-0950_EXPANDED_SCOPE_DASHBOARD_COHERENCE.md` §8-§11.
+
+**Status:** DRAFT — flips ACTIVE on ORCH-0950 CLOSE.
+
 ### I-PROPOSED-PREFS-SHEET-READ-ONLY-NO-WRITE — ORCH-0945 PREFERENCES SHEET READ-ONLY NO-WRITE
 
 **Statement:** When `PreferencesSheet` receives `viewParticipantId`, it must render that participant's preferences read-only and no code path may write preferences from that mode. `handleApplyPreferences` and every visible edit handler must short-circuit through the central `isEditable` guard.
@@ -3819,3 +3891,53 @@ Every chat response from every skill uses Section A (what just happened) + Secti
 **EXIT condition:** Permanent.
 
 **Status:** ACTIVE — codified 2026-05-24 by ORCH-0945 [Collab deck dead-end UX polish] CLOSE.
+
+
+### I-PROPOSED-NATIVE-TAX-COVERAGE (ACTIVE — ratified by ORCH-0955 CLOSE 2026-05-25)
+
+**Statement:** Every native PaymentIntent created in `supabase/functions/ticket-checkout-create/index.ts` MUST be preceded by `stripe.tax.calculations.create` against the same connected account (Stripe-Account header) before `stripe.paymentIntents.create` runs. The PI `amount` MUST equal the tax calculation `amount_total` (tax-inclusive); the calculation `id` MUST be carried forward via PI metadata key `mingla_tax_calculation_id`.
+**Enforcement:** strict-grep gate `.github/scripts/strict-grep/orch-0955-native-tax-coverage.mjs` + per-PR CI job.
+**Test:** implementor T-IH-01 + T-IH-02 at `supabase/functions/__tests__/orch_0955_native_stripe_tax.test.ts`.
+**Why:** Without this, native paid silently undercharges the buyer and the brand carries an uncollected tax liability.
+
+### I-PROPOSED-TAX-COMMIT-ON-SUCCESS (ACTIVE — ratified by ORCH-0955 CLOSE 2026-05-25)
+
+**Statement:** `supabase/functions/_shared/stripeWebhookRouter.ts` `handleTicketCheckoutPaymentIntent` MUST call `stripe.tax.transactions.createFromCalculation` when PI metadata carries `mingla_tax_calculation_id`. The call MUST be idempotency-keyed on `paymentIntentId` so webhook re-deliveries do not double-commit. The returned `transaction.id` MUST be persisted to `orders.stripe_tax_transaction_id` and `tax_breakdown` to `orders.tax_breakdown`. Failures are NON-FATAL (order is already finalized; tax record is recoverable).
+**Enforcement:** strict-grep gate `.github/scripts/strict-grep/orch-0955-tax-commit-on-success.mjs`.
+**Test:** implementor T-IH-03 + T-IH-06 at the regression suite.
+**Why:** Without commit, Stripe Tax reports show $0 collected for orders the buyer was charged tax on — brand-side compliance gap.
+
+### I-PROPOSED-TAX-REVERSAL-ON-REFUND (ACTIVE — ratified by ORCH-0955 CLOSE 2026-05-25)
+
+**Statement:** `supabase/functions/refund-order/index.ts` MUST call `stripe.tax.transactions.createReversal` inline-sync (after `stripe.refunds.create` succeeds, before `biz_refund_order_commit`) when `orders.stripe_tax_transaction_id IS NOT NULL`. `mode: 'full'` for full refunds; `mode: 'partial'` with per-line negative `line_items[]` for partial refunds. Reversal failure returns HTTP 502 with refund row marked `failed`. Backstop on `charge.refunded` / `refund.created` / `refund.updated` webhook handlers attempts reversal if inline-sync was skipped; idempotent.
+**Enforcement:** strict-grep gate `.github/scripts/strict-grep/orch-0955-tax-reversal-on-refund.mjs`.
+**Test:** implementor T-IH-04 + T-IH-05.
+**Why:** Without reversal, Stripe Tax reports overstate brand's collected tax (refunded portions still appear as collected) — brand over-reports liability.
+
+### I-PROPOSED-EMBEDDED-TAX-UI (ACTIVE — ratified by ORCH-0955 CLOSE 2026-05-25)
+
+**Statement:** Brand-side tax registrations + tax settings UI MUST go through `supabase/functions/brand-stripe-tax-account-session/index.ts` (calls `stripe.accountSessions.create` with `components: { tax_registrations: { enabled: true }, tax_settings: { enabled: true } }`) and `mingla-business/app/connect-tax-registrations/index.tsx` (mounts `@stripe/connect-js` + `<ConnectComponentsProvider>` + `<ConnectTaxRegistrations>` + `<ConnectTaxSettings>`). `mingla-business/src/components/brand/BrandPaymentsView.tsx` Tax CTA MUST invoke `useBrandStripeTaxAccountSession` and open the Mingla-hosted URL via `expo-web-browser.openAuthSessionAsync`. The legacy `brand-stripe-tax-dashboard-link` edge function + `stripeTaxDashboardLink` helper + `useBrandStripeTaxDashboardLink` hook + `brandStripeTaxDashboardLinkService` are DELETED and MUST NOT be re-introduced.
+**Enforcement:** strict-grep gate `.github/scripts/strict-grep/orch-0955-embedded-tax-ui.mjs` + ORCH-0804 gate updated to require new names.
+**Test:** implementor T-IH-07 + T-IH-11.
+**Why:** `accounts.createLoginLink` requires `controller.stripe_dashboard.type='express'` and breaks under ORCH-0954's `dashboard:'none'` cutover.
+
+### I-PROPOSED-REGION-GATE-DELETED (ACTIVE — ratified by ORCH-0955 CLOSE 2026-05-25)
+
+**Statement:** `supabase/functions/_shared/stripeTax.ts` MUST NOT exist. `NATIVE_PAID_ALLOWED_REGIONS` env var MUST NOT be referenced in any source file (including comments, configs, scripts under `.github/`, or app code under `app-mobile/` / `mingla-business/`). `isNativePaidAllowedForBrand` and `getNativePaidAllowedRegions` function names MUST NOT appear in repo code. The 4 ORCH-0953 gate-defending test files (`nativeRegionGate_adversarial.test.ts`, `nativePaidRegionGate.test.ts`, both `nativeCheckoutFlow_regionGateToast.test.tsx`) MUST NOT be re-introduced.
+**Enforcement:** strict-grep gate `.github/scripts/strict-grep/orch-0955-region-gate-deleted.mjs`. Supersedes any ORCH-0953 region-gate-defending gate.
+**Test:** implementor T-IH-12 + repo-wide legacy-token rg scan in QA retest 2 (returns zero hits).
+**Why:** Native paid is universal across Stripe-supported countries per operator decision 2026-05-24; the gate's purpose is subsumed by Stripe Tax for Platforms wiring (I-PROPOSED-NATIVE-TAX-COVERAGE + I-PROPOSED-TAX-COMMIT-ON-SUCCESS).
+
+---
+
+## ACTIVE (post META-ORCH-0952 [Buyer-web confirm pipeline deep forensics] CLOSE 2026-05-25)
+
+### I-BUYER-WEB-CAROUSEL-BROWSER-TESTED
+
+**Rule:** Any regression test asserting buyer-web checkout-confirm carousel behavior (and by extension, any buyer-web checkout dynamic-route hydration behavior under Expo Router's `web.output: "single"` mode) MUST run in a real browser (Playwright Chromium minimum; WebKit + Firefox strongly recommended) against the exported web bundle (`expo export -p web` output served locally OR equivalent harness). Source-string assertions (component-renders-without-crashing, imports-include-X, JSX-contains-Y) are insufficient as the sole coverage for this surface.
+
+**Why:** META-ORCH-0952 Q6 pattern analysis proved that 6 successive attempts (ORCH-0930 v1/v2/v3, ORCH-0932, ORCH-0951 v1/v2) shipped with green source-string tests while production browsers consistently showed a broken carousel. The bug class (RNW layout deadlock + React static-export hydration mismatch + parent shrink-wrap) cannot be detected by reading source — it requires a real browser layout engine + real React reconciler running on the production bundle.
+
+**Enforcement:** browser regression tests at `mingla-business/src/components/checkout/__tests__/meta_orch_0952_carousel_browser.test.ts` (HP-01/02/03 across Chromium + WebKit + Firefox) + adversarial `meta_orch_0952_carousel_adversarial.test.ts` (viewport-resize-during-mount) are now part of the append-only CI test suite per ORCH-0840. Both tests immutable; modifications require `[TEST-MOD-APPROVED ORCH-0952]` token. Future buyer-web checkout-surface ORCHs (e.g., the deferred ORCH-0946/0947 polish batch under META-ORCH-0953) inherit this invariant — SPEC §6 (Test contract) must require equivalent browser-running coverage if touching `confirm.tsx`, `TicketQrCarousel.tsx`, root `app/_layout.tsx`, `app.json`, or per-route `_layout.tsx` files in the dynamic checkout trees.
+
+**Status:** flipped DRAFT → ACTIVE on META-ORCH-0952 CLOSE 2026-05-25 (PR #205 `f62cfefb` + hotfix PR #206 `2c647592`).

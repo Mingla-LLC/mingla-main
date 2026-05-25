@@ -105,6 +105,7 @@ on:
 #   - ORCH-0885-A (orch-0885-a-no-bottomnav-on-wide-desktop.mjs) — BottomNav imported only by (tabs)/_layout.tsx + desktop gate via useResponsiveLayout() only (I-NO-BOTTOMNAV-OUTSIDE-LAYOUT + I-DESKTOP-GATE-VIA-HOOK)
 #   - ORCH-0913 (orch-0913-no-tabs-on-dashboards.mjs) — event/trip dashboards keep tile-grid + section-beneath structure; no tab strips
 #   - ORCH-0947 (orch-0947-trip-spots-tickets-not-orders.mjs) — trip dashboard Spots/travelers numerator uses tickets-sold, not order-count travelersCount
+#   - ORCH-0957 (orch-0957-no-metered-place-photo-reads.mjs) — place-photos processing avoids Supabase Storage render endpoint except explicit legacy fallback
 #   - I-PROPOSED-CONTROLLER-PROPS-PINNED (orch-0954-controller-props-pinned.mjs) — Stripe Connect account create controller stays losses_collector=stripe, fees_collector=stripe, dashboard=none (ORCH-0954)
 #   - I-PROPOSED-RAK-SCOPE-PINNED (orch-0954-rak-scope-pinned.mjs) — Stripe blueprint helpers use STRIPE_RAK_ONBOARD only, including Account Sessions (ORCH-0954)
 #   - I-PROPOSED-FINALIZE-CALLERS-PASS-INSTALLMENT-PARAMS (i-proposed-finalize-callers-pass-installment-params.mjs) — paid biz_ticket_checkout_finalize callers pass installment-plan params (ORCH-0921)
@@ -164,6 +165,17 @@ jobs:
           node-version: "20"
       - name: Run ORCH-0947 trip spots tickets gate
         run: node .github/scripts/strict-grep/orch-0947-trip-spots-tickets-not-orders.mjs
+
+  orch-0957-no-metered-place-photo-reads:
+    name: "ORCH-0957: no metered place-photo reads"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0957 storage transform overage gate
+        run: node .github/scripts/strict-grep/orch-0957-no-metered-place-photo-reads.mjs
 
   i37-topbar-default-cluster:
     name: "I-37: TopBar primary-tab default cluster"
@@ -1326,6 +1338,19 @@ jobs:
       - name: Run ORCH-0921 finalize caller installment-param gate
         run: node .github/scripts/strict-grep/i-proposed-finalize-callers-pass-installment-params.mjs
 
+  trip-capacity-single-source:
+    name: "ORCH-0950 [Trip]: capacity, dates, and destination are canonical columns"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run I-PROPOSED-TRIP-CANONICAL-COLUMNS gate
+        run: node .github/scripts/strict-grep/i-proposed-trip-canonical-columns.mjs
+      - name: Self-test
+        run: node .github/scripts/strict-grep/i-proposed-trip-canonical-columns.test.mjs
+
   i-proposed-orch-0925-installment-plan-attaches-customer:
     name: "ORCH-0925 [Trip Money]: installment-plan checkouts attach Stripe Customer"
     runs-on: ubuntu-latest
@@ -1617,3 +1642,22 @@ jobs:
           node-version: "20"
       - name: Run META-ORCH-0954 stanza gate
         run: node .github/scripts/strict-grep/meta-orch-0954-comms-ledger-stanza.mjs
+
+  orch-0955-native-stripe-tax:
+    name: "ORCH-0955: native Stripe Tax invariants"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0955 native tax coverage gate
+        run: node .github/scripts/strict-grep/orch-0955-native-tax-coverage.mjs
+      - name: Run ORCH-0955 tax commit gate
+        run: node .github/scripts/strict-grep/orch-0955-tax-commit-on-success.mjs
+      - name: Run ORCH-0955 tax reversal gate
+        run: node .github/scripts/strict-grep/orch-0955-tax-reversal-on-refund.mjs
+      - name: Run ORCH-0955 embedded tax UI gate
+        run: node .github/scripts/strict-grep/orch-0955-embedded-tax-ui.mjs
+      - name: Run ORCH-0955 region gate removal gate
+        run: node .github/scripts/strict-grep/orch-0955-region-gate-deleted.mjs

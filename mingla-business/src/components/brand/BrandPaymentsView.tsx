@@ -60,7 +60,7 @@ import { BrandStripeDeadlineBanner } from "./BrandStripeDeadlineBanner";
 import { BrandStripeDetachConfirmSheet } from "./BrandStripeDetachConfirmSheet";
 import { useBrandStripeStatus } from "../../hooks/useBrandStripeStatus";
 import { useBrandStripeBalances } from "../../hooks/useBrandStripeBalances";
-import { useBrandStripeTaxDashboardLink } from "../../hooks/useBrandStripeTaxDashboardLink";
+import { useBrandStripeTaxAccountSession } from "../../hooks/useBrandStripeTaxAccountSession";
 import { useBrandStripeAccountSession } from "../../hooks/useBrandStripeAccountSession";
 import { getEffectiveBrandStripeStatus } from "../../utils/stripeOnboardingOutcome";
 import { ACTIVE_STRIPE_BANNER_TITLE } from "../../utils/brandStripeUiState";
@@ -174,12 +174,16 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
   const stripeBalancesQuery = useBrandStripeBalances(brand?.id ?? null, {
     stripeStatus,
   });
-  // ORCH-0804 — Tax & registrations CTA. Mutation opens Stripe Express
-  // Dashboard via createLoginLink so the brand admin can manage their
-  // Stripe Tax registrations (no RN <TaxSettings /> component yet — web
-  // only). Disclosed: brand is merchant of record; Stripe Tax adds ~0.5%
-  // on top of regular Stripe fees.
-  const taxDashboardLink = useBrandStripeTaxDashboardLink();
+  // ORCH-0955 — Tax CTA opens new brand-stripe-tax-account-session that mints
+  // an AccountSession with tax_registrations + tax_settings GA components,
+  // rendered in the Mingla-hosted /connect-tax-registrations page via
+  // expo-web-browser. Replaces the legacy ORCH-0804 dashboard-link redirect
+  // (deleted; would have broken under ORCH-0954 dashboard:'none' cutover).
+  // ORCH-0955: brand is merchant of record; Stripe Tax for Platforms direct-
+  // charge handles the calc/commit/reverse 3-step inline on every native PI.
+  const taxAccountSession = useBrandStripeTaxAccountSession();
+  // ORCH-0954 — Account management embedded-onboarding session for
+  // dashboard:'none' Stripe-managed-risk Connect controllers.
   const accountSession = useBrandStripeAccountSession();
   const handleOpenAccountManagement = useCallback(async (): Promise<void> => {
     if (brand?.id === undefined || accountSession.isPending) return;
@@ -190,9 +194,9 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
     await WebBrowser.openAuthSessionAsync(result.targetUrl, RETURN_DEEP_LINK);
   }, [accountSession, brand?.id]);
   const handleOpenTaxDashboard = useCallback((): void => {
-    if (brand?.id === undefined || taxDashboardLink.isPending) return;
-    taxDashboardLink.mutate(brand.id);
-  }, [brand?.id, taxDashboardLink]);
+    if (brand?.id === undefined || taxAccountSession.isPending) return;
+    taxAccountSession.mutate(brand.id);
+  }, [brand?.id, taxAccountSession]);
 
   // ORCH-0802 — Disconnect Stripe sheet visibility. Sheet is only ever
   // reachable from the Danger zone CTA below, which itself only renders
@@ -310,6 +314,8 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
         ]}
         showsVerticalScrollIndicator={false}
       >
+        {/* ORCH-0954 — Manage payouts & tax embedded account-management session,
+            for dashboard:'none' Stripe-managed-risk Connect controllers. */}
         {stripeStatus === "active" || stripeStatus === "restricted"
           ? (
             <GlassCard
@@ -514,17 +520,15 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
           />
         </View>
 
-        {
-          /* SECTION B.5 — ORCH-0804 Tax & registrations.
-            Brand opens Stripe Express Dashboard to register for Stripe Tax
-            in each jurisdiction they sell tickets in. Brand is the merchant
-            of record. Stripe Tax adds ~0.5% on top of regular Stripe fees,
-            billed to the brand. No RN <TaxSettings /> component exists yet
-            (https://docs.stripe.com/connect/supported-embedded-components —
-            Tax Settings is web-only GA as of 2026-05-12). When Stripe ships
-            the RN component, retire this CTA in favor of the embedded
-            component. */
-        }
+        {/* SECTION B.5 — ORCH-0955 embedded Tax tools.
+            Mints an AccountSession with tax_registrations + tax_settings
+            GA components, then opens the Mingla-hosted
+            /connect-tax-registrations page (via expo-web-browser) which
+            mounts both components inline. Replaces the legacy ORCH-0804
+            Stripe Express Dashboard login-link redirect (deleted; broke
+            under ORCH-0954 dashboard:'none' cutover). Brand is merchant
+            of record. Stripe Tax for Platforms direct-charge handles
+            calc/commit/reverse on every native PI. */}
         {stripeStatus === "active" && brand !== null
           ? (
             <GlassCard
@@ -539,11 +543,11 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
                 <View style={styles.taxCtaTextCol}>
                   <Text style={styles.taxCtaTitle}>Tax & registrations</Text>
                   <Text style={styles.taxCtaBody}>
-                    Manage tax registrations in Stripe Dashboard. Stripe Tax
+                    Manage tax registrations and settings in Stripe. Stripe Tax
                     adds about 0.5% on top of Stripe fees. You're the merchant
                     of record.
                   </Text>
-                  {taxDashboardLink.isError
+                  {taxAccountSession.isError
                     ? (
                       <Text style={styles.taxCtaError}>
                         Couldn't open Stripe. Try again.
@@ -554,13 +558,13 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
               </View>
               <View style={styles.taxCtaBtnRow}>
                 <Button
-                  label={taxDashboardLink.isPending
-                    ? "Opening Stripe…"
-                    : "Open Stripe Dashboard"}
+                  label={taxAccountSession.isPending
+                    ? "Opening Stripe..."
+                    : "Manage tax registrations"}
                   onPress={handleOpenTaxDashboard}
                   variant="secondary"
                   size="md"
-                  disabled={taxDashboardLink.isPending}
+                  disabled={taxAccountSession.isPending}
                   leadingIcon="link"
                 />
               </View>

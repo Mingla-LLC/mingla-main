@@ -1,7 +1,11 @@
 // @ts-ignore — Deno ESM import
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import type { StripeClient } from "./stripe.ts";
-import { STRIPE_API_VERSION } from "./stripe.ts";
+import {
+  STRIPE_API_VERSION,
+  stripeTicketCheckout,
+  stripeTicketRefund,
+} from "./stripe.ts";
 import { generateIdempotencyKey } from "./idempotency.ts";
 import { writeAudit } from "./audit.ts";
 import {
@@ -664,6 +668,67 @@ async function handleRefundEvent(
     throw new Error(`refund webhook commit failed: ${commitError.message}`);
   }
 
+  if (stripeAccountId) {
+    try {
+      const { data: taxRows, error: taxLookupError } = await supabase
+        .from("refunds")
+        .select(
+          "id, stripe_tax_transaction_id, orders!inner(stripe_tax_transaction_id)",
+        )
+        .eq("stripe_refund_id", refundId)
+        .limit(1);
+      if (taxLookupError) throw taxLookupError;
+      const refundRow = taxRows?.[0] as
+        | {
+          id?: string;
+          stripe_tax_transaction_id?: string | null;
+          orders?:
+            | { stripe_tax_transaction_id?: string | null }
+            | Array<{ stripe_tax_transaction_id?: string | null }>;
+        }
+        | undefined;
+      const joinedOrder = Array.isArray(refundRow?.orders)
+        ? refundRow?.orders[0]
+        : refundRow?.orders;
+      const originalTaxTxId =
+        typeof joinedOrder?.stripe_tax_transaction_id === "string"
+          ? joinedOrder.stripe_tax_transaction_id
+          : null;
+      if (
+        refundRow?.id && !refundRow.stripe_tax_transaction_id && originalTaxTxId
+      ) {
+        const stripeForTax = stripeTicketRefund();
+        // @ts-ignore — Stripe SDK Tax namespace is runtime-provided.
+        const reversal = await stripeForTax.tax.transactions.createReversal(
+          {
+            mode: "full",
+            original_transaction: originalTaxTxId,
+            reference: `mingla_refund:${refundRow.id}`,
+          },
+          {
+            stripeAccount: stripeAccountId,
+            idempotencyKey: `tax_reversal:${refundRow.id}`,
+          },
+        );
+        await supabase
+          .from("refunds")
+          .update({
+            stripe_tax_transaction_id: String(reversal.id),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", refundRow.id)
+          .is("stripe_tax_transaction_id", null);
+      }
+    } catch (taxBackstopErr) {
+      console.error(
+        "[stripe-webhook] refund tax reversal backstop failed",
+        taxBackstopErr instanceof Error
+          ? taxBackstopErr.message
+          : String(taxBackstopErr),
+      );
+    }
+  }
+
   // Enqueue buyer notification only if this was a NEW (dashboard-initiated) refund.
   // The in-app refund-order edge function already enqueued one; we detect by checking
   // whether the refund row had a NULL stripe_refund_id before this call — but we
@@ -789,7 +854,9 @@ async function handleTicketCheckoutPaymentIntent(
 
   let { data: session, error: sessionError } = await supabase
     .from("ticket_checkout_sessions")
-    .select("id, brand_id, event_id, order_id")
+    .select(
+      "id, brand_id, event_id, order_id, tax_amount_cents, tax_calculation_id",
+    )
     .eq("stripe_payment_intent_id", paymentIntentId)
     .maybeSingle();
   if (sessionError) {
@@ -813,7 +880,9 @@ async function handleTicketCheckoutPaymentIntent(
     if (mingleCheckoutSessionId) {
       const fallback = await supabase
         .from("ticket_checkout_sessions")
-        .select("id, brand_id, event_id, order_id")
+        .select(
+          "id, brand_id, event_id, order_id, tax_amount_cents, tax_calculation_id",
+        )
         .eq("id", mingleCheckoutSessionId)
         .maybeSingle();
       if (fallback.error) {
@@ -886,6 +955,52 @@ async function handleTicketCheckoutPaymentIntent(
       typeof (finalized as Record<string, unknown> | null)?.orderId === "string"
         ? String((finalized as Record<string, unknown>).orderId)
         : null;
+    const taxCalculationId =
+      typeof piMetadata.mingla_tax_calculation_id === "string"
+        ? piMetadata.mingla_tax_calculation_id
+        : (typeof session.tax_calculation_id === "string"
+          ? session.tax_calculation_id
+          : null);
+    if (orderId && taxCalculationId) {
+      const connectedAccountId = accountIdForEvent(event);
+      if (connectedAccountId) {
+        try {
+          const stripeForTax = stripeTicketCheckout();
+          // @ts-ignore — Stripe SDK Tax namespace is runtime-provided.
+          const taxTx = await stripeForTax.tax.transactions
+            .createFromCalculation(
+              {
+                calculation: taxCalculationId,
+                reference: paymentIntentId,
+                expand: ["line_items"],
+              },
+              {
+                stripeAccount: connectedAccountId,
+                idempotencyKey: paymentIntentId,
+              },
+            );
+          await supabase
+            .from("orders")
+            .update({
+              stripe_tax_transaction_id: String(taxTx.id),
+              tax_amount_cents: Number(session.tax_amount_cents ?? 0),
+              tax_calculation_id: taxCalculationId,
+              tax_breakdown: (taxTx as Record<string, unknown>).line_items ??
+                null,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", orderId);
+        } catch (taxCommitErr) {
+          console.error(
+            "[stripe-webhook] tax.transactions.createFromCalculation failed",
+            orderId,
+            taxCommitErr instanceof Error
+              ? taxCommitErr.message
+              : String(taxCommitErr),
+          );
+        }
+      }
+    }
     if (orderId) {
       const url = Deno.env.get("SUPABASE_URL");
       const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");

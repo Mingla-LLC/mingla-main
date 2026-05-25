@@ -79,6 +79,10 @@ import {
   useCartTotals,
 } from "../../../src/components/checkout/CartContext";
 import {
+  CartTaxPreview,
+  type CartTaxPreviewResult,
+} from "../../../src/components/checkout/CartTaxPreview";
+import {
   readCheckoutResumePayload,
   writeCheckoutResumePayload,
 } from "../../../src/components/checkout/checkoutPersistence";
@@ -112,7 +116,9 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
   );
 
   const [processing, setProcessing] = useState<boolean>(false);
-  const [checkoutSessionId, setCheckoutSessionId] = useState<string | null>(null);
+  const [checkoutSessionId, setCheckoutSessionId] = useState<string | null>(
+    null,
+  );
   // ORCH-0839-B: declineToast state is retained but dormant. Stripe's hosted
   // page handles all card-decline UX inside its own surface. The Toast wrap
   // below preserves the absolute-positioning lesson per
@@ -124,6 +130,9 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
   // app-mobile/src/components/expandedCard/ExpandedBusinessEventSheet.tsx.
   const [successToast, setSuccessToast] = useState<boolean>(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [taxPreview, setTaxPreview] = useState<CartTaxPreviewResult | null>(
+    null,
+  );
 
   // ORCH-0849: native PaymentSheet hook. Returns a function that the
   // native branch of handlePay invokes; not used on web (Platform.OS ===
@@ -202,10 +211,12 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
   const [keyboardHeight, setKeyboardHeight] = useState<number>(0);
   const scrollViewRef = useRef<ScrollView | null>(null);
   useEffect(() => {
-    const showEvent =
-      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
-    const hideEvent =
-      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+    const showEvent = Platform.OS === "ios"
+      ? "keyboardWillShow"
+      : "keyboardDidShow";
+    const hideEvent = Platform.OS === "ios"
+      ? "keyboardWillHide"
+      : "keyboardDidHide";
     const showSub = Keyboard.addListener(
       showEvent,
       (e: KeyboardEvent): void => {
@@ -233,6 +244,10 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
   const handlePay = useCallback(async (): Promise<void> => {
     if (processing) return;
     if (eventId === null) return;
+    if (Platform.OS !== "web" && taxPreview === null) {
+      setPaymentError("Calculate tax before paying.");
+      return;
+    }
 
     // ORCH-0849: two distinct code paths, retained from ORCH-0839-B for web
     // (Platform.OS === "web"; mingla-business has a web build for the
@@ -283,10 +298,9 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
           lines,
           buyer,
         });
-        const w =
-          globalThis as unknown as {
-            location?: { assign?: (u: string) => void };
-          };
+        const w = globalThis as unknown as {
+          location?: { assign?: (u: string) => void };
+        };
         if (w.location?.assign) {
           w.location.assign(checkout.hostedCheckoutUrl);
           return;
@@ -298,10 +312,9 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
         );
       } catch (error) {
         setProcessing(false);
-        const message =
-          error instanceof Error
-            ? error.message
-            : "Payment could not be completed. Please try again.";
+        const message = error instanceof Error
+          ? error.message
+          : "Payment could not be completed. Please try again.";
         setPaymentError(message);
         mixpanelService.track("ticket_checkout_failed", {
           surface,
@@ -314,12 +327,20 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
     }
 
     // ---------- NATIVE PATH (ORCH-0849 native PaymentSheet) ----------
+    if (taxPreview === null) {
+      setPaymentError("Calculate tax before paying.");
+      return;
+    }
+    const readyTaxPreview = taxPreview;
     const surface: "native" = "native";
 
     try {
       setProcessing(true);
       setPaymentError(null);
-      mixpanelService.track("ticket_checkout_pay_started", { surface, eventId });
+      mixpanelService.track("ticket_checkout_pay_started", {
+        surface,
+        eventId,
+      });
 
       const outcome = await nativeCheckout({
         eventId,
@@ -329,7 +350,9 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
           email: buyer.email,
           phone: buyer.phone,
           marketingOptIn: buyer.marketingOptIn === true,
+          address: readyTaxPreview.address,
         },
+        taxCalculationId: readyTaxPreview.calculationId,
       });
 
       mixpanelService.track("ticket_checkout_sheet_opened", {
@@ -380,7 +403,7 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
         await Promise.race([
           confirmTicketCheckout(sessionId, ""),
           new Promise((_, reject) =>
-            setTimeout(() => reject(new Error("client_confirm_timeout")), 3000),
+            setTimeout(() => reject(new Error("client_confirm_timeout")), 3000)
           ),
         ]);
       } catch (confirmErr) {
@@ -393,8 +416,7 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
           surface,
           eventId,
           checkoutSessionId: sessionId,
-          reason:
-            confirmErr instanceof Error ? confirmErr.message : "unknown",
+          reason: confirmErr instanceof Error ? confirmErr.message : "unknown",
         });
       }
 
@@ -426,10 +448,9 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
       }, 1200);
     } catch (error) {
       setProcessing(false);
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Payment could not be completed. Please try again.";
+      const message = error instanceof Error
+        ? error.message
+        : "Payment could not be completed. Please try again.";
       setPaymentError(message);
       mixpanelService.track("ticket_checkout_failed", {
         surface,
@@ -448,10 +469,24 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
     nativeCheckout,
     processing,
     router,
+    taxPreview,
   ]);
+
+  const handleTaxPreviewChange = useCallback(
+    (result: CartTaxPreviewResult | null): void => {
+      setTaxPreview(result);
+      if (result !== null) setBuyer({ address: result.address });
+    },
+    [setBuyer],
+  );
+
+  const displayTotalCents = Platform.OS === "web" || taxPreview === null
+    ? totals.total
+    : taxPreview.totalCents;
 
   // Render an empty shell while defensive guards redirect.
   if (
+    eventId === null ||
     event === null ||
     lines.length === 0 ||
     totals.isFree ||
@@ -483,9 +518,7 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
         contentContainerStyle={[
           styles.scrollContent,
           { paddingBottom: insets.bottom + 140 },
-          keyboardHeight > 0
-            ? { paddingBottom: keyboardHeight + 140 }
-            : null,
+          keyboardHeight > 0 ? { paddingBottom: keyboardHeight + 140 } : null,
         ]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
@@ -505,7 +538,9 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
                 {l.ticketName}
               </Text>
               <Text style={styles.summaryTotal}>
-                {l.isFree ? "Free" : formatCurrency(l.unitPrice * l.quantity, l.currency)}
+                {l.isFree
+                  ? "Free"
+                  : formatCurrency(l.unitPrice * l.quantity, l.currency)}
               </Text>
             </View>
           ))}
@@ -513,29 +548,51 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
           <View style={styles.summaryTotalRow}>
             <Text style={styles.summaryTotalLabel}>Total</Text>
             <Text style={styles.summaryTotalValue}>
-              {formatCurrency(totals.total, totals.currency)}
+              {formatCurrency(displayTotalCents, totals.currency)}
             </Text>
           </View>
         </GlassCard>
 
+        {Platform.OS !== "web"
+          ? (
+            <GlassCard variant="base" radius="lg" padding={spacing.md}>
+              <CartTaxPreview
+                eventId={eventId}
+                lines={lines}
+                buyer={buyer}
+                currency={totals.currency}
+                disabled={processing}
+                onPreviewChange={handleTaxPreviewChange}
+              />
+            </GlassCard>
+          )
+          : null}
+
         <GlassCard variant="base" radius="lg" padding={spacing.md}>
           <Text style={styles.summaryLabel}>PAYMENT</Text>
           <Text style={styles.paymentCopy}>
-            You'll be redirected to Stripe to complete your purchase securely. Apple Pay and Google Pay are supported.
+            You'll be redirected to Stripe to complete your purchase securely.
+            Apple Pay and Google Pay are supported.
           </Text>
-          {checkoutSessionId !== null ? (
-            <Text style={styles.paymentMeta}>Session {checkoutSessionId.slice(0, 8)}</Text>
-          ) : null}
+          {checkoutSessionId !== null
+            ? (
+              <Text style={styles.paymentMeta}>
+                Session {checkoutSessionId.slice(0, 8)}
+              </Text>
+            )
+            : null}
         </GlassCard>
 
-        {/* ORCH-0852: the prior post-payment blocking GlassCard was removed.
+        {
+          /* ORCH-0852: the prior post-payment blocking GlassCard was removed.
             PaymentSheet success no longer parks the buyer on this screen;
             the success toast + auto-navigate happen inside handlePay so
-            this surface stays minimal. */}
+            this surface stays minimal. */
+        }
 
-        {paymentError !== null ? (
-          <Text style={styles.errorText}>{paymentError}</Text>
-        ) : null}
+        {paymentError !== null
+          ? <Text style={styles.errorText}>{paymentError}</Text>
+          : null}
       </ScrollView>
 
       {/* Sticky bottom bar */}
@@ -549,25 +606,30 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
         <View style={styles.totalRow}>
           <Text style={styles.totalLabel}>Total</Text>
           <Text style={styles.totalValue}>
-            {formatCurrency(totals.total, totals.currency)}
+            {formatCurrency(displayTotalCents, totals.currency)}
           </Text>
         </View>
         <Button
-          label={`Pay ${formatCurrency(totals.total, totals.currency)}`}
+          label={`Pay ${formatCurrency(displayTotalCents, totals.currency)}`}
           onPress={handlePay}
           variant="primary"
           size="lg"
           fullWidth
           loading={processing}
-          disabled={processing}
-          accessibilityLabel={`Pay ${formatCurrency(totals.total, totals.currency)} with card`}
+          disabled={processing ||
+            (Platform.OS !== "web" && taxPreview === null)}
+          accessibilityLabel={`Pay ${
+            formatCurrency(displayTotalCents, totals.currency)
+          } with card`}
         />
       </View>
 
-      {/* Toast — top-anchored absolute wrapper (Cycle 8a lesson per
+      {
+        /* Toast — top-anchored absolute wrapper (Cycle 8a lesson per
           feedback_toast_needs_absolute_wrap.md). ORCH-0852: success toast
           fires on PaymentSheet success before navigation; decline toast
-          retained from ORCH-0839-B for parity even though dormant. */}
+          retained from ORCH-0839-B for parity even though dormant. */
+      }
       <View style={styles.toastWrap} pointerEvents="box-none">
         <Toast
           visible={declineToast}

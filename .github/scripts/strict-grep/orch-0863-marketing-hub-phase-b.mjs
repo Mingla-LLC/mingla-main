@@ -722,6 +722,28 @@ function checkNoNewBackendFiles() {
     "supabase/functions/ticket-checkout-create/__tests__/nativePaidRegionGate.test.ts",
     "supabase/functions/ticket-checkout-create/__tests__/nativeRegionGate_adversarial.test.ts",
   ];
+  // ORCH-0955 [Native Stripe Tax for Platforms] PR #208 (2026-05-25). C7 is
+  // scoped to ORCH-0863 marketing; these backend touches are native Stripe Tax
+  // wiring (3-step calc/commit/reverse + embedded Tax UI replacement + region
+  // gate decommission). Same scoping rationale as prior allowlists.
+  const ORCH_0955_BACKEND_ALLOWLIST = [
+    "supabase/functions/_shared/email/__tests__/shell.test.ts",
+    "supabase/functions/_shared/email/ticketBody.ts",
+    "supabase/functions/_shared/email/types.ts",
+    "supabase/functions/_shared/stripe.ts",
+    "supabase/functions/_shared/stripeTax.ts",
+    "supabase/functions/_shared/stripeWebhookRouter.ts",
+    "supabase/functions/brand-stripe-tax-account-session/index.ts",
+    "supabase/functions/brand-stripe-tax-dashboard-link/index.ts",
+    "supabase/functions/refund-order/index.ts",
+    "supabase/functions/__tests__/orch_0955_native_stripe_tax.test.ts",
+    "supabase/functions/ticket-checkout-create/index.ts",
+    "supabase/functions/ticket-checkout-create/__tests__/nativePaidRegionGate.test.ts",
+    "supabase/functions/ticket-checkout-create/__tests__/nativeRegionGate_adversarial.test.ts",
+    "supabase/functions/ticket-confirmation-dispatch/index.ts",
+    "supabase/migrations/20260725000002_orch_0950_expanded_scope_dashboard_coherence.sql",
+    "supabase/migrations/20260727000000_orch_0955_native_stripe_tax.sql",
+  ];
 
   // ORCH-0915 [Buyer/traveller pay-in-full opt-out at payment-plan checkout]
   // CLOSE PR #203 (2026-05-24). Migration 20260724000007 + ticket-checkout-
@@ -780,7 +802,46 @@ function checkNoNewBackendFiles() {
     "supabase/functions/_shared/__tests__/stripeOpsAlertEmailRecipients.test.ts",
     "supabase/functions/_shared/__tests__/stripeOpsAlertEmailSandbox.test.ts",
   ];
+  // ORCH-0957 [Storage image transformation overage]: writes 384x384
+  // place-photo thumbnails, rewrites collage reads to non-metered object URLs,
+  // and adds the admin backfill edge function + Deno regression tests. The
+  // first two migrations below are source-reconciled remote-only history from
+  // ORCH-0950 / ORCH-0955 so this worktree can hand off a clean db push.
+  const ORCH_0957_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260725000002_orch_0950_expanded_scope_dashboard_coherence.sql",
+    "supabase/migrations/20260727000000_orch_0955_native_stripe_tax.sql",
+    "supabase/migrations/20260727000001_orch_0957_place_pool_thumbs_backfilled_at.sql",
+    "supabase/functions/_shared/imageCollage.ts",
+    "supabase/functions/_shared/imageCollage.test.ts",
+    "supabase/functions/_shared/photoStorageService.ts",
+    "supabase/functions/_shared/photoStorageService.test.ts",
+    "supabase/functions/backfill-place-photo-thumbs/index.ts",
+    "supabase/functions/backfill-place-photo-thumbs/index.test.ts",
+    "supabase/functions/_shared/__tests__/imageCollage.thumbFallback.test.ts",
+  ];
+  // META-ORCH-0952 [Buyer-web confirm pipeline deep forensics] CLOSE 2026-05-25.
+  // C7 is scoped to ORCH-0863 marketing; the META-ORCH-0952 self-heal rework
+  // touched ticket-checkout-confirm/index.ts (already in ORCH-0932 allowlist
+  // above) and added a new Deno test exercising the awaiting_web_redirect +
+  // null PI Checkout-Session recovery path. This entry adds the new test file
+  // only; the index.ts touch is covered by ORCH-0932.
+  const META_ORCH_0952_BACKEND_ALLOWLIST = [
+    "supabase/functions/ticket-checkout-confirm/__tests__/orch_0952_web_checkout_session_fallback.test.ts",
+  ];
+
+  // ORCH-0950 [Trip capacity + dashboard coherence — EXPANDED SCOPE]. C7 is
+  // scoped to ORCH-0863 marketing; these backend touches are the trip-capacity
+  // canonical-columns migration set (v1 strip + v2 expanded dashboard coherence)
+  // plus the Deno regression tests asserting partial-patch sibling preservation.
+  // No edge function source is touched.
+  const ORCH_0950_BACKEND_ALLOWLIST = [
+    "supabase/functions/_test/orch_0950_trip_capacity_canonical.test.ts",
+    "supabase/functions/_test/orch_0950_expanded_partial_patch_preserves_siblings.test.ts",
+    "supabase/migrations/20260725000000_orch_0950_trip_capacity_single_source.sql",
+    "supabase/migrations/20260725000002_orch_0950_expanded_scope_dashboard_coherence.sql",
+  ];
   const ALLOWLIST = [
+    ...META_ORCH_0952_BACKEND_ALLOWLIST,
     ...ORCH_0954_BACKEND_ALLOWLIST,
     ...ORCH_0915_BACKEND_ALLOWLIST,
     ...ORCH_0933_BACKEND_ALLOWLIST,
@@ -790,6 +851,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_0930_0928_LOCKIN_BACKEND_ALLOWLIST,
     ...ORCH_0932_BACKEND_ALLOWLIST,
     ...ORCH_0931_BACKEND_ALLOWLIST,
+    ...ORCH_0950_BACKEND_ALLOWLIST,
     ...ORCH_0859_BUNDLED_ALLOWLIST,
     ...ORCH_0869_BACKEND_ALLOWLIST,
     ...ORCH_0875_BACKEND_ALLOWLIST,
@@ -818,7 +880,9 @@ function checkNoNewBackendFiles() {
     ...ORCH_0946_BACKEND_ALLOWLIST,
     ...ORCH_0947_BACKEND_ALLOWLIST,
     ...ORCH_0953_BACKEND_ALLOWLIST,
+    ...ORCH_0955_BACKEND_ALLOWLIST,
     ...ORCH_0956_BACKEND_ALLOWLIST,
+    ...ORCH_0957_BACKEND_ALLOWLIST,
   ];
   const forbidden = changed.filter(
     (p) =>

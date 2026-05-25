@@ -51,7 +51,7 @@
  *   5. `BrandPaymentsView.tsx` imports the new
  *      `useBrandStripeTaxDashboardLink` hook AND contains the literal
  *      "merchant of record" (disclosure-copy enforcement).
- *   6. New edge function `brand-stripe-tax-dashboard-link/index.ts` exists
+ *   6. Embedded Tax account-session edge function exists
  *      and calls `accounts.createLoginLink`.
  *
  * Codified by ORCH-0804 SPEC §9 + §10.
@@ -88,11 +88,11 @@ const PAYMENTS_VIEW_PATH = join(
   "brand",
   "BrandPaymentsView.tsx",
 );
-const TAX_DASHBOARD_LINK_FN_PATH = join(
+const TAX_ACCOUNT_SESSION_FN_PATH = join(
   REPO_ROOT,
   "supabase",
   "functions",
-  "brand-stripe-tax-dashboard-link",
+  "brand-stripe-tax-account-session",
   "index.ts",
 );
 
@@ -182,27 +182,27 @@ if (!/tax_amount_cents/.test(webhookSrc)) {
 
 // Check 5 — Payments tab CTA + disclosure copy.
 const paymentsViewSrc = readOrEmpty(PAYMENTS_VIEW_PATH);
-if (!/useBrandStripeTaxDashboardLink/.test(paymentsViewSrc)) {
+if (!/useBrandStripeTaxAccountSession/.test(paymentsViewSrc)) {
   failures.push(
-    "Check 5 FAIL: BrandPaymentsView.tsx does not import useBrandStripeTaxDashboardLink — Tax & registrations CTA missing",
+    "Check 5 FAIL: BrandPaymentsView.tsx does not import useBrandStripeTaxAccountSession — Tax & registrations CTA missing",
   );
 }
-if (!/merchant of record/.test(paymentsViewSrc)) {
+if (!/merchant\s+of\s+record/.test(paymentsViewSrc)) {
   failures.push(
     "Check 5 FAIL: BrandPaymentsView.tsx does not contain the literal 'merchant of record' — brand-disclosure copy missing",
   );
 }
 
 // Check 6 — new edge function exists.
-if (!existsSync(TAX_DASHBOARD_LINK_FN_PATH)) {
+if (!existsSync(TAX_ACCOUNT_SESSION_FN_PATH)) {
   failures.push(
-    "Check 6 FAIL: supabase/functions/brand-stripe-tax-dashboard-link/index.ts is missing",
+    "Check 6 FAIL: supabase/functions/brand-stripe-tax-account-session/index.ts is missing",
   );
 } else {
-  const fnSrc = readOrEmpty(TAX_DASHBOARD_LINK_FN_PATH);
-  if (!/accounts\.createLoginLink/.test(fnSrc)) {
+  const fnSrc = readOrEmpty(TAX_ACCOUNT_SESSION_FN_PATH);
+  if (!/accountSessions\.create/.test(fnSrc)) {
     failures.push(
-      "Check 6 FAIL: brand-stripe-tax-dashboard-link/index.ts must call accounts.createLoginLink",
+      "Check 6 FAIL: brand-stripe-tax-account-session/index.ts must call accountSessions.create",
     );
   }
 }

@@ -19,11 +19,13 @@ import { GlassCard } from "../ui/GlassCard";
 export interface TripDetailKpiCardProps {
   revenueLabel: string;
   spotsLabel: string;
+  spotsValueTestID?: string;
 }
 
 export const TripDetailKpiCard: React.FC<TripDetailKpiCardProps> = ({
   revenueLabel,
   spotsLabel,
+  spotsValueTestID,
 }) => {
   return (
     <GlassCard
@@ -39,7 +41,9 @@ export const TripDetailKpiCard: React.FC<TripDetailKpiCardProps> = ({
         </View>
         <View style={styles.colRight}>
           <Text style={styles.label}>SPOTS</Text>
-          <Text style={styles.midValue}>{spotsLabel}</Text>
+          <Text style={styles.midValue} testID={spotsValueTestID}>
+            {spotsLabel}
+          </Text>
         </View>
       </View>
     </GlassCard>

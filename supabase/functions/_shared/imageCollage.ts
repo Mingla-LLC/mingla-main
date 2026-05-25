@@ -45,13 +45,14 @@ export async function fingerprintPhotos(photoUrls: string[]): Promise<string> {
     .join("");
 }
 
-// [CRITICAL — ORCH-0737 v6] Server-side photo resize via URL transform.
+// [CRITICAL — ORCH-0737 v6 + ORCH-0957] Server-side photo resize strategy.
 //
 // Memory safety: native-resolution decode (the prior behavior) consumed up to
 // ~92 MB per photo for native uploads (4800×4800 RGBA). v3 hit
 // WORKER_RESOURCE_LIMIT 546 at parallel-6 with this. v4 retreated to serial-3
-// prep within compose_collage. v6 fixes at the SOURCE — fetch the photo at
-// the target tile resolution from the start.
+// prep within compose_collage. v6 fixed at the SOURCE by fetching smaller
+// photos. ORCH-0957 keeps that memory contract while avoiding Supabase's
+// metered image-transformation endpoint for Mingla-owned place photos.
 //
 // Verified live 2026-05-06:
 //   - Supabase Storage transform: 173 KB → 10.7 KB (94%↓)
@@ -62,9 +63,15 @@ export async function fingerprintPhotos(photoUrls: string[]): Promise<string> {
 // fallback to native fetch + decode for unknown CDNs). Bounded because
 // composeCollage processes photos sequentially within a single call.
 //
-// Kill-switch: `DISABLE_PHOTO_URL_TRANSFORM=true` env var bypasses transform
-// without redeploy, useful if a CDN behavior change breaks the pattern.
+// Kill-switches:
+//   - DISABLE_PHOTO_URL_TRANSFORM=true bypasses all URL rewriting.
+//   - USE_PLACE_PHOTO_THUMBS=false temporarily restores the legacy Supabase
+//     render endpoint for place-photos if thumbnail rollout must be reverted.
 export function transformPhotoUrlForTile(url: string, tileSize: number): string {
+  return transformPhotoUrlForTileInternal(url, tileSize, false);
+}
+
+function transformPhotoUrlForTileInternal(url: string, tileSize: number, forceLegacySupabaseTransform: boolean): string {
   if (!url || typeof url !== "string") return url;
 
   // ORCH-0737 v6 kill-switch: operator sets DISABLE_PHOTO_URL_TRANSFORM=true
@@ -72,10 +79,29 @@ export function transformPhotoUrlForTile(url: string, tileSize: number): string 
   if (Deno.env.get("DISABLE_PHOTO_URL_TRANSFORM") === "true") return url;
 
   // Pattern 1 — Supabase Storage public object URL.
-  // Source:  https://<project>.supabase.co/storage/v1/object/public/<bucket>/<path>
-  // Target:  https://<project>.supabase.co/storage/v1/render/image/public/<bucket>/<path>?width=N&height=N&resize=cover
+  // ORCH-0957: place-photos default to pre-generated 384x384 JPEG thumbnails
+  // served through the non-metered object endpoint. The thumbnail path is
+  // derived from the original path without storing another DB column:
+  //   <dir>/<i>.<ext> -> <dir>/<i>_thumb.jpg
   const supabaseObjectPrefix = "/storage/v1/object/public/";
   if (url.includes(supabaseObjectPrefix)) {
+    const useThumbsFlag = Deno.env.get("USE_PLACE_PHOTO_THUMBS");
+    const useThumbs = !forceLegacySupabaseTransform &&
+      (useThumbsFlag === undefined ? true : useThumbsFlag === "true");
+
+    if (useThumbs) {
+      const [base] = url.split("?");
+      const lastSlash = base.lastIndexOf("/");
+      const dirPart = base.slice(0, lastSlash + 1);
+      const basename = base.slice(lastSlash + 1);
+      const dotIdx = basename.lastIndexOf(".");
+      const stem = dotIdx > 0 ? basename.slice(0, dotIdx) : basename;
+      return `${dirPart}${stem}_thumb.jpg`;
+    }
+
+    // ORCH-0957 LEGACY FALLBACK ALLOWLIST:
+    // USE_PLACE_PHOTO_THUMBS=false restores the pre-ORCH-0957 metered path as
+    // an emergency rollout lever. Strict-grep allows this exact block only.
     const transformedPath = url.replace(
       "/storage/v1/object/public/",
       "/storage/v1/render/image/public/",
@@ -99,6 +125,31 @@ export function transformPhotoUrlForTile(url: string, tileSize: number): string 
   return url;
 }
 
+function thumbFallbackEnabled(): boolean {
+  const raw = Deno.env.get("THUMB_404_FALLBACK_TO_TRANSFORM");
+  return raw === undefined ? true : raw === "true";
+}
+
+function isThumbObjectRewrite(originalUrl: string, rewrittenUrl: string): boolean {
+  return originalUrl !== rewrittenUrl &&
+    rewrittenUrl.includes("/storage/v1/object/public/") &&
+    rewrittenUrl.endsWith("_thumb.jpg");
+}
+
+function legacyTransformFallbackUrl(originalUrl: string, tileSize: number): string {
+  return transformPhotoUrlForTileInternal(originalUrl, tileSize, true);
+}
+
+async function fetchUrl(url: string, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { signal: controller.signal });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 /**
  * Fetch a photo URL and decode to imagescript Image.
  * Returns null on failure (caller leaves cell blank).
@@ -109,19 +160,28 @@ export function transformPhotoUrlForTile(url: string, tileSize: number): string 
 async function fetchAndDecode(url: string, tileSize: number, timeoutMs = 12_000): Promise<Image | null> {
   const transformedUrl = transformPhotoUrlForTile(url, tileSize);
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-    const res = await fetch(transformedUrl, { signal: controller.signal });
-    clearTimeout(timeoutId);
+    let fetchUrlForDecode = transformedUrl;
+    let res = await fetchUrl(fetchUrlForDecode, timeoutMs);
+
+    if (
+      res.status === 404 &&
+      thumbFallbackEnabled() &&
+      isThumbObjectRewrite(url, transformedUrl)
+    ) {
+      fetchUrlForDecode = legacyTransformFallbackUrl(url, tileSize);
+      console.warn(`[imageCollage] thumb missing; falling back to legacy transform for ${transformedUrl.slice(0, 80)}`);
+      res = await fetchUrl(fetchUrlForDecode, timeoutMs);
+    }
+
     if (!res.ok) {
-      console.warn(`[imageCollage] fetch failed ${res.status} for ${transformedUrl.slice(0, 80)}`);
+      console.warn(`[imageCollage] fetch failed ${res.status} for ${fetchUrlForDecode.slice(0, 80)}`);
       return null;
     }
     const buf = await res.arrayBuffer();
     const img = await decode(new Uint8Array(buf));
     // imagescript decode returns Image | GIF; we only handle Image
     if (img instanceof Image) return img;
-    console.warn(`[imageCollage] decoded as non-Image (likely GIF) for ${transformedUrl.slice(0, 80)}`);
+    console.warn(`[imageCollage] decoded as non-Image (likely GIF) for ${fetchUrlForDecode.slice(0, 80)}`);
     return null;
   } catch (err) {
     console.warn(`[imageCollage] decode error for ${transformedUrl.slice(0, 80)}:`, err instanceof Error ? err.message : err);

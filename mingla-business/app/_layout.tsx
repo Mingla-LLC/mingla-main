@@ -105,9 +105,13 @@ function RootLayoutInner(): React.ReactElement {
   const currentBrandId = useCurrentBrandId();
   const { isFetched: brandFetched, fetchStatus: brandFetchStatus } = useBrand(currentBrandId);
   const { isResolving: brandRecoveryResolving } = useCurrentBrandRecovery();
-  const mountedAt = useRef(Date.now());
+  const mountedAt = useRef<number | null>(null);
   const [splashHidden, setSplashHidden] = useState(false);
   const [brandFetchTimedOut, setBrandFetchTimedOut] = useState(false);
+
+  useEffect(() => {
+    mountedAt.current = Date.now();
+  }, []);
 
   // 2s hard-timeout: if useBrand hasn't resolved within 2s of auth bootstrap
   // completing, release the splash anyway.
@@ -128,7 +132,7 @@ function RootLayoutInner(): React.ReactElement {
 
   useEffect(() => {
     if (loading || !brandReady || splashHidden) return;
-    const elapsed = Date.now() - mountedAt.current;
+    const elapsed = Date.now() - (mountedAt.current ?? Date.now());
     const remaining = Math.max(0, SPLASH_MIN_VISIBLE_MS - elapsed);
     const timer = setTimeout(() => {
       void SplashScreen.hideAsync().catch(() => {
@@ -197,6 +201,7 @@ function RootLayoutInner(): React.ReactElement {
 
   // Cycle 17d §D — orphan-key safety net (log-only; operator promotes to auto-clear in future cycle).
   const [reapRan, setReapRan] = useState(false);
+
   useEffect(() => {
     if (loading || reapRan) return;
     void (async () => {
