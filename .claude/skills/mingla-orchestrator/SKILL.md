@@ -366,6 +366,10 @@ Run the full review protocol:
 - [ ] Constitutional compliance verified?
 - [ ] Evidence chain complete?
 - [ ] Documents updated?
+- [ ] **Commit-hash verification** — for every claimed-changed file, `git log --oneline <file>` MUST show a commit on the per-ORCH branch. If `git status` shows the file as modified-but-uncommitted, verdict is NEEDS WORK. No "I'll commit it after review" path. Codified by DEC-179 / ORCH-0959 [Orchestrator REVIEW dependency-graph gap + append-only gate META-ORCH regex broadening].
+- [ ] **Dependency walk for config-layer changes** — any touch to `app.json`, `app.config.ts`, `vercel.json`, `package.json`, `tsconfig*.json`, `expo.json`, `metro.config.*`, `babel.config.*`, `next.config.*`, `.github/workflows/**`, or `.github/scripts/**` triggers a grep for every consumer of the changed key/value, plus an explicit compatibility assessment per consumer documented in the REVIEW report. Codified by DEC-179 / ORCH-0959.
+
+**APPROVED verdicts MUST include labeled "Commit-hash verification" and "Dependency walk" sections in the REVIEW report.** Absent either section → verdict downgrades to NEEDS WORK regardless of other findings.
 
 Verdict: `APPROVED` | `NEEDS WORK (specific gaps)` | `REJECTED (re-audit needed)`
 
