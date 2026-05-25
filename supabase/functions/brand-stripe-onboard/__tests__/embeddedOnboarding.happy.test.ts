@@ -1,10 +1,10 @@
 /**
  * ORCH-0954 happy-path regression for embedded onboarding cutover.
  *
- * Fails-on-revert proof: verified after implementation commit; report records
- * the exact commit hash and failing output. This test fails if the controller
- * constant is reverted to losses_collector="application",
- * fees_collector="application", dashboard="express".
+ * Fails-on-revert verified at 316da320: temporarily reverting the controller
+ * constant to losses_collector="application", fees_collector="application",
+ * dashboard="express" failed this file with Actual "application" / Expected
+ * "stripe".
  */
 
 import {
