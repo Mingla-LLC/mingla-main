@@ -16,6 +16,7 @@ import {
   type AccountSessionComponents,
   createAccountSession,
 } from "../_shared/stripeBlueprintClient.ts";
+import { resolveBusinessWebOrigin } from "../_shared/businessWebOrigin.ts";
 import {
   corsHeaders,
   isValidUuid,
@@ -38,6 +39,7 @@ interface RequestBody {
   brand_id?: string;
   brandId?: string;
   surface?: AccountSessionSurface;
+  business_web_origin_override?: string;
 }
 
 interface StripeConnectAccountRow {
@@ -83,10 +85,6 @@ function componentsForSurface(
       enabled: true,
       features: {
         external_account_collection: true,
-        collection_options: {
-          fields: "eventually_due",
-          future_requirements: "include",
-        },
       },
     },
   };
@@ -97,10 +95,11 @@ function buildTargetUrl(input: {
   brandId: string;
   surface: AccountSessionSurface;
   returnTo: string;
+  businessWebOrigin: string;
 }): string {
   const url = new URL(
     targetPathForSurface(input.surface),
-    `${BUSINESS_WEB_ORIGIN}/`,
+    `${input.businessWebOrigin}/`,
   );
   url.searchParams.set("session", input.clientSecret);
   url.searchParams.set("brand_id", input.brandId);
@@ -131,6 +130,18 @@ serve(async (req) => {
   }
 
   const brandId = body.brand_id ?? body.brandId;
+  const businessWebOriginResult = resolveBusinessWebOrigin({
+    configuredOrigin: BUSINESS_WEB_ORIGIN,
+    override: body.business_web_origin_override,
+  });
+  if (!businessWebOriginResult.ok) {
+    return jsonResponse({
+      error: "validation_error",
+      detail: businessWebOriginResult.detail,
+    }, 400);
+  }
+  const businessWebOrigin = businessWebOriginResult.origin;
+
   if (!isValidUuid(brandId)) {
     return jsonResponse({
       error: "validation_error",
@@ -193,6 +204,7 @@ serve(async (req) => {
     brandId,
     surface: body.surface,
     returnTo: "mingla-business://onboarding-complete",
+    businessWebOrigin,
   });
 
   await writeAudit(supabase as never, {

@@ -3,7 +3,7 @@
  * ORCH-0954 strict-grep gate — I-PROPOSED-CONTROLLER-PROPS-PINNED.
  *
  * New Stripe connected accounts must use Stripe-managed risk and embedded
- * components: losses_collector=stripe, fees_collector=account, dashboard=none.
+ * components: losses_collector=stripe, fees_collector=stripe, dashboard=none.
  */
 
 import { readFileSync } from "node:fs";
@@ -29,7 +29,7 @@ const block = constantMatch[0];
 for (
   const required of [
     'losses_collector: "stripe"',
-    'fees_collector: "account"',
+    'fees_collector: "stripe"',
     'dashboard: "none"',
   ]
 ) {

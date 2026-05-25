@@ -2,7 +2,16 @@ import {
   BrandStripeCountryLockedError,
   startBrandStripeOnboarding,
 } from "../../services/brandStripeService";
+import { businessWebOriginOverrideBody } from "../../services/businessWebOriginOverride";
 import { supabase } from "../../services/supabase";
+
+jest.mock("../../services/businessWebOriginOverride", () => ({
+  businessWebOriginOverrideBody: jest.fn(() => ({})),
+}));
+
+jest.mock("../../services/appsFlyerService", () => ({
+  logAppsFlyerEvent: jest.fn(),
+}));
 
 jest.mock("../../services/supabase", () => ({
   supabase: {
@@ -13,9 +22,12 @@ jest.mock("../../services/supabase", () => ({
 }));
 
 const invokeMock = supabase.functions.invoke as jest.Mock;
+const originOverrideBodyMock = businessWebOriginOverrideBody as jest.Mock;
 
 beforeEach(() => {
   invokeMock.mockReset();
+  originOverrideBodyMock.mockReset();
+  originOverrideBodyMock.mockReturnValue({});
   invokeMock.mockResolvedValue({
     data: {
       client_secret: null,
@@ -23,6 +35,29 @@ beforeEach(() => {
       onboarding_url: "https://connect.stripe.com/setup/mock",
     },
     error: null,
+  });
+});
+
+it("sends preview business origin override for embedded onboarding URLs", async () => {
+  originOverrideBodyMock.mockReturnValue({
+    business_web_origin_override:
+      "https://mingla-business-orch-0954.vercel.app",
+  });
+
+  await startBrandStripeOnboarding(
+    "55555555-5555-4555-8555-555555555555",
+    "mingla-business://return",
+    "US",
+  );
+
+  expect(invokeMock).toHaveBeenCalledWith("brand-stripe-onboard", {
+    body: {
+      brand_id: "55555555-5555-4555-8555-555555555555",
+      return_url: "mingla-business://return",
+      country: "US",
+      business_web_origin_override:
+        "https://mingla-business-orch-0954.vercel.app",
+    },
   });
 });
 
