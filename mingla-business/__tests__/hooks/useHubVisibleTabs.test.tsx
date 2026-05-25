@@ -43,4 +43,15 @@ describe("META-ORCH-0972 Sub-B useHubVisibleTabs contract", () => {
     expect(pickHubInitialTab("trips", ["events", "trips"])).toBe("trips");
     expect(pickHubInitialTab(null, ["trips"])).toBe("trips");
   });
+
+  test("adversarial stale stored tab falls back to Get started when every offering bucket is empty", () => {
+    const visibleTabs = deriveHubVisibleTabs({
+      events: 0,
+      trips: 0,
+      experiences: 0,
+    });
+
+    expect(visibleTabs).toEqual(["getstarted"]);
+    expect(pickHubInitialTab("experiences", visibleTabs)).toBe("getstarted");
+  });
 });
