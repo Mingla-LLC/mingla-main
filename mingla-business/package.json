@@ -122,6 +122,15 @@
     "typescript": "~5.9.2"
   },
   "expo": {
+    "autolinking": {
+      "android": {
+        "exclude": [
+          "react-native-appsflyer",
+          "react-native-onesignal",
+          "react-native-purchases"
+        ]
+      }
+    },
     "doctor": {
       "reactNativeDirectoryCheck": {
         "exclude": [

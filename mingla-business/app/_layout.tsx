@@ -22,7 +22,11 @@
 // for full rationale.
 import "../src/diagnostics/silenceStripeForwardRef";
 import React, { useEffect, useRef, useState } from "react";
-import { AppState, type AppStateStatus } from "react-native";
+import {
+  AppState,
+  InteractionManager,
+  type AppStateStatus,
+} from "react-native";
 import { Stack } from "expo-router";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -94,7 +98,8 @@ function RootLayoutInner(): React.ReactElement {
   // both paths converge on `brandReady=true` (defensive belt-and-suspenders).
   const { loading } = useAuth();
   const currentBrandId = useCurrentBrandId();
-  const { isFetched: brandFetched, fetchStatus: brandFetchStatus } = useBrand(currentBrandId);
+  const { isFetched: brandFetched, fetchStatus: brandFetchStatus } =
+    useBrand(currentBrandId);
   const { isResolving: brandRecoveryResolving } = useCurrentBrandRecovery();
   const mountedAt = useRef<number | null>(null);
   const [splashHidden, setSplashHidden] = useState(false);
@@ -135,16 +140,26 @@ function RootLayoutInner(): React.ReactElement {
     return () => clearTimeout(timer);
   }, [loading, brandReady, splashHidden]);
 
-  // ORCH-0808 — AppsFlyer SDK init runs once at mount. Identity binding +
-  // first-event fire (af_complete_registration / af_login) happen in
-  // AuthContext on SIGNED_IN. Env-missing case is no-op + logged warn.
-  // Mixpanel init runs alongside — same pattern, env-guarded.
+  // ORCH-0808 — optional install/analytics SDK init runs after first paint.
+  // Auth identity binding + first-event fire happen in AuthContext on
+  // SIGNED_IN; env-missing cases are no-op + logged warn. Deferring keeps
+  // Android Home/Hub startup free of optional native SDK work.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
-    initializeAppsFlyer();
-    void mixpanelService.initialize();
-    revenueCatService.initialize();
-    initializeOneSignal();
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const task = InteractionManager.runAfterInteractions(() => {
+      timer = setTimeout(() => {
+        initializeAppsFlyer();
+        void mixpanelService.initialize();
+        revenueCatService.initialize();
+        initializeOneSignal();
+      }, 0);
+    });
+
+    return () => {
+      task.cancel();
+      if (timer !== null) clearTimeout(timer);
+    };
   }, []); // intentionally once
 
   // ORCH-0740 Cycle 1: AppState → React Query focusManager wiring.
@@ -157,7 +172,10 @@ function RootLayoutInner(): React.ReactElement {
     const handleAppStateChange = (status: AppStateStatus): void => {
       focusManager.setFocused(status === "active");
     };
-    const subscription = AppState.addEventListener("change", handleAppStateChange);
+    const subscription = AppState.addEventListener(
+      "change",
+      handleAppStateChange,
+    );
     return (): void => {
       subscription.remove();
     };
@@ -170,9 +188,8 @@ function RootLayoutInner(): React.ReactElement {
     if (loading || evictionRan) return;
     void (async () => {
       try {
-        const { evictEndedEvents } = await import(
-          "../src/utils/evictEndedEvents"
-        );
+        const { evictEndedEvents } =
+          await import("../src/utils/evictEndedEvents");
         const result = evictEndedEvents();
         if (__DEV__) {
           // eslint-disable-next-line no-console
@@ -197,9 +214,8 @@ function RootLayoutInner(): React.ReactElement {
     if (loading || reapRan) return;
     void (async () => {
       try {
-        const { reapOrphanStorageKeys } = await import(
-          "../src/utils/reapOrphanStorageKeys"
-        );
+        const { reapOrphanStorageKeys } =
+          await import("../src/utils/reapOrphanStorageKeys");
         await reapOrphanStorageKeys();
       } catch (error) {
         if (__DEV__) {

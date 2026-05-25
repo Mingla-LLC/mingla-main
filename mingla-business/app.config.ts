@@ -1,5 +1,35 @@
 import { ExpoConfig, ConfigContext } from "expo/config";
 
+type ExpoPluginEntry = NonNullable<ExpoConfig["plugins"]>[number];
+
+const pluginName = (plugin: ExpoPluginEntry): string | null => {
+  if (typeof plugin === "string") return plugin;
+  if (Array.isArray(plugin) && typeof plugin[0] === "string") {
+    return plugin[0];
+  }
+  return null;
+};
+
+const hasAppsFlyerEnv = (): boolean =>
+  Boolean(
+    process.env.EXPO_PUBLIC_APPSFLYER_DEV_KEY &&
+    process.env.EXPO_PUBLIC_APPSFLYER_IOS_APP_ID &&
+    process.env.EXPO_PUBLIC_APPSFLYER_ANDROID_APP_ID,
+  );
+
+const hasOneSignalEnv = (): boolean =>
+  Boolean(process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID);
+
+const filterOptionalNativeStartupPlugins = (
+  plugins: ExpoPluginEntry[] | undefined,
+): ExpoPluginEntry[] =>
+  (plugins ?? []).filter((plugin) => {
+    const name = pluginName(plugin);
+    if (name === "react-native-appsflyer") return hasAppsFlyerEnv();
+    if (name === "onesignal-expo-plugin") return hasOneSignalEnv();
+    return true;
+  });
+
 /**
  * Reads env at build time. Set in `.env` (EAS secrets / local):
  * - EXPO_PUBLIC_SUPABASE_URL, EXPO_PUBLIC_SUPABASE_ANON_KEY
@@ -26,121 +56,125 @@ const iosUrlScheme = iosClientId
 // Re-add once approved. Used by Cycle 13 (Door Mode card-present payments).
 // Not needed for Cycles 0a–12.
 
-export default ({ config }: ConfigContext): ExpoConfig => ({
-  ...config,
-  name: config.name ?? "Business",
-  slug: config.slug ?? "mingla-business",
-  // Cycle B2a — deep link scheme for Stripe Connect onboarding return.
-  // expo-web-browser.openAuthSessionAsync requires this scheme to redirect
-  // back into the native app after the embedded onboarding flow completes
-  // at business.mingla.com/connect-onboarding. Per
-  // SPEC_BIZ_CYCLE_B2A_STRIPE_CONNECT_ONBOARDING.md §3.3 A6.
-  scheme: "mingla-business",
-  plugins: [
-    ...(config.plugins ?? []),
-    [
-      "@react-native-google-signin/google-signin",
-      {
-        iosUrlScheme,
-      },
+export default ({ config }: ConfigContext): ExpoConfig => {
+  const basePlugins = filterOptionalNativeStartupPlugins(config.plugins);
+
+  return {
+    ...config,
+    name: config.name ?? "Business",
+    slug: config.slug ?? "mingla-business",
+    // Cycle B2a — deep link scheme for Stripe Connect onboarding return.
+    // expo-web-browser.openAuthSessionAsync requires this scheme to redirect
+    // back into the native app after the embedded onboarding flow completes
+    // at business.mingla.com/connect-onboarding. Per
+    // SPEC_BIZ_CYCLE_B2A_STRIPE_CONNECT_ONBOARDING.md §3.3 A6.
+    scheme: "mingla-business",
+    plugins: [
+      ...basePlugins,
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          iosUrlScheme,
+        },
+      ],
+      "expo-apple-authentication",
+      // expo-blur 15.0.8 has no config plugin — auto-links via React Native
+      // auto-linking only. Adding it as a plugin entry throws PluginError.
+      // Surfaced as D-DEV-1 in implementation report.
+      "expo-camera",
+      [
+        "expo-image-picker",
+        {
+          photosPermission:
+            "Mingla Business uses your photo library to upload brand and event imagery.",
+        },
+      ],
+      "expo-video",
+      // ORCH-0839-B (2026-05-14): @stripe/stripe-react-native plugin removed.
+      // mingla-business pivoted from native PaymentSheet to hosted Stripe
+      // Checkout via expo-web-browser. Removing the plugin omits the native
+      // framework on the next EAS rebuild — shrinking binary size and
+      // retiring the iOS 26 + bridgeless TurboModule hang surface.
+      "@sentry/react-native/expo",
+      // [TRANSITIONAL] react-native-nfc-manager auto-linked via npm install
+      // (D-NFC-OUTCOME = Option 3). No plugin entry required for auto-link.
+      // If iOS NFC entitlement is needed for Cycle 13 door-mode, re-evaluate
+      // with `expo-config-plugin-nfc-manager` (Option 1) at that time.
+      // ORCH-0950: generated Android New Architecture CMake must avoid
+      // React Native's bracket-unsafe generated-source glob so per-ORCH
+      // worktrees such as ORCH-0950-[trip-capacity-single-source] can build.
+      "./plugins/withAndroidBracketSafeCmake",
     ],
-    "expo-apple-authentication",
-    // expo-blur 15.0.8 has no config plugin — auto-links via React Native
-    // auto-linking only. Adding it as a plugin entry throws PluginError.
-    // Surfaced as D-DEV-1 in implementation report.
-    "expo-camera",
-    [
-      "expo-image-picker",
-      {
-        photosPermission:
-          "Mingla Business uses your photo library to upload brand and event imagery.",
-      },
-    ],
-    "expo-video",
-    // ORCH-0839-B (2026-05-14): @stripe/stripe-react-native plugin removed.
-    // mingla-business pivoted from native PaymentSheet to hosted Stripe
-    // Checkout via expo-web-browser. Removing the plugin omits the native
-    // framework on the next EAS rebuild — shrinking binary size and
-    // retiring the iOS 26 + bridgeless TurboModule hang surface.
-    "@sentry/react-native/expo",
-    // [TRANSITIONAL] react-native-nfc-manager auto-linked via npm install
-    // (D-NFC-OUTCOME = Option 3). No plugin entry required for auto-link.
-    // If iOS NFC entitlement is needed for Cycle 13 door-mode, re-evaluate
-    // with `expo-config-plugin-nfc-manager` (Option 1) at that time.
-    // ORCH-0950: generated Android New Architecture CMake must avoid
-    // React Native's bracket-unsafe generated-source glob so per-ORCH
-    // worktrees such as ORCH-0950-[trip-capacity-single-source] can build.
-    "./plugins/withAndroidBracketSafeCmake",
-  ],
-  extra: {
-    ...config.extra,
-    EXPO_PUBLIC_SUPABASE_URL:
-      process.env.EXPO_PUBLIC_SUPABASE_URL ??
-      "https://gqnoajqerqhnvulmnyvv.supabase.co",
-    EXPO_PUBLIC_SUPABASE_ANON_KEY:
-      process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ??
-      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdxbm9hanFlcnFobnZ1bG1ueXZ2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc1MDUyNzIsImV4cCI6MjA3MzA4MTI3Mn0.p4yi9yD2RWfJ2HN4DD-dgrvXnyzhJi3g2YCouSK-hbo",
-    // Cycle B2a Path C V3 — Stripe Connect publishable key. Used by the
-    // Mingla-hosted connect-onboarding page (Path B host) when initialising
-    // @stripe/connect-js. Publishable keys are public-by-design (ship in client
-    // bundle). ORCH-0954 amendment: Vercel production requires pk_live_;
-    // Vercel preview/development and local dev require pk_test_ so TEST-mode
-    // embedded Account Sessions can render on preview without weakening prod.
-    EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY: (() => {
-      const fromEnv = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY;
-      const vercelEnv = process.env.VERCEL_ENV;
-      const sandboxFallback =
-        "pk_test_51TTnt1PjlZyAYA40f3kjmxF6uXjfEJKfFR25LiJpVqd7qw6TYfDqqKLcNamL3JGlD2vxh94Bzn4ciaqsMNN1PJ0C00oZVosOxd";
-      if (vercelEnv === "production") {
-        if (!fromEnv || !fromEnv.startsWith("pk_live_")) {
+    extra: {
+      ...config.extra,
+      EXPO_PUBLIC_SUPABASE_URL:
+        process.env.EXPO_PUBLIC_SUPABASE_URL ??
+        "https://gqnoajqerqhnvulmnyvv.supabase.co",
+      EXPO_PUBLIC_SUPABASE_ANON_KEY:
+        process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ??
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdxbm9hanFlcnFobnZ1bG1ueXZ2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc1MDUyNzIsImV4cCI6MjA3MzA4MTI3Mn0.p4yi9yD2RWfJ2HN4DD-dgrvXnyzhJi3g2YCouSK-hbo",
+      // Cycle B2a Path C V3 — Stripe Connect publishable key. Used by the
+      // Mingla-hosted connect-onboarding page (Path B host) when initialising
+      // @stripe/connect-js. Publishable keys are public-by-design (ship in client
+      // bundle). ORCH-0954 amendment: Vercel production requires pk_live_;
+      // Vercel preview/development and local dev require pk_test_ so TEST-mode
+      // embedded Account Sessions can render on preview without weakening prod.
+      EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY: (() => {
+        const fromEnv = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY;
+        const vercelEnv = process.env.VERCEL_ENV;
+        const sandboxFallback =
+          "pk_test_51TTnt1PjlZyAYA40f3kjmxF6uXjfEJKfFR25LiJpVqd7qw6TYfDqqKLcNamL3JGlD2vxh94Bzn4ciaqsMNN1PJ0C00oZVosOxd";
+        if (vercelEnv === "production") {
+          if (!fromEnv || !fromEnv.startsWith("pk_live_")) {
+            throw new Error(
+              "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY must be a pk_live_ value for Vercel production builds.",
+            );
+          }
+          return fromEnv;
+        }
+        if (vercelEnv === "preview" || vercelEnv === "development") {
+          if (!fromEnv || !fromEnv.startsWith("pk_test_")) {
+            throw new Error(
+              "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY must be a pk_test_ value for Vercel preview/development builds.",
+            );
+          }
+          return fromEnv;
+        }
+        if (vercelEnv !== undefined) {
           throw new Error(
-            "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY must be a pk_live_ value for Vercel production builds.",
+            `Unsupported VERCEL_ENV "${vercelEnv}". Expected production, preview, development, or undefined.`,
           );
         }
-        return fromEnv;
-      }
-      if (vercelEnv === "preview" || vercelEnv === "development") {
-        if (!fromEnv || !fromEnv.startsWith("pk_test_")) {
+        const localValue = fromEnv ?? sandboxFallback;
+        if (!localValue.startsWith("pk_test_")) {
           throw new Error(
-            "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY must be a pk_test_ value for Vercel preview/development builds.",
+            "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY must be a pk_test_ value for local development.",
           );
         }
-        return fromEnv;
-      }
-      if (vercelEnv !== undefined) {
-        throw new Error(
-          `Unsupported VERCEL_ENV "${vercelEnv}". Expected production, preview, development, or undefined.`,
-        );
-      }
-      const localValue = fromEnv ?? sandboxFallback;
-      if (!localValue.startsWith("pk_test_")) {
-        throw new Error(
-          "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY must be a pk_test_ value for local development.",
-        );
-      }
-      return localValue;
-    })(),
-    // B2a Path C V3 forensics R-1: canonical Mingla Business public web URL.
-    // Single source of truth read by mingla-business/src/constants/platformUrl.ts.
-    // Production canonical: https://business.usemingla.com (Vercel-hosted Expo Web export).
-    // Vercel build also sets this in env so the web bundle reads consistently.
-    EXPO_PUBLIC_MINGLA_BUSINESS_WEB_URL:
-      process.env.EXPO_PUBLIC_MINGLA_BUSINESS_WEB_URL ??
-      "https://business.usemingla.com",
-    googleWebClientId:
-      process.env.GOOGLE_WEB_CLIENT_ID ??
-      "169132274606-hp7cne780gsp7s6l1rrvbfktp6smrfs0.apps.googleusercontent.com",
-    EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID:
-      process.env.GOOGLE_WEB_CLIENT_ID ??
-      "169132274606-hp7cne780gsp7s6l1rrvbfktp6smrfs0.apps.googleusercontent.com",
-    ANDROID_CLIENT_ID:
-      process.env.GOOGLE_ANDROID_CLIENT_ID ??
-      "169132274606-5cmvk27gpgr9dbhu5l2o2hgg4l53fc25.apps.googleusercontent.com",
-    IOS_CLIENT_ID:
-      process.env.GOOGLE_IOS_CLIENT_ID ??
-      "169132274606-3o5ecs4kn9fag36sbm8hesgmgl5bgf5e.apps.googleusercontent.com",
-    GOOGLE_ANDROID_CLIENT_ID:
-      process.env.GOOGLE_ANDROID_CLIENT_ID ??
-      "169132274606-5cmvk27gpgr9dbhu5l2o2hgg4l53fc25.apps.googleusercontent.com",
-  },
-});
+        return localValue;
+      })(),
+      // B2a Path C V3 forensics R-1: canonical Mingla Business public web URL.
+      // Single source of truth read by mingla-business/src/constants/platformUrl.ts.
+      // Production canonical: https://business.usemingla.com (Vercel-hosted Expo Web export).
+      // Vercel build also sets this in env so the web bundle reads consistently.
+      EXPO_PUBLIC_MINGLA_BUSINESS_WEB_URL:
+        process.env.EXPO_PUBLIC_MINGLA_BUSINESS_WEB_URL ??
+        "https://business.usemingla.com",
+      googleWebClientId:
+        process.env.GOOGLE_WEB_CLIENT_ID ??
+        "169132274606-hp7cne780gsp7s6l1rrvbfktp6smrfs0.apps.googleusercontent.com",
+      EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID:
+        process.env.GOOGLE_WEB_CLIENT_ID ??
+        "169132274606-hp7cne780gsp7s6l1rrvbfktp6smrfs0.apps.googleusercontent.com",
+      ANDROID_CLIENT_ID:
+        process.env.GOOGLE_ANDROID_CLIENT_ID ??
+        "169132274606-5cmvk27gpgr9dbhu5l2o2hgg4l53fc25.apps.googleusercontent.com",
+      IOS_CLIENT_ID:
+        process.env.GOOGLE_IOS_CLIENT_ID ??
+        "169132274606-3o5ecs4kn9fag36sbm8hesgmgl5bgf5e.apps.googleusercontent.com",
+      GOOGLE_ANDROID_CLIENT_ID:
+        process.env.GOOGLE_ANDROID_CLIENT_ID ??
+        "169132274606-5cmvk27gpgr9dbhu5l2o2hgg4l53fc25.apps.googleusercontent.com",
+    },
+  };
+};

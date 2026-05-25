@@ -17,8 +17,8 @@
  * See: Mingla_Artifacts/specs/SPEC_ORCH-0808_APPSFLYER_MINGLA_BUSINESS.md §3.3
  */
 
-import { Platform } from 'react-native';
-import { supabase } from './supabase';
+import { Platform } from "react-native";
+import { supabase } from "./supabase";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Native-module lazy load (ORCH-0807 Rev 3 emergency unblock 2026-05-12)
@@ -40,28 +40,47 @@ import { supabase } from './supabase';
 // ─────────────────────────────────────────────────────────────────────────────
 
 type AppsFlyerSdk = {
-  initSdk: (config: unknown, ok: (r: unknown) => void, fail: (e: unknown) => void) => void;
+  initSdk: (
+    config: unknown,
+    ok: (r: unknown) => void,
+    fail: (e: unknown) => void,
+  ) => void;
   setCustomerUserId: (id: string, cb: (r: unknown) => void) => void;
   getAppsFlyerUID: (cb: (err: unknown, uid: string) => void) => void;
-  logEvent: (name: string, values: Record<string, unknown>, ok: (r: unknown) => void, fail: (e: unknown) => void) => void;
+  logEvent: (
+    name: string,
+    values: Record<string, unknown>,
+    ok: (r: unknown) => void,
+    fail: (e: unknown) => void,
+  ) => void;
 };
 
 let appsFlyer: AppsFlyerSdk | null = null;
+const AF_DEV_KEY = process.env.EXPO_PUBLIC_APPSFLYER_DEV_KEY;
+const AF_IOS_APP_ID = process.env.EXPO_PUBLIC_APPSFLYER_IOS_APP_ID;
+const AF_ANDROID_APP_ID = process.env.EXPO_PUBLIC_APPSFLYER_ANDROID_APP_ID;
+const hasAppsFlyerEnv =
+  Boolean(AF_DEV_KEY) && Boolean(AF_IOS_APP_ID) && Boolean(AF_ANDROID_APP_ID);
 // ORCH-0839-A cleanup: also Platform.OS-guard for web. The existing
 // try/catch handles native dev-client missing-module crashes, but
 // `react-native-appsflyer` evaluates a native binding at import that
 // `expo export -p web` can't tree-shake even inside try/catch. Explicit
-// Platform guard short-circuits the require on web entirely.
-if (Platform.OS !== 'web') {
+// Platform guard short-circuits the require on web entirely. Env guard also
+// keeps Android startup from loading optional native SDK code in dev clients
+// where AppsFlyer is intentionally disabled.
+if (Platform.OS !== "web" && hasAppsFlyerEnv) {
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const mod = require('react-native-appsflyer') as { default?: AppsFlyerSdk } | AppsFlyerSdk;
-    appsFlyer = (mod as { default?: AppsFlyerSdk }).default ?? (mod as AppsFlyerSdk);
+    const mod = require("react-native-appsflyer") as
+      | { default?: AppsFlyerSdk }
+      | AppsFlyerSdk;
+    appsFlyer =
+      (mod as { default?: AppsFlyerSdk }).default ?? (mod as AppsFlyerSdk);
   } catch (err) {
     console.warn(
-      '[AppsFlyer] Native module unavailable at import — running as no-op. ' +
-        'This is expected on Expo Go / dev-client builds without the native ' +
-        'side linked; real release builds load normally.',
+      "[AppsFlyer] Native module unavailable at import — running as no-op. " +
+        "This is expected on Expo Go / dev-client builds without the native " +
+        "side linked; real release builds load normally.",
       err,
     );
   }
@@ -70,10 +89,6 @@ if (Platform.OS !== 'web') {
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants — env-driven (TRANSITIONAL until EAS Secrets are provisioned)
 // ─────────────────────────────────────────────────────────────────────────────
-
-const AF_DEV_KEY = process.env.EXPO_PUBLIC_APPSFLYER_DEV_KEY;
-const AF_IOS_APP_ID = process.env.EXPO_PUBLIC_APPSFLYER_IOS_APP_ID;
-const AF_ANDROID_APP_ID = process.env.EXPO_PUBLIC_APPSFLYER_ANDROID_APP_ID;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Initialization
@@ -92,35 +107,35 @@ const registeredDeviceKeys = new Set<string>();
  */
 export function initializeAppsFlyer(): void {
   if (_initialized) return;
-  if (!appsFlyer) return; // ORCH-0807 Rev 3 — native module unavailable; no-op.
-  if (!AF_DEV_KEY || !AF_IOS_APP_ID || !AF_ANDROID_APP_ID) {
+  if (!hasAppsFlyerEnv) {
     // Constitution #3 — log once with explicit reason; never silent.
     console.warn(
-      '[AppsFlyer] env missing — init skipped. Set EXPO_PUBLIC_APPSFLYER_DEV_KEY + EXPO_PUBLIC_APPSFLYER_IOS_APP_ID + EXPO_PUBLIC_APPSFLYER_ANDROID_APP_ID.',
+      "[AppsFlyer] env missing — init skipped. Set EXPO_PUBLIC_APPSFLYER_DEV_KEY + EXPO_PUBLIC_APPSFLYER_IOS_APP_ID + EXPO_PUBLIC_APPSFLYER_ANDROID_APP_ID.",
     );
     return;
   }
+  if (!appsFlyer) return; // ORCH-0807 Rev 3 — native module unavailable; no-op.
   try {
     appsFlyer.initSdk(
       {
         devKey: AF_DEV_KEY,
         isDebug: __DEV__,
-        appId: Platform.OS === 'ios' ? AF_IOS_APP_ID : undefined,
+        appId: Platform.OS === "ios" ? AF_IOS_APP_ID : undefined,
         onInstallConversionDataListener: false,
         onDeepLinkListener: false,
         // ATT deferred — mirrors consumer ORCH-0349. We never prompt at cold start.
         timeToWaitForATTUserAuthorization: 0,
       },
       (result: unknown) => {
-        if (__DEV__) console.log('[AppsFlyer] SDK initialized:', result);
+        if (__DEV__) console.log("[AppsFlyer] SDK initialized:", result);
         _initialized = true;
       },
       (error: unknown) => {
-        console.warn('[AppsFlyer] SDK initialization failed:', error);
+        console.warn("[AppsFlyer] SDK initialization failed:", error);
       },
     );
   } catch (e) {
-    console.warn('[AppsFlyer] Native module not available:', e);
+    console.warn("[AppsFlyer] Native module not available:", e);
   }
 }
 
@@ -136,10 +151,10 @@ export function setAppsFlyerUserId(userId: string): void {
   if (!_initialized || !appsFlyer) return;
   try {
     appsFlyer.setCustomerUserId(userId, (result: unknown) => {
-      if (__DEV__) console.log('[AppsFlyer] Customer user ID set:', result);
+      if (__DEV__) console.log("[AppsFlyer] Customer user ID set:", result);
     });
   } catch (e) {
-    console.warn('[AppsFlyer] setCustomerUserId failed:', e);
+    console.warn("[AppsFlyer] setCustomerUserId failed:", e);
   }
 }
 
@@ -153,11 +168,11 @@ export function setAppsFlyerUserId(userId: string): void {
 export function clearAppsFlyerUserId(): void {
   if (!_initialized || !appsFlyer) return;
   try {
-    appsFlyer.setCustomerUserId('', (result: unknown) => {
-      if (__DEV__) console.log('[AppsFlyer] Customer user ID cleared:', result);
+    appsFlyer.setCustomerUserId("", (result: unknown) => {
+      if (__DEV__) console.log("[AppsFlyer] Customer user ID cleared:", result);
     });
   } catch (e) {
-    console.warn('[AppsFlyer] clearCustomerUserId failed:', e);
+    console.warn("[AppsFlyer] clearCustomerUserId failed:", e);
   }
 }
 
@@ -177,13 +192,15 @@ export function registerAppsFlyerDevice(userId: string): void {
   try {
     appsFlyer.getAppsFlyerUID(async (err: unknown, uid: string) => {
       if (err || !uid) {
-        console.warn('[AppsFlyer] getAppsFlyerUID failed:', err);
+        console.warn("[AppsFlyer] getAppsFlyerUID failed:", err);
         return;
       }
 
       let currentUserId: string | undefined;
       try {
-        const { data: { user } } = await supabase.auth.getUser();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
         currentUserId = user?.id;
       } catch {
         currentUserId = undefined;
@@ -191,32 +208,37 @@ export function registerAppsFlyerDevice(userId: string): void {
 
       if (currentUserId !== userId) {
         if (__DEV__) {
-          console.log('[AppsFlyer] Device registration skipped - auth user changed');
+          console.log(
+            "[AppsFlyer] Device registration skipped - auth user changed",
+          );
         }
         return;
       }
 
-      const platform = Platform.OS as 'ios' | 'android';
-      const appId = platform === 'ios' ? AF_IOS_APP_ID : AF_ANDROID_APP_ID;
+      const platform = Platform.OS as "ios" | "android";
+      const appId = platform === "ios" ? AF_IOS_APP_ID : AF_ANDROID_APP_ID;
       const deviceKey = `${userId}:${uid}`;
       if (registeredDeviceKeys.has(deviceKey)) return;
 
       supabase
-        .from('appsflyer_devices')
+        .from("appsflyer_devices")
         .upsert(
           {
             user_id: userId,
             appsflyer_uid: uid,
             platform,
             app_id: appId,
-            app: 'business',
+            app: "business",
             updated_at: new Date().toISOString(),
           },
-          { onConflict: 'user_id,app,appsflyer_uid' },
+          { onConflict: "user_id,app,appsflyer_uid" },
         )
         .then(({ error }) => {
           if (error) {
-            console.warn('[AppsFlyer] Device registration failed:', error.message);
+            console.warn(
+              "[AppsFlyer] Device registration failed:",
+              error.message,
+            );
           } else {
             registeredDeviceKeys.add(deviceKey);
             if (__DEV__) {
@@ -226,7 +248,7 @@ export function registerAppsFlyerDevice(userId: string): void {
         });
     });
   } catch (e) {
-    console.warn('[AppsFlyer] registerAppsFlyerDevice failed:', e);
+    console.warn("[AppsFlyer] registerAppsFlyerDevice failed:", e);
   }
 }
 
@@ -271,6 +293,6 @@ export function logAppsFlyerEvent(
       },
     );
   } catch (e) {
-    console.warn('[AppsFlyer] logEvent failed:', e);
+    console.warn("[AppsFlyer] logEvent failed:", e);
   }
 }
