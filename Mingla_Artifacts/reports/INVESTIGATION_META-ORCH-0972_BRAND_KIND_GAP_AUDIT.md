@@ -218,7 +218,63 @@ Classifications: DELETE | REPURPOSE | REGATE | RENAME | UPDATE-COPY | NO-CHANGE 
 
 **Operator requirement 2026-05-25:** Public brand page is redesigned with (a) "Upcoming" tab interleaving events + trips + experiences chronologically when ANY offerings exist, (b) per-type tabs (Events / Trips / Experiences) shown only when that bucket has non-empty data, (c) zero offerings → no tabs, just identity card + empty state.
 
-**Experience data model gap (blocks Phase 2 Q4):** experiences live in `events` table with `event_type='experience'` and NO occurrence date — see Dimension 7 finding. Phase 2 designer must decide (a) experiences appear in Upcoming with a new occurrence date field, OR (b) experiences appear only in Experiences tab. See Open Questions report Q4.
+**Experience data model gap (blocks Phase 2 Q4):** experiences live in `events` table with `event_type='experience'` and NO occurrence date — see Dimension 7 finding. Phase 2 designer must decide (a) experiences appear in Upcoming with a new occurrence date field, OR (b) experiences appear only in Experiences tab. See Open Questions report Q4. **Q4 resolved 2026-05-25:** operator chose (a) IN with new occurrence-date field; Q9 chose JSON sub-field path (`theme.experience_meta.next_occurrence_at`).
+
+#### Post-Rebase Supplemental (verified 2026-05-25 — appended by forensics after worktree rebase onto `dd49d6d2b`)
+
+The pre-rebase Dimension 9 catalogue predicted what ORCH-0963 added to `PublicBrandPage.tsx`, `publicEventsService.ts`, the strict-grep gate, and the new RPC. After the rebase, every prediction was verified by reading the actual files at HEAD. **All predictions held — no wrong predictions, no missed surfaces, no false positives caught.** Catalogue rows below replace the predictive table with verified file-pinned surfaces.
+
+| File | Line(s) | Verified behavior | Classification | Risk |
+|---|---|---|---|---|
+| [PublicBrandPage.tsx](mingla-business/src/components/brand/PublicBrandPage.tsx) | 144 | `const isTripBrand = brand.kind === "trip_planner"` — the kind-branch constant (14 references in file) | DELETE | MEDIUM |
+| Same file | 196–208 | `upcomingTrips` + `pastTrips` memos gate on `!isTripBrand` to return `[]` for non-trip brands | DELETE (memos collapse with universal data-driven tabs) | MEDIUM |
+| Same file | 212–223 | Tab labels + counts + empty-state copy all branched on `isTripBrand` (`"Trips" / "Past Trips"` vs `"Upcoming" / "Past"`) | REPURPOSE (labels become data-driven per new I-PUBLIC-PAGE-DATA-DRIVEN-TABS) | MEDIUM |
+| Same file | 484–492 | `NextEventTeaser` only rendered when `!isTripBrand && upcomingEvents.length > 0` | REPURPOSE (NextEventTeaser preserved as presentation primitive; rendered when event bucket non-empty) | LOW |
+| Same file | 521, 538 | Inner tab-body branching on `isTripBrand` (renders TripMiniCards vs EventMiniCards) | REPURPOSE (each per-type tab body renders its own card type; no brand-level branch) | MEDIUM |
+| Same file | 701, 730 | `<TripMiniCard>` for upcoming + past trips lists | REPURPOSE (preserved as presentation primitive in new Trips tab) | LOW |
+| Same file | 985–1036 | `<NextEventTeaser>` component definition (NEXT · date · name · From £X →) | REPURPOSE (preserved as presentation primitive; usable in Events tab) | LOW |
+| Same file | 1038–1138 | `<TripMiniCard>` component definition (cover, date-range, title, destination, From-price, spots-left, hash-hue fallback) | REPURPOSE (preserved as presentation primitive in new Trips tab) | LOW |
+| Same file | 1139–1151 | `hashHueFromString()` helper for trip cover fallback hue | NO-CHANGE (utility; reusable) | LOW |
+| Same file | 1152–1206 | `formatTripDateRange()` helper for trip date display | NO-CHANGE (utility; reusable) | LOW |
+| Same file | 1371, 1397, 1447+ | Styles: `nextEventTeaser*`, `tripMiniCard*`, footer rows | REPURPOSE (style blocks preserved with their components) | LOW |
+| [publicEventsService.ts](mingla-business/src/services/publicEventsService.ts) | 36 | `BusinessPublicEventViewRow.brand_kind: "physical" \| "popup" \| "trip_planner"` (ORCH-0962 add — public-events view selects brand kind) | DELETE (drop `brand_kind` from view + from this TS row) | MEDIUM |
+| Same file | 111–114 | `BusinessPublicBrandViewRow.kind: "physical" \| "popup" \| "trip_planner"` (the union ORCH-0963 widened) | DELETE | MEDIUM |
+| Same file | 145 | `kind: "physical"` literal in `ClaimedVenuePublicViewRow` (venue-public view always physical, per ORCH-0622) | REGATE (drop kind from claimed-venues view + this row; verified venues are kind-independent under new model) | MEDIUM |
+| Same file | 205–208 | `PublicBrandDetail.trips: PublicTripCard[]` field added by ORCH-0963; comment notes "Empty array for physical/popup; populated for trip_planner" | REPURPOSE (always populated when brand has trips; no kind branching) | LOW |
+| Same file | 222–268 | `PublicTripCardRow` + `PublicTripCard` TS types (full shape: trip_id, slug, dates, destination, capacity, spots_left, currency, etc.) | NO-CHANGE (preserved as data shape for trips tab) | LOW |
+| Same file | 270–333 | `tripRowToCard(row)` mapper (snake_case → camelCase) | NO-CHANGE (preserved) | LOW |
+| Same file | 405 | Mapper line: `kind: row.brand_kind` (public-event-view path) | DELETE (drop kind passthrough from `viewRowToBrand`) | LOW |
+| Same file | 435 | Mapper line: `kind: row.kind` (public-brand-view path) | DELETE (drop kind passthrough from `brandViewRowToBrand`) | LOW |
+| Same file | 497 | Mapper line: `kind: "physical"` (claimed-venue path, hardcoded) | DELETE (drop kind from claimed-venue-row mapper) | LOW |
+| Same file | 836–848 | `fetchPublicBrandTrips(brandSlug)` calls `pg_public_trips_by_brand` RPC; carries `orch-strict-grep-allow events-type-filter` marker | REPURPOSE (called universally — for any brand that has trips, not just trip_planner) | MEDIUM |
+| Same file | 850–905 | `getPublicBrandBySlug` dispatch logic: line 889 `isTripPlanner = brandRow.kind === "trip_planner"`; lines 890–892 ternary `isTripPlanner ? [[], await fetchPublicBrandTrips(...)] : [await fetchPublicBrandEvents(...), []]` | REPURPOSE (replace with parallel fetch of events + trips + experiences regardless of brand) | HIGH |
+| Same file | 869 | Comment: "verified venues are kind='physical' — never trip_planner" | UPDATE-COPY (under new model, verified venues can be any kind-free brand) | LOW |
+| Same file | 887 | Comment: "kind-branched content load. Trip-planner brands fetch trips ... event brands fetch events" | UPDATE-COPY (rewrite to describe universal fetch) | LOW |
+| Same file | 987 | `.order("kind")` in some claimed-venue query path | VERIFY-NEEDED (line context truncated; orchestrator should spot-check during Phase 3 SPEC) | LOW |
+| Same file | 1086 | `kind: i.kind` in some loop mapper | NO-CHANGE (this is INSIDE a loop over offering items where `i.kind` is offering-side, NOT brand-side — FALSE POSITIVE verified via line-context scan) | LOW |
+| [pg_public_trips_by_brand.sql](supabase/migrations/20260728000000_orch_0963_pg_public_trips_by_brand.sql) | 11–38 | RPC signature: `pg_public_trips_by_brand(p_brand_slug text) RETURNS TABLE (trip_id uuid, ..., published_at timestamptz)` — 19 fields. SECURITY DEFINER. STABLE. `SET search_path = public, pg_temp`. | REPURPOSE (signature preserved; only the brand-kind guard at line 46 is removed) | LOW |
+| Same file | 41–46 | Brand CTE filters `b.kind = 'trip_planner'` — the security boundary preventing accidental misuse against event brands | REGATE (drop the kind filter — trips fetched for any brand that has them) | MEDIUM |
+| Same file | 48–57 | `trip_rows` CTE filters `e.event_type = 'trip' AND e.visibility = 'public' AND e.status IN ('scheduled','live','ended','cancelled') AND e.deleted_at IS NULL` | NO-CHANGE (event-type filter is correct; trips are events with `event_type='trip'`) | LOW |
+| Same file | 75–82 | Sold formula: `tickets.status IN ('valid', 'used', 'transferred')` via `tt.id = t.ticket_type_id` join — mirrors `biz_ticket_checkout_create_session` per `I-TRIP-SPOTS-MIRRORS-CAPACITY-GATE` | NO-CHANGE (canonical formula must be preserved) | LOW |
+| Same file | 125–127 | Sort: `(CASE WHEN tr.status IN ('scheduled','live') THEN 0 ELSE 1 END), d.start_at NULLS LAST` — upcoming first, then past | NO-CHANGE (preserved) | LOW |
+| Same file | 130–131 | `REVOKE ALL ... FROM PUBLIC; GRANT EXECUTE ... TO anon, authenticated;` | NO-CHANGE (anon-callable grant preserved) | LOW |
+| [orch-0963-public-brand-kind-branched.mjs](.github/scripts/strict-grep/orch-0963-public-brand-kind-branched.mjs) | 81–86 | C1 assertion: `assertContains(PAGE_FILE, "brand.kind === \"trip_planner\"")` — requires the literal kind-branch in PublicBrandPage | DELETE (the literal is going away) | LOW |
+| Same file | 88–93 | C2 assertion: `assertContains(SERVICE_FILE, "pg_public_trips_by_brand")` — requires the RPC call in publicEventsService | PRESERVE (RPC stays, just called universally) | LOW |
+| Same file | 95–100 | C3 assertion: `assertMatchesRegex(SERVICE_FILE, /kind:\s*"physical"\s*\|\s*"popup"\s*\|\s*"trip_planner"/)` — requires the TS union | DELETE (union goes away with kind column) | LOW |
+| Same file | 102–155 | C4 assertion: walks `mingla-business/src/`, excludes `node_modules`/`__tests__`/dot-dirs, finds files matching `/event_type\s*===\s*['"]trip['"]/` outside the 3-file allowlist (`publicEventsService.ts`, `businessEvents.ts`, `routeForEventRow.ts`) | **PRESERVE** (this gate enforces `I-PROPOSED-TR2-ROUTE-BY-EVENT-TYPE` — route segregation between `/e/*` events-only + `/t/*` trips-only, ORTHOGONAL to brand-kind decommission) | LOW |
+| [strict-grep-mingla-business.yml](.github/workflows/strict-grep-mingla-business.yml) | 181–190 | Job `orch-0963-public-brand-kind-branched` runs the mjs gate above | REPURPOSE (rename and rewrite to enforce I-PUBLIC-PAGE-DATA-DRIVEN-TABS once C1+C3 deleted; keep C2+C4) | LOW |
+
+**Prediction-vs-reality summary:** the pre-rebase predictions held on every surface. The only new surfaces caught post-rebase (not in the prediction) are:
+- Line 36 of publicEventsService — `BusinessPublicEventViewRow.brand_kind` field (ORCH-0962 add, not ORCH-0963; was missed in the predictive table but flagged in Data Model Audit §B.3 as `business_public_events_view` adding `b.kind AS brand_kind`). Now catalogued in Dimension 9 too for completeness.
+- Line 145 / 497 — `ClaimedVenuePublicViewRow.kind: "physical"` literal (ORCH-0622 VE4 view's kind column passthrough). Caught here; cross-refs Data Model Audit §B.2.
+- Line 987 — `.order("kind")` in a claimed-venue query. Marked VERIFY-NEEDED for Phase 3 SPEC.
+
+**Cross-ref to invariants:**
+- ORCH-0963 introduced `I-PUBLIC-BRAND-KIND-BRANCHED` ACTIVE → META-ORCH-0972 will SUPERSEDE on CLOSE with `I-PUBLIC-PAGE-DATA-DRIVEN-TABS`.
+- ORCH-0963's C4 gate enforces `I-PROPOSED-TR2-ROUTE-BY-EVENT-TYPE` (ORCH-0859 origin) — PRESERVED through META-ORCH-0972.
+- `I-TRIP-SPOTS-MIRRORS-CAPACITY-GATE` (ORCH-0947) — the canonical sold formula in `pg_public_trips_by_brand` MUST be preserved when the RPC is rewritten to drop the brand-kind guard.
+
+**No false positives, no missed surfaces, no solution drift.** Supplemental audit complete.
 
 ### Dimension 10 — Venue claim (VE1–VE4)
 
