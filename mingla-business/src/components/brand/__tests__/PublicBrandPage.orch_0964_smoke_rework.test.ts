@@ -38,6 +38,7 @@ describe("ORCH-0964 smoke rework — business public-page preview chrome/theme",
   });
 
   test("theme is visible beyond the cover image fallback", () => {
+    const heroWrapBlock = sharedSource.match(/heroWrap: \{[\s\S]*?\n  \},/)?.[0] ?? "";
     expect(sharedSource).toContain("type ThemePalette");
     expect(sharedSource).toContain("const createThemePalette = (theme: ResolvedTheme)");
     expect(sharedSource).toContain("const contrastRatio = (a: string, b: string): number");
@@ -51,10 +52,24 @@ describe("ORCH-0964 smoke rework — business public-page preview chrome/theme",
     expect(sharedSource).toContain("backgroundColor: palette.accent");
     expect(sharedSource).toContain("color: palette.primaryText");
     expect(sharedSource).toContain("color: palette.accentText");
-    expect(sharedSource).toContain("styles.pageThemeWashBottom");
     expect(sharedSource).toContain("styles.identityTopRow");
     expect(sharedSource).toContain("flexDirection: \"column\"");
     expect(sharedSource).toContain("height: 174");
+    expect(sharedSource).not.toContain("styles.pageThemeWashBottom");
+    expect(sharedSource).not.toContain("styles.pageThemeWash,");
+    expect(heroWrapBlock).not.toContain("position: \"absolute\"");
+    expect(heroWrapBlock).toContain("height: 264");
+  });
+
+  test("social links render icon shapes instead of letter initials", () => {
+    expect(sharedSource).toContain("type SocialKind");
+    expect(sharedSource).toContain("<SocialIcon kind={entry.kind} color={palette.accent} />");
+    expect(sharedSource).toContain("const SocialIcon: React.FC");
+    expect(sharedSource).toContain("styles.iconGlobe");
+    expect(sharedSource).toContain("styles.iconCamera");
+    expect(sharedSource).toContain("styles.iconVideoFrame");
+    expect(sharedSource).not.toContain("entry.label.charAt(0)");
+    expect(sharedSource).not.toContain("socialGlyph");
   });
 
   test("ticket CTA is promoted into a large themed card action", () => {

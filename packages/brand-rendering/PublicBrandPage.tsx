@@ -27,6 +27,15 @@ import type {
 } from "./types";
 
 type Tab = "upcoming" | "events" | "trips" | "experiences" | "about";
+type SocialKind =
+  | "website"
+  | "instagram"
+  | "tiktok"
+  | "x"
+  | "facebook"
+  | "youtube"
+  | "linkedin"
+  | "threads";
 
 const PINNED_CTA_CARD_COUNT = 3;
 
@@ -346,43 +355,55 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   const socialEntries = useMemo(() => {
     const links = brand.links;
     if (links === undefined) return [];
-    const entries: Array<{ label: string; url: string }> = [];
-    if (links.website) entries.push({ label: "Website", url: links.website });
+    const entries: Array<{ kind: SocialKind; label: string; url: string }> = [];
+    if (links.website) {
+      entries.push({ kind: "website", label: "Website", url: links.website });
+    }
     if (links.instagram) {
       entries.push({
+        kind: "instagram",
         label: "Instagram",
         url: normalizeSocialUrl(links.instagram, "https://instagram.com/"),
       });
     }
     if (links.tiktok) {
       entries.push({
+        kind: "tiktok",
         label: "TikTok",
         url: normalizeSocialUrl(links.tiktok, "https://tiktok.com/@"),
       });
     }
     if (links.x) {
-      entries.push({ label: "X", url: normalizeSocialUrl(links.x, "https://x.com/") });
+      entries.push({
+        kind: "x",
+        label: "X",
+        url: normalizeSocialUrl(links.x, "https://x.com/"),
+      });
     }
     if (links.facebook) {
       entries.push({
+        kind: "facebook",
         label: "Facebook",
         url: normalizeSocialUrl(links.facebook, "https://facebook.com/"),
       });
     }
     if (links.youtube) {
       entries.push({
+        kind: "youtube",
         label: "YouTube",
         url: normalizeSocialUrl(links.youtube, "https://youtube.com/@"),
       });
     }
     if (links.linkedin) {
       entries.push({
+        kind: "linkedin",
         label: "LinkedIn",
         url: normalizeSocialUrl(links.linkedin, "https://linkedin.com/in/"),
       });
     }
     if (links.threads) {
       entries.push({
+        kind: "threads",
         label: "Threads",
         url: normalizeSocialUrl(links.threads, "https://threads.net/@"),
       });
@@ -401,35 +422,6 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
 
   return (
     <View style={[styles.host, { backgroundColor: palette.page }]}>
-      <View
-        pointerEvents="none"
-        style={[styles.pageThemeWash, { backgroundColor: palette.pageWash }]}
-      />
-      <View
-        pointerEvents="none"
-        style={[styles.pageThemeWashBottom, { backgroundColor: palette.accentWash }]}
-      />
-      <View
-        style={[styles.heroWrap, { backgroundColor: heroColor }]}
-        pointerEvents="none"
-      >
-        {brand.coverMediaUrl !== undefined &&
-        brand.coverMediaUrl.length > 0 &&
-        !coverMediaFailed ? (
-          <Image
-            source={{ uri: brand.coverMediaUrl }}
-            style={styles.heroGradient}
-            resizeMode="cover"
-            onError={() => setCoverMediaFailed(true)}
-            accessibilityLabel="Brand cover"
-          />
-        ) : (
-          <View style={[styles.heroGradient, { backgroundColor: heroColor }]} />
-        )}
-        <View style={[styles.heroThemeTint, { backgroundColor: palette.pageWash }]} />
-        <View style={[styles.heroFade, { backgroundColor: palette.heroScrim }]} />
-      </View>
-
       {hideFloatingChrome ? null : (
         <View
           style={[
@@ -458,6 +450,27 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        <View
+          style={[styles.heroWrap, { backgroundColor: heroColor }]}
+          pointerEvents="none"
+        >
+          {brand.coverMediaUrl !== undefined &&
+          brand.coverMediaUrl.length > 0 &&
+          !coverMediaFailed ? (
+            <Image
+              source={{ uri: brand.coverMediaUrl }}
+              style={styles.heroGradient}
+              resizeMode="cover"
+              onError={() => setCoverMediaFailed(true)}
+              accessibilityLabel="Brand cover"
+            />
+          ) : (
+            <View style={[styles.heroGradient, { backgroundColor: heroColor }]} />
+          )}
+          <View style={[styles.heroThemeTint, { backgroundColor: palette.pageWash }]} />
+          <View style={[styles.heroFade, { backgroundColor: palette.heroScrim }]} />
+        </View>
+
         <View
           style={[
             styles.identityCentered,
@@ -671,7 +684,7 @@ const Avatar: React.FC<{
 };
 
 const SocialLinksRow: React.FC<{
-  entries: Array<{ label: string; url: string }>;
+  entries: Array<{ kind: SocialKind; label: string; url: string }>;
   palette: ThemePalette;
   onPress: (url: string) => void;
 }> = ({ entries, palette, onPress }) => {
@@ -692,11 +705,81 @@ const SocialLinksRow: React.FC<{
             },
           ]}
         >
-          <Text style={[styles.socialGlyph, { color: palette.accent }]}>
-            {entry.label.charAt(0)}
-          </Text>
+          <SocialIcon kind={entry.kind} color={palette.accent} />
         </Pressable>
       ))}
+    </View>
+  );
+};
+
+const SocialIcon: React.FC<{ kind: SocialKind; color: string }> = ({
+  kind,
+  color,
+}) => {
+  if (kind === "website") {
+    return (
+      <View style={[styles.iconGlobe, { borderColor: color }]}>
+        <View style={[styles.iconGlobeHorizontal, { backgroundColor: color }]} />
+        <View style={[styles.iconGlobeVertical, { backgroundColor: color }]} />
+      </View>
+    );
+  }
+  if (kind === "instagram") {
+    return (
+      <View style={[styles.iconCamera, { borderColor: color }]}>
+        <View style={[styles.iconCameraLens, { borderColor: color }]} />
+        <View style={[styles.iconCameraDot, { backgroundColor: color }]} />
+      </View>
+    );
+  }
+  if (kind === "youtube") {
+    return (
+      <View style={[styles.iconVideoFrame, { borderColor: color }]}>
+        <View style={[styles.iconPlayTriangle, { borderLeftColor: color }]} />
+      </View>
+    );
+  }
+  if (kind === "x") {
+    return (
+      <View style={styles.iconX}>
+        <View style={[styles.iconXStroke, styles.iconXStrokeA, { backgroundColor: color }]} />
+        <View style={[styles.iconXStroke, styles.iconXStrokeB, { backgroundColor: color }]} />
+      </View>
+    );
+  }
+  if (kind === "tiktok") {
+    return (
+      <View style={styles.iconMusic}>
+        <View style={[styles.iconMusicStem, { backgroundColor: color }]} />
+        <View style={[styles.iconMusicFlag, { backgroundColor: color }]} />
+        <View style={[styles.iconMusicDot, { borderColor: color }]} />
+      </View>
+    );
+  }
+  if (kind === "facebook") {
+    return (
+      <View style={styles.iconFacebook}>
+        <View style={[styles.iconFacebookStem, { backgroundColor: color }]} />
+        <View style={[styles.iconFacebookArm, { backgroundColor: color }]} />
+        <View style={[styles.iconFacebookCrossbar, { backgroundColor: color }]} />
+      </View>
+    );
+  }
+  if (kind === "linkedin") {
+    return (
+      <View style={styles.iconLinkedin}>
+        <View style={[styles.iconLinkedinDot, { backgroundColor: color }]} />
+        <View style={[styles.iconLinkedinStem, { backgroundColor: color }]} />
+        <View style={[styles.iconLinkedinStemTwo, { backgroundColor: color }]} />
+        <View style={[styles.iconLinkedinArc, { borderColor: color }]} />
+      </View>
+    );
+  }
+  return (
+    <View style={styles.iconThreads}>
+      <View style={[styles.iconThreadsLoop, { borderColor: color }]} />
+      <View style={[styles.iconThreadsTail, { backgroundColor: color }]} />
+      <View style={[styles.iconThreadsDot, { backgroundColor: color }]} />
     </View>
   );
 };
@@ -1305,31 +1388,10 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor,
   },
-  pageThemeWash: {
-    position: "absolute",
-    top: 110,
-    left: -120,
-    right: -120,
-    height: 360,
-    opacity: 1,
-    transform: [{ rotate: "-10deg" }],
-  },
-  pageThemeWashBottom: {
-    position: "absolute",
-    left: -80,
-    right: -80,
-    bottom: 80,
-    height: 260,
-    opacity: 0.52,
-    transform: [{ rotate: "8deg" }],
-  },
   heroWrap: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 380,
-    zIndex: 0,
+    height: 264,
+    marginHorizontal: -spacing.lg,
+    marginBottom: spacing.lg,
     overflow: "hidden",
   },
   heroGradient: {
@@ -1420,7 +1482,7 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
   scrollContent: {
-    paddingTop: 246,
+    paddingTop: 0,
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.xl * 2,
   },
@@ -1521,9 +1583,209 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.08)",
   },
-  socialGlyph: {
-    color: accent.warm,
-    fontWeight: "800",
+  iconGlobe: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  iconGlobeHorizontal: {
+    position: "absolute",
+    width: 15,
+    height: 2,
+    borderRadius: 1,
+  },
+  iconGlobeVertical: {
+    position: "absolute",
+    width: 2,
+    height: 16,
+    borderRadius: 1,
+  },
+  iconCamera: {
+    width: 23,
+    height: 23,
+    borderRadius: 7,
+    borderWidth: 2,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  iconCameraLens: {
+    width: 9,
+    height: 9,
+    borderRadius: 4.5,
+    borderWidth: 2,
+  },
+  iconCameraDot: {
+    position: "absolute",
+    top: 4,
+    right: 4,
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+  },
+  iconVideoFrame: {
+    width: 25,
+    height: 18,
+    borderRadius: 6,
+    borderWidth: 2,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  iconPlayTriangle: {
+    width: 0,
+    height: 0,
+    borderTopWidth: 5,
+    borderBottomWidth: 5,
+    borderLeftWidth: 8,
+    borderTopColor: "transparent",
+    borderBottomColor: "transparent",
+    marginLeft: 2,
+  },
+  iconX: {
+    width: 22,
+    height: 22,
+  },
+  iconXStroke: {
+    position: "absolute",
+    top: 10,
+    left: 1,
+    width: 20,
+    height: 2.5,
+    borderRadius: 2,
+  },
+  iconXStrokeA: {
+    transform: [{ rotate: "42deg" }],
+  },
+  iconXStrokeB: {
+    transform: [{ rotate: "-42deg" }],
+  },
+  iconMusic: {
+    width: 23,
+    height: 24,
+  },
+  iconMusicStem: {
+    position: "absolute",
+    top: 2,
+    right: 6,
+    width: 3,
+    height: 15,
+    borderRadius: 2,
+  },
+  iconMusicFlag: {
+    position: "absolute",
+    top: 2,
+    right: 4,
+    width: 10,
+    height: 3,
+    borderRadius: 2,
+    transform: [{ rotate: "18deg" }],
+  },
+  iconMusicDot: {
+    position: "absolute",
+    left: 2,
+    bottom: 2,
+    width: 12,
+    height: 10,
+    borderRadius: 6,
+    borderWidth: 3,
+  },
+  iconFacebook: {
+    width: 22,
+    height: 24,
+  },
+  iconFacebookStem: {
+    position: "absolute",
+    top: 3,
+    left: 10,
+    width: 4,
+    height: 18,
+    borderRadius: 2,
+  },
+  iconFacebookArm: {
+    position: "absolute",
+    top: 3,
+    left: 10,
+    width: 10,
+    height: 4,
+    borderRadius: 2,
+  },
+  iconFacebookCrossbar: {
+    position: "absolute",
+    top: 10,
+    left: 6,
+    width: 12,
+    height: 4,
+    borderRadius: 2,
+  },
+  iconLinkedin: {
+    width: 24,
+    height: 24,
+  },
+  iconLinkedinDot: {
+    position: "absolute",
+    left: 2,
+    top: 3,
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+  },
+  iconLinkedinStem: {
+    position: "absolute",
+    left: 3,
+    top: 10,
+    width: 4,
+    height: 11,
+    borderRadius: 2,
+  },
+  iconLinkedinStemTwo: {
+    position: "absolute",
+    left: 11,
+    top: 10,
+    width: 4,
+    height: 11,
+    borderRadius: 2,
+  },
+  iconLinkedinArc: {
+    position: "absolute",
+    left: 11,
+    top: 8,
+    width: 10,
+    height: 10,
+    borderTopWidth: 4,
+    borderRightWidth: 4,
+    borderRadius: 7,
+  },
+  iconThreads: {
+    width: 24,
+    height: 24,
+  },
+  iconThreadsLoop: {
+    position: "absolute",
+    top: 5,
+    left: 4,
+    width: 14,
+    height: 13,
+    borderRadius: 8,
+    borderWidth: 2,
+  },
+  iconThreadsTail: {
+    position: "absolute",
+    right: 2,
+    top: 10,
+    width: 10,
+    height: 2.5,
+    borderRadius: 2,
+    transform: [{ rotate: "-24deg" }],
+  },
+  iconThreadsDot: {
+    position: "absolute",
+    top: 10,
+    left: 10,
+    width: 4,
+    height: 4,
+    borderRadius: 2,
   },
   nextTeaser: {
     flexDirection: "row",
