@@ -5,6 +5,11 @@ import { QueryClient } from "@tanstack/react-query";
 
 import type { BusinessEventDetail } from "../../../services/businessEvents";
 import type { LiveEvent } from "../../../store/liveEventStore";
+import type { UpdateLiveEventResult } from "../../../store/liveEventStore";
+import {
+  LOCAL_SAVE_REJECTED_TOAST,
+  surfaceLocalSaveRejection,
+} from "../../../utils/localSaveRejectionSignal";
 import { refreshPublishedEventWhenAfterSave } from "../../../utils/publishedEventWhenRefresh";
 
 jest.mock("../../../services/businessEvents", () => ({
@@ -150,5 +155,30 @@ describe("ORCH-0980 Step 0.5 — published event date save round-trip", () => {
 
     expect(cachedDetail?.event.date).toBe("2026-11-11");
     expect(cachedList?.[0]?.date).toBe("2026-11-11");
+  });
+
+  it("fires a toast when updateLiveEventFields rejects after the save chain falls through", () => {
+    const rejected: Extract<UpdateLiveEventResult, { ok: false }> = {
+      ok: false,
+      reason: "multi_date_remove_with_sales",
+      droppedDates: ["2026-11-09"],
+      affectedOrderCount: 1,
+    };
+    const dialog = {
+      title: "Refund first",
+      body: "Refund before removing this date.",
+      primaryLabel: "Open Orders",
+      primaryAction: jest.fn(),
+    };
+    const showToast = jest.fn();
+    const buildDialog = jest.fn(() => dialog);
+    const setDialog = jest.fn();
+
+    surfaceLocalSaveRejection(rejected, showToast, buildDialog, setDialog);
+
+    expect(showToast).toHaveBeenCalledTimes(1);
+    expect(showToast).toHaveBeenCalledWith(LOCAL_SAVE_REJECTED_TOAST);
+    expect(buildDialog).toHaveBeenCalledWith(rejected);
+    expect(setDialog).toHaveBeenCalledWith(dialog);
   });
 });
