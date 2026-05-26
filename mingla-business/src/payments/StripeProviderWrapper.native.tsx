@@ -1,7 +1,7 @@
 // ORCH-0849 (2026-05-15): native variant — real <StripeNativeProvider>
-// from @mingla/payments-native. Mounted at the root of mingla-business so
-// PaymentSheet inherits the publishable key, merchant identifier, and URL
-// scheme on iOS/Android. Parity with consumer (app-mobile/app/_layout.tsx).
+// from @mingla/payments-native. Mounted around native checkout payment routes
+// so PaymentSheet inherits the publishable key, merchant identifier, and URL
+// scheme on iOS/Android without forcing Stripe SDK cold-init on Home startup.
 // Metro picks this file on native; the sibling StripeProviderWrapper.tsx
 // is a passthrough stub used on web + by tsc resolution.
 

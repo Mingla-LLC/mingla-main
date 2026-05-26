@@ -307,7 +307,6 @@ const brandFromRow = (row: BusinessManagementEventRow): Brand => {
     id: row.brand_id,
     displayName: row.brand_name,
     slug: row.brand_slug,
-    kind: "popup",
     address: null,
     coverHue: asNumber(theme.brandCoverHue, asNumber(theme.coverHue, 25)),
     photo: row.brand_profile_photo_url ?? undefined,

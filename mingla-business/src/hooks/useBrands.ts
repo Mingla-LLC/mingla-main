@@ -70,6 +70,10 @@ export const brandKeys = {
     brandId: string,
   ): readonly ["brands", "cascade-preview", string] =>
     [...brandKeys.all, "cascade-preview", brandId] as const,
+  offeringCounts: (
+    brandId: string,
+  ): readonly ["brand", string, "offeringCounts"] =>
+    ["brand", brandId, "offeringCounts"] as const,
 };
 
 const DISABLED_KEY = ["brands-disabled"] as const;
@@ -264,7 +268,6 @@ export const useCreateBrand = (): UseCreateBrandResult => {
         id: `_temp_${Date.now().toString(36)}`,
         displayName: input.name,
         slug: input.slug,
-        kind: input.kind,
         address: input.address,
         coverHue: input.coverHue,
         role: "owner",

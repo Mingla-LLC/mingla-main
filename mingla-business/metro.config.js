@@ -82,10 +82,30 @@ config.resolver.extraNodeModules = {
 config.resolver.disableHierarchicalLookup = false;
 
 const ZUSTAND_CJS_ROOT = path.join(__dirname, "node_modules", "zustand");
+const STRIPE_CONNECT_NATIVE_STUB = path.join(
+  __dirname,
+  "src",
+  "shims",
+  "stripeConnectNativeStub.js",
+);
 
 const originalResolveRequest = config.resolver.resolveRequest;
 
 config.resolver.resolveRequest = (context, moduleName, platform) => {
+  // Stripe embedded components are a web-only Connect surface opened via
+  // Expo WebBrowser. Expo Router still evaluates route modules while building
+  // the Android graph, so keep the DOM SDK out of native startup entirely.
+  if (
+    platform !== "web" &&
+    (moduleName === "@stripe/connect-js" ||
+      moduleName === "@stripe/react-connect-js")
+  ) {
+    return {
+      filePath: STRIPE_CONNECT_NATIVE_STUB,
+      type: "sourceFile",
+    };
+  }
+
   // Only intervene on the web platform. Native (ios/android) keeps the
   // default resolution which picks the `react-native` exports condition.
   if (platform === "web") {

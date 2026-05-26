@@ -1,0 +1,27 @@
+log=Mingla_Artifacts/reports/evidence/meta-orch-0972-sub-b/android-retest2-pixel7-logcat-auth-or-home.txt
+ANR in com.sethogieva.minglabusiness=0
+Input dispatching timed out=0
+document=0
+ReferenceError=0
+forwardRef render functions=0
+StripeResponse=0
+StripePushProvisioning=0
+Loading brands=0
+Process system isn't responding=0
+
+key-lines:
+2721:05-25 17:34:30.439  4362  4362 I Choreographer: Skipped 190 frames!  The application may be doing too much work on its main thread.
+3585:05-25 17:34:37.253  4362  4362 I Choreographer: Skipped 152 frames!  The application may be doing too much work on its main thread.
+3654:05-25 17:34:41.024   952  1049 I Choreographer: Skipped 58 frames!  The application may be doing too much work on its main thread.
+3730:05-25 17:34:44.925   952  1049 I Choreographer: Skipped 128 frames!  The application may be doing too much work on its main thread.
+3796:05-25 17:34:45.682  4362  4362 I Choreographer: Skipped 502 frames!  The application may be doing too much work on its main thread.
+3832:05-25 17:34:47.067   952   952 I Choreographer: Skipped 70 frames!  The application may be doing too much work on its main thread.
+5255:05-25 17:35:15.151  1235  1235 I Choreographer: Skipped 260 frames!  The application may be doing too much work on its main thread.
+8698:05-25 17:35:40.500  1235  1235 I Choreographer: Skipped 156 frames!  The application may be doing too much work on its main thread.
+9024:05-25 17:35:41.861  4362  4362 I Choreographer: Skipped 78 frames!  The application may be doing too much work on its main thread.
+10165:05-25 17:35:47.251  4362  4963 I ReactNativeJS: Running "main" with {"rootTag":1,"initialProps":{},"fabric":true}
+17499:05-25 17:35:59.964  5582  5582 I Choreographer: Skipped 37 frames!  The application may be doing too much work on its main thread.
+17788:05-25 17:36:02.479  4362  4362 I Choreographer: Skipped 76 frames!  The application may be doing too much work on its main thread.
+18443:05-25 17:36:10.523  4362  4963 I ReactNativeJS: '[auth] auth-event', { event: 'INITIAL_SESSION', hasSession: false, hasUser: false }
+18462:05-25 17:36:11.132  4362  4362 I Choreographer: Skipped 53 frames!  The application may be doing too much work on its main thread.
+18690:05-25 17:36:16.179  4362  4362 I Choreographer: Skipped 48 frames!  The application may be doing too much work on its main thread.

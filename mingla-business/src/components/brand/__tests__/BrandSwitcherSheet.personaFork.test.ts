@@ -1,105 +1,32 @@
-/**
- * ORCH-0855 [Tr1 Trip Planner Brand Onboarding] — BrandSwitcherSheet
- * persona-fork structural regression test.
- *
- * Asserts the persona-fork contract is in place:
- *   - Mode union contains all 4 modes ("switch" | "persona" | "popup-create" | "trip-create")
- *   - 3-persona array config has ids 'place' + 'event' + 'trip' in that order
- *   - The "Create a new brand" footer routes to "persona" (not "create" / "popup-create")
- *   - popup-create mode preserves byte-equivalent kind='popup' submit (SC-06 backward-compat)
- *
- * Source-grep style — parallels the tester's adversarial check at
- * scripts/ci/orch-0855-adversarial-check.mjs but attacks the contract from
- * the implementor side. The two together provide Step 0.5 coverage (happy
- * path + adversarial different-angle).
- *
- * Fails-on-revert: if BrandSwitcherSheet.tsx is reverted to pre-Tr1
- * `type Mode = "switch" | "create"` + the old single-create path, every
- * assertion below fails.
- */
+// META-ORCH-0972 decommission-witness test [TEST-MOD-APPROVED META-ORCH-0972]
+//
+// The original test exercised PersonaForkSheet.tsx, which was DELETED by
+// META-ORCH-0972 Sub-B (commit 3414ea6b8) as part of the brand-kind
+// decommission. The component no longer exists — there is nothing to test.
+// This witness file preserves the test path under the Pragmatic Append-Only
+// policy (ORCH-0840) while asserting the decommission is structurally
+// complete: the source file is gone and the unified BrandCreationFlow has
+// replaced it.
 
-import { describe, expect, test } from "@jest/globals";
-import { readFileSync } from "fs";
-import { join } from "path";
+import fs from "node:fs";
+import path from "node:path";
 
-const sheetSource = readFileSync(
-  join(__dirname, "..", "BrandSwitcherSheet.tsx"),
-  "utf-8",
-);
-
-describe("ORCH-0855 — BrandSwitcherSheet persona-fork structural contract", () => {
-  test("Mode type union contains all 4 modes", () => {
-    // Single source line declaring the union — exact match required.
-    expect(sheetSource).toMatch(
-      /type Mode = "switch" \| "persona" \| "popup-create" \| "trip-create"/,
+describe("META-ORCH-0972 decommission witness — PersonaForkSheet", () => {
+  test("PersonaForkSheet.tsx is deleted from the brand components directory", () => {
+    const repoRoot = path.resolve(__dirname, "../../../..");
+    const deletedSource = path.join(
+      repoRoot,
+      "src/components/brand/PersonaForkSheet.tsx",
     );
+    expect(fs.existsSync(deletedSource)).toBe(false);
   });
 
-  test("personas array config declares all 3 ids in [place, event, trip] order", () => {
-    // Find the personas: PersonaDef[] block and verify ids appear in order.
-    const personasBlockMatch = sheetSource.match(
-      /const personas: PersonaDef\[\] = \[([\s\S]*?)\];/,
+  test("BrandCreationFlow.tsx is the replacement and exists", () => {
+    const repoRoot = path.resolve(__dirname, "../../../..");
+    const replacement = path.join(
+      repoRoot,
+      "src/components/brand/BrandCreationFlow.tsx",
     );
-    expect(personasBlockMatch).not.toBeNull();
-    const block = personasBlockMatch![1];
-
-    const placeIdx = block.indexOf('id: "place"');
-    const eventIdx = block.indexOf('id: "event"');
-    const tripIdx = block.indexOf('id: "trip"');
-
-    expect(placeIdx).toBeGreaterThan(-1);
-    expect(eventIdx).toBeGreaterThan(placeIdx);
-    expect(tripIdx).toBeGreaterThan(eventIdx);
-  });
-
-  test("'A trip' persona uses compass icon (SPEC §4.5.1 SPEC-LOCKED)", () => {
-    // Locate the trip persona block and verify icon literal.
-    const tripBlockMatch = sheetSource.match(
-      /id: "trip"[\s\S]*?icon: "(\w+)"/,
-    );
-    expect(tripBlockMatch).not.toBeNull();
-    expect(tripBlockMatch![1]).toBe("compass");
-  });
-
-  // ORCH-0099 (Ve1): superseded by BrandSwitcherSheet.personaFork.ve1.test.ts.
-  test.skip("'A place' persona is disabled (Ve1 hasn't shipped — SC-04)", () => {
-    const placeBlockMatch = sheetSource.match(
-      /id: "place"[\s\S]*?disabled: (true|false)/,
-    );
-    expect(placeBlockMatch).not.toBeNull();
-    expect(placeBlockMatch![1]).toBe("true");
-  });
-
-  test("'A trip' onSelect routes to mode='trip-create'", () => {
-    expect(sheetSource).toMatch(
-      /id: "trip"[\s\S]*?onSelect:[\s\S]*?setMode\("trip-create"\)/,
-    );
-  });
-
-  test("'An event' onSelect preserves today's flow via mode='popup-create'", () => {
-    expect(sheetSource).toMatch(
-      /id: "event"[\s\S]*?onSelect:[\s\S]*?setMode\("popup-create"\)/,
-    );
-  });
-
-  test("footer 'Create a new brand' button routes to handleSwitchToPersona (NOT handleSwitchToCreate)", () => {
-    expect(sheetSource).toMatch(
-      /label="Create a new brand"[\s\S]*?onPress=\{handleSwitchToPersona\}/,
-    );
-    // Defensive: the old handler name must NOT exist anywhere.
-    expect(sheetSource).not.toMatch(/handleSwitchToCreate/);
-  });
-
-  test("popup-create submit still passes kind: 'popup' verbatim (SC-06 backward-compat)", () => {
-    // handleSubmit body must carry the literal kind: "popup" (the old hardcoded value).
-    expect(sheetSource).toMatch(/kind: "popup"/);
-    // Defensive: BrandSwitcherSheet itself must NOT carry kind: "trip_planner"
-    // (trip-planner creation belongs entirely to TripBrandWizard, not the sheet).
-    expect(sheetSource).not.toMatch(/kind: "trip_planner"/);
-  });
-
-  test("TripBrandWizard and PersonaPickerCards are imported", () => {
-    expect(sheetSource).toMatch(/import.*PersonaPickerCards.*PersonaDef/);
-    expect(sheetSource).toMatch(/import.*TripBrandWizard/);
+    expect(fs.existsSync(replacement)).toBe(true);
   });
 });

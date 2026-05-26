@@ -394,34 +394,26 @@ const createExperience: AgentTool = {
 
     await assertBrandOwned(client, args.brand_id, userId);
 
+    // I-BRAND-UNIVERSAL-AUTHORING (META-ORCH-0972) — no kind gate.
     const { data: brandRow, error: brandErr } = await client
       .from("brands")
-      .select("kind, venue_category, claim_status, default_currency")
+      .select("venue_category, default_currency")
       .eq("id", args.brand_id)
       .maybeSingle();
     if (brandErr) throw new ToolError("OWNERSHIP_CHECK_FAILED", brandErr.message);
     if (!brandRow) throw new ToolError("OWNERSHIP_DENIED", "Brand not found");
 
     const brand = brandRow as {
-      kind: string;
       venue_category: string | null;
-      claim_status: string | null;
       default_currency: string | null;
     };
     const venueCategory = brand.venue_category;
-    if (brand.kind !== "physical") {
-      throw new ToolError("INVALID_ARGS", "Experiences require a verified physical venue");
-    }
     if (venueCategory !== "restaurant" && venueCategory !== "play") {
       throw new ToolError(
         "INVALID_ARGS",
         "Experiences require a Restaurant or Play venue category",
       );
     }
-    if (brand.claim_status !== "verified") {
-      throw new ToolError("INVALID_ARGS", "Venue must be verified before publishing experiences");
-    }
-
     const currency = isString(args.currency)
       ? args.currency.toUpperCase().slice(0, 3)
       : (brand.default_currency ?? "GBP");

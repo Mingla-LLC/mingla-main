@@ -25,6 +25,10 @@ export const publicEventKeys = {
     brandSlug: string,
   ): readonly ["public-events", "brand-by-slug", string] =>
     [...publicEventKeys.all, "brand-by-slug", brandSlug] as const,
+  brandUpcoming: (
+    brandSlug: string,
+  ): readonly ["public-events", "brand", string, "upcoming"] =>
+    [...publicEventKeys.all, "brand", brandSlug, "upcoming"] as const,
 };
 
 const DISABLED_KEY = ["public-events-disabled"] as const;

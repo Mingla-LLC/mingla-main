@@ -27,7 +27,7 @@ describe("ORCH-0963 T-09 ADVERSARIAL — Past cap = 10 for both kinds", () => {
 
   test("T-09b pastEvents memo applies .slice(0, PAST_EVENT_CAP)", () => {
     const memo = pageSrc.match(
-      /const\s+pastEvents\s*=\s*useMemo<LiveEvent\[\]>\([\s\S]*?\}\,\s*\[events\]\);/,
+      /const\s+pastEvents\s*=\s*useMemo<LiveEvent\[\]>\([\s\S]*?\}\,\s*\[events,\s*providedPastEvents\]\);/,
     );
     expect(memo).not.toBeNull();
     expect(memo![0]).toMatch(/\.slice\(0,\s*PAST_EVENT_CAP\)/);
@@ -35,7 +35,7 @@ describe("ORCH-0963 T-09 ADVERSARIAL — Past cap = 10 for both kinds", () => {
 
   test("T-09c pastTrips memo applies .slice(0, PAST_TRIP_CAP)", () => {
     const memo = pageSrc.match(
-      /const\s+pastTrips\s*=\s*useMemo<PublicTripCard\[\]>\([\s\S]*?\}\,\s*\[isTripBrand,\s*trips\]\);/,
+      /const\s+pastTrips\s*=\s*useMemo<PublicTripCard\[\]>\([\s\S]*?\}\,\s*\[providedPastTrips,\s*trips\]\);/,
     );
     expect(memo).not.toBeNull();
     expect(memo![0]).toMatch(/\.slice\(0,\s*PAST_TRIP_CAP\)/);
@@ -43,10 +43,10 @@ describe("ORCH-0963 T-09 ADVERSARIAL — Past cap = 10 for both kinds", () => {
 
   test("T-09d past memos sort descending by date (most-recent first)", () => {
     const eventMemo = pageSrc.match(
-      /const\s+pastEvents\s*=\s*useMemo<LiveEvent\[\]>\([\s\S]*?\}\,\s*\[events\]\);/,
+      /const\s+pastEvents\s*=\s*useMemo<LiveEvent\[\]>\([\s\S]*?\}\,\s*\[events,\s*providedPastEvents\]\);/,
     );
     const tripMemo = pageSrc.match(
-      /const\s+pastTrips\s*=\s*useMemo<PublicTripCard\[\]>\([\s\S]*?\}\,\s*\[isTripBrand,\s*trips\]\);/,
+      /const\s+pastTrips\s*=\s*useMemo<PublicTripCard\[\]>\([\s\S]*?\}\,\s*\[providedPastTrips,\s*trips\]\);/,
     );
     expect(eventMemo).not.toBeNull();
     expect(tripMemo).not.toBeNull();
@@ -57,7 +57,7 @@ describe("ORCH-0963 T-09 ADVERSARIAL — Past cap = 10 for both kinds", () => {
 
   test("T-09e past-trips filter pins status='ended' (not status='past' or generic isPast)", () => {
     const tripMemo = pageSrc.match(
-      /const\s+pastTrips\s*=\s*useMemo<PublicTripCard\[\]>\([\s\S]*?\}\,\s*\[isTripBrand,\s*trips\]\);/,
+      /const\s+pastTrips\s*=\s*useMemo<PublicTripCard\[\]>\([\s\S]*?\}\,\s*\[providedPastTrips,\s*trips\]\);/,
     );
     expect(tripMemo).not.toBeNull();
     expect(tripMemo![0]).toMatch(/t\.status\s*===\s*"ended"/);
@@ -65,7 +65,7 @@ describe("ORCH-0963 T-09 ADVERSARIAL — Past cap = 10 for both kinds", () => {
 
   test("T-09f upcoming-trips memo filters scheduled+live (not just scheduled)", () => {
     const upcomingTripMemo = pageSrc.match(
-      /const\s+upcomingTrips\s*=\s*useMemo<PublicTripCard\[\]>\([\s\S]*?\}\,\s*\[isTripBrand,\s*trips\]\);/,
+      /const\s+upcomingTrips\s*=\s*useMemo<PublicTripCard\[\]>\([\s\S]*?\}\,\s*\[trips\]\);/,
     );
     expect(upcomingTripMemo).not.toBeNull();
     expect(upcomingTripMemo![0]).toMatch(

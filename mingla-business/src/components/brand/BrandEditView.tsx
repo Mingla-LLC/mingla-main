@@ -40,6 +40,7 @@ import {
 // ORCH-0892-A is DELETED — KAS supersedes it functionally.
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import { Image as ExpoImage } from "expo-image";
+import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
@@ -54,6 +55,7 @@ import {
 import { brandPublicUrl } from "../../constants/publicUrls";
 import { joinBrandDescription } from "../../services/brandMapping";
 import type { Brand } from "../../store/currentBrandStore";
+import { useDraftVenueStore } from "../../store/draftVenueStore";
 
 import { Avatar } from "../ui/Avatar";
 import { Button } from "../ui/Button";
@@ -252,6 +254,9 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
   onRequestDelete,
 }) => {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const resetVenueDraft = useDraftVenueStore((s) => s.reset);
+  const patchVenueDraft = useDraftVenueStore((s) => s.patch);
   // Initialize draft from `brand`. Note: when brand !== null, draft is the
   // editable copy. When brand === null, draft is unused (we render not-found).
   const initialDraft = useMemo<Brand | null>(() => brand, [brand]);
@@ -367,6 +372,17 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
     [],
   );
 
+  const handleClaimVenue = useCallback((): void => {
+    if (draft === null) return;
+    resetVenueDraft();
+    patchVenueDraft({
+      workingName: draft.displayName,
+      displayName: draft.displayName,
+      formattedAddress: draft.address ?? "",
+    });
+    router.push("/venue/create" as never);
+  }, [draft, patchVenueDraft, resetVenueDraft, router]);
+
   // ----- Not-found state -----
   if (brand === null || draft === null) {
     return (
@@ -472,6 +488,31 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
             </View>
           </GlassCard>
 
+          {draft.claimStatus === "none" && draft.placePoolId == null ? (
+            <GlassCard variant="elevated" padding={spacing.lg}>
+              <View style={styles.claimAffordance}>
+                <View style={styles.claimIconWrap}>
+                  <Icon name="location" size={20} color={accent.warm} />
+                </View>
+                <View style={styles.claimTextCol}>
+                  <Text style={styles.claimTitle}>Claim a venue on Mingla</Text>
+                  <Text style={styles.claimBody}>
+                    Got a physical space? Claim it for the Verified badge and better local discovery.
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.claimCtaRow}>
+                <Button
+                  label="Find my venue"
+                  onPress={handleClaimVenue}
+                  variant="secondary"
+                  size="md"
+                  leadingIcon="search"
+                />
+              </View>
+            </GlassCard>
+          ) : null}
+
           {/* SECTION B — About */}
           <Text style={styles.sectionLabel}>ABOUT</Text>
           <View style={styles.fieldsCol}>
@@ -557,98 +598,26 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
             </View>
           </View>
 
-          {/* SECTION B-2 — Brand kind (Cycle 7 v10).
-              Drives whether the public brand page shows a location after the
-              handle. Pop-up = no location shown. Physical = address rendered.
-
-              ORCH-0855 (Tr1) — entire section gated behind kind !== "trip_planner"
-              per I-PROPOSED-TR1-KIND-IMMUTABLE (DISCOVERY-4): trip-planner brands
-              NEVER see this toggle, and the toggle's options array does NOT
-              include 'trip_planner' (physical ↔ popup only — pre-existing). */}
-          {draft.kind !== "trip_planner" ? (
-          <>
-          <Text style={styles.sectionLabel}>BRAND KIND</Text>
+          <Text style={styles.sectionLabel}>ADDRESS</Text>
           <View style={styles.fieldsCol}>
-            <View style={styles.kindRow}>
-              <Pressable
-                onPress={() => setDraft({ ...draft, kind: "physical" })}
-                accessibilityRole="button"
-                accessibilityState={{ selected: draft.kind === "physical" }}
-                accessibilityLabel="Physical space"
-                style={[
-                  styles.kindPill,
-                  draft.kind === "physical" && styles.kindPillActive,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.kindPillLabel,
-                    draft.kind === "physical" && styles.kindPillLabelActive,
-                  ]}
-                >
-                  Physical space
-                </Text>
-                <Text
-                  style={[
-                    styles.kindPillSub,
-                    draft.kind === "physical" && styles.kindPillSubActive,
-                  ]}
-                >
-                  A venue you own or lease
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={() => setDraft({ ...draft, kind: "popup" })}
-                accessibilityRole="button"
-                accessibilityState={{ selected: draft.kind === "popup" }}
-                accessibilityLabel="Pop-up"
-                style={[
-                  styles.kindPill,
-                  draft.kind === "popup" && styles.kindPillActive,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.kindPillLabel,
-                    draft.kind === "popup" && styles.kindPillLabelActive,
-                  ]}
-                >
-                  Pop-up
-                </Text>
-                <Text
-                  style={[
-                    styles.kindPillSub,
-                    draft.kind === "popup" && styles.kindPillSubActive,
-                  ]}
-                >
-                  Events at varying venues
-                </Text>
-              </Pressable>
-            </View>
-            {draft.kind === "physical" ? (
-              <View>
-                <Input
-                  variant="text"
-                  value={draft.address ?? ""}
-                  onChangeText={(v) =>
-                    setDraft({
-                      ...draft,
-                      address: v.length === 0 ? null : v,
-                    })
-                  }
-                  placeholder="e.g. 12 Old Street, London EC1V 9HL"
-                  leadingIcon="location"
-                  accessibilityLabel="Brand address"
-                  clearable
-                />
-                <Text style={styles.kindHint}>
-                  Shown to buyers on your public brand page. Use neighborhood only if you'd rather not share the exact address.
-                </Text>
-              </View>
-            ) : null}
+            <Input
+              variant="text"
+              value={draft.address ?? ""}
+              onChangeText={(v) =>
+                setDraft({
+                  ...draft,
+                  address: v.length === 0 ? null : v,
+                })
+              }
+              placeholder="e.g. 12 Old Street, London EC1V 9HL"
+              leadingIcon="location"
+              accessibilityLabel="Address (optional)"
+              clearable
+            />
+            <Text style={styles.kindHint}>
+              Optional. We'll use this to pre-fill venues for any experiences you publish, and to show your address on your public page.
+            </Text>
           </View>
-          </>
-          ) : null}
 
           {/* SECTION C — Contact */}
           <Text style={styles.sectionLabel}>CONTACT</Text>
@@ -964,39 +933,39 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
 
-  // Brand kind pills (Cycle 7 v10) -----------------------------------
-  kindRow: {
+  claimAffordance: {
     flexDirection: "row",
-    gap: spacing.sm,
+    gap: spacing.md,
+    alignItems: "flex-start",
   },
-  kindPill: {
+  claimIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(235, 120, 37, 0.12)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: accent.border,
+  },
+  claimTextCol: {
     flex: 1,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
-    borderRadius: radiusTokens.lg,
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.10)",
-    backgroundColor: "rgba(255, 255, 255, 0.04)",
   },
-  kindPillActive: {
-    borderColor: accent.warm,
-    backgroundColor: "rgba(235, 120, 37, 0.10)",
-  },
-  kindPillLabel: {
+  claimTitle: {
     fontSize: typography.body.fontSize,
+    lineHeight: typography.body.lineHeight,
     fontWeight: "600",
-    color: textTokens.secondary,
-    marginBottom: 2,
-  },
-  kindPillLabelActive: {
     color: textTokens.primary,
   },
-  kindPillSub: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
-  },
-  kindPillSubActive: {
+  claimBody: {
+    marginTop: spacing.xs,
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
     color: textTokens.secondary,
+  },
+  claimCtaRow: {
+    flexDirection: "row",
+    marginTop: spacing.md,
   },
   kindHint: {
     fontSize: typography.caption.fontSize,

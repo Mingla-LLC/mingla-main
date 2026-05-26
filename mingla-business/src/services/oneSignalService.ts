@@ -24,6 +24,8 @@
 
 import { Platform } from "react-native";
 
+const ONESIGNAL_APP_ID = process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID;
+
 // Defer react-native-onesignal require so web bundles don't blow up at
 // module-load. The package imports native modules that fail to resolve
 // under `expo export -p web`. Web bundles intentionally skip push.
@@ -31,7 +33,7 @@ import { Platform } from "react-native";
 // Platform.OS guard (paired with I-PROPOSED-X web-export deprecation).
 let OneSignal: typeof import("react-native-onesignal").OneSignal | null = null;
 let LogLevel: typeof import("react-native-onesignal").LogLevel | null = null;
-if (Platform.OS !== "web") {
+if (Platform.OS !== "web" && ONESIGNAL_APP_ID) {
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const mod = require("react-native-onesignal");
@@ -41,8 +43,6 @@ if (Platform.OS !== "web") {
     console.warn("[OneSignal] native module unavailable; push disabled:", err);
   }
 }
-
-const ONESIGNAL_APP_ID = process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID;
 
 let _initialized = false;
 const _enabled =

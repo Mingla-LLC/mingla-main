@@ -1,0 +1,27 @@
+bundle=/tmp/mingla-business-android-export-rework2-final/_expo/static/js/android/index-d41d8cd98f00b204e9800998ecf8427e.js
+@stripe/react-connect-js count=5
+@stripe/connect-js count=3
+src/shims/stripeConnectNativeStub.js count=1
+__minglaNativeStub count=1
+@stripe/stripe-react-native count=94
+StripeProviderWrapper count=16
+
+runtime-crash terms:
+4344:    if (void 0 === e) throw new ReferenceError("this hasn't been initialised - super() hasn't been called");
+7835:      null != render && render.$$typeof === REACT_MEMO_TYPE ? console.error("forwardRef requires a render function but received a `memo` component. Instead of forwardRef(memo(...)), use memo(forwardRef(...)).") : "function" !== typeof render ? console.error("forwardRef requires a render function but was given %s.", null === render ? "null" : typeof render) : 0 !== render.length && 2 !== render.length && console.error("forwardRef render functions accept exactly two parameters: props and ref. %s", 1 === render.length ? "Did you forget to use the ref parameter?" : "Any additional parameter will be undefined.");
+7836:      null != render && null != render.defaultProps && console.error("forwardRef render functions do not support defaultProps. Did you accidentally pass a React component?");
+9668:  var RE_BABEL_TRANSFORM_ERROR_FORMAT = /^(?:TransformError )?(?:SyntaxError: |ReferenceError: )(.*): (.*) \((\d+):(\d+)\)\n\n([\s\S]+)/;
+40417:  var DEFAULT_WHITELIST = [ReferenceError, TypeError, RangeError];
+47737:            throw new ReferenceError("this hasn't been initialised - super() hasn't been called");
+48090:            throw new ReferenceError("this hasn't been initialised - super() hasn't been called");
+328186:  var SyntaxReferenceError = require(_dependencyMap[1], "./error").SyntaxReferenceError;
+328388:        return new SyntaxReferenceError('Unknown at-rule', '@' + atruleName);
+328415:        return new SyntaxReferenceError('Unknown at-rule descriptor', descriptorName);
+328426:        return new SyntaxReferenceError('Unknown property', propertyName);
+328464:        return buildMatchResult(null, new SyntaxReferenceError('Unknown type', typeName));
+328470:        return buildMatchResult(null, new SyntaxReferenceError('Bad syntax'));
+328645:  var SyntaxReferenceError = function (type, referenceName) {
+328646:    var error = createCustomError('SyntaxReferenceError', type + (referenceName ? ' `' + referenceName + '`' : ''));
+328673:    SyntaxReferenceError,
+383193:  _reactNative.LogBox.ignoreLogs([/forwardRef render functions accept exactly two parameters/]);
+541678:   * `crypto.randomUUID()` call throws ReferenceError on device. Use this helper

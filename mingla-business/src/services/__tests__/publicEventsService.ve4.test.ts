@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 
 const mockFrom = jest.fn();
+const mockRpc = jest.fn();
 jest.mock("../supabase", () => ({
   supabase: {
     from: (...args: unknown[]) => mockFrom(...args),
+    rpc: (...args: unknown[]) => mockRpc(...args),
   },
 }));
 
@@ -38,6 +40,7 @@ const row = (patch: Record<string, unknown> = {}): Record<string, unknown> => ({
   title: "Great Free Event",
   description: "A real public event.",
   slug: "great-free-event",
+  event_type: "event",
   location_text: "Fallback venue",
   online_url: null,
   is_online: false,
@@ -79,7 +82,6 @@ const brandRow = (patch: Record<string, unknown> = {}): Record<string, unknown> 
   social_links: { instagram: "@brand3" },
   custom_links: [{ label: "Menu", url: "https://brand.example.com/menu" }],
   display_attendee_count: false,
-  kind: "physical",
   address: "3 Brand Street",
   cover_hue: 180,
   cover_media_url: "https://cdn.example.com/cover.gif",
@@ -116,6 +118,8 @@ const claimedVenueRow = (
 
 beforeEach(() => {
   mockFrom.mockReset();
+  mockRpc.mockReset();
+  mockRpc.mockResolvedValue({ data: [], error: null } as never);
 });
 
 describe("Ve4 public brand lookup", () => {
@@ -128,8 +132,13 @@ describe("Ve4 public brand lookup", () => {
       data: [],
       error: null,
     });
+    const brandQuery = queryBuilder("maybeSingle", {
+      data: brandRow(),
+      error: null,
+    });
     mockFrom.mockImplementation((table) => {
       if (table === "claimed_venues_public_view") return claimedQuery;
+      if (table === "business_public_brands_view") return brandQuery;
       if (table === "business_public_events_view") return eventsQuery;
       throw new Error(`Unexpected table ${String(table)}`);
     });
@@ -141,7 +150,6 @@ describe("Ve4 public brand lookup", () => {
       id: "brand-1",
       displayName: "Brand 3",
       slug: "brand-3",
-      kind: "physical",
       claimStatus: "verified",
       city: "London",
       stats: { events: 0, followers: 0, rev: 0, rev7d: 0, attendees: 0 },
@@ -157,8 +165,9 @@ describe("Ve4 public brand lookup", () => {
     });
     expect(detail?.events).toEqual([]);
     expect(claimedQuery.eq).toHaveBeenCalledWith("slug", "brand-3");
+    expect(brandQuery.eq).toHaveBeenCalledWith("slug", "brand-3");
     expect(eventsQuery.eq).toHaveBeenCalledWith("brand_slug", "brand-3");
-    expect(mockFrom).toHaveBeenCalledTimes(2);
+    expect(mockFrom).toHaveBeenCalledTimes(3);
   });
 
   test("falls back to business_public_brands_view when claimed row is absent", async () => {
@@ -217,7 +226,7 @@ describe("Ve4 public brand lookup", () => {
       error: null,
     });
     const brandQuery = queryBuilder("maybeSingle", {
-      data: brandRow({ slug: "test-stripe", name: "Test Stripe", kind: "popup" }),
+      data: brandRow({ slug: "test-stripe", name: "Test Stripe" }),
       error: null,
     });
     const eventsQuery = queryBuilder("order", {

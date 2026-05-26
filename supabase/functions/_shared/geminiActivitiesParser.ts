@@ -156,6 +156,7 @@ export function normalizeActivitiesParsePayload(
 export async function parseActivitiesWithGemini(args: {
   files: ActivitiesFileInput[];
   defaultCurrency?: string;
+  temporaryCategory?: "play";
   venueName?: string;
 }): Promise<ActivitiesParseResult> {
   const apiKey = Deno.env.get("GEMINI_API_KEY_ARI");
@@ -164,6 +165,7 @@ export async function parseActivitiesWithGemini(args: {
   }
 
   const defaultCurrency = args.defaultCurrency ?? "GBP";
+  const temporaryCategory = args.temporaryCategory ?? "play";
   const parts: Array<{ text: string } | { inline_data: { mime_type: string; data: string } }> = [];
 
   const venueHint = args.venueName
@@ -184,7 +186,9 @@ export async function parseActivitiesWithGemini(args: {
 
   const requestBody = {
     contents: [{ role: "user", parts }],
-    systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+    systemInstruction: {
+      parts: [{ text: `You are parsing a ${temporaryCategory} activities list.\n\n${SYSTEM_PROMPT}` }],
+    },
     generationConfig: {
       maxOutputTokens: MAX_OUTPUT_TOKENS,
       temperature: TEMPERATURE,

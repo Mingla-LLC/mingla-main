@@ -38,7 +38,13 @@
 
 // orch-strict-grep-allow safearea-on-fullscreen-routes — design-intent full-bleed checkout header: insets.bottom IS applied (line 483 + 543) for home-indicator clearance; the top status-bar overlap with back arrow / payment-step header / "3 OF 3" pill is the intended banner-style buyer aesthetic (matches /checkout/{id} + /checkout/{id}/buyer pattern). Per ORCH-0859 [Tr2 Minimum Viable Trip] REWORK 5b operator design ruling 2026-05-17 (QA report §1).
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, {
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   Keyboard,
   Platform,
@@ -68,7 +74,7 @@ import { mixpanelService } from "../../../src/services/mixpanelService";
 // ORCH-0839-B WebBrowser.openAuthSessionAsync hosted-checkout pivot.
 // Parity with consumer (app-mobile/src/payments/nativeCheckoutFlow.ts).
 // Per SPEC_ORCH-0849 §3.4.5 + invariant I-PROPOSED-STRIPE-PAYMENTSHEET-PARITY.
-import { useNativeCheckoutFlow } from "../../../src/payments/nativeCheckoutFlow";
+import type { NativeCheckoutExecutor } from "../../../src/payments/NativeCheckoutPaymentBoundary";
 
 import { Button } from "../../../src/components/ui/Button";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
@@ -90,12 +96,34 @@ import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader"
 
 // ORCH-0849 (2026-05-15): CHECKOUT_RETURN_URL_SCHEME removed — native
 // PaymentSheet handles return-URL internally via the StripeNativeProvider's
-// urlScheme prop (mounted in mingla-business/app/_layout.tsx). Web path
+// urlScheme prop (scoped to this payment route wrapper). Web path
 // retains full-page redirect via window.location.assign; no return-URL
 // interception needed on web because Stripe's success_url/cancel_url
 // navigate the browser directly.
 
+const NativeCheckoutPaymentBoundary = React.lazy(
+  () => import("../../../src/payments/NativeCheckoutPaymentBoundary"),
+);
+
 export default function CheckoutPaymentScreen(): React.ReactElement {
+  return (
+    <Suspense fallback={null}>
+      <NativeCheckoutPaymentBoundary>
+        {(nativeCheckout) => (
+          <CheckoutPaymentScreenContent nativeCheckout={nativeCheckout} />
+        )}
+      </NativeCheckoutPaymentBoundary>
+    </Suspense>
+  );
+}
+
+interface CheckoutPaymentScreenContentProps {
+  nativeCheckout: NativeCheckoutExecutor;
+}
+
+function CheckoutPaymentScreenContent({
+  nativeCheckout,
+}: CheckoutPaymentScreenContentProps): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const params = useLocalSearchParams<{ eventId: string }>();
@@ -133,11 +161,6 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
   const [taxPreview, setTaxPreview] = useState<CartTaxPreviewResult | null>(
     null,
   );
-
-  // ORCH-0849: native PaymentSheet hook. Returns a function that the
-  // native branch of handlePay invokes; not used on web (Platform.OS ===
-  // "web" path stays on full-page Hosted Checkout via window.location.assign).
-  const nativeCheckout = useNativeCheckoutFlow();
 
   // ----- ORCH-0789/0790 REWORK: web sessionStorage restore -----
   // Runs once on mount (web only). If cart context is empty but we have

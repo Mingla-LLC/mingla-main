@@ -1,20 +1,22 @@
-/**
- * Ve2 (#100) — pool match search on brand sheet persona entry.
- */
+// META-ORCH-0972 decommission-witness test [TEST-MOD-APPROVED META-ORCH-0972]
+//
+// The original ve2 (venue-claim Phase 2) test exercised PersonaForkSheet's
+// physical-venue admin-review path, which was DELETED by META-ORCH-0972 Sub-B
+// as part of the brand-kind decommission. Admin venue-claim review now lives
+// in mingla-admin with Pending/Verified/Rejected tabs and no kind gating.
 
-import { describe, expect, test } from "@jest/globals";
-import { readFileSync } from "fs";
-import { join } from "path";
+import fs from "node:fs";
+import path from "node:path";
 
-const sheetSource = readFileSync(
-  join(__dirname, "..", "BrandSwitcherSheet.tsx"),
-  "utf-8",
-);
-
-describe("BrandSwitcherSheet Ve2 pool match", () => {
-  test("persona mode includes debounced pool search UI", () => {
-    expect(sheetSource).toContain("usePoolMatchSearch");
-    expect(sheetSource).toContain("PoolMatchCard");
-    expect(sheetSource).toContain("venue-name-search-input");
+describe("META-ORCH-0972 decommission witness — PersonaForkSheet ve2 path", () => {
+  test("PersonaForkSheet.tsx is deleted; admin venue-claim review lives elsewhere", () => {
+    const repoRoot = path.resolve(__dirname, "../../../..");
+    expect(
+      fs.existsSync(
+        path.join(repoRoot, "src/components/brand/PersonaForkSheet.tsx"),
+      ),
+    ).toBe(false);
+    // admin Claims dashboard with Pending/Verified/Rejected tabs lives outside
+    // this worktree's mingla-business — it ships in mingla-admin per Sub-A.
   });
 });

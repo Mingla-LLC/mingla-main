@@ -1,0 +1,500 @@
+05-25 15:46:54.608 I/A       ( 1570): (REDACTED) Assistant special experience changed to %s.
+05-25 15:46:54.610 I/Gralloc4( 2170): mapper 4.x is not supported
+05-25 15:46:54.643 E/CellBroadcastUtils(  944): getDefaultCellBroadcastReceiverPackageName: no package found
+05-25 15:46:54.675 W/AppOpService(  562): Ignored setUidMode call for runtime permission app op: uid = 1001, code = READ_SMS, mode = allow, callingUid = 1001, oldMode = allow
+05-25 15:46:54.675 W/AppOpService(  562): Ignored setUidMode call for runtime permission app op: uid = 1001, code = RECEIVE_SMS, mode = allow, callingUid = 1001, oldMode = allow
+05-25 15:46:54.675 W/AppOpService(  562): Ignored setUidMode call for runtime permission app op: uid = 1001, code = RECEIVE_WAP_PUSH, mode = allow, callingUid = 1001, oldMode = allow
+05-25 15:46:54.676 W/AppOpService(  562): Ignored setUidMode call for runtime permission app op: uid = 1001, code = SEND_SMS, mode = allow, callingUid = 1001, oldMode = allow
+05-25 15:46:54.676 W/AppOpService(  562): Ignored setUidMode call for runtime permission app op: uid = 1001, code = READ_CELL_BROADCASTS, mode = allow, callingUid = 1001, oldMode = allow
+05-25 15:46:54.679 I/SRMClientSgtnModule( 1570): SRMc: Instantiating SodaResourceManagerClient with non-account-scope.
+05-25 15:46:54.683 I/SRMClientSgtnModule( 1570): SRMc: Instantiating SodaResourceManagerClient with non-account-scope.
+05-25 15:46:54.688 I/FontLog ( 1061): (REDACTED) Received query %s, URI %s
+05-25 15:46:54.688 I/FontLog ( 1061): (REDACTED) Query [%s] resolved to %s
+05-25 15:46:54.689 D/ThemeOverlayController(  810): Writing boot animation colors 4: ffd9e2ff
+05-25 15:46:54.690 I/MicroModelsUtil( 1570): (REDACTED) #getHotwordModelFromMobstore [mobstoreUri: %s]
+05-25 15:46:54.692 I/FontLog ( 1061): (REDACTED) Fetch %s end status %s
+05-25 15:46:54.700 D/ImsResolver(  944): maybeAddedImsService, packageName: com.sethogieva.minglabusiness
+05-25 15:46:54.705 D/ZenModeController(  810): Removed callback class com.google.android.systemui.smartspace.KeyguardZenAlarmViewController$zenModeCallback$1
+05-25 15:46:54.710 I/A       ( 1570): NGA Sync: beginOnDataPresent
+05-25 15:46:54.716 I/A       ( 1570): (REDACTED) NGA Sync: isNgaSyncEnabled: %s; enableFileGroupPopulator: %s; requiresMddAssets: %s
+05-25 15:46:54.724 W/MagnificationConnectionManager(  562): requestConnection duplicated request: connect=false, mConnectionState=DISCONNECTED
+05-25 15:46:54.724 D/LockscreenSmartspaceController(  810): Ended smartspace session for lockscreen
+05-25 15:46:54.734 D/WearableService( 1061): Creating wearable service asynchronously.
+05-25 15:46:54.739 D/ZenModeController(  810): Removed callback class com.android.keyguard.ClockEventController$zenModeCallback$1
+05-25 15:46:54.743 I/BugleMDD( 1551): MddBackgroundStartupTask: Scheduled MDD periodic tasks.
+05-25 15:46:54.743 E/KeyguardClockSwitch(  810): No clock being shown
+05-25 15:46:54.746 W/A       ( 1570): (REDACTED) Task %s was queued for %dms before starting on executor %s
+05-25 15:46:54.757 I/MicroModelsUtil( 1570): (REDACTED) #getHotwordModelFromMobstore [mobstoreUri: %s]
+05-25 15:46:54.757 I/A       ( 1570): (REDACTED) Flag controlled groups: %s
+05-25 15:46:54.758 I/A       ( 1570): (REDACTED) Required groups: %s
+05-25 15:46:54.761 I/.android.as.oss( 1873): Background concurrent mark compact GC freed 1709KB AllocSpace bytes, 0(0B) LOS objects, 49% free, 2268KB/4537KB, paused 118us,6.412ms total 1.266s
+05-25 15:46:54.771 I/A       ( 1570): NGA Sync: endOnDataPresent
+05-25 15:46:54.783 D/nativeloader( 1570): Load /product/priv-app/Velvet/Velvet.apk!/lib/arm64-v8a/libgoogle_speech_micro_jni.so using ns product-clns-7 from class loader (caller=/product/priv-app/Velvet/Velvet.apk!classes10.dex): ok
+05-25 15:46:54.783 I/bt_shim_scanner(  881): system/main/shim/le_scanning_manager.cc:179 Scan: in shim layer stopped
+05-25 15:46:54.788 I/bluetooth(  881): system/gd/hci/le_address_manager.cc:244 unregister_client: Client unregistered
+05-25 15:46:54.789 I/bluetooth(  881): system/gd/hci/le_address_manager.cc:248 unregister_client: Cancelled address rotation alarm
+05-25 15:46:54.793 I/ctxmgr  ( 1061): (REDACTED) [WorkManager] Long workInfo: %s
+05-25 15:46:54.795 W/ActivityManager(  562): Unable to start service Intent { cmp=com.google.android.apps.tachyon/.clientapi.ClientApiService } U=0: not found
+05-25 15:46:54.796 I/bt_shim_scanner(  881): system/main/shim/le_scanning_manager.cc:361 SetScanParameters: in shim layer
+05-25 15:46:54.796 I/bt_shim_scanner(  881): system/main/shim/le_scanning_manager.cc:179 Scan: in shim layer started
+05-25 15:46:54.796 I/bluetooth(  881): system/gd/hci/le_scanning_manager.cc:636 stop_scan: Scanning already stopped, return!
+05-25 15:46:54.797 I/bluetooth(  881): system/gd/hci/le_address_manager.cc:226 register_client: Scheduled address rotation for first client registered
+05-25 15:46:54.797 I/bluetooth(  881): system/gd/hci/le_address_manager.cc:229 register_client: Client registered
+05-25 15:46:54.798 I/tflite  ( 1570): Initialized TensorFlow Lite runtime.
+05-25 15:46:54.827 W/FenceManagerImpl( 1302): <DWB> Register lost fences - start 4 registration.
+05-25 15:46:54.832 W/A       ( 1570): (REDACTED) %s task was not run. Callback from Service received after client was disposed.
+05-25 15:46:54.834 D/WearableService( 1061): onGetService: waiting for onCreate to be completed.
+05-25 15:46:54.835 I/NgaEntryPointEventSendr( 1399): (REDACTED) State changed: %s => %s (%s)
+05-25 15:46:54.841 W/A       ( 1570): (REDACTED) %s task was not run. Callback from Service received after client was disposed.
+05-25 15:46:54.841 W/A       ( 1570): (REDACTED) %s task was not run. Callback from Service received after client was disposed.
+05-25 15:46:54.846 I/Wear_Controller( 1061): Wearable module requires a companion app to be installed.
+05-25 15:46:54.846 I/WearableService( 1061): onCreate: Wearable Services not starting. Wear is not available on this device.
+05-25 15:46:54.860 I/BugleRcsProvisioning( 1551): RcsProvisioningTrigger: Schedule provisioning on app startup
+05-25 15:46:54.866 I/BugleRcsProvisioning( 1551): RcsProvisioningTrigger: updateAvailabilityForAllSimsAsync : hint = NO_HINT logTriggerEvent = false
+05-25 15:46:54.870 W/WearableService( 1061): onGetService: Wear is not available on this device. Calling package: com.google.android.apps.messaging
+05-25 15:46:54.889 I/FontLog ( 1061): (REDACTED) Pulling font file for id = %d, cache size = %d
+05-25 15:46:54.897 I/Bugle   ( 1551): RcsAvailabilityUtilForProvisioningEngineV2: updateAvailabilityForAllSimsAsync, hint: NO_HINT
+05-25 15:46:54.903 I/RcsAvailabilityUpdaterL( 1551): updateAvailabilityForAllSimsAsync: scheduling updateAvailabilityForRcsProvisioningId call. Hint: NO_HINT, enableWelcomePopupWithoutGoogleTos: false, reshowSuccessPopup: false
+05-25 15:46:54.910 I/BugleNetwork( 1551): Startup: registering tachyon.
+05-25 15:46:54.922 I/A       ( 1570): (REDACTED) NGA Sync: isNgaSyncEnabled: %s; enableFileGroupPopulator: %s; requiresMddAssets: %s
+05-25 15:46:54.949 I/FontLog ( 1061): (REDACTED) Pulling font file for id = %d, cache size = %d
+05-25 15:46:54.969 D/OomAdjuster(  562): Not killing cached processes
+05-25 15:46:54.970 I/RcsAvailabilityUpdaterL( 1551): updateRcsAvailabilityForMultipleSims: hint: NO_HINT, canReshowWelcomeMessage: false
+05-25 15:46:54.990 W/libc    ( 1570): Access denied finding property "ro.hardware.chipname"
+05-25 15:46:55.002 I/MicroDataManager( 1570): (REDACTED) MicroDataManager InitializationTask. googleHotwordData is null: true, hotwordModel is null: %b , sourceLocationOfCurrentHotwordModel %s
+05-25 15:46:55.006 I/ClockEventController(  810): Region isDark: true
+05-25 15:46:55.025 I/HotwordService( 1570): (REDACTED) Model ID: %s
+05-25 15:46:55.026 I/HotwordService( 1570): (REDACTED) hotwordModelLocation is null %b, locale is %s, re-mapped Chinese locale %s
+05-25 15:46:55.051 D/ZenModeController(  810): Added callback class com.android.keyguard.ClockEventController$zenModeCallback$1
+05-25 15:46:55.055 W/PageIndicator(  810): Total number of pages invalid: 0. Assuming 1 page.
+05-25 15:46:55.061 W/PageIndicator(  810): Total number of pages invalid: 0. Assuming 1 page.
+05-25 15:46:55.089 W/PageIndicator(  810): Total number of pages invalid: 0. Assuming 1 page.
+05-25 15:46:55.089 I/DynamiteModule( 1570): Considering local module com.google.android.gms.cronet_dynamite:0 and remote module com.google.android.gms.cronet_dynamite:4811
+05-25 15:46:55.090 I/DynamiteModule( 1570): Selected remote version of com.google.android.gms.cronet_dynamite, version >= 4811
+05-25 15:46:55.090 V/DynamiteModule( 1570): Dynamite loader version >= 2, using loadModule2NoCrashUtils
+05-25 15:46:55.130 I/HotwordService( 1570): (REDACTED) isOpaEligibleAndUserEnabled: %b
+05-25 15:46:55.137 D/LockscreenSmartspaceController(  810): Starting smartspace session for lockscreen
+05-25 15:46:55.163 W/ServiceManagerCppClient(  562): Permission failure: android.permission.ACCESS_SURFACE_FLINGER from uid=10207 pid=0
+05-25 15:46:55.163 D/PermissionCache(  562): checking android.permission.ACCESS_SURFACE_FLINGER for uid=10207 => denied (178 us)
+05-25 15:46:55.163 W/ServiceManagerCppClient(  562): Permission failure: android.permission.ROTATE_SURFACE_FLINGER from uid=10207 pid=0
+05-25 15:46:55.163 D/PermissionCache(  562): checking android.permission.ROTATE_SURFACE_FLINGER for uid=10207 => denied (41 us)
+05-25 15:46:55.163 W/ServiceManagerCppClient(  562): Permission failure: android.permission.INTERNAL_SYSTEM_WINDOW from uid=10207 pid=0
+05-25 15:46:55.163 D/PermissionCache(  562): checking android.permission.INTERNAL_SYSTEM_WINDOW for uid=10207 => denied (28 us)
+05-25 15:46:55.238 W/earchbox:search( 1570): ClassLoaderContext classpath element mismatch. expected=base.apk, found=/product/priv-app/Velvet/Velvet.apk (DLC[];PCL[base.apk*4118348250]{PCL[/system/framework/org.apache.http.legacy.jar*437079508]#PCL[/system/framework/com.android.location.provider.jar*3414091812]#PCL[/system/framework/com.android.media.remotedisplay.jar*2042759013]#PCL[/system_ext/framework/androidx.window.extensions.jar*1060046784]#PCL[/system_ext/framework/androidx.window.sidecar.jar*2147524027]} | DLC[];PCL[/product/priv-app/Velvet/Velvet.apk*1196086246]{PCL[/system/framework/org.apache.http.legacy.jar*437079508]#PCL[/system_ext/framework/androidx.window.extensions.jar*1060046784]#PCL[/system_ext/framework/androidx.window.sidecar.jar*2147524027]})
+05-25 15:46:55.285 I/earchbox:search( 1570): Waiting for a blocking GC ClassLinker
+05-25 15:46:55.296 I/A       ( 1570): (REDACTED) #handleLocale  %s
+05-25 15:46:55.306 W/PageIndicator(  810): Total number of pages invalid: 0. Assuming 1 page.
+05-25 15:46:55.306 W/BcSmartspaceView(  810): Current card is not present in the Adapter; cannot log.
+05-25 15:46:55.331 W/A       ( 1570): CompleteServer request has failed and can't show offline suggestions.
+05-25 15:46:55.331 W/A       ( 1570): kotlinx.coroutines.dt: Timed out waiting for 2000 ms
+05-25 15:46:55.331 W/A       ( 1570): 	at kotlinx.coroutines.du.run(PG:42)
+05-25 15:46:55.331 W/A       ( 1570): 	at com.google.apps.tiktok.f.y.run(PG:3)
+05-25 15:46:55.331 W/A       ( 1570): 	at com.google.apps.tiktok.tracing.fk.run(PG:24)
+05-25 15:46:55.331 W/A       ( 1570): 	at java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:487)
+05-25 15:46:55.331 W/A       ( 1570): 	at java.util.concurrent.FutureTask.run(FutureTask.java:264)
+05-25 15:46:55.331 W/A       ( 1570): 	at com.google.common.n.c.c.run(PG:50)
+05-25 15:46:55.331 W/A       ( 1570): 	at com.google.android.libraries.k.e.run(PG:8)
+05-25 15:46:55.331 W/A       ( 1570): 	at java.lang.Thread.run(Thread.java:1012)
+05-25 15:46:55.331 W/A       ( 1570): 	at com.google.android.libraries.k.d.b.run(PG:74)
+05-25 15:46:55.342 I/HWUI    ( 2170): Davey! duration=1300ms; Flags=1, FrameTimelineVsyncId=5627, IntendedVsync=89586651299, Vsync=90086651279, InputEventId=0, HandleInputStart=90097578499, AnimationStart=90097583416, PerformTraversalsStart=90097585499, DrawStart=90643033583, FrameDeadline=89603317965, FrameInterval=90097072166, FrameStartTime=16666666, SyncQueued=90659302874, SyncStart=90718878874, IssueDrawCommandsStart=90756684999, SwapBuffers=90786689958, FrameCompleted=90946296958, DequeueBufferDuration=12709, QueueBufferDuration=1644042, GpuCompleted=90946296958, SwapBuffersCompleted=90921053000, DisplayPresentTime=72904454231359566, CommandSubmissionCompleted=90786689958, 
+05-25 15:46:55.355 I/AiAiEcho( 1382): Predicting[0]:  [CONTEXT sampling_count=5 ]
+05-25 15:46:55.355 I/AiAiEcho( 1382): EchoTargets: 
+05-25 15:46:55.355 I/AiAiEcho( 1382): Filtered by AiAi flag check: 
+05-25 15:46:55.355 I/AiAiEcho( 1382): [CONTEXT ratelimit_period="10 SECONDS" ]
+05-25 15:46:55.355 D/BaseDepthController( 1256): setSurface:
+05-25 15:46:55.355 D/BaseDepthController( 1256): 	mWaitingOnSurfaceValidity: false
+05-25 15:46:55.355 D/BaseDepthController( 1256): 	mSurface: null
+05-25 15:46:55.355 I/AiAiEcho( 1382): Ranked targets strategy: SORT, count: 0, ranking metadata:  [CONTEXT ratelimit_period="10 SECONDS" ]
+05-25 15:46:55.357 I/AiAiEcho( 1382): #remoteViewsTwiddler: feature disabled.
+05-25 15:46:55.358 D/BaseDepthController( 1256): mSurface is null and mCurrentBlur is: 0
+05-25 15:46:55.359 W/ziparchive(  562): Unable to open '/data/app/~~IP_dXZs0KB6SbITCHbRAew==/com.sethogieva.minglabusiness--83aC_f7WbfAIRFpRTxulA==/base.dm': No such file or directory
+05-25 15:46:55.360 I/AiAiEcho( 1382): Predicting[0]:  [CONTEXT sampling_count=5 ]
+05-25 15:46:55.360 I/AiAiEcho( 1382): EchoTargets: 
+05-25 15:46:55.360 I/AiAiEcho( 1382): Filtered by AiAi flag check: 
+05-25 15:46:55.360 I/AiAiEcho( 1382): [CONTEXT ratelimit_period="10 SECONDS" ]
+05-25 15:46:55.361 I/AiAiEcho( 1382): Ranked targets strategy: SORT, count: 0, ranking metadata:  [CONTEXT ratelimit_period="10 SECONDS" ]
+05-25 15:46:55.362 I/AiAiEcho( 1382): #remoteViewsTwiddler: feature disabled.
+05-25 15:46:55.362 D/StateManager( 1256): goToState - fromState: Normal, toState: Normal, partial trace:
+05-25 15:46:55.362 D/StateManager( 1256): 	at com.android.launcher3.statemanager.StateManager.moveToRestState(go/retraceme 2855a437b73635ce9cad76b9289087e631bbb67fc90008a0da13d343a00e5041:4)
+05-25 15:46:55.362 D/StateManager( 1256): 	at com.android.launcher3.statemanager.StateManager.moveToRestState(go/retraceme 2855a437b73635ce9cad76b9289087e631bbb67fc90008a0da13d343a00e5041:1)
+05-25 15:46:55.362 D/StateManager( 1256): 	at com.android.launcher3.statemanager.StatefulActivity.onStop(go/retraceme 2855a437b73635ce9cad76b9289087e631bbb67fc90008a0da13d343a00e5041:34)
+05-25 15:46:55.363 I/AiAiEcho( 1382): Predicting[0]:  [CONTEXT sampling_count=5 ]
+05-25 15:46:55.363 I/AiAiEcho( 1382): EchoTargets: 
+05-25 15:46:55.363 I/AiAiEcho( 1382): Filtered by AiAi flag check: 
+05-25 15:46:55.363 I/AiAiEcho( 1382): [CONTEXT ratelimit_period="10 SECONDS" ]
+05-25 15:46:55.363 I/AiAiEcho( 1382): Ranked targets strategy: SORT, count: 0, ranking metadata:  [CONTEXT ratelimit_period="10 SECONDS" ]
+05-25 15:46:55.363 I/AiAiEcho( 1382): #remoteViewsTwiddler: feature disabled.
+05-25 15:46:55.363 I/AiAiEcho( 1382): Predicting[0]:  [CONTEXT sampling_count=5 ]
+05-25 15:46:55.363 I/AiAiEcho( 1382): EchoTargets: 
+05-25 15:46:55.363 I/AiAiEcho( 1382): Filtered by AiAi flag check: 
+05-25 15:46:55.363 I/AiAiEcho( 1382): [CONTEXT ratelimit_period="10 SECONDS" ]
+05-25 15:46:55.363 I/AiAiEcho( 1382): Ranked targets strategy: SORT, count: 0, ranking metadata:  [CONTEXT ratelimit_period="10 SECONDS" ]
+05-25 15:46:55.363 I/AiAiEcho( 1382): #remoteViewsTwiddler: feature disabled.
+05-25 15:46:55.365 I/AiAiEcho( 1382): #postPredictionTargets: Sending updates to UISurface lockscreen with targets# 0 (types=[])
+05-25 15:46:55.366 D/StatsLog( 1256): LAUNCHER_ONSTOP
+05-25 15:46:55.368 W/OneSignal( 2170): [DefaultDispatcher-worker-3] suspendInitInternal: no appId provided or found in local storage. Please pass a valid appId to initWithContext().
+05-25 15:46:55.371 E/OneSearchSuggestProvider( 1256): Unable to get suggestions from AGA
+05-25 15:46:55.371 E/OneSearchSuggestProvider( 1256): io.grpc.StatusRuntimeException: CANCELLED
+05-25 15:46:55.371 E/OneSearchSuggestProvider( 1256): 	at k3.e.a(go/retraceme 2855a437b73635ce9cad76b9289087e631bbb67fc90008a0da13d343a00e5041:77)
+05-25 15:46:55.371 E/OneSearchSuggestProvider( 1256): 	at i3.l.b(go/retraceme 2855a437b73635ce9cad76b9289087e631bbb67fc90008a0da13d343a00e5041:43)
+05-25 15:46:55.371 E/OneSearchSuggestProvider( 1256): 	at i3.l.a(go/retraceme 2855a437b73635ce9cad76b9289087e631bbb67fc90008a0da13d343a00e5041:27)
+05-25 15:46:55.371 E/OneSearchSuggestProvider( 1256): 	at i3.z.run(go/retraceme 2855a437b73635ce9cad76b9289087e631bbb67fc90008a0da13d343a00e5041:7)
+05-25 15:46:55.371 E/OneSearchSuggestProvider( 1256): 	at i3.m2.run(go/retraceme 2855a437b73635ce9cad76b9289087e631bbb67fc90008a0da13d343a00e5041:19)
+05-25 15:46:55.371 E/OneSearchSuggestProvider( 1256): 	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1145)
+05-25 15:46:55.371 E/OneSearchSuggestProvider( 1256): 	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:644)
+05-25 15:46:55.371 E/OneSearchSuggestProvider( 1256): 	at java.lang.Thread.run(Thread.java:1012)
+05-25 15:46:55.373 I/AiAiEcho( 1382): #postPredictionTargets: Sending updates to UISurface home with targets# 0 (types=[])
+05-25 15:46:55.374 I/AiAiEcho( 1382): #postPredictionTargets: Sending updates to UISurface lockscreen with targets# 0 (types=[])
+05-25 15:46:55.374 I/AiAiEcho( 1382): #postPredictionTargets: Sending updates to UISurface home with targets# 0 (types=[])
+05-25 15:46:55.375 W/A       ( 1570): CompleteServer request has failed and can't show offline suggestions.
+05-25 15:46:55.375 W/A       ( 1570): kotlinx.coroutines.dt: Timed out waiting for 2000 ms
+05-25 15:46:55.375 W/A       ( 1570): 	at kotlinx.coroutines.du.run(PG:42)
+05-25 15:46:55.375 W/A       ( 1570): 	at com.google.apps.tiktok.f.y.run(PG:3)
+05-25 15:46:55.375 W/A       ( 1570): 	at com.google.apps.tiktok.tracing.fk.run(PG:24)
+05-25 15:46:55.375 W/A       ( 1570): 	at java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:487)
+05-25 15:46:55.375 W/A       ( 1570): 	at java.util.concurrent.FutureTask.run(FutureTask.java:264)
+05-25 15:46:55.375 W/A       ( 1570): 	at com.google.common.n.c.c.run(PG:50)
+05-25 15:46:55.375 W/A       ( 1570): 	at com.google.android.libraries.k.e.run(PG:8)
+05-25 15:46:55.375 W/A       ( 1570): 	at java.lang.Thread.run(Thread.java:1012)
+05-25 15:46:55.375 W/A       ( 1570): 	at com.google.android.libraries.k.d.b.run(PG:74)
+05-25 15:46:55.383 D/ZenModeController(  810): Added callback class com.google.android.systemui.smartspace.KeyguardZenAlarmViewController$zenModeCallback$1
+05-25 15:46:55.383 W/AlarmManager(  810): Unrecognized alarm listener com.google.android.systemui.smartspace.KeyguardZenAlarmViewController$showNextAlarm$1@a4b49ec
+05-25 15:46:55.384 W/AlarmManager(  810): Unrecognized alarm listener com.google.android.systemui.smartspace.KeyguardZenAlarmViewController$showNextAlarm$1@a4b49ec
+05-25 15:46:55.384 W/PageIndicator(  810): Total number of pages invalid: 0. Assuming 1 page.
+05-25 15:46:55.384 W/BcSmartspaceView(  810): Current card is not present in the Adapter; cannot log.
+05-25 15:46:55.385 I/A       ( 1570): (REDACTED) available language pack of %s is version %d
+05-25 15:46:55.398 W/OneSignal( 2170): [DefaultDispatcher-worker-3] NotificationRestoreWorker skipped due to failed OneSignal init
+05-25 15:46:55.403 E/OneSearchSuggestProvider( 1256): Unable to get suggestions from AGA
+05-25 15:46:55.403 E/OneSearchSuggestProvider( 1256): io.grpc.StatusRuntimeException: CANCELLED
+05-25 15:46:55.403 E/OneSearchSuggestProvider( 1256): 	at k3.e.a(go/retraceme 2855a437b73635ce9cad76b9289087e631bbb67fc90008a0da13d343a00e5041:77)
+05-25 15:46:55.403 E/OneSearchSuggestProvider( 1256): 	at i3.l.b(go/retraceme 2855a437b73635ce9cad76b9289087e631bbb67fc90008a0da13d343a00e5041:43)
+05-25 15:46:55.403 E/OneSearchSuggestProvider( 1256): 	at i3.l.a(go/retraceme 2855a437b73635ce9cad76b9289087e631bbb67fc90008a0da13d343a00e5041:27)
+05-25 15:46:55.403 E/OneSearchSuggestProvider( 1256): 	at i3.z.run(go/retraceme 2855a437b73635ce9cad76b9289087e631bbb67fc90008a0da13d343a00e5041:7)
+05-25 15:46:55.403 E/OneSearchSuggestProvider( 1256): 	at i3.m2.run(go/retraceme 2855a437b73635ce9cad76b9289087e631bbb67fc90008a0da13d343a00e5041:19)
+05-25 15:46:55.403 E/OneSearchSuggestProvider( 1256): 	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1145)
+05-25 15:46:55.403 E/OneSearchSuggestProvider( 1256): 	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:644)
+05-25 15:46:55.403 E/OneSearchSuggestProvider( 1256): 	at java.lang.Thread.run(Thread.java:1012)
+05-25 15:46:55.407 D/OneSearchSuggestProvider( 1256): Shut down the binder channel
+05-25 15:46:55.409 D/StatsLog( 1256): LAUNCHER_GOOGLE_SEARCH_RESTORE_LIST_SIZE_AFTER_ACTIVITY_RESTART
+05-25 15:46:55.410 D/SearchTargetUtil( 1256): queryLength=0 size=0
+05-25 15:46:55.412 I/IPCThreadState( 1256): oneway function results for code 2 on binder at 0xb40000781ff7bac0 will be dropped but finished with status UNKNOWN_TRANSACTION
+05-25 15:46:55.427 I/WM-WorkerWrapper( 2170): Worker result SUCCESS for Work [ id=befa764d-79ce-49cc-bb14-467ae5faf787, tags={ com.onesignal.notifications.internal.restoration.impl.NotificationRestoreWorkManager$NotificationRestoreWorker } ]
+05-25 15:46:55.439 I/ActivityTaskManager(  562): Displayed com.sethogieva.minglabusiness/.MainActivity for user 0: +21s107ms
+05-25 15:46:55.596 D/SearchTargetUtil( 1256): queryLength=0 size=0
+05-25 15:46:55.597 I/ActivityManager(  562): Background started FGS: Allowed [callingPackage: com.google.android.apps.wellbeing; callingUid: 10143; uidState: BTOP; uidBFSL: [BFSL]; intent: Intent { cmp=com.google.android.apps.wellbeing/com.google.apps.tiktok.concurrent.InternalForegroundService (has extras) }; code:BACKGROUND_ACTIVITY_PERMISSION; tempAllowListReason:<null>; targetSdkVersion:34; callerTargetSdkVersion:34; startForegroundCount:0; bindFromPackage:null: isBindService:false]
+05-25 15:46:55.837 I/Finsky  ( 1813): [55] Initializing the instant apps module.
+05-25 15:46:55.940 D/ActivityManager(  562): freezing 2313 com.android.externalstorage
+05-25 15:46:56.172 D/ProfileInstaller( 2170): Installing profile for com.sethogieva.minglabusiness
+05-25 15:46:56.181 I/HDM.HotwordInfoProvider( 1399): HotwordInformation fetch will try to save hotword model.
+05-25 15:46:56.182 I/ctxmgr  ( 1061): (REDACTED) [WorkManager] Long workInfo: %s
+05-25 15:46:56.212 I/A       ( 1570): #initializeLanguages
+05-25 15:46:56.279 D/StatsLog( 1256): LAUNCHER_ALLAPPS_COUNT
+05-25 15:46:56.289 D/SsBaseTemplateCard( 1256): No text view can be set up
+05-25 15:46:56.290 D/SsBaseTemplateCard( 1256): Passed-in item info is null
+05-25 15:46:56.290 D/SsBaseTemplateCard( 1256): Passed-in item info is null
+05-25 15:46:56.290 D/SsBaseTemplateCard( 1256): Passed-in item info is null
+05-25 15:46:56.290 I/SsBaseTemplateCard( 1256): Secondary card pane is null
+05-25 15:46:56.291 D/SsBaseTemplateCard( 1256): No text view can be set up
+05-25 15:46:56.291 D/SsBaseTemplateCard( 1256): Passed-in item info is null
+05-25 15:46:56.291 D/SsBaseTemplateCard( 1256): Passed-in item info is null
+05-25 15:46:56.291 D/SsBaseTemplateCard( 1256): Passed-in item info is null
+05-25 15:46:56.291 I/SsBaseTemplateCard( 1256): Secondary card pane is null
+05-25 15:46:56.301 D/InetDiagMessage(  562): Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET, states=14
+05-25 15:46:56.301 D/InetDiagMessage(  562): Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET6, states=14
+05-25 15:46:56.301 D/InetDiagMessage(  562): Destroyed live tcp sockets for uids={10099} in 92ms
+05-25 15:46:56.322 I/Finsky  ( 1813): [2] setup::RES: shouldRecoverRestoredPackages: versionCodeSystem 84132530
+05-25 15:46:56.365 D/WifiNl80211Manager(  562): Scan result ready event
+05-25 15:46:56.365 D/WifiNative(  562): Scan result ready event
+05-25 15:46:56.413 W/JobInfo (  562): Job 'com.google.android.settings.intelligence/.modules.routines.impl.RoutinesJobIntentService#1728' has a deadline with no functional constraints. The deadline won't improve job execution latency. Consider removing the deadline.
+05-25 15:46:56.475 W/A       ( 1570): (REDACTED) %s task was not run. Callback from Service received after client was disposed.
+05-25 15:46:56.534 W/ProcessStats(  562): Tracking association SourceState{d373e8a system/1000 BFgs #631} whose proc state 4 is better than process ProcessState{2327712 com.google.android.ext.services/10200 pkg=com.google.android.ext.services} proc state 14 (3 skipped)
+05-25 15:46:56.539 W/Looper  (  562): Slow dispatch took 400ms main h=android.app.ActivityThread$H c=null m=131
+05-25 15:46:56.546 W/Looper  (  562): Slow delivery took 449ms main h=com.android.server.alarm.AlarmManagerService$AlarmHandler c=android.app.ActivityManager$1$$ExternalSyntheticLambda0@90771c7 m=0
+05-25 15:46:56.546 I/HDM.HotwordInfoProvider( 1399): onSuccess getHotwordInformation
+05-25 15:46:56.568 W/Looper  (  562): Drained
+05-25 15:46:56.619 I/HalDevMgr(  562): bestIfaceCreationProposal is null, requestIface=STA, existingIface=[name=wlan0 type=STA]
+05-25 15:46:56.639 I/SettingsDataLayer.AE( 1570): Set Assistant eligibility status
+05-25 15:46:56.700 D/TrafficStats( 2170): tagSocket(129) with statsTag=0xffffffff, statsUid=-1
+05-25 15:46:56.759 W/ForegroundServiceTypeLoggerModule(  562): Foreground service start for UID: 10143 does not have any types
+05-25 15:46:56.880 I/BugleNetwork( 1551): Startup: registering tachyon for phone.
+05-25 15:46:56.881 I/BugleNetwork( 1551): Profile service is not connected at startup task.
+05-25 15:46:56.915 I/Ma-Robin-Eligibility( 1570): (REDACTED) Robin eligibility : optedIn %s
+05-25 15:46:56.915 I/SettingsDataLayer.AE( 1570): Set isHotwordOpaEligible
+05-25 15:46:56.976 W/A       ( 1570): (REDACTED) %s task was not run. Callback from Service received after client was disposed.
+05-25 15:46:56.997 W/Looper  (  562): Slow dispatch took 572ms android.ui h=com.android.server.am.ActivityManagerService$UiHandler c=com.android.server.am.UidObserverController$$ExternalSyntheticLambda0@252b956 m=0
+05-25 15:46:56.999 W/Looper  (  562): Slow delivery took 558ms android.ui h=com.android.server.am.ActivityManagerService$UiHandler c=null m=31
+05-25 15:46:56.999 W/WindowOnBackDispatcher(  810): sendCancelIfRunning: isInProgress=false callback=android.view.ViewRootImpl$$ExternalSyntheticLambda11@649fb13
+05-25 15:46:57.003 I/Finsky  ( 1813): [2] Detected restoreservicev2://recovery not needed, will not run
+05-25 15:46:57.011 W/InputManager-JNI(  562): Input channel object '6825253 Splash Screen com.sethogieva.minglabusiness (client)' was disposed without first being removed with the input manager!
+05-25 15:46:57.016 W/gle.android.gms( 1729): Verification of void m32.gxa.<clinit>() took 630.568ms (12.69 bytecodes/s) (2264B approximate peak alloc)
+05-25 15:46:57.021 I/serviceentitlement( 1729): (REDACTED) [CredManRegistrationManager] [%s][%s] Success to register credentials
+05-25 15:46:57.023 W/WindowManager(  562): Failed looking up window session=Session{4aad31a 810:u0a10181} callers=com.android.server.wm.WindowManagerService.windowForClientLocked:6311 com.android.server.wm.Session.setOnBackInvokedCallbackInfo:1020 android.view.IWindowSession$Stub.onTransact:1199 
+05-25 15:46:57.023 I/WindowManager(  562): setOnBackInvokedCallback(): No window state for package:com.android.systemui
+05-25 15:46:57.027 W/.minglabusiness( 2170): Verification of java.util.Map expo.modules.manifests.core.Manifest.getPluginProperties(java.lang.String) took 155.642ms (2126.66 bytecodes/s) (8936B approximate peak alloc)
+05-25 15:46:57.034 W/PageIndicator(  810): Total number of pages invalid: 0. Assuming 1 page.
+05-25 15:46:57.034 W/BcSmartspaceView(  810): Current card is not present in the Adapter; cannot log.
+05-25 15:46:57.071 W/JobScheduler(  562): Job didn't exist in JobStore: 1c86916 #u0a207/5 com.sethogieva.minglabusiness/androidx.work.impl.background.systemjob.SystemJobService
+05-25 15:46:57.181 D/BoundBrokerSvc( 1729): onUnbind: Intent { act=com.google.android.gms.safetynet.service.START pkg=com.google.android.gms }
+05-25 15:46:57.185 W/ActivityThread( 1302): getPackageInfo() called with an older ApplicationInfo than the cached version for package com.google.android.apps.wellbeing
+05-25 15:46:57.194 D/ActivityManager(  562): freezing 1813 com.android.vending
+05-25 15:46:57.195 D/ActivityManager(  562): Reschedule freeze for process 1813 com.android.vending (outstanding txns), timeout=2244
+05-25 15:46:57.197 I/Finsky  ( 1813): [2] Memory trim requested to level 40
+05-25 15:46:57.198 I/Finsky  ( 1813): [2] Flushing in-memory image cache
+05-25 15:46:57.302 D/ActivityManager(  562): freezing 1967 com.android.vending:background
+05-25 15:46:57.304 D/BoundBrokerSvc( 1061): onUnbind: Intent { act=com.google.android.gms.gmscompliance.service.START dat=chimera-action:/... cmp=com.google.android.gms/.chimera.PersistentBoundBrokerService }
+05-25 15:46:57.314 I/Finsky  ( 1813): [98] registerListener
+05-25 15:46:57.315 I/Finsky  ( 1813): [98] DSC: reviveDownloads()
+05-25 15:46:57.319 I/Ma-Robin-Eligibility( 1570): (REDACTED) Robin eligibility : optedIn %s
+05-25 15:46:57.338 I/PBSessionCacheImpl( 1570): (REDACTED) Deleted sessionId[%d] from persistence.
+05-25 15:46:57.415 I/AiAiEcho( 1382): Predicting[0]:  [CONTEXT sampling_count=5 ]
+05-25 15:46:57.416 I/AiAiEcho( 1382): EchoTargets: 
+05-25 15:46:57.416 I/AiAiEcho( 1382): Filtered by AiAi flag check: 
+05-25 15:46:57.416 I/AiAiEcho( 1382): [CONTEXT ratelimit_period="10 SECONDS" ]
+05-25 15:46:57.416 I/AiAiEcho( 1382): Ranked targets strategy: SORT, count: 0, ranking metadata:  [CONTEXT ratelimit_period="10 SECONDS" ]
+05-25 15:46:57.417 I/AiAiEcho( 1382): #remoteViewsTwiddler: feature disabled.
+05-25 15:46:57.417 I/AiAiEcho( 1382): Predicting[0]:  [CONTEXT sampling_count=5 ]
+05-25 15:46:57.417 I/AiAiEcho( 1382): EchoTargets: 
+05-25 15:46:57.417 I/AiAiEcho( 1382): Filtered by AiAi flag check: 
+05-25 15:46:57.417 I/AiAiEcho( 1382): [CONTEXT ratelimit_period="10 SECONDS" ]
+05-25 15:46:57.417 I/AiAiEcho( 1382): Ranked targets strategy: SORT, count: 0, ranking metadata:  [CONTEXT ratelimit_period="10 SECONDS" ]
+05-25 15:46:57.417 I/AiAiEcho( 1382): #remoteViewsTwiddler: feature disabled.
+05-25 15:46:57.418 I/AiAiEcho( 1382): #postPredictionTargets: Sending updates to UISurface lockscreen with targets# 0 (types=[])
+05-25 15:46:57.418 I/AiAiEcho( 1382): #postPredictionTargets: Sending updates to UISurface home with targets# 0 (types=[])
+05-25 15:46:57.429 D/SsBaseTemplateCard( 1256): No text view can be set up
+05-25 15:46:57.429 D/SsBaseTemplateCard( 1256): Passed-in item info is null
+05-25 15:46:57.429 D/SsBaseTemplateCard( 1256): Passed-in item info is null
+05-25 15:46:57.429 D/SsBaseTemplateCard( 1256): Passed-in item info is null
+05-25 15:46:57.429 I/SsBaseTemplateCard( 1256): Secondary card pane is null
+05-25 15:46:57.435 I/Icing   ( 1729): IndexChimeraService.getServiceInterface callingPackage=com.google.android.googlequicksearchbox componentName=null serviceId=36
+05-25 15:46:57.456 I/HDM.HotwordModelHolder( 1399): New model provided, updating the reference.
+05-25 15:46:57.762 I/HWUI    ( 2170): Davey! duration=760ms; Flags=0, FrameTimelineVsyncId=5806, IntendedVsync=92486651183, Vsync=92886651167, InputEventId=0, HandleInputStart=92904871125, AnimationStart=92904874709, PerformTraversalsStart=93196664501, DrawStart=93198801751, FrameDeadline=92503317849, FrameInterval=92898736417, FrameStartTime=16666666, SyncQueued=93199098501, SyncStart=93199532751, IssueDrawCommandsStart=93199723167, SwapBuffers=93199874376, FrameCompleted=93247930001, DequeueBufferDuration=2916, QueueBufferDuration=190417, GpuCompleted=93247930001, SwapBuffersCompleted=93218778917, DisplayPresentTime=0, CommandSubmissionCompleted=93199874376, 
+05-25 15:46:57.802 I/AiAiEcho( 1382): AppFetcherImpl onPackageChanged com.sethogieva.minglabusiness.
+05-25 15:46:57.840 W/.apps.messaging( 1551): Missing inline cache for int dxcg.a(java.lang.Object)
+05-25 15:46:57.846 I/BugleRcsEngine( 1551): [SR]: Single Registration is disabled. Skipping Single Registration capability check for subId: 1, OS.isAtLeastS:[true], enableSingleRegistrationProvisioning:[false] [CONTEXT thread_id=74 ]
+05-25 15:46:57.851 D/CarrierSvcBindHelper(  944): onPackageModified: com.sethogieva.minglabusiness
+05-25 15:46:57.852 D/CarrierSvcBindHelper(  944): No carrier app for: 0
+05-25 15:46:57.854 I/BugleRcsEngine( 1551): No RCS Configuration was found in Bugle for simID: redacted-pii:sim_id[chars:20,last3:897] [CONTEXT log_prefix="ProvisioningEngineDataRetriever" thread_id=74 ]
+05-25 15:46:57.856 I/RcsAvailabilityUpdaterL( 1551): RcsAvailability configuration availability and enabled status: simId: redacted-pii:sim_id[chars:20,last3:897], SipConnectionType: DUAL_REG, isConfigurationAvailableAndEnabled: false
+05-25 15:46:57.862 I/BugleRcsEngine( 1551): Using config server URL from biuf [CONTEXT log_prefix="ProvisioningServerUtil" thread_id=74 ]
+05-25 15:46:57.881 I/HDM.HotwordInfoProvider( 1399): Save the hotword model in the HotwordInformation.
+05-25 15:46:57.882 W/BugleRcsProvisioning( 1551): Failed to get RCS configuration from the cached provider, configuration is empty.
+05-25 15:46:57.882 W/BugleRcsProvisioning( 1551): dncp: FULL
+05-25 15:46:57.882 W/BugleRcsProvisioning( 1551): 	at afzl.c(PG:130)
+05-25 15:46:57.882 W/BugleRcsProvisioning( 1551): 	at afzl.f(PG:13)
+05-25 15:46:57.882 W/BugleRcsProvisioning( 1551): 	at afwq.a(PG:9)
+05-25 15:46:57.882 W/BugleRcsProvisioning( 1551): 	at bluy.apply(PG:125)
+05-25 15:46:57.882 W/BugleRcsProvisioning( 1551): 	at j$.util.Optional.map(SourceFile:17)
+05-25 15:46:57.882 W/BugleRcsProvisioning( 1551): 	at blve.s(PG:255)
+05-25 15:46:57.882 W/BugleRcsProvisioning( 1551): 	at blve.o(PG:58)
+05-25 15:46:57.882 W/BugleRcsProvisioning( 1551): 	at bluo.run(PG:6)
+05-25 15:46:57.882 W/BugleRcsProvisioning( 1551): 	at dkqk.run(PG:21)
+05-25 15:46:57.882 W/BugleRcsProvisioning( 1551): 	at java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:487)
+05-25 15:46:57.882 W/BugleRcsProvisioning( 1551): 	at dqsy.a(PG:3)
+05-25 15:46:57.882 W/BugleRcsProvisioning( 1551): 	at dqrv.run(PG:21)
+05-25 15:46:57.882 W/BugleRcsProvisioning( 1551): 	at dqsz.run(PG:5)
+05-25 15:46:57.882 W/BugleRcsProvisioning( 1551): 	at crzm.run(PG:3)
+05-25 15:46:57.882 W/BugleRcsProvisioning( 1551): 	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1145)
+05-25 15:46:57.882 W/BugleRcsProvisioning( 1551): 	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:644)
+05-25 15:46:57.882 W/BugleRcsProvisioning( 1551): 	at cryq.run(PG:6)
+05-25 15:46:57.882 W/BugleRcsProvisioning( 1551): 	at java.lang.Thread.run(Thread.java:1012)
+05-25 15:46:57.882 W/BugleRcsProvisioning( 1551): 	at csaw.run(PG:64)
+05-25 15:46:57.883 I/RcsAvailabilityUpdaterL( 1551): RcsAvailability: Subscription Id: 1, simId: redacted-pii:sim_id[chars:20,last3:897], sipConnectionType: DUAL_REG, isRcsAvailable: false
+05-25 15:46:57.884 I/RcsAvailabilityUpdaterL( 1551): updateAvailabilityForRcsProvisioningId. SimId: redacted-pii:sim_id[chars:20,last3:897], currentAvailability: 10, newAvailability: 10, hint: NO_HINT
+05-25 15:46:57.888 I/BugleRcsProvisioning( 1551): scheduleProvisioningForEligibleSims
+05-25 15:46:57.915 D/PackageUpdatedTask( 1256): Package updated: mOp=UPDATE packages=[com.sethogieva.minglabusiness]
+05-25 15:46:57.919 I/AiAiEcho( 1382): AppIndexer Package:[com.sethogieva.minglabusiness] UserProfile:[0] Enabled:[true].
+05-25 15:46:57.919 I/AiAiEcho( 1382): AppFetcherImplV2 updateApps package:[com.sethogieva.minglabusiness], userId:[0], reason:[package is updated.].
+05-25 15:46:57.932 W/Looper  (  562): Slow dispatch took 750ms main h=android.app.ActivityThread$H c=android.app.LoadedApk$ServiceDispatcher$RunConnection@4768069 m=0
+05-25 15:46:57.933 W/Looper  (  562): Slow delivery took 582ms main h=android.os.Handler c=<recycled PooledLambda@bcadaee> m=0
+05-25 15:46:57.984 I/BistoHotwordHelper( 1399): (REDACTED) setHotwordVoiceLocale: prev: %s, new: %s
+05-25 15:46:57.985 I/BistoHotwordHelper( 1399): (REDACTED) setting VM enrollment allowed: %b
+05-25 15:46:57.985 I/BistoHotwordHelper( 1399): (REDACTED) setting speaker ID model presence: %b
+05-25 15:46:57.985 I/BistoHotwordHelper( 1399): (REDACTED) setting hotword model of size: %d bytes
+05-25 15:46:57.985 I/BistoHotwordHelper( 1399): (REDACTED) setting speaker id present: %b
+05-25 15:46:57.985 I/BistoHotwordHelper( 1399): (REDACTED) setting speaker ID model presence: %b
+05-25 15:46:57.986 I/BistoHotwordHelper( 1399): (REDACTED) setting VM enrollment status: %b
+05-25 15:46:57.979 I/LanguagePackUpdateContr( 1570): #finishInitRunnable run
+05-25 15:46:58.010 W/Looper  (  562): Drained
+05-25 15:46:58.020 W/Looper  (  562): Drained
+05-25 15:46:58.097 I/afym    ( 1551): scheduleProvisioningForEligibleSims: operationTrigger: 5 bugle trigger event: 4
+05-25 15:46:58.097 I/afym    ( 1551): scheduleProvisioningForAllEligibleSims: operationTrigger: 5 bugle trigger event: 4
+05-25 15:46:58.098 I/afym    ( 1551): scheduleProvisioningForDefaultSimIfEligible: defaultSimType: DEFAULT_CALL_SIM operationTrigger: 5 bugle trigger event: 4
+05-25 15:46:58.099 I/BugleRcsEngine( 1551): [SR]: Single Registration is disabled. Skipping Single Registration capability check for subId: 1, OS.isAtLeastS:[true], enableSingleRegistrationProvisioning:[false] [CONTEXT thread_id=62 ]
+05-25 15:46:58.101 I/afym    ( 1551): RcsProvisioningTrigger: DR is active, initializing DR provisioning. DUAL_REG
+05-25 15:46:58.101 I/afym    ( 1551): scheduleProvisioningForDefaultSimIfEligible: defaultSimType: DEFAULT_SMS_SIM operationTrigger: 5 bugle trigger event: 4
+05-25 15:46:58.102 I/BugleRcsEngine( 1551): [SR]: Single Registration is disabled. Skipping Single Registration capability check for subId: 1, OS.isAtLeastS:[true], enableSingleRegistrationProvisioning:[false] [CONTEXT thread_id=62 ]
+05-25 15:46:58.103 I/afym    ( 1551): RcsProvisioningTrigger: DR is active, initializing DR provisioning. DUAL_REG
+05-25 15:46:58.116 I/BugleRcsProvisioning( 1551): RcsProvisioningTrigger: onRcsAvailabilityUpdate : availability is updated to Carrier RCS is not set up, lastAvailabilityLocal is Carrier RCS is not set up, simId hash = 3703110291035144556, simId = redacted-pii:sim_id[chars:20,last3:897], isPev3Enabled = true
+05-25 15:46:58.136 I/ctxmgr  ( 1061): (REDACTED) [WorkManager] Long workInfo: %s
+05-25 15:46:58.154 I/BugleRcsEngine( 1551): [SR]: Single Registration is disabled. Skipping Single Registration capability check for subId: 1, OS.isAtLeastS:[true], enableSingleRegistrationProvisioning:[false] [CONTEXT thread_id=73 ]
+05-25 15:46:58.164 I/Bugle   ( 1551): VerifiedSmsEnabledCheckerImpl: VSMS is disabled via Phenotype flag.
+05-25 15:46:58.174 E/SmsApplication(  944): com.google.android.apps.messaging lost android:read_cell_broadcasts:  (fixing)
+05-25 15:46:58.178 W/AppOpService(  562): Ignored setUidMode call for runtime permission app op: uid = 10139, code = READ_CELL_BROADCASTS, mode = allow, callingUid = 1001, oldMode = allow
+05-25 15:46:58.205 W/IPCThreadState( 1813): Sending oneway calls to frozen process.
+05-25 15:46:58.205 I/Finsky  ( 1813): [98] Initialized AssetModuleDownloader.
+05-25 15:46:58.213 D/GlobalActionsDialogLite(  810): Service changed before actions created
+05-25 15:46:58.214 I/BugleRcsEngine( 1551): [SR]: Single Registration is disabled. Skipping Single Registration capability check for subId: 1, OS.isAtLeastS:[true], enableSingleRegistrationProvisioning:[false] [CONTEXT thread_id=58 ]
+05-25 15:46:58.216 I/BugleRcsEngine( 1551): No RCS Configuration was found in Bugle for simID: redacted-pii:sim_id[chars:20,last3:897] [CONTEXT log_prefix="ProvisioningEngineDataRetriever" thread_id=58 ]
+05-25 15:46:58.250 D/BoundBrokerSvc( 1061): onUnbind: Intent { act=com.google.android.gms.common.telemetry.service.START dat=chimera-action:/... cmp=com.google.android.gms/.chimera.PersistentApiService }
+05-25 15:46:58.258 W/IPCThreadState(  562): Sending oneway calls to frozen process.
+05-25 15:46:58.268 W/IPCThreadState(  562): Sending oneway calls to frozen process.
+05-25 15:46:58.272 I/Bugle   ( 1551): VerifiedSmsStartupTask: Checking if Verified SMS tasks should be enqueued. feature supported: false, feature enabled: false, eligible / has registered key: false, C11N: false
+05-25 15:46:58.276 W/earchbox:search( 1570): Suspending all threads took: 265.670ms
+05-25 15:46:58.279 D/EGL_emulation(  810): app_time_stats: avg=2887.86ms min=695.55ms max=5080.17ms count=2
+05-25 15:46:58.289 W/GLSUser ( 1061): [DeviceKeyStore] Cannot load key: Device key file not found.
+05-25 15:46:58.330 I/Bugle   ( 1551): VerifiedSmsStartupTask: Not enqueuing VSMS periodic task, VSMS is disabled or not supported.
+05-25 15:46:58.338 I/Bugle   ( 1551): VerifiedSmsStartupTask: Not calling C11N to get phone numbers.
+05-25 15:46:58.446 I/BugleRcsEngine( 1551): No RCS Configuration was found in Bugle for simID: redacted-pii:sim_id[chars:20,last3:897] [CONTEXT log_prefix="ProvisioningEngineDataRetriever" thread_id=73 ]
+05-25 15:46:58.470 I/BugleRcsEngine( 1551): Scheduled provisioning task with 0 seconds delay, KEEP policy, trigger is APP_STARTUP, workerId is d52a105c-bfad-4918-89f1-0682f77edca6, simId is redacted-pii:sim_id[chars:20,last3:897] [CONTEXT log_prefix="provisioning" thread_id=73 ]
+05-25 15:46:58.625 W/FenceManagerImpl( 1302): <DWB> Register lost fences - Successfully registered 4.
+05-25 15:46:58.647 W/IPCThreadState(  562): Sending oneway calls to frozen process.
+05-25 15:46:58.670 W/android.traceur( 1719): Suspending all threads took: 17.984ms
+05-25 15:46:58.856 I/ExpoDevMenu( 2170): Set new dev-menu delegate: class expo.modules.devmenu.DevMenuDefaultDelegate
+05-25 15:46:59.058 W/OptProp (  562): Cannot read opt property android.window.PROPERTY_COMPAT_ALLOW_USER_ASPECT_RATIO_OVERRIDE
+05-25 15:46:59.058 W/OptProp (  562): Cannot read opt property android.window.PROPERTY_COMPAT_ALLOW_USER_ASPECT_RATIO_FULLSCREEN_OVERRIDE
+05-25 15:46:59.058 W/OptProp (  562): Cannot read opt property android.window.PROPERTY_COMPAT_ALLOW_ORIENTATION_OVERRIDE
+05-25 15:46:59.058 V/GrammaticalInflectionUtils(  562): AttributionSource: android.content.AttributionSource@5feeb2e6 does not have READ_SYSTEM_GRAMMATICAL_GENDER permission.
+05-25 15:46:59.060 W/OptProp (  562): Cannot read opt property android.window.PROPERTY_COMPAT_ALLOW_RESIZEABLE_ACTIVITY_OVERRIDES
+05-25 15:46:59.060 W/OptProp (  562): Cannot read opt property android.window.PROPERTY_COMPAT_ALLOW_MIN_ASPECT_RATIO_OVERRIDE
+05-25 15:46:59.109 W/WellbeingSettingsProvid( 1302): <DWB> Call failed: get_actions
+05-25 15:46:59.109 W/WellbeingSettingsProvid( 1302): java.util.concurrent.TimeoutException: Waited 5000 milliseconds (plus 8 milliseconds, 526794 nanoseconds delay) for lep@d6cd115[status=PENDING, info=[inputFuture=[leo@a479c2a[status=PENDING, setFuture=[ldw@48e7a1b[status=PENDING, info=[inputFuture=[lep@5c067b8[status=PENDING, info=[inputFuture=[lep@2d66991[status=PENDING, info=[inputFuture=[lfl@9b50f6[status=PENDING, info=[futures=[lep@9109cf7[status=PENDING, info=[inputFuture=[lep@9f04764[status=PENDING, info=[inputFuture=[lgj@c670dcd[status=PENDING, info=[delegate=[lhp@7a38682[status=PENDING, setFuture=[lep@e281193[status=PENDING, info=[inputFuture=[leo@71c75d0[status=PENDING, info=[inputFuture=[lgj@1e3b9c9[status=PENDING, info=[delegate=[lhp@b0788ce[status=PENDING, setFuture=[leo@b3833ef[status=PENDING, info=[function=[propagating=[cer@9b1efc]]]]]]]]]], function=[propagating=[car@8652985]]]]], function=[propagating=[cau@79763da]]]]]]]]]], function=[propagating=[cag@7e200b]]]]], function=[propagating=[cme@6f92ee8]]]]]]]], function=[propagating=[dhi@3d3d901]]]]], function=[propagating=[bxu@517e3a6]]]]], exceptionType=[class java.lang.Throwable], fallback=[propagating=[cau@aecb1e7]]]]]]], function=[propagating=[bxu@4a65194]]]]
+05-25 15:46:59.109 W/WellbeingSettingsProvid( 1302): 	at lem.get(PG:52)
+05-25 15:46:59.109 W/WellbeingSettingsProvid( 1302): 	at lgb.get(PG:2)
+05-25 15:46:59.109 W/WellbeingSettingsProvid( 1302): 	at com.google.android.apps.wellbeing.api.impl.WellbeingSettingsProvider.i(PG:9)
+05-25 15:46:59.109 W/WellbeingSettingsProvid( 1302): 	at com.google.android.apps.wellbeing.api.impl.WellbeingSettingsProvider.call(PG:162)
+05-25 15:46:59.109 W/WellbeingSettingsProvid( 1302): 	at android.content.ContentProvider.call(ContentProvider.java:2704)
+05-25 15:46:59.109 W/WellbeingSettingsProvid( 1302): 	at android.content.ContentProvider$Transport.call(ContentProvider.java:633)
+05-25 15:46:59.109 W/WellbeingSettingsProvid( 1302): 	at android.content.ContentProviderNative.onTransact(ContentProviderNative.java:307)
+05-25 15:46:59.109 W/WellbeingSettingsProvid( 1302): 	at android.os.Binder.execTransactInternal(Binder.java:1500)
+05-25 15:46:59.109 W/WellbeingSettingsProvid( 1302): 	at android.os.Binder.execTransact(Binder.java:1444)
+05-25 15:46:59.116 I/BugleRcsEngine( 1551): Scheduled provisioning task with 0 seconds delay, KEEP policy, trigger is APP_STARTUP, workerId is a236164a-c29e-4bc6-9958-20d25d9aedc5, simId is redacted-pii:sim_id[chars:20,last3:897] [CONTEXT log_prefix="provisioning" thread_id=58 ]
+05-25 15:46:59.117 W/gle.android.gms( 1729): Verification of java.lang.Object m32.izm.bz() took 793.662ms (139.86 bytecodes/s) (4520B approximate peak alloc)
+05-25 15:46:59.122 I/Choreographer(  810): Skipped 51 frames!  The application may be doing too much work on its main thread.
+05-25 15:46:59.123 D/TrafficStats( 2170): tagSocket(127) with statsTag=0xffffffff, statsUid=-1
+05-25 15:46:59.156 E/CellBroadcastUtils(  944): getDefaultCellBroadcastReceiverPackageName: no package found
+05-25 15:46:59.157 W/AppOpService(  562): Ignored setUidMode call for runtime permission app op: uid = 1001, code = READ_SMS, mode = allow, callingUid = 1001, oldMode = allow
+05-25 15:46:59.158 W/AppOpService(  562): Ignored setUidMode call for runtime permission app op: uid = 1001, code = RECEIVE_SMS, mode = allow, callingUid = 1001, oldMode = allow
+05-25 15:46:59.158 W/AppOpService(  562): Ignored setUidMode call for runtime permission app op: uid = 1001, code = RECEIVE_WAP_PUSH, mode = allow, callingUid = 1001, oldMode = allow
+05-25 15:46:59.158 W/AppOpService(  562): Ignored setUidMode call for runtime permission app op: uid = 1001, code = SEND_SMS, mode = allow, callingUid = 1001, oldMode = allow
+05-25 15:46:59.158 W/AppOpService(  562): Ignored setUidMode call for runtime permission app op: uid = 1001, code = READ_CELL_BROADCASTS, mode = allow, callingUid = 1001, oldMode = allow
+05-25 15:46:59.161 W/resolv  (  360): SSL_connect write error 0, mark 0xf0064: Try again
+05-25 15:46:59.162 W/resolv  (  360): TLS Handshake failed
+05-25 15:46:59.172 W/resolv  (  360): query failed
+05-25 15:46:59.172 W/resolv  (  360): validateDnsTlsServer returned 0 for {10.0.2.3/}
+05-25 15:46:59.173 W/resolv  (  360): Validation failed
+05-25 15:46:59.191 I/Icing   ( 1729): Usage reports ok 0, Failed Usage reports 0, indexed 0, rejected 0
+05-25 15:46:59.191 I/BugleRcsEngine( 1439): Connected state: [1], networkType: [WIFI] [CONTEXT thread_id=58 ]
+05-25 15:46:59.212 I/KeyguardTransitionRepository(  810): STARTED transition: TransitionStep(from=OFF, to=GONE, value=0.0, transitionState=STARTED, ownerName=KeyguardTransitionRepository(boot))
+05-25 15:46:59.226 D/TrafficStats( 2170): tagSocket(132) with statsTag=0xffffffff, statsUid=-1
+05-25 15:46:59.500 E/AndroidFutures( 1302): Timeout exceeded waiting on crashApplicationOnFailure future. Waited 3000 MILLISECONDS. Allowing future lhm@c3156a4[status=PENDING, info=[inputFuture=[ntt@71b65f3[status=PENDING, delegate=[lhi@caca2b0[status=PENDING]]]], remaining delay=[115240 ms]]] to continue anyway.
+05-25 15:46:59.500 E/AndroidFutures( 1302): kly: 
+05-25 15:46:59.500 E/AndroidFutures( 1302): 	at tk_trace.handleBroadcast(Unknown Source:0)
+05-25 15:46:59.500 E/AndroidFutures( 1302): 	at tk_trace.Broadcast to com.google.android.apps.wellbeing.common.receiver.coalescedreceivers.ContextManagerRestartedCoalescedBroadcast_Receiver com.google.com.android.gms.contextmanager.CONTEXT_MANAGER_RESTARTED(Unknown Source:0)
+05-25 15:46:59.531 D/ImsResolver(  944): maybeAddedImsService, packageName: com.sethogieva.minglabusiness
+05-25 15:46:59.565 I/BugleRcsEngine( 1439): handleMessage processing message:[NOTIFY_UPTIME_IGNORE_STATE_CHANGED] with [non-null]:RcsEngineImpl reference [CONTEXT log_prefix="RcsEngineImpl[DUAL_REG]:[36fd9e39-8505]>Handler" thread_id=65 ]
+05-25 15:46:59.794 I/KeyguardTransitionRepository(  810): FINISHED transition: TransitionStep(from=OFF, to=GONE, value=1.0, transitionState=FINISHED, ownerName=KeyguardTransitionRepository(boot))
+05-25 15:46:59.798 D/ResourceTrimmer(  810): Sending TRIM_MEMORY_UI_HIDDEN.
+05-25 15:46:59.799 W/unknown:ReconnectingWebSocket( 2170): Couldn't connect to "ws://10.0.2.2:8081/message?device=sdk_gphone64_arm64%20-%2015%20-%20API%2035&app=com.sethogieva.minglabusiness&clientid=DevLauncherBridgelessDevSupportManager", will silently retry
+05-25 15:46:59.824 D/FaceProvider/virtual(  562): Starting watchdog for face
+05-25 15:46:59.922 D/BatteryInfoBroadcast(  810): mWidgetEnableObserver: false
+05-25 15:46:59.963 E/BatteryInfoBroadcast(  810): failed to register observer for remaining time
+05-25 15:46:59.963 E/BatteryInfoBroadcast(  810): java.lang.SecurityException: Failed to find provider com.google.android.apps.turbo.estimated_time_remaining for user 0; expected to find a valid ContentProvider for this authority
+05-25 15:46:59.963 E/BatteryInfoBroadcast(  810): 	at android.os.Parcel.createExceptionOrNull(Parcel.java:3242)
+05-25 15:46:59.963 E/BatteryInfoBroadcast(  810): 	at android.os.Parcel.createException(Parcel.java:3226)
+05-25 15:46:59.963 E/BatteryInfoBroadcast(  810): 	at android.os.Parcel.readException(Parcel.java:3209)
+05-25 15:46:59.963 E/BatteryInfoBroadcast(  810): 	at android.os.Parcel.readException(Parcel.java:3151)
+05-25 15:46:59.963 E/BatteryInfoBroadcast(  810): 	at android.content.IContentService$Stub$Proxy.registerContentObserver(IContentService.java:1040)
+05-25 15:46:59.963 E/BatteryInfoBroadcast(  810): 	at android.content.ContentResolver.registerContentObserver(ContentResolver.java:2728)
+05-25 15:46:59.963 E/BatteryInfoBroadcast(  810): 	at com.google.android.systemui.power.BatteryInfoBroadcast.registerObserver(go/retraceme 9e092c9c2386c99f14882b21706a041c35aea77d807a1528d7efcc93ed4a3601:9)
+05-25 15:46:59.963 E/BatteryInfoBroadcast(  810): 	at com.google.android.systemui.power.BatteryInfoBroadcast.<init>(go/retraceme 9e092c9c2386c99f14882b21706a041c35aea77d807a1528d7efcc93ed4a3601:159)
+05-25 15:46:59.963 E/BatteryInfoBroadcast(  810): 	at com.google.android.systemui.power.PowerNotificationWarningsGoogleImpl$$ExternalSyntheticLambda0.run(go/retraceme 9e092c9c2386c99f14882b21706a041c35aea77d807a1528d7efcc93ed4a3601:19)
+05-25 15:46:59.963 E/BatteryInfoBroadcast(  810): 	at android.os.Handler.handleCallback(Handler.java:959)
+05-25 15:46:59.963 E/BatteryInfoBroadcast(  810): 	at android.os.Handler.dispatchMessage(Handler.java:100)
+05-25 15:46:59.963 E/BatteryInfoBroadcast(  810): 	at android.os.Looper.loopOnce(Looper.java:232)
+05-25 15:46:59.963 E/BatteryInfoBroadcast(  810): 	at android.os.Looper.loop(Looper.java:317)
+05-25 15:46:59.963 E/BatteryInfoBroadcast(  810): 	at android.app.ActivityThread.main(ActivityThread.java:8705)
+05-25 15:46:59.963 E/BatteryInfoBroadcast(  810): 	at java.lang.reflect.Method.invoke(Native Method)
+05-25 15:46:59.963 E/BatteryInfoBroadcast(  810): 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:580)
+05-25 15:46:59.963 E/BatteryInfoBroadcast(  810): 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:886)
+05-25 15:46:59.963 E/BatteryInfoBroadcast(  810): Caused by: android.os.RemoteException: Remote stack trace:
+05-25 15:46:59.963 E/BatteryInfoBroadcast(  810): 	at com.android.server.content.ContentService.registerContentObserver(ContentService.java:379)
+05-25 15:46:59.963 E/BatteryInfoBroadcast(  810): 	at android.content.IContentService$Stub.onTransact(IContentService.java:494)
+05-25 15:46:59.963 E/BatteryInfoBroadcast(  810): 	at android.os.Binder.execTransactInternal(Binder.java:1500)
+05-25 15:46:59.963 E/BatteryInfoBroadcast(  810): 	at android.os.Binder.execTransact(Binder.java:1444)
+05-25 15:46:59.963 E/BatteryInfoBroadcast(  810): 
+05-25 15:46:59.986 D/PowerNotificationWarningsGoogleImpl(  810): onReceive: android.intent.action.BATTERY_CHANGED
+05-25 15:46:59.988 D/IncompatibleChargerNotification(  810): dispatchIntent: android.intent.action.BATTERY_CHANGED
+05-25 15:47:00.005 I/gle.android.tts( 2389): Background concurrent mark compact GC freed 6893KB AllocSpace bytes, 18(508KB) LOS objects, 49% free, 3686KB/7371KB, paused 380us,110.492ms total 869.584ms
+05-25 15:47:00.005 I/ActivityTaskManager(  562): START u0 {act=android.intent.action.VIEW cat=[android.intent.category.LAUNCHER,android.intent.category.BROWSABLE] dat=exp+mingla-business://expo-development-client/... flg=0x10018000 pkg=com.sethogieva.minglabusiness cmp=com.sethogieva.minglabusiness/.MainActivity} with LAUNCH_SINGLE_TASK from uid 10207 (BAL_ALLOW_VISIBLE_WINDOW) result code=0
+05-25 15:47:00.009 V/WindowManagerShell(  810): Transition requested (#8): android.os.BinderProxy@392556 TransitionRequestInfo { type = OPEN, triggerTask = TaskInfo{userId=0 taskId=21 displayId=0 isRunning=true baseIntent=Intent { act=android.intent.action.VIEW cat=[android.intent.category.BROWSABLE] dat=exp+mingla-business://expo-development-client/... flg=0x10000000 cmp=com.sethogieva.minglabusiness/.MainActivity } baseActivity=ComponentInfo{com.sethogieva.minglabusiness/com.sethogieva.minglabusiness.MainActivity} topActivity=ComponentInfo{com.sethogieva.minglabusiness/com.sethogieva.minglabusiness.MainActivity} origActivity=null realActivity=ComponentInfo{com.sethogieva.minglabusiness/com.sethogieva.minglabusiness.MainActivity} numActivities=1 lastActiveTime=94890 supportsMultiWindow=true resizeMode=1 isResizeable=true minWidth=-1 minHeight=-1 defaultMinSize=220 token=WCT{android.window.IWindowContainerToken$Stub$Proxy@83949d7} topActivityType=1 pictureInPictureParams=null shouldDockBigOverlays=false launchIntoPipHostTaskId=-1 lastParentTaskIdBeforePip=-1 displayCutoutSafeInsets=Rect(0, 151 - 0, 0) topActivityInfo=ActivityInfo{82e22c4 com.sethogieva.minglabusiness.MainActivity} launchCookies=[] positionInParent=Point(0, 0) parentTaskId=-1 isFocused=true isVisible=true isVisibleRequested=false isSleeping=false locusId=null displayAreaFeatureId=1 isTopActivityTransparent=false appCompatTaskInfo=AppCompatTaskInfo { topActivityInSizeCompat=false topActivityEligibleForLetterboxEducation= falseisLetterboxEducationEnabled= true isLetterboxDoubleTapEnabled= false topActivityEligibleForUserAspectRatioButton= false topActivityBoundsLetterboxed= false isFromLetterboxDoubleTap= false topActivityLetterboxVerticalPosition= -1 topActivityLetterboxHorizontalPosition= -1 topActivityLetterboxWidth=1344 topActivityLetterboxHeight=2992 isUserFullscreenOverrideEnabled=false isSystemFullscreenOverrideEnabled=false cameraCompatTaskInfo=CameraCompatTaskInfo { cameraCompatControlState=hidden freeformCameraCompatMode=inactive}}}, pipTask = null, remoteTransition = null, displayChange = null, flags = 0, debugId = 8 }
+05-25 15:47:00.011 I/MediaProvider( 1371): Scanned internal due to REASON_MOUNTED, found 227 items in 24995ms, 0 inserts 7 updates 0 deletes
+05-25 15:47:00.015 W/ActivityTaskManager(  562): Activity top resumed state loss timeout for ActivityRecord{a94acc3 u0 com.sethogieva.minglabusiness/.MainActivity t21 f}}
+05-25 15:47:00.017 W/ActivityTaskManager(  562): Activity pause timeout for ActivityRecord{a94acc3 u0 com.sethogieva.minglabusiness/.MainActivity t21 f}}
+05-25 15:47:00.026 I/BpBinder(  403): onLastStrongRef automatically unlinking death recipients: 
+05-25 15:47:00.237 V/MediaProvider( 1371): attachVolume() called for external_primary with state:null
+05-25 15:47:00.244 W/OptProp (  562): Cannot read opt property android.window.PROPERTY_COMPAT_ENABLE_FAKE_FOCUS
+05-25 15:47:00.335 I/Choreographer( 2170): Skipped 191 frames!  The application may be doing too much work on its main thread.
+05-25 15:47:00.679 I/.apps.wallpaper( 2068): Background concurrent mark compact GC freed 768KB AllocSpace bytes, 4(80KB) LOS objects, 49% free, 1835KB/3671KB, paused 161us,14.255ms total 75.178ms
+05-25 15:47:00.744 W/IPCThreadState(  562): Sending oneway calls to frozen process.
+05-25 15:47:00.765 W/SearchServiceCore( 1570): Abort, client detached.
+05-25 15:47:00.765 W/SearchServiceCore( 1570): Abort, client detached.
+05-25 15:47:00.767 W/A       ( 1570): (REDACTED) Task %s was queued for %dms before starting on executor %s
+05-25 15:47:00.775 D/OomAdjuster(  562): Not killing cached processes
+05-25 15:47:00.786 D/EGL_emulation(  810): app_time_stats: avg=2506.70ms min=2506.70ms max=2506.70ms count=1
+05-25 15:47:00.843 I/A       ( 1570): NGA enabled in interactor.
+05-25 15:47:00.943 D/CoreBackPreview(  562): Window{cfbc344 u0 Splash Screen com.sethogieva.minglabusiness}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@9f26f3, mPriority=0, mIsAnimationCallback=false}
+05-25 15:47:00.952 W/Looper  (  562): Slow delivery took 998ms android.fg h=android.net.ConnectivityManager$CallbackHandler c=null m=6
+05-25 15:47:01.138 W/m.android.phone(  944): Suspending all threads took: 332.506ms
+05-25 15:47:01.147 W/Looper  (  562): Drained
+05-25 15:47:01.189 I/Choreographer(  810): Skipped 52 frames!  The application may be doing too much work on its main thread.
+05-25 15:47:01.190 W/MagnificationConnectionManager(  562): requestConnection duplicated request: connect=false, mConnectionState=DISCONNECTED
+05-25 15:47:01.222 W/Looper  (  562): Slow dispatch took 2359ms main h=com.android.server.accessibility.AccessibilityManagerService$MainHandler c=<recycled PooledLambda@bcadaee> m=0
+05-25 15:47:01.222 W/Looper  (  562): Slow delivery took 2455ms main h=com.android.server.accessibility.AccessibilityManagerService$MainHandler c=<recycled PooledLambda@f88574> m=0
+05-25 15:47:01.230 W/SearchServiceCore( 1570): Abort, client detached.
+05-25 15:47:01.305 D/BoundBrokerSvc( 1061): onRebind: Intent { act=com.google.android.gms.common.telemetry.service.START dat=chimera-action:/... cmp=com.google.android.gms/.chimera.PersistentApiService }
+05-25 15:47:01.322 W/IPCThreadState(  562): Sending oneway calls to frozen process.
+05-25 15:47:01.322 W/IPCThreadState(  562): Sending oneway calls to frozen process.
+05-25 15:47:01.322 W/IPCThreadState(  562): Sending oneway calls to frozen process.
+05-25 15:47:01.354 W/unknown:BridgelessReact( 2170): ReactHost{0}.startSurface(surfaceId = 0): Schedule
+05-25 15:47:01.356 W/unknown:BridgelessReact( 2170): ReactHost{0}.attachSurface(surfaceId = 0)
+05-25 15:47:01.357 W/unknown:BridgelessReact( 2170): ReactHost{0}.getOrCreateReactInstanceTask()
+05-25 15:47:01.358 W/unknown:BridgelessReact( 2170): ReactHost{0}.getOrCreateReactInstanceTask(): Start
+05-25 15:47:01.366 W/unknown:BridgelessReact( 2170): ReactHost{0}.getJSBundleLoader()
+05-25 15:47:01.367 W/unknown:BridgelessReact( 2170): ReactHost{0}.isMetroRunning()
+05-25 15:47:01.375 D/TrafficStats( 2170): tagSocket(132) with statsTag=0xffffffff, statsUid=-1
+05-25 15:47:01.378 I/BugleRcsEngine( 1439): Connected state: [1], networkType: [WIFI] [CONTEXT thread_id=58 ]
+05-25 15:47:01.405 I/Choreographer(  810): Skipped 31 frames!  The application may be doing too much work on its main thread.
+05-25 15:47:01.604 V/WindowManagerShell(  810): onTransitionReady(transaction=2413771620823)
+05-25 15:47:01.609 I/m.android.phone(  944): IncrementDisableThreadFlip blocked for 139.921ms
+05-25 15:47:01.610 V/WindowManagerShell(  810): onTransitionReady (#8) android.os.BinderProxy@392556: {id=8 t=OPEN f=0x0 trk=0 r=[0@Point(0, 0)] c=[{null m=OPEN f=FILLS_TASK|IS_BEHIND_STARTING_WINDOW|NO_ANIMATION leash=Surface(name=ActivityRecord{c99db9e u0 com.sethogieva.minglabusiness/.MainActivity)/@0x901e023 sb=Rect(0, 0 - 0, 0) eb=Rect(0, 0 - 1344, 2992) d=-1->0 r=-1->0:-1 bc=fffafafa component=com.sethogieva.minglabusiness/.MainActivity},{null m=CLOSE f=FILLS_TASK|IS_BEHIND_STARTING_WINDOW leash=Surface(name=ActivityRecord{a94acc3 u0 com.sethogieva.minglabusiness/.MainActivity)/@0x6294920 sb=Rect(0, 0 - 1344, 2992) eb=Rect(0, 0 - 1344, 2992) d=0 bc=fffafafa component=com.sethogieva.minglabusiness/.MainActivity}]}
+05-25 15:47:01.610 V/WindowManagerShell(  810): Playing animation for (#8) android.os.BinderProxy@392556@0
+05-25 15:47:01.611 V/WindowManagerShell(  810):  try handler com.android.wm.shell.transition.DefaultMixedHandler@d4818b3
+05-25 15:47:01.611 V/WindowManagerShell(  810):  try handler com.android.wm.shell.keyguard.KeyguardTransitionHandler@cab3e70
+05-25 15:47:01.611 V/WindowManagerShell(  810):  try handler com.android.wm.shell.pip.PipTransition@c8fe5e9
+05-25 15:47:01.611 V/WindowManagerShell(  810):  try handler com.android.wm.shell.activityembedding.ActivityEmbeddingController@c88126e
+05-25 15:47:01.611 V/WindowManagerShell(  810):  try handler com.android.wm.shell.recents.RecentsTransitionHandler@aa18d0f
+05-25 15:47:01.611 V/ShellRecents(  810): RecentsTransitionHandler.startAnimation: no controller found
+05-25 15:47:01.611 V/WindowManagerShell(  810):  try handler com.android.wm.shell.splitscreen.StageCoordinator@85dd19c
+05-25 15:47:01.611 V/WindowManagerShell(  810):  try handler com.android.wm.shell.transition.RemoteTransitionHandler@77f7a5
+05-25 15:47:01.611 V/WindowManagerShell(  810): Transition doesn't have explicit remote, search filters for match for {id=8 t=OPEN f=0x0 trk=0 r=[0@Point(0, 0)] c=[{null m=OPEN f=FILLS_TASK|IS_BEHIND_STARTING_WINDOW|NO_ANIMATION leash=Surface(name=ActivityRecord{c99db9e u0 com.sethogieva.minglabusiness/.MainActivity)/@0x901e023 sb=Rect(0, 0 - 0, 0) eb=Rect(0, 0 - 1344, 2992) d=-1->0 r=-1->0:-1 bc=fffafafa component=com.sethogieva.minglabusiness/.MainActivity},{null m=CLOSE f=FILLS_TASK|IS_BEHIND_STARTING_WINDOW leash=Surface(name=ActivityRecord{a94acc3 u0 com.sethogieva.minglabusiness/.MainActivity)/@0x6294920 sb=Rect(0, 0 - 1344, 2992) eb=Rect(0, 0 - 1344, 2992) d=0 bc=fffafafa component=com.sethogieva.minglabusiness/.MainActivity}]}
+05-25 15:47:01.612 V/WindowManagerShell(  810):  Checking filter Pair{{types=[] flags=0x0] notFlags=0x0 checks=[{atype=undefined independent=true modes=[OPEN,TO_FRONT] flags=IN_TASK_WITH_EMBEDDED_ACTIVITY mustBeTask=false order=ANY topActivity=ComponentInfo{com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity} launchCookie=null},{atype=undefined independent=true modes=[CLOSE,TO_BACK] flags=IN_TASK_WITH_EMBEDDED_ACTIVITY mustBeTask=false order=ANY topActivity=null launchCookie=null}]} RemoteTransition { remoteTransition = android.window.IRemoteTransition$Stub$Proxy@708549e, appThread = android.app.IApplicationThread$Stub$Proxy@8885b7f, debugName = OverlaySwipeBack }}
+05-25 15:47:01.612 V/WindowManagerShell(  810):  Checking filter Pair{{types=[] flags=0x0] notFlags=0x0 checks=[{atype=dream independent=true modes=[OPEN,TO_FRONT] flags=NONE mustBeTask=false order=ANY topActivity=null launchCookie=null},{atype=home independent=true modes=[CLOSE,TO_BACK] flags=NONE mustBeTask=false order=ANY topActivity=null launchCookie=null}]} RemoteTransition { remoteTransition = android.window.IRemoteTransition$Stub$Proxy@129d74c, appThread = android.app.IApplicationThread$Stub$Proxy@f320395, debugName = LauncherToDream }}
+05-25 15:47:01.612 V/WindowManagerShell(  810):  Checking filter Pair{{types=[] flags=0x0] notFlags=0x100 checks=[{atype=home independent=true modes=[OPEN,TO_FRONT] flags=NONE mustBeTask=false order=TOP topActivity=ComponentInfo{com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity} launchCookie=null},{atype=standard independent=true modes=[CLOSE,TO_BACK] flags=NONE mustBeTask=false order=ANY topActivity=null launchCookie=null}]} RemoteTransition { remoteTransition = android.window.IRemoteTransition$Stub$Proxy@fa11caa, appThread = android.app.IApplicationThread$Stub$Proxy@3d1309b, debugName = QuickstepLaunchHome }}
+05-25 15:47:01.612 V/WindowManagerShell(  810):  Delegate animation for (#8) to null
+05-25 15:47:01.612 V/WindowManagerShell(  810):  try handler com.android.wm.shell.transition.DefaultTransitionHandler@f26e77a
+05-25 15:47:01.612 V/WindowManagerShell(  810): start default transition animation, info = {id=8 t=OPEN f=0x0 trk=0 r=[0@Point(0, 0)] c=[{null m=OPEN f=FILLS_TASK|IS_BEHIND_STARTING_WINDOW|NO_ANIMATION leash=Surface(name=ActivityRecord{c99db9e u0 com.sethogieva.minglabusiness/.MainActivity)/@0x901e023 sb=Rect(0, 0 - 0, 0) eb=Rect(0, 0 - 1344, 2992) d=-1->0 r=-1->0:-1 bc=fffafafa component=com.sethogieva.minglabusiness/.MainActivity},{null m=CLOSE f=FILLS_TASK|IS_BEHIND_STARTING_WINDOW leash=Surface(name=ActivityRecord{a94acc3 u0 com.sethogieva.minglabusiness/.MainActivity)/@0x6294920 sb=Rect(0, 0 - 1344, 2992) eb=Rect(0, 0 - 1344, 2992) d=0 bc=fffafafa component=com.sethogieva.minglabusiness/.MainActivity}]}
+05-25 15:47:01.614 D/StatsLog( 1256): LAUNCHER_ALLAPPS_COUNT
+05-25 15:47:01.663 V/WindowManagerShell(  810): Transition animation finished (aborted=false), notifying core (#8) android.os.BinderProxy@392556@0
+05-25 15:47:01.707 V/WindowManager(  562): Sent Transition (#8) createdAt=05-25 15:46:59.061 via request=TransitionRequestInfo { type = OPEN, triggerTask = TaskInfo{userId=0 taskId=21 displayId=0 isRunning=true baseIntent=Intent { act=android.intent.action.VIEW cat=[android.intent.category.BROWSABLE] dat=exp+mingla-business://expo-development-client/... flg=0x10000000 cmp=com.sethogieva.minglabusiness/.MainActivity } baseActivity=ComponentInfo{com.sethogieva.minglabusiness/com.sethogieva.minglabusiness.MainActivity} topActivity=ComponentInfo{com.sethogieva.minglabusiness/com.sethogieva.minglabusiness.MainActivity} origActivity=null realActivity=ComponentInfo{com.sethogieva.minglabusiness/com.sethogieva.minglabusiness.MainActivity} numActivities=1 lastActiveTime=94890 supportsMultiWindow=true resizeMode=1 isResizeable=true minWidth=-1 minHeight=-1 defaultMinSize=220 token=WCT{RemoteToken{8c21360 Task{fc32940 #21 type=standard A=10207:com.sethogieva.minglabusiness}}} topActivityType=1 pictureInPictureParams=null shouldDockBigOverlays=false launchIntoPipHostTaskId=-1 lastParentTaskIdBeforePip=-1 displayCutoutSafeInsets=Rect(0, 151 - 0, 0) topActivityInfo=ActivityInfo{b8a7a6a com.sethogieva.minglabusiness.MainActivity} launchCookies=[] positionInParent=Point(0, 0) parentTaskId=-1 isFocused=true isVisible=true isVisibleRequested=false isSleeping=false locusId=null displayAreaFeatureId=1 isTopActivityTransparent=false appCompatTaskInfo=AppCompatTaskInfo { topActivityInSizeCompat=false topActivityEligibleForLetterboxEducation= falseisLetterboxEducationEnabled= true isLetterboxDoubleTapEnabled= false topActivityEligibleForUserAspectRatioButton= false topActivityBoundsLetterboxed= false isFromLetterboxDoubleTap= false topActivityLetterboxVerticalPosition= -1 topActivityLetterboxHorizontalPosition= -1 topActivityLetterboxWidth=1344 topActivityLetterboxHeight=2992 isUserFullscreenOverrideEnabled=false isSystemFullscreenOverrideEnabled=false cameraCompatTaskInfo=CameraCompatTaskInfo { cameraCompatControlState=hidden freeformCameraCompatMode=inactive}}}, pipTask = null, remoteTransition = null, displayChange = null, flags = 0, debugId = 8 }
+05-25 15:47:01.707 V/WindowManager(  562):     startWCT=WindowContainerTransaction { changes = {} hops = [] errorCallbackToken=null taskFragmentOrganizer=null }
+05-25 15:47:01.708 V/WindowManager(  562):     info={id=8 t=OPEN f=0x0 trk=0 r=[0@Point(0, 0)] c=[
+05-25 15:47:01.708 V/WindowManager(  562):         {null m=OPEN f=FILLS_TASK|IS_BEHIND_STARTING_WINDOW|NO_ANIMATION leash=Surface(name=ActivityRecord{c99db9e u0 com.sethogieva.minglabusiness/.MainActivity)/@0xa8b0f0c sb=Rect(0, 0 - 0, 0) eb=Rect(0, 0 - 1344, 2992) d=-1->0 r=-1->0:-1 bc=fffafafa component=com.sethogieva.minglabusiness/.MainActivity},
+05-25 15:47:01.708 V/WindowManager(  562):         {null m=CLOSE f=FILLS_TASK|IS_BEHIND_STARTING_WINDOW leash=Surface(name=ActivityRecord{a94acc3 u0 com.sethogieva.minglabusiness/.MainActivity)/@0x3d09a3f sb=Rect(0, 0 - 1344, 2992) eb=Rect(0, 0 - 1344, 2992) d=0 bc=fffafafa component=com.sethogieva.minglabusiness/.MainActivity}
+05-25 15:47:01.708 V/WindowManager(  562):     ]}
+05-25 15:47:01.709 W/Looper  (  562): Slow delivery took 266ms android.fg h=android.os.Handler c=com.android.server.wm.TransitionController$Logger@33e9b5b m=0
+05-25 15:47:01.711 D/TelephonyManager(  562): requestModemActivityInfo: Sending result to app: ModemActivityInfo{ mTimestamp=97248 mSleepTimeMs=0 mIdleTimeMs=96944 mActivityStatsTechSpecificInfo=[{mRat=UNKNOWN,mFrequencyRange=UNKNOWN,mTxTimeMs[]=[0, 0, 0, 0, 0],mRxTimeMs=0}]}
+05-25 15:47:01.725 I/ctxmgr  ( 1061): (REDACTED) [WorkManager] Long workInfo: %s
+05-25 15:47:01.734 I/MicroDetectionState( 1570): (REDACTED) #takeChangeMicroDetectorMode [mIsBargeInEnabled: %b, mCurrentDetectionMode: %s]
+05-25 15:47:01.736 I/MicroDetectionState( 1570): (REDACTED) Should stop hotword detection immediately - %b
+05-25 15:47:01.840 D/BoundBrokerSvc( 1061): onUnbind: Intent { act=com.google.android.gms.clearcut.bootcount.service.START dat=chimera-action:/... cmp=com.google.android.gms/.chimera.PersistentBoundBrokerService }
+05-25 15:47:01.895 I/ComposerWrapperImpl( 2389): Done initializing en-us-x-hol-seanet-embedded

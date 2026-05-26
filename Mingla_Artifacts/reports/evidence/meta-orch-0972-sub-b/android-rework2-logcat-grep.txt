@@ -1,0 +1,18 @@
+Focused runtime grep from android-rework2-logcat-full.txt
+ANR in com\.sethogieva\.minglabusiness count=0
+Input dispatching timed out.*com\.sethogieva\.minglabusiness count=0
+Property .document. doesn.t exist|document count=0
+ReferenceError count=0
+forwardRef render functions accept exactly two parameters count=0
+StripeResponse count=0
+StripePushProvisioning count=0
+Loading brands count=0
+
+Positive lifecycle/auth lines:
+929:05-25 17:12:02.466  4238  4316 I ReactNativeJS: Running "main" with {"rootTag":1,"initialProps":{},"fabric":true}
+997:05-25 17:12:08.207  4238  4316 I ReactNativeJS: [auth] bootstrap-start
+1013:05-25 17:12:08.319  4238  4316 I ReactNativeJS: [auth] bootstrap-ready
+1014:05-25 17:12:08.463  4238  4316 I ReactNativeJS: '[auth] auth-event', { event: 'INITIAL_SESSION', hasSession: true, hasUser: true }
+
+Skipped frame lines:
+344:05-25 17:11:52.812  4238  4238 I Choreographer: Skipped 171 frames!  The application may be doing too much work on its main thread.

@@ -3,16 +3,15 @@ import { describe, expect, test } from "@jest/globals";
 import type { Brand } from "../../types/brand";
 import { canGenerateExperiencesFromActivities } from "../canGenerateExperiencesFromActivities";
 
-function brand(partial: Pick<Brand, "kind"> & Partial<Brand>): Brand {
+function brand(partial: Partial<Brand>): Brand {
   return partial as Brand;
 }
 
 describe("canGenerateExperiencesFromActivities", () => {
-  test("true for verified play physical brand", () => {
+  test("true for play venue category", () => {
     expect(
       canGenerateExperiencesFromActivities(
         brand({
-          kind: "physical",
           venueCategory: "play",
           claimStatus: "verified",
         }),
@@ -24,7 +23,6 @@ describe("canGenerateExperiencesFromActivities", () => {
     expect(
       canGenerateExperiencesFromActivities(
         brand({
-          kind: "physical",
           venueCategory: "restaurant",
           claimStatus: "verified",
         }),
@@ -32,16 +30,15 @@ describe("canGenerateExperiencesFromActivities", () => {
     ).toBe(false);
   });
 
-  test("false for unverified play", () => {
+  test("true for unverified play", () => {
     expect(
       canGenerateExperiencesFromActivities(
         brand({
-          kind: "physical",
           venueCategory: "play",
           claimStatus: "pending_review",
         }),
       ),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   test("false for null brand", () => {

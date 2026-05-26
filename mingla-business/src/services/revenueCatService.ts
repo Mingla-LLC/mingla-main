@@ -23,6 +23,8 @@
 
 import { Platform } from "react-native";
 
+const REVENUECAT_API_KEY = process.env.EXPO_PUBLIC_REVENUECAT_API_KEY;
+
 // Defer react-native-purchases require so web bundles don't blow up at
 // module-load. The package imports native modules that fail to resolve
 // under `expo export -p web`. Web bundles intentionally skip RevenueCat.
@@ -32,18 +34,19 @@ type PurchasesModule = typeof import("react-native-purchases").default;
 type LogLevelModule = typeof import("react-native-purchases").LOG_LEVEL;
 let Purchases: PurchasesModule | null = null;
 let LOG_LEVEL: LogLevelModule | null = null;
-if (Platform.OS !== "web") {
+if (Platform.OS !== "web" && REVENUECAT_API_KEY) {
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const mod = require("react-native-purchases");
     Purchases = mod.default;
     LOG_LEVEL = mod.LOG_LEVEL;
   } catch (err) {
-    console.warn("[RevenueCat] native module unavailable; purchases disabled:", err);
+    console.warn(
+      "[RevenueCat] native module unavailable; purchases disabled:",
+      err,
+    );
   }
 }
-
-const REVENUECAT_API_KEY = process.env.EXPO_PUBLIC_REVENUECAT_API_KEY;
 
 class RevenueCatService {
   private static instance: RevenueCatService;
@@ -97,7 +100,8 @@ class RevenueCatService {
    */
   identify(userId: string): void {
     if (!this.initialized) return;
-    void Purchases!.logIn(userId)
+    void Purchases!
+      .logIn(userId)
       .then(() => {
         if (__DEV__) console.log("[RevenueCat] identified:", userId);
       })
@@ -116,7 +120,8 @@ class RevenueCatService {
    */
   logOut(): void {
     if (!this.initialized) return;
-    void Purchases!.logOut()
+    void Purchases!
+      .logOut()
       .then(() => {
         if (__DEV__) console.log("[RevenueCat] logged out");
       })

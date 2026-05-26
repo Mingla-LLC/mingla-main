@@ -7,8 +7,8 @@
  * invariant I-PROPOSED-STRIPE-PAYMENTSHEET-PARITY.
  *
  * Three angle:
- *   (1) Business _layout.tsx mounts <StripeNativeProvider> with the
- *       business merchantIdentifier + urlScheme.
+ *   (1) Business native checkout routes mount <StripeProviderWrapper> while
+ *       the root layout stays free of the Stripe native provider.
  *   (2) Business nativeCheckoutFlow.native.ts exists; imports initStripe from
  *       @stripe/stripe-react-native; calls initStripe with stripeAccountId;
  *       passes customer + customerEphemeralKeySecret to initPaymentSheet.
@@ -30,13 +30,22 @@ const stripLineComments = (src: string): string =>
     .join("\n");
 
 describe("ORCH-0849 — mingla-business native PaymentSheet parity", () => {
-  it("mounts <StripeNativeProvider> in _layout.tsx with business merchant identifier and url scheme", () => {
-    const source = stripLineComments(read("mingla-business/app/_layout.tsx"));
-    expect(source).toMatch(/<StripeNativeProvider\b/);
-    expect(source).toMatch(
+  it("keeps native Stripe provider off root while preserving checkout route provider config", () => {
+    const rootLayout = stripLineComments(read("mingla-business/app/_layout.tsx"));
+    const wrapper = stripLineComments(
+      read("mingla-business/src/payments/StripeProviderWrapper.native.tsx"),
+    );
+    const nativeBoundary = stripLineComments(
+      read("mingla-business/src/payments/NativeCheckoutPaymentBoundary.native.tsx"),
+    );
+
+    expect(rootLayout).not.toMatch(/StripeProviderWrapper/);
+    expect(nativeBoundary).toMatch(/<StripeProviderWrapper>/);
+    expect(nativeBoundary).toMatch(/useNativeCheckoutFlow/);
+    expect(wrapper).toMatch(
       /merchantIdentifier=["']merchant\.com\.sethogieva\.minglabusiness["']/,
     );
-    expect(source).toMatch(/urlScheme=["']com\.sethogieva\.minglabusiness["']/);
+    expect(wrapper).toMatch(/urlScheme=["']com\.sethogieva\.minglabusiness["']/);
   });
 
   it("nativeCheckoutFlow.native.ts imports initStripe from @stripe/stripe-react-native", () => {
@@ -73,10 +82,12 @@ describe("ORCH-0849 — mingla-business native PaymentSheet parity", () => {
     expect(source).not.toMatch(
       /import\s+[^;]*\s+from\s+["']expo-web-browser["']/,
     );
-    // useNativeCheckoutFlow hook is imported from the new per-app glue
+    // Native flow is lazy-loaded through the route boundary so Home startup
+    // does not evaluate @stripe/stripe-react-native.
     expect(source).toMatch(
-      /import\s+\{\s*useNativeCheckoutFlow\s*\}\s+from\s+/,
+      /NativeCheckoutPaymentBoundary/,
     );
+    expect(source).not.toMatch(/from\s+["'][^"']*nativeCheckoutFlow["']/);
   });
 
   it("payment.tsx forbids WebBrowser.openAuthSessionAsync call site (post-ORCH-0849 retirement)", () => {

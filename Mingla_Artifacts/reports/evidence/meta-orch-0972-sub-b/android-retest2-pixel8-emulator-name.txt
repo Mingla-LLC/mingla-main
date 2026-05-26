@@ -1,0 +1,9 @@
+AVD: Pixel_8_Pro
+List of devices attached
+emulator-5554          device product:sdk_gphone64_arm64 model:sdk_gphone64_arm64 device:emu64a transport_id:9
+
+model=sdk_gphone64_arm64
+device=emu64a
+android=15
+Physical size: 1344x2992
+dev-client-url=exp+mingla-business://expo-development-client/?url=http%3A%2F%2F10.0.2.2%3A8097

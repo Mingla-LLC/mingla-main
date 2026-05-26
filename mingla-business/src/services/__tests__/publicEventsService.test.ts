@@ -71,6 +71,7 @@ const row = (patch: Record<string, unknown> = {}): Record<string, unknown> => ({
   title: "Great Free Event",
   description: "A real public event.",
   slug: "great-free-event",
+  event_type: "event",
   location_text: "Fallback venue",
   online_url: null,
   is_online: false,
@@ -132,7 +133,6 @@ const brandRow = (patch: Record<string, unknown> = {}): Record<string, unknown> 
   social_links: { instagram: "@brand3" },
   custom_links: [{ label: "Menu", url: "https://brand.example.com/menu" }],
   display_attendee_count: false,
-  kind: "physical",
   address: "3 Brand Street",
   cover_hue: 180,
   cover_media_url: "https://cdn.example.com/cover.gif",
@@ -274,7 +274,6 @@ describe("public brand lookup", () => {
       id: "brand-1",
       displayName: "Brand 3",
       slug: "brand-3",
-      kind: "physical",
       address: "3 Brand Street",
       coverHue: 180,
       coverMediaUrl: "https://cdn.example.com/cover.gif",
@@ -393,7 +392,6 @@ describe("public brand view mapper", () => {
   test("preserves public brand profile fields from the brand view", () => {
     expect(publicBrandViewRowToBrand(brandRow() as never, 4)).toMatchObject({
       displayName: "Brand 3",
-      kind: "physical",
       address: "3 Brand Street",
       coverHue: 180,
       coverMediaUrl: "https://cdn.example.com/cover.gif",

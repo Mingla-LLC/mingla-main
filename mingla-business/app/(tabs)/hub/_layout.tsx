@@ -17,9 +17,9 @@
  * Mingla_Artifacts/specs/SPEC_ORCH-0826_M0_HUB_FOUNDATION.md §6.5
  */
 
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { StyleSheet, View } from "react-native";
-import { Slot } from "expo-router";
+import { Slot, usePathname, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BrandDeleteSheet } from "../../../src/components/brand/BrandDeleteSheet";
@@ -27,6 +27,12 @@ import { BrandSwitcherSheet } from "../../../src/components/brand/BrandSwitcherS
 import { HubSubNav } from "../../../src/components/hub/HubSubNav";
 import { VenueClaimStatusBanner } from "../../../src/components/brand/VenueClaimStatusBanner";
 import { useCurrentBrand } from "../../../src/hooks/useCurrentBrand";
+import {
+  persistHubLastTab,
+  useHubInitialTab,
+  useHubVisibleTabs,
+  type HubTabName,
+} from "../../../src/hooks/useHubTabs";
 import { useVenueClaimRefresh } from "../../../src/hooks/useVenueClaimRefresh";
 import { IconChrome } from "../../../src/components/ui/IconChrome";
 import { TopBar } from "../../../src/components/ui/TopBar";
@@ -40,9 +46,16 @@ import {
 
 export default function HubTabLayout(): React.ReactElement {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const pathname = usePathname();
   const { user } = useAuth();
   const setCurrentBrand = useCurrentBrandStore((s) => s.setCurrentBrand);
   const currentBrand = useCurrentBrand();
+  const visibleTabs = useHubVisibleTabs(currentBrand?.id ?? null);
+  const initialTab = useHubInitialTab(
+    currentBrand?.id ?? null,
+    visibleTabs.data ?? [],
+  );
   useVenueClaimRefresh();
 
   const [brandSheetVisible, setBrandSheetVisible] = useState<boolean>(false);
@@ -83,6 +96,25 @@ export default function HubTabLayout(): React.ReactElement {
     }
   }, [brandPendingDelete, setCurrentBrand]);
 
+  useEffect(() => {
+    if (visibleTabs.data === undefined || initialTab === null) return;
+    const activePath = pathname.toLowerCase();
+    const active: HubTabName = activePath.includes("/hub/getstarted")
+      ? "getstarted"
+      : activePath.includes("/hub/trips")
+        ? "trips"
+        : activePath.includes("/hub/experiences")
+          ? "experiences"
+          : "events";
+    if (!visibleTabs.data.includes(active)) {
+      router.replace(`/(tabs)/hub/${initialTab}` as never);
+    }
+  }, [initialTab, pathname, router, visibleTabs.data]);
+
+  const handleHubTabPress = useCallback((tab: HubTabName): void => {
+    persistHubLastTab(tab);
+  }, []);
+
   return (
     <View style={[styles.host, { paddingTop: insets.top }]}>
       <View style={styles.barWrap}>
@@ -100,7 +132,16 @@ export default function HubTabLayout(): React.ReactElement {
           }
         />
       </View>
-      <HubSubNav />
+      <HubSubNav
+        visibleTabs={visibleTabs.data}
+        counts={{
+          events: visibleTabs.counts?.events,
+          trips: visibleTabs.counts?.trips,
+          experiences: visibleTabs.counts?.experiences,
+        }}
+        loading={visibleTabs.isLoading}
+        onTabPress={handleHubTabPress}
+      />
       <VenueClaimStatusBanner brand={currentBrand} />
       <Slot />
       <BrandSwitcherSheet

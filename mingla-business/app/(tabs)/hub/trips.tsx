@@ -148,27 +148,13 @@ export default function HubTripsRoute(): React.ReactElement {
     [router],
   );
 
-  // ----- States (loading / error / brand-missing / non-trip-planner) -----
+  // ----- States (loading / error / brand-missing) -----
 
   if (currentBrand === null) {
     return (
       <View style={styles.stateHost}>
         <Text style={styles.body}>Select a brand to see its trips.</Text>
       </View>
-    );
-  }
-
-  if (currentBrand.kind !== "trip_planner") {
-    return (
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <GlassCard variant="elevated" padding={spacing.lg}>
-          <Text style={styles.emptyTitle}>Trips are for trip-planner brands.</Text>
-          <Text style={styles.emptyBody}>
-            This brand is set up for events. To plan multi-day trips, switch to
-            a trip-planner brand or create one in the brand switcher.
-          </Text>
-        </GlassCard>
-      </ScrollView>
     );
   }
 

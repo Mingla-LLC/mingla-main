@@ -36,6 +36,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BrandDeleteSheet } from "../../src/components/brand/BrandDeleteSheet";
 import { BrandSwitcherSheet } from "../../src/components/brand/BrandSwitcherSheet";
+import {
+  OfferingChooser,
+  routeForOffering,
+  type OfferingKind,
+} from "../../src/components/brand/OfferingChooser";
 import { HomeNextActionCard } from "../../src/components/home/HomeNextActionCard";
 import { HomeTripRow } from "../../src/components/home/HomeTripRow";
 import { UpcomingListItem } from "../../src/components/home/UpcomingListItem";
@@ -373,6 +378,22 @@ export default function HomeTab(): React.ReactElement {
     }
     router.push(nextAction.ctaRoute as never);
   }, [nextAction, currentBrand, brands.length, router]);
+
+  const handleOfferingSelect = useCallback(
+    (offering: OfferingKind): void => {
+      if (currentBrand === null) {
+        setToast({
+          visible: true,
+          message:
+            brands.length > 0 ? "Select a brand first." : "Create a brand first.",
+        });
+        setSheetVisible(true);
+        return;
+      }
+      router.push(routeForOffering(offering) as never);
+    },
+    [brands.length, currentBrand, router],
+  );
 
   // ORCH-0965 — scan-QR action visible ONLY when the primary live hero is
   // an `event`-kind offering. Experiences route to a coming-soon stub
@@ -784,11 +805,20 @@ export default function HomeTab(): React.ReactElement {
           </View>
         </ScrollView>
       ) : (
-        // orch-0974-lock-pane:begin-mobile-populated
+        // orch-0974-lock-pane:begin-mobile-populated; META-ORCH-0972 — rule-ladder card renders only before a live offering exists, with the no_offerings rung yielding the unified OfferingChooser.
         <View style={styles.mobileBody}>
           <View style={styles.lockedZone}>
             {nextAction !== null && (upcoming.counts.live === 0 || nextAction.rung === 4) && !isSmallPhoneWithLiveHero ? (
-              <HomeNextActionCard action={nextAction} onPress={handleNextActionPress} />
+              nextAction.kind === "no_offerings" ? (
+                <View style={styles.nextActionChooser}>
+                  <OfferingChooser
+                    variant="home-empty"
+                    onSelect={handleOfferingSelect}
+                  />
+                </View>
+              ) : (
+                <HomeNextActionCard action={nextAction} onPress={handleNextActionPress} />
+              )
             ) : null}
 
             <View style={styles.mobileKpiStack}>
@@ -1201,6 +1231,9 @@ const styles = StyleSheet.create({
     fontSize: typography.bodySm.fontSize,
     color: accent.warm,
     fontWeight: "600",
+  },
+  nextActionChooser: {
+    marginBottom: spacing.md,
   },
 
   // Event rows ----------------------------------------------------------

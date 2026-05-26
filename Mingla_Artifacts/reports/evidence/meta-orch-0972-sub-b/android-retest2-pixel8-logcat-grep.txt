@@ -1,0 +1,20 @@
+log=Mingla_Artifacts/reports/evidence/meta-orch-0972-sub-b/android-retest2-pixel8-logcat-full.txt
+ANR in com.sethogieva.minglabusiness=0
+Input dispatching timed out=0
+document=0
+ReferenceError=0
+forwardRef render functions=0
+StripeResponse=0
+StripePushProvisioning=0
+Loading brands=0
+Process system isn't responding=0
+
+key-lines:
+248:05-25 17:38:46.550   834   834 I Choreographer: Skipped 33 frames!  The application may be doing too much work on its main thread.
+627:05-25 17:38:50.734  4233  4233 I Choreographer: Skipped 82 frames!  The application may be doing too much work on its main thread.
+961:05-25 17:38:54.220  4233  4233 I Choreographer: Skipped 56 frames!  The application may be doing too much work on its main thread.
+985:05-25 17:38:56.172  4233  4233 I Choreographer: Skipped 69 frames!  The application may be doing too much work on its main thread.
+990:05-25 17:38:56.965   576   606 I Choreographer: Skipped 35 frames!  The application may be doing too much work on its main thread.
+1541:05-25 17:39:11.454  4233  4513 I ReactNativeJS: Running "main" with {"rootTag":1,"initialProps":{},"fabric":true}
+1605:05-25 17:39:16.429  4233  4513 I ReactNativeJS: '[auth] auth-event', { event: 'INITIAL_SESSION', hasSession: true, hasUser: true }
+1681:05-25 17:39:20.165  4233  4233 I Choreographer: Skipped 31 frames!  The application may be doing too much work on its main thread.

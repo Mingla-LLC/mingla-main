@@ -1,33 +1,25 @@
-/**
- * ORCH-0099 [Ve1 Physical Venue Brand Onboarding] — place persona enabled.
- *
- * Additive contract alongside ORCH-0855 personaFork.test.ts (SC-04 skipped there
- * with [TEST-MOD-APPROVED ORCH-0099] once Ve1 ships).
- */
+// META-ORCH-0972 decommission-witness test [TEST-MOD-APPROVED META-ORCH-0972]
+//
+// The original ve1 (venue-claim Phase 1) test exercised PersonaForkSheet's
+// venue-claim entry point, which was DELETED by META-ORCH-0972 Sub-B as part
+// of the brand-kind decommission. Venue claim is now reframed as an opt-in
+// trust signal per I-VENUE-CLAIM-OPTIONAL, not a persona-fork gate.
 
-import { describe, expect, test } from "@jest/globals";
-import { readFileSync } from "fs";
-import { join } from "path";
+import fs from "node:fs";
+import path from "node:path";
 
-const sheetSource = readFileSync(
-  join(__dirname, "..", "BrandSwitcherSheet.tsx"),
-  "utf-8",
-);
-
-describe("ORCH-0099 — BrandSwitcherSheet place persona (Ve1)", () => {
-  test("'A place' persona enabled and routes to /venue/create", () => {
-    const placeBlockMatch = sheetSource.match(
-      /id: "place"[\s\S]*?disabled: (true|false)/,
-    );
-    expect(placeBlockMatch).not.toBeNull();
-    expect(placeBlockMatch![1]).toBe("false");
-    expect(sheetSource).toMatch(/openVenueCreateFromPool/);
-    expect(sheetSource).toMatch(/\/venue\/create/);
-  });
-
-  test("imports expo-router useRouter for venue onboarding", () => {
-    expect(sheetSource).toMatch(
-      /import\s*\{[^}]*useRouter[^}]*\}\s*from\s*["']expo-router["']/,
-    );
+describe("META-ORCH-0972 decommission witness — PersonaForkSheet ve1 path", () => {
+  test("PersonaForkSheet.tsx is deleted; venue-claim flow lives elsewhere", () => {
+    const repoRoot = path.resolve(__dirname, "../../../..");
+    expect(
+      fs.existsSync(
+        path.join(repoRoot, "src/components/brand/PersonaForkSheet.tsx"),
+      ),
+    ).toBe(false);
+    expect(
+      fs.existsSync(
+        path.join(repoRoot, "src/services/venueClaimBannerLogic.ts"),
+      ),
+    ).toBe(true);
   });
 });

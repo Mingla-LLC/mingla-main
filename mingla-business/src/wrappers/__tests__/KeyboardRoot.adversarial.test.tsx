@@ -26,11 +26,10 @@
  *        bundling contract.
  *
  *  TA-2: AST mount-position assertion. Verifies _layout.tsx renders
- *        KeyboardRoot INSIDE StripeProviderWrapper and OUTSIDE the
- *        RootLayoutInner ErrorBoundary. Different angle than T-02
- *        (presence check) — proves PROVIDER ORDER which is invariant-
- *        critical for I-36 ROOT-ERROR-BOUNDARY + I-PROPOSED-STRIPE-
- *        PAYMENTSHEET-PARITY (ORCH-0849).
+ *        KeyboardRoot OUTSIDE the RootLayoutInner ErrorBoundary while the
+ *        root remains free of the route-scoped StripeProviderWrapper.
+ *        Different angle than T-02 (presence check) — proves provider order
+ *        critical for I-36 ROOT-ERROR-BOUNDARY.
  *
  *  TA-3: Repo-wide grep for prop-deletion completeness. Implementor's
  *        T-06 covers the 7 known caller files; this test scans the
@@ -128,7 +127,7 @@ describe("ORCH-0892-A adversarial regression (tester)", () => {
   });
 
   // --- TA-2: AST mount-position assertion ---
-  it("TA-2: _layout.tsx mounts KeyboardRoot INSIDE StripeProviderWrapper and OUTSIDE RootLayoutInner", () => {
+  it("TA-2: _layout.tsx mounts KeyboardRoot OUTSIDE RootLayoutInner and keeps StripeProviderWrapper route-scoped", () => {
     const source = read("app/_layout.tsx");
 
     // Find the lines for each marker.
@@ -136,24 +135,17 @@ describe("ORCH-0892-A adversarial regression (tester)", () => {
     const findLineWith = (re: RegExp): number =>
       lines.findIndex((l) => re.test(l));
 
-    const stripeOpen = findLineWith(/<StripeProviderWrapper>/);
     const keyboardOpen = findLineWith(/<KeyboardRoot>/);
     const rootLayoutInnerLine = findLineWith(/<RootLayoutInner\s*\/>/);
     const keyboardClose = findLineWith(/<\/KeyboardRoot>/);
-    const stripeClose = findLineWith(/<\/StripeProviderWrapper>/);
     const errorBoundaryOpen = findLineWith(/<ErrorBoundary/);
     const errorBoundaryClose = findLineWith(/<\/ErrorBoundary>/);
 
     // All present
-    expect(stripeOpen).toBeGreaterThan(-1);
     expect(keyboardOpen).toBeGreaterThan(-1);
     expect(rootLayoutInnerLine).toBeGreaterThan(-1);
     expect(keyboardClose).toBeGreaterThan(-1);
-    expect(stripeClose).toBeGreaterThan(-1);
-
-    // KeyboardRoot is INSIDE StripeProviderWrapper.
-    expect(stripeOpen).toBeLessThan(keyboardOpen);
-    expect(keyboardClose).toBeLessThan(stripeClose);
+    expect(source).not.toMatch(/<StripeProviderWrapper>/);
 
     // RootLayoutInner is INSIDE KeyboardRoot.
     expect(keyboardOpen).toBeLessThan(rootLayoutInnerLine);
@@ -168,8 +160,8 @@ describe("ORCH-0892-A adversarial regression (tester)", () => {
     // function (below imports, above the default export's JSX block).
     expect(errorBoundaryOpen).toBeGreaterThan(-1);
     expect(errorBoundaryClose).toBeGreaterThan(-1);
-    expect(errorBoundaryOpen).toBeLessThan(stripeOpen);
-    expect(errorBoundaryClose).toBeLessThan(stripeOpen);
+    expect(errorBoundaryOpen).toBeLessThan(keyboardOpen);
+    expect(errorBoundaryClose).toBeLessThan(keyboardOpen);
   });
 
   // --- TA-3: repo-wide prop-deletion completeness ---

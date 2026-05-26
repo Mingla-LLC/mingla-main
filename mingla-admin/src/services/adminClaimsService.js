@@ -34,10 +34,33 @@ export async function listPendingClaims() {
   const { data, error } = await supabase
     .from("brands")
     .select(CLAIM_SELECT)
-    .eq("kind", "physical")
     .eq("claim_status", "pending_review")
     .is("deleted_at", null)
     .order("created_at", { ascending: true });
+
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function listVerifiedClaims() {
+  const { data, error } = await supabase
+    .from("brands")
+    .select(CLAIM_SELECT)
+    .eq("claim_status", "verified")
+    .is("deleted_at", null)
+    .order("updated_at", { ascending: false });
+
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function listRejectedClaims() {
+  const { data, error } = await supabase
+    .from("brands")
+    .select(CLAIM_SELECT)
+    .eq("claim_status", "rejected")
+    .is("deleted_at", null)
+    .order("updated_at", { ascending: false });
 
   if (error) throw error;
   return data ?? [];
