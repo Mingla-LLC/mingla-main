@@ -1,11 +1,11 @@
 {
-  "name": "@mingla/event-rendering",
+  "name": "@mingla/brand-rendering",
   "version": "0.0.0",
   "private": true,
   "main": "index.ts",
   "types": "index.ts",
   "license": "UNLICENSED",
-  "description": "Pure-presentational public event rendering shared between mingla-business (native + web) and app-mobile (native). Per META-ORCH-0827 Pass 2.",
+  "description": "Pure-presentational public brand rendering shared between mingla-business and app-mobile.",
   "peerDependencies": {
     "react": "*",
     "react-native": "*",

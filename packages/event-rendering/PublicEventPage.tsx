@@ -39,11 +39,15 @@ import {
   backgroundColor,
   glass,
   radius,
+  MINGLA_DEFAULT_THEME,
+  type ResolvedTheme,
   semantic,
   spacing,
   text,
   typography,
 } from "./designTokens";
+import { resolveTheme } from "./themeResolver";
+import { ThemeEntranceAnimation } from "./ThemeEntranceAnimation";
 import type {
   PublicEventPageProps,
   PublicEventProps,
@@ -143,8 +147,13 @@ export const PublicEventPage: React.FC<PublicEventPageProps> = ({
   viewerRole,
   callbacks,
   hideFloatingChrome = false,
+  theme,
 }) => {
   const [passwordUnlocked, setPasswordUnlocked] = useState<boolean>(false);
+  const resolvedTheme = useMemo<ResolvedTheme>(
+    () => theme ?? resolveTheme(brand?.theme ?? null, event.themeOverrides ?? null),
+    [theme, brand?.theme, event.themeOverrides],
+  );
 
   const variant: Variant = useMemo(
     () => computeVariant(event, passwordUnlocked),
@@ -176,6 +185,7 @@ export const PublicEventPage: React.FC<PublicEventPageProps> = ({
           brand={brand}
           variant={variant}
           callbacks={callbacks}
+          theme={resolvedTheme}
         />
       )}
 
@@ -195,7 +205,7 @@ export const PublicEventPage: React.FC<PublicEventPageProps> = ({
               accessibilityLabel="Close"
               style={styles.chromeButton}
             >
-              <Text style={styles.chromeIcon}>×</Text>
+              <Text style={[styles.chromeIcon, { color: resolvedTheme.foregroundColor }]}>×</Text>
             </Pressable>
           ) : (
             <View />
@@ -206,7 +216,7 @@ export const PublicEventPage: React.FC<PublicEventPageProps> = ({
             accessibilityLabel="Share"
             style={styles.chromeButton}
           >
-            <Text style={styles.chromeIcon}>↗</Text>
+            <Text style={[styles.chromeIcon, { color: resolvedTheme.foregroundColor }]}>↗</Text>
           </Pressable>
         </View>
       )}
@@ -221,6 +231,7 @@ interface PublishedBodyProps {
   brand: PublicEventPageProps["brand"];
   variant: "published" | "pre-sale" | "sold-out" | "past";
   callbacks: PublicEventPageProps["callbacks"];
+  theme: ResolvedTheme;
 }
 
 const PublishedBody: React.FC<PublishedBodyProps> = ({
@@ -228,6 +239,7 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
   brand,
   variant,
   callbacks,
+  theme,
 }) => {
   const [showAllDates, setShowAllDates] = useState<boolean>(false);
   const [showOverflowDates, setShowOverflowDates] = useState<boolean>(false);
@@ -274,12 +286,20 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
             style={[
               styles.heroImage,
               {
-                backgroundColor: `hsl(${event.coverHue}, 60%, 45%)`,
+                backgroundColor:
+                  theme.color === MINGLA_DEFAULT_THEME.color &&
+                  event.coverHue !== 25
+                    ? `hsl(${event.coverHue}, 60%, 45%)`
+                    : theme.color,
               },
             ]}
           />
         )}
         <View style={styles.heroOverlay} pointerEvents="none" />
+        <ThemeEntranceAnimation
+          theme={theme}
+          sessionKey={`event:${event.id}`}
+        />
         {event.coverCredit !== null ? (
           <View style={styles.coverCreditBadge} pointerEvents="none">
             <Text style={styles.coverCreditText}>{event.coverCredit}</Text>
@@ -321,8 +341,22 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
           {/* Title block */}
           <View style={styles.titleBlock}>
             <View style={styles.titleBlockText}>
-              <Text style={styles.dateLine}>{event.dateLine}</Text>
-              <Text style={styles.titleLine}>{titleLine}</Text>
+              <Text
+                style={[
+                  styles.dateLine,
+                  { color: theme.color, fontFamily: theme.fontFamilyValue },
+                ]}
+              >
+                {event.dateLine}
+              </Text>
+              <Text
+                style={[
+                  styles.titleLine,
+                  { fontFamily: theme.fontFamilyValue },
+                ]}
+              >
+                {titleLine}
+              </Text>
 
               {event.dateSubline !== null ? (
                 <View style={styles.recurrencePillRow}>
@@ -368,14 +402,35 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
           </View>
 
           {/* Brand chip */}
-          <View style={styles.brandRow}>
+          <Pressable
+            onPress={() => {
+              if (brand?.slug !== undefined) callbacks.onOpenBrand?.(brand.slug);
+            }}
+            disabled={brand?.slug === undefined || callbacks.onOpenBrand === undefined}
+            accessibilityRole={
+              callbacks.onOpenBrand === undefined ? undefined : "button"
+            }
+            accessibilityLabel={
+              brand?.displayName !== undefined
+                ? `View ${brand.displayName}`
+                : "View brand"
+            }
+            style={({ pressed }) => [
+              styles.brandRow,
+              callbacks.onOpenBrand !== undefined && styles.brandRowInteractive,
+              pressed && styles.brandRowPressed,
+            ]}
+          >
             <View style={styles.brandTile}>
               <Text style={styles.brandLetter}>{brandLetter}</Text>
             </View>
             <Text style={styles.brandName}>
               {brand?.displayName ?? "Brand"}
             </Text>
-          </View>
+            {callbacks.onOpenBrand !== undefined ? (
+              <Text style={styles.brandCta}>View brand</Text>
+            ) : null}
+          </Pressable>
 
           {/* Venue card — honors hideAddressUntilTicket */}
           {event.format !== "online" && event.venueName !== null ? (
@@ -410,7 +465,14 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
           ) : null}
 
           {/* About */}
-          <Text style={styles.sectionTitle}>About</Text>
+          <Text
+            style={[
+              styles.sectionTitle,
+              { fontFamily: theme.fontFamilyValue },
+            ]}
+          >
+            About
+          </Text>
           <Text style={styles.aboutBody}>
             {event.description.length > 0
               ? event.description
@@ -418,7 +480,14 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
           </Text>
 
           {/* Tickets */}
-          <Text style={styles.sectionTitle}>Tickets</Text>
+          <Text
+            style={[
+              styles.sectionTitle,
+              { fontFamily: theme.fontFamilyValue },
+            ]}
+          >
+            Tickets
+          </Text>
           {visibleTickets.length === 0 ? (
             <View style={styles.emptyTicketsCard}>
               <Text style={styles.aboutBody}>No tickets available yet.</Text>
@@ -433,6 +502,7 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
                   variant={variant}
                   fallbackCurrency={event.currency}
                   callbacks={callbacks}
+                  theme={theme}
                 />
               ))}
             </View>
@@ -451,6 +521,7 @@ interface PublicTicketRowProps {
   variant: "published" | "pre-sale" | "sold-out" | "past";
   fallbackCurrency: string;
   callbacks: PublicEventPageProps["callbacks"];
+  theme: ResolvedTheme;
 }
 
 const PublicTicketRow: React.FC<PublicTicketRowProps> = ({
@@ -459,6 +530,7 @@ const PublicTicketRow: React.FC<PublicTicketRowProps> = ({
   variant,
   fallbackCurrency,
   callbacks,
+  theme,
 }) => {
   const priceLabel = formatTicketPrice(ticket, fallbackCurrency);
   const isVisDisabled = ticket.visibility === "disabled";
@@ -539,12 +611,16 @@ const PublicTicketRow: React.FC<PublicTicketRowProps> = ({
           accessibilityLabel={effectiveLabel}
           style={[
             styles.ticketBuyerBtn,
+            {
+              backgroundColor: theme.color,
+            },
             isButtonDisabled && styles.ticketBuyerBtnDisabled,
           ]}
         >
           <Text
             style={[
               styles.ticketBuyerBtnLabel,
+              { color: theme.foregroundColor, fontFamily: theme.fontFamilyValue },
               isButtonDisabled && styles.ticketBuyerBtnLabelDisabled,
             ]}
           >
@@ -848,6 +924,13 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     marginBottom: spacing.lg,
   },
+  brandRowInteractive: {
+    borderRadius: radius.md,
+    paddingVertical: spacing.xs,
+  },
+  brandRowPressed: {
+    opacity: 0.72,
+  },
   brandTile: {
     width: 28,
     height: 28,
@@ -865,6 +948,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "500",
     color: text.primary,
+  },
+  brandCta: {
+    marginLeft: "auto",
+    color: accent.warm,
+    fontSize: typography.caption.fontSize,
+    fontWeight: "700",
   },
 
   // Venue card

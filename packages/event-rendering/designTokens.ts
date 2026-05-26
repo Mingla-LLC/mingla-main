@@ -70,3 +70,73 @@ export const typography = {
 } as const;
 
 export const backgroundColor = "#0c0e12";
+
+export const MINGLA_DEFAULT_THEME = {
+  color: "#eb7825",
+  font: "inter",
+  animation: "none",
+} as const;
+
+export const THEME_FONT_SLUGS = [
+  "inter",
+  "poppins",
+  "space_grotesk",
+  "plus_jakarta_sans",
+  "manrope",
+  "playfair_display",
+  "dm_serif_display",
+  "fraunces",
+  "lora",
+  "bebas_neue",
+  "anton",
+  "unbounded",
+  "caveat",
+  "dancing_script",
+] as const;
+
+export const THEME_ANIMATION_SLUGS = [
+  "none",
+  "confetti",
+  "fireworks",
+  "balloons",
+  "sparkles",
+  "glitter_shower",
+  "snowfall",
+  "falling_petals",
+  "hearts",
+  "shimmer_reveal",
+] as const;
+
+export type ThemeFontSlug = (typeof THEME_FONT_SLUGS)[number];
+export type ThemeAnimationSlug = (typeof THEME_ANIMATION_SLUGS)[number];
+
+export interface ThemeInput {
+  color?: string | null;
+  font?: ThemeFontSlug | string | null;
+  animation?: ThemeAnimationSlug | string | null;
+}
+
+export interface ResolvedTheme {
+  color: string;
+  foregroundColor: "#000000" | "#ffffff";
+  font: ThemeFontSlug;
+  fontFamilyValue: string;
+  animation: ThemeAnimationSlug;
+}
+
+export const FONT_FAMILY_MAP: Record<ThemeFontSlug, string> = {
+  inter: "Inter_500Medium",
+  poppins: "Poppins_500Medium",
+  space_grotesk: "SpaceGrotesk_500Medium",
+  plus_jakarta_sans: "PlusJakartaSans_500Medium",
+  manrope: "Manrope_500Medium",
+  playfair_display: "PlayfairDisplay_500Medium",
+  dm_serif_display: "DMSerifDisplay_400Regular",
+  fraunces: "Fraunces_500Medium",
+  lora: "Lora_500Medium",
+  bebas_neue: "BebasNeue_400Regular",
+  anton: "Anton_400Regular",
+  unbounded: "Unbounded_500Medium",
+  caveat: "Caveat_500Medium",
+  dancing_script: "DancingScript_500Medium",
+};

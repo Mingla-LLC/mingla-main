@@ -28,6 +28,7 @@ import {
   type PublicEventProps,
   type PublicTicketProps,
   type ViewerRole,
+  resolveTheme,
 } from "@mingla/event-rendering";
 
 import {
@@ -138,6 +139,7 @@ const mapLiveEventToPublicEvent = (event: LiveEvent): PublicEventProps => {
     coverCredit,
     tickets: event.tickets.map(mapTicket),
     currency: event.currency ?? "GBP",
+    themeOverrides: event.themeOverrides ?? null,
   };
 };
 
@@ -149,6 +151,7 @@ const mapBrandToPublicBrand = (
     id: brand.id,
     slug: brand.slug,
     displayName: brand.displayName ?? "Brand",
+    theme: brand.theme ?? null,
   };
 };
 
@@ -187,6 +190,10 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
 
   const publicEvent = useMemo(() => mapLiveEventToPublicEvent(event), [event]);
   const publicBrand = useMemo(() => mapBrandToPublicBrand(brand), [brand]);
+  const resolvedTheme = useMemo(
+    () => resolveTheme(publicBrand?.theme ?? null, publicEvent.themeOverrides ?? null),
+    [publicBrand?.theme, publicEvent.themeOverrides],
+  );
   const waitlistTicket = useMemo(
     () =>
       publicEvent.tickets.find((ticket) => ticket.id === waitlistTicketId) ??
@@ -233,6 +240,9 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       },
       onRequestApproval: (_ticketId: string) => {
         showToast("Approval flow lands Cycle 10 + B4.");
+      },
+      onOpenBrand: (brandSlug: string) => {
+        router.push(`/b/${brandSlug}` as never);
       },
       onUnlockPassword: (password: string): boolean => {
         // [TRANSITIONAL] Frontend stub validation against ticket.password.
@@ -298,6 +308,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         viewerRole={viewerRole}
         callbacks={callbacks}
         hideFloatingChrome
+        theme={resolvedTheme}
       />
 
       <View
