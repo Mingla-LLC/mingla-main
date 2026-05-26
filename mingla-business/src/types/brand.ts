@@ -179,8 +179,6 @@ export type Brand = {
    * do NOT mutate this field directly.
    */
   slug: string;
-  /** @deprecated META-ORCH-0972 — kind is removed from DB in Sub-C; this field will be deleted next. */
-  kind: "physical" | "popup" | "trip_planner";
   /**
    * Optional public-facing address. Used to pre-fill experience venues and
    * show an address on public surfaces when present.

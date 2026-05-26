@@ -37,7 +37,6 @@ const brandRow = (id: string, name: string): BrandRow => ({
   stripe_connect_id: null,
   stripe_payouts_enabled: false,
   stripe_charges_enabled: false,
-  kind: "popup",
   address: null,
   cover_hue: 25,
   cover_media_url: null,

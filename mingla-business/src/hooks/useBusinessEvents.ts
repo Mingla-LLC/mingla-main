@@ -42,7 +42,6 @@ const detailForPublishedEvent = (
     id: published.brand.id,
     slug: published.brand.slug,
     displayName: published.brand.displayName,
-    kind: "popup",
     address: null,
     coverHue: published.event.coverHue,
     role: "owner",

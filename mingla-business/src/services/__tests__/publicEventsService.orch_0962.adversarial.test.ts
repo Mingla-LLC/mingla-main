@@ -26,11 +26,7 @@
  *     row (full omit). T-02 tests both fields present; T-03 tests both
  *     null; partial-presence is uncovered.
  *   - A-04: trip_planner brand kind in event-detail context. Verifies
- *     viewRowToBrand reads brand_kind from the view row truthfully and
- *     does NOT downgrade trip_planner to popup. Pre-fix mapper
- *     hardcoded kind: "popup" regardless. Also protects
- *     I-PROPOSED-TR1-KIND-IMMUTABLE (ORCH-0855) truthful-read invariant.
- *     T-05 only tests physical kind.
+ *     viewRowToBrand reads address and cover fields from the view row truthfully.
  *   - A-05: structural integrity of SocialLinksRow's URL builder for
  *     the two newly-rendered platforms. Verifies BOTH facebook AND
  *     linkedin entries call `normalizeSocialUrl(links.X, "...")` with
@@ -93,7 +89,6 @@ const publicBrandRow = (
   social_links: {},
   custom_links: [],
   display_attendee_count: true,
-  kind: "popup",
   address: null,
   cover_hue: 25,
   cover_media_url: null,
@@ -112,12 +107,12 @@ const eventRow = (patch: Record<string, unknown> = {}): Record<string, unknown> 
   brand_description: null,
   brand_profile_photo_url: null,
   brand_display_attendee_count: true,
-  brand_kind: "popup",
   brand_address: null,
   brand_cover_media_url: null,
   title: "ORCH 0962 Adversarial Event",
   description: null,
   slug: "orch-0962-event-adv",
+  event_type: "event",
   location_text: null,
   online_url: null,
   is_online: false,
@@ -223,21 +218,15 @@ describe("ORCH-0962 adversarial regressions", () => {
     expect(brand.contact).not.toHaveProperty("phone");
   });
 
-  test("A-04 viewRowToBrand passes brand_kind=trip_planner through truthfully", async () => {
-    // Pre-fix viewRowToBrand hardcoded kind: "popup" regardless of brand's
-    // real kind. Post-fix reads row.brand_kind. This also protects
-    // I-PROPOSED-TR1-KIND-IMMUTABLE (ORCH-0855): trip_planner brands viewed
-    // inside event-detail context MUST surface their real kind so the
-    // public page can branch correctly (Constitution #9 no fabrication).
+  test("A-04 viewRowToBrand keeps address/cover truth without brand-kind fields", async () => {
     const detail = await resolveEventBrandFromRow({
-      brand_kind: "trip_planner",
-      brand_address: null,
-      brand_cover_media_url: null,
+      brand_address: "12 Old St",
+      brand_cover_media_url: "https://cdn.example/cover.jpg",
     });
 
     expect(detail).not.toBeNull();
-    expect(detail?.brand.kind).toBe("trip_planner");
-    expect(detail?.brand.kind).not.toBe("popup");
+    expect(detail?.brand.address).toBe("12 Old St");
+    expect(detail?.brand.coverMediaUrl).toBe("https://cdn.example/cover.jpg");
   });
 
   test("A-05 SocialLinksRow uses normalizeSocialUrl URL builder for facebook + linkedin", () => {

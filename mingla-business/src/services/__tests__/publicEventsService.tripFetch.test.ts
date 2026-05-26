@@ -5,12 +5,11 @@
  * Verifies the service-layer trip-fetch path:
  *   - `pg_public_trips_by_brand` RPC is called via supabase.rpc with the slug param
  *   - Snake_case rows are mapped to camelCase PublicTripCard shape
- *   - getPublicBrandBySlug dispatches on brand.kind='trip_planner' →
- *     populates `trips` array and leaves `events` empty
+ *   - getPublicBrandBySlug fetches trips for any brand slug alongside the
+ *     event/experience/upcoming buckets
  *
- * Fails-on-revert: if `getPublicBrandBySlug` reverts the dispatch (always calls
- * `fetchPublicBrandEvents`), the `trips` field stays [] for a trip-planner
- * brand and T-02c FAILs.
+ * Fails-on-revert: if `getPublicBrandBySlug` reverts to kind-branched dispatch,
+ * universal trip fetch for non-trip brands fails.
  */
 
 import { beforeEach, describe, expect, jest, test } from "@jest/globals";
@@ -45,7 +44,7 @@ const TRAVELBRAND_ROW = {
   social_links: {},
   custom_links: [],
   display_attendee_count: false,
-  kind: "trip_planner" as const,
+  claim_status: "none" as const,
   address: null,
   cover_hue: 200,
   cover_media_url: null,
@@ -145,7 +144,7 @@ describe("ORCH-0963 T-02 — public trips by brand fetch path", () => {
     expect(card.totalCapacity).toBeNull();
   });
 
-  test("T-02c getPublicBrandBySlug dispatches on trip_planner kind → trips populated, events empty", async () => {
+  test("T-02c getPublicBrandBySlug fetches trip bucket without a brand-kind branch", async () => {
     // Verified-venue lookup (claimed_venues_public_view) returns null
     // for non-physical brands.
     const claimedVenueMaybeSingle = jest
@@ -170,17 +169,31 @@ describe("ORCH-0963 T-02 — public trips by brand fetch path", () => {
           }),
         };
       }
+      if (table === "business_public_events_view") {
+        return {
+          select: () => ({
+            eq: () => ({
+              order: jest
+                .fn<() => Promise<{ data: never[]; error: null }>>()
+                .mockResolvedValue({ data: [], error: null }),
+            }),
+          }),
+        };
+      }
       throw new Error(`unexpected from(${table}) call in T-02c`);
     });
-    // pg_public_trips_by_brand returns the 2 trip rows.
-    rpcMock.mockResolvedValue({
-      data: [TRIP_FIXTURE_DC, TRIP_FIXTURE_THE_SONE],
-      error: null,
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pg_public_trips_by_brand") {
+        return Promise.resolve({
+          data: [TRIP_FIXTURE_DC, TRIP_FIXTURE_THE_SONE],
+          error: null,
+        });
+      }
+      return Promise.resolve({ data: [], error: null });
     });
 
     const detail = await getPublicBrandBySlug("travelbrand");
     expect(detail).not.toBeNull();
-    expect(detail!.brand.kind).toBe("trip_planner");
     expect(detail!.events).toEqual([]);
     expect(detail!.trips).toHaveLength(2);
     expect(detail!.trips[0].slug).toBe("the-dc-adventure");
@@ -193,12 +206,11 @@ describe("ORCH-0963 T-02 — public trips by brand fetch path", () => {
     });
   });
 
-  test("T-02d getPublicBrandBySlug for popup brand does NOT call the trips RPC", async () => {
+  test("T-02d getPublicBrandBySlug calls the trips RPC for a popup brand slug", async () => {
     const popupBrandRow = {
       ...TRAVELBRAND_ROW,
       slug: "leggothis",
       name: "Leggo This",
-      kind: "popup" as const,
     };
     const claimedVenueMaybeSingle = jest
       .fn<() => Promise<{ data: null; error: null }>>()
@@ -238,11 +250,18 @@ describe("ORCH-0963 T-02 — public trips by brand fetch path", () => {
       throw new Error(`unexpected from(${table}) call in T-02d`);
     });
 
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pg_public_trips_by_brand") {
+        return Promise.resolve({ data: [], error: null });
+      }
+      return Promise.resolve({ data: [], error: null });
+    });
+
     const detail = await getPublicBrandBySlug("leggothis");
     expect(detail).not.toBeNull();
-    expect(detail!.brand.kind).toBe("popup");
     expect(detail!.trips).toEqual([]);
-    // T-02d core assertion: pg_public_trips_by_brand RPC was NOT called for a popup brand
-    expect(rpcMock).not.toHaveBeenCalled();
+    expect(rpcMock).toHaveBeenCalledWith("pg_public_trips_by_brand", {
+      p_brand_slug: "leggothis",
+    });
   });
 });

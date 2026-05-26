@@ -41,12 +41,9 @@
  *                       schema bump. Real per-event records ship Cycle 3
  *                       in a separate table; this Brand-level stub array
  *                       drives J-A12 finance reports until then.
- *   v10 (Cycle 7 public brand page): adds kind: "physical" | "popup"
- *                       (required, default "popup") + address: string | null
- *                       (default null). Operator-steered addendum to Cycle 7
- *                       so the public brand page renders truthful location:
- *                       physical brands show address after handle, pop-up
- *                       brands show clean handle-only (no faked location).
+ *   v10 (Cycle 7 public brand page): added address: string | null
+ *                       (default null) so the public brand page renders
+ *                       truthful location text only when present.
  *                       Per Constitution #9 (no fabricated data).
  *   v11 (Cycle 7 FX2 brand cover editing): adds coverHue: number (required,
  *                       default 25 = warm orange matching accent.warm).

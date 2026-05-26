@@ -43,9 +43,7 @@ export interface BrandRow {
   stripe_connect_id: string | null;
   stripe_payouts_enabled: boolean;
   stripe_charges_enabled: boolean;
-  // Cycle 17e-A — migration 20260506000000 added these 6 columns.
-  // ORCH-0855 (Tr1) — migration 20260607000000 widened kind to admit 'trip_planner'.
-  kind: "physical" | "popup" | "trip_planner";
+  // Cycle 17e-A — migration 20260506000000 added address/cover/profile columns.
   address: string | null;
   cover_hue: number;
   cover_media_url: string | null;
@@ -235,10 +233,9 @@ export function mapBrandRowToUi(row: BrandRow, options: MapBrandRowToUiOptions):
     id: row.id,
     displayName: row.name,
     slug: row.slug,
-    // Cycle 17e-A — schema now carries kind/address/cover_hue/cover_media_*/profile_photo_type;
+    // Cycle 17e-A — schema now carries address/cover_hue/cover_media_*/profile_photo_type;
     // TRANSITIONAL hardcoded defaults removed. Closes D-CYCLE12-IMPL-2 + Cycle 7 v10
     // + FX2 v11. Per migration 20260506000000.
-    kind: row.kind,
     address: row.address,
     coverHue: row.cover_hue,
     coverMediaUrl: row.cover_media_url ?? undefined,

@@ -15,32 +15,20 @@ const EMPTY_COUNTS: BrandOfferingCounts = {
   experiences: 0,
 };
 
-type OfferingType = "event" | "trip" | "experience";
-
-const countOfferingType = async (
-  brandId: string,
-  eventType: OfferingType,
-): Promise<number> => {
-  const { count, error } = await supabase
-    .from("events")
-    .select("id", { count: "exact", head: true })
-    .eq("brand_id", brandId)
-    .eq("event_type", eventType)
-    .is("deleted_at", null);
-
-  if (error !== null) throw error;
-  return count ?? 0;
-};
-
 export const fetchBrandOfferingCounts = async (
   brandId: string,
 ): Promise<BrandOfferingCounts> => {
-  const [events, trips, experiences] = await Promise.all([
-    countOfferingType(brandId, "event"),
-    countOfferingType(brandId, "trip"),
-    countOfferingType(brandId, "experience"),
-  ]);
-  return { events, trips, experiences };
+  const { data, error } = await supabase.rpc("pg_brand_offering_counts", {
+    p_brand_id: brandId,
+  });
+
+  if (error !== null) throw error;
+  const row = Array.isArray(data) ? data[0] : data;
+  return {
+    events: Number(row?.events ?? 0),
+    trips: Number(row?.trips ?? 0),
+    experiences: Number(row?.experiences ?? 0),
+  };
 };
 
 export function useBrandOfferingCounts(

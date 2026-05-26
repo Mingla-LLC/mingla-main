@@ -124,7 +124,6 @@ const baseBrand = (patch: Partial<Brand> = {}): Brand => ({
   id: "brand-1",
   displayName: "Brand",
   slug: "brand-one",
-  kind: "popup",
   address: null,
   coverHue: 25,
   role: "owner",
@@ -239,8 +238,8 @@ describe("ORCH-0965 ADVERSARIAL — rule ladder under inconsistent state", () =>
     expect(result?.rung).toBe(2);
   });
 
-  test("ADV-07 — trip_planner draft with event_type='trip' → rung 3 routes to /trip/{id}/edit", () => {
-    const brand = baseBrand({ kind: "trip_planner" });
+  test("ADV-07 — trip draft with event_type='trip' → rung 3 routes to /trip/{id}/edit", () => {
+    const brand = baseBrand();
     const counts: UpcomingCounts = { total: 1, active: 1, live: 0, upcoming: 0, draft: 1 };
     const tripDraft = draft({ id: "draft-trip-99" });
     (tripDraft as DraftEvent & { event_type?: string }).event_type = "trip";
@@ -274,7 +273,7 @@ describe("ORCH-0965 ADVERSARIAL — invariant violations under live mutation", (
 
   test("ADV-09 — Brand-switch mid-render: pickHomeNextAction called twice with different brands → results don't bleed", () => {
     const brandA = baseBrand({ id: "brand-A", stripeStatus: "not_connected" });
-    const brandB = baseBrand({ id: "brand-B", stripeStatus: "active", kind: "trip_planner" });
+    const brandB = baseBrand({ id: "brand-B", stripeStatus: "active" });
     const emptyCounts: UpcomingCounts = { total: 0, active: 0, live: 0, upcoming: 0, draft: 0 };
     const resultA = pickHomeNextAction(brandA, emptyCounts, []);
     const resultB = pickHomeNextAction(brandB, emptyCounts, []);

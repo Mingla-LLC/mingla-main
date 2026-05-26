@@ -56,7 +56,12 @@ export default function PublicBrandRoute(): React.ReactElement {
     <PublicBrandPage
       brand={publicBrandQuery.data.brand}
       events={publicBrandQuery.data.events}
+      pastEvents={publicBrandQuery.data.pastEvents}
       trips={publicBrandQuery.data.trips}
+      pastTrips={publicBrandQuery.data.pastTrips}
+      experiences={publicBrandQuery.data.experiences}
+      upcoming={publicBrandQuery.data.upcoming}
+      upcomingHasMore={publicBrandQuery.data.upcomingHasMore}
       venue={publicBrandQuery.data.venue}
     />
   );

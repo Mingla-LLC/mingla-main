@@ -33,12 +33,12 @@ interface BusinessPublicEventViewRow {
   brand_description: string | null;
   brand_profile_photo_url: string | null;
   brand_display_attendee_count: boolean;
-  brand_kind: "physical" | "popup" | "trip_planner";
   brand_address: string | null;
   brand_cover_media_url: string | null;
   title: string;
   description: string | null;
   slug: string;
+  event_type: "event" | "trip" | "experience" | null;
   location_text: string | null;
   online_url: string | null;
   is_online: boolean;
@@ -107,11 +107,7 @@ interface BusinessPublicBrandViewRow {
   social_links: unknown;
   custom_links: unknown;
   display_attendee_count: boolean;
-  // ORCH-0963 F-3 fix + ORCH-0962: union widened to match schema constraint after
-  // ORCH-0855 (`20260607000000_orch_0855_brands_kind_trip_planner.sql:28`).
-  // Runtime can return `'trip_planner'`; the page branches on this in
-  // PublicBrandPage.tsx (`isTripBrand`).
-  kind: "physical" | "popup" | "trip_planner";
+  claim_status: "none" | "pending_review" | "verified" | "rejected";
   address: string | null;
   cover_hue: number;
   cover_media_url: string | null;
@@ -142,7 +138,7 @@ export interface ClaimedVenuePublicViewRow {
   cover_hue: number;
   cover_media_url: string | null;
   cover_media_type: "image" | "video" | "gif" | null;
-  kind: "physical";
+  claim_status: "none" | "pending_review" | "verified" | "rejected";
   venue_category: VenueCategory | null;
   place_pool_id: string | null;
   google_place_id: string | null;
@@ -202,21 +198,26 @@ export interface PublicEventDetail {
 
 export interface PublicBrandDetail {
   brand: PublicBrandRecord;
-  /** Empty array for trip-planner brands per ORCH-0963 kind-branched read. */
   events: PublicEventRecord[];
-  /** ORCH-0963 — empty array for physical/popup brands; populated for trip_planner. */
+  pastEvents: PublicEventRecord[];
   trips: PublicTripCard[];
+  pastTrips: PublicTripCard[];
+  experiences: PublicExperienceCard[];
+  upcoming: PublicUpcomingRow[];
+  upcomingHasMore: boolean;
+  upcomingNextCursor: string | null;
+  upcomingCount: number;
   /** Present only for verified physical venues (Ve4). */
   venue: PublicVenueDetail | null;
 }
 
 // ============================================================
-// ORCH-0963 — public trips by brand (kind-branched read path)
+// ORCH-0963 / META-ORCH-0972 — public trips by brand
 // ============================================================
 //
 // `pg_public_trips_by_brand` is an anon-callable SECURITY DEFINER RPC that
 // returns one row per public trip for a given brand slug, with pre-aggregated
-// spots_left + min_price_cents. Powers /b/{slug} when brand.kind='trip_planner'.
+// spots_left + min_price_cents. Powers /b/{slug} for any brand with trips.
 // See `supabase/migrations/20260728000000_orch_0963_pg_public_trips_by_brand.sql`.
 
 /** ORCH-0963 — row shape from pg_public_trips_by_brand RPC. */
@@ -289,6 +290,86 @@ export const tripRowToCard = (row: PublicTripCardRow): PublicTripCard => ({
   hasFreeTier: row.has_free_tier,
   publishedAt: row.published_at,
 });
+
+export interface PublicExperienceCardRow {
+  experience_id: string;
+  brand_id: string;
+  brand_slug: string;
+  brand_name: string;
+  experience_slug: string;
+  title: string;
+  description: string | null;
+  cover_media_url: string | null;
+  theme: JsonRecord | null;
+  venue_text: string | null;
+  next_occurrence_at: string | null;
+  price_from_cents: number | null;
+  currency: string | null;
+  is_free: boolean;
+  published_at: string;
+}
+
+export interface PublicExperienceCard {
+  experienceId: string;
+  brandId: string;
+  brandSlug: string;
+  brandName: string;
+  experienceSlug: string;
+  name: string;
+  bio: string | null;
+  coverMediaUrl: string | null;
+  theme: JsonRecord;
+  venueText: string | null;
+  nextOccurrenceAt: string | null;
+  priceFromMinorUnits: number | null;
+  currency: string;
+  isFree: boolean;
+  publishedAt: string;
+}
+
+export interface PublicUpcomingRowRaw {
+  offering_id: string;
+  brand_id: string;
+  brand_slug: string;
+  brand_name: string;
+  offering_type: "event" | "trip" | "experience";
+  offering_slug: string;
+  title: string;
+  description: string | null;
+  cover_media_url: string | null;
+  cover_media_type: "image" | "video" | "gif" | null;
+  theme: JsonRecord | null;
+  starts_at: string;
+  price_from_cents: number | null;
+  currency: string | null;
+  is_free: boolean;
+  published_at: string;
+}
+
+export interface PublicUpcomingRow {
+  offeringId: string;
+  brandId: string;
+  brandSlug: string;
+  brandName: string;
+  offeringType: "event" | "trip" | "experience";
+  offeringSlug: string;
+  name: string;
+  bio: string | null;
+  coverMediaUrl: string | null;
+  coverMediaType: "image" | "video" | "gif" | null;
+  theme: JsonRecord;
+  startsAt: string;
+  priceFromMinorUnits: number | null;
+  currency: string;
+  isFree: boolean;
+  publishedAt: string;
+}
+
+export interface PublicUpcomingFeedPage {
+  rows: PublicUpcomingRow[];
+  nextCursor: string | null;
+  hasMore: boolean;
+}
 
 const asRecord = (value: unknown): JsonRecord =>
   value !== null && typeof value === "object" && !Array.isArray(value)
@@ -402,7 +483,6 @@ const viewRowToBrand = (row: BusinessPublicEventViewRow): PublicBrandRecord => {
     id: row.brand_id,
     displayName: row.brand_name,
     slug: row.brand_slug,
-    kind: row.brand_kind,
     address: row.brand_address,
     coverHue: asNumber(theme.brandCoverHue, asNumber(theme.coverHue, 25)),
     coverMediaUrl: row.brand_cover_media_url ?? undefined,
@@ -432,7 +512,6 @@ export const publicBrandViewRowToBrand = (
     id: row.id,
     displayName: row.name,
     slug: row.slug,
-    kind: row.kind,
     address: row.address,
     coverHue: row.cover_hue,
     coverMediaUrl: row.cover_media_url ?? undefined,
@@ -453,6 +532,7 @@ export const publicBrandViewRowToBrand = (
     contact: extractBrandContact(row.contact_email, row.contact_phone),
     links: asLinks(row.social_links, row.custom_links),
     displayAttendeeCount: row.display_attendee_count,
+    claimStatus: row.claim_status,
   };
 };
 
@@ -494,7 +574,6 @@ export const claimedVenueRowToBrand = (
     id: row.id,
     displayName: row.name,
     slug: row.slug,
-    kind: "physical",
     address: row.address,
     coverHue: row.cover_hue,
     coverMediaUrl: row.cover_media_url ?? undefined,
@@ -515,7 +594,7 @@ export const claimedVenueRowToBrand = (
     contact: extractBrandContact(row.contact_email, row.contact_phone),
     links: asLinks(row.social_links, row.custom_links),
     displayAttendeeCount: row.display_attendee_count,
-    claimStatus: "verified",
+    claimStatus: row.claim_status,
     city: asStringOrNull(row.city) ?? undefined,
     countryCode: asStringOrNull(row.country_code) ?? undefined,
     lat: typeof row.lat === "number" ? row.lat : undefined,
@@ -736,10 +815,9 @@ export const getPublicEventBySlug = async (
   brandSlug: string,
   eventSlug: string,
 ): Promise<PublicEventDetail | null> => {
-  // ORCH-0859 REWORK 3 (events-type-filter audit): anon buyer landing on
-  // `/e/{brandSlug}/{slug}` MUST NOT resolve to a trip rendered as an
-  // event. View doesn't expose event_type, so probe events table and
-  // reject trip slugs. Trip-public surface is /t/{brandSlug}/{tripSlug}.
+  // ORCH-0859 REWORK 3 + META-ORCH-0972: anon buyer landing on
+  // `/e/{brandSlug}/{slug}` MUST resolve only to event offerings. Trips
+  // and experiences have their own public surfaces.
   // orch-strict-grep-allow events-type-filter — view doesn't expose event_type; trip exclusion via probe below
   const { data, error } = await supabase
     .from("business_public_events_view")
@@ -750,38 +828,19 @@ export const getPublicEventBySlug = async (
 
   if (error !== null) throw error;
   if (data === null) return null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const row = data as any;
-  // orch-strict-grep-allow events-type-filter — this IS the filter probe (returns event_type for client-side trip rejection)
-  const typeResp = await supabase
-    .from("events")
-    .select("event_type")
-    .eq("id", row.id)
-    .maybeSingle();
-  if (typeResp.error !== null) throw typeResp.error;
-  if (typeResp.data !== null && typeResp.data.event_type === "trip") {
+  const row = data as BusinessPublicEventViewRow;
+  if (row.event_type === "trip") {
     return null;
   }
-  return detailFromRow(data as BusinessPublicEventViewRow);
+  if (row.event_type !== "event") {
+    return null;
+  }
+  return detailFromRow(row);
 };
 
 export const getPublicEventById = async (
   eventId: string,
 ): Promise<PublicEventDetail | null> => {
-  // ORCH-0859 REWORK 3 (events-type-filter audit): same as
-  // getPublicEventBySlug — reject trip rows from event-only public surface.
-  // orch-strict-grep-allow events-type-filter — this IS the filter probe (returns event_type for client-side trip rejection)
-  const typeResp = await supabase
-    .from("events")
-    .select("event_type")
-    .eq("id", eventId)
-    .maybeSingle();
-  if (typeResp.error !== null) throw typeResp.error;
-  if (typeResp.data !== null && typeResp.data.event_type === "trip") {
-    return null;
-  }
-
-  // orch-strict-grep-allow events-type-filter — view doesn't expose event_type; trip exclusion via probe above
   const { data, error } = await supabase
     .from("business_public_events_view")
     .select("*")
@@ -789,13 +848,17 @@ export const getPublicEventById = async (
     .maybeSingle();
 
   if (error !== null) throw error;
-  return data === null ? null : detailFromRow(data as BusinessPublicEventViewRow);
+  if (data === null) return null;
+  const row = data as BusinessPublicEventViewRow;
+  if (row.event_type === "trip") {
+    return null;
+  }
+  return row.event_type === "event" ? detailFromRow(row) : null;
 };
 
 const fetchPublicBrandEvents = async (
   brandSlug: string,
 ): Promise<PublicEventRecord[]> => {
-  // orch-strict-grep-allow events-type-filter — view doesn't expose event_type; trip exclusion via probe below
   const { data, error } = await supabase
     .from("business_public_events_view")
     .select("*")
@@ -803,28 +866,9 @@ const fetchPublicBrandEvents = async (
     .order("published_at", { ascending: false, nullsFirst: false });
 
   if (error !== null) throw error;
-  const rawRows = (data ?? []) as BusinessPublicEventViewRow[];
-
-  // ORCH-0859 REWORK 3 (events-type-filter audit): brand-public-page
-  // events list MUST exclude trips. View doesn't expose event_type;
-  // probe events for the returned ids and filter trip rows out. Trips
-  // get their own surfaces on the brand page (not yet implemented).
-  let rows = rawRows;
-  if (rawRows.length > 0) {
-    const ids = rawRows.map((r) => r.id);
-    // orch-strict-grep-allow events-type-filter — this IS the filter probe (returns event_type for client-side trip rejection)
-    const typesResp = await supabase
-      .from("events")
-      .select("id, event_type")
-      .in("id", ids);
-    if (typesResp.error !== null) throw typesResp.error;
-    const tripIds = new Set(
-      ((typesResp.data ?? []) as Array<{ id: string; event_type: string | null }>)
-        .filter((r) => r.event_type === "trip")
-        .map((r) => r.id),
-    );
-    rows = rawRows.filter((r) => !tripIds.has(r.id));
-  }
+  const rows = ((data ?? []) as BusinessPublicEventViewRow[]).filter(
+    (row) => row.event_type === "event",
+  );
 
   const eventTickets = await Promise.all(rows.map((row) => fetchTickets(row.id)));
   return rows.map((row, idx) =>
@@ -832,13 +876,11 @@ const fetchPublicBrandEvents = async (
   );
 };
 
-// ORCH-0963 — anon-callable bulk public-trips by brand. Powers /b/{slug} for
-// trip-planner brands. Backed by pg_public_trips_by_brand RPC (migration
-// 20260728000000). Returns [] for non-trip-planner brands by RPC construction.
-const fetchPublicBrandTrips = async (
+// ORCH-0963 + META-ORCH-0972 — anon-callable bulk public-trips by brand.
+export const fetchPublicBrandTrips = async (
   brandSlug: string,
 ): Promise<PublicTripCard[]> => {
-  // orch-strict-grep-allow events-type-filter — ORCH-0963 RPC pins event_type='trip' server-side via brand-kind guard
+  // orch-strict-grep-allow events-type-filter — RPC pins event_type='trip' server-side.
   const { data, error } = await supabase
     .rpc("pg_public_trips_by_brand", { p_brand_slug: brandSlug });
 
@@ -847,10 +889,90 @@ const fetchPublicBrandTrips = async (
   return rows.map(tripRowToCard);
 };
 
+export const experienceRowToCard = (
+  row: PublicExperienceCardRow,
+): PublicExperienceCard => ({
+  experienceId: row.experience_id,
+  brandId: row.brand_id,
+  brandSlug: row.brand_slug,
+  brandName: row.brand_name,
+  experienceSlug: row.experience_slug,
+  name: row.title,
+  bio: row.description,
+  coverMediaUrl: row.cover_media_url,
+  theme: asRecord(row.theme),
+  venueText: row.venue_text,
+  nextOccurrenceAt: row.next_occurrence_at,
+  priceFromMinorUnits: row.price_from_cents,
+  currency: row.currency ?? "USD",
+  isFree: row.is_free,
+  publishedAt: row.published_at,
+});
+
+const upcomingRowToCard = (row: PublicUpcomingRowRaw): PublicUpcomingRow => ({
+  offeringId: row.offering_id,
+  brandId: row.brand_id,
+  brandSlug: row.brand_slug,
+  brandName: row.brand_name,
+  offeringType: row.offering_type,
+  offeringSlug: row.offering_slug,
+  name: row.title,
+  bio: row.description,
+  coverMediaUrl: row.cover_media_url,
+  coverMediaType: row.cover_media_type,
+  theme: asRecord(row.theme),
+  startsAt: row.starts_at,
+  priceFromMinorUnits: row.price_from_cents,
+  currency: row.currency ?? "USD",
+  isFree: row.is_free,
+  publishedAt: row.published_at,
+});
+
+export const fetchPublicBrandExperiences = async (
+  brandSlug: string,
+): Promise<PublicExperienceCard[]> => {
+  const { data, error } = await supabase
+    .rpc("pg_public_experiences_by_brand", { p_brand_slug: brandSlug });
+
+  if (error !== null) throw error;
+  return ((data ?? []) as PublicExperienceCardRow[]).map(experienceRowToCard);
+};
+
+export const fetchPublicBrandUpcoming = async (
+  brandSlug: string,
+  cursor?: { startsAt: string; limit?: number },
+): Promise<PublicUpcomingFeedPage> => {
+  const limit = cursor?.limit ?? 30;
+  const args: {
+    p_brand_slug: string;
+    p_cursor_at?: string;
+    p_limit: number;
+  } = {
+    p_brand_slug: brandSlug,
+    p_limit: limit,
+  };
+  if (cursor?.startsAt !== undefined) args.p_cursor_at = cursor.startsAt;
+  const { data, error } = await supabase.rpc("pg_public_brand_upcoming", args);
+
+  if (error !== null) throw error;
+  const rows = ((data ?? []) as PublicUpcomingRowRaw[]).map(upcomingRowToCard);
+  const hasMore = rows.length > limit;
+  const pageRows = hasMore ? rows.slice(0, limit) : rows;
+  return {
+    rows: pageRows,
+    hasMore,
+    nextCursor:
+      hasMore && pageRows.length > 0
+        ? pageRows[pageRows.length - 1]?.startsAt ?? null
+        : null,
+  };
+};
+
 export const getPublicBrandBySlug = async (
   brandSlug: string,
 ): Promise<PublicBrandDetail | null> => {
-  // 1. Verified-venue path (kind='physical' subset)
+  // 1. Verified-venue enrichment path. Under META-ORCH-0972 this is a venue
+  // claim overlay, not a brand kind branch; all offering buckets still load.
   const { data: claimedVenue, error: claimedError } = await supabase
     .from("claimed_venues_public_view")
     .select("*")
@@ -858,18 +980,6 @@ export const getPublicBrandBySlug = async (
     .maybeSingle();
 
   if (claimedError !== null) throw claimedError;
-
-  if (claimedVenue !== null) {
-    const venueRow = claimedVenue as ClaimedVenuePublicViewRow;
-    const events = await fetchPublicBrandEvents(brandSlug);
-    return {
-      brand: claimedVenueRowToBrand(venueRow, events.length),
-      venue: claimedVenueRowToPublicVenue(venueRow),
-      events,
-      // ORCH-0963: verified venues are kind='physical' — never trip_planner.
-      trips: [],
-    };
-  }
 
   // 2. Generic brand resolver
   const { data: brandData, error: brandError } = await supabase
@@ -882,23 +992,43 @@ export const getPublicBrandBySlug = async (
   if (brandData === null) return null;
 
   const brandRow = brandData as BusinessPublicBrandViewRow;
-  // ORCH-0963 — kind-branched content load. Trip-planner brands fetch trips
-  // (events would always be empty per I-PROPOSED-TR2-ROUTE-BY-EVENT-TYPE);
-  // event brands fetch events. Each kind hits ONE of the two read paths,
-  // never both. See I-PROPOSED-PUBLIC-BRAND-KIND-BRANCHED.
-  const isTripPlanner = brandRow.kind === "trip_planner";
-  const [events, trips]: [PublicEventRecord[], PublicTripCard[]] = isTripPlanner
-    ? [[], await fetchPublicBrandTrips(brandSlug)]
-    : [await fetchPublicBrandEvents(brandSlug), []];
+  const [eventsAll, tripsAll, experiences, upcomingPage] = await Promise.all([
+    fetchPublicBrandEvents(brandSlug),
+    fetchPublicBrandTrips(brandSlug),
+    fetchPublicBrandExperiences(brandSlug),
+    fetchPublicBrandUpcoming(brandSlug),
+  ]);
+
+  const events = eventsAll.filter((event) => event.status !== "ended");
+  const pastEvents = eventsAll.filter((event) => event.status === "ended");
+  const trips = tripsAll.filter(
+    (trip) => trip.status === "scheduled" || trip.status === "live",
+  );
+  const pastTrips = tripsAll.filter((trip) => trip.status === "ended");
+  const venueRow =
+    claimedVenue === null ? null : (claimedVenue as ClaimedVenuePublicViewRow);
+  const eventCount = events.length + pastEvents.length;
+  const tripCount = trips.length + pastTrips.length;
 
   return {
-    brand: publicBrandViewRowToBrand(
-      brandRow,
-      isTripPlanner ? trips.length : events.length,
-    ),
-    venue: null,
+    brand:
+      venueRow !== null
+        ? claimedVenueRowToBrand(venueRow, eventCount + tripCount + experiences.length)
+        : publicBrandViewRowToBrand(
+            brandRow,
+            eventCount + tripCount + experiences.length,
+          ),
+    venue:
+      venueRow !== null ? claimedVenueRowToPublicVenue(venueRow) : null,
     events,
+    pastEvents,
     trips,
+    pastTrips,
+    experiences,
+    upcoming: upcomingPage.rows,
+    upcomingHasMore: upcomingPage.hasMore,
+    upcomingNextCursor: upcomingPage.nextCursor,
+    upcomingCount: upcomingPage.rows.length,
   };
 };
 

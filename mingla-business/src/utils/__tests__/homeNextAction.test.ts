@@ -14,7 +14,6 @@ const baseBrand = (patch: Partial<Brand> = {}): Brand => ({
   id: "brand-1",
   displayName: "Brand One",
   slug: "brand-one",
-  kind: "popup",
   address: null,
   coverHue: 25,
   role: "owner",

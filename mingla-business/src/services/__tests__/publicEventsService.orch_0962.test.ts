@@ -46,7 +46,6 @@ const publicBrandRow = (
   social_links: {},
   custom_links: [],
   display_attendee_count: true,
-  kind: "popup",
   address: null,
   cover_hue: 25,
   cover_media_url: null,
@@ -79,7 +78,6 @@ const claimedVenueRow = (
   cover_hue: 25,
   cover_media_url: null,
   cover_media_type: null,
-  kind: "physical",
   venue_category: null,
   place_pool_id: null,
   google_place_id: null,
@@ -98,12 +96,12 @@ const eventRow = (patch: Record<string, unknown> = {}): Record<string, unknown> 
   brand_description: null,
   brand_profile_photo_url: null,
   brand_display_attendee_count: true,
-  brand_kind: "popup",
   brand_address: null,
   brand_cover_media_url: null,
   title: "ORCH 0962 Event",
   description: null,
   slug: "orch-0962-event",
+  event_type: "event",
   location_text: null,
   online_url: null,
   is_online: false,
@@ -187,13 +185,11 @@ describe("ORCH-0962 public brand mapper happy paths", () => {
     expect(brand.displayAttendeeCount).toBe(true);
   });
 
-  test("T-05 event-detail brand context reads kind and address from the view row", async () => {
+  test("T-05 event-detail brand context reads address from the view row", async () => {
     const detail = await resolvePublicEventBrand({
-      brand_kind: "physical",
       brand_address: "12 Old St",
     });
 
-    expect(detail?.brand.kind).toBe("physical");
     expect(detail?.brand.address).toBe("12 Old St");
   });
 

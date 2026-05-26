@@ -860,6 +860,8 @@ function checkNoNewBackendFiles() {
     "supabase/functions/parse-restaurant-menu/index.ts",
     "supabase/functions/parse-play-activities/index.ts",
     "supabase/functions/_shared/agentTools.ts",
+    "supabase/migrations/20260729000000_meta_orch_0972_universal_authoring.sql",
+    "supabase/functions/__tests__/pg_public_brand_upcoming.test.sql",
   ];
 
   // ORCH-0950 [Trip capacity + dashboard coherence — EXPANDED SCOPE]. C7 is
