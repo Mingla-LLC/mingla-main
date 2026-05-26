@@ -17,6 +17,8 @@ describe("ORCH-0964 smoke rework — business public-page preview chrome/theme",
     expect(sharedSource).toContain(
       "style={[styles.heroWrap, { backgroundColor: heroColor }]}",
     );
+    expect(sharedSource).toContain("const themeTint = hexToRgba(resolvedTheme.color, 0.42)");
+    expect(sharedSource).toContain("styles.heroThemeTint");
     expect(sharedSource).toContain(
       "<ThemeEntranceAnimation\n          theme={resolvedTheme}",
     );
@@ -30,6 +32,14 @@ describe("ORCH-0964 smoke rework — business public-page preview chrome/theme",
     expect(adapterSource).toContain("chromeTopOffset={insets.top + 8}");
     expect(adapterSource).toContain("onClose: handleClose");
     expect(adapterSource).toContain("onShare: () => setShareModalVisible(true)");
+  });
+
+  test("theme is visible beyond the cover image fallback", () => {
+    expect(sharedSource).toContain("themeSoftTint");
+    expect(sharedSource).toContain("backgroundColor: themeSoftTint");
+    expect(sharedSource).toContain("borderBottomColor: themeTint");
+    expect(sharedSource).toContain("borderColor: theme.color");
+    expect(sharedSource).toContain("backgroundColor: hexToRgba(theme.color, 0.16)");
   });
 
   test("shared close/share buttons keep ORCH-0961 test IDs and render share glyph", () => {

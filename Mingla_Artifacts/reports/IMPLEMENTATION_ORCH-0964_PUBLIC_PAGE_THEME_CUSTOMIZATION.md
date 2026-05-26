@@ -74,6 +74,47 @@ Result: PASS; iPhone 17 Pro and iPhone 17 simulators were booted. I did not run 
 
 TypeScript note: full `mingla-business` TypeScript remains blocked by the same existing app/shared-package resolution debt documented below; this rework did not add a new package dependency.
 
+## Smoke-Test Follow-Up — saved theme still not visible
+
+Seth re-smoked after `b4c5c670d` and confirmed theme values now save, but the public brand page still showed no noticeable visual change. A follow-up production DB probe confirmed the saved theme reached typed columns:
+
+```sql
+select id, slug, name, theme_color, theme_font, theme_animation, cover_media_url, updated_at
+from public.brands
+where theme_color is not null or theme_font is not null or theme_animation is not null
+order by updated_at desc nulls last
+limit 10;
+```
+
+Result summary: `22a18413-bfbf-4087-9ba7-45f70deba0f3` / `leggothis` / `Leggo This` had `theme_color = '#9333ea'`, `theme_font = 'playfair_display'`, `theme_animation = 'confetti'`, and a GIPHY `cover_media_url`. That localized the remaining problem to read/render freshness and cover-media visual masking, not the DB write path.
+
+Follow-up fixes:
+
+- `useUpdateBrand.onSuccess` now invalidates `publicEventKeys.brandBySlug(serverBrand.slug)`, so the in-app `/b/{slug}` preview does not reuse a fresh-but-stale public brand query after saving the private brand editor form.
+- `packages/brand-rendering/PublicBrandPage.tsx` now applies a theme-color tint over hero cover media, plus theme-tinted social buttons and tab band accents. This makes brand theme visible even when a cover image/GIF fills the hero.
+
+Follow-up regression tests:
+
+```bash
+cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0964-[public-page-theme-customization]/mingla-business" && npx jest src/hooks/__tests__/useBrands.orch_0964_public_theme_cache.test.ts src/components/brand/__tests__/PublicBrandPage.orch_0964_smoke_rework.test.ts --runInBand
+```
+
+Result: PASS, 2 suites / 6 tests passed.
+
+Full focused rework check:
+
+```bash
+cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0964-[public-page-theme-customization]/mingla-business" && npx jest src/utils/__tests__/brandPatch.orch_0964_smoke_rework.test.ts src/hooks/__tests__/useBrands.orch_0964_public_theme_cache.test.ts src/components/brand/__tests__/PublicBrandPage.orch_0964_smoke_rework.test.ts src/utils/__tests__/themeResolver.orch_0964.test.ts src/utils/__tests__/themeResolver.adversarial.orch_0964.test.ts --runInBand
+```
+
+Result: PASS, 5 suites / 13 tests passed.
+
+```bash
+cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0964-[public-page-theme-customization]" && node .github/scripts/strict-grep/orch-0964-theme-typed-columns.mjs && node .github/scripts/strict-grep/orch-0964-theme-resolver-canonical.mjs && node .github/scripts/strict-grep/orch-0964-theme-foreground-computed.mjs && node .github/scripts/strict-grep/orch-0964-checkout-no-brand-theme.mjs && node .github/scripts/strict-grep/orch-0964-brand-rendering-self-contained.mjs && node .github/scripts/strict-grep/orch-0964-well-known-json-content-type.mjs && node .github/scripts/strict-grep/meta-orch-0972-data-driven-tabs.mjs && node .github/scripts/strict-grep/meta-orch-0972-no-brand-kind-reads.mjs && node .github/scripts/strict-grep/orch-0963-public-trip-rpc-and-route-segregation.mjs && node .github/scripts/strict-grep/orch-0863-marketing-hub-phase-b.mjs
+```
+
+Result: PASS, all listed gates passed.
+
 ## Rework Update — Android App Links consumer target
 
 Seth provided the verified consumer Android package fingerprints after the first QA pass. `mingla-business/public/.well-known/assetlinks.json` now preserves the existing business-app target for `com.sethogieva.minglabusiness` and adds a second Android App Links target for `com.mingla.app.v2` with both verified SHA-256 fingerprints:

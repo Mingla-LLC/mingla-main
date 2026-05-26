@@ -102,6 +102,16 @@ const openUrl = (url: string): void => {
   void Linking.openURL(url).catch(() => undefined);
 };
 
+const hexToRgba = (hex: string, alpha: number): string => {
+  const match = /^#([0-9a-fA-F]{6})$/.exec(hex);
+  if (match === null) return `rgba(235,120,37,${alpha})`;
+  const value = match[1];
+  const r = parseInt(value.slice(0, 2), 16);
+  const g = parseInt(value.slice(2, 4), 16);
+  const b = parseInt(value.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+};
+
 const tabLabel: Record<Tab, string> = {
   upcoming: "Upcoming",
   events: "Events",
@@ -190,6 +200,8 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
     resolvedTheme.color === MINGLA_DEFAULT_THEME.color && brand.coverHue !== 25
       ? `hsl(${brand.coverHue}, 60%, 45%)`
       : resolvedTheme.color;
+  const themeTint = hexToRgba(resolvedTheme.color, 0.42);
+  const themeSoftTint = hexToRgba(resolvedTheme.color, 0.12);
   const themedFont = { fontFamily: resolvedTheme.fontFamilyValue };
 
   const socialEntries = useMemo(() => {
@@ -267,6 +279,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
         ) : (
           <View style={[styles.heroGradient, { backgroundColor: heroColor }]} />
         )}
+        <View style={[styles.heroThemeTint, { backgroundColor: themeTint }]} />
         <View style={styles.heroFade} />
         <ThemeEntranceAnimation
           theme={resolvedTheme}
@@ -322,7 +335,11 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
           <Text style={styles.bioLeadCentered}>{brand.bio}</Text>
         ) : null}
 
-        <SocialLinksRow entries={socialEntries} onPress={onExternal} />
+        <SocialLinksRow
+          entries={socialEntries}
+          theme={resolvedTheme}
+          onPress={onExternal}
+        />
 
         {upcoming.length > 0 ? (
           <NextOfferingTeaser
@@ -336,7 +353,12 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
           />
         ) : null}
 
-        <View style={styles.tabsRow}>
+        <View
+          style={[
+            styles.tabsRow,
+            { backgroundColor: themeSoftTint, borderBottomColor: themeTint },
+          ]}
+        >
           {visibleTabs.map((tab) => (
             <TabButton
               key={tab}
@@ -450,8 +472,9 @@ const Avatar: React.FC<{ brand: PublicBrand }> = ({ brand }) => {
 
 const SocialLinksRow: React.FC<{
   entries: Array<{ label: string; url: string }>;
+  theme: ResolvedTheme;
   onPress: (url: string) => void;
-}> = ({ entries, onPress }) => {
+}> = ({ entries, theme, onPress }) => {
   if (entries.length === 0) return null;
   return (
     <View style={styles.socialsRowCompact}>
@@ -461,9 +484,17 @@ const SocialLinksRow: React.FC<{
           onPress={() => onPress(entry.url)}
           accessibilityRole="link"
           accessibilityLabel={entry.label}
-          style={styles.socialBtnIconOnly}
+          style={[
+            styles.socialBtnIconOnly,
+            {
+              backgroundColor: hexToRgba(theme.color, 0.16),
+              borderColor: theme.color,
+            },
+          ]}
         >
-          <Text style={styles.socialGlyph}>{entry.label.charAt(0)}</Text>
+          <Text style={[styles.socialGlyph, { color: theme.color }]}>
+            {entry.label.charAt(0)}
+          </Text>
         </Pressable>
       ))}
     </View>
@@ -979,6 +1010,9 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(12,14,18,0.30)",
   },
+  heroThemeTint: {
+    ...StyleSheet.absoluteFillObject,
+  },
   floatingChrome: {
     position: "absolute",
     top: spacing.lg,
@@ -1171,6 +1205,8 @@ const styles = StyleSheet.create({
     gap: 4,
     borderBottomWidth: 1,
     borderBottomColor: "rgba(255, 255, 255, 0.06)",
+    borderRadius: radius.sm,
+    paddingHorizontal: 4,
     marginBottom: spacing.md,
   },
   tabButton: {
