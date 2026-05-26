@@ -863,7 +863,10 @@ function checkNoNewBackendFiles() {
     "supabase/functions/_shared/geminiMenuParser.ts",
     "supabase/functions/_shared/geminiActivitiesParser.ts",
     "supabase/migrations/20260729000000_meta_orch_0972_universal_authoring.sql",
+    "supabase/migrations/20260729000001_meta_orch_0972_pg_brand_offering_counts_grants.sql",
     "supabase/migrations/20260730000000_meta_orch_0972_drop_brand_kind.sql",
+    "supabase/migrations/__tests__/pg_brand_offering_counts_grants.test.ts",
+    "supabase/migrations/__tests__/pg_brand_offering_counts_privilege_probe.sql",
     "supabase/functions/__tests__/pg_public_brand_upcoming.test.sql",
   ];
 
