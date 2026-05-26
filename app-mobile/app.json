@@ -132,6 +132,7 @@
       "expo-calendar",
       "expo-apple-authentication",
       "expo-av",
+      "react-native-compressor",
       [
         "expo-build-properties",
         {
