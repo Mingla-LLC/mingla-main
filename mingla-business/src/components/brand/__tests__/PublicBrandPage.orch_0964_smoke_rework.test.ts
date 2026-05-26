@@ -51,6 +51,19 @@ describe("ORCH-0964 smoke rework — business public-page preview chrome/theme",
     expect(sharedSource).toContain("backgroundColor: palette.accent");
     expect(sharedSource).toContain("color: palette.primaryText");
     expect(sharedSource).toContain("color: palette.accentText");
+    expect(sharedSource).toContain("styles.pageThemeWashBottom");
+    expect(sharedSource).toContain("styles.identityTopRow");
+    expect(sharedSource).toContain("flexDirection: \"column\"");
+    expect(sharedSource).toContain("height: 174");
+  });
+
+  test("ticket CTA is promoted into a large themed card action", () => {
+    const eventBuyPillBlock = sharedSource.match(/eventBuyPill: \{[\s\S]*?\n  \},/)?.[0] ?? "";
+    expect(sharedSource).toContain("Buy tickets");
+    expect(sharedSource).toContain("minHeight: 52");
+    expect(sharedSource).toContain("fontSize: 16");
+    expect(sharedSource).toContain("fontWeight: \"900\"");
+    expect(eventBuyPillBlock).not.toContain("position: \"absolute\"");
   });
 
   test("public brand animation replays per page mount without changing event-page behavior", () => {

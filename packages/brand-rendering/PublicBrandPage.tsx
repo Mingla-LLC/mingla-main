@@ -406,6 +406,10 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
         style={[styles.pageThemeWash, { backgroundColor: palette.pageWash }]}
       />
       <View
+        pointerEvents="none"
+        style={[styles.pageThemeWashBottom, { backgroundColor: palette.accentWash }]}
+      />
+      <View
         style={[styles.heroWrap, { backgroundColor: heroColor }]}
         pointerEvents="none"
       >
@@ -463,34 +467,44 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
             },
           ]}
         >
-          <Avatar brand={brand} palette={palette} />
-          <Text
-            style={[styles.brandNameCentered, themedFont, { color: palette.primaryText }]}
-          >
-            {brand.displayName}
-          </Text>
-          {venue?.isVerifiedVenue === true ? (
-            <Text style={[styles.verifiedBadge, { color: palette.accent }]}>
-              Verified venue
+          <View style={styles.identityTopRow}>
+            <Avatar brand={brand} palette={palette} />
+            <View style={styles.identityCopy}>
+              {venue?.isVerifiedVenue === true ? (
+                <Text style={[styles.verifiedBadge, { color: palette.accent }]}>
+                  Verified venue
+                </Text>
+              ) : null}
+              <Text
+                style={[
+                  styles.brandNameCentered,
+                  themedFont,
+                  { color: palette.primaryText },
+                ]}
+              >
+                {brand.displayName}
+              </Text>
+              {brand.address !== null && brand.address.trim().length > 0 ? (
+                <Text style={[styles.handleLineCentered, { color: palette.tertiaryText }]}>
+                  {brand.address.trim()}
+                </Text>
+              ) : null}
+            </View>
+          </View>
+
+          {brand.tagline !== undefined && brand.tagline.trim().length > 0 ? (
+            <Text
+              style={[styles.taglineCentered, themedFont, { color: palette.primaryText }]}
+            >
+              {brand.tagline}
             </Text>
           ) : null}
-          {brand.address !== null && brand.address.trim().length > 0 ? (
-            <Text style={[styles.handleLineCentered, { color: palette.tertiaryText }]}>
-              {brand.address.trim()}
+          {brand.bio !== undefined && brand.bio.trim().length > 0 ? (
+            <Text style={[styles.bioLeadCentered, { color: palette.secondaryText }]}>
+              {brand.bio}
             </Text>
           ) : null}
         </View>
-
-        {brand.tagline !== undefined && brand.tagline.trim().length > 0 ? (
-          <Text style={[styles.taglineCentered, themedFont, { color: palette.tertiaryText }]}>
-            {brand.tagline}
-          </Text>
-        ) : null}
-        {brand.bio !== undefined && brand.bio.trim().length > 0 ? (
-          <Text style={[styles.bioLeadCentered, { color: palette.secondaryText }]}>
-            {brand.bio}
-          </Text>
-        ) : null}
 
         <SocialLinksRow
           entries={socialEntries}
@@ -702,20 +716,25 @@ const TabButton: React.FC<{
     accessibilityLabel={label}
     style={[
       styles.tabButton,
-      active && { borderBottomColor: palette.accent },
+      active && { backgroundColor: palette.accent },
     ]}
   >
     <Text
       style={[
         styles.tabLabel,
         { fontFamily: theme.fontFamilyValue },
-        { color: active ? palette.primaryText : palette.tertiaryText },
+        { color: active ? palette.accentText : palette.tertiaryText },
         active && styles.tabLabelActive,
       ]}
     >
       {label}
       {count !== undefined ? (
-        <Text style={[styles.tabCount, { color: palette.mutedText }]}> {count}</Text>
+        <Text
+          style={[styles.tabCount, { color: active ? palette.accentText : palette.mutedText }]}
+        >
+          {" "}
+          {count}
+        </Text>
       ) : null}
     </Text>
   </Pressable>
@@ -815,19 +834,19 @@ const EventMiniCard: React.FC<{
         {price !== null ? (
           <Text style={[styles.eventPrice, { color: palette.primaryText }]}>{price}</Text>
         ) : null}
+        {pinCta ? (
+          <View style={[styles.eventBuyPill, { backgroundColor: palette.accent }]}>
+            <Text
+              style={[
+                styles.eventBuyPillLabel,
+                { color: palette.accentText },
+              ]}
+            >
+              Buy tickets
+            </Text>
+          </View>
+        ) : null}
       </View>
-      {pinCta ? (
-        <View style={[styles.eventBuyPill, { backgroundColor: palette.accent }]}>
-          <Text
-            style={[
-              styles.eventBuyPillLabel,
-              { color: palette.accentText },
-            ]}
-          >
-            Buy tickets
-          </Text>
-        </View>
-      ) : null}
     </Pressable>
   );
 };
@@ -979,12 +998,26 @@ const TripMiniCard: React.FC<{
             <View />
           )}
           {trip.bookingsClosed ? (
-            <View style={styles.tripBadgeClosed}>
-              <Text style={styles.tripBadgeLabel}>Booking closed</Text>
+            <View
+              style={[
+                styles.tripBadgeClosed,
+                { backgroundColor: palette.panel, borderColor: palette.cardBorder },
+              ]}
+            >
+              <Text style={[styles.tripBadgeLabel, { color: palette.primaryText }]}>
+                Booking closed
+              </Text>
             </View>
           ) : spotsLabel !== null ? (
-            <View style={styles.tripBadgeScarce}>
-              <Text style={styles.tripBadgeLabel}>{spotsLabel}</Text>
+            <View
+              style={[
+                styles.tripBadgeScarce,
+                { backgroundColor: palette.accentWash, borderColor: palette.panelBorder },
+              ]}
+            >
+              <Text style={[styles.tripBadgeLabel, { color: palette.primaryText }]}>
+                {spotsLabel}
+              </Text>
             </View>
           ) : null}
         </View>
@@ -1274,19 +1307,28 @@ const styles = StyleSheet.create({
   },
   pageThemeWash: {
     position: "absolute",
-    top: 160,
+    top: 110,
+    left: -120,
+    right: -120,
+    height: 360,
+    opacity: 1,
+    transform: [{ rotate: "-10deg" }],
+  },
+  pageThemeWashBottom: {
+    position: "absolute",
     left: -80,
     right: -80,
-    height: 320,
-    opacity: 1,
-    transform: [{ rotate: "-8deg" }],
+    bottom: 80,
+    height: 260,
+    opacity: 0.52,
+    transform: [{ rotate: "8deg" }],
   },
   heroWrap: {
     position: "absolute",
     top: 0,
     left: 0,
     right: 0,
-    height: 220,
+    height: 380,
     zIndex: 0,
     overflow: "hidden",
   },
@@ -1378,32 +1420,40 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
   scrollContent: {
-    paddingTop: 148,
+    paddingTop: 246,
     paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.xl,
+    paddingBottom: spacing.xl * 2,
   },
   identityCentered: {
-    alignItems: "center",
+    alignItems: "stretch",
     alignSelf: "center",
     width: "100%",
-    maxWidth: 560,
+    maxWidth: 620,
     paddingHorizontal: spacing.lg,
-    paddingTop: 54,
-    paddingBottom: spacing.lg,
-    borderRadius: radius.xl,
+    paddingVertical: spacing.lg,
+    borderRadius: radius.md,
     borderWidth: 1,
-    marginBottom: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  identityTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+  },
+  identityCopy: {
+    flex: 1,
+    minWidth: 0,
   },
   avatar: {
-    width: 112,
-    height: 112,
-    borderRadius: 56,
+    width: 92,
+    height: 92,
+    borderRadius: 46,
     backgroundColor: "rgba(255,255,255,0.10)",
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 3,
     borderColor: "rgba(255,255,255,0.20)",
-    marginTop: -96,
+    marginTop: 0,
     shadowOpacity: 0.26,
     shadowRadius: 22,
     shadowOffset: { width: 0, height: 10 },
@@ -1415,54 +1465,55 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   brandNameCentered: {
-    fontSize: 22,
-    fontWeight: "700",
+    fontSize: 36,
+    lineHeight: 40,
+    fontWeight: "800",
     color: text.primary,
-    marginTop: spacing.sm,
-    textAlign: "center",
+    marginTop: spacing.xs,
+    textAlign: "left",
   },
   verifiedBadge: {
-    marginTop: spacing.xs,
     color: accent.warm,
-    fontSize: 12,
-    fontWeight: "700",
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1.5,
+    textTransform: "uppercase",
   },
   handleLineCentered: {
     fontSize: 13,
     color: text.tertiary,
-    marginTop: 2,
-    textAlign: "center",
+    marginTop: spacing.xs,
+    textAlign: "left",
   },
   bioLeadCentered: {
     fontSize: 15,
     color: text.secondary,
-    lineHeight: 22,
-    marginBottom: spacing.md,
-    textAlign: "center",
-    maxWidth: 540,
-    alignSelf: "center",
+    lineHeight: 23,
+    marginTop: spacing.sm,
+    textAlign: "left",
   },
   taglineCentered: {
-    fontSize: 13,
-    fontWeight: "600",
+    fontSize: 22,
+    fontWeight: "700",
     color: text.tertiary,
-    lineHeight: 18,
-    marginBottom: spacing.xs,
-    textAlign: "center",
-    maxWidth: 540,
-    alignSelf: "center",
+    lineHeight: 28,
+    marginTop: spacing.lg,
+    textAlign: "left",
   },
   socialsRowCompact: {
     flexDirection: "row",
-    justifyContent: "center",
+    justifyContent: "flex-start",
     flexWrap: "wrap",
-    marginTop: spacing.xs,
+    alignSelf: "center",
+    width: "100%",
+    maxWidth: 620,
+    marginTop: 0,
     marginBottom: spacing.lg,
-    gap: spacing.md,
+    gap: spacing.sm,
   },
   socialBtnIconOnly: {
-    width: 44,
-    height: 44,
+    width: 48,
+    height: 48,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: 999,
@@ -1477,44 +1528,52 @@ const styles = StyleSheet.create({
   nextTeaser: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingVertical: 10,
-    paddingHorizontal: spacing.md,
+    alignSelf: "center",
+    width: "100%",
+    maxWidth: 620,
+    gap: spacing.md,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
     borderRadius: radius.md,
     backgroundColor: accent.tint,
     borderWidth: 1,
-    marginBottom: spacing.md,
+    marginBottom: spacing.lg,
   },
   nextTeaserLabel: {
-    fontSize: 10,
-    fontWeight: "700",
+    fontSize: 11,
+    fontWeight: "800",
     letterSpacing: 1.4,
   },
   nextTeaserBody: {
     flex: 1,
-    fontSize: 13,
+    fontSize: 15,
     color: text.primary,
-    fontWeight: "500",
+    fontWeight: "700",
   },
   nextTeaserArrow: {
-    fontSize: 16,
-    fontWeight: "700",
+    fontSize: 24,
+    fontWeight: "800",
   },
   tabsRow: {
     flexDirection: "row",
-    gap: 4,
-    borderBottomWidth: 1,
+    flexWrap: "wrap",
+    alignSelf: "center",
+    width: "100%",
+    maxWidth: 620,
+    gap: 6,
+    borderBottomWidth: 0,
     borderBottomColor: "rgba(255, 255, 255, 0.06)",
-    borderRadius: radius.sm,
-    paddingHorizontal: 4,
-    marginBottom: spacing.md,
+    borderRadius: radius.md,
+    padding: 6,
+    marginBottom: spacing.lg,
   },
   tabButton: {
-    paddingVertical: 10,
+    paddingVertical: 11,
     paddingHorizontal: spacing.md,
-    borderBottomWidth: 2,
+    borderRadius: radius.sm,
+    borderBottomWidth: 0,
     borderBottomColor: "transparent",
-    marginBottom: -1,
+    marginBottom: 0,
   },
   tabLabel: {
     fontSize: 13,
@@ -1529,15 +1588,23 @@ const styles = StyleSheet.create({
     fontWeight: "400",
   },
   eventList: {
-    gap: spacing.sm,
+    alignSelf: "center",
+    width: "100%",
+    maxWidth: 620,
+    gap: spacing.lg,
   },
   eventCard: {
-    flexDirection: "row",
+    flexDirection: "column",
     backgroundColor: "rgba(255, 255, 255, 0.04)",
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
     overflow: "hidden",
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.06)",
+    shadowColor: "#000000",
+    shadowOpacity: 0.18,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 3,
   },
   eventCardPast: {
     opacity: 0.7,
@@ -1546,47 +1613,54 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   eventCover: {
-    width: 96,
-    height: 116,
+    width: "100%",
+    height: 174,
   },
   eventBody: {
-    flex: 1,
-    padding: spacing.md,
-    justifyContent: "space-between",
+    padding: spacing.lg,
+    gap: spacing.xs,
   },
   eventDate: {
-    fontSize: 10,
-    fontWeight: "700",
+    fontSize: 11,
+    fontWeight: "800",
     letterSpacing: 1.4,
-    marginBottom: 4,
-  },
-  eventTitle: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: text.primary,
     marginBottom: 2,
   },
-  eventVenue: {
-    fontSize: 11,
-    color: text.tertiary,
-    marginBottom: 6,
-  },
-  eventPrice: {
-    fontSize: 13,
-    fontWeight: "600",
+  eventTitle: {
+    fontSize: 21,
+    lineHeight: 26,
+    fontWeight: "800",
     color: text.primary,
   },
+  eventVenue: {
+    fontSize: 13,
+    color: text.tertiary,
+    marginTop: 2,
+  },
+  eventPrice: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: text.primary,
+    marginTop: spacing.xs,
+  },
   eventBuyPill: {
-    position: "absolute",
-    bottom: spacing.sm,
-    right: spacing.sm,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 52,
+    marginTop: spacing.md,
+    paddingVertical: 14,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.md,
+    shadowColor: "#000000",
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
   },
   eventBuyPillLabel: {
-    fontSize: 12,
-    fontWeight: "700",
+    fontSize: 16,
+    fontWeight: "900",
+    letterSpacing: 0.4,
   },
   tripFooterRow: {
     flexDirection: "row",
@@ -1617,6 +1691,9 @@ const styles = StyleSheet.create({
     color: text.primary,
   },
   emptyTabWrap: {
+    alignSelf: "center",
+    width: "100%",
+    maxWidth: 620,
     alignItems: "center",
     paddingVertical: spacing.xl,
   },
@@ -1626,13 +1703,16 @@ const styles = StyleSheet.create({
     color: text.secondary,
   },
   aboutWrap: {
+    alignSelf: "center",
+    width: "100%",
+    maxWidth: 620,
     gap: spacing.lg,
   },
   aboutBlock: {
     gap: spacing.xs,
     borderWidth: 1,
-    borderRadius: radius.lg,
-    padding: spacing.md,
+    borderRadius: radius.md,
+    padding: spacing.lg,
   },
   aboutBlockLabel: {
     fontSize: 11,

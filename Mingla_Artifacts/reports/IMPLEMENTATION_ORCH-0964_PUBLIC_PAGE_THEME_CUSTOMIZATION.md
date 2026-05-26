@@ -184,6 +184,34 @@ cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0964-[public-page-theme-customiz
 
 Result: PASS, all listed strict-grep gates passed.
 
+## Smoke-Test Design Rework #3 — full public brand page redesign
+
+Seth requested a total public-brand-page redesign: preserve the same public brand/event/trip/experience/about data, but change the rendering from a basic profile/list into a sophisticated theme-owned page with more dramatic ticket CTAs. This rework stays in `packages/brand-rendering/PublicBrandPage.tsx`; no data model, migration, RPC, or edge function changed.
+
+Design/implementation changes:
+
+- The cover now behaves as a taller editorial stage with page-level theme washes above and below the content.
+- The old centered identity stack is replaced by a masthead card with a left-aligned avatar/title/address hierarchy, followed by theme-font tagline and bio inside the masthead.
+- Social links, next-offering teaser, tabs, tab bodies, empty states, and about blocks now align to a consistent 620pt content rail instead of floating as unrelated rows.
+- Tabs now render as a segmented control with the active tab filled by the contrast-adjusted theme accent.
+- Event/trip/upcoming/experience cards now render as vertical feature cards with full-width cover media, stronger typography, and more editorial spacing.
+- The first three event cards keep the ORCH-0963 pinned-ticket contract but render the ticket affordance as a large full-width themed `Buy tickets` button inside the card body instead of a small absolute pill.
+- Trip scarcity/closed badges now use palette-derived backgrounds/text so they remain legible on both light and dark surfaces.
+
+Regression coverage:
+
+```bash
+cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0964-[public-page-theme-customization]/mingla-business" && npx jest src/utils/__tests__/brandPatch.orch_0964_smoke_rework.test.ts src/hooks/__tests__/useBrands.orch_0964_public_theme_cache.test.ts src/components/brand/__tests__/PublicBrandPage.orch_0964_smoke_rework.test.ts src/utils/__tests__/themeResolver.orch_0964.test.ts src/utils/__tests__/themeResolver.adversarial.orch_0964.test.ts --runInBand
+```
+
+Result: PASS, 5 suites / 15 tests passed. The public-page test now guards the editorial masthead, secondary page wash, vertical feature cards, and large non-absolute themed ticket CTA.
+
+```bash
+cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0964-[public-page-theme-customization]" && node .github/scripts/strict-grep/orch-0964-theme-typed-columns.mjs && node .github/scripts/strict-grep/orch-0964-theme-resolver-canonical.mjs && node .github/scripts/strict-grep/orch-0964-theme-foreground-computed.mjs && node .github/scripts/strict-grep/orch-0964-checkout-no-brand-theme.mjs && node .github/scripts/strict-grep/orch-0964-brand-rendering-self-contained.mjs && node .github/scripts/strict-grep/orch-0964-well-known-json-content-type.mjs && node .github/scripts/strict-grep/meta-orch-0972-data-driven-tabs.mjs && node .github/scripts/strict-grep/meta-orch-0972-no-brand-kind-reads.mjs && node .github/scripts/strict-grep/orch-0963-public-trip-rpc-and-route-segregation.mjs && node .github/scripts/strict-grep/orch-0863-marketing-hub-phase-b.mjs
+```
+
+Result: PASS, all listed strict-grep gates passed.
+
 ## Rework Update — Android App Links consumer target
 
 Seth provided the verified consumer Android package fingerprints after the first QA pass. `mingla-business/public/.well-known/assetlinks.json` now preserves the existing business-app target for `com.sethogieva.minglabusiness` and adds a second Android App Links target for `com.mingla.app.v2` with both verified SHA-256 fingerprints:
