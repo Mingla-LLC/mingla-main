@@ -30,11 +30,19 @@ describe("ORCH-0964 design rework — public event page premium renderer", () =>
     expect(sharedSource).toContain("paddingTop: 288");
     expect(sharedSource).toContain('pointerEvents="none"');
     expect(sharedSource).toContain("style={styles.bodyGlassLayer}");
+    expect(sharedSource).toContain("type ThemePalette");
+    expect(sharedSource).toContain(
+      "const createThemePalette = (theme: ResolvedTheme)",
+    );
+    expect(sharedSource).toContain("const contrastAdjustedAccent = (");
+    expect(sharedSource).toContain("const contrastAdjustedForWhiteText = (");
+    expect(sharedSource).toContain(
+      "const palette = useMemo(() => createThemePalette(theme)",
+    );
+    expect(sharedSource).toContain("tint={palette.glassTint}");
+    expect(sharedSource).toContain("backgroundColor: palette.page");
     expect(bodyContentBlock).toContain("maxWidth: 660");
     expect(bodyContentBlock).toContain("borderTopLeftRadius: 28");
-    expect(bodyContentBlock).toContain(
-      'backgroundColor: "rgba(5, 7, 11, 0.96)"',
-    );
   });
 
   test("tickets render as large themed cards instead of divider rows", () => {
@@ -47,8 +55,12 @@ describe("ORCH-0964 design rework — public event page premium renderer", () =>
     expect(sharedSource).toContain("styles.ticketPricePill");
     expect(sharedSource).toContain("styles.ticketFooterRow");
     expect(sharedSource).toContain("styles.ticketCardAccent");
-    expect(sharedSource).toContain("borderColor: theme.foregroundColor");
-    expect(sharedSource).toContain("shadowColor: theme.color");
+    expect(sharedSource).toContain("backgroundColor: palette.card");
+    expect(sharedSource).toContain("borderColor: palette.cutoutBorder");
+    expect(sharedSource).toContain("backgroundColor: palette.accent");
+    expect(sharedSource).toContain("borderColor: palette.accentText");
+    expect(sharedSource).toContain("shadowColor: palette.accent");
+    expect(sharedSource).toContain("color: palette.accentText");
     expect(ticketCardBlock).toContain("borderWidth: 1.5");
     expect(ticketCardBlock).toContain("shadowOpacity: 0.3");
     expect(ticketBuyerBlock).toContain("minHeight: 58");
@@ -63,9 +75,10 @@ describe("ORCH-0964 design rework — public event page premium renderer", () =>
     expect(sharedSource).toContain("const heroColor =");
     expect(sharedSource).toContain("styles.brandKicker");
     expect(sharedSource).toContain("styles.brandTextCol");
-    expect(sharedSource).toContain("{ borderColor: theme.color }");
+    expect(sharedSource).toContain("backgroundColor: palette.glass");
+    expect(sharedSource).toContain("color: palette.primaryText");
     expect(sharedSource).toContain("styles.venueIconDisk");
-    expect(sharedSource).toContain("{ backgroundColor: theme.color }");
+    expect(sharedSource).toContain("color: palette.secondaryText");
     expect(sharedSource).toContain("Presented by");
   });
 
@@ -89,7 +102,7 @@ describe("ORCH-0964 design rework — public event page premium renderer", () =>
     expect(sharedSource).toContain("callbacks.onOpenMaps?.(venueMapsQuery)");
     expect(sharedSource).toContain("Open maps");
     expect(sharedSource).toContain("styles.venueMapsPill");
-    expect(sharedSource).toContain("{ color: theme.foregroundColor }");
+    expect(sharedSource).toContain("borderColor: palette.accentText");
     expect(businessAdapterSource).toContain("const openMapsForQuery =");
     expect(businessAdapterSource).toContain('Platform.OS === "ios"');
     expect(businessAdapterSource).toContain("maps://?q=");

@@ -65,6 +65,164 @@ type Variant =
   | "password-gate"
   | "cancelled";
 
+type ThemePalette = {
+  page: string;
+  accent: string;
+  accentText: string;
+  primaryText: string;
+  secondaryText: string;
+  tertiaryText: string;
+  panel: string;
+  panelStrong: string;
+  panelBorder: string;
+  card: string;
+  cutoutBorder: string;
+  glass: string;
+  glassTint: "dark" | "light";
+  accentWash: string;
+};
+
+type Rgb = {
+  r: number;
+  g: number;
+  b: number;
+};
+
+const FALLBACK_ACCENT_RGB: Rgb = { r: 235, g: 120, b: 37 };
+
+const clampColorChannel = (value: number): number =>
+  Math.min(255, Math.max(0, Math.round(value)));
+
+const parseHexColor = (hex: string): Rgb => {
+  const match = /^#([0-9a-fA-F]{6})$/.exec(hex);
+  if (match === null) return FALLBACK_ACCENT_RGB;
+  const value = match[1];
+  return {
+    r: parseInt(value.slice(0, 2), 16),
+    g: parseInt(value.slice(2, 4), 16),
+    b: parseInt(value.slice(4, 6), 16),
+  };
+};
+
+const rgbToHex = ({ r, g, b }: Rgb): string =>
+  `#${[r, g, b]
+    .map((channel) => clampColorChannel(channel).toString(16).padStart(2, "0"))
+    .join("")}`;
+
+const mixHexColors = (from: string, to: string, amount: number): string => {
+  const a = parseHexColor(from);
+  const b = parseHexColor(to);
+  const weight = Math.min(1, Math.max(0, amount));
+  return rgbToHex({
+    r: a.r + (b.r - a.r) * weight,
+    g: a.g + (b.g - a.g) * weight,
+    b: a.b + (b.b - a.b) * weight,
+  });
+};
+
+const hexToRgba = (hex: string, alpha: number): string => {
+  const { r, g, b } = parseHexColor(hex);
+  return `rgba(${r},${g},${b},${alpha})`;
+};
+
+const linearizeSrgb = (channel: number): number => {
+  const normalized = channel / 255;
+  return normalized <= 0.03928
+    ? normalized / 12.92
+    : ((normalized + 0.055) / 1.055) ** 2.4;
+};
+
+const relativeLuminance = (hex: string): number => {
+  const { r, g, b } = parseHexColor(hex);
+  return (
+    0.2126 * linearizeSrgb(r) +
+    0.7152 * linearizeSrgb(g) +
+    0.0722 * linearizeSrgb(b)
+  );
+};
+
+const contrastRatio = (a: string, b: string): number => {
+  const lighter = Math.max(relativeLuminance(a), relativeLuminance(b));
+  const darker = Math.min(relativeLuminance(a), relativeLuminance(b));
+  return (lighter + 0.05) / (darker + 0.05);
+};
+
+const readableTextFor = (background: string): "#000000" | "#ffffff" =>
+  contrastRatio("#000000", background) >= contrastRatio("#ffffff", background)
+    ? "#000000"
+    : "#ffffff";
+
+const contrastAdjustedAccent = (
+  accentColor: string,
+  background: string,
+  minimumRatio: number,
+): string => {
+  if (contrastRatio(accentColor, background) >= minimumRatio)
+    return accentColor;
+  const direction = readableTextFor(background);
+  let adjusted = accentColor;
+  for (let i = 0; i < 12; i++) {
+    adjusted = mixHexColors(adjusted, direction, 0.16);
+    if (contrastRatio(adjusted, background) >= minimumRatio) return adjusted;
+  }
+  return adjusted;
+};
+
+const contrastAdjustedForWhiteText = (
+  accentColor: string,
+  minimumRatio: number,
+): string => {
+  if (contrastRatio(accentColor, "#ffffff") >= minimumRatio) return accentColor;
+  let adjusted = accentColor;
+  for (let i = 0; i < 12; i++) {
+    adjusted = mixHexColors(adjusted, "#000000", 0.14);
+    if (contrastRatio(adjusted, "#ffffff") >= minimumRatio) return adjusted;
+  }
+  return adjusted;
+};
+
+const createThemePalette = (theme: ResolvedTheme): ThemePalette => {
+  const darkBase = "#07070a";
+  const lightBase = "#f8fafc";
+  const accentOnDark = contrastRatio(theme.color, darkBase);
+  const accentOnLight = contrastRatio(theme.color, lightBase);
+  const useDark =
+    accentOnDark >= 3 && accentOnLight < 3
+      ? true
+      : accentOnLight >= 3 && accentOnDark < 3
+        ? false
+        : theme.foregroundColor === "#ffffff";
+  const basePage = useDark ? darkBase : lightBase;
+  const page = mixHexColors(basePage, theme.color, useDark ? 0.1 : 0.035);
+  const accentColor = contrastAdjustedForWhiteText(
+    contrastAdjustedAccent(theme.color, page, 3.15),
+    4.5,
+  );
+  const primaryText = readableTextFor(page);
+  return {
+    page,
+    accent: accentColor,
+    accentText: "#ffffff",
+    primaryText,
+    secondaryText:
+      primaryText === "#ffffff"
+        ? "rgba(255,255,255,0.78)"
+        : "rgba(16,20,31,0.76)",
+    tertiaryText:
+      primaryText === "#ffffff"
+        ? "rgba(255,255,255,0.58)"
+        : "rgba(16,20,31,0.58)",
+    panel: useDark ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.76)",
+    panelStrong: useDark ? "rgba(255,255,255,0.11)" : "rgba(255,255,255,0.92)",
+    panelBorder: hexToRgba(accentColor, useDark ? 0.38 : 0.3),
+    card: useDark ? "rgba(255,255,255,0.10)" : "rgba(255,255,255,0.72)",
+    cutoutBorder: useDark ? "rgba(255,255,255,0.24)" : "rgba(255,255,255,0.96)",
+    glass: useDark ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.62)",
+    glassTint: useDark ? "dark" : "light",
+    accentWash: hexToRgba(accentColor, useDark ? 0.24 : 0.18),
+  };
+};
+
 const computeVariant = (
   event: PublicEventProps,
   passwordUnlocked: boolean,
@@ -156,6 +314,10 @@ export const PublicEventPage: React.FC<PublicEventPageProps> = ({
     () => computeVariant(event, passwordUnlocked),
     [event, passwordUnlocked],
   );
+  const resolvedPalette = useMemo(
+    () => createThemePalette(resolvedTheme),
+    [resolvedTheme],
+  );
 
   const ownsThisEvent = viewerRole === "organizer";
 
@@ -168,7 +330,7 @@ export const PublicEventPage: React.FC<PublicEventPageProps> = ({
   );
 
   return (
-    <View style={styles.host}>
+    <View style={[styles.host, { backgroundColor: resolvedPalette.page }]}>
       {variant === "cancelled" ? (
         <CancelledVariant event={event} brand={brand} />
       ) : variant === "password-gate" ? (
@@ -294,6 +456,7 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
     theme.color === MINGLA_DEFAULT_THEME.color && event.coverHue !== 25
       ? `hsl(${event.coverHue}, 60%, 45%)`
       : theme.color;
+  const palette = useMemo(() => createThemePalette(theme), [theme]);
 
   return (
     <>
@@ -352,9 +515,19 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <View style={[styles.bodyContent, isPast && styles.bodyContentMuted]}>
+        <View
+          style={[
+            styles.bodyContent,
+            {
+              backgroundColor: palette.page,
+              borderColor: palette.panelBorder,
+              shadowColor: palette.accent,
+            },
+            isPast && styles.bodyContentMuted,
+          ]}
+        >
           <BlurView
-            tint="dark"
+            tint={palette.glassTint}
             intensity={28}
             pointerEvents="none"
             style={styles.bodyGlassLayer}
@@ -365,7 +538,7 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
               <Text
                 style={[
                   styles.dateLine,
-                  { color: theme.color, fontFamily: theme.fontFamilyValue },
+                  { color: palette.accent, fontFamily: theme.fontFamilyValue },
                 ]}
               >
                 {event.dateLine}
@@ -373,7 +546,10 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
               <Text
                 style={[
                   styles.titleLine,
-                  { fontFamily: theme.fontFamilyValue },
+                  {
+                    color: palette.primaryText,
+                    fontFamily: theme.fontFamilyValue,
+                  },
                 ]}
               >
                 {titleLine}
@@ -387,9 +563,20 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
                     accessibilityLabel={
                       showAllDates ? "Collapse date list" : "Show all dates"
                     }
-                    style={styles.recurrencePill}
+                    style={[
+                      styles.recurrencePill,
+                      {
+                        backgroundColor: palette.accentWash,
+                        borderColor: palette.panelBorder,
+                      },
+                    ]}
                   >
-                    <Text style={styles.recurrencePillLabel}>
+                    <Text
+                      style={[
+                        styles.recurrencePillLabel,
+                        { color: palette.accent },
+                      ]}
+                    >
                       {event.dateSubline} · {showAllDates ? "Hide" : "Show all"}
                     </Text>
                   </Pressable>
@@ -399,8 +586,24 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
               {showAllDates && visibleDates.length > 0 ? (
                 <View style={styles.expandedDatesList}>
                   {visibleDates.map((label, i) => (
-                    <View key={i} style={styles.expandedDateRow}>
-                      <Text style={styles.expandedDateText}>{label}</Text>
+                    <View
+                      key={i}
+                      style={[
+                        styles.expandedDateRow,
+                        {
+                          backgroundColor: palette.card,
+                          borderColor: palette.cutoutBorder,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.expandedDateText,
+                          { color: palette.primaryText },
+                        ]}
+                      >
+                        {label}
+                      </Text>
                     </View>
                   ))}
                   {event.datesList.length > SHOW_INITIAL_DATES &&
@@ -411,7 +614,9 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
                       accessibilityLabel={`Show all ${event.datesList.length} dates`}
                       style={styles.showAllBtn}
                     >
-                      <Text style={styles.showAllLabel}>
+                      <Text
+                        style={[styles.showAllLabel, { color: palette.accent }]}
+                      >
                         Show all {event.datesList.length} dates
                       </Text>
                     </Pressable>
@@ -440,7 +645,10 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
             }
             style={({ pressed }) => [
               styles.brandRow,
-              { borderColor: theme.color },
+              {
+                backgroundColor: palette.glass,
+                borderColor: palette.cutoutBorder,
+              },
               callbacks.onOpenBrand !== undefined && styles.brandRowInteractive,
               pressed && styles.brandRowPressed,
             ]}
@@ -448,25 +656,37 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
             {brand?.photo !== undefined && brand.photo.length > 0 ? (
               <Image
                 source={{ uri: brand.photo }}
-                style={[styles.brandTile, styles.brandPhoto]}
+                style={[
+                  styles.brandTile,
+                  styles.brandPhoto,
+                  { borderColor: palette.cutoutBorder },
+                ]}
                 resizeMode="cover"
                 accessibilityLabel={`${brand.displayName} profile photo`}
               />
             ) : (
               <View
-                style={[styles.brandTile, { backgroundColor: theme.color }]}
+                style={[styles.brandTile, { backgroundColor: palette.accent }]}
               >
-                <Text style={styles.brandLetter}>{brandLetter}</Text>
+                <Text
+                  style={[styles.brandLetter, { color: palette.accentText }]}
+                >
+                  {brandLetter}
+                </Text>
               </View>
             )}
             <View style={styles.brandTextCol}>
-              <Text style={styles.brandKicker}>Presented by</Text>
-              <Text style={styles.brandName}>
+              <Text
+                style={[styles.brandKicker, { color: palette.tertiaryText }]}
+              >
+                Presented by
+              </Text>
+              <Text style={[styles.brandName, { color: palette.primaryText }]}>
                 {brand?.displayName ?? "Brand"}
               </Text>
             </View>
             {callbacks.onOpenBrand !== undefined ? (
-              <Text style={[styles.brandCta, { color: theme.color }]}>
+              <Text style={[styles.brandCta, { color: palette.accent }]}>
                 View
               </Text>
             ) : null}
@@ -493,6 +713,10 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
               }
               style={({ pressed }) => [
                 styles.venueCard,
+                {
+                  backgroundColor: palette.card,
+                  borderColor: palette.cutoutBorder,
+                },
                 canOpenVenueMaps && styles.venueCardInteractive,
                 pressed && styles.venueCardPressed,
               ]}
@@ -501,30 +725,45 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
                 <View
                   style={[
                     styles.venueIconDisk,
-                    { backgroundColor: theme.color },
+                    { backgroundColor: palette.accent },
                   ]}
                 >
-                  <Text style={styles.venueIcon}>⌖</Text>
+                  <Text
+                    style={[styles.venueIcon, { color: palette.accentText }]}
+                  >
+                    ⌖
+                  </Text>
                 </View>
                 <View style={styles.venueTextCol}>
-                  <Text style={styles.venueName}>{event.venueName}</Text>
-                  <Text style={styles.venueAddress}>{venueAddressLabel}</Text>
+                  <Text
+                    style={[styles.venueName, { color: palette.primaryText }]}
+                  >
+                    {event.venueName}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.venueAddress,
+                      { color: palette.secondaryText },
+                    ]}
+                  >
+                    {venueAddressLabel}
+                  </Text>
                 </View>
                 {canOpenVenueMaps ? (
                   <View
                     style={[
                       styles.venueMapsPill,
                       {
-                        backgroundColor: theme.color,
-                        borderColor: theme.foregroundColor,
-                        shadowColor: theme.color,
+                        backgroundColor: palette.accent,
+                        borderColor: palette.accentText,
+                        shadowColor: palette.accent,
                       },
                     ]}
                   >
                     <Text
                       style={[
                         styles.venueMapsText,
-                        { color: theme.foregroundColor },
+                        { color: palette.accentText },
                       ]}
                     >
                       Open maps
@@ -534,19 +773,40 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
               </View>
             </Pressable>
           ) : event.format === "online" ? (
-            <View style={styles.venueCard}>
+            <View
+              style={[
+                styles.venueCard,
+                {
+                  backgroundColor: palette.card,
+                  borderColor: palette.cutoutBorder,
+                },
+              ]}
+            >
               <View style={styles.venueRow}>
                 <View
                   style={[
                     styles.venueIconDisk,
-                    { backgroundColor: theme.color },
+                    { backgroundColor: palette.accent },
                   ]}
                 >
-                  <Text style={styles.venueIcon}>◯</Text>
+                  <Text
+                    style={[styles.venueIcon, { color: palette.accentText }]}
+                  >
+                    ◯
+                  </Text>
                 </View>
                 <View style={styles.venueTextCol}>
-                  <Text style={styles.venueName}>Online</Text>
-                  <Text style={styles.venueAddress}>
+                  <Text
+                    style={[styles.venueName, { color: palette.primaryText }]}
+                  >
+                    Online
+                  </Text>
+                  <Text
+                    style={[
+                      styles.venueAddress,
+                      { color: palette.secondaryText },
+                    ]}
+                  >
                     Conferencing link shared with ticketed guests.
                   </Text>
                 </View>
@@ -556,11 +816,17 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
 
           {/* About */}
           <Text
-            style={[styles.sectionTitle, { fontFamily: theme.fontFamilyValue }]}
+            style={[
+              styles.sectionTitle,
+              {
+                color: palette.primaryText,
+                fontFamily: theme.fontFamilyValue,
+              },
+            ]}
           >
             About
           </Text>
-          <Text style={styles.aboutBody}>
+          <Text style={[styles.aboutBody, { color: palette.secondaryText }]}>
             {event.description.length > 0
               ? event.description
               : "Details coming soon."}
@@ -568,13 +834,31 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
 
           {/* Tickets */}
           <Text
-            style={[styles.sectionTitle, { fontFamily: theme.fontFamilyValue }]}
+            style={[
+              styles.sectionTitle,
+              {
+                color: palette.primaryText,
+                fontFamily: theme.fontFamilyValue,
+              },
+            ]}
           >
             Tickets
           </Text>
           {visibleTickets.length === 0 ? (
-            <View style={styles.emptyTicketsCard}>
-              <Text style={styles.aboutBody}>No tickets available yet.</Text>
+            <View
+              style={[
+                styles.emptyTicketsCard,
+                {
+                  backgroundColor: palette.card,
+                  borderColor: palette.cutoutBorder,
+                },
+              ]}
+            >
+              <Text
+                style={[styles.aboutBody, { color: palette.secondaryText }]}
+              >
+                No tickets available yet.
+              </Text>
             </View>
           ) : (
             <View style={styles.ticketsCol}>
@@ -586,6 +870,7 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
                   fallbackCurrency={event.currency}
                   callbacks={callbacks}
                   theme={theme}
+                  palette={palette}
                 />
               ))}
             </View>
@@ -604,6 +889,7 @@ interface PublicTicketRowProps {
   fallbackCurrency: string;
   callbacks: PublicEventPageProps["callbacks"];
   theme: ResolvedTheme;
+  palette: ThemePalette;
 }
 
 const PublicTicketRow: React.FC<PublicTicketRowProps> = ({
@@ -612,6 +898,7 @@ const PublicTicketRow: React.FC<PublicTicketRowProps> = ({
   fallbackCurrency,
   callbacks,
   theme,
+  palette,
 }) => {
   const priceLabel = formatTicketPrice(ticket, fallbackCurrency);
   const isVisDisabled = ticket.visibility === "disabled";
@@ -671,25 +958,53 @@ const PublicTicketRow: React.FC<PublicTicketRowProps> = ({
 
   return (
     <View
-      style={[styles.ticketCard, isVisDisabled && styles.ticketCardDisabled]}
+      style={[
+        styles.ticketCard,
+        {
+          backgroundColor: palette.card,
+          borderColor: palette.cutoutBorder,
+        },
+        isVisDisabled && styles.ticketCardDisabled,
+      ]}
     >
       <View
         pointerEvents="none"
-        style={[styles.ticketCardAccent, { backgroundColor: theme.color }]}
+        style={[styles.ticketCardAccent, { backgroundColor: palette.accent }]}
       />
       <View style={styles.ticketHeaderRow}>
         <View style={styles.ticketTextCol}>
-          <Text style={styles.ticketName}>{ticket.name}</Text>
+          <Text style={[styles.ticketName, { color: palette.primaryText }]}>
+            {ticket.name}
+          </Text>
           {ticket.description !== null && ticket.description.length > 0 ? (
-            <Text style={styles.ticketDescription}>{ticket.description}</Text>
+            <Text
+              style={[
+                styles.ticketDescription,
+                { color: palette.secondaryText },
+              ]}
+            >
+              {ticket.description}
+            </Text>
           ) : null}
         </View>
-        <View style={styles.ticketPricePill}>
-          <Text style={styles.ticketPrice}>{priceLabel}</Text>
+        <View
+          style={[
+            styles.ticketPricePill,
+            {
+              backgroundColor: palette.accentWash,
+              borderColor: palette.panelBorder,
+            },
+          ]}
+        >
+          <Text style={[styles.ticketPrice, { color: palette.primaryText }]}>
+            {priceLabel}
+          </Text>
         </View>
       </View>
       <View style={styles.ticketFooterRow}>
-        <Text style={styles.ticketSub}>{capacityLabel}</Text>
+        <Text style={[styles.ticketSub, { color: palette.tertiaryText }]}>
+          {capacityLabel}
+        </Text>
         <Pressable
           onPress={handleTap}
           disabled={isButtonDisabled}
@@ -699,21 +1014,26 @@ const PublicTicketRow: React.FC<PublicTicketRowProps> = ({
           style={[
             styles.ticketBuyerBtn,
             {
-              backgroundColor: theme.color,
-              borderColor: theme.foregroundColor,
-              shadowColor: theme.color,
+              backgroundColor: palette.accent,
+              borderColor: palette.accentText,
+              shadowColor: palette.accent,
             },
             isButtonDisabled && styles.ticketBuyerBtnDisabled,
+            isButtonDisabled && {
+              backgroundColor: palette.panel,
+              borderColor: palette.cutoutBorder,
+              shadowOpacity: 0,
+            },
           ]}
         >
           <Text
             style={[
               styles.ticketBuyerBtnLabel,
               {
-                color: theme.foregroundColor,
+                color: palette.accentText,
                 fontFamily: theme.fontFamilyValue,
               },
-              isButtonDisabled && styles.ticketBuyerBtnLabelDisabled,
+              isButtonDisabled && { color: palette.tertiaryText },
             ]}
           >
             {effectiveLabel}
