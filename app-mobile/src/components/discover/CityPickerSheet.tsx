@@ -34,11 +34,10 @@ import {
 import * as Haptics from "expo-haptics";
 import { geocodingService, AutocompleteSuggestion } from "../../services/geocodingService";
 import { PreferencesService } from "../../services/preferencesService";
-// ORCH-0824 hotfix-5b: resolve locality via the places-autocomplete proxy
-// so the consumer-side city name matches what the business wizard writes
-// to events.city (Google's structured `locality` component, e.g. "Raleigh"
-// rather than the free-form display string "Raleigh, NC, USA").
-import { supabase } from "../../services/supabase";
+// ORCH-0824 hotfix-5b: parse the first comma-separated segment of the
+// OpenStreetMap display name to derive the canonical city token (e.g.
+// "Raleigh") so the consumer-side city name matches what the business
+// wizard writes to events.city.
 import type { DiscoverCity } from "../../types/discoverFilters";
 import { Icon } from "../ui/Icon";
 import { glass } from "../../constants/designSystem";
@@ -185,37 +184,11 @@ export const CityPickerSheet: React.FC<CityPickerSheetProps> = ({
       // search for "Raleigh, NC, USA" while business events have
       // city="Raleigh" — zero matches.
       //
-      // Strategy: if the suggestion carries a Google placeId, fetch
-      // structured locality via the `places-autocomplete` proxy. Else
-      // (OSM fallback or missing placeId), parse the first
-      // comma-separated segment from the display name as a best-effort
-      // fallback. Both paths converge on a single-token city name like
-      // "Raleigh" / "London" / "New York".
+      // Parse the first comma-separated segment from the OpenStreetMap
+      // display name as the canonical city token like "Raleigh" / "London".
       let resolvedCityName = suggestion.displayName;
-      if (suggestion.placeId) {
-        try {
-          const { data, error } = await supabase.functions.invoke(
-            "places-autocomplete",
-            { body: { action: "details", placeId: suggestion.placeId } },
-          );
-          if (!error && data && data.details && typeof data.details.city === "string") {
-            resolvedCityName = data.details.city;
-          } else {
-            // Proxy failed — fall back to first-segment parse below.
-            console.warn("[CityPickerSheet] place details proxy failed, falling back to displayName parse");
-            const firstSegment = suggestion.displayName.split(",")[0]?.trim();
-            if (firstSegment && firstSegment.length > 0) resolvedCityName = firstSegment;
-          }
-        } catch (e) {
-          console.warn("[CityPickerSheet] place details exception:", e);
-          const firstSegment = suggestion.displayName.split(",")[0]?.trim();
-          if (firstSegment && firstSegment.length > 0) resolvedCityName = firstSegment;
-        }
-      } else {
-        // No placeId (OSM fallback path): first-segment parse.
-        const firstSegment = suggestion.displayName.split(",")[0]?.trim();
-        if (firstSegment && firstSegment.length > 0) resolvedCityName = firstSegment;
-      }
+      const firstSegment = suggestion.displayName.split(",")[0]?.trim();
+      if (firstSegment && firstSegment.length > 0) resolvedCityName = firstSegment;
 
       const city: DiscoverCity = {
         name: resolvedCityName,
@@ -345,7 +318,7 @@ export const CityPickerSheet: React.FC<CityPickerSheetProps> = ({
             {!loading &&
               results.map((suggestion, idx) => (
                 <TouchableOpacity
-                  key={`${suggestion.placeId ?? idx}-${suggestion.displayName}`}
+                  key={`${idx}-${suggestion.displayName}`}
                   onPress={() => handlePick(suggestion)}
                   disabled={persisting}
                   style={[

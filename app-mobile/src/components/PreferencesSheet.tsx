@@ -654,12 +654,7 @@ export default function PreferencesSheet({
     setShowSuggestions(false);
     setIsInputFocused(false);
 
-    // Resolve coordinates: use suggestion.location if present, otherwise fetch via placeId
-    let coords = suggestion.location ?? null;
-    if (!coords && suggestion.placeId) {
-      coords = await geocodingService.getPlaceCoordinates(suggestion.placeId);
-    }
-    // Validate coordinate bounds before accepting
+    const coords = suggestion.location ?? null;
     if (coords && Math.abs(coords.lat) <= 90 && Math.abs(coords.lng) <= 180) {
       setSelectedCoords(coords);
     } else {
@@ -879,12 +874,7 @@ export default function PreferencesSheet({
         const results = await geocodingService.autocomplete(searchLocation);
         resolvedSuggestion = results[0] ?? null;
         if (resolvedSuggestion) {
-          let coords = resolvedSuggestion.location ?? null;
-          if (!coords && resolvedSuggestion.placeId) {
-            coords = await geocodingService.getPlaceCoordinates(
-              resolvedSuggestion.placeId,
-            );
-          }
+          const coords = resolvedSuggestion.location ?? null;
           if (coords && Math.abs(coords.lat) <= 90 && Math.abs(coords.lng) <= 180) {
             resolvedCoords = coords;
           }

@@ -227,7 +227,7 @@ export interface BusynessData {
 }
 
 export interface BookingOption {
-  provider: "opentable" | "eventbrite" | "viator" | "website" | "phone";
+  provider: "website" | "phone";
   available: boolean;
   url?: string;
   phone?: string;

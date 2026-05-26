@@ -11,7 +11,6 @@ interface GeocodingResult {
 export interface AutocompleteSuggestion {
   displayName: string;
   fullAddress: string;
-  placeId?: string;
   location?: { lat: number; lng: number };
 }
 
@@ -293,54 +292,9 @@ class GeocodingService {
     }
 
     try {
-      // Option 1: Use Google Places Autocomplete API (if available)
-      const GOOGLE_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
-
-      if (GOOGLE_API_KEY) {
-        try {
-          const response = await fetch(
-            `https://places.googleapis.com/v1/places:autocomplete`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "X-Goog-Api-Key": GOOGLE_API_KEY,
-                "X-Goog-FieldMask":
-                  "suggestions.placePrediction.placeId,suggestions.placePrediction.text",
-              },
-              body: JSON.stringify({
-                input: query,
-                /*  includedRegionCodes: ["us", "ca", "mx", "gb", "au", "nz"], */
-              }),
-            }
-          );
-
-          if (response.ok) {
-            const data = await response.json();
-
-            const suggestions = (data.suggestions || [])
-              .filter((s: any) => s.placePrediction)
-              .map((suggestion: any) => ({
-                displayName: suggestion.placePrediction?.text?.text || "",
-                fullAddress: suggestion.placePrediction?.text?.text || "",
-                placeId: suggestion.placePrediction?.placeId,
-              }));
-
-            if (suggestions.length > 0) {
-              this.cacheAutocompleteResult(cacheKey, suggestions);
-              return suggestions;
-            }
-          }
-        } catch (googleError) {
-          console.warn(
-            "Google Places Autocomplete failed, falling back to OpenStreetMap:",
-            googleError
-          );
-          // Fall through to OpenStreetMap
-        }
-      }
-
-      // Option 2: Fallback to OpenStreetMap Nominatim (free, but rate-limited)
+      // OpenStreetMap Nominatim (free, rate-limited, no API key required).
+      // Each result carries lat/lng directly, so downstream callers never need
+      // a separate place-details lookup.
       const response = await fetch(
         `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
           query
@@ -394,36 +348,6 @@ class GeocodingService {
     } catch (error) {
       console.error("Autocomplete error:", error);
       return [];
-    }
-  }
-
-  // Fetch coordinates for a Google Place ID via Place Details
-  async getPlaceCoordinates(placeId: string): Promise<{ lat: number; lng: number } | null> {
-    const GOOGLE_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
-    if (!GOOGLE_API_KEY || !placeId) return null;
-
-    try {
-      const response = await fetch(
-        `https://places.googleapis.com/v1/places/${placeId}`,
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Goog-Api-Key': GOOGLE_API_KEY,
-            'X-Goog-FieldMask': 'location',
-          },
-        }
-      );
-
-      if (!response.ok) return null;
-
-      const data = await response.json();
-      if (data.location?.latitude != null && data.location?.longitude != null) {
-        return { lat: data.location.latitude, lng: data.location.longitude };
-      }
-      return null;
-    } catch (error) {
-      console.error('Place Details error:', error);
-      return null;
     }
   }
 
