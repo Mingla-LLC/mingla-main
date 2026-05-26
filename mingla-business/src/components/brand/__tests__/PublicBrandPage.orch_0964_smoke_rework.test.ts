@@ -24,7 +24,6 @@ describe("ORCH-0964 smoke rework — business public-page preview chrome/theme",
       "</ScrollView>\n\n      <ThemeEntranceAnimation\n        theme={resolvedTheme}",
     );
     expect(sharedSource).toContain("replayOnMount");
-    expect(sharedSource).toContain("colorOverride={palette.accent}");
     expect(sharedSource).toContain('pointerEvents="none"');
     expect(sharedSource).toContain("styles.floatingChrome");
     expect(sharedSource).toContain('pointerEvents="box-none"');
@@ -44,14 +43,16 @@ describe("ORCH-0964 smoke rework — business public-page preview chrome/theme",
     expect(sharedSource).toContain("const contrastRatio = (a: string, b: string): number");
     expect(sharedSource).toContain("const contrastAdjustedAccent = (");
     expect(sharedSource).toContain("const useDark =");
-    expect(sharedSource).toContain("const accentColor = contrastAdjustedAccent(theme.color, page, 3.15)");
+    expect(sharedSource).toContain("contrastAdjustedAccent(theme.color, page, 3.15)");
+    expect(sharedSource).toContain("contrastAdjustedForWhiteText(");
     expect(sharedSource).toContain("backgroundColor: palette.page");
     expect(sharedSource).toContain("backgroundColor: palette.heroLift");
     expect(sharedSource).toContain("borderColor: palette.accent");
     expect(sharedSource).toContain("backgroundColor: palette.card");
     expect(sharedSource).toContain("backgroundColor: palette.accent");
     expect(sharedSource).toContain("color: palette.primaryText");
-    expect(sharedSource).toContain("color: palette.accentText");
+    expect(sharedSource).toContain('const accentText = "#ffffff"');
+    expect(sharedSource).toContain("const contrastAdjustedForWhiteText = (");
     expect(sharedSource).toContain("styles.identityTopRow");
     expect(sharedSource).toContain("flexDirection: \"column\"");
     expect(sharedSource).toContain("height: 174");
@@ -59,17 +60,28 @@ describe("ORCH-0964 smoke rework — business public-page preview chrome/theme",
     expect(sharedSource).not.toContain("styles.pageThemeWash,");
     expect(heroWrapBlock).not.toContain("position: \"absolute\"");
     expect(heroWrapBlock).toContain("height: 264");
+    expect(heroWrapBlock).toContain("maxWidth: 620");
   });
 
   test("social links render icon shapes instead of letter initials", () => {
     expect(sharedSource).toContain("type SocialKind");
-    expect(sharedSource).toContain("<SocialIcon kind={entry.kind} color={palette.accent} />");
+    expect(sharedSource).toContain('<SocialIcon kind={entry.kind} color="#ffffff" />');
     expect(sharedSource).toContain("const SocialIcon: React.FC");
     expect(sharedSource).toContain("styles.iconGlobe");
     expect(sharedSource).toContain("styles.iconCamera");
     expect(sharedSource).toContain("styles.iconVideoFrame");
+    expect(sharedSource).toContain('<SocialIcon kind={entry.kind} color="#ffffff" />');
+    expect(sharedSource).toContain("backgroundColor: palette.accent, borderColor: palette.accent");
     expect(sharedSource).not.toContain("entry.label.charAt(0)");
     expect(sharedSource).not.toContain("socialGlyph");
+  });
+
+  test("tab switcher is a premium branded segmented control with white labels", () => {
+    expect(sharedSource).toContain("{ backgroundColor: palette.accent, borderColor: palette.accent }");
+    expect(sharedSource).toContain("active && styles.tabButtonActive");
+    expect(sharedSource).toContain("backgroundColor: \"rgba(255,255,255,0.22)\"");
+    expect(sharedSource).toContain('{ color: "#ffffff" }');
+    expect(sharedSource).toContain("borderRadius: radius.full");
   });
 
   test("ticket CTA is promoted into a large themed card action", () => {
@@ -83,11 +95,11 @@ describe("ORCH-0964 smoke rework — business public-page preview chrome/theme",
 
   test("public brand animation replays per page mount without changing event-page behavior", () => {
     expect(animationSource).toContain("replayOnMount?: boolean");
-    expect(animationSource).toContain("colorOverride?: string");
     expect(animationSource).toContain("replayOnMount = false");
     expect(animationSource).toContain("mountIdRef");
     expect(animationSource).toContain("replayOnMount\n    ? `${sessionKey}:${theme.animation}:${mountIdRef.current}`");
-    expect(animationSource).toContain("colorOverride ?? theme.color");
+    expect(animationSource).not.toContain("colorFilters");
+    expect(animationSource).not.toContain("colorOverride");
     expect(animationSource).toContain("elevation: 6");
     expect(sharedSource).toContain(
       "sessionKey={`brand:${brand.slug}:${resolvedTheme.color}:${resolvedTheme.font}`}",

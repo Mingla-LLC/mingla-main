@@ -9,7 +9,6 @@ interface ThemeEntranceAnimationProps {
   theme: ResolvedTheme;
   sessionKey: string;
   replayOnMount?: boolean;
-  colorOverride?: string;
 }
 
 const playedSessionKeys = new Set<string>();
@@ -18,7 +17,6 @@ export const ThemeEntranceAnimation: React.FC<ThemeEntranceAnimationProps> = ({
   theme,
   sessionKey,
   replayOnMount = false,
-  colorOverride,
 }) => {
   const mountIdRef = useRef<string>(`${Date.now()}:${Math.random()}`);
   const mountedKey = replayOnMount
@@ -53,7 +51,6 @@ export const ThemeEntranceAnimation: React.FC<ThemeEntranceAnimationProps> = ({
         autoPlay
         loop={false}
         resizeMode="cover"
-        colorFilters={[{ keypath: "**", color: colorOverride ?? theme.color }]}
         style={styles.animation}
         onAnimationFinish={() => setShouldPlay(false)}
       />

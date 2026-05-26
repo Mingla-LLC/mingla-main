@@ -217,6 +217,19 @@ const contrastAdjustedAccent = (
   return adjusted;
 };
 
+const contrastAdjustedForWhiteText = (
+  accentColor: string,
+  minimumRatio: number,
+): string => {
+  if (contrastRatio(accentColor, "#ffffff") >= minimumRatio) return accentColor;
+  let adjusted = accentColor;
+  for (let i = 0; i < 12; i++) {
+    adjusted = mixHexColors(adjusted, "#000000", 0.14);
+    if (contrastRatio(adjusted, "#ffffff") >= minimumRatio) return adjusted;
+  }
+  return adjusted;
+};
+
 const createThemePalette = (theme: ResolvedTheme): ThemePalette => {
   const darkBase = "#07070a";
   const lightBase = "#f8fafc";
@@ -230,8 +243,11 @@ const createThemePalette = (theme: ResolvedTheme): ThemePalette => {
         : theme.foregroundColor === "#ffffff";
   const basePage = useDark ? darkBase : lightBase;
   const page = mixHexColors(basePage, theme.color, useDark ? 0.10 : 0.035);
-  const accentColor = contrastAdjustedAccent(theme.color, page, 3.15);
-  const accentText = readableTextFor(accentColor);
+  const accentColor = contrastAdjustedForWhiteText(
+    contrastAdjustedAccent(theme.color, page, 3.15),
+    4.5,
+  );
+  const accentText = "#ffffff";
   const primaryText = readableTextFor(page);
   const secondaryText =
     primaryText === "#ffffff" ? "rgba(255,255,255,0.78)" : "rgba(16,20,31,0.76)";
@@ -541,7 +557,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
         <View
           style={[
             styles.tabsRow,
-            { backgroundColor: palette.tabBand, borderBottomColor: palette.tabBorder },
+            { backgroundColor: palette.accent, borderColor: palette.accent },
           ]}
         >
           {visibleTabs.map((tab) => (
@@ -609,7 +625,6 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
         theme={resolvedTheme}
         sessionKey={`brand:${brand.slug}:${resolvedTheme.color}:${resolvedTheme.font}`}
         replayOnMount
-        colorOverride={palette.accent}
       />
     </View>
   );
@@ -699,13 +714,10 @@ const SocialLinksRow: React.FC<{
           accessibilityLabel={entry.label}
           style={[
             styles.socialBtnIconOnly,
-            {
-              backgroundColor: palette.accentWash,
-              borderColor: palette.panelBorder,
-            },
+            { backgroundColor: palette.accent, borderColor: palette.accent },
           ]}
         >
-          <SocialIcon kind={entry.kind} color={palette.accent} />
+          <SocialIcon kind={entry.kind} color="#ffffff" />
         </Pressable>
       ))}
     </View>
@@ -799,21 +811,21 @@ const TabButton: React.FC<{
     accessibilityLabel={label}
     style={[
       styles.tabButton,
-      active && { backgroundColor: palette.accent },
+      active && styles.tabButtonActive,
     ]}
   >
     <Text
       style={[
         styles.tabLabel,
         { fontFamily: theme.fontFamilyValue },
-        { color: active ? palette.accentText : palette.tertiaryText },
+        { color: "#ffffff" },
         active && styles.tabLabelActive,
       ]}
     >
       {label}
       {count !== undefined ? (
         <Text
-          style={[styles.tabCount, { color: active ? palette.accentText : palette.mutedText }]}
+          style={styles.tabCount}
         >
           {" "}
           {count}
@@ -953,21 +965,21 @@ const NextOfferingTeaser: React.FC<{
       accessibilityLabel={`Next offering ${item.name}`}
       style={({ pressed }) => [
         styles.nextTeaser,
-        { backgroundColor: palette.accentWash, borderColor: palette.panelBorder },
+        { backgroundColor: palette.accent, borderColor: palette.accent },
         pressed && styles.cardPressed,
       ]}
     >
-      <Text style={[styles.nextTeaserLabel, { color: palette.accent }]}>NEXT</Text>
+      <Text style={styles.nextTeaserLabel}>NEXT</Text>
       <Text
         style={[
           styles.nextTeaserBody,
-          { fontFamily: theme.fontFamilyValue, color: palette.primaryText },
+          { fontFamily: theme.fontFamilyValue },
         ]}
         numberOfLines={1}
       >
         {bodyText}
       </Text>
-      <Text style={[styles.nextTeaserArrow, { color: palette.accent }]}>→</Text>
+      <Text style={styles.nextTeaserArrow}>→</Text>
     </Pressable>
   );
 };
@@ -1390,8 +1402,11 @@ const styles = StyleSheet.create({
   },
   heroWrap: {
     height: 264,
-    marginHorizontal: -spacing.lg,
+    alignSelf: "center",
+    width: "100%",
+    maxWidth: 620,
     marginBottom: spacing.lg,
+    borderRadius: radius.md,
     overflow: "hidden",
   },
   heroGradient: {
@@ -1500,7 +1515,7 @@ const styles = StyleSheet.create({
   identityTopRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
+    gap: spacing.lg,
   },
   identityCopy: {
     flex: 1,
@@ -1564,7 +1579,7 @@ const styles = StyleSheet.create({
   },
   socialsRowCompact: {
     flexDirection: "row",
-    justifyContent: "flex-start",
+    justifyContent: "center",
     flexWrap: "wrap",
     alignSelf: "center",
     width: "100%",
@@ -1574,8 +1589,8 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   socialBtnIconOnly: {
-    width: 48,
-    height: 48,
+    width: 50,
+    height: 50,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: 999,
@@ -1802,6 +1817,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
   },
   nextTeaserLabel: {
+    color: "#ffffff",
     fontSize: 11,
     fontWeight: "800",
     letterSpacing: 1.4,
@@ -1809,45 +1825,57 @@ const styles = StyleSheet.create({
   nextTeaserBody: {
     flex: 1,
     fontSize: 15,
-    color: text.primary,
+    color: "#ffffff",
     fontWeight: "700",
   },
   nextTeaserArrow: {
+    color: "#ffffff",
     fontSize: 24,
     fontWeight: "800",
   },
   tabsRow: {
     flexDirection: "row",
-    flexWrap: "wrap",
     alignSelf: "center",
     width: "100%",
     maxWidth: 620,
-    gap: 6,
-    borderBottomWidth: 0,
-    borderBottomColor: "rgba(255, 255, 255, 0.06)",
-    borderRadius: radius.md,
-    padding: 6,
+    gap: 4,
+    borderWidth: 1,
+    borderRadius: radius.full,
+    padding: 5,
     marginBottom: spacing.lg,
+    shadowColor: "#000000",
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
   },
   tabButton: {
-    paddingVertical: 11,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.sm,
-    borderBottomWidth: 0,
-    borderBottomColor: "transparent",
+    flex: 1,
+    minHeight: 42,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 10,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.full,
     marginBottom: 0,
   },
+  tabButtonActive: {
+    backgroundColor: "rgba(255,255,255,0.22)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.36)",
+  },
   tabLabel: {
-    fontSize: 13,
-    fontWeight: "500",
+    fontSize: 12,
+    fontWeight: "800",
     color: text.tertiary,
+    textAlign: "center",
   },
   tabLabelActive: {
-    fontWeight: "600",
+    fontWeight: "900",
   },
   tabCount: {
-    color: text.quaternary,
-    fontWeight: "400",
+    color: "rgba(255,255,255,0.72)",
+    fontWeight: "700",
   },
   eventList: {
     alignSelf: "center",
