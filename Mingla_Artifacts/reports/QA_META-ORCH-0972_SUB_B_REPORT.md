@@ -1,27 +1,27 @@
 # QA_META-ORCH-0972_SUB_B_REPORT
 
 **ORCH:** META-ORCH-0972 [brand-kind decommission + universal feature access + data-driven hub/public tabs]  
-**Sub-scope:** Sub-B targeted verification with Phase 0.A live-fire gate  
+**Sub-scope:** Sub-B targeted verification with Phase 0.A live-fire retest  
 **Tester:** Codex `tester-mingla` parity mirror  
 **Date:** 2026-05-25  
 **Working tree:** `~/Desktop/mingla-orchs/meta-orch-0972-[brand-kind-decommission-universal-features]/`  
 **Branch:** `meta-orch-0972-brand-kind-decommission-universal-features`  
-**Baseline under test:** `3414ea6b8272a5cce864b474391781f8798ce5b3`  
-**Adversarial test commit:** `411925909`  
+**Baseline under retest:** `c9741eb52`  
+**Adversarial test commit:** `411925909` preserved (`git merge-base --is-ancestor 411925909 HEAD` PASS)  
 
 ## Verdict
 
-**BLOCKED / UNVERIFIED — do not dispatch Sub-C yet.**
+**FAIL — do not dispatch Sub-C yet.**
 
-Sub-B source and automated regression gates are green, and iOS live-fire partially passed. The mandatory Phase 0.A live-fire gate did not fully pass across all three required surfaces: Android became unstable during create-flow execution and rendered Expo's default app screen, and web preview was only verified to the signed-out auth screen because no authenticated browser session or test credentials were available.
+The missing live-fire matrix was retested. iOS and authenticated web preview now have usable evidence for the universal chooser path, and the required automated gates remain green. Android still fails the release gate: the stable Pixel 8 Pro emulator/dev-client repeatedly froze at the Expo bundling screen or ANR dialog and never rendered the authenticated Home/Hub path from the current worktree bundle.
 
-No product-code P0/P1 was proven in Sub-B source. The blocker is release-gate completeness: the required three-surface live-fire matrix is not fully evidenced.
+This is now an isolated Android runtime failure, not a source-only ambiguity. Per the routing rule, send this to `implementor-mingla` with the Android finding isolated; do not route to Sub-C.
 
 ## Comms Ledger
 
-Read `/Users/sethogieva/Desktop/mingla-main/COMMS_LEDGER.md` on entry before other work. Acknowledged open WARN entries addressed to ALL:
+Read `/Users/sethogieva/Desktop/mingla-main/COMMS_LEDGER.md` on entry before other work. Relevant open WARN entries addressed to ALL were already acknowledged for this Sub-B line and were factored into the retest:
 
-- COMMS-0002 — backend strict-grep warning; factored, no backend files touched.
+- COMMS-0002 — backend strict-grep warning; no backend files touched.
 - COMMS-0003 — external API docs gate; N/A, no external API integration changed.
 - COMMS-0004 — intake collision SOP; N/A for tester phase.
 
@@ -30,8 +30,8 @@ Read `/Users/sethogieva/Desktop/mingla-main/COMMS_LEDGER.md` on entry before oth
 - `Mingla_Artifacts/reports/IMPLEMENTATION_META-ORCH-0972_SUB_B.md`
 - `Mingla_Artifacts/reports/REVIEW_META-ORCH-0972_SUB_B.md`
 - `Mingla_Artifacts/design/PHASE_2_DESIGN_META-ORCH-0972_USER_JOURNEYS.md`
-- `Mingla_Artifacts/design/PHASE_2_DESIGN_META-ORCH-0972_COPY_INVENTORY.md`
 - `Mingla_Artifacts/specs/SPEC_META-ORCH-0972_BRAND_KIND_DECOMMISSION.md` §Sub-spec B
+- Prior `Mingla_Artifacts/reports/QA_META-ORCH-0972_SUB_B_REPORT.md` at `c9741eb52`
 
 ## Automated Verification
 
@@ -40,38 +40,28 @@ Read `/Users/sethogieva/Desktop/mingla-main/COMMS_LEDGER.md` on entry before oth
 | Mandatory Sub-B Jest + tester adversarial test | `npx jest --runInBand __tests__/hooks/useHubVisibleTabs.test.tsx __tests__/components/BrandCreationFlow.test.tsx` from `mingla-business/` | PASS — 2 suites, 8 tests |
 | Venue claim banner/service regression | `npx jest --runInBand src/services/__tests__/venueClaimService.test.ts` from `mingla-business/` | PASS — 1 suite, 4 tests |
 | Admin production build | `npm run build` from `mingla-admin/` | PASS — Vite build completed with existing chunk-size/dynamic CSS warnings |
+| Adversarial commit preserved | `git merge-base --is-ancestor 411925909 HEAD` | PASS |
 | Hard forbidden-path guard | `git diff --name-only fee178634..HEAD \| rg '(^supabase/|^\\.github/scripts/strict-grep/meta-orch-0972-|PublicBrandPage|publicEventsService|ExperienceMiniCard|useUpcomingFeed|EventMiniCard|TripMiniCard)'` | PASS — empty output |
-| Deleted persona files | `find mingla-business/src/components/brand -maxdepth 1 \( -name 'PersonaPickerCards.tsx' -o -name 'PersonaForkSheet.tsx' -o -name 'TripBrandWizard.tsx' \) -print` | PASS — empty output |
+| DB / edge / strict-grep touch guard | `git diff --name-only fee178634..HEAD -- supabase .github/scripts/strict-grep` | PASS — empty output |
+| Brand.kind reintroduction guard | `git diff --unified=0 fee178634..HEAD -- mingla-business mingla-admin \| rg '^\\+.*(Brand\\.kind|brand\\.kind|currentBrand\\.kind)'` | PASS — empty output |
 
-## Adversarial Regression Test
+## Phase 0.A Live-Fire Retest Evidence
 
-**Path:** `mingla-business/__tests__/hooks/useHubVisibleTabs.test.tsx`  
-**Commit:** `411925909`  
-**Angle:** stale `@mingla/hub/lastTab` value points at a removed tab while only `getstarted` is visible.
+New retest evidence files:
 
-The new test proves `deriveHubVisibleTabs({ events: 0, trips: 0, experiences: 0 })` returns `['getstarted']` and `pickHubInitialTab('experiences', ['getstarted'])` falls back to `getstarted`.
+- `Mingla_Artifacts/reports/evidence/meta-orch-0972-sub-b/ios-retest-authenticated-home.png`
+- `Mingla_Artifacts/reports/evidence/meta-orch-0972-sub-b/ios-retest-start.png`
+- `Mingla_Artifacts/reports/evidence/meta-orch-0972-sub-b/web-retest-authenticated-home.png`
+- `Mingla_Artifacts/reports/evidence/meta-orch-0972-sub-b/web-retest-hub-getstarted.png`
+- `Mingla_Artifacts/reports/evidence/meta-orch-0972-sub-b/android-retest-start.png`
+- `Mingla_Artifacts/reports/evidence/meta-orch-0972-sub-b/android-retest-after-wait.png`
+- `Mingla_Artifacts/reports/evidence/meta-orch-0972-sub-b/android-retest-after-long-wait.png`
+- `Mingla_Artifacts/reports/evidence/meta-orch-0972-sub-b/android-retest-authenticated-home.png`
+- `Mingla_Artifacts/reports/evidence/meta-orch-0972-sub-b/android-retest-10-0-2-2.png`
+- `Mingla_Artifacts/reports/evidence/meta-orch-0972-sub-b/android-retest-logcat-excerpt.txt`
+- `Mingla_Artifacts/reports/evidence/meta-orch-0972-sub-b/admin-retest-claims-pending.png`
 
-## Fails-On-Revert Re-Verification
-
-Performed in throwaway worktree `/tmp/mingla-0972-revert-check`:
-
-1. Added detached worktree at `3414ea6b8272a5cce864b474391781f8798ce5b3`.
-2. Ran `git revert --no-commit 3414ea6b8272a5cce864b474391781f8798ce5b3`.
-3. Restored only the two mandatory test files from `3414ea6b8272a5cce864b474391781f8798ce5b3`.
-4. Ran `npx jest --runInBand __tests__/hooks/useHubVisibleTabs.test.tsx __tests__/components/BrandCreationFlow.test.tsx`.
-
-**Result:** FAIL as expected.
-
-Material failure proof:
-
-- `BrandCreationFlow.test.tsx` failed because `src/components/brand/BrandCreationFlow.tsx` no longer exists under revert.
-- `useHubVisibleTabs.test.tsx` failed TypeScript compile because `../../src/hooks/useHubTabs` no longer exists under revert.
-
-This materially verifies the implementor's pre-amend `6633be066` fails-on-revert claim against the amended Sub-B commit.
-
-## Phase 0.A Live-Fire Evidence
-
-Evidence files:
+Prior evidence retained from `411925909` / `c9741eb52`:
 
 - `Mingla_Artifacts/reports/evidence/meta-orch-0972-sub-b/ios-offering-chooser.png`
 - `Mingla_Artifacts/reports/evidence/meta-orch-0972-sub-b/ios-event-create.png`
@@ -81,38 +71,37 @@ Evidence files:
 
 | Surface | Required coverage | Result | Evidence |
 |---|---|---|---|
-| iOS simulator | Empty-brand home/hub chooser; brand creation skip-address + skip-cover; Event/Trip/Experience creator routing; hub populated tabs; admin tabs | PARTIAL | iOS dev-client loaded this branch from Metro. Brand creation Step 1 → Step 4 worked. Skip-address and skip-cover worked. Step 4 OfferingChooser rendered. Event selection routed to event creator. Trip/Experience route live-fire and hub/admin live-fire were not completed before Android/web blockers made the gate non-passable. |
-| Android emulator | Same business-app checklist | BLOCKED / UNVERIFIED | Emulator booted after manual foreground start. App loaded the branch Home screen after dismissing a System UI ANR. During create-flow attempt, the app later rendered Expo's default "Welcome to Expo / Start by creating a file in the app directory" screen, so Android create-flow evidence is not trustworthy. |
-| Web preview | Same business-app checklist where applicable | BLOCKED / UNVERIFIED | Expo web served on `http://localhost:8081`; headless Chrome reached the signed-out Mingla Business auth screen. No authenticated browser session or test credentials were available, so Home/Hub/create/admin runtime paths were not live-fired on web. |
-| Admin web | Venue Claims Pending/Verified/Rejected tabs | SOURCE + BUILD PASS, LIVE-FIRE UNVERIFIED | `ClaimsPage.jsx` has Pending review / Verified / Rejected tabs and dispatches to `listPendingClaims`, `listVerifiedClaims`, `listRejectedClaims`; `adminClaimsService.js` filters `claim_status` and no longer filters `.eq("kind", "physical")`. Admin build passed. Browser live-fire was not completed. |
+| iOS simulator | Authenticated empty-brand Home/Hub chooser; brand creation skip-address + skip-cover; Event/Trip/Experience creator routing; hub populated tabs | PARTIAL PASS | Current worktree bundle loaded on authenticated iPhone 17 Pro Max simulator and rendered the empty-brand Home chooser with Event / Trip / Experience cards. Prior retained iOS evidence shows OfferingChooser and Event creator routing. Trip/Experience route refresh was not completed after Android reproduced the blocker. |
+| Android emulator/dev-client | Same business-app checklist on stable Android emulator/dev-client | FAIL | Pixel 8 Pro AVD launched `com.sethogieva.minglabusiness` from the current Metro URL. The app produced System UI / Business ANR dialogs and remained stuck at `Bundling 89.0%...` even after Metro reported `Android Bundled 47774ms index.js (3201 modules)`. Retried with both LAN host URL and `10.0.2.2`; neither produced a usable authenticated Home/Hub screen. |
+| Authenticated web preview | Authenticated business preview Home/Hub chooser where applicable | PASS | Headless Chromium injected the existing Supabase web auth session and loaded `http://localhost:8097` plus `/hub/getstarted`. Body text included the authenticated brand name, `What do you want to make first?`, and Event / Trip / Experience chooser cards on both Home and Hub Get Started. |
+| Admin web | Venue Claims Pending/Verified/Rejected tabs | BLOCKED BY AUTH | Admin Vite served on `http://127.0.0.1:5177/#/claims`, but no authenticated admin browser/session state was available. Injecting the business Supabase session correctly landed on the admin login screen, so the Venue Claims tabs could not be live-fired. Source and build still verify the Pending review / Verified / Rejected tabs and the removal of `.eq("kind", "physical")` from claims queries. |
 
-## Findings
+## Android Failure Detail
 
-### P1 — Mandatory three-surface live-fire gate is incomplete
+### P1 — Android dev-client runtime freeze/ANR blocks Phase 0.A
 
-Sub-C dispatch is blocked because the required Phase 0.A matrix does not have complete PASS evidence for iOS, Android, and web preview. iOS produced useful partial proof, but Android and web did not complete the requested flows.
+Reproduction:
 
-**Required retest:** rerun Phase 0.A with stable authenticated sessions on iOS simulator, Android emulator, and web preview. Capture either Maestro output or screenshots for: empty-brand Home and Hub chooser, skip-address + skip-cover brand creation, Event/Trip/Experience route selection, populated-only hub tabs, and Admin Venue Claims tab switching.
+1. Start Metro from the Sub-B worktree with `npx expo start --clear --dev-client --port 8097`.
+2. Boot Pixel 8 Pro AVD and launch `com.sethogieva.minglabusiness` with the Expo dev-client URL.
+3. Observe System UI / Business ANR and persistent `Bundling 89.0%...`; retry with `10.0.2.2:8097`.
 
-### P2 — OfferingChooser icon choice drifts from locked design
+Observed log excerpt:
 
-SPEC B.1.a says the three buttons use Calendar / Map / Sparkles. `OfferingChooser.tsx` uses `calendar`, `compass`, and `sparkle`. This is not the blocker, but it is a small design-lock mismatch to resolve before close if the locked icon names are considered exact rather than representative.
+- `Running "main" with {"rootTag":1,"initialProps":{},"fabric":true}`
+- `[ReferenceError: Property 'document' doesn't exist]`
+- `[auth] auth-event { event: 'INITIAL_SESSION', hasSession: true, hasUser: true }`
+- `Cycle17d §C] Evicted 0 entries from 0 ended events.`
+
+Interpretation: Android reaches React bootstrap/auth code, but the dev-client runtime never becomes usable. This reproduces the Android blocker and prevents full Phase 0.A PASS.
 
 ## Non-Blocker Notes
 
-- `useBrandOfferingCounts` uses three direct `events` count queries instead of the spec's future `pg_brand_offering_counts` RPC. The Sub-B review accepted this as a transitional choice because Sub-C owns the RPC; no DB or migration touch was allowed in Sub-B.
-- Metro logged existing warnings, including the known Stripe React Native `forwardRef` dev warning and route warning for `eventCardStatus.ts`. No Sub-B-specific crash was proven from those logs.
-
-## Retest Contract
-
-To convert this to PASS, tester must produce a new report showing:
-
-1. iOS simulator: all Ready-To-Test checklist items 1-4 complete.
-2. Android emulator: all Ready-To-Test checklist items 1-4 complete with no Expo default-screen fallback.
-3. Web preview: authenticated Home/Hub/create runtime paths and admin Venue Claims tab switching complete.
-4. Mandatory Jest suites still pass at HEAD with the adversarial test.
-5. Hard guards still show no DB, migrations, edge functions, forbidden public-page files, forbidden strict-grep scripts, or Brand.kind reintroduction.
+- Web preview is no longer merely signed-out/unverified; authenticated Home and Hub Get Started passed.
+- Admin Claims remains a credentials/session availability blocker, not a proven Venue Claims page crash.
+- The previous P2 icon note remains non-blocking: the spec says Calendar / Map / Sparkles while `OfferingChooser.tsx` uses calendar / compass / sparkle.
+- No DB, migrations, edge functions, forbidden public-page files, or META-ORCH-0972 strict-grep scripts changed in this retest.
 
 ## Downstream Routing
 
-Do not dispatch Sub-C yet. Route back to tester after the authenticated web session and stable Android emulator/dev-client state are available; if the Expo default-screen issue reproduces on a clean Android dev-client launch, route to `implementor-mingla` only with that Android finding isolated and reproducible.
+Do not dispatch Sub-C. Route to `implementor-mingla` with this isolated Android runtime finding and preserve the Sub-B hard guards: no DB/migrations/edge, no forbidden public-page files, no META-ORCH-0972 strict-grep script touch, no Brand.kind reintroduction, and no Sub-A rewrites.

@@ -1,0 +1,601 @@
+--------- beginning of main
+05-25 15:51:58.699 I/AiAiEcho( 1382): Predicting[0]:  [CONTEXT sampling_count=5 ]
+05-25 15:51:58.699 I/AiAiEcho( 1382): EchoTargets: 
+05-25 15:51:58.699 I/AiAiEcho( 1382): Filtered by AiAi flag check: 
+05-25 15:51:58.699 I/AiAiEcho( 1382): [CONTEXT ratelimit_period="10 SECONDS" ]
+05-25 15:51:58.700 I/AiAiEcho( 1382): Ranked targets strategy: SORT, count: 0, ranking metadata:  [CONTEXT ratelimit_period="10 SECONDS" ]
+05-25 15:51:58.701 I/AiAiEcho( 1382): #remoteViewsTwiddler: feature disabled.
+05-25 15:51:58.701 D/CarrierSvcBindHelper(  944): No carrier app for: 0
+05-25 15:51:58.702 I/AiAiEcho( 1382): #postPredictionTargets: Sending updates to UISurface home with targets# 0 (types=[])
+05-25 15:51:58.748 I/NearbySharing( 1061): Network state changed: NetworkState(isRestricted=false, isOnline=true, isCongested=false, isMetered=false, isWifiConnected=true)
+05-25 15:51:58.754 W/AppSearchIcing(  562): icing-search-engine.cc:321: Error: 5, Message: Document (com.google.android.googlequicksearchbox$OneSearchZeroStateGoogleSuggestions/default, zp) not found.
+05-25 15:51:58.765 I/ActivityScheduler( 1061): nextTriggerTime: 629844, in 235299ms, detectorType: 39, FULL_TYPE alarmWindowMillis: 30000
+05-25 15:51:58.777 D/OneSearchSuggestProvider( 1256): AppSearch 0-state cache not available, fallback to AGA
+05-25 15:51:58.777 D/OneSearchSuggestProvider( 1256): java.util.concurrent.CompletionException: java.util.NoSuchElementException: No value present
+05-25 15:51:58.777 D/OneSearchSuggestProvider( 1256): 	at java.util.concurrent.CompletableFuture.encodeThrowable(CompletableFuture.java:308)
+05-25 15:51:58.777 D/OneSearchSuggestProvider( 1256): 	at java.util.concurrent.CompletableFuture.completeThrowable(CompletableFuture.java:323)
+05-25 15:51:58.777 D/OneSearchSuggestProvider( 1256): 	at java.util.concurrent.CompletableFuture$UniAccept.tryFire(CompletableFuture.java:684)
+05-25 15:51:58.777 D/OneSearchSuggestProvider( 1256): 	at java.util.concurrent.CompletableFuture.postComplete(CompletableFuture.java:486)
+05-25 15:51:58.777 D/OneSearchSuggestProvider( 1256): 	at java.util.concurrent.CompletableFuture.completeExceptionally(CompletableFuture.java:2138)
+05-25 15:51:58.777 D/OneSearchSuggestProvider( 1256): 	at com.google.android.apps.nexuslauncher.allapps.E0.onResult(go/retraceme 2855a437b73635ce9cad76b9289087e631bbb67fc90008a0da13d343a00e5041:67)
+05-25 15:51:58.777 D/OneSearchSuggestProvider( 1256): 	at android.app.appsearch.SearchSessionUtil$1.lambda$onResult$0(go/retraceme 64eee9e9f568ff45978879ad2ff83146f2618ee8a88278736fbdf5fae931976e:144)
+05-25 15:51:58.777 D/OneSearchSuggestProvider( 1256): 	at android.app.appsearch.SearchSessionUtil$1.$r8$lambda$CEk3q8sDAQVhU3rQwVueB8FAj_M(go/retraceme 64eee9e9f568ff45978879ad2ff83146f2618ee8a88278736fbdf5fae931976e:1)
+05-25 15:51:58.777 D/OneSearchSuggestProvider( 1256): 	at android.app.appsearch.SearchSessionUtil$1$$ExternalSyntheticLambda0.run(go/retraceme 64eee9e9f568ff45978879ad2ff83146f2618ee8a88278736fbdf5fae931976e:22)
+05-25 15:51:58.777 D/OneSearchSuggestProvider( 1256): 	at android.os.Handler.handleCallback(Handler.java:959)
+05-25 15:51:58.777 D/OneSearchSuggestProvider( 1256): 	at android.os.Handler.dispatchMessage(Handler.java:100)
+05-25 15:51:58.777 D/OneSearchSuggestProvider( 1256): 	at android.os.Looper.loopOnce(Looper.java:232)
+05-25 15:51:58.777 D/OneSearchSuggestProvider( 1256): 	at android.os.Looper.loop(Looper.java:317)
+05-25 15:51:58.777 D/OneSearchSuggestProvider( 1256): 	at android.os.HandlerThread.run(HandlerThread.java:85)
+05-25 15:51:58.777 D/OneSearchSuggestProvider( 1256): Caused by: java.util.NoSuchElementException: No value present
+05-25 15:51:58.777 D/OneSearchSuggestProvider( 1256): 	at java.util.Optional.get(Optional.java:143)
+05-25 15:51:58.777 D/OneSearchSuggestProvider( 1256): 	at com.google.android.apps.nexuslauncher.allapps.E0.onResult(go/retraceme 2855a437b73635ce9cad76b9289087e631bbb67fc90008a0da13d343a00e5041:28)
+05-25 15:51:58.777 D/OneSearchSuggestProvider( 1256): 	... 8 more
+05-25 15:51:58.778 D/BaseDepthController( 1256): setSurface:
+05-25 15:51:58.778 D/BaseDepthController( 1256): 	mWaitingOnSurfaceValidity: false
+05-25 15:51:58.778 D/BaseDepthController( 1256): 	mSurface: Surface(name=com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity)/@0x1bee8a4
+05-25 15:51:58.822 D/OneSearchSuggestProvider( 1256): Created the binder channel successfully for end point service =com.google.android.apps.search.googleapp.search.suggest.plugins.onesearch.server.OneSearchSuggestService , mChannel=i1{delegate=f{logId=9, target=directaddress:///AndroidComponentAddress%5BIntent%20%7B%20act=grpc.io.action.BIND%20cmp=com.google.android.googlequicksearchbox/com.google.android.apps.search.googleapp.search.suggest.plugins.onesearch.server.OneSearchSuggestService%20%7D%5D}} , mOneSearchConnection=l2.Z@bdd99a1
+--------- beginning of system
+05-25 15:51:58.909 D/ActivityManager(  562): sync unfroze 1570 com.google.android.googlequicksearchbox:search for 6
+05-25 15:52:00.137 E/SurfaceSyncGroup( 1256): Failed to receive transaction ready in 1000ms. Marking SurfaceSyncGroup(wmsSync-VRI[NexusLauncherActivity]#26) as ready
+05-25 15:52:00.137 E/SurfaceSyncGroup( 1256): Failed to receive transaction ready in 1000ms. Marking SurfaceSyncGroup(VRI[NexusLauncherActivity]#27) as ready
+05-25 15:52:00.410 V/WindowManagerShell(  810): onTransitionReady(transaction=2413771621175)
+05-25 15:52:00.526 V/WindowManagerShell(  810): onTransitionReady (#18) android.os.BinderProxy@3739972: {id=18 t=OPEN f=0x0 trk=0 r=[0@Point(0, 0)] c=[{WCT{android.window.IWindowContainerToken$Stub$Proxy@5495835} m=TO_FRONT f=SHOW_WALLPAPER|MOVE_TO_TOP leash=Surface(name=Task=1)/@0x9195d79 sb=Rect(0, 0 - 1344, 2992) eb=Rect(0, 0 - 1344, 2992) d=0 taskParent=-1},{WCT{android.window.IWindowContainerToken$Stub$Proxy@718e4ca} m=TO_BACK f=NONE leash=Surface(name=Task=22)/@0xedddabe sb=Rect(0, 0 - 1344, 2992) eb=Rect(0, 0 - 1344, 2992) d=0 taskParent=-1},{null m=TO_FRONT f=IS_WALLPAPER leash=Surface(name=WallpaperWindowToken{9da8f8f token=android.os.Binder@1d18eee})/@0xa10371f sb=Rect(0, 0 - 1344, 2992) eb=Rect(0, 0 - 1344, 2992) d=0}]}
+05-25 15:52:00.527 V/WindowManagerShell(  810): Playing animation for (#18) android.os.BinderProxy@3739972@0
+05-25 15:52:00.527 V/WindowManagerShell(  810):  try handler com.android.wm.shell.transition.DefaultMixedHandler@d4818b3
+05-25 15:52:00.527 V/WindowManagerShell(  810):  try handler com.android.wm.shell.keyguard.KeyguardTransitionHandler@cab3e70
+05-25 15:52:00.527 V/WindowManagerShell(  810):  try handler com.android.wm.shell.pip.PipTransition@c8fe5e9
+05-25 15:52:00.527 V/WindowManagerShell(  810):  try handler com.android.wm.shell.activityembedding.ActivityEmbeddingController@c88126e
+05-25 15:52:00.527 V/WindowManagerShell(  810):  try handler com.android.wm.shell.recents.RecentsTransitionHandler@aa18d0f
+05-25 15:52:00.527 V/ShellRecents(  810): RecentsTransitionHandler.startAnimation: no controller found
+05-25 15:52:00.527 V/WindowManagerShell(  810):  try handler com.android.wm.shell.splitscreen.StageCoordinator@85dd19c
+05-25 15:52:00.527 V/WindowManagerShell(  810):  try handler com.android.wm.shell.transition.RemoteTransitionHandler@77f7a5
+05-25 15:52:00.527 V/WindowManagerShell(  810): Transition doesn't have explicit remote, search filters for match for {id=18 t=OPEN f=0x0 trk=0 r=[0@Point(0, 0)] c=[{WCT{android.window.IWindowContainerToken$Stub$Proxy@5495835} m=TO_FRONT f=SHOW_WALLPAPER|MOVE_TO_TOP leash=Surface(name=Task=1)/@0x9195d79 sb=Rect(0, 0 - 1344, 2992) eb=Rect(0, 0 - 1344, 2992) d=0 taskParent=-1},{WCT{android.window.IWindowContainerToken$Stub$Proxy@718e4ca} m=TO_BACK f=NONE leash=Surface(name=Task=22)/@0xedddabe sb=Rect(0, 0 - 1344, 2992) eb=Rect(0, 0 - 1344, 2992) d=0 taskParent=-1},{null m=TO_FRONT f=IS_WALLPAPER leash=Surface(name=WallpaperWindowToken{9da8f8f token=android.os.Binder@1d18eee})/@0xa10371f sb=Rect(0, 0 - 1344, 2992) eb=Rect(0, 0 - 1344, 2992) d=0}]}
+05-25 15:52:00.527 V/WindowManagerShell(  810):  Checking filter Pair{{types=[] flags=0x0] notFlags=0x0 checks=[{atype=undefined independent=true modes=[OPEN,TO_FRONT] flags=IN_TASK_WITH_EMBEDDED_ACTIVITY mustBeTask=false order=ANY topActivity=ComponentInfo{com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity} launchCookie=null},{atype=undefined independent=true modes=[CLOSE,TO_BACK] flags=IN_TASK_WITH_EMBEDDED_ACTIVITY mustBeTask=false order=ANY topActivity=null launchCookie=null}]} RemoteTransition { remoteTransition = android.window.IRemoteTransition$Stub$Proxy@98b263b, appThread = android.app.IApplicationThread$Stub$Proxy@2877158, debugName = OverlaySwipeBack }}
+05-25 15:52:00.528 V/WindowManagerShell(  810):  Checking filter Pair{{types=[] flags=0x0] notFlags=0x0 checks=[{atype=dream independent=true modes=[OPEN,TO_FRONT] flags=NONE mustBeTask=false order=ANY topActivity=null launchCookie=null},{atype=home independent=true modes=[CLOSE,TO_BACK] flags=NONE mustBeTask=false order=ANY topActivity=null launchCookie=null}]} RemoteTransition { remoteTransition = android.window.IRemoteTransition$Stub$Proxy@a4442b1, appThread = android.app.IApplicationThread$Stub$Proxy@1488396, debugName = LauncherToDream }}
+05-25 15:52:00.528 V/WindowManagerShell(  810):  Checking filter Pair{{types=[] flags=0x0] notFlags=0x100 checks=[{atype=home independent=true modes=[OPEN,TO_FRONT] flags=NONE mustBeTask=false order=TOP topActivity=ComponentInfo{com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity} launchCookie=null},{atype=standard independent=true modes=[CLOSE,TO_BACK] flags=NONE mustBeTask=false order=ANY topActivity=null launchCookie=null}]} RemoteTransition { remoteTransition = android.window.IRemoteTransition$Stub$Proxy@ffbeb17, appThread = android.app.IApplicationThread$Stub$Proxy@aae4b04, debugName = QuickstepLaunchHome }}
+05-25 15:52:00.528 D/RemoteTransitionHandler(  810): Found filterPair{{types=[] flags=0x0] notFlags=0x100 checks=[{atype=home independent=true modes=[OPEN,TO_FRONT] flags=NONE mustBeTask=false order=TOP topActivity=ComponentInfo{com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity} launchCookie=null},{atype=standard independent=true modes=[CLOSE,TO_BACK] flags=NONE mustBeTask=false order=ANY topActivity=null launchCookie=null}]} RemoteTransition { remoteTransition = android.window.IRemoteTransition$Stub$Proxy@ffbeb17, appThread = android.app.IApplicationThread$Stub$Proxy@aae4b04, debugName = QuickstepLaunchHome }}
+05-25 15:52:00.528 V/WindowManagerShell(  810):  Delegate animation for (#18) to RemoteTransition { remoteTransition = android.window.IRemoteTransition$Stub$Proxy@ffbeb17, appThread = android.app.IApplicationThread$Stub$Proxy@aae4b04, debugName = QuickstepLaunchHome }
+05-25 15:52:00.624 W/Looper  (  562): Slow dispatch took 193ms android.fg h=android.os.Handler c=com.android.server.wm.ActivityMetricsLogger$$ExternalSyntheticLambda0@d3a9be9 m=0
+05-25 15:52:00.715 I/Zygote  (  361): Process 3766 exited due to signal 9 (Killed)
+05-25 15:52:00.719 I/adbd    (  414): Remote process closed the socket (on MSG_PEEK)
+05-25 15:52:00.824 I/HWUI    ( 1256): Davey! duration=1770ms; Flags=1, FrameTimelineVsyncId=17416, IntendedVsync=394319972443, Vsync=394319972443, InputEventId=0, HandleInputStart=394334484186, AnimationStart=394334485186, PerformTraversalsStart=394334635186, DrawStart=394561438103, FrameDeadline=394336639109, FrameInterval=394334479019, FrameStartTime=16666666, SyncQueued=394564561394, SyncStart=394655619436, IssueDrawCommandsStart=394711462603, SwapBuffers=395878312187, FrameCompleted=396181374478, DequeueBufferDuration=4875, QueueBufferDuration=555917, GpuCompleted=396181374478, SwapBuffersCompleted=396016927228, DisplayPresentTime=72904454231883892, CommandSubmissionCompleted=395878312187, 
+05-25 15:52:01.200 I/Choreographer( 1256): Skipped 158 frames!  The application may be doing too much work on its main thread.
+05-25 15:52:01.214 I/libprocessgroup(  562): Removed cgroup /sys/fs/cgroup/uid_10207/pid_3766
+05-25 15:52:01.252 V/ActivityManager(  562): Got obituary of 3766:com.sethogieva.minglabusiness
+05-25 15:52:01.311 W/Looper  (  562): Slow delivery took 468ms main h=android.os.Handler c=<recycled PooledLambda@cab906e> m=0
+05-25 15:52:01.312 W/Looper  (  562): Slow dispatch took 125ms main h=android.os.Handler c=<recycled PooledLambda@cab906e> m=0
+05-25 15:52:01.425 I/ImeTracker(  562): com.sethogieva.minglabusiness:7409bfbc: onRequestHide at ORIGIN_SERVER reason HIDE_REMOVE_CLIENT fromUser false
+05-25 15:52:01.426 I/ImeTracker(  562): com.sethogieva.minglabusiness:7409bfbc: onCancelled at PHASE_SERVER_SHOULD_HIDE
+05-25 15:52:01.428 W/Looper  (  562): Drained
+05-25 15:52:01.481 I/AiAiEcho( 1382): Predicting[0]:  [CONTEXT sampling_count=5 ]
+05-25 15:52:01.482 I/AiAiEcho( 1382): EchoTargets: 
+05-25 15:52:01.482 I/AiAiEcho( 1382): Filtered by AiAi flag check: 
+05-25 15:52:01.482 I/AiAiEcho( 1382): [CONTEXT ratelimit_period="10 SECONDS" ]
+05-25 15:52:01.482 I/AiAiEcho( 1382): Ranked targets strategy: SORT, count: 0, ranking metadata:  [CONTEXT ratelimit_period="10 SECONDS" ]
+05-25 15:52:01.482 I/AiAiEcho( 1382): #remoteViewsTwiddler: feature disabled.
+05-25 15:52:01.485 I/AiAiEcho( 1382): Predicting[0]:  [CONTEXT sampling_count=5 ]
+05-25 15:52:01.485 I/AiAiEcho( 1382): EchoTargets: 
+05-25 15:52:01.485 I/AiAiEcho( 1382): Filtered by AiAi flag check: 
+05-25 15:52:01.485 I/AiAiEcho( 1382): [CONTEXT ratelimit_period="10 SECONDS" ]
+05-25 15:52:01.485 I/AiAiEcho( 1382): Ranked targets strategy: SORT, count: 0, ranking metadata:  [CONTEXT ratelimit_period="10 SECONDS" ]
+05-25 15:52:01.485 I/AiAiEcho( 1382): #remoteViewsTwiddler: feature disabled.
+05-25 15:52:01.485 I/AiAiEcho( 1382): #postPredictionTargets: Sending updates to UISurface lockscreen with targets# 0 (types=[])
+05-25 15:52:01.486 I/AiAiEcho( 1382): #postPredictionTargets: Sending updates to UISurface home with targets# 0 (types=[])
+05-25 15:52:01.511 D/SsBaseTemplateCard( 1256): No text view can be set up
+05-25 15:52:01.519 D/SsBaseTemplateCard( 1256): Passed-in item info is null
+05-25 15:52:01.519 D/SsBaseTemplateCard( 1256): Passed-in item info is null
+05-25 15:52:01.519 D/SsBaseTemplateCard( 1256): Passed-in item info is null
+05-25 15:52:01.519 I/SsBaseTemplateCard( 1256): Secondary card pane is null
+05-25 15:52:01.713 D/StatsLog( 1256): LAUNCHER_ALLAPPS_COUNT
+05-25 15:52:01.753 V/WindowManager(  562): Sent Transition (#18) createdAt=05-25 15:51:58.296 via request=TransitionRequestInfo { type = OPEN, triggerTask = TaskInfo{userId=0 taskId=20 displayId=0 isRunning=true baseIntent=Intent { act=android.intent.action.MAIN cat=[android.intent.category.HOME] flg=0x10000100 cmp=com.google.android.apps.nexuslauncher/.NexusLauncherActivity } baseActivity=ComponentInfo{com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity} topActivity=ComponentInfo{com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity} origActivity=null realActivity=ComponentInfo{com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity} numActivities=1 lastActiveTime=394086 supportsMultiWindow=true resizeMode=2 isResizeable=true minWidth=-1 minHeight=-1 defaultMinSize=220 token=WCT{RemoteToken{18aeedd Task{24ffc3d #20 type=home I=com.google.android.apps.nexuslauncher/.NexusLauncherActivity}}} topActivityType=2 pictureInPictureParams=null shouldDockBigOverlays=false launchIntoPipHostTaskId=-1 lastParentTaskIdBeforePip=-1 displayCutoutSafeInsets=null topActivityInfo=ActivityInfo{cb87f9c com.google.android.apps.nexuslauncher.NexusLauncherActivity} launchCookies=[] positionInParent=Point(0, 0) parentTaskId=-1 isFocused=true isVisible=false isVisibleRequested=true isSleeping=false locusId=null displayAreaFeatureId=1 isTopActivityTransparent=false appCompatTaskInfo=AppCompatTaskInfo { topActivityInSizeCompat=false topActivityEligibleForLetterboxEducation= falseisLetterboxEducationEnabled= true isLetterboxDoubleTapEnabled= false topActivityEligibleForUserAspectRatioButton= false topActivityBoundsLetterboxed= false isFromLetterboxDoubleTap= false topActivityLetterboxVerticalPosition= -1 topActivityLetterboxHorizontalPosition= -1 topActivityLetterboxWidth=1344 topActivityLetterboxHeight=2992 isUserFullscreenOverrideEnabled=false isSystemFullscreenOverrideEnabled=false cameraCompatTaskInfo=CameraCompatTaskInfo { cameraCompatControlState=hidden freeformCameraCompatMode=inactive}}}, pipTask = null, remoteTransition = null, displayChange = null, flags = 0, debugId = 18 }
+05-25 15:52:01.753 V/WindowManager(  562):     startWCT=WindowContainerTransaction { changes = {} hops = [] errorCallbackToken=null taskFragmentOrganizer=null }
+05-25 15:52:01.753 V/WindowManager(  562):     info={id=18 t=OPEN f=0x0 trk=0 r=[0@Point(0, 0)] c=[
+05-25 15:52:01.753 V/WindowManager(  562):         {WCT{RemoteToken{725058c Task{8d7c64d #1 type=home}}} m=TO_FRONT f=SHOW_WALLPAPER|MOVE_TO_TOP leash=Surface(name=Task=1)/@0x2333f1d sb=Rect(0, 0 - 1344, 2992) eb=Rect(0, 0 - 1344, 2992) d=0 taskParent=-1},
+05-25 15:52:01.753 V/WindowManager(  562):         {WCT{RemoteToken{3715618 Task{28c29d0 #22 type=standard A=10207:com.sethogieva.minglabusiness}}} m=TO_BACK f=NONE leash=Surface(name=Task=22)/@0xabe332c sb=Rect(0, 0 - 1344, 2992) eb=Rect(0, 0 - 1344, 2992) d=0 taskParent=-1},
+05-25 15:52:01.753 V/WindowManager(  562):         {null m=TO_FRONT f=IS_WALLPAPER leash=Surface(name=WallpaperWindowToken{9da8f8f token=android.os.Binder@1d18eee})/@0xc385422 sb=Rect(0, 0 - 1344, 2992) eb=Rect(0, 0 - 1344, 2992) d=0}
+05-25 15:52:01.753 V/WindowManager(  562):     ]}
+05-25 15:52:01.753 I/Choreographer(  562): Skipped 84 frames!  The application may be doing too much work on its main thread.
+05-25 15:52:01.959 I/WindowManager(  562): WIN DEATH: Window{fb36274 u0 com.sethogieva.minglabusiness/com.sethogieva.minglabusiness.MainActivity}
+05-25 15:52:01.967 W/InputManager-JNI(  562): Input channel object 'fb36274 com.sethogieva.minglabusiness/com.sethogieva.minglabusiness.MainActivity (client)' was disposed without first being removed with the input manager!
+05-25 15:52:01.970 V/WindowManagerShell(  810):  animated by com.android.wm.shell.transition.RemoteTransitionHandler@77f7a5
+05-25 15:52:01.977 W/ActivityManager(  562): setHasOverlayUi called on unknown pid: 3766
+05-25 15:52:02.092 I/A       ( 1570): (REDACTED) Created gRPC endpoint for service %s
+05-25 15:52:02.105 W/UserManagerService(  562): Requested status bar icon for non-badged user 0
+05-25 15:52:02.109 D/StateManager( 1256): createAtomicAnimation - fromState: Background, toState: Normal, partial trace:
+05-25 15:52:02.109 D/StateManager( 1256): 	at com.android.quickstep.util.WorkspaceRevealAnim.prepareToAnimate(go/retraceme 2855a437b73635ce9cad76b9289087e631bbb67fc90008a0da13d343a00e5041:22)
+05-25 15:52:02.109 D/StateManager( 1256): 	at com.android.quickstep.util.WorkspaceRevealAnim.<init>(go/retraceme 2855a437b73635ce9cad76b9289087e631bbb67fc90008a0da13d343a00e5041:11)
+05-25 15:52:02.109 D/StateManager( 1256): 	at com.android.launcher3.QuickstepTransitionManager.createWallpaperOpenAnimations(go/retraceme 2855a437b73635ce9cad76b9289087e631bbb67fc90008a0da13d343a00e5041:735)
+05-25 15:52:02.141 I/HWUI    ( 1256): Davey! duration=3359ms; Flags=0, FrameTimelineVsyncId=17423, IntendedVsync=394336639109, Vsync=396969972337, InputEventId=0, HandleInputStart=397032854979, AnimationStart=397032856146, PerformTraversalsStart=397033099312, DrawStart=397033273771, FrameDeadline=396203305701, FrameInterval=396979831604, FrameStartTime=16666666, SyncQueued=397044831896, SyncStart=397122985604, IssueDrawCommandsStart=397123241979, SwapBuffers=397534434229, FrameCompleted=397773991604, DequeueBufferDuration=8333, QueueBufferDuration=942542, GpuCompleted=397773991604, SwapBuffersCompleted=397617239604, DisplayPresentTime=72057628415623265, CommandSubmissionCompleted=397534434229, 
+05-25 15:52:02.142 W/PageIndicator(  810): Total number of pages invalid: 0. Assuming 1 page.
+05-25 15:52:02.148 I/Choreographer( 1256): Skipped 52 frames!  The application may be doing too much work on its main thread.
+05-25 15:52:02.149 D/EGL_emulation(  810): app_time_stats: avg=11293.44ms min=196.33ms max=22390.54ms count=2
+05-25 15:52:02.153 D/SsBaseTemplateCard( 1256): No text view can be set up
+05-25 15:52:02.153 D/SsBaseTemplateCard( 1256): Passed-in item info is null
+05-25 15:52:02.153 D/SsBaseTemplateCard( 1256): Passed-in item info is null
+05-25 15:52:02.153 D/SsBaseTemplateCard( 1256): Passed-in item info is null
+05-25 15:52:02.153 I/SsBaseTemplateCard( 1256): Secondary card pane is null
+05-25 15:52:02.232 W/ActivityTaskManager(  562): callingPackage for (uid=2000, pid=3922) has no WPC
+05-25 15:52:02.234 W/OptProp (  562): Cannot read opt property android.window.PROPERTY_COMPAT_ALLOW_USER_ASPECT_RATIO_OVERRIDE
+05-25 15:52:02.234 W/OptProp (  562): Cannot read opt property android.window.PROPERTY_COMPAT_ALLOW_USER_ASPECT_RATIO_FULLSCREEN_OVERRIDE
+05-25 15:52:02.234 W/OptProp (  562): Cannot read opt property android.window.PROPERTY_COMPAT_ALLOW_ORIENTATION_OVERRIDE
+05-25 15:52:02.234 V/GrammaticalInflectionUtils(  562): AttributionSource: android.content.AttributionSource@5feeb2e6 does not have READ_SYSTEM_GRAMMATICAL_GENDER permission.
+05-25 15:52:02.235 W/OptProp (  562): Cannot read opt property android.window.PROPERTY_COMPAT_ALLOW_RESIZEABLE_ACTIVITY_OVERRIDES
+05-25 15:52:02.235 W/OptProp (  562): Cannot read opt property android.window.PROPERTY_COMPAT_ALLOW_MIN_ASPECT_RATIO_OVERRIDE
+05-25 15:52:02.248 W/IPCThreadState(  562): Sending oneway calls to frozen process.
+05-25 15:52:02.259 W/IPCThreadState(  562): Sending oneway calls to frozen process.
+05-25 15:52:02.259 W/IPCThreadState(  562): Sending oneway calls to frozen process.
+05-25 15:52:02.260 I/HWUI    (  810): Davey! duration=1272ms; Flags=0, FrameTimelineVsyncId=17487, IntendedVsync=396486639023, Vsync=396486639023, InputEventId=0, HandleInputStart=396499719187, AnimationStart=396499719895, PerformTraversalsStart=396499720062, DrawStart=397532397771, FrameDeadline=396503305689, FrameInterval=396499715895, FrameStartTime=16666666, SyncQueued=397533152937, SyncStart=397712502937, IssueDrawCommandsStart=397887804438, SwapBuffers=397927838021, FrameCompleted=397938234146, DequeueBufferDuration=4000, QueueBufferDuration=492042, GpuCompleted=397938234146, SwapBuffersCompleted=397929099979, DisplayPresentTime=0, CommandSubmissionCompleted=397927838021, 
+05-25 15:52:02.260 W/IPCThreadState(  562): Sending oneway calls to frozen process.
+05-25 15:52:02.260 W/IPCThreadState(  562): Sending oneway calls to frozen process.
+05-25 15:52:02.261 W/IPCThreadState(  562): Sending oneway calls to frozen process.
+05-25 15:52:02.261 W/IPCThreadState(  562): Sending oneway calls to frozen process.
+05-25 15:52:02.261 W/IPCThreadState(  562): Sending oneway calls to frozen process.
+05-25 15:52:02.261 W/IPCThreadState(  562): Sending oneway calls to frozen process.
+05-25 15:52:02.262 W/IPCThreadState(  562): Sending oneway calls to frozen process.
+05-25 15:52:02.263 I/NullBinder( 1061): NullBinder for android.net.action.RECOMMEND_NETWORKS triggering remote TransactionTooLargeException due to Service without Chimera impl, calling uid: 1000, calling pid: 0
+05-25 15:52:02.263 W/.gms.persistent( 1061): Large reply transaction of 1056768 bytes, interface descriptor , code 1
+05-25 15:52:02.265 I/BugleRcsEngine( 1439): handleMessage processing message:[NOTIFY_UPTIME_IGNORE_STATE_CHANGED] with [non-null]:RcsEngineImpl reference [CONTEXT log_prefix="RcsEngineImpl[DUAL_REG]:[36fd9e39-8505]>Handler" thread_id=65 ]
+05-25 15:52:02.266 I/BugleRcsEngine( 1439): Connected state: [1], networkType: [WIFI] [CONTEXT thread_id=58 ]
+05-25 15:52:02.285 I/BugleRcsEngine( 1439): No RCS Configuration was found in Bugle for simID: redacted-pii:sim_id[chars:20,last3:897] [CONTEXT log_prefix="ProvisioningEngineDataRetriever" thread_id=65 ]
+05-25 15:52:02.360 I/ActivityTaskManager(  562): Add Task{28c29d0 #22 type=standard A=10207:com.sethogieva.minglabusiness} to hidden list because adding Task{3013f46 #23 type=standard A=10207:com.sethogieva.minglabusiness}
+05-25 15:52:02.365 I/ActivityTaskManager(  562): START u0 {act=android.intent.action.VIEW cat=[android.intent.category.BROWSABLE] dat=exp+mingla-business://expo-development-client/... flg=0x10000000 cmp=com.sethogieva.minglabusiness/.MainActivity} with LAUNCH_SINGLE_TASK from uid 2000 (BAL_ALLOW_PERMISSION) result code=0
+05-25 15:52:02.368 V/GrammaticalInflectionUtils(  562): AttributionSource: android.content.AttributionSource@5feeb2e6 does not have READ_SYSTEM_GRAMMATICAL_GENDER permission.
+05-25 15:52:02.386 V/WindowManagerShell(  810): Transition requested (#19): android.os.BinderProxy@6a4d7ef TransitionRequestInfo { type = OPEN, triggerTask = TaskInfo{userId=0 taskId=23 displayId=0 isRunning=true baseIntent=Intent { act=android.intent.action.VIEW cat=[android.intent.category.BROWSABLE] dat=exp+mingla-business://expo-development-client/... flg=0x10000000 cmp=com.sethogieva.minglabusiness/.MainActivity } baseActivity=ComponentInfo{com.sethogieva.minglabusiness/com.sethogieva.minglabusiness.MainActivity} topActivity=ComponentInfo{com.sethogieva.minglabusiness/com.sethogieva.minglabusiness.MainActivity} origActivity=null realActivity=ComponentInfo{com.sethogieva.minglabusiness/com.sethogieva.minglabusiness.MainActivity} numActivities=1 lastActiveTime=398140 supportsMultiWindow=true resizeMode=1 isResizeable=true minWidth=-1 minHeight=-1 defaultMinSize=220 token=WCT{android.window.IWindowContainerToken$Stub$Proxy@fd4f2fc} topActivityType=1 pictureInPictureParams=null shouldDockBigOverlays=false launchIntoPipHostTaskId=-1 lastParentTaskIdBeforePip=-1 displayCutoutSafeInsets=Rect(0, 151 - 0, 0) topActivityInfo=ActivityInfo{a9c6d85 com.sethogieva.minglabusiness.MainActivity} launchCookies=[] positionInParent=Point(0, 0) parentTaskId=-1 isFocused=false isVisible=false isVisibleRequested=false isSleeping=false locusId=null displayAreaFeatureId=1 isTopActivityTransparent=false appCompatTaskInfo=AppCompatTaskInfo { topActivityInSizeCompat=false topActivityEligibleForLetterboxEducation= falseisLetterboxEducationEnabled= true isLetterboxDoubleTapEnabled= false topActivityEligibleForUserAspectRatioButton= false topActivityBoundsLetterboxed= false isFromLetterboxDoubleTap= false topActivityLetterboxVerticalPosition= -1 topActivityLetterboxHorizontalPosition= -1 topActivityLetterboxWidth=1344 topActivityLetterboxHeight=2992 isUserFullscreenOverrideEnabled=false isSystemFullscreenOverrideEnabled=false cameraCompatTaskInfo=CameraCompatTaskInfo { cameraCompatControlState=hidden freeformCameraCompatMode=inactive}}}, pipTask = null, remoteTransition = null, displayChange = null, flags = 0, debugId = 19 }
+05-25 15:52:02.404 D/Zygote  (  361): Forked child process 3926
+05-25 15:52:02.406 I/ActivityManager(  562): Start proc 3926:com.sethogieva.minglabusiness/u0a207 for next-top-activity {com.sethogieva.minglabusiness/com.sethogieva.minglabusiness.MainActivity}
+05-25 15:52:02.429 W/A       ( 1570): CompleteServer request has failed and can't show offline suggestions.
+05-25 15:52:02.429 W/A       ( 1570): java.util.NoSuchElementException: Expected at least one element
+05-25 15:52:02.429 W/A       ( 1570): 	at kotlinx.coroutines.b.dc.a(PG:104)
+05-25 15:52:02.429 W/A       ( 1570): 	at kotlinx.coroutines.b.cr.jc(PG:11)
+05-25 15:52:02.429 W/A       ( 1570): 	at p.c.b.a.a.q(PG:12)
+05-25 15:52:02.429 W/A       ( 1570): 	at kotlinx.coroutines.d.am.x(PG:7)
+05-25 15:52:02.429 W/A       ( 1570): 	at kotlinx.coroutines.a.q(PG:14)
+05-25 15:52:02.429 W/A       ( 1570): 	at p.c.b.a.a.q(PG:36)
+05-25 15:52:02.429 W/A       ( 1570): 	at kotlinx.coroutines.bh.run(PG:112)
+05-25 15:52:02.429 W/A       ( 1570): 	at com.google.apps.tiktok.f.y.run(PG:3)
+05-25 15:52:02.429 W/A       ( 1570): 	at com.google.apps.tiktok.tracing.fk.run(PG:24)
+05-25 15:52:02.429 W/A       ( 1570): 	at com.google.android.libraries.k.x.run(PG:3)
+05-25 15:52:02.429 W/A       ( 1570): 	at com.google.common.n.c.c.run(PG:50)
+05-25 15:52:02.429 W/A       ( 1570): 	at com.google.android.libraries.k.e.run(PG:8)
+05-25 15:52:02.429 W/A       ( 1570): 	at java.lang.Thread.run(Thread.java:1012)
+05-25 15:52:02.429 W/A       ( 1570): 	at com.google.android.libraries.k.d.b.run(PG:74)
+05-25 15:52:02.429 W/A       ( 1570): #getSuggestions failed
+05-25 15:52:02.429 W/A       ( 1570): java.util.NoSuchElementException: Expected at least one element
+05-25 15:52:02.429 W/A       ( 1570): 	at kotlinx.coroutines.b.dc.a(PG:104)
+05-25 15:52:02.429 W/A       ( 1570): 	at kotlinx.coroutines.b.cr.jc(PG:11)
+05-25 15:52:02.429 W/A       ( 1570): 	at p.c.b.a.a.q(PG:12)
+05-25 15:52:02.429 W/A       ( 1570): 	at kotlinx.coroutines.d.am.x(PG:7)
+05-25 15:52:02.429 W/A       ( 1570): 	at kotlinx.coroutines.a.q(PG:14)
+05-25 15:52:02.429 W/A       ( 1570): 	at p.c.b.a.a.q(PG:36)
+05-25 15:52:02.429 W/A       ( 1570): 	at kotlinx.coroutines.bh.run(PG:112)
+05-25 15:52:02.429 W/A       ( 1570): 	at com.google.apps.tiktok.f.y.run(PG:3)
+05-25 15:52:02.429 W/A       ( 1570): 	at com.google.apps.tiktok.tracing.fk.run(PG:24)
+05-25 15:52:02.429 W/A       ( 1570): 	at com.google.android.libraries.k.x.run(PG:3)
+05-25 15:52:02.429 W/A       ( 1570): 	at com.google.common.n.c.c.run(PG:50)
+05-25 15:52:02.429 W/A       ( 1570): 	at com.google.android.libraries.k.e.run(PG:8)
+05-25 15:52:02.429 W/A       ( 1570): 	at java.lang.Thread.run(Thread.java:1012)
+05-25 15:52:02.429 W/A       ( 1570): 	at com.google.android.libraries.k.d.b.run(PG:74)
+05-25 15:52:02.449 E/OneSearchSuggestProvider( 1256): Unable to get suggestions from AGA
+05-25 15:52:02.449 E/OneSearchSuggestProvider( 1256): io.grpc.StatusRuntimeException: UNKNOWN
+05-25 15:52:02.449 E/OneSearchSuggestProvider( 1256): 	at k3.e.a(go/retraceme 2855a437b73635ce9cad76b9289087e631bbb67fc90008a0da13d343a00e5041:77)
+05-25 15:52:02.449 E/OneSearchSuggestProvider( 1256): 	at i3.l.b(go/retraceme 2855a437b73635ce9cad76b9289087e631bbb67fc90008a0da13d343a00e5041:43)
+05-25 15:52:02.449 E/OneSearchSuggestProvider( 1256): 	at i3.l.a(go/retraceme 2855a437b73635ce9cad76b9289087e631bbb67fc90008a0da13d343a00e5041:27)
+05-25 15:52:02.449 E/OneSearchSuggestProvider( 1256): 	at i3.z.run(go/retraceme 2855a437b73635ce9cad76b9289087e631bbb67fc90008a0da13d343a00e5041:7)
+05-25 15:52:02.449 E/OneSearchSuggestProvider( 1256): 	at i3.m2.run(go/retraceme 2855a437b73635ce9cad76b9289087e631bbb67fc90008a0da13d343a00e5041:19)
+05-25 15:52:02.449 E/OneSearchSuggestProvider( 1256): 	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1145)
+05-25 15:52:02.449 E/OneSearchSuggestProvider( 1256): 	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:644)
+05-25 15:52:02.449 E/OneSearchSuggestProvider( 1256): 	at java.lang.Thread.run(Thread.java:1012)
+05-25 15:52:02.488 D/CoreBackPreview(  562): Window{b55159 u0 Splash Screen com.sethogieva.minglabusiness}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@76907cc, mPriority=0, mIsAnimationCallback=false}
+05-25 15:52:02.514 D/WifiNl80211Manager(  562): Scan result ready event
+05-25 15:52:02.514 D/WifiNative(  562): Scan result ready event
+05-25 15:52:02.543 I/HalDevMgr(  562): bestIfaceCreationProposal is null, requestIface=STA, existingIface=[name=wlan0 type=STA]
+05-25 15:52:03.235 I/NearbySharing( 1061): Network state changed: NetworkState(isRestricted=false, isOnline=true, isCongested=false, isMetered=false, isWifiConnected=true)
+05-25 15:52:03.278 W/ActivityTaskManager(  562): Activity top resumed state loss timeout for ActivityRecord{a72994 u0 com.google.android.apps.nexuslauncher/.NexusLauncherActivity t20}
+05-25 15:52:03.278 W/ActivityTaskManager(  562): Activity pause timeout for ActivityRecord{a72994 u0 com.google.android.apps.nexuslauncher/.NexusLauncherActivity t20}
+05-25 15:52:03.292 I/.minglabusiness( 3926): Late-enabling -Xcheck:jni
+05-25 15:52:03.429 D/EGL_emulation( 1256): app_time_stats: avg=1596.29ms min=1592.31ms max=1600.27ms count=2
+05-25 15:52:03.530 I/.minglabusiness( 3926): Using CollectorTypeCMC GC.
+05-25 15:52:03.562 I/adbd    (  414): jdwp connection from 3926
+05-25 15:52:03.610 D/OomAdjuster(  562): Not killing cached processes
+05-25 15:52:03.645 W/ProcessStats(  562): Tracking association SourceState{27dadf7 com.google.android.apps.nexuslauncher/10176 BTop #2226} whose proc state 2 is better than process ProcessState{2ee69e3 com.google.android.googlequicksearchbox:search/10145 pkg=com.google.android.googlequicksearchbox} proc state 14 (6 skipped)
+05-25 15:52:03.793 W/Looper  (  562): Slow dispatch took 154ms android.ui h=com.android.server.am.ActivityManagerService$UiHandler c=com.android.server.am.UidObserverController$$ExternalSyntheticLambda0@252b956 m=0
+05-25 15:52:03.919 D/nativeloader( 3926): Load libframework-connectivity-tiramisu-jni.so using APEX ns com_android_tethering for caller /apex/com.android.tethering/javalib/framework-connectivity-t.jar: ok
+05-25 15:52:03.957 I/RanchuHwc(  384): logCompositionFallbackIfChanged: layer 5 CompositionType fallback from 2 to 1
+05-25 15:52:03.957 I/RanchuHwc(  384): logCompositionFallbackIfChanged: layer 34 CompositionType fallback from 2 to 1
+05-25 15:52:03.957 I/RanchuHwc(  384): logCompositionFallbackIfChanged: layer 4 CompositionType fallback from 2 to 1
+05-25 15:52:03.957 I/RanchuHwc(  384): logCompositionFallbackIfChanged: layer 19 CompositionType fallback from 2 to 1
+05-25 15:52:03.957 I/RanchuHwc(  384): logCompositionFallbackIfChanged: layer 33 CompositionType fallback from 2 to 1
+05-25 15:52:03.957 I/RanchuHwc(  384): logCompositionFallbackIfChanged: layer 20 CompositionType fallback from 2 to 1
+05-25 15:52:04.118 I/android.hardware.power-service.example(  387): Power isModeSupported: 6
+05-25 15:52:04.178 I/Choreographer(  810): Skipped 102 frames!  The application may be doing too much work on its main thread.
+05-25 15:52:04.199 W/ActivityManager(  562): Slow operation: 55ms so far, now at attachApplicationLocked: after updateOomAdjLocked
+05-25 15:52:04.284 I/HWUI    ( 1256): Davey! duration=2620ms; Flags=0, FrameTimelineVsyncId=17504, IntendedVsync=397053305667, Vsync=397919972299, InputEventId=0, HandleInputStart=397927956771, AnimationStart=397927957688, PerformTraversalsStart=397928501521, DrawStart=397930677021, FrameDeadline=397803305637, FrameInterval=397927720313, FrameStartTime=16666666, SyncQueued=397931824146, SyncStart=397931923979, IssueDrawCommandsStart=397932254146, SwapBuffers=399202338272, FrameCompleted=399673416772, DequeueBufferDuration=4834, QueueBufferDuration=1125750, GpuCompleted=399673416772, SwapBuffersCompleted=399209644230, DisplayPresentTime=0, CommandSubmissionCompleted=399202338272, 
+05-25 15:52:04.337 D/ApplicationLoaders( 3926): Returning zygote-cached class loader: /system/framework/org.apache.http.legacy.jar
+05-25 15:52:04.341 D/ApplicationLoaders( 3926): Returning zygote-cached class loader: /system_ext/framework/androidx.window.extensions.jar
+05-25 15:52:04.341 D/ApplicationLoaders( 3926): Returning zygote-cached class loader: /system_ext/framework/androidx.window.sidecar.jar
+05-25 15:52:04.366 W/ziparchive( 3926): Unable to open '/data/app/~~IP_dXZs0KB6SbITCHbRAew==/com.sethogieva.minglabusiness--83aC_f7WbfAIRFpRTxulA==/base.dm': No such file or directory
+05-25 15:52:04.366 I/Choreographer( 1256): Skipped 131 frames!  The application may be doing too much work on its main thread.
+05-25 15:52:04.367 W/ziparchive( 3926): Unable to open '/data/app/~~IP_dXZs0KB6SbITCHbRAew==/com.sethogieva.minglabusiness--83aC_f7WbfAIRFpRTxulA==/base.dm': No such file or directory
+05-25 15:52:04.372 D/EGL_emulation( 1256): app_time_stats: avg=12966.79ms min=2.77ms max=51818.30ms count=4
+05-25 15:52:04.442 V/WindowManagerShell(  810): Transition animation finished (aborted=false), notifying core (#18) android.os.BinderProxy@3739972@0
+05-25 15:52:04.447 I/HWUI    (  810): Davey! duration=1673ms; Flags=1, FrameTimelineVsyncId=17587, IntendedVsync=398153305623, Vsync=398153305623, InputEventId=0, HandleInputStart=398169748813, AnimationStart=398169749354, PerformTraversalsStart=398169797146, DrawStart=399487682105, FrameDeadline=398169972289, FrameInterval=398169745479, FrameStartTime=16666666, SyncQueued=399488729563, SyncStart=399726045397, IssueDrawCommandsStart=399892840647, SwapBuffers=399899404105, FrameCompleted=400063691439, DequeueBufferDuration=4958, QueueBufferDuration=544250, GpuCompleted=400063691439, SwapBuffersCompleted=399923564272, DisplayPresentTime=0, CommandSubmissionCompleted=399899404105, 
+05-25 15:52:04.525 I/HWUI    ( 1256): Davey! duration=886ms; Flags=0, FrameTimelineVsyncId=17565, IntendedVsync=397936638965, Vsync=397936638965, InputEventId=0, HandleInputStart=397940279729, AnimationStart=397940410563, PerformTraversalsStart=397941195521, DrawStart=397941758438, FrameDeadline=399703305561, FrameInterval=397940274771, FrameStartTime=16666666, SyncQueued=397944442396, SyncStart=399209727522, IssueDrawCommandsStart=399209855105, SwapBuffers=399507245813, FrameCompleted=400088495439, DequeueBufferDuration=387385084, QueueBufferDuration=407333, GpuCompleted=400063709730, SwapBuffersCompleted=400088495439, DisplayPresentTime=0, CommandSubmissionCompleted=399507245813, 
+05-25 15:52:04.537 V/WindowManager(  562): Finish Transition (#18): created at 05-25 15:51:58.296 collect-started=0.444ms request-sent=13.989ms started=124.96ms ready=233.351ms sent=2105.169ms finished=6240.772ms
+05-25 15:52:04.538 E/IPCThreadState(  562): Binder transaction failure. id: 149357, BR_*: 29189, error: -22 (Invalid argument)
+05-25 15:52:04.538 W/ActivityManager(  562): pid 562 system sent binder code 7 with flags 1 to frozen apps and got error -32
+05-25 15:52:04.540 I/HWUI    ( 1256): Davey! duration=1422ms; Flags=0, FrameTimelineVsyncId=17565, IntendedVsync=397936638965, Vsync=397936638965, InputEventId=0, HandleInputStart=397940279729, AnimationStart=397940410563, PerformTraversalsStart=397941195521, DrawStart=399281430730, FrameDeadline=397953305631, FrameInterval=397940274771, FrameStartTime=16666666, SyncQueued=399283104813, SyncStart=400142807439, IssueDrawCommandsStart=400143448147, SwapBuffers=400145306439, FrameCompleted=400219268897, DequeueBufferDuration=6917, QueueBufferDuration=450209, GpuCompleted=400219268897, SwapBuffersCompleted=400151926897, DisplayPresentTime=0, CommandSubmissionCompleted=400145306439, 
+05-25 15:52:04.550 W/WindowManager(  562): Exception thrown during dispatchAppVisibility Window{fb36274 u0 com.sethogieva.minglabusiness/com.sethogieva.minglabusiness.MainActivity EXITING}
+05-25 15:52:04.550 W/WindowManager(  562): android.os.DeadObjectException
+05-25 15:52:04.550 W/WindowManager(  562): 	at android.os.BinderProxy.transactNative(Native Method)
+05-25 15:52:04.550 W/WindowManager(  562): 	at android.os.BinderProxy.transact(BinderProxy.java:586)
+05-25 15:52:04.550 W/WindowManager(  562): 	at android.view.IWindow$Stub$Proxy.dispatchAppVisibility(IWindow.java:553)
+05-25 15:52:04.550 W/WindowManager(  562): 	at com.android.server.wm.WindowState.sendAppVisibilityToClients(WindowState.java:3253)
+05-25 15:52:04.550 W/WindowManager(  562): 	at com.android.server.wm.WindowContainer.sendAppVisibilityToClients(WindowContainer.java:1289)
+05-25 15:52:04.550 W/WindowManager(  562): 	at com.android.server.wm.WindowToken.setClientVisible(WindowToken.java:403)
+05-25 15:52:04.550 W/WindowManager(  562): 	at com.android.server.wm.ActivityRecord.setClientVisible(ActivityRecord.java:7166)
+05-25 15:52:04.550 W/WindowManager(  562): 	at com.android.server.wm.ActivityRecord.postApplyAnimation(ActivityRecord.java:5881)
+05-25 15:52:04.550 W/WindowManager(  562): 	at com.android.server.wm.ActivityRecord.commitVisibility(ActivityRecord.java:5823)
+05-25 15:52:04.550 W/WindowManager(  562): 	at com.android.server.wm.Transition.finishTransition(Transition.java:1286)
+05-25 15:52:04.550 W/WindowManager(  562): 	at com.android.server.wm.TransitionController.finishTransition(TransitionController.java:937)
+05-25 15:52:04.550 W/WindowManager(  562): 	at com.android.server.wm.WindowOrganizerController.finishTransition(WindowOrganizerController.java:494)
+05-25 15:52:04.550 W/WindowManager(  562): 	at android.window.IWindowOrganizerController$Stub.onTransact(IWindowOrganizerController.java:289)
+05-25 15:52:04.550 W/WindowManager(  562): 	at com.android.server.wm.WindowOrganizerController.onTransact(WindowOrganizerController.java:204)
+05-25 15:52:04.550 W/WindowManager(  562): 	at android.os.Binder.execTransactInternal(Binder.java:1500)
+05-25 15:52:04.550 W/WindowManager(  562): 	at android.os.Binder.execTransact(Binder.java:1444)
+05-25 15:52:04.551 W/Process (  562): Unable to open /proc/3766/status
+05-25 15:52:04.574 V/WindowManagerShell(  810): Track 0 became idle
+05-25 15:52:04.582 W/UserManagerService(  562): Requested status bar icon for non-badged user 0
+05-25 15:52:04.583 W/UserManagerService(  562): Requested status bar icon for non-badged user 0
+05-25 15:52:04.820 D/EGL_emulation( 1256): app_time_stats: avg=501.26ms min=491.27ms max=511.25ms count=2
+05-25 15:52:04.822 W/SplitSelectStateCtor( 1256): Missing session instanceIds
+05-25 15:52:04.822 D/StatsLog( 1256): LAUNCHER_SPLIT_SELECTION_EXIT_INTERRUPTED
+05-25 15:52:04.824 D/WindowManagerShell(  810): setLauncherKeepClearAreaHeight: visible=false, height=603
+05-25 15:52:04.834 W/OptProp (  562): Cannot read opt property android.window.PROPERTY_COMPAT_ENABLE_FAKE_FOCUS
+05-25 15:52:04.837 I/TopTaskTracker( 1256): onTaskMovedToFront: (moved taskInfo to front) taskId=23, baseIntent=Intent { act=android.intent.action.VIEW cat=[android.intent.category.BROWSABLE] dat=exp+mingla-business://expo-development-client/... flg=0x10000000 cmp=com.sethogieva.minglabusiness/.MainActivity }
+05-25 15:52:04.837 D/SearchTargetUtil( 1256): queryLength=0 size=0
+05-25 15:52:04.843 I/TopTaskTracker( 1256): onTaskRemoved: taskId=22
+05-25 15:52:04.843 I/TopTaskTracker( 1256): onTaskRemoved: taskId=22
+05-25 15:52:04.969 V/WindowManagerShell(  810): onTransitionReady(transaction=2413771621201)
+05-25 15:52:04.971 V/WindowManagerShell(  810): onTransitionReady (#19) android.os.BinderProxy@6a4d7ef: {id=19 t=OPEN f=0x0 trk=1 r=[0@Point(0, 0)] c=[{WCT{android.window.IWindowContainerToken$Stub$Proxy@7328700} m=OPEN f=NONE leash=Surface(name=Task=23)/@0x57fc83d sb=Rect(0, 0 - 1344, 2992) eb=Rect(0, 0 - 1344, 2992) d=0 taskParent=-1},{WCT{android.window.IWindowContainerToken$Stub$Proxy@fa5ab39} m=TO_BACK f=SHOW_WALLPAPER leash=Surface(name=Task=1)/@0x2990832 sb=Rect(0, 0 - 1344, 2992) eb=Rect(0, 0 - 1344, 2992) d=0 taskParent=-1}]}
+05-25 15:52:04.972 V/WindowManagerShell(  810): Playing animation for (#19) android.os.BinderProxy@6a4d7ef@1
+05-25 15:52:04.972 V/WindowManagerShell(  810):  try handler com.android.wm.shell.transition.DefaultMixedHandler@d4818b3
+05-25 15:52:04.972 V/WindowManagerShell(  810):  try handler com.android.wm.shell.keyguard.KeyguardTransitionHandler@cab3e70
+05-25 15:52:04.972 V/WindowManagerShell(  810):  try handler com.android.wm.shell.pip.PipTransition@c8fe5e9
+05-25 15:52:04.972 V/WindowManagerShell(  810):  try handler com.android.wm.shell.activityembedding.ActivityEmbeddingController@c88126e
+05-25 15:52:04.972 V/WindowManagerShell(  810):  try handler com.android.wm.shell.recents.RecentsTransitionHandler@aa18d0f
+05-25 15:52:04.972 V/ShellRecents(  810): RecentsTransitionHandler.startAnimation: no controller found
+05-25 15:52:04.974 V/WindowManager(  562): Sent Transition (#19) createdAt=05-25 15:52:02.267 via request=TransitionRequestInfo { type = OPEN, triggerTask = TaskInfo{userId=0 taskId=23 displayId=0 isRunning=true baseIntent=Intent { act=android.intent.action.VIEW cat=[android.intent.category.BROWSABLE] dat=exp+mingla-business://expo-development-client/... flg=0x10000000 cmp=com.sethogieva.minglabusiness/.MainActivity } baseActivity=ComponentInfo{com.sethogieva.minglabusiness/com.sethogieva.minglabusiness.MainActivity} topActivity=ComponentInfo{com.sethogieva.minglabusiness/com.sethogieva.minglabusiness.MainActivity} origActivity=null realActivity=ComponentInfo{com.sethogieva.minglabusiness/com.sethogieva.minglabusiness.MainActivity} numActivities=1 lastActiveTime=398140 supportsMultiWindow=true resizeMode=1 isResizeable=true minWidth=-1 minHeight=-1 defaultMinSize=220 token=WCT{RemoteToken{64002e7 Task{3013f46 #23 type=standard A=10207:com.sethogieva.minglabusiness}}} topActivityType=1 pictureInPictureParams=null shouldDockBigOverlays=false launchIntoPipHostTaskId=-1 lastParentTaskIdBeforePip=-1 displayCutoutSafeInsets=Rect(0, 151 - 0, 0) topActivityInfo=ActivityInfo{fcdce94 com.sethogieva.minglabusiness.MainActivity} launchCookies=[] positionInParent=Point(0, 0) parentTaskId=-1 isFocused=false isVisible=false isVisibleRequested=false isSleeping=false locusId=null displayAreaFeatureId=1 isTopActivityTransparent=false appCompatTaskInfo=AppCompatTaskInfo { topActivityInSizeCompat=false topActivityEligibleForLetterboxEducation= falseisLetterboxEducationEnabled= true isLetterboxDoubleTapEnabled= false topActivityEligibleForUserAspectRatioButton= false topActivityBoundsLetterboxed= false isFromLetterboxDoubleTap= false topActivityLetterboxVerticalPosition= -1 topActivityLetterboxHorizontalPosition= -1 topActivityLetterboxWidth=1344 topActivityLetterboxHeight=2992 isUserFullscreenOverrideEnabled=false isSystemFullscreenOverrideEnabled=false cameraCompatTaskInfo=CameraCompatTaskInfo { cameraCompatControlState=hidden freeformCameraCompatMode=inactive}}}, pipTask = null, remoteTransition = null, displayChange = null, flags = 0, debugId = 19 }
+05-25 15:52:04.975 V/WindowManager(  562):     startWCT=WindowContainerTransaction { changes = {} hops = [] errorCallbackToken=null taskFragmentOrganizer=null }
+05-25 15:52:04.975 V/WindowManager(  562):     info={id=19 t=OPEN f=0x0 trk=1 r=[0@Point(0, 0)] c=[
+05-25 15:52:04.975 V/WindowManager(  562):         {WCT{RemoteToken{64002e7 Task{3013f46 #23 type=standard A=10207:com.sethogieva.minglabusiness}}} m=OPEN f=NONE leash=Surface(name=Task=23)/@0x7988201 sb=Rect(0, 0 - 1344, 2992) eb=Rect(0, 0 - 1344, 2992) d=0 taskParent=-1},
+05-25 15:52:04.975 V/WindowManager(  562):         {WCT{RemoteToken{725058c Task{8d7c64d #1 type=home}}} m=TO_BACK f=SHOW_WALLPAPER leash=Surface(name=Task=1)/@0x2333f1d sb=Rect(0, 0 - 1344, 2992) eb=Rect(0, 0 - 1344, 2992) d=0 taskParent=-1}
+05-25 15:52:04.975 V/WindowManager(  562):     ]}
+05-25 15:52:04.978 W/UserManagerService(  562): Requested status bar icon for non-badged user 0
+05-25 15:52:05.332 V/WindowManagerShell(  810):  try handler com.android.wm.shell.splitscreen.StageCoordinator@85dd19c
+05-25 15:52:05.333 V/WindowManagerShell(  810):  try handler com.android.wm.shell.transition.RemoteTransitionHandler@77f7a5
+05-25 15:52:05.334 V/WindowManagerShell(  810): Transition doesn't have explicit remote, search filters for match for {id=19 t=OPEN f=0x0 trk=1 r=[0@Point(0, 0)] c=[{WCT{android.window.IWindowContainerToken$Stub$Proxy@7328700} m=OPEN f=NONE leash=Surface(name=Task=23)/@0x57fc83d sb=Rect(0, 0 - 1344, 2992) eb=Rect(0, 0 - 1344, 2992) d=0 taskParent=-1},{WCT{android.window.IWindowContainerToken$Stub$Proxy@fa5ab39} m=TO_BACK f=SHOW_WALLPAPER leash=Surface(name=Task=1)/@0x2990832 sb=Rect(0, 0 - 1344, 2992) eb=Rect(0, 0 - 1344, 2992) d=0 taskParent=-1}]}
+05-25 15:52:05.334 V/WindowManagerShell(  810):  Checking filter Pair{{types=[] flags=0x0] notFlags=0x0 checks=[{atype=undefined independent=true modes=[OPEN,TO_FRONT] flags=IN_TASK_WITH_EMBEDDED_ACTIVITY mustBeTask=false order=ANY topActivity=ComponentInfo{com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity} launchCookie=null},{atype=undefined independent=true modes=[CLOSE,TO_BACK] flags=IN_TASK_WITH_EMBEDDED_ACTIVITY mustBeTask=false order=ANY topActivity=null launchCookie=null}]} RemoteTransition { remoteTransition = android.window.IRemoteTransition$Stub$Proxy@98b263b, appThread = android.app.IApplicationThread$Stub$Proxy@2877158, debugName = OverlaySwipeBack }}
+05-25 15:52:05.334 V/WindowManagerShell(  810):  Checking filter Pair{{types=[] flags=0x0] notFlags=0x0 checks=[{atype=dream independent=true modes=[OPEN,TO_FRONT] flags=NONE mustBeTask=false order=ANY topActivity=null launchCookie=null},{atype=home independent=true modes=[CLOSE,TO_BACK] flags=NONE mustBeTask=false order=ANY topActivity=null launchCookie=null}]} RemoteTransition { remoteTransition = android.window.IRemoteTransition$Stub$Proxy@a4442b1, appThread = android.app.IApplicationThread$Stub$Proxy@1488396, debugName = LauncherToDream }}
+05-25 15:52:05.334 V/WindowManagerShell(  810):  Checking filter Pair{{types=[] flags=0x0] notFlags=0x100 checks=[{atype=home independent=true modes=[OPEN,TO_FRONT] flags=NONE mustBeTask=false order=TOP topActivity=ComponentInfo{com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity} launchCookie=null},{atype=standard independent=true modes=[CLOSE,TO_BACK] flags=NONE mustBeTask=false order=ANY topActivity=null launchCookie=null}]} RemoteTransition { remoteTransition = android.window.IRemoteTransition$Stub$Proxy@ffbeb17, appThread = android.app.IApplicationThread$Stub$Proxy@aae4b04, debugName = QuickstepLaunchHome }}
+05-25 15:52:05.340 V/WindowManagerShell(  810):  Delegate animation for (#19) to null
+05-25 15:52:05.340 V/WindowManagerShell(  810):  try handler com.android.wm.shell.transition.DefaultTransitionHandler@f26e77a
+05-25 15:52:05.341 V/WindowManagerShell(  810): start default transition animation, info = {id=19 t=OPEN f=0x0 trk=1 r=[0@Point(0, 0)] c=[{WCT{android.window.IWindowContainerToken$Stub$Proxy@7328700} m=OPEN f=NONE leash=Surface(name=Task=23)/@0x57fc83d sb=Rect(0, 0 - 1344, 2992) eb=Rect(0, 0 - 1344, 2992) d=0 taskParent=-1},{WCT{android.window.IWindowContainerToken$Stub$Proxy@fa5ab39} m=TO_BACK f=SHOW_WALLPAPER leash=Surface(name=Task=1)/@0x2990832 sb=Rect(0, 0 - 1344, 2992) eb=Rect(0, 0 - 1344, 2992) d=0 taskParent=-1}]}
+05-25 15:52:05.341 V/WindowManagerShell(  810): loadAnimation: anim=android.view.animation.AnimationSet@3e19adf animAttr=0x13 type=OPEN isEntrance=false
+05-25 15:52:05.343 V/WindowManagerShell(  810): loadAnimation: anim=android.view.animation.AnimationSet@bb9132c animAttr=0x12 type=OPEN isEntrance=true
+05-25 15:52:05.345 D/SharedPreferencesImpl( 1256): Time required to fsync /data/user/0/com.google.android.apps.nexuslauncher/shared_prefs/com.android.launcher3.prefs.xml: [<1: 0, <2: 0, <4: 0, <8: 0, <16: 0, <32: 0, <64: 1, <128: 0, <256: 0, <512: 1, <1024: 0, <2048: 0, <4096: 0, <8192: 0, <16384: 0, >=16384: 0]
+05-25 15:52:05.345 V/WindowManagerShell(  810):  animated by com.android.wm.shell.transition.DefaultTransitionHandler@f26e77a
+05-25 15:52:05.369 I/HWUI    ( 1256): Davey! duration=2801ms; Flags=0, FrameTimelineVsyncId=17572, IntendedVsync=397953305631, Vsync=400136638877, InputEventId=0, HandleInputStart=400148461522, AnimationStart=400148463605, PerformTraversalsStart=400173848897, DrawStart=400174296397, FrameDeadline=400236638873, FrameInterval=400146535189, FrameStartTime=16666666, SyncQueued=400174520647, SyncStart=400174569939, IssueDrawCommandsStart=400183193147, SwapBuffers=400217807730, FrameCompleted=400754427272, DequeueBufferDuration=102090541, QueueBufferDuration=814667, GpuCompleted=400754427272, SwapBuffersCompleted=400321437772, DisplayPresentTime=0, CommandSubmissionCompleted=400217807730, 
+05-25 15:52:05.369 I/HWUI    ( 1256): Davey! duration=2399ms; Flags=0, FrameTimelineVsyncId=17572, IntendedVsync=397953305631, Vsync=400136638877, InputEventId=0, HandleInputStart=400148461522, AnimationStart=400148463605, PerformTraversalsStart=400173848897, DrawStart=400183021730, FrameDeadline=400086638879, FrameInterval=400146535189, FrameStartTime=16666666, SyncQueued=400183140814, SyncStart=400435553689, IssueDrawCommandsStart=400469767105, SwapBuffers=400553549897, FrameCompleted=400605350647, DequeueBufferDuration=11250, QueueBufferDuration=44587042, GpuCompleted=400605350647, SwapBuffersCompleted=400599806189, DisplayPresentTime=0, CommandSubmissionCompleted=400553549897, 
+05-25 15:52:05.384 D/EGL_emulation( 1256): app_time_stats: avg=455.27ms min=67.41ms max=843.14ms count=2
+05-25 15:52:05.403 D/ConnectivityService(  562): releasing NetworkRequest [ REQUEST id=132, [ Transports: CELLULAR Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VPN&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Forbidden: LOCAL_NETWORK Uid: 10145 RequestorUid: 10145 RequestorPkg: com.google.android.googlequicksearchbox UnderlyingNetworks: Null] ] (release request)
+05-25 15:52:05.434 I/ConnectivityService(  562): Update capabilities for net 100 : -FOREGROUND
+05-25 15:52:05.602 W/IPCThreadState(  562): Sending oneway calls to frozen process.
+05-25 15:52:05.691 W/IPCThreadState(  562): Sending oneway calls to frozen process.
+05-25 15:52:05.691 W/IPCThreadState(  562): Sending oneway calls to frozen process.
+05-25 15:52:06.846 E/SurfaceSyncGroup( 1256): Failed to receive transaction ready in 1000ms. Marking SurfaceSyncGroup(SysUIAnimation#33) as ready
+05-25 15:52:07.144 W/EventThread(  403): Faking VSYNC due to driver stall for thread app
+05-25 15:52:07.316 E/IPCThreadState(  403): binder thread pool (4 threads) starved for 1625 ms
+05-25 15:52:07.778 E/SurfaceSyncGroup( 1256): Failed to receive transaction ready in 1000ms. Marking SurfaceSyncGroup(VRI[Taskbar]#35) as ready
+05-25 15:52:07.883 I/NearbySharing( 1061): Network state changed: NetworkState(isRestricted=false, isOnline=true, isCongested=false, isMetered=false, isWifiConnected=true)
+05-25 15:52:08.006 D/EGL_emulation(  810): app_time_stats: avg=5856.90ms min=5856.90ms max=5856.90ms count=1
+05-25 15:52:08.369 W/ActivityTaskManager(  562): Launch timeout has expired, giving up wake lock!
+05-25 15:52:08.785 I/Choreographer(  810): Skipped 74 frames!  The application may be doing too much work on its main thread.
+05-25 15:52:08.791 V/WindowManagerShell(  810): Transition animation finished (aborted=false), notifying core (#19) android.os.BinderProxy@6a4d7ef@1
+05-25 15:52:08.826 D/ActivityManager(  562): freezing 1729 com.google.android.gms
+05-25 15:52:08.852 W/IPCThreadState(  562): Sending oneway calls to frozen process.
+05-25 15:52:08.852 W/IPCThreadState(  562): Sending oneway calls to frozen process.
+05-25 15:52:08.852 W/IPCThreadState(  562): Sending oneway calls to frozen process.
+05-25 15:52:08.854 W/IPCThreadState(  562): Sending oneway calls to frozen process.
+05-25 15:52:08.858 W/IPCThreadState(  562): Sending oneway calls to frozen process.
+05-25 15:52:08.929 I/BugleRcsEngine( 1439): handleMessage processing message:[NOTIFY_UPTIME_IGNORE_STATE_CHANGED] with [non-null]:RcsEngineImpl reference [CONTEXT log_prefix="RcsEngineImpl[DUAL_REG]:[36fd9e39-8505]>Handler" thread_id=65 ]
+05-25 15:52:08.944 I/BugleRcsEngine( 1439): Connected state: [1], networkType: [WIFI] [CONTEXT thread_id=58 ]
+05-25 15:52:08.949 W/IPCThreadState(  562): Sending oneway calls to frozen process.
+05-25 15:52:08.950 W/IPCThreadState(  562): Sending oneway calls to frozen process.
+05-25 15:52:08.951 W/IPCThreadState(  562): Sending oneway calls to frozen process.
+05-25 15:52:08.951 W/IPCThreadState(  562): Sending oneway calls to frozen process.
+05-25 15:52:08.951 W/IPCThreadState(  562): Sending oneway calls to frozen process.
+05-25 15:52:08.951 W/IPCThreadState(  562): Sending oneway calls to frozen process.
+05-25 15:52:08.952 W/IPCThreadState(  562): Sending oneway calls to frozen process.
+05-25 15:52:08.952 W/IPCThreadState(  562): Sending oneway calls to frozen process.
+05-25 15:52:08.970 W/IPCThreadState(  562): Sending oneway calls to frozen process.
+05-25 15:52:09.000 V/WindowManager(  562): Finish Transition (#19): created at 05-25 15:52:02.267 collect-started=0.047ms request-sent=94.329ms started=121.737ms ready=2600.674ms sent=2682.78ms finished=6731.178ms
+05-25 15:52:09.003 D/OomAdjuster(  562): Not killing cached processes
+05-25 15:52:09.015 I/NullBinder( 1061): NullBinder for android.net.action.RECOMMEND_NETWORKS triggering remote TransactionTooLargeException due to Service without Chimera impl, calling uid: 1000, calling pid: 0
+05-25 15:52:09.015 W/.gms.persistent( 1061): Large reply transaction of 1056768 bytes, interface descriptor , code 1
+05-25 15:52:09.081 I/HWUI    ( 1256): Davey! duration=3042ms; Flags=0, FrameTimelineVsyncId=17792, IntendedVsync=401036638841, Vsync=401169972169, InputEventId=0, HandleInputStart=401176752731, AnimationStart=401176753439, PerformTraversalsStart=401177166314, DrawStart=401177266981, FrameDeadline=401536638821, FrameInterval=401176564397, FrameStartTime=16666666, SyncQueued=401177281647, SyncStart=401180866647, IssueDrawCommandsStart=401181017147, SwapBuffers=401497537856, FrameCompleted=404082871316, DequeueBufferDuration=2229236960, QueueBufferDuration=1327750, GpuCompleted=403723469940, SwapBuffersCompleted=404082871316, DisplayPresentTime=72057628415623436, CommandSubmissionCompleted=401497537856, 
+05-25 15:52:09.278 W/Looper  (  562): Slow dispatch took 131ms android.ui h=com.android.server.am.ActivityManagerService$UiHandler c=com.android.server.am.UidObserverController$$ExternalSyntheticLambda0@252b956 m=0
+05-25 15:52:09.282 I/Choreographer( 1256): Skipped 232 frames!  The application may be doing too much work on its main thread.
+05-25 15:52:09.286 I/BugleRcsEngine( 1439): No RCS Configuration was found in Bugle for simID: redacted-pii:sim_id[chars:20,last3:897] [CONTEXT log_prefix="ProvisioningEngineDataRetriever" thread_id=65 ]
+05-25 15:52:09.318 E/BpTransactionCompletedListener(  403): Failed to transact (-32)
+05-25 15:52:09.617 I/HWUI    (  810): Davey! duration=2341ms; Flags=0, FrameTimelineVsyncId=17856, IntendedVsync=401336638829, Vsync=401386638827, InputEventId=0, HandleInputStart=401389361064, AnimationStart=401389362064, PerformTraversalsStart=401389668731, DrawStart=401389718023, FrameDeadline=401353305495, FrameInterval=401389351481, FrameStartTime=16666666, SyncQueued=401391278023, SyncStart=401499197523, IssueDrawCommandsStart=401499365523, SwapBuffers=403706122357, FrameCompleted=403786116190, DequeueBufferDuration=9167, QueueBufferDuration=78149250, GpuCompleted=403785925357, SwapBuffersCompleted=403786116190, DisplayPresentTime=0, CommandSubmissionCompleted=403706122357, 
+05-25 15:52:09.830 W/SurfaceSyncGroup( 1256): Adding transaction to a completed SurfaceSyncGroup(VRI[Taskbar]#35).  Applying immediately
+05-25 15:52:09.831 D/EGL_emulation( 1256): app_time_stats: avg=4446.39ms min=4446.39ms max=4446.39ms count=1
+05-25 15:52:09.954 I/HWUI    (  810): Davey! duration=3340ms; Flags=0, FrameTimelineVsyncId=17863, IntendedVsync=401386638827, Vsync=401486638823, InputEventId=0, HandleInputStart=403115850773, AnimationStart=403115853315, PerformTraversalsStart=403123279857, DrawStart=403123357523, FrameDeadline=403803305397, FrameInterval=401499579189, FrameStartTime=16666666, SyncQueued=403134532898, SyncStart=403829125940, IssueDrawCommandsStart=403829366065, SwapBuffers=404728415191, FrameCompleted=405421553358, DequeueBufferDuration=685014125, QueueBufferDuration=4549625, GpuCompleted=405098165149, SwapBuffersCompleted=405421553358, DisplayPresentTime=0, CommandSubmissionCompleted=404728415191, 
+05-25 15:52:10.068 D/EGL_emulation(  810): app_time_stats: avg=688.61ms min=426.91ms max=950.32ms count=2
+05-25 15:52:10.118 I/NearbySharing( 1061): Network state changed: NetworkState(isRestricted=false, isOnline=true, isCongested=false, isMetered=false, isWifiConnected=true)
+05-25 15:52:10.136 D/EGL_emulation( 1256): app_time_stats: avg=1028.59ms min=319.15ms max=2186.65ms count=3
+05-25 15:52:10.214 I/wpa_supplicant(  789): wlan0: CTRL-EVENT-BEACON-LOSS 
+05-25 15:52:10.775 I/Choreographer(  562): Skipped 87 frames!  The application may be doing too much work on its main thread.
+05-25 15:52:10.776 W/FrameTracker( 1256): Missed App frame:UNKNOWN: 76, 17565, 2151856474, CUJ=J<LAUNCHER_APP_CLOSE_TO_HOME_FALLBACK>
+05-25 15:52:10.776 W/FrameTracker( 1256): Missed SF frame:UNKNOWN: 76, 17565, 2151856474, CUJ=J<LAUNCHER_APP_CLOSE_TO_HOME_FALLBACK>
+05-25 15:52:10.776 W/FrameTracker( 1256): Missed App frame:UNKNOWN: 74, 17572, 0, CUJ=J<LAUNCHER_APP_CLOSE_TO_HOME_FALLBACK>
+05-25 15:52:10.776 W/FrameTracker( 1256): Missed SF frame:UNKNOWN: 74, 17572, 0, CUJ=J<LAUNCHER_APP_CLOSE_TO_HOME_FALLBACK>
+05-25 15:52:10.776 W/FrameTracker( 1256): Missing HWUI jank callback for vsyncId: 17572, CUJ=J<LAUNCHER_APP_CLOSE_TO_HOME_FALLBACK>
+05-25 15:52:10.776 D/VRI[NexusLauncherActivity]( 1256): visibilityChanged oldVisibility=true newVisibility=false
+05-25 15:52:10.776 I/Choreographer( 1256): Skipped 69 frames!  The application may be doing too much work on its main thread.
+05-25 15:52:10.787 W/UserManagerService(  562): Requested status bar icon for non-badged user 0
+05-25 15:52:10.790 V/WindowManagerShell(  810): Track 1 became idle
+05-25 15:52:10.790 V/WindowManagerShell(  810): All active transition animations finished
+05-25 15:52:10.790 W/UserManagerService(  562): Requested status bar icon for non-badged user 0
+05-25 15:52:10.793 W/UserManagerService(  562): Requested status bar icon for non-badged user 0
+05-25 15:52:10.793 D/NexusLauncherModelDelegate( 1256): notifySmartspaceEvent: SmartspaceTargetEvent{mSmartspaceTarget=null, mSmartspaceActionId='null', mEventType=7}
+05-25 15:52:10.798 I/EGL_emulation(  562): Opening libGLESv1_CM_emulation.so
+05-25 15:52:10.802 I/HWUI    ( 1256): Davey! duration=1191ms; Flags=0, FrameTimelineVsyncId=17792, IntendedVsync=401036638841, Vsync=401169972169, InputEventId=0, HandleInputStart=401176752731, AnimationStart=401176753439, PerformTraversalsStart=401177166314, DrawStart=401345465231, FrameDeadline=401203305501, FrameInterval=401176564397, FrameStartTime=16666666, SyncQueued=401345688189, SyncStart=405024445066, IssueDrawCommandsStart=405024590274, SwapBuffers=405100486774, FrameCompleted=405906801941, DequeueBufferDuration=7583, QueueBufferDuration=1022500, GpuCompleted=405906801941, SwapBuffersCompleted=405611178525, DisplayPresentTime=72904454231491248, CommandSubmissionCompleted=405100486774, 
+05-25 15:52:10.803 I/HWUI    (  810): Davey! duration=1738ms; Flags=0, FrameTimelineVsyncId=17892, IntendedVsync=403319972083, Vsync=404553305367, InputEventId=0, HandleInputStart=404571579191, AnimationStart=404571579732, PerformTraversalsStart=404573198274, DrawStart=404573236357, FrameDeadline=405119972011, FrameInterval=404564710607, FrameStartTime=16666666, SyncQueued=404573769191, SyncStart=405421651108, IssueDrawCommandsStart=405421766108, SwapBuffers=405735177108, FrameCompleted=405906796608, DequeueBufferDuration=9209, QueueBufferDuration=2520708, GpuCompleted=405906796608, SwapBuffersCompleted=405848524983, DisplayPresentTime=0, CommandSubmissionCompleted=405735177108, 
+05-25 15:52:10.967 I/EGL_emulation(  562): Opening libGLESv2_emulation.so
+05-25 15:52:11.313 I/HWUI    ( 1256): Davey! duration=4938ms; Flags=0, FrameTimelineVsyncId=17835, IntendedVsync=401186638835, Vsync=405053305347, InputEventId=0, HandleInputStart=405148754108, AnimationStart=405148755399, PerformTraversalsStart=405752170275, DrawStart=405889639566, FrameDeadline=405936638645, FrameInterval=405062043733, FrameStartTime=16666666, SyncQueued=405889820941, SyncStart=406554477192, IssueDrawCommandsStart=406556605567, SwapBuffers=406557006358, FrameCompleted=406790163983, DequeueBufferDuration=23862708, QueueBufferDuration=224000, GpuCompleted=406790163983, SwapBuffersCompleted=406581831650, DisplayPresentTime=72057628414509830, CommandSubmissionCompleted=406557006358, 
+05-25 15:52:11.320 W/HWUI    (  562): Failed to choose config with EGL_SWAP_BEHAVIOR_PRESERVED, retrying without...
+05-25 15:52:11.320 W/HWUI    (  562): Failed to initialize 101010-2 format, error = EGL_SUCCESS
+05-25 15:52:11.322 I/Choreographer(  562): Skipped 30 frames!  The application may be doing too much work on its main thread.
+05-25 15:52:11.332 I/HWUI    (  810): Davey! duration=829ms; Flags=0, FrameTimelineVsyncId=17954, IntendedVsync=405753305319, Vsync=405853305315, InputEventId=0, HandleInputStart=405909488858, AnimationStart=405909490441, PerformTraversalsStart=405909490608, DrawStart=405930856316, FrameDeadline=405936638645, FrameInterval=405862450900, FrameStartTime=16666666, SyncQueued=405931321525, SyncStart=405931410900, IssueDrawCommandsStart=405931841566, SwapBuffers=406094782691, FrameCompleted=406582919108, DequeueBufferDuration=39561375, QueueBufferDuration=1101750, GpuCompleted=406581455608, SwapBuffersCompleted=406582919108, DisplayPresentTime=0, CommandSubmissionCompleted=406094782691, 
+05-25 15:52:11.334 E/TaskPersister(  562): File error accessing recents directory (directory doesn't exist?).
+05-25 15:52:11.335 I/Choreographer( 1256): Skipped 31 frames!  The application may be doing too much work on its main thread.
+05-25 15:52:11.346 D/EGL_emulation( 1256): app_time_stats: avg=745.50ms min=544.21ms max=946.79ms count=2
+05-25 15:52:12.085 W/IPCThreadState(  562): Sending oneway calls to frozen process.
+05-25 15:52:12.085 W/IPCThreadState(  562): Sending oneway calls to frozen process.
+05-25 15:52:12.085 W/IPCThreadState(  562): Sending oneway calls to frozen process.
+05-25 15:52:12.086 W/IPCThreadState(  562): Sending oneway calls to frozen process.
+05-25 15:52:12.087 W/IPCThreadState(  562): Sending oneway calls to frozen process.
+05-25 15:52:12.090 W/IPCThreadState(  562): Sending oneway calls to frozen process.
+05-25 15:52:12.091 W/IPCThreadState(  562): Sending oneway calls to frozen process.
+05-25 15:52:12.091 W/IPCThreadState(  562): Sending oneway calls to frozen process.
+05-25 15:52:12.092 W/IPCThreadState(  562): Sending oneway calls to frozen process.
+05-25 15:52:12.092 W/IPCThreadState(  562): Sending oneway calls to frozen process.
+05-25 15:52:12.092 W/IPCThreadState(  562): Sending oneway calls to frozen process.
+05-25 15:52:12.092 W/IPCThreadState(  562): Sending oneway calls to frozen process.
+05-25 15:52:12.092 W/IPCThreadState(  562): Sending oneway calls to frozen process.
+05-25 15:52:12.092 W/IPCThreadState(  562): Sending oneway calls to frozen process.
+05-25 15:52:12.099 I/BugleRcsEngine( 1439): Connected state: [1], networkType: [WIFI] [CONTEXT thread_id=58 ]
+05-25 15:52:12.113 I/BugleRcsEngine( 1439): handleMessage processing message:[NOTIFY_UPTIME_IGNORE_STATE_CHANGED] with [non-null]:RcsEngineImpl reference [CONTEXT log_prefix="RcsEngineImpl[DUAL_REG]:[36fd9e39-8505]>Handler" thread_id=65 ]
+05-25 15:52:12.129 I/BugleRcsEngine( 1439): No RCS Configuration was found in Bugle for simID: redacted-pii:sim_id[chars:20,last3:897] [CONTEXT log_prefix="ProvisioningEngineDataRetriever" thread_id=65 ]
+05-25 15:52:12.138 I/NullBinder( 1061): NullBinder for android.net.action.RECOMMEND_NETWORKS triggering remote TransactionTooLargeException due to Service without Chimera impl, calling uid: 1000, calling pid: 0
+05-25 15:52:12.138 W/.gms.persistent( 1061): Large reply transaction of 1056768 bytes, interface descriptor , code 1
+05-25 15:52:12.597 I/NearbySharing( 1061): Network state changed: NetworkState(isRestricted=false, isOnline=true, isCongested=false, isMetered=false, isWifiConnected=true)
+05-25 15:52:13.001 D/nativeloader( 3926): Configuring clns-7 for other apk /data/app/~~IP_dXZs0KB6SbITCHbRAew==/com.sethogieva.minglabusiness--83aC_f7WbfAIRFpRTxulA==/base.apk. target_sdk_version=36, uses_libraries=, library_path=/data/app/~~IP_dXZs0KB6SbITCHbRAew==/com.sethogieva.minglabusiness--83aC_f7WbfAIRFpRTxulA==/lib/arm64:/data/app/~~IP_dXZs0KB6SbITCHbRAew==/com.sethogieva.minglabusiness--83aC_f7WbfAIRFpRTxulA==/base.apk!/lib/arm64-v8a, permitted_path=/data:/mnt/expand:/data/user/0/com.sethogieva.minglabusiness
+05-25 15:52:13.027 V/GraphicsEnvironment( 3926): Currently set values for:
+05-25 15:52:13.027 V/GraphicsEnvironment( 3926):   angle_gl_driver_selection_pkgs=[]
+05-25 15:52:13.027 V/GraphicsEnvironment( 3926):   angle_gl_driver_selection_values=[]
+05-25 15:52:13.027 V/GraphicsEnvironment( 3926): Global.Settings values are invalid: number of packages: 0, number of values: 0
+05-25 15:52:13.027 V/GraphicsEnvironment( 3926): Neither updatable production driver nor prerelease driver is supported.
+05-25 15:52:13.139 W/FirebaseApp( 3926): Default FirebaseApp failed to initialize because no default options were found. This usually means that com.google.gms:google-services was not applied to your gradle project.
+05-25 15:52:13.139 I/FirebaseInitProvider( 3926): FirebaseApp initialization unsuccessful
+05-25 15:52:13.150 D/Sentry  ( 3926): io.sentry.auto-init read: false
+05-25 15:52:13.153 D/WM-WrkMgrInitializer( 3926): Initializing WorkManager with default configuration.
+05-25 15:52:13.227 W/SoLoader( 3926): Initializing SoLoader: 0
+05-25 15:52:13.229 W/SoLoader( 3926): Recording new base apk path: /data/app/~~IP_dXZs0KB6SbITCHbRAew==/com.sethogieva.minglabusiness--83aC_f7WbfAIRFpRTxulA==/base.apk
+05-25 15:52:13.229 W/SoLoader( 3926): Previously recorded 0 base apk paths.
+05-25 15:52:13.235 I/SoLoader( 3926): Preparing SO source: DirectorySoSource[root = /vendor/lib64 flags = 2]
+05-25 15:52:13.236 I/SoLoader( 3926): Preparing SO source: DirectorySoSource[root = /system/lib64 flags = 2]
+05-25 15:52:13.236 I/SoLoader( 3926): Preparing SO source: DirectApkSoSource[root = [/data/app/~~IP_dXZs0KB6SbITCHbRAew==/com.sethogieva.minglabusiness--83aC_f7WbfAIRFpRTxulA==/base.apk!/lib/arm64-v8a]]
+05-25 15:52:13.564 I/SoLoader( 3926): Preparing SO source: ApplicationSoSource[DirectorySoSource[root = /data/app/~~IP_dXZs0KB6SbITCHbRAew==/com.sethogieva.minglabusiness--83aC_f7WbfAIRFpRTxulA==/lib/arm64 flags = 0]]
+05-25 15:52:13.564 I/SoLoader( 3926): init finish: 4 SO sources prepared
+05-25 15:52:13.564 W/SoLoader( 3926): SoLoader initialized: 8
+05-25 15:52:13.588 D/nativeloader( 3926): Load /data/app/~~IP_dXZs0KB6SbITCHbRAew==/com.sethogieva.minglabusiness--83aC_f7WbfAIRFpRTxulA==/base.apk!/lib/arm64-v8a/libc++_shared.so using ns clns-7 from class loader (caller=/data/app/~~IP_dXZs0KB6SbITCHbRAew==/com.sethogieva.minglabusiness--83aC_f7WbfAIRFpRTxulA==/base.apk!classes7.dex): ok
+05-25 15:52:13.597 D/nativeloader( 3926): Load /data/app/~~IP_dXZs0KB6SbITCHbRAew==/com.sethogieva.minglabusiness--83aC_f7WbfAIRFpRTxulA==/base.apk!/lib/arm64-v8a/libjsi.so using ns clns-7 from class loader (caller=/data/app/~~IP_dXZs0KB6SbITCHbRAew==/com.sethogieva.minglabusiness--83aC_f7WbfAIRFpRTxulA==/base.apk!classes7.dex): ok
+05-25 15:52:13.605 D/nativeloader( 3926): Load /data/app/~~IP_dXZs0KB6SbITCHbRAew==/com.sethogieva.minglabusiness--83aC_f7WbfAIRFpRTxulA==/base.apk!/lib/arm64-v8a/libfbjni.so using ns clns-7 from class loader (caller=/data/app/~~IP_dXZs0KB6SbITCHbRAew==/com.sethogieva.minglabusiness--83aC_f7WbfAIRFpRTxulA==/base.apk!classes7.dex): ok
+05-25 15:52:13.618 D/nativeloader( 3926): Load /data/app/~~IP_dXZs0KB6SbITCHbRAew==/com.sethogieva.minglabusiness--83aC_f7WbfAIRFpRTxulA==/base.apk!/lib/arm64-v8a/libreactnative.so using ns clns-7 from class loader (caller=/data/app/~~IP_dXZs0KB6SbITCHbRAew==/com.sethogieva.minglabusiness--83aC_f7WbfAIRFpRTxulA==/base.apk!classes7.dex): ok
+05-25 15:52:13.618 D/jni_lib_merge( 3926): Entering merged library JNI_OnLoad.
+05-25 15:52:13.618 D/jni_lib_merge( 3926): Preparing 12 pre-merged libs (including stub)
+05-25 15:52:13.618 D/jni_lib_merge( 3926): Preparing to register libfabricjni_so.  onload_func: 0x759544fce0
+05-25 15:52:13.618 D/jni_lib_merge( 3926): Preparing to register libreact_devsupportjni_so.  onload_func: 0x7595649fc8
+05-25 15:52:13.618 D/jni_lib_merge( 3926): Preparing to register libreact_featureflagsjni_so.  onload_func: 0x7595658518
+05-25 15:52:13.618 D/jni_lib_merge( 3926): Preparing to register libreact_newarchdefaults_so.  onload_func: 0x75956c06a8
+05-25 15:52:13.618 D/jni_lib_merge( 3926): Preparing to register libreactnativeblob_so.  onload_func: 0x75958b0cb4
+05-25 15:52:13.618 D/jni_lib_merge( 3926): Preparing to register libreactnativejni_so.  onload_func: 0x75958fe6bc
+05-25 15:52:13.618 D/jni_lib_merge( 3926): Preparing to register libreactnativejni_common_so.  onload_func: 0x759590f044
+05-25 15:52:13.618 D/jni_lib_merge( 3926): Preparing to register librninstance_so.  onload_func: 0x7595956764
+05-25 15:52:13.618 D/jni_lib_merge( 3926): Preparing to register libturbomodulejsijni_so.  onload_func: 0x7595a6ef68
+05-25 15:52:13.618 D/jni_lib_merge( 3926): Preparing to register libuimanagerjni_so.  onload_func: 0x7595a87fb8
+05-25 15:52:13.618 D/jni_lib_merge( 3926): Preparing to register libyoga_so.  onload_func: 0x7595a97a3c
+05-25 15:52:13.618 D/jni_lib_merge( 3926): About to register 11 actual methods.
+05-25 15:52:13.650 D/nativeloader( 3926): Load /data/app/~~IP_dXZs0KB6SbITCHbRAew==/com.sethogieva.minglabusiness--83aC_f7WbfAIRFpRTxulA==/base.apk!/lib/arm64-v8a/libreact_codegen_rnscreens.so using ns clns-7 from class loader (caller=/data/app/~~IP_dXZs0KB6SbITCHbRAew==/com.sethogieva.minglabusiness--83aC_f7WbfAIRFpRTxulA==/base.apk!classes7.dex): ok
+05-25 15:52:13.650 D/jni_lib_merge( 3926): Entering merged library JNI_OnLoad.
+05-25 15:52:13.650 D/jni_lib_merge( 3926): Preparing 12 pre-merged libs (including stub)
+05-25 15:52:13.650 D/jni_lib_merge( 3926): Preparing to register libfabricjni_so.  onload_func: 0x759544fce0
+05-25 15:52:13.650 D/jni_lib_merge( 3926): Preparing to register libreact_devsupportjni_so.  onload_func: 0x7595649fc8
+05-25 15:52:13.650 D/jni_lib_merge( 3926): Preparing to register libreact_featureflagsjni_so.  onload_func: 0x7595658518
+05-25 15:52:13.650 D/jni_lib_merge( 3926): Preparing to register libreact_newarchdefaults_so.  onload_func: 0x75956c06a8
+05-25 15:52:13.650 D/jni_lib_merge( 3926): Preparing to register libreactnativeblob_so.  onload_func: 0x75958b0cb4
+05-25 15:52:13.651 D/jni_lib_merge( 3926): Preparing to register libreactnativejni_so.  onload_func: 0x75958fe6bc
+05-25 15:52:13.651 D/jni_lib_merge( 3926): Preparing to register libreactnativejni_common_so.  onload_func: 0x759590f044
+05-25 15:52:13.651 D/jni_lib_merge( 3926): Preparing to register librninstance_so.  onload_func: 0x7595956764
+05-25 15:52:13.651 D/jni_lib_merge( 3926): Preparing to register libturbomodulejsijni_so.  onload_func: 0x7595a6ef68
+05-25 15:52:13.651 D/jni_lib_merge( 3926): Preparing to register libuimanagerjni_so.  onload_func: 0x7595a87fb8
+05-25 15:52:13.651 D/jni_lib_merge( 3926): Preparing to register libyoga_so.  onload_func: 0x7595a97a3c
+05-25 15:52:13.651 D/jni_lib_merge( 3926): About to register 11 actual methods.
+05-25 15:52:13.660 D/nativeloader( 3926): Load /data/app/~~IP_dXZs0KB6SbITCHbRAew==/com.sethogieva.minglabusiness--83aC_f7WbfAIRFpRTxulA==/base.apk!/lib/arm64-v8a/libreact_codegen_rnsvg.so using ns clns-7 from class loader (caller=/data/app/~~IP_dXZs0KB6SbITCHbRAew==/com.sethogieva.minglabusiness--83aC_f7WbfAIRFpRTxulA==/base.apk!classes7.dex): ok
+05-25 15:52:13.660 D/jni_lib_merge( 3926): Entering merged library JNI_OnLoad.
+05-25 15:52:13.660 D/jni_lib_merge( 3926): Preparing 12 pre-merged libs (including stub)
+05-25 15:52:13.660 D/jni_lib_merge( 3926): Preparing to register libfabricjni_so.  onload_func: 0x759544fce0
+05-25 15:52:13.660 D/jni_lib_merge( 3926): Preparing to register libreact_devsupportjni_so.  onload_func: 0x7595649fc8
+05-25 15:52:13.660 D/jni_lib_merge( 3926): Preparing to register libreact_featureflagsjni_so.  onload_func: 0x7595658518
+05-25 15:52:13.660 D/jni_lib_merge( 3926): Preparing to register libreact_newarchdefaults_so.  onload_func: 0x75956c06a8
+05-25 15:52:13.660 D/jni_lib_merge( 3926): Preparing to register libreactnativeblob_so.  onload_func: 0x75958b0cb4
+05-25 15:52:13.660 D/jni_lib_merge( 3926): Preparing to register libreactnativejni_so.  onload_func: 0x75958fe6bc
+05-25 15:52:13.660 D/jni_lib_merge( 3926): Preparing to register libreactnativejni_common_so.  onload_func: 0x759590f044
+05-25 15:52:13.660 D/jni_lib_merge( 3926): Preparing to register librninstance_so.  onload_func: 0x7595956764
+05-25 15:52:13.660 D/jni_lib_merge( 3926): Preparing to register libturbomodulejsijni_so.  onload_func: 0x7595a6ef68
+05-25 15:52:13.660 D/jni_lib_merge( 3926): Preparing to register libuimanagerjni_so.  onload_func: 0x7595a87fb8
+05-25 15:52:13.660 D/jni_lib_merge( 3926): Preparing to register libyoga_so.  onload_func: 0x7595a97a3c
+05-25 15:52:13.660 D/jni_lib_merge( 3926): About to register 11 actual methods.
+05-25 15:52:13.674 D/nativeloader( 3926): Load /data/app/~~IP_dXZs0KB6SbITCHbRAew==/com.sethogieva.minglabusiness--83aC_f7WbfAIRFpRTxulA==/base.apk!/lib/arm64-v8a/libreact_codegen_safeareacontext.so using ns clns-7 from class loader (caller=/data/app/~~IP_dXZs0KB6SbITCHbRAew==/com.sethogieva.minglabusiness--83aC_f7WbfAIRFpRTxulA==/base.apk!classes7.dex): ok
+05-25 15:52:13.683 D/nativeloader( 3926): Load /data/app/~~IP_dXZs0KB6SbITCHbRAew==/com.sethogieva.minglabusiness--83aC_f7WbfAIRFpRTxulA==/base.apk!/lib/arm64-v8a/libreact_codegen_reactnativekeyboardcontroller.so using ns clns-7 from class loader (caller=/data/app/~~IP_dXZs0KB6SbITCHbRAew==/com.sethogieva.minglabusiness--83aC_f7WbfAIRFpRTxulA==/base.apk!classes7.dex): ok
+05-25 15:52:13.683 D/jni_lib_merge( 3926): Entering merged library JNI_OnLoad.
+05-25 15:52:13.683 D/jni_lib_merge( 3926): Preparing 12 pre-merged libs (including stub)
+05-25 15:52:13.683 D/jni_lib_merge( 3926): Preparing to register libfabricjni_so.  onload_func: 0x759544fce0
+05-25 15:52:13.683 D/jni_lib_merge( 3926): Preparing to register libreact_devsupportjni_so.  onload_func: 0x7595649fc8
+05-25 15:52:13.683 D/jni_lib_merge( 3926): Preparing to register libreact_featureflagsjni_so.  onload_func: 0x7595658518
+05-25 15:52:13.683 D/jni_lib_merge( 3926): Preparing to register libreact_newarchdefaults_so.  onload_func: 0x75956c06a8
+05-25 15:52:13.683 D/jni_lib_merge( 3926): Preparing to register libreactnativeblob_so.  onload_func: 0x75958b0cb4
+05-25 15:52:13.683 D/jni_lib_merge( 3926): Preparing to register libreactnativejni_so.  onload_func: 0x75958fe6bc
+05-25 15:52:13.683 D/jni_lib_merge( 3926): Preparing to register libreactnativejni_common_so.  onload_func: 0x759590f044
+05-25 15:52:13.683 D/jni_lib_merge( 3926): Preparing to register librninstance_so.  onload_func: 0x7595956764
+05-25 15:52:13.683 D/jni_lib_merge( 3926): Preparing to register libturbomodulejsijni_so.  onload_func: 0x7595a6ef68
+05-25 15:52:13.683 D/jni_lib_merge( 3926): Preparing to register libuimanagerjni_so.  onload_func: 0x7595a87fb8
+05-25 15:52:13.683 D/jni_lib_merge( 3926): Preparing to register libyoga_so.  onload_func: 0x7595a97a3c
+05-25 15:52:13.683 D/jni_lib_merge( 3926): About to register 11 actual methods.
+05-25 15:52:13.696 D/nativeloader( 3926): Load /data/app/~~IP_dXZs0KB6SbITCHbRAew==/com.sethogieva.minglabusiness--83aC_f7WbfAIRFpRTxulA==/base.apk!/lib/arm64-v8a/libappmodules.so using ns clns-7 from class loader (caller=/data/app/~~IP_dXZs0KB6SbITCHbRAew==/com.sethogieva.minglabusiness--83aC_f7WbfAIRFpRTxulA==/base.apk!classes7.dex): ok
+05-25 15:52:13.910 D/TrafficStats( 3926): tagSocket(99) with statsTag=0xffffffff, statsUid=-1
+05-25 15:52:14.049 D/AppCompatDelegate( 3926): Checking for metadata for AppLocalesMetadataHolderService : Service not found
+05-25 15:52:14.101 W/.minglabusiness( 3926): Accessing hidden method Landroid/view/ViewGroup;->makeOptionalFitsSystemWindows()V (unsupported, reflection, allowed)
+05-25 15:52:14.122 W/.minglabusiness( 3926): Accessing hidden field Ljava/lang/reflect/Field;->accessFlags:I (unsupported, reflection, allowed)
+05-25 15:52:14.125 I/ExpoDevMenu( 3926): Set new dev-menu delegate: class expo.modules.devmenu.DevMenuDefaultDelegate
+05-25 15:52:14.128 W/OneSignal( 3926): [DefaultDispatcher-worker-1] suspendInitInternal: no appId provided or found in local storage. Please pass a valid appId to initWithContext().
+05-25 15:52:14.128 W/OneSignal( 3926): [DefaultDispatcher-worker-1] NotificationRestoreReceiver skipped due to failed OneSignal init
+05-25 15:52:14.129 I/BroadcastQueue(  562): BOOT_COMPLETED_BROADCAST_COMPLETION_LATENCY_REPORTED action:android.intent.action.BOOT_COMPLETED dispatchLatency:0 completeLatency:9928 dispatchRealLatency:0 completeRealLatency:9928 receiversSize:1 userId:0 userType:android.os.usertype.full.SYSTEM
+05-25 15:52:14.129 D/OomAdjuster(  562): Not killing cached processes
+05-25 15:52:14.135 D/TrafficStats( 3926): tagSocket(99) with statsTag=0xffffffff, statsUid=-1
+05-25 15:52:14.136 W/unknown:ReconnectingWebSocket( 3926): Couldn't connect to "ws://10.0.2.2:8081/message?device=sdk_gphone64_arm64%20-%2015%20-%20API%2035&app=com.sethogieva.minglabusiness&clientid=BridgelessDevSupportManager", will silently retry
+05-25 15:52:14.148 W/HWUI    ( 3926): Unknown dataspace 0
+05-25 15:52:14.196 I/Choreographer( 3926): Skipped 60 frames!  The application may be doing too much work on its main thread.
+05-25 15:52:14.207 D/CoreBackPreview(  562): Window{8d8f3d5 u0 com.sethogieva.minglabusiness/com.sethogieva.minglabusiness.MainActivity}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@20da9b7, mPriority=0, mIsAnimationCallback=false}
+05-25 15:52:14.220 I/EGL_emulation( 3926): Opening libGLESv1_CM_emulation.so
+05-25 15:52:14.221 I/EGL_emulation( 3926): Opening libGLESv2_emulation.so
+05-25 15:52:14.227 W/HWUI    ( 3926): Failed to choose config with EGL_SWAP_BEHAVIOR_PRESERVED, retrying without...
+05-25 15:52:14.228 W/HWUI    ( 3926): Failed to initialize 101010-2 format, error = EGL_SUCCESS
+05-25 15:52:14.569 I/hwservicemanager(  160): getTransport: Cannot find entry android.hardware.graphics.mapper@4.0::IMapper/default in either framework or device VINTF manifest.
+05-25 15:52:14.569 I/Gralloc4( 3926): mapper 4.x is not supported
+05-25 15:52:14.874 D/BaseDepthController( 1256): setSurface:
+05-25 15:52:14.874 D/BaseDepthController( 1256): 	mWaitingOnSurfaceValidity: false
+05-25 15:52:14.874 D/BaseDepthController( 1256): 	mSurface: null
+05-25 15:52:14.875 D/BaseDepthController( 1256): mSurface is null and mCurrentBlur is: 0
+05-25 15:52:14.877 D/StateManager( 1256): goToState - fromState: Normal, toState: Normal, partial trace:
+05-25 15:52:14.877 D/StateManager( 1256): 	at com.android.launcher3.statemanager.StateManager.moveToRestState(go/retraceme 2855a437b73635ce9cad76b9289087e631bbb67fc90008a0da13d343a00e5041:4)
+05-25 15:52:14.877 D/StateManager( 1256): 	at com.android.launcher3.statemanager.StateManager.moveToRestState(go/retraceme 2855a437b73635ce9cad76b9289087e631bbb67fc90008a0da13d343a00e5041:1)
+05-25 15:52:14.877 D/StateManager( 1256): 	at com.android.launcher3.statemanager.StatefulActivity.onStop(go/retraceme 2855a437b73635ce9cad76b9289087e631bbb67fc90008a0da13d343a00e5041:34)
+05-25 15:52:14.878 W/ProcessStats(  562): Tracking association SourceState{27dadf7 com.google.android.apps.nexuslauncher/10176 BFgs #2244} whose proc state 4 is better than process ProcessState{2ee69e3 com.google.android.googlequicksearchbox:search/10145 pkg=com.google.android.googlequicksearchbox} proc state 14 (6 skipped)
+05-25 15:52:14.878 D/StatsLog( 1256): LAUNCHER_ONSTOP
+05-25 15:52:15.047 W/ziparchive(  562): Unable to open '/data/app/~~IP_dXZs0KB6SbITCHbRAew==/com.sethogieva.minglabusiness--83aC_f7WbfAIRFpRTxulA==/base.dm': No such file or directory
+05-25 15:52:15.056 D/StatsLog( 1256): LAUNCHER_GOOGLE_SEARCH_RESTORE_LIST_SIZE_AFTER_ACTIVITY_RESTART
+05-25 15:52:15.094 I/ActivityTaskManager(  562): Displayed com.sethogieva.minglabusiness/.MainActivity for user 0: +12s900ms
+05-25 15:52:15.097 D/OneSearchSuggestProvider( 1256): Shut down the binder channel
+05-25 15:52:15.100 I/IPCThreadState( 1256): oneway function results for code 2 on binder at 0xb40000781ff75a90 will be dropped but finished with status UNKNOWN_TRANSACTION
+05-25 15:52:15.155 I/HWUI    ( 3926): Davey! duration=1558ms; Flags=1, FrameTimelineVsyncId=18643, IntendedVsync=408969971857, Vsync=409969971817, InputEventId=0, HandleInputStart=409981914527, AnimationStart=409981923568, PerformTraversalsStart=409982065318, DrawStart=410390462360, FrameDeadline=408986638523, FrameInterval=409975902152, FrameStartTime=16666666, SyncQueued=410398207110, SyncStart=410530426569, IssueDrawCommandsStart=410535590110, SwapBuffers=410544634444, FrameCompleted=410660855819, DequeueBufferDuration=6000, QueueBufferDuration=47018250, GpuCompleted=410660754444, SwapBuffersCompleted=410660855819, DisplayPresentTime=72904454231359566, CommandSubmissionCompleted=410544634444, 
+05-25 15:52:15.178 W/.minglabusiness( 3926): Verification of com.apollographql.apollo.ApolloClient$Builder com.apollographql.apollo.ApolloClient$Builder.addCustomScalarAdapter(com.apollographql.apollo.api.CustomScalarType, com.apollographql.apollo.api.Adapter) took 146.415ms (163.92 bytecodes/s) (2600B approximate peak alloc)
+05-25 15:52:15.209 D/CarrierSvcBindHelper(  944): onPackageModified: com.sethogieva.minglabusiness
+05-25 15:52:15.215 W/BpBinder( 3964): Linking to death on android.gui.ISurfaceComposer but there are no threads (yet?) listening to incoming transactions. See ProcessState::startThreadPool and ProcessState::setThreadPoolMaxThreadCount. Generally you should setup the binder threadpool before other initialization steps.
+05-25 15:52:15.247 W/ProcessState( 3964): Extra binder thread started, but 0 threads requested. Do not use *startThreadPool when zero threads are requested.
+05-25 15:52:15.250 D/CarrierSvcBindHelper(  944): No carrier app for: 0
+05-25 15:52:15.251 D/ShortcutService(  562): received package broadcast intent: Intent { act=android.intent.action.PACKAGE_CHANGED dat=package: flg=0x45000010 (has extras) }
+05-25 15:52:15.251 D/ShortcutService(  562): changing package: com.sethogieva.minglabusiness userId0
+05-25 15:52:15.252 D/ShortcutService(  562): handlePackageChanged: com.sethogieva.minglabusiness user=0
+05-25 15:52:15.252 D/ShortcutService(  562): rescanPackageIfNeeded 0@com.sethogieva.minglabusiness, forceRescan=true , isNewApp=true
+05-25 15:52:15.252 D/ShortcutService(  562): Package com.sethogieva.minglabusiness has 0 manifest shortcut(s), and 0 share target(s)
+05-25 15:52:15.319 D/ActivityManager(  562): sync unfroze 1160 com.google.android.permissioncontroller for 6
+05-25 15:52:15.329 E/SmsApplication(  944): com.google.android.apps.messaging lost android:read_cell_broadcasts:  (fixing)
+05-25 15:52:15.329 W/AppOpService(  562): Ignored setUidMode call for runtime permission app op: uid = 10139, code = READ_CELL_BROADCASTS, mode = allow, callingUid = 1001, oldMode = allow
+05-25 15:52:15.330 I/RoleService(  562): Granting default roles...
+05-25 15:52:15.331 E/CellBroadcastUtils(  944): getDefaultCellBroadcastReceiverPackageName: no package found
+05-25 15:52:15.331 W/AppOpService(  562): Ignored setUidMode call for runtime permission app op: uid = 1001, code = READ_SMS, mode = allow, callingUid = 1001, oldMode = allow
+05-25 15:52:15.332 W/AppOpService(  562): Ignored setUidMode call for runtime permission app op: uid = 1001, code = RECEIVE_SMS, mode = allow, callingUid = 1001, oldMode = allow
+05-25 15:52:15.332 W/AppOpService(  562): Ignored setUidMode call for runtime permission app op: uid = 1001, code = RECEIVE_WAP_PUSH, mode = allow, callingUid = 1001, oldMode = allow
+05-25 15:52:15.332 W/AppOpService(  562): Ignored setUidMode call for runtime permission app op: uid = 1001, code = SEND_SMS, mode = allow, callingUid = 1001, oldMode = allow
+05-25 15:52:15.332 W/AppOpService(  562): Ignored setUidMode call for runtime permission app op: uid = 1001, code = READ_CELL_BROADCASTS, mode = allow, callingUid = 1001, oldMode = allow
+05-25 15:52:15.334 D/ImsResolver(  944): maybeAddedImsService, packageName: com.sethogieva.minglabusiness
+05-25 15:52:15.343 W/Role    (  562): Default holder doesn't have required signing certificate: com.google.android.retaildemo:6547c73dee150c103980bfdffe55cc9a011d785dd694a5f99afd8205bcaf1f80
+05-25 15:52:15.343 E/RoleControllerServiceImpl(  562): Default/fallback role holder package doesn't qualify for the role, package: com.google.android.gms.supervision, role: android.app.role.SYSTEM_SUPERVISION
+05-25 15:52:15.373 W/.minglabusiness( 3926): Verification of java.lang.Object kotlinx.coroutines.channels.BufferedChannel$BufferedChannelIterator.next(kotlin.coroutines.Continuation) took 114.848ms (43.54 bytecodes/s) (2312B approximate peak alloc)
+05-25 15:52:15.499 D/ControlsListingControllerImpl(  810): ServiceConfig reloaded, count: 0
+05-25 15:52:15.535 W/Role    (  562): Default holder doesn't have required signing certificate: com.google.android.apps.work.clouddpc:23962F4B43B9857638EA66F4D419518EAE282491ACDA4B94707BD59003C45E58
+05-25 15:52:15.549 W/MagnificationConnectionManager(  562): requestConnection duplicated request: connect=false, mConnectionState=DISCONNECTED
+05-25 15:52:15.551 W/IPCThreadState(  562): Sending oneway calls to frozen process.
+05-25 15:52:15.551 W/IPCThreadState(  562): Sending oneway calls to frozen process.
+05-25 15:52:15.551 W/IPCThreadState(  562): Sending oneway calls to frozen process.
+05-25 15:52:15.551 W/IPCThreadState(  562): Sending oneway calls to frozen process.
+05-25 15:52:15.552 W/IPCThreadState(  562): Sending oneway calls to frozen process.
+05-25 15:52:15.553 I/hwservicemanager(  160): getTransport: Cannot find entry android.hardware.graphics.mapper@4.0::IMapper/default in either framework or device VINTF manifest.
+05-25 15:52:15.553 I/Gralloc4( 3964): mapper 4.x is not supported
+05-25 15:52:15.553 D/PackageUpdatedTask( 1256): Package updated: mOp=UPDATE packages=[com.sethogieva.minglabusiness]
+05-25 15:52:15.566 I/AiAiEcho( 1382): AppFetcherImpl onPackageChanged com.sethogieva.minglabusiness.
+05-25 15:52:15.581 I/AiAiEcho( 1382): AppIndexer Package:[com.sethogieva.minglabusiness] UserProfile:[0] Enabled:[true].
+05-25 15:52:15.581 I/AiAiEcho( 1382): AppFetcherImplV2 updateApps package:[com.sethogieva.minglabusiness], userId:[0], reason:[package is updated.].
+05-25 15:52:15.668 I/ImeTracker(  562): com.sethogieva.minglabusiness:1b6e0a5d: onRequestHide at ORIGIN_SERVER reason HIDE_UNSPECIFIED_WINDOW fromUser false
+05-25 15:52:15.668 I/ImeTracker(  562): com.sethogieva.minglabusiness:1b6e0a5d: onCancelled at PHASE_SERVER_SHOULD_HIDE
+05-25 15:52:15.669 I/FontLog ( 1061): (REDACTED) Received query %s, URI %s
+05-25 15:52:15.670 I/FontLog ( 1061): (REDACTED) Query [%s] resolved to %s
+05-25 15:52:15.704 E/RoleControllerServiceImpl(  562): Default/fallback role holder package doesn't qualify for the role, package: com.google.android.gms, role: android.app.role.WALLET
+05-25 15:52:15.706 I/FontLog ( 1061): (REDACTED) Fetch %s end status %s
+05-25 15:52:15.709 E/RoleControllerServiceImpl(  562): Default/fallback role holder package doesn't qualify for the role, package: com.google.android.devicelockcontroller, role: android.app.role.SYSTEM_FINANCED_DEVICE_CONTROLLER
+05-25 15:52:15.732 W/WindowOnBackDispatcher(  810): sendCancelIfRunning: isInProgress=false callback=android.view.ViewRootImpl$$ExternalSyntheticLambda11@1fc42e8
+05-25 15:52:15.737 D/CoreBackPreview(  562): Window{b55159 u0 Splash Screen com.sethogieva.minglabusiness}: Setting back callback null
+05-25 15:52:16.450 W/InputManager-JNI(  562): Input channel object 'b55159 Splash Screen com.sethogieva.minglabusiness (client)' was disposed without first being removed with the input manager!
+05-25 15:52:17.627 W/Looper  (  562): Slow delivery took 699ms main h=android.os.Handler c=android.hardware.camera2.CameraManager$CameraManagerGlobal$$ExternalSyntheticLambda0@cb25ae5 m=0
+05-25 15:52:17.631 I/Bugle   ( 1551): BroadcastReceiverAsyncWorkTracker: Acknowledging broadcast of buoi@1ba076
+05-25 15:52:17.753 I/FontLog ( 1061): (REDACTED) Pulling font file for id = %d, cache size = %d
+05-25 15:52:17.876 W/Looper  (  562): Drained
+05-25 15:52:18.199 I/wpa_supplicant(  789): wlan0: CTRL-EVENT-BEACON-LOSS 
+05-25 15:52:18.599 I/GoogleInputMethodService( 1281): GoogleInputMethodService.onFinishInput():3157 
+05-25 15:52:19.120 W/OneSignal( 3926): [DefaultDispatcher-worker-1] suspendInitInternal: no appId provided or found in local storage. Please pass a valid appId to initWithContext().
+05-25 15:52:19.127 W/OneSignal( 3926): [DefaultDispatcher-worker-1] NotificationRestoreWorker skipped due to failed OneSignal init
+05-25 15:52:19.129 I/Choreographer(  562): Skipped 32 frames!  The application may be doing too much work on its main thread.
+05-25 15:52:19.212 I/FontLog ( 1061): (REDACTED) Pulling font file for id = %d, cache size = %d
+05-25 15:52:19.315 I/GoogleInputMethodService( 1281): GoogleInputMethodService.updateDeviceLockedStatus():2248 repeatCheckTimes = 0, locked = false
+05-25 15:52:19.315 I/GoogleInputMethodService( 1281): GoogleInputMethodService.onStartInput():1986 onStartInput(EditorInfo{EditorInfo{packageName=com.sethogieva.minglabusiness, inputType=0, inputTypeString=NULL, enableLearning=false, autoCorrection=false, autoComplete=false, imeOptions=0, privateImeOptions=null, actionName=UNSPECIFIED, actionLabel=null, initialSelStart=-1, initialSelEnd=-1, initialCapsMode=0, label=null, fieldId=0, fieldName=null, extras=null, hintText=null, hintLocales=[]}}, false)
+05-25 15:52:20.051 I/Choreographer( 3926): Skipped 259 frames!  The application may be doing too much work on its main thread.
+05-25 15:52:20.146 I/Choreographer(  810): Skipped 55 frames!  The application may be doing too much work on its main thread.
+05-25 15:52:20.354 I/GoogleInputMethodService( 1281): GoogleInputMethodService.updateDeviceLockedStatus():2248 repeatCheckTimes = 1, locked = false
+05-25 15:52:20.385 I/HWUI    ( 3926): Davey! duration=4221ms; Flags=0, FrameTimelineVsyncId=19321, IntendedVsync=411436638425, Vsync=411436638425, InputEventId=0, HandleInputStart=411448870402, AnimationStart=411448875152, PerformTraversalsStart=411448876861, DrawStart=411450917277, FrameDeadline=411453305091, FrameInterval=411448850402, FrameStartTime=16666666, SyncQueued=411451511694, SyncStart=411451547736, IssueDrawCommandsStart=411451601527, SwapBuffers=414023782987, FrameCompleted=415657852321, DequeueBufferDuration=35250, QueueBufferDuration=815821376, GpuCompleted=415638823196, SwapBuffersCompleted=415657852321, DisplayPresentTime=144115222452437076, CommandSubmissionCompleted=414023782987, 
+05-25 15:52:20.417 I/WM-WorkerWrapper( 3926): Worker result SUCCESS for Work [ id=eca47f47-254c-416f-be3a-3b56cf20c17a, tags={ com.onesignal.notifications.internal.restoration.impl.NotificationRestoreWorkManager$NotificationRestoreWorker } ]
+05-25 15:52:20.421 I/Choreographer(  810): Skipped 71 frames!  The application may be doing too much work on its main thread.
+05-25 15:52:20.428 D/TrafficStats( 3926): tagSocket(130) with statsTag=0xffffffff, statsUid=-1
+05-25 15:52:20.455 I/AndroidIME( 1281): InputBundleManager.loadActiveInputBundleId():450 loadActiveInputBundleId: und-Latn-x-password, password
+05-25 15:52:20.481 I/PermissionControllerServiceImpl( 1160): Updating user sensitive for uid 10207
+05-25 15:52:20.499 W/PackageConfigPersister(  562): App-specific configuration not found for packageName: com.sethogieva.minglabusiness and userId: 0
+05-25 15:52:20.503 W/NotificationCenter( 1281): NotificationCenter$ListenerData.notifyOnExecutor():672 Heavy notify work detected on UI thread: |kga->jjc| takes 47ms
+05-25 15:52:20.840 W/.minglabusiness( 3926): Verification of java.lang.String com.facebook.react.devsupport.DevLauncherDevServerHelper.getSourceMapUrl(java.lang.String) took 253.900ms (846.79 bytecodes/s) (6608B approximate peak alloc)
+05-25 15:52:21.499 I/ExpoDevMenu( 3926): Set new dev-menu delegate: class expo.modules.devmenu.DevMenuDefaultDelegate
+05-25 15:52:21.566 D/EGL_emulation(  810): app_time_stats: avg=5728.81ms min=694.83ms max=10762.78ms count=2
+05-25 15:52:21.582 W/Looper  (  810): Slow delivery took 1038ms SysUiBg h=android.os.Handler c=android.telephony.TelephonyCallback$IPhoneStateListenerStub$$ExternalSyntheticLambda43@d75b030 m=0
+05-25 15:52:21.696 I/HWUI    (  810): Davey! duration=2548ms; Flags=0, FrameTimelineVsyncId=19412, IntendedVsync=414786638291, Vsync=414986638283, InputEventId=0, HandleInputStart=415001519696, AnimationStart=415001521404, PerformTraversalsStart=415003867071, DrawStart=416072970113, FrameDeadline=414803304957, FrameInterval=414995300946, FrameStartTime=16666666, SyncQueued=416074598321, SyncStart=416107169488, IssueDrawCommandsStart=416121689030, SwapBuffers=417343964905, FrameCompleted=417367529697, DequeueBufferDuration=21000, QueueBufferDuration=507917, GpuCompleted=417367529697, SwapBuffersCompleted=417345909947, DisplayPresentTime=0, CommandSubmissionCompleted=417343964905, 
+05-25 15:52:21.724 W/OptProp (  562): Cannot read opt property android.window.PROPERTY_COMPAT_ALLOW_USER_ASPECT_RATIO_OVERRIDE
+05-25 15:52:21.732 W/OptProp (  562): Cannot read opt property android.window.PROPERTY_COMPAT_ALLOW_USER_ASPECT_RATIO_FULLSCREEN_OVERRIDE
+05-25 15:52:21.732 W/OptProp (  562): Cannot read opt property android.window.PROPERTY_COMPAT_ALLOW_ORIENTATION_OVERRIDE
+05-25 15:52:21.733 V/GrammaticalInflectionUtils(  562): AttributionSource: android.content.AttributionSource@5feeb2e6 does not have READ_SYSTEM_GRAMMATICAL_GENDER permission.
+05-25 15:52:21.733 W/OptProp (  562): Cannot read opt property android.window.PROPERTY_COMPAT_ALLOW_RESIZEABLE_ACTIVITY_OVERRIDES
+05-25 15:52:21.762 D/StatsLog( 1256): LAUNCHER_ALLAPPS_COUNT
+05-25 15:52:21.769 D/OomAdjuster(  562): Not killing cached processes
+05-25 15:52:21.821 W/OptProp (  562): Cannot read opt property android.window.PROPERTY_COMPAT_ALLOW_MIN_ASPECT_RATIO_OVERRIDE
+05-25 15:52:21.750 D/TrafficStats( 3926): tagSocket(95) with statsTag=0xffffffff, statsUid=-1
+05-25 15:52:21.823 D/TrafficStats( 3926): tagSocket(135) with statsTag=0xffffffff, statsUid=-1
+05-25 15:52:21.828 I/HWUI    (  810): Davey! duration=1365ms; Flags=0, FrameTimelineVsyncId=19449, IntendedVsync=415003304949, Vsync=416186638235, InputEventId=0, HandleInputStart=416203040821, AnimationStart=416203041863, PerformTraversalsStart=416205580280, DrawStart=416205623488, FrameDeadline=417386638187, FrameInterval=416201503113, FrameStartTime=16666666, SyncQueued=416210466405, SyncStart=417346262655, IssueDrawCommandsStart=417353047697, SwapBuffers=417473791322, FrameCompleted=417504673655, DequeueBufferDuration=2020916, QueueBufferDuration=597583, GpuCompleted=417504673655, SwapBuffersCompleted=417477331197, DisplayPresentTime=0, CommandSubmissionCompleted=417473791322, 
+05-25 15:52:21.850 I/Choreographer(  810): Skipped 84 frames!  The application may be doing too much work on its main thread.
+05-25 15:52:21.864 I/ActivityTaskManager(  562): START u0 {act=android.intent.action.VIEW cat=[android.intent.category.LAUNCHER,android.intent.category.BROWSABLE] dat=exp+mingla-business://expo-development-client/... flg=0x10018000 pkg=com.sethogieva.minglabusiness cmp=com.sethogieva.minglabusiness/.MainActivity} with LAUNCH_SINGLE_TASK from uid 10207 (BAL_ALLOW_VISIBLE_WINDOW) result code=0
+05-25 15:52:21.911 D/ProfileInstaller( 3926): Installing profile for com.sethogieva.minglabusiness
+05-25 15:52:21.968 I/Choreographer( 3926): Skipped 109 frames!  The application may be doing too much work on its main thread.
+05-25 15:52:21.991 V/WindowManagerShell(  810): Transition requested (#20): android.os.BinderProxy@37e3a2e TransitionRequestInfo { type = OPEN, triggerTask = TaskInfo{userId=0 taskId=23 displayId=0 isRunning=true baseIntent=Intent { act=android.intent.action.VIEW cat=[android.intent.category.BROWSABLE] dat=exp+mingla-business://expo-development-client/... flg=0x10000000 cmp=com.sethogieva.minglabusiness/.MainActivity } baseActivity=ComponentInfo{com.sethogieva.minglabusiness/com.sethogieva.minglabusiness.MainActivity} topActivity=ComponentInfo{com.sethogieva.minglabusiness/com.sethogieva.minglabusiness.MainActivity} origActivity=null realActivity=ComponentInfo{com.sethogieva.minglabusiness/com.sethogieva.minglabusiness.MainActivity} numActivities=1 lastActiveTime=417613 supportsMultiWindow=true resizeMode=1 isResizeable=true minWidth=-1 minHeight=-1 defaultMinSize=220 token=WCT{android.window.IWindowContainerToken$Stub$Proxy@cf9cf} topActivityType=1 pictureInPictureParams=null shouldDockBigOverlays=false launchIntoPipHostTaskId=-1 lastParentTaskIdBeforePip=-1 displayCutoutSafeInsets=Rect(0, 151 - 0, 0) topActivityInfo=ActivityInfo{ebd9f5c com.sethogieva.minglabusiness.MainActivity} launchCookies=[] positionInParent=Point(0, 0) parentTaskId=-1 isFocused=true isVisible=true isVisibleRequested=false isSleeping=false locusId=null displayAreaFeatureId=1 isTopActivityTransparent=false appCompatTaskInfo=AppCompatTaskInfo { topActivityInSizeCompat=false topActivityEligibleForLetterboxEducation= falseisLetterboxEducationEnabled= true isLetterboxDoubleTapEnabled= false topActivityEligibleForUserAspectRatioButton= false topActivityBoundsLetterboxed= false isFromLetterboxDoubleTap= false topActivityLetterboxVerticalPosition= -1 topActivityLetterboxHorizontalPosition= -1 topActivityLetterboxWidth=1344 topActivityLetterboxHeight=2992 isUserFullscreenOverrideEnabled=false isSystemFullscreenOverrideEnabled=false cameraCompatTaskInfo=CameraCompatTaskInfo { cameraCompatControlState=hidden freeformCameraCompatMode=inactive}}}, pipTask = null, remoteTransition = null, displayChange = null, flags = 0, debugId = 20 }
+05-25 15:52:22.037 I/BpBinder(  403): onLastStrongRef automatically unlinking death recipients: 
+05-25 15:52:22.116 I/HWUI    (  810): Davey! duration=1428ms; Flags=0, FrameTimelineVsyncId=19529, IntendedVsync=416219971567, Vsync=417619971511, InputEventId=0, HandleInputStart=417630819405, AnimationStart=417630820739, PerformTraversalsStart=417630820905, DrawStart=417630911030, FrameDeadline=417536638181, FrameInterval=417630580697, FrameStartTime=16666666, SyncQueued=417631365489, SyncStart=417631508530, IssueDrawCommandsStart=417631625364, SwapBuffers=417632664780, FrameCompleted=417648555239, DequeueBufferDuration=6083, QueueBufferDuration=286500, GpuCompleted=417648555239, SwapBuffersCompleted=417633659072, DisplayPresentTime=0, CommandSubmissionCompleted=417632664780, 
+05-25 15:52:22.153 D/EGL_emulation( 3926): app_time_stats: avg=3628.10ms min=2278.14ms max=4978.06ms count=2
+05-25 15:52:22.160 D/CoreBackPreview(  562): Window{54b2fc5 u0 Splash Screen com.sethogieva.minglabusiness}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@f19304b, mPriority=0, mIsAnimationCallback=false}
+05-25 15:52:22.189 W/JobScheduler(  562): Job didn't exist in JobStore: 1edebde #u0a207/7 com.sethogieva.minglabusiness/androidx.work.impl.background.systemjob.SystemJobService
+05-25 15:52:22.297 W/unknown:ReconnectingWebSocket( 3926): Couldn't connect to "ws://10.0.2.2:8081/message?device=sdk_gphone64_arm64%20-%2015%20-%20API%2035&app=com.sethogieva.minglabusiness&clientid=DevLauncherBridgelessDevSupportManager", will silently retry

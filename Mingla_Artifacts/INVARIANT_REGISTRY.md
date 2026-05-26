@@ -11,7 +11,39 @@
 
 One invariant flipped DRAFT → ACTIVE at the ORCH-0963 close. Tester CONDITIONAL PASS verdict P0:0 P1:0 P2:0 P3:1 P4:3 (P3-1 = D-LF-INFRA blocker registered as follow-up ORCH-0971; not a close blocker). Implementor happy-path 35 tests fails-on-revert verified at HEAD~1 on 3 tracks (Deno SQL + Jest service + Jest component). Tester adversarial T-10 at `mingla-business/src/components/brand/__tests__/TripMiniCard.cancelledTripLeak.adversarial.test.ts` fails-on-revert verified at commit `4d437b94c`. Migration applied 2026-05-25; RPC verified live via Mgmt API replay returning correct rows for `travelbrand` (DC Adventure spots_left=21 + The Sone spots_left=200) and 0 rows for non-trip-planner brands.
 
-### I-PUBLIC-BRAND-KIND-BRANCHED (ACTIVE post ORCH-0963 CLOSE)
+### I-BRAND-UNIVERSAL-AUTHORING (ACTIVE post META-ORCH-0972 CLOSE — 2026-05-26)
+
+**Rule:** Every brand can author every offering type (event, trip, experience) regardless of `brands.kind`. No active product code reads `brand.kind`, `currentBrand.kind`, or `brands.kind` as a gate, filter, or branch. The `Brand.kind` TS field is deleted from `mingla-business/src/types/brand.ts`. The `brands.kind` DB column remains until Stage 4 (`20260730000000_meta_orch_0972_drop_brand_kind.sql`, separate release-cycle follow-up) but no view, RPC, or RLS policy filters on it.
+
+**Why it exists:** Pre-decommission, `brands.kind ∈ {'physical' | 'popup' | 'trip_planner'}` gated which offering types a brand could publish. This created categorical mismatches (trip-planner brands couldn't publish events, popup brands couldn't publish experiences) and forced kind-branched render code on every consuming surface. Operator decided 2026-05-25 that universal authoring is the canonical product positioning; this invariant prevents any future refactor from reintroducing kind as a gate.
+
+**Enforcement:** Strict-grep CI gate `.github/scripts/strict-grep/meta-orch-0972-no-brand-kind-reads.mjs` (registered in `strict-grep-mingla-business.yml`). Four assertions N1-N4 forbid `brand.kind`, `currentBrand.kind`, and `brands.kind` reads across `mingla-business/src/` + `mingla-business/app/`. Implementor happy-path test `mingla-business/__tests__/strictGrep/noBrandKindReads.test.ts` + tester adversarial `noBrandKindReadsAppCoverage.test.ts` cover the gate. Migration `20260729000000_meta_orch_0972_universal_authoring.sql` removed kind from views + RLS + RPCs.
+
+### I-PUBLIC-PAGE-DATA-DRIVEN-TABS (ACTIVE post META-ORCH-0972 CLOSE — 2026-05-26)
+
+**Rule:** Public brand page (`mingla-business/src/components/brand/PublicBrandPage.tsx` at `/b/{brandSlug}`) tab visibility derives from real offering counts via `pg_brand_offering_counts(uuid)` + `pg_public_brand_upcoming(text, timestamptz, integer)`. Tabs render in fixed Events → Trips → Experiences → Upcoming → About order, with only populated buckets shown. Empty-offering brands render identity + About + an empty "Get started" state — never a blank or kind-branched tab strip.
+
+**Why it exists:** Pre-decommission, `PublicBrandPage.tsx` branched per `brand.kind` to decide which tabs to render. Combined with universal authoring (DEC-170), this would leak trips into event-brand tabs and vice versa. Data-driven derivation makes the rendering contract truthful regardless of the (now-deprecated) kind column.
+
+**Enforcement:** Strict-grep CI gate `.github/scripts/strict-grep/meta-orch-0972-data-driven-tabs.mjs` (D1-D4 forbid `brand.kind ===` in `PublicBrandPage.tsx`; require offering-count derivation). Regression test `mingla-business/__tests__/components/PublicBrandPage.dataDriven.test.tsx` (fails-on-revert verified at `2aea165d5`). Renamed gate `orch-0963-public-trip-rpc-and-route-segregation.mjs` preserves trip RPC presence + no-positive-event-type-trip-filter assertions.
+
+### I-HUB-TABS-DATA-DRIVEN (ACTIVE post META-ORCH-0972 CLOSE — 2026-05-26)
+
+**Rule:** Business hub tab visibility (`mingla-business/app/(tabs)/hub/_layout.tsx` + `mingla-business/src/hooks/useHubTabs.ts`) derives from `pg_brand_offering_counts(uuid)` via `useBrandOfferingCounts`. Empty brand → single "Get started" tab with offering chooser. Mixed offerings → tabs in fixed Events → Trips → Experiences order, only populated buckets visible. Sticky last-visited tab via `@mingla/hub/lastTab` AsyncStorage key, with stale-fallback to first-visible when stored tab is no longer in the visible set.
+
+**Why it exists:** Same as I-PUBLIC-PAGE-DATA-DRIVEN-TABS but for the business-owner side. Pre-decommission, hub tabs were kind-branched; post-decommission they must reflect what the brand has actually published.
+
+**Enforcement:** Shared with I-PUBLIC-PAGE-DATA-DRIVEN-TABS via `meta-orch-0972-data-driven-tabs.mjs` gate. Sub-B test `mingla-business/__tests__/hooks/useHubVisibleTabs.test.tsx` covers the hook contract.
+
+### I-VENUE-CLAIM-OPTIONAL (ACTIVE post META-ORCH-0972 CLOSE — 2026-05-26)
+
+**Rule:** Venue claim (VE1–VE4 flow) is an opt-in trust/discovery booster, NOT an authoring gate. `BrandEditView` shows the "Claim a venue" affordance when no claim/place exists but does NOT gate offering authoring on it. `biz_create_venue_brand_pending_review` no longer inserts `kind`; `biz_review_venue_claim` no longer requires `kind='physical'`. Banner logic in `venueClaimBannerLogic.ts` is claim-status driven, not kind-driven.
+
+**Why it exists:** Pre-decommission, venue claim was implicitly required for "physical" brands and forbidden for others. Universal authoring (DEC-170) means any brand can publish without claiming a venue; claim becomes an upgrade path for surfacing in consumer-app discovery.
+
+**Enforcement:** Migration `20260729000000_meta_orch_0972_universal_authoring.sql` Stage 3 (SECURITY DEFINER RPC body rewrites). Existing test `mingla-business/src/services/__tests__/venueClaimService.test.ts` updated in Sub-B scope to encode the status-only contract.
+
+### I-PUBLIC-BRAND-KIND-BRANCHED (SUPERSEDED by I-PUBLIC-PAGE-DATA-DRIVEN-TABS post META-ORCH-0972 CLOSE — 2026-05-26 — ~24-hour lifetime from 2026-05-25 ORCH-0963 CLOSE)
 
 **Rule:** The public brand page render path (`/b/{brandSlug}` at `mingla-business/app/b/[brandSlug]/index.tsx` → `mingla-business/src/components/brand/PublicBrandPage.tsx`) MUST source content according to `brands.kind`:
 - `kind ∈ {'physical', 'popup'}` (event brands) → events array, never trips array. Tabs labelled "Upcoming / Past / About". First 3 upcoming-event cards carry the sticky "Buy tickets" pill (F-5 polish).
@@ -233,7 +265,9 @@ Three new invariants introduced by ORCH-0866 + ORCH-0865 structural fix. All thr
 
 Two new invariants introduced by ORCH-0855 SPEC §8. Both flipped DRAFT → ACTIVE at CLOSE after operator iOS sim live-fire confirmation, tester 14/14 adversarial check PASS at HEAD `7750f7d6`, implementor 22/22 jest tests PASS at baseline `ff46c3f5`.
 
-### I-PROPOSED-TR1-PERSONA-INTERFACE
+### I-PROPOSED-TR1-PERSONA-INTERFACE (SUPERSEDED by I-BRAND-UNIVERSAL-AUTHORING post META-ORCH-0972 CLOSE — 2026-05-26)
+
+> **Status note (2026-05-26):** This invariant is SUPERSEDED. `PersonaPickerCards.tsx` + `PersonaForkSheet.tsx` + `TripBrandWizard.tsx` are DELETED files in the META-ORCH-0972 close (Sub-B `3414ea6b8`). The `PersonaDef.id` union no longer exists in active product code. Universal brand creation flow at `BrandCreationFlow.tsx` + shared `OfferingChooser.tsx` replaces the persona-fork model. Original text preserved below for audit.
 
 **Rule.** The `PersonaPickerCards` component in `mingla-business/src/components/brand/PersonaPickerCards.tsx` exports a `PersonaDef` interface whose `id` field is the literal union `"place" | "event" | "trip"`. Widening this union — or removing any of the three ids — requires a new ORCH + SPEC + invariant amendment. The component itself is presentation-only and does NOT own state, does NOT call services, does NOT know about brand creation — it just renders the cards the caller supplies via the `personas: PersonaDef[]` prop.
 
@@ -252,7 +286,9 @@ Two new invariants introduced by ORCH-0855 SPEC §8. Both flipped DRAFT → ACTI
 
 ---
 
-### I-PROPOSED-TR1-KIND-IMMUTABLE
+### I-PROPOSED-TR1-KIND-IMMUTABLE (SUPERSEDED by I-BRAND-UNIVERSAL-AUTHORING post META-ORCH-0972 CLOSE — 2026-05-26)
+
+> **Status note (2026-05-26):** This invariant is SUPERSEDED. `brands.kind` is decommissioned as a feature gate (DEC-170). The kind editor concern is moot because the field is no longer read by active product code. The Stage 4 follow-up migration (`20260730000000_meta_orch_0972_drop_brand_kind.sql`, separate release cycle) will physically drop the column. Until then the DB column remains for safety, but no code path reads it. Original text preserved below for audit.
 
 **Rule.** `brands.kind` is IMMUTABLE post-create for rows with `kind='trip_planner'`. `BrandEditView.tsx` MUST NOT render the BRAND KIND editor for trip-planner brands. The legacy physical↔popup toggle for popup/physical brands MUST NOT include `'trip_planner'` as a togglable option. Demoting a trip-planner brand to popup/physical or promoting popup/physical to trip-planner via the kind editor is forbidden by design — the only way to obtain a trip-planner brand is via the dedicated `TripBrandWizard` persona flow with mandatory Stripe Connect onboarding.
 

@@ -310,3 +310,37 @@
 - COMMS-0003 (external-API integration ORCHs cite provider docs URLs inline at SPEC time)
 
 **Enforcement:** Strict-grep gates `orch-0954-controller-props-pinned.mjs` + `orch-0954-rak-scope-pinned.mjs` registered in `.github/workflows/strict-grep-mingla-business.yml`. Constraint migration `supabase/migrations/20260727000002_orch_0954_controller_dashboard_type_check.sql` applied to remote DB (idempotent).
+
+## DEC-170 — `brands.kind` decommissioned as authoring/feature gate per META-ORCH-0972 (2026-05-26)
+
+**Decision:** `brands.kind` ceases to function as a feature/authoring gate. Every brand can author every offering type (event, trip, experience) regardless of kind. Public brand page tabs derive from real offering counts, not from `brand.kind`. Hub tabs follow the same data-driven contract. Venue claim is reframed as an opt-in trust/discovery signal, not an authoring permission gate. The `Brand.kind` TS field is deleted from `mingla-business/src/types/brand.ts`; the DB column `brands.kind` is retained until Stage 4 (separate release-cycle follow-up migration `20260730000000_meta_orch_0972_drop_brand_kind.sql`, already allowlisted) actually drops it.
+
+**Rationale:** Operator directive locked 2026-05-25 across 4 brainstorm turns. Three-kind persona model (`'physical' | 'popup' | 'trip_planner'`) was masking universal authoring capability — trip-planner brands couldn't publish events, popup brands couldn't publish experiences, and the public-page UX branched per kind in ways that surprised buyers expecting a single coherent brand surface. Decommissioning the gate restores Mingla's "any brand can publish any experience" product positioning and unblocks Marketing Hub + AI generator universality (no kind discrimination at the parser layer).
+
+**Supersedes:** DEC-152 (TopSheet extension via persona-locked union), DEC-161 (`brands.kind` immutable post-create), the implicit kind-gating in ORCH-0855 + ORCH-0963.
+
+**Enforcement:** Migration `supabase/migrations/20260729000000_meta_orch_0972_universal_authoring.sql` (Stage 0+2+3 view + RLS + RPC rewrites); strict-grep gate `.github/scripts/strict-grep/meta-orch-0972-no-brand-kind-reads.mjs` (N1-N4 forbid `brand.kind`, `currentBrand.kind`, `brands.kind` reads in active product code); new invariants `I-BRAND-UNIVERSAL-AUTHORING` + `I-VENUE-CLAIM-OPTIONAL`. Stage 4 follow-up will land `DROP CONSTRAINT brands_kind_check` + `DROP COLUMN brands.kind`.
+
+**Cross-references:**
+- I-BRAND-UNIVERSAL-AUTHORING (NEW ACTIVE)
+- I-VENUE-CLAIM-OPTIONAL (NEW ACTIVE)
+- DEC-171 (data-driven tabs — the rendering counterpart of this authoring decision)
+- COMMS-0002 (allowlist obligation HELD for all backend touches)
+- `feedback_brand_kind_decommissioned.md` (memory rule DRAFT → ACTIVE on this CLOSE)
+
+## DEC-171 — Data-driven public-page + hub tabs per META-ORCH-0972 (2026-05-26)
+
+**Decision:** Public brand page (`mingla-business/src/components/brand/PublicBrandPage.tsx`) and business hub (`mingla-business/app/(tabs)/hub/_layout.tsx` + `useHubTabs.ts`) derive visible tabs from real offering counts via `pg_brand_offering_counts(uuid)` (owner-side, SECURITY DEFINER, authenticated-only EXECUTE per Sub-D grant rework `20260729000001`) and `pg_public_brand_upcoming(text, timestamptz, integer)` (anon-callable for public Upcoming feed with chronologically-interleaved events + trips + experiences via `published_at DESC` tiebreak and `limit + 1` has-more detection). Empty-offering brands keep identity + About visible with a neutral "Get started" chooser. Tabs render in a fixed Events → Trips → Experiences order for visible buckets.
+
+**Rationale:** Pre-decommission, public-page IA branched per `brand.kind` (ORCH-0963 `isTripBrand` 24-hour lifetime contract). After universal authoring (DEC-170), kind-based IA is a categorical mismatch — a single brand can host all three offering types and the page must show what's actually published.
+
+**Supersedes:** `I-PUBLIC-BRAND-KIND-BRANCHED` (ORCH-0963, ACTIVE 2026-05-25 with ~24-hour lifetime); `I-HUB-TABS-KIND-DRIVEN` (implicit pre-decommission contract).
+
+**Enforcement:** Strict-grep gate `.github/scripts/strict-grep/meta-orch-0972-data-driven-tabs.mjs` (D1-D4 forbid `brand.kind ===` in `PublicBrandPage.tsx` + hub layout; require `useHubVisibleTabs` / offering-count derivation); ORCH-0963 gate renamed to `orch-0963-public-trip-rpc-and-route-segregation.mjs` (kind-branch assertions stripped, trip RPC presence + no-positive-event-type-trip-filter preserved); new invariants `I-PUBLIC-PAGE-DATA-DRIVEN-TABS` + `I-HUB-TABS-DATA-DRIVEN`.
+
+**Cross-references:**
+- I-PUBLIC-PAGE-DATA-DRIVEN-TABS (NEW ACTIVE)
+- I-HUB-TABS-DATA-DRIVEN (NEW ACTIVE)
+- I-PUBLIC-BRAND-KIND-BRANCHED (SUPERSEDED)
+- DEC-170 (universal authoring — the data side of this rendering decision)
+- COMMS-0005 (ORCH-0964 `<Head>` SEO/metadata block preserved zero-diff in this rebuild)
