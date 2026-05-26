@@ -843,6 +843,13 @@ function checkNoNewBackendFiles() {
     "supabase/migrations/__tests__/pg_public_trips_by_brand.test.ts",
     "supabase/migrations/__tests__/pg_public_trips_by_brand.antiLeak.adversarial.test.ts",
   ];
+  // ORCH-0964 [Public-page theme customization + consumer-app brand screen]:
+  // adds nullable typed theme columns plus public-view column exposure. C7 is
+  // scoped to ORCH-0863 marketing; this migration is ORCH-0964 public-page
+  // theming scope and no edge function source is touched.
+  const ORCH_0964_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260729000002_orch_0964_brand_event_theme_columns.sql",
+  ];
   // META-ORCH-0952 [Buyer-web confirm pipeline deep forensics] CLOSE 2026-05-25.
   // C7 is scoped to ORCH-0863 marketing; the META-ORCH-0952 self-heal rework
   // touched ticket-checkout-confirm/index.ts (already in ORCH-0932 allowlist
@@ -927,6 +934,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_0957_BACKEND_ALLOWLIST,
     ...ORCH_0962_BACKEND_ALLOWLIST,
     ...ORCH_0963_BACKEND_ALLOWLIST,
+    ...ORCH_0964_BACKEND_ALLOWLIST,
   ];
   const forbidden = changed.filter(
     (p) =>

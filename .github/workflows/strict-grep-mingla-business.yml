@@ -191,6 +191,72 @@ jobs:
       - name: Run ORCH-0963 public trip RPC and route segregation gate
         run: node .github/scripts/strict-grep/orch-0963-public-trip-rpc-and-route-segregation.mjs
 
+  orch-0964-theme-typed-columns:
+    name: "ORCH-0964: theme typed columns"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0964 theme typed-columns gate
+        run: node .github/scripts/strict-grep/orch-0964-theme-typed-columns.mjs
+
+  orch-0964-theme-resolver-canonical:
+    name: "ORCH-0964: theme resolver canonical"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0964 theme resolver gate
+        run: node .github/scripts/strict-grep/orch-0964-theme-resolver-canonical.mjs
+
+  orch-0964-theme-foreground-computed:
+    name: "ORCH-0964: foreground computed"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0964 foreground-computed gate
+        run: node .github/scripts/strict-grep/orch-0964-theme-foreground-computed.mjs
+
+  orch-0964-checkout-no-brand-theme:
+    name: "ORCH-0964: checkout no brand theme"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0964 checkout no-brand-theme gate
+        run: node .github/scripts/strict-grep/orch-0964-checkout-no-brand-theme.mjs
+
+  orch-0964-brand-rendering-self-contained:
+    name: "ORCH-0964: brand-rendering self-contained"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0964 brand-rendering isolation gate
+        run: node .github/scripts/strict-grep/orch-0964-brand-rendering-self-contained.mjs
+
+  orch-0964-well-known-json-content-type:
+    name: "ORCH-0964: well-known JSON content type"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0964 well-known content-type gate
+        run: node .github/scripts/strict-grep/orch-0964-well-known-json-content-type.mjs
+
   meta-orch-0972-data-driven-tabs:
     name: "META-ORCH-0972: data-driven tabs"
     runs-on: ubuntu-latest
