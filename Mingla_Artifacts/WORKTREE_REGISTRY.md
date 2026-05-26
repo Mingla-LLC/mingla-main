@@ -15,7 +15,7 @@ Reference: [WORKTREE_STRATEGY.md](WORKTREE_STRATEGY.md).
 | Worktree path | Branch | ORCH-ID | Phase | Sim assigned | Metro port | Spawned | Owner |
 |---------------|--------|---------|-------|--------------|------------|---------|-------|
 | `~/Desktop/mingla-orchs/meta-orch-0952-[buyer-web-confirm-deep-forensics]` | `meta-orch-0952-buyer-web-confirm-deep-forensics` | META-ORCH-0952 | INVESTIGATE | no sim — buyer-web (Playwright Chromium + Safari) | 8083 | 2026-05-24 | Claude `mingla-orchestrator` (dispatch) → Claude `mingla-forensics` (active) |
-| `~/Desktop/mingla-orchs/ORCH-0978-[video-upload-polish-and-cloudinary-lifecycle]` | `ORCH-0978-video-upload-polish-and-cloudinary-lifecycle` | ORCH-0978 | INVESTIGATE (queued — IMPLEMENT phase deferred until ORCH-0964 PR merges per WORLD_MAP intake decision) | iPhone 17 Pro (business-iOS write surface) + Android emu (business-Android write surface) + Playwright Chromium (business-web-preview + buyer-web) | 8090 | 2026-05-26 | Claude `mingla-orchestrator` (dispatch) → Claude `mingla-forensics` (INVESTIGATE pending) |
+| `~/Desktop/mingla-orchs/ORCH-0978-[video-upload-polish-and-cloudinary-lifecycle]` | `ORCH-0978-video-upload-polish-and-cloudinary-lifecycle` | ORCH-0978 | RESEARCH REVIEW (sub-30s pipeline research report returned 2026-05-26; awaiting orchestrator REVIEW — IMPLEMENT phase still deferred until ORCH-0964 PR merges) | iPhone 17 Pro + Android emu + Playwright Chromium (none used this phase — research-only) | 8090 | 2026-05-26 | Claude `mingla-forensics` (RESEARCH returned) → Claude `mingla-orchestrator` (REVIEW pending) |
 
 ---
 
