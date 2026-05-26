@@ -25,6 +25,15 @@
             "comment": "Public checkout pages"
           }
         ]
+      },
+      {
+        "appIDs": ["782KVMY869.com.mingla.app.v2"],
+        "components": [
+          {
+            "/": "/b/*",
+            "comment": "Consumer app public brand profile deep links"
+          }
+        ]
       }
     ]
   }
