@@ -596,6 +596,41 @@ No data pre-flight probe is required: all new columns are nullable, CHECK constr
 - EAS build queue IDs are not produced yet. Because this ORCH adds fonts, Lottie, a native route, and associated domains, both native apps require EAS builds before ship.
 - Full TypeScript remains blocked by existing workspace/shared-package type-resolution debt; targeted resolver and strict-grep gates passed.
 
+## Smoke-Test Design Rework #9 — Public Event Premium Pass
+
+User-visible changes:
+
+- Public event pages now keep the proven cover-under-scroll interaction but render the content as a premium glass sheet over the cover.
+- Ticket options now render as individual larger cards with price pills and full-width theme-colored purchase actions instead of compact divider rows.
+- Event brand and venue affordances now use the selected theme color in boxes/icons/buttons, not only small text accents.
+- Public brand pages now use the same cover-under-scroll structure as public events: the cover sits behind the page and the profile/details scroll up over it.
+
+Design evidence:
+
+- Used `ui-ux-mingla` and its React Native guidance to preserve `resizeMode="cover"` for media and keep small floating controls touch-safe.
+- Kept public event data, callbacks, state precedence, ORCH-0961 brand close/share test IDs, ORCH-0961 `hideFloatingChrome`, and animation color behavior unchanged.
+
+Regression coverage added/updated:
+
+- `mingla-business/src/components/brand/__tests__/PublicEventPage.orch_0964_design_rework.test.ts`
+- `mingla-business/src/components/brand/__tests__/PublicBrandPage.orch_0964_smoke_rework.test.ts`
+
+Verification:
+
+```bash
+cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0964-[public-page-theme-customization]/mingla-business" && npx jest src/components/brand/__tests__/PublicBrandPage.orch_0964_smoke_rework.test.ts src/components/brand/__tests__/PublicEventPage.orch_0964_design_rework.test.ts src/components/brand/__tests__/themeAnimations.orch_0964_smoke_rework.test.ts src/utils/__tests__/themeResolver.orch_0964.test.ts src/utils/__tests__/themeResolver.adversarial.orch_0964.test.ts src/utils/__tests__/brandPatch.orch_0964_smoke_rework.test.ts src/hooks/__tests__/useBrands.orch_0964_public_theme_cache.test.ts --runInBand
+```
+
+Result: PASS, 7 suites / 25 tests passed.
+
+```bash
+cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0964-[public-page-theme-customization]" && node .github/scripts/strict-grep/orch-0964-theme-typed-columns.mjs && node .github/scripts/strict-grep/orch-0964-theme-resolver-canonical.mjs && node .github/scripts/strict-grep/orch-0964-theme-foreground-computed.mjs && node .github/scripts/strict-grep/orch-0964-checkout-no-brand-theme.mjs && node .github/scripts/strict-grep/orch-0964-brand-rendering-self-contained.mjs && node .github/scripts/strict-grep/orch-0964-well-known-json-content-type.mjs && node .github/scripts/strict-grep/meta-orch-0972-data-driven-tabs.mjs && node .github/scripts/strict-grep/meta-orch-0972-no-brand-kind-reads.mjs && node .github/scripts/strict-grep/orch-0963-public-trip-rpc-and-route-segregation.mjs && node .github/scripts/strict-grep/orch-0863-marketing-hub-phase-b.mjs
+```
+
+Result: PASS, all listed strict-grep gates passed.
+
+Full TypeScript note: the known workspace/shared-package type-resolution debt remains. A focused business `tsc` run still fails before reaching useful ORCH-specific signal because `../packages/*` cannot resolve app-local `react` / `react-native` types and existing app test fixtures still carry unrelated errors.
+
 ## Downstream Routing
 
 Next: Codex `tester-mingla` RETEST should verify this rework against `Mingla_Artifacts/reports/QA_ORCH-0964_PUBLIC_PAGE_THEME_CUSTOMIZATION_RETEST.md`, including committed assetlinks content, rebase proof, restored META gates, the cleared `publicEventsService.ts` `Brand.kind` TypeScript blocker, and `npm run test:orch-0964-logout-cache`. Android OS tap verification remains post-merge/deploy/device-gated.

@@ -223,7 +223,8 @@ const contrastAdjustedAccent = (
   background: string,
   minimumRatio: number,
 ): string => {
-  if (contrastRatio(accentColor, background) >= minimumRatio) return accentColor;
+  if (contrastRatio(accentColor, background) >= minimumRatio)
+    return accentColor;
   const direction = readableTextFor(background);
   let adjusted = accentColor;
   for (let i = 0; i < 12; i++) {
@@ -258,7 +259,7 @@ const createThemePalette = (theme: ResolvedTheme): ThemePalette => {
         ? false
         : theme.foregroundColor === "#ffffff";
   const basePage = useDark ? darkBase : lightBase;
-  const page = mixHexColors(basePage, theme.color, useDark ? 0.10 : 0.035);
+  const page = mixHexColors(basePage, theme.color, useDark ? 0.1 : 0.035);
   const accentColor = contrastAdjustedForWhiteText(
     contrastAdjustedAccent(theme.color, page, 3.15),
     4.5,
@@ -266,11 +267,17 @@ const createThemePalette = (theme: ResolvedTheme): ThemePalette => {
   const accentText = "#ffffff";
   const primaryText = readableTextFor(page);
   const secondaryText =
-    primaryText === "#ffffff" ? "rgba(255,255,255,0.78)" : "rgba(16,20,31,0.76)";
+    primaryText === "#ffffff"
+      ? "rgba(255,255,255,0.78)"
+      : "rgba(16,20,31,0.76)";
   const tertiaryText =
-    primaryText === "#ffffff" ? "rgba(255,255,255,0.58)" : "rgba(16,20,31,0.58)";
+    primaryText === "#ffffff"
+      ? "rgba(255,255,255,0.58)"
+      : "rgba(16,20,31,0.58)";
   const mutedText =
-    primaryText === "#ffffff" ? "rgba(255,255,255,0.40)" : "rgba(16,20,31,0.42)";
+    primaryText === "#ffffff"
+      ? "rgba(255,255,255,0.40)"
+      : "rgba(16,20,31,0.42)";
   return {
     page,
     accent: accentColor,
@@ -284,14 +291,14 @@ const createThemePalette = (theme: ResolvedTheme): ThemePalette => {
     mutedText,
     panel: useDark ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.76)",
     panelStrong: useDark ? "rgba(255,255,255,0.11)" : "rgba(255,255,255,0.92)",
-    panelBorder: hexToRgba(accentColor, useDark ? 0.38 : 0.30),
+    panelBorder: hexToRgba(accentColor, useDark ? 0.38 : 0.3),
     card: useDark ? "rgba(255,255,255,0.09)" : "rgba(255,255,255,0.72)",
     cardBorder: useDark ? "rgba(255,255,255,0.16)" : "rgba(255,255,255,0.78)",
     cutoutBorder: useDark ? "rgba(255,255,255,0.24)" : "rgba(255,255,255,0.96)",
     glass: useDark ? "rgba(255,255,255,0.10)" : "rgba(255,255,255,0.62)",
     glassStrong: useDark ? "rgba(255,255,255,0.16)" : "rgba(255,255,255,0.82)",
     glassTint: useDark ? "dark" : "light",
-    tabBand: hexToRgba(accentColor, useDark ? 0.20 : 0.14),
+    tabBand: hexToRgba(accentColor, useDark ? 0.2 : 0.14),
     tabBorder: hexToRgba(accentColor, useDark ? 0.46 : 0.34),
     accentWash: hexToRgba(accentColor, useDark ? 0.24 : 0.18),
   };
@@ -341,7 +348,9 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   const upcomingEvents = useMemo(
     () =>
       events
-        .filter((event) => event.status !== "ended" && event.status !== "cancelled")
+        .filter(
+          (event) => event.status !== "ended" && event.status !== "cancelled",
+        )
         .slice()
         .sort((a, b) => a.dateLine.localeCompare(b.dateLine)),
     [events],
@@ -396,7 +405,10 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
     resolvedTheme.color === MINGLA_DEFAULT_THEME.color && brand.coverHue !== 25
       ? `hsl(${brand.coverHue}, 60%, 45%)`
       : resolvedTheme.color;
-  const palette = useMemo(() => createThemePalette(resolvedTheme), [resolvedTheme]);
+  const palette = useMemo(
+    () => createThemePalette(resolvedTheme),
+    [resolvedTheme],
+  );
   const themedFont = { fontFamily: resolvedTheme.fontFamilyValue };
 
   const socialEntries = useMemo(() => {
@@ -492,32 +504,36 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
         </View>
       )}
 
+      <View
+        style={[styles.heroWrap, { backgroundColor: heroColor }]}
+        pointerEvents="none"
+      >
+        {brand.coverMediaUrl !== undefined &&
+        brand.coverMediaUrl.length > 0 &&
+        !coverMediaFailed ? (
+          <Image
+            source={{ uri: brand.coverMediaUrl }}
+            style={styles.heroGradient}
+            resizeMode="cover"
+            onError={() => setCoverMediaFailed(true)}
+            accessibilityLabel="Brand cover"
+          />
+        ) : (
+          <View style={[styles.heroGradient, { backgroundColor: heroColor }]} />
+        )}
+        <View
+          style={[styles.heroThemeTint, { backgroundColor: palette.pageWash }]}
+        />
+        <View
+          style={[styles.heroFade, { backgroundColor: palette.heroScrim }]}
+        />
+      </View>
+
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <View
-          style={[styles.heroWrap, { backgroundColor: heroColor }]}
-          pointerEvents="none"
-        >
-          {brand.coverMediaUrl !== undefined &&
-          brand.coverMediaUrl.length > 0 &&
-          !coverMediaFailed ? (
-            <Image
-              source={{ uri: brand.coverMediaUrl }}
-              style={styles.heroGradient}
-              resizeMode="cover"
-              onError={() => setCoverMediaFailed(true)}
-              accessibilityLabel="Brand cover"
-            />
-          ) : (
-            <View style={[styles.heroGradient, { backgroundColor: heroColor }]} />
-          )}
-          <View style={[styles.heroThemeTint, { backgroundColor: palette.pageWash }]} />
-          <View style={[styles.heroFade, { backgroundColor: palette.heroScrim }]} />
-        </View>
-
         <View
           style={[
             styles.identityCentered,
@@ -550,7 +566,12 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
                 {brand.displayName}
               </Text>
               {brand.address !== null && brand.address.trim().length > 0 ? (
-                <Text style={[styles.handleLineCentered, { color: palette.tertiaryText }]}>
+                <Text
+                  style={[
+                    styles.handleLineCentered,
+                    { color: palette.tertiaryText },
+                  ]}
+                >
                   {brand.address.trim()}
                 </Text>
               ) : null}
@@ -559,13 +580,19 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
 
           {brand.tagline !== undefined && brand.tagline.trim().length > 0 ? (
             <Text
-              style={[styles.taglineCentered, themedFont, { color: palette.primaryText }]}
+              style={[
+                styles.taglineCentered,
+                themedFont,
+                { color: palette.primaryText },
+              ]}
             >
               {brand.tagline}
             </Text>
           ) : null}
           {brand.bio !== undefined && brand.bio.trim().length > 0 ? (
-            <Text style={[styles.bioLeadCentered, { color: palette.secondaryText }]}>
+            <Text
+              style={[styles.bioLeadCentered, { color: palette.secondaryText }]}
+            >
               {brand.bio}
             </Text>
           ) : null}
@@ -786,10 +813,7 @@ const TabButton: React.FC<{
     accessibilityRole="button"
     accessibilityState={{ selected: active }}
     accessibilityLabel={label}
-    style={[
-      styles.tabButton,
-      active && styles.tabButtonActive,
-    ]}
+    style={[styles.tabButton, active && styles.tabButtonActive]}
   >
     <Text
       style={[
@@ -801,12 +825,7 @@ const TabButton: React.FC<{
     >
       {label}
       {count !== undefined ? (
-        <Text
-          style={styles.tabCount}
-        >
-          {" "}
-          {count}
-        </Text>
+        <Text style={styles.tabCount}> {count}</Text>
       ) : null}
     </Text>
   </Pressable>
@@ -900,7 +919,10 @@ const EventMiniCard: React.FC<{
           {event.name.length > 0 ? event.name : "Untitled event"}
         </Text>
         {event.venueName !== null && event.venueName.length > 0 ? (
-          <Text style={[styles.eventVenue, { color: palette.tertiaryText }]} numberOfLines={1}>
+          <Text
+            style={[styles.eventVenue, { color: palette.tertiaryText }]}
+            numberOfLines={1}
+          >
             {event.venueName}
           </Text>
         ) : event.format === "online" || event.format === "hybrid" ? (
@@ -909,15 +931,16 @@ const EventMiniCard: React.FC<{
           </Text>
         ) : null}
         {price !== null ? (
-          <Text style={[styles.eventPrice, { color: palette.primaryText }]}>{price}</Text>
+          <Text style={[styles.eventPrice, { color: palette.primaryText }]}>
+            {price}
+          </Text>
         ) : null}
         {pinCta ? (
-          <View style={[styles.eventBuyPill, { backgroundColor: palette.accent }]}>
+          <View
+            style={[styles.eventBuyPill, { backgroundColor: palette.accent }]}
+          >
             <Text
-              style={[
-                styles.eventBuyPillLabel,
-                { color: palette.accentText },
-              ]}
+              style={[styles.eventBuyPillLabel, { color: palette.accentText }]}
             >
               Buy tickets
             </Text>
@@ -959,10 +982,7 @@ const NextOfferingTeaser: React.FC<{
       <View style={styles.nextTeaserCopy}>
         <Text style={styles.nextTeaserLabel}>NEXT EVENT</Text>
         <Text
-          style={[
-            styles.nextTeaserBody,
-            { fontFamily: theme.fontFamilyValue },
-          ]}
+          style={[styles.nextTeaserBody, { fontFamily: theme.fontFamilyValue }]}
           numberOfLines={2}
         >
           {bodyText}
@@ -1078,13 +1098,18 @@ const TripMiniCard: React.FC<{
           {trip.title.length > 0 ? trip.title : "Untitled trip"}
         </Text>
         {trip.destinationText !== null && trip.destinationText.length > 0 ? (
-          <Text style={[styles.eventVenue, { color: palette.tertiaryText }]} numberOfLines={1}>
+          <Text
+            style={[styles.eventVenue, { color: palette.tertiaryText }]}
+            numberOfLines={1}
+          >
             {trip.destinationText}
           </Text>
         ) : null}
         <View style={styles.tripFooterRow}>
           {price !== null ? (
-            <Text style={[styles.eventPrice, { color: palette.primaryText }]}>{price}</Text>
+            <Text style={[styles.eventPrice, { color: palette.primaryText }]}>
+              {price}
+            </Text>
           ) : (
             <View />
           )}
@@ -1092,10 +1117,15 @@ const TripMiniCard: React.FC<{
             <View
               style={[
                 styles.tripBadgeClosed,
-                { backgroundColor: palette.panel, borderColor: palette.cardBorder },
+                {
+                  backgroundColor: palette.panel,
+                  borderColor: palette.cardBorder,
+                },
               ]}
             >
-              <Text style={[styles.tripBadgeLabel, { color: palette.primaryText }]}>
+              <Text
+                style={[styles.tripBadgeLabel, { color: palette.primaryText }]}
+              >
                 Booking closed
               </Text>
             </View>
@@ -1103,10 +1133,15 @@ const TripMiniCard: React.FC<{
             <View
               style={[
                 styles.tripBadgeScarce,
-                { backgroundColor: palette.accentWash, borderColor: palette.panelBorder },
+                {
+                  backgroundColor: palette.accentWash,
+                  borderColor: palette.panelBorder,
+                },
               ]}
             >
-              <Text style={[styles.tripBadgeLabel, { color: palette.primaryText }]}>
+              <Text
+                style={[styles.tripBadgeLabel, { color: palette.primaryText }]}
+              >
                 {spotsLabel}
               </Text>
             </View>
@@ -1122,7 +1157,10 @@ const offeringPriceLabel = (item: {
   priceFromMinorUnits?: number | null;
   currency?: string | null;
 }): string | null => {
-  if (item.priceFromMinorUnits !== null && item.priceFromMinorUnits !== undefined) {
+  if (
+    item.priceFromMinorUnits !== null &&
+    item.priceFromMinorUnits !== undefined
+  ) {
     return `From ${formatCurrencyRound(
       item.priceFromMinorUnits / 100,
       item.currency ?? "USD",
@@ -1218,7 +1256,9 @@ const OfferingMiniCard: React.FC<{
           {item.offeringType}
         </Text>
         {price !== null ? (
-          <Text style={[styles.eventPrice, { color: palette.primaryText }]}>{price}</Text>
+          <Text style={[styles.eventPrice, { color: palette.primaryText }]}>
+            {price}
+          </Text>
         ) : null}
       </View>
     </Pressable>
@@ -1300,12 +1340,17 @@ const ExperienceMiniCard: React.FC<{
           {experience.name.length > 0 ? experience.name : "Untitled experience"}
         </Text>
         {experience.venueText !== null && experience.venueText.length > 0 ? (
-          <Text style={[styles.eventVenue, { color: palette.tertiaryText }]} numberOfLines={1}>
+          <Text
+            style={[styles.eventVenue, { color: palette.tertiaryText }]}
+            numberOfLines={1}
+          >
             {experience.venueText}
           </Text>
         ) : null}
         {price !== null ? (
-          <Text style={[styles.eventPrice, { color: palette.primaryText }]}>{price}</Text>
+          <Text style={[styles.eventPrice, { color: palette.primaryText }]}>
+            {price}
+          </Text>
         ) : null}
       </View>
     </Pressable>
@@ -1332,10 +1377,7 @@ const CoverBlock: React.FC<{
   }
   return (
     <View
-      style={[
-        styles.eventCover,
-        { backgroundColor: `hsl(${hue}, 60%, 45%)` },
-      ]}
+      style={[styles.eventCover, { backgroundColor: `hsl(${hue}, 60%, 45%)` }]}
     />
   );
 };
@@ -1372,7 +1414,8 @@ const AboutTab: React.FC<{
         </Text>
       </View>
     ) : null}
-    {brand.contact?.email !== undefined || brand.contact?.phone !== undefined ? (
+    {brand.contact?.email !== undefined ||
+    brand.contact?.phone !== undefined ? (
       <View
         style={[
           styles.aboutBlock,
@@ -1393,7 +1436,9 @@ const AboutTab: React.FC<{
           Contact
         </Text>
         {brand.contact?.email !== undefined ? (
-          <Pressable onPress={() => onExternal(`mailto:${brand.contact?.email}`)}>
+          <Pressable
+            onPress={() => onExternal(`mailto:${brand.contact?.email}`)}
+          >
             <Text style={[styles.aboutContactLink, { color: palette.accent }]}>
               {brand.contact.email}
             </Text>
@@ -1417,12 +1462,13 @@ const styles = StyleSheet.create({
     backgroundColor,
   },
   heroWrap: {
-    height: 332,
-    alignSelf: "stretch",
-    marginHorizontal: -spacing.lg,
-    marginBottom: -72,
-    borderRadius: 0,
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 380,
     overflow: "hidden",
+    zIndex: 0,
   },
   heroGradient: {
     ...StyleSheet.absoluteFillObject,
@@ -1512,7 +1558,7 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
   scrollContent: {
-    paddingTop: 0,
+    paddingTop: 284,
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.xl * 2,
   },

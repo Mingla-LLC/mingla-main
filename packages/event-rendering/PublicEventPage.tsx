@@ -33,6 +33,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { BlurView } from "expo-blur";
 
 import {
   accent,
@@ -71,12 +72,9 @@ const computeVariant = (
   if (event.status === "cancelled") return "cancelled";
   const isPast =
     event.status === "ended" ||
-    (event.endedAt !== null &&
-      new Date(event.endedAt).getTime() < Date.now());
+    (event.endedAt !== null && new Date(event.endedAt).getTime() < Date.now());
   if (isPast) return "past";
-  const visibleTickets = event.tickets.filter(
-    (t) => t.visibility !== "hidden",
-  );
+  const visibleTickets = event.tickets.filter((t) => t.visibility !== "hidden");
   const requiresPassword = visibleTickets.some((t) => t.passwordProtected);
   if (requiresPassword && !passwordUnlocked) return "password-gate";
   const allPreSale =
@@ -89,9 +87,7 @@ const computeVariant = (
   if (allPreSale) return "pre-sale";
   const allSoldOut =
     visibleTickets.length > 0 &&
-    visibleTickets.every(
-      (t) => !t.isUnlimited && (t.capacity ?? 0) === 0,
-    );
+    visibleTickets.every((t) => !t.isUnlimited && (t.capacity ?? 0) === 0);
   if (allSoldOut) return "sold-out";
   return "published";
 };
@@ -151,7 +147,8 @@ export const PublicEventPage: React.FC<PublicEventPageProps> = ({
 }) => {
   const [passwordUnlocked, setPasswordUnlocked] = useState<boolean>(false);
   const resolvedTheme = useMemo<ResolvedTheme>(
-    () => theme ?? resolveTheme(brand?.theme ?? null, event.themeOverrides ?? null),
+    () =>
+      theme ?? resolveTheme(brand?.theme ?? null, event.themeOverrides ?? null),
     [theme, brand?.theme, event.themeOverrides],
   );
 
@@ -175,10 +172,7 @@ export const PublicEventPage: React.FC<PublicEventPageProps> = ({
       {variant === "cancelled" ? (
         <CancelledVariant event={event} brand={brand} />
       ) : variant === "password-gate" ? (
-        <PasswordGateVariant
-          event={event}
-          onUnlock={handleUnlockPassword}
-        />
+        <PasswordGateVariant event={event} onUnlock={handleUnlockPassword} />
       ) : (
         <PublishedBody
           event={event}
@@ -203,9 +197,17 @@ export const PublicEventPage: React.FC<PublicEventPageProps> = ({
               onPress={callbacks.onClose}
               accessibilityRole="button"
               accessibilityLabel="Close"
+              hitSlop={8}
               style={styles.chromeButton}
             >
-              <Text style={[styles.chromeIcon, { color: resolvedTheme.foregroundColor }]}>×</Text>
+              <Text
+                style={[
+                  styles.chromeIcon,
+                  { color: resolvedTheme.foregroundColor },
+                ]}
+              >
+                ×
+              </Text>
             </Pressable>
           ) : (
             <View />
@@ -214,9 +216,17 @@ export const PublicEventPage: React.FC<PublicEventPageProps> = ({
             onPress={callbacks.onShare}
             accessibilityRole="button"
             accessibilityLabel="Share"
+            hitSlop={8}
             style={styles.chromeButton}
           >
-            <Text style={[styles.chromeIcon, { color: resolvedTheme.foregroundColor }]}>↗</Text>
+            <Text
+              style={[
+                styles.chromeIcon,
+                { color: resolvedTheme.foregroundColor },
+              ]}
+            >
+              ↗
+            </Text>
           </Pressable>
         </View>
       )}
@@ -267,14 +277,17 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
   const isSoldOut = variant === "sold-out";
   const isPreSale = variant === "pre-sale";
   const preSaleStart = isPreSale ? computePreSaleStart(event) : null;
+  const heroColor =
+    theme.color === MINGLA_DEFAULT_THEME.color && event.coverHue !== 25
+      ? `hsl(${event.coverHue}, 60%, 45%)`
+      : theme.color;
 
   return (
     <>
       {/* Hero cover */}
       <View style={styles.heroWrap}>
         {event.coverMediaUrl !== null &&
-        (event.coverMediaType === "image" ||
-          event.coverMediaType === "gif") ? (
+        (event.coverMediaType === "image" || event.coverMediaType === "gif") ? (
           <Image
             source={{ uri: event.coverMediaUrl }}
             style={styles.heroImage}
@@ -282,18 +295,7 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
             accessibilityLabel="Event cover"
           />
         ) : (
-          <View
-            style={[
-              styles.heroImage,
-              {
-                backgroundColor:
-                  theme.color === MINGLA_DEFAULT_THEME.color &&
-                  event.coverHue !== 25
-                    ? `hsl(${event.coverHue}, 60%, 45%)`
-                    : theme.color,
-              },
-            ]}
-          />
+          <View style={[styles.heroImage, { backgroundColor: heroColor }]} />
         )}
         <View style={styles.heroOverlay} pointerEvents="none" />
         <ThemeEntranceAnimation
@@ -338,6 +340,12 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
         showsVerticalScrollIndicator={false}
       >
         <View style={[styles.bodyContent, isPast && styles.bodyContentMuted]}>
+          <BlurView
+            tint="dark"
+            intensity={28}
+            pointerEvents="none"
+            style={styles.bodyGlassLayer}
+          />
           {/* Title block */}
           <View style={styles.titleBlock}>
             <View style={styles.titleBlockText}>
@@ -369,8 +377,7 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
                     style={styles.recurrencePill}
                   >
                     <Text style={styles.recurrencePillLabel}>
-                      {event.dateSubline} ·{" "}
-                      {showAllDates ? "Hide" : "Show all"}
+                      {event.dateSubline} · {showAllDates ? "Hide" : "Show all"}
                     </Text>
                   </Pressable>
                 </View>
@@ -404,9 +411,12 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
           {/* Brand chip */}
           <Pressable
             onPress={() => {
-              if (brand?.slug !== undefined) callbacks.onOpenBrand?.(brand.slug);
+              if (brand?.slug !== undefined)
+                callbacks.onOpenBrand?.(brand.slug);
             }}
-            disabled={brand?.slug === undefined || callbacks.onOpenBrand === undefined}
+            disabled={
+              brand?.slug === undefined || callbacks.onOpenBrand === undefined
+            }
             accessibilityRole={
               callbacks.onOpenBrand === undefined ? undefined : "button"
             }
@@ -417,18 +427,24 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
             }
             style={({ pressed }) => [
               styles.brandRow,
+              { borderColor: theme.color },
               callbacks.onOpenBrand !== undefined && styles.brandRowInteractive,
               pressed && styles.brandRowPressed,
             ]}
           >
-            <View style={styles.brandTile}>
+            <View style={[styles.brandTile, { backgroundColor: theme.color }]}>
               <Text style={styles.brandLetter}>{brandLetter}</Text>
             </View>
-            <Text style={styles.brandName}>
-              {brand?.displayName ?? "Brand"}
-            </Text>
+            <View style={styles.brandTextCol}>
+              <Text style={styles.brandKicker}>Presented by</Text>
+              <Text style={styles.brandName}>
+                {brand?.displayName ?? "Brand"}
+              </Text>
+            </View>
             {callbacks.onOpenBrand !== undefined ? (
-              <Text style={styles.brandCta}>View brand</Text>
+              <Text style={[styles.brandCta, { color: theme.color }]}>
+                View
+              </Text>
             ) : null}
           </Pressable>
 
@@ -436,7 +452,14 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
           {event.format !== "online" && event.venueName !== null ? (
             <View style={styles.venueCard}>
               <View style={styles.venueRow}>
-                <Text style={styles.venueIcon}>⌖</Text>
+                <View
+                  style={[
+                    styles.venueIconDisk,
+                    { backgroundColor: theme.color },
+                  ]}
+                >
+                  <Text style={styles.venueIcon}>⌖</Text>
+                </View>
                 <View style={styles.venueTextCol}>
                   <Text style={styles.venueName}>{event.venueName}</Text>
                   <Text style={styles.venueAddress}>
@@ -444,8 +467,8 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
                       ? "Address shared after ticket purchase"
                       : event.format === "hybrid" && event.address !== null
                         ? `${event.address} · also online`
-                        : event.address ??
-                          "Address shared after ticket purchase"}
+                        : (event.address ??
+                          "Address shared after ticket purchase")}
                   </Text>
                 </View>
               </View>
@@ -453,7 +476,14 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
           ) : event.format === "online" ? (
             <View style={styles.venueCard}>
               <View style={styles.venueRow}>
-                <Text style={styles.venueIcon}>◯</Text>
+                <View
+                  style={[
+                    styles.venueIconDisk,
+                    { backgroundColor: theme.color },
+                  ]}
+                >
+                  <Text style={styles.venueIcon}>◯</Text>
+                </View>
                 <View style={styles.venueTextCol}>
                   <Text style={styles.venueName}>Online</Text>
                   <Text style={styles.venueAddress}>
@@ -466,10 +496,7 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
 
           {/* About */}
           <Text
-            style={[
-              styles.sectionTitle,
-              { fontFamily: theme.fontFamilyValue },
-            ]}
+            style={[styles.sectionTitle, { fontFamily: theme.fontFamilyValue }]}
           >
             About
           </Text>
@@ -481,10 +508,7 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
 
           {/* Tickets */}
           <Text
-            style={[
-              styles.sectionTitle,
-              { fontFamily: theme.fontFamilyValue },
-            ]}
+            style={[styles.sectionTitle, { fontFamily: theme.fontFamilyValue }]}
           >
             Tickets
           </Text>
@@ -494,11 +518,10 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
             </View>
           ) : (
             <View style={styles.ticketsCol}>
-              {visibleTickets.map((t, i) => (
+              {visibleTickets.map((t) => (
                 <PublicTicketRow
                   key={t.id}
                   ticket={t}
-                  isLast={i === visibleTickets.length - 1}
                   variant={variant}
                   fallbackCurrency={event.currency}
                   callbacks={callbacks}
@@ -517,7 +540,6 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
 
 interface PublicTicketRowProps {
   ticket: PublicTicketProps;
-  isLast: boolean;
   variant: "published" | "pre-sale" | "sold-out" | "past";
   fallbackCurrency: string;
   callbacks: PublicEventPageProps["callbacks"];
@@ -526,7 +548,6 @@ interface PublicTicketRowProps {
 
 const PublicTicketRow: React.FC<PublicTicketRowProps> = ({
   ticket,
-  isLast,
   variant,
   fallbackCurrency,
   callbacks,
@@ -538,8 +559,7 @@ const PublicTicketRow: React.FC<PublicTicketRowProps> = ({
     ticket.saleEndAt !== null &&
     Number.isFinite(new Date(ticket.saleEndAt).getTime()) &&
     new Date(ticket.saleEndAt).getTime() <= Date.now();
-  const isSoldOutTicket =
-    !ticket.isUnlimited && (ticket.capacity ?? 0) === 0;
+  const isSoldOutTicket = !ticket.isUnlimited && (ticket.capacity ?? 0) === 0;
   const isDoorOnly = ticket.availableAt === "door";
 
   const handleTap = (): void => {
@@ -591,17 +611,20 @@ const PublicTicketRow: React.FC<PublicTicketRowProps> = ({
 
   return (
     <View
-      style={[
-        styles.ticketRow,
-        !isLast && styles.ticketRowDivider,
-        isVisDisabled && styles.ticketRowDisabled,
-      ]}
+      style={[styles.ticketCard, isVisDisabled && styles.ticketCardDisabled]}
     >
-      <View style={styles.ticketTextCol}>
-        <Text style={styles.ticketName}>{ticket.name}</Text>
-        {ticket.description !== null && ticket.description.length > 0 ? (
-          <Text style={styles.ticketDescription}>{ticket.description}</Text>
-        ) : null}
+      <View style={styles.ticketHeaderRow}>
+        <View style={styles.ticketTextCol}>
+          <Text style={styles.ticketName}>{ticket.name}</Text>
+          {ticket.description !== null && ticket.description.length > 0 ? (
+            <Text style={styles.ticketDescription}>{ticket.description}</Text>
+          ) : null}
+        </View>
+        <View style={styles.ticketPricePill}>
+          <Text style={styles.ticketPrice}>{priceLabel}</Text>
+        </View>
+      </View>
+      <View style={styles.ticketFooterRow}>
         <Text style={styles.ticketSub}>{capacityLabel}</Text>
         <Pressable
           onPress={handleTap}
@@ -613,6 +636,7 @@ const PublicTicketRow: React.FC<PublicTicketRowProps> = ({
             styles.ticketBuyerBtn,
             {
               backgroundColor: theme.color,
+              borderColor: theme.color,
             },
             isButtonDisabled && styles.ticketBuyerBtnDisabled,
           ]}
@@ -620,7 +644,10 @@ const PublicTicketRow: React.FC<PublicTicketRowProps> = ({
           <Text
             style={[
               styles.ticketBuyerBtnLabel,
-              { color: theme.foregroundColor, fontFamily: theme.fontFamilyValue },
+              {
+                color: theme.foregroundColor,
+                fontFamily: theme.fontFamilyValue,
+              },
               isButtonDisabled && styles.ticketBuyerBtnLabelDisabled,
             ]}
           >
@@ -628,7 +655,6 @@ const PublicTicketRow: React.FC<PublicTicketRowProps> = ({
           </Text>
         </Pressable>
       </View>
-      <Text style={styles.ticketPrice}>{priceLabel}</Text>
     </View>
   );
 };
@@ -651,8 +677,8 @@ const CancelledVariant: React.FC<CancelledVariantProps> = ({
     <Text style={styles.cancelledTitle}>This event has been cancelled</Text>
     <Text style={styles.cancelledEventName}>{event.name}</Text>
     <Text style={styles.cancelledBody}>
-      {brand?.displayName ?? "The organiser"} has cancelled this event.
-      If you purchased tickets, you will receive refund details by email.
+      {brand?.displayName ?? "The organiser"} has cancelled this event. If you
+      purchased tickets, you will receive refund details by email.
     </Text>
   </View>
 );
@@ -836,13 +862,32 @@ const styles = StyleSheet.create({
     zIndex: 2,
   },
   scrollContent: {
-    paddingTop: 280,
+    paddingTop: 288,
     paddingBottom: spacing.xl * 2,
   },
   bodyContent: {
+    position: "relative",
+    overflow: "hidden",
+    alignSelf: "center",
+    width: "100%",
+    maxWidth: 660,
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    backgroundColor,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xl,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    backgroundColor: "rgba(8, 10, 14, 0.92)",
+    borderWidth: 1,
+    borderBottomWidth: 0,
+    borderColor: "rgba(255,255,255,0.14)",
+    shadowColor: "#000000",
+    shadowOpacity: 0.28,
+    shadowRadius: 30,
+    shadowOffset: { width: 0, height: -10 },
+    elevation: 7,
+  },
+  bodyGlassLayer: {
+    ...StyleSheet.absoluteFillObject,
   },
   bodyContentMuted: {
     opacity: 0.7,
@@ -850,28 +895,28 @@ const styles = StyleSheet.create({
 
   // Title block
   titleBlock: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: spacing.sm,
-    marginBottom: spacing.sm,
+    marginBottom: spacing.md,
   },
   titleBlockText: {
     flex: 1,
   },
   dateLine: {
     fontSize: 11,
-    fontWeight: "700",
-    letterSpacing: 1.4,
+    fontWeight: "900",
+    letterSpacing: 1.6,
     textTransform: "uppercase",
     color: accent.warm,
     marginBottom: 8,
   },
   titleLine: {
-    fontSize: 32,
-    fontWeight: "700",
-    letterSpacing: -0.4,
+    fontSize: 36,
+    lineHeight: 41,
+    fontWeight: "900",
     color: text.primary,
     marginBottom: spacing.sm,
+    textShadowColor: "rgba(0,0,0,0.28)",
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 10,
   },
   recurrencePillRow: {
     flexDirection: "row",
@@ -899,7 +944,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     borderRadius: radius.md,
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: "rgba(255,255,255,0.08)",
     borderWidth: 1,
     borderColor: glass.border.profileBase,
   },
@@ -922,31 +967,47 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radius.lg,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.16)",
     marginBottom: spacing.lg,
   },
   brandRowInteractive: {
-    borderRadius: radius.md,
-    paddingVertical: spacing.xs,
+    borderRadius: radius.lg,
   },
   brandRowPressed: {
     opacity: 0.72,
   },
   brandTile: {
-    width: 28,
-    height: 28,
-    borderRadius: radius.sm,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: accent.warm,
     alignItems: "center",
     justifyContent: "center",
   },
   brandLetter: {
-    fontWeight: "700",
-    fontSize: 13,
+    fontWeight: "900",
+    fontSize: 17,
     color: "#fff",
   },
+  brandTextCol: {
+    flex: 1,
+    minWidth: 0,
+  },
+  brandKicker: {
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+    color: text.tertiary,
+    marginBottom: 2,
+  },
   brandName: {
-    fontSize: 14,
-    fontWeight: "500",
+    fontSize: 16,
+    fontWeight: "800",
     color: text.primary,
   },
   brandCta: {
@@ -958,10 +1019,10 @@ const styles = StyleSheet.create({
 
   // Venue card
   venueCard: {
-    marginBottom: spacing.md,
+    marginBottom: spacing.lg,
     padding: spacing.md,
     borderRadius: radius.lg,
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: "rgba(255,255,255,0.08)",
     borderWidth: 1,
     borderColor: glass.border.profileBase,
   },
@@ -970,10 +1031,17 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     alignItems: "flex-start",
   },
+  venueIconDisk: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   venueIcon: {
     fontSize: 18,
-    color: accent.warm,
-    width: 18,
+    color: "#ffffff",
+    width: 20,
     textAlign: "center",
     lineHeight: 22,
   },
@@ -981,8 +1049,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   venueName: {
-    fontSize: 14,
-    fontWeight: "500",
+    fontSize: 15,
+    fontWeight: "800",
     color: text.primary,
   },
   venueAddress: {
@@ -992,11 +1060,11 @@ const styles = StyleSheet.create({
   },
 
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    letterSpacing: -0.2,
+    fontSize: 21,
+    lineHeight: 26,
+    fontWeight: "900",
     color: text.primary,
-    marginTop: spacing.md,
+    marginTop: spacing.lg,
     marginBottom: spacing.sm,
   },
   aboutBody: {
@@ -1014,32 +1082,36 @@ const styles = StyleSheet.create({
     borderColor: glass.border.profileBase,
   },
   ticketsCol: {
-    backgroundColor: glass.tint.profileBase,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    overflow: "hidden",
+    gap: spacing.md,
   },
-  ticketRow: {
+  ticketCard: {
+    padding: spacing.md,
+    borderRadius: radius.lg,
+    backgroundColor: "rgba(255,255,255,0.09)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.16)",
+    shadowColor: "#000000",
+    shadowOpacity: 0.2,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 4,
+  },
+  ticketCardDisabled: {
+    opacity: 0.5,
+  },
+  ticketHeaderRow: {
     flexDirection: "row",
     alignItems: "flex-start",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    gap: spacing.sm,
-  },
-  ticketRowDivider: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: glass.border.profileBase,
-  },
-  ticketRowDisabled: {
-    opacity: 0.5,
+    gap: spacing.md,
   },
   ticketTextCol: {
     flex: 1,
+    minWidth: 0,
   },
   ticketName: {
-    fontSize: typography.bodySm.fontSize,
-    fontWeight: "600",
+    fontSize: 18,
+    lineHeight: 22,
+    fontWeight: "900",
     color: text.primary,
   },
   ticketDescription: {
@@ -1049,35 +1121,59 @@ const styles = StyleSheet.create({
     lineHeight: typography.caption.lineHeight * 1.4,
   },
   ticketSub: {
-    fontSize: typography.caption.fontSize,
+    fontSize: 11,
     color: text.tertiary,
-    marginTop: 2,
+    fontWeight: "800",
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    flex: 1,
+  },
+  ticketFooterRow: {
+    gap: spacing.md,
+    marginTop: spacing.md,
   },
   ticketBuyerBtn: {
-    marginTop: spacing.sm,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 6,
+    minHeight: 52,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: 14,
     borderRadius: radius.md,
     backgroundColor: accent.tint,
     borderWidth: 1,
     borderColor: accent.border,
-    alignSelf: "flex-start",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000000",
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
   },
   ticketBuyerBtnDisabled: {
     backgroundColor: glass.tint.profileBase,
     borderColor: glass.border.profileBase,
   },
   ticketBuyerBtnLabel: {
-    fontSize: typography.caption.fontSize,
-    fontWeight: "600",
+    fontSize: 16,
+    fontWeight: "900",
     color: accent.warm,
+    letterSpacing: 0.3,
   },
   ticketBuyerBtnLabelDisabled: {
     color: text.tertiary,
   },
+  ticketPricePill: {
+    minHeight: 38,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: spacing.md,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+  },
   ticketPrice: {
-    fontSize: typography.bodySm.fontSize,
-    fontWeight: "700",
+    fontSize: 14,
+    fontWeight: "900",
     color: text.primary,
   },
 

@@ -9,6 +9,7 @@
   "peerDependencies": {
     "react": "*",
     "react-native": "*",
+    "expo-blur": "*",
     "lottie-react-native": "*"
   }
 }
