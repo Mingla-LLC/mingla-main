@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import {
   MINGLA_DEFAULT_THEME,
@@ -18,6 +18,8 @@ import {
   spacing,
   text as textTokens,
 } from "../../constants/designSystem";
+
+import { normalizeHexColor } from "./normalizeHexColor";
 
 interface ThemeEditorSectionProps {
   value: ThemeInput | null | undefined;
@@ -40,11 +42,10 @@ const labelForSlug = (slug: string): string =>
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
 
-const normalizeColor = (value: string | null | undefined): string | null => {
-  if (value === null || value === undefined) return null;
-  const trimmed = value.trim();
-  return /^#[0-9a-fA-F]{6}$/.test(trimmed) ? trimmed : null;
-};
+// ORCH-0964 hex-input contract: commit-on-valid pattern. The pure logic
+// lives in ./normalizeHexColor so Jest can unit-test it without an RN
+// runtime. The local re-export keeps existing in-file references valid.
+const normalizeColor = normalizeHexColor;
 
 export const ThemeEditorSection: React.FC<ThemeEditorSectionProps> = ({
   value,
@@ -52,6 +53,18 @@ export const ThemeEditorSection: React.FC<ThemeEditorSectionProps> = ({
   resetLabel = "Reset to Mingla default",
 }) => {
   const theme = useMemo(() => resolveTheme(value ?? null, null), [value]);
+
+  // ORCH-0964 hot-fix (post-operator-smoke-test): the hex input must allow
+  // free typing. Prior shape `value={value?.color ?? ""}` + on-keystroke
+  // normalize destroyed any partial input (#FF1493 typed char-by-char
+  // returned to "" after each character because the partial regex didn't
+  // match). New shape: separate raw input state + commit only when the
+  // trimmed text becomes a valid 7-char #RRGGBB. Swatch taps sync the input
+  // via useEffect. Invalid text on blur reverts to last committed value.
+  const [hexInputDraft, setHexInputDraft] = useState<string>(value?.color ?? "");
+  useEffect(() => {
+    setHexInputDraft(value?.color ?? "");
+  }, [value?.color]);
 
   const commit = (patch: ThemeInput): void => {
     const next: ThemeInput = {
@@ -112,8 +125,19 @@ export const ThemeEditorSection: React.FC<ThemeEditorSectionProps> = ({
         ))}
       </View>
       <TextInput
-        value={value?.color ?? ""}
-        onChangeText={(text) => commit({ color: normalizeColor(text) })}
+        value={hexInputDraft}
+        onChangeText={(text) => {
+          setHexInputDraft(text);
+          const normalized = normalizeColor(text);
+          if (normalized !== null) {
+            commit({ color: normalized });
+          }
+        }}
+        onBlur={() => {
+          if (normalizeColor(hexInputDraft) === null) {
+            setHexInputDraft(value?.color ?? "");
+          }
+        }}
         placeholder={MINGLA_DEFAULT_THEME.color}
         placeholderTextColor={textTokens.quaternary}
         autoCapitalize="none"
