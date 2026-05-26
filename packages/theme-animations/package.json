@@ -1,0 +1,13 @@
+{
+  "name": "@mingla/theme-animations",
+  "version": "0.0.0",
+  "private": true,
+  "main": "index.ts",
+  "types": "index.ts",
+  "license": "UNLICENSED",
+  "description": "Small in-house Lottie entrance animations for ORCH-0964 public theme rendering.",
+  "peerDependencies": {
+    "react": "*",
+    "react-native": "*"
+  }
+}

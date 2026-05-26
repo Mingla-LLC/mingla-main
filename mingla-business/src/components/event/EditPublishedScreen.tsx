@@ -112,21 +112,30 @@ import {
 // the events DB row so legacy events become Discover-eligible after edit.
 import {
   patchPublishedEventTaxonomy,
+  patchPublishedEventTheme,
   patchPublishedEventWhen,
 } from "../../services/businessEvents";
 import { businessEventKeys } from "../../hooks/useBusinessEvents";
 import { publicEventKeys } from "../../hooks/usePublicEvents";
 import { useEventHasWebPurchases } from "../../hooks/useEventOrders";
+import { ThemeEditorSection } from "../theme/ThemeEditorSection";
 
 // ---- Section configuration -----------------------------------------
 
-type SectionKey = "basics" | "when" | "where" | "cover" | "tickets" | "settings";
+type SectionKey =
+  | "basics"
+  | "when"
+  | "where"
+  | "cover"
+  | "visual"
+  | "tickets"
+  | "settings";
 
 interface SectionConfig {
   key: SectionKey;
   label: string;
   /** Step index for `validateStep(N, draft)`. */
-  stepIndex: number;
+  stepIndex: number | null;
 }
 
 const SECTIONS: readonly SectionConfig[] = [
@@ -134,6 +143,7 @@ const SECTIONS: readonly SectionConfig[] = [
   { key: "when", label: "When", stepIndex: 1 },
   { key: "where", label: "Where", stepIndex: 2 },
   { key: "cover", label: "Cover", stepIndex: 3 },
+  { key: "visual", label: "Visual", stepIndex: null },
   { key: "tickets", label: "Tickets", stepIndex: 4 },
   { key: "settings", label: "Settings", stepIndex: 5 },
 ];
@@ -184,10 +194,15 @@ const ORCH_0877_WHEN_PATCH_KEYS = new Set<keyof EditableLiveEventFields>([
   "multiDates",
 ]);
 
+const ORCH_0964_THEME_PATCH_KEYS = new Set<keyof EditableLiveEventFields>([
+  "themeOverrides",
+]);
+
 const SERVER_EDITABLE_PATCH_KEYS = new Set<keyof EditableLiveEventFields>([
   ...COVER_MEDIA_PATCH_KEYS,
   ...ORCH_0824_PATCH_KEYS,
   ...ORCH_0877_WHEN_PATCH_KEYS,
+  ...ORCH_0964_THEME_PATCH_KEYS,
 ]);
 
 const sleep = (ms: number): Promise<void> =>
@@ -330,11 +345,13 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
       when: [],
       where: [],
       cover: [],
+      visual: [],
       tickets: [],
       settings: [],
     };
     for (const sec of SECTIONS) {
-      out[sec.key] = validateStep(sec.stepIndex, editState);
+      out[sec.key] =
+        sec.stepIndex === null ? [] : validateStep(sec.stepIndex, editState);
     }
     return out;
   }, [editState]);
@@ -832,6 +849,30 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         }
       }
 
+      const themePatchPresent = patch.themeOverrides !== undefined;
+      if (themePatchPresent) {
+        if (liveEvent.serverEventId === null) {
+          setSubmitting(false);
+          setModal((prev) => ({ ...prev, visible: false }));
+          showToast(
+            "Save failed because this event is missing its server id.",
+          );
+          return;
+        }
+        try {
+          await patchPublishedEventTheme({
+            eventId: liveEvent.serverEventId,
+            themeOverrides: patch.themeOverrides ?? null,
+          });
+          invalidateServerEventCaches();
+        } catch {
+          setSubmitting(false);
+          setModal((prev) => ({ ...prev, visible: false }));
+          showToast("Couldn't save the public theme. Tap to try again.");
+          return;
+        }
+      }
+
       // ORCH-0824 hotfix: unified early-return for server-editable-only
       // patches when the local Zustand event isn't available
       // (disableLocalSaveReason is set when liveEvent === null at the
@@ -941,6 +982,14 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
           return <CreatorStep3Where {...stepBodyProps} />;
         case "cover":
           return <CreatorStep4Cover {...stepBodyProps} />;
+        case "visual":
+          return (
+            <ThemeEditorSection
+              value={editState.themeOverrides}
+              onChange={(themeOverrides) => handleUpdateDraft({ themeOverrides })}
+              resetLabel="Use brand default"
+            />
+          );
         case "tickets":
           return <CreatorStep5Tickets {...stepBodyProps} />;
         case "settings":
@@ -999,6 +1048,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
             changedKeys.has("coverMediaCredit") ||
             changedKeys.has("coverMediaCreditUrl") ||
             changedKeys.has("coverMediaAlt"))) ||
+        (sec.key === "visual" && changedKeys.has("themeOverrides")) ||
         (sec.key === "tickets" && changedKeys.has("tickets")) ||
         (sec.key === "settings" &&
           (changedKeys.has("visibility") ||

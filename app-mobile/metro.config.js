@@ -25,6 +25,16 @@ config.resolver.extraNodeModules = {
     "packages",
     "event-rendering",
   ),
+  "@mingla/brand-rendering": path.join(
+    WORKSPACE_ROOT,
+    "packages",
+    "brand-rendering",
+  ),
+  "@mingla/theme-animations": path.join(
+    WORKSPACE_ROOT,
+    "packages",
+    "theme-animations",
+  ),
   "@mingla/payments-native": path.join(
     WORKSPACE_ROOT,
     "packages",

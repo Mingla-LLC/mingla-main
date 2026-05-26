@@ -16,7 +16,7 @@
  */
 
 import React, { useCallback, useMemo, useState } from "react";
-import { Platform, View, StyleSheet } from "react-native";
+import { Linking, Platform, View, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
 import Head from "expo-router/head";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -28,6 +28,7 @@ import {
   type PublicEventProps,
   type PublicTicketProps,
   type ViewerRole,
+  resolveTheme,
 } from "@mingla/event-rendering";
 
 import {
@@ -138,6 +139,7 @@ const mapLiveEventToPublicEvent = (event: LiveEvent): PublicEventProps => {
     coverCredit,
     tickets: event.tickets.map(mapTicket),
     currency: event.currency ?? "GBP",
+    themeOverrides: event.themeOverrides ?? null,
   };
 };
 
@@ -149,7 +151,24 @@ const mapBrandToPublicBrand = (
     id: brand.id,
     slug: brand.slug,
     displayName: brand.displayName ?? "Brand",
+    photo: brand.photo,
+    theme: brand.theme ?? null,
   };
+};
+
+const openMapsForQuery = (query: string): void => {
+  const encoded = encodeURIComponent(query);
+  const googleUrl = `https://www.google.com/maps/search/?api=1&query=${encoded}`;
+  const platformUrl =
+    Platform.OS === "ios"
+      ? `maps://?q=${encoded}`
+      : Platform.OS === "android"
+        ? `geo:0,0?q=${encoded}`
+        : googleUrl;
+
+  void Linking.openURL(platformUrl).catch(() => {
+    void Linking.openURL(googleUrl).catch(() => undefined);
+  });
 };
 
 const canonicalUrl = (event: LiveEvent): string =>
@@ -187,6 +206,14 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
 
   const publicEvent = useMemo(() => mapLiveEventToPublicEvent(event), [event]);
   const publicBrand = useMemo(() => mapBrandToPublicBrand(brand), [brand]);
+  const resolvedTheme = useMemo(
+    () =>
+      resolveTheme(
+        publicBrand?.theme ?? null,
+        publicEvent.themeOverrides ?? null,
+      ),
+    [publicBrand?.theme, publicEvent.themeOverrides],
+  );
   const waitlistTicket = useMemo(
     () =>
       publicEvent.tickets.find((ticket) => ticket.id === waitlistTicketId) ??
@@ -234,6 +261,10 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       onRequestApproval: (_ticketId: string) => {
         showToast("Approval flow lands Cycle 10 + B4.");
       },
+      onOpenBrand: (brandSlug: string) => {
+        router.push(`/b/${brandSlug}` as never);
+      },
+      onOpenMaps: openMapsForQuery,
       onUnlockPassword: (password: string): boolean => {
         // [TRANSITIONAL] Frontend stub validation against ticket.password.
         // B4 wires real backend verification (hashed comparison).
@@ -298,6 +329,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         viewerRole={viewerRole}
         callbacks={callbacks}
         hideFloatingChrome
+        theme={resolvedTheme}
       />
 
       <View

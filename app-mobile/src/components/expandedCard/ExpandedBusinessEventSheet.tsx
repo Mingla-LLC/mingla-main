@@ -22,12 +22,13 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { StyleSheet } from "react-native";
+import { Linking, Platform, StyleSheet } from "react-native";
 import BottomSheet, {
   BottomSheetBackdrop,
   type BottomSheetBackdropProps,
   BottomSheetScrollView,
 } from "@gorhom/bottom-sheet";
+import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
 
 import {
@@ -36,6 +37,7 @@ import {
   PublicEventPage,
   type PublicEventProps,
   type ViewerRole,
+  resolveTheme,
 } from "@mingla/event-rendering";
 
 import { useQueryClient } from "@tanstack/react-query";
@@ -45,6 +47,7 @@ import type { BusinessEventCard } from "../../types/mergedDiscover";
 import { formatEventDateLine } from "../../utils/eventDateDisplay";
 import { useAppStore } from "../../store/appStore";
 import { usePublicEventTickets } from "../../hooks/usePublicEventTickets";
+import { useEventTheme } from "../../hooks/useEventTheme";
 import { circleKeys } from "../../hooks/queryKeys";
 import {
   type NativeCheckoutOutcome,
@@ -68,8 +71,10 @@ interface ExpandedBusinessEventSheetProps {
 // ORCH-0828 REWORK: canonical bottomSheet snapPoints from design tokens,
 // matching the TM/place path at ExpandedCardModal.tsx:1606. Two snap points
 // give the user a natural 50% preview + 90% full gesture.
-const SHEET_SNAP_POINTS = glass.bottomSheet
-  .snapPoints as unknown as (string | number)[];
+const SHEET_SNAP_POINTS = glass.bottomSheet.snapPoints as unknown as (
+  | string
+  | number
+)[];
 const SHEET_INITIAL_INDEX = 1; // open at the 90% snap (full view)
 
 // ORCH-0877 — formatDateLine replaced by centralized `formatEventDateLine`
@@ -108,11 +113,12 @@ export const mapCardToPublicEvent = (
   hideAddressUntilTicket: card.hideAddressUntilTicket,
   coverHue: card.coverHue,
   coverMediaUrl: card.coverMediaUrl,
-  coverMediaType: card.coverMediaType === "image" ||
-      card.coverMediaType === "video" ||
-      card.coverMediaType === "gif"
-    ? card.coverMediaType
-    : null,
+  coverMediaType:
+    card.coverMediaType === "image" ||
+    card.coverMediaType === "video" ||
+    card.coverMediaType === "gif"
+      ? card.coverMediaType
+      : null,
   coverCredit: null,
   tickets,
   currency: card.currency,
@@ -122,17 +128,29 @@ const mapCardToPublicBrand = (card: BusinessEventCard): PublicBrandProps => ({
   id: card.brandId,
   slug: card.brandSlug,
   displayName: card.brandName,
+  photo: card.brandProfilePhotoUrl ?? undefined,
 });
+
+const openMapsForQuery = (query: string): void => {
+  const encoded = encodeURIComponent(query);
+  const googleUrl = `https://www.google.com/maps/search/?api=1&query=${encoded}`;
+  const platformUrl =
+    Platform.OS === "ios"
+      ? `maps://?q=${encoded}`
+      : Platform.OS === "android"
+        ? `geo:0,0?q=${encoded}`
+        : googleUrl;
+
+  void Linking.openURL(platformUrl).catch(() => {
+    void Linking.openURL(googleUrl).catch(() => undefined);
+  });
+};
 
 export const ExpandedBusinessEventSheet: React.FC<
   ExpandedBusinessEventSheetProps
-> = ({
-  visible,
-  data,
-  onClose,
-  bottomContentInset = 32,
-}) => {
+> = ({ visible, data, onClose, bottomContentInset = 32 }) => {
   const sheetRef = useRef<BottomSheet>(null);
+  const router = useRouter();
   const user = useAppStore((s) => s.user);
   const profile = useAppStore((s) => s.profile);
   const queryClient = useQueryClient();
@@ -149,6 +167,7 @@ export const ExpandedBusinessEventSheet: React.FC<
   );
 
   const ticketsQuery = usePublicEventTickets(visible ? data.eventId : null);
+  const themeQuery = useEventTheme(visible ? data : null);
   const runNativeCheckout = useNativeCheckoutFlow();
 
   // ORCH-0828 REWORK: diagnostic log only. Sheet open/close is driven by
@@ -212,9 +231,8 @@ export const ExpandedBusinessEventSheet: React.FC<
         toastManager.show("Please sign in to get tickets.", "warning");
         return;
       }
-      const buyerName = profile?.display_name?.trim() ||
-        user.email?.split("@")[0] ||
-        "Guest";
+      const buyerName =
+        profile?.display_name?.trim() || user.email?.split("@")[0] || "Guest";
       const buyerEmail = user.email ?? profile?.email ?? "";
       const buyerPhone = profile?.phone ?? "";
 
@@ -333,6 +351,10 @@ export const ExpandedBusinessEventSheet: React.FC<
         // [TRANSITIONAL] Share for business events lands in a follow-up.
         toastManager.show("Share is coming soon.", "info");
       },
+      onOpenBrand: (brandSlug: string) => {
+        router.push(`/brand/${encodeURIComponent(brandSlug)}`);
+      },
+      onOpenMaps: openMapsForQuery,
       // ORCH-0847 Phase C — open the multi-tier cart sheet seeded at the
       // tapped tier. The TicketCartSheet manages the cart, opt-in, buyer
       // recap, and primary CTA; on Continue/Claim it calls handleBuy with
@@ -354,7 +376,7 @@ export const ExpandedBusinessEventSheet: React.FC<
         toastManager.show("Request-to-attend coming soon.", "info");
       },
     }),
-    [ticketsQuery.data, data.currency],
+    [router],
   );
 
   // ORCH-0828 REWORK: inline `<BottomSheet>` matching the proven
@@ -387,24 +409,25 @@ export const ExpandedBusinessEventSheet: React.FC<
             event={publicEvent}
             brand={publicBrand}
             viewerRole={viewerRole}
+            theme={
+              themeQuery.data ?? resolveTheme(null, publicEvent.themeOverrides)
+            }
             callbacks={callbacks}
           />
         </BottomSheetScrollView>
       </BottomSheet>
-      {
-        /* ORCH-0847 Phase C — multi-tier cart sheet. Renders as a sibling
+      {/* ORCH-0847 Phase C — multi-tier cart sheet. Renders as a sibling
           @gorhom/bottom-sheet so it overlays the parent sheet without
-          competing for the same Modal root. */
-      }
+          competing for the same Modal root. */}
       <TicketCartSheet
         visible={cartSheetVisible}
         eventId={data.eventId}
         tickets={ticketsQuery.data}
         fallbackCurrency={data.currency}
         initialTicketTypeId={initialTicketTypeId}
-        buyerName={profile?.display_name?.trim() ||
-          user?.email?.split("@")[0] ||
-          "Guest"}
+        buyerName={
+          profile?.display_name?.trim() || user?.email?.split("@")[0] || "Guest"
+        }
         buyerEmail={user?.email ?? profile?.email ?? ""}
         buyerPhone={profile?.phone ?? ""}
         isSubmitting={checkoutInFlight}

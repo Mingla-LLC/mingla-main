@@ -1,0 +1,16 @@
+{
+  "name": "@mingla/brand-rendering",
+  "version": "0.0.0",
+  "private": true,
+  "main": "index.ts",
+  "types": "index.ts",
+  "license": "UNLICENSED",
+  "description": "Pure-presentational public brand rendering shared between mingla-business and app-mobile.",
+  "peerDependencies": {
+    "react": "*",
+    "react-native": "*",
+    "expo-blur": "*",
+    "lottie-react-native": "*",
+    "lucide-react-native": "*"
+  }
+}

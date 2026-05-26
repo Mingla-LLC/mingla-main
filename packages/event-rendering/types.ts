@@ -7,13 +7,11 @@
 // If the underlying schema changes (e.g., M0 adds events.event_type), this
 // file updates once; both apps' type-checkers immediately flag any drift.
 
+import type { ResolvedTheme, ThemeInput } from "./designTokens";
+
 export type EventCoverMediaType = "image" | "video" | "gif";
 export type EventFormat = "in-person" | "online" | "hybrid";
-export type EventStatus =
-  | "draft"
-  | "published"
-  | "ended"
-  | "cancelled";
+export type EventStatus = "draft" | "published" | "ended" | "cancelled";
 export type TicketVisibility = "visible" | "hidden" | "disabled";
 export type TicketAvailableAt = "online" | "door" | "both";
 
@@ -69,22 +67,21 @@ export interface PublicEventProps {
   // Tickets
   tickets: PublicTicketProps[];
   currency: string;
+
+  themeOverrides?: ThemeInput | null;
 }
 
 export interface PublicBrandProps {
   id: string;
   slug: string;
   displayName: string;
+  photo?: string;
+  theme?: ThemeInput | null;
 }
 
 export type ViewerRole = "organizer" | "ticket-holder" | "anonymous";
 
-export type BuyerAction =
-  | "buy"
-  | "free"
-  | "approval"
-  | "waitlist"
-  | "password";
+export type BuyerAction = "buy" | "free" | "approval" | "waitlist" | "password";
 
 export interface PublicEventCallbacks {
   onClose: () => void;
@@ -93,6 +90,8 @@ export interface PublicEventCallbacks {
   onClaimFreeTicket: (ticketId: string) => void;
   onJoinWaitlist: (ticketId: string) => void;
   onRequestApproval: (ticketId: string) => void;
+  onOpenBrand?: (brandSlug: string) => void;
+  onOpenMaps?: (query: string) => void;
   onUnlockPassword?: (password: string) => boolean;
 }
 
@@ -110,6 +109,7 @@ export interface PublicEventPageProps {
    * adapter started rendering its own IconChrome row.
    */
   hideFloatingChrome?: boolean;
+  theme?: ResolvedTheme;
 }
 
 export interface PublicEventNotFoundProps {

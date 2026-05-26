@@ -18,12 +18,18 @@ function argValue(flag) {
 }
 
 const REPO_ROOT = path.resolve(argValue("--root") ?? DEFAULT_ROOT);
-const publicBrandPage = path.join(
+const businessPublicBrandPage = path.join(
   REPO_ROOT,
   "mingla-business",
   "src",
   "components",
   "brand",
+  "PublicBrandPage.tsx",
+);
+const sharedPublicBrandPage = path.join(
+  REPO_ROOT,
+  "packages",
+  "brand-rendering",
   "PublicBrandPage.tsx",
 );
 const hubLayout = path.join(
@@ -57,12 +63,15 @@ function forbidContains(source, needle, label, file) {
   }
 }
 
-const publicBrandPageSource = readRequired(publicBrandPage, "D1");
+const publicBrandPageFile = fs.existsSync(sharedPublicBrandPage)
+  ? sharedPublicBrandPage
+  : businessPublicBrandPage;
+const publicBrandPageSource = readRequired(publicBrandPageFile, "D1");
 const hubLayoutSource = readRequired(hubLayout, "D2");
 
-requireContains(publicBrandPageSource, "visibleTabs", "D1", publicBrandPage);
-forbidContains(publicBrandPageSource, "isTripBrand", "D1", publicBrandPage);
-forbidContains(publicBrandPageSource, "brand.kind ===", "D1", publicBrandPage);
+requireContains(publicBrandPageSource, "visibleTabs", "D1", publicBrandPageFile);
+forbidContains(publicBrandPageSource, "isTripBrand", "D1", publicBrandPageFile);
+forbidContains(publicBrandPageSource, "brand.kind ===", "D1", publicBrandPageFile);
 
 requireContains(hubLayoutSource, "useHubVisibleTabs(", "D2", hubLayout);
 forbidContains(hubLayoutSource, "brand.kind ===", "D2", hubLayout);
@@ -70,8 +79,8 @@ forbidContains(hubLayoutSource, "currentBrand.kind", "D2", hubLayout);
 
 requireContains(hubLayoutSource, "useHubInitialTab(", "D3", hubLayout);
 
-forbidContains(publicBrandPageSource, "if (isTripBrand)", "D4", publicBrandPage);
-forbidContains(publicBrandPageSource, "if (!isTripBrand)", "D4", publicBrandPage);
+forbidContains(publicBrandPageSource, "if (isTripBrand)", "D4", publicBrandPageFile);
+forbidContains(publicBrandPageSource, "if (!isTripBrand)", "D4", publicBrandPageFile);
 
 if (failures.length > 0) {
   console.error("META-ORCH-0972 data-driven tabs strict-grep failed:");

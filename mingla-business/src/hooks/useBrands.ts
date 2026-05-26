@@ -28,6 +28,7 @@ import {
 import { supabase } from "../services/supabase";
 import { queryClient } from "../config/queryClient";
 import { eventOrdersKeys } from "./useEventOrders";
+import { publicEventKeys } from "./usePublicEvents";
 import {
   createBrand,
   createVenueBrandPendingReview,
@@ -381,6 +382,9 @@ export const useUpdateBrand = (): UseUpdateBrandResult => {
           return prev.map((b) => (b.id === brandId ? serverBrand : b));
         },
       );
+      queryClient.invalidateQueries({
+        queryKey: publicEventKeys.brandBySlug(serverBrand.slug),
+      });
     },
   });
   return { mutateAsync: mutation.mutateAsync, isPending: mutation.isPending };

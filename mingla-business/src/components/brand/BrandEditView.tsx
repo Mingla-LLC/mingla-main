@@ -68,6 +68,7 @@ import { Toast } from "../ui/Toast";
 import { TopBar } from "../ui/TopBar";
 import { BrandAvatarPickerSheet } from "./BrandAvatarPickerSheet";
 import { BrandCoverPickerSheet } from "./BrandCoverPickerSheet";
+import { ThemeEditorSection } from "../theme/ThemeEditorSection";
 
 interface ToastState {
   visible: boolean;
@@ -596,6 +597,14 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
                 leadingIcon="upload"
               />
             </View>
+          </View>
+
+          <Text style={styles.sectionLabel}>PUBLIC PAGE THEME</Text>
+          <View style={styles.fieldsCol}>
+            <ThemeEditorSection
+              value={draft.theme}
+              onChange={(theme) => setDraft({ ...draft, theme })}
+            />
           </View>
 
           <Text style={styles.sectionLabel}>ADDRESS</Text>

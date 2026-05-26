@@ -1,0 +1,207 @@
+import { readFileSync } from "fs";
+import path from "path";
+
+import { describe, expect, test } from "@jest/globals";
+
+const repoFile = (relativePath: string): string =>
+  readFileSync(path.join(process.cwd(), "..", relativePath), "utf8");
+
+describe("ORCH-0964 smoke rework — business public-page preview chrome/theme", () => {
+  const sharedSource = repoFile("packages/brand-rendering/PublicBrandPage.tsx");
+  const adapterSource = readFileSync(
+    path.join(process.cwd(), "src/components/brand/PublicBrandPage.tsx"),
+    "utf8",
+  );
+  const animationSource = repoFile(
+    "packages/event-rendering/ThemeEntranceAnimation.tsx",
+  );
+
+  test("hero band is themed and entrance animation cannot intercept chrome taps", () => {
+    expect(sharedSource).toContain(
+      "style={[styles.heroWrap, { backgroundColor: heroColor }]}",
+    );
+    expect(sharedSource).toContain("const palette = useMemo(");
+    expect(sharedSource).toContain("() => createThemePalette(resolvedTheme)");
+    expect(sharedSource).toContain("styles.heroThemeTint");
+    expect(sharedSource).toContain(
+      "</ScrollView>\n\n      <ThemeEntranceAnimation\n        theme={resolvedTheme}",
+    );
+    expect(sharedSource).toContain("replayOnMount");
+    expect(sharedSource).toContain('pointerEvents="none"');
+    expect(sharedSource).toContain("styles.floatingChrome");
+    expect(sharedSource).toContain('pointerEvents="box-none"');
+  });
+
+  test("business adapter passes resolved theme and safe chrome top offset", () => {
+    expect(adapterSource).toContain("theme={theme}");
+    expect(adapterSource).toContain("chromeTopOffset={insets.top + 8}");
+    expect(adapterSource).toContain("onClose: handleClose");
+    expect(adapterSource).toContain(
+      "onShare: () => setShareModalVisible(true)",
+    );
+  });
+
+  test("theme is visible beyond the cover image fallback", () => {
+    const heroWrapBlock =
+      sharedSource.match(/heroWrap: \{[\s\S]*?\n  \},/)?.[0] ?? "";
+    expect(sharedSource).toContain("type ThemePalette");
+    expect(sharedSource).toContain(
+      "const createThemePalette = (theme: ResolvedTheme)",
+    );
+    expect(sharedSource).toContain(
+      "const contrastRatio = (a: string, b: string): number",
+    );
+    expect(sharedSource).toContain("const contrastAdjustedAccent = (");
+    expect(sharedSource).toContain("const useDark =");
+    expect(sharedSource).toContain(
+      "contrastAdjustedAccent(theme.color, page, 3.15)",
+    );
+    expect(sharedSource).toContain("contrastAdjustedForWhiteText(");
+    expect(sharedSource).toContain("backgroundColor: palette.page");
+    expect(sharedSource).toContain("backgroundColor: palette.glassStrong");
+    expect(sharedSource).toContain("borderColor: palette.accent");
+    expect(sharedSource).toContain("backgroundColor: palette.glass");
+    expect(sharedSource).toContain("borderColor: palette.cutoutBorder");
+    expect(sharedSource).toContain("backgroundColor: palette.accent");
+    expect(sharedSource).toContain("color: palette.primaryText");
+    expect(sharedSource).toContain('const accentText = "#ffffff"');
+    expect(sharedSource).toContain("const contrastAdjustedForWhiteText = (");
+    expect(sharedSource).toContain("styles.identityTopRow");
+    expect(sharedSource).toContain('flexDirection: "column"');
+    expect(sharedSource).toContain("height: 184");
+    expect(sharedSource).not.toContain("styles.pageThemeWashBottom");
+    expect(sharedSource).not.toContain("styles.pageThemeWash,");
+    expect(heroWrapBlock).toContain('position: "absolute"');
+    expect(heroWrapBlock).toContain("height: 380");
+    expect(heroWrapBlock).toContain("zIndex: 0");
+    expect(sharedSource).toContain("paddingTop: 284");
+    expect(sharedSource).toContain(
+      "contentContainerStyle={styles.scrollContent}",
+    );
+    expect(sharedSource).toContain('pointerEvents="none"');
+    expect(heroWrapBlock).not.toContain("marginHorizontal: -spacing.lg");
+    expect(heroWrapBlock).not.toContain("marginBottom: -72");
+    expect(heroWrapBlock).not.toContain("maxWidth: 620");
+  });
+
+  test("public brand page uses liquid glass panels and cut-out event cards", () => {
+    const identityBlock =
+      sharedSource.match(/identityCentered: \{[\s\S]*?\n  \},/)?.[0] ?? "";
+    const eventCardBlock =
+      sharedSource.match(/eventCard: \{[\s\S]*?\n  \},/)?.[0] ?? "";
+    const aboutBlock =
+      sharedSource.match(/aboutBlock: \{[\s\S]*?\n  \},/)?.[0] ?? "";
+    expect(sharedSource).toContain('import { BlurView } from "expo-blur"');
+    expect(sharedSource).toContain('glassTint: useDark ? "dark" : "light"');
+    expect(sharedSource).toContain("<BlurView");
+    expect(sharedSource).toContain("style={styles.glassLayer}");
+    expect(sharedSource).toContain("tint={palette.glassTint}");
+    expect(sharedSource).toContain(
+      "{ backgroundColor: palette.glass, borderColor: palette.cutoutBorder }",
+    );
+    expect(identityBlock).toContain('overflow: "hidden"');
+    expect(identityBlock).toContain("shadowOpacity: 0.22");
+    expect(eventCardBlock).toContain("borderWidth: 1.5");
+    expect(eventCardBlock).toContain("shadowOpacity: 0.28");
+    expect(eventCardBlock).toContain("elevation: 8");
+    expect(aboutBlock).toContain('overflow: "hidden"');
+  });
+
+  test("social links render Lucide glyphs instead of custom shapes or letter initials", () => {
+    expect(sharedSource).toContain("type SocialKind");
+    expect(sharedSource).toContain('from "lucide-react-native"');
+    expect(sharedSource).toContain(
+      "const SOCIAL_ICON_BY_KIND: Record<SocialKind, LucideIcon>",
+    );
+    expect(sharedSource).toContain("website: Globe2");
+    expect(sharedSource).toContain("instagram: Instagram");
+    expect(sharedSource).toContain("youtube: Youtube");
+    expect(sharedSource).toContain("threads: AtSign");
+    expect(sharedSource).toContain(
+      '<SocialIcon kind={entry.kind} color="#ffffff" />',
+    );
+    expect(sharedSource).toContain("const SocialIcon: React.FC");
+    expect(sharedSource).toContain(
+      "return <Icon color={color} size={23} strokeWidth={2.35} />",
+    );
+    expect(sharedSource).toContain(
+      "backgroundColor: palette.accent, borderColor: palette.accent",
+    );
+    expect(sharedSource).not.toContain("entry.label.charAt(0)");
+    expect(sharedSource).not.toContain("socialGlyph");
+    expect(sharedSource).not.toContain("styles.iconGlobe");
+    expect(sharedSource).not.toContain("styles.iconCamera");
+    expect(sharedSource).not.toContain("styles.iconVideoFrame");
+  });
+
+  test("next event renders as a rectangular marketing banner, not a compact pill", () => {
+    expect(sharedSource).toContain("NEXT EVENT");
+    expect(sharedSource).toContain("styles.nextTeaserCopy");
+    expect(sharedSource).toContain("styles.nextTeaserAction");
+    expect(sharedSource).toContain("numberOfLines={2}");
+    expect(sharedSource).toContain("minHeight: 86");
+    expect(sharedSource).toContain("borderRadius: radius.sm");
+    expect(sharedSource).not.toContain("styles.nextTeaserArrow");
+  });
+
+  test("identity card uses stronger premium typography and avatar treatment", () => {
+    const identityBlock =
+      sharedSource.match(/identityCentered: \{[\s\S]*?\n  \},/)?.[0] ?? "";
+    const avatarBlock =
+      sharedSource.match(/avatar: \{[\s\S]*?\n  \},/)?.[0] ?? "";
+    const brandNameBlock =
+      sharedSource.match(/brandNameCentered: \{[\s\S]*?\n  \},/)?.[0] ?? "";
+    expect(identityBlock).toContain("paddingHorizontal: spacing.xl");
+    expect(identityBlock).toContain("shadowRadius: 30");
+    expect(avatarBlock).toContain("width: 104");
+    expect(avatarBlock).toContain("borderWidth: 4");
+    expect(brandNameBlock).toContain("fontSize: 38");
+    expect(brandNameBlock).toContain('fontWeight: "900"');
+  });
+
+  test("tab switcher is a premium branded segmented control with white labels", () => {
+    expect(sharedSource).toContain(
+      "{ backgroundColor: palette.accent, borderColor: palette.accent }",
+    );
+    expect(sharedSource).toContain("active && styles.tabButtonActive");
+    expect(sharedSource).toContain('backgroundColor: "rgba(255,255,255,0.22)"');
+    expect(sharedSource).toContain('{ color: "#ffffff" }');
+    expect(sharedSource).toContain("borderRadius: radius.full");
+  });
+
+  test("ticket CTA is promoted into a large themed card action", () => {
+    const eventBuyPillBlock =
+      sharedSource.match(/eventBuyPill: \{[\s\S]*?\n  \},/)?.[0] ?? "";
+    expect(sharedSource).toContain("Buy tickets");
+    expect(sharedSource).toContain("minHeight: 52");
+    expect(sharedSource).toContain("fontSize: 16");
+    expect(sharedSource).toContain('fontWeight: "900"');
+    expect(eventBuyPillBlock).not.toContain('position: "absolute"');
+  });
+
+  test("public brand animation replays per page mount without changing event-page behavior", () => {
+    expect(animationSource).toContain("replayOnMount?: boolean");
+    expect(animationSource).toContain("replayOnMount = false");
+    expect(animationSource).toContain("mountIdRef");
+    expect(animationSource).toContain(
+      "replayOnMount\n    ? `${sessionKey}:${theme.animation}:${mountIdRef.current}`",
+    );
+    expect(animationSource).not.toContain("colorFilters");
+    expect(animationSource).not.toContain("brandColorFilters");
+    expect(animationSource).not.toContain("colorOverride");
+    expect(animationSource).toContain("elevation: 6");
+    expect(sharedSource).toContain(
+      "sessionKey={`brand:${brand.slug}:${resolvedTheme.color}:${resolvedTheme.font}`}",
+    );
+    expect(sharedSource).toContain("replayOnMount");
+  });
+
+  test("shared close/share buttons keep ORCH-0961 test IDs and render share glyph", () => {
+    expect(sharedSource).toContain('testID="orch-0961-public-brand-close"');
+    expect(sharedSource).toContain('testID="orch-0961-public-brand-share"');
+    expect(sharedSource).toContain("hitSlop={8}");
+    expect(sharedSource).toContain('glyph: "x" | "share"');
+    expect(sharedSource).toContain("<ChromeGlyph glyph={glyph} />");
+    expect(sharedSource).not.toContain('{glyph === "x" ? "x" : "up"}');
+  });
+});

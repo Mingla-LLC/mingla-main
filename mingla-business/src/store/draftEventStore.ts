@@ -45,6 +45,7 @@ import {
 } from "../utils/serverDraftAutosaveGuards";
 import type { EventCoverMediaProvider } from "../types/eventCoverProvider";
 import type { LiveEvent } from "./liveEventStore";
+import type { ThemeInput } from "@mingla/event-rendering";
 
 /**
  * Detect device's IANA timezone via Intl. Falls back to "Europe/London"
@@ -318,6 +319,8 @@ export interface DraftEvent {
   allowTransfers: boolean;
   hideRemainingCount: boolean;
   passwordProtected: boolean;
+  /** ORCH-0964 — transient post-publish event-theme override editor value. */
+  themeOverrides?: ThemeInput | null;
   /** Cycle 10: hide guest count from buyer-side surfaces. I-26 — operator-only flag; no buyer surface honors this in Cycle 10. */
   privateGuestList: boolean;
   /**
@@ -415,6 +418,7 @@ const DEFAULT_DRAFT_FIELDS: Omit<
   allowTransfers: true,
   hideRemainingCount: false,
   passwordProtected: false,
+  themeOverrides: null,
   privateGuestList: false,
   inPersonPaymentsEnabled: false,
   lastStepReached: 0,

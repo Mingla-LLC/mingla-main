@@ -49,6 +49,9 @@ export interface BrandRow {
   cover_media_url: string | null;
   cover_media_type: "image" | "video" | "gif" | null;
   profile_photo_type: "image" | "video" | "gif" | null;
+  theme_color?: string | null;
+  theme_font?: string | null;
+  theme_animation?: string | null;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
@@ -91,6 +94,9 @@ export type BrandTableInsert = {
   cover_media_url?: string | null;
   cover_media_type?: "image" | "video" | "gif" | null;
   profile_photo_type?: "image" | "video" | "gif" | null;
+  theme_color?: string | null;
+  theme_font?: string | null;
+  theme_animation?: string | null;
   place_pool_id?: string | null;
   google_place_id?: string | null;
   lat?: number | null;
@@ -255,6 +261,16 @@ export function mapBrandRowToUi(row: BrandRow, options: MapBrandRowToUiOptions):
       : undefined,
     links,
     displayAttendeeCount: row.display_attendee_count,
+    theme:
+      row.theme_color !== undefined ||
+      row.theme_font !== undefined ||
+      row.theme_animation !== undefined
+        ? {
+            color: row.theme_color ?? null,
+            font: row.theme_font ?? null,
+            animation: row.theme_animation ?? null,
+          }
+        : null,
     stripeStatus,
     // ORCH-0769: expose brands.default_currency only once Stripe/brand setup
     // has actually set it. Undefined means "currency not set" — do not imply GBP.
@@ -313,6 +329,11 @@ export function mapUiToBrandInsert(input: MapUiToBrandInsertInput): BrandTableIn
   }
   if (brand.profilePhotoType !== undefined) {
     row.profile_photo_type = brand.profilePhotoType ?? null;
+  }
+  if (brand.theme !== undefined) {
+    row.theme_color = brand.theme?.color ?? null;
+    row.theme_font = brand.theme?.font ?? null;
+    row.theme_animation = brand.theme?.animation ?? null;
   }
   if (brand.claimStatus !== undefined) row.claim_status = brand.claimStatus;
   if (brand.googlePlaceId !== undefined) {
@@ -396,6 +417,11 @@ export function mapUiToBrandUpdatePatch(
   }
   if (patch.profilePhotoType !== undefined) {
     out.profile_photo_type = patch.profilePhotoType ?? null;
+  }
+  if (patch.theme !== undefined) {
+    out.theme_color = patch.theme?.color ?? null;
+    out.theme_font = patch.theme?.font ?? null;
+    out.theme_animation = patch.theme?.animation ?? null;
   }
   if (patch.claimStatus !== undefined) out.claim_status = patch.claimStatus;
   if (patch.googlePlaceId !== undefined) {

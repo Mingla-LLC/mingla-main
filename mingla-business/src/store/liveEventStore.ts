@@ -39,6 +39,7 @@ import type {
   EventCoverMediaType,
 } from "./draftEventStore";
 import type { EventCoverMediaProvider } from "../types/eventCoverProvider";
+import type { ThemeInput } from "@mingla/event-rendering";
 import { useEventEditLogStore } from "./eventEditLogStore";
 import { useOrderStore } from "./orderStore";
 import type { SoldCountContext } from "./orderStoreHelpers";
@@ -110,6 +111,7 @@ export type EditableLiveEventFields = Pick<
   | "musicGenres"
   | "city"
   | "locationGeo"
+  | "themeOverrides"
 >;
 
 /**
@@ -224,6 +226,8 @@ export interface LiveEvent {
   coverMediaAlt?: string | null;
   /** ISO 4217 immutable commerce currency for this published event. */
   currency?: string;
+  /** ORCH-0964 — nullable per-event public theme overrides. */
+  themeOverrides?: ThemeInput | null;
   tickets: TicketStub[];
   visibility: DraftEventVisibility;
   requireApproval: boolean;

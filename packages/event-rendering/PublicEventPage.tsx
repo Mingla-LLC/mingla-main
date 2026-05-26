@@ -33,17 +33,22 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { BlurView } from "expo-blur";
 
 import {
   accent,
   backgroundColor,
   glass,
   radius,
+  MINGLA_DEFAULT_THEME,
+  type ResolvedTheme,
   semantic,
   spacing,
   text,
   typography,
 } from "./designTokens";
+import { resolveTheme } from "./themeResolver";
+import { ThemeEntranceAnimation } from "./ThemeEntranceAnimation";
 import type {
   PublicEventPageProps,
   PublicEventProps,
@@ -60,6 +65,164 @@ type Variant =
   | "password-gate"
   | "cancelled";
 
+type ThemePalette = {
+  page: string;
+  accent: string;
+  accentText: string;
+  primaryText: string;
+  secondaryText: string;
+  tertiaryText: string;
+  panel: string;
+  panelStrong: string;
+  panelBorder: string;
+  card: string;
+  cutoutBorder: string;
+  glass: string;
+  glassTint: "dark" | "light";
+  accentWash: string;
+};
+
+type Rgb = {
+  r: number;
+  g: number;
+  b: number;
+};
+
+const FALLBACK_ACCENT_RGB: Rgb = { r: 235, g: 120, b: 37 };
+
+const clampColorChannel = (value: number): number =>
+  Math.min(255, Math.max(0, Math.round(value)));
+
+const parseHexColor = (hex: string): Rgb => {
+  const match = /^#([0-9a-fA-F]{6})$/.exec(hex);
+  if (match === null) return FALLBACK_ACCENT_RGB;
+  const value = match[1];
+  return {
+    r: parseInt(value.slice(0, 2), 16),
+    g: parseInt(value.slice(2, 4), 16),
+    b: parseInt(value.slice(4, 6), 16),
+  };
+};
+
+const rgbToHex = ({ r, g, b }: Rgb): string =>
+  `#${[r, g, b]
+    .map((channel) => clampColorChannel(channel).toString(16).padStart(2, "0"))
+    .join("")}`;
+
+const mixHexColors = (from: string, to: string, amount: number): string => {
+  const a = parseHexColor(from);
+  const b = parseHexColor(to);
+  const weight = Math.min(1, Math.max(0, amount));
+  return rgbToHex({
+    r: a.r + (b.r - a.r) * weight,
+    g: a.g + (b.g - a.g) * weight,
+    b: a.b + (b.b - a.b) * weight,
+  });
+};
+
+const hexToRgba = (hex: string, alpha: number): string => {
+  const { r, g, b } = parseHexColor(hex);
+  return `rgba(${r},${g},${b},${alpha})`;
+};
+
+const linearizeSrgb = (channel: number): number => {
+  const normalized = channel / 255;
+  return normalized <= 0.03928
+    ? normalized / 12.92
+    : ((normalized + 0.055) / 1.055) ** 2.4;
+};
+
+const relativeLuminance = (hex: string): number => {
+  const { r, g, b } = parseHexColor(hex);
+  return (
+    0.2126 * linearizeSrgb(r) +
+    0.7152 * linearizeSrgb(g) +
+    0.0722 * linearizeSrgb(b)
+  );
+};
+
+const contrastRatio = (a: string, b: string): number => {
+  const lighter = Math.max(relativeLuminance(a), relativeLuminance(b));
+  const darker = Math.min(relativeLuminance(a), relativeLuminance(b));
+  return (lighter + 0.05) / (darker + 0.05);
+};
+
+const readableTextFor = (background: string): "#000000" | "#ffffff" =>
+  contrastRatio("#000000", background) >= contrastRatio("#ffffff", background)
+    ? "#000000"
+    : "#ffffff";
+
+const contrastAdjustedAccent = (
+  accentColor: string,
+  background: string,
+  minimumRatio: number,
+): string => {
+  if (contrastRatio(accentColor, background) >= minimumRatio)
+    return accentColor;
+  const direction = readableTextFor(background);
+  let adjusted = accentColor;
+  for (let i = 0; i < 12; i++) {
+    adjusted = mixHexColors(adjusted, direction, 0.16);
+    if (contrastRatio(adjusted, background) >= minimumRatio) return adjusted;
+  }
+  return adjusted;
+};
+
+const contrastAdjustedForWhiteText = (
+  accentColor: string,
+  minimumRatio: number,
+): string => {
+  if (contrastRatio(accentColor, "#ffffff") >= minimumRatio) return accentColor;
+  let adjusted = accentColor;
+  for (let i = 0; i < 12; i++) {
+    adjusted = mixHexColors(adjusted, "#000000", 0.14);
+    if (contrastRatio(adjusted, "#ffffff") >= minimumRatio) return adjusted;
+  }
+  return adjusted;
+};
+
+const createThemePalette = (theme: ResolvedTheme): ThemePalette => {
+  const darkBase = "#07070a";
+  const lightBase = "#f8fafc";
+  const accentOnDark = contrastRatio(theme.color, darkBase);
+  const accentOnLight = contrastRatio(theme.color, lightBase);
+  const useDark =
+    accentOnDark >= 3 && accentOnLight < 3
+      ? true
+      : accentOnLight >= 3 && accentOnDark < 3
+        ? false
+        : theme.foregroundColor === "#ffffff";
+  const basePage = useDark ? darkBase : lightBase;
+  const page = mixHexColors(basePage, theme.color, useDark ? 0.1 : 0.035);
+  const accentColor = contrastAdjustedForWhiteText(
+    contrastAdjustedAccent(theme.color, page, 3.15),
+    4.5,
+  );
+  const primaryText = readableTextFor(page);
+  return {
+    page,
+    accent: accentColor,
+    accentText: "#ffffff",
+    primaryText,
+    secondaryText:
+      primaryText === "#ffffff"
+        ? "rgba(255,255,255,0.78)"
+        : "rgba(16,20,31,0.76)",
+    tertiaryText:
+      primaryText === "#ffffff"
+        ? "rgba(255,255,255,0.58)"
+        : "rgba(16,20,31,0.58)",
+    panel: useDark ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.76)",
+    panelStrong: useDark ? "rgba(255,255,255,0.11)" : "rgba(255,255,255,0.92)",
+    panelBorder: hexToRgba(accentColor, useDark ? 0.38 : 0.3),
+    card: useDark ? "rgba(255,255,255,0.10)" : "rgba(255,255,255,0.72)",
+    cutoutBorder: useDark ? "rgba(255,255,255,0.24)" : "rgba(255,255,255,0.96)",
+    glass: useDark ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.62)",
+    glassTint: useDark ? "dark" : "light",
+    accentWash: hexToRgba(accentColor, useDark ? 0.24 : 0.18),
+  };
+};
+
 const computeVariant = (
   event: PublicEventProps,
   passwordUnlocked: boolean,
@@ -67,12 +230,9 @@ const computeVariant = (
   if (event.status === "cancelled") return "cancelled";
   const isPast =
     event.status === "ended" ||
-    (event.endedAt !== null &&
-      new Date(event.endedAt).getTime() < Date.now());
+    (event.endedAt !== null && new Date(event.endedAt).getTime() < Date.now());
   if (isPast) return "past";
-  const visibleTickets = event.tickets.filter(
-    (t) => t.visibility !== "hidden",
-  );
+  const visibleTickets = event.tickets.filter((t) => t.visibility !== "hidden");
   const requiresPassword = visibleTickets.some((t) => t.passwordProtected);
   if (requiresPassword && !passwordUnlocked) return "password-gate";
   const allPreSale =
@@ -85,9 +245,7 @@ const computeVariant = (
   if (allPreSale) return "pre-sale";
   const allSoldOut =
     visibleTickets.length > 0 &&
-    visibleTickets.every(
-      (t) => !t.isUnlimited && (t.capacity ?? 0) === 0,
-    );
+    visibleTickets.every((t) => !t.isUnlimited && (t.capacity ?? 0) === 0);
   if (allSoldOut) return "sold-out";
   return "published";
 };
@@ -143,12 +301,22 @@ export const PublicEventPage: React.FC<PublicEventPageProps> = ({
   viewerRole,
   callbacks,
   hideFloatingChrome = false,
+  theme,
 }) => {
   const [passwordUnlocked, setPasswordUnlocked] = useState<boolean>(false);
+  const resolvedTheme = useMemo<ResolvedTheme>(
+    () =>
+      theme ?? resolveTheme(brand?.theme ?? null, event.themeOverrides ?? null),
+    [theme, brand?.theme, event.themeOverrides],
+  );
 
   const variant: Variant = useMemo(
     () => computeVariant(event, passwordUnlocked),
     [event, passwordUnlocked],
+  );
+  const resolvedPalette = useMemo(
+    () => createThemePalette(resolvedTheme),
+    [resolvedTheme],
   );
 
   const ownsThisEvent = viewerRole === "organizer";
@@ -162,20 +330,18 @@ export const PublicEventPage: React.FC<PublicEventPageProps> = ({
   );
 
   return (
-    <View style={styles.host}>
+    <View style={[styles.host, { backgroundColor: resolvedPalette.page }]}>
       {variant === "cancelled" ? (
         <CancelledVariant event={event} brand={brand} />
       ) : variant === "password-gate" ? (
-        <PasswordGateVariant
-          event={event}
-          onUnlock={handleUnlockPassword}
-        />
+        <PasswordGateVariant event={event} onUnlock={handleUnlockPassword} />
       ) : (
         <PublishedBody
           event={event}
           brand={brand}
           variant={variant}
           callbacks={callbacks}
+          theme={resolvedTheme}
         />
       )}
 
@@ -193,9 +359,17 @@ export const PublicEventPage: React.FC<PublicEventPageProps> = ({
               onPress={callbacks.onClose}
               accessibilityRole="button"
               accessibilityLabel="Close"
+              hitSlop={8}
               style={styles.chromeButton}
             >
-              <Text style={styles.chromeIcon}>×</Text>
+              <Text
+                style={[
+                  styles.chromeIcon,
+                  { color: resolvedTheme.foregroundColor },
+                ]}
+              >
+                ×
+              </Text>
             </Pressable>
           ) : (
             <View />
@@ -204,9 +378,17 @@ export const PublicEventPage: React.FC<PublicEventPageProps> = ({
             onPress={callbacks.onShare}
             accessibilityRole="button"
             accessibilityLabel="Share"
+            hitSlop={8}
             style={styles.chromeButton}
           >
-            <Text style={styles.chromeIcon}>↗</Text>
+            <Text
+              style={[
+                styles.chromeIcon,
+                { color: resolvedTheme.foregroundColor },
+              ]}
+            >
+              ↗
+            </Text>
           </Pressable>
         </View>
       )}
@@ -221,6 +403,7 @@ interface PublishedBodyProps {
   brand: PublicEventPageProps["brand"];
   variant: "published" | "pre-sale" | "sold-out" | "past";
   callbacks: PublicEventPageProps["callbacks"];
+  theme: ResolvedTheme;
 }
 
 const PublishedBody: React.FC<PublishedBodyProps> = ({
@@ -228,12 +411,26 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
   brand,
   variant,
   callbacks,
+  theme,
 }) => {
   const [showAllDates, setShowAllDates] = useState<boolean>(false);
   const [showOverflowDates, setShowOverflowDates] = useState<boolean>(false);
 
   const titleLine = event.name.length > 0 ? event.name : "Untitled event";
   const brandLetter = (brand?.displayName?.charAt(0) ?? "?").toUpperCase();
+  const venueAddressLabel = event.hideAddressUntilTicket
+    ? "Address shared after ticket purchase"
+    : event.format === "hybrid" && event.address !== null
+      ? `${event.address} · also online`
+      : (event.address ?? "Address shared after ticket purchase");
+  const venueMapsQuery =
+    event.hideAddressUntilTicket || event.venueName === null
+      ? null
+      : [event.venueName, event.address].filter(Boolean).join(", ");
+  const canOpenVenueMaps =
+    venueMapsQuery !== null &&
+    venueMapsQuery.trim().length > 0 &&
+    callbacks.onOpenMaps !== undefined;
 
   const visibleTickets = useMemo(
     () =>
@@ -255,14 +452,18 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
   const isSoldOut = variant === "sold-out";
   const isPreSale = variant === "pre-sale";
   const preSaleStart = isPreSale ? computePreSaleStart(event) : null;
+  const heroColor =
+    theme.color === MINGLA_DEFAULT_THEME.color && event.coverHue !== 25
+      ? `hsl(${event.coverHue}, 60%, 45%)`
+      : theme.color;
+  const palette = useMemo(() => createThemePalette(theme), [theme]);
 
   return (
     <>
       {/* Hero cover */}
       <View style={styles.heroWrap}>
         {event.coverMediaUrl !== null &&
-        (event.coverMediaType === "image" ||
-          event.coverMediaType === "gif") ? (
+        (event.coverMediaType === "image" || event.coverMediaType === "gif") ? (
           <Image
             source={{ uri: event.coverMediaUrl }}
             style={styles.heroImage}
@@ -270,16 +471,13 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
             accessibilityLabel="Event cover"
           />
         ) : (
-          <View
-            style={[
-              styles.heroImage,
-              {
-                backgroundColor: `hsl(${event.coverHue}, 60%, 45%)`,
-              },
-            ]}
-          />
+          <View style={[styles.heroImage, { backgroundColor: heroColor }]} />
         )}
         <View style={styles.heroOverlay} pointerEvents="none" />
+        <ThemeEntranceAnimation
+          theme={theme}
+          sessionKey={`event:${event.id}`}
+        />
         {event.coverCredit !== null ? (
           <View style={styles.coverCreditBadge} pointerEvents="none">
             <Text style={styles.coverCreditText}>{event.coverCredit}</Text>
@@ -317,12 +515,45 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <View style={[styles.bodyContent, isPast && styles.bodyContentMuted]}>
+        <View
+          style={[
+            styles.bodyContent,
+            {
+              backgroundColor: palette.page,
+              borderColor: palette.panelBorder,
+              shadowColor: palette.accent,
+            },
+            isPast && styles.bodyContentMuted,
+          ]}
+        >
+          <BlurView
+            tint={palette.glassTint}
+            intensity={28}
+            pointerEvents="none"
+            style={styles.bodyGlassLayer}
+          />
           {/* Title block */}
           <View style={styles.titleBlock}>
             <View style={styles.titleBlockText}>
-              <Text style={styles.dateLine}>{event.dateLine}</Text>
-              <Text style={styles.titleLine}>{titleLine}</Text>
+              <Text
+                style={[
+                  styles.dateLine,
+                  { color: "#ffffff", fontFamily: theme.fontFamilyValue },
+                ]}
+              >
+                {event.dateLine}
+              </Text>
+              <Text
+                style={[
+                  styles.titleLine,
+                  {
+                    color: palette.primaryText,
+                    fontFamily: theme.fontFamilyValue,
+                  },
+                ]}
+              >
+                {titleLine}
+              </Text>
 
               {event.dateSubline !== null ? (
                 <View style={styles.recurrencePillRow}>
@@ -332,11 +563,18 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
                     accessibilityLabel={
                       showAllDates ? "Collapse date list" : "Show all dates"
                     }
-                    style={styles.recurrencePill}
+                    style={[
+                      styles.recurrencePill,
+                      {
+                        backgroundColor: palette.accentWash,
+                        borderColor: palette.panelBorder,
+                      },
+                    ]}
                   >
-                    <Text style={styles.recurrencePillLabel}>
-                      {event.dateSubline} ·{" "}
-                      {showAllDates ? "Hide" : "Show all"}
+                    <Text
+                      style={[styles.recurrencePillLabel, { color: "#ffffff" }]}
+                    >
+                      {event.dateSubline} · {showAllDates ? "Hide" : "Show all"}
                     </Text>
                   </Pressable>
                 </View>
@@ -345,8 +583,24 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
               {showAllDates && visibleDates.length > 0 ? (
                 <View style={styles.expandedDatesList}>
                   {visibleDates.map((label, i) => (
-                    <View key={i} style={styles.expandedDateRow}>
-                      <Text style={styles.expandedDateText}>{label}</Text>
+                    <View
+                      key={i}
+                      style={[
+                        styles.expandedDateRow,
+                        {
+                          backgroundColor: palette.card,
+                          borderColor: palette.cutoutBorder,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.expandedDateText,
+                          { color: palette.primaryText },
+                        ]}
+                      >
+                        {label}
+                      </Text>
                     </View>
                   ))}
                   {event.datesList.length > SHOW_INITIAL_DATES &&
@@ -357,7 +611,9 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
                       accessibilityLabel={`Show all ${event.datesList.length} dates`}
                       style={styles.showAllBtn}
                     >
-                      <Text style={styles.showAllLabel}>
+                      <Text
+                        style={[styles.showAllLabel, { color: palette.accent }]}
+                      >
                         Show all {event.datesList.length} dates
                       </Text>
                     </Pressable>
@@ -368,40 +624,186 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
           </View>
 
           {/* Brand chip */}
-          <View style={styles.brandRow}>
-            <View style={styles.brandTile}>
-              <Text style={styles.brandLetter}>{brandLetter}</Text>
+          <Pressable
+            onPress={() => {
+              if (brand?.slug !== undefined)
+                callbacks.onOpenBrand?.(brand.slug);
+            }}
+            disabled={
+              brand?.slug === undefined || callbacks.onOpenBrand === undefined
+            }
+            accessibilityRole={
+              callbacks.onOpenBrand === undefined ? undefined : "button"
+            }
+            accessibilityLabel={
+              brand?.displayName !== undefined
+                ? `View ${brand.displayName}`
+                : "View brand"
+            }
+            style={({ pressed }) => [
+              styles.brandRow,
+              {
+                backgroundColor: palette.glass,
+                borderColor: palette.cutoutBorder,
+              },
+              callbacks.onOpenBrand !== undefined && styles.brandRowInteractive,
+              pressed && styles.brandRowPressed,
+            ]}
+          >
+            {brand?.photo !== undefined && brand.photo.length > 0 ? (
+              <Image
+                source={{ uri: brand.photo }}
+                style={[
+                  styles.brandTile,
+                  styles.brandPhoto,
+                  { borderColor: palette.cutoutBorder },
+                ]}
+                resizeMode="cover"
+                accessibilityLabel={`${brand.displayName} profile photo`}
+              />
+            ) : (
+              <View
+                style={[styles.brandTile, { backgroundColor: palette.accent }]}
+              >
+                <Text
+                  style={[styles.brandLetter, { color: palette.accentText }]}
+                >
+                  {brandLetter}
+                </Text>
+              </View>
+            )}
+            <View style={styles.brandTextCol}>
+              <Text
+                style={[styles.brandKicker, { color: palette.tertiaryText }]}
+              >
+                Presented by
+              </Text>
+              <Text style={[styles.brandName, { color: palette.primaryText }]}>
+                {brand?.displayName ?? "Brand"}
+              </Text>
             </View>
-            <Text style={styles.brandName}>
-              {brand?.displayName ?? "Brand"}
-            </Text>
-          </View>
+            {callbacks.onOpenBrand !== undefined ? (
+              <Text style={[styles.brandCta, { color: palette.accent }]}>
+                View
+              </Text>
+            ) : null}
+          </Pressable>
 
           {/* Venue card — honors hideAddressUntilTicket */}
           {event.format !== "online" && event.venueName !== null ? (
-            <View style={styles.venueCard}>
+            <Pressable
+              onPress={() => {
+                if (venueMapsQuery !== null)
+                  callbacks.onOpenMaps?.(venueMapsQuery);
+              }}
+              disabled={!canOpenVenueMaps}
+              accessibilityRole={canOpenVenueMaps ? "button" : undefined}
+              accessibilityLabel={
+                canOpenVenueMaps
+                  ? `Open ${event.venueName} in maps`
+                  : event.venueName
+              }
+              accessibilityHint={
+                canOpenVenueMaps
+                  ? "Opens this event location in your maps app"
+                  : undefined
+              }
+              style={({ pressed }) => [
+                styles.venueCard,
+                {
+                  backgroundColor: palette.card,
+                  borderColor: palette.cutoutBorder,
+                },
+                canOpenVenueMaps && styles.venueCardInteractive,
+                pressed && styles.venueCardPressed,
+              ]}
+            >
               <View style={styles.venueRow}>
-                <Text style={styles.venueIcon}>⌖</Text>
-                <View style={styles.venueTextCol}>
-                  <Text style={styles.venueName}>{event.venueName}</Text>
-                  <Text style={styles.venueAddress}>
-                    {event.hideAddressUntilTicket
-                      ? "Address shared after ticket purchase"
-                      : event.format === "hybrid" && event.address !== null
-                        ? `${event.address} · also online`
-                        : event.address ??
-                          "Address shared after ticket purchase"}
+                <View
+                  style={[
+                    styles.venueIconDisk,
+                    { backgroundColor: palette.accent },
+                  ]}
+                >
+                  <Text
+                    style={[styles.venueIcon, { color: palette.accentText }]}
+                  >
+                    ⌖
                   </Text>
                 </View>
-              </View>
-            </View>
-          ) : event.format === "online" ? (
-            <View style={styles.venueCard}>
-              <View style={styles.venueRow}>
-                <Text style={styles.venueIcon}>◯</Text>
                 <View style={styles.venueTextCol}>
-                  <Text style={styles.venueName}>Online</Text>
-                  <Text style={styles.venueAddress}>
+                  <Text
+                    style={[styles.venueName, { color: palette.primaryText }]}
+                  >
+                    {event.venueName}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.venueAddress,
+                      { color: palette.secondaryText },
+                    ]}
+                  >
+                    {venueAddressLabel}
+                  </Text>
+                </View>
+                {canOpenVenueMaps ? (
+                  <View
+                    style={[
+                      styles.venueMapsPill,
+                      {
+                        backgroundColor: palette.accent,
+                        borderColor: palette.accentText,
+                        shadowColor: palette.accent,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.venueMapsText,
+                        { color: palette.accentText },
+                      ]}
+                    >
+                      Open maps
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            </Pressable>
+          ) : event.format === "online" ? (
+            <View
+              style={[
+                styles.venueCard,
+                {
+                  backgroundColor: palette.card,
+                  borderColor: palette.cutoutBorder,
+                },
+              ]}
+            >
+              <View style={styles.venueRow}>
+                <View
+                  style={[
+                    styles.venueIconDisk,
+                    { backgroundColor: palette.accent },
+                  ]}
+                >
+                  <Text
+                    style={[styles.venueIcon, { color: palette.accentText }]}
+                  >
+                    ◯
+                  </Text>
+                </View>
+                <View style={styles.venueTextCol}>
+                  <Text
+                    style={[styles.venueName, { color: palette.primaryText }]}
+                  >
+                    Online
+                  </Text>
+                  <Text
+                    style={[
+                      styles.venueAddress,
+                      { color: palette.secondaryText },
+                    ]}
+                  >
                     Conferencing link shared with ticketed guests.
                   </Text>
                 </View>
@@ -410,29 +812,62 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
           ) : null}
 
           {/* About */}
-          <Text style={styles.sectionTitle}>About</Text>
-          <Text style={styles.aboutBody}>
+          <Text
+            style={[
+              styles.sectionTitle,
+              {
+                color: palette.primaryText,
+                fontFamily: theme.fontFamilyValue,
+              },
+            ]}
+          >
+            About
+          </Text>
+          <Text style={[styles.aboutBody, { color: palette.secondaryText }]}>
             {event.description.length > 0
               ? event.description
               : "Details coming soon."}
           </Text>
 
           {/* Tickets */}
-          <Text style={styles.sectionTitle}>Tickets</Text>
+          <Text
+            style={[
+              styles.sectionTitle,
+              {
+                color: palette.primaryText,
+                fontFamily: theme.fontFamilyValue,
+              },
+            ]}
+          >
+            Tickets
+          </Text>
           {visibleTickets.length === 0 ? (
-            <View style={styles.emptyTicketsCard}>
-              <Text style={styles.aboutBody}>No tickets available yet.</Text>
+            <View
+              style={[
+                styles.emptyTicketsCard,
+                {
+                  backgroundColor: palette.card,
+                  borderColor: palette.cutoutBorder,
+                },
+              ]}
+            >
+              <Text
+                style={[styles.aboutBody, { color: palette.secondaryText }]}
+              >
+                No tickets available yet.
+              </Text>
             </View>
           ) : (
             <View style={styles.ticketsCol}>
-              {visibleTickets.map((t, i) => (
+              {visibleTickets.map((t) => (
                 <PublicTicketRow
                   key={t.id}
                   ticket={t}
-                  isLast={i === visibleTickets.length - 1}
                   variant={variant}
                   fallbackCurrency={event.currency}
                   callbacks={callbacks}
+                  theme={theme}
+                  palette={palette}
                 />
               ))}
             </View>
@@ -447,18 +882,20 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
 
 interface PublicTicketRowProps {
   ticket: PublicTicketProps;
-  isLast: boolean;
   variant: "published" | "pre-sale" | "sold-out" | "past";
   fallbackCurrency: string;
   callbacks: PublicEventPageProps["callbacks"];
+  theme: ResolvedTheme;
+  palette: ThemePalette;
 }
 
 const PublicTicketRow: React.FC<PublicTicketRowProps> = ({
   ticket,
-  isLast,
   variant,
   fallbackCurrency,
   callbacks,
+  theme,
+  palette,
 }) => {
   const priceLabel = formatTicketPrice(ticket, fallbackCurrency);
   const isVisDisabled = ticket.visibility === "disabled";
@@ -466,8 +903,7 @@ const PublicTicketRow: React.FC<PublicTicketRowProps> = ({
     ticket.saleEndAt !== null &&
     Number.isFinite(new Date(ticket.saleEndAt).getTime()) &&
     new Date(ticket.saleEndAt).getTime() <= Date.now();
-  const isSoldOutTicket =
-    !ticket.isUnlimited && (ticket.capacity ?? 0) === 0;
+  const isSoldOutTicket = !ticket.isUnlimited && (ticket.capacity ?? 0) === 0;
   const isDoorOnly = ticket.availableAt === "door";
 
   const handleTap = (): void => {
@@ -520,17 +956,52 @@ const PublicTicketRow: React.FC<PublicTicketRowProps> = ({
   return (
     <View
       style={[
-        styles.ticketRow,
-        !isLast && styles.ticketRowDivider,
-        isVisDisabled && styles.ticketRowDisabled,
+        styles.ticketCard,
+        {
+          backgroundColor: palette.card,
+          borderColor: palette.cutoutBorder,
+        },
+        isVisDisabled && styles.ticketCardDisabled,
       ]}
     >
-      <View style={styles.ticketTextCol}>
-        <Text style={styles.ticketName}>{ticket.name}</Text>
-        {ticket.description !== null && ticket.description.length > 0 ? (
-          <Text style={styles.ticketDescription}>{ticket.description}</Text>
-        ) : null}
-        <Text style={styles.ticketSub}>{capacityLabel}</Text>
+      <View
+        pointerEvents="none"
+        style={[styles.ticketCardAccent, { backgroundColor: palette.accent }]}
+      />
+      <View style={styles.ticketHeaderRow}>
+        <View style={styles.ticketTextCol}>
+          <Text style={[styles.ticketName, { color: palette.primaryText }]}>
+            {ticket.name}
+          </Text>
+          {ticket.description !== null && ticket.description.length > 0 ? (
+            <Text
+              style={[
+                styles.ticketDescription,
+                { color: palette.secondaryText },
+              ]}
+            >
+              {ticket.description}
+            </Text>
+          ) : null}
+        </View>
+        <View
+          style={[
+            styles.ticketPricePill,
+            {
+              backgroundColor: palette.accentWash,
+              borderColor: palette.panelBorder,
+            },
+          ]}
+        >
+          <Text style={[styles.ticketPrice, { color: palette.primaryText }]}>
+            {priceLabel}
+          </Text>
+        </View>
+      </View>
+      <View style={styles.ticketFooterRow}>
+        <Text style={[styles.ticketSub, { color: palette.tertiaryText }]}>
+          {capacityLabel}
+        </Text>
         <Pressable
           onPress={handleTap}
           disabled={isButtonDisabled}
@@ -539,20 +1010,33 @@ const PublicTicketRow: React.FC<PublicTicketRowProps> = ({
           accessibilityLabel={effectiveLabel}
           style={[
             styles.ticketBuyerBtn,
+            {
+              backgroundColor: palette.accent,
+              borderColor: palette.accentText,
+              shadowColor: palette.accent,
+            },
             isButtonDisabled && styles.ticketBuyerBtnDisabled,
+            isButtonDisabled && {
+              backgroundColor: palette.panel,
+              borderColor: palette.cutoutBorder,
+              shadowOpacity: 0,
+            },
           ]}
         >
           <Text
             style={[
               styles.ticketBuyerBtnLabel,
-              isButtonDisabled && styles.ticketBuyerBtnLabelDisabled,
+              {
+                color: palette.accentText,
+                fontFamily: theme.fontFamilyValue,
+              },
+              isButtonDisabled && { color: palette.tertiaryText },
             ]}
           >
             {effectiveLabel}
           </Text>
         </Pressable>
       </View>
-      <Text style={styles.ticketPrice}>{priceLabel}</Text>
     </View>
   );
 };
@@ -575,8 +1059,8 @@ const CancelledVariant: React.FC<CancelledVariantProps> = ({
     <Text style={styles.cancelledTitle}>This event has been cancelled</Text>
     <Text style={styles.cancelledEventName}>{event.name}</Text>
     <Text style={styles.cancelledBody}>
-      {brand?.displayName ?? "The organiser"} has cancelled this event.
-      If you purchased tickets, you will receive refund details by email.
+      {brand?.displayName ?? "The organiser"} has cancelled this event. If you
+      purchased tickets, you will receive refund details by email.
     </Text>
   </View>
 );
@@ -760,13 +1244,32 @@ const styles = StyleSheet.create({
     zIndex: 2,
   },
   scrollContent: {
-    paddingTop: 280,
+    paddingTop: 288,
     paddingBottom: spacing.xl * 2,
   },
   bodyContent: {
+    position: "relative",
+    overflow: "hidden",
+    alignSelf: "center",
+    width: "100%",
+    maxWidth: 660,
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    backgroundColor,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xl,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    backgroundColor: "rgba(5, 7, 11, 0.96)",
+    borderWidth: 1,
+    borderBottomWidth: 0,
+    borderColor: "rgba(255,255,255,0.14)",
+    shadowColor: "#000000",
+    shadowOpacity: 0.28,
+    shadowRadius: 30,
+    shadowOffset: { width: 0, height: -10 },
+    elevation: 7,
+  },
+  bodyGlassLayer: {
+    ...StyleSheet.absoluteFillObject,
   },
   bodyContentMuted: {
     opacity: 0.7,
@@ -774,28 +1277,28 @@ const styles = StyleSheet.create({
 
   // Title block
   titleBlock: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: spacing.sm,
-    marginBottom: spacing.sm,
+    marginBottom: spacing.md,
   },
   titleBlockText: {
     flex: 1,
   },
   dateLine: {
     fontSize: 11,
-    fontWeight: "700",
-    letterSpacing: 1.4,
+    fontWeight: "900",
+    letterSpacing: 1.6,
     textTransform: "uppercase",
     color: accent.warm,
     marginBottom: 8,
   },
   titleLine: {
-    fontSize: 32,
-    fontWeight: "700",
-    letterSpacing: -0.4,
+    fontSize: 36,
+    lineHeight: 41,
+    fontWeight: "900",
     color: text.primary,
     marginBottom: spacing.sm,
+    textShadowColor: "rgba(0,0,0,0.28)",
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 10,
   },
   recurrencePillRow: {
     flexDirection: "row",
@@ -823,7 +1326,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     borderRadius: radius.md,
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: "rgba(255,255,255,0.08)",
     borderWidth: 1,
     borderColor: glass.border.profileBase,
   },
@@ -846,54 +1349,106 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radius.lg,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.16)",
     marginBottom: spacing.lg,
   },
+  brandRowInteractive: {
+    borderRadius: radius.lg,
+  },
+  brandRowPressed: {
+    opacity: 0.72,
+  },
   brandTile: {
-    width: 28,
-    height: 28,
-    borderRadius: radius.sm,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: accent.warm,
     alignItems: "center",
     justifyContent: "center",
   },
+  brandPhoto: {
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.26)",
+  },
   brandLetter: {
-    fontWeight: "700",
-    fontSize: 13,
+    fontWeight: "900",
+    fontSize: 17,
     color: "#fff",
   },
+  brandTextCol: {
+    flex: 1,
+    minWidth: 0,
+  },
+  brandKicker: {
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+    color: text.tertiary,
+    marginBottom: 2,
+  },
   brandName: {
-    fontSize: 14,
-    fontWeight: "500",
+    fontSize: 16,
+    fontWeight: "800",
     color: text.primary,
+  },
+  brandCta: {
+    marginLeft: "auto",
+    color: accent.warm,
+    fontSize: typography.caption.fontSize,
+    fontWeight: "700",
   },
 
   // Venue card
   venueCard: {
-    marginBottom: spacing.md,
+    marginBottom: spacing.lg,
     padding: spacing.md,
     borderRadius: radius.lg,
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: "rgba(255,255,255,0.10)",
     borderWidth: 1,
     borderColor: glass.border.profileBase,
+  },
+  venueCardInteractive: {
+    borderColor: "rgba(255,255,255,0.32)",
+    shadowColor: "#000000",
+    shadowOpacity: 0.22,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 3,
+  },
+  venueCardPressed: {
+    opacity: 0.74,
   },
   venueRow: {
     flexDirection: "row",
     gap: spacing.sm,
     alignItems: "flex-start",
   },
+  venueIconDisk: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   venueIcon: {
     fontSize: 18,
-    color: accent.warm,
-    width: 18,
+    color: "#ffffff",
+    width: 20,
     textAlign: "center",
     lineHeight: 22,
   },
   venueTextCol: {
     flex: 1,
+    minWidth: 0,
   },
   venueName: {
-    fontSize: 14,
-    fontWeight: "500",
+    fontSize: 15,
+    fontWeight: "800",
     color: text.primary,
   },
   venueAddress: {
@@ -901,13 +1456,34 @@ const styles = StyleSheet.create({
     color: text.secondary,
     marginTop: 2,
   },
+  venueMapsPill: {
+    minHeight: 38,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: spacing.md,
+    borderRadius: 999,
+    backgroundColor: accent.warm,
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.18)",
+    shadowColor: accent.warm,
+    shadowOpacity: 0.28,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
+  },
+  venueMapsText: {
+    color: "#ffffff",
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 0.2,
+  },
 
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    letterSpacing: -0.2,
+    fontSize: 21,
+    lineHeight: 26,
+    fontWeight: "900",
     color: text.primary,
-    marginTop: spacing.md,
+    marginTop: spacing.lg,
     marginBottom: spacing.sm,
   },
   aboutBody: {
@@ -925,32 +1501,46 @@ const styles = StyleSheet.create({
     borderColor: glass.border.profileBase,
   },
   ticketsCol: {
-    backgroundColor: glass.tint.profileBase,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    overflow: "hidden",
+    gap: spacing.md,
   },
-  ticketRow: {
+  ticketCard: {
+    position: "relative",
+    overflow: "hidden",
+    padding: spacing.md,
+    paddingTop: spacing.lg,
+    borderRadius: radius.lg,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.24)",
+    shadowColor: "#000000",
+    shadowOpacity: 0.3,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 14 },
+    elevation: 7,
+  },
+  ticketCardAccent: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 5,
+  },
+  ticketCardDisabled: {
+    opacity: 0.5,
+  },
+  ticketHeaderRow: {
     flexDirection: "row",
     alignItems: "flex-start",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    gap: spacing.sm,
-  },
-  ticketRowDivider: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: glass.border.profileBase,
-  },
-  ticketRowDisabled: {
-    opacity: 0.5,
+    gap: spacing.md,
   },
   ticketTextCol: {
     flex: 1,
+    minWidth: 0,
   },
   ticketName: {
-    fontSize: typography.bodySm.fontSize,
-    fontWeight: "600",
+    fontSize: 18,
+    lineHeight: 22,
+    fontWeight: "900",
     color: text.primary,
   },
   ticketDescription: {
@@ -960,35 +1550,59 @@ const styles = StyleSheet.create({
     lineHeight: typography.caption.lineHeight * 1.4,
   },
   ticketSub: {
-    fontSize: typography.caption.fontSize,
+    fontSize: 11,
     color: text.tertiary,
-    marginTop: 2,
+    fontWeight: "800",
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    flex: 1,
+  },
+  ticketFooterRow: {
+    gap: spacing.md,
+    marginTop: spacing.md,
   },
   ticketBuyerBtn: {
-    marginTop: spacing.sm,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 6,
-    borderRadius: radius.md,
+    minHeight: 58,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: 16,
+    borderRadius: radius.lg,
     backgroundColor: accent.tint,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: accent.border,
-    alignSelf: "flex-start",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: accent.warm,
+    shadowOpacity: 0.42,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 8,
   },
   ticketBuyerBtnDisabled: {
     backgroundColor: glass.tint.profileBase,
     borderColor: glass.border.profileBase,
   },
   ticketBuyerBtnLabel: {
-    fontSize: typography.caption.fontSize,
-    fontWeight: "600",
+    fontSize: 17,
+    fontWeight: "900",
     color: accent.warm,
+    letterSpacing: 0.5,
   },
   ticketBuyerBtnLabelDisabled: {
     color: text.tertiary,
   },
+  ticketPricePill: {
+    minHeight: 38,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: spacing.md,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+  },
   ticketPrice: {
-    fontSize: typography.bodySm.fontSize,
-    fontWeight: "700",
+    fontSize: 14,
+    fontWeight: "900",
     color: text.primary,
   },
 

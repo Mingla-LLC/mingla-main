@@ -11,9 +11,11 @@ import '../src/i18n'  // Must be first — initializes i18next before any compon
 // See app-mobile/src/diagnostics/silenceStripeForwardRef.ts for full rationale.
 import '../src/diagnostics/silenceStripeForwardRef'
 import { Stack } from "expo-router";
+import { useFonts } from "expo-font";
 import * as Sentry from '@sentry/react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StripeNativeProvider } from "@mingla/payments-native";
+import { MINGLA_THEME_FONTS } from "../src/theme/themeFonts";
 
 // ORCH-0679 Wave 2B-2: SINGLE source of truth for Sentry init.
 // I-SENTRY-SINGLE-INIT — duplicate Sentry.init in app/index.tsx was deleted as
@@ -50,6 +52,8 @@ Sentry.init({
 });
 
 export default Sentry.wrap(function RootLayout() {
+  useFonts(MINGLA_THEME_FONTS);
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       {/* META-ORCH-0827 Pass 2 — Stripe PaymentSheet provider for native
