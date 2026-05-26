@@ -1459,15 +1459,7 @@ const OnboardingFlow = ({
     setManualLocationText(suggestion.displayName)
     setShowLocationSuggestions(false)
     setLocationSuggestions([])
-    logger.action('Location suggestion selected', { displayName: suggestion.displayName, placeId: suggestion.placeId })
-
-    // Resolve coordinates if not already present (Google path returns placeId only)
-    if (!suggestion.location && suggestion.placeId) {
-      const coords = await geocodingService.getPlaceCoordinates(suggestion.placeId)
-      if (coords) {
-        setSelectedLocation({ ...suggestion, location: coords })
-      }
-    }
+    logger.action('Location suggestion selected', { displayName: suggestion.displayName })
   }, [])
 
   // ─── Clear Location Selection (user wants to search again) ───
@@ -1485,17 +1477,8 @@ const OnboardingFlow = ({
     logger.action('Manual location submitted', { displayName: selectedLocation.displayName })
     setSavingPrefs(true)
     try {
-      // Resolve coordinates: from suggestion.location or placeId lookup
-      let lat: number | undefined
-      let lng: number | undefined
-
-      if (selectedLocation.location) {
-        lat = selectedLocation.location.lat
-        lng = selectedLocation.location.lng
-      } else if (selectedLocation.placeId) {
-        const coords = await geocodingService.getPlaceCoordinates(selectedLocation.placeId)
-        if (coords) { lat = coords.lat; lng = coords.lng }
-      }
+      const lat = selectedLocation.location?.lat
+      const lng = selectedLocation.location?.lng
 
       if (lat != null && lng != null) {
         setData((prev) => ({

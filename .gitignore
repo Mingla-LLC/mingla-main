@@ -124,3 +124,6 @@ Mingla_Artifacts/reports/orch-*-retest*.log
 Mingla_Artifacts/reports/*.mov
 Mingla_Artifacts/evidence/**/*.mov
 vercel-token.md
+
+# Local-only personal secrets file — never commit
+TokensNeeded.md
