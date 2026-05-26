@@ -139,16 +139,16 @@ Classifications: DELETE | REPURPOSE | REGATE | RENAME | UPDATE-COPY | NO-CHANGE 
 | Same file | 112–123 | Rung 4: physical-no-address nudge | UX nudge | DELETE | LOW |
 | Same file | 33–43 | `pickHomeNextAction(brand, counts, drafts)` signature | Structural | NO-CHANGE | LOW |
 | [mingla-business/src/utils/__tests__/homeNextAction.test.ts](mingla-business/src/utils/__tests__/homeNextAction.test.ts) | 67, 76, 84, 101, 110, 117, 160 | Test fixtures: `baseBrand({kind: "trip_planner" \| "popup" \| "physical"})` | Test setup | DELETE/REGATE | MEDIUM |
-| [mingla-business/app/(tabs)/home.tsx](mingla-business/app/(tabs)/home.tsx) | (entire file) | NO direct brand.kind reference. References to `kind` are all `item.kind` (offering type: event/experience/trip/draft) — FALSE POSITIVES. Comment at line 453 mentions "physical-no-address rung" but that's just describing homeNextAction's output. | None | NO-CHANGE | LOW |
+| [mingla-business/app/(tabs)/home.tsx](mingla-business/app/%28tabs%29/home.tsx) | (entire file) | NO direct brand.kind reference. References to `kind` are all `item.kind` (offering type: event/experience/trip/draft) — FALSE POSITIVES. Comment at line 453 mentions "physical-no-address rung" but that's just describing homeNextAction's output. | None | NO-CHANGE | LOW |
 
 ### Dimension 6 — Hub tabs (mingla-business)
 
 | File | Lines | Behavior | Coupling | Classification | Risk |
 |---|---|---|---|---|---|
-| [mingla-business/app/(tabs)/hub/_layout.tsx](mingla-business/app/(tabs)/hub/_layout.tsx) | (full) | TopBar + HubSubNav (hardcoded 3-tab shell) + `<Slot />` | Structural | REPURPOSE (introduce data-driven tab visibility) | MEDIUM |
-| [mingla-business/app/(tabs)/hub/events.tsx](mingla-business/app/(tabs)/hub/events.tsx) | (full) | No brand.kind references — `item.kind`, `manageCtx.kind` are offering-side enums (FALSE POSITIVES). | None | NO-CHANGE | LOW |
-| [mingla-business/app/(tabs)/hub/trips.tsx](mingla-business/app/(tabs)/hub/trips.tsx) | 161 | `if (currentBrand.kind !== "trip_planner") { render "Trips are for trip-planner brands" }` | Hard gate | DELETE | MEDIUM |
-| [mingla-business/app/(tabs)/hub/experiences.tsx](mingla-business/app/(tabs)/hub/experiences.tsx) | 292 | `currentBrand.kind === "physical" && claimStatus !== "verified"` → unverified hint | UX gate | REGATE (no kind; if AI gate stays, gate on offering-specific signal) | MEDIUM |
+| [mingla-business/app/(tabs)/hub/_layout.tsx](mingla-business/app/%28tabs%29/hub/_layout.tsx) | (full) | TopBar + HubSubNav (hardcoded 3-tab shell) + `<Slot />` | Structural | REPURPOSE (introduce data-driven tab visibility) | MEDIUM |
+| [mingla-business/app/(tabs)/hub/events.tsx](mingla-business/app/%28tabs%29/hub/events.tsx) | (full) | No brand.kind references — `item.kind`, `manageCtx.kind` are offering-side enums (FALSE POSITIVES). | None | NO-CHANGE | LOW |
+| [mingla-business/app/(tabs)/hub/trips.tsx](mingla-business/app/%28tabs%29/hub/trips.tsx) | 161 | `if (currentBrand.kind !== "trip_planner") { render "Trips are for trip-planner brands" }` | Hard gate | DELETE | MEDIUM |
+| [mingla-business/app/(tabs)/hub/experiences.tsx](mingla-business/app/%28tabs%29/hub/experiences.tsx) | 292 | `currentBrand.kind === "physical" && claimStatus !== "verified"` → unverified hint | UX gate | REGATE (no kind; if AI gate stays, gate on offering-specific signal) | MEDIUM |
 | Same file | 307 | `currentBrand.kind === "physical" && venueCategory === "restaurant"` → show MenuSnapInput | Gate on kind+venueCategory | REGATE (gate on `venueCategory === "restaurant"` alone) | LOW |
 | Same file | 319 | `currentBrand.kind === "physical" && venueCategory === "play"` → show ActivitiesSnapInput | Same | REGATE | LOW |
 | Same file | 331 | `currentBrand.kind === "physical" && venueCategory === "creative_and_arts"` → "Schedule snap coming soon" | Same | REGATE | LOW |
@@ -164,7 +164,7 @@ Classifications: DELETE | REPURPOSE | REGATE | RENAME | UPDATE-COPY | NO-CHANGE 
 | Same file | 52 | `if (currentBrand.kind !== "trip_planner") { setErrorMessage; return }` | Hard gate | DELETE | LOW |
 | [mingla-business/app/trip/[id]/edit.tsx](mingla-business/app/trip/%5Bid%5D/edit.tsx) | 67 | `if (currentBrand.kind !== "trip_planner") return;` — early-return inside `useEffect` that migrates a client-only trip-ID to a server draft via `createTripDraftMutation`. Non-trip-planner brands silently skip the migration. | Hard gate (early-return) | DELETE (universal authoring means the migration runs for any brand) | LOW |
 | `mingla-business/app/event/create*.tsx` | (full) | No brand.kind references found | None | NO-CHANGE | LOW |
-| [mingla-business/app/(tabs)/hub/experiences.tsx](mingla-business/app/(tabs)/hub/experiences.tsx) | 307–327 | Two snap inputs routed by venueCategory (restaurant→menu, play→activities) | Venue-type | REPURPOSE (keep venueCategory branching post-kind-removal) | LOW |
+| [mingla-business/app/(tabs)/hub/experiences.tsx](mingla-business/app/%28tabs%29/hub/experiences.tsx) | 307–327 | Two snap inputs routed by venueCategory (restaurant→menu, play→activities) | Venue-type | REPURPOSE (keep venueCategory branching post-kind-removal) | LOW |
 | [mingla-business/src/components/ui/UniversalCreatorSheet.tsx](mingla-business/src/components/ui/UniversalCreatorSheet.tsx) | 79–80 | Comment in trip-persona entry: "/trip/create gates on currentBrand.kind === 'trip_planner' — non-trip-planner brands see an explainer (Tr2 §8 hard guard)". Stale once D7's `trip/create.tsx:52` gate is deleted. | Comment only | UPDATE-COPY | LOW |
 | [mingla-business/src/services/eventDrafts.ts](mingla-business/src/services/eventDrafts.ts) | 172 | Calls authoring gate (D3) | Indirect kind via D3 | DELETE (remove call per D3) | LOW |
 | [mingla-business/src/services/tripsService.ts](mingla-business/src/services/tripsService.ts) | 441 | Calls authoring gate (D3) | Indirect kind via D3 | DELETE (remove call per D3) | LOW |

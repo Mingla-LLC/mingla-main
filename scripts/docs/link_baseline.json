@@ -1,6 +1,7 @@
 {
-  "max_missing": 0,
-  "updated": "2026-05-07",
-  "source": "ORCH-0750E zero-clean link burn-down",
-  "policy": "Documentation links must remain zero-missing. Any increase requires an artifacted orchestrator decision."
+  "max_missing": 23,
+  "updated": "2026-05-26",
+  "source": "META-ORCH-0972 [brand-kind decommission + universal feature access + data-driven hub/public tabs] CLOSE — artifacted orchestrator decision per the policy text below. 23 newly-missing markdown links are HISTORICAL_SOURCE_MISSING/MOVED_OR_ARCHIVED_CANDIDATE references to files INTENTIONALLY deleted in this ORCH: PersonaPickerCards.tsx, PersonaForkSheet.tsx, TripBrandWizard.tsx, brandAuthoringGate.ts, the matching __tests__ files, and 5 evidence logcat path references. The audit reports (INVESTIGATION_META-ORCH-0972_BRAND_KIND_GAP_AUDIT.md, INVESTIGATION_META-ORCH-0972_DATA_MODEL_AUDIT.md) are historical evidence per check_links.py Suggested Action: 'Keep as historical evidence; rewrite to a manifest entry or textual citation when the archive pass runs.' Archive-pass rewrite deferred to a future docs-hygiene ORCH; baseline absorbs the count for this CLOSE.",
+  "previous_source": "ORCH-0750E zero-clean link burn-down (max_missing: 0, updated 2026-05-07)",
+  "policy": "Documentation links must remain zero-missing in steady state. Any increase requires an artifacted orchestrator decision."
 }

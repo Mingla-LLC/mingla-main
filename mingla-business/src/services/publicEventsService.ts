@@ -841,6 +841,7 @@ export const getPublicEventBySlug = async (
 export const getPublicEventById = async (
   eventId: string,
 ): Promise<PublicEventDetail | null> => {
+  // orch-strict-grep-allow events-type-filter — META-ORCH-0972 Sub-C: lookup by id then filter row.event_type at JS layer (lines 853 + 856).
   const { data, error } = await supabase
     .from("business_public_events_view")
     .select("*")
@@ -859,6 +860,7 @@ export const getPublicEventById = async (
 const fetchPublicBrandEvents = async (
   brandSlug: string,
 ): Promise<PublicEventRecord[]> => {
+  // orch-strict-grep-allow events-type-filter — META-ORCH-0972 Sub-C: brand events list filtered by row.event_type === "event" at JS layer immediately after fetch.
   const { data, error } = await supabase
     .from("business_public_events_view")
     .select("*")

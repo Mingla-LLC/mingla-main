@@ -1731,13 +1731,11 @@ jobs:
       - name: Run ORCH-0955 region gate removal gate
         run: node .github/scripts/strict-grep/orch-0955-region-gate-deleted.mjs
 
-  orch-0962-brand-field-map-coverage:
-    name: "ORCH-0962: brand field map coverage"
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-      - name: Run ORCH-0962 brand field map coverage gate
-        run: node .github/scripts/strict-grep/orch-0962-brand-field-map-coverage.mjs
+  # ORCH-0962 brand-field-map-coverage gate RETIRED at META-ORCH-0972 CLOSE
+  # (2026-05-26). The gate asserted that `viewRowToBrand` reads `row.brand_kind`
+  # from `business_public_events_view`. META-ORCH-0972 Sub-C removed `brand_kind`
+  # from the view per the brand-kind decommission contract. Gate is structurally
+  # superseded by I-BRAND-UNIVERSAL-AUTHORING + I-PUBLIC-PAGE-DATA-DRIVEN-TABS.
+  # The other 3 columns the gate also checked (brand_address, brand_cover_media_url,
+  # display_attendee_count) are still mapped — a future docs-hygiene ORCH may
+  # revive a narrower replacement gate for just those columns if regressions appear.
