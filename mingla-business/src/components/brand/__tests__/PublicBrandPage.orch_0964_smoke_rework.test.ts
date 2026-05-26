@@ -63,17 +63,45 @@ describe("ORCH-0964 smoke rework — business public-page preview chrome/theme",
     expect(heroWrapBlock).toContain("maxWidth: 620");
   });
 
-  test("social links render icon shapes instead of letter initials", () => {
+  test("social links render Lucide glyphs instead of custom shapes or letter initials", () => {
     expect(sharedSource).toContain("type SocialKind");
+    expect(sharedSource).toContain('from "lucide-react-native"');
+    expect(sharedSource).toContain("const SOCIAL_ICON_BY_KIND: Record<SocialKind, LucideIcon>");
+    expect(sharedSource).toContain("website: Globe2");
+    expect(sharedSource).toContain("instagram: Instagram");
+    expect(sharedSource).toContain("youtube: Youtube");
+    expect(sharedSource).toContain("threads: AtSign");
     expect(sharedSource).toContain('<SocialIcon kind={entry.kind} color="#ffffff" />');
     expect(sharedSource).toContain("const SocialIcon: React.FC");
-    expect(sharedSource).toContain("styles.iconGlobe");
-    expect(sharedSource).toContain("styles.iconCamera");
-    expect(sharedSource).toContain("styles.iconVideoFrame");
-    expect(sharedSource).toContain('<SocialIcon kind={entry.kind} color="#ffffff" />');
+    expect(sharedSource).toContain("return <Icon color={color} size={23} strokeWidth={2.35} />");
     expect(sharedSource).toContain("backgroundColor: palette.accent, borderColor: palette.accent");
     expect(sharedSource).not.toContain("entry.label.charAt(0)");
     expect(sharedSource).not.toContain("socialGlyph");
+    expect(sharedSource).not.toContain("styles.iconGlobe");
+    expect(sharedSource).not.toContain("styles.iconCamera");
+    expect(sharedSource).not.toContain("styles.iconVideoFrame");
+  });
+
+  test("next event renders as a rectangular marketing banner, not a compact pill", () => {
+    expect(sharedSource).toContain("NEXT EVENT");
+    expect(sharedSource).toContain("styles.nextTeaserCopy");
+    expect(sharedSource).toContain("styles.nextTeaserAction");
+    expect(sharedSource).toContain("numberOfLines={2}");
+    expect(sharedSource).toContain("minHeight: 86");
+    expect(sharedSource).toContain("borderRadius: radius.sm");
+    expect(sharedSource).not.toContain("styles.nextTeaserArrow");
+  });
+
+  test("identity card uses stronger premium typography and avatar treatment", () => {
+    const identityBlock = sharedSource.match(/identityCentered: \{[\s\S]*?\n  \},/)?.[0] ?? "";
+    const avatarBlock = sharedSource.match(/avatar: \{[\s\S]*?\n  \},/)?.[0] ?? "";
+    const brandNameBlock = sharedSource.match(/brandNameCentered: \{[\s\S]*?\n  \},/)?.[0] ?? "";
+    expect(identityBlock).toContain("paddingHorizontal: spacing.xl");
+    expect(identityBlock).toContain("shadowRadius: 24");
+    expect(avatarBlock).toContain("width: 104");
+    expect(avatarBlock).toContain("borderWidth: 4");
+    expect(brandNameBlock).toContain("fontSize: 38");
+    expect(brandNameBlock).toContain('fontWeight: "900"');
   });
 
   test("tab switcher is a premium branded segmented control with white labels", () => {

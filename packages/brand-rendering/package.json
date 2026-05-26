@@ -9,6 +9,7 @@
   "peerDependencies": {
     "react": "*",
     "react-native": "*",
-    "lottie-react-native": "*"
+    "lottie-react-native": "*",
+    "lucide-react-native": "*"
   }
 }

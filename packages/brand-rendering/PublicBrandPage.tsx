@@ -8,6 +8,17 @@ import {
   Text,
   View,
 } from "react-native";
+import type { LucideIcon } from "lucide-react-native";
+import {
+  AtSign,
+  Facebook,
+  Globe2,
+  Instagram,
+  Linkedin,
+  Music2,
+  X as XIcon,
+  Youtube,
+} from "lucide-react-native";
 import {
   MINGLA_DEFAULT_THEME,
   ThemeEntranceAnimation,
@@ -283,6 +294,17 @@ const tabLabel: Record<Tab, string> = {
   trips: "Trips",
   experiences: "Experiences",
   about: "About",
+};
+
+const SOCIAL_ICON_BY_KIND: Record<SocialKind, LucideIcon> = {
+  website: Globe2,
+  instagram: Instagram,
+  tiktok: Music2,
+  x: XIcon,
+  facebook: Facebook,
+  youtube: Youtube,
+  linkedin: Linkedin,
+  threads: AtSign,
 };
 
 export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
@@ -728,72 +750,8 @@ const SocialIcon: React.FC<{ kind: SocialKind; color: string }> = ({
   kind,
   color,
 }) => {
-  if (kind === "website") {
-    return (
-      <View style={[styles.iconGlobe, { borderColor: color }]}>
-        <View style={[styles.iconGlobeHorizontal, { backgroundColor: color }]} />
-        <View style={[styles.iconGlobeVertical, { backgroundColor: color }]} />
-      </View>
-    );
-  }
-  if (kind === "instagram") {
-    return (
-      <View style={[styles.iconCamera, { borderColor: color }]}>
-        <View style={[styles.iconCameraLens, { borderColor: color }]} />
-        <View style={[styles.iconCameraDot, { backgroundColor: color }]} />
-      </View>
-    );
-  }
-  if (kind === "youtube") {
-    return (
-      <View style={[styles.iconVideoFrame, { borderColor: color }]}>
-        <View style={[styles.iconPlayTriangle, { borderLeftColor: color }]} />
-      </View>
-    );
-  }
-  if (kind === "x") {
-    return (
-      <View style={styles.iconX}>
-        <View style={[styles.iconXStroke, styles.iconXStrokeA, { backgroundColor: color }]} />
-        <View style={[styles.iconXStroke, styles.iconXStrokeB, { backgroundColor: color }]} />
-      </View>
-    );
-  }
-  if (kind === "tiktok") {
-    return (
-      <View style={styles.iconMusic}>
-        <View style={[styles.iconMusicStem, { backgroundColor: color }]} />
-        <View style={[styles.iconMusicFlag, { backgroundColor: color }]} />
-        <View style={[styles.iconMusicDot, { borderColor: color }]} />
-      </View>
-    );
-  }
-  if (kind === "facebook") {
-    return (
-      <View style={styles.iconFacebook}>
-        <View style={[styles.iconFacebookStem, { backgroundColor: color }]} />
-        <View style={[styles.iconFacebookArm, { backgroundColor: color }]} />
-        <View style={[styles.iconFacebookCrossbar, { backgroundColor: color }]} />
-      </View>
-    );
-  }
-  if (kind === "linkedin") {
-    return (
-      <View style={styles.iconLinkedin}>
-        <View style={[styles.iconLinkedinDot, { backgroundColor: color }]} />
-        <View style={[styles.iconLinkedinStem, { backgroundColor: color }]} />
-        <View style={[styles.iconLinkedinStemTwo, { backgroundColor: color }]} />
-        <View style={[styles.iconLinkedinArc, { borderColor: color }]} />
-      </View>
-    );
-  }
-  return (
-    <View style={styles.iconThreads}>
-      <View style={[styles.iconThreadsLoop, { borderColor: color }]} />
-      <View style={[styles.iconThreadsTail, { backgroundColor: color }]} />
-      <View style={[styles.iconThreadsDot, { backgroundColor: color }]} />
-    </View>
-  );
+  const Icon = SOCIAL_ICON_BY_KIND[kind];
+  return <Icon color={color} size={23} strokeWidth={2.35} />;
 };
 
 const TabButton: React.FC<{
@@ -969,17 +927,21 @@ const NextOfferingTeaser: React.FC<{
         pressed && styles.cardPressed,
       ]}
     >
-      <Text style={styles.nextTeaserLabel}>NEXT</Text>
-      <Text
-        style={[
-          styles.nextTeaserBody,
-          { fontFamily: theme.fontFamilyValue },
-        ]}
-        numberOfLines={1}
-      >
-        {bodyText}
-      </Text>
-      <Text style={styles.nextTeaserArrow}>→</Text>
+      <View style={styles.nextTeaserCopy}>
+        <Text style={styles.nextTeaserLabel}>NEXT EVENT</Text>
+        <Text
+          style={[
+            styles.nextTeaserBody,
+            { fontFamily: theme.fontFamilyValue },
+          ]}
+          numberOfLines={2}
+        >
+          {bodyText}
+        </Text>
+      </View>
+      <View style={styles.nextTeaserAction}>
+        <Text style={styles.nextTeaserActionText}>View</Text>
+      </View>
     </Pressable>
   );
 };
@@ -1506,45 +1468,50 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     width: "100%",
     maxWidth: 620,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.xl,
     borderRadius: radius.md,
     borderWidth: 1,
     marginBottom: spacing.lg,
+    shadowColor: "#000000",
+    shadowOpacity: 0.12,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 14 },
+    elevation: 3,
   },
   identityTopRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.lg,
+    gap: spacing.xl,
   },
   identityCopy: {
     flex: 1,
     minWidth: 0,
   },
   avatar: {
-    width: 92,
-    height: 92,
-    borderRadius: 46,
+    width: 104,
+    height: 104,
+    borderRadius: 52,
     backgroundColor: "rgba(255,255,255,0.10)",
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 3,
+    borderWidth: 4,
     borderColor: "rgba(255,255,255,0.20)",
     marginTop: 0,
     shadowOpacity: 0.26,
-    shadowRadius: 22,
-    shadowOffset: { width: 0, height: 10 },
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 12 },
     elevation: 4,
   },
   avatarInitial: {
     color: text.primary,
-    fontSize: 34,
-    fontWeight: "800",
+    fontSize: 38,
+    fontWeight: "900",
   },
   brandNameCentered: {
-    fontSize: 36,
-    lineHeight: 40,
-    fontWeight: "800",
+    fontSize: 38,
+    lineHeight: 42,
+    fontWeight: "900",
     color: text.primary,
     marginTop: spacing.xs,
     textAlign: "left",
@@ -1552,28 +1519,29 @@ const styles = StyleSheet.create({
   verifiedBadge: {
     color: accent.warm,
     fontSize: 10,
-    fontWeight: "800",
-    letterSpacing: 1.5,
+    fontWeight: "900",
+    letterSpacing: 1.4,
     textTransform: "uppercase",
   },
   handleLineCentered: {
-    fontSize: 13,
+    fontSize: 14,
+    lineHeight: 19,
     color: text.tertiary,
     marginTop: spacing.xs,
     textAlign: "left",
   },
   bioLeadCentered: {
-    fontSize: 15,
+    fontSize: 16,
     color: text.secondary,
-    lineHeight: 23,
-    marginTop: spacing.sm,
+    lineHeight: 25,
+    marginTop: spacing.md,
     textAlign: "left",
   },
   taglineCentered: {
-    fontSize: 22,
-    fontWeight: "700",
+    fontSize: 24,
+    fontWeight: "800",
     color: text.tertiary,
-    lineHeight: 28,
+    lineHeight: 30,
     marginTop: spacing.lg,
     textAlign: "left",
   },
@@ -1598,210 +1566,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.08)",
   },
-  iconGlobe: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 2,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  iconGlobeHorizontal: {
-    position: "absolute",
-    width: 15,
-    height: 2,
-    borderRadius: 1,
-  },
-  iconGlobeVertical: {
-    position: "absolute",
-    width: 2,
-    height: 16,
-    borderRadius: 1,
-  },
-  iconCamera: {
-    width: 23,
-    height: 23,
-    borderRadius: 7,
-    borderWidth: 2,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  iconCameraLens: {
-    width: 9,
-    height: 9,
-    borderRadius: 4.5,
-    borderWidth: 2,
-  },
-  iconCameraDot: {
-    position: "absolute",
-    top: 4,
-    right: 4,
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-  },
-  iconVideoFrame: {
-    width: 25,
-    height: 18,
-    borderRadius: 6,
-    borderWidth: 2,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  iconPlayTriangle: {
-    width: 0,
-    height: 0,
-    borderTopWidth: 5,
-    borderBottomWidth: 5,
-    borderLeftWidth: 8,
-    borderTopColor: "transparent",
-    borderBottomColor: "transparent",
-    marginLeft: 2,
-  },
-  iconX: {
-    width: 22,
-    height: 22,
-  },
-  iconXStroke: {
-    position: "absolute",
-    top: 10,
-    left: 1,
-    width: 20,
-    height: 2.5,
-    borderRadius: 2,
-  },
-  iconXStrokeA: {
-    transform: [{ rotate: "42deg" }],
-  },
-  iconXStrokeB: {
-    transform: [{ rotate: "-42deg" }],
-  },
-  iconMusic: {
-    width: 23,
-    height: 24,
-  },
-  iconMusicStem: {
-    position: "absolute",
-    top: 2,
-    right: 6,
-    width: 3,
-    height: 15,
-    borderRadius: 2,
-  },
-  iconMusicFlag: {
-    position: "absolute",
-    top: 2,
-    right: 4,
-    width: 10,
-    height: 3,
-    borderRadius: 2,
-    transform: [{ rotate: "18deg" }],
-  },
-  iconMusicDot: {
-    position: "absolute",
-    left: 2,
-    bottom: 2,
-    width: 12,
-    height: 10,
-    borderRadius: 6,
-    borderWidth: 3,
-  },
-  iconFacebook: {
-    width: 22,
-    height: 24,
-  },
-  iconFacebookStem: {
-    position: "absolute",
-    top: 3,
-    left: 10,
-    width: 4,
-    height: 18,
-    borderRadius: 2,
-  },
-  iconFacebookArm: {
-    position: "absolute",
-    top: 3,
-    left: 10,
-    width: 10,
-    height: 4,
-    borderRadius: 2,
-  },
-  iconFacebookCrossbar: {
-    position: "absolute",
-    top: 10,
-    left: 6,
-    width: 12,
-    height: 4,
-    borderRadius: 2,
-  },
-  iconLinkedin: {
-    width: 24,
-    height: 24,
-  },
-  iconLinkedinDot: {
-    position: "absolute",
-    left: 2,
-    top: 3,
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-  },
-  iconLinkedinStem: {
-    position: "absolute",
-    left: 3,
-    top: 10,
-    width: 4,
-    height: 11,
-    borderRadius: 2,
-  },
-  iconLinkedinStemTwo: {
-    position: "absolute",
-    left: 11,
-    top: 10,
-    width: 4,
-    height: 11,
-    borderRadius: 2,
-  },
-  iconLinkedinArc: {
-    position: "absolute",
-    left: 11,
-    top: 8,
-    width: 10,
-    height: 10,
-    borderTopWidth: 4,
-    borderRightWidth: 4,
-    borderRadius: 7,
-  },
-  iconThreads: {
-    width: 24,
-    height: 24,
-  },
-  iconThreadsLoop: {
-    position: "absolute",
-    top: 5,
-    left: 4,
-    width: 14,
-    height: 13,
-    borderRadius: 8,
-    borderWidth: 2,
-  },
-  iconThreadsTail: {
-    position: "absolute",
-    right: 2,
-    top: 10,
-    width: 10,
-    height: 2.5,
-    borderRadius: 2,
-    transform: [{ rotate: "-24deg" }],
-  },
-  iconThreadsDot: {
-    position: "absolute",
-    top: 10,
-    left: 10,
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-  },
   nextTeaser: {
     flexDirection: "row",
     alignItems: "center",
@@ -1809,29 +1573,51 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: 620,
     gap: spacing.md,
-    paddingVertical: spacing.md,
+    minHeight: 86,
+    paddingVertical: spacing.lg,
     paddingHorizontal: spacing.lg,
-    borderRadius: radius.md,
+    borderRadius: radius.sm,
     backgroundColor: accent.tint,
     borderWidth: 1,
     marginBottom: spacing.lg,
+    shadowColor: "#000000",
+    shadowOpacity: 0.14,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 3,
+  },
+  nextTeaserCopy: {
+    flex: 1,
+    minWidth: 0,
   },
   nextTeaserLabel: {
     color: "#ffffff",
     fontSize: 11,
-    fontWeight: "800",
+    fontWeight: "900",
     letterSpacing: 1.4,
   },
   nextTeaserBody: {
-    flex: 1,
-    fontSize: 15,
+    fontSize: 18,
+    lineHeight: 23,
     color: "#ffffff",
-    fontWeight: "700",
-  },
-  nextTeaserArrow: {
-    color: "#ffffff",
-    fontSize: 24,
     fontWeight: "800",
+    marginTop: 5,
+  },
+  nextTeaserAction: {
+    minWidth: 58,
+    minHeight: 40,
+    paddingHorizontal: spacing.md,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radius.sm,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.24)",
+  },
+  nextTeaserActionText: {
+    color: "#ffffff",
+    fontSize: 13,
+    fontWeight: "900",
   },
   tabsRow: {
     flexDirection: "row",

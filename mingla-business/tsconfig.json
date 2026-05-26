@@ -11,7 +11,9 @@
       "@mingla/theme-animations": ["../packages/theme-animations"],
       "@mingla/theme-animations/*": ["../packages/theme-animations/*"],
       "@mingla/phone-input": ["../packages/phone-input"],
-      "@mingla/phone-input/*": ["../packages/phone-input/*"]
+      "@mingla/phone-input/*": ["../packages/phone-input/*"],
+      "lucide-react-native": ["./node_modules/lucide-react-native"],
+      "lucide-react-native/*": ["./node_modules/lucide-react-native/*"]
     }
   },
   "include": [

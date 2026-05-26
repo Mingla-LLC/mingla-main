@@ -273,6 +273,52 @@ cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0964-[public-page-theme-customiz
 
 Result: PASS, all listed strict-grep gates passed.
 
+## Smoke-Test Design Rework #6 — Lucide links, event banner, premium brand masthead
+
+Seth requested a tighter premium pass after reviewing the latest public brand page: social links needed real Lucide icons, the next-event unit needed to feel like a marketing banner instead of a button, and the brand photo/name/description block needed stronger typography and styling.
+
+Follow-up changes:
+
+- Replaced the custom-drawn social glyphs with `lucide-react-native` icons (`Globe2`, `Instagram`, `Music2`, `X`, `Facebook`, `Youtube`, `Linkedin`, `AtSign`) in the shared renderer.
+- Added `lucide-react-native` to `mingla-business` and declared it as a peer for `packages/brand-rendering`; `app-mobile` already carried the dependency.
+- Added narrow `tsconfig` path aliases in both host apps so the shared package resolves `lucide-react-native` from each app's local dependency during TypeScript checks.
+- Kept social link buttons brand-colored with white icon strokes, preserving the product rule that foregrounds inside branded controls stay white.
+- Reworked the next offering into a full-width rectangular `NEXT EVENT` promo banner with two-line event copy and a subtle white "View" action chip.
+- Upgraded the identity block with larger avatar/photo treatment, stronger name typography, roomier spacing, and shadowed card depth while keeping the content rail aligned to the cover and tabs.
+- Extended the ORCH-0964 public-page smoke test to fail if the page falls back to custom icon shapes, a compact next-event pill, or the smaller identity-card treatment.
+
+Regression coverage:
+
+```bash
+cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0964-[public-page-theme-customization]/mingla-business" && npx jest src/components/brand/__tests__/PublicBrandPage.orch_0964_smoke_rework.test.ts --runInBand
+```
+
+Result: PASS, 1 suite / 10 tests passed.
+
+```bash
+cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0964-[public-page-theme-customization]/mingla-business" && npx jest src/utils/__tests__/brandPatch.orch_0964_smoke_rework.test.ts src/hooks/__tests__/useBrands.orch_0964_public_theme_cache.test.ts src/components/brand/__tests__/PublicBrandPage.orch_0964_smoke_rework.test.ts src/utils/__tests__/themeResolver.orch_0964.test.ts src/utils/__tests__/themeResolver.adversarial.orch_0964.test.ts --runInBand
+```
+
+Result: PASS, 5 suites / 19 tests passed.
+
+```bash
+cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0964-[public-page-theme-customization]/mingla-business" && npx tsc --noEmit --pretty false 2>&1 | tee /tmp/orch0964-lucide-public-page-tsc.log >/dev/null; if rg -n 'lucide-react-native|packages/brand-rendering/PublicBrandPage\.tsx.*(JSX element type|not assignable|has no construct|has no call)' /tmp/orch0964-lucide-public-page-tsc.log; then exit 1; else exit 0; fi
+```
+
+Result: PASS for the new Lucide/shared-renderer surface. Full TypeScript still has the previously documented shared-package module-resolution debt, but no `lucide-react-native` or Lucide JSX errors are present.
+
+```bash
+cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0964-[public-page-theme-customization]/app-mobile" && npx tsc --noEmit --pretty false 2>&1 | tee /tmp/orch0964-app-lucide-public-page-tsc.log >/dev/null; if rg -n 'lucide-react-native|packages/brand-rendering/PublicBrandPage\.tsx.*(JSX element type|not assignable|has no construct|has no call)' /tmp/orch0964-app-lucide-public-page-tsc.log; then exit 1; else exit 0; fi
+```
+
+Result: PASS for the new Lucide/shared-renderer surface.
+
+```bash
+cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0964-[public-page-theme-customization]" && node .github/scripts/strict-grep/orch-0964-theme-typed-columns.mjs && node .github/scripts/strict-grep/orch-0964-theme-resolver-canonical.mjs && node .github/scripts/strict-grep/orch-0964-theme-foreground-computed.mjs && node .github/scripts/strict-grep/orch-0964-checkout-no-brand-theme.mjs && node .github/scripts/strict-grep/orch-0964-brand-rendering-self-contained.mjs && node .github/scripts/strict-grep/orch-0964-well-known-json-content-type.mjs && node .github/scripts/strict-grep/meta-orch-0972-data-driven-tabs.mjs && node .github/scripts/strict-grep/meta-orch-0972-no-brand-kind-reads.mjs && node .github/scripts/strict-grep/orch-0963-public-trip-rpc-and-route-segregation.mjs && node .github/scripts/strict-grep/orch-0863-marketing-hub-phase-b.mjs
+```
+
+Result: PASS, all listed strict-grep gates passed.
+
 ## Rework Update — Android App Links consumer target
 
 Seth provided the verified consumer Android package fingerprints after the first QA pass. `mingla-business/public/.well-known/assetlinks.json` now preserves the existing business-app target for `com.sethogieva.minglabusiness` and adds a second Android App Links target for `com.mingla.app.v2` with both verified SHA-256 fingerprints:
