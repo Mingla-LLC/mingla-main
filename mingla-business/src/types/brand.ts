@@ -15,6 +15,8 @@
  * Per SPEC_ORCH_0743 §3.4.1.
  */
 
+import type { ThemeInput } from "@mingla/event-rendering";
+
 // BrandRole: from the brand list, what role does the CURRENT USER hold on
 // this brand? Used for permission gating in the founder-facing UI (top-nav
 // chip, brand-list rendering).
@@ -268,6 +270,8 @@ export type Brand = {
    * 17e-B Tier 2 picker writes this.
    */
   coverMediaType?: "image" | "video" | "gif";
+  /** ORCH-0964 — public-page theme defaults. Null/undefined falls back to Mingla default. */
+  theme?: ThemeInput | null;
   /**
    * Profile photo type — supports animated avatars per Q1=B amendment (DEC-109).
    * NEW in Cycle 17e-A schema (column pre-load). Picker UI ships in 17e-B Tier 2.

@@ -28,11 +28,13 @@ import {
   type AppStateStatus,
 } from "react-native";
 import { Stack } from "expo-router";
+import { useFonts } from "expo-font";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { focusManager, QueryClientProvider } from "@tanstack/react-query";
 import * as Sentry from "../src/diagnostics/sentry";
 import * as SplashScreen from "expo-splash-screen";
+import { MINGLA_THEME_FONTS } from "../src/theme/themeFonts";
 
 import { AuthProvider, useAuth } from "../src/context/AuthContext";
 import { queryClient } from "../src/config/queryClient";
@@ -249,6 +251,8 @@ function RootLayoutInner(): React.ReactElement {
 }
 
 export default function RootLayout(): React.ReactElement {
+  useFonts(MINGLA_THEME_FONTS);
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>

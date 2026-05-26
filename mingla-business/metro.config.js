@@ -43,6 +43,16 @@ config.resolver.extraNodeModules = {
     "packages",
     "event-rendering",
   ),
+  "@mingla/brand-rendering": path.join(
+    WORKSPACE_ROOT,
+    "packages",
+    "brand-rendering",
+  ),
+  "@mingla/theme-animations": path.join(
+    WORKSPACE_ROOT,
+    "packages",
+    "theme-animations",
+  ),
   // ORCH-0849 (2026-05-15): @mingla/payments-native alias RE-ADDED.
   // ORCH-0839-B's hosted-checkout pivot was reversed by ORCH-0849
   // [Stripe payment-method parity — mingla-business PaymentSheet re-pivot].

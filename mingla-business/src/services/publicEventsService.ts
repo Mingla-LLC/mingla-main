@@ -15,6 +15,12 @@ import type {
   BrandLinks,
   VenueCategory,
 } from "../types/brand";
+import {
+  isThemeAnimationSlug,
+  isThemeColor,
+  isThemeFontSlug,
+  type ThemeInput,
+} from "@mingla/event-rendering";
 import { parseClaimedVenueHours } from "../utils/venuePublicHours";
 import { buildVenueGalleryPhotoUrls } from "../utils/venuePublicPhotos";
 import {
@@ -35,6 +41,9 @@ interface BusinessPublicEventViewRow {
   brand_display_attendee_count: boolean;
   brand_address: string | null;
   brand_cover_media_url: string | null;
+  brand_theme_color: string | null;
+  brand_theme_font: string | null;
+  brand_theme_animation: string | null;
   title: string;
   description: string | null;
   slug: string;
@@ -61,6 +70,9 @@ interface BusinessPublicEventViewRow {
   created_at: string;
   updated_at: string;
   public_theme: JsonRecord | null;
+  theme_color_override: string | null;
+  theme_font_override: string | null;
+  theme_animation_override: string | null;
   // ORCH-0792: master event_dates columns surfaced by the view.
   master_start_at: string | null;
   master_end_at: string | null;
@@ -113,6 +125,9 @@ interface BusinessPublicBrandViewRow {
   cover_media_url: string | null;
   cover_media_type: "image" | "video" | "gif" | null;
   profile_photo_type: "image" | "video" | "gif" | null;
+  theme_color: string | null;
+  theme_font: string | null;
+  theme_animation: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -138,6 +153,9 @@ export interface ClaimedVenuePublicViewRow {
   cover_hue: number;
   cover_media_url: string | null;
   cover_media_type: "image" | "video" | "gif" | null;
+  theme_color: string | null;
+  theme_font: string | null;
+  theme_animation: string | null;
   claim_status: "none" | "pending_review" | "verified" | "rejected";
   venue_category: VenueCategory | null;
   place_pool_id: string | null;
@@ -476,6 +494,18 @@ const extractBrandContact = (
   return Object.keys(out).length > 0 ? out : undefined;
 };
 
+const asThemeInput = (
+  color: unknown,
+  font: unknown,
+  animation: unknown,
+): ThemeInput | null => {
+  const out: ThemeInput = {};
+  if (isThemeColor(color)) out.color = color;
+  if (isThemeFontSlug(font)) out.font = font;
+  if (isThemeAnimationSlug(animation)) out.animation = animation;
+  return Object.keys(out).length > 0 ? out : null;
+};
+
 const viewRowToBrand = (row: BusinessPublicEventViewRow): PublicBrandRecord => {
   const theme = asRecord(row.public_theme);
   const { tagline, bio } = splitBrandDescription(row.brand_description);
@@ -500,6 +530,11 @@ const viewRowToBrand = (row: BusinessPublicEventViewRow): PublicBrandRecord => {
     tagline,
     links: asLinks(theme.brandLinks),
     displayAttendeeCount: row.brand_display_attendee_count,
+    theme: asThemeInput(
+      row.brand_theme_color,
+      row.brand_theme_font,
+      row.brand_theme_animation,
+    ),
   };
 };
 
@@ -533,6 +568,7 @@ export const publicBrandViewRowToBrand = (
     links: asLinks(row.social_links, row.custom_links),
     displayAttendeeCount: row.display_attendee_count,
     claimStatus: row.claim_status,
+    theme: asThemeInput(row.theme_color, row.theme_font, row.theme_animation),
   };
 };
 
@@ -602,6 +638,7 @@ export const claimedVenueRowToBrand = (
     venueCategory: asVenueCategory(row.venue_category) ?? undefined,
     googlePlaceId: asStringOrNull(row.google_place_id) ?? undefined,
     placePoolId: row.place_pool_id ?? undefined,
+    theme: asThemeInput(row.theme_color, row.theme_font, row.theme_animation),
   };
 };
 
@@ -736,6 +773,11 @@ export const publicEventViewRowToEvent = (
         (ticket) =>
           ticket.availableAt === "both" || ticket.availableAt === "door",
       ),
+    ),
+    themeOverrides: asThemeInput(
+      row.theme_color_override,
+      row.theme_font_override,
+      row.theme_animation_override,
     ),
     orders: [],
     createdAt: row.created_at,

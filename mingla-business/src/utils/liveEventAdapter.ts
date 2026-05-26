@@ -88,6 +88,7 @@ export const liveEventToEditableDraft = (e: LiveEvent): DraftEvent => ({
   allowTransfers: e.allowTransfers,
   hideRemainingCount: e.hideRemainingCount,
   passwordProtected: e.passwordProtected,
+  themeOverrides: e.themeOverrides ?? null,
   privateGuestList: e.privateGuestList,
   inPersonPaymentsEnabled: e.inPersonPaymentsEnabled,
   // DraftEvent-only fields (wizard-internal; stubbed for edit mode)
@@ -134,6 +135,7 @@ export const FIELD_LABELS: Record<keyof EditableLiveEventFields, string> = {
   allowTransfers: "Allow transfers",
   hideRemainingCount: "Hide remaining count",
   passwordProtected: "Password protected",
+  themeOverrides: "Public theme",
   privateGuestList: "Private guest list",
   inPersonPaymentsEnabled: "In-person payments",
   // ORCH-0824 hotfix
@@ -184,6 +186,7 @@ export const SAFE_KEYS: ReadonlyArray<keyof EditableLiveEventFields> = [
   "hideRemainingCount",
   "allowTransfers",
   "passwordProtected",
+  "themeOverrides",
   "visibility",
   "privateGuestList",
   // ORCH-0824 hotfix: taxonomy + city are additive/cosmetic for buyer
@@ -288,6 +291,9 @@ export const editableDraftToPatch = (
   }
   if (original.passwordProtected !== edited.passwordProtected) {
     patch.passwordProtected = edited.passwordProtected;
+  }
+  if (!deepEqual(original.themeOverrides ?? null, edited.themeOverrides ?? null)) {
+    patch.themeOverrides = edited.themeOverrides ?? null;
   }
   if (original.privateGuestList !== edited.privateGuestList) {
     patch.privateGuestList = edited.privateGuestList;

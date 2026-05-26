@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import type { ThemeInput } from "@mingla/event-rendering";
 import type {
   DraftEvent,
   DraftEventFormat,
@@ -71,6 +72,9 @@ interface BusinessManagementEventRow {
   vibe_tags?: string[] | null;
   music_genres?: string[] | null;
   location_geo?: string | { x: number; y: number } | null;
+  theme_color_override?: string | null;
+  theme_font_override?: string | null;
+  theme_animation_override?: string | null;
 }
 
 // ORCH-0792: derive YYYY-MM-DD + HH:MM in the event's IANA timezone from a
@@ -428,6 +432,16 @@ const eventFromRow = (
     allowTransfers: asBoolean(settings.allowTransfers, tickets.every((t) => t.allowTransfers)),
     hideRemainingCount: asBoolean(settings.hideRemainingCount, false),
     passwordProtected: asBoolean(settings.passwordProtected, tickets.some((t) => t.passwordProtected)),
+    themeOverrides:
+      row.theme_color_override !== undefined ||
+      row.theme_font_override !== undefined ||
+      row.theme_animation_override !== undefined
+        ? {
+            color: row.theme_color_override ?? null,
+            font: row.theme_font_override ?? null,
+            animation: row.theme_animation_override ?? null,
+          }
+        : null,
     privateGuestList: asBoolean(settings.privateGuestList, false),
     inPersonPaymentsEnabled: asBoolean(
       settings.inPersonPaymentsEnabled,
@@ -607,6 +621,9 @@ const eventFromPublishResponse = (
     vibe_tags: response.event.vibe_tags ?? null,
     music_genres: response.event.music_genres ?? null,
     location_geo: response.event.location_geo ?? null,
+    theme_color_override: null,
+    theme_font_override: null,
+    theme_animation_override: null,
   };
   const tickets = (response.tickets ?? []).map(ticketRowToTicketStub);
   return {
@@ -759,6 +776,30 @@ export const patchPublishedEventTaxonomy = async (
     throw new Error("patch_event_taxonomy_empty_response");
   }
   return response;
+};
+
+// ─── ORCH-0964 — published-event public theme overrides ───────────────
+
+export interface PatchEventThemeInput {
+  eventId: string;
+  themeOverrides: ThemeInput | null;
+}
+
+export const patchPublishedEventTheme = async (
+  input: PatchEventThemeInput,
+): Promise<void> => {
+  const { error } = await supabase
+    .from("events")
+    .update({
+      theme_color_override: input.themeOverrides?.color ?? null,
+      theme_font_override: input.themeOverrides?.font ?? null,
+      theme_animation_override: input.themeOverrides?.animation ?? null,
+    })
+    .eq("id", input.eventId);
+
+  if (error !== null) {
+    throw new Error(error.message ?? "patch_event_theme_failed");
+  }
 };
 
 // ─── ORCH-0877 — When-section server-write RPC ───────────────────────

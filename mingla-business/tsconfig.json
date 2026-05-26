@@ -4,8 +4,12 @@
     "strict": true,
     "paths": {
       "@/*": ["./*"],
+      "@mingla/brand-rendering": ["../packages/brand-rendering"],
+      "@mingla/brand-rendering/*": ["../packages/brand-rendering/*"],
       "@mingla/event-rendering": ["../packages/event-rendering"],
       "@mingla/event-rendering/*": ["../packages/event-rendering/*"],
+      "@mingla/theme-animations": ["../packages/theme-animations"],
+      "@mingla/theme-animations/*": ["../packages/theme-animations/*"],
       "@mingla/phone-input": ["../packages/phone-input"],
       "@mingla/phone-input/*": ["../packages/phone-input/*"]
     }
