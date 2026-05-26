@@ -631,6 +631,33 @@ Result: PASS, all listed strict-grep gates passed.
 
 Full TypeScript note: the known workspace/shared-package type-resolution debt remains. A focused business `tsc` run still fails before reaching useful ORCH-specific signal because `../packages/*` cannot resolve app-local `react` / `react-native` types and existing app test fixtures still carry unrelated errors.
 
+## Smoke-Test Design Rework #10 — Public Event Presenter Photo + Maps
+
+User-visible changes:
+
+- The public event "Presented by" card now renders the brand profile photo when the brand has one; otherwise it keeps the themed initial fallback.
+- The public event location card now reads as a tappable location box and shows an "Open maps" affordance when the event has a visible physical location.
+- Maps opening is host-wired: iOS uses Apple Maps (`maps://`), Android uses the native geo intent, and web/fallback uses Google Maps search.
+- Address privacy remains intact: when `hideAddressUntilTicket` is true, the card still shows "Address shared after ticket purchase" and does not expose/open the hidden address.
+
+Regression coverage added/updated:
+
+- `mingla-business/src/components/brand/__tests__/PublicEventPage.orch_0964_design_rework.test.ts`
+
+Verification:
+
+```bash
+cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0964-[public-page-theme-customization]/mingla-business" && npx jest src/components/brand/__tests__/PublicEventPage.orch_0964_design_rework.test.ts src/components/brand/__tests__/PublicBrandPage.orch_0964_smoke_rework.test.ts src/components/brand/__tests__/themeAnimations.orch_0964_smoke_rework.test.ts src/utils/__tests__/themeResolver.orch_0964.test.ts src/utils/__tests__/themeResolver.adversarial.orch_0964.test.ts src/utils/__tests__/brandPatch.orch_0964_smoke_rework.test.ts src/hooks/__tests__/useBrands.orch_0964_public_theme_cache.test.ts --runInBand
+```
+
+Result: PASS, 7 suites / 27 tests passed.
+
+```bash
+cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0964-[public-page-theme-customization]" && node .github/scripts/strict-grep/orch-0964-theme-typed-columns.mjs && node .github/scripts/strict-grep/orch-0964-theme-resolver-canonical.mjs && node .github/scripts/strict-grep/orch-0964-theme-foreground-computed.mjs && node .github/scripts/strict-grep/orch-0964-checkout-no-brand-theme.mjs && node .github/scripts/strict-grep/orch-0964-brand-rendering-self-contained.mjs && node .github/scripts/strict-grep/orch-0964-well-known-json-content-type.mjs && node .github/scripts/strict-grep/meta-orch-0972-data-driven-tabs.mjs && node .github/scripts/strict-grep/meta-orch-0972-no-brand-kind-reads.mjs && node .github/scripts/strict-grep/orch-0963-public-trip-rpc-and-route-segregation.mjs && node .github/scripts/strict-grep/orch-0863-marketing-hub-phase-b.mjs
+```
+
+Result: PASS, all listed strict-grep gates passed.
+
 ## Downstream Routing
 
 Next: Codex `tester-mingla` RETEST should verify this rework against `Mingla_Artifacts/reports/QA_ORCH-0964_PUBLIC_PAGE_THEME_CUSTOMIZATION_RETEST.md`, including committed assetlinks content, rebase proof, restored META gates, the cleared `publicEventsService.ts` `Brand.kind` TypeScript blocker, and `npm run test:orch-0964-logout-cache`. Android OS tap verification remains post-merge/deploy/device-gated.

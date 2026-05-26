@@ -256,6 +256,19 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
 
   const titleLine = event.name.length > 0 ? event.name : "Untitled event";
   const brandLetter = (brand?.displayName?.charAt(0) ?? "?").toUpperCase();
+  const venueAddressLabel = event.hideAddressUntilTicket
+    ? "Address shared after ticket purchase"
+    : event.format === "hybrid" && event.address !== null
+      ? `${event.address} · also online`
+      : (event.address ?? "Address shared after ticket purchase");
+  const venueMapsQuery =
+    event.hideAddressUntilTicket || event.venueName === null
+      ? null
+      : [event.venueName, event.address].filter(Boolean).join(", ");
+  const canOpenVenueMaps =
+    venueMapsQuery !== null &&
+    venueMapsQuery.trim().length > 0 &&
+    callbacks.onOpenMaps !== undefined;
 
   const visibleTickets = useMemo(
     () =>
@@ -432,9 +445,20 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
               pressed && styles.brandRowPressed,
             ]}
           >
-            <View style={[styles.brandTile, { backgroundColor: theme.color }]}>
-              <Text style={styles.brandLetter}>{brandLetter}</Text>
-            </View>
+            {brand?.photo !== undefined && brand.photo.length > 0 ? (
+              <Image
+                source={{ uri: brand.photo }}
+                style={[styles.brandTile, styles.brandPhoto]}
+                resizeMode="cover"
+                accessibilityLabel={`${brand.displayName} profile photo`}
+              />
+            ) : (
+              <View
+                style={[styles.brandTile, { backgroundColor: theme.color }]}
+              >
+                <Text style={styles.brandLetter}>{brandLetter}</Text>
+              </View>
+            )}
             <View style={styles.brandTextCol}>
               <Text style={styles.brandKicker}>Presented by</Text>
               <Text style={styles.brandName}>
@@ -450,7 +474,29 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
 
           {/* Venue card — honors hideAddressUntilTicket */}
           {event.format !== "online" && event.venueName !== null ? (
-            <View style={styles.venueCard}>
+            <Pressable
+              onPress={() => {
+                if (venueMapsQuery !== null)
+                  callbacks.onOpenMaps?.(venueMapsQuery);
+              }}
+              disabled={!canOpenVenueMaps}
+              accessibilityRole={canOpenVenueMaps ? "button" : undefined}
+              accessibilityLabel={
+                canOpenVenueMaps
+                  ? `Open ${event.venueName} in maps`
+                  : event.venueName
+              }
+              accessibilityHint={
+                canOpenVenueMaps
+                  ? "Opens this event location in your maps app"
+                  : undefined
+              }
+              style={({ pressed }) => [
+                styles.venueCard,
+                canOpenVenueMaps && styles.venueCardInteractive,
+                pressed && styles.venueCardPressed,
+              ]}
+            >
               <View style={styles.venueRow}>
                 <View
                   style={[
@@ -462,17 +508,15 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
                 </View>
                 <View style={styles.venueTextCol}>
                   <Text style={styles.venueName}>{event.venueName}</Text>
-                  <Text style={styles.venueAddress}>
-                    {event.hideAddressUntilTicket
-                      ? "Address shared after ticket purchase"
-                      : event.format === "hybrid" && event.address !== null
-                        ? `${event.address} · also online`
-                        : (event.address ??
-                          "Address shared after ticket purchase")}
-                  </Text>
+                  <Text style={styles.venueAddress}>{venueAddressLabel}</Text>
                 </View>
+                {canOpenVenueMaps ? (
+                  <View style={styles.venueMapsPill}>
+                    <Text style={styles.venueMapsText}>Open maps</Text>
+                  </View>
+                ) : null}
               </View>
-            </View>
+            </Pressable>
           ) : event.format === "online" ? (
             <View style={styles.venueCard}>
               <View style={styles.venueRow}>
@@ -988,6 +1032,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  brandPhoto: {
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.26)",
+  },
   brandLetter: {
     fontWeight: "900",
     fontSize: 17,
@@ -1026,6 +1074,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: glass.border.profileBase,
   },
+  venueCardInteractive: {
+    borderColor: "rgba(255,255,255,0.24)",
+    shadowColor: "#000000",
+    shadowOpacity: 0.16,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 3,
+  },
+  venueCardPressed: {
+    opacity: 0.74,
+  },
   venueRow: {
     flexDirection: "row",
     gap: spacing.sm,
@@ -1047,6 +1106,7 @@ const styles = StyleSheet.create({
   },
   venueTextCol: {
     flex: 1,
+    minWidth: 0,
   },
   venueName: {
     fontSize: 15,
@@ -1057,6 +1117,21 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: text.secondary,
     marginTop: 2,
+  },
+  venueMapsPill: {
+    minHeight: 34,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: spacing.sm,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+  },
+  venueMapsText: {
+    color: text.primary,
+    fontSize: 11,
+    fontWeight: "800",
   },
 
   sectionTitle: {

@@ -8,7 +8,15 @@ const repoFile = (relativePath: string): string =>
 
 describe("ORCH-0964 design rework — public event page premium renderer", () => {
   const sharedSource = repoFile("packages/event-rendering/PublicEventPage.tsx");
+  const typesSource = repoFile("packages/event-rendering/types.ts");
   const packageSource = repoFile("packages/event-rendering/package.json");
+  const businessAdapterSource = readFileSync(
+    path.join(process.cwd(), "src/components/event/PublicEventPage.tsx"),
+    "utf8",
+  );
+  const consumerSheetSource = repoFile(
+    "app-mobile/src/components/expandedCard/ExpandedBusinessEventSheet.tsx",
+  );
 
   test("event body keeps the cover-scroll concept and upgrades into a glass sheet", () => {
     const heroWrapBlock =
@@ -54,5 +62,36 @@ describe("ORCH-0964 design rework — public event page premium renderer", () =>
     expect(sharedSource).toContain("styles.venueIconDisk");
     expect(sharedSource).toContain("{ backgroundColor: theme.color }");
     expect(sharedSource).toContain("Presented by");
+  });
+
+  test("presented-by card renders the brand profile photo when available", () => {
+    expect(typesSource).toContain("photo?: string");
+    expect(sharedSource).toContain("brand?.photo !== undefined");
+    expect(sharedSource).toContain("source={{ uri: brand.photo }}");
+    expect(sharedSource).toContain("styles.brandPhoto");
+    expect(businessAdapterSource).toContain("photo: brand.photo");
+    expect(consumerSheetSource).toContain(
+      "photo: card.brandProfilePhotoUrl ?? undefined",
+    );
+  });
+
+  test("location card opens platform maps without leaking hidden addresses", () => {
+    expect(typesSource).toContain("onOpenMaps?: (query: string) => void");
+    expect(sharedSource).toContain("const venueMapsQuery =");
+    expect(sharedSource).toContain(
+      "event.hideAddressUntilTicket || event.venueName === null",
+    );
+    expect(sharedSource).toContain("callbacks.onOpenMaps?.(venueMapsQuery)");
+    expect(sharedSource).toContain("Open maps");
+    expect(sharedSource).toContain("styles.venueMapsPill");
+    expect(businessAdapterSource).toContain("const openMapsForQuery =");
+    expect(businessAdapterSource).toContain('Platform.OS === "ios"');
+    expect(businessAdapterSource).toContain("maps://?q=");
+    expect(businessAdapterSource).toContain("geo:0,0?q=");
+    expect(businessAdapterSource).toContain(
+      "https://www.google.com/maps/search/?api=1&query=",
+    );
+    expect(businessAdapterSource).toContain("onOpenMaps: openMapsForQuery");
+    expect(consumerSheetSource).toContain("onOpenMaps: openMapsForQuery");
   });
 });
