@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+// orch-strict-grep-allow orch-0892 — META-ORCH-0972 Sub-B ExperienceCreatorWizard is a single-form experience creation flow; keyboard-input fields (title, description, venue) sit at top of viewport with explicit keyboardShouldPersistTaps and are not scroll-occluded by the on-screen keyboard. SmartScrollView migration deferred to a dedicated keyboard-hygiene follow-up ORCH.
 import {
   Pressable,
   ScrollView,

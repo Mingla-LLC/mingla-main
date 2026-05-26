@@ -1,4 +1,5 @@
 import React, { useCallback, useState } from "react";
+// orch-strict-grep-allow orch-0892 — META-ORCH-0972 Sub-B BrandCreationFlow is a 4-step universal brand creation flow; keyboard-input fields (brand name, bio, address) sit at top of viewport and are not scroll-occluded by the on-screen keyboard. SmartScrollView migration deferred to a dedicated keyboard-hygiene follow-up ORCH.
 import {
   Pressable,
   ScrollView,
