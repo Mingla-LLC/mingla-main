@@ -7,6 +7,44 @@
 
 ---
 
+## SPEC AMENDMENT 1 — 2026-05-26 — Single 30s cap via native trim
+
+**Operator decision:** collapse the original two-tier cap (500 MB raw / 5 min raw / 15s output / 25 MB output) into a **single 30-second cap** enforced at the picker via the device's NATIVE trim screen. The 30s slice the user trims IS the final cover — no separate output-trim step on Cloudinary.
+
+**Changes vs original SPEC:**
+
+1. **New caps (single user-facing number):**
+   - Picker enforces **30s maximum** via `expo-image-picker` `videoMaxDuration: 30` + `allowsEditing: true`.
+   - iOS: native iOS trim screen appears on any clip; user slides a 30s window across the source; returned URI is ONLY the trimmed 30s slice. No friction, no rejection.
+   - Android: same API; behavior is best-effort (some system pickers respect `videoMaxDuration`, some ignore it). If the returned clip duration is > 30s, post-pick fallback rejects with "Please trim to 30 seconds first" friendly copy.
+   - Web composer: no native trim available. Post-pick rejection with the same friendly copy. Future ORCH may add an in-app trim UI.
+   - Server-side defense-in-depth: `_shared/eventCoverVideo.ts` `MAX_SOURCE_VIDEO_DURATION_MS` lowered from `300_000` (5 min) → `60_000` (1 min — gives a 2× safety margin around the 30s cap in case picker enforcement glitches). `MAX_SOURCE_VIDEO_BYTES` lowered from `524_288_000` (500 MB) → `104_857_600` (100 MB — generous post-trim ceiling).
+
+2. **Cloudinary eager chain simplified:**
+   - DROP `so_{trimStartMs/1000}` and `du_{trimDurationMs/1000}` from the eager chain in `event-cover-video-upload-intent/index.ts:241-250`. The input is already trimmed to 30s by the picker, so Cloudinary doesn't need to slice it.
+   - KEEP `c_limit,w_1280,h_720,vc_h264,ac_aac,br_{clamped},f_mp4,q_auto:good`.
+   - `clampBitrate` math unchanged but now operates on the 30s output target (~6 Mbps to stay under 25 MB cap, vs ~12 Mbps for 15s) — visibly clean quality, mild softening on high-motion footage acceptable for cover use.
+
+3. **Service-layer params simplified:**
+   - `createEventCoverVideoUploadIntent` no longer requires `trimStartMs` / `trimEndMs` from the client (the picker already returned only the trimmed slice).
+   - For backward compatibility during rollout, the edge fn accepts these params if sent (server treats them as 0 / sourceDurationMs) but new client code stops sending them.
+
+4. **Cost/perf implications:**
+   - Per-upload transformation cost: 30s HD output = 0.12 credits (vs 0.06 at 15s; 2× per upload, still small absolute).
+   - Per-view delivery cost: ~10–18 MB per view (vs ~5–10 MB at 15s; ~2× bandwidth scaling at scale).
+   - Perf budget: still achievable. Compression of 30s 1080p HEVC = ~10–20s on a modern phone; upload of ~12–18 MB compressed = ~20–30s on cellular. Optimistic-local-preview pivot remains the safety net.
+   - Industry positioning: matches the Apple App Store preview ceiling (15-30s standard) and aligns with Vimeo/Wistia cover-video norms. Tight enough to feel like a cover, long enough to feel like a proper trailer.
+
+5. **New success criterion + tests:** SC-13 native-trim per platform; T-16 iOS native trim returns ≤30s slice; T-17 Android fallback rejection; T-18 web fallback rejection; T-19 server-side defense-in-depth rejection (defense if client bypassed).
+
+6. **New invariant:** I-PROPOSED-VIDEO-INPUT-CAP-AT-PICKER — cap is enforced at picker (`videoMaxDuration: 30` + `allowsEditing: true`) AND at edge fn (`MAX_SOURCE_VIDEO_DURATION_MS = 60_000` defense bound). CI gate strict-greps any `launchImageLibraryAsync` call with `mediaTypes` including video that omits `videoMaxDuration` or `allowsEditing`.
+
+7. **Removed open question OQ-3** (telemetry columns) — no longer needed since trim params drop. Original OQ-3 still listed for historical reference; mark as RESOLVED-by-amendment.
+
+**Affected sections of the original SPEC below:** §1 still accurate; §2 scope updated implicitly (the cap behaviour is now part of scope); §4.2 picker-related text updated; §4.3 service-layer compressVideoLocally unchanged but trim params dropped from callers; §4.5 picker component spec gets the new picker config; §5 add SC-13; §6 add I-PROPOSED-VIDEO-INPUT-CAP-AT-PICKER; §7 add T-16 through T-19; §8 add Step 1.5 (picker config); §10 OQ-3 marked RESOLVED.
+
+---
+
 ## 1 — Executive summary (≤10 sentences)
 
 This SPEC codifies the sub-30s perfect-render video upload pipeline derived from APPROVED RESEARCH. Phase 0 surfaced four binding constraints: (1) **both apps are on Expo SDK 54** (`~54.0.34`), the last SDK that still ships `expo-av` — so SDK migration is OUT OF SCOPE here (deferred to a future SDK-55 upgrade ORCH), but `expo-av` audio code in `app-mobile` (4 files for beta feedback) remains untouched and OK; (2) `mingla-business` already has `expo-video v3.0.16` installed and a complete `EventCoverMedia.tsx` renderer with web `<video>` + RN `VideoView` branches + mute toggle + autoplay+playsInline contract — most of the render-side architecture is already built; (3) `app-mobile` does NOT have `expo-video` installed and needs it added for consumer-side cover rendering; (4) the `_shared/eventCoverVideo.ts` helpers (HMAC-SHA1 signature, derivative validation, status mapping) are well-structured and reusable for cancel-destroy and new picker integration. The SPEC therefore focuses on **four discrete IMPLEMENT deltas**: (A) add `react-native-compressor` to both apps + wire client-side compression into the upload service, (B) add Cloudinary destroy API call to the cancel edge function so abort cleans up the in-flight asset, (C) add optimistic-local-preview swap pattern to the upload UI components, (D) refactor `EventCoverMedia` either into the existing `packages/event-rendering/` package OR a new shared module so consumer and business apps share one render contract. Three new DRAFT invariants codify the structural safeguards: I-PROPOSED-VIDEO-UPLOAD-OPTIMISTIC-PREVIEW, I-PROPOSED-VIDEO-CANCEL-ABORTS-UPLOAD, I-PROPOSED-VIDEO-AUTOPLAY-MUTED-CONTRACT. **IMPLEMENT is GATED on ORCH-0964 [Public-page theme customization] PR merging to main** (per WORLD_MAP intake; ORCH-0964 introduces `packages/brand-rendering/` and reshapes `packages/event-rendering/` — collision risk on render-layer files).
