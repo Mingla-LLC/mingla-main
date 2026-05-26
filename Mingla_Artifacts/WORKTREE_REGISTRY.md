@@ -15,7 +15,7 @@ Reference: [WORKTREE_STRATEGY.md](WORKTREE_STRATEGY.md).
 | Worktree path | Branch | ORCH-ID | Phase | Sim assigned | Metro port | Spawned | Owner |
 |---------------|--------|---------|-------|--------------|------------|---------|-------|
 | `~/Desktop/mingla-orchs/meta-orch-0952-[buyer-web-confirm-deep-forensics]` | `meta-orch-0952-buyer-web-confirm-deep-forensics` | META-ORCH-0952 | INVESTIGATE | no sim — buyer-web (Playwright Chromium + Safari) | 8083 | 2026-05-24 | Claude `mingla-orchestrator` (dispatch) → Claude `mingla-forensics` (active) |
-| `~/Desktop/mingla-orchs/ORCH-0978-[video-upload-polish-and-cloudinary-lifecycle]` | `ORCH-0978-video-upload-polish-and-cloudinary-lifecycle` | ORCH-0978 | SPEC APPROVED + T-00 PoC PASS (2026-05-26 — physical iPhone 4K HDR worst-case: 30s→9.76s compress, 15s→5.10s compress, quality indistinguishable) — IMPLEMENT cleared on perf dimension, only ONE remaining gate: ORCH-0964 PR merge | iPhone 17 Pro + Android emu + Playwright Chromium | 8090 | 2026-05-26 | Claude `mingla-orchestrator` (PoC interpreted PASS) → awaiting ORCH-0964 merge → IMPLEMENT dispatch |
+| `~/Desktop/mingla-orchs/ORCH-0978-[video-upload-polish-and-cloudinary-lifecycle]` | `ORCH-0978-video-upload-polish-and-cloudinary-lifecycle` | ORCH-0978 | IMPLEMENT REVIEW APPROVED (work quality, commit `3e8d03ed0`) — BLOCKED on ORCH-0964 PR #220 merge + rebase resolving 3 packages/event-rendering/ conflicts BEFORE edge deploy + tester dispatch | iPhone 17 Pro + Android emu + Playwright Chromium | 8090 | 2026-05-26 | Claude `mingla-orchestrator` (IMPLEMENT REVIEWED) → operator awaits ORCH-0964 merge → implementor rebases → orchestrator deploys edge fns → mingla-tester T-11/T-12 |
 
 ---
 
