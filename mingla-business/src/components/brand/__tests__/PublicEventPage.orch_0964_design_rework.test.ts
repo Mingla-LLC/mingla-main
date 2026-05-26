@@ -33,7 +33,7 @@ describe("ORCH-0964 design rework — public event page premium renderer", () =>
     expect(bodyContentBlock).toContain("maxWidth: 660");
     expect(bodyContentBlock).toContain("borderTopLeftRadius: 28");
     expect(bodyContentBlock).toContain(
-      'backgroundColor: "rgba(8, 10, 14, 0.92)"',
+      'backgroundColor: "rgba(5, 7, 11, 0.96)"',
     );
   });
 
@@ -46,9 +46,14 @@ describe("ORCH-0964 design rework — public event page premium renderer", () =>
     expect(sharedSource).toContain("styles.ticketHeaderRow");
     expect(sharedSource).toContain("styles.ticketPricePill");
     expect(sharedSource).toContain("styles.ticketFooterRow");
-    expect(sharedSource).toContain("borderColor: theme.color");
-    expect(ticketCardBlock).toContain("shadowOpacity: 0.2");
-    expect(ticketBuyerBlock).toContain("minHeight: 52");
+    expect(sharedSource).toContain("styles.ticketCardAccent");
+    expect(sharedSource).toContain("borderColor: theme.foregroundColor");
+    expect(sharedSource).toContain("shadowColor: theme.color");
+    expect(ticketCardBlock).toContain("borderWidth: 1.5");
+    expect(ticketCardBlock).toContain("shadowOpacity: 0.3");
+    expect(ticketBuyerBlock).toContain("minHeight: 58");
+    expect(ticketBuyerBlock).toContain("borderWidth: 2");
+    expect(ticketBuyerBlock).toContain("shadowOpacity: 0.42");
     expect(ticketBuyerBlock).toContain('alignItems: "center"');
     expect(sharedSource).not.toContain("ticketRowDivider");
     expect(sharedSource).not.toContain("isLast");
@@ -84,6 +89,7 @@ describe("ORCH-0964 design rework — public event page premium renderer", () =>
     expect(sharedSource).toContain("callbacks.onOpenMaps?.(venueMapsQuery)");
     expect(sharedSource).toContain("Open maps");
     expect(sharedSource).toContain("styles.venueMapsPill");
+    expect(sharedSource).toContain("{ color: theme.foregroundColor }");
     expect(businessAdapterSource).toContain("const openMapsForQuery =");
     expect(businessAdapterSource).toContain('Platform.OS === "ios"');
     expect(businessAdapterSource).toContain("maps://?q=");

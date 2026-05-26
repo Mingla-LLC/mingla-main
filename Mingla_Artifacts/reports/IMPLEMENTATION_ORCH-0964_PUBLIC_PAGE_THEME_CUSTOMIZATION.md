@@ -658,6 +658,33 @@ cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0964-[public-page-theme-customiz
 
 Result: PASS, all listed strict-grep gates passed.
 
+## Smoke-Test Design Rework #11 — Public Event Contrast + Button Weight
+
+User-visible changes:
+
+- Public event ticket cards now have a darker, higher-contrast glass surface with a themed accent strip at the top of each ticket card.
+- Ticket purchase buttons now read as stronger primary actions: larger height, heavier border, stronger shadow/glow, and contrast-aware border/text pairing from the resolved theme foreground color.
+- The event location "Open maps" control now uses the same high-contrast button treatment instead of a subtle translucent pill.
+- The page body sheet was deepened slightly so white text, ticket cards, and buttons separate more clearly from the cover.
+
+Regression coverage updated:
+
+- `mingla-business/src/components/brand/__tests__/PublicEventPage.orch_0964_design_rework.test.ts`
+
+Verification:
+
+```bash
+cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0964-[public-page-theme-customization]/mingla-business" && npx jest src/components/brand/__tests__/PublicEventPage.orch_0964_design_rework.test.ts src/components/brand/__tests__/PublicBrandPage.orch_0964_smoke_rework.test.ts src/components/brand/__tests__/themeAnimations.orch_0964_smoke_rework.test.ts src/utils/__tests__/themeResolver.orch_0964.test.ts src/utils/__tests__/themeResolver.adversarial.orch_0964.test.ts src/utils/__tests__/brandPatch.orch_0964_smoke_rework.test.ts src/hooks/__tests__/useBrands.orch_0964_public_theme_cache.test.ts --runInBand
+```
+
+Result: PASS, 7 suites / 27 tests passed.
+
+```bash
+cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0964-[public-page-theme-customization]" && node .github/scripts/strict-grep/orch-0964-theme-typed-columns.mjs && node .github/scripts/strict-grep/orch-0964-theme-resolver-canonical.mjs && node .github/scripts/strict-grep/orch-0964-theme-foreground-computed.mjs && node .github/scripts/strict-grep/orch-0964-checkout-no-brand-theme.mjs && node .github/scripts/strict-grep/orch-0964-brand-rendering-self-contained.mjs && node .github/scripts/strict-grep/orch-0964-well-known-json-content-type.mjs && node .github/scripts/strict-grep/meta-orch-0972-data-driven-tabs.mjs && node .github/scripts/strict-grep/meta-orch-0972-no-brand-kind-reads.mjs && node .github/scripts/strict-grep/orch-0963-public-trip-rpc-and-route-segregation.mjs && node .github/scripts/strict-grep/orch-0863-marketing-hub-phase-b.mjs
+```
+
+Result: PASS, all listed strict-grep gates passed.
+
 ## Downstream Routing
 
 Next: Codex `tester-mingla` RETEST should verify this rework against `Mingla_Artifacts/reports/QA_ORCH-0964_PUBLIC_PAGE_THEME_CUSTOMIZATION_RETEST.md`, including committed assetlinks content, rebase proof, restored META gates, the cleared `publicEventsService.ts` `Brand.kind` TypeScript blocker, and `npm run test:orch-0964-logout-cache`. Android OS tap verification remains post-merge/deploy/device-gated.

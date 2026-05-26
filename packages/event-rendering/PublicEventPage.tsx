@@ -511,8 +511,24 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
                   <Text style={styles.venueAddress}>{venueAddressLabel}</Text>
                 </View>
                 {canOpenVenueMaps ? (
-                  <View style={styles.venueMapsPill}>
-                    <Text style={styles.venueMapsText}>Open maps</Text>
+                  <View
+                    style={[
+                      styles.venueMapsPill,
+                      {
+                        backgroundColor: theme.color,
+                        borderColor: theme.foregroundColor,
+                        shadowColor: theme.color,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.venueMapsText,
+                        { color: theme.foregroundColor },
+                      ]}
+                    >
+                      Open maps
+                    </Text>
                   </View>
                 ) : null}
               </View>
@@ -657,6 +673,10 @@ const PublicTicketRow: React.FC<PublicTicketRowProps> = ({
     <View
       style={[styles.ticketCard, isVisDisabled && styles.ticketCardDisabled]}
     >
+      <View
+        pointerEvents="none"
+        style={[styles.ticketCardAccent, { backgroundColor: theme.color }]}
+      />
       <View style={styles.ticketHeaderRow}>
         <View style={styles.ticketTextCol}>
           <Text style={styles.ticketName}>{ticket.name}</Text>
@@ -680,7 +700,8 @@ const PublicTicketRow: React.FC<PublicTicketRowProps> = ({
             styles.ticketBuyerBtn,
             {
               backgroundColor: theme.color,
-              borderColor: theme.color,
+              borderColor: theme.foregroundColor,
+              shadowColor: theme.color,
             },
             isButtonDisabled && styles.ticketBuyerBtnDisabled,
           ]}
@@ -920,7 +941,7 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xl,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
-    backgroundColor: "rgba(8, 10, 14, 0.92)",
+    backgroundColor: "rgba(5, 7, 11, 0.96)",
     borderWidth: 1,
     borderBottomWidth: 0,
     borderColor: "rgba(255,255,255,0.14)",
@@ -1070,15 +1091,15 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
     padding: spacing.md,
     borderRadius: radius.lg,
-    backgroundColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "rgba(255,255,255,0.10)",
     borderWidth: 1,
     borderColor: glass.border.profileBase,
   },
   venueCardInteractive: {
-    borderColor: "rgba(255,255,255,0.24)",
+    borderColor: "rgba(255,255,255,0.32)",
     shadowColor: "#000000",
-    shadowOpacity: 0.16,
-    shadowRadius: 16,
+    shadowOpacity: 0.22,
+    shadowRadius: 20,
     shadowOffset: { width: 0, height: 8 },
     elevation: 3,
   },
@@ -1119,19 +1140,25 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   venueMapsPill: {
-    minHeight: 34,
+    minHeight: 38,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: spacing.md,
     borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.12)",
-    borderWidth: 1,
+    backgroundColor: accent.warm,
+    borderWidth: 2,
     borderColor: "rgba(255,255,255,0.18)",
+    shadowColor: accent.warm,
+    shadowOpacity: 0.28,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
   },
   venueMapsText: {
-    color: text.primary,
-    fontSize: 11,
-    fontWeight: "800",
+    color: "#ffffff",
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 0.2,
   },
 
   sectionTitle: {
@@ -1160,16 +1187,26 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   ticketCard: {
+    position: "relative",
+    overflow: "hidden",
     padding: spacing.md,
+    paddingTop: spacing.lg,
     borderRadius: radius.lg,
-    backgroundColor: "rgba(255,255,255,0.09)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.16)",
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.24)",
     shadowColor: "#000000",
-    shadowOpacity: 0.2,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 4,
+    shadowOpacity: 0.3,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 14 },
+    elevation: 7,
+  },
+  ticketCardAccent: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 5,
   },
   ticketCardDisabled: {
     opacity: 0.5,
@@ -1208,30 +1245,30 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
   },
   ticketBuyerBtn: {
-    minHeight: 52,
+    minHeight: 58,
     paddingHorizontal: spacing.lg,
-    paddingVertical: 14,
-    borderRadius: radius.md,
+    paddingVertical: 16,
+    borderRadius: radius.lg,
     backgroundColor: accent.tint,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: accent.border,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000000",
-    shadowOpacity: 0.18,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 4,
+    shadowColor: accent.warm,
+    shadowOpacity: 0.42,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 8,
   },
   ticketBuyerBtnDisabled: {
     backgroundColor: glass.tint.profileBase,
     borderColor: glass.border.profileBase,
   },
   ticketBuyerBtnLabel: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: "900",
     color: accent.warm,
-    letterSpacing: 0.3,
+    letterSpacing: 0.5,
   },
   ticketBuyerBtnLabelDisabled: {
     color: text.tertiary,
