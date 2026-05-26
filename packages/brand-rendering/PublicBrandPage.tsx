@@ -32,6 +32,8 @@ const PINNED_CTA_CARD_COUNT = 3;
 
 type ThemePalette = {
   page: string;
+  accent: string;
+  accentText: string;
   pageWash: string;
   heroScrim: string;
   heroLift: string;
@@ -47,6 +49,12 @@ type ThemePalette = {
   tabBand: string;
   tabBorder: string;
   accentWash: string;
+};
+
+type Rgb = {
+  r: number;
+  g: number;
+  b: number;
 };
 
 const normalizeSocialUrl = (raw: string, base: string): string => {
@@ -121,35 +129,126 @@ const openUrl = (url: string): void => {
   void Linking.openURL(url).catch(() => undefined);
 };
 
-const hexToRgba = (hex: string, alpha: number): string => {
+const FALLBACK_ACCENT_RGB: Rgb = { r: 235, g: 120, b: 37 };
+
+const clampColorChannel = (value: number): number =>
+  Math.min(255, Math.max(0, Math.round(value)));
+
+const parseHexColor = (hex: string): Rgb => {
   const match = /^#([0-9a-fA-F]{6})$/.exec(hex);
-  if (match === null) return `rgba(235,120,37,${alpha})`;
+  if (match === null) return FALLBACK_ACCENT_RGB;
   const value = match[1];
-  const r = parseInt(value.slice(0, 2), 16);
-  const g = parseInt(value.slice(2, 4), 16);
-  const b = parseInt(value.slice(4, 6), 16);
+  return {
+    r: parseInt(value.slice(0, 2), 16),
+    g: parseInt(value.slice(2, 4), 16),
+    b: parseInt(value.slice(4, 6), 16),
+  };
+};
+
+const rgbToHex = ({ r, g, b }: Rgb): string =>
+  `#${[r, g, b]
+    .map((channel) => clampColorChannel(channel).toString(16).padStart(2, "0"))
+    .join("")}`;
+
+const mixHexColors = (from: string, to: string, amount: number): string => {
+  const a = parseHexColor(from);
+  const b = parseHexColor(to);
+  const weight = Math.min(1, Math.max(0, amount));
+  return rgbToHex({
+    r: a.r + (b.r - a.r) * weight,
+    g: a.g + (b.g - a.g) * weight,
+    b: a.b + (b.b - a.b) * weight,
+  });
+};
+
+const hexToRgba = (hex: string, alpha: number): string => {
+  const { r, g, b } = parseHexColor(hex);
   return `rgba(${r},${g},${b},${alpha})`;
 };
 
+const linearizeSrgb = (channel: number): number => {
+  const normalized = channel / 255;
+  return normalized <= 0.03928
+    ? normalized / 12.92
+    : ((normalized + 0.055) / 1.055) ** 2.4;
+};
+
+const relativeLuminance = (hex: string): number => {
+  const { r, g, b } = parseHexColor(hex);
+  return (
+    0.2126 * linearizeSrgb(r) +
+    0.7152 * linearizeSrgb(g) +
+    0.0722 * linearizeSrgb(b)
+  );
+};
+
+const contrastRatio = (a: string, b: string): number => {
+  const lighter = Math.max(relativeLuminance(a), relativeLuminance(b));
+  const darker = Math.min(relativeLuminance(a), relativeLuminance(b));
+  return (lighter + 0.05) / (darker + 0.05);
+};
+
+const readableTextFor = (background: string): "#000000" | "#ffffff" =>
+  contrastRatio("#000000", background) >= contrastRatio("#ffffff", background)
+    ? "#000000"
+    : "#ffffff";
+
+const contrastAdjustedAccent = (
+  accentColor: string,
+  background: string,
+  minimumRatio: number,
+): string => {
+  if (contrastRatio(accentColor, background) >= minimumRatio) return accentColor;
+  const direction = readableTextFor(background);
+  let adjusted = accentColor;
+  for (let i = 0; i < 12; i++) {
+    adjusted = mixHexColors(adjusted, direction, 0.16);
+    if (contrastRatio(adjusted, background) >= minimumRatio) return adjusted;
+  }
+  return adjusted;
+};
+
 const createThemePalette = (theme: ResolvedTheme): ThemePalette => {
-  const isLight = theme.foregroundColor === "#000000";
+  const darkBase = "#07070a";
+  const lightBase = "#f8fafc";
+  const accentOnDark = contrastRatio(theme.color, darkBase);
+  const accentOnLight = contrastRatio(theme.color, lightBase);
+  const useDark =
+    accentOnDark >= 3 && accentOnLight < 3
+      ? true
+      : accentOnLight >= 3 && accentOnDark < 3
+        ? false
+        : theme.foregroundColor === "#ffffff";
+  const basePage = useDark ? darkBase : lightBase;
+  const page = mixHexColors(basePage, theme.color, useDark ? 0.10 : 0.035);
+  const accentColor = contrastAdjustedAccent(theme.color, page, 3.15);
+  const accentText = readableTextFor(accentColor);
+  const primaryText = readableTextFor(page);
+  const secondaryText =
+    primaryText === "#ffffff" ? "rgba(255,255,255,0.78)" : "rgba(16,20,31,0.76)";
+  const tertiaryText =
+    primaryText === "#ffffff" ? "rgba(255,255,255,0.58)" : "rgba(16,20,31,0.58)";
+  const mutedText =
+    primaryText === "#ffffff" ? "rgba(255,255,255,0.40)" : "rgba(16,20,31,0.42)";
   return {
-    page: isLight ? "#f8fafc" : "#07070a",
-    pageWash: hexToRgba(theme.color, isLight ? 0.10 : 0.22),
-    heroScrim: isLight ? "rgba(248,250,252,0.30)" : "rgba(4,5,8,0.42)",
-    heroLift: isLight ? "rgba(248,250,252,0.88)" : "rgba(7,7,10,0.78)",
-    primaryText: isLight ? "#10141f" : "#ffffff",
-    secondaryText: isLight ? "rgba(16,20,31,0.74)" : "rgba(255,255,255,0.76)",
-    tertiaryText: isLight ? "rgba(16,20,31,0.56)" : "rgba(255,255,255,0.56)",
-    mutedText: isLight ? "rgba(16,20,31,0.42)" : "rgba(255,255,255,0.38)",
-    panel: isLight ? "rgba(255,255,255,0.74)" : "rgba(255,255,255,0.07)",
-    panelStrong: isLight ? "rgba(255,255,255,0.92)" : "rgba(255,255,255,0.10)",
-    panelBorder: hexToRgba(theme.color, isLight ? 0.26 : 0.34),
-    card: isLight ? "rgba(255,255,255,0.82)" : "rgba(255,255,255,0.075)",
-    cardBorder: isLight ? "rgba(16,20,31,0.08)" : "rgba(255,255,255,0.10)",
-    tabBand: hexToRgba(theme.color, isLight ? 0.12 : 0.18),
-    tabBorder: hexToRgba(theme.color, isLight ? 0.28 : 0.42),
-    accentWash: hexToRgba(theme.color, isLight ? 0.16 : 0.22),
+    page,
+    accent: accentColor,
+    accentText,
+    pageWash: hexToRgba(theme.color, useDark ? 0.24 : 0.12),
+    heroScrim: useDark ? "rgba(4,5,8,0.50)" : "rgba(248,250,252,0.36)",
+    heroLift: useDark ? "rgba(7,7,10,0.82)" : "rgba(248,250,252,0.90)",
+    primaryText,
+    secondaryText,
+    tertiaryText,
+    mutedText,
+    panel: useDark ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.76)",
+    panelStrong: useDark ? "rgba(255,255,255,0.11)" : "rgba(255,255,255,0.92)",
+    panelBorder: hexToRgba(accentColor, useDark ? 0.38 : 0.30),
+    card: useDark ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.84)",
+    cardBorder: useDark ? "rgba(255,255,255,0.11)" : "rgba(16,20,31,0.08)",
+    tabBand: hexToRgba(accentColor, useDark ? 0.20 : 0.14),
+    tabBorder: hexToRgba(accentColor, useDark ? 0.46 : 0.34),
+    accentWash: hexToRgba(accentColor, useDark ? 0.24 : 0.18),
   };
 };
 
@@ -325,11 +424,6 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
         )}
         <View style={[styles.heroThemeTint, { backgroundColor: palette.pageWash }]} />
         <View style={[styles.heroFade, { backgroundColor: palette.heroScrim }]} />
-        <ThemeEntranceAnimation
-          theme={resolvedTheme}
-          sessionKey={`brand:${brand.slug}:${resolvedTheme.color}:${resolvedTheme.font}`}
-          replayOnMount
-        />
       </View>
 
       {hideFloatingChrome ? null : (
@@ -369,14 +463,14 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
             },
           ]}
         >
-          <Avatar brand={brand} theme={resolvedTheme} palette={palette} />
+          <Avatar brand={brand} palette={palette} />
           <Text
             style={[styles.brandNameCentered, themedFont, { color: palette.primaryText }]}
           >
             {brand.displayName}
           </Text>
           {venue?.isVerifiedVenue === true ? (
-            <Text style={[styles.verifiedBadge, { color: resolvedTheme.color }]}>
+            <Text style={[styles.verifiedBadge, { color: palette.accent }]}>
               Verified venue
             </Text>
           ) : null}
@@ -400,7 +494,6 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
 
         <SocialLinksRow
           entries={socialEntries}
-          theme={resolvedTheme}
           palette={palette}
           onPress={onExternal}
         />
@@ -484,6 +577,13 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
           />
         )}
       </ScrollView>
+
+      <ThemeEntranceAnimation
+        theme={resolvedTheme}
+        sessionKey={`brand:${brand.slug}:${resolvedTheme.color}:${resolvedTheme.font}`}
+        replayOnMount
+        colorOverride={palette.accent}
+      />
     </View>
   );
 };
@@ -527,15 +627,14 @@ const ChromeGlyph: React.FC<{ glyph: "x" | "share" }> = ({ glyph }) => (
 
 const Avatar: React.FC<{
   brand: PublicBrand;
-  theme: ResolvedTheme;
   palette: ThemePalette;
-}> = ({ brand, theme, palette }) => {
+}> = ({ brand, palette }) => {
   const avatarStyle = [
     styles.avatar,
     {
       backgroundColor: palette.panelStrong,
-      borderColor: theme.color,
-      shadowColor: theme.color,
+      borderColor: palette.accent,
+      shadowColor: palette.accent,
     },
   ];
   if (brand.photo !== undefined && brand.photo.length > 0) {
@@ -559,10 +658,9 @@ const Avatar: React.FC<{
 
 const SocialLinksRow: React.FC<{
   entries: Array<{ label: string; url: string }>;
-  theme: ResolvedTheme;
   palette: ThemePalette;
   onPress: (url: string) => void;
-}> = ({ entries, theme, palette, onPress }) => {
+}> = ({ entries, palette, onPress }) => {
   if (entries.length === 0) return null;
   return (
     <View style={styles.socialsRowCompact}>
@@ -580,7 +678,7 @@ const SocialLinksRow: React.FC<{
             },
           ]}
         >
-          <Text style={[styles.socialGlyph, { color: theme.color }]}>
+          <Text style={[styles.socialGlyph, { color: palette.accent }]}>
             {entry.label.charAt(0)}
           </Text>
         </Pressable>
@@ -604,7 +702,7 @@ const TabButton: React.FC<{
     accessibilityLabel={label}
     style={[
       styles.tabButton,
-      active && { borderBottomColor: theme.color },
+      active && { borderBottomColor: palette.accent },
     ]}
   >
     <Text
@@ -693,7 +791,7 @@ const EventMiniCard: React.FC<{
         mediaType={event.coverMediaType}
       />
       <View style={styles.eventBody}>
-        <Text style={[styles.eventDate, { color: theme.color }]}>
+        <Text style={[styles.eventDate, { color: palette.accent }]}>
           {event.dateLine}
         </Text>
         <Text
@@ -719,11 +817,11 @@ const EventMiniCard: React.FC<{
         ) : null}
       </View>
       {pinCta ? (
-        <View style={[styles.eventBuyPill, { backgroundColor: theme.color }]}>
+        <View style={[styles.eventBuyPill, { backgroundColor: palette.accent }]}>
           <Text
             style={[
               styles.eventBuyPillLabel,
-              { color: theme.foregroundColor },
+              { color: palette.accentText },
             ]}
           >
             Buy tickets
@@ -757,7 +855,7 @@ const NextOfferingTeaser: React.FC<{
         pressed && styles.cardPressed,
       ]}
     >
-      <Text style={[styles.nextTeaserLabel, { color: theme.color }]}>NEXT</Text>
+      <Text style={[styles.nextTeaserLabel, { color: palette.accent }]}>NEXT</Text>
       <Text
         style={[
           styles.nextTeaserBody,
@@ -767,7 +865,7 @@ const NextOfferingTeaser: React.FC<{
       >
         {bodyText}
       </Text>
-      <Text style={[styles.nextTeaserArrow, { color: theme.color }]}>→</Text>
+      <Text style={[styles.nextTeaserArrow, { color: palette.accent }]}>→</Text>
     </Pressable>
   );
 };
@@ -856,7 +954,7 @@ const TripMiniCard: React.FC<{
       />
       <View style={styles.eventBody}>
         {dateLine.length > 0 ? (
-          <Text style={[styles.eventDate, { color: theme.color }]}>
+          <Text style={[styles.eventDate, { color: palette.accent }]}>
             {dateLine}
           </Text>
         ) : null}
@@ -975,7 +1073,7 @@ const OfferingMiniCard: React.FC<{
         mediaType={item.coverMediaType}
       />
       <View style={styles.eventBody}>
-        <Text style={[styles.eventDate, { color: theme.color }]}>
+        <Text style={[styles.eventDate, { color: palette.accent }]}>
           {formatUpcomingDateLine(item.startsAt)}
         </Text>
         <Text
@@ -1054,7 +1152,7 @@ const ExperienceMiniCard: React.FC<{
       />
       <View style={styles.eventBody}>
         {experience.nextOccurrenceAt !== null ? (
-          <Text style={[styles.eventDate, { color: theme.color }]}>
+          <Text style={[styles.eventDate, { color: palette.accent }]}>
             {formatUpcomingDateLine(experience.nextOccurrenceAt)}
           </Text>
         ) : null}
@@ -1152,14 +1250,14 @@ const AboutTab: React.FC<{
         </Text>
         {brand.contact?.email !== undefined ? (
           <Pressable onPress={() => onExternal(`mailto:${brand.contact?.email}`)}>
-            <Text style={[styles.aboutContactLink, { color: theme.color }]}>
+            <Text style={[styles.aboutContactLink, { color: palette.accent }]}>
               {brand.contact.email}
             </Text>
           </Pressable>
         ) : null}
         {brand.contact?.phone !== undefined ? (
           <Pressable onPress={() => onExternal(`tel:${brand.contact?.phone}`)}>
-            <Text style={[styles.aboutContactLink, { color: theme.color }]}>
+            <Text style={[styles.aboutContactLink, { color: palette.accent }]}>
               {brand.contact.phone}
             </Text>
           </Pressable>

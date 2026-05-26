@@ -21,9 +21,10 @@ describe("ORCH-0964 smoke rework — business public-page preview chrome/theme",
     expect(sharedSource).toContain("const palette = useMemo(() => createThemePalette(resolvedTheme)");
     expect(sharedSource).toContain("styles.heroThemeTint");
     expect(sharedSource).toContain(
-      "<ThemeEntranceAnimation\n          theme={resolvedTheme}",
+      "</ScrollView>\n\n      <ThemeEntranceAnimation\n        theme={resolvedTheme}",
     );
     expect(sharedSource).toContain("replayOnMount");
+    expect(sharedSource).toContain("colorOverride={palette.accent}");
     expect(sharedSource).toContain('pointerEvents="none"');
     expect(sharedSource).toContain("styles.floatingChrome");
     expect(sharedSource).toContain('pointerEvents="box-none"');
@@ -39,19 +40,27 @@ describe("ORCH-0964 smoke rework — business public-page preview chrome/theme",
   test("theme is visible beyond the cover image fallback", () => {
     expect(sharedSource).toContain("type ThemePalette");
     expect(sharedSource).toContain("const createThemePalette = (theme: ResolvedTheme)");
-    expect(sharedSource).toContain('page: isLight ? "#f8fafc" : "#07070a"');
+    expect(sharedSource).toContain("const contrastRatio = (a: string, b: string): number");
+    expect(sharedSource).toContain("const contrastAdjustedAccent = (");
+    expect(sharedSource).toContain("const useDark =");
+    expect(sharedSource).toContain("const accentColor = contrastAdjustedAccent(theme.color, page, 3.15)");
     expect(sharedSource).toContain("backgroundColor: palette.page");
     expect(sharedSource).toContain("backgroundColor: palette.heroLift");
-    expect(sharedSource).toContain("borderColor: theme.color");
+    expect(sharedSource).toContain("borderColor: palette.accent");
     expect(sharedSource).toContain("backgroundColor: palette.card");
+    expect(sharedSource).toContain("backgroundColor: palette.accent");
     expect(sharedSource).toContain("color: palette.primaryText");
+    expect(sharedSource).toContain("color: palette.accentText");
   });
 
   test("public brand animation replays per page mount without changing event-page behavior", () => {
     expect(animationSource).toContain("replayOnMount?: boolean");
+    expect(animationSource).toContain("colorOverride?: string");
     expect(animationSource).toContain("replayOnMount = false");
     expect(animationSource).toContain("mountIdRef");
     expect(animationSource).toContain("replayOnMount\n    ? `${sessionKey}:${theme.animation}:${mountIdRef.current}`");
+    expect(animationSource).toContain("colorOverride ?? theme.color");
+    expect(animationSource).toContain("elevation: 6");
     expect(sharedSource).toContain(
       "sessionKey={`brand:${brand.slug}:${resolvedTheme.color}:${resolvedTheme.font}`}",
     );

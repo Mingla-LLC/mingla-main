@@ -151,6 +151,39 @@ Result: PASS, all listed strict-grep gates passed.
 
 TypeScript note: full `mingla-business` TypeScript remains blocked by existing unrelated app/shared-package type debt, including pre-existing `home.tsx`, checkout, ComposerV2, payment package, old test fixture `category`, and shared-package module-resolution errors. This rework did not introduce a new package dependency; focused regression and strict-grep gates are the release proof for this scoped pass.
 
+## Smoke-Test Design Rework #2 — contrast solver + full-page animation overlay
+
+Seth re-smoked the first design pass and reported that the page still needed better color science and that the animation still did not show. The second design rework keeps the same ORCH-0964 scope and existing DB fields, but changes the renderer from a foreground-flag palette to a contrast-measured palette.
+
+Follow-up changes:
+
+- `packages/brand-rendering/PublicBrandPage.tsx` now computes relative luminance and contrast ratio for the saved theme color against light and dark page surfaces.
+- The renderer chooses the better light/near-black page base for the selected brand color, then adjusts the displayed accent toward white or black until it reaches a minimum contrast target against the page.
+- The contrast-adjusted accent now drives badges, profile-photo ring/shadow, social glyphs, selected tab underline, date labels, contact links, next-offering affordances, and pinned CTA pills; CTA text uses a separately computed `accentText`.
+- `ThemeEntranceAnimation` is no longer mounted inside the cover band. `PublicBrandPage` mounts it as a root-level overlay after the scroll view, passes the contrast-adjusted accent through `colorOverride`, and `ThemeEntranceAnimation` now supports that override with Android elevation.
+
+Regression coverage:
+
+```bash
+cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0964-[public-page-theme-customization]/mingla-business" && npx jest src/components/brand/__tests__/PublicBrandPage.orch_0964_smoke_rework.test.ts --runInBand
+```
+
+Result: PASS, 1 suite / 5 tests passed. The test now guards the contrast solver primitives, the adjusted accent/color override contract, and the root-level page overlay mount.
+
+Focused rework check:
+
+```bash
+cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0964-[public-page-theme-customization]/mingla-business" && npx jest src/utils/__tests__/brandPatch.orch_0964_smoke_rework.test.ts src/hooks/__tests__/useBrands.orch_0964_public_theme_cache.test.ts src/components/brand/__tests__/PublicBrandPage.orch_0964_smoke_rework.test.ts src/utils/__tests__/themeResolver.orch_0964.test.ts src/utils/__tests__/themeResolver.adversarial.orch_0964.test.ts --runInBand
+```
+
+Result: PASS, 5 suites / 14 tests passed.
+
+```bash
+cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0964-[public-page-theme-customization]" && node .github/scripts/strict-grep/orch-0964-theme-typed-columns.mjs && node .github/scripts/strict-grep/orch-0964-theme-resolver-canonical.mjs && node .github/scripts/strict-grep/orch-0964-theme-foreground-computed.mjs && node .github/scripts/strict-grep/orch-0964-checkout-no-brand-theme.mjs && node .github/scripts/strict-grep/orch-0964-brand-rendering-self-contained.mjs && node .github/scripts/strict-grep/orch-0964-well-known-json-content-type.mjs && node .github/scripts/strict-grep/meta-orch-0972-data-driven-tabs.mjs && node .github/scripts/strict-grep/meta-orch-0972-no-brand-kind-reads.mjs && node .github/scripts/strict-grep/orch-0963-public-trip-rpc-and-route-segregation.mjs && node .github/scripts/strict-grep/orch-0863-marketing-hub-phase-b.mjs
+```
+
+Result: PASS, all listed strict-grep gates passed.
+
 ## Rework Update — Android App Links consumer target
 
 Seth provided the verified consumer Android package fingerprints after the first QA pass. `mingla-business/public/.well-known/assetlinks.json` now preserves the existing business-app target for `com.sethogieva.minglabusiness` and adds a second Android App Links target for `com.mingla.app.v2` with both verified SHA-256 fingerprints:
