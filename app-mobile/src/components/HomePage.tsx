@@ -9,7 +9,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { s, vs, ms } from "../utils/responsive";
 import SwipeableCards from "./SwipeableCards";
 import { useCoachMark } from "../hooks/useCoachMark";
-import NotificationsModal from "./NotificationsModal";
+import NotificationsSheet from "./NotificationsSheet";
 import { GlassTopBar } from "./GlassTopBar";
 import FriendRequestsModal from "./FriendRequestsModal";
 import { useNotifications, ServerNotification } from "../hooks/useNotifications";
@@ -206,7 +206,7 @@ function HomePage({
         </View>
 
         {/* V2 Notifications Modal — server-synced */}
-        <NotificationsModal
+        <NotificationsSheet
           visible={showNotificationsModal}
           onClose={handleCloseNotifications}
           notifications={notifications}

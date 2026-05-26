@@ -2,14 +2,10 @@
   "header": {
     "title": "Meldingen",
     "unread": "{{count}} ongelezen",
-    "markAllRead": "Alles als gelezen markeren",
-    "clearAll": "Alles wissen"
-  },
-  "filters": {
-    "all": "Alles",
-    "social": "Sociaal",
-    "sessions": "Sessies",
-    "messages": "Berichten"
+    "markAllRead": "Mark all as read",
+    "clearAll": "Alles wissen",
+    "subtitle": "Stay updated on what matters.",
+    "newCount": "{{count}} new"
   },
   "timeAgo": {
     "justNow": "Zojuist"
@@ -39,5 +35,11 @@
   },
   "offline": {
     "banner": "Je bent offline — gecachte meldingen worden getoond"
+  },
+  "categoryLabels": {
+    "social": "Social",
+    "sessions": "Plans",
+    "messages": "Chats",
+    "all": "System"
   }
 }

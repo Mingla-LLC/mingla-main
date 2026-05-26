@@ -107,6 +107,7 @@ on:
 #   - ORCH-0947 (orch-0947-trip-spots-tickets-not-orders.mjs) — trip dashboard Spots/travelers numerator uses tickets-sold, not order-count travelersCount
 #   - ORCH-0957 (orch-0957-no-metered-place-photo-reads.mjs) — place-photos processing avoids Supabase Storage render endpoint except explicit legacy fallback
 #   - I-PROPOSED-BRAND-FIELD-MAP-COVERAGE (orch-0962-brand-field-map-coverage.mjs) — brand-edit persisted fields stay mapped into public brand views/mappers/renderers (ORCH-0962)
+#   - ORCH-0974 (orch-0974-home-mobile-lock-pane.mjs) — mobile Home locks KPI hero + Active Events + Upcoming header above the FlatList
 #   - I-PROPOSED-CONTROLLER-PROPS-PINNED (orch-0954-controller-props-pinned.mjs) — Stripe Connect account create controller stays losses_collector=stripe, fees_collector=stripe, dashboard=none (ORCH-0954)
 #   - I-PROPOSED-RAK-SCOPE-PINNED (orch-0954-rak-scope-pinned.mjs) — Stripe blueprint helpers use STRIPE_RAK_ONBOARD only, including Account Sessions (ORCH-0954)
 #   - I-PROPOSED-FINALIZE-CALLERS-PASS-INSTALLMENT-PARAMS (i-proposed-finalize-callers-pass-installment-params.mjs) — paid biz_ticket_checkout_finalize callers pass installment-plan params (ORCH-0921)
@@ -116,6 +117,7 @@ on:
 #   - I-PROPOSED-CUSTOM-COORDS-LOCKED-WHEN-CUSTOM-LOCATION-MODE (i-proposed-orch-0943-custom-coords-locked.mjs) — partial custom_lat/custom_lng client writes require GPS-mode guard or custom_location in same payload (ORCH-0943)
 #   - I-PROPOSED-DEAD-END-REASON-COVERAGE + I-PROPOSED-COLLAB-DEAD-END-PAYLOAD-PROPAGATED (i-proposed-orch-0945-dead-end-reason-coverage.mjs) — collab dead-end client handles all five reasons and propagates acceptedCount/pendingGpsUserIds (ORCH-0945)
 #   - I-PROPOSED-PREFS-SHEET-READ-ONLY-NO-WRITE (i-proposed-orch-0945-prefs-sheet-read-only-no-write.mjs) — read-only PreferencesSheet mode cannot write participant prefs (ORCH-0945)
+#   - I-PROPOSED-ORCH-0975-NOTIFICATIONS-NO-RN-MODAL / NO-FILTER-CHIPS / CATEGORY-LABELS-EXIST (orch-0975-notifications-sheet.mjs) — notifications sheet uses bottom-sheet, not RN Modal, and filter locale keys stay deleted
 #   - G-CIRCLE-RPC-SOLE-OWNER (circle-rpc-sole-owner.sh) — Your Circle uses get_user_circle RPC as sole data path (ORCH-0933)
 #   - G-CIRCLE-BADGE-DUAL-APP (circle-badge-dual-app.sh) — Your Circle briefcase badge means dual-app user only (ORCH-0933)
 #   - I-COMMS-LEDGER-ENTRY-STANZA + I-RESPONSE-2-SECTION-SHAPE (meta-orch-0954-comms-ledger-stanza.mjs) — every Claude SKILL.md + AGENTS.md carries ledger + 2-section output stanzas (META-ORCH-0954)
@@ -221,6 +223,28 @@ jobs:
           node-version: "20"
       - name: Run ORCH-0965 home upcoming hook gate
         run: node .github/scripts/strict-grep/orch-0965-home-uses-upcoming-hook.mjs
+
+  orch-0974-home-mobile-lock-pane:
+    name: "ORCH-0974: Home mobile lock pane"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0974 home mobile lock pane gate
+        run: node .github/scripts/strict-grep/orch-0974-home-mobile-lock-pane.mjs
+
+  orch-0975-notifications-sheet:
+    name: "ORCH-0975: notifications sheet bottom-sheet invariant"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0975 notifications sheet gate
+        run: node .github/scripts/strict-grep/orch-0975-notifications-sheet.mjs
 
   i37-topbar-default-cluster:
     name: "I-37: TopBar primary-tab default cluster"

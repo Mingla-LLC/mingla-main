@@ -2,14 +2,10 @@
   "header": {
     "title": "Bildirimler",
     "unread": "{{count}} unread",
-    "markAllRead": "Mark all read",
-    "clearAll": "Clear all"
-  },
-  "filters": {
-    "all": "All",
-    "social": "Social",
-    "sessions": "Sessions",
-    "messages": "Mesajlar"
+    "markAllRead": "Mark all as read",
+    "clearAll": "Clear all",
+    "subtitle": "Stay updated on what matters.",
+    "newCount": "{{count}} new"
   },
   "timeAgo": {
     "justNow": "Şimdi"
@@ -39,5 +35,11 @@
   },
   "offline": {
     "banner": "You're offline — showing cached notifications"
+  },
+  "categoryLabels": {
+    "social": "Social",
+    "sessions": "Plans",
+    "messages": "Chats",
+    "all": "System"
   }
 }

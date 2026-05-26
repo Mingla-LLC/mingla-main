@@ -2,14 +2,10 @@
   "header": {
     "title": "Ẹmwẹ Ne Ọ Rre",
     "unread": "{{count}} a i re ghee",
-    "markAllRead": "Kẹ hia ne a ghee",
-    "clearAll": "Rhan hia kua"
-  },
-  "filters": {
-    "all": "Hia",
-    "social": "Ẹvbo",
-    "sessions": "Ẹghẹ",
-    "messages": "Ẹmwẹ"
+    "markAllRead": "Mark all as read",
+    "clearAll": "Rhan hia kua",
+    "subtitle": "Stay updated on what matters.",
+    "newCount": "{{count}} new"
   },
   "timeAgo": {
     "justNow": "Nẹ nẹ"
@@ -39,5 +35,11 @@
   },
   "offline": {
     "banner": "U i vbe ẹrọ — a ya kẹ ẹmwẹ ne a sẹ"
+  },
+  "categoryLabels": {
+    "social": "Social",
+    "sessions": "Plans",
+    "messages": "Chats",
+    "all": "System"
   }
 }

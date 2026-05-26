@@ -2,14 +2,10 @@
   "header": {
     "title": "Sanarwa",
     "unread": "{{count}} ba a karanta ba",
-    "markAllRead": "Nuna duk an karanta",
-    "clearAll": "Share duka"
-  },
-  "filters": {
-    "all": "Duka",
-    "social": "Zamantakewa",
-    "sessions": "Zamunnuka",
-    "messages": "Saƙonni"
+    "markAllRead": "Mark all as read",
+    "clearAll": "Share duka",
+    "subtitle": "Stay updated on what matters.",
+    "newCount": "{{count}} new"
   },
   "timeAgo": {
     "justNow": "Yanzu nan"
@@ -39,5 +35,11 @@
   },
   "offline": {
     "banner": "Ba ka a layi — ana nuna sanarwar da aka ajiye"
+  },
+  "categoryLabels": {
+    "social": "Social",
+    "sessions": "Plans",
+    "messages": "Chats",
+    "all": "System"
   }
 }

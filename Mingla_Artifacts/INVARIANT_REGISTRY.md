@@ -7,6 +7,58 @@
 
 ---
 
+## ACTIVE (post ORCH-0975 [Consumer notifications sheet redesign] CLOSE 2026-05-25)
+
+Three invariants flipped DRAFT → ACTIVE at the ORCH-0975 close. Tester CONDITIONAL PASS verdict P0:0 P1:0 P2:1 P3:0 P4:1 (P2-1 = Android emulator Pixel_8_Pro AVD System UI ANR during bundling — environment failure not sheet defect, accepted per RETEST REVIEW 5-axis rationale; P4-1 = iOS Maestro selector ambiguity where `assertNotVisible: "Notifications"` also matches the persistent top-bar bell `accessibilityLabel` in `GlassTopBar.tsx`, operator manually verified pan-down works on iOS). Implementor regression at `app-mobile/src/components/__tests__/NotificationsSheet.test.tsx` (Node-assertion pattern per app-mobile's existing convention) fails-on-revert verified at the IMPL part 2 commit introducing `NotificationsSheet.tsx` (revert via `git rm` produces `ENOENT`). Tester adversarial at `app-mobile/src/components/__tests__/NotificationsSheet.tester-adversarial.test.tsx` attacks the per-category-pill routing angle (F-1: `board_card_message` must route to Chats not Plans because the type-specific branch must come BEFORE the generic `board_card_*` sessions branch in `getFilterCategory()`). All 3 invariants enforced by a single new strict-grep CI script `.github/scripts/strict-grep/orch-0975-notifications-sheet.mjs` registered in `.github/workflows/strict-grep-mingla-business.yml` as `ORCH-0975: notifications sheet bottom-sheet invariant`. EAS-OTA-eligible (pure-JS, no native module).
+
+### I-ORCH-0975-NOTIFICATIONS-NO-RN-MODAL (ACTIVE post ORCH-0975 CLOSE)
+
+**Rule:** `app-mobile/src/components/NotificationsSheet.tsx` MUST NOT import `Modal` from `react-native`. The notifications sheet MUST use `@gorhom/bottom-sheet` v5 (`BottomSheet` + `BottomSheetBackdrop` + `BottomSheetSectionList` + `BottomSheetView`) so that the pan-down-to-close gesture works natively and the sheet sits inside the existing `GestureHandlerRootView` at `app-mobile/app/_layout.tsx:54`.
+
+**Why it exists:** Pre-ORCH-0975, the notifications sheet wrapped its content in RN `<Modal animationType="slide" transparent>` with a manual `<TouchableOpacity>` backdrop and a static drag-handle View — closing required tapping the × button or the backdrop, with no swipe-down gesture. Two production sheets (`TicketCartSheet.tsx` from ORCH-0847, `ExpandedBusinessEventSheet.tsx`) had already adopted `@gorhom/bottom-sheet` v5 with pan-down close. This invariant prevents a "simplifying" refactor from reverting to RN Modal and silently losing the gesture, or splitting the sheet across two sheet primitives.
+
+**Enforcement:** Gate C1 in `orch-0975-notifications-sheet.mjs` — fails if `NotificationsSheet.tsx` imports `Modal` from `react-native` OR if it does not import from `@gorhom/bottom-sheet`. CI job registered in `strict-grep-mingla-business.yml`.
+
+**Tests:** Implementor structural assertion suite at `app-mobile/src/components/__tests__/NotificationsSheet.test.tsx` SC-01..SC-06 (bottom-sheet open/close paths) + SC-26 (strict-grep gate runs green on branch). Tester adversarial at `app-mobile/src/components/__tests__/NotificationsSheet.tester-adversarial.test.tsx`.
+
+### I-ORCH-0975-NOTIFICATIONS-NO-FILTER-CHIPS (ACTIVE post ORCH-0975 CLOSE)
+
+**Rule:** The notification locale namespace at `app-mobile/src/i18n/locales/<lang>/notifications.json` MUST NOT contain a `filters` key. The notifications sheet renders a single chronological date-grouped list (Today / Yesterday / This Week / Earlier) with no per-category filter row. `getFilterCategory()` SURVIVES as a per-card pill-label helper but MUST NOT drive a top-of-sheet filter ScrollView or `activeFilter` state.
+
+**Why it exists:** Pre-ORCH-0975, a horizontal `<ScrollView>` of 4 filter chips (All / Social / Sessions / Messages) consumed ~64px of vertical sheet space and forced users to triage notifications by category before reading them. Operator wanted a single chronological list; this invariant prevents a "let's add a filter" refactor from re-introducing the chips and silently reverting the design.
+
+**Enforcement:** Gate C2 in `orch-0975-notifications-sheet.mjs` — fails if any of the 29 `notifications.json` locale files contain a top-level `filters` namespace.
+
+**Tests:** Implementor SC-07 (`queryByTestId('notifications-filter-chip')` returns null in render tree assertion).
+
+### I-ORCH-0975-NOTIFICATIONS-CATEGORY-LABELS-EXIST (ACTIVE post ORCH-0975 CLOSE)
+
+**Rule:** The notification locale namespace at `app-mobile/src/i18n/locales/<lang>/notifications.json` MUST contain a `categoryLabels` object with at least `social`, `sessions`, `messages`, and `all` keys. These keys power the per-card pill label that appears at the bottom of every notification card (operator's UI labels are "Social", "Plans", "Chats", "System" — mapping the internal `sessions/messages` enum keys to user-facing copy).
+
+**Why it exists:** The per-card category pill is the surviving visual signal of the deleted filter chips — without these locale keys, the pill renders as a key lookup miss and breaks the per-type matrix v1 contract.
+
+**Enforcement:** Gate C3 in `orch-0975-notifications-sheet.mjs` — fails if any of the 29 `notifications.json` locale files lack a `categoryLabels` object with `social` key.
+
+**Tests:** Implementor SC-23 (locale-shape assertion across all 29 files via strict-grep). Tester adversarial F-1 RETEST regression on `board_card_message` routing to the `messages` (Chats) pill confirms the per-card pill mapping holds across all 25 notification types in the per-type matrix.
+
+---
+
+## ACTIVE (post ORCH-0974 [Home (mingla-business mobile) section lock + spacing] CLOSE 2026-05-25)
+
+One invariant flipped DRAFT → ACTIVE at the ORCH-0974 close. Tester CONDITIONAL PASS verdict P0:0 P1:0 P2:0 (native visual eyeball deferred per known ORCH-0971 [Worktree-per-ORCH live-fire infrastructure unblock] Expo Router welcome-fallback blocker — same conditional shape as ORCH-0954/0961/0962/0963 recent closes). Implementor happy-path T-01..T-06 at `mingla-business/app/(tabs)/__tests__/home.orch_0974.test.tsx` with `fails-on-revert verified at 3e638c926` (T-01 + T-02 + T-05 failed when outer ScrollView restored / paddingBottom reverted to 0 / small-phone carve-out removed; restore commit `60ff97b0d` returned green). Tester adversarial A-01..A-05 at `mingla-business/app/(tabs)/__tests__/home.orch_0974.adversarial.test.tsx` with `fails-on-revert verified at 809ebab1e` (A-01 pull-to-refresh-on-FlatList hidden-flaw guard fails when RefreshControl prop removed). 11/11 tests pass post-rebase onto `origin/main`; rebase resolved cleanly with no conflicts (lane-disjoint claim from INVESTIGATION §5 confirmed — ORCH-0973's top-bar lane and ORCH-0974's body lane did not overlap in `home.tsx`).
+
+### I-PROPOSED-HOME-MOBILE-LOCK-PANE (ACTIVE post ORCH-0974 CLOSE)
+
+**Rule:** On the mingla-business mobile Home tab (`!isWideDesktop` branch of `mingla-business/app/(tabs)/home.tsx`), the KPI hero card (`<KpiTile label="Last 7 days">` or the live-event hero `<GlassCard>`), the Active Events `<KpiTile>`, the optional `<HomeNextActionCard>` (when placement is locked per the small-phone carve-out below), and the "Upcoming / See all" `sectionHeaderRow` MUST NOT participate in the scrollable surface. Exactly one scrollable surface (the upcoming `<FlatList>`) exists on the populated mobile Home path. The empty-state branch (`!currentBrand`) is exempt and retains its single-`ScrollView` layout. The small-phone carve-out (`isSmallPhoneWithLiveHero = primaryLiveEvent !== null && dimensions.height <= 700`) renders the `<HomeNextActionCard>` BELOW the FlatList as a foot region only when both conditions are true; on all other state/viewport combinations the ladder card stays in the locked zone above the KPI stack.
+
+**Why it exists:** Pre-ORCH-0974, an outer `<ScrollView>` at `home.tsx:393` wrapped the KPI cards, the Active Events tile, the "Upcoming" section header, AND the upcoming list. On mobile this meant once a brand accumulated 4-5+ upcoming items, the KPI hero and section header scrolled off-screen the moment the buyer flicked the list, breaking at-a-glance dashboard visibility. The fix mirrors the existing `desktopUpcomingPane` flex contract (`flex: 1, minHeight: 0, overflow: hidden`) on mobile via a new `<View style={styles.mobileBody}>` shell with a `flexShrink: 0` locked zone and a `flex: 1` FlatList. Without this invariant, a "simplifying" refactor could fold the populated branch back into a single ScrollView and silently re-introduce the regression on any brand with >3 upcoming items.
+
+**Enforcement:** Strict-grep CI gate at `.github/scripts/strict-grep/orch-0974-home-mobile-lock-pane.mjs` (registered in `.github/workflows/strict-grep-mingla-business.yml` as `ORCH-0974: Home mobile lock pane`). Five checks: C1 single-scrollable-surface (0 `<ScrollView>` + 1 `<FlatList>` between the `// orch-0974-lock-pane:begin/end-mobile-populated` markers), C2 locked-zone style names present (`mobileBody`, `lockedZone`, `mobileKpiStack`, `mobileSectionHeaderRow`), C3 spacing-contract explicit (`paddingBottom: spacing.md` + `paddingTop: spacing.lg` on the section header, `gap: spacing.sm` on the KPI stack), C4 `refreshControl=` prop within 30 lines of the `<FlatList` declaration, C5 `UpcomingListItem.tsx` exists + is imported by `home.tsx`.
+
+**Tests:** T-01 (lock-zone structural assertion) + T-02 (spacing token assertion) + T-03 (KPI gap assertion) + T-04 (empty-state branch unchanged) + T-05 (large-phone ladder placement in locked zone) + T-06 (small-phone ladder placement below FlatList) — all happy-path with fails-on-revert verified by implementor at `3e638c926`. A-01 (pull-to-refresh on FlatList hidden-flaw guard, fails-on-revert at `809ebab1e`) + A-02 (ListEmptyComponent renders for empty upcoming list) + A-03 (empty brand path bypasses ladder card) + A-04 (ladder condition matrix preserved across rung 1-4 × live/no-live × small/large) + A-05 (UpcomingListItem extraction snapshot) — all tester adversarial.
+
+---
+
 ## ACTIVE (post ORCH-0963 [Public brand page business-case optimization (events vs. trip brands)] CLOSE 2026-05-25)
 
 One invariant flipped DRAFT → ACTIVE at the ORCH-0963 close. Tester CONDITIONAL PASS verdict P0:0 P1:0 P2:0 P3:1 P4:3 (P3-1 = D-LF-INFRA blocker registered as follow-up ORCH-0971; not a close blocker). Implementor happy-path 35 tests fails-on-revert verified at HEAD~1 on 3 tracks (Deno SQL + Jest service + Jest component). Tester adversarial T-10 at `mingla-business/src/components/brand/__tests__/TripMiniCard.cancelledTripLeak.adversarial.test.ts` fails-on-revert verified at commit `4d437b94c`. Migration applied 2026-05-25; RPC verified live via Mgmt API replay returning correct rows for `travelbrand` (DC Adventure spots_left=21 + The Sone spots_left=200) and 0 rows for non-trip-planner brands.
