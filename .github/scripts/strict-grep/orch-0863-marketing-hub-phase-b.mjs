@@ -860,7 +860,10 @@ function checkNoNewBackendFiles() {
     "supabase/functions/parse-restaurant-menu/index.ts",
     "supabase/functions/parse-play-activities/index.ts",
     "supabase/functions/_shared/agentTools.ts",
+    "supabase/functions/_shared/geminiMenuParser.ts",
+    "supabase/functions/_shared/geminiActivitiesParser.ts",
     "supabase/migrations/20260729000000_meta_orch_0972_universal_authoring.sql",
+    "supabase/migrations/20260730000000_meta_orch_0972_drop_brand_kind.sql",
     "supabase/functions/__tests__/pg_public_brand_upcoming.test.sql",
   ];
 

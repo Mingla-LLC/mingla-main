@@ -9,14 +9,11 @@
  *   - Migration file presence + correct timestamp prefix + DDL + self-verify
  *     probe + transactional wrap
  *   - Cross-file type-union widening (4 separate locations)
- *   - PersonaDef interface locked union (regex against the type declaration)
  *   - BrandSwitcherSheet Mode union completeness via exact set membership
  *     (different angle from implementor's whole-line regex)
  *   - popup-create backward-compat literal
  *   - TripBrandWizard kind literal + final-route literal
  *   - Home Stripe-status gating presence
- *   - BrandEditView scope guardrail — 'trip_planner' must NOT appear in any
- *     toggle options array (kind immutability per I-PROPOSED-TR1-KIND-IMMUTABLE)
  *   - Scope-leak guardrail — 'trip_planner' literal appears ONLY in expected
  *     files (Tr2 scope-leak detection)
  *
@@ -152,35 +149,6 @@ function read(path) {
   }
 }
 
-// ---------- A-07: PersonaPickerCards locked PersonaDef.id union ----------
-{
-  const path = join(BUSINESS, "src", "components", "brand", "PersonaPickerCards.tsx");
-  if (!existsSync(path)) {
-    fail("A-07", "PersonaPickerCards.tsx missing");
-  } else {
-    const src = read(path);
-    // Must export PersonaDef + PersonaPickerCards.
-    if (!/export interface PersonaDef\b/.test(src)) {
-      fail("A-07", "PersonaPickerCards.tsx missing `export interface PersonaDef`");
-    } else if (!/export const PersonaPickerCards\b/.test(src)) {
-      fail("A-07", "PersonaPickerCards.tsx missing `export const PersonaPickerCards`");
-    } else if (!/id:\s*"place"\s*\|\s*"event"\s*\|\s*"trip"/.test(src)) {
-      fail("A-07", "PersonaDef.id literal union not locked to 'place' | 'event' | 'trip'");
-    } else {
-      // Defensive: also confirm no widened ids snuck in (e.g., "venue", "experience").
-      const banned = ["venue", "experience", "creator", "host", "planner"];
-      const widened = banned.filter((b) =>
-        new RegExp(`id:\\s*[\\s\\S]{0,80}\\|\\s*"${b}"`, "i").test(src),
-      );
-      if (widened.length > 0) {
-        fail("A-07", `PersonaDef.id union widened with banned ids: ${widened.join(", ")}`);
-      } else {
-        pass("A-07", "PersonaDef.id union locked to 3 ids; PersonaPickerCards exports clean");
-      }
-    }
-  }
-}
-
 // ---------- A-08: BrandSwitcherSheet Mode union has all 4 modes (set membership) ----------
 {
   const path = join(BUSINESS, "src", "components", "brand", "BrandSwitcherSheet.tsx");
@@ -265,28 +233,6 @@ function read(path) {
     fail("A-12", "home.tsx missing stripeStatus === 'active' gating branch");
   } else {
     pass("A-12", "home.tsx has kind + stripeStatus gating");
-  }
-}
-
-// ---------- A-13: BrandEditView kind-immutability — no 'trip_planner' in toggle ----------
-{
-  const path = join(BUSINESS, "src", "components", "brand", "BrandEditView.tsx");
-  const src = read(path);
-  // The kind editor toggle currently has `kind: "physical"` and `kind: "popup"` Pressables.
-  // It must NOT have `kind: "trip_planner"` Pressable. Look for any `kind: "trip_planner"`
-  // INSIDE a setDraft call (the toggle setter pattern).
-  if (/setDraft\([\s\S]{0,200}?kind:\s*"trip_planner"/.test(src)) {
-    fail(
-      "A-13",
-      "BrandEditView.tsx contains setDraft({...kind: 'trip_planner'...}) — kind editor admits trip_planner, violates I-PROPOSED-TR1-KIND-IMMUTABLE",
-    );
-  } else if (!/draft\.kind\s*!==\s*"trip_planner"/.test(src)) {
-    fail(
-      "A-13",
-      "BrandEditView.tsx missing draft.kind !== 'trip_planner' guard — trip-planner brands will see the kind editor",
-    );
-  } else {
-    pass("A-13", "BrandEditView.tsx kind editor hidden for trip_planner + toggle does not admit it");
   }
 }
 

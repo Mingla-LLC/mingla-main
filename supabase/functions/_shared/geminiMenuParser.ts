@@ -135,6 +135,7 @@ export function normalizeMenuParsePayload(
 export async function parseMenuWithGemini(args: {
   files: MenuFileInput[];
   defaultCurrency?: string;
+  temporaryCategory?: "restaurant";
   venueName?: string;
 }): Promise<MenuParseResult> {
   const apiKey = Deno.env.get("GEMINI_API_KEY_ARI");
@@ -143,6 +144,7 @@ export async function parseMenuWithGemini(args: {
   }
 
   const defaultCurrency = args.defaultCurrency ?? "GBP";
+  const temporaryCategory = args.temporaryCategory ?? "restaurant";
   const parts: Array<{ text: string } | { inline_data: { mime_type: string; data: string } }> = [];
 
   const venueHint = args.venueName
@@ -163,7 +165,9 @@ export async function parseMenuWithGemini(args: {
 
   const requestBody = {
     contents: [{ role: "user", parts }],
-    systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+    systemInstruction: {
+      parts: [{ text: `You are parsing a ${temporaryCategory} menu.\n\n${SYSTEM_PROMPT}` }],
+    },
     generationConfig: {
       maxOutputTokens: MAX_OUTPUT_TOKENS,
       temperature: TEMPERATURE,

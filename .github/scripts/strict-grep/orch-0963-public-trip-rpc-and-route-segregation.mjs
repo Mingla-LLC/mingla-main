@@ -1,20 +1,17 @@
 #!/usr/bin/env node
 /* eslint-disable no-console */
 /**
- * ORCH-0963 — public brand page (/b/{slug}) MUST branch on brands.kind.
+ * ORCH-0963 — public brand page trip RPC + route segregation.
  *
- * Codifies I-PROPOSED-PUBLIC-BRAND-KIND-BRANCHED:
- *   - kind='physical' | 'popup' → events array, never trips array
- *   - kind='trip_planner' → trips array, never events array
+ * C1/C3 from the original kind-branched gate were retired by
+ * META-ORCH-0972 Sub-D because public tabs are now data-driven.
  *
- * Four assertions:
- *   1. PublicBrandPage.tsx contains `brand.kind === "trip_planner"` branch
- *   2. publicEventsService.ts contains `pg_public_trips_by_brand` RPC call
- *   3. publicEventsService.ts BusinessPublicBrandViewRow.kind union includes 'trip_planner'
- *   4. No file outside the allowlist uses positive `event_type === 'trip'`
+ * Two assertions remain:
+ *   1. publicEventsService.ts contains `pg_public_trips_by_brand` RPC call
+ *   2. No file outside the allowlist uses positive `event_type === 'trip'`
  *      filter in client code (only the explicit rejection in
  *      fetchPublicBrandEvents + the trip-only resolver getPublicTripById are
- *      allowed — both already annotated with orch-strict-grep-allow markers).
+ *      allowed).
  */
 
 import fs from "node:fs";
@@ -25,14 +22,6 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, "..", "..", "..");
 
-const PAGE_FILE = path.join(
-  REPO_ROOT,
-  "mingla-business",
-  "src",
-  "components",
-  "brand",
-  "PublicBrandPage.tsx",
-);
 const SERVICE_FILE = path.join(
   REPO_ROOT,
   "mingla-business",
@@ -61,45 +50,14 @@ function assertContains(file, needle, label) {
   }
 }
 
-function assertMatchesRegex(file, regex, label) {
-  if (!fs.existsSync(file)) {
-    console.error(`FAIL [${label}] file not found: ${path.relative(REPO_ROOT, file)}`);
-    failed++;
-    return;
-  }
-  const src = fs.readFileSync(file, "utf8");
-  if (!regex.test(src)) {
-    console.error(
-      `FAIL [${label}] ${path.relative(REPO_ROOT, file)} does not match: ${regex}`,
-    );
-    failed++;
-  } else {
-    console.log(`OK   [${label}] ${path.relative(REPO_ROOT, file)} matches ${regex}`);
-  }
-}
-
-// Assertion 1: PublicBrandPage.tsx contains the kind-branch
-assertContains(
-  PAGE_FILE,
-  `brand.kind === "trip_planner"`,
-  "C1: PublicBrandPage branches on brand.kind === 'trip_planner'",
-);
-
-// Assertion 2: publicEventsService.ts calls the public-trips RPC
+// Assertion C2: publicEventsService.ts calls the public-trips RPC
 assertContains(
   SERVICE_FILE,
   `pg_public_trips_by_brand`,
   "C2: publicEventsService calls pg_public_trips_by_brand RPC",
 );
 
-// Assertion 3: BusinessPublicBrandViewRow.kind union includes 'trip_planner'
-assertMatchesRegex(
-  SERVICE_FILE,
-  /kind:\s*"physical"\s*\|\s*"popup"\s*\|\s*"trip_planner"/,
-  "C3: BusinessPublicBrandViewRow.kind union includes 'trip_planner'",
-);
-
-// Assertion 4: No positive `event_type === 'trip'` filter in client code outside the allowlist.
+// Assertion C4: No positive `event_type === 'trip'` filter in client code outside the allowlist.
 // Allowed sites (both already annotated with orch-strict-grep-allow markers):
 //   - publicEventsService.ts:fetchPublicBrandEvents (NEGATIVE filter — rejects trips)
 //   - publicEventsService.ts:getPublicTripById (trip-ONLY resolver — opposite scope, intentional)
@@ -158,4 +116,4 @@ if (failed > 0) {
   console.error(`\nORCH-0963 strict-grep: ${failed} assertion(s) failed`);
   process.exit(1);
 }
-console.log(`\nORCH-0963 strict-grep: 4/4 assertions PASS`);
+console.log(`\nORCH-0963 strict-grep: 2/2 assertions PASS`);

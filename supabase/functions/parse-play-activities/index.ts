@@ -177,6 +177,7 @@ Deno.serve(async (req) => {
     parseResult = await parseActivitiesWithGemini({
       files,
       defaultCurrency,
+      temporaryCategory,
       venueName: brand.name as string,
     });
   } catch (err) {
