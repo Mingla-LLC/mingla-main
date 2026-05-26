@@ -52,7 +52,8 @@
     "test:orch-0909": "node ./scripts/ci/orch-0909-regression-check.mjs",
     "test:orch-0909-adv": "node ./scripts/ci/orch-0909-adversarial-check.mjs",
     "test:orch-0908-chat": "node ./scripts/ci/orch-0908-chat-mention-card-tag-check.mjs",
-    "test:orch-0897-chat-polish": "node ./scripts/ci/orch-0897-consumer-chat-polish-check.mjs"
+    "test:orch-0897-chat-polish": "node ./scripts/ci/orch-0897-consumer-chat-polish-check.mjs",
+    "test:orch-0964-logout-cache": "node ./scripts/ci/orch-0964-logout-cache-regression-check.mjs"
   },
   "dependencies": {
     "@expo-google-fonts/anton": "^0.4.2",

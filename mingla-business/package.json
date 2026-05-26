@@ -18,6 +18,7 @@
     "lint": "expo lint",
     "typecheck": "tsc",
     "test:browser": "playwright test -c playwright.config.ts",
+    "test:orch-0964-assetlinks": "npx jest assetlinks.consumerAppLinks.test --runInBand",
     "test:orch-0754": "node ../.github/scripts/strict-grep/i-proposed-z-home-no-fabricated-events.mjs && npx jest brandEventSummary.test",
     "test:orch-0756a": "node ../.github/scripts/strict-grep/orch-0756a-active-brand-recovery.mjs && npx jest currentBrandResolver.test",
     "test:orch-0756b": "npx jest serverDraftEventMapper.test serverDraftLifecycleGuards.test",

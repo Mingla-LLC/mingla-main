@@ -257,6 +257,28 @@ jobs:
       - name: Run ORCH-0964 well-known content-type gate
         run: node .github/scripts/strict-grep/orch-0964-well-known-json-content-type.mjs
 
+  meta-orch-0972-data-driven-tabs:
+    name: "META-ORCH-0972: data-driven tabs"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run META-ORCH-0972 data-driven tabs gate
+        run: node .github/scripts/strict-grep/meta-orch-0972-data-driven-tabs.mjs
+
+  meta-orch-0972-no-brand-kind-reads:
+    name: "META-ORCH-0972: no brand kind reads"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run META-ORCH-0972 no brand kind reads gate
+        run: node .github/scripts/strict-grep/meta-orch-0972-no-brand-kind-reads.mjs
+
   orch-0965-home-uses-upcoming-hook:
     name: "ORCH-0965: home dashboard uses tri-kind upcoming hook"
     runs-on: ubuntu-latest
