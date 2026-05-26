@@ -844,10 +844,13 @@ function checkNoNewBackendFiles() {
     "supabase/migrations/__tests__/pg_public_trips_by_brand.antiLeak.adversarial.test.ts",
   ];
   // ORCH-0964 [Public-page theme customization + consumer-app brand screen]:
-  // adds nullable typed theme columns plus public-view column exposure. C7 is
-  // scoped to ORCH-0863 marketing; this migration is ORCH-0964 public-page
-  // theming scope and no edge function source is touched.
+  // adds nullable typed theme columns plus public-view column exposure. The
+  // two META-ORCH-0972 migrations are source-reconciled remote-only history so
+  // this branch can hand off a clean db push. C7 is scoped to ORCH-0863
+  // marketing; no edge function source is touched.
   const ORCH_0964_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260729000000_meta_orch_0972_universal_authoring.sql",
+    "supabase/migrations/20260729000001_meta_orch_0972_pg_brand_offering_counts_grants.sql",
     "supabase/migrations/20260729000002_orch_0964_brand_event_theme_columns.sql",
   ];
   // META-ORCH-0952 [Buyer-web confirm pipeline deep forensics] CLOSE 2026-05-25.
