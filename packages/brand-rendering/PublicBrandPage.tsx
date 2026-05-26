@@ -122,6 +122,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   venue = null,
   theme,
   hideFloatingChrome = false,
+  chromeTopOffset,
   callbacks,
 }) => {
   const [activeTab, setActiveTab] = useState<Tab>("about");
@@ -249,7 +250,10 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
 
   return (
     <View style={styles.host}>
-      <View style={styles.heroWrap} pointerEvents="none">
+      <View
+        style={[styles.heroWrap, { backgroundColor: heroColor }]}
+        pointerEvents="none"
+      >
         {brand.coverMediaUrl !== undefined &&
         brand.coverMediaUrl.length > 0 &&
         !coverMediaFailed ? (
@@ -271,9 +275,25 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
       </View>
 
       {hideFloatingChrome ? null : (
-        <View style={styles.floatingChrome} pointerEvents="box-none">
-          <ChromeButton label="Close" glyph="x" onPress={callbacks.onClose} />
-          <ChromeButton label="Share" glyph="share" onPress={callbacks.onShare} />
+        <View
+          style={[
+            styles.floatingChrome,
+            chromeTopOffset !== undefined ? { top: chromeTopOffset } : null,
+          ]}
+          pointerEvents="box-none"
+        >
+          <ChromeButton
+            label="Close"
+            glyph="x"
+            onPress={callbacks.onClose}
+            testID="orch-0961-public-brand-close"
+          />
+          <ChromeButton
+            label="Share"
+            glyph="share"
+            onPress={callbacks.onShare}
+            testID="orch-0961-public-brand-share"
+          />
         </View>
       )}
 
@@ -375,15 +395,37 @@ const ChromeButton: React.FC<{
   label: string;
   glyph: "x" | "share";
   onPress: () => void;
-}> = ({ label, glyph, onPress }) => (
+  testID: string;
+}> = ({ label, glyph, onPress, testID }) => (
   <Pressable
     onPress={onPress}
     accessibilityRole="button"
     accessibilityLabel={label}
+    testID={testID}
+    hitSlop={8}
     style={styles.chromeButton}
   >
-    <Text style={styles.chromeIcon}>{glyph === "x" ? "x" : "up"}</Text>
+    <ChromeGlyph glyph={glyph} />
   </Pressable>
+);
+
+const ChromeGlyph: React.FC<{ glyph: "x" | "share" }> = ({ glyph }) => (
+  <View style={styles.chromeGlyph} pointerEvents="none">
+    {glyph === "x" ? (
+      <>
+        <View style={[styles.chromeXStroke, styles.chromeXStrokeA]} />
+        <View style={[styles.chromeXStroke, styles.chromeXStrokeB]} />
+      </>
+    ) : (
+      <>
+        <View style={[styles.chromeShareLine, styles.chromeShareLineTop]} />
+        <View style={[styles.chromeShareLine, styles.chromeShareLineBottom]} />
+        <View style={[styles.chromeShareDot, styles.chromeShareDotLeft]} />
+        <View style={[styles.chromeShareDot, styles.chromeShareDotTop]} />
+        <View style={[styles.chromeShareDot, styles.chromeShareDotBottom]} />
+      </>
+    )}
+  </View>
 );
 
 const Avatar: React.FC<{ brand: PublicBrand }> = ({ brand }) => {
@@ -945,6 +987,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     zIndex: 4,
+    elevation: 8,
   },
   chromeButton: {
     width: 40,
@@ -954,10 +997,59 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  chromeIcon: {
-    color: text.primary,
-    fontSize: 13,
-    fontWeight: "700",
+  chromeGlyph: {
+    width: 18,
+    height: 18,
+  },
+  chromeXStroke: {
+    position: "absolute",
+    top: 8,
+    left: 2,
+    width: 14,
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: text.primary,
+  },
+  chromeXStrokeA: {
+    transform: [{ rotate: "45deg" }],
+  },
+  chromeXStrokeB: {
+    transform: [{ rotate: "-45deg" }],
+  },
+  chromeShareLine: {
+    position: "absolute",
+    left: 5,
+    width: 9,
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: text.primary,
+  },
+  chromeShareLineTop: {
+    top: 6,
+    transform: [{ rotate: "-24deg" }],
+  },
+  chromeShareLineBottom: {
+    top: 11,
+    transform: [{ rotate: "24deg" }],
+  },
+  chromeShareDot: {
+    position: "absolute",
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: text.primary,
+  },
+  chromeShareDotLeft: {
+    left: 1,
+    top: 7,
+  },
+  chromeShareDotTop: {
+    right: 1,
+    top: 2,
+  },
+  chromeShareDotBottom: {
+    right: 1,
+    bottom: 2,
   },
   scroll: {
     flex: 1,

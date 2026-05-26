@@ -2,6 +2,7 @@ import React, { useCallback, useMemo, useState } from "react";
 import { Platform } from "react-native";
 import { useRouter } from "expo-router";
 import Head from "expo-router/head";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   PublicBrandPage as SharedPublicBrandPage,
   type PublicBrand,
@@ -153,6 +154,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   resolvedTheme,
 }) => {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [shareModalVisible, setShareModalVisible] = useState(false);
   const theme = useMemo(
     () => resolvedTheme ?? resolveTheme(brand.theme, null),
@@ -301,6 +303,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
               }
         }
         theme={theme}
+        chromeTopOffset={insets.top + 8}
         callbacks={{
           onClose: handleClose,
           onShare: () => setShareModalVisible(true),

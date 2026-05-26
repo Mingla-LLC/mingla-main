@@ -142,5 +142,6 @@ export interface PublicBrandPageProps {
   venue?: PublicVenueDetail | null;
   theme?: ResolvedTheme;
   hideFloatingChrome?: boolean;
+  chromeTopOffset?: number;
   callbacks: PublicBrandCallbacks;
 }
