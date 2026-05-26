@@ -82,6 +82,14 @@ describe("ORCH-0964 design rework — public event page premium renderer", () =>
     expect(sharedSource).toContain("Presented by");
   });
 
+  test("event date and time labels stay white above the themed event surface", () => {
+    expect(sharedSource).toContain(
+      '{ color: "#ffffff", fontFamily: theme.fontFamilyValue }',
+    );
+    expect(sharedSource).toContain("styles.recurrencePillLabel");
+    expect(sharedSource).toContain('{ color: "#ffffff" }');
+  });
+
   test("presented-by card renders the brand profile photo when available", () => {
     expect(typesSource).toContain("photo?: string");
     expect(sharedSource).toContain("brand?.photo !== undefined");

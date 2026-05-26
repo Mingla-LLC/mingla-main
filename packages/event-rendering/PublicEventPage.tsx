@@ -538,7 +538,7 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
               <Text
                 style={[
                   styles.dateLine,
-                  { color: palette.accent, fontFamily: theme.fontFamilyValue },
+                  { color: "#ffffff", fontFamily: theme.fontFamilyValue },
                 ]}
               >
                 {event.dateLine}
@@ -572,10 +572,7 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
                     ]}
                   >
                     <Text
-                      style={[
-                        styles.recurrencePillLabel,
-                        { color: palette.accent },
-                      ]}
+                      style={[styles.recurrencePillLabel, { color: "#ffffff" }]}
                     >
                       {event.dateSubline} · {showAllDates ? "Hide" : "Show all"}
                     </Text>
