@@ -273,9 +273,9 @@ cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0964-[public-page-theme-customiz
 
 Result: PASS, all listed strict-grep gates passed.
 
-## Smoke-Test Design Rework #8 — real brand-tinted Lottie animations
+## Smoke-Test Design Rework #8 — real original-color Lottie animations
 
-Seth reported that the selected public-page animations still looked fake and carried Mingla orange instead of the selected brand color. Root cause: animation selection was correct, but the bundled Lottie files were generated from only three generic `tintable` layers per animation, and the renderer was no longer applying the selected brand color.
+Seth reported that the selected public-page animations still looked fake and carried Mingla orange. Root cause: animation selection was correct, but the bundled Lottie files were generated from only three generic `tintable` layers per animation. Seth then clarified that animations should keep their original artwork colors instead of inheriting the chosen brand color.
 
 Animation selection contract:
 
@@ -296,9 +296,9 @@ Follow-up changes:
   - `falling_petals`: petal-shaped falling elements.
   - `hearts`: floating heart paths.
   - `shimmer_reveal`: sweeping shimmer bands and glints.
-- Restored runtime brand-color tinting through `colorFilters`, using `theme.color` rather than a hardcoded Mingla color.
-- Added `themeAnimations.orch_0964_smoke_rework.test.ts` to prove selection is slug-driven, renderer tinting uses the resolved brand color, and bundled assets are no longer three generic tintable layers.
-- Updated the animation package README to document the data-driven slug selection and brand-color tinting contract.
+- Removed runtime `colorFilters` so each selected Lottie keeps its original colors.
+- Added `themeAnimations.orch_0964_smoke_rework.test.ts` to prove selection is slug-driven, renderer tinting is absent, and bundled assets are no longer three generic tintable layers.
+- Updated the animation package README to document the data-driven slug selection and original-color rendering contract.
 
 Regression coverage:
 

@@ -9,8 +9,8 @@ const repoFile = (relativePath: string): string =>
 const animationJson = (slug: string): { layers?: Array<{ nm?: string }> } =>
   JSON.parse(repoFile(`packages/theme-animations/lottie/${slug}.json`));
 
-describe("ORCH-0964 smoke rework — distinct brand-tinted Lottie animations", () => {
-  test("animations are selected by saved theme slug and tinted with the brand color", () => {
+describe("ORCH-0964 smoke rework — distinct original-color Lottie animations", () => {
+  test("animations are selected by saved theme slug and preserve original Lottie colors", () => {
     const indexSource = repoFile("packages/theme-animations/index.ts");
     const resolverSource = repoFile("packages/event-rendering/themeResolver.ts");
     const animationSource = repoFile("packages/event-rendering/ThemeEntranceAnimation.tsx");
@@ -19,8 +19,8 @@ describe("ORCH-0964 smoke rework — distinct brand-tinted Lottie animations", (
     expect(resolverSource).toContain("return eventOverride.animation");
     expect(resolverSource).toContain("return brandTheme.animation");
     expect(animationSource).toContain("source={LOTTIE_BY_SLUG[theme.animation]}");
-    expect(animationSource).toContain("colorFilters={brandColorFilters}");
-    expect(animationSource).toContain('color: theme.color');
+    expect(animationSource).not.toContain("colorFilters");
+    expect(animationSource).not.toContain("brandColorFilters");
   });
 
   test("bundled Lotties use recognizable shapes instead of three generic tintable layers", () => {
