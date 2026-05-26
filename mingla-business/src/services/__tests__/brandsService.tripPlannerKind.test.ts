@@ -1,11 +1,11 @@
 // META-ORCH-0972 decommission-witness test [TEST-MOD-APPROVED META-ORCH-0972]
 //
-// The original test exercised brandsService behavior keyed on
-// `Brand.kind === "trip_planner"`. The `Brand.kind` TS field was DELETED
-// from `mingla-business/src/types/brand.ts` by META-ORCH-0972 Sub-C
-// (commit a1c1d7f70) as part of the brand-kind decommission. The DB column
-// `brands.kind` remains until Stage 4 follow-up migration but no code path
-// reads it. Test preserved per Pragmatic Append-Only policy.
+// The original test exercised brandsService behavior keyed on the legacy
+// trip-planner persona field. That TypeScript field was DELETED from
+// `mingla-business/src/types/brand.ts` by META-ORCH-0972 Sub-C (commit
+// a1c1d7f70) as part of the brand-persona decommission. The DB column
+// remains until Stage 4 follow-up migration but no code path reads it.
+// Test preserved per Pragmatic Append-Only policy.
 
 import fs from "node:fs";
 import path from "node:path";
