@@ -1,4 +1,5 @@
 import {
+  cloudinaryDestroy,
   eventCoverVideoReadyUpdate,
   mapEventCoverVideoStatus,
   serviceRoleClient,
@@ -8,6 +9,33 @@ import {
 
 const assert = (condition: boolean, message: string): void => {
   if (!condition) throw new Error(message);
+};
+
+const withCloudinaryEnvAndFetch = async (
+  response: Response,
+  assertion: () => Promise<void>,
+): Promise<void> => {
+  const originalFetch = globalThis.fetch;
+  const originalCloudName = Deno.env.get("CLOUDINARY_CLOUD_NAME");
+  const originalApiKey = Deno.env.get("CLOUDINARY_API_KEY");
+  const originalApiSecret = Deno.env.get("CLOUDINARY_API_SECRET");
+
+  Deno.env.set("CLOUDINARY_CLOUD_NAME", "demo");
+  Deno.env.set("CLOUDINARY_API_KEY", "key");
+  Deno.env.set("CLOUDINARY_API_SECRET", "secret");
+  globalThis.fetch = (() => Promise.resolve(response)) as typeof fetch;
+
+  try {
+    await assertion();
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalCloudName === undefined) Deno.env.delete("CLOUDINARY_CLOUD_NAME");
+    else Deno.env.set("CLOUDINARY_CLOUD_NAME", originalCloudName);
+    if (originalApiKey === undefined) Deno.env.delete("CLOUDINARY_API_KEY");
+    else Deno.env.set("CLOUDINARY_API_KEY", originalApiKey);
+    if (originalApiSecret === undefined) Deno.env.delete("CLOUDINARY_API_SECRET");
+    else Deno.env.set("CLOUDINARY_API_SECRET", originalApiSecret);
+  }
 };
 
 Deno.test("Cloudinary notification signature accepts body + timestamp + secret", async () => {
@@ -121,6 +149,34 @@ Deno.test("event cover video status mapping marks applied processed MP4 terminal
   assert(!status.canCheckAgain, "expected no check-again affordance");
   assert(status.processedMimeType === "video/mp4", "expected processed MP4");
   assert(status.processedUrl?.endsWith(".mp4") === true, "expected processed URL");
+});
+
+Deno.test("T-05 cancel cleanup treats Cloudinary destroy not found as idempotent success", async () => {
+  await withCloudinaryEnvAndFetch(
+    new Response(JSON.stringify({ result: "not found" }), { status: 200 }),
+    async () => {
+      const result = await cloudinaryDestroy("event-covers/raw/brand/event/job");
+
+      assert(result.ok, "expected already-destroyed Cloudinary source to be cancel-safe");
+    },
+  );
+});
+
+Deno.test("T-05 cancel cleanup reports Cloudinary destroy failure without throwing", async () => {
+  await withCloudinaryEnvAndFetch(
+    new Response(JSON.stringify({ error: { message: "temporary outage" } }), {
+      status: 503,
+    }),
+    async () => {
+      const result = await cloudinaryDestroy("event-covers/raw/brand/event/job");
+
+      assert(!result.ok, "expected destroy failure to return a structured failure");
+      assert(
+        !result.ok && result.reason === "cloudinary_destroy_http_503",
+        "expected Cloudinary HTTP status in failure reason",
+      );
+    },
+  );
 });
 
 Deno.test("event cover video ready update column set matches live table shape", async () => {
