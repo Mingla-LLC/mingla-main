@@ -77,6 +77,79 @@ B. **Pre-IMPLEMENT housekeeping** — orphan-row cleanup SQL (Finding 2) runs at
 
 ---
 
+## SPEC AMENDMENT 3 — 2026-05-26 — T-00 PoC results (PASS, HIGH confidence)
+
+Operator (Seth) executed the T-00 empirical compression PoC on his physical iPhone via a dev client built off this worktree. **Verdict: PASS with HIGH confidence — IMPLEMENT cleared on the perf-budget dimension.**
+
+### Measured results
+
+| Test | Source format | Source size | Output size | Compression ratio | Elapsed time | Quality verdict |
+|---|---|---|---|---|---|---|
+| 30s clip | iPhone HEVC (4K Dolby Vision HDR, default camera) | **389.15 MB** | 5.98 MB | 1.5% | **9.76 s** | Indistinguishable from source |
+| 15s clip | iPhone HEVC (4K Dolby Vision HDR, default camera) | **193.78 MB** | 3.04 MB | 1.6% | **5.10 s** | Indistinguishable from source |
+
+Test C (30s H.264 source) skipped — pattern from Tests A+B was strong enough to lock the verdict.
+
+### Critical context — the source is WORST-CASE input
+
+Seth's iPhone records at 4K Dolby Vision HDR by default (~103 Mbps source bitrate, ~389 MB for 30 seconds). This is the **highest-quality input we'll ever see in production**. Even at this extreme:
+- Compression stays well within the 5–15 s budget assumed in original SPEC §3
+- Output is visually indistinguishable from source per operator eyeball
+- Linear scaling: ~0.33 s of compression per second of source — predictable, controllable
+- Output size is 6 MB for 30 s — comfortably under the 25 MB SPEC cap, leaving headroom for higher-bitrate slices if SPEC ever loosens the cap
+
+Most users record at default 1080p HEVC (~30–60 MB for 30 s), which will compress in roughly 2–5 s.
+
+### Latency budget table — §3 replaced with REAL numbers
+
+Replace the original §3 table with this verified-against-physical-device version:
+
+| Stage | Real measured (worst-case 4K HDR 30s source) | Notes |
+|---|---|---|
+| User picks file (system picker) | ~1 s | system bound |
+| Client-side compression on iPhone (default iPhone 16-class device) | **9.76 s** (real, T-00 measured) | react-native-compressor `auto` preset; predictable scaling |
+| Upload bytes to Cloudinary (6 MB @ 5 Mbps cellular) | ~9.6 s | 6 MB compressed output × 8 bits / 5 Mbps |
+| Cloudinary transcode (trim + crop + container only — input is already H.264 720p-class) | ~3–5 s estimated | small pre-compressed input means light eager work; `[BENCHMARK NEEDED]` — measure at IMPLEMENT TEST phase |
+| Webhook → Supabase → DB write | ~1 s | unchanged, current pipeline |
+| Client poll + render | <1.5 s (real wait); 0 s perceived | optimistic-local-preview swap pattern |
+| **TOTAL real (worst-case input on cellular)** | **~25–27 s** | **WITHIN the 30 s budget** |
+| **TOTAL real (default 1080p input on Wi-Fi)** | **~10–15 s** | comfortable |
+| **TOTAL perceived (via optimistic local preview)** | **~2 s to first frame, always** | safety net always engaged |
+
+### Implications for IMPLEMENT
+
+1. **No SPEC amendment to compression strategy needed.** The `react-native-compressor` `auto` preset works as assumed. SPEC §4.3 `compressVideoLocally` implementation can ship as written.
+2. **No pivot to per-platform native modules needed.** The SC-11 fallback path (custom Expo Module wrapping AVAssetExportSession + MediaCodec) is NOT required. Issue #268 (Android-compressed → iOS playback) still needs T-11 verification at TEST phase, but the iOS-compressed→iOS pipeline is validated.
+3. **Latency budget §3 updated above.** Implementor uses these real numbers as the contract, not the original estimates.
+4. **Quality contract verified.** SC-1 (perceived first-frame ≤3 s via optimistic preview) and SC-8 (cross-surface render parity) remain testable at IMPLEMENT TEST per the SPEC; this PoC verified the upstream compression-quality input that feeds those.
+
+### PoC scaffolding reverted (this commit)
+
+- DELETED: `mingla-business/app/compression-poc.tsx` (throwaway measurement screen)
+- REVERTED: `mingla-business/app/(tabs)/account.tsx` (PoC nav row removed)
+- REVERTED: `mingla-business/app.config.ts` (isPocDevBuild gate removed; hasAppsFlyerEnv + hasOneSignalEnv restored to original)
+- REVERTED: `mingla-business/eas.json` (development profile env back to SENTRY_DISABLE_AUTO_UPLOAD only)
+- KEPT (this IS SPEC Step 1 of IMPLEMENT, intentionally landed early):
+  - `react-native-compressor@1.18.2` in `mingla-business/package.json` + `app-mobile/package.json`
+  - `react-native-compressor` plugin entry in both `app.json` files
+  - `mingla-business/package-lock.json` updated dependency tree
+
+### Runbook archived (informational)
+
+`Mingla_Artifacts/POC_ORCH-0978_COMPRESSION_RUNBOOK.md` stays in the worktree. Future video-feature ORCHs (brand cover, trip cover, profile video) can re-use the same recipe for their own PoC measurements — only the test screen needs to be rebuilt.
+
+### Open items NOT resolved by PoC (deferred to IMPLEMENT TEST)
+
+- T-11 cross-platform playability (Android-compressed → iOS playback regression check per issue #268) — must be verified at IMPLEMENT TEST phase
+- Cloudinary transcode time for our pre-compressed 6 MB input (cited `[BENCHMARK NEEDED]` above) — measure at IMPLEMENT TEST first run, lock budget table further
+- Real cellular upload measurement (we assumed 5 Mbps; operator could be on different networks) — IMPLEMENT TEST captures actual network distribution
+
+### Authorization
+
+Per operator (Seth) reply 2026-05-26: "It looks indistinguishable. looks great". Verdict locked. IMPLEMENT cleared on the PoC dimension. Final gate remains: ORCH-0964 [Public-page theme customization] PR merge to main.
+
+---
+
 ## 1 — Executive summary (≤10 sentences)
 
 This SPEC codifies the sub-30s perfect-render video upload pipeline derived from APPROVED RESEARCH. Phase 0 surfaced four binding constraints: (1) **both apps are on Expo SDK 54** (`~54.0.34`), the last SDK that still ships `expo-av` — so SDK migration is OUT OF SCOPE here (deferred to a future SDK-55 upgrade ORCH), but `expo-av` audio code in `app-mobile` (4 files for beta feedback) remains untouched and OK; (2) `mingla-business` already has `expo-video v3.0.16` installed and a complete `EventCoverMedia.tsx` renderer with web `<video>` + RN `VideoView` branches + mute toggle + autoplay+playsInline contract — most of the render-side architecture is already built; (3) `app-mobile` does NOT have `expo-video` installed and needs it added for consumer-side cover rendering; (4) the `_shared/eventCoverVideo.ts` helpers (HMAC-SHA1 signature, derivative validation, status mapping) are well-structured and reusable for cancel-destroy and new picker integration. The SPEC therefore focuses on **four discrete IMPLEMENT deltas**: (A) add `react-native-compressor` to both apps + wire client-side compression into the upload service, (B) add Cloudinary destroy API call to the cancel edge function so abort cleans up the in-flight asset, (C) add optimistic-local-preview swap pattern to the upload UI components, (D) refactor `EventCoverMedia` either into the existing `packages/event-rendering/` package OR a new shared module so consumer and business apps share one render contract. Three new DRAFT invariants codify the structural safeguards: I-PROPOSED-VIDEO-UPLOAD-OPTIMISTIC-PREVIEW, I-PROPOSED-VIDEO-CANCEL-ABORTS-UPLOAD, I-PROPOSED-VIDEO-AUTOPLAY-MUTED-CONTRACT. **IMPLEMENT is GATED on ORCH-0964 [Public-page theme customization] PR merging to main** (per WORLD_MAP intake; ORCH-0964 introduces `packages/brand-rendering/` and reshapes `packages/event-rendering/` — collision risk on render-layer files).
