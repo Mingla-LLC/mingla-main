@@ -46,21 +46,42 @@ describe("ORCH-0964 smoke rework — business public-page preview chrome/theme",
     expect(sharedSource).toContain("contrastAdjustedAccent(theme.color, page, 3.15)");
     expect(sharedSource).toContain("contrastAdjustedForWhiteText(");
     expect(sharedSource).toContain("backgroundColor: palette.page");
-    expect(sharedSource).toContain("backgroundColor: palette.heroLift");
+    expect(sharedSource).toContain("backgroundColor: palette.glassStrong");
     expect(sharedSource).toContain("borderColor: palette.accent");
-    expect(sharedSource).toContain("backgroundColor: palette.card");
+    expect(sharedSource).toContain("backgroundColor: palette.glass");
+    expect(sharedSource).toContain("borderColor: palette.cutoutBorder");
     expect(sharedSource).toContain("backgroundColor: palette.accent");
     expect(sharedSource).toContain("color: palette.primaryText");
     expect(sharedSource).toContain('const accentText = "#ffffff"');
     expect(sharedSource).toContain("const contrastAdjustedForWhiteText = (");
     expect(sharedSource).toContain("styles.identityTopRow");
     expect(sharedSource).toContain("flexDirection: \"column\"");
-    expect(sharedSource).toContain("height: 174");
+    expect(sharedSource).toContain("height: 184");
     expect(sharedSource).not.toContain("styles.pageThemeWashBottom");
     expect(sharedSource).not.toContain("styles.pageThemeWash,");
     expect(heroWrapBlock).not.toContain("position: \"absolute\"");
-    expect(heroWrapBlock).toContain("height: 264");
-    expect(heroWrapBlock).toContain("maxWidth: 620");
+    expect(heroWrapBlock).toContain("height: 332");
+    expect(heroWrapBlock).toContain("marginHorizontal: -spacing.lg");
+    expect(heroWrapBlock).toContain("marginBottom: -72");
+    expect(heroWrapBlock).not.toContain("maxWidth: 620");
+  });
+
+  test("public brand page uses liquid glass panels and cut-out event cards", () => {
+    const identityBlock = sharedSource.match(/identityCentered: \{[\s\S]*?\n  \},/)?.[0] ?? "";
+    const eventCardBlock = sharedSource.match(/eventCard: \{[\s\S]*?\n  \},/)?.[0] ?? "";
+    const aboutBlock = sharedSource.match(/aboutBlock: \{[\s\S]*?\n  \},/)?.[0] ?? "";
+    expect(sharedSource).toContain('import { BlurView } from "expo-blur"');
+    expect(sharedSource).toContain("glassTint: useDark ? \"dark\" : \"light\"");
+    expect(sharedSource).toContain("<BlurView");
+    expect(sharedSource).toContain("style={styles.glassLayer}");
+    expect(sharedSource).toContain("tint={palette.glassTint}");
+    expect(sharedSource).toContain("{ backgroundColor: palette.glass, borderColor: palette.cutoutBorder }");
+    expect(identityBlock).toContain("overflow: \"hidden\"");
+    expect(identityBlock).toContain("shadowOpacity: 0.22");
+    expect(eventCardBlock).toContain("borderWidth: 1.5");
+    expect(eventCardBlock).toContain("shadowOpacity: 0.28");
+    expect(eventCardBlock).toContain("elevation: 8");
+    expect(aboutBlock).toContain("overflow: \"hidden\"");
   });
 
   test("social links render Lucide glyphs instead of custom shapes or letter initials", () => {
@@ -97,7 +118,7 @@ describe("ORCH-0964 smoke rework — business public-page preview chrome/theme",
     const avatarBlock = sharedSource.match(/avatar: \{[\s\S]*?\n  \},/)?.[0] ?? "";
     const brandNameBlock = sharedSource.match(/brandNameCentered: \{[\s\S]*?\n  \},/)?.[0] ?? "";
     expect(identityBlock).toContain("paddingHorizontal: spacing.xl");
-    expect(identityBlock).toContain("shadowRadius: 24");
+    expect(identityBlock).toContain("shadowRadius: 30");
     expect(avatarBlock).toContain("width: 104");
     expect(avatarBlock).toContain("borderWidth: 4");
     expect(brandNameBlock).toContain("fontSize: 38");

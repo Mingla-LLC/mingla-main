@@ -273,6 +273,51 @@ cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0964-[public-page-theme-customiz
 
 Result: PASS, all listed strict-grep gates passed.
 
+## Smoke-Test Design Rework #7 — liquid glass, full-width cover, cut-out cards
+
+Seth requested a stronger premium material pass: the public brand page should feel liquid-glass, the cover should read as a true full-width cover, and upcoming/event cards should feel cut out from the themed background.
+
+Follow-up changes:
+
+- Added `expo-blur` to the shared brand renderer surface and declared it as a `packages/brand-rendering` peer dependency; both host apps already carry `expo-blur`.
+- Added narrow `expo-blur` TypeScript path aliases in both host apps, matching the earlier Lucide shared-package alias pattern.
+- Reworked the cover from a constrained 620pt card into a full-width 332pt cover band that bleeds past the page gutters and lets the identity glass card overlap it.
+- Added `BlurView` liquid-glass layers to the identity card, tab switcher, next-event banner, event/trip/experience/upcoming cards, and about/contact panels.
+- Updated event/upcoming/trip/experience cards to use translucent glass fills, brighter cutout borders, larger cover media, deeper shadows, and larger spacing so they lift off the background instead of blending into it.
+- Extended the ORCH-0964 public-page smoke test to fail if the page loses the full-width cover, `expo-blur` glass layer, or cut-out event-card treatment.
+
+Regression coverage:
+
+```bash
+cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0964-[public-page-theme-customization]/mingla-business" && npx jest src/components/brand/__tests__/PublicBrandPage.orch_0964_smoke_rework.test.ts --runInBand
+```
+
+Result: PASS, 1 suite / 11 tests passed.
+
+```bash
+cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0964-[public-page-theme-customization]/mingla-business" && npx jest src/utils/__tests__/brandPatch.orch_0964_smoke_rework.test.ts src/hooks/__tests__/useBrands.orch_0964_public_theme_cache.test.ts src/components/brand/__tests__/PublicBrandPage.orch_0964_smoke_rework.test.ts src/utils/__tests__/themeResolver.orch_0964.test.ts src/utils/__tests__/themeResolver.adversarial.orch_0964.test.ts --runInBand
+```
+
+Result: PASS, 5 suites / 20 tests passed.
+
+```bash
+cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0964-[public-page-theme-customization]/mingla-business" && if rg -n 'expo-blur|lucide-react-native|packages/brand-rendering/PublicBrandPage\.tsx.*(JSX element type|not assignable|has no construct|has no call)' /tmp/orch0964-glass-business-tsc.log; then exit 1; else exit 0; fi
+```
+
+Result: PASS for the new `expo-blur` / shared-renderer surface. Full TypeScript still has the previously documented shared-package `react` / `react-native` module-resolution debt, but no `expo-blur`, Lucide, or shared-renderer JSX errors are present.
+
+```bash
+cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0964-[public-page-theme-customization]/app-mobile" && if rg -n 'expo-blur|lucide-react-native|packages/brand-rendering/PublicBrandPage\.tsx.*(JSX element type|not assignable|has no construct|has no call)' /tmp/orch0964-glass-app-tsc.log; then exit 1; else exit 0; fi
+```
+
+Result: PASS for the new `expo-blur` / shared-renderer surface.
+
+```bash
+cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0964-[public-page-theme-customization]" && node .github/scripts/strict-grep/orch-0964-theme-typed-columns.mjs && node .github/scripts/strict-grep/orch-0964-theme-resolver-canonical.mjs && node .github/scripts/strict-grep/orch-0964-theme-foreground-computed.mjs && node .github/scripts/strict-grep/orch-0964-checkout-no-brand-theme.mjs && node .github/scripts/strict-grep/orch-0964-brand-rendering-self-contained.mjs && node .github/scripts/strict-grep/orch-0964-well-known-json-content-type.mjs && node .github/scripts/strict-grep/meta-orch-0972-data-driven-tabs.mjs && node .github/scripts/strict-grep/meta-orch-0972-no-brand-kind-reads.mjs && node .github/scripts/strict-grep/orch-0963-public-trip-rpc-and-route-segregation.mjs && node .github/scripts/strict-grep/orch-0863-marketing-hub-phase-b.mjs
+```
+
+Result: PASS, all listed strict-grep gates passed.
+
 ## Smoke-Test Design Rework #6 — Lucide links, event banner, premium brand masthead
 
 Seth requested a tighter premium pass after reviewing the latest public brand page: social links needed real Lucide icons, the next-event unit needed to feel like a marketing banner instead of a button, and the brand photo/name/description block needed stronger typography and styling.

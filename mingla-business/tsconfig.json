@@ -12,6 +12,8 @@
       "@mingla/theme-animations/*": ["../packages/theme-animations/*"],
       "@mingla/phone-input": ["../packages/phone-input"],
       "@mingla/phone-input/*": ["../packages/phone-input/*"],
+      "expo-blur": ["./node_modules/expo-blur"],
+      "expo-blur/*": ["./node_modules/expo-blur/*"],
       "lucide-react-native": ["./node_modules/lucide-react-native"],
       "lucide-react-native/*": ["./node_modules/lucide-react-native/*"]
     }

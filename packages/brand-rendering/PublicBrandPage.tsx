@@ -8,6 +8,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { BlurView } from "expo-blur";
 import type { LucideIcon } from "lucide-react-native";
 import {
   AtSign,
@@ -66,6 +67,10 @@ type ThemePalette = {
   panelBorder: string;
   card: string;
   cardBorder: string;
+  cutoutBorder: string;
+  glass: string;
+  glassStrong: string;
+  glassTint: "dark" | "light";
   tabBand: string;
   tabBorder: string;
   accentWash: string;
@@ -280,8 +285,12 @@ const createThemePalette = (theme: ResolvedTheme): ThemePalette => {
     panel: useDark ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.76)",
     panelStrong: useDark ? "rgba(255,255,255,0.11)" : "rgba(255,255,255,0.92)",
     panelBorder: hexToRgba(accentColor, useDark ? 0.38 : 0.30),
-    card: useDark ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.84)",
-    cardBorder: useDark ? "rgba(255,255,255,0.11)" : "rgba(16,20,31,0.08)",
+    card: useDark ? "rgba(255,255,255,0.09)" : "rgba(255,255,255,0.72)",
+    cardBorder: useDark ? "rgba(255,255,255,0.16)" : "rgba(255,255,255,0.78)",
+    cutoutBorder: useDark ? "rgba(255,255,255,0.24)" : "rgba(255,255,255,0.96)",
+    glass: useDark ? "rgba(255,255,255,0.10)" : "rgba(255,255,255,0.62)",
+    glassStrong: useDark ? "rgba(255,255,255,0.16)" : "rgba(255,255,255,0.82)",
+    glassTint: useDark ? "dark" : "light",
     tabBand: hexToRgba(accentColor, useDark ? 0.20 : 0.14),
     tabBorder: hexToRgba(accentColor, useDark ? 0.46 : 0.34),
     accentWash: hexToRgba(accentColor, useDark ? 0.24 : 0.18),
@@ -513,11 +522,16 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
           style={[
             styles.identityCentered,
             {
-              backgroundColor: palette.heroLift,
+              backgroundColor: palette.glassStrong,
               borderColor: palette.panelBorder,
             },
           ]}
         >
+          <BlurView
+            tint={palette.glassTint}
+            intensity={34}
+            style={styles.glassLayer}
+          />
           <View style={styles.identityTopRow}>
             <Avatar brand={brand} palette={palette} />
             <View style={styles.identityCopy}>
@@ -582,6 +596,11 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
             { backgroundColor: palette.accent, borderColor: palette.accent },
           ]}
         >
+          <BlurView
+            tint={palette.glassTint}
+            intensity={18}
+            style={styles.glassLayer}
+          />
           {visibleTabs.map((tab) => (
             <TabButton
               key={tab}
@@ -852,11 +871,16 @@ const EventMiniCard: React.FC<{
       accessibilityLabel={`Open event ${event.name}`}
       style={({ pressed }) => [
         styles.eventCard,
-        { backgroundColor: palette.card, borderColor: palette.cardBorder },
+        { backgroundColor: palette.glass, borderColor: palette.cutoutBorder },
         past && styles.eventCardPast,
         pressed && styles.cardPressed,
       ]}
     >
+      <BlurView
+        tint={palette.glassTint}
+        intensity={24}
+        style={styles.glassLayer}
+      />
       <CoverBlock
         hue={event.coverHue}
         mediaUrl={event.coverMediaUrl}
@@ -927,6 +951,11 @@ const NextOfferingTeaser: React.FC<{
         pressed && styles.cardPressed,
       ]}
     >
+      <BlurView
+        tint={palette.glassTint}
+        intensity={14}
+        style={styles.glassLayer}
+      />
       <View style={styles.nextTeaserCopy}>
         <Text style={styles.nextTeaserLabel}>NEXT EVENT</Text>
         <Text
@@ -1018,11 +1047,16 @@ const TripMiniCard: React.FC<{
       accessibilityLabel={`Open trip ${trip.title}`}
       style={({ pressed }) => [
         styles.eventCard,
-        { backgroundColor: palette.card, borderColor: palette.cardBorder },
+        { backgroundColor: palette.glass, borderColor: palette.cutoutBorder },
         past && styles.eventCardPast,
         pressed && styles.cardPressed,
       ]}
     >
+      <BlurView
+        tint={palette.glassTint}
+        intensity={24}
+        style={styles.glassLayer}
+      />
       <CoverBlock
         hue={hashHueFromString(trip.id)}
         mediaUrl={trip.coverMediaUrl}
@@ -1153,10 +1187,15 @@ const OfferingMiniCard: React.FC<{
       accessibilityLabel={`Open ${item.offeringType} ${item.name}`}
       style={({ pressed }) => [
         styles.eventCard,
-        { backgroundColor: palette.card, borderColor: palette.cardBorder },
+        { backgroundColor: palette.glass, borderColor: palette.cutoutBorder },
         pressed && styles.cardPressed,
       ]}
     >
+      <BlurView
+        tint={palette.glassTint}
+        intensity={24}
+        style={styles.glassLayer}
+      />
       <CoverBlock
         hue={hashHueFromString(item.offeringId)}
         mediaUrl={item.coverMediaUrl}
@@ -1231,10 +1270,15 @@ const ExperienceMiniCard: React.FC<{
       accessibilityLabel={`Open experience ${experience.name}`}
       style={({ pressed }) => [
         styles.eventCard,
-        { backgroundColor: palette.card, borderColor: palette.cardBorder },
+        { backgroundColor: palette.glass, borderColor: palette.cutoutBorder },
         pressed && styles.cardPressed,
       ]}
     >
+      <BlurView
+        tint={palette.glassTint}
+        intensity={24}
+        style={styles.glassLayer}
+      />
       <CoverBlock
         hue={hashHueFromString(experience.experienceId)}
         mediaUrl={experience.coverMediaUrl}
@@ -1307,9 +1351,14 @@ const AboutTab: React.FC<{
       <View
         style={[
           styles.aboutBlock,
-          { backgroundColor: palette.panel, borderColor: palette.cardBorder },
+          { backgroundColor: palette.glass, borderColor: palette.cutoutBorder },
         ]}
       >
+        <BlurView
+          tint={palette.glassTint}
+          intensity={22}
+          style={styles.glassLayer}
+        />
         <Text
           style={[
             styles.aboutBlockLabel,
@@ -1327,9 +1376,14 @@ const AboutTab: React.FC<{
       <View
         style={[
           styles.aboutBlock,
-          { backgroundColor: palette.panel, borderColor: palette.cardBorder },
+          { backgroundColor: palette.glass, borderColor: palette.cutoutBorder },
         ]}
       >
+        <BlurView
+          tint={palette.glassTint}
+          intensity={22}
+          style={styles.glassLayer}
+        />
         <Text
           style={[
             styles.aboutBlockLabel,
@@ -1363,12 +1417,11 @@ const styles = StyleSheet.create({
     backgroundColor,
   },
   heroWrap: {
-    height: 264,
-    alignSelf: "center",
-    width: "100%",
-    maxWidth: 620,
-    marginBottom: spacing.lg,
-    borderRadius: radius.md,
+    height: 332,
+    alignSelf: "stretch",
+    marginHorizontal: -spacing.lg,
+    marginBottom: -72,
+    borderRadius: 0,
     overflow: "hidden",
   },
   heroGradient: {
@@ -1463,21 +1516,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.xl * 2,
   },
+  glassLayer: {
+    ...StyleSheet.absoluteFillObject,
+  },
   identityCentered: {
     alignItems: "stretch",
     alignSelf: "center",
     width: "100%",
     maxWidth: 620,
+    position: "relative",
+    overflow: "hidden",
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.xl,
     borderRadius: radius.md,
     borderWidth: 1,
+    marginTop: 0,
     marginBottom: spacing.lg,
     shadowColor: "#000000",
-    shadowOpacity: 0.12,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 14 },
-    elevation: 3,
+    shadowOpacity: 0.22,
+    shadowRadius: 30,
+    shadowOffset: { width: 0, height: 18 },
+    elevation: 7,
   },
   identityTopRow: {
     flexDirection: "row",
@@ -1572,6 +1631,8 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     width: "100%",
     maxWidth: 620,
+    position: "relative",
+    overflow: "hidden",
     gap: spacing.md,
     minHeight: 86,
     paddingVertical: spacing.lg,
@@ -1624,6 +1685,8 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     width: "100%",
     maxWidth: 620,
+    position: "relative",
+    overflow: "hidden",
     gap: 4,
     borderWidth: 1,
     borderRadius: radius.full,
@@ -1667,20 +1730,21 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     width: "100%",
     maxWidth: 620,
-    gap: spacing.lg,
+    gap: spacing.xl,
   },
   eventCard: {
     flexDirection: "column",
+    position: "relative",
     backgroundColor: "rgba(255, 255, 255, 0.04)",
     borderRadius: radius.md,
     overflow: "hidden",
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: "rgba(255, 255, 255, 0.06)",
     shadowColor: "#000000",
-    shadowOpacity: 0.18,
-    shadowRadius: 22,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 3,
+    shadowOpacity: 0.28,
+    shadowRadius: 30,
+    shadowOffset: { width: 0, height: 18 },
+    elevation: 8,
   },
   eventCardPast: {
     opacity: 0.7,
@@ -1690,7 +1754,7 @@ const styles = StyleSheet.create({
   },
   eventCover: {
     width: "100%",
-    height: 174,
+    height: 184,
   },
   eventBody: {
     padding: spacing.lg,
@@ -1785,10 +1849,17 @@ const styles = StyleSheet.create({
     gap: spacing.lg,
   },
   aboutBlock: {
+    position: "relative",
+    overflow: "hidden",
     gap: spacing.xs,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderRadius: radius.md,
     padding: spacing.lg,
+    shadowColor: "#000000",
+    shadowOpacity: 0.16,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 4,
   },
   aboutBlockLabel: {
     fontSize: 11,
