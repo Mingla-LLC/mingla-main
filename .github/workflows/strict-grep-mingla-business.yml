@@ -312,6 +312,39 @@ jobs:
       - name: Run ORCH-0975 notifications sheet gate
         run: node .github/scripts/strict-grep/orch-0975-notifications-sheet.mjs
 
+  orch-0978-video-upload-optimistic-preview:
+    name: "ORCH-0978: video upload optimistic preview"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0978 optimistic preview gate
+        run: node .github/scripts/strict-grep/orch-0978-video-upload-optimistic-preview.mjs
+
+  orch-0978-video-cancel-aborts-upload:
+    name: "ORCH-0978: video cancel aborts upload"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0978 cancel abort gate
+        run: node .github/scripts/strict-grep/orch-0978-video-cancel-aborts-upload.mjs
+
+  orch-0978-video-autoplay-muted-contract:
+    name: "ORCH-0978: video autoplay muted contract"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0978 autoplay muted gate
+        run: node .github/scripts/strict-grep/orch-0978-video-autoplay-muted-contract.mjs
+
   i37-topbar-default-cluster:
     name: "I-37: TopBar primary-tab default cluster"
     runs-on: ubuntu-latest

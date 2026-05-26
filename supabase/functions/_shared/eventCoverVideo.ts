@@ -15,15 +15,15 @@ export const FINAL_MAX_BYTES = Number.parseInt(
   10,
 );
 export const MAX_DURATION_MS = Number.parseInt(
-  Deno.env.get("EVENT_COVER_MAX_DURATION_MS") ?? "15000",
+  Deno.env.get("EVENT_COVER_MAX_DURATION_MS") ?? "30000",
   10,
 );
 export const MAX_SOURCE_VIDEO_BYTES = Number.parseInt(
-  Deno.env.get("EVENT_COVER_MAX_SOURCE_VIDEO_BYTES") ?? "524288000",
+  Deno.env.get("EVENT_COVER_MAX_SOURCE_VIDEO_BYTES") ?? "104857600",
   10,
 );
 export const MAX_SOURCE_VIDEO_DURATION_MS = Number.parseInt(
-  Deno.env.get("EVENT_COVER_MAX_SOURCE_VIDEO_DURATION_MS") ?? "300000",
+  Deno.env.get("EVENT_COVER_MAX_SOURCE_VIDEO_DURATION_MS") ?? "60000",
   10,
 );
 
@@ -146,6 +146,54 @@ export async function cloudinarySignature(params: Record<string, string>): Promi
     .map((key) => `${key}=${params[key]}`)
     .join("&");
   return sha1Hex(`${base}${secret}`);
+}
+
+export async function cloudinaryDestroy(
+  publicId: string,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  if (!providerConfigured()) {
+    return { ok: false, reason: "provider_not_configured" };
+  }
+  const trimmedPublicId = publicId.trim();
+  if (trimmedPublicId.length === 0) {
+    return { ok: false, reason: "missing_public_id" };
+  }
+
+  const cloudName = Deno.env.get("CLOUDINARY_CLOUD_NAME") ?? "";
+  const apiKey = Deno.env.get("CLOUDINARY_API_KEY") ?? "";
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  const signature = await cloudinarySignature({
+    public_id: trimmedPublicId,
+    timestamp,
+  });
+
+  // Cloudinary Upload API destroy method:
+  // https://cloudinary.com/documentation/image_upload_api_reference#destroy_method
+  const formData = new FormData();
+  formData.append("public_id", trimmedPublicId);
+  formData.append("resource_type", "video");
+  formData.append("timestamp", timestamp);
+  formData.append("api_key", apiKey);
+  formData.append("signature", signature);
+
+  const response = await fetch(
+    `https://api.cloudinary.com/v1_1/${cloudName}/video/destroy`,
+    { method: "POST", body: formData },
+  );
+  let body: { result?: unknown } | null = null;
+  try {
+    body = await response.json();
+  } catch {
+    body = null;
+  }
+  if (!response.ok) {
+    return { ok: false, reason: `cloudinary_destroy_http_${response.status}` };
+  }
+  const result = typeof body?.result === "string" ? body.result : "unknown";
+  if (result !== "ok" && result !== "not found") {
+    return { ok: false, reason: `cloudinary_destroy_${result}` };
+  }
+  return { ok: true };
 }
 
 export type CloudinaryNotificationSignatureResult =

@@ -108,7 +108,7 @@ serve(async (req) => {
   const sourceBytes = Number(body.sourceBytes ?? 0);
   const sourceDurationMs = Number(body.sourceDurationMs ?? 0);
   const trimStartMs = Number(body.trimStartMs ?? 0);
-  const trimEndMs = Number(body.trimEndMs ?? Math.min(sourceDurationMs, MAX_DURATION_MS));
+  const trimEndMs = Number(body.trimEndMs ?? sourceDurationMs);
 
   if (!Number.isFinite(sourceBytes) || sourceBytes <= 0 || sourceBytes > MAX_SOURCE_VIDEO_BYTES) {
     logWarn(requestId, "source_size_out_of_range", {
@@ -236,15 +236,13 @@ serve(async (req) => {
   const cloudName = Deno.env.get("CLOUDINARY_CLOUD_NAME") ?? "";
   const apiKey = Deno.env.get("CLOUDINARY_API_KEY") ?? "";
   const timestamp = Math.floor(Date.now() / 1000).toString();
-  const trimDurationMs = trimEndMs - trimStartMs;
   const publicId = `event-covers/raw/${brandId}/${eventId}/${job.id}`;
+  const durationBudgetMs = Math.min(trimEndMs - trimStartMs, MAX_DURATION_MS);
   const eager = [
-    `so_${(trimStartMs / 1000).toFixed(3)}`,
-    `du_${(trimDurationMs / 1000).toFixed(3)}`,
     "c_limit,w_1280,h_720",
     "vc_h264",
     "ac_aac",
-    `br_${clampBitrate(trimDurationMs)}`,
+    `br_${clampBitrate(durationBudgetMs)}`,
     "f_mp4",
     "q_auto:good",
   ].join(",");
@@ -252,6 +250,9 @@ serve(async (req) => {
     `${Deno.env.get("SUPABASE_URL") ?? ""}/functions/v1/event-cover-video-webhook`;
   const context = `job_id=${job.id}|event_id=${eventId}|brand_id=${brandId}|apply_mode=${applyMode}`;
   const signature = await cloudinarySignature({
+    // Cloudinary signed upload params:
+    // https://cloudinary.com/documentation/upload_images
+    // https://cloudinary.com/documentation/authentication_signatures
     context,
     eager,
     eager_async: "true",
@@ -262,12 +263,15 @@ serve(async (req) => {
   logInfo(requestId, "cloudinary_signature_generated", {
     jobId: job.id,
     publicId,
-    trimDurationMs,
+    durationBudgetMs,
   });
 
   const { error: payloadUpdateError } = await supabase
     .from("event_cover_video_jobs")
-    .update({ provider_payload: { public_id: publicId, eager } })
+    .update({
+      provider_payload: { public_id: publicId, eager },
+      source_public_id: publicId,
+    })
     .eq("id", job.id);
   if (payloadUpdateError) {
     logWarn(requestId, "provider_payload_update_failed", {
@@ -288,6 +292,9 @@ serve(async (req) => {
     upload: {
       url: `https://api.cloudinary.com/v1_1/${cloudName}/video/upload`,
       fields: {
+        // Cloudinary Upload API parameters:
+        // https://cloudinary.com/documentation/upload_images
+        // https://cloudinary.com/documentation/upload_parameters
         api_key: apiKey,
         context,
         eager,

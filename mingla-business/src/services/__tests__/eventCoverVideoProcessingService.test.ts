@@ -27,6 +27,10 @@ jest.mock("expo-file-system/legacy", () => ({
   createUploadTask: jest.fn(),
 }));
 
+jest.mock("react-native", () => ({
+  Platform: { OS: "ios" },
+}));
+
 const invoke = supabase.functions.invoke as unknown as jest.MockedFunction<
   (name: string, options?: unknown) => Promise<{ data: unknown; error: unknown }>
 >;
@@ -103,7 +107,7 @@ describe("event cover video processing service", () => {
       code: "validation_error",
       edgeDetail: "source_duration_out_of_range",
       edgeError: "validation_error",
-      message: "Video duration metadata was missing or out of range. Try another 15-second clip.",
+      message: "Video duration metadata was missing or out of range. Try another 30-second clip.",
       phase: "upload_intent",
       requestId: expect.any(String),
     });

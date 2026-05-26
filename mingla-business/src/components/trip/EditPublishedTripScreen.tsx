@@ -1093,6 +1093,7 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                 onCoverChange={handleCoverChange}
                 onShowToast={showToast}
                 providers={["upload", "giphy", "pexels"]}
+                enableVideoUpload={false}
                 disabled={submitting}
               />
             </View>

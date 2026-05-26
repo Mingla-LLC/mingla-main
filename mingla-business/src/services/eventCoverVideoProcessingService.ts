@@ -1,13 +1,24 @@
 import { supabase } from "./supabase";
 import { BusinessAuthNotReadyError } from "../utils/authReadiness";
 import * as FileSystem from "expo-file-system/legacy";
+import { Platform } from "react-native";
+
+declare const require: (moduleName: string) => {
+  Video?: {
+    compress: (
+      uri: string,
+      options: unknown,
+      onProgress?: (progress: number) => void,
+    ) => Promise<string>;
+  };
+};
 
 export const EVENT_COVER_FINAL_MAX_BYTES = 25 * 1024 * 1024;
-export const EVENT_COVER_MAX_VIDEO_DURATION_MS = 15_000;
-export const EVENT_COVER_MAX_SOURCE_VIDEO_BYTES = 500 * 1024 * 1024;
-export const EVENT_COVER_MAX_SOURCE_VIDEO_DURATION_MS = 5 * 60 * 1000;
+export const EVENT_COVER_MAX_VIDEO_DURATION_MS = 30_000;
+export const EVENT_COVER_MAX_SOURCE_VIDEO_BYTES = 100 * 1024 * 1024;
+export const EVENT_COVER_MAX_SOURCE_VIDEO_DURATION_MS = 60_000;
 export const EVENT_COVER_VIDEO_PROCESSING_COPY =
-  "Use your phone's trim screen for videos longer than 15 seconds; Mingla compresses the cover to a browser-safe MP4 under 25 MB.";
+  "Use your phone's trim screen to keep video covers to 30 seconds. Mingla compresses the cover to a browser-safe MP4 under 25 MB.";
 export const EVENT_COVER_VIDEO_NOT_CONFIGURED_COPY =
   "Video cover processing is not configured yet. Images and GIFs still work.";
 
@@ -58,6 +69,17 @@ export interface EventCoverVideoUploadProgress {
   bytesTotal: number;
   percent: number;
 }
+
+export type EventCoverVideoUploadStage =
+  | { phase: "idle"; percent: 0 }
+  | { phase: "picking"; percent: 0 }
+  | { phase: "compressing"; percent: number }
+  | { phase: "uploading"; percent: number }
+  | { phase: "processing"; percent: number }
+  | { phase: "ready"; percent: 100 }
+  | { phase: "error"; percent: 0; code: string; message: string };
+
+export type CompressionProgress = { phase: "compressing"; percent: number };
 
 export interface EventCoverVideoStatus {
   jobId: string;
@@ -242,13 +264,13 @@ const internalErrorDetailMessage = (detail?: string): string => {
 const validationDetailMessage = (detail?: string): string => {
   switch (detail) {
     case "source_size_out_of_range":
-      return "Video file size was missing or over 500 MB. Try another trimmed clip.";
+      return "Video file size was missing or over 100 MB. Try another trimmed clip.";
     case "source_duration_out_of_range":
-      return "Video duration metadata was missing or out of range. Try another 15-second clip.";
+      return "Video duration metadata was missing or out of range. Try another 30-second clip.";
     case "trim_invalid":
     case "trim_out_of_range":
     case "trim_over_duration":
-      return "Native trim did not return a valid 15-second clip. Trim again and retry.";
+      return "Native trim did not return a valid 30-second clip. Trim again and retry.";
     case "event_id_invalid_uuid":
     case "brand_id_invalid_uuid":
       return "This event is still syncing. Reopen the draft and try again.";
@@ -322,15 +344,95 @@ const sanitizeProviderUploadResponse = (
   };
 };
 
+const statFileSize = async (
+  uri: string,
+  fallbackBytes: number,
+): Promise<number> => {
+  try {
+    const info = await FileSystem.getInfoAsync(uri);
+    const size = (info as { exists?: boolean; size?: unknown }).size;
+    if (info.exists && typeof size === "number" && size > 0) return size;
+  } catch {
+    // Keep the caller-provided bytes when the platform cannot stat the URI.
+  }
+  return fallbackBytes;
+};
+
+const loadVideoCompressor = ():
+  | { compress: (uri: string, options: unknown, onProgress?: (progress: number) => void) => Promise<string> }
+  | null => {
+  if (Platform.OS === "web") return null;
+  try {
+    // react-native-compressor Video.compress API:
+    // https://github.com/numandev1/react-native-compressor#compress-1
+    return require("react-native-compressor").Video ?? null;
+  } catch {
+    return null;
+  }
+};
+
+export const compressVideoLocally = async (input: {
+  uri: string;
+  bytes: number;
+  durationMs: number;
+  onProgress?: (progress: CompressionProgress) => void;
+}): Promise<{
+  uri: string;
+  bytes: number;
+  durationMs: number;
+  wasCompressed: boolean;
+}> => {
+  const compressor = loadVideoCompressor();
+  if (compressor === null || input.bytes < 5 * 1024 * 1024) {
+    return {
+      uri: input.uri,
+      bytes: input.bytes,
+      durationMs: input.durationMs,
+      wasCompressed: false,
+    };
+  }
+  const compressedUri = await compressor.compress(
+    input.uri,
+    { compressionMethod: "auto" },
+    (progress: number) => {
+      input.onProgress?.({
+        percent: clampPercent(progress * 100),
+        phase: "compressing",
+      });
+    },
+  );
+  return {
+    uri: compressedUri,
+    bytes: await statFileSize(compressedUri, input.bytes),
+    durationMs: input.durationMs,
+    wasCompressed: true,
+  };
+};
+
 const uploadEventCoverVideoSourceWithXhr = async (input: {
   upload: { url: string; fields: Record<string, string> };
   uri: string;
   fileName?: string | null;
   mimeType?: string | null;
   onProgress?: (progress: EventCoverVideoUploadProgress) => void;
+  signal?: AbortSignal;
 }): Promise<EventCoverVideoProviderUploadResponse | null> =>
   new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
+    const abort = (): void => {
+      xhr.abort();
+      reject(
+        new EventCoverVideoProcessingError(
+          "source_upload_cancelled",
+          "Video upload was cancelled.",
+        ),
+      );
+    };
+    if (input.signal?.aborted) {
+      abort();
+      return;
+    }
+    input.signal?.addEventListener("abort", abort, { once: true });
     const formData = new FormData();
     Object.entries(input.upload.fields).forEach(([key, value]) => {
       if (key !== "resource_type") formData.append(key, value);
@@ -345,6 +447,7 @@ const uploadEventCoverVideoSourceWithXhr = async (input: {
       emitUploadProgress(input.onProgress, event.loaded, event.total);
     };
     xhr.onerror = () => {
+      input.signal?.removeEventListener("abort", abort);
       reject(
         new EventCoverVideoProcessingError(
           "source_upload_failed",
@@ -353,6 +456,7 @@ const uploadEventCoverVideoSourceWithXhr = async (input: {
       );
     };
     xhr.onload = () => {
+      input.signal?.removeEventListener("abort", abort);
       let body: unknown = null;
       try {
         body = JSON.parse(xhr.responseText);
@@ -374,6 +478,59 @@ const uploadEventCoverVideoSourceWithXhr = async (input: {
     xhr.open("POST", input.upload.url);
     xhr.send(formData);
   });
+
+const uploadEventCoverVideoSourceInChunks = async (input: {
+  upload: { url: string; fields: Record<string, string> };
+  uri: string;
+  bytes: number;
+  jobId: string;
+  fileName?: string | null;
+  mimeType?: string | null;
+  onProgress?: (progress: EventCoverVideoUploadProgress) => void;
+  signal?: AbortSignal;
+}): Promise<EventCoverVideoProviderUploadResponse | null> => {
+  const response = await fetch(input.uri);
+  const file = await response.blob();
+  const totalBytes = input.bytes > 0 ? input.bytes : file.size;
+  const chunkSize = 10 * 1024 * 1024;
+  let lastResponse: EventCoverVideoProviderUploadResponse | null = null;
+
+  for (let start = 0; start < totalBytes; start += chunkSize) {
+    if (input.signal?.aborted) {
+      throw new EventCoverVideoProcessingError(
+        "source_upload_cancelled",
+        "Video upload was cancelled.",
+      );
+    }
+    const end = Math.min(start + chunkSize, totalBytes) - 1;
+    const chunk = file.slice(start, end + 1, input.mimeType ?? file.type);
+    const formData = new FormData();
+    Object.entries(input.upload.fields).forEach(([key, value]) => {
+      if (key !== "resource_type") formData.append(key, value);
+    });
+    formData.append("file", chunk, input.fileName ?? "event-cover.mp4");
+    // Cloudinary chunked upload headers:
+    // https://support.cloudinary.com/hc/en-us/articles/208263735-Guidelines-for-implementing-chunked-upload-to-Cloudinary
+    const chunkResponse = await fetch(input.upload.url, {
+      body: formData,
+      headers: {
+        "Content-Range": `bytes ${start}-${end}/${totalBytes}`,
+        "X-Unique-Upload-Id": input.jobId,
+      },
+      method: "POST",
+      signal: input.signal,
+    });
+    const body = await chunkResponse.json().catch(() => null);
+    if (!chunkResponse.ok) {
+      const detail = cloudinaryUploadFailureDetail(body, chunkResponse.status);
+      throw new EventCoverVideoProcessingError("source_upload_failed", detail);
+    }
+    lastResponse = sanitizeProviderUploadResponse(body);
+    emitUploadProgress(input.onProgress, end + 1, totalBytes);
+  }
+
+  return lastResponse;
+};
 
 const edgeError = async (
   error: unknown,
@@ -442,8 +599,8 @@ export const createEventCoverVideoUploadIntent = async (input: {
   sourceMimeType?: string | null;
   sourceBytes: number;
   sourceDurationMs: number;
-  trimStartMs: number;
-  trimEndMs: number;
+  trimStartMs?: number;
+  trimEndMs?: number;
 }): Promise<{ jobId: string; upload: { url: string; fields: Record<string, string> } }> => {
   const requestId = `${Date.now().toString(36)}-${Math.random()
     .toString(36)
@@ -523,15 +680,43 @@ export const createEventCoverVideoUploadIntent = async (input: {
 export const uploadEventCoverVideoSource = async (input: {
   upload: { url: string; fields: Record<string, string> };
   uri: string;
+  bytes?: number;
+  jobId?: string;
   fileName?: string | null;
   mimeType?: string | null;
   onProgress?: (progress: EventCoverVideoUploadProgress) => void;
+  signal?: AbortSignal;
 }): Promise<EventCoverVideoProviderUploadResponse | null> => {
+  if (
+    Platform.OS === "web" &&
+    typeof input.bytes === "number" &&
+    input.bytes > 50 * 1024 * 1024 &&
+    typeof input.jobId === "string"
+  ) {
+    return await uploadEventCoverVideoSourceInChunks({
+      ...input,
+      bytes: input.bytes,
+      jobId: input.jobId,
+    });
+  }
   const parameters = Object.fromEntries(
     Object.entries(input.upload.fields).filter(([key]) => key !== "resource_type"),
   );
+  let task:
+    | { uploadAsync: () => Promise<unknown>; cancelAsync?: () => Promise<void> }
+    | null = null;
+  const abort = (): void => {
+    void task?.cancelAsync?.();
+  };
   try {
-    const task = FileSystem.createUploadTask(
+    if (input.signal?.aborted) {
+      throw new EventCoverVideoProcessingError(
+        "source_upload_cancelled",
+        "Video upload was cancelled.",
+      );
+    }
+    input.signal?.addEventListener("abort", abort, { once: true });
+    task = FileSystem.createUploadTask(
       input.upload.url,
       input.uri,
       {
@@ -550,7 +735,17 @@ export const uploadEventCoverVideoSource = async (input: {
         );
       },
     );
-    const result = await task.uploadAsync();
+    const result = await task.uploadAsync() as
+      | { body: string; status: number }
+      | null
+      | undefined;
+    input.signal?.removeEventListener("abort", abort);
+    if (input.signal?.aborted) {
+      throw new EventCoverVideoProcessingError(
+        "source_upload_cancelled",
+        "Video upload was cancelled.",
+      );
+    }
     if (result === null || result === undefined) {
       throw new EventCoverVideoProcessingError(
         "source_upload_failed",
@@ -578,7 +773,14 @@ export const uploadEventCoverVideoSource = async (input: {
       return null;
     }
   } catch (error) {
+    input.signal?.removeEventListener("abort", abort);
     if (error instanceof EventCoverVideoProcessingError) throw error;
+    if (input.signal?.aborted) {
+      throw new EventCoverVideoProcessingError(
+        "source_upload_cancelled",
+        "Video upload was cancelled.",
+      );
+    }
     devWarn("source-upload-task-failed", {
       message: error instanceof Error ? error.message : String(error),
       fallback: "xhr",
@@ -707,8 +909,12 @@ export const applyEventCoverVideoJob = async (jobId: string): Promise<string> =>
 };
 
 export const cancelEventCoverVideoJob = async (
-  jobId: string,
+  input: string | { jobId: string; uploadAbortController?: AbortController | null },
 ): Promise<EventCoverVideoStatus> => {
+  const jobId = typeof input === "string" ? input : input.jobId;
+  if (typeof input !== "string") {
+    input.uploadAbortController?.abort();
+  }
   const { data, error } = await supabase.functions.invoke<StatusResponse>(
     "event-cover-video-cancel",
     { body: { jobId } },
@@ -733,7 +939,7 @@ export const waitForEventCoverVideoReady = async (
 ): Promise<EventCoverVideoStatus> => {
   const timeoutMs = typeof options === "number" ? options : options.timeoutMs ?? 120_000;
   const pollIntervalMs =
-    typeof options === "number" ? 2500 : options.pollIntervalMs ?? 2500;
+    typeof options === "number" ? 1500 : options.pollIntervalMs ?? 1500;
   const onStatus = typeof options === "number" ? undefined : options.onStatus;
   const startedAt = Date.now();
   let lastStatus: EventCoverVideoStatus | undefined;

@@ -117,10 +117,14 @@ serve(async (req) => {
   }
 
   const sourceUpload = sanitizeProviderUpload(body.providerUploadResponse);
+  const sourcePublicId = safeString(body.providerUploadResponse?.public_id);
+  const sourceAssetId = safeString(body.providerUploadResponse?.asset_id);
   const { data: updatedJob, error: updateError } = await supabase
     .from("event_cover_video_jobs")
     .update({
       provider_payload: mergeProviderPayload(job.provider_payload, sourceUpload),
+      ...(sourceAssetId !== null ? { source_asset_id: sourceAssetId } : {}),
+      ...(sourcePublicId !== null ? { source_public_id: sourcePublicId } : {}),
       status: "source_uploaded",
     })
     .eq("id", job.id)

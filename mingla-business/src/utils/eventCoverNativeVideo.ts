@@ -59,7 +59,7 @@ export const validateNativeTrimmedEventCoverVideo = (
     return {
       ok: false,
       code: "video_too_long",
-      message: "Trim this video to 15 seconds or shorter, then try again.",
+      message: "Please trim to 30 seconds first.",
     };
   }
 
@@ -79,7 +79,7 @@ export const validateNativeTrimmedEventCoverVideo = (
     return {
       ok: false,
       code: "video_file_too_large",
-      message: "Choose a video under 500 MB.",
+      message: "Choose a video under 100 MB.",
     };
   }
 

@@ -8,6 +8,7 @@
 
 export { PublicEventPage } from "./PublicEventPage";
 export { PublicEventNotFound } from "./PublicEventNotFound";
+export { EventCoverMedia } from "./EventCoverMedia";
 export { ThemeEntranceAnimation } from "./ThemeEntranceAnimation";
 export {
   computeForeground,
@@ -22,6 +23,10 @@ export {
   THEME_ANIMATION_SLUGS,
   THEME_FONT_SLUGS,
 } from "./designTokens";
+export type {
+  EventCoverMediaErrorEvent,
+  EventCoverMediaProps,
+} from "./EventCoverMedia";
 // ORCH-0847 Phase A2 — shared ticket-tier quantity stepper used by
 // mingla-business public cart screen AND consumer-app TicketCartSheet.
 export { QuantityRow } from "./QuantityRow";

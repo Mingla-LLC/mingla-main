@@ -7,9 +7,11 @@
   "license": "UNLICENSED",
   "description": "Pure-presentational public event rendering shared between mingla-business (native + web) and app-mobile (native). Per META-ORCH-0827 Pass 2.",
   "peerDependencies": {
+    "expo-video": "*",
     "react": "*",
     "react-native": "*",
     "expo-blur": "*",
-    "lottie-react-native": "*"
+    "lottie-react-native": "*",
+    "react-native-svg": "*"
   }
 }

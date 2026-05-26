@@ -61,6 +61,11 @@ import {
   uploadEventCoverMedia,
 } from "../../services/eventCoverMediaService";
 import {
+  EVENT_COVER_MAX_VIDEO_DURATION_MS,
+  EVENT_COVER_VIDEO_PROCESSING_COPY,
+} from "../../services/eventCoverVideoProcessingService";
+import { useEventCoverVideoUpload } from "../../hooks/useEventCoverVideoUpload";
+import {
   searchGiphyEventCovers,
   type GiphyCoverSearchResult,
 } from "../../services/giphyEventCoverService";
@@ -118,6 +123,9 @@ export interface CoverPickerProps {
    *  show only upload tab). */
   providers?: ReadonlyArray<CoverProvider>;
   disabled?: boolean;
+  enableVideoUpload?: boolean;
+  coverMediaApplyMode?: "draft_auto" | "published_manual";
+  onCoverVideoProcessingChange?: (isProcessing: boolean) => void;
 }
 
 const DEFAULT_PROVIDERS: ReadonlyArray<CoverProvider> = ["upload", "giphy", "pexels"];
@@ -137,11 +145,19 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   onShowToast,
   providers = DEFAULT_PROVIDERS,
   disabled = false,
+  enableVideoUpload = true,
+  coverMediaApplyMode = "draft_auto",
+  onCoverVideoProcessingChange,
 }) => {
   const { isAuthReady } = useAuth();
   const [uploading, setUploading] = useState(false);
   const [mediaDisplayError, setMediaDisplayError] = useState<string | null>(
     null,
+  );
+  const videoUpload = useEventCoverVideoUpload(
+    eventRowId,
+    brandId,
+    coverMediaApplyMode,
   );
 
   // Local mirror of current cover for preview render + credit label.
@@ -184,7 +200,16 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     setMediaDisplayError(null);
   }, [localCover.coverMediaUrl]);
 
+  useEffect(() => {
+    onCoverVideoProcessingChange?.(
+      videoUpload.stage.phase === "compressing" ||
+        videoUpload.stage.phase === "uploading" ||
+        videoUpload.stage.phase === "processing",
+    );
+  }, [onCoverVideoProcessingChange, videoUpload.stage.phase]);
+
   const supportsUpload = providers.includes("upload");
+  const supportsVideoUpload = supportsUpload && enableVideoUpload;
   const supportsGiphy = providers.includes("giphy");
   const supportsPexels = providers.includes("pexels");
   const supportsSearch = supportsGiphy || supportsPexels;
@@ -209,6 +234,26 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     provider: localCover.coverMediaProvider,
     credit: localCover.coverMediaCredit,
   });
+  const activeVideoUpload =
+    videoUpload.stage.phase === "compressing" ||
+    videoUpload.stage.phase === "uploading" ||
+    videoUpload.stage.phase === "processing";
+  const activeMediaUrl =
+    videoUpload.localPreviewUri ??
+    videoUpload.processedUrl ??
+    localCover.coverMediaUrl;
+  const activeMediaType =
+    videoUpload.localPreviewUri !== null || videoUpload.processedUrl !== null
+      ? "video"
+      : localCover.coverMediaType;
+  const videoStageCopy =
+    videoUpload.stage.phase === "compressing"
+      ? "Compressing on your phone..."
+      : videoUpload.stage.phase === "uploading"
+        ? "Uploading..."
+        : videoUpload.stage.phase === "processing"
+          ? "Almost ready..."
+          : null;
 
   const emitChange = useCallback(
     (patch: CoverPatch): void => {
@@ -217,6 +262,28 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     },
     [onCoverChange],
   );
+
+  useEffect(() => {
+    if (videoUpload.stage.phase !== "ready" || videoUpload.processedUrl === null) {
+      return;
+    }
+    setMediaDisplayError(null);
+    emitChange({
+      coverMediaUrl: videoUpload.processedUrl,
+      coverMediaType: "video",
+      coverMediaProvider: UPLOAD_EVENT_COVER_PROVIDER_METADATA.provider,
+      coverMediaSourceUrl: UPLOAD_EVENT_COVER_PROVIDER_METADATA.sourceUrl,
+      coverMediaCredit: UPLOAD_EVENT_COVER_PROVIDER_METADATA.credit,
+      coverMediaCreditUrl: UPLOAD_EVENT_COVER_PROVIDER_METADATA.creditUrl,
+      coverMediaAlt: "Uploaded video cover",
+    });
+    onShowToast("Video cover updated.");
+  }, [
+    emitChange,
+    onShowToast,
+    videoUpload.processedUrl,
+    videoUpload.stage.phase,
+  ]);
 
   const showUploadError = useCallback(
     (error: unknown): void => {
@@ -275,7 +342,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   }, [eventRowId, showUploadError]);
 
   const pickImageOrGifCover = useCallback(async (): Promise<void> => {
-    if (uploading || disabled) return;
+    if (uploading || disabled || activeVideoUpload) return;
     if (!isAuthReady) {
       onShowToast("Finishing sign-in before upload. Try again in a moment.");
       return;
@@ -331,7 +398,81 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     showUploadError,
     uploading,
     validateEventRowId,
+    activeVideoUpload,
   ]);
+
+  const normalizePickerDurationMs = (duration?: number | null): number => {
+    if (typeof duration !== "number" || !Number.isFinite(duration)) return 0;
+    return duration > 0 && duration < 1000 ? duration * 1000 : duration;
+  };
+
+  const pickVideoCover = useCallback(async (): Promise<void> => {
+    if (!supportsVideoUpload || uploading || disabled || activeVideoUpload) return;
+    if (!isAuthReady) {
+      onShowToast("Finishing sign-in before upload. Try again in a moment.");
+      return;
+    }
+    if (!(await ensureMediaPermission())) return;
+    if (!validateEventRowId()) return;
+
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["videos"],
+        allowsEditing: true,
+        videoMaxDuration: 30,
+        preferredAssetRepresentationMode:
+          ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
+        quality: 1,
+      });
+      if (result.canceled || result.assets.length === 0) return;
+      const asset = result.assets[0];
+      const durationMs = normalizePickerDurationMs(asset.duration);
+      if (durationMs <= 0) {
+        onShowToast("Could not read this video's duration. Try another clip.");
+        return;
+      }
+      if (durationMs > EVENT_COVER_MAX_VIDEO_DURATION_MS + 250) {
+        onShowToast("Please trim to 30 seconds first.");
+        return;
+      }
+      const bytes = asset.fileSize ?? 0;
+      if (bytes <= 0) {
+        onShowToast("Could not read this video's size. Try another clip.");
+        return;
+      }
+      await videoUpload.start({
+        bytes,
+        durationMs,
+        fileName: asset.fileName,
+        mimeType: asset.mimeType,
+        uri: asset.uri,
+      });
+    } catch (error) {
+      onShowToast(
+        error instanceof Error
+          ? error.message
+          : "Video cover upload failed. Try again.",
+      );
+    }
+  }, [
+    activeVideoUpload,
+    disabled,
+    ensureMediaPermission,
+    isAuthReady,
+    onShowToast,
+    supportsVideoUpload,
+    uploading,
+    validateEventRowId,
+    videoUpload,
+  ]);
+
+  const cancelVideoCoverUpload = useCallback((): void => {
+    void videoUpload.cancel().catch((error) => {
+      onShowToast(
+        error instanceof Error ? error.message : "Could not cancel video upload.",
+      );
+    });
+  }, [onShowToast, videoUpload]);
 
   const runProviderSearch = useCallback(async (): Promise<void> => {
     if (disabled) return;
@@ -440,13 +581,29 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
         <View style={styles.coverPreview}>
           <EventCoverMedia
             hue={initialCoverHue}
-            mediaUrl={localCover.coverMediaUrl}
-            mediaType={localCover.coverMediaType}
+            mediaUrl={activeMediaUrl}
+            mediaType={activeMediaType}
             radius={radiusTokens.lg}
             label={localCover.coverMediaAlt ?? "cover"}
             height={180}
             onMediaError={handleMediaRenderError}
-          />
+            muted={true}
+            showAudioControl={activeMediaType === "video"}
+          >
+            {activeVideoUpload && videoStageCopy !== null ? (
+              <View style={styles.videoProgressOverlay}>
+                <Text style={styles.videoProgressText}>{videoStageCopy}</Text>
+                <View style={styles.progressTrack}>
+                  <View
+                    style={[
+                      styles.progressFill,
+                      { width: `${videoUpload.stage.percent}%` },
+                    ]}
+                  />
+                </View>
+              </View>
+            ) : null}
+          </EventCoverMedia>
         </View>
         {selectedCredit !== null ? (
           <Text style={styles.creditText}>{selectedCredit}</Text>
@@ -465,9 +622,23 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
               shape="square"
               onPress={pickImageOrGifCover}
               loading={uploading}
-              disabled={uploading || disabled}
+              disabled={uploading || activeVideoUpload || disabled}
               style={styles.actionButton}
             />
+            {supportsVideoUpload ? (
+              <Button
+                label="Upload video"
+                leadingIcon="play"
+                variant="secondary"
+                size="md"
+                shape="square"
+                onPress={() => {
+                  void pickVideoCover();
+                }}
+                disabled={uploading || activeVideoUpload || disabled}
+                style={styles.actionButton}
+              />
+            ) : null}
             {localCover.coverMediaUrl !== null ? (
               <Button
                 label="Remove"
@@ -475,14 +646,29 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
                 size="md"
                 shape="square"
                 onPress={handleRemoveCover}
-                disabled={uploading || disabled}
+                disabled={uploading || activeVideoUpload || disabled}
                 style={styles.removeButton}
               />
             ) : null}
           </View>
         ) : null}
+        {activeVideoUpload ? (
+          <View style={styles.actionRow}>
+            <Button
+              label="Cancel upload"
+              variant="ghost"
+              size="md"
+              shape="square"
+              onPress={cancelVideoCoverUpload}
+              style={styles.actionButton}
+            />
+          </View>
+        ) : null}
         {supportsUpload ? (
           <Text style={styles.uploadLimitText}>{EVENT_COVER_UPLOAD_LIMIT_COPY}</Text>
+        ) : null}
+        {supportsVideoUpload ? (
+          <Text style={styles.uploadLimitText}>{EVENT_COVER_VIDEO_PROCESSING_COPY}</Text>
         ) : null}
         {mediaDisplayError !== null ? (
           <Text accessibilityRole="alert" style={styles.mediaErrorText}>
@@ -678,6 +864,33 @@ const styles = StyleSheet.create({
     lineHeight: typography.caption.lineHeight,
     color: semantic.error,
     marginTop: spacing.xs,
+  },
+  videoProgressOverlay: {
+    position: "absolute",
+    left: spacing.sm,
+    right: spacing.sm,
+    bottom: spacing.sm,
+    padding: spacing.sm,
+    borderRadius: radiusTokens.md,
+    backgroundColor: "rgba(0, 0, 0, 0.62)",
+    gap: spacing.xs,
+  },
+  videoProgressText: {
+    color: "#FFFFFF",
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    fontWeight: "700",
+  },
+  progressTrack: {
+    height: 4,
+    borderRadius: 999,
+    overflow: "hidden",
+    backgroundColor: "rgba(255, 255, 255, 0.24)",
+  },
+  progressFill: {
+    height: "100%",
+    borderRadius: 999,
+    backgroundColor: accent.warm,
   },
   providerTabs: {
     flexDirection: "row",
