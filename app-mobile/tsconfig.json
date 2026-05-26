@@ -9,8 +9,12 @@
       "@/*": [
         "./*"
       ],
+      "@mingla/brand-rendering": ["../packages/brand-rendering"],
+      "@mingla/brand-rendering/*": ["../packages/brand-rendering/*"],
       "@mingla/event-rendering": ["../packages/event-rendering"],
       "@mingla/event-rendering/*": ["../packages/event-rendering/*"],
+      "@mingla/theme-animations": ["../packages/theme-animations"],
+      "@mingla/theme-animations/*": ["../packages/theme-animations/*"],
       "@mingla/payments-native": ["../packages/payments-native"],
       "@mingla/payments-native/*": ["../packages/payments-native/*"],
       "@mingla/phone-input": ["../packages/phone-input"],

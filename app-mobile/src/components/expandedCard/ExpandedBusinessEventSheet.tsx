@@ -28,6 +28,7 @@ import BottomSheet, {
   type BottomSheetBackdropProps,
   BottomSheetScrollView,
 } from "@gorhom/bottom-sheet";
+import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
 
 import {
@@ -36,6 +37,7 @@ import {
   PublicEventPage,
   type PublicEventProps,
   type ViewerRole,
+  resolveTheme,
 } from "@mingla/event-rendering";
 
 import { useQueryClient } from "@tanstack/react-query";
@@ -45,6 +47,7 @@ import type { BusinessEventCard } from "../../types/mergedDiscover";
 import { formatEventDateLine } from "../../utils/eventDateDisplay";
 import { useAppStore } from "../../store/appStore";
 import { usePublicEventTickets } from "../../hooks/usePublicEventTickets";
+import { useEventTheme } from "../../hooks/useEventTheme";
 import { circleKeys } from "../../hooks/queryKeys";
 import {
   type NativeCheckoutOutcome,
@@ -133,6 +136,7 @@ export const ExpandedBusinessEventSheet: React.FC<
   bottomContentInset = 32,
 }) => {
   const sheetRef = useRef<BottomSheet>(null);
+  const router = useRouter();
   const user = useAppStore((s) => s.user);
   const profile = useAppStore((s) => s.profile);
   const queryClient = useQueryClient();
@@ -149,6 +153,7 @@ export const ExpandedBusinessEventSheet: React.FC<
   );
 
   const ticketsQuery = usePublicEventTickets(visible ? data.eventId : null);
+  const themeQuery = useEventTheme(visible ? data : null);
   const runNativeCheckout = useNativeCheckoutFlow();
 
   // ORCH-0828 REWORK: diagnostic log only. Sheet open/close is driven by
@@ -333,6 +338,9 @@ export const ExpandedBusinessEventSheet: React.FC<
         // [TRANSITIONAL] Share for business events lands in a follow-up.
         toastManager.show("Share is coming soon.", "info");
       },
+      onOpenBrand: (brandSlug: string) => {
+        router.push(`/brand/${encodeURIComponent(brandSlug)}`);
+      },
       // ORCH-0847 Phase C — open the multi-tier cart sheet seeded at the
       // tapped tier. The TicketCartSheet manages the cart, opt-in, buyer
       // recap, and primary CTA; on Continue/Claim it calls handleBuy with
@@ -354,7 +362,7 @@ export const ExpandedBusinessEventSheet: React.FC<
         toastManager.show("Request-to-attend coming soon.", "info");
       },
     }),
-    [ticketsQuery.data, data.currency],
+    [router],
   );
 
   // ORCH-0828 REWORK: inline `<BottomSheet>` matching the proven
@@ -387,6 +395,7 @@ export const ExpandedBusinessEventSheet: React.FC<
             event={publicEvent}
             brand={publicBrand}
             viewerRole={viewerRole}
+            theme={themeQuery.data ?? resolveTheme(null, publicEvent.themeOverrides)}
             callbacks={callbacks}
           />
         </BottomSheetScrollView>

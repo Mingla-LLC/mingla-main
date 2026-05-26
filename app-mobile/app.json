@@ -28,7 +28,8 @@
         "ITSAppUsesNonExemptEncryption": false
       },
       "associatedDomains": [
-        "applinks:usemingla.com"
+        "applinks:usemingla.com",
+        "applinks:business.usemingla.com"
       ]
     },
     "android": {
@@ -46,6 +47,16 @@
           "action": "VIEW",
           "autoVerify": true,
           "data": [
+            {
+              "scheme": "https",
+              "host": "usemingla.com",
+              "pathPrefix": "/b"
+            },
+            {
+              "scheme": "https",
+              "host": "business.usemingla.com",
+              "pathPrefix": "/b"
+            },
             {
               "scheme": "https",
               "host": "usemingla.com",
