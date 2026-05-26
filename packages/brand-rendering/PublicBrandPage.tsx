@@ -30,6 +30,25 @@ type Tab = "upcoming" | "events" | "trips" | "experiences" | "about";
 
 const PINNED_CTA_CARD_COUNT = 3;
 
+type ThemePalette = {
+  page: string;
+  pageWash: string;
+  heroScrim: string;
+  heroLift: string;
+  primaryText: string;
+  secondaryText: string;
+  tertiaryText: string;
+  mutedText: string;
+  panel: string;
+  panelStrong: string;
+  panelBorder: string;
+  card: string;
+  cardBorder: string;
+  tabBand: string;
+  tabBorder: string;
+  accentWash: string;
+};
+
 const normalizeSocialUrl = (raw: string, base: string): string => {
   const trimmed = raw.trim();
   if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
@@ -110,6 +129,28 @@ const hexToRgba = (hex: string, alpha: number): string => {
   const g = parseInt(value.slice(2, 4), 16);
   const b = parseInt(value.slice(4, 6), 16);
   return `rgba(${r},${g},${b},${alpha})`;
+};
+
+const createThemePalette = (theme: ResolvedTheme): ThemePalette => {
+  const isLight = theme.foregroundColor === "#000000";
+  return {
+    page: isLight ? "#f8fafc" : "#07070a",
+    pageWash: hexToRgba(theme.color, isLight ? 0.10 : 0.22),
+    heroScrim: isLight ? "rgba(248,250,252,0.30)" : "rgba(4,5,8,0.42)",
+    heroLift: isLight ? "rgba(248,250,252,0.88)" : "rgba(7,7,10,0.78)",
+    primaryText: isLight ? "#10141f" : "#ffffff",
+    secondaryText: isLight ? "rgba(16,20,31,0.74)" : "rgba(255,255,255,0.76)",
+    tertiaryText: isLight ? "rgba(16,20,31,0.56)" : "rgba(255,255,255,0.56)",
+    mutedText: isLight ? "rgba(16,20,31,0.42)" : "rgba(255,255,255,0.38)",
+    panel: isLight ? "rgba(255,255,255,0.74)" : "rgba(255,255,255,0.07)",
+    panelStrong: isLight ? "rgba(255,255,255,0.92)" : "rgba(255,255,255,0.10)",
+    panelBorder: hexToRgba(theme.color, isLight ? 0.26 : 0.34),
+    card: isLight ? "rgba(255,255,255,0.82)" : "rgba(255,255,255,0.075)",
+    cardBorder: isLight ? "rgba(16,20,31,0.08)" : "rgba(255,255,255,0.10)",
+    tabBand: hexToRgba(theme.color, isLight ? 0.12 : 0.18),
+    tabBorder: hexToRgba(theme.color, isLight ? 0.28 : 0.42),
+    accentWash: hexToRgba(theme.color, isLight ? 0.16 : 0.22),
+  };
 };
 
 const tabLabel: Record<Tab, string> = {
@@ -200,8 +241,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
     resolvedTheme.color === MINGLA_DEFAULT_THEME.color && brand.coverHue !== 25
       ? `hsl(${brand.coverHue}, 60%, 45%)`
       : resolvedTheme.color;
-  const themeTint = hexToRgba(resolvedTheme.color, 0.42);
-  const themeSoftTint = hexToRgba(resolvedTheme.color, 0.12);
+  const palette = useMemo(() => createThemePalette(resolvedTheme), [resolvedTheme]);
   const themedFont = { fontFamily: resolvedTheme.fontFamilyValue };
 
   const socialEntries = useMemo(() => {
@@ -261,7 +301,11 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   };
 
   return (
-    <View style={styles.host}>
+    <View style={[styles.host, { backgroundColor: palette.page }]}>
+      <View
+        pointerEvents="none"
+        style={[styles.pageThemeWash, { backgroundColor: palette.pageWash }]}
+      />
       <View
         style={[styles.heroWrap, { backgroundColor: heroColor }]}
         pointerEvents="none"
@@ -279,11 +323,12 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
         ) : (
           <View style={[styles.heroGradient, { backgroundColor: heroColor }]} />
         )}
-        <View style={[styles.heroThemeTint, { backgroundColor: themeTint }]} />
-        <View style={styles.heroFade} />
+        <View style={[styles.heroThemeTint, { backgroundColor: palette.pageWash }]} />
+        <View style={[styles.heroFade, { backgroundColor: palette.heroScrim }]} />
         <ThemeEntranceAnimation
           theme={resolvedTheme}
-          sessionKey={`brand:${brand.slug}`}
+          sessionKey={`brand:${brand.slug}:${resolvedTheme.color}:${resolvedTheme.font}`}
+          replayOnMount
         />
       </View>
 
@@ -315,29 +360,48 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.identityCentered}>
-          <Avatar brand={brand} />
-          <Text style={[styles.brandNameCentered, themedFont]}>
+        <View
+          style={[
+            styles.identityCentered,
+            {
+              backgroundColor: palette.heroLift,
+              borderColor: palette.panelBorder,
+            },
+          ]}
+        >
+          <Avatar brand={brand} theme={resolvedTheme} palette={palette} />
+          <Text
+            style={[styles.brandNameCentered, themedFont, { color: palette.primaryText }]}
+          >
             {brand.displayName}
           </Text>
           {venue?.isVerifiedVenue === true ? (
-            <Text style={styles.verifiedBadge}>Verified venue</Text>
+            <Text style={[styles.verifiedBadge, { color: resolvedTheme.color }]}>
+              Verified venue
+            </Text>
           ) : null}
           {brand.address !== null && brand.address.trim().length > 0 ? (
-            <Text style={styles.handleLineCentered}>{brand.address.trim()}</Text>
+            <Text style={[styles.handleLineCentered, { color: palette.tertiaryText }]}>
+              {brand.address.trim()}
+            </Text>
           ) : null}
         </View>
 
         {brand.tagline !== undefined && brand.tagline.trim().length > 0 ? (
-          <Text style={[styles.taglineCentered, themedFont]}>{brand.tagline}</Text>
+          <Text style={[styles.taglineCentered, themedFont, { color: palette.tertiaryText }]}>
+            {brand.tagline}
+          </Text>
         ) : null}
         {brand.bio !== undefined && brand.bio.trim().length > 0 ? (
-          <Text style={styles.bioLeadCentered}>{brand.bio}</Text>
+          <Text style={[styles.bioLeadCentered, { color: palette.secondaryText }]}>
+            {brand.bio}
+          </Text>
         ) : null}
 
         <SocialLinksRow
           entries={socialEntries}
           theme={resolvedTheme}
+          palette={palette}
           onPress={onExternal}
         />
 
@@ -345,6 +409,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
           <NextOfferingTeaser
             item={upcoming[0]}
             theme={resolvedTheme}
+            palette={palette}
             onPress={(item) => {
               if (callbacks.onOpenUpcoming !== undefined) {
                 callbacks.onOpenUpcoming(item);
@@ -356,7 +421,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
         <View
           style={[
             styles.tabsRow,
-            { backgroundColor: themeSoftTint, borderBottomColor: themeTint },
+            { backgroundColor: palette.tabBand, borderBottomColor: palette.tabBorder },
           ]}
         >
           {visibleTabs.map((tab) => (
@@ -366,6 +431,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
               count={countForTab(tab)}
               active={activeTab === tab}
               theme={resolvedTheme}
+              palette={palette}
               onPress={() => setActiveTab(tab)}
             />
           ))}
@@ -375,6 +441,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
           <UpcomingList
             rows={upcoming}
             theme={resolvedTheme}
+            palette={palette}
             emptyCopy="No upcoming offerings yet"
             onPress={(item) => {
               if (callbacks.onOpenUpcoming !== undefined) {
@@ -387,6 +454,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
             events={upcomingEvents}
             pastEvents={pastEvents}
             theme={resolvedTheme}
+            palette={palette}
             emptyCopy="No public events yet"
             onPress={callbacks.onOpenEvent}
           />
@@ -395,6 +463,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
             trips={upcomingTrips}
             pastTrips={pastTrips}
             theme={resolvedTheme}
+            palette={palette}
             emptyCopy="No public trips yet"
             onPress={callbacks.onOpenTrip}
           />
@@ -402,11 +471,17 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
           <ExperienceList
             experiences={experiences}
             theme={resolvedTheme}
+            palette={palette}
             emptyCopy="No public experiences yet"
             onPress={callbacks.onOpenExperience}
           />
         ) : (
-          <AboutTab brand={brand} theme={resolvedTheme} onExternal={onExternal} />
+          <AboutTab
+            brand={brand}
+            theme={resolvedTheme}
+            palette={palette}
+            onExternal={onExternal}
+          />
         )}
       </ScrollView>
     </View>
@@ -450,20 +525,32 @@ const ChromeGlyph: React.FC<{ glyph: "x" | "share" }> = ({ glyph }) => (
   </View>
 );
 
-const Avatar: React.FC<{ brand: PublicBrand }> = ({ brand }) => {
+const Avatar: React.FC<{
+  brand: PublicBrand;
+  theme: ResolvedTheme;
+  palette: ThemePalette;
+}> = ({ brand, theme, palette }) => {
+  const avatarStyle = [
+    styles.avatar,
+    {
+      backgroundColor: palette.panelStrong,
+      borderColor: theme.color,
+      shadowColor: theme.color,
+    },
+  ];
   if (brand.photo !== undefined && brand.photo.length > 0) {
     return (
       <Image
         source={{ uri: brand.photo }}
-        style={styles.avatar}
+        style={avatarStyle}
         resizeMode="cover"
         accessibilityLabel={`${brand.displayName} avatar`}
       />
     );
   }
   return (
-    <View style={styles.avatar}>
-      <Text style={styles.avatarInitial}>
+    <View style={avatarStyle}>
+      <Text style={[styles.avatarInitial, { color: palette.primaryText }]}>
         {(brand.displayName.charAt(0) || "?").toUpperCase()}
       </Text>
     </View>
@@ -473,8 +560,9 @@ const Avatar: React.FC<{ brand: PublicBrand }> = ({ brand }) => {
 const SocialLinksRow: React.FC<{
   entries: Array<{ label: string; url: string }>;
   theme: ResolvedTheme;
+  palette: ThemePalette;
   onPress: (url: string) => void;
-}> = ({ entries, theme, onPress }) => {
+}> = ({ entries, theme, palette, onPress }) => {
   if (entries.length === 0) return null;
   return (
     <View style={styles.socialsRowCompact}>
@@ -487,8 +575,8 @@ const SocialLinksRow: React.FC<{
           style={[
             styles.socialBtnIconOnly,
             {
-              backgroundColor: hexToRgba(theme.color, 0.16),
-              borderColor: theme.color,
+              backgroundColor: palette.accentWash,
+              borderColor: palette.panelBorder,
             },
           ]}
         >
@@ -506,8 +594,9 @@ const TabButton: React.FC<{
   count?: number;
   active: boolean;
   theme: ResolvedTheme;
+  palette: ThemePalette;
   onPress: () => void;
-}> = ({ label, count, active, theme, onPress }) => (
+}> = ({ label, count, active, theme, palette, onPress }) => (
   <Pressable
     onPress={onPress}
     accessibilityRole="button"
@@ -522,11 +611,14 @@ const TabButton: React.FC<{
       style={[
         styles.tabLabel,
         { fontFamily: theme.fontFamilyValue },
+        { color: active ? palette.primaryText : palette.tertiaryText },
         active && styles.tabLabelActive,
       ]}
     >
       {label}
-      {count !== undefined ? <Text style={styles.tabCount}> {count}</Text> : null}
+      {count !== undefined ? (
+        <Text style={[styles.tabCount, { color: palette.mutedText }]}> {count}</Text>
+      ) : null}
     </Text>
   </Pressable>
 );
@@ -535,13 +627,16 @@ const EventList: React.FC<{
   events: PublicBrandEvent[];
   pastEvents?: PublicBrandEvent[];
   theme: ResolvedTheme;
+  palette: ThemePalette;
   emptyCopy: string;
   onPress: (event: PublicBrandEvent) => void;
-}> = ({ events, pastEvents = [], theme, emptyCopy, onPress }) => {
+}> = ({ events, pastEvents = [], theme, palette, emptyCopy, onPress }) => {
   if (events.length === 0 && pastEvents.length === 0) {
     return (
       <View style={styles.emptyTabWrap}>
-        <Text style={styles.emptyTabTitle}>{emptyCopy}</Text>
+        <Text style={[styles.emptyTabTitle, { color: palette.secondaryText }]}>
+          {emptyCopy}
+        </Text>
       </View>
     );
   }
@@ -552,6 +647,7 @@ const EventList: React.FC<{
           key={event.id}
           event={event}
           theme={theme}
+          palette={palette}
           onPress={onPress}
           pinCta={index < PINNED_CTA_CARD_COUNT}
         />
@@ -561,6 +657,7 @@ const EventList: React.FC<{
           key={event.id}
           event={event}
           theme={theme}
+          palette={palette}
           onPress={onPress}
           past
         />
@@ -572,10 +669,11 @@ const EventList: React.FC<{
 const EventMiniCard: React.FC<{
   event: PublicBrandEvent;
   theme: ResolvedTheme;
+  palette: ThemePalette;
   onPress: (event: PublicBrandEvent) => void;
   pinCta?: boolean;
   past?: boolean;
-}> = ({ event, theme, onPress, pinCta = false, past = false }) => {
+}> = ({ event, theme, palette, onPress, pinCta = false, past = false }) => {
   const price = minPriceLabel(event.tickets, event.currency);
   return (
     <Pressable
@@ -584,6 +682,7 @@ const EventMiniCard: React.FC<{
       accessibilityLabel={`Open event ${event.name}`}
       style={({ pressed }) => [
         styles.eventCard,
+        { backgroundColor: palette.card, borderColor: palette.cardBorder },
         past && styles.eventCardPast,
         pressed && styles.cardPressed,
       ]}
@@ -598,19 +697,26 @@ const EventMiniCard: React.FC<{
           {event.dateLine}
         </Text>
         <Text
-          style={[styles.eventTitle, { fontFamily: theme.fontFamilyValue }]}
+          style={[
+            styles.eventTitle,
+            { fontFamily: theme.fontFamilyValue, color: palette.primaryText },
+          ]}
           numberOfLines={2}
         >
           {event.name.length > 0 ? event.name : "Untitled event"}
         </Text>
         {event.venueName !== null && event.venueName.length > 0 ? (
-          <Text style={styles.eventVenue} numberOfLines={1}>
+          <Text style={[styles.eventVenue, { color: palette.tertiaryText }]} numberOfLines={1}>
             {event.venueName}
           </Text>
         ) : event.format === "online" || event.format === "hybrid" ? (
-          <Text style={styles.eventVenue}>Online event</Text>
+          <Text style={[styles.eventVenue, { color: palette.tertiaryText }]}>
+            Online event
+          </Text>
         ) : null}
-        {price !== null ? <Text style={styles.eventPrice}>{price}</Text> : null}
+        {price !== null ? (
+          <Text style={[styles.eventPrice, { color: palette.primaryText }]}>{price}</Text>
+        ) : null}
       </View>
       {pinCta ? (
         <View style={[styles.eventBuyPill, { backgroundColor: theme.color }]}>
@@ -631,8 +737,9 @@ const EventMiniCard: React.FC<{
 const NextOfferingTeaser: React.FC<{
   item: PublicBrandUpcoming;
   theme: ResolvedTheme;
+  palette: ThemePalette;
   onPress: (item: PublicBrandUpcoming) => void;
-}> = ({ item, theme, onPress }) => {
+}> = ({ item, theme, palette, onPress }) => {
   const price = offeringPriceLabel(item);
   const dateLine = formatUpcomingDateLine(item.startsAt);
   const bodyText =
@@ -646,13 +753,16 @@ const NextOfferingTeaser: React.FC<{
       accessibilityLabel={`Next offering ${item.name}`}
       style={({ pressed }) => [
         styles.nextTeaser,
-        { borderColor: theme.color },
+        { backgroundColor: palette.accentWash, borderColor: palette.panelBorder },
         pressed && styles.cardPressed,
       ]}
     >
       <Text style={[styles.nextTeaserLabel, { color: theme.color }]}>NEXT</Text>
       <Text
-        style={[styles.nextTeaserBody, { fontFamily: theme.fontFamilyValue }]}
+        style={[
+          styles.nextTeaserBody,
+          { fontFamily: theme.fontFamilyValue, color: palette.primaryText },
+        ]}
         numberOfLines={1}
       >
         {bodyText}
@@ -666,13 +776,16 @@ const TripList: React.FC<{
   trips: PublicBrandTrip[];
   pastTrips?: PublicBrandTrip[];
   theme: ResolvedTheme;
+  palette: ThemePalette;
   emptyCopy: string;
   onPress: (trip: PublicBrandTrip) => void;
-}> = ({ trips, pastTrips = [], theme, emptyCopy, onPress }) => {
+}> = ({ trips, pastTrips = [], theme, palette, emptyCopy, onPress }) => {
   if (trips.length === 0 && pastTrips.length === 0) {
     return (
       <View style={styles.emptyTabWrap}>
-        <Text style={styles.emptyTabTitle}>{emptyCopy}</Text>
+        <Text style={[styles.emptyTabTitle, { color: palette.secondaryText }]}>
+          {emptyCopy}
+        </Text>
       </View>
     );
   }
@@ -683,6 +796,7 @@ const TripList: React.FC<{
           key={trip.id}
           trip={trip}
           theme={theme}
+          palette={palette}
           onPress={onPress}
         />
       ))}
@@ -691,6 +805,7 @@ const TripList: React.FC<{
           key={trip.id}
           trip={trip}
           theme={theme}
+          palette={palette}
           onPress={onPress}
           past
         />
@@ -702,9 +817,10 @@ const TripList: React.FC<{
 const TripMiniCard: React.FC<{
   trip: PublicBrandTrip;
   theme: ResolvedTheme;
+  palette: ThemePalette;
   onPress: (trip: PublicBrandTrip) => void;
   past?: boolean;
-}> = ({ trip, theme, onPress, past = false }) => {
+}> = ({ trip, theme, palette, onPress, past = false }) => {
   const dateLine = formatTripDateRange(trip.startAt, trip.endAt, trip.timezone);
   const price =
     trip.minPriceCents !== null && trip.currency !== null
@@ -728,6 +844,7 @@ const TripMiniCard: React.FC<{
       accessibilityLabel={`Open trip ${trip.title}`}
       style={({ pressed }) => [
         styles.eventCard,
+        { backgroundColor: palette.card, borderColor: palette.cardBorder },
         past && styles.eventCardPast,
         pressed && styles.cardPressed,
       ]}
@@ -744,18 +861,25 @@ const TripMiniCard: React.FC<{
           </Text>
         ) : null}
         <Text
-          style={[styles.eventTitle, { fontFamily: theme.fontFamilyValue }]}
+          style={[
+            styles.eventTitle,
+            { fontFamily: theme.fontFamilyValue, color: palette.primaryText },
+          ]}
           numberOfLines={2}
         >
           {trip.title.length > 0 ? trip.title : "Untitled trip"}
         </Text>
         {trip.destinationText !== null && trip.destinationText.length > 0 ? (
-          <Text style={styles.eventVenue} numberOfLines={1}>
+          <Text style={[styles.eventVenue, { color: palette.tertiaryText }]} numberOfLines={1}>
             {trip.destinationText}
           </Text>
         ) : null}
         <View style={styles.tripFooterRow}>
-          {price !== null ? <Text style={styles.eventPrice}>{price}</Text> : <View />}
+          {price !== null ? (
+            <Text style={[styles.eventPrice, { color: palette.primaryText }]}>{price}</Text>
+          ) : (
+            <View />
+          )}
           {trip.bookingsClosed ? (
             <View style={styles.tripBadgeClosed}>
               <Text style={styles.tripBadgeLabel}>Booking closed</Text>
@@ -799,13 +923,16 @@ const formatUpcomingDateLine = (startsAt: string | null): string => {
 const UpcomingList: React.FC<{
   rows: PublicBrandUpcoming[];
   theme: ResolvedTheme;
+  palette: ThemePalette;
   emptyCopy: string;
   onPress: (item: PublicBrandUpcoming) => void;
-}> = ({ rows, theme, emptyCopy, onPress }) => {
+}> = ({ rows, theme, palette, emptyCopy, onPress }) => {
   if (rows.length === 0) {
     return (
       <View style={styles.emptyTabWrap}>
-        <Text style={styles.emptyTabTitle}>{emptyCopy}</Text>
+        <Text style={[styles.emptyTabTitle, { color: palette.secondaryText }]}>
+          {emptyCopy}
+        </Text>
       </View>
     );
   }
@@ -816,6 +943,7 @@ const UpcomingList: React.FC<{
           key={`${item.offeringType}:${item.offeringId}`}
           item={item}
           theme={theme}
+          palette={palette}
           onPress={onPress}
         />
       ))}
@@ -826,15 +954,20 @@ const UpcomingList: React.FC<{
 const OfferingMiniCard: React.FC<{
   item: PublicBrandUpcoming;
   theme: ResolvedTheme;
+  palette: ThemePalette;
   onPress: (item: PublicBrandUpcoming) => void;
-}> = ({ item, theme, onPress }) => {
+}> = ({ item, theme, palette, onPress }) => {
   const price = offeringPriceLabel(item);
   return (
     <Pressable
       onPress={() => onPress(item)}
       accessibilityRole="button"
       accessibilityLabel={`Open ${item.offeringType} ${item.name}`}
-      style={({ pressed }) => [styles.eventCard, pressed && styles.cardPressed]}
+      style={({ pressed }) => [
+        styles.eventCard,
+        { backgroundColor: palette.card, borderColor: palette.cardBorder },
+        pressed && styles.cardPressed,
+      ]}
     >
       <CoverBlock
         hue={hashHueFromString(item.offeringId)}
@@ -846,13 +979,20 @@ const OfferingMiniCard: React.FC<{
           {formatUpcomingDateLine(item.startsAt)}
         </Text>
         <Text
-          style={[styles.eventTitle, { fontFamily: theme.fontFamilyValue }]}
+          style={[
+            styles.eventTitle,
+            { fontFamily: theme.fontFamilyValue, color: palette.primaryText },
+          ]}
           numberOfLines={2}
         >
           {item.name.length > 0 ? item.name : "Untitled offering"}
         </Text>
-        <Text style={styles.eventVenue}>{item.offeringType}</Text>
-        {price !== null ? <Text style={styles.eventPrice}>{price}</Text> : null}
+        <Text style={[styles.eventVenue, { color: palette.tertiaryText }]}>
+          {item.offeringType}
+        </Text>
+        {price !== null ? (
+          <Text style={[styles.eventPrice, { color: palette.primaryText }]}>{price}</Text>
+        ) : null}
       </View>
     </Pressable>
   );
@@ -861,13 +1001,16 @@ const OfferingMiniCard: React.FC<{
 const ExperienceList: React.FC<{
   experiences: PublicBrandExperience[];
   theme: ResolvedTheme;
+  palette: ThemePalette;
   emptyCopy: string;
   onPress?: (experience: PublicBrandExperience) => void;
-}> = ({ experiences, theme, emptyCopy, onPress }) => {
+}> = ({ experiences, theme, palette, emptyCopy, onPress }) => {
   if (experiences.length === 0) {
     return (
       <View style={styles.emptyTabWrap}>
-        <Text style={styles.emptyTabTitle}>{emptyCopy}</Text>
+        <Text style={[styles.emptyTabTitle, { color: palette.secondaryText }]}>
+          {emptyCopy}
+        </Text>
       </View>
     );
   }
@@ -878,6 +1021,7 @@ const ExperienceList: React.FC<{
           key={experience.experienceId}
           experience={experience}
           theme={theme}
+          palette={palette}
           onPress={onPress}
         />
       ))}
@@ -888,15 +1032,20 @@ const ExperienceList: React.FC<{
 const ExperienceMiniCard: React.FC<{
   experience: PublicBrandExperience;
   theme: ResolvedTheme;
+  palette: ThemePalette;
   onPress?: (experience: PublicBrandExperience) => void;
-}> = ({ experience, theme, onPress }) => {
+}> = ({ experience, theme, palette, onPress }) => {
   const price = offeringPriceLabel(experience);
   return (
     <Pressable
       onPress={() => onPress?.(experience)}
       accessibilityRole="button"
       accessibilityLabel={`Open experience ${experience.name}`}
-      style={({ pressed }) => [styles.eventCard, pressed && styles.cardPressed]}
+      style={({ pressed }) => [
+        styles.eventCard,
+        { backgroundColor: palette.card, borderColor: palette.cardBorder },
+        pressed && styles.cardPressed,
+      ]}
     >
       <CoverBlock
         hue={hashHueFromString(experience.experienceId)}
@@ -910,17 +1059,22 @@ const ExperienceMiniCard: React.FC<{
           </Text>
         ) : null}
         <Text
-          style={[styles.eventTitle, { fontFamily: theme.fontFamilyValue }]}
+          style={[
+            styles.eventTitle,
+            { fontFamily: theme.fontFamilyValue, color: palette.primaryText },
+          ]}
           numberOfLines={2}
         >
           {experience.name.length > 0 ? experience.name : "Untitled experience"}
         </Text>
         {experience.venueText !== null && experience.venueText.length > 0 ? (
-          <Text style={styles.eventVenue} numberOfLines={1}>
+          <Text style={[styles.eventVenue, { color: palette.tertiaryText }]} numberOfLines={1}>
             {experience.venueText}
           </Text>
         ) : null}
-        {price !== null ? <Text style={styles.eventPrice}>{price}</Text> : null}
+        {price !== null ? (
+          <Text style={[styles.eventPrice, { color: palette.primaryText }]}>{price}</Text>
+        ) : null}
       </View>
     </Pressable>
   );
@@ -957,30 +1111,57 @@ const CoverBlock: React.FC<{
 const AboutTab: React.FC<{
   brand: PublicBrand;
   theme: ResolvedTheme;
+  palette: ThemePalette;
   onExternal: (url: string) => void;
-}> = ({ brand, theme, onExternal }) => (
+}> = ({ brand, theme, palette, onExternal }) => (
   <View style={styles.aboutWrap}>
     {brand.bio !== undefined && brand.bio.trim().length > 0 ? (
-      <View style={styles.aboutBlock}>
-        <Text style={[styles.aboutBlockLabel, { fontFamily: theme.fontFamilyValue }]}>
+      <View
+        style={[
+          styles.aboutBlock,
+          { backgroundColor: palette.panel, borderColor: palette.cardBorder },
+        ]}
+      >
+        <Text
+          style={[
+            styles.aboutBlockLabel,
+            { fontFamily: theme.fontFamilyValue, color: palette.tertiaryText },
+          ]}
+        >
           About
         </Text>
-        <Text style={styles.aboutBlockBody}>{brand.bio}</Text>
+        <Text style={[styles.aboutBlockBody, { color: palette.secondaryText }]}>
+          {brand.bio}
+        </Text>
       </View>
     ) : null}
     {brand.contact?.email !== undefined || brand.contact?.phone !== undefined ? (
-      <View style={styles.aboutBlock}>
-        <Text style={[styles.aboutBlockLabel, { fontFamily: theme.fontFamilyValue }]}>
+      <View
+        style={[
+          styles.aboutBlock,
+          { backgroundColor: palette.panel, borderColor: palette.cardBorder },
+        ]}
+      >
+        <Text
+          style={[
+            styles.aboutBlockLabel,
+            { fontFamily: theme.fontFamilyValue, color: palette.tertiaryText },
+          ]}
+        >
           Contact
         </Text>
         {brand.contact?.email !== undefined ? (
           <Pressable onPress={() => onExternal(`mailto:${brand.contact?.email}`)}>
-            <Text style={styles.aboutContactLink}>{brand.contact.email}</Text>
+            <Text style={[styles.aboutContactLink, { color: theme.color }]}>
+              {brand.contact.email}
+            </Text>
           </Pressable>
         ) : null}
         {brand.contact?.phone !== undefined ? (
           <Pressable onPress={() => onExternal(`tel:${brand.contact?.phone}`)}>
-            <Text style={styles.aboutContactLink}>{brand.contact.phone}</Text>
+            <Text style={[styles.aboutContactLink, { color: theme.color }]}>
+              {brand.contact.phone}
+            </Text>
           </Pressable>
         ) : null}
       </View>
@@ -993,12 +1174,21 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor,
   },
+  pageThemeWash: {
+    position: "absolute",
+    top: 160,
+    left: -80,
+    right: -80,
+    height: 320,
+    opacity: 1,
+    transform: [{ rotate: "-8deg" }],
+  },
   heroWrap: {
     position: "absolute",
     top: 0,
     left: 0,
     right: 0,
-    height: 180,
+    height: 220,
     zIndex: 0,
     overflow: "hidden",
   },
@@ -1090,24 +1280,36 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
   scrollContent: {
-    paddingTop: 110,
+    paddingTop: 148,
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.xl,
   },
   identityCentered: {
     alignItems: "center",
+    alignSelf: "center",
+    width: "100%",
+    maxWidth: 560,
+    paddingHorizontal: spacing.lg,
+    paddingTop: 54,
+    paddingBottom: spacing.lg,
+    borderRadius: radius.xl,
+    borderWidth: 1,
     marginBottom: spacing.md,
   },
   avatar: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
+    width: 112,
+    height: 112,
+    borderRadius: 56,
     backgroundColor: "rgba(255,255,255,0.10)",
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 2,
+    borderWidth: 3,
     borderColor: "rgba(255,255,255,0.20)",
-    marginTop: -42,
+    marginTop: -96,
+    shadowOpacity: 0.26,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 4,
   },
   avatarInitial: {
     color: text.primary,
@@ -1222,7 +1424,6 @@ const styles = StyleSheet.create({
     color: text.tertiary,
   },
   tabLabelActive: {
-    color: text.primary,
     fontWeight: "600",
   },
   tabCount: {
@@ -1331,6 +1532,9 @@ const styles = StyleSheet.create({
   },
   aboutBlock: {
     gap: spacing.xs,
+    borderWidth: 1,
+    borderRadius: radius.lg,
+    padding: spacing.md,
   },
   aboutBlockLabel: {
     fontSize: 11,

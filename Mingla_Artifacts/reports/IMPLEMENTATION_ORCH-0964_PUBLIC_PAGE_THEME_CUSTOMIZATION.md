@@ -115,6 +115,42 @@ cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0964-[public-page-theme-customiz
 
 Result: PASS, all listed gates passed.
 
+## Smoke-Test Design Rework — premium theme-owned public page + animation replay
+
+Seth confirmed theme colors now save and appear, then requested a stronger public-brand-page design pass: the page should feel modern, premium, and customizable, with the full background/text system matching the chosen theme instead of only placing the accent color in a few controls. The rework stays inside the existing ORCH-0964 surface and does not add a migration or new DB column.
+
+Design/implementation changes:
+
+- `packages/brand-rendering/PublicBrandPage.tsx` now derives a full `ThemePalette` from `ResolvedTheme`, including light/dark page background, cover wash, profile panel, profile-photo ring, readable primary/secondary/tertiary text, tab band, cards, and about blocks.
+- The page background can flip between a premium light surface and near-black surface based on the existing foreground-contrast resolver, so chosen theme colors can support either white-leaning or black-leaning public pages without adding schema.
+- Cover media now receives a theme-owned wash and scrim, the brand profile photo is larger with a themed ring/shadow, and brand title/tagline/bio/card text all use palette-derived readable colors.
+- Event/trip/upcoming/experience cards, empty states, the next-offering teaser, social buttons, and about/contact panels now use palette colors instead of fixed dark glass/text.
+- `packages/event-rendering/ThemeEntranceAnimation.tsx` adds optional `replayOnMount`; `PublicBrandPage` passes it with a session key containing brand slug + color + font, so public brand animations replay when the page mounts while the event page keeps the old one-play-per-session default.
+
+Regression coverage:
+
+```bash
+cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0964-[public-page-theme-customization]/mingla-business" && npx jest src/components/brand/__tests__/PublicBrandPage.orch_0964_smoke_rework.test.ts --runInBand
+```
+
+Result: PASS, 1 suite / 5 tests passed. The test now guards the palette-owned page surface/card/text treatment and the public-brand-only animation replay contract.
+
+Focused rework check:
+
+```bash
+cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0964-[public-page-theme-customization]/mingla-business" && npx jest src/utils/__tests__/brandPatch.orch_0964_smoke_rework.test.ts src/hooks/__tests__/useBrands.orch_0964_public_theme_cache.test.ts src/components/brand/__tests__/PublicBrandPage.orch_0964_smoke_rework.test.ts src/utils/__tests__/themeResolver.orch_0964.test.ts src/utils/__tests__/themeResolver.adversarial.orch_0964.test.ts --runInBand
+```
+
+Result: PASS, 5 suites / 14 tests passed.
+
+```bash
+cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0964-[public-page-theme-customization]" && node .github/scripts/strict-grep/orch-0964-theme-typed-columns.mjs && node .github/scripts/strict-grep/orch-0964-theme-resolver-canonical.mjs && node .github/scripts/strict-grep/orch-0964-theme-foreground-computed.mjs && node .github/scripts/strict-grep/orch-0964-checkout-no-brand-theme.mjs && node .github/scripts/strict-grep/orch-0964-brand-rendering-self-contained.mjs && node .github/scripts/strict-grep/orch-0964-well-known-json-content-type.mjs && node .github/scripts/strict-grep/meta-orch-0972-data-driven-tabs.mjs && node .github/scripts/strict-grep/meta-orch-0972-no-brand-kind-reads.mjs && node .github/scripts/strict-grep/orch-0963-public-trip-rpc-and-route-segregation.mjs && node .github/scripts/strict-grep/orch-0863-marketing-hub-phase-b.mjs
+```
+
+Result: PASS, all listed strict-grep gates passed.
+
+TypeScript note: full `mingla-business` TypeScript remains blocked by existing unrelated app/shared-package type debt, including pre-existing `home.tsx`, checkout, ComposerV2, payment package, old test fixture `category`, and shared-package module-resolution errors. This rework did not introduce a new package dependency; focused regression and strict-grep gates are the release proof for this scoped pass.
+
 ## Rework Update — Android App Links consumer target
 
 Seth provided the verified consumer Android package fingerprints after the first QA pass. `mingla-business/public/.well-known/assetlinks.json` now preserves the existing business-app target for `com.sethogieva.minglabusiness` and adds a second Android App Links target for `com.mingla.app.v2` with both verified SHA-256 fingerprints:

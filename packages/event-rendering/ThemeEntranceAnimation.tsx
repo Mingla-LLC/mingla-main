@@ -8,6 +8,7 @@ import type { ResolvedTheme } from "./designTokens";
 interface ThemeEntranceAnimationProps {
   theme: ResolvedTheme;
   sessionKey: string;
+  replayOnMount?: boolean;
 }
 
 const playedSessionKeys = new Set<string>();
@@ -15,8 +16,12 @@ const playedSessionKeys = new Set<string>();
 export const ThemeEntranceAnimation: React.FC<ThemeEntranceAnimationProps> = ({
   theme,
   sessionKey,
+  replayOnMount = false,
 }) => {
-  const mountedKey = `${sessionKey}:${theme.animation}`;
+  const mountIdRef = useRef<string>(`${Date.now()}:${Math.random()}`);
+  const mountedKey = replayOnMount
+    ? `${sessionKey}:${theme.animation}:${mountIdRef.current}`
+    : `${sessionKey}:${theme.animation}`;
   const [shouldPlay, setShouldPlay] = useState<boolean>(() => {
     return theme.animation !== "none" && !playedSessionKeys.has(mountedKey);
   });
