@@ -117,6 +117,7 @@ import {
 import { businessEventKeys } from "../../hooks/useBusinessEvents";
 import { publicEventKeys } from "../../hooks/usePublicEvents";
 import { useEventHasWebPurchases } from "../../hooks/useEventOrders";
+import { refreshPublishedEventWhenAfterSave } from "../../utils/publishedEventWhenRefresh";
 
 // ---- Section configuration -----------------------------------------
 
@@ -800,6 +801,12 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
             reason: validation.trimmedReason,
             clientRevision: null,
           });
+          const refreshedDetail = await refreshPublishedEventWhenAfterSave({
+            queryClient,
+            eventId: liveEvent.serverEventId,
+            brandId: liveEvent.brandId,
+          });
+          setEditState(liveEventToEditableDraft(refreshedDetail.event));
           invalidateServerEventCaches();
         } catch (error) {
           setSubmitting(false);
@@ -894,6 +901,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
       buildRejectDialog,
       disableLocalSaveReason,
       invalidateServerEventCaches,
+      queryClient,
     ],
   );
 
