@@ -9,6 +9,71 @@
 
 ORCH-0964 now adds typed brand/event theme columns, shared theme resolution, themed buyer-web public brand/event rendering, a consumer-app brand screen, consumer event-sheet brand navigation, and Universal/App Link app config. Amendment 3 was applied after rebase: `PublicBrandPage` is data-driven (Upcoming / Events / Trips / Experiences / About), `ExperienceMiniCard` is included in `packages/brand-rendering`, and the hooks use upcoming + experience RPCs without `brands.kind` reads.
 
+## Smoke-Test Rework — P0/P1 operator findings
+
+Operator smoke-test rework was implemented in two scoped commits:
+
+- `a71648342` — fixes F-A write path by adding `theme` to `computeDirtyFieldsPatch`, so a public-page theme-only edit no longer produces an empty mutation patch.
+- `4e57df035` — fixes F-B/F-C/F-D preview rendering/chrome by applying the resolved theme to the shared hero band, keeping the entrance animation `pointerEvents="none"`, threading a safe top offset from the business adapter, restoring ORCH-0961 brand chrome test IDs, adding hit slop/elevation, and replacing the bad `up` text glyph with a self-contained share glyph.
+
+Mandatory DB probe result:
+
+```sql
+select id, slug, name, theme_color, theme_font, theme_animation, updated_at
+from public.brands
+order by updated_at desc nulls last
+limit 20;
+```
+
+Result summary: the 20 most recently updated production brand rows all had `theme_color = null`, `theme_font = null`, and `theme_animation = null`; the newest row was `22a18413-bfbf-4087-9ba7-45f70deba0f3` / `leggothis` / `Leggo This` at `2026-05-26 06:34:08.726161+00`, also all-null. That localizes F-A to suspect 1 from the dispatch: the write-side diff patch dropped `theme` before `useUpdateBrand`/`mapUiToBrandUpdatePatch` could write typed columns. I did not mutate production to create a fresh post-fix row; the operator EAS smoke-test remains the production write/read proof after a new bundle is pushed.
+
+Finding outcomes:
+
+- F-A (P0): root cause confirmed as diff-patch drop. `BrandEditView` called `onSave(draft)`, but `computeDirtyFieldsPatch(next, brand)` skipped `theme`, so theme-only edits short-circuited as a no-op while the view still showed "Saved".
+- F-B (P1): downstream of F-A for saved values, plus renderer hardening. The business adapter already passed `theme={theme}` into the shared page; the shared hero band now carries `backgroundColor: heroColor`, so the selected theme color is the band fallback instead of black/default.
+- F-C (P1): preview close wiring was present, but the extracted shared chrome had lost the ORCH-0961 test IDs and had a smaller/no explicit hit-slop contract. The shared close/share buttons now preserve `orch-0961-public-brand-close` / `orch-0961-public-brand-share`, use `hitSlop={8}`, `elevation: 8`, `pointerEvents="box-none"` on the row, and the animation overlay remains non-interactive.
+- F-D (P1): root cause confirmed as the shared chrome rendering the share glyph as text `"up"`. The share button now renders a self-contained share-node glyph using React Native views.
+
+New regression tests:
+
+```bash
+cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0964-[public-page-theme-customization]/mingla-business" && npx jest src/utils/__tests__/brandPatch.orch_0964_smoke_rework.test.ts src/components/brand/__tests__/PublicBrandPage.orch_0964_smoke_rework.test.ts --runInBand
+```
+
+Result: PASS, 2 suites / 5 tests passed.
+
+F-A fails-on-revert proof: created detached proof worktree at `a71648342`, removed only the `theme` comparison block from `mingla-business/src/utils/brandPatch.ts`, symlinked the existing `mingla-business/node_modules`, and ran:
+
+```bash
+cd "/tmp/orch0964-fa-proof.q2WLUT/mingla-business" && npx jest src/utils/__tests__/brandPatch.orch_0964_smoke_rework.test.ts --runInBand
+```
+
+Result: FAIL as expected. Both tests failed because `computeDirtyFieldsPatch(...)` returned `{}` instead of `{ theme: ... }` / `{ theme: null }`.
+
+Rework verification run:
+
+```bash
+cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0964-[public-page-theme-customization]/mingla-business" && npx jest src/utils/__tests__/brandPatch.orch_0964_smoke_rework.test.ts src/components/brand/__tests__/PublicBrandPage.orch_0964_smoke_rework.test.ts src/utils/__tests__/themeResolver.orch_0964.test.ts src/utils/__tests__/themeResolver.adversarial.orch_0964.test.ts --runInBand
+```
+
+Result: PASS, 4 suites / 10 tests passed.
+
+```bash
+cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0964-[public-page-theme-customization]" && node .github/scripts/strict-grep/orch-0964-theme-typed-columns.mjs && node .github/scripts/strict-grep/orch-0964-theme-resolver-canonical.mjs && node .github/scripts/strict-grep/orch-0964-theme-foreground-computed.mjs && node .github/scripts/strict-grep/orch-0964-checkout-no-brand-theme.mjs && node .github/scripts/strict-grep/orch-0964-brand-rendering-self-contained.mjs && node .github/scripts/strict-grep/orch-0964-well-known-json-content-type.mjs && node .github/scripts/strict-grep/meta-orch-0972-data-driven-tabs.mjs && node .github/scripts/strict-grep/meta-orch-0972-no-brand-kind-reads.mjs && node .github/scripts/strict-grep/orch-0963-public-trip-rpc-and-route-segregation.mjs && node .github/scripts/strict-grep/orch-0863-marketing-hub-phase-b.mjs
+```
+
+Result: PASS, all listed gates passed.
+
+iOS simulator availability check:
+
+```bash
+cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0964-[public-page-theme-customization]" && xcrun simctl list devices booted
+```
+
+Result: PASS; iPhone 17 Pro and iPhone 17 simulators were booted. I did not run the full in-app smoke flow because no local Expo/dev-client session was active in this Codex turn, and production DB mutation is reserved for the operator smoke-test after the fresh business-app EAS Update.
+
+TypeScript note: full `mingla-business` TypeScript remains blocked by the same existing app/shared-package resolution debt documented below; this rework did not add a new package dependency.
+
 ## Rework Update — Android App Links consumer target
 
 Seth provided the verified consumer Android package fingerprints after the first QA pass. `mingla-business/public/.well-known/assetlinks.json` now preserves the existing business-app target for `com.sethogieva.minglabusiness` and adds a second Android App Links target for `com.mingla.app.v2` with both verified SHA-256 fingerprints:
