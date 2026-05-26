@@ -69,6 +69,9 @@ export function computeDirtyFieldsPatch(
   if (JSON.stringify(draft.links) !== JSON.stringify(original.links)) {
     patch.links = draft.links;
   }
+  if (JSON.stringify(draft.theme) !== JSON.stringify(original.theme)) {
+    patch.theme = draft.theme;
+  }
 
   // SKIPPED (immutable or server-derived):
   //   - id (immutable)
