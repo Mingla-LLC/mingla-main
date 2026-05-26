@@ -45,6 +45,38 @@
 
 ---
 
+## SPEC AMENDMENT 2 — 2026-05-26 — Pre-IMPLEMENT Supabase probe results
+
+Orchestrator ran read-only probes against the production Supabase (`gqnoajqerqhnvulmnyvv`) before IMPLEMENT to surface blockers. **Three findings, all favourable:**
+
+**Finding 1 — Schema is solid; zero DB blockers.**
+- `event_cover_video_jobs` exists with all 31 columns the SPEC assumes (verified via `information_schema.columns`).
+- Notable unused columns the SPEC should now leverage: `source_public_id`, `source_asset_id`, `processed_public_id`, `processed_asset_id` (all nullable, currently always null).
+- `events.cover_media_url` + `events.cover_media_type` exist as plain `text` with no CHECK constraint blocking `'video'`. No migration needed.
+- Single RLS policy exists (SELECT for event managers via `biz_brand_effective_rank_for_caller`). All writes go through service-role edge functions — correct design.
+
+**Finding 2 — Two orphan `source_uploading` rows from 2026-05-11 (15 days stuck).**
+- Status counts: 7 `cancelled` + 2 `source_uploading` (no rows in any other state).
+- The 2 stuck rows are exactly the orphan-state bug this SPEC fixes (no abort + no destroy = forever-stuck).
+- **Action:** clean these up before IMPLEMENT so the PoC + first test runs see a clean slate. Single DELETE statement: `DELETE FROM public.event_cover_video_jobs WHERE status IN ('source_uploading', 'cancelled') AND created_at < '2026-05-12';` — to be run by operator at PoC kickoff time via Supabase SQL editor (orchestrator does NOT execute writes per memory rule).
+
+**Finding 3 — Greenfield rollout, not a retrofit.**
+- 53 events total in production: 1 image cover, 13 GIF covers, 39 null covers, **ZERO video covers**, **ZERO Cloudinary-hosted URLs**.
+- The video cover feature has effectively never been used. No live brands affected if rollout has bugs.
+- **Implication:** lower migration risk + lower accumulated-orphan pressure, BUT T-00 PoC + T-11 cross-platform test become MORE important because there's no production usage signal to fall back on. Get the PoC right.
+
+**Edge function deploy state probed:** all 6 video edge fns ACTIVE at their expected versions; `verify_jwt` settings correct (true on auth-gated functions, **false** on the webhook — correct because it's signature-verified). No drift, no broken deploys.
+
+**Two small SPEC additions surfaced by the probe:**
+
+A. **Use dedicated `source_public_id` column for cancel-destroy lookup** instead of parsing `provider_payload.public_id` JSON. Cleaner. Requires `event-cover-video-upload-intent/index.ts` to ALSO populate `source_public_id` at job-insert time (one-line change). Amends SPEC §4.2 edge-fn changes to add this.
+
+B. **Pre-IMPLEMENT housekeeping** — orphan-row cleanup SQL (Finding 2) runs at PoC kickoff. Trivial.
+
+**No blocking issues. SPEC stands as APPROVED.** PoC scaffolding follows in commit `Mingla_Artifacts/POC_ORCH-0978_COMPRESSION_RUNBOOK.md`.
+
+---
+
 ## 1 — Executive summary (≤10 sentences)
 
 This SPEC codifies the sub-30s perfect-render video upload pipeline derived from APPROVED RESEARCH. Phase 0 surfaced four binding constraints: (1) **both apps are on Expo SDK 54** (`~54.0.34`), the last SDK that still ships `expo-av` — so SDK migration is OUT OF SCOPE here (deferred to a future SDK-55 upgrade ORCH), but `expo-av` audio code in `app-mobile` (4 files for beta feedback) remains untouched and OK; (2) `mingla-business` already has `expo-video v3.0.16` installed and a complete `EventCoverMedia.tsx` renderer with web `<video>` + RN `VideoView` branches + mute toggle + autoplay+playsInline contract — most of the render-side architecture is already built; (3) `app-mobile` does NOT have `expo-video` installed and needs it added for consumer-side cover rendering; (4) the `_shared/eventCoverVideo.ts` helpers (HMAC-SHA1 signature, derivative validation, status mapping) are well-structured and reusable for cancel-destroy and new picker integration. The SPEC therefore focuses on **four discrete IMPLEMENT deltas**: (A) add `react-native-compressor` to both apps + wire client-side compression into the upload service, (B) add Cloudinary destroy API call to the cancel edge function so abort cleans up the in-flight asset, (C) add optimistic-local-preview swap pattern to the upload UI components, (D) refactor `EventCoverMedia` either into the existing `packages/event-rendering/` package OR a new shared module so consumer and business apps share one render contract. Three new DRAFT invariants codify the structural safeguards: I-PROPOSED-VIDEO-UPLOAD-OPTIMISTIC-PREVIEW, I-PROPOSED-VIDEO-CANCEL-ABORTS-UPLOAD, I-PROPOSED-VIDEO-AUTOPLAY-MUTED-CONTRACT. **IMPLEMENT is GATED on ORCH-0964 [Public-page theme customization] PR merging to main** (per WORLD_MAP intake; ORCH-0964 introduces `packages/brand-rendering/` and reshapes `packages/event-rendering/` — collision risk on render-layer files).
