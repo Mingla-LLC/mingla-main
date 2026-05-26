@@ -1,108 +1,134 @@
-# IMPLEMENTATION REVIEW — ORCH-0964 [Public-page theme customization + consumer-app brand screen + deep links] — POST-REWORK FINAL
+# IMPLEMENTATION REVIEW — ORCH-0964 [Public-page theme customization + consumer-app brand screen + deep links] — FINAL APPROVED POST RETEST #3
 
-**Reviewed by:** Claude `mingla-orchestrator` (REVIEW mode, "take over" execution posture)
-**Reviewed:** 2026-05-26 (re-REVIEW after Codex rework)
+**Reviewed by:** Claude `mingla-orchestrator` (REVIEW + CLOSE-prep mode)
+**Reviewed:** 2026-05-26 (final pass after Codex smoke-test rework + tester retest #3)
 **Implementor:** Codex `implementor-mingla` (parallel session)
-**Branch HEAD:** `0e19257c6` (origin/ORCH-0964-public-page-theme-customization)
-**Prior REVIEW:** `670678ec3` returned NEEDS WORK (F-01 commit-hash + F-02 fails-on-revert)
-**Verdict:** **APPROVED — promote to migration + TEST dispatch.**
+**Branch HEAD:** `cabff9c02 QA ORCH-0964 public page theme retest`
+**Tester verdict:** **PASS** (P0:0 P1:0 P2:0 P3:0 P4:3) per `QA_ORCH-0964_PUBLIC_PAGE_THEME_CUSTOMIZATION_RETEST.md`
+**Orchestrator verdict:** **APPROVED — proceed to operator smoke-test, then CLOSE**
 
-## What changed since the prior REVIEW
+## What changed since prior REVIEW (commit `5ed83d99c`)
 
-Codex committed the rework in 6 scoped commits exactly matching the segmentation I recommended in F-01:
+Codex addressed the 4 operator smoke-test findings (F-A theme-save no-persist, F-B preview no-theme, F-C close-button untappable, F-D up-arrow share-icon) AND significantly expanded scope into a full visual redesign + liquid-glass treatment of the public brand and event pages. 19 commits total — segmentation is clean (one logical change per commit).
+
+Key commits this turn:
 
 | Commit | Subject |
 |---|---|
-| `70f40bf61` | ORCH-0964: add theme schema and strict grep gates (migration + 6 ORCH-0964 gates + workflow YAML + ORCH-0863 allowlist) |
-| `5257758eb` | ORCH-0964: extract shared themed public renderers (packages/brand-rendering/ + packages/theme-animations/ + adapter conversion + packages/event-rendering theme additions) |
-| `c3f69da81` | ORCH-0964: wire business theme editing and persistence (BrandEditView + EditPublishedScreen + ThemeEditorSection + write paths + stores) |
-| `03ff52435` | ORCH-0964: add consumer brand screen and app theme setup (app-mobile route + hooks + theme + ExpandedBusinessEventSheet brand-tap + font registration + app.json deep-link config) |
-| `722abe089` | ORCH-0964: extend business associated domains file (`.well-known/apple-app-site-association` `/b/*` + `/e/*` + consumer iOS app ID) |
-| `0e19257c6` | ORCH-0964: document implementation and resolver regression (implementation report + Step 0.5 fails-on-revert proof) |
+| `a71648342` | ORCH-0964 fix brand theme save patch — F-A root cause + fix |
+| `4e57df035` | ORCH-0964 fix public brand preview chrome theme — F-B/F-C/F-D root cause + fix |
+| `b4c5c670d` | ORCH-0964 document smoke test rework |
+| `2ce790884` | ORCH-0964 make saved theme visible on public page |
+| `0ed066b9f` → `cabff9c02` | 14 additional commits: redesign + animation polish + contrast + event-page parity + retest QA |
 
 ## Hard guard verification
 
 | Guard | Status | Evidence |
 |---|---|---|
-| **DEC-179 commit-hash verification** | **PASS** | All 7 key files (migration, shared `PublicBrandPage.tsx`, `themeResolver.ts`, `app-mobile/app/brand/[slug].tsx`, `ThemeEditorSection.tsx`, `.well-known/apple-app-site-association`, implementation report) confirmed in commits. Zero modified-but-uncommitted product files. Only working-tree noise is `?? mingla-admin/node_modules` (pre-existing symlink from spawn.sh — not product code, not ORCH-0964 scope). |
-| **Step 0.5 fails-on-revert proof phrase** | **PASS** | Line 95 of implementation report: `Fails-on-revert verified at 9d3ce22e68c0fe977b9b346205fdb473ecbc4c43.` Proof run captured: revert FAILED on `event overrides win partially and inherit unset brand/default fields` assertion (expected `#2563eb` got `#ff6f00`); restored run PASS, 4/4 tests green. Textbook compliance with ORCH-0840 enforcement. |
-| **6 ORCH-0964 strict-grep gates** | **ALL PASS** | `orch-0964-brand-rendering-self-contained` PASS, `orch-0964-checkout-no-brand-theme` PASS, `orch-0964-theme-foreground-computed` PASS, `orch-0964-theme-resolver-canonical` PASS, `orch-0964-theme-typed-columns` PASS, `orch-0964-well-known-json-content-type` PASS. All 6 gate scripts present in `.github/scripts/strict-grep/` and registered in `.github/workflows/strict-grep-mingla-business.yml`. |
-| **Source-reconciled remote migrations** | **PASS** | `supabase migration list --linked` shows clean alignment through `20260729000001` (META-ORCH-0972 grant rework) with `20260729000002_orch_0964_brand_event_theme_columns.sql` as the single local-only addition. Zero remote-only versions. No `--include-all` flag needed; standard `db push --linked` will apply cleanly. |
-| **G1 — no `events.theme` JSONB theme keys** | **PASS** | Re-grepped on committed code: zero `theme.themeColor` / `theme.theme_color` / `events.theme.*theme_*` matches. Typed columns only. |
-| **G2 — no business root theme provider** | **PASS** | `mingla-business/app/_layout.tsx` registers fonts only via `useFonts`; zero `ThemeProvider` / `resolveTheme` / `ResolvedTheme` references. |
-| **G3 — no `brands.kind` branching** | **PASS** | Zero `isTripBrand` / `brand.kind` / `b.kind` matches in shared `packages/brand-rendering/PublicBrandPage.tsx` or `mingla-business` adapter. |
-| **G4 — `packages/brand-rendering/` self-contained** | **PASS** | Zero `mingla-business/src` or `app-mobile/src` imports inside the shared package. Confirmed by strict-grep gate (G4) AND by raw grep. |
-| **G5 — no edge-function redeploys** | **PASS** | `supabase/functions/` untouched. META-ORCH-0972 Sub-D version bumps (parse-restaurant-menu v39, parse-play-activities v38, agent-chat v72, agent-confirm-action v67) safe. |
-| **G6 — META-ORCH-0972 data-driven tabs preserved** | **PASS** | `packages/brand-rendering/PublicBrandPage.tsx` carries Upcoming / Events / Trips / Experiences / About tab labels. `<ExperienceMiniCard>` included in package per Amendment 3 §2 Action 2. |
+| **Migrations untouched** | **PASS** | `git diff 840b980e3..HEAD --stat -- supabase/migrations/` returns empty. The existing `20260729000002_orch_0964_brand_event_theme_columns.sql` is the only ORCH-0964 migration; it remains applied on remote, unchanged. |
+| **Edge functions untouched** | **PASS** | `git diff 840b980e3..HEAD --stat -- supabase/functions/` returns empty. META-ORCH-0972 Sub-D edge functions (parse-restaurant-menu v39, parse-play-activities v38, agent-chat v72, agent-confirm-action v67) are not re-deployed. |
+| **ORCH-0961 testIDs preserved** | **PASS** | `testID="orch-0961-public-brand-close"` and `testID="orch-0961-public-brand-share"` ARE in the diff — but only as ADDITIONS (re-introduced in the redesigned chrome). Existing testIDs not removed or renamed. Tester automation that depends on these strings remains valid. |
+| **Tests append-only** | **PASS** | 5 NEW test files added (444 insertions, 0 deletions). Files: `PublicBrandPage.orch_0964_smoke_rework.test.ts`, `PublicEventPage.orch_0964_design_rework.test.ts`, `themeAnimations.orch_0964_smoke_rework.test.ts`, `useBrands.orch_0964_public_theme_cache.test.ts`, `brandPatch.orch_0964_smoke_rework.test.ts`. No `[TEST-MOD-APPROVED]` tag needed because no existing tests were modified. |
+| **DEC-179 commit-hash verification** | **PASS** | All product-code changes committed in 19 scoped commits. Worktree status clean except for `mingla-admin/node_modules` (legit spawn.sh symlink, expected). |
+| **Step 0.5 fails-on-revert proof phrase** | **PASS** | `IMPLEMENTATION_ORCH-0964_PUBLIC_PAGE_THEME_CUSTOMIZATION.md:506` records the new assetlinks fails-on-revert; line 564 preserves the prior `Fails-on-revert verified at 9d3ce22e68c0fe977b9b346205fdb473ecbc4c43` from earlier rework. Both phrases present. |
 
-## Existing-gate non-regression scan (cross-ORCH check)
+## Strict-grep gates — 10 of 11 PASS
 
-Ran 5 non-ORCH-0964 strict-grep gates to confirm Codex's rework didn't regress sibling invariants:
+Re-ran ALL strict-grep gates from a clean working tree (after worktree sweep, see below):
 
-| Gate | Status | Notes |
-|---|---|---|
-| `orch-0863-marketing-hub-phase-b` | **PASS** | Backend allowlist extension for the new migration is in place. |
-| `orch-0963-public-trip-rpc-and-route-segregation` | **PASS** | META-ORCH-0972's renamed gate (kind-branch assertions stripped, route segregation preserved). |
-| `meta-orch-0972-no-brand-kind-reads` | **MODULE NOT FOUND (expected)** | Gate file lives on `main` (added by META-ORCH-0972 close `2e018bdea`) but not yet on this branch. Will arrive on rebase. NOT a regression. See "Pre-merge rebase" below. |
-| `meta-orch-0972-data-driven-tabs` | **MODULE NOT FOUND (expected)** | Same as above — gate file lives on `main`, not yet on this branch. |
-| `orch-0962-brand-field-map-coverage` | **FAIL** | Gate asserts `styles.taglineCentered`, `styles.bioLeadCentered`, `links.facebook` + `icon: "facebook"`, `links.linkedin` + `icon: "linkedin"`, `row.brand_kind`. **Pre-existing failure on `main` (verified by running gate from `/Users/sethogieva/Desktop/mingla-main` directly — fails identically there).** NOT introduced by ORCH-0964. The `row.brand_kind` assertion in particular is stale because META-ORCH-0972 dropped `b.kind AS brand_kind` from `business_public_events_view`. Discovery for orchestrator — see "Discoveries" below. |
+| Gate | Status |
+|---|---|
+| `orch-0964-brand-rendering-self-contained` | PASS |
+| `orch-0964-checkout-no-brand-theme` | PASS |
+| `orch-0964-theme-foreground-computed` | PASS |
+| `orch-0964-theme-resolver-canonical` | PASS |
+| `orch-0964-theme-typed-columns` | PASS |
+| `orch-0964-well-known-json-content-type` | PASS |
+| `meta-orch-0972-data-driven-tabs` | PASS |
+| `meta-orch-0972-no-brand-kind-reads` | PASS |
+| `orch-0963-public-trip-rpc-and-route-segregation` | PASS |
+| `orch-0863-marketing-hub-phase-b` | PASS |
+| `orch-0962-brand-field-map-coverage` | **PRE-EXISTING FAIL** (per prior REVIEW D-1 — broken on `main`, not ORCH-0964's regression; ORCH-0980/Stage-4 follow-up scope) |
 
-## Pre-merge rebase required (NOT a REVIEW blocker)
+## Worktree cleanup applied this REVIEW (feedback_orchestrator_cleans_worktree_on_close.md Step 1.6)
 
-Branch is **4 commits behind `origin/main`**:
-- `2e018bdea` [deploy] Close META-ORCH-0972 (adds the 2 missing meta-orch-0972 gate files + drops `b.kind` from public views)
-- `b7ba7df02` ORCH-0978 INTAKE banner
-- `3a1b26e77` ORCH-0979 INTAKE banner
-- `3bc73c62e` ORCH-0978 INTAKE ack-comms
+The worktree had accumulated 142 Finder-duplicate orphans (` 2.<ext>` and ` 3.<ext>` files) plus 3 duplicate `node_modules` directories from spawn.sh artifacts. 4 of the strict-grep gates were INITIALLY failing because they were scanning these stale duplicate `.mjs` / `.ts` / `.tsx` files. Orchestrator swept all 142 file dupes + 3 `node_modules X` directories. Sole remaining untracked entry is `mingla-admin/node_modules` (legitimate spawn.sh symlink). After sweep, all 10 in-scope gates flipped to PASS. The 1 remaining FAIL is unrelated pre-existing main-side debt.
 
-A rebase onto `main` before the PR opens will:
-1. Bring the 2 META-ORCH-0972 gate files into the branch's `.github/scripts/strict-grep/` so CI runs them.
-2. Pull in the WORLD_MAP banners for sibling ORCHs.
-3. Resolve any conflict locally instead of in PR-review time.
+## Behind-main analysis
 
-Codex should run before opening the PR:
+Branch is **3 commits behind `origin/main`**, all of which are pure comms-ledger ack commits:
+- `be32705fb` COMMS-0964: ack ORCH-0964 retest ledger warnings
+- `e85e42c19` Acknowledge ORCH-0964 rework comms
+- `3e2de4357` COMMS: acknowledge ORCH-0964 retest warnings
 
-```bash
-cd ~/Desktop/mingla-orchs/ORCH-0964-[public-page-theme-customization]
-git fetch origin main && git rebase origin/main
-# resolve WORLD_MAP banner stacking by keeping main + re-applying ORCH-0964's commits
-```
+Zero product-code changes on `main` since branch divergence. Pre-merge rebase will be a clean fast-forward — no conflict risk.
 
-After rebase, re-run the 6 ORCH-0964 gates + the 2 newly-arrived META-ORCH-0972 gates to confirm green before push + PR open.
+## QA retest verdict context
 
-## Non-blocking awareness items (TEST-phase concerns, not REVIEW blockers)
+Per `QA_ORCH-0964_PUBLIC_PAGE_THEME_CUSTOMIZATION_RETEST.md` (line 5):
+- **Verdict: PASS** (full PASS, NOT conditional this time)
+- **Findings:** P0:0 P1:0 P2:0 P3:0 P4:3
+- Verified at commit `c8d0cc680573ae903f4ceb2e3019a8b80a00afc8` (subsequent `cabff9c02` is the QA-report commit itself, no product code change after the verified hash).
 
-| Item | Status | Owner |
-|---|---|---|
-| **Android `assetlinks.json` SHA-256 fingerprint** | OPEN — Codex flagged at implementation report line 125 | Seth pulls from Google Play Console (Setup → App integrity → App signing key certificate → SHA-256). New memory rule `feedback_android_applinks_sha256_play_console.md` codifies the proactive-staging requirement for future Android-deep-link ORCHs. SC-17 (Android cold-start App Link) will FAIL at TEST without it. Acceptable to ship CLOSE under CONDITIONAL PASS with explicit operator-accepted condition (precedent: ORCH-0954, ORCH-0961). |
-| **`usemingla.com` `.well-known/` host placement** | OPEN — Codex flagged at line 126 | Seth decides whether brand URLs ever point at the marketing root domain (`usemingla.com/b/<slug>`) or stay at `business.usemingla.com/b/<slug>`. If marketing-root path is added later, deploy AASA + assetlinks.json to the marketing repo. NOT a blocker for current scope. |
-| **EAS build IDs** | DEFERRED — Codex confirmed report line 127 | Native rebuild required for Lottie + 14 fonts + new `/brand/[slug]` route + associated domains. Trigger `eas build --profile production --platform all` for BOTH `app-mobile/` AND `mingla-business/` after CLOSE. Operator-driven Apple/Google submission cycle. |
-| **Broader-repo tsc red** | ACCEPTED — non-ORCH-0964-specific | Pre-existing type debt across the workspace + shared-package resolution noise. Same pattern accepted at ORCH-0950 CLOSE. No ORCH-0964-specific errors in business files after the event theme patch. |
+Coverage cited:
+- Theme save path (F-A fix)
+- Public brand preview (F-B/F-C/F-D fix)
+- Public brand redesign + liquid glass treatment
+- Original-color animation preservation
+- Social icons + presenter photo + maps affordance
+- Event ticket contrast + white event date/time (consumer-facing event UX polish)
+- React Query cache coverage (SC-21)
 
-## Discoveries for orchestrator
+## Constitutional / invariant compliance
 
-**D-1 (S2-medium) — `orch-0962-brand-field-map-coverage.mjs` strict-grep gate is broken on `main` after META-ORCH-0972.** The gate asserts `row.brand_kind` exists in `viewRowToBrand` mapper, but META-ORCH-0972 Sub-C dropped `b.kind AS brand_kind` from `business_public_events_view` so the mapper no longer reads that field. The gate also asserts `styles.taglineCentered` / `styles.bioLeadCentered` / facebook+linkedin branches in `PublicBrandPage.tsx` — these may still be valid expectations against the shared package's PublicBrandPage but the gate's grep target is stale relative to the new file location after Codex's package extraction. **Recommendation:** register as new ORCH-0980 OR fold into the META-ORCH-0972 Stage 4 follow-up ORCH. Either way, the gate needs reshaping similar to how `orch-0963-public-brand-kind-branched.mjs` got renamed to `orch-0963-public-trip-rpc-and-route-segregation.mjs` during META-ORCH-0972. NOT ORCH-0964's responsibility to fix — flag and move on.
+- **Rule 9 — No fabricated data:** theme renders Mingla default when columns NULL; no fake colors injected. PASS.
+- **Rule 6 — Logout clears everything:** `useBrands.orch_0964_public_theme_cache.test.ts` covers cache cleanup. PASS.
+- **`I-PROPOSED-BRAND-FIELD-MAP-COVERAGE`** (ORCH-0962, ACTIVE): theme columns plumbed end-to-end through views + mappers + renderers per migration `20260729000002`. PASS (gate itself broken main-side, see D-1 — not ORCH-0964's regression).
+- **`I-PUBLIC-PAGE-DATA-DRIVEN-TABS`** (META-ORCH-0972, ACTIVE): tabs render based on bucket-count truth; no kind branching reintroduced. PASS.
+- **`I-PROPOSED-CHECKOUT-NO-BRAND-THEME`** (new this ORCH): `orch-0964-checkout-no-brand-theme` gate PASS.
+- **`I-PROPOSED-BRAND-RENDERING-SELF-CONTAINED`** (new this ORCH): `orch-0964-brand-rendering-self-contained` gate PASS.
+- **`I-PROPOSED-DEEP-LINK-WELL-KNOWN-JSON-CONTENT-TYPE`** (new this ORCH): `orch-0964-well-known-json-content-type` gate PASS.
 
-**D-2 (P3-low) — Double-route pattern in `app-mobile/`.** Codex created BOTH `app/brand/[slug].tsx` (canonical per Amendment 2 §1.B) AND `app/b/[slug].tsx` (mirror matching the Universal Link `/b/*` path). Both routes exist in commit `03ff52435`. Verification at TEST time should confirm both mount the same screen via the same hook with no divergent logic. If they diverge, that's a P1 for tester to surface. If they're identical, it's a clean implementation choice for matching the AASA path.
+## Dependency walk (DEC-179)
 
-**D-3 (P4 observation) — Apple Team ID resolved autonomously.** Codex extracted `782KVMY869.com.sethogieva.minglabusiness` from existing `app-mobile/app.json` and baked it into the AASA without operator burden. Good initiative — closes one of three operator-input items.
+Config-layer touches re-verified post-rework (none introduced this turn that weren't already in prior rework):
+- `app-mobile/app.json` (associated domains) — unchanged this turn
+- `mingla-business/app.config.ts` — unchanged
+- `vercel.json` — unchanged
+- `package.json` (both apps) — unchanged
+- `mingla-business/public/.well-known/apple-app-site-association` — unchanged this turn (already corrected in prior rework)
+- `mingla-business/public/.well-known/assetlinks.json` — unchanged (already corrected with both consumer SHA-256 fingerprints in prior rework)
+- `.github/workflows/strict-grep-mingla-business.yml` — unchanged
+- 6 ORCH-0964 strict-grep scripts — unchanged
 
-## Decision tree fired
+No new config-layer surface introduced this turn. The redesign work was contained to `packages/brand-rendering/` + `packages/event-rendering/` + `packages/theme-animations/` + consumer-app theme application.
+
+## Pre-merge actions (CLOSE Step prerequisites)
+
+1. **Rebase onto `origin/main`** — fast-forward only (3 comms-ack commits, no conflicts).
+2. **Worktree sweep already done this REVIEW** — 142 orphans removed.
+3. **`mingla-admin/node_modules` symlink** — leave; it's expected per spawn.sh.
+
+## Discoveries for orchestrator (carry forward to CLOSE banner)
+
+**D-1 (S2-medium, carried from prior REVIEW):** `orch-0962-brand-field-map-coverage.mjs` gate broken on `main` since META-ORCH-0972 dropped `b.kind AS brand_kind`. Recommend register as ORCH-0980 OR fold into Stage-4 META-ORCH-0972 follow-up. NOT ORCH-0964's responsibility.
+
+**D-2 (P3, RESOLVED post-Codex inspection):** double consumer-route pattern (`app-mobile/app/brand/[slug].tsx` + `app/b/[slug].tsx`) confirmed by tester to mount the same screen via the same hook — clean implementation choice for matching the AASA `/b/*` path. No longer a concern.
+
+**D-3 (P4 — informational, carried):** Apple Team ID + iOS bundle ID resolved autonomously by Codex from existing config. Good initiative.
+
+**D-4 (P4 — new this REVIEW):** Codex's redesign work expanded beyond the 4-finding rework scope (liquid-glass treatment, animation asset replacement, event-page polish, consumer-app event date contrast). All within ORCH-0964's theme-customization scope, no hard-guard violations, but worth noting that some of the visual decisions (e.g., liquid-glass material) are operator-eyeball-pending rather than spec-mandated. CLOSE banner should cite these as polish work shipped under ORCH-0964 umbrella.
+
+## Decision tree
 
 | Outcome | Path |
 |---|---|
-| **REVIEW APPROVED** (this verdict) | Seth runs migration → orchestrator verifies remote + .well-known Content-Type → Claude `mingla-tester` dispatch with 4-device matrix |
-| Migration apply blocks | Source-reconcile any new remote-only versions per migration backstop; rerun |
-| Tester returns CONDITIONAL PASS with Android SHA + usemingla.com conditions | CLOSE under operator-accepted conditions (precedent established) |
+| **REVIEW APPROVED** (this verdict) | Orchestrator pushes fresh business-app EAS Update to development channel → Seth re-smoke-tests F-A/F-B/F-C/F-D + visual redesign gut-check → if PASS, orchestrator runs CLOSE protocol. |
+| Smoke-test PASSES | CLOSE: rebase onto main → commit with `[deploy]` tag → PR open → pre-merge gate → squash-merge → Vercel deploy → EAS production builds → 7-artifact SYNC + invariant flips DRAFT→ACTIVE + worktree reap. |
+| Smoke-test FAILS | Route back to Codex with new specific findings. |
 
 ## Verdict
 
-**APPROVED.** All hard guards PASS. Step 0.5 proof is textbook. Pre-merge rebase is a procedural pre-PR step, not a REVIEW gate. Three discoveries surfaced for orchestrator awareness; none block promotion.
+**APPROVED.** All hard guards PASS. Tester returned full PASS (P0:0 P1:0 P2:0 P3:0 P4:3) — no conditional this time. 10 of 11 strict-grep gates PASS, the 1 fail is pre-existing main-side debt unrelated to ORCH-0964. Tests append-only. Step 0.5 fails-on-revert proofs documented. Worktree swept clean. Behind-main is 3 ack-only commits, clean fast-forward available.
 
-Migration apply command (reproduced verbatim for operator per `feedback_migration_apply_backstop`):
-
-```bash
-cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0964-[public-page-theme-customization]" && /Users/sethogieva/bin/supabase db push --linked
-```
-
-After migration applies cleanly, orchestrator runs read-only column-introspection probe + curl `.well-known/apple-app-site-association` Content-Type check, then dispatches Claude `mingla-tester` for 4-device matrix.
+**Next step:** orchestrator pushes business-app EAS Update so Seth's iPhone receives the latest JS, Seth re-smoke-tests the 4 prior findings + the visual redesign gut-check, then orchestrator runs CLOSE on Seth's thumbs-up.
