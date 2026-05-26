@@ -118,6 +118,7 @@ import { businessEventKeys } from "../../hooks/useBusinessEvents";
 import { publicEventKeys } from "../../hooks/usePublicEvents";
 import { useEventHasWebPurchases } from "../../hooks/useEventOrders";
 import { refreshPublishedEventWhenAfterSave } from "../../utils/publishedEventWhenRefresh";
+import { surfaceLocalSaveRejection } from "../../utils/localSaveRejectionSignal";
 
 // ---- Section configuration -----------------------------------------
 
@@ -808,6 +809,20 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
           });
           setEditState(liveEventToEditableDraft(refreshedDetail.event));
           invalidateServerEventCaches();
+          if (isServerEditableOnlyPatch(patch)) {
+            setSubmitting(false);
+            setModal((prev) => ({ ...prev, visible: false }));
+            showToast("Saved. Live now.");
+            setTimeout(() => {
+              if (router.canGoBack()) {
+                router.back();
+              } else {
+                // orch-strict-grep-allow route-by-event-type — EditPublishedScreen.tsx edits events only; liveEvent.id is always an event id (ORCH-0859 [Tr2] REWORK 5b)
+                router.replace(`/event/${liveEvent.id}` as never);
+              }
+            }, TOAST_NAV_DELAY_MS);
+            return;
+          }
         } catch (error) {
           setSubmitting(false);
           setModal((prev) => ({ ...prev, visible: false }));
@@ -888,7 +903,12 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         return;
       }
       // Guard-rail rejection — open dialog
-      setRejectDialog(buildRejectDialog(result));
+      surfaceLocalSaveRejection(
+        result,
+        showToast,
+        buildRejectDialog,
+        setRejectDialog,
+      );
     },
     [
       submitting,
