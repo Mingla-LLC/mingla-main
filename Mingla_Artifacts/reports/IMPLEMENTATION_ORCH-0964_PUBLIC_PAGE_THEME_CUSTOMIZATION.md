@@ -273,6 +273,53 @@ cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0964-[public-page-theme-customiz
 
 Result: PASS, all listed strict-grep gates passed.
 
+## Smoke-Test Design Rework #8 — real brand-tinted Lottie animations
+
+Seth reported that the selected public-page animations still looked fake and carried Mingla orange instead of the selected brand color. Root cause: animation selection was correct, but the bundled Lottie files were generated from only three generic `tintable` layers per animation, and the renderer was no longer applying the selected brand color.
+
+Animation selection contract:
+
+- The brand editor saves the selected animation slug to the brand theme.
+- Public brand and event views call `resolveTheme(...)`.
+- `resolveTheme` chooses the event override animation first, then the brand animation, then `none`.
+- `ThemeEntranceAnimation` uses that resolved slug as `LOTTIE_BY_SLUG[theme.animation]`.
+
+Follow-up changes:
+
+- Replaced all nine bundled Lottie files with richer in-house vector animations:
+  - `confetti`: 46 falling/fluttering pieces.
+  - `fireworks`: 95 burst core/ray layers.
+  - `balloons`: balloon bodies, highlights, and strings.
+  - `sparkles`: star twinkles.
+  - `glitter_shower`: falling glitter shards.
+  - `snowfall`: drifting snowflake stars.
+  - `falling_petals`: petal-shaped falling elements.
+  - `hearts`: floating heart paths.
+  - `shimmer_reveal`: sweeping shimmer bands and glints.
+- Restored runtime brand-color tinting through `colorFilters`, using `theme.color` rather than a hardcoded Mingla color.
+- Added `themeAnimations.orch_0964_smoke_rework.test.ts` to prove selection is slug-driven, renderer tinting uses the resolved brand color, and bundled assets are no longer three generic tintable layers.
+- Updated the animation package README to document the data-driven slug selection and brand-color tinting contract.
+
+Regression coverage:
+
+```bash
+cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0964-[public-page-theme-customization]/mingla-business" && npx jest src/components/brand/__tests__/PublicBrandPage.orch_0964_smoke_rework.test.ts src/components/brand/__tests__/themeAnimations.orch_0964_smoke_rework.test.ts --runInBand
+```
+
+Result: PASS, 2 suites / 13 tests passed.
+
+```bash
+cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0964-[public-page-theme-customization]/mingla-business" && npx jest src/utils/__tests__/brandPatch.orch_0964_smoke_rework.test.ts src/hooks/__tests__/useBrands.orch_0964_public_theme_cache.test.ts src/components/brand/__tests__/PublicBrandPage.orch_0964_smoke_rework.test.ts src/components/brand/__tests__/themeAnimations.orch_0964_smoke_rework.test.ts src/utils/__tests__/themeResolver.orch_0964.test.ts src/utils/__tests__/themeResolver.adversarial.orch_0964.test.ts --runInBand
+```
+
+Result: PASS, 6 suites / 22 tests passed.
+
+```bash
+cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0964-[public-page-theme-customization]" && node .github/scripts/strict-grep/orch-0964-theme-typed-columns.mjs && node .github/scripts/strict-grep/orch-0964-theme-resolver-canonical.mjs && node .github/scripts/strict-grep/orch-0964-theme-foreground-computed.mjs && node .github/scripts/strict-grep/orch-0964-checkout-no-brand-theme.mjs && node .github/scripts/strict-grep/orch-0964-brand-rendering-self-contained.mjs && node .github/scripts/strict-grep/orch-0964-well-known-json-content-type.mjs && node .github/scripts/strict-grep/meta-orch-0972-data-driven-tabs.mjs && node .github/scripts/strict-grep/meta-orch-0972-no-brand-kind-reads.mjs && node .github/scripts/strict-grep/orch-0963-public-trip-rpc-and-route-segregation.mjs && node .github/scripts/strict-grep/orch-0863-marketing-hub-phase-b.mjs
+```
+
+Result: PASS, all listed strict-grep gates passed.
+
 ## Smoke-Test Design Rework #7 — liquid glass, full-width cover, cut-out cards
 
 Seth requested a stronger premium material pass: the public brand page should feel liquid-glass, the cover should read as a true full-width cover, and upcoming/event cards should feel cut out from the themed background.

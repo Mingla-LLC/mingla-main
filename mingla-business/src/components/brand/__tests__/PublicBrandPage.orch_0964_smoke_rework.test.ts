@@ -147,7 +147,9 @@ describe("ORCH-0964 smoke rework — business public-page preview chrome/theme",
     expect(animationSource).toContain("replayOnMount = false");
     expect(animationSource).toContain("mountIdRef");
     expect(animationSource).toContain("replayOnMount\n    ? `${sessionKey}:${theme.animation}:${mountIdRef.current}`");
-    expect(animationSource).not.toContain("colorFilters");
+    expect(animationSource).toContain("const brandColorFilters = useMemo(");
+    expect(animationSource).toContain('() => [{ keypath: "**", color: theme.color }]');
+    expect(animationSource).toContain("colorFilters={brandColorFilters}");
     expect(animationSource).not.toContain("colorOverride");
     expect(animationSource).toContain("elevation: 6");
     expect(sharedSource).toContain(

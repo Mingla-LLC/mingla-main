@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import LottieView from "lottie-react-native";
 import { LOTTIE_BY_SLUG } from "@mingla/theme-animations";
@@ -26,6 +26,10 @@ export const ThemeEntranceAnimation: React.FC<ThemeEntranceAnimationProps> = ({
     return theme.animation !== "none" && !playedSessionKeys.has(mountedKey);
   });
   const animationRef = useRef<LottieView>(null);
+  const brandColorFilters = useMemo(
+    () => [{ keypath: "**", color: theme.color }],
+    [theme.color],
+  );
 
   useEffect(() => {
     if (theme.animation === "none" || playedSessionKeys.has(mountedKey)) {
@@ -52,6 +56,7 @@ export const ThemeEntranceAnimation: React.FC<ThemeEntranceAnimationProps> = ({
         loop={false}
         resizeMode="cover"
         style={styles.animation}
+        colorFilters={brandColorFilters}
         onAnimationFinish={() => setShouldPlay(false)}
       />
     </View>
