@@ -1,0 +1,6 @@
+appId: com.sethogieva.minglabusiness
+---
+- tapOn: "Business, http://localhost:8090"
+- waitForAnimationToEnd:
+    timeout: 20000
+- takeScreenshot: "orch-0978-retest-01-open-8090"

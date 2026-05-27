@@ -1,0 +1,7 @@
+appId: com.sethogieva.minglabusiness
+---
+- tapOn:
+    point: "38%,94%"
+- waitForAnimationToEnd:
+    timeout: 30000
+- takeScreenshot: "orch-0978-retest-04-reload-point"
