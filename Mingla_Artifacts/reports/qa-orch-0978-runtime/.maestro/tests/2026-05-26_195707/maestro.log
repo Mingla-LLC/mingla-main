@@ -1,0 +1,217 @@
+19:57:07.720 [ INFO] maestro.cli.report.TestDebugReporter.logSystemInfo: Debug output path: /Users/sethogieva/Desktop/mingla-orchs/ORCH-0978-[video-upload-polish-and-cloudinary-lifecycle]/Mingla_Artifacts/reports/qa-orch-0978-runtime/.maestro/tests/2026-05-26_195707
+19:57:07.724 [ INFO] MAESTRO.logSystemInfo: ---- System Info ----
+19:57:07.725 [ INFO] MAESTRO.logSystemInfo: Maestro Version: 2.5.1
+19:57:07.726 [ INFO] MAESTRO.logSystemInfo: CI: Undefined
+19:57:07.726 [ INFO] MAESTRO.logSystemInfo: OS Name: Mac OS X
+19:57:07.727 [ INFO] MAESTRO.logSystemInfo: OS Version: 26.4
+19:57:07.727 [ INFO] MAESTRO.logSystemInfo: Architecture: aarch64
+19:57:07.730 [ INFO] MAESTRO.logSystemInfo: Java Version: 21
+19:57:08.061 [ INFO] MAESTRO.logSystemInfo: Xcode Version: 26.4.1
+19:57:08.168 [ INFO] MAESTRO.logSystemInfo: Flutter Version: Undefined
+19:57:08.207 [ INFO] MAESTRO.logSystemInfo: Flutter Channel: Undefined
+19:57:08.207 [ INFO] MAESTRO.logSystemInfo: ---------------------
+19:57:09.098 [DEBUG] io.micrometer.common.util.internal.logging.InternalLoggerFactory.newDefaultFactory: Using SLF4J as the default logging framework
+19:57:19.512 [ INFO] maestro.cli.command.TestCommand.runShardSuite: [shard 1] Selected device F7ECAC25-2A98-4002-AD17-85AED17AB752 using port 7001 with execution plan ExecutionPlan(flowsToRun=[/tmp/orch-0978-ios-smoke.XXXXXX.yaml], sequence=FlowSequence(flows=[], continueOnFailure=true), workspaceConfig=WorkspaceConfig(flows=null, includeTags=null, excludeTags=null, executionOrder=null, baselineBranch=null, notifications=null, disableRetries=false, platform=PlatformConfiguration(android=AndroidConfiguration(disableAnimations=false), ios=IOSConfiguration(disableAnimations=false, snapshotKeyHonorModalViews=null)), testOutputDir=null))
+19:57:24.179 [TRACE] ios.xctest.XCTestIOSDevice.open: Opening a connection
+19:57:24.180 [TRACE] xcuitest.XCTestDriverClient.restartXCTestRunner: Restarting XCTest Runner (uninstalling, installing and starting)
+19:57:24.182 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:24.191 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:24.192 [TRACE] xcuitest.XCTestDriverClient.restartXCTestRunner: XCTest Runner uninstalled, will install and start it
+19:57:24.193 [ INFO] xcuitest.installer.LocalXCTestInstaller.start$lambda$3: start()
+19:57:24.193 [ INFO] xcuitest.installer.LocalXCTestInstaller.start$lambda$3: [Start] Install XCUITest runner on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:24.193 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:24.195 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:24.195 [ INFO] xcuitest.installer.IOSBuildProductsExtractor.extract: [Start] Writing build products
+19:57:24.391 [ INFO] xcuitest.installer.IOSBuildProductsExtractor.extract: [Done] Writing build products
+19:57:24.392 [ INFO] xcuitest.installer.IOSBuildProductsExtractor.extract: [Start] Writing maestro-driver-iosUITests-Runner app
+19:57:24.880 [ INFO] xcuitest.installer.IOSBuildProductsExtractor.extract: [Done] Writing maestro-driver-iosUITests-Runner app
+19:57:24.880 [ INFO] xcuitest.installer.IOSBuildProductsExtractor.extract: [Start] Writing maestro-driver-ios app
+19:57:24.897 [ INFO] xcuitest.installer.IOSBuildProductsExtractor.extract: [Done] Writing maestro-driver-ios app
+19:57:24.901 [ INFO] xcuitest.installer.LocalXCTestInstaller.startXCTestRunner: Installing driver with xcodebuild
+19:57:24.906 [ INFO] xcuitest.installer.LocalXCTestInstaller.startXCTestRunner: [Start] Running XcUITest with `xcodebuild test-without-building` with 7001 and config: IOSDriverConfig(prebuiltRunner=false, sourceDirectory=driver-iPhoneSimulator, context=CLI, snapshotKeyHonorModalViews=null)
+19:57:24.909 [ INFO] util.CommandLineUtils.runCommand: Running command line operation: [xcodebuild, test-without-building, -xctestrun, /var/folders/3r/07xt7j7s1hxgwddw4xsz4jqr0000gn/T/F7ECAC25-2A98-4002-AD17-85AED17AB75216391301649579591984/maestro-driver-ios-config.xctestrun, -destination, id=F7ECAC25-2A98-4002-AD17-85AED17AB752, -derivedDataPath, /var/folders/3r/07xt7j7s1hxgwddw4xsz4jqr0000gn/T/maestro_xctestrunner_xcodebuild_output10066359865426272456] with {TEST_RUNNER_PORT=7001}
+19:57:24.917 [ INFO] xcuitest.installer.LocalXCTestInstaller.startXCTestRunner: [Done] Running XcUITest with `xcodebuild test-without-building`
+19:57:24.917 [ INFO] xcuitest.installer.LocalXCTestInstaller.start$lambda$3: [Done] Install XCUITest runner on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:24.918 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:24.920 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:25.426 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:25.428 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:25.930 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:25.931 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:26.435 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:26.440 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:26.943 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:26.945 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:27.446 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:27.447 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:27.957 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:27.958 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:28.462 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:28.463 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:28.969 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:28.974 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:29.482 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:29.488 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:29.990 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:29.993 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:30.498 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:30.502 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:31.005 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:31.007 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:31.515 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:31.523 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:32.025 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:32.028 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:32.531 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:32.538 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:33.042 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:33.044 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:33.546 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:33.555 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:34.066 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:34.069 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:34.573 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:34.575 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:35.090 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:35.093 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:35.642 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:35.655 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:36.161 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:36.169 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:36.700 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:36.705 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:37.214 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:37.216 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:37.723 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:37.727 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:38.242 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:38.247 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:38.754 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:38.761 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:39.264 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:39.266 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:39.775 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:39.779 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:40.289 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:40.293 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:40.799 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:40.800 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:41.308 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:41.311 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:41.816 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:41.819 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:42.326 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:42.329 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:42.836 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:42.842 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:43.349 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:43.351 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:43.857 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:43.859 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:44.365 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:44.367 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:44.876 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:44.878 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:45.382 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:45.393 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:45.895 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:45.897 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:46.402 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:46.404 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:46.905 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:46.911 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:47.419 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:47.422 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:47.925 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:47.928 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:48.434 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:48.441 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:48.945 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:48.949 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:49.453 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:49.454 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:49.968 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:49.980 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:50.489 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:50.492 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:50.998 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:51.015 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:51.538 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:51.562 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:52.073 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:52.084 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:52.588 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:52.599 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:53.108 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:53.111 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:53.632 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:53.637 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:54.142 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:54.144 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:54.646 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:54.648 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:55.153 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:55.166 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:55.673 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:55.676 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:56.187 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:56.189 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:56.690 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:56.695 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:57.200 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:57.202 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:57.704 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:57.707 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:58.214 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:58.228 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:58.732 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:58.735 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:59.244 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:59.249 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:57:59.754 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:57:59.757 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:58:00.269 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:58:00.290 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:58:00.795 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:58:00.797 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:58:01.302 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:58:01.304 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:58:01.827 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:58:01.831 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:58:02.335 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:58:02.353 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Failed] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752, exception: java.net.ConnectException: Failed to connect to /127.0.0.1:7001
+19:58:02.863 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Start] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:58:02.957 [ INFO] xcuitest.installer.LocalXCTestInstaller.xcTestDriverStatusCheck: [Done] Perform XCUITest driver status check on F7ECAC25-2A98-4002-AD17-85AED17AB752
+19:58:03.067 [ INFO] maestro.cli.runner.TestRunner.runSingle$lambda$0: Running flow orch-0978-ios-smoke.XXXXXX.yaml...
+19:58:03.179 [ INFO] maestro.Maestro.cachedDeviceInfo_delegate$lambda$0: Getting device info
+19:58:03.580 [ INFO] maestro.Maestro.cachedDeviceInfo_delegate$lambda$0: Got device info: DeviceInfo(platform=IOS, widthPixels=1206, heightPixels=2622, widthGrid=402, heightGrid=874)
+19:58:03.875 [ INFO] maestro.cli.runner.MaestroCommandRunner.runCommands$lambda$0: Define variables RUNNING
+19:58:03.886 [ INFO] maestro.cli.runner.MaestroCommandRunner.runCommands$lambda$11: Define variables metadata CommandMetadata(numberOfRuns=null, evaluatedCommand=MaestroCommand(defineVariablesCommand=DefineVariablesCommand(env={MAESTRO_FILENAME=orch-0978-ios-smoke.XXXXXX, MAESTRO_DEVICE_UDID=F7ECAC25-2A98-4002-AD17-85AED17AB752, MAESTRO_SHARD_ID=1, MAESTRO_SHARD_INDEX=0}, label=null, optional=false)), logMessages=[], insight=Insight(message=, level=NONE), aiReasoning=null, labeledCommand=null)
+19:58:03.889 [ INFO] maestro.cli.runner.MaestroCommandRunner.runCommands$lambda$2: Define variables COMPLETED
+19:58:03.894 [ INFO] maestro.cli.runner.MaestroCommandRunner.runCommands$lambda$0: Apply configuration RUNNING
+19:58:03.900 [ INFO] maestro.cli.runner.MaestroCommandRunner.runCommands$lambda$11: Apply configuration metadata CommandMetadata(numberOfRuns=null, evaluatedCommand=MaestroCommand(applyConfigurationCommand=ApplyConfigurationCommand(config=MaestroConfig(appId=com.sethogieva.minglabusiness, name=null, tags=[], ext={}, onFlowStart=null, onFlowComplete=null, properties={}), label=null, optional=false)), logMessages=[], insight=Insight(message=, level=NONE), aiReasoning=null, labeledCommand=null)
+19:58:03.902 [ INFO] maestro.cli.runner.MaestroCommandRunner.runCommands$lambda$2: Apply configuration COMPLETED
+19:58:03.903 [ INFO] maestro.cli.runner.MaestroCommandRunner.runCommands$lambda$0: Launch app "com.sethogieva.minglabusiness" RUNNING
+19:58:03.929 [ INFO] maestro.cli.runner.MaestroCommandRunner.runCommands$lambda$11: Launch app "com.sethogieva.minglabusiness" metadata CommandMetadata(numberOfRuns=null, evaluatedCommand=MaestroCommand(launchAppCommand=LaunchAppCommand(appId=com.sethogieva.minglabusiness, clearState=false, clearKeychain=null, stopApp=null, permissions={notifications=allow}, launchArguments=null, label=null, optional=false)), logMessages=[], insight=Insight(message=, level=NONE), aiReasoning=null, labeledCommand=null)
+19:58:03.932 [ INFO] device.SimctlIOSDevice.setPermissions: [Start] Setting permissions notifications=allow through applesimutils
+19:58:03.933 [ INFO] device.SimctlIOSDevice.setPermissions: [Done] Setting permissions through applesimutils
+19:58:03.961 [ INFO] device.SimctlIOSDevice.setPermissions: [Start] Setting Permissions notifications=allow through simctl
+19:58:03.961 [ INFO] device.SimctlIOSDevice.setPermissions: [Done] Setting Permissions notifications=allow through simctl
+19:58:04.044 [ INFO] maestro.Maestro.launchApp$lambda$2: Launching app com.sethogieva.minglabusiness
+19:58:04.045 [ INFO] maestro.Maestro.launchApp$lambda$2: Stopping com.sethogieva.minglabusiness app during launch
+19:58:04.075 [ INFO] util.CommandLineUtils.runCommand: Running command line operation: [xcrun, simctl, launch, F7ECAC25-2A98-4002-AD17-85AED17AB752, com.sethogieva.minglabusiness] with {}
+19:58:05.471 [ INFO] maestro.cli.runner.MaestroCommandRunner.runCommands$lambda$2: Launch app "com.sethogieva.minglabusiness" COMPLETED
+19:58:05.486 [ INFO] maestro.cli.runner.MaestroCommandRunner.runCommands$lambda$0: Wait for animation to end within 5000 ms RUNNING
+19:58:05.555 [ INFO] maestro.cli.runner.MaestroCommandRunner.runCommands$lambda$11: Wait for animation to end within 5000 ms metadata CommandMetadata(numberOfRuns=null, evaluatedCommand=MaestroCommand(waitForAnimationToEndCommand=WaitForAnimationToEndCommand(timeout=5000, label=null, optional=false)), logMessages=[], insight=Insight(message=, level=NONE), aiReasoning=null, labeledCommand=null)
+19:58:05.618 [ INFO] maestro.Maestro.waitForAnimationToEnd$lambda$51: Waiting for animation to end with timeout 5000
+19:58:05.680 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to byte array
+19:58:05.681 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to output sink
+19:58:08.536 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to byte array
+19:58:08.537 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to output sink
+19:58:21.234 [ INFO] maestro.cli.runner.MaestroCommandRunner.runCommands$lambda$2: Wait for animation to end within 5000 ms COMPLETED
+19:58:21.249 [ INFO] maestro.cli.runner.MaestroCommandRunner.runCommands$lambda$0: Take screenshot orch-0978-ios-business-launch-smoke RUNNING
+19:58:21.366 [ INFO] maestro.cli.runner.MaestroCommandRunner.runCommands$lambda$11: Take screenshot orch-0978-ios-business-launch-smoke metadata CommandMetadata(numberOfRuns=null, evaluatedCommand=MaestroCommand(takeScreenshotCommand=TakeScreenshotCommand(path=orch-0978-ios-business-launch-smoke, cropOn=null, label=null, optional=false)), logMessages=[], insight=Insight(message=, level=NONE), aiReasoning=null, labeledCommand=null)
+19:58:21.416 [ INFO] maestro.Maestro.takeScreenshot: Taking screenshot
+19:58:21.440 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to output sink
+19:58:21.738 [ INFO] maestro.cli.runner.MaestroCommandRunner.runCommands$lambda$2: Take screenshot orch-0978-ios-business-launch-smoke COMPLETED
+19:58:25.010 [ INFO] maestro.cli.report.TestDebugReporter.deleteOldFiles: Performing purge of logs older than 14 days from /Users/sethogieva/Desktop/mingla-orchs/ORCH-0978-[video-upload-polish-and-cloudinary-lifecycle]/Mingla_Artifacts/reports/qa-orch-0978-runtime

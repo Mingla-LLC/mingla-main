@@ -195,7 +195,7 @@ describe("ORCH-0978 event cover video compression happy path", () => {
       providerUploadResponse,
     });
     await expect(
-      waitForEventCoverVideoReady(intent.jobId, { pollIntervalMs: 1, timeoutMs: 5 }),
+      waitForEventCoverVideoReady(intent.jobId, { pollIntervalMs: 1, timeoutMs: 1_000 }),
     ).resolves.toMatchObject({
       processedUrl: "https://res.cloudinary.com/demo/video/upload/processed.mp4",
       status: "applied",

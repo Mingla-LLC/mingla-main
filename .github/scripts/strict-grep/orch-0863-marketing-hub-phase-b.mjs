@@ -885,6 +885,7 @@ function checkNoNewBackendFiles() {
   // lifecycle paths needed for abort + Cloudinary destroy. No new backend
   // function or migration is introduced here.
   const ORCH_0978_BACKEND_ALLOWLIST = [
+    "supabase/functions/_shared/eventCoverVideo.test.ts",
     "supabase/functions/_shared/eventCoverVideo.ts",
     "supabase/functions/event-cover-video-cancel/index.ts",
     "supabase/functions/event-cover-video-source-uploaded/index.ts",
