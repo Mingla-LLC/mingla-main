@@ -889,6 +889,8 @@ function checkNoNewBackendFiles() {
     "supabase/functions/_shared/eventCoverVideo.ts",
     "supabase/functions/event-cover-video-cancel/index.ts",
     "supabase/functions/event-cover-video-source-uploaded/index.ts",
+    "supabase/functions/event-cover-video-webhook/__tests__/job-id-recovery.test.ts",
+    "supabase/functions/event-cover-video-webhook/index.ts",
     "supabase/functions/event-cover-video-upload-intent/__tests__/duration-cap.test.ts",
     "supabase/functions/event-cover-video-upload-intent/index.ts",
     "supabase/migrations/20260730000000_orch_0978_video_cap_29s_constraints.sql",
