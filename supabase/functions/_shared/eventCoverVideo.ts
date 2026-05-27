@@ -29,6 +29,72 @@ export const MAX_SOURCE_VIDEO_DURATION_MS = Number.parseInt(
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const ORCH_0978_AUTH_FAILURE_REASON_HEADER = "x-orch-0978-auth-failure-reason";
+const ORCH_0978_AUTH_FAILURE_EXP_DELTA_HEADER = "x-orch-0978-auth-exp-delta-sec";
+
+type AuthFailureReason =
+  | "token_absent"
+  | "token_malformed"
+  | "token_expired"
+  | "token_invalid_signature"
+  | "userid_missing";
+
+const logWarn = (requestId: string, stage: string, payload: Record<string, unknown> = {}) => {
+  console.warn("[event-cover-video]", JSON.stringify({
+    requestId,
+    stage,
+    ...payload,
+  }));
+};
+
+const authHeaderPrefix = (authHeader: string): string | null => {
+  if (authHeader.length === 0) return null;
+  return authHeader.slice(0, 24);
+};
+
+const decodeJwtPayload = (token: string): Record<string, unknown> | null => {
+  const segments = token.split(".");
+  if (segments.length !== 3 || segments.some((segment) => segment.length === 0)) {
+    return null;
+  }
+  try {
+    const padded = segments[1]
+      .replace(/-/g, "+")
+      .replace(/_/g, "/")
+      .padEnd(Math.ceil(segments[1].length / 4) * 4, "=");
+    const decoded = atob(padded);
+    const payload = JSON.parse(decoded);
+    return payload && typeof payload === "object" && !Array.isArray(payload) ? payload : null;
+  } catch {
+    return null;
+  }
+};
+
+const expDeltaSecFromPayload = (payload: Record<string, unknown> | null): number | null => {
+  const exp = payload?.exp;
+  if (typeof exp !== "number" || !Number.isFinite(exp)) return null;
+  return Math.floor(exp - Date.now() / 1000);
+};
+
+const unauthenticatedResponse = (
+  reason: AuthFailureReason,
+  authHeader: string,
+  expDeltaSec: number | null,
+): Response => {
+  const requestId = crypto.randomUUID();
+  logWarn(requestId, "auth_failed", {
+    reason,
+    expDeltaSec,
+    hasAuthHeader: authHeader.length > 0,
+    authHeaderPrefix: authHeaderPrefix(authHeader),
+  });
+  const response = jsonResponse({ error: "unauthenticated" }, 401);
+  response.headers.set(ORCH_0978_AUTH_FAILURE_REASON_HEADER, reason);
+  if (expDeltaSec !== null) {
+    response.headers.set(ORCH_0978_AUTH_FAILURE_EXP_DELTA_HEADER, String(expDeltaSec));
+  }
+  return response;
+};
 
 export function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -57,17 +123,36 @@ export function serviceRoleClient(): SupabaseClient {
 
 export async function requireUserId(req: Request): Promise<string | Response> {
   const authHeader = req.headers.get("authorization") ?? "";
+  if (authHeader.length === 0) {
+    return unauthenticatedResponse("token_absent", authHeader, null);
+  }
   const tokenMatch = authHeader.match(/^Bearer\s+(.+)$/i);
-  if (!tokenMatch) return jsonResponse({ error: "unauthenticated" }, 401);
+  if (!tokenMatch) {
+    return unauthenticatedResponse("token_malformed", authHeader, null);
+  }
 
   const token = tokenMatch[1];
+  const jwtPayload = decodeJwtPayload(token);
+  const expDeltaSec = expDeltaSecFromPayload(jwtPayload);
+  if (!jwtPayload || expDeltaSec === null) {
+    return unauthenticatedResponse("token_malformed", authHeader, expDeltaSec);
+  }
+  if (expDeltaSec <= 0) {
+    return unauthenticatedResponse("token_expired", authHeader, expDeltaSec);
+  }
+
   const userClient = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
     { global: { headers: { Authorization: `Bearer ${token}` } } },
   );
   const { data, error } = await userClient.auth.getUser(token);
-  if (error || !data.user) return jsonResponse({ error: "unauthenticated" }, 401);
+  if (error) {
+    return unauthenticatedResponse("token_invalid_signature", authHeader, expDeltaSec);
+  }
+  if (!data.user?.id) {
+    return unauthenticatedResponse("userid_missing", authHeader, expDeltaSec);
+  }
   return data.user.id;
 }
 

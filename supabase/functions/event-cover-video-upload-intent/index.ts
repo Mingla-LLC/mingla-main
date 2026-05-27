@@ -47,7 +47,7 @@ serve(async (req) => {
 
   const userIdOrResponse = await requireUserId(req);
   if (userIdOrResponse instanceof Response) {
-    logWarn(requestId, "auth_failed", { status: userIdOrResponse.status });
+    logWarn(requestId, "auth_response_returned", { status: userIdOrResponse.status });
     return userIdOrResponse;
   }
   const userId = userIdOrResponse;
