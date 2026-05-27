@@ -830,9 +830,13 @@ This item splits into 2a (diagnostic) and 2b (targeted fix). The implementor MUS
 
 ##### Item 2a — Diagnostic instrumentation (lands first, no client-visible behavior change)
 
-**File:** `supabase/functions/event-cover-video-upload-intent/index.ts` line 48 (the `requireUserId(req)` call)
+**Files (in scope):**
+- `supabase/functions/event-cover-video-upload-intent/index.ts` line 48 (the `requireUserId(req)` call site)
+- `supabase/functions/_shared/eventCoverVideo.ts:58` (the `requireUserId` helper definition itself)
 
-**Change:** wrap or inline-expand `requireUserId` to log WHICH auth check failed when it returns a 401 Response. The diagnostic must distinguish:
+**Out of scope (DO NOT TOUCH):** `supabase/functions/_shared/stripeEdgeAuth.ts:40` also exports a `requireUserId` helper — that one serves Stripe Connect endpoints (different surface) and is NOT part of this amendment. If the implementor mistakenly edits the Stripe helper instead of the cover-video helper, the instrumentation will land in the wrong codepath and the diagnostic will produce zero data for this ORCH. Verify the import path inside `event-cover-video-upload-intent/index.ts` resolves to `_shared/eventCoverVideo.ts` before editing.
+
+**Change:** wrap or inline-expand the `requireUserId` helper in `_shared/eventCoverVideo.ts:58` to log WHICH auth check failed when it returns a 401 Response. The diagnostic must distinguish:
 - `token_absent` — request had no `Authorization` header at all
 - `token_malformed` — header present but not in `Bearer <jwt>` shape
 - `token_expired` — JWT present and valid shape but `exp` claim in the past
@@ -888,26 +892,40 @@ This clears the phantom preview when any pre-ready failure occurs (compressor er
 
 #### Item 4 — Trim cap drop 30s → 29s (P1)
 
-**Two-constant change.** Per `feedback_external_api_docs_verified.md`, both citations are inline.
+**Four-file change** (5 lines total). Per `feedback_external_api_docs_verified.md`, the Expo citation is inline.
 
-- **File:** `mingla-business/src/components/ui/CoverPicker.tsx` line 422
-  - Change: `videoMaxDuration: 30,` → `videoMaxDuration: 29,`
-  - Cite: https://docs.expo.dev/versions/latest/sdk/imagepicker/#imagepickeroptions — `videoMaxDuration` accepts seconds, integer, iOS-best-effort + Android-best-effort.
+**Background — duplicate constant declaration (surfaced by orchestrator REVIEW dependency walk):** `EVENT_COVER_MAX_VIDEO_DURATION_MS` is currently declared in TWO places — `mingla-business/src/utils/eventCoverMediaRules.ts:4` (older canonical location, used by the pre-ORCH-0978 image+gif validation pipeline via `eventCoverMediaService.ts`) AND `mingla-business/src/services/eventCoverVideoProcessingService.ts:17` (the new ORCH-0978 Cloudinary pipeline). Each serves a different consumer chain today:
+- `eventCoverVideoProcessingService.ts:17` feeds `CoverPicker.tsx:64 → 434` (the picker's rejection check)
+- `eventCoverMediaRules.ts:4` feeds `eventCoverMediaService.ts:7,25 → validateEventCoverAsset` (the storage-bucket validation pipeline)
 
-- **File:** `mingla-business/src/services/eventCoverVideoProcessingService.ts` line 17
-  - Change: `export const EVENT_COVER_MAX_VIDEO_DURATION_MS = 30_000;` → `export const EVENT_COVER_MAX_VIDEO_DURATION_MS = 29_000;`
+Updating only one would cause the two pipelines to diverge (picker caps at 29s, storage validation still accepts 30s). The IMPLEMENT-2 MUST update BOTH declarations to 29_000 in the same commit. A future cleanup ORCH can consolidate to a single declaration per "one owner per truth" (Discovery for Orchestrator §J-bis below); this amendment ships the dual-update minimum.
 
-- **File:** `mingla-business/src/components/ui/CoverPicker.tsx` line 435
-  - Change toast copy: `"Please trim to 30 seconds first."` → `"Please trim to 29 seconds first."`
+**Required edits:**
 
-- **File:** `mingla-business/src/services/eventCoverVideoProcessingService.ts` line 21
-  - Change: `"Use your phone's trim screen to keep video covers to 30 seconds. ..."` → `"Use your phone's trim screen to keep video covers to 29 seconds. ..."`
+1. **Picker config** — `mingla-business/src/components/ui/CoverPicker.tsx` line 422
+   - Change: `videoMaxDuration: 30,` → `videoMaxDuration: 29,`
+   - Cite: https://docs.expo.dev/versions/latest/sdk/imagepicker/#imagepickeroptions — `videoMaxDuration` accepts seconds, integer, iOS-best-effort + Android-best-effort.
+
+2. **Cloudinary pipeline constant (the one CoverPicker imports)** — `mingla-business/src/services/eventCoverVideoProcessingService.ts` line 17
+   - Change: `export const EVENT_COVER_MAX_VIDEO_DURATION_MS = 30_000;` → `export const EVENT_COVER_MAX_VIDEO_DURATION_MS = 29_000;`
+
+3. **Storage-bucket validation constant (the older canonical declaration)** — `mingla-business/src/utils/eventCoverMediaRules.ts` line 4
+   - Change: `export const EVENT_COVER_MAX_VIDEO_DURATION_MS = 30_000;` → `export const EVENT_COVER_MAX_VIDEO_DURATION_MS = 29_000;`
+   - Verification: post-change, the consumer at `eventCoverMediaRules.ts:339` (`input.durationMs > EVENT_COVER_MAX_VIDEO_DURATION_MS`) will reject anything over 29,000 ms in the storage-bucket path — matching the picker's behaviour.
+
+4. **Picker toast copy** — `mingla-business/src/components/ui/CoverPicker.tsx` line 435
+   - Change: `"Please trim to 30 seconds first."` → `"Please trim to 29 seconds first."`
+
+5. **Processing copy constant** — `mingla-business/src/services/eventCoverVideoProcessingService.ts` line 21
+   - Change: `"Use your phone's trim screen to keep video covers to 30 seconds. ..."` → `"Use your phone's trim screen to keep video covers to 29 seconds. ..."`
 
 **Tolerance UNCHANGED:** the existing `+ 250` rejection guard at `CoverPicker.tsx:434` stays. Effective rejection ceiling becomes 29,250 ms. iOS keyframe overshoot typically 100-800 ms (per save-bug investigation citations), comfortable headroom.
 
+**Existing test compatibility:** `mingla-business/src/services/__tests__/eventCoverMediaService.test.ts` lines 258, 430, 453 assert `EVENT_COVER_MAX_VIDEO_DURATION_MS + 1` rejects. After this change those assertions become `29_001` rejects (was `30_001`) — same semantic (one over the cap rejects), no test edit required. The test at `mingla-business/src/components/ui/__tests__/eventCoverMedia.test.ts:75` asserts `videoMaxDuration: 15` is NOT present (it's currently 30, becomes 29 — both satisfy the negative assertion); no test edit required.
+
 **AMENDMENT 1 supersession statement:** AMENDMENT 1's "single 30s cap via native trim" is hereby superseded by 29s. AMENDMENT 1 stays in this document as historical record. AMENDMENT 1 invariants and CI gates referring to `30000` ms or the `videoMaxDuration: 30` literal MUST be updated to `29000` / `videoMaxDuration: 29` per Item 6 below.
 
-**SC-AMENDMENT-4-CAP-4:** Picker config line literally reads `videoMaxDuration: 29`; constant literally reads `29_000`; toast copy literally reads `29 seconds`.
+**SC-AMENDMENT-4-CAP-4:** Picker config line literally reads `videoMaxDuration: 29`; BOTH constants (`eventCoverVideoProcessingService.ts:17` AND `eventCoverMediaRules.ts:4`) literally read `29_000`; toast copy literally reads `29 seconds`; `grep -rn "EVENT_COVER_MAX_VIDEO_DURATION_MS = 30" mingla-business/src/` returns ZERO matches post-change.
 
 #### Item 5 — Edge function validation matches new cap (P0)
 
@@ -1007,7 +1025,9 @@ Must land in the SAME commit as the migration + test files. Otherwise the C7 `no
 
 ### E — New invariants
 
-**I-PROPOSED-VIDEO-CAP-CONSISTENCY-29S:** Picker `videoMaxDuration`, client constant `EVENT_COVER_MAX_VIDEO_DURATION_MS`, edge function `EFFECTIVE_TRIM_CEILING_MS` validation, and DB CHECK constraints on `event_cover_video_jobs` MUST all agree at 29000 ms (with `+250ms` tolerance at picker reject + edge reject = 29250). Any layer deviating from this contract is a P0 invariant violation.
+**I-PROPOSED-VIDEO-CAP-CONSISTENCY-29S:** Picker `videoMaxDuration`, BOTH client constant declarations of `EVENT_COVER_MAX_VIDEO_DURATION_MS` (the one at `eventCoverVideoProcessingService.ts:17` AND the one at `eventCoverMediaRules.ts:4`), edge function `EFFECTIVE_TRIM_CEILING_MS` validation, and DB CHECK constraints on `event_cover_video_jobs` MUST all agree at 29000 ms (with `+250ms` tolerance at picker reject + edge reject = 29250). Any layer deviating from this contract is a P0 invariant violation. Strict-grep C1-C4 (§F) enforces at CI.
+
+**Architectural follow-up (not blocking this amendment):** the two duplicate constant declarations themselves violate "one owner per truth" (constitutional rule #2). A future cleanup ORCH should consolidate to a single declaration — see Discovery for Orchestrator §J-bis. Until then, the strict-grep C1+C2+C3 trio is the contract that keeps them aligned.
 
 **Supersedes:** I-PROPOSED-VIDEO-INPUT-CAP-AT-PICKER (AMENDMENT 1 §6) — that invariant referenced `videoMaxDuration: 30`. Update its target literal to `29` or replace with the new invariant.
 
@@ -1015,10 +1035,11 @@ Must land in the SAME commit as the migration + test files. Otherwise the C7 `no
 
 **New strict-grep registry file:** `.github/scripts/strict-grep/orch-0978-video-cap-29s.mjs` (NEW)
 
-Three checks:
-1. **C1 — Client cap is 29:** assert `mingla-business/src/components/ui/CoverPicker.tsx` contains `videoMaxDuration: 29` exactly once. Fail if `videoMaxDuration: 30` appears anywhere.
-2. **C2 — Constant is 29_000:** assert `mingla-business/src/services/eventCoverVideoProcessingService.ts` contains `EVENT_COVER_MAX_VIDEO_DURATION_MS = 29_000`. Fail if `= 30_000` appears in this constant.
-3. **C3 — DB constraint is 29000:** assert the migration `20260730000000_orch_0978_video_cap_29s_constraints.sql` exists AND contains the literal `29000` in BOTH `_trim_max_duration` and `_processed_max_duration` ADD CONSTRAINT statements.
+Four checks (updated per orchestrator REVIEW dependency walk):
+1. **C1 — Client cap is 29:** assert `mingla-business/src/components/ui/CoverPicker.tsx` contains `videoMaxDuration: 29` exactly once. Fail if `videoMaxDuration: 30` appears anywhere in this file.
+2. **C2 — Cloudinary-pipeline constant is 29_000:** assert `mingla-business/src/services/eventCoverVideoProcessingService.ts` contains `EVENT_COVER_MAX_VIDEO_DURATION_MS = 29_000`. Fail if `EVENT_COVER_MAX_VIDEO_DURATION_MS = 30_000` appears in this file.
+3. **C3 — Storage-pipeline constant is 29_000 (dependency-walk gap closure):** assert `mingla-business/src/utils/eventCoverMediaRules.ts` contains `EVENT_COVER_MAX_VIDEO_DURATION_MS = 29_000`. Fail if `EVENT_COVER_MAX_VIDEO_DURATION_MS = 30_000` appears in this file. Without this check the two pipelines could silently drift if either constant gets bumped back.
+4. **C4 — DB constraint is 29000:** assert the migration `20260730000000_orch_0978_video_cap_29s_constraints.sql` exists AND contains the literal `29000` in BOTH `_trim_max_duration` and `_processed_max_duration` ADD CONSTRAINT statements.
 
 Wire into `.github/workflows/strict-grep-mingla-business.yml` as one new job per `feedback_strict_grep_registry_pattern.md`. Do NOT create a parallel workflow file.
 
@@ -1063,9 +1084,21 @@ Codex `implementor-mingla` IMPLEMENT-2 produces ONE PR covering all 9 items in t
 
 Then orchestrator REVIEW → DB migration apply (operator) → edge deploy (orchestrator) → Codex/Claude tester live-fire on iOS sim + your physical iPhone → orchestrator CLOSE with `[deploy]` tag.
 
+### J-bis — Discovery for Orchestrator (architectural follow-up, NOT in this scope)
+
+**Title:** Consolidate the duplicate `EVENT_COVER_MAX_VIDEO_DURATION_MS` declarations.
+
+**Background:** `EVENT_COVER_MAX_VIDEO_DURATION_MS` is currently declared in two files (`mingla-business/src/utils/eventCoverMediaRules.ts:4` AND `mingla-business/src/services/eventCoverVideoProcessingService.ts:17`). Pre-ORCH-0978 only the first declaration existed; ORCH-0978 added the second to keep the Cloudinary pipeline's constants colocated with the new processing service. Both currently agree at 30_000 ms; this amendment updates BOTH to 29_000 ms. The duplication violates "one owner per truth" (constitutional rule #2).
+
+**Recommendation:** register a follow-up ORCH (e.g., ORCH-NNNN [event cover constants consolidation]) to delete the duplicate at `eventCoverVideoProcessingService.ts:17` and have it re-export from `eventCoverMediaRules.ts`. Update the `CoverPicker.tsx:64` import path to source from `eventCoverMediaRules` (or keep the re-export shim if the service file is the more natural import surface for video-pipeline consumers). Delete strict-grep check C2 OR C3 (only need one once consolidated). Net diff: ~10 lines, single PR, near-zero risk because all consumers already get the same value.
+
+**Why not include here?** Scope discipline. AMENDMENT 4 is a bug-fix amendment, not a refactor. The strict-grep C1+C2+C3 trio keeps the two declarations aligned at CI in the interim, so the architectural debt is contained.
+
+---
+
 ### K — Confidence — HIGH
 
-Every code touchpoint cited has been read in this Phase 0 with line ranges captured. Live DB constraint probe independently confirms Codex's finding. Migration timestamp scan across all worktrees confirms no collision. Operator decisions captured from chat. Diagnostic-first rule for Item 2 preserves engineering rigor against the temptation to blindly pick a fix path. No open questions.
+Every code touchpoint cited has been read in this Phase 0 with line ranges captured. Live DB constraint probe independently confirms Codex's finding. Migration timestamp scan across all worktrees confirms no collision. Operator decisions captured from chat. Diagnostic-first rule for Item 2 preserves engineering rigor against the temptation to blindly pick a fix path. Orchestrator REVIEW dependency-walk gap (duplicate constant + ambiguous requireUserId file) closed in rework pass; new strict-grep check C3 + Item 2a out-of-scope note added; consolidation surfaced as Discovery J-bis for a future cleanup ORCH. No open questions.
 
 ---
 
