@@ -24,6 +24,8 @@ const processingServicePath =
 const mediaRulesPath = "mingla-business/src/utils/eventCoverMediaRules.ts";
 const migrationPath =
   "supabase/migrations/20260730000000_orch_0978_video_cap_29s_constraints.sql";
+const uploadIntentPath = "supabase/functions/event-cover-video-upload-intent/index.ts";
+const webhookPath = "supabase/functions/event-cover-video-webhook/index.ts";
 
 const coverPicker = read(coverPickerPath);
 if (count(coverPicker, "videoMaxDuration: 29") !== 1) {
@@ -67,6 +69,23 @@ if (!existsSync(join(root, migrationPath))) {
   } else {
     ok("C4", "DB migration pins both video duration constraints to 29000");
   }
+}
+
+const uploadIntent = read(uploadIntentPath);
+const webhook = read(webhookPath);
+const publicIdTemplatePattern = /event-covers\/raw\/\$\{brandId\}\/\$\{eventId\}\/\$\{job\.id\}/;
+if (!publicIdTemplatePattern.test(uploadIntent)) {
+  fail(
+    "C5",
+    `${uploadIntentPath} must contain publicId template event-covers/raw/\${brandId}/\${eventId}/\${job.id}`,
+  );
+} else if (!webhook.includes("recoverJobIdFromPayload") && !webhook.includes("public_id.split")) {
+  fail(
+    "C5",
+    `${webhookPath} must contain public_id-based job_id recovery to match upload-intent template`,
+  );
+} else {
+  ok("C5", "Upload-intent public_id template and webhook public_id parser remain aligned");
 }
 
 if (process.exitCode && process.exitCode !== 0) {

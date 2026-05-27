@@ -3,6 +3,7 @@ import {
   assertProcessedDerivative,
   corsHeaders,
   eventCoverVideoReadyUpdate,
+  isValidUuid,
   jsonResponse,
   serviceRoleClient,
   verifyCloudinaryNotificationSignature,
@@ -26,6 +27,17 @@ const contextValue = (payload: Record<string, unknown>, key: string): string | n
   }
   const direct = payload[key];
   return typeof direct === "string" ? direct : null;
+};
+
+export const recoverJobIdFromPayload = (payload: Record<string, unknown>): string | null => {
+  const fromContext = contextValue(payload, "job_id");
+  if (fromContext !== null && isValidUuid(fromContext)) return fromContext;
+
+  const publicId = typeof payload.public_id === "string" ? payload.public_id : null;
+  if (publicId === null) return null;
+  const lastSegment = publicId.split("/").at(-1) ?? null;
+  if (lastSegment === null) return null;
+  return isValidUuid(lastSegment) ? lastSegment : null;
 };
 
 const verifyWebhook = async (
@@ -56,7 +68,15 @@ const firstEager = (payload: Record<string, unknown>): Record<string, unknown> =
     : {};
 };
 
-serve(async (req) => {
+const defaultDeps = {
+  serviceRoleClient,
+  verifyWebhook,
+};
+
+export const handleEventCoverVideoWebhook = async (
+  req: Request,
+  deps: typeof defaultDeps = defaultDeps,
+): Promise<Response> => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return jsonResponse({ error: "method_not_allowed" }, 405);
 
@@ -66,7 +86,7 @@ serve(async (req) => {
     hasTimestamp: Boolean(req.headers.get("x-cld-timestamp")),
     stage: "webhook_received",
   }));
-  const webhookVerification = await verifyWebhook(req, rawBody);
+  const webhookVerification = await deps.verifyWebhook(req, rawBody);
   if (!webhookVerification.ok) {
     console.warn("[event-cover-video-webhook]", JSON.stringify({
       code: webhookVerification.code,
@@ -86,12 +106,17 @@ serve(async (req) => {
   } catch {
     return jsonResponse({ error: "validation_error", detail: "invalid_json" }, 400);
   }
-  const jobId = contextValue(payload, "job_id");
+  const jobId = recoverJobIdFromPayload(payload);
   if (jobId === null) {
+    console.warn("[event-cover-video-webhook]", JSON.stringify({
+      publicId: typeof payload.public_id === "string" ? payload.public_id : null,
+      hasContext: typeof payload.context === "object" || typeof payload.context === "string",
+      stage: "job_id_extraction_failed",
+    }));
     return jsonResponse({ error: "validation_error", detail: "job_id_missing" }, 400);
   }
 
-  const supabase = serviceRoleClient();
+  const supabase = deps.serviceRoleClient();
   const { data: existingJob, error: existingJobError } = await supabase
     .from("event_cover_video_jobs")
     .select("id,status,event_id,apply_mode")
@@ -212,4 +237,8 @@ serve(async (req) => {
   }
 
   return jsonResponse({ ok: true });
-});
+};
+
+if (import.meta.main) {
+  serve((req) => handleEventCoverVideoWebhook(req));
+}
