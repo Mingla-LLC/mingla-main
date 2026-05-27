@@ -274,6 +274,55 @@ describe("event cover video processing service", () => {
     );
   });
 
+  test("fetches a fresh session token for each upload-intent retry", async () => {
+    getSession
+      .mockResolvedValueOnce({
+        data: { session: { access_token: "first-session-jwt" } },
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        data: { session: { access_token: "retry-session-jwt" } },
+        error: null,
+      });
+    invoke.mockResolvedValue({
+      data: {
+        jobId: "job_1",
+        provider: "cloudinary",
+        upload: { fields: { api_key: "key" }, url: "https://upload.example.com" },
+      },
+      error: null,
+    });
+
+    const input = {
+      applyMode: "draft_auto" as const,
+      brandId: "brand_id",
+      eventId: "event_id",
+      sourceBytes: 12_345,
+      sourceDurationMs: 8_000,
+      trimEndMs: 8_000,
+      trimStartMs: 0,
+    };
+
+    await createEventCoverVideoUploadIntent(input);
+    await createEventCoverVideoUploadIntent(input);
+
+    expect(getSession).toHaveBeenCalledTimes(2);
+    expect(invoke).toHaveBeenNthCalledWith(
+      1,
+      "event-cover-video-upload-intent",
+      expect.objectContaining({
+        headers: { Authorization: "Bearer first-session-jwt" },
+      }),
+    );
+    expect(invoke).toHaveBeenNthCalledWith(
+      2,
+      "event-cover-video-upload-intent",
+      expect.objectContaining({
+        headers: { Authorization: "Bearer retry-session-jwt" },
+      }),
+    );
+  });
+
   test("maps status provider failure without hiding the provider code", async () => {
     invoke.mockResolvedValue({
       data: {
