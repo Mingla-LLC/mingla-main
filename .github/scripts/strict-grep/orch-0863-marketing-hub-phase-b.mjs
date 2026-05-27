@@ -890,6 +890,7 @@ function checkNoNewBackendFiles() {
     "supabase/functions/event-cover-video-cancel/index.ts",
     "supabase/functions/event-cover-video-source-uploaded/index.ts",
     "supabase/functions/event-cover-video-webhook/__tests__/job-id-recovery-adversarial.test.ts",
+    "supabase/functions/event-cover-video-webhook/__tests__/duration-fallback.test.ts",
     "supabase/functions/event-cover-video-webhook/__tests__/job-id-recovery.test.ts",
     "supabase/functions/event-cover-video-webhook/index.ts",
     "supabase/functions/event-cover-video-upload-intent/__tests__/duration-cap.test.ts",
