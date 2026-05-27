@@ -697,3 +697,375 @@ After SPEC returns:
 SPEC builds on APPROVED RESEARCH with concrete code-level specifications grounded in actual current source (`_shared/eventCoverVideo.ts`, `EventCoverMedia.tsx`, both `package.json` files). Phase 0 surfaced the SDK 54 reality + the already-built business renderer + the missing `app-mobile` `expo-video` dependency — none of which were in RESEARCH. Three open questions (OQ-2 react-native-compressor characterization, OQ-3 telemetry columns, OQ-6 destroy retry) are explicit decisions deferred to REVIEW/IMPLEMENT — not unknowns.
 
 The ONE BLOCKER is the T-00 PoC clause: until react-native-compressor's real-world behaviour on Mingla's typical inputs is measured, the §3 latency budget is an estimate. SPEC correctly gates IMPLEMENT on T-00.
+
+---
+
+## SPEC AMENDMENT 4 (a.k.a. AMENDMENT 2 in operator language) — 2026-05-27 — Consolidated trim cap + DB constraint raise + save-button root-cause fix
+
+**Author:** Claude `mingla-forensics` (SPEC mode)
+**Trigger:** consolidate findings from two APPROVED investigations into one IMPLEMENT-2 pass.
+**Operator decisions in:** Option A from trim investigation (drop cap 30s → 29s); full save-bug remediation from save-button investigation; no Save-gate widening; diagnostic-first for auth fix.
+
+### A — Executive summary (plain English)
+
+ORCH-0978's first IMPLEMENT shipped a working sub-30s video upload pipeline but two live-fire failure modes surfaced on iOS hardware: (1) iOS's native trim slider returns slightly-over-30s clips due to keyframe alignment, triggering a "Please trim to 30 seconds first" toast on clips the user thought they trimmed; (2) edge function returns 401 on upload-intent for visibly signed-in users, leaving a phantom local-preview as the cover with the Save button greyed forever. Codex live-fire on iPhone 17 sim also discovered a hidden launch blocker — the database's `event_cover_video_jobs` table still enforces a 15-second CHECK constraint left over from ORCH-0770, so even a 29-second client cap would be rejected at the DB layer. This amendment consolidates all three fixes plus regression-test gates into one IMPLEMENT-2 PR. After ship: a user picks any source video, iOS trims to ≤29s, the upload either succeeds and Save enables OR fails cleanly with the old cover restored and an explicit retry affordance. No phantom previews, no mystery greyed buttons, no DB constraint violations.
+
+### B — Sources
+
+- `Mingla_Artifacts/reports/INVESTIGATION_ORCH-0978_TRIM_UX_GAP.md` (commit `38b195dd0`) — F-1 through F-8; chosen path = Option A tolerance bump via cap reduction.
+- `Mingla_Artifacts/reports/REVIEW_ORCH-0978_INVESTIGATION_TRIM_UX_GAP.md` (commit `1f39b63af`) — APPROVED.
+- `Mingla_Artifacts/reports/INVESTIGATION_ORCH-0978_SAVE_BUTTON_GREYED.md` (commit `23fb1d877`) — F-1 through F-9 + §6 fix-shape + §7 SPEC AMENDMENT 2 inputs.
+- `Mingla_Artifacts/reports/REVIEW_ORCH-0978_INVESTIGATION_SAVE_BUTTON_GREYED.md` (REVIEW APPROVED 2026-05-27) — orchestrator's 9-item consolidated scope table.
+- Forensics dispatch `Mingla_Artifacts/prompts/FORENSICS_SPEC_AMENDMENT_2_ORCH-0978.md` (this AMENDMENT 4 binding contract).
+- Live DB constraint probe via Supabase Management API on 2026-05-27 (https://supabase.com/docs/reference/api/introduction) — independently confirmed both `event_cover_video_jobs_trim_max_duration` and `event_cover_video_jobs_processed_max_duration` still bound at `15000` ms.
+- Migration source `supabase/migrations/20260515000012_orch_0770_event_cover_video_processing.sql` lines 53-54 + 57-58 — origin of the 15s constraints.
+- Migration timestamp scan across all `~/Desktop/mingla-orchs/*/supabase/migrations/` worktrees: highest existing = `20260729000002_orch_0964_brand_event_theme_columns.sql`. This amendment claims `20260730000000`.
+
+### C — Cross-surface impact declaration (Phase 2.5)
+
+| Surface | In scope? | Behavior change | Files touched | Parity |
+|---|---|---|---|---|
+| Consumer iOS (`app-mobile/` on iOS) | NO | none | none | n/a — consumer app does not author covers |
+| Consumer Android (`app-mobile/` on Android) | NO | none | none | n/a |
+| Buyer/anonymous Web | NO behavior change | reads processed cover URLs same as today; no contract change | none | n/a |
+| Business iOS (`mingla-business/` on iOS) | **YES (primary)** | trim cap drops 30s→29s; auth preflight before picker; failed uploads roll back to old cover with retry copy; Save no longer mystery-greyed | `CoverPicker.tsx`, `useEventCoverVideoUpload.ts`, `eventCoverVideoProcessingService.ts`, `event-cover-video-upload-intent/index.ts` (edge) | shared code with Android — automatic |
+| Business Android (`mingla-business/` on Android) | **YES** | same as iOS — automatic via shared code | same files | automatic |
+| Admin Web (`mingla-admin/`) | NO | none | none | n/a — admin does not author covers |
+| Business Web preview | **YES** | trim cap + auth preflight + rollback apply (web picker has no native trim so the rejection-toast path engages on >29s clips with new copy) | same files (web build of `mingla-business/`) | automatic |
+
+SC-N numbering: parity is automatic because business iOS/Android/Web share the same source files. No per-surface SC split required.
+
+### D — Item-by-item scope (9 items)
+
+#### Item 1 — DB constraint migration (P0 — launch blocker)
+
+**File:** `supabase/migrations/20260730000000_orch_0978_video_cap_29s_constraints.sql` (NEW)
+
+**Pre-flight invariant probe (mandatory per `feedback_orchestrator_deploys_edge_functions.md` invariant migration backstop):**
+
+Before migration body, run:
+```sql
+DO $$
+DECLARE
+  offending_count int;
+BEGIN
+  -- Existing 15s constraint guarantees no rows >15000, so any row >29000 is impossible.
+  -- Still probe to confirm zero rows that would fail the new 29000 constraint
+  -- (defensive: catches accidental constraint drift, prior unguarded backfills, etc.)
+  SELECT count(*) INTO offending_count
+  FROM public.event_cover_video_jobs
+  WHERE (trim_end_ms - trim_start_ms) > 29000
+     OR (processed_duration_ms IS NOT NULL AND processed_duration_ms > 29000);
+
+  IF offending_count > 0 THEN
+    RAISE EXCEPTION 'orch-0978 amendment 4 pre-flight: % rows exceed 29000ms cap; data repair runbook required before migration', offending_count;
+  END IF;
+END $$;
+```
+
+If pre-flight fails: STOP. Do not proceed with migration. The data-repair runbook is: identify the offending row(s) via `SELECT id, event_id, trim_end_ms - trim_start_ms AS trim_dur, processed_duration_ms FROM public.event_cover_video_jobs WHERE (trim_end_ms - trim_start_ms) > 29000 OR processed_duration_ms > 29000;` then either (a) cancel the rows via `UPDATE ... SET status='cancelled', cancelled_at=now(), failure_code='orch_0978_supersede', failure_message='Superseded by 29s cap migration'` or (b) widen the cap to absorb them if operator approves.
+
+**Migration body:**
+```sql
+ALTER TABLE public.event_cover_video_jobs
+  DROP CONSTRAINT IF EXISTS event_cover_video_jobs_trim_max_duration;
+ALTER TABLE public.event_cover_video_jobs
+  DROP CONSTRAINT IF EXISTS event_cover_video_jobs_processed_max_duration;
+
+ALTER TABLE public.event_cover_video_jobs
+  ADD CONSTRAINT event_cover_video_jobs_trim_max_duration
+    CHECK ((trim_end_ms - trim_start_ms) <= 29000);
+ALTER TABLE public.event_cover_video_jobs
+  ADD CONSTRAINT event_cover_video_jobs_processed_max_duration
+    CHECK (processed_duration_ms IS NULL OR processed_duration_ms <= 29000);
+```
+
+**Post-migration self-verify probe (mandatory):**
+```sql
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname IN (
+      'event_cover_video_jobs_trim_max_duration',
+      'event_cover_video_jobs_processed_max_duration'
+    )
+    AND pg_get_constraintdef(oid) LIKE '%15000%'
+  ) THEN
+    RAISE EXCEPTION 'orch-0978 amendment 4 post-verify: 15000ms constraint still present after migration';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'event_cover_video_jobs_trim_max_duration'
+    AND pg_get_constraintdef(oid) LIKE '%29000%'
+  ) THEN
+    RAISE EXCEPTION 'orch-0978 amendment 4 post-verify: 29000ms trim constraint not present after migration';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'event_cover_video_jobs_processed_max_duration'
+    AND pg_get_constraintdef(oid) LIKE '%29000%'
+  ) THEN
+    RAISE EXCEPTION 'orch-0978 amendment 4 post-verify: 29000ms processed constraint not present after migration';
+  END IF;
+END $$;
+```
+
+**Apply command for operator (per `feedback_orchestrator_deploys_edge_functions.md` migration backstop):**
+```bash
+cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0978-[video-upload-polish-and-cloudinary-lifecycle]" && /Users/sethogieva/bin/supabase db push --linked
+```
+
+**Pre-apply check the orchestrator MUST run before asking operator to push:**
+```bash
+cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0978-[video-upload-polish-and-cloudinary-lifecycle]" && /Users/sethogieva/bin/supabase migration list --linked
+```
+Confirm no remote-only versions (blank Local, populated Remote) before approving operator apply.
+
+**SC-AMENDMENT-4-DB-1:** Post-apply, live `pg_constraint` probe returns `29000` in both constraint definitions and zero rows match the LIKE `%15000%` pattern.
+
+#### Item 2 — Auth preflight, diagnostic-first (P0)
+
+This item splits into 2a (diagnostic) and 2b (targeted fix). The implementor MUST land 2a alone first, deploy, capture one repro on iOS sim, then implement 2b based on what the diagnostic reveals.
+
+##### Item 2a — Diagnostic instrumentation (lands first, no client-visible behavior change)
+
+**File:** `supabase/functions/event-cover-video-upload-intent/index.ts` line 48 (the `requireUserId(req)` call)
+
+**Change:** wrap or inline-expand `requireUserId` to log WHICH auth check failed when it returns a 401 Response. The diagnostic must distinguish:
+- `token_absent` — request had no `Authorization` header at all
+- `token_malformed` — header present but not in `Bearer <jwt>` shape
+- `token_expired` — JWT present and valid shape but `exp` claim in the past
+- `token_invalid_signature` — JWT shape OK, exp future, but signature does not verify against project JWT secret
+- `userid_missing` — token verified but no `sub` claim returned
+
+Output via existing `logWarn(requestId, "auth_failed", { reason, expDeltaSec, hasAuthHeader, authHeaderPrefix })`. NO client-visible response change. The function still returns 401 with the same body shape. NO new dependencies.
+
+**Deploy:** orchestrator deploys via `/Users/sethogieva/bin/supabase functions deploy event-cover-video-upload-intent --project-ref gqnoajqerqhnvulmnyvv`. Confirm `verify_jwt: false` is NOT set (this function IS auth-gated; default `verify_jwt: true` is correct).
+
+**Repro:** orchestrator or implementor drives Maestro on iOS sim through the same reproducer Codex used (`Vibes and Stuff` event or operator-supplied test event) and captures the function log via `mcp__supabase__get_logs` filtering `auth_failed`. Document the captured `reason` field.
+
+**SC-AMENDMENT-4-AUTH-2a:** One Maestro repro produces one `auth_failed` log entry naming one of the 5 reasons above. Result documented in the IMPLEMENT-2 report.
+
+##### Item 2b — Targeted auth fix (based on Item 2a diagnostic)
+
+The implementor picks ONE fix path based on the captured `reason`:
+
+- **If `token_expired`** → add session-refresh await before launching the picker:
+  - **File:** `mingla-business/src/components/ui/CoverPicker.tsx` immediately before line 415 (the `ensureMediaPermission()` call inside `onPickVideo`/equivalent).
+  - **Change:** call `const { data: { session } } = await supabase.auth.getSession();` then if `session && session.expires_at && session.expires_at * 1000 - Date.now() < 60_000`, await `await supabase.auth.refreshSession()` before continuing. On refresh failure, show toast "Sign-in expired — tap your profile to sign back in" and return.
+  - Cite: https://supabase.com/docs/reference/javascript/auth-refreshsession
+
+- **If `token_malformed` or `token_absent`** → the request is not carrying the auth header. Fix the `supabase.functions.invoke` call site:
+  - **File:** `mingla-business/src/services/eventCoverVideoProcessingService.ts` — find the invoke call inside `createEventCoverVideoUploadIntent`.
+  - **Change:** ensure the call uses the authenticated supabase client (NOT a fresh anon client). Verify the client instance is the one with the session attached. If multiple supabase clients exist in the app (anon + auth), explicitly pick the auth-bound instance.
+  - Cite: https://supabase.com/docs/reference/javascript/functions-invoke
+
+- **If `token_invalid_signature`** → JWT secret rotation mismatch. Implementor flags to operator; this is an environment fix not a code fix. Pause IMPLEMENT-2 and surface to orchestrator.
+
+- **If `userid_missing`** → `requireUserId` helper has a bug. Fix the helper in `_shared/auth.ts` (or wherever it lives) to handle the missing-sub case explicitly with a more accurate error code.
+
+**Constraint:** the IMPLEMENT-2 SPEC AMENDMENT 4 binds the implementor to pick ONE path. Do NOT implement all four pre-emptively. The diagnostic-first rule exists to avoid shipping a 100-line auth refactor when a 3-line session refresh fixes it.
+
+**SC-AMENDMENT-4-AUTH-2b:** Post-fix, a Maestro repro of the same reproducer does NOT produce an `auth_failed` log entry; the upload-intent call returns 200 with a `jobId`.
+
+#### Item 3 — Local-preview rollback on pre-ready failure (P0)
+
+**File:** `mingla-business/src/hooks/useEventCoverVideoUpload.ts` lines 142-152 (the catch block)
+
+**Change:** before `setStage({ phase: "error", ... })` add:
+```ts
+setLocalPreviewUri(null);
+```
+
+This clears the phantom preview when any pre-ready failure occurs (compressor error, upload-intent 401/4xx/5xx, upload provider failure, acknowledge failure, status timeout).
+
+**Side requirement (verified per save-bug investigation §6):** `CoverPicker.tsx:241-248` `activeMediaUrl` fallback chain `videoUpload.localPreviewUri ?? videoUpload.processedUrl ?? localCover.coverMediaUrl` continues to behave correctly with `localPreviewUri === null` because the `??` chain falls through to `localCover.coverMediaUrl` (the existing server-persisted cover). Verified by reading the file in this SPEC's Phase 0; no additional changes required to CoverPicker.
+
+**Failure UX:** when the catch fires, the UI reverts to the old cover automatically (because `activeMediaUrl` falls back). The implementor must ALSO add an explicit retry affordance — extend the existing `videoUpload.stage` error rendering in `CoverPicker.tsx` to show a small inline retry chip when `stage.phase === "error"`, copy "Upload failed — try again" with a tap target that re-invokes `videoUpload.start(...)` with the same args (cached in a ref). If implementation complexity threatens scope, an OK-state minimum is: show a one-line error toast via existing `onShowToast` AND have the old cover restored via the fallback — explicit retry chip can land in a follow-up ORCH if the chip widget needs designer input. State this minimum vs. preferred split clearly in the IMPLEMENT-2 report.
+
+**SC-AMENDMENT-4-ROLLBACK-3:** After a forced upload-intent 401 in Maestro, the cover preview shows the original (pre-pick) cover OR a clear failed-card with retry CTA; `localPreviewUri` is null in React DevTools; Save button state matches the actual save-ability (greyed because no patch exists is CORRECT here — the previous failure mode was "greyed with a phantom new video", not "greyed with no change attempted").
+
+#### Item 4 — Trim cap drop 30s → 29s (P1)
+
+**Two-constant change.** Per `feedback_external_api_docs_verified.md`, both citations are inline.
+
+- **File:** `mingla-business/src/components/ui/CoverPicker.tsx` line 422
+  - Change: `videoMaxDuration: 30,` → `videoMaxDuration: 29,`
+  - Cite: https://docs.expo.dev/versions/latest/sdk/imagepicker/#imagepickeroptions — `videoMaxDuration` accepts seconds, integer, iOS-best-effort + Android-best-effort.
+
+- **File:** `mingla-business/src/services/eventCoverVideoProcessingService.ts` line 17
+  - Change: `export const EVENT_COVER_MAX_VIDEO_DURATION_MS = 30_000;` → `export const EVENT_COVER_MAX_VIDEO_DURATION_MS = 29_000;`
+
+- **File:** `mingla-business/src/components/ui/CoverPicker.tsx` line 435
+  - Change toast copy: `"Please trim to 30 seconds first."` → `"Please trim to 29 seconds first."`
+
+- **File:** `mingla-business/src/services/eventCoverVideoProcessingService.ts` line 21
+  - Change: `"Use your phone's trim screen to keep video covers to 30 seconds. ..."` → `"Use your phone's trim screen to keep video covers to 29 seconds. ..."`
+
+**Tolerance UNCHANGED:** the existing `+ 250` rejection guard at `CoverPicker.tsx:434` stays. Effective rejection ceiling becomes 29,250 ms. iOS keyframe overshoot typically 100-800 ms (per save-bug investigation citations), comfortable headroom.
+
+**AMENDMENT 1 supersession statement:** AMENDMENT 1's "single 30s cap via native trim" is hereby superseded by 29s. AMENDMENT 1 stays in this document as historical record. AMENDMENT 1 invariants and CI gates referring to `30000` ms or the `videoMaxDuration: 30` literal MUST be updated to `29000` / `videoMaxDuration: 29` per Item 6 below.
+
+**SC-AMENDMENT-4-CAP-4:** Picker config line literally reads `videoMaxDuration: 29`; constant literally reads `29_000`; toast copy literally reads `29 seconds`.
+
+#### Item 5 — Edge function validation matches new cap (P0)
+
+**File:** `supabase/functions/event-cover-video-upload-intent/index.ts` — validation step that bounds `sourceDurationMs` (currently uses `EVENT_COVER_MAX_SOURCE_VIDEO_DURATION_MS = 60000` per AMENDMENT 1 §1 as defense-in-depth 2× safety margin; this stays). What MUST be added is a separate validation against the new cap+tolerance:
+
+**Change:** in the body validation step (between `requireUserId` pass and `requireEventManager`), add:
+```ts
+const EFFECTIVE_TRIM_CEILING_MS = 29_250; // 29000 cap + 250ms client tolerance
+if (sourceDurationMs > EFFECTIVE_TRIM_CEILING_MS) {
+  logWarn(requestId, "duration_over_cap", { sourceDurationMs, ceiling: EFFECTIVE_TRIM_CEILING_MS });
+  return jsonResponse({ error: "duration_over_cap", detail: { sourceDurationMs, ceilingMs: EFFECTIVE_TRIM_CEILING_MS } }, 422);
+}
+```
+
+Place AFTER the existing 60_000 outer defense bound (no functional regression — 29_250 < 60_000 so the new check is strictly tighter), BEFORE the `supabase.from("event_cover_video_jobs").insert(...)` so DB constraint can never be triggered.
+
+**SC-AMENDMENT-4-EDGE-5:** A request with `sourceDurationMs: 29250` (boundary) returns 200 + jobId; a request with `sourceDurationMs: 29251` returns 422 with body `{error:"duration_over_cap", detail:{sourceDurationMs:29251, ceilingMs:29250}}`.
+
+#### Item 6 — Save gate stays strict (CONSTRAINT — must NOT do)
+
+**Explicit non-goal:** the implementor MUST NOT modify `mingla-business/src/components/event/EditPublishedScreen.tsx` lines 1161-1166 (the Save button `disabled={...}` gate) NOR lines 380-382 (`canSaveServerCoverMediaOnly`) NOR lines 224-231 (`isServerEditableOnlyPatch`). The Save gate is correctly catching the absent patch — the fix is entirely upstream (Items 2 + 3). Adding a "video-pending-but-allow-save" carve-out would mask the actual failure mode.
+
+If the implementor is tempted to widen the gate (e.g., to make CONDITIONAL PASS easier or to handle an edge case discovered mid-implementation), STOP and surface to orchestrator. Do not silently widen.
+
+**SC-AMENDMENT-4-GATE-6:** `git diff` against `EditPublishedScreen.tsx` shows ZERO changes to lines 220-235 and 375-395 and 1155-1175.
+
+#### Item 7 — Observability telemetry (P2)
+
+**File:** `mingla-business/src/services/eventCoverVideoProcessingService.ts` (next to existing `devWarn`)
+
+Three structured log events with shared schema `{ eventId: string, applyMode: string, jobId?: string, phase: string, errorCode?: string, timestamp: string }`:
+
+- `video_cover_upload_intent_failed` — fired when `createEventCoverVideoUploadIntent` returns non-2xx OR throws.
+- `video_cover_upload_ready` — fired when `waitForEventCoverVideoReady` resolves with a `processedUrl`.
+- `video_cover_upload_preview_rolled_back` — fired from `useEventCoverVideoUpload.ts` catch block when Item 3's `setLocalPreviewUri(null)` executes.
+
+Use existing `devWarn` plumbing. Do NOT add a new analytics SDK. Do NOT add Mixpanel/AppsFlyer calls in this scope (telemetry pipeline integration is a future ORCH).
+
+**SC-AMENDMENT-4-TELEMETRY-7:** Maestro forced-401 repro produces one `video_cover_upload_intent_failed` + one `video_cover_upload_preview_rolled_back` log line; happy-path repro produces one `video_cover_upload_ready` log line.
+
+#### Item 8 — Diagnostic console.log at trim rejection (P2)
+
+**File:** `mingla-business/src/components/ui/CoverPicker.tsx` line 434 (immediately before the `onShowToast("Please trim to 29 seconds first.")` line)
+
+**Change:**
+```ts
+console.log("[ORCH-0978-TRIM]", {
+  durationMs,
+  capMs: EVENT_COVER_MAX_VIDEO_DURATION_MS,
+  overshoot: durationMs - EVENT_COVER_MAX_VIDEO_DURATION_MS,
+});
+```
+
+Stays in code permanently (cheap real-device observability). Not gated behind `__DEV__` — production overshoots are exactly what we want to see in field logs.
+
+**SC-AMENDMENT-4-LOG-8:** Code grep finds the literal `"[ORCH-0978-TRIM]"` exactly once at `CoverPicker.tsx`.
+
+#### Item 9 — Regression tests in same commit (P0 per `feedback_close_commit_precommit_checks.md`)
+
+Per `feedback_close_commit_precommit_checks.md` and the META-ORCH-0744-PROCESS regression-test gate, the IMPLEMENT-2 CLOSE ships BOTH an implementor happy-path test AND a tester adversarial test, each with `fails-on-revert verified at <commit hash>` proof.
+
+##### Test (a) — Implementor happy-path regression (Item 3 fix)
+
+**Path:** `mingla-business/src/hooks/__tests__/useEventCoverVideoUpload.test.ts` (extend if exists, create if not)
+
+**Scenario:** When `createEventCoverVideoUploadIntent` mock throws an error matching the 401 shape (or rejects with a `BusinessAuthNotReadyError`), assert:
+1. `result.current.localPreviewUri` is `null` after the rejection settles.
+2. `emitChange` (proxied via a mock `onCoverChange` callback at the consumer level) is NEVER called.
+3. `result.current.stage.phase === "error"` with `stage.code === "video_upload_failed"`.
+
+**Fails-on-revert verification:** before pushing, run the test on the fixed code (assert PASS), then locally delete the single line `setLocalPreviewUri(null);` added in Item 3, re-run (assert FAIL with localPreviewUri assertion failure), restore the line, re-run (assert PASS). Document the three runs in the IMPLEMENT-2 report with each commit hash where the revert was probed.
+
+##### Test (b) — Tester adversarial boundary regression (Items 4+5 caps)
+
+**Path:** `supabase/functions/event-cover-video-upload-intent/__tests__/duration-cap.test.ts` (create new)
+
+**Scenario:** With the edge function under test (use Deno test runner per existing supabase function test pattern), POST two requests:
+1. Body `{ ..., sourceDurationMs: 29250 }` — assert response status 200, response body has `jobId`.
+2. Body `{ ..., sourceDurationMs: 29251 }` — assert response status 422, response body equals `{error: "duration_over_cap", detail: {sourceDurationMs: 29251, ceilingMs: 29250}}`.
+
+This is adversarial because it attacks the BOUNDARY of the cap, not the happy-path 12s-clip path the implementor exercises. It also exercises Item 5's edge validation independently of the client.
+
+**Fails-on-revert verification:** before pushing, run on the fixed code (assert PASS), then locally revert Item 5's `EFFECTIVE_TRIM_CEILING_MS` check (delete the validation block), re-run (assert FAIL — both requests would return 200 because no validation rejects them, OR boundary case would slip to DB which then rejects with a 500), restore, re-run (assert PASS). Document.
+
+##### Strict-grep registry update (per COMMS-0002)
+
+**File:** `.github/scripts/strict-grep/orch-0863-marketing-hub-phase-b.mjs`
+
+**Change:** add to `ORCH_0978_BACKEND_ALLOWLIST` the following new backend paths:
+- `supabase/migrations/20260730000000_orch_0978_video_cap_29s_constraints.sql`
+- `supabase/functions/event-cover-video-upload-intent/__tests__/duration-cap.test.ts`
+- `supabase/functions/event-cover-video-upload-intent/index.ts` (if not already in allowlist — verify before adding to avoid dup)
+
+Must land in the SAME commit as the migration + test files. Otherwise the C7 `no-new-backend-files` gate fails on PR per COMMS-0002.
+
+**SC-AMENDMENT-4-TEST-9:** IMPLEMENT-2 commit body cites both test paths + each `fails-on-revert verified at <commit hash>` line. Strict-grep registry diff lands in the same commit.
+
+### E — New invariants
+
+**I-PROPOSED-VIDEO-CAP-CONSISTENCY-29S:** Picker `videoMaxDuration`, client constant `EVENT_COVER_MAX_VIDEO_DURATION_MS`, edge function `EFFECTIVE_TRIM_CEILING_MS` validation, and DB CHECK constraints on `event_cover_video_jobs` MUST all agree at 29000 ms (with `+250ms` tolerance at picker reject + edge reject = 29250). Any layer deviating from this contract is a P0 invariant violation.
+
+**Supersedes:** I-PROPOSED-VIDEO-INPUT-CAP-AT-PICKER (AMENDMENT 1 §6) — that invariant referenced `videoMaxDuration: 30`. Update its target literal to `29` or replace with the new invariant.
+
+### F — CI gates
+
+**New strict-grep registry file:** `.github/scripts/strict-grep/orch-0978-video-cap-29s.mjs` (NEW)
+
+Three checks:
+1. **C1 — Client cap is 29:** assert `mingla-business/src/components/ui/CoverPicker.tsx` contains `videoMaxDuration: 29` exactly once. Fail if `videoMaxDuration: 30` appears anywhere.
+2. **C2 — Constant is 29_000:** assert `mingla-business/src/services/eventCoverVideoProcessingService.ts` contains `EVENT_COVER_MAX_VIDEO_DURATION_MS = 29_000`. Fail if `= 30_000` appears in this constant.
+3. **C3 — DB constraint is 29000:** assert the migration `20260730000000_orch_0978_video_cap_29s_constraints.sql` exists AND contains the literal `29000` in BOTH `_trim_max_duration` and `_processed_max_duration` ADD CONSTRAINT statements.
+
+Wire into `.github/workflows/strict-grep-mingla-business.yml` as one new job per `feedback_strict_grep_registry_pattern.md`. Do NOT create a parallel workflow file.
+
+### G — Test contract (paths + run protocol)
+
+| Test | Path | Type | Fails-on-revert anchor |
+|---|---|---|---|
+| Implementor happy-path | `mingla-business/src/hooks/__tests__/useEventCoverVideoUpload.test.ts` | Jest | delete `setLocalPreviewUri(null);` line from Item 3 |
+| Tester adversarial boundary | `supabase/functions/event-cover-video-upload-intent/__tests__/duration-cap.test.ts` | Deno test | delete `EFFECTIVE_TRIM_CEILING_MS` validation block from Item 5 |
+
+Both MUST land in the IMPLEMENT-2 PR with passing runs + revert-probe runs documented in the implementation report.
+
+### H — Migration plan
+
+| Phase | Action | Owner | Command |
+|---|---|---|---|
+| Before push | Pre-flight invariant probe (in-migration `DO $$` block) | implementor (writes); operator (sees in `db push` output) | embedded in migration body |
+| Migration file landing | Commit on ORCH-0978 branch alongside code | implementor | `git add supabase/migrations/20260730000000_orch_0978_video_cap_29s_constraints.sql` |
+| Strict-grep registry update | Same commit | implementor | `git add .github/scripts/strict-grep/orch-0863-marketing-hub-phase-b.mjs` |
+| Pre-apply migration list check | Confirm no remote-only versions | orchestrator | `cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0978-[video-upload-polish-and-cloudinary-lifecycle]" && /Users/sethogieva/bin/supabase migration list --linked` |
+| Apply | Push migration to remote | **operator** | `cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0978-[video-upload-polish-and-cloudinary-lifecycle]" && /Users/sethogieva/bin/supabase db push --linked` |
+| Verify | Re-probe constraints | orchestrator | Supabase Management API query (see Item 1 SC) |
+| Edge deploy | Deploy `event-cover-video-upload-intent` v94 (Item 2a diagnostic) + v95 (Item 2b fix + Item 5 validation) | orchestrator | `/Users/sethogieva/bin/supabase functions deploy event-cover-video-upload-intent --project-ref gqnoajqerqhnvulmnyvv` |
+
+**Rollback note:** if Item 1's migration causes any downstream breakage (extremely unlikely — the change is loosening a CHECK, not tightening), revert with the inverse migration `20260730000001_orch_0978_video_cap_29s_constraints_revert.sql` restoring the 15000 ms ceilings. Pre-flight probe in the revert would itself need a data-repair runbook for any 15000-29000 ms rows that landed in between — operator-approved before applying.
+
+### I — Open questions
+
+**None.** All operator decisions captured. Diagnostic-first rule preserves the only remaining uncertainty (Item 2b path) as a deliberate decision point during IMPLEMENT-2, not a SPEC ambiguity.
+
+### J — Acceptance gate
+
+This AMENDMENT 4 is "implementable" when:
+1. Orchestrator REVIEW returns APPROVED.
+2. Operator confirms readiness to apply migration after PR commit-and-push.
+
+Codex `implementor-mingla` IMPLEMENT-2 produces ONE PR covering all 9 items in the order:
+1. Item 2a (diagnostic) — separate landing commit, then deploy + run repro, capture log
+2. Items 1, 3, 4, 5, 7, 8 (the actual fixes + non-2a items) — second landing commit
+3. Item 6 (the non-change) — verified by `git diff` showing zero touches to specified line ranges
+4. Item 9 (tests + strict-grep registry) — third landing commit with fails-on-revert proofs
+
+Then orchestrator REVIEW → DB migration apply (operator) → edge deploy (orchestrator) → Codex/Claude tester live-fire on iOS sim + your physical iPhone → orchestrator CLOSE with `[deploy]` tag.
+
+### K — Confidence — HIGH
+
+Every code touchpoint cited has been read in this Phase 0 with line ranges captured. Live DB constraint probe independently confirms Codex's finding. Migration timestamp scan across all worktrees confirms no collision. Operator decisions captured from chat. Diagnostic-first rule for Item 2 preserves engineering rigor against the temptation to blindly pick a fix path. No open questions.
+
+---
+
