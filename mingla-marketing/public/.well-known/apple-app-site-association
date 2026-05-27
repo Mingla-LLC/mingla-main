@@ -1,0 +1,16 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "782KVMY869.com.mingla.app.v2",
+        "paths": [
+          "/invite/*",
+          "/board/*",
+          "/orders/*",
+          "/chat/*"
+        ]
+      }
+    ]
+  }
+}
