@@ -15,6 +15,9 @@ import * as FileSystem from "expo-file-system/legacy";
 
 jest.mock("../supabase", () => ({
   supabase: {
+    auth: {
+      getSession: jest.fn(),
+    },
     functions: {
       invoke: jest.fn(),
     },
@@ -34,6 +37,12 @@ jest.mock("react-native", () => ({
 const invoke = supabase.functions.invoke as unknown as jest.MockedFunction<
   (name: string, options?: unknown) => Promise<{ data: unknown; error: unknown }>
 >;
+const getSession = supabase.auth.getSession as unknown as jest.MockedFunction<
+  () => Promise<{
+    data: { session: { access_token: string } | null };
+    error: null | Error;
+  }>
+>;
 const createUploadTask = FileSystem.createUploadTask as unknown as jest.MockedFunction<
   (
     url: string,
@@ -50,6 +59,11 @@ describe("event cover video processing service", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     invoke.mockReset();
+    getSession.mockReset();
+    getSession.mockResolvedValue({
+      data: { session: { access_token: "user-session-jwt" } },
+      error: null,
+    });
     createUploadTask.mockReset();
   });
 
