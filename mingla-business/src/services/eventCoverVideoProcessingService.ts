@@ -14,11 +14,11 @@ declare const require: (moduleName: string) => {
 };
 
 export const EVENT_COVER_FINAL_MAX_BYTES = 25 * 1024 * 1024;
-export const EVENT_COVER_MAX_VIDEO_DURATION_MS = 30_000;
+export const EVENT_COVER_MAX_VIDEO_DURATION_MS = 29_000;
 export const EVENT_COVER_MAX_SOURCE_VIDEO_BYTES = 100 * 1024 * 1024;
 export const EVENT_COVER_MAX_SOURCE_VIDEO_DURATION_MS = 60_000;
 export const EVENT_COVER_VIDEO_PROCESSING_COPY =
-  "Use your phone's trim screen to keep video covers to 30 seconds. Mingla compresses the cover to a browser-safe MP4 under 25 MB.";
+  "Use your phone's trim screen to keep video covers to 29 seconds. Mingla compresses the cover to a browser-safe MP4 under 25 MB.";
 export const EVENT_COVER_VIDEO_NOT_CONFIGURED_COPY =
   "Video cover processing is not configured yet. Images and GIFs still work.";
 
@@ -291,6 +291,43 @@ const devWarn = (label: string, payload: Record<string, unknown>): void => {
   if (typeof __DEV__ !== "undefined" && __DEV__) {
     console.warn(`[eventCoverVideoProcessingService] ${label}`, payload);
   }
+};
+
+type EventCoverVideoUploadTelemetry = {
+  eventId: string;
+  applyMode: EventCoverVideoApplyMode;
+  jobId?: string;
+  phase: EventCoverVideoProcessingPhase;
+  errorCode?: string;
+  timestamp: string;
+};
+
+export const logEventCoverVideoUploadTelemetry = (
+  eventName:
+    | "video_cover_upload_intent_failed"
+    | "video_cover_upload_ready"
+    | "video_cover_upload_preview_rolled_back",
+  payload: EventCoverVideoUploadTelemetry,
+): void => {
+  devWarn(eventName, payload);
+};
+
+const errorCodeOf = (error: unknown, fallback = "unknown"): string => {
+  if (
+    error !== null &&
+    typeof error === "object" &&
+    typeof (error as { code?: unknown }).code === "string"
+  ) {
+    return (error as { code: string }).code;
+  }
+  if (
+    error !== null &&
+    typeof error === "object" &&
+    typeof (error as { edgeError?: unknown }).edgeError === "string"
+  ) {
+    return (error as { edgeError: string }).edgeError;
+  }
+  return fallback;
 };
 
 const clampPercent = (value: number): number =>
@@ -617,10 +654,39 @@ export const createEventCoverVideoUploadIntent = async (input: {
     trimEndMs: input.trimEndMs,
     trimStartMs: input.trimStartMs,
   });
-  const { data, error } = await supabase.functions.invoke<UploadIntentResponse>(
-    "event-cover-video-upload-intent",
-    { body: { ...input, clientRequestId: requestId } },
-  );
+  let data: UploadIntentResponse | null = null;
+  let error: unknown = null;
+  try {
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession();
+    const accessToken = session?.access_token;
+    if (sessionError !== null || typeof accessToken !== "string" || accessToken.length === 0) {
+      throw new BusinessAuthNotReadyError(
+        "unauthenticated",
+        "Finishing sign-in. Try again in a moment.",
+      );
+    }
+    const response = await supabase.functions.invoke<UploadIntentResponse>(
+      "event-cover-video-upload-intent",
+      {
+        body: { ...input, clientRequestId: requestId },
+        headers: { Authorization: `Bearer ${accessToken}` },
+      },
+    );
+    data = response.data;
+    error = response.error;
+  } catch (caught) {
+    logEventCoverVideoUploadTelemetry("video_cover_upload_intent_failed", {
+      applyMode: input.applyMode,
+      errorCode: errorCodeOf(caught),
+      eventId: input.eventId,
+      phase: "upload_intent",
+      timestamp: new Date().toISOString(),
+    });
+    throw caught;
+  }
   if (error) {
     devWarn("upload-intent-edge-error", {
       applyMode: input.applyMode,
@@ -628,10 +694,18 @@ export const createEventCoverVideoUploadIntent = async (input: {
       eventId: input.eventId,
       requestId,
     });
-    throw await edgeError(error, "Could not prepare video upload.", {
+    const preparedError = await edgeError(error, "Could not prepare video upload.", {
       phase: "upload_intent",
       requestId,
     });
+    logEventCoverVideoUploadTelemetry("video_cover_upload_intent_failed", {
+      applyMode: input.applyMode,
+      errorCode: errorCodeOf(preparedError, "edge_error"),
+      eventId: input.eventId,
+      phase: "upload_intent",
+      timestamp: new Date().toISOString(),
+    });
+    throw preparedError;
   }
   if (data?.error !== undefined) {
     devWarn("upload-intent-rejected", {
@@ -639,10 +713,18 @@ export const createEventCoverVideoUploadIntent = async (input: {
       error: data.error,
       requestId,
     });
-    throw processingErrorFromPayload(data, "Could not prepare video upload.", {
+    const preparedError = processingErrorFromPayload(data, "Could not prepare video upload.", {
       phase: "upload_intent",
       requestId,
     });
+    logEventCoverVideoUploadTelemetry("video_cover_upload_intent_failed", {
+      applyMode: input.applyMode,
+      errorCode: errorCodeOf(preparedError, data.error),
+      eventId: input.eventId,
+      phase: "upload_intent",
+      timestamp: new Date().toISOString(),
+    });
+    throw preparedError;
   }
   const jobId = data?.jobId;
   const uploadUrl = data?.upload?.url;
@@ -947,7 +1029,16 @@ export const waitForEventCoverVideoReady = async (
     const status = await fetchEventCoverVideoStatus(jobId);
     lastStatus = status;
     onStatus?.(status);
-    if (status.status === "ready" || status.status === "applied") return status;
+    if (status.status === "ready" || status.status === "applied") {
+      logEventCoverVideoUploadTelemetry("video_cover_upload_ready", {
+        applyMode: status.applyMode,
+        eventId: status.eventId,
+        jobId: status.jobId,
+        phase: "status",
+        timestamp: new Date().toISOString(),
+      });
+      return status;
+    }
     if (status.status === "failed" || status.status === "cancelled") {
       throw new EventCoverVideoProcessingError(
         status.failureCode ?? status.status,

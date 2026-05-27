@@ -27,7 +27,7 @@
  * Per SPEC_ORCH-0876_V2_FULL_PARITY §9.1.
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Image,
   Pressable,
@@ -159,6 +159,13 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     brandId,
     coverMediaApplyMode,
   );
+  const lastVideoUploadFileRef = useRef<{
+    uri: string;
+    fileName?: string | null;
+    mimeType?: string | null;
+    bytes: number;
+    durationMs: number;
+  } | null>(null);
 
   // Local mirror of current cover for preview render + credit label.
   // Parent owns canonical state (passes initial* props on remount); this
@@ -419,7 +426,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ["videos"],
         allowsEditing: true,
-        videoMaxDuration: 30,
+        videoMaxDuration: 29,
         preferredAssetRepresentationMode:
           ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
         quality: 1,
@@ -432,7 +439,12 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
         return;
       }
       if (durationMs > EVENT_COVER_MAX_VIDEO_DURATION_MS + 250) {
-        onShowToast("Please trim to 30 seconds first.");
+        console.log("[ORCH-0978-TRIM]", {
+          durationMs,
+          capMs: EVENT_COVER_MAX_VIDEO_DURATION_MS,
+          overshoot: durationMs - EVENT_COVER_MAX_VIDEO_DURATION_MS,
+        });
+        onShowToast("Please trim to 29 seconds first.");
         return;
       }
       const bytes = asset.fileSize ?? 0;
@@ -440,13 +452,15 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
         onShowToast("Could not read this video's size. Try another clip.");
         return;
       }
-      await videoUpload.start({
+      const uploadFile = {
         bytes,
         durationMs,
         fileName: asset.fileName,
         mimeType: asset.mimeType,
         uri: asset.uri,
-      });
+      };
+      lastVideoUploadFileRef.current = uploadFile;
+      await videoUpload.start(uploadFile);
     } catch (error) {
       onShowToast(
         error instanceof Error
@@ -473,6 +487,12 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       );
     });
   }, [onShowToast, videoUpload]);
+
+  const retryVideoCoverUpload = useCallback((): void => {
+    const uploadFile = lastVideoUploadFileRef.current;
+    if (uploadFile === null || activeVideoUpload || disabled || uploading) return;
+    void videoUpload.start(uploadFile);
+  }, [activeVideoUpload, disabled, uploading, videoUpload]);
 
   const runProviderSearch = useCallback(async (): Promise<void> => {
     if (disabled) return;
@@ -662,6 +682,24 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
               onPress={cancelVideoCoverUpload}
               style={styles.actionButton}
             />
+          </View>
+        ) : null}
+        {videoUpload.stage.phase === "error" ? (
+          <View style={styles.videoErrorRow}>
+            <Text accessibilityRole="alert" style={styles.mediaErrorText}>
+              {videoUpload.stage.message}
+            </Text>
+            {lastVideoUploadFileRef.current !== null ? (
+              <Button
+                label="Upload failed - try again"
+                variant="secondary"
+                size="sm"
+                shape="square"
+                onPress={retryVideoCoverUpload}
+                disabled={uploading || disabled}
+                style={styles.retryButton}
+              />
+            ) : null}
           </View>
         ) : null}
         {supportsUpload ? (
@@ -864,6 +902,13 @@ const styles = StyleSheet.create({
     lineHeight: typography.caption.lineHeight,
     color: semantic.error,
     marginTop: spacing.xs,
+  },
+  videoErrorRow: {
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+  },
+  retryButton: {
+    alignSelf: "flex-start",
   },
   videoProgressOverlay: {
     position: "absolute",

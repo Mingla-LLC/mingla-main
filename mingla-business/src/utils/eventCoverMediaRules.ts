@@ -1,7 +1,7 @@
 import type { EventCoverMediaType } from "../store/draftEventStore";
 
 export const EVENT_COVER_MAX_BYTES = 30 * 1024 * 1024;
-export const EVENT_COVER_MAX_VIDEO_DURATION_MS = 30_000;
+export const EVENT_COVER_MAX_VIDEO_DURATION_MS = 29_000;
 export const EVENT_COVER_UPLOAD_LIMIT_COPY =
   "Upload a JPEG, PNG, WebP, or GIF up to 30 MB.";
 

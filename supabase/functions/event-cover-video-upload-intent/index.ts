@@ -14,6 +14,8 @@ import {
   validateTrimRange,
 } from "../_shared/eventCoverVideo.ts";
 
+export const EFFECTIVE_TRIM_CEILING_MS = 29_250;
+
 const clampBitrate = (durationMs: number): string => {
   const seconds = Math.max(1, Math.ceil(durationMs / 1000));
   const targetBits = 25 * 1024 * 1024 * 8 * 0.86;
@@ -37,7 +39,18 @@ const logWarn = (requestId: string, stage: string, payload: Record<string, unkno
   }));
 };
 
-serve(async (req) => {
+const defaultDeps = {
+  cloudinarySignature,
+  providerConfigured,
+  requireEventManager,
+  requireUserId,
+  serviceRoleClient,
+};
+
+export const handleEventCoverVideoUploadIntent = async (
+  req: Request,
+  deps: typeof defaultDeps = defaultDeps,
+): Promise<Response> => {
   let requestId: string = crypto.randomUUID();
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") {
@@ -45,7 +58,7 @@ serve(async (req) => {
     return jsonResponse({ error: "method_not_allowed" }, 405);
   }
 
-  const userIdOrResponse = await requireUserId(req);
+  const userIdOrResponse = await deps.requireUserId(req);
   if (userIdOrResponse instanceof Response) {
     logWarn(requestId, "auth_response_returned", { status: userIdOrResponse.status });
     return userIdOrResponse;
@@ -86,7 +99,7 @@ serve(async (req) => {
     trimStartMs: body.trimStartMs,
   });
 
-  if (!providerConfigured()) {
+  if (!deps.providerConfigured()) {
     logWarn(requestId, "provider_not_configured");
     return jsonResponse({
       error: "provider_not_configured",
@@ -128,6 +141,19 @@ serve(async (req) => {
     });
     return jsonResponse({ error: "validation_error", detail: "source_duration_out_of_range" }, 422);
   }
+  if (sourceDurationMs > EFFECTIVE_TRIM_CEILING_MS) {
+    logWarn(requestId, "duration_over_cap", {
+      ceiling: EFFECTIVE_TRIM_CEILING_MS,
+      sourceDurationMs,
+    });
+    return jsonResponse(
+      {
+        error: "duration_over_cap",
+        detail: { sourceDurationMs, ceilingMs: EFFECTIVE_TRIM_CEILING_MS },
+      },
+      422,
+    );
+  }
   const trimError = validateTrimRange({ sourceDurationMs, trimStartMs, trimEndMs });
   if (trimError !== null) {
     let detail: unknown = "trim_invalid";
@@ -152,8 +178,8 @@ serve(async (req) => {
     trimStartMs,
   });
 
-  const supabase = serviceRoleClient();
-  const allowed = await requireEventManager(supabase, eventId, brandId, userId);
+  const supabase = deps.serviceRoleClient();
+  const allowed = await deps.requireEventManager(supabase, eventId, brandId, userId);
   if (allowed instanceof Response) {
     let detail: unknown = null;
     let error: unknown = null;
@@ -249,7 +275,7 @@ serve(async (req) => {
   const eagerNotificationUrl =
     `${Deno.env.get("SUPABASE_URL") ?? ""}/functions/v1/event-cover-video-webhook`;
   const context = `job_id=${job.id}|event_id=${eventId}|brand_id=${brandId}|apply_mode=${applyMode}`;
-  const signature = await cloudinarySignature({
+  const signature = await deps.cloudinarySignature({
     // Cloudinary signed upload params:
     // https://cloudinary.com/documentation/upload_images
     // https://cloudinary.com/documentation/authentication_signatures
@@ -307,4 +333,8 @@ serve(async (req) => {
       },
     },
   });
-});
+};
+
+if (import.meta.main) {
+  serve((req) => handleEventCoverVideoUploadIntent(req));
+}

@@ -9,6 +9,7 @@ import {
   type EventCoverVideoApplyMode,
   type EventCoverVideoStatus,
   type EventCoverVideoUploadStage,
+  logEventCoverVideoUploadTelemetry,
   uploadEventCoverVideoSource,
   waitForEventCoverVideoReady,
 } from "../services/eventCoverVideoProcessingService";
@@ -143,6 +144,19 @@ export function useEventCoverVideoUpload(
         if (abortController.signal.aborted) return;
         const nextError =
           caught instanceof Error ? caught : new Error("Video upload failed.");
+        const errorCode =
+          "code" in nextError && typeof nextError.code === "string"
+            ? nextError.code
+            : "video_upload_failed";
+        setLocalPreviewUri(null);
+        logEventCoverVideoUploadTelemetry("video_cover_upload_preview_rolled_back", {
+          applyMode,
+          errorCode,
+          eventId,
+          jobId: jobIdRef.current ?? undefined,
+          phase: "upload_intent",
+          timestamp: new Date().toISOString(),
+        });
         setError(nextError);
         setStage({
           code: "video_upload_failed",
