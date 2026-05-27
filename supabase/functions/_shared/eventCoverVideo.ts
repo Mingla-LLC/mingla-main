@@ -396,8 +396,14 @@ export function assertProcessedDerivative(input: {
   }
   const durationMs =
     typeof input.durationMs === "number" ? input.durationMs : Number(input.durationMs);
-  if (!Number.isFinite(durationMs) || durationMs <= 0 || durationMs > MAX_DURATION_MS) {
-    return { ok: false, code: "processed_duration_invalid", message: "Processed video was over the duration limit." };
+  if (!Number.isFinite(durationMs)) {
+    return { ok: false, code: "processed_duration_missing", message: "Processed video duration was missing from the provider callback." };
+  }
+  if (durationMs <= 0) {
+    return { ok: false, code: "processed_duration_nonpositive", message: "Processed video duration was zero or negative." };
+  }
+  if (durationMs > MAX_DURATION_MS) {
+    return { ok: false, code: "processed_duration_over_cap", message: "Processed video was over the duration limit." };
   }
   if (
     typeof input.videoCodec === "string" &&

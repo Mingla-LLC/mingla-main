@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 const root = process.cwd().endsWith("mingla-business")
@@ -17,6 +17,16 @@ const ok = (check, message) => {
 };
 
 const count = (source, literal) => source.split(literal).length - 1;
+const walkFiles = (dirPath) => {
+  const absoluteDir = join(root, dirPath);
+  if (!existsSync(absoluteDir)) return [];
+  const entries = readdirSync(absoluteDir);
+  return entries.flatMap((entry) => {
+    const relativePath = join(dirPath, entry);
+    const absolutePath = join(root, relativePath);
+    return statSync(absolutePath).isDirectory() ? walkFiles(relativePath) : [relativePath];
+  });
+};
 
 const coverPickerPath = "mingla-business/src/components/ui/CoverPicker.tsx";
 const processingServicePath =
@@ -86,6 +96,37 @@ if (!publicIdTemplatePattern.test(uploadIntent)) {
   );
 } else {
   ok("C5", "Upload-intent public_id template and webhook public_id parser remain aligned");
+}
+
+if (!webhook.includes("eagerDurationOrFallback") || !webhook.includes("trim_end_ms")) {
+  fail(
+    "C6",
+    `${webhookPath} must contain eagerDurationOrFallback and trim_end_ms duration fallback references`,
+  );
+} else {
+  ok("C6", "Webhook duration fallback remains tied to job trim columns");
+}
+
+const sharedPath = "supabase/functions/_shared/eventCoverVideo.ts";
+const shared = read(sharedPath);
+const durationCodes = [
+  "processed_duration_missing",
+  "processed_duration_nonpositive",
+  "processed_duration_over_cap",
+];
+const missingDurationCodes = durationCodes.filter((literal) => !shared.includes(literal));
+if (missingDurationCodes.length > 0) {
+  fail("C7", `${sharedPath} is missing duration code(s): ${missingDurationCodes.join(", ")}`);
+}
+const oldLiteralFiles = [
+  ...walkFiles("supabase/functions"),
+  ...walkFiles("mingla-business/src"),
+].filter((filePath) => read(filePath).includes("processed_duration_invalid"));
+if (oldLiteralFiles.length > 0) {
+  fail("C7", `processed_duration_invalid literal must be dead; found in ${oldLiteralFiles.join(", ")}`);
+}
+if (missingDurationCodes.length === 0 && oldLiteralFiles.length === 0) {
+  ok("C7", "Processed-duration validation uses discrete codes and the old literal is dead");
 }
 
 if (process.exitCode && process.exitCode !== 0) {

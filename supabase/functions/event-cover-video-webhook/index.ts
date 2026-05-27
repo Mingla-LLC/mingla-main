@@ -68,6 +68,25 @@ const firstEager = (payload: Record<string, unknown>): Record<string, unknown> =
     : {};
 };
 
+const eagerDurationOrFallback = (
+  eager: Record<string, unknown>,
+  payload: Record<string, unknown>,
+  job: { trim_start_ms?: number | null; trim_end_ms?: number | null },
+): number | null => {
+  const raw = eager.duration ?? eager.duration_ms ?? payload.duration ?? payload.duration_ms;
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    return raw < 1000 ? raw * 1000 : raw;
+  }
+  // Cloudinary's eager_notification payload is not contractually required to include duration.
+  // Reference: https://cloudinary.com/documentation/upload_images#notification_url
+  // The job's trim window is the authoritative source: upload-intent enforced the cap
+  // before upload, and the eager transformation now also enforces du_<seconds>.
+  const start = typeof job.trim_start_ms === "number" ? job.trim_start_ms : 0;
+  const end = typeof job.trim_end_ms === "number" ? job.trim_end_ms : null;
+  if (end === null || end <= start) return null;
+  return end - start;
+};
+
 const defaultDeps = {
   serviceRoleClient,
   verifyWebhook,
@@ -119,7 +138,7 @@ export const handleEventCoverVideoWebhook = async (
   const supabase = deps.serviceRoleClient();
   const { data: existingJob, error: existingJobError } = await supabase
     .from("event_cover_video_jobs")
-    .select("id,status,event_id,apply_mode")
+    .select("id,status,event_id,apply_mode,trim_start_ms,trim_end_ms")
     .eq("id", jobId)
     .maybeSingle();
   if (existingJobError || !existingJob) {
@@ -155,9 +174,7 @@ export const handleEventCoverVideoWebhook = async (
   const eager = firstEager(payload);
   const url = eager.secure_url ?? eager.url ?? payload.secure_url ?? payload.url;
   const bytes = eager.bytes ?? payload.bytes;
-  const durationRaw = eager.duration ?? eager.duration_ms ?? payload.duration ?? payload.duration_ms;
-  const durationMs =
-    typeof durationRaw === "number" && durationRaw < 1000 ? durationRaw * 1000 : durationRaw;
+  const durationMs = eagerDurationOrFallback(eager, payload, existingJob);
   const mimeType =
     eager.format === "mp4" || String(url ?? "").toLowerCase().includes(".mp4")
       ? "video/mp4"
@@ -168,10 +185,24 @@ export const handleEventCoverVideoWebhook = async (
   const audio = typeof eager.audio === "object" && eager.audio !== null
     ? eager.audio as Record<string, unknown>
     : {};
+  const fellBackToTrim =
+    durationMs !== null &&
+    eager.duration === undefined &&
+    eager.duration_ms === undefined &&
+    payload.duration === undefined &&
+    payload.duration_ms === undefined;
+  if (fellBackToTrim) {
+    console.warn("[event-cover-video-webhook]", JSON.stringify({
+      jobId,
+      fallbackDurationMs: durationMs,
+      publicId: typeof payload.public_id === "string" ? payload.public_id : null,
+      stage: "duration_fallback_to_job_trim",
+    }));
+  }
   const derivative = assertProcessedDerivative({
     audioCodec: audio.codec ?? eager.audio_codec ?? payload.audio_codec,
     bytes,
-    durationMs,
+    durationMs: durationMs ?? undefined,
     mimeType,
     url,
     videoCodec: video.codec ?? eager.video_codec ?? payload.video_codec,

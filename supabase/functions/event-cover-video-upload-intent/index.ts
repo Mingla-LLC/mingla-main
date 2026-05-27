@@ -264,8 +264,12 @@ export const handleEventCoverVideoUploadIntent = async (
   const timestamp = Math.floor(Date.now() / 1000).toString();
   const publicId = `event-covers/raw/${brandId}/${eventId}/${job.id}`;
   const durationBudgetMs = Math.min(trimEndMs - trimStartMs, MAX_DURATION_MS);
+  const durationBudgetSeconds = Math.ceil(durationBudgetMs / 1000);
+  // du_<seconds> caps processed duration server-side as defense-in-depth alongside client trim.
+  // Reference: https://cloudinary.com/documentation/video_manipulation_and_delivery_reference#video_transformation_url_parameters
   const eager = [
     "c_limit,w_1280,h_720",
+    `du_${durationBudgetSeconds}`,
     "vc_h264",
     "ac_aac",
     `br_${clampBitrate(durationBudgetMs)}`,
