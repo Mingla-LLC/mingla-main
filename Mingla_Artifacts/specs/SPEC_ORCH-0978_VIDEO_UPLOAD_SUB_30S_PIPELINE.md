@@ -1102,3 +1102,297 @@ Every code touchpoint cited has been read in this Phase 0 with line ranges captu
 
 ---
 
+## SPEC AMENDMENT 5 (a.k.a. AMENDMENT 3 in operator language) — 2026-05-27 — event-cover-video-webhook job_id extraction fallback + batch redeploy
+
+**Author:** Claude `mingla-forensics` (SPEC mode)
+**Trigger:** Tester FAIL at `Mingla_Artifacts/reports/QA_ORCH-0978_IMPLEMENT_2_LIVE_FIRE.md` (commit `b85478a45`) + investigation at `Mingla_Artifacts/reports/INVESTIGATION_ORCH-0978_WEBHOOK_400.md` (commit `b26374dc5`, root cause PROBABLE).
+**Operator decisions absorbed in dispatch:** Option A (webhook-side public_id parsing) over Options B/C; bound scope to webhook fix only — do NOT modify IMPLEMENT-2's auth/picker/local-preview fixes.
+
+### A — Executive summary (plain English)
+
+IMPLEMENT-2 fixed the auth and picker layer cleanly. Live-fire then exposed a pre-existing latent webhook bug: Cloudinary's `eager_async` notification (the only notification we wire) does NOT include the `context` field that `event-cover-video-webhook` expects to extract `job_id` from. The webhook returns HTTP 400 `job_id_missing` and the job sits forever at `status='source_uploaded'`. After this amendment ships: the webhook falls back to parsing the last UUID segment of `payload.public_id` (already populated by `event-cover-video-upload-intent` as `event-covers/raw/{brandId}/{eventId}/{jobId}`). Cloudinary always includes `public_id` in eager notifications, the fix is fully local to one Deno file (no Cloudinary contract change, no schema change), and a new strict-grep gate keeps the upload-intent public_id template and the webhook parser aligned forever. After ship: every uploaded video reaches `status='ready'` with `processed_url` populated, the client poll sees ready, Save button enables, and the full ORCH-0978 happy path completes end-to-end for the first time.
+
+### B — Sources
+
+- `Mingla_Artifacts/reports/INVESTIGATION_ORCH-0978_WEBHOOK_400.md` (commit `b26374dc5`) — root cause PROBABLE, fix-shape Option A recommended.
+- `Mingla_Artifacts/reports/QA_ORCH-0978_IMPLEMENT_2_LIVE_FIRE.md` (commit `b85478a45`) — tester FAIL evidence + stuck job `dde19eac-9810-4e0d-b8f6-63fe235fc5af`.
+- `Mingla_Artifacts/reports/INVESTIGATION_ORCH-0978_SAVE_BUTTON_GREYED.md` (commit `23fb1d877`) — prior auth-layer investigation; F-7 explicitly noted "the Cloudinary/upload/webhook lifecycle is not reached on this repro" (this amendment closes that gap).
+- F-5 read-only probe (orchestrator-run on 2026-05-27): `SELECT count(*) FROM event_cover_video_jobs WHERE status='source_uploaded' AND created_at < now() - interval '1 hour'` returned `stuck_count = 0`. Only the in-flight live-fire job `dde19eac-...` is currently stuck. SPEC §I-5 (historical cleanup) is therefore N/A.
+- Cloudinary docs cited inline per COMMS-0003:
+  - Notifications + notification types: https://cloudinary.com/documentation/notifications
+  - Eager async transformations + eager_notification_url: https://cloudinary.com/documentation/upload_images#eager_async_transformations
+  - Context (contextual metadata) parameter format: https://cloudinary.com/documentation/contextual_metadata
+  - Signature verification: https://cloudinary.com/documentation/notifications#verifying_notifications
+
+### C — Cross-surface impact declaration (Phase 2.5)
+
+| Surface | In scope? | Behavior change | Files touched | Parity |
+|---|---|---|---|---|
+| Consumer iOS (`app-mobile/` on iOS) | NO | none | none | n/a — consumer app does not author covers |
+| Consumer Android (`app-mobile/` on Android) | NO | none | none | n/a |
+| Buyer/anonymous Web | NO behavior change | reads processed cover URLs same as today; no contract change; benefits indirectly when business uploads start succeeding | none | n/a |
+| Business iOS (`mingla-business/` on iOS) | **YES (primary)** | video uploads now reach `processed_url` populated → Save button enables → cover persists | edge function only (no client change) | automatic — fix is server-side |
+| Business Android (`mingla-business/` on Android) | **YES** | same as iOS — server-side fix benefits both | edge function only | automatic |
+| Admin Web (`mingla-admin/`) | NO | none | none | n/a — admin doesn't author covers |
+| Business Web preview | **YES** | same server-side fix benefits web composer too | edge function only | automatic |
+
+No client code changes. Pure backend fix. Parity is structurally automatic.
+
+### D — Item-by-item scope (6 binding items; Item 5 N/A per F-5 probe)
+
+#### Item 1 — Webhook public_id fallback for job_id extraction (P0)
+
+**File:** `supabase/functions/event-cover-video-webhook/index.ts`
+
+**Change site 1 — extend or replace the `contextValue` helper at lines 11-29 with public_id-aware extraction:**
+
+The current helper lives at lines 11-29 and ONLY looks in `payload.context.custom.<key>`, `payload.context` pipe-delimited, or `payload[<key>]` direct. Add a new helper `recoverJobIdFromPayload` (or inline the logic at the call site, whichever the implementor prefers — preference: separate helper for testability):
+
+```ts
+import { isValidUuid } from "../_shared/eventCoverVideo.ts";
+
+const recoverJobIdFromPayload = (payload: Record<string, unknown>): string | null => {
+  // First try the documented `upload`-notification shape (context.custom)
+  const fromContext = contextValue(payload, "job_id");
+  if (fromContext !== null && isValidUuid(fromContext)) return fromContext;
+
+  // Fall back to parsing public_id last segment.
+  // upload-intent encodes: event-covers/raw/{brandId}/{eventId}/{jobId}
+  // Cloudinary `eager_async` notifications always include public_id per
+  // https://cloudinary.com/documentation/notifications
+  const publicId = typeof payload.public_id === "string" ? payload.public_id : null;
+  if (publicId === null) return null;
+  const lastSegment = publicId.split("/").at(-1) ?? null;
+  if (lastSegment === null) return null;
+  return isValidUuid(lastSegment) ? lastSegment : null;
+};
+```
+
+**Change site 2 — replace the call at line 89 with the new helper:**
+
+```ts
+// Before (line 89-92):
+const jobId = contextValue(payload, "job_id");
+if (jobId === null) {
+  return jsonResponse({ error: "validation_error", detail: "job_id_missing" }, 400);
+}
+
+// After:
+const jobId = recoverJobIdFromPayload(payload);
+if (jobId === null) {
+  console.warn("[event-cover-video-webhook]", JSON.stringify({
+    publicId: typeof payload.public_id === "string" ? payload.public_id : null,
+    hasContext: typeof payload.context === "object" || typeof payload.context === "string",
+    stage: "job_id_extraction_failed",
+  }));
+  return jsonResponse({ error: "validation_error", detail: "job_id_missing" }, 400);
+}
+```
+
+**Notes:**
+- The `console.warn` payload is intentionally non-PII (just types/booleans, no payload bodies). It exists so future failures show in the dashboard log viewer with enough context to diagnose without needing another investigation cycle.
+- `isValidUuid` is already exported from `_shared/eventCoverVideo.ts` (line 106-108). No new shared utility needed.
+- The `contextValue` helper at lines 11-29 stays — it's still useful for extracting non-job-id fields if any future webhook code paths need them. Don't delete it.
+
+**SC-AMENDMENT-5-WEBHOOK-1:** A Deno test POSTing a Cloudinary-shaped eager payload WITHOUT context but WITH `public_id: "event-covers/raw/<brand-uuid>/<event-uuid>/<job-uuid>"` reaches the DB update path (asserted by mocked supabase). Same test with a malformed public_id (`"event-covers/raw/foo/bar/not-a-uuid"`) returns 400 `job_id_missing`. Backwards compat: a payload WITH `context.custom.job_id` AND no public_id still extracts via the context path (regression test for existing behavior).
+
+#### Item 2 — Write failure status when job is identifiable but payload extraction failed (P1)
+
+**File:** `supabase/functions/event-cover-video-webhook/index.ts`
+
+**Background:** investigation F-4 hidden flaw — when the webhook 400s on `job_id_missing`, NO failure status is written to the job. Client polls forever until its own timeout. With Item 1 in place, MOST 400s become 200s — but a defensive narrow case remains: if `public_id` parses to a valid UUID that DOES exist in `event_cover_video_jobs` but the eager payload is otherwise malformed (e.g., empty `eager` array, missing required derivative fields), the webhook would still fall through to the existing `assertProcessedDerivative` failed path (lines 154-166), which DOES write status='failed'. **So Item 2 is actually already covered by the existing failed-derivative path once Item 1 lands.** No additional code needed for the strict P1.
+
+**However**, one narrow gap exists: if Item 1's `recoverJobIdFromPayload` returns null (both context AND public_id parsing failed), the webhook still 400s without writing any failure status. This is an extreme edge case (means Cloudinary sent a malformed notification with neither context nor a valid-UUID public_id). The reasonable trade-off: log the failure (already in Item 1's `console.warn`), return 400, and accept that the client will see a polling timeout for this pathological case. Adding a "scan all source_uploaded jobs and fail one that might match" fallback is out of scope — too speculative.
+
+**SC-AMENDMENT-5-FAIL-STATUS-2:** Existing `assertProcessedDerivative` failed path at lines 154-166 is verified intact by Item 1's regression test (eager-shape-with-context, valid job_id, derivative missing → 200 + job status='failed' + failure_code='processed_*' per the existing logic). No new code; verified by test coverage.
+
+#### Item 3 — New invariant + strict-grep CI gate aligning upload-intent template with webhook parser (P0)
+
+**New invariant:** `I-PROPOSED-EVENT-COVER-VIDEO-PUBLIC-ID-LAST-SEGMENT-IS-JOB-UUID`
+
+> The public_id template `event-covers/raw/{brandId}/{eventId}/{jobId}` constructed by `event-cover-video-upload-intent/index.ts:265` MUST always have a valid UUID as its last segment. The webhook (`event-cover-video-webhook/index.ts` Item 1 helper) depends on this contract to recover job_id from eager_async notifications. Any change to either side requires updating both atomically.
+
+**New strict-grep CI gate:** add to existing `.github/scripts/strict-grep/orch-0978-video-cap-29s.mjs` (don't create a new file — extend the existing one to keep CI surface narrow). Add check **C5**:
+
+```js
+const uploadIntentPath = "supabase/functions/event-cover-video-upload-intent/index.ts";
+const webhookPath = "supabase/functions/event-cover-video-webhook/index.ts";
+
+const uploadIntent = read(uploadIntentPath);
+const webhook = read(webhookPath);
+
+// C5: upload-intent must encode publicId as `event-covers/raw/${brandId}/${eventId}/${job.id}`
+const publicIdTemplatePattern = /event-covers\/raw\/\$\{brandId\}\/\$\{eventId\}\/\$\{job\.id\}/;
+if (!publicIdTemplatePattern.test(uploadIntent)) {
+  fail("C5", `${uploadIntentPath} must contain publicId template event-covers/raw/\${brandId}/\${eventId}/\${job.id}`);
+} else if (!webhook.includes("recoverJobIdFromPayload") && !webhook.includes("public_id.split")) {
+  fail("C5", `${webhookPath} must contain public_id-based job_id recovery to match upload-intent template`);
+} else {
+  ok("C5", "Upload-intent public_id template and webhook public_id parser remain aligned");
+}
+```
+
+**SC-AMENDMENT-5-INVARIANT-3:** `node .github/scripts/strict-grep/orch-0978-video-cap-29s.mjs` passes C1-C5 (was C1-C4 from AMENDMENT 4; +1 new check).
+
+#### Item 4 — Deno regression test for webhook public_id fallback (P0)
+
+**Path:** `supabase/functions/event-cover-video-webhook/__tests__/job-id-recovery.test.ts` (NEW)
+
+**Test scenarios (minimum):**
+
+1. **Eager notification WITHOUT context, WITH valid public_id (Item 1 happy path):**
+   - Input: POST with body `{notification_type: "eager", public_id: "event-covers/raw/<brand-uuid>/<event-uuid>/<job-uuid>", eager: [...], ...signed-cloudinary-fields...}` + valid HMAC headers
+   - Mock supabase to confirm job-lookup call uses `<job-uuid>`, return a sample `source_uploaded` job, mock the ready-update return.
+   - Expected: HTTP 200 + `{ok: true}` + verify job-lookup-by-id was called with the parsed UUID.
+
+2. **Eager notification WITH context (regression — must still work):**
+   - Input: POST with body that has BOTH `context.custom.job_id: "<job-uuid>"` AND `public_id: "event-covers/raw/.../<other-uuid>"` (different from context's job_id)
+   - Expected: context wins (preserves existing behavior). Job lookup uses context's job_id, not public_id's.
+
+3. **Malformed public_id (no UUID in last segment):**
+   - Input: POST with body lacking context AND `public_id: "event-covers/raw/foo/bar/not-a-uuid"`
+   - Expected: HTTP 400 + `{error: "validation_error", detail: "job_id_missing"}` + `console.warn` log fired.
+
+4. **Missing both context AND public_id:**
+   - Input: POST with body that has neither
+   - Expected: HTTP 400 + `{error: "validation_error", detail: "job_id_missing"}`.
+
+5. **Backwards compatibility for legacy pipe-delimited context (already in `contextValue`):**
+   - Input: POST with body having `context: "job_id=<uuid>|event_id=..."` string (legacy format)
+   - Expected: context still wins; HTTP 200.
+
+**Fails-on-revert verification (mandatory per `feedback_close_commit_precommit_checks.md`):** before commit, run the test on the fixed code (PASS all 5 scenarios), then locally remove the public_id fallback branch from `recoverJobIdFromPayload`, re-run (scenario 1 FAILS with `expect status 200, received 400`), restore, re-run (PASS). Document the three commit hashes in the IMPLEMENT-3 report.
+
+**SC-AMENDMENT-5-TEST-4:** All 5 test scenarios PASS on Deno. Fails-on-revert sequence documented in IMPLEMENT-3 report.
+
+#### Item 5 — Historical job cleanup (N/A — probe returned zero)
+
+**Status: N/A.** F-5 probe ran by orchestrator at 2026-05-27 returned `stuck_count = 0` for `WHERE status='source_uploaded' AND created_at < now() - interval '1 hour'`. The only currently-stuck job is `dde19eac-9810-4e0d-b8f6-63fe235fc5af` from the tester live-fire (created 16:10:33Z today), which IS recent and within the 1-hour window so not counted. The implementor MAY cancel that job as part of IMPLEMENT-3 cleanup (call `cloudinary destroy` on its `source_public_id` + `UPDATE event_cover_video_jobs SET status='cancelled', cancelled_at=now(), failure_code='orch_0978_amendment_5_test_artifact', failure_message='Tester live-fire stuck job cleaned up by IMPLEMENT-3' WHERE id='dde19eac-9810-4e0d-b8f6-63fe235fc5af'`) but this is housekeeping, not a binding SPEC item.
+
+**No data cleanup migration needed.** If the probe count changes between now and IMPLEMENT-3 (more uploads attempted in the gap), the implementor re-runs the probe and decides based on count > 0 OR ≤ 5. If > 5, the implementor flags to orchestrator for a SPEC AMENDMENT 6 cleanup migration; if ≤ 5, the implementor cleans them up via the same one-off UPDATE pattern.
+
+**SC-AMENDMENT-5-CLEANUP-5:** N/A — no binding deliverable. Implementor housekeeping note only.
+
+#### Item 6 — Batch redeploy ALL six event-cover-video functions (P0 deploy discipline)
+
+**Background:** investigation F-6 hidden flaw — when `_shared/eventCoverVideo.ts` changes, ALL six functions that import from it should be batch-redeployed. IMPLEMENT-2 only redeployed `event-cover-video-upload-intent`. The IMPLEMENT-3 fix changes `event-cover-video-webhook/index.ts` (Item 1) but NOT `_shared/eventCoverVideo.ts` — so this amendment's deploy footprint is just the webhook. However, to clear the technical debt from IMPLEMENT-2's partial deploy AND to ensure all six functions are running on the latest shared bundle, this amendment mandates batch redeploy of ALL six:
+
+| Function | Current version | After IMPLEMENT-3 deploy | Reason |
+|---|---|---|---|
+| `event-cover-video-upload-intent` | v95 | v96 | re-bundle for safety (no code change) |
+| `event-cover-video-source-uploaded` | v81 | v82 | re-bundle (no code change) |
+| `event-cover-video-status` | v93 | v94 | re-bundle (no code change) |
+| `event-cover-video-apply` | v91 | v92 | re-bundle (no code change) |
+| `event-cover-video-cancel` | v91 | v92 | re-bundle (no code change) |
+| `event-cover-video-webhook` | v120 | v121 | **THE FIX** — public_id fallback (Item 1 + Item 4 tests) |
+
+**Deploy command** (orchestrator-owned per `feedback_orchestrator_deploys_edge_functions.md`):
+```bash
+cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0978-[video-upload-polish-and-cloudinary-lifecycle]"
+/Users/sethogieva/bin/supabase functions deploy event-cover-video-upload-intent --project-ref gqnoajqerqhnvulmnyvv
+/Users/sethogieva/bin/supabase functions deploy event-cover-video-source-uploaded --project-ref gqnoajqerqhnvulmnyvv
+/Users/sethogieva/bin/supabase functions deploy event-cover-video-status --project-ref gqnoajqerqhnvulmnyvv
+/Users/sethogieva/bin/supabase functions deploy event-cover-video-apply --project-ref gqnoajqerqhnvulmnyvv
+/Users/sethogieva/bin/supabase functions deploy event-cover-video-cancel --project-ref gqnoajqerqhnvulmnyvv
+/Users/sethogieva/bin/supabase functions deploy event-cover-video-webhook --project-ref gqnoajqerqhnvulmnyvv
+```
+
+After all six deploys, orchestrator verifies via `mcp__supabase__list_edge_functions` that:
+1. All six have version-bumped (counters all +1)
+2. `verify_jwt` settings preserved: webhooks is `false`, all five others are `true`
+3. `event-cover-video-webhook` v121 returns the new diagnostic log line via one curl probe per `feedback_supabase_edge_deploy_verify_first_call.md` — specifically a POST with valid HMAC signature + body lacking context AND lacking public_id should now log `stage: "job_id_extraction_failed"` (whereas v120 logged no such stage).
+
+**SC-AMENDMENT-5-DEPLOY-6:** Post-deploy, `mcp__supabase__list_edge_functions` shows all six event-cover-video functions at their incremented version with correct `verify_jwt` settings. Curl probe to webhook v121 confirms the new stage log.
+
+**Future invariant codification:** post-CLOSE, the orchestrator should add a memory rule (or extend `feedback_orchestrator_deploys_edge_functions.md`) explicitly stating "when `_shared/eventCoverVideo.ts` changes in a PR, ALL six event-cover-video functions must be batch-redeployed." This is a process improvement and not a code-layer change; it's a documentation/discipline addition. Out of scope for this amendment but flagged for orchestrator's attention.
+
+#### Item 7 — Regression test contract (P0 per META-ORCH-0744 (b) gate)
+
+Per `feedback_close_commit_precommit_checks.md` and the META-ORCH-0744 regression-test gate:
+
+**(a) Implementor-written happy-path regression test (Item 4 above):**
+- Path: `supabase/functions/event-cover-video-webhook/__tests__/job-id-recovery.test.ts` (NEW)
+- Scope: 5 scenarios (Item 4 §1-5)
+- Fails-on-revert: scenario 1 must FAIL when public_id fallback is removed; PASS when restored.
+
+**(b) Tester-written adversarial regression test (TBD in tester RETEST phase):**
+- The tester must ship ONE genuinely adversarial test attacking a DIFFERENT angle than Item 4. Suggestions:
+  - **Race condition:** Cloudinary fires the eager notification TWICE (duplicate webhook calls). Does the webhook idempotently handle the second call (existing job status='ready' check at line 111-113 — test that path).
+  - **Stale signature:** valid public_id but signature timestamp >1 hour old → should return 403 stale_timestamp (different status, different code path).
+  - **public_id with extra trailing slash:** `event-covers/raw/<brand>/<event>/<job>/` (trailing slash) — does `split("/").at(-1)` return empty string? If so, does the fallback correctly return null and 400 instead of silently doing the wrong thing?
+  - **Signature pass + body has `context.custom.job_id = "<wrong-uuid>"` AND `public_id = ".../<right-uuid>"`:** which wins? (Per Item 1 spec, context wins — proves the precedence ordering is the documented one.)
+
+Both tests must land in IMPLEMENT-3 (implementor's) + tester's RETEST QA report respectively. Strict-grep `ORCH_0978_BACKEND_ALLOWLIST` in `.github/scripts/strict-grep/orch-0863-marketing-hub-phase-b.mjs` MUST be extended to include the new test file path in the SAME commit per COMMS-0002 — append:
+- `supabase/functions/event-cover-video-webhook/__tests__/job-id-recovery.test.ts`
+
+**SC-AMENDMENT-5-TEST-CONTRACT-7:** IMPLEMENT-3 commit body cites implementor test path + commit hash with fails-on-revert proof. Tester RETEST QA report cites adversarial test path + commit hash with PASS run + fails-on-revert proof.
+
+### E — New invariants
+
+**I-PROPOSED-EVENT-COVER-VIDEO-PUBLIC-ID-LAST-SEGMENT-IS-JOB-UUID:** The public_id constructed by `event-cover-video-upload-intent/index.ts:265` MUST always have a valid UUID as its last segment, matching the format `event-covers/raw/{brandId}/{eventId}/{jobId}`. The webhook's `recoverJobIdFromPayload` helper relies on this. Changes to either side require updating BOTH atomically. Strict-grep C5 (§D Item 3) enforces at CI.
+
+### F — CI gates
+
+Extends `.github/scripts/strict-grep/orch-0978-video-cap-29s.mjs` with one new check **C5** (per §D Item 3). Total checks after this amendment: 5 (C1 picker cap 29, C2 Cloudinary-pipeline constant 29_000, C3 storage-pipeline constant 29_000, C4 DB migration 29000, C5 public_id template + parser alignment).
+
+ORCH_0978_BACKEND_ALLOWLIST extension in `.github/scripts/strict-grep/orch-0863-marketing-hub-phase-b.mjs`: append `supabase/functions/event-cover-video-webhook/__tests__/job-id-recovery.test.ts` (and the webhook source path if it's not already there — check before adding to avoid dup).
+
+### G — Test contract (paths + run protocol)
+
+| Test | Path | Type | Fails-on-revert anchor |
+|---|---|---|---|
+| Implementor happy-path | `supabase/functions/event-cover-video-webhook/__tests__/job-id-recovery.test.ts` | Deno test | delete `recoverJobIdFromPayload` public_id fallback branch |
+| Tester adversarial | TBD — chosen by tester from §D Item 7 suggestions | Deno test | TBD by tester |
+
+Both MUST land before CLOSE per META-ORCH-0744 (b).
+
+### H — Migration plan
+
+**No new migration required.** The fix is pure edge function code. Schema is unchanged. `event_cover_video_jobs.failure_code` is free-text so no enum update needed.
+
+### I — Open questions
+
+**None.** All scope decisions captured. Item 5 N/A per probe. Item 2 absorbed by existing failed-derivative path. Item 6 list is exhaustive (the six event-cover-video functions). Item 7 (b) tester adversarial test angle is operator's choice — but suggestions provided.
+
+### J — Implementation order (for Codex `implementor-mingla`)
+
+Three-commit landing pattern (mirror AMENDMENT 4's pattern for consistency):
+
+1. **Commit 1 — Item 1 + Item 2 + observability log + Item 3 strict-grep extension:**
+   - Modify `supabase/functions/event-cover-video-webhook/index.ts` per §D Item 1 (add helper, replace line 89, add console.warn for diagnostic absence cases)
+   - Extend `.github/scripts/strict-grep/orch-0978-video-cap-29s.mjs` with C5 per §D Item 3
+   - Commit message: `ORCH-0978 IMPLEMENT-3 step 1: webhook public_id fallback for eager_async notifications (Item 1) + strict-grep C5 invariant (Item 3); no client change`
+
+2. **Commit 2 — Item 4 regression test + ORCH_0978_BACKEND_ALLOWLIST update:**
+   - Create `supabase/functions/event-cover-video-webhook/__tests__/job-id-recovery.test.ts` with all 5 scenarios per §D Item 4
+   - Append test path + webhook source path (if missing) to `ORCH_0978_BACKEND_ALLOWLIST` in `.github/scripts/strict-grep/orch-0863-marketing-hub-phase-b.mjs`
+   - Run fails-on-revert sequence (PASS → revert helper public_id branch → FAIL → restore → PASS), document all three commit hashes in commit body
+   - Commit message: `ORCH-0978 IMPLEMENT-3 step 2: Deno regression test for webhook job_id recovery (5 scenarios, fails-on-revert verified at <commit>) + ORCH_0978_BACKEND_ALLOWLIST extension per COMMS-0002`
+
+3. **Implementation report** at `Mingla_Artifacts/reports/IMPLEMENTATION_ORCH-0978_IMPLEMENT_3.md` covering:
+   - Both commit hashes + diff stats
+   - Helper function shape verbatim
+   - 5-scenario test results
+   - Fails-on-revert PASS/FAIL/PASS sequence
+   - Strict-grep C5 PASS run output
+   - Confirmation that `event-cover-video-source-uploaded`, `-status`, `-apply`, `-cancel`, `-upload-intent` source files were NOT touched (only the webhook)
+   - F-5 re-probe count at IMPLEMENT-3 time (in case the dde19eac job is no longer the only one)
+   - Optional dde19eac job cleanup decision (cancelled with explanatory failure_code, OR left as historical artifact — implementor's call, documented either way)
+
+Then **orchestrator REVIEW** → **batch redeploy 6 functions** per §D Item 6 → **tester RETEST** → **CLOSE**.
+
+### K — Acceptance gate
+
+This AMENDMENT 5 is "implementable" when:
+1. Orchestrator REVIEW returns APPROVED.
+2. Operator confirms no other webhook bug is suspected (this amendment is bounded to the captured 400 path).
+
+Codex `implementor-mingla` IMPLEMENT-3 produces TWO commits + the implementation report. Total scope: ~80-150 net additions across 3 files (webhook + strict-grep extension + new Deno test). No client code touched. No SPEC modifications. No schema changes.
+
+### L — Confidence — HIGH
+
+Investigation's root cause is PROBABLE (one layer — literal production log line — captured via HTTP status code rather than direct log paste). However, the fix shape (Option A public_id parsing) is correct regardless of which 400 path fires — `invalid_json` is implausible for Cloudinary and `job_id_missing` is the only other path. Even if the production log later proves it was `invalid_json` (highly unlikely), the public_id fallback adds defense-in-depth without breaking anything. Six items defined, one N/A by probe, three commit-landing pattern, full test contract, strict-grep gate, batch deploy, no client touches. Scope is tightly bounded and additive (no rollback risk to IMPLEMENT-2's fixes).
+
+---
+
+
