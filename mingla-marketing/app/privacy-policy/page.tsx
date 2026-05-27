@@ -4,7 +4,7 @@ import { PRIVACY_SECTIONS, PRIVACY_EFFECTIVE_DATE } from '@/lib/privacyContent'
 import { cn } from '@/lib/cn'
 
 export const metadata: Metadata = {
-  title: 'Privacy Policy — Mingla',
+  title: 'Privacy Policy',
   description:
     'How Mingla collects, uses, discloses, and safeguards your information when you use our app and website.',
 }
