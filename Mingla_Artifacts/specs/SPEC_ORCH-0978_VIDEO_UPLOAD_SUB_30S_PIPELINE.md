@@ -1395,4 +1395,308 @@ Investigation's root cause is PROBABLE (one layer — literal production log lin
 
 ---
 
+## SPEC AMENDMENT 6 (a.k.a. AMENDMENT 4 in operator language) — 2026-05-27 — Webhook processed-duration fallback to job trim window + error-code split + eager `du_` defense-in-depth
+
+> Author: Claude `mingla-orchestrator` (operator-delegated take-over; default SPEC owner is forensics, redirected by operator).
+> Inputs: `Mingla_Artifacts/reports/INVESTIGATION_ORCH-0978_PROCESSED_DURATION_INVALID.md` (committed `1ec24f0fc`, ROOT CAUSE PROVEN), `Mingla_Artifacts/reports/QA_ORCH-0978_SIM_RETEST_ORCHESTRATOR.md`, `Mingla_Artifacts/reports/DEPLOY_ORCH-0978_IMPLEMENT_3.md`.
+> Comms ledger acknowledged: COMMS-0002 WARN (ORCH_0978_BACKEND_ALLOWLIST), COMMS-0003 WARN (Cloudinary docs URLs cited inline).
+
+### A — Layman summary
+
+On webhook v121 the Cloudinary eager callback for video uploads arrives without a `duration` field, so the webhook's `Number(undefined) → NaN` rejects every upload with the misleading message "Processed video was over the duration limit." This SPEC hardens the webhook to fall back to the job's already-known trim window (`trim_end_ms - trim_start_ms`) when Cloudinary's eager callback omits duration, splits the misleading single-code rejection into three discrete codes for ops clarity, and adds a server-side `du_<seconds>` eager-transformation clause so the duration cap holds even if a future client misbehaves. The user-visible win: a 12-second iOS upload reaches `status='ready'` within 30 seconds and the cover updates. No client touches. No migration. One batch redeploy of all six event-cover-video functions after merge.
+
+### B — Scope and non-goals
+
+**In scope:**
+1. Webhook duration extraction falls back to job row's `trim_end_ms - trim_start_ms` when Cloudinary's eager payload omits `duration`.
+2. `assertProcessedDerivative` splits `processed_duration_invalid` into three discrete codes: `processed_duration_missing`, `processed_duration_nonpositive`, `processed_duration_over_cap` with matching human-readable messages.
+3. `event-cover-video-upload-intent` eager chain adds `du_<seconds>` defense-in-depth clause computed from `Math.min(trim_end_ms - trim_start_ms, MAX_DURATION_MS) / 1000`.
+4. Strict-grep extension `C6` enforcing webhook duration fallback co-references job-row trim columns.
+5. Deno regression test fixture using the EXACT captured payload from `event_cover_video_jobs.provider_payload` of job `99179520-3566-4202-bf7c-f8711257ce0c` (sans signature) as the canonical real-world fixture.
+6. Orchestrator-owned batch redeploy of ALL six event-cover-video functions because `_shared/eventCoverVideo.ts` is touched.
+
+**Out of scope (explicit non-goals):**
+- Switching from `eager_notification_url` to `notification_url`. Current architecture stays.
+- Adopting the Cloudinary React Native SDK. Already-decided NO.
+- `media_metadata: true` on upload-intent signed params (F-6 in investigation). Optional; rejected from this SPEC scope to keep amendment tight.
+- Touching `source_uploaded`, `status`, `apply`, `cancel` source code beyond the shared lib's error-code split.
+- Any client-side code (`app-mobile/`, `mingla-business/src/`, `mingla-admin/`).
+- Any schema change. `processed_duration_ms` column is already nullable.
+
+**Assumptions:**
+- Cloudinary's eager_notification payload shape per the captured fixture (no `duration` field) is the canonical real-world shape, verified for video MP4 derivatives. Per Cloudinary docs (https://cloudinary.com/documentation/upload_images#notification_url and https://cloudinary.com/documentation/upload_images#eager_transformations), the eager callback is not contractually required to include duration.
+- iOS `UIImagePickerController` with `allowsEditing: true` produces a pre-trimmed source, so `trim_end_ms - trim_start_ms` equals the source duration equals the processed duration (eager has no trim component pre-AMENDMENT-6; post-AMENDMENT-6 the new `du_` clause enforces it server-side).
+
+### C — Cross-Surface Impact (MANDATORY)
+
+| Surface | In scope? | Impact |
+|---|---|---|
+| Consumer iOS | NO — consumer app doesn't upload event cover videos | N/A |
+| Consumer Android | NO — same as above | N/A |
+| Buyer/anonymous Web | NO — read-only consumer of cover URLs | N/A |
+| Business iOS | YES — backend path fix; client code untouched; user-visible win | Cover-video uploads complete to `ready` within 30s on iOS after deploy |
+| Business Android | YES — same backend path; client code untouched | Cover-video uploads complete to `ready` within 30s on Android after deploy |
+| Admin Web | NO — admin doesn't upload event cover videos | N/A |
+| Business Web preview | YES (if web ever surfaces upload) — same backend path | Same behavior |
+
+Parity is **automatic** (single backend path serves all three business surfaces). No per-surface success criterion needed.
+
+### D — Layered specification
+
+#### D.1 — Database layer
+
+No changes. `event_cover_video_jobs.processed_duration_ms` remains nullable; `trim_start_ms` + `trim_end_ms` are already populated by upload-intent (column-level constraint `trim_end_ms - trim_start_ms <= 29000` is already enforced per AMENDMENT 4 migration `20260730000000_orch_0978_video_cap_29s_constraints.sql`).
+
+#### D.2 — Shared edge lib (`supabase/functions/_shared/eventCoverVideo.ts`)
+
+**Change site 1 — split `processed_duration_invalid` into three codes (lines 397-401 today).**
+
+Current:
+```ts
+const durationMs =
+  typeof input.durationMs === "number" ? input.durationMs : Number(input.durationMs);
+if (!Number.isFinite(durationMs) || durationMs <= 0 || durationMs > MAX_DURATION_MS) {
+  return { ok: false, code: "processed_duration_invalid", message: "Processed video was over the duration limit." };
+}
+```
+
+Must become:
+```ts
+const durationMs =
+  typeof input.durationMs === "number" ? input.durationMs : Number(input.durationMs);
+if (!Number.isFinite(durationMs)) {
+  return { ok: false, code: "processed_duration_missing", message: "Processed video duration was missing from the provider callback." };
+}
+if (durationMs <= 0) {
+  return { ok: false, code: "processed_duration_nonpositive", message: "Processed video duration was zero or negative." };
+}
+if (durationMs > MAX_DURATION_MS) {
+  return { ok: false, code: "processed_duration_over_cap", message: "Processed video was over the duration limit." };
+}
+```
+
+Three discrete codes, three discrete messages. The `_over_cap` message keeps the old wording so any external monitor parsing that string still works for the genuine-over-cap case.
+
+Note: the existing `processed_duration_invalid` literal must NOT be re-introduced anywhere. Strict-grep C6 enforces this.
+
+#### D.3 — Webhook (`supabase/functions/event-cover-video-webhook/index.ts`)
+
+**Change site 2 — duration extraction with job-row trim fallback (current lines 155-178, especially 158-160 and the `assertProcessedDerivative` call at 171-178).**
+
+The webhook already fetches the job at lines 120-124 (`existingJob` carries `id, status, event_id, apply_mode`). The SELECT must widen to include `trim_start_ms` and `trim_end_ms`:
+
+```ts
+const { data: existingJob, error: existingJobError } = await supabase
+  .from("event_cover_video_jobs")
+  .select("id,status,event_id,apply_mode,trim_start_ms,trim_end_ms")
+  .eq("id", jobId)
+  .maybeSingle();
+```
+
+Then introduce a fallback helper near `firstEager`:
+
+```ts
+const eagerDurationOrFallback = (
+  eager: Record<string, unknown>,
+  payload: Record<string, unknown>,
+  job: { trim_start_ms?: number | null; trim_end_ms?: number | null },
+): number | null => {
+  const raw = eager.duration ?? eager.duration_ms ?? payload.duration ?? payload.duration_ms;
+  if (typeof raw === "number" && Number.isFinite(raw) && raw > 0) {
+    return raw < 1000 ? raw * 1000 : raw;
+  }
+  // Cloudinary's eager_notification payload is not contractually required to include duration.
+  // Reference: https://cloudinary.com/documentation/upload_images#notification_url
+  // The job's trim window is the next-best authoritative source — upload-intent enforced the cap
+  // before the upload, and the eager transformation now also enforces du_<seconds>.
+  const start = typeof job.trim_start_ms === "number" ? job.trim_start_ms : 0;
+  const end = typeof job.trim_end_ms === "number" ? job.trim_end_ms : null;
+  if (end === null || end <= start) return null;
+  return end - start;
+};
+```
+
+Change the assertion call site (lines 158-178 area):
+
+```ts
+const eager = firstEager(payload);
+const url = eager.secure_url ?? eager.url ?? payload.secure_url ?? payload.url;
+const bytes = eager.bytes ?? payload.bytes;
+const durationMs = eagerDurationOrFallback(eager, payload, existingJob);
+// ... rest of metadata extraction unchanged
+const derivative = assertProcessedDerivative({
+  audioCodec: audio.codec ?? eager.audio_codec ?? payload.audio_codec,
+  bytes,
+  durationMs,
+  mimeType,
+  url,
+  videoCodec: video.codec ?? eager.video_codec ?? payload.video_codec,
+});
+```
+
+**Diagnostic log on fallback path (MANDATORY, codified per `feedback_supabase_edge_deploy_verify_first_call.md` post-deploy probe contract):**
+
+When the fallback fires, log via `console.warn`:
+
+```ts
+if (durationMs !== null && (eager.duration === undefined && eager.duration_ms === undefined && payload.duration === undefined && payload.duration_ms === undefined)) {
+  console.warn("[event-cover-video-webhook]", JSON.stringify({
+    jobId,
+    fallbackDurationMs: durationMs,
+    publicId: typeof payload.public_id === "string" ? payload.public_id : null,
+    stage: "duration_fallback_to_job_trim",
+  }));
+}
+```
+
+This is observability for the SRE: any future Cloudinary contract change that re-introduces `duration` in the eager payload should make this warning rate drop to zero.
+
+#### D.4 — Upload-intent (`supabase/functions/event-cover-video-upload-intent/index.ts`)
+
+**Change site 3 — add `du_<seconds>` eager clause (lines 266-274 area).**
+
+Current:
+```ts
+const durationBudgetMs = Math.min(trimEndMs - trimStartMs, MAX_DURATION_MS);
+const eager = [
+  "c_limit,w_1280,h_720",
+  "vc_h264",
+  "ac_aac",
+  `br_${clampBitrate(durationBudgetMs)}`,
+  "f_mp4",
+  "q_auto:good",
+].join(",");
+```
+
+Must become:
+```ts
+const durationBudgetMs = Math.min(trimEndMs - trimStartMs, MAX_DURATION_MS);
+const durationBudgetSeconds = Math.ceil(durationBudgetMs / 1000);
+// du_<seconds> caps processed duration server-side as defense-in-depth alongside client trim.
+// Reference: https://cloudinary.com/documentation/video_manipulation_and_delivery_reference#video_transformation_url_parameters
+const eager = [
+  "c_limit,w_1280,h_720",
+  `du_${durationBudgetSeconds}`,
+  "vc_h264",
+  "ac_aac",
+  `br_${clampBitrate(durationBudgetMs)}`,
+  "f_mp4",
+  "q_auto:good",
+].join(",");
+```
+
+The `du_<X>` parameter sets a hard duration limit on the processed output per Cloudinary's video transformation reference.
+
+#### D.5 — Strict-grep `.github/scripts/strict-grep/orch-0978-video-cap-29s.mjs`
+
+Extend with **C6** check: webhook source MUST contain BOTH `eagerDurationOrFallback` (the new helper) AND `trim_end_ms` reference within the file. This pairs eager-duration reads with the job-row fallback so future edits cannot silently drop the fallback.
+
+Also add **C7** check: shared lib source MUST contain all three new code literals `processed_duration_missing`, `processed_duration_nonpositive`, `processed_duration_over_cap` AND MUST NOT contain the old `processed_duration_invalid` literal. Prevents accidental regression to the misleading single-code rejection.
+
+#### D.6 — `.github/scripts/strict-grep/orch-0863-marketing-hub-phase-b.mjs` allowlist
+
+Per COMMS-0002: the new Deno regression test file `supabase/functions/event-cover-video-webhook/__tests__/duration-fallback.test.ts` (created in IMPLEMENT-4 step 2) MUST be appended to `ORCH_0978_BACKEND_ALLOWLIST` in the same commit as the test file lands.
+
+### E — Success criteria (numbered, observable, testable)
+
+1. **SC-1 — Happy path with missing duration.** Upload a 12-second iOS video via the business app cover flow. Within 30 seconds: `event_cover_video_jobs.status='ready'`, `processed_url` is a non-null `https://res.cloudinary.com/...` URL, `processed_duration_ms = 12000`. Cover updates on the event.
+2. **SC-2 — Diagnostic log fires on fallback.** Supabase dashboard log for webhook v122 contains a `stage: "duration_fallback_to_job_trim"` entry for the SC-1 upload with `fallbackDurationMs: 12000` and the job UUID.
+3. **SC-3 — Genuine over-cap rejected with new discrete code.** A simulated callback with `duration: 35.0` (35 seconds) writes `failure_code='processed_duration_over_cap'`, `failure_message='Processed video was over the duration limit.'`. Unit test, not live-fire.
+4. **SC-4 — Missing-duration callback writes new discrete code when no trim window exists.** A simulated callback with no `duration` field AND a job row missing `trim_end_ms` writes `failure_code='processed_duration_missing'`, `failure_message='Processed video duration was missing from the provider callback.'`. Unit test.
+5. **SC-5 — Nonpositive guarded.** A simulated callback with `duration: 0` writes `failure_code='processed_duration_nonpositive'`. Unit test.
+6. **SC-6 — Eager `du_` clause is in the upload signature.** Strict-grep C6 + C7 both PASS. `upload-intent/index.ts` eager string contains `du_${durationBudgetSeconds}`.
+7. **SC-7 — Webhook batch redeploy succeeds.** All six event-cover-video functions deployed to next version (webhook v121→v122 at minimum; others may be no-bundle-change if `_shared` import path unchanged for them). Each preserves `verify_jwt` setting. Webhook v122 post-deploy verify-first-call probe returns HTTP 403 `missing_signature` (proves bundle live + `verify_jwt=false` preserved).
+8. **SC-8 — `processed_duration_invalid` literal is dead.** `grep -rn "processed_duration_invalid"` returns ZERO matches under `supabase/functions/` and `mingla-business/src/`. Tests may reference the old code only in commit messages or comments explaining the supersession.
+
+### F — Invariants
+
+| Invariant | Preserved how |
+|---|---|
+| Webhook `verify_jwt = false` | `supabase/config.toml:48-49` unchanged; CLI deploy reads config preserving setting |
+| Cover-video pipeline is sole writer of processed-job state | Unchanged; only webhook calls `eventCoverVideoReadyUpdate` |
+| No silent failures | NEW logs surface fallback path; three discrete error codes prevent message-conflation regression |
+| Cloudinary external API verified against docs (COMMS-0003) | Webhook fallback + `du_<seconds>` eager addition both cite docs URLs inline in source comments per spec |
+| Backend touches go through ORCH_0978_BACKEND_ALLOWLIST (COMMS-0002) | New test path appended in same commit |
+| Production-ready or flag it | T-1 happy path becomes proven post-deploy via SC-1; if not, FAIL CLOSE |
+
+**New invariant introduced (proposed):** I-PROPOSED-WEBHOOK-PAYLOAD-FALLBACK — every webhook that reads optional external-API payload fields MUST have a typed fallback to internal source-of-truth (DB row, prior request state) OR a discrete error code that names the missing field. No `Number(undefined) = NaN` paths to misleading rejections. Promote to ACTIVE on ORCH-0978 CLOSE.
+
+### G — Test cases
+
+| ID | Scenario | Input | Expected | Layer |
+|---|---|---|---|---|
+| T-AMEND6-01 | **Fixture-faithful happy path.** Use the EXACT captured payload from job `99179520-...` provider_payload (sans signature) as the test fixture. | Captured Cloudinary eager payload + job stub with `trim_start_ms=0, trim_end_ms=12000` | HTTP 200; webhook writes `processed_duration_ms=12000`, `status='ready'`, `processed_url=eager[0].secure_url`. `duration_fallback_to_job_trim` warn logged. | Deno regression |
+| T-AMEND6-02 | **Cloudinary-canonical happy path.** Eager payload with `duration: 12.0` (float seconds per docs). | Eager `duration: 12.0` + job stub `trim_end_ms=12000` | HTTP 200; webhook writes `processed_duration_ms=12000` (×1000 heuristic applied); status='ready'. NO fallback warn. | Deno regression |
+| T-AMEND6-03 | **Over-cap rejection with new code.** | Eager `duration: 35.0` (35s) | HTTP 200; webhook writes `failure_code='processed_duration_over_cap'`, message="Processed video was over the duration limit." | Deno regression |
+| T-AMEND6-04 | **Missing-duration AND missing-trim guards write missing code.** | Eager without `duration` + job stub with `trim_end_ms=null` | HTTP 200; webhook writes `failure_code='processed_duration_missing'`, message="Processed video duration was missing from the provider callback." | Deno regression |
+| T-AMEND6-05 | **Nonpositive guard.** | Eager `duration: 0` | HTTP 200; webhook writes `failure_code='processed_duration_nonpositive'`, message="Processed video duration was zero or negative." | Deno regression |
+| T-AMEND6-06 | **Live-fire happy path.** Real iOS picker → real Cloudinary → real webhook v122. | Rainbow 0:12 video from sim | DB job reaches `status='ready'` within 30s, `processed_url` non-null. | Live-fire (tester) |
+| T-AMEND6-07 | **Strict-grep C6 + C7.** | `node .github/scripts/strict-grep/orch-0978-video-cap-29s.mjs` | All checks PASS | CI gate |
+| T-AMEND6-08 | **`processed_duration_invalid` dead.** | `rg "processed_duration_invalid" supabase/functions mingla-business/src` | Zero matches | grep |
+
+T-AMEND6-01 is the META-ORCH-0744 implementor happy-path regression test. T-AMEND6-04 is the META-ORCH-0744 tester adversarial regression test (different angle — covers the trim-also-missing edge case the implementor's fixture-faithful test does not exercise). Both MUST land with fails-on-revert verified at the IMPLEMENT-4 commit hash.
+
+### H — Implementation order (binding two-commit pattern per META-ORCH-0744)
+
+**Commit 1 — product fix (~80 net lines across 3 files):**
+- `supabase/functions/_shared/eventCoverVideo.ts`: split `assertProcessedDerivative` duration check into three discrete codes.
+- `supabase/functions/event-cover-video-webhook/index.ts`: widen job SELECT to include `trim_start_ms,trim_end_ms`; add `eagerDurationOrFallback` helper; replace existing duration extraction; add diagnostic warn on fallback path.
+- `supabase/functions/event-cover-video-upload-intent/index.ts`: add `du_${durationBudgetSeconds}` to eager chain with Cloudinary docs URL comment.
+- `.github/scripts/strict-grep/orch-0978-video-cap-29s.mjs`: add C6 + C7 checks.
+
+**Commit 2 — Deno regression tests + allowlist (~150 net lines, 2 files):**
+- `supabase/functions/event-cover-video-webhook/__tests__/duration-fallback.test.ts`: scenarios T-AMEND6-01 through T-AMEND6-05 (5 scenarios). Test fixture for T-AMEND6-01 MUST be the literal captured payload from investigation §4 (sans signature), copy-paste into test file as a JSON constant.
+- `.github/scripts/strict-grep/orch-0863-marketing-hub-phase-b.mjs`: append `supabase/functions/event-cover-video-webhook/__tests__/duration-fallback.test.ts` to `ORCH_0978_BACKEND_ALLOWLIST`.
+
+Fails-on-revert proof (MANDATORY in implementation report):
+- PASS on fixed code at `<commit-1-hash>`: `deno test --allow-env supabase/functions/event-cover-video-webhook/__tests__/duration-fallback.test.ts` → 5/5 PASS.
+- FAIL when `eagerDurationOrFallback` fallback branch is temporarily replaced with `return null`: T-AMEND6-01 should fail expecting 200 but receiving HTTP 200 with `failure_code='processed_duration_missing'`. Document the local revert sequence.
+- PASS restored at `<commit-1-hash>`.
+
+### I — Regression prevention
+
+1. T-AMEND6-01 fixture-faithful test locks in the proven real-world Cloudinary eager shape. Any future Cloudinary contract change that re-introduces `duration` makes T-AMEND6-02 the canonical path; T-AMEND6-01 still works because fallback wins when duration is absent — never wrong.
+2. Strict-grep C6 makes "future engineer removes the fallback" impossible to ship.
+3. Strict-grep C7 makes "future engineer re-introduces `processed_duration_invalid` literal" impossible to ship.
+4. Diagnostic warn surface lets SRE track whether Cloudinary's contract changes over time.
+5. `du_<seconds>` eager clause makes server-side cap independent of client trim discipline — defense-in-depth.
+6. New invariant I-PROPOSED-WEBHOOK-PAYLOAD-FALLBACK promotes to ACTIVE on CLOSE, codifying the pattern for any future webhook.
+
+### J — Cross-Surface Impact (closing summary)
+
+Backend-only. No client touches. No migration. No PR open by implementor. Orchestrator owns batch redeploy after merge. Tester runs T-AMEND6-06 live-fire after deploy. Seth runs physical-iPhone T-1/T-2/T-3 ONLY after sim T-AMEND6-06 PASS.
+
+### K — Deploy discipline
+
+Per `feedback_orchestrator_deploys_edge_functions.md`: orchestrator owns the batch redeploy of ALL six event-cover-video functions because `_shared/eventCoverVideo.ts` is touched (3-code split affects what other functions might assert against in future, even if they don't today). Sequence:
+
+```bash
+cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0978-[video-upload-polish-and-cloudinary-lifecycle]"
+for fn in event-cover-video-webhook event-cover-video-upload-intent event-cover-video-source-uploaded event-cover-video-status event-cover-video-apply event-cover-video-cancel; do
+  /Users/sethogieva/bin/supabase functions deploy "$fn" --project-ref gqnoajqerqhnvulmnyvv
+done
+```
+
+Then `mcp__supabase__list_edge_functions` to verify version bumps and `verify_jwt` preservation (webhook stays `false`; the other five stay `true`).
+
+Then per `feedback_supabase_edge_deploy_verify_first_call.md`: one curl probe against webhook v122:
+
+```bash
+curl -sS -o /tmp/v122_probe.json -w "HTTP %{http_code} | time %{time_total}s\n" \
+  -X POST "https://gqnoajqerqhnvulmnyvv.supabase.co/functions/v1/event-cover-video-webhook" \
+  -H "Content-Type: application/json" -d '{}'
+```
+
+Expected: HTTP 403 `missing_signature` (proves bundle live + `verify_jwt=false` preserved).
+
+### L — Downstream routing
+
+Codex `implementor-mingla` IMPLEMENT-4 → orchestrator REVIEW → orchestrator batch redeploy + curl probe → tester RETEST T-AMEND6-06 on sim + Seth physical iPhone T-1/T-2/T-3 → orchestrator CLOSE with `[deploy]` tag (touches `mingla-business/src/` from IMPLEMENT-2 and backend from IMPLEMENT-3+IMPLEMENT-4) → EAS OTA → PR → squash merge → worktree reap.
+
+### M — Confidence — HIGH
+
+Investigation's root cause is PROVEN (captured raw production payload at investigation §4). All three competing hypotheses are ruled out. Fix shape derives directly from the proven failure mode. Two-commit landing pattern per META-ORCH-0744. Defense-in-depth via `du_` server-side cap. Three discrete error codes prevent message-conflation regression class entirely. Scope is tightly bounded — backend only, additive, no rollback risk to IMPLEMENT-2 or IMPLEMENT-3 fixes.
+
+---
+
 
