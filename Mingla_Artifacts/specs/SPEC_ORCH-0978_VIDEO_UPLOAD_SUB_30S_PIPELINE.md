@@ -1699,4 +1699,479 @@ Investigation's root cause is PROVEN (captured raw production payload at investi
 
 ---
 
+## SPEC AMENDMENT 7 (a.k.a. AMENDMENT 5 in operator language) — 2026-05-27 — Save-cover persistence + 30s text fix + service split + round-trip verification + trim wiring
+
+> Author: Claude `mingla-forensics` (operator-delegated SPEC mode).
+> Binding inputs: `Mingla_Artifacts/reports/INVESTIGATION_ORCH-0978_SAVE_COVER_PERSISTENCE.md` (committed `02f5314ba`, PROBABLE root cause with named blocker); `Mingla_Artifacts/reports/REVIEW_ORCH-0978_INVESTIGATION_SAVE_COVER_PERSISTENCE.md` (committed `8266f7e5d`, REVIEW APPROVED).
+> Dispatch reference: `Mingla_Artifacts/prompts/FORENSICS_SPEC_ORCH-0978_AMENDMENT_7_SAVE_COVER_PERSISTENCE.md`.
+> Comms ledger acknowledged: COMMS-0002 (no backend allowlist update — client-only changes), COMMS-0003 (no external API claims — client-only changes), COMMS-0004 (no INTAKE — same ORCH).
+
+### A — Layman summary
+
+Today, when a user uploads a cover video on a published event and taps "Save changes," the app shows "Saved" but the cover stays blank because the save call writes NULL to every cover column. This SPEC fixes that by (1) splitting the cover service into two discrete functions (`setEventCover` requires a real URL; `clearEventCover` is the only path that nulls everything), (2) tightening the save flow to never invoke the cover service with NULL when no clear was intended, (3) adding round-trip verification so a "Saved" toast can never appear when the DB write was a silent null, (4) wiring trim values through the upload-intent hook for self-documenting backend contract, and (5) replacing three stale "30 seconds" strings with "29 seconds" that IMPLEMENT-2 missed. After this lands, the user-visible win is: a 16-second video upload on a published event reaches the event row and renders on reopen, and any future silent-null regression is caught at write time, not on reopen.
+
+### B — Scope and non-goals
+
+**In scope (binding):**
+1. Item 1 — Tighten the cover-save guard in `EditPublishedScreen.tsx:617-674` so `updatePublishedEventCoverMedia` (now `setEventCover` / `clearEventCover`) is never invoked with `mediaUrl=null` when no explicit clear was intended.
+2. Item 2 — Split `eventCoverMediaService.ts:180-222` into `setEventCover` (requires non-null mediaUrl at TypeScript level) + `clearEventCover` (explicit null path only). Remove `updatePublishedEventCoverMedia` from active code.
+3. Item 3 — Round-trip verification after `setEventCover` returns; throw `EventCoverMediaError("persist_mismatch", ...)` on mismatch. Service-layer `.select(...)` widens to include cover columns.
+4. Item 4 — `useEventCoverVideoUpload.ts:92-100` passes `trimStartMs: 0` and `trimEndMs: file.durationMs` explicitly to `createEventCoverVideoUploadIntent`.
+5. Item 5 — Replace 3 stale "30 seconds" strings with "29 seconds" at the exact lines named in §D.
+6. Item 6 — Strict-grep C8 + C9 in `.github/scripts/strict-grep/orch-0978-video-cap-29s.mjs`.
+7. Item 7 — Regression tests (Jest, two files) per META-ORCH-0744 two-commit landing.
+8. Item 8 — OPTIONAL `[ORCH-0978-DIAG]` `console.log` for PROBABLE→PROVEN upgrade. Implementor choice; if included, must be reapable at CLOSE Step 1.5.
+
+**Non-goals (explicit out-of-scope):**
+- Edge function source changes. Backend pipeline (webhook v122, upload-intent v96) is proven good.
+- Migration. Schema is unchanged. `events` cover columns are already nullable per existing DDL.
+- Switching from `eager_notification_url` to `notification_url`. Out of scope per AMENDMENT 6 non-goal.
+- Cloudinary RN SDK adoption. Out of scope per AMENDMENT 5 non-goal.
+- Draft-event cover save path. The investigation's blast radius §7 notes draft-side may have the same shape, but a separate ORCH should own that audit — folding it here widens scope.
+- Trip-event cover save path. `tripsService.ts:672-674` has the same `patch.coverMediaUrl !== undefined` read-through. Out of scope; document as Discovery for Orchestrator follow-up.
+- Brand-cover service (`useBrandCoverUpload.ts`). Different write path; out of scope.
+- Removing the COMMS-0002 backend-allowlist requirement (none of this PR's files are under `supabase/`).
+- Re-running prior phases' verification (webhook v122 already PASSED on sim + physical iPhone).
+
+**Assumptions:**
+- The investigation's PROBABLE root cause (F-1: read-through to `liveEvent.coverMediaUrl=null`) is correct. The fix direction (split service + tighten guard + round-trip) is correct regardless of WHICH client-side sub-mechanism produces the bad patch shape — it tightens the boundary structurally.
+- `events.cover_media_*` columns are nullable; RLS UPDATE permits the editing user to write cover columns on a live event (verified via prior IMPLEMENT-2 success path).
+- React Query cache invalidation downstream of save remains the orchestrator's concern; this SPEC does not modify cache keys.
+
+### C — Cross-Surface Impact (MANDATORY per Phase 2.5)
+
+| Surface | In scope? | User-visible behaviour the SPEC demands | File paths touched on this surface | Parity |
+|---|---|---|---|---|
+| Consumer iOS (`app-mobile/` on iOS) | NO | N/A — consumer app does not author event covers | None | N/A |
+| Consumer Android (`app-mobile/` on Android) | NO | N/A — same as above | None | N/A |
+| Buyer/anonymous Web | NO | N/A — buyer pages read cover URLs but never write them | None | N/A — automatic by absence |
+| Business iOS (`mingla-business/` on iOS) | **YES** | Upload video on published event → Save changes → cover persists and renders on reopen | `mingla-business/src/services/eventCoverMediaService.ts`, `mingla-business/src/components/event/EditPublishedScreen.tsx`, `mingla-business/src/components/ui/CoverPicker.tsx`, `mingla-business/src/hooks/useEventCoverVideoUpload.ts`, `mingla-business/src/utils/eventCoverNativeVideo.ts`, `mingla-business/src/utils/eventCoverMediaRules.ts` | **Automatic** (shared client code; same TypeScript bundle ships to both platforms) |
+| Business Android (`mingla-business/` on Android) | **YES** | Same as Business iOS | Same files (shared) | **Automatic** (same bundle) |
+| Admin Web (`mingla-admin/`) | NO | N/A — admin does not author event covers | None | N/A |
+| Business Web preview (`mingla-business/` dev/web) | YES (incidental) | Same backend write path; if cover-edit UI is ever exposed on web, this fix protects it | Same files (shared) | **Automatic** (same React Native Web bundle path) |
+
+**Parity is fully automatic.** No platform-specific code paths. Single set of success criteria suffices for all covered surfaces.
+
+### D — Layered specification
+
+#### D.1 — Service layer: split `eventCoverMediaService.ts`
+
+**Current state (lines 180-222):** One function `updatePublishedEventCoverMedia(serverEventId, mediaUrl, mediaType, metadata)` with `mediaUrl: string | null`. Service uses `mediaUrl === null ? null : ...` ternaries for all 6 metadata columns, so calling with null nulls everything.
+
+**Required transformation:**
+
+REMOVE `updatePublishedEventCoverMedia` entirely (delete the function — do NOT alias, do NOT re-export, do NOT deprecate-then-keep). Replace with two new exports:
+
+```ts
+export const setEventCover = async (
+  serverEventId: string,
+  mediaUrl: string,              // NOT NULL — TypeScript enforces
+  mediaType: EventCoverMediaType, // NOT NULL — TypeScript enforces
+  metadata: EventCoverProviderMetadata,
+): Promise<{ id: string; cover_media_url: string; cover_media_type: EventCoverMediaType }> => {
+  if (serverEventId.trim().length === 0) {
+    throw new EventCoverMediaError(
+      "missing_server_event_id",
+      "Save failed because this event is missing its server id.",
+    );
+  }
+  const { data, error } = await supabase
+    .from("events")
+    .update({
+      cover_media_url: mediaUrl,
+      cover_media_type: mediaType,
+      cover_media_provider: metadata.provider ?? null,
+      cover_media_source_url: metadata.sourceUrl ?? null,
+      cover_media_credit: metadata.credit ?? null,
+      cover_media_credit_url: metadata.creditUrl ?? null,
+      cover_media_alt: metadata.alt ?? null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", serverEventId)
+    .eq("event_type", "event")
+    .is("deleted_at", null)
+    .select("id, cover_media_url, cover_media_type")
+    .maybeSingle();
+
+  if (error !== null) {
+    throw new EventCoverMediaError("upload_failed", error.message);
+  }
+  if (data === null) {
+    throw new EventCoverMediaError(
+      "missing_server_event_id",
+      "Save failed because this event could not be found.",
+    );
+  }
+  // Item 3 round-trip verification (see D.2 caller).
+  if (data.cover_media_url !== mediaUrl) {
+    throw new EventCoverMediaError(
+      "persist_mismatch",
+      "Save succeeded but the cover did not persist. Refresh and try again.",
+    );
+  }
+  return data as { id: string; cover_media_url: string; cover_media_type: EventCoverMediaType };
+};
+
+export const clearEventCover = async (
+  serverEventId: string,
+): Promise<void> => {
+  if (serverEventId.trim().length === 0) {
+    throw new EventCoverMediaError(
+      "missing_server_event_id",
+      "Save failed because this event is missing its server id.",
+    );
+  }
+  const { data, error } = await supabase
+    .from("events")
+    .update({
+      cover_media_url: null,
+      cover_media_type: null,
+      cover_media_provider: null,
+      cover_media_source_url: null,
+      cover_media_credit: null,
+      cover_media_credit_url: null,
+      cover_media_alt: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", serverEventId)
+    .eq("event_type", "event")
+    .is("deleted_at", null)
+    .select("id")
+    .maybeSingle();
+
+  if (error !== null) {
+    throw new EventCoverMediaError("upload_failed", error.message);
+  }
+  if (data === null) {
+    throw new EventCoverMediaError(
+      "missing_server_event_id",
+      "Save failed because this event could not be found.",
+    );
+  }
+};
+```
+
+**Error contract additions:** `EventCoverMediaError` codes union must include `"persist_mismatch"` (new). Update `src/services/eventCoverMediaService.ts` or whichever file declares the `EventCoverMediaErrorCode` union (search for `type EventCoverMediaErrorCode`).
+
+**Test-guard update:** `src/utils/__tests__/serverDraftLifecycleGuards.test.ts:352` currently asserts `source.indexOf("updatePublishedEventCoverMedia(") > 0`. Update the assertion to look for `setEventCover(` or `clearEventCover(` — both are valid post-AMENDMENT-7. Implementor MUST land this change in Commit 1 alongside the service rewrite.
+
+#### D.2 — Component layer: rewrite the cover-save block in `EditPublishedScreen.tsx`
+
+**Current state (lines 617-674):** `mediaPatchPresent = patch.coverMediaUrl !== undefined || ... || patch.coverMediaAlt !== undefined`. If true, calls `updatePublishedEventCoverMedia` with read-through fall-back to `liveEvent.coverMediaUrl` for the URL and metadata fields.
+
+**Required transformation:**
+
+```ts
+// === REPLACEMENT FOR LINES 617-674 ===
+
+const explicitCoverSet =
+  patch.coverMediaUrl !== undefined && patch.coverMediaUrl !== null;
+const explicitCoverClear = patch.coverMediaUrl === null;
+const metadataOnlyPatch =
+  patch.coverMediaUrl === undefined &&
+  (patch.coverMediaType !== undefined ||
+    patch.coverMediaProvider !== undefined ||
+    patch.coverMediaSourceUrl !== undefined ||
+    patch.coverMediaCredit !== undefined ||
+    patch.coverMediaCreditUrl !== undefined ||
+    patch.coverMediaAlt !== undefined);
+
+if (explicitCoverSet || explicitCoverClear) {
+  if (liveEvent.serverEventId === null) {
+    setSubmitting(false);
+    setModal((prev) => ({ ...prev, visible: false }));
+    showToast("Save failed because this event is missing its server id.");
+    return;
+  }
+  try {
+    if (explicitCoverClear) {
+      await clearEventCover(liveEvent.serverEventId);
+    } else {
+      // explicitCoverSet — assertion: patch.coverMediaUrl is a non-null string here.
+      // TypeScript narrowing requires non-null assertion or refinement.
+      const mediaUrl = patch.coverMediaUrl as string;
+      const mediaType = patch.coverMediaType ?? liveEvent.coverMediaType;
+      if (mediaType === null) {
+        // Defensive: cover URL set but no type — should never happen since
+        // every emitChange call site in CoverPicker sets both fields together.
+        // Treat as silent-failure prevention.
+        throw new EventCoverMediaError(
+          "upload_failed",
+          "Cover save failed: media type is missing.",
+        );
+      }
+      await setEventCover(
+        liveEvent.serverEventId,
+        mediaUrl,
+        mediaType,
+        {
+          provider:
+            patch.coverMediaProvider !== undefined
+              ? patch.coverMediaProvider
+              : liveEvent.coverMediaProvider ?? null,
+          sourceUrl:
+            patch.coverMediaSourceUrl !== undefined
+              ? patch.coverMediaSourceUrl
+              : liveEvent.coverMediaSourceUrl ?? null,
+          credit:
+            patch.coverMediaCredit !== undefined
+              ? patch.coverMediaCredit
+              : liveEvent.coverMediaCredit ?? null,
+          creditUrl:
+            patch.coverMediaCreditUrl !== undefined
+              ? patch.coverMediaCreditUrl
+              : liveEvent.coverMediaCreditUrl ?? null,
+          alt:
+            patch.coverMediaAlt !== undefined
+              ? patch.coverMediaAlt
+              : liveEvent.coverMediaAlt ?? null,
+        },
+      );
+    }
+  } catch (error) {
+    setSubmitting(false);
+    setModal((prev) => ({ ...prev, visible: false }));
+    if (error instanceof EventCoverMediaError) {
+      if (error.code === "persist_mismatch") {
+        showToast("Save succeeded but the cover did not persist. Refresh and try again.");
+      } else {
+        showToast("Cover upload failed. Try again.");
+      }
+    } else {
+      showToast("Could not save cover media. Try again.");
+    }
+    return;
+  }
+} else if (metadataOnlyPatch) {
+  // No URL change AND no explicit clear — metadata-only patches without a
+  // cover URL change cannot persist meaningfully (the service ALWAYS
+  // co-writes URL or NULL-everything). Skip the call. If this fires
+  // unexpectedly, log for diagnostic; do not invoke the cover service.
+  console.warn(
+    "[ORCH-0978]",
+    "metadata-only cover patch skipped (no coverMediaUrl change)",
+    { patchKeys: Object.keys(patch).filter((k) => k.startsWith("coverMedia")) },
+  );
+}
+// Else: no cover field in patch — fall through to the next save block (taxonomy/when/theme).
+```
+
+**Import updates required at the top of the file:** Remove `updatePublishedEventCoverMedia` from the import; add `setEventCover` and `clearEventCover` from `../../services/eventCoverMediaService`.
+
+**Toast copy for persist-mismatch:** "Save succeeded but the cover did not persist. Refresh and try again." (mirrors investigation §9's recommended wording).
+
+#### D.3 — Component layer: handleRemoveCover wires to clearEventCover via the picker → updateDraft chain (NOT direct service call)
+
+`CoverPicker.tsx:562-575` `handleRemoveCover` currently calls `emitChange({ ...all 7 fields null... })`. That flows through `updateDraft` → `setEditState` and is then persisted by `EditPublishedScreen`'s save flow per D.2. Under the new D.2 logic, `patch.coverMediaUrl === null` triggers `explicitCoverClear` → `clearEventCover()`. **No source change required in CoverPicker.tsx for handleRemoveCover** — the wiring is preserved end-to-end; only the persistence path (which CoverPicker doesn't know about) changes.
+
+Verification step the implementor MUST perform: read CoverPicker.tsx:562-575 verbatim post-rewrite; confirm `emitChange({ coverMediaUrl: null, ... })` still matches today's signature. Confirm `EditPublishedScreen.tsx`'s save block correctly routes that patch shape to `clearEventCover` per D.2.
+
+#### D.4 — Hook layer: `useEventCoverVideoUpload.ts` passes trim values explicitly
+
+**Current state (lines 92-100):**
+```ts
+const intent = await createEventCoverVideoUploadIntent({
+  applyMode,
+  brandId,
+  eventId,
+  sourceBytes: compressed.bytes,
+  sourceDurationMs: compressed.durationMs,
+  sourceFileName: file.fileName ?? null,
+  sourceMimeType: file.mimeType ?? null,
+});
+```
+
+**Required transformation:**
+```ts
+const intent = await createEventCoverVideoUploadIntent({
+  applyMode,
+  brandId,
+  eventId,
+  sourceBytes: compressed.bytes,
+  sourceDurationMs: compressed.durationMs,
+  sourceFileName: file.fileName ?? null,
+  sourceMimeType: file.mimeType ?? null,
+  trimStartMs: 0,
+  trimEndMs: compressed.durationMs,
+});
+```
+
+No behavior change today (backend defaults are identical to these values). Self-documenting contract for future explicit-trim work.
+
+**Type contract:** `createEventCoverVideoUploadIntent` input type (in `eventCoverVideoProcessingService.ts`) likely already accepts optional `trimStartMs` and `trimEndMs` (since edge function reads them). Implementor verifies and adds to the type if missing — no behavior change to the edge function.
+
+#### D.5 — Text layer: replace 3 stale "30 seconds" strings
+
+| File | Line | Old | New |
+|---|---|---|---|
+| `mingla-business/src/utils/eventCoverNativeVideo.ts` | 62 | `message: "Please trim to 30 seconds first.",` | `message: "Please trim to 29 seconds first.",` |
+| `mingla-business/src/utils/eventCoverMediaRules.ts` | 318 | `"Choose an image, GIF, or MP4/MOV/WebM video up to 30 seconds.",` | `"Choose an image, GIF, or MP4/MOV/WebM video up to 29 seconds.",` |
+| `mingla-business/src/utils/eventCoverMediaRules.ts` | 343 | `"Cover videos must be 30 seconds or shorter.",` | `"Cover videos must be 29 seconds or shorter.",` |
+
+#### D.6 — CI gate layer: strict-grep extensions
+
+Extend `.github/scripts/strict-grep/orch-0978-video-cap-29s.mjs` with TWO new checks after the existing C7:
+
+**C8 — eventCoverMediaService split + dead literal:**
+```js
+const eventCoverMediaServicePath = "mingla-business/src/services/eventCoverMediaService.ts";
+const eventCoverMediaService = read(eventCoverMediaServicePath);
+if (!eventCoverMediaService.includes("export const setEventCover")) {
+  fail("C8", `${eventCoverMediaServicePath} must export setEventCover`);
+} else if (!eventCoverMediaService.includes("export const clearEventCover")) {
+  fail("C8", `${eventCoverMediaServicePath} must export clearEventCover`);
+} else if (eventCoverMediaService.includes("updatePublishedEventCoverMedia")) {
+  fail(
+    "C8",
+    `${eventCoverMediaServicePath} must NOT reference updatePublishedEventCoverMedia (dead literal)`,
+  );
+} else {
+  ok("C8", "eventCoverMediaService exports setEventCover + clearEventCover; old symbol is dead");
+}
+```
+
+**C9 — dead "30 seconds" literal across two utils files:**
+```js
+const nativeVideoPath = "mingla-business/src/utils/eventCoverNativeVideo.ts";
+const mediaRulesPath2 = "mingla-business/src/utils/eventCoverMediaRules.ts";
+const nativeVideoText = read(nativeVideoPath);
+const mediaRulesText = read(mediaRulesPath2);
+const offendingFiles = [];
+if (nativeVideoText.includes("30 seconds")) offendingFiles.push(nativeVideoPath);
+if (mediaRulesText.includes("30 seconds")) offendingFiles.push(mediaRulesPath2);
+if (offendingFiles.length > 0) {
+  fail(
+    "C9",
+    `"30 seconds" literal must not appear in: ${offendingFiles.join(", ")}`,
+  );
+} else {
+  ok("C9", `"30 seconds" literal is dead in eventCoverNativeVideo.ts + eventCoverMediaRules.ts`);
+}
+```
+
+Both checks placed after the existing C7 block, before the final `if (process.exitCode && process.exitCode !== 0)` exit-code propagation.
+
+### E — Success criteria (numbered, observable, testable)
+
+| ID | Criterion |
+|---|---|
+| **SC-AMEND7-1** | Upload a video on a published event with NULL cover. Tap Save changes + enter reason + confirm. Reopen the event. `events.cover_media_url` is the processed Cloudinary URL (non-null). User sees the new cover. |
+| **SC-AMEND7-2** | Same flow as SC-AMEND7-1 but tap Remove cover instead. After save, `events.cover_media_url` is NULL AND `events.cover_media_type` is NULL AND all 5 metadata columns are NULL. |
+| **SC-AMEND7-3** | A patch shape with metadata-only changes (e.g., coverMediaAlt set but coverMediaUrl undefined) skips the cover service call. `console.warn("[ORCH-0978]", "metadata-only cover patch skipped...")` fires (visible in Metro logs). |
+| **SC-AMEND7-4** | If `setEventCover` is mocked to return a row with `cover_media_url` different from the `mediaUrl` passed in, `EventCoverMediaError("persist_mismatch", ...)` is thrown and toast "Save succeeded but the cover did not persist. Refresh and try again." appears. |
+| **SC-AMEND7-5** | `setEventCover(serverEventId, mediaUrl: null, ...)` is a TypeScript compile-time error. The `mediaUrl: string` (NOT `string | null`) parameter type forbids null at the type system level. |
+| **SC-AMEND7-6** | `mingla-business/src/utils/eventCoverNativeVideo.ts` AND `mingla-business/src/utils/eventCoverMediaRules.ts` contain zero occurrences of the literal `"30 seconds"`. Toast wording matches `"Please trim to 29 seconds first."`. |
+| **SC-AMEND7-7** | `useEventCoverVideoUpload.ts` invokes `createEventCoverVideoUploadIntent` with `trimStartMs: 0, trimEndMs: compressed.durationMs`. Metro log line `upload-intent-request` includes `trimStartMs: 0, trimEndMs: <duration>` (not `undefined`). |
+| **SC-AMEND7-8** | Strict-grep gates C1-C9 all PASS (`node .github/scripts/strict-grep/orch-0978-video-cap-29s.mjs`). Existing ORCH-0863 backend allowlist gate stays green (no `supabase/functions/` touch in this commit). |
+
+### F — Invariants (preserved + new)
+
+**Preserved:**
+- Webhook v122 `verify_jwt = false` — N/A (this SPEC is client-only).
+- AMENDMENT 6 invariants (webhook duration fallback) — unchanged.
+- AMENDMENT 5 invariants (webhook public_id job_id recovery) — unchanged.
+- META-ORCH-0744 two-commit landing — product commit then test commit with fails-on-revert proof.
+
+**NEW invariant introduced (proposed):**
+
+**I-PROPOSED-NO-COVER-NULL-IMPLICIT-WRITE** — A cover service function MUST NOT accept `mediaUrl: string | null` and write null based on a falsy check. Setting a cover requires `mediaUrl: string` (non-null TS type). Clearing a cover requires invoking an explicit clear function. The implicit-null-write bug class is structurally impossible after this SPEC ships. Backed by:
+- Strict-grep C8 (dead `updatePublishedEventCoverMedia` literal + presence of both new exports).
+- Service tests T-AMEND7-01 + T-AMEND7-02.
+- Constitution rule 3 (no silent failures): F-4 from investigation is structurally closed by round-trip verification in `setEventCover`.
+
+Promote to ACTIVE on ORCH-0978 CLOSE.
+
+### G — Test cases (8 scenarios)
+
+| ID | Scenario | Input | Expected | Layer | Owner |
+|---|---|---|---|---|---|
+| **T-AMEND7-01** | `setEventCover` writes all 7 columns with non-null mediaUrl + round-trip succeeds | Mock Supabase: `.update().select().maybeSingle()` returns `{id, cover_media_url: <mediaUrl>, cover_media_type: <mediaType>}` | Function resolves (no throw); UPDATE payload has all 7 cover columns set; no `cover_media_url: null` write | Service unit test | Implementor (happy-path) |
+| **T-AMEND7-02** | `clearEventCover` nulls all 7 columns | Mock Supabase: `.update().select().maybeSingle()` returns `{id}` | Function resolves; UPDATE payload sets all 7 cover columns to NULL | Service unit test | Implementor |
+| **T-AMEND7-03** | `setEventCover` TypeScript-rejects null mediaUrl at compile time | `setEventCover(id, null as any, ...)` in a `// @ts-expect-error` comment line | TypeScript compile fails on the call site (verified by ensuring `tsc` errors when the `// @ts-expect-error` is removed) | TS unit / type-level | Implementor |
+| **T-AMEND7-04** | `setEventCover` throws persist_mismatch on stub-returning-mismatched-row | Mock returns `{id, cover_media_url: null, ...}` despite mediaUrl="https://...mp4" | `EventCoverMediaError` thrown with `code: "persist_mismatch"` and the expected message | Service unit test | Implementor |
+| **T-AMEND7-05** | `EditPublishedScreen` save flow calls `setEventCover` with non-null mediaUrl after video-ready emitChange | Render `EditPublishedScreen` with liveEvent having NULL cover; simulate `emitChange({coverMediaUrl: "https://x.mp4", coverMediaType: "video", ...})`; trigger `handleConfirmSave("reason ≥ 10 chars")` | `setEventCover` called once with `mediaUrl="https://x.mp4"` and `mediaType="video"`; `clearEventCover` NOT called; no toast about failure | Component integration test (Jest + Testing Library) | **Tester (adversarial — closes the actual physical-iPhone repro)** |
+| **T-AMEND7-06** | Metadata-only patch skips the cover service entirely | Render with liveEvent having coverMediaUrl="https://existing"; simulate `updateDraft({coverMediaAlt: "new alt"})`; trigger save | Neither `setEventCover` nor `clearEventCover` called; `console.warn` with `[ORCH-0978]` + "metadata-only cover patch skipped" fires; save proceeds to next block | Component integration test | Implementor |
+| **T-AMEND7-07** | Explicit Remove → `clearEventCover` invoked | Render with liveEvent having existing cover; simulate `handleRemoveCover()` (which emits all-null patch); trigger save | `clearEventCover` called once with serverEventId; `setEventCover` NOT called | Component integration test | Implementor |
+| **T-AMEND7-08** | Persist-mismatch surfaces user-visible toast | Render save flow; mock `setEventCover` to throw `EventCoverMediaError("persist_mismatch", ...)` | Toast "Save succeeded but the cover did not persist. Refresh and try again." appears; submitting state cleared | Component integration test | Tester adversarial |
+
+**META-ORCH-0744 mapping:**
+- **Implementor happy-path:** T-AMEND7-05 (the most direct exercise of the bug — render → emitChange → save → assert setEventCover called with non-null URL). Implementor writes; lands in Commit 2; fails-on-revert at the product commit hash (assert fails before the rewrite, passes after).
+- **Tester adversarial:** T-AMEND7-08 (attacks the silent-failure surface from a different angle — verifies that even when persistence FAILS the user sees a truthful toast). Tester writes during RETEST; lands as the tester's commit before PR. Different angle = error-surface verification vs happy-path persistence verification.
+
+Both must include `fails-on-revert verified at <commit hash>` lines.
+
+### H — Implementation order (binding two-commit pattern per META-ORCH-0744)
+
+**Commit 1 — product fix (~150 net lines across 8 files):**
+1. `mingla-business/src/services/eventCoverMediaService.ts`: delete `updatePublishedEventCoverMedia` (lines 180-222); add `setEventCover` (~50 lines) + `clearEventCover` (~30 lines); extend `EventCoverMediaErrorCode` union to include `"persist_mismatch"`.
+2. `mingla-business/src/components/event/EditPublishedScreen.tsx`: replace lines 617-674 with the new conditional tree from §D.2 (~75 lines including the metadata-only warn branch); update the import at line 108 to remove `updatePublishedEventCoverMedia`, add `setEventCover` + `clearEventCover`.
+3. `mingla-business/src/hooks/useEventCoverVideoUpload.ts`: extend lines 92-100 with `trimStartMs: 0` and `trimEndMs: compressed.durationMs` per §D.4.
+4. `mingla-business/src/utils/eventCoverNativeVideo.ts` line 62: 30 → 29.
+5. `mingla-business/src/utils/eventCoverMediaRules.ts` lines 318 + 343: 30 → 29 (two places).
+6. `mingla-business/src/utils/__tests__/serverDraftLifecycleGuards.test.ts` line 352: update assertion to look for `setEventCover(` or `clearEventCover(` rather than `updatePublishedEventCoverMedia(`. Land in Commit 1 to keep the existing test green.
+7. `.github/scripts/strict-grep/orch-0978-video-cap-29s.mjs`: append C8 + C9 per §D.6.
+8. (Optional Item 8) `mingla-business/src/components/event/EditPublishedScreen.tsx` line ~407: add `console.log("[ORCH-0978-DIAG]", "save-patch", JSON.stringify(patch));` immediately after `const patch = currentPatch;` inside `handleSavePress`. Implementor decides whether to include — orchestrator reaps at CLOSE Step 1.5 if present.
+
+Commit message prefix: `ORCH-0978 IMPLEMENT-5 step 1: split eventCoverMediaService into setEventCover + clearEventCover; tighten EditPublishedScreen cover-save guard with round-trip verification; wire trim values through upload-intent; replace 3 stale "30 seconds" strings`.
+
+**Commit 2 — Jest regression tests (~200 net lines, 2 test files):**
+1. `mingla-business/src/services/__tests__/eventCoverMediaService.setClearSplit.test.ts` — NEW. Scenarios T-AMEND7-01, T-AMEND7-02, T-AMEND7-03 (TS expect-error), T-AMEND7-04.
+2. `mingla-business/src/components/event/__tests__/EditPublishedScreen.coverPersistence.test.tsx` — NEW. Scenarios T-AMEND7-05, T-AMEND7-06, T-AMEND7-07.
+3. (Tester adds T-AMEND7-08 during RETEST commit — different scope, different commit. Tester also commits the fails-on-revert proof for their own test.)
+
+**Fails-on-revert proof (mandatory):**
+
+| Phase | Action | Expected |
+|---|---|---|
+| PASS on fixed code | `cd mingla-business && npm test -- --testPathPattern="(setClearSplit\|coverPersistence)"` at Commit 1 hash | 7/7 PASS (T-AMEND7-01 through T-AMEND7-07) |
+| FAIL with rewrite reverted | Temporarily revert `EditPublishedScreen.tsx` lines 617-end of replacement block back to the old `mediaPatchPresent + updatePublishedEventCoverMedia` shape (do NOT commit); re-run | T-AMEND7-05 + T-AMEND7-07 FAIL because `setEventCover` / `clearEventCover` were never called (the old code called the now-removed `updatePublishedEventCoverMedia`). T-AMEND7-06 may pass or fail depending on revert depth. |
+| PASS restored | Re-apply rewrite; re-run | 7/7 PASS |
+
+Document all three phases verbatim in the implementation report per IMPLEMENT-3 + IMPLEMENT-4 precedent.
+
+### I — Regression prevention
+
+1. **Strict-grep C8** (Item 6) makes "future engineer re-introduces `updatePublishedEventCoverMedia` symbol" or "removes one of the new exports" impossible to ship.
+2. **Strict-grep C9** (Item 6) makes "future engineer adds a `30 seconds` string back" impossible to ship.
+3. **T-AMEND7-05 fixture** (the actual physical-iPhone repro shape — published event + NULL cover + video upload + save) is the canonical regression fixture for the F-1 bug class. Locks the behavior.
+4. **`setEventCover`'s TypeScript signature** (`mediaUrl: string` not `string | null`) makes the bug class structurally impossible at the type system level — the implicit-null-write bug cannot recur.
+5. **Round-trip verification in `setEventCover`** (the `if (data.cover_media_url !== mediaUrl) throw persist_mismatch`) closes the silent-failure surface — any future regression that produces a DB write mismatch will surface as a toast, not a silent success.
+6. **New invariant I-PROPOSED-NO-COVER-NULL-IMPLICIT-WRITE** (promotes to ACTIVE on CLOSE) — documents the pattern for any future cover-like service (e.g., a future "brand cover" or "trip cover" rewrite — see Discoveries §J).
+
+### J — Cross-Surface Impact closing summary
+
+Business iOS + Android (shared bundle) — automatic parity. No backend touch (no edge function source change, no migration). Orchestrator does NOT need to batch-redeploy edge functions after this PR. Tester runs T-AMEND7-05/06/07/08 on the iOS sim; Seth re-validates the physical iPhone path with the exact 16s-video-on-published-event flow from his 2026-05-27 test.
+
+### K — Deploy discipline
+
+**No edge function redeploy.** All six event-cover-video functions stay at current versions (webhook v122, upload-intent v96, source-uploaded v83, status v95, apply v93, cancel v93).
+
+**No `supabase db push`.** No migrations.
+
+**EAS OTA at CLOSE:** Required. `mingla-business/src/` is touched in 6 files. CLOSE commit MUST include `[deploy]` tag for the Vercel gate (because `mingla-business/` is a Next.js + React Native universal bundle and the Vercel side ships the web preview). Per orchestrator skill Step 2.5.
+
+**Pre-merge gate at CLOSE:** Standard — checks green + conflicts clean + reviews approved + not behind. No exemption.
+
+### L — Downstream routing
+
+- Forensics returns SPEC → orchestrator REVIEW (commit-hash verification + dependency walk per DEC-179).
+- Orchestrator dispatches IMPLEMENT-5 to Codex `implementor-mingla` (default) or Claude `mingla-implementor`.
+- Implementor returns with Commit 1 + Commit 2 + implementation report at `Mingla_Artifacts/reports/IMPLEMENTATION_ORCH-0978_IMPLEMENT_5.md`.
+- Orchestrator REVIEWs IMPLEMENT-5. NO edge function redeploy. NO `supabase db push`.
+- Tester (Codex `tester-mingla` or Claude `mingla-tester`) live-fire RETEST on iOS sim:
+  - T-AMEND7-05 (upload video → save → cover persists)
+  - T-AMEND7-06 (metadata-only patch skipped)
+  - T-AMEND7-07 (remove → clearEventCover invoked)
+  - T-AMEND7-08 (persist-mismatch surfaces toast — tester writes the test as their adversarial regression per META-ORCH-0744)
+  - Plus strict-grep C1-C9 all green
+  - Plus Item 5 visual verification (toast text on the sim says "29 seconds" not "30 seconds")
+- Pause for Seth's physical iPhone re-validation: open A life in vegas → Cover → Upload 16s video → Save changes → reopen → cover renders.
+- After both PASS → orchestrator CLOSE with `[deploy]` tag + EAS OTA iOS+Android publish + PR open + pre-merge gate + squash merge + worktree reap. Closes the ORCH-0978 ORCH end-to-end (backend AMENDMENT 4-5-6 + client AMENDMENT 7 all merged).
+
+### M — Confidence — HIGH
+
+Investigation's PROBABLE root cause + named blocker is binding-grade for SPEC; the fix direction is unambiguous regardless of which client sub-mechanism produces the bad patch shape (the new contract structurally prevents the bug). Service split + round-trip verification + strict-grep + Jest fixture cover the bug class from 4 angles. TypeScript signature change makes regression compile-time impossible. Two-commit landing pattern is well-rehearsed (4 prior IMPLEMENT phases in this ORCH). Scope is tightly bounded — client-only, no backend touch, no migration, no rollback risk to any prior IMPLEMENT phase. ~150 net product lines + ~200 net test lines across 8 files. Optional Item 8 DIAG console.log gives the implementor a clean PROBABLE→PROVEN upgrade path inside Commit 1 without expanding scope.
+
+---
+
 
