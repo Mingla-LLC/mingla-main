@@ -372,14 +372,8 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
             style={StyleSheet.absoluteFillObject}
           />
           {renderBack()}
-          <TouchableOpacity
-            style={[styles.overflowButton, { top: headerTop }]}
-            activeOpacity={0.86}
-            accessibilityRole="button"
-            accessibilityLabel={`Profile actions for ${name}`}
-          >
-            <Icon name="ellipsis-horizontal" size={s(22)} color="#ffffff" />
-          </TouchableOpacity>
+          {/* ORCH-0986: the ••• more-menu (unpair/mute/block/report/add-to-session) is
+              its own follow-up ORCH. Hidden here until then to avoid a dead tap (Constitution #1). */}
           <View style={styles.heroIdentity}>
             <Text style={styles.heroName} numberOfLines={2}>{name}</Text>
             <View style={styles.heroMetaRow}>
@@ -417,18 +411,32 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
             </TouchableOpacity>
           ) : null}
 
-          {profile.categories.length > 0 && (
-            <View style={styles.interestsWrap}>
-              {profile.categories.map(cat => {
-                const slug = cat.toLowerCase().replace(/[^a-z_]/g, '_');
-                const label = t(`common:category_${slug}`, { defaultValue: cat.replace(/_/g, ' ') });
-                return (
-                  <View key={cat} style={styles.interestPill}>
-                    <Icon name={getCategoryChipIcon(cat) as any} size={s(14)} color="#c2410c" />
-                    <Text style={styles.interestPillText}>{label}</Text>
-                  </View>
-                );
-              })}
+          {/* ORCH-0986: "Users Vibe" — render BOTH chosen categories and intents. */}
+          {(profile.categories.length > 0 || profile.intents.length > 0) && (
+            <View style={styles.interestsSection}>
+              <Text style={styles.interestsHeader}>{t('profile:friend.users_vibe', { defaultValue: 'Users Vibe' })}</Text>
+              <View style={styles.interestsWrap}>
+                {profile.categories.map(cat => {
+                  const slug = cat.toLowerCase().replace(/[^a-z_]/g, '_');
+                  const label = t(`common:category_${slug}`, { defaultValue: cat.replace(/_/g, ' ') });
+                  return (
+                    <View key={`cat-${cat}`} style={styles.interestPill}>
+                      <Icon name={getCategoryChipIcon(cat) as any} size={s(14)} color="#c2410c" />
+                      <Text style={styles.interestPillText}>{label}</Text>
+                    </View>
+                  );
+                })}
+                {profile.intents.map(intent => {
+                  const slug = intent.toLowerCase().replace(/[^a-z_]/g, '_');
+                  const label = t(`common:intent_${slug}`, { defaultValue: intent.replace(/_/g, ' ') });
+                  return (
+                    <View key={`intent-${intent}`} style={styles.interestPill}>
+                      <Icon name="sparkles-outline" size={s(14)} color="#c2410c" />
+                      <Text style={styles.interestPillText}>{label}</Text>
+                    </View>
+                  );
+                })}
+              </View>
             </View>
           )}
 

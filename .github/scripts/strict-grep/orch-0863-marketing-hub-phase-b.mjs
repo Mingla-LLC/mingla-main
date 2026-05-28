@@ -911,6 +911,7 @@ function checkNoNewBackendFiles() {
     "supabase/migrations/20260730000001_orch_0978_video_cap_generous_source.sql",
     "supabase/migrations/20260730000002_orch_0986_paired_friend_last_location.sql",
     "supabase/migrations/20260730000003_orch_0986_lock_friend_location_rpc.sql",
+    "supabase/migrations/20260730000004_orch_0986_friend_location_resolution_chain.sql",
     "supabase/functions/_shared/personHeroCards.ts",
     "supabase/functions/_shared/personHeroCards.test.ts",
     "supabase/functions/_shared/personHeroCards.adversarial.test.ts",
