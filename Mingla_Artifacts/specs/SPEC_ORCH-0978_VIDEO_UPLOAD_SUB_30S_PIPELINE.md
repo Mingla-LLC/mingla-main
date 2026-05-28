@@ -2502,3 +2502,109 @@ The SPEC is HIGH-confidence: every cap site read and verified (12 sites), exact 
 ---
 
 
+
+## SPEC AMENDMENT 9 (a.k.a. AMENDMENT 7 in operator language) — 2026-05-28 — Reliable user-controlled trim via dedicated trimmer (replaces unreliable picker `allowsEditing`)
+
+**Author:** Claude `mingla-orchestrator` (operator-delegated SPEC).
+**Binding input:** `Mingla_Artifacts/reports/INVESTIGATION_ORCH-0978_PICKER_TRIM_NOT_APPLIED.md` (root cause PROVEN). Supersedes the keyframe-overshoot root cause in `INVESTIGATION_ORCH-0978_KEYFRAME_OVERSHOOT.md` §9.5.
+**Operator decision (locked 2026-05-28):** the user MUST be able to trim to ANY ~29s segment (not auto-first-29s); that chosen segment becomes the cover. Architecture B (local trim, upload the segment) approved.
+**Comms:** COMMS-0003 — library install/API docs cited inline (`react-native-video-trim`). COMMS-0002 — N/A (no backend/migration touch in this amendment).
+
+### A — Layman summary
+
+The video cover relies on Apple's built-in picker trim (`allowsEditing` + `videoMaxDuration`), which is documented-unreliable (expo #16146) and on the operator's iPhone returns the FULL video, discarding the user's trim. This amendment removes that dependency and adds a dedicated trimmer (`react-native-video-trim`) so the user drags to any ≤29s segment and the app uploads that exact trimmed file. No backend change — the existing pipeline already treats the uploaded clip as the final cover. Ships as a native build (eas build), not OTA.
+
+### B — Scope and non-goals
+
+**In scope:**
+1. Add `react-native-video-trim` dependency + Expo config (native module; dev/eas build required).
+2. Rewrite the video path in `CoverPicker.tsx`: picker selects (no `allowsEditing`/`videoMaxDuration`), then the dedicated trimmer (`maxDuration: 29`) produces the trimmed file; wire its result into the existing upload flow.
+3. BLOCKING on-device PoC clause (mirrors AMENDMENT 3) before full wiring.
+4. New invariant + strict-grep: the cover video path must NOT use picker `allowsEditing` for trimming and MUST route through the dedicated trimmer.
+5. Regression tests (two-commit landing).
+
+**Non-goals:**
+- NO edge function change, NO migration, NO Cloudinary `so_` (Architecture A rejected). `du_` + the AMENDMENT-8 33s ceiling/clamp/constraints stay as harmless defense-in-depth.
+- NO web-native trimmer (web has no native module) — web composer keeps current behavior (selection + the 33s ceiling check); a web in-browser trim UI is a separate future ORCH.
+- NO visual restyling of the trimmer beyond the library's default UI (a designer polish pass is a follow-up if the operator wants it).
+- NO change to compression (`react-native-compressor`), upload, webhook, or apply logic.
+
+**Assumptions:**
+- `react-native-video-trim` works with Expo SDK 54 + dev client (PoC clause verifies). Cite: https://github.com/maitrungduc1410/react-native-video-trim + https://www.npmjs.com/package/react-native-video-trim
+- Both apps already require native dev builds (existing `react-native-compressor` + `expo-video`), so adding one more native module is consistent.
+
+### C — Cross-Surface Impact (MANDATORY)
+
+| Surface | In scope? | Behaviour | Parity |
+|---|---|---|---|
+| Business iOS (`mingla-business/`) | YES (primary) | pick → dedicated trimmer (drag any ≤29s window) → that segment uploads + becomes cover | native; verified per-platform |
+| Business Android (`mingla-business/`) | YES | same as iOS (`react-native-video-trim` supports Android) | native; verified per-platform |
+| Business Web preview | YES (degraded) | no native trimmer on web → selection + existing 33s-ceiling check (no in-app trim); web trim deferred to a follow-up ORCH | manual — web fallback path |
+| Consumer iOS/Android, Buyer-web, Admin | NO | no cover authoring | n/a |
+
+Per-surface success criteria split: SC-9-iOS, SC-9-Android (native trimmer), SC-9-Web (graceful fallback, no crash).
+
+### D — Layered specification
+
+**D.1 — Dependency (native):**
+- Add `react-native-video-trim` to `mingla-business/package.json`.
+- Add its Expo config plugin to `app.config.ts`/`app.json` if the library provides one (verify per the library's Expo install docs); otherwise rely on autolinking + `expo prebuild`.
+- Remove worktree node_modules symlink and do a real install per `feedback_worktree_per_orch_workflow.md`. Native rebuild required.
+
+**D.2 — `CoverPicker.tsx` video path rewrite:**
+- `launchImageLibraryAsync`: remove `allowsEditing: true` and `videoMaxDuration: 29` (selection only). Keep `mediaTypes: ["videos"]`, `preferredAssetRepresentationMode`, `quality`.
+- After a video is selected, invoke the trimmer (`react-native-video-trim` `showEditor(asset.uri, { maxDuration: 29, ... })`) per the library's documented API + event listeners (`onFinishTrimming` → `{ outputPath, duration, startTime, endTime }`; `onCancelTrimming`/close → abort, no upload). Cite the library docs inline in the implementation.
+- On finish: re-stat `outputPath` via `expo-file-system` for real `bytes`; use the library-reported `duration` (and/or re-probe). Call `videoUpload.start({ uri: outputPath, bytes, durationMs, fileName, mimeType })`.
+- The existing acceptance check (`durationMs > EVENT_COVER_SOURCE_CEILING_MS`, 33s) stays as a backstop (trimmed output ≤29s → always passes). Keep the `[ORCH-0978-TRIM]` log.
+- Web (`Platform.OS === "web"`): trimmer is native-only → keep the existing selection + 33s-ceiling behavior (no in-app trim); guard the trimmer call behind a native-platform check so web does not crash.
+
+**D.3 — Service / hook layer:** no contract change. `useEventCoverVideoUpload.start({uri, bytes, durationMs, ...})` already accepts a file; the trimmed `outputPath` is the new `uri`. `trimStartMs: 0, trimEndMs: durationMs` (the file IS the segment). 
+
+**D.4 — Edge / DB:** NO CHANGE. `du_` + 33s ceiling + clamp + 30000 constraints remain as defense-in-depth.
+
+### E — PoC clause (BLOCKS full IMPLEMENT — mirrors AMENDMENT 3)
+
+Before full wiring + tests, the implementor scaffolds a minimal path (add dep + a dev-build screen or the picker→trimmer call with logging) and the operator runs it on his physical iPhone to confirm:
+1. The trimmer opens on a >29s video and lets the user drag to a ≤29s window anywhere in the clip.
+2. `onFinishTrimming` returns a real `outputPath` whose file plays and whose duration ≈ the chosen window (≤29s).
+3. The returned segment uploads through the existing pipeline and renders as a cover.
+
+If the library fails on SDK 54 / dev client, return to SPEC (try `react-native-video-processing` or a custom AVFoundation/MediaCodec Expo Module). **PASS unlocks full IMPLEMENT-7.**
+
+### F — Success criteria
+
+- **SC-9-iOS / SC-9-Android:** pick a >29s video → trimmer opens → drag to an arbitrary ≤29s window (e.g., seconds 20–47) → confirm → that exact segment uploads, reaches `status='ready'`, `processed_duration_ms < 30000`, and the cover plays the chosen segment (not the first N seconds). No "Please trim to 29 seconds first." toast.
+- **SC-9-cancel:** backing out of the trimmer aborts cleanly (no upload, picker returns to idle).
+- **SC-9-Web:** web composer does not crash; falls back to selection + ceiling check (documented degraded path).
+- **SC-9-no-allowsEditing:** `grep` shows the video `launchImageLibraryAsync` call no longer passes `allowsEditing: true`; the trimmer is wired.
+
+### G — Invariants
+
+**New (proposed, ACTIVE on CLOSE): I-PROPOSED-VIDEO-COVER-DEDICATED-TRIMMER** — cover-video trimming MUST use the dedicated trimmer (`react-native-video-trim`), NOT `expo-image-picker` `allowsEditing`. CI gate (strict-grep): the video pick in `CoverPicker.tsx` must not contain `allowsEditing: true` in the same options object as `mediaTypes: ["videos"]`, and `react-native-video-trim` must be imported/used in the cover flow. **Supersedes** the AMENDMENT-1 `I-PROPOSED-VIDEO-INPUT-CAP-AT-PICKER` reliance on `allowsEditing`.
+
+**Preserved:** AMENDMENT 8 caps (33s/30s/migration) stay as defense-in-depth; AMENDMENT 6 `du_`; AMENDMENT 7 save persistence.
+
+### H — Test cases (two-commit landing per META-ORCH-0744)
+
+- **T-AMEND9-PoC:** on-device PoC (operator) — gates IMPLEMENT.
+- **T-AMEND9-01 (implementor happy-path):** mock/unit — given a trimmer result `{outputPath, duration: 25000}`, the upload flow is invoked with `uri=outputPath`, `durationMs=25000`, `trimStartMs:0`, `trimEndMs:25000`; fails-on-revert when the trimmer-result wiring is removed.
+- **T-AMEND9-02 (tester adversarial):** trimmer cancel/early-close → no `videoUpload.start` call, picker returns idle, no phantom preview; fails-on-revert. Plus strict-grep `no allowsEditing` check.
+- **T-AMEND9-03 (live-fire, tester + operator):** arbitrary-segment trim on iOS device → cover renders the CHOSEN segment, sub-30s.
+
+### I — Implementation order
+
+1. **PoC (Step 0, BLOCKING):** add dep + minimal wiring + dev build; operator on-device PoC; PASS gate.
+2. Picker rewrite (remove allowsEditing; wire trimmer + cancel + re-stat) + web guard.
+3. Strict-grep invariant (new file or extend `orch-0978-video-cap-29s.mjs` with C12: no-allowsEditing + trimmer-wired).
+4. Regression tests (two commits).
+5. **Deploy: full `eas build` for iOS + Android (NOT OTA — native module).** Dev build for testing; production build + store submission for release. No migration, no edge redeploy.
+
+### J — Downstream routing
+
+Orchestrator REVIEW of this SPEC → IMPLEMENT-7 (Codex `implementor-mingla` or Claude `mingla-implementor`): Step 0 PoC scaffold → operator dev build + on-device PoC → on PASS, full wiring + tests → orchestrator REVIEW → tester live-fire (arbitrary-segment trim) → operator physical-iPhone re-check → CLOSE (native build; `[deploy]` tag if any web-built surface changed — here CoverPicker is in the RN bundle; confirm whether the Next.js/web build input changed before tagging).
+
+### K — Confidence — HIGH (SPEC) / PROVEN (root cause)
+
+Root cause proven by live full-duration capture + documented expo defect. Architecture B is the minimal-change fit (no backend touch). Residual risk = library behavior on SDK 54, fully de-risked by the BLOCKING on-device PoC clause before full wiring.
+
+---

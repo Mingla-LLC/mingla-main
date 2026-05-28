@@ -164,6 +164,24 @@
 
 ---
 
-## 10 — Confidence: PROBABLE
+## 9.5 — POST-DEPLOY LIVE-FIRE RE-DIAGNOSIS (2026-05-28) — SUPERSEDES F-1 root cause
+
+After IMPLEMENT-6 deployed (edge v97 + migration live) and the operator tested on his physical iPhone against the new client bundle (confirmed loaded — `capMs: 29000` with the new 33s gate), the live `[ORCH-0978-TRIM]` Metro log captured the ACTUAL rejected durations:
+
+```
+[ORCH-0978-TRIM] {"capMs": 29000, "durationMs": 61700,  "overshoot": 32700}
+[ORCH-0978-TRIM] {"capMs": 29000, "durationMs": 61700,  "overshoot": 32700}
+[ORCH-0978-TRIM] {"capMs": 29000, "durationMs": 58225.7, "overshoot": 29225.7}
+```
+
+**The rejected clip's `durationMs` is ~58-62 SECONDS — the full untrimmed source — not the ~29s the operator trimmed in the iOS trim UI.** This DISPROVES F-1's premise (a ~29s trim overshooting to 29.4-30.x s). The keyframe-overshoot magnitude was never the problem; the problem is that **the iOS native trim is not being applied to (or not reported on) the asset that reaches the app.** `expo-image-picker@17.0.11` `launchImageLibraryAsync({ mediaTypes: ["videos"], allowsEditing: true, videoMaxDuration: 29 })` returns `asset.duration` = the FULL source duration, so a 60s video the operator trimmed to ~29s arrives as 60s and is (correctly) rejected as over-cap. Raising the ceiling to 33s cannot help a 60s value.
+
+**Revised root cause (PROVEN by live `[ORCH-0978-TRIM]` capture):** the cover-video pipeline relies on `expo-image-picker`'s `allowsEditing`/`videoMaxDuration` to enforce/return a ≤29s trimmed asset, but on this iOS + expo-image-picker 17.0.11 combination the picker returns the full source duration (trim not enforced or duration misreported). The app has no programmatic trim of its own, so an over-cap source has no path to success — the user is stuck exactly as the operator reported ("trimmer bar snaps… 'Video too long to send'… Choose → 'Please trim to 29 seconds first.'").
+
+**Open sub-question for the re-investigation (determines fix size):** is the returned video FILE actually trimmed (≤29s) with `asset.duration` merely misreporting the original (→ cheap fix: re-probe the returned URI's true duration via expo-av/AVFoundation and use that), OR is the returned file genuinely the full ~60s (→ programmatic trim required: the app cuts the first ≤29s itself, which also removes the finicky native trim screen — the UX the operator explicitly asked for)? Must be answered by live-fire inspecting the returned asset URI's real duration.
+
+**Status of AMENDMENT 8:** the source-ceiling/clamp/migration work is still sound defense-in-depth (and the migration is already applied), but it does NOT resolve the operator's reported failure. ORCH-0978 must NOT close on AMENDMENT 8 alone. A new investigation + sub-amendment (picker trim enforcement / programmatic trim) is required.
+
+## 10 — Confidence: PROBABLE (original F-1) — SUPERSEDED by §9.5 PROVEN re-diagnosis
 
 Root-cause mechanism (F-1) is established by: (a) full source trace of all 12 cap sites, (b) Seth's physical-device runtime signal (`:447` toast → asset > 29250 ms), and (c) a deterministic synthetic keyframe demonstration (2.0 s GOP → 29 s out-point snaps to 30.0 s). The named blocker preventing `proven` is the inability to capture a live in-sim `[ORCH-0978-TRIM]` overshoot value (Business Metro offline + simulator trimmer-fidelity uncertainty). This is exactly the condition under which the dispatch authorizes `probable`. The architecture decision ("generous source / tight processed") is operator-locked and not re-litigated; SPEC AMENDMENT 8 operationalizes it with exact values.
