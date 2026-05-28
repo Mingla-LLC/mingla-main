@@ -15,11 +15,20 @@ const AF_ANDROID_APP_ID = 'com.mingla.app.v2'
 // ─────────────────────────────────────────────────────────────────────────────
 
 let _initialized = false
+let _started = false
 const registeredDeviceKeys = new Set<string>()
 
 /**
  * Initialize the AppsFlyer SDK. Call once at app startup.
- * Tracks installs, sessions, and attribution automatically after init.
+ *
+ * Configured with `manualStart: true` — the SDK loads but does not transmit
+ * until `startAppsFlyer()` is called. This gives us a window to fire the iOS
+ * ATT (App Tracking Transparency) prompt first, so AppsFlyer has a final
+ * IDFA value when transmission begins (real IDFA if user allowed, zeroed
+ * IDFA if denied — either way, no race condition).
+ *
+ * The ATT prompt + startAppsFlyer() pair is wired in app/index.tsx
+ * (ORCH-0977 — replaces the never-implemented ORCH-0349 plan).
  */
 export function initializeAppsFlyer(): void {
   if (_initialized) return
@@ -31,7 +40,7 @@ export function initializeAppsFlyer(): void {
         appId: Platform.OS === 'ios' ? AF_IOS_APP_ID : undefined,
         onInstallConversionDataListener: false,
         onDeepLinkListener: false,
-        timeToWaitForATTUserAuthorization: 0, // deferred — ATT requested after coach mark tour (ORCH-0349)
+        manualStart: true,
       },
       (result: unknown) => {
         if (__DEV__) console.log('[AppsFlyer] SDK initialized:', result)
@@ -43,6 +52,27 @@ export function initializeAppsFlyer(): void {
     )
   } catch (e) {
     console.warn('[AppsFlyer] Native module not available:', e)
+  }
+}
+
+/**
+ * Start AppsFlyer transmission. Must be called AFTER iOS ATT has resolved
+ * (or immediately on Android, where ATT is a no-op).
+ *
+ * Idempotent — safe to call multiple times; only the first call has effect.
+ */
+export function startAppsFlyer(): void {
+  if (_started) return
+  if (!_initialized) {
+    if (__DEV__) console.warn('[AppsFlyer] startAppsFlyer called before init — skipping')
+    return
+  }
+  try {
+    appsFlyer.startSdk()
+    _started = true
+    if (__DEV__) console.log('[AppsFlyer] SDK started — transmission active')
+  } catch (e) {
+    console.warn('[AppsFlyer] startSdk failed:', e)
   }
 }
 

@@ -8,7 +8,6 @@ import {
   Text,
   View,
 } from "react-native";
-import { BlurView } from "expo-blur";
 import type { LucideIcon } from "lucide-react-native";
 import {
   AtSign,
@@ -21,6 +20,8 @@ import {
   Youtube,
 } from "lucide-react-native";
 import {
+  EventCoverMedia,
+  GlassBlur,
   MINGLA_DEFAULT_THEME,
   ThemeEntranceAnimation,
   resolveTheme,
@@ -36,6 +37,7 @@ import type {
   PublicBrandTicket,
   PublicBrandTrip,
   PublicBrandUpcoming,
+  PublicMediaType,
 } from "./types";
 
 type Tab = "upcoming" | "events" | "trips" | "experiences" | "about";
@@ -511,12 +513,13 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
         {brand.coverMediaUrl !== undefined &&
         brand.coverMediaUrl.length > 0 &&
         !coverMediaFailed ? (
-          <Image
-            source={{ uri: brand.coverMediaUrl }}
+          <EventCoverMedia
+            mediaUrl={brand.coverMediaUrl}
+            mediaType={brand.coverMediaType ?? null}
+            radius={0}
+            label="Brand cover"
             style={styles.heroGradient}
-            resizeMode="cover"
-            onError={() => setCoverMediaFailed(true)}
-            accessibilityLabel="Brand cover"
+            onMediaError={() => setCoverMediaFailed(true)}
           />
         ) : (
           <View style={[styles.heroGradient, { backgroundColor: heroColor }]} />
@@ -543,7 +546,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
             },
           ]}
         >
-          <BlurView
+          <GlassBlur
             tint={palette.glassTint}
             intensity={34}
             style={styles.glassLayer}
@@ -623,7 +626,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
             { backgroundColor: palette.accent, borderColor: palette.accent },
           ]}
         >
-          <BlurView
+          <GlassBlur
             tint={palette.glassTint}
             intensity={18}
             style={styles.glassLayer}
@@ -895,7 +898,7 @@ const EventMiniCard: React.FC<{
         pressed && styles.cardPressed,
       ]}
     >
-      <BlurView
+      <GlassBlur
         tint={palette.glassTint}
         intensity={24}
         style={styles.glassLayer}
@@ -974,7 +977,7 @@ const NextOfferingTeaser: React.FC<{
         pressed && styles.cardPressed,
       ]}
     >
-      <BlurView
+      <GlassBlur
         tint={palette.glassTint}
         intensity={14}
         style={styles.glassLayer}
@@ -1072,7 +1075,7 @@ const TripMiniCard: React.FC<{
         pressed && styles.cardPressed,
       ]}
     >
-      <BlurView
+      <GlassBlur
         tint={palette.glassTint}
         intensity={24}
         style={styles.glassLayer}
@@ -1229,7 +1232,7 @@ const OfferingMiniCard: React.FC<{
         pressed && styles.cardPressed,
       ]}
     >
-      <BlurView
+      <GlassBlur
         tint={palette.glassTint}
         intensity={24}
         style={styles.glassLayer}
@@ -1314,7 +1317,7 @@ const ExperienceMiniCard: React.FC<{
         pressed && styles.cardPressed,
       ]}
     >
-      <BlurView
+      <GlassBlur
         tint={palette.glassTint}
         intensity={24}
         style={styles.glassLayer}
@@ -1361,26 +1364,16 @@ const CoverBlock: React.FC<{
   hue: number;
   mediaUrl: string | null;
   mediaType: string | null;
-}> = ({ hue, mediaUrl, mediaType }) => {
-  if (
-    mediaUrl !== null &&
-    mediaUrl.length > 0 &&
-    (mediaType === "image" || mediaType === "gif")
-  ) {
-    return (
-      <Image
-        source={{ uri: mediaUrl }}
-        style={styles.eventCover}
-        resizeMode="cover"
-      />
-    );
-  }
-  return (
-    <View
-      style={[styles.eventCover, { backgroundColor: `hsl(${hue}, 60%, 45%)` }]}
-    />
-  );
-};
+}> = ({ hue, mediaUrl, mediaType }) => (
+  <EventCoverMedia
+    hue={hue}
+    mediaUrl={mediaUrl}
+    mediaType={mediaType as PublicMediaType | null}
+    radius={0}
+    label="Cover"
+    style={styles.eventCover}
+  />
+);
 
 const AboutTab: React.FC<{
   brand: PublicBrand;
@@ -1396,7 +1389,7 @@ const AboutTab: React.FC<{
           { backgroundColor: palette.glass, borderColor: palette.cutoutBorder },
         ]}
       >
-        <BlurView
+        <GlassBlur
           tint={palette.glassTint}
           intensity={22}
           style={styles.glassLayer}
@@ -1422,7 +1415,7 @@ const AboutTab: React.FC<{
           { backgroundColor: palette.glass, borderColor: palette.cutoutBorder },
         ]}
       >
-        <BlurView
+        <GlassBlur
           tint={palette.glassTint}
           intensity={22}
           style={styles.glassLayer}

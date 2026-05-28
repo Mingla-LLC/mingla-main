@@ -375,7 +375,9 @@ describe("server-backed draft lifecycle guards", () => {
   });
 
   test("reduced-motion video covers render through video rather than Image fallback", () => {
-    const source = repoFile("src/components/ui/EventCoverMedia.tsx");
+    // ORCH-0964 [TEST-MOD-APPROVED ORCH-0964]: EventCoverMedia implementation
+    // moved to the shared @mingla/event-rendering package; assertions unchanged.
+    const source = repoFile("../packages/event-rendering/EventCoverMedia.tsx");
 
     expect(source).toContain('presentation === "video" || presentation === "video_still"');
     expect(source).toContain('autoplay={presentation === "video" ? autoplay : false}');

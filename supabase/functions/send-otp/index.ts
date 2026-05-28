@@ -51,6 +51,19 @@ serve(async (req) => {
       })
     }
 
+    // ORCH-0977: App Store / Play Store review bypass. REVIEWER_TEST_PHONE is a
+    // fictional NANP 555-0199 number that can never be a real line. For this
+    // number we skip the real Twilio SMS so a store reviewer can clear the
+    // mandatory phone-verification onboarding step (verify-otp accepts a fixed
+    // code for the same number). No effect on any real phone number.
+    const REVIEWER_TEST_PHONE = '+12015550199'
+    if (phone === REVIEWER_TEST_PHONE) {
+      return new Response(JSON.stringify({ success: true, status: 'pending', channel: 'sms' }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
     const channel: AllowedChannel = rawChannel ?? 'sms'
     if (!ALLOWED_CHANNELS.includes(channel)) {
       return new Response(JSON.stringify({ error: 'Invalid channel. Must be sms, whatsapp, or call.' }), {

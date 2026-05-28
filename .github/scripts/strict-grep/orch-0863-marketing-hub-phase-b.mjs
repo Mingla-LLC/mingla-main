@@ -852,6 +852,7 @@ function checkNoNewBackendFiles() {
     "supabase/migrations/20260729000000_meta_orch_0972_universal_authoring.sql",
     "supabase/migrations/20260729000001_meta_orch_0972_pg_brand_offering_counts_grants.sql",
     "supabase/migrations/20260729000002_orch_0964_brand_event_theme_columns.sql",
+    "supabase/migrations/20260731000000_orch_0964_public_views_security_definer.sql",
   ];
   // META-ORCH-0952 [Buyer-web confirm pipeline deep forensics] CLOSE 2026-05-25.
   // C7 is scoped to ORCH-0863 marketing; the META-ORCH-0952 self-heal rework
@@ -910,7 +911,48 @@ function checkNoNewBackendFiles() {
     "supabase/migrations/20260725000000_orch_0950_trip_capacity_single_source.sql",
     "supabase/migrations/20260725000002_orch_0950_expanded_scope_dashboard_coherence.sql",
   ];
+  // ORCH-0977 [Consumer App Store + Play Store production launch] CLOSE.
+  // C7 is scoped to ORCH-0863 marketing; these backend touches are ORCH-0977
+  // launch scope: a new content-moderation edge function (Apple Guideline 1.2
+  // UGC filter) + the App-Review test-OTP bypass added to the existing
+  // send-otp/verify-otp functions. C7 flags modified backend files too, so the
+  // two existing functions are listed alongside the new one.
+  const ORCH_0977_BACKEND_ALLOWLIST = [
+    "supabase/functions/moderate-content/index.ts",
+    "supabase/functions/send-otp/index.ts",
+    "supabase/functions/verify-otp/index.ts",
+  ];
+  // ORCH-0985 [Curated stop "Replace" fix]. C7 is scoped to ORCH-0863 marketing;
+  // these backend touches are the Replace-stop fix: single-source slug validation
+  // (kills the stale VALID_CATEGORIES whitelist), center-search-on-the-replaced-
+  // stop, decoupled search radius, vibe rank-signal pass-through, best-score
+  // ordering, + the slug/rank-signal parity regression test. No marketing scope.
+  const ORCH_0985_BACKEND_ALLOWLIST = [
+    "supabase/functions/replace-curated-stop/index.ts",
+    "supabase/functions/_shared/stopAlternatives.ts",
+    "supabase/functions/_shared/signalRankFetch.ts",
+    "supabase/functions/generate-curated-experiences/index.ts",
+    "supabase/functions/_shared/replaceCuratedStopSlugParity.test.ts",
+  ];
+  // ORCH-0986 [Paired-profile redesign]. C7 is scoped to ORCH-0863 marketing;
+  // these backend touches are the paired profile friend-GPS RPC, batched cards
+  // endpoint, shared person hero mapper/planner, and mapper regression test.
+  const ORCH_0986_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260730000000_orch_0978_video_cap_29s_constraints.sql",
+    "supabase/migrations/20260730000001_orch_0978_video_cap_generous_source.sql",
+    "supabase/migrations/20260730000002_orch_0986_paired_friend_last_location.sql",
+    "supabase/migrations/20260730000003_orch_0986_lock_friend_location_rpc.sql",
+    "supabase/migrations/20260730000004_orch_0986_friend_location_resolution_chain.sql",
+    "supabase/functions/_shared/personHeroCards.ts",
+    "supabase/functions/_shared/personHeroCards.test.ts",
+    "supabase/functions/_shared/personHeroCards.adversarial.test.ts",
+    "supabase/functions/get-paired-profile-cards/index.ts",
+    "supabase/functions/get-person-hero-cards/index.ts",
+    "supabase/functions/generate-curated-experiences/index.ts",
+  ];
   const ALLOWLIST = [
+    ...ORCH_0986_BACKEND_ALLOWLIST,
+    ...ORCH_0985_BACKEND_ALLOWLIST,
     ...META_ORCH_0952_BACKEND_ALLOWLIST,
     ...ORCH_0972_BACKEND_ALLOWLIST,
     ...ORCH_0954_BACKEND_ALLOWLIST,
@@ -957,6 +999,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_0962_BACKEND_ALLOWLIST,
     ...ORCH_0963_BACKEND_ALLOWLIST,
     ...ORCH_0964_BACKEND_ALLOWLIST,
+    ...ORCH_0977_BACKEND_ALLOWLIST,
     ...ORCH_0978_BACKEND_ALLOWLIST,
   ];
   const forbidden = changed.filter(

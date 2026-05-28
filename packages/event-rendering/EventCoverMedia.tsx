@@ -2,9 +2,9 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   AccessibilityInfo,
   AppState,
+  Pressable,
   Image,
   Platform,
-  Pressable,
   StyleSheet,
   Text,
   View,
@@ -15,9 +15,11 @@ import {
   type ViewStyle,
 } from "react-native";
 import { VideoView, useVideoPlayer } from "expo-video";
-import Svg, { Path } from "react-native-svg";
+import Svg, { Path, Line } from "react-native-svg";
 
 import type { EventCoverMediaType } from "./types";
+import { resolveEventCoverMediaPresentation } from "./coverMediaPresentation";
+import { EventCover } from "./EventCover";
 
 export interface EventCoverMediaProps {
   hue?: number;
@@ -36,8 +38,6 @@ export interface EventCoverMediaProps {
   audioControlLabel?: string;
   audioControlPosition?: "topLeft" | "topRight" | "bottomRight";
   audioControlTopOffset?: number;
-  posterUri?: string | null;
-  onFirstFrameRender?: () => void;
   children?: React.ReactNode;
   onMediaError?: (event: EventCoverMediaErrorEvent) => void;
   testID?: string;
@@ -51,8 +51,6 @@ export interface EventCoverMediaErrorEvent {
   nativeEvent?: unknown;
 }
 
-type Presentation = "image" | "video" | "video_still" | "fallback";
-
 const WEB_VIDEO_STYLE: React.CSSProperties = {
   backgroundColor: "#000000",
   height: "100%",
@@ -62,22 +60,35 @@ const WEB_VIDEO_STYLE: React.CSSProperties = {
   width: "100%",
 };
 
-const resolvePresentation = (input: {
-  mediaUrl: string | null | undefined;
-  mediaType: EventCoverMediaType | null | undefined;
-  hasMediaError: boolean;
-  reduceMotion: boolean;
-}): Presentation => {
-  if (input.hasMediaError || !input.mediaUrl) return "fallback";
-  if (input.mediaType === "image" || input.mediaType === "gif") return "image";
-  if (input.mediaType === "video") {
-    return input.reduceMotion ? "video_still" : "video";
-  }
-  return "fallback";
-};
-
-const hsl = (hue: number, sat: number, light: number): string =>
-  `hsl(${hue}, ${sat}%, ${light}%)`;
+// Inline volume glyphs (replaces the app-level Icon component so this stays
+// package-isolated per I-MOR-0827-PACKAGE-ISOLATION).
+const VolumeGlyph: React.FC<{ muted: boolean; size?: number }> = ({
+  muted,
+  size = 16,
+}) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path
+      d="M11 5 6 9H2v6h4l5 4V5z"
+      fill="#FFFFFF"
+      stroke="#FFFFFF"
+      strokeWidth={2}
+      strokeLinejoin="round"
+    />
+    {muted ? (
+      <>
+        <Line x1={16} y1={9} x2={22} y2={15} stroke="#FFFFFF" strokeWidth={2} strokeLinecap="round" />
+        <Line x1={22} y1={9} x2={16} y2={15} stroke="#FFFFFF" strokeWidth={2} strokeLinecap="round" />
+      </>
+    ) : (
+      <Path
+        d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"
+        stroke="#FFFFFF"
+        strokeWidth={2}
+        strokeLinecap="round"
+      />
+    )}
+  </Svg>
+);
 
 const isDisposedNativeVideoPlayerError = (error: unknown): boolean => {
   const message = error instanceof Error ? error.message : String(error);
@@ -95,68 +106,6 @@ const callNativeVideoPlayer = (action: () => void): void => {
   }
 };
 
-const EventCoverFallback: React.FC<{
-  hue: number;
-  radius: number;
-  label: string;
-  height: DimensionValue;
-  width: DimensionValue;
-  children?: React.ReactNode;
-  testID?: string;
-  style?: StyleProp<ViewStyle>;
-}> = ({ hue, radius, label, height, width, children, testID, style }) => (
-  <View
-    testID={testID}
-    style={[
-      styles.fallback,
-      { backgroundColor: hsl(hue, 60, 45), borderRadius: radius, height, width },
-      style,
-    ]}
-  >
-    <View
-      style={[StyleSheet.absoluteFill, { backgroundColor: hsl(hue, 60, 38) }]}
-    />
-    <View style={styles.fallbackShade} pointerEvents="none" />
-    <View style={styles.labelWrap} pointerEvents="none">
-      <Text style={styles.label}>{label.toUpperCase()}</Text>
-    </View>
-    {children !== undefined ? <View style={styles.overlay}>{children}</View> : null}
-  </View>
-);
-
-const VolumeGlyph: React.FC<{ muted: boolean; color: string; size: number }> = ({
-  muted,
-  color,
-  size,
-}) => (
-  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    <Path
-      d="M4 9v6h4l5 4V5L8 9H4z"
-      stroke={color}
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-    {muted ? (
-      <>
-        <Path
-          d="M18 9l4 4M22 9l-4 4"
-          stroke={color}
-          strokeWidth={2}
-          strokeLinecap="round"
-        />
-      </>
-    ) : (
-      <Path
-        d="M16 8a5 5 0 010 8M19 5a9 9 0 010 14"
-        stroke={color}
-        strokeWidth={2}
-        strokeLinecap="round"
-      />
-    )}
-  </Svg>
-);
-
 const EventCoverWebVideo: React.FC<{
   uri: string;
   autoplay: boolean;
@@ -164,28 +113,29 @@ const EventCoverWebVideo: React.FC<{
   muted: boolean;
   loop: boolean;
   onError: () => void;
-  onFirstFrameRender: () => void;
-}> = ({
-  uri,
-  autoplay,
-  playbackActive,
-  muted,
-  loop,
-  onError,
-  onFirstFrameRender,
-}) => {
+}> = ({ uri, autoplay, playbackActive, muted, loop, onError }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const shouldPlay = autoplay && playbackActive;
 
   useEffect(() => {
     const video = videoRef.current;
     if (video === null) return;
+    // iOS Safari only treats a video as eligible for inline muted autoplay when
+    // the `muted` + `playsinline` ATTRIBUTES are present at the element level.
+    // React 19 sets `muted` as a DOM property only (no attribute), so iOS refuses
+    // to autoplay and shows its native play button. Set the attributes + property
+    // imperatively, then play(). (Desktop works on the property alone.)
+    video.muted = muted;
+    if (muted) video.setAttribute("muted", "");
+    else video.removeAttribute("muted");
+    video.setAttribute("playsinline", "");
+    video.setAttribute("webkit-playsinline", "");
     if (shouldPlay) {
       void video.play().catch(() => undefined);
       return;
     }
     video.pause();
-  }, [shouldPlay, uri]);
+  }, [shouldPlay, uri, muted]);
 
   return React.createElement("video", {
     ref: videoRef,
@@ -203,7 +153,6 @@ const EventCoverWebVideo: React.FC<{
       void event.currentTarget.play().catch(() => undefined);
     },
     onError,
-    onLoadedData: onFirstFrameRender,
     playsInline: true,
     preload: "auto",
     src: uri,
@@ -218,16 +167,7 @@ const EventCoverNativeVideo: React.FC<{
   muted: boolean;
   loop: boolean;
   onError: () => void;
-  onFirstFrameRender: () => void;
-}> = ({
-  uri,
-  autoplay,
-  playbackActive,
-  muted,
-  loop,
-  onError,
-  onFirstFrameRender,
-}) => {
+}> = ({ uri, autoplay, playbackActive, muted, loop, onError }) => {
   const shouldPlay = autoplay && playbackActive;
   const player = useVideoPlayer(uri, (nextPlayer) => {
     nextPlayer.loop = loop;
@@ -297,8 +237,6 @@ const EventCoverNativeVideo: React.FC<{
       fullscreenOptions={{ enable: false }}
       allowsPictureInPicture={false}
       playsInline
-      onFirstFrameRender={onFirstFrameRender}
-      useExoShutter={false}
     />
   );
 };
@@ -310,7 +248,6 @@ const EventCoverVideo: React.FC<{
   muted: boolean;
   loop: boolean;
   onError: () => void;
-  onFirstFrameRender: () => void;
 }> = (props) =>
   Platform.OS === "web" ? (
     <EventCoverWebVideo {...props} />
@@ -335,8 +272,6 @@ export const EventCoverMedia: React.FC<EventCoverMediaProps> = ({
   audioControlLabel = "cover video audio",
   audioControlPosition = "bottomRight",
   audioControlTopOffset,
-  posterUri = null,
-  onFirstFrameRender,
   children,
   onMediaError,
   testID,
@@ -344,7 +279,6 @@ export const EventCoverMedia: React.FC<EventCoverMediaProps> = ({
 }) => {
   const [hasMediaError, setHasMediaError] = useState(false);
   const [reduceMotion, setReduceMotion] = useState(false);
-  const [posterVisible, setPosterVisible] = useState(posterUri !== null);
   const initialMuted = Platform.OS === "web" && autoplay ? true : muted;
   const [isMuted, setIsMuted] = useState(initialMuted);
 
@@ -365,24 +299,18 @@ export const EventCoverMedia: React.FC<EventCoverMediaProps> = ({
 
   useEffect(() => {
     setHasMediaError(false);
-    setPosterVisible(posterUri !== null);
-  }, [mediaUrl, posterUri]);
+  }, [mediaUrl]);
 
   useEffect(() => {
     setIsMuted(Platform.OS === "web" && autoplay ? true : muted);
   }, [autoplay, mediaUrl, muted]);
 
-  const presentation = resolvePresentation({
+  const presentation = resolveEventCoverMediaPresentation({
     mediaUrl,
     mediaType,
     hasMediaError,
     reduceMotion,
   });
-
-  const handleFirstFrameRender = (): void => {
-    setPosterVisible(false);
-    onFirstFrameRender?.();
-  };
 
   const handleMediaError = (
     surface: "image" | "video",
@@ -409,7 +337,7 @@ export const EventCoverMedia: React.FC<EventCoverMediaProps> = ({
 
   if (presentation === "fallback" || mediaUrl === null) {
     return (
-      <EventCoverFallback
+      <EventCover
         hue={hue}
         radius={radius}
         label={label}
@@ -419,7 +347,7 @@ export const EventCoverMedia: React.FC<EventCoverMediaProps> = ({
         style={style}
       >
         {children}
-      </EventCoverFallback>
+      </EventCover>
     );
   }
 
@@ -436,7 +364,6 @@ export const EventCoverMedia: React.FC<EventCoverMediaProps> = ({
           muted={isMuted}
           loop={presentation === "video" ? loop : false}
           onError={() => handleMediaError("video")}
-          onFirstFrameRender={handleFirstFrameRender}
         />
       ) : (
         <Image
@@ -448,13 +375,6 @@ export const EventCoverMedia: React.FC<EventCoverMediaProps> = ({
           }
         />
       )}
-      {posterUri !== null && posterVisible ? (
-        <Image
-          source={{ uri: posterUri }}
-          style={StyleSheet.absoluteFill}
-          resizeMode="cover"
-        />
-      ) : null}
       {showAudioControl &&
       mediaType === "video" &&
       presentation === "video" ? (
@@ -482,7 +402,7 @@ export const EventCoverMedia: React.FC<EventCoverMediaProps> = ({
             pressed && styles.audioControlPressed,
           ]}
         >
-          <VolumeGlyph muted={isMuted} size={16} color="#FFFFFF" />
+          <VolumeGlyph muted={isMuted} size={16} />
           <Text style={styles.audioControlText}>
             {isMuted ? "Sound" : "Mute"}
           </Text>
@@ -500,25 +420,6 @@ const styles = StyleSheet.create({
     position: "relative",
     overflow: "hidden",
     backgroundColor: "rgba(255, 255, 255, 0.06)",
-  },
-  fallback: {
-    position: "relative",
-    overflow: "hidden",
-  },
-  fallbackShade: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0, 0, 0, 0.22)",
-  },
-  labelWrap: {
-    position: "absolute",
-    top: 16,
-    left: 16,
-  },
-  label: {
-    fontSize: 10,
-    lineHeight: 14,
-    fontWeight: "800",
-    color: "rgba(255, 255, 255, 0.58)",
   },
   overlay: {
     flex: 1,

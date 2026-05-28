@@ -119,6 +119,30 @@ export const COMBO_SLUG_FILTER_MIN: Record<string, number> = {
 // ── Resolvers ────────────────────────────────────────────────────────────────
 
 /**
+ * ORCH-0985: single source of truth for "is this a slug the curated pipeline
+ * can serve?". Replaces the stale `VALID_CATEGORIES` whitelist that lived in
+ * replace-curated-stop/index.ts and drifted out of sync with the slug split
+ * (ORCH-0599.4/0601: brunch_lunch_casual→brunch+casual_food,
+ * movies_theatre→movies+theatre, +hiking/+museum). Validity = "has an entry in
+ * COMBO_SLUG_TO_FILTER_SIGNAL", the same authority the generator resolves
+ * against, so the two can never disagree again (Constitution #6).
+ */
+export function isValidComboSlug(comboSlug: string): boolean {
+  return Object.prototype.hasOwnProperty.call(COMBO_SLUG_TO_FILTER_SIGNAL, comboSlug);
+}
+
+/**
+ * ORCH-0601/0985: resolve the required-types sub-filter for slugs that narrow a
+ * shared signal to specific Google Places types (hiking→nature-subset,
+ * museum→creative_arts-subset). Returns undefined for slugs with no narrowing.
+ * The replace flow MUST pass this through so swapping a "hiking" stop returns
+ * hiking trails, not a generic city park (matches the curated generator).
+ */
+export function resolveTypeFilter(comboSlug: string): string[] | undefined {
+  return COMBO_SLUG_TYPE_FILTER[comboSlug];
+}
+
+/**
  * Resolve a combo slug to its underlying signal_id. Throws on unknown slug
  * (Constitution #3: never silently fall back). Used by stopAlternatives.
  */
@@ -138,6 +162,33 @@ export function resolveFilterSignal(comboSlug: string): string {
  */
 export function resolveFilterMin(comboSlug: string): number {
   return COMBO_SLUG_FILTER_MIN[comboSlug] ?? 120;
+}
+
+// ORCH-0985: "vibe" rank signals the curated generator ranks stops by INSTEAD of
+// the slot's own filter signal (EXPERIENCE_RANK_SIGNAL_OVERRIDE in
+// generate-curated-experiences/index.ts — e.g. Romantic dinner ranks by
+// `romantic`, First-Date by `icebreakers`, Group-Fun by `lively`, Take-a-Stroll
+// nature by `scenic`, Picnic spot by `picnic_friendly`). The replace flow accepts
+// a stamped rankSignal from the client so swapped-in places are ordered by the
+// SAME vibe the plan was built with. This list MUST stay in sync with the values
+// of EXPERIENCE_RANK_SIGNAL_OVERRIDE — the slug-parity test enforces that.
+export const EXPERIENCE_VIBE_RANK_SIGNALS: ReadonlySet<string> = new Set([
+  'romantic', 'icebreakers', 'lively', 'scenic', 'picnic_friendly',
+]);
+
+/**
+ * ORCH-0985: a string is a valid rank signal if it is either a category filter
+ * signal (a value in COMBO_SLUG_TO_FILTER_SIGNAL) or one of the vibe signals
+ * above. Used by replace-curated-stop to reject bogus rankSignal inputs instead
+ * of silently ranking by a non-existent signal (Constitution #3).
+ */
+export function isKnownRankSignal(signal: string): boolean {
+  if (!signal) return false;
+  if (EXPERIENCE_VIBE_RANK_SIGNALS.has(signal)) return true;
+  for (const sig of Object.values(COMBO_SLUG_TO_FILTER_SIGNAL)) {
+    if (sig === signal) return true;
+  }
+  return false;
 }
 
 // ── fetchSinglesForSignalRank ────────────────────────────────────────────────

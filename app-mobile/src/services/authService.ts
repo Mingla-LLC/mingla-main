@@ -1,5 +1,6 @@
 import { supabase } from "./supabase";
 import { useAppStore } from "../store/appStore";
+import { moderateText } from "./moderationService";
 
 export interface UserProfile {
   id: string;
@@ -281,6 +282,11 @@ class AuthService {
   }
 
   async updateBio(userId: string, bio: string): Promise<void> {
+    // ORCH-0977: moderate bio before saving (Apple 1.2 / Play UGC policy)
+    const moderation = await moderateText(bio, "profile_bio");
+    if (!moderation.allowed) {
+      throw new Error(moderation.reason);
+    }
     const { error } = await supabase
       .from("profiles")
       .update({ bio })

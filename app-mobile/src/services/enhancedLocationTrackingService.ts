@@ -61,15 +61,8 @@ class EnhancedLocationTrackingService {
         return false;
       }
 
-      // Request background permissions for continuous tracking
-      try {
-        const { status: backgroundStatus } = await Location.requestBackgroundPermissionsAsync();
-        
-        if (backgroundStatus !== 'granted') {
-        }
-      } catch (backgroundError) {
-      }
-
+      // Foreground-only: tracking uses watchPositionAsync while the app is
+      // open. No background location is requested or used.
       return true;
     } catch (error) {
       console.error('Error requesting location permissions:', error);

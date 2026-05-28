@@ -788,17 +788,27 @@ export interface PatchEventThemeInput {
 export const patchPublishedEventTheme = async (
   input: PatchEventThemeInput,
 ): Promise<void> => {
-  const { error } = await supabase
+  // I-PROPOSED-I (MUTATION-ROWCOUNT-VERIFIED): chain .select() so a 0-row
+  // no-op (RLS denial / wrong id / already-mutated) surfaces as an error
+  // instead of a silent success. Fixes the violation ORCH-0964 (#220) left.
+  // orch-strict-grep-allow events-type-filter — id-targeted UPDATE; the .select("id")
+  // is a rowcount check (I-PROPOSED-I), not a content read, so an event_type
+  // filter is irrelevant (the eq("id") already uniquely identifies the row).
+  const { data, error } = await supabase
     .from("events")
     .update({
       theme_color_override: input.themeOverrides?.color ?? null,
       theme_font_override: input.themeOverrides?.font ?? null,
       theme_animation_override: input.themeOverrides?.animation ?? null,
     })
-    .eq("id", input.eventId);
+    .eq("id", input.eventId)
+    .select("id");
 
   if (error !== null) {
     throw new Error(error.message ?? "patch_event_theme_failed");
+  }
+  if (data === null || data.length === 0) {
+    throw new Error("patch_event_theme_no_rows");
   }
 };
 

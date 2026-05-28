@@ -11,6 +11,9 @@
     "react": "*",
     "react-native": "*",
     "expo-blur": "*",
+    "expo-image": "*",
+    "expo-linear-gradient": "*",
+    "expo-video": "*",
     "lottie-react-native": "*",
     "react-native-svg": "*"
   }

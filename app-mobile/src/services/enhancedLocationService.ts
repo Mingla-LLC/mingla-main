@@ -48,18 +48,8 @@ export class EnhancedLocationService {
         return false;
       }
 
-      // Request background permissions for better experience (optional)
-      try {
-        const { status: backgroundStatus } =
-          await Location.requestBackgroundPermissionsAsync();
-
-        if (backgroundStatus !== "granted") {
-          // Background permission not granted, but foreground is enough
-        }
-      } catch (backgroundError) {
-        // This is not critical, so we continue
-      }
-
+      // Foreground-only: Mingla reads location solely while the app is open
+      // and in active use. No background location is requested or used.
       return true;
     } catch (error) {
       // Don't log permission errors - they're expected
