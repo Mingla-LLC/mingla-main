@@ -120,12 +120,22 @@ const EventCoverWebVideo: React.FC<{
   useEffect(() => {
     const video = videoRef.current;
     if (video === null) return;
+    // iOS Safari only treats a video as eligible for inline muted autoplay when
+    // the `muted` + `playsinline` ATTRIBUTES are present at the element level.
+    // React 19 sets `muted` as a DOM property only (no attribute), so iOS refuses
+    // to autoplay and shows its native play button. Set the attributes + property
+    // imperatively, then play(). (Desktop works on the property alone.)
+    video.muted = muted;
+    if (muted) video.setAttribute("muted", "");
+    else video.removeAttribute("muted");
+    video.setAttribute("playsinline", "");
+    video.setAttribute("webkit-playsinline", "");
     if (shouldPlay) {
       void video.play().catch(() => undefined);
       return;
     }
     video.pause();
-  }, [shouldPlay, uri]);
+  }, [shouldPlay, uri, muted]);
 
   return React.createElement("video", {
     ref: videoRef,
