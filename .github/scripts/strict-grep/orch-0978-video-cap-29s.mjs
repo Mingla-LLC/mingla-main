@@ -38,12 +38,12 @@ const uploadIntentPath = "supabase/functions/event-cover-video-upload-intent/ind
 const webhookPath = "supabase/functions/event-cover-video-webhook/index.ts";
 
 const coverPicker = read(coverPickerPath);
-if (count(coverPicker, "videoMaxDuration: 29") !== 1) {
-  fail("C1", `${coverPickerPath} must contain videoMaxDuration: 29 exactly once`);
-} else if (coverPicker.includes("videoMaxDuration: 30")) {
-  fail("C1", `${coverPickerPath} must not contain videoMaxDuration: 30`);
+if (!coverPicker.includes("maxDuration: EVENT_COVER_MAX_VIDEO_DURATION_MS")) {
+  fail("C1", `${coverPickerPath} must pass EVENT_COVER_MAX_VIDEO_DURATION_MS to showEditor`);
+} else if (coverPicker.includes("videoMaxDuration")) {
+  fail("C1", `${coverPickerPath} must not rely on ImagePicker videoMaxDuration`);
 } else {
-  ok("C1", "CoverPicker client picker cap is 29 seconds");
+  ok("C1", "Dedicated trimmer receives the 29s cap; picker videoMaxDuration is dead");
 }
 
 const processingService = read(processingServicePath);
@@ -180,6 +180,27 @@ if (!processingService.includes("EVENT_COVER_SOURCE_CEILING_MS = 33_000")) {
   fail("C11", "source ceiling must remain strictly greater than processed cap");
 } else {
   ok("C11", "Client source ceiling is 33s and remains above the 30s processed cap");
+}
+
+const videoPickerCall = coverPicker.match(
+  /ImagePicker\.launchImageLibraryAsync\(\{\s*mediaTypes:\s*\["videos"\][\s\S]*?\n\s*\}\);/,
+)?.[0];
+if (videoPickerCall === undefined) {
+  fail("C12", `${coverPickerPath} must keep a video launchImageLibraryAsync call`);
+} else if (videoPickerCall.includes("allowsEditing")) {
+  fail("C12", `${coverPickerPath} video picker must not pass allowsEditing`);
+} else if (videoPickerCall.includes("videoMaxDuration")) {
+  fail("C12", `${coverPickerPath} video picker must not pass videoMaxDuration`);
+} else if (!coverPicker.includes('from "react-native-video-trim"')) {
+  fail("C12", `${coverPickerPath} must import react-native-video-trim`);
+} else if (!coverPicker.includes("showEditor(uri")) {
+  fail("C12", `${coverPickerPath} must call showEditor for the native trim flow`);
+} else if (!coverPicker.includes("onCancelTrimming")) {
+  fail("C12", `${coverPickerPath} must handle trimmer cancel`);
+} else if (!coverPicker.includes("buildTrimmedVideoUploadFile")) {
+  fail("C12", `${coverPickerPath} must build uploads from the trimmed outputPath`);
+} else {
+  ok("C12", "Dedicated trimmer is wired and ImagePicker trim knobs are absent");
 }
 
 if (process.exitCode && process.exitCode !== 0) {

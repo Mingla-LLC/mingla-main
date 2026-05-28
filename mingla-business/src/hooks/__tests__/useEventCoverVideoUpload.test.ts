@@ -109,6 +109,12 @@ type LooseMock = {
 const mockCompressVideoLocally = compressVideoLocally as unknown as LooseMock;
 const mockCreateEventCoverVideoUploadIntent =
   createEventCoverVideoUploadIntent as unknown as LooseMock;
+const mockUploadEventCoverVideoSource =
+  uploadEventCoverVideoSource as unknown as LooseMock;
+const mockAcknowledgeEventCoverVideoSourceUploaded =
+  acknowledgeEventCoverVideoSourceUploaded as unknown as LooseMock;
+const mockWaitForEventCoverVideoReady =
+  waitForEventCoverVideoReady as unknown as LooseMock;
 
 describe("useEventCoverVideoUpload", () => {
   beforeEach(() => {
@@ -156,6 +162,59 @@ describe("useEventCoverVideoUpload", () => {
         errorCode: "unauthenticated",
         eventId: "09b4ece6-eabc-4734-8ce3-3a25d90417e4",
         phase: "upload_intent",
+      }),
+    );
+  });
+
+  test("T-AMEND9-01 sends explicit trim bounds from the trimmer-built file", async () => {
+    mockCompressVideoLocally.mockResolvedValue({
+      bytes: 1_234_567,
+      durationMs: 25000,
+      uri: "file:///Documents/trimmedVideo_1780000151.mp4",
+      wasCompressed: false,
+    });
+    mockCreateEventCoverVideoUploadIntent.mockResolvedValue({
+      jobId: "job_trimmed",
+      provider: "cloudinary",
+      upload: { fields: {}, url: "https://upload.example.com" },
+    });
+    mockUploadEventCoverVideoSource.mockResolvedValue({ public_id: "public_id" });
+    mockAcknowledgeEventCoverVideoSourceUploaded.mockResolvedValue({
+      progressPercent: 90,
+      status: "processing",
+    });
+    mockWaitForEventCoverVideoReady.mockResolvedValue({
+      processedUrl: "https://res.cloudinary.com/demo/video/upload/processed.mp4",
+      status: "applied",
+    });
+
+    const hook = renderHook();
+    await hook.start({
+      bytes: 1_234_567,
+      durationMs: 25000,
+      fileName: "trimmedVideo_1780000151.mp4",
+      mimeType: "video/mp4",
+      trimEndMs: 25000,
+      trimStartMs: 0,
+      uri: "file:///Documents/trimmedVideo_1780000151.mp4",
+    });
+
+    expect(createEventCoverVideoUploadIntent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sourceBytes: 1_234_567,
+        sourceDurationMs: 25000,
+        sourceFileName: "trimmedVideo_1780000151.mp4",
+        sourceMimeType: "video/mp4",
+        trimEndMs: 25000,
+        trimStartMs: 0,
+      }),
+    );
+    expect(uploadEventCoverVideoSource).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bytes: 1_234_567,
+        fileName: "trimmedVideo_1780000151.mp4",
+        mimeType: "video/mp4",
+        uri: "file:///Documents/trimmedVideo_1780000151.mp4",
       }),
     );
   });
