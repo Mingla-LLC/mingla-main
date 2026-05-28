@@ -222,6 +222,25 @@ So "doesn't use the scored system" is **false** — the scoring is sound. The on
 
 ---
 
+## 9c. Locked redesign brief + friend-GPS feasibility (operator 2026-05-28)
+
+**Operator decisions (locked):**
+1. The attached mockup is the **hero section only**. All sections below (birthday, custom days, standard holidays) must adopt the same premium visual style.
+2. **Keep the recommendation rows** (curated combos + singles) — do NOT drop or collapse to one highlight — but redesign them to look premium. So curated combos are **fixed + restyled**, not removed (resolves RC-1, HF-1, HF-2, and the 2.9km radius).
+3. Recommendation rows live **below the fold, rebuilt fast** (batched + parallel, per §9b Q1 direction).
+4. The new full-bleed hero applies to **all friend profiles**; birthday + recommendations remain paired-only below it.
+5. Recommendations center on the **paired friend's last-known physical GPS** (`user_location_history`), explicitly NOT their preferences-sheet location and NOT the viewer's location.
+6. The hero's "Ideal night out" card is a **hero element** (the person's stated ideal experience), distinct from the recommendation rows. Its data source must be defined at SPEC (candidates: a profile free-text field, or derived from bio/top interests + a representative image). **Open design question.**
+
+**🟠 CF-2 / feasibility risk — friend last-known GPS is largely unavailable.**
+`user_location_history` (cols: `user_id, latitude, longitude, accuracy, altitude, heading, speed, location_type, place_context, created_at`) currently holds only **200 rows from 3 distinct users**, most recent **2026-04-08**, with **0 users active in the last 30 days**. RLS has 2 policies (assume owner-only read → cross-user read needs a SECURITY DEFINER RPC or service-role edge read). Decision #5 is therefore **not satisfiable for ~all paired friends today** — the location-capture pipeline is barely populated.
+
+Note: `enhancedLocationService.ts`, `enhancedLocationTrackingService.ts`, and `permissionOrchestrator.ts` are under active modification on the in-flight `orch-0977-close` branch (consumer-app launch), which may be (re)activating location capture — coordinate before assuming the table stays empty.
+
+**Implication for SPEC:** decision #5 requires a documented fallback chain when the friend's GPS is missing/stale, AND a cross-user read path (RPC/edge). Without a fallback, the redesigned recs would have no location for almost every friend. This needs an operator call (see handoff).
+
+---
+
 ## 10. Confidence
 
 - **RC-1: root cause proven at code + data layers.** Both field contracts read directly; #229 diff confirmed not to touch them; data confirms the path executes. This is a deterministic contract mismatch, not pattern-matching.
