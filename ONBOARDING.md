@@ -69,7 +69,7 @@ INTAKE → INVESTIGATE → REVIEW → SPEC → REVIEW → IMPLEMENT → TEST →
 | `/mingla-forensics` | Investigation reports + specs | Write code |
 | `/mingla-implementor` | Code changes + implementation reports | Redesign, skip spec |
 | (tester) | Test reports with pass/fail | Skip regression checks |
-| `/ui-ux-pro-max` | Design recommendations | Implement code |
+| `/mingla-designer` | Premium design specs + recommendations | Implement code |
 
 **The orchestrator NEVER writes code or executes agents directly.** It writes prompts to `Mingla_Artifacts/prompts/`. The user dispatches them. This is how we keep the audit trail clean.
 
@@ -107,7 +107,7 @@ These exist because we ALREADY tripped over them. Don't trip again.
 | **Cross-domain check on every DB change.** Consumer + admin + business apps share Supabase. | R8 in risk register. |
 | **Migration chain rule.** When investigating a DB function/table, find the LATEST migration that touches it. Earlier migrations may be superseded. | We previously cited a stale CHECK constraint as current truth. Forensics now MUST verify the latest definition. |
 | **Sequential pace.** No parallel dispatches. Wait for approval after every step. | Founder rule. Stops scope creep. |
-| **/ui-ux-pro-max for visible UI.** Every implementor task touching UI must invoke `/ui-ux-pro-max` as pre-flight. | Founder rule. Quality bar enforcement. |
+| **/mingla-designer for visible UI.** Every implementor task touching UI must invoke `/mingla-designer` as pre-flight (replaces retired `/ui-ux-pro-max`). | Founder rule. Quality bar enforcement. |
 | **Keyboard never blocks an input field.** Every TextInput must remain visible above the keyboard. Reference Cycle 3 wizard root pattern. | Cost multiple reworks across Cycle 3 and 4 before being codified globally (2026-04-30). |
 | **No Co-Authored-By in commits.** No AI attribution lines. | Founder rule. |
 
