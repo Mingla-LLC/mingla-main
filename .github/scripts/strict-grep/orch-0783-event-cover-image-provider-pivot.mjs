@@ -44,7 +44,10 @@ const giphy = read("mingla-business/src/services/giphyEventCoverService.ts");
 const pexelsClient = read("mingla-business/src/services/pexelsEventCoverService.ts");
 const pexelsEdge = read("supabase/functions/event-cover-pexels-search/index.ts");
 const migration = read("supabase/migrations/20260515000018_orch_0783_event_cover_provider_metadata.sql");
-const eventCoverMedia = read("mingla-business/src/components/ui/EventCoverMedia.tsx");
+// ORCH-0964 — EventCoverMedia moved into the shared @mingla/event-rendering
+// package (mingla-business path is now a re-export shim). Read the shared
+// implementation so the legacy-video-support assertion reflects reality.
+const eventCoverMedia = read("packages/event-rendering/EventCoverMedia.tsx");
 const publicPage = read("mingla-business/src/components/event/PublicEventPage.tsx");
 
 const forbiddenStep4 = [
