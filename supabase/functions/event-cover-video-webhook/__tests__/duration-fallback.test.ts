@@ -4,7 +4,8 @@ import { sha1Hex } from "../../_shared/eventCoverVideo.ts";
 const JOB_ID = "99179520-3566-4202-bf7c-f8711257ce0c";
 const EVENT_ID = "09b4ece6-eabc-4734-8ce3-3a25d90417e4";
 const BRAND_ID = "22a18413-bfbf-4087-9ba7-45f70deba0f3";
-const API_SECRET = "cloudinary-test-secret";
+// Fake signing input for the local Deno signature test only — not a credential.
+const API_SECRET = "deno-unit-test-signing-input";
 const TIMESTAMP = "1778346000";
 
 type UpdateCall = {

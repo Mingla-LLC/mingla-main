@@ -5,7 +5,8 @@ const JOB_ID = "dde19eac-9810-4e0d-b8f6-63fe235fc5af";
 const OTHER_JOB_ID = "11111111-1111-4111-8111-111111111111";
 const EVENT_ID = "09b4ece6-eabc-4734-8ce3-3a25d90417e4";
 const BRAND_ID = "22a18413-bfbf-4087-9ba7-45f70deba0f3";
-const API_SECRET = "cloudinary-test-secret";
+// Fake signing input for the local Deno signature test only — not a credential.
+const API_SECRET = "deno-unit-test-signing-input";
 const TIMESTAMP = "1778346000";
 
 type UpdateCall = {
