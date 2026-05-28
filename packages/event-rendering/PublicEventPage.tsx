@@ -33,7 +33,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { BlurView } from "expo-blur";
+import { GlassBlur } from "./GlassBlur";
 
 import {
   accent,
@@ -529,7 +529,7 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
             isPast && styles.bodyContentMuted,
           ]}
         >
-          <BlurView
+          <GlassBlur
             tint={palette.glassTint}
             intensity={28}
             pointerEvents="none"
