@@ -4,6 +4,28 @@ import { BlurView } from "expo-blur";
 
 const MOBILE_WEB_MAX_WIDTH = 768;
 
+// Catch-all safety net for the mobile-web blur crash.
+//
+// The per-instance width guard below only neutralizes THIS component's blur, but
+// the public pages crash at ~34 DOM nodes — before those render — because other
+// `backdrop-filter` sources (app shell / early chrome) also stack up and kill the
+// mobile renderer. A global media-query stylesheet disables backdrop-filter for
+// EVERY element under 768px at paint time (immune to the SPA render-timing race),
+// which is the exact thing proven to stop the crash. Injected once, web-only;
+// desktop web (>=768px) and native apps are unaffected.
+if (typeof document !== "undefined") {
+  const STYLE_ID = "mingla-mobile-web-no-backdrop-blur";
+  if (!document.getElementById(STYLE_ID)) {
+    const styleEl = document.createElement("style");
+    styleEl.id = STYLE_ID;
+    styleEl.textContent =
+      "@media (max-width:" +
+      (MOBILE_WEB_MAX_WIDTH - 1) +
+      "px){*,*::before,*::after{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}}";
+    (document.head || document.documentElement).appendChild(styleEl);
+  }
+}
+
 // GlassBlur — drop-in BlurView that skips the blur layer on MOBILE WEB only.
 //
 // Stacked `backdrop-filter: blur()` (what expo-blur's BlurView renders on web)
