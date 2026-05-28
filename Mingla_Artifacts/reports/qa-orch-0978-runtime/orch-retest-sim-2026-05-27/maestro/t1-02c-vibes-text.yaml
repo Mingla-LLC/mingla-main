@@ -1,0 +1,8 @@
+appId: com.sethogieva.minglabusiness
+---
+- assertVisible:
+    text: "Vibes and Stuff"
+- tapOn:
+    text: "Vibes and Stuff"
+- waitForAnimationToEnd
+- takeScreenshot: "orch-retest-vibes-tapped-by-text"

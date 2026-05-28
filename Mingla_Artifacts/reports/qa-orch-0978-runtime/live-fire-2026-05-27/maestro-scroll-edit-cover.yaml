@@ -1,0 +1,5 @@
+appId: com.sethogieva.minglabusiness
+---
+- scroll
+- scroll
+- takeScreenshot: "orch-0978-edit-cover-section"

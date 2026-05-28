@@ -1,0 +1,6 @@
+appId: com.sethogieva.minglabusiness
+---
+- tapOn: "Home"
+- waitForAnimationToEnd:
+    timeout: 10000
+- takeScreenshot: orch-0978-home-restored

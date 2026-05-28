@@ -1,0 +1,5 @@
+appId: com.sethogieva.minglabusiness
+---
+- tapOn: "See all"
+- waitForAnimationToEnd
+- takeScreenshot: "orch-retest-see-all"

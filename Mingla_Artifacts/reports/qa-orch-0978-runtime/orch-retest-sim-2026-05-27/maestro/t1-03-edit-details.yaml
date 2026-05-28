@@ -1,0 +1,9 @@
+appId: com.sethogieva.minglabusiness
+---
+- tapOn:
+    point: "89%,10%"
+- waitForAnimationToEnd
+- takeScreenshot: "orch-retest-event-menu"
+- tapOn: "Edit details"
+- waitForAnimationToEnd
+- takeScreenshot: "orch-retest-edit-details"

@@ -1,0 +1,6 @@
+appId: com.sethogieva.minglabusiness
+---
+- tapOn:
+    point: "50%,12%"
+- waitForAnimationToEnd
+- takeScreenshot: "orch-retest-vibes-card-opened-v2"

@@ -1,0 +1,11 @@
+appId: com.sethogieva.minglabusiness
+---
+- scrollUntilVisible:
+    element:
+      text: "Cover"
+    direction: DOWN
+    timeout: 8000
+- takeScreenshot: "orch-retest-cover-visible"
+- tapOn: "Cover"
+- waitForAnimationToEnd
+- takeScreenshot: "orch-retest-cover-expanded"

@@ -1,0 +1,5 @@
+appId: com.sethogieva.minglabusiness
+---
+- tapOn:
+    point: "50%,55%"
+- takeScreenshot: "orch-0978-cover-expanded-coordinate"

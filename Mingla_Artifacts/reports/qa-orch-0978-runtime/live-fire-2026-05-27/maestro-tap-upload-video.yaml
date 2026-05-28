@@ -1,0 +1,5 @@
+appId: com.sethogieva.minglabusiness
+---
+- tapOn:
+    point: "51%,28%"
+- takeScreenshot: "orch-0978-after-upload-video-tap"

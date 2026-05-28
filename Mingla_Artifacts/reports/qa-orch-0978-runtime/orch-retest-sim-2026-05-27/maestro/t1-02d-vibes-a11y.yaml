@@ -1,0 +1,5 @@
+appId: com.sethogieva.minglabusiness
+---
+- tapOn: "Open Vibes and Stuff.*"
+- waitForAnimationToEnd
+- takeScreenshot: "orch-retest-vibes-opened-a11y"

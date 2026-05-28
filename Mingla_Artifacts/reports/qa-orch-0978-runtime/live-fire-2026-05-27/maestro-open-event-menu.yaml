@@ -1,0 +1,5 @@
+appId: com.sethogieva.minglabusiness
+---
+- tapOn:
+    point: "89%,10%"
+- takeScreenshot: "orch-0978-event-menu"

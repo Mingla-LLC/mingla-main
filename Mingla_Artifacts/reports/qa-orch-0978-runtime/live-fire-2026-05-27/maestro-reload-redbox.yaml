@@ -1,0 +1,6 @@
+appId: com.sethogieva.minglabusiness
+---
+- tapOn: "Reload"
+- waitForAnimationToEnd:
+    timeout: 15000
+- takeScreenshot: orch-0978-after-redbox-reload

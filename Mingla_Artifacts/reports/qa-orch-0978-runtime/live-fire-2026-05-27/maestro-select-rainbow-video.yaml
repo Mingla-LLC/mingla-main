@@ -1,0 +1,5 @@
+appId: com.sethogieva.minglabusiness
+---
+- tapOn:
+    point: "16%,26%"
+- takeScreenshot: "orch-0978-rainbow-video-selected"

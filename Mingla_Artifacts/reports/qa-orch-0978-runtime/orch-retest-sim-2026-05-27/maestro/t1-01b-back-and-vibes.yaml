@@ -1,0 +1,10 @@
+appId: com.sethogieva.minglabusiness
+---
+- tapOn:
+    point: "9%,10%"
+- waitForAnimationToEnd
+- swipe:
+    start: "50%,80%"
+    end: "50%,40%"
+- waitForAnimationToEnd
+- takeScreenshot: "orch-retest-t1-01b-home-scrolled"

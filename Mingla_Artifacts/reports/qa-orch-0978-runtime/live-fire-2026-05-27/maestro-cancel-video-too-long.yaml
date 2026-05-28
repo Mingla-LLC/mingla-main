@@ -1,0 +1,4 @@
+appId: com.sethogieva.minglabusiness
+---
+- tapOn: "Cancel"
+- takeScreenshot: "orch-0978-picker-after-too-long-cancel"

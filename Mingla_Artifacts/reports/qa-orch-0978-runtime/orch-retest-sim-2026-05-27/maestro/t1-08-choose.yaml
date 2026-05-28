@@ -1,0 +1,5 @@
+appId: com.sethogieva.minglabusiness
+---
+- tapOn: "Choose"
+- waitForAnimationToEnd
+- takeScreenshot: "orch-retest-after-choose"

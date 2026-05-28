@@ -1,0 +1,5 @@
+appId: com.sethogieva.minglabusiness
+---
+- tapOn: "Cover section.*"
+- waitForAnimationToEnd
+- takeScreenshot: "orch-retest-cover-expanded2"

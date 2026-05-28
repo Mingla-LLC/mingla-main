@@ -1,0 +1,11 @@
+appId: com.sethogieva.minglabusiness
+---
+- scrollUntilVisible:
+    element:
+      text: "Vibes and Stuff"
+    direction: UP
+    timeout: 5000
+- takeScreenshot: "orch-retest-vibes-visible"
+- tapOn: "Vibes and Stuff"
+- waitForAnimationToEnd
+- takeScreenshot: "orch-retest-vibes-opened"

@@ -1,0 +1,4 @@
+appId: com.sethogieva.minglabusiness
+---
+- tapOn: "Edit details"
+- takeScreenshot: "orch-0978-edit-details-open"

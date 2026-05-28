@@ -1,0 +1,3 @@
+status=HTTP/2 401 
+auth_failure_header=absent
+body={"code":"UNAUTHORIZED_INVALID_JWT_FORMAT","message":"Invalid JWT"}

@@ -1,0 +1,11 @@
+appId: com.sethogieva.minglabusiness
+---
+- swipe:
+    start: "50%,70%"
+    end: "50%,30%"
+- waitForAnimationToEnd
+- swipe:
+    start: "50%,70%"
+    end: "50%,40%"
+- waitForAnimationToEnd
+- takeScreenshot: "orch-retest-cover-section"

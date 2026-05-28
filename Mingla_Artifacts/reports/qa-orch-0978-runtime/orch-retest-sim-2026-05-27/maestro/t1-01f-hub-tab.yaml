@@ -1,0 +1,6 @@
+appId: com.sethogieva.minglabusiness
+---
+- tapOn:
+    point: "28%,92%"
+- waitForAnimationToEnd
+- takeScreenshot: "orch-retest-hub-tab2"

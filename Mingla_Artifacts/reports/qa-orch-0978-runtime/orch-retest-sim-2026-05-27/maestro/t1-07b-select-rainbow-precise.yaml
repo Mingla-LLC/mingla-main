@@ -1,0 +1,6 @@
+appId: com.sethogieva.minglabusiness
+---
+- tapOn:
+    point: "17%,10%"
+- waitForAnimationToEnd
+- takeScreenshot: "orch-retest-rainbow-selected2"

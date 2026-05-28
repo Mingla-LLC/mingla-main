@@ -1,0 +1,7 @@
+appId: com.sethogieva.minglabusiness
+---
+- tapOn:
+    point: "42%,78%"
+- waitForAnimationToEnd:
+    timeout: 10000
+- takeScreenshot: orch-0978-vibes-detail-coordinate

@@ -1,0 +1,3 @@
+status=HTTP/2 422 
+auth_failure_header_present=no
+body={"error":"duration_over_cap","detail":{"sourceDurationMs":29251,"ceilingMs":29250}}

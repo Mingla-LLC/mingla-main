@@ -1,0 +1,6 @@
+appId: com.sethogieva.minglabusiness
+---
+- tapOn:
+    point: "55%,27%"
+- waitForAnimationToEnd
+- takeScreenshot: "orch-0978-after-upload-video-center"

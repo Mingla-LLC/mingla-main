@@ -1,0 +1,7 @@
+appId: com.sethogieva.minglabusiness
+---
+- stopApp
+- launchApp
+- waitForAnimationToEnd:
+    timeout: 15000
+- takeScreenshot: orch-0978-after-brand-storage-reset
