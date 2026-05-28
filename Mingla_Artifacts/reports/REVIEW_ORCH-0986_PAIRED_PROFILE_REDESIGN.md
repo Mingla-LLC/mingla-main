@@ -64,3 +64,32 @@ Confirm the new-function registration doesn't alter other functions' `verify_jwt
 
 ## Routing
 NEEDS WORK → Codex `implementor-mingla` for B-1 (commit), B-2 (per-occasion categories), F-1 (migration coordination + COMMS), F-3 (config check). After rework returns: re-REVIEW (commit-hash + dependency-walk), then operator `db push`, then orchestrator deploys edge functions (verify-first curl), then `mingla-tester` iOS+Android. The migration + RPC + curated fix are sound — the rework is bounded.
+
+---
+
+# RE-REVIEW (Pass 2) — 2026-05-28 — VERDICT: APPROVED
+
+Reviewed at pushed HEAD `8a8fb284c` (rework commit `facfa227a` + report update `8a8fb284c`).
+
+## Commit-hash verification (REQUIRED)
+**PASS.** All scoped ORCH-0986 work is committed in `facfa227a` (18 files, +1974/-1227): the 3 strict-grep/workflow files, 6 mobile files, `config.toml`, the 4 backend function/test files, and the 3 migrations. Report update in `8a8fb284c`. Only the 3 `node_modules` symlinks remain uncommitted (correctly excluded). `git log` shows every claimed-changed file on the branch.
+
+## Dependency walk (REQUIRED)
+- `supabase/config.toml`: diff adds ONLY `[functions.get-paired-profile-cards] verify_jwt = true` — no other function's settings altered. ✓
+- `.github/workflows/strict-grep-mingla-business.yml`: additive ORCH-0986 job; no existing job changed. ✓
+- `.github/scripts/strict-grep/orch-0863-marketing-hub-phase-b.mjs`: additive backend allowlist (6 ORCH-0986 files + 2 source-reconciled ORCH-0978 migrations). ✓
+
+## Blocker / flag resolution
+- **B-1 (uncommitted) — RESOLVED.** Work committed atomically; node_modules excluded.
+- **B-2 (DEFAULT_PERSON_SECTIONS) — RESOLVED.** New shared `resolveHolidayCategorySlugs(holidayKey)` derives per-occasion categories server-side in `get-paired-profile-cards` (client sends real per-holiday categories where available; birthday/custom server-derived). `DEFAULT_PERSON_SECTIONS`-for-all removed from the batched request build. New test `ORCH-0986 batched profile derives occasion-specific singles signals` asserts birthday ≠ valentines signal sets and birthday includes `play`. Singles personalization restored.
+- **F-1 (ORCH-0978 migration contamination) — RESOLVED.** COMMS-0008 written + pushed on `main` (`9d495879f`, WARN → ORCH-0978). Files verified byte-for-byte matching remote (SHA256 recorded in impl report). `migration list --linked` confirms both ORCH-0978 versions already applied remotely (no remote-only drift); only `20260730000002` (ORCH-0986 RPC) is local-only/pending. Decision documented: files ride ORCH-0986 as source-reconciliation; ORCH-0978 retains ownership and must not land divergent copies.
+- **F-3 (config.toml) — RESOLVED** (see dependency walk).
+
+## Carry-forward (non-blocking, for CLOSE/tester)
+- F-2: no sim QA — `mingla-tester` performs `proven`-level iOS + Android live-fire at TEST.
+- At CLOSE/merge: ensure ORCH-0978's eventual PR does NOT re-add `20260730000000/0001` (they land on main via this PR per COMMS-0008).
+
+## Pre-flight for db push (PASS)
+`migration list --linked`: no remote-only rows; only `20260730000002` pending. Safe to `db push` (applies the additive read-only RPC only).
+
+**APPROVED → proceed to operator-authorized db push → orchestrator edge deploy (verify-first) → `mingla-tester` iOS+Android.**
