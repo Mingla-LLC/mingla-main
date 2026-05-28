@@ -53,10 +53,10 @@ export default function DeleteAccountPage() {
               For questions and concerns, and exceptional requests, email:
             </p>
             <a
-              href="mailto:developer@usemingla.com"
+              href="mailto:privacy@usemingla.com"
               className="mt-2 inline-flex min-h-10 items-center rounded-full border border-white/14 bg-white/10 px-4 text-sm font-semibold text-warm transition hover:bg-white/16 focus-ring"
             >
-              developer@usemingla.com
+              privacy@usemingla.com
             </a>
           </div>
         </article>
