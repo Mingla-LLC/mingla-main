@@ -14,7 +14,7 @@ import {
   validateTrimRange,
 } from "../_shared/eventCoverVideo.ts";
 
-export const EFFECTIVE_TRIM_CEILING_MS = 29_250;
+export const SOURCE_CEILING_MS = 33_000;
 
 const clampBitrate = (durationMs: number): string => {
   const seconds = Math.max(1, Math.ceil(durationMs / 1000));
@@ -121,7 +121,10 @@ export const handleEventCoverVideoUploadIntent = async (
   const sourceBytes = Number(body.sourceBytes ?? 0);
   const sourceDurationMs = Number(body.sourceDurationMs ?? 0);
   const trimStartMs = Number(body.trimStartMs ?? 0);
-  const trimEndMs = Number(body.trimEndMs ?? sourceDurationMs);
+  const rawTrimEndMs = Number(body.trimEndMs ?? sourceDurationMs);
+  // Accept a generous source window for native keyframe overshoot, but persist a
+  // processed trim window capped at MAX_DURATION_MS. (ORCH-0978 AMENDMENT 8.)
+  const trimEndMs = Math.min(rawTrimEndMs, MAX_DURATION_MS);
 
   if (!Number.isFinite(sourceBytes) || sourceBytes <= 0 || sourceBytes > MAX_SOURCE_VIDEO_BYTES) {
     logWarn(requestId, "source_size_out_of_range", {
@@ -141,15 +144,15 @@ export const handleEventCoverVideoUploadIntent = async (
     });
     return jsonResponse({ error: "validation_error", detail: "source_duration_out_of_range" }, 422);
   }
-  if (sourceDurationMs > EFFECTIVE_TRIM_CEILING_MS) {
+  if (sourceDurationMs > SOURCE_CEILING_MS) {
     logWarn(requestId, "duration_over_cap", {
-      ceiling: EFFECTIVE_TRIM_CEILING_MS,
+      ceiling: SOURCE_CEILING_MS,
       sourceDurationMs,
     });
     return jsonResponse(
       {
         error: "duration_over_cap",
-        detail: { sourceDurationMs, ceilingMs: EFFECTIVE_TRIM_CEILING_MS },
+        detail: { sourceDurationMs, ceilingMs: SOURCE_CEILING_MS },
       },
       422,
     );

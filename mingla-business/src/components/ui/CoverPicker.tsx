@@ -62,6 +62,7 @@ import {
 } from "../../services/eventCoverMediaService";
 import {
   EVENT_COVER_MAX_VIDEO_DURATION_MS,
+  EVENT_COVER_SOURCE_CEILING_MS,
   EVENT_COVER_VIDEO_PROCESSING_COPY,
 } from "../../services/eventCoverVideoProcessingService";
 import { useEventCoverVideoUpload } from "../../hooks/useEventCoverVideoUpload";
@@ -438,7 +439,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
         onShowToast("Could not read this video's duration. Try another clip.");
         return;
       }
-      if (durationMs > EVENT_COVER_MAX_VIDEO_DURATION_MS + 250) {
+      if (durationMs > EVENT_COVER_SOURCE_CEILING_MS) {
         console.log("[ORCH-0978-TRIM]", {
           durationMs,
           capMs: EVENT_COVER_MAX_VIDEO_DURATION_MS,

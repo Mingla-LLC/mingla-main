@@ -33,7 +33,7 @@ const processingServicePath =
   "mingla-business/src/services/eventCoverVideoProcessingService.ts";
 const mediaRulesPath = "mingla-business/src/utils/eventCoverMediaRules.ts";
 const migrationPath =
-  "supabase/migrations/20260730000000_orch_0978_video_cap_29s_constraints.sql";
+  "supabase/migrations/20260730000001_orch_0978_video_cap_generous_source.sql";
 const uploadIntentPath = "supabase/functions/event-cover-video-upload-intent/index.ts";
 const webhookPath = "supabase/functions/event-cover-video-webhook/index.ts";
 
@@ -69,15 +69,15 @@ if (!existsSync(join(root, migrationPath))) {
 } else {
   const migration = read(migrationPath);
   const trimConstraintPattern =
-    /ADD CONSTRAINT event_cover_video_jobs_trim_max_duration[\s\S]*?<= 29000/;
+    /ADD CONSTRAINT event_cover_video_jobs_trim_max_duration[\s\S]*?<= 30000/;
   const processedConstraintPattern =
-    /ADD CONSTRAINT event_cover_video_jobs_processed_max_duration[\s\S]*?<= 29000/;
+    /ADD CONSTRAINT event_cover_video_jobs_processed_max_duration[\s\S]*?<= 30000/;
   if (!trimConstraintPattern.test(migration)) {
-    fail("C4", "trim max-duration constraint must contain 29000");
+    fail("C4", "trim max-duration constraint must contain 30000");
   } else if (!processedConstraintPattern.test(migration)) {
-    fail("C4", "processed max-duration constraint must contain 29000");
+    fail("C4", "processed max-duration constraint must contain 30000");
   } else {
-    ok("C4", "DB migration pins both video duration constraints to 29000");
+    ok("C4", "DB migration pins both video duration constraints to 30000");
   }
 }
 
@@ -158,6 +158,28 @@ if (offendingFiles.length > 0) {
   );
 } else {
   ok("C9", `"30 seconds" literal is dead in eventCoverNativeVideo.ts + eventCoverMediaRules.ts`);
+}
+
+if (!uploadIntent.includes("SOURCE_CEILING_MS = 33_000")) {
+  fail("C10", `${uploadIntentPath} must declare SOURCE_CEILING_MS = 33_000`);
+} else if (uploadIntent.includes("EFFECTIVE_TRIM_CEILING_MS")) {
+  fail("C10", `${uploadIntentPath} must not contain dead EFFECTIVE_TRIM_CEILING_MS`);
+} else if (!uploadIntent.includes("Math.min(rawTrimEndMs, MAX_DURATION_MS)")) {
+  fail("C10", `${uploadIntentPath} must clamp rawTrimEndMs with MAX_DURATION_MS before persistence`);
+} else {
+  ok("C10", "Upload-intent uses a 33s source ceiling and clamps persisted trim to 30s");
+}
+
+if (!processingService.includes("EVENT_COVER_SOURCE_CEILING_MS = 33_000")) {
+  fail("C11", `${processingServicePath} must declare EVENT_COVER_SOURCE_CEILING_MS = 33_000`);
+} else if (!coverPicker.includes("EVENT_COVER_SOURCE_CEILING_MS")) {
+  fail("C11", `${coverPickerPath} must reference EVENT_COVER_SOURCE_CEILING_MS`);
+} else if (coverPicker.includes("EVENT_COVER_MAX_VIDEO_DURATION_MS + 250")) {
+  fail("C11", `${coverPickerPath} must not use the old +250ms duration tolerance`);
+} else if (!(33_000 > 30_000)) {
+  fail("C11", "source ceiling must remain strictly greater than processed cap");
+} else {
+  ok("C11", "Client source ceiling is 33s and remains above the 30s processed cap");
 }
 
 if (process.exitCode && process.exitCode !== 0) {

@@ -896,6 +896,7 @@ function checkNoNewBackendFiles() {
     "supabase/functions/event-cover-video-upload-intent/__tests__/duration-cap.test.ts",
     "supabase/functions/event-cover-video-upload-intent/index.ts",
     "supabase/migrations/20260730000000_orch_0978_video_cap_29s_constraints.sql",
+    "supabase/migrations/20260730000001_orch_0978_video_cap_generous_source.sql",
   ];
 
   // ORCH-0950 [Trip capacity + dashboard coherence — EXPANDED SCOPE]. C7 is
