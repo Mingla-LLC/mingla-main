@@ -71,7 +71,16 @@ import {
   EVENT_COVER_SOURCE_CEILING_MS,
   EVENT_COVER_VIDEO_PROCESSING_COPY,
 } from "../../services/eventCoverVideoProcessingService";
-import { useEventCoverVideoUpload } from "../../hooks/useEventCoverVideoUpload";
+import {
+  useEventCoverVideoUpload,
+  type EventCoverVideoUploadFile,
+} from "../../hooks/useEventCoverVideoUpload";
+import {
+  buildTrimmedVideoUploadFile,
+  normalizeLocalFileUri,
+  normalizePickerDurationMs,
+  type VideoTrimFinishPayload,
+} from "./coverPickerVideoTrimUpload";
 import {
   searchGiphyEventCovers,
   type GiphyCoverSearchResult,
@@ -95,13 +104,6 @@ export type CoverProvider = "upload" | "giphy" | "pexels";
 type SearchProviderTab = "giphy" | "pexels";
 type SearchStatus = "idle" | "loading" | "error";
 type VideoTrimSubscription = { remove: () => void };
-type VideoTrimFinishPayload = {
-  outputPath: string;
-  duration: number;
-  startTime: number;
-  endTime: number;
-};
-
 /** Full 7-field cover patch emitted on every change. Mirror of the
  *  events table cover_media_* column family. */
 export interface CoverPatch {
@@ -173,13 +175,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     brandId,
     coverMediaApplyMode,
   );
-  const lastVideoUploadFileRef = useRef<{
-    uri: string;
-    fileName?: string | null;
-    mimeType?: string | null;
-    bytes: number;
-    durationMs: number;
-  } | null>(null);
+  const lastVideoUploadFileRef = useRef<EventCoverVideoUploadFile | null>(null);
 
   // Local mirror of current cover for preview render + credit label.
   // Parent owns canonical state (passes initial* props on remount); this
@@ -422,14 +418,6 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     activeVideoUpload,
   ]);
 
-  const normalizePickerDurationMs = (duration?: number | null): number => {
-    if (typeof duration !== "number" || !Number.isFinite(duration)) return 0;
-    return duration > 0 && duration < 1000 ? duration * 1000 : duration;
-  };
-
-  const normalizeLocalFileUri = (path: string): string =>
-    path.startsWith("file://") ? path : `file://${path}`;
-
   const trimVideoWithDedicatedEditor = useCallback(
     (uri: string): Promise<VideoTrimFinishPayload | null> =>
       new Promise((resolve, reject) => {
@@ -506,24 +494,24 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
         ? await trimVideoWithDedicatedEditor(asset.uri)
         : null;
       if (isNative && trimResult === null) return;
-      const outputPath = trimResult?.outputPath ?? asset.uri;
-      const uploadUri = normalizeLocalFileUri(outputPath);
-      const trimDurationMs = normalizePickerDurationMs(
-        trimResult?.duration ??
-          ((trimResult?.endTime ?? 0) > (trimResult?.startTime ?? 0)
-            ? (trimResult?.endTime ?? 0) - (trimResult?.startTime ?? 0)
-            : null),
-      );
-      const durationMs =
-        trimDurationMs > 0 ? trimDurationMs : normalizePickerDurationMs(asset.duration);
-      if (trimResult !== null) {
-        console.log("[ORCH-0978-POC]", {
-          outputPath: trimResult.outputPath,
-          duration: trimResult.duration,
-          startTime: trimResult.startTime,
-          endTime: trimResult.endTime,
-        });
-      }
+      const uploadFile =
+        trimResult !== null
+          ? await buildTrimmedVideoUploadFile({
+              originalFileName: asset.fileName,
+              originalMimeType: asset.mimeType,
+              statFile: (uri) => FileSystem.getInfoAsync(uri),
+              trimResult,
+            })
+          : {
+              bytes: asset.fileSize ?? 0,
+              durationMs: normalizePickerDurationMs(asset.duration),
+              fileName: asset.fileName,
+              mimeType: asset.mimeType ?? "video/mp4",
+              trimEndMs: normalizePickerDurationMs(asset.duration),
+              trimStartMs: 0,
+              uri: normalizeLocalFileUri(asset.uri),
+            };
+      const { durationMs } = uploadFile;
       if (durationMs <= 0) {
         onShowToast("Could not read this video's duration. Try another clip.");
         return;
@@ -537,24 +525,10 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
         onShowToast("Please trim to 29 seconds first.");
         return;
       }
-      const trimmedInfo =
-        trimResult !== null ? await FileSystem.getInfoAsync(uploadUri) : null;
-      const bytes =
-        trimmedInfo !== null && trimmedInfo.exists && typeof trimmedInfo.size === "number"
-          ? trimmedInfo.size
-          : asset.fileSize ?? 0;
-      if (bytes <= 0) {
+      if (uploadFile.bytes <= 0) {
         onShowToast("Could not read this video's size. Try another clip.");
         return;
       }
-      const fallbackFileName = outputPath.split("/").pop() ?? asset.fileName;
-      const uploadFile = {
-        bytes,
-        durationMs,
-        fileName: asset.fileName ?? fallbackFileName,
-        mimeType: asset.mimeType ?? "video/mp4",
-        uri: uploadUri,
-      };
       lastVideoUploadFileRef.current = uploadFile;
       await videoUpload.start(uploadFile);
     } catch (error) {

@@ -20,18 +20,22 @@ import { upcomingKeys } from "./upcomingKeys";
 
 const idleStage: EventCoverVideoUploadStage = { phase: "idle", percent: 0 };
 
+export type EventCoverVideoUploadFile = {
+  uri: string;
+  fileName?: string | null;
+  mimeType?: string | null;
+  bytes: number;
+  durationMs: number;
+  trimStartMs?: number;
+  trimEndMs?: number;
+};
+
 export function useEventCoverVideoUpload(
   eventId: string,
   brandId: string,
   applyMode: EventCoverVideoApplyMode = "draft_auto",
 ): {
-  start: (file: {
-    uri: string;
-    fileName?: string | null;
-    mimeType?: string | null;
-    bytes: number;
-    durationMs: number;
-  }) => Promise<void>;
+  start: (file: EventCoverVideoUploadFile) => Promise<void>;
   cancel: () => Promise<void>;
   stage: EventCoverVideoUploadStage;
   status: EventCoverVideoStatus | null;
@@ -58,13 +62,7 @@ export function useEventCoverVideoUpload(
   }, [brandId, eventId, queryClient]);
 
   const start = useCallback(
-    async (file: {
-      uri: string;
-      fileName?: string | null;
-      mimeType?: string | null;
-      bytes: number;
-      durationMs: number;
-    }): Promise<void> => {
+    async (file: EventCoverVideoUploadFile): Promise<void> => {
       abortControllerRef.current?.abort();
       const abortController = new AbortController();
       abortControllerRef.current = abortController;
@@ -89,6 +87,8 @@ export function useEventCoverVideoUpload(
         });
         if (abortController.signal.aborted) return;
 
+        const trimStartMs = file.trimStartMs ?? 0;
+        const trimEndMs = file.trimEndMs ?? compressed.durationMs;
         const intent = await createEventCoverVideoUploadIntent({
           applyMode,
           brandId,
@@ -97,8 +97,8 @@ export function useEventCoverVideoUpload(
           sourceDurationMs: compressed.durationMs,
           sourceFileName: file.fileName ?? null,
           sourceMimeType: file.mimeType ?? null,
-          trimEndMs: compressed.durationMs,
-          trimStartMs: 0,
+          trimEndMs,
+          trimStartMs,
         });
         jobIdRef.current = intent.jobId;
         setStage({ phase: "uploading", percent: 0 });
