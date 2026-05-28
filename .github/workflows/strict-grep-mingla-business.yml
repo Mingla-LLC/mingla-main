@@ -312,6 +312,39 @@ jobs:
       - name: Run ORCH-0975 notifications sheet gate
         run: node .github/scripts/strict-grep/orch-0975-notifications-sheet.mjs
 
+  orch-0978-video-upload-optimistic-preview:
+    name: "ORCH-0978: video upload optimistic preview"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0978 optimistic preview gate
+        run: node .github/scripts/strict-grep/orch-0978-video-upload-optimistic-preview.mjs
+
+  orch-0978-video-cancel-aborts-upload:
+    name: "ORCH-0978: video cancel aborts upload"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0978 cancel abort gate
+        run: node .github/scripts/strict-grep/orch-0978-video-cancel-aborts-upload.mjs
+
+  orch-0978-video-autoplay-muted-contract:
+    name: "ORCH-0978: video autoplay muted contract"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0978 autoplay muted gate
+        run: node .github/scripts/strict-grep/orch-0978-video-autoplay-muted-contract.mjs
+
   orch-0986-paired-profile:
     name: "ORCH-0986: paired profile friend-GPS and no-heart invariants"
     runs-on: ubuntu-latest
@@ -1807,6 +1840,17 @@ jobs:
         run: node .github/scripts/strict-grep/orch-0955-embedded-tax-ui.mjs
       - name: Run ORCH-0955 region gate removal gate
         run: node .github/scripts/strict-grep/orch-0955-region-gate-deleted.mjs
+
+  orch-0978-video-cap-29s:
+    name: "ORCH-0978: event cover video cap consistency"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0978 video cap gate
+        run: node .github/scripts/strict-grep/orch-0978-video-cap-29s.mjs
 
   # ORCH-0962 brand-field-map-coverage gate RETIRED at META-ORCH-0972 CLOSE
   # (2026-05-26). The gate asserted that `viewRowToBrand` reads `row.brand_kind`

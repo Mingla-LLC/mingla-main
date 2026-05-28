@@ -1,0 +1,42 @@
+19:59:11.898 [ INFO] maestro.cli.report.TestDebugReporter.logSystemInfo: Debug output path: /Users/sethogieva/Desktop/mingla-orchs/ORCH-0978-[video-upload-polish-and-cloudinary-lifecycle]/Mingla_Artifacts/reports/qa-orch-0978-runtime/.maestro/tests/2026-05-26_195911
+19:59:11.937 [ INFO] MAESTRO.logSystemInfo: ---- System Info ----
+19:59:11.937 [ INFO] MAESTRO.logSystemInfo: Maestro Version: 2.5.1
+19:59:11.943 [ INFO] MAESTRO.logSystemInfo: CI: Undefined
+19:59:11.943 [ INFO] MAESTRO.logSystemInfo: OS Name: Mac OS X
+19:59:11.944 [ INFO] MAESTRO.logSystemInfo: OS Version: 26.4
+19:59:11.944 [ INFO] MAESTRO.logSystemInfo: Architecture: aarch64
+19:59:12.169 [ INFO] MAESTRO.logSystemInfo: Java Version: 21
+19:59:12.992 [ INFO] MAESTRO.logSystemInfo: Xcode Version: 26.4.1
+19:59:13.033 [ INFO] MAESTRO.logSystemInfo: Flutter Version: Undefined
+19:59:13.070 [ INFO] MAESTRO.logSystemInfo: Flutter Channel: Undefined
+19:59:13.071 [ INFO] MAESTRO.logSystemInfo: ---------------------
+19:59:14.752 [DEBUG] io.micrometer.common.util.internal.logging.InternalLoggerFactory.newDefaultFactory: Using SLF4J as the default logging framework
+19:59:28.606 [ INFO] maestro.cli.command.TestCommand.runShardSuite: [shard 1] Selected device emulator-5554 using port 7001 with execution plan ExecutionPlan(flowsToRun=[/tmp/orch-0978-android-smoke.XXXXXX.yaml], sequence=FlowSequence(flows=[], continueOnFailure=true), workspaceConfig=WorkspaceConfig(flows=null, includeTags=null, excludeTags=null, executionOrder=null, baselineBranch=null, notifications=null, disableRetries=false, platform=PlatformConfiguration(android=AndroidConfiguration(disableAnimations=false), ios=IOSConfiguration(disableAnimations=false, snapshotKeyHonorModalViews=null)), testOutputDir=null))
+20:00:12.409 [ INFO] maestro.cli.runner.TestRunner.runSingle$lambda$0: Running flow orch-0978-android-smoke.XXXXXX.yaml...
+20:00:12.438 [ INFO] maestro.Maestro.cachedDeviceInfo_delegate$lambda$0: Getting device info
+20:00:13.126 [ INFO] maestro.Maestro.cachedDeviceInfo_delegate$lambda$0: Got device info: DeviceInfo(platform=ANDROID, widthPixels=1080, heightPixels=2400, widthGrid=1080, heightGrid=2400)
+20:00:13.256 [ INFO] maestro.cli.runner.MaestroCommandRunner.runCommands$lambda$0: Define variables RUNNING
+20:00:13.265 [ INFO] maestro.cli.runner.MaestroCommandRunner.runCommands$lambda$11: Define variables metadata CommandMetadata(numberOfRuns=null, evaluatedCommand=MaestroCommand(defineVariablesCommand=DefineVariablesCommand(env={MAESTRO_FILENAME=orch-0978-android-smoke.XXXXXX, MAESTRO_DEVICE_UDID=emulator-5554, MAESTRO_SHARD_ID=1, MAESTRO_SHARD_INDEX=0}, label=null, optional=false)), logMessages=[], insight=Insight(message=, level=NONE), aiReasoning=null, labeledCommand=null)
+20:00:13.266 [ INFO] maestro.cli.runner.MaestroCommandRunner.runCommands$lambda$2: Define variables COMPLETED
+20:00:13.267 [ INFO] maestro.cli.runner.MaestroCommandRunner.runCommands$lambda$0: Apply configuration RUNNING
+20:00:13.270 [ INFO] maestro.cli.runner.MaestroCommandRunner.runCommands$lambda$11: Apply configuration metadata CommandMetadata(numberOfRuns=null, evaluatedCommand=MaestroCommand(applyConfigurationCommand=ApplyConfigurationCommand(config=MaestroConfig(appId=com.sethogieva.minglabusiness, name=null, tags=[], ext={}, onFlowStart=null, onFlowComplete=null, properties={}), label=null, optional=false)), logMessages=[], insight=Insight(message=, level=NONE), aiReasoning=null, labeledCommand=null)
+20:00:13.271 [ INFO] maestro.cli.runner.MaestroCommandRunner.runCommands$lambda$2: Apply configuration COMPLETED
+20:00:13.272 [ INFO] maestro.cli.runner.MaestroCommandRunner.runCommands$lambda$0: Launch app "com.sethogieva.minglabusiness" RUNNING
+20:00:13.277 [ INFO] maestro.cli.runner.MaestroCommandRunner.runCommands$lambda$11: Launch app "com.sethogieva.minglabusiness" metadata CommandMetadata(numberOfRuns=null, evaluatedCommand=MaestroCommand(launchAppCommand=LaunchAppCommand(appId=com.sethogieva.minglabusiness, clearState=false, clearKeychain=null, stopApp=null, permissions={notifications=allow}, launchArguments=null, label=null, optional=false)), logMessages=[], insight=Insight(message=, level=NONE), aiReasoning=null, labeledCommand=null)
+20:00:13.384 [ INFO] maestro.Maestro.launchApp$lambda$2: Launching app com.sethogieva.minglabusiness
+20:00:13.385 [ INFO] maestro.Maestro.launchApp$lambda$2: Stopping com.sethogieva.minglabusiness app during launch
+20:00:15.007 [ INFO] maestro.cli.runner.MaestroCommandRunner.runCommands$lambda$2: Launch app "com.sethogieva.minglabusiness" COMPLETED
+20:00:15.010 [ INFO] maestro.cli.runner.MaestroCommandRunner.runCommands$lambda$0: Wait for animation to end within 5000 ms RUNNING
+20:00:15.011 [ INFO] maestro.cli.runner.MaestroCommandRunner.runCommands$lambda$11: Wait for animation to end within 5000 ms metadata CommandMetadata(numberOfRuns=null, evaluatedCommand=MaestroCommand(waitForAnimationToEndCommand=WaitForAnimationToEndCommand(timeout=5000, label=null, optional=false)), logMessages=[], insight=Insight(message=, level=NONE), aiReasoning=null, labeledCommand=null)
+20:00:15.015 [ INFO] maestro.Maestro.waitForAnimationToEnd$lambda$51: Waiting for animation to end with timeout 5000
+20:00:15.023 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to byte array
+20:00:15.023 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to output sink
+20:00:21.878 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to byte array
+20:00:21.881 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to output sink
+20:00:24.948 [ INFO] maestro.cli.runner.MaestroCommandRunner.runCommands$lambda$2: Wait for animation to end within 5000 ms COMPLETED
+20:00:24.949 [ INFO] maestro.cli.runner.MaestroCommandRunner.runCommands$lambda$0: Take screenshot orch-0978-android-business-launch-smoke RUNNING
+20:00:24.955 [ INFO] maestro.cli.runner.MaestroCommandRunner.runCommands$lambda$11: Take screenshot orch-0978-android-business-launch-smoke metadata CommandMetadata(numberOfRuns=null, evaluatedCommand=MaestroCommand(takeScreenshotCommand=TakeScreenshotCommand(path=orch-0978-android-business-launch-smoke, cropOn=null, label=null, optional=false)), logMessages=[], insight=Insight(message=, level=NONE), aiReasoning=null, labeledCommand=null)
+20:00:24.959 [ INFO] maestro.Maestro.takeScreenshot: Taking screenshot
+20:00:24.962 [TRACE] maestro.utils.ScreenshotUtils.takeScreenshot: Taking screenshot to output sink
+20:00:27.615 [ INFO] maestro.cli.runner.MaestroCommandRunner.runCommands$lambda$2: Take screenshot orch-0978-android-business-launch-smoke COMPLETED
+20:00:29.521 [ INFO] maestro.cli.report.TestDebugReporter.deleteOldFiles: Performing purge of logs older than 14 days from /Users/sethogieva/Desktop/mingla-orchs/ORCH-0978-[video-upload-polish-and-cloudinary-lifecycle]/Mingla_Artifacts/reports/qa-orch-0978-runtime

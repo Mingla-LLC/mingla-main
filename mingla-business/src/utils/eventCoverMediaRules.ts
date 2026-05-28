@@ -1,7 +1,7 @@
 import type { EventCoverMediaType } from "../store/draftEventStore";
 
 export const EVENT_COVER_MAX_BYTES = 30 * 1024 * 1024;
-export const EVENT_COVER_MAX_VIDEO_DURATION_MS = 15_000;
+export const EVENT_COVER_MAX_VIDEO_DURATION_MS = 29_000;
 export const EVENT_COVER_UPLOAD_LIMIT_COPY =
   "Upload a JPEG, PNG, WebP, or GIF up to 30 MB.";
 
@@ -13,7 +13,8 @@ export type EventCoverMediaErrorCode =
   | "video_duration_unknown"
   | "upload_failed"
   | "display_failed"
-  | "missing_server_event_id";
+  | "missing_server_event_id"
+  | "persist_mismatch";
 
 export class EventCoverMediaError extends Error {
   code: EventCoverMediaErrorCode;
@@ -315,7 +316,7 @@ export const validateEventCoverAsset = (input: {
   if (mediaType === null) {
     throw new EventCoverMediaError(
       "unsupported_type",
-      "Choose an image, GIF, or MP4/MOV/WebM video up to 15 seconds.",
+      "Choose an image, GIF, or MP4/MOV/WebM video up to 29 seconds.",
     );
   }
   if (
@@ -330,7 +331,7 @@ export const validateEventCoverAsset = (input: {
   if (mediaType === "video" && typeof input.durationMs !== "number") {
     throw new EventCoverMediaError(
       "video_duration_unknown",
-      "We couldn't read this video's duration. Choose a 15-second MP4, MOV, or WebM video.",
+      "We couldn't read this video's duration. Choose a 30-second MP4, MOV, or WebM video.",
     );
   }
   if (
@@ -340,7 +341,7 @@ export const validateEventCoverAsset = (input: {
   ) {
     throw new EventCoverMediaError(
       "video_too_long",
-      "Cover videos must be 15 seconds or shorter.",
+      "Cover videos must be 29 seconds or shorter.",
     );
   }
   return mediaType;

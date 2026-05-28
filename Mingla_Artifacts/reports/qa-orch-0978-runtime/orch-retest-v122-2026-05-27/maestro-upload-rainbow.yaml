@@ -1,0 +1,10 @@
+appId: com.sethogieva.minglabusiness
+---
+- tapOn: "Upload video"
+- waitForAnimationToEnd
+- tapOn:
+    point: "17%,25%"
+- waitForAnimationToEnd
+- takeScreenshot: "trim-screen"
+- tapOn: "Choose"
+- waitForAnimationToEnd

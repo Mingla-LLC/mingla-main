@@ -349,10 +349,13 @@ describe("server-backed draft lifecycle guards", () => {
     const source = repoFile("src/components/event/EditPublishedScreen.tsx");
 
     const validationIndex = source.indexOf("validateLiveEventFieldUpdate(");
-    const serverWriteIndex = source.indexOf("updatePublishedEventCoverMedia(");
+    const setCoverIndex = source.indexOf("setEventCover(");
+    const clearCoverIndex = source.indexOf("clearEventCover(");
 
     expect(validationIndex).toBeGreaterThan(-1);
-    expect(serverWriteIndex).toBeGreaterThan(validationIndex);
+    expect(
+      [setCoverIndex, clearCoverIndex].some((index) => index > validationIndex),
+    ).toBe(true);
   });
 
   test("server-loaded published event edits can save cover media without local store writes", () => {

@@ -112,7 +112,8 @@
           "enableGooglePay": true
         }
       ],
-      "./plugins/withAdiRegistration"
+      "./plugins/withAdiRegistration",
+      "react-native-compressor"
     ],
     "experiments": {
       "typedRoutes": true,

@@ -880,6 +880,25 @@ function checkNoNewBackendFiles() {
     "supabase/migrations/__tests__/pg_brand_offering_counts_privilege_probe.sql",
     "supabase/functions/__tests__/pg_public_brand_upcoming.test.sql",
   ];
+  // ORCH-0978 [Video upload polish + sub-30s perfect cross-surface render].
+  // C7 is scoped to ORCH-0863 marketing; these backend touches are the
+  // existing event-cover-video shared helper/cancel/source-uploaded/upload-intent
+  // lifecycle paths needed for abort + Cloudinary destroy. No new backend
+  // function or migration is introduced here.
+  const ORCH_0978_BACKEND_ALLOWLIST = [
+    "supabase/functions/_shared/eventCoverVideo.test.ts",
+    "supabase/functions/_shared/eventCoverVideo.ts",
+    "supabase/functions/event-cover-video-cancel/index.ts",
+    "supabase/functions/event-cover-video-source-uploaded/index.ts",
+    "supabase/functions/event-cover-video-webhook/__tests__/job-id-recovery-adversarial.test.ts",
+    "supabase/functions/event-cover-video-webhook/__tests__/duration-fallback.test.ts",
+    "supabase/functions/event-cover-video-webhook/__tests__/job-id-recovery.test.ts",
+    "supabase/functions/event-cover-video-webhook/index.ts",
+    "supabase/functions/event-cover-video-upload-intent/__tests__/duration-cap.test.ts",
+    "supabase/functions/event-cover-video-upload-intent/index.ts",
+    "supabase/migrations/20260730000000_orch_0978_video_cap_29s_constraints.sql",
+    "supabase/migrations/20260730000001_orch_0978_video_cap_generous_source.sql",
+  ];
 
   // ORCH-0950 [Trip capacity + dashboard coherence — EXPANDED SCOPE]. C7 is
   // scoped to ORCH-0863 marketing; these backend touches are the trip-capacity
@@ -981,6 +1000,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_0963_BACKEND_ALLOWLIST,
     ...ORCH_0964_BACKEND_ALLOWLIST,
     ...ORCH_0977_BACKEND_ALLOWLIST,
+    ...ORCH_0978_BACKEND_ALLOWLIST,
   ];
   const forbidden = changed.filter(
     (p) =>

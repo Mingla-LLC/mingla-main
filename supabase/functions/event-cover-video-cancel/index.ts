@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import {
+  cloudinaryDestroy,
   corsHeaders,
   isValidUuid,
   jsonResponse,
@@ -8,6 +9,30 @@ import {
   requireUserId,
   serviceRoleClient,
 } from "../_shared/eventCoverVideo.ts";
+
+const sourcePublicIdFromJob = (job: {
+  source_public_id?: unknown;
+  provider_payload?: unknown;
+}): string | null => {
+  if (typeof job.source_public_id === "string" && job.source_public_id.trim().length > 0) {
+    return job.source_public_id.trim();
+  }
+  if (job.provider_payload === null || typeof job.provider_payload !== "object") {
+    return null;
+  }
+  const payload = job.provider_payload as {
+    public_id?: unknown;
+    source_upload?: { public_id?: unknown };
+  };
+  const nestedPublicId = payload.source_upload?.public_id;
+  if (typeof nestedPublicId === "string" && nestedPublicId.trim().length > 0) {
+    return nestedPublicId.trim();
+  }
+  if (typeof payload.public_id === "string" && payload.public_id.trim().length > 0) {
+    return payload.public_id.trim();
+  }
+  return null;
+};
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -59,6 +84,18 @@ serve(async (req) => {
   if (updateError || !updatedJob) {
     console.error("[event-cover-video-cancel] cancel failed:", updateError);
     return jsonResponse({ error: "internal_error", detail: "cancel_failed" }, 500);
+  }
+
+  const sourcePublicId = sourcePublicIdFromJob(job);
+  if (sourcePublicId !== null) {
+    const destroyResult = await cloudinaryDestroy(sourcePublicId);
+    if (!destroyResult.ok) {
+      console.warn("[event-cover-video-cancel] cloudinary destroy failed:", {
+        jobId: job.id,
+        publicId: sourcePublicId,
+        reason: destroyResult.reason,
+      });
+    }
   }
 
   return jsonResponse(mapEventCoverVideoStatus(updatedJob));

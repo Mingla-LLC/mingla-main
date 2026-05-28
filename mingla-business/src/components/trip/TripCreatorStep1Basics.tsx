@@ -404,6 +404,7 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
           onCoverChange={handleCoverChange}
           onShowToast={handleCoverToast}
           providers={["upload", "giphy", "pexels"]}
+          enableVideoUpload={false}
           disabled={disabled}
         />
       </View>

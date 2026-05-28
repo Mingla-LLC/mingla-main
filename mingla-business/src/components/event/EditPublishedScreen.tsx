@@ -104,8 +104,9 @@ import { EditAfterPublishBanner } from "./EditAfterPublishBanner";
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
 import { canPerformAction } from "../../utils/permissionGates";
 import {
+  clearEventCover,
   EventCoverMediaError,
-  updatePublishedEventCoverMedia,
+  setEventCover,
 } from "../../services/eventCoverMediaService";
 // ORCH-0824 hotfix (Option B): post-publish RPC for the 5 new taxonomy
 // + city fields. Bridges the local-only EditPublishedScreen save flow to
@@ -614,15 +615,18 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         setRejectDialog(buildRejectDialog(validation));
         return;
       }
-      const mediaPatchPresent =
-        patch.coverMediaUrl !== undefined ||
-        patch.coverMediaType !== undefined ||
-        patch.coverMediaProvider !== undefined ||
-        patch.coverMediaSourceUrl !== undefined ||
-        patch.coverMediaCredit !== undefined ||
-        patch.coverMediaCreditUrl !== undefined ||
-        patch.coverMediaAlt !== undefined;
-      if (mediaPatchPresent) {
+      const explicitCoverSet =
+        patch.coverMediaUrl !== undefined && patch.coverMediaUrl !== null;
+      const explicitCoverClear = patch.coverMediaUrl === null;
+      const metadataOnlyPatch =
+        patch.coverMediaUrl === undefined &&
+        (patch.coverMediaType !== undefined ||
+          patch.coverMediaProvider !== undefined ||
+          patch.coverMediaSourceUrl !== undefined ||
+          patch.coverMediaCredit !== undefined ||
+          patch.coverMediaCreditUrl !== undefined ||
+          patch.coverMediaAlt !== undefined);
+      if (explicitCoverSet || explicitCoverClear) {
         if (liveEvent.serverEventId === null) {
           setSubmitting(false);
           setModal((prev) => ({ ...prev, visible: false }));
@@ -630,15 +634,18 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
           return;
         }
         try {
-          await updatePublishedEventCoverMedia(
-            liveEvent.serverEventId,
-            patch.coverMediaUrl !== undefined
-              ? patch.coverMediaUrl
-              : liveEvent.coverMediaUrl,
-            patch.coverMediaType !== undefined
-              ? patch.coverMediaType
-              : liveEvent.coverMediaType,
-            {
+          if (explicitCoverClear) {
+            await clearEventCover(liveEvent.serverEventId);
+          } else {
+            const mediaUrl = patch.coverMediaUrl as string;
+            const mediaType = patch.coverMediaType ?? liveEvent.coverMediaType;
+            if (mediaType === null || mediaType === undefined) {
+              throw new EventCoverMediaError(
+                "upload_failed",
+                "Cover save failed: media type is missing.",
+              );
+            }
+            await setEventCover(liveEvent.serverEventId, mediaUrl, mediaType, {
               provider:
                 patch.coverMediaProvider !== undefined
                   ? patch.coverMediaProvider
@@ -659,18 +666,34 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
                 patch.coverMediaAlt !== undefined
                   ? patch.coverMediaAlt
                   : liveEvent.coverMediaAlt ?? null,
-            },
-          );
+            });
+          }
         } catch (error) {
           setSubmitting(false);
           setModal((prev) => ({ ...prev, visible: false }));
-          showToast(
-            error instanceof EventCoverMediaError
-              ? "Cover upload failed. Try again."
-              : "Could not save cover media. Try again.",
-          );
+          if (error instanceof EventCoverMediaError) {
+            if (error.code === "persist_mismatch") {
+              showToast(
+                "Save succeeded but the cover did not persist. Refresh and try again.",
+              );
+            } else {
+              showToast("Cover upload failed. Try again.");
+            }
+          } else {
+            showToast("Could not save cover media. Try again.");
+          }
           return;
         }
+      } else if (metadataOnlyPatch) {
+        console.warn(
+          "[ORCH-0978]",
+          "metadata-only cover patch skipped (no coverMediaUrl change)",
+          {
+            patchKeys: Object.keys(patch).filter((key) =>
+              key.startsWith("coverMedia"),
+            ),
+          },
+        );
       }
       // ORCH-0824 hotfix (Option B): if the patch touches any of the 5
       // ORCH-0824 fields, push them to the events row via the post-publish

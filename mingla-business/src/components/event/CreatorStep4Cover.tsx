@@ -31,6 +31,9 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
   draft,
   updateDraft,
   onShowToast,
+  coverMediaEventId,
+  coverMediaApplyMode,
+  onCoverVideoProcessingChange,
 }) => {
   const handleCoverChange = useCallback(
     (patch: CoverPatch): void => {
@@ -53,7 +56,7 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
         <Text style={styles.fieldLabel}>Cover</Text>
         <CoverPicker
           brandId={draft.brandId}
-          eventRowId={draft.id}
+          eventRowId={coverMediaEventId ?? draft.id}
           initialCoverHue={draft.coverHue}
           initialMediaUrl={draft.coverMediaUrl ?? null}
           initialMediaType={draft.coverMediaType ?? null}
@@ -65,6 +68,8 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
           onCoverChange={handleCoverChange}
           onShowToast={onShowToast}
           providers={["upload", "giphy", "pexels"]}
+          coverMediaApplyMode={coverMediaApplyMode ?? "draft_auto"}
+          onCoverVideoProcessingChange={onCoverVideoProcessingChange}
         />
       </View>
     </View>

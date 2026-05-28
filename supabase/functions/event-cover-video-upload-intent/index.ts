@@ -14,6 +14,8 @@ import {
   validateTrimRange,
 } from "../_shared/eventCoverVideo.ts";
 
+export const SOURCE_CEILING_MS = 33_000;
+
 const clampBitrate = (durationMs: number): string => {
   const seconds = Math.max(1, Math.ceil(durationMs / 1000));
   const targetBits = 25 * 1024 * 1024 * 8 * 0.86;
@@ -37,7 +39,18 @@ const logWarn = (requestId: string, stage: string, payload: Record<string, unkno
   }));
 };
 
-serve(async (req) => {
+const defaultDeps = {
+  cloudinarySignature,
+  providerConfigured,
+  requireEventManager,
+  requireUserId,
+  serviceRoleClient,
+};
+
+export const handleEventCoverVideoUploadIntent = async (
+  req: Request,
+  deps: typeof defaultDeps = defaultDeps,
+): Promise<Response> => {
   let requestId: string = crypto.randomUUID();
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") {
@@ -45,9 +58,9 @@ serve(async (req) => {
     return jsonResponse({ error: "method_not_allowed" }, 405);
   }
 
-  const userIdOrResponse = await requireUserId(req);
+  const userIdOrResponse = await deps.requireUserId(req);
   if (userIdOrResponse instanceof Response) {
-    logWarn(requestId, "auth_failed", { status: userIdOrResponse.status });
+    logWarn(requestId, "auth_response_returned", { status: userIdOrResponse.status });
     return userIdOrResponse;
   }
   const userId = userIdOrResponse;
@@ -86,7 +99,7 @@ serve(async (req) => {
     trimStartMs: body.trimStartMs,
   });
 
-  if (!providerConfigured()) {
+  if (!deps.providerConfigured()) {
     logWarn(requestId, "provider_not_configured");
     return jsonResponse({
       error: "provider_not_configured",
@@ -108,7 +121,10 @@ serve(async (req) => {
   const sourceBytes = Number(body.sourceBytes ?? 0);
   const sourceDurationMs = Number(body.sourceDurationMs ?? 0);
   const trimStartMs = Number(body.trimStartMs ?? 0);
-  const trimEndMs = Number(body.trimEndMs ?? Math.min(sourceDurationMs, MAX_DURATION_MS));
+  const rawTrimEndMs = Number(body.trimEndMs ?? sourceDurationMs);
+  // Accept a generous source window for native keyframe overshoot, but persist a
+  // processed trim window capped at MAX_DURATION_MS. (ORCH-0978 AMENDMENT 8.)
+  const trimEndMs = Math.min(rawTrimEndMs, MAX_DURATION_MS);
 
   if (!Number.isFinite(sourceBytes) || sourceBytes <= 0 || sourceBytes > MAX_SOURCE_VIDEO_BYTES) {
     logWarn(requestId, "source_size_out_of_range", {
@@ -127,6 +143,19 @@ serve(async (req) => {
       sourceDurationMs,
     });
     return jsonResponse({ error: "validation_error", detail: "source_duration_out_of_range" }, 422);
+  }
+  if (sourceDurationMs > SOURCE_CEILING_MS) {
+    logWarn(requestId, "duration_over_cap", {
+      ceiling: SOURCE_CEILING_MS,
+      sourceDurationMs,
+    });
+    return jsonResponse(
+      {
+        error: "duration_over_cap",
+        detail: { sourceDurationMs, ceilingMs: SOURCE_CEILING_MS },
+      },
+      422,
+    );
   }
   const trimError = validateTrimRange({ sourceDurationMs, trimStartMs, trimEndMs });
   if (trimError !== null) {
@@ -152,8 +181,8 @@ serve(async (req) => {
     trimStartMs,
   });
 
-  const supabase = serviceRoleClient();
-  const allowed = await requireEventManager(supabase, eventId, brandId, userId);
+  const supabase = deps.serviceRoleClient();
+  const allowed = await deps.requireEventManager(supabase, eventId, brandId, userId);
   if (allowed instanceof Response) {
     let detail: unknown = null;
     let error: unknown = null;
@@ -236,22 +265,27 @@ serve(async (req) => {
   const cloudName = Deno.env.get("CLOUDINARY_CLOUD_NAME") ?? "";
   const apiKey = Deno.env.get("CLOUDINARY_API_KEY") ?? "";
   const timestamp = Math.floor(Date.now() / 1000).toString();
-  const trimDurationMs = trimEndMs - trimStartMs;
   const publicId = `event-covers/raw/${brandId}/${eventId}/${job.id}`;
+  const durationBudgetMs = Math.min(trimEndMs - trimStartMs, MAX_DURATION_MS);
+  const durationBudgetSeconds = Math.ceil(durationBudgetMs / 1000);
+  // du_<seconds> caps processed duration server-side as defense-in-depth alongside client trim.
+  // Reference: https://cloudinary.com/documentation/video_manipulation_and_delivery_reference#video_transformation_url_parameters
   const eager = [
-    `so_${(trimStartMs / 1000).toFixed(3)}`,
-    `du_${(trimDurationMs / 1000).toFixed(3)}`,
     "c_limit,w_1280,h_720",
+    `du_${durationBudgetSeconds}`,
     "vc_h264",
     "ac_aac",
-    `br_${clampBitrate(trimDurationMs)}`,
+    `br_${clampBitrate(durationBudgetMs)}`,
     "f_mp4",
     "q_auto:good",
   ].join(",");
   const eagerNotificationUrl =
     `${Deno.env.get("SUPABASE_URL") ?? ""}/functions/v1/event-cover-video-webhook`;
   const context = `job_id=${job.id}|event_id=${eventId}|brand_id=${brandId}|apply_mode=${applyMode}`;
-  const signature = await cloudinarySignature({
+  const signature = await deps.cloudinarySignature({
+    // Cloudinary signed upload params:
+    // https://cloudinary.com/documentation/upload_images
+    // https://cloudinary.com/documentation/authentication_signatures
     context,
     eager,
     eager_async: "true",
@@ -262,12 +296,15 @@ serve(async (req) => {
   logInfo(requestId, "cloudinary_signature_generated", {
     jobId: job.id,
     publicId,
-    trimDurationMs,
+    durationBudgetMs,
   });
 
   const { error: payloadUpdateError } = await supabase
     .from("event_cover_video_jobs")
-    .update({ provider_payload: { public_id: publicId, eager } })
+    .update({
+      provider_payload: { public_id: publicId, eager },
+      source_public_id: publicId,
+    })
     .eq("id", job.id);
   if (payloadUpdateError) {
     logWarn(requestId, "provider_payload_update_failed", {
@@ -288,6 +325,9 @@ serve(async (req) => {
     upload: {
       url: `https://api.cloudinary.com/v1_1/${cloudName}/video/upload`,
       fields: {
+        // Cloudinary Upload API parameters:
+        // https://cloudinary.com/documentation/upload_images
+        // https://cloudinary.com/documentation/upload_parameters
         api_key: apiKey,
         context,
         eager,
@@ -300,4 +340,8 @@ serve(async (req) => {
       },
     },
   });
-});
+};
+
+if (import.meta.main) {
+  serve((req) => handleEventCoverVideoUploadIntent(req));
+}

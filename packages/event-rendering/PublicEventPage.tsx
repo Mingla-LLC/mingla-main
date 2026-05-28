@@ -55,6 +55,7 @@ import type {
   PublicEventProps,
   PublicTicketProps,
 } from "./types";
+import { EventCoverMedia } from "./EventCoverMedia";
 
 const SHOW_INITIAL_DATES = 10;
 
@@ -472,6 +473,19 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
             style={styles.heroImage}
             showAudioControl={event.coverMediaType === "video"}
             audioControlPosition="topRight"
+          />
+        ) : event.coverMediaUrl !== null && event.coverMediaType === "video" ? (
+          <EventCoverMedia
+            mediaUrl={event.coverMediaUrl}
+            mediaType="video"
+            hue={event.coverHue}
+            height={380}
+            radius={0}
+            muted={true}
+            autoplay={true}
+            loop={true}
+            showAudioControl
+            audioControlLabel="event cover video"
           />
         ) : (
           <View style={[styles.heroImage, { backgroundColor: heroColor }]} />

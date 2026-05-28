@@ -15,6 +15,9 @@ import * as FileSystem from "expo-file-system/legacy";
 
 jest.mock("../supabase", () => ({
   supabase: {
+    auth: {
+      getSession: jest.fn(),
+    },
     functions: {
       invoke: jest.fn(),
     },
@@ -27,8 +30,18 @@ jest.mock("expo-file-system/legacy", () => ({
   createUploadTask: jest.fn(),
 }));
 
+jest.mock("react-native", () => ({
+  Platform: { OS: "ios" },
+}));
+
 const invoke = supabase.functions.invoke as unknown as jest.MockedFunction<
   (name: string, options?: unknown) => Promise<{ data: unknown; error: unknown }>
+>;
+const getSession = supabase.auth.getSession as unknown as jest.MockedFunction<
+  () => Promise<{
+    data: { session: { access_token: string } | null };
+    error: null | Error;
+  }>
 >;
 const createUploadTask = FileSystem.createUploadTask as unknown as jest.MockedFunction<
   (
@@ -46,6 +59,11 @@ describe("event cover video processing service", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     invoke.mockReset();
+    getSession.mockReset();
+    getSession.mockResolvedValue({
+      data: { session: { access_token: "user-session-jwt" } },
+      error: null,
+    });
     createUploadTask.mockReset();
   });
 
@@ -103,7 +121,7 @@ describe("event cover video processing service", () => {
       code: "validation_error",
       edgeDetail: "source_duration_out_of_range",
       edgeError: "validation_error",
-      message: "Video duration metadata was missing or out of range. Try another 15-second clip.",
+      message: "Video duration metadata was missing or out of range. Try another 30-second clip.",
       phase: "upload_intent",
       requestId: expect.any(String),
     });
@@ -252,6 +270,55 @@ describe("event cover video processing service", () => {
           trimEndMs: 8_000,
           trimStartMs: 0,
         }),
+      }),
+    );
+  });
+
+  test("fetches a fresh session token for each upload-intent retry", async () => {
+    getSession
+      .mockResolvedValueOnce({
+        data: { session: { access_token: "first-session-jwt" } },
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        data: { session: { access_token: "retry-session-jwt" } },
+        error: null,
+      });
+    invoke.mockResolvedValue({
+      data: {
+        jobId: "job_1",
+        provider: "cloudinary",
+        upload: { fields: { api_key: "key" }, url: "https://upload.example.com" },
+      },
+      error: null,
+    });
+
+    const input = {
+      applyMode: "draft_auto" as const,
+      brandId: "brand_id",
+      eventId: "event_id",
+      sourceBytes: 12_345,
+      sourceDurationMs: 8_000,
+      trimEndMs: 8_000,
+      trimStartMs: 0,
+    };
+
+    await createEventCoverVideoUploadIntent(input);
+    await createEventCoverVideoUploadIntent(input);
+
+    expect(getSession).toHaveBeenCalledTimes(2);
+    expect(invoke).toHaveBeenNthCalledWith(
+      1,
+      "event-cover-video-upload-intent",
+      expect.objectContaining({
+        headers: { Authorization: "Bearer first-session-jwt" },
+      }),
+    );
+    expect(invoke).toHaveBeenNthCalledWith(
+      2,
+      "event-cover-video-upload-intent",
+      expect.objectContaining({
+        headers: { Authorization: "Bearer retry-session-jwt" },
       }),
     );
   });

@@ -1,0 +1,6 @@
+appId: com.sethogieva.minglabusiness
+---
+- tapOn: "Reload"
+- waitForAnimationToEnd:
+    timeout: 30000
+- takeScreenshot: "orch-0978-retest-03-reload-bundle"

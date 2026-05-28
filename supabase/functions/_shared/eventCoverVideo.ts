@@ -15,20 +15,86 @@ export const FINAL_MAX_BYTES = Number.parseInt(
   10,
 );
 export const MAX_DURATION_MS = Number.parseInt(
-  Deno.env.get("EVENT_COVER_MAX_DURATION_MS") ?? "15000",
+  Deno.env.get("EVENT_COVER_MAX_DURATION_MS") ?? "30000",
   10,
 );
 export const MAX_SOURCE_VIDEO_BYTES = Number.parseInt(
-  Deno.env.get("EVENT_COVER_MAX_SOURCE_VIDEO_BYTES") ?? "524288000",
+  Deno.env.get("EVENT_COVER_MAX_SOURCE_VIDEO_BYTES") ?? "104857600",
   10,
 );
 export const MAX_SOURCE_VIDEO_DURATION_MS = Number.parseInt(
-  Deno.env.get("EVENT_COVER_MAX_SOURCE_VIDEO_DURATION_MS") ?? "300000",
+  Deno.env.get("EVENT_COVER_MAX_SOURCE_VIDEO_DURATION_MS") ?? "60000",
   10,
 );
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const ORCH_0978_AUTH_FAILURE_REASON_HEADER = "x-orch-0978-auth-failure-reason";
+const ORCH_0978_AUTH_FAILURE_EXP_DELTA_HEADER = "x-orch-0978-auth-exp-delta-sec";
+
+type AuthFailureReason =
+  | "token_absent"
+  | "token_malformed"
+  | "token_expired"
+  | "token_invalid_signature"
+  | "userid_missing";
+
+const logWarn = (requestId: string, stage: string, payload: Record<string, unknown> = {}) => {
+  console.warn("[event-cover-video]", JSON.stringify({
+    requestId,
+    stage,
+    ...payload,
+  }));
+};
+
+const authHeaderPrefix = (authHeader: string): string | null => {
+  if (authHeader.length === 0) return null;
+  return authHeader.slice(0, 24);
+};
+
+const decodeJwtPayload = (token: string): Record<string, unknown> | null => {
+  const segments = token.split(".");
+  if (segments.length !== 3 || segments.some((segment) => segment.length === 0)) {
+    return null;
+  }
+  try {
+    const padded = segments[1]
+      .replace(/-/g, "+")
+      .replace(/_/g, "/")
+      .padEnd(Math.ceil(segments[1].length / 4) * 4, "=");
+    const decoded = atob(padded);
+    const payload = JSON.parse(decoded);
+    return payload && typeof payload === "object" && !Array.isArray(payload) ? payload : null;
+  } catch {
+    return null;
+  }
+};
+
+const expDeltaSecFromPayload = (payload: Record<string, unknown> | null): number | null => {
+  const exp = payload?.exp;
+  if (typeof exp !== "number" || !Number.isFinite(exp)) return null;
+  return Math.floor(exp - Date.now() / 1000);
+};
+
+const unauthenticatedResponse = (
+  reason: AuthFailureReason,
+  authHeader: string,
+  expDeltaSec: number | null,
+): Response => {
+  const requestId = crypto.randomUUID();
+  logWarn(requestId, "auth_failed", {
+    reason,
+    expDeltaSec,
+    hasAuthHeader: authHeader.length > 0,
+    authHeaderPrefix: authHeaderPrefix(authHeader),
+  });
+  const response = jsonResponse({ error: "unauthenticated" }, 401);
+  response.headers.set(ORCH_0978_AUTH_FAILURE_REASON_HEADER, reason);
+  if (expDeltaSec !== null) {
+    response.headers.set(ORCH_0978_AUTH_FAILURE_EXP_DELTA_HEADER, String(expDeltaSec));
+  }
+  return response;
+};
 
 export function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -57,17 +123,36 @@ export function serviceRoleClient(): SupabaseClient {
 
 export async function requireUserId(req: Request): Promise<string | Response> {
   const authHeader = req.headers.get("authorization") ?? "";
+  if (authHeader.length === 0) {
+    return unauthenticatedResponse("token_absent", authHeader, null);
+  }
   const tokenMatch = authHeader.match(/^Bearer\s+(.+)$/i);
-  if (!tokenMatch) return jsonResponse({ error: "unauthenticated" }, 401);
+  if (!tokenMatch) {
+    return unauthenticatedResponse("token_malformed", authHeader, null);
+  }
 
   const token = tokenMatch[1];
+  const jwtPayload = decodeJwtPayload(token);
+  const expDeltaSec = expDeltaSecFromPayload(jwtPayload);
+  if (!jwtPayload || expDeltaSec === null) {
+    return unauthenticatedResponse("token_malformed", authHeader, expDeltaSec);
+  }
+  if (expDeltaSec <= 0) {
+    return unauthenticatedResponse("token_expired", authHeader, expDeltaSec);
+  }
+
   const userClient = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
     { global: { headers: { Authorization: `Bearer ${token}` } } },
   );
   const { data, error } = await userClient.auth.getUser(token);
-  if (error || !data.user) return jsonResponse({ error: "unauthenticated" }, 401);
+  if (error) {
+    return unauthenticatedResponse("token_invalid_signature", authHeader, expDeltaSec);
+  }
+  if (!data.user?.id) {
+    return unauthenticatedResponse("userid_missing", authHeader, expDeltaSec);
+  }
   return data.user.id;
 }
 
@@ -146,6 +231,54 @@ export async function cloudinarySignature(params: Record<string, string>): Promi
     .map((key) => `${key}=${params[key]}`)
     .join("&");
   return sha1Hex(`${base}${secret}`);
+}
+
+export async function cloudinaryDestroy(
+  publicId: string,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  if (!providerConfigured()) {
+    return { ok: false, reason: "provider_not_configured" };
+  }
+  const trimmedPublicId = publicId.trim();
+  if (trimmedPublicId.length === 0) {
+    return { ok: false, reason: "missing_public_id" };
+  }
+
+  const cloudName = Deno.env.get("CLOUDINARY_CLOUD_NAME") ?? "";
+  const apiKey = Deno.env.get("CLOUDINARY_API_KEY") ?? "";
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  const signature = await cloudinarySignature({
+    public_id: trimmedPublicId,
+    timestamp,
+  });
+
+  // Cloudinary Upload API destroy method:
+  // https://cloudinary.com/documentation/image_upload_api_reference#destroy_method
+  const formData = new FormData();
+  formData.append("public_id", trimmedPublicId);
+  formData.append("resource_type", "video");
+  formData.append("timestamp", timestamp);
+  formData.append("api_key", apiKey);
+  formData.append("signature", signature);
+
+  const response = await fetch(
+    `https://api.cloudinary.com/v1_1/${cloudName}/video/destroy`,
+    { method: "POST", body: formData },
+  );
+  let body: { result?: unknown } | null = null;
+  try {
+    body = await response.json();
+  } catch {
+    body = null;
+  }
+  if (!response.ok) {
+    return { ok: false, reason: `cloudinary_destroy_http_${response.status}` };
+  }
+  const result = typeof body?.result === "string" ? body.result : "unknown";
+  if (result !== "ok" && result !== "not found") {
+    return { ok: false, reason: `cloudinary_destroy_${result}` };
+  }
+  return { ok: true };
 }
 
 export type CloudinaryNotificationSignatureResult =
@@ -263,8 +396,14 @@ export function assertProcessedDerivative(input: {
   }
   const durationMs =
     typeof input.durationMs === "number" ? input.durationMs : Number(input.durationMs);
-  if (!Number.isFinite(durationMs) || durationMs <= 0 || durationMs > MAX_DURATION_MS) {
-    return { ok: false, code: "processed_duration_invalid", message: "Processed video was over the duration limit." };
+  if (!Number.isFinite(durationMs)) {
+    return { ok: false, code: "processed_duration_missing", message: "Processed video duration was missing from the provider callback." };
+  }
+  if (durationMs <= 0) {
+    return { ok: false, code: "processed_duration_nonpositive", message: "Processed video duration was zero or negative." };
+  }
+  if (durationMs > MAX_DURATION_MS) {
+    return { ok: false, code: "processed_duration_over_cap", message: "Processed video was over the duration limit." };
   }
   if (
     typeof input.videoCodec === "string" &&
