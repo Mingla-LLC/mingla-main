@@ -55,7 +55,6 @@ import type {
   PublicEventProps,
   PublicTicketProps,
 } from "./types";
-import { EventCoverMedia } from "./EventCoverMedia";
 
 const SHOW_INITIAL_DATES = 10;
 
