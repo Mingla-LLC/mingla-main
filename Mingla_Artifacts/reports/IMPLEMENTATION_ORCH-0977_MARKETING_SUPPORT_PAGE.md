@@ -158,5 +158,12 @@ ORCH-0977 marketing: add support page [deploy]
 ## Ready-To-Test Checklist
 
 1. Open `/support` and confirm the page shows `How can we help?`, `support@usemingla.com`, and the quick links.
-2. Open `/` at mobile width and confirm the footer chip order is About, Support, Privacy, Terms.
+2. Open `/` at mobile width and confirm the footer chip order is About, Support, Privacy, Terms, then tap Support and confirm it opens a modal.
 3. Confirm the browser title for `/support` renders `Support — Mingla`.
+
+## Follow-Up Addendum: Support Chip Modal
+
+> Date: 2026-05-28
+> Status: implemented and verified
+
+After PR #226 merged, Seth clarified that the homepage Support chip should open a pop-up modal like the existing Privacy and Terms chips. The standalone `/support` route remains live for App Store Connect and Google Play, while `mingla-marketing/components/sections/explorer-home/hero.tsx` now renders the Support chip as a modal button with the same dialog, escape-key, backdrop-click, scroll-lock, animation, and close-button pattern as Privacy and Terms. `mingla-marketing/scripts/verify-support-page.mjs` now checks the modal wiring as part of the regression contract.
