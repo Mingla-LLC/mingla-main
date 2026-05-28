@@ -12,6 +12,7 @@ import {
   fetchSinglesForSignalRank,
   resolveFilterSignal,
   resolveFilterMin,
+  resolveTypeFilter,
 } from './signalRankFetch.ts';
 import {
   CATEGORY_DURATION_MINUTES,
@@ -25,9 +26,15 @@ import {
 import { haversineKm, estimateTravelMinutes } from './distanceMath.ts';
 export { haversineKm, estimateTravelMinutes };
 
-const TRAVEL_SPEEDS_KMH: Record<string, number> = {
-  walking: 4.5, biking: 14, transit: 20, driving: 35,
-};
+// ORCH-0985: fixed metro-scale search radius for stop replacement (decoupled
+// from travel mode — see fetchStopAlternatives for why). 25km comfortably covers
+// a metropolitan area around the stop being replaced.
+const REPLACE_SEARCH_RADIUS_METERS = 25000;
+
+// ORCH-0985: score-band size for ordering. Alternatives are ordered best-score-
+// first; places whose rank-signal scores fall in the same band are treated as
+// comparable and ordered by distance (closest first). 5 points ≈ "comparable".
+const SCORE_BAND = 5;
 
 // ── Fetch Alternatives ─────────────────────────────────────────────────────
 
@@ -82,14 +89,18 @@ export async function fetchStopAlternatives(
     budgetMax: number;
     excludePlaceIds: string[];
     limit: number;
+    rankSignal?: string; // ORCH-0985: vibe rank signal stamped on the stop by the generator
   },
 ): Promise<{ alternatives: StopAlternativeResult[]; totalAvailable: number }> {
-  const { categoryId, refLat, refLng, travelMode, budgetMax, excludePlaceIds, limit } = params;
+  const { categoryId, refLat, refLng, budgetMax, excludePlaceIds, limit, rankSignal } = params;
 
-  // Compute search radius (same formula as curated generator)
-  const speedKmh = TRAVEL_SPEEDS_KMH[travelMode] ?? 4.5;
-  const radiusMeters = Math.round((speedKmh * 1000 / 60) * 30); // 30min constraint
-  const clampedRadius = Math.min(Math.max(radiusMeters, 500), 50000);
+  // ORCH-0985: replace uses a fixed, generous search radius around the stop being
+  // replaced — NOT a travel-mode-derived one. The travel-mode radius exists to
+  // chain stops within ~30 min when BUILDING a route; for swapping a single stop
+  // it just starves the result (a walking 2.25km radius hid every downtown
+  // theatre in the Burning Coal case). A metro-scale radius returns the same
+  // candidate set the deck would for this stop, ranked best-first below.
+  const clampedRadius = REPLACE_SEARCH_RADIUS_METERS;
 
   // ORCH-0707: Resolve combo slug → filter signal. Throws on unknown slug
   // (Constitution #3: never silently fall back). Same map the curated pipeline
@@ -98,19 +109,28 @@ export async function fetchStopAlternatives(
   const filterSignal = resolveFilterSignal(categoryId);
   const filterMin = resolveFilterMin(categoryId);
 
-  // Use the same RPC the curated pipeline uses for selection. rankSignal =
-  // filterSignal preserves the legacy "rating-then-distance" approximation
-  // (no vibe override for replace flow — user is replacing within a slot,
-  // not picking a new vibe).
+  // ORCH-0985: pass the slug's required-types narrowing through (hiking→trails,
+  // museum→museums) so replace matches the curated generator instead of
+  // returning a generic park / art class for those slots.
+  const requiredTypes = resolveTypeFilter(categoryId);
+
+  // ORCH-0985: rank by the vibe signal the generator stamped on the stop
+  // (romantic/icebreakers/lively/scenic/picnic_friendly) so alternatives are
+  // ordered by the SAME vibe the plan was built with. Filtering is always by the
+  // category filter signal — only the ORDER changes. Older cards without a
+  // stamped rankSignal fall back to the filter signal (documented compatibility
+  // path, validated upstream in the edge function — Constitution #3).
+  const effectiveRankSignal = rankSignal || filterSignal;
+
   const candidates = await fetchSinglesForSignalRank(supabaseAdmin, {
     filterSignal,
     filterMin,
-    rankSignal: filterSignal,
+    rankSignal: effectiveRankSignal,
     centerLat: refLat,
     centerLng: refLng,
     radiusMeters: clampedRadius,
     limit: 100,
-    requiredTypes: undefined,
+    requiredTypes,
   });
 
   // Filter: not in exclude list, within budget, fine-dining tier floor.
@@ -132,12 +152,21 @@ export async function fetchStopAlternatives(
 
   const totalAvailable = filtered.length;
 
-  // Sort by distance from reference point (closest first) — same UX contract
-  // as the prior implementation.
+  // ORCH-0985: order best-score-first, distance as the tiebreaker among
+  // comparable places. `_rankScore` is the slot's rank-signal score (the vibe
+  // signal for curated cards). Places whose scores fall in the same SCORE_BAND
+  // are treated as comparable and ordered closest-first. This is deterministic
+  // and predictable — the best venues always lead — unlike the prior normalized
+  // blend. (Bucketing keeps the comparator transitive.)
+  const distByPlace = new Map<string, number>();
+  for (const c of filtered) {
+    distByPlace.set(c.id, haversineKm(refLat, refLng, c.lat ?? 0, c.lng ?? 0));
+  }
+  const band = (score: number): number => Math.floor((score ?? 0) / SCORE_BAND);
   filtered.sort((a, b) => {
-    const distA = haversineKm(refLat, refLng, a.lat ?? 0, a.lng ?? 0);
-    const distB = haversineKm(refLat, refLng, b.lat ?? 0, b.lng ?? 0);
-    return distA - distB;
+    const bandDiff = band(b._rankScore ?? 0) - band(a._rankScore ?? 0); // higher score band first
+    if (bandDiff !== 0) return bandDiff;
+    return (distByPlace.get(a.id) ?? 0) - (distByPlace.get(b.id) ?? 0);  // then closest first
   });
 
   const selected = filtered.slice(0, limit);
