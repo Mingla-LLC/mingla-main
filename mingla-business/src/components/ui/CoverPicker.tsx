@@ -30,6 +30,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Image,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -45,7 +46,12 @@ import {
 // scrollResponder call) which remain deleted. Per SPEC_ORCH-0892-B_v2
 // §7.D + §15 (ORCH-0888 supersession verdict).
 import { ScrollView } from "../../wrappers/SmartScrollView";
+import * as FileSystem from "expo-file-system/legacy";
 import * as ImagePicker from "expo-image-picker";
+import NativeVideoTrim, {
+  showEditor,
+  type Spec as VideoTrimSpec,
+} from "react-native-video-trim";
 
 import {
   accent,
@@ -88,6 +94,13 @@ import { useAuth } from "../../context/AuthContext";
 export type CoverProvider = "upload" | "giphy" | "pexels";
 type SearchProviderTab = "giphy" | "pexels";
 type SearchStatus = "idle" | "loading" | "error";
+type VideoTrimSubscription = { remove: () => void };
+type VideoTrimFinishPayload = {
+  outputPath: string;
+  duration: number;
+  startTime: number;
+  endTime: number;
+};
 
 /** Full 7-field cover patch emitted on every change. Mirror of the
  *  events table cover_media_* column family. */
@@ -414,6 +427,61 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     return duration > 0 && duration < 1000 ? duration * 1000 : duration;
   };
 
+  const normalizeLocalFileUri = (path: string): string =>
+    path.startsWith("file://") ? path : `file://${path}`;
+
+  const trimVideoWithDedicatedEditor = useCallback(
+    (uri: string): Promise<VideoTrimFinishPayload | null> =>
+      new Promise((resolve, reject) => {
+        const videoTrim = NativeVideoTrim as VideoTrimSpec;
+        const subscriptions: VideoTrimSubscription[] = [];
+        let settled = false;
+        const settle = (handler: () => void): void => {
+          if (settled) return;
+          settled = true;
+          subscriptions.forEach((subscription) => subscription.remove());
+          handler();
+        };
+
+        subscriptions.push(
+          videoTrim.onFinishTrimming((payload: VideoTrimFinishPayload) => {
+            settle(() => resolve(payload));
+          }) as VideoTrimSubscription,
+          videoTrim.onCancelTrimming(() => {
+            settle(() => resolve(null));
+          }) as VideoTrimSubscription,
+          videoTrim.onCancel(() => {
+            settle(() => resolve(null));
+          }) as VideoTrimSubscription,
+          videoTrim.onError(({ message, errorCode }) => {
+            settle(() =>
+              reject(
+                new Error(
+                  `Video trim failed (${errorCode || "unknown"}): ${message}`,
+                ),
+              ),
+            );
+          }) as VideoTrimSubscription,
+        );
+
+        try {
+          // react-native-video-trim docs:
+          // https://github.com/maitrungduc1410/react-native-video-trim
+          // https://www.npmjs.com/package/react-native-video-trim
+          // v8.1.0's typed/native config treats maxDuration as milliseconds.
+          showEditor(uri, {
+            maxDuration: EVENT_COVER_MAX_VIDEO_DURATION_MS,
+            saveButtonText: "Use clip",
+            cancelButtonText: "Back",
+            enablePreciseTrimming: true,
+          });
+        } catch (error) {
+          settle(() => reject(error));
+        }
+      }),
+    [],
+  );
+
   const pickVideoCover = useCallback(async (): Promise<void> => {
     if (!supportsVideoUpload || uploading || disabled || activeVideoUpload) return;
     if (!isAuthReady) {
@@ -423,18 +491,39 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     if (!(await ensureMediaPermission())) return;
     if (!validateEventRowId()) return;
 
+    setUploading(true);
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ["videos"],
-        allowsEditing: true,
-        videoMaxDuration: 29,
         preferredAssetRepresentationMode:
           ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
         quality: 1,
       });
       if (result.canceled || result.assets.length === 0) return;
       const asset = result.assets[0];
-      const durationMs = normalizePickerDurationMs(asset.duration);
+      const isNative = Platform.OS !== "web";
+      const trimResult = isNative
+        ? await trimVideoWithDedicatedEditor(asset.uri)
+        : null;
+      if (isNative && trimResult === null) return;
+      const outputPath = trimResult?.outputPath ?? asset.uri;
+      const uploadUri = normalizeLocalFileUri(outputPath);
+      const trimDurationMs = normalizePickerDurationMs(
+        trimResult?.duration ??
+          ((trimResult?.endTime ?? 0) > (trimResult?.startTime ?? 0)
+            ? (trimResult?.endTime ?? 0) - (trimResult?.startTime ?? 0)
+            : null),
+      );
+      const durationMs =
+        trimDurationMs > 0 ? trimDurationMs : normalizePickerDurationMs(asset.duration);
+      if (trimResult !== null) {
+        console.log("[ORCH-0978-POC]", {
+          outputPath: trimResult.outputPath,
+          duration: trimResult.duration,
+          startTime: trimResult.startTime,
+          endTime: trimResult.endTime,
+        });
+      }
       if (durationMs <= 0) {
         onShowToast("Could not read this video's duration. Try another clip.");
         return;
@@ -448,17 +537,23 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
         onShowToast("Please trim to 29 seconds first.");
         return;
       }
-      const bytes = asset.fileSize ?? 0;
+      const trimmedInfo =
+        trimResult !== null ? await FileSystem.getInfoAsync(uploadUri) : null;
+      const bytes =
+        trimmedInfo !== null && trimmedInfo.exists && typeof trimmedInfo.size === "number"
+          ? trimmedInfo.size
+          : asset.fileSize ?? 0;
       if (bytes <= 0) {
         onShowToast("Could not read this video's size. Try another clip.");
         return;
       }
+      const fallbackFileName = outputPath.split("/").pop() ?? asset.fileName;
       const uploadFile = {
         bytes,
         durationMs,
-        fileName: asset.fileName,
-        mimeType: asset.mimeType,
-        uri: asset.uri,
+        fileName: asset.fileName ?? fallbackFileName,
+        mimeType: asset.mimeType ?? "video/mp4",
+        uri: uploadUri,
       };
       lastVideoUploadFileRef.current = uploadFile;
       await videoUpload.start(uploadFile);
@@ -468,6 +563,8 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
           ? error.message
           : "Video cover upload failed. Try again.",
       );
+    } finally {
+      setUploading(false);
     }
   }, [
     activeVideoUpload,
@@ -476,6 +573,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     isAuthReady,
     onShowToast,
     supportsVideoUpload,
+    trimVideoWithDedicatedEditor,
     uploading,
     validateEventRowId,
     videoUpload,
