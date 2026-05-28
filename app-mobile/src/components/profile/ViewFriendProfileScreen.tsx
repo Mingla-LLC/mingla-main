@@ -414,7 +414,7 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
           {/* ORCH-0986: "Users Vibe" — render BOTH chosen categories and intents. */}
           {(profile.categories.length > 0 || profile.intents.length > 0) && (
             <View style={styles.interestsSection}>
-              <Text style={styles.interestsHeader}>{t('profile:friend.users_vibe', { defaultValue: 'Users Vibe' })}</Text>
+              <Text style={styles.interestsHeader}>{t('profile:friend.users_vibe', { defaultValue: "{{name}}'s Vibe", name: (profile.first_name || name.split(' ')[0] || name) })}</Text>
               <View style={styles.interestsWrap}>
                 {profile.categories.map(cat => {
                   const slug = cat.toLowerCase().replace(/[^a-z_]/g, '_');
@@ -731,7 +731,8 @@ const styles = StyleSheet.create({
   interestsSection: {
     marginTop: vs(22),
     paddingHorizontal: s(20),
-    alignItems: 'center',
+    alignItems: 'flex-start',
+    alignSelf: 'stretch',
   },
   interestsHeader: {
     fontSize: s(11),
@@ -744,7 +745,8 @@ const styles = StyleSheet.create({
   interestsWrap: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
+    alignSelf: 'stretch',
     rowGap: vs(8),
     columnGap: s(8),
   },
