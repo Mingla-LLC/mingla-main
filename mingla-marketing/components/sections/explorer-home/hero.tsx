@@ -46,6 +46,7 @@ interface ChipLink {
 const SITE_CHIPS: ChipLink[] = [
   { href: '/organisers', label: 'Organiser', mobileOnly: true },
   { href: '/about', label: 'About' },
+  { href: '/support', label: 'Support' },
   { href: '/privacy', label: 'Privacy' },
   { href: '/terms', label: 'Terms' },
 ]
