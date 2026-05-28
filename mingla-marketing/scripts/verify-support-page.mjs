@@ -18,6 +18,14 @@ const requiredSupportSnippets = [
   'Delete Account',
 ]
 
+const requiredHeroSnippets = [
+  'function SupportModal',
+  'aria-labelledby="support-modal-title"',
+  'const [supportOpen, setSupportOpen] = useState(false)',
+  "onClick={() => setSupportOpen(true)}",
+  '<SupportModal open={supportOpen} onClose={() => setSupportOpen(false)} />',
+]
+
 for (const snippet of requiredSupportSnippets) {
   if (!supportPage.includes(snippet)) {
     throw new Error(`Support page missing expected snippet: ${snippet}`)
@@ -38,6 +46,12 @@ if (aboutIndex === -1 || supportIndex === -1 || privacyIndex === -1) {
 
 if (!(aboutIndex < supportIndex && supportIndex < privacyIndex)) {
   throw new Error('Support chip must appear between About and Privacy')
+}
+
+for (const snippet of requiredHeroSnippets) {
+  if (!hero.includes(snippet)) {
+    throw new Error(`Hero missing expected support modal snippet: ${snippet}`)
+  }
 }
 
 console.log('Support page regression checks passed')

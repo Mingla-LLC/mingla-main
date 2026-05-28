@@ -412,8 +412,138 @@ function PrivacyModal({ open, onClose }: TermsModalProps) {
   )
 }
 
+function SupportModal({ open, onClose }: TermsModalProps) {
+  useEffect(() => {
+    if (!open) return
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [open, onClose])
+
+  useEffect(() => {
+    if (!open) return
+    const previous = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = previous
+    }
+  }, [open])
+
+  return (
+    <AnimatePresence>
+      {open ? (
+        <motion.div
+          key="support-backdrop"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.22 }}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="support-modal-title"
+          onClick={onClose}
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-black/90 px-4 py-5 backdrop-blur-xl sm:px-6"
+        >
+          <motion.div
+            key="support-panel"
+            initial={{ opacity: 0, scale: 0.96, y: 16 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.98, y: 10 }}
+            transition={{ type: 'spring', stiffness: 240, damping: 28 }}
+            onClick={(event) => event.stopPropagation()}
+            className="relative flex max-h-[min(760px,calc(100svh-2.5rem))] w-full max-w-3xl flex-col overflow-hidden rounded-[28px] border border-white/14 bg-[#0d0d10] shadow-[0_40px_120px_rgba(0,0,0,0.72),inset_0_1px_0_rgba(255,255,255,0.08)]"
+          >
+            <div className="sticky top-0 z-10 border-b border-white/10 bg-[#0d0d10]/98 px-5 py-5 backdrop-blur-2xl sm:px-7">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-warm">
+                Support
+              </p>
+              <h2
+                id="support-modal-title"
+                className="mt-2 font-display text-3xl leading-none text-text-primary sm:text-5xl"
+              >
+                How can we help?
+              </h2>
+              <button
+                type="button"
+                autoFocus
+                onClick={onClose}
+                aria-label="Close support"
+                className="absolute right-4 top-4 grid size-10 place-items-center rounded-full border border-white/12 bg-white/10 text-text-primary transition-all duration-200 hover:bg-white/16 focus-ring"
+              >
+                <X className="size-5" aria-hidden="true" />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto px-5 py-6 text-left sm:px-7 sm:py-7">
+              <div className="space-y-6 text-sm leading-7 text-white/72 sm:text-base">
+                <p>
+                  The Mingla team reads every support message and aims to
+                  respond within 1–2 business days.
+                </p>
+
+                <div className="rounded-3xl border border-warm/25 bg-warm/10 p-5 text-white/82 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+                  <p className="font-semibold text-white">
+                    For help with your account, app access, or a problem you
+                    spotted, email:
+                  </p>
+                  <a
+                    href="mailto:support@usemingla.com"
+                    className="mt-3 inline-flex min-h-10 items-center rounded-full border border-white/14 bg-white/10 px-4 text-sm font-semibold text-warm transition hover:bg-white/16 focus-ring"
+                  >
+                    support@usemingla.com
+                  </a>
+                </div>
+
+                <section className="space-y-3">
+                  <h3 className="font-display text-xl leading-tight text-white/95 sm:text-2xl">
+                    Quick links
+                  </h3>
+                  <ul className="space-y-2 pl-5">
+                    <li className="list-disc marker:text-warm/80">
+                      <Link
+                        href="/privacy-policy"
+                        className="font-semibold text-warm underline-offset-4 hover:underline focus-ring"
+                      >
+                        Privacy Policy
+                      </Link>
+                    </li>
+                    <li className="list-disc marker:text-warm/80">
+                      <Link
+                        href="/terms-of-service"
+                        className="font-semibold text-warm underline-offset-4 hover:underline focus-ring"
+                      >
+                        Terms of Service
+                      </Link>
+                    </li>
+                    <li className="list-disc marker:text-warm/80">
+                      <Link
+                        href="/delete-account"
+                        className="font-semibold text-warm underline-offset-4 hover:underline focus-ring"
+                      >
+                        Delete your account
+                      </Link>
+                    </li>
+                  </ul>
+                </section>
+
+                <p>
+                  Account deletion is also available in the app from Settings →
+                  Delete Account.
+                </p>
+              </div>
+            </div>
+          </motion.div>
+        </motion.div>
+      ) : null}
+    </AnimatePresence>
+  )
+}
+
 export function ExplorerHero() {
   const reduced = useMinglaReducedMotion()
+  const [supportOpen, setSupportOpen] = useState(false)
   const [termsOpen, setTermsOpen] = useState(false)
   const [privacyOpen, setPrivacyOpen] = useState(false)
 
@@ -529,6 +659,19 @@ export function ExplorerHero() {
             )
           }
 
+          if (chip.href === '/support') {
+            return (
+              <button
+                key={chip.href}
+                type="button"
+                onClick={() => setSupportOpen(true)}
+                className={chipClassName}
+              >
+                {chip.label}
+              </button>
+            )
+          }
+
           return chip.href === '/terms' ? (
             <button
               key={chip.href}
@@ -546,6 +689,7 @@ export function ExplorerHero() {
         })}
       </motion.nav>
       </div>
+      <SupportModal open={supportOpen} onClose={() => setSupportOpen(false)} />
       <TermsModal open={termsOpen} onClose={() => setTermsOpen(false)} />
       <PrivacyModal open={privacyOpen} onClose={() => setPrivacyOpen(false)} />
     </section>
