@@ -24,6 +24,7 @@ import { useMinglaReducedMotion } from '@/lib/reduced-motion'
 import { HeroVibeDeck } from '@/components/sections/explorer-home/hero-vibe-deck'
 import { cn } from '@/lib/cn'
 import { PRIVACY_SECTIONS, PRIVACY_EFFECTIVE_DATE } from '@/lib/privacyContent'
+import { TERMS_SECTIONS, TERMS_EFFECTIVE_DATE } from '@/lib/termsContent'
 
 // ---------------------------------------------------------------
 // Mingla Explorer Hero
@@ -74,131 +75,6 @@ const PREFERENCE_CHIPS: PreferenceChip[] = [
 
 const CYCLE_MS = 2800
 
-const TERMS_SECTIONS = [
-  {
-    title: '1. Acceptance of Terms',
-    paragraphs: [
-      'By downloading, installing, or using the Mingla mobile application or website (the "Service"), you agree to be bound by these Terms of Service ("Terms"). If you do not agree to these Terms, do not use our Service. These Terms apply to all users of the Service.',
-    ],
-  },
-  {
-    title: '2. About Mingla',
-    paragraphs: [
-      'Mingla is a date and hangout planning platform that helps couples, singles, and friend groups discover local experiences, generate personalized plans, and coordinate outings. Mingla is operated by usemingla.com.',
-    ],
-  },
-  {
-    title: '3. Eligibility',
-    paragraphs: [
-      'You must be at least 13 years of age to use Mingla. By using the Service, you represent and warrant that you meet this age requirement. If you are under 18, you represent that you have obtained parental or guardian consent to use the Service.',
-    ],
-  },
-  {
-    title: '4. Account Registration',
-    paragraphs: [
-      'To access certain features, you must create an account. You may register using your Google account, Apple ID, or phone number. You agree to:',
-    ],
-    bullets: [
-      'Provide accurate and complete information during registration',
-      'Keep your account credentials secure and not share them with others',
-      'Notify us immediately of any unauthorized use of your account',
-      'Be responsible for all activity that occurs under your account',
-    ],
-  },
-  {
-    title: '5. Phone Verification and SMS',
-    paragraphs: [
-      'To use certain features of Mingla, you must verify your phone number. By providing your phone number, you consent to receive a one-time SMS passcode (OTP) for verification purposes. Standard message and data rates may apply.',
-      'When you invite a friend via SMS, you represent that you have obtained that person’s consent to receive a text message from Mingla on your behalf. Misuse of the invite feature to send unsolicited messages is strictly prohibited and may result in account termination.',
-    ],
-  },
-  {
-    title: '6. User Conduct',
-    paragraphs: ['You agree not to use Mingla to:'],
-    bullets: [
-      'Violate any applicable laws or regulations',
-      'Harass, abuse, or harm other users',
-      'Send spam or unsolicited communications',
-      'Impersonate any person or entity',
-      'Upload or transmit harmful, offensive, or inappropriate content',
-      'Attempt to gain unauthorized access to the Service or other users’ accounts',
-      'Reverse engineer, decompile, or disassemble any part of the Service',
-      'Use the Service for any commercial purpose without our written consent',
-    ],
-  },
-  {
-    title: '7. User-Generated Content',
-    paragraphs: [
-      'You may submit content to Mingla including reviews, preferences, and plans ("User Content"). By submitting User Content, you grant Mingla a non-exclusive, worldwide, royalty-free license to use, display, and distribute that content solely to operate and improve the Service.',
-      'You represent that you own or have the rights to any User Content you submit, and that it does not violate any third-party rights or applicable laws.',
-    ],
-  },
-  {
-    title: '8. Intellectual Property',
-    paragraphs: [
-      'All content, branding, design, software, and technology within the Mingla Service are the property of Mingla / usemingla.com and are protected by applicable intellectual property laws. You may not copy, reproduce, distribute, or create derivative works from any part of the Service without our express written permission.',
-    ],
-  },
-  {
-    title: '9. Third-Party Services',
-    paragraphs: [
-      'Mingla integrates with third-party services including Google, Apple, Supabase, Twilio, and Vonage. Your use of those services is subject to their respective terms of service and privacy policies. Mingla is not responsible for the conduct or content of any third-party service.',
-    ],
-  },
-  {
-    title: '10. Location Services',
-    paragraphs: [
-      'Mingla may request access to your device’s location to suggest nearby experiences and venues. You may disable location access at any time in your device settings. Disabling location services may limit certain features of the app.',
-    ],
-  },
-  {
-    title: '11. Disclaimer of Warranties',
-    paragraphs: [
-      'THE SERVICE IS PROVIDED "AS IS" AND "AS AVAILABLE" WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED. MINGLA DOES NOT WARRANT THAT THE SERVICE WILL BE UNINTERRUPTED, ERROR-FREE, OR FREE OF HARMFUL COMPONENTS. YOUR USE OF THE SERVICE IS AT YOUR SOLE RISK.',
-    ],
-  },
-  {
-    title: '12. Limitation of Liability',
-    paragraphs: [
-      'TO THE MAXIMUM EXTENT PERMITTED BY LAW, MINGLA SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES ARISING OUT OF OR RELATED TO YOUR USE OF THE SERVICE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES. OUR TOTAL LIABILITY TO YOU SHALL NOT EXCEED THE AMOUNT YOU PAID TO US IN THE TWELVE MONTHS PRECEDING THE CLAIM, OR $100, WHICHEVER IS GREATER.',
-    ],
-  },
-  {
-    title: '13. Indemnification',
-    paragraphs: [
-      'You agree to indemnify, defend, and hold harmless Mingla, its officers, directors, employees, and agents from and against any claims, liabilities, damages, losses, and expenses (including legal fees) arising out of or related to your use of the Service, your User Content, or your violation of these Terms.',
-    ],
-  },
-  {
-    title: '14. Termination',
-    paragraphs: [
-      'We reserve the right to suspend or terminate your account at any time, with or without notice, for any violation of these Terms or for any other reason at our sole discretion. Upon termination, your right to use the Service will immediately cease.',
-    ],
-  },
-  {
-    title: '15. Governing Law',
-    paragraphs: [
-      'These Terms shall be governed by and construed in accordance with the laws of the United States, without regard to conflict of law principles. Any disputes arising from these Terms shall be resolved in the courts of competent jurisdiction.',
-    ],
-  },
-  {
-    title: '16. Changes to Terms',
-    paragraphs: [
-      'We reserve the right to modify these Terms at any time. We will notify you of material changes by posting updated Terms on our website and updating the effective date. Your continued use of the Service after such changes constitutes your acceptance of the new Terms.',
-    ],
-  },
-  {
-    title: '17. Contact Us',
-    paragraphs: [
-      'If you have any questions about these Terms of Service, please contact us at:',
-    ],
-    contact: {
-      name: 'Mingla / usemingla.com',
-      email: 'developer@usemingla.com',
-      website: 'https://www.usemingla.com',
-    },
-  },
-] as const
 
 
 interface PreferenceChipCycleProps {
@@ -309,7 +185,7 @@ function TermsModal({ open, onClose }: TermsModalProps) {
           >
             <div className="sticky top-0 z-10 border-b border-white/10 bg-[#0d0d10]/98 px-5 py-5 backdrop-blur-2xl sm:px-7">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-warm">
-                Effective Date: February 16, 2026
+                Effective Date: {TERMS_EFFECTIVE_DATE}
               </p>
               <h2
                 id="terms-modal-title"
