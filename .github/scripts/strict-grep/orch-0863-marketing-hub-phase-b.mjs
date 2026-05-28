@@ -852,6 +852,7 @@ function checkNoNewBackendFiles() {
     "supabase/migrations/20260729000000_meta_orch_0972_universal_authoring.sql",
     "supabase/migrations/20260729000001_meta_orch_0972_pg_brand_offering_counts_grants.sql",
     "supabase/migrations/20260729000002_orch_0964_brand_event_theme_columns.sql",
+    "supabase/migrations/20260731000000_orch_0964_public_views_security_definer.sql",
   ];
   // META-ORCH-0952 [Buyer-web confirm pipeline deep forensics] CLOSE 2026-05-25.
   // C7 is scoped to ORCH-0863 marketing; the META-ORCH-0952 self-heal rework
