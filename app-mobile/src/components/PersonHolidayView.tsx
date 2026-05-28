@@ -389,10 +389,12 @@ function CardRow({
 
   const shufflePairedCards = useShufflePairedCards();
   const handleShuffle = useCallback(async () => {
-    await shufflePairedCards(pairedUserId, holidayKey, sections, excludeCardIds, isCustomHoliday, yearsElapsed);
+    // ORCH-0986 (QA P1-002 fix): pass the active mode so the shuffle result is
+    // spliced into the SAME pairedProfile cache slice this row renders from.
+    // No refetchProfile() — that reloaded default cards and discarded the shuffle.
+    await shufflePairedCards(pairedUserId, holidayKey, sections, mode ?? "default", excludeCardIds, isCustomHoliday, yearsElapsed);
     if (onShuffleCategories) onShuffleCategories();
-    refetchProfile();
-  }, [shufflePairedCards, pairedUserId, holidayKey, sections, excludeCardIds, isCustomHoliday, yearsElapsed, onShuffleCategories, refetchProfile]);
+  }, [shufflePairedCards, pairedUserId, holidayKey, sections, mode, excludeCardIds, isCustomHoliday, yearsElapsed, onShuffleCategories]);
 
   // Signal parent that loading finished
   useEffect(() => {

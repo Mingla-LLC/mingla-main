@@ -52,6 +52,25 @@ if (/Ideal night out/i.test(profile) || /Ideal night out/i.test(holiday)) {
   ok("C3: no-ideal-night-out", "Ideal night out copy absent");
 }
 
+// C4 (QA P0-001 regression guard): the friend-location RPC must be locked to
+// service_role only — no client role may execute it (it returns raw friend GPS).
+// The lock migration must revoke anon + authenticated and grant service_role.
+const lockMigrationPath = "supabase/migrations/20260730000003_orch_0986_lock_friend_location_rpc.sql";
+let lockMigration = "";
+try {
+  lockMigration = read(lockMigrationPath);
+} catch {
+  lockMigration = "";
+}
+const locksAnon = /revoke\s+all\s+on\s+function\s+public\.get_paired_friend_last_location[^;]*from\s+anon/i.test(lockMigration);
+const locksAuthenticated = /revoke\s+all\s+on\s+function\s+public\.get_paired_friend_last_location[^;]*from\s+authenticated/i.test(lockMigration);
+const grantsServiceRole = /grant\s+execute\s+on\s+function\s+public\.get_paired_friend_last_location[^;]*to\s+service_role/i.test(lockMigration);
+if (!lockMigration || !locksAnon || !locksAuthenticated || !grantsServiceRole) {
+  fail("C4: friend-gps-rpc-service-role-only", `${lockMigrationPath} must revoke EXECUTE from anon + authenticated and grant only service_role.`);
+} else {
+  ok("C4: friend-gps-rpc-service-role-only", "friend-location RPC locked to service_role");
+}
+
 if (failures > 0) {
   console.error(`\nORCH-0986 strict-grep failed with ${failures} failure(s).`);
   process.exit(1);

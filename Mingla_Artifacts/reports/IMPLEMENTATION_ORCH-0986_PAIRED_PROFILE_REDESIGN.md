@@ -217,3 +217,34 @@ npx tsc --noEmit 2>&1 | rg 'PersonHolidayView|ViewFriendProfileScreen|usePairedP
 - `supabase/migrations/20260730000000_orch_0978_video_cap_29s_constraints.sql`
 - `supabase/migrations/20260730000001_orch_0978_video_cap_generous_source.sql`
 - `supabase/migrations/20260730000002_orch_0986_paired_friend_last_location.sql`
+
+---
+
+## REWORK (orchestrator-executed) — 2026-05-28 — QA FAIL fixes
+
+### P0-001 — RPC coordinate leak (FIXED + verified live)
+Root cause: original migration granted `EXECUTE` to `authenticated`; the SECURITY DEFINER function was thus callable via the PostgREST RPC surface and returned raw friend GPS.
+Fix: new migration `supabase/migrations/20260730000003_orch_0986_lock_friend_location_rpc.sql` — `revoke all ... from public, anon, authenticated; grant execute ... to service_role`. Applied to remote via `db push`.
+Verification (live):
+- Anon REST attack (QA's exact UUIDs + real anon key) → `HTTP 401 {"code":"42501","message":"permission denied for function get_paired_friend_last_location"}`. No coordinates returned.
+- ACL after fix (`pg_proc.proacl`): `{postgres=X/postgres,service_role=X/postgres}` — only owner + service_role; anon/authenticated/PUBLIC have no EXECUTE.
+- Edge functions unaffected (they call via the service-role admin client) — no redeploy needed (grant-only change, signature/body unchanged).
+Regression guard: strict-grep `orch-0986-paired-profile.mjs` C4 asserts the lock migration revokes anon + authenticated and grants service_role.
+
+### P1-002 — Shuffle dead tap (FIXED)
+Root cause: `useShufflePairedCards` wrote results into the legacy `personCardKeys.paired(...)` key while the UI reads the batched `personCardKeys.pairedProfile(...)` cache; `CardRow` then called `refetchProfile()` which reloaded default (non-shuffled) cards.
+Fix: `useShufflePairedCards` now takes `mode` and splices `result.cards` into the matching `pairedProfile(pairedUserId, mode)` section slice via `setQueryData`. `CardRow.handleShuffle` passes the active `mode` and no longer calls `refetchProfile()`. Shuffle now updates the visible row in place.
+
+### P2-001 — Adversarial test committed
+`supabase/functions/_shared/personHeroCards.adversarial.test.ts` (GPS-missing → resolveFriendLocation returns null, no invented fallback) is now committed and allowlisted. `deno test` 4/4 PASS (3 implementor + 1 adversarial).
+
+### P2-002 — Branch pushed
+Local review-report commit + this rework pushed to `origin/ORCH-0986-paired-profile-holidays-redesign`.
+
+### Verification evidence
+- `deno test _shared/personHeroCards.test.ts _shared/personHeroCards.adversarial.test.ts` → 4 passed / 0 failed.
+- `node strict-grep/orch-0986-paired-profile.mjs` → C1/C2/C3/C4 PASS.
+- `node strict-grep/orch-0863-marketing-hub-phase-b.mjs` → C7 PASS (new migration + adversarial test allowlisted).
+
+### Not re-run (tester's job)
+P1-001 iOS/Android live-fire remains for the tester re-dispatch (use the iOS dev-build rebuild runbook for the splash-hang; Android Gradle hang needs a clean build). No code defect — environment blocker.
