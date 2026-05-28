@@ -812,12 +812,14 @@ function MultiStopPlanView({
     const stop = stops[stopIndex];
     // comboCategory is the Mingla slug from the combo that originally selected this stop.
     // Set by the generator (buildCardStop). Falls back to placeType for older cards.
-    const categoryId = stop.comboCategory || stop.placeType || 'casual_eats';
-    const siblingStops = stops
-      .filter((_, i) => i !== stopIndex)
-      .map(s => ({ lat: s.lat, lng: s.lng }));
+    // ORCH-0985: terminal fallback is 'casual_food' — a real slug the backend
+    // accepts. The prior 'casual_eats' existed in neither the generator's slug
+    // universe nor COMBO_SLUG_TO_FILTER_SIGNAL, so it always 400-rejected.
+    const categoryId = stop.comboCategory || stop.placeType || 'casual_food';
+    // ORCH-0985: exclude EVERY stop already in the plan — including the one being
+    // replaced — so you never see the current stop (or a sibling) offered as an
+    // alternative to itself.
     const excludePlaceIds = stops
-      .filter((_, i) => i !== stopIndex)
       .map(s => s.placeId)
       .filter(Boolean);
 
@@ -825,10 +827,15 @@ function MultiStopPlanView({
     clearAlternatives();
     fetchAlternatives({
       categoryId,
-      location: { lat: userPreferences?.location?.lat ?? stops[0]?.lat ?? 0, lng: userPreferences?.location?.lng ?? stops[0]?.lng ?? 0 },
+      // ORCH-0985: search around the STOP BEING REPLACED, not the user's location
+      // or the midpoint of the other stops. This is what makes Replace return
+      // "the deck for this stop" — alternatives near where the stop actually is.
+      location: { lat: stop.lat, lng: stop.lng },
       travelMode: userPreferences?.travel_mode || 'walking',
       excludePlaceIds,
-      siblingStops,
+      // ORCH-0985: order alternatives by the same vibe signal this stop was
+      // ranked by (undefined for older cards → backend uses the category signal).
+      rankSignal: stop.rankSignal,
       limit: 10,
     });
   };

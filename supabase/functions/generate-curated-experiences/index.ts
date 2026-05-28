@@ -459,6 +459,14 @@ const EXPERIENCE_RANK_SIGNAL_OVERRIDE: Record<string, Record<string, string>> = 
   },
 };
 
+// ORCH-0985: resolve the vibe rank signal a stop is selected/ranked by — the
+// type's EXPERIENCE_RANK_SIGNAL_OVERRIDE entry if present, else the slug's own
+// filter signal. Mirrors the rankSignal computed in fetchForCombo so the value
+// stamped on the stop equals the value the stop was actually ranked by.
+function resolveStopRankSignal(typeId: string, catId: string): string | undefined {
+  return EXPERIENCE_RANK_SIGNAL_OVERRIDE[typeId]?.[catId] ?? COMBO_SLUG_TO_FILTER_SIGNAL[catId];
+}
+
 // Per-slug stop role label for dynamic role assignment (ORCH-0628). When a typeDef's
 // stop roles are generic placeholders and combos mix orderings (Activity-first vs
 // Food-first), the display label should reflect the actual slug. Falls back to
@@ -509,7 +517,10 @@ function buildCardStop(
   travelMode: string,
   // ORCH-0707: comboCategory is REQUIRED. TypeScript fails compilation at any
   // call site that omits it — structural safeguard for I-CURATED-LABEL-SOURCE.
-  opts: { optional?: boolean; dismissible?: boolean; comboCategory: string },
+  // ORCH-0985: rankSignal is the vibe signal this stop was selected/ranked by
+  // (e.g. 'romantic' for a Romantic dinner). Stamped onto the stop so the
+  // Replace flow can order alternatives by the same vibe the plan was built with.
+  opts: { optional?: boolean; dismissible?: boolean; comboCategory: string; rankSignal?: string },
 ): any {
   const lat = card.lat ?? 0;
   const lng = card.lng ?? 0;
@@ -580,6 +591,8 @@ function buildCardStop(
     // type doesn't declare it; silently dropped today). per OQ-2.
     // ORCH-0707: comboCategory always emitted (no longer conditional spread).
     comboCategory: opts.comboCategory,
+    // ORCH-0985: vibe rank signal (for Replace ordering); omitted when absent.
+    ...(opts.rankSignal ? { rankSignal: opts.rankSignal } : {}),
   };
 }
 
@@ -796,7 +809,7 @@ async function generateCardsForType(
             const stop = buildCardStop(
               anchor, stops.length + 1, typeDef.stops.length, resolveStopRole(catId, stopDef),
               lat, lng, stops.length > 0 ? prevLat : null, stops.length > 0 ? prevLng : null,
-              travelMode, { optional: stopDef.optional, dismissible: stopDef.dismissible, comboCategory: catId },
+              travelMode, { optional: stopDef.optional, dismissible: stopDef.dismissible, comboCategory: catId, rankSignal: resolveStopRankSignal(typeDef.id, catId) },
             );
             stops.push(stop);
             prevLat = anchor.lat;
@@ -828,7 +841,7 @@ async function generateCardsForType(
             const stop = buildCardStop(
               place, stops.length + 1, typeDef.stops.length, resolveStopRole(catId, stopDef),
               lat, lng, stops.length > 0 ? prevLat : null, stops.length > 0 ? prevLng : null,
-              travelMode, { optional: stopDef.optional, dismissible: stopDef.dismissible, comboCategory: catId },
+              travelMode, { optional: stopDef.optional, dismissible: stopDef.dismissible, comboCategory: catId, rankSignal: resolveStopRankSignal(typeDef.id, catId) },
             );
             stops.push(stop);
             prevLat = place.lat;
@@ -878,7 +891,7 @@ async function generateCardsForType(
         const stop = buildCardStop(
           place, stops.length + 1, typeDef.stops.length, resolveStopRole(catId, stopDef),
           lat, lng, stops.length > 0 ? prevLat : null, stops.length > 0 ? prevLng : null,
-          travelMode, { optional: stopDef.optional, dismissible: stopDef.dismissible, comboCategory: catId },
+          travelMode, { optional: stopDef.optional, dismissible: stopDef.dismissible, comboCategory: catId, rankSignal: resolveStopRankSignal(typeDef.id, catId) },
         );
         stops.push(stop);
         prevLat = place.lat;

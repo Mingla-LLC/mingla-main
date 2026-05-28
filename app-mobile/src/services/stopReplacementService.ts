@@ -7,7 +7,7 @@ interface GetAlternativesParams {
   location: { lat: number; lng: number };
   travelMode: string;
   excludePlaceIds: string[];
-  siblingStops: Array<{ lat: number; lng: number }>;
+  rankSignal?: string;
   limit?: number;
 }
 
@@ -69,7 +69,7 @@ class StopReplacementService {
         location: params.location,
         travelMode: params.travelMode,
         excludePlaceIds: params.excludePlaceIds,
-        siblingStops: params.siblingStops,
+        rankSignal: params.rankSignal,
         limit: params.limit ?? 10,
       },
     });

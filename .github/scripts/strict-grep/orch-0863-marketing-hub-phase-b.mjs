@@ -891,7 +891,20 @@ function checkNoNewBackendFiles() {
     "supabase/migrations/20260725000000_orch_0950_trip_capacity_single_source.sql",
     "supabase/migrations/20260725000002_orch_0950_expanded_scope_dashboard_coherence.sql",
   ];
+  // ORCH-0985 [Curated stop "Replace" fix]. C7 is scoped to ORCH-0863 marketing;
+  // these backend touches are the Replace-stop fix: single-source slug validation
+  // (kills the stale VALID_CATEGORIES whitelist), center-search-on-the-replaced-
+  // stop, decoupled search radius, vibe rank-signal pass-through, best-score
+  // ordering, + the slug/rank-signal parity regression test. No marketing scope.
+  const ORCH_0985_BACKEND_ALLOWLIST = [
+    "supabase/functions/replace-curated-stop/index.ts",
+    "supabase/functions/_shared/stopAlternatives.ts",
+    "supabase/functions/_shared/signalRankFetch.ts",
+    "supabase/functions/generate-curated-experiences/index.ts",
+    "supabase/functions/_shared/replaceCuratedStopSlugParity.test.ts",
+  ];
   const ALLOWLIST = [
+    ...ORCH_0985_BACKEND_ALLOWLIST,
     ...META_ORCH_0952_BACKEND_ALLOWLIST,
     ...ORCH_0972_BACKEND_ALLOWLIST,
     ...ORCH_0954_BACKEND_ALLOWLIST,
