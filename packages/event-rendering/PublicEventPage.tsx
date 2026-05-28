@@ -49,6 +49,7 @@ import {
 } from "./designTokens";
 import { resolveTheme } from "./themeResolver";
 import { ThemeEntranceAnimation } from "./ThemeEntranceAnimation";
+import { EventCoverMedia } from "./EventCoverMedia";
 import type {
   PublicEventPageProps,
   PublicEventProps,
@@ -462,13 +463,15 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
     <>
       {/* Hero cover */}
       <View style={styles.heroWrap}>
-        {event.coverMediaUrl !== null &&
-        (event.coverMediaType === "image" || event.coverMediaType === "gif") ? (
-          <Image
-            source={{ uri: event.coverMediaUrl }}
+        {event.coverMediaUrl !== null ? (
+          <EventCoverMedia
+            mediaUrl={event.coverMediaUrl}
+            mediaType={event.coverMediaType}
+            radius={0}
+            label="Event cover"
             style={styles.heroImage}
-            resizeMode="cover"
-            accessibilityLabel="Event cover"
+            showAudioControl={event.coverMediaType === "video"}
+            audioControlPosition="topRight"
           />
         ) : (
           <View style={[styles.heroImage, { backgroundColor: heroColor }]} />
