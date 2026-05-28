@@ -98,6 +98,7 @@ export function buildReplacementStop(
     optional: original.optional,
     dismissible: original.dismissible,
     comboCategory: original.comboCategory,
+    rankSignal: original.rankSignal, // ORCH-0985: slot vibe is preserved across replacement
     // Place data from alternative
     placeId: alternative.placeId,
     placeName: alternative.placeName,

@@ -32,6 +32,7 @@ export interface CuratedStop {
   dismissible?: boolean;
   role?: string;
   comboCategory?: string;  // Mingla category slug from the combo that selected this stop (e.g., 'fine_dining')
+  rankSignal?: string;     // ORCH-0985: vibe signal this stop was ranked by (e.g. 'romantic'); used by Replace to order alternatives
 }
 
 // ORCH-0677 RC-2: surfaced by `generate-curated-experiences` when the response
