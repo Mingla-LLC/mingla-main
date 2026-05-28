@@ -59,7 +59,7 @@ export const validateNativeTrimmedEventCoverVideo = (
     return {
       ok: false,
       code: "video_too_long",
-      message: "Please trim to 30 seconds first.",
+      message: "Please trim to 29 seconds first.",
     };
   }
 

@@ -13,7 +13,8 @@ export type EventCoverMediaErrorCode =
   | "video_duration_unknown"
   | "upload_failed"
   | "display_failed"
-  | "missing_server_event_id";
+  | "missing_server_event_id"
+  | "persist_mismatch";
 
 export class EventCoverMediaError extends Error {
   code: EventCoverMediaErrorCode;
@@ -315,7 +316,7 @@ export const validateEventCoverAsset = (input: {
   if (mediaType === null) {
     throw new EventCoverMediaError(
       "unsupported_type",
-      "Choose an image, GIF, or MP4/MOV/WebM video up to 30 seconds.",
+      "Choose an image, GIF, or MP4/MOV/WebM video up to 29 seconds.",
     );
   }
   if (
@@ -340,7 +341,7 @@ export const validateEventCoverAsset = (input: {
   ) {
     throw new EventCoverMediaError(
       "video_too_long",
-      "Cover videos must be 30 seconds or shorter.",
+      "Cover videos must be 29 seconds or shorter.",
     );
   }
   return mediaType;

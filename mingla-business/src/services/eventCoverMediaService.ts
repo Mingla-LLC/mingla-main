@@ -177,12 +177,16 @@ export const uploadEventCoverMedia = async (
   };
 };
 
-export const updatePublishedEventCoverMedia = async (
+export const setEventCover = async (
   serverEventId: string,
-  mediaUrl: string | null,
-  mediaType: EventCoverMediaType | null,
-  metadata: EventCoverProviderMetadata | null = null,
-): Promise<void> => {
+  mediaUrl: string,
+  mediaType: EventCoverMediaType,
+  metadata: EventCoverProviderMetadata,
+): Promise<{
+  id: string;
+  cover_media_url: string;
+  cover_media_type: EventCoverMediaType;
+}> => {
   if (serverEventId.trim().length === 0) {
     throw new EventCoverMediaError(
       "missing_server_event_id",
@@ -196,12 +200,62 @@ export const updatePublishedEventCoverMedia = async (
     .from("events")
     .update({
       cover_media_url: mediaUrl,
-      cover_media_type: mediaUrl === null ? null : mediaType,
-      cover_media_provider: mediaUrl === null ? null : metadata?.provider ?? null,
-      cover_media_source_url: mediaUrl === null ? null : metadata?.sourceUrl ?? null,
-      cover_media_credit: mediaUrl === null ? null : metadata?.credit ?? null,
-      cover_media_credit_url: mediaUrl === null ? null : metadata?.creditUrl ?? null,
-      cover_media_alt: mediaUrl === null ? null : metadata?.alt ?? null,
+      cover_media_type: mediaType,
+      cover_media_provider: metadata.provider ?? null,
+      cover_media_source_url: metadata.sourceUrl ?? null,
+      cover_media_credit: metadata.credit ?? null,
+      cover_media_credit_url: metadata.creditUrl ?? null,
+      cover_media_alt: metadata.alt ?? null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", serverEventId)
+    .eq("event_type", "event")
+    .is("deleted_at", null)
+    .select("id, cover_media_url, cover_media_type")
+    .maybeSingle();
+
+  if (error !== null) {
+    throw new EventCoverMediaError("upload_failed", error.message);
+  }
+  if (data === null) {
+    throw new EventCoverMediaError(
+      "missing_server_event_id",
+      "Save failed because this event could not be found.",
+    );
+  }
+  if (data.cover_media_url !== mediaUrl) {
+    throw new EventCoverMediaError(
+      "persist_mismatch",
+      "Save succeeded but the cover did not persist. Refresh and try again.",
+    );
+  }
+  return data as {
+    id: string;
+    cover_media_url: string;
+    cover_media_type: EventCoverMediaType;
+  };
+};
+
+export const clearEventCover = async (serverEventId: string): Promise<void> => {
+  if (serverEventId.trim().length === 0) {
+    throw new EventCoverMediaError(
+      "missing_server_event_id",
+      "Save failed because this event is missing its server id.",
+    );
+  }
+  // ORCH-0859 REWORK 3 (events-type-filter audit): event-wizard cover
+  // media writer is event-only. Trip wizard manages its own cover via
+  // theme.business_trip + its own service path.
+  const { data, error } = await supabase
+    .from("events")
+    .update({
+      cover_media_url: null,
+      cover_media_type: null,
+      cover_media_provider: null,
+      cover_media_source_url: null,
+      cover_media_credit: null,
+      cover_media_credit_url: null,
+      cover_media_alt: null,
       updated_at: new Date().toISOString(),
     })
     .eq("id", serverEventId)

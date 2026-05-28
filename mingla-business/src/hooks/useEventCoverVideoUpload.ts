@@ -97,6 +97,8 @@ export function useEventCoverVideoUpload(
           sourceDurationMs: compressed.durationMs,
           sourceFileName: file.fileName ?? null,
           sourceMimeType: file.mimeType ?? null,
+          trimEndMs: compressed.durationMs,
+          trimStartMs: 0,
         });
         jobIdRef.current = intent.jobId;
         setStage({ phase: "uploading", percent: 0 });

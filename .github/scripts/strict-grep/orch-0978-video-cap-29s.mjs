@@ -129,6 +129,37 @@ if (missingDurationCodes.length === 0 && oldLiteralFiles.length === 0) {
   ok("C7", "Processed-duration validation uses discrete codes and the old literal is dead");
 }
 
+const eventCoverMediaServicePath = "mingla-business/src/services/eventCoverMediaService.ts";
+const eventCoverMediaService = read(eventCoverMediaServicePath);
+if (!eventCoverMediaService.includes("export const setEventCover")) {
+  fail("C8", `${eventCoverMediaServicePath} must export setEventCover`);
+} else if (!eventCoverMediaService.includes("export const clearEventCover")) {
+  fail("C8", `${eventCoverMediaServicePath} must export clearEventCover`);
+} else if (eventCoverMediaService.includes("updatePublishedEventCoverMedia")) {
+  fail(
+    "C8",
+    `${eventCoverMediaServicePath} must NOT reference updatePublishedEventCoverMedia (dead literal)`,
+  );
+} else {
+  ok("C8", "eventCoverMediaService exports setEventCover + clearEventCover; old symbol is dead");
+}
+
+const nativeVideoPath = "mingla-business/src/utils/eventCoverNativeVideo.ts";
+const mediaRulesPath2 = "mingla-business/src/utils/eventCoverMediaRules.ts";
+const nativeVideoText = read(nativeVideoPath);
+const mediaRulesText = read(mediaRulesPath2);
+const offendingFiles = [];
+if (nativeVideoText.includes("30 seconds")) offendingFiles.push(nativeVideoPath);
+if (mediaRulesText.includes("30 seconds")) offendingFiles.push(mediaRulesPath2);
+if (offendingFiles.length > 0) {
+  fail(
+    "C9",
+    `"30 seconds" literal must not appear in: ${offendingFiles.join(", ")}`,
+  );
+} else {
+  ok("C9", `"30 seconds" literal is dead in eventCoverNativeVideo.ts + eventCoverMediaRules.ts`);
+}
+
 if (process.exitCode && process.exitCode !== 0) {
   process.exit(process.exitCode);
 }
