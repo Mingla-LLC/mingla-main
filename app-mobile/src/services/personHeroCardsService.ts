@@ -6,7 +6,6 @@ export async function fetchPersonHeroCards(params: {
   holidayKey: string;
   categorySlugs: string[];
   curatedExperienceType: string | null;
-  location: { latitude: number; longitude: number };
   // ORCH-0684 D-Q4: widened to add explicit "individual" force-off.
   // "default" lets the edge fn auto-decide bilateral when both users meet
   // the preference threshold; "individual" explicitly blocks auto-promotion.
@@ -32,7 +31,6 @@ export async function fetchPersonHeroCards(params: {
         holidayKey: params.holidayKey,
         categorySlugs: params.categorySlugs,
         curatedExperienceType: params.curatedExperienceType,
-        location: params.location,
         mode: params.mode ?? "default",
         isCustomHoliday: params.isCustomHoliday,
         yearsElapsed: params.yearsElapsed,
@@ -57,5 +55,61 @@ export async function fetchPersonHeroCards(params: {
   return {
     cards: data.cards ?? [],
     hasMore: data.hasMore ?? false,
+    summary: data.summary,
+  };
+}
+
+export type PairedProfileCardsResponse = {
+  locationStatus: "ok" | "missing";
+  sections: Record<string, { cards: HolidayCardsResponse["cards"]; summary?: { emptyReason: string } }>;
+};
+
+export async function fetchPairedProfileCards(params: {
+  pairedUserId: string;
+  sections: Array<{
+    holidayKey: string;
+    isCustomHoliday: boolean;
+    yearsElapsed?: number;
+    categorySlugs: string[];
+    curatedExperienceType: string | null;
+  }>;
+  mode?: "default" | "individual" | "bilateral";
+}): Promise<PairedProfileCardsResponse> {
+  const { data: sessionData } = await supabase.auth.getSession();
+  const token = sessionData?.session?.access_token;
+  if (!token) throw new Error("Not authenticated");
+
+  const response = await fetch(
+    `${supabaseUrl}/functions/v1/get-paired-profile-cards`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        pairedUserId: params.pairedUserId,
+        sections: params.sections,
+        mode: params.mode ?? "default",
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const rawText = await response.text().catch(() => "");
+    let errorMessage = `Paired profile cards fetch failed (HTTP ${response.status})`;
+    try {
+      const errorData = JSON.parse(rawText);
+      if (errorData.error) errorMessage = errorData.error;
+    } catch {
+      if (rawText) errorMessage += `: ${rawText.slice(0, 200)}`;
+    }
+    throw new Error(errorMessage);
+  }
+
+  const data = await response.json();
+  return {
+    locationStatus: data.locationStatus === "missing" ? "missing" : "ok",
+    sections: data.sections ?? {},
   };
 }

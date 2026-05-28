@@ -628,6 +628,7 @@ function buildCardFromStops(
     title,
     tagline,
     categoryLabel: CURATED_TYPE_LABELS[experienceType] || 'Explore',
+    imageUrl: mainStops.find(s => s.imageUrl)?.imageUrl ?? null,
     stops,
     totalPriceMin,
     totalPriceMax,

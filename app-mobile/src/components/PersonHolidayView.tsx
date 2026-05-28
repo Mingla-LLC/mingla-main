@@ -1,12 +1,10 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   View,
   Text,
   Image,
   ScrollView,
-  FlatList,
   TouchableOpacity,
-  ActivityIndicator,
   StyleSheet,
   Modal,
 } from "react-native";
@@ -17,16 +15,17 @@ import {
   HolidayDefinition,
   HolidayCardSection,
 } from "../types/holidayTypes";
+import type { HolidayCardsResponse } from "../services/holidayCardsService";
 import {
   STANDARD_HOLIDAYS,
   DEFAULT_PERSON_SECTIONS,
 } from "../constants/holidays";
-import { usePairedCards, useShufflePairedCards } from "../hooks/usePairedCards";
+import { sectionsToSlugsAndType, useShufflePairedCards } from "../hooks/usePairedCards";
+import { usePairedProfileCards, type PairedProfileSectionRequest } from "../hooks/usePairedProfileCards";
 import { useHolidayCategories } from "../hooks/useHolidayCategories";
 import { usePairedSaves } from "../hooks/usePairedSaves";
 import { usePairedUserVisits } from "../hooks/useVisits";
 import { getCategoryIcon, getCategoryColor, getReadableCategoryName } from "../utils/categoryUtils";
-import { computeTravelInfo } from "../utils/travelTime";
 import { PriceTierSlug, formatTierLabel } from "../constants/priceTiers";
 import { useLocalePreferences } from "../hooks/useLocalePreferences";
 import { getCurrencySymbol, getCurrencyRate } from "./utils/formatters";
@@ -71,7 +70,6 @@ interface PersonHolidayViewProps {
   displayName: string;
   birthday: string | null;
   gender: string | null;
-  location: { latitude: number; longitude: number };
   userId: string;
   customHolidays?: Array<{
     id: string;
@@ -106,7 +104,7 @@ interface PersonHolidayViewProps {
     googlePlaceId: string | null;
     priceTier: string | null;
     tagline: string | null;
-    stops: number;
+    stops: number | unknown[];
     stopsData: unknown[] | null;
     totalPriceMin: number | null;
     totalPriceMax: number | null;
@@ -292,7 +290,10 @@ function CompactCard({
           <Image source={{ uri: imageUrl }} style={styles.compactCardImage} resizeMode="cover" />
         ) : (
           <View style={[styles.compactCardImage, styles.compactCardImageFallback]}>
-            <Icon name="image-outline" size={s(28)} color="#d1d5db" />
+            <Icon name="image-outline" size={s(24)} color="#eb7825" />
+            {isCurated ? (
+              <Text style={styles.compactCardImageMissingText}>Plan image unavailable</Text>
+            ) : null}
           </View>
         )}
         {/* Category badge */}
@@ -344,7 +345,11 @@ function CardRow({
   pairedUserId,
   holidayKey,
   sections,
-  location,
+  sectionData,
+  isProfileLoading,
+  isProfileError,
+  locationStatus,
+  refetchProfile,
   fallbackCards,
   onCardPress,
   onShuffleCategories,
@@ -352,7 +357,6 @@ function CardRow({
   onLoaded,
   excludeCardIds = [],
   enabled = true,
-  onCardsLoaded,
   mode,                  // ORCH-0684: bilateral toggle override
   isCustomHoliday,       // ORCH-0684: composition rule routing
   yearsElapsed,          // ORCH-0684: anniversary detection
@@ -360,7 +364,11 @@ function CardRow({
   pairedUserId: string;
   holidayKey: string;
   sections: HolidayCardSection[];
-  location: { latitude: number; longitude: number };
+  sectionData?: { cards: HolidayCardsResponse["cards"]; summary?: { emptyReason: string } };
+  isProfileLoading: boolean;
+  isProfileError: boolean;
+  locationStatus: "ok" | "missing";
+  refetchProfile: () => void;
   fallbackCards?: FallbackCard[];
   onCardPress?: PersonHolidayViewProps["onCardPress"];
   onShuffleCategories?: () => Promise<void>;
@@ -368,7 +376,6 @@ function CardRow({
   onLoaded?: () => void;
   excludeCardIds?: string[];
   enabled?: boolean;
-  onCardsLoaded?: (cardIds: string[]) => void;
   mode?: "default" | "individual" | "bilateral";
   isCustomHoliday?: boolean;
   yearsElapsed?: number;
@@ -377,70 +384,72 @@ function CardRow({
   const { currency } = useLocalePreferences();
   const currencySymbol = getCurrencySymbol(currency);
   const currencyRate = getCurrencyRate(currency);
-  const hasLoc = location.latitude !== 0 || location.longitude !== 0;
-
-  const { data, isLoading, isFetching, isError, refetch } = usePairedCards(
-    enabled && hasLoc
-      ? { pairedUserId, holidayKey, location, sections, excludeCardIds, mode, isCustomHoliday, yearsElapsed }
-      : null
-  );
-
-  const allCards = data?.cards ?? [];
+  const allCards = enabled ? (sectionData?.cards ?? []) : [];
   const pairedCards = allCards;
-
-  // Report loaded card IDs to parent for next stage's exclusions
-  const reportedRef = useRef(false);
-  useEffect(() => {
-    if (!isLoading && !isFetching && allCards.length > 0 && onCardsLoaded && !reportedRef.current) {
-      reportedRef.current = true;
-      onCardsLoaded(allCards.map(c => c.id));
-    }
-  }, [isLoading, isFetching, allCards, onCardsLoaded]);
-
-  // Reset reported flag when query re-fires (e.g., after shuffle or stage change)
-  useEffect(() => {
-    reportedRef.current = false;
-  }, [holidayKey, enabled]);
 
   const shufflePairedCards = useShufflePairedCards();
   const handleShuffle = useCallback(async () => {
-    reportedRef.current = false;
-    await shufflePairedCards(pairedUserId, holidayKey, sections, location, excludeCardIds, isCustomHoliday, yearsElapsed);
+    await shufflePairedCards(pairedUserId, holidayKey, sections, excludeCardIds, isCustomHoliday, yearsElapsed);
     if (onShuffleCategories) onShuffleCategories();
-  }, [shufflePairedCards, pairedUserId, holidayKey, sections, location, excludeCardIds, isCustomHoliday, yearsElapsed, onShuffleCategories]);
+    refetchProfile();
+  }, [shufflePairedCards, pairedUserId, holidayKey, sections, excludeCardIds, isCustomHoliday, yearsElapsed, onShuffleCategories, refetchProfile]);
 
   // Signal parent that loading finished
   useEffect(() => {
-    if (!isLoading && !isFetching && onLoaded) {
+    if (!isProfileLoading && onLoaded) {
       onLoaded();
     }
-  }, [isLoading, isFetching, onLoaded]);
+  }, [isProfileLoading, onLoaded]);
 
   const sectionFallback = useMemo(() => {
     if (!fallbackCards || fallbackCards.length === 0) return [];
     return seededShuffle(fallbackCards, holidayKey).slice(0, 6);
   }, [fallbackCards, holidayKey]);
 
-  if (!hasLoc || isLoading || (!data && isFetching)) {
+  if (locationStatus === "missing") {
     return (
-      <View style={styles.loadingRow}>
-        <ActivityIndicator size="small" color="#eb7825" />
-        <Text style={styles.loadingText}>
-          {hasLoc ? t('social:holiday.loading_recommendations') : t('social:holiday.getting_location')}
+      <View style={styles.gpsEmptyCard}>
+        <View style={styles.gpsEmptyIcon}>
+          <Icon name="location-outline" size={s(22)} color="#eb7825" />
+        </View>
+        <Text style={styles.gpsEmptyTitle}>No recent location yet</Text>
+        <Text style={styles.gpsEmptyBody}>
+          Mingla will not guess. Birthday and holiday picks will appear around where this friend actually is once their recent location is available.
         </Text>
       </View>
     );
   }
 
-  if (isError) {
+  if (isProfileLoading) {
+    return (
+      <View style={styles.skeletonRow}>
+        <View style={styles.skeletonCuratedCard} />
+        <View style={styles.skeletonSingleCard} />
+      </View>
+    );
+  }
+
+  if (isProfileError) {
     return (
       <View style={styles.errorRow}>
         <Icon name="cloud-offline-outline" size={s(20)} color="#9ca3af" />
         <Text style={styles.errorText}>{t('social:holiday.couldnt_load')}</Text>
-        <TouchableOpacity style={styles.retryButton} onPress={() => refetch()} activeOpacity={0.7}>
+        <TouchableOpacity style={styles.retryButton} onPress={refetchProfile} activeOpacity={0.7}>
           <Icon name="refresh-outline" size={s(14)} color="#eb7825" />
           <Text style={styles.retryText}>{t('social:holiday.retry')}</Text>
         </TouchableOpacity>
+      </View>
+    );
+  }
+
+  if (pairedCards.length === 0 && sectionData?.summary?.emptyReason) {
+    return (
+      <View style={styles.noCardsCard}>
+        <Icon name="sparkles-outline" size={s(22)} color="#eb7825" />
+        <Text style={styles.noCardsTitle}>No strong picks yet</Text>
+        <Text style={styles.noCardsBody}>
+          Mingla could not find enough good matches near this friend for this day. Try again later.
+        </Text>
       </View>
     );
   }
@@ -464,9 +473,6 @@ function CardRow({
               experienceType={c.experienceType}
               stops={c.stops}
               onPress={() => {
-                const travel = c.lat != null && c.lng != null && location.latitude !== 0
-                  ? computeTravelInfo(location.latitude, location.longitude, c.lat, c.lng, travelMode || 'walking')
-                  : undefined;
                 onCardPress?.({
                   id: c.id,
                   title: c.title,
@@ -484,14 +490,12 @@ function CardRow({
                   googlePlaceId: c.googlePlaceId,
                   priceTier: c.priceTier,
                   tagline: c.tagline,
-                  stops: c.stops,
+                  stops: c.cardType === "curated" && Array.isArray(c.stopsData) ? (c.stopsData as any) : c.stops,
                   stopsData: c.stopsData,
                   totalPriceMin: c.totalPriceMin,
                   totalPriceMax: c.totalPriceMax,
                   estimatedDurationMinutes: c.estimatedDurationMinutes,
                   shoppingList: c.shoppingList,
-                  travelTime: travel?.travelTime,
-                  distance: travel?.distance,
                   travelMode,
                 });
               }}
@@ -545,10 +549,11 @@ function CardRow({
 
 function HolidaySectionView({
   holiday, daysAway, date,
-  pairedUserId, pairingId, firstName, location,
+  pairedUserId, pairingId, firstName,
+  sectionData, isProfileLoading, isProfileError, locationStatus, refetchProfile,
   fallbackCards, onCardPress,
   isExpanded, onToggle, onArchive,
-  travelMode, excludeCardIds, enabled, onCardsLoaded,
+  travelMode, excludeCardIds, enabled,
   mode,                  // ORCH-0684
 }: {
   holiday: HolidayDefinition;
@@ -557,7 +562,11 @@ function HolidaySectionView({
   pairedUserId: string;
   pairingId: string;
   firstName: string;
-  location: { latitude: number; longitude: number };
+  sectionData?: { cards: HolidayCardsResponse["cards"]; summary?: { emptyReason: string } };
+  isProfileLoading: boolean;
+  isProfileError: boolean;
+  locationStatus: "ok" | "missing";
+  refetchProfile: () => void;
   fallbackCards?: FallbackCard[];
   onCardPress?: PersonHolidayViewProps["onCardPress"];
   isExpanded: boolean;
@@ -566,7 +575,6 @@ function HolidaySectionView({
   travelMode?: string;
   excludeCardIds?: string[];
   enabled?: boolean;
-  onCardsLoaded?: (cardIds: string[]) => void;
   mode?: "default" | "individual" | "bilateral";
 }) {
   const { t } = useTranslation(['social', 'common']);
@@ -606,13 +614,17 @@ function HolidaySectionView({
           </View>
           <CardRow
             pairedUserId={pairedUserId} holidayKey={holiday.id}
-            sections={aiSections} location={location}
+            sections={aiSections}
+            sectionData={sectionData}
+            isProfileLoading={isProfileLoading}
+            isProfileError={isProfileError}
+            locationStatus={locationStatus}
+            refetchProfile={refetchProfile}
             fallbackCards={fallbackCards} onCardPress={onCardPress}
             onShuffleCategories={invalidate}
             travelMode={travelMode}
             excludeCardIds={excludeCardIds}
             enabled={enabled}
-            onCardsLoaded={onCardsLoaded}
             mode={mode}
             isCustomHoliday={false}
           />
@@ -625,14 +637,19 @@ function HolidaySectionView({
 // ── Custom Holiday Section ──────────────────────────────────────────────────
 
 function CustomHolidaySectionView({
-  holiday, pairedUserId, pairingId, firstName, location,
+  holiday, pairedUserId, pairingId, firstName,
+  sectionData, isProfileLoading, isProfileError, locationStatus, refetchProfile,
   fallbackCards, onCardPress, isExpanded, onToggle, onDelete,
-  travelMode, excludeCardIds, enabled, onCardsLoaded,
+  travelMode, excludeCardIds, enabled,
   mode,                  // ORCH-0684
 }: {
   holiday: { id: string; name: string; month: number; day: number; year: number };
   pairedUserId: string; pairingId: string; firstName: string;
-  location: { latitude: number; longitude: number };
+  sectionData?: { cards: HolidayCardsResponse["cards"]; summary?: { emptyReason: string } };
+  isProfileLoading: boolean;
+  isProfileError: boolean;
+  locationStatus: "ok" | "missing";
+  refetchProfile: () => void;
   fallbackCards?: FallbackCard[];
   onCardPress?: PersonHolidayViewProps["onCardPress"];
   isExpanded: boolean; onToggle: () => void;
@@ -640,7 +657,6 @@ function CustomHolidaySectionView({
   travelMode?: string;
   excludeCardIds?: string[];
   enabled?: boolean;
-  onCardsLoaded?: (cardIds: string[]) => void;
   mode?: "default" | "individual" | "bilateral";
 }) {
   const { t } = useTranslation(['social', 'common']);
@@ -689,13 +705,17 @@ function CustomHolidaySectionView({
           </View>
           <CardRow
             pairedUserId={pairedUserId} holidayKey={`custom_${holiday.id}`}
-            sections={ai} location={location}
+            sections={ai}
+            sectionData={sectionData}
+            isProfileLoading={isProfileLoading}
+            isProfileError={isProfileError}
+            locationStatus={locationStatus}
+            refetchProfile={refetchProfile}
             fallbackCards={fallbackCards} onCardPress={onCardPress}
             onShuffleCategories={invalidate}
             travelMode={travelMode}
             excludeCardIds={excludeCardIds}
             enabled={enabled}
-            onCardsLoaded={onCardsLoaded}
             mode={mode}
             isCustomHoliday={true}
             yearsElapsed={elapsed > 0 ? elapsed : 0}
@@ -710,7 +730,7 @@ function CustomHolidaySectionView({
 
 export default function PersonHolidayView({
   pairedUserId, pairingId, displayName, birthday, gender,
-  location, userId, customHolidays, onAddCustomDay,
+  userId, customHolidays, onAddCustomDay,
   fallbackCards, archivedHolidayIds, onArchiveHoliday, onUnarchiveHoliday,
   onCardPress, onSaveCardPress, onDeleteCustomDay, travelMode,
   autoOpenSaves, onAutoOpenSavesConsumed,
@@ -730,36 +750,7 @@ export default function PersonHolidayView({
   const [showSavesList, setShowSavesList] = useState(false);
   const [showVisitsList, setShowVisitsList] = useState(false);
 
-  // Staged dedup: accumulate card IDs from each loading stage
-  const [stage1Ids, setStage1Ids] = useState<string[]>([]);
-  const [stage1Done, setStage1Done] = useState(false);
-  const [stage2Ids, setStage2Ids] = useState<string[]>([]);
-  const [stage2Done, setStage2Done] = useState(false);
-  const customLoadedRef = useRef(0);
-
-  // Reset when viewing a different person
-  useEffect(() => {
-    setStage1Ids([]);
-    setStage1Done(false);
-    setStage2Ids([]);
-    setStage2Done(false);
-    customLoadedRef.current = 0;
-  }, [pairedUserId]);
-
-  // If no birthday, skip stage 1 immediately
   const hasBirthday = !!birthday;
-  useEffect(() => {
-    if (!hasBirthday) setStage1Done(true);
-  }, [hasBirthday]);
-
-  // If no custom holidays, skip stage 2 immediately
-  const customCount = customHolidays?.length || 0;
-  useEffect(() => {
-    if (customCount === 0) setStage2Done(true);
-  }, [customCount]);
-
-  // Stable combined exclude list for standard holidays
-  const standardExcludeIds = useMemo(() => [...stage1Ids, ...stage2Ids], [stage1Ids, stage2Ids]);
 
   // Load bilateral mode from AsyncStorage per paired person.
   // ORCH-0684 D-Q4: only "individual" or "bilateral" persist as overrides;
@@ -852,6 +843,42 @@ export default function PersonHolidayView({
     [sortedHolidays, archivedSet]
   );
 
+  const batchedSectionRequests = useMemo<PairedProfileSectionRequest[]>(() => {
+    const toRequest = (
+      holidayKey: string,
+      isCustomHoliday: boolean,
+      yearsElapsed?: number,
+      sections?: HolidayCardSection[],
+    ): PairedProfileSectionRequest => {
+      const derived = sections
+        ? sectionsToSlugsAndType(sections)
+        : { categorySlugs: [], curatedExperienceType: null };
+      return {
+        holidayKey,
+        isCustomHoliday,
+        yearsElapsed,
+        categorySlugs: derived.categorySlugs,
+        curatedExperienceType: derived.curatedExperienceType,
+      };
+    };
+    const requests: PairedProfileSectionRequest[] = [];
+    if (hasBirthday) requests.push(toRequest("birthday", false));
+    for (const holiday of customHolidays ?? []) {
+      const elapsed = new Date().getFullYear() - holiday.year;
+      requests.push(toRequest(`custom_${holiday.id}`, true, elapsed > 0 ? elapsed : 0));
+    }
+    for (const { holiday } of visible) {
+      requests.push(toRequest(holiday.id, false, undefined, holiday.sections));
+    }
+    return requests;
+  }, [customHolidays, hasBirthday, visible]);
+
+  const profileCards = usePairedProfileCards({
+    pairedUserId,
+    sections: batchedSectionRequests,
+    mode: bilateralMode,
+  });
+
   // Sub-screen handling moved to Modals at end of return (fixes FlatList-in-ScrollView nesting)
 
   return (
@@ -886,11 +913,11 @@ export default function PersonHolidayView({
                   onPress={() => setShowSavesList(true)}
                   activeOpacity={0.7}
                 >
-                  <Icon name="heart" size={s(14)} color="white" />
+                  <Icon name="heart-outline" size={s(14)} color="#eb7825" />
                   <Text style={styles.heroLikedText}>
                     {t('social:holiday.liked_places', { count: saves.length })}
                   </Text>
-                  <Icon name="chevron-forward" size={s(14)} color="rgba(255,255,255,0.7)" />
+                  <Icon name="chevron-forward" size={s(14)} color="#eb7825" />
                 </TouchableOpacity>
               )}
               <CalendarButton
@@ -898,23 +925,23 @@ export default function PersonHolidayView({
                 eventTitle={t('social:holiday.birthday_event', { name: fn })} nextOccurrence={nd}
                 notes={t('social:holiday.reminder_notes', { event: t('social:holiday.birthday_event', { name: fn }) })}
                 personName={fn} occasionLabel={t('social:holiday.birthday_label')}
-                inverted
               />
             </View>
             {/* Birthday card row — always visible beneath hero */}
             <CardRow
               pairedUserId={pairedUserId} holidayKey="birthday"
-              sections={DEFAULT_PERSON_SECTIONS} location={location}
+              sections={DEFAULT_PERSON_SECTIONS}
+              sectionData={profileCards.sections.birthday}
+              isProfileLoading={profileCards.isLoading}
+              isProfileError={profileCards.isError}
+              locationStatus={profileCards.locationStatus}
+              refetchProfile={() => { profileCards.refetch(); }}
               fallbackCards={fallbackCards} onCardPress={onCardPress}
               travelMode={travelMode}
               excludeCardIds={[]}
               enabled={true}
               mode={bilateralMode}
               isCustomHoliday={false}
-              onCardsLoaded={(ids) => {
-                setStage1Ids(ids);
-                setStage1Done(true);
-              }}
             />
           </View>
         );
@@ -935,22 +962,20 @@ export default function PersonHolidayView({
             <CustomHolidaySectionView
               key={ch.id} holiday={ch}
               pairedUserId={pairedUserId} pairingId={pairingId}
-              firstName={firstName} location={location}
+              firstName={firstName}
+              sectionData={profileCards.sections[`custom_${ch.id}`]}
+              isProfileLoading={profileCards.isLoading}
+              isProfileError={profileCards.isError}
+              locationStatus={profileCards.locationStatus}
+              refetchProfile={() => { profileCards.refetch(); }}
               fallbackCards={fallbackCards} onCardPress={onCardPress}
               isExpanded={expandedIds.has(`custom_${ch.id}`)}
               onToggle={() => toggle(`custom_${ch.id}`)}
               onDelete={onDeleteCustomDay ? () => onDeleteCustomDay(ch.id, ch.name) : undefined}
               travelMode={travelMode}
-              excludeCardIds={stage1Ids}
-              enabled={stage1Done}
+              excludeCardIds={[]}
+              enabled={true}
               mode={bilateralMode}
-              onCardsLoaded={(ids) => {
-                setStage2Ids(prev => [...prev, ...ids]);
-                customLoadedRef.current += 1;
-                if (customLoadedRef.current >= (customHolidays?.length || 0)) {
-                  setStage2Done(true);
-                }
-              }}
             />
           ))
         ) : (
@@ -978,14 +1003,19 @@ export default function PersonHolidayView({
               key={holiday.id}
               holiday={holiday} daysAway={daysAway} date={date}
               pairedUserId={pairedUserId} pairingId={pairingId}
-              firstName={firstName} location={location}
+              firstName={firstName}
+              sectionData={profileCards.sections[holiday.id]}
+              isProfileLoading={profileCards.isLoading}
+              isProfileError={profileCards.isError}
+              locationStatus={profileCards.locationStatus}
+              refetchProfile={() => { profileCards.refetch(); }}
               fallbackCards={fallbackCards} onCardPress={onCardPress}
               isExpanded={expandedIds.has(holiday.id)}
               onToggle={() => toggle(holiday.id)}
               onArchive={() => handleArchive(holiday.id)}
               travelMode={travelMode}
-              excludeCardIds={standardExcludeIds}
-              enabled={stage2Done || (customHolidays?.length || 0) === 0}
+              excludeCardIds={[]}
+              enabled={true}
               mode={bilateralMode}
             />
           ))}
@@ -1082,24 +1112,31 @@ const styles = StyleSheet.create({
   // ── Birthday hero ────────────────────────────────────
   birthdaySection: { marginBottom: s(24) },
   heroCard: {
-    backgroundColor: "#eb7825",
-    borderRadius: s(20),
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: s(24),
     paddingTop: s(20),
     paddingHorizontal: s(20),
     paddingBottom: s(16),
-    marginBottom: s(4),
+    marginBottom: s(10),
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    elevation: 3,
   },
   heroContent: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
   heroLeft: { flex: 1 },
   heroDaysWrap: { alignItems: "flex-end" },
-  heroTitle: { fontSize: s(22), fontWeight: "700", color: "white", marginBottom: s(4) },
-  heroSubtitle: { fontSize: s(14), color: "rgba(255,255,255,0.9)", marginBottom: s(2) },
-  heroAge: { fontSize: s(15), fontWeight: "600", color: "rgba(255,255,255,0.95)" },
+  heroTitle: { fontSize: s(22), fontWeight: "700", color: "#111827", marginBottom: s(4) },
+  heroSubtitle: { fontSize: s(14), color: "#6b7280", marginBottom: s(2) },
+  heroAge: { fontSize: s(15), fontWeight: "600", color: "#111827" },
   heroLikedBtn: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(0,0,0,0.15)",
-    borderRadius: s(10),
+    backgroundColor: "#fff7ed",
+    borderRadius: s(999),
     paddingHorizontal: s(14),
     paddingVertical: s(9),
     marginTop: s(12),
@@ -1107,12 +1144,12 @@ const styles = StyleSheet.create({
   heroLikedText: {
     fontSize: s(14),
     fontWeight: "600",
-    color: "white",
+    color: "#c2410c",
     marginLeft: s(8),
     flex: 1,
   },
-  heroDaysNum: { fontSize: s(36), fontWeight: "700", color: "white", lineHeight: s(40) },
-  heroDaysLabel: { fontSize: s(16), fontWeight: "700", color: "white", lineHeight: s(24), marginTop: s(4) },
+  heroDaysNum: { fontSize: s(36), fontWeight: "700", color: "#eb7825", lineHeight: s(40) },
+  heroDaysLabel: { fontSize: s(16), fontWeight: "700", color: "#6b7280", lineHeight: s(24), marginTop: s(4) },
 
   // ── Section headers ──────────────────────────────────
   sectionWrap: { marginBottom: s(24) },
@@ -1197,9 +1234,16 @@ const styles = StyleSheet.create({
     height: "100%",
   },
   compactCardImageFallback: {
-    backgroundColor: "#f3f4f6",
+    backgroundColor: "#fff7ed",
     justifyContent: "center",
     alignItems: "center",
+  },
+  compactCardImageMissingText: {
+    fontSize: s(11),
+    fontWeight: "700",
+    color: "#c2410c",
+    marginTop: s(6),
+    textAlign: "center",
   },
   compactCardBadge: {
     position: "absolute",
@@ -1269,6 +1313,72 @@ const styles = StyleSheet.create({
     backgroundColor: "#eb7825",
     justifyContent: "center",
     alignItems: "center",
+  },
+  gpsEmptyCard: {
+    backgroundColor: "#fff7ed",
+    borderWidth: 1,
+    borderColor: "#ffedd5",
+    borderRadius: s(24),
+    padding: s(18),
+    marginVertical: s(8),
+  },
+  gpsEmptyIcon: {
+    width: s(48),
+    height: s(48),
+    borderRadius: s(24),
+    backgroundColor: "#ffffff",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: s(12),
+  },
+  gpsEmptyTitle: {
+    fontSize: s(16),
+    fontWeight: "700",
+    color: "#111827",
+  },
+  gpsEmptyBody: {
+    fontSize: s(13),
+    lineHeight: s(19),
+    color: "#6b7280",
+    marginTop: s(6),
+  },
+  noCardsCard: {
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: s(20),
+    padding: s(18),
+    marginVertical: s(8),
+  },
+  noCardsTitle: {
+    fontSize: s(15),
+    fontWeight: "700",
+    color: "#111827",
+    marginTop: s(8),
+  },
+  noCardsBody: {
+    fontSize: s(13),
+    lineHeight: s(18),
+    color: "#6b7280",
+    marginTop: s(4),
+  },
+  skeletonRow: {
+    flexDirection: "row",
+    gap: s(12),
+    paddingHorizontal: s(12),
+    paddingVertical: s(8),
+  },
+  skeletonCuratedCard: {
+    width: s(208),
+    height: s(276),
+    borderRadius: s(24),
+    backgroundColor: "#f3f4f6",
+  },
+  skeletonSingleCard: {
+    width: s(158),
+    height: s(224),
+    borderRadius: s(16),
+    backgroundColor: "#f3f4f6",
   },
 });
 

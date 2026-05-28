@@ -312,6 +312,17 @@ jobs:
       - name: Run ORCH-0975 notifications sheet gate
         run: node .github/scripts/strict-grep/orch-0975-notifications-sheet.mjs
 
+  orch-0986-paired-profile:
+    name: "ORCH-0986: paired profile friend-GPS and no-heart invariants"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0986 paired profile gate
+        run: node .github/scripts/strict-grep/orch-0986-paired-profile.mjs
+
   i37-topbar-default-cluster:
     name: "I-37: TopBar primary-tab default cluster"
     runs-on: ubuntu-latest

@@ -110,3 +110,8 @@ verify_jwt = true
 # ORCH-0897 — consumer-app post-install claim flow. Must be auth-gated.
 [functions.claim-pending-trip-chat-participation]
 verify_jwt = true
+
+# ORCH-0986 — paired profile batched cards. Auth-gated; function resolves the
+# paired friend's last-known GPS server-side and never returns coordinates.
+[functions.get-paired-profile-cards]
+verify_jwt = true
