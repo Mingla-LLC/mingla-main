@@ -168,3 +168,41 @@ The backend implementation otherwise has several good pieces: the new batched ed
 
 - The RPC privacy issue is not a cross-ORCH discovery; it belongs directly to ORCH-0986 rework.
 - The simulator/runtime blockers may be local dev-build/environment issues, but they still prevent the required proof level.
+
+---
+
+# RETEST (Claude mingla-tester) — 2026-05-28 — VERDICT: CONDITIONAL PASS
+
+Re-test at HEAD `52649714e` after the orchestrator-executed rework. P0:0 P1:0(open) P2:0(open) — the prior P0 is independently proven fixed; the only remaining gap is environment-blocked UI live-fire (deferred, not a code defect).
+
+## Prior FAIL findings — re-verification
+
+### P0-001 (RPC coord leak) — FIXED, INDEPENDENTLY PROVEN
+- Re-ran the QA's exact anon attack myself: `POST /rest/v1/rpc/get_paired_friend_last_location` with the public anon key + the same paired UUIDs (`8905106f…` / `1bb79276…`) → **HTTP 401 `{"code":"42501","message":"permission denied for function get_paired_friend_last_location"}`**. No `latitude`/`longitude` in the response. (Previously: HTTP 200 with raw coords.)
+- ACL after fix (`pg_proc.proacl`, read independently): `{postgres=X/postgres,service_role=X/postgres}` — only owner + `service_role` hold EXECUTE; `anon`/`authenticated`/PUBLIC have none.
+- Migration `20260730000003_orch_0986_lock_friend_location_rpc.sql` applied to remote.
+- Edge path intact: functions call via the service-role admin client, which retains EXECUTE; no redeploy needed (grant-only change). Verdict on P0: **PASS (proven, backend-verifiable)**.
+
+### P1-002 (shuffle dead tap) — FIXED at code level (suspected; UI not live-fired)
+- `useShufflePairedCards` now writes the shuffle result into `personCardKeys.pairedProfile(pairedUserId, mode)` via `setQueryData` (the slice the UI reads), not the legacy per-section key (`usePairedCards.ts:122-123`). `CardRow.handleShuffle` passes the active `mode` and no longer calls `refetchProfile()` (`PersonHolidayView.tsx:394-395`). Code-correct. Runtime confirmation pending live-fire (see blocker).
+
+### P2-001 (adversarial test) — RESOLVED
+- `supabase/functions/_shared/personHeroCards.adversarial.test.ts` is committed + allowlisted. Regression suite re-run by me: **4 passed / 0 failed** (3 implementor happy-path incl. fails-on-revert + 1 adversarial GPS-missing → returns null, different angle from the implementor's curated-mapping test).
+
+### P2-002 (branch push) — RESOLVED (HEAD `52649714e` on origin).
+
+## P1-001 (iOS/Android live-fire) — STILL BLOCKED (environment, not code) → `probable`
+- I started Metro on 8092 and launched `com.mingla.app.v2` on booted iPhone 17 Pro. The app shows a **red Metro resolver error**: `Unable to resolve module ./mingla-main/app-mobile/node_modules/expo-router/entry`. Screenshot `/tmp/orch0986_ios_state2.png`.
+- **Named root cause:** `app-mobile/node_modules` in this worktree is a SYMLINK to `~/Desktop/mingla-main/app-mobile/node_modules` (the spawn.sh optimization). Metro resolves the symlink and can't locate `expo-router/entry` relative to the worktree. This is the same blocker the prior tester hit. It is a tooling/environment issue, NOT an ORCH-0986 code defect.
+- Android leg: no AVD booted; prior session's `expo run:android` hung at Gradle.
+- Consequence: the app cannot reach login → paired profile, so a Maestro UI flow is impossible. SC-1..7, SC-10, SC-12, SC-14, SC-16..18 remain CODE-PASS / RUNTIME-UNVERIFIED.
+
+## Unblock options (to reach `proven` PASS)
+1. Remove the worktree node_modules symlink and run a real `npm install` in `app-mobile/` (spawn.sh symlink breaks Metro+expo-router here), then re-run iOS + Android Maestro live-fire with a paired test user that has a `user_location_history` row (only the `8905106f…`/`1bb79276…` pairing currently has one) AND one without.
+2. OR Seth verifies on his physical device: open a paired friend's profile, confirm the new hero/quote-bio/Message-beneath layout, tap Shuffle and confirm the row updates, and confirm the friend-GPS-missing empty state for a friend with no location.
+
+## Verdict rationale
+The prior FAIL was caused by the P0 coordinate leak — that is independently proven fixed. Backend, security, and regression are solid. The remaining gap is on-device UI confirmation of the visual redesign + shuffle, blocked by a worktree tooling issue. Per the live-fire gate, PASS requires `proven` UI repro, which the environment blocks. **CONDITIONAL PASS** — requires Seth's explicit acceptance of the UI-live-fire deferral (or completion of an unblock option above) before CLOSE.
+
+## Regression-test gate
+- Implementor happy-path: `supabase/functions/_shared/personHeroCards.test.ts` (fails-on-revert confirmed). Tester adversarial: `supabase/functions/_shared/personHeroCards.adversarial.test.ts` (different angle). Both on branch `52649714e`. Gate SATISFIED.
