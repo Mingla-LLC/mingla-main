@@ -40,6 +40,9 @@ export type {
   EventCoverMediaErrorEvent,
 } from "./EventCoverMedia";
 export { resolveEventCoverMediaPresentation } from "./coverMediaPresentation";
+// ORCH-0964 — BlurView wrapper that skips backdrop-filter on mobile web (where
+// stacked blur hard-crashes the renderer). Used by public brand + event pages.
+export { GlassBlur } from "./GlassBlur";
 export type {
   PublicEventProps,
   PublicBrandProps,
