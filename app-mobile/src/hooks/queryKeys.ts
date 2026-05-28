@@ -48,4 +48,6 @@ export const personCardKeys = {
   // call sites that pass 3 args.
   paired: (pairedUserId: string, holidayKey: string, locationKey: string, mode: string = 'default') =>
     [...personCardKeys.all, 'paired', pairedUserId, holidayKey, locationKey, mode] as const,
+  pairedProfile: (pairedUserId: string, mode: string = 'default') =>
+    [...personCardKeys.all, 'pairedProfile', pairedUserId, mode] as const,
 };

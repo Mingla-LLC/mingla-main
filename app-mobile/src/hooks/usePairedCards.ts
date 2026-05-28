@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
 import { fetchPersonHeroCards } from "../services/personHeroCardsService";
+import type { PairedProfileCardsResponse } from "../services/personHeroCardsService";
 import type { HolidayCardsResponse } from "../services/holidayCardsService";
 import type { HolidayCardSection } from "../types/holidayTypes";
 import { personCardKeys } from "./queryKeys";
@@ -12,7 +13,6 @@ export type PairedCardsMode = "default" | "individual" | "bilateral";
 interface UsePairedCardsParams {
   pairedUserId: string;
   holidayKey: string;
-  location: { latitude: number; longitude: number };
   sections: HolidayCardSection[];
   excludeCardIds?: string[];
   // ORCH-0684 D-Q4: explicit user override of bilateral auto-detect.
@@ -24,15 +24,6 @@ interface UsePairedCardsParams {
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
-
-function isValidLocation(loc: { latitude: number; longitude: number }): boolean {
-  return loc.latitude !== 0 || loc.longitude !== 0;
-}
-
-function locationKey(loc: { latitude: number; longitude: number }): string {
-  // Coarse key — same cache within ~11km. Prevents needless refetch on GPS drift.
-  return `${loc.latitude.toFixed(1)},${loc.longitude.toFixed(1)}`;
-}
 
 export function sectionsToSlugsAndType(sections: HolidayCardSection[]): {
   categorySlugs: string[];
@@ -65,13 +56,11 @@ export function sectionsToSlugsAndType(sections: HolidayCardSection[]): {
 
 export function usePairedCards(params: UsePairedCardsParams | null) {
   const derived = params ? sectionsToSlugsAndType(params.sections) : null;
-  const hasValidLocation = !!params && isValidLocation(params.location);
-  const locKey = params ? locationKey(params.location) : "";
   const mode: PairedCardsMode = params?.mode ?? "default";
 
   return useQuery<HolidayCardsResponse>({
     queryKey: params
-      ? personCardKeys.paired(params.pairedUserId, params.holidayKey, locKey, mode)
+      ? personCardKeys.paired(params.pairedUserId, params.holidayKey, "server-friend-gps", mode)
       : personCardKeys.all,
     queryFn: () =>
       fetchPersonHeroCards({
@@ -79,13 +68,12 @@ export function usePairedCards(params: UsePairedCardsParams | null) {
         holidayKey: params!.holidayKey,
         categorySlugs: derived!.categorySlugs,
         curatedExperienceType: derived!.curatedExperienceType,
-        location: params!.location,
         mode,
         isCustomHoliday: params!.isCustomHoliday,
         yearsElapsed: params!.yearsElapsed,
         excludeCardIds: params!.excludeCardIds,
       }),
-    enabled: hasValidLocation,
+    enabled: !!params,
     staleTime: Infinity, // Cards persist until shuffle — no auto-refresh
     gcTime: 24 * 60 * 60 * 1000, // 24h garbage collection
     retry: 2,
@@ -108,7 +96,7 @@ export function useShufflePairedCards() {
       pairedUserId: string,
       holidayKey: string,
       sections: HolidayCardSection[],
-      location: { latitude: number; longitude: number },
+      mode: PairedCardsMode,
       excludeCardIds?: string[],
       isCustomHoliday?: boolean,
       yearsElapsed?: number,
@@ -121,22 +109,31 @@ export function useShufflePairedCards() {
         holidayKey,
         categorySlugs,
         curatedExperienceType,
-        location,
         mode: "shuffle",
         isCustomHoliday,
         yearsElapsed,
         excludeCardIds,
       });
 
-      const locK = locationKey(location);
-
-      // Replace the cached data so the UI updates immediately.
-      // ORCH-0684: shuffle writes into the "default"-mode key so the next
-      // render in default mode shows the shuffled set; explicit-mode users
-      // (individual/bilateral) get their own caches.
-      queryClient.setQueryData(
-        personCardKeys.paired(pairedUserId, holidayKey, locK, "default"),
-        result
+      // ORCH-0986 (QA P1-002 fix): the paired-profile UI reads the BATCHED
+      // pairedProfile cache, not the legacy per-section key. Splice the shuffled
+      // cards into the matching section slice of the pairedProfile cache so the
+      // row updates immediately. Writing the old per-section key was a dead write.
+      queryClient.setQueryData<PairedProfileCardsResponse>(
+        personCardKeys.pairedProfile(pairedUserId, mode),
+        (old) => {
+          if (!old) return old;
+          return {
+            ...old,
+            sections: {
+              ...old.sections,
+              [holidayKey]: {
+                cards: result.cards,
+                summary: old.sections?.[holidayKey]?.summary,
+              },
+            },
+          };
+        },
       );
     },
     [queryClient]

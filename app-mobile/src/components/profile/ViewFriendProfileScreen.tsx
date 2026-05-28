@@ -23,7 +23,6 @@ import { useTranslation } from 'react-i18next';
 // ORCH-0435: Pairing + PersonHolidayView
 import { usePairingPills } from '../../hooks/usePairings';
 import { useAppStore } from '../../store/appStore';
-import { useUserLocation } from '../../hooks/useUserLocation';
 import PersonHolidayView from '../PersonHolidayView';
 import ExpandedCardModal from '../ExpandedCardModal';
 import CustomHolidayModal from '../CustomHolidayModal';
@@ -121,22 +120,12 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
     staleTime: 60_000,
   });
   const friendLevel = friendLevelData?.level ?? 1;
-  const currentMode = 'solo';
   const { data: pairingPills = [] } = usePairingPills(currentUserId);
   const pairedPill = useMemo(() =>
     pairingPills.find(p => p.pairedUserId === userId && p.pillState === 'active'),
     [pairingPills, userId]
   );
   const isPaired = !!pairedPill;
-
-  // ── User location (for PersonHolidayView travel time) ───
-  const locationQuery = useUserLocation(currentUserId, currentMode as string);
-  const userLocation = useMemo(() => {
-    if (locationQuery?.data) {
-      return { latitude: locationQuery.data.lat, longitude: locationQuery.data.lng };
-    }
-    return { latitude: 0, longitude: 0 };
-  }, [locationQuery?.data]);
 
   // ── Custom holidays + archived holidays ─────────────────
   const [customHolidays, setCustomHolidays] = useState<Array<{ id: string; name: string; month: number; day: number; year: number }>>([]);
@@ -292,7 +281,7 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
       accessibilityLabel={t('common:go_back')}
     >
       <View style={styles.backButtonInner}>
-        <Icon name="arrow-back" size={s(22)} color="#111827" />
+        <Icon name="arrow-back" size={s(22)} color="#ffffff" />
       </View>
     </TouchableOpacity>
   );
@@ -362,108 +351,116 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
         showsVerticalScrollIndicator={false}
         nestedScrollEnabled
       >
-        <View style={styles.heroWrap}>
+        <View style={[styles.photoHero, { height: Math.min(Math.max(vs(420), vs(520)), vs(560)) }]}>
+          {profile.avatar_url ? (
+            <ImageWithFallback source={{ uri: profile.avatar_url }} style={styles.heroImage} />
+          ) : (
+            <LinearGradient
+              colors={['#fdba74', '#eb7825', '#111827']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.heroImage}
+            >
+              <Text style={styles.heroInitials}>
+                {getInitials(profile.first_name, profile.last_name, profile.username)}
+              </Text>
+            </LinearGradient>
+          )}
           <LinearGradient
-            colors={['#fef3e2', '#fef9f3', '#ffffff']}
-            locations={[0, 0.35, 1]}
-            style={{ width: '100%', height: vs(90) + insets.top }}
+            colors={['rgba(0,0,0,0.28)', 'rgba(0,0,0,0.02)', 'rgba(0,0,0,0.72)']}
+            locations={[0, 0.42, 1]}
+            style={StyleSheet.absoluteFillObject}
           />
           {renderBack()}
-
-          <View style={[styles.avatarBlock, { marginTop: -vs(54) }]}>
-            <View style={styles.avatarRing}>
-              {profile.avatar_url ? (
-                <ImageWithFallback source={{ uri: profile.avatar_url }} style={styles.avatar} />
-              ) : (
-                <LinearGradient
-                  colors={['#eb7825', '#f5a623']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.avatar}
-                >
-                  <Text style={styles.avatarInitials}>
-                    {getInitials(profile.first_name, profile.last_name, profile.username)}
-                  </Text>
-                </LinearGradient>
-              )}
-            </View>
-            <Text style={styles.displayName}>{name}</Text>
-            {profile.bio ? (
-              <Text style={styles.bioText} numberOfLines={3}>{profile.bio}</Text>
-            ) : null}
-          </View>
-        </View>
-
-        {/* City · Level · Tier — pills on one line */}
-        <View style={styles.chipContainer}>
-          <View style={styles.infoLine}>
-            <View style={styles.chip}>
-              <Icon name="location-outline" size={s(13)} color="#eb7825" />
-              <Text style={styles.chipText} numberOfLines={1}>{locationLine}</Text>
-            </View>
-            <View style={styles.chip}>
-              <Icon name="trophy" size={s(13)} color="#eb7825" />
-              <Text style={styles.chipText}>Lvl {friendLevel}</Text>
-            </View>
-            <View style={[styles.chip, { backgroundColor: tierBadge.bg, borderColor: tierBadge.border }]}>
-              <Icon name="diamond-outline" size={s(13)} color={tierBadge.text} />
-              <Text style={[styles.chipText, { color: tierBadge.text }]}>{TIER_LABEL[profile.tier]}</Text>
+          {/* ORCH-0986: the ••• more-menu (unpair/mute/block/report/add-to-session) is
+              its own follow-up ORCH. Hidden here until then to avoid a dead tap (Constitution #1). */}
+          <View style={styles.heroIdentity}>
+            <Text style={styles.heroName} numberOfLines={2}>{name}</Text>
+            <View style={styles.heroMetaRow}>
+              <Icon name="location-outline" size={s(16)} color="#ffffff" />
+              <Text style={styles.heroMetaText} numberOfLines={1}>{locationLine}</Text>
+              <Text style={styles.heroDot}>·</Text>
+              <Icon name="diamond-outline" size={s(15)} color="#fdba74" />
+              <Text style={styles.heroTierText}>{levelLine}</Text>
+              <Text style={styles.heroDot}>·</Text>
+              <Icon name="trophy" size={s(15)} color="#ffffff" />
+              <Text style={styles.heroMetaText}>Lv. {friendLevel}</Text>
             </View>
           </View>
         </View>
 
-        {/* Interests — dedicated section, warm peach palette */}
-        {profile.categories.length > 0 && (
-          <View style={styles.interestsSection}>
-            <Text style={styles.interestsHeader}>{t('profile:friend.interests')}</Text>
-            <View style={styles.interestsWrap}>
-              {profile.categories.map(cat => {
-                const slug = cat.toLowerCase().replace(/[^a-z_]/g, '_');
-                const label = t(`common:category_${slug}`, { defaultValue: cat.replace(/_/g, ' ') });
-                return (
-                  <View key={cat} style={styles.interestPill}>
-                    <Icon name={getCategoryChipIcon(cat) as any} size={s(14)} color="#c2410c" />
-                    <Text style={styles.interestPillText}>{label}</Text>
-                  </View>
-                );
-              })}
+        <View style={styles.profileSheet}>
+          <View style={styles.sheetHandle} />
+          {profile.bio?.trim() ? (
+            <View style={styles.bioQuoteCard} accessibilityLabel={`Bio: ${profile.bio}`}>
+              <Text style={styles.quoteGlyph}>“</Text>
+              <Text style={styles.bioQuoteText}>{profile.bio}</Text>
             </View>
-          </View>
-        )}
+          ) : null}
 
-        {onMessage && profile.isFriend ? (
-          <TouchableOpacity
-            style={styles.messageButton}
-            onPress={() => onMessage(userId)}
-            activeOpacity={0.88}
-          >
-            <Icon name="chatbubble-outline" size={s(20)} color="#ffffff" />
-            <Text style={styles.messageText}>{t('profile:friend.message')}</Text>
-          </TouchableOpacity>
-        ) : null}
+          {onMessage && profile.isFriend ? (
+            <TouchableOpacity
+              style={styles.messageButton}
+              onPress={() => onMessage(userId)}
+              activeOpacity={0.88}
+              accessibilityRole="button"
+              accessibilityLabel={`Message ${name}`}
+            >
+              <Icon name="chatbubble-outline" size={s(22)} color="#ffffff" />
+              <Text style={styles.messageText}>{t('profile:friend.message')}</Text>
+            </TouchableOpacity>
+          ) : null}
 
-        {/* PersonHolidayView — paired friends only (ORCH-0435) */}
-        {isPaired && pairedPill && currentUserId && (
-          <View style={styles.pairedSection}>
-            <PersonHolidayView
-              pairedUserId={userId}
-              pairingId={pairedPill.pairingId ?? pairedPill.id}
-              displayName={name}
-              birthday={pairedPill.birthday ?? null}
-              gender={pairedPill.gender ?? null}
-              location={userLocation}
-              userId={currentUserId}
-              customHolidays={customHolidays}
-              onAddCustomDay={handleAddCustomDay}
-              archivedHolidayIds={archivedHolidayIds}
-              onArchiveHoliday={handleArchiveHoliday}
-              onUnarchiveHoliday={handleUnarchiveHoliday}
-              onCardPress={handleCardPress}
-              onSaveCardPress={handleSaveCard}
-              onDeleteCustomDay={handleDeleteCustomHoliday}
-            />
-          </View>
-        )}
+          {/* ORCH-0986: "Users Vibe" — render BOTH chosen categories and intents. */}
+          {(profile.categories.length > 0 || profile.intents.length > 0) && (
+            <View style={styles.interestsSection}>
+              <Text style={styles.interestsHeader}>{t('profile:friend.users_vibe', { defaultValue: "{{name}}'s Vibe", name: (profile.first_name || name.split(' ')[0] || name) })}</Text>
+              <View style={styles.interestsWrap}>
+                {profile.categories.map(cat => {
+                  const slug = cat.toLowerCase().replace(/[^a-z_]/g, '_');
+                  const label = t(`common:category_${slug}`, { defaultValue: cat.replace(/_/g, ' ') });
+                  return (
+                    <View key={`cat-${cat}`} style={styles.interestPill}>
+                      <Icon name={getCategoryChipIcon(cat) as any} size={s(14)} color="#c2410c" />
+                      <Text style={styles.interestPillText}>{label}</Text>
+                    </View>
+                  );
+                })}
+                {profile.intents.map(intent => {
+                  const slug = intent.toLowerCase().replace(/[^a-z_]/g, '_');
+                  const label = t(`common:intent_${slug}`, { defaultValue: intent.replace(/_/g, ' ') });
+                  return (
+                    <View key={`intent-${intent}`} style={styles.interestPill}>
+                      <Icon name="sparkles-outline" size={s(14)} color="#c2410c" />
+                      <Text style={styles.interestPillText}>{label}</Text>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+          )}
+
+          {isPaired && pairedPill && currentUserId && (
+            <View style={styles.pairedSection}>
+              <PersonHolidayView
+                pairedUserId={userId}
+                pairingId={pairedPill.pairingId ?? pairedPill.id}
+                displayName={name}
+                birthday={pairedPill.birthday ?? null}
+                gender={pairedPill.gender ?? null}
+                userId={currentUserId}
+                customHolidays={customHolidays}
+                onAddCustomDay={handleAddCustomDay}
+                archivedHolidayIds={archivedHolidayIds}
+                onArchiveHoliday={handleArchiveHoliday}
+                onUnarchiveHoliday={handleUnarchiveHoliday}
+                onCardPress={handleCardPress}
+                onSaveCardPress={handleSaveCard}
+                onDeleteCustomDay={handleDeleteCustomHoliday}
+              />
+            </View>
+          )}
+        </View>
 
         <View style={{ height: vs(40) + insets.bottom }} />
       </ScrollView>
@@ -499,7 +496,7 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f9fafb' },
+  container: { flex: 1, backgroundColor: '#ffffff' },
   heroWrap: {
     width: '100%',
     position: 'relative',
@@ -513,21 +510,149 @@ const styles = StyleSheet.create({
     width: s(42),
     height: s(42),
     borderRadius: s(21),
-    backgroundColor: 'rgba(255,255,255,0.92)',
+    backgroundColor: 'rgba(17,24,39,0.48)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.24)',
     alignItems: 'center',
     justifyContent: 'center',
     ...Platform.select({
       ios: {
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.08,
-        shadowRadius: 4,
+        shadowOpacity: 0.18,
+        shadowRadius: 10,
       },
       android: { elevation: 2 },
     }),
   },
   scroll: { flex: 1 },
   scrollContent: { paddingBottom: vs(8) },
+  photoHero: {
+    width: '100%',
+    position: 'relative',
+    overflow: 'hidden',
+    backgroundColor: '#111827',
+  },
+  heroImage: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroInitials: {
+    fontSize: s(72),
+    fontWeight: '800',
+    color: '#ffffff',
+  },
+  overflowButton: {
+    position: 'absolute',
+    right: s(16),
+    zIndex: 2,
+    width: s(42),
+    height: s(42),
+    borderRadius: s(21),
+    backgroundColor: 'rgba(17,24,39,0.48)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.24)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.18,
+        shadowRadius: 10,
+      },
+      android: { elevation: 4 },
+    }),
+  },
+  heroIdentity: {
+    position: 'absolute',
+    left: s(24),
+    right: s(24),
+    bottom: vs(84),
+  },
+  heroName: {
+    fontSize: s(32),
+    lineHeight: s(38),
+    fontWeight: '800',
+    color: '#ffffff',
+    textShadowColor: 'rgba(0,0,0,0.35)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+  },
+  heroMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: s(7),
+    marginTop: vs(8),
+  },
+  heroMetaText: {
+    fontSize: s(15),
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.92)',
+    maxWidth: s(128),
+  },
+  heroTierText: {
+    fontSize: s(15),
+    fontWeight: '800',
+    color: '#fdba74',
+  },
+  heroDot: {
+    fontSize: s(16),
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.78)',
+  },
+  profileSheet: {
+    marginTop: -vs(52),
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: s(28),
+    borderTopRightRadius: s(28),
+    paddingTop: vs(12),
+    paddingHorizontal: s(20),
+    paddingBottom: vs(28),
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(17,24,39,0.10)',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000000',
+        shadowOffset: { width: 0, height: -8 },
+        shadowOpacity: 0.10,
+        shadowRadius: 24,
+      },
+      android: { elevation: 8 },
+    }),
+  },
+  sheetHandle: {
+    width: s(36),
+    height: vs(4),
+    borderRadius: s(999),
+    backgroundColor: '#d1d5db',
+    alignSelf: 'center',
+    marginBottom: vs(20),
+  },
+  bioQuoteCard: {
+    backgroundColor: '#fff7ed',
+    borderWidth: 1,
+    borderColor: '#ffedd5',
+    borderRadius: s(16),
+    paddingTop: vs(20),
+    paddingRight: s(20),
+    paddingBottom: vs(20),
+    paddingLeft: s(20),
+  },
+  quoteGlyph: {
+    fontSize: s(34),
+    lineHeight: s(34),
+    color: '#eb7825',
+    fontWeight: '800',
+  },
+  bioQuoteText: {
+    fontSize: s(17),
+    lineHeight: s(26),
+    color: '#111827',
+    fontWeight: '500',
+  },
   avatarBlock: {
     alignItems: 'center',
     paddingHorizontal: s(24),
@@ -552,7 +677,7 @@ const styles = StyleSheet.create({
     height: s(104),
     borderRadius: s(52),
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     overflow: 'hidden',
   },
   avatarInitials: {
@@ -606,7 +731,8 @@ const styles = StyleSheet.create({
   interestsSection: {
     marginTop: vs(22),
     paddingHorizontal: s(20),
-    alignItems: 'center',
+    alignItems: 'flex-start',
+    alignSelf: 'stretch',
   },
   interestsHeader: {
     fontSize: s(11),
@@ -619,7 +745,8 @@ const styles = StyleSheet.create({
   interestsWrap: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
+    alignSelf: 'stretch',
     rowGap: vs(8),
     columnGap: s(8),
   },
@@ -642,24 +769,23 @@ const styles = StyleSheet.create({
   },
   pairedSection: {
     marginTop: vs(24),
-    paddingHorizontal: s(16),
   },
   messageButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: s(10),
-    backgroundColor: '#eb7825',
-    borderRadius: s(16),
+    backgroundColor: '#111827',
+    borderRadius: s(999),
     paddingVertical: vs(16),
-    marginHorizontal: s(20),
-    marginTop: vs(28),
+    marginTop: vs(16),
+    marginBottom: vs(16),
     ...Platform.select({
       ios: {
-        shadowColor: '#eb7825',
+        shadowColor: '#000000',
         shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.35,
-        shadowRadius: 8,
+        shadowOpacity: 0.20,
+        shadowRadius: 16,
       },
       android: { elevation: 4 },
     }),

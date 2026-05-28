@@ -915,7 +915,24 @@ function checkNoNewBackendFiles() {
     "supabase/functions/generate-curated-experiences/index.ts",
     "supabase/functions/_shared/replaceCuratedStopSlugParity.test.ts",
   ];
+  // ORCH-0986 [Paired-profile redesign]. C7 is scoped to ORCH-0863 marketing;
+  // these backend touches are the paired profile friend-GPS RPC, batched cards
+  // endpoint, shared person hero mapper/planner, and mapper regression test.
+  const ORCH_0986_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260730000000_orch_0978_video_cap_29s_constraints.sql",
+    "supabase/migrations/20260730000001_orch_0978_video_cap_generous_source.sql",
+    "supabase/migrations/20260730000002_orch_0986_paired_friend_last_location.sql",
+    "supabase/migrations/20260730000003_orch_0986_lock_friend_location_rpc.sql",
+    "supabase/migrations/20260730000004_orch_0986_friend_location_resolution_chain.sql",
+    "supabase/functions/_shared/personHeroCards.ts",
+    "supabase/functions/_shared/personHeroCards.test.ts",
+    "supabase/functions/_shared/personHeroCards.adversarial.test.ts",
+    "supabase/functions/get-paired-profile-cards/index.ts",
+    "supabase/functions/get-person-hero-cards/index.ts",
+    "supabase/functions/generate-curated-experiences/index.ts",
+  ];
   const ALLOWLIST = [
+    ...ORCH_0986_BACKEND_ALLOWLIST,
     ...ORCH_0985_BACKEND_ALLOWLIST,
     ...META_ORCH_0952_BACKEND_ALLOWLIST,
     ...ORCH_0972_BACKEND_ALLOWLIST,
