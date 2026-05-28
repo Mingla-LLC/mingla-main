@@ -43,7 +43,10 @@
         "releaseStatus": "draft"
       },
       "ios": {
-        "ascAppId": "6760440898"
+        "ascAppId": "6760440898",
+        "ascApiKeyPath": "/Users/sethogieva/Desktop/mingla-main/Key Details For Mingla/AuthKey_B39RMRV6D8.p8",
+        "ascApiKeyId": "B39RMRV6D8",
+        "ascApiKeyIssuerId": "ee78d0ff-158c-4326-80ef-aec69745fc2d"
       }
     }
   }

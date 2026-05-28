@@ -16,6 +16,7 @@
  * new code targets the unified substrate.
  */
 import { supabase } from './supabase';
+import { moderateText } from './moderationService';
 import { realtimeService } from './realtimeService';
 
 export interface BoardMessage {
@@ -221,6 +222,12 @@ export class BoardMessageService {
     userId,
   }: SendMessageParams): Promise<{ data: BoardMessage | null; error: any }> {
     try {
+      // ORCH-0977: moderate before posting (Apple 1.2 / Play UGC policy)
+      const moderation = await moderateText(content.trim(), 'board_message');
+      if (!moderation.allowed) {
+        return { data: null, error: { message: moderation.reason } };
+      }
+
       const { data: message, error: insertError } = await supabase
         .from('board_messages')
         .insert({

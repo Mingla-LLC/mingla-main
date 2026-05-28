@@ -6,7 +6,7 @@
  *   - Storage bucket migration exists with public read + admin write policies.
  *   - Rules + service + provider services + hook + picker sheet all present.
  *   - BrandEditView no longer renders the 6-swatch hue picker.
- *   - PublicBrandPage hero uses expo-image when cover_media_url is set.
+ *   - Shared brand page renders covers via EventCoverMedia (ORCH-0964).
  *
  * Nine pattern checks (all must pass; any failure exits non-zero).
  * SPEC §11 originally enumerated 10 checks; Check 8 ("Photo upload lands in
@@ -70,12 +70,14 @@ const EDIT_PATH = join(
   "brand",
   "BrandEditView.tsx",
 );
+// ORCH-0964 — cover rendering moved out of the mingla-business wrapper into the
+// shared @mingla/event-rendering EventCoverMedia, mounted by the shared brand
+// page. Check 9 now targets the shared page (single source of truth) so the gate
+// reflects reality instead of failing on the stale wrapper path.
 const PUBLIC_PATH = join(
   REPO_ROOT,
-  "mingla-business",
-  "src",
-  "components",
-  "brand",
+  "packages",
+  "brand-rendering",
   "PublicBrandPage.tsx",
 );
 
@@ -198,14 +200,18 @@ if (!existsSync(SHEET_PATH)) {
   }
 }
 
-// Check 9 — PublicBrandPage.tsx imports expo-image AND references coverMediaUrl.
+// Check 9 (ORCH-0964) — shared brand page renders covers via EventCoverMedia
+// (image + GIF + video; expo-image / expo-video under the hood) AND references
+// coverMediaUrl on the hero.
 const publicSrc = readOrEmpty(PUBLIC_PATH);
-if (!/from\s+["']expo-image["']/.test(publicSrc)) {
-  failures.push("Check 9 FAIL: PublicBrandPage.tsx must import from 'expo-image'");
+if (!/EventCoverMedia/.test(publicSrc)) {
+  failures.push(
+    "Check 9 FAIL: packages/brand-rendering/PublicBrandPage.tsx must render covers via EventCoverMedia (ORCH-0964)",
+  );
 }
 if (!/coverMediaUrl/.test(publicSrc)) {
   failures.push(
-    "Check 9 FAIL: PublicBrandPage.tsx must reference brand.coverMediaUrl on the hero (ORCH-0805 §8.3)",
+    "Check 9 FAIL: packages/brand-rendering/PublicBrandPage.tsx must reference coverMediaUrl on the hero (ORCH-0805 §8.3 / ORCH-0964)",
   );
 }
 

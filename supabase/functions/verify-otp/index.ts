@@ -51,6 +51,33 @@ serve(async (req) => {
       })
     }
 
+    // ORCH-0977: App Store / Play Store review bypass. For the fictional
+    // REVIEWER_TEST_PHONE + fixed REVIEWER_TEST_CODE, accept without calling
+    // Twilio and attach the test number to this (already-authenticated)
+    // reviewer account so onboarding proceeds. Frees the number from any prior
+    // reviewer account first so repeat reviews work. No effect on real numbers.
+    const REVIEWER_TEST_PHONE = '+12015550199'
+    const REVIEWER_TEST_CODE = '123456'
+    if (phone === REVIEWER_TEST_PHONE && code === REVIEWER_TEST_CODE) {
+      const reviewerClient = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      )
+      await reviewerClient
+        .from('profiles')
+        .update({ phone: null })
+        .eq('phone', REVIEWER_TEST_PHONE)
+        .neq('id', user.id)
+      await reviewerClient
+        .from('profiles')
+        .update({ phone: REVIEWER_TEST_PHONE })
+        .eq('id', user.id)
+      return new Response(JSON.stringify({ success: true, status: 'approved' }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
     const accountSid = Deno.env.get('TWILIO_ACCOUNT_SID')!
     const authToken = Deno.env.get('TWILIO_AUTH_TOKEN')!
     const serviceSid = Deno.env.get('TWILIO_VERIFY_SERVICE_SID')!

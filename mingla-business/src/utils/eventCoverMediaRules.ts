@@ -375,6 +375,9 @@ export const normalizeEventCoverAsset = (input: {
   };
 };
 
+// ORCH-0964 — kept identical to @mingla/event-rendering `coverMediaPresentation.ts`,
+// which the shared EventCoverMedia uses. Both are the same pure 1:1 type→presentation
+// mapping; if you change one, change the other (covered by eventCoverMedia.test.ts).
 export const resolveEventCoverMediaPresentation = ({
   mediaUrl,
   mediaType,

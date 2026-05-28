@@ -891,6 +891,17 @@ function checkNoNewBackendFiles() {
     "supabase/migrations/20260725000000_orch_0950_trip_capacity_single_source.sql",
     "supabase/migrations/20260725000002_orch_0950_expanded_scope_dashboard_coherence.sql",
   ];
+  // ORCH-0977 [Consumer App Store + Play Store production launch] CLOSE.
+  // C7 is scoped to ORCH-0863 marketing; these backend touches are ORCH-0977
+  // launch scope: a new content-moderation edge function (Apple Guideline 1.2
+  // UGC filter) + the App-Review test-OTP bypass added to the existing
+  // send-otp/verify-otp functions. C7 flags modified backend files too, so the
+  // two existing functions are listed alongside the new one.
+  const ORCH_0977_BACKEND_ALLOWLIST = [
+    "supabase/functions/moderate-content/index.ts",
+    "supabase/functions/send-otp/index.ts",
+    "supabase/functions/verify-otp/index.ts",
+  ];
   // ORCH-0985 [Curated stop "Replace" fix]. C7 is scoped to ORCH-0863 marketing;
   // these backend touches are the Replace-stop fix: single-source slug validation
   // (kills the stale VALID_CATEGORIES whitelist), center-search-on-the-replaced-
@@ -951,6 +962,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_0962_BACKEND_ALLOWLIST,
     ...ORCH_0963_BACKEND_ALLOWLIST,
     ...ORCH_0964_BACKEND_ALLOWLIST,
+    ...ORCH_0977_BACKEND_ALLOWLIST,
   ];
   const forbidden = changed.filter(
     (p) =>

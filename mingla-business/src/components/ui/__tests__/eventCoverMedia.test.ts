@@ -99,7 +99,9 @@ describe("EventCoverMedia presentation", () => {
   });
 
   test("event cover videos use inline browser-safe playback props", () => {
-    const source = repoFile("src/components/ui/EventCoverMedia.tsx");
+    // ORCH-0964 [TEST-MOD-APPROVED ORCH-0964]: implementation moved to the
+    // shared @mingla/event-rendering package; assertions unchanged.
+    const source = repoFile("../packages/event-rendering/EventCoverMedia.tsx");
     const publicPageSource = repoFile("src/components/event/PublicEventPage.tsx");
 
     expect(source).toContain("fullscreenOptions={{ enable: false }}");
@@ -124,7 +126,9 @@ describe("EventCoverMedia presentation", () => {
   });
 
   test("event cover video playback is gated by active surface intent", () => {
-    const source = repoFile("src/components/ui/EventCoverMedia.tsx");
+    // ORCH-0964 [TEST-MOD-APPROVED ORCH-0964]: implementation moved to the
+    // shared @mingla/event-rendering package; assertions unchanged.
+    const source = repoFile("../packages/event-rendering/EventCoverMedia.tsx");
     const publicPageSource = repoFile("src/components/event/PublicEventPage.tsx");
 
     expect(source).toContain("playbackActive?: boolean");
@@ -159,7 +163,9 @@ describe("EventCoverMedia presentation", () => {
   });
 
   test("native event cover cleanup does not call pause on a potentially disposed player", () => {
-    const source = repoFile("src/components/ui/EventCoverMedia.tsx");
+    // ORCH-0964 [TEST-MOD-APPROVED ORCH-0964]: implementation moved to the
+    // shared @mingla/event-rendering package; assertions unchanged.
+    const source = repoFile("../packages/event-rendering/EventCoverMedia.tsx");
     const cleanupBlockMatch = source.match(
       /return \(\) => \{\s*playToEndSub\.remove\(\);\s*appStateSub\.remove\(\);\s*\};/,
     );
@@ -172,7 +178,9 @@ describe("EventCoverMedia presentation", () => {
   });
 
   test("media render failures are surfaced to the caller before fallback", () => {
-    const source = repoFile("src/components/ui/EventCoverMedia.tsx");
+    // ORCH-0964 [TEST-MOD-APPROVED ORCH-0964]: implementation moved to the
+    // shared @mingla/event-rendering package; assertions unchanged.
+    const source = repoFile("../packages/event-rendering/EventCoverMedia.tsx");
     const stepSource = repoFile("src/components/event/CreatorStep4Cover.tsx");
 
     expect(source).toContain("onMediaError");

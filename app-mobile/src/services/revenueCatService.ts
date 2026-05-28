@@ -21,9 +21,6 @@ const RC_API_KEY = Platform.select({
 
 // Entitlement identifiers — must match exactly what's in the RC dashboard
 export const RC_MINGLA_PLUS_ENTITLEMENT_ID = 'Mingla Plus'
-// Legacy entitlement IDs — kept for backward compat with existing Pro/Elite subscribers
-export const RC_PRO_ENTITLEMENT_ID = 'Mingla Pro'
-export const RC_ELITE_ENTITLEMENT_ID = 'Mingla Elite'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Configuration
@@ -140,68 +137,16 @@ export async function logoutRevenueCatIfIdentified(): Promise<CustomerInfo | nul
 // Entitlement helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Returns true if the given CustomerInfo has an active "Mingla Pro" entitlement.
- */
-export function hasProEntitlement(customerInfo: CustomerInfo): boolean {
-  return customerInfo.entitlements.active[RC_PRO_ENTITLEMENT_ID] !== undefined
-}
-
-/**
- * Returns true if the given CustomerInfo has an active "Mingla Elite" entitlement.
- */
-export function hasEliteEntitlement(customerInfo: CustomerInfo): boolean {
-  return customerInfo.entitlements.active[RC_ELITE_ENTITLEMENT_ID] !== undefined
-}
-
-/**
- * Returns true if the given CustomerInfo has an active "Mingla Plus" entitlement,
- * or either legacy entitlement (Pro or Elite) for backward compatibility.
- */
 export function hasMinglaPlus(customerInfo: CustomerInfo): boolean {
-  return (
-    customerInfo.entitlements.active[RC_MINGLA_PLUS_ENTITLEMENT_ID] !== undefined ||
-    customerInfo.entitlements.active[RC_PRO_ENTITLEMENT_ID] !== undefined ||
-    customerInfo.entitlements.active[RC_ELITE_ENTITLEMENT_ID] !== undefined
-  )
+  return customerInfo.entitlements.active[RC_MINGLA_PLUS_ENTITLEMENT_ID] !== undefined
 }
 
-/**
- * Returns true if the user has any active paid entitlement.
- */
 export function hasAnyEntitlement(customerInfo: CustomerInfo): boolean {
   return hasMinglaPlus(customerInfo)
 }
 
-/**
- * Returns the expiration date of the active "Mingla Pro" entitlement,
- * or null if not active.
- */
-export function getProExpirationDate(customerInfo: CustomerInfo): Date | null {
-  const entitlement = customerInfo.entitlements.active[RC_PRO_ENTITLEMENT_ID]
-  if (!entitlement?.expirationDate) return null
-  return new Date(entitlement.expirationDate)
-}
-
-/**
- * Returns the expiration date of the active "Mingla Elite" entitlement,
- * or null if not active.
- */
-export function getEliteExpirationDate(customerInfo: CustomerInfo): Date | null {
-  const entitlement = customerInfo.entitlements.active[RC_ELITE_ENTITLEMENT_ID]
-  if (!entitlement?.expirationDate) return null
-  return new Date(entitlement.expirationDate)
-}
-
-/**
- * Returns the expiration date of the active Mingla+ entitlement (checking new ID
- * first, then legacy Elite, then legacy Pro). Returns null if no active entitlement.
- */
 export function getMinglaExpirationDate(customerInfo: CustomerInfo): Date | null {
-  const entitlement =
-    customerInfo.entitlements.active[RC_MINGLA_PLUS_ENTITLEMENT_ID] ??
-    customerInfo.entitlements.active[RC_ELITE_ENTITLEMENT_ID] ??
-    customerInfo.entitlements.active[RC_PRO_ENTITLEMENT_ID]
+  const entitlement = customerInfo.entitlements.active[RC_MINGLA_PLUS_ENTITLEMENT_ID]
   if (!entitlement?.expirationDate) return null
   return new Date(entitlement.expirationDate)
 }
