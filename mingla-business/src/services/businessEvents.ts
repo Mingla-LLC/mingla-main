@@ -791,6 +791,9 @@ export const patchPublishedEventTheme = async (
   // I-PROPOSED-I (MUTATION-ROWCOUNT-VERIFIED): chain .select() so a 0-row
   // no-op (RLS denial / wrong id / already-mutated) surfaces as an error
   // instead of a silent success. Fixes the violation ORCH-0964 (#220) left.
+  // orch-strict-grep-allow events-type-filter — id-targeted UPDATE; the .select("id")
+  // is a rowcount check (I-PROPOSED-I), not a content read, so an event_type
+  // filter is irrelevant (the eq("id") already uniquely identifies the row).
   const { data, error } = await supabase
     .from("events")
     .update({
