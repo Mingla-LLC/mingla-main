@@ -184,6 +184,44 @@ OBS-1 (cold surface, 0 impressions) is relevant context: the curated combo on pa
 
 ---
 
+## 9b. Addendum — Speed, scoring path, and location (operator follow-up 2026-05-28)
+
+### Q1 — Why the page loads slowly, and how to make all sections fast
+
+The current architecture is the slow part, in four compounding layers:
+
+1. **Per-section fan-out.** Every occasion renders its own `CardRow` → `usePairedCards` → a **separate** `get-person-hero-cards` HTTP call. On a typical open that's the birthday row + the 2 auto-expanded standard holidays (`PersonHolidayView.tsx:823`) + every custom day = 3–5+ independent edge calls.
+2. **Serialized, not parallel.** The sections are staged: custom days are gated `enabled={stage1Done}` and standard holidays `enabled={stage2Done}` (`PersonHolidayView.tsx:945,988`). So stage 2 waits for stage 1's round-trip, stage 3 waits for stage 2 — latency adds up instead of overlapping.
+3. **Nested HTTP per call.** Each `get-person-hero-cards` call internally fires a **second** HTTP call to `generate-curated-experiences` (`:295-316`) for the one combo. So each section ≈ 2 edge round-trips.
+4. **Blocking OpenAI in the curated sub-call.** `generate-curated-experiences` generates teasers on a `curated_teaser_cache` miss via a blocking `await` OpenAI call (`:1419-1431`) and descriptions unless `skipDescriptions` (the person-hero path does NOT set it, `:1243`/`:304-314`), plus per-stop `place_pool` queries. So a cold section can block on 1–3 GPT-4o-mini calls.
+
+**Net:** worst case = (3–5 sections) × (2 HTTP round-trips + up to 3 OpenAI calls), serialized across 3 stages. `staleTime: Infinity` caches per occasion+location after first load, but the first paint is expensive.
+
+**Direction to make all sections load fast (for the redesign — not a spec):**
+- Replace N per-section calls with **one batched edge call** that returns recommendations for every section in a single pass (the signal RPC already supports multiple `signal_ids`; sections could be composed server-side).
+- **Parallelize** instead of staging (the staging exists only for cross-section dedup — that can be done server-side in one query).
+- **Decouple the combo from a synchronous nested HTTP + OpenAI call** — precompute/store combos + teasers offline (the `curated_teaser_cache` already exists; populate it ahead of time), or drop combos here (report §7 option B).
+
+### Q2 — Are the displayed cards coming through the scored system? YES.
+
+- **Singles:** `query_person_hero_places_by_signal` joins `place_scores` (`ps.score AS signal_score`), filters by `signal_id`, ranks by `signal_score` + personalization boost (OBS-2). Confirmed scored.
+- **Curated stops:** `generate-curated-experiences` builds every stop via the signal system on `place_pool` (ORCH-0634 — "EVERY curated stop goes through the signal system. No card_pool fallback").
+- **No fabricated/fallback cards are shown here.** `PersonHolidayView` is mounted by `ViewFriendProfileScreen` WITHOUT a `fallbackCards` prop (`ViewFriendProfileScreen.tsx:448-463`), so `sectionFallback` is always `[]` (`PersonHolidayView.tsx:419-422`). Everything displayed is scored, real data.
+
+So "doesn't use the scored system" is **false** — the scoring is sound. The only break is the curated card's image/shape mapping (RC-1).
+
+### Q3 — How is the card location determined?
+
+- **Center = the VIEWER's own location, not the paired friend's.** `ViewFriendProfileScreen.tsx:132-139` calls `useUserLocation(currentUserId, 'solo')`, which resolves the viewer's GPS (default) or their saved coordinates (`useUserLocation.ts`). That single `{latitude, longitude}` is passed down to every `CardRow` → `get-person-hero-cards` as `location`, used as the RPC center and the curated combo center. The paired friend's location is never used.
+- **Radius differs by path — and this is a second reason combos come up empty:**
+  - **Singles:** `initialRadius` 15 km → `maxRadius` 100 km, widened by the *paired* user's learned `distance` preference (`get-person-hero-cards:725-768`, `DISTANCE_RADIUS_MAP`).
+  - **Curated combo:** built with a **hardcoded `travelMode: 'walking'` + `travelConstraintValue: 30`** (`get-person-hero-cards:307-309`) → `radiusKmForConstraint(30,'walking',1.0)` = `(30/60)×4.5×1.3` ≈ **2.9 km** (`_shared/distanceMath.ts:24,72-79`).
+  - So singles search up to 100 km while the combo searches ~2.9 km around the viewer. In any non-dense area the combo finds little or nothing → silently dropped (CF-1) or a weak plan. This compounds RC-1: when a combo *does* return, it renders imageless; when it doesn't, it silently vanishes.
+
+**Design implications for the redesign:** decide (a) whether to recommend around the viewer, the friend, or a shared midpoint; and (b) give the curated combo a sane metro-scale radius (≈ singles') instead of a 2.9 km walking box.
+
+---
+
 ## 10. Confidence
 
 - **RC-1: root cause proven at code + data layers.** Both field contracts read directly; #229 diff confirmed not to touch them; data confirms the path executes. This is a deterministic contract mismatch, not pattern-matching.
