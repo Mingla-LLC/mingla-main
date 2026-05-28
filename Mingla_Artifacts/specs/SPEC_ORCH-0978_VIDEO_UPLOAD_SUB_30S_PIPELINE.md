@@ -2174,4 +2174,331 @@ Investigation's PROBABLE root cause + named blocker is binding-grade for SPEC; t
 
 ---
 
+## SPEC AMENDMENT 8 (a.k.a. AMENDMENT 6 in operator language) — 2026-05-28 — Generous source / tight processed: stop rejecting normally-trimmed clips for iOS keyframe overshoot
+
+**Author:** Claude `mingla-forensics` (INVESTIGATE-then-SPEC mode)
+**Binding input:** `Mingla_Artifacts/reports/INVESTIGATION_ORCH-0978_KEYFRAME_OVERSHOOT.md` (committed this turn; root cause **PROBABLE** with named live-fire blocker — Business Metro offline + simulator trimmer-fidelity uncertainty; runtime evidence = Seth's physical-device `:447` toast which fires only when `durationMs > 29250`).
+**Dispatch:** `Mingla_Artifacts/prompts/FORENSICS_INVESTIGATE_SPEC_ORCH-0978_AMENDMENT_8_KEYFRAME_OVERSHOOT.md`.
+**Comms ledger acknowledged:** COMMS-0002 (new migration must be appended to `ORCH_0978_BACKEND_ALLOWLIST` in the IMPLEMENT-6 commit) + COMMS-0003 (Cloudinary `du_` docs URL cited inline).
+
+### A — Layman summary
+
+Today a user can pick a long video, use the iOS trim screen to cut it to ~29 seconds, tap Choose — and Mingla still says "Please trim to 29 seconds first." even though they trimmed correctly. The cause: iOS's trim screen snaps the cut to the nearest keyframe, so a "29 second" trim often comes back as 29.4-30 seconds, which exceeds the app's hard 29.25-second ceiling. This amendment implements the operator-locked **"generous source / tight processed"** architecture: accept source clips up to **33 seconds** (so a normally-trimmed clip is never rejected for keyframe slop), keep the iOS trimmer aiming at 29 seconds, and **clamp the processed cover to ≤30 seconds server-side** so the final rendered cover is always sub-30. After ship, a user who trims to ~29s uploads successfully every time, and the cover that renders is still a tight sub-30-second clip. A genuinely un-trimmed long source (>33s) is still rejected with the same "trim first" message — which is now accurate because that is the only case where trimming is actually required.
+
+### B — Scope and non-goals
+
+**In scope (binding):**
+1. Raise the **source-acceptance ceiling** from 29.25s → **33s** at the client picker check (`CoverPicker.tsx`) and the edge source-duration check (`upload-intent/index.ts`).
+2. Introduce a new client constant `EVENT_COVER_SOURCE_CEILING_MS = 33_000` (distinct from the unchanged 29s trimmer-target constant).
+3. **Clamp the persisted `trim_end_ms`** at the edge to the processed cap (`MAX_DURATION_MS` = 30000) BEFORE `validateTrimRange` + job insert + `du_`, so the source overshoot never reaches the processed budget or the DB constraint. Store the raw source duration in `source_duration_ms` (the generous record).
+4. New DB migration raising the `trim_end_ms - trim_start_ms` and `processed_duration_ms` CHECK constraints from `≤ 29000` → `≤ 30000` (so the clamped trim window is legal and processed stays tight).
+5. Revise strict-grep `orch-0978-video-cap-29s.mjs` C1-C9 (the cap-value checks need REVISION, not just addition) + add new checks C10/C11 enforcing the two-tier source-ceiling-vs-processed-cap relationship.
+6. Update the existing AMENDMENT-4 Deno boundary test (`duration-cap.test.ts`) to the new 33s ceiling (REQUIRES `[TEST-MOD-APPROVED ORCH-0978]` in the commit body per `feedback_close_commit_precommit_checks.md`).
+7. Append the new migration to `ORCH_0978_BACKEND_ALLOWLIST` (COMMS-0002, same commit).
+
+**Non-goals (explicit out-of-scope):**
+- The iOS picker `videoMaxDuration` stays **29** (trimmer target). NOT raised — see Decision 1.
+- `_shared/eventCoverVideo.ts` is **NOT touched** (the `MAX_DURATION_MS` = 30000 constant already serves correctly as the processed/trim-window cap once `trim_end_ms` is clamped to it). Therefore the AMENDMENT-6 §K "batch redeploy all six functions because `_shared` is touched" rule does NOT apply — only `event-cover-video-upload-intent` is redeployed.
+- The storage-bucket video validation path (`eventCoverMediaRules.ts` → `validateEventCoverAsset`) stays at the 29s cap — the Cloudinary video-upload path (the one with the keyframe-overshoot bug) does not flow through it. Raising it is a separate concern (Discovery §K).
+- The duplicate `EVENT_COVER_MAX_VIDEO_DURATION_MS` declaration (AMENDMENT 4 §J-bis) is NOT consolidated here.
+- HLS/sp_auto, Cloudinary RN SDK, webhook architecture — unchanged.
+- No client trim-UI rebuild; no consumer/admin changes.
+
+**Assumptions:**
+- Greenfield: AMENDMENT 2 probe confirmed ZERO production video covers / Cloudinary URLs. The migration's pre-flight `RAISE EXCEPTION` guard will see zero offending rows. (Implementor re-probes pre-apply.)
+- iOS keyframe overshoot on a 29s trim target is bounded at ≤ ~2s for real iPhone footage (synthetic 2.0s-GOP demonstration → 1000ms snap; 4K Dolby Vision HDR can be sparser). **33s source ceiling = 29s target + ~4s headroom**, comfortably absorbing the worst realistic overshoot. Confirmed against the operator's ~33s target.
+- `Math.min(rawTrimEnd, 30000)` is the correct clamp: a normally-trimmed iOS clip (content ~29.x s) keeps its full content (`du_` is a Cloudinary hard ceiling, not a forced length, so a 29.4s clip stays 29.4s — sub-30); only a pathological un-trimmed 30-33s source (reachable only via web/Android no-trim) is capped to exactly 30s.
+
+### C — Cross-Surface Impact (MANDATORY per Phase 2.5)
+
+| Surface | In scope? | User-visible behaviour the SPEC demands | File paths touched on this surface | Parity |
+|---|---|---|---|---|
+| Consumer iOS (`app-mobile/`) | NO | N/A — consumer app does not author covers | None | N/A |
+| Consumer Android (`app-mobile/`) | NO | N/A | None | N/A |
+| Buyer/anonymous Web | NO | reads processed cover URLs unchanged | None | N/A |
+| **Business iOS** (`mingla-business/`) | **YES (primary)** | Trim a long video to ~29s → upload SUCCEEDS (no false "trim to 29 seconds" rejection); processed cover renders sub-30s | `mingla-business/src/components/ui/CoverPicker.tsx`, `mingla-business/src/services/eventCoverVideoProcessingService.ts`, `supabase/functions/event-cover-video-upload-intent/index.ts` (edge), new migration | Shared client bundle + shared backend → **automatic** |
+| **Business Android** (`mingla-business/`) | **YES** | Same as iOS (best-effort native trim; same client + edge + DB path) | Same files | **Automatic** (same bundle) |
+| Admin Web (`mingla-admin/`) | NO | N/A — admin does not author covers | None | N/A |
+| Business Web preview (`mingla-business/` web) | YES (incidental) | Web has no native trim; a >33s raw pick hits the same client check with the same "trim first" copy. A 30-33s web source → cover capped at exactly 30s (du_ ceiling). | Same files (shared) | **Automatic** |
+
+**Parity is automatic** (business iOS/Android/Web share the client `mingla-business/src/` bundle and the single backend path). No per-surface SC split required. Sub-30 holds strictly for the in-scope native-picker surfaces (iOS/Android force a ~29s trim); the only exactly-30s edge is a pathological 30-33s un-trimmed web source.
+
+### D — Decisions (operator architecture is locked; these resolve the implementation specifics)
+
+**Decision 1 — `videoMaxDuration` stays 29 (do NOT raise).**
+`launchImageLibraryAsync({ videoMaxDuration: 29, allowsEditing: true })` makes iOS present the native trim UI for any source >29s and aims the trim window at 29s. Raising `videoMaxDuration` would let the user keep a longer slice → larger processed cover, defeating "tight processed", and would NOT remove the trim prompt (the prompt IS the `videoMaxDuration` enforcement, not a separate "too long" error). The operator wants the trimmer target at ~29s so the processed cover is small. **KEEP `videoMaxDuration: 29` (`CoverPicker.tsx:429`) unchanged.** The "Video Too Long to Send"-style sheet observed on the simulator is Apple's standard entry into the trim UI for `videoMaxDuration`-constrained library picks; it is expected and benign. Cite: [Expo ImagePicker `videoMaxDuration` — https://docs.expo.dev/versions/latest/sdk/imagepicker/#imagepickeroptions] (seconds, integer, iOS+Android best-effort).
+
+**Decision 2 — Source ceiling = 33000 ms.** 29000 trimmer target + ~4000ms headroom absorbs the worst realistic iOS keyframe overshoot (synthetic 2.0s-GOP → 1000ms; sparser GOP 4K HDR → up to ~2s). Confirms the operator's ~33s target.
+
+**Decision 3 — Processed cap = 30000 ms (the existing `MAX_DURATION_MS`).** `trim_end_ms` is clamped to this, `du_` is bounded by this, the DB processed constraint is this, and `assertProcessedDerivative` backstops at this. No `_shared` change needed — `MAX_DURATION_MS` simply stops being ambiguous once the source ceiling is a separate constant.
+
+**Decision 4 — Clamp `trim_end_ms` at the EDGE (trust boundary), not the client.** The edge clamps `trimEndMs = Math.min(rawTrimEndMs, MAX_DURATION_MS)` so a bypassed/older client cannot push an over-cap trim window into the DB or `du_`. The client continues to send the raw `compressed.durationMs` as `trimEndMs` (no client change to the hook). `source_duration_ms` stores the raw value (generous record); `trim_end_ms` stores the clamped value (tight processed window).
+
+### E — Layered specification (exact values + every cap-chain change)
+
+#### E.1 — Client picker (`mingla-business/src/components/ui/CoverPicker.tsx`)
+
+**E.1.a — Acceptance check (line 441).**
+Current:
+```ts
+if (durationMs > EVENT_COVER_MAX_VIDEO_DURATION_MS + 250) {
+```
+Becomes:
+```ts
+if (durationMs > EVENT_COVER_SOURCE_CEILING_MS) {
+```
+- `EVENT_COVER_SOURCE_CEILING_MS` imported from `../../services/eventCoverVideoProcessingService` (alongside the existing `EVENT_COVER_MAX_VIDEO_DURATION_MS` import).
+- The `[ORCH-0978-TRIM]` `console.log` at lines 442-446 stays **unchanged** — it keeps logging `capMs: EVENT_COVER_MAX_VIDEO_DURATION_MS` (29000) and `overshoot: durationMs - EVENT_COVER_MAX_VIDEO_DURATION_MS`, so field logs still report overshoot magnitude relative to the 29s trimmer target. (This is the diagnostic the tester captures to upgrade the root cause to `proven`.)
+- The rejection toast copy at line 447 stays **"Please trim to 29 seconds first."** — now only fires for a genuinely un-trimmed source >33s, where "trim first" is accurate.
+- `videoMaxDuration: 29` (line 429) UNCHANGED (Decision 1).
+
+#### E.2 — Client constants (`mingla-business/src/services/eventCoverVideoProcessingService.ts`)
+
+- KEEP line 17 `export const EVENT_COVER_MAX_VIDEO_DURATION_MS = 29_000;` (trimmer target + "29 seconds" messaging reference).
+- ADD: `export const EVENT_COVER_SOURCE_CEILING_MS = 33_000;` (the generous source-acceptance ceiling; mirrors the edge `SOURCE_CEILING_MS`). Place adjacent to the existing duration constants (line 17-19 block).
+- KEEP `EVENT_COVER_MAX_SOURCE_VIDEO_DURATION_MS = 60_000` (line 19) — outer defense bound, still > 33000.
+- Copy constant `EVENT_COVER_VIDEO_PROCESSING_COPY` (line 20-21) stays "29 seconds" (trimmer target).
+
+#### E.3 — Edge source ceiling (`supabase/functions/event-cover-video-upload-intent/index.ts`)
+
+**E.3.a — Constant (line 17).**
+Current: `export const EFFECTIVE_TRIM_CEILING_MS = 29_250;`
+Becomes: `export const SOURCE_CEILING_MS = 33_000;`
+The old `EFFECTIVE_TRIM_CEILING_MS` literal must be fully removed (no alias).
+
+**E.3.b — Source-duration check (lines 144-156).**
+Replace `EFFECTIVE_TRIM_CEILING_MS` with `SOURCE_CEILING_MS` in the condition, the `logWarn` `ceiling` field, and the 422 response `detail.ceilingMs`:
+```ts
+if (sourceDurationMs > SOURCE_CEILING_MS) {
+  logWarn(requestId, "duration_over_cap", { ceiling: SOURCE_CEILING_MS, sourceDurationMs });
+  return jsonResponse(
+    { error: "duration_over_cap", detail: { sourceDurationMs, ceilingMs: SOURCE_CEILING_MS } },
+    422,
+  );
+}
+```
+This check validates the RAW `sourceDurationMs` (generous). It stays positioned after the existing `MAX_SOURCE_VIDEO_DURATION_MS` (60000) outer bound (no regression — 33000 < 60000, strictly tighter than the outer guard but more generous than the old 29250).
+
+**E.3.c — Trim-window clamp (lines 123-124) — THE KEY ARCHITECTURAL PIECE.**
+Current:
+```ts
+const trimStartMs = Number(body.trimStartMs ?? 0);
+const trimEndMs = Number(body.trimEndMs ?? sourceDurationMs);
+```
+Becomes:
+```ts
+const trimStartMs = Number(body.trimStartMs ?? 0);
+const rawTrimEndMs = Number(body.trimEndMs ?? sourceDurationMs);
+// Clamp the persisted/processed trim window to the tight processed cap so iOS keyframe
+// overshoot in the SOURCE never reaches du_, the DB constraint, or validateTrimRange.
+// Generous source (up to SOURCE_CEILING_MS) is recorded in source_duration_ms; the
+// processed window stays <= MAX_DURATION_MS. (ORCH-0978 AMENDMENT 8.)
+const trimEndMs = Math.min(rawTrimEndMs, MAX_DURATION_MS);
+```
+`MAX_DURATION_MS` is already imported (line 7). Because `trimEndMs` is now clamped to ≤ 30000 BEFORE `validateTrimRange` (line 157) and the job insert (line 240):
+- `validateTrimRange` (`_shared:366`, `trimEndMs - trimStartMs > MAX_DURATION_MS`) always passes (clamped ≤ 30000).
+- `validateTrimRange` (`_shared:369-374`, `trimEndMs > sourceDurationMs + 250`) always passes (clamp ≤ raw source).
+- The job insert stores `trim_end_ms ≤ 30000` → legal under the new DB constraint.
+- The `du_` budget at line 266 (`Math.min(trimEndMs - trimStartMs, MAX_DURATION_MS)`) is now ≤ 30000 → `du_${ceil(...)}` ≤ 30 (Cloudinary hard ceiling; real content ~29.x s stays sub-30). No change to line 266-272 required; it remains correct. Cite: [Cloudinary `du_` video transformation parameter — https://cloudinary.com/documentation/video_manipulation_and_delivery_reference#video_transformation_url_parameters] (du_ sets a maximum duration limit on the output).
+
+#### E.4 — `_shared/eventCoverVideo.ts` — NO CHANGE
+
+`MAX_DURATION_MS` stays 30000 and now unambiguously means "processed / trim-window cap". `validateTrimRange` and `assertProcessedDerivative` keep using it correctly because the edge clamps `trim_end_ms` to it before validation. **This file is NOT touched** → AMENDMENT-6 §K batch-redeploy-all-six rule does NOT trigger; only `upload-intent` redeploys (Decision in §I).
+
+#### E.5 — Database migration (NEW)
+
+**File:** `supabase/migrations/20260730000001_orch_0978_video_cap_generous_source.sql`
+(Next slot after the existing `20260730000000`; highest timestamp across all worktrees verified = `20260730000000`.)
+
+**Pre-flight invariant probe (mandatory — migration backstop):**
+```sql
+DO $$
+DECLARE
+  offending_count int;
+BEGIN
+  -- Existing <=29000 constraints guarantee no rows exceed 29000, so any row >30000 is
+  -- impossible. Probe defensively for drift before loosening to 30000.
+  SELECT count(*) INTO offending_count
+  FROM public.event_cover_video_jobs
+  WHERE (trim_end_ms - trim_start_ms) > 30000
+     OR (processed_duration_ms IS NOT NULL AND processed_duration_ms > 30000);
+
+  IF offending_count > 0 THEN
+    RAISE EXCEPTION 'orch-0978 amendment 8 pre-flight: % rows exceed 30000ms cap; data repair runbook required before migration', offending_count;
+  END IF;
+END $$;
+```
+
+**Migration body:**
+```sql
+ALTER TABLE public.event_cover_video_jobs
+  DROP CONSTRAINT IF EXISTS event_cover_video_jobs_trim_max_duration;
+ALTER TABLE public.event_cover_video_jobs
+  DROP CONSTRAINT IF EXISTS event_cover_video_jobs_processed_max_duration;
+
+ALTER TABLE public.event_cover_video_jobs
+  ADD CONSTRAINT event_cover_video_jobs_trim_max_duration
+    CHECK ((trim_end_ms - trim_start_ms) <= 30000);
+ALTER TABLE public.event_cover_video_jobs
+  ADD CONSTRAINT event_cover_video_jobs_processed_max_duration
+    CHECK (processed_duration_ms IS NULL OR processed_duration_ms <= 30000);
+```
+
+**Post-migration self-verify probe (mandatory):**
+```sql
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname IN ('event_cover_video_jobs_trim_max_duration','event_cover_video_jobs_processed_max_duration')
+    AND pg_get_constraintdef(oid) LIKE '%29000%'
+  ) THEN
+    RAISE EXCEPTION 'orch-0978 amendment 8 post-verify: stale 29000ms constraint still present after migration';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'event_cover_video_jobs_trim_max_duration'
+    AND pg_get_constraintdef(oid) LIKE '%30000%'
+  ) THEN
+    RAISE EXCEPTION 'orch-0978 amendment 8 post-verify: 30000ms trim constraint not present after migration';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'event_cover_video_jobs_processed_max_duration'
+    AND pg_get_constraintdef(oid) LIKE '%30000%'
+  ) THEN
+    RAISE EXCEPTION 'orch-0978 amendment 8 post-verify: 30000ms processed constraint not present after migration';
+  END IF;
+END $$;
+```
+
+**`source_duration_ms` note:** the migration does NOT add a constraint on `source_duration_ms` — the generous source ceiling (33000) is enforced at the edge (E.3.b) + the existing 60000 outer bound. Implementor MUST run a read-only probe pre-apply to confirm no pre-existing `source_duration_ms` constraint from ORCH-0770 would block 33000 (read `20260515000012_orch_0770_event_cover_video_processing.sql`); if one exists, add a drop+re-add to ≤ 33000 in this migration and surface to orchestrator.
+
+**Apply command (operator owns `db push`):**
+```bash
+cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0978-[video-upload-polish-and-cloudinary-lifecycle]" && /Users/sethogieva/bin/supabase db push --linked
+```
+**Pre-apply check (orchestrator):**
+```bash
+cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0978-[video-upload-polish-and-cloudinary-lifecycle]" && /Users/sethogieva/bin/supabase migration list --linked
+```
+Confirm no remote-only versions before approving operator apply.
+
+#### E.6 — Strict-grep revision (`.github/scripts/strict-grep/orch-0978-video-cap-29s.mjs`)
+
+The existing C1-C9 assume "29 everywhere" — the cap-value checks need **REVISION**, not just addition.
+
+- **C1 (videoMaxDuration: 29):** UNCHANGED (`videoMaxDuration` stays 29). ✓
+- **C2 (processingService `EVENT_COVER_MAX_VIDEO_DURATION_MS = 29_000` present; `30_000` absent):** UNCHANGED. (The new `EVENT_COVER_SOURCE_CEILING_MS = 33_000` line does not contain the `= 30_000` literal, so C2 stays green.)
+- **C3 (mediaRules `EVENT_COVER_MAX_VIDEO_DURATION_MS = 29_000`):** UNCHANGED (storage path stays 29s).
+- **C4 (DB constraints):** **REVISE.** Update `migrationPath` (line 35-36) to the NEW migration `supabase/migrations/20260730000001_orch_0978_video_cap_generous_source.sql`. Change both regexes from `<= 29000` → `<= 30000`. Update the OK/FAIL messages from "29000" → "30000". (The old `20260730000000` migration remains in history with its 29000→drop sequence; the active constraint state is defined by the new migration.)
+- **C5 (public_id template ↔ webhook parser):** UNCHANGED.
+- **C6 (webhook `eagerDurationOrFallback` + `trim_end_ms`):** UNCHANGED.
+- **C7 (discrete processed-duration codes + dead `processed_duration_invalid`):** UNCHANGED.
+- **C8 (eventCoverMediaService split):** UNCHANGED.
+- **C9 ("30 seconds" literal dead in the two utils files):** UNCHANGED. (AMENDMENT 8 introduces no "30 seconds"/"33 seconds" copy; all changes are numeric `30000`/`33_000` constants and the migration, none of which contain the string "30 seconds".)
+- **NEW C10 (edge source ceiling + clamp):** assert `event-cover-video-upload-intent/index.ts` (a) contains `SOURCE_CEILING_MS = 33_000`, (b) does NOT contain the dead literal `EFFECTIVE_TRIM_CEILING_MS`, (c) contains the clamp `Math.min(rawTrimEndMs, MAX_DURATION_MS)`.
+- **NEW C11 (client source ceiling + relationship):** assert `eventCoverVideoProcessingService.ts` contains `EVENT_COVER_SOURCE_CEILING_MS = 33_000`; assert `CoverPicker.tsx` references `EVENT_COVER_SOURCE_CEILING_MS` in the acceptance check and does NOT contain the old `+ 250` tolerance literal `EVENT_COVER_MAX_VIDEO_DURATION_MS + 250`; assert the relationship `33000 > 30000` (source ceiling strictly greater than processed cap) and `30000` (processed cap) is the tight value — a static invariant guard so a future edit cannot invert the two tiers.
+
+Both new checks placed after C9, before the final exit-code propagation. Wire stays in `.github/workflows/strict-grep-mingla-business.yml` (existing job; no parallel workflow).
+
+#### E.7 — Backend allowlist (COMMS-0002)
+
+Append to `ORCH_0978_BACKEND_ALLOWLIST` in `.github/scripts/strict-grep/orch-0863-marketing-hub-phase-b.mjs` (currently lines 887-899), in the SAME commit as the migration:
+- `supabase/migrations/20260730000001_orch_0978_video_cap_generous_source.sql`
+
+(`event-cover-video-upload-intent/index.ts` is already in the allowlist at line 897. The strict-grep `.mjs` files are under `.github/` and are not gated by the `no-new-backend-files` C7 check.)
+
+### F — Success criteria (numbered, observable, testable)
+
+| ID | Criterion |
+|---|---|
+| **SC-AMEND8-1** | A video trimmed at the iOS native trimmer to ~29s with realistic keyframe overshoot (reported duration 29251-33000 ms) UPLOADS successfully — no "Please trim to 29 seconds first." toast. (Live-fire: tester captures the `[ORCH-0978-TRIM]` overshoot value first to confirm the actual magnitude, then confirms acceptance.) |
+| **SC-AMEND8-2** | The PROCESSED cover for SC-AMEND8-1 is sub-30s: `event_cover_video_jobs.processed_duration_ms < 30000` and the rendered cover plays a clip < 30s. |
+| **SC-AMEND8-3** | A genuinely un-trimmed long source (>33000 ms reported duration) is still rejected: client shows "Please trim to 29 seconds first." OR (if client bypassed) edge returns 422 `duration_over_cap` with `detail.ceilingMs = 33000`. |
+| **SC-AMEND8-4** | Edge boundary: a request with `sourceDurationMs: 33000` returns 200 + `jobId`; `sourceDurationMs: 33001` returns 422 `{error:"duration_over_cap", detail:{sourceDurationMs:33001, ceilingMs:33000}}`. |
+| **SC-AMEND8-5** | Edge clamp: a request with `sourceDurationMs: 31000, trimEndMs: 31000` returns 200; the inserted job row has `source_duration_ms = 31000` AND `trim_end_ms = 30000` (clamped) AND the eager transformation string contains `du_30`. |
+| **SC-AMEND8-6** | DB: post-migration `pg_constraint` probe returns `<= 30000` in BOTH `event_cover_video_jobs_trim_max_duration` and `event_cover_video_jobs_processed_max_duration`; zero rows match `%29000%`. |
+| **SC-AMEND8-7** | Strict-grep C1-C11 all PASS (`node .github/scripts/strict-grep/orch-0978-video-cap-29s.mjs`). C4 reads the new migration and asserts 30000; C10/C11 assert the source-ceiling/clamp/relationship. |
+| **SC-AMEND8-8** | Constants present + dead literals gone: `grep "EVENT_COVER_SOURCE_CEILING_MS = 33_000"` hits in `eventCoverVideoProcessingService.ts`; `grep "SOURCE_CEILING_MS = 33_000"` hits in `upload-intent/index.ts`; `grep "EFFECTIVE_TRIM_CEILING_MS"` returns ZERO matches under `supabase/functions/`; `videoMaxDuration: 29` still present exactly once in `CoverPicker.tsx`. |
+
+### G — Invariants
+
+**Superseded:**
+- **I-PROPOSED-VIDEO-CAP-CONSISTENCY-29S** (AMENDMENT 4 §E) — "all layers agree at 29000." OBSOLETE. Mark superseded in INVARIANT_REGISTRY / DECISION_LOG at CLOSE.
+
+**New (proposed — promote to ACTIVE on CLOSE):**
+- **I-PROPOSED-VIDEO-CAP-GENEROUS-SOURCE-TIGHT-PROCESSED** — The video-cover pipeline maintains a two-tier cap: a generous SOURCE-acceptance ceiling (`EVENT_COVER_SOURCE_CEILING_MS` / edge `SOURCE_CEILING_MS` = 33000) strictly greater than the tight PROCESSED cap (`MAX_DURATION_MS` = 30000 = `du_` ceiling = DB `processed_duration_ms` constraint = DB `trim_end_ms - trim_start_ms` constraint). `trim_end_ms` MUST be clamped to the processed cap at the edge before persistence and `du_`. The iOS trimmer target (`videoMaxDuration` = 29) and the "29 seconds" user copy reference the trimmer target, NOT the acceptance ceiling. **CI gate:** strict-grep C1-C4 + C10 + C11. Any layer deviating (source ≤ processed, processed > 30000, missing clamp, `videoMaxDuration` ≠ 29) is a P0 violation.
+
+**Preserved (must NOT regress):**
+- AMENDMENT 6 webhook duration-fallback (reads `trim_end_ms` — now the clamped value, which is correct).
+- AMENDMENT 7 cover-save persistence (`setEventCover`/`clearEventCover`).
+- I-PROPOSED-EXTERNAL-API-DOCS-VERIFIED (COMMS-0003): the `du_` Cloudinary docs URL is cited inline (E.3.c).
+- Webhook `verify_jwt = false`; idempotency gates; race-handling supersede.
+
+### H — Test cases (two-commit landing per META-ORCH-0744)
+
+| ID | Scenario | Input | Expected | Layer | Owner |
+|---|---|---|---|---|---|
+| **T-AMEND8-01** | **Edge accepts overshoot source + clamps trim.** | POST `{ sourceDurationMs: 31000, trimEndMs: 31000, trimStartMs: 0, ...valid }` | 200 + jobId; inserted row `source_duration_ms=31000`, `trim_end_ms=30000`; eager string contains `du_30` | Deno (edge) | **Implementor (happy-path)** |
+| **T-AMEND8-02** | **Edge source-ceiling boundary.** | (a) `sourceDurationMs: 33000` (b) `sourceDurationMs: 33001` | (a) 200 + jobId; (b) 422 `{error:"duration_over_cap", detail:{sourceDurationMs:33001, ceilingMs:33000}}` | Deno (edge) | **Tester (adversarial)** |
+| **T-AMEND8-03** | **Client acceptance ceiling.** | Jest: `pickVideoCover` with mocked picker returning `asset.duration = 30.5` (30500ms) | No "trim to 29 seconds" toast; `videoUpload.start` invoked. With `asset.duration = 34` (34000ms): toast fires, `start` NOT invoked. | Jest (client) | Implementor |
+| **T-AMEND8-04** | **Normal-trim happy path unchanged.** | `sourceDurationMs: 29400, trimEndMs: 29400` | 200; `trim_end_ms=29400` (≤30000, not clamped); `du_30` ceiling; processed content stays 29.4s (sub-30) | Deno (edge) | Implementor |
+| **T-AMEND8-05** | **Live-fire (PROBABLE→PROVEN upgrade).** Real iOS picker → trim a >29s clip to ~29s → Choose. Capture `[ORCH-0978-TRIM]` Metro log; confirm acceptance. | Injected 35s/2.0s-GOP clip (or Seth's physical repro) | Metro logs the `overshoot` value; upload succeeds; job reaches `ready`; cover renders sub-30s | Live-fire | Tester (sim) + Seth (physical) |
+| **T-AMEND8-06** | **Strict-grep C1-C11.** | `node .github/scripts/strict-grep/orch-0978-video-cap-29s.mjs` | All PASS | CI | Implementor |
+
+**META-ORCH-0744 mapping:** implementor happy-path = **T-AMEND8-01** (clamp + accept), tester adversarial = **T-AMEND8-02** (boundary rejection). Both land with `fails-on-revert verified at <commit hash>`:
+- T-AMEND8-01 fails-on-revert: temporarily revert the E.3.c clamp (`const trimEndMs = Number(body.trimEndMs ?? sourceDurationMs)`) → the 31000 trim window trips `validateTrimRange` (`trim_over_duration` 422) so the test's expected 200 fails. Restore → PASS.
+- T-AMEND8-02 fails-on-revert: temporarily leave `EFFECTIVE_TRIM_CEILING_MS = 29_250` → `sourceDurationMs: 31000`/`33000` would 422 (over old ceiling) so the test's expected 200 on the in-range case fails. Restore → PASS.
+
+**TEST-MOD note:** the existing AMENDMENT-4 boundary test `supabase/functions/event-cover-video-upload-intent/__tests__/duration-cap.test.ts` asserts `29250→200` / `29251→422`. The `29251→422` assertion is now WRONG (29251 < 33000 → 200). The implementor MUST update it to the new 33000 boundary (or fold it into T-AMEND8-02). Because this MODIFIES an existing test's assertions, the IMPLEMENT-6 commit body MUST include **`[TEST-MOD-APPROVED ORCH-0978]`** per `feedback_close_commit_precommit_checks.md`.
+
+### I — Implementation order + deploy discipline
+
+**Commit 1 — product fix (~12 net lines across 3 files + 1 new migration):**
+1. `mingla-business/src/services/eventCoverVideoProcessingService.ts`: add `EVENT_COVER_SOURCE_CEILING_MS = 33_000`.
+2. `mingla-business/src/components/ui/CoverPicker.tsx`: acceptance check → `> EVENT_COVER_SOURCE_CEILING_MS`; import the constant; keep `videoMaxDuration: 29`, the `[ORCH-0978-TRIM]` log, and the toast copy.
+3. `supabase/functions/event-cover-video-upload-intent/index.ts`: `EFFECTIVE_TRIM_CEILING_MS` → `SOURCE_CEILING_MS = 33_000` (constant + check); add the E.3.c trim clamp.
+4. `supabase/migrations/20260730000001_orch_0978_video_cap_generous_source.sql` (NEW, per E.5).
+5. `.github/scripts/strict-grep/orch-0978-video-cap-29s.mjs`: C4 revision + C10 + C11.
+6. `.github/scripts/strict-grep/orch-0863-marketing-hub-phase-b.mjs`: append the new migration to `ORCH_0978_BACKEND_ALLOWLIST` (COMMS-0002).
+- Commit prefix: `ORCH-0978 IMPLEMENT-6 step 1: generous source (33s) / tight processed (30s) cap split + edge trim clamp + DB constraints 29s→30s + strict-grep C4/C10/C11 [TEST-MOD-APPROVED ORCH-0978]`.
+
+**Commit 2 — tests:**
+7. `supabase/functions/event-cover-video-upload-intent/__tests__/duration-cap.test.ts`: update boundary to 33000 + add T-AMEND8-01/02/04 (Deno). 
+8. `mingla-business/src/components/ui/__tests__/` (or hook test): add T-AMEND8-03 (Jest client acceptance ceiling).
+9. Fails-on-revert proofs (§H) documented in the IMPLEMENT-6 report.
+
+**Deploy discipline:**
+- `_shared/eventCoverVideo.ts` NOT touched → NO batch redeploy. Deploy ONLY `event-cover-video-upload-intent`:
+  ```bash
+  cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-0978-[video-upload-polish-and-cloudinary-lifecycle]" && /Users/sethogieva/bin/supabase functions deploy event-cover-video-upload-intent --project-ref gqnoajqerqhnvulmnyvv
+  ```
+  Confirm `verify_jwt` stays `true` (auth-gated) via `mcp__supabase__list_edge_functions`.
+- Per `feedback_supabase_edge_deploy_verify_first_call.md`, one curl probe post-deploy:
+  ```bash
+  curl -sS -o /dev/null -w "HTTP %{http_code}\n" -X POST "https://gqnoajqerqhnvulmnyvv.supabase.co/functions/v1/event-cover-video-upload-intent" -H "Content-Type: application/json" -d '{}'
+  ```
+  Expected: HTTP 401 (auth-gated, `verify_jwt=true` rejects the unauthenticated probe) — NOT 404. (Confirms bundle live.)
+- Migration: operator `db push` (E.5) after orchestrator pre-apply `migration list` check.
+- EAS OTA at CLOSE (`mingla-business/src/` touched) + `[deploy]` tag (Vercel web gate).
+
+### J — Downstream routing
+
+Forensics returns INVESTIGATION + SPEC AMENDMENT 8 → orchestrator **REVIEW** (commit-hash verification + dependency walk; confirm the cap-tier relationship + C4/C10/C11 logic) → orchestrator dispatches **IMPLEMENT-6** to Codex `implementor-mingla` (or Claude `mingla-implementor`) → implementor returns Commit 1 + Commit 2 + report `Mingla_Artifacts/reports/IMPLEMENTATION_ORCH-0978_IMPLEMENT_6.md` → orchestrator REVIEW → operator `db push` → orchestrator redeploy `upload-intent` + curl probe → **tester live-fire RETEST** (T-AMEND8-05: trim a long video; capture `[ORCH-0978-TRIM]`; confirm sub-30 processed) → **Seth physical-iPhone re-validation** (Metro URL provided per `feedback_physical_iphone_test_handoff_provides_metro_url.md`) → orchestrator **CLOSE** with `[deploy]` tag + EAS OTA + PR + pre-merge gate + squash merge + worktree reap.
+
+### K — Discoveries for Orchestrator
+
+1. **Two un-mapped cap sites** found in investigation (`_shared:366` `validateTrimRange` trim-window bound + `:369-374` source bound). Layer 11 shares `MAX_DURATION_MS`; handled by the edge clamp (no `_shared` change needed).
+2. **`I-PROPOSED-VIDEO-CAP-CONSISTENCY-29S` is obsolete** — mark superseded in INVARIANT_REGISTRY + DECISION_LOG at CLOSE; record the new two-tier invariant.
+3. **Storage-bucket video validation** (`eventCoverMediaRules.ts`) stays at 29s — if video ever routes through `validateEventCoverAsset`, it will reject the same overshoot. Register a follow-up if that path is reactivated for video.
+4. **Duplicate-constant debt** (AMENDMENT 4 §J-bis) persists; the consolidation cleanup ORCH is still recommended.
+5. **Business Metro tunnel offline** — restart before any IMPLEMENT-6 tester live-fire (memory `feedback_sim_load_latest_bundle_before_test`).
+
+### L — Confidence — HIGH (SPEC) / PROBABLE (root cause)
+
+The SPEC is HIGH-confidence: every cap site read and verified (12 sites), exact values + diffs given, the migration mirrors the proven AMENDMENT-4 pattern, strict-grep revision is mechanical, and the architecture is operator-locked (not re-litigated). The underlying root cause is PROBABLE (not proven) only because the exact in-sim `[ORCH-0978-TRIM]` overshoot capture is blocked (Business Metro offline + simulator trimmer-fidelity uncertainty); Seth's physical-device `:447` toast + the synthetic 2.0s-GOP demonstration + the full source trace establish the mechanism. The IMPLEMENT-6 tester live-fire (T-AMEND8-05) upgrades it to `proven` by capturing the overshoot value on a reconnected sim or Seth's physical device.
+
+---
+
 
