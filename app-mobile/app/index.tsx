@@ -333,7 +333,11 @@ function AppContent() {
   // ───────────────────────────────────────────────────────────────────────────
 
   // ── AppsFlyer ──────────────────────────────────────────────────────────────
-  // Initialize once at mount — tracks installs and attribution automatically.
+  // Initialize once at mount with manualStart: true — SDK loads but does not
+  // transmit until startAppsFlyer() is called. Transmission begins after the
+  // coach mark tour completes (or is skipped) via permissionOrchestrator,
+  // which fires the iOS ATT prompt first, then starts AppsFlyer with the
+  // now-resolved IDFA state, then fires the OneSignal push permission prompt.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     initializeAppsFlyer();

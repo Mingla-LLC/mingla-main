@@ -2,7 +2,7 @@
   "expo": {
     "name": "Mingla",
     "slug": "mingla",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -14,12 +14,10 @@
       "backgroundColor": "#FAFAFA"
     },
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "bundleIdentifier": "com.mingla.app.v2",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Mingla needs location access to find experiences near you and provide location-based recommendations.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "Mingla needs location access to find experiences near you and provide location-based recommendations.",
-        "NSLocationAlwaysUsageDescription": "Mingla needs location access to find experiences near you and provide location-based recommendations.",
         "NSCameraUsageDescription": "Mingla needs camera access to capture photos for your experiences.",
         "NSPhotoLibraryUsageDescription": "Mingla needs photo library access to select images for your experiences.",
         "NSCalendarsUsageDescription": "Mingla needs calendar access to add scheduled experiences to your device calendar.",
@@ -100,8 +98,6 @@
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
         "CAMERA",
-        "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE",
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.CAMERA",
@@ -159,7 +155,14 @@
           "smallIconAccentColor": "#EB7825"
         }
       ],
-      "react-native-appsflyer"
+      "react-native-appsflyer",
+      [
+        "expo-tracking-transparency",
+        {
+          "userTrackingPermission": "Mingla uses this permission to measure ad performance and improve your experience. You can change this in Settings."
+        }
+      ],
+      "./plugins/withoutSystemAlertWindow"
     ],
     "updates": {
       "enabled": true,

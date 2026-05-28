@@ -54,7 +54,9 @@
   },
   "app_info": {
     "title": "App Information",
-    "app_version": "App Version"
+    "app_version": "App Version",
+    "contact_support": "Contact Support",
+    "contact_support_hint": "Questions, feedback, or report a problem"
   },
   "delete": {
     "title": "The Red Zone",

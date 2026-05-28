@@ -14,6 +14,7 @@ import {
   LayoutAnimation,
   UIManager,
   useWindowDimensions,
+  Linking,
 } from "react-native";
 import type { AppStateStatus } from "react-native";
 import { Icon } from "../ui/Icon";
@@ -746,6 +747,24 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
                 <Text style={styles.rowLabel}>{t('settings:app_info.app_version')}</Text>
                 <Text style={styles.rowValueMuted}>1.0.0</Text>
               </View>
+
+              <View style={styles.rowDivider} />
+
+              <TouchableOpacity
+                style={[styles.row, styles.rowMultiline]}
+                onPress={() => {
+                  void Linking.openURL("mailto:support@usemingla.com");
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={t('settings:app_info.contact_support')}
+                activeOpacity={0.7}
+              >
+                <View style={styles.rowLabelWrap}>
+                  <Text style={styles.rowLabel}>{t('settings:app_info.contact_support')}</Text>
+                  <Text style={styles.rowHint}>{t('settings:app_info.contact_support_hint')}</Text>
+                </View>
+                <Text style={styles.rowValueMuted}>support@usemingla.com</Text>
+              </TouchableOpacity>
             </AccordionCard>
 
             {/* Section 6: The Red Zone (NOT collapsible — always visible) */}

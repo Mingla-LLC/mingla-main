@@ -15,6 +15,7 @@
 import { useState, useCallback } from 'react';
 import { getDisplayName } from '../utils/getDisplayName';
 import { supabase } from '../services/supabase';
+import { moderateText } from '../services/moderationService';
 import type { CardTagEntry, MentionEntry } from '../services/messagingService';
 import type { BusinessEventCard } from '../types/mergedDiscover';
 
@@ -279,6 +280,14 @@ export const useMessages = () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
+
+      // ORCH-0977: moderate text messages before posting (Apple 1.2 / Play UGC policy)
+      if (messageType === 'text') {
+        const moderation = await moderateText(content, 'direct_message');
+        if (!moderation.allowed) {
+          throw new Error(moderation.reason);
+        }
+      }
 
       const { data: messageData, error } = await supabase
         .from('messages')

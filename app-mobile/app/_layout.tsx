@@ -27,7 +27,11 @@ Sentry.init({
   dsn: 'https://5bb11663dddc2efc612498d7a14b70f4@o4511136062701568.ingest.us.sentry.io/4511136064012288',
 
   // ── From original _layout.tsx config ──
-  // TODO ORCH-0679-D3: privacy review — confirm sendDefaultPii intent.
+  // ORCH-0977 (2026-05-26) — privacy review complete; operator chose to keep
+  // sendDefaultPii: true. Sentry receives IP, cookies, user-agent, and the
+  // identified user ID. Both stores' privacy disclosures (Play Data Safety,
+  // Apple Privacy Nutrition Labels) MUST list: Approximate Location (IP),
+  // User ID, Diagnostics.
   sendDefaultPii: true,
   enableLogs: true,
 
