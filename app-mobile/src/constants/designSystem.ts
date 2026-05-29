@@ -285,6 +285,19 @@ export const glass = {
       marginTop: 8,
       marginBottom: 12,
     },
+    // META-ORCH-0991 (DESIGN) — Active (mid-drag / between-snap) handle treatment.
+    // Resting handle stays glass.bottomSheet.handle (LOCKED). On pan-engage the
+    // handle brightens + widens + lifts; returns to resting on snap-settle/close.
+    // Drive from gorhom animatedIndex via useAnimatedStyle. 160ms cubic crossfade.
+    handleActive: {
+      color: 'rgba(255, 255, 255, 0.55)', // resting 0.30 → active 0.55 (same family)
+      width: 44,                            // resting 36 → active 44 (+8, 4px grid)
+      scale: 1.06,                          // sub-perceptible lift
+      transitionMs: 160,                    // engage/release crossfade duration
+    },
+    // META-ORCH-0991 (DESIGN) — Reduce-transparency floor for the dark scrim.
+    // When OS reduce-transparency is on, floor backdrop opacity UP to this (flat, never blur).
+    a11yBackdropTint: 'rgba(0, 0, 0, 0.62)',
     hairline: 'rgba(255, 255, 255, 0.08)',
     topRadius: 28,
     snapPoints: ['50%', '90%'] as const,
@@ -310,6 +323,16 @@ export const glass = {
       marginTop: 8,
       marginBottom: 12,
     },
+    // META-ORCH-0991 (DESIGN) — Active handle for the light canvas. Mirrors
+    // glass.bottomSheet.handleActive ratios in the black family.
+    handleActive: {
+      color: 'rgba(0, 0, 0, 0.34)', // resting 0.18 → active 0.34 (same family)
+      width: 44,
+      scale: 1.06,
+      transitionMs: 160,
+    },
+    // META-ORCH-0991 (DESIGN) — Reduce-transparency floor for the light scrim.
+    a11yBackdropTint: 'rgba(0, 0, 0, 0.45)',
     cardShadow: {
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 2 },
@@ -340,6 +363,57 @@ export const glass = {
       sessions: { bg: 'rgba(59, 130, 246, 0.10)', text: '#2563eb', icon: 'calendar' as const },
       messages: { bg: 'rgba(139, 92, 246, 0.10)', text: '#7c3aed', icon: 'chatbubble' as const },
       all: { bg: 'rgba(107, 114, 128, 0.10)', text: '#4b5563', icon: 'notifications' as const },
+    },
+  } as const,
+  // META-ORCH-0991 (DESIGN) — Center-dialog variant chrome. Centered confirm
+  // card (NOT gorhom — RN Modal + centered Animated.View). NO pan-down; the
+  // only guaranteed dismiss is an explicit button. Flat scrim, no blur.
+  // First consumers are Wave-B confirm dialogs (BlockUser / IncomingPairRequest
+  // / PairingInfo / AccountSettings delete-confirm). Wave A types the variant
+  // prop; the body may stub. Radius 28 matches the sheet family.
+  centerDialog: {
+    radius: 28,
+    maxWidth: 340,
+    horizontalMargin: 24,   // spacing.lg — card never touches screen edge
+    paddingVertical: 24,    // spacing.lg
+    paddingHorizontal: 24,  // spacing.lg
+    dark: {
+      canvas: 'rgba(12, 14, 18, 1)',   // matches ExpandedCardModal dark sheet canvas
+      hairline: 'rgba(255, 255, 255, 0.08)',
+      backdropTint: 'rgba(0, 0, 0, 0.62)', // heavier than sheet (hard interrupt)
+    },
+    light: {
+      canvas: '#FFFFFF',
+      hairline: 'rgba(0, 0, 0, 0.06)',
+      backdropTint: 'rgba(0, 0, 0, 0.45)',
+    },
+    shadow: {
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 12 },
+      shadowOpacity: 0.32,
+      shadowRadius: 28,
+      elevation: 24,
+    },
+    motion: {
+      entryMs: 180,         // fade + scale-in, paired with SHEET_SPRING for scale
+      exitMs: 140,          // fade + slight scale-down (snappier out)
+      scaleFrom: 0.96,      // entry start scale
+      scaleExitTo: 0.97,    // exit end scale
+    },
+    // Accessibility fallbacks — see DESIGN §6.
+    a11y: {
+      reduceMotion: {
+        // No fade, no scale; dialog + scrim appear/disappear instantly.
+        entryMs: 0,
+        exitMs: 0,
+        scaleFrom: 1,
+        scaleExitTo: 1,
+      },
+      reduceTransparency: {
+        // Flat tint floored UP (more opaque); never blur.
+        darkBackdropTint: 'rgba(0, 0, 0, 0.78)',
+        lightBackdropTint: 'rgba(0, 0, 0, 0.60)',
+      },
     },
   } as const,
   surfaceElevated: {
