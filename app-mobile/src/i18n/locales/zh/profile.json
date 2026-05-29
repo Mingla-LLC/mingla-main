@@ -74,6 +74,18 @@
     "mingla_level": "Mingla 等级",
     "interests": "兴趣",
     "message": "消息",
-    "friend_fallback": "好友"
+    "friend_fallback": "好友",
+    "add_friend": "添加好友",
+    "requested": "已请求",
+    "accept_request": "接受请求",
+    "sending": "发送中…",
+    "canceling": "取消中…",
+    "accepting": "接受中…",
+    "error_generic": "发送失败，点按重试。",
+    "error_network": "你已离线。请检查网络连接后重试。",
+    "error_unavailable": "该用户当前不可用。",
+    "cancel_request_title": "取消好友请求？",
+    "cancel_request_body": "系统不会通知 {{name}}。",
+    "cancel_request_confirm": "取消请求"
   }
 }

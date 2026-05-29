@@ -74,6 +74,18 @@
     "mingla_level": "Tahap Mingla",
     "interests": "Minat",
     "message": "Mesej",
-    "friend_fallback": "Rakan"
+    "friend_fallback": "Rakan",
+    "add_friend": "Tambah rakan",
+    "requested": "Diminta",
+    "accept_request": "Terima permintaan",
+    "sending": "Menghantar…",
+    "canceling": "Membatalkan…",
+    "accepting": "Menerima…",
+    "error_generic": "Gagal menghantar. Ketik untuk cuba lagi.",
+    "error_network": "Anda di luar talian. Periksa sambungan anda dan cuba lagi.",
+    "error_unavailable": "Orang ini tidak tersedia sekarang.",
+    "cancel_request_title": "Batalkan permintaan rakan?",
+    "cancel_request_body": "{{name}} tidak akan dimaklumkan.",
+    "cancel_request_confirm": "Batalkan permintaan"
   }
 }

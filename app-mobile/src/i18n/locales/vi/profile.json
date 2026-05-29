@@ -74,6 +74,18 @@
     "mingla_level": "Cấp độ Mingla",
     "interests": "Sở thích",
     "message": "Tin nhắn",
-    "friend_fallback": "Bạn bè"
+    "friend_fallback": "Bạn bè",
+    "add_friend": "Kết bạn",
+    "requested": "Đã gửi yêu cầu",
+    "accept_request": "Chấp nhận yêu cầu",
+    "sending": "Đang gửi…",
+    "canceling": "Đang hủy…",
+    "accepting": "Đang chấp nhận…",
+    "error_generic": "Không gửi được. Chạm để thử lại.",
+    "error_network": "Bạn đang ngoại tuyến. Kiểm tra kết nối và thử lại.",
+    "error_unavailable": "Người này hiện không khả dụng.",
+    "cancel_request_title": "Hủy yêu cầu kết bạn?",
+    "cancel_request_body": "{{name}} sẽ không được thông báo.",
+    "cancel_request_confirm": "Hủy yêu cầu"
   }
 }

@@ -74,6 +74,18 @@
     "mingla_level": "Mingla level",
     "interests": "Interests",
     "message": "Message",
-    "friend_fallback": "Vän"
+    "friend_fallback": "Vän",
+    "add_friend": "Lägg till vän",
+    "requested": "Förfrågad",
+    "accept_request": "Acceptera förfrågan",
+    "sending": "Skickar…",
+    "canceling": "Avbryter…",
+    "accepting": "Accepterar…",
+    "error_generic": "Det gick inte att skicka. Tryck för att försöka igen.",
+    "error_network": "Du är offline. Kontrollera anslutningen och försök igen.",
+    "error_unavailable": "Den här personen är inte tillgänglig just nu.",
+    "cancel_request_title": "Avbryta vänförfrågan?",
+    "cancel_request_body": "{{name}} meddelas inte.",
+    "cancel_request_confirm": "Avbryt förfrågan"
   }
 }

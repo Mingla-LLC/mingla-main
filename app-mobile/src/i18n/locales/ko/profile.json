@@ -74,6 +74,18 @@
     "mingla_level": "Mingla 레벨",
     "interests": "관심사",
     "message": "메시지",
-    "friend_fallback": "친구"
+    "friend_fallback": "친구",
+    "add_friend": "친구 추가",
+    "requested": "요청됨",
+    "accept_request": "요청 수락",
+    "sending": "보내는 중…",
+    "canceling": "취소하는 중…",
+    "accepting": "수락하는 중…",
+    "error_generic": "보내지 못했습니다. 다시 시도하려면 탭하세요.",
+    "error_network": "오프라인 상태입니다. 연결을 확인하고 다시 시도하세요.",
+    "error_unavailable": "이 사용자는 지금 사용할 수 없습니다.",
+    "cancel_request_title": "친구 요청을 취소할까요?",
+    "cancel_request_body": "{{name}}에게 알림이 가지 않습니다.",
+    "cancel_request_confirm": "요청 취소"
   }
 }

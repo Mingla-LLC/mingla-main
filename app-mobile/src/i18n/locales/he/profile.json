@@ -65,7 +65,7 @@
     "add_interests": "הוסף תחומי עניין"
   },
   "friend": {
-    "loading_profile": "טוען פרופיל\u2026",
+    "loading_profile": "טוען פרופיל…",
     "profile_unavailable_title": "הפרופיל הזה לא זמין",
     "profile_unavailable_body": "הפרופיל של אדם זה עשוי להיות פרטי, או שאינכם מחוברים.",
     "about": "אודות",
@@ -74,6 +74,18 @@
     "mingla_level": "רמת Mingla",
     "interests": "תחומי עניין",
     "message": "הודעה",
-    "friend_fallback": "חבר"
+    "friend_fallback": "חבר",
+    "add_friend": "הוספת חבר",
+    "requested": "התבקש",
+    "accept_request": "אישור בקשה",
+    "sending": "שולח…",
+    "canceling": "מבטל…",
+    "accepting": "מאשר…",
+    "error_generic": "השליחה נכשלה. הקש כדי לנסות שוב.",
+    "error_network": "אתה לא מחובר. בדוק את החיבור ונסה שוב.",
+    "error_unavailable": "האדם הזה אינו זמין כעת.",
+    "cancel_request_title": "לבטל את בקשת החברות?",
+    "cancel_request_body": "‏{{name}} לא יקבל התראה.",
+    "cancel_request_confirm": "ביטול הבקשה"
   }
 }

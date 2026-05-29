@@ -74,6 +74,18 @@
     "mingla_level": "Mingla level",
     "interests": "Interests",
     "message": "Message",
-    "friend_fallback": "Prieten"
+    "friend_fallback": "Prieten",
+    "add_friend": "Adaugă prieten",
+    "requested": "Solicitat",
+    "accept_request": "Acceptă cererea",
+    "sending": "Se trimite…",
+    "canceling": "Se anulează…",
+    "accepting": "Se acceptă…",
+    "error_generic": "Trimiterea a eșuat. Atinge pentru a încerca din nou.",
+    "error_network": "Ești offline. Verifică conexiunea și încearcă din nou.",
+    "error_unavailable": "Această persoană nu este disponibilă acum.",
+    "cancel_request_title": "Anulezi cererea de prietenie?",
+    "cancel_request_body": "{{name}} nu va fi notificat.",
+    "cancel_request_confirm": "Anulează cererea"
   }
 }

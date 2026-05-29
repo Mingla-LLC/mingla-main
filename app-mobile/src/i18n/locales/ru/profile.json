@@ -74,6 +74,18 @@
     "mingla_level": "Mingla level",
     "interests": "Interests",
     "message": "Message",
-    "friend_fallback": "Друг"
+    "friend_fallback": "Друг",
+    "add_friend": "Добавить в друзья",
+    "requested": "Запрос отправлен",
+    "accept_request": "Принять запрос",
+    "sending": "Отправка…",
+    "canceling": "Отмена…",
+    "accepting": "Принятие…",
+    "error_generic": "Не удалось отправить. Нажмите, чтобы повторить.",
+    "error_network": "Вы офлайн. Проверьте подключение и повторите попытку.",
+    "error_unavailable": "Этот человек сейчас недоступен.",
+    "cancel_request_title": "Отменить запрос в друзья?",
+    "cancel_request_body": "{{name}} не получит уведомление.",
+    "cancel_request_confirm": "Отменить запрос"
   }
 }

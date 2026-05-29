@@ -176,5 +176,6 @@
   "untitled": "Sin título",
   "error_sign_in_save": "Inicia sesión para guardar experiencias",
   "error_boundary_title": "Algo salió mal",
-  "error_boundary_message": "Encontramos un error inesperado. Por favor inténtalo de nuevo."
+  "error_boundary_message": "Encontramos un error inesperado. Por favor inténtalo de nuevo.",
+  "keep": "Mantener"
 }

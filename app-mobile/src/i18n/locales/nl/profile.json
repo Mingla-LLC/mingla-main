@@ -74,6 +74,18 @@
     "mingla_level": "Mingla-niveau",
     "interests": "Interesses",
     "message": "Bericht",
-    "friend_fallback": "Vriend"
+    "friend_fallback": "Vriend",
+    "add_friend": "Vriend toevoegen",
+    "requested": "Aangevraagd",
+    "accept_request": "Verzoek accepteren",
+    "sending": "Verzenden…",
+    "canceling": "Annuleren…",
+    "accepting": "Accepteren…",
+    "error_generic": "Verzenden mislukt. Tik om opnieuw te proberen.",
+    "error_network": "Je bent offline. Controleer je verbinding en probeer het opnieuw.",
+    "error_unavailable": "Deze persoon is momenteel niet beschikbaar.",
+    "cancel_request_title": "Vriendschapsverzoek annuleren?",
+    "cancel_request_body": "{{name}} krijgt geen melding.",
+    "cancel_request_confirm": "Verzoek annuleren"
   }
 }
