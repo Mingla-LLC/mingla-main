@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { Text, View, StyleSheet, Modal, ScrollView, Alert, Clipboard, Share, Linking } from 'react-native';
+import { Text, View, StyleSheet, Alert, Clipboard, Share, Linking } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import * as WebBrowser from 'expo-web-browser';
 import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
+import { BaseBottomSheet } from './ui/BaseBottomSheet';
 import { Icon } from './ui/Icon';
 import { WhatsAppLogo, InstagramLogo, TwitterLogo } from './ui/BrandIcons';
 import { ImageWithFallback } from './figma/ImageWithFallback';
@@ -23,6 +24,10 @@ interface ShareModalProps {
   accountPreferences?: any;
 }
 
+// META-ORCH-0991 Wave B Batch 3: was a centered card capped at maxHeight 90% →
+// a swipe-down sheet at the same height. Module-level const per playbook §2.
+const SHARE_SHEET_SNAP_POINTS = ['90%'];
+
 export default function ShareModal({ 
   isOpen, 
   onClose, 
@@ -40,32 +45,28 @@ export default function ShareModal({
   // Guard against missing data
   if (!experienceData) {
     return (
-      <Modal
+      <BaseBottomSheet
         visible={isOpen}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={onClose}
-      >
-        <View style={styles.overlay}>
-          <TrackedTouchableOpacity logComponent="ShareModal"
-            style={styles.backdropTouch}
-            activeOpacity={1}
-            onPress={onClose}
-          />
-          <View style={styles.modalContainer}>
-            <View style={styles.header}>
-              <View style={styles.headerSidePlaceholder} />
-              <Text style={styles.headerTitle}>{t('share:header.title')}</Text>
-              <TrackedTouchableOpacity logComponent="ShareModal" onPress={onClose} style={styles.closeButton}>
-                <Icon name="close" size={20} color="#111827" />
-              </TrackedTouchableOpacity>
-            </View>
-            <View style={{ padding: 20, alignItems: 'center' }}>
-              <Text style={{ color: '#6b7280' }}>{t('share:empty.no_data')}</Text>
-            </View>
+        onClose={onClose}
+        theme="light"
+        snapPoints={SHARE_SHEET_SNAP_POINTS}
+        scrollMode="view"
+        wrapInRNModal
+        accessibilityLabel={t('share:header.title')}
+        header={
+          <View style={styles.header}>
+            <View style={styles.headerSidePlaceholder} />
+            <Text style={styles.headerTitle}>{t('share:header.title')}</Text>
+            <TrackedTouchableOpacity logComponent="ShareModal" onPress={onClose} style={styles.closeButton}>
+              <Icon name="close" size={20} color="#111827" />
+            </TrackedTouchableOpacity>
           </View>
+        }
+      >
+        <View style={{ padding: 20, alignItems: 'center' }}>
+          <Text style={{ color: '#6b7280' }}>{t('share:empty.no_data')}</Text>
         </View>
-      </Modal>
+      </BaseBottomSheet>
     );
   }
 
@@ -191,36 +192,32 @@ export default function ShareModal({
   };
 
   return (
-    <Modal
+    <BaseBottomSheet
       visible={isOpen}
-      transparent={true}
-      animationType="fade"
-      onRequestClose={onClose}
-    >
-      <View style={styles.overlay}>
-        <TrackedTouchableOpacity logComponent="ShareModal"
-          style={styles.backdropTouch}
-          activeOpacity={1}
-          onPress={onClose}
-        />
-        <View style={styles.modalContainer}>
-          {/* Header */}
-          <View style={styles.header}>
-            <View style={styles.headerSidePlaceholder} />
-            <Text style={styles.headerTitle}>Share Experience</Text>
-            <TrackedTouchableOpacity logComponent="ShareModal" 
-              onPress={onClose}
-              style={styles.closeButton}
-            >
-              <Icon name="close" size={20} color="#111827" />
-            </TrackedTouchableOpacity>
-          </View>
-
-          <ScrollView 
-            style={styles.scrollView} 
-            contentContainerStyle={styles.scrollContent}
-            showsVerticalScrollIndicator={false}
+      onClose={onClose}
+      theme="light"
+      snapPoints={SHARE_SHEET_SNAP_POINTS}
+      scrollMode="scroll"
+      wrapInRNModal
+      accessibilityLabel="Share Experience"
+      scrollProps={{
+        style: styles.scrollView,
+        contentContainerStyle: styles.scrollContent,
+        showsVerticalScrollIndicator: false,
+      }}
+      header={
+        <View style={styles.header}>
+          <View style={styles.headerSidePlaceholder} />
+          <Text style={styles.headerTitle}>Share Experience</Text>
+          <TrackedTouchableOpacity logComponent="ShareModal"
+            onPress={onClose}
+            style={styles.closeButton}
           >
+            <Icon name="close" size={20} color="#111827" />
+          </TrackedTouchableOpacity>
+        </View>
+      }
+    >
             {/* Experience Card with Orange Border */}
             <View style={styles.cardPreview}>
               <View style={styles.cardWrapper}>
@@ -381,37 +378,11 @@ export default function ShareModal({
                 </TrackedTouchableOpacity>
               </View>
             </View>
-          </ScrollView>
-        </View>
-      </View>
-    </Modal>
+    </BaseBottomSheet>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  backdropTouch: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  modalContainer: {
-    backgroundColor: 'white',
-    borderRadius: 20,
-    maxHeight: '90%',
-    width: '90%',
-    maxWidth: 400,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
-    elevation: 10,
-    flexDirection: 'column',
-  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

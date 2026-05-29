@@ -3,14 +3,22 @@
 // through useFriendActions and renders the existing AddToBoardModal / BlockUserModal /
 // ReportUserModal. No new backend.
 import React from "react";
-import { Modal, View, Text, TouchableOpacity, TouchableWithoutFeedback, StyleSheet } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import { BaseBottomSheet } from "../ui/BaseBottomSheet";
 import { Icon } from "../ui/Icon";
 import { s, vs } from "../../utils/responsive";
 import AddToBoardModal from "../AddToBoardModal";
 import BlockUserModal from "../BlockUserModal";
 import ReportUserModal from "../ReportUserModal";
 import { useFriendActions } from "../../hooks/useFriendActions";
+
+// META-ORCH-0991 Wave B Batch 3: was a flex-end action menu sized to its rows →
+// a swipe-down sheet. A fixed snap (not enableDynamicSizing) is used because a
+// content-height sheet inside the RN-Modal wrap measures its children below the
+// viewport and snaps off-screen-bottom (sim-observed on FriendsActionChooser);
+// ['55%'] comfortably fits the max-row case (pair + add-to-session + mute +
+// remove + block + report + title). Module-level const per playbook §2.
+const FRIEND_ACTIONS_SNAP_POINTS = ['55%'];
 
 interface FriendActionsSheetProps {
   visible: boolean;
@@ -38,7 +46,6 @@ const FriendActionsSheet: React.FC<FriendActionsSheetProps> = ({
   isPending,
   isFriend,
 }) => {
-  const insets = useSafeAreaInsets();
   const a = useFriendActions({ friendUserId, friendName, friendUsername, friendAvatarUrl, pairingId, isPaired, isPending });
 
   const run = (fn: () => void) => {
@@ -51,12 +58,16 @@ const FriendActionsSheet: React.FC<FriendActionsSheetProps> = ({
 
   return (
     <>
-      <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-        <TouchableWithoutFeedback onPress={onClose} accessibilityLabel="Close menu">
-          <View style={styles.overlay} />
-        </TouchableWithoutFeedback>
-        <View style={[styles.container, { paddingBottom: insets.bottom + vs(16) }]}>
-          <View style={styles.handle} />
+      <BaseBottomSheet
+        visible={visible}
+        onClose={onClose}
+        theme="light"
+        snapPoints={FRIEND_ACTIONS_SNAP_POINTS}
+        scrollMode="view"
+        wrapInRNModal
+        accessibilityLabel={`Actions for ${friendName}`}
+      >
+        <View style={styles.container}>
           <Text style={styles.title} numberOfLines={1}>{friendName}</Text>
 
           {/* Pair / Unpair — friends only */}
@@ -121,7 +132,7 @@ const FriendActionsSheet: React.FC<FriendActionsSheetProps> = ({
             <Text style={styles.itemTextDanger}>Report user</Text>
           </TouchableOpacity>
         </View>
-      </Modal>
+      </BaseBottomSheet>
 
       {/* Action modals — rendered alongside the sheet so they show after it closes */}
       <AddToBoardModal isOpen={a.addToSessionVisible} onClose={a.closeAddToSession} friend={friendForModal} boardsSessions={a.boardsSessions} />
@@ -132,14 +143,9 @@ const FriendActionsSheet: React.FC<FriendActionsSheetProps> = ({
 };
 
 const styles = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)" },
   container: {
-    position: "absolute", bottom: 0, left: 0, right: 0,
-    backgroundColor: "#ffffff",
-    borderTopLeftRadius: s(20), borderTopRightRadius: s(20),
-    paddingTop: vs(10), paddingHorizontal: s(8),
+    paddingTop: vs(6), paddingHorizontal: s(8), paddingBottom: vs(16),
   },
-  handle: { width: s(36), height: vs(4), borderRadius: s(2), backgroundColor: "#e5e7eb", alignSelf: "center", marginBottom: vs(8) },
   title: { fontSize: s(16), fontWeight: "700", color: "#111827", paddingHorizontal: s(12), paddingVertical: vs(8) },
   item: { flexDirection: "row", alignItems: "center", paddingVertical: vs(14), paddingHorizontal: s(12), minHeight: vs(48) },
   icon: { marginRight: s(14) },
