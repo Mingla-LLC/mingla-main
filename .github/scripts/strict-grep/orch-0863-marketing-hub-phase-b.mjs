@@ -964,6 +964,11 @@ function checkNoNewBackendFiles() {
     "supabase/functions/event-cover-video-cancel/index.ts",
     "supabase/functions/event-cover-video-webhook/index.ts",
     "supabase/functions/_shared/eventCoverVideo.ts",
+    // ORCH-0989 tester-authored adversarial regressions. Ship with the close PR.
+    // #1 curated edge fn error/boundary/no-orientation invariant.
+    "supabase/functions/event-cover-pexels-curated/index.adversarial.test.ts",
+    // #2 brand-cover-video target boundary (CHECK + RLS + apply gate).
+    "supabase/functions/event-cover-video-apply/index.adversarial.test.ts",
   ];
   const ALLOWLIST = [
     ...ORCH_0989_BACKEND_ALLOWLIST,
