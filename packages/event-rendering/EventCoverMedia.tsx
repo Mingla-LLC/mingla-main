@@ -18,7 +18,10 @@ import { VideoView, useVideoPlayer } from "expo-video";
 import Svg, { Path, Line } from "react-native-svg";
 
 import type { EventCoverMediaType } from "./types";
-import { resolveEventCoverMediaPresentation } from "./coverMediaPresentation";
+import {
+  resolveEventCoverMediaPresentation,
+  shouldFreezeCoverForReduceMotion,
+} from "./coverMediaPresentation";
 import { EventCover } from "./EventCover";
 
 export interface EventCoverMediaProps {
@@ -345,11 +348,20 @@ export const EventCoverMedia: React.FC<EventCoverMediaProps> = ({
     setIsMuted(Platform.OS === "web" && autoplay ? true : muted);
   }, [autoplay, mediaUrl, muted]);
 
+  // ORCH-0992: a muted-autoplay-loop cover is ambient motion (like a GIF cover,
+  // never frozen). Only freeze non-ambient covers (sound-on / tap-to-play) for
+  // reduce-motion. See shouldFreezeCoverForReduceMotion for the full rationale.
+  const freezeForReduceMotion = shouldFreezeCoverForReduceMotion({
+    reduceMotion,
+    autoplay,
+    muted,
+    loop,
+  });
   const presentation = resolveEventCoverMediaPresentation({
     mediaUrl,
     mediaType,
     hasMediaError,
-    reduceMotion,
+    reduceMotion: freezeForReduceMotion,
   });
 
   const handleMediaError = (
