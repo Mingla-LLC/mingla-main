@@ -356,6 +356,17 @@ jobs:
       - name: Run ORCH-0986 paired profile gate
         run: node .github/scripts/strict-grep/orch-0986-paired-profile.mjs
 
+  orch-0989-unified-cover-picker:
+    name: "ORCH-0989: unified cover picker single-sheet + gallery-first"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0989 unified cover picker gate
+        run: node .github/scripts/strict-grep/orch-0989-unified-cover-picker.mjs
+
   orch-0990-flower-stop-florist-gate:
     name: "ORCH-0990: flower stop composite florist gate"
     runs-on: ubuntu-latest

@@ -104,6 +104,10 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       // React Native's bracket-unsafe generated-source glob so per-ORCH
       // worktrees such as ORCH-0950-[trip-capacity-single-source] can build.
       "./plugins/withAndroidBracketSafeCmake",
+      // ORCH-0989: Xcode 26 / clang 21 cannot compile fmt 10.x consteval
+      // format-string checking. Inject FMT_USE_CONSTEVAL=0 into the generated
+      // Podfile post_install so iOS dev/device builds compile on this toolchain.
+      "./plugins/withIosFmtConsteval",
     ],
     extra: {
       ...config.extra,

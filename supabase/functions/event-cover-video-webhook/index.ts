@@ -33,6 +33,10 @@ export const recoverJobIdFromPayload = (payload: Record<string, unknown>): strin
   const fromContext = contextValue(payload, "job_id");
   if (fromContext !== null && isValidUuid(fromContext)) return fromContext;
 
+  // ORCH-0989: both templates end in `${job.id}` as the last path segment —
+  //   event:  event-covers/raw/${brandId}/${eventId}/${job.id}
+  //   brand:  brand-covers/raw/${brandId}/${job.id}
+  // so the last-segment recovery works for brand-target jobs unchanged.
   const publicId = typeof payload.public_id === "string" ? payload.public_id : null;
   if (publicId === null) return null;
   const lastSegment = publicId.split("/").at(-1) ?? null;
@@ -138,7 +142,7 @@ export const handleEventCoverVideoWebhook = async (
   const supabase = deps.serviceRoleClient();
   const { data: existingJob, error: existingJobError } = await supabase
     .from("event_cover_video_jobs")
-    .select("id,status,event_id,apply_mode,trim_start_ms,trim_end_ms")
+    .select("id,status,event_id,target_kind,apply_mode,trim_start_ms,trim_end_ms")
     .eq("id", jobId)
     .maybeSingle();
   if (existingJobError || !existingJob) {
@@ -229,14 +233,17 @@ export const handleEventCoverVideoWebhook = async (
       providerPayload: payload,
     }))
     .eq("id", jobId)
-    .select("id,event_id,apply_mode")
+    .select("id,event_id,target_kind,apply_mode")
     .maybeSingle();
   if (jobError || !job) {
     console.error("[event-cover-video-webhook] ready update failed:", jobError);
     return jsonResponse({ error: "internal_error" }, 500);
   }
 
-  if (job.apply_mode === "draft_auto") {
+  // ORCH-0989: only event-target draft_auto jobs auto-apply to events here.
+  // Brand-target jobs always use published_manual (no event_id), so they
+  // stay at `ready` and the explicit apply fn writes brands.cover_media_url.
+  if (job.target_kind !== "brand" && job.apply_mode === "draft_auto") {
     const { error: eventUpdateError } = await supabase
       .from("events")
       .update({

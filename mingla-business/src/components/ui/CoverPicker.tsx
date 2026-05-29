@@ -1,34 +1,33 @@
 /**
- * CoverPicker — shared 3-provider cover image picker (ORCH-0876).
+ * CoverPicker — unified, gallery-first, target-aware cover picker.
  *
- * Extracted from `mingla-business/src/components/event/CreatorStep4Cover.tsx`
- * to enable reuse on the trip side (Step 1 Basics + EditPublishedTripScreen
- * Cover section) without duplicating the picker stack.
+ * ORCH-0989 [Unified cover picker sheet]: the ONE cover authoring body for
+ * events, trips, AND brand covers. Three tabs (Library / GIF / Stock), each
+ * gallery-first — GIF opens to GIPHY trending, Stock opens to Pexels curated,
+ * no typing required; search is additive. Library hosts device image/GIF +
+ * (per-target) video via the proven ORCH-0978 Architecture-B trim path.
  *
- * Self-contained state:
- *   - provider tab (GIPHY ↔ Pexels)
- *   - search input + status
- *   - search results
- *   - upload spinner
- *   - media display error
+ * Target routing (CoverTarget discriminated union, SPEC §4.2):
+ *   - event/trip → uploadEventCoverMedia + direct 7-field patch; video via
+ *     useEventCoverVideoUpload(eventRowId, brandId, applyMode, "event").
+ *   - brand → useBrandCoverUpload.uploadCover (device + provider, host-
+ *     validated); video via useEventCoverVideoUpload(_, brandId, _, "brand")
+ *     which persists to brands.cover_media_url on ready.
  *
- * Caller responsibility:
- *   - Pass current cover fields as initial* props
- *   - Receive 7-field patch via `onCoverChange` on any selection/upload/remove
- *   - Surface toasts via `onShowToast`
+ * The 7-field CoverPatch emit contract + onCoverChange callback are UNCHANGED
+ * (every mount keeps consuming the same patch). Hosted inside CoverPickerSheet
+ * (the canonical surface for all 6 mounts).
  *
- * Architecture: events table is shared between events + trips, so the
- * upload service (`uploadEventCoverMedia`) is event_type-agnostic — it
- * accepts any events-row id (the event's id, or the trip's id) and
- * writes to the same `event_covers` storage bucket keyed by
- * `{brandId}/{eventRowId}/{random}.{ext}`. No storage policy changes
- * needed for trip reuse.
+ * Provider transport asymmetry (LOCKED, ToS):
+ *   - GIPHY client-direct (search + trending) — proxying forbidden.
+ *   - Pexels edge-proxied (search + curated) — key stays server-side.
  *
- * Per SPEC_ORCH-0876_V2_FULL_PARITY §9.1.
+ * Per SPEC_ORCH-0989 §3/§4/§6/§7 + SPEC_ORCH-0989_..._DESIGN.md.
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Image,
   Platform,
   Pressable,
@@ -37,14 +36,10 @@ import {
   TextInput,
   View,
 } from "react-native";
-// ORCH-0892-B v2: ScrollView routed through SmartScrollView wrapper.
-// On native, resolves to KeyboardAwareScrollView (library) which scrolls
-// the focused TextInput (e.g. the GIPHY/Pexels search input) exactly
-// 12pt above the keyboard. On web, plain RN ScrollView. KAS supersedes
-// ORCH-0892-A's <KeyboardAvoidingView> wrap which has been removed; also
-// supersedes ORCH-0884 follow-ups #8 (400pt spacer) and #9 (dead
-// scrollResponder call) which remain deleted. Per SPEC_ORCH-0892-B_v2
-// §7.D + §15 (ORCH-0888 supersession verdict).
+import * as Haptics from "expo-haptics";
+// ORCH-0892-B v2: ScrollView routed through SmartScrollView wrapper (KAS on
+// native, plain ScrollView on web) so the GIF/Stock search input scrolls
+// above the keyboard without bespoke listeners (orch-0892 gate).
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import * as FileSystem from "expo-file-system/legacy";
 import * as ImagePicker from "expo-image-picker";
@@ -55,6 +50,7 @@ import NativeVideoTrim, {
 
 import {
   accent,
+  glass,
   radius as radiusTokens,
   semantic,
   spacing,
@@ -89,6 +85,10 @@ import {
   searchPexelsEventCovers,
   type PexelsCoverSearchResult,
 } from "../../services/pexelsEventCoverService";
+import {
+  curatedPexelsCovers,
+  trendingGiphyCovers,
+} from "../../services/coverProviderBrowseService";
 import { EventCoverProviderError } from "../../services/eventCoverProviderError";
 import {
   eventCoverProviderCreditLabel,
@@ -96,21 +96,27 @@ import {
 } from "../../types/eventCoverProvider";
 import type { EventCoverMediaProvider } from "../../types/eventCoverProvider";
 import type { EventCoverMediaType } from "../../store/draftEventStore";
+import { useBrandCoverUpload } from "../../hooks/useBrandCoverUpload";
+import { BrandCoverError } from "../../utils/brandCoverRules";
 import { Button } from "./Button";
+import { Icon } from "./Icon";
 import { EventCoverMedia, type EventCoverMediaErrorEvent } from "./EventCoverMedia";
 import { useAuth } from "../../context/AuthContext";
+import type { CoverTarget } from "./coverTarget";
 
-export type CoverProvider = "upload" | "giphy" | "pexels";
-type SearchProviderTab = "giphy" | "pexels";
-type SearchStatus = "idle" | "loading" | "error";
+export type { CoverTarget } from "./coverTarget";
+
+// LOCKED tab ids (SPEC §4.3); display labels are designer-owned copy (DESIGN §3.1).
+type CoverTabId = "library" | "gif" | "stock";
+type ProviderStatus = "idle" | "loading" | "populated" | "empty" | "error";
+
 type VideoTrimSubscription = { remove: () => void };
-/** Full 7-field cover patch emitted on every change. Mirror of the
- *  events table cover_media_* column family. */
+
+/** Full 7-field cover patch emitted on every change. Mirror of the events
+ *  table cover_media_* column family. UNCHANGED from prior CoverPicker. */
 export interface CoverPatch {
   coverMediaUrl: string | null;
   coverMediaType: EventCoverMediaType | null;
-  /** Provider union — narrow to keep EventCoverMedia + draftEventStore in
-   *  sync. Free-form strings would break the event-side updateDraft path. */
   coverMediaProvider: EventCoverMediaProvider | null;
   coverMediaSourceUrl: string | null;
   coverMediaCredit: string | null;
@@ -119,12 +125,9 @@ export interface CoverPatch {
 }
 
 export interface CoverPickerProps {
-  brandId: string;
-  /** Events-table row id. For events: the event id. For trips: the trip's
-   *  events-row id. uploadEventCoverMedia is event_type-agnostic. */
-  eventRowId: string;
-  /** Cover hue fallback for empty preview (0..360). Events have one; trips
-   *  default to 0. Used by EventCoverMedia when no media is set. */
+  /** Discriminated cover target — drives persistence + video availability. */
+  target: CoverTarget;
+  /** Cover hue fallback for empty preview (0..360). */
   initialCoverHue?: number;
   initialMediaUrl: string | null;
   initialMediaType: EventCoverMediaType | null;
@@ -135,20 +138,33 @@ export interface CoverPickerProps {
   initialAlt: string | null;
   onCoverChange: (patch: CoverPatch) => void;
   onShowToast: (msg: string) => void;
-  /** Defaults to ["upload", "giphy", "pexels"]. Caller may restrict (e.g.,
-   *  show only upload tab). */
-  providers?: ReadonlyArray<CoverProvider>;
   disabled?: boolean;
-  enableVideoUpload?: boolean;
-  coverMediaApplyMode?: "draft_auto" | "published_manual";
+  /** Override default 3-column desktop / 2-column phone masonry. */
+  isWideDesktop?: boolean;
   onCoverVideoProcessingChange?: (isProcessing: boolean) => void;
 }
 
-const DEFAULT_PROVIDERS: ReadonlyArray<CoverProvider> = ["upload", "giphy", "pexels"];
+const TAB_DEFS: ReadonlyArray<{ id: CoverTabId; label: string; icon: Parameters<typeof Icon>[0]["name"] }> = [
+  { id: "library", label: "Library", icon: "grid" },
+  { id: "gif", label: "GIFs", icon: "sparkle" },
+  { id: "stock", label: "Photos", icon: "search" },
+];
+
+const lightHaptic = (): void => {
+  if (Platform.OS === "web") return;
+  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+};
+const tickHaptic = (): void => {
+  if (Platform.OS === "web") return;
+  void Haptics.selectionAsync().catch(() => {});
+};
+const warnHaptic = (): void => {
+  if (Platform.OS === "web") return;
+  void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+};
 
 export const CoverPicker: React.FC<CoverPickerProps> = ({
-  brandId,
-  eventRowId,
+  target,
   initialCoverHue = 0,
   initialMediaUrl,
   initialMediaType,
@@ -159,28 +175,32 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   initialAlt,
   onCoverChange,
   onShowToast,
-  providers = DEFAULT_PROVIDERS,
   disabled = false,
-  enableVideoUpload = true,
-  coverMediaApplyMode = "draft_auto",
+  isWideDesktop = false,
   onCoverVideoProcessingChange,
 }) => {
   const { isAuthReady } = useAuth();
+  const isBrand = target.kind === "brand";
+  const isNative = Platform.OS !== "web";
+
+  const [activeTab, setActiveTab] = useState<CoverTabId>("library");
   const [uploading, setUploading] = useState(false);
-  const [mediaDisplayError, setMediaDisplayError] = useState<string | null>(
-    null,
-  );
+  const [mediaDisplayError, setMediaDisplayError] = useState<string | null>(null);
+
+  // Video upload hook — event/trip writes events.cover_media_url; brand writes
+  // brands.cover_media_url (via the apply step on ready). For brand, eventRowId
+  // is unused server-side (sentinel passed for the hook's signature).
   const videoUpload = useEventCoverVideoUpload(
-    eventRowId,
-    brandId,
-    coverMediaApplyMode,
+    isBrand ? "" : target.eventRowId,
+    target.brandId,
+    isBrand ? "published_manual" : target.coverMediaApplyMode,
+    isBrand ? "brand" : "event",
   );
   const lastVideoUploadFileRef = useRef<EventCoverVideoUploadFile | null>(null);
 
+  const brandCover = useBrandCoverUpload();
+
   // Local mirror of current cover for preview render + credit label.
-  // Parent owns canonical state (passes initial* props on remount); this
-  // local copy reflects the most recent onCoverChange-fired patch so the
-  // preview updates immediately without round-trip.
   const [localCover, setLocalCover] = useState<CoverPatch>({
     coverMediaUrl: initialMediaUrl,
     coverMediaType: initialMediaType,
@@ -191,8 +211,6 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     coverMediaAlt: initialAlt,
   });
 
-  // Sync localCover when caller updates initial props (e.g., parent
-  // re-renders with new server data).
   useEffect(() => {
     setLocalCover({
       coverMediaUrl: initialMediaUrl,
@@ -225,27 +243,16 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     );
   }, [onCoverVideoProcessingChange, videoUpload.stage.phase]);
 
-  const supportsUpload = providers.includes("upload");
-  const supportsVideoUpload = supportsUpload && enableVideoUpload;
-  const supportsGiphy = providers.includes("giphy");
-  const supportsPexels = providers.includes("pexels");
-  const supportsSearch = supportsGiphy || supportsPexels;
-
-  // Search tab defaults to the first supported search provider.
-  const initialSearchTab: SearchProviderTab = supportsGiphy ? "giphy" : "pexels";
-  const [providerTab, setProviderTab] = useState<SearchProviderTab>(initialSearchTab);
+  // ----- Browse state (GIF + Stock tabs) ---------------------------------
   const [query, setQuery] = useState("");
-  const [searchStatus, setSearchStatus] = useState<SearchStatus>("idle");
-  const [searchError, setSearchError] = useState<string | null>(null);
+  const [giphyStatus, setGiphyStatus] = useState<ProviderStatus>("idle");
+  const [giphyError, setGiphyError] = useState<EventCoverProviderError["code"] | null>(null);
   const [giphyResults, setGiphyResults] = useState<GiphyCoverSearchResult[]>([]);
+  const [pexelsStatus, setPexelsStatus] = useState<ProviderStatus>("idle");
+  const [pexelsError, setPexelsError] = useState<EventCoverProviderError["code"] | null>(null);
   const [pexelsResults, setPexelsResults] = useState<PexelsCoverSearchResult[]>([]);
-
-  // ORCH-0892-A: prior ORCH-0884 follow-ups #8 + #9 (Keyboard listener
-  // with 400pt spacer + dead scroll-responder call) DELETED. Both were
-  // workarounds for keyboard covering the GIPHY/Pexels search input.
-  // The Fabric-compatible fix is the keyboard-controller library's
-  // <KeyboardAvoidingView behavior="padding"> wrap around the search
-  // section below. Supersedes ORCH-0888 if pilot confirms.
+  const giphyLoadedRef = useRef(false);
+  const pexelsLoadedRef = useRef(false);
 
   const selectedCredit = eventCoverProviderCreditLabel({
     provider: localCover.coverMediaProvider,
@@ -280,6 +287,8 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     [onCoverChange],
   );
 
+  // Video ready → emit the upload-provider patch (events) OR rely on the brand
+  // apply (brand). Both surface the processed Cloudinary URL in the preview.
   useEffect(() => {
     if (videoUpload.stage.phase !== "ready" || videoUpload.processedUrl === null) {
       return;
@@ -295,12 +304,9 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       coverMediaAlt: "Uploaded video cover",
     });
     onShowToast("Video cover updated.");
-  }, [
-    emitChange,
-    onShowToast,
-    videoUpload.processedUrl,
-    videoUpload.stage.phase,
-  ]);
+  }, [emitChange, onShowToast, videoUpload.processedUrl, videoUpload.stage.phase]);
+
+  // ----- Device image/GIF + video pickers --------------------------------
 
   const showUploadError = useCallback(
     (error: unknown): void => {
@@ -326,6 +332,10 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
             return;
         }
       }
+      if (error instanceof BrandCoverError) {
+        onShowToast(error.message);
+        return;
+      }
       onShowToast("Cover upload failed. Try again.");
     },
     [onShowToast],
@@ -335,10 +345,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
       showUploadError(
-        new EventCoverMediaError(
-          "permission_denied",
-          "Photo library permission denied.",
-        ),
+        new EventCoverMediaError("permission_denied", "Photo library permission denied."),
       );
       return false;
     }
@@ -346,17 +353,15 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   }, [showUploadError]);
 
   const validateEventRowId = useCallback((): boolean => {
-    if (eventRowId.trim().length === 0) {
+    if (isBrand) return true;
+    if (target.eventRowId.trim().length === 0) {
       showUploadError(
-        new EventCoverMediaError(
-          "missing_server_event_id",
-          "Missing server row id.",
-        ),
+        new EventCoverMediaError("missing_server_event_id", "Missing server row id."),
       );
       return false;
     }
     return true;
-  }, [eventRowId, showUploadError]);
+  }, [isBrand, target, showUploadError]);
 
   const pickImageOrGifCover = useCallback(async (): Promise<void> => {
     if (uploading || disabled || activeVideoUpload) return;
@@ -378,10 +383,46 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       });
       if (result.canceled || result.assets.length === 0) return;
       const asset = result.assets[0];
+
+      if (target.kind === "brand") {
+        // Brand device upload → brand_covers bucket + brands.cover_media_url.
+        const uploaded = await brandCover.uploadCover({
+          brandId: target.brandId,
+          accountId: target.accountId,
+          existingDescription: target.existingDescription,
+          previousMediaUrl: localCover.coverMediaUrl,
+          source: {
+            kind: "upload",
+            asset: {
+              uri: asset.uri,
+              mimeType: asset.mimeType,
+              fileName: asset.fileName,
+              fileSize: asset.fileSize,
+            },
+          },
+        });
+        setMediaDisplayError(null);
+        emitChange({
+          coverMediaUrl: uploaded.publicUrl,
+          coverMediaType: uploaded.mediaType === "gif" ? "gif" : "image",
+          coverMediaProvider: UPLOAD_EVENT_COVER_PROVIDER_METADATA.provider,
+          coverMediaSourceUrl: UPLOAD_EVENT_COVER_PROVIDER_METADATA.sourceUrl,
+          coverMediaCredit: UPLOAD_EVENT_COVER_PROVIDER_METADATA.credit,
+          coverMediaCreditUrl: UPLOAD_EVENT_COVER_PROVIDER_METADATA.creditUrl,
+          coverMediaAlt: UPLOAD_EVENT_COVER_PROVIDER_METADATA.alt,
+        });
+        if (Platform.OS !== "web") {
+          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        }
+        onShowToast("Cover updated.");
+        return;
+      }
+
+      // Event/trip device upload → event_covers bucket + 7-field patch.
       const upload = await uploadEventCoverMedia({
         uri: asset.uri,
-        brandId,
-        eventId: eventRowId,
+        brandId: target.brandId,
+        eventId: target.eventRowId,
         mimeType: asset.mimeType,
         fileName: asset.fileName,
         fileSize: asset.fileSize,
@@ -398,6 +439,9 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
         coverMediaCreditUrl: UPLOAD_EVENT_COVER_PROVIDER_METADATA.creditUrl,
         coverMediaAlt: UPLOAD_EVENT_COVER_PROVIDER_METADATA.alt,
       });
+      if (Platform.OS !== "web") {
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      }
       onShowToast("Cover updated.");
     } catch (error) {
       showUploadError(error);
@@ -405,17 +449,18 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       setUploading(false);
     }
   }, [
-    brandId,
+    activeVideoUpload,
+    brandCover,
     disabled,
     emitChange,
     ensureMediaPermission,
-    eventRowId,
     isAuthReady,
+    localCover.coverMediaUrl,
     onShowToast,
     showUploadError,
+    target,
     uploading,
     validateEventRowId,
-    activeVideoUpload,
   ]);
 
   const trimVideoWithDedicatedEditor = useCallback(
@@ -443,11 +488,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
           }) as VideoTrimSubscription,
           videoTrim.onError(({ message, errorCode }) => {
             settle(() =>
-              reject(
-                new Error(
-                  `Video trim failed (${errorCode || "unknown"}): ${message}`,
-                ),
-              ),
+              reject(new Error(`Video trim failed (${errorCode || "unknown"}): ${message}`)),
             );
           }) as VideoTrimSubscription,
         );
@@ -455,8 +496,6 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
         try {
           // react-native-video-trim docs:
           // https://github.com/maitrungduc1410/react-native-video-trim
-          // https://www.npmjs.com/package/react-native-video-trim
-          // v8.1.0's typed/native config treats maxDuration as milliseconds.
           showEditor(uri, {
             maxDuration: EVENT_COVER_MAX_VIDEO_DURATION_MS,
             saveButtonText: "Use clip",
@@ -471,7 +510,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   );
 
   const pickVideoCover = useCallback(async (): Promise<void> => {
-    if (!supportsVideoUpload || uploading || disabled || activeVideoUpload) return;
+    if (uploading || disabled || activeVideoUpload) return;
     if (!isAuthReady) {
       onShowToast("Finishing sign-in before upload. Try again in a moment.");
       return;
@@ -489,10 +528,8 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       });
       if (result.canceled || result.assets.length === 0) return;
       const asset = result.assets[0];
-      const isNative = Platform.OS !== "web";
-      const trimResult = isNative
-        ? await trimVideoWithDedicatedEditor(asset.uri)
-        : null;
+      // Web has no native trimmer (SC-7-Web-4): use the raw asset, no crash.
+      const trimResult = isNative ? await trimVideoWithDedicatedEditor(asset.uri) : null;
       if (isNative && trimResult === null) return;
       const uploadFile =
         trimResult !== null
@@ -533,9 +570,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       await videoUpload.start(uploadFile);
     } catch (error) {
       onShowToast(
-        error instanceof Error
-          ? error.message
-          : "Video cover upload failed. Try again.",
+        error instanceof Error ? error.message : "Video cover upload failed. Try again.",
       );
     } finally {
       setUploading(false);
@@ -545,8 +580,8 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     disabled,
     ensureMediaPermission,
     isAuthReady,
+    isNative,
     onShowToast,
-    supportsVideoUpload,
     trimVideoWithDedicatedEditor,
     uploading,
     validateEventRowId,
@@ -567,39 +602,137 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     void videoUpload.start(uploadFile);
   }, [activeVideoUpload, disabled, uploading, videoUpload]);
 
+  // ----- Provider browse (gallery-first) ---------------------------------
+
+  const loadTrending = useCallback(async (): Promise<void> => {
+    if (giphyStatus === "loading") return;
+    setGiphyStatus("loading");
+    setGiphyError(null);
+    try {
+      const results = await trendingGiphyCovers({ limit: 24 });
+      setGiphyResults(results);
+      setGiphyStatus(results.length > 0 ? "populated" : "empty");
+      giphyLoadedRef.current = true;
+    } catch (error) {
+      const code =
+        error instanceof EventCoverProviderError ? error.code : "provider_unavailable";
+      setGiphyError(code);
+      setGiphyStatus("error");
+      warnHaptic();
+    }
+  }, [giphyStatus]);
+
+  const loadCurated = useCallback(async (): Promise<void> => {
+    if (pexelsStatus === "loading") return;
+    setPexelsStatus("loading");
+    setPexelsError(null);
+    try {
+      const page = await curatedPexelsCovers({ perPage: 20 });
+      setPexelsResults(page.photos);
+      setPexelsStatus(page.photos.length > 0 ? "populated" : "empty");
+      pexelsLoadedRef.current = true;
+    } catch (error) {
+      const code =
+        error instanceof EventCoverProviderError ? error.code : "provider_unavailable";
+      setPexelsError(code);
+      setPexelsStatus("error");
+      warnHaptic();
+    }
+  }, [pexelsStatus]);
+
+  // Gallery-first: when entering GIF/Stock with an empty query and no prior
+  // load this session, fire trending/curated. One call per tab-open session.
+  useEffect(() => {
+    if (disabled) return;
+    if (activeTab === "gif" && !giphyLoadedRef.current && query.trim().length === 0) {
+      void loadTrending();
+    } else if (activeTab === "stock" && !pexelsLoadedRef.current && query.trim().length === 0) {
+      void loadCurated();
+    }
+  }, [activeTab, disabled, loadCurated, loadTrending, query]);
+
   const runProviderSearch = useCallback(async (): Promise<void> => {
     if (disabled) return;
     const trimmed = query.trim();
-    if (trimmed.length < 2) {
-      setSearchError("Search with at least two characters.");
-      return;
-    }
-    setSearchStatus("loading");
-    setSearchError(null);
-    try {
-      if (providerTab === "giphy") {
-        const results = await searchGiphyEventCovers(trimmed, { limit: 12 });
+    if (trimmed.length < 2) return;
+    if (activeTab === "gif") {
+      setGiphyStatus("loading");
+      setGiphyError(null);
+      try {
+        const results = await searchGiphyEventCovers(trimmed, { limit: 24 });
         setGiphyResults(results);
-      } else {
-        const page = await searchPexelsEventCovers(trimmed, { perPage: 12 });
-        setPexelsResults(page.photos);
+        setGiphyStatus(results.length > 0 ? "populated" : "empty");
+      } catch (error) {
+        const code =
+          error instanceof EventCoverProviderError ? error.code : "provider_unavailable";
+        setGiphyError(code);
+        setGiphyStatus("error");
+        warnHaptic();
       }
-      setSearchStatus("idle");
-    } catch (error) {
-      const message =
-        error instanceof EventCoverProviderError
-          ? error.message
-          : "Cover search failed. Try again.";
-      setSearchStatus("error");
-      setSearchError(message);
-      onShowToast(message);
+    } else if (activeTab === "stock") {
+      setPexelsStatus("loading");
+      setPexelsError(null);
+      try {
+        const page = await searchPexelsEventCovers(trimmed, { perPage: 20 });
+        setPexelsResults(page.photos);
+        setPexelsStatus(page.photos.length > 0 ? "populated" : "empty");
+      } catch (error) {
+        const code =
+          error instanceof EventCoverProviderError ? error.code : "provider_unavailable";
+        setPexelsError(code);
+        setPexelsStatus("error");
+        warnHaptic();
+      }
     }
-  }, [disabled, onShowToast, providerTab, query]);
+  }, [activeTab, disabled, query]);
+
+  const clearSearch = useCallback((): void => {
+    setQuery("");
+    // Restore the cached trending/curated grid (no new network if loaded).
+    if (activeTab === "gif" && giphyLoadedRef.current) {
+      setGiphyStatus(giphyResults.length > 0 ? "populated" : "empty");
+    } else if (activeTab === "gif") {
+      void loadTrending();
+    }
+    if (activeTab === "stock" && pexelsLoadedRef.current) {
+      setPexelsStatus(pexelsResults.length > 0 ? "populated" : "empty");
+    } else if (activeTab === "stock") {
+      void loadCurated();
+    }
+  }, [activeTab, giphyResults.length, loadCurated, loadTrending, pexelsResults.length]);
+
+  // ----- Selection persistence -------------------------------------------
 
   const selectGiphy = useCallback(
-    (result: GiphyCoverSearchResult): void => {
+    async (result: GiphyCoverSearchResult): Promise<void> => {
       if (disabled) return;
+      lightHaptic();
       setMediaDisplayError(null);
+      if (target.kind === "brand") {
+        // Host-validated brand persistence (anti-injection, ORCH-0805).
+        try {
+          await brandCover.uploadCover({
+            brandId: target.brandId,
+            accountId: target.accountId,
+            existingDescription: target.existingDescription,
+            previousMediaUrl: localCover.coverMediaUrl,
+            source: {
+              kind: "provider",
+              ref: {
+                provider: "giphy",
+                publicUrl: result.mediaUrl,
+                attribution:
+                  result.creditUrl !== null
+                    ? { name: result.credit, url: result.creditUrl }
+                    : null,
+              },
+            },
+          });
+        } catch (error) {
+          showUploadError(error);
+          return;
+        }
+      }
       emitChange({
         coverMediaUrl: result.mediaUrl,
         coverMediaType: "gif",
@@ -611,13 +744,35 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       });
       onShowToast("GIPHY cover selected.");
     },
-    [disabled, emitChange, onShowToast],
+    [brandCover, disabled, emitChange, localCover.coverMediaUrl, onShowToast, showUploadError, target],
   );
 
   const selectPexels = useCallback(
-    (result: PexelsCoverSearchResult): void => {
+    async (result: PexelsCoverSearchResult): Promise<void> => {
       if (disabled) return;
+      lightHaptic();
       setMediaDisplayError(null);
+      if (target.kind === "brand") {
+        try {
+          await brandCover.uploadCover({
+            brandId: target.brandId,
+            accountId: target.accountId,
+            existingDescription: target.existingDescription,
+            previousMediaUrl: localCover.coverMediaUrl,
+            source: {
+              kind: "provider",
+              ref: {
+                provider: "pexels",
+                publicUrl: result.mediaUrl,
+                attribution: { name: result.credit, url: result.creditUrl },
+              },
+            },
+          });
+        } catch (error) {
+          showUploadError(error);
+          return;
+        }
+      }
       emitChange({
         coverMediaUrl: result.mediaUrl,
         coverMediaType: "image",
@@ -629,12 +784,19 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       });
       onShowToast("Pexels cover selected.");
     },
-    [disabled, emitChange, onShowToast],
+    [brandCover, disabled, emitChange, localCover.coverMediaUrl, onShowToast, showUploadError, target],
   );
 
   const handleRemoveCover = useCallback((): void => {
     if (disabled) return;
+    if (Platform.OS !== "web") {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    }
     setMediaDisplayError(null);
+    // Emit the null patch. For brand the parent (BrandEditView /
+    // BrandCreationFlow) mirrors into its draft and persists the cleared
+    // cover on Save (the brand save path already writes cover_media_url).
+    // For event/trip the parent persists through its existing cover patch.
     emitChange({
       coverMediaUrl: null,
       coverMediaType: null,
@@ -662,289 +824,559 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     [onShowToast],
   );
 
-  const currentResults = useMemo(
-    () => (providerTab === "giphy" ? giphyResults : pexelsResults),
-    [giphyResults, pexelsResults, providerTab],
-  );
+  const switchTab = useCallback((tab: CoverTabId): void => {
+    tickHaptic();
+    setActiveTab(tab);
+    setQuery("");
+  }, []);
+
+  const columns = isWideDesktop ? 3 : 2;
+  const hasCover = localCover.coverMediaUrl !== null;
 
   return (
-    <View>
-      {/* Preview + upload/remove actions */}
-      <View style={styles.field}>
-        <View style={styles.coverPreview}>
-          <EventCoverMedia
-            hue={initialCoverHue}
-            mediaUrl={activeMediaUrl}
-            mediaType={activeMediaType}
-            radius={radiusTokens.lg}
-            label={localCover.coverMediaAlt ?? "cover"}
-            height={180}
-            onMediaError={handleMediaRenderError}
-            muted={true}
-            showAudioControl={activeMediaType === "video"}
-          >
-            {activeVideoUpload && videoStageCopy !== null ? (
-              <View style={styles.videoProgressOverlay}>
-                <Text style={styles.videoProgressText}>{videoStageCopy}</Text>
-                <View style={styles.progressTrack}>
-                  <View
-                    style={[
-                      styles.progressFill,
-                      { width: `${videoUpload.stage.percent}%` },
-                    ]}
-                  />
-                </View>
-              </View>
-            ) : null}
-          </EventCoverMedia>
-        </View>
-        {selectedCredit !== null ? (
-          <Text style={styles.creditText}>{selectedCredit}</Text>
-        ) : null}
-        {supportsUpload ? (
-          <View style={styles.actionRow}>
-            <Button
-              label={
-                localCover.coverMediaUrl === null
-                  ? "Upload image/GIF"
-                  : "Replace upload"
-              }
-              leadingIcon="upload"
-              variant="secondary"
-              size="md"
-              shape="square"
-              onPress={pickImageOrGifCover}
-              loading={uploading}
-              disabled={uploading || activeVideoUpload || disabled}
-              style={styles.actionButton}
-            />
-            {supportsVideoUpload ? (
-              <Button
-                label="Upload video"
-                leadingIcon="play"
-                variant="secondary"
-                size="md"
-                shape="square"
-                onPress={() => {
-                  void pickVideoCover();
-                }}
-                disabled={uploading || activeVideoUpload || disabled}
-                style={styles.actionButton}
+    <View style={styles.root}>
+      {/* Tab bar — segmented control (DESIGN §3). */}
+      <View style={styles.tabTrack} accessibilityRole="tablist">
+        {TAB_DEFS.map((tab) => {
+          const isActive = tab.id === activeTab;
+          return (
+            <Pressable
+              key={tab.id}
+              onPress={() => switchTab(tab.id)}
+              disabled={disabled}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: isActive, disabled }}
+              accessibilityLabel={`${tab.label} tab`}
+              style={[styles.tabSegment, isActive && styles.tabSegmentActive]}
+            >
+              <Icon
+                name={tab.icon}
+                size={16}
+                color={isActive ? accent.warm : textTokens.tertiary}
               />
-            ) : null}
-            {localCover.coverMediaUrl !== null ? (
-              <Button
-                label="Remove"
-                variant="ghost"
-                size="md"
-                shape="square"
-                onPress={handleRemoveCover}
-                disabled={uploading || activeVideoUpload || disabled}
-                style={styles.removeButton}
-              />
-            ) : null}
-          </View>
-        ) : null}
-        {activeVideoUpload ? (
-          <View style={styles.actionRow}>
-            <Button
-              label="Cancel upload"
-              variant="ghost"
-              size="md"
-              shape="square"
-              onPress={cancelVideoCoverUpload}
-              style={styles.actionButton}
-            />
-          </View>
-        ) : null}
-        {videoUpload.stage.phase === "error" ? (
-          <View style={styles.videoErrorRow}>
-            <Text accessibilityRole="alert" style={styles.mediaErrorText}>
-              {videoUpload.stage.message}
-            </Text>
-            {lastVideoUploadFileRef.current !== null ? (
-              <Button
-                label="Upload failed - try again"
-                variant="secondary"
-                size="sm"
-                shape="square"
-                onPress={retryVideoCoverUpload}
-                disabled={uploading || disabled}
-                style={styles.retryButton}
-              />
-            ) : null}
-          </View>
-        ) : null}
-        {supportsUpload ? (
-          <Text style={styles.uploadLimitText}>{EVENT_COVER_UPLOAD_LIMIT_COPY}</Text>
-        ) : null}
-        {supportsVideoUpload ? (
-          <Text style={styles.uploadLimitText}>{EVENT_COVER_VIDEO_PROCESSING_COPY}</Text>
-        ) : null}
-        {mediaDisplayError !== null ? (
-          <Text accessibilityRole="alert" style={styles.mediaErrorText}>
-            {mediaDisplayError}
-          </Text>
-        ) : null}
+              <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>
+                {tab.label}
+              </Text>
+            </Pressable>
+          );
+        })}
       </View>
 
-      {/* GIPHY + Pexels search (only renders if at least one is enabled).
-          ORCH-0892-B v2: <KeyboardAvoidingView> wrap removed. Keyboard
-          avoidance for the search input now flows through the parent
-          screen / Sheet consumer's SmartScrollView (KAS) which scrolls
-          the focused TextInput exactly above the keyboard. ORCH-0884
-          follow-ups #8 (400pt spacer) and #9 (dead scrollResponder)
-          remain DELETED. Per SPEC_ORCH-0892-B_v2 §7.D. */}
-      {supportsSearch ? (
-        <View>
-          <View style={styles.field}>
-            <Text style={styles.fieldLabel}>Find a cover</Text>
-            <View style={styles.providerTabs}>
-              {supportsGiphy ? (
-                <ProviderTabButton
-                  label="GIPHY"
-                  active={providerTab === "giphy"}
-                  onPress={() => setProviderTab("giphy")}
-                  disabled={disabled}
-                />
-              ) : null}
-              {supportsPexels ? (
-                <ProviderTabButton
-                  label="Pexels"
-                  active={providerTab === "pexels"}
-                  onPress={() => setProviderTab("pexels")}
-                  disabled={disabled}
-                />
-              ) : null}
-            </View>
-            <View style={styles.searchRow}>
-              <TextInput
-                value={query}
-                onChangeText={setQuery}
-                placeholder={
-                  providerTab === "giphy"
-                    ? "Search GIFs"
-                    : "Search landscape photos"
-                }
-                placeholderTextColor={textTokens.tertiary}
-                returnKeyType="search"
-                onSubmitEditing={() => {
-                  void runProviderSearch();
-                }}
-                style={styles.searchInput}
-                editable={!disabled}
-              />
-              <Button
-                label="Search"
-                variant="secondary"
-                size="md"
-                shape="square"
-                onPress={() => {
-                  void runProviderSearch();
-                }}
-                loading={searchStatus === "loading"}
-                disabled={searchStatus === "loading" || disabled}
-                style={styles.searchButton}
-              />
-            </View>
-            {searchError !== null ? (
-              <Text accessibilityRole="alert" style={styles.mediaErrorText}>
-                {searchError}
-              </Text>
-            ) : null}
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.providerResults}
+      {/* Search bar — GIF + Stock only. */}
+      {(activeTab === "gif" || activeTab === "stock") ? (
+        <View style={styles.searchRow}>
+          <Icon name="search" size={18} color={textTokens.tertiary} />
+          <TextInput
+            value={query}
+            onChangeText={setQuery}
+            placeholder={
+              activeTab === "gif"
+                ? "Search GIFs (or just browse)"
+                : "Search photos (or just browse)"
+            }
+            placeholderTextColor={textTokens.tertiary}
+            returnKeyType="search"
+            autoCapitalize="none"
+            autoCorrect={false}
+            onSubmitEditing={() => {
+              void runProviderSearch();
+            }}
+            style={styles.searchInput}
+            editable={!disabled}
+            accessibilityLabel={activeTab === "gif" ? "Search GIFs" : "Search photos"}
+          />
+          {query.length > 0 ? (
+            <Pressable
+              onPress={clearSearch}
+              hitSlop={12}
+              accessibilityRole="button"
+              accessibilityLabel="Clear search"
             >
-              {currentResults.map((result) =>
-                providerTab === "giphy" ? (
-                  <ProviderResultTile
-                    key={`giphy-${result.id}`}
-                    imageUrl={(result as GiphyCoverSearchResult).previewUrl}
-                    label={(result as GiphyCoverSearchResult).alt ?? "GIPHY GIF"}
-                    credit="GIPHY"
-                    onPress={() => selectGiphy(result as GiphyCoverSearchResult)}
-                  />
-                ) : (
-                  <ProviderResultTile
-                    key={`pexels-${(result as PexelsCoverSearchResult).id}`}
-                    imageUrl={(result as PexelsCoverSearchResult).mediaUrl}
-                    label={
-                      (result as PexelsCoverSearchResult).alt ?? "Pexels photo"
-                    }
-                    credit={(result as PexelsCoverSearchResult).credit}
-                    onPress={() =>
-                      selectPexels(result as PexelsCoverSearchResult)
-                    }
-                  />
-                ),
-              )}
-            </ScrollView>
-          </View>
+              <Icon name="close" size={18} color={textTokens.tertiary} />
+            </Pressable>
+          ) : null}
         </View>
+      ) : null}
+
+      {/* Tab bodies */}
+      {activeTab === "library" ? (
+        <LibraryTab
+          hasCover={hasCover}
+          hue={initialCoverHue}
+          activeMediaUrl={activeMediaUrl}
+          activeMediaType={activeMediaType}
+          alt={localCover.coverMediaAlt}
+          credit={selectedCredit}
+          uploading={uploading}
+          activeVideoUpload={activeVideoUpload}
+          videoStageCopy={videoStageCopy}
+          videoPercent={videoUpload.stage.percent}
+          videoErrorMessage={
+            videoUpload.stage.phase === "error" ? videoUpload.stage.message : null
+          }
+          canRetryVideo={lastVideoUploadFileRef.current !== null}
+          disabled={disabled}
+          onPickImage={pickImageOrGifCover}
+          onPickVideo={() => {
+            void pickVideoCover();
+          }}
+          onRemove={handleRemoveCover}
+          onCancelVideo={cancelVideoCoverUpload}
+          onRetryVideo={retryVideoCoverUpload}
+          onMediaError={handleMediaRenderError}
+          mediaDisplayError={mediaDisplayError}
+        />
+      ) : null}
+
+      {activeTab === "gif" ? (
+        <ProviderGrid
+          kind="gif"
+          status={giphyStatus}
+          errorCode={giphyError}
+          columns={columns}
+          giphy={giphyResults}
+          pexels={[]}
+          onSelectGiphy={(r) => {
+            void selectGiphy(r);
+          }}
+          onSelectPexels={() => {}}
+          onRetry={() => {
+            if (query.trim().length >= 2) void runProviderSearch();
+            else void loadTrending();
+          }}
+          onUseLibrary={() => switchTab("library")}
+          searchActive={query.trim().length >= 2}
+        />
+      ) : null}
+
+      {activeTab === "stock" ? (
+        <ProviderGrid
+          kind="stock"
+          status={pexelsStatus}
+          errorCode={pexelsError}
+          columns={columns}
+          giphy={[]}
+          pexels={pexelsResults}
+          onSelectGiphy={() => {}}
+          onSelectPexels={(r) => {
+            void selectPexels(r);
+          }}
+          onRetry={() => {
+            if (query.trim().length >= 2) void runProviderSearch();
+            else void loadCurated();
+          }}
+          onUseLibrary={() => switchTab("library")}
+          searchActive={query.trim().length >= 2}
+        />
       ) : null}
     </View>
   );
 };
 
-const ProviderTabButton: React.FC<{
-  label: string;
-  active: boolean;
-  onPress: () => void;
-  disabled?: boolean;
-}> = ({ label, active, onPress, disabled }) => (
-  <Pressable
-    accessibilityRole="button"
-    accessibilityLabel={label}
-    accessibilityState={{ selected: active, disabled }}
-    onPress={onPress}
-    disabled={disabled}
-    style={[styles.providerTab, active && styles.providerTabActive]}
-  >
-    <Text
-      style={[styles.providerTabText, active && styles.providerTabTextActive]}
-    >
-      {label}
-    </Text>
-  </Pressable>
+// ----- Library tab (preview + action row + video affordance) -------------
+
+const LibraryTab: React.FC<{
+  hasCover: boolean;
+  hue: number;
+  activeMediaUrl: string | null;
+  activeMediaType: EventCoverMediaType | null;
+  alt: string | null;
+  credit: string | null;
+  uploading: boolean;
+  activeVideoUpload: boolean;
+  videoStageCopy: string | null;
+  videoPercent: number;
+  videoErrorMessage: string | null;
+  canRetryVideo: boolean;
+  disabled: boolean;
+  onPickImage: () => void;
+  onPickVideo: () => void;
+  onRemove: () => void;
+  onCancelVideo: () => void;
+  onRetryVideo: () => void;
+  onMediaError: (e: EventCoverMediaErrorEvent) => void;
+  mediaDisplayError: string | null;
+}> = ({
+  hasCover,
+  hue,
+  activeMediaUrl,
+  activeMediaType,
+  alt,
+  credit,
+  uploading,
+  activeVideoUpload,
+  videoStageCopy,
+  videoPercent,
+  videoErrorMessage,
+  canRetryVideo,
+  disabled,
+  onPickImage,
+  onPickVideo,
+  onRemove,
+  onCancelVideo,
+  onRetryVideo,
+  onMediaError,
+  mediaDisplayError,
+}) => (
+  <View>
+    <View style={styles.coverPreview}>
+      <EventCoverMedia
+        hue={hue}
+        mediaUrl={activeMediaUrl}
+        mediaType={activeMediaType}
+        radius={radiusTokens.md}
+        label={alt ?? "cover"}
+        height={180}
+        onMediaError={onMediaError}
+        muted={true}
+        showAudioControl={activeMediaType === "video"}
+      >
+        {activeVideoUpload && videoStageCopy !== null ? (
+          <View style={styles.videoProgressOverlay}>
+            <Text style={styles.videoProgressText}>{videoStageCopy}</Text>
+            <View style={styles.progressTrack}>
+              <View style={[styles.progressFill, { width: `${videoPercent}%` }]} />
+            </View>
+          </View>
+        ) : null}
+      </EventCoverMedia>
+    </View>
+    {credit !== null ? <Text style={styles.creditText}>{credit}</Text> : null}
+
+    <View style={styles.actionRow}>
+      <Button
+        label={hasCover ? "Replace" : "Upload image or GIF"}
+        leadingIcon="upload"
+        variant="secondary"
+        size="md"
+        shape="square"
+        onPress={onPickImage}
+        loading={uploading}
+        disabled={uploading || activeVideoUpload || disabled}
+        style={styles.actionButton}
+      />
+      <Button
+        label="Upload video"
+        leadingIcon="play"
+        variant="secondary"
+        size="md"
+        shape="square"
+        onPress={onPickVideo}
+        disabled={uploading || activeVideoUpload || disabled}
+        style={styles.actionButton}
+      />
+      {hasCover ? (
+        <Button
+          label="Remove"
+          leadingIcon="trash"
+          variant="ghost"
+          size="md"
+          shape="square"
+          onPress={onRemove}
+          disabled={uploading || activeVideoUpload || disabled}
+          style={styles.removeButton}
+        />
+      ) : null}
+    </View>
+
+    {Platform.OS === "web" ? (
+      <Text style={styles.helperText}>
+        On the web, video uploads use the clip as-is. For trimming, use the Mingla
+        Business app.
+      </Text>
+    ) : null}
+
+    {activeVideoUpload ? (
+      <View style={styles.actionRow}>
+        <Button
+          label="Cancel upload"
+          variant="ghost"
+          size="md"
+          shape="square"
+          onPress={onCancelVideo}
+          style={styles.actionButton}
+        />
+      </View>
+    ) : null}
+
+    {videoErrorMessage !== null ? (
+      <View style={styles.videoErrorRow}>
+        <Text accessibilityRole="alert" style={styles.mediaErrorText}>
+          {videoErrorMessage}
+        </Text>
+        {canRetryVideo ? (
+          <Button
+            label="Upload failed - try again"
+            variant="secondary"
+            size="sm"
+            shape="square"
+            onPress={onRetryVideo}
+            disabled={uploading || disabled}
+            style={styles.retryButton}
+          />
+        ) : null}
+      </View>
+    ) : null}
+
+    <Text style={styles.uploadLimitText}>{EVENT_COVER_UPLOAD_LIMIT_COPY}</Text>
+    <Text style={styles.uploadLimitText}>{EVENT_COVER_VIDEO_PROCESSING_COPY}</Text>
+
+    {mediaDisplayError !== null ? (
+      <Text accessibilityRole="alert" style={styles.mediaErrorText}>
+        {mediaDisplayError}
+      </Text>
+    ) : null}
+  </View>
 );
 
-const ProviderResultTile: React.FC<{
+// ----- Provider grid (GIF/Stock masonry + 9 states) ----------------------
+
+const PROVIDER_ERROR_COPY: Record<
+  "gif" | "stock",
+  Record<string, { title: string; body: string }>
+> = {
+  gif: {
+    rate_limited: { title: "Whoa, slow down.", body: "We've hit the hourly limit for GIFs. Give it a minute." },
+    not_configured: { title: "This source is taking a break.", body: "GIFs aren't available right now — your own Library still works." },
+    provider_unavailable: { title: "Couldn't reach GIPHY.", body: "Our bad — give it another shot." },
+    invalid_response: { title: "That came back scrambled.", body: "Try again — usually a one-off." },
+    auth_required: { title: "Sign in again.", body: "Your session needs a refresh to browse GIFs." },
+  },
+  stock: {
+    rate_limited: { title: "Whoa, slow down.", body: "We've hit the hourly limit for photos. Give it a minute." },
+    not_configured: { title: "This source is taking a break.", body: "Photos aren't available right now — your own Library still works." },
+    provider_unavailable: { title: "Couldn't reach Pexels.", body: "Our bad — give it another shot." },
+    invalid_response: { title: "That came back scrambled.", body: "Try again — usually a one-off." },
+    auth_required: { title: "Sign in again.", body: "Your session needs a refresh to browse photos." },
+  },
+};
+
+const ProviderGrid: React.FC<{
+  kind: "gif" | "stock";
+  status: ProviderStatus;
+  errorCode: string | null;
+  columns: number;
+  giphy: GiphyCoverSearchResult[];
+  pexels: PexelsCoverSearchResult[];
+  onSelectGiphy: (r: GiphyCoverSearchResult) => void;
+  onSelectPexels: (r: PexelsCoverSearchResult) => void;
+  onRetry: () => void;
+  onUseLibrary: () => void;
+  searchActive: boolean;
+}> = ({
+  kind,
+  status,
+  errorCode,
+  columns,
+  giphy,
+  pexels,
+  onSelectGiphy,
+  onSelectPexels,
+  onRetry,
+  onUseLibrary,
+  searchActive,
+}) => {
+  const attribution = kind === "gif" ? "Powered by GIPHY" : "Photos provided by Pexels";
+
+  if (status === "loading" || status === "idle") {
+    return (
+      <View style={styles.gridStateHost}>
+        <ActivityIndicator size="small" color={accent.warm} />
+        <Text style={styles.providerFooter}>{attribution}</Text>
+      </View>
+    );
+  }
+
+  if (status === "error") {
+    const copy =
+      (errorCode !== null && PROVIDER_ERROR_COPY[kind][errorCode]) ||
+      PROVIDER_ERROR_COPY[kind].provider_unavailable;
+    const noRetry = errorCode === "not_configured";
+    return (
+      <View style={styles.gridStateHost}>
+        <Icon name="globe" size={36} color={semantic.error} />
+        <Text style={styles.stateTitle}>{copy.title}</Text>
+        <Text style={styles.stateBody}>{copy.body}</Text>
+        {noRetry ? (
+          <Button label="Use Library" variant="secondary" size="sm" shape="square" onPress={onUseLibrary} />
+        ) : (
+          <Button label="Try again" variant="secondary" size="sm" shape="square" onPress={onRetry} />
+        )}
+        <Text style={styles.providerFooter}>{attribution}</Text>
+      </View>
+    );
+  }
+
+  if (status === "empty") {
+    return (
+      <View style={styles.gridStateHost}>
+        <Icon name="search" size={36} color={textTokens.tertiary} />
+        <Text style={styles.stateTitle}>
+          {searchActive
+            ? kind === "gif"
+              ? "No GIFs for that."
+              : "Nothing matched."
+            : "Nothing to show right now."}
+        </Text>
+        <Text style={styles.stateBody}>
+          {searchActive
+            ? "Try fewer words — or just browse what's hot."
+            : "Odd. Give it a sec and try again."}
+        </Text>
+        <Button label="Try again" variant="secondary" size="sm" shape="square" onPress={onRetry} />
+        <Text style={styles.providerFooter}>{attribution}</Text>
+      </View>
+    );
+  }
+
+  // Populated — masonry via N flex columns, shortest-column insertion.
+  const columnBuckets: Array<Array<{ key: string; node: React.ReactNode }>> = Array.from(
+    { length: columns },
+    () => [],
+  );
+  const columnHeights = new Array<number>(columns).fill(0);
+  const pushTile = (key: string, aspect: number, node: React.ReactNode): void => {
+    let shortest = 0;
+    for (let i = 1; i < columns; i += 1) {
+      if (columnHeights[i] < columnHeights[shortest]) shortest = i;
+    }
+    columnBuckets[shortest].push({ key, node });
+    columnHeights[shortest] += 1 / Math.max(0.4, aspect);
+  };
+
+  if (kind === "gif") {
+    giphy.forEach((r) => {
+      pushTile(
+        `giphy-${r.id}`,
+        1,
+        <GridTile
+          key={`giphy-${r.id}`}
+          imageUrl={r.previewUrl}
+          label={r.alt ?? "GIPHY GIF"}
+          onPress={() => onSelectGiphy(r)}
+        />,
+      );
+    });
+  } else {
+    pexels.forEach((r) => {
+      pushTile(
+        `pexels-${r.id}`,
+        r.width > 0 && r.height > 0 ? r.width / r.height : 1,
+        <GridTile
+          key={`pexels-${r.id}`}
+          imageUrl={r.mediaUrl}
+          aspect={r.width > 0 && r.height > 0 ? r.width / r.height : 1}
+          avgColor={r.avgColor}
+          label={r.alt ?? "Pexels photo"}
+          credit={r.credit}
+          onPress={() => onSelectPexels(r)}
+        />,
+      );
+    });
+  }
+
+  return (
+    <View>
+      <ScrollView contentContainerStyle={styles.masonryHost} showsVerticalScrollIndicator={false}>
+        <View style={styles.masonryColumns}>
+          {columnBuckets.map((bucket, i) => (
+            <View key={`col-${i}`} style={styles.masonryColumn}>
+              {bucket.map((t) => t.node)}
+            </View>
+          ))}
+        </View>
+      </ScrollView>
+      <Text style={styles.providerFooter}>{attribution}</Text>
+    </View>
+  );
+};
+
+const GridTile: React.FC<{
   imageUrl: string;
   label: string;
-  credit: string;
+  aspect?: number;
+  avgColor?: string | null;
+  credit?: string;
   onPress: () => void;
-}> = ({ imageUrl, label, credit, onPress }) => (
+}> = ({ imageUrl, label, aspect = 1, avgColor, credit, onPress }) => (
   <Pressable
-    accessibilityRole="button"
-    accessibilityLabel={`Select ${label}`}
+    accessibilityRole="imagebutton"
+    accessibilityLabel={credit !== undefined ? `Select ${label} by ${credit}` : `Select ${label}`}
     onPress={onPress}
-    style={({ pressed }) => [
-      styles.resultTile,
-      pressed && styles.resultTilePressed,
-    ]}
+    style={({ pressed }) => [styles.tile, pressed && styles.tilePressed]}
   >
-    <Image source={{ uri: imageUrl }} style={styles.resultImage} />
-    <Text style={styles.resultCredit} numberOfLines={1}>
-      {credit}
-    </Text>
+    <Image
+      source={{ uri: imageUrl }}
+      style={[
+        styles.tileImage,
+        { aspectRatio: Math.max(0.5, Math.min(aspect, 2)) },
+        avgColor ? { backgroundColor: avgColor } : null,
+      ]}
+    />
+    {credit !== undefined ? (
+      <Text style={styles.tileCredit} numberOfLines={1}>
+        — {credit}
+      </Text>
+    ) : null}
   </Pressable>
 );
 
 const styles = StyleSheet.create({
-  field: {
+  root: {
+    flex: 1,
+  },
+  tabTrack: {
+    flexDirection: "row",
+    height: 40,
+    borderRadius: radiusTokens.md,
+    backgroundColor: glass.tint.profileBase,
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+    padding: 3,
     marginBottom: spacing.md,
   },
-  fieldLabel: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    fontWeight: "500",
+  tabSegment: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.xs,
+    borderRadius: radiusTokens.sm,
+  },
+  tabSegmentActive: {
+    backgroundColor: accent.tint,
+    borderWidth: 1,
+    borderColor: accent.border,
+  },
+  tabLabel: {
+    fontSize: typography.buttonMd.fontSize,
+    lineHeight: typography.buttonMd.lineHeight,
+    fontWeight: "600",
     color: textTokens.secondary,
-    marginBottom: spacing.xs,
+  },
+  tabLabelActive: {
+    color: accent.warm,
+  },
+  searchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    height: 40,
+    borderRadius: radiusTokens.md,
+    backgroundColor: glass.tint.profileBase,
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+    paddingHorizontal: spacing.md,
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  searchInput: {
+    flex: 1,
+    color: textTokens.primary,
+    fontSize: typography.body.fontSize,
+    lineHeight: typography.body.lineHeight,
   },
   coverPreview: {
-    borderRadius: radiusTokens.lg,
+    borderRadius: radiusTokens.md,
     overflow: "hidden",
     marginBottom: spacing.sm,
   },
@@ -956,13 +1388,21 @@ const styles = StyleSheet.create({
   },
   actionRow: {
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: spacing.sm,
   },
   actionButton: {
     flex: 1,
+    minWidth: 140,
   },
   removeButton: {
     minWidth: 96,
+  },
+  helperText: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: textTokens.tertiary,
+    marginTop: spacing.xs,
   },
   uploadLimitText: {
     fontSize: typography.caption.fontSize,
@@ -990,7 +1430,7 @@ const styles = StyleSheet.create({
     bottom: spacing.sm,
     padding: spacing.sm,
     borderRadius: radiusTokens.md,
-    backgroundColor: "rgba(0, 0, 0, 0.62)",
+    backgroundColor: "rgba(12, 14, 18, 0.62)",
     gap: spacing.xs,
   },
   videoProgressText: {
@@ -1010,73 +1450,63 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: accent.warm,
   },
-  providerTabs: {
-    flexDirection: "row",
-    gap: spacing.xs,
-    marginBottom: spacing.sm,
+  gridStateHost: {
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+    paddingVertical: spacing.xl,
   },
-  providerTab: {
-    borderRadius: radiusTokens.sm,
-    borderWidth: 1,
-    borderColor: textTokens.quaternary,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-  },
-  providerTabActive: {
-    borderColor: accent.warm,
-    backgroundColor: "rgba(255, 122, 69, 0.12)",
-  },
-  providerTabText: {
-    color: textTokens.secondary,
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+  stateTitle: {
+    fontSize: typography.bodyLg.fontSize,
+    lineHeight: typography.bodyLg.lineHeight,
     fontWeight: "600",
+    color: textTokens.primary,
+    textAlign: "center",
   },
-  providerTabTextActive: {
-    color: accent.warm,
+  stateBody: {
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+    color: textTokens.secondary,
+    textAlign: "center",
   },
-  searchRow: {
+  masonryHost: {
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.sm,
+  },
+  masonryColumns: {
     flexDirection: "row",
     gap: spacing.sm,
   },
-  searchInput: {
+  masonryColumn: {
     flex: 1,
-    minHeight: 44,
-    borderRadius: radiusTokens.md,
-    borderWidth: 1,
-    borderColor: textTokens.quaternary,
-    color: textTokens.primary,
-    paddingHorizontal: spacing.sm,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-  },
-  searchButton: {
-    minWidth: 96,
-  },
-  providerResults: {
     gap: spacing.sm,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.xs,
   },
-  resultTile: {
-    width: 128,
+  tile: {
     borderRadius: radiusTokens.md,
     overflow: "hidden",
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    backgroundColor: glass.tint.profileElevated,
   },
-  resultTilePressed: {
-    opacity: 0.75,
+  tilePressed: {
+    opacity: 0.82,
   },
-  resultImage: {
+  tileImage: {
     width: "100%",
-    height: 84,
-    backgroundColor: textTokens.quaternary,
+    borderRadius: radiusTokens.md,
+    backgroundColor: glass.tint.profileElevated,
   },
-  resultCredit: {
+  tileCredit: {
+    fontSize: typography.micro.fontSize,
+    lineHeight: typography.micro.lineHeight,
+    fontWeight: "600",
     color: textTokens.tertiary,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 4,
+  },
+  providerFooter: {
     fontSize: typography.caption.fontSize,
     lineHeight: typography.caption.lineHeight,
-    paddingHorizontal: spacing.xs,
-    paddingVertical: 6,
+    color: textTokens.tertiary,
+    textAlign: "center",
+    marginTop: spacing.sm,
   },
 });

@@ -15,6 +15,13 @@
  * Removing the avatar-deferral toast would have broken §15.
  *
  * Codified by ORCH-0805 SPEC §10 + §11.
+ *
+ * ORCH-0989 amendment: Check 6 + Check 8 repointed (NOT deleted) after the
+ * brand cover picker was unified into the shared CoverPickerSheet/CoverPicker.
+ * Check 6 now asserts coverProviderBrowseService (trending/curated) exists +
+ * the two retired brand provider services are gone. Check 8 now asserts
+ * CoverPickerSheet hosts <Sheet>+<CoverPicker> + the LOCKED tab ids
+ * (library/gif/stock) + BrandCoverPickerSheet is gone. Per SPEC_ORCH-0989 §9.1.
  */
 
 import { existsSync, readFileSync, readdirSync } from "node:fs";
@@ -40,27 +47,33 @@ const SERVICE_PATH = join(
   "services",
   "brandCoverService.ts",
 );
-const PEXELS_PATH = join(
+// ORCH-0989 — the two brand provider services were retired and unified into
+// coverProviderBrowseService.ts (trending/curated browse). Check 6 repoints
+// here (provider browse stays gated) instead of asserting the deleted files.
+const BROWSE_SERVICE_PATH = join(
   REPO_ROOT,
   "mingla-business",
   "src",
   "services",
-  "pexelsBrandCoverService.ts",
+  "coverProviderBrowseService.ts",
 );
-const GIPHY_PATH = join(
-  REPO_ROOT,
-  "mingla-business",
-  "src",
-  "services",
-  "giphyBrandCoverService.ts",
-);
+// ORCH-0989 — BrandCoverPickerSheet retired; the unified surface is
+// CoverPickerSheet (Sheet host) + CoverPicker (3-tab gallery-first body).
 const SHEET_PATH = join(
   REPO_ROOT,
   "mingla-business",
   "src",
   "components",
-  "brand",
-  "BrandCoverPickerSheet.tsx",
+  "ui",
+  "CoverPickerSheet.tsx",
+);
+const PICKER_PATH = join(
+  REPO_ROOT,
+  "mingla-business",
+  "src",
+  "components",
+  "ui",
+  "CoverPicker.tsx",
 );
 const EDIT_PATH = join(
   REPO_ROOT,
@@ -164,12 +177,23 @@ if (!existsSync(SERVICE_PATH)) {
   }
 }
 
-// Check 6 — provider services exist.
-if (!existsSync(PEXELS_PATH)) {
-  failures.push("Check 6 FAIL: pexelsBrandCoverService.ts missing");
+// Check 6 (ORCH-0989 repoint) — the unified provider browse service exists and
+// exports trending/curated. The retired brand provider duplicates must NOT
+// reappear (subtract-before-add).
+if (!existsSync(BROWSE_SERVICE_PATH)) {
+  failures.push("Check 6 FAIL: coverProviderBrowseService.ts missing (ORCH-0989 unified browse)");
+} else {
+  const browseSrc = readOrEmpty(BROWSE_SERVICE_PATH);
+  for (const sym of ["trendingGiphyCovers", "curatedPexelsCovers"]) {
+    if (!new RegExp(`export\\s+const\\s+${sym}\\b`).test(browseSrc)) {
+      failures.push(`Check 6 FAIL: coverProviderBrowseService.ts must export ${sym}`);
+    }
+  }
 }
-if (!existsSync(GIPHY_PATH)) {
-  failures.push("Check 6 FAIL: giphyBrandCoverService.ts missing");
+for (const retired of ["pexelsBrandCoverService.ts", "giphyBrandCoverService.ts"]) {
+  if (existsSync(join(REPO_ROOT, "mingla-business", "src", "services", retired))) {
+    failures.push(`Check 6 FAIL: ${retired} must be DELETED (ORCH-0989 unification)`);
+  }
 }
 
 // Check 7 — BrandEditView.tsx does NOT contain COVER_HUE_TILES literal (the
@@ -186,18 +210,34 @@ if (/^\s*const\s+COVER_HUE_TILES\b/m.test(editSrc)) {
 // "Photo upload lands in a later cycle." string. Dropped per §15 — the
 // brand-avatar pencil deferral toast must stay until ORCH-0805-A ships.)
 
-// Check 8 (renumbered) — picker sheet present and references all 3 tab labels.
+// Check 8 (ORCH-0989 repoint) — the unified CoverPickerSheet exists and hosts
+// CoverPicker, which carries the LOCKED tab ids (library/gif/stock). We assert
+// the tab ID literals (LOCKED in SPEC §4.3), NOT the display labels (designer-
+// owned copy). BrandCoverPickerSheet must NOT reappear.
 if (!existsSync(SHEET_PATH)) {
-  failures.push("Check 8 FAIL: BrandCoverPickerSheet.tsx missing");
+  failures.push("Check 8 FAIL: CoverPickerSheet.tsx missing (ORCH-0989 unified sheet)");
 } else {
-  const src = readOrEmpty(SHEET_PATH);
-  for (const label of ["Upload", "Pexels", "GIPHY"]) {
-    if (!src.includes(label)) {
-      failures.push(
-        `Check 8 FAIL: BrandCoverPickerSheet.tsx must contain the tab label '${label}'`,
-      );
+  const sheetSrc = readOrEmpty(SHEET_PATH);
+  if (!/<Sheet\b/.test(sheetSrc) || !/<CoverPicker\b/.test(sheetSrc)) {
+    failures.push("Check 8 FAIL: CoverPickerSheet.tsx must host <Sheet> + <CoverPicker>");
+  }
+}
+if (!existsSync(PICKER_PATH)) {
+  failures.push("Check 8 FAIL: CoverPicker.tsx missing");
+} else {
+  const pickerSrc = readOrEmpty(PICKER_PATH);
+  for (const id of ['"library"', '"gif"', '"stock"']) {
+    if (!pickerSrc.includes(id)) {
+      failures.push(`Check 8 FAIL: CoverPicker.tsx must contain the LOCKED tab id ${id}`);
     }
   }
+}
+if (
+  existsSync(
+    join(REPO_ROOT, "mingla-business", "src", "components", "brand", "BrandCoverPickerSheet.tsx"),
+  )
+) {
+  failures.push("Check 8 FAIL: BrandCoverPickerSheet.tsx must be DELETED (ORCH-0989 unification)");
 }
 
 // Check 9 (ORCH-0964) — shared brand page renders covers via EventCoverMedia
