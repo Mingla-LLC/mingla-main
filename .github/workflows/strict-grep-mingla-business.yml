@@ -121,6 +121,7 @@ on:
 #   - G-CIRCLE-RPC-SOLE-OWNER (circle-rpc-sole-owner.sh) — Your Circle uses get_user_circle RPC as sole data path (ORCH-0933)
 #   - G-CIRCLE-BADGE-DUAL-APP (circle-badge-dual-app.sh) — Your Circle briefcase badge means dual-app user only (ORCH-0933)
 #   - I-COMMS-LEDGER-ENTRY-STANZA + I-RESPONSE-2-SECTION-SHAPE (meta-orch-0954-comms-ledger-stanza.mjs) — every Claude SKILL.md + AGENTS.md carries ledger + 2-section output stanzas (META-ORCH-0954)
+#   - I-PROPOSED-BASE-BOTTOM-SHEET-SOLE-GORHOM-CONSUMER (meta-orch-0991-base-bottom-sheet-sole-consumer.mjs) — only BaseBottomSheet.tsx imports @gorhom/bottom-sheet under app-mobile/src; matches IMPORT statements not comments; self-tested (META-ORCH-0991 Wave A)
 #
 # Future gates to register (proposed but not yet implemented):
 #   - I-32 rank parity (Cycle 13a proposal)
@@ -311,6 +312,19 @@ jobs:
           node-version: "20"
       - name: Run ORCH-0975 notifications sheet gate
         run: node .github/scripts/strict-grep/orch-0975-notifications-sheet.mjs
+
+  meta-orch-0991-base-bottom-sheet-sole-consumer:
+    name: "META-ORCH-0991: BaseBottomSheet sole gorhom consumer invariant"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the gate (import-vs-comment discrimination)
+        run: node .github/scripts/strict-grep/meta-orch-0991-base-bottom-sheet-sole-consumer.mjs --self-test
+      - name: Run META-ORCH-0991 BaseBottomSheet sole-consumer gate
+        run: node .github/scripts/strict-grep/meta-orch-0991-base-bottom-sheet-sole-consumer.mjs
 
   orch-0978-video-upload-optimistic-preview:
     name: "ORCH-0978: video upload optimistic preview"
