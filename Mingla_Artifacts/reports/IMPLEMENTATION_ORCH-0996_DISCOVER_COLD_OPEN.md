@@ -114,3 +114,69 @@ New effect: once results land, `ExpoImage.prefetch` the first 4 cover URIs (≈ 
 ## Test first (for Seth)
 - On a logged-in sim/device: open Discover cold, confirm cards appear noticeably faster; leave Discover and re-open → cards paint instantly then refresh.
 - Toggle each filter and confirm results still change correctly.
+
+---
+
+# REWORK 1 — resolved-city seed for instant re-open
+
+- **Date:** 2026-05-29
+- **Built on:** prior ORCH-0996 commit `61ed534c5` (new commit on top).
+- **Trigger:** QA verified live on a physical Android (Galaxy A72): open Discover → resolves to "Raleigh" via GPS reverse-geocode (~2-3s) + caches events; leave to another tab and return → at +350ms the SKELETON + "Set city" shows, NOT the cached Raleigh cards.
+
+## Root cause (confirmed)
+
+DiscoverScreen remounts fresh on every tab return (active-tab-only architecture). On remount `selectedCity` and `gpsDefaultCity` are both `null` until the async GPS→reverseGeocode chain re-runs. So on the FIRST post-remount render `effectiveCity` is `null` → the events-cache signature has `cityName=null` (and `gpsLat/Lng` not yet seeded) → `buildDiscoverCacheKey` produces a different key → `readDiscoverCache` MISSES the prior "Raleigh"-keyed entry. By the time the city re-resolves (~2-3s), the fresh network fetch is already in flight. **The expensive UN-cached step is the CITY RESOLUTION (GPS reverse-geocode), not the events fetch** — so the events cache built in the original pass could never be read on re-open until the slow thing it depends on re-ran.
+
+## The fix — mechanism
+
+A tiny module-level (process-lifetime, in-memory) **resolved-city cache** in `discoverEventsCache.ts`:
+
+- `writeResolvedDiscoverCity(lat, lng, city)` — called when the authoritative `reverseGeocode` resolves; records the resolved `DiscoverCity` + a coord key rounded to 3 decimals (~110m).
+- `readLastResolvedDiscoverCity()` — coords-agnostic; returns the most-recent resolved city. DiscoverScreen calls this **synchronously in the `useState` lazy initializers** for `gpsDefaultCity` AND `deviceGpsLat/Lng`, so on the very first post-remount render `effectiveCity` is non-null and the gps facets are populated → the events-cache key reproduces the prior entry's key → the events cache **HITS** and paints the prior cards immediately.
+- `readResolvedDiscoverCity(lat, lng)` — coords-matched (~110m bucket). Once the device's actual coords are known, if the seeded city's coords don't match (user physically moved cities), the seed is dropped so the user isn't shown a stale city while the authoritative geocode runs.
+
+**Why the seed approach (not the geocode-result approach):** I chose to cache the resolved `DiscoverCity` object and seed `gpsDefaultCity`+`deviceGps*` directly, rather than only memoizing `geocodingService.reverseGeocode`. Reason: memoizing only the geocode would still leave `gpsDefaultCity` `null` on the first synchronous render (the geocode call site is inside an `async` effect that runs AFTER first commit), so `effectiveCity` would still be `null` on render 1 and the events cache would still MISS that frame. Seeding state directly is the least-surface-area way to make `effectiveCity` and the gps facets known on render 1. (`geocodingService` already has its own 24h coords→city cache, so the authoritative re-geocode is itself fast/free on re-open anyway.)
+
+Both the async `reverseGeocode` and the network events fetch **ALWAYS still run and overwrite** — the seed is a paint-first hint, never a short-circuit. This preserves the ORCH-0839-A C-1 leakage guard exactly as the events cache does: same never-short-circuit discipline, in-memory only, full-signature events key unchanged.
+
+### Skeleton suppression on the first frame
+
+Because the seeded city is known at `useState`-init time, the events-cache read is also done synchronously at mount (`initialEventsCacheSeed` memo) and used to lazy-init `nightOutCards` / `businessEvents` / `tmError` / `fallbackActive` / `nightOutLoading`. So there is **no one-frame skeleton flash** — a fresh remount with a fresh cached entry initializes with `nightOutLoading=false` and the prior cards already in state. The immediate fetch then revalidates underneath.
+
+## Hard guards verified
+
+- **User-set city still wins:** `effectiveCity = selectedCity ?? gpsDefaultCity`. The seed only fills the `gpsDefaultCity` slot; when preferences load, `selectedCity` overrides. Unchanged.
+- **Always-overwrite preserved:** the reverseGeocode effect no longer early-returns on `gpsDefaultCity` being set; it geocodes each distinct coord once per mount (`geocodedCoordsRef`) and overwrites + persists the result. Network events fetch unchanged (still always runs).
+- **Moved-user safety:** coords-matched read drops a stale seed when the device moved beyond the ~110m bucket.
+- **Filter behavior (ORCH-0824 stale-closure):** untouched — all facets remain in the fetch deps; only the seed reads were added.
+- **ORCH-0839-A CI gate:** `node scripts/ci/orch-0839-a-mobile-cache-removed.mjs` → 5/5 PASS (new identifiers don't trip the forbidden-list).
+
+## Files changed (REWORK 1)
+
+### `app-mobile/src/utils/discoverEventsCache.ts`
+**Before:** events cache + `decideDiscoverFetchMode` only.
+**Now:** adds the resolved-city cache — `writeResolvedDiscoverCity`, `readResolvedDiscoverCity` (coords-matched ~110m), `readLastResolvedDiscoverCity` (coords-agnostic bootstrap seed), `RESOLVED_CITY_COORD_PRECISION`, `ResolvedDiscoverCity`, `__resetResolvedDiscoverCityForTests`.
+**Why:** make the resolved city available synchronously on remount.
+**Lines changed:** ~95 added.
+
+### `app-mobile/src/components/DiscoverScreen.tsx`
+**Before:** `gpsDefaultCity`/`deviceGps*` init to `null`; events state init to empty/`loading=true`; reverseGeocode effect early-returned once `gpsDefaultCity` was set.
+**Now:** `gpsDefaultCity` + `deviceGpsLat/Lng` lazy-init from `readLastResolvedDiscoverCity()`; `initialEventsCacheSeed` memo reads the events cache synchronously at mount and seeds `nightOutCards`/`businessEvents`/`tmError`/`fallbackActive`/`nightOutLoading`; reverseGeocode effect runs once per distinct coord (ref-guarded), drops a stale seed when coords don't match, and persists the authoritative result via `writeResolvedDiscoverCity`.
+**Why:** instant paint on re-open without waiting for GPS reverse-geocode or the network.
+**Lines changed:** ~70 changed/added.
+
+### `app-mobile/src/utils/__tests__/discoverEventsCache.test.ts`
+**Now:** +2 tests (9 total) — (c) prior-resolved coords seed the city synchronously so the events-cache key reproduces the prior entry and `readDiscoverCache` HITS; (c) coords-matched read respects the ~110m bucket (moved user not mis-seeded).
+
+## Regression Test (REWORK 1)
+
+- **Path:** `app-mobile/src/utils/__tests__/discoverEventsCache.test.ts`
+- **Runner:** `/Users/sethogieva/.deno/bin/deno test --allow-env --no-check src/utils/__tests__/discoverEventsCache.test.ts`
+- **Passing run:** `ok | 9 passed | 0 failed (144ms)`
+- **fails-on-revert verified at `61ed534c5` (the prior ORCH-0996 commit):** stubbing `readLastResolvedDiscoverCity()` to `return null` (the pre-rework no-seed behavior) → test `ORCH-0996 REWORK 1 (c) prior-resolved coords seed city synchronously -> events cache HITS` FAILS (`AssertionError: fresh mount must synchronously seed the resolved city`), `8 passed | 1 failed`. Fix restored → `9 passed`.
+
+## Completion condition
+
+On remount with previously-resolved coords: `gpsDefaultCity` + `deviceGps*` are seeded synchronously → `effectiveCity` non-null on render 1 → the events cache HITS and cached cards paint without waiting for GPS reverse-geocode or the network (skeleton suppressed via synchronous events-cache seed). Behavior otherwise unchanged (selectedCity wins; geocode + fetch always overwrite; ORCH-0824/0839-A guards intact). Test passes with fails-on-revert. Committed.
+
+**Live device A/B** (re-open paints the cached Raleigh cards instead of skeleton + "Set city") remains the manual confirmation for Seth on the Galaxy A72 reproducer — the logic + synchronous-seed mechanism + unit proof are in place; the on-device timing is the last eyeball.

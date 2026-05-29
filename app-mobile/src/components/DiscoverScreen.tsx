@@ -82,6 +82,9 @@ import {
   isDiscoverCacheFresh,
   writeDiscoverCache,
   decideDiscoverFetchMode,
+  writeResolvedDiscoverCity,
+  readResolvedDiscoverCity,
+  readLastResolvedDiscoverCity,
   type DiscoverCacheSignature,
 } from "../utils/discoverEventsCache";
 
@@ -873,8 +876,19 @@ function DiscoverScreen({
   const { data: userLocationData } = useUserLocation(user?.id, "solo");
   const fallbackLat = userLocationData?.lat;
   const fallbackLng = userLocationData?.lng;
-  const [deviceGpsLat, setDeviceGpsLat] = useState<number | null>(null);
-  const [deviceGpsLng, setDeviceGpsLng] = useState<number | null>(null);
+  // ORCH-0996 REWORK 1: seed device coords SYNCHRONOUSLY from the last
+  // resolved-city snapshot (process-lifetime, in-memory) so the events-cache
+  // key reproduces the prior entry's gps facets on the very first
+  // post-remount render. The location effect below still seeds from
+  // last-known and refines with precise GPS, always overwriting — this is a
+  // paint-first hint only.
+  const seededResolvedCity = readLastResolvedDiscoverCity();
+  const [deviceGpsLat, setDeviceGpsLat] = useState<number | null>(
+    seededResolvedCity?.lat ?? null,
+  );
+  const [deviceGpsLng, setDeviceGpsLng] = useState<number | null>(
+    seededResolvedCity?.lng ?? null,
+  );
   const deviceGpsFetchedRef = useRef(false);
 
   // ORCH-0996: parallelize the location chain so a slow precise-GPS lock
@@ -963,20 +977,72 @@ function DiscoverScreen({
         }
       : { date: "any", segment: "music", genre: "all", partyTypes: [], vibeTags: [], musicGenres: [] }
   );
+  // ORCH-0996 REWORK 1: synchronously read the events cache at MOUNT TIME using
+  // the seeds available now (the resolved-city seed → effectiveCity, its coords
+  // → gps facets, and the snapshotted filters). selectedCity (preferences) is
+  // still null this early, so effectiveCity-at-mount == the GPS-seeded city —
+  // exactly the signature under which the prior session cached. This lets the
+  // card arrays + loading flag initialize from the cache, so a fresh remount
+  // paints the prior cards on the FIRST render with no skeleton flash. The
+  // network fetch still runs immediately underneath and overwrites.
+  const initialEventsCacheSeed = useMemo(() => {
+    if (!seededResolvedCity) return null;
+    const key = buildDiscoverCacheKey({
+      cityName: seededResolvedCity.name,
+      cityLat: seededResolvedCity.lat,
+      cityLng: seededResolvedCity.lng,
+      gpsLat: seededResolvedCity.lat,
+      gpsLng: seededResolvedCity.lng,
+      date: selectedFilters.date,
+      segment: selectedFilters.segment,
+      genre: selectedFilters.genre,
+      partyTypes: selectedFilters.partyTypes,
+      vibeTags: selectedFilters.vibeTags,
+      musicGenres: selectedFilters.musicGenres,
+    });
+    const hit = readDiscoverCache<NightOutCardData, BusinessEventCardData>(key);
+    return hit && isDiscoverCacheFresh(hit) ? hit : null;
+    // Mount-time seed only — intentionally not reactive to later filter changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ORCH-0824: business events that came back from the merged endpoint,
   // rendered above the Ticketmaster grid. Empty when no business events
   // match the active city + filters.
   const [businessEvents, setBusinessEvents] = useState<BusinessEventCardData[]>(
-    [],
+    initialEventsCacheSeed?.businessEvents ?? [],
   );
 
   // ORCH-0809 M2: city picker state. selectedCity comes from preferences;
   // gpsDefaultCity comes from reverse-geocoding the device GPS on first paint.
   // effectiveCity = selectedCity ?? gpsDefaultCity.
   const [selectedCity, setSelectedCity] = useState<DiscoverCity | null>(null);
-  const [gpsDefaultCity, setGpsDefaultCity] = useState<DiscoverCity | null>(null);
+  // ORCH-0996 REWORK 1: seed the GPS-derived city SYNCHRONOUSLY from the last
+  // resolved-city snapshot so `effectiveCity` is non-null on the FIRST
+  // post-remount render → the events-cache signature reproduces the prior
+  // "Raleigh"-keyed entry → instant paint, instead of waiting ~2-3s for the
+  // async reverseGeocode chain to re-run (which was leaving `effectiveCity`
+  // null and forcing a cache MISS + the skeleton + "Set city"). selectedCity
+  // (user-set, from preferences) still wins via `effectiveCity` below; the
+  // async reverseGeocode still runs and overwrites this seed authoritatively.
+  const [gpsDefaultCity, setGpsDefaultCity] = useState<DiscoverCity | null>(
+    () => {
+      const seed = readLastResolvedDiscoverCity();
+      return seed
+        ? {
+            name: seed.name,
+            stateCode: seed.stateCode,
+            countryCode: seed.countryCode,
+            lat: seed.lat,
+            lng: seed.lng,
+          }
+        : null;
+    },
+  );
   const [isCityPickerVisible, setIsCityPickerVisible] = useState(false);
-  const [fallbackActive, setFallbackActive] = useState(false);
+  const [fallbackActive, setFallbackActive] = useState(
+    initialEventsCacheSeed?.fallbackActive ?? false,
+  );
   const effectiveCity: DiscoverCity | null = selectedCity ?? gpsDefaultCity;
 
   // Sync local filter state back to the Zustand registry on every change so
@@ -989,9 +1055,15 @@ function DiscoverScreen({
   const { scrollRef: discoverScrollRef, handleScroll: handleDiscoverScroll } =
     useTabScrollRegistry('discover_main');
 
-  // Events fetch state
-  const [nightOutCards, setNightOutCards] = useState<NightOutCardData[]>([]);
-  const [nightOutLoading, setNightOutLoading] = useState(true);
+  // Events fetch state. ORCH-0996 REWORK 1: seed from the mount-time events
+  // cache read so a remount paints prior cards immediately (no skeleton flash)
+  // while the network revalidates underneath.
+  const [nightOutCards, setNightOutCards] = useState<NightOutCardData[]>(
+    initialEventsCacheSeed?.nightOutCards ?? [],
+  );
+  const [nightOutLoading, setNightOutLoading] = useState(
+    initialEventsCacheSeed === null,
+  );
   const [nightOutError, setNightOutError] = useState<string | null>(null);
   // ORCH-0839-A F-6: surface a non-fatal banner when the merged endpoint
   // returns a non-null meta.tmError (Ticketmaster upstream returned events=[]
@@ -1000,7 +1072,9 @@ function DiscoverScreen({
   // Banner is non-blocking; Mingla business events continue to render. The
   // string value is currently informational only — render is just on
   // null-vs-non-null.
-  const [tmError, setTmError] = useState<string | null>(null);
+  const [tmError, setTmError] = useState<string | null>(
+    initialEventsCacheSeed?.tmError ?? null,
+  );
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const nightOutGpsLat = deviceGpsLat;
@@ -1043,13 +1117,34 @@ function DiscoverScreen({
     };
   }, [user?.id]);
 
-  // ORCH-0809 M2: reverse-geocode GPS to derive the default city chip value
-  // when the user hasn't picked one. Only runs when we have GPS and no
-  // selectedCity (selectedCity takes precedence).
+  // ORCH-0809 M2 / ORCH-0996 REWORK 1: reverse-geocode GPS to derive the
+  // default city chip value when the user hasn't picked one.
+  //
+  // The chip may already be SEEDED synchronously from the resolved-city cache
+  // (see useState above) so a remount paints instantly. This effect still runs
+  // the authoritative reverseGeocode and overwrites the seed — paint-first
+  // hint, never a short-circuit. Two guards keep it correct + churn-free:
+  //   • `geocodedCoordsRef` ensures we geocode each distinct coord at most once
+  //     per mount (a remount resets it, so the authoritative call re-runs).
+  //   • If the seed's coords no longer match the now-known device coords
+  //     (user moved cities), the coords-matched read returns null and the
+  //     reverseGeocode below corrects the chip.
+  const geocodedCoordsRef = useRef<string | null>(null);
   useEffect(() => {
     if (selectedCity) return; // user override wins
     if (typeof nightOutGpsLat !== "number" || typeof nightOutGpsLng !== "number") return;
-    if (gpsDefaultCity) return; // already resolved once this session
+    const coordKey = `${nightOutGpsLat},${nightOutGpsLng}`;
+    if (geocodedCoordsRef.current === coordKey) return; // already geocoded these coords this mount
+    geocodedCoordsRef.current = coordKey;
+
+    // If the synchronously-seeded chip does NOT match the now-known coords
+    // (the device has moved beyond the ~110m bucket), drop the stale seed so
+    // the user isn't shown the previous city while the authoritative call runs.
+    const coordsMatchSeed = readResolvedDiscoverCity(nightOutGpsLat, nightOutGpsLng);
+    if (gpsDefaultCity && !coordsMatchSeed) {
+      setGpsDefaultCity(null);
+    }
+
     let cancelled = false;
     (async () => {
       const result = await geocodingService.reverseGeocode(nightOutGpsLat, nightOutGpsLng);
@@ -1065,13 +1160,16 @@ function DiscoverScreen({
           ? countryStr.toUpperCase()
           : null;
       const stateCode = stateStr.length === 2 ? stateStr.toUpperCase() : null;
-      setGpsDefaultCity({
+      const resolved: DiscoverCity = {
         name: result.city,
         stateCode,
         countryCode,
         lat: nightOutGpsLat,
         lng: nightOutGpsLng,
-      });
+      };
+      setGpsDefaultCity(resolved);
+      // Persist for the NEXT remount's synchronous seed.
+      writeResolvedDiscoverCity(nightOutGpsLat, nightOutGpsLng, resolved);
     })();
     return () => {
       cancelled = true;

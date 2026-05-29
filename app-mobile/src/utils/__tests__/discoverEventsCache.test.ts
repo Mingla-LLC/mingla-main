@@ -23,6 +23,10 @@ import {
   isDiscoverCacheFresh,
   __resetDiscoverCacheForTests,
   DISCOVER_CACHE_TTL_MS,
+  writeResolvedDiscoverCity,
+  readResolvedDiscoverCity,
+  readLastResolvedDiscoverCity,
+  __resetResolvedDiscoverCityForTests,
 } from "../discoverEventsCache.ts";
 
 const baseSig = {
@@ -112,6 +116,117 @@ Deno.test("ORCH-0996 (b) array pill ORDER does not change the key (set semantics
   const k1 = buildDiscoverCacheKey({ ...baseSig, vibeTags: ["a", "b"] });
   const k2 = buildDiscoverCacheKey({ ...baseSig, vibeTags: ["b", "a"] });
   assertEquals(k1, k2, "pill selection order must not fragment the cache");
+});
+
+// ── REWORK 1 (c): resolved-city seed makes the events cache HIT on re-open ──
+//
+// QA proved the events cache alone could NOT deliver instant re-open: on a
+// fresh remount `gpsDefaultCity` was null until the ~2-3s async reverseGeocode
+// re-ran, so the events-cache signature had cityName=null and MISSED the prior
+// city-keyed entry. The resolved-city cache fixes that: the prior session's
+// reverse-geocode result is recorded; a fresh mount with the SAME coords reads
+// it SYNCHRONOUSLY so the events-cache key reproduces the prior entry's key.
+
+// Filters carried into the events-cache key — mirrors what the screen has at
+// mount time (selectedCity is still null then, so effectiveCity == seed city).
+const seedFilters = {
+  date: "any",
+  segment: "music",
+  genre: "all",
+  partyTypes: [] as string[],
+  vibeTags: [] as string[],
+  musicGenres: [] as string[],
+};
+
+// Reproduce DiscoverScreen's mount-time events-cache read from the seeded city.
+function eventsKeyFromSeededCity(
+  city: { name: string; lat: number; lng: number },
+): string {
+  return buildDiscoverCacheKey({
+    cityName: city.name,
+    cityLat: city.lat,
+    cityLng: city.lng,
+    gpsLat: city.lat,
+    gpsLng: city.lng,
+    ...seedFilters,
+  });
+}
+
+Deno.test("ORCH-0996 REWORK 1 (c) prior-resolved coords seed city synchronously -> events cache HITS", () => {
+  __resetDiscoverCacheForTests();
+  __resetResolvedDiscoverCityForTests();
+
+  // ── Prior session: Raleigh resolved for coords X, events fetched + cached
+  //    under the Raleigh signature (with the GPS facets the screen used). ──
+  const X = { lat: 35.7796, lng: -78.6382 };
+  const raleigh = {
+    name: "Raleigh",
+    stateCode: "NC",
+    countryCode: "US",
+    lat: X.lat,
+    lng: X.lng,
+  };
+  writeResolvedDiscoverCity(X.lat, X.lng, raleigh);
+  const priorEventsKey = eventsKeyFromSeededCity(raleigh);
+  writeDiscoverCache(priorEventsKey, {
+    nightOutCards: [{ id: "tm-raleigh" }],
+    businessEvents: [{ eventId: "biz-raleigh" }],
+    tmError: null,
+    fallbackActive: false,
+  });
+
+  // ── Fresh remount: gpsDefaultCity is null; the screen seeds it
+  //    SYNCHRONOUSLY from the resolved-city cache BEFORE any async geocode. ──
+  const seed = readLastResolvedDiscoverCity();
+  assert(seed !== null, "fresh mount must synchronously seed the resolved city");
+  assertEquals(seed.name, "Raleigh");
+
+  // The events-cache key built from the seeded city reproduces the prior key,
+  // so the events cache HITS on the very first render — instant paint.
+  const remountEventsKey = eventsKeyFromSeededCity(seed);
+  assertEquals(
+    remountEventsKey,
+    priorEventsKey,
+    "seeded city must reproduce the prior events-cache key",
+  );
+  const hit = readDiscoverCache(remountEventsKey);
+  assert(
+    hit !== null,
+    "events cache must HIT on remount via the resolved-city seed (no skeleton wait)",
+  );
+  assert(isDiscoverCacheFresh(hit), "seeded paint suppresses the skeleton when fresh");
+  assertEquals(hit.nightOutCards.length, 1);
+  assertEquals(hit.businessEvents.length, 1);
+});
+
+Deno.test("ORCH-0996 REWORK 1 (c) coords-matched read respects the ~110m bucket (moved user not mis-seeded)", () => {
+  __resetResolvedDiscoverCityForTests();
+  const raleigh = {
+    name: "Raleigh",
+    stateCode: "NC",
+    countryCode: "US",
+    lat: 35.7796,
+    lng: -78.6382,
+  };
+  writeResolvedDiscoverCity(raleigh.lat, raleigh.lng, raleigh);
+
+  // Same ~110m bucket -> coords-matched read returns the seed.
+  assert(
+    readResolvedDiscoverCity(35.7796, -78.6382) !== null,
+    "identical coords must match the resolved-city bucket",
+  );
+  // A jitter under the 3-decimal bucket still matches.
+  assert(
+    readResolvedDiscoverCity(35.7798, -78.6381) !== null,
+    "sub-110m jitter must still match the bucket",
+  );
+  // A different city (Durham, ~30km away) must NOT match -> async geocode
+  // corrects the chip instead of showing the previous city.
+  assertEquals(
+    readResolvedDiscoverCity(35.994, -78.8986),
+    null,
+    "a moved user (different bucket) must not get the previous city seeded",
+  );
 });
 
 Deno.test("ORCH-0996 (b) stale cache entry reports not-fresh past TTL", () => {
