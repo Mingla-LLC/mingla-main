@@ -76,18 +76,23 @@ export type BaseBottomSheetScrollMode =
   | 'sectionlist';
 
 /**
- * `scrollProps` is a discriminated union keyed on `scrollMode` so a consumer
- * cannot pass `sections` to a `scroll` body (compile-time guard, SPEC §3.1).
+ * `scrollProps` accepts the union of the four gorhom body-container prop shapes.
+ *
+ * DEVIATION D-2 (SPEC §3.1): the SPEC asked for a discriminated union keyed on
+ * `scrollMode` so a consumer cannot pass `sections` to a `scroll` body. That
+ * makes a *dynamically-computed* `scrollMode` (e.g. TicketCartSheet picks
+ * 'scroll' vs 'view' by render-state) impossible to type — TS cannot collapse a
+ * union scrollMode to one member. Several Wave-A migrations need a dynamic
+ * scrollMode, so `scrollProps` is the looser union here. The body `switch`
+ * (which container actually renders) still guarantees "no raw RN list inside a
+ * sheet" (SC-10) at runtime; the discriminated *type* guard is the only thing
+ * relaxed. Documented in the implementation report.
  */
-type ScrollPropsFor<M extends BaseBottomSheetScrollMode> = M extends 'scroll'
-  ? Partial<React.ComponentProps<typeof BottomSheetScrollView>>
-  : M extends 'flatlist'
-    ? Partial<React.ComponentProps<typeof BottomSheetFlatList>>
-    : M extends 'sectionlist'
-      ? Partial<React.ComponentProps<typeof BottomSheetSectionList>>
-      : M extends 'view'
-        ? Partial<React.ComponentProps<typeof BottomSheetView>>
-        : never;
+export type BaseBottomSheetScrollProps =
+  | Partial<React.ComponentProps<typeof BottomSheetScrollView>>
+  | Partial<React.ComponentProps<typeof BottomSheetFlatList>>
+  | Partial<React.ComponentProps<typeof BottomSheetSectionList>>
+  | Partial<React.ComponentProps<typeof BottomSheetView>>;
 
 interface BaseBottomSheetCommonProps {
   /** Declarative open/close. Drives `index={visible ? initialIndex : -1}`. */
@@ -106,9 +111,7 @@ interface BaseBottomSheetCommonProps {
   accessibilityLabel?: string;
 }
 
-interface BaseBottomSheetSheetProps<
-  M extends BaseBottomSheetScrollMode = 'scroll',
-> extends BaseBottomSheetCommonProps {
+interface BaseBottomSheetSheetProps extends BaseBottomSheetCommonProps {
   variant?: 'sheet';
   /** Exact snapPoints for this surface (string = percentage). */
   snapPoints?: (string | number)[];
@@ -120,9 +123,18 @@ interface BaseBottomSheetSheetProps<
   enablePanDownToClose?: boolean;
   theme?: BaseBottomSheetTheme;
   /** Picks the gorhom body container. Default 'scroll'. */
-  scrollMode?: M;
+  scrollMode?: BaseBottomSheetScrollMode;
   /** Forwarded to the chosen scrollable (sections/renderItem/contentContainerStyle…). */
-  scrollProps?: ScrollPropsFor<M>;
+  scrollProps?: BaseBottomSheetScrollProps;
+  /**
+   * Fixed (non-scrolling) content rendered ABOVE the scroll/list body, inside a
+   * single flexed BottomSheetView. The classic header pattern (title + close +
+   * action row) for scroll/sectionlist sheets. When set with scrollMode scroll/
+   * sectionlist, the body claims flex:1 below it.
+   */
+  header?: ReactNode;
+  /** Style for the outer flexed BottomSheetView when `header` is set. */
+  bodyContainerStyle?: ViewStyle;
   /** Pins a footer at the bottom of a single flexed container (TicketCart pattern). */
   stickyFooter?: ReactNode;
   /** ORCH-0908 z-stacking-over-tab-bar escape hatch. Default false. */
@@ -145,10 +157,7 @@ interface BaseBottomSheetCenterDialogProps extends BaseBottomSheetCommonProps {
 }
 
 export type BaseBottomSheetProps =
-  | BaseBottomSheetSheetProps<'view'>
-  | BaseBottomSheetSheetProps<'scroll'>
-  | BaseBottomSheetSheetProps<'flatlist'>
-  | BaseBottomSheetSheetProps<'sectionlist'>
+  | BaseBottomSheetSheetProps
   | BaseBottomSheetCenterDialogProps;
 
 /** Theme-derived default backdrop opacity (SPEC §3.1 / §6). */
@@ -241,6 +250,8 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
     enablePanDownToClose = true,
     scrollMode = 'scroll',
     scrollProps,
+    header,
+    bodyContainerStyle,
     stickyFooter,
     wrapInRNModal = false,
     keyboardBehavior = 'interactive',
@@ -309,34 +320,76 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
   // gorhom scrollable so no raw RN list ever lands inside a sheet (SC-10).
   const body = useMemo(() => {
     const safeBottom = Math.max(insets.bottom, 16);
+    void safeBottom;
     if (stickyFooter !== undefined && stickyFooter !== null) {
-      // Single flexed container: scroll/view body claims flex:1, footer pinned
-      // at the bottom with the safe-area floor (TicketCart pattern, SPEC §3.1).
-      return (
-        <BottomSheetView style={styles.stickyContainer}>
+      // Single flexed container: header (fixed) + scroll/view body claims flex:1
+      // + footer pinned at the bottom (TicketCart pattern, SPEC §3.1). The body
+      // scrolls when scrollMode='scroll' (gorhom BottomSheetScrollView) so the
+      // cart list pans without fighting the sheet. The footer node owns its own
+      // safe-area bottom padding (parity: TicketCart's insets.bottom+16, SPEC §7.2).
+      const stickyBody =
+        scrollMode === 'scroll' ? (
+          <BottomSheetScrollView
+            style={styles.stickyBody}
+            {...(scrollProps as Partial<
+              React.ComponentProps<typeof BottomSheetScrollView>
+            >)}
+          >
+            {children}
+          </BottomSheetScrollView>
+        ) : (
           <View style={styles.stickyBody}>{children}</View>
-          <View style={{ paddingBottom: safeBottom + 16 }}>{stickyFooter}</View>
+        );
+      return (
+        <BottomSheetView style={[styles.stickyContainer, bodyContainerStyle]}>
+          {header}
+          {stickyBody}
+          {stickyFooter}
         </BottomSheetView>
       );
     }
+
+    const hasHeader = header !== undefined && header !== null;
+
     switch (scrollMode) {
       case 'view':
         // Children render directly as <BottomSheet> children (consumer-composed).
+        // A header, when present, is wrapped with the children in a flex View.
+        if (hasHeader) {
+          return (
+            <BottomSheetView style={[styles.flexContainer, bodyContainerStyle]}>
+              {header}
+              {children}
+            </BottomSheetView>
+          );
+        }
         return children;
-      case 'scroll':
-        return (
+      case 'scroll': {
+        const scroll = (
           <BottomSheetScrollView
             {...(scrollProps as Partial<React.ComponentProps<typeof BottomSheetScrollView>>)}
           >
             {children}
           </BottomSheetScrollView>
         );
+        if (hasHeader) {
+          return (
+            <BottomSheetView style={[styles.flexContainer, bodyContainerStyle]}>
+              {header}
+              {scroll}
+            </BottomSheetView>
+          );
+        }
+        return scroll;
+      }
       case 'flatlist':
         return (
           <BottomSheetFlatList
             {...(scrollProps as React.ComponentProps<typeof BottomSheetFlatList>)}
             ListHeaderComponent={
-              children as React.ComponentProps<typeof BottomSheetFlatList>['ListHeaderComponent']
+              (header ?? children) as React.ComponentProps<
+                typeof BottomSheetFlatList
+              >['ListHeaderComponent']
             }
           />
         );
@@ -347,11 +400,12 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
         const hasSections =
           sectionProps?.sections !== undefined &&
           sectionProps.sections !== null;
-        // When sections are provided, header (children) renders above the list.
-        // When omitted, only the children render (consumer-owned state, e.g.
-        // NotificationsSheet's loading/empty/error branches).
+        // header + children render above the list. When sections are omitted
+        // (consumer-owned loading/empty/error state in children), only the
+        // header + children render — no list. (NotificationsSheet pattern.)
         return (
-          <BottomSheetView style={styles.sectionListContainer}>
+          <BottomSheetView style={[styles.sectionListContainer, bodyContainerStyle]}>
+            {header}
             {children}
             {hasSections ? (
               <BottomSheetSectionList
@@ -367,7 +421,15 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
         return exhaustive;
       }
     }
-  }, [scrollMode, scrollProps, children, stickyFooter, insets.bottom]);
+  }, [
+    scrollMode,
+    scrollProps,
+    header,
+    bodyContainerStyle,
+    children,
+    stickyFooter,
+    insets.bottom,
+  ]);
 
   const sheet = (
     <BottomSheet
@@ -501,6 +563,7 @@ function CenterDialog({
 }
 
 const styles = StyleSheet.create({
+  flexContainer: { flex: 1 },
   stickyContainer: { flex: 1 },
   stickyBody: { flex: 1 },
   sectionListContainer: { flex: 1 },
