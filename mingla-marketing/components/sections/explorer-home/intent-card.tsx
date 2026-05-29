@@ -215,10 +215,10 @@ export function IntentCard({
           <span
             className="font-sans"
             style={{
-              fontSize: '12px',
+              fontSize: '14px',
               lineHeight: 1.1,
               fontWeight: 700,
-              color: 'var(--color-ink)',
+              color: '#FFFFFF',
               whiteSpace: 'nowrap',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
@@ -231,10 +231,10 @@ export function IntentCard({
             style={{
               flex: '0 0 auto',
               marginLeft: '8px',
-              fontSize: '12px',
+              fontSize: '14px',
               lineHeight: 1.1,
               fontWeight: 700,
-              color: 'var(--color-ink)',
+              color: '#FFFFFF',
               whiteSpace: 'nowrap',
             }}
           >
