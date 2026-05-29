@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 
 import {
   acknowledgeEventCoverVideoSourceUploaded,
+  applyEventCoverVideoJob,
   cancelEventCoverVideoJob,
   compressVideoLocally,
   createEventCoverVideoUploadIntent,
@@ -17,6 +18,7 @@ import { businessEventKeys } from "./useBusinessEvents";
 import { eventDraftKeys } from "./useServerDraftEvents";
 import { publicEventKeys } from "./usePublicEvents";
 import { upcomingKeys } from "./upcomingKeys";
+import { brandKeys } from "./useBrands";
 
 const idleStage: EventCoverVideoUploadStage = { phase: "idle", percent: 0 };
 
@@ -30,10 +32,15 @@ export type EventCoverVideoUploadFile = {
   trimEndMs?: number;
 };
 
+// ORCH-0989: cover-video target. "event" (default) → events.cover_media_url;
+// "brand" → brands.cover_media_url (the apply step writes brands on ready).
+export type CoverVideoTargetKind = "event" | "brand";
+
 export function useEventCoverVideoUpload(
   eventId: string,
   brandId: string,
   applyMode: EventCoverVideoApplyMode = "draft_auto",
+  target: CoverVideoTargetKind = "event",
 ): {
   start: (file: EventCoverVideoUploadFile) => Promise<void>;
   cancel: () => Promise<void>;
@@ -53,13 +60,20 @@ export function useEventCoverVideoUpload(
   const [error, setError] = useState<Error | null>(null);
 
   const invalidateEventCaches = useCallback((): void => {
+    if (target === "brand") {
+      // ORCH-0989: brand-target writes brands.cover_media_url — invalidate
+      // brand caches, not event caches (eventId is absent).
+      void queryClient.invalidateQueries({ queryKey: brandKeys.detail(brandId) });
+      void queryClient.invalidateQueries({ queryKey: brandKeys.lists() });
+      return;
+    }
     void queryClient.invalidateQueries({ queryKey: businessEventKeys.detail(eventId) });
     void queryClient.invalidateQueries({ queryKey: businessEventKeys.list(brandId) });
     void queryClient.invalidateQueries({ queryKey: eventDraftKeys.detail(eventId) });
     void queryClient.invalidateQueries({ queryKey: eventDraftKeys.list(brandId) });
     void queryClient.invalidateQueries({ queryKey: publicEventKeys.detailById(eventId) });
     void queryClient.invalidateQueries({ queryKey: upcomingKeys.all });
-  }, [brandId, eventId, queryClient]);
+  }, [brandId, eventId, queryClient, target]);
 
   const start = useCallback(
     async (file: EventCoverVideoUploadFile): Promise<void> => {
@@ -90,9 +104,11 @@ export function useEventCoverVideoUpload(
         const trimStartMs = file.trimStartMs ?? 0;
         const trimEndMs = file.trimEndMs ?? compressed.durationMs;
         const intent = await createEventCoverVideoUploadIntent({
+          target,
           applyMode,
           brandId,
-          eventId,
+          // ORCH-0989: brand-target carries no eventId.
+          eventId: target === "brand" ? undefined : eventId,
           sourceBytes: compressed.bytes,
           sourceDurationMs: compressed.durationMs,
           sourceFileName: file.fileName ?? null,
@@ -118,8 +134,9 @@ export function useEventCoverVideoUpload(
         if (abortController.signal.aborted) return;
 
         const acknowledged = await acknowledgeEventCoverVideoSourceUploaded({
+          target,
           brandId,
-          eventId,
+          eventId: target === "brand" ? undefined : eventId,
           jobId: intent.jobId,
           providerUploadResponse,
         });
@@ -137,6 +154,13 @@ export function useEventCoverVideoUpload(
             }
           },
         });
+        // ORCH-0989: brand-target persists on ready via the apply fn (writes
+        // brands.cover_media_url + cover_media_type='video'). Event-target
+        // keeps its existing apply path (draft_auto auto-applies in the
+        // webhook; published_manual applies through the event publish flow).
+        if (target === "brand") {
+          await applyEventCoverVideoJob(intent.jobId);
+        }
         setStatus(ready);
         setProcessedUrl(ready.processedUrl);
         setLocalPreviewUri(null);
@@ -168,7 +192,7 @@ export function useEventCoverVideoUpload(
         });
       }
     },
-    [applyMode, brandId, eventId, invalidateEventCaches],
+    [applyMode, brandId, eventId, invalidateEventCaches, target],
   );
 
   const cancel = useCallback(async (): Promise<void> => {

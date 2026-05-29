@@ -21,6 +21,9 @@ const requiredFiles = [
   // search + provider-metadata tokens now live in CoverPicker.tsx; event
   // Step4 is a thin wrapper that forwards via the picker.
   "mingla-business/src/components/ui/CoverPicker.tsx",
+  // ORCH-0989 — unified Sheet host + the browse service for gallery-first tabs.
+  "mingla-business/src/components/ui/CoverPickerSheet.tsx",
+  "mingla-business/src/services/coverProviderBrowseService.ts",
   "mingla-business/src/services/giphyEventCoverService.ts",
   "mingla-business/src/services/__tests__/giphyEventCoverService.test.ts",
   "mingla-business/src/services/pexelsEventCoverService.ts",
@@ -36,10 +39,17 @@ for (const path of requiredFiles) {
 
 const step4 = read("mingla-business/src/components/event/CreatorStep4Cover.tsx");
 const coverPicker = read("mingla-business/src/components/ui/CoverPicker.tsx");
+// ORCH-0989: the picker UI moved out of CreatorStep4Cover (now a button +
+// preview) into the shared CoverPickerSheet. The provider tokens live in
+// CoverPicker (the sheet's body) + coverProviderBrowseService. Concatenate
+// the sheet too so the composite substring checks find the tokens wherever
+// they land.
+const coverPickerSheet = read("mingla-business/src/components/ui/CoverPickerSheet.tsx");
+const browseService = read("mingla-business/src/services/coverProviderBrowseService.ts");
 // ORCH-0876: the event-side cover provider invariant is now satisfied when
-// EITHER CreatorStep4Cover OR the shared CoverPicker it composes carries the
-// tokens. Combined source for the substring checks below.
-const eventCoverComposite = step4 + "\n" + coverPicker;
+// EITHER CreatorStep4Cover OR the shared CoverPicker/CoverPickerSheet it
+// composes carries the tokens. Combined source for the substring checks below.
+const eventCoverComposite = step4 + "\n" + coverPicker + "\n" + coverPickerSheet;
 const giphy = read("mingla-business/src/services/giphyEventCoverService.ts");
 const pexelsClient = read("mingla-business/src/services/pexelsEventCoverService.ts");
 const pexelsEdge = read("supabase/functions/event-cover-pexels-search/index.ts");
@@ -78,6 +88,23 @@ if (!giphy.includes("https://api.giphy.com/v1/gifs/search")) {
 }
 if (giphy.includes("supabase.functions.invoke") || giphy.includes("PEXELS_API_KEY")) {
   fail("GIPHY must not be proxied through Supabase or share Pexels secret handling.");
+}
+// ORCH-0989 gallery-first: the browse service must expose trending/curated and
+// keep the GIPHY/Pexels transport asymmetry (GIPHY client-direct, Pexels edge).
+if (
+  !browseService.includes("trendingGiphyCovers") ||
+  !browseService.includes("curatedPexelsCovers")
+) {
+  fail("coverProviderBrowseService must export trendingGiphyCovers + curatedPexelsCovers.");
+}
+if (!browseService.includes("https://api.giphy.com/v1/gifs/trending")) {
+  fail("coverProviderBrowseService GIPHY trending must call the direct client endpoint.");
+}
+if (!browseService.includes("event-cover-pexels-curated")) {
+  fail("coverProviderBrowseService Pexels curated must call the authenticated Edge proxy.");
+}
+if (browseService.includes("PEXELS_API_KEY")) {
+  fail("Pexels API key must not be read client-side in coverProviderBrowseService.");
 }
 if (!pexelsClient.includes("event-cover-pexels-search")) {
   fail("Pexels client must call the authenticated Edge proxy.");

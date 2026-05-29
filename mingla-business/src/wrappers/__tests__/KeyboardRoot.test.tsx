@@ -302,7 +302,8 @@ describe("ORCH-0892-B v2 sheet-consumer migrations — SmartScrollView contract"
   // migrated to SmartScrollView wrapper. Sheet primitive itself dropped
   // keyboard logic, so each consumer owns its own KAS-driven scroll.
   const SHEET_CONSUMERS = [
-    "src/components/brand/BrandCoverPickerSheet.tsx",
+    // ORCH-0989: BrandCoverPickerSheet retired → unified CoverPickerSheet.
+    "src/components/ui/CoverPickerSheet.tsx",
     "src/components/brand/BrandDeleteSheet.tsx",
     "src/components/brand/BrandStripeDetachConfirmSheet.tsx",
     "src/components/door/DoorRefundSheet.tsx",

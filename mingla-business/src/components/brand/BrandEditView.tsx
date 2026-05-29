@@ -67,7 +67,8 @@ import { Input } from "../ui/Input";
 import { Toast } from "../ui/Toast";
 import { TopBar } from "../ui/TopBar";
 import { BrandAvatarPickerSheet } from "./BrandAvatarPickerSheet";
-import { BrandCoverPickerSheet } from "./BrandCoverPickerSheet";
+import { CoverPickerSheet } from "../ui/CoverPickerSheet";
+import type { CoverPatch } from "../ui/CoverPicker";
 import { ThemeEditorSection } from "../theme/ThemeEditorSection";
 
 interface ToastState {
@@ -359,14 +360,22 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
     setCoverPickerVisible(false);
   }, []);
   const handleCoverPicked = useCallback(
-    (result: { publicUrl: string; mediaType: "image" | "gif" }): void => {
+    (patch: CoverPatch): void => {
       setDraft((prev) =>
         prev === null
           ? prev
           : {
               ...prev,
-              coverMediaUrl: result.publicUrl,
-              coverMediaType: result.mediaType,
+              coverMediaUrl: patch.coverMediaUrl ?? undefined,
+              // brands.cover_media_type is "image" | "gif" | "video" (optional).
+              coverMediaType:
+                patch.coverMediaUrl === null
+                  ? undefined
+                  : patch.coverMediaType === "video"
+                    ? "video"
+                    : patch.coverMediaType === "gif"
+                      ? "gif"
+                      : "image",
             },
       );
     },
@@ -816,19 +825,31 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
         />
       </View>
 
-      {/* ORCH-0805 — brand cover picker. Mounted inside the parent host View
-          per the sub-sheet-inside-parent rule; native Modal sibling mounts
-          compete at the OS root layer (Cycle 12 / 13a precedent). */}
+      {/* ORCH-0989 — unified cover picker sheet (replaces BrandCoverPickerSheet).
+          Mounted inside the parent host View per I-SUB-SHEET-INSIDE-PARENT;
+          native Modal sibling mounts compete at the OS root layer. Brand video
+          is now enabled via the generalized event_cover_video_jobs pipeline. */}
       {brand !== null && accountId !== null ? (
-        <BrandCoverPickerSheet
+        <CoverPickerSheet
           visible={coverPickerVisible}
-          brandId={brand.id}
-          accountId={accountId}
-          existingDescription={joinBrandDescription(brand.tagline, brand.bio)}
-          currentMediaUrl={draft?.coverMediaUrl ?? null}
           onClose={handleCloseCoverPicker}
-          onPicked={handleCoverPicked}
-          onErrorToast={fireToast}
+          target={{
+            kind: "brand",
+            brandId: brand.id,
+            accountId,
+            existingDescription: joinBrandDescription(brand.tagline, brand.bio),
+          }}
+          initial={{
+            coverMediaUrl: draft?.coverMediaUrl ?? null,
+            coverMediaType: draft?.coverMediaType ?? null,
+            coverMediaProvider: null,
+            coverMediaSourceUrl: null,
+            coverMediaCredit: null,
+            coverMediaCreditUrl: null,
+            coverMediaAlt: null,
+          }}
+          onCoverChange={handleCoverPicked}
+          onShowToast={fireToast}
         />
       ) : null}
 

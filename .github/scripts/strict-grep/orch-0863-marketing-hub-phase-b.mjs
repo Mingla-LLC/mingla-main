@@ -950,6 +950,26 @@ function checkNoNewBackendFiles() {
     "supabase/functions/get-person-hero-cards/index.ts",
     "supabase/functions/generate-curated-experiences/index.ts",
   ];
+  // ORCH-0989 [Unified cover picker sheet]: brand-cover video target migration
+  // + new Pexels curated edge fn + the 6 generalized event-cover-video fns +
+  // shared helper (edits flagged by C7's modified-file detection). Per
+  // SPEC_ORCH-0989 §9.4 + COMMS-0002.
+  const ORCH_0989_BACKEND_ALLOWLIST = [
+    "supabase/functions/event-cover-pexels-curated/index.ts",
+    "supabase/migrations/20260801000000_orch_0989_brand_cover_video_target.sql",
+    "supabase/functions/event-cover-video-upload-intent/index.ts",
+    "supabase/functions/event-cover-video-source-uploaded/index.ts",
+    "supabase/functions/event-cover-video-status/index.ts",
+    "supabase/functions/event-cover-video-apply/index.ts",
+    "supabase/functions/event-cover-video-cancel/index.ts",
+    "supabase/functions/event-cover-video-webhook/index.ts",
+    "supabase/functions/_shared/eventCoverVideo.ts",
+    // ORCH-0989 tester-authored adversarial regressions. Ship with the close PR.
+    // #1 curated edge fn error/boundary/no-orientation invariant.
+    "supabase/functions/event-cover-pexels-curated/index.adversarial.test.ts",
+    // #2 brand-cover-video target boundary (CHECK + RLS + apply gate).
+    "supabase/functions/event-cover-video-apply/index.adversarial.test.ts",
+  ];
   // ORCH-0990 [Curated "Flowers" stop resolves to real florists]. C7 is scoped to
   // ORCH-0863 marketing; these backend touches are the composite primary-type
   // florist gate: a read-only re-create of the fetch_local_signal_ranked RPC
@@ -968,6 +988,7 @@ function checkNoNewBackendFiles() {
     "supabase/functions/generate-curated-experiences/index.ts",
   ];
   const ALLOWLIST = [
+    ...ORCH_0989_BACKEND_ALLOWLIST,
     ...ORCH_0990_BACKEND_ALLOWLIST,
     ...ORCH_0986_BACKEND_ALLOWLIST,
     ...ORCH_0985_BACKEND_ALLOWLIST,

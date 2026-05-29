@@ -90,6 +90,16 @@ jest.mock("../upcomingKeys", () => ({
   upcomingKeys: { all: ["upcoming"] },
 }));
 
+// ORCH-0989: the hook now imports brandKeys from useBrands for brand-target
+// cache invalidation. Mock it so the test does not pull the real useBrands →
+// supabase → expo-constants chain (untransformed in this node test env).
+jest.mock("../useBrands", () => ({
+  brandKeys: {
+    detail: (brandId: string) => ["brands", "detail", brandId],
+    lists: () => ["brands", "list"],
+  },
+}));
+
 import { useEventCoverVideoUpload } from "../useEventCoverVideoUpload";
 
 const renderHook = () => {
