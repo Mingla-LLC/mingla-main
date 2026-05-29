@@ -153,3 +153,40 @@ Deck container formula `CARD_H + 62` is unchanged in code; wrapper scale ≈1.07
 
 ### Discoveries for orchestrator
 None.
+
+---
+
+## v2.7 chip styling pass — 2026-05-29 (operator verbatim)
+
+**Operator direction (verbatim):** "The labels Cocktail bar, restaurant etc should go. The names of the place and the description should be aligned left and styled as chips. same thing with the price. the 173 locals recommend with the avatars should be on one line and at the bottom."
+
+**File edited (exactly 1):** `mingla-marketing/components/sections/explorer-home/hero-place-deck.tsx`. Dev server already on :3008 (orchestrator-started); all edits hot-reloaded; no restart, no second server, no process killed. `CARD_H` stays 360 (unchanged), `CARD_W` 260 (unchanged), deck-wrapper height `CARD_H + 62` unchanged — the page-level no-scroll ceiling is untouched.
+
+### The 5 changes
+
+**1. Category eyebrow removed entirely.** The `<p>` rendering `{place.category}` (warm 10px uppercase eyebrow) was deleted from the content block. The category is no longer shown on the card. The front-card `aria-label` was also changed from `"{name}, {category}. {sellLine}. {price}."` to `"{name}. {sellLine}. {price}."` so the spoken label matches the visible card (no orphaned category in AT). `place.category` is still consumed internally by `sellLineFor`/`fallbackSellLine`, so no unused symbol.
+
+**2. Place name → left-aligned chip.** Name now renders inside `<Pill variant="glass">` (the shared primitive at `components/ui/pill.tsx`, whose `glass` variant applies the `.glass-soft` utility from `globals.css`). Compact overrides via className: `h-auto max-w-full truncate px-2.5 py-1 font-display`, 14px/lh1.15/ink. Left-aligned because the content block is `items-start`.
+
+**3. Description → left-aligned chip.** Sell-line renders inside the same `<Pill variant="glass">`, `h-auto max-w-full px-2.5 py-1 font-sans`, 11.5px/lh1.25/500, `WebkitLineClamp:2` + `whiteSpace:normal` so it clamps to 2 lines and never overflows.
+
+**4. Price → chip.** Price range / "Free" renders inside the same `<Pill variant="glass">`, `h-auto px-2.5 py-1`, 12px. Keeps the `$N–$N` + ` · per person` two-tone for real ranges and warm "Free" when null. Consistent with name + description chips.
+
+**5. "N locals recommend" + avatars on ONE line at the bottom.** The content block is now `flex flex-col items-start gap-5px`; the bottom row is a `<div className="mt-auto flex w-full items-center">` holding the single `RecommendStack`, which itself lays the 3 CSS-only avatars (+overflow chip) and the "N locals recommend" label on one horizontal row. `mt-auto` pins it to the bottom of the block. CSS-only avatars unchanged (no `<img>`, no network).
+
+**Supporting layout change:** photo zone `h-[64%]`→`h-[58%]`, content block `h-[36%]`→`h-[42%]`, content padding `12px 14px 10px`→`10px 12px`, added `gap:5px`. This gives the 3 stacked chips + bottom row room inside the unchanged 360px card.
+
+### No-scroll conclusion (768px-tall worst case, CARD_H=360 unchanged)
+The card's outer height (`CARD_H=360`), width (260) and deck-wrapper height (`CARD_H+62`) are byte-for-byte unchanged, so the page-level one-screen-hero math from v2 (middle band 599.0px available; used 584.6px; **headroom +14.4px**) is unchanged → **no page scroll at 768px.** Internal fit inside the 360px card: content block 42% of 360 ≈ 151px, minus 20px vertical padding ≈ 131px usable. Chip stack with 5px gaps: name ≈24px + description(2-line) ≈37px + price ≈20px + 3 gaps 15px + bottom row(avatars 22px) ≈22px = **≈118px ≤ 131px usable (~13px headroom)**. The block is `overflow:hidden`, so any tightening clips cleanly rather than growing the card. Conclusion: **fits with headroom; no scroll, card height not exceeded.**
+
+### Verify
+- `npx tsc --noEmit` (marketing) → **exit 0**, no errors.
+- `curl http://localhost:3008/` → **HTTP 200**; **0** Next build-error / error-overlay markers (clean hot-recompile).
+- Served HTML: `glass-soft` chips present; place name `OKPB` present; `locals recommend` present; ` per person` present. **Category strings ABSENT** — grep for `Italian Restaurant` / `Cocktail Bar` / `Historical Landmark` / `French Restaurant` returns nothing in the served HTML (gone from both visible label and aria-label).
+- Marketing-only; no app-mobile/supabase/business/admin touch; only existing `globals.css` tokens + the shared `<Pill>` primitive reused (no new chip style invented).
+
+### Regression test
+**BACKFILL-EXEMPT** — marketing-only presentational CSS change; verification is the served-HTML + tsc gate above.
+
+### Discoveries for orchestrator
+None.

@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useMinglaReducedMotion } from '@/lib/reduced-motion'
+import { Pill } from '@/components/ui/pill'
 import {
   DC_SHOWCASE_PLACES,
   placePhotoUrl,
@@ -144,7 +145,7 @@ function DeckCard({ place, position, reduced }: DeckCardProps) {
       role={isFront ? 'img' : undefined}
       aria-label={
         isFront
-          ? `${place.name}, ${place.category}. ${sellLine}. ${priceLabel}.`
+          ? `${place.name}. ${sellLine}. ${priceLabel}.`
           : undefined
       }
       aria-hidden={isFront ? undefined : true}
@@ -169,10 +170,11 @@ function DeckCard({ place, position, reduced }: DeckCardProps) {
       }}
       className="group absolute flex flex-col overflow-hidden bg-[#1a1a2e] will-change-transform [backface-visibility:hidden] [transform-style:preserve-3d] hover:[transform:translateY(-4px)]"
     >
-      {/* Photo zone — 64% (v2.2). The over-photo sell-line, price pill and the
-          "5 photos" pill were all removed in v2; the only thing left on the photo
-          is a faint scrim guarding the seam against the description block. */}
-      <div className="relative h-[64%] w-full overflow-hidden bg-[#1a1a2e]">
+      {/* Photo zone — 58% (v2.7). Trimmed from 64% to give the chip stack
+          (name + 2-line description + price + bottom social row) room to fit
+          inside CARD_H=360 with no scroll. The over-photo sell-line, price pill
+          and "5 photos" pill were removed in v2; only a faint seam scrim remains. */}
+      <div className="relative h-[58%] w-full overflow-hidden bg-[#1a1a2e]">
         <PhotoOrFallback place={place} eager={isFront} />
 
         {/* Seam scrim — lower 38% (v2.2: reduced from 52%, no text sits on it now) */}
@@ -186,103 +188,85 @@ function DeckCard({ place, position, reduced }: DeckCardProps) {
         />
       </div>
 
-      {/* Description area — 36% solid content block (v2.3). Hierarchy:
-          eyebrow category → name → description → price + social-proof row.
-          overflow:hidden so a wrapped name/fallback clips cleanly, never grows
-          the card past CARD_H. */}
+      {/* Content area — 42% solid block (v2.7). All chips LEFT-aligned, stacked:
+          name chip, description chip (2-line clamp), price chip, then a flex
+          spacer, then the bottom row (avatars + "N locals recommend" on ONE line).
+          Category eyebrow removed per operator. Chips reuse the shared
+          <Pill variant="glass"> primitive (glass-soft fill + rim) with compact
+          height/padding overrides so everything fits inside CARD_H=360 with no
+          scroll. overflow:hidden so any wrap clips cleanly, never grows the card. */}
       <div
-        className="flex h-[36%] flex-col overflow-hidden"
+        className="flex h-[42%] flex-col items-start overflow-hidden"
         style={{
           background: 'rgba(255,255,255,0.96)',
           backdropFilter: 'blur(20px)',
           WebkitBackdropFilter: 'blur(20px)',
           borderTop: '1px solid rgba(14,14,16,0.06)',
-          padding: '12px 14px 10px',
+          padding: '10px 12px',
+          gap: '5px',
         }}
       >
-        {/* #1 — category eyebrow */}
-        <p
-          className="font-sans uppercase"
-          style={{
-            fontSize: '10px',
-            lineHeight: 1,
-            letterSpacing: '0.06em',
-            fontWeight: 700,
-            color: '#eb7825',
-            marginBottom: '4px',
-          }}
-        >
-          {place.category}
-        </p>
+        {/* Category eyebrow removed (operator v2.7: the category labels go away).
+            The card no longer shows the category. */}
 
-        {/* #2 — place name (1-line truncate; full name in aria-label) */}
-        <p
-          className="truncate font-display"
-          style={{
-            fontSize: '18px',
-            lineHeight: 1.1,
-            color: '#0e0e10',
-            marginBottom: '4px',
-          }}
+        {/* place name chip (left-aligned, single-line truncate) */}
+        <Pill
+          variant="glass"
+          className="h-auto max-w-full truncate px-2.5 py-1 font-display"
+          style={{ fontSize: '14px', lineHeight: 1.15, color: '#0e0e10' }}
         >
           {place.name}
-        </p>
+        </Pill>
 
-        {/* #3 — description (2-line clamp) */}
-        <p
-          className="font-sans"
+        {/* description chip (left-aligned, 2-line clamp) */}
+        <Pill
+          variant="glass"
+          className="h-auto max-w-full px-2.5 py-1 font-sans"
           style={{
-            fontSize: '12.5px',
-            lineHeight: 1.3,
+            fontSize: '11.5px',
+            lineHeight: 1.25,
             fontWeight: 500,
-            color: 'rgba(14,14,16,0.66)',
-            marginBottom: '6px',
+            color: 'rgba(14,14,16,0.7)',
             display: '-webkit-box',
             WebkitLineClamp: 2,
             WebkitBoxOrient: 'vertical',
             overflow: 'hidden',
+            whiteSpace: 'normal',
           }}
         >
           {sellLine}
-        </p>
+        </Pill>
 
-        {/* #4 — price (left) + social-proof avatar stack (right) */}
-        <div className="mt-auto flex items-center justify-between">
-          {/* #4a — real price range, or "Free" (warm) when null (v2.4) */}
+        {/* price chip (left-aligned, consistent with name + description) */}
+        <Pill
+          variant="glass"
+          className="h-auto px-2.5 py-1 font-sans"
+          style={{ fontSize: '12px', lineHeight: 1 }}
+        >
           {place.priceRange ? (
-            <span style={{ fontSize: '13px', lineHeight: 1 }}>
-              <span
-                className="font-sans"
-                style={{ fontWeight: 700, color: '#0e0e10' }}
-              >
+            <>
+              <span style={{ fontWeight: 700, color: '#0e0e10' }}>
                 {place.priceRange}
               </span>
               <span
-                className="font-sans"
                 style={{
                   fontSize: '10px',
                   fontWeight: 600,
                   color: 'rgba(14,14,16,0.45)',
                 }}
               >
-                {' · per person'}
+                {' · per person'}
               </span>
-            </span>
+            </>
           ) : (
-            <span
-              className="font-sans"
-              style={{
-                fontSize: '13px',
-                lineHeight: 1,
-                fontWeight: 700,
-                color: '#eb7825',
-              }}
-            >
-              Free
-            </span>
+            <span style={{ fontWeight: 700, color: '#eb7825' }}>Free</span>
           )}
+        </Pill>
 
-          {/* #4b — decorative "N locals recommend" avatar stack (v2.6) */}
+        {/* bottom row: avatars + "N locals recommend" on ONE line,
+            pinned to the bottom of the content block (mt-auto). */}
+        <div className="mt-auto flex w-full items-center">
+          {/* decorative "N locals recommend" avatar stack — CSS-only, no images */}
           <RecommendStack count={place.recommendCount} />
         </div>
       </div>

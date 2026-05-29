@@ -160,3 +160,172 @@ OKPB variant (no price, no blurb): no `$$$` pill; sell-line = fallback *"Craft c
 4. Category→fallback-sell-line is a local lookup in this component (test run); not a shared util yet.
 5. Keep the auto-rotate/visibility/hover-pause logic from `HeroVibeDeck`; extend the queue to all 5; swap SVG `<img>` for the real card markup above.
 6. Comment the omitted distance/travel-time decision inline so a future dev doesn't "add it back" thinking it was forgotten.
+
+---
+
+# REDESIGN v2 — operator pass 2026-05-29
+
+**Driver (Seth, verbatim):** "Put a real price range, increase the height of the cards, and redesign the description area to contain the name, description, price, replace review count with an avatar overlap design indicator of how many people locally recommend. and also remove the picture count."
+
+This section **supersedes** §1 (card height), §2 (the photo-count pill), §3–§6 (the bottom-block layout, the over-photo sell-line, the rating/review-count row, the frosted-strip proportions), and the §12 mockup. Everything NOT contradicted here (motion §7–§8, reduced-motion §8, photo treatment + scrim §2 *except* the pill, the 404 fallback §9, accent/font tokens §11) stays exactly as built. The honesty rules (no distance, no travel-time) remain in force.
+
+**References examined (v2):** re-studied the in-house `CuratedExperienceSwipeCard.tsx` info block (24pt bold title → 15/600 one-liner → hairline → meta row, `fontSize:24/15`) and `SwipeableCards.tsx` single-card 88/12 split as the Mingla-native hierarchy to echo on a TALLER block; Airbnb "Guest favourite" + host-avatar row (overlapping circular avatars with white ring separation, "+N" overflow); Hinge/Bumble "liked by" avatar stacks (−8 to −10px overlap, 2px ring); Partiful guest-list avatar pile (gradient-fill avatars when no photo). Synthesized for a marketing card that must render with ZERO external avatar fetches — so avatars are CSS-drawn, not network images.
+
+## v2.1 — New card dimensions + no-scroll proof
+
+- **`CARD_H` 325px → `360px`.** `CARD_W` stays **260px** (portrait integrity; 260×360 ≈ 13:18, a touch taller than 4:5 — reads as a premium tall card, still inside the 420px hero slot). Corner radius `--radius-2xl` (36px), border, and elevation tokens are unchanged from §1.
+- **Why 360 and not more — computed against the real hero, not eyeballed.** The deck mounts in `hero.tsx` inside `h-[100svh]` with a wrapper `transform: scale(clamp(0.82, 0.82 + (100vmin−360px)/1600px, 1.08))`. The hero envelope at the **768px-tall** worst case:
+
+  | Band | Value at 768px tall |
+  |---|---|
+  | Top spacer `clamp(80px,11vh,160px)` | 84.5px |
+  | Bottom spacer (mirror) | 84.5px |
+  | Middle band available (`flex-1`) | **599.0px** |
+  | Headline block (2 lines @ `clamp(1.7rem,5.7vmin,4rem)`→43.8px, leading 1.12, + 0.12em gap) | 103.3px |
+  | Deck `margin-top` `clamp(1.1rem,3.6vmin,2.8rem)` | 27.6px |
+  | Wrapper scale at vmin=768 | **1.075** |
+  | Deck container raw height = `CARD_H + 62` | 360+62 = 422px |
+  | Deck container **scaled** = 422 × 1.075 | 453.6px |
+  | **Total used** = 103.3 + 27.6 + 453.6 | **584.6px** |
+  | **Headroom** = 599.0 − 584.6 | **+14.4px** ✓ fits, no page scroll |
+
+  The chip-nav row is `position: absolute; bottom-8` and lives *inside* the bottom spacer band, so it does not consume middle-band height. The deck container keeps the existing `CARD_H + 62` formula (the +62 is the stack peek headroom + bottom inset), so growing `CARD_H` to 360 grows the scaled container linearly at the 1.075 factor.
+
+- **Ceiling check (why not taller).** The scale *amplifies* every added pixel by 1.075×. Stepping the same math: `CARD_H=375` → used 600.7px → **−1.7px (overflows)**; `CARD_H=380` → −7.1px; `CARD_H=400` → −28.6px. **360px is the tallest height that clears 768px with a real margin (+14.4px).** Locking 360 — do NOT round up to 375/380; it reintroduces page scroll on a 768px laptop. (At taller viewports the band only grows and headroom increases, so 360 is safe everywhere ≥768px.) 🔒LOCKED: `CARD_H = 360`.
+
+## v2.2 — New split: photo 64% / description area 36%
+
+The richer block needs real room, so the description area roughly **doubles** (was 16% frost, now 36% solid block) and the photo zone shrinks from 81% to **64%**.
+
+- Photo zone: **64% of 360 = 230px**. `object-fit: cover`, `#1a1a2e` load fill, 404 fallback — all unchanged from §2/§9. The bottom scrim (§2) **stays** but its only job now is to keep the photo edge from clashing with the description block's top border; the sell-line and price NO LONGER live over the photo (they move into the description area). Keep the scrim at the existing gradient but you may reduce its height to `38%` since no text sits on it.
+- **Photo top-right pill: DELETED** (see v2.5).
+- Description area: **36% of 360 = 130px** solid block. This is the redesigned "description area."
+
+🔒LOCKED: split `64% / 36%` (≈ 230px / 130px).
+
+## v2.3 — Redesigned description area (the core of this pass)
+
+A solid (non-frosted, non-overlay) content block at the card bottom. It is light-on-light: the same frosted-white treatment from §6 is promoted to a **solid premium card surface** so the block reads as "the listing detail," echoing `CuratedExperienceSwipeCard`'s white info strip but with 4 stacked elements instead of 2.
+
+**Surface:**
+- Background `rgba(255,255,255,0.96)` (slightly more opaque than v1's 0.92 — it's now a primary content surface, not a thin strip). `backdrop-filter: blur(20px)` retained for the hairline of photo bleed at the top edge.
+- Top hairline `1px solid rgba(14,14,16,0.06)` (unchanged).
+- Inner padding: **`14px` horizontal, `12px` top, `12px` bottom** (4px grid).
+
+**Vertical order (top → bottom), with exact type + spacing:**
+
+| # | Element | Font | Size / line-height | Weight | Color | Spacing below |
+|---|---|---|---|---|---|---|
+| 1 | **Category label** (small eyebrow) | `--font-sans` | `10px` / 1.0, letter-spacing `0.06em`, `text-transform: uppercase` | `700` | `--color-warm` `#eb7825` | `4px` |
+| 2 | **Place name** | `--font-display` (Mochiy) | `18px` / 1.1 | (single-weight) | `--color-ink` `#0e0e10` | `4px` |
+| 3 | **Description** (sell-line / blurb) | `--font-sans` | `12.5px` / 1.35 | `500` | `rgba(14,14,16,0.66)` | `8px` |
+| 4 | **Price + social-proof row** (flex, space-between, `align-items:center`) | — | — | — | — | — |
+| 4a | ↳ Price range (left) | `--font-sans` | `13px` / 1.0 | `700` | `--color-ink` `#0e0e10` | — |
+| 4b | ↳ Avatar stack + label (right) | see v2.6 | — | — | — | — |
+
+- **Name** clamps to **1 line** (`truncate`) — at 18px Mochiy on 232px inner width, all 5 real names fit on one line except "President Lincoln's Cottage"; that one wraps awkwardly, so use 1-line truncate with the full name in the `aria-label`. (If the operator wants 2-line names, drop description to 1 line — but the 130px budget is tuned for 1-line name + 2-line description + the row; see the budget table below.)
+- **Description** clamps to **2 lines** (`-webkit-line-clamp:2`, ellipsis). Same content rules as §5 (real blurb, else category-derived fallback). The category-fallback map from §5 is unchanged.
+- The category moves OUT of the old "Category · ★ rating" meta row (that row is gone) and becomes the **eyebrow (#1)**. There is no longer a rating number or review count anywhere on the card — they are replaced by the social-proof row (v2.6).
+
+**130px vertical budget (proof the block holds without overflow):**
+
+| Item | px |
+|---|---|
+| Padding top | 12 |
+| Category eyebrow (10px, lh 1.0) | 10 |
+| gap | 4 |
+| Name (18px, lh 1.1) | 19.8 |
+| gap | 4 |
+| Description 2 lines (12.5px, lh 1.35) | 33.8 |
+| gap | 8 |
+| Price/social row (avatar 22px dia governs height) | 22 |
+| Padding bottom | 12 |
+| **Total** | **135.6px** |
+
+135.6 vs 130 budget → **5.6px over**. Resolve by tightening the description-to-row gap from 8→`6px` and the bottom padding from 12→`10px` (−4px) **and** trimming description line-height to `1.3` (−2px): revised total **129.6px ✓**. 🔒LOCKED final spacing: pad `14 / 12 / 10`, gaps `4 / 4 / 6`, description `12.5px / 1.3 / 2-line clamp`. (Implementor: if a name wraps or a longer fallback pushes it, the block is `overflow:hidden` so it clips cleanly — never grows the card.)
+
+## v2.4 — Real price range (replaces the `$/$$/$$$` pill)
+
+Render an **actual currency range**, not tier glyphs. Lives at **#4a** (left of the social row, inside the description area — NOT a glass pill over the photo anymore).
+
+- **Format (LOCKED):** `"$50–$100"` using an **en-dash** `–` (U+2013), no spaces around the dash, no decimals, no "per person" suffix on the number itself. Optional muted qualifier renders as a separate span: the number in `#0e0e10` weight 700, then a hair space + `· per person` in `rgba(14,14,16,0.45)` weight 600 at `10px`. **Decision:** include the `· per person` qualifier — it disambiguates the range honestly and reads premium. So the full render is e.g. **`$50–$100`** `· per person`.
+- **"Free" case:** Anacostia Park and President Lincoln's Cottage have no real price data → render the single word **`Free`** in `--color-warm` `#eb7825` weight 700 at 13px (warm makes "Free" feel like a perk, not a missing field), with **no** `· per person` qualifier. (Note: the current `dc-showcase-places.ts` carries decorative `$`/`$$`/`$$$` tiers for OKPB/Lincoln/Anacostia; v2 replaces the `priceTier` field with a real `priceRange: string | null` — `null` ⇒ "Free". Implementor updates the data shape.)
+- **Real data → renders (LOCKED):**
+  | Place | `priceRange` | Renders |
+  |---|---|---|
+  | L'Ardente | `"$50–$100"` | `$50–$100 · per person` |
+  | OKPB | `"$30–$50"` | `$30–$50 · per person` |
+  | Del Ray Café | `"$20–$30"` | `$20–$30 · per person` |
+  | Anacostia Park | `null` | `Free` (warm) |
+  | President Lincoln's Cottage | `null` | `Free` (warm) |
+
+  (OKPB's range is operator-confirmed for this DC test run; Del Ray "$20–$30" and L'Ardente "$50–$100" are from Seth's instruction.)
+
+## v2.5 — Photo-count pill: REMOVED ✓
+
+The top-right `⧉ 5` glass pill (v1 §2 "5 photos affordance", §4 badge inventory, `StackedPhotosGlyph`) is **deleted entirely** — markup, the `nPhotos` render, and the `StackedPhotosGlyph` SVG component. The `nPhotos` data field may stay in `ShowcasePlace` (harmless) but is no longer rendered. Confirmed: no photo-count anywhere on the card.
+
+## v2.6 — Avatar-overlap "locals recommend" indicator (replaces ★ rating + review count)
+
+A horizontal row at **#4b** (right side of the price/social row), right-aligned: an overlapping avatar stack, then a label to its right.
+
+**Avatars — CSS-drawn, zero network dependency (LOCKED approach).** Reliability rule: NO external avatar image fetches (no `i.pravatar`, no Unsplash, no Supabase avatar URLs — any of those can 404 or hang and break the premium read). Each avatar is a **CSS soft-gradient circle with a single uppercase initial**, drawn purely in markup:
+- **Diameter:** `22px`. **Count shown:** **3 gradient circles** + a **`+N` overflow chip** as the 4th token (so visually 4 tokens, premium and compact at 260px width).
+- **Shape:** `border-radius: 9999px`, `width/height 22px`.
+- **Ring/separation:** `border: 2px solid rgba(255,255,255,0.96)` (matches the description surface so each avatar punches a clean white gap from its neighbour — the Airbnb/Hinge separation trick).
+- **Overlap offset:** each avatar after the first gets `margin-left: -8px` (≈ 36% overlap). The `+N` chip also `-8px`.
+- **Gradient fills (LOCKED, 3 distinct, all from the Mingla warm/butter family so they read on-brand, never random):**
+  1. `linear-gradient(135deg, #eb7825 0%, #f4a85f 100%)` — warm
+  2. `linear-gradient(135deg, #f4d679 0%, #eba94f 100%)` — butter→amber
+  3. `linear-gradient(135deg, #7a4a2a 0%, #b87333 100%)` — cocoa→copper
+- **Initials:** one uppercase letter per avatar, `--font-sans` `10px` weight 800, color `rgba(255,255,255,0.96)`, centered. Use a tasteful fixed set per card (decorative — these are NOT real users): e.g. `M`, `J`, `K`. Same 3 initials across all cards is fine (decorative); or vary lightly per card for texture. `aria-hidden="true"` on the whole stack.
+- **`+N` overflow chip:** same 22px circle, `border:2px solid rgba(255,255,255,0.96)`, fill `rgba(14,14,16,0.82)` (dark neutral so it reads as "more"), text `+N` in `rgba(255,255,255,0.95)` `9px` weight 800.
+
+**Label (right of the stack, `margin-left: 8px`):**
+- Copy (LOCKED): **`N locals recommend`** — short, fits the 260px row. (Alternative "Recommended by N locals" is too long beside a price on a 260px card; use the compact form.)
+- Type: `--font-sans` `11px` / 1.1, weight `600`, color `rgba(14,14,16,0.6)`. The **N** numeral may be weight `700` color `#0e0e10` for a subtle emphasis.
+
+**The recommend count `N` is DECORATIVE social proof** (we have no real local-recommend data) — tasteful per-card values, plausibly proportional to each place's real popularity but NOT derived from it:
+  | Place | decorative `N` | `+N` chip |
+  |---|---|---|
+  | L'Ardente (2,141 reviews) | `212` | `+209` |
+  | OKPB (269) | `48` | `+45` |
+  | President Lincoln's Cottage (800) | `96` | `+93` |
+  | Anacostia Park (1,778) | `173` | `+170` |
+  | Del Ray Café (1,786) | `184` | `+181` |
+
+  `+N` chip = `N − 3` (three faces shown). Implementor: store `recommendCount` per place in the data; render 3 faces + `+(recommendCount − 3)`. Add an inline comment: **"decorative social proof — no real local-recommend data exists; do not wire to a backend."**
+
+**Accessibility:** the avatar stack + label is `aria-hidden="true"` (decorative). The card's `aria-label` (§10) drops the old "rated 4.5 from 2,141 reviews" clause and instead reads: `"{name}, {category}. {description}. {priceRange or 'Free'}."` — no fake recommend count in the AT string (honest to assistive tech). Keep `role="img"` on the front card, peeked cards `aria-hidden`.
+
+## v2.7 — Updated one-card mockup (L'Ardente, front card, v2)
+
+```
+┌──────────────────────────────────────┐  ← 36px radius, 260×360, shadow on dark
+│                                        │
+│        [ REAL HERO PHOTO ]             │
+│          0.jpg, cover                  │  64% photo zone (≈230px)
+│                                        │   (no pill, no over-photo text;
+│        (faint scrim at very bottom)    │    scrim only guards the seam)
+├────────────────────────────────────────┤  ← hairline
+│  ITALIAN RESTAURANT                     │  ← eyebrow, Nunito 10/700 warm, caps
+│  L'Ardente                              │  ← name, Mochiy 18, ink
+│  Elegant Italian with chandeliers and   │  ← description, Nunito 12.5/500,
+│  a gold-plated pizza oven.              │     ink-66%, 2-line clamp     36%
+│  $50–$100 · per person      (●●●)+209  │  ← price (left, 13/700 ink) ·  block
+│                             212 locals  │     avatar stack + label (right)
+│                             recommend   │     (≈130px)
+└────────────────────────────────────────┘
+```
+
+Free-case variant (Anacostia Park): eyebrow `PARK`; price cell renders **`Free`** in warm; social row `173 locals recommend` with `+170` chip. OKPB variant: eyebrow `COCKTAIL BAR`; description = category fallback *"Craft cocktails and a room worth lingering in."*; price `$30–$50 · per person`; `48 locals recommend` / `+45`.
+
+## v2.8 — Data-shape changes for the implementor (concise)
+
+1. `ShowcasePlace`: **remove** `priceTier`, **add** `priceRange: string | null` (null ⇒ "Free") and `recommendCount: number`. Keep `rating`/`reviewCount` in the type if you like (now unused on the card) or drop them — they no longer render.
+2. `CARD_H = 360` (was 325). `CARD_W` unchanged. Photo zone `64%`, description block `36%`.
+3. **Delete** `StackedPhotosGlyph`, the `⧉ N` pill markup, the over-photo sell-line `<p>`, the price glass pill, and the old `Category · ★ rating (count)` meta row + `StarGlyph` (no rating renders anymore — `StarGlyph` becomes dead code, remove it).
+4. Add a CSS-only `<AvatarStack>` primitive (3 gradient circles + `+N` chip) per v2.6 — no `<img>`, no network.
+5. Description-area layout per the v2.3 table; spacing tokens `14/12/10` pad, `4/4/6` gaps; price-range format per v2.4.
+6. Update the front-card `aria-label` per v2.6 (drop rating clause). Keep all motion/reduced-motion/hover/visibility logic from v1 §7–§8 untouched.
+7. Keep the inline "no distance / no travel-time" honesty comment; add the "decorative social proof" comment on `recommendCount`.
