@@ -19,16 +19,25 @@ export interface ShowcasePlace {
   category: string
   /** Real Google rating (0–5). */
   rating: number
-  /** Real review count. */
+  /** Real review count. (Retained on the type; no longer rendered on the card post-v2.) */
   reviewCount: number
-  /** Price tier ("$$", "$$$") or null when the place has no price signal. */
-  priceTier: string | null
+  /**
+   * Real per-person price range (e.g. "$50–$100", en-dash U+2013), or null
+   * when the place has no real price → the card renders "Free" (ORCH-0998 v2.4).
+   */
+  priceRange: string | null
   /** Editorial blurb, or null → category-derived fallback sell-line is used. */
   blurb: string | null
   /** Supabase Storage place-photos key. */
   placeKey: string
-  /** Number of photos available (always 5 in this snapshot). */
+  /** Number of photos available (always 5 in this snapshot). No longer rendered post-v2. */
   nPhotos: number
+  /**
+   * Decorative social proof — "N locals recommend". NO real local-recommend
+   * data exists; these are tasteful per-card values for the marketing test
+   * run. Do NOT wire to a backend. (ORCH-0998 v2.6)
+   */
+  recommendCount: number
 }
 
 const SUPABASE_PHOTO_BASE =
@@ -45,55 +54,60 @@ export const DC_SHOWCASE_PLACES: readonly ShowcasePlace[] = [
     category: 'Italian Restaurant',
     rating: 4.5,
     reviewCount: 2141,
-    priceTier: '$$$',
+    priceRange: '$50–$100',
     blurb:
       'Elegant Italian restaurant with chandeliers and a gold-plated pizza oven firing signature pies.',
     placeKey: 'ChIJ-82JrXi3t4kRSAkfWH-6ToU',
     nPhotos: 5,
+    recommendCount: 212,
   },
   {
     name: 'OKPB',
     category: 'Cocktail Bar',
     rating: 4.8,
     reviewCount: 269,
-    // Decorative price tier for this marketing test run (no live Google price
-    // signal for these three) — every card shows a price pill per ORCH-0998 polish.
-    priceTier: '$$$',
+    priceRange: '$30–$50',
     blurb: null,
     placeKey: 'ChIJuVcr4vHJt4kR3RGgn9ppyKM',
     nPhotos: 5,
+    recommendCount: 48,
   },
   {
     name: "President Lincoln's Cottage",
     category: 'Historical Landmark',
     rating: 4.6,
     reviewCount: 800,
-    priceTier: '$$',
+    // No real price signal → renders "Free" (warm) per v2.4.
+    priceRange: null,
     blurb:
       "Lincoln's home during the height of the Civil War, the Gothic-Revival cottage is now a museum.",
     placeKey: 'ChIJYXXbqgvIt4kRsTOXeP0bXTA',
     nPhotos: 5,
+    recommendCount: 96,
   },
   {
     name: 'Anacostia Park',
     category: 'Park',
     rating: 4.4,
     reviewCount: 1778,
-    priceTier: '$',
+    // No real price signal → renders "Free" (warm) per v2.4.
+    priceRange: null,
     blurb:
       'Waterside park offering trails, a roller-skating rink, picnic sites, golf, fishing & sports areas.',
     placeKey: 'ChIJCVOosVS4t4kRc5PLjLRnQU4',
     nPhotos: 5,
+    recommendCount: 173,
   },
   {
     name: 'Del Ray Café',
     category: 'French Restaurant',
     rating: 4.6,
     reviewCount: 1786,
-    priceTier: '$$',
+    priceRange: '$20–$30',
     blurb:
       'Farm-to-table French-American cuisine served from morning to night in a quaint, converted house.',
     placeKey: 'ChIJS1TgNB6xt4kRBA6GYja2FyY',
     nPhotos: 5,
+    recommendCount: 184,
   },
 ] as const

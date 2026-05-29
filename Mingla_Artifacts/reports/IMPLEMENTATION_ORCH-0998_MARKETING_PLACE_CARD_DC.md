@@ -117,3 +117,39 @@ The hero (`hero.tsx`) is `flex h-[100svh] flex-col` with a fixed top spacer `cla
 - All 5 places + full Anacostia blurb present in client chunk `page.js`; all 5 price tiers non-null in data.
 - `npx tsc --noEmit` → 0 errors.
 - Marketing-only; no `app-mobile`/`supabase`/`mingla-business`/`mingla-admin` touch; existing tokens only.
+
+---
+
+## REDESIGN v2 pass — 2026-05-29 (operator pass 2026-05-29)
+
+**Spec section:** "REDESIGN v2" in `DESIGN_ORCH-0998_MARKETING_PLACE_CARD_DC.md` (supersedes v1 §1 card-height, §2 photo-count pill, §3–§6 bottom-block, §12 mockup). Everything not contradicted (motion §7–§8, reduced-motion, photo treatment + scrim except the pill, 404 fallback, accent/font tokens) is unchanged. No-distance / no-travel-time honesty remains in force.
+
+**Files edited (exactly 2, per dispatch):** `lib/dc-showcase-places.ts` + `components/sections/explorer-home/hero-place-deck.tsx`. Dev server already running on :3008 (orchestrator-started); all edits hot-reloaded; no restart, no second server, no process killed.
+
+### The 5 items
+
+**1. Card height 325 → 360px; split 64% / 36%.** `CARD_H = 360` (was 325, with 🔒LOCKED comment explaining 360 is the no-scroll ceiling). `CARD_W` unchanged (260). Photo zone `h-[64%]` (≈230px); description block `h-[36%]` (≈130px) — was 81%/19%.
+
+**2. Redesigned description area (off-photo, solid block).** Solid `rgba(255,255,255,0.96)` block, padding `12px 14px 10px`, vertical order: category eyebrow (Nunito 10/700/0.06em/uppercase/warm) → place name (Mochiy 18/lh1.1/ink, 1-line truncate, full name in aria-label) → description (Nunito 12.5/lh1.3/500/ink-66%, 2-line clamp) → price+social row (`mt-auto` flex space-between). The over-photo sell-line `<p>` was deleted; name + description moved into the block; photo zone shrank to 64%; seam scrim reduced to lower 38%.
+
+**3. Real price range — data `priceTier` → `priceRange: string | null`.** Render: number `#0e0e10`/700/13px + ` · per person` `rgba(14,14,16,0.45)`/600/10px; `null` → `Free` in `--color-warm #eb7825`/700, no qualifier. Values: L'Ardente `$50–$100`, OKPB `$30–$50`, Del Ray `$20–$30`, Anacostia `null`→Free, Lincoln `null`→Free. En-dash U+2013.
+
+**4. Avatar-overlap "locals recommend" indicator replaces the rating/review row.** New CSS-only `RecommendStack`: 3 soft-gradient circles (22px, 2px white ring, −8px overlap, Mingla warm/butter family) + `+N` overflow chip (`+(count−3)`) + label `N locals recommend`. **No `<img>`, no network.** `recommendCount` added to data: 212 / 48 / 96 / 173 / 184. Old `Category · ★ rating (count)` row + `StarGlyph` + `numberFmt` + `ratingLabel` deleted. aria-label now `"{name}, {category}. {sellLine}. {price or Free}."` (no fake recommend count to AT).
+
+**5. Photo-count pill removed entirely.** `⧉ 5` pill markup + `nPhotos` render + `StackedPhotosGlyph` component all deleted. `nPhotos` stays in the type (unrendered) per v2.8 §1.
+
+### No-scroll conclusion (768px-tall worst case, CARD_H=360)
+Deck container formula `CARD_H + 62` is unchanged in code; wrapper scale ≈1.075× at vmin=768. Per the spec envelope: middle band 599.0px available; used = headline 103.3 + margin 27.6 + scaled deck (422×1.075=453.6) = 584.6px → **headroom +14.4px → no page scroll**. CARD_H=375 overflows (−1.7px). I did NOT exceed 360. Taller viewports only grow the band, so 360 is safe everywhere ≥768px.
+
+### Verify
+- `tsc --noEmit` (marketing) → **exit 0**.
+- `curl http://localhost:3008/` → **HTTP 200**, 77ms, **0** Next build-error/error-overlay markers (clean hot-recompile).
+- SSR HTML (front 3 cards): `$50–$100`, `$30–$50`, `Free` present; ` · per person` ×2; `locals recommend` ×3; overflow chips `+209`/`+45`/`+93` = counts 212/48/96 − 3 ✓. Anacostia + Del Ray data verified in source (render on rotation; SSR shows only `order.slice(0,3)`).
+- Removed elements: `reviews` ×0, star SVG path ×0, `(2,141)` ×0, `⧉` ×0, `StackedPhotosGlyph` ×0. Orphaned refs to removed symbols: NONE. `priceTier` anywhere in marketing: NONE.
+- Marketing-only; no app-mobile/supabase/business/admin touch; existing globals.css tokens + Tailwind only; CARD_H not exceeded.
+
+### Regression test
+**BACKFILL-EXEMPT** — marketing-only presentational CSS/data change; verification is the served-HTML + tsc gate above.
+
+### Discoveries for orchestrator
+None.

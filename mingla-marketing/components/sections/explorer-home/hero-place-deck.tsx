@@ -43,7 +43,11 @@ const enterAnim = { y: -34, scale: 0.92, x: 0 }
 const AUTO_MS = 4200
 
 const CARD_W = 260
-const CARD_H = 325
+// 🔒LOCKED (ORCH-0998 v2.1): 360 is the tallest height that clears a 768px-tall
+// viewport with real headroom (+14.4px). The hero wrapper scales the deck by
+// ~1.075× at vmin=768, so every added pixel is amplified — 375 already overflows
+// (−1.7px). Do NOT round up past 360 or the one-screen hero reintroduces page scroll.
+const CARD_H = 360
 
 // Category → editorial sell-line fallback (spec §5). Hardcoded for this
 // test run; deterministic, never renders a blank or a raw category slug.
@@ -62,8 +66,6 @@ function fallbackSellLine(category: string): string {
 function sellLineFor(place: ShowcasePlace): string {
   return place.blurb ?? fallbackSellLine(place.category)
 }
-
-const numberFmt = new Intl.NumberFormat('en-US')
 
 export function HeroPlaceDeck() {
   const reduced = useMinglaReducedMotion()
@@ -132,7 +134,9 @@ function DeckCard({ place, position, reduced }: DeckCardProps) {
   const initial = position === 2 ? enterAnim : undefined
 
   const sellLine = useMemo(() => sellLineFor(place), [place])
-  const ratingLabel = `${place.rating} from ${numberFmt.format(place.reviewCount)} reviews`
+  // v2.6 aria: drop the old rating/review clause; honest to AT (no fake
+  // recommend count). Price reads "Free" when there is no real range.
+  const priceLabel = place.priceRange ?? 'Free'
 
   return (
     <motion.div
@@ -140,7 +144,7 @@ function DeckCard({ place, position, reduced }: DeckCardProps) {
       role={isFront ? 'img' : undefined}
       aria-label={
         isFront
-          ? `${place.name}, ${place.category}, rated ${ratingLabel}. ${sellLine}`
+          ? `${place.name}, ${place.category}. ${sellLine}. ${priceLabel}.`
           : undefined
       }
       aria-hidden={isFront ? undefined : true}
@@ -165,101 +169,122 @@ function DeckCard({ place, position, reduced }: DeckCardProps) {
       }}
       className="group absolute flex flex-col overflow-hidden bg-[#1a1a2e] will-change-transform [backface-visibility:hidden] [transform-style:preserve-3d] hover:[transform:translateY(-4px)]"
     >
-      {/* Photo zone — 81% (trimmed from 84% to give the frosted strip room for
-          a full, non-truncated place name while keeping CARD_H fixed → the
-          no-scroll hero envelope is unchanged). */}
-      <div className="relative h-[81%] w-full overflow-hidden bg-[#1a1a2e]">
+      {/* Photo zone — 64% (v2.2). The over-photo sell-line, price pill and the
+          "5 photos" pill were all removed in v2; the only thing left on the photo
+          is a faint scrim guarding the seam against the description block. */}
+      <div className="relative h-[64%] w-full overflow-hidden bg-[#1a1a2e]">
         <PhotoOrFallback place={place} eager={isFront} />
 
-        {/* Bottom scrim — lower 52% of the photo zone, for sell-line/badge legibility */}
+        {/* Seam scrim — lower 38% (v2.2: reduced from 52%, no text sits on it now) */}
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute inset-x-0 bottom-0 h-[52%]"
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-[38%]"
           style={{
             background:
               'linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.18) 45%, rgba(0,0,0,0.62) 100%)',
           }}
         />
-
-        {/* "5 photos" affordance — glass pill, top-right */}
-        <span
-          aria-hidden="true"
-          className="glass-soft absolute right-3 top-3 inline-flex h-6 items-center gap-1 rounded-full px-2 text-[11px] font-semibold transition-[filter] duration-200 ease-out-quart group-hover:brightness-110"
-          style={{ color: 'rgba(255,255,255,0.92)' }}
-        >
-          <StackedPhotosGlyph />
-          {place.nPhotos}
-        </span>
-
-        {/* Scrim content: price pill (if any) + sell-line. Tighter bottom/top
-            padding than the prior p-3 so the text block sits lower and reads a
-            touch taller without growing the card (ORCH-0998 polish FIX 3). */}
-        <div className="absolute inset-x-0 bottom-0 flex flex-col gap-1.5 px-3 pb-2.5 pt-2">
-          {place.priceTier ? (
-            <span
-              aria-hidden="true"
-              className="glass-soft inline-flex h-6 w-fit items-center rounded-full px-2 text-[11px] font-semibold"
-              style={{ color: 'rgba(255,255,255,0.92)' }}
-            >
-              {place.priceTier}
-            </span>
-          ) : null}
-          <p
-            className="font-sans text-[13px] font-semibold leading-[1.3]"
-            style={{
-              color: 'rgba(255,255,255,0.95)',
-              textShadow: '0 1px 3px rgba(0,0,0,0.7)',
-              display: '-webkit-box',
-              WebkitLineClamp: 2,
-              WebkitBoxOrient: 'vertical',
-              overflow: 'hidden',
-            }}
-          >
-            {sellLine}
-          </p>
-        </div>
       </div>
 
-      {/* Frosted info strip — 19% (was 16%). Slightly taller + tighter padding
-          (py-2, was py-3) so the place name can wrap to a full 2 lines without
-          ellipsis cutoff (e.g. "President Lincoln's Cottage") while the content
-          reads tighter top-to-bottom. CARD_H is unchanged. */}
+      {/* Description area — 36% solid content block (v2.3). Hierarchy:
+          eyebrow category → name → description → price + social-proof row.
+          overflow:hidden so a wrapped name/fallback clips cleanly, never grows
+          the card past CARD_H. */}
       <div
-        className="flex h-[19%] flex-col justify-center gap-0.5 px-[14px] py-2"
+        className="flex h-[36%] flex-col overflow-hidden"
         style={{
-          background: 'rgba(255,255,255,0.92)',
+          background: 'rgba(255,255,255,0.96)',
           backdropFilter: 'blur(20px)',
           WebkitBackdropFilter: 'blur(20px)',
           borderTop: '1px solid rgba(14,14,16,0.06)',
+          padding: '12px 14px 10px',
         }}
       >
+        {/* #1 — category eyebrow */}
         <p
-          className="font-display text-[17px] leading-[1.1]"
+          className="font-sans uppercase"
           style={{
+            fontSize: '10px',
+            lineHeight: 1,
+            letterSpacing: '0.06em',
+            fontWeight: 700,
+            color: '#eb7825',
+            marginBottom: '4px',
+          }}
+        >
+          {place.category}
+        </p>
+
+        {/* #2 — place name (1-line truncate; full name in aria-label) */}
+        <p
+          className="truncate font-display"
+          style={{
+            fontSize: '18px',
+            lineHeight: 1.1,
             color: '#0e0e10',
-            display: '-webkit-box',
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: 'vertical',
-            overflow: 'hidden',
-            wordBreak: 'break-word',
+            marginBottom: '4px',
           }}
         >
           {place.name}
         </p>
+
+        {/* #3 — description (2-line clamp) */}
         <p
-          className="truncate font-sans text-[12px] font-semibold"
-          style={{ color: 'rgba(14,14,16,0.68)' }}
+          className="font-sans"
+          style={{
+            fontSize: '12.5px',
+            lineHeight: 1.3,
+            fontWeight: 500,
+            color: 'rgba(14,14,16,0.66)',
+            marginBottom: '6px',
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical',
+            overflow: 'hidden',
+          }}
         >
-          {place.category}
-          {' · '}
-          <StarGlyph />
-          {' '}
-          {place.rating}
-          {' '}
-          <span style={{ color: 'rgba(14,14,16,0.48)', fontWeight: 400 }}>
-            ({numberFmt.format(place.reviewCount)})
-          </span>
+          {sellLine}
         </p>
+
+        {/* #4 — price (left) + social-proof avatar stack (right) */}
+        <div className="mt-auto flex items-center justify-between">
+          {/* #4a — real price range, or "Free" (warm) when null (v2.4) */}
+          {place.priceRange ? (
+            <span style={{ fontSize: '13px', lineHeight: 1 }}>
+              <span
+                className="font-sans"
+                style={{ fontWeight: 700, color: '#0e0e10' }}
+              >
+                {place.priceRange}
+              </span>
+              <span
+                className="font-sans"
+                style={{
+                  fontSize: '10px',
+                  fontWeight: 600,
+                  color: 'rgba(14,14,16,0.45)',
+                }}
+              >
+                {' · per person'}
+              </span>
+            </span>
+          ) : (
+            <span
+              className="font-sans"
+              style={{
+                fontSize: '13px',
+                lineHeight: 1,
+                fontWeight: 700,
+                color: '#eb7825',
+              }}
+            >
+              Free
+            </span>
+          )}
+
+          {/* #4b — decorative "N locals recommend" avatar stack (v2.6) */}
+          <RecommendStack count={place.recommendCount} />
+        </div>
       </div>
     </motion.div>
   )
@@ -306,36 +331,96 @@ function PhotoOrFallback({
   )
 }
 
-function StarGlyph() {
-  return (
-    <svg
-      aria-hidden="true"
-      width="11"
-      height="11"
-      viewBox="0 0 24 24"
-      fill="#f4d679"
-      className="inline-block align-[-1px]"
-    >
-      <path d="M12 2.5l2.9 6.06 6.6.62-4.97 4.44 1.46 6.48L12 17.9l-5.99 2.7 1.46-6.48L2.5 9.68l6.6-.62L12 2.5z" />
-    </svg>
-  )
-}
+// Decorative "N locals recommend" indicator (v2.6). Replaces the old ★ rating +
+// review-count row. CSS-only avatars — NO <img>, NO network fetch (any external
+// avatar URL could 404/hang and break the premium read). Three soft-gradient
+// circles from the Mingla warm/butter family + a "+N" overflow chip + a label.
+// `recommendCount` is DECORATIVE social proof — no real local-recommend data
+// exists; do NOT wire this to a backend.
+const AVATAR_GRADIENTS = [
+  'linear-gradient(135deg, #eb7825 0%, #f4a85f 100%)', // warm
+  'linear-gradient(135deg, #f4d679 0%, #eba94f 100%)', // butter→amber
+  'linear-gradient(135deg, #7a4a2a 0%, #b87333 100%)', // cocoa→copper
+] as const
+const AVATAR_INITIALS = ['M', 'J', 'K'] as const
 
-function StackedPhotosGlyph() {
+function RecommendStack({ count }: { count: number }) {
+  // 3 faces shown; overflow chip = count − 3.
+  const overflow = Math.max(0, count - 3)
+  const ringStyle = {
+    width: 22,
+    height: 22,
+    borderRadius: 9999,
+    border: '2px solid rgba(255,255,255,0.96)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: '0 0 auto',
+  } as const
+
   return (
-    <svg
-      aria-hidden="true"
-      width="12"
-      height="12"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="rgba(255,255,255,0.92)"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <rect x="7" y="3" width="14" height="14" rx="2.5" />
-      <path d="M3 8v11a2 2 0 0 0 2 2h11" />
-    </svg>
+    <div aria-hidden="true" className="flex items-center">
+      <div className="flex items-center">
+        {AVATAR_INITIALS.map((initial, i) => (
+          <div
+            key={initial}
+            style={{
+              ...ringStyle,
+              background: AVATAR_GRADIENTS[i] ?? AVATAR_GRADIENTS[0],
+              marginLeft: i === 0 ? 0 : -8,
+              zIndex: AVATAR_INITIALS.length - i,
+            }}
+          >
+            <span
+              className="font-sans"
+              style={{
+                fontSize: '10px',
+                fontWeight: 800,
+                color: 'rgba(255,255,255,0.96)',
+                lineHeight: 1,
+              }}
+            >
+              {initial}
+            </span>
+          </div>
+        ))}
+        {overflow > 0 ? (
+          <div
+            style={{
+              ...ringStyle,
+              background: 'rgba(14,14,16,0.82)',
+              marginLeft: -8,
+              zIndex: 0,
+            }}
+          >
+            <span
+              className="font-sans"
+              style={{
+                fontSize: '9px',
+                fontWeight: 800,
+                color: 'rgba(255,255,255,0.95)',
+                lineHeight: 1,
+              }}
+            >
+              {`+${overflow}`}
+            </span>
+          </div>
+        ) : null}
+      </div>
+      <span
+        className="font-sans"
+        style={{
+          marginLeft: 8,
+          fontSize: '11px',
+          lineHeight: 1.1,
+          fontWeight: 600,
+          color: 'rgba(14,14,16,0.6)',
+          textAlign: 'right',
+        }}
+      >
+        <span style={{ fontWeight: 700, color: '#0e0e10' }}>{count}</span>
+        {' locals recommend'}
+      </span>
+    </div>
   )
 }
