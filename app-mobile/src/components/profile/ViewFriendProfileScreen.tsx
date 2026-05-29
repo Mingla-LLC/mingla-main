@@ -26,6 +26,7 @@ import { useAppStore } from '../../store/appStore';
 import PersonHolidayView from '../PersonHolidayView';
 import ExpandedCardModal from '../ExpandedCardModal';
 import CustomHolidayModal from '../CustomHolidayModal';
+import FriendActionsSheet from '../friends/FriendActionsSheet';
 import { getSharedCustomHolidaysByPairing, createCustomHolidayForPairing, deleteCustomHoliday as deleteCustomHolidayFromDb } from '../../services/customHolidayService';
 import { savedCardsService } from '../../services/savedCardsService';
 import { savedCardKeys } from '../../hooks/queryKeys';
@@ -126,6 +127,12 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
     [pairingPills, userId]
   );
   const isPaired = !!pairedPill;
+  // ORCH-0987: friend more-menu state + pending-pair derivation
+  const isPendingPair = useMemo(
+    () => pairingPills.some(p => p.pairedUserId === userId && (p.type === 'pending_request' || p.type === 'pending_invite')),
+    [pairingPills, userId]
+  );
+  const [showActionsSheet, setShowActionsSheet] = useState(false);
 
   // ── Custom holidays + archived holidays ─────────────────
   const [customHolidays, setCustomHolidays] = useState<Array<{ id: string; name: string; month: number; day: number; year: number }>>([]);
@@ -372,8 +379,17 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
             style={StyleSheet.absoluteFillObject}
           />
           {renderBack()}
-          {/* ORCH-0986: the ••• more-menu (unpair/mute/block/report/add-to-session) is
-              its own follow-up ORCH. Hidden here until then to avoid a dead tap (Constitution #1). */}
+          {/* ORCH-0987: friend more-menu (••• ) */}
+          <TouchableOpacity
+            style={[styles.overflowButton, { top: headerTop }]}
+            activeOpacity={0.86}
+            onPress={() => setShowActionsSheet(true)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel={`Profile actions for ${name}`}
+          >
+            <Icon name="ellipsis-horizontal" size={s(22)} color="#ffffff" />
+          </TouchableOpacity>
           <View style={styles.heroIdentity}>
             <Text style={styles.heroName} numberOfLines={2}>{name}</Text>
             <View style={styles.heroMetaRow}>
@@ -491,6 +507,20 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
           onSave={handleCustomHolidaySave}
         />
       )}
+
+      {/* ORCH-0987: friend more-menu action sheet */}
+      <FriendActionsSheet
+        visible={showActionsSheet}
+        onClose={() => setShowActionsSheet(false)}
+        friendUserId={userId}
+        friendName={name}
+        friendUsername={profile.username ?? undefined}
+        friendAvatarUrl={profile.avatar_url}
+        pairingId={pairedPill?.pairingId ?? pairedPill?.id ?? null}
+        isPaired={isPaired}
+        isPending={isPendingPair}
+        isFriend={profile.isFriend}
+      />
     </View>
   );
 };

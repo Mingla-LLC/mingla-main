@@ -7,8 +7,6 @@ import {
   Image,
   TextInput,
   StyleSheet,
-  Modal,
-  TouchableWithoutFeedback,
   Platform,
 } from "react-native";
 import { useTranslation } from 'react-i18next';
@@ -22,11 +20,6 @@ import { useKeyboard } from '../../hooks/useKeyboard';
 interface FriendsManagementListProps {
   friends: Friend[];
   loading: boolean;
-  onRemoveFriend: (friend: Friend) => void;
-  onBlockUser: (friend: Friend) => void;
-  onReportUser: (friend: Friend) => void;
-  onMuteUser: (friend: Friend) => void;
-  muteLoadingFriendId: string | null;
   mutedUserIds: string[];
   currentUserId: string;
   /** ORCH-0435: Set of user IDs that are actively paired */
@@ -45,6 +38,9 @@ interface FriendsManagementListProps {
   onFriendPress?: (friendUserId: string) => void;
   /** ORCH-0435: Add friend to active collaboration session */
   onAddToSession?: (friendUserId: string) => void;
+  /** ORCH-0987: open the shared friend more-menu (FriendActionsSheet) for this friend.
+   *  When provided, the ⋮ routes here instead of the legacy inline sheet. */
+  onOpenFriendActions?: (friend: Friend) => void;
 }
 
 function getFriendDisplayName(friend: Friend): string {
@@ -68,11 +64,6 @@ function getFriendUserId(friend: Friend, currentUserId: string): string {
 export function FriendsManagementList({
   friends,
   loading,
-  onRemoveFriend,
-  onBlockUser,
-  onReportUser,
-  onMuteUser,
-  muteLoadingFriendId,
   mutedUserIds,
   currentUserId,
   pairedUserIds,
@@ -83,11 +74,11 @@ export function FriendsManagementList({
   onAvatarPress,
   onFriendPress,
   onAddToSession,
+  onOpenFriendActions,
 }: FriendsManagementListProps) {
   const { t } = useTranslation(['social', 'common']);
   const [searchQuery, setSearchQuery] = useState("");
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
-  const [sheetFriend, setSheetFriend] = useState<Friend | null>(null);
   const insets = useSafeAreaInsets();
   const { keyboardHeight } = useKeyboard({ disableLayoutAnimation: true });
 
@@ -149,7 +140,6 @@ export function FriendsManagementList({
           const initials = getInitials(displayName);
           const isMuted = mutedUserIds.includes(friendUserId);
           const isDropdownOpen = openDropdownId === friend.id;
-          const isMuteLoading = muteLoadingFriendId === friendUserId;
 
           return (
             <View key={friend.id} style={styles.friendRow}>
@@ -241,9 +231,9 @@ export function FriendsManagementList({
                 );
               })()}
 
-              {/* Three-dot menu → opens bottom sheet */}
+              {/* Three-dot menu → opens the shared friend more-menu (ORCH-0987) */}
               <TouchableOpacity
-                onPress={() => setSheetFriend(friend)}
+                onPress={() => { setOpenDropdownId(null); onOpenFriendActions?.(friend); }}
                 style={styles.menuButton}
                 activeOpacity={0.7}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -255,120 +245,6 @@ export function FriendsManagementList({
         })
       )}
       <View style={{ height: keyboardHeight > 0 ? keyboardHeight : insets.bottom }} />
-
-      {/* Bottom sheet menu */}
-      <Modal
-        visible={!!sheetFriend}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setSheetFriend(null)}
-      >
-        <TouchableWithoutFeedback onPress={() => setSheetFriend(null)}>
-          <View style={styles.sheetOverlay} />
-        </TouchableWithoutFeedback>
-        <View style={[styles.sheetContainer, { paddingBottom: insets.bottom + 16 }]}>
-          <View style={styles.sheetHandle} />
-          {sheetFriend && (() => {
-            const sheetUserId = getFriendUserId(sheetFriend, currentUserId);
-            const sheetName = getFriendDisplayName(sheetFriend);
-            const sheetIsMuted = mutedUserIds.includes(sheetUserId);
-            const sheetIsPaired = pairedUserIds?.has(sheetUserId);
-            const sheetIsPending = pendingPairUserIds?.has(sheetUserId);
-            const sheetMuteLoading = muteLoadingFriendId === sheetUserId;
-            return (
-              <>
-                <Text style={styles.sheetTitle}>{sheetName}</Text>
-
-                {/* Pair / Unpair */}
-                {sheetIsPaired ? (
-                  <TouchableOpacity
-                    style={styles.sheetItem}
-                    onPress={() => { setSheetFriend(null); onUnpairFriend?.(sheetUserId); }}
-                    activeOpacity={0.7}
-                  >
-                    <Icon name="star" size={20} color="#10b981" style={styles.sheetItemIcon} />
-                    <Text style={styles.sheetItemText}>Unpair</Text>
-                  </TouchableOpacity>
-                ) : sheetIsPending ? (
-                  <View style={styles.sheetItem}>
-                    <Icon name="star-outline" size={20} color="#9ca3af" style={styles.sheetItemIcon} />
-                    <Text style={[styles.sheetItemText, { color: '#9ca3af' }]}>Pair request pending</Text>
-                  </View>
-                ) : (
-                  <TouchableOpacity
-                    style={styles.sheetItem}
-                    onPress={() => { setSheetFriend(null); onPairFriend?.(sheetUserId); }}
-                    activeOpacity={0.7}
-                  >
-                    <Icon name="star-outline" size={20} color="#eb7825" style={styles.sheetItemIcon} />
-                    <Text style={styles.sheetItemText}>Send pair request</Text>
-                  </TouchableOpacity>
-                )}
-
-                {/* Add to session */}
-                <TouchableOpacity
-                  style={styles.sheetItem}
-                  onPress={() => { setSheetFriend(null); onAddToSession?.(sheetUserId); }}
-                  activeOpacity={0.7}
-                >
-                  <Icon name="people-outline" size={20} color={colors.text.secondary} style={styles.sheetItemIcon} />
-                  <Text style={styles.sheetItemText}>Add to session</Text>
-                </TouchableOpacity>
-
-                {/* Mute / Unmute */}
-                <TouchableOpacity
-                  style={styles.sheetItem}
-                  onPress={() => { setSheetFriend(null); onMuteUser(sheetFriend); }}
-                  activeOpacity={0.7}
-                  disabled={sheetMuteLoading}
-                >
-                  <Icon
-                    name={sheetIsMuted ? "volume-high" : "volume-mute"}
-                    size={20}
-                    color={colors.text.secondary}
-                    style={styles.sheetItemIcon}
-                  />
-                  <Text style={styles.sheetItemText}>
-                    {sheetIsMuted ? t('social:unmute') : t('social:mute')}
-                  </Text>
-                </TouchableOpacity>
-
-                <View style={styles.sheetDivider} />
-
-                {/* Remove Friend */}
-                <TouchableOpacity
-                  style={styles.sheetItem}
-                  onPress={() => { setSheetFriend(null); onRemoveFriend(sheetFriend); }}
-                  activeOpacity={0.7}
-                >
-                  <Icon name="person-remove" size={20} color={colors.error[500]} style={styles.sheetItemIcon} />
-                  <Text style={styles.sheetItemTextDanger}>{t('social:removeFriend')}</Text>
-                </TouchableOpacity>
-
-                {/* Block User */}
-                <TouchableOpacity
-                  style={styles.sheetItem}
-                  onPress={() => { setSheetFriend(null); onBlockUser(sheetFriend); }}
-                  activeOpacity={0.7}
-                >
-                  <Icon name="shield" size={20} color={colors.error[500]} style={styles.sheetItemIcon} />
-                  <Text style={styles.sheetItemTextDanger}>{t('social:blockUserMenu')}</Text>
-                </TouchableOpacity>
-
-                {/* Report User */}
-                <TouchableOpacity
-                  style={styles.sheetItem}
-                  onPress={() => { setSheetFriend(null); onReportUser(sheetFriend); }}
-                  activeOpacity={0.7}
-                >
-                  <Icon name="flag" size={20} color={colors.error[500]} style={styles.sheetItemIcon} />
-                  <Text style={styles.sheetItemTextDanger}>{t('social:reportUserMenu')}</Text>
-                </TouchableOpacity>
-              </>
-            );
-          })()}
-        </View>
-      </Modal>
     </View>
   );
 }
