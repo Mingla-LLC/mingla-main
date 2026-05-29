@@ -255,6 +255,44 @@ const EventCoverVideo: React.FC<{
     <EventCoverNativeVideo {...props} />
   );
 
+// ORCH-0964: on WEB, only mount the heavy cover media (video / animated image)
+// once the card is at/near the viewport. A brand page renders many cards; if
+// all their covers (e.g. 12 animated GIFs + a video) decode at once, the mobile
+// renderer balloons past ~1GB and the WebContent process crashes ("Can't open
+// this page"). Lazy-mounting bounds concurrent decodes to what's visible.
+// One-way (load when first visible, then keep) to avoid scroll flicker. Native
+// is unaffected (always true) — no IntersectionObserver, native handles memory.
+function useInViewport(ref: React.RefObject<unknown>): boolean {
+  const [inView, setInView] = useState<boolean>(Platform.OS !== "web");
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    if (typeof IntersectionObserver === "undefined") {
+      setInView(true);
+      return;
+    }
+    const node = ref.current as unknown as Element | null;
+    if (node === null) {
+      setInView(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            setInView(true);
+            observer.disconnect();
+            return;
+          }
+        }
+      },
+      { rootMargin: "400px" },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [ref]);
+  return inView;
+}
+
 export const EventCoverMedia: React.FC<EventCoverMediaProps> = ({
   hue = 25,
   mediaUrl = null,
@@ -281,6 +319,8 @@ export const EventCoverMedia: React.FC<EventCoverMediaProps> = ({
   const [reduceMotion, setReduceMotion] = useState(false);
   const initialMuted = Platform.OS === "web" && autoplay ? true : muted;
   const [isMuted, setIsMuted] = useState(initialMuted);
+  const containerRef = useRef<View | null>(null);
+  const inView = useInViewport(containerRef);
 
   useEffect(() => {
     let mounted = true;
@@ -335,24 +375,40 @@ export const EventCoverMedia: React.FC<EventCoverMediaProps> = ({
     setHasMediaError(true);
   };
 
-  if (presentation === "fallback" || mediaUrl === null) {
+  // Render heavy media only when there IS media AND (native OR the card is at/
+  // near the viewport on web). Off-screen web cards show the lightweight
+  // EventCover placeholder until scrolled into view — bounding concurrent
+  // decodes so a media-dense brand page can't OOM the mobile renderer.
+  const renderMedia =
+    presentation !== "fallback" &&
+    mediaUrl !== null &&
+    (Platform.OS !== "web" || inView);
+
+  if (!renderMedia) {
     return (
-      <EventCover
-        hue={hue}
-        radius={radius}
-        label={label}
-        height={height}
-        width={width}
-        testID={testID}
-        style={style}
+      <View
+        ref={containerRef}
+        collapsable={false}
+        style={[{ height, width }, style]}
       >
-        {children}
-      </EventCover>
+        <EventCover
+          hue={hue}
+          radius={radius}
+          label={label}
+          height="100%"
+          width="100%"
+          testID={testID}
+        >
+          {children}
+        </EventCover>
+      </View>
     );
   }
 
   return (
     <View
+      ref={containerRef}
+      collapsable={false}
       testID={testID}
       style={[styles.container, { height, width, borderRadius: radius }, style]}
     >

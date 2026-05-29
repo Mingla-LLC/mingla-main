@@ -31,7 +31,12 @@ export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: FIVE_MINUTES_MS,
-      retry: 1,
+      // ORCH-0964: bumped 1 -> 2 with capped exponential backoff. A single
+      // transient failure on the brand/identity fetch left surfaces errored
+      // (empty state behind a lifted splash = "didn't fully load"); the extra
+      // retry lets flaky-network loads recover on their own.
+      retry: 2,
+      retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 4000),
       refetchOnWindowFocus: false,
       refetchOnReconnect: true,
     },

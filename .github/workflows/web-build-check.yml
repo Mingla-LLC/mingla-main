@@ -1,0 +1,34 @@
+name: Web Build Check
+
+# ORCH-0964: catch web-build breaks BEFORE merge.
+#
+# mingla-business web is built on Vercel via `expo export -p web`, but that
+# build was NOT a blocking PR check — so a parallel ORCH (#237) merged a
+# duplicate `EventCoverMedia` import (broke the build) and a duplicate export
+# (runtime white-screen), each green in isolation but broken once merged to
+# main. The build then failed silently and froze production on a stale bundle.
+#
+# This job runs the real web export on the PR MERGE result (GitHub Actions
+# pull_request checks out PR+base merged), so duplicate imports/exports,
+# syntax errors, and merge-combination breaks fail the check instead of
+# silently breaking main. Mark it a REQUIRED status check in branch protection.
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  mingla-business-web-build:
+    name: "mingla-business: web build (expo export)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install dependencies
+        working-directory: mingla-business
+        run: npm install
+      - name: Build web bundle (fails on duplicate import/export + syntax errors)
+        working-directory: mingla-business
+        run: npx expo export -p web --output-dir /tmp/web-build-check

@@ -20,6 +20,10 @@
 // arms the LogBox filter before route-level checkout screens can pull
 // @stripe/stripe-react-native. See src/diagnostics/silenceStripeForwardRef.ts
 // for full rationale.
+// ORCH-0964: chunk-load resilience — auto-reload once on a failed JS-chunk
+// fetch (the "needs multiple reloads to load" symptom). Loop-guarded. Web-only
+// side effect; must arm before any route chunk can fail. See the module header.
+import "../src/diagnostics/chunkReloadGuard";
 import "../src/diagnostics/silenceStripeForwardRef";
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -256,17 +260,35 @@ export default function RootLayout(): React.ReactElement {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <QueryClientProvider client={queryClient}>
-          <AuthProvider>
-            {/* ORCH-0892-A: KeyboardRoot wraps the app shell and stays OUTSIDE
-                RootLayoutInner's ErrorBoundary. Stripe's native provider is
-                intentionally route-scoped to checkout payment screens so Home
-                startup does not initialize the payment SDK. */}
-            <KeyboardRoot>
-              <RootLayoutInner />
-            </KeyboardRoot>
-          </AuthProvider>
-        </QueryClientProvider>
+        {/* ORCH-0964: top-level ErrorBoundary ABOVE the provider tree. A throw
+            in QueryClientProvider / AuthProvider / KeyboardRoot init previously
+            escaped RootLayoutInner's (inner) boundary and blanked the whole app
+            white. This outer boundary catches it and shows the recoverable
+            fallback. Kept inside Gesture/SafeArea so the fallback has its
+            required context. */}
+        <ErrorBoundary
+          onError={(error, info) => {
+            if (sentryDsn) {
+              Sentry.captureException(error, {
+                contexts: {
+                  react: { componentStack: info.componentStack ?? "" },
+                },
+              });
+            }
+          }}
+        >
+          <QueryClientProvider client={queryClient}>
+            <AuthProvider>
+              {/* ORCH-0892-A: KeyboardRoot wraps the app shell and stays OUTSIDE
+                  RootLayoutInner's ErrorBoundary. Stripe's native provider is
+                  intentionally route-scoped to checkout payment screens so Home
+                  startup does not initialize the payment SDK. */}
+              <KeyboardRoot>
+                <RootLayoutInner />
+              </KeyboardRoot>
+            </AuthProvider>
+          </QueryClientProvider>
+        </ErrorBoundary>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
