@@ -30,6 +30,7 @@ import { usePairingPills } from '../../hooks/usePairings';
 import { useAppStore } from '../../store/appStore';
 import PersonHolidayView from '../PersonHolidayView';
 import ExpandedCardModal from '../ExpandedCardModal';
+import type { ExpandedCardData } from '../../types/expandedCardTypes';
 import CustomHolidayModal from '../CustomHolidayModal';
 import FriendActionsSheet from '../friends/FriendActionsSheet';
 import { getSharedCustomHolidaysByPairing, createCustomHolidayForPairing, deleteCustomHoliday as deleteCustomHolidayFromDb } from '../../services/customHolidayService';
@@ -545,9 +546,12 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
   }, [t]);
 
   // ── Expanded card modal ─────────────────────────────────
-  const [expandedCard, setExpandedCard] = useState<any>(null);
+  // ORCH-0997: expandedCard is now a fully-shaped ExpandedCardData (built by
+  // PersonHolidayView via holidayCardToExpandedCardData), so the modal renders the
+  // hero image + location + curated stops identically to the deck (RC#2 fix).
+  const [expandedCard, setExpandedCard] = useState<ExpandedCardData | null>(null);
 
-  const handleCardPress = useCallback((card: any) => {
+  const handleCardPress = useCallback((card: ExpandedCardData) => {
     setExpandedCard(card);
   }, []);
 
