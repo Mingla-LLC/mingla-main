@@ -21,7 +21,7 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useMinglaReducedMotion } from '@/lib/reduced-motion'
-import { HeroVibeDeck } from '@/components/sections/explorer-home/hero-vibe-deck'
+import { HeroPlaceDeck } from '@/components/sections/explorer-home/hero-place-deck'
 import { cn } from '@/lib/cn'
 import { PRIVACY_SECTIONS, PRIVACY_EFFECTIVE_DATE } from '@/lib/privacyContent'
 import { TERMS_SECTIONS, TERMS_EFFECTIVE_DATE } from '@/lib/termsContent'
@@ -611,7 +611,7 @@ export function ExplorerHero() {
               transformOrigin: 'center',
             }}
           >
-            <HeroVibeDeck />
+            <HeroPlaceDeck />
           </div>
         </motion.div>
       </div>
