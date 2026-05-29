@@ -124,7 +124,7 @@ const FriendActionsSheet: React.FC<FriendActionsSheetProps> = ({
       </Modal>
 
       {/* Action modals — rendered alongside the sheet so they show after it closes */}
-      <AddToBoardModal isOpen={a.addToSessionVisible} onClose={a.closeAddToSession} friend={friendForModal} />
+      <AddToBoardModal isOpen={a.addToSessionVisible} onClose={a.closeAddToSession} friend={friendForModal} boardsSessions={a.boardsSessions} />
       <BlockUserModal visible={a.blockVisible} onClose={a.closeBlock} onConfirm={a.confirmBlock} userName={friendName} />
       <ReportUserModal isOpen={a.reportVisible} onClose={a.closeReport} user={userForReport} onReport={a.submitReport} />
     </>

@@ -4,7 +4,8 @@
 // services + modals — no new backend.
 import { useCallback, useState } from "react";
 import { Alert } from "react-native";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "../services/supabase";
 import { useAppStore } from "../store/appStore";
 import { useSendPairRequest, useUnpair } from "./usePairings";
 import { useFriends } from "./useFriends";
@@ -27,8 +28,20 @@ export interface UseFriendActionsArgs {
   isPending: boolean;
 }
 
+/** Minimal session shape AddToBoardModal needs for the add-to-session picker. */
+export interface FriendPickerSession {
+  id: string;
+  name: string;
+  status: "active";
+  created_by: string;
+  participants: { id: string; name: string; username: string }[];
+}
+
 export interface FriendActionsApi {
   pairAction: FriendPairAction;
+  /** Joinable collaboration sessions for the add-to-session picker. Lazily fetched
+   *  only while the picker is open (no realtime, no heavy session hook). */
+  boardsSessions: FriendPickerSession[];
   isMuted: boolean;
   isMuteLoading: boolean;
   addToSessionVisible: boolean;
@@ -68,6 +81,49 @@ export function useFriendActions(args: UseFriendActionsArgs): FriendActionsApi {
   const [addToSessionVisible, setAddToSessionVisible] = useState(false);
   const [blockVisible, setBlockVisible] = useState(false);
   const [reportVisible, setReportVisible] = useState(false);
+
+  // Joinable sessions for the add-to-session picker. One-shot, lazy (enabled only while
+  // the picker is open), no realtime — deliberately NOT useSessionManagement, which mounts
+  // a duplicate session_pills realtime channel and loops the menu. [TRANSITIONAL] the
+  // dedupe follow should consolidate this read with the canonical session loader.
+  const sessionsQuery = useQuery<FriendPickerSession[]>({
+    queryKey: ["friend-actions-sessions", currentUserId],
+    enabled: addToSessionVisible && !!currentUserId,
+    staleTime: 30_000,
+    queryFn: async () => {
+      const { data: myParts } = await supabase
+        .from("session_participants")
+        .select("session_id")
+        .eq("user_id", currentUserId)
+        .eq("has_accepted", true);
+      const ids = (myParts ?? []).map((p: { session_id: string }) => p.session_id);
+      if (ids.length === 0) return [];
+
+      const [{ data: sessions }, { data: parts }] = await Promise.all([
+        supabase.from("collaboration_sessions").select("id, name, created_by").in("id", ids),
+        supabase.from("session_participants").select("session_id, user_id").in("session_id", ids),
+      ]);
+
+      const userIds = [...new Set((parts ?? []).map((p: { user_id: string }) => p.user_id))];
+      const { data: profiles } = userIds.length
+        ? await supabase.from("profiles").select("id, username, first_name, last_name").in("id", userIds)
+        : { data: [] as Array<{ id: string; username: string | null; first_name: string | null; last_name: string | null }> };
+
+      return (sessions ?? []).map((s: { id: string; name: string | null; created_by: string | null }) => ({
+        id: s.id,
+        name: s.name || "Session",
+        status: "active" as const,
+        created_by: s.created_by || "",
+        participants: (parts ?? [])
+          .filter((p: { session_id: string }) => p.session_id === s.id)
+          .map((p: { user_id: string }) => {
+            const prof = (profiles ?? []).find((pr) => pr.id === p.user_id);
+            const name = [prof?.first_name, prof?.last_name].filter(Boolean).join(" ") || prof?.username || "Friend";
+            return { id: p.user_id, name, username: prof?.username ?? "user" };
+          }),
+      }));
+    },
+  });
 
   const sendPair = useCallback(() => {
     sendPairMutation
@@ -178,6 +234,7 @@ export function useFriendActions(args: UseFriendActionsArgs): FriendActionsApi {
 
   return {
     pairAction: derivePairAction(isPaired, isPending),
+    boardsSessions: sessionsQuery.data ?? [],
     isMuted,
     isMuteLoading,
     addToSessionVisible,

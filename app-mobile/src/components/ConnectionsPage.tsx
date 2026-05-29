@@ -76,6 +76,7 @@ import MessageInterface from "./MessageInterface";
 import { CustomPaywallScreen } from "./CustomPaywallScreen";
 import { useSessionCreationGate } from "../hooks/useSessionCreationGate";
 import AddToBoardModal from "./AddToBoardModal";
+import FriendActionsSheet from "./friends/FriendActionsSheet";
 import ReportUserModal from "./ReportUserModal";
 import BlockUserModal from "./BlockUserModal";
 import { emitAddToBoardToasts } from "../utils/addToBoardToasts";
@@ -746,6 +747,12 @@ function ConnectionsPageRefactored({
 
   // ── Modal state (for MessageInterface actions) ───────────
   const [showAddToBoardModal, setShowAddToBoardModal] = useState(false);
+  // ORCH-0987 unify: the friend whose shared more-menu (FriendActionsSheet) is open.
+  // `actionsFriend` stays set after the sheet hides so the sheet (and its sub-modals —
+  // AddToBoardModal/Block/Report) remain mounted long enough to present; only
+  // `actionsSheetVisible` toggles the sheet itself (mirrors the profile mount).
+  const [actionsFriend, setActionsFriend] = useState<UseFriend | null>(null);
+  const [actionsSheetVisible, setActionsSheetVisible] = useState(false);
   const [selectedFriendForBoard, setSelectedFriendForBoard] = useState<Friend | null>(null);
   const [showReportModal, setShowReportModal] = useState(false);
   const [selectedUserToReport, setSelectedUserToReport] = useState<Friend | null>(null);
@@ -1510,87 +1517,10 @@ function ConnectionsPageRefactored({
     });
   };
 
-  // ── Friends modal handlers ──────────────────────────────
-  const getFriendDisplayNameFromUseFriend = (friend: UseFriend): string => {
-    return getDisplayName(friend);
-  };
-
-  const handleMuteUserFromModal = async (friend: UseFriend) => {
-    const friendUserId = friend.user_id === user?.id ? friend.friend_user_id : friend.user_id;
-    if (muteLoadingFriendId) return;
-    setMuteLoadingFriendId(friendUserId);
-    try {
-      const { success, isMuted, error: muteError } = await muteService.toggleMuteUser(friendUserId);
-      if (success) {
-        setMutedUserIds((prev) =>
-          isMuted ? [...prev, friendUserId] : prev.filter((id) => id !== friendUserId)
-        );
-        HapticFeedback.light();
-      } else {
-        Alert.alert(t('common:error'), muteError || t('connections:mute_error'));
-      }
-    } catch (e) {
-      console.error("Error toggling mute:", e);
-      Alert.alert(t('common:error'), t('connections:mute_error'));
-    } finally {
-      setMuteLoadingFriendId(null);
-    }
-  };
-
-  const handleRemoveFriendFromModal = (friend: UseFriend) => {
-    const friendUserId = friend.user_id === user?.id ? friend.friend_user_id : friend.user_id;
-    const displayName = getFriendDisplayNameFromUseFriend(friend);
-    Alert.alert(
-      t('connections:remove_friend_title'),
-      t('connections:remove_friend_body', { name: displayName }),
-      [
-        { text: t('common:cancel'), style: "cancel" },
-        {
-          text: t('common:remove'),
-          style: "destructive",
-          onPress: () => {
-            HapticFeedback.warning();
-            // removeFriend invalidates friendsKeys.all — also invalidate nearby-people for map (ORCH-0360)
-            removeFriend(friendUserId)
-              .then(() => {
-                queryClient.invalidateQueries({ queryKey: ['nearby-people'] });
-              })
-              .catch((e) => {
-                showMutationError(e, 'removing friend', showToast);
-              });
-          },
-        },
-      ]
-    );
-  };
-
-  const handleBlockFromModal = (friend: UseFriend) => {
-    const friendUserId = friend.user_id === user?.id ? friend.friend_user_id : friend.user_id;
-    const displayName = getFriendDisplayNameFromUseFriend(friend);
-    setSelectedUserToBlock({
-      id: friendUserId,
-      name: displayName,
-      username: friend.username || "",
-      status: "offline",
-      isOnline: false,
-    });
-    InteractionManager.runAfterInteractions(() => {
-      setShowBlockModal(true);
-    });
-  };
-
-  const handleReportFromModal = (friend: UseFriend) => {
-    const friendUserId = friend.user_id === user?.id ? friend.friend_user_id : friend.user_id;
-    const displayName = getFriendDisplayNameFromUseFriend(friend);
-    setSelectedUserToReport({
-      id: friendUserId,
-      name: displayName,
-      username: friend.username || "",
-      status: "offline",
-      isOnline: false,
-    });
-    setShowReportModal(true);
-  };
+  // ORCH-0987 unify: the legacy friends-modal action handlers (mute/remove/block/report
+  // FromModal) were removed — the friends-modal ⋮ now routes through the shared
+  // FriendActionsSheet (single owner). Block/Report state + modals remain (used by other
+  // entry points). Pair/unpair handlers (handlePairFriend/handleUnpairFriend) live above.
 
   // ── Transform message from DirectMessage to MessageInterface format ──
   const transformMessage = useCallback(
@@ -3725,11 +3655,6 @@ function ConnectionsPageRefactored({
                   <FriendsManagementList
                     friends={dbFriends}
                     loading={friendsLoading}
-                    onRemoveFriend={handleRemoveFriendFromModal}
-                    onBlockUser={handleBlockFromModal}
-                    onReportUser={handleReportFromModal}
-                    onMuteUser={handleMuteUserFromModal}
-                    muteLoadingFriendId={muteLoadingFriendId}
                     mutedUserIds={mutedUserIds}
                     currentUserId={user?.id || ""}
                     pairedUserIds={pairedUserIds}
@@ -3741,16 +3666,6 @@ function ConnectionsPageRefactored({
                       setShowFriendsModal(false);
                       onNavigateToFriendProfile?.(friendUserId);
                     }}
-                    onAddToSession={(friendUserId) => {
-                      setShowFriendsModal(false);
-                      // ORCH-0666: open AddToBoardModal pre-targeted at this friend.
-                      // Replaces dead-tap onSendCollabInvite (RC-1) and HF-5 wrong-primitive.
-                      const friend = dbFriends.find(f => {
-                        const fid = f.user_id === (user?.id || '') ? f.friend_user_id : f.user_id;
-                        return fid === friendUserId;
-                      });
-                      if (friend) handleAddToBoard(friend as unknown as Friend);
-                    }}
                     onFriendPress={(friendUserId) => {
                       setShowFriendsModal(false);
                       const friend = dbFriends.find(f => {
@@ -3758,6 +3673,14 @@ function ConnectionsPageRefactored({
                         return fid === friendUserId;
                       });
                       if (friend) handlePickFriend(friend);
+                    }}
+                    onOpenFriendActions={(friend) => {
+                      // ORCH-0987 unify: close the friends modal, then present the shared
+                      // FriendActionsSheet after the dismiss settles. Presenting it in the
+                      // same tick the friends modal dismisses freezes iOS (present-during-
+                      // dismiss). The shared sheet owns all six actions (single owner).
+                      setShowFriendsModal(false);
+                      setTimeout(() => { setActionsFriend(friend); setActionsSheetVisible(true); }, 450);
                     }}
                   />
                 </>
@@ -4033,6 +3956,36 @@ function ConnectionsPageRefactored({
           }
         }}
       />
+
+      {/* ORCH-0987 unify: the friends-modal ⋮ routes here. Single shared menu for the
+          friend profile + the Connections list (Constitution #2). */}
+      {actionsFriend && (() => {
+        const fid = actionsFriend.user_id === (user?.id || '')
+          ? actionsFriend.friend_user_id
+          : actionsFriend.user_id;
+        const activePill = pairingPills.find(p => p.pairedUserId === fid && p.pillState === 'active');
+        return (
+          <FriendActionsSheet
+            visible={actionsSheetVisible}
+            onClose={() => {
+              // Hide the sheet but KEEP it mounted (actionsFriend stays set) so an action's
+              // sub-modal (AddToBoardModal/Block/Report) can present after the sheet hides.
+              setActionsSheetVisible(false);
+              // Mute lives in ConnectionsPage local state; the shared hook mutates it via
+              // its own query, so re-pull on close to keep the list's mute icon in sync.
+              fetchMutedUsers();
+            }}
+            friendUserId={fid}
+            friendName={getDisplayName(actionsFriend)}
+            friendUsername={actionsFriend.username ?? undefined}
+            friendAvatarUrl={actionsFriend.avatar_url}
+            pairingId={activePill?.pairingId ?? null}
+            isPaired={pairedUserIds.has(fid)}
+            isPending={pendingPairUserIds.has(fid)}
+            isFriend={true}
+          />
+        );
+      })()}
     </>
   );
 }
