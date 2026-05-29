@@ -18,7 +18,7 @@
  * Spec: SPEC_ORCH-0589_FLOATING_GLASS_HOME.md §5 Variant A
  * Tokens: designSystem.ts → glass.chrome.*
  */
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -26,10 +26,12 @@ import {
   StyleSheet,
   Platform,
   AccessibilityInfo,
-  Animated,
-  Easing,
-  useWindowDimensions,
 } from 'react-native';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+} from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { Icon, type IconName } from './ui/Icon';
@@ -139,9 +141,15 @@ export const GlassBottomNav: React.FC<GlassBottomNavProps> = ({
     setLayoutTick((v) => v + 1);
   };
 
-  // Spotlight animation: translateX + width interpolates to the active tab's position.
-  const spotlightX = useRef(new Animated.Value(0)).current;
-  const spotlightWidth = useRef(new Animated.Value(0)).current;
+  // ORCH-0995: Spotlight position (left) + width animate on the UI THREAD via
+  // react-native-reanimated shared values. The previous implementation animated `left`
+  // and `width` (non-native-drivable layout props) on the JS thread, forcing every frame
+  // through the bridge → dropped frames + tab-switch lag on mid-tier Android. Reanimated
+  // animates `left`/`width` on the UI thread (it is NOT subject to the RN-Animated
+  // native-driver limitation for layout props), keeping resting geometry pixel-identical
+  // (translateX-via-`left` + true `width`, no scaleX radius distortion).
+  const spotlightX = useSharedValue(0);
+  const spotlightWidth = useSharedValue(0);
 
   useEffect(() => {
     const layout = tabLayoutsRef.current[currentPage];
@@ -150,30 +158,29 @@ export const GlassBottomNav: React.FC<GlassBottomNavProps> = ({
     const targetWidth = layout.width - c.nav.spotlightInset * 2;
 
     if (reduceMotion) {
-      spotlightX.setValue(targetX);
-      spotlightWidth.setValue(targetWidth);
+      // Instant set, no animation (a11y reduce-motion path preserved).
+      spotlightX.value = targetX;
+      spotlightWidth.value = targetWidth;
       return;
     }
 
-    Animated.parallel([
-      Animated.spring(spotlightX, {
-        toValue: targetX,
-        damping: c.motion.springDamping,
-        stiffness: c.motion.springStiffness,
-        mass: c.motion.springMass,
-        useNativeDriver: false,
-      }),
-      Animated.spring(spotlightWidth, {
-        toValue: targetWidth,
-        damping: c.motion.springDamping,
-        stiffness: c.motion.springStiffness,
-        mass: c.motion.springMass,
-        useNativeDriver: false,
-      }),
-    ]).start();
+    // designSystem motion tokens map 1:1 onto Reanimated withSpring config.
+    const springConfig = {
+      damping: c.motion.springDamping,
+      stiffness: c.motion.springStiffness,
+      mass: c.motion.springMass,
+    };
+    spotlightX.value = withSpring(targetX, springConfig);
+    spotlightWidth.value = withSpring(targetWidth, springConfig);
     // R6 fix: layoutTick included so this effect re-runs when onLayout fires
     // for the active tab on first mount.
   }, [currentPage, layoutTick, reduceMotion, spotlightX, spotlightWidth]);
+
+  // UI-thread animated style for the spotlight pill (left + width).
+  const spotlightAnimatedStyle = useAnimatedStyle(() => ({
+    left: spotlightX.value,
+    width: spotlightWidth.value,
+  }));
 
   return (
     <View style={styles.container}>
@@ -203,16 +210,10 @@ export const GlassBottomNav: React.FC<GlassBottomNavProps> = ({
       ) : null}
       {/* ORCH-0589 v4 (V5): top-highlight line removed — see designSystem comment. */}
 
-      {/* Spotlight */}
+      {/* Spotlight — left + width animate on the UI thread (ORCH-0995). */}
       <Animated.View
         pointerEvents="none"
-        style={[
-          styles.spotlight,
-          {
-            left: spotlightX,
-            width: spotlightWidth,
-          },
-        ]}
+        style={[styles.spotlight, spotlightAnimatedStyle]}
       />
 
       {/* Tabs */}
