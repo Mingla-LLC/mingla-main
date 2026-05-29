@@ -470,6 +470,9 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
             radius={0}
             label="Event cover"
             style={styles.heroImage}
+            // ORCH-0992: show the WHOLE cover video on the event hero (no edge
+            // crop). List/grid cards keep the default "cover" fill.
+            videoContentFit="contain"
             showAudioControl={event.coverMediaType === "video"}
             audioControlPosition="topRight"
           />

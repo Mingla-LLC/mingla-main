@@ -37,6 +37,12 @@ export interface EventCoverMediaProps {
   muted?: boolean;
   onMutedChange?: (muted: boolean) => void;
   loop?: boolean;
+  // ORCH-0992: how the cover VIDEO fills its box. "cover" (default) crops to
+  // fill — right for list/grid cards. "contain" shows the entire frame
+  // (letterboxed on the player's black background) — used by the event-page
+  // hero so the whole video is visible, edges not cut off. Images are
+  // unaffected (always "cover").
+  videoContentFit?: "cover" | "contain";
   showAudioControl?: boolean;
   audioControlLabel?: string;
   audioControlPosition?: "topLeft" | "topRight" | "bottomRight";
@@ -115,8 +121,9 @@ const EventCoverWebVideo: React.FC<{
   playbackActive: boolean;
   muted: boolean;
   loop: boolean;
+  contentFit: "cover" | "contain";
   onError: () => void;
-}> = ({ uri, autoplay, playbackActive, muted, loop, onError }) => {
+}> = ({ uri, autoplay, playbackActive, muted, loop, contentFit, onError }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const shouldPlay = autoplay && playbackActive;
 
@@ -159,7 +166,7 @@ const EventCoverWebVideo: React.FC<{
     playsInline: true,
     preload: "auto",
     src: uri,
-    style: WEB_VIDEO_STYLE,
+    style: { ...WEB_VIDEO_STYLE, objectFit: contentFit },
   });
 };
 
@@ -169,8 +176,9 @@ const EventCoverNativeVideo: React.FC<{
   playbackActive: boolean;
   muted: boolean;
   loop: boolean;
+  contentFit: "cover" | "contain";
   onError: () => void;
-}> = ({ uri, autoplay, playbackActive, muted, loop, onError }) => {
+}> = ({ uri, autoplay, playbackActive, muted, loop, contentFit, onError }) => {
   const shouldPlay = autoplay && playbackActive;
   const player = useVideoPlayer(uri, (nextPlayer) => {
     nextPlayer.loop = loop;
@@ -235,7 +243,7 @@ const EventCoverNativeVideo: React.FC<{
     <VideoView
       player={player}
       style={StyleSheet.absoluteFill}
-      contentFit="cover"
+      contentFit={contentFit}
       nativeControls={false}
       fullscreenOptions={{ enable: false }}
       allowsPictureInPicture={false}
@@ -250,6 +258,7 @@ const EventCoverVideo: React.FC<{
   playbackActive: boolean;
   muted: boolean;
   loop: boolean;
+  contentFit: "cover" | "contain";
   onError: () => void;
 }> = (props) =>
   Platform.OS === "web" ? (
@@ -309,6 +318,7 @@ export const EventCoverMedia: React.FC<EventCoverMediaProps> = ({
   muted = true,
   onMutedChange,
   loop = true,
+  videoContentFit = "cover",
   showAudioControl = false,
   audioControlLabel = "cover video audio",
   audioControlPosition = "bottomRight",
@@ -431,6 +441,7 @@ export const EventCoverMedia: React.FC<EventCoverMediaProps> = ({
           playbackActive={playbackActive}
           muted={isMuted}
           loop={presentation === "video" ? loop : false}
+          contentFit={videoContentFit}
           onError={() => handleMediaError("video")}
         />
       ) : (
