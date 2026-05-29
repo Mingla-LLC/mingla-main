@@ -43,10 +43,21 @@ import BottomSheet, {
   BottomSheetFlatList,
   BottomSheetScrollView,
   BottomSheetSectionList,
+  BottomSheetTextInput,
   BottomSheetView,
   type BottomSheetBackdropProps,
 } from '@gorhom/bottom-sheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+// META-ORCH-0991 Wave B — keyboard-aware text input re-export. Form sheets
+// (ReportUserModal, CustomHolidayModal, …) need gorhom's BottomSheetTextInput
+// so a focused field coordinates with the sheet position instead of being
+// hidden by the keyboard. Because the strict-grep gate
+// (I-PROPOSED-BASE-BOTTOM-SHEET-SOLE-GORHOM-CONSUMER) forbids any other
+// app-mobile/src file from importing @gorhom/bottom-sheet directly, the
+// primitive re-exports it. Consumers: `import { BaseBottomSheet,
+// BottomSheetTextInput } from '.../ui/BaseBottomSheet'`.
+export { BottomSheetTextInput };
 
 import { glass } from '../../constants/designSystem';
 
