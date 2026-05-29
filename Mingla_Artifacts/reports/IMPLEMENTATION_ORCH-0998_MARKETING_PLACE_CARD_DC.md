@@ -285,3 +285,47 @@ CARD_H (360), CARD_W (260), the 58/42 split, and the deck-wrapper height (`CARD_
 
 ### Discoveries for orchestrator (v3.5)
 None.
+
+---
+
+## Intent Card v1 — NEW card type (preview route) — 2026-05-29
+
+Built the NEW "intent card" per `DESIGN_ORCH-0998_MARKETING_PLACE_CARD_DC.md` §I.1–I.9. An intent card is a snapshot of a multi-stop Mingla EXPERIENCE / plan (Mingla = experience / date-planning app, never a dating app). Additive only: new component + new data file + new standalone preview route. The production hero and `hero-place-deck.tsx` are untouched.
+
+### New files
+
+#### `mingla-marketing/lib/dc-intent-plans.ts` (new)
+**What it does:** typed `IntentPlan[]` of the 4 operator-verbatim DC plans (Romantic Evening, Group Night Out, Culture Crawl, Slow First Date). Each plan: `id`, `intentTitle`, `stops[]` (`name`, `role`, `heroPhoto`), `itineraryLabel`, `sellLine` (≤72 chars), `priceRange`, `duration`. Stop hero photos resolved via `placePhotoUrl(<placeKey>,0)` against the public Supabase `place-photos` base. Header comment documents: price ranges are real summed ranges where stop price exists ("from $X" / "Free" otherwise), duration is an editorial estimate. All 11 distinct stop placeKeys verified → `/0.jpg` returns HTTP 200.
+**Lines:** ~150.
+
+#### `mingla-marketing/components/sections/explorer-home/intent-card.tsx` (new)
+**What it does:** renders ONE intent card. Pixel-identical SHELL to the single place card (260×360, `--radius-2xl` 36px, border/elevation tokens, frosted-white `rgba(255,255,255,0.96)` content block, `#1a1a2e` photo fill, per-cell 404 → faint Mingla mark). DIFFERS in two ways per spec: (1) photo zone (64%) is a horizontal flex collage of N equal `flex:1` cells (one per stop, itinerary order) separated by 2px ink seams (`gap:2px` over `--color-ink` bg), each cell with an ink stop-number badge top-left; (2) the 36% content block carries the v3 ink→white→orange three-chip cadence re-purposed for a plan — ink chip with `intentTitle` (flexes/truncates) + `N stops` (hugs right), white itinerary-sequence chip (2-line clamp, the itinerary IS the sell), full-width orange price+duration pill (`justify-between`, ink text 5.0:1 on orange — never white-on-orange). Pure CSS, plain `<img>`. `role="img"` + §I.7 aria-label on front; pill + badges + photos `aria-hidden`. Reduced-motion N/A here (static card; the optional sibling-deck wrapper would inherit `useMinglaReducedMotion()` — not built this pass, own-row static preview per §I.5).
+**Lines:** ~300.
+
+#### `mingla-marketing/app/intent-preview/page.tsx` (new)
+**What it does:** standalone preview route. Renders all 4 intent cards in a centered responsive flex-wrap grid on the marketing `--color-smoke` background under a "Intent cards — preview" heading + eyebrow + subhead, plus ONE existing `<HeroPlaceDeck />` below for side-by-side comparison. `robots: noindex` (preview). Production hero untouched.
+**Lines:** ~115.
+
+### Spec traceability (Intent Card v1)
+- §I.1 vertical-seam collage, 2px ink seams, ink stop-number badges, 64% photo zone, per-cell 404 fallback, ≤4 cells → **DONE**.
+- §I.2 three chips (ink title+`N stops` / white itinerary / orange pill), title in name-slot, stop count in price-slot → **DONE**.
+- §I.3 itinerary chip IS the sell; sellLine ≤72 authored per plan (carried in data for future section subhead use) → **DONE**.
+- §I.4 orange pill carries summed price range + duration (two honest facts, no fabricated social count); ink-on-orange; decorative-duration comment present → **DONE**.
+- §I.5 own-row placement (preview route, not mixed into locked hero deck) → **DONE**.
+- §I.6 260×360 shell, 64/36 split, CARD_H=360 unchanged → **DONE**.
+- §I.7 aria-label (`"{title}. A {N}-stop Mingla plan: {roles with 'then'}. {price}, {duration}."`); pill/badges/photos aria-hidden → **DONE**.
+- §I.8/I.9 ink/white/orange recipe reused verbatim; honesty + decorative comments inline → **DONE**.
+
+### Verify (Intent Card v1)
+- `npx tsc --noEmit` (marketing) → **exit 0**, clean.
+- `curl http://localhost:3008/intent-preview` → **HTTP 200**, 54 KB rendered HTML (a compile error would yield a 500/overlay).
+- Served HTML (HTML-unescaped) contains all 4 intent titles, all 4 visible arrow itineraries (`Dinner → Cocktails → Stroll`, `Dinner → Game → Nightcap`, `Museum → Walk → Coffee`, `Sushi → Pastries → Stroll`), all 4 price ranges (`$80–$150 for two`, `from $40 for two`, `Free–$20 for two`, `$20–$40 for two`), all 4 durations (`≈ 3 hrs`, `≈ 3.5 hrs`, `≈ 4 hrs`, `≈ 2.5 hrs`), `3 stops` chips, and the comparison single-card's `locals recommend`.
+- One stop photo URL spot-checked + all 11 distinct stop keys → `curl -I .../0.jpg` HTTP 200.
+- Marketing-only; no app-mobile/supabase/business/admin touch; only existing `--color-ink`/`--color-warm`/`--color-smoke`/`--radius-2xl` tokens + standard `#ffffff` (matches the file's existing convention). Positioning is EXPERIENCE app, never dating (verbatim in the component header comment).
+- No eslint config present in the worktree (`next lint` is unconfigured/interactive) → tsc is the available scoped gate; passed clean.
+
+### Regression test (Intent Card v1)
+**BACKFILL-EXEMPT** — marketing-only additive presentational component + hardcoded test data + a noindex preview route; zero product-logic, no shared-state, no network mutation. Verification is the served-HTML + tsc gate above.
+
+### Discoveries for orchestrator (Intent Card v1)
+None. The optional auto-rotating sibling intent-deck (§I.5 alternative) and any homepage mount were intentionally NOT built — this is a "let's see" preview only (own-row static grid), per the dispatch.
