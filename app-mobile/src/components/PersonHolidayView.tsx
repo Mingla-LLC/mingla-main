@@ -1,15 +1,25 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   View,
   Text,
-  Image,
   ScrollView,
   TouchableOpacity,
   StyleSheet,
   Modal,
+  Animated,
+  Easing,
+  Pressable,
+  AccessibilityInfo,
+  Platform,
 } from "react-native";
+import { Image as ExpoImage } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
+import * as Haptics from 'expo-haptics';
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Icon } from './ui/Icon';
+import { Icon, type IconName } from './ui/Icon';
+import { GlassBadge } from './ui/GlassBadge';
+import type { ExpandedCardData } from '../types/expandedCardTypes';
+import { holidayCardToExpandedCardData } from './utils/holidayCardToExpandedCardData';
 import {
   GenderOption,
   HolidayDefinition,
@@ -86,34 +96,13 @@ interface PersonHolidayViewProps {
   onArchiveHoliday?: (holidayId: string) => void;
   /** Called when user unarchives a holiday — parent persists to AsyncStorage */
   onUnarchiveHoliday?: (holidayId: string) => void;
-  /** Called when any card is tapped — parent should open ExpandedCardModal */
-  onCardPress?: (card: {
-    id: string;
-    title: string;
-    category: string;
-    imageUrl: string | null;
-    rating: number | null;
-    address: string | null;
-    priceRange: string | null;
-    cardType: "single" | "curated";
-    experienceType: string | null;
-    website: string | null;
-    description: string | null;
-    lat: number | null;
-    lng: number | null;
-    googlePlaceId: string | null;
-    priceTier: string | null;
-    tagline: string | null;
-    stops: number | unknown[];
-    stopsData: unknown[] | null;
-    totalPriceMin: number | null;
-    totalPriceMax: number | null;
-    estimatedDurationMinutes: number | null;
-    shoppingList: unknown[] | null;
-    travelTime?: string;
-    distance?: string;
-    travelMode?: string;
-  }) => void;
+  /**
+   * Called when any card is tapped — parent should open ExpandedCardModal.
+   * ORCH-0997: now a fully-shaped ExpandedCardData (built by
+   * holidayCardToExpandedCardData) so the modal renders hero image + location +
+   * curated stops identically to the deck (RC#2 fix).
+   */
+  onCardPress?: (card: ExpandedCardData) => void;
   /** Called when a card from the saves list is tapped — passes raw cardData + navigation context */
   onSaveCardPress?: (cardData: Record<string, unknown>, index: number, allCardData: Record<string, unknown>[]) => void;
   /** Called when user deletes a custom holiday */
@@ -264,78 +253,123 @@ function CompactCard({
   stops: number;
   onPress?: () => void;
 }) {
-  const catIcon = isCurated
-    ? experienceType === "romantic"
+  // ORCH-0997: chip content in the deck's visual language. ONE frame for single +
+  // curated (no dark-bg swap); curated is distinguished only by the accent hairline
+  // + its chips. Icons cast to IconName — getCatIcon returns Ionicons keys already
+  // rendered by the deck's GlassBadge.
+  const experienceIcon: IconName =
+    experienceType === "romantic"
       ? "heart-outline"
       : experienceType === "adventurous"
       ? "compass-outline"
-      : "sparkles-outline"
-    : getCatIcon(category);
+      : "sparkles-outline";
+  const experienceLabel = experienceType
+    ? experienceType.charAt(0).toUpperCase() + experienceType.slice(1)
+    : i18n.t('social:holiday.curated');
+  const categoryIconName = getCatIcon(category) as IconName;
+  const categoryLabel = getReadableCategoryName(category);
+  const stopsLabel = i18n.t('social:holiday.stops', { count: stops });
 
-  const catLabel = isCurated
-    ? experienceType
-      ? experienceType.charAt(0).toUpperCase() + experienceType.slice(1)
-      : i18n.t('social:holiday.curated')
-    : getReadableCategoryName(category);
+  // a11y: one composed label for the whole tile; chips hidden from the reader.
+  const a11yLabel = isCurated
+    ? `${title}, ${experienceLabel}, ${stopsLabel}`
+    : `${title}, ${categoryLabel}${rating != null && rating > 0 ? `, rated ${rating.toFixed(1)}` : ''}`;
+
+  // Press feedback: scale 0.97 / 120ms + light haptic; reduced-motion → opacity dip.
+  const [reduceMotion, setReduceMotion] = useState(false);
+  useEffect(() => {
+    let mounted = true;
+    AccessibilityInfo.isReduceMotionEnabled()
+      .then((v) => { if (mounted) setReduceMotion(v); })
+      .catch(() => {});
+    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', (v: boolean) => setReduceMotion(v));
+    return () => { mounted = false; sub.remove(); };
+  }, []);
+  const pressScale = useRef(new Animated.Value(1)).current;
+  const pressOpacity = useRef(new Animated.Value(1)).current;
+  const animatePress = (down: boolean): void => {
+    if (reduceMotion) {
+      pressOpacity.setValue(down ? 0.85 : 1);
+      return;
+    }
+    Animated.timing(pressScale, {
+      toValue: down ? 0.97 : 1,
+      duration: 120,
+      easing: Easing.out(Easing.ease),
+      useNativeDriver: true,
+    }).start();
+  };
+  const handlePressIn = (): void => {
+    if (Platform.OS === 'ios') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    }
+    animatePress(true);
+  };
 
   return (
-    <TouchableOpacity
-      style={[styles.compactCard, isCurated && styles.compactCardCurated]}
-      onPress={onPress}
-      activeOpacity={0.9}
-    >
-      {/* Image */}
-      <View style={styles.compactCardImageWrap}>
+    <Animated.View style={[styles.tileOuter, { transform: [{ scale: pressScale }], opacity: pressOpacity }]}>
+      <Pressable
+        onPress={onPress}
+        onPressIn={handlePressIn}
+        onPressOut={() => animatePress(false)}
+        accessibilityRole="button"
+        accessibilityLabel={a11yLabel}
+        style={styles.tile}
+      >
+        {/* Hero photo (full-bleed) or branded fallback — never a fabricated image */}
         {imageUrl ? (
-          <Image source={{ uri: imageUrl }} style={styles.compactCardImage} resizeMode="cover" />
+          <ExpoImage
+            source={{ uri: imageUrl }}
+            style={styles.tileImage}
+            contentFit="cover"
+            transition={200}
+          />
         ) : (
-          <View style={[styles.compactCardImage, styles.compactCardImageFallback]}>
-            <Icon name="image-outline" size={s(24)} color="#eb7825" />
-            {isCurated ? (
-              <Text style={styles.compactCardImageMissingText}>Plan image unavailable</Text>
-            ) : null}
+          <View style={[styles.tileImage, styles.tileImageFallback]}>
+            <Icon name={categoryIconName} size={s(28)} color="#eb7825" />
           </View>
         )}
-        {/* Category badge */}
-        <View style={[styles.compactCardBadge, isCurated && styles.compactCardBadgeCurated]}>
-          <Icon name={catIcon} size={s(13)} color={isCurated ? "white" : "#eb7825"} />
-        </View>
-      </View>
 
-      {/* Content */}
-      <View style={styles.compactCardContent}>
-        <Text style={[styles.compactCardTitle, isCurated && styles.compactCardTitleCurated]} numberOfLines={2}>
-          {title}
-        </Text>
-        <Text style={[styles.compactCardCategory, isCurated && styles.compactCardCatCurated]} numberOfLines={1}>
-          {catLabel}
-          {isCurated && stops > 0 ? ` · ${i18n.t('social:holiday.stops', { count: stops })}` : ""}
-        </Text>
-        <View style={styles.compactCardFooter}>
-          {/* ORCH-0684 D-Q5: hide price line when priceRange is null —
-              never render a fabricated default (Constitution #9). The
-              empty View placeholder preserves footer layout via
-              justifyContent:'space-between'. */}
-          {priceRange ? (
-            <Text style={[styles.compactCardPrice, isCurated && styles.compactCardPriceCurated]}>
-              {priceRange}
-            </Text>
-          ) : <View />}
-          {rating != null && rating > 0 ? (
-            <View style={styles.compactCardRatingRow}>
-              <Icon name="star" size={s(11)} color="white" />
-              <Text style={[styles.compactCardRatingText, isCurated && styles.compactCardRatingCurated]}>
-                {rating.toFixed(1)}
-              </Text>
-            </View>
-          ) : (
-            <View style={styles.compactCardArrow}>
-              <Icon name="chevron-right" size={s(12)} color="white" />
-            </View>
-          )}
+        {/* Curated accent — the ONLY distinction from single (no dark-bg swap) */}
+        {isCurated ? <View style={styles.tileCuratedAccent} pointerEvents="none" /> : null}
+
+        {/* Bottom legibility gradient (mirrors the deck's hero gradient) */}
+        <LinearGradient
+          colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.35)', 'rgba(0,0,0,0.78)']}
+          locations={[0, 0.55, 1]}
+          pointerEvents="none"
+          style={styles.tileGradient}
+        />
+
+        {/* Title + glass chips overlay */}
+        <View style={styles.tileContent}>
+          <Text style={styles.tileTitle} numberOfLines={2}>{title}</Text>
+          <View
+            style={styles.tileChips}
+            importantForAccessibility="no-hide-descendants"
+            accessibilityElementsHidden
+          >
+            {isCurated ? (
+              <>
+                <GlassBadge iconName="navigate-outline">{stopsLabel}</GlassBadge>
+                {experienceType ? (
+                  <GlassBadge iconName={experienceIcon}>{experienceLabel}</GlassBadge>
+                ) : null}
+              </>
+            ) : (
+              <>
+                <GlassBadge iconName={categoryIconName}>{categoryLabel}</GlassBadge>
+                {rating != null && rating > 0 ? (
+                  <GlassBadge iconName="star">{rating.toFixed(1)}</GlassBadge>
+                ) : priceRange ? (
+                  <GlassBadge iconName="pricetag">{priceRange}</GlassBadge>
+                ) : null}
+              </>
+            )}
+          </View>
         </View>
-      </View>
-    </TouchableOpacity>
+      </Pressable>
+    </Animated.View>
   );
 }
 
@@ -474,33 +508,11 @@ function CardRow({
               isCurated={c.cardType === "curated"}
               experienceType={c.experienceType}
               stops={c.stops}
-              onPress={() => {
-                onCardPress?.({
-                  id: c.id,
-                  title: c.title,
-                  category: c.category,
-                  imageUrl: c.imageUrl,
-                  rating: c.rating,
-                  address: c.address,
-                  priceRange: c.priceTier ? formatTierLabel(c.priceTier as PriceTierSlug, currencySymbol, currencyRate) : null,
-                  cardType: c.cardType,
-                  experienceType: c.experienceType,
-                  website: c.website,
-                  description: c.description,
-                  lat: c.lat,
-                  lng: c.lng,
-                  googlePlaceId: c.googlePlaceId,
-                  priceTier: c.priceTier,
-                  tagline: c.tagline,
-                  stops: c.cardType === "curated" && Array.isArray(c.stopsData) ? (c.stopsData as any) : c.stops,
-                  stopsData: c.stopsData,
-                  totalPriceMin: c.totalPriceMin,
-                  totalPriceMax: c.totalPriceMax,
-                  estimatedDurationMinutes: c.estimatedDurationMinutes,
-                  shoppingList: c.shoppingList,
-                  travelMode,
-                });
-              }}
+              onPress={() =>
+                onCardPress?.(
+                  holidayCardToExpandedCardData(c, { travelMode, currencySymbol, currencyRate }),
+                )
+              }
             />
           ))
         : sectionFallback.map((c) => (
@@ -519,25 +531,22 @@ function CardRow({
                   id: c.id,
                   title: c.title,
                   category: c.category,
-                  imageUrl: c.image,
-                  rating: c.rating,
-                  address: c.address,
-                  priceRange: c.priceRange,
-                  cardType: "single",
-                  experienceType: null,
-                  website: null,
-                  description: null,
-                  lat: null,
-                  lng: null,
-                  googlePlaceId: null,
-                  priceTier: null,
-                  tagline: null,
-                  stops: 0,
-                  stopsData: null,
-                  totalPriceMin: null,
-                  totalPriceMax: null,
-                  estimatedDurationMinutes: null,
-                  shoppingList: null,
+                  categoryIcon: getCategoryIcon(c.category),
+                  description: '',
+                  fullDescription: '',
+                  image: c.image ?? '',
+                  images: c.image ? [c.image] : [],
+                  rating: c.rating ?? 0,
+                  reviewCount: 0,
+                  priceRange: c.priceRange ?? undefined,
+                  distance: null,
+                  travelMode,
+                  address: c.address ?? '',
+                  highlights: [],
+                  tags: [],
+                  matchScore: 0,
+                  matchFactors: { location: 0, budget: 0, category: 0, time: 0, popularity: 0 },
+                  socialStats: { views: 0, likes: 0, saves: 0, shares: 0 },
                 })
               }
             />
@@ -1106,7 +1115,9 @@ export default function PersonHolidayView({
 
 // ── Styles ──────────────────────────────────────────────────────────────────
 
-const CARD_W = s(150);
+// ORCH-0997: portrait hero tile in the deck's visual language (was 150-wide landscape).
+const CARD_W = s(168);
+const CARD_H = s(232);
 
 const styles = StyleSheet.create({
   root: { paddingBottom: s(80) },
@@ -1213,108 +1224,73 @@ const styles = StyleSheet.create({
   cardsScroll: { paddingHorizontal: s(12), paddingVertical: s(8), paddingBottom: s(16), gap: s(10) },
 
   // ── Compact card (matches GridCard visual from For You) ──
-  compactCard: {
+  // ── ORCH-0997 hero tile (deck visual language) ──────────
+  tileOuter: {
     width: CARD_W,
-    backgroundColor: "white",
-    borderRadius: s(14),
-    overflow: "hidden",
+    height: CARD_H,
+    borderRadius: s(16),
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
+    shadowOpacity: 0.10,
     shadowRadius: 8,
     elevation: 3,
   },
-  compactCardCurated: {
-    backgroundColor: "#1C1C1E",
+  tile: {
+    flex: 1,
+    borderRadius: s(16),
+    overflow: "hidden",
+    backgroundColor: "#1a1a2e", // dark base so the gradient/photo seam is invisible while loading
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(0,0,0,0.06)",
   },
-  compactCardImageWrap: {
-    position: "relative",
-    height: s(100),
-  },
-  compactCardImage: {
+  tileImage: {
+    ...StyleSheet.absoluteFillObject,
     width: "100%",
     height: "100%",
   },
-  compactCardImageFallback: {
+  tileImageFallback: {
     backgroundColor: "#fff7ed",
     justifyContent: "center",
     alignItems: "center",
   },
-  compactCardImageMissingText: {
-    fontSize: s(11),
-    fontWeight: "700",
-    color: "#c2410c",
-    marginTop: s(6),
-    textAlign: "center",
-  },
-  compactCardBadge: {
+  tileCuratedAccent: {
     position: "absolute",
-    bottom: s(6),
-    left: s(6),
-    backgroundColor: "white",
-    paddingHorizontal: s(6),
-    paddingVertical: s(4),
-    borderRadius: s(6),
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 2,
+    backgroundColor: "rgba(235,120,37,0.9)",
+    zIndex: 3,
   },
-  compactCardBadgeCurated: {
-    backgroundColor: "rgba(255,255,255,0.2)",
+  tileGradient: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: "62%",
+    zIndex: 1,
   },
-  compactCardContent: {
-    padding: s(10),
+  tileContent: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    padding: s(12),
+    zIndex: 2,
   },
-  compactCardTitle: {
-    fontSize: s(13),
-    fontWeight: "600",
-    color: "#111827",
-    marginBottom: s(3),
-    lineHeight: s(17),
-    minHeight: s(34),
+  tileTitle: {
+    fontSize: s(15),
+    fontWeight: "700",
+    lineHeight: s(19),
+    color: "#FFFFFF",
+    marginBottom: s(8),
+    textShadowColor: "rgba(0,0,0,0.6)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
-  compactCardTitleCurated: {
-    color: "white",
-  },
-  compactCardCategory: {
-    fontSize: s(11),
-    fontWeight: "500",
-    color: "#6b7280",
-    marginBottom: s(6),
-  },
-  compactCardCatCurated: {
-    color: "#9ca3af",
-  },
-  compactCardFooter: {
+  tileChips: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  compactCardPrice: {
-    fontSize: s(11),
-    fontWeight: "400",
-    color: "#eb7825",
-  },
-  compactCardPriceCurated: {
-    color: "#F59E0B",
-  },
-  compactCardRatingRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: s(2),
-  },
-  compactCardRatingText: {
-    fontSize: s(11),
-    fontWeight: "400",
-    color: "#1f2937",
-  },
-  compactCardRatingCurated: {
-    color: "#d1d5db",
-  },
-  compactCardArrow: {
-    width: s(20),
-    height: s(20),
-    borderRadius: s(10),
-    backgroundColor: "#eb7825",
-    justifyContent: "center",
-    alignItems: "center",
+    gap: s(8),
   },
   gpsEmptyCard: {
     backgroundColor: "#fff7ed",
