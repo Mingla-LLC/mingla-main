@@ -29,8 +29,13 @@ import {
   Text,
   View,
 } from "react-native";
-import { Image as ExpoImage } from "expo-image";
 import * as Haptics from "expo-haptics";
+// ORCH-0994 — shared cover renderer (image + GIF + video). Replaces the
+// image-only ExpoImage path so video covers PLAY in the Discover grid instead
+// of falling through to the solid hue band. Same component the event hero uses;
+// muted/looping ambient autoplay, reduce-motion aware, and renders its own
+// hue-band fallback (EventCover) when there is no media or media fails to load.
+import { EventCoverMedia } from "@mingla/event-rendering";
 
 import type { BusinessEventCard as BusinessEventCardData } from "../../types/mergedDiscover";
 // ORCH-0877 — centralized consumer-side date formatter.
@@ -43,16 +48,19 @@ interface BusinessEventCardProps {
   onPress: (data: BusinessEventCardData) => void;
 }
 
+// ORCH-0994 — single source for the card corner radius, shared by the card
+// container clip and the EventCoverMedia radius so the cover (and its fallback
+// band) corners align with the card.
+const CARD_RADIUS = 18;
+
 // ORCH-0877 — formatDateChip replaced by centralized
 // `formatEventDateChip` from app-mobile/src/utils/eventDateDisplay.ts.
 // I-14 single-source; cross-midnight aware via the shared helper.
-
-const heroColorFromHue = (hue: number): string => {
-  // Hue-driven band; matches the EventCover.tsx pattern from mingla-business.
-  // hsl() format is RN-safe (oklch is not — see feedback_rn_color_formats.md).
-  const h = Number.isFinite(hue) ? Math.max(0, Math.min(360, hue)) : 25;
-  return `hsl(${h}, 60%, 45%)`;
-};
+//
+// ORCH-0994 — the local `heroColorFromHue` hue-band helper was removed: the
+// no-media / video-fallback band is now rendered by EventCoverMedia's built-in
+// EventCover (hsl(hue, 60%, 45%) base — identical to the prior local band),
+// keeping a single owner for cover rendering across hero + grid.
 
 const BusinessEventCardImpl: React.FC<BusinessEventCardProps> = ({
   data,
@@ -80,22 +88,20 @@ const BusinessEventCardImpl: React.FC<BusinessEventCardProps> = ({
         { width, height },
       ]}
     >
-      {/* Hero — image or hue band */}
-      {data.coverMediaUrl !== null && data.coverMediaType !== "video" ? (
-        <ExpoImage
-          source={{ uri: data.coverMediaUrl }}
-          style={styles.heroImage}
-          contentFit="cover"
-          transition={150}
-        />
-      ) : (
-        <View
-          style={[
-            styles.heroBand,
-            { backgroundColor: heroColorFromHue(data.coverHue) },
-          ]}
-        />
-      )}
+      {/* Hero — image / GIF / video, with built-in hue-band fallback.
+          ORCH-0994: routes through the shared EventCoverMedia so a video
+          cover plays (muted, looping) instead of dropping to a solid band.
+          videoContentFit="cover" fills the fixed grid cell (crop) — the
+          "contain" letterbox treatment is for the full-bleed event hero only. */}
+      <EventCoverMedia
+        hue={data.coverHue}
+        mediaUrl={data.coverMediaUrl}
+        mediaType={data.coverMediaType}
+        radius={CARD_RADIUS}
+        videoContentFit="cover"
+        label={data.title}
+        style={StyleSheet.absoluteFill}
+      />
 
       {/* Subtle "On Mingla" pill (top-right) */}
       <View style={styles.minglaPill}>
@@ -133,18 +139,10 @@ export const BusinessEventCard = React.memo(BusinessEventCardImpl);
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 18,
+    borderRadius: CARD_RADIUS,
     overflow: "hidden",
     backgroundColor: "rgba(255,255,255,0.04)",
     position: "relative",
-  },
-  heroImage: {
-    width: "100%",
-    height: "100%",
-  },
-  heroBand: {
-    width: "100%",
-    height: "100%",
   },
   minglaPill: {
     position: "absolute",
