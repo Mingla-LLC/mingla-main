@@ -3288,7 +3288,7 @@ function ConnectionsPageRefactored({
             ]}
           />
 
-          {/* Single header row — title + friends icon + + button + scrollable pills */}
+          {/* Single header row — title + friends icon (+ button / pills relocated above search per ORCH-0990) */}
           <View
             ref={coachChatHeader.targetRef as any}
             style={[styles.headerRowAbsolute, { top: HEADER_ROW_TOP, height: HEADER_ROW_HEIGHT }]}
@@ -3302,7 +3302,7 @@ function ConnectionsPageRefactored({
               hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
               accessibilityRole="button"
               accessibilityLabel={showBadge ? `Friends, ${incomingCount} new` : 'Friends'}
-              style={styles.friendsIconButton}
+              style={[styles.friendsIconButton, { marginLeft: 'auto' }]}
             >
               <Icon name="people-outline" size={22} color="#FFFFFF" />
               {showBadge ? (
@@ -3313,7 +3313,14 @@ function ConnectionsPageRefactored({
                 </View>
               ) : null}
             </Pressable>
+          </View>
+        </View>
 
+        <View style={[styles.content, { paddingTop: HEADER_PANEL_HEIGHT + 12 }]}>
+
+          {/* ORCH-0990: + button, divider, paired-pills row — relocated here from the
+              glass header to sit directly above the search bar. */}
+          <View style={styles.pairControlsRow}>
             <Pressable
               onPress={() => {
                 HapticFeedback.light();
@@ -3369,9 +3376,6 @@ function ConnectionsPageRefactored({
               />
             </View>
           </View>
-        </View>
-
-        <View style={[styles.content, { paddingTop: HEADER_PANEL_HEIGHT + 12 }]}>
 
           {/* Search bar */}
           <View style={styles.searchContainer}>
@@ -4085,6 +4089,15 @@ const styles = StyleSheet.create({
     height: 24,
     backgroundColor: 'rgba(255, 255, 255, 0.18)',
     marginHorizontal: 4,
+  },
+  // ORCH-0990: row holding the + button, divider, and paired-pills scroll,
+  // relocated out of the glass header to sit just above the search bar.
+  pairControlsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    height: 48,
+    paddingHorizontal: 16,
   },
   pillsScrollWrap: {
     flex: 1,
