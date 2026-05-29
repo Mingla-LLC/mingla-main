@@ -74,6 +74,16 @@ import {
 } from "../types/discoverFilters";
 import { geocodingService } from "../services/geocodingService";
 import { PreferencesService } from "../services/preferencesService";
+// ORCH-0996: paint-first, full-signature in-memory cache (NOT the ORCH-0839-A
+// AsyncStorage cache — see discoverEventsCache.ts header for why C-1 can't recur).
+import {
+  buildDiscoverCacheKey,
+  readDiscoverCache,
+  isDiscoverCacheFresh,
+  writeDiscoverCache,
+  decideDiscoverFetchMode,
+  type DiscoverCacheSignature,
+} from "../utils/discoverEventsCache";
 
 // ORCH-0839-A F-4: cache-key prefix const removed — mobile cache deleted.
 const SCREEN_WIDTH = Dimensions.get("window").width;
@@ -867,26 +877,58 @@ function DiscoverScreen({
   const [deviceGpsLng, setDeviceGpsLng] = useState<number | null>(null);
   const deviceGpsFetchedRef = useRef(false);
 
+  // ORCH-0996: parallelize the location chain so a slow precise-GPS lock
+  // never blocks first paint. Previously this effect AWAITED the precise
+  // `getCurrentLocation()` (2-5s on first open) before any coordinate was
+  // set, which gated the whole events fetch. Now:
+  //   1. Seed `deviceGps*` IMMEDIATELY from the best already-available
+  //      coordinate (saved/last-known location from `useUserLocation`), so
+  //      the events fetch can kick off on the next render with no GPS wait.
+  //   2. Resolve precise GPS in parallel; only REPLACE the seeded coordinate
+  //      if precise GPS lands AND is meaningfully different (> ~500m), which
+  //      mints a refetch. A near-identical lock is ignored (no churn).
+  // `MEANINGFUL_MOVE_DEG ≈ 0.005°` is roughly 500m of latitude — far below
+  // the 50km search radius, so a tiny GPS drift never triggers a refetch.
+  const MEANINGFUL_MOVE_DEG = 0.005;
   useEffect(() => {
     if (deviceGpsFetchedRef.current) return;
     deviceGpsFetchedRef.current = true;
-    const resolveLocation = async (): Promise<void> => {
+
+    // (1) Immediate seed from last-known/saved location (no await).
+    let seededLat: number | null = null;
+    let seededLng: number | null = null;
+    if (typeof fallbackLat === "number" && typeof fallbackLng === "number") {
+      seededLat = fallbackLat;
+      seededLng = fallbackLng;
+      setDeviceGpsLat(fallbackLat);
+      setDeviceGpsLng(fallbackLng);
+    }
+
+    // (2) Refine with precise GPS in parallel; replace only if meaningfully different.
+    let cancelled = false;
+    (async (): Promise<void> => {
       try {
         const loc = await enhancedLocationService.getCurrentLocation();
-        if (loc?.latitude && loc?.longitude) {
-          setDeviceGpsLat(loc.latitude);
-          setDeviceGpsLng(loc.longitude);
-          return;
+        if (cancelled) return;
+        if (typeof loc?.latitude === "number" && typeof loc?.longitude === "number") {
+          const movedMeaningfully =
+            seededLat === null ||
+            seededLng === null ||
+            Math.abs(loc.latitude - seededLat) > MEANINGFUL_MOVE_DEG ||
+            Math.abs(loc.longitude - seededLng) > MEANINGFUL_MOVE_DEG;
+          if (movedMeaningfully) {
+            setDeviceGpsLat(loc.latitude);
+            setDeviceGpsLng(loc.longitude);
+          }
         }
       } catch {
-        // fall through
+        // precise GPS failed — keep the seeded last-known coordinate.
       }
-      if (fallbackLat && fallbackLng) {
-        setDeviceGpsLat(fallbackLat);
-        setDeviceGpsLng(fallbackLng);
-      }
+    })();
+
+    return () => {
+      cancelled = true;
     };
-    resolveLocation();
   }, [fallbackLat, fallbackLng]);
 
   useEffect(() => {
@@ -963,6 +1005,17 @@ function DiscoverScreen({
 
   const nightOutGpsLat = deviceGpsLat;
   const nightOutGpsLng = deviceGpsLng;
+
+  // ORCH-0996: stabilize the i18n `t` reference out of the fetch dep array.
+  // Previously `t` lived in `fetchNightOutEvents`'s deps (only used for the
+  // catch-block error string). If `t`'s identity churned, the fetch callback
+  // was recreated → the debounce effect re-fired → a latent extra refetch.
+  // We mirror the (only) translated string the fetch needs into a ref that
+  // stays current, and read the ref inside the fetch, so `t` can leave deps.
+  const fetchErrorTextRef = useRef<string>("");
+  useEffect(() => {
+    fetchErrorTextRef.current = t("discover:errors.failed_events");
+  }, [t]);
 
   // ORCH-0809 M2: load persisted Discover city from preferences on mount.
   useEffect(() => {
@@ -1064,14 +1117,62 @@ function DiscoverScreen({
 
   const nightOutFetchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // ORCH-0996: the exact full-signature key for the current query. Drives
+  // the paint-first in-memory cache. MUST include every facet the server
+  // reads (see discoverEventsCache.ts) so two distinct filter sets can never
+  // collide — this is what makes the ORCH-0839-A C-1 cross-filter leakage
+  // structurally impossible to recur here.
+  const cacheSignature: DiscoverCacheSignature = useMemo(
+    () => ({
+      cityName: effectiveCity?.name ?? null,
+      cityLat: effectiveCity?.lat ?? null,
+      cityLng: effectiveCity?.lng ?? null,
+      gpsLat: nightOutGpsLat ?? null,
+      gpsLng: nightOutGpsLng ?? null,
+      date: selectedFilters.date,
+      segment: selectedFilters.segment,
+      genre: selectedFilters.genre,
+      partyTypes: selectedFilters.partyTypes,
+      vibeTags: selectedFilters.vibeTags,
+      musicGenres: selectedFilters.musicGenres,
+    }),
+    [
+      effectiveCity?.name,
+      effectiveCity?.lat,
+      effectiveCity?.lng,
+      nightOutGpsLat,
+      nightOutGpsLng,
+      selectedFilters.date,
+      selectedFilters.segment,
+      selectedFilters.genre,
+      selectedFilters.partyTypes,
+      selectedFilters.vibeTags,
+      selectedFilters.musicGenres,
+    ],
+  );
+  const cacheKey = useMemo(
+    () => buildDiscoverCacheKey(cacheSignature),
+    [cacheSignature],
+  );
+  // Keep the live key in a ref so the (signature-stable) fetch callback can
+  // write to the correct cache slot without taking the key as a dependency.
+  const cacheKeyRef = useRef(cacheKey);
+  useEffect(() => {
+    cacheKeyRef.current = cacheKey;
+  }, [cacheKey]);
+
   const fetchNightOutEvents = useCallback(
     async (skipCache: boolean = false): Promise<void> => {
       // ORCH-0839-A F-4: prior on-device cache removed in this ORCH.
       // Server-side caches authoritatively (TM cache table + edge-function
       // in-memory cache). The `skipCache` parameter is preserved for API
       // compatibility but is now a no-op.
+      // ORCH-0996: an in-memory paint-first cache exists again, but it NEVER
+      // short-circuits this fetch — the network ALWAYS runs and overwrites,
+      // so `skipCache` remains a no-op and the server stays authoritative.
       // ORCH-0809 M2: require EITHER an effective city OR GPS to fetch.
       void skipCache;
+      const writeKey = cacheKeyRef.current;
       if (!effectiveCity && (!nightOutGpsLat || !nightOutGpsLng)) return;
       setNightOutLoading(true);
       setNightOutError(null);
@@ -1119,6 +1220,16 @@ function DiscoverScreen({
           setFallbackActive(false);
           const cards = tmVenues.map(transformNightOutVenue);
           setNightOutCards(cards);
+          // ORCH-0996: store this exact-signature result so a re-open paints
+          // instantly. Full-signature key ⇒ no cross-filter leakage (C-1).
+          writeDiscoverCache<NightOutCardData, BusinessEventCardData>(writeKey, {
+            nightOutCards: cards,
+            businessEvents: bizItems,
+            tmError:
+              (merged.meta as { tmError?: string | null } | undefined)
+                ?.tmError ?? null,
+            fallbackActive: false,
+          });
         } else {
           // GPS-only path keeps the legacy TM-only call. No business events
           // until the user picks a city via CityPickerSheet.
@@ -1138,10 +1249,19 @@ function DiscoverScreen({
           setFallbackActive(usedFallbackNow);
           const cards = events.map(transformNightOutVenue);
           setNightOutCards(cards);
+          // ORCH-0996: cache the GPS-only result under its exact signature too.
+          writeDiscoverCache<NightOutCardData, BusinessEventCardData>(writeKey, {
+            nightOutCards: cards,
+            businessEvents: [],
+            tmError: null,
+            fallbackActive: usedFallbackNow,
+          });
         }
       } catch (err) {
         console.error("[Discover] Error fetching events:", err);
-        setNightOutError(t("discover:errors.failed_events"));
+        // ORCH-0996: read the translated error from a ref so `t` stays out
+        // of this callback's dependency array (latent-refetch fix).
+        setNightOutError(fetchErrorTextRef.current);
         // ORCH-0809 M2.1 (P2-1 audit fix): reset fallbackActive on error so the
         // banner doesn't stay stuck on after a failed retry / city switch.
         setFallbackActive(false);
@@ -1170,23 +1290,83 @@ function DiscoverScreen({
       selectedFilters.musicGenres,
       // ORCH-0839-A F-4: businessEvents.length dep removed — the
       // cache-hit predicate it fed is gone with the mobile cache.
-      t,
+      // ORCH-0996: `t` removed from deps — the only translated string it fed
+      // (the catch-block error) is now read from `fetchErrorTextRef`, kept
+      // current by a separate effect. Stabilizing the callback identity stops
+      // an i18n re-render from re-firing the fetch effect (latent refetch).
     ],
   );
 
+  // ORCH-0996: separate the INITIAL load path from the FILTER-CHANGE path.
+  //
+  // Before, a single effect always wrapped the fetch in `setTimeout(…, 300)`,
+  // so even the very first cold-open paid the 300ms debounce on top of the
+  // GPS + prefs + geocode + edge-fn waterfall. Now:
+  //   • The FIRST time a usable query becomes available, we (a) synchronously
+  //     paint from the in-memory cache if a same-signature entry exists, and
+  //     (b) fire the fetch IMMEDIATELY (no 300ms wait).
+  //   • Every SUBSEQUENT change (filter pills, city switch, GPS refine) keeps
+  //     the 300ms debounce to coalesce rapid taps.
+  const initialFetchFiredRef = useRef(false);
   useEffect(() => {
+    const hasUsableQuery = Boolean(
+      effectiveCity || (nightOutGpsLat && nightOutGpsLng),
+    );
+    const mode = decideDiscoverFetchMode({
+      hasUsableQuery,
+      hasFiredInitial: initialFetchFiredRef.current,
+    });
+    if (mode === "skip") return;
+
+    if (mode === "immediate") {
+      // ── INITIAL load ──────────────────────────────────────────────────
+      initialFetchFiredRef.current = true;
+      // (a) Paint-first from cache (synchronous) so a re-open shows cards
+      //     instantly while the network revalidates underneath.
+      const cached = readDiscoverCache<NightOutCardData, BusinessEventCardData>(
+        cacheKeyRef.current,
+      );
+      if (cached) {
+        setNightOutCards(cached.nightOutCards);
+        setBusinessEvents(cached.businessEvents);
+        setTmError(cached.tmError);
+        setFallbackActive(cached.fallbackActive);
+        // Only suppress the blocking skeleton when the cached paint is fresh;
+        // a stale cache still shows content but keeps the loading affordance.
+        if (isDiscoverCacheFresh(cached)) {
+          setNightOutLoading(false);
+        }
+      }
+      // (b) Fire the real fetch immediately — NO 300ms debounce on first load.
+      void fetchNightOutEvents();
+      return;
+    }
+
+    // ── FILTER-CHANGE / refine ───────────────────────────────────────────
     if (nightOutFetchTimeoutRef.current) {
       clearTimeout(nightOutFetchTimeoutRef.current);
     }
+    // Paint-first for the NEW signature too, if we already have it cached.
+    const cachedForNew = readDiscoverCache<
+      NightOutCardData,
+      BusinessEventCardData
+    >(cacheKeyRef.current);
+    if (cachedForNew && isDiscoverCacheFresh(cachedForNew)) {
+      setNightOutCards(cachedForNew.nightOutCards);
+      setBusinessEvents(cachedForNew.businessEvents);
+      setTmError(cachedForNew.tmError);
+      setFallbackActive(cachedForNew.fallbackActive);
+    }
     nightOutFetchTimeoutRef.current = setTimeout(() => {
-      fetchNightOutEvents();
+      void fetchNightOutEvents();
     }, 300);
     return () => {
       if (nightOutFetchTimeoutRef.current) {
         clearTimeout(nightOutFetchTimeoutRef.current);
       }
     };
-  }, [fetchNightOutEvents]);
+  }, [fetchNightOutEvents, effectiveCity, nightOutGpsLat, nightOutGpsLng]);
+
 
   const handleRefresh = async (): Promise<void> => {
     setIsRefreshing(true);
@@ -1346,6 +1526,25 @@ function DiscoverScreen({
     });
   }, [nightOutCards]);
 
+  // ORCH-0996: prefetch the first row of event-cover images as soon as
+  // results land so the 2-col grid doesn't fade in cold. We prefetch the
+  // first 4 cover URIs (≈ first two rows of the 2-col grid), business events
+  // first (they render above the TM grid) then Ticketmaster cards. Only
+  // image-type business covers are prefetched here (video/gif covers have
+  // their own render pipeline in EventCoverMedia).
+  useEffect(() => {
+    const firstRowUris = [
+      ...businessEvents
+        .filter((b) => b.coverMediaType === "image" || b.coverMediaType === null)
+        .map((b) => b.coverMediaUrl),
+      ...filteredNightOutCards.map((c) => c.image),
+    ]
+      .filter((u): u is string => typeof u === "string" && u.length > 0)
+      .slice(0, 4);
+    if (firstRowUris.length === 0) return;
+    void ExpoImage.prefetch(firstRowUris);
+  }, [businessEvents, filteredNightOutCards]);
+
   // ORCH-0809 M2: badge counts non-default segment and non-"all" genre.
   // Price counter removed.
   const moreChipBadgeCount =
@@ -1423,15 +1622,26 @@ function DiscoverScreen({
     animation: "Animation",
     "science-fiction": "Science Fiction",
   };
-  const genreFilterOptions: { id: GenreFilter; label: string }[] =
-    GENRES_BY_SEGMENT[selectedFilters.segment].map((slug) => {
-      const i18nKey =
-        slug === "all"
-          ? "discover:filters.all_genres"
-          : `discover:filters.${slug.replace(/-/g, "_")}`;
-      const translated = t(i18nKey, { defaultValue: GENRE_LABEL_FALLBACK[slug] });
-      return { id: slug, label: translated };
-    });
+  // ORCH-0996: memoize so the per-slug `.map()` + `t()` only recomputes when
+  // the active segment or the i18n `t` reference changes — not on every
+  // render of this large screen.
+  const genreFilterOptions: { id: GenreFilter; label: string }[] = useMemo(
+    () =>
+      GENRES_BY_SEGMENT[selectedFilters.segment].map((slug) => {
+        const i18nKey =
+          slug === "all"
+            ? "discover:filters.all_genres"
+            : `discover:filters.${slug.replace(/-/g, "_")}`;
+        const translated = t(i18nKey, {
+          defaultValue: GENRE_LABEL_FALLBACK[slug],
+        });
+        return { id: slug, label: translated };
+      }),
+    // GENRE_LABEL_FALLBACK is a stable in-render literal; `t` + segment are
+    // the real inputs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [selectedFilters.segment, t],
+  );
 
   const isFilterActive = (chip: DateFilter): boolean =>
     selectedFilters.date === chip;
