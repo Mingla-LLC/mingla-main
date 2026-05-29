@@ -242,3 +242,59 @@ used a FIXED snap per the §2 off-screen lesson (sim-confirmed on-screen).
   horizontal `<ScrollView pagingEnabled>` — the "no raw list inside a sheet" rule targets
   VERTICAL lists that fight the pan gesture; a horizontal pager is orthogonal and safe.
   (TicketPdfSheet.)
+
+## 12. Batch C-1 decision record (search / keyboard-list cluster)
+
+The first Wave-C cluster: search/keyboard sheets. All non-destructive → full
+swipe-down sheets. All mount over the floating tab bar / Discover nav / inside
+chat → **wrapInRNModal**. Stock gorhom motion. **3 of the 4 dispatched targets
+shipped; PreferencesSheet hit a hard gorhom-scroll blocker (see below).**
+
+| Modal | Variant | Snap | Keyboard | Body mode | wrapInRNModal | Notes |
+|---|---|---|---|---|---|---|
+| CreateGroupChatSheet | sheet (light) | `['90%']` | **yes** (name + search inputs) | `scroll` (header + `BottomSheetScrollView` body + **stickyFooter** Create button) | **true** | Was flex-end `maxHeight:'85%'` RN `<Modal>`. The friend list is a `.map`, not a long FlatList — fine in the scroll body. `availableFriends.length > 3` search-field gate preserved. Restores the old `accessibilityViewIsModal` focus-trap (via the RN-Modal wrap). Sim-verified: roll-up, keyboard never covers name field / footer, selection toggles + Create enables, swipe-close. |
+| FriendPickerSheet | sheet (light) | `['88%']` | **yes** (search) | **`flatlist`** (long friend results → `BottomSheetFlatList`; loading/no-friends/no-results states are the FlatList `ListEmptyComponent`; header = title+close+search via `ListHeaderComponent`) | **true** | Was height `'88%'` RN `<Modal>` with a raw RN `<FlatList>` + the hand-rolled `useKeyboard` footer-padding hack (both DELETED — gorhom owns keyboard + the list). **Orphaned entry point** (`setFriendPickerVisible(true)` is never called in ConnectionsPage) — sim-verified by a TEMP `useState(true)` flip, screenshotted, then `git checkout --` (never committed; playbook §7.5). Sim-verified: roll-up, keyboard never covers search/results, live filter ("Ava" → 1 result), swipe-close. |
+| CityPickerSheet | sheet (**dark**) | `['90%']` | **yes** (autoFocus search) | `scroll` (header + status/results body) | **true** | Was an RN `<Modal>` + a hand-rolled `KeyboardAvoidingView` lifting a `flex:1` sheet (DELETED — gorhom owns keyboard). Bespoke dark canvas `rgba(20,22,26,0.98)` + topRadius 24 preserved via `backgroundStyle`. `autoFocus` + 250ms autocomplete debounce + all status rows preserved. Mounted on Discover before the floating GlassBottomNav (same z-trap as the Batch-5 Night Out filter). Sim-verified: roll-up, autoFocus, keyboard never covers field/results, live Google-Places filter ("Brooklyn" → 5 results), swipe-close. |
+| **PreferencesSheet** | **NOT CONVERTED — gorhom-scroll BLOCKER** | — | — | — | — | Stays its original RN `<Modal>`. See the blocker note below. A regression-test guard (T-8) asserts it remains an RN `<Modal>` so nobody silently ships the broken conversion without re-proving body scroll on a sim. |
+
+**Pattern worth reusing — search/keyboard-list sheet:**
+- **Long VERTICAL result list → `scrollMode="flatlist"`** with the data/renderItem/
+  keyExtractor passed via `scrollProps`, the search header as the implicit
+  `ListHeaderComponent` (the primitive uses `header ?? children`), and the
+  loading/empty/no-results states as `scrollProps.ListEmptyComponent`. This keeps
+  the list scroll coordinated with the sheet pan and avoids a raw RN `<FlatList>`.
+  (FriendPickerSheet.)
+- **Short `.map` result list → `scrollMode="scroll"`** (the `.map` rows ride the
+  `BottomSheetScrollView`); swap every `<TextInput>` → `<BottomSheetTextInput>`,
+  set `keyboardBehavior="interactive"` + `keyboardBlurBehavior="restore"` +
+  `android_keyboardInputMode="adjustResize"`, and DROP any hand-rolled
+  `KeyboardAvoidingView` / `useKeyboard` padding hack — gorhom owns keyboard
+  coordination once the field is a `BottomSheetTextInput`. (CreateGroupChatSheet,
+  CityPickerSheet.)
+
+> **HARD LESSON (Batch C-1) — a deeply-nested RN-ScrollView body sheet may NOT
+> be convertible.** PreferencesSheet's body is a `KeyboardAwareScrollView` (a raw
+> RN `<ScrollView>`) wrapping 5 `Animated.View` sections + an absolute footer,
+> inside a `SafeAreaView`, with a sibling `CustomPaywallScreen` Modal, behind a
+> dual render mode (sheet when `visible` defined, legacy full-screen inline
+> otherwise). **FOUR documented patterns were tried on the iPhone 17 Pro sim and
+> ALL failed to scroll the body**: (1) `scrollMode="view"` + a nested
+> `BottomSheetScrollView`; (2) `scrollMode="scroll"` + `header`/`stickyFooter`
+> slots; (3) `scrollMode="scroll"` + footer inline in the scroll content; (4) a
+> two-stop `['50%','90%']` snap with `initialIndex={1}` (events-sheet config). In
+> every case gorhom mounted only ~3 of the 5 sections, reported the scroll as
+> "1 page", and refused to scroll to the travel sections / Apply button — i.e.
+> the user could not reach "How far?" or tap Apply. Root cause: a raw RN
+> `<ScrollView>` (KeyboardAwareScrollView) nested inside a gorhom `<BottomSheet>`
+> defeats gorhom's content-size measurement + pan→scroll handoff, AND wrapping
+> `BottomSheetScrollView` under intermediate flex Views (SafeAreaView + flexed
+> `stickyFooter` container) clips the tall body off-screen. **The real fix is to
+> rebuild the body to render its sections as DIRECT children of the primitive's
+> `BottomSheetScrollView` (no intervening `KeyboardAwareScrollView`/SafeAreaView/
+> absolute-footer/flex wrappers), and to migrate the two nested inputs
+> (LocationInputSection + TravelLimitSection, which live in out-of-scope
+> `PreferencesSheet/*` sub-components) to `BottomSheetTextInput`.** That is a
+> standalone refactor of a core consumer surface — it should be its own ORCH (or
+> a dedicated Wave-C PreferencesSheet sub-task with the sub-component edits in
+> scope), NOT bundled into a mechanical batch. Until then, PreferencesSheet stays
+> an RN `<Modal>` (it works today) and T-8 guards against a premature flip.
