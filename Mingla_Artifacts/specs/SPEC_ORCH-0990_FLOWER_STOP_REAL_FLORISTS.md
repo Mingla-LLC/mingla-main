@@ -1,54 +1,77 @@
 # SPEC — ORCH-0990 [Curated-card flower stop shows real florists]
 
 **Author:** mingla-forensics (SPEC mode)
-**Date:** 2026-05-29
+**Date:** 2026-05-29 (PASS-2 revision after orchestrator REVIEW `NEEDS WORK`)
 **Worktree:** `~/Desktop/mingla-orchs/ORCH-0990-[flower-stop-real-florists]/` on branch `ORCH-0990-flower-stop-real-florists`
-**Surface class:** Backend-only (Supabase edge `_shared` TS). No client code change. No migration *required* for the core fix (one OPTIONAL data re-score is specified as a follow-on, not a blocker).
-**Confidence:** root cause **proven** (six-field, live DB + docs + code cross-checked).
+**Surface class:** Backend-only (Supabase RPC migration + edge `_shared` TS). **No client code change.** This revision ADDS a required `CREATE OR REPLACE FUNCTION fetch_local_signal_ranked` migration (the PASS-1 "no migration" boundary was proven WRONG — see §2.3 / Defect 1).
+**Confidence:** root cause **proven** + the corrected mechanism **proven against live data** (Management API probes, project `gqnoajqerqhnvulmnyvv`, 2026-05-29, read-only).
+
+> **PASS-2 changelog (what this revision changes vs. the `79addb01d` SPEC):**
+> 1. Mechanism replaced: `types[] && {florist}` array-overlap → a **composite primary-type-aware gate** (`primary_type='florist' OR (primary_type IN ('grocery_store','supermarket') AND 'florist'=ANY(types))`). Proven necessary because Google over-applies the secondary `florist` tag in `types[]` to non-florists in Lagos.
+> 2. A `fetch_local_signal_ranked` migration is now REQUIRED (the RPC cannot express the composite on the `types[]`-only clause). New optional params, existing callers unaffected.
+> 3. `COMBO_SLUG_FILTER_MIN.flowers` set to **0** (order-only), not 40 — a 40 floor drops real Lagos florists scoring 33 and 0.
+> 4. Per-city coverage recomputed with the composite gate (§5).
+> 5. Strict-grep gate + Step-0.5 fails-on-revert test + `I-PROPOSED-FLOWER-STOP-FLORIST-VERIFIED` invariant rewritten to assert the COMPOSITE gate and fail on a revert to admitting `service`/`general_contractor` primary types.
 
 ---
 
 ## 0. Comms Ledger acknowledgements (read on entry 2026-05-29)
 
-- **COMMS-0003 (WARN, ALL)** — external-API params must cite provider docs URLs inline at SPEC. **Acknowledged + satisfied**: every `types[]` / `primaryType` / `florist` claim below cites Google Places v1 docs inline (§4.1). No new external call is introduced; we read an already-persisted Google field (`place_pool.types`).
-- **COMMS-0002 (WARN, ALL)** — the ORCH-0863 strict-grep gate blocks PRs adding `supabase/functions/*` files unless the ORCH is allowlisted. **Acknowledged**: this fix edits an EXISTING `_shared` file (no new backend file) and adds a NEW strict-grep gate file under `.github/scripts/strict-grep/` (not under `supabase/functions/`). The new gate file + the OPTIONAL re-score migration (if the implementor ships it) MUST be added to `ORCH_0990_BACKEND_ALLOWLIST` in `.github/scripts/strict-grep/orch-0863-marketing-hub-phase-b.mjs` **in the same commit** (§9, §10).
+- **COMMS-0002 (WARN, ALL)** — ORCH-0863 strict-grep gate blocks PRs adding/touching `supabase/functions/*` OR `supabase/migrations/*` unless allowlisted. **Acknowledged + factored**: this revision now ships a NEW migration (`fetch_local_signal_ranked` re-create) AND edits `_shared/signalRankFetch.ts` AND adds a NEW Deno test file under `supabase/functions/_shared/`. **All three** MUST be added to a new `ORCH_0990_BACKEND_ALLOWLIST` in `.github/scripts/strict-grep/orch-0863-marketing-hub-phase-b.mjs` and spread into the `ALLOWLIST` union **in the same commit** (§10). The new strict-grep gate file lives under `.github/scripts/strict-grep/` (not `supabase/`) so it is not itself subject to C7.
+- **COMMS-0003 (WARN, ALL)** — external-API params must cite provider docs URLs inline at SPEC. **Acknowledged + satisfied**: no new external API call is introduced. We read already-persisted Google Places fields (`place_pool.types`, `place_pool.primary_type`). Every `types[]` / `primaryType` / `florist` claim cites the Google Places v1 docs inline (§4.1).
 - **COMMS-0004 (WARN, ALL)** — INTAKE ID-collision scan. **N/A** — this is SPEC, not INTAKE; ORCH-0990 already spawned.
 
 ---
 
 ## 1. Symptom (operator-reported 2026-05-29)
 
-On curated experience cards, the "Flowers" stop ("pick up flowers") surfaces places where you **cannot actually buy a bouquet**. Flagged in **Lagos, Nigeria** and **Raleigh, NC**. The bar: **100% of flower stops must resolve to a place that actually sells bouquets** — a real florist OR a grocery/supermarket with a verified floral department — or the stop must be honestly omitted.
+On curated experience cards, the "Flowers" stop ("pick up flowers") surfaces places where you **cannot actually buy a bouquet**. Flagged in **Lagos, Nigeria** and **Raleigh, NC**. The operator's bar: **100% of flower stops must resolve to a place that actually sells bouquets** — a real florist OR a grocery/supermarket with a verified floral department — or the stop must be honestly omitted.
 
 ---
 
-## 2. Root cause — PROVEN (confirmed, extended, formalized)
+## 2. Root cause — PROVEN (corrected mechanism)
 
-Two layers, both verified against live DB (project `gqnoajqerqhnvulmnyvv`, 2026-05-29) + the latest migration + the persisted Google field.
+Three layers, all verified against live DB (project `gqnoajqerqhnvulmnyvv`, 2026-05-29, read-only) + the latest migration + the persisted Google fields.
 
 ### 🔴 RC-1 — No serve-time type-gate for `flowers` (the direct cause)
 
 | Field | Evidence |
 |---|---|
 | **File + line** | `supabase/functions/_shared/signalRankFetch.ts:105-108` (`COMBO_SLUG_TYPE_FILTER`) |
-| **Exact code** | `export const COMBO_SLUG_TYPE_FILTER: Record<string, string[]> = {`<br>` hiking: ['hiking_area', 'state_park', ...],`<br>` museum: ['museum', 'art_museum'],`<br>`};` — **no `flowers` entry.** |
-| **What it does** | `generate-curated-experiences/index.ts:689` reads `COMBO_SLUG_TYPE_FILTER['flowers']` → `undefined` → passes `requiredTypes: undefined` into `fetchSinglesForSignalRank` (signalRankFetch.ts:240 sends `p_required_types: requiredTypes ?? null`). The RPC `fetch_local_signal_ranked` (baseline migration `20260505000000_baseline_squash_orch_0729.sql:4727`) then evaluates `(p_required_types IS NULL OR pp.types && p_required_types)` → the left side is TRUE → **the type clause passes unconditionally.** ANY place with a `flowers` score ≥ `COMBO_SLUG_FILTER_MIN.flowers` (80) inside the bbox is eligible, regardless of whether it sells flowers. |
-| **What it should do** | A flower stop MUST require `pp.types && ARRAY['florist']` — i.e. the place's Google `types[]` set MUST contain `'florist'`. |
-| **Causal chain** | symptom (non-florist at flower stop) ← card built from `fetchForCombo('flowers')` result ← RPC returned a high-popularity non-florist ← `p_required_types` was NULL ← `COMBO_SLUG_TYPE_FILTER` has no `flowers` key ← never added when `flowers` was introduced (only `hiking`/`museum` got entries in ORCH-0601). |
-| **Verification** | Live DB, Cary bbox: **"Eggless cakes of RTP" (primary_type `bakery`, NO florist tag) scores 86 on `flowers` and is currently serve-eligible** — a bakery served as a flower stop. Lagos bbox: "Rukkies Decor" (`general_contractor`) scores 100. These pass today purely because the type clause is a no-op. |
+| **Exact code** | `export const COMBO_SLUG_TYPE_FILTER: Record<string, string[]> = { hiking: [...], museum: ['museum','art_museum'], };` — **no `flowers` entry.** |
+| **What it does** | `generate-curated-experiences/index.ts:689` reads `COMBO_SLUG_TYPE_FILTER['flowers']` → `undefined` → `requiredTypes: undefined` into `fetchSinglesForSignalRank` (signalRankFetch.ts:240 sends `p_required_types: requiredTypes ?? null`). The RPC `fetch_local_signal_ranked` (baseline `20260505000000_baseline_squash_orch_0729.sql:4727`) evaluates `(p_required_types IS NULL OR pp.types && p_required_types)` → left side TRUE → the type clause passes unconditionally. ANY place with a `flowers` score ≥ `COMBO_SLUG_FILTER_MIN.flowers` (80) in the bbox is eligible, florist or not. |
+| **What it should do** | A flower stop MUST gate on the **composite primary-type-aware predicate** in RC-3 — NOT on a `types[]`-only overlap (see RC-2). |
+| **Causal chain** | symptom (non-florist at flower stop) ← card from `fetchForCombo('flowers')` ← RPC returned a high-popularity non-florist ← `p_required_types` was NULL ← `COMBO_SLUG_TYPE_FILTER` has no `flowers` key ← never added when `flowers` was introduced. |
+| **Verification** | Live DB, Lagos: "Rukkies Decor" (`primary_type=general_contractor`) scores 99.5 on `flowers` and is serve-eligible today purely because the type clause is a no-op. |
 
-### 🔴 RC-2 — `flowers` signal is popularity-weighted, so real florists are under-scored (the reason a type-gate alone is insufficient)
+### 🔴 RC-2 — Google over-applies the secondary `florist` tag in `types[]`, so a `types[]`-only gate re-admits noise (why the PASS-1 mechanism was wrong)
 
 | Field | Evidence |
 |---|---|
-| **File + line** | `signal_definition_versions.config` for signal `flowers` (version `477e8a05-d401-4b86-af43-eace3fe087d5`), consumed by `_shared/signalScorer.ts:141 computeScore`. |
-| **Exact config** | `scale: { rating_cap: 35, reviews_cap: 25, rating_multiplier: 10, reviews_log_multiplier: 5 }`, `field_weights: { types_includes_florist: 60, types_includes_grocery_store: -15, types_includes_supermarket: -10, ... }`, text patterns up to +40/+35/+10, `min_rating: 4`, `min_reviews: 5`, `cap: 200`. |
-| **What it does** | A place's score is dominated by rating (≤35) + reviews-log (≤25) + text-pattern matches (≤85) — up to **145 from popularity/keywords**, vs **+60 for actually being a florist.** A well-reviewed business that merely mentions "flowers" in reviews can outscore a small genuine florist. |
-| **What it should do** | Florist-vs-not eligibility must be decided by TYPE (RC-1's gate), and the per-stop score threshold must NOT exclude genuine, quality-gated florists the popularity signal under-weighted. |
-| **Causal chain** | real florists score LOW (under the 80 min) → excluded by `COMBO_SLUG_FILTER_MIN.flowers=80` even after a type-gate → the only florist-tagged places clearing 80 are the highly-reviewed ones (big Harris Teeters) → a naïve "type-gate only, keep min 80" fix STILL under-serves real boutiques. |
-| **Verification** | Live DB florist-tagged (`'florist' = ANY(types)`) places **scoring under 80**: Washington 13, Lagos 6, Raleigh 6, London 5, Brussels 4. Brussels has 5 florist-tagged places but only 1 clears 80 — keeping min 80 would serve 1 of 5 real florists. |
+| **Column** | `place_pool.types text[]` (secondary tag set) vs `place_pool.primary_type text` (single canonical type). |
+| **What it does** | In Lagos, Google attaches the secondary `florist` tag in `types[]` to businesses whose **primary_type is NOT florist** — event planners, decorators, contractors. A `pp.types && ARRAY['florist']` overlap therefore admits them. |
+| **What it should do** | Eligibility must key off `primary_type` (the clean discriminator), with one explicit carve-out for verified-floral groceries (RC-3). |
+| **Verification (live, Lagos `city_id=287cab01-…`, all `'florist'=ANY(types)` rows with a `flowers` score)** | <table><tr><th>name</th><th>primary_type</th><th>flowers score</th><th>composite admits?</th></tr><tr><td>Regal Flowers Lekki Branch</td><td>florist</td><td>143.85</td><td>✅</td></tr><tr><td>BusyBee Events LAGOS (event planner)</td><td>service</td><td>104.29</td><td>❌</td></tr><tr><td>Rukkies Decor Victoria Island</td><td>general_contractor</td><td>99.52</td><td>❌</td></tr><tr><td>LEE signTEC EMPIRE</td><td>service</td><td>98.01</td><td>❌</td></tr><tr><td>FRESH FLOWERS BY OLIVE DESIGNS</td><td>florist</td><td>32.72</td><td>✅</td></tr><tr><td>Sparkle Gardens</td><td>florist</td><td>0</td><td>✅</td></tr><tr><td>Just Weddings / JW Events NG</td><td>null</td><td>22.46</td><td>❌</td></tr><tr><td>Ottama Interiors</td><td>service</td><td>0</td><td>❌</td></tr></table> The PASS-1 gate (`types[] && {florist}` + floor 40) would have returned **Regal (144, real) + BusyBee (104) + Rukkies (99.5) + LEE signTEC (98)** = 1 real florist + 3 non-bouquet businesses — **the exact reported bug, unfixed.** |
 
-**Conclusion (formalized):** RC-1 is the direct cause; RC-2 is why option (i)-alone (add the type key, keep min 80) fails the 100% bar by *under-serving*. The honest fix is **type-gate (RC-1) + threshold decoupling (RC-2)**, both inside `signalRankFetch.ts`. No migration is required because the type-gate is enforced by passing `requiredTypes` into the existing RPC clause.
+### 🔴 RC-3 — `primary_type='florist'` ALONE excludes the verified-floral groceries the operator chose IN (why the composite is required)
+
+| Field | Evidence |
+|---|---|
+| **Operator scope (LOCKED 2026-05-29)** | eligibility = **florist OR verified-floral grocery**. |
+| **What primary-only does** | Raleigh has **ZERO** `primary_type='florist'` servable places. ALL its bouquet availability is Harris Teeter `primary_type='grocery_store'` carrying the `florist` tag in `types[]` (floral department). A `primary_type='florist'`-only gate would make Raleigh — an operator-flagged city — go honest-empty despite 13 real floral-dept groceries. |
+| **What it should do** | Admit `primary_type='florist'` PLUS the carve-out `primary_type IN ('grocery_store','supermarket') AND 'florist'=ANY(types)`. The grocery carve-out is narrow (must ALSO carry the `florist` tag = Google-verified floral dept), so it does not re-open the RC-2 noise (event planners/contractors are never `grocery_store`/`supermarket`). |
+| **Verification (live)** | Raleigh composite gate → 1 `florist`-primary + 13 grocery-floral = 14 fillable, 0 noise; Lagos composite gate → 3 `florist`-primary + 0 grocery-floral = 3 fillable, 0 noise (§5). |
+
+### 🔴 RC-4 — the popularity-weighted `flowers` score must NOT be the eligibility decider (why the floor must be 0, not 40)
+
+| Field | Evidence |
+|---|---|
+| **File + config** | `signal_definition_versions.config` for signal `flowers` (version `477e8a05-d401-4b86-af43-eace3fe087d5`, confirmed live `is_active=true`), consumed by `_shared/signalScorer.ts computeScore`. Rating ≤35 + reviews-log ≤25 + text-pattern ≤85 dominate over `types_includes_florist:+60`. |
+| **What it does** | Real boutique florists score LOW. Live Lagos: **FRESH FLOWERS BY OLIVE DESIGNS = 32.72**, **Sparkle Gardens = 0** — both genuine `primary_type='florist'` shops. A floor of 40 (the PASS-1 proposal) drops BOTH. |
+| **What it should do** | Once the composite type-gate (RC-3) is the **hard guarantee of bouquet availability**, the popularity score must only **ORDER** results, never **DROP** a verified florist. So `COMBO_SLUG_FILTER_MIN.flowers = 0`. |
+| **Verification (live)** | With floor=0 + composite gate, every composite-fillable place already has a `flowers` score row (§5: scored counts == no-score-gate counts in all 9 covered cities), so floor=0 admits exactly the composite set and orders it by score DESC. Floor=40 would silently drop Lagos's 2 lowest real florists. |
+
+**Conclusion (formalized):** RC-1 is the direct cause; RC-2 + RC-3 prove the gate must be the **composite primary-type-aware predicate** (not `types[]`-only, not `primary_type='florist'`-only); RC-4 proves the score floor must be **0**. The composite predicate **cannot** be expressed by the current RPC's single `pp.types && p_required_types` clause → a `fetch_local_signal_ranked` migration is **required** (§8.2). No client change.
 
 ---
 
@@ -56,71 +79,84 @@ Two layers, both verified against live DB (project `gqnoajqerqhnvulmnyvv`, 2026-
 
 | Layer | Finding |
 |---|---|
-| **Docs** | Google Places v1: `types[]` is "a set of type tags for this result"; `primaryType` is a single value and is always one of the `types`. `florist`, `grocery_store`, `supermarket` are all Table-A types (§4.1 URLs). |
-| **Schema** | `place_pool.types text[]`, `place_pool.primary_type text`, `place_scores(place_id, signal_id, score)`. RPC `fetch_local_signal_ranked` latest def confirmed in `20260505000000_baseline_squash_orch_0729.sql:4708` (no later migration supersedes it — grep-all confirmed). |
-| **Code** | `COMBO_SLUG_TYPE_FILTER` lacks `flowers`; the comment at signalRankFetch.ts:110-113 *claims* it keeps Harris-Teeter florist tags + filters noise — but that behavior was never wired (no type-gate). The comment is aspirational, not enforced. |
-| **Runtime** | RPC returns non-florists for `flowers` because the type clause is NULL-bypassed. |
-| **Data** | Live: places scoring ≥80 on `flowers` in Lagos/Raleigh currently mostly DO carry the florist tag (the signal config was tuned since the orchestrator's first probe), but the bug is structural: nothing *enforces* it. Cary proves a NO-florist-tag bakery (86) is serve-eligible right now. |
+| **Docs** | Google Places v1: `types[]` is "a set of type tags for this result" (multiple, includes loose secondary tags); `primaryType` is "the primary type… A place can only have a single primary type" and "when a primary type is present, it is always one of the types in the `types` field." `florist`, `grocery_store`, `supermarket` are Table-A types (§4.1 URLs). The secondary-vs-primary distinction is exactly why `primary_type` is the clean discriminator. |
+| **Schema** | `place_pool.types text[]`, `place_pool.primary_type text`, `place_scores(place_id, signal_id, score)`. RPC latest def `20260505000000_baseline_squash_orch_0729.sql:4708-4730` (grep-all confirmed no later migration supersedes it; latest migration on disk is `20260731000000_orch_0964_…`, unrelated). |
+| **Code** | `COMBO_SLUG_TYPE_FILTER` lacks `flowers`; the comment at signalRankFetch.ts:110-113 *claims* it keeps Harris-Teeter florist tags + filters noise — never wired. RPC clause is `types[]`-only and cannot express the composite. |
+| **Runtime** | RPC returns non-florists for `flowers` because the type clause is NULL-bypassed; even a naïve `types[]={florist}` fix would still return Lagos event-planners/contractors (RC-2). |
+| **Data** | Live Lagos proves `florist` is over-applied as a secondary tag to `service`/`general_contractor` primaries; `primary_type` cleanly separates the 3 real florists from the 4+ noise rows (RC-2 table). |
 
-**Layer disagreement = the bug:** Code-comment (Docs layer) says florist-tag filtering happens; Code layer never implements it; Runtime serves non-florists.
+**Layer disagreement = the bug:** Docs say `primaryType` is the canonical single type; Code gates on the loose `types[]` set (or nothing); Runtime serves non-florists.
 
 ---
 
-## 4. Grocery-verification signal — DECISION
+## 4. The gate — DECISION
 
-**Operator scope (LOCKED 2026-05-29):** eligibility = **florist OR verified-floral grocery**. The honest question: how do we verify a grocery actually sells flowers without per-store curation?
+**Operator scope (LOCKED 2026-05-29):** eligibility = **florist OR verified-floral grocery**.
 
-### 4.1 Candidate (a) — `types[]` CONTAINS `'florist'` — **CHOSEN (primary signal)** 🔒LOCKED
+### 4.1 The composite gate — 🔒 LOCKED
 
-Google Places v1 docs:
-- `types[]` field: *"A set of type tags for this result."* — https://developers.google.com/maps/documentation/places/web-service/reference/rest/v1/places (Place resource → `types[]`).
-- `primaryType`: *"The primary type of the given result... A place can only have a single primary type"* and *"when a primary type is present, it is always one of the types in the `types` field."* — same reference.
-- `florist`, `grocery_store`, `supermarket` are all valid Table-A types — https://developers.google.com/maps/documentation/places/web-service/place-types (`florist` under Services; `grocery_store`/`supermarket` under Shopping).
+```
+primary_type = 'florist'
+  OR (primary_type IN ('grocery_store','supermarket') AND 'florist' = ANY(types))
+```
 
-**Why it is the honest signal:** Google independently tags a place `florist` in `types[]` when it operates a floral business/department — even when `primaryType` is `grocery_store` or `supermarket`. This is Google's own classification, not Mingla heuristics, and requires zero manual curation.
+**Google Places v1 docs (inline citations, COMMS-0003):**
+- `types[]`: *"A set of type tags for this result."* — https://developers.google.com/maps/documentation/places/web-service/reference/rest/v1/places (Place resource → `types[]`).
+- `primaryType`: *"The primary type of the given result… A place can only have a single primary type"* and *"when a primary type is present, it is always one of the types in the `types` field."* — same reference.
+- `florist`, `grocery_store`, `supermarket` are valid Table-A types — https://developers.google.com/maps/documentation/places/web-service/place-types (`florist` under Services; `grocery_store`/`supermarket` under Shopping).
 
-**Live empirical proof (project gqnoajqerqhnvulmnyvv, 2026-05-29):**
-- Harris-Teeter supermarkets with genuine floral departments carry `'florist'` in `types[]` while `primaryType='grocery_store'` (Raleigh: 18 such; Washington: 23; Cary: 11). These are exactly the "verified-floral grocery" the operator wants IN.
-- A grocery/supermarket WITHOUT a floral department does NOT carry the florist tag → automatically excluded.
-- The "florist OR verified-floral-grocery" set is **precisely `'florist' = ANY(types)`** — one predicate covers both halves of the operator's scope.
+**Why this is the honest gate:**
+- `primary_type='florist'` = a business Google classifies *primarily* as a florist → guaranteed bouquet availability. Excludes the RC-2 noise (event planners, decorators, contractors carry `florist` only as a loose secondary tag, never as `primary_type`).
+- The grocery carve-out (`primary_type IN ('grocery_store','supermarket') AND 'florist'=ANY(types)`) admits exactly the operator's "verified-floral grocery": a grocery/supermarket that Google *also* tags `florist` = it operates a floral department. A grocery WITHOUT a floral dept lacks the tag → excluded. Event planners/contractors are never `grocery_store`/`supermarket` → the carve-out cannot re-admit them.
 
-### 4.2 Candidate (b) — text-pattern (reviews/summary mentions "flowers/bouquet/floral") — **REJECTED as the gate; RETAINED as scorer input** 🔵
+**Null-safety:** rows with `primary_type IS NULL` (e.g. Lagos "Ottama Interiors", "Just Weddings") evaluate both branches to NULL/false → correctly excluded.
 
-Already present in the `flowers` signal config (`reviews_regex`, `summary_regex`). Text-pattern is the SOURCE of false positives (RC-2): "Eggless cakes of RTP" scores 86 partly via text. Using it as the eligibility gate would re-admit non-florists. **Decision:** do NOT use text as the eligibility gate. It stays as a *ranking* nudge inside the score (fine — ranking, not gating).
+### 4.2 Rejected alternatives 🔵
+- **`types[] && {florist}` (PASS-1 proposal)** — REJECTED (RC-2: re-admits Lagos event-planners/contractors). This is the defect being fixed.
+- **`primary_type='florist'` alone** — REJECTED (RC-3: zeroes out Raleigh's 13 floral-dept groceries; operator chose them IN).
+- **Text-pattern (reviews mention "flowers/bouquet")** — REJECTED as a gate (source of false positives); RETAINED only as a `flowers`-signal scorer input → it nudges *ranking*, never *eligibility*.
 
-### 4.3 Candidate (c) — `seedingCategories.ts` / `categoryPlaceTypes.ts` Flowers config — **CONFIRMED CONSISTENT; not the serve gate** 🔵
-
-`seedingCategories.ts:474-499` (Flowers seeding config: `includedTypes: ['florist','grocery_store','supermarket']` + 30 `excludedPrimaryTypes`) governs SEEDING (Google Nearby Search to populate `place_pool`), NOT serving. `categoryPlaceTypes.ts:162-164` mirrors `'Flowers': ['florist','grocery_store','supermarket']`. These confirm florist+grocery+supermarket is Mingla's canonical Flowers universe at seed time. The serve-time gate (signal (a)) is *stricter* (florist tag required), which is correct: a supermarket only qualifies at serve time if it actually has the florist tag (verified floral dept), satisfying the operator's "verified" requirement. **No change to these files.**
+### 4.3 `seedingCategories.ts` / `categoryPlaceTypes.ts` — CONFIRMED CONSISTENT; not the serve gate 🔵
+`seedingCategories.ts` Flowers seeding config (`includedTypes: ['florist','grocery_store','supermarket']`) governs SEEDING (Google Nearby Search to populate `place_pool`), not serving. The serve-time composite gate is *stricter* (a grocery only qualifies at serve time if it has the `florist` tag = verified floral dept). **No change to these files.**
 
 ### 4.4 Fallback
-
-`'florist' = ANY(types)` is the gate. If a future city has florists Google never tagged `florist`, the stop goes honest-empty (it is optional+dismissible). There is no softer fallback because any softer signal re-admits non-florists — the operator's bar is 100% honesty, which dominates coverage.
+The composite gate is the only gate. If a city has no florist-primary and no verified-floral grocery, the stop goes honest-empty (it is `optional:true, dismissible:true`). No softer fallback — any softer signal re-admits non-florists, and the operator's 100% honesty bar dominates coverage.
 
 ---
 
-## 5. Per-city coverage finding (all 17 seeded cities probed live 2026-05-29)
+## 5. Per-city coverage — RECOMPUTED with the COMPOSITE gate (live, all 17 served cities, 2026-05-29, read-only)
 
-`seeding_cities WHERE status='seeded'` = 17 cities. Probe joined `place_pool` (is_active + is_servable, within bbox) to `place_scores(signal_id='flowers')`, with the real `stored_photo_urls` photo gate (G3) the serve path applies.
+**Method:** `place_pool` filtered `is_active=true AND is_servable=true`, the real `stored_photo_urls` photo gate (G3) applied (drops null/empty/`__backfill_failed__`), scoped per city via `place_pool.city_id` joined to `seeding_cities (status='seeded')`. "Composite-fillable" = rows satisfying the §4.1 composite gate. Floor=0 → every composite-fillable row that has a `flowers` score row is serve-eligible; verified that the score-row-required count EQUALS the no-score-gate count in every covered city (so floor=0 admits the full composite set and merely orders it).
 
-| City | Florist-tagged servable | …with photo (servable for stop) | Non-florist scoring ≥80 (today's false-positive risk) |
-|---|---|---|---|
-| Raleigh | 26 | 26 | 0 (was the operator's flagged city — now clean under the gate) |
-| Washington | 26 | 26 | 0 |
-| Cary | 13 | 13 | **1 — "Eggless cakes of RTP" (bakery, 86)** |
-| Lagos | 10 | 10 | 0 (flagged city — gate yields 10 real florist-tagged places) |
-| Durham | 9 | 9 | 0 |
-| London | 8 | 8 | 0 |
-| Baltimore | 6 | 6 | 0 |
-| Brussels | 5 | 5 | 0 |
-| **Fort Lauderdale** | **0** | **0** | 0 — **goes honest-empty** |
-| **Toronto, Paris, Berlin, Barcelona, Chicago, Dallas, Miami, New York** | **0** | **0** | 0 — **go honest-empty** |
+| City | `primary_type='florist'` | grocery/supermarket + `florist` tag | **Composite-fillable** | `types[]`-only noise the composite EXCLUDES |
+|---|---|---|---|---|
+| Washington | 1 | 27 | **28** | 1 |
+| Raleigh ⚑ | 1 | 13 | **14** | 5 |
+| Cary | 0 | 11 | **11** | 0 |
+| Durham | 0 | 10 | **10** | 0 |
+| Brussels | 1 | 5 | **6** | 0 |
+| Baltimore | 0 | 6 | **6** | 0 |
+| Lagos ⚑ | 3 | 0 | **3** | 4 |
+| Fort Lauderdale | 1 | 0 | **1** | 0 |
+| London | 1 | 0 | **1** | 7 |
+| **Barcelona** | 0 | 0 | **0 — honest-empty** | 0 |
+| **Berlin** | 0 | 0 | **0 — honest-empty** | 0 |
+| **Chicago** | 0 | 0 | **0 — honest-empty** | 0 |
+| **Dallas** | 0 | 0 | **0 — honest-empty** | 0 |
+| **Miami** | 0 | 0 | **0 — honest-empty** | 0 |
+| **New York** | 0 | 0 | **0 — honest-empty** | 0 |
+| **Paris** | 0 | 0 | **0 — honest-empty** | 0 |
+| **Toronto** | 0 | 0 | **0 — honest-empty** | 0 |
+
+⚑ = operator-flagged city.
 
 **Findings:**
-1. **9 of 17 cities have florist-tagged places** (≥5 each, plenty to fill an optional single-place stop). The two operator-flagged cities (Lagos, Raleigh) BOTH have ample real florists once the gate is applied.
-2. **8 cities have ZERO florist-tagged servable places** (Toronto, Paris, Berlin, Barcelona, Chicago, Dallas, Miami, New York; Fort Lauderdale has 842 servable places but 0 florist-tagged). These go **honest-empty** for the flower stop. This is acceptable and correct because the Flowers stop is `optional: true, dismissible: true` in all three experience types that use it (see §6) — the card still builds without it. The RPC's INNER JOINs already return `[]` cleanly when nothing matches; `fetchForCombo` returns `[]`; the generator skips the optional stop (index.ts:831 `if (available.length === 0 && stopDef.optional) continue;`).
-3. **The score-threshold choice barely changes coverage** (type-gate + min 80 vs +min 40 differ by ≤2 places/city) because `place_scores` only has a `flowers` row for places that already cleared the scorer's hard eligibility (`min_rating:4`, `min_reviews:5`). Florist-tagged places with NO score row (Brussels 4, Lagos 6, etc.) failed that rating/review quality floor — they are legitimately lower quality and excluded by the RPC's INNER JOIN on `ps_filter` regardless of threshold. Lowering the threshold from 80→40 recovers the few quality florists the popularity weighting pushed just under 80 (Raleigh +2, e.g.) without admitting any non-florist (the type-gate blocks those).
+1. **9 of 17 cities are covered** under the composite gate. **Both flagged cities are covered**: Lagos = 3 real florists (zero noise); Raleigh = 14 (1 florist + 13 floral-dept Harris Teeters, zero noise).
+2. **8 cities are genuinely empty** (Barcelona, Berlin, Chicago, Dallas, Miami, New York, Paris, Toronto) → flower stop honestly omitted. **No city flips empty→covered or covered→empty vs. the PASS-1 table** — the composite gate produces the same covered/empty *partition*, but the *counts inside covered cities are now correct* (PASS-1's `types[]`-only counts were inflated by the noise the composite excludes: Raleigh −5, London −7, Lagos −4, Washington −1).
+3. **The composite gate removes real noise** (rightmost column): without it, Lagos would serve 4 non-florists, London 7, Raleigh 5. These are exactly the businesses Google mis-tags with a secondary `florist`.
+4. **Honest-empty is correct + safe:** the flower stop is `optional:true, dismissible:true` in all three experience types that use it (§6). The RPC's INNER JOINs return `[]`; `fetchForCombo` returns `[]`; the generator skips the optional stop (`generate-curated-experiences/index.ts` `if (available.length === 0 && stopDef.optional) continue;`). Card still builds. No crash, no non-florist substitution.
 
-**Conclusion:** type-gate `['florist']` + threshold floor 40 serves every florist-tagged quality place in every city that has one, and yields honest-empty in the 8 cities with none. **100% honesty bar met.**
+**Conclusion:** composite gate + floor 0 serves every verified-bouquet place in every city that has one and yields honest-empty in the 8 with none. **100% honesty bar met.** (D-1: the 8 empty cities are a SEEDING coverage gap, not this ORCH — register a seeding ORCH if the operator wants flower stops live there.)
 
 ---
 
@@ -128,128 +164,246 @@ Already present in the `flowers` signal config (`reviews_regex`, `summary_regex`
 
 ```
 generate-curated-experiences/index.ts
-  EXPERIENCE_TYPES (line 206):
-    first-date  → stops[0] { role:'Flowers', optional:true, dismissible:true } (line 244); combos start 'flowers' (lines 249-253)
-    romantic    → stops[0] { role:'Flowers', optional:true, dismissible:true } (line 272); combos 'flowers' (lines 277-278)
-    picnic-dates→ stops[1] { role:'Flowers', optional:true, dismissible:true } (line 318); combo ['groceries','flowers','nature'] (line 322)
-  → generateCardsForType() (line 643)
-    → fetchForCombo('flowers') (defined line 682):
-        filterSignal = COMBO_SLUG_TO_FILTER_SIGNAL['flowers'] = 'flowers' (signalRankFetch.ts:92)
-        typeFilter   = COMBO_SLUG_TYPE_FILTER['flowers']      = undefined  ← RC-1 (signalRankFetch.ts:689 read)
-        filterMin    = COMBO_SLUG_FILTER_MIN['flowers']       = 80          ← RC-2 (signalRankFetch.ts:117)
-      → fetchSinglesForSignalRank(supabaseAdmin, { ..., requiredTypes: undefined }) (signalRankFetch.ts:211)
-        → RPC fetch_local_signal_ranked(p_required_types := null, ...) 
+  EXPERIENCE_TYPES:
+    first-date  → stops[0] {role:'Flowers', optional:true, dismissible:true}; combos start 'flowers'
+    romantic    → stops[0] {role:'Flowers', optional:true, dismissible:true}; combos 'flowers'
+    picnic-dates→ stops[1] {role:'Flowers', optional:true, dismissible:true}; combo ['groceries','flowers','nature']
+  → generateCardsForType()
+    → fetchForCombo('flowers')  [index.ts:682]:
+        filterSignal = COMBO_SLUG_TO_FILTER_SIGNAL['flowers'] = 'flowers'
+        typeFilter   = COMBO_SLUG_TYPE_FILTER['flowers']      = undefined  ← RC-1 (index.ts:689)
+        filterMin    = COMBO_SLUG_FILTER_MIN['flowers'] ?? 120 = 80         ← RC-4 (index.ts:690)
+      → fetchSinglesForSignalRank(supabaseAdmin, { …, requiredTypes: typeFilter }) [index.ts:694]
+        → RPC fetch_local_signal_ranked(p_required_types := null, …)
            clause: (p_required_types IS NULL OR pp.types && p_required_types) → NULL bypass ← RC-1 lands here
            (baseline_squash_orch_0729.sql:4727)
 
 ALSO (same resolvers, swap flow):
-replace-curated-stop/index.ts → _shared/stopAlternatives.ts:110/115
+replace-curated-stop/index.ts → _shared/stopAlternatives.ts:109-134
     filterMin    = resolveFilterMin('flowers')   = 80
     requiredTypes= resolveTypeFilter('flowers')  = undefined
-  → fetchSinglesForSignalRank(... requiredTypes) (stopAlternatives.ts:125-134)
+  → fetchSinglesForSignalRank(… requiredTypes) [stopAlternatives.ts:125]
 ```
 
-**Single-point fix:** both the curated generator AND the swap flow resolve through `COMBO_SLUG_TYPE_FILTER` + `COMBO_SLUG_FILTER_MIN` in `signalRankFetch.ts`. Editing those two maps fixes **both** flows at once (Constitution #13 — generation and serving use the same gate). No edge-function code edit, no RPC edit needed.
+**Single-point fix surface:** both flows resolve through `COMBO_SLUG_TYPE_FILTER` + `COMBO_SLUG_FILTER_MIN` + `fetchSinglesForSignalRank` in `signalRankFetch.ts`, which calls the RPC. The fix = (a) new composite params in the RPC, (b) thread them through `SignalRankParams`/`fetchSinglesForSignalRank`, (c) populate them for `flowers` via a resolver, (d) floor 0. Both flows inherit it (Constitution #13 — generation and serving use the same gate).
 
 ---
 
-## 7. Fix decision — which option (i / ii / iii)
+## 7. Fix decision
 
-- (i) add `flowers` to `COMBO_SLUG_TYPE_FILTER` + keep min 80 — **INSUFFICIENT** (under-serves real florists; RC-2 proof: Brussels 1-of-5).
-- (ii) decouple ranking/threshold from popularity — **REQUIRED** (lower `COMBO_SLUG_FILTER_MIN.flowers` 80→40 so quality florist-tagged places under-weighted by popularity still pass).
-- (iii) re-score / data backfill — **NOT REQUIRED for the fix.** The `types_includes_florist:+60` weight + `min_rating:4`/`min_reviews:5` already give a quality floor in the persisted scores; the type-gate enforces honesty. **OPTIONAL follow-on** (§8.4) only if the operator later wants to *raise* florist scores so flower stops rank higher relative to non-flower noise — not needed to meet the bar.
-
-**Chosen fix = (i) + (ii)**, entirely in `_shared/signalRankFetch.ts`. No migration. No client change.
+- (i) `types[] && {florist}` gate + floor 40 — **REJECTED** (RC-2: re-admits Lagos noise; RC-4: drops real florists).
+- (ii) **composite primary-type-aware gate (RPC migration) + floor 0** — **CHOSEN.** Honesty enforced by the composite type-gate; score orders only.
+- (iii) re-score / data backfill (§8.4) — **OUT of scope** (not needed to meet the bar).
 
 ---
 
 ## 8. Change contract — layer by layer
 
-### 8.1 `supabase/functions/_shared/signalRankFetch.ts` — 🔒 LOCKED
+### 8.1 DB / RPC migration — 🔒 LOCKED (NEW — this is the corrected boundary)
 
-**Change A — add the `flowers` type-gate.** In `COMBO_SLUG_TYPE_FILTER` (line 105):
+**New migration file:** `supabase/migrations/20260801000000_orch_0990_fetch_local_signal_ranked_primary_type_gate.sql`
+(timestamp strictly greater than the latest on disk `20260731000000_orch_0964_…`; implementor MUST re-confirm at implement time that no newer migration landed and bump if needed — safe-migration protocol §8.5.)
+
+**Current RPC definition being replaced (verbatim, this worktree, `20260505000000_baseline_squash_orch_0729.sql:4708-4730`):**
+```sql
+CREATE OR REPLACE FUNCTION "public"."fetch_local_signal_ranked"(
+  "p_filter_signal" "text", "p_filter_min" numeric, "p_rank_signal" "text",
+  "p_lat_min" numeric, "p_lat_max" numeric, "p_lng_min" numeric, "p_lng_max" numeric,
+  "p_required_types" "text"[] DEFAULT NULL::"text"[], "p_limit" integer DEFAULT 100)
+  RETURNS TABLE("place_id" "uuid", "rank_score" numeric)
+  LANGUAGE "sql" STABLE SECURITY DEFINER SET "search_path" TO 'public'
+  AS $$
+  SELECT ps_rank.place_id, ps_rank.score AS rank_score
+  FROM place_pool pp
+  INNER JOIN place_scores ps_filter ON ps_filter.place_id = pp.id AND ps_filter.signal_id = p_filter_signal AND ps_filter.score >= p_filter_min
+  INNER JOIN place_scores ps_rank   ON ps_rank.place_id   = pp.id AND ps_rank.signal_id   = p_rank_signal
+  WHERE pp.is_active = true AND pp.is_servable = true
+    AND pp.lat BETWEEN p_lat_min AND p_lat_max
+    AND pp.lng BETWEEN p_lng_min AND p_lng_max
+    AND (p_required_types IS NULL OR pp.types && p_required_types)
+  ORDER BY ps_rank.score DESC
+  LIMIT p_limit;
+$$;
+```
+
+**Chosen new signature (least-invasive, non-regressing):** add TWO new trailing optional parameters AFTER `p_required_types`, BEFORE `p_limit` is impossible (Postgres positional defaults), so they go AFTER `p_limit` with their own defaults. To avoid reordering existing named-arg callers, append both at the end:
+
+```sql
+CREATE OR REPLACE FUNCTION "public"."fetch_local_signal_ranked"(
+  "p_filter_signal" "text", "p_filter_min" numeric, "p_rank_signal" "text",
+  "p_lat_min" numeric, "p_lat_max" numeric, "p_lng_min" numeric, "p_lng_max" numeric,
+  "p_required_types" "text"[] DEFAULT NULL::"text"[],
+  "p_limit" integer DEFAULT 100,
+  "p_primary_type_required" "text"[] DEFAULT NULL::"text"[],
+  "p_grocery_floral_tag" boolean DEFAULT false)
+  RETURNS TABLE("place_id" "uuid", "rank_score" numeric)
+  LANGUAGE "sql" STABLE SECURITY DEFINER SET "search_path" TO 'public'
+  AS $$
+  SELECT ps_rank.place_id, ps_rank.score AS rank_score
+  FROM place_pool pp
+  INNER JOIN place_scores ps_filter ON ps_filter.place_id = pp.id AND ps_filter.signal_id = p_filter_signal AND ps_filter.score >= p_filter_min
+  INNER JOIN place_scores ps_rank   ON ps_rank.place_id   = pp.id AND ps_rank.signal_id   = p_rank_signal
+  WHERE pp.is_active = true AND pp.is_servable = true
+    AND pp.lat BETWEEN p_lat_min AND p_lat_max
+    AND pp.lng BETWEEN p_lng_min AND p_lng_max
+    -- Existing secondary-tag overlap path. UNCHANGED for all current callers
+    -- (hiking, museum). When p_required_types IS NULL this is a no-op (TRUE).
+    AND (p_required_types IS NULL OR pp.types && p_required_types)
+    -- ORCH-0990: composite primary-type-aware gate. When p_primary_type_required
+    -- IS NULL AND p_grocery_floral_tag = false this is a no-op (TRUE) → EVERY
+    -- existing caller (which passes neither) is byte-for-byte unaffected.
+    -- For flowers: p_primary_type_required := ARRAY['florist'],
+    --              p_grocery_floral_tag    := true
+    --   → admits primary_type='florist'
+    --      OR (primary_type IN ('grocery_store','supermarket') AND 'florist'=ANY(types))
+    AND (
+      (p_primary_type_required IS NULL AND p_grocery_floral_tag = false)
+      OR (p_primary_type_required IS NOT NULL AND pp.primary_type = ANY(p_primary_type_required))
+      OR (p_grocery_floral_tag = true
+          AND pp.primary_type = ANY(ARRAY['grocery_store','supermarket'])
+          AND pp.types && ARRAY['florist'])
+    )
+  ORDER BY ps_rank.score DESC
+  LIMIT p_limit;
+$$;
+```
+
+Plus re-issue the existing `ALTER FUNCTION … OWNER TO "postgres";`, the 3 `GRANT ALL … TO anon/authenticated/service_role;`, and a refreshed `COMMENT ON FUNCTION … IS 'ORCH-0653 v3.2 + ORCH-0990: …composite primary-type gate (p_primary_type_required + p_grocery_floral_tag) for the flowers stop; existing types-overlap path unchanged.';` — **all keyed to the NEW full argument list** (the GRANTs/OWNER/COMMENT are signature-specific in Postgres; the old-signature grants remain on the old overload only if a stale overload survives — see §8.5 drop-old-overload note).
+
+**Why this signature does NOT regress hiking/museum/all other callers (🔒 proof):**
+- Every current caller passes only `p_required_types` (or nothing) — `generate-curated-experiences` and `stopAlternatives` invoke the RPC by NAMED args (`supabaseAdmin.rpc('fetch_local_signal_ranked', { p_filter_signal, …, p_required_types, p_limit })`) and **never name** `p_primary_type_required` or `p_grocery_floral_tag`.
+- Both new params **default** (`NULL`, `false`). With those defaults, the new WHERE clause reduces to `(NULL IS NULL AND false = false) → TRUE` → an unconditional pass → **identical row set** to the pre-migration RPC for hiking, museum, and every non-flowers signal.
+- The existing `p_required_types` overlap clause is **untouched** — hiking still narrows by `['hiking_area',…]`, museum by `['museum','art_museum']`, exactly as today.
+- Result: only the `flowers` caller (which will newly pass the two params) changes behavior; all other callers are bit-identical. (T-09 asserts this.)
+
+**Safe-migration protocol (§8.5):**
+- `CREATE OR REPLACE FUNCTION` with a **changed argument list creates a NEW overload**; the old 9-arg overload would survive. To avoid an ambiguous-overload hazard, the migration MUST first `DROP FUNCTION IF EXISTS public.fetch_local_signal_ranked(text,numeric,text,numeric,numeric,numeric,numeric,text[],integer);` (the exact old signature) THEN `CREATE OR REPLACE` the new 11-arg version, THEN re-issue OWNER/GRANT/COMMENT. Document this ordering inline. This is forward-only and idempotent (the `IF EXISTS` guards re-runs).
+- The RPC is `STABLE SECURITY DEFINER` read-only (SELECT only) — no data mutation, no lock risk, instant deploy.
+- Operator applies via `supabase db push` at CLOSE (per autonomy posture: safe read-only migration, orchestrator may push; but this is operator's call at CLOSE). Edge functions re-deploy after (their bundled `_shared/signalRankFetch.ts` changed): `generate-curated-experiences` + `replace-curated-stop`.
+
+### 8.2 `supabase/functions/_shared/signalRankFetch.ts` — 🔒 LOCKED
+
+**Change A — add the composite gate resolver + maps.** Replace the `COMBO_SLUG_TYPE_FILTER` block (lines 105-108) region with the existing entries PLUS a new flowers-specific composite descriptor. Do NOT add `flowers` to `COMBO_SLUG_TYPE_FILTER` (that map drives the `types[]`-overlap param, which is the wrong mechanism). Instead add a new map for the primary-type gate:
 
 ```ts
+// ORCH-0601 — Slugs that narrow a filter signal to a sub-category via the
+// secondary types[] overlap (p_required_types). UNCHANGED by ORCH-0990.
 export const COMBO_SLUG_TYPE_FILTER: Record<string, string[]> = {
   hiking: ['hiking_area', 'state_park', 'nature_preserve', 'national_park', 'wildlife_refuge', 'scenic_spot'],
   museum: ['museum', 'art_museum'],
-  // ORCH-0990 — Flowers eligibility = Google `types[]` contains 'florist'.
-  // This is the single honest gate that admits BOTH true florists AND
-  // grocery/supermarket floral departments (Harris Teeter etc. carry the
-  // 'florist' tag in types[] even when primary_type is grocery_store) while
-  // rejecting bakeries/event-decor/contractors that only score high on
-  // rating/review popularity (RC-1). Google Places v1: types[] is "a set of
-  // type tags for this result"; florist is a Table-A type.
-  // https://developers.google.com/maps/documentation/places/web-service/place-types
-  flowers: ['florist'],
+};
+
+// ORCH-0990 — Slugs that gate on the canonical primary_type (NOT the loose
+// secondary types[] set). Google over-applies the secondary `florist` tag in
+// types[] to event planners / decorators / contractors in some markets (proven
+// in Lagos), so a types[]-overlap gate re-admits non-bouquet businesses. The
+// clean discriminator is primary_type. `groceryFloralTag` additionally admits a
+// grocery/supermarket that ALSO carries the `florist` tag (a verified floral
+// department, e.g. Harris Teeter) — the operator's "verified-floral grocery".
+// Google Places v1: primaryType is a single canonical type; types[] is a loose
+// tag set. https://developers.google.com/maps/documentation/places/web-service/place-types
+export interface PrimaryTypeGate { primaryTypes: string[]; groceryFloralTag: boolean; }
+export const COMBO_SLUG_PRIMARY_TYPE_GATE: Record<string, PrimaryTypeGate> = {
+  flowers: { primaryTypes: ['florist'], groceryFloralTag: true },
 };
 ```
 
-**Change B — decouple the per-stop threshold from popularity.** In `COMBO_SLUG_FILTER_MIN` (line 114), change `flowers` from `80` to `40`, and REWRITE the misleading comment (lines 110-113) to state the type-gate is now the honesty mechanism:
+Add a resolver mirroring `resolveTypeFilter`:
+```ts
+/**
+ * ORCH-0990: resolve the primary-type composite gate for a slug, or undefined.
+ * Flowers gates on primary_type='florist' OR grocery/supermarket+florist-tag.
+ */
+export function resolvePrimaryTypeGate(comboSlug: string): PrimaryTypeGate | undefined {
+  return COMBO_SLUG_PRIMARY_TYPE_GATE[comboSlug];
+}
+```
 
+**Change B — extend `SignalRankParams` + thread the params into the RPC call.** Add to the interface (after `requiredTypes`):
+```ts
+  primaryTypeRequired?: string[]; // ORCH-0990: composite primary-type gate (flowers)
+  groceryFloralTag?: boolean;     // ORCH-0990: also admit grocery/supermarket + florist tag
+```
+In `fetchSinglesForSignalRank`, destructure both and pass them to the RPC (alongside the existing args):
+```ts
+      p_primary_type_required: primaryTypeRequired ?? null,
+      p_grocery_floral_tag: groceryFloralTag ?? false,
+```
+(Existing `p_required_types: requiredTypes ?? null` line stays — for flowers it resolves to `null`, so the types-overlap path is the no-op TRUE and only the new composite clause gates.)
+
+**Change C — set the floor to 0 + rewrite the stale comment** (lines 110-117):
 ```ts
 // Per-stop filter_min override. Most signals use 120; movies is 80 (tiny universe).
-// ORCH-0990: flowers is 40 (was 80). Honesty is now enforced by the
-// COMBO_SLUG_TYPE_FILTER['flowers']=['florist'] type-gate, NOT by the score
+// ORCH-0990: flowers is 0 (was 80). Honesty for flowers is enforced ENTIRELY by
+// the COMBO_SLUG_PRIMARY_TYPE_GATE['flowers'] composite primary-type gate
+// (primary_type='florist' OR grocery/supermarket+florist-tag), NOT by the score
 // threshold. The flowers signal is rating/review-popularity weighted, so genuine
-// boutique florists scored 40-79 and were wrongly excluded at 80 (RC-2). The
-// scorer's own hard floor (min_rating:4, min_reviews:5) already guarantees only
-// rated, reviewed florists get a flowers score row at all, so 40 keeps quality
-// real florists while the type-gate keeps out non-florists.
+// boutique florists score 0-39 (e.g. Lagos "FRESH FLOWERS BY OLIVE DESIGNS" 33,
+// "Sparkle Gardens" 0) and would be wrongly dropped by ANY positive floor. With
+// the type-gate as the hard bouquet guarantee, the score must only ORDER results,
+// never drop a verified florist → floor 0.
 export const COMBO_SLUG_FILTER_MIN: Record<string, number> = {
   'movies': 80,
-  'flowers': 40,
+  'flowers': 0,
 };
 ```
+`resolveFilterMin` already returns the map value (`?? 120`) — flowers now returns 0.
 
-**No other edit to this file.** `resolveTypeFilter` (line 141) and `resolveFilterMin` (line 163) already return the map values; the swap flow inherits both changes automatically.
+**No other edit to this file.**
 
-### 8.2 DB / RPC — 🔒 LOCKED: **NO CHANGE**
+### 8.3 Edge function call sites — 🔒 LOCKED (thread the resolver; NO logic change)
 
-`fetch_local_signal_ranked` already honors `p_required_types` via `pp.types && p_required_types`. Passing `['florist']` makes the clause `pp.types && ARRAY['florist']` (overlap = the row's types contains florist). No migration. (Confirmed latest def, no superseding migration.)
+- `generate-curated-experiences/index.ts` `fetchForCombo` (line ~682): import `resolvePrimaryTypeGate`, resolve it for `catId`, and pass `primaryTypeRequired: gate?.primaryTypes` + `groceryFloralTag: gate?.groceryFloralTag` into the `fetchSinglesForSignalRank` params object. (One resolver call + two new param lines.)
+- `_shared/stopAlternatives.ts` (line ~115): identically resolve `resolvePrimaryTypeGate(categoryId)` and pass both params into its `fetchSinglesForSignalRank` call, so the swap flow inherits the same gate.
 
-### 8.3 Edge functions — 🔒 LOCKED: **NO CODE CHANGE**
+These two call-site edits are the ONLY edge-function-code changes. They are mechanical param threading (no branching). The functions re-deploy at CLOSE because `_shared/signalRankFetch.ts` changed.
 
-`generate-curated-experiences/index.ts` and `replace-curated-stop/index.ts` read the maps unchanged. The behavior change is entirely data-driven by the two map edits. (They will be re-deployed by the orchestrator at CLOSE because their bundled `_shared/signalRankFetch.ts` changed — deploy `generate-curated-experiences` AND `replace-curated-stop`.)
+> **Scope note:** §8.3 edits two edge `index.ts`/`_shared` files (param threading) — this is unavoidable because the resolver output must reach the RPC. This is still "no CLIENT code change" (no `app-mobile/`, no `mingla-business/`, no `mingla-admin/`). Both touched files go in the backend allowlist (§10).
 
-### 8.4 🎨 OPEN follow-on (NOT in this ORCH's required scope) — optional re-score
-
-If, after shipping, the operator wants florists to rank even higher (e.g. raise `types_includes_florist` from +60 to +80 in the `flowers` signal config and re-run `run-signal-scorer`), that is a DATA op via `signal_definition_versions` + the scorer edge fn. **Implementor: do NOT do this unless explicitly asked** — the type-gate + min-40 already meets the bar. If shipped, it requires a migration (new `signal_definition_versions` row) → add to `ORCH_0990_BACKEND_ALLOWLIST` (§10).
+### 8.4 🎨 OPEN follow-on — OUT of scope
+A `flowers`-signal re-score (raise `types_includes_florist` weight) is a DATA op, **not** in ORCH-0990. The composite gate + floor 0 meets the bar without it. Do NOT ship unless the operator explicitly asks.
 
 ---
 
-## 9. Regression prevention — new strict-grep gate 🔒 LOCKED
+## 9. Regression prevention — strict-grep gate 🔒 LOCKED
 
 **New file:** `.github/scripts/strict-grep/orch-0990-flower-stop-florist-gate.mjs`
 
 Asserts, on `supabase/functions/_shared/signalRankFetch.ts`:
-1. `COMBO_SLUG_TYPE_FILTER` contains a `flowers:` key whose array includes the string `'florist'`. (Fail if the key is missing or the array lacks `'florist'` → catches a revert of Change A.)
-2. `COMBO_SLUG_FILTER_MIN.flowers` is present and ≤ 60 (catches a silent bump back to 80 that would re-exclude real florists).
+1. `COMBO_SLUG_PRIMARY_TYPE_GATE` exists and its `flowers` entry has `primaryTypes` including `'florist'` AND `groceryFloralTag: true`. (Fail if missing → catches a revert of Change A.)
+2. `flowers` is NOT present in `COMBO_SLUG_TYPE_FILTER` (catches an accidental re-introduction of the rejected `types[]`-only mechanism, which would re-admit RC-2 noise).
+3. `COMBO_SLUG_FILTER_MIN.flowers` is present and `=== 0` (catches a silent bump that would drop real florists).
 
-Exit 1 on any violation (model on `orch-0965-home-uses-upcoming-hook.mjs`). Register the gate as a job in the relevant workflow (`.github/workflows/strict-grep-mingla-business.yml` or the curated/backend strict-grep workflow — implementor: place it in the same workflow that already runs the other backend `_shared` gates; if none exists, add to the mingla-business strict-grep workflow as the other ORCH-09xx backend gates are).
+Asserts, on the migration `supabase/migrations/20260801000000_orch_0990_*.sql`:
+4. The new RPC body contains the composite predicate signature `p_primary_type_required` AND `p_grocery_floral_tag` AND the literal `'grocery_store'`/`'supermarket'` + `ARRAY['florist']` carve-out (catches a revert to the `types[]`-only RPC that would re-admit `service`/`general_contractor` primaries).
 
-**Regression test (Deno):** `supabase/functions/_shared/signalRankFetch.flowers.test.ts` (new) — see T-06/T-07 in §12. Pure assertions on the exported maps (no DB).
+Exit 1 on any violation (model on `orch-0965-home-uses-upcoming-hook.mjs`). Register as a job in the same workflow that runs the other backend `_shared` strict-grep gates.
+
+**Regression test (Deno):** `supabase/functions/_shared/signalRankFetch.flowers.test.ts` (new) — T-02 / T-06 / T-07 / T-09 below (pure assertions on the exported maps + resolver; no DB).
 
 ---
 
-## 10. Invariant proposal 🔒 LOCKED
+## 10. Invariant + backend allowlist 🔒 LOCKED
 
 Add to `Mingla_Artifacts/INVARIANT_REGISTRY.md` (status DRAFT → ACTIVE on ORCH-0990 CLOSE):
 
 > ### I-PROPOSED-FLOWER-STOP-FLORIST-VERIFIED
-> **Rule:** A curated "Flowers" stop NEVER resolves to a place lacking a flowers-availability signal. Concretely: the only serve-time gate for the `flowers` combo slug is `COMBO_SLUG_TYPE_FILTER['flowers'] = ['florist']`, requiring the served place's Google `types[]` to contain `'florist'` (covers true florists AND grocery/supermarket floral departments that Google tags `florist`). The popularity-weighted `flowers` signal score MUST NOT be the eligibility decider; the per-stop threshold `COMBO_SLUG_FILTER_MIN['flowers']` ≤ 60 exists only to retain quality florists the popularity signal under-weights. If no florist-tagged servable place exists in range, the flower stop is omitted (it is `optional:true, dismissible:true`) — never substituted with a non-florist.
-> **Applies to:** `generate-curated-experiences` (curated cards) + `replace-curated-stop` (stop swap), both via `_shared/signalRankFetch.ts` + `_shared/stopAlternatives.ts`.
-> **Enforcement:** strict-grep gate `orch-0990-flower-stop-florist-gate.mjs` + Deno test `signalRankFetch.flowers.test.ts`.
+> **Rule:** A curated "Flowers" stop NEVER resolves to a place that is not a verified bouquet source. The ONLY serve-time gate for the `flowers` combo slug is the **composite primary-type gate** `COMBO_SLUG_PRIMARY_TYPE_GATE['flowers'] = { primaryTypes: ['florist'], groceryFloralTag: true }`, evaluated server-side in `fetch_local_signal_ranked` as `primary_type='florist' OR (primary_type IN ('grocery_store','supermarket') AND 'florist'=ANY(types))`. The gate MUST key off the canonical `primary_type` (NOT the loose secondary `types[]` set — Google over-applies the `florist` tag to `service`/`general_contractor`/event-planner primaries, proven in Lagos 2026-05-29). The popularity-weighted `flowers` score MUST NOT be the eligibility decider: `COMBO_SLUG_FILTER_MIN['flowers'] === 0`, so the score only ORDERS results and never drops a verified florist (real Lagos florists score 33 and 0). If no place satisfies the composite gate in range, the flower stop is OMITTED (`optional:true, dismissible:true`) — never substituted with a non-florist.
+> **Forbidden reverts (gate FAILS the build if any occur):** (a) adding `flowers` to `COMBO_SLUG_TYPE_FILTER` (re-introduces the `types[]`-only mechanism → re-admits noise); (b) `COMBO_SLUG_FILTER_MIN.flowers` ≠ 0; (c) an RPC that admits flowers rows on a `types[]`-overlap alone without the `primary_type` check.
+> **Applies to:** `generate-curated-experiences` (curated cards) + `replace-curated-stop` (stop swap), both via `_shared/signalRankFetch.ts` + `_shared/stopAlternatives.ts` + the `fetch_local_signal_ranked` RPC.
+> **Enforcement:** strict-grep gate `orch-0990-flower-stop-florist-gate.mjs` + Deno test `signalRankFetch.flowers.test.ts` + live RPC probe (T-03/T-04/T-08).
 
-**Backend allowlist (COMMS-0002):** in `.github/scripts/strict-grep/orch-0863-marketing-hub-phase-b.mjs`, add (same commit as the gate/migration):
+**Backend allowlist (COMMS-0002):** in `.github/scripts/strict-grep/orch-0863-marketing-hub-phase-b.mjs`, add (same commit as gate/migration/edits) and spread into the `ALLOWLIST` union:
 ```js
 const ORCH_0990_BACKEND_ALLOWLIST = [
+  'supabase/migrations/20260801000000_orch_0990_fetch_local_signal_ranked_primary_type_gate.sql',
   'supabase/functions/_shared/signalRankFetch.ts',
   'supabase/functions/_shared/signalRankFetch.flowers.test.ts',
-  // + the OPTIONAL §8.4 re-score migration filename, ONLY if the implementor ships it
+  'supabase/functions/_shared/stopAlternatives.ts',
+  'supabase/functions/generate-curated-experiences/index.ts',
 ];
 ```
-Wire it into the gate's allowlist union exactly as the other `ORCH_0NNN_BACKEND_ALLOWLIST` consts are consumed in that file.
+Then add `...ORCH_0990_BACKEND_ALLOWLIST,` to the `const ALLOWLIST = [ … ]` union (after `...ORCH_0978_BACKEND_ALLOWLIST,`).
 
 ---
 
@@ -257,29 +411,30 @@ Wire it into the gate's allowlist union exactly as the other `ORCH_0NNN_BACKEND_
 
 | # | Surface | Covered? | Behavior / parity |
 |---|---|---|---|
-| 1 | **Consumer iOS** (`app-mobile/` iOS) | ✅ COVERED (automatic) | Curated cards + ORCH-0986 paired-profile holidays section consume `generate-curated-experiences` output. Flower stops now resolve only to florist-tagged places (or are omitted). No client code change — parity is automatic (shared backend). |
-| 2 | **Consumer Android** (`app-mobile/` Android) | ✅ COVERED (automatic) | Identical mechanism; same backend response. Automatic parity. |
-| 3 | **Buyer/anonymous Web** (`mingla-business/` public routes) | ❌ NOT COVERED | Buyer-anon routes don't render curated experience cards or the flower stop — no analog exists. |
-| 4 | **Business iOS** (`mingla-business/` iOS) | ❌ NOT COVERED | Business app has no curated-card flower stop. |
-| 5 | **Business Android** (`mingla-business/` Android) | ❌ NOT COVERED | Same — no analog. |
-| 6 | **Admin Web** (`mingla-admin/`) | ❌ NOT COVERED | Admin doesn't render curated cards. (Admin *does* run seeding/scoring, but this fix touches neither.) |
+| 1 | **Consumer iOS** | ✅ COVERED (automatic) | Curated cards + paired-profile holidays consume `generate-curated-experiences`. Flower stops now resolve only to composite-gate-passing places (or omit). No client code change — parity automatic (shared backend). |
+| 2 | **Consumer Android** | ✅ COVERED (automatic) | Identical mechanism, same backend response. Automatic parity. |
+| 3 | **Buyer/anonymous Web** | ❌ NOT COVERED | Buyer-anon routes render no curated cards / flower stop — no analog. |
+| 4 | **Business iOS** | ❌ NOT COVERED | No curated-card flower stop. |
+| 5 | **Business Android** | ❌ NOT COVERED | No analog. |
+| 6 | **Admin Web** | ❌ NOT COVERED | Admin renders no curated cards (it runs seeding/scoring; this fix touches neither). |
 | 7 | **Business Web preview** | ❌ NOT COVERED | No curated-card surface. |
 
-Parity across iOS + Android is automatic (single shared backend response), so no separate per-surface success criteria are required; SC-1..SC-5 below apply equally to both consumer platforms.
+Parity across iOS + Android is automatic (single shared backend response). No per-surface success criteria needed; SC-1..SC-7 apply to both consumer platforms. **No UI surface is touched** → the Phase 3.6 visual/UX contract is N/A (stated explicitly per the granularity protocol; this is a backend serving-logic fix with zero pixel changes).
 
 ---
 
 ## 12. Success criteria (observable / testable / unambiguous)
 
-The bar: **100% of flower stops resolve to a florist or verified-floral grocery, in every served city, or honest-empty if truly none.**
+The bar: **100% of flower stops resolve to a place satisfying `primary_type='florist' OR (primary_type IN ('grocery_store','supermarket') AND 'florist'=ANY(types))`, in every served city, or honest-empty if none.**
 
-- **SC-1 🔒** — For the `flowers` combo slug, `fetchSinglesForSignalRank` is called with `requiredTypes: ['florist']`. (Verify: log/inspect the params, or unit-assert `resolveTypeFilter('flowers')` deep-equals `['florist']`.)
-- **SC-2 🔒** — Every place returned for a flower stop satisfies `'florist' ∈ place_pool.types`. No place lacking the florist tag is ever served as a flower stop. (Verify: T-01 + live RPC probe.)
-- **SC-3 🔒** — Genuine florists scored 40-79 on the `flowers` signal ARE eligible (not excluded by an 80 floor). `resolveFilterMin('flowers') === 40`. (Verify: T-02.)
-- **SC-4 🔒** — In a city with ≥1 florist-tagged servable photo'd place (e.g. Lagos, Raleigh), the flower stop resolves to one such place. (Verify: live RPC probe per §5; T-03.)
-- **SC-5 🔒** — In a city with ZERO florist-tagged servable places (e.g. Paris, Chicago), the flower stop is OMITTED and the curated card still builds from its required stops (flowers is optional). No crash, no non-florist substitution, no empty-card. (Verify: T-04.)
-- **SC-6 🔒** — The swap flow (`replace-curated-stop`) returns only florist-tagged alternatives for a flower stop (same gate). (Verify: T-05.)
-- **SC-7 🔒** — Strict-grep gate fails if `COMBO_SLUG_TYPE_FILTER['flowers']` is removed/lacks `'florist'`, or if `COMBO_SLUG_FILTER_MIN['flowers']` > 60. (Verify: T-06/T-07 — run gate against a reverted fixture.)
+- **SC-1 🔒** — For the `flowers` slug, `fetchSinglesForSignalRank` is called with `primaryTypeRequired: ['florist']` and `groceryFloralTag: true` and `requiredTypes: undefined`. (Verify: assert `resolvePrimaryTypeGate('flowers')` deep-equals `{ primaryTypes:['florist'], groceryFloralTag:true }` and `resolveTypeFilter('flowers') === undefined`.)
+- **SC-2 🔒** — Every place returned for a flower stop satisfies the §4.1 composite gate. No `service`/`general_contractor`/null-primary place (even if `'florist'∈types`) is ever served. (Verify: T-01 + T-08 + live RPC probe.)
+- **SC-3 🔒** — `resolveFilterMin('flowers') === 0`. Genuine florists scoring 0-39 ARE eligible. (Verify: T-02.)
+- **SC-4 🔒** — In Lagos, the flower stop returns ONLY {Regal Flowers, Fresh Flowers by Olive Designs, Sparkle Gardens} (the 3 `primary_type='florist'`) and NEVER BusyBee/Rukkies/LEE signTEC. In Raleigh, it returns the 1 florist + 13 floral-dept Harris Teeters, no noise. (Verify: T-03 live RPC.)
+- **SC-5 🔒** — In a composite-empty city (Paris, Chicago, …), the flower stop is OMITTED, the card still builds, no crash, no non-florist substitution. (Verify: T-04.)
+- **SC-6 🔒** — The swap flow (`replace-curated-stop`) returns only composite-gate-passing alternatives for a flower stop. (Verify: T-05.)
+- **SC-7 🔒** — Strict-grep gate fails on any forbidden revert (§9 / §10). (Verify: T-06/T-07.)
+- **SC-8 🔒 (no-regression)** — For a non-flowers slug (e.g. `hiking`, `museum`, `casual_food`), the RPC returns the IDENTICAL row set pre- and post-migration (the new params default to no-op). (Verify: T-09.)
 
 ---
 
@@ -287,39 +442,43 @@ The bar: **100% of flower stops resolve to a florist or verified-floral grocery,
 
 | Test | Scenario | Input | Expected | Layer |
 |---|---|---|---|---|
-| **T-01 (fails-on-revert, happy path — Step 0.5)** | Type-gate honored | Call `fetchForCombo('flowers')` (or the RPC directly) for the Cary bbox | Result set EXCLUDES "Eggless cakes of RTP" (bakery, no florist tag, score 86) and INCLUDES the florist-tagged places. Reverting Change A re-admits the bakery → test fails. | edge + RPC (live or seeded fixture) |
-| **T-02** | Threshold decoupled | `resolveFilterMin('flowers')` | `=== 40` | unit (Deno) |
-| **T-03** | Florist served in populous city | RPC `fetch_local_signal_ranked(p_filter_signal:'flowers', p_filter_min:40, p_rank_signal:'flowers', <Raleigh bbox>, p_required_types:['florist'])` | Returns ≥1 row; every returned `place_id` has `'florist' ∈ types`. | RPC (live) |
-| **T-04** | Honest-empty city | Same RPC with `<Paris bbox>` | Returns `[]`; generator skips optional flower stop; card still built from required stops; no exception. | edge |
-| **T-05** | Swap flow gated | `replace-curated-stop` for a flowers stop | All alternatives are florist-tagged. | edge |
-| **T-06 (gate)** | Strict-grep catches type-gate revert | Remove `flowers` key from `COMBO_SLUG_TYPE_FILTER` | gate exits 1 | CI |
-| **T-07 (gate)** | Strict-grep catches threshold bump | Set `COMBO_SLUG_FILTER_MIN.flowers = 80` | gate exits 1 | CI |
-| **T-08 (adversarial — for tester)** | Popularity can't beat type | Seed/identify a non-florist with a high `flowers` score (e.g. a heavily-reviewed bakery whose reviews mention "flowers") in a served bbox | It is NEVER returned for a flower stop; only florist-tagged places appear. Confirms the gate, not the score, decides eligibility. | RPC + edge (live) |
+| **T-01 (fails-on-revert, Step 0.5)** | Composite gate honored | Call the RPC for the **Lagos** bbox with `p_primary_type_required:=['florist']`, `p_grocery_floral_tag:=true`, `p_filter_signal:='flowers'`, `p_filter_min:=0`, `p_rank_signal:='flowers'` | Result INCLUDES Regal/Fresh Flowers/Sparkle Gardens; EXCLUDES BusyBee (service,104), Rukkies (general_contractor,99.5), LEE signTEC (service,98). Reverting to the `types[]`-only RPC (or dropping the primary check) re-admits the 3 noise rows → test fails. | RPC (live) |
+| **T-02** | Floor + gate resolvers | `resolveFilterMin('flowers')`, `resolvePrimaryTypeGate('flowers')`, `resolveTypeFilter('flowers')` | `0`, `{primaryTypes:['florist'],groceryFloralTag:true}`, `undefined` | unit (Deno) |
+| **T-03** | Flagged cities served correctly | RPC for Lagos bbox + Raleigh bbox (params as T-01) | Lagos → exactly the 3 florist-primary rows; Raleigh → 1 florist + 13 grocery+florist-tag rows; every returned `place_id` satisfies the composite gate (verified by re-querying `primary_type`/`types`). | RPC (live) |
+| **T-04** | Honest-empty city | RPC for Paris bbox (params as T-01) | Returns `[]`; generator skips optional flower stop; card still built; no exception. | edge |
+| **T-05** | Swap flow gated | `replace-curated-stop` for a flowers stop | All alternatives satisfy the composite gate. | edge |
+| **T-06 (gate)** | Strict-grep catches gate revert | Remove `COMBO_SLUG_PRIMARY_TYPE_GATE.flowers` OR add `flowers` to `COMBO_SLUG_TYPE_FILTER` | gate exits 1 | CI |
+| **T-07 (gate)** | Strict-grep catches floor bump | Set `COMBO_SLUG_FILTER_MIN.flowers = 40` | gate exits 1 | CI |
+| **T-08 (adversarial)** | Secondary tag can't beat primary | Identify a `service`/`general_contractor` place carrying `'florist'` in `types[]` with a high `flowers` score (BusyBee/Rukkies in Lagos) | NEVER returned for a flower stop; only composite-gate-passing places appear. Confirms `primary_type`, not `types[]`, decides eligibility. | RPC + edge (live) |
+| **T-09 (no-regression)** | Existing callers unchanged | Run the new RPC for `hiking` (`p_required_types:=['hiking_area',…]`, new params default) and diff the returned `place_id` set against the same query on the pre-migration RPC (captured before db push) | IDENTICAL set + order. Proves the migration doesn't regress hiking/museum/all other callers. | RPC (live) |
 
-**Step-0.5 fails-on-revert test the implementor MUST write:** T-01 above — assert the Cary-bbox flower fetch excludes the no-florist-tag bakery and includes florist-tagged places, and that `git stash` of Change A flips the assertion red. Capture the before/after in the implementation report.
+**Step-0.5 fails-on-revert test the implementor MUST write:** T-01 — assert the Lagos RPC call with the composite params EXCLUDES the 3 named `service`/`general_contractor` noise rows and INCLUDES the 3 florist-primary rows, and that reverting the RPC to the `types[]`-only predicate (or removing the `primary_type` clause) flips the assertion red. Capture before/after in the implementation report.
 
 ---
 
 ## 14. Implementation order
 
-1. Edit `COMBO_SLUG_TYPE_FILTER` (add `flowers: ['florist']`) + `COMBO_SLUG_FILTER_MIN` (`flowers: 40`) + rewrite the stale comment — `signalRankFetch.ts`. (🔒)
-2. Add Deno regression test `signalRankFetch.flowers.test.ts` (T-01 mechanism + T-02). (🔒)
-3. Add strict-grep gate `orch-0990-flower-stop-florist-gate.mjs` + register the workflow job. (🔒)
-4. Add `ORCH_0990_BACKEND_ALLOWLIST` to `orch-0863-marketing-hub-phase-b.mjs` — SAME commit as steps 2-3 (COMMS-0002). (🔒)
-5. Add `I-PROPOSED-FLOWER-STOP-FLORIST-VERIFIED` (DRAFT) to `INVARIANT_REGISTRY.md`. (🔒)
-6. Local Deno test + strict-grep run green → PR. Orchestrator at CLOSE: deploy `generate-curated-experiences` + `replace-curated-stop` (their `_shared` bundle changed). (🔒)
-7. 🎨 OPEN: §8.4 re-score is explicitly OUT of required scope — do not ship unless the operator asks.
+1. Write migration `20260801000000_orch_0990_fetch_local_signal_ranked_primary_type_gate.sql` (DROP old overload → CREATE OR REPLACE new 11-arg → OWNER/GRANT/COMMENT). (🔒 §8.1)
+2. Edit `signalRankFetch.ts`: add `COMBO_SLUG_PRIMARY_TYPE_GATE` + `PrimaryTypeGate` + `resolvePrimaryTypeGate`; extend `SignalRankParams` + thread `p_primary_type_required`/`p_grocery_floral_tag` into the RPC call; set `COMBO_SLUG_FILTER_MIN.flowers = 0`; rewrite the stale comment. (🔒 §8.2)
+3. Edit `generate-curated-experiences/index.ts` + `stopAlternatives.ts` call sites to resolve + pass the two new params for flowers. (🔒 §8.3)
+4. Add Deno test `signalRankFetch.flowers.test.ts` (T-02 + T-06/T-07 mechanism assertions). (🔒)
+5. Add strict-grep gate `orch-0990-flower-stop-florist-gate.mjs` + register the workflow job. (🔒 §9)
+6. Add `ORCH_0990_BACKEND_ALLOWLIST` to `orch-0863-marketing-hub-phase-b.mjs` + spread into the union — SAME commit as steps 1-5 (COMMS-0002). (🔒 §10)
+7. Add `I-PROPOSED-FLOWER-STOP-FLORIST-VERIFIED` (DRAFT) to `INVARIANT_REGISTRY.md`. (🔒)
+8. Local Deno test + strict-grep green → PR. CLOSE: operator `supabase db push` (read-only RPC, safe) → orchestrator deploys `generate-curated-experiences` + `replace-curated-stop`. Tester runs T-01/T-03/T-04/T-08/T-09 live. (🔒)
+9. 🎨 §8.4 re-score is OUT of required scope — do not ship unless the operator asks.
 
 ---
 
 ## 15. Discoveries for orchestrator
 
-- **D-1 (FYI):** 8 of 17 seeded cities (Toronto, Paris, Berlin, Barcelona, Chicago, Dallas, Miami, New York — and Fort Lauderdale) currently have ZERO florist-tagged servable places in `place_pool`. The flower stop will be honestly omitted there. If the operator wants flower stops live in those markets, that's a SEEDING coverage gap (Google Nearby Search by the `flowers` seeding config), NOT this ORCH — register a separate seeding ORCH if desired. This fix correctly omits rather than fabricates.
-- **D-2 (FYI):** The signalRankFetch.ts comment at lines 110-113 referenced specific Raleigh florists by name+score ("Mio Kreations 155, Petal & Oak 102, Fresh Market 69"). That comment was aspirational — the filtering it described was never wired. Change B replaces it with an accurate description. Worth a code-comment-hygiene note for other signal configs (do the comments describe behavior that's actually enforced?).
-- **D-3 (FYI):** `picnic-dates` combo `['groceries','flowers','nature']` has the Flowers stop as the optional middle stop. The `groceries` slug separately resolves (no type-gate today) — out of ORCH-0990 scope, but if a future "groceries shows non-grocery" report lands, the same pattern (`COMBO_SLUG_TYPE_FILTER['groceries'] = ['grocery_store','supermarket']`) applies.
+- **D-1 (FYI):** 8 of 17 seeded cities (Barcelona, Berlin, Chicago, Dallas, Miami, New York, Paris, Toronto) have ZERO composite-gate-passing servable places — flower stop honestly omitted there. This is a SEEDING coverage gap (Google Nearby Search by the Flowers seeding config), NOT this ORCH. Register a separate seeding ORCH if the operator wants flower stops live in those markets.
+- **D-2 (FYI):** The composite gate exposes that the `flowers` signal scorer's `types_includes_florist:+60` weight is too weak relative to rating/review popularity — real florists score 0-33 in Lagos. Floor 0 + type-gate sidesteps this for serving, but if flower stops ever need to rank *above* other stop types in a shared list, an §8.4 re-score would help. Not needed now.
+- **D-3 (FYI):** The same `primary_type` vs `types[]` over-tagging pattern likely affects OTHER signals that gate on secondary tags (e.g. a future "groceries shows non-grocery" report). The new `p_primary_type_required` RPC param is now available for any slug that needs a primary-type gate — reuse it rather than re-introducing `types[]`-only gates.
+- **D-4 (FYI):** `replace-curated-stop`/`stopAlternatives.ts` is in the backend allowlist for this ORCH even though its only change is param threading — flagged so the orchestrator expects it in the diff.
 
 ---
 
 ## 16. Recommended implementor for next phase
 
-**Codex `implementor-mingla`.** Rationale: the change is tiny, surgical, backend-only TS map edits + a Deno test + a strict-grep gate + an allowlist line + an invariant-registry stanza — exactly the mechanical, contract-bounded work Codex executes cleanly with the spec as the contract. No UI, no design pass, no live-fire sim needed (pure backend; tester verifies via live RPC probe per T-03/T-04/T-08). Either implementor can do it; Codex is the default for spec-bounded backend edits.
+**Codex `implementor-mingla`.** Backend-only: 1 read-only RPC migration + mechanical TS map/param threading + a Deno test + a strict-grep gate + an allowlist line + an invariant stanza — spec-bounded work Codex executes cleanly. No UI, no design pass. Tester verifies via live RPC probe (T-01/T-03/T-04/T-08/T-09). External-API context: no new external calls; Google Places field semantics cited inline (COMMS-0003 satisfied).
