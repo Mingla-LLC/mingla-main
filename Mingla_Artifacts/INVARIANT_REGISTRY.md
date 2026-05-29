@@ -4114,7 +4114,7 @@ Every chat response from every skill uses Section A (what just happened) + Secti
 
 **Cross-references:** DEC-169, COMMS-0003, SPEC_ORCH-0954_AMENDMENT §A5.
 
-### I-PROPOSED-FLOWER-STOP-FLORIST-VERIFIED (DRAFT — flips ACTIVE on ORCH-0990 CLOSE)
+### I-FLOWER-STOP-FLORIST-VERIFIED (ACTIVE — flipped at ORCH-0990 CLOSE 2026-05-29; tester PASS P0:0 P1:0)
 
 **Invariant:** A curated "Flowers" stop NEVER resolves to a place that is not a verified bouquet source. The ONLY serve-time gate for the `flowers` combo slug is the **composite primary-type gate** `COMBO_SLUG_PRIMARY_TYPE_GATE['flowers'] = { primaryTypes: ['florist'], groceryFloralTag: true }`, evaluated server-side in `fetch_local_signal_ranked` as `primary_type='florist' OR (primary_type IN ('grocery_store','supermarket') AND 'florist'=ANY(types))`. The gate MUST key off the canonical `primary_type` (NOT the loose secondary `types[]` set — Google over-applies the `florist` tag to `service`/`general_contractor`/event-planner primaries, proven in Lagos 2026-05-29). The popularity-weighted `flowers` score MUST NOT be the eligibility decider: `COMBO_SLUG_FILTER_MIN['flowers'] === 0`, so the score only ORDERS results and never drops a verified florist (real Lagos florists score 33 and 0). If no place satisfies the composite gate in range, the flower stop is OMITTED (`optional:true, dismissible:true`) — never substituted with a non-florist.
 
