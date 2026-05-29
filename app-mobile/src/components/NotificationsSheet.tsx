@@ -11,9 +11,7 @@
  */
 import React, {
   useCallback,
-  useEffect,
   useMemo,
-  useRef,
   useState,
 } from 'react';
 import {
@@ -23,17 +21,12 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import BottomSheet, {
-  BottomSheetBackdrop,
-  type BottomSheetBackdropProps,
-  BottomSheetSectionList,
-  BottomSheetView,
-} from '@gorhom/bottom-sheet';
 import { useNetInfo } from '@react-native-community/netinfo';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 
 import { ImageWithFallback } from './figma/ImageWithFallback';
+import { BaseBottomSheet } from './ui/BaseBottomSheet';
 import { Icon, type IconName } from './ui/Icon';
 import { colors, glass, radius, spacing } from '../constants/designSystem';
 import type { ServerNotification } from '../hooks/useNotifications';
@@ -296,20 +289,14 @@ export default function NotificationsSheet({
   const { t } = useTranslation(['notifications', 'common']);
   const insets = useSafeAreaInsets();
   const netInfo = useNetInfo();
-  const sheetRef = useRef<BottomSheet>(null);
   const isOffline = netInfo.isConnected === false;
   const [failedImageIds, setFailedImageIds] = useState<Set<string>>(new Set());
   const [actionErrors, setActionErrors] = useState<Set<string>>(new Set());
 
-  const sheetIndex = visible ? 0 : -1;
-
-  useEffect(() => {
-    if (visible) {
-      sheetRef.current?.snapToIndex(0);
-    } else {
-      sheetRef.current?.close();
-    }
-  }, [visible]);
+  // META-ORCH-0991 Wave A — open/close + backdrop owned by BaseBottomSheet
+  // (declarative `visible`). The prior sheetRef + snapToIndex/close effect +
+  // renderBackdrop are removed; the primitive replicates them. wrapInRNModal
+  // stays FALSE (HomePage mounts this high enough to z-stack without the wrap).
 
   const sections = useMemo(
     () => groupNotificationsByDate(notifications, t),
@@ -324,31 +311,9 @@ export default function NotificationsSheet({
     [insets.bottom]
   );
 
-  const handleSheetChange = useCallback(
-    (index: number): void => {
-      if (index === -1 && visible) {
-        onClose();
-      }
-    },
-    [onClose, visible]
-  );
-
-  const renderBackdrop = useCallback(
-    (props: BottomSheetBackdropProps) => (
-      <BottomSheetBackdrop
-        {...props}
-        appearsOnIndex={0}
-        disappearsOnIndex={-1}
-        pressBehavior="close"
-        opacity={0.32}
-      />
-    ),
-    []
-  );
-
   const handleClosePress = useCallback(() => {
-    sheetRef.current?.close();
-  }, []);
+    onClose();
+  }, [onClose]);
 
   const handleImageError = useCallback((notificationId: string) => {
     setFailedImageIds((prev) => new Set(prev).add(notificationId));
@@ -700,6 +665,10 @@ export default function NotificationsSheet({
       );
     }
 
+    // META-ORCH-0991 Wave A — the BottomSheetSectionList now lives in
+    // BaseBottomSheet (scrollMode="sectionlist"). The populated branch renders
+    // ONLY the offline banner here; the list is fed to the primitive via
+    // `scrollProps.sections` so this file no longer imports gorhom (SC-01).
     return (
       <View style={styles.notificationsBody}>
         {isOffline && notifications.length > 0 && (
@@ -710,114 +679,135 @@ export default function NotificationsSheet({
             </Text>
           </View>
         )}
-        <BottomSheetSectionList
-          style={styles.sectionList}
-          sections={sections}
-          keyExtractor={(item: ServerNotification) => item.id}
-          renderItem={renderNotification}
-          renderSectionHeader={renderSectionHeader}
-          stickySectionHeadersEnabled={false}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={listContentStyle}
-          onEndReached={() => {
-            if (hasMore) onLoadMore?.();
-          }}
-          onEndReachedThreshold={0.3}
-          refreshing={false}
-          onRefresh={onRefresh}
-        />
       </View>
     );
   };
+
+  // Populated = the section list should render (notifications exist). Loading/
+  // error/empty branches return their own content from renderBody() and pass NO
+  // sections so the primitive renders only the header + that content.
+  const isPopulated = !(isLoading && notifications.length === 0)
+    && !isError
+    && !(notifications.length === 0 && !isOffline);
 
   const showMarkAllRead = unreadCount > 0;
   const showClearAll = notifications.length > 0;
   const showActionRow = showMarkAllRead || showClearAll;
 
-  return (
-    <BottomSheet
-      ref={sheetRef}
-      index={sheetIndex}
-      snapPoints={SHEET_SNAP_POINTS}
-      enablePanDownToClose
-      onChange={handleSheetChange}
-      backdropComponent={renderBackdrop}
-      backgroundStyle={styles.sheetBackground}
-      handleIndicatorStyle={styles.handleIndicator}
-    >
-      <BottomSheetView style={styles.sheetContent}>
-        <View style={styles.header}>
-          <View style={styles.headerTitleRow}>
-            <View style={styles.headerTitleCluster}>
-              <Text style={styles.headerTitle}>
-                {t('notifications:header.title')}
-              </Text>
-              {unreadCount > 0 && (
-                <View style={styles.newCountPill}>
-                  <Text style={styles.newCountText}>
-                    {t('notifications:header.newCount', { count: unreadCount })}
-                  </Text>
-                </View>
-              )}
-            </View>
-            <TouchableOpacity
-              style={styles.closeButton}
-              onPress={handleClosePress}
-              activeOpacity={0.85}
-              hitSlop={12}
-              accessibilityLabel="Close notifications"
-              accessibilityRole="button"
-            >
-              <Icon name="close" size={18} color={colors.gray[500]} />
-            </TouchableOpacity>
-          </View>
-
-          <Text style={styles.headerSubtitle}>
-            {t('notifications:header.subtitle')}
+  const header = (
+    <View style={styles.header}>
+      <View style={styles.headerTitleRow}>
+        <View style={styles.headerTitleCluster}>
+          <Text style={styles.headerTitle}>
+            {t('notifications:header.title')}
           </Text>
-
-          {showActionRow && (
-            <View style={styles.actionPillRow}>
-              {showMarkAllRead && (
-                <TouchableOpacity
-                  style={styles.actionPillHalf}
-                  onPress={onMarkAllRead}
-                  activeOpacity={0.85}
-                  accessibilityLabel={t('notifications:header.markAllRead')}
-                  accessibilityHint="Marks every unread notification as read"
-                  accessibilityRole="button"
-                >
-                  <Icon name="checkmark-done" size={16} color={colors.accent} />
-                  <Text style={styles.markAllText}>
-                    {t('notifications:header.markAllRead')}
-                  </Text>
-                </TouchableOpacity>
-              )}
-
-              {showMarkAllRead && showClearAll && <View style={styles.actionDivider} />}
-
-              {showClearAll && (
-                <TouchableOpacity
-                  style={styles.actionPillHalf}
-                  onPress={onClearAll}
-                  activeOpacity={0.85}
-                  accessibilityLabel={t('notifications:header.clearAll')}
-                  accessibilityHint="Removes all notifications"
-                  accessibilityRole="button"
-                >
-                  <Icon name="trash-outline" size={16} color={colors.gray[500]} />
-                  <Text style={styles.clearAllText}>
-                    {t('notifications:header.clearAll')}
-                  </Text>
-                </TouchableOpacity>
-              )}
+          {unreadCount > 0 && (
+            <View style={styles.newCountPill}>
+              <Text style={styles.newCountText}>
+                {t('notifications:header.newCount', { count: unreadCount })}
+              </Text>
             </View>
           )}
         </View>
+        <TouchableOpacity
+          style={styles.closeButton}
+          onPress={handleClosePress}
+          activeOpacity={0.85}
+          hitSlop={12}
+          accessibilityLabel="Close notifications"
+          accessibilityRole="button"
+        >
+          <Icon name="close" size={18} color={colors.gray[500]} />
+        </TouchableOpacity>
+      </View>
 
-        {renderBody()}
-      </BottomSheetView>
-    </BottomSheet>
+      <Text style={styles.headerSubtitle}>
+        {t('notifications:header.subtitle')}
+      </Text>
+
+      {showActionRow && (
+        <View style={styles.actionPillRow}>
+          {showMarkAllRead && (
+            <TouchableOpacity
+              style={styles.actionPillHalf}
+              onPress={onMarkAllRead}
+              activeOpacity={0.85}
+              accessibilityLabel={t('notifications:header.markAllRead')}
+              accessibilityHint="Marks every unread notification as read"
+              accessibilityRole="button"
+            >
+              <Icon name="checkmark-done" size={16} color={colors.accent} />
+              <Text style={styles.markAllText}>
+                {t('notifications:header.markAllRead')}
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          {showMarkAllRead && showClearAll && <View style={styles.actionDivider} />}
+
+          {showClearAll && (
+            <TouchableOpacity
+              style={styles.actionPillHalf}
+              onPress={onClearAll}
+              activeOpacity={0.85}
+              accessibilityLabel={t('notifications:header.clearAll')}
+              accessibilityHint="Removes all notifications"
+              accessibilityRole="button"
+            >
+              <Icon name="trash-outline" size={16} color={colors.gray[500]} />
+              <Text style={styles.clearAllText}>
+                {t('notifications:header.clearAll')}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+    </View>
+  );
+
+  // META-ORCH-0991 Wave A — migrated onto BaseBottomSheet (scrollMode
+  // "sectionlist"). theme=light, wrapInRNModal=false (HomePage z-stacks it),
+  // backdrop 0.32. Header is the fixed `header` slot; the offline banner +
+  // loading/error/empty states render as `children`; the date-grouped section
+  // list is fed via `scrollProps.sections` and rendered by the primitive
+  // (gorhom now imported only there). Light canvas + handle preserved via the
+  // existing sheetBackground/handleIndicator styles.
+  return (
+    <BaseBottomSheet
+      visible={visible}
+      onClose={onClose}
+      theme="light"
+      wrapInRNModal={false}
+      snapPoints={SHEET_SNAP_POINTS}
+      backdropOpacity={0.32}
+      backgroundStyle={styles.sheetBackground}
+      handleStyle={styles.handleIndicator}
+      bodyContainerStyle={styles.sheetContent}
+      accessibilityLabel={t('notifications:header.title')}
+      scrollMode="sectionlist"
+      scrollProps={
+        isPopulated
+          ? {
+              sections,
+              keyExtractor: (item: ServerNotification) => item.id,
+              renderItem: renderNotification,
+              renderSectionHeader,
+              stickySectionHeadersEnabled: false,
+              showsVerticalScrollIndicator: false,
+              contentContainerStyle: listContentStyle,
+              onEndReached: () => {
+                if (hasMore) onLoadMore?.();
+              },
+              onEndReachedThreshold: 0.3,
+              refreshing: false,
+              onRefresh,
+            }
+          : undefined
+      }
+      header={header}
+    >
+      {renderBody()}
+    </BaseBottomSheet>
   );
 }
 
