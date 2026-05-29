@@ -18,12 +18,14 @@
 import React, { useCallback } from "react";
 import {
   Linking,
+  type LayoutChangeEvent,
   Platform,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import QRCode from "react-native-qrcode-svg";
 
 import {
@@ -104,6 +106,23 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   const [isCopying, setIsCopying] = React.useState<boolean>(false);
   const [isSharing, setIsSharing] = React.useState<boolean>(false);
 
+  // ORCH-0964: size the sheet to its actual content so the QR + platform row
+  // are never clipped. The fixed "half" snap was shorter than this content on
+  // most phones, cutting off the bottom (QR). Measure the content once, then
+  // pin the panel to fit it (+ Sheet drag handle + bottom safe-area). The Sheet
+  // clamps to 95% of the viewport, so very small screens still cap gracefully.
+  const insets = useSafeAreaInsets();
+  const [contentHeight, setContentHeight] = React.useState<number | null>(null);
+  const onContentLayout = useCallback((e: LayoutChangeEvent): void => {
+    const h = e.nativeEvent.layout.height;
+    if (h > 0) setContentHeight((prev) => (prev === null || Math.abs(prev - h) > 1 ? h : prev));
+  }, []);
+  const SHEET_HANDLE_AND_PADDING = 44; // drag handle + body top padding
+  const sheetSnapPoint =
+    contentHeight !== null
+      ? contentHeight + SHEET_HANDLE_AND_PADDING + insets.bottom
+      : "half";
+
   const showToast = useCallback((message: string): void => {
     setToast({ visible: true, message });
   }, []);
@@ -177,8 +196,8 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   );
 
   return (
-    <Sheet visible={visible} onClose={onClose} snapPoint="half">
-      <View style={styles.host}>
+    <Sheet visible={visible} onClose={onClose} snapPoint={sheetSnapPoint}>
+      <View style={styles.host} onLayout={onContentLayout}>
         {/* Title bar */}
         <View style={styles.titleBar}>
           <Text style={styles.title}>Share</Text>
@@ -280,7 +299,9 @@ export const ShareModal: React.FC<ShareModalProps> = ({
 
 const styles = StyleSheet.create({
   host: {
-    flex: 1,
+    // No flex:1 — the host sizes to its content so onLayout reports the real
+    // content height (used to fit the sheet, ORCH-0964). flex:1 would report
+    // the stretched panel height and defeat the measurement.
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
     paddingBottom: spacing.lg,
