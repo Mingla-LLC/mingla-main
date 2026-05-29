@@ -40,6 +40,13 @@ export interface ShowcasePlace {
   recommendCount: number
 }
 
+// Fixed character budget for every card description (ORCH-0998 v3.5). All
+// blurbs below are authored to fit within DESCRIPTION_MAX_CHARS so the deck
+// renders a uniform, compact 2-line description chip with equal spacing above
+// and below. Future cards added to this deck MUST follow the same rule — keep
+// each blurb ≤ DESCRIPTION_MAX_CHARS so the layout never drifts.
+export const DESCRIPTION_MAX_CHARS = 72
+
 const SUPABASE_PHOTO_BASE =
   'https://gqnoajqerqhnvulmnyvv.supabase.co/storage/v1/object/public/place-photos'
 
@@ -55,8 +62,9 @@ export const DC_SHOWCASE_PLACES: readonly ShowcasePlace[] = [
     rating: 4.5,
     reviewCount: 2141,
     priceRange: '$50–$100',
+    // ≤ DESCRIPTION_MAX_CHARS (68) — authored for uniform card layout.
     blurb:
-      'Elegant Italian restaurant with chandeliers and a gold-plated pizza oven firing signature pies.',
+      'Chandeliers, a gold-plated pizza oven, and pasta worth the occasion.',
     placeKey: 'ChIJ-82JrXi3t4kRSAkfWH-6ToU',
     nPhotos: 5,
     recommendCount: 212,
@@ -67,7 +75,8 @@ export const DC_SHOWCASE_PLACES: readonly ShowcasePlace[] = [
     rating: 4.8,
     reviewCount: 269,
     priceRange: '$30–$50',
-    blurb: null,
+    // ≤ DESCRIPTION_MAX_CHARS (63) — authored for uniform card layout.
+    blurb: 'Inventive cocktails in a low-lit room built for lingering late.',
     placeKey: 'ChIJuVcr4vHJt4kR3RGgn9ppyKM',
     nPhotos: 5,
     recommendCount: 48,
@@ -79,8 +88,9 @@ export const DC_SHOWCASE_PLACES: readonly ShowcasePlace[] = [
     reviewCount: 800,
     // No real price signal → renders "Free" (warm) per v2.4.
     priceRange: null,
+    // ≤ DESCRIPTION_MAX_CHARS (65) — authored for uniform card layout.
     blurb:
-      "Lincoln's home during the height of the Civil War, the Gothic-Revival cottage is now a museum.",
+      "Lincoln's Civil War retreat, now a quietly moving hilltop museum.",
     placeKey: 'ChIJYXXbqgvIt4kRsTOXeP0bXTA',
     nPhotos: 5,
     recommendCount: 96,
@@ -92,8 +102,9 @@ export const DC_SHOWCASE_PLACES: readonly ShowcasePlace[] = [
     reviewCount: 1778,
     // No real price signal → renders "Free" (warm) per v2.4.
     priceRange: null,
+    // ≤ DESCRIPTION_MAX_CHARS (64) — authored for uniform card layout.
     blurb:
-      'Waterside park offering trails, a roller-skating rink, picnic sites, golf, fishing & sports areas.',
+      'Riverside trails, picnic spots, and a skating rink by the water.',
     placeKey: 'ChIJCVOosVS4t4kRc5PLjLRnQU4',
     nPhotos: 5,
     recommendCount: 173,
@@ -104,8 +115,9 @@ export const DC_SHOWCASE_PLACES: readonly ShowcasePlace[] = [
     rating: 4.6,
     reviewCount: 1786,
     priceRange: '$20–$30',
+    // ≤ DESCRIPTION_MAX_CHARS (64) — authored for uniform card layout.
     blurb:
-      'Farm-to-table French-American cuisine served from morning to night in a quaint, converted house.',
+      'Farm-to-table French-American comfort in a cozy converted house.',
     placeKey: 'ChIJS1TgNB6xt4kRBA6GYja2FyY',
     nPhotos: 5,
     recommendCount: 184,

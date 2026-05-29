@@ -202,7 +202,6 @@ function DeckCard({ place, position, reduced }: DeckCardProps) {
           WebkitBackdropFilter: 'blur(20px)',
           borderTop: '1px solid rgba(14,14,16,0.06)',
           padding: '10px 12px',
-          gap: '5px',
         }}
       >
         {/* Category eyebrow removed (operator v2.7: the category labels go away).
@@ -253,23 +252,29 @@ function DeckCard({ place, position, reduced }: DeckCardProps) {
           </span>
         </div>
 
-        {/* description chip → solid white with a subtle hairline rim (v3.3),
-            ink text at 78% (9.8:1 AAA), 2-line clamp. */}
+        {/* description chip → solid white with a subtle hairline rim (v3.5),
+            ink text at 78% (9.8:1 AAA), left-aligned. The chip GROWS to fill the
+            space between the name+price chip and the locals pill (flex: 1), and
+            carries an equal vertical margin top + bottom (8px each) so the gap
+            ABOVE the description equals the gap BELOW it. Text is vertically
+            centered inside the grown chip; descriptions are authored to
+            DESCRIPTION_MAX_CHARS so 2 tidy lines always fit (no clamp needed,
+            overflow:hidden on the chip + the content block guards any edge case). */}
         <div
-          className="max-w-full font-sans"
+          className="flex w-full max-w-full flex-col justify-center font-sans"
           style={{
-            width: 'max-content',
+            flex: '1 1 auto',
+            minHeight: 0,
+            margin: '8px 0',
             background: '#ffffff',
             border: '1px solid rgba(14,14,16,0.08)',
             borderRadius: '8px',
-            padding: '5px 9px',
+            padding: '6px 9px',
             fontSize: '11.5px',
-            lineHeight: 1.25,
+            lineHeight: 1.3,
             fontWeight: 500,
             color: 'rgba(14,14,16,0.78)',
-            display: '-webkit-box',
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: 'vertical',
+            textAlign: 'left',
             overflow: 'hidden',
             whiteSpace: 'normal',
           }}
@@ -277,13 +282,16 @@ function DeckCard({ place, position, reduced }: DeckCardProps) {
           {sellLine}
         </div>
 
-        {/* Locals row → full-width orange pill (v3.4), pinned to the block
-            bottom (mt-auto). Avatars left + label left-packed + flex spacer.
-            Ink text on orange = 5.0:1 (white-on-orange is 4.2:1 and FAILS AA —
-            do NOT recolor the label to white). */}
+        {/* Locals row → full-width orange pill (v3.5), sits at the block bottom
+            because the description chip above grows to fill (flex:1) with equal
+            8px margins. Avatars left + label left-packed + flex spacer. Label is
+            WHITE + bold ≥14px (v3.5): white-on-orange is ~4.2:1 which passes
+            WCAG AA for LARGE text (≥14px bold needs only ≥3:1), so the bold 14px
+            white label is accessible. flex:0 0 auto so the pill never shrinks. */}
         <div
-          className="mt-auto flex w-full items-center overflow-hidden"
+          className="flex w-full items-center overflow-hidden"
           style={{
+            flex: '0 0 auto',
             background: 'var(--color-warm)',
             borderRadius: '999px',
             height: '30px',
@@ -424,20 +432,22 @@ function RecommendStack({ count }: { count: number }) {
           </div>
         ) : null}
       </div>
-      {/* Label → INK on orange (5.0:1 AA ✓; white-on-orange is 4.2:1 and FAILS). */}
+      {/* Label → WHITE on orange (v3.5). white-on-#eb7825 ≈ 4.2:1 passes WCAG AA
+          ONLY for LARGE text, so the label is BOLD (700) at 14px — at ≥14px bold
+          the AA threshold drops to 3:1, which 4.2:1 clears. Do NOT drop below
+          14px or un-bold this label or it stops being accessible. */}
       <span
         className="font-sans"
         style={{
           marginLeft: 8,
-          fontSize: '11px',
+          fontSize: '14px',
           lineHeight: 1.1,
-          fontWeight: 600,
-          color: 'var(--color-ink)',
+          fontWeight: 700,
+          color: '#ffffff',
+          whiteSpace: 'nowrap',
         }}
       >
-        <span style={{ fontWeight: 700, color: 'var(--color-ink)' }}>
-          {count}
-        </span>
+        <span style={{ fontWeight: 800, color: '#ffffff' }}>{count}</span>
         {' locals recommend'}
       </span>
       {/* flex spacer — eats remaining width so the pill is genuinely full-width

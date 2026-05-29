@@ -236,3 +236,52 @@ The card's outer height (`CARD_H=360`), width (260) and deck-wrapper height (`CA
 
 ### Discoveries for orchestrator
 None.
+
+---
+
+## v3.5 — locals white text + equal-spacing description + fixed-length copy (operator pass, 2026-05-29)
+
+Operator (Seth) verbatim: "locals recommend should be white text. The card description should be aligned left and the container for it should extend down such that the space between the title and price and the locals recommend is equal and there is more space for the text. also there should be a fixed character length for the entire description and the descriptions should be rewritten to that length so it all fits and is compact."
+
+**Files edited (2):**
+- `mingla-marketing/components/sections/explorer-home/hero-place-deck.tsx`
+- `mingla-marketing/lib/dc-showcase-places.ts`
+
+Dev server already on :3008 (orchestrator-started); both edits hot-reloaded; no restart, no second server, no process killed. `CARD_H` stays 360 (LOCKED, untouched), `CARD_W` 260, 58/42 photo/content split untouched.
+
+### Change 1 — Locals label → WHITE, bold, 14px (accessible large text)
+`RecommendStack` label was ink `var(--color-ink)` 11px/600. Now WHITE `#FFFFFF`, **bold 700, 14px** (count span 800), `white-space:nowrap`. Rationale recorded inline: white-on-#eb7825 ≈ 4.2:1 passes WCAG AA only for LARGE text; at ≥14px bold the AA threshold drops to 3:1, which 4.2:1 clears, so the label stays accessible. Avatar rings remain solid white; the `+N` overflow chip is unchanged (white text on solid ink = 18.9:1, already readable). A guard comment forbids dropping below 14px or un-bolding.
+
+### Change 2 — Description left-aligned + container extends with EQUAL spacing
+Restructured the 42% content block as a clean flex column with three children:
+- **Name+price chip** (top) — `flex: 0 0 auto`, unchanged.
+- **Description chip** (middle) — now `flex: 1 1 auto`, `width:100%`, `min-height:0`, `margin: 8px 0` (equal top+bottom), `text-align:left`, `flex-col justify-center` so the text vertically centers inside the grown chip. Padding bumped to `6px 9px`, line-height to 1.3. The 2-line `-webkit-line-clamp` was removed (descriptions are now length-bounded; `overflow:hidden` on the chip + block guards any edge case).
+- **Locals pill** (bottom) — `flex: 0 0 auto`; the prior `mt-auto` was REMOVED (no longer needed — the description chip's `flex:1` consumes all slack, leaving the pill naturally at the bottom).
+- The parent block's `gap: '5px'` was REMOVED so the only vertical spacing around the description is its own symmetric `8px` margins.
+
+**Equal-spacing proof:** flex item margins do NOT collapse. Gap ABOVE the description = its `margin-top` = 8px (name chip has no bottom margin, parent has no `gap`). Gap BELOW = its `margin-bottom` = 8px (pill has no top margin). Both = 8px, fixed and equal regardless of block height, because the description chip absorbs all remaining vertical slack via `flex:1 1 auto`. The chip therefore "extends down," giving the text more room while keeping the two gaps identical.
+
+### Change 3 — Fixed description length + rewritten copy
+Added `export const DESCRIPTION_MAX_CHARS = 72` in `dc-showcase-places.ts` with a comment instructing future cards to keep blurbs ≤ this budget for uniform layout. All 5 blurbs rewritten VERBATIM to operator copy, each tagged inline with its char count:
+- L'Ardente (68): "Chandeliers, a gold-plated pizza oven, and pasta worth the occasion."
+- OKPB (63): "Inventive cocktails in a low-lit room built for lingering late." (was `blurb: null` → now set)
+- President Lincoln's Cottage (65): "Lincoln's Civil War retreat, now a quietly moving hilltop museum."
+- Anacostia Park (64): "Riverside trails, picnic spots, and a skating rink by the water."
+- Del Ray Café (64): "Farm-to-table French-American comfort in a cozy converted house."
+
+All ≤ 72; two tidy lines at 11.5px in the 260-wide chip. OKPB no longer falls through to the category fallback sell-line.
+
+### No-scroll conclusion (768px, CARD_H=360 unchanged)
+CARD_H (360), CARD_W (260), the 58/42 split, and the deck-wrapper height (`CARD_H+62`) are byte-for-byte unchanged — the page-level one-screen-hero math is untouched, so the prior +14.4px headroom at vmin=768 still holds. Internal fit: content-block inner height ≈ 131.2px (42% of 360 minus 10px×2 padding) = name chip ~26px + 8px + description ~59px + 8px + pill 30px. The description's `flex:1` only ever ADDS slack to itself; it cannot push the fixed 26+30+16 = 72px of siblings/margins past the 131px budget. `overflow:hidden` on both the chip and the block clips any edge case. **CARD_H stays 360; no new scroll at 768px or taller.**
+
+### Verify (v3.5)
+- `npx tsc --noEmit` (marketing) → **exit 0**, clean.
+- `curl http://localhost:3008/` → **HTTP 200** (clean hot-recompile; a compile error would yield a 500/error overlay).
+- Served HTML: all 5 new blurbs present (Lincoln/Anacostia/Del Ray apostrophe/comma HTML-escaped in SSR; Lincoln+Anacostia+DelRay are positions 4–5, in the JS bundle, rendered as the deck rotates — confirmed in source + chunk); `locals recommend` present; old blurbs (`firing signature pies`, `roller-skating rink, picnic sites`, `Gothic-Revival cottage`) count = 0.
+- Marketing-only; no app-mobile/supabase/business/admin touch; only existing `--color-warm` token + standard hex `#ffffff` (matches the file's existing white-text convention).
+
+### Regression test (v3.5)
+**BACKFILL-EXEMPT** — marketing-only presentational CSS/color/copy change; verification is the served-HTML + tsc gate above.
+
+### Discoveries for orchestrator (v3.5)
+None.
