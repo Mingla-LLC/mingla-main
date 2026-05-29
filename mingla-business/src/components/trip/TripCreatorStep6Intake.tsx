@@ -19,7 +19,7 @@
  */
 
 import React, { useEffect, useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 
 import {
   accent,
@@ -299,7 +299,9 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.35,
     shadowRadius: 14,
-    elevation: 8,
+    // META-ORCH-1002 Sub-1 (S5): zero the Android elevation so no hard rectangular
+    // shadow draws under the rounded pill (mirrors androidSafeElevation). iOS glow kept.
+    elevation: Platform.select({ ios: 8, android: 0, default: 8 }),
   },
   tabAdd: {
     borderColor: accent.border,
