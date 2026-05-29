@@ -135,10 +135,13 @@ function runOrch0995SpotlightUiThreadTest() {
   );
 
   // ---- T-07: layoutTick re-run preserved (first-mount positioning) ----
+  // ORCH-0995 IMPLEMENT-2: the effect now keys off `displayPage` (optimistic) instead of
+  // `currentPage` so the spotlight moves on the tap frame; layoutTick still present so the
+  // effect re-runs when onLayout fires on first mount.
   assert.match(
     source,
-    /\}, \[currentPage, layoutTick, reduceMotion, spotlightX, spotlightWidth\]\);/,
-    'T-07 spotlight effect dep array must still include layoutTick (re-runs when onLayout fires on first mount)'
+    /\}, \[displayPage, layoutTick, reduceMotion, spotlightX, spotlightWidth\]\);/,
+    'T-07 spotlight effect dep array must include displayPage + layoutTick (re-runs when onLayout fires on first mount; optimistic-driven post IMPLEMENT-2)'
   );
 }
 

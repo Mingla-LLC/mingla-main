@@ -127,3 +127,122 @@ Per contract, no blur/visual treatment was changed. The investigation's Root Cau
 
 - `TabConfig` type (GlassBottomNav.tsx line ~47) is defined but never used — pre-existing dead code, lint warning, NOT introduced by this ORCH. Left untouched (out of scope). Flag for a future cleanup sweep if desired.
 - Runtime perceptual smoothness is the one criterion that can't be machine-verified. A mid-tier physical device (SM-A725F) with the consumer dev client is attached and is the correct target for Seth's eyeball confirmation.
+
+---
+
+# IMPLEMENT-2 — instant tab-tap feedback (optimistic nav + deferred mount)
+
+- **Date:** 2026-05-29
+- **Builds on:** IMPLEMENT-1 spotlight UI-thread fix (`b91770195`) + hash-record commit (`22ad396ae`).
+- **Commit:** the single IMPLEMENT-2 commit on branch `ORCH-0995-android-nav-jank` whose parent is `22ad396ae` (the IMPLEMENT-1 hash-record commit). The exact hash is reported in the chat handoff and is the current branch HEAD; it is omitted here to avoid a self-referential amend loop (a report that records its own commit hash changes the hash on every edit).
+- **Status:** implemented and verified (automated tsc + lint + regression test with fails-on-revert) · runtime perceptual confirmation pending Seth on the attached mid-tier device.
+
+## Operator feedback that triggered this
+After IMPLEMENT-1 (spotlight off the JS thread), tab-switching was "much better but still a noticeable lag between tapping a tab and seeing the effect."
+
+## Proven root cause
+The bottom-nav highlight was **hostage to the destination screen's mount**. Flow before: tap → `GlassBottomNav` `onNavigate(key)` → parent `app/index.tsx` onNavigate (`closeProfileOverlays()` + `setCurrentPage(page)`) → `AppContent` re-renders → the `switch(currentPage)` IIFE **unmounts the old screen and mounts the new heavy screen SYNCHRONOUSLY on the JS thread** → only after that commit does `GlassBottomNav` receive the new `currentPage` prop and move the spotlight + active icon. So the tap feedback (highlight) was blocked behind the heavy mount. `currentPage`/`setCurrentPage` is plain React `useState` (`AppStateManager.tsx:124`), so React transitions apply to it.
+
+## The fix — two parts
+
+### PART A — `GlassBottomNav.tsx` optimistic selection (instant tap feedback, decoupled from mount)
+Added local optimistic state so the highlight responds on the tap frame regardless of when `currentPage` catches up:
+- `const [pendingPage, setPendingPage] = useState<BottomNavPage | null>(null);`
+- `const displayPage = pendingPage ?? currentPage;`
+- Reconcile: `useEffect(() => { setPendingPage(null); }, [currentPage]);` — clears the optimistic lead whenever the REAL `currentPage` commits (the tapped page OR a programmatic page via deep-link/notification). This guarantees the optimistic state can never desync from the source of truth.
+- The spotlight `useEffect` now looks up `tabLayoutsRef.current[displayPage]` and its dep array is `[displayPage, layoutTick, reduceMotion, spotlightX, spotlightWidth]`.
+- The `active` flag is now `key === displayPage`, which already feeds the icon color, the active/inactive label style, AND `accessibilityState.selected` (all three derive from `active`).
+- `reduceMotion` instant-set path and the `layoutTick` re-run are **unchanged** (still in the same effect; reduceMotion still instant-sets, layoutTick still in deps).
+
+**onPress — exact before/after:**
+
+Before:
+```tsx
+onPress={() => {
+  if (active) return;
+  if (Platform.OS === 'ios') {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+  }
+  onNavigate(key);
+}}
+```
+After:
+```tsx
+onPress={() => {
+  // Guard against re-tapping the already-selected tab (optimistic-aware).
+  if (key === displayPage) return;
+  if (Platform.OS === 'ios') {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+  }
+  // ORCH-0995 IMPLEMENT-2: set optimistic selection FIRST so the
+  // spotlight + active styling move on the tap frame, then trigger the
+  // (heavier) navigation. The reconcile effect clears pendingPage once
+  // currentPage catches up.
+  setPendingPage(key);
+  onNavigate(key);
+}}
+```
+The guard switched from the stale `active` closure to `key === displayPage` so an in-flight optimistic tap isn't re-fired. iOS haptic preserved in place.
+
+### PART B — `app/index.tsx` onNavigate: defer the heavy mount via `React.startTransition`
+`React` is already imported (`import React, { ... } from "react"`), React 19.1.0 — `startTransition` is a named React export and concurrent features are live (New Architecture/Fabric).
+
+Before:
+```tsx
+onNavigate={(page: BottomNavPage) => {
+  logger.action(`Tab pressed: ${page}`);
+  closeProfileOverlays();
+  setCurrentPage(page);
+}}
+```
+After:
+```tsx
+onNavigate={(page: BottomNavPage) => {
+  logger.action(`Tab pressed: ${page}`);
+  // closeProfileOverlays() stays URGENT (commits synchronously).
+  closeProfileOverlays();
+  // ORCH-0995 IMPLEMENT-2: de-prioritize the heavy screen mount so the
+  // urgent optimistic nav highlight + spotlight animation commit first.
+  React.startTransition(() => {
+    setCurrentPage(page);
+  });
+}}
+```
+`closeProfileOverlays()` stays outside the transition (urgent — overlay must be gone before the new screen paints). Only `setCurrentPage(page)` — which drives the `switch(currentPage)` IIFE mount — is deferred/interruptible. **No pending spinner** added; the optimistic nav state IS the feedback. The mount structure is untouched (still single active tab via the IIFE).
+
+## Optimistic-state mechanism (why it can't desync)
+`displayPage = pendingPage ?? currentPage` means the optimistic page only ever *leads* the real page. The `[currentPage]` reconcile effect fires on EVERY `currentPage` commit — whether from the tap's deferred `setCurrentPage`, OR from any programmatic caller (deep links / push notification at `app/index.tsx` lines ~455/469/764/1008+/2039, e.g. a notification that switches to `'connections'` with no tab tapped). In the no-tap case `pendingPage` is already `null`, so `displayPage === currentPage` and the highlight follows the programmatic nav immediately. In the tap case, once the deferred `setCurrentPage` commits, the effect clears `pendingPage` and `displayPage` falls back to the now-correct `currentPage`. If a programmatic nav lands on a DIFFERENT page than an in-flight optimistic tap, the reconcile still clears `pendingPage` and `displayPage` follows the authoritative `currentPage` — the highlight can never strand on a stale optimistic page.
+
+## Files changed (IMPLEMENT-2)
+| File | Lines | What |
+|---|---|---|
+| `app-mobile/src/components/GlassBottomNav.tsx` | +~24 / -3 | optimistic `pendingPage` + `displayPage`, reconcile effect, effect/active/onPress driven by `displayPage` |
+| `app-mobile/app/index.tsx` | +~12 / -1 | tab `onNavigate` wraps `setCurrentPage(page)` in `React.startTransition`; `closeProfileOverlays()` stays urgent |
+| `app-mobile/src/components/__tests__/orch-0995-impl2-optimistic-tab-feedback.test.tsx` | new | behavioral + source-wiring regression test |
+| `app-mobile/src/components/__tests__/orch-0995-bottom-nav-spotlight-ui-thread.test.tsx` | T-07 updated | dep-array assertion repointed `currentPage` → `displayPage` (`[TEST-MOD-APPROVED ORCH-0995]`) |
+
+## Regression Test (IMPLEMENT-2)
+- **Path:** `app-mobile/src/components/__tests__/orch-0995-impl2-optimistic-tab-feedback.test.tsx`
+- **Run:** `cd app-mobile && node src/components/__tests__/orch-0995-impl2-optimistic-tab-feedback.test.tsx`
+- **Passing output:** `PASS T-08..T-18 ORCH-0995 IMPLEMENT-2 optimistic tab-tap feedback ...`
+- **Coverage:** T-08 press sets optimistic `displayPage` to the pressed key BEFORE `currentPage` changes; T-09 reconcile clears the optimistic state once `currentPage` commits to the tapped page; T-10 a programmatic `currentPage` change (deep-link/notification, no tap) is reflected by `displayPage`; T-11 an optimistic lead that diverges from a programmatic `currentPage` change is cleared (no desync); T-12 re-tapping the active tab is a no-op; T-13..T-18 static source-wiring keys binding the test to the real `GlassBottomNav.tsx` + `app/index.tsx` (these are the fails-on-revert keys).
+- **fails-on-revert verified at `22ad396aee5b4f2376d6e11e27dd8cee14e7a8f2`** (HEAD before IMPLEMENT-2): reverted both source files to HEAD (keeping the test), re-ran → **FAILED at T-13** (`T-13 GlassBottomNav must declare optimistic 'pendingPage' state`). Restored the fix → **PASSES** again. The IMPLEMENT-1 test also re-passes (T-07 now asserts the `displayPage` dep array).
+
+## Verification Matrix (IMPLEMENT-2)
+| Criterion | How verified | Result |
+|---|---|---|
+| Tapping a tab moves the highlight on the tap frame (optimistic `displayPage`) | onPress sets `setPendingPage(key)` before `onNavigate`; spotlight effect + active flag read `displayPage`; T-08 + T-16 + T-17 assert. | PASS |
+| Heavy screen mount no longer blocks the feedback | `setCurrentPage(page)` wrapped in `React.startTransition`; `closeProfileOverlays()` stays urgent; T-18 asserts. | PASS |
+| Only the active tab still mounts | `switch(currentPage)` IIFE untouched; `check-active-tab-only.sh` → `I-ONLY-ACTIVE-TAB-MOUNTED: PASS`. | PASS |
+| All programmatic nav paths still drive the highlight | `[currentPage]` reconcile effect clears `pendingPage` on every commit; T-10 + T-11 assert deep-link/notification semantics. | PASS |
+| reduceMotion + layoutTick preserved | reduceMotion instant-set branch and `layoutTick` in deps unchanged; IMPLEMENT-1 T-06/T-07 still pass. | PASS |
+| No new native dependency (OTA-safe) | `React.startTransition` is built into React 19.1.0; `pendingPage` is plain `useState`. Zero package.json change. | PASS |
+| tsc clean (touched files) | `npx tsc --noEmit` → 0 errors referencing `GlassBottomNav.tsx` / `app/index.tsx`; pre-existing unrelated errors only. | PASS |
+| lint clean (touched files) | `npx eslint app/index.tsx src/components/GlassBottomNav.tsx` → 0 errors; only pre-existing warnings (`TabConfig` unused; app/index unused-vars/exhaustive-deps), none on changed lines. | PASS |
+| Runtime perceptual confirmation | Perceptual — not machine-verifiable. Physical SM-A725F mid-tier attached for Seth's eyeball. | UNVERIFIED — needs Seth device eyeball |
+
+## Scope guards honored
+- Did NOT reintroduce `tabVisible`/`tabHidden` or the all-mounted pattern; CI gate passes.
+- `switch(currentPage)` IIFE mount structure untouched — only WHEN `setCurrentPage` commits changed.
+- Spotlight resting geometry pixel-identical (animates `left`+`width` via existing Reanimated shared values, no scaleX); reduceMotion + layoutTick preserved.
+- No new native dependency. Scope limited to `GlassBottomNav.tsx` + the onNavigate handler in `app/index.tsx` + tests. Did NOT touch DiscoverScreen / ORCH-0996.

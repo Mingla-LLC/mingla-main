@@ -85,6 +85,24 @@ export const GlassBottomNav: React.FC<GlassBottomNavProps> = ({
   const [reduceTransparency, setReduceTransparency] = useState(false);
   const [reduceMotion, setReduceMotion] = useState(false);
 
+  // ORCH-0995 IMPLEMENT-2: optimistic tab selection.
+  // The destination screen mounts synchronously on the JS thread when the parent
+  // commits `setCurrentPage(page)` (app/index.tsx onNavigate). Because the nav only
+  // learns the new active tab AFTER that heavy mount commits, the spotlight + active
+  // icon used to wait for the mount → felt like a lag between tap and highlight.
+  // `pendingPage` lets the highlight respond on the tap frame, decoupled from the
+  // mount. `displayPage` is the single source the spotlight/active styling reads.
+  const [pendingPage, setPendingPage] = useState<BottomNavPage | null>(null);
+  const displayPage = pendingPage ?? currentPage;
+
+  // Reconcile: clear the optimistic lead whenever the REAL currentPage commits —
+  // whether that's the tab we tapped OR a programmatic page (deep link / push
+  // notification). This guarantees the optimistic state can never desync from the
+  // source of truth: once currentPage catches up, `displayPage` falls back to it.
+  useEffect(() => {
+    setPendingPage(null);
+  }, [currentPage]);
+
   useEffect(() => {
     let mounted = true;
     (async (): Promise<void> => {
@@ -152,7 +170,9 @@ export const GlassBottomNav: React.FC<GlassBottomNavProps> = ({
   const spotlightWidth = useSharedValue(0);
 
   useEffect(() => {
-    const layout = tabLayoutsRef.current[currentPage];
+    // ORCH-0995 IMPLEMENT-2: drive off `displayPage` (optimistic) so the spotlight
+    // animates to the tapped tab on the tap frame, before the currentPage prop commits.
+    const layout = tabLayoutsRef.current[displayPage];
     if (!layout) return;
     const targetX = layout.x + c.nav.spotlightInset;
     const targetWidth = layout.width - c.nav.spotlightInset * 2;
@@ -174,7 +194,7 @@ export const GlassBottomNav: React.FC<GlassBottomNavProps> = ({
     spotlightWidth.value = withSpring(targetWidth, springConfig);
     // R6 fix: layoutTick included so this effect re-runs when onLayout fires
     // for the active tab on first mount.
-  }, [currentPage, layoutTick, reduceMotion, spotlightX, spotlightWidth]);
+  }, [displayPage, layoutTick, reduceMotion, spotlightX, spotlightWidth]);
 
   // UI-thread animated style for the spotlight pill (left + width).
   const spotlightAnimatedStyle = useAnimatedStyle(() => ({
@@ -219,17 +239,23 @@ export const GlassBottomNav: React.FC<GlassBottomNavProps> = ({
       {/* Tabs */}
       <View style={styles.tabsRow}>
         {TAB_ORDER.map((key) => {
-          const active = key === currentPage;
+          const active = key === displayPage;
           const badge = badges?.[key] ?? 0;
           return (
             <Pressable
               key={key}
               ref={key === 'likes' ? (coachLikesRef as React.Ref<View>) : undefined}
               onPress={() => {
-                if (active) return;
+                // Guard against re-tapping the already-selected tab (optimistic-aware).
+                if (key === displayPage) return;
                 if (Platform.OS === 'ios') {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
                 }
+                // ORCH-0995 IMPLEMENT-2: set optimistic selection FIRST so the
+                // spotlight + active styling move on the tap frame, then trigger the
+                // (heavier) navigation. The reconcile effect clears pendingPage once
+                // currentPage catches up.
+                setPendingPage(key);
                 onNavigate(key);
               }}
               onLayout={(e) => {
