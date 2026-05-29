@@ -950,7 +950,23 @@ function checkNoNewBackendFiles() {
     "supabase/functions/get-person-hero-cards/index.ts",
     "supabase/functions/generate-curated-experiences/index.ts",
   ];
+  // ORCH-0989 [Unified cover picker sheet]: brand-cover video target migration
+  // + new Pexels curated edge fn + the 6 generalized event-cover-video fns +
+  // shared helper (edits flagged by C7's modified-file detection). Per
+  // SPEC_ORCH-0989 §9.4 + COMMS-0002.
+  const ORCH_0989_BACKEND_ALLOWLIST = [
+    "supabase/functions/event-cover-pexels-curated/index.ts",
+    "supabase/migrations/20260801000000_orch_0989_brand_cover_video_target.sql",
+    "supabase/functions/event-cover-video-upload-intent/index.ts",
+    "supabase/functions/event-cover-video-source-uploaded/index.ts",
+    "supabase/functions/event-cover-video-status/index.ts",
+    "supabase/functions/event-cover-video-apply/index.ts",
+    "supabase/functions/event-cover-video-cancel/index.ts",
+    "supabase/functions/event-cover-video-webhook/index.ts",
+    "supabase/functions/_shared/eventCoverVideo.ts",
+  ];
   const ALLOWLIST = [
+    ...ORCH_0989_BACKEND_ALLOWLIST,
     ...ORCH_0986_BACKEND_ALLOWLIST,
     ...ORCH_0985_BACKEND_ALLOWLIST,
     ...META_ORCH_0952_BACKEND_ALLOWLIST,

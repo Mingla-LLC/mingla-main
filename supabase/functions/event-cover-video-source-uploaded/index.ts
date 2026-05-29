@@ -4,6 +4,7 @@ import {
   isValidUuid,
   jsonResponse,
   mapEventCoverVideoStatus,
+  requireBrandCoverManager,
   requireEventManager,
   requireUserId,
   serviceRoleClient,
@@ -57,6 +58,7 @@ serve(async (req) => {
   const userId = userIdOrResponse;
 
   let body: {
+    target?: string;
     jobId?: string;
     eventId?: string;
     brandId?: string;
@@ -70,10 +72,12 @@ serve(async (req) => {
   }
 
   const requestId = safeString(body.clientRequestId) ?? crypto.randomUUID();
+  const targetKind = body.target === "brand" ? "brand" : "event";
   if (!isValidUuid(body.jobId)) {
     return jsonResponse({ error: "validation_error", detail: "job_id_invalid_uuid" }, 400);
   }
-  if (!isValidUuid(body.eventId)) {
+  // ORCH-0989: event-target requires eventId; brand-target has none.
+  if (targetKind === "event" && !isValidUuid(body.eventId)) {
     return jsonResponse({ error: "validation_error", detail: "event_id_invalid_uuid" }, 400);
   }
   if (!isValidUuid(body.brandId)) {
@@ -81,7 +85,10 @@ serve(async (req) => {
   }
 
   const supabase = serviceRoleClient();
-  const allowed = await requireEventManager(supabase, body.eventId, body.brandId, userId);
+  const allowed =
+    targetKind === "brand"
+      ? await requireBrandCoverManager(supabase, body.brandId as string, userId)
+      : await requireEventManager(supabase, body.eventId as string, body.brandId as string, userId);
   if (allowed instanceof Response) return allowed;
 
   const { data: job, error: jobError } = await supabase
@@ -101,7 +108,13 @@ serve(async (req) => {
     return jsonResponse({ error: "internal_error", detail: "job_read_failed" }, 500);
   }
   if (!job) return jsonResponse({ error: "not_found", detail: "job_not_found" }, 404);
-  if (job.event_id !== body.eventId || job.brand_id !== body.brandId) {
+  // ORCH-0989: context match. Brand-target verifies brand_id + target_kind
+  // (event_id is NULL); event-target verifies the event_id + brand_id pair.
+  const contextMismatch =
+    targetKind === "brand"
+      ? job.target_kind !== "brand" || job.brand_id !== body.brandId
+      : job.event_id !== body.eventId || job.brand_id !== body.brandId;
+  if (contextMismatch) {
     return jsonResponse({ error: "forbidden", detail: "job_context_mismatch" }, 403);
   }
   if (job.status === "failed" || job.status === "cancelled") {

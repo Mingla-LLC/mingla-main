@@ -8,6 +8,7 @@ import {
   MAX_SOURCE_VIDEO_BYTES,
   MAX_SOURCE_VIDEO_DURATION_MS,
   providerConfigured,
+  requireBrandCoverManager,
   requireEventManager,
   requireUserId,
   serviceRoleClient,
@@ -42,6 +43,7 @@ const logWarn = (requestId: string, stage: string, payload: Record<string, unkno
 const defaultDeps = {
   cloudinarySignature,
   providerConfigured,
+  requireBrandCoverManager,
   requireEventManager,
   requireUserId,
   serviceRoleClient,
@@ -66,6 +68,9 @@ export const handleEventCoverVideoUploadIntent = async (
   const userId = userIdOrResponse;
 
   let body: {
+    // ORCH-0989: target discriminator. Absent/"event" => event-target
+    // (eventId required); "brand" => brand-target (eventId absent).
+    target?: string;
     eventId?: string;
     brandId?: string;
     applyMode?: string;
@@ -87,10 +92,13 @@ export const handleEventCoverVideoUploadIntent = async (
     requestId = body.clientRequestId.trim();
   }
 
+  const targetKind = body.target === "brand" ? "brand" : "event";
+
   logInfo(requestId, "received", {
     applyMode: body.applyMode,
     brandId: body.brandId,
     eventId: body.eventId,
+    targetKind,
     sourceBytes: body.sourceBytes,
     sourceDurationMs: body.sourceDurationMs,
     sourceFileName: body.sourceFileName,
@@ -109,7 +117,9 @@ export const handleEventCoverVideoUploadIntent = async (
 
   const eventId = body.eventId;
   const brandId = body.brandId;
-  if (!isValidUuid(eventId)) {
+  // ORCH-0989: event-target requires a valid eventId; brand-target must NOT
+  // carry one (the job is keyed on brand_id alone).
+  if (targetKind === "event" && !isValidUuid(eventId)) {
     logWarn(requestId, "event_id_invalid_uuid", { eventId });
     return jsonResponse({ error: "validation_error", detail: "event_id_invalid_uuid" }, 400);
   }
@@ -117,7 +127,14 @@ export const handleEventCoverVideoUploadIntent = async (
     logWarn(requestId, "brand_id_invalid_uuid", { brandId });
     return jsonResponse({ error: "validation_error", detail: "brand_id_invalid_uuid" }, 400);
   }
-  const applyMode = body.applyMode === "published_manual" ? "published_manual" : "draft_auto";
+  // ORCH-0989: a brand is always "live", so brand video uses published_manual
+  // apply semantics (apply step writes brands.cover_media_url on ready).
+  const applyMode =
+    targetKind === "brand"
+      ? "published_manual"
+      : body.applyMode === "published_manual"
+        ? "published_manual"
+        : "draft_auto";
   const sourceBytes = Number(body.sourceBytes ?? 0);
   const sourceDurationMs = Number(body.sourceDurationMs ?? 0);
   const trimStartMs = Number(body.trimStartMs ?? 0);
@@ -182,7 +199,12 @@ export const handleEventCoverVideoUploadIntent = async (
   });
 
   const supabase = deps.serviceRoleClient();
-  const allowed = await deps.requireEventManager(supabase, eventId, brandId, userId);
+  // ORCH-0989: brand-target gates on brand_admin (no events lookup);
+  // event-target keeps the byte-for-byte event_manager gate.
+  const allowed =
+    targetKind === "brand"
+      ? await deps.requireBrandCoverManager(supabase, brandId as string, userId)
+      : await deps.requireEventManager(supabase, eventId as string, brandId as string, userId);
   if (allowed instanceof Response) {
     let detail: unknown = null;
     let error: unknown = null;
@@ -203,18 +225,29 @@ export const handleEventCoverVideoUploadIntent = async (
   logInfo(requestId, "permission_pass", {
     brandId,
     eventId,
+    targetKind,
   });
 
-  const { error: cancelError } = await supabase
+  // ORCH-0989: supersede prior active jobs. Event-target keys on event_id
+  // (filter order preserved: .eq() then .not()); brand-target keys on
+  // brand_id + target_kind='brand' (no event_id).
+  const supersedeBase = supabase
     .from("event_cover_video_jobs")
     .update({
       status: "cancelled",
       cancelled_at: new Date().toISOString(),
       failure_code: "superseded",
       failure_message: "Superseded by a newer cover video upload.",
-    })
-    .eq("event_id", eventId)
-    .not("status", "in", "(failed,cancelled,applied)");
+    });
+  const { error: cancelError } =
+    targetKind === "brand"
+      ? await supersedeBase
+          .eq("brand_id", brandId as string)
+          .eq("target_kind", "brand")
+          .not("status", "in", "(failed,cancelled,applied)")
+      : await supersedeBase
+          .eq("event_id", eventId as string)
+          .not("status", "in", "(failed,cancelled,applied)");
   if (cancelError) {
     logWarn(requestId, "active_job_cancel_failed", {
       code: cancelError.code,
@@ -229,7 +262,9 @@ export const handleEventCoverVideoUploadIntent = async (
   const { data: job, error: insertError } = await supabase
     .from("event_cover_video_jobs")
     .insert({
-      event_id: eventId,
+      // ORCH-0989: brand-target jobs carry no event_id (row CHECK enforces it).
+      event_id: targetKind === "brand" ? null : eventId,
+      target_kind: targetKind,
       brand_id: brandId,
       requested_by: userId,
       provider: "cloudinary",
@@ -265,7 +300,12 @@ export const handleEventCoverVideoUploadIntent = async (
   const cloudName = Deno.env.get("CLOUDINARY_CLOUD_NAME") ?? "";
   const apiKey = Deno.env.get("CLOUDINARY_API_KEY") ?? "";
   const timestamp = Math.floor(Date.now() / 1000).toString();
-  const publicId = `event-covers/raw/${brandId}/${eventId}/${job.id}`;
+  // ORCH-0989: brand-target uses a brandId-keyed public_id (no eventId
+  // segment); the webhook recovers job_id from either template (recoverJobIdFromPayload).
+  const publicId =
+    targetKind === "brand"
+      ? `brand-covers/raw/${brandId}/${job.id}`
+      : `event-covers/raw/${brandId}/${eventId}/${job.id}`;
   const durationBudgetMs = Math.min(trimEndMs - trimStartMs, MAX_DURATION_MS);
   const durationBudgetSeconds = Math.ceil(durationBudgetMs / 1000);
   // du_<seconds> caps processed duration server-side as defense-in-depth alongside client trim.
@@ -281,7 +321,12 @@ export const handleEventCoverVideoUploadIntent = async (
   ].join(",");
   const eagerNotificationUrl =
     `${Deno.env.get("SUPABASE_URL") ?? ""}/functions/v1/event-cover-video-webhook`;
-  const context = `job_id=${job.id}|event_id=${eventId}|brand_id=${brandId}|apply_mode=${applyMode}`;
+  // ORCH-0989: brand-target context carries target_kind + brand_id (no event_id);
+  // event-target keeps the original event_id-bearing context.
+  const context =
+    targetKind === "brand"
+      ? `job_id=${job.id}|target_kind=brand|brand_id=${brandId}|apply_mode=${applyMode}`
+      : `job_id=${job.id}|event_id=${eventId}|brand_id=${brandId}|apply_mode=${applyMode}`;
   const signature = await deps.cloudinarySignature({
     // Cloudinary signed upload params:
     // https://cloudinary.com/documentation/upload_images

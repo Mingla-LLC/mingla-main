@@ -5,6 +5,7 @@ import {
   isValidUuid,
   jsonResponse,
   mapEventCoverVideoStatus,
+  requireBrandCoverManager,
   requireEventManager,
   requireUserId,
   serviceRoleClient,
@@ -63,7 +64,11 @@ serve(async (req) => {
     return jsonResponse({ error: "internal_error" }, 500);
   }
   if (!job) return jsonResponse({ error: "not_found", detail: "job_not_found" }, 404);
-  const allowed = await requireEventManager(supabase, job.event_id, job.brand_id, userId);
+  // ORCH-0989: brand-target gates on brand_admin; event-target on event_manager.
+  const allowed =
+    job.target_kind === "brand"
+      ? await requireBrandCoverManager(supabase, job.brand_id, userId)
+      : await requireEventManager(supabase, job.event_id, job.brand_id, userId);
   if (allowed instanceof Response) return allowed;
   if (["ready", "failed", "cancelled", "applied"].includes(job.status)) {
     return jsonResponse(mapEventCoverVideoStatus(job));

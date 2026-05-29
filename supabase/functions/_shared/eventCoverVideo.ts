@@ -206,6 +206,44 @@ export async function requireEventManager(
   return { event };
 }
 
+// ORCH-0989: brand-cover video target. A brand has no events-row, so the
+// event-bound requireEventManager cannot gate a brand job. This sibling
+// resolves the caller's effective rank on the brand directly and requires
+// >= brand_admin (no events lookup). Mirrors requireEventManager's response
+// vocabulary so each edge fn can dispatch on target_kind identically.
+export async function requireBrandCoverManager(
+  supabase: SupabaseClient,
+  brandId: string,
+  userId: string,
+): Promise<{ brandId: string } | Response> {
+  const { data: rank, error: rankError } = await supabase.rpc(
+    "biz_brand_effective_rank",
+    { p_brand_id: brandId, p_user_id: userId },
+  );
+  if (rankError) {
+    console.error("[event-cover-video] brand role check failed:", rankError);
+    return jsonResponse(
+      { error: "internal_error", detail: "role_check_failed" },
+      500,
+    );
+  }
+  const { data: requiredRank, error: requiredRankError } = await supabase.rpc(
+    "biz_role_rank",
+    { p_role: "brand_admin" },
+  );
+  if (requiredRankError) {
+    console.error("[event-cover-video] brand role rank failed:", requiredRankError);
+    return jsonResponse(
+      { error: "internal_error", detail: "role_rank_failed" },
+      500,
+    );
+  }
+  if (Number(rank ?? 0) < Number(requiredRank ?? 50)) {
+    return jsonResponse({ error: "forbidden", detail: "permission_denied" }, 403);
+  }
+  return { brandId };
+}
+
 export function providerConfigured(): boolean {
   return (
     (Deno.env.get("EVENT_COVER_VIDEO_PROVIDER") ?? "cloudinary") === "cloudinary" &&
@@ -434,8 +472,11 @@ export type EventCoverVideoJobStatus =
 
 export type EventCoverVideoStatusPayload = {
   jobId: string;
-  eventId: string;
+  // ORCH-0989: null for brand-target jobs (brand jobs have no events-row).
+  eventId: string | null;
   brandId: string;
+  // ORCH-0989: 'event' (default) or 'brand'.
+  targetKind: "event" | "brand";
   status: EventCoverVideoJobStatus;
   applyMode: "draft_auto" | "published_manual";
   stageLabel: string;
@@ -484,8 +525,10 @@ export function eventCoverVideoReadyUpdate(input: EventCoverVideoReadyUpdateInpu
 
 type EventCoverVideoJobRow = {
   id: string;
-  event_id: string;
+  // ORCH-0989: nullable for brand-target jobs.
+  event_id: string | null;
   brand_id: string;
+  target_kind?: string | null;
   status: string | null;
   apply_mode: string | null;
   processed_url?: string | null;
@@ -575,7 +618,8 @@ export function mapEventCoverVideoStatus(
     canRetry: status === "failed" || status === "cancelled",
     cancelledAt: job.cancelled_at ?? null,
     createdAt: job.created_at ?? null,
-    eventId: job.event_id,
+    eventId: job.event_id ?? null,
+    targetKind: job.target_kind === "brand" ? "brand" : "event",
     failureCode: job.failure_code ?? null,
     failureMessage: job.failure_message ?? null,
     isTerminal,
