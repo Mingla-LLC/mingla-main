@@ -19,15 +19,9 @@ import React, {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from "react";
 import { Linking, Platform, StyleSheet } from "react-native";
-import BottomSheet, {
-  BottomSheetBackdrop,
-  type BottomSheetBackdropProps,
-  BottomSheetScrollView,
-} from "@gorhom/bottom-sheet";
 import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
 
@@ -54,6 +48,7 @@ import {
   useNativeCheckoutFlow,
 } from "../../payments/nativeCheckoutFlow";
 import { toastManager } from "../ui/Toast";
+import { BaseBottomSheet } from "../ui/BaseBottomSheet";
 import { glass } from "../../constants/designSystem";
 // ORCH-0847 Phase C — multi-tier cart sheet replaces the single-ticket
 // TicketClaimConfirmModal. Mirrors public J-C1 cart screen.
@@ -149,7 +144,6 @@ const openMapsForQuery = (query: string): void => {
 export const ExpandedBusinessEventSheet: React.FC<
   ExpandedBusinessEventSheetProps
 > = ({ visible, data, onClose, bottomContentInset = 32 }) => {
-  const sheetRef = useRef<BottomSheet>(null);
   const router = useRouter();
   const user = useAppStore((s) => s.user);
   const profile = useAppStore((s) => s.profile);
@@ -184,31 +178,13 @@ export const ExpandedBusinessEventSheet: React.FC<
     );
   }, [visible, data.eventId]);
 
-  const renderBackdrop = useCallback(
-    (props: BottomSheetBackdropProps) => (
-      <BottomSheetBackdrop
-        {...props}
-        appearsOnIndex={0}
-        disappearsOnIndex={-1}
-        pressBehavior="close"
-      />
-    ),
-    [],
-  );
-
-  // ORCH-0828 REWORK: inline `<BottomSheet>` fires `onChange(-1)` when
-  // the user swipes down or backdrop-press dismisses. Forward to onClose
-  // so DiscoverScreen can clear its `expansionTarget` state. The diagnostic
-  // log captures every index transition for live-fire verification.
-  const handleSheetChange = useCallback(
-    (index: number): void => {
-      console.log("[ExpandedBusinessEventSheet] onChange index=", index);
-      if (index === -1) {
-        onClose();
-      }
-    },
-    [onClose],
-  );
+  // META-ORCH-0991 Wave A — diagnostic-only onChange passthrough. BaseBottomSheet
+  // already routes index===-1 → onClose internally (and then calls this), so this
+  // MUST NOT call onClose again or it double-fires (SPEC §3.1 / §9 blast #4).
+  // The log keeps the ORCH-0828 index-transition trace for live-fire.
+  const handleSheetChange = useCallback((index: number): void => {
+    console.log("[ExpandedBusinessEventSheet] onChange index=", index);
+  }, []);
 
   const publicEvent = useMemo(
     () => mapCardToPublicEvent(data, ticketsQuery.data ?? []),
@@ -287,7 +263,9 @@ export const ExpandedBusinessEventSheet: React.FC<
           Haptics.NotificationFeedbackType.Success,
         );
         toastManager.show("Ticket secured! Check your calendar.", "success");
-        sheetRef.current?.close();
+        // META-ORCH-0991 Wave A — close via the declarative onClose prop
+        // (BaseBottomSheet owns the sheet ref); DiscoverScreen flips visible.
+        onClose();
 
         // ORCH-0829-A: invalidate the consumer calendar query immediately.
         // ORCH-0847 Phase C — paid-vs-free branch derived from cart total
@@ -323,6 +301,7 @@ export const ExpandedBusinessEventSheet: React.FC<
       runNativeCheckout,
       data.eventId,
       queryClient,
+      onClose,
     ],
   );
 
@@ -345,7 +324,8 @@ export const ExpandedBusinessEventSheet: React.FC<
   const callbacks: PublicEventCallbacks = useMemo(
     () => ({
       onClose: () => {
-        sheetRef.current?.close();
+        // META-ORCH-0991 Wave A — close via declarative onClose prop.
+        onClose();
       },
       onShare: () => {
         // [TRANSITIONAL] Share for business events lands in a follow-up.
@@ -376,48 +356,49 @@ export const ExpandedBusinessEventSheet: React.FC<
         toastManager.show("Request-to-attend coming soon.", "info");
       },
     }),
-    [router],
+    [router, onClose],
   );
 
-  // ORCH-0828 REWORK: inline `<BottomSheet>` matching the proven
-  // ExpandedCardModal.tsx:1602-2066 TM/place pattern. Declarative
-  // `index={visible ? 1 : -1}` drives open/close — no portal, no
-  // provider, no `present()` ref dance. `BottomSheetScrollView` gives
-  // the library measurable content from the first frame, avoiding the
-  // collapse-to-zero failure mode that broke the prior portal-based
-  // approach with `enableDynamicSizing=true`.
+  // META-ORCH-0991 Wave A — migrated onto BaseBottomSheet. Declarative
+  // `visible` + initialIndex=1 (90% snap) replicate the proven inline
+  // <BottomSheet> open/close. onChange passthrough keeps the ORCH-0828
+  // diagnostic log. Dark #0c0e12 background (NO top radius — preserved exactly
+  // via the per-consumer backgroundStyle) + rgba(255,255,255,0.32)/width-36
+  // handle. The TicketCartSheet stays a SIBLING root in the same fragment
+  // (feedback_rn_sub_sheet_must_render_inside_parent) — itself a BaseBottomSheet.
   return (
     <>
-      <BottomSheet
-        ref={sheetRef}
-        index={visible ? SHEET_INITIAL_INDEX : -1}
-        snapPoints={SHEET_SNAP_POINTS}
-        enablePanDownToClose
+      <BaseBottomSheet
+        visible={visible}
+        onClose={onClose}
         onChange={handleSheetChange}
-        backdropComponent={renderBackdrop}
+        theme="dark"
+        snapPoints={SHEET_SNAP_POINTS}
+        initialIndex={SHEET_INITIAL_INDEX}
         backgroundStyle={styles.sheetBackground}
-        handleIndicatorStyle={styles.sheetHandle}
-      >
-        <BottomSheetScrollView
-          style={styles.sheetScroll}
-          contentContainerStyle={[
+        handleStyle={styles.sheetHandle}
+        scrollMode="scroll"
+        scrollProps={{
+          style: styles.sheetScroll,
+          contentContainerStyle: [
             styles.sheetScrollContent,
             { paddingBottom: Math.max(32, bottomContentInset) },
-          ]}
-        >
-          <PublicEventPage
-            event={publicEvent}
-            brand={publicBrand}
-            viewerRole={viewerRole}
-            theme={
-              themeQuery.data ?? resolveTheme(null, publicEvent.themeOverrides)
-            }
-            callbacks={callbacks}
-          />
-        </BottomSheetScrollView>
-      </BottomSheet>
+          ],
+        }}
+        accessibilityLabel={data.title}
+      >
+        <PublicEventPage
+          event={publicEvent}
+          brand={publicBrand}
+          viewerRole={viewerRole}
+          theme={
+            themeQuery.data ?? resolveTheme(null, publicEvent.themeOverrides)
+          }
+          callbacks={callbacks}
+        />
+      </BaseBottomSheet>
       {/* ORCH-0847 Phase C — multi-tier cart sheet. Renders as a sibling
-          @gorhom/bottom-sheet so it overlays the parent sheet without
+          BaseBottomSheet so it overlays the parent sheet without
           competing for the same Modal root. */}
       <TicketCartSheet
         visible={cartSheetVisible}
