@@ -4113,3 +4113,17 @@ Every chat response from every skill uses Section A (what just happened) + Secti
 **Enforcement:** Memory rules `feedback_stripe_skill_mandatory.md` + `feedback_external_api_docs_verified.md`. CI strict-grep gate deferred to a future META-ORCH (out of ORCH-0954 scope).
 
 **Cross-references:** DEC-169, COMMS-0003, SPEC_ORCH-0954_AMENDMENT §A5.
+
+### I-PROPOSED-FLOWER-STOP-FLORIST-VERIFIED (DRAFT — flips ACTIVE on ORCH-0990 CLOSE)
+
+**Invariant:** A curated "Flowers" stop NEVER resolves to a place that is not a verified bouquet source. The ONLY serve-time gate for the `flowers` combo slug is the **composite primary-type gate** `COMBO_SLUG_PRIMARY_TYPE_GATE['flowers'] = { primaryTypes: ['florist'], groceryFloralTag: true }`, evaluated server-side in `fetch_local_signal_ranked` as `primary_type='florist' OR (primary_type IN ('grocery_store','supermarket') AND 'florist'=ANY(types))`. The gate MUST key off the canonical `primary_type` (NOT the loose secondary `types[]` set — Google over-applies the `florist` tag to `service`/`general_contractor`/event-planner primaries, proven in Lagos 2026-05-29). The popularity-weighted `flowers` score MUST NOT be the eligibility decider: `COMBO_SLUG_FILTER_MIN['flowers'] === 0`, so the score only ORDERS results and never drops a verified florist (real Lagos florists score 33 and 0). If no place satisfies the composite gate in range, the flower stop is OMITTED (`optional:true, dismissible:true`) — never substituted with a non-florist.
+
+**Forbidden reverts (gate FAILS the build if any occur):** (a) adding `flowers` to `COMBO_SLUG_TYPE_FILTER` (re-introduces the `types[]`-only mechanism → re-admits noise); (b) `COMBO_SLUG_FILTER_MIN.flowers` ≠ 0; (c) an RPC that admits flowers rows on a `types[]`-overlap alone without the `primary_type` check.
+
+**Why this matters:** the flowers stop had NO serve-time type gate, so a popularity score let non-florists (general contractors, event planners, supermarkets without floral departments) win the slot. The operator's bar is 100% of flower stops resolve to a place that actually sells bouquets, or honest-omit.
+
+**Applies to:** `generate-curated-experiences` (curated cards) + `replace-curated-stop` (stop swap), both via `_shared/signalRankFetch.ts` + `_shared/stopAlternatives.ts` + the `fetch_local_signal_ranked` RPC.
+
+**Enforcement:** strict-grep gate `.github/scripts/strict-grep/orch-0990-flower-stop-florist-gate.mjs` (registered in `.github/workflows/strict-grep-mingla-business.yml`) + Deno test `supabase/functions/_shared/signalRankFetch.flowers.test.ts` + live RPC probe (tester T-01/T-03/T-08).
+
+**Cross-references:** SPEC_ORCH-0990_FLOWER_STOP_REAL_FLORISTS.md §10, COMMS-0002, COMMS-0003.

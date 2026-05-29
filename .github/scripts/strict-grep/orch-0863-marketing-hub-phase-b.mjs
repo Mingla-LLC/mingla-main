@@ -950,7 +950,21 @@ function checkNoNewBackendFiles() {
     "supabase/functions/get-person-hero-cards/index.ts",
     "supabase/functions/generate-curated-experiences/index.ts",
   ];
+  // ORCH-0990 [Curated "Flowers" stop resolves to real florists]. C7 is scoped to
+  // ORCH-0863 marketing; these backend touches are the composite primary-type
+  // florist gate: a read-only re-create of the fetch_local_signal_ranked RPC
+  // (two new optional params, no-op at defaults), the shared signal-rank helper
+  // (new gate map + resolver + floor 0), its Deno regression test, the stop-swap
+  // resolver, and the curated generator call-site. No marketing scope.
+  const ORCH_0990_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260801000001_orch_0990_fetch_local_signal_ranked_primary_type_gate.sql",
+    "supabase/functions/_shared/signalRankFetch.ts",
+    "supabase/functions/_shared/signalRankFetch.flowers.test.ts",
+    "supabase/functions/_shared/stopAlternatives.ts",
+    "supabase/functions/generate-curated-experiences/index.ts",
+  ];
   const ALLOWLIST = [
+    ...ORCH_0990_BACKEND_ALLOWLIST,
     ...ORCH_0986_BACKEND_ALLOWLIST,
     ...ORCH_0985_BACKEND_ALLOWLIST,
     ...META_ORCH_0952_BACKEND_ALLOWLIST,
