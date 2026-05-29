@@ -298,3 +298,49 @@ shipped; PreferencesSheet hit a hard gorhom-scroll blocker (see below).**
 > a dedicated Wave-C PreferencesSheet sub-task with the sub-component edits in
 > scope), NOT bundled into a mechanical batch. Until then, PreferencesSheet stays
 > an RN `<Modal>` (it works today) and T-8 guards against a premature flip.
+
+## 13. Batch C-2 decision record (AccountSettings nested-modal chain)
+
+One component, 5 surfaces: a root account-settings sheet + 3 nested pickers
+(gender/language/birthday) + a delete-account confirm. The pickers used to open
+*over* the root on the iOS window stack. All non-destructive surfaces are
+swipe-down sheets; the delete confirm is a NON-swipe center-dialog (operator
+rule §1). All sheet surfaces mount from ProfilePage under the floating
+GlassBottomNav → `wrapInRNModal` (Batch-2 z-trap).
+
+| Modal | Variant | Snap | Body mode | wrapInRNModal | Notes |
+|---|---|---|---|---|---|
+| Root account-settings | sheet (light) | `['92%']` | `scroll` (header + accordion body) | **true** | Was `flex:1` from `windowHeight*0.08` ≈ 92%. |
+| Gender picker | sheet (light) | `['45%']` | `scroll` (`.map` options) | **true** | Short tap-list. |
+| Language picker | sheet (light) | `['70%']` | `scroll` (29-lang list rides BottomSheetScrollView) | **true** | Was `maxHeight:'70%'`. |
+| Birthday picker | sheet (light) | `['60%']` | `view` (consumer owns body) | **true** | 3 column wheels → swapped raw RN `<ScrollView>` to `BottomSheetScrollView`. |
+| Delete-account confirm | **center-dialog** | — | — | n/a (auto) | Destructive confirm rule. Multi-step states as children; stripped local overlay/card. |
+
+> **HARD LESSON (Batch C-2) — two `wrapInRNModal` BaseBottomSheets CANNOT
+> co-present on iOS.** Rendering picker sheets as sibling `wrapInRNModal` roots
+> that try to layer over an also-`wrapInRNModal` root crashes with
+> `(UIKitCore) [UIKit:Presentation] Attempt to present
+> <RCTFabricModalHostViewController> … which is already presenting
+> <RCTFabricModalHostViewController>` and the child silently fails to appear
+> (sim-confirmed iPhone 17 Pro). RN `<Modal>`s stack; two RN-Modal-wrapped gorhom
+> sheets fight for the single iOS presentation slot. True stacked sheets would
+> need `BottomSheetModal` + provider — a LOCKED-OUT architecture (ORCH-0828).
+>
+> **The fix — one-sheet-at-a-time GATE (the reusable nested-chain pattern):**
+> 1. Derive `const anyChildOpen = showA || showB || …` from every child flag
+>    (including any excluded sub-modal, e.g. CountryPicker).
+> 2. Gate the PARENT sheet: `visible={visible && !anyChildOpen}`. While a child
+>    is open the parent's RN-Modal window is dropped → the child owns the slot.
+>    On child dismiss the parent re-presents at its prior snap, value applied.
+> 3. WRAP the parent onClose: `const handleRootClose = useCallback(() => { if
+>    (anyChildOpen) return; onClose(); }, …)` and pass `onClose={handleRootClose}`.
+>    This is load-bearing — `BaseBottomSheet` fires `onClose` on `onChange(-1)`
+>    when `visible` flips false, so without the guard the suppress-for-child
+>    close would call the PARENT onClose and tear down the whole flow.
+> 4. Children are normal sibling `<BaseBottomSheet>` roots in the same fragment,
+>    each `wrapInRNModal`, each with its own `visible`/`onClose` flag.
+>
+> This is investigation §3d option (i) ("parent closes before the child opens").
+> Guard it with a test that asserts the gate is intact AND that the parent is
+> NEVER rendered with a bare `visible={visible}` (adversarial — an ungated parent
+> re-introduces the crash). See `WaveCBatch2.test.mjs` T-7 + T-A2.
