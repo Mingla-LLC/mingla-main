@@ -272,11 +272,16 @@ export default function EventDetailLayout({
           <Animated.View style={{ transform: [{ scale: saveBounceScale }] }}>
             <Icon
               name={isSaved ? "bookmark" : "bookmark-outline"}
-              size={18}
+              size={16}
               color={isSaved ? colors.primary : colors.white}
             />
           </Animated.View>
-          <Text style={styles.secondaryChipText}>
+          <Text
+            style={styles.secondaryChipText}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.85}
+          >
             {isSaved
               ? t("cards:expanded.saved")
               : t("cards:expanded.save")}
@@ -290,8 +295,13 @@ export default function EventDetailLayout({
           accessibilityRole="button"
           accessibilityLabel={t("cards:expanded.share")}
         >
-          <Icon name="share-outline" size={18} color={colors.white} />
-          <Text style={styles.secondaryChipText}>
+          <Icon name="share-outline" size={16} color={colors.white} />
+          <Text
+            style={styles.secondaryChipText}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.85}
+          >
             {t("cards:expanded.share")}
           </Text>
         </TouchableOpacity>
@@ -304,9 +314,14 @@ export default function EventDetailLayout({
             accessibilityRole="button"
             accessibilityLabel={t("cards:expanded.add_to_calendar")}
           >
-            <Icon name="calendar-outline" size={18} color={colors.white} />
-            <Text style={styles.secondaryChipText}>
-              {t("cards:expanded.add_to_calendar")}
+            <Icon name="calendar-outline" size={16} color={colors.white} />
+            <Text
+              style={styles.secondaryChipText}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.85}
+            >
+              {t("cards:expanded.calendar")}
             </Text>
           </TouchableOpacity>
         )}
@@ -491,7 +506,7 @@ const styles = StyleSheet.create({
   },
   secondaryRow: {
     flexDirection: "row",
-    gap: 8,
+    gap: 6,
     marginTop: spacing.sm,
   },
   secondaryChip: {
@@ -499,16 +514,21 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    height: 40,
-    gap: 6,
+    height: 38,
+    gap: 5,
+    paddingHorizontal: 6,
     backgroundColor: glass.surfaceDark.backgroundColor,
     borderColor: glass.surfaceDark.borderColor,
     borderWidth: 1,
     borderRadius: radius.md,
   },
   secondaryChipText: {
-    fontSize: 14,
-    fontWeight: "500",
+    flexShrink: 1,
+    minWidth: 0,
+    textAlign: "center",
+    fontSize: 13,
+    fontWeight: "600",
+    letterSpacing: 0.2,
     color: colors.white,
   },
   section: {
