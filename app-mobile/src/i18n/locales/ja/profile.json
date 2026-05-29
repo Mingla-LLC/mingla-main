@@ -74,6 +74,18 @@
     "mingla_level": "Minglaレベル",
     "interests": "興味",
     "message": "メッセージ",
-    "friend_fallback": "友達"
+    "friend_fallback": "友達",
+    "add_friend": "友達を追加",
+    "requested": "リクエスト済み",
+    "accept_request": "リクエストを承認",
+    "sending": "送信中…",
+    "canceling": "キャンセル中…",
+    "accepting": "承認中…",
+    "error_generic": "送信できませんでした。タップして再試行してください。",
+    "error_network": "オフラインです。接続を確認して再試行してください。",
+    "error_unavailable": "この人は現在利用できません。",
+    "cancel_request_title": "友達リクエストをキャンセルしますか？",
+    "cancel_request_body": "{{name}}には通知されません。",
+    "cancel_request_confirm": "リクエストをキャンセル"
   }
 }

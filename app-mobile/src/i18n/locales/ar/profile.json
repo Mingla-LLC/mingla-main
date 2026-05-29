@@ -74,6 +74,18 @@
     "mingla_level": "مستوى Mingla",
     "interests": "الاهتمامات",
     "message": "رسالة",
-    "friend_fallback": "صديق"
+    "friend_fallback": "صديق",
+    "add_friend": "إضافة صديق",
+    "requested": "تم الإرسال",
+    "accept_request": "قبول الطلب",
+    "sending": "جارٍ الإرسال…",
+    "canceling": "جارٍ الإلغاء…",
+    "accepting": "جارٍ القبول…",
+    "error_generic": "تعذّر الإرسال. انقر للمحاولة مرة أخرى.",
+    "error_network": "أنت غير متصل. تحقق من اتصالك وحاول مرة أخرى.",
+    "error_unavailable": "هذا الشخص غير متاح الآن.",
+    "cancel_request_title": "إلغاء طلب الصداقة؟",
+    "cancel_request_body": "لن يتم إشعار {{name}}.",
+    "cancel_request_confirm": "إلغاء الطلب"
   }
 }

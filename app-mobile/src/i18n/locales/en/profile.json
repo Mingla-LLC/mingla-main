@@ -69,7 +69,7 @@
     "add_interests": "Add Interests"
   },
   "friend": {
-    "loading_profile": "Loading profile\u2026",
+    "loading_profile": "Loading profile…",
     "profile_unavailable_title": "This profile isn't available",
     "profile_unavailable_body": "This person's profile may be private, or you may not be connected.",
     "about": "About",
@@ -78,6 +78,18 @@
     "mingla_level": "Mingla level",
     "interests": "Interests",
     "message": "Message",
-    "friend_fallback": "Friend"
+    "friend_fallback": "Friend",
+    "add_friend": "Add Friend",
+    "requested": "Requested",
+    "accept_request": "Accept Request",
+    "sending": "Sending…",
+    "canceling": "Canceling…",
+    "accepting": "Accepting…",
+    "error_generic": "Couldn't send that. Tap to try again.",
+    "error_network": "You're offline. Check your connection and try again.",
+    "error_unavailable": "This person isn't available right now.",
+    "cancel_request_title": "Cancel friend request?",
+    "cancel_request_body": "{{name}} won't be notified.",
+    "cancel_request_confirm": "Cancel request"
   }
 }

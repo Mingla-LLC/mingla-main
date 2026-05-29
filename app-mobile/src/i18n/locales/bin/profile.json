@@ -74,6 +74,18 @@
     "mingla_level": "Ebe Mingla",
     "interests": "Emwi Ne Ọ Hẹnmwẹ",
     "message": "Ẹmwẹ",
-    "friend_fallback": "Ọre"
+    "friend_fallback": "Ọre",
+    "add_friend": "Yẹ ọse yi",
+    "requested": "A na nọ",
+    "accept_request": "Miẹn unu",
+    "sending": "Ne lẹ rri…",
+    "canceling": "Ne fian hia…",
+    "accepting": "Ne miẹn…",
+    "error_generic": "I ma sẹtin lẹ rri. Tọ ne u werriọ.",
+    "error_network": "U rrọọ vbe интернет. Ghee ọ ne u ya, u werriọ.",
+    "error_unavailable": "Ọmwa na i rrọọ banbanna.",
+    "cancel_request_title": "U gha fian unu ọse hia ra?",
+    "cancel_request_body": "A i khian tama {{name}}.",
+    "cancel_request_confirm": "Fian unu hia"
   }
 }

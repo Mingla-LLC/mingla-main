@@ -74,6 +74,18 @@
     "mingla_level": "Mingla level",
     "interests": "Interests",
     "message": "Message",
-    "friend_fallback": "Arkadaş"
+    "friend_fallback": "Arkadaş",
+    "add_friend": "Arkadaş ekle",
+    "requested": "İstendi",
+    "accept_request": "İsteği kabul et",
+    "sending": "Gönderiliyor…",
+    "canceling": "İptal ediliyor…",
+    "accepting": "Kabul ediliyor…",
+    "error_generic": "Gönderilemedi. Tekrar denemek için dokun.",
+    "error_network": "Çevrimdışısın. Bağlantını kontrol edip tekrar dene.",
+    "error_unavailable": "Bu kişi şu anda müsait değil.",
+    "cancel_request_title": "Arkadaşlık isteği iptal edilsin mi?",
+    "cancel_request_body": "{{name}} bilgilendirilmeyecek.",
+    "cancel_request_confirm": "İsteği iptal et"
   }
 }

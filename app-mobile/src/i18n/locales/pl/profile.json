@@ -74,6 +74,18 @@
     "mingla_level": "Mingla level",
     "interests": "Interests",
     "message": "Message",
-    "friend_fallback": "Znajomy"
+    "friend_fallback": "Znajomy",
+    "add_friend": "Dodaj znajomego",
+    "requested": "Wysłano prośbę",
+    "accept_request": "Zaakceptuj prośbę",
+    "sending": "Wysyłanie…",
+    "canceling": "Anulowanie…",
+    "accepting": "Akceptowanie…",
+    "error_generic": "Nie udało się wysłać. Dotknij, aby spróbować ponownie.",
+    "error_network": "Jesteś offline. Sprawdź połączenie i spróbuj ponownie.",
+    "error_unavailable": "Ta osoba jest teraz niedostępna.",
+    "cancel_request_title": "Anulować zaproszenie do znajomych?",
+    "cancel_request_body": "{{name}} nie otrzyma powiadomienia.",
+    "cancel_request_confirm": "Anuluj zaproszenie"
   }
 }

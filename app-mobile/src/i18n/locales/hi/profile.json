@@ -74,6 +74,18 @@
     "mingla_level": "Mingla स्तर",
     "interests": "रुचियाँ",
     "message": "संदेश",
-    "friend_fallback": "मित्र"
+    "friend_fallback": "मित्र",
+    "add_friend": "मित्र जोड़ें",
+    "requested": "अनुरोध भेजा",
+    "accept_request": "अनुरोध स्वीकारें",
+    "sending": "भेजा जा रहा है…",
+    "canceling": "रद्द किया जा रहा है…",
+    "accepting": "स्वीकार किया जा रहा है…",
+    "error_generic": "भेजा नहीं जा सका। पुनः प्रयास के लिए टैप करें।",
+    "error_network": "आप ऑफ़लाइन हैं। अपना कनेक्शन जांचें और पुनः प्रयास करें।",
+    "error_unavailable": "यह व्यक्ति अभी उपलब्ध नहीं है।",
+    "cancel_request_title": "मित्र अनुरोध रद्द करें?",
+    "cancel_request_body": "{{name}} को सूचित नहीं किया जाएगा।",
+    "cancel_request_confirm": "अनुरोध रद्द करें"
   }
 }

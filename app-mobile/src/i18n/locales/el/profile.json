@@ -65,7 +65,7 @@
     "add_interests": "Πρόσθεσε Ενδιαφέροντα"
   },
   "friend": {
-    "loading_profile": "Φόρτωση προφίλ\u2026",
+    "loading_profile": "Φόρτωση προφίλ…",
     "profile_unavailable_title": "Αυτό το προφίλ δεν είναι διαθέσιμο",
     "profile_unavailable_body": "Το προφίλ αυτού του ατόμου μπορεί να είναι ιδιωτικό ή να μην είστε συνδεδεμένοι.",
     "about": "Σχετικά",
@@ -74,6 +74,18 @@
     "mingla_level": "Επίπεδο Mingla",
     "interests": "Ενδιαφέροντα",
     "message": "Μήνυμα",
-    "friend_fallback": "Φίλος"
+    "friend_fallback": "Φίλος",
+    "add_friend": "Προσθήκη φίλου",
+    "requested": "Έχει ζητηθεί",
+    "accept_request": "Αποδοχή αιτήματος",
+    "sending": "Αποστολή…",
+    "canceling": "Ακύρωση…",
+    "accepting": "Αποδοχή…",
+    "error_generic": "Η αποστολή απέτυχε. Πάτησε για επανάληψη.",
+    "error_network": "Είσαι εκτός σύνδεσης. Έλεγξε τη σύνδεσή σου και δοκίμασε ξανά.",
+    "error_unavailable": "Αυτό το άτομο δεν είναι διαθέσιμο αυτή τη στιγμή.",
+    "cancel_request_title": "Ακύρωση αιτήματος φιλίας;",
+    "cancel_request_body": "Ο/Η {{name}} δεν θα ειδοποιηθεί.",
+    "cancel_request_confirm": "Ακύρωση αιτήματος"
   }
 }
