@@ -1,38 +1,25 @@
 /**
- * ORCH-0891 M2 — Sheet.web.tsx desktop-modal branching regression test.
+ * ORCH-0891 M2 + ORCH-0964 — Sheet.web.tsx desktop-card + recursion-guard test.
  *
- * # What this verifies (per SPEC §6 M2 row implementor-happy)
- * Sheet.web.tsx is the canonical primitive for sub-sheet → desktop-modal
- * conversion (I-DESKTOP-MODAL-VIA-SHEET-WEB). The file MUST:
- *   (a) Branch on `useResponsiveLayout().isWideDesktop` so narrow web +
- *       native fall through to the existing mobile bottom-sheet variant
- *       (`MobileSheet`).
- *   (b) On wide-desktop, render a centred modal-style overlay with
- *       opacity-backdrop scrim that closes on tap/Esc — NOT the mobile
- *       bottom-sheet drag-to-dismiss layout.
- *   (c) Re-export `SheetProps` so consumers using the canonical
- *       specifier `./Sheet` get the right type on both platforms
- *       (Metro picks `.web.tsx` on web, `.tsx` on native).
- *
- * # Important context (ORCH-0891 M2 implementation discovery)
- * Sheet.web.tsx was ALREADY built by ORCH-0885-A using RN Modal +
- * Reanimated for the desktop centered card. SPEC §3.5.3 was written
- * without knowing this; the M2 implementor kept the existing
- * implementation rather than rewriting to Radix Dialog. This test
- * therefore verifies the ORCH-0885-A implementation satisfies the
- * I-DESKTOP-MODAL-VIA-SHEET-WEB invariant the M2 SPEC introduced.
+ * # What this verifies
+ *   (a) [ORCH-0964] Sheet.web.tsx does NOT import the Sheet *value* from
+ *       "./Sheet". On web, Metro platform-resolves "./Sheet" to THIS file,
+ *       so a `import { Sheet as MobileSheet } from "./Sheet"` + a
+ *       `<MobileSheet>` narrow branch makes this component render itself
+ *       recursively → unbounded fiber tree → mobile-web renderer OOM
+ *       ("page won't load / blank / needs multiple reloads"). The fix renders
+ *       the centred card at ALL web widths. These assertions are the
+ *       fails-on-revert anchor for that fix.
+ *   (b) The wide/centred-card overlay (RN Modal + Reanimated) renders a dim
+ *       backdrop scrim + a centred floating card (I-DESKTOP-MODAL-VIA-SHEET-WEB).
+ *   (c) Re-exports `SheetProps` so consumers using the canonical specifier
+ *       `./Sheet` get the right type on both platforms (Metro picks
+ *       `.web.tsx` on web, `.tsx` on native).
  *
  * # Source-grep style (repo precedent)
  * Per `mingla-business/jest.config.cjs` (`testEnvironment: "node"`),
  * there's no jsdom/RTL. We read the file as a string and assert on the
  * structural patterns that satisfy the contract.
- *
- * # Fails-on-revert anchor
- * If a future implementor removes the `isWideDesktop` branch or breaks
- * the SheetProps re-export, this test fails. Reverting the
- * `MobileSheet` import → fall-through to `MobileSheet` chain breaks the
- * I-DESKTOP-GATE-VIA-HOOK + I-DESKTOP-MODAL-VIA-SHEET-WEB invariants
- * simultaneously.
  */
 
 import fs from "node:fs";
@@ -40,37 +27,30 @@ import path from "node:path";
 
 const SHEET_WEB_PATH = path.resolve(__dirname, "..", "Sheet.web.tsx");
 
-describe("ORCH-0891 M2 — Sheet.web.tsx desktop-modal branching (implementor-happy)", () => {
+describe("ORCH-0964 — Sheet.web.tsx recursion guard + centred-card", () => {
   let source: string;
 
   beforeAll(() => {
     source = fs.readFileSync(SHEET_WEB_PATH, "utf8");
   });
 
-  describe("(T-M2-01) Branches on isWideDesktop", () => {
-    it("imports useResponsiveLayout from the canonical hook path", () => {
-      expect(source).toMatch(
-        /from\s+["'][^"']*\/useResponsiveLayout["']/,
-      );
+  describe("(T-0964-01) No self-recursive MobileSheet delegation", () => {
+    it("does NOT import the Sheet value from './Sheet' (recursion source)", () => {
+      // On web, "./Sheet" resolves to Sheet.web.tsx (this file). A value
+      // import of Sheet here is the infinite-recursion footgun. Type-only
+      // imports are erased at build, so they are allowed.
+      expect(source).not.toMatch(/import\s*\{[^}]*\bSheet\s+as\s+MobileSheet/);
+      // No JSX self-delegation (the actual recursion). Prose comments may
+      // still reference the old MobileSheet name to explain the fix.
+      expect(source).not.toMatch(/<\s*MobileSheet\b/);
     });
 
-    it("reads isWideDesktop from useResponsiveLayout()", () => {
-      expect(source).toMatch(/isWideDesktop[^;]*?useResponsiveLayout/);
-    });
-
-    it("returns MobileSheet (fall-through) when isWideDesktop is false", () => {
-      // The narrow + native branch MUST delegate to the existing canonical
-      // bottom-sheet. Match the conditional `if (!isWideDesktop)` pattern
-      // immediately followed by a JSX MobileSheet usage.
-      expect(source).toMatch(/!\s*isWideDesktop[\s\S]{0,200}MobileSheet/);
+    it("renders the centred card directly (no isWideDesktop branch)", () => {
+      expect(source).toMatch(/return\s*<DesktopCenteredCard\s*\{\.\.\.props\}/);
     });
   });
 
-  describe("(T-M2-02) Mobile-sheet fall-through preserves canonical surface", () => {
-    it("imports the mobile Sheet (as MobileSheet) from the sibling Sheet.tsx", () => {
-      expect(source).toMatch(/Sheet\s+as\s+MobileSheet/);
-    });
-
+  describe("(T-M2-02) Type surface preserved", () => {
     it("re-exports SheetProps + SheetSnapPoint / SheetSnapValue type aliases", () => {
       // Consumers import { Sheet, SheetProps } from './Sheet'. Metro picks
       // .web.tsx on web. The web variant MUST re-export the type surface
