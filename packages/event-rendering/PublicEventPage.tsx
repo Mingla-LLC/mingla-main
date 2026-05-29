@@ -459,78 +459,85 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
       : theme.color;
   const palette = useMemo(() => createThemePalette(theme), [theme]);
 
+  // ORCH-0992: the hero sizes itself to the cover's real shape so a 16:9,
+  // square, or vertical cover fills it with NO crop AND NO letterbox bars.
+  // Start at 16:9 (the common case + a stable first paint) and update once the
+  // media reports its intrinsic aspect ratio. Clamp so a very tall/vertical
+  // cover can't push the whole page below the fold.
+  const [heroAspect, setHeroAspect] = useState<number>(16 / 9);
+  const clampedHeroAspect = Math.min(Math.max(heroAspect, 0.75), 16 / 9);
+
   return (
     <>
-      {/* Hero cover */}
-      <View style={styles.heroWrap}>
-        {event.coverMediaUrl !== null ? (
-          <EventCoverMedia
-            mediaUrl={event.coverMediaUrl}
-            mediaType={event.coverMediaType}
-            radius={0}
-            label="Event cover"
-            style={styles.heroImage}
-            showAudioControl={event.coverMediaType === "video"}
-            audioControlPosition="topRight"
-          />
-        ) : event.coverMediaUrl !== null && event.coverMediaType === "video" ? (
-          <EventCoverMedia
-            mediaUrl={event.coverMediaUrl}
-            mediaType="video"
-            hue={event.coverHue}
-            height={380}
-            radius={0}
-            muted={true}
-            autoplay={true}
-            loop={true}
-            showAudioControl
-            audioControlLabel="event cover video"
-          />
-        ) : (
-          <View style={[styles.heroImage, { backgroundColor: heroColor }]} />
-        )}
-        <View style={styles.heroOverlay} pointerEvents="none" />
-        <ThemeEntranceAnimation
-          theme={theme}
-          sessionKey={`event:${event.id}`}
-        />
-        {event.coverCredit !== null ? (
-          <View style={styles.coverCreditBadge} pointerEvents="none">
-            <Text style={styles.coverCreditText}>{event.coverCredit}</Text>
-          </View>
-        ) : null}
-      </View>
-
-      {/* State banner — past / pre-sale / sold-out */}
-      {isPast || isPreSale || isSoldOut ? (
-        <View style={styles.stateBannerWrap} pointerEvents="none">
-          <View
-            style={[
-              styles.stateBanner,
-              isPast && styles.stateBannerMuted,
-              isPreSale && styles.stateBannerInfo,
-              isSoldOut && styles.stateBannerWarn,
-            ]}
-          >
-            <Text style={styles.stateBannerLabel}>
-              {isPast
-                ? "THIS EVENT HAS ENDED"
-                : isPreSale && preSaleStart !== null
-                  ? `ON SALE ${formatCountdown(preSaleStart).toUpperCase()}`
-                  : isPreSale
-                    ? "ON SALE SOON"
-                    : "SOLD OUT"}
-            </Text>
-          </View>
-        </View>
-      ) : null}
-
-      {/* Body */}
+      {/* Body (scroll). The hero lives INSIDE the scroll as the first in-flow
+          block so its height can vary with the cover's aspect ratio without
+          breaking the body offset (the old absolute hero + fixed paddingTop
+          could only fit one shape). */}
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        {/* Hero cover — column-width, aspect-adaptive, cover-filled */}
+        <View style={styles.heroColumn}>
+          <View
+            style={[styles.heroBox, { aspectRatio: clampedHeroAspect }]}
+          >
+            {event.coverMediaUrl !== null ? (
+              <EventCoverMedia
+                mediaUrl={event.coverMediaUrl}
+                mediaType={event.coverMediaType}
+                radius={0}
+                label="Event cover"
+                style={StyleSheet.absoluteFill}
+                onAspectRatio={setHeroAspect}
+                showAudioControl={event.coverMediaType === "video"}
+                audioControlPosition="topRight"
+              />
+            ) : (
+              <View
+                style={[StyleSheet.absoluteFill, { backgroundColor: heroColor }]}
+              />
+            )}
+            <View style={styles.heroOverlay} pointerEvents="none" />
+            <ThemeEntranceAnimation
+              theme={theme}
+              sessionKey={`event:${event.id}`}
+            />
+            {event.coverCredit !== null ? (
+              <View style={styles.coverCreditBadge} pointerEvents="none">
+                <Text style={styles.coverCreditText}>{event.coverCredit}</Text>
+              </View>
+            ) : null}
+          </View>
+        </View>
+
+        {/* State banner — past / pre-sale / sold-out. In-flow under the hero,
+            column-width (the hero is no longer a fixed absolute band). */}
+        {isPast || isPreSale || isSoldOut ? (
+          <View style={styles.stateBannerWrap} pointerEvents="none">
+            <View
+              style={[
+                styles.stateBanner,
+                isPast && styles.stateBannerMuted,
+                isPreSale && styles.stateBannerInfo,
+                isSoldOut && styles.stateBannerWarn,
+              ]}
+            >
+              <Text style={styles.stateBannerLabel}>
+                {isPast
+                  ? "THIS EVENT HAS ENDED"
+                  : isPreSale && preSaleStart !== null
+                    ? `ON SALE ${formatCountdown(preSaleStart).toUpperCase()}`
+                    : isPreSale
+                      ? "ON SALE SOON"
+                      : "SOLD OUT"}
+              </Text>
+            </View>
+          </View>
+        ) : null}
+
+        {/* Body */}
         <View
           style={[
             styles.bodyContent,
@@ -1184,18 +1191,19 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 
-  // Hero
-  heroWrap: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 380,
-    zIndex: 0,
-  },
-  heroImage: {
+  // Hero — ORCH-0992: in-flow, column-width, aspect-adaptive so any cover
+  // shape (16:9 / square / vertical) fills it with no crop and no bars.
+  heroColumn: {
+    alignSelf: "center",
     width: "100%",
-    height: 380,
+    maxWidth: 660,
+  },
+  heroBox: {
+    position: "relative",
+    width: "100%",
+    // aspectRatio is set inline from the measured cover ratio; height follows.
+    overflow: "hidden",
+    backgroundColor: "#000000",
   },
   heroOverlay: {
     position: "absolute",
@@ -1222,18 +1230,22 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 
-  // State banner
+  // State banner — ORCH-0992: in-flow under the hero, column-width, left-aligned.
   stateBannerWrap: {
-    position: "absolute",
-    top: Platform.OS === "web" ? 56 + spacing.md : 56 + spacing.xl + spacing.md,
-    left: spacing.md,
+    alignSelf: "center",
+    width: "100%",
+    maxWidth: 660,
+    paddingHorizontal: spacing.md,
+    marginTop: spacing.md,
     zIndex: 3,
+    flexDirection: "row",
   },
   stateBanner: {
     paddingHorizontal: spacing.sm,
     paddingVertical: 4,
     borderRadius: 999,
     borderWidth: 1,
+    alignSelf: "flex-start",
   },
   stateBannerMuted: {
     backgroundColor: "rgba(255, 255, 255, 0.06)",
@@ -1260,7 +1272,7 @@ const styles = StyleSheet.create({
     zIndex: 2,
   },
   scrollContent: {
-    paddingTop: 288,
+    // ORCH-0992: hero is now the first in-flow block, so no fixed top offset.
     paddingBottom: spacing.xl * 2,
   },
   bodyContent: {
@@ -1269,6 +1281,9 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     width: "100%",
     maxWidth: 660,
+    // Pull the rounded body up over the bottom of the hero so the card still
+    // overlaps the cover (preserves the prior immersive seam) for any height.
+    marginTop: -28,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.lg,
     paddingBottom: spacing.xl,

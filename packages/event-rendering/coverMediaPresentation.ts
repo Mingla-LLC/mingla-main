@@ -28,3 +28,29 @@ export const resolveEventCoverMediaPresentation = ({
   if (mediaType === "image") return "image";
   return "fallback";
 };
+
+// ORCH-0992 [event-cover video paused on web].
+// A muted, autoplaying, looping cover video is ambient motion — the same class
+// as an animated GIF cover, which is NEVER frozen for reduce-motion. Freezing
+// only the video cover left it stuck on frame 0 ("shows up but seems paused")
+// for reduce-motion viewers on every cover surface (event hero + brand-list
+// cards), while GIF covers beside it kept animating. This helper decides whether
+// a cover should still honor reduce-motion (freeze to a still): YES for any
+// non-ambient cover (sound-on, or non-autoplay/tap-to-play contexts), NO for the
+// default muted-autoplay-loop ambient cover. EventCoverMedia feeds the result
+// into `reduceMotion` of resolveEventCoverMediaPresentation above.
+export const shouldFreezeCoverForReduceMotion = ({
+  reduceMotion,
+  autoplay,
+  muted,
+  loop,
+}: {
+  reduceMotion?: boolean;
+  autoplay?: boolean;
+  muted?: boolean;
+  loop?: boolean;
+}): boolean => {
+  const isAmbientMutedLoop =
+    autoplay === true && muted === true && loop === true;
+  return reduceMotion === true && !isAmbientMutedLoop;
+};
