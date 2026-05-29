@@ -60,6 +60,7 @@ import { useConversationParticipants } from "../hooks/useConversationParticipant
 import { useChatCardTagSource } from "../hooks/useChatCardTagSource";
 import { useChatInputController } from "../hooks/useChatInputController";
 import ExpandedCardModal from "./ExpandedCardModal";  // ORCH-0667
+import { BaseBottomSheet } from "./ui/BaseBottomSheet";
 import { ExpandedBusinessEventSheet } from "./expandedCard/ExpandedBusinessEventSheet";
 import type { ExpandedCardData } from "../types/expandedCardTypes";  // ORCH-0685
 import type { BusinessEventCard } from "../types/mergedDiscover";
@@ -80,6 +81,10 @@ const INPUT_CAPSULE_MARGIN_BOTTOM = 14;
 /** ORCH-0600: intrinsic height of the glass input capsule (padding + 40pt controls). */
 const INPUT_CAPSULE_HEIGHT = 56;
 /** Bottom read-only broadcast pill height; used to keep chat bubbles and sheets above it. */
+// META-ORCH-0991 Wave B Batch 5: fixed compact snap for the 1:1 chat
+// more-options action menu (was a flex-end RN <Modal>).
+const CHAT_MORE_OPTIONS_SNAP = ["45%"] as const;
+
 const BROADCAST_COMPOSER_NOTICE_HEIGHT = 56;
 const BROADCAST_COMPOSER_NOTICE_BOTTOM_GAP = 14;
 const BROADCAST_COMPOSER_NOTICE_CONTENT_GAP = 12;
@@ -2332,22 +2337,22 @@ export default function MessageInterface({
         onParticipantsChange={onGroupParticipantsChange}
       />
 
-      {/* More options bottom sheet — ORCH-0435 */}
-      <Modal
+      {/* More options bottom sheet — ORCH-0435.
+          META-ORCH-0991 Wave B Batch 5: was an RN <Modal> flex-end card → light
+          BaseBottomSheet, fixed ['45%'] snap (action-menu list, not a tall sheet),
+          wrapInRNModal (mounted in chat over the chat input). Header (contact name) +
+          action-item body. Destructive items (Remove / Block / Report) route to their
+          OWN confirms downstream, so this menu itself is a non-destructive picker. */}
+      <BaseBottomSheet
         visible={!isGroupChat && showMoreOptionsMenu}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowMoreOptionsMenu(false)}
+        onClose={() => setShowMoreOptionsMenu(false)}
+        snapPoints={CHAT_MORE_OPTIONS_SNAP as unknown as string[]}
+        wrapInRNModal
+        scrollMode="view"
+        accessibilityLabel={cleanName(friend.name)}
+        header={<Text style={styles.chatSheetTitle}>{cleanName(friend.name)}</Text>}
       >
-        <TouchableOpacity
-          style={styles.chatSheetOverlay}
-          activeOpacity={1}
-          onPress={() => setShowMoreOptionsMenu(false)}
-        />
-        <View style={styles.chatSheetContainer}>
-          <View style={styles.chatSheetHandle} />
-          <Text style={styles.chatSheetTitle}>{cleanName(friend.name)}</Text>
-
+        <View style={styles.chatSheetBody}>
           <TouchableOpacity
             style={styles.chatSheetItem}
             onPress={() => { setShowMoreOptionsMenu(false); onViewProfile?.(friend.id); }}
@@ -2404,7 +2409,7 @@ export default function MessageInterface({
             <Text style={styles.chatSheetTextDanger}>Report User</Text>
           </TouchableOpacity>
         </View>
-      </Modal>
+      </BaseBottomSheet>
 
       {/* Local Notifications */}
       {notifications.length > 0 && (
@@ -3580,18 +3585,12 @@ const styles = StyleSheet.create({
     color: "rgba(255, 255, 255, 0.56)",
     textAlign: "center",
   },
-  chatSheetOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.3)",
-  },
-  chatSheetContainer: {
-    backgroundColor: "#ffffff",
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+  chatSheetBody: {
     paddingHorizontal: 20,
-    paddingTop: 12,
     paddingBottom: 40,
   },
+  // Retained for the untouched event-audience sheet (line ~2188), which is
+  // Wave C and still a raw RN <Modal> with its own drag handle.
   chatSheetHandle: {
     width: 36,
     height: 4,
@@ -3605,6 +3604,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#111827",
     textAlign: "center",
+    paddingTop: 4,
     marginBottom: 16,
   },
   chatSheetItem: {

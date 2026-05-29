@@ -24,7 +24,6 @@ import {
   StyleSheet,
   StatusBar,
   ScrollView,
-  Modal,
   Pressable,
   AppState,
   Platform,
@@ -64,6 +63,11 @@ import { savedCardsService } from "../services/savedCardsService";
 import { savedCardKeys } from "../hooks/queryKeys";
 import { useQueryClient } from "@tanstack/react-query";
 import { glass } from "../constants/designSystem";
+import { BaseBottomSheet } from "./ui/BaseBottomSheet";
+
+// META-ORCH-0991 Wave B Batch 5: fixed snap translated from the old filter
+// modal's `maxHeight: "85%"`.
+const FILTER_SNAP_POINTS = ["85%"] as const;
 // ORCH-0809 M2: city picker + segment switcher
 import { CityPickerSheet } from "./discover/CityPickerSheet";
 import {
@@ -1811,27 +1815,53 @@ function DiscoverScreen({
         onCityPicked={handleCityPicked}
       />
 
-      {/* Night Out Filter Modal (content unchanged from Phase 1 — trigger moved to More chip) */}
-      <Modal
+      {/* Night Out Filter sheet (content unchanged from Phase 1 — trigger moved to More chip).
+          META-ORCH-0991 Wave B Batch 5: was an RN <Modal> flex-end card (maxHeight 85%,
+          dark rgba(22,24,28,1) canvas, topRadius 24) → BaseBottomSheet dark surface,
+          fixed ['85%'] snap, wrapInRNModal (Discover tab mounts it before the floating
+          GlassBottomNav sibling, so an unwrapped sheet would render under the nav).
+          Header + scroll body + sticky Reset/Apply footer. Bespoke dark canvas + radius
+          preserved via backgroundStyle. */}
+      <BaseBottomSheet
         visible={isFilterModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={handleCloseFilterModal}
+        onClose={handleCloseFilterModal}
+        snapPoints={FILTER_SNAP_POINTS as unknown as string[]}
+        wrapInRNModal
+        theme="dark"
+        backgroundStyle={{
+          backgroundColor: "rgba(22,24,28,1)",
+          borderTopLeftRadius: 24,
+          borderTopRightRadius: 24,
+        }}
+        accessibilityLabel={t("discover:filters.title")}
+        scrollProps={{ style: styles.filterModalScrollView, showsVerticalScrollIndicator: false }}
+        header={
+          <View style={styles.filterModalHeader}>
+            <Text style={styles.filterModalTitle}>{t("discover:filters.title")}</Text>
+            <TouchableOpacity onPress={handleCloseFilterModal} style={styles.modalCloseButton}>
+              <Icon name="x" size={24} color="rgba(255,255,255,0.65)" />
+            </TouchableOpacity>
+          </View>
+        }
+        stickyFooter={
+          <View style={styles.filterButtonsContainer}>
+            <TouchableOpacity
+              style={styles.resetFilterButton}
+              onPress={handleResetFilters}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.resetFilterButtonText}>{t("discover:filters.reset")}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.applyFilterButton}
+              onPress={handleApplyFilters}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.applyFilterButtonText}>{t("discover:filters.apply")}</Text>
+            </TouchableOpacity>
+          </View>
+        }
       >
-        <View style={styles.filterModalOverlay}>
-          <TouchableOpacity
-            style={styles.backdropTouch}
-            activeOpacity={1}
-            onPress={handleCloseFilterModal}
-          />
-          <View style={styles.filterModalContent}>
-            <View style={styles.filterModalHeader}>
-              <Text style={styles.filterModalTitle}>{t("discover:filters.title")}</Text>
-              <TouchableOpacity onPress={handleCloseFilterModal} style={styles.modalCloseButton}>
-                <Icon name="x" size={24} color="rgba(255,255,255,0.65)" />
-              </TouchableOpacity>
-            </View>
-            <ScrollView style={styles.filterModalScrollView} showsVerticalScrollIndicator={false}>
               <View style={styles.filterSection}>
                 <View style={styles.filterSectionHeader}>
                   <Icon name="calendar" size={20} color={glass.chrome.active.glowColor} />
@@ -1953,27 +1983,7 @@ function DiscoverScreen({
                   </Text>
                 ) : null}
               </View>
-            </ScrollView>
-
-            <View style={styles.filterButtonsContainer}>
-              <TouchableOpacity
-                style={styles.resetFilterButton}
-                onPress={handleResetFilters}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.resetFilterButtonText}>{t("discover:filters.reset")}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.applyFilterButton}
-                onPress={handleApplyFilters}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.applyFilterButtonText}>{t("discover:filters.apply")}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      </BaseBottomSheet>
     </View>
   );
 }
@@ -2316,22 +2326,6 @@ const styles = StyleSheet.create({
   },
 
   // Filter modal (dark-glass restyle; structure preserved from Phase 1)
-  filterModalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.55)",
-    justifyContent: "flex-end",
-  },
-  backdropTouch: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  filterModalContent: {
-    backgroundColor: "rgba(22,24,28,1)",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingTop: 20,
-    paddingBottom: 28,
-    maxHeight: "85%",
-  },
   filterModalHeader: {
     flexDirection: "row",
     alignItems: "center",

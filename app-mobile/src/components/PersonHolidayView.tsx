@@ -9,6 +9,7 @@ import {
   Modal,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { BaseBottomSheet } from './ui/BaseBottomSheet';
 import { Icon } from './ui/Icon';
 import {
   GenderOption,
@@ -1049,10 +1050,23 @@ export default function PersonHolidayView({
           )}
         </View>
       )}
-      {/* Saves list — rendered as Modal to avoid FlatList-in-ScrollView nesting */}
-      <Modal visible={showSavesList} animationType="slide" presentationStyle="pageSheet">
+      {/* Saves list — META-ORCH-0991 Wave B Batch 5: was a full-screen pageSheet
+          Modal; now a tall ['90%'] BaseBottomSheet (roll-up + swipe-down-close).
+          scrollMode="view" — PairedSavesListScreen owns its body tree; its 2-col
+          vertical grid renders via BottomSheetFlatList (inBottomSheet) so it
+          scrolls inside the sheet instead of fighting the pan. wrapInRNModal:
+          mounted from ViewFriendProfileScreen over the floating tab bar. */}
+      <BaseBottomSheet
+        visible={showSavesList}
+        onClose={() => setShowSavesList(false)}
+        snapPoints={SAVES_LIST_SNAP as unknown as string[]}
+        wrapInRNModal
+        scrollMode="view"
+        accessibilityLabel={t('social:holiday.saves_title', { name: firstName })}
+      >
         <PairedSavesListScreen
           title={t('social:holiday.saves_title', { name: firstName })}
+          inBottomSheet
           items={saves.map((sv) => ({
             id: sv.id,
             title: sv.title,
@@ -1079,7 +1093,7 @@ export default function PersonHolidayView({
             }
           }}
         />
-      </Modal>
+      </BaseBottomSheet>
 
       {/* Visits list — rendered as Modal */}
       <Modal visible={showVisitsList} animationType="slide" presentationStyle="pageSheet">
@@ -1107,6 +1121,11 @@ export default function PersonHolidayView({
 // ── Styles ──────────────────────────────────────────────────────────────────
 
 const CARD_W = s(150);
+
+// META-ORCH-0991 Wave B Batch 5: tall fixed snap for the saves list (was a
+// full-screen pageSheet Modal). Only the saves list is converted; the visits
+// list keeps its native pageSheet Modal.
+const SAVES_LIST_SNAP = ['90%'] as const;
 
 const styles = StyleSheet.create({
   root: { paddingBottom: s(80) },

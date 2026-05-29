@@ -67,6 +67,13 @@ export { BottomSheetTextInput };
 // BottomSheetTextInput above (consumers may not import @gorhom/bottom-sheet).
 export { BottomSheetScrollView };
 
+// META-ORCH-0991 Wave B Batch 5 — re-export the gorhom FlatList for consumers
+// that own their body tree (scrollMode="view") AND need a VERTICAL list inside
+// the sheet (PersonHolidayView's 2-column saves grid). A raw RN <FlatList>
+// nested in a gorhom sheet fights the sheet's pan gesture; BottomSheetFlatList
+// coordinates with it. Same gate rationale as the two re-exports above.
+export { BottomSheetFlatList };
+
 import { glass } from '../../constants/designSystem';
 
 // ── Snap/settle motion: STOCK gorhom default ────────────────────────────────
