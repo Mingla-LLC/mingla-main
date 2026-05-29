@@ -26,6 +26,8 @@ export interface SignalRankParams {
   radiusMeters: number;
   limit: number;
   requiredTypes?: string[]; // ORCH-0601: optional sub-filter (e.g., 'hiking_area','museum')
+  primaryTypeRequired?: string[]; // ORCH-0990: composite primary-type gate (flowers)
+  groceryFloralTag?: boolean;     // ORCH-0990: also admit grocery/supermarket + florist tag
   excludePlaceIds?: string[]; // ORCH-0906: session-wide place_pool.id exclusions for curated batches
 }
 
@@ -102,18 +104,44 @@ export const COMBO_SLUG_TO_FILTER_SIGNAL: Record<string, string> = {
 // ORCH-0601 — Slugs that narrow a filter signal to a sub-category via types.
 // A place passes the filter iff it scores >= filter_min on the filter signal
 // AND its place_pool.types overlaps with this list.
+// ORCH-0990: `flowers` is deliberately NOT in this map. The secondary types[]
+// overlap is the WRONG mechanism for flowers — Google over-applies the secondary
+// `florist` tag in types[] to event planners / decorators / general contractors
+// (proven live in Lagos), so a types[]-overlap gate re-admits non-bouquet
+// businesses. Flowers gates on the canonical primary_type instead, via
+// COMBO_SLUG_PRIMARY_TYPE_GATE below. (Re-adding flowers here is blocked by the
+// orch-0990-flower-stop-florist-gate.mjs strict-grep gate.)
 export const COMBO_SLUG_TYPE_FILTER: Record<string, string[]> = {
   hiking: ['hiking_area', 'state_park', 'nature_preserve', 'national_park', 'wildlife_refuge', 'scenic_spot'],
   museum: ['museum', 'art_museum'],
 };
 
-// Per-stop filter_min override. Most signals use 120; movies is 80 (tiny universe);
-// flowers is 80 — keeps 2 boutique florists (Mio Kreations 155, Petal & Oak 102) + 12 Harris
-// Teeter locations with florist tag (97-136) while filtering out noise leaks: Fresh Market
-// (69, no florist tag), candy/chocolate/catering/bakery false positives scoring 50-66.
+// ORCH-0990 — Slugs that gate on the canonical primary_type (NOT the loose
+// secondary types[] set). Google over-applies the secondary `florist` tag in
+// types[] to event planners / decorators / contractors in some markets (proven
+// in Lagos), so a types[]-overlap gate re-admits non-bouquet businesses. The
+// clean discriminator is primary_type. `groceryFloralTag` additionally admits a
+// grocery/supermarket that ALSO carries the `florist` tag (a verified floral
+// department, e.g. Harris Teeter) — the operator's "verified-floral grocery".
+// Google Places v1: primaryType is a single canonical type; types[] is a loose
+// tag set. https://developers.google.com/maps/documentation/places/web-service/place-types
+export interface PrimaryTypeGate { primaryTypes: string[]; groceryFloralTag: boolean; }
+export const COMBO_SLUG_PRIMARY_TYPE_GATE: Record<string, PrimaryTypeGate> = {
+  flowers: { primaryTypes: ['florist'], groceryFloralTag: true },
+};
+
+// Per-stop filter_min override. Most signals use 120; movies is 80 (tiny universe).
+// ORCH-0990: flowers is 0 (was 80). Honesty for flowers is enforced ENTIRELY by
+// the COMBO_SLUG_PRIMARY_TYPE_GATE['flowers'] composite primary-type gate
+// (primary_type='florist' OR grocery/supermarket+florist-tag), NOT by the score
+// threshold. The flowers signal is rating/review-popularity weighted, so genuine
+// boutique florists score 0-39 (e.g. Lagos "FRESH FLOWERS BY OLIVE DESIGNS" 33,
+// "Sparkle Gardens" 0) and would be wrongly dropped by ANY positive floor. With
+// the type-gate as the hard bouquet guarantee, the score must only ORDER results,
+// never drop a verified florist → floor 0.
 export const COMBO_SLUG_FILTER_MIN: Record<string, number> = {
   'movies': 80,
-  'flowers': 80,
+  'flowers': 0,
 };
 
 // ── Resolvers ────────────────────────────────────────────────────────────────
@@ -140,6 +168,16 @@ export function isValidComboSlug(comboSlug: string): boolean {
  */
 export function resolveTypeFilter(comboSlug: string): string[] | undefined {
   return COMBO_SLUG_TYPE_FILTER[comboSlug];
+}
+
+/**
+ * ORCH-0990: resolve the primary-type composite gate for a slug, or undefined.
+ * Flowers gates on primary_type='florist' OR grocery/supermarket+florist-tag.
+ * Both the curated generator and the replace-stop flow MUST pass this through so
+ * the flowers stop (and its swaps) only ever resolve to verified bouquet sources.
+ */
+export function resolvePrimaryTypeGate(comboSlug: string): PrimaryTypeGate | undefined {
+  return COMBO_SLUG_PRIMARY_TYPE_GATE[comboSlug];
 }
 
 /**
@@ -221,6 +259,8 @@ export async function fetchSinglesForSignalRank(
     radiusMeters,
     limit,
     requiredTypes,
+    primaryTypeRequired,
+    groceryFloralTag,
     excludePlaceIds,
   } = params;
 
@@ -239,6 +279,10 @@ export async function fetchSinglesForSignalRank(
       p_lng_max: centerLng + lngDelta,
       p_required_types: requiredTypes ?? null,
       p_limit: limit * 2,
+      // ORCH-0990: composite primary-type gate (flowers). Defaults (null/false)
+      // are a no-op in the RPC → every existing caller is unaffected.
+      p_primary_type_required: primaryTypeRequired ?? null,
+      p_grocery_floral_tag: groceryFloralTag ?? false,
     },
   );
 

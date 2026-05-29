@@ -11,6 +11,7 @@ import {
   COMBO_SLUG_TO_FILTER_SIGNAL,
   COMBO_SLUG_TYPE_FILTER,
   COMBO_SLUG_FILTER_MIN,
+  resolvePrimaryTypeGate,
 } from '../_shared/signalRankFetch.ts';
 // ORCH-0707: duration map centralised in _shared/curatedConstants.ts.
 import {
@@ -687,6 +688,10 @@ async function generateCardsForType(
     }
     const rankOverride = signalOverride?.[catId];
     const typeFilter = COMBO_SLUG_TYPE_FILTER[catId];
+    // ORCH-0990: composite primary-type gate (flowers → primary_type='florist'
+    // OR grocery/supermarket+florist-tag). undefined for every other slug, so the
+    // RPC clause is a no-op and behavior is unchanged for hiking/museum/etc.
+    const primaryTypeGate = resolvePrimaryTypeGate(catId);
     const filterMin = COMBO_SLUG_FILTER_MIN[catId] ?? 120;
     const rankSignal = rankOverride ?? filterSignal; // no override → rank by filter signal itself
     // ORCH-0707: helper moved to _shared/signalRankFetch.ts; pass supabaseAdmin
@@ -700,6 +705,8 @@ async function generateCardsForType(
       radiusMeters: fetchRadius,
       limit: fetchLimit ?? 50,
       requiredTypes: typeFilter,
+      primaryTypeRequired: primaryTypeGate?.primaryTypes,
+      groceryFloralTag: primaryTypeGate?.groceryFloralTag,
       excludePlaceIds: excludePlacePoolIds,
     });
   };
