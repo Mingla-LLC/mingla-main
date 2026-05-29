@@ -6,17 +6,20 @@
  * iOS/Android.
  *
  * # Runtime behaviour
- * - All web viewports render a **centred floating card** with a dimmed
- *   backdrop. Card width capped at `min(640, viewportWidth - 64)`; height
- *   auto-sized to content with max-height `min(80vh, viewport - 64)`;
+ * - `isWideDesktop === false` (narrow web < 1024px) → renders the canonical
+ *   bottom sheet via `MobileSheet`, imported from the platform-neutral
+ *   `./SheetMobile`. Visual + interaction parity with iOS/Android.
+ * - `isWideDesktop === true` → renders a **centred floating card** with a
+ *   dimmed backdrop. Card width capped at `min(640, viewportWidth - 64)`;
+ *   height auto-sized to content with max-height `min(80vh, viewport - 64)`;
  *   borderRadius `radius.lg`; backdrop alpha `rgba(0, 0, 0, 0.55)` per
  *   SPEC §7 (verified WCAG-clean against the #0c0e12 canvas).
  *
- *   NOTE (ORCH-0964): the original design delegated narrow web (< 1024px) to
- *   the canonical bottom-sheet. That path self-imported this `.web` file via
- *   Metro platform resolution and recursed infinitely, OOM-killing the mobile
- *   renderer (see the recursion note on the `Sheet` export). It is removed; the
- *   centred card now serves every web width.
+ *   NOTE (ORCH-0964): `MobileSheet` MUST be imported from `./SheetMobile`, not
+ *   `./Sheet`. On web Metro resolves `./Sheet` to THIS file, so importing the
+ *   Sheet value from `./Sheet` made the narrow branch render itself infinitely
+ *   → mobile-web renderer OOM. The neutral `./SheetMobile` filename avoids the
+ *   self-collision.
  *
  * # Sub-sheet invariant (I-SUB-SHEET-INSIDE-PARENT)
  * Sub-sheets remain JSX-children of their parent floating card. This file
@@ -26,6 +29,7 @@
  * applies per-file — the JSX structure consumers compose is the contract.
  *
  * # Invariants honoured
+ * - I-DESKTOP-GATE-VIA-HOOK — gates exclusively via `useResponsiveLayout()`.
  * - I-SUB-SHEET-INSIDE-PARENT — sub-sheets stay JSX-children.
  * - I-RN-COLOR-FORMATS — backdrop + card surfaces use rgba/hex only.
  * - I-KEYBOARD-NEVER-BLOCKS-INPUT — desktop browsers don't displace
@@ -61,16 +65,20 @@ import {
   radius as radiusTokens,
   shadows,
 } from "../../constants/designSystem";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 
-// Type-only import (erased at build): TypeScript resolves "./Sheet" to the
-// canonical Sheet.tsx where these types are declared. We deliberately do NOT
-// import the Sheet *value* here — see the recursion note on the Sheet export
-// below.
-import type {
-  SheetProps,
-  SheetSnapPoint,
-  SheetSnapValue,
-} from "./Sheet";
+// Import the canonical bottom sheet from the platform-NEUTRAL `./SheetMobile`,
+// never from the bare `./Sheet` specifier. On web, Metro resolves `./Sheet` to
+// THIS file, so importing the Sheet value via that specifier makes the
+// narrow-web branch render itself recursively → unbounded fiber tree →
+// mobile-web renderer OOM (ORCH-0964). `./SheetMobile` has no .web variant, so
+// it always resolves to the real bottom-sheet implementation.
+import {
+  Sheet as MobileSheet,
+  type SheetProps,
+  type SheetSnapPoint,
+  type SheetSnapValue,
+} from "./SheetMobile";
 
 // Re-export the type aliases so existing imports
 // `import { Sheet, SheetProps, SheetSnapValue } from '.../Sheet'`
@@ -91,23 +99,14 @@ const CLOSE_EASING = Easing.in(Easing.cubic);
 const OPEN_TIMING = { duration: OPEN_DURATION_MS, easing: OPEN_EASING } as const;
 const CLOSE_TIMING = { duration: CLOSE_DURATION_MS, easing: CLOSE_EASING } as const;
 
-// ORCH-0964 — every web viewport renders the centred floating card.
-//
-// This file previously delegated narrow web (< 1024px) to the canonical
-// bottom-sheet by importing the Sheet value from the sibling "./Sheet". On
-// web, Metro's platform resolution resolves "./Sheet" to THIS file
-// (Sheet.web.tsx), not Sheet.tsx — so that delegate was this component itself.
-// At any width below 1024 the narrow branch re-rendered this same component
-// with the same props, recursing without a base case. React's work loop built an
-// unbounded fiber tree, driving the renderer heap past ~1GB until the mobile
-// WebContent process was OOM-killed — the "page won't load / blank / needs
-// multiple reloads" symptom on every public page that mounts a Sheet (e.g. the
-// brand/event pages' ShareModal, even while hidden). Narrow-web bottom sheets
-// therefore never actually worked. The centred card is the proven, crash-free
-// web sheet and is now used at all web widths; mobile-web no longer attempts
-// the native bottom-sheet. (TypeScript resolved "./Sheet" to Sheet.tsx, so the
-// bug type-checked clean and only surfaced at runtime on web.)
+// Narrow web (< 1024px) renders the canonical bottom sheet (MobileSheet, from
+// the neutral "./SheetMobile" — NOT "./Sheet", which would self-resolve to this
+// file and recurse infinitely; ORCH-0964). Wide web renders the centred card.
 export const Sheet: React.FC<SheetProps> = (props) => {
+  const { isWideDesktop } = useResponsiveLayout();
+  if (!isWideDesktop) {
+    return <MobileSheet {...props} />;
+  }
   return <DesktopCenteredCard {...props} />;
 };
 

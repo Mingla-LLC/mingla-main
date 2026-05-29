@@ -34,19 +34,32 @@ describe("ORCH-0964 — Sheet.web.tsx recursion guard + centred-card", () => {
     source = fs.readFileSync(SHEET_WEB_PATH, "utf8");
   });
 
-  describe("(T-0964-01) No self-recursive MobileSheet delegation", () => {
-    it("does NOT import the Sheet value from './Sheet' (recursion source)", () => {
-      // On web, "./Sheet" resolves to Sheet.web.tsx (this file). A value
-      // import of Sheet here is the infinite-recursion footgun. Type-only
-      // imports are erased at build, so they are allowed.
-      expect(source).not.toMatch(/import\s*\{[^}]*\bSheet\s+as\s+MobileSheet/);
-      // No JSX self-delegation (the actual recursion). Prose comments may
-      // still reference the old MobileSheet name to explain the fix.
-      expect(source).not.toMatch(/<\s*MobileSheet\b/);
+  describe("(T-0964-01) Recursion guard — bottom sheet imported from neutral file", () => {
+    it("imports the bottom sheet (Sheet as MobileSheet) from './SheetMobile'", () => {
+      // The canonical bottom sheet MUST come from the platform-neutral
+      // "./SheetMobile" so narrow web renders the real sheet, not this file.
+      expect(source).toMatch(
+        /import\s*\{[^}]*\bSheet\s+as\s+MobileSheet[\s\S]*?\}\s*from\s*["']\.\/SheetMobile["']/,
+      );
     });
 
-    it("renders the centred card directly (no isWideDesktop branch)", () => {
-      expect(source).toMatch(/return\s*<DesktopCenteredCard\s*\{\.\.\.props\}/);
+    it("does NOT import any value from './Sheet' (Metro self-resolves it on web → infinite recursion)", () => {
+      // Only the platform-neutral specifiers are allowed. A bare "./Sheet"
+      // import resolves to Sheet.web.tsx itself on web. Prose comments may
+      // still mention "./Sheet" to explain the footgun, so anchor on import
+      // statements specifically.
+      expect(source).not.toMatch(/import[\s\S]*?from\s*["']\.\/Sheet["']/);
+    });
+  });
+
+  describe("(T-M2-01) Desktop gate via useResponsiveLayout", () => {
+    it("reads isWideDesktop from useResponsiveLayout()", () => {
+      expect(source).toMatch(/from\s+["'][^"']*\/useResponsiveLayout["']/);
+      expect(source).toMatch(/isWideDesktop[\s\S]{0,80}useResponsiveLayout/);
+    });
+
+    it("narrow web (!isWideDesktop) falls through to MobileSheet", () => {
+      expect(source).toMatch(/!\s*isWideDesktop[\s\S]{0,160}<MobileSheet/);
     });
   });
 

@@ -198,7 +198,7 @@ describe("ORCH-0892-B v2 SmartScrollView + useKeyboardIsVisible wrappers (post O
 describe("ORCH-0892-B v2 Sheet primitive rewrite (no keyboard logic)", () => {
   // --- T-12: Sheet.tsx no longer registers layout-event Keyboard listener ---
   it("T-12: Sheet.tsx no longer registers Keyboard.addListener for layout events", () => {
-    const source = read("src/components/ui/Sheet.tsx");
+    const source = read("src/components/ui/SheetMobile.tsx");
     expect(source).not.toMatch(
       /Keyboard\.addListener\s*\(\s*["']?keyboard(Will|Did)(Show|Hide)/,
     );
@@ -206,7 +206,7 @@ describe("ORCH-0892-B v2 Sheet primitive rewrite (no keyboard logic)", () => {
 
   // --- T-13: Sheet.tsx no longer translates panel by keyboardHeight ---
   it("T-13: Sheet.tsx no longer computes openY = -keyboardHeight", () => {
-    const source = read("src/components/ui/Sheet.tsx");
+    const source = read("src/components/ui/SheetMobile.tsx");
     expect(source).not.toMatch(/openY\s*=\s*-\s*keyboardHeight/);
     // openY = 0 is the new contract.
     expect(source).toMatch(/openY\s*=\s*0/);
@@ -214,7 +214,7 @@ describe("ORCH-0892-B v2 Sheet primitive rewrite (no keyboard logic)", () => {
 
   // --- T-14: Sheet.tsx no longer destructures Keyboard / KeyboardEvent from react-native ---
   it("T-14: Sheet.tsx no longer imports Keyboard or KeyboardEvent from 'react-native'", () => {
-    const source = read("src/components/ui/Sheet.tsx");
+    const source = read("src/components/ui/SheetMobile.tsx");
     const reactNativeImportBlockMatch = source.match(
       /import\s+\{[^}]+\}\s+from\s+["']react-native["']/,
     );
