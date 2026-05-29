@@ -39,10 +39,15 @@ export interface EventCoverMediaProps {
   loop?: boolean;
   // ORCH-0992: how the cover VIDEO fills its box. "cover" (default) crops to
   // fill — right for list/grid cards. "contain" shows the entire frame
-  // (letterboxed on the player's black background) — used by the event-page
-  // hero so the whole video is visible, edges not cut off. Images are
-  // unaffected (always "cover").
+  // (letterboxed on the player's black background). Images are unaffected
+  // (always "cover").
   videoContentFit?: "cover" | "contain";
+  // ORCH-0992: optional callback fired once the media's intrinsic size is
+  // known, with its aspect ratio (width / height). The event-page hero uses
+  // this to size its box to the media's shape so a 16:9 / square / vertical
+  // cover fills the hero with NO crop AND NO letterbox bars. List/grid cards
+  // omit it (no-op) and keep their fixed-shape "cover" fill.
+  onAspectRatio?: (ratio: number) => void;
   showAudioControl?: boolean;
   audioControlLabel?: string;
   audioControlPosition?: "topLeft" | "topRight" | "bottomRight";
@@ -122,10 +127,38 @@ const EventCoverWebVideo: React.FC<{
   muted: boolean;
   loop: boolean;
   contentFit: "cover" | "contain";
+  onAspectRatio?: (ratio: number) => void;
   onError: () => void;
-}> = ({ uri, autoplay, playbackActive, muted, loop, contentFit, onError }) => {
+}> = ({
+  uri,
+  autoplay,
+  playbackActive,
+  muted,
+  loop,
+  contentFit,
+  onAspectRatio,
+  onError,
+}) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const shouldPlay = autoplay && playbackActive;
+
+  // ORCH-0992: report the video's intrinsic aspect ratio once metadata loads,
+  // so a hero can size its box to the video's shape. videoWidth/videoHeight are
+  // 0 until metadata is available; the loadedmetadata listener covers the case
+  // where metadata is already cached (the effect runs after the event fired).
+  useEffect(() => {
+    if (onAspectRatio === undefined) return;
+    const video = videoRef.current;
+    if (video === null) return;
+    const report = (): void => {
+      if (video.videoWidth > 0 && video.videoHeight > 0) {
+        onAspectRatio(video.videoWidth / video.videoHeight);
+      }
+    };
+    report();
+    video.addEventListener("loadedmetadata", report);
+    return () => video.removeEventListener("loadedmetadata", report);
+  }, [onAspectRatio, uri]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -177,8 +210,18 @@ const EventCoverNativeVideo: React.FC<{
   muted: boolean;
   loop: boolean;
   contentFit: "cover" | "contain";
+  onAspectRatio?: (ratio: number) => void;
   onError: () => void;
-}> = ({ uri, autoplay, playbackActive, muted, loop, contentFit, onError }) => {
+}> = ({
+  uri,
+  autoplay,
+  playbackActive,
+  muted,
+  loop,
+  contentFit,
+  onAspectRatio,
+  onError,
+}) => {
   const shouldPlay = autoplay && playbackActive;
   const player = useVideoPlayer(uri, (nextPlayer) => {
     nextPlayer.loop = loop;
@@ -198,6 +241,23 @@ const EventCoverNativeVideo: React.FC<{
     });
     return () => sub.remove();
   }, [onError, player, shouldPlay]);
+
+  // ORCH-0992: report intrinsic aspect ratio from expo-video's video track
+  // (sourceLoad fires once the track is known) so a hero can size to the
+  // video's shape. Guarded so list/grid cards (no callback) pay nothing.
+  useEffect(() => {
+    if (onAspectRatio === undefined) return;
+    const emit = (size: { width: number; height: number } | undefined): void => {
+      if (size !== undefined && size.width > 0 && size.height > 0) {
+        onAspectRatio(size.width / size.height);
+      }
+    };
+    emit(player.videoTrack?.size);
+    const sub = player.addListener("sourceLoad", (payload) => {
+      emit(payload.availableVideoTracks[0]?.size);
+    });
+    return () => sub.remove();
+  }, [onAspectRatio, player]);
 
   useEffect(() => {
     player.loop = loop;
@@ -259,6 +319,7 @@ const EventCoverVideo: React.FC<{
   muted: boolean;
   loop: boolean;
   contentFit: "cover" | "contain";
+  onAspectRatio?: (ratio: number) => void;
   onError: () => void;
 }> = (props) =>
   Platform.OS === "web" ? (
@@ -319,6 +380,7 @@ export const EventCoverMedia: React.FC<EventCoverMediaProps> = ({
   onMutedChange,
   loop = true,
   videoContentFit = "cover",
+  onAspectRatio,
   showAudioControl = false,
   audioControlLabel = "cover video audio",
   audioControlPosition = "bottomRight",
@@ -442,6 +504,7 @@ export const EventCoverMedia: React.FC<EventCoverMediaProps> = ({
           muted={isMuted}
           loop={presentation === "video" ? loop : false}
           contentFit={videoContentFit}
+          onAspectRatio={onAspectRatio}
           onError={() => handleMediaError("video")}
         />
       ) : (
@@ -449,6 +512,22 @@ export const EventCoverMedia: React.FC<EventCoverMediaProps> = ({
           source={{ uri: mediaUrl }}
           style={StyleSheet.absoluteFill}
           resizeMode="cover"
+          // ORCH-0992: report image aspect ratio so an adaptive hero fits
+          // square / vertical image covers the same way it fits videos.
+          onLoad={
+            onAspectRatio === undefined
+              ? undefined
+              : (event) => {
+                  const src = event.nativeEvent?.source;
+                  if (
+                    src !== undefined &&
+                    src.width > 0 &&
+                    src.height > 0
+                  ) {
+                    onAspectRatio(src.width / src.height);
+                  }
+                }
+          }
           onError={(event: NativeSyntheticEvent<ImageErrorEventData>) =>
             handleMediaError("image", event.nativeEvent)
           }

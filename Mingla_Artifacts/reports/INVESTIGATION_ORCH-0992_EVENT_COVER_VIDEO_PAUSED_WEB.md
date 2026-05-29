@@ -101,6 +101,33 @@ branch in the shared `PublicEventPage.tsx` hero.
 - Blast radius: `packages/event-rendering/` (mingla-business web+native, app-mobile
   native). Operator approved all-surfaces.
 
+## Follow-up: event-hero cover FIT (operator request, 2026-05-29)
+After the reduce-motion fix, operator asked that the event-page hero show the WHOLE
+cover (no edge crop) AND have no black bars, for any uploaded shape incl. square.
+`cover` crops; `contain` bars — neither alone satisfies both. Fix: make the hero
+size itself to the cover's real aspect ratio, then cover-fill (fills exactly → no
+crop, no bars).
+
+- `EventCoverMedia` gained `onAspectRatio?(ratio)` — reports intrinsic ratio from
+  web `<video>.loadedmetadata` (videoWidth/Height), native expo-video 3.0.16
+  `sourceLoad` → `availableVideoTracks[0].size`, and RN `<Image>.onLoad`
+  `source.width/height` for image/gif covers. Guarded: list/grid cards omit the
+  callback and pay nothing.
+- Event hero (`PublicEventPage.tsx`) moved from a fixed-380px absolute band to an
+  in-flow, column-width (`maxWidth: 660`) box whose `aspectRatio` follows the measured
+  ratio, clamped to `[0.75, 16/9]`. Body card pulled up `-28` to keep the rounded
+  immersive seam; state banner moved in-flow. The old fixed `paddingTop: 288` offset
+  removed.
+- Clamp behavior (verified): 16:9 / square / 4:3 / anything in [0.75,1.78] → exact
+  fit, no bars/no crop. Extreme vertical (<0.75) or ultrawide (>1.78) → cover-fills
+  with bounded crop so a portrait video can't push the page off-screen.
+- **Verified on a real production web export** (`expo export -p web`, served static,
+  Playwright): video 1280×720 (AR 1.778) → hero box rendered 660×371 (AR 1.778),
+  `objectFit: cover`, `matchesShape: true`, playing. Screenshot confirmed no bars,
+  no crop, seam preserved. (Dev-web `expo start --web` could not be used — unrelated
+  `expo-file-system getEnforcing` dev-only crash; production export is the real
+  artifact and renders clean.)
+
 ## Tests
 - `mingla-business/src/components/ui/__tests__/eventCoverMedia.test.ts` — new
   `describe("ORCH-0992 reduce-motion ambient cover gate")`: 5 truth-table cases
