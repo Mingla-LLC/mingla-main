@@ -24,7 +24,6 @@ import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   Linking,
-  Modal,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
   Platform,
@@ -34,7 +33,9 @@ import {
   Text,
   useWindowDimensions,
   View,
+  type ViewStyle,
 } from "react-native";
+import { BaseBottomSheet } from "../ui/BaseBottomSheet";
 import QRCode from "react-native-qrcode-svg";
 // expo-file-system v19 split the API. The legacy entry exposes the
 // `cacheDirectory` constant + `downloadAsync` helper we need.
@@ -81,6 +82,20 @@ function buildMapsUrl(
 // Sheet inner padding (matches styles.card.paddingHorizontal). Used to
 // compute the full-width-per-page QR carousel.
 const SHEET_HORIZONTAL_PADDING = 20;
+
+// META-ORCH-0991 Wave B Batch 4: was a flex-end RN <Modal> dark card capped at
+// maxHeight 88% → fixed ['88%'] snap (playbook §2). Read-only QR/PDF viewer, so a
+// tall snap. Fixed snap (NOT enableDynamicSizing) per the Batch-3 off-screen lesson.
+const TICKET_PDF_SNAP_POINTS = ['88%'];
+
+// Preserve the bespoke dark canvas (#15181f, topRadius 28) the card shipped with;
+// the default dark theme uses #0c0e12 / topRadius from glass.bottomSheet, so we
+// override to keep this surface byte-identical (parity floor, BaseBottomSheet §6/§7).
+const TICKET_PDF_BACKGROUND_STYLE: ViewStyle = {
+  backgroundColor: "#15181f",
+  borderTopLeftRadius: 28,
+  borderTopRightRadius: 28,
+};
 
 export const TicketPdfSheet: React.FC<TicketPdfSheetProps> = ({
   visible,
@@ -229,17 +244,17 @@ export const TicketPdfSheet: React.FC<TicketPdfSheetProps> = ({
   const isDownloading = state.status === "downloading";
 
   return (
-    <Modal
+    <BaseBottomSheet
       visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
-      statusBarTranslucent
+      onClose={onClose}
+      theme="dark"
+      snapPoints={TICKET_PDF_SNAP_POINTS}
+      wrapInRNModal
+      backgroundStyle={TICKET_PDF_BACKGROUND_STYLE}
+      scrollMode="view"
+      accessibilityLabel={`Ticket viewer for ${entry.eventTitle}`}
     >
-      <View style={styles.backdrop}>
         <View style={styles.card}>
-          <View style={styles.dragHandle} />
-
           <View style={styles.header}>
             <View style={styles.headerText}>
               <Text style={styles.title} numberOfLines={2}>
@@ -388,33 +403,21 @@ export const TicketPdfSheet: React.FC<TicketPdfSheetProps> = ({
             </View>
           ) : null}
         </View>
-      </View>
-    </Modal>
+    </BaseBottomSheet>
   );
 };
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.65)",
-    justifyContent: "flex-end",
-  },
+  // META-ORCH-0991 Wave B Batch 4: removed the hand-rolled RN <Modal> chrome
+  // (`backdrop` scrim, `card` background/radius/maxHeight, `dragHandle` cosmetic
+  // handle). Now a swipe-down dark BaseBottomSheet at ['88%'] with the real gorhom
+  // handle + pan-down/backdrop close; canvas/radius preserved via the
+  // TICKET_PDF_BACKGROUND_STYLE override. wrapInRNModal z-stacks above the
+  // floating tab bar (opened from BusinessEventCalendarRow in the activity tab).
   card: {
-    backgroundColor: "#15181f",
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
     paddingHorizontal: 20,
     paddingTop: 8,
     paddingBottom: 28,
-    maxHeight: "88%",
-  },
-  dragHandle: {
-    alignSelf: "center",
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "rgba(255,255,255,0.18)",
-    marginBottom: 12,
   },
   header: {
     flexDirection: "row",

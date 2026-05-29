@@ -4,20 +4,19 @@
  * Displays avatar, name, status message, and cancel action.
  * Animates in with scale + fade.
  */
-import React, { useEffect, useRef } from "react";
+import React from "react";
 import {
   View,
   Text,
   TouchableOpacity,
-  Modal,
   StyleSheet,
-  Animated,
   Image,
 } from "react-native";
 import * as Haptics from "expo-haptics";
+import { BaseBottomSheet } from "./ui/BaseBottomSheet";
 import type { PairingPill } from "../services/pairingService";
 import { useTranslation } from 'react-i18next';
-import { colors, radius, shadows } from "../constants/designSystem";
+import { colors } from "../constants/designSystem";
 import { s } from "../utils/responsive";
 
 const INITIALS_COLORS = [
@@ -48,29 +47,6 @@ export default function PairingInfoCard({
   onCancel,
   onClose,
 }: PairingInfoCardProps) {
-  const scaleAnim = useRef(new Animated.Value(0.95)).current;
-  const opacityAnim = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    if (visible) {
-      scaleAnim.setValue(0.95);
-      opacityAnim.setValue(0);
-      Animated.parallel([
-        Animated.spring(scaleAnim, {
-          toValue: 1,
-          useNativeDriver: true,
-          tension: 100,
-          friction: 10,
-        }),
-        Animated.timing(opacityAnim, {
-          toValue: 1,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    }
-  }, [visible, scaleAnim, opacityAnim]);
-
   const { t } = useTranslation(['social', 'common']);
 
   if (!pill) return null;
@@ -86,28 +62,13 @@ export default function PairingInfoCard({
   };
 
   return (
-    <Modal
+    <BaseBottomSheet
+      variant="center-dialog"
       visible={visible}
-      transparent
-      animationType="none"
-      onRequestClose={onClose}
-      statusBarTranslucent
+      onClose={onClose}
+      accessibilityLabel={pill.displayName}
     >
-      <View style={styles.overlay}>
-        <TouchableOpacity
-          style={styles.backdrop}
-          activeOpacity={1}
-          onPress={onClose}
-        />
-        <Animated.View
-          style={[
-            styles.card,
-            {
-              transform: [{ scale: scaleAnim }],
-              opacity: opacityAnim,
-            },
-          ]}
-        >
+      <View style={styles.card}>
           {/* Avatar */}
           <View
             style={[
@@ -147,34 +108,21 @@ export default function PairingInfoCard({
           >
             <Text style={styles.cancelButtonText}>{cancelLabel}</Text>
           </TouchableOpacity>
-        </Animated.View>
       </View>
-    </Modal>
+    </BaseBottomSheet>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.35)",
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: s(40),
-  },
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-  },
+  // META-ORCH-0991 Wave B Batch 4: was a hand-rolled RN <Modal> centered card with
+  // its own scrim (`overlay`), `backdrop`, and `card` chrome + scale/fade spring.
+  // Now a NON-swipe center-dialog (BaseBottomSheet variant="center-dialog") — it's a
+  // cancel-pairing confirm that must not be flickable (operator rule, playbook §1).
+  // Card chrome (scrim/canvas/radius/padding/shadow/maxWidth/fade) comes from
+  // glass.centerDialog; `card` is just the content layout passthrough (playbook §1).
   card: {
-    backgroundColor: "rgba(255, 255, 255, 0.95)",
-    borderRadius: s(20),
-    paddingVertical: s(28),
-    paddingHorizontal: s(24),
-    alignItems: "center",
     width: "100%",
-    maxWidth: s(300),
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.5)",
-    ...shadows.lg,
+    alignItems: "center",
   },
   avatar: {
     width: s(56),

@@ -9,18 +9,17 @@ import {
   View,
   Text,
   TouchableOpacity,
-  Modal,
   StyleSheet,
-  Animated,
   Image,
   ActivityIndicator,
 } from "react-native";
 import * as Haptics from "expo-haptics";
+import { BaseBottomSheet } from "./ui/BaseBottomSheet";
 import { Icon } from "./ui/Icon";
 import { useAcceptPairRequest, useDeclinePairRequest } from "../hooks/usePairings";
 import type { PairRequest } from "../services/pairingService";
 import { useTranslation } from 'react-i18next';
-import { colors, shadows } from "../constants/designSystem";
+import { colors } from "../constants/designSystem";
 import { s } from "../utils/responsive";
 
 const INITIALS_COLORS = [
@@ -63,8 +62,6 @@ export default function IncomingPairRequestCard({
   onClose,
 }: IncomingPairRequestCardProps) {
   const { t } = useTranslation(['social', 'common']);
-  const scaleAnim = useRef(new Animated.Value(0.95)).current;
-  const opacityAnim = useRef(new Animated.Value(0)).current;
 
   const acceptMutation = useAcceptPairRequest();
   const declineMutation = useDeclinePairRequest();
@@ -86,22 +83,6 @@ export default function IncomingPairRequestCard({
       if (successTimerRef.current) clearTimeout(successTimerRef.current);
       acceptMutation.reset();
       declineMutation.reset();
-
-      scaleAnim.setValue(0.95);
-      opacityAnim.setValue(0);
-      Animated.parallel([
-        Animated.spring(scaleAnim, {
-          toValue: 1,
-          useNativeDriver: true,
-          tension: 100,
-          friction: 10,
-        }),
-        Animated.timing(opacityAnim, {
-          toValue: 1,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-      ]).start();
     }
   }, [visible]);
 
@@ -141,29 +122,21 @@ export default function IncomingPairRequestCard({
       ? t('social:couldntDecline')
       : null;
 
+  // Guard dismissal while a mutation is in flight or success is showing, matching
+  // the prior backdrop-press guard (was `isBusy || showSuccess ? undefined : onClose`).
+  const handleClose = (): void => {
+    if (isBusy || showSuccess) return;
+    onClose();
+  };
+
   return (
-    <Modal
+    <BaseBottomSheet
+      variant="center-dialog"
       visible={visible}
-      transparent
-      animationType="none"
-      onRequestClose={onClose}
-      statusBarTranslucent
+      onClose={handleClose}
+      accessibilityLabel={t('social:wantsToPairWithYou')}
     >
-      <View style={styles.overlay}>
-        <TouchableOpacity
-          style={styles.backdrop}
-          activeOpacity={1}
-          onPress={isBusy || showSuccess ? undefined : onClose}
-        />
-        <Animated.View
-          style={[
-            styles.card,
-            {
-              transform: [{ scale: scaleAnim }],
-              opacity: opacityAnim,
-            },
-          ]}
-        >
+      <View style={styles.card}>
           {showSuccess ? (
             <>
               {/* Success state — premium */}
@@ -254,34 +227,22 @@ export default function IncomingPairRequestCard({
               )}
             </>
           )}
-        </Animated.View>
       </View>
-    </Modal>
+    </BaseBottomSheet>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.35)",
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: s(40),
-  },
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-  },
+  // META-ORCH-0991 Wave B Batch 4: was a hand-rolled RN <Modal> centered card with
+  // its own scrim (`overlay`), `backdrop`, and `card` chrome + scale/fade spring.
+  // Now a NON-swipe center-dialog (BaseBottomSheet variant="center-dialog") — it's an
+  // accept/decline confirm that must not be flickable (operator rule, playbook §1).
+  // The center-dialog supplies scrim + card canvas + radius + padding + shadow +
+  // maxWidth + fade from glass.centerDialog, so `card` is now just the content layout
+  // passthrough (alignItems:center) per playbook §1.
   card: {
-    backgroundColor: "rgba(255, 255, 255, 0.95)",
-    borderRadius: s(20),
-    paddingVertical: s(28),
-    paddingHorizontal: s(24),
-    alignItems: "center",
     width: "100%",
-    maxWidth: s(300),
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.5)",
-    ...shadows.lg,
+    alignItems: "center",
   },
   avatar: {
     width: s(64),

@@ -67,6 +67,16 @@ force 90%.
 translate it. `flex-end` + `minHeight:'95%'` → `['90%']`. Fixed `height: H*0.88` → `['88%']`.
 Centered → center-dialog (no snap).
 
+> **HARD LESSON (Batch 3, re-confirmed Batch 4):** **content-height /
+> `enableDynamicSizing` can render a sheet OFF the bottom of the screen** — gorhom
+> measures the children below the viewport (especially inside the `wrapInRNModal`
+> window) and snaps to a y-offset that's partly or fully off-screen. **Prefer an
+> explicit fixed snap height** (`['40%']` / `['45%']` / `['55%']` / `['85%']` / `['88%']`
+> as fits the content, translated from the old modal's `maxHeight`/`SCREEN_HEIGHT*`)
+> over content-dynamic sizing, UNLESS you have sim-confirmed the dynamic sheet renders
+> fully on-screen. When in doubt, fixed snap. Every Batch-4 sheet used a fixed snap and
+> all six harness-mounted sheets rendered fully on-screen.
+
 ---
 
 ## 3. Keyboard handling (any sheet with a text input)
@@ -204,3 +214,31 @@ None are destructive → all full swipe-down sheets (operator rule §1).
 | EditBioSheet | sheet | `enableDynamicSizing` (content-height) | **yes** (BottomSheetTextInput + interactive) | **true** | Was a compact flex-end card. header + view body + footer save. Dropped `KeyboardAwareView` (gorhom owns keyboard). |
 | EditInterestsSheet | sheet | `['85%']` | no | **true** | Was `maxHeight:'85%'` flex-end card → ['85%']. header + scroll chip body + sticky footer save. |
 | BillingSheet | sheet | `['92%']` | no | **true** | Was `flex:1` from `windowHeight*0.08` (≈92%) with hand-rolled drag handle + top overlay tap-strip → ['92%'] + real gorhom handle + pan-down/backdrop close. header + scroll body. Nested CustomPaywallScreen is its own RN Modal (excluded) and floats independently. |
+
+## 11. Batch 4 decision record (pairing / custom-holiday / scheduling cluster)
+
+Two of the seven are pure destructive/irreversible CONFIRM cards → NON-swipe
+`variant="center-dialog"` (operator rule §1). Two of the sheets are keyboard-aware.
+ProposeDateTimeModal was a HAND-ROLLED Animated slide-up (not an RN `<Modal>` sheet) —
+the custom slide/backdrop springs were deleted for stock gorhom motion. Every sheet
+used a FIXED snap per the §2 off-screen lesson (sim-confirmed on-screen).
+
+| Modal | Variant | Snap | Keyboard | wrapInRNModal | Notes |
+|---|---|---|---|---|---|
+| PairRequestModal | sheet | `['85%']` | **yes** (×2 inputs) | **true** | Was flex-end `maxHeight:'85%'`. header + scroll body. Mounted from ConnectionsPage (renders before the floating GlassBottomNav sibling) → wrap. Kept excluded `CountryPickerModal` sub-modal as a fragment sibling (BillingSheet precedent). |
+| IncomingPairRequestCard | **center-dialog** | — | no | n/a (auto) | Accept/decline confirm. Stripped scrim/backdrop/card + scale-fade spring → glass.centerDialog. Busy/success dismiss-guard preserved (handleClose no-ops while busy/success). |
+| PairingInfoCard | **center-dialog** | — | no | n/a (auto) | Cancel-pairing confirm. Stripped scrim/card + spring. |
+| CustomHolidayModal | sheet | `['88%']` | **yes** (name) | **true** | Was flex-end `SCREEN_HEIGHT*0.88`. header + scroll body. Inner year/month/day pill pickers stay horizontal `<ScrollView>` (orthogonal to the sheet pan — sideways scroll is fine; only a VERTICAL raw list fights the pan). ViewFriendProfileScreen over the nav → wrap. |
+| ProposeDateTimeModal | sheet (dark) | `['85%']` | no | **true** | Was a HAND-ROLLED Animated slide-up. Custom slide/backdrop springs DELETED → stock gorhom. header + scroll body + **stickyFooter** (ProposeDateTimeFooter). Dark `#1C1C1E` via backgroundStyle. iOS date+time pickers now each in their OWN RN `<Modal>` so they float ABOVE the sheet's wrapInRNModal window (were absolute overlays inside the single old Modal). Android native pickers unchanged. |
+| TicketPdfSheet | sheet (dark) | `['88%']` | no | **true** | Was flex-end `maxHeight:'88%'`. `scrollMode="view"` (consumer owns the body) because the QR carousel is a HORIZONTAL paging `<ScrollView>` that must keep paging — do NOT convert a horizontal paging carousel to BottomSheetScrollView. Bespoke `#15181f`/topRadius 28 via backgroundStyle. |
+| ActionButtons (iOS picker ONLY) | sheet (light) | `['45%']` | no | **true** | ONLY the iOS date/time `<Modal>` (~line 656). `scrollMode="view"`, header = title + Cancel/Back-to-date/Next-or-Done (TrackedTouchableOpacity analytics preserved), DateTimePicker spinner as body. Android `display="default"` branch + the rest of ActionButtons UNTOUCHED → expect exactly ONE `<BaseBottomSheet>` in the file. ExpandedCard over the tab bar → wrap. |
+
+**Two patterns worth reusing:**
+- **OS pickers above a wrapInRNModal sheet:** when a sheet contains/launches a native
+  date/time picker AND the sheet is `wrapInRNModal`, each picker overlay must be its own
+  RN `<Modal>` (not an in-tree absolute View) so it z-stacks above the sheet's OS window.
+  (ProposeDateTimeModal did this for both pickers.)
+- **Horizontal paging carousel inside a sheet:** use `scrollMode="view"` and keep the raw
+  horizontal `<ScrollView pagingEnabled>` — the "no raw list inside a sheet" rule targets
+  VERTICAL lists that fight the pan gesture; a horizontal pager is orthogonal and safe.
+  (TicketPdfSheet.)
