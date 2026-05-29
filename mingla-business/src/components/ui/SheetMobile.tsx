@@ -41,9 +41,11 @@ import {
   Platform,
   Pressable,
   StyleSheet,
+  useWindowDimensions,
   View,
 } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BlurView } from "expo-blur";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
@@ -153,6 +155,8 @@ export const Sheet: React.FC<SheetProps> = ({
   style,
 }) => {
   const screenHeight = Dimensions.get("window").height;
+  const { width: windowWidth } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   // Compute panel height: numeric snap (clamped) OR ratio-based preset.
   const requestedSheetHeight =
     typeof snapPoint === "number"
@@ -268,7 +272,14 @@ export const Sheet: React.FC<SheetProps> = ({
 
   if (!mounted) return null;
 
-  const blurOk = shouldUseRealBlur();
+  // ORCH-0964: on mobile web (< 768px) `backdrop-filter` is globally disabled
+  // (GlassBlur injects a `@media (max-width:767px){*{backdrop-filter:none}}`
+  // rule to dodge the mobile-web blur crash). A BlurView there renders FULLY
+  // transparent — the sheet's page content shows straight through it. Fall back
+  // to the solid panel background in that case so the sheet reads as opaque.
+  const blurOk =
+    shouldUseRealBlur() &&
+    !(Platform.OS === "web" && windowWidth < 768);
   const blurIntensity = blurIntensityTokens.cardElevated;
 
   return (
@@ -352,7 +363,16 @@ export const Sheet: React.FC<SheetProps> = ({
               <View style={styles.handleWrap}>
                 <View style={styles.handle} />
               </View>
-              <View style={styles.body}>{children}</View>
+              {/* ORCH-0964: pad past the bottom safe-area / nav bar so sheet
+                  content doesn't bleed into the bottom edge of the screen. */}
+              <View
+                style={[
+                  styles.body,
+                  { paddingBottom: spacing.lg + insets.bottom },
+                ]}
+              >
+                {children}
+              </View>
             </Animated.View>
           </GestureDetector>
         </View>
