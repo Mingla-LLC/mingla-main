@@ -960,6 +960,10 @@ function checkNoNewBackendFiles() {
     "supabase/migrations/20260801000001_orch_0990_fetch_local_signal_ranked_primary_type_gate.sql",
     "supabase/functions/_shared/signalRankFetch.ts",
     "supabase/functions/_shared/signalRankFetch.flowers.test.ts",
+    // ORCH-0990 tester-authored adversarial regression test (QA Step 0.5(b)) —
+    // evaluates the composite gate predicate against adversarial rows (a different
+    // angle than the implementor's SQL-text grep test). Same C7 rationale.
+    "supabase/functions/_shared/signalRankFetch.flowers.adversarial.test.ts",
     "supabase/functions/_shared/stopAlternatives.ts",
     "supabase/functions/generate-curated-experiences/index.ts",
   ];
