@@ -2,7 +2,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useMinglaReducedMotion } from '@/lib/reduced-motion'
-import { Pill } from '@/components/ui/pill'
 import {
   DC_SHOWCASE_PLACES,
   placePhotoUrl,
@@ -188,13 +187,13 @@ function DeckCard({ place, position, reduced }: DeckCardProps) {
         />
       </div>
 
-      {/* Content area — 42% solid block (v2.7). All chips LEFT-aligned, stacked:
-          name chip, description chip (2-line clamp), price chip, then a flex
-          spacer, then the bottom row (avatars + "N locals recommend" on ONE line).
-          Category eyebrow removed per operator. Chips reuse the shared
-          <Pill variant="glass"> primitive (glass-soft fill + rim) with compact
-          height/padding overrides so everything fits inside CARD_H=360 with no
-          scroll. overflow:hidden so any wrap clips cleanly, never grows the card. */}
+      {/* Content area — 42% solid block (v2.7), frosted white. Chip Color
+          System v3: a calm dark→light→accent cadence of 3 solid chips:
+          (1) name+price on ONE ink chip, (2) description white chip with a
+          hairline rim, (3) a full-width ORANGE locals pill pinned to the bottom
+          (mt-auto). Orange is spent ONCE so it lands as a single intentional
+          accent. Category eyebrow removed per operator (v2.7). overflow:hidden
+          so any name wrap / long fallback clips cleanly, never grows the card. */}
       <div
         className="flex h-[42%] flex-col items-start overflow-hidden"
         style={{
@@ -209,24 +208,65 @@ function DeckCard({ place, position, reduced }: DeckCardProps) {
         {/* Category eyebrow removed (operator v2.7: the category labels go away).
             The card no longer shows the category. */}
 
-        {/* place name chip (left-aligned, single-line truncate) */}
-        <Pill
-          variant="glass"
-          className="h-auto max-w-full truncate px-2.5 py-1 font-display"
-          style={{ fontSize: '14px', lineHeight: 1.15, color: '#0e0e10' }}
-        >
-          {place.name}
-        </Pill>
-
-        {/* description chip (left-aligned, 2-line clamp) */}
-        <Pill
-          variant="glass"
-          className="h-auto max-w-full px-2.5 py-1 font-sans"
+        {/* Name + price → ONE ink-black chip on a single line (v3.2). Name
+            flexes left and truncates; price hugs the right and never wraps.
+            Range-only on this line (· per person dropped per v3.2 — a range on
+            a place card reads as per-person by convention). White text on ink
+            = 18.9:1 (AAA). "Free" renders in WHITE here, not orange — orange is
+            reserved for the locals pill (v3.1). */}
+        <div
+          className="flex max-w-full items-baseline overflow-hidden"
           style={{
+            width: 'max-content',
+            background: 'var(--color-ink)',
+            borderRadius: '10px',
+            padding: '5px 10px',
+            gap: '8px',
+          }}
+        >
+          <span
+            className="font-display"
+            style={{
+              flex: '1 1 auto',
+              minWidth: 0,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              fontSize: '14px',
+              lineHeight: 1.15,
+              color: '#ffffff',
+            }}
+          >
+            {place.name}
+          </span>
+          <span
+            className="font-sans"
+            style={{
+              flex: '0 0 auto',
+              whiteSpace: 'nowrap',
+              fontSize: '12px',
+              fontWeight: 700,
+              color: '#ffffff',
+            }}
+          >
+            {place.priceRange ?? 'Free'}
+          </span>
+        </div>
+
+        {/* description chip → solid white with a subtle hairline rim (v3.3),
+            ink text at 78% (9.8:1 AAA), 2-line clamp. */}
+        <div
+          className="max-w-full font-sans"
+          style={{
+            width: 'max-content',
+            background: '#ffffff',
+            border: '1px solid rgba(14,14,16,0.08)',
+            borderRadius: '8px',
+            padding: '5px 9px',
             fontSize: '11.5px',
             lineHeight: 1.25,
             fontWeight: 500,
-            color: 'rgba(14,14,16,0.7)',
+            color: 'rgba(14,14,16,0.78)',
             display: '-webkit-box',
             WebkitLineClamp: 2,
             WebkitBoxOrient: 'vertical',
@@ -235,37 +275,21 @@ function DeckCard({ place, position, reduced }: DeckCardProps) {
           }}
         >
           {sellLine}
-        </Pill>
+        </div>
 
-        {/* price chip (left-aligned, consistent with name + description) */}
-        <Pill
-          variant="glass"
-          className="h-auto px-2.5 py-1 font-sans"
-          style={{ fontSize: '12px', lineHeight: 1 }}
+        {/* Locals row → full-width orange pill (v3.4), pinned to the block
+            bottom (mt-auto). Avatars left + label left-packed + flex spacer.
+            Ink text on orange = 5.0:1 (white-on-orange is 4.2:1 and FAILS AA —
+            do NOT recolor the label to white). */}
+        <div
+          className="mt-auto flex w-full items-center overflow-hidden"
+          style={{
+            background: 'var(--color-warm)',
+            borderRadius: '999px',
+            height: '30px',
+            padding: '0 10px',
+          }}
         >
-          {place.priceRange ? (
-            <>
-              <span style={{ fontWeight: 700, color: '#0e0e10' }}>
-                {place.priceRange}
-              </span>
-              <span
-                style={{
-                  fontSize: '10px',
-                  fontWeight: 600,
-                  color: 'rgba(14,14,16,0.45)',
-                }}
-              >
-                {' · per person'}
-              </span>
-            </>
-          ) : (
-            <span style={{ fontWeight: 700, color: '#eb7825' }}>Free</span>
-          )}
-        </Pill>
-
-        {/* bottom row: avatars + "N locals recommend" on ONE line,
-            pinned to the bottom of the content block (mt-auto). */}
-        <div className="mt-auto flex w-full items-center">
           {/* decorative "N locals recommend" avatar stack — CSS-only, no images */}
           <RecommendStack count={place.recommendCount} />
         </div>
@@ -315,27 +339,35 @@ function PhotoOrFallback({
   )
 }
 
-// Decorative "N locals recommend" indicator (v2.6). Replaces the old ★ rating +
-// review-count row. CSS-only avatars — NO <img>, NO network fetch (any external
-// avatar URL could 404/hang and break the premium read). Three soft-gradient
-// circles from the Mingla warm/butter family + a "+N" overflow chip + a label.
+// Decorative "N locals recommend" indicator (v2.6 / v3.4). Replaces the old ★
+// rating + review-count row. CSS-only avatars — NO <img>, NO network fetch (any
+// external avatar URL could 404/hang and break the premium read). Three
+// soft-gradient circles + a "+N" overflow chip + a label, laid out on ONE line
+// inside the full-width orange locals pill (v3.4).
 // `recommendCount` is DECORATIVE social proof — no real local-recommend data
 // exists; do NOT wire this to a backend.
+//
+// v3.4 gradient reorder: on the orange pill, avatar #1's old warm gradient would
+// blend into the band, so the most-contrasting fills face the orange — cocoa,
+// then butter, then a NEW cool plum to break the all-warm monotony and guarantee
+// the 3rd disc separates from the band.
 const AVATAR_GRADIENTS = [
-  'linear-gradient(135deg, #eb7825 0%, #f4a85f 100%)', // warm
+  'linear-gradient(135deg, #7a4a2a 0%, #b87333 100%)', // cocoa→copper (darkest)
   'linear-gradient(135deg, #f4d679 0%, #eba94f 100%)', // butter→amber
-  'linear-gradient(135deg, #7a4a2a 0%, #b87333 100%)', // cocoa→copper
+  'linear-gradient(135deg, #2a1f3d 0%, #5a4a7a 100%)', // deep plum→violet (cool)
 ] as const
 const AVATAR_INITIALS = ['M', 'J', 'K'] as const
 
 function RecommendStack({ count }: { count: number }) {
   // 3 faces shown; overflow chip = count − 3.
   const overflow = Math.max(0, count - 3)
+  // White rings (v3.4): solid #FFFFFF punches a clean separation from both the
+  // neighbour avatar AND the saturated orange band.
   const ringStyle = {
     width: 22,
     height: 22,
     borderRadius: 9999,
-    border: '2px solid rgba(255,255,255,0.96)',
+    border: '2px solid #ffffff',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -343,7 +375,7 @@ function RecommendStack({ count }: { count: number }) {
   } as const
 
   return (
-    <div aria-hidden="true" className="flex items-center">
+    <div aria-hidden="true" className="flex w-full items-center">
       <div className="flex items-center">
         {AVATAR_INITIALS.map((initial, i) => (
           <div
@@ -360,7 +392,7 @@ function RecommendStack({ count }: { count: number }) {
               style={{
                 fontSize: '10px',
                 fontWeight: 800,
-                color: 'rgba(255,255,255,0.96)',
+                color: '#ffffff',
                 lineHeight: 1,
               }}
             >
@@ -371,8 +403,9 @@ function RecommendStack({ count }: { count: number }) {
         {overflow > 0 ? (
           <div
             style={{
+              // +N chip → solid ink (v3.4: reads as "more" decisively on orange).
               ...ringStyle,
-              background: 'rgba(14,14,16,0.82)',
+              background: 'var(--color-ink)',
               marginLeft: -8,
               zIndex: 0,
             }}
@@ -382,7 +415,7 @@ function RecommendStack({ count }: { count: number }) {
               style={{
                 fontSize: '9px',
                 fontWeight: 800,
-                color: 'rgba(255,255,255,0.95)',
+                color: '#ffffff',
                 lineHeight: 1,
               }}
             >
@@ -391,6 +424,7 @@ function RecommendStack({ count }: { count: number }) {
           </div>
         ) : null}
       </div>
+      {/* Label → INK on orange (5.0:1 AA ✓; white-on-orange is 4.2:1 and FAILS). */}
       <span
         className="font-sans"
         style={{
@@ -398,13 +432,17 @@ function RecommendStack({ count }: { count: number }) {
           fontSize: '11px',
           lineHeight: 1.1,
           fontWeight: 600,
-          color: 'rgba(14,14,16,0.6)',
-          textAlign: 'right',
+          color: 'var(--color-ink)',
         }}
       >
-        <span style={{ fontWeight: 700, color: '#0e0e10' }}>{count}</span>
+        <span style={{ fontWeight: 700, color: 'var(--color-ink)' }}>
+          {count}
+        </span>
         {' locals recommend'}
       </span>
+      {/* flex spacer — eats remaining width so the pill is genuinely full-width
+          with the avatars + label left-packed (v3.4). */}
+      <span style={{ flex: '1 1 auto' }} aria-hidden="true" />
     </div>
   )
 }

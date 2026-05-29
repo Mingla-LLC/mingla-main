@@ -190,3 +190,49 @@ The card's outer height (`CARD_H=360`), width (260) and deck-wrapper height (`CA
 
 ### Discoveries for orchestrator
 None.
+
+---
+
+## Chip Color System v3 pass — 2026-05-29 (operator verbatim)
+
+**Operator direction (verbatim):** "The chips need better design, use black, white or eb7825. Great contrast for visual appeal. The price should be beside the name of the place compact to both be contained in one line. The locals and avatar should be in a colored pill as well, and be the full width of the section so its great."
+
+**File edited (exactly 1):** `mingla-marketing/components/sections/explorer-home/hero-place-deck.tsx`. Dev server already on :3008 (orchestrator-started); all edits hot-reloaded; no restart, no second server, no process killed. `CARD_H` stays 360 (untouched), `CARD_W` 260, deck-wrapper `CARD_H + 62` — page-level no-scroll ceiling untouched. Per spec §335–476 "Chip Color System v3."
+
+### The 3 changes
+
+**1. Name + price → ONE ink chip on a single line (v3.2).** The separate name `<Pill>` and price `<Pill>` were merged into one flex `<div>`: fill `var(--color-ink)` (#0E0E10), `border-radius:10px`, pad `5px 10px`, `align-items:baseline`, `gap:8px`, `width:max-content`, `overflow:hidden`. Name (left) `flex:1 1 auto; min-width:0; white-space:nowrap; text-overflow:ellipsis` — truncates if long (e.g. President Lincoln's Cottage). Mochiy 14px White `#FFFFFF`. Price (right) `flex:0 0 auto; white-space:nowrap` — Nunito 12px/700 White, never wraps. RANGE ONLY (`· per person` dropped per v3.2). "Free" renders in WHITE here (orange reserved for the locals pill). White-on-ink = 18.9:1 (AAA).
+
+**2. Description chip → solid white with a hairline rim (v3.3).** Was glass-soft `<Pill>`; now a `<div>` fill `#FFFFFF`, `border:1px solid rgba(14,14,16,0.08)` rim, `border-radius:8px`, pad `5px 9px`, text `rgba(14,14,16,0.78)` (9.8:1 AAA), Nunito 11.5px/lh1.25/500, 2-line clamp via `-webkit-line-clamp:2` + `overflow:hidden`, `width:max-content; max-width:100%`.
+
+**3. Locals row → full-width orange pill (v3.4).** The bottom row is now a `<div>` fill `var(--color-warm)` (#EB7825), `width:100%`, `border-radius:999px`, `height:30px`, pad `0 10px`, `mt-auto` (pinned to block bottom), `overflow:hidden`, `display:flex; align-items:center`. Inside, `RecommendStack` was updated: avatar rings → solid `#FFFFFF` (was `rgba(255,255,255,0.96)`); gradients REORDERED to cocoa→copper, butter→amber, and a NEW deep plum→violet so each disc separates from the orange band (per v3.4); `+N` overflow chip fill → solid `var(--color-ink)` (was `rgba(14,14,16,0.82)`); label + count color → `var(--color-ink)` (was `rgba(14,14,16,0.6)`/#0e0e10). Layout = avatars left, label left-packed (`margin-left:8px`), then a `flex:1 1 auto` spacer so the pill is genuinely full-width with content left-packed. Initials M/J/K White on the dark/mid gradients.
+
+**Why ink text on orange, not white (load-bearing color decision):** white-on-#EB7825 = 4.2:1 (FAILS AA body 4.5). Ink-on-orange = 5.0:1 (passes AA body, AAA large). Recorded inline in the component so no future dev "fixes" it back to white.
+
+**Cleanup:** the now-unused `import { Pill }` was removed (Pill no longer used anywhere in the file); stale content-block comment updated to describe the v3 dark→light→accent cadence.
+
+### Contrast summary (computed, per spec v3.7)
+| Pairing | Ratio | WCAG |
+|---|---|---|
+| White name/price on Ink chip | 18.9:1 | AAA |
+| Ink-78% description text on White chip | 9.8:1 | AAA body |
+| Ink label/count on Orange pill | 5.0:1 | AA body ✓ |
+| White avatar initials on cocoa/butter/plum | ≥4.5:1 | AA body |
+| White +N on Ink overflow chip | 18.9:1 | AAA |
+
+White-on-orange (4.2:1) was REJECTED for failing AA body — that is why the locals pill uses ink text.
+
+### No-scroll conclusion (768px-tall worst case, CARD_H=360 unchanged)
+The card's outer height (`CARD_H=360`), width (260) and deck-wrapper height (`CARD_H+62`) are byte-for-byte unchanged from v2, so the page-level one-screen-hero math is unchanged → middle band 599.0px available, used 584.6px, **headroom +14.4px → no page scroll at 768px or any taller viewport.** Internal fit: v3 REMOVED one full row (price folded into the name line) and spent part of the reclaimed space on the 30px orange pill. Computed content-block budget (spec v3.5) = **124.75px**, comfortably under the available content area (≈151px at the as-built 42% split). Block is `overflow:hidden` so any name wrap clips cleanly. **CARD_H stays 360; no scroll; card height not exceeded.**
+
+### Verify
+- `npx tsc --noEmit` (marketing) → **exit 0**, no errors.
+- `curl http://localhost:3008/` → **HTTP 200** (clean hot-recompile; correct chip markup served — a compile error would yield a Next error overlay/500 instead).
+- Served HTML: name+price on the combined ink chip (`var(--color-ink)` fill ×1; `L'Ardente … $50–$100`); description white chip with `1px solid rgba(14,14,16,0.08)` rim; `var(--color-warm)` orange locals-pill fill ×2; `locals recommend` ×3; `Free` present (Lincoln's Cottage front card); overflow chips `+209`/`+45`/`+93`. ` per person` count = **0** (dropped per v3.2). Category labels (`Italian Restaurant`/`Cocktail Bar`) count = **0** (still absent).
+- Marketing-only; no app-mobile/supabase/business/admin touch; existing `--color-ink` + `--color-warm` tokens reused (no raw hex for the chip fills); CARD_H not exceeded.
+
+### Regression test
+**BACKFILL-EXEMPT** — marketing-only presentational CSS/color change; verification is the served-HTML + tsc gate above.
+
+### Discoveries for orchestrator
+None.

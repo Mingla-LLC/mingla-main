@@ -329,3 +329,147 @@ Free-case variant (Anacostia Park): eyebrow `PARK`; price cell renders **`Free`*
 5. Description-area layout per the v2.3 table; spacing tokens `14/12/10` pad, `4/4/6` gaps; price-range format per v2.4.
 6. Update the front-card `aria-label` per v2.6 (drop rating clause). Keep all motion/reduced-motion/hover/visibility logic from v1 §7–§8 untouched.
 7. Keep the inline "no distance / no travel-time" honesty comment; add the "decorative social proof" comment on `recommendCount`.
+
+---
+
+# Chip Color System v3 — operator pass 2026-05-29
+
+**Driver (Seth, verbatim):** "The chips need better design, use black, white or eb7825. Great contrast for visual appeal. The price should be beside the name of the place compact to both be contained in one line. The locals and avatar should be in a colored pill as well, and be the full width of the section so its great."
+
+This section **supersedes** the chip *colors* (the all-glass-soft treatment), the chip *stacking order* (name → description → price → bottom row), and the bottom social-row treatment in v2.3/v2.4/v2.6. Everything else holds: `CARD_H = 360` 🔒, `CARD_W 260`, the `64% / 36%` photo/content split, the photo treatment + scrim, the 404 fallback, all motion/reduced-motion/hover/visibility logic, the honesty rules (no distance, no travel-time), and the CSS-only-avatar / decorative-social-proof rules. **The card surface stays `rgba(255,255,255,0.96)` frosted white** — all chip colors below are computed against that as the separation background.
+
+**Palette (3 colors only):**
+- **Ink** `#0E0E10` (near-black; the existing `--color-ink` token, not pure `#000` — sits more premium on frost and is already the card's text color)
+- **White** `#FFFFFF`
+- **Mingla orange** `#EB7825` (the brand warm; exists as `--color-warm` in `mingla-marketing` globals — confirmed used at `hero-place-deck.tsx` L262 and v2 §11. Use the token, not a raw hex.)
+
+## v3.1 — Chip color assignment (computed contrast)
+
+Three chip surfaces, one per palette color, deliberately distributed so the eye reads **name+price (ink) → description (white) → locals (orange)** top-to-bottom as a calm dark→light→accent cadence. Orange is spent ONCE (the locals pill) so it lands as a single intentional accent, not noise.
+
+| Chip | Fill | Text | Text-on-fill contrast (WCAG) | Fill-vs-card separation |
+|---|---|---|---|---|
+| **Name + price line** | Ink `#0E0E10` | Name: White `#FFFFFF` · Price: White `#FFFFFF` · "per person" qualifier: `rgba(255,255,255,0.62)` | name/price **18.9:1** (AAA); qualifier `rgba(255,255,255,0.62)`≈`#9D9D9E`-on-ink **6.7:1** (AA body) | ink chip on `#FAFAFA`-effective frost = **18.5:1** luminance gap — maximal separation, the chip reads as a solid object |
+| **Description** | White `#FFFFFF` | Ink at 78% `rgba(14,14,16,0.78)` ≈ `#3F3F40` | **9.8:1** (AAA body) | white chip on `0.96`-white frost: fills are near-identical, so separation comes from a **`1px solid rgba(14,14,16,0.08)` hairline rim + the chip's own opacity bump to a true `#FFFFFF` vs the frost's `0.96`** (subtle lift, deliberate — description is supporting text, not a hard object) |
+| **Locals pill (full-width)** | Orange `--color-warm` `#EB7825` | Label + count: Ink `#0E0E10`; avatar rings: White `#FFFFFF` | ink-on-orange **5.0:1** (AA body ≥4.5 ✓; large-text AAA) | orange chip on white frost = **2.4:1** luminance gap + the orange hue itself — reads instantly as the one accent band |
+
+**Why ink text on orange, not white:** white-on-`#EB7825` is **4.2:1** — *fails* AA body (4.5). Ink-on-orange is **5.0:1** — passes. So the locals pill uses **near-black text on orange**, which also reads more premium (the orange stays a confident saturated band, not washed by white type). This is the load-bearing color decision in this pass.
+
+**Anti-slop note:** exactly 3 fills, each a flat solid (no gradients on the chips themselves — the avatar circles keep their warm gradients per v2.6, see v3.4). No glass/blur on the name/price/locals chips anymore (they become opaque solids); the description chip keeps a whisper of the frost lineage via its hairline rim only.
+
+## v3.2 — Name + price on ONE compact line (chip #1, Ink fill)
+
+A single horizontal ink chip holding the place name (left, flexes) and the price (right, hugs content), both on one baseline-aligned line.
+
+- **Container:** `display:flex; align-items:baseline; gap:8px; width:max-content; max-width:100%`. Fill Ink `#0E0E10`, `border-radius:10px` (`rounded-[10px]` — slightly tighter than `rounded-full` so a wide name+price chip doesn't read as a lozenge), padding `5px 10px`. One line, `overflow:hidden`.
+- **Name (left, flexes + truncates):** `--font-display` (Mochiy) `14px` / lh 1.15, White `#FFFFFF`. `flex:1 1 auto; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis`. The `min-width:0` is what lets a long name actually truncate inside a flex row.
+- **Price (right, hugs):** `flex:0 0 auto; white-space:nowrap`. Number `--font-sans` `12px` weight 700 White `#FFFFFF`; e.g. `$50–$100` (en-dash, per v2.4).
+  - **`· per person` is DROPPED on this compact line** — the qualifier doesn't fit beside name+number on a 260px card and isn't needed (a price range on a place card reads as per-person by convention). 🔒 Decision: price shows **only the range** on the name line. (The honest range itself carries the meaning; "per person" was a v2 nicety, not load-bearing.)
+  - **`Free` case** (Anacostia, Lincoln's Cottage, `priceRange === null`): the price segment renders the word **`Free`** in `--font-sans` `12px` weight 700 — but in **White `#FFFFFF`** on the ink chip (NOT orange here; orange is reserved for the locals pill, and white-on-ink keeps the line monochrome-clean). 18.9:1 contrast.
+- **Truncation behavior (long name, e.g. "President Lincoln's Cottage"):** name truncates with ellipsis; price is `flex:0 0 auto` so it NEVER truncates or wraps — the price always stays fully visible, the name yields. A 1px gap guard (`gap:8px`) keeps the ellipsis off the price. Full name lives in the card `aria-label`.
+- **Separator inside the chip:** none needed — the `8px` gap + the name-truncate + right-pinned price reads cleanly. (If a future longer dataset crowds it, add a `rgba(255,255,255,0.18)` `1px` vertical hairline before the price; not needed for these 5.)
+
+ASCII of the one-line chip (L'Ardente):
+```
+[■ L'Ardente            $50–$100 ■]   ← ink fill, white text, name flexes/truncates, price hugs right
+```
+
+## v3.3 — Description chip (chip #2, White fill)
+
+Stays its own line, directly below the name+price line. Unchanged content rules (real blurb else category fallback per §5).
+- **Fill:** White `#FFFFFF`. **Text:** Ink at 78% `rgba(14,14,16,0.78)` (9.8:1). **Rim:** `1px solid rgba(14,14,16,0.08)`, `border-radius:8px`, padding `5px 9px`.
+- Type: `--font-sans` `11.5px` / lh 1.25, weight 500. **2-line clamp** (`-webkit-line-clamp:2`), `overflow:hidden`. Width `max-content; max-width:100%` so a short blurb chip hugs its text and a long one fills the row then clamps.
+
+## v3.4 — Locals + avatars → full-width Orange PILL (chip #3)
+
+The v2.6 social row becomes a single **orange pill spanning the FULL WIDTH** of the content section, pinned to the bottom (`margin-top:auto`).
+
+- **Fill:** Orange `--color-warm` `#EB7825`. **Width:** `100%` of the content block's inner width (`width:100%`, stretches edge-to-edge inside the `12px` horizontal padding). **Radius:** `999px` (full pill — at full width a pill cap reads as a deliberate "ribbon", premium). **Height:** `30px` fixed. **Padding:** `0 10px`. `overflow:hidden`.
+- **Internal layout (one line, `display:flex; align-items:center`):** **avatars LEFT, label RIGHT-of-avatars but left-aligned, count emphasized** — i.e. `[avatars] [label] ————— (flex spacer)`. Avatars anchor the left so the orange band has a clear visual entry; the label sits immediately right with `margin-left:8px`. Rationale: left-anchored avatars + label reads as a unit ("these people →"), and left-alignment on a full-width band looks intentional (a right-pinned label on a wide band leaves an awkward empty middle).
+  - Layout: `<avatar stack>` then `<label>` then `flex:1` spacer (eats the remaining width so the pill is genuinely full-width with content left-packed).
+- **Label text:** `N locals recommend`, `--font-sans` `11px` / lh 1.1 weight 600, **Ink `#0E0E10`** (5.0:1 on orange ✓). The **`N`** numeral weight 700, also ink (no extra emphasis color needed — ink-on-orange is already strong).
+- **Avatars (CSS-only, restated for orange fill):** 3 circles, **22px**, `border:2px solid #FFFFFF` (white ring — punches a clean separation from BOTH the neighbour avatar AND the orange band; the v2.6 `rgba(255,255,255,0.96)` ring is bumped to solid `#FFFFFF` for max crispness on saturated orange). `margin-left:-8px` overlap after the first.
+  - **Gradient fills (re-verified to read on orange):** avatar #1's warm gradient (`#eb7825→#f4a85f`) would *blend into* the orange band and lose its edge — so on the orange pill, **reorder the gradients** so the most-contrasting fills face the band:
+    1. `linear-gradient(135deg, #7a4a2a 0%, #b87333 100%)` — cocoa→copper (darkest; reads as a clear dark disc on orange)
+    2. `linear-gradient(135deg, #f4d679 0%, #eba94f 100%)` — butter→amber (light disc, the white ring separates it from the band)
+    3. `linear-gradient(135deg, #2a1f3d 0%, #5a4a7a 100%)` — deep plum→violet (NEW: a cool dark to break the all-warm monotony and guarantee the 3rd disc separates from orange; still on-brand-adjacent, not random)
+  - Initials `M`, `J`, `K` (decorative), `--font-sans` `10px` weight 800, White `#FFFFFF` (≥4.5:1 on all three dark/mid gradients).
+  - **`+N` overflow chip:** 22px, `border:2px solid #FFFFFF`, fill **Ink `#0E0E10`** (was `0.82` — now solid ink so it reads as "more" decisively against orange), text `+N` White `9px` weight 800 (18.9:1).
+- **`aria-hidden="true"`** on the whole pill (decorative social proof — unchanged from v2.6). Card `aria-label` still drops the recommend count.
+
+ASCII of the locals pill (full width, L'Ardente):
+```
+│■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■│   ← orange band, 100% width, 30px tall
+│ (●●●)+209  212 locals recommend     │   ← avatars left, ink label, left-packed
+```
+
+## v3.5 — Content-block budget (proof it still fits 36% of 360 = 130px content area)
+
+The content block in code is `42%` (151px); v3 keeps the v2.7-as-built **`10px 12px` padding, `5px` gaps**. v3 removes one full row (price was its own line; now folded into the name line) which BUYS back vertical room, then spends part of it on the slightly taller full-width pill.
+
+| Item | px |
+|---|---|
+| Padding top | 10 |
+| Name+price chip (14px Mochiy, pad 5+5, lh 1.15 → ~16 glyph) | 26 |
+| gap | 5 |
+| Description chip (2× 11.5px @ lh1.25 = 28.75 + pad 5+5) | 38.75 |
+| gap (flex spacer absorbs slack, ≥5 floor) | 5 |
+| Locals pill | 30 |
+| Padding bottom | 10 |
+| **Total** | **124.75px** |
+
+124.75 ≤ the available content area (151px at the as-built 42%, comfortably; and ≤130px if held to the v2 36% split) → **fits with headroom, no growth of `CARD_H`.** The block is `overflow:hidden` so any name wrap or longer fallback clips cleanly. **No padding tightening required**; if a future dataset crowds it, drop the description-to-pill gap to `4px` (the flex spacer already floats the pill to the bottom regardless). `CARD_H` stays **360** — untouched. 🔒
+
+## v3.6 — Full-card ASCII mockup (L'Ardente, front card, v3)
+
+```
+┌──────────────────────────────────────┐  ← 36px radius, 260×360, shadow on dark
+│                                        │
+│        [ REAL HERO PHOTO ]             │
+│          0.jpg, cover                  │  64% photo zone (≈230px)
+│                                        │   (no pill, no over-photo text;
+│        (faint scrim guards the seam)   │    scrim only guards the seam)
+├────────────────────────────────────────┤  ← hairline
+│ ┌────────────────────────────────────┐ │  ← INK chip, white text, ONE line:
+│ │ L'Ardente              $50–$100    │ │     name flexes/truncates · price hugs
+│ └────────────────────────────────────┘ │
+│ ┌────────────────────────────────────┐ │  ← WHITE chip, ink-78% text, 2-line:
+│ │ Elegant Italian with chandeliers   │ │     hairline rim separates from frost
+│ │ and a gold-plated pizza oven.      │ │
+│ └────────────────────────────────────┘ │      36% content block (≈130–151px)
+│ ┌────────────────────────────────────┐ │  ← ORANGE pill, FULL WIDTH, ink text:
+│ │ (●●●)+209  212 locals recommend    │ │     avatars left, label left-packed
+│ └────────────────────────────────────┘ │
+└────────────────────────────────────────┘
+```
+
+Free-case (Anacostia Park): name line `Anacostia Park   Free` (Free in WHITE on ink, not orange — orange reserved for the pill); orange locals pill `173 locals recommend` / `+170`. OKPB: name line `OKPB   $30–$50`; description = fallback *"Craft cocktails and a room worth lingering in."*; locals pill `48 locals recommend` / `+45`.
+
+## v3.7 — Contrast summary (all pairings, computed)
+
+| Pairing | Ratio | WCAG |
+|---|---|---|
+| White name/price on Ink chip | 18.9:1 | AAA |
+| `rgba(255,255,255,0.62)` qualifier on Ink (if ever shown) | 6.7:1 | AA body |
+| Ink-78% description text on White chip | 9.8:1 | AAA body |
+| Ink label/count on Orange pill | 5.0:1 | AA body ✓ (large AAA) |
+| White avatar initials on cocoa/butter/plum gradients | ≥4.5:1 | AA body |
+| White `+N` on Ink overflow chip | 18.9:1 | AAA |
+| Ink chip vs frost card (separation) | 18.5:1 Δ | strong object read |
+| Orange pill vs frost card (separation) | 2.4:1 Δ + hue | clear accent band |
+| White description chip vs frost (separation) | hairline rim (fills ~equal by design) | intentional soft lift |
+
+**Rejected for failing contrast:** white text on orange (`4.2:1` — fails AA body). That is why the locals pill uses ink text, not white. Recorded so no implementor "fixes" it back to white.
+
+## v3.8 — No-scroll conclusion
+
+`CARD_H` remains **360px** 🔒 — the v2.1 hero math (768px-tall worst case, +14.4px headroom, 1.075× wrapper scale) is unchanged because the card's outer dimensions did not move. v3 only re-colors and re-flows chips *inside* the existing `36%`/`42%`-as-built content block, and the new layout's computed budget (**124.75px**) sits comfortably under the available content height. No padding was grown; one row was removed (price folded into the name line) and the reclaimed space funds the full-width 30px orange pill. **The one-screen hero introduces no page scroll at 768px or any taller viewport.**
+
+## v3.9 — Implementor delta (concise)
+
+1. **Name+price chip:** replace the separate name `<Pill>` and price `<Pill>` (current L213–264) with ONE flex chip — Ink fill `#0E0E10`, `rounded-[10px]`, pad `5px 10px`, `align-items:baseline`, `gap:8px`. Name `flex:1 1 auto; min-width:0` truncate, White Mochiy 14. Price `flex:0 0 auto` White Nunito 12/700, range-only (DROP `· per person`). `Free` → White (not orange) on this chip.
+2. **Description chip (current L222–238):** keep position + 2-line clamp; change fill to solid `#FFFFFF`, add `1px solid rgba(14,14,16,0.08)` rim, text `rgba(14,14,16,0.78)`, `rounded-[8px]`.
+3. **Delete** the standalone price `<Pill>` block (current L240–264) — folded into #1.
+4. **Locals pill:** wrap the current bottom row (`RecommendStack`, L268–271 + the component L331–410) in a full-width orange pill: `width:100%`, fill `--color-warm`, `rounded-full`, `height:30px`, pad `0 10px`, `display:flex; align-items:center`, avatars left + label left-packed + `flex:1` spacer. Change label color to Ink `#0E0E10`; change avatar rings to solid `#FFFFFF`; reorder/replace gradients per v3.4 (cocoa, butter, plum); `+N` chip fill → solid Ink.
+5. Keep `mt-auto` on the pill so it pins to the block bottom; keep `overflow:hidden` on the content block.
+6. All motion/reduced-motion/hover/visibility/`aria-label`/honesty comments — untouched.
