@@ -39,11 +39,6 @@ export type {
 // mingla-business cards/public pages, app-mobile, AND the shared brand page.
 export { EventCover } from "./EventCover";
 export type { EventCoverProps } from "./EventCover";
-export { EventCoverMedia } from "./EventCoverMedia";
-export type {
-  EventCoverMediaProps,
-  EventCoverMediaErrorEvent,
-} from "./EventCoverMedia";
 export { resolveEventCoverMediaPresentation } from "./coverMediaPresentation";
 // ORCH-0964 — BlurView wrapper that skips backdrop-filter on mobile web (where
 // stacked blur hard-crashes the renderer). Used by public brand + event pages.
