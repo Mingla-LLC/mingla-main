@@ -39,7 +39,7 @@ now match its feel. Structural regression suites PASS (`BaseBottomSheet.test.mjs
 the sole-gorhom-consumer strict-grep gate PASSES, and `tsc` shows zero new errors in touched files (244
 pre-existing baseline unchanged). Metro :8100 compiled the iOS bundle cleanly (HTTP 200, 4.75 MB).
 
-**REWORK commit:** `bdefd0931` — see §2 Commits table.
+**REWORK commit:** `89f69ca66` — see §2 Commits table.
 
 ---
 
@@ -66,7 +66,7 @@ Every Mingla consumer bottom sheet now slides up from one shared engine instead 
 | 5 | `cf7bb1169` | Migrate `NotificationsSheet.tsx` + repoint ORCH-0975 gate & locked test `[TEST-MOD-APPROVED META-ORCH-0991]`. |
 | 6 | `42bc0d336` | Migrate `ExpandedCardModal.tsx` (HIGH-risk keystone — last). |
 | 7 | `1ad01730e` | Strict-grep sole-gorhom-consumer gate + CI job + `BaseBottomSheet.test.mjs` regression suite. |
-| 8 | `bdefd0931` | **REWORK** — stock gorhom motion (clone `ExpandedBusinessEventSheet`): drop custom `SHEET_SPRING` + `useBottomSheetSpringConfigs` + `ReduceMotion` import + `animationConfigs` prop; update T-C `[TEST-MOD-APPROVED META-ORCH-0991]`; amend DESIGN §2/§3 + this report. |
+| 8 | `89f69ca66` | **REWORK** — stock gorhom motion (clone `ExpandedBusinessEventSheet`): drop custom `SHEET_SPRING` + `useBottomSheetSpringConfigs` + `ReduceMotion` import + `animationConfigs` prop; update T-C `[TEST-MOD-APPROVED META-ORCH-0991]`; amend DESIGN §2/§3 + this report. |
 
 ---
 
