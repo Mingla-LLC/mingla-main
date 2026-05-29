@@ -10,6 +10,38 @@
 
 ---
 
+## ⚠ REWORK SUPERSESSION — STOCK gorhom default motion (operator decision 2026-05-29)
+
+> **Seth rejected the custom-motion version.** The `BaseBottomSheet` primitive must feel **EXACTLY** like
+> `app-mobile/src/components/expandedCard/ExpandedBusinessEventSheet.tsx` — which uses the **stock
+> `@gorhom/bottom-sheet` DEFAULT spring** (passes **NO** `animationConfigs`). That default ("rolls up and
+> closes") IS the feel Seth wants.
+>
+> **What this supersedes in the sections below:**
+> - **§3 (OPEN #2 — Snap spring feel) — SUPERSEDED / REJECTED.** The custom `SHEET_SPRING`
+>   (`damping 50 / stiffness 320 / overshootClamping / ReduceMotion.System` via `useBottomSheetSpringConfigs`)
+>   is **REMOVED** from `BaseBottomSheet.tsx`. The primitive passes **no** `animationConfigs`; gorhom's
+>   default spring carries open/snap/snap-snap/dismiss-settle for all consumers, byte-equivalent to the
+>   reference sheet. gorhom's default already honors OS reduce-motion internally, so the Reanimated
+>   `ReduceMotion` import is gone too.
+> - **§2 (OPEN #1 — Handle resting vs active treatment) — REJECTED for Wave A.** The handle is **STATIC**,
+>   matching `ExpandedBusinessEventSheet`'s static `handleIndicatorStyle`. The custom pan-engage
+>   brighten/widen/scale (`handleActive`) micro-interaction is **NOT wired** into the primitive. The
+>   `glass.bottomSheet.handleActive` / `glass.notificationsSheet.handleActive` tokens remain **defined-but-unused**
+>   in `designSystem.ts` (kept to avoid touching other refs; the primitive does NOT animate the handle).
+>
+> **What still stands (NOT motion — preserved):** the declarative `index={visible ? initialIndex : -1}`
+> open/close, `enablePanDownToClose`, `snapPoints` from `glass.bottomSheet.snapPoints` (`['50%','90%']`),
+> `BottomSheetBackdrop`, the static handle/background tokens, top-radius 28, handle 36×4, the inline-vanilla
+> `<BottomSheet>` architecture, `wrapInRNModal` z-stacking, keyboard-aware text input, and the scrollMode
+> variants. §4 (flat backdrop), §5 (`center-dialog` — which is RN-Modal `animationType="fade"`, never used
+> the custom spring), and §6.2 (reduce-transparency backdrop floor) all stand. Only the custom MOTION
+> (§3 spring) and the handle-active animation (§2) are reverted to stock.
+>
+> Implemented in the Wave A REWORK commit; see `Mingla_Artifacts/reports/IMPLEMENTATION_META-ORCH-0991_WAVE_A_BASE_BOTTOM_SHEET.md` §REWORK.
+
+---
+
 ## 0. Comms ledger + lock acknowledgment
 
 - **COMMS_LEDGER scanned** (`/Users/sethogieva/Desktop/mingla-main/COMMS_LEDGER.md`). No OPEN `BLOCK` row targets `mingla-designer`, `META-ORCH-0991`, or `ALL`. **COMMS-0003** (`ALL`/WARN — external-API params doc-cited inline) is factored: this DESIGN introduces **no new external API surface** — gorhom's `animationConfigs`, `useBottomSheetSpringConfigs`, and Reanimated's `ReduceMotion` enum are each cited inline below against the provider typings/docs. **COMMS-0002** (ORCH-0863 backend allowlist) is **N/A** — this is a docs-only artifact + a future `designSystem.ts` change; zero `supabase/functions/` or `supabase/migrations/` touch. No new cross-ORCH discovery to write.
@@ -35,6 +67,10 @@ All five are pinned to exact hex / px / ms / easing below. Nothing is left to im
 ---
 
 ## 2. OPEN #1 — Handle resting vs active (drag) treatment
+
+> **🚫 REJECTED (REWORK 2026-05-29).** The handle is STATIC in the shipped primitive — see the REWORK
+> supersession banner at the top. Section retained for history only; do NOT implement the active-handle
+> animation in Wave A. The `handleActive` tokens stay defined-but-unused.
 
 ### 2.1 Design rationale
 
@@ -102,6 +138,10 @@ And the LIGHT-theme active handle goes as a NEW sibling key inside `glass.notifi
 ---
 
 ## 3. OPEN #2 — Snap spring feel
+
+> **🚫 SUPERSEDED / REJECTED (REWORK 2026-05-29).** The custom `SHEET_SPRING` was REMOVED. The primitive
+> passes NO `animationConfigs` and uses gorhom's DEFAULT spring, cloned from `ExpandedBusinessEventSheet`.
+> See the REWORK supersession banner at the top. Section retained for history only.
 
 ### 3.1 Constraint
 

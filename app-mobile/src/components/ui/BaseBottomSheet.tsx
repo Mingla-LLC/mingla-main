@@ -44,28 +44,22 @@ import BottomSheet, {
   BottomSheetScrollView,
   BottomSheetSectionList,
   BottomSheetView,
-  useBottomSheetSpringConfigs,
   type BottomSheetBackdropProps,
 } from '@gorhom/bottom-sheet';
-import { ReduceMotion } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { glass } from '../../constants/designSystem';
 
-// ── Snap/settle spring (DESIGN §3) ──────────────────────────────────────────
-// Critically-near-damped, zero overshoot, ~320ms arrival. Governs
-// open/snap/snap-snap/dismiss-settle. Does NOT change snapPoints or dismiss
-// thresholds (those are gesture, not spring). `ReduceMotion.System` makes
-// Reanimated jump-to-target automatically when OS reduce-motion is on.
-const SHEET_SPRING_CONFIG = {
-  damping: 50,
-  stiffness: 320,
-  mass: 1,
-  overshootClamping: true,
-  restDisplacementThreshold: 0.01,
-  restSpeedThreshold: 2,
-  reduceMotion: ReduceMotion.System,
-} as const;
+// ── Snap/settle motion: STOCK gorhom default ────────────────────────────────
+// META-ORCH-0991 Wave A REWORK (operator decision 2026-05-29): the custom
+// `SHEET_SPRING` (damping 50 / stiffness 320 / overshootClamping) is REMOVED.
+// This primitive now passes NO `animationConfigs` to <BottomSheet>, so gorhom
+// uses its DEFAULT spring — the exact open/close/settle feel of
+// `ExpandedBusinessEventSheet` (the gold-standard sheet, itself one of the 5
+// Wave-A consumers). gorhom's default already honors the OS reduce-motion
+// setting internally, so no Reanimated `ReduceMotion` wiring is needed here.
+// The custom spring + the DESIGN §3 handle-active micro-interaction were
+// REJECTED; see DESIGN_META-ORCH-0991_WAVE_A_BASE_BOTTOM_SHEET.md §3/§2.
 
 export type BaseBottomSheetTheme = 'dark' | 'light';
 export type BaseBottomSheetVariant = 'sheet' | 'center-dialog';
@@ -263,7 +257,6 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
     backdropOpacity,
   } = props;
 
-  const springConfig = useBottomSheetSpringConfigs(SHEET_SPRING_CONFIG);
   const effectiveBackdropOpacity = useEffectiveBackdropOpacity(theme, backdropOpacity);
 
   // Open/close mirror of the proven pattern (SPEC §3.3): snapToIndex on open,
@@ -443,7 +436,6 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
       backgroundStyle={resolvedBackgroundStyle}
       handleIndicatorStyle={resolvedHandleStyle}
       handleComponent={showHandle ? undefined : null}
-      animationConfigs={springConfig}
       keyboardBehavior={keyboardBehavior}
       keyboardBlurBehavior={keyboardBlurBehavior}
       android_keyboardInputMode={android_keyboardInputMode}

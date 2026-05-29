@@ -13,7 +13,11 @@
  *   T-B  The primitive routes index === -1 → onClose internally, and threads
  *        scrollMode view/scroll/flatlist/sectionlist + wrapInRNModal + stickyFooter.
  *   T-C  The primitive consumes the additive design tokens (handleActive /
- *        a11yBackdropTint / centerDialog) and defines the SHEET_SPRING config.
+ *        a11yBackdropTint / centerDialog) AND uses STOCK gorhom default motion —
+ *        it passes NO `animationConfigs` and builds NO `useBottomSheetSpringConfigs`
+ *        (META-ORCH-0991 Wave A REWORK, operator 2026-05-29: the custom
+ *        SHEET_SPRING was REJECTED; the primitive clones ExpandedBusinessEventSheet,
+ *        which itself passes no animationConfigs). [TEST-MOD-APPROVED META-ORCH-0991]
  *   T-D  All 5 Wave-A sheets consume BaseBottomSheet and NONE imports gorhom
  *        directly (the sole-consumer invariant, structurally).
  *   T-E  NotificationsSheet passes scrollMode="sectionlist".
@@ -84,17 +88,37 @@ function run() {
   assert.match(base, /BackHandler\.addEventListener/, "T-B Android hardware-back for non-wrapped sheets");
   assert.match(base, /accessibilityViewIsModal/, "T-B VoiceOver modal boundary");
 
-  // ── T-C: tokens + spring ───────────────────────────────────────────────────
+  // ── T-C: tokens + STOCK gorhom motion ──────────────────────────────────────
   const ds = read("app-mobile/src/constants/designSystem.ts");
   assert.match(ds, /handleActive:\s*\{/, "T-C handleActive token block(s) added");
   assert.match(ds, /a11yBackdropTint:/, "T-C a11yBackdropTint token added");
   assert.match(ds, /centerDialog:\s*\{/, "T-C centerDialog token block added");
   // Additive only: the locked handle token + topRadius 28 must still be intact.
   assert.match(ds, /topRadius:\s*28/, "T-C locked topRadius 28 intact");
-  assert.match(base, /useBottomSheetSpringConfigs/, "T-C SHEET_SPRING via gorhom spring hook");
-  assert.match(base, /damping:\s*50/, "T-C spring damping 50 (zero-overshoot)");
-  assert.match(base, /stiffness:\s*320/, "T-C spring stiffness 320");
-  assert.match(base, /ReduceMotion\.System/, "T-C reduce-motion honored");
+  // META-ORCH-0991 Wave A REWORK (operator 2026-05-29) [TEST-MOD-APPROVED
+  // META-ORCH-0991]: the custom SHEET_SPRING was REJECTED. The primitive must
+  // now clone ExpandedBusinessEventSheet's stock-gorhom recipe: NO
+  // `animationConfigs`, NO `useBottomSheetSpringConfigs`, NO Reanimated
+  // `ReduceMotion` wiring — gorhom's DEFAULT spring carries open/close/settle.
+  assert.doesNotMatch(
+    baseCode,
+    /animationConfigs=/,
+    "T-C primitive must NOT pass animationConfigs (stock gorhom default motion)",
+  );
+  assert.doesNotMatch(
+    baseCode,
+    /useBottomSheetSpringConfigs/,
+    "T-C primitive must NOT build a custom spring (REJECTED — clone of ExpandedBusinessEventSheet)",
+  );
+  // The gold-standard reference itself passes NO animationConfigs — assert it
+  // stays that way so the primitive and its reference remain feel-equivalent.
+  assert.doesNotMatch(
+    read(
+      "app-mobile/src/components/expandedCard/ExpandedBusinessEventSheet.tsx",
+    ).replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1"),
+    /animationConfigs=/,
+    "T-C reference ExpandedBusinessEventSheet still passes NO animationConfigs",
+  );
 
   // ── T-D: all 5 sheets consume BaseBottomSheet + none imports gorhom ────────
   const SHEETS = {

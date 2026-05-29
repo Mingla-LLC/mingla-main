@@ -9,6 +9,40 @@
 
 ---
 
+## REWORK — STOCK gorhom default motion (operator decision 2026-05-29)
+
+**Why:** Seth rejected the custom-motion version. The shared sheet must feel **EXACTLY** like
+`app-mobile/src/components/expandedCard/ExpandedBusinessEventSheet.tsx`, which uses the **stock
+`@gorhom/bottom-sheet` DEFAULT spring** (passes **NO** `animationConfigs`) — the "rolls up and closes"
+feel. `ExpandedBusinessEventSheet` is itself one of the 5 Wave-A consumers and the gold-standard reference.
+
+**What changed in this REWORK:**
+
+| File | Removed / changed |
+|------|-------------------|
+| `app-mobile/src/components/ui/BaseBottomSheet.tsx` | Deleted the `SHEET_SPRING_CONFIG` const (`damping 50 / stiffness 320 / mass 1 / overshootClamping / restThresholds / reduceMotion: ReduceMotion.System`); removed the `useBottomSheetSpringConfigs` import and the `const springConfig = useBottomSheetSpringConfigs(...)` line; removed the `import { ReduceMotion } from 'react-native-reanimated'` (only used by the deleted const); **removed `animationConfigs={springConfig}` from the `<BottomSheet>` JSX** → primitive now passes NO `animationConfigs`, so gorhom uses its DEFAULT spring, byte-equivalent to `ExpandedBusinessEventSheet`. Replaced the §3 spring comment block with a stock-motion REWORK note. |
+| handle animation | **No code change needed** — the original IMPLEMENT never actually wired the DESIGN §2 handle-active (`useAnimatedStyle` / `animatedIndex`) into the primitive; the handle was already STATIC via `handleIndicatorStyle={resolvedHandleStyle}`. So the handle already matched `ExpandedBusinessEventSheet`. The `glass.bottomSheet.handleActive` / `glass.notificationsSheet.handleActive` tokens remain **defined-but-unused** in `designSystem.ts` (left in place per dispatch; removing them is unnecessary churn and the primitive does not animate the handle). |
+| `center-dialog` variant | **No motion change** — `CenterDialog` is a pure RN `<Modal animationType="fade">` and never consumed the custom spring. Already stock. |
+| `app-mobile/src/components/ui/__tests__/BaseBottomSheet.test.mjs` | **[TEST-MOD-APPROVED META-ORCH-0991]** — T-C previously asserted the custom spring (`useBottomSheetSpringConfigs`, `damping: 50`, `stiffness: 320`, `ReduceMotion.System`). Those 4 assertions were replaced with the inverse contract: the primitive must pass **NO** `animationConfigs` and build **NO** `useBottomSheetSpringConfigs`, AND the reference `ExpandedBusinessEventSheet` must still pass no `animationConfigs` (feel-equivalence guard). Re-proven fails-on-revert: stashing the primitive change (custom spring restored) flips T-C → suite FAILS (exit 1); applying the rework → PASS. |
+
+**What was deliberately PRESERVED (🔒 LOCKED structural contract, NOT motion):** declarative
+`index={visible ? initialIndex : -1}` open/close, `enablePanDownToClose`, `snapPoints` from
+`glass.bottomSheet.snapPoints` (`['50%','90%']`), `BottomSheetBackdrop`, static handle/background tokens,
+top-radius 28, handle 36×4, inline-vanilla `<BottomSheet>` architecture, `wrapInRNModal` z-stacking,
+keyboard-aware text input, and the scrollMode variants.
+
+**5-sheet re-verification:** all 5 sheets consume `BaseBottomSheet` and none passes its own
+`animationConfigs` (grep-confirmed), so all 5 now ride gorhom's default spring identically.
+`ExpandedBusinessEventSheet.tsx` was NOT touched by this rework (byte-equivalent to today, as required);
+the other 4 (ExpandedCardModal keystone, TicketCartSheet, NotificationsSheet, CollabSessionChatBanners)
+now match its feel. Structural regression suites PASS (`BaseBottomSheet.test.mjs`, `NotificationsSheet.test.tsx`),
+the sole-gorhom-consumer strict-grep gate PASSES, and `tsc` shows zero new errors in touched files (244
+pre-existing baseline unchanged). Metro :8100 compiled the iOS bundle cleanly (HTTP 200, 4.75 MB).
+
+**REWORK commit:** `bdefd0931` — see §2 Commits table.
+
+---
+
 ## 0. Comms ledger
 
 Scanned `COMMS_LEDGER.md` on entry. No OPEN `BLOCK` row targets this skill, META-ORCH-0991, or `ALL`. The three OPEN WARN/ALL rows are non-binding for a pure consumer-UI Wave A: COMMS-0002 (ORCH-0863 backend strict-grep allowlist) is **N/A** — this ORCH touches zero `supabase/functions/` or `supabase/migrations/` files; the new gate touches only `.github/scripts/strict-grep/` + `.github/workflows/`. COMMS-0003 (external-API docs) — no new external API surface (gorhom v5 already doc-cited in SPEC/DESIGN). COMMS-0004 (INTAKE numbering) — orchestrator-scope. No new cross-ORCH discovery to write.
@@ -17,7 +51,7 @@ Scanned `COMMS_LEDGER.md` on entry. No OPEN `BLOCK` row targets this skill, META
 
 ## 1. What shipped (plain English)
 
-Every Mingla consumer bottom sheet now slides up from one shared engine instead of five hand-rolled copies. The five sheets that already supported swipe-down-to-dismiss (notifications, the expanded card detail, the business-event detail, the ticket cart, and the collab plans/matches sheets) were rebuilt on a single `BaseBottomSheet` primitive — pixel- and gesture-identical to before — plus a calmer settle spring, a handle that wakes up while you drag, and accessibility fallbacks for reduce-motion / reduce-transparency. A CI gate now structurally forbids any future sheet from hand-rolling gorhom again. This is the foundation the ~38 Wave-B/C modal conversions will consume.
+Every Mingla consumer bottom sheet now slides up from one shared engine instead of five hand-rolled copies. The five sheets that already supported swipe-down-to-dismiss (notifications, the expanded card detail, the business-event detail, the ticket cart, and the collab plans/matches sheets) were rebuilt on a single `BaseBottomSheet` primitive — pixel- and gesture-identical to before — using the **stock gorhom default open/close/settle motion** (post-REWORK 2026-05-29; the originally-shipped custom spring + handle-active animation were REJECTED by Seth — see the REWORK section at top), plus accessibility fallbacks for reduce-transparency. A CI gate now structurally forbids any future sheet from hand-rolling gorhom again. This is the foundation the ~38 Wave-B/C modal conversions will consume.
 
 ---
 
@@ -32,6 +66,7 @@ Every Mingla consumer bottom sheet now slides up from one shared engine instead 
 | 5 | `cf7bb1169` | Migrate `NotificationsSheet.tsx` + repoint ORCH-0975 gate & locked test `[TEST-MOD-APPROVED META-ORCH-0991]`. |
 | 6 | `42bc0d336` | Migrate `ExpandedCardModal.tsx` (HIGH-risk keystone — last). |
 | 7 | `1ad01730e` | Strict-grep sole-gorhom-consumer gate + CI job + `BaseBottomSheet.test.mjs` regression suite. |
+| 8 | `bdefd0931` | **REWORK** — stock gorhom motion (clone `ExpandedBusinessEventSheet`): drop custom `SHEET_SPRING` + `useBottomSheetSpringConfigs` + `ReduceMotion` import + `animationConfigs` prop; update T-C `[TEST-MOD-APPROVED META-ORCH-0991]`; amend DESIGN §2/§3 + this report. |
 
 ---
 
