@@ -2486,8 +2486,22 @@ function AppContent() {
                             currentPage={currentPage as BottomNavPage}
                             onNavigate={(page: BottomNavPage) => {
                               logger.action(`Tab pressed: ${page}`);
+                              // Closing profile overlays is URGENT — it must commit
+                              // synchronously so the overlay is gone before the new
+                              // screen paints.
                               closeProfileOverlays();
-                              setCurrentPage(page);
+                              // ORCH-0995 IMPLEMENT-2: de-prioritize the heavy screen
+                              // mount. The switch(currentPage) IIFE unmounts the old
+                              // screen and mounts the new (often heavy) one synchronously
+                              // when currentPage commits. Wrapping it in a transition lets
+                              // the urgent optimistic nav highlight (GlassBottomNav
+                              // pendingPage) + spotlight animation commit first; the mount
+                              // is interruptible and no longer blocks tap feedback. The
+                              // mount structure is unchanged — only WHEN setCurrentPage
+                              // commits is deferred.
+                              React.startTransition(() => {
+                                setCurrentPage(page);
+                              });
                             }}
                             labels={{
                               home: t('navigation:tabs.explore'),
