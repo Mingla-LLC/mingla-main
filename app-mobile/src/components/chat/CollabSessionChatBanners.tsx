@@ -1,20 +1,14 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Modal,
   Pressable,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
-import BottomSheet, {
-  BottomSheetBackdrop,
-  BottomSheetScrollView,
-  BottomSheetView,
-  type BottomSheetBackdropProps,
-} from "@gorhom/bottom-sheet";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { BaseBottomSheet } from "../ui/BaseBottomSheet";
 import { Icon } from "../ui/Icon";
 import ExpandedCardModal from "../ExpandedCardModal";
 import { SwipeableSessionCards } from "../board/SwipeableSessionCards";
@@ -241,12 +235,20 @@ function formatScheduledAt(value: string): string {
   }
 }
 
+// META-ORCH-0991 Wave A — migrated onto BaseBottomSheet. Preserves exact
+// pixel/gesture parity: light theme via per-consumer backgroundStyle (#ffffff
+// + radius 24) and handleStyle (rgba(17,24,39,0.24) width 44), backdrop 0.48,
+// wrapInRNModal (was wrapped in RN Modal at the old :282). Header + close stay
+// identical; `scroll` lets the primitive own the BottomSheetScrollView so the
+// row list scrolls without fighting the sheet pan (SC-10).
 function CompactCollabBottomSheet({
   visible,
   onClose,
   title,
   closeAccessibilityLabel,
   snapPoints,
+  scroll = false,
+  scrollContentContainerStyle,
   children,
 }: {
   visible: boolean;
@@ -254,66 +256,68 @@ function CompactCollabBottomSheet({
   title: string;
   closeAccessibilityLabel: string;
   snapPoints: string[];
+  scroll?: boolean;
+  scrollContentContainerStyle?: object;
   children: React.ReactNode;
 }) {
-  const sheetRef = useRef<BottomSheet>(null);
-
-  const handleSheetChange = useCallback(
-    (index: number) => {
-      if (index === -1) onClose();
-    },
-    [onClose],
+  const header = (
+    <View style={styles.compactSheetHeader}>
+      <Text style={styles.compactSheetTitle} numberOfLines={1}>
+        {title}
+      </Text>
+      <TouchableOpacity
+        onPress={onClose}
+        style={styles.compactSheetCloseButton}
+        accessibilityRole="button"
+        accessibilityLabel={closeAccessibilityLabel}
+      >
+        <Icon name="close-outline" size={22} color="#6b7280" />
+      </TouchableOpacity>
+    </View>
   );
 
-  const renderBackdrop = useCallback(
-    (props: BottomSheetBackdropProps) => (
-      <BottomSheetBackdrop
-        {...props}
-        appearsOnIndex={0}
-        disappearsOnIndex={-1}
-        opacity={0.48}
-        pressBehavior="close"
-      />
-    ),
-    [],
-  );
+  if (scroll) {
+    return (
+      <BaseBottomSheet
+        visible={visible}
+        onClose={onClose}
+        theme="light"
+        wrapInRNModal
+        snapPoints={snapPoints}
+        backdropOpacity={0.48}
+        backgroundStyle={styles.compactSheetBackground}
+        handleStyle={styles.compactSheetHandle}
+        bodyContainerStyle={styles.compactSheetContent}
+        accessibilityLabel={title}
+        scrollMode="scroll"
+        scrollProps={{
+          contentContainerStyle: scrollContentContainerStyle,
+          showsVerticalScrollIndicator: false,
+        }}
+        header={header}
+      >
+        {children}
+      </BaseBottomSheet>
+    );
+  }
 
   return (
-    <Modal
+    <BaseBottomSheet
       visible={visible}
-      transparent
-      animationType="none"
-      onRequestClose={onClose}
-      statusBarTranslucent
+      onClose={onClose}
+      theme="light"
+      wrapInRNModal
+      snapPoints={snapPoints}
+      backdropOpacity={0.48}
+      backgroundStyle={styles.compactSheetBackground}
+      handleStyle={styles.compactSheetHandle}
+      bodyContainerStyle={styles.compactSheetContent}
+      accessibilityLabel={title}
+      scrollMode="view"
+      header={header}
     >
-      <BottomSheet
-        ref={sheetRef}
-        index={visible ? 0 : -1}
-        snapPoints={snapPoints}
-        enablePanDownToClose
-        onChange={handleSheetChange}
-        backdropComponent={renderBackdrop}
-        backgroundStyle={styles.compactSheetBackground}
-        handleIndicatorStyle={styles.compactSheetHandle}
-      >
-        <BottomSheetView style={styles.compactSheetContent}>
-          <View style={styles.compactSheetHeader}>
-            <Text style={styles.compactSheetTitle} numberOfLines={1}>
-              {title}
-            </Text>
-            <TouchableOpacity
-              onPress={onClose}
-              style={styles.compactSheetCloseButton}
-              accessibilityRole="button"
-              accessibilityLabel={closeAccessibilityLabel}
-            >
-              <Icon name="close-outline" size={22} color="#6b7280" />
-            </TouchableOpacity>
-          </View>
-          {children}
-        </BottomSheetView>
-      </BottomSheet>
-    </Modal>
+      {children}
+    </BaseBottomSheet>
   );
 }
 
@@ -324,37 +328,38 @@ export function ScheduleSheet({ visible, onClose, sessionId }: SheetProps) {
     null,
   );
 
+  const hasRows = !isLoading && !isError && rows.length > 0;
+
   return (
-    <CompactCollabBottomSheet
-      visible={visible}
-      onClose={onClose}
-      title="Plans"
-      closeAccessibilityLabel="Close plans"
-      snapPoints={PLANS_SHEET_SNAP_POINTS}
-    >
-      {isLoading ? (
-        <ActivityIndicator style={styles.loading} color="#eb7825" />
-      ) : isError ? (
-        <Pressable
-          onPress={refetch}
-          style={styles.emptyState}
-          accessibilityRole="button"
-          accessibilityLabel="Retry loading plans"
-        >
-          <Text style={styles.emptyText}>
-            Could not load plans. Tap to retry.
-          </Text>
-        </Pressable>
-      ) : rows.length === 0 ? (
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyText}>No locked-in plans yet.</Text>
-        </View>
-      ) : (
-        <BottomSheetScrollView
-          contentContainerStyle={styles.verticalListContent}
-          showsVerticalScrollIndicator={false}
-        >
-          {rows.map((item: SessionScheduledCardRow) => (
+    <>
+      <CompactCollabBottomSheet
+        visible={visible}
+        onClose={onClose}
+        title="Plans"
+        closeAccessibilityLabel="Close plans"
+        snapPoints={PLANS_SHEET_SNAP_POINTS}
+        scroll={hasRows}
+        scrollContentContainerStyle={styles.verticalListContent}
+      >
+        {isLoading ? (
+          <ActivityIndicator style={styles.loading} color="#eb7825" />
+        ) : isError ? (
+          <Pressable
+            onPress={refetch}
+            style={styles.emptyState}
+            accessibilityRole="button"
+            accessibilityLabel="Retry loading plans"
+          >
+            <Text style={styles.emptyText}>
+              Could not load plans. Tap to retry.
+            </Text>
+          </Pressable>
+        ) : rows.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyText}>No locked-in plans yet.</Text>
+          </View>
+        ) : (
+          rows.map((item: SessionScheduledCardRow) => (
             <TouchableOpacity
               key={item.savedCardId}
               style={styles.scheduleRow}
@@ -378,9 +383,9 @@ export function ScheduleSheet({ visible, onClose, sessionId }: SheetProps) {
               </View>
               <Icon name="chevron-forward" size={18} color="#9ca3af" />
             </TouchableOpacity>
-          ))}
-        </BottomSheetScrollView>
-      )}
+          ))
+        )}
+      </CompactCollabBottomSheet>
       <ExpandedCardModal
         visible={!!expandedCard}
         target={
@@ -390,7 +395,7 @@ export function ScheduleSheet({ visible, onClose, sessionId }: SheetProps) {
         onSave={() => {}}
         currentMode="collab"
       />
-    </CompactCollabBottomSheet>
+    </>
   );
 }
 
@@ -423,25 +428,27 @@ export function SavedToSessionCardsSheet({
   }, []);
 
   return (
-    <CompactCollabBottomSheet
-      visible={visible}
-      onClose={onClose}
-      title="Matches"
-      closeAccessibilityLabel="Close matches"
-      snapPoints={MATCHES_SHEET_SNAP_POINTS}
-    >
-      <BottomSheetView style={styles.savedCardsBody}>
-        <SwipeableSessionCards
-          cards={savedCards}
-          sessionId={sessionId}
-          userId={currentUserId ?? undefined}
-          participantCount={participantCount}
-          onViewDetails={openExpandedCardModal}
-          loading={savedCardsLoading}
-          accountPreferences={accountPreferences}
-          isAdmin={isAdmin}
-        />
-      </BottomSheetView>
+    <>
+      <CompactCollabBottomSheet
+        visible={visible}
+        onClose={onClose}
+        title="Matches"
+        closeAccessibilityLabel="Close matches"
+        snapPoints={MATCHES_SHEET_SNAP_POINTS}
+      >
+        <View style={styles.savedCardsBody}>
+          <SwipeableSessionCards
+            cards={savedCards}
+            sessionId={sessionId}
+            userId={currentUserId ?? undefined}
+            participantCount={participantCount}
+            onViewDetails={openExpandedCardModal}
+            loading={savedCardsLoading}
+            accountPreferences={accountPreferences}
+            isAdmin={isAdmin}
+          />
+        </View>
+      </CompactCollabBottomSheet>
       <ExpandedCardModal
         visible={!!expandedCard}
         target={
@@ -451,7 +458,7 @@ export function SavedToSessionCardsSheet({
         onSave={() => {}}
         currentMode="collab"
       />
-    </CompactCollabBottomSheet>
+    </>
   );
 }
 
