@@ -1,15 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  Modal,
-  TouchableOpacity,
-  TextInput,
-  StyleSheet,
-  Pressable,
-} from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Icon } from '../ui/Icon';
-import { KeyboardAwareView } from '../ui/KeyboardAwareView';
+import { BaseBottomSheet, BottomSheetTextInput } from '../ui/BaseBottomSheet';
 import { useTranslation } from 'react-i18next';
 
 interface EditBioSheetProps {
@@ -21,6 +13,10 @@ interface EditBioSheetProps {
 
 const MAX_LENGTH = 160;
 
+// META-ORCH-0991 Wave B Batch 2: compact, content-height form (header + one
+// textarea + counter + save). enableDynamicSizing lets the sheet open at the
+// content's natural height rather than forcing a tall snap — preserves the prior
+// flex-end card's compact feel while becoming a true swipe-down sheet.
 const EditBioSheet: React.FC<EditBioSheetProps> = ({
   visible,
   onClose,
@@ -43,66 +39,58 @@ const EditBioSheet: React.FC<EditBioSheetProps> = ({
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        <KeyboardAwareView
-          style={styles.keyboardView}
-          dismissOnTap={false}
+    <BaseBottomSheet
+      visible={visible}
+      onClose={onClose}
+      theme="light"
+      enableDynamicSizing
+      scrollMode="view"
+      wrapInRNModal
+      keyboardBehavior="interactive"
+      keyboardBlurBehavior="restore"
+      android_keyboardInputMode="adjustResize"
+      accessibilityLabel={t('profile:edit_bio.title')}
+      header={
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>{t('profile:edit_bio.title')}</Text>
+          <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Icon name="close" size={24} color="#111827" />
+          </TouchableOpacity>
+        </View>
+      }
+    >
+      <View style={styles.body}>
+        <BottomSheetTextInput
+          style={styles.input}
+          value={bioText}
+          onChangeText={setBioText}
+          maxLength={MAX_LENGTH}
+          multiline
+          numberOfLines={4}
+          placeholder={t('profile:edit_bio.placeholder')}
+          placeholderTextColor="#9ca3af"
+          textAlignVertical="top"
+        />
+        <Text style={[styles.counter, atLimit && styles.counterLimit]}>
+          {bioText.length}/{MAX_LENGTH}
+        </Text>
+      </View>
+
+      <View style={styles.footer}>
+        <TouchableOpacity
+          style={[styles.saveButton, !hasChanged && styles.saveButtonDisabled]}
+          onPress={handleSave}
+          disabled={!hasChanged}
+          activeOpacity={0.8}
         >
-          <Pressable style={styles.card} onPress={() => {}}>
-            <View style={styles.header}>
-              <Text style={styles.headerTitle}>{t('profile:edit_bio.title')}</Text>
-              <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Icon name="close" size={24} color="#111827" />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.body}>
-              <TextInput
-                style={styles.input}
-                value={bioText}
-                onChangeText={setBioText}
-                maxLength={MAX_LENGTH}
-                multiline
-                numberOfLines={4}
-                placeholder={t('profile:edit_bio.placeholder')}
-                placeholderTextColor="#9ca3af"
-                textAlignVertical="top"
-              />
-              <Text style={[styles.counter, atLimit && styles.counterLimit]}>
-                {bioText.length}/{MAX_LENGTH}
-              </Text>
-            </View>
-
-            <View style={styles.footer}>
-              <TouchableOpacity
-                style={[styles.saveButton, !hasChanged && styles.saveButtonDisabled]}
-                onPress={handleSave}
-                disabled={!hasChanged}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.saveText}>{t('profile:edit_bio.save')}</Text>
-              </TouchableOpacity>
-            </View>
-          </Pressable>
-        </KeyboardAwareView>
-      </Pressable>
-    </Modal>
+          <Text style={styles.saveText}>{t('profile:edit_bio.save')}</Text>
+        </TouchableOpacity>
+      </View>
+    </BaseBottomSheet>
   );
 };
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
-  },
-  keyboardView: { justifyContent: 'flex-end' },
-  card: {
-    backgroundColor: '#ffffff',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',

@@ -31,10 +31,18 @@ default** (the primitive passes NO `animationConfigs`); never add a custom sprin
 
 ## 1. Pick the variant: sheet vs center-dialog
 
+> **OPERATOR-CONFIRMED RULE (Seth, 2026-05-29):** **destructive / irreversible
+> confirms (block, delete, leave, remove, unfriend, cancel-order, sign-out, etc.)
+> are NON-swipe centered confirm cards (`variant="center-dialog"`, no
+> pan-down-to-dismiss) so they can't be flicked away by accident. EVERYTHING ELSE
+> is a full swipe-down `BaseBottomSheet`.** This was previously the investigation
+> §2 "footgun" recommendation; it is now a hard, operator-confirmed rule for all
+> remaining Wave B / Wave C conversions.
+
 | If the modal is… | Use | Why |
 |---|---|---|
-| A **destructive / irreversible confirm** (block, delete, leave) | `variant="center-dialog"` | A confirm you can flick away by accident is a footgun (investigation §2). Center-dialog = centered card, NO pan-down, RN-Modal-backed (z-stacks + Android back for free). |
-| A **form, list, picker, detail, or action menu** | default (`variant="sheet"`) | Rolls up + swipe-down-to-dismiss like the events sheet. |
+| A **destructive / irreversible confirm** (block, delete, leave, remove, unfriend, cancel-order, sign-out) | `variant="center-dialog"` | A confirm you can flick away by accident is a footgun (operator-confirmed 2026-05-29). Center-dialog = centered card, NO pan-down, RN-Modal-backed (z-stacks + Android back for free). |
+| A **form, list, picker, detail, or action menu** (everything else) | default (`variant="sheet"`) | Rolls up + swipe-down-to-dismiss like the events sheet. |
 
 Center-dialog needs almost nothing: `visible`, `onClose`, `theme`, `accessibilityLabel`,
 children. It supplies scrim + card + radius + padding + shadow from `glass.centerDialog`.
@@ -180,3 +188,19 @@ save reaches the sim through Metro); no rebuild needed for JS-only changes.
 | BlockUserModal | center-dialog | — | no | n/a (auto) | Block confirm = footgun rule. Stripped local scrim/card. |
 | ReportUserModal | sheet | `['90%']` | yes (BottomSheetTextInput + interactive) | **true** | Opened over chat. header + scroll body + sticky footer (actions + disclaimer). |
 | FriendRequestsModal | sheet | `['88%']` | no | **false** | Mounted high from HomePage. Real handle replaces cosmetic one. header + list + sticky footer. |
+
+## 10. Batch 2 decision record (profile/settings form cluster)
+
+All three mount from `ProfilePage`, which renders INSIDE the page `<View>` while the
+floating `GlassBottomNav` renders as a LATER sibling in the same tree — so an
+unwrapped sheet renders *under* the floating tab bar. **All three therefore use
+`wrapInRNModal` (true)** to z-stack above it (sim-confirmed: each sheet covers the
+tab bar). This is the same z-order trap §4 describes; "mounted from a top-level
+screen → don't wrap" only holds when that screen's sheet already clears the nav.
+None are destructive → all full swipe-down sheets (operator rule §1).
+
+| Modal | Variant | Snap | Keyboard | wrapInRNModal | Notes |
+|---|---|---|---|---|---|
+| EditBioSheet | sheet | `enableDynamicSizing` (content-height) | **yes** (BottomSheetTextInput + interactive) | **true** | Was a compact flex-end card. header + view body + footer save. Dropped `KeyboardAwareView` (gorhom owns keyboard). |
+| EditInterestsSheet | sheet | `['85%']` | no | **true** | Was `maxHeight:'85%'` flex-end card → ['85%']. header + scroll chip body + sticky footer save. |
+| BillingSheet | sheet | `['92%']` | no | **true** | Was `flex:1` from `windowHeight*0.08` (≈92%) with hand-rolled drag handle + top overlay tap-strip → ['92%'] + real gorhom handle + pan-down/backdrop close. header + scroll body. Nested CustomPaywallScreen is its own RN Modal (excluded) and floats independently. |
