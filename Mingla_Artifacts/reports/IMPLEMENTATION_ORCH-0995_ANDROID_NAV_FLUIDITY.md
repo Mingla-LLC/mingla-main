@@ -20,11 +20,9 @@ This is **OTA-deliverable**: `react-native-reanimated@4.1.5` + `react-native-wor
 
 | File | Commit | Lines |
 |---|---|---|
-| `app-mobile/src/components/GlassBottomNav.tsx` | `<see below>` | +34 / -33 |
-| `app-mobile/src/components/__tests__/orch-0995-bottom-nav-spotlight-ui-thread.test.tsx` | `<see below>` | new file |
-| `Mingla_Artifacts/reports/IMPLEMENTATION_ORCH-0995_ANDROID_NAV_FLUIDITY.md` | `<see below>` | new file |
-
-Commit hash recorded in the chat summary / git log after commit.
+| `app-mobile/src/components/GlassBottomNav.tsx` | `b91770195` | +34 / -33 |
+| `app-mobile/src/components/__tests__/orch-0995-bottom-nav-spotlight-ui-thread.test.tsx` | `b91770195` | new file |
+| `Mingla_Artifacts/reports/IMPLEMENTATION_ORCH-0995_ANDROID_NAV_FLUIDITY.md` | `b91770195` | new file |
 
 ---
 
