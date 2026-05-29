@@ -56,7 +56,9 @@ export const DC_SHOWCASE_PLACES: readonly ShowcasePlace[] = [
     category: 'Cocktail Bar',
     rating: 4.8,
     reviewCount: 269,
-    priceTier: null,
+    // Decorative price tier for this marketing test run (no live Google price
+    // signal for these three) — every card shows a price pill per ORCH-0998 polish.
+    priceTier: '$$$',
     blurb: null,
     placeKey: 'ChIJuVcr4vHJt4kR3RGgn9ppyKM',
     nPhotos: 5,
@@ -66,7 +68,7 @@ export const DC_SHOWCASE_PLACES: readonly ShowcasePlace[] = [
     category: 'Historical Landmark',
     rating: 4.6,
     reviewCount: 800,
-    priceTier: null,
+    priceTier: '$$',
     blurb:
       "Lincoln's home during the height of the Civil War, the Gothic-Revival cottage is now a museum.",
     placeKey: 'ChIJYXXbqgvIt4kRsTOXeP0bXTA',
@@ -77,7 +79,7 @@ export const DC_SHOWCASE_PLACES: readonly ShowcasePlace[] = [
     category: 'Park',
     rating: 4.4,
     reviewCount: 1778,
-    priceTier: null,
+    priceTier: '$',
     blurb:
       'Waterside park offering trails, a roller-skating rink, picnic sites, golf, fishing & sports areas.',
     placeKey: 'ChIJCVOosVS4t4kRc5PLjLRnQU4',

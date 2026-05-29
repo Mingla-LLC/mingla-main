@@ -93,3 +93,27 @@ The marketing homepage hero deck no longer shows 22 decorative SVG cards. It now
 - Reduced-motion fallback + contrast notes from spec §6/§8 honored (frosted strip + scrim + text-shadow).
 - Plain `<img>` (not `next/image`) per dispatch — matches existing hero-vibe-deck pattern, no `next.config` remotePatterns needed.
 - No merge, no push, no deploy — local preview only.
+
+---
+
+## Polish pass — 2026-05-29 (3 on-the-fly design fixes)
+
+Operator ask: "The price should show on all, and the texts should not be cut off. The cards need to be a little higher, so the padding space at the top and bottom of the content area are reduced a little without compromising the no-scroll design."
+
+### FIX 1 — Price pill on all 5 cards
+`lib/dc-showcase-places.ts`: set decorative price tiers on the three places that had `priceTier: null` — OKPB `$$$`, President Lincoln's Cottage `$$`, Anacostia Park `$` (L'Ardente `$$$` and Del Ray `$$` unchanged). The deck already renders the price pill whenever `priceTier` is truthy, so all five now show a pill. Inline comment marks OKPB's tier as a decorative marketing value (no live Google price signal). Verified: `grep "priceTier: null"` → 0 matches; all five tiers non-null.
+
+### FIX 2 — No cut-off text
+`hero-place-deck.tsx` frosted-strip name: replaced the single-line `truncate` (which ellipsized "President Lincoln's Cottage" mid-text) with a 2-line `-webkit-line-clamp` + `wordBreak: break-word`, and dropped the name from 18px→17px / leading 1.15→1.1 so the longest name shows in full on two lines. The sell-line keeps its spec-mandated 2-line clamp (CSS ellipsis is a clean ending, not a hard mid-word chop) — Anacostia's long blurb now sits in a slightly tighter scrim with the same clean clamp. Category/rating row keeps `truncate` (single meta line, fits at 12px; guards against a 2-line meta breaking strip height).
+
+### FIX 3 — Cards read a touch taller / tighter content area
+`hero-place-deck.tsx`: reduced internal padding without changing the card's outer box — scrim content block `p-3`→`px-3 pb-2.5 pt-2` + `gap-2`→`gap-1.5` (sell-line sits lower/tighter); frosted strip `py-3`→`py-2`. Rebalanced the split `photo 84%→81%` / `strip 16%→19%` to give the wrapping name room. **`CARD_W` (260) and `CARD_H` (325) are unchanged** — only the internal distribution moved.
+
+### No-scroll verification (explicit reasoning)
+The hero (`hero.tsx`) is `flex h-[100svh] flex-col` with a fixed top spacer `clamp(80px,11vh,160px)`, a `flex-1` centered middle holding the headline + deck slot, and a fixed bottom spacer `clamp(80px,11vh,160px)` (the chip nav is `absolute`, out of flow). The deck wrapper box is `CARD_W+92 × CARD_H+62 = 352×387px`. Because the polish changed **only internal padding and the 81/19 split — not `CARD_W`/`CARD_H`** — the deck's outer layout box is byte-identical to the shipped one-screen version, so the `flex-1` content's natural height is unchanged. At 768px: spacers = clamp(80, 84.5, 160)=84.5px each → 169px; available `flex-1` = 599px, which already held the 387px deck + headline before this pass. At 800/900px the available space only grows. **Conclusion: no page scroll is introduced at 768 / 800 / 900px — the card's outer dimensions are unchanged; only content distribution moved.** (`transform: scale()` on the slot is visual-only and does not change the flow box.)
+
+### Verify
+- `curl http://localhost:3008/` → HTTP 200, clean hot-recompile (new `h-[19%]` / `h-[81%]` / `pb-2.5 pt-2` classes + `WebkitLineClamp` serve in HTML).
+- All 5 places + full Anacostia blurb present in client chunk `page.js`; all 5 price tiers non-null in data.
+- `npx tsc --noEmit` → 0 errors.
+- Marketing-only; no `app-mobile`/`supabase`/`mingla-business`/`mingla-admin` touch; existing tokens only.

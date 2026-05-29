@@ -165,8 +165,10 @@ function DeckCard({ place, position, reduced }: DeckCardProps) {
       }}
       className="group absolute flex flex-col overflow-hidden bg-[#1a1a2e] will-change-transform [backface-visibility:hidden] [transform-style:preserve-3d] hover:[transform:translateY(-4px)]"
     >
-      {/* Photo zone — 84% */}
-      <div className="relative h-[84%] w-full overflow-hidden bg-[#1a1a2e]">
+      {/* Photo zone — 81% (trimmed from 84% to give the frosted strip room for
+          a full, non-truncated place name while keeping CARD_H fixed → the
+          no-scroll hero envelope is unchanged). */}
+      <div className="relative h-[81%] w-full overflow-hidden bg-[#1a1a2e]">
         <PhotoOrFallback place={place} eager={isFront} />
 
         {/* Bottom scrim — lower 52% of the photo zone, for sell-line/badge legibility */}
@@ -189,8 +191,10 @@ function DeckCard({ place, position, reduced }: DeckCardProps) {
           {place.nPhotos}
         </span>
 
-        {/* Scrim content: price pill (if any) + sell-line */}
-        <div className="absolute inset-x-0 bottom-0 flex flex-col gap-2 p-3">
+        {/* Scrim content: price pill (if any) + sell-line. Tighter bottom/top
+            padding than the prior p-3 so the text block sits lower and reads a
+            touch taller without growing the card (ORCH-0998 polish FIX 3). */}
+        <div className="absolute inset-x-0 bottom-0 flex flex-col gap-1.5 px-3 pb-2.5 pt-2">
           {place.priceTier ? (
             <span
               aria-hidden="true"
@@ -216,9 +220,12 @@ function DeckCard({ place, position, reduced }: DeckCardProps) {
         </div>
       </div>
 
-      {/* Frosted info strip — 16% */}
+      {/* Frosted info strip — 19% (was 16%). Slightly taller + tighter padding
+          (py-2, was py-3) so the place name can wrap to a full 2 lines without
+          ellipsis cutoff (e.g. "President Lincoln's Cottage") while the content
+          reads tighter top-to-bottom. CARD_H is unchanged. */}
       <div
-        className="flex h-[16%] flex-col justify-center gap-0.5 px-[14px] py-3"
+        className="flex h-[19%] flex-col justify-center gap-0.5 px-[14px] py-2"
         style={{
           background: 'rgba(255,255,255,0.92)',
           backdropFilter: 'blur(20px)',
@@ -227,8 +234,15 @@ function DeckCard({ place, position, reduced }: DeckCardProps) {
         }}
       >
         <p
-          className="truncate font-display text-[18px] leading-[1.15]"
-          style={{ color: '#0e0e10' }}
+          className="font-display text-[17px] leading-[1.1]"
+          style={{
+            color: '#0e0e10',
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical',
+            overflow: 'hidden',
+            wordBreak: 'break-word',
+          }}
         >
           {place.name}
         </p>
