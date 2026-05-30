@@ -31,7 +31,7 @@ export function GlassNav() {
             <img
               src="/brand/mingla-business-logo.svg"
               alt="Mingla Business"
-              className="h-14 w-14 select-none"
+              className="h-20 w-20 select-none"
               draggable={false}
             />
           ) : (

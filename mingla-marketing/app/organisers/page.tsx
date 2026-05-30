@@ -1,4 +1,5 @@
 import { OrganiserHero } from '@/components/sections/organiser-home/hero'
+import { OrganiserWhatIsMingla } from '@/components/sections/organiser-home/what-is-mingla'
 import { OrganiserWhatMinglaDoes } from '@/components/sections/organiser-home/what-mingla-does'
 import { OrganiserHowItWorks } from '@/components/sections/organiser-home/how-it-works'
 import { OrganiserAudiences } from '@/components/sections/organiser-home/audiences'
@@ -18,6 +19,7 @@ export default function OrganiserHomePage() {
   return (
     <>
       <OrganiserHero />
+      <OrganiserWhatIsMingla />
       <OrganiserWhatMinglaDoes />
       <OrganiserHowItWorks />
       <OrganiserAudiences />

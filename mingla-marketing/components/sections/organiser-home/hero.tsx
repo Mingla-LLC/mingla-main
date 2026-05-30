@@ -68,9 +68,9 @@ export function OrganiserHero() {
           style={{ background: 'linear-gradient(90deg, rgba(8,9,12,0.72) 0%, transparent 100%)' }}
         />
 
-        {/* Foreground — headline + single CTA, high contrast on the dark wall. */}
+        {/* Foreground — headline + single CTA, centered, high contrast on the wall. */}
         <div className="relative mx-auto w-full max-w-6xl">
-          <div className="flex max-w-2xl flex-col items-center text-center md:items-start md:text-left">
+          <div className="mx-auto flex max-w-2xl flex-col items-center text-center">
             <motion.h1
               initial={reduced ? false : { opacity: 0, y: 12, filter: 'blur(8px)' }}
               animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
