@@ -153,7 +153,7 @@ export function OrganiserAudienceTabs() {
             delay={0.1}
             className="flex justify-center lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:items-center lg:justify-end"
           >
-            <div data-theme="light" className="w-full max-w-md">
+            <div data-theme="light" className="w-full">
               <EarningsCard />
             </div>
           </Reveal>

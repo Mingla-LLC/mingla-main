@@ -15,7 +15,7 @@ export function OrganiserFeatures() {
         </Reveal>
         <Reveal>
           <h2 className="mx-auto mt-4 max-w-2xl font-display text-3xl leading-[1.06] tracking-[-0.02em] text-text-primary md:text-5xl">
-            everything to turn a vibe into <span className="text-warm-ink">a full room.</span>
+            everything to make your <span className="text-warm-ink">people find you.</span>
           </h2>
         </Reveal>
       </div>

@@ -5,7 +5,6 @@ import { OrganiserAudienceTabs } from '@/components/sections/organiser-home/audi
 import { OrganiserAudiences } from '@/components/sections/organiser-home/audiences'
 import { OrganiserFeatures } from '@/components/sections/organiser-home/features'
 import { OrganiserFaq } from '@/components/sections/organiser-home/faq'
-import { OrganiserCta } from '@/components/sections/organiser-home/cta'
 
 export const metadata = {
   title: 'Mingla Business — we give people a reason to show up for you.',
@@ -23,7 +22,6 @@ export default function OrganiserHomePage() {
       <OrganiserAudienceTabs />
       <OrganiserFeatures />
       <OrganiserFaq />
-      <OrganiserCta />
     </>
   )
 }

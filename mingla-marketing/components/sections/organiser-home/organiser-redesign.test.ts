@@ -44,7 +44,7 @@ const LIGHT_SECTIONS = ['audiences.tsx', 'features.tsx', 'faq.tsx'] as const
 
 // Dark sections — accent text uses warm (correct on dark). The hero is now a
 // full-bleed dark booking-wall section; comparison + cta are SpotlightBands.
-const DARK_SECTIONS = ['hero.tsx', 'cta.tsx'] as const
+const DARK_SECTIONS = ['hero.tsx'] as const
 
 // Fabricated / off-reality phrases that must NOT appear anywhere on the page.
 const FORBIDDEN = [
