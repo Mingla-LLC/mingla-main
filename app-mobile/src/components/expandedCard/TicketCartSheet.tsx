@@ -49,10 +49,7 @@ import {
 } from "@mingla/event-rendering";
 
 import { Icon } from "../ui/Icon";
-import {
-  CartTaxPreview,
-  type CartTaxPreviewResult,
-} from "../checkout/CartTaxPreview";
+import { useCartAllInPreview } from "../checkout/CartTaxPreview";
 import { ConsumerCartCard } from "./ConsumerCartCard";
 import { type CartLineSeed, useTicketCart } from "../../hooks/useTicketCart";
 
@@ -131,9 +128,9 @@ const isVisibleForConsumer = (ticket: PublicTicketProps): boolean =>
 export interface TicketCartCheckoutPayload {
   lines: Array<{ ticketTypeId: string; quantity: number }>;
   marketingOptIn: boolean;
+  /** All-in buyer total from the no-address `mode:"preview"` engine call. */
   totalCents: number;
   taxCalculationId: string | null;
-  address: CartTaxPreviewResult["address"];
 }
 
 export interface TicketCartSheetProps {
@@ -173,9 +170,9 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     fallbackCurrency,
   );
   const [marketingOptIn, setMarketingOptIn] = useState<boolean>(false);
-  const [taxPreview, setTaxPreview] = useState<CartTaxPreviewResult | null>(
-    null,
-  );
+  // ORCH-1006 Surface 6 — the "What's included" disclosure panel (Airbnb-style
+  // tap-to-open; default view is just the all-in number + the quiet incl. line).
+  const [showBreakdown, setShowBreakdown] = useState<boolean>(false);
   const lastOpenSeedRef = React.useRef<string | null>(null);
 
   // META-ORCH-0991 Wave A — open/close is owned by BaseBottomSheet
@@ -202,7 +199,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
       lastOpenSeedRef.current = null;
       reset();
       setMarketingOptIn(false);
-      setTaxPreview(null);
+      setShowBreakdown(false);
     }
   }, [
     visible,
@@ -218,23 +215,65 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     onCancel();
   }, [isSubmitting, onCancel]);
 
-  const handleConfirm = useCallback((): void => {
-    if (totals.isEmpty || isSubmitting || taxPreview === null) return;
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    onCheckout({
-      lines: lines
+  // ORCH-1006 Surface 6 — headless all-in preview (no address). Fires the
+  // repurposed `mode:"preview"` engine call as soon as the cart has a paid
+  // line; the resolved `buyer_total` + breakdown drive the sticky bar.
+  const previewLines = useMemo(
+    () =>
+      lines
         .filter((l) => l.quantity > 0)
         .map((l) => ({ ticketTypeId: l.ticketTypeId, quantity: l.quantity })),
+    [lines],
+  );
+  // Free carts never need a price preview (no money moves) — gate it off so the
+  // CTA enables immediately for "Claim Free Ticket".
+  const previewEnabled =
+    visible && !isSubmitting && !totals.isEmpty && !totals.isFree;
+  const { status: previewStatus, preview, retry: retryPreview } =
+    useCartAllInPreview({
+      eventId: _eventId,
+      lines: previewLines,
+      buyer: {
+        name: buyerName,
+        email: buyerEmail,
+        phone: buyerPhone,
+        marketingOptIn,
+      },
+      enabled: previewEnabled,
+    });
+
+  // The all-in total to show + commit. Free carts resolve to 0 with no preview.
+  const allInTotalCents = totals.isFree ? 0 : preview?.totalCents ?? null;
+  const allInCurrency = preview?.currency ?? totals.currency;
+  const breakdown = preview?.pricingBreakdown ?? null;
+  const previewResolved = totals.isFree || previewStatus === "ready";
+
+  const handleConfirm = useCallback((): void => {
+    if (totals.isEmpty || isSubmitting) return;
+    if (totals.isFree) {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      onCheckout({
+        lines: previewLines,
+        marketingOptIn,
+        totalCents: 0,
+        taxCalculationId: null,
+      });
+      return;
+    }
+    if (preview === null) return;
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    onCheckout({
+      lines: previewLines,
       marketingOptIn,
-      totalCents: taxPreview.totalCents,
-      taxCalculationId: taxPreview.calculationId,
-      address: taxPreview.address,
+      totalCents: preview.totalCents,
+      taxCalculationId: preview.calculationId,
     });
   }, [
     totals.isEmpty,
+    totals.isFree,
     isSubmitting,
-    taxPreview,
-    lines,
+    preview,
+    previewLines,
     marketingOptIn,
     onCheckout,
   ]);
@@ -269,18 +308,45 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
       return "populated";
     })();
 
+  // ORCH-1006 Surface 6 — CTA enables the instant the cart is non-empty AND the
+  // all-in preview has resolved (free carts skip the preview). While the preview
+  // is in flight the CTA shows "Getting your price…" — never a dead grey button.
   const ctaLabel = totals.isEmpty
     ? "Add tickets above"
     : totals.isFree
     ? "Claim Free Ticket"
+    : !previewResolved
+    ? "Getting your price…"
+    : allInTotalCents !== null
+    ? `Pay ${formatCentsCurrency(allInTotalCents, allInCurrency)}`
     : "Continue to Payment";
-  const ctaDisabled = totals.isEmpty || isSubmitting || taxPreview === null;
+  const ctaDisabled =
+    totals.isEmpty ||
+    isSubmitting ||
+    (!totals.isFree && (preview === null || allInTotalCents === null));
 
-  const subtotalValueText = totals.isEmpty
+  // The hero "Total" number on the sticky bar.
+  const totalValueText = totals.isEmpty
     ? "—"
     : totals.isFree
     ? "Free"
-    : formatCentsCurrency(totals.totalCents, totals.currency);
+    : allInTotalCents !== null
+    ? formatCentsCurrency(allInTotalCents, allInCurrency)
+    : "—";
+
+  // The quiet, region/switch-aware "incl. …" reassurance line (GB inclusive
+  // VAT). Only shown once a paid preview resolves with a VAT or passed fee.
+  const inclLineText = ((): string | null => {
+    if (totals.isFree || breakdown === null) return null;
+    const hasVat = breakdown.components.tax_cents > 0;
+    const hasPassedFee =
+      breakdown.passed.service_fee_cents > 0 ||
+      breakdown.passed.mingla_fee_cents > 0;
+    if (hasVat && hasPassedFee) return "incl. VAT & fees";
+    if (hasPassedFee) return "incl. fees";
+    if (hasVat) return "incl. VAT";
+    return null;
+  })();
 
   const stickyBarStyle = useMemo(
     () => [styles.stickyBar, { paddingBottom: insets.bottom + 16 }],
@@ -403,33 +469,94 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
             <BuyerRow label="Phone" value={buyerPhone} />
           </View>
         </ConsumerCartCard>
-        <CartTaxPreview
-          eventId={_eventId}
-          lines={lines
-            .filter((l) => l.quantity > 0)
-            .map((l) => ({
-              ticketTypeId: l.ticketTypeId,
-              quantity: l.quantity,
-            }))}
-          buyer={{
-            name: buyerName,
-            email: buyerEmail,
-            phone: buyerPhone,
-            marketingOptIn,
-          }}
-          currency={totals.currency}
-          disabled={isSubmitting || totals.isEmpty}
-          onPreviewChange={setTaxPreview}
-        />
       </>
     );
 
   const stickyFooter =
     renderState === "populated" ? (
       <View style={stickyBarStyle}>
+        {/* ORCH-1006 Surface 6 — "What's included" panel (opens above the bar,
+            reassurance only; mirrors the receipt row set). */}
+        {showBreakdown && breakdown !== null && !totals.isEmpty ? (
+          <View style={styles.includedPanel}>
+            <Text style={styles.includedTitle}>What&apos;s included</Text>
+            <View style={styles.includedRow}>
+              <Text style={styles.includedLabel}>Tickets</Text>
+              <Text style={styles.includedValue}>
+                {formatCentsCurrency(
+                  // Tickets line FOLDS the passed Mingla platform fee into the
+                  // subtotal (operator decision — no buyer-facing "Mingla fee"
+                  // line). Service fee stays its own disclosed line below.
+                  breakdown.base_cents + breakdown.passed.mingla_fee_cents,
+                  allInCurrency,
+                )}
+              </Text>
+            </View>
+            {breakdown.passed.service_fee_cents > 0 ? (
+              <View style={styles.includedRow}>
+                <Text style={styles.includedLabel}>Service fee</Text>
+                <Text style={styles.includedValue}>
+                  {formatCentsCurrency(
+                    breakdown.passed.service_fee_cents,
+                    allInCurrency,
+                  )}
+                </Text>
+              </View>
+            ) : null}
+            <View style={styles.includedDivider} />
+            <View style={styles.includedRow}>
+              <Text style={styles.includedTotalLabel}>Total</Text>
+              <Text style={styles.includedTotalValue}>
+                {allInTotalCents !== null
+                  ? formatCentsCurrency(allInTotalCents, allInCurrency)
+                  : "—"}
+              </Text>
+            </View>
+            {breakdown.components.tax_cents > 0 ? (
+              <Text style={styles.includedVatNote}>
+                Includes{" "}
+                {formatCentsCurrency(
+                  breakdown.components.tax_cents,
+                  allInCurrency,
+                )}{" "}
+                VAT
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
+
         <View style={styles.subtotalRow}>
-          <Text style={styles.subtotalLabel}>Subtotal</Text>
-          <Text style={styles.subtotalValue}>{subtotalValueText}</Text>
+          <View style={styles.totalTextCol}>
+            <Text style={styles.subtotalLabel}>Total</Text>
+            {previewStatus === "error" && !totals.isFree ? (
+              <Pressable
+                onPress={retryPreview}
+                accessibilityRole="button"
+                accessibilityLabel="Couldn't load price, tap to retry"
+                hitSlop={6}
+              >
+                <Text style={styles.retryLine}>
+                  Couldn&apos;t load price — tap to retry
+                </Text>
+              </Pressable>
+            ) : inclLineText !== null ? (
+              <Pressable
+                onPress={() => setShowBreakdown((v) => !v)}
+                accessibilityRole="button"
+                accessibilityLabel="Show what's included"
+                hitSlop={6}
+              >
+                <Text style={styles.inclLine}>
+                  {inclLineText} {showBreakdown ? "⌃" : "⌄"}
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
+          {!previewResolved && !totals.isFree ? (
+            <ActivityIndicator color="rgba(255,255,255,0.65)" />
+          ) : (
+            <Text style={styles.subtotalValue}>{totalValueText}</Text>
+          )}
         </View>
         <Pressable
           onPress={handleConfirm}
@@ -444,6 +571,11 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
         >
           {isSubmitting ? (
             <ActivityIndicator color="#ffffff" />
+          ) : !previewResolved && !totals.isFree ? (
+            <View style={styles.ctaInflightRow}>
+              <ActivityIndicator color="#ffffff" />
+              <Text style={styles.ctaLabel}>Getting your price…</Text>
+            </View>
           ) : (
             <Text style={styles.ctaLabel}>{ctaLabel}</Text>
           )}
@@ -650,13 +782,83 @@ const styles = StyleSheet.create({
   subtotalRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "baseline",
+    alignItems: "center",
     marginBottom: 8,
+  },
+  totalTextCol: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
   },
   subtotalLabel: {
     fontSize: 13,
     fontWeight: "500",
     color: "rgba(255, 255, 255, 0.55)",
+  },
+  // ORCH-1006 Surface 6 — quiet "incl. VAT & fees ⌄" reassurance line.
+  inclLine: {
+    fontSize: 12,
+    fontWeight: "500",
+    color: "rgba(255, 255, 255, 0.45)",
+  },
+  retryLine: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#fca5a5",
+  },
+  ctaInflightRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  // ORCH-1006 Surface 6 — "What's included" panel (sunken card above the bar).
+  includedPanel: {
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255, 255, 255, 0.10)",
+    padding: 16,
+    marginBottom: 12,
+    gap: 8,
+  },
+  includedTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "rgba(255, 255, 255, 0.72)",
+    marginBottom: 2,
+  },
+  includedRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "baseline",
+  },
+  includedLabel: {
+    fontSize: 14,
+    color: "rgba(255, 255, 255, 0.72)",
+  },
+  includedValue: {
+    fontSize: 14,
+    color: "rgba(255, 255, 255, 0.96)",
+  },
+  includedDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    marginVertical: 2,
+  },
+  includedTotalLabel: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "rgba(255, 255, 255, 0.96)",
+  },
+  includedTotalValue: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "rgba(255, 255, 255, 0.96)",
+  },
+  includedVatNote: {
+    fontSize: 12,
+    color: "rgba(255, 255, 255, 0.55)",
+    marginTop: 2,
   },
   subtotalValue: {
     fontSize: 20,

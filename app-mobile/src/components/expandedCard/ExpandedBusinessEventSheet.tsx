@@ -250,7 +250,6 @@ export const ExpandedBusinessEventSheet: React.FC<
             email: buyerEmail,
             phone: buyerPhone,
             marketingOptIn: payload.marketingOptIn,
-            address: payload.address,
           },
           taxCalculationId: payload.taxCalculationId,
         });
