@@ -230,6 +230,12 @@ function tripToLocalEditState(trip: Trip): LocalTripEditState {
       capacity: trip.businessTrip.capacity,
       paymentPlan: firstTier?.installmentSchedule ?? null,
       paymentPlanLocked: false,
+      // ORCH-1006 — seed switches from events.pass_* (NULL = inherit).
+      pricingSwitches: {
+        passTax: trip.pricingSwitches?.passTax ?? null,
+        passMinglaFee: trip.pricingSwitches?.passMinglaFee ?? null,
+        passServiceFee: trip.pricingSwitches?.passServiceFee ?? null,
+      },
     },
     coverMediaUrl: trip.coverMediaUrl,
     coverMediaType: coverType,

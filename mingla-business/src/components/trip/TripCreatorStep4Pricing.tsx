@@ -32,6 +32,9 @@ import {
 } from "../../constants/designSystem";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { PaymentPlanEditor, type TripInstallmentSchedule } from "./PaymentPlanEditor";
+import { WhoCoversCostsSection } from "../pricing/WhoCoversCostsSection";
+import { DEFAULT_TAKE_RATE_BPS } from "../../constants/pricing";
+import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 
 export interface Step4Draft {
   tierName: string;
@@ -55,6 +58,16 @@ export interface Step4Draft {
    * made on this trip; locks the editor into read-only banner v3 (Q6).
    */
   paymentPlanLocked: boolean;
+  /**
+   * ORCH-1006 — per-offering all-in pricing switches. Each NULL = inherit the
+   * brand default; explicit boolean = override. Persisted to events.pass_* via
+   * setTripPricingSwitches when the trip is unsold.
+   */
+  pricingSwitches: {
+    passTax: boolean | null;
+    passMinglaFee: boolean | null;
+    passServiceFee: boolean | null;
+  };
 }
 
 export interface TripCreatorStep4PricingProps {
@@ -85,6 +98,7 @@ export const TripCreatorStep4Pricing: React.FC<TripCreatorStep4PricingProps> = (
   editMode,
 }) => {
   const [confirmRemoveOpen, setConfirmRemoveOpen] = useState(false);
+  const brand = useCurrentBrand();
   const priceCents = Math.round((parseFloat(draft.priceMajor) || 0) * 100);
   const planEnabled = draft.paymentPlan !== null;
   // ORCH-0876 — read-only price when at least one confirmed booking exists
@@ -245,6 +259,26 @@ export const TripCreatorStep4Pricing: React.FC<TripCreatorStep4PricingProps> = (
           />
         ) : null}
       </View>
+
+      {brand !== null ? (
+        <WhoCoversCostsSection
+          format="trip"
+          overrides={draft.pricingSwitches}
+          defaults={{
+            passTax: brand.defaultPassTax ?? false,
+            passMinglaFee: brand.defaultPassMinglaFee ?? false,
+            passServiceFee: brand.defaultPassServiceFee ?? false,
+          }}
+          onChange={(next) => onChange({ pricingSwitches: next })}
+          previewBaseCents={priceCents}
+          currency={draft.currency}
+          effectiveTakeRateBps={brand.takeRateBpsOverride ?? DEFAULT_TAKE_RATE_BPS}
+          locked={priceLocked}
+          // Surface 4 — interim interactive; engine fail-closes to absorb at
+          // checkout for unregistered brands. Real probe wires with the endpoint.
+          vatRegistered
+        />
+      ) : null}
 
       <ConfirmDialog
         visible={confirmRemoveOpen}
