@@ -39,8 +39,8 @@ function stripComments(src: string): string {
 }
 
 // Light-surface sections (parchment/vellum) — accent text MUST be warm-ink.
+// (hero.tsx moved to DARK after the ORCH-1010 booking-wall pivot.)
 const LIGHT_SECTIONS = [
-  'hero.tsx',
   'what-mingla-does.tsx',
   'how-it-works.tsx',
   'audiences.tsx',
@@ -49,8 +49,9 @@ const LIGHT_SECTIONS = [
   'faq.tsx',
 ] as const
 
-// Dark SpotlightBand sections — accent text uses warm (correct on dark).
-const DARK_SECTIONS = ['comparison.tsx', 'cta.tsx'] as const
+// Dark sections — accent text uses warm (correct on dark). The hero is now a
+// full-bleed dark booking-wall section; comparison + cta are SpotlightBands.
+const DARK_SECTIONS = ['hero.tsx', 'comparison.tsx', 'cta.tsx'] as const
 
 // Fabricated / off-reality phrases that must NOT appear anywhere on the page.
 const FORBIDDEN = [
@@ -123,12 +124,16 @@ const cases: ReadonlyArray<readonly [string, () => void]> = [
     },
   ],
   [
-    'dark SpotlightBand sections use text-warm accent (correct on night canvas)',
+    'dark sections use text-warm accent (correct on night canvas)',
     () => {
+      // All dark sections use the warm accent on dark.
       for (const file of DARK_SECTIONS) {
-        const src = read(file)
-        makeExpect(src).toContain('SpotlightBand')
-        makeExpect(src).toContain('text-warm')
+        makeExpect(read(file)).toContain('text-warm')
+      }
+      // The two SpotlightBand sections specifically render via <SpotlightBand>
+      // (the hero is dark via its own full-bleed booking-wall + overlay).
+      for (const file of ['comparison.tsx', 'cta.tsx']) {
+        makeExpect(read(file)).toContain('SpotlightBand')
       }
     },
   ],
@@ -142,20 +147,21 @@ const cases: ReadonlyArray<readonly [string, () => void]> = [
     },
   ],
   [
-    'hero + CTA primary button uses primary-ink variant (white-on-warm fix)',
+    'CTA primary button uses primary-ink variant (white-on-warm fix)',
     () => {
-      makeExpect(read('hero.tsx')).toContain("variant=\"primary-ink\"")
+      // Hero no longer carries a primary button (booking-wall pivot — single
+      // glass PlayTile on the dark overlay). The CTA still owns the primary-ink.
       makeExpect(read('cta.tsx')).toContain("variant=\"primary-ink\"")
     },
   ],
   [
-    'hero renders the business growth-OS dashboard card (show-not-tell, no stock art)',
+    'hero is the full-bleed booking-wall; the dashboard card lives in what-mingla-does',
     () => {
-      // Operator pivot (ORCH-1010): the business hero shows the BUSINESS outcome
-      // (payouts / bookings / CRM / AI) via the dashboard card, not the consumer
-      // swipe deck. Guard the current artifact.
-      const hero = read('hero.tsx')
-      makeExpect(hero).toContain('HeroBusinessCards')
+      // Operator pivot (ORCH-1010): the hero is a dark 3D booking-wall cover with
+      // the headline over an overlay; the business growth-OS dashboard card moved
+      // into what-mingla-does. Guard the current artifacts.
+      makeExpect(read('hero.tsx')).toContain('HeroBookingWall')
+      makeExpect(read('what-mingla-does.tsx')).toContain('HeroBusinessCards')
     },
   ],
   [

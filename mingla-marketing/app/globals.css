@@ -300,6 +300,18 @@ body {
   }
 }
 
+/* ORCH-1010 — vertical marquee for the hero 3D booking wall. Columns hold a
+   doubled card list; translating -50% loops seamlessly. Disabled by the
+   reduced-motion block below (becomes a static tilted wall). */
+@keyframes mingla-marquee-y {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(-50%);
+  }
+}
+
 /* ----- Reduced motion ----- */
 @media (prefers-reduced-motion: reduce) {
   *,

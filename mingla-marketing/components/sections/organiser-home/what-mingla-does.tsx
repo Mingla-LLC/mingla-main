@@ -2,6 +2,7 @@
 import { type ReactNode } from 'react'
 import { motion } from 'framer-motion'
 import { Reveal } from '@/components/ui/reveal'
+import { HeroBusinessCards } from '@/components/sections/organiser-home/hero-business-cards'
 import { useMinglaReducedMotion } from '@/lib/reduced-motion'
 
 // ORCH-1010 — the page's emotional core: the litany. Centered, generous,
@@ -79,6 +80,14 @@ export function OrganiserWhatMinglaDoes() {
             people understand instantly, and put it in front of the people most
             likely to care.
           </p>
+        </Reveal>
+
+        {/* The growth-OS dashboard — relocated from the hero. Shows the business
+            outcome (payouts, bookings, customers, AI reach) of all the above. */}
+        <Reveal delay={0.15}>
+          <div className="mt-16 flex justify-center">
+            <HeroBusinessCards />
+          </div>
         </Reveal>
       </div>
     </section>
