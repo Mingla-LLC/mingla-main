@@ -60,7 +60,7 @@ export function GlassNav() {
           >
             {surface === 'organiser' ? (
               <img
-                src="/brand/mingla-business-logo.svg"
+                src="/brand/mingla-business-logo.png"
                 alt="Mingla Business"
                 className="h-20 w-20 select-none"
                 draggable={false}
