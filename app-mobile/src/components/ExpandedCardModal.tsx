@@ -1335,7 +1335,10 @@ function MultiStopPlanView({
 }
 
 /** Wrapper component so each curated stop gets its own useIsPlaceOpen hook instance */
-function StopOpenBadge({ openingHours }: { openingHours: Record<string, string> | null | undefined }) {
+// ORCH-1019 F-7: prop type widened to CuratedStop['openingHours'] (the
+// Google-v1-object-or-legacy union). useIsPlaceOpen already accepts this union
+// and routes through extractWeekdayText — no day-key index here.
+function StopOpenBadge({ openingHours }: { openingHours: CuratedStop['openingHours'] | undefined }) {
   const { t } = useTranslation(['cards', 'common']);
   const liveOpenStatus = useIsPlaceOpen(openingHours);
   if (liveOpenStatus === null) return null;

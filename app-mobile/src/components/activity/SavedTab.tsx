@@ -37,6 +37,7 @@ import { PriceTierSlug, TIER_BY_SLUG, formatTierLabel } from '../../constants/pr
 import { HapticFeedback } from "../../utils/hapticFeedback";
 import type { CuratedStop } from "../../types/curatedExperience";
 import { isPlaceOpenNow, isPlaceOpenAt, extractWeekdayText } from "../../utils/openingHoursUtils";
+import { checkAllCuratedStopsOpen, type CuratedStopsAvailabilityResult } from "../../utils/curatedStopsAvailability";
 import { getReadableCategoryName } from "../../utils/categoryUtils";
 import { CardFilterBar, WhenFilter } from './CardFilterBar';
 import { useFeatureGate } from "../../hooks/useFeatureGate";
@@ -1076,111 +1077,21 @@ const SavedTab = ({
   };
 
   // ---- Opening Hours Validation for Curated Plans ----
-
-  interface StopAvailability {
-    stopName: string;
-    isOpen: boolean;
-    reason?: string;
-  }
-
-  const to24Hour = (hour: number, ampm: string): number => {
-    const isPM = ampm.toUpperCase() === 'PM';
-    if (hour === 12) return isPM ? 12 : 0;
-    return isPM ? hour + 12 : hour;
-  };
-
-  const checkSingleStopOpen = (
-    stop: CuratedStop,
-    arrivalTime: Date
-  ): StopAvailability => {
-    const dayName = arrivalTime.toLocaleDateString(getUserLocale(), { weekday: 'long' });
-    const hoursString = stop.openingHours?.[dayName];
-
-    // No hours data — assume open
-    if (!hoursString) {
-      return { stopName: stop.placeName, isOpen: true };
-    }
-
-    // Explicitly closed
-    if (hoursString.toLowerCase().includes('closed')) {
-      return {
-        stopName: stop.placeName,
-        isOpen: false,
-        reason: `Closed on ${dayName}s`,
-      };
-    }
-
-    // Open 24 hours
-    if (hoursString.toLowerCase().includes('24 hours') || hoursString.toLowerCase().includes('open 24')) {
-      return { stopName: stop.placeName, isOpen: true };
-    }
-
-    // Parse "9:00 AM – 5:00 PM" or "9 AM – 5 PM" format
-    const match = hoursString.match(
-      /(\d{1,2}):?(\d{2})?\s*(AM|PM)\s*[–\-]\s*(\d{1,2}):?(\d{2})?\s*(AM|PM)/i
-    );
-    if (!match) {
-      // Can't parse — assume open
-      return { stopName: stop.placeName, isOpen: true };
-    }
-
-    const openHour = to24Hour(parseInt(match[1]), match[3]);
-    const openMinute = parseInt(match[2] || '0');
-    const closeHour = to24Hour(parseInt(match[4]), match[6]);
-    const closeMinute = parseInt(match[5] || '0');
-
-    const arrivalHour = arrivalTime.getHours();
-    const arrivalMinute = arrivalTime.getMinutes();
-    const arrivalTotal = arrivalHour * 60 + arrivalMinute;
-    const openTotal = openHour * 60 + openMinute;
-    const closeTotal = closeHour * 60 + closeMinute;
-
-    if (arrivalTotal < openTotal) {
-      const openTimeStr = `${match[1]}:${match[2] || '00'} ${match[3]}`;
-      return {
-        stopName: stop.placeName,
-        isOpen: false,
-        reason: `Opens at ${openTimeStr}`,
-      };
-    }
-
-    if (arrivalTotal >= closeTotal && closeTotal > openTotal) {
-      const closeTimeStr = `${match[4]}:${match[5] || '00'} ${match[6]}`;
-      return {
-        stopName: stop.placeName,
-        isOpen: false,
-        reason: `Closes at ${closeTimeStr}`,
-      };
-    }
-
-    return { stopName: stop.placeName, isOpen: true };
-  };
+  //
+  // ORCH-1019 F-2: the bespoke day-name parser (to24Hour / checkSingleStopOpen /
+  // checkAllStopsOpen with `stop.openingHours?.[dayName]`) was DELETED. It indexed
+  // a day key on the openingHours value, which is the raw Google Places v1 object
+  // ({ weekdayDescriptions: [...] }) at runtime — so the lookup was always
+  // undefined and every stop was reported "open" ("All Stops Are Open!" even for
+  // closed venues). All curated availability now routes through the canonical
+  // shared validator (checkAllCuratedStopsOpen) which uses extractWeekdayText +
+  // isPlaceOpenAt — the single hours authority. See I-CURATED-HOURS-VIA-CANONICAL-READER.
 
   const checkAllStopsOpen = (
     stops: CuratedStop[],
     startTime: Date
-  ): { allOpen: boolean; results: StopAvailability[] } => {
-    let cumulativeMinutes = 0;
-
-    const results: StopAvailability[] = stops.map((stop, idx) => {
-      // Calculate estimated arrival time at this stop
-      const arrivalTime = new Date(startTime.getTime() + cumulativeMinutes * 60000);
-      const availability = checkSingleStopOpen(stop, arrivalTime);
-
-      // Add this stop's duration + next stop's travel time
-      cumulativeMinutes += (stop.estimatedDurationMinutes ?? 45);
-      if (idx < stops.length - 1 && stops[idx + 1]?.travelTimeFromPreviousStopMin) {
-        cumulativeMinutes += stops[idx + 1].travelTimeFromPreviousStopMin!;
-      }
-
-      return availability;
-    });
-
-    return {
-      allOpen: results.every(r => r.isOpen),
-      results,
-    };
-  };
+  ): CuratedStopsAvailabilityResult =>
+    checkAllCuratedStopsOpen(stops, startTime, getUserLocale());
 
   const handleScheduleCurated = (card: SavedCard) => {
     // Gate: curated card schedule requires Mingla+

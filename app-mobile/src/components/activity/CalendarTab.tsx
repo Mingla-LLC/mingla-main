@@ -36,6 +36,10 @@ import { useFeatureGate } from "../../hooks/useFeatureGate";
 import { CustomPaywallScreen } from "../CustomPaywallScreen";
 import { useKeyboard } from "../../hooks/useKeyboard";
 import { useTranslation } from 'react-i18next';
+// ORCH-1019 F-1: curated reschedule validation routes through the canonical
+// shared validator (extractWeekdayText + isPlaceOpenAt), same as SavedTab.
+import { checkAllCuratedStopsOpen } from "../../utils/curatedStopsAvailability";
+import { getUserLocale } from "../../utils/localeUtils";
 // ORCH-0829-A: business-event ticket purchases live in `orders`+`tickets`
 // tables. Surface them inside Calendar so the user sees a unified
 // timeline. The legacy prop flow (calendarEntries from AppStateManager
@@ -604,6 +608,36 @@ const CalendarTab = ({
       return;
     }
 
+    // ORCH-1019 F-1(c): for curated entries, validate every stop's hours at the
+    // chosen datetime BEFORE committing the reschedule — same canonical
+    // validator as SavedTab (no bespoke day-key lookup). On any closed stop,
+    // show "Some Stops Are Closed" and do NOT silently commit; regular
+    // (single-place) entries skip this and keep their existing advisory path.
+    const rescheduleStops = (entryToReschedule.experience as any)?.stops;
+    if (Array.isArray(rescheduleStops) && rescheduleStops.length > 0) {
+      const { allOpen, results } = checkAllCuratedStopsOpen(
+        rescheduleStops,
+        date,
+        getUserLocale(),
+      );
+      if (!allOpen) {
+        const closedList = results
+          .filter((r) => !r.isOpen)
+          .map((s) => `  • ${s.stopName} — ${s.reason}`)
+          .join('\n');
+        setShowProposeDateTimeModal(false);
+        Alert.alert(
+          'Some Stops Are Closed',
+          `Not all activities are open at the time you selected:\n\n${closedList}\n\nPlease choose a different time when all stops are available.`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Choose New Time', onPress: () => setShowProposeDateTimeModal(true) },
+          ],
+        );
+        return;
+      }
+    }
+
     setIsScheduling(true);
     try {
       const { CalendarService } = await import("../../services/calendarService");
@@ -646,9 +680,22 @@ const CalendarTab = ({
             }
           }
 
-          const deviceEvent = DeviceCalendarService.createEventFromCard(
-            cardData, date, entryToReschedule.duration_minutes || 120
-          );
+          // ORCH-1019 F-4: curated reschedule must rebuild with the multi-stop
+          // builder so every stop's "Stop N / Address: …" line survives
+          // (createEventFromCard emits only the first stop's address). Mirrors
+          // the initial-schedule branch at SavedTab.tsx:1415-1420. Only this
+          // no-stored-ID recreate fallback is touched — the stored-ID patch
+          // branch above preserves notes and is NOT modified.
+          const isCuratedEntry = Array.isArray(cardData.stops) && cardData.stops.length > 0;
+          const deviceEvent = isCuratedEntry
+            ? DeviceCalendarService.createEventFromCuratedCard(
+                cardData,
+                date,
+                cardData.estimatedDurationMinutes || entryToReschedule.duration_minutes || 120,
+              )
+            : DeviceCalendarService.createEventFromCard(
+                cardData, date, entryToReschedule.duration_minutes || 120
+              );
           const newEventId = await DeviceCalendarService.addEventToDeviceCalendar(deviceEvent);
 
           // Store the new event ID for future reschedule
@@ -799,6 +846,72 @@ const CalendarTab = ({
     eventDetailText: {
       fontSize: 14,
       color: "#FFFFFF",
+    },
+    // ORCH-1019 F-5: curated per-stop address rail (DESIGN doc §3 tokens).
+    curatedStopRail: {
+      gap: 12,
+    },
+    curatedStopRow: {
+      flexDirection: "row",
+      gap: 8,
+      alignItems: "flex-start",
+    },
+    curatedStopBadgeCol: {
+      width: 20,
+      alignItems: "center",
+    },
+    curatedStopBadge: {
+      width: 20,
+      height: 20,
+      borderRadius: 10,
+      backgroundColor: "#eb7825",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    curatedStopBadgeText: {
+      color: "#FFFFFF",
+      fontSize: 12,
+      fontWeight: "700",
+    },
+    curatedStopConnector: {
+      width: 1.5,
+      flex: 1,
+      backgroundColor: "rgba(235,120,37,0.32)",
+      marginTop: 2,
+    },
+    curatedStopTextCol: {
+      flex: 1,
+      minWidth: 0,
+    },
+    curatedStopMeta: {
+      // container line; child <Text> carry their own roles
+    },
+    curatedStopLabel: {
+      color: "#eb7825",
+      fontSize: 11,
+      fontWeight: "600",
+      letterSpacing: 0.5,
+    },
+    curatedStopMiddot: {
+      color: "rgba(255,255,255,0.4)",
+      fontSize: 13,
+    },
+    curatedStopName: {
+      color: "#FFFFFF",
+      fontSize: 13,
+      fontWeight: "600",
+    },
+    curatedStopAddress: {
+      color: "rgba(255,255,255,0.72)",
+      fontSize: 13,
+      fontWeight: "400",
+      marginTop: 2,
+    },
+    curatedStopAddressTBD: {
+      color: "rgba(255,255,255,0.55)",
+      fontSize: 13,
+      fontStyle: "italic",
+      marginTop: 2,
     },
     statusIndicators: {
       flexDirection: "row",
@@ -1580,14 +1693,93 @@ const CalendarTab = ({
                     <Text style={styles.eventDetailText}>{formattedTime}</Text>
                   </View>
                 ) : null}
-                <View style={styles.eventDetailRow}>
-                  <Icon name="location" size={16} color="#eb7825" />
-                  <Text style={styles.eventDetailText}>
-                    {entry.experience?.address ||
-                      entry.address ||
-                      t('activity:calendarTab.locationTBD')}
-                  </Text>
-                </View>
+                {(() => {
+                  // ORCH-1019 F-5: curated multi-stop entries surface EVERY
+                  // stop's address inline (numbered rail), so the user can
+                  // execute the plan without opening a second screen or
+                  // expanding each stop. Non-curated entries keep the existing
+                  // single location row unchanged (no regression). Built to
+                  // DESIGN_ORCH-1019_F5_CALENDAR_STOP_ADDRESSES.md.
+                  const railStops = (entry.experience as any)?.stops as any[] | undefined;
+                  const isCuratedRail = Array.isArray(railStops) && railStops.length > 0;
+                  if (!isCuratedRail) {
+                    return (
+                      <View style={styles.eventDetailRow}>
+                        <Icon name="location" size={16} color="#eb7825" />
+                        <Text style={styles.eventDetailText}>
+                          {entry.experience?.address ||
+                            entry.address ||
+                            t('activity:calendarTab.locationTBD')}
+                        </Text>
+                      </View>
+                    );
+                  }
+                  return (
+                    <View style={styles.curatedStopRail}>
+                      {railStops.map((stop, idx) => {
+                        const stopNum =
+                          typeof stop?.stopNumber === 'number' && stop.stopNumber >= 1
+                            ? stop.stopNumber
+                            : idx + 1;
+                        const label = typeof stop?.stopLabel === 'string' ? stop.stopLabel : '';
+                        const placeName =
+                          (typeof stop?.placeName === 'string' && stop.placeName) ||
+                          (typeof stop?.title === 'string' && stop.title) ||
+                          '';
+                        const addr =
+                          typeof stop?.address === 'string' ? stop.address.trim() : '';
+                        const hasAddr = addr.length > 0;
+                        return (
+                          <View
+                            key={`stop-${stopNum}-${idx}`}
+                            style={styles.curatedStopRow}
+                            accessibilityRole="text"
+                            accessibilityLabel={`Stop ${stopNum}${label ? `, ${label}` : ''}${placeName ? `, ${placeName}` : ''}, ${hasAddr ? addr : t('activity:calendarTab.locationTBD')}`}
+                          >
+                            <View style={styles.curatedStopBadgeCol}>
+                              <View style={styles.curatedStopBadge}>
+                                <Text style={styles.curatedStopBadgeText}>{stopNum}</Text>
+                              </View>
+                              {idx < railStops.length - 1 ? (
+                                <View
+                                  style={styles.curatedStopConnector}
+                                  importantForAccessibility="no"
+                                  accessibilityElementsHidden
+                                />
+                              ) : null}
+                            </View>
+                            <View style={styles.curatedStopTextCol}>
+                              <Text style={styles.curatedStopMeta} numberOfLines={1}>
+                                {label ? (
+                                  <Text style={styles.curatedStopLabel}>
+                                    {label.toUpperCase()}
+                                  </Text>
+                                ) : null}
+                                {label && placeName ? (
+                                  <Text style={styles.curatedStopMiddot}> · </Text>
+                                ) : null}
+                                <Text style={styles.curatedStopName}>{placeName}</Text>
+                              </Text>
+                              {hasAddr ? (
+                                <Text
+                                  style={styles.curatedStopAddress}
+                                  numberOfLines={2}
+                                  ellipsizeMode="tail"
+                                >
+                                  {addr}
+                                </Text>
+                              ) : (
+                                <Text style={styles.curatedStopAddressTBD} numberOfLines={1}>
+                                  {t('activity:calendarTab.locationTBD')}
+                                </Text>
+                              )}
+                            </View>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  );
+                })()}
               </View>
 
               {/* ORCH-0908: Source Badge — uses collaborationBadge styles for collab entries
@@ -1946,6 +2138,13 @@ const CalendarTab = ({
 
   // Convert CalendarEntry to SavedCard format for ProposeDateTimeModal
   const entryToCard = (entry: CalendarEntry) => {
+    // ORCH-1019 F-1(a): carry the curated payload so the reschedule modal
+    // routes the curated flow (canonical per-stop hours) instead of the
+    // regular single-place flow. entry.experience is { ...card_data, id }
+    // (AppStateManager.tsx:587), and card_data carries these via the
+    // calendarService allowlist (L158-168). Presence of `stops` drives
+    // isCurated downstream — see the modal render + handleProposeDateTime.
+    const exp = (entry.experience || {}) as any;
     return {
       id: entry.id,
       title: entry.experience?.title || entry.title,
@@ -1967,6 +2166,15 @@ const CalendarTab = ({
       socialStats: entry.experience?.socialStats || entry.socialStats,
       source: entry.source || "solo",
       dateAdded: entry.suggestedDates?.[0] || entry.date,
+      // ORCH-1019 F-1(a): curated fields (sourced from entry.experience).
+      stops: exp.stops,
+      cardType: exp.cardType,
+      tagline: exp.tagline,
+      pairingKey: exp.pairingKey,
+      experienceType: exp.experienceType,
+      totalPriceMin: exp.totalPriceMin,
+      totalPriceMax: exp.totalPriceMax,
+      estimatedDurationMinutes: exp.estimatedDurationMinutes,
     };
   };
 
@@ -2147,6 +2355,10 @@ const CalendarTab = ({
             setIsScheduling(false);
           }}
           card={entryToCard(entryToReschedule)}
+          isCurated={
+            Array.isArray((entryToReschedule.experience as any)?.stops) &&
+            (entryToReschedule.experience as any).stops.length > 0
+          }
           currentScheduledDate={
             entryToReschedule.suggestedDates?.[0] ||
             (entryToReschedule.date && entryToReschedule.time
