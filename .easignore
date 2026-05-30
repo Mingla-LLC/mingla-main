@@ -32,3 +32,7 @@ mingla-marketing/
 orch-*.png
 trim-screen.png
 App Screenshots/
+.codex/
+**/.codex/
+.claude/
+**/.claude/
