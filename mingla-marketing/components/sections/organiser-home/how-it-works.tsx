@@ -1,5 +1,6 @@
 'use client'
 import { Reveal, RevealGroup } from '@/components/ui/reveal'
+import { LiveActivityFeed } from './live-activity-feed'
 
 // ORCH-1010 — the real journey from the owner's chair in 4 true steps, ending
 // on "a full room". A hairline through-line with warm-ink step nodes makes it
@@ -49,15 +50,18 @@ export function OrganiserHowItWorks() {
           </h2>
         </Reveal>
 
-        {/* Step row. On lg, a hairline rail runs behind the number nodes. */}
-        <div className="relative mt-16">
+        {/* Two-column on desktop: the journey steps on the left, an illustrative
+            live activity feed on the right (ORCH-1010). Stacks on mobile. */}
+        <div className="mt-16 grid gap-12 lg:grid-cols-[1.55fr_1fr] lg:items-start lg:gap-16">
+          {/* Steps column. A hairline rail runs behind the number nodes. */}
+          <div className="relative">
           {/* Desktop horizontal rail — behind the 40px node baseline. */}
           <div
             aria-hidden="true"
             className="absolute left-0 right-0 top-5 hidden h-px lg:block"
             style={{ background: 'var(--seam-light)' }}
           />
-          <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-4 lg:gap-6">
+          <div className="grid gap-8 md:grid-cols-2 lg:gap-6">
             <RevealGroup
               items={STEPS}
               step={0.08}
@@ -92,6 +96,12 @@ export function OrganiserHowItWorks() {
               )}
             </RevealGroup>
           </div>
+          </div>
+
+          {/* Feed column — what those four steps produce, live. */}
+          <Reveal delay={0.15} className="lg:sticky lg:top-24">
+            <LiveActivityFeed />
+          </Reveal>
         </div>
       </div>
     </section>

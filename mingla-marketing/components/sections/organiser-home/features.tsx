@@ -9,6 +9,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { Reveal, RevealGroup } from '@/components/ui/reveal'
+import { ActiveListingsTable } from './active-listings-table'
 
 // ORCH-1010 — the concrete, all-shipped capability list ("what you actually
 // get"). Back on parchment (daylight after the dark Comparison peak). Each card
@@ -69,7 +70,14 @@ export function OrganiserFeatures() {
           </h2>
         </Reveal>
 
-        <div className="mt-16 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {/* Visual anchor — an illustrative "Active listings" product table that
+            shows what the dashboard actually looks like, above the capability
+            grid. Dashboard font + warm light theme (ORCH-1010). */}
+        <Reveal className="mt-16">
+          <ActiveListingsTable />
+        </Reveal>
+
+        <div className="mt-12 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           <RevealGroup
             items={FEATURES}
             step={0.04}
