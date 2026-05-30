@@ -4,7 +4,6 @@ import { motion } from 'framer-motion'
 import { Play } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { VideoModal } from '@/components/ui/video-modal'
-import { StatLine } from '@/components/ui/stat-line'
 import { HeroBusinessCards } from '@/components/sections/organiser-home/hero-business-cards'
 import { useMinglaReducedMotion } from '@/lib/reduced-motion'
 
@@ -15,13 +14,6 @@ import { useMinglaReducedMotion } from '@/lib/reduced-motion'
 // example values, no stock art — reality-anchored).
 
 const EASE = [0.16, 1, 0.3, 1] as const
-
-// Numberless trust strip — all three are SHIPPED capabilities (no metric).
-const TRUST_PILLS = [
-  'Native all-in checkout',
-  'Email your real buyers',
-  'Guest list + check-ins',
-] as const
 
 interface PlayTileProps {
   onPlay: () => void
@@ -107,25 +99,6 @@ export function OrganiserHero() {
               </Button>
               <PlayTile onPlay={() => setVideoOpen(true)} />
             </motion.div>
-
-            <motion.div
-              initial={reduced ? false : { opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: reduced ? 0 : 0.6, ease: EASE }}
-              className="mt-8"
-            >
-              <StatLine items={TRUST_PILLS} className="justify-center lg:justify-start" />
-            </motion.div>
-
-            <motion.p
-              initial={reduced ? false : { opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.6, delay: reduced ? 0 : 0.75 }}
-              className="mt-12 text-base text-text-muted"
-            >
-              Not just a listing. Not just an ad.{' '}
-              <span className="text-text-primary">A reason people choose you.</span>
-            </motion.p>
           </div>
 
           {/* RIGHT — the business outcome. A live feed of bookings arriving
