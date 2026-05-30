@@ -681,6 +681,9 @@ const SavedTab = ({
       borderRadius: 12,
       borderWidth: 1,
       borderColor: "#f5e6d3",
+      // META-ORCH-1002 Sub-B (C5, dark-canvas): clip the translucent orange fill +
+      // bright border to the radius (kills the corner ring). Glass fill preserved.
+      overflow: "hidden",
     },
     emptyStateIconCircle: {
       width: 40,

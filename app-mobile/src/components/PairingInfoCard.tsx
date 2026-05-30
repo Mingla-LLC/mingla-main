@@ -13,6 +13,7 @@ import {
   StyleSheet,
   Animated,
   Image,
+  Platform,
 } from "react-native";
 import * as Haptics from "expo-haptics";
 import type { PairingPill } from "../services/pairingService";
@@ -165,7 +166,14 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
   },
   card: {
-    backgroundColor: "rgba(255, 255, 255, 0.95)",
+    // META-ORCH-1002 Sub-B (A2): clip fill+border to the radius on Android (kills the
+    // inset ring); opaque white on Android; zero the Android elevation so shadows.lg's
+    // elevation:8 draws no hard rectangle under the rounded fill. iOS byte-identical.
+    backgroundColor: Platform.select({
+      ios: "rgba(255, 255, 255, 0.95)",
+      android: "#FFFFFF",
+      default: "rgba(255, 255, 255, 0.95)",
+    }),
     borderRadius: s(20),
     paddingVertical: s(28),
     paddingHorizontal: s(24),
@@ -174,7 +182,9 @@ const styles = StyleSheet.create({
     maxWidth: s(300),
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.5)",
+    overflow: "hidden",
     ...shadows.lg,
+    elevation: Platform.select({ ios: shadows.lg.elevation, android: 0, default: shadows.lg.elevation }),
   },
   avatar: {
     width: s(56),
