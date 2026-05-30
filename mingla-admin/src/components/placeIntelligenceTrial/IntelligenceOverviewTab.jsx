@@ -27,14 +27,12 @@ import { extractFunctionError } from "../../lib/edgeFunctionError";
 import { fetchIntelligenceCoverage } from "../../services/intelligenceCoverageService";
 import { timeAgo } from "../../lib/formatters";
 import { RunRemainderConfirmModal } from "./RunRemainderConfirmModal";
-<<<<<<< HEAD
 // ORCH-1013 Finding B — bulk launch ("Run remainder on all").
 import { RunRemainderOnAllConfirmModal } from "./RunRemainderOnAllConfirmModal";
 import { useBulkRunDispatcher } from "../../hooks/useBulkRunDispatcher";
-=======
+// ORCH-1014 Finding B — per-city Seed + Refresh readiness badges.
 import { SeedStatusBadge } from "./SeedStatusBadge";
 import { RefreshStatusBadge } from "./RefreshStatusBadge";
->>>>>>> ecfc84d18 ([ORCH-1014] Finding B: per-city Seed + Refresh readiness badges on Intelligence Overview)
 
 const PER_PLACE_COST_USD = 0.0040;
 

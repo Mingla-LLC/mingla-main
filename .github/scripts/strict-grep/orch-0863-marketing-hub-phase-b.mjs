@@ -1077,11 +1077,8 @@ function checkNoNewBackendFiles() {
     ...ORCH_0977_BACKEND_ALLOWLIST,
     ...ORCH_0978_BACKEND_ALLOWLIST,
     ...ORCH_1008_BACKEND_ALLOWLIST,
-<<<<<<< HEAD
     ...ORCH_1013_BACKEND_ALLOWLIST,
-=======
     ...ORCH_1014_BACKEND_ALLOWLIST,
->>>>>>> ecfc84d18 ([ORCH-1014] Finding B: per-city Seed + Refresh readiness badges on Intelligence Overview)
   ];
   const forbidden = changed.filter(
     (p) =>
