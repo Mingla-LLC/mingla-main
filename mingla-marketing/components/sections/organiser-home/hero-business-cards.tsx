@@ -74,7 +74,7 @@ export function HeroBusinessCards({ className }: { className?: string }) {
   return (
     <motion.div
       className={cn(
-        'w-full max-w-[440px] rounded-2xl bg-white p-5 md:p-6',
+        'font-dashboard w-full max-w-[440px] rounded-2xl bg-white p-5 md:p-6',
         className,
       )}
       style={{ boxShadow: 'var(--elev-3)', outline: '1px solid rgba(14,14,16,0.05)' }}
@@ -90,7 +90,7 @@ export function HeroBusinessCards({ className }: { className?: string }) {
             Paid out this week
           </p>
           <p className="mt-1 flex items-baseline gap-1.5">
-            <span className="font-display text-4xl leading-none tracking-[-0.01em] text-text-primary tabular-nums">
+            <span className="text-4xl font-bold leading-none tracking-[-0.02em] text-text-primary tabular-nums">
               $<AnimatedNumber value={4820} reduced={reduced} />
             </span>
             <span className="text-sm text-text-muted">straight to you</span>
@@ -114,7 +114,7 @@ export function HeroBusinessCards({ className }: { className?: string }) {
               <CalendarCheck className="h-[18px] w-[18px] text-text-muted" />
             </div>
             <div className="mb-3">
-              <span className="font-display text-3xl font-medium text-text-primary tabular-nums">
+              <span className="text-3xl font-bold tracking-[-0.02em] text-text-primary tabular-nums">
                 <AnimatedNumber value={128} reduced={reduced} />
               </span>
               <span className="ml-1 text-xs text-text-muted">this week</span>
@@ -160,7 +160,7 @@ export function HeroBusinessCards({ className }: { className?: string }) {
               <Users className="h-[18px] w-[18px]" style={{ color: 'var(--color-warm-ink)' }} />
             </div>
             <div className="mb-3">
-              <span className="font-display text-3xl font-medium text-text-primary tabular-nums">
+              <span className="text-3xl font-bold tracking-[-0.02em] text-text-primary tabular-nums">
                 <AnimatedNumber value={1240} reduced={reduced} />
               </span>
               <span className="ml-1 text-xs text-text-muted">owned</span>
