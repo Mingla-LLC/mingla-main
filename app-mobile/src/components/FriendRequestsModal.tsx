@@ -1,18 +1,31 @@
+/**
+ * FriendRequestsModal
+ *
+ * META-ORCH-0991 Wave B — migrated from a hand-rolled RN <Modal> (slide,
+ * flex-end, fixed 88%-of-screen card with a non-draggable fake handle) onto
+ * BaseBottomSheet. It is now a true swipe-down sheet that rolls up + pan-
+ * dismisses like ExpandedBusinessEventSheet. Snap height ['88%'] preserves the
+ * exact prior height; the primitive's real drag handle replaces the cosmetic
+ * one. Light theme. Opened from HomePage (mounted high in the tree, above the
+ * tab-bar sibling), so NO wrapInRNModal is needed — the sheet's absolute float
+ * already clears the tab bar (same as NotificationsSheet). Fixed header +
+ * scrolling request list + pinned footer map onto the primitive's slots. All
+ * accept/decline logic, analytics (Mixpanel + AppsFlyer), empty/loading states,
+ * and copy preserved.
+ */
+
 import React, { useState, useEffect } from "react";
 import {
   Text,
   View,
   TouchableOpacity,
   StyleSheet,
-  Modal,
-  ScrollView,
   ActivityIndicator,
   Image,
-  Dimensions,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from 'react-i18next';
 import { Icon } from './ui/Icon';
+import { BaseBottomSheet } from './ui/BaseBottomSheet';
 import { getDisplayName } from '../utils/getDisplayName';
 import { useFriends } from "../hooks/useFriends";
 import { formatTimestamp } from "../utils/dateUtils";
@@ -29,7 +42,6 @@ export default function FriendRequestsModal({
   onClose,
 }: FriendRequestsModalProps) {
   const { t } = useTranslation(['social', 'common']);
-  const insets = useSafeAreaInsets();
   const {
     friendRequests,
     loadFriendRequests,
@@ -154,50 +166,61 @@ export default function FriendRequestsModal({
     }
   };
 
-  if (!isOpen) return null;
+  // META-ORCH-0991 Wave B — fixed header (title + dynamic subtitle), pinned to
+  // the top of the sheet above the scrolling request list.
+  const header = (
+    <View style={styles.header}>
+      <View style={styles.headerContent}>
+        <View style={styles.headerSidePlaceholder} />
+        <View style={styles.headerCenter}>
+          <Text style={styles.headerTitle}>{t('social:friendRequests')}</Text>
+          <Text style={styles.headerSubtitle}>
+            {initialLoading ? (
+              t('social:loading')
+            ) : incomingRequests.length === 0 ? (
+              t('social:allCaughtUp')
+            ) : (
+              t('social:pendingCount', { count: incomingRequests.length })
+            )}
+          </Text>
+        </View>
+        <View style={styles.headerSidePlaceholder} />
+      </View>
+    </View>
+  );
+
+  // Pinned footer (only shown once requests have loaded, matching prior layout).
+  const footer = initialLoading ? undefined : (
+    <View style={styles.footer}>
+      <Text style={styles.footerText}>
+        {t('social:manageConnectionsFooter')}
+      </Text>
+    </View>
+  );
 
   return (
-    <Modal
+    <BaseBottomSheet
       visible={isOpen}
-      transparent={true}
-      animationType="slide"
-      onRequestClose={onClose}
-      statusBarTranslucent
+      onClose={onClose}
+      theme="light"
+      snapPoints={FRIEND_REQUESTS_SNAP_POINTS}
+      scrollMode="scroll"
+      // META-ORCH-0991 Bug 4 (tab-bar awareness): this sheet is opened from
+      // HomePage as a NON-wrapInRNModal sheet, so Mingla's floating GlassBottomNav
+      // (rendered absolutely at the app root, zIndex 50) stays VISIBLE and overlaps
+      // the sheet's bottom. tabBarAware makes the primitive add the nav-capsule
+      // clearance to the sticky footer so the "manage connections" footer + the
+      // last request row sit ABOVE the floating menu (not behind it).
+      tabBarAware
+      header={header}
+      stickyFooter={footer}
+      scrollProps={{
+        style: styles.content,
+        contentContainerStyle: styles.contentContainer,
+        showsVerticalScrollIndicator: false,
+      }}
+      accessibilityLabel={t('social:friendRequests')}
     >
-      <View style={styles.sheetOverlay}>
-        {/* Tap backdrop to close */}
-        <TouchableOpacity
-          style={styles.backdropTouch}
-          activeOpacity={1}
-          onPress={onClose}
-        />
-
-        <View style={[styles.sheetContent, { paddingBottom: Math.max(insets.bottom, 16) }]}>
-          {/* Drag Handle */}
-          <View style={styles.dragHandleContainer}>
-            <View style={styles.dragHandle} />
-          </View>
-
-          {/* Header */}
-          <View style={styles.header}>
-            <View style={styles.headerContent}>
-              <View style={styles.headerSidePlaceholder} />
-              <View style={styles.headerCenter}>
-                <Text style={styles.headerTitle}>{t('social:friendRequests')}</Text>
-                <Text style={styles.headerSubtitle}>
-                  {initialLoading ? (
-                    t('social:loading')
-                  ) : incomingRequests.length === 0 ? (
-                    t('social:allCaughtUp')
-                  ) : (
-                    t('social:pendingCount', { count: incomingRequests.length })
-                  )}
-                </Text>
-              </View>
-              <View style={styles.headerSidePlaceholder} />
-            </View>
-          </View>
-
           {/* Content */}
           {initialLoading ? (
             <View style={styles.loadingContainer}>
@@ -205,11 +228,6 @@ export default function FriendRequestsModal({
             </View>
           ) : (
             <>
-              <ScrollView
-                style={styles.content}
-                contentContainerStyle={styles.contentContainer}
-                showsVerticalScrollIndicator={false}
-              >
                 {/* Received Requests */}
                 {incomingRequests.length === 0 ? (
                   <View style={styles.emptyState}>
@@ -354,56 +372,21 @@ export default function FriendRequestsModal({
                       })}
                     </View>
                   )}
-              </ScrollView>
-
-              {/* Footer */}
-              <View style={styles.footer}>
-                <Text style={styles.footerText}>
-                  {t('social:manageConnectionsFooter')}
-                </Text>
-              </View>
             </>
           )}
-        </View>
-      </View>
-    </Modal>
+    </BaseBottomSheet>
   );
 }
 
-const { height: SCREEN_HEIGHT } = Dimensions.get("window");
+// META-ORCH-0991 Wave B — single tall snap preserving the prior
+// SCREEN_HEIGHT * 0.88 fixed card height for the request list.
+const FRIEND_REQUESTS_SNAP_POINTS = ['88%'];
 
 const styles = StyleSheet.create({
-  sheetOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.35)",
-    justifyContent: "flex-end",
-  },
-  backdropTouch: {
-    flex: 1,
-  },
-  sheetContent: {
-    height: SCREEN_HEIGHT * 0.88,
-    backgroundColor: "#FFFFFF",
-    borderTopLeftRadius: 36,
-    borderTopRightRadius: 36,
-    overflow: "hidden",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: -12 },
-    shadowOpacity: 0.3,
-    shadowRadius: 24,
-    elevation: 30,
-  },
-  dragHandleContainer: {
-    alignItems: "center",
-    paddingTop: 12,
-    paddingBottom: 4,
-  },
-  dragHandle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "#D1D5DB",
-  },
+  // META-ORCH-0991 Wave B — the scrim (sheetOverlay), backdrop touch target,
+  // fixed-height card (sheetContent), and cosmetic drag handle are removed:
+  // BaseBottomSheet provides the backdrop (press-to-close), the ['88%'] snap,
+  // the light-theme rounded top, and a REAL draggable handle.
   header: {
     flexDirection: "row",
     alignItems: "center",

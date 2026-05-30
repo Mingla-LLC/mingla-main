@@ -2,21 +2,29 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
-  Modal,
-  ScrollView,
   ActivityIndicator,
   Alert,
 } from 'react-native';
 import { Icon } from '../ui/Icon';
-import { KeyboardAwareView } from '../ui/KeyboardAwareView';
+// META-ORCH-0991 Wave C: CardDiscussionModal converted from a pageSheet RN
+// <Modal> + KeyboardAwareView to the shared BaseBottomSheet (swipe-down,
+// stock gorhom motion). BottomSheetScrollView hosts the message thread;
+// BottomSheetTextInput keeps the composer above the keyboard.
+import {
+  BaseBottomSheet,
+  BottomSheetScrollView,
+  BottomSheetTextInput,
+} from '../ui/BaseBottomSheet';
 import { BoardMessageService, CardMessage } from '../../services/boardMessageService';
 import { realtimeService } from '../../services/realtimeService';
 import { useAppStore } from '../../store/appStore';
 import { Participant } from './ParticipantAvatars';
 import { useTranslation } from 'react-i18next';
+
+// Was a near-full-screen pageSheet chat → tall fixed snap (playbook §2).
+const CARD_DISCUSSION_SNAP = ['92%'] as const;
 
 interface CardDiscussionModalProps {
   visible: boolean;
@@ -45,7 +53,10 @@ export const CardDiscussionModal: React.FC<CardDiscussionModalProps> = ({
   const [loading, setLoading] = useState(true);
   const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
   const [editingMessage, setEditingMessage] = useState<CardMessage | null>(null);
-  const scrollViewRef = useRef<ScrollView>(null);
+  // BottomSheetScrollView exposes the same scrollToEnd imperative API as the
+  // RN ScrollView it wraps; type loosely to call it without importing gorhom's
+  // ref type (the strict-grep gate forbids gorhom imports outside BaseBottomSheet).
+  const scrollViewRef = useRef<{ scrollToEnd: (opts?: { animated?: boolean }) => void } | null>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Load messages
@@ -359,41 +370,103 @@ export const CardDiscussionModal: React.FC<CardDiscussionModalProps> = ({
     }
   }, [messages.length, visible]);
 
-  return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      presentationStyle="pageSheet"
-      onRequestClose={onClose}
-    >
-      <KeyboardAwareView
-        style={styles.container}
-        dismissOnTap={false}
-      >
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.headerSidePlaceholder} />
-          <View style={styles.headerContent}>
-            <Text style={styles.headerTitle} numberOfLines={1}>
-              {cardTitle || t('board:cardDiscussionModal.cardDiscussion')}
-            </Text>
-            <Text style={styles.headerSubtitle}>
-              {participants.length} {participants.length === 1 ? 'participant' : 'participants'}
-            </Text>
-          </View>
-          <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-            <Icon name="close" size={20} color="#6B7280" />
+  // Header slot (fixed top bar): title + subtitle + close X. Replaces the
+  // hand-rolled <View style={header}>; the gorhom drag handle replaces the old
+  // pageSheet system handle.
+  const headerNode = (
+    <View style={styles.header}>
+      <View style={styles.headerSidePlaceholder} />
+      <View style={styles.headerContent}>
+        <Text style={styles.headerTitle} numberOfLines={1}>
+          {cardTitle || t('board:cardDiscussionModal.cardDiscussion')}
+        </Text>
+        <Text style={styles.headerSubtitle}>
+          {participants.length} {participants.length === 1 ? 'participant' : 'participants'}
+        </Text>
+      </View>
+      <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+        <Icon name="close" size={20} color="#6B7280" />
+      </TouchableOpacity>
+    </View>
+  );
+
+  // Sticky footer (pinned composer): editing indicator + input + send button.
+  // Stays above the keyboard via BaseBottomSheet's stickyFooter slot.
+  const footerNode = (
+    <View style={styles.inputContainer}>
+      {editingMessage && (
+        <View style={styles.editingIndicator}>
+          <Text style={styles.editingText}>Editing message</Text>
+          <TouchableOpacity
+            onPress={() => {
+              setEditingMessage(null);
+              setMessageText('');
+            }}
+          >
+            <Icon name="close" size={16} color="#666" />
           </TouchableOpacity>
         </View>
+      )}
+      <BottomSheetTextInput
+        style={styles.input}
+        placeholder={editingMessage ? 'Edit message...' : 'Type a message...'}
+        placeholderTextColor="#999"
+        value={messageText}
+        onChangeText={(text) => {
+          setMessageText(text);
+          if (!editingMessage) {
+            handleTyping();
+          }
+        }}
+        multiline
+        maxLength={1000}
+      />
+      <TouchableOpacity
+        style={[
+          styles.sendButton,
+          (!messageText.trim() || sending) && styles.sendButtonDisabled,
+        ]}
+        onPress={editingMessage ? handleUpdateMessage : handleSendMessage}
+        disabled={!messageText.trim() || sending}
+      >
+        {sending ? (
+          <ActivityIndicator size="small" color="white" />
+        ) : (
+          <Icon
+            name={editingMessage ? 'checkmark' : 'send'}
+            size={20}
+            color="white"
+          />
+        )}
+      </TouchableOpacity>
+    </View>
+  );
 
+  return (
+    <BaseBottomSheet
+      visible={visible}
+      onClose={onClose}
+      snapPoints={CARD_DISCUSSION_SNAP as unknown as string[]}
+      wrapInRNModal
+      theme="light"
+      scrollMode="view"
+      keyboardBehavior="interactive"
+      keyboardBlurBehavior="restore"
+      android_keyboardInputMode="adjustResize"
+      backgroundStyle={styles.sheetBackground}
+      accessibilityLabel={cardTitle || t('board:cardDiscussionModal.cardDiscussion')}
+      header={headerNode}
+      stickyFooter={footerNode}
+    >
+      <View style={styles.body}>
         {/* Messages */}
         {loading ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color="#007AFF" />
           </View>
         ) : (
-          <ScrollView
-            ref={scrollViewRef}
+          <BottomSheetScrollView
+            ref={scrollViewRef as never}
             style={styles.messagesContainer}
             contentContainerStyle={styles.messagesContent}
             keyboardShouldPersistTaps="handled"
@@ -487,66 +560,22 @@ export const CardDiscussionModal: React.FC<CardDiscussionModalProps> = ({
                 </Text>
               </View>
             )}
-          </ScrollView>
+          </BottomSheetScrollView>
         )}
-
-        {/* Input */}
-        <View style={styles.inputContainer}>
-          {editingMessage && (
-            <View style={styles.editingIndicator}>
-              <Text style={styles.editingText}>Editing message</Text>
-              <TouchableOpacity
-                onPress={() => {
-                  setEditingMessage(null);
-                  setMessageText('');
-                }}
-              >
-                <Icon name="close" size={16} color="#666" />
-              </TouchableOpacity>
-            </View>
-          )}
-          <TextInput
-            style={styles.input}
-            placeholder={editingMessage ? "Edit message..." : "Type a message..."}
-            placeholderTextColor="#999"
-            value={messageText}
-            onChangeText={(text) => {
-              setMessageText(text);
-              if (!editingMessage) {
-                handleTyping();
-              }
-            }}
-            multiline
-            maxLength={1000}
-          />
-          <TouchableOpacity
-            style={[
-              styles.sendButton,
-              (!messageText.trim() || sending) && styles.sendButtonDisabled,
-            ]}
-            onPress={editingMessage ? handleUpdateMessage : handleSendMessage}
-            disabled={!messageText.trim() || sending}
-          >
-            {sending ? (
-              <ActivityIndicator size="small" color="white" />
-            ) : (
-              <Icon
-                name={editingMessage ? 'checkmark' : 'send'}
-                size={20}
-                color="white"
-              />
-            )}
-          </TouchableOpacity>
-        </View>
-      </KeyboardAwareView>
-    </Modal>
+      </View>
+    </BaseBottomSheet>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
+  // Light chat canvas; topRadius matches the old pageSheet rounded corners.
+  sheetBackground: {
     backgroundColor: '#f9fafb',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+  },
+  body: {
+    flex: 1,
   },
   header: {
     flexDirection: 'row',

@@ -2,9 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
-  Modal,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -12,6 +10,10 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
+import {
+  BaseBottomSheet,
+  BottomSheetTextInput,
+} from "../ui/BaseBottomSheet";
 import { Icon } from "../ui/Icon";
 import { colors, fontWeights } from "../../constants/designSystem";
 import { s } from "../../utils/responsive";
@@ -41,6 +43,12 @@ interface CreateGroupChatSheetProps {
   ) => Promise<{ conversationId: string; sessionId: string } | void>;
   onCreated: (conversationId: string, sessionId: string) => void;
 }
+
+// META-ORCH-0991 Wave C Batch 1 — content-height tall snap. Was an RN <Modal>
+// slide-up flex-end card capped at maxHeight 85%; the name field + search +
+// friend list need the tall feel → fixed ['90%'] (playbook §2 off-screen
+// lesson: prefer a fixed snap over content-dynamic sizing).
+const SNAP_POINTS = ["90%"];
 
 function getFriendId(friend: CreateGroupChatFriend): string {
   return friend.friend_user_id || friend.id;
@@ -143,164 +151,152 @@ export function CreateGroupChatSheet({
     }
   };
 
-  return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      transparent
-      statusBarTranslucent
-      accessibilityViewIsModal
-      onRequestClose={onClose}
-    >
-      <Pressable style={styles.backdrop} onPress={onClose} />
-      <View
-        style={[
-          styles.sheet,
-          { paddingBottom: Math.max(insets.bottom, s(16)) + s(16) },
-        ]}
-      >
-        <View style={styles.handle} />
-        <View style={styles.header}>
-          <Text style={styles.title} accessibilityRole="header">
-            {t("social:createGroupChatSheetTitle")}
-          </Text>
-          <Pressable
-            onPress={onClose}
-            accessibilityRole="button"
-            accessibilityLabel={t("common:close", { defaultValue: "Close" })}
-            hitSlop={10}
-            style={({ pressed }) => [
-              styles.closeButton,
-              pressed ? styles.pressed : null,
-            ]}
-            disabled={isCreating}
-          >
-            <Icon name="close" size={22} color={colors.text.primary} />
-          </Pressable>
-        </View>
-
-        {error ? <Text style={styles.errorText}>{error}</Text> : null}
-
-        <ScrollView
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.body}
-        >
-          <TextInput
-            ref={inputRef}
-            value={name}
-            onChangeText={setName}
-            placeholder={t("social:createGroupChatNamePlaceholder")}
-            placeholderTextColor={colors.gray[400]}
-            maxLength={60}
-            style={styles.nameInput}
-            editable={!isCreating}
-            returnKeyType="done"
-          />
-
-          <Text style={styles.sectionLabel}>
-            {t("social:createGroupChatFriendsLabel")}
-          </Text>
-
-          {availableFriends.length > 3 ? (
-            <View style={styles.searchWrap}>
-              <Icon name="search" size={18} color={colors.gray[400]} />
-              <TextInput
-                value={search}
-                onChangeText={setSearch}
-                placeholder={t("common:search", { defaultValue: "Search" })}
-                placeholderTextColor={colors.gray[400]}
-                style={styles.searchInput}
-                editable={!isCreating}
-              />
-            </View>
-          ) : null}
-
-          <View style={styles.friendList}>
-            {filteredFriends.map((friend) => {
-              const friendId = getFriendId(friend);
-              const displayName = getFriendName(friend);
-              const selected = selectedIds.has(friendId);
-              const avatarUrl = friend.avatar || friend.avatar_url || null;
-              return (
-                <Pressable
-                  key={friendId}
-                  onPress={() => toggleFriend(friend)}
-                  disabled={isCreating}
-                  accessibilityRole="checkbox"
-                  accessibilityState={{ checked: selected, disabled: isCreating }}
-                  style={({ pressed }) => [
-                    styles.friendRow,
-                    pressed && !isCreating ? styles.pressed : null,
-                  ]}
-                >
-                  {avatarUrl ? (
-                    <Image source={{ uri: avatarUrl }} style={styles.avatar} />
-                  ) : (
-                    <View style={styles.avatarFallback}>
-                      <Text style={styles.avatarText}>{getInitials(displayName)}</Text>
-                    </View>
-                  )}
-                  <Text style={styles.friendName} numberOfLines={1}>
-                    {displayName}
-                  </Text>
-                  <View style={[styles.checkCircle, selected ? styles.checkCircleSelected : null]}>
-                    {selected ? <Icon name="checkmark" size={14} color="#FFFFFF" /> : null}
-                  </View>
-                </Pressable>
-              );
-            })}
-          </View>
-        </ScrollView>
-
+  const header = (
+    <View style={styles.headerWrap}>
+      <View style={styles.header}>
+        <Text style={styles.title} accessibilityRole="header">
+          {t("social:createGroupChatSheetTitle")}
+        </Text>
         <Pressable
-          onPress={handleSubmit}
-          disabled={!canSubmit}
+          onPress={onClose}
           accessibilityRole="button"
-          accessibilityState={{ disabled: !canSubmit }}
+          accessibilityLabel={t("common:close", { defaultValue: "Close" })}
+          hitSlop={10}
           style={({ pressed }) => [
-            styles.submitButton,
-            !canSubmit ? styles.submitButtonDisabled : null,
-            pressed && canSubmit ? styles.pressed : null,
+            styles.closeButton,
+            pressed ? styles.pressed : null,
           ]}
+          disabled={isCreating}
         >
-          {isCreating ? (
-            <ActivityIndicator size="small" color="#FFFFFF" />
-          ) : (
-            <Text style={styles.submitText}>
-              {t("social:createGroupChatSubmit")}
-            </Text>
-          )}
+          <Icon name="close" size={22} color={colors.text.primary} />
         </Pressable>
       </View>
-    </Modal>
+      {error ? <Text style={styles.errorText}>{error}</Text> : null}
+    </View>
+  );
+
+  const footer = (
+    <View
+      style={[
+        styles.footer,
+        { paddingBottom: Math.max(insets.bottom, s(16)) + s(8) },
+      ]}
+    >
+      <Pressable
+        onPress={handleSubmit}
+        disabled={!canSubmit}
+        accessibilityRole="button"
+        accessibilityState={{ disabled: !canSubmit }}
+        style={({ pressed }) => [
+          styles.submitButton,
+          !canSubmit ? styles.submitButtonDisabled : null,
+          pressed && canSubmit ? styles.pressed : null,
+        ]}
+      >
+        {isCreating ? (
+          <ActivityIndicator size="small" color="#FFFFFF" />
+        ) : (
+          <Text style={styles.submitText}>
+            {t("social:createGroupChatSubmit")}
+          </Text>
+        )}
+      </Pressable>
+    </View>
+  );
+
+  return (
+    <BaseBottomSheet
+      visible={visible}
+      onClose={onClose}
+      snapPoints={SNAP_POINTS}
+      theme="light"
+      scrollMode="scroll"
+      wrapInRNModal
+      keyboardBehavior="interactive"
+      keyboardBlurBehavior="restore"
+      android_keyboardInputMode="adjustResize"
+      accessibilityLabel={t("social:createGroupChatSheetTitle")}
+      header={header}
+      stickyFooter={footer}
+      scrollProps={{
+        keyboardShouldPersistTaps: "handled",
+        showsVerticalScrollIndicator: false,
+        contentContainerStyle: styles.body,
+      }}
+    >
+      <BottomSheetTextInput
+        ref={inputRef as any}
+        value={name}
+        onChangeText={setName}
+        placeholder={t("social:createGroupChatNamePlaceholder")}
+        placeholderTextColor={colors.gray[400]}
+        maxLength={60}
+        style={styles.nameInput}
+        editable={!isCreating}
+        returnKeyType="done"
+      />
+
+      <Text style={styles.sectionLabel}>
+        {t("social:createGroupChatFriendsLabel")}
+      </Text>
+
+      {availableFriends.length > 3 ? (
+        <View style={styles.searchWrap}>
+          <Icon name="search" size={18} color={colors.gray[400]} />
+          <BottomSheetTextInput
+            value={search}
+            onChangeText={setSearch}
+            placeholder={t("common:search", { defaultValue: "Search" })}
+            placeholderTextColor={colors.gray[400]}
+            style={styles.searchInput}
+            editable={!isCreating}
+          />
+        </View>
+      ) : null}
+
+      <View style={styles.friendList}>
+        {filteredFriends.map((friend) => {
+          const friendId = getFriendId(friend);
+          const displayName = getFriendName(friend);
+          const selected = selectedIds.has(friendId);
+          const avatarUrl = friend.avatar || friend.avatar_url || null;
+          return (
+            <Pressable
+              key={friendId}
+              onPress={() => toggleFriend(friend)}
+              disabled={isCreating}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: selected, disabled: isCreating }}
+              style={({ pressed }) => [
+                styles.friendRow,
+                pressed && !isCreating ? styles.pressed : null,
+              ]}
+            >
+              {avatarUrl ? (
+                <Image source={{ uri: avatarUrl }} style={styles.avatar} />
+              ) : (
+                <View style={styles.avatarFallback}>
+                  <Text style={styles.avatarText}>{getInitials(displayName)}</Text>
+                </View>
+              )}
+              <Text style={styles.friendName} numberOfLines={1}>
+                {displayName}
+              </Text>
+              <View style={[styles.checkCircle, selected ? styles.checkCircleSelected : null]}>
+                {selected ? <Icon name="checkmark" size={14} color="#FFFFFF" /> : null}
+              </View>
+            </Pressable>
+          );
+        })}
+      </View>
+    </BaseBottomSheet>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0, 0, 0, 0.35)",
-  },
-  sheet: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    maxHeight: "85%",
-    backgroundColor: "#FFFFFF",
-    borderTopLeftRadius: s(24),
-    borderTopRightRadius: s(24),
-    paddingTop: s(12),
+  headerWrap: {
     paddingHorizontal: s(20),
-  },
-  handle: {
-    width: s(40),
-    height: s(4),
-    borderRadius: s(2),
-    backgroundColor: colors.gray[300],
-    alignSelf: "center",
-    marginBottom: s(12),
+    paddingTop: s(4),
   },
   header: {
     minHeight: s(44),
@@ -331,6 +327,7 @@ const styles = StyleSheet.create({
     marginTop: s(8),
   },
   body: {
+    paddingHorizontal: s(20),
     paddingTop: s(16),
     paddingBottom: s(16),
     gap: s(14),
@@ -412,6 +409,10 @@ const styles = StyleSheet.create({
   checkCircleSelected: {
     borderColor: colors.accent,
     backgroundColor: colors.accent,
+  },
+  footer: {
+    paddingHorizontal: s(20),
+    paddingTop: s(8),
   },
   submitButton: {
     height: s(48),

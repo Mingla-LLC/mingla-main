@@ -33,6 +33,7 @@ function countMatches(source, pattern) {
 
 function runNotificationsSheetTest() {
   const sheet = readSource('src/components/NotificationsSheet.tsx');
+  const baseBottomSheet = readSource('src/components/ui/BaseBottomSheet.tsx');
   const homePage = readSource('src/components/HomePage.tsx');
   const designSystem = readSource('src/constants/designSystem.ts');
   const fixtures = readSource('src/components/__tests__/__fixtures__/notificationsFixtures.ts');
@@ -43,12 +44,19 @@ function runNotificationsSheetTest() {
     'document the pre-ORCH-0975 fail-on-revert anchor commit',
   );
 
-  assert.match(sheet, /from '@gorhom\/bottom-sheet'/, 'SC-01..06 sheet must import bottom-sheet');
-  assert.match(sheet, /\bBottomSheetSectionList\b/, 'SC-04 list must use BottomSheetSectionList');
+  // META-ORCH-0991 Wave A repoint [TEST-MOD-APPROVED META-ORCH-0991]:
+  // NotificationsSheet now consumes the shared BaseBottomSheet primitive — the
+  // gorhom import + BottomSheetSectionList moved into BaseBottomSheet.tsx (the
+  // sole permitted gorhom consumer, I-PROPOSED-BASE-BOTTOM-SHEET-SOLE-GORHOM-CONSUMER).
+  assert.match(baseBottomSheet, /from '@gorhom\/bottom-sheet'/, 'SC-01..06 BaseBottomSheet must import bottom-sheet');
+  assert.match(baseBottomSheet, /\bBottomSheetSectionList\b/, 'SC-04 BaseBottomSheet must reference BottomSheetSectionList for sectionlist mode');
+  assert.match(sheet, /import\s+\{[^}]*\bBaseBottomSheet\b[^}]*\}\s+from\s+['"][^'"]*BaseBottomSheet['"]/, 'SC-01 NotificationsSheet must import BaseBottomSheet');
+  assert.match(sheet, /scrollMode=["']sectionlist["']/, 'SC-04 NotificationsSheet must pass scrollMode="sectionlist"');
+  assert.doesNotMatch(sheet, /from\s+['"]@gorhom\/bottom-sheet['"]/, 'SC-01 NotificationsSheet must NOT import @gorhom/bottom-sheet directly (sole consumer is BaseBottomSheet)');
   assert.doesNotMatch(sheet, /import\s+\{[^}]*\bModal\b[^}]*\}\s+from\s+['"]react-native['"]/, 'SC-01/C1 RN Modal import must not remain in NotificationsSheet');
   assert.doesNotMatch(sheet, /<Modal\b/, 'SC-01/C1 RN Modal render wrapper must not remain in NotificationsSheet');
   assert.doesNotMatch(sheet, /notifications-filter-chip|filters\.|FILTER_TAB_KEYS|activeFilter/, 'SC-07 filter chip state/rendering must be deleted');
-  assert.doesNotMatch(sheet, /ScrollView/, 'SC-07 old horizontal filter ScrollView must not remain');
+  assert.doesNotMatch(sheet, /ScrollView/, 'SC-07 old horizontal filter ScrollView must not remain (no raw scroll container in NotificationsSheet)');
 
   assert.match(sheet, /header\.newCount/, 'SC-08 header must use the new-count pill locale');
   assert.match(sheet, /header\.subtitle/, 'SC-08 header subtitle must render');

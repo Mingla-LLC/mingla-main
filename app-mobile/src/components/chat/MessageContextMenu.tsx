@@ -1,20 +1,22 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
-  Animated,
   StyleSheet,
-  Dimensions,
   Clipboard,
-  Modal,
 } from 'react-native';
+import { BaseBottomSheet } from '../ui/BaseBottomSheet';
 import { Icon } from '../ui/Icon';
 import * as Haptics from 'expo-haptics';
 import { colors } from '../../constants/designSystem';
 
 const EMOJI_OPTIONS = ['❤️', '😂', '👍', '😮', '😢', '🔥'];
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+// META-ORCH-0991 Wave B Batch 5: compact fixed snap — this is a long-press
+// message action menu, so it reads as an anchored context menu (a short
+// bottom action sheet), NOT a tall pan-down sheet.
+const SNAP_POINTS = ['28%'] as const;
 
 interface MessageContextMenuProps {
   visible: boolean;
@@ -45,34 +47,20 @@ export function MessageContextMenu({
   onEdit,
   onDelete,
 }: MessageContextMenuProps): React.ReactElement {
-  const scale = useRef(new Animated.Value(0.9)).current;
-  const opacity = useRef(new Animated.Value(0)).current;
-
+  // META-ORCH-0991 Wave B Batch 5: open haptic preserved. The custom
+  // scale/fade Animated springs + the `position`-anchored absolute placement
+  // were dropped for stock gorhom motion (the menu now rolls up from the
+  // bottom as a compact action sheet; `position` is retained on the props for
+  // caller compatibility but no longer drives placement).
   useEffect(() => {
     if (visible) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      scale.setValue(0.9);
-      opacity.setValue(0);
-      Animated.parallel([
-        Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 24, bounciness: 3 }),
-        Animated.timing(opacity, { toValue: 1, duration: 150, useNativeDriver: true }),
-      ]).start();
     }
-  }, [visible, scale, opacity]);
+  }, [visible]);
 
-  const dismiss = (): void => {
-    Animated.parallel([
-      Animated.timing(scale, { toValue: 0.95, duration: 80, useNativeDriver: true }),
-      Animated.timing(opacity, { toValue: 0, duration: 80, useNativeDriver: true }),
-    ]).start(() => onClose());
-  };
+  void position;
 
   const act = (fn: () => void): void => { fn(); onClose(); };
-
-  const menuHeight = 92;
-  const showAbove = position.top > menuHeight + 80;
-  const rawTop = showAbove ? position.top - menuHeight - 8 : position.top + 8;
-  const clampedTop = Math.max(50, Math.min(rawTop, SCREEN_HEIGHT - menuHeight - 50));
 
   // Action icons
   const actions: { icon: string; color: string; onPress: () => void; label: string }[] = [
@@ -90,62 +78,55 @@ export function MessageContextMenu({
   }
 
   return (
-    <Modal visible={visible} transparent animationType="none" statusBarTranslucent onRequestClose={dismiss}>
-      <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={dismiss}>
-        <Animated.View style={[styles.menu, { top: clampedTop, transform: [{ scale }], opacity }]}>
-          {/* Emoji row */}
-          <View style={styles.emojiRow}>
-            {EMOJI_OPTIONS.map((emoji) => (
-              <TouchableOpacity
-                key={emoji}
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  onReaction(messageId, emoji);
-                  onClose();
-                }}
-                style={[styles.emojiBtn, existingReactions.includes(emoji) && styles.emojiBtnUsed]}
-              >
-                <Text style={styles.emojiText}>{emoji}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+    <BaseBottomSheet
+      visible={visible}
+      onClose={onClose}
+      snapPoints={SNAP_POINTS as unknown as string[]}
+      wrapInRNModal
+      scrollMode="view"
+      accessibilityLabel="Message actions"
+    >
+      <View style={styles.menu}>
+        {/* Emoji row */}
+        <View style={styles.emojiRow}>
+          {EMOJI_OPTIONS.map((emoji) => (
+            <TouchableOpacity
+              key={emoji}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                onReaction(messageId, emoji);
+                onClose();
+              }}
+              style={[styles.emojiBtn, existingReactions.includes(emoji) && styles.emojiBtnUsed]}
+            >
+              <Text style={styles.emojiText}>{emoji}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
 
-          {/* Action icons — small, no text, aligned left */}
-          <View style={styles.actionRow}>
-            {actions.map((a) => (
-              <TouchableOpacity
-                key={a.icon}
-                style={styles.actionBtn}
-                onPress={a.onPress}
-                accessibilityLabel={a.label}
-              >
-                <Icon name={a.icon} size={16} color={a.color} />
-              </TouchableOpacity>
-            ))}
-          </View>
-        </Animated.View>
-      </TouchableOpacity>
-    </Modal>
+        {/* Action icons — small, no text, aligned left */}
+        <View style={styles.actionRow}>
+          {actions.map((a) => (
+            <TouchableOpacity
+              key={a.icon}
+              style={styles.actionBtn}
+              onPress={a.onPress}
+              accessibilityLabel={a.label}
+            >
+              <Icon name={a.icon} size={16} color={a.color} />
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+    </BaseBottomSheet>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.25)',
-  },
   menu: {
-    position: 'absolute',
-    alignSelf: 'center',
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 16,
-    elevation: 6,
     paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingTop: 8,
+    paddingBottom: 14,
   },
   emojiRow: {
     flexDirection: 'row',

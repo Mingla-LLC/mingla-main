@@ -4,14 +4,11 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  ScrollView,
-  Modal,
-  TextInput,
   ActivityIndicator,
   Alert,
-  Pressable,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { BaseBottomSheet, BottomSheetTextInput } from "../ui/BaseBottomSheet";
 import { Icon } from "../ui/Icon";
 import { supabase } from "../../services/supabase";
 import { useTranslation } from "react-i18next";
@@ -28,6 +25,10 @@ import { InlineInviteFriendsList } from "./InlineInviteFriendsList";
 // ORCH-0520 v2: reuse existing phone-lookup hook for live warm/cold visual
 // (same pattern as AddFriendView.tsx:121)
 import { usePhoneLookup, useDebouncedValue } from "../../hooks/usePhoneLookup";
+
+// META-ORCH-0991 Wave B Batch 5: fixed snap translated from the old modal's
+// `maxHeight: "80%"`. Keyboard-aware (the rename input lives in the header).
+const SNAP_POINTS = ["80%"] as const;
 
 interface Participant {
   id?: string;
@@ -100,7 +101,9 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
   const [pendingInviteIdsByUserId, setPendingInviteIdsByUserId] = useState<Record<string, string>>({});
   const [loadingPendingInvites, setLoadingPendingInvites] = useState(false);
   const [revokingInviteId, setRevokingInviteId] = useState<string | null>(null);
-  const nameInputRef = useRef<TextInput>(null);
+  // META-ORCH-0991 Wave B Batch 5: ref widened to the BottomSheetTextInput
+  // element ref (gorhom's keyboard-aware input forwards to RN TextInput).
+  const nameInputRef = useRef<React.ElementRef<typeof BottomSheetTextInput>>(null);
 
   // ORCH-0520: inline phone invite state
   const [invitePhoneInput, setInvitePhoneInput] = useState("");
@@ -633,31 +636,26 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
   if (!visible) return null;
 
   return (
-    <>
-      {/* Bottom Sheet */}
-      {visible && (
-        <Modal
-          visible={visible}
-          transparent
-          animationType="slide"
-          onRequestClose={onClose}
-        >
-          <View style={styles.sheetOverlay}>
-            <Pressable style={styles.sheetBackdrop} onPress={onClose} />
-            <View style={styles.sheetContainer}>
-              {/* Handle */}
-              <View style={styles.sheetHandleRow}>
-                <View style={styles.sheetHandle} />
-              </View>
-
-              {/* Header row — editable name (creators/admins) + mute bell (all participants).
-                  ORCH-0520 v2: title+pencil wrapped in a tight self-sized row with a
-                  solid orange underline (cross-platform reliable); spacer pushes bell
-                  to the far right so the pencil hugs the title. */}
-              <View style={styles.headerRow}>
+    <BaseBottomSheet
+      visible={visible}
+      onClose={onClose}
+      snapPoints={SNAP_POINTS as unknown as string[]}
+      wrapInRNModal
+      keyboardBehavior="interactive"
+      keyboardBlurBehavior="restore"
+      android_keyboardInputMode="adjustResize"
+      accessibilityLabel={t("board:boardSettingsDropdown.title", {
+        defaultValue: "Board settings",
+      })}
+      header={
+        /* Header row — editable name (creators/admins) + mute bell (all participants).
+            ORCH-0520 v2: title+pencil wrapped in a tight self-sized row with a
+            solid orange underline (cross-platform reliable); spacer pushes bell
+            to the far right so the pencil hugs the title. */
+        <View style={styles.headerRow}>
                 {canManageSession ? (
                   <View style={styles.titleAndPencil}>
-                    <TextInput
+                    <BottomSheetTextInput
                       ref={nameInputRef}
                       style={styles.titleInput}
                       value={editSessionName}
@@ -713,16 +711,46 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
                     color={currentUserIsMuted ? "#9CA3AF" : "#374151"}
                   />
                 </TouchableOpacity>
-              </View>
-
-              <ScrollView
-                style={styles.sheetScroll}
-                contentContainerStyle={styles.sheetScrollContent}
-                showsVerticalScrollIndicator={false}
-                bounces={false}
-                nestedScrollEnabled
-                keyboardShouldPersistTaps="handled"
-              >
+        </View>
+      }
+      scrollProps={{
+        style: styles.sheetScroll,
+        contentContainerStyle: styles.sheetScrollContent,
+        showsVerticalScrollIndicator: false,
+        keyboardShouldPersistTaps: "handled",
+      }}
+      stickyFooter={
+        /* ORCH-0520 v2: Leave & Delete fixed footer — outside the scroll body.
+            Prevents action buttons from shifting when the friend accordion
+            expands. Safe-area-aware bottom padding. */
+        <View style={[styles.actionButtonsRow, { paddingBottom: Math.max(12, insets.bottom) }]}>
+          <TouchableOpacity
+            style={styles.leaveButton}
+            onPress={handleLeaveBoard}
+            activeOpacity={0.8}
+            disabled={exitingBoard}
+          >
+            <Icon name="log-out" size={16} color="#EF4444" />
+            <Text style={styles.leaveButtonText}>
+              {exitingBoard ? "Leaving..." : "Leave"}
+            </Text>
+          </TouchableOpacity>
+          {canManageSession && (
+            <TouchableOpacity
+              style={styles.deleteButton}
+              onPress={handleDeleteSessionWithConfirmation}
+              activeOpacity={0.8}
+              disabled={deletingSession}
+            >
+              <Icon name="trash-outline" size={16} color="white" />
+              <Text style={styles.deleteButtonText}>
+                {deletingSession ? "Deleting..." : "Delete"}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      }
+    >
                 {/* ORCH-0520: Invite section — creators + admins only */}
                 {canManageSession && (
                   <View style={styles.inviteSection}>
@@ -996,80 +1024,12 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
                 </View>
 
                 {/* Divider */}
-              </ScrollView>
-
-              {/* ORCH-0520 v2: Leave & Delete fixed footer — outside ScrollView.
-                  Prevents action buttons from shifting when the friend accordion
-                  expands. Safe-area-aware bottom padding. */}
-              <View style={[styles.actionButtonsRow, { paddingBottom: Math.max(12, insets.bottom) }]}>
-                <TouchableOpacity
-                  style={styles.leaveButton}
-                  onPress={handleLeaveBoard}
-                  activeOpacity={0.8}
-                  disabled={exitingBoard}
-                >
-                  <Icon name="log-out" size={16} color="#EF4444" />
-                  <Text style={styles.leaveButtonText}>
-                    {exitingBoard ? "Leaving..." : "Leave"}
-                  </Text>
-                </TouchableOpacity>
-                {canManageSession && (
-                  <TouchableOpacity
-                    style={styles.deleteButton}
-                    onPress={handleDeleteSessionWithConfirmation}
-                    activeOpacity={0.8}
-                    disabled={deletingSession}
-                  >
-                    <Icon name="trash-outline" size={16} color="white" />
-                    <Text style={styles.deleteButtonText}>
-                      {deletingSession ? "Deleting..." : "Delete"}
-                    </Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            </View>
-          </View>
-        </Modal>
-      )}
-
-    </>
+    </BaseBottomSheet>
   );
 };
 
 const styles = StyleSheet.create({
-  // --- Bottom sheet ---
-  sheetOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.4)",
-    justifyContent: "flex-end",
-  },
-  sheetBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  sheetContainer: {
-    backgroundColor: "white",
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: "80%",
-    paddingBottom: 34,
-    zIndex: 1,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 20,
-  },
-  sheetHandleRow: {
-    alignItems: "center",
-    paddingTop: 10,
-    paddingBottom: 6,
-  },
-  sheetHandle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "#d1d5db",
-  },
+  // --- Bottom sheet body ---
   sheetScroll: {
     paddingHorizontal: 4,
     flexShrink: 1,

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Text, View, StyleSheet, Modal, ScrollView } from 'react-native';
+import { Text, View, StyleSheet } from 'react-native';
 import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
+import { BaseBottomSheet } from './ui/BaseBottomSheet';
 import { Icon } from './ui/Icon';
 import { getDisplayName } from '../utils/getDisplayName';
 import { useTranslation } from 'react-i18next';
@@ -47,6 +48,10 @@ interface AddToBoardModalProps {
   /** ORCH-0666: forwards the aggregate result for parent-owned toast emission. */
   onResult?: (result: AddFriendsToSessionsReturn) => void;
 }
+
+// META-ORCH-0991 Wave B Batch 3: was a centered card capped at maxHeight 80% →
+// a swipe-down sheet at the same height. Module-level const per playbook §2.
+const ADD_TO_BOARD_SNAP_POINTS = ['80%'];
 
 // Helper to format relative time
 const formatRelativeTime = (dateString: string | undefined, t: (key: string) => string): string => {
@@ -221,42 +226,74 @@ export default function AddToBoardModal({
   const errorEntries = lastResult?.errors ?? [];
 
   return (
-    <Modal
+    <BaseBottomSheet
       visible={isOpen}
-      transparent={true}
-      animationType="fade"
-      onRequestClose={onClose}
-    >
-      <View style={styles.modalOverlay}>
-        <TrackedTouchableOpacity
-          logComponent="AddToBoardModal"
-          style={styles.backdropTouch}
-          activeOpacity={1}
-          onPress={onClose}
-        />
-        <View style={styles.modalContainer}>
-          {/* Header */}
-          <View style={styles.header}>
-            <View style={styles.headerContent}>
-              <View style={styles.headerSidePlaceholder} />
-              <View style={styles.headerCenter}>
-                <Text style={styles.headerTitle}>{t('modals:add_to_board.title')}</Text>
-                <Text style={styles.headerSubtitle}>
-                  {t('modals:add_to_board.subtitle', { friendName: friend.name })}
-                </Text>
-              </View>
-              <TrackedTouchableOpacity
-                logComponent="AddToBoardModal"
-                onPress={onClose}
-                style={styles.closeButton}
-              >
-                <Icon name="close" size={20} color="#6b7280" />
-              </TrackedTouchableOpacity>
+      onClose={onClose}
+      theme="light"
+      snapPoints={ADD_TO_BOARD_SNAP_POINTS}
+      scrollMode="scroll"
+      wrapInRNModal
+      accessibilityLabel={t('modals:add_to_board.title')}
+      scrollProps={{ style: styles.content }}
+      header={
+        <View style={styles.header}>
+          <View style={styles.headerContent}>
+            <View style={styles.headerSidePlaceholder} />
+            <View style={styles.headerCenter}>
+              <Text style={styles.headerTitle}>{t('modals:add_to_board.title')}</Text>
+              <Text style={styles.headerSubtitle}>
+                {t('modals:add_to_board.subtitle', { friendName: friend.name })}
+              </Text>
             </View>
+            <TrackedTouchableOpacity
+              logComponent="AddToBoardModal"
+              onPress={onClose}
+              style={styles.closeButton}
+            >
+              <Icon name="close" size={20} color="#6b7280" />
+            </TrackedTouchableOpacity>
           </View>
-
-          {/* Content */}
-          <ScrollView style={styles.content}>
+        </View>
+      }
+      stickyFooter={
+        availableSessions.length > 0 ? (
+          <View style={styles.footer}>
+            <TrackedTouchableOpacity
+              logComponent="AddToBoardModal"
+              onPress={onClose}
+              style={styles.cancelButton}
+              disabled={isAdding}
+            >
+              <Text style={styles.cancelButtonText}>{t('modals:add_to_board.cancel')}</Text>
+            </TrackedTouchableOpacity>
+            <TrackedTouchableOpacity
+              logComponent="AddToBoardModal"
+              onPress={handleAddToBoard}
+              disabled={selectedSessions.length === 0 || isAdding}
+              style={[
+                styles.addButton,
+                (selectedSessions.length === 0 || isAdding) && styles.addButtonDisabled,
+              ]}
+            >
+              {isAdding ? (
+                <>
+                  <View style={styles.loadingSpinner} />
+                  <Text style={styles.addButtonText}>{t('modals:add_to_board.adding')}</Text>
+                </>
+              ) : (
+                <Text style={styles.addButtonText}>
+                  {selectedSessions.length === 0
+                    ? t('modals:add_to_board.select_boards_button')
+                    : selectedSessions.length === 1
+                    ? t('modals:add_to_board.add_to_board_button')
+                    : t('modals:add_to_board.add_to_boards_button', { count: selectedSessions.length })}
+                </Text>
+              )}
+            </TrackedTouchableOpacity>
+          </View>
+        ) : undefined
+      }
+    >
             {availableSessions.length === 0 ? (
               <View style={styles.emptyState}>
                 <Icon name="people" size={48} color="#d1d5db" />
@@ -392,74 +429,11 @@ export default function AddToBoardModal({
                 </View>
               </>
             )}
-          </ScrollView>
-
-          {/* Footer */}
-          {availableSessions.length > 0 && (
-            <View style={styles.footer}>
-              <TrackedTouchableOpacity
-                logComponent="AddToBoardModal"
-                onPress={onClose}
-                style={styles.cancelButton}
-                disabled={isAdding}
-              >
-                <Text style={styles.cancelButtonText}>{t('modals:add_to_board.cancel')}</Text>
-              </TrackedTouchableOpacity>
-              <TrackedTouchableOpacity
-                logComponent="AddToBoardModal"
-                onPress={handleAddToBoard}
-                disabled={selectedSessions.length === 0 || isAdding}
-                style={[
-                  styles.addButton,
-                  (selectedSessions.length === 0 || isAdding) && styles.addButtonDisabled,
-                ]}
-              >
-                {isAdding ? (
-                  <>
-                    <View style={styles.loadingSpinner} />
-                    <Text style={styles.addButtonText}>{t('modals:add_to_board.adding')}</Text>
-                  </>
-                ) : (
-                  <Text style={styles.addButtonText}>
-                    {selectedSessions.length === 0
-                      ? t('modals:add_to_board.select_boards_button')
-                      : selectedSessions.length === 1
-                      ? t('modals:add_to_board.add_to_board_button')
-                      : t('modals:add_to_board.add_to_boards_button', { count: selectedSessions.length })}
-                  </Text>
-                )}
-              </TrackedTouchableOpacity>
-            </View>
-          )}
-        </View>
-      </View>
-    </Modal>
+    </BaseBottomSheet>
   );
 }
 
 const styles = StyleSheet.create({
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 16,
-  },
-  backdropTouch: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  modalContainer: {
-    backgroundColor: 'white',
-    borderRadius: 24,
-    width: '100%',
-    maxWidth: 400,
-    maxHeight: '80%',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    elevation: 16,
-  },
   header: {
     paddingHorizontal: 16,
     paddingTop: 16,
@@ -507,7 +481,6 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 24,
-    maxHeight: 384,
   },
   emptyState: {
     alignItems: 'center',

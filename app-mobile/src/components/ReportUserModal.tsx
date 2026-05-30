@@ -1,8 +1,27 @@
+/**
+ * ReportUserModal
+ *
+ * META-ORCH-0991 Wave B — migrated from a hand-rolled RN <Modal> (fade,
+ * flex-end, minHeight 95%) onto BaseBottomSheet. It is now a true swipe-down
+ * bottom sheet that rolls up and pan-dismisses exactly like
+ * ExpandedBusinessEventSheet. Snap height ['90%'] preserves the prior 95%
+ * minHeight feel. The report-reason form has a free-text "additional details"
+ * field, so the TextInput is swapped to gorhom's BottomSheetTextInput
+ * (re-exported from BaseBottomSheet) and the sheet runs keyboardBehavior
+ * 'interactive' so the field is never hidden by the keyboard. The fixed header
+ * + scrolling options/details body + pinned footer + disclaimer map onto the
+ * primitive's header / scroll body / stickyFooter slots. Opened from
+ * FriendActionsSheet / ConnectionsPage over the chat surface, so it sets
+ * wrapInRNModal for z-stacking above the in-tree tab bar (ORCH-0908). All copy,
+ * report options, callbacks, block-after-report logic, and analytics preserved.
+ */
+
 import React, { useState } from 'react';
-import { Text, View, StyleSheet, Modal, ScrollView, TextInput } from 'react-native';
+import { Text, View, StyleSheet } from 'react-native';
 import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
 import { useTranslation } from 'react-i18next';
 import { Icon } from './ui/Icon';
+import { BaseBottomSheet, BottomSheetTextInput } from './ui/BaseBottomSheet';
 import { blockUser, BlockReason } from '../services/blockService';
 
 interface ReportUserModalProps {
@@ -16,6 +35,12 @@ interface ReportUserModalProps {
   onReport: (userId: string, reason: string, details?: string) => void | Promise<void>;
 }
 
+// META-ORCH-0991 Wave B — single tall snap. Preserves the prior 95%-minHeight
+// feel of the report form (it has a description, four reason cards, and an
+// expanding details field) while leaving a sliver of backdrop to signal
+// swipe-down-to-dismiss.
+const REPORT_SNAP_POINTS = ['90%'];
+
 const REPORT_OPTION_KEYS = [
   { id: 'spam', labelKey: 'social:spam', descKey: 'social:spamDescription', icon: 'chatbubbles', color: '#ea580c' },
   { id: 'inappropriate-content', labelKey: 'social:inappropriateContent', descKey: 'social:inappropriateContentDescription', icon: 'warning', color: '#dc2626' },
@@ -28,8 +53,6 @@ export default function ReportUserModal({ isOpen, onClose, user, onReport }: Rep
   const [selectedReason, setSelectedReason] = useState<string>('');
   const [additionalDetails, setAdditionalDetails] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  if (!isOpen) return null;
 
   const handleSubmit = async () => {
     if (!selectedReason || isSubmitting) return;
@@ -73,39 +96,77 @@ export default function ReportUserModal({ isOpen, onClose, user, onReport }: Rep
     onClose();
   };
 
-  return (
-    <Modal
-      visible={isOpen}
-      transparent={true}
-      animationType="fade"
-      onRequestClose={handleClose}
-    >
-      <View style={styles.overlay}>
-          <TrackedTouchableOpacity logComponent="ReportUserModal"
-            style={styles.backdropTouch}
-            activeOpacity={1}
-            onPress={handleClose}
-          />
-        <View style={styles.modalContainer}>
-          {/* Header */}
-          <View style={styles.header}>
-            <View style={styles.headerSidePlaceholder} />
-            <View style={styles.headerCenter}>
-              <View style={styles.iconContainer}>
-                <Icon name="flag" size={20} color="#dc2626" />
-              </View>
-              <Text style={styles.headerTitle}>{t('social:reportUserTitle')}</Text>
-            </View>
-            <TrackedTouchableOpacity logComponent="ReportUserModal"
-              onPress={handleClose}
-              style={styles.closeButton}
-            >
-              <Icon name="close" size={20} color="#9ca3af" />
-            </TrackedTouchableOpacity>
-          </View>
+  // META-ORCH-0991 Wave B — fixed header (title + close), pinned to the top of
+  // the sheet above the scrolling reason/details body.
+  const header = (
+    <View style={styles.header}>
+      <View style={styles.headerSidePlaceholder} />
+      <View style={styles.headerCenter}>
+        <View style={styles.iconContainer}>
+          <Icon name="flag" size={20} color="#dc2626" />
+        </View>
+        <Text style={styles.headerTitle}>{t('social:reportUserTitle')}</Text>
+      </View>
+      <TrackedTouchableOpacity logComponent="ReportUserModal"
+        onPress={handleClose}
+        style={styles.closeButton}
+      >
+        <Icon name="close" size={20} color="#9ca3af" />
+      </TrackedTouchableOpacity>
+    </View>
+  );
 
-        {/* Content */}
-        <ScrollView style={styles.content} keyboardShouldPersistTaps="handled">
+  // Pinned footer: submit/cancel actions + the reporting disclaimer. Stays
+  // visible above the keyboard while the details field is focused.
+  const footer = (
+    <View>
+      <View style={styles.footer}>
+        <TrackedTouchableOpacity logComponent="ReportUserModal"
+          onPress={handleClose}
+          style={styles.cancelButton}
+        >
+          <Text style={styles.cancelButtonText}>{t('social:cancel')}</Text>
+        </TrackedTouchableOpacity>
+        <TrackedTouchableOpacity logComponent="ReportUserModal"
+          onPress={handleSubmit}
+          disabled={!selectedReason || isSubmitting}
+          style={[
+            styles.submitButton,
+            selectedReason && !isSubmitting ? styles.submitButtonEnabled : styles.submitButtonDisabled
+          ]}
+        >
+          <Text style={[
+            styles.submitButtonText,
+            selectedReason && !isSubmitting ? styles.submitButtonTextEnabled : styles.submitButtonTextDisabled
+          ]}>
+            {isSubmitting ? t('social:submitting') : t('social:submitReport')}
+          </Text>
+        </TrackedTouchableOpacity>
+      </View>
+      <View style={styles.disclaimer}>
+        <Text style={styles.disclaimerText}>
+          {t('social:reportDisclaimer')}
+        </Text>
+      </View>
+    </View>
+  );
+
+  return (
+    <BaseBottomSheet
+      visible={isOpen}
+      onClose={handleClose}
+      theme="light"
+      snapPoints={REPORT_SNAP_POINTS}
+      scrollMode="scroll"
+      wrapInRNModal
+      keyboardBehavior="interactive"
+      keyboardBlurBehavior="restore"
+      android_keyboardInputMode="adjustResize"
+      header={header}
+      stickyFooter={footer}
+      scrollProps={{ keyboardShouldPersistTaps: 'handled', style: styles.content }}
+      accessibilityLabel={t('social:reportUserTitle')}
+    >
           <View style={styles.descriptionContainer}>
             <Text style={styles.description}>
               {t('social:reportDescription', { name: user.name })}
@@ -156,7 +217,7 @@ export default function ReportUserModal({ isOpen, onClose, user, onReport }: Rep
               <Text style={styles.detailsTitle}>
                 {t('social:additionalDetails')}
               </Text>
-              <TextInput
+              <BottomSheetTextInput
                 value={additionalDetails}
                 onChangeText={setAdditionalDetails}
                 placeholder={t('social:additionalDetailsPlaceholder')}
@@ -171,63 +232,15 @@ export default function ReportUserModal({ isOpen, onClose, user, onReport }: Rep
               </Text>
             </View>
           )}
-        </ScrollView>
-
-        {/* Footer */}
-        <View style={styles.footer}>
-          <TrackedTouchableOpacity logComponent="ReportUserModal"
-            onPress={handleClose}
-            style={styles.cancelButton}
-          >
-            <Text style={styles.cancelButtonText}>{t('social:cancel')}</Text>
-          </TrackedTouchableOpacity>
-          <TrackedTouchableOpacity logComponent="ReportUserModal"
-            onPress={handleSubmit}
-            disabled={!selectedReason || isSubmitting}
-            style={[
-              styles.submitButton,
-              selectedReason && !isSubmitting ? styles.submitButtonEnabled : styles.submitButtonDisabled
-            ]}
-          >
-            <Text style={[
-              styles.submitButtonText,
-              selectedReason && !isSubmitting ? styles.submitButtonTextEnabled : styles.submitButtonTextDisabled
-            ]}>
-              {isSubmitting ? t('social:submitting') : t('social:submitReport')}
-            </Text>
-          </TrackedTouchableOpacity>
-        </View>
-
-        {/* Disclaimer */}
-        <View style={styles.disclaimer}>
-          <Text style={styles.disclaimerText}>
-            {t('social:reportDisclaimer')}
-          </Text>
-        </View>
-        </View>
-      </View>
-    </Modal>
+    </BaseBottomSheet>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
-    alignItems: 'center',
-  },
-  backdropTouch: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  modalContainer: {
-    backgroundColor: 'white',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    width: '100%',
-    minHeight: '95%',
-    overflow: 'hidden',
-  },
+  // META-ORCH-0991 Wave B — scrim, rounded top, and width now come from
+  // BaseBottomSheet's light-theme chrome (glass.notificationsSheet, topRadius
+  // 28). The former `overlay` / `backdropTouch` / `modalContainer` shells are
+  // gone; the sheet provides the backdrop (press-to-close) and pan-down.
   header: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -1,22 +1,32 @@
 /**
  * BlockUserModal
- * 
- * Confirmation modal for blocking a user.
+ *
+ * Confirmation dialog for blocking a user.
  * Explains what blocking does and provides optional reason selection.
+ *
+ * META-ORCH-0991 Wave B — migrated from a hand-rolled RN <Modal> (fade,
+ * centered card) onto BaseBottomSheet's `variant="center-dialog"`. A block
+ * confirm is a deliberate, irreversible-feeling decision: per the investigation
+ * §2 it MUST stay a centered confirm card (no pan-down — a confirm you can flick
+ * away by accident is a footgun), NOT a swipe-down sheet. The center-dialog
+ * variant gives the shared scrim + card chrome (glass.centerDialog) + RN-Modal
+ * z-stacking (so it layers above the FriendActionsSheet / ConnectionsPage chat
+ * that opens it) + Android hardware-back. Only the OUTER scrim/card shell was
+ * removed; every bit of the inner content, copy, reason chips, callbacks, and
+ * styling is preserved exactly.
  */
 
 import React, { useState } from "react";
 import {
   View,
   Text,
-  Modal,
   StyleSheet,
   TouchableOpacity,
-  TouchableWithoutFeedback,
   ActivityIndicator,
 } from "react-native";
 import { useTranslation } from 'react-i18next';
 import { Icon } from './ui/Icon';
+import { BaseBottomSheet } from './ui/BaseBottomSheet';
 import { BlockReason } from "../services/blockService";
 
 interface BlockUserModalProps {
@@ -65,18 +75,16 @@ export const BlockUserModal: React.FC<BlockUserModalProps> = ({
   const isLoading = loading || isSubmitting;
 
   return (
-    <Modal
+    <BaseBottomSheet
+      variant="center-dialog"
       visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={handleClose}
+      onClose={handleClose}
+      theme="light"
+      accessibilityLabel={t('social:blockTitle', { name: userName })}
     >
-      <TouchableWithoutFeedback onPress={handleClose}>
-        <View style={styles.overlay}>
-          <TouchableWithoutFeedback>
-            <View style={styles.container}>
-              {/* Header */}
-              <View style={styles.header}>
+      <View style={styles.container}>
+        {/* Header */}
+        <View style={styles.header}>
                 <View style={styles.iconContainer}>
                   <Icon name="shield" size={32} color="#ef4444" />
                 </View>
@@ -174,33 +182,19 @@ export const BlockUserModal: React.FC<BlockUserModalProps> = ({
                   )}
                 </TouchableOpacity>
               </View>
-            </View>
-          </TouchableWithoutFeedback>
-        </View>
-      </TouchableWithoutFeedback>
-    </Modal>
+      </View>
+    </BaseBottomSheet>
   );
 };
 
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
-  },
+  // META-ORCH-0991 Wave B — the scrim, centered card, radius, padding, shadow,
+  // and maxWidth now come from BaseBottomSheet's center-dialog chrome
+  // (glass.centerDialog). `container` is a transparent passthrough so the
+  // inner content (header/bullets/reason chips/actions) keeps its exact
+  // vertical rhythm without a second background/border/padding.
   container: {
-    backgroundColor: "white",
-    borderRadius: 20,
-    padding: 24,
     width: "100%",
-    maxWidth: 400,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 8,
   },
   header: {
     alignItems: "center",
