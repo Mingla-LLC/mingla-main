@@ -17,6 +17,7 @@ import {
   type RecentInstallmentReminder,
 } from "../services/installmentReminderService";
 import { orderInstallmentKeys } from "./useOrderInstallments";
+import { useAuth } from "../context/AuthContext";
 
 export const manualReminderKeys = {
   all: ["manualBuyerReminders"] as const,
@@ -137,7 +138,9 @@ export function useSendInstallmentReminder(
 export function useRecentReminderForOrder(
   orderId: string | null,
 ): UseQueryResult<RecentInstallmentReminder | null, Error> {
-  const enabled = orderId !== null && orderId.length > 0;
+  // ORCH-1004 — reminder ledger is RLS auth.uid()-scoped; gate on auth.
+  const { isAuthReady } = useAuth();
+  const enabled = isAuthReady && orderId !== null && orderId.length > 0;
   return useQuery({
     queryKey: enabled
       ? manualReminderKeys.recentByOrder(orderId)

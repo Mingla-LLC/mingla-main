@@ -25,6 +25,7 @@ import {
   type UseQueryResult,
 } from "@tanstack/react-query";
 
+import { useAuth } from "../context/AuthContext";
 import { supabase } from "../services/supabase";
 import { queryClient } from "../config/queryClient";
 import { eventOrdersKeys } from "./useEventOrders";
@@ -116,7 +117,13 @@ export const getBrandFromCache = (brandId: string | null): Brand | null => {
 export const useBrands = (
   accountId: string | null,
 ): UseQueryResult<Brand[]> => {
-  const enabled = accountId !== null;
+  // ORCH-1004 — lists the signed-in user's brands via the authenticated
+  // "Account owner can select own brands" RLS policy; anon returns 200 + []
+  // which caches as success. Gate on auth readiness. (useBrand single-by-id
+  // stays UNGATED — `brands` has an anon "Public can read non-deleted brands"
+  // policy and the public buyer pages depend on it.)
+  const { isAuthReady } = useAuth();
+  const enabled = isAuthReady && accountId !== null;
   const rqClient = useQueryClient();
 
   // ORCH-0816 — Realtime subscription on `public.orders` for brand-stats

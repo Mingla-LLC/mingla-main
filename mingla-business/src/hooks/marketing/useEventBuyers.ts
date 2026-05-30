@@ -13,6 +13,7 @@
 import { useMemo } from "react";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 
+import { useAuth } from "../../context/AuthContext";
 import {
   resolveEventBuyers,
   type ResolveBuyersResult,
@@ -37,7 +38,10 @@ export interface UseEventBuyersState {
 export function useEventBuyers(
   eventId: string | null | undefined,
 ): UseEventBuyersState {
-  const enabled = typeof eventId === "string" && eventId.length > 0;
+  // ORCH-1004 — event buyers read auth.uid()-scoped buyer rollups; gate on auth.
+  const { isAuthReady } = useAuth();
+  const enabled =
+    isAuthReady && typeof eventId === "string" && eventId.length > 0;
 
   const query = useQuery<ResolveBuyersResult>({
     queryKey: enabled
