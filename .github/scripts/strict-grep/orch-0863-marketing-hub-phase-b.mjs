@@ -1023,7 +1023,18 @@ function checkNoNewBackendFiles() {
     "supabase/functions/run-place-intelligence-trial/index.ts",
     "supabase/functions/run-place-intelligence-trial/__tests__/intelligence_coverage_seed_refresh.test.ts",
   ];
+  // ORCH-1016 [Consumer Discover Trips tab] — global published-trips RPC +
+  // departure_text column (+ departure_geo + theme→column sync trigger). C7 is
+  // scoped to ORCH-0863 marketing; these are ORCH-1016 consumer-surfacing
+  // backend touches. No new edge function (the buyer flow reuses the already-
+  // allowlisted ticket-checkout-create). Per COMMS-0002.
+  const ORCH_1016_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260803000000_orch_1016_events_departure_text.sql",
+    "supabase/migrations/20260803000001_orch_1016_pg_published_trips_public.sql",
+    "supabase/migrations/__tests__/orch_1016_pg_published_trips_public.test.ts",
+  ];
   const ALLOWLIST = [
+    ...ORCH_1016_BACKEND_ALLOWLIST,
     ...ORCH_0989_BACKEND_ALLOWLIST,
     ...ORCH_0990_BACKEND_ALLOWLIST,
     ...ORCH_0986_BACKEND_ALLOWLIST,

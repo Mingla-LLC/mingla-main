@@ -68,9 +68,9 @@ export default function ConsumerBrandProfileScreen(): React.ReactElement {
           );
         },
         onOpenTrip: (trip: PublicBrandTrip) => {
-          void WebBrowser.openBrowserAsync(
-            `https://business.usemingla.com/t/${trip.brandSlug}/${trip.slug}`,
-          );
+          // ORCH-1016 — open the in-app trip detail (deep-link re-export route),
+          // NOT WebBrowser (the web-eject this ORCH kills).
+          router.push(`/t/${trip.brandSlug}/${trip.slug}`);
         },
         onOpenExperience: (experience: PublicBrandExperience) => {
           void WebBrowser.openBrowserAsync(

@@ -41,6 +41,15 @@ export interface NativeCheckoutInput {
   };
   idempotencyKey?: string;
   taxCalculationId?: string | null;
+  // ORCH-1016: trip intake answers ride the existing ticket-checkout-create body
+  // key → orders.intake_form_data. The key is already supported server-side
+  // (ticket-checkout-create reads it for trip checkouts); this just forwards it
+  // from the native consumer path. No new edge-fn contract.
+  intakeFormData?: Array<{
+    ticket_type_id: string;
+    schema_version_id: string;
+    answers: Record<string, unknown>;
+  }>;
 }
 
 export type NativeCheckoutOutcome =
@@ -123,6 +132,10 @@ export const useNativeCheckoutFlow = (): ((
             address: input.buyer.address,
           },
           lines: input.lines,
+          // ORCH-1016: trip intake answers → orders.intake_form_data.
+          ...(input.intakeFormData && input.intakeFormData.length > 0
+            ? { intake_form_data: input.intakeFormData }
+            : {}),
           ...(input.taxCalculationId ? { taxCalculationId: input.taxCalculationId } : {}),
           ...(input.idempotencyKey !== undefined
             ? { idempotencyKey: input.idempotencyKey }

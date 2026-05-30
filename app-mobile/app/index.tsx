@@ -21,6 +21,9 @@ import { useFriends } from "../src/hooks/useFriends";
 import ErrorBoundary from "../src/components/ErrorBoundary";
 import HomePage from "../src/components/HomePage";
 import DiscoverScreen from "../src/components/DiscoverScreen";
+// ORCH-1016 — in-app trip detail overlay + its seed type.
+import ConsumerTripDetailScreen from "../src/screens/Trip/ConsumerTripDetailScreen";
+import type { DiscoverTripRow } from "../src/services/tripsDiscoveryService";
 import PreferencesSheet from "../src/components/PreferencesSheet";
 import ProfilePage from "../src/components/ProfilePage";
 import WelcomeScreen from "../src/components/signIn/WelcomeScreen";
@@ -248,6 +251,15 @@ function AppContent() {
   } = state;
 
   const [totalUnreadMessages, setTotalUnreadMessages] = useState<number>(0);
+  // ORCH-1016 — in-app trip detail overlay slot (mirrors viewingFriendProfileId).
+  const [viewingTrip, setViewingTrip] = useState<{
+    brandSlug: string;
+    tripSlug: string;
+    seed: DiscoverTripRow | null;
+  } | null>(null);
+  const handleOpenTripFromDiscover = useCallback((seed: DiscoverTripRow): void => {
+    setViewingTrip({ brandSlug: seed.brandSlug, tripSlug: seed.tripSlug, seed });
+  }, []);
   const [totalUnreadBoardMessages, setTotalUnreadBoardMessages] =
     useState<number>(0);
   const [isCreatingSession, setIsCreatingSession] = useState<boolean>(false);
@@ -2067,7 +2079,8 @@ function AppContent() {
   }
 
   // Whether any full-screen overlay is active (hides tab container)
-  const isOverlayActive = !!viewingFriendProfileId || (showPaywall && !!user?.id);
+  const isOverlayActive =
+    !!viewingFriendProfileId || !!viewingTrip || (showPaywall && !!user?.id);
 
   // Function to render current page based on navigation
   const renderCurrentPage = () => {
@@ -2321,7 +2334,15 @@ function AppContent() {
                         ]}
                       >
                         {/* Full-screen overlays render ON TOP of tabs */}
-                        {viewingFriendProfileId ? (
+                        {viewingTrip ? (
+                          <ConsumerTripDetailScreen
+                            brandSlug={viewingTrip.brandSlug}
+                            tripSlug={viewingTrip.tripSlug}
+                            seed={viewingTrip.seed}
+                            onBack={() => setViewingTrip(null)}
+                            accountPreferences={accountPreferencesMemo}
+                          />
+                        ) : viewingFriendProfileId ? (
                           <ViewFriendProfileScreen
                             userId={viewingFriendProfileId}
                             onBack={() => setViewingFriendProfileId(null)}
@@ -2378,6 +2399,7 @@ function AppContent() {
                                       isTabVisible={true}
                                       onOpenChatWithUser={handleOpenChatWithUserFromDiscover}
                                       onViewFriendProfile={handleViewFriendProfile}
+                                      onOpenTrip={handleOpenTripFromDiscover}
                                       accountPreferences={accountPreferencesMemo}
                                       preferencesRefreshKey={preferencesRefreshKey}
                                       deepLinkParams={discoverDeepLinkParams}

@@ -213,6 +213,8 @@ interface AppState {
   connectionsActivePanel: 'friends' | 'add' | 'blocked' | null;
   connectionsFriendsModalTab: 'friend-list' | 'requests' | 'add' | null;
   likesActiveTab: 'saved' | 'calendar';
+  // ORCH-1016 — Discover Events/Trips pill selection, preserved across tab unmount.
+  discoverActiveTab: 'events' | 'trips';
 
   // Actions
   setAuth: (user: User | null) => void;
@@ -243,6 +245,7 @@ interface AppState {
   setConnectionsActivePanel: (panel: AppState['connectionsActivePanel']) => void;
   setConnectionsFriendsModalTab: (tab: AppState['connectionsFriendsModalTab']) => void;
   setLikesActiveTab: (tab: 'saved' | 'calendar') => void;
+  setDiscoverActiveTab: (tab: 'events' | 'trips') => void;
 
   // Utilities
   clearUserData: () => void;
@@ -287,6 +290,7 @@ export const useAppStore = create<AppState>()(
       connectionsActivePanel: null,
       connectionsFriendsModalTab: null,
       likesActiveTab: 'saved',
+      discoverActiveTab: 'events',
 
       // Auth actions
       setAuth: (user) => {
@@ -342,6 +346,7 @@ export const useAppStore = create<AppState>()(
       setConnectionsActivePanel: (connectionsActivePanel) => set({ connectionsActivePanel }),
       setConnectionsFriendsModalTab: (connectionsFriendsModalTab) => set({ connectionsFriendsModalTab }),
       setLikesActiveTab: (likesActiveTab) => set({ likesActiveTab }),
+      setDiscoverActiveTab: (discoverActiveTab) => set({ discoverActiveTab }),
 
       // Deck session actions
       addSwipedCard: (card) => set((state: AppState) => {
@@ -391,6 +396,7 @@ export const useAppStore = create<AppState>()(
           connectionsActivePanel: null,
           connectionsFriendsModalTab: null,
           likesActiveTab: 'saved',
+          discoverActiveTab: 'events',
         }),
     })),  // end of state definition + devLoggerMiddleware
     {

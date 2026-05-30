@@ -1,5 +1,7 @@
 {
-  "title": "Events",
+  "title": "Discover",
+  "events_tab": "Events",
+  "trips_tab": "Trips",
   "featured.badge": "Featured",
   "error.title": "Something went wrong",
   "error.subtitle": "Pull down to retry, or check your connection.",

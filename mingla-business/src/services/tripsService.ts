@@ -87,6 +87,13 @@ export interface TripBusinessTrip {
   destinationLocationText: string | null;
   destinationLat: number | null;
   destinationLng: number | null;
+  // ORCH-1016 — DEPARTURE/origin city. departureLocationText is sourced from the
+  // canonical events.departure_text column (synced from theme.business_trip by the
+  // ORCH-1016 trigger); placeId/lat/lng read from theme.business_trip.
+  departurePlaceId: string | null;
+  departureLocationText: string | null;
+  departureLat: number | null;
+  departureLng: number | null;
   capacity: number | null;
 }
 
@@ -244,6 +251,7 @@ interface EventRow {
   cover_media_url: string | null;
   cover_media_type: string | null;
   destination_text?: string | null;
+  departure_text?: string | null; // ORCH-1016 canonical departure column
   theme: Record<string, unknown> | null;
   event_type: "event" | "experience" | "trip";
   created_at: string;
@@ -355,6 +363,7 @@ function readBusinessTrip(
   canonicalStartAt: string | null,
   canonicalEndAt: string | null,
   canonicalDestination: string | null,
+  canonicalDeparture: string | null,
 ): TripBusinessTrip {
   const bt = (theme?.business_trip as Record<string, unknown> | undefined) ?? {};
   return {
@@ -367,6 +376,14 @@ function readBusinessTrip(
       typeof bt.destinationLat === "number" ? bt.destinationLat : null,
     destinationLng:
       typeof bt.destinationLng === "number" ? bt.destinationLng : null,
+    // ORCH-1016 — departureLocationText from the canonical column; the rest from theme.
+    departurePlaceId:
+      typeof bt.departurePlaceId === "string" ? bt.departurePlaceId : null,
+    departureLocationText: canonicalDeparture,
+    departureLat:
+      typeof bt.departureLat === "number" ? bt.departureLat : null,
+    departureLng:
+      typeof bt.departureLng === "number" ? bt.departureLng : null,
     capacity: ticketCapacity,
   };
 }
@@ -401,6 +418,7 @@ function mapTrip(
       masterDate?.start_at ?? null,
       masterDate?.end_at ?? null,
       event.destination_text ?? null,
+      event.departure_text ?? null,
     ),
     days: days.map(mapTripDay),
     pricingTiers: tiers.map((t) =>
