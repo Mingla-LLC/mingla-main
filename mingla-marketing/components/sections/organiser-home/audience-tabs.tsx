@@ -190,15 +190,15 @@ export function OrganiserAudienceTabs() {
             animate={{ opacity: 1, y: 0 }}
             exit={reduced ? undefined : { opacity: 0, y: -8 }}
             transition={{ duration: 0.34, ease: EASE }}
-            className="mt-16 grid gap-12 lg:grid-cols-2 lg:items-start lg:gap-16"
+            className="mt-16 grid gap-12 lg:grid-cols-2 lg:items-stretch lg:gap-16"
           >
-            {/* LEFT — heading + intro + steps (one column) */}
-            <div>
+            {/* LEFT — heading + intro + steps, distributed to fit the chart's height. */}
+            <div className="flex flex-col lg:h-full">
               <h3 className="font-display text-3xl leading-tight tracking-[-0.01em] text-white md:text-4xl">
                 {tab.heading}
               </h3>
-              <p className="mt-5 text-base leading-relaxed text-white/70 md:text-lg">{tab.intro}</p>
-              <ol className="mt-10 space-y-7">
+              <p className="mt-4 text-base leading-relaxed text-white/70 md:text-lg">{tab.intro}</p>
+              <ol className="mt-8 flex flex-1 flex-col justify-between gap-6">
                 {tab.steps.map((s, i) => (
                   <li key={s.title} className="flex gap-5">
                     <span className="font-display text-2xl leading-none tabular-nums text-warm/45">
