@@ -6,6 +6,7 @@
 
 import { useCallback, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "../context/AuthContext";
 import {
   AgentChatResponse,
   AgentMessage,
@@ -45,6 +46,9 @@ export function useAgentChat(
   brandId: string | null = null,
 ): UseAgentChatResult {
   const qc = useQueryClient();
+  // ORCH-1004 — agent conversation messages are RLS auth.uid()-scoped; gate on
+  // auth readiness so a pre-auth fire can't cache an empty thread as success.
+  const { isAuthReady } = useAuth();
   const [conversationId, setConversationId] = useState<string | null>(initialConversationId);
   const [pendingAction, setPendingAction] = useState<PendingActionView | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -52,7 +56,7 @@ export function useAgentChat(
   const messagesQuery = useQuery({
     queryKey: agentQueryKeys.messages(conversationId),
     queryFn: () => (conversationId ? fetchMessages(conversationId) : Promise.resolve([])),
-    enabled: !!conversationId,
+    enabled: isAuthReady && !!conversationId,
     staleTime: 0,
   });
 

@@ -6,6 +6,7 @@
 import { useMemo } from "react";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 
+import { useAuth } from "../../context/AuthContext";
 import { listUserTemplates } from "../../services/marketing/marketingTemplateService";
 import type { MarketingTemplateRow } from "../../types/marketing";
 import { marketingKeys } from "./marketingKeys";
@@ -22,7 +23,10 @@ export interface UseUserTemplatesState {
 export function useUserTemplates(
   accountId: string | null | undefined,
 ): UseUserTemplatesState {
-  const enabled = typeof accountId === "string" && accountId.length > 0;
+  // ORCH-1004 — user-authored templates are auth.uid()-scoped; gate on auth.
+  const { isAuthReady } = useAuth();
+  const enabled =
+    isAuthReady && typeof accountId === "string" && accountId.length > 0;
   const query = useQuery<MarketingTemplateRow[]>({
     queryKey: enabled
       ? marketingKeys.templates.user(accountId as string)

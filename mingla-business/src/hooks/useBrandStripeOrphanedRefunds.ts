@@ -16,6 +16,7 @@ import {
   fetchBrandStripeOrphanedRefunds,
   type OrphanedRefundEntry,
 } from "../services/brandStripeOrphanedRefundsService";
+import { useAuth } from "../context/AuthContext";
 
 const STALE_TIME_MS = 5 * 60 * 1000;
 
@@ -32,7 +33,9 @@ const DISABLED_KEY = ["brand-stripe-orphaned-refunds-disabled"] as const;
 export function useBrandStripeOrphanedRefunds(
   brandId: string | null,
 ): UseQueryResult<readonly OrphanedRefundEntry[]> {
-  const enabled = brandId !== null;
+  // ORCH-1004 — orphaned-refund history is RLS auth.uid()-scoped; gate on auth.
+  const { isAuthReady } = useAuth();
+  const enabled = isAuthReady && brandId !== null;
 
   return useQuery<readonly OrphanedRefundEntry[]>({
     queryKey: enabled

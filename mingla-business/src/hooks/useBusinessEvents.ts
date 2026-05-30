@@ -19,6 +19,7 @@ import {
   type PublishedBusinessEvent,
 } from "../services/businessEvents";
 import type { Brand } from "../store/currentBrandStore";
+import { useAuth } from "../context/AuthContext";
 import { eventDraftKeys } from "./useServerDraftEvents";
 import { publicEventKeys } from "./usePublicEvents";
 // ORCH-0965 — invalidate the home composite-upcoming cache on every event
@@ -111,7 +112,11 @@ export const businessEventKeys = {
 export const useBusinessEventsForBrand = (
   brandId: string | null,
 ): UseQueryResult<LiveEvent[]> => {
-  const enabled = brandId !== null;
+  // ORCH-1004 — reads `business_management_events_view` (security_invoker=true)
+  // + RLS-scoped `events`. Anon firing returns 200 + [] (cached as success),
+  // so gate on auth readiness. The PUBLIC buyer feed is usePublicEvents.
+  const { isAuthReady } = useAuth();
+  const enabled = isAuthReady && brandId !== null;
   return useQuery<LiveEvent[]>({
     queryKey:
       enabled && brandId !== null ? businessEventKeys.list(brandId) : DISABLED_KEY,
@@ -127,7 +132,10 @@ export const useBusinessEventsForBrand = (
 export const useBusinessEventById = (
   eventId: string | null,
 ): UseQueryResult<BusinessEventDetail | null> => {
-  const enabled = eventId !== null;
+  // ORCH-1004 — management detail reads the security_invoker view + RLS
+  // `events`; gate on auth readiness (public detail is usePublicEvents).
+  const { isAuthReady } = useAuth();
+  const enabled = isAuthReady && eventId !== null;
   return useQuery<BusinessEventDetail | null>({
     queryKey:
       enabled && eventId !== null ? businessEventKeys.detail(eventId) : DISABLED_KEY,

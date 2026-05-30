@@ -24,6 +24,7 @@ import {
   type UseQueryResult,
 } from "@tanstack/react-query";
 
+import { useAuth } from "../context/AuthContext";
 import { supabase } from "../services/supabase";
 import { getStripeSupportedCountry } from "../constants/stripeSupportedCountries";
 
@@ -90,7 +91,9 @@ export function useBrandStripeBankVerification(
   brandId: string | null,
 ): UseQueryResult<BrandStripeBankVerification> {
   const queryClient = useQueryClient();
-  const enabled = brandId !== null;
+  // ORCH-1004 — stripe_external_accounts is RLS auth.uid()-scoped; gate on auth.
+  const { isAuthReady } = useAuth();
+  const enabled = isAuthReady && brandId !== null;
 
   useEffect(() => {
     if (!enabled || brandId === null) return;

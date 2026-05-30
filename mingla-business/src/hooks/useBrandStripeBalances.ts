@@ -41,8 +41,11 @@ export function useBrandStripeBalances(
   brandId: string | null,
   options: UseBrandStripeBalancesOptions,
 ): UseQueryResult<BrandStripeBalancesResult> {
-  const { loading, session, user } = useAuth();
+  // ORCH-1004 — tighten to the canonical isAuthReady signal alongside the
+  // existing loading+user+session gate (balances edge call is auth-scoped).
+  const { isAuthReady, loading, session, user } = useAuth();
   const enabled =
+    isAuthReady &&
     options.stripeStatus === "active" &&
     shouldEnableBrandStripeStatusQuery({
       brandId,

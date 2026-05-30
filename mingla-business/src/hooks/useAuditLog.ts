@@ -20,6 +20,7 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 
+import { useAuth } from "../context/AuthContext";
 import { supabase } from "../services/supabase";
 import {
   type AuditCategory,
@@ -72,7 +73,10 @@ export const useAuditLog = (
   brandId: string | null,
   categoryFilter: AuditCategoryFilter = "all",
 ): UseAuditLogState => {
-  const enabled = brandId !== null;
+  // ORCH-1004 — audit_log RLS scopes SELECT to user_id = auth.uid(); firing
+  // pre-auth returns 200 + [] cached as success. Gate on auth readiness.
+  const { isAuthReady } = useAuth();
+  const enabled = isAuthReady && brandId !== null;
 
   const {
     data,
