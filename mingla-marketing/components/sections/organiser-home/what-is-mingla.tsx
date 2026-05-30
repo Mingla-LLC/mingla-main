@@ -62,18 +62,19 @@ export function OrganiserWhatIsMingla() {
   const sectionRef = useRef<HTMLElement>(null)
   const { scrollYProgress } = useScroll({
     target: sectionRef,
-    offset: ['start 0.85', 'end 0.2'],
+    offset: ['start start', 'end end'],
   })
   useMotionValueEvent(scrollYProgress, 'change', (v) => {
     setActive(stepForProgress(v, STEPS.length))
   })
 
+  // Desktop: the section is tall and the content is pinned (sticky), so scrolling
+  // scrubs the 3 steps while everything stays in view — each step gets a real
+  // reading moment. Mobile: normal flow, all steps shown expanded (below).
   return (
-    <section
-      ref={sectionRef}
-      className="seam-top px-6 py-24 md:px-10 md:py-32 [padding-left:max(1.5rem,env(safe-area-inset-left))] [padding-right:max(1.5rem,env(safe-area-inset-right))] md:[padding-left:max(2.5rem,env(safe-area-inset-left))] md:[padding-right:max(2.5rem,env(safe-area-inset-right))]"
-    >
-      <div className="mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-2 lg:gap-20">
+    <section ref={sectionRef} className="seam-top relative lg:min-h-[180vh]">
+      <div className="flex items-center px-6 py-24 md:px-10 md:py-32 lg:sticky lg:top-0 lg:min-h-screen [padding-left:max(1.5rem,env(safe-area-inset-left))] [padding-right:max(1.5rem,env(safe-area-inset-right))] md:[padding-left:max(2.5rem,env(safe-area-inset-left))] md:[padding-right:max(2.5rem,env(safe-area-inset-right))]">
+        <div className="mx-auto grid w-full max-w-6xl items-center gap-12 lg:grid-cols-2 lg:gap-20">
         {/* LEFT — what is Mingla */}
         <div className="max-w-xl">
           <Reveal as="span" className="block text-xs font-semibold uppercase tracking-[0.2em] text-warm-ink">
@@ -133,10 +134,12 @@ export function OrganiserWhatIsMingla() {
                       </div>
                       {/* text column */}
                       <div className="pb-6 pt-1.5">
-                        <StepperTitle className="data-[state=inactive]:text-text-muted">
+                        <StepperTitle className="lg:data-[state=inactive]:text-text-muted">
                           {s.title}
                         </StepperTitle>
-                        <StepperDescription className="mt-0 max-h-0 overflow-hidden opacity-0 transition-all duration-500 ease-out data-[state=active]:mt-2 data-[state=active]:max-h-44 data-[state=active]:opacity-100">
+                        {/* Mobile: always expanded (readable without scroll-scrub).
+                            Desktop: collapse/expand driven by the scroll-active step. */}
+                        <StepperDescription className="mt-2 overflow-hidden lg:mt-0 lg:max-h-0 lg:opacity-0 lg:transition-all lg:duration-500 lg:ease-out lg:data-[state=active]:mt-2 lg:data-[state=active]:max-h-44 lg:data-[state=active]:opacity-100">
                           {s.description}
                         </StepperDescription>
                       </div>
@@ -147,6 +150,7 @@ export function OrganiserWhatIsMingla() {
             </StepperNav>
           </Stepper>
         </Reveal>
+        </div>
       </div>
     </section>
   )

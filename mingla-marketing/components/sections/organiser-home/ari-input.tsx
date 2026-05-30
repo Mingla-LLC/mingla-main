@@ -10,12 +10,14 @@ import { useMinglaReducedMotion } from '@/lib/reduced-motion'
 // self-contained warm CSS orb. Illustrative of Ari's range (product vision).
 
 const PROMPTS = [
-  "Here's my menu — create a Friday experience to boost bookings.",
-  'Create an afrobeats event for Sunday, with flyer ideas.',
-  'Build the trip page for my travel company.',
-  'Run the marketing for my last event.',
-  "What's my ROI this month?",
-  'Give me the data on last weekend.',
+  "Here's my menu — design a Friday supper club that sells out.",
+  'Turn my slow Tuesdays into a weekly ritual people book ahead.',
+  'Create a Sunday afrobeats night — flyer, ticket tiers, guest list.',
+  "Build my travel company's trip page and price the packages.",
+  'Find the 200 people most likely to come — and invite them.',
+  'Why did last weekend underperform, and what do I change?',
+  'Write the blast for my new brunch and send it to past guests.',
+  "What's my ROI this month, and where should I spend next?",
 ] as const
 
 const CHAR_DELAY = 48 // ms per character
