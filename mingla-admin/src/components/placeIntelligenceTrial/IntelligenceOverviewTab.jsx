@@ -30,6 +30,9 @@ import { RunRemainderConfirmModal } from "./RunRemainderConfirmModal";
 // ORCH-1013 Finding B — bulk launch ("Run remainder on all").
 import { RunRemainderOnAllConfirmModal } from "./RunRemainderOnAllConfirmModal";
 import { useBulkRunDispatcher } from "../../hooks/useBulkRunDispatcher";
+// ORCH-1014 Finding B — per-city Seed + Refresh readiness badges.
+import { SeedStatusBadge } from "./SeedStatusBadge";
+import { RefreshStatusBadge } from "./RefreshStatusBadge";
 
 const PER_PLACE_COST_USD = 0.0040;
 
@@ -307,6 +310,20 @@ export function IntelligenceOverviewTab({ onSwitchToResults, onTabChange }) {
                   <tr className="text-left text-[10px] uppercase tracking-wide font-mono text-[var(--color-text-tertiary)]">
                     <th className="px-3 py-2 font-medium">City</th>
                     <th className="px-3 py-2 font-medium">Country</th>
+                    {/* ORCH-1014 — Seed + Refresh readiness columns
+                        (read-only; act on Place Pool page) */}
+                    <th
+                      className="px-3 py-2 font-medium"
+                      title="Reseed in Place Pool"
+                    >
+                      Seed status
+                    </th>
+                    <th
+                      className="px-3 py-2 font-medium"
+                      title="Refresh in Place Pool"
+                    >
+                      Refresh status
+                    </th>
                     <th className="px-3 py-2 font-medium text-right">Servable</th>
                     <th className="px-3 py-2 font-medium text-right">Evaluated</th>
                     <th className="px-3 py-2 font-medium text-right">Remaining</th>
@@ -328,6 +345,19 @@ export function IntelligenceOverviewTab({ onSwitchToResults, onTabChange }) {
                         </td>
                         <td className="px-3 py-2 text-[var(--color-text-secondary)]">
                           {row.country || "—"}
+                        </td>
+                        {/* ORCH-1014 — Seed + Refresh readiness cells (read-only) */}
+                        <td className="px-3 py-2 align-top">
+                          <SeedStatusBadge
+                            firstSeededAt={row.first_seeded_at}
+                            lastSeededAt={row.last_seeded_at}
+                          />
+                        </td>
+                        <td className="px-3 py-2 align-top">
+                          <RefreshStatusBadge
+                            missingFieldsCount={row.missing_fields_count ?? 0}
+                            staleRefreshCount={row.stale_refresh_count ?? 0}
+                          />
                         </td>
                         <td className="px-3 py-2 text-right text-[var(--color-text-primary)] font-mono tabular-nums">
                           {row.servable_count.toLocaleString()}

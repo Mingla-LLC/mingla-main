@@ -29,8 +29,6 @@ const EXPECTED_IDS = [
   "admin",
   "placepool",
   "signals",
-  "photo-labeling",
-  "photo-scorer",
   "place-intelligence-trial",
   "email",
   "claims",
@@ -45,7 +43,7 @@ describe("ORCH-1008 Phase 1 — sidebar prune + flatten", () => {
     assert.notEqual(NAV_GROUPS[0].collapsible, true, "the single group must not be collapsible");
   });
 
-  it("NAV_GROUPS has exactly 12 items in the locked SPEC order", () => {
+  it("NAV_GROUPS has exactly 10 items in the locked SPEC order", () => {
     const ids = NAV_GROUPS[0].items.map((i) => i.id);
     assert.deepEqual(ids, EXPECTED_IDS);
   });
@@ -57,8 +55,8 @@ describe("ORCH-1008 Phase 1 — sidebar prune + flatten", () => {
     }
   });
 
-  it("NAV_ITEMS is the flat 12-item list (no group splits)", () => {
-    assert.equal(NAV_ITEMS.length, 12);
+  it("NAV_ITEMS is the flat 10-item list (no group splits)", () => {
+    assert.equal(NAV_ITEMS.length, 10);
     assert.deepEqual(NAV_ITEMS.map((i) => i.id), EXPECTED_IDS);
   });
 

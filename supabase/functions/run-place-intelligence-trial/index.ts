@@ -2194,16 +2194,46 @@ async function insertRetryChildrenInChunks(
 
 // ═══════════════════════════════════════════════════════════════════════════
 // intelligence_coverage — per-city coverage tiles for the Intelligence
-// Overview tab (ORCH-1008). Returns one row per seeding_city with ≥1
-// servable place_pool row; sorted by servable_count desc.
+// Overview tab (ORCH-1008 + ORCH-1014 seed/refresh badge fields).
+// Returns one row per seeding_city with ≥1 servable place_pool row; sorted
+// by servable_count desc.
+//
+// ORCH-1014: extended the per-row shape with 6 NEW fields for the Seed +
+// Refresh status badges (first_seeded_at, last_seeded_at, refresh_oldest_at,
+// refresh_newest_at, stale_refresh_count, missing_fields_count). Two
+// additional fetches (servable details + seed window) feed those aggregates
+// client-side via per-city Maps — no new SECURITY DEFINER RPC, no new
+// external API surface. Stale threshold = 90 days (operator-chosen
+// operational constant; no external doc).
+//
+// COMMS-0003 — external API parameters/pricing must cite provider docs URL.
+// This action is Supabase-only (no Gemini calls) but the file-level Gemini
+// 2.5 Flash pricing citation is preserved in the q1/q2 helpers above:
+//   https://ai.google.dev/pricing/gemini-2-5-flash (verified 2026-05-29).
 // ═══════════════════════════════════════════════════════════════════════════
+
+// ORCH-1014 — operator-chosen stale threshold (90 days). Internal operational
+// constant, not an external API parameter. last_detail_refresh older than
+// this counts as "stale" in the Refresh status badge.
+const ORCH_1014_STALE_THRESHOLD_MS = 90 * 24 * 60 * 60 * 1000;
 
 async function handleIntelligenceCoverage(
   db: SupabaseClient,
 ): Promise<Response> {
-  // 4 parallel queries → client-side join (Supabase MCP-friendly; avoids
+  // 6 parallel queries → client-side join (Supabase MCP-friendly; avoids
   // a new SECURITY DEFINER RPC for what is admin-only read state).
-  const [citiesRes, servableRes, completedRes, runsRes] = await Promise.all([
+  // ORCH-1014 added (5) servableDetailsRes + (6) seedWindowRes for the new
+  // Seed + Refresh status badges. The pre-existing (2) servableRes count
+  // remains as the canonical servable_count source; (5) only feeds the new
+  // refresh/missing aggregates so the count contract stays identical.
+  const [
+    citiesRes,
+    servableRes,
+    completedRes,
+    runsRes,
+    servableDetailsRes,
+    seedWindowRes,
+  ] = await Promise.all([
     db
       .from("seeding_cities")
       .select("id, name, country")
@@ -2233,17 +2263,80 @@ async function handleIntelligenceCoverage(
       )
       .in("status", ["complete", "failed", "cancelled"])
       .order("completed_at", { ascending: false, nullsFirst: false }),
+    // ORCH-1014 NEW — servable details for the Refresh status badge
+    db
+      .from("place_pool")
+      .select("city_id, last_detail_refresh, generative_summary, editorial_summary, reviews")
+      .eq("is_servable", true)
+      .not("city_id", "is", null),
+    // ORCH-1014 NEW — seed window across ALL place_pool rows (servable + non)
+    db
+      .from("place_pool")
+      .select("city_id, created_at")
+      .not("city_id", "is", null),
   ]);
 
   if (citiesRes.error) return json({ error: citiesRes.error.message }, 500);
   if (servableRes.error) return json({ error: servableRes.error.message }, 500);
   if (completedRes.error) return json({ error: completedRes.error.message }, 500);
   if (runsRes.error) return json({ error: runsRes.error.message }, 500);
+  if (servableDetailsRes.error) return json({ error: servableDetailsRes.error.message }, 500);
+  if (seedWindowRes.error) return json({ error: seedWindowRes.error.message }, 500);
 
   const servableByCity = new Map<string, number>();
   for (const row of servableRes.data || []) {
     if (!row.city_id) continue;
     servableByCity.set(row.city_id, (servableByCity.get(row.city_id) || 0) + 1);
+  }
+
+  // ORCH-1014 — refresh + missing-fields aggregates, all scoped to is_servable=true
+  const refreshOldestByCity = new Map<string, string>(); // ISO
+  const refreshNewestByCity = new Map<string, string>(); // ISO
+  const staleRefreshByCity = new Map<string, number>();
+  const missingFieldsByCity = new Map<string, number>();
+  const nowMs = Date.now();
+  for (const row of servableDetailsRes.data || []) {
+    if (!row.city_id) continue;
+    const cityId = row.city_id as string;
+
+    // refresh window
+    const lastRefresh = (row.last_detail_refresh ?? null) as string | null;
+    if (lastRefresh) {
+      const cur = refreshOldestByCity.get(cityId);
+      if (!cur || lastRefresh < cur) refreshOldestByCity.set(cityId, lastRefresh);
+      const curN = refreshNewestByCity.get(cityId);
+      if (!curN || lastRefresh > curN) refreshNewestByCity.set(cityId, lastRefresh);
+      if (nowMs - Date.parse(lastRefresh) > ORCH_1014_STALE_THRESHOLD_MS) {
+        staleRefreshByCity.set(cityId, (staleRefreshByCity.get(cityId) || 0) + 1);
+      }
+    } else {
+      // Treat NULL last_detail_refresh as stale (never refreshed)
+      staleRefreshByCity.set(cityId, (staleRefreshByCity.get(cityId) || 0) + 1);
+    }
+
+    // missing fields
+    const reviewsLen = Array.isArray(row.reviews) ? row.reviews.length : 0;
+    const missingAny =
+      row.generative_summary == null ||
+      row.editorial_summary == null ||
+      row.reviews == null ||
+      reviewsLen === 0;
+    if (missingAny) {
+      missingFieldsByCity.set(cityId, (missingFieldsByCity.get(cityId) || 0) + 1);
+    }
+  }
+
+  // ORCH-1014 — seed window across ALL place_pool rows (servable + non-servable)
+  const firstSeededByCity = new Map<string, string>();
+  const lastSeededByCity = new Map<string, string>();
+  for (const row of seedWindowRes.data || []) {
+    if (!row.city_id || !row.created_at) continue;
+    const cityId = row.city_id as string;
+    const createdAt = row.created_at as string;
+    const f = firstSeededByCity.get(cityId);
+    if (!f || createdAt < f) firstSeededByCity.set(cityId, createdAt);
+    const l = lastSeededByCity.get(cityId);
+    if (!l || createdAt > l) lastSeededByCity.set(cityId, createdAt);
   }
 
   // distinct (city_id, place_pool_id) pairs across all completed runs
@@ -2307,6 +2400,14 @@ async function handleIntelligenceCoverage(
         last_run_status: lastRun?.status ?? null,
         last_run_cost_usd: lastRun?.cost_so_far_usd ?? null,
         last_run_mode: lastRun?.mode ?? null,
+        // ORCH-1014 — Seed status badge inputs (all place_pool rows for this city)
+        first_seeded_at: firstSeededByCity.get(c.id) ?? null,
+        last_seeded_at: lastSeededByCity.get(c.id) ?? null,
+        // ORCH-1014 — Refresh status badge inputs (is_servable=true only)
+        refresh_oldest_at: refreshOldestByCity.get(c.id) ?? null,
+        refresh_newest_at: refreshNewestByCity.get(c.id) ?? null,
+        stale_refresh_count: staleRefreshByCity.get(c.id) ?? 0,
+        missing_fields_count: missingFieldsByCity.get(c.id) ?? 0,
       };
     })
     .filter((r) => r.servable_count > 0)
