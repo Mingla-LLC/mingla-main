@@ -1,5 +1,18 @@
 # Agent Handoffs
 
+## 2026-05-30 — ORCH-1022 [DM-shared card freeze + single-card Policies & Reservations dead taps] INTAKE → FORENSICS DISPATCH
+
+**Pipeline this session:** Codex `orchestrator-mingla` read COMMS_LEDGER, factored open WARN entries to ALL, scanned WORLD_MAP / MASTER_BUG_LIST / OPEN_INVESTIGATIONS / COMMS_LEDGER / live worktrees for ID collision, assigned ORCH-1022, spawned a per-ORCH worktree from `origin/main` because the anchor checkout had unrelated dirty work, and wrote the forensics prompt.
+
+**Worktree:** `~/Desktop/mingla-orchs/ORCH-1022-[dm-shared-card-freeze-policies-reservations]` on branch `ORCH-1022-dm-shared-card-freeze-policies-reservations`.
+
+**Affected Surfaces:** Consumer iOS + Consumer Android. **Explicitly NOT in scope:** buyer/anonymous Web, business iOS, business Android, admin Web, business Web preview.
+
+**Dispatch artifact:** `Mingla_Artifacts/prompts/FORENSICS_INVESTIGATE_ORCH-1022_DM_SHARED_CARD_FREEZE_POLICIES_RESERVATIONS.md`.
+
+**Next phase:** Claude `mingla-forensics` INVESTIGATE. Expected report: `Mingla_Artifacts/reports/INVESTIGATION_ORCH-1022_DM_SHARED_CARD_FREEZE_POLICIES_RESERVATIONS.md`. Downstream: orchestrator REVIEW → SPEC → implementation with repo-running regression tests → independent tester verification.
+
+
 ## 2026-05-31 — ORCH-1023 [Scheduling picker regression after decisive scheduling fix] CLOSED PASS Grade A
 
 **Pipeline executed (worktree `~/Desktop/mingla-orchs/ORCH-1023-[scheduling-picker-regression]` on branch `ORCH-1023-scheduling-picker-regression`):** operator report -> Codex `implementor-mingla` hotfix -> Codex `tester-mingla` PASS -> Seth app smoke PASS ("works now, schedule is fixed") -> Codex `orchestrator-mingla` CLOSE.
