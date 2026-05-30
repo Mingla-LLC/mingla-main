@@ -1058,6 +1058,8 @@ function checkNoNewBackendFiles() {
     "supabase/functions/run-place-intelligence-trial/index.ts",
     "supabase/functions/run-place-intelligence-trial/__tests__/ai_signal_scores_slice.test.ts",
     "supabase/functions/run-place-intelligence-trial/__tests__/ai_signal_scores_write_path.test.ts",
+    // QA pass — adversarial coverage on slice + writer (5 new tests):
+    "supabase/functions/run-place-intelligence-trial/__tests__/ai_signal_scores_adversarial.test.ts",
     "supabase/migrations/__tests__/meta_orch_1009_sub_a_ai_signal_scores_backfill.test.sql",
   ];
   const ALLOWLIST = [
