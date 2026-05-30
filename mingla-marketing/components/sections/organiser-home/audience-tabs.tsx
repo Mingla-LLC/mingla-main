@@ -7,6 +7,7 @@ import { EarningsCard } from '@/components/sections/organiser-home/earnings-card
 import { VenueActivityFeed } from '@/components/sections/organiser-home/venue-activity-feed'
 import { EventAttendeesCard } from '@/components/sections/organiser-home/event-attendees-card'
 import { DiningDashboardCard } from '@/components/sections/organiser-home/dining-dashboard-card'
+import { TripPlannerCard } from '@/components/sections/organiser-home/trip-planner-card'
 import { cn } from '@/lib/cn'
 import { useMinglaReducedMotion } from '@/lib/reduced-motion'
 
@@ -160,7 +161,7 @@ export function OrganiserAudienceTabs() {
           <div
             role="tablist"
             aria-label="Audience"
-            className="flex flex-wrap gap-2.5 lg:col-start-1 lg:row-start-2 lg:self-start"
+            className="flex flex-nowrap gap-1 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] sm:gap-2.5 lg:col-start-1 lg:row-start-2 lg:self-start [&::-webkit-scrollbar]:hidden"
           >
             {TABS.map((t, i) => {
               const isActive = i === active
@@ -171,7 +172,7 @@ export function OrganiserAudienceTabs() {
                   aria-selected={isActive}
                   onClick={() => setActive(i)}
                   className={cn(
-                    'rounded-full px-4 py-2 text-sm font-semibold transition-all duration-200 ease-out-quart focus-ring',
+                    'shrink-0 whitespace-nowrap rounded-full px-2 py-1.5 text-[11px] font-semibold transition-all duration-200 ease-out-quart focus-ring sm:px-4 sm:py-2 sm:text-sm',
                     isActive
                       ? 'bg-warm text-white'
                       : 'bg-white/[0.07] text-white/75 ring-1 ring-white/10 hover:bg-white/[0.12] hover:text-white',
@@ -223,6 +224,8 @@ export function OrganiserAudienceTabs() {
                 <EventAttendeesCard />
               ) : tab.id === 'dining' ? (
                 <DiningDashboardCard />
+              ) : tab.id === 'experiences' ? (
+                <TripPlannerCard />
               ) : null}
             </div>
           </motion.div>
