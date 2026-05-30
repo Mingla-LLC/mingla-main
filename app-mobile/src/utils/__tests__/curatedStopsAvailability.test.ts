@@ -55,7 +55,7 @@ Deno.test("ORCH-1019 T-01: dinner stop closed at arrival → not all open, names
           "Wednesday: 5:00 PM – 10:00 PM",
           "Thursday: 5:00 PM – 10:00 PM",
           "Friday: 5:00 PM – 10:00 PM",
-          "Saturday: 5:00 PM – 10:00 PM",
+          "Saturday: 5:00 – 10:00 PM",
           "Sunday: 5:00 PM – 10:00 PM",
         ],
       },
@@ -76,19 +76,20 @@ Deno.test("ORCH-1019 T-01: dinner stop closed at arrival → not all open, names
   assertEquals(results[0].isOpen, true);
   // Stop 2 (dinner) is reported closed, with a time-bearing reason.
   assertEquals(results[1].isOpen, false);
+  assertEquals(results[1].status, "closed");
   assertEquals(results[1].stopName, "Rey's Restaurant");
   assert(
-    typeof results[1].reason === "string" && /\d/.test(results[1].reason),
+    typeof results[1].reason === "string" && results[1].reason.startsWith("Closed at"),
     `expected a reason mentioning a time, got: ${results[1].reason}`,
   );
 });
 
-Deno.test("ORCH-1019 T-04: stop with no parseable hours is non-blocking (honest-unknown ≠ closed)", () => {
+Deno.test("ORCH-1021 T-04: stop with no parseable hours blocks safe scheduling (honest-unknown is not all-open)", () => {
   const stops = [
     {
       placeName: "Mystery Spot",
       address: "1 Unknown Way",
-      openingHours: {}, // no weekdayDescriptions → null → must NOT block
+      openingHours: {}, // no weekdayDescriptions → null → must block "safe to schedule"
       estimatedDurationMinutes: 45,
       travelTimeFromPreviousStopMin: null,
     },
@@ -98,9 +99,44 @@ Deno.test("ORCH-1019 T-04: stop with no parseable hours is non-blocking (honest-
     SATURDAY_3_07_PM,
     "en-US",
   );
-  assertEquals(allOpen, true);
-  assertEquals(results[0].isOpen, true);
-  assertEquals(results[0].reason, undefined);
+  assertEquals(allOpen, false);
+  assertEquals(results[0].isOpen, false);
+  assertEquals(results[0].status, "unknown");
+  assertEquals(results[0].reason, "Hours unavailable at 3:07 PM");
+});
+
+Deno.test("ORCH-1021 T-05: Nasher-style omitted AM close range is definitive closed after 5 PM", () => {
+  const stops = [
+    {
+      placeName: "Nasher Museum of Art at Duke University",
+      address: "2001 Campus Dr, Durham, NC 27705, USA",
+      openingHours: {
+        weekdayDescriptions: [
+          "Saturday: 10:00 – 5:00 PM",
+        ],
+      },
+      estimatedDurationMinutes: 60,
+      travelTimeFromPreviousStopMin: null,
+    },
+    {
+      placeName: "Parizade",
+      address: "2200 W Main St, Durham, NC 27705, USA",
+      openingHours: {
+        weekdayDescriptions: [
+          "Saturday: 5:00 – 10:00 PM",
+        ],
+      },
+      estimatedDurationMinutes: 90,
+      travelTimeFromPreviousStopMin: 5,
+    },
+  ];
+  const saturdayAfterMuseumClose = new Date(2026, 4, 30, 17, 13, 0);
+  const { allOpen, results } = checkAllCuratedStopsOpen(stops, saturdayAfterMuseumClose, "en-US");
+
+  assertEquals(allOpen, false);
+  assertEquals(results[0].status, "closed");
+  assertEquals(results[0].reason, "Closed at 5:13 PM");
+  assertEquals(results[1].status, "open");
 });
 
 Deno.test("ORCH-1019 T-03: all stops open at the chosen time → allOpen true", () => {

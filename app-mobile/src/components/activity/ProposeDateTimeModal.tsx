@@ -17,7 +17,11 @@ import DateOptionsGrid from "./DateOptionsGrid";
 import WeekendDaySelection from "./WeekendDaySelection";
 import ProposeDateTimeFooter from "./ProposeDateTimeFooter";
 import { useIsPlaceOpen } from "../../hooks/useIsPlaceOpen";
-import { extractWeekdayText, isPlaceOpenAt } from "../../utils/openingHoursUtils";
+import { extractWeekdayText } from "../../utils/openingHoursUtils";
+import {
+  buildSingleCardNotSafeMessage,
+  checkSingleCardSchedulingAvailability,
+} from "../../utils/singleCardAvailability";
 import { useTranslation } from 'react-i18next';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
@@ -38,6 +42,9 @@ const PROPOSE_DATE_TIME_BACKGROUND_STYLE = {
 interface SavedCard {
   id: string;
   title: string;
+  openingHours?: unknown;
+  utcOffsetMinutes?: number | null;
+  utc_offset_minutes?: number | null;
   [key: string]: any;
 }
 
@@ -78,7 +85,7 @@ export default function ProposeDateTimeModal({
   const [isPlaceOpen, setIsPlaceOpen] = useState(false);
   const [isCheckingAvailability, setIsCheckingAvailability] = useState(false);
   const [proposedDateTime, setProposedDateTime] = useState<Date | null>(null);
-  const [availabilityAssumption, setAvailabilityAssumption] = useState<
+  const [availabilityIssueMessage, setAvailabilityIssueMessage] = useState<
     string | null
   >(null);
 
@@ -95,7 +102,8 @@ export default function ProposeDateTimeModal({
   }, [card?.openingHours]);
 
   // Live open/closed status computed from weekday_text against local clock
-  const liveOpenStatus = useIsPlaceOpen(card?.openingHours ?? null);
+  const cardUtcOffset = card?.utcOffsetMinutes ?? card?.utc_offset_minutes ?? null;
+  const liveOpenStatus = useIsPlaceOpen(card?.openingHours ?? null, cardUtcOffset);
 
   const todayDayName = useMemo(() => {
     const days = [
@@ -125,7 +133,7 @@ export default function ProposeDateTimeModal({
     setIsAvailabilityChecked(false);
     setIsPlaceOpen(false);
     setProposedDateTime(null);
-    setAvailabilityAssumption(null);
+    setAvailabilityIssueMessage(null);
 
     if (option === "custom") {
       setShowDatePicker(true);
@@ -139,7 +147,7 @@ export default function ProposeDateTimeModal({
     setIsAvailabilityChecked(false);
     setIsPlaceOpen(false);
     setProposedDateTime(null);
-    setAvailabilityAssumption(null);
+    setAvailabilityIssueMessage(null);
     setShowTimePicker(true);
   };
 
@@ -198,9 +206,7 @@ export default function ProposeDateTimeModal({
   };
 
   // [ORCH-0649 — CONSTITUTION #2] Local parseTimeString + checkPlaceAvailability
-  // DELETED. Canonical isPlaceOpenAt (openingHoursUtils.ts) is now the single
-  // owner of the open/closed decision. See call site below for the
-  // true | false | null → {isOpen, isAssumption, reason} mapping.
+  // DELETED. The shared scheduling helper owns the open/closed/unknown decision.
 
   const handleDatePickerChange = (_event: any, date?: Date) => {
     if (Platform.OS === "android") {
@@ -212,7 +218,7 @@ export default function ProposeDateTimeModal({
       setIsAvailabilityChecked(false);
       setIsPlaceOpen(false);
       setProposedDateTime(null);
-      setAvailabilityAssumption(null);
+      setAvailabilityIssueMessage(null);
 
       // On Android, onChange fires once on OK — auto-advance to time picker.
       // On iOS, onChange fires on every spinner scroll — the "Done" button handles the transition.
@@ -240,7 +246,7 @@ export default function ProposeDateTimeModal({
       setIsAvailabilityChecked(false);
       setIsPlaceOpen(false);
       setProposedDateTime(null);
-      setAvailabilityAssumption(null);
+      setAvailabilityIssueMessage(null);
     }
   };
 
@@ -274,18 +280,14 @@ export default function ProposeDateTimeModal({
     setProposedDateTime(proposedDate);
 
     setTimeout(() => {
-      // [ORCH-0649] Canonical isPlaceOpenAt → {isOpen, isAssumption, reason}.
-      // null result = "cannot determine" → treat as advisory (allow schedule
-      // but show warning), NOT as closed.
-      const weekdayText = extractWeekdayText(card?.openingHours ?? null);
-      const openAt = isPlaceOpenAt(weekdayText, proposedDate);
-      if (openAt === null) {
-        setIsPlaceOpen(true);
-        setAvailabilityAssumption(t('activity:proposeDateTimeModal.hoursUnknown'));
-      } else {
-        setIsPlaceOpen(openAt);
-        setAvailabilityAssumption(null);
-      }
+      const availability = checkSingleCardSchedulingAvailability(
+        card,
+        proposedDate,
+      );
+      setIsPlaceOpen(availability.isSafeToSchedule);
+      setAvailabilityIssueMessage(
+        availability.isSafeToSchedule ? null : buildSingleCardNotSafeMessage(availability),
+      );
       setIsAvailabilityChecked(true);
       setIsCheckingAvailability(false);
     }, 500);
@@ -389,7 +391,7 @@ export default function ProposeDateTimeModal({
     setIsPlaceOpen(false);
     setIsCheckingAvailability(false);
     setProposedDateTime(null);
-    setAvailabilityAssumption(null);
+    setAvailabilityIssueMessage(null);
   };
 
   const handleClose = () => {
@@ -610,32 +612,10 @@ export default function ProposeDateTimeModal({
                 <View style={styles.availabilityMessage}>
                   <Icon name="warning" size={18} color="#ef4444" />
                   <Text style={styles.availabilityMessageText}>
-                    {t('activity:proposeDateTimeModal.closedAtTime')}
+                    {availabilityIssueMessage ?? t('activity:proposeDateTimeModal.closedAtTime')}
                   </Text>
                 </View>
               )}
-
-              {!isCurated &&
-                isAvailabilityChecked &&
-                isPlaceOpen &&
-                availabilityAssumption && (
-                  <View style={styles.assumptionWarning}>
-                    <Icon
-                      name="information-circle"
-                      size={18}
-                      color="#F59E0B"
-                    />
-                    {/* ORCH-1019 F-6: render the assumption string verbatim —
-                        availabilityAssumption is already the full sentence
-                        ("We couldn't verify this place's hours. Please
-                        double-check before scheduling."). The old appended
-                        ". Please verify opening hours before scheduling."
-                        produced a double period + duplicated trailing clause. */}
-                    <Text style={styles.assumptionWarningText}>
-                      {availabilityAssumption}
-                    </Text>
-                  </View>
-                )}
       </BaseBottomSheet>
 
       {/* Date Picker (iOS) — own RN Modal so it floats ABOVE the sheet's wrapInRNModal

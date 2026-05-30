@@ -610,6 +610,7 @@ function transformServablePlaceToCard(
     image: storedPhotos[0] ?? null,
     images: storedPhotos,
     openingHours: row.opening_hours ?? null,
+    utcOffsetMinutes: row.utc_offset_minutes ?? null,
     isOpenNow: null, // computed downstream — mirrors today's behavior
     website: row.website,
     placeType: row.primary_type,
@@ -897,6 +898,7 @@ async function handleDeterministicV2(args: {
         price_range_start_cents,
         price_range_end_cents,
         opening_hours,
+        utc_offset_minutes,
         website,
         photos,
         stored_photo_urls,
