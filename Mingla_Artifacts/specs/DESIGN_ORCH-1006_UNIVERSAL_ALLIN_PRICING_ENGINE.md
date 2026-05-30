@@ -493,3 +493,49 @@ On the detail page, each tier row shows its **all-in per-ticket** price next to 
 ## 12. Handoff to IMPLEMENT
 
 This design is the visual/IA/copy contract for SPEC §I surfaces 1–8. The functional contract + acceptance bar in the SPEC remain LOCKED and authoritative; where this design and the SPEC could appear to differ, the SPEC's money math + switch semantics win and this design styles within them. The implementor MUST, in addition to the SPEC's own `[CONFIRM at IMPLEMENT]` list: (a) resolve every `[CONFIRM token value at IMPLEMENT]` tag by reading `mingla-business/components/theme/tokens.ts` + the consumer token set and substituting the real values; (b) finalize the numeric contrast ratios against the resolved hexes and confirm each clears its §1.2 target; (c) wire the live preview chip to a client mirror of the engine's `pricing_breakdown` math; (d) implement the GB region copy map with US slots reserved (do not hardcode GB strings at call sites); (e) build all glass surfaces through `Glass` with the Android opaque fallback. Operator decisions in §9 should be confirmed before the affected strings are coded.
+
+---
+
+## 13. SLICE 3 RECONCILIATION (mingla-designer, 2026-05-30 — post-backend-ship)
+
+Slices 1+2 are now MERGED to `main` (PR #269 `33703f7e2`) + the migrations applied to prod. This section reconciles the design above against the **shipped** backend and resolves the open `[CONFIRM token value at IMPLEMENT]` tags so the implementor builds without guessing. The §0–§12 design above stands unchanged; these are confirmations + three precise deltas.
+
+### 13.1 Data-shape references — VERIFIED against shipped `_shared/allInPricingEngine.ts`
+The canonical `PricingBreakdown` (engine lines 55–86) is:
+`{ region, currency, tax_behavior, tax_basis, switches, base_cents, buyer_subtotal_cents, buyer_total_cents, components{mingla_fee_cents,service_fee_cents,tax_cents}, passed{…same3}, absorbed{…same3}, application_fee_amount_cents, connected_account_payout_cents, stripe_tax_calculation_id, effective_take_rate_bps, take_rate_source }`.
+- Surface 7 VAT note → read **`pricing_breakdown.components.tax_cents`** ✓ (design §7.2 correct).
+- Surface 5 "you covered" → read **`pricing_breakdown.absorbed.{tax_cents,mingla_fee_cents,service_fee_cents}`** per component ✓ (design §5.2 `->'absorbed'` correct). **Correction:** any shorthand `pricing_breakdown.tax_cents` (no `components.`) in §5 narration is wrong — tax is ALWAYS nested under `components`/`passed`/`absorbed`, never top-level.
+- Surface 6 cart hero → **`buyer_total_cents`** ✓. Subtotal line → **`base_cents`** (+ passed service fee from `passed.service_fee_cents`).
+- Surfaces 6/7 currency → **`currency`** field on the breakdown (drives the money helper; never hardcode £) ✓.
+
+### 13.2 Public-view column — VERIFIED
+`business_public_events_view` exposes **`display_price_cents`** (migration `20260802000001`, 8 refs) = the lowest-tier all-in via `compute_all_in_cents(...)`, NULL when no priced tier. Surface 8's `displayPriceCents`/`allInPriceGbp` → bind to **`display_price_cents`** (the SQL column name is canonical; the TS field name follows the view-row type). Legacy/all-absorb rows return the bare tier as the all-in (design §8.4 fallback correct).
+
+### 13.3 Take-rate — VERIFIED clean
+Zero stale `600bps`/`6%` references in this design. Seed is **150 bps (1.50%)**. The §3.1 "£100 → You keep £92.50" example = £100 − £1.50 Mingla fee − £6.00 service fee (3% default × … illustrative) — it does NOT encode the dead 600bps. Leave example numbers as illustrative-only; they are not a contract.
+
+### 13.4 Token values — RESOLVED against `mingla-business/components/theme/tokens.ts`
+- **Radius** — EXACT match: `sm:8, md:12, lg:16, pill:999` ✓. Use as written.
+- **Spacing — NAME DELTA (values still the contract).** The real scale is `xxs:2, xs:4, sm:8, md:12, lg:16, xl:20, xxl:24, xxxl:32, huge:48`. The design wrote `space.xl=24` and `space.2xl=32`. **Mapping the implementor MUST apply:** design `xl` (24) → token **`xxl`**; design `2xl` (32) → token **`xxxl`**. design `xs/sm/md/lg` map 1:1. (The design pre-authorized this: "values are the contract; names follow the file.")
+- **Type** — all referenced tokens EXIST: `display`(34/700), `title1`(28/700), `headline`(17/600), `subhead`(15 — design overrides weight→700 for preview numbers, fine), `footnote`(13), `caption`(12/—), `body`(17 — design overrides weight→600 for labels, fine), `caption2`(11). Tabular-nums is a `fontVariant` override at the call site (not a token), as the design specifies.
+- Consumer-app token set (Surfaces 6–8 consumer) is a SEPARATE file — implementor confirms consumer names there; do NOT import business tokens into `app-mobile/` (design §1.1 rule holds).
+
+### 13.5 finalize-copies-breakdown — VERIFIED
+`biz_ticket_checkout_finalize` now copies `ticket_checkout_sessions.pricing_breakdown` → `orders.pricing_breakdown` (migration `20260802000002`, shipped). Surface 7 (receipt) + Surface 5 (reporting) can rely on `orders.pricing_breakdown` being populated for all orders finalized post-deploy. **Pre-deploy orders have NULL** `orders.pricing_breakdown` → Surface 7 §7.4 "Error (missing)" fallback (legacy total-only) is the correct handler; not an error, just older orders.
+
+### 13.6 ORCH-1008/1013/1014 admin restructure — NO IMPACT on these 8 surfaces
+The admin shell prune/restructure touched `mingla-admin/` only. All 8 design surfaces live in `mingla-business/` (authoring 1–5), `app-mobile/` (consumer 6–8), and shared `packages/` — none in admin. The admin take-rate `/pricing` screen is a SEPARATE deliverable already merged (slices 1+2). **No design rework from the restructure.**
+
+### 13.7 All 15 referenced UI paths — VERIFIED present on the branch
+`PricingStep.tsx`, `MoneyText.tsx`, `PriceTag.tsx`, `theme/tokens.ts`, `app/checkout/[eventId]/payment.tsx` (business); `TicketCartSheet.tsx`, `CartTaxPreview.tsx`, `SwipeableCards.tsx`, `CuratedExperienceSwipeCard.tsx`, `ExpandedCardModal.tsx`, `activity/SavedTab.tsx`, `activity/CalendarTab.tsx`, `utils/formatters.ts` (consumer); `event-rendering/QuantityRow.tsx` + `PublicEventPage.tsx`, `brand-rendering/PublicBrandPage.tsx` (shared). All exist — no path drift.
+
+### 13.8 Remaining true [CONFIRM at IMPLEMENT] (genuinely needs reading at build time)
+1. **Exact accent hex** → finalize the selected-segment-label contrast (§1.2): if accent is too light for white text in light mode, use `text.primary`-on-tint. Read the real palette.
+2. **Consumer token names** (Surfaces 6–8) — the consumer file, not the business one.
+3. **Icon names** — VAT/Mingla-fee/Service-fee/lock glyphs from the business icon set (§2.2, §5.1).
+4. **Money-helper export names** — `MoneyText`/`formatMoney` (business) + the consumer formatter export (`formatters.ts`).
+5. **`CartTaxPreview.tsx` current address-form scope** — confirm exactly what to delete vs keep (SPEC §B.6 / §D.4) when wiring Surface 6.
+These are reads, not decisions. Everything else above is resolved.
+
+### 13.9 Implement-ready verdict
+The design is **implement-ready for all 8 surfaces.** No redesign needed post-backend-ship. The implementor proceeds with: §13.1 shapes, §13.2 column, §13.4 token mapping (esp. the `xl→xxl`, `2xl→xxxl` spacing remap), §13.5 finalize reliance + legacy fallback, and the 5 build-time reads in §13.8. Operator §9 string decisions ("covered" vs "absorbed"; Mingla-fee folded vs itemized) should be confirmed before those strings are coded.
