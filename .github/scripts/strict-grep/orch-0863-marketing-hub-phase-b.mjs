@@ -996,6 +996,7 @@ function checkNoNewBackendFiles() {
     "supabase/migrations/20260802000000_orch_1006_pricing_switches.sql",
     "supabase/migrations/20260802000001_orch_1006_pricing_views.sql",
     "supabase/migrations/20260802000002_orch_1006_finalize_copy_pricing_breakdown.sql",
+    "supabase/migrations/20260805000000_orch_1006_public_event_tier_allin.sql",
   ];
   // ORCH-1008 [Admin shell prune + Intelligence Overview tab + remainder mode].
   // C7 is scoped to ORCH-0863 marketing; these backend touches are the new
