@@ -995,6 +995,7 @@ function checkNoNewBackendFiles() {
     "supabase/functions/_shared/__tests__/allInPricingEngine.test.ts",
     "supabase/migrations/20260802000000_orch_1006_pricing_switches.sql",
     "supabase/migrations/20260802000001_orch_1006_pricing_views.sql",
+    "supabase/migrations/20260802000002_orch_1006_finalize_copy_pricing_breakdown.sql",
   ];
   const ALLOWLIST = [
     ...ORCH_1006_BACKEND_ALLOWLIST,
