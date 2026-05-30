@@ -25,6 +25,7 @@ import {
   Linking,
   Platform,
   StyleSheet,
+  View,
   type ScrollViewProps,
 } from "react-native";
 import { useRouter } from "expo-router";
@@ -392,16 +393,26 @@ export const ExpandedBusinessEventSheet: React.FC<
     const bottomPad = Math.max(32, bottomContentInset);
     const Host: React.FC<ScrollViewProps> = ({
       contentContainerStyle,
+      children,
       ...rest
     }) => (
       <BottomSheetScrollView
         {...rest}
-        contentContainerStyle={[
-          contentContainerStyle,
-          { paddingBottom: bottomPad },
-        ]}
+        contentContainerStyle={contentContainerStyle}
       >
-        {rest.children}
+        {children}
+        {/* ORCH-1016 REWORK-6 — ROOT CAUSE of the "Buy button blocked by the
+            bottom nav" bug: gorhom's BottomSheetScrollView does NOT reliably
+            extend its scrollable content height from `contentContainerStyle`
+            paddingBottom (it measures children for snap/scroll extent), so the
+            last "Buy ticket" row could never scroll above Mingla's floating
+            GlassBottomNav no matter how large the padding was. A REAL spacer
+            View as the final scroll child is counted as content, guaranteeing
+            the body overflows by `bottomPad` so the Buy CTA scrolls fully clear
+            of the nav. Replaces the prior (non-working) contentContainerStyle
+            paddingBottom approach. `bottomPad` carries the nav footprint +
+            safe-area + buffer from the mount site's `bottomContentInset`. */}
+        <View style={{ height: bottomPad }} pointerEvents="none" />
       </BottomSheetScrollView>
     );
     Host.displayName = "EbesSheetScrollHost";
