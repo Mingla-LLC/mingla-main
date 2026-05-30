@@ -2385,251 +2385,64 @@ async function insertRetryChildrenInChunks(
 //   https://ai.google.dev/pricing/gemini-2-5-flash (verified 2026-05-30).
 // ═══════════════════════════════════════════════════════════════════════════
 
-// ORCH-1014 — operator-chosen stale threshold (90 days). Internal operational
-// constant, not an external API parameter. last_detail_refresh older than
-// this counts as "stale" in the Refresh status badge.
-const ORCH_1014_STALE_THRESHOLD_MS = 90 * 24 * 60 * 60 * 1000;
-
-// ORCH-1015 — operator-chosen cutover date for the 48-field DETAIL_FIELD_MASK.
-// Set 2026-03-19 (commit 596b3c05c "feat: admin stale-place lifecycle UI +
-// manual refresh edge function"). Anchored to the introduction of the full
-// field set the Gemini intelligence trial reads (editorialSummary,
-// generativeSummary, priceRange + 23 facet booleans). Hardcoded; if the field
-// mask ever expands again, operator opens a new ORCH to bump this value —
-// NOT runtime-tunable. See supabase/functions/admin-refresh-places/index.ts
-// L31-L143 (DETAIL_FIELD_MASK array).
-const ORCH_1015_REFRESH_CUTOVER_DATE_MS = Date.parse("2026-03-19T00:00:00Z");
+// ORCH-1017 — the Intelligence Coverage operational constants (90-day stale
+// threshold from ORCH-1014; 2026-03-19 details-refresh cutover from ORCH-1015,
+// commit 596b3c05c's 48-field DETAIL_FIELD_MASK) now live INSIDE the
+// pg_intelligence_coverage() RPC (migration
+// 20260807000000_orch_1017_pg_intelligence_coverage.sql), since the per-city
+// aggregation moved from JS into Postgres to fix the Edge WORKER_LIMIT / HTTP
+// 546 failure. If the field mask ever expands again, bump the cutover in that
+// migration via a new ORCH — NOT runtime-tunable. See
+// supabase/functions/admin-refresh-places/index.ts L31-L143 (DETAIL_FIELD_MASK).
 
 async function handleIntelligenceCoverage(
   db: SupabaseClient,
 ): Promise<Response> {
-  // 6 parallel queries → client-side join (Supabase MCP-friendly; avoids
-  // a new SECURITY DEFINER RPC for what is admin-only read state).
-  // ORCH-1014 added (5) servableDetailsRes + (6) seedWindowRes for the new
-  // Seed + Refresh status badges. The pre-existing (2) servableRes count
-  // remains as the canonical servable_count source; (5) only feeds the new
-  // refresh/missing aggregates so the count contract stays identical.
-  const [
-    citiesRes,
-    servableRes,
-    completedRes,
-    runsRes,
-    servableDetailsRes,
-    seedWindowRes,
-  ] = await Promise.all([
-    db
-      .from("seeding_cities")
-      // ORCH-1015 — coverage_radius_km drives the `regeocoded` flag (= 0 ⇔ city
-      // re-seeded under the 2026-04 bbox model; deprecated otherwise). See
-      // supabase/functions/admin-seed-places/index.ts L166-L168 BBOX MODEL note.
-      .select("id, name, country, coverage_radius_km")
-      .order("name"),
-    db
-      .from("place_pool")
-      .select("city_id")
-      .eq("is_servable", true)
-      .not("city_id", "is", null),
-    // ORCH-1013 Finding A — restrict evaluated set to places STILL servable.
-    // Without the !inner+is_servable filter, places that drifted out of the
-    // pool (e.g. re-classified non-servable post-evaluation) are counted as
-    // evaluated, falsely inflating coverage to 100% and zeroing remaining.
-    // Verified live 2026-05-30 against Cary: 6 drifted rows masked 1 truly
-    // un-evaluated servable place. See SPEC §3 Finding A.
-    // Gemini pricing ref (COMMS-0003): https://ai.google.dev/pricing/gemini-2-5-flash
-    db
-      .from("place_intelligence_trial_runs")
-      .select("city_id, place_pool_id, place_pool!inner(is_servable)")
-      .eq("status", "completed")
-      .eq("place_pool.is_servable", true)
-      .not("city_id", "is", null),
-    db
-      .from("place_intelligence_runs")
-      .select(
-        "city_id, id, completed_at, status, cost_so_far_usd, mode, started_at",
-      )
-      .in("status", ["complete", "failed", "cancelled"])
-      .order("completed_at", { ascending: false, nullsFirst: false }),
-    // ORCH-1014 NEW — servable details for the Refresh status badge
-    db
-      .from("place_pool")
-      .select("city_id, last_detail_refresh, generative_summary, editorial_summary, reviews")
-      .eq("is_servable", true)
-      .not("city_id", "is", null),
-    // ORCH-1014 NEW — seed window across ALL place_pool rows (servable + non)
-    db
-      .from("place_pool")
-      .select("city_id, created_at")
-      .not("city_id", "is", null),
-  ]);
+  // ORCH-1017 — aggregation pushed entirely into Postgres via the
+  // `pg_intelligence_coverage()` SECURITY DEFINER RPC (migration
+  // 20260807000000_orch_1017_pg_intelligence_coverage.sql). This REPLACES the
+  // prior 6-query Promise.all + JS-side per-city aggregation, which pulled the
+  // ENTIRE place_pool (~79k rows) for the seed window, the servable set (~13.6k)
+  // TWICE — one copy carrying generative_summary + editorial_summary + the full
+  // reviews jsonb array per row — plus ~2.6k run rows into the edge function's
+  // memory on every call. That intermittently exceeded the Edge WORKER_LIMIT and
+  // returned HTTP 546 ("not enough compute resources"). The RPC does one GROUP BY
+  // and returns ~17 city rows; payload + compute drop by ~3 orders of magnitude.
+  //
+  // Output shape is byte-for-byte identical to the prior JS row builder (same
+  // field names, same filters, same constants: 90-day stale threshold +
+  // 2026-03-19 refresh cutover). numeric columns are coerced to JS numbers so the
+  // contract (coverage_pct/last_run_cost_usd as numbers) is preserved regardless
+  // of PostgREST numeric serialization.
+  const { data, error } = await db.rpc("pg_intelligence_coverage");
+  if (error) return json({ error: error.message }, 500);
 
-  if (citiesRes.error) return json({ error: citiesRes.error.message }, 500);
-  if (servableRes.error) return json({ error: servableRes.error.message }, 500);
-  if (completedRes.error) return json({ error: completedRes.error.message }, 500);
-  if (runsRes.error) return json({ error: runsRes.error.message }, 500);
-  if (servableDetailsRes.error) return json({ error: servableDetailsRes.error.message }, 500);
-  if (seedWindowRes.error) return json({ error: seedWindowRes.error.message }, 500);
+  const toNum = (v: unknown): number | null =>
+    v === null || v === undefined ? null : typeof v === "number" ? v : Number(v);
 
-  const servableByCity = new Map<string, number>();
-  for (const row of servableRes.data || []) {
-    if (!row.city_id) continue;
-    servableByCity.set(row.city_id, (servableByCity.get(row.city_id) || 0) + 1);
-  }
-
-  // ORCH-1014 — refresh + missing-fields aggregates, all scoped to is_servable=true
-  const refreshOldestByCity = new Map<string, string>(); // ISO
-  const refreshNewestByCity = new Map<string, string>(); // ISO
-  const staleRefreshByCity = new Map<string, number>();
-  const missingFieldsByCity = new Map<string, number>();
-  // ORCH-1015 — per-city count of servable places with last_detail_refresh
-  // strictly before the 2026-03-19 cutover (NULL counts as needing refresh,
-  // mirroring the existing ORCH-1014 stale-NULL treatment).
-  const needsRefreshByCity = new Map<string, number>();
-  const nowMs = Date.now();
-  for (const row of servableDetailsRes.data || []) {
-    if (!row.city_id) continue;
-    const cityId = row.city_id as string;
-
-    // refresh window
-    const lastRefresh = (row.last_detail_refresh ?? null) as string | null;
-    if (lastRefresh) {
-      const cur = refreshOldestByCity.get(cityId);
-      if (!cur || lastRefresh < cur) refreshOldestByCity.set(cityId, lastRefresh);
-      const curN = refreshNewestByCity.get(cityId);
-      if (!curN || lastRefresh > curN) refreshNewestByCity.set(cityId, lastRefresh);
-      if (nowMs - Date.parse(lastRefresh) > ORCH_1014_STALE_THRESHOLD_MS) {
-        staleRefreshByCity.set(cityId, (staleRefreshByCity.get(cityId) || 0) + 1);
-      }
-      // ORCH-1015 — below-cutover places need refresh under the 48-field mask
-      if (Date.parse(lastRefresh) < ORCH_1015_REFRESH_CUTOVER_DATE_MS) {
-        needsRefreshByCity.set(cityId, (needsRefreshByCity.get(cityId) || 0) + 1);
-      }
-    } else {
-      // Treat NULL last_detail_refresh as stale (never refreshed)
-      staleRefreshByCity.set(cityId, (staleRefreshByCity.get(cityId) || 0) + 1);
-      // ORCH-1015 — NULL also counts as needing refresh (never refreshed at all)
-      needsRefreshByCity.set(cityId, (needsRefreshByCity.get(cityId) || 0) + 1);
-    }
-
-    // missing fields
-    const reviewsLen = Array.isArray(row.reviews) ? row.reviews.length : 0;
-    const missingAny =
-      row.generative_summary == null ||
-      row.editorial_summary == null ||
-      row.reviews == null ||
-      reviewsLen === 0;
-    if (missingAny) {
-      missingFieldsByCity.set(cityId, (missingFieldsByCity.get(cityId) || 0) + 1);
-    }
-  }
-
-  // ORCH-1014 — seed window across ALL place_pool rows (servable + non-servable)
-  const firstSeededByCity = new Map<string, string>();
-  const lastSeededByCity = new Map<string, string>();
-  for (const row of seedWindowRes.data || []) {
-    if (!row.city_id || !row.created_at) continue;
-    const cityId = row.city_id as string;
-    const createdAt = row.created_at as string;
-    const f = firstSeededByCity.get(cityId);
-    if (!f || createdAt < f) firstSeededByCity.set(cityId, createdAt);
-    const l = lastSeededByCity.get(cityId);
-    if (!l || createdAt > l) lastSeededByCity.set(cityId, createdAt);
-  }
-
-  // distinct (city_id, place_pool_id) pairs across all completed runs
-  const evaluatedByCity = new Map<string, Set<string>>();
-  for (const row of completedRes.data || []) {
-    if (!row.city_id || !row.place_pool_id) continue;
-    let set = evaluatedByCity.get(row.city_id);
-    if (!set) {
-      set = new Set<string>();
-      evaluatedByCity.set(row.city_id, set);
-    }
-    set.add(row.place_pool_id as string);
-  }
-
-  // First terminal run per city (already sorted desc by completed_at)
-  const latestRunByCity = new Map<
-    string,
-    {
-      id: string;
-      completed_at: string | null;
-      status: string;
-      cost_so_far_usd: number | null;
-      mode: string;
-    }
-  >();
-  for (const row of runsRes.data || []) {
-    if (!row.city_id) continue;
-    if (latestRunByCity.has(row.city_id)) continue;
-    latestRunByCity.set(row.city_id, {
-      id: row.id as string,
-      completed_at: (row.completed_at ?? row.started_at ?? null) as string | null,
-      status: row.status as string,
-      cost_so_far_usd: (row.cost_so_far_usd ?? null) as number | null,
-      mode: row.mode as string,
-    });
-  }
-
-  const rows = (citiesRes.data || [])
-    .map((c) => {
-      const servable = servableByCity.get(c.id) || 0;
-      const evaluated = (evaluatedByCity.get(c.id) || new Set()).size;
-      const lastRun = latestRunByCity.get(c.id) || null;
-      const coveragePct = servable === 0
-        ? 0
-        : Math.min(100, +((evaluated / servable) * 100).toFixed(1));
-      return {
-        city_id: c.id,
-        city_name: c.name,
-        country: c.country,
-        servable_count: servable,
-        // ORCH-1013 Finding A — `evaluated` is now ≤ `servable` by construction
-        // (the JOIN at the completedRes query filters to currently-servable
-        // places only). Math.min/Math.max retained as defensive cosmetic safety
-        // for the 4 non-transactional parallel queries (race could theoretically
-        // see a 1-row skew). See SPEC §3 Finding A + §7 D9.
-        evaluated_count: Math.min(evaluated, servable),
-        remaining_count: Math.max(0, servable - evaluated),
-        coverage_pct: coveragePct,
-        last_run_id: lastRun?.id ?? null,
-        last_run_at: lastRun?.completed_at ?? null,
-        last_run_status: lastRun?.status ?? null,
-        last_run_cost_usd: lastRun?.cost_so_far_usd ?? null,
-        last_run_mode: lastRun?.mode ?? null,
-        // ORCH-1014 — Seed status badge inputs (all place_pool rows for this city)
-        // PRESERVED post-ORCH-1015 for operator diagnostic use.
-        first_seeded_at: firstSeededByCity.get(c.id) ?? null,
-        last_seeded_at: lastSeededByCity.get(c.id) ?? null,
-        // ORCH-1014 — Refresh status badge inputs (is_servable=true only)
-        // PRESERVED post-ORCH-1015 for operator diagnostic use.
-        refresh_oldest_at: refreshOldestByCity.get(c.id) ?? null,
-        refresh_newest_at: refreshNewestByCity.get(c.id) ?? null,
-        stale_refresh_count: staleRefreshByCity.get(c.id) ?? 0,
-        missing_fields_count: missingFieldsByCity.get(c.id) ?? 0,
-        // ORCH-1015 — Boundary + Details binary readiness flags driving the
-        // 3-band ladder + smart-skip bulk launcher.
-        // regeocoded: city has been re-seeded under the bbox model (the
-        //   coverage_radius_km column is zeroed when operator re-seeds; see
-        //   supabase/functions/admin-seed-places/index.ts L166-L168
-        //   "BBOX MODEL (2026-04): … coverage_radius_km is deprecated").
-        regeocoded: (c.coverage_radius_km ?? null) === 0,
-        // refreshed_new_fields: TRUE iff every servable place has been refreshed
-        //   under the 48-field DETAIL_FIELD_MASK (commit 596b3c05c, 2026-03-19).
-        //   Equivalent to needs_refresh_count === 0 with at least one servable
-        //   place — NULL last_detail_refresh counts as not-refreshed (mirrors
-        //   the stale-NULL treatment above + the operator's mental model of
-        //   "have ALL my places been refreshed under the new mask?"). When
-        //   servable_count is 0 the city is filtered out below entirely.
-        refreshed_new_fields:
-          servable > 0 && (needsRefreshByCity.get(c.id) ?? 0) === 0,
-        // needs_refresh_count: number of servable places with last_detail_refresh
-        //   strictly before the cutover (or NULL). Used by DetailsReadinessBadge
-        //   to size the warning ("⚠ 41 places need refresh").
-        needs_refresh_count: needsRefreshByCity.get(c.id) ?? 0,
-      };
-    })
-    .filter((r) => r.servable_count > 0)
-    .sort((a, b) => b.servable_count - a.servable_count);
+  const rows = ((data as Record<string, unknown>[] | null) ?? []).map((r) => ({
+    city_id: r.city_id,
+    city_name: r.city_name,
+    country: r.country,
+    servable_count: r.servable_count,
+    evaluated_count: r.evaluated_count,
+    remaining_count: r.remaining_count,
+    coverage_pct: toNum(r.coverage_pct),
+    last_run_id: r.last_run_id ?? null,
+    last_run_at: r.last_run_at ?? null,
+    last_run_status: r.last_run_status ?? null,
+    last_run_cost_usd: toNum(r.last_run_cost_usd),
+    last_run_mode: r.last_run_mode ?? null,
+    first_seeded_at: r.first_seeded_at ?? null,
+    last_seeded_at: r.last_seeded_at ?? null,
+    refresh_oldest_at: r.refresh_oldest_at ?? null,
+    refresh_newest_at: r.refresh_newest_at ?? null,
+    stale_refresh_count: r.stale_refresh_count ?? 0,
+    missing_fields_count: r.missing_fields_count ?? 0,
+    regeocoded: r.regeocoded === true,
+    refreshed_new_fields: r.refreshed_new_fields === true,
+    needs_refresh_count: r.needs_refresh_count ?? 0,
+  }));
 
   return json({ rows });
 }
