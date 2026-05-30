@@ -127,88 +127,83 @@ export function OrganiserAudienceTabs() {
   return (
     <SpotlightBand aria-label="How Mingla works for your kind of business" className="md:py-32">
       <div className="mx-auto max-w-6xl">
-        <Reveal as="span" className="block text-xs font-semibold uppercase tracking-[0.2em] text-warm">
-          Built for your kind of place
-        </Reveal>
-        <Reveal>
-          <h2 className="mt-4 max-w-2xl font-display text-3xl leading-[1.05] tracking-[-0.02em] text-white md:text-5xl">
-            pick your world. <span className="text-warm">see your Mingla.</span>
-          </h2>
-        </Reveal>
-
-        {/* Tabs */}
-        <div role="tablist" aria-label="Audience" className="mt-9 flex flex-wrap gap-2.5">
-          {TABS.map((t, i) => {
-            const isActive = i === active
-            return (
-              <button
-                key={t.id}
-                role="tab"
-                aria-selected={isActive}
-                onClick={() => setActive(i)}
-                className={cn(
-                  'rounded-full px-4 py-2 text-sm font-semibold transition-all duration-200 ease-out-quart focus-ring',
-                  isActive
-                    ? 'bg-warm text-ink'
-                    : 'bg-white/[0.07] text-white/75 ring-1 ring-white/10 hover:bg-white/[0.12] hover:text-white',
-                )}
-              >
-                {t.label}
-              </button>
-            )
-          })}
-        </div>
-
-        {/* Tab content — heading/intro/steps on the left; the Earnings chart
-            (static) fills the top-right, with the tailored feature cards beneath. */}
-        <div className="mt-12 grid gap-12 lg:grid-cols-[1.08fr_0.92fr] lg:gap-16">
-          {/* LEFT — heading + intro + steps (animated per tab) */}
+        {/* Header — title + tabs on the left, Earnings chart beside it. */}
+        <div className="grid gap-10 lg:grid-cols-[1fr_0.82fr] lg:items-center lg:gap-16">
           <div>
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={tab.id}
-                initial={reduced ? false : { opacity: 0, y: 14 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={reduced ? undefined : { opacity: 0, y: -8 }}
-                transition={{ duration: 0.34, ease: EASE }}
-              >
-                <h3 className="font-display text-3xl leading-tight tracking-[-0.01em] text-white md:text-4xl">
-                  {tab.heading}
-                </h3>
-                <p className="mt-5 max-w-xl text-base leading-relaxed text-white/70 md:text-lg">
-                  {tab.intro}
-                </p>
-                <ol className="mt-10 space-y-7">
-                  {tab.steps.map((s, i) => (
-                    <li key={s.title} className="flex gap-5">
-                      <span className="font-display text-2xl leading-none tabular-nums text-warm/45">
-                        {i + 1}
-                      </span>
-                      <div>
-                        <h4 className="font-display text-lg leading-tight text-white">{s.title}</h4>
-                        <p className="mt-1.5 text-sm leading-relaxed text-white/60">{s.body}</p>
-                      </div>
-                    </li>
-                  ))}
-                </ol>
-              </motion.div>
-            </AnimatePresence>
+            <Reveal as="span" className="block text-xs font-semibold uppercase tracking-[0.2em] text-warm">
+              Built for your kind of place
+            </Reveal>
+            <Reveal>
+              <h2 className="mt-4 max-w-xl font-display text-3xl leading-[1.05] tracking-[-0.02em] text-white md:text-5xl">
+                pick your world. <span className="text-warm">see your Mingla.</span>
+              </h2>
+            </Reveal>
+
+            <div role="tablist" aria-label="Audience" className="mt-9 flex flex-wrap gap-2.5">
+              {TABS.map((t, i) => {
+                const isActive = i === active
+                return (
+                  <button
+                    key={t.id}
+                    role="tab"
+                    aria-selected={isActive}
+                    onClick={() => setActive(i)}
+                    className={cn(
+                      'rounded-full px-4 py-2 text-sm font-semibold transition-all duration-200 ease-out-quart focus-ring',
+                      isActive
+                        ? 'bg-warm text-ink'
+                        : 'bg-white/[0.07] text-white/75 ring-1 ring-white/10 hover:bg-white/[0.12] hover:text-white',
+                    )}
+                  >
+                    {t.label}
+                  </button>
+                )
+              })}
+            </div>
           </div>
 
-          {/* RIGHT — Earnings chart (static across tabs) + feature cards (animated) */}
-          <div>
-            <div data-theme="light">
+          <Reveal delay={0.1} className="flex justify-center lg:justify-end">
+            <div data-theme="light" className="w-full max-w-md">
               <EarningsCard />
             </div>
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={tab.id}
-                initial={reduced ? false : { opacity: 0, y: 14 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={reduced ? undefined : { opacity: 0, y: -8 }}
-                transition={{ duration: 0.34, ease: EASE }}
-                className="mt-5 grid gap-4 sm:grid-cols-2"
-              >
+          </Reveal>
+        </div>
+
+        {/* Tab content — per-tab heading + intro, then steps (left) + feature cards (right). */}
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={tab.id}
+            initial={reduced ? false : { opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={reduced ? undefined : { opacity: 0, y: -8 }}
+            transition={{ duration: 0.34, ease: EASE }}
+            className="mt-16"
+          >
+            <div className="max-w-2xl">
+              <h3 className="font-display text-3xl leading-tight tracking-[-0.01em] text-white md:text-4xl">
+                {tab.heading}
+              </h3>
+              <p className="mt-5 text-base leading-relaxed text-white/70 md:text-lg">{tab.intro}</p>
+            </div>
+
+            <div className="mt-12 grid gap-12 lg:grid-cols-2 lg:gap-16">
+              {/* Steps */}
+              <ol className="space-y-7">
+                {tab.steps.map((s, i) => (
+                  <li key={s.title} className="flex gap-5">
+                    <span className="font-display text-2xl leading-none tabular-nums text-warm/45">
+                      {i + 1}
+                    </span>
+                    <div>
+                      <h4 className="font-display text-lg leading-tight text-white">{s.title}</h4>
+                      <p className="mt-1.5 text-sm leading-relaxed text-white/60">{s.body}</p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+
+              {/* Feature cards */}
+              <div className="grid gap-4 sm:grid-cols-2">
                 {tab.features.map((f) => (
                   <div
                     key={f.title}
@@ -218,10 +213,10 @@ export function OrganiserAudienceTabs() {
                     <p className="mt-2 text-sm leading-snug text-white/60">{f.body}</p>
                   </div>
                 ))}
-              </motion.div>
-            </AnimatePresence>
-          </div>
-        </div>
+              </div>
+            </div>
+          </motion.div>
+        </AnimatePresence>
       </div>
     </SpotlightBand>
   )
