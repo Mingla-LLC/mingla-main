@@ -31,6 +31,7 @@ import {
   typography,
 } from "../../constants/designSystem";
 import { DEFAULT_TAKE_RATE_BPS } from "../../constants/pricing";
+import { formatCurrencyRound } from "../../utils/currency";
 import { useBrand, brandKeys } from "../../hooks/useBrands";
 import {
   setBrandPricingDefaults,
@@ -99,6 +100,16 @@ export const BrandPricingDefaultsView: React.FC<
     );
   }
 
+  // ORCH-1006 — defaults always display in the brand's Stripe currency once
+  // Stripe is set (brands.default_currency is populated only after connect);
+  // fall back to GBP (the pricing region) when no currency is set yet.
+  const displayCurrency = brand.defaultCurrency ?? "GBP";
+  const exampleOrder = formatCurrencyRound(
+    EXAMPLE_ORDER_CENTS,
+    displayCurrency,
+    true,
+  );
+
   return (
     <ScrollView
       style={styles.host}
@@ -118,12 +129,12 @@ export const BrandPricingDefaultsView: React.FC<
         defaults={defaults}
         onChange={handleChange}
         previewBaseCents={EXAMPLE_ORDER_CENTS}
-        currency={brand.pricingCurrency ?? brand.defaultCurrency ?? "GBP"}
+        currency={displayCurrency}
         effectiveTakeRateBps={brand.takeRateBpsOverride ?? DEFAULT_TAKE_RATE_BPS}
         footerOverride={
           <View style={styles.regionChip}>
             <Text style={styles.regionText}>
-              Example on a £100 order · United Kingdom (GBP) · VAT inclusive
+              {`Example on a ${exampleOrder} order · VAT inclusive`}
             </Text>
           </View>
         }

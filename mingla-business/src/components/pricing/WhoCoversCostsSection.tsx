@@ -44,7 +44,7 @@ import type {
   PricingSwitchOverrides,
 } from "../../services/pricingSwitchesService";
 import { resolveSwitches } from "../../services/pricingSwitchesService";
-import { Icon, type IconName } from "../ui/Icon";
+import { Icon } from "../ui/Icon";
 
 export type OfferingFormat = "event" | "trip" | "experience";
 
@@ -53,7 +53,6 @@ type SwitchKey = "passTax" | "passMinglaFee" | "passServiceFee";
 interface SwitchRowDef {
   key: SwitchKey;
   label: string;
-  icon: IconName;
   /** Segment labels: [passed, absorbed]. */
   passLabel: string;
   absorbLabel: string;
@@ -71,7 +70,6 @@ const ROWS: SwitchRowDef[] = [
   {
     key: "passTax",
     label: "VAT",
-    icon: "receipt",
     passLabel: "Included in price",
     absorbLabel: "I'll cover it",
     subPassed: "VAT sits inside the price buyers see.",
@@ -82,7 +80,6 @@ const ROWS: SwitchRowDef[] = [
   {
     key: "passMinglaFee",
     label: "Mingla fee",
-    icon: "sparkle",
     passLabel: "Add to price",
     absorbLabel: "I'll cover it",
     subPassed: "Buyers cover the Mingla fee.",
@@ -93,7 +90,6 @@ const ROWS: SwitchRowDef[] = [
   {
     key: "passServiceFee",
     label: "Service fee",
-    icon: "tap",
     passLabel: "Add to price",
     absorbLabel: "I'll cover it",
     subPassed: "Buyers cover the service fee.",
@@ -212,14 +208,6 @@ export const WhoCoversCostsSection: React.FC<WhoCoversCostsSectionProps> = ({
               key={row.key}
               style={[styles.row, isLast ? null : styles.rowDivider]}
             >
-              <View style={styles.rowIconWrap}>
-                <Icon
-                  name={row.icon}
-                  size={20}
-                  color={locked ? textTokens.tertiary : textTokens.secondary}
-                />
-              </View>
-
               <View style={styles.rowText}>
                 <Text
                   style={[styles.rowLabel, locked ? styles.lockedText : null]}
@@ -428,10 +416,6 @@ const styles = StyleSheet.create({
   rowDivider: {
     borderBottomWidth: 1,
     borderBottomColor: glass.border.profileBase,
-  },
-  rowIconWrap: {
-    width: 28,
-    alignItems: "center",
   },
   rowText: {
     flex: 1,
