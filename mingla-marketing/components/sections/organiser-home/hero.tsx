@@ -67,6 +67,13 @@ export function OrganiserHero() {
           className="pointer-events-none absolute inset-y-0 left-0 w-full md:w-3/4"
           style={{ background: 'linear-gradient(90deg, rgba(8,9,12,0.72) 0%, transparent 100%)' }}
         />
+        {/* Dissolve — the dark wall melts into the next section's canvas so the
+            scroll from hero → "What is Mingla?" is one continuous pull, not a cut. */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-[38%]"
+          style={{ background: 'linear-gradient(to bottom, transparent 0%, var(--color-smoke) 92%)' }}
+        />
 
         {/* Foreground — headline + single CTA, centered, high contrast on the wall. */}
         <div className="relative mx-auto w-full max-w-6xl">

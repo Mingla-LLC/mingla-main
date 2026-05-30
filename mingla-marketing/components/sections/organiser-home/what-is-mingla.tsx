@@ -72,7 +72,17 @@ export function OrganiserWhatIsMingla() {
   // scrubs the 3 steps while everything stays in view — each step gets a real
   // reading moment. Mobile: normal flow, all steps shown expanded (below).
   return (
-    <section ref={sectionRef} className="seam-top relative lg:min-h-[180vh]">
+    <section ref={sectionRef} className="relative lg:min-h-[180vh]">
+      {/* Warm glow at the seam — the section emerges from the hero's dark wall
+          into a warm-lit space (continuous-experience transition, no hard line). */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 top-0 h-72"
+        style={{
+          background:
+            'radial-gradient(120% 100% at 50% 0%, rgba(235,120,37,0.12) 0%, transparent 60%)',
+        }}
+      />
       <div className="flex items-center px-6 py-24 md:px-10 md:py-32 lg:sticky lg:top-0 lg:min-h-screen [padding-left:max(1.5rem,env(safe-area-inset-left))] [padding-right:max(1.5rem,env(safe-area-inset-right))] md:[padding-left:max(2.5rem,env(safe-area-inset-left))] md:[padding-right:max(2.5rem,env(safe-area-inset-right))]">
         <div className="mx-auto grid w-full max-w-6xl items-center gap-12 lg:grid-cols-2 lg:items-stretch lg:gap-20">
         {/* LEFT — what is Mingla */}
@@ -92,11 +102,16 @@ export function OrganiserWhatIsMingla() {
           </Reveal>
 
           <Reveal delay={0.18}>
-            <p className="mt-6 text-lg leading-relaxed text-text-secondary md:text-xl">
+            <p className="mt-6 text-base leading-relaxed text-text-secondary md:text-lg">
               The places with the most soul are often the hardest to find — not because people
               wouldn&rsquo;t love them, but because attention is scattered and running a business
               already takes everything you have. Mingla is the other side of that: people find the
               night they&rsquo;re after by vibe, not by searching, and your place is what they find.
+              And you don&rsquo;t do the finding alone — Ari helps name your vibe, build your page,
+              and spin up the kind of event that fills a room, then put it in front of the right
+              people from inside the app, so you spend less on marketing and less time fighting to
+              be seen. Because Mingla exists to make real life easier to find — for the people
+              looking, and for the places worth finding.
             </p>
           </Reveal>
         </div>
