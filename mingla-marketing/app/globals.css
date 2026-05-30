@@ -358,3 +358,42 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/* ----------------------------------------------------------------------------
+   Content protection (Balanced). Interaction/visual rules ONLY — they apply to
+   human browsers, never to crawlers, so SEO is unaffected: the server-rendered
+   HTML + metadata Googlebot reads is unchanged. Determined copying can't be
+   fully stopped on the web (anything rendered is downloaded); this raises
+   friction against casual copying, dragging, and printing of our creative.
+---------------------------------------------------------------------------- */
+html {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+/* Keep real form fields fully usable (selection + copy inside inputs). */
+input,
+textarea,
+select,
+[contenteditable='true'] {
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+  user-select: text;
+}
+/* Make images/video hard to drag out or long-press-save. */
+img,
+video {
+  -webkit-user-drag: none;
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+/* Blank the page for print / print-to-PDF. */
+@media print {
+  html,
+  body {
+    display: none !important;
+  }
+}
