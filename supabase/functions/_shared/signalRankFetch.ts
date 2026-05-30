@@ -33,6 +33,10 @@ export interface SignalRankParams {
 
 // Shape preserved verbatim from the original row-mapping output, MINUS the
 // dropped ai_categories/category/categories triple.
+// META-ORCH-1009 Sub-B — `aiReasoningBySignal` added (optional) so generate-
+// curated-experiences can surface the per-signal Gemini Q2 reasoning slice on
+// each stop. Keyed by signal_id (e.g. 'romantic') to match the deck card
+// payload's `ai_reasoning_by_signal` shape (D-2 in SPEC §7).
 export interface SignalRankResult {
   id: string;
   place_pool_id: string;
@@ -59,6 +63,10 @@ export interface SignalRankResult {
   types: string[] | null;
   primary_type: string | null;
   _rankScore: number;
+  // META-ORCH-1009 Sub-B — per-signal AI reasoning slice. Keyed by signal_id.
+  // undefined when AI hasn't evaluated this place for the rankSignal (graceful
+  // degrade — mobile-side renderer hides the "Why we picked" section).
+  aiReasoningBySignal?: Record<string, string>;
 }
 
 // ── Combo-slug → signal-id mapping tables (moved from generate-curated-experiences) ──
@@ -305,9 +313,12 @@ export async function fetchSinglesForSignalRank(
   // Hydrate the small ranked set. rankedIds is bounded by limit*2 ≤ ~100,
   // well under any URL cap. No chunking needed.
   // ORCH-0707: ai_categories REMOVED from SELECT (deprecated; comboCategory is authority).
+  // META-ORCH-1009 Sub-B: `ai_signal_scores` added so the stop carries the
+  // per-rankSignal Gemini Q2 reasoning into the curated card payload (mobile
+  // expand-modal "Why we picked this for you" section).
   const { data: places, error: placeErr } = await supabaseAdmin
     .from('place_pool')
-    .select('id, google_place_id, name, address, lat, lng, rating, review_count, price_level, price_range_start_cents, price_range_end_cents, opening_hours, website, stored_photo_urls, photos, types, primary_type, utc_offset_minutes, city_id, city, country')
+    .select('id, google_place_id, name, address, lat, lng, rating, review_count, price_level, price_range_start_cents, price_range_end_cents, opening_hours, website, stored_photo_urls, photos, types, primary_type, utc_offset_minutes, city_id, city, country, ai_signal_scores')
     .in('id', rankedIds);
 
   // ORCH-0653: throw on error (Constitution #3); empty result still legitimate.
@@ -373,6 +384,20 @@ export async function fetchSinglesForSignalRank(
       types: (pp.types as string[] | null) ?? null,
       primary_type: (pp.primary_type as string | null) ?? null,
       _rankScore: rankScoreById.get(pp.id as string) ?? 0,
+      // META-ORCH-1009 Sub-B — per-rankSignal Gemini Q2 reasoning slice from
+      // place_pool.ai_signal_scores. undefined when unevaluated or no reasoning
+      // string. The key uses the rankSignal (the signal the curated generator
+      // ORDERED this stop by) so the mobile expand-modal renders the reasoning
+      // for whichever vibe drove the pick (e.g. 'romantic' for a Romantic dinner).
+      aiReasoningBySignal: (() => {
+        const scores = pp.ai_signal_scores as Record<string, { reasoning?: unknown; prompt_version?: unknown }> | null | undefined;
+        if (!scores || typeof scores !== 'object') return undefined;
+        const slice = scores[rankSignal];
+        if (!slice || typeof slice !== 'object') return undefined;
+        const reasoning = slice.reasoning;
+        if (typeof reasoning !== 'string' || reasoning.trim().length === 0) return undefined;
+        return { [rankSignal]: reasoning };
+      })(),
     }))
     .sort((a, b) => b._rankScore - a._rankScore)
     .slice(0, limit);

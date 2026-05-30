@@ -1081,6 +1081,31 @@ function checkNoNewBackendFiles() {
     "supabase/functions/run-place-intelligence-trial/__tests__/coverage_adversarial.test.ts",
     "supabase/functions/run-place-intelligence-trial/__tests__/intelligence_coverage_seed_refresh.test.ts",
   ];
+  // META-ORCH-1009 Sub-B [consumer ranker blend + reasoning-on-card-back]:
+  // extends signalScorer.computeScore with AI blend + inappropriate_for veto,
+  // wires run-signal-scorer to read place_pool.ai_signal_scores + DELETE
+  // vetoed rows, surfaces ai_reasoning + ai_score_raw on the two consumer
+  // RPCs via a new migration, threads the per-signal reasoning slice through
+  // discover-cards + generate-curated-experiences + _shared/signalRankFetch.
+  // Per-Sub-B contract: 5 backend code files + 1 migration + new Deno test
+  // suites + 1 new strict-grep gate (registered separately in the workflow
+  // file, not under supabase/). All consumer-ranker-only — admin paths
+  // intentionally NOT in scope.
+  // Migration rebumped 20260803→20260806 to land after ORCH-1006's already-
+  // applied 20260805 (tester P2 F-01).
+  const META_ORCH_1009_SUB_B_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260806000000_meta_orch_1009_sub_b_rpcs_with_reasoning.sql",
+    "supabase/functions/_shared/signalScorer.ts",
+    "supabase/functions/_shared/signalRankFetch.ts",
+    "supabase/functions/run-signal-scorer/index.ts",
+    "supabase/functions/discover-cards/index.ts",
+    "supabase/functions/generate-curated-experiences/index.ts",
+    "supabase/functions/_shared/__tests__/signalScorer.blend.test.ts",
+    "supabase/functions/discover-cards/__tests__/ai_reasoning_passthrough.test.ts",
+    "supabase/functions/discover-cards/__tests__/collab_determinism_under_ai_blend.test.ts",
+    "supabase/functions/generate-curated-experiences/__tests__/ai_reasoning_passthrough.test.ts",
+    "supabase/migrations/__tests__/meta_orch_1009_sub_b_rpc_reasoning_return.test.sql",
+  ];
   const ALLOWLIST = [
     ...ORCH_1017_BACKEND_ALLOWLIST,
     ...ORCH_1006_BACKEND_ALLOWLIST,
@@ -1141,6 +1166,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_1014_BACKEND_ALLOWLIST,
     ...ORCH_1015_BACKEND_ALLOWLIST,
     ...META_ORCH_1009_SUB_A_BACKEND_ALLOWLIST,
+    ...META_ORCH_1009_SUB_B_BACKEND_ALLOWLIST,
   ];
   const forbidden = changed.filter(
     (p) =>
