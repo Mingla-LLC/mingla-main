@@ -1,5 +1,7 @@
 # Open Investigations
 
+> **2026-05-30 — META-ORCH-1009 Sub-A [Schema foundation — ai_signal_scores JSONB + DEC-099 invariant lift] CLOSED PASS Grade A.** PR #275 merged `741076e68`. Migration applied (2,366 places backfilled). Edge fn redeployed. Worktree reaped. Tester P1 (missing SOLE-OWNER CI gate) self-fixed during close. Full banner in WORLD_MAP. Next dispatch: Sub-B (consumer ranker blend).
+
 > **2026-05-30 — META-ORCH-1009 Sub-A [Schema foundation — ai_signal_scores JSONB + DEC-099 invariant lift] REGISTERED → FORENSICS QUEUED.** S1-high / `missing-feature` + `architecture-flaw`. Parent: META-ORCH-1009. Backend-only — Supabase migration + edge fn change + invariant retraction. NO user-visible change yet (plumbing for Sub-B). Inputs: research doc §5 Option A + DEC-099. Worktree: `~/Desktop/mingla-orchs/META-ORCH-1009-Sub-A-[ai-signal-scores-schema]`. Full scope in WORLD_MAP.
 
 > **2026-05-30 — ORCH-1015 [Intelligence Overview readiness ladder] CLOSED CONDITIONAL PASS Grade A.** Full banner in WORLD_MAP. PR #271 merged as `265f11c9e`. Edge fn redeployed. Worktree reaped.
