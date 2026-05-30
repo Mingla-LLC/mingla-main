@@ -13,11 +13,8 @@ declare const require: (moduleName: string) => {
   };
 };
 
-export const EVENT_COVER_FINAL_MAX_BYTES = 25 * 1024 * 1024;
 export const EVENT_COVER_MAX_VIDEO_DURATION_MS = 29_000;
 export const EVENT_COVER_SOURCE_CEILING_MS = 33_000;
-export const EVENT_COVER_MAX_SOURCE_VIDEO_BYTES = 100 * 1024 * 1024;
-export const EVENT_COVER_MAX_SOURCE_VIDEO_DURATION_MS = 60_000;
 export const EVENT_COVER_VIDEO_PROCESSING_COPY =
   "Use your phone's trim screen to keep video covers to 29 seconds. Mingla compresses the cover to a browser-safe MP4 under 25 MB.";
 export const EVENT_COVER_VIDEO_NOT_CONFIGURED_COPY =

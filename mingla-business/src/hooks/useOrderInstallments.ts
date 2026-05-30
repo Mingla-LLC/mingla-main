@@ -22,9 +22,7 @@ import {
 
 import {
   fetchInstallmentsForBrandTrips,
-  fetchInstallmentsForOrder,
   retryInstallment,
-  type OrderInstallment,
   type OrderInstallmentForBrand,
   type RetryInstallmentResult,
 } from "../services/orderInstallmentsService";
@@ -46,25 +44,6 @@ export const orderInstallmentKeys = {
 };
 
 const DISABLED_KEY = ["orderInstallments", "__disabled__"] as const;
-
-export function useInstallmentsForOrder(
-  orderId: string | null,
-): UseQueryResult<OrderInstallment[], Error> {
-  // ORCH-1004 — order_installments is RLS auth.uid()-scoped; gate on auth.
-  const { isAuthReady } = useAuth();
-  const enabled = isAuthReady && orderId !== null && orderId.length > 0;
-  return useQuery<OrderInstallment[], Error>({
-    queryKey: enabled
-      ? orderInstallmentKeys.byOrder(orderId)
-      : DISABLED_KEY,
-    queryFn: async () => {
-      if (orderId === null) return [];
-      return fetchInstallmentsForOrder(orderId);
-    },
-    enabled,
-    staleTime: INSTALLMENTS_STALE_MS,
-  });
-}
 
 export function useInstallmentsForBrandTrips(
   brandId: string | null,

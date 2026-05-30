@@ -20,13 +20,13 @@
 import { useState, useCallback } from "react";
 import {
   Alert,
-  Modal,
   View,
   Text,
   Pressable,
   StyleSheet,
   ActivityIndicator,
 } from "react-native";
+import { BaseBottomSheet } from "../ui/BaseBottomSheet";
 import * as Haptics from "expo-haptics";
 import { useQueryClient } from "@tanstack/react-query";
 import { BoardSessionService } from "../../services/boardSessionService";
@@ -201,11 +201,22 @@ export default function LockedCardSchedulingSheet({
     );
   }
 
-  // Step 2 — summary + confirm
+  // Step 2 — summary + confirm.
+  // META-ORCH-0991 Wave B Batch 5: this is an irreversible commit confirm
+  // ("once you confirm … a new round of swiping starts") presented as a
+  // centered card with Confirm / Pick-a-different-time / Cancel actions →
+  // variant="center-dialog" (non-swipe, can't be flicked away by accident,
+  // operator rule §1). The local scrim/card chrome is stripped; the dialog
+  // supplies scrim + card + radius + padding from glass.centerDialog. The
+  // inner container is a transparent passthrough so chrome doesn't double up.
   return (
-    <Modal visible={visible} transparent animationType="fade">
-      <View style={styles.overlay}>
-        <View style={styles.sheet}>
+    <BaseBottomSheet
+      variant="center-dialog"
+      visible={visible}
+      onClose={resetAndClose}
+      accessibilityLabel="Lock in this plan"
+    >
+      <View style={styles.dialogBody}>
           <Text style={styles.title}>Lock in this plan?</Text>
           <Text style={styles.subtitle}>
             Once you confirm, everyone in the session will see this card as the
@@ -267,26 +278,16 @@ export default function LockedCardSchedulingSheet({
           >
             <Text style={styles.cancelButtonText}>Cancel</Text>
           </Pressable>
-        </View>
       </View>
-    </Modal>
+    </BaseBottomSheet>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 20,
-  },
-  sheet: {
+  // META-ORCH-0991 Wave B Batch 5: transparent passthrough — the
+  // center-dialog supplies scrim/card/radius/padding from glass.centerDialog.
+  dialogBody: {
     width: "100%",
-    maxWidth: 420,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 24,
   },
   title: {
     fontSize: 20,

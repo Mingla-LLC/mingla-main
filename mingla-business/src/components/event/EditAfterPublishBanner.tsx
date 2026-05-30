@@ -44,6 +44,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm + 4,
     padding: spacing.md,
     borderRadius: radiusTokens.lg,
+    overflow: "hidden",
     backgroundColor: accent.tint,
     borderWidth: 1,
     borderColor: accent.border,

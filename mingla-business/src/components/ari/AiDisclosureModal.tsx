@@ -14,7 +14,7 @@
  */
 
 import React, { useEffect } from "react";
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { BlurView } from "expo-blur";
 import Animated, {
   Easing,
@@ -37,6 +37,20 @@ export interface AiDisclosureModalProps {
   visible: boolean;
   onAccept: () => void;
 }
+
+// META-ORCH-1002 Sub-D: on Android, expo-blur renders a thin near-transparent
+// view, so the sheet leaked busy content through the 0.78 tint. Route Android
+// to a solid opaque frosted surface; iOS keeps the real UIVisualEffectView blur.
+const BlurViewOrOpaque: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  if (Platform.OS === "android") {
+    return <View style={styles.opaqueSheet}>{children}</View>;
+  }
+  return (
+    <BlurView intensity={40} tint="dark" style={styles.blur}>
+      {children}
+    </BlurView>
+  );
+};
 
 export const AiDisclosureModal: React.FC<AiDisclosureModalProps> = ({
   visible,
@@ -64,7 +78,10 @@ export const AiDisclosureModal: React.FC<AiDisclosureModalProps> = ({
     <Modal visible={visible} animationType="slide" transparent statusBarTranslucent>
       <Animated.View style={[styles.scrim, scrimStyle]}>
         <View style={styles.sheetWrap}>
-          <BlurView intensity={40} tint="dark" style={styles.blur}>
+          {/* META-ORCH-1002 Sub-D: Android renders an opaque frosted surface
+              instead of expo-blur's thin near-transparent fallback. iOS keeps
+              the real BlurView. */}
+          <BlurViewOrOpaque>
             <View style={styles.sheet}>
               {/* Inner highlight ring at the top of the sheet — premium glass edge */}
               <View pointerEvents="none" style={styles.topHighlight} />
@@ -114,7 +131,7 @@ export const AiDisclosureModal: React.FC<AiDisclosureModalProps> = ({
                 </Pressable>
               </View>
             </View>
-          </BlurView>
+          </BlurViewOrOpaque>
         </View>
       </Animated.View>
     </Modal>
@@ -139,6 +156,12 @@ const styles = StyleSheet.create({
   },
   blur: {
     backgroundColor: "rgba(20, 17, 19, 0.78)",
+  },
+  // META-ORCH-1002 Sub-D: opaque Android sheet surface (≥0.92 policy). Warm
+  // dark frosted fill matching the iOS blur's intent, fully opaque so busy
+  // content never bleeds through.
+  opaqueSheet: {
+    backgroundColor: "#1a1416",
   },
   sheet: {
     flexShrink: 1,

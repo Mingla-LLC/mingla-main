@@ -3,12 +3,10 @@ import {
   View,
   Text,
   TouchableOpacity,
-  Modal,
-  ScrollView,
   Image,
   StyleSheet,
-  Dimensions,
 } from 'react-native';
+import { BaseBottomSheet } from './ui/BaseBottomSheet';
 import { Icon } from './ui/Icon';
 import * as Haptics from 'expo-haptics';
 import { Recommendation } from '../contexts/RecommendationsContext';
@@ -18,7 +16,10 @@ import { parseAndFormatDistance } from './utils/formatters';
 import { useTranslation } from 'react-i18next';
 import type { CollabDismissalRow } from '../hooks/useSessionDismissedCards';
 
-const { height: screenHeight } = Dimensions.get('window');
+// META-ORCH-0991 Wave B Batch 5: fixed snap translated from the old modal's
+// `maxHeight: screenHeight * 0.8`. Fixed-snap over content-dynamic (Batch-3
+// off-screen lesson).
+const SNAP_POINTS = ['80%'] as const;
 
 interface DismissedCardsSheetProps {
   visible: boolean;
@@ -124,41 +125,27 @@ export const DismissedCardsSheet: React.FC<DismissedCardsSheetProps> = ({
   };
 
   return (
-    <Modal
+    <BaseBottomSheet
       visible={visible}
-      transparent={true}
-      animationType="slide"
-      onRequestClose={onClose}
-    >
-      <View style={styles.overlay}>
-        <TouchableOpacity
-          style={styles.backdrop}
-          activeOpacity={1}
-          onPress={onClose}
-        />
-        <View style={styles.sheet}>
-          {/* Drag handle */}
-          <View style={styles.handleBar} />
-
-          {/* Header */}
-          <View style={styles.header}>
-            <View style={styles.headerLeft}>
-              <Text style={styles.title}>
-                {t('modals:dismissed_cards.cards_viewed', { count: allCards.length })}
-              </Text>
-            </View>
-            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-              <Icon name="close-outline" size={22} color="#6b7280" />
-            </TouchableOpacity>
+      onClose={onClose}
+      snapPoints={SNAP_POINTS as unknown as string[]}
+      wrapInRNModal
+      accessibilityLabel={t('modals:dismissed_cards.cards_viewed', { count: allCards.length })}
+      scrollProps={{ style: styles.list, showsVerticalScrollIndicator: false }}
+      header={
+        <View style={styles.header}>
+          <View style={styles.headerLeft}>
+            <Text style={styles.title}>
+              {t('modals:dismissed_cards.cards_viewed', { count: allCards.length })}
+            </Text>
           </View>
-
-          {/* Card list */}
-          <ScrollView
-            style={styles.list}
-            showsVerticalScrollIndicator={false}
-            bounces={allCards.length > 4}
-          >
-            {allCards.length === 0 ? (
+          <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+            <Icon name="close-outline" size={22} color="#6b7280" />
+          </TouchableOpacity>
+        </View>
+      }
+    >
+      {allCards.length === 0 ? (
               <View style={styles.emptyState}>
                 <Text style={styles.emptyText}>{t('modals:dismissed_cards.no_cards_viewed')}</Text>
               </View>
@@ -313,38 +300,11 @@ export const DismissedCardsSheet: React.FC<DismissedCardsSheetProps> = ({
               )}
               </>
             )}
-          </ScrollView>
-        </View>
-      </View>
-    </Modal>
+    </BaseBottomSheet>
   );
 };
 
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
-  },
-  sheet: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: screenHeight * 0.8,
-    paddingBottom: 34,
-  },
-  handleBar: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#d1d5db',
-    alignSelf: 'center',
-    marginTop: 10,
-    marginBottom: 8,
-  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',

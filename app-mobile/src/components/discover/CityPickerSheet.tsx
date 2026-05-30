@@ -19,19 +19,17 @@
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
-  Modal,
   View,
   Text,
-  TextInput,
   TouchableOpacity,
-  ScrollView,
-  Pressable,
   StyleSheet,
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
 } from "react-native";
 import * as Haptics from "expo-haptics";
+import {
+  BaseBottomSheet,
+  BottomSheetTextInput,
+} from "../ui/BaseBottomSheet";
 import { geocodingService, AutocompleteSuggestion } from "../../services/geocodingService";
 import { PreferencesService } from "../../services/preferencesService";
 // ORCH-0824 hotfix-5b: parse the first comma-separated segment of the
@@ -41,6 +39,22 @@ import { PreferencesService } from "../../services/preferencesService";
 import type { DiscoverCity } from "../../types/discoverFilters";
 import { Icon } from "../ui/Icon";
 import { glass } from "../../constants/designSystem";
+
+// META-ORCH-0991 Wave C Batch 1 — was an RN <Modal> slide-up with a
+// KeyboardAvoidingView lifting a flex:1 sheet above the keyboard. Converted to
+// BaseBottomSheet: gorhom owns keyboard coordination (keyboardBehavior
+// interactive + BottomSheetTextInput), so the hand-rolled KeyboardAvoidingView
+// is dropped. Fixed ['90%'] snap (the old sheet was full-height minus an 80px
+// dismiss strip ≈ 90%; playbook §2 prefers a fixed snap). Bespoke dark canvas
+// (rgba(20,22,26,0.98)) + topRadius 24 preserved via backgroundStyle. Mounted
+// from DiscoverScreen before the floating GlassBottomNav sibling → wrapInRNModal
+// (same z-order trap as the Batch-5 Night Out filter on this screen).
+const SNAP_POINTS = ["90%"];
+const SHEET_BACKGROUND = {
+  backgroundColor: "rgba(20,22,26,0.98)",
+  borderTopLeftRadius: 24,
+  borderTopRightRadius: 24,
+} as const;
 
 interface CityPickerSheetProps {
   visible: boolean;
@@ -224,154 +238,126 @@ export const CityPickerSheet: React.FC<CityPickerSheetProps> = ({
     [persisting, userId, onCityPicked, onClose],
   );
 
+  const header = (
+    <View style={styles.headerWrap}>
+      <View style={styles.header}>
+        <Text style={styles.title} accessibilityRole="header">
+          Choose a city
+        </Text>
+        <TouchableOpacity
+          onPress={onClose}
+          style={styles.closeBtn}
+          accessibilityLabel="Close city picker"
+          accessibilityRole="button"
+        >
+          <Icon name="x" size={22} color="rgba(255,255,255,0.7)" />
+        </TouchableOpacity>
+      </View>
+
+      {currentCity && (
+        <Text style={styles.currentHint}>
+          Currently showing events in {currentCity.name}
+        </Text>
+      )}
+
+      <View style={styles.inputWrap}>
+        <Icon name="search" size={18} color="rgba(255,255,255,0.5)" />
+        <BottomSheetTextInput
+          value={query}
+          onChangeText={setQuery}
+          placeholder="Search for a city (e.g. Brooklyn, Miami)"
+          placeholderTextColor="rgba(255,255,255,0.4)"
+          style={styles.input}
+          autoCorrect={false}
+          autoCapitalize="words"
+          accessibilityLabel="Search for a city"
+          autoFocus
+        />
+      </View>
+    </View>
+  );
+
   return (
-    <Modal
+    <BaseBottomSheet
       visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
+      onClose={onClose}
+      snapPoints={SNAP_POINTS}
+      theme="dark"
+      scrollMode="scroll"
+      wrapInRNModal
+      keyboardBehavior="interactive"
+      keyboardBlurBehavior="restore"
+      android_keyboardInputMode="adjustResize"
+      backgroundStyle={SHEET_BACKGROUND}
+      accessibilityLabel="City picker"
+      header={header}
+      scrollProps={{
+        keyboardShouldPersistTaps: "handled",
+        contentContainerStyle: styles.resultsContent,
+      }}
     >
-      {/* ORCH-0809-final: KeyboardAvoidingView lifts the sheet above the
-          on-screen keyboard so the TextInput + autocomplete results stay
-          visible while typing. iOS uses behavior="padding" (the system
-          keyboard inset becomes bottom padding on the KAV, which pushes
-          the bottom-aligned sheet up). Android relies on the system's
-          windowSoftInputMode=adjustResize (the default for this app);
-          adding `behavior="height"` on Android causes overshoot, so
-          leave it undefined. Per memory feedback_keyboard_never_blocks_input. */}
-      <KeyboardAvoidingView
-        style={styles.overlay}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
-        <Pressable style={styles.backdrop} onPress={onClose} />
-        <View style={styles.sheet}>
-          <View style={styles.header}>
-            <Text style={styles.title} accessibilityRole="header">
-              Choose a city
-            </Text>
-            <TouchableOpacity
-              onPress={onClose}
-              style={styles.closeBtn}
-              accessibilityLabel="Close city picker"
-              accessibilityRole="button"
-            >
-              <Icon name="x" size={22} color="rgba(255,255,255,0.7)" />
-            </TouchableOpacity>
-          </View>
-
-          {currentCity && (
-            <Text style={styles.currentHint}>
-              Currently showing events in {currentCity.name}
-            </Text>
-          )}
-
-          <View style={styles.inputWrap}>
-            <Icon name="search" size={18} color="rgba(255,255,255,0.5)" />
-            <TextInput
-              value={query}
-              onChangeText={setQuery}
-              placeholder="Search for a city (e.g. Brooklyn, Miami)"
-              placeholderTextColor="rgba(255,255,255,0.4)"
-              style={styles.input}
-              autoCorrect={false}
-              autoCapitalize="words"
-              accessibilityLabel="Search for a city"
-              autoFocus
-            />
-          </View>
-
-          <ScrollView
-            keyboardShouldPersistTaps="handled"
-            style={styles.resultsScroll}
-            contentContainerStyle={styles.resultsContent}
-          >
-            {loading && (
-              <View style={styles.statusRow}>
-                <ActivityIndicator size="small" color={glass.chrome.active.glowColor} />
-                <Text style={styles.statusText}>Searching…</Text>
-              </View>
-            )}
-
-            {!loading && error && (
-              <TouchableOpacity onPress={() => setQuery(query)} style={styles.statusRow}>
-                <Icon name="cloud-offline-outline" size={18} color="rgba(255,255,255,0.5)" />
-                <Text style={styles.statusText}>{error}</Text>
-              </TouchableOpacity>
-            )}
-
-            {!loading && !error && query.trim().length >= 2 && results.length === 0 && (
-              <View style={styles.statusRow}>
-                <Text style={styles.statusText}>
-                  No matches — try a broader query.
-                </Text>
-              </View>
-            )}
-
-            {!loading && !error && query.trim().length < 2 && (
-              <View style={styles.statusRow}>
-                <Text style={styles.statusText}>
-                  Type at least 2 letters to search.
-                </Text>
-              </View>
-            )}
-
-            {!loading &&
-              results.map((suggestion, idx) => (
-                <TouchableOpacity
-                  key={`${idx}-${suggestion.displayName}`}
-                  onPress={() => handlePick(suggestion)}
-                  disabled={persisting}
-                  style={[
-                    styles.resultRow,
-                    persisting && styles.resultRowDisabled,
-                  ]}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Pick ${suggestion.displayName}`}
-                >
-                  <Icon name="location-outline" size={18} color="rgba(255,255,255,0.55)" />
-                  <View style={styles.resultText}>
-                    <Text style={styles.resultPrimary} numberOfLines={1}>
-                      {suggestion.displayName}
-                    </Text>
-                    <Text style={styles.resultSecondary} numberOfLines={1}>
-                      {suggestion.fullAddress}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              ))}
-          </ScrollView>
+      {loading && (
+        <View style={styles.statusRow}>
+          <ActivityIndicator size="small" color={glass.chrome.active.glowColor} />
+          <Text style={styles.statusText}>Searching…</Text>
         </View>
-      </KeyboardAvoidingView>
-    </Modal>
+      )}
+
+      {!loading && error && (
+        <TouchableOpacity onPress={() => setQuery(query)} style={styles.statusRow}>
+          <Icon name="cloud-offline-outline" size={18} color="rgba(255,255,255,0.5)" />
+          <Text style={styles.statusText}>{error}</Text>
+        </TouchableOpacity>
+      )}
+
+      {!loading && !error && query.trim().length >= 2 && results.length === 0 && (
+        <View style={styles.statusRow}>
+          <Text style={styles.statusText}>
+            No matches — try a broader query.
+          </Text>
+        </View>
+      )}
+
+      {!loading && !error && query.trim().length < 2 && (
+        <View style={styles.statusRow}>
+          <Text style={styles.statusText}>
+            Type at least 2 letters to search.
+          </Text>
+        </View>
+      )}
+
+      {!loading &&
+        results.map((suggestion, idx) => (
+          <TouchableOpacity
+            key={`${idx}-${suggestion.displayName}`}
+            onPress={() => handlePick(suggestion)}
+            disabled={persisting}
+            style={[
+              styles.resultRow,
+              persisting && styles.resultRowDisabled,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel={`Pick ${suggestion.displayName}`}
+          >
+            <Icon name="location-outline" size={18} color="rgba(255,255,255,0.55)" />
+            <View style={styles.resultText}>
+              <Text style={styles.resultPrimary} numberOfLines={1}>
+                {suggestion.displayName}
+              </Text>
+              <Text style={styles.resultSecondary} numberOfLines={1}>
+                {suggestion.fullAddress}
+              </Text>
+            </View>
+          </TouchableOpacity>
+        ))}
+    </BaseBottomSheet>
   );
 };
 
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    justifyContent: "flex-end",
-    backgroundColor: "rgba(0,0,0,0.55)",
-  },
-  backdrop: {
-    // Small tappable strip at the very top of the modal so the user can
-    // dismiss the sheet by tapping outside it. Fixed inset (not flex) so the
-    // sheet below it can flex: 1 fill the rest of the screen — sheet
-    // background then flows to the bottom (or to the keyboard top when the
-    // KAV is engaged), eliminating the prior "half-screen background" gap.
-    height: 80,
-  },
-  sheet: {
-    // ORCH-0809 polish: sheet fills the visible area below the dismissible
-    // backdrop strip — flush bottom = screen bottom when no keyboard, flush
-    // bottom = keyboard top when KeyboardAvoidingView is engaged. Previously
-    // capped at 55-85% which left a band of dark backdrop below the sheet.
-    flex: 1,
-    backgroundColor: "rgba(20,22,26,0.98)",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingTop: 12,
+  headerWrap: {
     paddingHorizontal: 20,
-    paddingBottom: 36,
+    paddingTop: 4,
   },
   header: {
     flexDirection: "row",
@@ -409,11 +395,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     paddingVertical: 14,
   },
-  resultsScroll: {
-    flexGrow: 0,
-  },
   resultsContent: {
-    paddingBottom: 12,
+    paddingHorizontal: 20,
+    paddingBottom: 36,
   },
   statusRow: {
     flexDirection: "row",

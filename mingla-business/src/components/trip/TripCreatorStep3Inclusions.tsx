@@ -254,6 +254,7 @@ const styles = StyleSheet.create({
     height: 44,
     paddingHorizontal: 12,
     borderRadius: radiusTokens.md,
+    overflow: "hidden",
     backgroundColor: INPUT_BG,
     borderWidth: 1,
     borderColor: INPUT_BORDER,

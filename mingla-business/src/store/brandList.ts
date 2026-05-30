@@ -220,9 +220,3 @@ export const STUB_BRANDS: Brand[] = [
     ],
   },
 ];
-
-/**
- * The brand the dev-seed button activates. Sunday Languor is chosen so the
- * brand shell appears immediately after seeding without manual brand-switching.
- */
-export const STUB_DEFAULT_BRAND_ID = "sl";

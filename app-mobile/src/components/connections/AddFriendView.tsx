@@ -3,17 +3,26 @@ import {
   Text,
   View,
   TouchableOpacity,
-  TextInput,
   ActivityIndicator,
   Alert,
   StyleSheet,
   Share,
-  FlatList,
+  Platform,
 } from "react-native";
 import { useTranslation } from 'react-i18next';
 import { Icon } from "../ui/Icon";
 import * as Haptics from "expo-haptics";
-import { KeyboardAwareScrollView } from '../ui/KeyboardAwareScrollView';
+// META-ORCH-0991 Wave C: AddFriendView is rendered ONLY inside the ConnectionsPage
+// friends modal, which is now a BaseBottomSheet. The phone field uses
+// BottomSheetTextInput so it coordinates with the sheet (the keyboard never
+// covers it). The country picker stays CountryPickerModal (its own fullScreen
+// RN <Modal>, sibling fragment) — the SAME proven Batch-4 PairRequestModal
+// pattern: a fullScreen RN <Modal> sub-picker opened by a user tap stacks above
+// the wrapInRNModal sheet (it escapes the sheet's scroll context so it does NOT
+// trip the "VirtualizedLists nested in a ScrollView" warning that a
+// CountryPickerOverlay-in-sheet would). Its FlatList rows are virtualized
+// correctly because the Modal is a separate window.
+import { BottomSheetTextInput } from "../ui/BaseBottomSheet";
 import {
   getDefaultCountryCode,
   getCountryByCode,
@@ -401,7 +410,7 @@ export function AddFriendView({
 
             <View style={styles.phoneDivider} />
 
-            <TextInput
+            <BottomSheetTextInput
               style={styles.phoneInput}
               value={phoneNumber}
               onChangeText={(text) => {
@@ -511,7 +520,9 @@ export function AddFriendView({
           </TouchableOpacity>
       </View>
 
-      {/* Country picker modal */}
+      {/* Country picker modal — fullScreen RN <Modal> sibling fragment, opened by
+          a user tap (Batch-4 PairRequestModal precedent). Stacks above the friends
+          BaseBottomSheet and virtualizes its country FlatList in its own window. */}
       <CountryPickerModal
         visible={showCountryPicker}
         selectedCode={selectedCountry.code}
@@ -528,17 +539,26 @@ const styles = StyleSheet.create({
     paddingVertical: vs(8),
   },
   glassCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.70)',
+    // META-ORCH-1002 Sub-B (A4): frosted-white panel. On Android render the iOS
+    // frosted-white *intent* as a solid opaque white panel, clip fill+border to the
+    // radius (kills the ring), and zero the elevation so no hard shadow rectangle
+    // draws under the rounded panel. iOS keeps the translucent frost + shadow.
+    backgroundColor: Platform.select({
+      ios: 'rgba(255, 255, 255, 0.70)',
+      android: '#FFFFFF',
+      default: 'rgba(255, 255, 255, 0.70)',
+    }),
     borderWidth: 1,
     borderTopWidth: 0.5,
     borderColor: 'rgba(255, 255, 255, 0.45)',
     borderRadius: 24,
     padding: 16,
+    overflow: 'hidden',
     shadowColor: 'rgba(0, 0, 0, 0.08)',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 1,
     shadowRadius: 24,
-    elevation: 6,
+    elevation: Platform.select({ ios: 6, android: 0, default: 6 }),
   },
   tabBar: {
     flexDirection: "row",

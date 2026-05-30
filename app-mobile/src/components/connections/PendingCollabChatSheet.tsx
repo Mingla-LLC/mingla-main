@@ -3,14 +3,13 @@ import {
   ActivityIndicator,
   Alert,
   Image,
-  Modal,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { BaseBottomSheet, BottomSheetScrollView } from "../ui/BaseBottomSheet";
 import { Icon } from "../ui/Icon";
 import { colors, fontWeights } from "../../constants/designSystem";
 import { s } from "../../utils/responsive";
@@ -59,6 +58,19 @@ interface PendingCollabChatSheetProps {
     receiverUsername?: string,
   ) => Promise<void>;
 }
+
+// META-ORCH-0991 Wave B Batch 3: was a dark sheet capped at maxHeight 88% →
+// a swipe-down BaseBottomSheet at the same height. Module-level const per
+// playbook §2. Dark surface preserved via an explicit backgroundStyle override.
+const PENDING_COLLAB_SNAP_POINTS = ['88%'];
+
+const SHEET_BACKGROUND_STYLE = {
+  backgroundColor: "rgba(18, 20, 24, 0.98)",
+  borderTopLeftRadius: s(28),
+  borderTopRightRadius: s(28),
+  borderWidth: 1,
+  borderColor: "rgba(255, 255, 255, 0.10)",
+};
 
 function getInitials(name: string): string {
   return name
@@ -188,27 +200,25 @@ export function PendingCollabChatSheet({
   if (!details) return null;
 
   return (
-    <Modal
+    <BaseBottomSheet
       visible={visible}
-      animationType="slide"
-      transparent
-      statusBarTranslucent
-      accessibilityViewIsModal
-      onRequestClose={onClose}
+      onClose={onClose}
+      theme="dark"
+      snapPoints={PENDING_COLLAB_SNAP_POINTS}
+      scrollMode="view"
+      wrapInRNModal
+      keyboardBehavior="interactive"
+      keyboardBlurBehavior="restore"
+      android_keyboardInputMode="adjustResize"
+      backgroundStyle={SHEET_BACKGROUND_STYLE}
+      accessibilityLabel={details.sessionName}
     >
-      <Pressable
-        style={styles.backdrop}
-        accessibilityRole="button"
-        accessibilityLabel="Close pending chat"
-        onPress={onClose}
-      />
       <View
         style={[
           styles.sheet,
           { paddingBottom: Math.max(insets.bottom, s(16)) + s(16) },
         ]}
       >
-        <View style={styles.handle} />
         <View style={styles.header}>
           <View style={styles.headerIcon}>
             <Icon name="time-outline" size={20} color="#fb923c" />
@@ -309,7 +319,7 @@ export function PendingCollabChatSheet({
           </Pressable>
         </View>
 
-        <ScrollView
+        <BottomSheetScrollView
           style={styles.peopleList}
           contentContainerStyle={styles.peopleContent}
           showsVerticalScrollIndicator={false}
@@ -363,7 +373,7 @@ export function PendingCollabChatSheet({
               ) : null}
             </View>
           ))}
-        </ScrollView>
+        </BottomSheetScrollView>
 
         <Pressable
           onPress={onCancelChat}
@@ -381,36 +391,15 @@ export function PendingCollabChatSheet({
           )}
         </Pressable>
       </View>
-    </Modal>
+    </BaseBottomSheet>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0, 0, 0, 0.42)",
-  },
   sheet: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    maxHeight: "88%",
-    borderTopLeftRadius: s(28),
-    borderTopRightRadius: s(28),
-    paddingTop: s(12),
+    flex: 1,
+    paddingTop: s(6),
     paddingHorizontal: s(18),
-    backgroundColor: "rgba(18, 20, 24, 0.98)",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.10)",
-  },
-  handle: {
-    width: s(42),
-    height: s(4),
-    borderRadius: s(2),
-    backgroundColor: "rgba(255, 255, 255, 0.20)",
-    alignSelf: "center",
-    marginBottom: s(18),
   },
   header: {
     flexDirection: "row",

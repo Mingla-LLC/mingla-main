@@ -1,8 +1,13 @@
 import React, { useState } from 'react';
-import { Text, View, StyleSheet, Modal, ScrollView } from 'react-native';
+import { Text, View, StyleSheet } from 'react-native';
 import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
+import { BaseBottomSheet } from './ui/BaseBottomSheet';
 import { Icon } from './ui/Icon';
 import { useTranslation } from 'react-i18next';
+
+// META-ORCH-0991 Wave B Batch 3: was a centered card capped at maxHeight 80% →
+// a swipe-down sheet at the same height. Module-level const per playbook §2.
+const BOARD_MEMBER_SNAP_POINTS = ['80%'];
 
 interface Participant {
   id: string;
@@ -93,20 +98,16 @@ export default function BoardMemberManagementModal({
   };
 
   return (
-    <Modal
+    <BaseBottomSheet
       visible={isOpen}
-      transparent={true}
-      animationType="fade"
-      onRequestClose={onClose}
-    >
-      <View style={styles.modalOverlay}>
-        <TrackedTouchableOpacity logComponent="BoardMemberManagementModal"
-          style={styles.backdropTouch}
-          activeOpacity={1}
-          onPress={onClose}
-        />
-        <View style={styles.modalContainer}>
-        {/* Header */}
+      onClose={onClose}
+      theme="light"
+      snapPoints={BOARD_MEMBER_SNAP_POINTS}
+      scrollMode="scroll"
+      wrapInRNModal
+      accessibilityLabel={t('board:boardMemberManagement.manageBoard')}
+      scrollProps={{ style: styles.membersList }}
+      header={
         <View style={styles.header}>
           <View style={styles.headerContent}>
             <View style={styles.headerSidePlaceholder} />
@@ -122,9 +123,98 @@ export default function BoardMemberManagementModal({
             </TrackedTouchableOpacity>
           </View>
         </View>
+      }
+      stickyFooter={
+        <View style={styles.actions}>
+          {confirmAction ? (
+            <View style={styles.confirmContainer}>
+              {confirmAction.type === 'remove' && (
+                <View style={styles.removeConfirm}>
+                  <Text style={styles.confirmText}>
+                    Remove <Text style={styles.confirmBold}>{confirmAction.participantName}</Text> from this board?
+                  </Text>
+                  <View style={styles.confirmButtons}>
+                    <TrackedTouchableOpacity logComponent="BoardMemberManagementModal"
+                      onPress={() => handleRemoveMember(confirmAction.participantId!)}
+                      style={styles.confirmButton}
+                    >
+                      <Text style={styles.confirmButtonText}>{t('board:boardMemberManagement.removeMember')}</Text>
+                    </TrackedTouchableOpacity>
+                    <TrackedTouchableOpacity logComponent="BoardMemberManagementModal"
+                      onPress={() => setConfirmAction(null)}
+                      style={styles.cancelConfirmButton}
+                    >
+                      <Text style={styles.cancelConfirmButtonText}>{t('board:boardMemberManagement.cancel')}</Text>
+                    </TrackedTouchableOpacity>
+                  </View>
+                </View>
+              )}
 
-        {/* Members List */}
-        <ScrollView style={styles.membersList}>
+              {confirmAction.type === 'demote' && (
+                <View style={styles.demoteConfirm}>
+                  <Text style={styles.demoteConfirmText}>
+                    Remove admin privileges from <Text style={styles.confirmBold}>{confirmAction.participantName}</Text>?
+                  </Text>
+                  <View style={styles.confirmButtons}>
+                    <TrackedTouchableOpacity logComponent="BoardMemberManagementModal"
+                      onPress={() => handleDemoteFromAdmin(confirmAction.participantId!)}
+                      style={styles.demoteConfirmButton}
+                    >
+                      <Text style={styles.demoteButtonText}>{t('board:boardMemberManagement.removeAdmin')}</Text>
+                    </TrackedTouchableOpacity>
+                    <TrackedTouchableOpacity logComponent="BoardMemberManagementModal"
+                      onPress={() => setConfirmAction(null)}
+                      style={styles.cancelConfirmButton}
+                    >
+                      <Text style={styles.cancelConfirmButtonText}>{t('board:boardMemberManagement.cancel')}</Text>
+                    </TrackedTouchableOpacity>
+                  </View>
+                </View>
+              )}
+
+              {confirmAction.type === 'leave' && (
+                <View style={styles.leaveConfirm}>
+                  <Text style={styles.leaveConfirmTitle}>
+                    <Text style={styles.confirmBold}>Leave this board?</Text>
+                  </Text>
+                  <View style={styles.leaveConfirmDetails}>
+                    {isCurrentUserAdmin && board.admins.length === 1 && board.participants.length > 2 && (
+                      <Text style={styles.leaveConfirmDetail}>• Another member will be randomly assigned as admin</Text>
+                    )}
+                    {board.participants.length <= 2 && (
+                      <Text style={styles.leaveConfirmDetail}>• Board will be permanently deleted (less than 2 members remaining)</Text>
+                    )}
+                    <Text style={styles.leaveConfirmDetail}>• This action cannot be undone</Text>
+                  </View>
+                  <View style={styles.confirmButtons}>
+                    <TrackedTouchableOpacity logComponent="BoardMemberManagementModal"
+                      onPress={handleLeaveBoard}
+                      style={styles.leaveButton}
+                    >
+                      <Text style={styles.leaveButtonText}>{t('board:boardMemberManagement.leaveBoard')}</Text>
+                    </TrackedTouchableOpacity>
+                    <TrackedTouchableOpacity logComponent="BoardMemberManagementModal"
+                      onPress={() => setConfirmAction(null)}
+                      style={styles.cancelConfirmButton}
+                    >
+                      <Text style={styles.cancelConfirmButtonText}>{t('board:boardMemberManagement.cancel')}</Text>
+                    </TrackedTouchableOpacity>
+                  </View>
+                </View>
+              )}
+            </View>
+          ) : (
+            <TrackedTouchableOpacity logComponent="BoardMemberManagementModal"
+              onPress={handleLeaveBoard}
+              style={styles.leaveBoardButton}
+            >
+              <Icon name="person-remove" size={16} color="#dc2626" />
+              <Text style={styles.leaveBoardButtonText}>{t('board:boardMemberManagement.leaveBoard')}</Text>
+            </TrackedTouchableOpacity>
+          )}
+        </View>
+      }
+    >
           <View style={styles.membersContainer}>
             {board.participants.map((participant) => {
               const isAdmin = board.admins.includes(participant.id);
@@ -217,126 +307,11 @@ export default function BoardMemberManagementModal({
               )}
             </View>
           </View>
-        </ScrollView>
-
-        {/* Actions */}
-        <View style={styles.actions}>
-          {confirmAction ? (
-            <View style={styles.confirmContainer}>
-              {confirmAction.type === 'remove' && (
-                <View style={styles.removeConfirm}>
-                  <Text style={styles.confirmText}>
-                    Remove <Text style={styles.confirmBold}>{confirmAction.participantName}</Text> from this board?
-                  </Text>
-                  <View style={styles.confirmButtons}>
-                    <TrackedTouchableOpacity logComponent="BoardMemberManagementModal"
-                      onPress={() => handleRemoveMember(confirmAction.participantId!)}
-                      style={styles.confirmButton}
-                    >
-                      <Text style={styles.confirmButtonText}>{t('board:boardMemberManagement.removeMember')}</Text>
-                    </TrackedTouchableOpacity>
-                    <TrackedTouchableOpacity logComponent="BoardMemberManagementModal"
-                      onPress={() => setConfirmAction(null)}
-                      style={styles.cancelConfirmButton}
-                    >
-                      <Text style={styles.cancelConfirmButtonText}>{t('board:boardMemberManagement.cancel')}</Text>
-                    </TrackedTouchableOpacity>
-                  </View>
-                </View>
-              )}
-
-              {confirmAction.type === 'demote' && (
-                <View style={styles.demoteConfirm}>
-                  <Text style={styles.demoteConfirmText}>
-                    Remove admin privileges from <Text style={styles.confirmBold}>{confirmAction.participantName}</Text>?
-                  </Text>
-                  <View style={styles.confirmButtons}>
-                    <TrackedTouchableOpacity logComponent="BoardMemberManagementModal"
-                      onPress={() => handleDemoteFromAdmin(confirmAction.participantId!)}
-                      style={styles.demoteConfirmButton}
-                    >
-                      <Text style={styles.demoteButtonText}>{t('board:boardMemberManagement.removeAdmin')}</Text>
-                    </TrackedTouchableOpacity>
-                    <TrackedTouchableOpacity logComponent="BoardMemberManagementModal"
-                      onPress={() => setConfirmAction(null)}
-                      style={styles.cancelConfirmButton}
-                    >
-                      <Text style={styles.cancelConfirmButtonText}>{t('board:boardMemberManagement.cancel')}</Text>
-                    </TrackedTouchableOpacity>
-                  </View>
-                </View>
-              )}
-
-              {confirmAction.type === 'leave' && (
-                <View style={styles.leaveConfirm}>
-                  <Text style={styles.leaveConfirmTitle}>
-                    <Text style={styles.confirmBold}>Leave this board?</Text>
-                  </Text>
-                  <View style={styles.leaveConfirmDetails}>
-                    {isCurrentUserAdmin && board.admins.length === 1 && board.participants.length > 2 && (
-                      <Text style={styles.leaveConfirmDetail}>• Another member will be randomly assigned as admin</Text>
-                    )}
-                    {board.participants.length <= 2 && (
-                      <Text style={styles.leaveConfirmDetail}>• Board will be permanently deleted (less than 2 members remaining)</Text>
-                    )}
-                    <Text style={styles.leaveConfirmDetail}>• This action cannot be undone</Text>
-                  </View>
-                  <View style={styles.confirmButtons}>
-                    <TrackedTouchableOpacity logComponent="BoardMemberManagementModal"
-                      onPress={handleLeaveBoard}
-                      style={styles.leaveButton}
-                    >
-                      <Text style={styles.leaveButtonText}>{t('board:boardMemberManagement.leaveBoard')}</Text>
-                    </TrackedTouchableOpacity>
-                    <TrackedTouchableOpacity logComponent="BoardMemberManagementModal"
-                      onPress={() => setConfirmAction(null)}
-                      style={styles.cancelConfirmButton}
-                    >
-                      <Text style={styles.cancelConfirmButtonText}>{t('board:boardMemberManagement.cancel')}</Text>
-                    </TrackedTouchableOpacity>
-                  </View>
-                </View>
-              )}
-            </View>
-          ) : (
-            <TrackedTouchableOpacity logComponent="BoardMemberManagementModal"
-              onPress={handleLeaveBoard}
-              style={styles.leaveBoardButton}
-            >
-              <Icon name="person-remove" size={16} color="#dc2626" />
-              <Text style={styles.leaveBoardButtonText}>{t('board:boardMemberManagement.leaveBoard')}</Text>
-            </TrackedTouchableOpacity>
-          )}
-        </View>
-        </View>
-      </View>
-    </Modal>
+    </BaseBottomSheet>
   );
 }
 
 const styles = StyleSheet.create({
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 16,
-  },
-  backdropTouch: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  modalContainer: {
-    backgroundColor: 'white',
-    borderRadius: 24,
-    width: '100%',
-    maxWidth: 400,
-    maxHeight: '80%',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    elevation: 16,
-  },
   header: {
     paddingHorizontal: 16,
     paddingTop: 16,

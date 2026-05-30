@@ -111,71 +111,30 @@ export const SEED_SCRIPTS = [
 ];
 
 // ─── Grouped Sidebar Navigation ──────────────────────────────────────────────
-// ORCH-0640 ch08: reorganised around the 3-gate architecture (DEC-044).
-//   Deleted entries: Card Pool, AI Validation (both pages DROPPED).
-//   New group: Supply (place_pool supply chain — intake + photo backfill).
-//   New group: Quality Gates (signal library — G1/G2/G3 authoring).
-//   Content group: kept Moderation + Place Pool only.
+// ORCH-1008: flat single-group sidebar. Six pages deleted (Seed,
+//   ContentModeration, Analytics, Reports, BetaFeedback, TableBrowser).
+//   Settings + Users promoted out of System dropdown to top-level rail.
+//   Invariant I-PROPOSED-ADMIN-SHELL-FLAT-NAVIGATION (PROPOSED) — single
+//   group with label:null + no collapsible:true. See SPEC §3 Phase 1 + §5.
+// ORCH-1014: photo-labeling + photo-scorer deleted (DEC-099 Cut 1 cleanup);
+//   NAV is now 10 items.
 
 export const NAV_GROUPS = [
   {
     label: null,
     items: [
-      { id: "overview", label: "Dashboard", icon: "LayoutDashboard" },
-    ],
-  },
-  {
-    label: "People",
-    items: [
-      { id: "users", label: "Users", icon: "Users" },
-      { id: "subscriptions", label: "Subscriptions", icon: "CreditCard" },
-      { id: "admin", label: "Admin Users", icon: "Shield" },
-    ],
-  },
-  {
-    label: "Supply",
-    items: [
-      { id: "seed", label: "Seed / Refresh", icon: "Terminal" },
-      { id: "placepool", label: "Place Pool", icon: "Globe" },
-    ],
-  },
-  {
-    label: "Quality Gates",
-    items: [
-      { id: "signals", label: "Signal Library", icon: "Activity" },
-      { id: "photo-labeling", label: "Photo Labeling", icon: "Camera" },
-      { id: "photo-scorer", label: "Photo Scorer", icon: "Sparkles" },
-      { id: "place-intelligence-trial", label: "Intelligence Trial", icon: "Microscope" },
-    ],
-  },
-  {
-    label: "Content",
-    items: [
-      { id: "content", label: "Moderation", icon: "Layers" },
-      { id: "claims", label: "Venue claims", icon: "ClipboardList" },
-    ],
-  },
-  {
-    label: "Intelligence",
-    items: [
-      { id: "analytics", label: "Analytics", icon: "BarChart3" },
-      { id: "reports", label: "Reports", icon: "Flag" },
-      { id: "feedback", label: "Feedback", icon: "Mic" },
-    ],
-  },
-  {
-    label: "Operations",
-    items: [
-      { id: "email", label: "Email", icon: "Mail" },
-      { id: "pricing", label: "Pricing", icon: "Percent" },
-    ],
-  },
-  {
-    label: "System",
-    collapsible: true,
-    items: [
-      { id: "settings", label: "Settings", icon: "Settings" },
-      { id: "tables", label: "Table Browser", icon: "Database" },
+      { id: "overview",                  label: "Dashboard",          icon: "LayoutDashboard" },
+      { id: "subscriptions",             label: "Subscriptions",      icon: "CreditCard" },
+      { id: "admin",                     label: "Admin Users",        icon: "Shield" },
+      { id: "placepool",                 label: "Place Pool",         icon: "Globe" },
+      { id: "signals",                   label: "Signal Library",     icon: "Activity" },
+      { id: "place-intelligence-trial",  label: "Intelligence Trial", icon: "Microscope" },
+      { id: "email",                     label: "Email",              icon: "Mail" },
+      // ORCH-1006: Mingla take-rate admin screen (global default + per-brand override).
+      { id: "pricing",                   label: "Pricing",            icon: "Percent" },
+      { id: "claims",                    label: "Venue claims",       icon: "ClipboardList" },
+      { id: "users",                     label: "Users",              icon: "Users" },
+      { id: "settings",                  label: "Settings",           icon: "Settings" },
     ],
   },
 ];

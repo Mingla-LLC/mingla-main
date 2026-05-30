@@ -243,6 +243,3 @@ const MESSAGES: Record<string, KycRemediationMessage> = {
 export function getKycRemediationMessage(code: string): KycRemediationMessage {
   return MESSAGES[code] ?? FALLBACK;
 }
-
-export const KYC_REMEDIATION_FALLBACK = FALLBACK;
-export const KYC_REMEDIATION_MESSAGE_COUNT = Object.keys(MESSAGES).length;

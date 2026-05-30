@@ -12,16 +12,11 @@ import {
   Animated,
   LayoutAnimation,
   PanResponder,
-  Modal as RNModal,
 } from "react-native";
-import BottomSheet, {
-  BottomSheetScrollView,
-  BottomSheetBackdrop,
-  BottomSheetBackdropProps,
-} from "@gorhom/bottom-sheet";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from 'react-i18next';
 import { Icon } from "./ui/Icon";
+import { BaseBottomSheet } from "./ui/BaseBottomSheet";
 import { ExpandedCardModalProps, ExpandedCardData } from "../types/expandedCardTypes";
 import type { CuratedExperienceCard, CuratedStop } from '../types/curatedExperience';
 import { formatDistanceFromMeters, formatPriceRange, formatCurrency } from "./utils/formatters";
@@ -1691,41 +1686,14 @@ export default function ExpandedCardModal({
     }
   };
 
-  // [ORCH-0696 S-1] BottomSheet chrome wiring. MUST be declared BEFORE the
-  // `if (!card) return null` early return below — React rules-of-hooks
-  // requires every hook call in same order every render. If these moved
-  // below the early return, the hook count would differ between
-  // visible-without-card and visible-with-card states.
-  const bottomSheetRef = useRef<BottomSheet>(null);
+  // [ORCH-0696 S-1] BottomSheet chrome wiring. `insets` MUST be declared BEFORE
+  // the `if (!card) return null` early return below — React rules-of-hooks
+  // requires every hook call in same order every render.
+  // META-ORCH-0991 Wave A — open/close + backdrop (opacity 0.55) + RN-Modal
+  // z-stacking wrap are now owned by BaseBottomSheet (wrapInRNModal). The prior
+  // bottomSheetRef + snapToIndex(1)/close effect + renderBackdrop +
+  // handleSheetChange are removed; the primitive routes index -1 → onClose.
   const insets = useSafeAreaInsets();
-
-  const renderBackdrop = useCallback(
-    (props: BottomSheetBackdropProps) => (
-      <BottomSheetBackdrop
-        {...props}
-        appearsOnIndex={0}
-        disappearsOnIndex={-1}
-        opacity={0.55}
-        pressBehavior="close"
-      />
-    ),
-    []
-  );
-
-  useEffect(() => {
-    if (visible) {
-      bottomSheetRef.current?.snapToIndex(1);
-    } else {
-      bottomSheetRef.current?.close();
-    }
-  }, [visible]);
-
-  const handleSheetChange = useCallback(
-    (index: number) => {
-      if (index === -1) onClose();
-    },
-    [onClose]
-  );
 
   // ORCH-0824: business-event branch. Mutually exclusive with `card` by
   // contract — DiscoverScreen clears one before setting the other. If a
@@ -1783,26 +1751,59 @@ export default function ExpandedCardModal({
     }
   };
 
+  // [ORCH-0696 S-6] Conditionally render sticky header + review nav for
+  // review-flow surfaces only (Discover deck + Solo deck pass nav props).
+  // Drag handle owns chrome role on all other 6 mount surfaces.
+  // META-ORCH-0991 Wave A — this is the BaseBottomSheet `header` slot.
+  const reviewNavHeader =
+    hasNavigation && navigationTotal != null && navigationIndex != null ? (
+      <>
+        <ExpandedCardHeader onClose={onClose} />
+        <View style={styles.reviewNavBar}>
+          <TouchableOpacity
+            onPress={onNavigatePrevious}
+            disabled={!onNavigatePrevious}
+            style={styles.reviewNavArrow}
+            hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}
+          >
+            <Icon name="chevron-back" size={20} color={onNavigatePrevious ? '#eb7825' : '#d1d5db'} />
+          </TouchableOpacity>
+          <Text style={styles.reviewNavCounter}>
+            {navigationIndex + 1} of {navigationTotal}
+          </Text>
+          <TouchableOpacity
+            onPress={onNavigateNext}
+            disabled={!onNavigateNext}
+            style={styles.reviewNavArrow}
+            hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}
+          >
+            <Icon name="chevron-forward" size={20} color={onNavigateNext ? '#eb7825' : '#d1d5db'} />
+          </TouchableOpacity>
+        </View>
+      </>
+    ) : undefined;
+
   return (
-    // ORCH-0908 fix (2026-05-21): wrap BottomSheet in RN Modal so it renders
-    // on the OS overlay layer — above the bottom tab bar + chat input that
-    // were bleeding through underneath the sheet (snapPoint-relative position
-    // was correct; z-stacking was wrong because BottomSheet renders inline in
-    // its parent tree, while the tab bar is a sibling in the App.tsx tree).
-    <RNModal
+    // META-ORCH-0991 Wave A — migrated onto BaseBottomSheet. wrapInRNModal=true
+    // preserves the ORCH-0908 z-stack above the custom tab bar / chat input.
+    // theme keyed on isNightOut reproduces the EXACT prior chrome (dark
+    // rgba(12,14,18,1) bg + rgba(255,255,255,0.30) handle; light #ffffff bg +
+    // rgba(0,0,0,0.30) handle) via per-consumer backgroundStyle/handleStyle so
+    // there is zero pixel drift. initialIndex=1 opens at the 90% snap. The
+    // review-nav header is the `header` slot; the scroll body is `children`
+    // (primitive owns BottomSheetScrollView). Child modals (InAppBrowser/Share)
+    // are RN Modals — moved to siblings of the sheet in this fragment; they
+    // still present in their own OS window over the sheet (position-independent).
+    <>
+    <BaseBottomSheet
       visible={visible}
-      transparent
-      animationType="none"
-      onRequestClose={onClose}
-      statusBarTranslucent
-    >
-    <BottomSheet
-      ref={bottomSheetRef}
-      index={visible ? 1 : -1}
+      onClose={onClose}
+      wrapInRNModal
+      theme={isNightOut ? 'dark' : 'light'}
       snapPoints={glass.bottomSheet.snapPoints as unknown as (string | number)[]}
-      enablePanDownToClose
-      onChange={handleSheetChange}
-      handleIndicatorStyle={{
+      initialIndex={1}
+      backdropOpacity={0.55}
+      handleStyle={{
         // [ORCH-0696 hotfix-3] Conditional chrome theme:
         //   • Ticketmaster events → dark sheet (designs perfect per operator)
         //   • Place / curated cards → light sheet (operator directive: cards
@@ -1818,47 +1819,17 @@ export default function ExpandedCardModal({
         borderTopWidth: StyleSheet.hairlineWidth,
         borderTopColor: isNightOut ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)",
       }}
-      backdropComponent={renderBackdrop}
-    >
-      {/* [ORCH-0696 S-6] Conditionally render sticky header + review nav for
-          review-flow surfaces only (Discover deck + Solo deck pass nav props).
-          Drag handle owns chrome role on all other 6 mount surfaces. */}
-      {hasNavigation && navigationTotal != null && navigationIndex != null && (
-        <>
-          <ExpandedCardHeader onClose={onClose} />
-          <View style={styles.reviewNavBar}>
-            <TouchableOpacity
-              onPress={onNavigatePrevious}
-              disabled={!onNavigatePrevious}
-              style={styles.reviewNavArrow}
-              hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}
-            >
-              <Icon name="chevron-back" size={20} color={onNavigatePrevious ? '#eb7825' : '#d1d5db'} />
-            </TouchableOpacity>
-            <Text style={styles.reviewNavCounter}>
-              {navigationIndex + 1} of {navigationTotal}
-            </Text>
-            <TouchableOpacity
-              onPress={onNavigateNext}
-              disabled={!onNavigateNext}
-              style={styles.reviewNavArrow}
-              hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}
-            >
-              <Icon name="chevron-forward" size={20} color={onNavigateNext ? '#eb7825' : '#d1d5db'} />
-            </TouchableOpacity>
-          </View>
-        </>
-      )}
-
-      {/* Scrollable Content — BottomSheetScrollView required so gestures don't
-          fight with the sheet's drag-to-dismiss handler. */}
-      <BottomSheetScrollView
-        style={styles.scrollView}
-        contentContainerStyle={[
+      header={reviewNavHeader}
+      scrollMode="scroll"
+      accessibilityLabel={card.title}
+      scrollProps={{
+        style: styles.scrollView,
+        contentContainerStyle: [
           styles.scrollContent,
           { paddingBottom: Math.max(insets.bottom, 16) },
-        ]}
-      >
+        ],
+      }}
+    >
             {/* ORCH-0908: locked-in banner — renders for ANY card type (curated/event/place) when shared via lock-and-schedule */}
             {card && <LockedInBanner card={card} />}
 
@@ -2219,7 +2190,11 @@ export default function ExpandedCardModal({
                 />
               </>
             ))}
-      </BottomSheetScrollView>
+    </BaseBottomSheet>
+
+      {/* META-ORCH-0991 Wave A — child RN Modals moved to siblings of the sheet.
+          They render in their own OS overlay window regardless of tree position,
+          so they still present over the sheet content exactly as before. */}
 
       {/* In-app ticket browser (event Get Tickets CTA target) */}
       {isNightOut && nightOut && (
@@ -2262,8 +2237,7 @@ export default function ExpandedCardModal({
           accountPreferences={accountPreferences}
         />
       )}
-    </BottomSheet>
-    </RNModal>
+    </>
   );
 }
 

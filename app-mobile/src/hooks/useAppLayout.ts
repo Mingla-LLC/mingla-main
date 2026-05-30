@@ -8,8 +8,16 @@ import { SCREEN_WIDTH, SCREEN_HEIGHT, vs } from '../utils/responsive';
 /** Header content height (logo + buttons), excluding safe area */
 const HEADER_CONTENT_HEIGHT = vs(52);
 
-/** Bottom nav content height (icons + labels), excluding safe area */
-const BOTTOM_NAV_CONTENT_HEIGHT = vs(56);
+/**
+ * Bottom nav content height (icons + labels), excluding safe area.
+ *
+ * META-ORCH-0991 (sheet rework): exported so the BaseBottomSheet primitive can
+ * add this clearance to a sheet's bottom padding when the sheet is rendered
+ * BELOW the floating GlassBottomNav (i.e. non-`wrapInRNModal` sheets, where the
+ * nav stays visible). This is the single source of truth for the floating-nav
+ * footprint — the primitive must NOT hardcode its own copy.
+ */
+export const BOTTOM_NAV_CONTENT_HEIGHT = vs(56);
 
 /** Minimum bottom padding when no system inset exists (Android w/o gesture nav) */
 const MIN_BOTTOM_PADDING = 8;

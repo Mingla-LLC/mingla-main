@@ -173,6 +173,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
     borderRadius: radiusTokens.lg,
+    overflow: "hidden",
     backgroundColor: glass.tint.profileBase,
     borderColor: glass.border.profileBase,
     borderWidth: StyleSheet.hairlineWidth,

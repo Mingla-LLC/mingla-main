@@ -229,6 +229,7 @@ const styles = StyleSheet.create({
   scroll: {
     flex: 1,
     borderRadius: radius.md,
+    overflow: "hidden",
     backgroundColor: glass.tint.profileBase,
     borderWidth: 1,
     borderColor: glass.border.profileBase,

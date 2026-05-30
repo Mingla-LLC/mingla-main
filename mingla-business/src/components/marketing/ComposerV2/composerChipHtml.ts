@@ -34,12 +34,6 @@ export interface EventChipAttrs {
   coverUrl: string | null;
 }
 
-export function ctaLabelToText(cta: EventChipCtaLabel): string {
-  if (cta === "rsvp") return "RSVP";
-  if (cta === "details") return "See details";
-  return "Get tickets";
-}
-
 /**
  * HTML for an inline event chip. Stage F.10 compact rendering:
  *   - No inline × close button (backspace deletes the chip atomically).

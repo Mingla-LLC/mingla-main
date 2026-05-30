@@ -15,12 +15,6 @@
 import { useCallback, useState } from "react";
 import { Linking } from "react-native";
 
-export type PermissionStatus =
-  | "undetermined"
-  | "granted"
-  | "denied"
-  | "blocked";
-
 export interface PermissionRequestResult {
   granted: boolean;
   canAskAgain: boolean;

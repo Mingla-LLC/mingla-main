@@ -3,16 +3,16 @@ import {
   Text,
   View,
   TouchableOpacity,
-  TextInput,
-  Modal,
-  FlatList,
   ActivityIndicator,
   StyleSheet,
 } from "react-native";
 import { useTranslation } from 'react-i18next';
+import {
+  BaseBottomSheet,
+  BottomSheetTextInput,
+} from "../ui/BaseBottomSheet";
 import { Icon } from "../ui/Icon";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useKeyboard } from '../../hooks/useKeyboard';
 import { Friend } from "../../hooks/useFriends";
 import { getDisplayName } from "../../utils/getDisplayName";
 
@@ -23,6 +23,14 @@ interface FriendPickerSheetProps {
   friends: Friend[];
   loadingFriends: boolean;
 }
+
+// META-ORCH-0991 Wave C Batch 1 — was an RN <Modal> slide-up flex-end card at
+// height "88%" → fixed ['88%'] snap (playbook §2: match the prior modal height,
+// prefer a fixed snap over content-dynamic sizing). The friend results are a
+// long VERTICAL list → routed through BaseBottomSheet's flatlist scroll mode
+// (BottomSheetFlatList) instead of a raw RN <FlatList>, so the list scroll
+// coordinates with the sheet pan gesture (playbook §5).
+const SNAP_POINTS = ["88%"];
 
 function getInitials(name: string): string {
   if (!name) return "?";
@@ -49,7 +57,6 @@ export function FriendPickerSheet({
   const [searchQuery, setSearchQuery] = useState("");
   const [loadingFriendId, setLoadingFriendId] = useState<string | null>(null);
   const insets = useSafeAreaInsets();
-  const { keyboardHeight } = useKeyboard({ disableLayoutAnimation: true });
 
   const filteredFriends = useMemo(() => {
     if (!searchQuery.trim()) return friends;
@@ -108,109 +115,98 @@ export function FriendPickerSheet({
     );
   };
 
-  return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      transparent
-      onRequestClose={handleClose}
-    >
-      <TouchableOpacity
-        style={styles.backdrop}
-        activeOpacity={1}
-        onPress={handleClose}
-      >
-        <View style={styles.sheet} onStartShouldSetResponder={() => true}>
-          {/* Handle bar */}
-          <View style={styles.handleBar} />
+  // Header (handle is owned by the primitive's gorhom handle): title + close +
+  // search field. Rendered as the FlatList ListHeaderComponent so it scrolls
+  // with the list / stays above the keyboard via keyboardBehavior interactive.
+  const header = (
+    <View>
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>{t('chat:newMessage')}</Text>
+        <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
+          <Icon name="close" size={24} color="#111827" />
+        </TouchableOpacity>
+      </View>
 
-          {/* Header */}
-          <View style={styles.header}>
-            <Text style={styles.headerTitle}>{t('chat:newMessage')}</Text>
-            <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
-              <Icon name="close" size={24} color="#111827" />
-            </TouchableOpacity>
-          </View>
+      <View style={styles.searchContainer}>
+        <Icon
+          name="search"
+          size={18}
+          color="#9ca3af"
+          style={styles.searchIcon}
+        />
+        <BottomSheetTextInput
+          placeholder={t('chat:searchFriends')}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          style={styles.searchInput}
+          placeholderTextColor="#9ca3af"
+          autoCapitalize="none"
+        />
+      </View>
+    </View>
+  );
 
-          {/* Search */}
-          <View style={styles.searchContainer}>
-            <Icon
-              name="search"
-              size={18}
-              color="#9ca3af"
-              style={styles.searchIcon}
-            />
-            <TextInput
-              placeholder={t('chat:searchFriends')}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              style={styles.searchInput}
-              placeholderTextColor="#9ca3af"
-              autoCapitalize="none"
-            />
-          </View>
-
-          {/* Friends list */}
-          {loadingFriends ? (
-            <View style={styles.emptyState}>
-              <ActivityIndicator size="large" color="#eb7825" />
-            </View>
-          ) : friends.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Icon name="people-outline" size={48} color="#d1d5db" />
-              <Text style={styles.emptyTitle}>{t('chat:noFriendsYet')}</Text>
-              <Text style={styles.emptySubtitle}>
-                {t('chat:addFriendsToStart')}
-              </Text>
-            </View>
-          ) : filteredFriends.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Icon name="search" size={48} color="#d1d5db" />
-              <Text style={styles.emptyTitle}>{t('chat:noResults')}</Text>
-              <Text style={styles.emptySubtitle}>
-                {t('chat:tryDifferentSearch')}
-              </Text>
-            </View>
-          ) : (
-            <FlatList
-              data={filteredFriends}
-              keyExtractor={(item) => item.id}
-              keyboardShouldPersistTaps="handled"
-              keyboardDismissMode="on-drag"
-              renderItem={renderFriendRow}
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.listContent}
-              ListFooterComponent={<View style={{ height: keyboardHeight > 0 ? keyboardHeight : insets.bottom }} />}
-            />
-          )}
+  // Loading / no-friends / no-results states render as the list's empty
+  // component so they sit below the (always-visible) search header.
+  const renderEmpty = () => {
+    if (loadingFriends) {
+      return (
+        <View style={styles.emptyState}>
+          <ActivityIndicator size="large" color="#eb7825" />
         </View>
-      </TouchableOpacity>
-    </Modal>
+      );
+    }
+    if (friends.length === 0) {
+      return (
+        <View style={styles.emptyState}>
+          <Icon name="people-outline" size={48} color="#d1d5db" />
+          <Text style={styles.emptyTitle}>{t('chat:noFriendsYet')}</Text>
+          <Text style={styles.emptySubtitle}>
+            {t('chat:addFriendsToStart')}
+          </Text>
+        </View>
+      );
+    }
+    return (
+      <View style={styles.emptyState}>
+        <Icon name="search" size={48} color="#d1d5db" />
+        <Text style={styles.emptyTitle}>{t('chat:noResults')}</Text>
+        <Text style={styles.emptySubtitle}>
+          {t('chat:tryDifferentSearch')}
+        </Text>
+      </View>
+    );
+  };
+
+  return (
+    <BaseBottomSheet
+      visible={visible}
+      onClose={handleClose}
+      snapPoints={SNAP_POINTS}
+      theme="light"
+      scrollMode="flatlist"
+      wrapInRNModal
+      keyboardBehavior="interactive"
+      keyboardBlurBehavior="restore"
+      android_keyboardInputMode="adjustResize"
+      accessibilityLabel={t('chat:newMessage')}
+      header={header}
+      scrollProps={{
+        data: filteredFriends,
+        keyExtractor: (item: Friend) => item.id,
+        keyboardShouldPersistTaps: "handled",
+        keyboardDismissMode: "on-drag",
+        renderItem: renderFriendRow,
+        showsVerticalScrollIndicator: false,
+        contentContainerStyle: styles.listContent,
+        ListEmptyComponent: renderEmpty,
+        ListFooterComponent: <View style={{ height: insets.bottom }} />,
+      }}
+    />
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    justifyContent: "flex-end",
-  },
-  sheet: {
-    backgroundColor: "#ffffff",
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    height: "88%",
-    paddingBottom: 0,
-  },
-  handleBar: {
-    width: 40,
-    height: 4,
-    backgroundColor: "#d1d5db",
-    borderRadius: 2,
-    alignSelf: "center",
-    marginTop: 12,
-    marginBottom: 8,
-  },
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -248,6 +244,7 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingHorizontal: 8,
+    flexGrow: 1,
   },
   friendRow: {
     flexDirection: "row",

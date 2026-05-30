@@ -17,7 +17,6 @@ import {
 } from "@tanstack/react-query";
 
 import {
-  getTripIntakeSchemaByTier,
   getTripIntakeSchemasByEvent,
   upsertTripIntakeSchema,
   type IntakeSchema,
@@ -55,24 +54,6 @@ export function useTripIntakeSchemasByEvent(
     queryFn: () => getTripIntakeSchemasByEvent(eventId),
     enabled: (options?.enabled ?? true) && eventId.length > 0,
     staleTime: 30_000, // 30s — schema doesn't change often during a session
-  });
-}
-
-/**
- * Fetch a single tier's intake schema. Used by:
- *   - /checkout-trip/[tripEventId]/intake.tsx buyer-fill page (single-tier cart)
- */
-export function useTripIntakeSchemaByTier(
-  eventId: string,
-  ticketTypeId: string,
-  options?: { enabled?: boolean },
-): UseQueryResult<IntakeSchema | null, IntakeSchemaServiceError> {
-  return useQuery<IntakeSchema | null, IntakeSchemaServiceError>({
-    queryKey: intakeSchemaKeys.byTier(eventId, ticketTypeId),
-    queryFn: () => getTripIntakeSchemaByTier(eventId, ticketTypeId),
-    enabled:
-      (options?.enabled ?? true) && eventId.length > 0 && ticketTypeId.length > 0,
-    staleTime: 30_000,
   });
 }
 
