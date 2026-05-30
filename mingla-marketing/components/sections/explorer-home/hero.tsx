@@ -41,7 +41,7 @@ const SITE_CHIPS: ChipLink[] = [
 
 // ---------------------------------------------------------------
 // HeadlinePill — the white-glass rounded pill in "Find <pill> that fit the
-// vibe". ORCH-0998 hero-pill sync: it is now DRIVEN by the rotating deck. The
+// vibe". ORCH-1007 hero-pill sync: it is now DRIVEN by the rotating deck. The
 // `pill` ({ label, icon }) comes from the shared `useDeckRotation` hook, so the
 // word always matches the deck's current front card and they advance on the
 // SAME 2000ms tick. There is no independent timer here anymore — the previous
@@ -497,14 +497,14 @@ function SupportModal({ open, onClose }: TermsModalProps) {
 }
 
 interface ExplorerHeroProps {
-  /** Server-resolved marketing city (ORCH-0998 location-aware). Defaults to DC. */
+  /** Server-resolved marketing city (ORCH-1007 location-aware). Defaults to DC. */
   cityKey?: CityKey
 }
 
 export function ExplorerHero({ cityKey = DEFAULT_CITY }: ExplorerHeroProps) {
   const reduced = useMinglaReducedMotion()
   // Single source of truth for the rotation: the SAME index/timer drives both
-  // the deck's front card and the headline pill (ORCH-0998 hero-pill sync).
+  // the deck's front card and the headline pill (ORCH-1007 hero-pill sync).
   // The rotation is built from the RESOLVED city's interleaved slots.
   const rotation = useDeckRotation(cityKey)
   const [supportOpen, setSupportOpen] = useState(false)

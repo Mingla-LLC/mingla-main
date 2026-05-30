@@ -2,7 +2,7 @@ import { headers } from 'next/headers'
 import { ExplorerHero } from '@/components/sections/explorer-home/hero'
 import { resolveCityKey } from '@/lib/city-decks'
 
-// ORCH-0998 location-aware hero: resolve the marketing city SERVER-SIDE from
+// ORCH-1007 location-aware hero: resolve the marketing city SERVER-SIDE from
 // Vercel geo headers (or a ?city= override for local testing on :3008), then
 // pass the resolved cityKey down to the client hero. No backend / edge function.
 //

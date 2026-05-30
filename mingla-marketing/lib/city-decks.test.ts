@@ -1,12 +1,12 @@
 // ---------------------------------------------------------------
-// city-decks resolver regression test — ORCH-0998 location-aware hero.
+// city-decks resolver regression test — ORCH-1007 location-aware hero.
 //
 // Asserts resolveCityKey's geo → city mapping + DC fallback. Written for a Jest
 // or Vitest harness (describe/it/expect). The marketing package has no test
 // runner wired yet (no jest/vitest in package.json), so this also ships with a
 // self-contained Node assert runner block at the bottom that can be executed by
 // transpiling this file + city-decks.ts to JS — used to prove fails-on-revert
-// for the ORCH-0998 regression gate. When a harness lands, the describe/it
+// for the ORCH-1007 regression gate. When a harness lands, the describe/it
 // blocks run directly.
 // ---------------------------------------------------------------
 
@@ -80,7 +80,7 @@ declare const describe: undefined | ((name: string, fn: () => void) => void)
 declare const it: undefined | ((name: string, fn: () => void) => void)
 
 if (typeof describe === 'function' && typeof it === 'function') {
-  describe('resolveCityKey (ORCH-0998 location-aware)', () => {
+  describe('resolveCityKey (ORCH-1007 location-aware)', () => {
     for (const [name, fn] of cases) {
       it(name, fn)
     }

@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------
-// Lagos Showcase Events — ORCH-0998 [marketing real place cards — DC test run]
+// Lagos Showcase Events — ORCH-1007 [marketing real place cards — DC test run]
 //
 // Hardcoded snapshot of 4 Lagos-NG events for the event card, mirroring
 // dc-showcase-events.ts. TEST DATA — no backend calls at render time.

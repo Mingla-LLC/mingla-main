@@ -3,11 +3,11 @@ import { useState } from 'react'
 import type { IntentPlan, IntentStop } from '@/lib/dc-intent-plans'
 
 // ---------------------------------------------------------------
-// Intent Card — ORCH-0998 [marketing real place cards — DC test run]
+// Intent Card — ORCH-1007 [marketing real place cards — DC test run]
 //
 // A NEW card type (sibling of hero-place-deck.tsx's single place card): a
 // snapshot of a multi-stop Mingla EXPERIENCE / plan. Built per
-// DESIGN_ORCH-0998_MARKETING_PLACE_CARD_DC.md "Intent Card v1" (§I.1–I.9).
+// DESIGN_ORCH-1007_MARKETING_PLACE_CARD_DC.md "Intent Card v1" (§I.1–I.9).
 //
 // POSITIONING (LOCKED): Mingla is an EXPERIENCE / date-planning / social-
 // experiences app — NOT a dating app. An intent is a vibe for an OUTING
@@ -29,7 +29,7 @@ import type { IntentPlan, IntentStop } from '@/lib/dc-intent-plans'
 // ---------------------------------------------------------------
 
 const CARD_W = 260
-// 🔒LOCKED (ORCH-0998 v2.1 / §I.6): same 360 as the single card — the intent
+// 🔒LOCKED (ORCH-1007 v2.1 / §I.6): same 360 as the single card — the intent
 // card is a pixel-identical SHELL sibling, so the hero no-scroll math is
 // unchanged. Do NOT diverge this height.
 const CARD_H = 360

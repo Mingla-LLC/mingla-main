@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------
-// Raleigh Showcase Places — ORCH-0998 [marketing real place cards — DC test run]
+// Raleigh Showcase Places — ORCH-1007 [marketing real place cards — DC test run]
 //
 // Hardcoded snapshot of 10 real Raleigh-NC places (one per Mingla category),
 // mirroring dc-showcase-places.ts. TEST DATA — no backend calls, no fetch, no

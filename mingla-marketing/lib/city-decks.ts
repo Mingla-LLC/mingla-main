@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------
-// City Decks + Resolver — ORCH-0998 [marketing real place cards — DC test run]
+// City Decks + Resolver — ORCH-1007 [marketing real place cards — DC test run]
 //
 // Maps a resolved cityKey ('dc' | 'raleigh' | 'lagos') to its static showcase
 // snapshot (places + intents + events) and holds the city centers used to pick
