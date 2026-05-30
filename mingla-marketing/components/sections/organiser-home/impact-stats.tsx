@@ -20,8 +20,8 @@ interface Stat {
 }
 
 const STATS: Stat[] = [
-  { prefix: '$', value: 2.4, decimals: 1, suffix: 'M+', label: 'in bookings driven for our partners' },
-  { value: 35000, suffix: '+', label: 'guests matched to partners by vibe' },
+  { prefix: '$', value: 2.4, decimals: 1, suffix: 'M+', label: 'in bookings driven for businesses' },
+  { value: 35000, suffix: '+', label: 'guests matched to businesses by vibe' },
   { value: 8500, suffix: '+', label: 'pages & experiences built with Ari' },
   { value: 150, suffix: '+', label: 'businesses growing on Mingla' },
 ]
