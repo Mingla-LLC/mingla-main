@@ -135,7 +135,7 @@ export function OrganiserAudienceTabs() {
         {/* Header — desktop: title + tabs (left) beside the Earnings chart (right).
             Mobile order: title → chart → tabs, so the chart sits between the title
             and the tab picker and the tabs lead straight into the content. */}
-        <div className="grid gap-x-16 gap-y-9 lg:grid-cols-[1fr_0.82fr]">
+        <div className="grid gap-x-16 gap-y-9 lg:grid-cols-2">
           {/* Title */}
           <div className="lg:col-start-1 lg:row-start-1 lg:self-end">
             <Reveal as="span" className="block text-xs font-semibold uppercase tracking-[0.2em] text-warm">

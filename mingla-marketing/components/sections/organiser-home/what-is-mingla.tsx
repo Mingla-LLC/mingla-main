@@ -155,7 +155,7 @@ export function OrganiserWhatIsMingla() {
                         </StepperTitle>
                         {/* Mobile: always expanded (readable without scroll-scrub).
                             Desktop: collapse/expand driven by the scroll-active step. */}
-                        <StepperDescription className="mt-2 overflow-hidden lg:mt-0 lg:max-h-0 lg:opacity-0 lg:transition-all lg:duration-500 lg:ease-out lg:data-[state=active]:mt-2 lg:data-[state=active]:max-h-44 lg:data-[state=active]:opacity-100">
+                        <StepperDescription className="mt-2 overflow-hidden lg:mt-0 lg:max-h-0 lg:opacity-0 lg:transition-all lg:duration-500 lg:ease-out lg:data-[state=active]:mt-2 lg:data-[state=active]:max-h-44 lg:data-[state=active]:opacity-100 lg:data-[state=completed]:mt-2 lg:data-[state=completed]:max-h-44 lg:data-[state=completed]:opacity-100">
                           {s.description}
                         </StepperDescription>
                       </div>
