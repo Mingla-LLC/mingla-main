@@ -466,7 +466,10 @@ export async function setTripPricingSwitches(
     passServiceFee: boolean | null;
   },
 ): Promise<void> {
-  const { error } = await supabase
+  // I-PROPOSED-I (MUTATION-ROWCOUNT-VERIFIED): chain .select() so a 0-row write
+  // (RLS denial / wrong id / not-a-trip) surfaces as an error, never a silent
+  // no-op. Mirrors patchPublishedEventPricingSwitches on the event side.
+  const { data, error } = await supabase
     .from("events")
     .update({
       pass_tax: overrides.passTax,
@@ -474,8 +477,12 @@ export async function setTripPricingSwitches(
       pass_service_fee: overrides.passServiceFee,
     })
     .eq("id", eventId)
-    .eq("event_type", "trip");
+    .eq("event_type", "trip")
+    .select("id");
   if (error) throw error;
+  if (data === null || data.length === 0) {
+    throw new Error("set_trip_pricing_switches_no_rows");
+  }
 }
 
 // ---------------------- createTripDraft ----------------------
