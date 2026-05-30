@@ -38,6 +38,18 @@
  *     missing_fields_count:  number,         // count where generative_summary IS NULL
  *                                            //   OR editorial_summary IS NULL
  *                                            //   OR reviews IS NULL OR jsonb_array_length(reviews) = 0
+ *
+ *     // ORCH-1015 — Boundary + Details binary readiness flags driving the
+ *     // 3-band layout + smart-skip bulk button on IntelligenceOverviewTab.
+ *     // Cutover date for `refreshed_new_fields` + `needs_refresh_count` is
+ *     // 2026-03-19 (commit 596b3c05c, 48-field DETAIL_FIELD_MASK ship).
+ *     // Hardcoded constant in the edge fn — not runtime-tunable.
+ *     regeocoded:            boolean,        // seeding_cities.coverage_radius_km = 0
+ *     refreshed_new_fields:  boolean,        // needs_refresh_count === 0 AND servable_count > 0
+ *                                            //   (i.e. EVERY servable place refreshed post-cutover)
+ *     needs_refresh_count:   number,         // COUNT(*) FILTER (is_servable AND
+ *                                            //                  (last_detail_refresh < 2026-03-19 OR NULL))
+ *                                            //   NULL counted as needing refresh (mirrors stale-NULL rule)
  *   }>
  *
  * Sorted by servable_count desc.

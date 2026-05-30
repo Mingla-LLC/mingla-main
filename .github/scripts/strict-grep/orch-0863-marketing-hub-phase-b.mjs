@@ -1033,6 +1033,15 @@ function checkNoNewBackendFiles() {
     "supabase/functions/run-place-intelligence-trial/index.ts",
     "supabase/functions/run-place-intelligence-trial/__tests__/intelligence_coverage_seed_refresh.test.ts",
   ];
+  // ORCH-1015 — Intelligence Overview readiness ladder. Edge fn touched is
+  // the existing intelligence_coverage action (3 new fields per city row +
+  // 1 extended fetch column on seeding_cities). The Deno test file is
+  // extended in-place (no new test file). Edge fn path duplicates
+  // ORCH_1008/ORCH_1014 — harmless (ALLOWLIST is a union via .includes()).
+  const ORCH_1015_BACKEND_ALLOWLIST = [
+    "supabase/functions/run-place-intelligence-trial/index.ts",
+    "supabase/functions/run-place-intelligence-trial/__tests__/intelligence_coverage_seed_refresh.test.ts",
+  ];
   const ALLOWLIST = [
     ...ORCH_1006_BACKEND_ALLOWLIST,
     ...ORCH_0989_BACKEND_ALLOWLIST,
@@ -1090,6 +1099,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_1008_BACKEND_ALLOWLIST,
     ...ORCH_1013_BACKEND_ALLOWLIST,
     ...ORCH_1014_BACKEND_ALLOWLIST,
+    ...ORCH_1015_BACKEND_ALLOWLIST,
   ];
   const forbidden = changed.filter(
     (p) =>
