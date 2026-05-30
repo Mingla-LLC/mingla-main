@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Mochiy_Pop_One, Nunito_Sans, Inter } from 'next/font/google'
 import './globals.css'
+import { ContentProtection } from '@/components/marketing/content-protection'
 
 // Brand display — matches the live usemingla.com brand font.
 // Mochiy Pop One ships in a single weight (400) with no italic axis.
@@ -47,6 +48,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           Skip to content
         </a>
         {children}
+        <ContentProtection />
       </body>
     </html>
   )
