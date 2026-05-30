@@ -7,9 +7,9 @@
 
 ---
 
-## ACTIVE (post META-ORCH-1009 Sub-A [ai-signal-scores schema] CLOSE 2026-05-30)
+## ACTIVE (post META-ORCH-1009 Sub-A [ai-signal-scores schema] + Sub-B [consumer ranker blend + 3-surface reasoning] CLOSE 2026-05-30)
 
-Three invariants landed by Sub-A. Two flip ACTIVE on this CLOSE (sole-owner + shape contract); one is DRAFT until Sub-B's ranker reads the new column. Backed by Deno tests at `supabase/functions/run-place-intelligence-trial/__tests__/ai_signal_scores_slice.test.ts` + `ai_signal_scores_write_path.test.ts` (11 tests total, fails-on-revert verified at commit `25376e00f`), the migration self-verify probe in `20260802000003_meta_orch_1009_sub_a_ai_signal_scores.sql` (RAISE NOTICE + WARNING on drift > 5%), and the post-apply SQL probe at `supabase/migrations/__tests__/meta_orch_1009_sub_a_ai_signal_scores_backfill.test.sql`.
+Five invariants total. Sub-A landed three (sole-owner ACTIVE + shape contract ACTIVE + prompt-version-discriminated DRAFT). Sub-B flipped the discriminator ACTIVE + added two new ACTIVE invariants (consumer-reads-not-trial-table + collab-determinism-preserved-under-AI-blend). Backed by Deno tests at `supabase/functions/_shared/__tests__/signalScorer.blend.test.ts` (11 blend tests, fails-on-revert verified at commit `141b1c69f`), `supabase/functions/discover-cards/__tests__/ai_reasoning_passthrough.test.ts` (9 tests) + `collab_determinism_under_ai_blend.test.ts` (6 tests), `supabase/functions/generate-curated-experiences/__tests__/ai_reasoning_passthrough.test.ts` (5 tests), the existing Sub-A trial-writer tests (11 tests), the new strict-grep gate `i-consumer-reads-ai-signal-scores-not-trial-table.mjs` (registered in `strict-grep-mingla-business.yml`), and the post-apply SQL probe `meta_orch_1009_sub_b_rpc_reasoning_return.test.sql`.
 
 ### I-AI-SIGNAL-SCORES-COLUMN-SOLE-OWNER (ACTIVE post META-ORCH-1009 Sub-A CLOSE)
 
@@ -50,23 +50,63 @@ Three invariants landed by Sub-A. Two flip ACTIVE on this CLOSE (sole-owner + sh
 
 **Related invariants:** I-AI-SIGNAL-SCORES-COLUMN-SOLE-OWNER · I-AI-SIGNAL-SCORES-PROMPT-VERSION-DISCRIMINATED
 
-### I-AI-SIGNAL-SCORES-PROMPT-VERSION-DISCRIMINATED (DRAFT post META-ORCH-1009 Sub-A CLOSE)
+### I-AI-SIGNAL-SCORES-PROMPT-VERSION-DISCRIMINATED (ACTIVE post META-ORCH-1009 Sub-B CLOSE 2026-05-30)
 
-**Status:** DRAFT. Flips to ACTIVE on Sub-B's ranker landing (the ranker is the enforcement surface; the invariant is documented now so Sub-B implementor inherits the contract).
+**Status:** ACTIVE post META-ORCH-1009 Sub-B CLOSE 2026-05-30 (flipped from DRAFT — Sub-A pre-staged the body; Sub-B is the enforcement surface).
 
-**Statement:** The consumer-ranker code path (`supabase/functions/_shared/signalScorer.ts` or its successor, per Sub-B SPEC) MUST check the per-signal `prompt_version` field in `place_pool.ai_signal_scores` against the current expected prompt version (sourced from a single canonical constant — Sub-B SPEC pins WHERE). On mismatch, the AI score for that signal MUST be treated as null and the ranker MUST fall back to the rule scorer alone (no blend) for that (place, signal) pair.
+**Statement:** The consumer-ranker code path (`supabase/functions/_shared/signalScorer.ts`) MUST check the per-signal `prompt_version` field in `place_pool.ai_signal_scores` against the current expected prompt version (single source of truth: `DEFAULT_EXPECTED_PROMPT_VERSION = 'v4'` exported from `signalScorer.ts`; overridable per signal via `signal_definition_versions.config.expected_prompt_version` JSONB key). On mismatch, the AI score for that signal MUST be treated as null and the ranker MUST fall back to the rule scorer alone (no blend) for that (place, signal) pair.
 
 **Rationale:** Prompt drift is silent. A V5 prompt with re-tuned scoring thresholds will produce scores on a different scale than V4 — blending V4 scores into a V5-aware ranker silently corrupts the deck. Discriminating at READ time means the system fails CLOSED (rule-scorer baseline) rather than fails OPEN (degraded blend).
 
-**Authority (to be set on Sub-B close):** `supabase/functions/_shared/signalScorer.ts` — Sub-B SPEC §3.X (TBD).
+**Authority:** `supabase/functions/_shared/signalScorer.ts` — `computeScore` function, the `if (!aiEntry || aiEntry.prompt_version !== expectedVersion)` guard. Single-source-of-truth constant `DEFAULT_EXPECTED_PROMPT_VERSION` exported from the same file. Per-signal override lives in `signal_definition_versions.config.expected_prompt_version` JSONB.
 
-**Enforcement (gates to be set on Sub-B close):**
-1. Sub-B unit test on the ranker — feed AI evaluations stamped `v3` and `v4` with `EXPECTED_PROMPT_VERSION='v4'`; assert v3 entries are ignored and v4 entries are blended.
-2. Sub-B integration test — feed a mixed-prompt place row through the full ranker; assert the v3 signals produce the same score as if AI scores were absent.
+**Enforcement:**
+1. Deno unit test `supabase/functions/_shared/__tests__/signalScorer.blend.test.ts` Test T-B4: feeds `ai_signal_scores[signalId].prompt_version = 'v3'` with `config.expected_prompt_version = 'v4'`; asserts the AI score is ignored and the result equals the rule-only score.
+2. Deno unit test T-B6: feeds `ai_signal_scores[signalId].prompt_version = 'v4'` with `config.expected_prompt_version` ABSENT; asserts default constant is used and AI score IS blended.
+3. Deno unit test T-B4b: feeds a veto (`inappropriate_for=true`) on a prompt-version-mismatched entry; asserts veto does NOT fire (discriminator runs first — fail-closed).
+4. Sub-B migration RPC SQL probe `meta_orch_1009_sub_b_rpc_reasoning_return.test.sql`: the `ai_reasoning` column returned by the RPC is the raw `ai_signal_scores -> signal_id` entry — the version discriminator runs ABOVE this column at offline write-time in signalScorer.computeScore, so this column is intentionally permissive (admin visibility of even-mismatched entries is useful for re-eval triage).
 
-**Established:** 2026-05-30 by META-ORCH-1009 Sub-A CLOSE (as DRAFT); target ACTIVE on Sub-B close.
+**Established:** 2026-05-30 by META-ORCH-1009 Sub-A CLOSE (as DRAFT); flipped ACTIVE 2026-05-30 by META-ORCH-1009 Sub-B CLOSE.
 
-**Related invariants:** I-AI-SIGNAL-SCORES-COLUMN-SOLE-OWNER · I-AI-SIGNAL-SCORES-SHAPE-CONTRACT
+**Related invariants:** I-AI-SIGNAL-SCORES-COLUMN-SOLE-OWNER · I-AI-SIGNAL-SCORES-SHAPE-CONTRACT · I-CONSUMER-READS-AI-SIGNAL-SCORES-NOT-TRIAL-TABLE · I-COLLAB-DECK-DETERMINISM-PRESERVED-UNDER-AI-BLEND
+
+### I-CONSUMER-READS-AI-SIGNAL-SCORES-NOT-TRIAL-TABLE (ACTIVE post META-ORCH-1009 Sub-B CLOSE 2026-05-30)
+
+**Statement:** Production consumer-ranker code paths — `supabase/functions/_shared/signalScorer.ts`, `supabase/functions/run-signal-scorer/index.ts`, `supabase/functions/discover-cards/index.ts`, `supabase/functions/generate-curated-experiences/index.ts`, `supabase/functions/_shared/signalRankFetch.ts`, and the SQL RPCs `query_servable_places_by_signal` + `query_servable_places_by_signal_intersection` — MUST read AI signal evaluations EXCLUSIVELY from `place_pool.ai_signal_scores`. Direct reads of `place_intelligence_trial_runs` from any production code path (consumer mobile, admin-callable consumer-facing RPC, signal scorer) are FORBIDDEN. Reads of `place_intelligence_trial_runs` from admin tooling (admin dashboard, trial-run inspector, re-eval button) are PERMITTED.
+
+**Rationale:** `place_intelligence_trial_runs` is research-grade (no production contract on schema or freshness). `place_pool.ai_signal_scores` is the single production-blessed surface per DEC-099 + DEC-181. Bypassing the column would defeat the shape contract (I-AI-SIGNAL-SCORES-SHAPE-CONTRACT), the sole-writer contract (I-AI-SIGNAL-SCORES-COLUMN-SOLE-OWNER), and the prompt-version discriminator (I-AI-SIGNAL-SCORES-PROMPT-VERSION-DISCRIMINATED) by reading a schema with no such gates.
+
+**Authority:** This invariant. Code reviewers + the strict-grep gate below.
+
+**Enforcement:**
+1. NEW strict-grep CI script `.github/scripts/strict-grep/i-consumer-reads-ai-signal-scores-not-trial-table.mjs`: fails CI if any file under `supabase/functions/_shared/signalScorer.ts`, `supabase/functions/_shared/signalRankFetch.ts`, `supabase/functions/discover-cards/`, `supabase/functions/generate-curated-experiences/`, or `supabase/functions/run-signal-scorer/` contains the literal string `place_intelligence_trial_runs`. Registered in `.github/workflows/strict-grep-mingla-business.yml`. Self-test: insert a temporary `from('place_intelligence_trial_runs')` into signalScorer.ts → gate fails with exit 1.
+2. PR review checklist item: any new consumer edge function that wants AI scores reads from `place_pool.ai_signal_scores` via the existing helper pattern.
+
+**Test that catches a regression:** the strict-grep gate fires on any PR that imports trial table access into a consumer file. Self-test verified at Sub-B close: gate failed cleanly with the temporary violation, passed clean after revert.
+
+**Established:** 2026-05-30 by META-ORCH-1009 Sub-B CLOSE.
+
+**Related invariants:** I-AI-SIGNAL-SCORES-COLUMN-SOLE-OWNER · I-AI-SIGNAL-SCORES-SHAPE-CONTRACT · I-AI-SIGNAL-SCORES-PROMPT-VERSION-DISCRIMINATED · I-TRIAL-OUTPUT-NEVER-FEEDS-RANKING (RETRACTED).
+
+### I-COLLAB-DECK-DETERMINISM-PRESERVED-UNDER-AI-BLEND (ACTIVE post META-ORCH-1009 Sub-B CLOSE 2026-05-30)
+
+**Statement:** The introduction of `place_pool.ai_signal_scores` reads + blending + veto into the consumer ranker (Sub-B) preserves the collab-deck determinism contract `[[collab-deck-determinism-contract]]`. Specifically: the AI score for a given (place, signal) is a pure function of `place_pool.ai_signal_scores[signal_id]` at the time `run-signal-scorer` computes the blended `place_scores.score`. The blended score is then read by `query_servable_places_by_signal_intersection` (collab RPC) and produces an identical ordering for two requests in the same session V_n that observe the same `place_scores.score` set + the same `session_deck_cards` exclusion set + the same circles intersection. The blend MUST NOT introduce request-time randomness or request-time reads from `place_pool.ai_signal_scores` for ranking purposes (those reads happen only at offline `run-signal-scorer` time). The `ai_reasoning` jsonb column returned by the RPC IS read at request time but is INFORMATIONAL (rendered in expand-modal) and does NOT influence card ordering.
+
+**Rationale:** The deck-determinism contract requires that within a session version V_n, every participant sees the same card at the same position. The blended score lives in `place_scores.score` (offline-computed); the request-time RPC reads ONLY `place_scores.score` to ORDER BY — the AI score is never read at request time for ranking. The new `ai_reasoning` jsonb column returned by the RPC is INFORMATIONAL and carries identical content for identical input rows, so it is also a pure function.
+
+**Authority:** This invariant. Sub-B's signalScorer.computeScore (which writes the blend offline) + the unchanged collab RPC ordering clause `ORDER BY ps.score DESC, pp.review_count DESC NULLS LAST, pp.id ASC` (verified verbatim by Sub-B migration).
+
+**Enforcement:**
+1. Deno test `supabase/functions/discover-cards/__tests__/collab_determinism_under_ai_blend.test.ts` — 6 source-text assertions covering: (T-D-01) intersection ORDER BY preserved verbatim; (T-D-02) solo ORDER BY preserved verbatim; (T-D-03) ORDER BY clauses do not reference any AI column; (T-D-04) RPC call parameters unchanged (no `p_ai_*`); (T-D-05) signalScorer.computeScore is pure (no I/O imports); (T-D-06) blend formula lives in scorer, not in discover-cards request path.
+2. Code review: any change to `signalScorer.computeScore` or to the collab RPC must mention this invariant.
+3. Existing collab determinism Deno tests (the `orch_0909_adversarial.test.ts` family) continue to pass — Sub-B's change to `signalScorer` does not touch the RPC ordering clause.
+4. Migration probe `meta_orch_1009_sub_b_rpc_reasoning_return.test.sql` M-03: asserts the intersection RPC ORDER BY clause does not reference any AI column.
+
+**Test that catches a regression:** the source-text test (T-D-03) fails immediately if the implementor pushes the AI read into the request-time RPC ORDER BY.
+
+**Established:** 2026-05-30 by META-ORCH-1009 Sub-B CLOSE.
+
+**Related invariants:** I-CONSUMER-READS-AI-SIGNAL-SCORES-NOT-TRIAL-TABLE · I-AI-SIGNAL-SCORES-COLUMN-SOLE-OWNER · `[[collab-deck-determinism-contract]]` memory rule.
 
 ---
 

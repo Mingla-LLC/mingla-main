@@ -73,6 +73,14 @@ export function holidayCardToExpandedCardData(
     matchFactors: { location: 0, budget: 0, category: 0, time: 0, popularity: 0 },
     socialStats: { views: 0, likes: 0, saves: 0, shares: 0 },
     location: c.lat != null && c.lng != null ? { lat: c.lat, lng: c.lng } : undefined,
+    // [META-ORCH-1009 Sub-B] Per-signal Gemini Q2 reasoning passthrough. D-8
+    // verdict 2026-05-30: the paired-friend backends today do NOT populate
+    // this field; passing it through is a no-op for the current pipeline but
+    // makes the modal section automatically appear the moment the follow-up
+    // Sub extends `get-person-hero-cards` / `get-paired-profile-cards` to
+    // source reasoning from place_pool.ai_signal_scores. Undefined → modal
+    // hides the section (graceful degrade).
+    aiReasoningBySignal: c.aiReasoningBySignal,
   };
 
   if (!isCurated) return base;

@@ -378,3 +378,60 @@
 - META-ORCH-1009 Sub-A implementation report (`Mingla_Artifacts/reports/IMPLEMENTATION_META-ORCH-1009_SUB_A_AI_SIGNAL_SCORES_SCHEMA.md`)
 - Sub-B / Sub-C / Sub-D (sibling sub-dispatches — separate ORCHs)
 - COMMS-0003 (external-API docs cited inline — Gemini function-calling URL + Postgres JSONB indexing URL)
+
+---
+
+## DEC-182 — META-ORCH-1009 Sub-B: write-time AI blend + DELETE-on-veto + Record<signalId,string> reasoning payload
+
+**Date:** 2026-05-30
+**Owner:** META-ORCH-1009 Sub-B (orchestrator-dispatched implementor pass)
+**Context:** Sub-A landed the `place_pool.ai_signal_scores` column + backfill. Sub-B's job is the user-felt moment: every deck card now ranked by a blend of the rule scorer and Gemini's per-signal score, places vetoed by Gemini silently removed, and the expand-modal renders Gemini's reasoning on the card back. Three design choices fixed shape: WHERE the blend runs (write-time vs request-time), HOW veto is stored (the column accepts NOT NULL only), and what shape the reasoning payload takes on the wire.
+
+**Decision (load-bearing — three coupled choices):**
+
+1. **Blend happens at WRITE time** in `signalScorer.computeScore`, invoked by the offline `run-signal-scorer` edge function. The blended value lands in the existing `place_scores.score` numeric column. Request-time RPCs continue to ORDER BY the stored score with zero added blend logic at the hot path.
+
+2. **Veto-on-Gemini is materialised by DELETING the `place_scores` row** for the (place, signal) pair. `place_scores.score` is declared `NOT NULL` with `CHECK (0 <= score <= 200)` in the baseline DDL, so the SPEC's proposed NULL-sentinel cannot exist. Row-deletion has the same JOIN-side effect (the consumer RPCs `INNER JOIN place_scores ps ON ps.place_id = pp.id AND ps.signal_id = ...` exclude vetoed pairs automatically) without requiring a DDL change. Re-running `run-signal-scorer` after Gemini reverses a veto naturally restores the row via the existing UPSERT path.
+
+3. **Reasoning payload shape is `Record<signalId, string>`** keyed by signal_id (not a single string). A card surfaces under multiple signals when the user picks multiple chips; the expand-modal's `pickDominantReasoning` resolver picks whichever signal matches the card's `tags[0]` (the placeType the chip routed to), falling back to the first non-empty entry by `Object.keys` order.
+
+**Rationale:**
+
+- **Write-time blend:** (a) Zero hot-path latency added (RPC just SELECTs `place_scores.score`). (b) Preserves the collab determinism contract trivially (the RPC ORDER BY clause is unchanged → `I-COLLAB-DECK-DETERMINISM-PRESERVED-UNDER-AI-BLEND` holds by construction). (c) Preserves the existing `CATEGORY_TO_SIGNAL.filterMin` thresholds (100, 120, 80) without coordinated re-tuning because the blended value is re-scaled back to the [0, 200] rule scale.
+- **DELETE-on-veto:** No DDL change. Idempotent: `UPSERT` restores on un-veto, `DELETE` removes on veto. No risk of sentinel values leaking to admin tooling that SELECTs `place_scores.score` without the `>= filter_min` guard.
+- **Record<signalId, string>:** Multi-chip support. Lets a future Sub render "matches you for both romantic AND scenic" without re-shipping the payload format. Mobile-side dominant-signal resolver is a single shared helper in `ExpandedCardModal.tsx` so all 3 surfaces (Home solo, group-chat collab, paired-friend) get identical treatment.
+
+**Operator-confirmed constraints (carried over from dispatch 2026-05-30):**
+
+- D-1 staleness window: `run-signal-scorer` must be re-run after each Gemini Q2 coverage bump from Sub-C; operator triggers manually until Sub-D ships the auto-cron. Acceptable trade-off — bounds blend freshness at ≤24h.
+- D-8 paired-friend coverage gap: the friend-profile pipeline (`get-person-hero-cards` + `get-paired-profile-cards`) is INDEPENDENT of `discover-cards`; it uses `query_person_hero_places_by_signal` which Sub-B does NOT extend. Mobile types + mapper carry the reasoning field for forward-compat; the field is undefined in practice on the friend surface until a follow-up Sub extends that RPC. Modal hides the section when undefined (graceful degrade).
+
+**Alternatives rejected:**
+
+- **Request-time blend** (compute in `discover-cards` from a raw `ai_signal_scores` JSONB read per card per request) — rejected because (a) it requires hot-path JSONB key lookups against the cold place_pool column on every fetch, (b) it forces a parallel re-tune of every `CATEGORY_TO_SIGNAL.filterMin` to account for blended-scale values, and (c) it makes collab determinism harder to argue (the RPC would need a stable ORDER BY over a request-time computed expression).
+- **NULL-sentinel veto** (per SPEC §3.1) — rejected because `place_scores.score` is NOT NULL in DDL and adding the NULL allowance is a separate column-altering migration with its own apply risk.
+- **Single-string reasoning payload** — rejected because multi-chip cards surface under multiple signals; collapsing to a single string forces the backend to pick the dominant signal (it doesn't know which chip the user clicked at expand-time) and loses fidelity for a future "matches you for both X AND Y" UX.
+- **Per-signal `_ai_vetoed` boolean column on `place_scores`** — rejected as premature; row-deletion has the same RPC-exclusion effect without DDL.
+
+**Impact:**
+
+- **Scorer (offline):** `signalScorer.computeScore` gains a 3rd required arg `signalId`; the 21 existing scorer.test.ts call sites updated mechanically with TEST-MOD-APPROVED token. Adds the blend + veto + version-discriminator branches. 11 new Deno blend tests pass fails-on-revert at commit `141b1c69f`.
+- **Edge fn (offline):** `run-signal-scorer/index.ts` reads `ai_signal_scores` via extended SELECT; computes blend; UPSERTs non-veto rows; DELETEs veto rows in batches of 500. Adds `vetoed_count` + `ai_blended_count` to the summary response. Pure offline — no consumer latency.
+- **Consumer RPCs (online):** New migration `20260803000000_meta_orch_1009_sub_b_rpcs_with_reasoning.sql` re-CREATEs `query_servable_places_by_signal` + `query_servable_places_by_signal_intersection` with two appended columns: `ai_reasoning jsonb` (the full per-signal slice) + `ai_score_raw numeric` (admin convenience). ORDER BY clauses preserved verbatim. ~250 bytes per row added to the wire payload.
+- **Mobile (3 surfaces):** Optional `aiReasoningBySignal?: Record<string,string>` added to `ExpandedCardData`, `Recommendation`, and `HolidayCard`. `ExpandedCardModal.tsx` renders a "Why we picked this for you" section (violet-tinted card, sparkles icon, ~14sp body copy) when the dominant-signal resolver returns a non-empty string. Home + collab inherit via `unifiedCardToRecommendation`. Paired-friend mapper passes through the field but the source pipeline doesn't populate it (D-8) — section silently absent.
+- **Invariants:** Flips `I-AI-SIGNAL-SCORES-PROMPT-VERSION-DISCRIMINATED` DRAFT → ACTIVE; adds `I-CONSUMER-READS-AI-SIGNAL-SCORES-NOT-TRIAL-TABLE` ACTIVE + `I-COLLAB-DECK-DETERMINISM-PRESERVED-UNDER-AI-BLEND` ACTIVE.
+- **CI:** New strict-grep gate `i-consumer-reads-ai-signal-scores-not-trial-table.mjs` registered in `strict-grep-mingla-business.yml`. Self-test verified.
+
+**EXIT signal:** none — the write-time blend is the load-bearing choice; reversing it would force a re-tune of all `filterMin` thresholds + a request-time blend cost + a re-argument of the collab determinism contract. Lock now.
+
+**Cross-references:**
+
+- DEC-099 (constitutional bless — JSONB column pre-authorisation)
+- DEC-181 (column name `ai_signal_scores` over `claude_signal_evaluations`)
+- META-ORCH-1009 Sub-A close (column landed)
+- META-ORCH-1009 Sub-B SPEC (`Mingla_Artifacts/specs/SPEC_META-ORCH-1009_SUB_B_CONSUMER_RANKER_BLEND.md`)
+- META-ORCH-1009 Sub-B implementation report (`Mingla_Artifacts/reports/IMPLEMENTATION_META-ORCH-1009_SUB_B_CONSUMER_RANKER_BLEND.md`)
+- I-AI-SIGNAL-SCORES-PROMPT-VERSION-DISCRIMINATED (flipped DRAFT → ACTIVE)
+- I-CONSUMER-READS-AI-SIGNAL-SCORES-NOT-TRIAL-TABLE (new ACTIVE)
+- I-COLLAB-DECK-DETERMINISM-PRESERVED-UNDER-AI-BLEND (new ACTIVE)
+- COMMS-0003 (Gemini structured-output docs URL cited inline in signalScorer.ts header)
