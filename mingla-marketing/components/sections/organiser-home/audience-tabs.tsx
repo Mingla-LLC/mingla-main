@@ -8,6 +8,7 @@ import { VenueActivityFeed } from '@/components/sections/organiser-home/venue-ac
 import { EventAttendeesCard } from '@/components/sections/organiser-home/event-attendees-card'
 import { DiningDashboardCard } from '@/components/sections/organiser-home/dining-dashboard-card'
 import { TripPlannerCard } from '@/components/sections/organiser-home/trip-planner-card'
+import { PopupCard } from '@/components/sections/organiser-home/popup-card'
 import { cn } from '@/lib/cn'
 import { useMinglaReducedMotion } from '@/lib/reduced-motion'
 
@@ -226,6 +227,8 @@ export function OrganiserAudienceTabs() {
                 <DiningDashboardCard />
               ) : tab.id === 'experiences' ? (
                 <TripPlannerCard />
+              ) : tab.id === 'popups' ? (
+                <PopupCard />
               ) : null}
             </div>
           </motion.div>
