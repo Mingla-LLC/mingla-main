@@ -20,6 +20,7 @@
 
 import React, { useCallback, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useRouter } from "expo-router";
 
 import {
   accent,
@@ -212,6 +213,7 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
 
   // ORCH-1006 — "Who covers the costs?" section state.
   const brand = useCurrentBrand();
+  const router = useRouter();
   const pricingSwitches = draft.pricingSwitches ?? {
     passTax: null,
     passMinglaFee: null,
@@ -343,6 +345,9 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
           currency={switchesCurrency}
           effectiveTakeRateBps={brand.takeRateBpsOverride ?? DEFAULT_TAKE_RATE_BPS}
           locked={pricingLocked}
+          onEditDefaults={() =>
+            router.push(`/brand/${brand.id}/pricing-defaults` as never)
+          }
           // Surface 4 — VAT-registration probe wires in with its endpoint
           // (next batch). Interim: interactive; the engine fail-closes to
           // absorb at checkout for unregistered brands regardless of this UI.

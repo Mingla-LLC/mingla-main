@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "expo-router";
 // orch-strict-grep-allow orch-0892 — META-ORCH-0972 Sub-B ExperienceCreatorWizard is a single-form experience creation flow; keyboard-input fields (title, description, venue) sit at top of viewport with explicit keyboardShouldPersistTaps and are not scroll-occluded by the on-screen keyboard. SmartScrollView migration deferred to a dedicated keyboard-hygiene follow-up ORCH.
 import {
   Pressable,
@@ -107,6 +108,7 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
 }) => {
   const { user } = useAuth();
   const brand = useCurrentBrand();
+  const router = useRouter();
   const updateBrand = useUpdateBrand();
   const venueDefault = useExperienceVenueDefault(brandId);
   const [step, setStep] = useState<StepIndex>(1);
@@ -316,6 +318,9 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
                 previewBaseCents={Math.round((parseFloat(priceMajor) || 0) * 100)}
                 currency={brand.defaultCurrency ?? "USD"}
                 effectiveTakeRateBps={brand.takeRateBpsOverride ?? DEFAULT_TAKE_RATE_BPS}
+                onEditDefaults={() =>
+                  router.push(`/brand/${brand.id}/pricing-defaults` as never)
+                }
                 // Create-only wizard — never locked at create; engine fail-closes
                 // VAT to absorb at checkout for unregistered brands.
                 vatRegistered

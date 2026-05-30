@@ -129,6 +129,12 @@ export interface WhoCoversCostsSectionProps {
   onEditDefaults?: () => void;
   /** Which format this is mounted in (drives the "{event}" copy). */
   format: OfferingFormat;
+  /**
+   * Surface 2 — replaces the inherit/edit-defaults footer with custom content
+   * (e.g. the read-only region chip on the brand-defaults screen, which IS the
+   * source of truth and has nothing to inherit). Ignored when `locked`.
+   */
+  footerOverride?: React.ReactNode;
   testID?: string;
 }
 
@@ -150,6 +156,7 @@ export const WhoCoversCostsSection: React.FC<WhoCoversCostsSectionProps> = ({
   onSetupVat,
   onEditDefaults,
   format,
+  footerOverride,
   testID,
 }) => {
   const resolved = resolveSwitches(overrides, defaults);
@@ -304,6 +311,8 @@ export const WhoCoversCostsSection: React.FC<WhoCoversCostsSectionProps> = ({
             the same terms.
           </Text>
         </View>
+      ) : footerOverride !== undefined ? (
+        <View style={styles.overrideFooter}>{footerOverride}</View>
       ) : (
         <View style={styles.inheritFooter}>
           <Text style={styles.inheritText}>
@@ -553,6 +562,9 @@ const styles = StyleSheet.create({
     fontSize: typography.caption.fontSize,
     lineHeight: typography.caption.lineHeight,
     color: textTokens.tertiary,
+  },
+  overrideFooter: {
+    marginTop: spacing.md,
   },
   inheritFooter: {
     flexDirection: "row",
