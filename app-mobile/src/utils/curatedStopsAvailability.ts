@@ -18,18 +18,18 @@
  * Verdict semantics (Constitution #9 — no fabricated availability):
  *   isPlaceOpenAt === false → CLOSED → counts toward "Some Stops Are Closed".
  *   isPlaceOpenAt === true  → OPEN.
- *   isPlaceOpenAt === null  → honest-unknown (no parseable hours) → treated as
- *                             OPEN-but-unknown, does NOT block — consistent with
- *                             the regular-card advisory path and the reference
- *                             ActionButtons (which only flags `=== false`).
+ *   isPlaceOpenAt === null  → honest-unknown (no parseable hours) → NOT safe
+ *                             to schedule. Curated plans only get an "all open"
+ *                             verdict when every stop is proven open.
  */
 
 import { extractWeekdayText, isPlaceOpenAt } from './openingHoursUtils';
 
 export interface StopAvailability {
   stopName: string;
-  isOpen: boolean; // true when isPlaceOpenAt === true OR === null (honest-unknown is non-blocking)
-  reason?: string; // present only when isOpen === false
+  status: 'open' | 'closed' | 'unknown';
+  isOpen: boolean; // true only when status === 'open'
+  reason?: string; // present when status !== 'open'
 }
 
 export interface CuratedStopsAvailabilityResult {
@@ -62,7 +62,16 @@ function formatClosedReason(arrivalTime: Date, locale?: string): string {
     minute: '2-digit',
     hour12: true,
   });
-  return `May be closed at ${timeStr}`;
+  return `Closed at ${timeStr}`;
+}
+
+function formatUnknownReason(arrivalTime: Date, locale?: string): string {
+  const timeStr = arrivalTime.toLocaleTimeString(locale, {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+  return `Hours unavailable at ${timeStr}`;
 }
 
 /**
@@ -99,10 +108,12 @@ export function checkAllCuratedStopsOpen(
     const stopName = stop.placeName ?? 'Stop';
 
     if (openAtArrival === false) {
-      return { stopName, isOpen: false, reason: formatClosedReason(arrivalTime, locale) };
+      return { stopName, status: 'closed', isOpen: false, reason: formatClosedReason(arrivalTime, locale) };
     }
-    // true OR null → not blocking (null = honest-unknown; advisory only).
-    return { stopName, isOpen: true };
+    if (openAtArrival === true) {
+      return { stopName, status: 'open', isOpen: true };
+    }
+    return { stopName, status: 'unknown', isOpen: false, reason: formatUnknownReason(arrivalTime, locale) };
   });
 
   return { allOpen: results.every((r) => r.isOpen), results };

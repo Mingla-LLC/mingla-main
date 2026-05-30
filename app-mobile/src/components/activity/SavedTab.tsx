@@ -1156,23 +1156,23 @@ const SavedTab = ({
           hour12: true,
         });
         Alert.alert(
-          'All Stops Are Open!',
-          `All ${stops.length} stops are open at ${timeStr}.\n\nWould you like to schedule this plan and add it to your calendar?`,
+          'Safe to Schedule',
+          `All ${stops.length} stops are confirmed open at ${timeStr}.\n\nWould you like to schedule this plan and add it to your calendar?`,
           [
             { text: 'Not Now', style: 'cancel', onPress: () => setCardToSchedule(null) },
             { text: 'Schedule', onPress: () => proceedWithScheduling(date) },
           ]
         );
       } else {
-        // Some stops are closed — show which ones and why
-        const closedStops = results.filter(r => !r.isOpen);
-        const closedList = closedStops
+        // Any closed or unknown stop means the plan is not safe to schedule.
+        const unavailableStops = results.filter(r => !r.isOpen);
+        const unavailableList = unavailableStops
           .map(s => `  \u2022 ${s.stopName} \u2014 ${s.reason}`)
           .join('\n');
 
         Alert.alert(
-          'Some Stops Are Closed',
-          `Not all activities are open at the time you selected:\n\n${closedList}\n\nPlease choose a different time when all stops are available.`,
+          'Not Safe to Schedule',
+          `Mingla could not confirm every stop is open at the time you selected:\n\n${unavailableList}\n\nPlease choose a different time when all stops are confirmed open.`,
           [
             { text: 'Cancel', style: 'cancel', onPress: () => setCardToSchedule(null) },
             {

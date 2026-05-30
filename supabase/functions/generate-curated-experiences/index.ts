@@ -565,6 +565,7 @@ function buildCardStop(
     priceTier: card.price_tiers?.[0] || card.price_tier || 'chill',
     priceTiers: card.price_tiers?.length ? card.price_tiers : (card.price_tier ? [card.price_tier] : ['chill']),
     openingHours: card.opening_hours || {},
+    utcOffsetMinutes: card.utc_offset_minutes ?? null,
     // ORCH-0677 D-3: derive truthfully from openingHours.openNow when present.
     // Never fabricate `true` (Constitution #9). null = honestly unknown.
     isOpenNow: (() => {

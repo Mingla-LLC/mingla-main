@@ -610,8 +610,8 @@ const CalendarTab = ({
 
     // ORCH-1019 F-1(c): for curated entries, validate every stop's hours at the
     // chosen datetime BEFORE committing the reschedule — same canonical
-    // validator as SavedTab (no bespoke day-key lookup). On any closed stop,
-    // show "Some Stops Are Closed" and do NOT silently commit; regular
+    // validator as SavedTab (no bespoke day-key lookup). On any closed/unknown
+    // stop, show "Not Safe to Schedule" and do NOT silently commit; regular
     // (single-place) entries skip this and keep their existing advisory path.
     const rescheduleStops = (entryToReschedule.experience as any)?.stops;
     if (Array.isArray(rescheduleStops) && rescheduleStops.length > 0) {
@@ -621,14 +621,14 @@ const CalendarTab = ({
         getUserLocale(),
       );
       if (!allOpen) {
-        const closedList = results
+        const unavailableList = results
           .filter((r) => !r.isOpen)
           .map((s) => `  • ${s.stopName} — ${s.reason}`)
           .join('\n');
         setShowProposeDateTimeModal(false);
         Alert.alert(
-          'Some Stops Are Closed',
-          `Not all activities are open at the time you selected:\n\n${closedList}\n\nPlease choose a different time when all stops are available.`,
+          'Not Safe to Schedule',
+          `Mingla could not confirm every stop is open at the time you selected:\n\n${unavailableList}\n\nPlease choose a different time when all stops are confirmed open.`,
           [
             { text: 'Cancel', style: 'cancel' },
             { text: 'Choose New Time', onPress: () => setShowProposeDateTimeModal(true) },
