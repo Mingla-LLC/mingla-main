@@ -625,9 +625,14 @@ export default function ProposeDateTimeModal({
                       size={18}
                       color="#F59E0B"
                     />
+                    {/* ORCH-1019 F-6: render the assumption string verbatim —
+                        availabilityAssumption is already the full sentence
+                        ("We couldn't verify this place's hours. Please
+                        double-check before scheduling."). The old appended
+                        ". Please verify opening hours before scheduling."
+                        produced a double period + duplicated trailing clause. */}
                     <Text style={styles.assumptionWarningText}>
-                      {availabilityAssumption}. Please verify opening hours
-                      before scheduling.
+                      {availabilityAssumption}
                     </Text>
                   </View>
                 )}
