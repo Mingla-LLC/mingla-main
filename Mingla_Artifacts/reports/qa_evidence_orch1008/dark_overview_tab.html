@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>ORCH-1008 IntelligenceOverviewTab — Dark mode</title>
+<style>
+:root {
+  --color-brand-50:  #fff7ed; --color-brand-500: #f97316;
+  --color-success-500: #22c55e; --color-success-700: #15803d;
+  --color-warning-500: #f59e0b; --color-warning-700: #b45309;
+  --color-error-500:   #ef4444; --color-error-700:   #b91c1c;
+  --color-info-50:    #eff6ff; --color-info-500:    #3b82f6; --color-info-700:    #1d4ed8;
+  --color-background-primary: #ffffff;
+  --color-background-secondary: #faf8f6;
+  --color-text-primary:   #111827;
+  --color-text-secondary: #4b5563;
+  --color-text-tertiary:  #6b7280;
+  --gray-50: #f9fafb; --gray-100: #f3f4f6; --gray-200: #e5e7eb; --gray-300: #d1d5db;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
+}
+[data-theme="dark"] {
+  --color-background-primary:   #0f1117;
+  --color-background-secondary: #1a1d27;
+  --color-text-primary:   #f3f4f6;
+  --color-text-secondary: #9ca3af;
+  --color-text-tertiary:  #6b7280;
+  --gray-50:  #1a1d27; --gray-100: #242833; --gray-200: #2d3241; --gray-300: #3d4354;
+  --color-success-700: #4ade80;
+  --color-warning-700: #fbbf24;
+  --color-error-700: #fca5a5;
+  --color-info-700: #93c5fd;
+  --color-brand-50: rgba(249,115,22,0.1);
+  --color-brand-700: #fb923c;
+  --shadow-sm:  0 1px 3px rgba(0,0,0,.2), 0 1px 2px rgba(0,0,0,.15);
+}
+* { box-sizing: border-box; font-family: -apple-system, system-ui, sans-serif; }
+body { background: var(--color-background-secondary); padding: 32px; margin: 0; color: var(--color-text-primary); }
+.shell { max-width: 1200px; margin: 0 auto; }
+h1 { font-size: 1.5rem; font-weight: 600; margin: 0 0 16px; }
+.card { background: var(--color-background-primary); border: 1px solid var(--gray-200); border-radius: 16px; box-shadow: var(--shadow-sm); }
+.card-header { padding: 12px 20px; border-bottom: 1px solid var(--gray-200); display: flex; align-items: center; justify-content: space-between; }
+.card-body { padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+.tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.tile { background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: 8px; padding: 12px; }
+.tile-label { font-size: 10px; text-transform: uppercase; letter-spacing: .03em; font-family: monospace; color: var(--color-text-tertiary); margin-bottom: 4px; }
+.tile-value { font-size: 14px; font-weight: 600; font-family: monospace; }
+.tile-evaluated { color: var(--color-success-700); }
+.tile-remaining { color: var(--color-warning-700); }
+.tbl-wrap { border: 1px solid var(--gray-200); border-radius: 8px; overflow: hidden; }
+table { width: 100%; font-size: 14px; border-collapse: collapse; }
+thead { background: var(--gray-50); border-bottom: 1px solid var(--gray-200); }
+thead th { font-size: 10px; text-transform: uppercase; letter-spacing: .03em; font-family: monospace; color: var(--color-text-tertiary); padding: 8px 12px; text-align: left; font-weight: 500; }
+tbody td { padding: 8px 12px; border-bottom: 1px solid var(--gray-200); }
+tbody tr:last-child td { border-bottom: 0; }
+tbody tr:hover { background: var(--gray-50); }
+.right { text-align: right; }
+.bar-cell { display: flex; align-items: center; gap: 8px; }
+.bar { flex: 1; max-width: 120px; height: 8px; background: var(--gray-100); border-radius: 9999px; overflow: hidden; }
+.bar-fill { height: 100%; background: var(--color-brand-500); border-radius: 9999px; }
+.btn { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; font-size: 12px; font-weight: 600; border-radius: 8px; cursor: pointer; }
+.btn-primary { background: var(--color-background-primary); border: 1px solid var(--gray-300); color: var(--color-text-primary); }
+.pill { display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 10px; font-family: monospace; text-transform: uppercase; }
+.pill-success { background: rgba(34,197,94,0.1); color: var(--color-success-700); }
+.pill-failed  { background: rgba(239,68,68,0.1); color: var(--color-error-700); }
+</style>
+</head>
+<body data-theme="dark">
+<div class="shell">
+  <h1>Place Intelligence Trial — Overview tab (DARK)</h1>
+  <div class="card">
+    <div class="card-header">
+      <strong>Per-city coverage</strong>
+      <button class="btn btn-primary">↻ Refresh</button>
+    </div>
+    <div class="card-body">
+      <div class="tiles">
+        <div class="tile"><div class="tile-label">Cities</div><div class="tile-value">3</div></div>
+        <div class="tile"><div class="tile-label">Servable</div><div class="tile-value">17,422</div></div>
+        <div class="tile"><div class="tile-label">Evaluated</div><div class="tile-value tile-evaluated">3,401</div></div>
+        <div class="tile"><div class="tile-label">Remaining</div><div class="tile-value tile-remaining">14,021</div></div>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead>
+            <tr><th>City</th><th>Country</th><th class="right">Servable</th><th class="right">Evaluated</th><th class="right">Remaining</th><th>Coverage</th><th>Last run</th><th class="right">Action</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><strong>Lagos</strong></td><td>Nigeria</td><td class="right">11,344</td><td class="right tile-evaluated">1,524</td><td class="right tile-remaining">9,820</td><td><div class="bar-cell"><div class="bar"><div class="bar-fill" style="width:13.4%"></div></div><span style="font-size:12px;font-family:monospace">13.4%</span></div></td><td><span class="pill pill-success">complete</span> 4h ago · $12.34</td><td class="right"><button class="btn btn-primary">▶ Run remainder</button></td></tr>
+            <tr><td><strong>Raleigh</strong></td><td>USA</td><td class="right">3,891</td><td class="right tile-evaluated">1,200</td><td class="right tile-remaining">2,691</td><td><div class="bar-cell"><div class="bar"><div class="bar-fill" style="width:30.8%"></div></div><span style="font-size:12px;font-family:monospace">30.8%</span></div></td><td><span class="pill pill-success">complete</span> 2d ago · $4.80</td><td class="right"><button class="btn btn-primary">▶ Run remainder</button></td></tr>
+            <tr><td><strong>Washington DC</strong></td><td>USA</td><td class="right">2,187</td><td class="right tile-evaluated">677</td><td class="right tile-remaining">1,510</td><td><div class="bar-cell"><div class="bar"><div class="bar-fill" style="width:31.0%"></div></div><span style="font-size:12px;font-family:monospace">31.0%</span></div></td><td><span class="pill pill-failed">failed</span> 6d ago · $2.71</td><td class="right"><button class="btn btn-primary">▶ Run remainder</button></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
