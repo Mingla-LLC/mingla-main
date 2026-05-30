@@ -1162,7 +1162,18 @@ function checkNoNewBackendFiles() {
     "supabase/functions/run-pre-photo-bouncer/index.ts",
     "supabase/functions/run-bouncer/index.ts",
   ];
+  // ORCH-1021 [Decisive scheduling availability].
+  // C7 is scoped to ORCH-0863 marketing; ORCH-1021 only threads Google Places
+  // utc_offset_minutes through existing card payloads so mobile scheduling can
+  // evaluate the selected time in the venue's timezone.
+  // No marketing scope. Per COMMS-0002.
+  const ORCH_1021_BACKEND_ALLOWLIST = [
+    "supabase/functions/discover-cards/index.ts",
+    "supabase/functions/generate-curated-experiences/index.ts",
+    "supabase/functions/generate-curated-experiences/__tests__/utc_offset_passthrough.test.ts",
+  ];
   const ALLOWLIST = [
+    ...ORCH_1021_BACKEND_ALLOWLIST,
     ...ORCH_1018_BACKEND_ALLOWLIST,
     ...ORCH_1017_BACKEND_ALLOWLIST,
     ...ORCH_1006_BACKEND_ALLOWLIST,
