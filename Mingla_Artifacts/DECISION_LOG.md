@@ -344,3 +344,37 @@
 - I-PUBLIC-BRAND-KIND-BRANCHED (SUPERSEDED)
 - DEC-170 (universal authoring — the data side of this rendering decision)
 - COMMS-0005 (ORCH-0964 `<Head>` SEO/metadata block preserved zero-diff in this rebuild)
+
+## DEC-181 — `place_pool.ai_signal_scores` column landed under META-ORCH-1009 Sub-A; renamed from DEC-099's tentative `claude_signal_evaluations` (2026-05-30)
+
+**Decision:** The single JSONB column on `place_pool` pre-authorised by DEC-099 (2026-05-04) ships as `ai_signal_scores` (NOT DEC-099's originally-proposed `claude_signal_evaluations`). Landed by migration `supabase/migrations/20260802000003_meta_orch_1009_sub_a_ai_signal_scores.sql` under META-ORCH-1009 Sub-A [ai-signal-scores schema]. Column type `JSONB`, nullable, GIN-indexed with `jsonb_path_ops` opclass per Postgres 17 JSONB Indexing docs (https://www.postgresql.org/docs/17/datatype-json.html#JSON-INDEXING). Per-signal shape (6 keys): `score_0_to_100` (int 0–100), `inappropriate_for` (bool), `reasoning` (text), `evaluated_at` (ISO-8601 string), `prompt_version` (text), `model` (text). One-shot backfill seeded ~2,366 places from existing `place_intelligence_trial_runs.q2_response` corpus. Sole writer: `processOnePlace` in `supabase/functions/run-place-intelligence-trial/index.ts` via the `writeAiSignalScoresToPlacePool` helper.
+
+**Rationale (renaming):** DEC-099 was written 2026-05-04 when Claude was the candidate AI provider. The trial pipeline shipped on Gemini 2.5 Flash (operator decision per DEC-101 Anthropic-dropped, 2026-05-?). The column will outlive the current provider — `ai_signal_scores` is provider-agnostic and survives a future swap (each per-signal entry stamps its own `model` field so the column body remains auditable). Operator Gemini-not-Claude lock-in confirmed 2026-05-30 during META-ORCH-1009 Sub-A spec write; vendor-specific names (`gemini_signal_evaluations`) rejected for the same forward-compatibility reason.
+
+**Rationale (landing under Sub-A):** Sub-A is pure plumbing — column + index + backfill + edge-fn secondary write. Sub-B will wire the consumer ranker to READ the column; Sub-C will backfill Gemini coverage from 2,366 → 13,671 servable places; Sub-D will add refresh cron + admin re-eval. Splitting the landing this way lets Sub-A merge with zero user-visible change while Sub-B can be a one-file ranker edit on top of a stable schema.
+
+**Alternatives rejected:**
+- Keep `claude_signal_evaluations` per DEC-099 verbatim — rejected because the column body no longer matches the name (no Claude evaluations exist in the corpus). Future-engineer cost of reading code under a wrong name outweighs the audit-trail value of literal DEC-099 adherence.
+- `gemini_signal_evaluations` — rejected because the column will outlive Gemini; vendor naming forces a column rename on next provider swap.
+- Separate `place_ai_evaluations` table — rejected per DEC-099 Cut 2 ("cut down on needless tables"); single JSONB column on `place_pool` matches the existing `photo_aesthetic_data` JSONB precedent and lets the read path stay a single column lookup (no LEFT JOIN).
+- Defer the column landing until Sub-B is ready — rejected because that bundles the schema risk + ranker logic risk in a single PR; splitting them lets Sub-A bake without affecting deck rendering.
+
+**Impact:**
+- Schema: +1 JSONB column on `place_pool`, +1 GIN index (`idx_place_pool_ai_signal_scores`), ~2,366 rows backfilled at apply time.
+- Edge fn: +2 helpers (`buildAiSignalScoresSlice`, `writeAiSignalScoresToPlacePool`) + 1 non-fatal secondary write inside `processOnePlace`. Trial row remains source of truth.
+- Invariants: retracts `I-TRIAL-OUTPUT-NEVER-FEEDS-RANKING`; establishes `I-AI-SIGNAL-SCORES-COLUMN-SOLE-OWNER` (ACTIVE), `I-AI-SIGNAL-SCORES-SHAPE-CONTRACT` (ACTIVE), `I-AI-SIGNAL-SCORES-PROMPT-VERSION-DISCRIMINATED` (DRAFT → ACTIVE on Sub-B).
+- User-visible: zero (Sub-B ships the ranker change that turns this column into deck behaviour).
+
+**EXIT signal:** none — column rename post-Sub-B landing is expensive (touches the migration history + the ranker code + every test). Lock now. If a future AI provider swap requires a different per-signal field set, extend the shape under a new prompt_version with backward-compatible defaults and let `I-AI-SIGNAL-SCORES-PROMPT-VERSION-DISCRIMINATED` gate the read.
+
+**Cross-references:**
+- DEC-099 (constitutional bless — original column pre-authorisation, 2026-05-04)
+- DEC-101 (Anthropic dropped from trial pipeline; Gemini sole provider)
+- I-AI-SIGNAL-SCORES-COLUMN-SOLE-OWNER (new ACTIVE)
+- I-AI-SIGNAL-SCORES-SHAPE-CONTRACT (new ACTIVE)
+- I-AI-SIGNAL-SCORES-PROMPT-VERSION-DISCRIMINATED (new DRAFT)
+- I-TRIAL-OUTPUT-NEVER-FEEDS-RANKING (RETRACTED)
+- META-ORCH-1009 Sub-A SPEC (`Mingla_Artifacts/specs/SPEC_META-ORCH-1009_SUB_A_AI_SIGNAL_SCORES_SCHEMA.md`)
+- META-ORCH-1009 Sub-A implementation report (`Mingla_Artifacts/reports/IMPLEMENTATION_META-ORCH-1009_SUB_A_AI_SIGNAL_SCORES_SCHEMA.md`)
+- Sub-B / Sub-C / Sub-D (sibling sub-dispatches — separate ORCHs)
+- COMMS-0003 (external-API docs cited inline — Gemini function-calling URL + Postgres JSONB indexing URL)
