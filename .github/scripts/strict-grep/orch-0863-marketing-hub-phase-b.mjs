@@ -1101,6 +1101,11 @@ function checkNoNewBackendFiles() {
     "supabase/functions/discover-cards/index.ts",
     "supabase/functions/generate-curated-experiences/index.ts",
     "supabase/functions/_shared/__tests__/signalScorer.blend.test.ts",
+    // [META-ORCH-1009 Sub-B tester adversarial] 10 additional edge-case tests
+    // for the AI blend ranker — determinism, veto round-trip, NaN/Infinity
+    // sanitization, snippet trimming, strict ===/case discriminators, clamp
+    // floor. Lives next to the implementor's blend.test.ts; same gate.
+    "supabase/functions/_shared/__tests__/signalScorer.blend.adversarial.test.ts",
     // [TEST-MOD-APPROVED META-ORCH-1009 Sub-B] 20 call sites in scorer.test.ts
     // updated to pass the new required signalId arg to computeScore. Mechanical
     // update; no existing test semantics altered. Inclusion in this allowlist
