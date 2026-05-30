@@ -181,26 +181,47 @@ Deno.test(
 const INDEX_TS_PATH = new URL("../index.ts", import.meta.url);
 const INDEX_TS = await Deno.readTextFile(INDEX_TS_PATH);
 
-Deno.test("ORCH-1014 — edge fn source declares STALE_THRESHOLD_MS = 90 days", () => {
+// ORCH-1017 — the per-city aggregation moved from JS into the
+// pg_intelligence_coverage() RPC (fixing Edge WORKER_LIMIT / HTTP 546). The
+// source-inspect assertions below are repointed at the migration SQL; the
+// pure-math mirrors above are unchanged and remain the behavioral spec.
+const MIGRATION_SQL = await Deno.readTextFile(
+  new URL(
+    "../../../migrations/20260807000000_orch_1017_pg_intelligence_coverage.sql",
+    import.meta.url,
+  ),
+);
+
+Deno.test("ORCH-1014 — RPC migration encodes the 90-day stale threshold", () => {
   assert(
-    /ORCH_1014_STALE_THRESHOLD_MS\s*=\s*90\s*\*\s*24\s*\*\s*60\s*\*\s*60\s*\*\s*1000/.test(INDEX_TS),
-    "must declare 90-day stale threshold constant",
+    INDEX_TS.includes('db.rpc("pg_intelligence_coverage")'),
+    "handler must call the RPC — ORCH-1017",
+  );
+  assert(
+    /interval\s+'90 days'/i.test(MIGRATION_SQL),
+    "stale_refresh_count must use a 90-day interval in SQL",
   );
 });
 
-Deno.test("ORCH-1014 — edge fn source fetches servable details (last_detail_refresh, generative_summary, editorial_summary, reviews)", () => {
-  assert(
-    INDEX_TS.includes(
-      '"city_id, last_detail_refresh, generative_summary, editorial_summary, reviews"',
-    ),
-    "must select the 4 detail-readiness columns from place_pool",
-  );
+Deno.test("ORCH-1014 — migration servable CTE reads the 4 detail-readiness columns", () => {
+  for (const col of [
+    "last_detail_refresh",
+    "generative_summary",
+    "editorial_summary",
+    "reviews",
+  ]) {
+    assert(
+      MIGRATION_SQL.includes(col),
+      `servable/missing-fields aggregate must reference ${col}`,
+    );
+  }
 });
 
-Deno.test("ORCH-1014 — edge fn source fetches seed window (city_id, created_at) across all place_pool", () => {
+Deno.test("ORCH-1014 — migration seed_window CTE aggregates created_at across all place_pool", () => {
   assert(
-    INDEX_TS.includes('"city_id, created_at"'),
-    "must select city_id + created_at for the seed window",
+    /MIN\s*\(\s*pp\.created_at\s*\)/i.test(MIGRATION_SQL) &&
+      /MAX\s*\(\s*pp\.created_at\s*\)/i.test(MIGRATION_SQL),
+    "seed_window must MIN/MAX(created_at) for first/last_seeded_at",
   );
 });
 
@@ -317,21 +338,19 @@ Deno.test(
 );
 
 Deno.test(
-  "ORCH-1015 — edge fn source declares ORCH_1015_REFRESH_CUTOVER_DATE_MS = 2026-03-19",
+  "ORCH-1015 — migration encodes the 2026-03-19 details-refresh cutover",
   () => {
     assert(
-      /const\s+ORCH_1015_REFRESH_CUTOVER_DATE_MS\s*=\s*Date\.parse\(\s*"2026-03-19T00:00:00Z"\s*\)/.test(
-        INDEX_TS,
-      ),
-      "edge fn must declare ORCH_1015_REFRESH_CUTOVER_DATE_MS = Date.parse('2026-03-19T00:00:00Z')",
+      /2026-03-19/.test(MIGRATION_SQL),
+      "needs_refresh_count must compare last_detail_refresh against the 2026-03-19 cutover in SQL",
     );
   },
 );
 
-Deno.test("ORCH-1015 — edge fn source fetches seeding_cities.coverage_radius_km", () => {
+Deno.test("ORCH-1015 — migration computes regeocoded from coverage_radius_km", () => {
   assert(
-    INDEX_TS.includes('"id, name, country, coverage_radius_km"'),
-    "seeding_cities .select must include coverage_radius_km for the regeocoded flag",
+    /coverage_radius_km\s*=\s*0/i.test(MIGRATION_SQL),
+    "regeocoded must be derived from seeding_cities.coverage_radius_km = 0",
   );
 });
 

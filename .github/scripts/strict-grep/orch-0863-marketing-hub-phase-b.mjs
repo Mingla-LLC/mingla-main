@@ -1062,7 +1062,27 @@ function checkNoNewBackendFiles() {
     "supabase/functions/run-place-intelligence-trial/__tests__/ai_signal_scores_adversarial.test.ts",
     "supabase/migrations/__tests__/meta_orch_1009_sub_a_ai_signal_scores_backfill.test.sql",
   ];
+  // ORCH-1017 [Intelligence Trial "Couldn't load coverage" — Edge HTTP 546]:
+  // moves the intelligence_coverage per-city aggregation out of JS (which pulled
+  // ~79k place_pool rows into the edge fn and intermittently blew the Edge
+  // WORKER_LIMIT) into the SECURITY DEFINER RPC pg_intelligence_coverage().
+  // New migration + 2 new Deno tests; the 2 ORCH-1013 coverage tests have their
+  // source-inspect halves repointed at the RPC/migration ([TEST-MOD-APPROVED
+  // ORCH-1017]). The edge-fn source path is already covered by ORCH_1015 /
+  // META_ORCH_1009_SUB_A above — listed here for explicit ORCH-1017 ownership;
+  // the ALLOWLIST spread is a union so dups are harmless. C7 is scoped to
+  // ORCH-0863 marketing; this entry covers the ORCH-1017 backend touches.
+  const ORCH_1017_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260807000000_orch_1017_pg_intelligence_coverage.sql",
+    "supabase/functions/run-place-intelligence-trial/index.ts",
+    "supabase/functions/run-place-intelligence-trial/__tests__/orch1017_coverage_rpc.test.ts",
+    "supabase/functions/run-place-intelligence-trial/__tests__/orch1017_coverage_rpc_adversarial.test.ts",
+    "supabase/functions/run-place-intelligence-trial/__tests__/coverage_servable_filter.test.ts",
+    "supabase/functions/run-place-intelligence-trial/__tests__/coverage_adversarial.test.ts",
+    "supabase/functions/run-place-intelligence-trial/__tests__/intelligence_coverage_seed_refresh.test.ts",
+  ];
   const ALLOWLIST = [
+    ...ORCH_1017_BACKEND_ALLOWLIST,
     ...ORCH_1006_BACKEND_ALLOWLIST,
     ...ORCH_0989_BACKEND_ALLOWLIST,
     ...ORCH_0990_BACKEND_ALLOWLIST,
