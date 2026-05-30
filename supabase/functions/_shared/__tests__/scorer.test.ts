@@ -86,7 +86,7 @@ function basePlaceForScoring(overrides: Partial<PlaceForScoring> = {}): PlaceFor
 // ───── T-06: Hard eligibility — too low rating ───────────────────────────
 
 Deno.test('T-06: hard eligibility — rating below min_rating', () => {
-  const r = computeScore(basePlaceForScoring({ rating: 3.5 }), FINE_DINING_CONFIG);
+  const r = computeScore(basePlaceForScoring({ rating: 3.5 }), FINE_DINING_CONFIG, 'fine_dining');
   assertEquals(r.score, 0);
   assertEquals(r.contributions._reason, 'min_rating');
 });
@@ -97,6 +97,7 @@ Deno.test('T-07: hard eligibility — too few reviews + below bypass_rating', ()
   const r = computeScore(
     basePlaceForScoring({ rating: 4.1, review_count: 20 }),
     FINE_DINING_CONFIG,
+    'fine_dining',
   );
   assertEquals(r.score, 0);
   assertEquals(r.contributions._reason, 'min_reviews');
@@ -108,6 +109,7 @@ Deno.test('T-08: bypass triggers when rating >= bypass_rating', () => {
   const r = computeScore(
     basePlaceForScoring({ rating: 4.7, review_count: 20, types: ['restaurant'] }),
     FINE_DINING_CONFIG,
+    'fine_dining',
   );
   // Should be eligible — score > 0 (restaurant +30, rating *10 cap 50, reviews log)
   assert(r.score > 0, `expected eligible score > 0, got ${r.score}`);
@@ -124,6 +126,7 @@ Deno.test('T-09: NULL field treated as no contribution (positive)', () => {
       dine_in: null, // explicit null
     }),
     FINE_DINING_CONFIG,
+    'fine_dining',
   );
   // dine_in weight is +15 — must NOT appear in contributions
   assertEquals(r.contributions.dine_in, undefined);
@@ -139,6 +142,7 @@ Deno.test('T-10: NULL field treated as no contribution (negative)', () => {
       delivery: null, // explicit null
     }),
     FINE_DINING_CONFIG,
+    'fine_dining',
   );
   // delivery weight is -20 — must NOT appear in contributions
   assertEquals(r.contributions.delivery, undefined);
@@ -154,6 +158,7 @@ Deno.test('T-11: boolean true triggers positive weight', () => {
       reservable: true,
     }),
     FINE_DINING_CONFIG,
+    'fine_dining',
   );
   assertEquals(r.contributions.reservable, 30);
 });
@@ -168,6 +173,7 @@ Deno.test('T-12: boolean true triggers negative weight', () => {
       delivery: true,
     }),
     FINE_DINING_CONFIG,
+    'fine_dining',
   );
   assertEquals(r.contributions.delivery, -20);
 });
@@ -186,6 +192,7 @@ Deno.test('T-13: score clamps at 0 (negatives can sink but never invert)', () =>
       good_for_groups: true, good_for_children: true, serves_brunch: true,
     }),
     FINE_DINING_CONFIG,
+    'fine_dining',
   );
   assertEquals(r.score, 0);
 });
@@ -212,6 +219,7 @@ Deno.test('T-14: score clamps at 200 cap (max contributors)', () => {
       serves_dessert: true, serves_lunch: true, serves_vegetarian_food: true,
     },
     FINE_DINING_CONFIG,
+    'fine_dining',
   );
   assertEquals(r.score, 200);
 });
@@ -237,6 +245,7 @@ Deno.test('T-15: Capital Grille (Raleigh) caps at 200', () => {
       serves_dinner: true, serves_wine: true, serves_cocktails: true,
     },
     FINE_DINING_CONFIG,
+    'fine_dining',
   );
   assertEquals(r.score, 200);
 });
@@ -261,6 +270,7 @@ Deno.test('T-16: Neomonde Mediterranean (Raleigh) scores in 80-110 range', () =>
       serves_dinner: true, serves_wine: true, serves_cocktails: false,
     },
     FINE_DINING_CONFIG,
+    'fine_dining',
   );
   // Hand calc: restaurant +30 + serves_dinner +30 + dine_in +15 + serves_wine +10
   // - delivery -20 - takeout -10 - good_for_groups -10 - good_for_children -15
@@ -388,6 +398,7 @@ Deno.test('T-20: drinks — Foundation (bar, cocktail-focused, 4.8/176) scores �
       serves_beer: true,
     },
     DRINKS_CONFIG,
+    'drinks',
   );
   assert(r.score >= 120, `Foundation score=${r.score}, expected ≥120`);
 });
@@ -414,6 +425,7 @@ Deno.test('T-21: drinks — Crawford and Son (american_restaurant, 4.7/1062) sco
       reservable: true,
     },
     DRINKS_CONFIG,
+    'drinks',
   );
   // Restaurant without bar/cocktail_bar type. Bare "bar" intentionally NOT in summary_regex
   // so "casual venue with a bar" does NOT get a text_weight. Scores below filter_min.
@@ -437,6 +449,7 @@ Deno.test('T-22: drinks — Trophy Brewing & Taproom (brewery, 4.6/447, sparse) 
       serves_beer: true,
     },
     DRINKS_CONFIG,
+    'drinks',
   );
   // brewery +50 + bar +40 + serves_beer +10 + rating 35 (cap) + log10(448)*5 ≈ 13.3 = ~148
   assert(r.score >= 120, `Trophy Taproom score=${r.score}, expected ≥120`);
@@ -526,6 +539,7 @@ Deno.test('T-23: brunch — First Watch (breakfast_restaurant primary, 4.8/2168)
       outdoor_seating: true,
     },
     BRUNCH_CONFIG,
+    'brunch',
   );
   assert(r.score >= 120, `First Watch score=${r.score}, expected ≥120`);
 });
@@ -548,6 +562,7 @@ Deno.test('T-24: brunch — pure coffee shop without food/brunch tags scores < 1
       dine_in: true,
     },
     BRUNCH_CONFIG,
+    'brunch',
   );
   // coffee_shop +10 + dine_in +5 + price_inx +5 + rating 35 + log10(501)*5 ≈ 13.5 = ~68 (no summary match)
   assert(r.score < 120, `Pure coffee shop score=${r.score}, expected <120 (no brunch tags, no food service)`);
@@ -576,6 +591,7 @@ Deno.test('T-25: brunch — dinner-only restaurant (no breakfast/brunch booleans
       reservable: true,
     },
     BRUNCH_CONFIG,
+    'brunch',
   );
   // Rating 35 + reviews log10(1001)*5 ≈ 15 + dine_in 5 + reservable 5 + price_expensive 5 = ~65
   // No type matches for brunch. No brunch booleans. No summary match for dinner-only blurb.
@@ -682,6 +698,7 @@ Deno.test('T-26: casual_food — Neomonde (lebanese/mediterranean, moderate) sco
       good_for_groups: true,
     },
     CASUAL_FOOD_CONFIG,
+    'casual_food',
   );
   // +50 lebanese +50 mediterranean = +100. +30 lunch +15 dinner +10 dine_in +10 groups = +65.
   // +15 price_mod. +35 rating. +18 reviews log. +20 "cozy" summary match. Total ~253 → cap 200.
@@ -708,6 +725,7 @@ Deno.test('T-27: casual_food — Angus Barn (steak_house, very_expensive, night_
       good_for_groups: true,
     },
     CASUAL_FOOD_CONFIG,
+    'casual_food',
   );
   // Penalties: steak_house -30, fine_dining -40, bar -5, night_club -50 = -125.
   // price_very_expensive -40. No lunch (0). +15 dinner +10 dine_in +10 groups. +35 rating. +20 reviews.
@@ -735,6 +753,7 @@ Deno.test('T-28: casual_food — Chipotle (rating 3.4 below min 4.0) is ineligib
       good_for_groups: true,
     },
     CASUAL_FOOD_CONFIG,
+    'casual_food',
   );
   // Rating 3.4 < min_rating 4.0 → early-return ineligible, score = 0.
   assertEquals(r.score, 0);

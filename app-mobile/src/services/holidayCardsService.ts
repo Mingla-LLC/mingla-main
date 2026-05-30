@@ -39,6 +39,14 @@ export interface HolidayCard {
   distanceM?: number | null;
   signalId?: string | null;
   signalScore?: number | null;
+  // [META-ORCH-1009 Sub-B] Per-signal Gemini Q2 reasoning slice carried from the
+  // paired-friend backend pipeline (get-person-hero-cards / get-paired-profile-
+  // cards). D-8 verdict (2026-05-30): those backends are INDEPENDENT of
+  // discover-cards and do NOT yet populate this field — Sub-B ships the type
+  // surface so the mobile mapper is ready, and a follow-up Sub will extend the
+  // paired-friend RPC to source reasoning from place_pool.ai_signal_scores.
+  // Until then the field is undefined and the modal hides the section.
+  aiReasoningBySignal?: Record<string, string>;
 }
 
 export interface HolidayCardsResponse {

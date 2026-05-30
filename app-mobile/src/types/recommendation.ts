@@ -94,4 +94,10 @@ export interface Recommendation {
       duration: number;
     }>;
   };
+  // [META-ORCH-1009 Sub-B] Per-signal Gemini Q2 reasoning slice (keyed by
+  // signal_id). Carried verbatim from the discover-cards / generate-curated-
+  // experiences card payload through unifiedCardToRecommendation. The
+  // ExpandedCardModal renders this in the "Why we picked this for you"
+  // section. Optional — degrades cleanly when AI hasn't evaluated the place.
+  aiReasoningBySignal?: Record<string, string>;
 }

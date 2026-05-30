@@ -18,24 +18,36 @@ const corsHeaders = {
 };
 
 // Selected fields used by scorer + the id/city we need for filtering and writing.
+// META-ORCH-1009 Sub-B — `ai_signal_scores` added so computeScore can blend +
+// veto using the Gemini Q2 per-place evaluation slice (canonical 6-key shape
+// pinned by I-AI-SIGNAL-SCORES-SHAPE-CONTRACT, populated by Sub-A's
+// run-place-intelligence-trial writer + the Sub-A backfill).
 const SELECT_FIELDS =
   'id, rating, review_count, types, price_level, price_range_start_cents, price_range_end_cents,' +
   ' editorial_summary, generative_summary, reviews,' +
   ' serves_dinner, serves_lunch, serves_breakfast, serves_brunch,' +
   ' serves_wine, serves_cocktails, serves_dessert, serves_vegetarian_food,' +
   ' reservable, dine_in, delivery, takeout,' +
-  ' allows_dogs, good_for_groups, good_for_children, outdoor_seating, live_music';
+  ' allows_dogs, good_for_groups, good_for_children, outdoor_seating, live_music,' +
+  ' ai_signal_scores';
 
 const BATCH_SIZE = 500;
 
 interface ScorerSummary {
   scored_count: number;
   ineligible_count: number;
+  // META-ORCH-1009 Sub-B — how many (place, signal) pairs Gemini vetoed via
+  // `inappropriate_for=true`. Surfaced in the response for admin visibility;
+  // dashboard UI for this is Sub-D scope (admin re-eval button).
+  vetoed_count: number;
+  ai_blended_count: number;
   signal_version_id: string | null;
   score_distribution: { '0-50': number; '50-100': number; '100-150': number; '150-200': number };
 }
 
-function bucketize(distribution: ScorerSummary['score_distribution'], score: number): void {
+function bucketize(distribution: ScorerSummary['score_distribution'], score: number | null): void {
+  // META-ORCH-1009 Sub-B — null = vetoed, don't bucket
+  if (score === null) return;
   if (score < 50) distribution['0-50']++;
   else if (score < 100) distribution['50-100']++;
   else if (score < 150) distribution['100-150']++;
@@ -122,6 +134,8 @@ serve(async (req: Request) => {
     const summary: ScorerSummary = {
       scored_count: 0,
       ineligible_count: 0,
+      vetoed_count: 0,
+      ai_blended_count: 0,
       signal_version_id: signalVersionId,
       score_distribution: { '0-50': 0, '50-100': 0, '100-150': 0, '150-200': 0 },
     };
@@ -133,6 +147,11 @@ serve(async (req: Request) => {
       contributions: Record<string, number | string>;
       signal_version_id: string;
     }> = [];
+    // META-ORCH-1009 Sub-B — vetoed (place, signal) pairs need their existing
+    // place_scores row DELETED (not upserted) so the RPC JOIN excludes them.
+    // place_scores.score is NOT NULL in the DDL CHECK constraint so we can't
+    // sentinel via NULL — see IMPLEMENTATION report §Deviations.
+    const vetoedPlaceIds: string[] = [];
 
     // Stream is_servable place_pool in pages
     let offset = 0;
@@ -157,12 +176,24 @@ serve(async (req: Request) => {
       if (!data || data.length === 0) break;
 
       for (const place of data as Array<PlaceForScoring & { id: string }>) {
-        const result = computeScore(place, config);
+        // META-ORCH-1009 Sub-B — pass signalId so computeScore can read the
+        // per-signal slice of place.ai_signal_scores for blend + veto.
+        const result = computeScore(place, config, signalId);
         bucketize(summary.score_distribution, result.score);
         if ((result.contributions as Record<string, unknown>)._ineligible !== undefined) {
           summary.ineligible_count++;
         } else {
           summary.scored_count++;
+        }
+        // META-ORCH-1009 Sub-B — null score = Gemini veto. Queue a DELETE
+        // for any existing place_scores row instead of an UPSERT.
+        if (result.score === null) {
+          summary.vetoed_count++;
+          vetoedPlaceIds.push(place.id);
+          continue;
+        }
+        if (result.ai_blended) {
+          summary.ai_blended_count++;
         }
         writes.push({
           place_id: place.id,
@@ -179,7 +210,7 @@ serve(async (req: Request) => {
 
     if (dryRun) {
       const elapsed = Date.now() - t0;
-      console.log(`[run-signal-scorer] dry_run signal=${signalId} city=${cityId ?? 'all'} scored=${summary.scored_count} ineligible=${summary.ineligible_count} elapsed_ms=${elapsed}`);
+      console.log(`[run-signal-scorer] dry_run signal=${signalId} city=${cityId ?? 'all'} scored=${summary.scored_count} ineligible=${summary.ineligible_count} vetoed=${summary.vetoed_count} ai_blended=${summary.ai_blended_count} elapsed_ms=${elapsed}`);
       return new Response(
         JSON.stringify({ success: true, dry_run: true, ...summary, duration_ms: elapsed }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
@@ -215,11 +246,32 @@ serve(async (req: Request) => {
       written += chunk.length;
     }
 
+    // META-ORCH-1009 Sub-B — DELETE existing place_scores rows for vetoed
+    // (place, signal) pairs so the consumer RPC JOIN excludes them. Chunked
+    // to keep the URL parameter list small. Non-fatal: a partial failure is
+    // logged but does not return 500 because the upserts already succeeded.
+    let deleted = 0;
+    if (vetoedPlaceIds.length > 0) {
+      for (let i = 0; i < vetoedPlaceIds.length; i += BATCH_SIZE) {
+        const chunk = vetoedPlaceIds.slice(i, i + BATCH_SIZE);
+        const { error: delErr, count } = await supabaseAdmin
+          .from('place_scores')
+          .delete({ count: 'exact' })
+          .eq('signal_id', signalId)
+          .in('place_id', chunk);
+        if (delErr) {
+          console.error(`[run-signal-scorer] veto-delete batch ${i / BATCH_SIZE} failed:`, delErr.message);
+          continue;
+        }
+        deleted += count ?? 0;
+      }
+    }
+
     const elapsed = Date.now() - t0;
-    console.log(`[run-signal-scorer] signal=${signalId} city=${cityId ?? 'all'} scored=${summary.scored_count} ineligible=${summary.ineligible_count} written=${written} elapsed_ms=${elapsed}`);
+    console.log(`[run-signal-scorer] signal=${signalId} city=${cityId ?? 'all'} scored=${summary.scored_count} ineligible=${summary.ineligible_count} vetoed=${summary.vetoed_count} ai_blended=${summary.ai_blended_count} written=${written} veto_deleted=${deleted} elapsed_ms=${elapsed}`);
 
     return new Response(
-      JSON.stringify({ success: true, ...summary, written, duration_ms: elapsed }),
+      JSON.stringify({ success: true, ...summary, written, veto_deleted: deleted, duration_ms: elapsed }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
 

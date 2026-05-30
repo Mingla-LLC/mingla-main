@@ -550,12 +550,35 @@ function filterCuratedByStopHours(
 //   - specs/SPEC_ORCH-0659_0660_DECK_DISTANCE_TRAVELTIME.md
 //   - INVARIANT_REGISTRY.md → I-DECK-CARD-CONTRACT-DISTANCE-AND-TIME
 // ────────────────────────────────────────────────────────────────────────────
+// META-ORCH-1009 Sub-B — extract the per-signal AI reasoning slice from the new
+// RPC `ai_reasoning` column. Returns `{ [signalId]: reasoning }` when the row
+// has a non-empty reasoning string, or `undefined` otherwise (mobile-side
+// renderer hides the section when the field is absent — never an empty state).
+// The signalId is passed in because a single card can surface under multiple
+// signals (multi-chip), and ExpandedCardModal's dominant-signal resolver picks
+// whichever key matches the card's tag/category. Per SPEC §3.3 D-2.
+function extractAiReasoningBySignal(
+  row: any,
+  signalId: string | undefined,
+): Record<string, string> | undefined {
+  if (!signalId) return undefined;
+  const slice = row?.ai_reasoning;
+  if (!slice || typeof slice !== 'object') return undefined;
+  const reasoning = slice.reasoning;
+  if (typeof reasoning !== 'string' || reasoning.trim().length === 0) return undefined;
+  return { [signalId]: reasoning };
+}
+
 function transformServablePlaceToCard(
   row: any,
   categoryLabel: string,
   userLat: number,
   userLng: number,
   travelMode: TravelMode,
+  // META-ORCH-1009 Sub-B — signalId for the per-signal reasoning lookup.
+  // Optional to keep the curated/hydrate call site (line ~883) compatible
+  // since it doesn't have a single source signal.
+  signalId?: string,
 ): any {
   const storedPhotos = Array.isArray(row.stored_photo_urls) ? row.stored_photo_urls : [];
   const tier = googleLevelToTierSlug(row.price_level);
@@ -599,9 +622,15 @@ function transformServablePlaceToCard(
     travelMode,  // Mobile uses this to render the matching mode-icon
     oneLiner: null,
     tip: null,
+    // META-ORCH-1009 Sub-B — per-signal Gemini Q2 reasoning slice for the
+    // "Why we picked this for you" expand-modal section. undefined when AI
+    // hasn't evaluated this place for this signal (degrades cleanly — modal
+    // hides the section). Mobile-side type: Record<string, string>.
+    ai_reasoning_by_signal: extractAiReasoningBySignal(row, signalId),
     // Debug-only fields — mobile parser ignores extra keys
     _signal_score: row.signal_score,
     _signal_contributions: row.signal_contributions,
+    _ai_score_raw: row.ai_score_raw,
   };
 }
 
@@ -1239,7 +1268,9 @@ async function handleDeterministicV2(args: {
     for (const row of (res.data as any[]) ?? []) {
       const existing = bucket.get(row.place_id);
       if (!existing || Number(row.signal_score) > Number(existing.signal_score)) {
-        bucket.set(row.place_id, { ...row, __displayCategory: task.displayCategory });
+        // META-ORCH-1009 Sub-B — stamp the winning signalId on the row so the
+        // downstream transformer can attach the per-signal reasoning slice.
+        bucket.set(row.place_id, { ...row, __displayCategory: task.displayCategory, __signalId: task.signalId });
       }
     }
   }
@@ -1306,6 +1337,7 @@ async function handleDeterministicV2(args: {
         closest.lat,
         closest.lng,
         closest.travel_mode as TravelMode,
+        row.__signalId, // META-ORCH-1009 Sub-B: per-signal reasoning lookup
       ),
     };
   });
@@ -2018,7 +2050,9 @@ serve(async (req: Request) => {
         const existing = bucket.get(row.place_id);
         if (!existing || Number(row.signal_score) > Number(existing.signal_score)) {
           // Attach displayCategory from the winning chip (preserved through interleave)
-          bucket.set(row.place_id, { ...row, __displayCategory: task.displayCategory });
+          // META-ORCH-1009 Sub-B — also stamp signalId so the transformer can attach
+          // the per-signal Gemini Q2 reasoning slice for the "Why we picked" section.
+          bucket.set(row.place_id, { ...row, __displayCategory: task.displayCategory, __signalId: task.signalId });
         }
       }
     }
@@ -2078,6 +2112,7 @@ serve(async (req: Request) => {
         location.lat,
         location.lng,
         travelMode as TravelMode,
+        row.__signalId, // META-ORCH-1009 Sub-B: per-signal reasoning lookup
       );
       if (card.distanceKm === null) _placesMissingCoords++;
       return card;
