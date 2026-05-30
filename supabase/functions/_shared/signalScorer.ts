@@ -123,6 +123,12 @@ export interface ScoreResult {
     rule_score_normalized: number;
     weight_used: number;
     prompt_version: string;
+    // META-ORCH-1009 Sub-D — passthrough of aiEntry.evaluated_at so the caller
+    // (run-signal-scorer/index.ts) can stamp `place_scores.ai_signal_scores_at`
+    // on every write. The 15-min Sub-D cron compares this timestamp against
+    // the live AI slice to detect stale (place, signal) pairs. See
+    // I-AI-SCORE-STALENESS-AUTO-RECOVERED.
+    evaluated_at: string;
   };
   // META-ORCH-1009 Sub-B — set when AI veto fired. Causes caller to delete
   // place_scores row for this (place, signal).
@@ -354,6 +360,9 @@ export function computeScore(
       rule_score_normalized: ruleNormalized,
       weight_used: w,
       prompt_version: aiEntry.prompt_version,
+      // META-ORCH-1009 Sub-D — passthrough so run-signal-scorer can stamp
+      // place_scores.ai_signal_scores_at on the upsert.
+      evaluated_at: aiEntry.evaluated_at,
     },
   };
 }
