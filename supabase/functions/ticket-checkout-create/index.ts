@@ -19,6 +19,15 @@ import {
   ticketCorsHeaders,
   userIdFromAuthHeader,
 } from "../_shared/ticketCheckout.ts";
+// ORCH-1006 [Universal all-in pricing engine] — shared money engine.
+// (slice 1 uses feeFromBps + the region/switches types; the gross-up + tax
+// helpers — computeBuyerSubtotal/buildPricingBreakdown/taxBehaviorForRegion/
+// MINGLA_SERVICE_FEE_BPS — are imported when slice 2 wires them in.)
+import {
+  feeFromBps,
+  type PricingRegion,
+  type PricingSwitches,
+} from "../_shared/allInPricingEngine.ts";
 
 type CheckoutLine = { ticketTypeId: string; quantity: number };
 type CheckoutMode = "create" | "preview";
@@ -599,22 +608,58 @@ serve(async (req) => {
     return jsonResponse({ error: "stripe_account_not_ready" }, 409);
   }
 
-  // ORCH-0843 (2026-05-15) — Mingla platform application-fee formula.
-  // Hardcoded 1.5% of the order's unit amount per operator decision (G-2).
-  // Computed in the edge function (NOT plumbed through the RPC) so that
-  // changing the rate requires only an edge-function redeploy. Integer math
-  // via Math.round on integer-cent input × 0.015 is precision-safe for any
-  // realistic order amount (max safe cents ≈ 9.0×10^15). If the resulting
-  // fee is zero (totalCents < ~67), the application_fee_amount key is
-  // OMITTED from the Stripe call body entirely — Stripe documents both
-  // omitting and passing zero as accepted, but omitting is the cleaner
-  // contract and avoids any future "application_fee_amount must be > 0"
-  // edge-case error. Discovery for orchestrator (future ORCH): plumb the
-  // fee percentage through `brands` table or env config for dynamic
-  // adjustment without code redeploy.
-  const MINGLA_APPLICATION_FEE_RATE = 0.015 as const;
-  const applicationFeeAmountCents = Math.round(
-    totalCents * MINGLA_APPLICATION_FEE_RATE,
+  // ORCH-1006 [Universal all-in pricing engine] — resolve the brand/event
+  // pricing config (3 pass/absorb switches + region/currency + venue tax
+  // basis + the CONFIGURABLE Mingla take-rate, global default with per-brand
+  // override) for this event. One single-row read via the resolver RPC
+  // (standalone, no clobber of the big session RPC). Replaces ORCH-0843's
+  // hardcoded 1.5% application-fee constant (DEC: take-rate is now
+  // operator-tunable in the admin /pricing screen; stored as integer basis
+  // points; migration default = 150 bps = today's 1.5% → zero economic
+  // change at migration). resolve_event_pricing_inputs is GRANTed to
+  // service_role; this edge function runs service-role.
+  const { data: pricingRows, error: pricingError } = await supabase.rpc(
+    "resolve_event_pricing_inputs",
+    { p_event_id: eventId },
+  );
+  if (pricingError || !Array.isArray(pricingRows) || pricingRows.length === 0) {
+    console.error(
+      "[ticket-checkout-create] resolve_event_pricing_inputs failed",
+      pricingError,
+    );
+    return jsonResponse(
+      { error: "pricing_config_unavailable", detail: pricingError?.message },
+      409,
+    );
+  }
+  const pricing = pricingRows[0] as {
+    pass_tax: boolean;
+    pass_mingla_fee: boolean;
+    pass_service_fee: boolean;
+    pricing_region: string | null;
+    pricing_currency: string | null;
+    venue_tax_address: Record<string, unknown> | null;
+    pricing_locked: boolean;
+    effective_take_rate_bps: number;
+    take_rate_source: "brand_override" | "platform_default";
+  };
+  const pricingRegion = (pricing.pricing_region ?? "GB") as PricingRegion;
+  const pricingSwitches: PricingSwitches = {
+    pass_tax: pricing.pass_tax,
+    pass_mingla_fee: pricing.pass_mingla_fee,
+    pass_service_fee: pricing.pass_service_fee,
+  };
+
+  // application_fee_amount = Mingla's take-rate skim, ALWAYS (independent of
+  // pass/absorb — the switch only changes the buyer-facing gross-up, not what
+  // Mingla collects). Direct-charge collection:
+  // https://docs.stripe.com/api/payment_intents/create#create_payment_intent-application_fee_amount
+  // https://docs.stripe.com/connect/direct-charges#collect-fees
+  // Integer basis-point math (no float; invariant I-PROPOSED-TAKE-RATE-BPS-INTEGER).
+  // Omitted from the Stripe body when it rounds to zero (existing >0 guard kept).
+  const applicationFeeAmountCents = feeFromBps(
+    totalCents,
+    pricing.effective_take_rate_bps,
   );
 
   // ORCH-0843 — persist the computed fee on the session row so the refund
