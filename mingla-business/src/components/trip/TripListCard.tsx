@@ -358,6 +358,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: radiusTokens.full,
+    overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: glass.tint.chrome.idle,

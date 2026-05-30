@@ -232,6 +232,7 @@ const styles = StyleSheet.create({
   },
   dayRow: {
     borderRadius: radiusTokens.md,
+    overflow: "hidden",
     backgroundColor: glass.tint.profileBase,
     borderWidth: 1,
     borderColor: glass.border.profileBase,

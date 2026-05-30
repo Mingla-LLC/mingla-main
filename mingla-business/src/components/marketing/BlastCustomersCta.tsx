@@ -37,7 +37,7 @@
  */
 
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { BlurView } from "expo-blur";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -75,6 +75,13 @@ const UNIT_BY_KIND: Record<BlastAudienceKind, { singular: string; plural: string
 };
 
 const CTA_HEIGHT = 60;
+
+// META-ORCH-1002 Sub-D: Android glass policy = opaque frosted fallback. The L1
+// BlurView renders near-transparent on Android, leaking busy content through
+// the accent tint floor. On Android we replace it with the kit's solid
+// `rgba(20,22,26,0.92)` (the GlassChrome fallback) so the L2 accent tint floor
+// composites over a solid base → a confident solid capsule. iOS keeps real blur.
+const FALLBACK_BACKGROUND = "rgba(20, 22, 26, 0.92)";
 
 // Custom accent tint — stronger than `accent.tint` (0.28) for confident
 // primary-action presence on dark canvas without the orange-halo shadow.
@@ -133,12 +140,20 @@ export const BlastCustomersCta: React.FC<BlastCustomersCtaProps> = ({
           accessibilityState={{ disabled: isDisabled }}
           testID={testID}
         >
-          {/* L1 — Blur base (real backdrop blur on iOS / Android, web shim) */}
-          <BlurView
-            intensity={blurIntensity.chrome}
-            tint="dark"
-            style={StyleSheet.absoluteFill}
-          />
+          {/* L1 — Blur base (real backdrop blur on iOS, web shim). Android =
+              opaque fallback (META-ORCH-1002 Sub-D). */}
+          {Platform.OS === "android" ? (
+            <View
+              style={[StyleSheet.absoluteFill, { backgroundColor: FALLBACK_BACKGROUND }]}
+              pointerEvents="none"
+            />
+          ) : (
+            <BlurView
+              intensity={blurIntensity.chrome}
+              tint="dark"
+              style={StyleSheet.absoluteFill}
+            />
+          )}
           {/* L2 — Tint floor */}
           <View
             style={[StyleSheet.absoluteFill, { backgroundColor: tintColor }]}

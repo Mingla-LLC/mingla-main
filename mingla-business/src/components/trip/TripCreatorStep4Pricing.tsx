@@ -283,6 +283,7 @@ const styles = StyleSheet.create({
     height: 48,
     paddingHorizontal: 14,
     borderRadius: radiusTokens.md,
+    overflow: "hidden",
     backgroundColor: INPUT_BG,
     borderWidth: 1,
     borderColor: INPUT_BORDER,

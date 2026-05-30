@@ -122,6 +122,7 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: glass.border.chrome,
     borderRadius: radius.full,
+    overflow: "hidden",
   },
   pill: {
     flex: 1,

@@ -770,6 +770,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 999,
+    overflow: "hidden",
     backgroundColor: accent.tint,
     borderWidth: 1,
     borderColor: accent.border,

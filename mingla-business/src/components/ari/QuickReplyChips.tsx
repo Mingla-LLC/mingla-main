@@ -60,6 +60,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: glass.border.profileBase,
     borderRadius: radius.md,
+    overflow: "hidden",
     paddingHorizontal: spacing.md,
     paddingVertical: 12,
     minHeight: 44,

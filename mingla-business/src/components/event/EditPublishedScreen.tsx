@@ -1295,6 +1295,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: radiusTokens.full,
+    overflow: "hidden",
     backgroundColor: accent.tint,
     borderWidth: 1,
     borderColor: accent.border,

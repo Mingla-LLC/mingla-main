@@ -92,6 +92,7 @@ const styles = StyleSheet.create({
     width: 36, // F.8: was 44 (still hits 44pt total with hitSlop)
     height: 36,
     borderRadius: radius.full,
+    overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: glass.tint.profileBase,
