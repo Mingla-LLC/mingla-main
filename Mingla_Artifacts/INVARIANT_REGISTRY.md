@@ -7,6 +7,88 @@
 
 ---
 
+## ACTIVE (post META-ORCH-1009 Sub-A [ai-signal-scores schema] CLOSE 2026-05-30)
+
+Three invariants landed by Sub-A. Two flip ACTIVE on this CLOSE (sole-owner + shape contract); one is DRAFT until Sub-B's ranker reads the new column. Backed by Deno tests at `supabase/functions/run-place-intelligence-trial/__tests__/ai_signal_scores_slice.test.ts` + `ai_signal_scores_write_path.test.ts` (11 tests total, fails-on-revert verified at commit `25376e00f`), the migration self-verify probe in `20260802000003_meta_orch_1009_sub_a_ai_signal_scores.sql` (RAISE NOTICE + WARNING on drift > 5%), and the post-apply SQL probe at `supabase/migrations/__tests__/meta_orch_1009_sub_a_ai_signal_scores_backfill.test.sql`.
+
+### I-AI-SIGNAL-SCORES-COLUMN-SOLE-OWNER (ACTIVE post META-ORCH-1009 Sub-A CLOSE)
+
+**Statement:** `public.place_pool.ai_signal_scores` is written by EXACTLY ONE code path — `processOnePlace` in `supabase/functions/run-place-intelligence-trial/index.ts` (via the encapsulated `writeAiSignalScoresToPlacePool` helper) — plus the one-shot backfill in migration `20260802000003_meta_orch_1009_sub_a_ai_signal_scores.sql`. No other edge function, no RPC, no admin action, no migration, no manual SQL ad-hoc write may set this column. Reads are unrestricted (Sub-B ranker is the primary consumer; admin inspector is a secondary consumer).
+
+**Authority:** The column comment (set in the migration DDL) names `processOnePlace` as the sole writer.
+
+**Rationale:** Single-writer guarantees shape consistency (I-AI-SIGNAL-SCORES-SHAPE-CONTRACT cannot drift), prompt-version honesty (I-AI-SIGNAL-SCORES-PROMPT-VERSION-DISCRIMINATED can trust the stored prompt_version field), and a single audit log (the trial-run row carries the full evaluation context the column slice was derived from).
+
+**Enforcement:**
+1. Column comment readable in any psql `\d+ place_pool` inspection; in-DB documentation surviving code-grep evasion.
+2. Sub-A close registers this invariant. A dedicated strict-grep gate enforcing the no-other-writer rule may be added in a follow-up; for now the allowlist on the per-PR diff catches new write call-sites.
+
+**Test that catches a regression:** any new `.update({ ai_signal_scores` outside the two allowed call-sites is a direct violation. Manual psql writes are caught at runtime by the shape contract the first time Sub-B reads them.
+
+**Established:** 2026-05-30 by META-ORCH-1009 Sub-A CLOSE.
+
+**Related invariants:**
+- I-AI-SIGNAL-SCORES-SHAPE-CONTRACT (sibling — shape gate)
+- I-AI-SIGNAL-SCORES-PROMPT-VERSION-DISCRIMINATED (sibling — read gate)
+- I-TRIAL-OUTPUT-NEVER-FEEDS-RANKING (RETRACTED predecessor)
+
+### I-AI-SIGNAL-SCORES-SHAPE-CONTRACT (ACTIVE post META-ORCH-1009 Sub-A CLOSE)
+
+**Statement:** Every non-null value of `place_pool.ai_signal_scores` is a JSON object keyed by signal_id (∈ the 16 canonical signal IDs from `signal_definitions`). Each per-signal value is a JSON object with EXACTLY these 6 keys: `score_0_to_100` (integer 0–100), `inappropriate_for` (boolean), `reasoning` (non-empty text), `evaluated_at` (ISO-8601 timestamp string), `prompt_version` (non-empty text), `model` (non-empty text). No additional keys. No null values inside the per-signal object. If a signal was not evaluated for a place, the key is absent (not null).
+
+**Authority:** The `buildAiSignalScoresSlice` helper in `run-place-intelligence-trial/index.ts` and the backfill SQL in the Sub-A migration are the two producers; both produce this shape exactly. The column comment in the migration is the in-DB statement of the contract.
+
+**Rationale:** Sub-B's ranker reads the column with `Object.keys()` + narrow per-signal type assertion; any drift in shape breaks the ranker silently. Pinning the shape here means Sub-B does NOT need defensive shape-validation at read time — it can trust the contract.
+
+**Enforcement:**
+1. Producer-side TypeScript — `buildAiSignalScoresSlice` return type is the locked TS signature; any future producer must import this helper or replicate the type. The Deno unit test pins the produced shape against an exact-key assertion.
+2. Migration-time CHECK constraint DEFERRED to Sub-B (the backfill writes ~2,366 rows that have not been deeply shape-validated yet; Sub-B will add the CHECK once empirical evidence proves stability).
+
+**Test that catches a regression:** `supabase/functions/run-place-intelligence-trial/__tests__/ai_signal_scores_slice.test.ts` Test A asserts the exact 6-key shape; any future producer that omits or adds a field fails the test.
+
+**Established:** 2026-05-30 by META-ORCH-1009 Sub-A CLOSE.
+
+**Related invariants:** I-AI-SIGNAL-SCORES-COLUMN-SOLE-OWNER · I-AI-SIGNAL-SCORES-PROMPT-VERSION-DISCRIMINATED
+
+### I-AI-SIGNAL-SCORES-PROMPT-VERSION-DISCRIMINATED (DRAFT post META-ORCH-1009 Sub-A CLOSE)
+
+**Status:** DRAFT. Flips to ACTIVE on Sub-B's ranker landing (the ranker is the enforcement surface; the invariant is documented now so Sub-B implementor inherits the contract).
+
+**Statement:** The consumer-ranker code path (`supabase/functions/_shared/signalScorer.ts` or its successor, per Sub-B SPEC) MUST check the per-signal `prompt_version` field in `place_pool.ai_signal_scores` against the current expected prompt version (sourced from a single canonical constant — Sub-B SPEC pins WHERE). On mismatch, the AI score for that signal MUST be treated as null and the ranker MUST fall back to the rule scorer alone (no blend) for that (place, signal) pair.
+
+**Rationale:** Prompt drift is silent. A V5 prompt with re-tuned scoring thresholds will produce scores on a different scale than V4 — blending V4 scores into a V5-aware ranker silently corrupts the deck. Discriminating at READ time means the system fails CLOSED (rule-scorer baseline) rather than fails OPEN (degraded blend).
+
+**Authority (to be set on Sub-B close):** `supabase/functions/_shared/signalScorer.ts` — Sub-B SPEC §3.X (TBD).
+
+**Enforcement (gates to be set on Sub-B close):**
+1. Sub-B unit test on the ranker — feed AI evaluations stamped `v3` and `v4` with `EXPECTED_PROMPT_VERSION='v4'`; assert v3 entries are ignored and v4 entries are blended.
+2. Sub-B integration test — feed a mixed-prompt place row through the full ranker; assert the v3 signals produce the same score as if AI scores were absent.
+
+**Established:** 2026-05-30 by META-ORCH-1009 Sub-A CLOSE (as DRAFT); target ACTIVE on Sub-B close.
+
+**Related invariants:** I-AI-SIGNAL-SCORES-COLUMN-SOLE-OWNER · I-AI-SIGNAL-SCORES-SHAPE-CONTRACT
+
+---
+
+## RETRACTED (post META-ORCH-1009 Sub-A CLOSE 2026-05-30)
+
+### I-TRIAL-OUTPUT-NEVER-FEEDS-RANKING — RETRACTED 2026-05-30 per DEC-099 + DEC-181
+
+**Original statement (preserved for audit):** "Trial pipeline output stored in `place_intelligence_trial_runs` MUST NOT be read by production scoring / ranking surfaces. The trial table is admin-evaluation only; production rerank reads `place_scores`."
+
+**Original rationale:** the trial schema was research-grade and not bound by any production contract; allowing the ranker to read it would have coupled deck behaviour to ad-hoc admin experimentation.
+
+**Retraction rationale:** DEC-099 (2026-05-04) pre-authorised the constitutionally-blessed exception — a single JSONB column on `place_pool` (originally proposed as `claude_signal_evaluations`, renamed to `ai_signal_scores` per DEC-181 since Gemini, not Claude, is the trial-pipeline provider) that production code IS allowed to read. The old invariant guarded the trial TABLE; the new exception is a SEPARATE COLUMN ON A DIFFERENT TABLE (`place_pool.ai_signal_scores`) whose write path is constrained by `I-AI-SIGNAL-SCORES-COLUMN-SOLE-OWNER` and whose shape is pinned by `I-AI-SIGNAL-SCORES-SHAPE-CONTRACT`. Production code STILL must not read `place_intelligence_trial_runs` directly — that part of the old invariant survives, just folded into `I-AI-SIGNAL-SCORES-COLUMN-SOLE-OWNER`.
+
+**Replacement invariants:**
+- `I-AI-SIGNAL-SCORES-COLUMN-SOLE-OWNER` (ACTIVE post Sub-A close)
+- `I-AI-SIGNAL-SCORES-PROMPT-VERSION-DISCRIMINATED` (DRAFT post Sub-A close → ACTIVE on Sub-B's ranker landing)
+- `I-AI-SIGNAL-SCORES-SHAPE-CONTRACT` (ACTIVE post Sub-A close)
+
+**Cross-references:** DEC-099 · DEC-181 · META-ORCH-1009 Sub-A close · the three replacement invariants above.
+
+---
+
 ## ACTIVE (post ORCH-0975 [Consumer notifications sheet redesign] CLOSE 2026-05-25)
 
 Three invariants flipped DRAFT → ACTIVE at the ORCH-0975 close. Tester CONDITIONAL PASS verdict P0:0 P1:0 P2:1 P3:0 P4:1 (P2-1 = Android emulator Pixel_8_Pro AVD System UI ANR during bundling — environment failure not sheet defect, accepted per RETEST REVIEW 5-axis rationale; P4-1 = iOS Maestro selector ambiguity where `assertNotVisible: "Notifications"` also matches the persistent top-bar bell `accessibilityLabel` in `GlassTopBar.tsx`, operator manually verified pan-down works on iOS). Implementor regression at `app-mobile/src/components/__tests__/NotificationsSheet.test.tsx` (Node-assertion pattern per app-mobile's existing convention) fails-on-revert verified at the IMPL part 2 commit introducing `NotificationsSheet.tsx` (revert via `git rm` produces `ENOENT`). Tester adversarial at `app-mobile/src/components/__tests__/NotificationsSheet.tester-adversarial.test.tsx` attacks the per-category-pill routing angle (F-1: `board_card_message` must route to Chats not Plans because the type-specific branch must come BEFORE the generic `board_card_*` sessions branch in `getFilterCategory()`). All 3 invariants enforced by a single new strict-grep CI script `.github/scripts/strict-grep/orch-0975-notifications-sheet.mjs` registered in `.github/workflows/strict-grep-mingla-business.yml` as `ORCH-0975: notifications sheet bottom-sheet invariant`. EAS-OTA-eligible (pure-JS, no native module).
@@ -1231,7 +1313,7 @@ Forbidden: persisting `currentBrand: Brand`, `currentEvent: LiveEvent`, `current
 **Established:** 2026-05-05 by ORCH-0734 (forensics → SPEC → IMPL → Cary 50 smoke PASS in 19 min for $0.21 with 3 Gemini retries fired+succeeded). DEC-110 logs the decision.
 
 **Related invariants:**
-- `I-TRIAL-OUTPUT-NEVER-FEEDS-RANKING` (preserved) — trial pipeline output is PM-evaluation only; never feeds production rerank
+- `I-TRIAL-OUTPUT-NEVER-FEEDS-RANKING` (RETRACTED 2026-05-30 per DEC-099 + DEC-181 — see top-of-file RETRACTED section; replaced by I-AI-SIGNAL-SCORES-COLUMN-SOLE-OWNER + shape contract + prompt-version-discriminated invariants)
 - `I-TRIAL-RUN-SCOPED-TO-CITY` (pre-cursor — DEC-105; ORCH-0734 strengthens via schema + UI gates)
 - `I-BOUNCER-EXCLUDES-FAST-FOOD-AND-CHAINS` (ORCH-0735) — upstream pool-quality gate; trial output validity depends on this
 

@@ -96,6 +96,127 @@ const COLLAGE_BUCKET = "place-collages";
 const PROMPT_VERSION = "v4";
 const COST_GUARD_USD = 5.0;
 
+// ─── META-ORCH-1009 Sub-A ──────────────────────────────────────────────────
+// Slice Q2 aggregate response into the JSONB shape required by
+// place_pool.ai_signal_scores. Pure function (no I/O); tested by Deno unit
+// test in __tests__/ai_signal_scores_slice.test.ts.
+//
+// Input: q2.evaluations — the Q2_TOOL output shape pinned by the Q2_TOOL
+// function declaration in this file. Per Gemini 2.5 Flash function-calling
+// output shape: https://ai.google.dev/api/generate-content#function_calling
+// (verified 2026-05-30). The toolCall arg payload returned by Gemini is
+// parsed in callGeminiQuestion() upstream; q2.evaluations is a plain JS
+// array of { signal_id, score_0_to_100, inappropriate_for, reasoning }.
+//
+// Output: { signal_id: { score_0_to_100, inappropriate_for, reasoning,
+// evaluated_at, prompt_version, model } } per I-AI-SIGNAL-SCORES-SHAPE-CONTRACT.
+//
+// Defensive: skips evaluations missing required fields (logs + drops);
+// returns {} if input is null/undefined/empty array.
+//
+// Exported so __tests__/ai_signal_scores_slice.test.ts can import it. Deno
+// import-from-relative-path is the established pattern in this folder.
+export function buildAiSignalScoresSlice(
+  evaluations: ReadonlyArray<{
+    signal_id: string;
+    score_0_to_100: number;
+    inappropriate_for: boolean;
+    reasoning: string;
+  }> | null | undefined,
+  evaluatedAtIso: string,
+  promptVersion: string,
+  modelName: string,
+): Record<string, {
+  score_0_to_100: number;
+  inappropriate_for: boolean;
+  reasoning: string;
+  evaluated_at: string;
+  prompt_version: string;
+  model: string;
+}> {
+  if (!evaluations || evaluations.length === 0) return {};
+  const out: Record<string, {
+    score_0_to_100: number;
+    inappropriate_for: boolean;
+    reasoning: string;
+    evaluated_at: string;
+    prompt_version: string;
+    model: string;
+  }> = {};
+  for (const ev of evaluations) {
+    if (
+      !ev ||
+      typeof ev.signal_id !== "string" || ev.signal_id.length === 0 ||
+      typeof ev.score_0_to_100 !== "number" ||
+      !Number.isFinite(ev.score_0_to_100) ||
+      typeof ev.inappropriate_for !== "boolean" ||
+      typeof ev.reasoning !== "string" || ev.reasoning.length === 0
+    ) {
+      console.warn(
+        `[place-intel-trial:ai_signal_scores_skip_malformed_eval] signal=${ev?.signal_id ?? "<missing>"}`,
+      );
+      continue;
+    }
+    out[ev.signal_id] = {
+      score_0_to_100: Math.max(0, Math.min(100, Math.round(ev.score_0_to_100))),
+      inappropriate_for: ev.inappropriate_for,
+      reasoning: ev.reasoning,
+      evaluated_at: evaluatedAtIso,
+      prompt_version: promptVersion,
+      model: modelName,
+    };
+  }
+  return out;
+}
+
+// META-ORCH-1009 Sub-A — Non-fatal place_pool.ai_signal_scores writer.
+//
+// Encapsulates the "mirror Q2 slice to place_pool" call so it (a) is
+// independently unit-testable with a mocked supabase client and (b) keeps
+// the call-site inside processOnePlace small + auditable.
+//
+// Contract (per SPEC §3.2 D4):
+//  - If slice is empty, NO write attempt is made.
+//  - If the .update() call returns an error, log and RESOLVE (do NOT throw).
+//  - If the entire call throws (network drop, etc.), log and RESOLVE.
+//  - Returns a discriminator so callers can branch on outcome (currently
+//    unused but lets Sub-D's refresh cron later surface drift metrics).
+//
+// Minimal db client surface used: db.from('place_pool').update(<obj>).eq('id', <uuid>)
+// returning { error: { message: string } | null }.
+// Exported so __tests__/ai_signal_scores_write_path.test.ts can import it.
+export async function writeAiSignalScoresToPlacePool(
+  db: {
+    from: (table: string) => {
+      update: (patch: Record<string, unknown>) => {
+        eq: (col: string, val: string) => Promise<{ error: { message: string } | null }>;
+      };
+    };
+  },
+  placeId: string,
+  slice: Record<string, unknown>,
+): Promise<"skipped_empty" | "ok" | "error_caught"> {
+  if (!slice || Object.keys(slice).length === 0) return "skipped_empty";
+  try {
+    const { error: ppErr } = await db
+      .from("place_pool")
+      .update({ ai_signal_scores: slice })
+      .eq("id", placeId);
+    if (ppErr) {
+      console.error(
+        `[place-intel-trial:ai_signal_scores_write_failed] place=${placeId} err=${ppErr.message}`,
+      );
+      return "error_caught";
+    }
+    return "ok";
+  } catch (e) {
+    console.error(
+      `[place-intel-trial:ai_signal_scores_write_threw] place=${placeId} err=${e instanceof Error ? e.message : String(e)}`,
+    );
+    return "error_caught";
+  }
+}
+
 // ORCH-0737 v6 — Anthropic-era per-place throttle constant removed (was dead code
 // post ORCH-0733 / DEC-101 dropping Anthropic from the trial pipeline).
 const REVIEWS_FETCH_THROTTLE_MS = 200; // gentle Serper throttle
@@ -1498,6 +1619,46 @@ async function processOnePlace(args: {
       .eq("place_pool_id", anchor.place_pool_id);
     if (updateErr) {
       throw new Error(`trial row update failed: ${updateErr.message}`);
+    }
+
+    // META-ORCH-1009 Sub-A — mirror Q2 slice into place_pool.ai_signal_scores
+    // for the production ranker (Sub-B reads it). Trial row is source of
+    // truth; this is a DERIVED materialisation. Non-fatal: if the secondary
+    // write fails we log + continue; the migration's idempotent backfill SQL
+    // is re-runnable to recover laggards. Constitutionally blessed by DEC-099
+    // (column) + DEC-181 (name). Sole-writer invariant:
+    // I-AI-SIGNAL-SCORES-COLUMN-SOLE-OWNER.
+    //
+    // Gemini Q2 shape ref (q2.evaluations[]): per
+    // https://ai.google.dev/api/generate-content#function_calling (verified
+    // 2026-05-30) — toolCall arg payload returned by Gemini function-calling
+    // mode is parsed in callGeminiQuestion() upstream; q2.evaluations is a
+    // plain JS array of { signal_id, score_0_to_100, inappropriate_for,
+    // reasoning } objects per Q2_TOOL declaration in this file.
+    try {
+      const aiSignalScoresSlice = buildAiSignalScoresSlice(
+        (q2 as { evaluations?: ReadonlyArray<{
+          signal_id: string;
+          score_0_to_100: number;
+          inappropriate_for: boolean;
+          reasoning: string;
+        }> })?.evaluations,
+        completedAt,
+        PROMPT_VERSION,
+        GEMINI_MODEL_NAME_SHORT,
+      );
+      // Helper handles empty-slice skip + supabase-error log + thrown-error
+      // catch; never rejects. See writeAiSignalScoresToPlacePool() above.
+      await writeAiSignalScoresToPlacePool(
+        db as unknown as Parameters<typeof writeAiSignalScoresToPlacePool>[0],
+        anchor.place_pool_id,
+        aiSignalScoresSlice,
+      );
+    } catch (sliceErr) {
+      console.error(
+        `[place-intel-trial:ai_signal_scores_slice_failed] place=${anchor.place_pool_id} err=${sliceErr instanceof Error ? sliceErr.message : String(sliceErr)}`,
+      );
+      // Non-fatal.
     }
 
     const finalDiagnostics = safeMergeDiagnostics(preWriteDiagnostics, {

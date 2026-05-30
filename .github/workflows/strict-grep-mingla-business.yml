@@ -1103,6 +1103,17 @@ jobs:
       - name: Run I-ARI-NO-OKLCH gate
         run: node .github/scripts/strict-grep/i-ari-no-oklch.mjs
 
+  i-ai-signal-scores-column-sole-owner:
+    name: "I-AI-SIGNAL-SCORES-COLUMN-SOLE-OWNER: only run-place-intelligence-trial writes the column"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run I-AI-SIGNAL-SCORES-COLUMN-SOLE-OWNER gate
+        run: node .github/scripts/strict-grep/i-ai-signal-scores-column-sole-owner.mjs
+
   i-ari-user-jwt-only:
     name: "I-ARI-USER-JWT-ONLY: Ari edge handlers never reference service role"
     runs-on: ubuntu-latest

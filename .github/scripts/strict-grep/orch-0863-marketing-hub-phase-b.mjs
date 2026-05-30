@@ -1042,6 +1042,26 @@ function checkNoNewBackendFiles() {
     "supabase/functions/run-place-intelligence-trial/index.ts",
     "supabase/functions/run-place-intelligence-trial/__tests__/intelligence_coverage_seed_refresh.test.ts",
   ];
+  // META-ORCH-1009 Sub-A [ai-signal-scores schema]: adds the place_pool
+  // ai_signal_scores JSONB column + GIN(jsonb_path_ops) index + one-shot
+  // backfill from place_intelligence_trial_runs.q2_response; extends the
+  // trial edge function with a non-fatal secondary write to mirror Q2 slice
+  // into the new column. New Deno tests cover the slice helper + write-path
+  // contract; new SQL probe covers post-apply backfill verification. The
+  // edge-fn source path (`run-place-intelligence-trial/index.ts`) is already
+  // listed in ORCH_1015_BACKEND_ALLOWLIST above — duplicated here for
+  // explicit Sub-A ownership; the ALLOWLIST spread is a union so dup is
+  // harmless. C7 is scoped to ORCH-0863 marketing; this entry covers the
+  // Sub-A backend touches.
+  const META_ORCH_1009_SUB_A_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260802000003_meta_orch_1009_sub_a_ai_signal_scores.sql",
+    "supabase/functions/run-place-intelligence-trial/index.ts",
+    "supabase/functions/run-place-intelligence-trial/__tests__/ai_signal_scores_slice.test.ts",
+    "supabase/functions/run-place-intelligence-trial/__tests__/ai_signal_scores_write_path.test.ts",
+    // QA pass — adversarial coverage on slice + writer (5 new tests):
+    "supabase/functions/run-place-intelligence-trial/__tests__/ai_signal_scores_adversarial.test.ts",
+    "supabase/migrations/__tests__/meta_orch_1009_sub_a_ai_signal_scores_backfill.test.sql",
+  ];
   const ALLOWLIST = [
     ...ORCH_1006_BACKEND_ALLOWLIST,
     ...ORCH_0989_BACKEND_ALLOWLIST,
@@ -1100,6 +1120,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_1013_BACKEND_ALLOWLIST,
     ...ORCH_1014_BACKEND_ALLOWLIST,
     ...ORCH_1015_BACKEND_ALLOWLIST,
+    ...META_ORCH_1009_SUB_A_BACKEND_ALLOWLIST,
   ];
   const forbidden = changed.filter(
     (p) =>
