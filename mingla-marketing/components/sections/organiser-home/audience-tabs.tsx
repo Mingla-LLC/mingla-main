@@ -127,9 +127,12 @@ export function OrganiserAudienceTabs() {
   return (
     <SpotlightBand aria-label="How Mingla works for your kind of business" className="md:py-32">
       <div className="mx-auto max-w-6xl">
-        {/* Header — title + tabs on the left, Earnings chart beside it. */}
-        <div className="grid gap-10 lg:grid-cols-[1fr_0.82fr] lg:items-center lg:gap-16">
-          <div>
+        {/* Header — desktop: title + tabs (left) beside the Earnings chart (right).
+            Mobile order: title → chart → tabs, so the chart sits between the title
+            and the tab picker and the tabs lead straight into the content. */}
+        <div className="grid gap-x-16 gap-y-9 lg:grid-cols-[1fr_0.82fr]">
+          {/* Title */}
+          <div className="lg:col-start-1 lg:row-start-1 lg:self-end">
             <Reveal as="span" className="block text-xs font-semibold uppercase tracking-[0.2em] text-warm">
               Built for your kind of place
             </Reveal>
@@ -138,35 +141,44 @@ export function OrganiserAudienceTabs() {
                 pick your world. <span className="text-warm">see your Mingla.</span>
               </h2>
             </Reveal>
-
-            <div role="tablist" aria-label="Audience" className="mt-9 flex flex-wrap gap-2.5">
-              {TABS.map((t, i) => {
-                const isActive = i === active
-                return (
-                  <button
-                    key={t.id}
-                    role="tab"
-                    aria-selected={isActive}
-                    onClick={() => setActive(i)}
-                    className={cn(
-                      'rounded-full px-4 py-2 text-sm font-semibold transition-all duration-200 ease-out-quart focus-ring',
-                      isActive
-                        ? 'bg-warm text-ink'
-                        : 'bg-white/[0.07] text-white/75 ring-1 ring-white/10 hover:bg-white/[0.12] hover:text-white',
-                    )}
-                  >
-                    {t.label}
-                  </button>
-                )
-              })}
-            </div>
           </div>
 
-          <Reveal delay={0.1} className="flex justify-center lg:justify-end">
+          {/* Earnings chart (after the title on mobile; right column on desktop) */}
+          <Reveal
+            delay={0.1}
+            className="flex justify-center lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:items-center lg:justify-end"
+          >
             <div data-theme="light" className="w-full max-w-md">
               <EarningsCard />
             </div>
           </Reveal>
+
+          {/* Tabs */}
+          <div
+            role="tablist"
+            aria-label="Audience"
+            className="flex flex-wrap gap-2.5 lg:col-start-1 lg:row-start-2 lg:self-start"
+          >
+            {TABS.map((t, i) => {
+              const isActive = i === active
+              return (
+                <button
+                  key={t.id}
+                  role="tab"
+                  aria-selected={isActive}
+                  onClick={() => setActive(i)}
+                  className={cn(
+                    'rounded-full px-4 py-2 text-sm font-semibold transition-all duration-200 ease-out-quart focus-ring',
+                    isActive
+                      ? 'bg-warm text-ink'
+                      : 'bg-white/[0.07] text-white/75 ring-1 ring-white/10 hover:bg-white/[0.12] hover:text-white',
+                  )}
+                >
+                  {t.label}
+                </button>
+              )
+            })}
+          </div>
         </div>
 
         {/* Tab content — per-tab heading + intro, then steps (left) + feature cards (right). */}
