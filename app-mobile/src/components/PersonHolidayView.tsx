@@ -1307,9 +1307,22 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
   },
+  // ORCH-1016 REWORK-4 (FIX C) — contain the glass pills within the card.
+  // Intent/curated cards (stops + experience) and multi-category/rating cards
+  // render TWO wide GlassBadges; without flexWrap the row overflowed the card's
+  // padded content width and the pills bled past the card edges on-device. Mirror
+  // the EXPANDED deck card's badge-row treatment (CuratedExperienceSwipeCard
+  // `detailsBadges` + SwipeableCards chip rows already use flexDirection:row +
+  // gap + flexWrap:'wrap') so a too-wide second pill wraps to a new line instead
+  // of bleeding. The tile already clips at its rounded edge (overflow:'hidden').
+  // rowGap keeps wrapped rows from touching; alignItems:flex-start keeps each
+  // badge at its natural width (GlassBadge text is already numberOfLines={1}).
   tileChips: {
     flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "flex-start",
     gap: s(8),
+    rowGap: s(6),
   },
   gpsEmptyCard: {
     backgroundColor: "#fff7ed",
