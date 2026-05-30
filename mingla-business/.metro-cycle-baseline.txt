@@ -28,3 +28,11 @@ src/store/draftEventStore.ts | src/utils/serverDraftAutosaveGuards.ts
 src/store/liveEventStore.ts | src/store/orderStoreHelpers.ts
 src/store/liveEventStore.ts | src/utils/liveEventAdapter.ts
 src/store/liveEventStore.ts | src/utils/publishedEventEditGuards.ts
+# ORCH-1004: useBrands now imports AuthContext (useAuth) to gate its fetch on
+# auth-session readiness — the reliability fix. This closes 3 cycles through the
+# existing AuthContext -> clearAllStores -> stores graph. Benign: useAuth() is
+# called at hook-runtime, never at module-init top level, so the cyclic import
+# resolves lazily. Intentional + reviewed (ORCH-1004 CLOSE).
+src/context/AuthContext.tsx | src/hooks/useBrandListShim.ts | src/hooks/useBrands.ts | src/store/currentBrandStore.ts | src/utils/clearAllStores.ts
+src/context/AuthContext.tsx | src/hooks/useBrands.ts | src/store/draftEventStore.ts | src/store/liveEventStore.ts | src/utils/clearAllStores.ts
+src/context/AuthContext.tsx | src/hooks/useBrands.ts | src/store/draftEventStore.ts | src/utils/clearAllStores.ts | src/utils/liveEventConverter.ts
