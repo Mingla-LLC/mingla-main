@@ -37,8 +37,22 @@ Buyer always sees ONE all-in price (the exact charge); brand sets 3 switches (ta
 - **RPC can't write NULL.** `business_set_pricing_switches` takes non-null booleans → no server-side "reset to inherit"/partial per-column override. The EVENT flow sidesteps this by writing columns directly (true per-column NULL inheritance via autosave). Trip/experience + post-publish live-edit will hit this if they route through the RPC — a NULL-writing RPC (or direct-column writes) is needed for reset/partial.
 - **"You keep" economics caveat (handoff §3).** The chip shows "You keep …before VAT" using the flat-absorb floor. The service-fee-recovers-whose-cost question is still unsettled; current copy avoids claiming what the service fee compensates. Settle before any payout/fee copy hardens.
 
-## REMAINING WORK (in priority order)
-### 0. NEXT BATCH (post core-vertical) — trip + experience mounts, Surface 2, Surface 4 endpoint
+## BATCH 2 COMPLETE (2026-05-30) — Surfaces 1–5 now authored across all formats
+- **Trip mount** (`248ece286`): `WhoCoversCostsSection` in `TripCreatorStep4Pricing`; switches persist to `events.pass_*` via `setTripPricingSwitches` (direct columns, NULL-capable) in `autosaveStep4`, gated on `ticketsSoldCount===0`. `Trip.pricingSwitches` (optional) read in `mapTrip`.
+- **Experience mount** (`bfefc4b03`): switch state + `pass_*` in the single-shot `events` insert in `ExperienceCreatorWizard`.
+- **Surface 2** (`ed5eea336`): `BrandPricingDefaultsView` + route `app/brand/[id]/pricing-defaults.tsx` + "Pricing defaults" row in `BrandProfileView`; reuses the shared section via a new `footerOverride` prop (region chip, £100 example, no inherit ring). Writes via `setBrandPricingDefaults` + invalidates the brand query. "Edit defaults →" deep-links wired from all three format mounts.
+- **Surface 4** (`ca3754630`): new read-only edge fn `brand-tax-registrations-list` (owner-gated, `STRIPE_RAK_TICKET_CHECKOUT`, Connect `{stripeAccount}`, fail-closed) + `useBrandTaxRegistration` hook; all three mounts gate the VAT row on the real probe and deep-link `onSetupVat` → `/connect-tax-registrations`. Registered in `ORCH_1006_BACKEND_ALLOWLIST`.
+- Every batch: tsc 263 == 263 baseline (zero net-new errors).
+
+### REMAINING TO SHIP (verification + deploy gates — NOT code)
+- **Deploy the new edge fn from MERGED main** (`brand-tax-registrations-list`, verify_jwt:true) — until then `useBrandTaxRegistration` errors → fail-closed (VAT row shows the nudge for everyone, which is safe).
+- **Run the 4 business jest gates + the pricingPreview parity test on the anchor/CI** (worktree jest is broken — escalade dep). 
+- **On-device / sim smoke**: author an event/trip/experience, toggle switches, confirm persistence + the live "Buyer pays" chip + the locked state on a sold offering + Surface 5 "You covered £X" + Surface 2 defaults round-trip.
+- **Settle the service-fee economics** (handoff §3) before payout/fee copy hardens; revisit the "You keep …before VAT" floor framing.
+- **Decide merge + consumer build timing** (the cart/detail buyer surfaces won't show until a new native build ships; DB RPCs already live).
+- Optional polish: per-column reset-to-inherit (needs a NULL-writing RPC); VAT-row loading shimmer while the probe is in flight (currently shows nudge until resolved).
+
+### (superseded) NEXT BATCH — trip + experience mounts, Surface 2, Surface 4 endpoint — DONE above
 - **Trip mount:** add `pricingSwitches` to `Step4Draft` + thread through `TripCreatorWizard` state; persist to the trip's `events.pass_*` (trip is an events row; `updateTripPricing` only writes `trip_pricing_tiers`, so add a separate events write — either direct columns or the RPC). Mount `<WhoCoversCostsSection format="trip" .../>` in `TripCreatorStep4Pricing.tsx`. Brand defaults via `useCurrentBrand`.
 - **Experience mount:** experiences insert directly into `events` in `ExperienceCreatorWizard.tsx` — add `pass_*` to that insert/update + mount `<WhoCoversCostsSection format="experience" .../>`.
 - **Surface 2:** new screen `app/brand/[id]/pricing-defaults.tsx` + `src/components/brand/BrandPricingDefaultsView.tsx` (mirror `BrandEditView`); reuse `WhoCoversCostsSection`-style rows against `business_set_brand_pricing_defaults` (already wrapped in `pricingSwitchesService`). Add a settings-list link; wire `onEditDefaults` deep-link from Surface 1.
