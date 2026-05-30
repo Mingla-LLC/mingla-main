@@ -312,6 +312,28 @@ body {
   }
 }
 
+/* ORCH-1010 — horizontal marquee (Built-for cards drift slowly to the right).
+   Doubled card list; -50%->0 moves rightward and loops seamlessly. */
+@keyframes mingla-marquee-x {
+  from {
+    transform: translateX(-50%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+/* ORCH-1010 — pin-dot chip pulse (business-type chips fade in/out). */
+@keyframes mingla-chip-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
 /* ORCH-1010 — Ari orb glow pulse. */
 @keyframes mingla-orb-pulse {
   0%,

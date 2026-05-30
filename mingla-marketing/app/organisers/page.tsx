@@ -22,9 +22,9 @@ export default function OrganiserHomePage() {
       <OrganiserHero />
       <OrganiserWhatIsMingla />
       <OrganiserImpactStats />
+      <OrganiserAudiences />
       <OrganiserWhatMinglaDoes />
       <OrganiserHowItWorks />
-      <OrganiserAudiences />
       <OrganiserWhyMingla />
       <OrganiserComparison />
       <OrganiserFeatures />

@@ -166,11 +166,13 @@ const cases: ReadonlyArray<readonly [string, () => void]> = [
     },
   ],
   [
-    'audiences ships all 6 experience-economy cards incl. the Compass card',
+    'audiences ships the full experience economy as a right-drifting image marquee',
     () => {
+      // Redesigned to image-background cards in a marquee (lucide Compass icon
+      // dropped). Guard the experience-economy card + the marquee mechanism.
       const aud = read('audiences.tsx')
       makeExpect(aud).toContain('Experiences, trips & adventures')
-      makeExpect(aud).toContain('Compass')
+      makeExpect(aud).toContain('mingla-marquee-x')
     },
   ],
 ]
