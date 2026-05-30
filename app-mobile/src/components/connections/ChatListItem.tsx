@@ -522,6 +522,10 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.075)',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.10)',
+    // META-ORCH-1002 Sub-B (C6, dark-canvas): clip the translucent glass fill + border
+    // to the radius (kills the corner ring); zero the Android elevation so no hard
+    // shadow rectangle draws under the rounded row. iOS shadow + glass fill preserved.
+    overflow: 'hidden',
     ...Platform.select({
       ios: {
         shadowColor: '#000000',
@@ -531,7 +535,7 @@ const styles = StyleSheet.create({
       },
       android: {
         backgroundColor: 'rgba(255, 255, 255, 0.09)',
-        elevation: 2,
+        elevation: 0,
       },
     }),
   },

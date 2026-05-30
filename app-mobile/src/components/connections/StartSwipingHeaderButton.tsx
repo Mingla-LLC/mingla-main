@@ -50,6 +50,9 @@ const styles = StyleSheet.create({
     borderRadius: s(17),
     paddingHorizontal: s(12),
     paddingVertical: s(6),
+    // META-ORCH-1002 Sub-B (C2, dark-canvas): clip the translucent orange glass fill +
+    // border to the radius (kills the corner ring). Glass fill preserved.
+    overflow: "hidden",
     backgroundColor: "rgba(235, 120, 37, 0.18)",
     borderWidth: 1,
     borderColor: "rgba(235, 120, 37, 0.5)",

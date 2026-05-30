@@ -388,6 +388,9 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 48,
     borderRadius: radius.lg,
+    // META-ORCH-1002 Sub-B (C1, dark-canvas): clip the translucent fill + border to
+    // the radius (kills the corner ring). Glass fill preserved — no opaque-ify.
+    overflow: 'hidden',
     backgroundColor: 'rgba(255, 255, 255, 0.45)',
     borderWidth: 1,
     borderColor: 'rgba(0, 0, 0, 0.06)',
