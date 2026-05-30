@@ -524,3 +524,64 @@ Read on entry. No BLOCK/WARN entry targets ORCH-0998 or this skill. COMMS-0003 (
 
 ## Discoveries for orchestrator
 None. Change is self-contained to `mingla-marketing/`. No other surface touched (admin/business/app-mobile/supabase untouched).
+
+---
+
+# ADDENDUM — Location-aware multi-city hero (Raleigh + Lagos + DC fallback)
+
+**Dispatch:** add TWO more cities (Raleigh, Lagos) to the marketing hero deck and make it LOCATION-AWARE with a DC fallback. Static per-city snapshots; Vercel geo headers → nearest seeded city → DC fallback. No new backend/edge function.
+**Status:** implemented and verified (local dev preview on :3008).
+
+## What changed for end users
+Visitors now see a hero deck localized to where they are. A visitor near Raleigh sees real Raleigh places, plans, and events with USD ($) prices; a visitor in Lagos / in Nigeria sees real Lagos venues with NGN (₦) prices; everyone else (and local dev) still gets the original DC deck. The 2s synced pill+deck, pill vocabulary, white-on-orange pills, uniform event cards, no-scroll-at-768px, and reduced-motion behavior are all unchanged.
+
+## City resolution approach
+Resolved SERVER-SIDE in `app/(explorer)/page.tsx` (async server component):
+- Reads Vercel geo headers via `next/headers`: `x-vercel-ip-latitude`, `x-vercel-ip-longitude`, `x-vercel-ip-country`.
+- `resolveCityKey()` (pure fn in `lib/city-decks.ts`) order: (1) `?city=dc|raleigh|lagos` override (local testing) → (2) lat/lng haversine to nearest of the 3 centers within 250km → (3) country `NG` → lagos → (4) DC fallback (also the local-dev path where no Vercel headers exist).
+- City centers: DC (38.9072873, -77.0369274), Raleigh (35.7795897, -78.6381787), Lagos (6.6137395, 3.3552568).
+- Resolved `cityKey` flows page → `<ExplorerHero cityKey>` → `useDeckRotation(cityKey)` + `<HeroPlaceDeck cityKey>`; the deck builds its interleaved single→intent→event slots from the RESOLVED city's data.
+
+## Files created
+- `lib/raleigh-showcase-places.ts` — 10 real Raleigh places (exact `stored_photo_urls[0]`, USD prices, ≤72-char blurbs).
+- `lib/lagos-showcase-places.ts` — 10 real Lagos places (exact photo URLs, NGN prices).
+- `lib/raleigh-intent-plans.ts` — 6 intent plans (exact stop photos, USD).
+- `lib/lagos-intent-plans.ts` — 6 intent plans (exact stop photos, NGN).
+- `lib/raleigh-showcase-events.ts` — 5 events (real Ticketmaster covers, "On Mingla", illustrative USD prices — TM returned TBA).
+- `lib/lagos-showcase-events.ts` — 4 representative "On Mingla" events (covers = real venue `stored_photo_urls[0]`, NGN).
+- `lib/city-decks.ts` — `CITY_DECKS` map + city centers + pure `resolveCityKey()`.
+- `lib/city-decks.test.ts` — 10-case resolver regression test (harness-ready + Node-assert runner).
+
+## Files changed (Old → New)
+- `lib/dc-showcase-places.ts` — added optional `coverImageUrl?: string` to `ShowcasePlace` (DC entries omit it → unchanged behavior; new cities supply the exact stored URL so the extension is never guessed). ~8 lines.
+- `components/sections/explorer-home/hero-place-deck.tsx` — `buildInterleavedSlots(deck)` now takes a `CityDeck` (was DC-globals); `useDeckRotation(cityKey)` builds + returns city slots and resets `order` on city change; `HeroPlaceDeck` reads slots from rotation (or builds for a static `cityKey`); aria group label uses the resolved city; `PhotoOrFallback` prefers `place.coverImageUrl`. ~60 lines.
+- `components/sections/explorer-home/hero.tsx` — `ExplorerHero({ cityKey })` threads the city to the rotation hook + deck. ~10 lines.
+- `app/(explorer)/page.tsx` — async server component resolving the city from geo headers + `?city=` override. ~30 lines.
+
+## Currency handling (per dispatch CURRENCY RULE)
+`price_range_*_cents` are minor units of LOCAL currency → ÷100. Real DB-derived values used:
+- Raleigh (USD): Angus Barn $50–$100, Raleigh Beer Garden $20–$30, The Pit $20–$30, Royal India $20–$30, Big Ed's $10–$20; Umstead/NCMA Free; Regal/Meymandi/DEFY null.
+- Lagos (NGN): Bay Lounge ₦20,000–₦70,000, Eric Kayser ₦10,000–₦60,000, Farmcity ₦10,000–₦60,000, Golden Eagles ₦10,000–₦20,000, Noir from ₦20,000; Lekki/Nike Free; Genesis/Canyon/Dream null.
+
+## Data note (unexpected from DB)
+- **Royal India** (Raleigh) hero photo is a **`.png`** (not `.jpg`) — pulled exactly from `stored_photo_urls[0]`; would have been a broken image if the extension were guessed. HEAD-checked → 200.
+- **Lagos editorial_summary** is null for most places (Bay Lounge, Eric Kayser, Farmcity, Golden Eagles, Noir, Genesis, Canyon, Dream) → wrote original Mingla-voice blurbs from the place type. Only Lekki, Nike, Freedom Park, Hard Rock had editorial text.
+- Operator's illustrative price hints (e.g. Angus Barn "$20–$30") were superseded by the real DB `price_range_*_cents` per the CURRENCY RULE ("use real data").
+
+## Verification
+- `tsc --noEmit` (mingla-marketing): **clean, exit 0**.
+- `curl` (dev :3008, hot-reloaded, NOT restarted): `/` → 200, `/?city=raleigh` → 200, `/?city=lagos` → 200, `/?city=dc` → 200. No "Application error"/ISR error strings.
+- Content proof: `/?city=raleigh` aria = "from Raleigh", front card "William B. Umstead", **0** `₦` chars; `/?city=lagos` aria = "from Lagos", "Lekki Conservation", `₦` present (₦15,000 / ₦40,000 / ₦120,000 in first cards); `/` (default DC) aria = "from Washington DC", "Anacostia Park". DC deck unchanged.
+- Photo HEAD checks 200: Raleigh Angus Barn `.jpg`, Royal India `.png`; Lagos Nike `.jpg`, Lekki `.jpg`; Raleigh TM French Montana cover `.jpg`.
+
+## Regression test
+`lib/city-decks.test.ts` — 10 cases covering exact-coords, suburb, far-city fallback, NG country, no-signal fallback, and `?city=` override precedence/case/invalid.
+- Passing run: **All 10 tests passed** (compiled via temp tsconfig + `@/` alias hook, run under Node).
+- fails-on-revert verified at commit `689000f56` — neutralizing the haversine pick + country branch → **4 failures, exit 1**. Fix restored byte-identical (git diff clean), re-run green.
+- No jest/vitest harness exists in mingla-marketing; the test ships harness-ready (describe/it) with a self-contained Node-assert fallback runner so it runs today and slots into a future harness unchanged.
+
+## Cross-surface impact
+Only `mingla-marketing/` (Buyer/marketing web). UNAFFECTED: consumer iOS/Android, business iOS/Android/web, admin — none render this hero. DC deck preserved unchanged (DC entries have no `coverImageUrl`, fall back to the original placeKey path).
+
+## Discoveries for orchestrator
+None blocking. Note for future: when Vercel-deployed, confirm geo headers are enabled for the marketing project (they are on by default on Vercel's Edge Network); the page is now dynamically rendered per request (reads headers + searchParams), which is correct for geo personalization but means this route is no longer statically cached.

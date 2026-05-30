@@ -9,6 +9,7 @@ import {
   useDeckRotation,
   type DeckPill,
 } from '@/components/sections/explorer-home/hero-place-deck'
+import { DEFAULT_CITY, type CityKey } from '@/lib/city-decks'
 import { cn } from '@/lib/cn'
 import { PRIVACY_SECTIONS, PRIVACY_EFFECTIVE_DATE } from '@/lib/privacyContent'
 import { TERMS_SECTIONS, TERMS_EFFECTIVE_DATE } from '@/lib/termsContent'
@@ -495,11 +496,17 @@ function SupportModal({ open, onClose }: TermsModalProps) {
   )
 }
 
-export function ExplorerHero() {
+interface ExplorerHeroProps {
+  /** Server-resolved marketing city (ORCH-0998 location-aware). Defaults to DC. */
+  cityKey?: CityKey
+}
+
+export function ExplorerHero({ cityKey = DEFAULT_CITY }: ExplorerHeroProps) {
   const reduced = useMinglaReducedMotion()
   // Single source of truth for the rotation: the SAME index/timer drives both
   // the deck's front card and the headline pill (ORCH-0998 hero-pill sync).
-  const rotation = useDeckRotation()
+  // The rotation is built from the RESOLVED city's interleaved slots.
+  const rotation = useDeckRotation(cityKey)
   const [supportOpen, setSupportOpen] = useState(false)
   const [termsOpen, setTermsOpen] = useState(false)
   const [privacyOpen, setPrivacyOpen] = useState(false)
@@ -568,7 +575,7 @@ export function ExplorerHero() {
               transformOrigin: 'center',
             }}
           >
-            <HeroPlaceDeck rotation={rotation} />
+            <HeroPlaceDeck rotation={rotation} cityKey={cityKey} />
           </div>
         </motion.div>
       </div>

@@ -25,17 +25,18 @@ import {
 import type { LucideIcon } from 'lucide-react'
 import { useMinglaReducedMotion } from '@/lib/reduced-motion'
 import {
-  DC_SHOWCASE_PLACES,
   placePhotoUrl,
   type PlacePillIcon,
   type ShowcasePlace,
 } from '@/lib/dc-showcase-places'
-import { DC_INTENT_PLANS, type IntentPlan } from '@/lib/dc-intent-plans'
+import { type IntentPlan } from '@/lib/dc-intent-plans'
+import { type EventKind, type ShowcaseEvent } from '@/lib/dc-showcase-events'
 import {
-  DC_SHOWCASE_EVENTS,
-  type EventKind,
-  type ShowcaseEvent,
-} from '@/lib/dc-showcase-events'
+  CITY_DECKS,
+  DEFAULT_CITY,
+  type CityDeck,
+  type CityKey,
+} from '@/lib/city-decks'
 import { IntentCard } from '@/components/sections/explorer-home/intent-card'
 import { EventCard } from '@/components/sections/explorer-home/event-card'
 
@@ -107,28 +108,34 @@ type DeckSlot =
   | { kind: 'intent'; key: string; plan: IntentPlan }
   | { kind: 'event'; key: string; event: ShowcaseEvent }
 
-function buildInterleavedSlots(): DeckSlot[] {
+// Build the interleaved single→intent→event slot list for the RESOLVED city
+// (ORCH-0998 location-aware). The cadence is identical to the original DC-only
+// build: one slot per place, with intents + events wrapped modulo so the strict
+// place→intent→event order holds across all places even when those lists are
+// shorter. Keys are prefixed with the city key + round index so AnimatePresence
+// never sees a duplicate key across cities or wrapped passes.
+function buildInterleavedSlots(deck: CityDeck): DeckSlot[] {
   const slots: DeckSlot[] = []
-  const nSingles = DC_SHOWCASE_PLACES.length
+  const nSingles = deck.places.length
+  // Defensive: with no intents/events a modulo would divide by zero. Every
+  // seeded city ships ≥1 of each, but guard so a future empty list can't crash.
+  if (nSingles === 0 || deck.intents.length === 0 || deck.events.length === 0) {
+    return slots
+  }
   for (let i = 0; i < nSingles; i++) {
-    const place = DC_SHOWCASE_PLACES[i] as ShowcasePlace
-    const plan = DC_INTENT_PLANS[i % DC_INTENT_PLANS.length] as IntentPlan
-    const event = DC_SHOWCASE_EVENTS[i % DC_SHOWCASE_EVENTS.length] as ShowcaseEvent
-    // Keys are made unique across the (possibly wrapped) sequence by prefixing
-    // the round index, so AnimatePresence never sees a duplicate key when a
-    // shorter list wraps onto a second pass.
-    slots.push({ kind: 'place', key: `p${i}-${place.placeKey}`, place })
-    slots.push({ kind: 'intent', key: `i${i}-${plan.id}`, plan })
+    const place = deck.places[i] as ShowcasePlace
+    const plan = deck.intents[i % deck.intents.length] as IntentPlan
+    const event = deck.events[i % deck.events.length] as ShowcaseEvent
+    slots.push({ kind: 'place', key: `${deck.key}-p${i}-${place.placeKey}`, place })
+    slots.push({ kind: 'intent', key: `${deck.key}-i${i}-${plan.id}`, plan })
     slots.push({
       kind: 'event',
-      key: `e${i}-${event.source}-${event.title}`,
+      key: `${deck.key}-e${i}-${event.source}-${event.title}`,
       event,
     })
   }
   return slots
 }
-
-const DECK_SLOTS: readonly DeckSlot[] = buildInterleavedSlots()
 
 // ---------------------------------------------------------------
 // Headline-pill resolution (ORCH-0998 hero-pill sync). The pill word + icon
@@ -200,6 +207,8 @@ function pillForSlot(slot: DeckSlot): DeckPill {
 // ---------------------------------------------------------------
 export interface DeckRotation {
   order: number[]
+  /** The resolved city's interleaved slots — the deck renders from these. */
+  slots: readonly DeckSlot[]
   /** Pill for the current front card (order[0]). */
   pill: DeckPill
   /** Hover handlers for the deck wrapper — pausing here pauses the pill too. */
@@ -207,22 +216,32 @@ export interface DeckRotation {
   onMouseLeave: () => void
 }
 
-export function useDeckRotation(): DeckRotation {
+// ORCH-0998 location-aware: the rotation now depends on the RESOLVED city. The
+// `cityKey` comes from the server-resolved geo (page → ExplorerHero → here).
+// Slots are rebuilt (memoized) when the city changes; the order resets to the
+// new slot count so a city with a different total never indexes out of range.
+export function useDeckRotation(cityKey: CityKey = DEFAULT_CITY): DeckRotation {
   const reduced = useMinglaReducedMotion()
-  const [order, setOrder] = useState<number[]>(() =>
-    DECK_SLOTS.map((_, i) => i),
-  )
+  const deck = CITY_DECKS[cityKey] ?? CITY_DECKS[DEFAULT_CITY]
+  const slots = useMemo(() => buildInterleavedSlots(deck), [deck])
+  const [order, setOrder] = useState<number[]>(() => slots.map((_, i) => i))
   const [paused, setPaused] = useState(false)
 
+  // Reset the order whenever the slot set changes (city switch on the override
+  // route, or first resolve) so order indices always match the current slots.
   useEffect(() => {
-    if (reduced || paused || DECK_SLOTS.length <= 1) return
+    setOrder(slots.map((_, i) => i))
+  }, [slots])
+
+  useEffect(() => {
+    if (reduced || paused || slots.length <= 1) return
     const id = window.setInterval(() => {
       setOrder((prev) =>
         prev.length === 0 ? prev : [...prev.slice(1), prev[0] as number],
       )
     }, ROTATION_MS)
     return () => window.clearInterval(id)
-  }, [reduced, paused])
+  }, [reduced, paused, slots])
 
   useEffect(() => {
     const onVis = (): void => {
@@ -239,11 +258,11 @@ export function useDeckRotation(): DeckRotation {
   // first slot — pill + deck both hold the first card/label exactly as required.
   const frontIdx = order[0] ?? 0
   const pill = useMemo(
-    () => pillForSlot(DECK_SLOTS[frontIdx] as DeckSlot),
-    [frontIdx],
+    () => pillForSlot((slots[frontIdx] ?? slots[0]) as DeckSlot),
+    [frontIdx, slots],
   )
 
-  return { order, pill, onMouseEnter, onMouseLeave }
+  return { order, slots, pill, onMouseEnter, onMouseLeave }
 }
 
 // Category → editorial sell-line fallback (spec §5). Hardcoded for this
@@ -271,25 +290,38 @@ function sellLineFor(place: ShowcasePlace): string {
 //
 // `rotation` is OPTIONAL: omitted (e.g. the static /intent-preview comparison
 // route, a server component that can't run the hook) → the deck renders the
-// first 3 slots statically with no rotation and no-op hover handlers.
-const STATIC_ORDER: number[] = DECK_SLOTS.map((_, i) => i)
+// first 3 slots statically with no rotation and no-op hover handlers. In the
+// static case `cityKey` selects which city's slots to show (default DC).
 const NOOP = (): void => {}
 
 interface HeroPlaceDeckProps {
   rotation?: DeckRotation
+  /** Static-render city when no `rotation` is provided. */
+  cityKey?: CityKey
 }
 
-export function HeroPlaceDeck({ rotation }: HeroPlaceDeckProps) {
+export function HeroPlaceDeck({
+  rotation,
+  cityKey = DEFAULT_CITY,
+}: HeroPlaceDeckProps) {
   const reduced = useMinglaReducedMotion()
-  const order = rotation?.order ?? STATIC_ORDER
+  // Slots come from the rotation when present (controlled, city-resolved); else
+  // build them statically for the requested city.
+  const staticDeck = CITY_DECKS[cityKey] ?? CITY_DECKS[DEFAULT_CITY]
+  const slots = useMemo(
+    () => rotation?.slots ?? buildInterleavedSlots(staticDeck),
+    [rotation?.slots, staticDeck],
+  )
+  const order = rotation?.order ?? slots.map((_, i) => i)
   const onMouseEnter = rotation?.onMouseEnter ?? NOOP
   const onMouseLeave = rotation?.onMouseLeave ?? NOOP
+  const cityLabel = staticDeck.label
   const visible = order.slice(0, 3)
 
   return (
     <div
       role="group"
-      aria-label="Real places, plans, and events on Mingla, from Washington DC"
+      aria-label={`Real places, plans, and events on Mingla, from ${cityLabel}`}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
       style={{ width: CARD_W + 92, height: CARD_H + 62 }}
@@ -297,7 +329,8 @@ export function HeroPlaceDeck({ rotation }: HeroPlaceDeckProps) {
     >
       <AnimatePresence initial={false}>
         {visible.map((slotIdx, position) => {
-          const slot = DECK_SLOTS[slotIdx] as DeckSlot
+          const slot = slots[slotIdx] as DeckSlot
+          if (!slot) return null
           return (
             <StackCell key={slot.key} slot={slot} position={position} reduced={reduced} />
           )
@@ -559,13 +592,18 @@ function PhotoOrFallback({
     )
   }
 
+  // Prefer the exact stored photo URL (newer per-city snapshots set this so the
+  // extension is never guessed); fall back to the placeKey-built path for the
+  // original DC snapshot which has no coverImageUrl.
+  const photoSrc = place.coverImageUrl ?? placePhotoUrl(place.placeKey, 0)
+
   return (
     // Plain <img> (not next/image) — matches the existing hero-vibe-deck
     // pattern and avoids next.config remotePatterns setup. alt="" because
     // the card's aria-label carries the meaning (spec §10).
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      src={placePhotoUrl(place.placeKey, 0)}
+      src={photoSrc}
       alt=""
       className="h-full w-full select-none object-cover"
       loading={eager ? 'eager' : 'lazy'}

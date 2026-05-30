@@ -54,6 +54,14 @@ export interface ShowcasePlace {
   blurb: string | null
   /** Supabase Storage place-photos key. */
   placeKey: string
+  /**
+   * Exact hero photo URL (verbatim `stored_photo_urls[0]` from place_pool),
+   * used by newer per-city snapshots (Raleigh, Lagos) where the photo extension
+   * (.jpg / .png) must NOT be guessed. When present the deck renders this URL
+   * directly; when omitted (the original DC snapshot) the deck falls back to
+   * `placePhotoUrl(placeKey, 0)`. Optional so the DC shape is unchanged.
+   */
+  coverImageUrl?: string
   /** Number of photos available (always 5 in this snapshot). No longer rendered post-v2. */
   nPhotos: number
   /**
