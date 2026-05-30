@@ -998,6 +998,7 @@ function checkNoNewBackendFiles() {
     "supabase/migrations/20260801000002_orch_1008_remainder_mode.sql",
     "supabase/functions/run-place-intelligence-trial/index.ts",
     "supabase/functions/run-place-intelligence-trial/__tests__/runRemainder.test.ts",
+    "supabase/functions/run-place-intelligence-trial/__tests__/runRemainder_adversarial.test.ts",
   ];
   const ALLOWLIST = [
     ...ORCH_0989_BACKEND_ALLOWLIST,
