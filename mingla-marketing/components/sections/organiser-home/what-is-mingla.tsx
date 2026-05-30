@@ -1,7 +1,9 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useRef, useState } from 'react'
+import { useScroll, useMotionValueEvent } from 'framer-motion'
 import { Sparkles, Bot, Megaphone, type LucideIcon } from 'lucide-react'
 import { Reveal } from '@/components/ui/reveal'
+import { AriInput } from '@/components/sections/organiser-home/ari-input'
 import {
   Stepper,
   StepperItem,
@@ -11,7 +13,6 @@ import {
   StepperDescription,
   StepperNav,
 } from '@/components/ui/stepper'
-import { useMinglaReducedMotion } from '@/lib/reduced-motion'
 
 // ORCH-1010 — "What is Mingla?" Split column: the explainer on the left, an
 // adapted vertical auto-advancing Stepper on the right showing how consumer
@@ -49,18 +50,29 @@ const STEPS: Step[] = [
   },
 ]
 
-export function OrganiserWhatIsMingla() {
-  const reduced = useMinglaReducedMotion()
-  const [active, setActive] = useState(1)
+// Map scroll progress through the section to the active step. Scrubbing the
+// steps on scroll lets visitors read each one (a middle ground between a static
+// list and a timed auto-loop).
+function stepForProgress(v: number, count: number): number {
+  return Math.min(count, Math.max(1, Math.floor(v * count) + 1))
+}
 
-  useEffect(() => {
-    if (reduced) return
-    const id = setInterval(() => setActive((p) => (p % STEPS.length) + 1), 3400)
-    return () => clearInterval(id)
-  }, [reduced])
+export function OrganiserWhatIsMingla() {
+  const [active, setActive] = useState(1)
+  const sectionRef = useRef<HTMLElement>(null)
+  const { scrollYProgress } = useScroll({
+    target: sectionRef,
+    offset: ['start 0.85', 'end 0.2'],
+  })
+  useMotionValueEvent(scrollYProgress, 'change', (v) => {
+    setActive(stepForProgress(v, STEPS.length))
+  })
 
   return (
-    <section className="seam-top px-6 py-24 md:px-10 md:py-32 [padding-left:max(1.5rem,env(safe-area-inset-left))] [padding-right:max(1.5rem,env(safe-area-inset-right))] md:[padding-left:max(2.5rem,env(safe-area-inset-left))] md:[padding-right:max(2.5rem,env(safe-area-inset-right))]">
+    <section
+      ref={sectionRef}
+      className="seam-top px-6 py-24 md:px-10 md:py-32 [padding-left:max(1.5rem,env(safe-area-inset-left))] [padding-right:max(1.5rem,env(safe-area-inset-right))] md:[padding-left:max(2.5rem,env(safe-area-inset-left))] md:[padding-right:max(2.5rem,env(safe-area-inset-right))]"
+    >
       <div className="mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-2 lg:gap-20">
         {/* LEFT — what is Mingla */}
         <div className="max-w-xl">
@@ -69,15 +81,21 @@ export function OrganiserWhatIsMingla() {
           </Reveal>
           <Reveal>
             <h2 className="mt-4 font-display text-4xl leading-[1.05] tracking-[-0.02em] text-text-primary md:text-6xl">
-              One app to find the vibe. <span className="text-warm-ink">One to be found.</span>
+              We make real life <span className="text-warm-ink">easier to find.</span>
             </h2>
           </Reveal>
-          <Reveal delay={0.15}>
-            <p className="mt-8 text-lg leading-relaxed text-text-secondary md:text-xl">
+
+          {/* Ari typing bar — different operators, different asks. */}
+          <Reveal delay={0.1}>
+            <AriInput className="mt-8" />
+          </Reveal>
+
+          <Reveal delay={0.18}>
+            <p className="mt-6 text-lg leading-relaxed text-text-secondary md:text-xl">
               Mingla is where people find what to do — by vibe, not by searching. The consumer app
               surfaces the places, events, and experiences that match the night they want. Mingla
               Business is the other side of that coin: the AI and tools that get your place found,
-              booked, and remembered by the people most likely to love it.
+              booked, and remembered.
             </p>
           </Reveal>
         </div>

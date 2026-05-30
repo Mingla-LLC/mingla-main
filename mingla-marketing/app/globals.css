@@ -312,6 +312,19 @@ body {
   }
 }
 
+/* ORCH-1010 — Ari orb glow pulse. */
+@keyframes mingla-orb-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+  50% {
+    transform: scale(1.18);
+    opacity: 0.15;
+  }
+}
+
 /* ----- Reduced motion ----- */
 @media (prefers-reduced-motion: reduce) {
   *,
