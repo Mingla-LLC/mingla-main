@@ -72,7 +72,7 @@ export const DC_SHOWCASE_EVENTS: readonly ShowcaseEvent[] = [
     dateMonth: 'MAY',
     dateDay: '30',
     weekdayTime: 'Sat · 10:00 PM',
-    price: '$18',
+    price: 'from $18',
     genreOrTags: 'Pop',
     coverImageUrl:
       'https://s1.ticketm.net/dam/c/4f2/0109888a-61b5-4525-8432-b026ef04f4f2_105631_TABLET_LANDSCAPE_LARGE_16_9.jpg',
@@ -88,7 +88,7 @@ export const DC_SHOWCASE_EVENTS: readonly ShowcaseEvent[] = [
     dateMonth: 'MAY',
     dateDay: '29',
     weekdayTime: 'Fri · 8:00 PM',
-    price: null,
+    price: 'from $45',
     genreOrTags: 'R&B',
     coverImageUrl:
       'https://s1.ticketm.net/dam/a/929/868a946f-8525-4a3c-aa3a-329c04fdc929_SOURCE',
@@ -104,7 +104,7 @@ export const DC_SHOWCASE_EVENTS: readonly ShowcaseEvent[] = [
     dateMonth: 'MAY',
     dateDay: '29',
     weekdayTime: 'Fri · 8:00 PM',
-    price: null,
+    price: 'from $39',
     genreOrTags: 'Classical',
     coverImageUrl:
       'https://s1.ticketm.net/dam/a/7ff/acbe1a66-2777-4a79-8770-4dcd73ab17ff_TABLET_LANDSCAPE_LARGE_16_9.jpg',
@@ -119,7 +119,7 @@ export const DC_SHOWCASE_EVENTS: readonly ShowcaseEvent[] = [
     dateMonth: 'MAY',
     dateDay: '29',
     weekdayTime: 'Fri · 8:00 PM',
-    price: null,
+    price: 'from $30',
     genreOrTags: 'Pop',
     coverImageUrl:
       'https://s1.ticketm.net/dam/a/6e5/231540ba-47db-405b-aa6f-d1ca689966e5_SOURCE',
@@ -155,9 +155,9 @@ export const DC_SHOWCASE_EVENTS: readonly ShowcaseEvent[] = [
     weekdayTime: 'Sat · 5:00 PM',
     price: 'from $20',
     genreOrTags: 'Jazz · Picnic',
-    // No cover media on purpose → SHOWCASES the coverHue striped fallback band
-    // (§E.4b, faithful to @mingla/event-rendering EventCover). hue=200 = cool blue.
-    coverImageUrl: null,
+    // Photo-cover sample — the real President Lincoln's Cottage place-photo.
+    coverImageUrl:
+      'https://gqnoajqerqhnvulmnyvv.supabase.co/storage/v1/object/public/place-photos/ChIJYXXbqgvIt4kRsTOXeP0bXTA/0.jpg',
     coverHue: 200,
     ticketUrl: '#',
     onMingla: true,
