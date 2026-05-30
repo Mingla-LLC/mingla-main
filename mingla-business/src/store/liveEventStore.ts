@@ -226,6 +226,13 @@ export interface LiveEvent {
   coverMediaAlt?: string | null;
   /** ISO 4217 immutable commerce currency for this published event. */
   currency?: string;
+  /**
+   * ORCH-1006 Slice 3 — server-computed all-in (tax/fee-inclusive) lowest-tier
+   * price in CENTS, sourced from business_public_events_view. Null when no
+   * priced tier; the brand mini-card "From" label then falls back to base.
+   */
+  displayPriceCents?: number | null;
+  displayCurrency?: string | null;
   /** ORCH-0964 — nullable per-event public theme overrides. */
   themeOverrides?: ThemeInput | null;
   tickets: TicketStub[];

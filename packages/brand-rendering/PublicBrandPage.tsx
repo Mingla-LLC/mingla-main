@@ -140,7 +140,18 @@ const formatTripDateRange = (
 const minPriceLabel = (
   tickets: PublicBrandTicket[],
   fallbackCurrency: string | null | undefined,
+  // ORCH-1006 Slice 3 — server-computed all-in (tax/fee-inclusive) lowest-tier
+  // price in CENTS. When present (>0), it is the WYSIWYP charge and overrides
+  // the base-price fallback below. Null when no priced tier.
+  displayPriceCents?: number | null,
+  displayCurrency?: string | null,
 ): string | null => {
+  if (typeof displayPriceCents === "number" && displayPriceCents > 0) {
+    return `From ${formatCurrencyRound(
+      displayPriceCents / 100,
+      displayCurrency ?? fallbackCurrency ?? "GBP",
+    )}`;
+  }
   const visible = tickets.filter((t) => t.visibility !== "hidden");
   const paid = visible
     .map((t) => t.priceGbp ?? null)
@@ -885,7 +896,12 @@ const EventMiniCard: React.FC<{
   pinCta?: boolean;
   past?: boolean;
 }> = ({ event, theme, palette, onPress, pinCta = false, past = false }) => {
-  const price = minPriceLabel(event.tickets, event.currency);
+  const price = minPriceLabel(
+    event.tickets,
+    event.currency,
+    event.displayPriceCents,
+    event.displayCurrency,
+  );
   return (
     <Pressable
       onPress={() => onPress(event)}

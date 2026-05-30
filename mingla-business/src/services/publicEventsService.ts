@@ -757,6 +757,9 @@ export const publicEventViewRowToEvent = (
     currency:
       asStringOrNull(row.currency) ??
       tickets.find((ticket) => ticket.currency !== undefined)?.currency,
+    // ORCH-1006 Slice 3 — server-computed all-in lowest-tier price (cents).
+    displayPriceCents: row.display_price_cents ?? null,
+    displayCurrency: row.pricing_currency ?? null,
     tickets,
     visibility: asVisibility(row.visibility),
     requireApproval: asBoolean(
