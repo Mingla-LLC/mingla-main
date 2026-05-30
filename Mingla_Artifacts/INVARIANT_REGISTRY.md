@@ -7,9 +7,31 @@
 
 ---
 
-## ACTIVE (post META-ORCH-1009 Sub-A [ai-signal-scores schema] + Sub-B [consumer ranker blend + 3-surface reasoning] CLOSE 2026-05-30)
+## ACTIVE (post META-ORCH-1009 Sub-A + Sub-B + Sub-D CLOSE 2026-05-30)
 
-Five invariants total. Sub-A landed three (sole-owner ACTIVE + shape contract ACTIVE + prompt-version-discriminated DRAFT). Sub-B flipped the discriminator ACTIVE + added two new ACTIVE invariants (consumer-reads-not-trial-table + collab-determinism-preserved-under-AI-blend). Backed by Deno tests at `supabase/functions/_shared/__tests__/signalScorer.blend.test.ts` (11 blend tests, fails-on-revert verified at commit `141b1c69f`), `supabase/functions/discover-cards/__tests__/ai_reasoning_passthrough.test.ts` (9 tests) + `collab_determinism_under_ai_blend.test.ts` (6 tests), `supabase/functions/generate-curated-experiences/__tests__/ai_reasoning_passthrough.test.ts` (5 tests), the existing Sub-A trial-writer tests (11 tests), the new strict-grep gate `i-consumer-reads-ai-signal-scores-not-trial-table.mjs` (registered in `strict-grep-mingla-business.yml`), and the post-apply SQL probe `meta_orch_1009_sub_b_rpc_reasoning_return.test.sql`.
+Six invariants total. Sub-A landed three (sole-owner ACTIVE + shape contract ACTIVE + prompt-version-discriminated DRAFT). Sub-B flipped the discriminator ACTIVE + added two new ACTIVE invariants (consumer-reads-not-trial-table + collab-determinism-preserved-under-AI-blend). Sub-D adds one new ACTIVE invariant (I-AI-SCORE-STALENESS-AUTO-RECOVERED) covering the 15-min rescore-sweep cron + sole-writer contract for the new `place_scores.ai_signal_scores_at` column.
+
+### I-AI-SCORE-STALENESS-AUTO-RECOVERED (ACTIVE post META-ORCH-1009 Sub-D CLOSE)
+
+**Statement:** No (place, signal) pair where `place_pool.ai_signal_scores` contains an `evaluated_at` timestamp T may remain in `place_scores` with `ai_signal_scores_at < T` (or `ai_signal_scores_at IS NULL` while `ai_signal_scores` has a v4-prompt entry) for longer than **20 min** after the AI write lands. The 15-min `meta_orch_1009_sub_d_ai_score_rescore_sweep` cron drains stale pairs in chunks of 500 per tick; the 5-min buffer covers the case where a tick fires concurrently with an AI write.
+
+**Authority:** Cron schedule + helper fn live in the Sub-D migration `supabase/migrations/20260808000000_meta_orch_1009_sub_d_refresh_cron.sql`. The `ai_signal_scores_at` column is written exclusively by `supabase/functions/run-signal-scorer/index.ts` (sole-writer; enforced by the Sub-D strict-grep gate).
+
+**Rationale:** Sub-B's write-time blend created a deferred-update contract — `place_scores` is correct ONLY as of the last `run-signal-scorer` invocation, which was operator-clicked pre-Sub-D. Sub-C's coverage backfill makes that contract untenable (11K places get fresh AI scores in one batch and the deck stays stale for hours until manual click). Sub-D closes the loop automatically via a 15-min pg_cron sweep that re-runs the scorer per-place per-signal for any pair whose `ai_signal_scores_at` is older than the live AI slice's `evaluated_at`. Two secondary mechanisms cover specific gaps: (a) a `place_pool` AFTER UPDATE trigger on `business_status` / `editorial_summary` / `generative_summary` queues a Gemini Q2 re-evaluation when Google data drifts on an already-AI-evaluated place; (b) a quarterly all-cities backstop cron at `0 4 1 */3 *` re-scores every signal as the safety net for anything the trigger missed.
+
+**Enforcement (3 gates):**
+1. **DB probe gate** — post-Sub-D-apply admin probe `SELECT COUNT(*) FROM pg_meta_orch_1009_sub_d_select_stale_pairs(99999)` returns the live stale-pair count; under steady-state load this drains to 0 within ~16 min.
+2. **Strict-grep CI gate** — `.github/scripts/strict-grep/meta-orch-1009-sub-d-ai-score-staleness-recovery.mjs` (registered in `.github/workflows/strict-grep-mingla-business.yml`) enforces both that the cron is registered in the Sub-D migration AND that `place_scores.ai_signal_scores_at` is written exclusively by `run-signal-scorer/index.ts`.
+3. **Edge-fn smoke test** — manual: trigger `admin_reeval_place` on one place; within ~16 min the place's `place_scores.scored_at` AND `place_scores.ai_signal_scores_at` for the dominant signal advance to ≥ the new `ai_signal_scores -> signal -> evaluated_at`.
+
+**Test that catches a regression:** any future code path that writes to `place_scores` without setting `ai_signal_scores_at` (or with a stale value) eventually trips gate 1 (the probe surfaces lagging rows once the next AI write lands for that place). The strict-grep gate also fires on any unauthorized write to the column.
+
+**Established:** 2026-05-30 by META-ORCH-1009 Sub-D CLOSE.
+
+**Related invariants:**
+- I-AI-SIGNAL-SCORES-COLUMN-SOLE-OWNER (sibling — write side of `place_pool.ai_signal_scores`)
+- I-AI-SIGNAL-SCORES-PROMPT-VERSION-DISCRIMINATED (sibling — read side of the blend)
+- I-CONSUMER-READS-AI-SIGNAL-SCORES-NOT-TRIAL-TABLE (sibling — what production reads from)
 
 ### I-AI-SIGNAL-SCORES-COLUMN-SOLE-OWNER (ACTIVE post META-ORCH-1009 Sub-A CLOSE)
 

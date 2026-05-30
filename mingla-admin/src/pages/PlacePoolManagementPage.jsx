@@ -362,6 +362,9 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
     ai_categories: [],
   });
   const [saving, setSaving] = useState(false);
+  // META-ORCH-1009 Sub-D — admin per-place re-evaluation. Pending state
+  // disables the button + shows spinner; error surfaces inline + via toast.
+  const [reeval, setReeval] = useState({ pending: false, error: null });
 
   useEffect(() => {
     if (!open || !place) return;
@@ -414,6 +417,56 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
     addToast({ variant: "success", title: "Place updated" }); onClose(); if (onSave) onSave();
     setSaving(false);
   };
+
+  // META-ORCH-1009 Sub-D — fires the admin re-evaluation action. Optimistic
+  // toast on success; rate-limit/error paths show inline + toast.
+  const handleReeval = async () => {
+    setReeval({ pending: true, error: null });
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        "run-place-intelligence-trial",
+        { body: { action: "admin_reeval_place", place_pool_id: place.id } },
+      );
+      if (error) throw error;
+      if (data?.error) {
+        const msg = data?.message || data.error;
+        addToast({
+          variant: data.error === "rate_limited" ? "warning" : "error",
+          title: data.error === "rate_limited" ? "Already in progress" : "Re-evaluation failed",
+          description: msg,
+        });
+        setReeval({ pending: false, error: msg });
+        return;
+      }
+      addToast({
+        variant: "success",
+        title: "Re-evaluation queued",
+        description: "Gemini Q2 runs within ~1 min; deck refresh within ~16 min.",
+      });
+      setReeval({ pending: false, error: null });
+    } catch (e) {
+      const msg = e?.message ?? String(e);
+      addToast({ variant: "error", title: "Re-evaluation failed", description: msg });
+      setReeval({ pending: false, error: msg });
+    }
+  };
+
+  // META-ORCH-1009 Sub-D — extract the most-recent AI evaluated_at across
+  // signals on this place. NULL if the place has no AI scores (Sub-C hasn't
+  // covered it yet).
+  const aiLastEvaluatedAt = (() => {
+    const slices = place.ai_signal_scores;
+    if (!slices || typeof slices !== "object") return null;
+    let latest = null;
+    for (const v of Object.values(slices)) {
+      const ts = v?.evaluated_at;
+      if (!ts) continue;
+      if (!latest || new Date(ts).getTime() > new Date(latest).getTime()) {
+        latest = ts;
+      }
+    }
+    return latest;
+  })();
 
   const relativeTime = (dateStr) => {
     if (!dateStr) return "Never";
@@ -533,7 +586,40 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
               <div><span className="text-[var(--color-text-secondary)]">Last Refreshed:</span> {place.last_detail_refresh ? `${new Date(place.last_detail_refresh).toLocaleDateString()} (${relativeTime(place.last_detail_refresh)})` : "Never"}</div>
               <div><span className="text-[var(--color-text-secondary)]">Refresh Failures:</span> {place.refresh_failures || 0}</div>
               <div><span className="text-[var(--color-text-secondary)]">Fetched Via:</span> {place.fetched_via || "—"}</div>
+              {/* META-ORCH-1009 Sub-D — "Last AI evaluated" surfaces the most
+                  recent evaluated_at across signals so admin knows whether
+                  the AI looked at this place recently. */}
+              <div>
+                <span className="text-[var(--color-text-secondary)]">Last AI Evaluated:</span>{" "}
+                {aiLastEvaluatedAt
+                  ? `${new Date(aiLastEvaluatedAt).toLocaleDateString()} (${relativeTime(aiLastEvaluatedAt)})`
+                  : "Never"}
+              </div>
             </div>
+          </div>
+
+          {/* META-ORCH-1009 Sub-D — Admin re-evaluate this place.
+              Forces a fresh Gemini Q2 read + rescore for one place; rate-
+              limited server-side so duplicate clicks during in-flight runs
+              get a friendly 429. */}
+          <div>
+            <h4 className="text-xs font-semibold text-[var(--color-text-tertiary)] uppercase tracking-wider mb-2">AI Signals</h4>
+            <div className="flex items-center gap-3 flex-wrap">
+              <Button
+                variant="secondary"
+                loading={reeval.pending}
+                disabled={reeval.pending}
+                onClick={handleReeval}
+              >
+                Re-evaluate AI signals
+              </Button>
+              <span className="text-xs text-[var(--color-text-secondary)] max-w-md">
+                Forces a fresh Gemini Q2 read + rescore for this place. ~$0.004 each. Use when you suspect AI got it wrong.
+              </span>
+            </div>
+            {reeval.error && (
+              <div className="text-xs text-[var(--color-error-600)] mt-2">{reeval.error}</div>
+            )}
           </div>
 
           {/* Edit Controls */}
