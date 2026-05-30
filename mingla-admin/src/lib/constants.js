@@ -116,6 +116,8 @@ export const SEED_SCRIPTS = [
 //   Settings + Users promoted out of System dropdown to top-level rail.
 //   Invariant I-PROPOSED-ADMIN-SHELL-FLAT-NAVIGATION (PROPOSED) — single
 //   group with label:null + no collapsible:true. See SPEC §3 Phase 1 + §5.
+// ORCH-1014: photo-labeling + photo-scorer deleted (DEC-099 Cut 1 cleanup);
+//   NAV is now 10 items.
 
 export const NAV_GROUPS = [
   {
@@ -126,8 +128,6 @@ export const NAV_GROUPS = [
       { id: "admin",                     label: "Admin Users",        icon: "Shield" },
       { id: "placepool",                 label: "Place Pool",         icon: "Globe" },
       { id: "signals",                   label: "Signal Library",     icon: "Activity" },
-      { id: "photo-labeling",            label: "Photo Labeling",     icon: "Camera" },
-      { id: "photo-scorer",              label: "Photo Scorer",       icon: "Sparkles" },
       { id: "place-intelligence-trial",  label: "Intelligence Trial", icon: "Microscope" },
       { id: "email",                     label: "Email",              icon: "Mail" },
       { id: "claims",                    label: "Venue claims",       icon: "ClipboardList" },

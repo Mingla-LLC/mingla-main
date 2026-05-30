@@ -38,7 +38,7 @@ const DELETED_PAGE_CLASSES = [
 const DELETED_HASH_IDS = ["seed", "tables", "content", "analytics", "reports", "feedback"];
 
 describe("ORCH-1008 adversarial — App.jsx PAGES map purity", () => {
-  it("PAGES map declaration has exactly 12 keys (no ghost entries)", () => {
+  it("PAGES map declaration has exactly 10 keys (no ghost entries)", () => {
     // Find the PAGES const declaration and parse its keys.
     const m = APP_JSX.match(/const PAGES\s*=\s*\{([\s\S]*?)\n\}/);
     assert.ok(m, "expected to find `const PAGES = { ... }`");
@@ -60,7 +60,8 @@ describe("ORCH-1008 adversarial — App.jsx PAGES map purity", () => {
         `PAGES must not contain deleted id '${dead}'`,
       );
     }
-    // Assert the 12 expected ids ARE present
+    // Assert the 10 expected ids ARE present (ORCH-1014: photo-labeling +
+    // photo-scorer removed)
     const expected = [
       "overview",
       "users",
@@ -71,8 +72,6 @@ describe("ORCH-1008 adversarial — App.jsx PAGES map purity", () => {
       "admin",
       "settings",
       "signals",
-      "photo-labeling",
-      "photo-scorer",
       "place-intelligence-trial",
     ];
     for (const id of expected) {
