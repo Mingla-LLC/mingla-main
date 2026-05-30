@@ -222,15 +222,15 @@ function run() {
     !/<Modal\b/.test(code(discover)),
     "T-8 DiscoverScreen: the single filter <Modal> was the only one — now converted (0 raw <Modal>)",
   );
-  // MessageInterface keeps its EXCLUDED modals (image preview + file spinner +
-  // event-audience). Exactly one BaseBottomSheet was added here for the
-  // more-options menu; the other raw <Modal>s remain.
+  // MessageInterface keeps its EXCLUDED modals (image preview + file spinner).
+  // [TEST-MOD-APPROVED META-ORCH-0991] event-audience was Wave-C IN-SCOPE (not
+  // excluded) and was correctly converted to BaseBottomSheet in Wave C Batch 3,
+  // superseding this batch's original "3 must remain"/chatSheetHandle assumption.
   const miModalCount = (code(messageIf).match(/<Modal\b/g) || []).length;
   assert.ok(
-    miModalCount >= 3,
-    `T-8 MessageInterface: excluded modals (image preview, file spinner, event-audience) must remain — found ${miModalCount} raw <Modal>`,
+    miModalCount >= 2,
+    `T-8 MessageInterface: excluded modals (image preview, file spinner) must remain — found ${miModalCount} raw <Modal>`,
   );
-  assert.match(code(messageIf), /style=\{styles\.chatSheetHandle\}/, "T-8 MessageInterface: event-audience modal still uses chatSheetHandle (untouched)");
   // PersonHolidayView keeps the visits-list pageSheet <Modal>.
   assert.match(
     code(holiday),
