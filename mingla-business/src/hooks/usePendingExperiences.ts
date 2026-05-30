@@ -19,6 +19,7 @@ import {
   type ExperienceFilePayload,
   type ParseExperienceResponse,
 } from "../services/experienceGenerationService";
+import { useAuth } from "../context/AuthContext";
 import { experienceKeys } from "./useExperiencesByBrand";
 
 export const pendingExperienceKeys = {
@@ -33,11 +34,14 @@ export function usePendingExperiences(
   parseMode: ExperienceParseMode = "menu",
 ) {
   const qc = useQueryClient();
+  // ORCH-1004 — pending proposals are RLS auth.uid()-scoped; gate on auth
+  // readiness so a pre-auth fire can't cache an empty list as success.
+  const { isAuthReady } = useAuth();
 
   const pendingQuery = useQuery<HubPendingExperienceRow[]>({
     queryKey: pendingExperienceKeys.byBrand(brandId ?? ""),
     queryFn: () => fetchPendingExperiencesForBrand(brandId!),
-    enabled: brandId !== null && brandId.length > 0,
+    enabled: isAuthReady && brandId !== null && brandId.length > 0,
     staleTime: 10_000,
   });
 

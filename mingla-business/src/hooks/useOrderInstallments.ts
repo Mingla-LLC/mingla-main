@@ -28,6 +28,7 @@ import {
   type OrderInstallmentForBrand,
   type RetryInstallmentResult,
 } from "../services/orderInstallmentsService";
+import { useAuth } from "../context/AuthContext";
 
 const INSTALLMENTS_STALE_MS = 30 * 1000;
 
@@ -49,7 +50,9 @@ const DISABLED_KEY = ["orderInstallments", "__disabled__"] as const;
 export function useInstallmentsForOrder(
   orderId: string | null,
 ): UseQueryResult<OrderInstallment[], Error> {
-  const enabled = orderId !== null && orderId.length > 0;
+  // ORCH-1004 — order_installments is RLS auth.uid()-scoped; gate on auth.
+  const { isAuthReady } = useAuth();
+  const enabled = isAuthReady && orderId !== null && orderId.length > 0;
   return useQuery<OrderInstallment[], Error>({
     queryKey: enabled
       ? orderInstallmentKeys.byOrder(orderId)
@@ -67,7 +70,9 @@ export function useInstallmentsForBrandTrips(
   brandId: string | null,
   opts: ByBrandOpts = {},
 ): UseQueryResult<OrderInstallmentForBrand[], Error> {
-  const enabled = brandId !== null && brandId.length > 0;
+  // ORCH-1004 — RLS auth.uid()-scoped; gate on auth readiness.
+  const { isAuthReady } = useAuth();
+  const enabled = isAuthReady && brandId !== null && brandId.length > 0;
   return useQuery<OrderInstallmentForBrand[], Error>({
     queryKey: enabled
       ? orderInstallmentKeys.byBrand(brandId, opts)

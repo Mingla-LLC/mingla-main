@@ -7,6 +7,7 @@
 import { useMemo } from "react";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 
+import { useAuth } from "../../context/AuthContext";
 import { getMarketingOverview } from "../../services/marketing/marketingOverviewService";
 import type { MarketingOverviewSnapshot } from "../../types/marketing";
 import { marketingKeys } from "./marketingKeys";
@@ -31,7 +32,10 @@ export interface UseMarketingOverviewState {
 export function useMarketingOverview(
   accountId: string | null | undefined,
 ): UseMarketingOverviewState {
-  const enabled = typeof accountId === "string" && accountId.length > 0;
+  // ORCH-1004 — overview funnel counters are auth.uid()-scoped; gate on auth.
+  const { isAuthReady } = useAuth();
+  const enabled =
+    isAuthReady && typeof accountId === "string" && accountId.length > 0;
   const query = useQuery<MarketingOverviewSnapshot>({
     queryKey: enabled
       ? marketingKeys.overview.byAccount(accountId as string)

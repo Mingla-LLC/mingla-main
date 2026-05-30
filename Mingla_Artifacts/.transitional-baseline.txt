@@ -14,5 +14,5 @@
 #   - SPEC_META_ORCH_0744_PROCESS_HARDENING.md §3.4.2
 #   - ORCH-0744 INVESTIGATION_ORCH_0744_LATENT_DEFECTS_SWEEP.md §HF-4
 
-mingla-business/src/hooks/useCurrentBrandRole.ts:158
+mingla-business/src/hooks/useCurrentBrandRole.ts:163
 mingla-business/src/services/eventChangeNotifier.ts:152

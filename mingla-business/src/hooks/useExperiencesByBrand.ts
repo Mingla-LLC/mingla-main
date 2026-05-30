@@ -4,6 +4,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 
+import { useAuth } from "../context/AuthContext";
 import {
   getExperiencesByBrand,
   type VenueExperience,
@@ -15,10 +16,13 @@ export const experienceKeys = {
 };
 
 export function useExperiencesByBrand(brandId: string | null) {
+  // ORCH-1004 — venue_experiences is RLS auth.uid()-scoped; gate on auth
+  // readiness so a pre-auth fire can't cache an empty list as success.
+  const { isAuthReady } = useAuth();
   return useQuery<VenueExperience[]>({
     queryKey: experienceKeys.listByBrand(brandId ?? ""),
     queryFn: () => getExperiencesByBrand(brandId!),
-    enabled: brandId !== null && brandId.length > 0,
+    enabled: isAuthReady && brandId !== null && brandId.length > 0,
     staleTime: 60_000,
   });
 }
