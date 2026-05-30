@@ -54,6 +54,11 @@ export interface ServerDraftEventRow {
   vibe_tags?: string[] | null;
   music_genres?: string[] | null;
   location_geo?: string | { x: number; y: number } | null;
+  // ORCH-1006 — per-offering all-in pricing switches. NULL = inherit brand
+  // default. Optional on the row type (legacy rows pre-migration lack them).
+  pass_tax?: boolean | null;
+  pass_mingla_fee?: boolean | null;
+  pass_service_fee?: boolean | null;
 }
 
 export interface ServerDraftEventInsert {
@@ -114,6 +119,13 @@ export interface ServerDraftEventUpdate {
   music_genres: string[];
   city: string | null;
   location_geo: string | null;
+  // ORCH-1006 — per-offering all-in pricing switches. Written every autosave
+  // round-trip (like the taxonomy columns above) so the read mapper, which
+  // reads top-level columns and does NOT fall back to theme, never zeroes the
+  // user's pass/absorb choices. NULL = inherit the brand default (untouched).
+  pass_tax: boolean | null;
+  pass_mingla_fee: boolean | null;
+  pass_service_fee: boolean | null;
 }
 
 export interface BusinessDraftPayload {
@@ -429,6 +441,12 @@ export const draftToServerUpdate = (
     draft.locationGeo === null
       ? null
       : `(${draft.locationGeo.lng},${draft.locationGeo.lat})`,
+  // ORCH-1006 — per-offering pricing switches. NULL = inherit brand default.
+  // Draft rows are status=draft (unsold → never locked) so a direct column
+  // write is safe; the post-sale lock guard only matters on live edits.
+  pass_tax: draft.pricingSwitches?.passTax ?? null,
+  pass_mingla_fee: draft.pricingSwitches?.passMinglaFee ?? null,
+  pass_service_fee: draft.pricingSwitches?.passServiceFee ?? null,
 });
 
 export const publishedVisibilityForDraft = (
@@ -551,6 +569,12 @@ export const serverRowToDraft = (row: ServerDraftEventRow): DraftEvent => {
           ),
     currency:
       asStringOrNull(businessDraft.currency) ?? asStringOrNull(row.currency) ?? null,
+    // ORCH-1006 — read pricing switches from top-level columns. null = inherit.
+    pricingSwitches: {
+      passTax: row.pass_tax ?? null,
+      passMinglaFee: row.pass_mingla_fee ?? null,
+      passServiceFee: row.pass_service_fee ?? null,
+    },
     tickets: ticketsFromPayload(businessDraft.tickets),
     visibility: asVisibility(businessDraft.requestedVisibility),
     requireApproval: asBoolean(settings.requireApproval, false),

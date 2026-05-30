@@ -391,6 +391,25 @@ export default function EventDetailScreen(): React.ReactElement {
   // columns. Null when no online activity exists; KPI card renders that as 0 via its
   // existing hasData guard.
   const payoutGbp = moneySummary.onlineNetMajor;
+  // ORCH-1006 Surface 5 — total the brand covered (absorbed VAT + fees) on
+  // completed online orders, from orders.pricing_breakdown.absorbed. Legacy
+  // orders (NULL breakdown) contribute nothing; the line omits when 0.
+  const coveredGbp = useMemo<number>(() => {
+    if (event === null) return 0;
+    const cents = allOrderEntries
+      .filter(
+        (o) =>
+          o.eventId === event.id &&
+          (o.status === "paid" || o.status === "refunded_partial"),
+      )
+      .reduce((sum, o) => {
+        const a = o.absorbedCostsCents;
+        return a === undefined
+          ? sum
+          : sum + a.taxCents + a.miglaFeeCents + a.serviceFeeCents;
+      }, 0);
+    return cents / 100;
+  }, [allOrderEntries, event]);
   const doorRevenue = moneySummary.doorRevenue;
   const displayCurrency = event?.currency ?? brand?.defaultCurrency ?? moneySummary.expectedCurrency;
   // Per-tier sold count map — stable ref via raw entries + useMemo (same
@@ -723,6 +742,7 @@ export default function EventDetailScreen(): React.ReactElement {
         <EventDetailKpiCard
           revenueGbp={revenueGbp}
           payoutGbp={payoutGbp}
+          coveredGbp={coveredGbp}
           currency={displayCurrency}
         />
 

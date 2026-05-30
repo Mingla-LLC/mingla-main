@@ -988,16 +988,18 @@ function checkNoNewBackendFiles() {
     "supabase/functions/generate-curated-experiences/index.ts",
   ];
   // ORCH-1006 [Universal all-in pricing engine]. New shared money engine + its
-  // regression test + the three pricing migrations. Admin take-rate persistence
-  // uses SECURITY DEFINER RPCs (no new edge function), so only these register.
+  // regression test + the pricing migrations. Admin take-rate persistence uses
+  // SECURITY DEFINER RPCs (no new edge function). Slice 3 Surface 4 adds the
+  // read-only tax-registration probe edge fn for the authoring VAT row.
+  // (META-ORCH-1009 Sub-B previously source-reconciled the migrations from this
+  // branch to unblock db push; this merge supersedes that with the full list.)
   const ORCH_1006_BACKEND_ALLOWLIST = [
     "supabase/functions/_shared/allInPricingEngine.ts",
     "supabase/functions/_shared/__tests__/allInPricingEngine.test.ts",
+    "supabase/functions/brand-tax-registrations-list/index.ts",
     "supabase/migrations/20260802000000_orch_1006_pricing_switches.sql",
     "supabase/migrations/20260802000001_orch_1006_pricing_views.sql",
     "supabase/migrations/20260802000002_orch_1006_finalize_copy_pricing_breakdown.sql",
-    // META-ORCH-1009 Sub-B source-reconciled this from ORCH-1006's branch (commit
-    // 832736f7f) to unblock db push — same path as the future ORCH-1006 merge.
     "supabase/migrations/20260805000000_orch_1006_public_event_tier_allin.sql",
   ];
   // ORCH-1008 [Admin shell prune + Intelligence Overview tab + remainder mode].
@@ -1096,6 +1098,34 @@ function checkNoNewBackendFiles() {
   // intentionally NOT in scope.
   // Migration rebumped 20260803→20260806 to land after ORCH-1006's already-
   // applied 20260805 (tester P2 F-01).
+  // META-ORCH-1009 Sub-D [refresh cron + admin re-evaluate button]:
+  // closes the staleness loop DEC-182 left open by adding a 15-min pg_cron
+  // rescore-sweep + a Google-data-drift trigger on place_pool + a per-place
+  // admin re-eval button + a 90-day all-cities backstop. Touches:
+  //   - 1 new migration (cron + helper fns + drift trigger + column adds)
+  //   - run-signal-scorer/index.ts (per-place mode + ai_signal_scores_at write)
+  //   - _shared/signalScorer.ts (1-line evaluated_at passthrough)
+  //   - run-place-intelligence-trial/index.ts (new admin_reeval_place action)
+  //   - 5 new Deno + SQL tests under __tests__/
+  // C7 is scoped to ORCH-0863 marketing; this entry covers the Sub-D backend
+  // touches. See DEC-183 + I-AI-SCORE-STALENESS-AUTO-RECOVERED.
+  const META_ORCH_1009_SUB_D_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260808000000_meta_orch_1009_sub_d_refresh_cron.sql",
+    "supabase/functions/run-signal-scorer/index.ts",
+    "supabase/functions/_shared/signalScorer.ts",
+    "supabase/functions/run-place-intelligence-trial/index.ts",
+    "supabase/functions/run-signal-scorer/__tests__/per_place_mode.test.ts",
+    "supabase/functions/_shared/__tests__/signalScorer.evaluated_at_passthrough.test.ts",
+    "supabase/functions/run-place-intelligence-trial/__tests__/admin_reeval_place.test.ts",
+    // Tester adversarial test (Sub-D QA pass) — pinned P0 drift trigger fix.
+    "supabase/migrations/__tests__/meta_orch_1009_sub_d_adversarial.test.ts",
+    "supabase/migrations/__tests__/sub_d_seed_idempotent.test.sql",
+    // Admin UI regression test (note: lives outside supabase/ so the C7
+    // backend-only forbid does not gate it; listed here for ORCH-trace).
+    "mingla-admin/src/__tests__/orch1009_sub_d_reeval_button.test.js",
+    // Strict-grep gate (also lives outside supabase/; listed for trace).
+    ".github/scripts/strict-grep/meta-orch-1009-sub-d-ai-score-staleness-recovery.mjs",
+  ];
   const META_ORCH_1009_SUB_B_BACKEND_ALLOWLIST = [
     "supabase/migrations/20260806000000_meta_orch_1009_sub_b_rpcs_with_reasoning.sql",
     "supabase/functions/_shared/signalScorer.ts",
@@ -1194,6 +1224,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_1015_BACKEND_ALLOWLIST,
     ...META_ORCH_1009_SUB_A_BACKEND_ALLOWLIST,
     ...META_ORCH_1009_SUB_B_BACKEND_ALLOWLIST,
+    ...META_ORCH_1009_SUB_D_BACKEND_ALLOWLIST,
   ];
   const forbidden = changed.filter(
     (p) =>

@@ -95,7 +95,10 @@ import type {
   TripPricingTierInput,
   UpdateLiveTripResult,
 } from "../../services/tripsService";
-import { UpdateLiveTripPermissionError } from "../../services/tripsService";
+import {
+  UpdateLiveTripPermissionError,
+  setTripPricingSwitches,
+} from "../../services/tripsService";
 import {
   computeRichTripFieldDiffs,
   computeTripDayDiffs,
@@ -230,6 +233,12 @@ function tripToLocalEditState(trip: Trip): LocalTripEditState {
       capacity: trip.businessTrip.capacity,
       paymentPlan: firstTier?.installmentSchedule ?? null,
       paymentPlanLocked: false,
+      // ORCH-1006 — seed switches from events.pass_* (NULL = inherit).
+      pricingSwitches: {
+        passTax: trip.pricingSwitches?.passTax ?? null,
+        passMinglaFee: trip.pricingSwitches?.passMinglaFee ?? null,
+        passServiceFee: trip.pricingSwitches?.passServiceFee ?? null,
+      },
     },
     coverMediaUrl: trip.coverMediaUrl,
     coverMediaType: coverType,
@@ -251,6 +260,14 @@ interface PatchComputeResult {
   droppedDayOrdinals: number[];
   droppedInclusionKeys: string[];
   tierPriceChangedTicketTypeIds: string[];
+  // ORCH-1006 — the new pricing switches when they differ from the trip's
+  // current values, else null. Persisted via setTripPricingSwitches (the trip
+  // patch RPC has no pass_* path), NOT through `patch`.
+  pricingSwitchesChanged: {
+    passTax: boolean | null;
+    passMinglaFee: boolean | null;
+    passServiceFee: boolean | null;
+  } | null;
 }
 
 function buildLiveTripPatch(
@@ -433,6 +450,23 @@ function buildLiveTripPatch(
     patch.cover_media_alt = state.coverMediaAlt;
   }
 
+  // ORCH-1006 — diff the pricing switches (NULL = inherit). Side-channel:
+  // not part of `patch` (the trip RPC has no pass_* path) — persisted via
+  // setTripPricingSwitches in handleConfirmSave.
+  const origSwitches = {
+    passTax: trip.pricingSwitches?.passTax ?? null,
+    passMinglaFee: trip.pricingSwitches?.passMinglaFee ?? null,
+    passServiceFee: trip.pricingSwitches?.passServiceFee ?? null,
+  };
+  const newSwitches = state.pricing.pricingSwitches;
+  const pricingSwitchesChanged =
+    newSwitches !== undefined &&
+    (origSwitches.passTax !== newSwitches.passTax ||
+      origSwitches.passMinglaFee !== newSwitches.passMinglaFee ||
+      origSwitches.passServiceFee !== newSwitches.passServiceFee)
+      ? newSwitches
+      : null;
+
   return {
     patch,
     dayDiffs,
@@ -441,6 +475,7 @@ function buildLiveTripPatch(
     droppedDayOrdinals,
     droppedInclusionKeys,
     tierPriceChangedTicketTypeIds,
+    pricingSwitchesChanged,
   };
 }
 
@@ -665,7 +700,11 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
   // ---- Save flow ----
   const handleSavePress = useCallback((): void => {
     const { patch } = computed;
-    if (Object.keys(patch).length === 0) {
+    // ORCH-1006 — a switch-only change has an empty patch but still saves.
+    if (
+      Object.keys(patch).length === 0 &&
+      computed.pricingSwitchesChanged === null
+    ) {
       showToast("No changes to save.");
       return;
     }
@@ -826,6 +865,41 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
         setSubmitting(false);
         setModal((prev) => ({ ...prev, visible: false }));
         setRejectDialog(buildRejectDialog(preflight));
+        return;
+      }
+
+      // ORCH-1006 — persist "Who covers the costs?" switches (side-channel: the
+      // trip patch RPC has no pass_* path). Unsold only — the section renders
+      // read-only once sold, so this only runs when changes are allowed.
+      if (
+        computed.pricingSwitchesChanged !== null &&
+        trip.ticketsSoldCount === 0
+      ) {
+        try {
+          await setTripPricingSwitches(trip.id, computed.pricingSwitchesChanged);
+        } catch {
+          setSubmitting(false);
+          setModal((prev) => ({ ...prev, visible: false }));
+          showToast("Couldn't save who covers costs. Tap to try again.");
+          return;
+        }
+      }
+
+      // If ONLY the switches changed, the trip patch RPC has nothing to do —
+      // finish without it (no buyer notification: who-covers-cost never changes
+      // the buyer's all-in price, T-1).
+      if (Object.keys(patch).length === 0) {
+        setSubmitting(false);
+        setModal((prev) => ({ ...prev, visible: false }));
+        showToast("Saved. Live now.");
+        setTimeout(() => {
+          if (router.canGoBack()) {
+            router.back();
+          } else {
+            // orch-strict-grep-allow route-by-event-type — EditPublishedTripScreen is trip-only (app/trip/[id]/edit.tsx dispatch)
+            router.replace(`/trip/${trip.id}` as never);
+          }
+        }, TOAST_NAV_DELAY_MS);
         return;
       }
 

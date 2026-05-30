@@ -30,7 +30,10 @@ export interface NativeCheckoutInput {
     email: string;
     phone: string;
     marketingOptIn?: boolean;
-    address: {
+    // ORCH-1006 Surface 6: the buyer no longer types a billing address (tax is
+    // sourced at the venue server-side). Optional + forwarded only when present
+    // for backward compatibility with any non-native caller.
+    address?: {
       line1: string;
       line2?: string;
       city: string;
@@ -129,7 +132,9 @@ export const useNativeCheckoutFlow = (): ((
             email: input.buyer.email,
             phone: input.buyer.phone,
             marketingOptIn: input.buyer.marketingOptIn === true,
-            address: input.buyer.address,
+            // Forwarded only if a caller still supplies one (edge fn ignores it
+            // — tax is venue-sourced, SPEC §B.1).
+            ...(input.buyer.address ? { address: input.buyer.address } : {}),
           },
           lines: input.lines,
           // ORCH-1016: trip intake answers → orders.intake_form_data.

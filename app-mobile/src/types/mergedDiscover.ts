@@ -64,6 +64,16 @@ export interface BusinessEventCard {
   // Pricing (lowest/highest active ticket; null when no priced tickets exist)
   priceMin: number | null;
   priceMax: number | null;
+  /**
+   * ORCH-1006 Slice 3 Wave 2 — server-computed all-in (tax/fee-inclusive)
+   * lowest-tier price in CENTS, from
+   * business_public_events_view.display_price_cents. null when there is no
+   * priced tier (free / unpriced) → consumers fall back to priceMin (which
+   * is in MAJOR units). Pure data-plumbing of an existing column; no
+   * client-side pricing math runs.
+   */
+  displayPriceCents: number | null;
+  displayCurrency: string | null;
   /** ISO 4217. */
   currency: string;
   /** The anon-tolerant buyer route in mingla-business. Opened via in-app WebView. */

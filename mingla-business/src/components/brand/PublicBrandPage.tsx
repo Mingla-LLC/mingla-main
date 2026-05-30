@@ -75,6 +75,9 @@ const mapEvent = (event: LiveEvent): PublicBrandEvent => ({
   coverMediaUrl: event.coverMediaUrl,
   coverMediaType: event.coverMediaType,
   currency: event.currency,
+  // ORCH-1006 Slice 3 — prefer server-computed all-in for "From £X".
+  displayPriceCents: event.displayPriceCents ?? null,
+  displayCurrency: event.displayCurrency ?? null,
   tickets: event.tickets.map((ticket) => ({
     priceGbp: ticket.priceGbp,
     currency: ticket.currency,
