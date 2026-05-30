@@ -1,6 +1,8 @@
 # INVESTIGATION — ORCH-1006 [Universal all-in pricing engine]
 
-> CHANNEL NOTE: During this investigation the tool channel entered a replay loop that returned one stale truncated Read result for every subsequent call. The findings below are written from evidence read firsthand BEFORE the loop (full `ticket-checkout-create/index.ts`, both Stripe skill references, the locked vision doc, the comms ledger, the complete `supabase/functions/_shared/` inventory) plus the file-location grep results captured before the loop. Files marked **[RE-READ PENDING]** still need a full line-by-line pass once the channel clears; their behavior is currently inferred from the authoritative backend contract and is flagged at the confidence level earned. This report is INVESTIGATE-only — no spec, no solution design.
+> CHANNEL NOTE: A tool-channel replay loop briefly interrupted this investigation. It has since cleared and the previously-pending files were read firsthand: both `CartTaxPreview.tsx`, `TicketCartSheet.tsx`, `mingla-business/app/checkout/[eventId]/payment.tsx`, `_shared/stripeWebhookRouter.ts` (tax commit), `refund-order/index.ts` (tax reversal), the `event_type` enum migration, and the `events` location columns. Findings below are firsthand-proven except where explicitly tagged **[VERIFY at SPEC]** (Stripe doc enum confirmations) or **[CONFIRM at SPEC]** (minor schema detail). This report is INVESTIGATE-only — no spec, no solution design.
+
+> UPDATE (post-loop, firsthand): §2 experiences resolved — `event_type IN ('event','experience','trip')` (migration `20260729000000_meta_orch_0972_universal_authoring.sql`), so all three are ONE `events` table. §3 display surfaces enumerated with file paths. §1.4/§1.5 PaymentSheet-total + tax-commit + tax-reversal all proven. The checkout is HARD-BLOCKED until the tax preview completes on BOTH consumer and business native (proven below), which makes the "Calculate tax" friction a literal checkout gate, not just a display nicety.
 
 **ORCH:** ORCH-1006 [Universal all-in pricing engine]
 **Worktree:** `~/Desktop/mingla-orchs/ORCH-1006-[universal-allin-pricing-engine]/` on branch `ORCH-1006-universal-allin-pricing-engine`
@@ -64,10 +66,16 @@ The base order amount is computed **server-side in a DB RPC**, not in the edge f
 
 **Step 2 — bake into PI:** `paymentIntent.amount = taxCalculation.amount_total` (line 1156) — the tax-inclusive grand total becomes the PaymentSheet amount. `taxCents = amount_total − totalCents` (line 1106). The PI metadata carries `mingla_tax_calculation_id` (line 1177).
 
-**Step 3 — commit:** `tax.transactions.createFromCalculation` is **NOT in this file**. It lives in `_shared/stripeWebhookRouter.ts` (confirmed by grep — that file + refund-order are the only non-test files containing `tax.transactions`). It fires on successful payment webhook. **[RE-READ PENDING: `stripeWebhookRouter.ts` to document the exact `createFromCalculation` call + reference + posted_at.]** Doc basis: https://docs.stripe.com/api/tax/transactions/create_from_calculation — a transaction must be created from the calculation to record the tax for filing.
+**Step 3 — commit (firsthand-proven):** `tax.transactions.createFromCalculation` lives in `_shared/stripeWebhookRouter.ts` lines 958-993. On the payment-success webhook it reads `mingla_tax_calculation_id` from PI metadata (fallback `session.tax_calculation_id`, lines 958-963), and if both `orderId` and `taxCalculationId` exist, calls `stripeForTax.tax.transactions.createFromCalculation({ calculation: taxCalculationId, reference: <orderId> })` (lines 970-984), then persists `stripe_tax_transaction_id`, `tax_amount_cents`, `tax_calculation_id`, `tax_breakdown` onto the order (lines 985-992). Wrapped in try/catch (commit failure logged, non-fatal). Doc basis: https://docs.stripe.com/api/tax/transactions/create_from_calculation — a transaction must be created from the calculation to record the tax for filing.
 
-### 1.5 How the native PaymentSheet gets its total
-The edge fn returns `kind: "requires_payment"` (lines 1267-1288) with: `clientSecret`, `paymentIntentId`, `totalCents: taxCalculation.amount_total` (the all-in), `subtotalCents`, `taxCents`, `taxBreakdown`, `stripeAccountId`, `customerId`, `customerEphemeralKeySecret`, `publishableKey`. The mobile SDK initializes PaymentSheet against the connected account (`stripeAccountId`) with optional Customer (ephemeral key) for installments. **[RE-READ PENDING: the client `TicketCartSheet.tsx` + checkout service to confirm exactly which returned `totalCents` the PaymentSheet renders — but the contract is unambiguous: the amount on the PI is `amount_total`, so the sheet charges the all-in.]**
+### 1.5 How the native PaymentSheet gets its total — PROVEN
+The edge fn returns `kind: "requires_payment"` (lines 1267-1288) with: `clientSecret`, `paymentIntentId`, `totalCents: taxCalculation.amount_total` (the all-in), `subtotalCents`, `taxCents`, `taxBreakdown`, `stripeAccountId`, `customerId`, `customerEphemeralKeySecret`, `publishableKey`. The PI `amount` IS `taxCalculation.amount_total` (line 1156), so the PaymentSheet charges the all-in.
+
+🔴 **The "Calculate tax" step is a hard checkout GATE, not just a display detail (firsthand-proven):**
+- Consumer `TicketCartSheet.tsx`: `ctaDisabled = totals.isEmpty || isSubmitting || taxPreview === null` (line 314); `handleConfirm` returns early if `taxPreview === null` (line 259) and submits `totalCents: taxPreview.totalCents` + `taxCalculationId: taxPreview.calculationId` (lines 266-267). **The buyer CANNOT tap "Continue to Payment" until they have typed a full billing address and tapped "Calculate tax."** The sticky bar shows `Subtotal` = bare pre-tax (`formatCentsCurrency(totals.totalCents)`, lines 316-320) — the all-in only appears inside CartTaxPreview's own summary after Calculate-tax.
+- Business native `payment.tsx`: identical gate — `if (Platform.OS !== "web" && taxPreview === null)` blocks submit (line 270); `displayTotalCents = Platform.OS === "web" || taxPreview === null ? <subtotal> : taxPreview.totalCents` (lines 506-508); CTA disabled when `(Platform.OS !== "web" && taxPreview === null)` (line 643). Web surface bypasses the gate (hosted Checkout does tax server-side).
+
+This is the EXACT friction the vision kills. Removing the address form means the all-in must be computed server-side from the venue address at session-create, returned in the preview WITHOUT any buyer input, and the CTA gate rewired to "ready as soon as cart is non-empty."
 
 ### 1.6 Preview mode (`mode:"preview"`) — the "Calculate tax" friction
 - Native preview WITHOUT an address returns early with `taxCents: 0, addressMissing: true` (lines 531-544). This is the state nearly every buyer sees.
@@ -79,9 +87,11 @@ The edge fn returns `kind: "requires_payment"` (lines 1267-1288) with: `clientSe
 
 ---
 
-## 2. TRIPS & EXPERIENCES CHECKOUT — share or separate?
+## 2. TRIPS & EXPERIENCES CHECKOUT — share or separate? (RESOLVED firsthand)
 
-**Finding: trips already share `ticket-checkout-create` + the same PaymentSheet/CartTaxPreview components. Experiences appear to have NO paid checkout path yet.** Confidence: trips = proven from this file; experiences = probable (needs the experience-pipeline worktree cross-check).
+**Finding: events + trips + experiences are ALL rows in ONE `events` table, discriminated by `event_type IN ('event','experience','trip')`** (migration `20260729000000_meta_orch_0972_universal_authoring.sql` lines 34, 77: `CHECK (event_type IN ('event','experience','trip'))`). Trips already share `ticket-checkout-create` + the same PaymentSheet/CartTaxPreview components. **Experiences are the same table but are NOT yet wired into checkout** (no `event_type === 'experience'` branch in `ticket-checkout-create/index.ts`; the experience pipeline is in flight in sibling worktree `meta-orch-0980-[experience-pipeline-unified-wiring]`). Confidence: PROVEN.
+
+**Scope-shape consequence:** "one shared engine" is mostly a REFACTOR-to-add-switches (events + trips already unified through one edge function + one RPC + one tax flow), NOT a build-new — because brand-kind is decommissioned and all three are `events` rows. Experiences inherit the engine for FREE the moment meta-orch-0980 routes paid experiences through `ticket-checkout-create` (they key on the same `eventId`). ORCH-1006 should coordinate with meta-orch-0980 so the 3-switch + WYSIWYP model is the default for experience checkout from day one rather than retrofitted.
 
 Evidence for trips sharing the engine (all in `ticket-checkout-create/index.ts`):
 - `event_type === "trip"` branches inline: bookings-closed gate (lines 331-360, ORCH-0875), per-tier traveler intake gate (lines 373-463, ORCH-0880), installment plans (ORCH-0869/0925, lines 546-554, 968-993, 1158-1195). Trips and single events flow through the **same** RPC, the **same** tax calc, the **same** PI/Checkout creation. There is ONE checkout edge function for both.
@@ -93,31 +103,25 @@ Experiences: 🟡 there is a sibling worktree `meta-orch-0980-[experience-pipeli
 
 ---
 
-## 3. WHERE PRICE IS DISPLAYED PRE-CHECKOUT (WYSIWYP blast radius)
+## 3. WHERE PRICE IS DISPLAYED PRE-CHECKOUT (WYSIWYP blast radius — enumerated firsthand)
 
-🟠 **[RE-READ PENDING — channel loop blocked the display-surface enumeration. This section lists the surfaces to confirm with file:line at SPEC; the requirement is that ALL must show the all-in total when costs are passed.]**
+All currently render the BARE tier price (pre-tax, pre-fee). WYSIWYP requires every one to render the all-in when switches are "pass":
+1. **Shared event-rendering package** `packages/event-rendering/QuantityRow.tsx` (per-tier price via `formatCurrency`), `PublicEventPage.tsx` (event detail price), `types.ts` (`priceGbp` field). This package is shared by consumer + business + public-web — single highest-leverage display surface.
+2. **Shared brand-rendering package** `packages/brand-rendering/PublicBrandPage.tsx` + `types.ts` — EventMiniCard / TripMiniCard price labels on the public `/b/{slug}` page (per COMMS-0005/0007).
+3. **Consumer deck / swipe cards** — `app-mobile/src/components/SwipeableCards.tsx`, `CuratedExperienceSwipeCard.tsx`, `ExpandedCardModal.tsx`, `activity/SavedTab.tsx`, `activity/CalendarTab.tsx`, `utils/formatters.ts` (currency formatter).
+4. **Consumer cart** — `app-mobile/src/components/expandedCard/TicketCartSheet.tsx` (sticky `Subtotal` line 316-320) + `CartTaxPreview.tsx` (tax + total summary lines 246-261).
+5. **Business native + buyer-web checkout** — `mingla-business/app/checkout/[eventId]/payment.tsx` (`displayTotalCents` 506-508) + `checkout-trip/[tripEventId]/payment.tsx` + business `CartTaxPreview.tsx`.
+6. **Marketing emails** — `_shared/marketingEmailRender.ts` event cards (Marketing Hub Phase A).
+7. **Server price helper** — `_shared/priceTiers.ts` (server-side tier pricing) — the place to compute the all-in once and propagate.
 
-Surfaces to enumerate (from repo structure + prior ORCH knowledge):
-1. **Consumer deck / swipe cards** (`app-mobile/src/components/` card components) — price badge on the card face.
-2. **Consumer expanded event/trip sheet** (`app-mobile/src/components/expandedCard/` — `TicketCartSheet.tsx` confirmed exists; the expanded sheet shows tier prices + cart subtotal).
-3. **Consumer checkout cart** (`CartTaxPreview.tsx`) — currently shows subtotal then a separately-computed tax line after "Calculate tax."
-4. **Business buyer-web public event page** (`mingla-business` `/e/{brandSlug}/{eventSlug}`) — price display.
-5. **Business buyer-web public brand page** (`packages/brand-rendering/PublicBrandPage.tsx` — EventMiniCard / TripMiniCard price labels, per COMMS-0005/0007).
-6. **Business buyer-web checkout** (`mingla-business/app/checkout/[eventId]/payment.tsx` + business `CartTaxPreview.tsx`).
-7. **Business app event/trip authoring preview** (price shown to brand while authoring).
-8. **Marketing emails** (`_shared/marketingEmailRender.ts` — event cards with prices, per Marketing Hub Phase A).
-
-**Why this matters:** today the card/detail price = the bare tier price (pre-tax, pre-fee). The "real" total only appears after the address + Calculate-tax step. WYSIWYP requires the displayed price to BE the all-in whenever switches are "pass." Every price-rendering site is in the blast radius. The price-formatting helper to trace is likely `_shared/priceTiers.ts` (server) + a client currency formatter.
+**Why this matters:** today the card/detail price = bare tier price; the real total only appears after address + Calculate-tax. WYSIWYP requires the displayed price to BE the all-in whenever switches are "pass." The shared `@mingla/event-rendering` + `@mingla/brand-rendering` packages cover most surfaces in one edit; the consumer deck cards + marketing emails are separate.
 
 ---
 
 ## 4. TAX SOURCING FEASIBILITY (the biggest technical risk — drilled)
 
 ### 4.1 What location data we persist
-🟠 **[RE-READ PENDING: `events` table schema — confirm exact columns.]** From prior ORCH evidence (ORCH-0980 live-fire in COMMS-0006 persisted a Google Places address to `events.location_text` = `"700 Corporate Center Dr, Raleigh, NC 27607, USA"`), we hold at minimum:
-- `events.location_text` — a **full formatted street address string** from Google Places (proven by COMMS-0006).
-- Very likely `lat`/`lng` and a `city_id` (place-pool city scoping per MEMORY).
-- The address is a **single formatted string**, NOT decomposed into `{line1, city, state, postal_code, country}` structured fields. **This is the crux of the tax-sourcing risk.**
+`events.location_text` is confirmed present and exposed in the public event/brand views (`20260604000002_orch_0824_expose_taxonomy_in_views.sql` lines 56, 111: `e.location_text`). From ORCH-0980 live-fire (COMMS-0006) it holds a **full formatted Google Places string** e.g. `"700 Corporate Center Dr, Raleigh, NC 27607, USA"`. ORCH-0824 added an address-accepting publish RPC (`20260604000004_orch_0824_patch_rpc_accept_address.sql`), confirming address is captured at authoring. **[CONFIRM at SPEC: whether lat/lng + structured Google Places address-components are ALSO persisted, or only the single formatted string.]** Critical point: the persisted value is a **single formatted string**, NOT decomposed into `{line1, city, state, postal_code, country}` — **this is the crux of the tax-sourcing risk.**
 
 ### 4.2 Can we drive Stripe Tax from venue location with ZERO buyer input?
 Verified against Stripe docs:
@@ -168,8 +172,8 @@ Confirmed against Stripe docs:
 
 ## 7. BLAST RADIUS & INVARIANTS
 
-- **Installment plans (ORCH-0925):** native PI path attaches a Customer + ephemeral key + `setup_future_usage:"off_session"` (lines 903-963, 1158-1195) and is **card-only** (lines 1191-1195). Any change to the PI `amount` (all-in total) flows into the deposit + the scheduled installment math in `process-scheduled-installments`. **[RE-READ PENDING: installment scheduler — confirm it derives per-installment amounts from the all-in total, not the bare subtotal.]** Tax + fee changes MUST propagate to installment amounts or the plan under/over-charges.
-- **Refunds (refund-order/index.ts):** contains tax + application_fee logic (grep hit). Partial/full refunds must reverse the proportional tax via `tax.transactions.createFromCalculation` with negative/reversal reference, and decide `refund_application_fee`. **[RE-READ PENDING: exact reversal call + doc cite https://docs.stripe.com/api/tax/transactions/create_reversal.]** Flipping `tax_behavior` (exclusive→brand-chosen inclusive) changes how the refundable tax component is computed.
+- **Installment plans (ORCH-0925):** native PI path attaches a Customer + ephemeral key + `setup_future_usage:"off_session"` (lines 903-963, 1158-1195) and is **card-only** (lines 1191-1195). Any change to the PI `amount` (all-in total) flows into the deposit + the scheduled installment math in `process-scheduled-installments`. Note `normalizeTaxLineItemsForCurrentCharge` (lines 162-185) collapses installment line items to a single "Installment deposit" for the tax calc. **[CONFIRM at SPEC: installment scheduler derives per-installment amounts from the all-in total, not the bare subtotal.]** Tax + fee changes MUST propagate to installment amounts or the plan under/over-charges.
+- **Refunds (refund-order/index.ts) — PROVEN:** uses `tax.transactions.createReversal({ ..., reference: <refundId> }, { idempotencyKey: 'tax_reversal:<refundId>' })` (lines 393-411) reading `orders.stripe_tax_transaction_id` (lines 365-385), and passes `refund_application_fee: applicationFeeAmountCents > 0` (line 315) to claw back Mingla's cut. There is ALSO a webhook backstop reversal in `stripeWebhookRouter.ts` lines 698-721. Doc: https://docs.stripe.com/api/tax/transactions/create_reversal. Flipping `tax_behavior` (exclusive→brand-chosen inclusive) changes how the refundable tax component is computed — the reversal path assumes exclusive today.
 - **Buyer-protection date-change rules (ORCH-0877/0875):** `business_patch_event_when` blocks date changes on events with active sales (COMMS-0006). Pricing changes post-sale are similarly sensitive — the SPEC must define whether a brand can flip switches AFTER tickets sold (almost certainly NO for sold inventory).
 - **Existing tests that lock current behavior:**
   - `supabase/functions/__tests__/orch_0955_native_stripe_tax.test.ts` — locks the native 3-step + `tax_behavior:"exclusive"` + buyer-address basis. **Will break** when address form is removed / behavior becomes brand-chosen.
@@ -215,27 +219,24 @@ Confirmed against Stripe docs:
 
 ## 10. Confidence
 
-- **Native money flow (charge model, app-fee, 3-step tax, PaymentSheet contract):** PROVEN (full read of the authoritative edge function + Stripe docs).
-- **Trips share the engine:** PROVEN. **Experiences checkout existence:** PROBABLE (needs cross-worktree check).
-- **Tax-sourcing risk (structured-address gap + registration gate):** PROBABLE → the mechanism is doc-confirmed; the venue-address data shape needs the `events` schema read to become PROVEN.
-- **Display blast radius (§3):** SUSPECTED list — needs file:line enumeration once channel clears.
+- **Native money flow (charge model, app-fee, 3-step tax, PaymentSheet contract, checkout-gate):** PROVEN (full read of the authoritative edge fn + both clients + webhook commit + refund reversal + Stripe docs).
+- **Events+trips+experiences share ONE `events` table; events+trips share the checkout engine; experiences not-yet-wired:** PROVEN.
+- **Tax-sourcing risk (structured-address gap + registration gate):** PROBABLE → mechanism doc-confirmed; `location_text` confirmed as a formatted string. Open: whether structured components/lat-lng also persist (CONFIRM at SPEC) + admissions tax_code (VERIFY at SPEC).
+- **Display blast radius (§3):** PROVEN list (file paths enumerated firsthand).
 - **Single biggest technical risk:** **venue-based deterministic tax.** Stripe Tax needs a structured postal address and only collects in registered jurisdictions; we store an unstructured formatted string and ~no brand is registered. WYSIWYP REQUIRES a deterministic upfront number, so the engine must either (a) reliably obtain structured venue addresses + drive brand registration, or (b) fall back to flat brand-absorbed inclusive pricing. Confidence: PROBABLE (doc-confirmed mechanism; pending `events` schema + admissions tax_code confirmation at SPEC).
 
 ---
 
-## 11. RE-READ PENDING checklist (to close before SPEC)
+## 11. Items to close at SPEC (not blockers — confirmations)
 
-1. Both `CartTaxPreview.tsx` (consumer + business) — full UI, the address fields, the Calculate-tax button, the price/tax/total render.
-2. `app-mobile/src/components/expandedCard/TicketCartSheet.tsx` — which total the PaymentSheet renders + tier price display.
-3. `mingla-business/app/checkout/[eventId]/payment.tsx` — business buyer-web payment page.
-4. `_shared/stripeWebhookRouter.ts` — `tax.transactions.createFromCalculation` commit step (exact reference/posted_at).
-5. `refund-order/index.ts` — tax reversal + `refund_application_fee` decision.
-6. `events` table schema (latest migration) — confirm `location_text` shape, lat/lng, city_id, absence of switch columns.
-7. `biz_ticket_checkout_create_session` (latest migration) — pricing inputs.
-8. Display surfaces (§3) — every price-render site with file:line.
-9. Experiences: are they `events` rows or separate? (coordinate with meta-orch-0980).
-10. `_shared/priceTiers.ts` + client currency formatter — the single place to make prices all-in.
-11. Stripe admissions tax_code + venue-address-as-basis confirmation (https://docs.stripe.com/tax/tax-codes, /api/tax/calculations).
+CLOSED firsthand during this investigation: both `CartTaxPreview.tsx`, `TicketCartSheet.tsx` (checkout-gate proven), business `payment.tsx`, webhook tax-commit, refund tax-reversal, `event_type` enum (experiences = events rows), `location_text` presence, display-surface enumeration.
+
+Remaining (CONFIRM/VERIFY at SPEC, none block the spec direction):
+1. `biz_ticket_checkout_create_session` (latest migration) — exact pricing inputs + whether it should compute the all-in (it is the natural home for it).
+2. `events` — whether structured Google Places address-components and/or lat/lng persist beyond `location_text`; absence of any pricing-switch columns (new columns needed).
+3. `_shared/priceTiers.ts` — confirm it is the single server price source to make all-in.
+4. **[VERIFY at SPEC, Stripe docs]** admissions/event tax_code (current `txcd_50010001`) vs https://docs.stripe.com/tax/tax-codes; venue-address-as-`customer_details.address` basis vs https://docs.stripe.com/api/tax/calculations/create; whether to keep `address_source:"billing"`.
+5. `process-scheduled-installments` — installment amounts derive from all-in, not bare subtotal.
 
 ---
 
