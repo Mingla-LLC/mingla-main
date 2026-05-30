@@ -67,15 +67,21 @@ const AUDIENCES: Audience[] = [
 
 // Pin-dot chips — business types that could use Mingla, scattered around the
 // heading like map pins.
+// Business-type pins, scattered ABOVE and BELOW the heading only (never over the
+// text) so nothing overlaps the headline on mobile or desktop.
 const CHIPS: { label: string; s: React.CSSProperties }[] = [
-  { label: 'Taco truck', s: { top: '-14%', left: '3%' } },
-  { label: 'Rooftop bar', s: { top: '-7%', right: '2%' } },
-  { label: 'Pottery studio', s: { top: '-20%', left: '36%' } },
-  { label: 'Sunday market', s: { top: '26%', left: '0%' } },
-  { label: 'Supper club', s: { top: '40%', right: '0%' } },
-  { label: 'Comedy night', s: { top: '108%', left: '6%' } },
-  { label: 'Wine tasting', s: { top: '118%', right: '8%' } },
-  { label: 'Food festival', s: { top: '112%', left: '44%' } },
+  // above
+  { label: 'Restaurant', s: { top: '-9%', left: '2%' } },
+  { label: 'Taco truck', s: { top: '-22%', left: '24%' } },
+  { label: 'Pottery studio', s: { top: '-10%', left: '46%' } },
+  { label: 'Trip planners', s: { top: '-24%', left: '62%' } },
+  { label: 'Rooftop bar', s: { top: '-12%', right: '1%' } },
+  // below
+  { label: 'Sunday market', s: { top: '108%', left: '3%' } },
+  { label: 'Comedy night', s: { top: '126%', left: '24%' } },
+  { label: 'Wine tasting', s: { top: '110%', left: '46%' } },
+  { label: 'Supper club', s: { top: '128%', left: '64%' } },
+  { label: 'Food festival', s: { top: '112%', right: '1%' } },
 ]
 
 function AudienceCard({ a }: { a: Audience }) {
@@ -142,7 +148,7 @@ export function OrganiserAudiences() {
                 animation: reduced ? undefined : `mingla-chip-pulse 4.5s ease-in-out ${i * 0.4}s infinite`,
               }}
             >
-              <span className="h-1.5 w-1.5 rounded-full" style={{ background: 'var(--color-warm)' }} />
+              <span className="h-1.5 w-1.5 rounded-full" style={{ background: 'var(--color-success)' }} />
               {c.label}
             </span>
           ))}
