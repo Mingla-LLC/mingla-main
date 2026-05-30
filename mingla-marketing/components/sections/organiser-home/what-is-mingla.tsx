@@ -74,14 +74,14 @@ export function OrganiserWhatIsMingla() {
   return (
     <section ref={sectionRef} className="seam-top relative lg:min-h-[180vh]">
       <div className="flex items-center px-6 py-24 md:px-10 md:py-32 lg:sticky lg:top-0 lg:min-h-screen [padding-left:max(1.5rem,env(safe-area-inset-left))] [padding-right:max(1.5rem,env(safe-area-inset-right))] md:[padding-left:max(2.5rem,env(safe-area-inset-left))] md:[padding-right:max(2.5rem,env(safe-area-inset-right))]">
-        <div className="mx-auto grid w-full max-w-6xl items-center gap-12 lg:grid-cols-2 lg:gap-20">
+        <div className="mx-auto grid w-full max-w-6xl items-center gap-12 lg:grid-cols-2 lg:items-stretch lg:gap-20">
         {/* LEFT — what is Mingla */}
-        <div className="max-w-xl">
+        <div className="flex max-w-xl flex-col justify-center">
           <Reveal as="span" className="block text-xs font-semibold uppercase tracking-[0.2em] text-warm-ink">
             What is Mingla?
           </Reveal>
           <Reveal>
-            <h2 className="mt-4 font-display text-4xl leading-[1.05] tracking-[-0.02em] text-text-primary md:text-6xl">
+            <h2 className="mt-4 font-display text-3xl leading-[1.06] tracking-[-0.02em] text-text-primary md:text-5xl">
               We make real life <span className="text-warm-ink">easier to find.</span>
             </h2>
           </Reveal>
@@ -93,23 +93,24 @@ export function OrganiserWhatIsMingla() {
 
           <Reveal delay={0.18}>
             <p className="mt-6 text-lg leading-relaxed text-text-secondary md:text-xl">
-              Mingla is where people find what to do — by vibe, not by searching. The consumer app
-              surfaces the places, events, and experiences that match the night they want. Mingla
-              Business is the other side of that coin: the AI and tools that get your place found,
-              booked, and remembered.
+              The places with the most soul are often the hardest to find — not because people
+              wouldn&rsquo;t love them, but because attention is scattered and running a business
+              already takes everything you have. Mingla is the other side of that: people find the
+              night they&rsquo;re after by vibe, not by searching, and your place is what they find.
             </p>
           </Reveal>
         </div>
 
-        {/* RIGHT — the connecting steps (vertical, auto-advancing) */}
-        <Reveal delay={0.1}>
+        {/* RIGHT — the connecting steps (scroll-driven). h-full so the column
+            matches the left column's height for desktop uniformity. */}
+        <Reveal delay={0.1} className="flex flex-col justify-center lg:h-full">
           <Stepper
             value={active}
             onValueChange={setActive}
             orientation="vertical"
-            className="font-dashboard"
+            className="font-dashboard lg:h-full"
           >
-            <StepperNav className="w-full flex-col gap-0">
+            <StepperNav className="w-full flex-col gap-0 lg:h-full">
               {STEPS.map((s, i) => {
                 const Icon = s.icon
                 const isLast = i === STEPS.length - 1
@@ -117,7 +118,7 @@ export function OrganiserWhatIsMingla() {
                   <StepperItem
                     key={s.step}
                     step={s.step}
-                    className="w-full !flex-row !items-stretch !justify-start"
+                    className="w-full !flex-row !items-stretch !justify-start lg:flex-1"
                   >
                     <StepperTrigger className="flex w-full items-stretch gap-4 rounded-2xl p-3 text-left transition-colors duration-300 hover:bg-black/[0.025] data-[state=active]:bg-black/[0.03]">
                       {/* indicator + connector column */}
