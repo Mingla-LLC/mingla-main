@@ -29,6 +29,9 @@ export default function TripDeepLinkScreen(): React.ReactElement | null {
       brandSlug={brandSlug}
       tripSlug={tripSlug}
       seed={null}
+      // ORCH-1016 REWORK — cold deep-link route has no floating GlassBottomNav,
+      // so the sheet only needs OS-inset clearance, not the tab-bar height.
+      tabBarAware={false}
       onBack={() => {
         if (router.canGoBack()) router.back();
         else router.replace("/");

@@ -228,3 +228,64 @@ Source mirrored: `mingla-business/src/components/checkout/intake/IntakeQuestionR
   cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-1016-[consumer-discover-trips-tab]" && /Users/sethogieva/bin/supabase db push --linked
   ```
 - The two ORCH-1016 migrations' objects (`events.departure_text`, `pg_published_trips_public`) are live on remote but NOT yet in `schema_migrations` (same applied-not-recorded pattern as COMMS-0009/0012) — the `db push` will record all three idempotently.
+
+---
+
+# REWORK — Operator UX corrections (2026-05-30, on-device review)
+
+Operator (Seth) reviewed the consumer trip detail on his physical iPhone and gave two verbatim corrections: *"we should use the sheet used throughout the app, and also everything in the consumer app ought to scroll and clear the nav menu."* Specifically, the detail was a BESPOKE full-screen overlay (full-bleed hero, X top-left, share top-right) and its day-by-day list clipped behind the floating GlassBottomNav (Day 3 cut off).
+
+## RW.1 — Canonical sheet adopted
+
+**Component:** `app-mobile/src/components/ui/BaseBottomSheet.tsx`.
+
+**Why it is THE standard:** `BaseBottomSheet` is the app's single shared bottom-sheet primitive and the SOLE permitted importer of `@gorhom/bottom-sheet` under `app-mobile/src/` (strict-grep gate `meta-orch-0991-base-bottom-sheet-sole-consumer.mjs`, invariant `I-PROPOSED-BASE-BOTTOM-SHEET-SOLE-GORHOM-CONSUMER`). It is consumed by 50+ surfaces including `ExpandedBusinessEventSheet` — the exact event-detail sheet the trip Reserve flow already opens. Adopting it makes the trip detail visually + behaviorally identical to every other detail surface (drag handle, pan-down-to-dismiss, dark `#0c0e12` chrome, 50%/90% snap points, backdrop). The prior overlay invented its own presentation.
+
+The trip body now mirrors `ExpandedBusinessEventSheet` exactly: `theme="dark"`, `snapPoints={glass.bottomSheet.snapPoints}` (`['50%','90%']`), `initialIndex=1` (open at 90%), `scrollMode="view"` with the body owning a single gorhom-aware `BottomSheetScrollView` host (re-exported from the primitive — never imports gorhom directly), the sticky Reserve bar passed as the sheet's `stickyFooter`, and `onClose` wired to `onBack` so the X chrome and pan-down close fire identically. The Reserve checkout sheet (`ExpandedBusinessEventSheet`) still renders as a SIBLING `BaseBottomSheet` root in the same fragment (`feedback_rn_sub_sheet_must_render_inside_parent`). The prior bespoke `styles.host` full-screen root and the absolute-positioned bottom reserve bar are DELETED.
+
+## RW.2 — Scroll clears the bottom nav (all ORCH-1016 consumer surfaces)
+
+**Bottom-inset source:** `BOTTOM_NAV_CONTENT_HEIGHT` exported from `app-mobile/src/hooks/useAppLayout.ts` — the single source of truth for the floating GlassBottomNav footprint. No magic numbers introduced.
+
+- **Detail sheet:** set `tabBarAware` on `BaseBottomSheet`. The primitive then adds `BOTTOM_NAV_CONTENT_HEIGHT + max(insets.bottom,16)` to the scroll body AND wraps the sticky Reserve footer with the same clearance (`BaseBottomSheet.tsx` `tabBarExtra`/`bottomInset` logic). In-app overlay (`app/index.tsx`) passes `tabBarAware`; cold deep-link route (`app/t/[brandSlug]/[tripSlug].tsx`) passes `tabBarAware={false}` because that standalone route has no nav.
+- **Trips tab list:** `TripsContent.tsx` already sourced `useAppLayout().bottomNavTotalHeight + insets.bottom + 16` and applied it to the FlatList + every state container — confirmed intact, no change needed (the regression test pins it so it cannot silently regress).
+
+## RW.3 — Files changed
+
+| File | Before → After |
+|---|---|
+| `app-mobile/src/screens/Trip/ConsumerTripDetailScreen.tsx` | Bespoke full-screen `<View style={host}>` + raw `<ScrollView>` + absolute bottom reserve bar → canonical `<BaseBottomSheet>` (`scrollMode="view"`, `BottomSheetScrollView` host, `stickyFooter` Reserve bar, `tabBarAware`, dark theme, 90% snap). Added `tabBarAware?: boolean` prop (default true). All states (loading/error/not-found) wrapped in the sheet too. ~120 lines reworked. |
+| `app-mobile/app/index.tsx` | In-app overlay mount passes `tabBarAware` to the detail. ~3 lines. |
+| `app-mobile/app/t/[brandSlug]/[tripSlug].tsx` | Cold deep-link route passes `tabBarAware={false}`. ~3 lines. |
+| `app-mobile/src/screens/Trip/__tests__/orch_1016_consumer_trip_detail.rework_sheet.test.tsx` | NEW — 14-assertion source-regression test. |
+
+## RW.4 — Regression test
+
+**Path:** `app-mobile/src/screens/Trip/__tests__/orch_1016_consumer_trip_detail.rework_sheet.test.tsx` (node:assert source-assertion, the app-mobile mobile-test convention — no jest/RTL runner).
+
+**Coverage:** R1a-f pin the canonical-sheet adoption (imports BaseBottomSheet, body wrapped in `<BaseBottomSheet>`, canonical snap tokens + 90% index, `onClose=onBack`, bespoke `styles.host`/absolute-bottom overlay GONE, single `BottomSheetScrollView` host with no raw `<ScrollView>`). R2a-h pin nav-clearance (detail `tabBarAware`, in-app overlay passes it, deep-link passes `false`, primitive sources `BOTTOM_NAV_CONTENT_HEIGHT`, `useAppLayout` exports the token, TripsContent uses `bottomNavTotalHeight + insets.bottom + N` on ≥2 containers).
+
+**Passing run:** `14 checks PASS`.
+
+**Fails-on-revert:** verified at commit `9c9c1c5f0` (HEAD before fix) — `git stash`ed the 3 fix files and re-ran; failed at the first assertion `FAIL R1a detail imports the canonical BaseBottomSheet primitive`. Restored via `git stash pop`; back to 14 PASS.
+
+**Existing adversarial test:** `orch_1016_consumer_trip_detail.adversarial.test.tsx` still `18 checks PASS` (no regression — deadline/null/verified/intake guards intact).
+
+## RW.5 — Verification
+
+| Check | Result |
+|---|---|
+| tsc (touched files) | Clean — zero `error TS` in `screens/Trip`, `app/index.tsx`, deep-link route (`npx tsc --noEmit`). Pre-existing 259 errors are all `packages/*` workspace-resolution artifacts of the isolated worktree, unrelated. |
+| eslint (ConsumerTripDetailScreen) | Clean except `import/no-unresolved` for `@mingla/event-rendering` — a worktree symlinked-node_modules artifact (the import predates this rework and resolves under the monorepo workspace). Two `react/no-unescaped-entities` fixed (`&apos;`). |
+| strict-grep `meta-orch-0991-base-bottom-sheet-sole-consumer` | OK — BaseBottomSheet remains the sole gorhom importer; the detail uses the re-exported `BottomSheetScrollView`. |
+| strict-grep `orch-1016-trips-discovery-service-check` | 6 PASS (no `.from('brands')`, no AsyncStorage, mapping intact). |
+| Sim live evidence (iPhone 17 Pro Max, Metro 8087) | Trips tab → tapped "The Sone" trip → detail now renders as the canonical sheet (drag handle, rounded top, dark chrome, X + share), NOT the bespoke overlay; pan-down-to-dismiss closes it. Trips list clears the floating nav. Screenshots: `qa_evidence_orch1016/trips_tab.png`, `trip_detail_sheet.png`, `trip_detail_scrolled.png`. (The test trip has a single Day so the multi-day clip symptom doesn't reproduce on it; the clearance mechanism is the gate-verified `tabBarAware` path used app-wide.) |
+
+## RW.6 — Surface impact
+
+- **Consumer iOS / Android:** changed — trip detail presentation + nav clearance. Parity automatic (shared RN component + shared BaseBottomSheet primitive; `ANDROID_GLASS_USES_OPAQUE_FALLBACK` not implicated — the sheet uses opaque `#0c0e12`, no translucent Android fill introduced).
+- **Buyer-anon Web / Business iOS+Android / Admin:** unaffected — trip detail is a consumer-app surface with no analog on those surfaces.
+
+## RW.7 — Discoveries for orchestrator (REWORK)
+
+- None new. The pre-existing migration handoff (RLS `db push`) from the D2 rework still stands unchanged.

@@ -1,9 +1,18 @@
 /**
- * ConsumerTripDetailScreen — in-app full-screen trip detail (ORCH-1016).
+ * ConsumerTripDetailScreen — in-app trip detail (ORCH-1016).
  *
- * Mirrors the STRUCTURE of mingla-business app/t/[brandSlug]/[tripSlug].tsx:
- * full-bleed cover hero + X-close/share, deadline/refund band, "Leaving from"
- * meta (above destination), itinerary, inclusions, tiers, sticky Reserve CTA.
+ * ORCH-1016 REWORK (operator UX corrections, 2026-05-30):
+ *   1. CANONICAL SHEET — the detail body now renders inside the app's shared
+ *      `BaseBottomSheet` primitive (the SOLE permitted gorhom consumer, used by
+ *      ExpandedBusinessEventSheet + every other detail/expanded surface), not the
+ *      prior bespoke full-screen overlay. Same presentation, same drag-handle/
+ *      pan-down close, same dark chrome as the rest of the app. `onClose`→`onBack`.
+ *   2. SCROLL CLEARS THE BOTTOM NAV — the sheet is `tabBarAware`, so the scroll
+ *      body's bottom padding includes `BOTTOM_NAV_CONTENT_HEIGHT + safe-area`
+ *      (single source of truth: useAppLayout). The last itinerary Day + Reserve
+ *      CTA are fully reachable above the floating GlassBottomNav (no clipped
+ *      "Day 3"). The sticky Reserve bar is the sheet's `stickyFooter`, which the
+ *      primitive pads with the same nav clearance.
  *
  * Anon-read constraint (🔒 COMMS-0009): all data comes from useConsumerTripDetail
  * (anon-direct events/trip_* reads + RPC-sourced brand fields). NEVER `.from('brands')`.
@@ -15,15 +24,14 @@
  * select → cart → tax-preview address → runNativeCheckout). The trip's tier
  * `ticket_type_id`s map onto the same `lines` contract; intake answers (when a
  * schema exists — none today) ride the nativeCheckoutFlow `intakeFormData` body
- * key → orders.intake_form_data.
+ * key → orders.intake_form_data. ExpandedBusinessEventSheet renders as a SIBLING
+ * BaseBottomSheet root in the same fragment (feedback_rn_sub_sheet_must_render_inside_parent).
  */
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, type ReactElement } from "react";
 import {
   ActivityIndicator,
-  Platform,
   Pressable,
-  ScrollView,
   Share,
   StyleSheet,
   Text,
@@ -34,7 +42,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { EventCoverMedia, formatTripDateRange, RefundPolicyDisplay } from "@mingla/event-rendering";
 
 import { Icon } from "../../components/ui/Icon";
+import { BaseBottomSheet, BottomSheetScrollView } from "../../components/ui/BaseBottomSheet";
 import { ExpandedBusinessEventSheet } from "../../components/expandedCard/ExpandedBusinessEventSheet";
+import { glass } from "../../constants/designSystem";
 import { hueFromId } from "../../utils/hueFromId";
 import {
   useConsumerTripDetail,
@@ -48,12 +58,26 @@ interface ConsumerTripDetailScreenProps {
   tripSlug: string;
   seed?: DiscoverTripRow | null;
   onBack: () => void;
+  /**
+   * ORCH-1016 REWORK — true when the detail is presented BELOW the floating
+   * GlassBottomNav (the in-app Discover overlay), so the sheet adds the nav
+   * clearance to its scroll body. The cold deep-link route (app/t/...) has no
+   * nav and passes false. Default true (the common in-app case).
+   */
+  tabBarAware?: boolean;
   accountPreferences?: { currency: string; measurementSystem: "Metric" | "Imperial" };
 }
 
-const SCREEN_BG = "#0c0e12";
 const ACCENT = "#FF6B35";
 const WARM = "#eb7825";
+
+// Canonical sheet snap tokens — same as ExpandedBusinessEventSheet (the
+// gold-standard detail sheet). Two snaps give a 50% preview + 90% full view.
+const SHEET_SNAP_POINTS = glass.bottomSheet.snapPoints as unknown as (
+  | string
+  | number
+)[];
+const SHEET_INITIAL_INDEX = 1; // open at the 90% snap (full view)
 
 function formatMoney(cents: number | null, currency: string | null): string | null {
   if (cents === null) return null;
@@ -128,6 +152,7 @@ export default function ConsumerTripDetailScreen({
   tripSlug,
   seed = null,
   onBack,
+  tabBarAware = true,
   accountPreferences,
 }: ConsumerTripDetailScreenProps): React.ReactElement {
   const insets = useSafeAreaInsets();
@@ -149,46 +174,91 @@ export default function ConsumerTripDetailScreen({
     [detail],
   );
 
+  // Floating close/share chrome — preserved from the prior overlay, now layered
+  // over the sheet body (inside the BaseBottomSheet) instead of the full screen.
+  const chrome = (
+    <>
+      <Pressable
+        style={[styles.closeChrome, { top: 8 }]}
+        onPress={onBack}
+        accessibilityLabel="Close"
+        hitSlop={8}
+      >
+        <Icon name="close" size={24} color="#FFFFFF" />
+      </Pressable>
+      <Pressable
+        style={[styles.shareChrome, { top: 8 }]}
+        onPress={handleShare}
+        accessibilityLabel="Share"
+        hitSlop={8}
+      >
+        <Icon name="share" size={22} color="#FFFFFF" />
+      </Pressable>
+    </>
+  );
+
   // ── Loading (cold deep-link) ──
   if (isLoading && detail === null) {
     return (
-      <View style={[styles.host, styles.centered]}>
-        <ActivityIndicator color={ACCENT} />
-      </View>
+      <BaseBottomSheet
+        visible
+        onClose={onBack}
+        theme="dark"
+        snapPoints={SHEET_SNAP_POINTS}
+        initialIndex={SHEET_INITIAL_INDEX}
+        scrollMode="view"
+        tabBarAware={tabBarAware}
+        accessibilityLabel="Trip detail"
+      >
+        <View style={[styles.stateBody, { paddingBottom: insets.bottom + 48 }]}>
+          {chrome}
+          <ActivityIndicator color={ACCENT} />
+        </View>
+      </BaseBottomSheet>
     );
   }
 
   // ── Error ──
   if (isError && detail === null) {
     return (
-      <View style={[styles.host, styles.centered]}>
-        <Pressable
-          style={[styles.closeChrome, { top: insets.top + 8 }]}
-          onPress={onBack}
-          accessibilityLabel="Close"
-        >
-          <Icon name="close" size={24} color="#FFFFFF" />
-        </Pressable>
-        <Text style={styles.stateTitle}>Couldn't load this trip</Text>
-        <Pressable style={styles.retryBtn} onPress={() => refetch()}>
-          <Text style={styles.retryText}>Try again</Text>
-        </Pressable>
-      </View>
+      <BaseBottomSheet
+        visible
+        onClose={onBack}
+        theme="dark"
+        snapPoints={SHEET_SNAP_POINTS}
+        initialIndex={SHEET_INITIAL_INDEX}
+        scrollMode="view"
+        tabBarAware={tabBarAware}
+        accessibilityLabel="Trip detail"
+      >
+        <View style={[styles.stateBody, { paddingBottom: insets.bottom + 48 }]}>
+          {chrome}
+          <Text style={styles.stateTitle}>Couldn&apos;t load this trip</Text>
+          <Pressable style={styles.retryBtn} onPress={() => refetch()}>
+            <Text style={styles.retryText}>Try again</Text>
+          </Pressable>
+        </View>
+      </BaseBottomSheet>
     );
   }
 
   if (detail === null) {
     return (
-      <View style={[styles.host, styles.centered]}>
-        <Pressable
-          style={[styles.closeChrome, { top: insets.top + 8 }]}
-          onPress={onBack}
-          accessibilityLabel="Close"
-        >
-          <Icon name="close" size={24} color="#FFFFFF" />
-        </Pressable>
-        <Text style={styles.stateTitle}>Trip not found</Text>
-      </View>
+      <BaseBottomSheet
+        visible
+        onClose={onBack}
+        theme="dark"
+        snapPoints={SHEET_SNAP_POINTS}
+        initialIndex={SHEET_INITIAL_INDEX}
+        scrollMode="view"
+        tabBarAware={tabBarAware}
+        accessibilityLabel="Trip detail"
+      >
+        <View style={[styles.stateBody, { paddingBottom: insets.bottom + 48 }]}>
+          {chrome}
+          <Text style={styles.stateTitle}>Trip not found</Text>
+        </View>
+      </BaseBottomSheet>
     );
   }
 
@@ -202,201 +272,209 @@ export default function ConsumerTripDetailScreen({
   const includedItems = detail.inclusions.filter((i) => i.kind === "included");
   const excludedItems = detail.inclusions.filter((i) => i.kind === "excluded");
 
-  return (
-    <View style={styles.host}>
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 120 + insets.bottom }}
-      >
-        {/* Hero */}
-        <View style={styles.hero}>
-          <EventCoverMedia
-            hue={hueFromId(detail.tripId)}
-            mediaUrl={detail.coverMediaUrl}
-            mediaType={detail.coverMediaType}
-            radius={0}
-            videoContentFit="cover"
-            label={detail.title}
-            style={StyleSheet.absoluteFill}
-          />
-          <LinearGradient
-            colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.8)"]}
-            locations={[0.45, 1]}
-            style={StyleSheet.absoluteFill}
-            pointerEvents="none"
-          />
-        </View>
-
-        {/* Floating chrome */}
-        <Pressable
-          style={[styles.closeChrome, { top: insets.top + 8 }]}
-          onPress={onBack}
-          accessibilityLabel="Close"
-          hitSlop={8}
-        >
-          <Icon name="close" size={24} color="#FFFFFF" />
-        </Pressable>
-        <Pressable
-          style={[styles.shareChrome, { top: insets.top + 8 }]}
-          onPress={handleShare}
-          accessibilityLabel="Share"
-          hitSlop={8}
-        >
-          <Icon name="share" size={22} color="#FFFFFF" />
-        </Pressable>
-
-        <View style={styles.body}>
-          <Text style={styles.title}>{detail.title}</Text>
-          <View style={styles.bylineRow}>
-            <Text style={styles.byline}>by {detail.brandName}</Text>
-            {detail.brandVerified ? (
-              <Icon name="shield-checkmark" size={14} color={ACCENT} />
-            ) : null}
-          </View>
-
-          {/* Meta rows */}
-          {dateLabel !== null ? (
-            <View style={styles.metaRow}>
-              <Icon name="calendar-outline" size={16} color={WARM} />
-              <Text style={styles.metaText}>{dateLabel}</Text>
-            </View>
-          ) : null}
-          {/* Leaving from — ABOVE destination */}
-          {detail.departureText !== null ? (
-            <View style={styles.metaRow}>
-              <Icon name="paper-plane-outline" size={16} color={WARM} />
-              <Text style={styles.metaText}>Leaving from {detail.departureText}</Text>
-            </View>
-          ) : null}
-          {detail.destinationText !== null ? (
-            <View style={styles.metaRow}>
-              <Icon name="navigate-outline" size={16} color={WARM} />
-              <Text style={styles.metaText}>{detail.destinationText}</Text>
-            </View>
-          ) : null}
-          {detail.totalCapacity !== null ? (
-            <View style={styles.metaRow}>
-              <Icon name="people-outline" size={16} color={WARM} />
-              <Text style={styles.metaText}>
-                {detail.totalCapacity} traveler{detail.totalCapacity === 1 ? "" : "s"} max
-              </Text>
-            </View>
-          ) : null}
-
-          {/* Deadline state band */}
-          {closed ? (
-            <View style={[styles.band, styles.bandClosed]}>
-              <Text style={styles.bandClosedTitle}>Bookings closed</Text>
-              <Text style={styles.bandBody}>
-                This trip stopped taking new bookings. Reach out to the organizer
-                with questions.
-              </Text>
-            </View>
-          ) : countdownLabel !== null ? (
-            <View style={[styles.band, styles.bandCountdown]}>
-              <Text style={styles.bandCountdownText}>{countdownLabel}</Text>
-            </View>
-          ) : null}
-
-          {/* Refund ladder */}
-          {detail.refundPolicy !== null ? (
-            <View style={styles.section}>
-              <RefundPolicyDisplay policy={detail.refundPolicy} />
-            </View>
-          ) : null}
-
-          {/* Description */}
-          {detail.description !== null && detail.description.trim().length > 0 ? (
-            <Text style={styles.description}>{detail.description}</Text>
-          ) : null}
-
-          {/* Itinerary */}
-          {detail.days.length > 0 ? (
-            <View style={styles.section}>
-              <Text style={styles.sectionLabel}>Day by day</Text>
-              {detail.days.map((day) => (
-                <View key={day.id} style={styles.dayCard}>
-                  <Text style={styles.dayOrdinal}>DAY {day.ordinal}</Text>
-                  <Text style={styles.dayTitle}>{day.title}</Text>
-                  {day.narrative !== null && day.narrative.trim().length > 0 ? (
-                    <Text style={styles.dayNarrative}>{day.narrative}</Text>
-                  ) : null}
-                </View>
-              ))}
-            </View>
-          ) : null}
-
-          {/* Inclusions */}
-          {includedItems.length > 0 || excludedItems.length > 0 ? (
-            <View style={styles.section}>
-              {includedItems.length > 0 ? (
-                <>
-                  <Text style={styles.sectionLabel}>What's included</Text>
-                  {includedItems.map((i) => (
-                    <View key={i.id} style={styles.inclRow}>
-                      <Icon name="checkmark-circle-outline" size={18} color="#34C759" />
-                      <Text style={styles.inclText}>{i.item}</Text>
-                    </View>
-                  ))}
-                </>
-              ) : null}
-              {excludedItems.length > 0 ? (
-                <>
-                  <Text style={[styles.sectionLabel, { marginTop: 12 }]}>Not included</Text>
-                  {excludedItems.map((i) => (
-                    <View key={i.id} style={styles.inclRow}>
-                      <Icon name="close" size={18} color="rgba(255,255,255,0.4)" />
-                      <Text style={[styles.inclText, styles.inclTextMuted]}>{i.item}</Text>
-                    </View>
-                  ))}
-                </>
-              ) : null}
-            </View>
-          ) : null}
-
-          {/* Tiers */}
-          {detail.tiers.length > 0 ? (
-            <View style={styles.section}>
-              <Text style={styles.sectionLabel}>Pricing</Text>
-              {detail.tiers.map((tier) => (
-                <View key={tier.ticketTypeId} style={styles.tierRow}>
-                  <Text style={styles.tierName}>{tier.tierName}</Text>
-                  <Text style={styles.tierPrice}>
-                    {tier.isFree
-                      ? "Free"
-                      : formatMoney(tier.priceCents, tier.currency) ?? ""}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          ) : null}
-        </View>
-      </ScrollView>
-
-      {/* Sticky Reserve bar */}
-      <View style={[styles.reserveBar, { paddingBottom: insets.bottom + 8 }]}>
-        <View style={styles.reservePriceCol}>
-          <Text style={styles.reservePriceLabel}>
-            {detail.hasFreeTier && priceLabel === null
-              ? "Free"
-              : priceLabel !== null
-                ? `From ${priceLabel}`
-                : ""}
-          </Text>
-        </View>
-        <Pressable
-          style={[styles.reserveBtn, reserveDisabled && styles.reserveBtnDisabled]}
-          disabled={reserveDisabled}
-          onPress={() => setReserveSheetVisible(true)}
-          accessibilityLabel="Reserve this trip"
-        >
-          <Text style={styles.reserveBtnText}>
-            {reserveDisabled ? "Bookings closed" : "Reserve"}
-          </Text>
-        </Pressable>
+  // ORCH-1016 REWORK — the trip body owns the SINGLE gorhom-aware scroll host
+  // (scrollMode="view"), mirroring ExpandedBusinessEventSheet. The detail content
+  // is the scroll's children; the sheet's own clearance is handled below by the
+  // tabBarAware sticky-footer, so the scroll only needs handle/internal spacing.
+  const detailBody: ReactElement = (
+    <BottomSheetScrollView
+      showsVerticalScrollIndicator={false}
+      contentContainerStyle={styles.scrollContent}
+    >
+      {/* Hero */}
+      <View style={styles.hero}>
+        <EventCoverMedia
+          hue={hueFromId(detail.tripId)}
+          mediaUrl={detail.coverMediaUrl}
+          mediaType={detail.coverMediaType}
+          radius={0}
+          videoContentFit="cover"
+          label={detail.title}
+          style={StyleSheet.absoluteFill}
+        />
+        <LinearGradient
+          colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.8)"]}
+          locations={[0.45, 1]}
+          style={StyleSheet.absoluteFill}
+          pointerEvents="none"
+        />
       </View>
 
-      {/* Reserve flow — reuses the proven business-event checkout sheet. */}
+      <View style={styles.body}>
+        <Text style={styles.title}>{detail.title}</Text>
+        <View style={styles.bylineRow}>
+          <Text style={styles.byline}>by {detail.brandName}</Text>
+          {detail.brandVerified ? (
+            <Icon name="shield-checkmark" size={14} color={ACCENT} />
+          ) : null}
+        </View>
+
+        {/* Meta rows */}
+        {dateLabel !== null ? (
+          <View style={styles.metaRow}>
+            <Icon name="calendar-outline" size={16} color={WARM} />
+            <Text style={styles.metaText}>{dateLabel}</Text>
+          </View>
+        ) : null}
+        {/* Leaving from — ABOVE destination */}
+        {detail.departureText !== null ? (
+          <View style={styles.metaRow}>
+            <Icon name="paper-plane-outline" size={16} color={WARM} />
+            <Text style={styles.metaText}>Leaving from {detail.departureText}</Text>
+          </View>
+        ) : null}
+        {detail.destinationText !== null ? (
+          <View style={styles.metaRow}>
+            <Icon name="navigate-outline" size={16} color={WARM} />
+            <Text style={styles.metaText}>{detail.destinationText}</Text>
+          </View>
+        ) : null}
+        {detail.totalCapacity !== null ? (
+          <View style={styles.metaRow}>
+            <Icon name="people-outline" size={16} color={WARM} />
+            <Text style={styles.metaText}>
+              {detail.totalCapacity} traveler{detail.totalCapacity === 1 ? "" : "s"} max
+            </Text>
+          </View>
+        ) : null}
+
+        {/* Deadline state band */}
+        {closed ? (
+          <View style={[styles.band, styles.bandClosed]}>
+            <Text style={styles.bandClosedTitle}>Bookings closed</Text>
+            <Text style={styles.bandBody}>
+              This trip stopped taking new bookings. Reach out to the organizer
+              with questions.
+            </Text>
+          </View>
+        ) : countdownLabel !== null ? (
+          <View style={[styles.band, styles.bandCountdown]}>
+            <Text style={styles.bandCountdownText}>{countdownLabel}</Text>
+          </View>
+        ) : null}
+
+        {/* Refund ladder */}
+        {detail.refundPolicy !== null ? (
+          <View style={styles.section}>
+            <RefundPolicyDisplay policy={detail.refundPolicy} />
+          </View>
+        ) : null}
+
+        {/* Description */}
+        {detail.description !== null && detail.description.trim().length > 0 ? (
+          <Text style={styles.description}>{detail.description}</Text>
+        ) : null}
+
+        {/* Itinerary */}
+        {detail.days.length > 0 ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Day by day</Text>
+            {detail.days.map((day) => (
+              <View key={day.id} style={styles.dayCard}>
+                <Text style={styles.dayOrdinal}>DAY {day.ordinal}</Text>
+                <Text style={styles.dayTitle}>{day.title}</Text>
+                {day.narrative !== null && day.narrative.trim().length > 0 ? (
+                  <Text style={styles.dayNarrative}>{day.narrative}</Text>
+                ) : null}
+              </View>
+            ))}
+          </View>
+        ) : null}
+
+        {/* Inclusions */}
+        {includedItems.length > 0 || excludedItems.length > 0 ? (
+          <View style={styles.section}>
+            {includedItems.length > 0 ? (
+              <>
+                <Text style={styles.sectionLabel}>What&apos;s included</Text>
+                {includedItems.map((i) => (
+                  <View key={i.id} style={styles.inclRow}>
+                    <Icon name="checkmark-circle-outline" size={18} color="#34C759" />
+                    <Text style={styles.inclText}>{i.item}</Text>
+                  </View>
+                ))}
+              </>
+            ) : null}
+            {excludedItems.length > 0 ? (
+              <>
+                <Text style={[styles.sectionLabel, { marginTop: 12 }]}>Not included</Text>
+                {excludedItems.map((i) => (
+                  <View key={i.id} style={styles.inclRow}>
+                    <Icon name="close" size={18} color="rgba(255,255,255,0.4)" />
+                    <Text style={[styles.inclText, styles.inclTextMuted]}>{i.item}</Text>
+                  </View>
+                ))}
+              </>
+            ) : null}
+          </View>
+        ) : null}
+
+        {/* Tiers */}
+        {detail.tiers.length > 0 ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Pricing</Text>
+            {detail.tiers.map((tier) => (
+              <View key={tier.ticketTypeId} style={styles.tierRow}>
+                <Text style={styles.tierName}>{tier.tierName}</Text>
+                <Text style={styles.tierPrice}>
+                  {tier.isFree
+                    ? "Free"
+                    : formatMoney(tier.priceCents, tier.currency) ?? ""}
+                </Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
+      </View>
+    </BottomSheetScrollView>
+  );
+
+  // Sticky Reserve bar — the sheet's stickyFooter. With tabBarAware the primitive
+  // pads it with BOTTOM_NAV_CONTENT_HEIGHT + safe-area so it clears the floating
+  // GlassBottomNav; we keep an internal paddingTop for breathing room.
+  const reserveFooter: ReactElement = (
+    <View style={styles.reserveBar}>
+      <View style={styles.reservePriceCol}>
+        <Text style={styles.reservePriceLabel}>
+          {detail.hasFreeTier && priceLabel === null
+            ? "Free"
+            : priceLabel !== null
+              ? `From ${priceLabel}`
+              : ""}
+        </Text>
+      </View>
+      <Pressable
+        style={[styles.reserveBtn, reserveDisabled && styles.reserveBtnDisabled]}
+        disabled={reserveDisabled}
+        onPress={() => setReserveSheetVisible(true)}
+        accessibilityLabel="Reserve this trip"
+      >
+        <Text style={styles.reserveBtnText}>
+          {reserveDisabled ? "Bookings closed" : "Reserve"}
+        </Text>
+      </Pressable>
+    </View>
+  );
+
+  return (
+    <>
+      <BaseBottomSheet
+        visible
+        onClose={onBack}
+        theme="dark"
+        snapPoints={SHEET_SNAP_POINTS}
+        initialIndex={SHEET_INITIAL_INDEX}
+        scrollMode="view"
+        tabBarAware={tabBarAware}
+        stickyFooter={reserveFooter}
+        accessibilityLabel={detail.title}
+      >
+        {chrome}
+        {detailBody}
+      </BaseBottomSheet>
+
+      {/* Reserve flow — reuses the proven business-event checkout sheet. Sibling
+          BaseBottomSheet root in the same fragment so it overlays this sheet. */}
       {card !== null ? (
         <ExpandedBusinessEventSheet
           visible={reserveSheetVisible}
@@ -404,13 +482,12 @@ export default function ConsumerTripDetailScreen({
           onClose={() => setReserveSheetVisible(false)}
         />
       ) : null}
-    </View>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
-  host: { flex: 1, backgroundColor: SCREEN_BG },
-  centered: { alignItems: "center", justifyContent: "center" },
+  scrollContent: { paddingBottom: 16 },
   hero: { width: "100%", height: 320, backgroundColor: "#1a1c20" },
   closeChrome: {
     position: "absolute",
@@ -467,15 +544,12 @@ const styles = StyleSheet.create({
   tierName: { fontSize: 15, color: "#FFFFFF" },
   tierPrice: { fontSize: 15, fontWeight: "700", color: "#FFFFFF" },
   reserveBar: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 20,
     paddingTop: 12,
+    paddingBottom: 8,
     backgroundColor: "rgba(16,18,22,0.98)",
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: "rgba(255,255,255,0.12)",
@@ -490,6 +564,13 @@ const styles = StyleSheet.create({
   },
   reserveBtnDisabled: { opacity: 0.4 },
   reserveBtnText: { fontSize: 16, fontWeight: "600", color: "#FFFFFF" },
+  stateBody: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingTop: 64,
+    paddingHorizontal: 24,
+    gap: 12,
+  },
   stateTitle: { fontSize: 17, fontWeight: "600", color: "#FFFFFF", marginTop: 12 },
   retryBtn: { marginTop: 16, backgroundColor: "rgba(255,255,255,0.08)", borderRadius: 22, paddingVertical: 12, paddingHorizontal: 24 },
   retryText: { color: "#FFFFFF", fontSize: 15, fontWeight: "600" },

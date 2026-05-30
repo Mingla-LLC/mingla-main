@@ -2340,6 +2340,10 @@ function AppContent() {
                             tripSlug={viewingTrip.tripSlug}
                             seed={viewingTrip.seed}
                             onBack={() => setViewingTrip(null)}
+                            // ORCH-1016 REWORK — in-app overlay sits BELOW the
+                            // floating GlassBottomNav; tabBarAware pads the sheet
+                            // body so the last Day + Reserve CTA clear the nav.
+                            tabBarAware
                             accountPreferences={accountPreferencesMemo}
                           />
                         ) : viewingFriendProfileId ? (
