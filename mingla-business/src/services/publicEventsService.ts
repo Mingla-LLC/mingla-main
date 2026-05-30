@@ -78,6 +78,12 @@ interface BusinessPublicEventViewRow {
   master_end_at: string | null;
   master_timezone: string | null;
   master_event_date_id: string | null;
+  // ORCH-1006 Slice 3 Wave 2 — server-computed all-in (tax/fee-inclusive)
+  // lowest-tier price in CENTS, surfaced by business_public_events_view.
+  // Arrives via the existing .select("*"); null when no priced tier → the
+  // brand mini-card "From" label falls back to the min-of-tickets base.
+  display_price_cents?: number | null;
+  pricing_currency?: string | null;
 }
 
 // ORCH-0792: split a UTC ISO timestamp into YYYY-MM-DD + HH:MM in a target

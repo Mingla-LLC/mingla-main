@@ -55,6 +55,13 @@ export interface PublicBrandEvent {
   coverMediaUrl: string | null;
   coverMediaType: PublicMediaType | null;
   currency?: string | null;
+  // ORCH-1006 Slice 3 Wave 2 — server-computed all-in (tax/fee-inclusive)
+  // lowest-tier price in CENTS, from
+  // business_public_events_view.display_price_cents. null/undefined when
+  // there is no priced tier → the "From" mini-card label falls back to the
+  // min-of-tickets base price. Optional for back-compat with older payloads.
+  displayPriceCents?: number | null;
+  displayCurrency?: string | null;
   tickets: PublicBrandTicket[];
 }
 
