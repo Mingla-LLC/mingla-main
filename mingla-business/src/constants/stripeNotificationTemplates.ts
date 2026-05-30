@@ -166,23 +166,3 @@ export const STRIPE_NOTIFICATION_TEMPLATES: Record<
   },
 };
 
-export const STRIPE_NOTIFICATION_TYPES: readonly StripeNotificationType[] =
-  Object.keys(STRIPE_NOTIFICATION_TEMPLATES) as StripeNotificationType[];
-
-/**
- * Render a template field with `{key}` placeholders substituted.
- * Missing keys fall back to "your account" / empty string sensibly.
- */
-export function renderTemplate(
-  template: string,
-  vars: Record<string, string | number | undefined> = {},
-): string {
-  return template.replace(/\{(\w+)\}/g, (_match, key: string) => {
-    const v = vars[key];
-    if (v === undefined || v === null || v === "") {
-      // Sensible fallback: never show a raw {key} to a user
-      return key === "brandName" ? "your account" : "";
-    }
-    return String(v);
-  });
-}

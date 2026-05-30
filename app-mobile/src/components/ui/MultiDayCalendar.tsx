@@ -6,6 +6,7 @@ import {
   StyleSheet,
   Animated,
   AccessibilityInfo,
+  Platform,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Icon } from './Icon';
@@ -221,16 +222,25 @@ export const MultiDayCalendar: React.FC<MultiDayCalendarProps> = ({
 
 const calStyles = StyleSheet.create({
   container: {
-    backgroundColor: 'rgba(255, 255, 255, 0.60)',
+    // META-ORCH-1002 Sub-B (A3): frosted-white panel. On Android render the iOS
+    // frosted-white *intent* as a solid opaque white panel, clip fill+border to the
+    // radius (kills the ring), and zero the elevation so no hard shadow rectangle
+    // draws under the rounded panel. iOS keeps the translucent frost + shadow.
+    backgroundColor: Platform.select({
+      ios: 'rgba(255, 255, 255, 0.60)',
+      android: '#FFFFFF',
+      default: 'rgba(255, 255, 255, 0.60)',
+    }),
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.40)',
     borderRadius: 16,
     padding: spacing.md,
+    overflow: 'hidden',
     shadowColor: 'rgba(0, 0, 0, 0.08)',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 1,
     shadowRadius: 24,
-    elevation: 6,
+    elevation: Platform.select({ ios: 6, android: 0, default: 6 }),
   },
   monthHeader: {
     flexDirection: 'row',

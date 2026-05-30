@@ -41,13 +41,19 @@ export function useBrandStripeStatus(
   brandId: string | null,
 ): UseQueryResult<RefreshStatusResult> {
   const queryClient = useQueryClient();
-  const { loading, session, user } = useAuth();
-  const enabled = shouldEnableBrandStripeStatusQuery({
-    brandId,
-    authLoading: loading,
-    user,
-    session,
-  });
+  // ORCH-1004 — tighten the existing loading+user+session gate to the canonical
+  // isAuthReady signal (signed_in_ready + access_token present). The brand-stripe
+  // status edge call is RLS auth.uid()-scoped; this keeps the uniform readiness
+  // gate that the orch-1004 strict-grep enforces.
+  const { isAuthReady, loading, session, user } = useAuth();
+  const enabled =
+    isAuthReady &&
+    shouldEnableBrandStripeStatusQuery({
+      brandId,
+      authLoading: loading,
+      user,
+      session,
+    });
 
   // Realtime subscription per D-B2-11
   useEffect(() => {

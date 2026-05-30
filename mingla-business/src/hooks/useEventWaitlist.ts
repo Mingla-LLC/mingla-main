@@ -5,6 +5,7 @@ import {
   type UseQueryResult,
 } from "@tanstack/react-query";
 
+import { useAuth } from "../context/AuthContext";
 import { supabase } from "../services/supabase";
 import {
   fetchEventWaitlist,
@@ -23,7 +24,10 @@ export const eventWaitlistKeys = {
 export const useEventWaitlist = (
   eventId: string | null,
 ): UseQueryResult<EventWaitlistTicket[]> => {
-  const enabled = eventId !== null;
+  // ORCH-1004 — waitlist_entries is RLS auth.uid()-scoped (organiser-only);
+  // gate on auth readiness so a pre-auth fire can't cache empty as success.
+  const { isAuthReady } = useAuth();
+  const enabled = isAuthReady && eventId !== null;
   const queryClient = useQueryClient();
 
   useEffect(() => {

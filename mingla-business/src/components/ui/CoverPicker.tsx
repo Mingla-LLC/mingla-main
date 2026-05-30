@@ -43,10 +43,12 @@ import * as Haptics from "expo-haptics";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import * as FileSystem from "expo-file-system/legacy";
 import * as ImagePicker from "expo-image-picker";
-import NativeVideoTrim, {
-  showEditor,
-  type Spec as VideoTrimSpec,
-} from "react-native-video-trim";
+// ORCH-1001 [Business web white-page crash]: the native video-trim editor is
+// imported through a Metro platform split (.native vs .web) so the native-only
+// `react-native-video-trim` TurboModule never lands in the web bundle. A raw
+// top-level import here ran `getEnforcing('VideoTrim')` at web-eval time and
+// crashed the entire app to a blank page.
+import { trimVideoWithDedicatedEditor } from "./coverPickerVideoTrimEditor";
 
 import {
   accent,
@@ -75,7 +77,6 @@ import {
   buildTrimmedVideoUploadFile,
   normalizeLocalFileUri,
   normalizePickerDurationMs,
-  type VideoTrimFinishPayload,
 } from "./coverPickerVideoTrimUpload";
 import {
   searchGiphyEventCovers,
@@ -109,8 +110,6 @@ export type { CoverTarget } from "./coverTarget";
 // LOCKED tab ids (SPEC §4.3); display labels are designer-owned copy (DESIGN §3.1).
 type CoverTabId = "library" | "gif" | "stock";
 type ProviderStatus = "idle" | "loading" | "populated" | "empty" | "error";
-
-type VideoTrimSubscription = { remove: () => void };
 
 /** Full 7-field cover patch emitted on every change. Mirror of the events
  *  table cover_media_* column family. UNCHANGED from prior CoverPicker. */
@@ -463,52 +462,6 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     validateEventRowId,
   ]);
 
-  const trimVideoWithDedicatedEditor = useCallback(
-    (uri: string): Promise<VideoTrimFinishPayload | null> =>
-      new Promise((resolve, reject) => {
-        const videoTrim = NativeVideoTrim as VideoTrimSpec;
-        const subscriptions: VideoTrimSubscription[] = [];
-        let settled = false;
-        const settle = (handler: () => void): void => {
-          if (settled) return;
-          settled = true;
-          subscriptions.forEach((subscription) => subscription.remove());
-          handler();
-        };
-
-        subscriptions.push(
-          videoTrim.onFinishTrimming((payload: VideoTrimFinishPayload) => {
-            settle(() => resolve(payload));
-          }) as VideoTrimSubscription,
-          videoTrim.onCancelTrimming(() => {
-            settle(() => resolve(null));
-          }) as VideoTrimSubscription,
-          videoTrim.onCancel(() => {
-            settle(() => resolve(null));
-          }) as VideoTrimSubscription,
-          videoTrim.onError(({ message, errorCode }) => {
-            settle(() =>
-              reject(new Error(`Video trim failed (${errorCode || "unknown"}): ${message}`)),
-            );
-          }) as VideoTrimSubscription,
-        );
-
-        try {
-          // react-native-video-trim docs:
-          // https://github.com/maitrungduc1410/react-native-video-trim
-          showEditor(uri, {
-            maxDuration: EVENT_COVER_MAX_VIDEO_DURATION_MS,
-            saveButtonText: "Use clip",
-            cancelButtonText: "Back",
-            enablePreciseTrimming: true,
-          });
-        } catch (error) {
-          settle(() => reject(error));
-        }
-      }),
-    [],
-  );
-
   const pickVideoCover = useCallback(async (): Promise<void> => {
     if (uploading || disabled || activeVideoUpload) return;
     if (!isAuthReady) {
@@ -529,7 +482,11 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       if (result.canceled || result.assets.length === 0) return;
       const asset = result.assets[0];
       // Web has no native trimmer (SC-7-Web-4): use the raw asset, no crash.
-      const trimResult = isNative ? await trimVideoWithDedicatedEditor(asset.uri) : null;
+      // On web `trimVideoWithDedicatedEditor` resolves to a no-op stub, but we
+      // still gate on `isNative` so the raw clip flows straight to upload.
+      const trimResult = isNative
+        ? await trimVideoWithDedicatedEditor(asset.uri, EVENT_COVER_MAX_VIDEO_DURATION_MS)
+        : null;
       if (isNative && trimResult === null) return;
       const uploadFile =
         trimResult !== null
@@ -582,7 +539,6 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     isAuthReady,
     isNative,
     onShowToast,
-    trimVideoWithDedicatedEditor,
     uploading,
     validateEventRowId,
     videoUpload,
@@ -1329,6 +1285,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     height: 40,
     borderRadius: radiusTokens.md,
+    overflow: "hidden",
     backgroundColor: glass.tint.profileBase,
     borderWidth: 1,
     borderColor: glass.border.profileBase,
@@ -1362,6 +1319,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     height: 40,
     borderRadius: radiusTokens.md,
+    overflow: "hidden",
     backgroundColor: glass.tint.profileBase,
     borderWidth: 1,
     borderColor: glass.border.profileBase,

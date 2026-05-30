@@ -286,6 +286,7 @@ const styles = StyleSheet.create({
   input: {
     minHeight: 46,
     borderRadius: radiusTokens.md,
+    overflow: "hidden",
     borderWidth: 1,
     borderColor: glass.border.profileBase,
     backgroundColor: glass.tint.profileBase,
@@ -315,6 +316,7 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 21,
+    overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: glass.tint.chrome.idle,
@@ -343,6 +345,7 @@ const styles = StyleSheet.create({
     width: 22,
     height: 22,
     borderRadius: 6,
+    overflow: "hidden",
     borderWidth: 1,
     borderColor: glass.border.chrome,
     alignItems: "center",

@@ -240,6 +240,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: radius.md,
+    overflow: "hidden",
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: glass.border.chrome,
     backgroundColor: glass.tint.profileBase,

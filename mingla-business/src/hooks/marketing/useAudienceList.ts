@@ -11,6 +11,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 
+import { useAuth } from "../../context/AuthContext";
 import {
   listAudiencesForAccount,
   resolveBrandBuyers,
@@ -45,7 +46,10 @@ export interface UseAudienceListState {
 export function useAudienceList(
   accountId: string | null | undefined,
 ): UseAudienceListState {
-  const enabled = typeof accountId === "string" && accountId.length > 0;
+  // ORCH-1004 — audiences read auth.uid()-scoped buyer rollups; gate on auth.
+  const { isAuthReady } = useAuth();
+  const enabled =
+    isAuthReady && typeof accountId === "string" && accountId.length > 0;
   const query = useQuery<AudienceListEntry[]>({
     queryKey: enabled
       ? marketingKeys.audiences.list(accountId as string)

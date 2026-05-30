@@ -13,16 +13,6 @@
  * Per Cycle 8 spec §4.12.
  */
 
-const TS36 = (): string => Date.now().toString(36);
-
-const RAND4 = (): string =>
-  Math.floor(Math.random() * 36 ** 4)
-    .toString(36)
-    .padStart(4, "0");
-
-/** Stub order ID — `ord_<base36-timestamp>_<base36-rand>`. */
-export const generateOrderId = (): string => `ord_${TS36()}_${RAND4()}`;
-
 /**
  * Stub ticket ID — composes from the order ID's suffix + line + seat
  * indices. Deterministic given (orderId, lineIdx, seatIdx) so the same

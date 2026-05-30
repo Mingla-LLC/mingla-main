@@ -12,6 +12,7 @@ import {
   TextInput,
   Animated,
   RefreshControl,
+  Platform,
 } from "react-native";
 import * as WebBrowser from 'expo-web-browser';
 import { getReadableCategoryName } from "../../utils/categoryUtils";
@@ -1188,6 +1189,9 @@ const CalendarTab = ({
       borderRadius: 12,
       borderWidth: 1,
       borderColor: "#f5e6d3",
+      // META-ORCH-1002 Sub-B (C3, dark-canvas): clip the translucent orange fill +
+      // bright border to the radius (kills the corner ring). Glass fill preserved.
+      overflow: "hidden",
     },
     emptyStateIconCircle: {
       width: 40,
@@ -1230,7 +1234,12 @@ const CalendarTab = ({
       borderRadius: 12,
       marginHorizontal: 16,
       marginBottom: 8,
-      elevation: 1,
+      // META-ORCH-1002 Sub-B (C4, dark-canvas): clip the translucent glass fill +
+      // bright border to the radius (kills the corner ring) and zero the Android
+      // elevation so no hard shadow rectangle draws under the rounded header. iOS
+      // shadow + glass fill preserved.
+      overflow: "hidden",
+      elevation: Platform.select({ ios: 1, android: 0, default: 1 }),
       shadowColor: "#000",
       shadowOffset: { width: 0, height: 2 },
       shadowOpacity: 0.06,

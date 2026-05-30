@@ -9,6 +9,7 @@ import {
   StyleSheet,
   Share,
   FlatList,
+  Platform,
 } from "react-native";
 import { useTranslation } from 'react-i18next';
 import { Icon } from "../ui/Icon";
@@ -528,17 +529,26 @@ const styles = StyleSheet.create({
     paddingVertical: vs(8),
   },
   glassCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.70)',
+    // META-ORCH-1002 Sub-B (A4): frosted-white panel. On Android render the iOS
+    // frosted-white *intent* as a solid opaque white panel, clip fill+border to the
+    // radius (kills the ring), and zero the elevation so no hard shadow rectangle
+    // draws under the rounded panel. iOS keeps the translucent frost + shadow.
+    backgroundColor: Platform.select({
+      ios: 'rgba(255, 255, 255, 0.70)',
+      android: '#FFFFFF',
+      default: 'rgba(255, 255, 255, 0.70)',
+    }),
     borderWidth: 1,
     borderTopWidth: 0.5,
     borderColor: 'rgba(255, 255, 255, 0.45)',
     borderRadius: 24,
     padding: 16,
+    overflow: 'hidden',
     shadowColor: 'rgba(0, 0, 0, 0.08)',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 1,
     shadowRadius: 24,
-    elevation: 6,
+    elevation: Platform.select({ ios: 6, android: 0, default: 6 }),
   },
   tabBar: {
     flexDirection: "row",

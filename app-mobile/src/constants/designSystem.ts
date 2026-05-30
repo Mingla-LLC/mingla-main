@@ -1,7 +1,15 @@
 // Design System Constants for Mingla App
 // Phase 1: Foundation & Core Polish
 
+import { Platform } from 'react-native';
 import { vs, ms } from '../utils/responsive';
+
+// META-ORCH-1002 Sub-1: Android glass policy = OPAQUE frosted fallback by default.
+// expo-blur on Android renders a thin semi-transparent view (or, with dimezisBlurView,
+// an unreliable experimental blur). Policy Option 1: route ALL Android to the opaque
+// fallbackSolid branch; reserve real blur for on-device-validated hero surfaces only.
+// Replaces the per-component Android-11 version gate that left Android 12+ on BlurView.
+export const ANDROID_GLASS_USES_OPAQUE_FALLBACK = Platform.OS === 'android';
 
 export const spacing = {
   xxs: 2,   // 2px — ultra-compact message grouping
@@ -318,7 +326,14 @@ export const glass = {
       elevation: 2,
     },
     cardBorder: 'rgba(0, 0, 0, 0.06)',
-    cardUnreadBg: 'rgba(255, 247, 237, 0.6)',
+    // META-ORCH-1002 Sub-1 (S1): on Android the translucent cream let the card border
+    // show through at the clipped corner. Composite over the #FFFFFF card = opaque #FFFAF4.
+    // iOS keeps the exact translucent value (byte-identical render).
+    cardUnreadBg: Platform.select({
+      ios: 'rgba(255, 247, 237, 0.6)',
+      android: '#FFFAF4',
+      default: 'rgba(255, 247, 237, 0.6)',
+    }),
     avatarRing: {
       unread: 'rgba(235, 120, 37, 0.35)',
       read: 'rgba(0, 0, 0, 0.06)',

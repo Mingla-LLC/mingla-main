@@ -313,6 +313,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     paddingVertical: 2,
     borderRadius: 999,
+    overflow: "hidden",
     borderWidth: 1,
     borderColor: accent.border,
     backgroundColor: accent.tint,
