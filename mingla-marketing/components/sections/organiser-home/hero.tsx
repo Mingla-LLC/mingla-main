@@ -4,18 +4,15 @@ import { motion } from 'framer-motion'
 import { Play } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { VideoModal } from '@/components/ui/video-modal'
-import { ProductFrame } from '@/components/ui/product-frame'
 import { StatLine } from '@/components/ui/stat-line'
-import {
-  HeroPlaceDeck,
-  useDeckRotation,
-} from '@/components/sections/explorer-home/hero-place-deck'
+import { HeroBusinessCards } from '@/components/sections/organiser-home/hero-business-cards'
 import { useMinglaReducedMotion } from '@/lib/reduced-motion'
 
-// ORCH-1010 — business hero. The page's biggest premium move: the centered
-// emotional headline is paired with the REAL consumer card deck inside a
-// <ProductFrame>, so the very first screen SHOWS the product that creates
-// demand instead of just claiming it (reality-anchor: real deck, no stock art).
+// ORCH-1010 — business hero. The headline is paired with a live BUSINESS feed:
+// bookings arriving across every category Mingla sells (events, reservations,
+// trips, experiences), topped by the "99% of earnings kept" payout summary. The
+// first screen shows the business OUTCOME, not the consumer deck (illustrative
+// example values, no stock art — reality-anchored).
 
 const EASE = [0.16, 1, 0.3, 1] as const
 
@@ -62,9 +59,6 @@ function PlayTile({ onPlay }: PlayTileProps) {
 export function OrganiserHero() {
   const reduced = useMinglaReducedMotion()
   const [videoOpen, setVideoOpen] = useState(false)
-  // The same hook the consumer hero uses — drives the auto-rotating
-  // single → intent → event deck. Defaults to the DC city deck.
-  const rotation = useDeckRotation()
 
   return (
     <>
@@ -85,7 +79,7 @@ export function OrganiserHero() {
               initial={reduced ? false : { opacity: 0, y: 12, filter: 'blur(8px)' }}
               animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
               transition={{ duration: 0.72, delay: reduced ? 0 : 0.1, ease: EASE }}
-              className="font-display text-5xl leading-[1.02] tracking-[-0.02em] text-text-primary md:text-8xl"
+              className="font-display text-4xl leading-[1.04] tracking-[-0.02em] text-text-primary md:text-6xl"
             >
               we give people a reason
               <br />
@@ -96,13 +90,10 @@ export function OrganiserHero() {
               initial={reduced ? false : { opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: reduced ? 0 : 0.35, ease: EASE }}
-              className="mt-8 max-w-xl text-lg leading-relaxed text-text-secondary md:text-xl"
+              className="mt-6 max-w-md text-base leading-relaxed text-text-secondary md:text-lg"
             >
-              The businesses with the most soul are the hardest for people to
-              find. Mingla changes that. We take what makes your place, event, or
-              experience special — the vibe, the story, the night people will
-              actually remember — and put it in front of the people already
-              looking for exactly that.
+              The businesses with the most soul are the hardest to find. Mingla
+              puts yours in front of the people already looking for exactly it.
             </motion.p>
 
             <motion.div
@@ -137,18 +128,12 @@ export function OrganiserHero() {
             </motion.p>
           </div>
 
-          {/* RIGHT — the real product. The live consumer card deck inside a
-              warm-tinted glass frame. The page's signature "show, don't tell". */}
-          <motion.div
-            initial={reduced ? false : { opacity: 0, y: 24 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: reduced ? 0 : 0.4, ease: EASE }}
-            className="flex justify-center lg:justify-end"
-          >
-            <ProductFrame>
-              <HeroPlaceDeck rotation={rotation} />
-            </ProductFrame>
-          </motion.div>
+          {/* RIGHT — the business outcome. A live feed of bookings arriving
+              across every category, topped by the "99% kept" payout summary.
+              Show the money, not the swipe deck. */}
+          <div className="flex justify-center lg:justify-end">
+            <HeroBusinessCards />
+          </div>
         </div>
       </section>
 
