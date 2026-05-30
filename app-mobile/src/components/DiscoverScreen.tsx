@@ -59,6 +59,10 @@ import type {
 } from "../types/mergedDiscover";
 import { BusinessEventCard } from "./discover/BusinessEventCard";
 import { useAppStore } from "../store/appStore";
+// ORCH-1016 — Events/Trips pill + Trips feed content.
+import { mixpanelService } from "../services/mixpanelService";
+import { TripsContent } from "./discover/TripsContent";
+import type { DiscoverTripRow } from "../services/tripsDiscoveryService";
 import { useTabScrollRegistry } from "../hooks/useTabScrollRegistry";
 import { useUserLocation } from "../hooks/useUserLocation";
 import { enhancedLocationService } from "../services/enhancedLocationService";
@@ -326,6 +330,8 @@ interface DiscoverScreenProps {
   onDeepLinkHandled?: () => void;
   onOpenPreferences?: () => void;
   onOpenSession?: (sessionId: string) => void;
+  // ORCH-1016 — open a trip's in-app detail overlay (host owns the viewingTrip slot).
+  onOpenTrip?: (seed: import("../services/tripsDiscoveryService").DiscoverTripRow) => void;
 }
 
 // ============================================================================
@@ -856,6 +862,7 @@ const EmptyState: React.FC<EmptyStateProps> = ({
 
 function DiscoverScreen({
   accountPreferences,
+  onOpenTrip,
 }: DiscoverScreenProps): React.ReactElement {
   // ORCH-0679 Wave 2A: Dev-only render counter (I-TAB-PROPS-STABLE verification).
   const renderCountRef = React.useRef(0);
@@ -902,6 +909,89 @@ function DiscoverScreen({
   }, []);
 
   const useGlass = !reduceTransparency && !isAndroidPreBlur;
+
+  // ── ORCH-1016: Events/Trips spotlight-pill switcher (Likes pattern, exact) ──
+  const discoverActiveTabSnapshot = useAppStore.getState().discoverActiveTab;
+  const setDiscoverActiveTabRegistry = useAppStore((s) => s.setDiscoverActiveTab);
+  const [activeTab, setActiveTab] = useState<"events" | "trips">(
+    discoverActiveTabSnapshot,
+  );
+  useEffect(() => {
+    setDiscoverActiveTabRegistry(activeTab);
+  }, [activeTab, setDiscoverActiveTabRegistry]);
+
+  const cc = glass.chrome;
+  const TAB_PILL_HEIGHT = 52;
+  const TABS_1016: Array<{ id: "events" | "trips"; label: string; icon: IconName }> = [
+    { id: "events", label: t("discover:events_tab", "Events"), icon: "sparkles-outline" },
+    // ORCH-1016 REWORK (operator, 2026-05-30): the Trips tab reads as travel via a
+    // paper-plane / send glyph (Lucide `Send`, mapped from `paper-plane-outline`)
+    // instead of the prior generic compass. Same outline family as the Events
+    // `sparkles-outline`; already bundled (also used for "Leaving from" in the
+    // trip detail). No new asset, no emoji.
+    { id: "trips", label: t("discover:trips_tab", "Trips"), icon: "paper-plane-outline" },
+  ];
+  const tab1016LayoutsRef = useRef<
+    Record<"events" | "trips", { x: number; width: number } | undefined>
+  >({ events: undefined, trips: undefined });
+  const [tab1016LayoutTick, setTab1016LayoutTick] = useState(0);
+  const spotlight1016X = useRef(new RNAnimated.Value(0)).current;
+  const spotlight1016Width = useRef(new RNAnimated.Value(0)).current;
+  const handleTab1016Layout = (id: "events" | "trips", x: number, width: number): void => {
+    tab1016LayoutsRef.current[id] = { x, width };
+    setTab1016LayoutTick((v) => v + 1);
+  };
+  useEffect(() => {
+    const layout = tab1016LayoutsRef.current[activeTab];
+    if (!layout) return;
+    const targetX = layout.x + cc.nav.spotlightInset;
+    const targetWidth = layout.width - cc.nav.spotlightInset * 2;
+    if (reduceMotion) {
+      spotlight1016X.setValue(targetX);
+      spotlight1016Width.setValue(targetWidth);
+      return;
+    }
+    RNAnimated.parallel([
+      RNAnimated.spring(spotlight1016X, {
+        toValue: targetX,
+        damping: cc.motion.springDamping,
+        stiffness: cc.motion.springStiffness,
+        mass: cc.motion.springMass,
+        useNativeDriver: false,
+      }),
+      RNAnimated.spring(spotlight1016Width, {
+        toValue: targetWidth,
+        damping: cc.motion.springDamping,
+        stiffness: cc.motion.springStiffness,
+        mass: cc.motion.springMass,
+        useNativeDriver: false,
+      }),
+    ]).start();
+  }, [
+    activeTab,
+    tab1016LayoutTick,
+    reduceMotion,
+    spotlight1016X,
+    spotlight1016Width,
+    cc.motion.springDamping,
+    cc.motion.springStiffness,
+    cc.motion.springMass,
+    cc.nav.spotlightInset,
+  ]);
+  const handleTab1016Change = (tab: "events" | "trips"): void => {
+    if (tab === activeTab) return;
+    if (Platform.OS === "ios") {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    }
+    setActiveTab(tab);
+    mixpanelService.trackTabViewed({ screen: "discover", tab });
+  };
+  const handleOpenTripDetail = useCallback(
+    (seed: DiscoverTripRow): void => {
+      onOpenTrip?.(seed);
+    },
+    [onOpenTrip],
+  );
 
   // Expanded-card state
   const [isExpandedModalVisible, setIsExpandedModalVisible] = useState(false);
@@ -1811,8 +1901,16 @@ function DiscoverScreen({
   const TITLE_TOP = insets.top + glass.chrome.row.topInset;
   const TITLE_BAND_HEIGHT = 36;
   const FILTER_BAR_HEIGHT = d.filterBar.height; // 52
-  const FILTER_BAR_TOP = TITLE_TOP + TITLE_BAND_HEIGHT;
-  const HEADER_PANEL_HEIGHT = FILTER_BAR_TOP + FILTER_BAR_HEIGHT;
+  // ORCH-1016 — pill bar sits between the title and the (Events-only) filter bar.
+  const PILL_BAR_TOP = TITLE_TOP + TITLE_BAND_HEIGHT;
+  const FILTER_BAR_TOP = PILL_BAR_TOP + TAB_PILL_HEIGHT;
+  // On the Trips tab the Events filter bar is hidden, so the glass header ends at
+  // the pill (title → pill); on Events it includes the filter bar (title → pill →
+  // filterBar). The Events grid + its filter bar are byte-for-byte unchanged (SC-12).
+  const HEADER_PANEL_HEIGHT =
+    activeTab === "events"
+      ? FILTER_BAR_TOP + FILTER_BAR_HEIGHT
+      : PILL_BAR_TOP + TAB_PILL_HEIGHT + 4;
   const HEADER_PANEL_RADIUS = 28;
 
   // Grid content branching
@@ -1895,7 +1993,56 @@ function DiscoverScreen({
           </Text>
         </View>
 
-        {/* Filter bar — scrolling chips on the left, pinned Filters button on the right */}
+        {/* ORCH-1016 — Events/Trips spotlight pill (Likes pattern, exact). */}
+        <View style={[styles.pillBar1016Absolute, { top: PILL_BAR_TOP, height: TAB_PILL_HEIGHT }]}>
+          <View style={styles.pillBar1016Capsule}>
+            <RNAnimated.View
+              pointerEvents="none"
+              style={[
+                styles.spotlight1016,
+                { left: spotlight1016X, width: spotlight1016Width },
+              ]}
+            />
+            <View style={styles.tabs1016Row}>
+              {TABS_1016.map((tab) => {
+                const active = tab.id === activeTab;
+                return (
+                  <Pressable
+                    key={tab.id}
+                    onPress={() => handleTab1016Change(tab.id)}
+                    onLayout={(e) => {
+                      const { x, width } = e.nativeEvent.layout;
+                      handleTab1016Layout(tab.id, x, width);
+                    }}
+                    style={styles.tab1016}
+                    accessibilityRole="tab"
+                    accessibilityLabel={tab.label}
+                    accessibilityState={{ selected: active }}
+                  >
+                    <Icon
+                      name={tab.icon}
+                      size={16}
+                      color={active ? cc.active.iconColor : cc.inactive.iconColor}
+                    />
+                    <Text
+                      style={[
+                        styles.tabLabel1016,
+                        active ? styles.tabLabel1016Active : styles.tabLabel1016Inactive,
+                      ]}
+                      numberOfLines={1}
+                      allowFontScaling
+                    >
+                      {tab.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        </View>
+
+        {/* Filter bar — Events tab only (SC-12: unchanged). Hidden on Trips. */}
+        {activeTab === "events" ? (
         <View style={[styles.filterBarAbsolute, { top: FILTER_BAR_TOP, height: FILTER_BAR_HEIGHT }]}>
           <View style={styles.filterBarScrollWrap}>
             <ScrollView
@@ -1989,9 +2136,20 @@ function DiscoverScreen({
             />
           </View>
         </View>
+        ) : null}
       </View>
 
-      {/* Scrollable content — grid only; header stays fixed above */}
+      {/* ORCH-1016 — Trips tab content (own filter row + feed). Mounts in place of
+          the Events grid; the Events pipeline below is byte-for-byte unchanged. */}
+      {activeTab === "trips" ? (
+        <TripsContent
+          headerHeight={HEADER_PANEL_HEIGHT}
+          onOpenTrip={handleOpenTripDetail}
+          onBrowseEvents={() => setActiveTab("events")}
+          reduceMotion={reduceMotion}
+        />
+      ) : (
+      /* Scrollable content — grid only; header stays fixed above */
       <ScrollView
         ref={discoverScrollRef as React.RefObject<ScrollView>}
         onScroll={handleDiscoverScroll}
@@ -2099,6 +2257,7 @@ function DiscoverScreen({
           </View>
         ) : null}
       </ScrollView>
+      )}
 
       {/* Expanded Card Modal */}
       <ExpandedCardModal
@@ -2416,6 +2575,61 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "500",
     textAlign: "center",
+  },
+
+  // ── ORCH-1016 — Events/Trips pill (mirrors LikesPage geometry) ──
+  pillBar1016Absolute: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    paddingHorizontal: glass.discover.filterBar.paddingHorizontal,
+    justifyContent: "center",
+  },
+  pillBar1016Capsule: {
+    height: 44,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.12)",
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    overflow: "hidden",
+  },
+  tabs1016Row: {
+    flex: 1,
+    flexDirection: "row",
+    paddingHorizontal: 4,
+    paddingVertical: 4,
+  },
+  tab1016: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+  },
+  spotlight1016: {
+    position: "absolute",
+    top: 4,
+    bottom: 4,
+    borderRadius: 20,
+    backgroundColor: glass.chrome.active.tint,
+    borderWidth: 1,
+    borderColor: glass.chrome.active.border,
+    shadowColor: glass.chrome.active.glowColor,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: glass.chrome.active.glowOpacity,
+    shadowRadius: glass.chrome.active.glowRadius,
+    elevation: 4,
+  },
+  tabLabel1016: {
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  tabLabel1016Active: {
+    color: glass.chrome.active.labelColor,
+    fontWeight: "600",
+  },
+  tabLabel1016Inactive: {
+    color: glass.chrome.inactive.labelColor,
   },
 
   // Floating blurred header panel (status bar + title + filter bar in one glass surface)

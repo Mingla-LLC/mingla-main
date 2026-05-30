@@ -96,6 +96,127 @@ const COLLAGE_BUCKET = "place-collages";
 const PROMPT_VERSION = "v4";
 const COST_GUARD_USD = 5.0;
 
+// ─── META-ORCH-1009 Sub-A ──────────────────────────────────────────────────
+// Slice Q2 aggregate response into the JSONB shape required by
+// place_pool.ai_signal_scores. Pure function (no I/O); tested by Deno unit
+// test in __tests__/ai_signal_scores_slice.test.ts.
+//
+// Input: q2.evaluations — the Q2_TOOL output shape pinned by the Q2_TOOL
+// function declaration in this file. Per Gemini 2.5 Flash function-calling
+// output shape: https://ai.google.dev/api/generate-content#function_calling
+// (verified 2026-05-30). The toolCall arg payload returned by Gemini is
+// parsed in callGeminiQuestion() upstream; q2.evaluations is a plain JS
+// array of { signal_id, score_0_to_100, inappropriate_for, reasoning }.
+//
+// Output: { signal_id: { score_0_to_100, inappropriate_for, reasoning,
+// evaluated_at, prompt_version, model } } per I-AI-SIGNAL-SCORES-SHAPE-CONTRACT.
+//
+// Defensive: skips evaluations missing required fields (logs + drops);
+// returns {} if input is null/undefined/empty array.
+//
+// Exported so __tests__/ai_signal_scores_slice.test.ts can import it. Deno
+// import-from-relative-path is the established pattern in this folder.
+export function buildAiSignalScoresSlice(
+  evaluations: ReadonlyArray<{
+    signal_id: string;
+    score_0_to_100: number;
+    inappropriate_for: boolean;
+    reasoning: string;
+  }> | null | undefined,
+  evaluatedAtIso: string,
+  promptVersion: string,
+  modelName: string,
+): Record<string, {
+  score_0_to_100: number;
+  inappropriate_for: boolean;
+  reasoning: string;
+  evaluated_at: string;
+  prompt_version: string;
+  model: string;
+}> {
+  if (!evaluations || evaluations.length === 0) return {};
+  const out: Record<string, {
+    score_0_to_100: number;
+    inappropriate_for: boolean;
+    reasoning: string;
+    evaluated_at: string;
+    prompt_version: string;
+    model: string;
+  }> = {};
+  for (const ev of evaluations) {
+    if (
+      !ev ||
+      typeof ev.signal_id !== "string" || ev.signal_id.length === 0 ||
+      typeof ev.score_0_to_100 !== "number" ||
+      !Number.isFinite(ev.score_0_to_100) ||
+      typeof ev.inappropriate_for !== "boolean" ||
+      typeof ev.reasoning !== "string" || ev.reasoning.length === 0
+    ) {
+      console.warn(
+        `[place-intel-trial:ai_signal_scores_skip_malformed_eval] signal=${ev?.signal_id ?? "<missing>"}`,
+      );
+      continue;
+    }
+    out[ev.signal_id] = {
+      score_0_to_100: Math.max(0, Math.min(100, Math.round(ev.score_0_to_100))),
+      inappropriate_for: ev.inappropriate_for,
+      reasoning: ev.reasoning,
+      evaluated_at: evaluatedAtIso,
+      prompt_version: promptVersion,
+      model: modelName,
+    };
+  }
+  return out;
+}
+
+// META-ORCH-1009 Sub-A — Non-fatal place_pool.ai_signal_scores writer.
+//
+// Encapsulates the "mirror Q2 slice to place_pool" call so it (a) is
+// independently unit-testable with a mocked supabase client and (b) keeps
+// the call-site inside processOnePlace small + auditable.
+//
+// Contract (per SPEC §3.2 D4):
+//  - If slice is empty, NO write attempt is made.
+//  - If the .update() call returns an error, log and RESOLVE (do NOT throw).
+//  - If the entire call throws (network drop, etc.), log and RESOLVE.
+//  - Returns a discriminator so callers can branch on outcome (currently
+//    unused but lets Sub-D's refresh cron later surface drift metrics).
+//
+// Minimal db client surface used: db.from('place_pool').update(<obj>).eq('id', <uuid>)
+// returning { error: { message: string } | null }.
+// Exported so __tests__/ai_signal_scores_write_path.test.ts can import it.
+export async function writeAiSignalScoresToPlacePool(
+  db: {
+    from: (table: string) => {
+      update: (patch: Record<string, unknown>) => {
+        eq: (col: string, val: string) => Promise<{ error: { message: string } | null }>;
+      };
+    };
+  },
+  placeId: string,
+  slice: Record<string, unknown>,
+): Promise<"skipped_empty" | "ok" | "error_caught"> {
+  if (!slice || Object.keys(slice).length === 0) return "skipped_empty";
+  try {
+    const { error: ppErr } = await db
+      .from("place_pool")
+      .update({ ai_signal_scores: slice })
+      .eq("id", placeId);
+    if (ppErr) {
+      console.error(
+        `[place-intel-trial:ai_signal_scores_write_failed] place=${placeId} err=${ppErr.message}`,
+      );
+      return "error_caught";
+    }
+    return "ok";
+  } catch (e) {
+    console.error(
+      `[place-intel-trial:ai_signal_scores_write_threw] place=${placeId} err=${e instanceof Error ? e.message : String(e)}`,
+    );
+    return "error_caught";
+  }
+}
+
 // ORCH-0737 v6 — Anthropic-era per-place throttle constant removed (was dead code
 // post ORCH-0733 / DEC-101 dropping Anthropic from the trial pipeline).
 const REVIEWS_FETCH_THROTTLE_MS = 200; // gentle Serper throttle
@@ -547,7 +668,7 @@ serve(async (req: Request) => {
     if (!body.action) {
       return json({
         error:
-          "Missing 'action'. Use action='preview_run' | 'fetch_reviews' | 'compose_collage' | 'start_run' | 'run_trial_for_place' | 'run_status' | 'cancel_trial' | 'process_chunk' | 'list_active_runs' | 'city_coverage' | 'retry_failed_run' | 'intelligence_coverage'",
+          "Missing 'action'. Use action='preview_run' | 'fetch_reviews' | 'compose_collage' | 'start_run' | 'run_trial_for_place' | 'run_status' | 'cancel_trial' | 'process_chunk' | 'list_active_runs' | 'city_coverage' | 'retry_failed_run' | 'intelligence_coverage' | 'admin_reeval_place'",
       }, 400);
     }
 
@@ -619,6 +740,16 @@ serve(async (req: Request) => {
           supabaseAdmin,
           body,
           adminRow.id,
+          supabaseServiceKey,
+        );
+      // META-ORCH-1009 Sub-D — admin per-place re-evaluation. Creates a
+      // synthetic single-place parent run + 1 pending child + immediately
+      // kicks the worker (same pattern as full_city mode). Rate-limited
+      // server-side: 429 if any pending/running row exists for the place.
+      case "admin_reeval_place":
+        return await handleAdminReevalPlace(
+          supabaseAdmin,
+          body,
           supabaseServiceKey,
         );
       default:
@@ -1314,6 +1445,149 @@ async function handleRunTrialForPlace(
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// META-ORCH-1009 Sub-D — admin_reeval_place
+//
+// Admin-initiated single-place re-evaluation. Creates a synthetic parent run
+// + 1 pending child + immediately kicks the worker (same pattern as
+// handleStartRun for full_city mode). Server-side rate-limited: rejects with
+// 429 if the same place_pool_id has any pending/running row in
+// place_intelligence_trial_runs (any source — drift, prior button click, or
+// in-progress city sweep).
+//
+// External-API doc: Gemini 2.5 Flash invoked via the existing trial pipeline
+// (the queued child is drained by handleProcessChunk → processOnePlace).
+// See https://ai.google.dev/api/generate-content#function_calling (cited at
+// line 1092 above) + https://ai.google.dev/pricing/gemini-2-5-flash for
+// per-place cost (~$0.0040). COMMS-0003.
+// ═══════════════════════════════════════════════════════════════════════════
+
+async function handleAdminReevalPlace(
+  db: SupabaseClient,
+  body: Record<string, unknown>,
+  supabaseServiceKey: string,
+): Promise<Response> {
+  const placePoolId = body.place_pool_id as string | undefined;
+  if (!placePoolId) return json({ error: "place_pool_id required" }, 400);
+
+  // Rate-limit: refuse if any pending/running row exists for this place (any
+  // source — admin city sweeps, drift triggers, or prior button clicks). The
+  // expensive resource is the Gemini Q2 call; duplicating it for a place
+  // that's already being processed wastes ~$0.0040 + worker contention.
+  const { count: inflight, error: inflightErr } = await db
+    .from("place_intelligence_trial_runs")
+    .select("id", { count: "exact", head: true })
+    .eq("place_pool_id", placePoolId)
+    .in("status", ["pending", "running"]);
+  if (inflightErr) return json({ error: inflightErr.message }, 500);
+  if ((inflight ?? 0) > 0) {
+    return json({
+      error: "rate_limited",
+      message:
+        "A re-evaluation is already pending or running for this place. Wait for it to complete.",
+    }, 429);
+  }
+
+  // Resolve city_id from the place (needed for parent run row).
+  const { data: place, error: placeErr } = await db
+    .from("place_pool")
+    .select("id, city_id, name")
+    .eq("id", placePoolId)
+    .maybeSingle();
+  if (placeErr) return json({ error: placeErr.message }, 500);
+  if (!place) return json({ error: "place not found" }, 404);
+
+  const runId = crypto.randomUUID();
+  const { error: parentErr } = await db.from("place_intelligence_runs").insert({
+    id: runId,
+    city_id: place.city_id,
+    city_name: "admin-reeval",
+    mode: "admin_reeval",
+    sample_size: 1,
+    total_count: 1,
+    estimated_cost_usd: PER_PLACE_COST_USD,
+    estimated_minutes: 1,
+    prompt_version: PROMPT_VERSION,
+    model: GEMINI_MODEL_NAME_SHORT,
+    started_by: null,
+    status: "running",
+    started_at: new Date().toISOString(),
+  });
+  if (parentErr) {
+    // 23505 unique violation = a run is already active for this place's city.
+    // Surface a clean 409 rather than 500 so the admin UI can guide.
+    if (parentErr.code === "23505") {
+      return json({ error: "concurrent_run_for_city" }, 409);
+    }
+    return json({ error: parentErr.message }, 500);
+  }
+
+  const { error: childErr } = await db
+    .from("place_intelligence_trial_runs")
+    .insert({
+      run_id: runId,
+      parent_run_id: runId,
+      place_pool_id: placePoolId,
+      city_id: place.city_id,
+      signal_id: null,
+      anchor_index: null,
+      input_payload: {},
+      status: "pending",
+      prompt_version: PROMPT_VERSION,
+      model: GEMINI_MODEL_NAME_SHORT,
+      retry_count: 0,
+      source: "admin-reeval-button",
+    });
+  if (childErr) {
+    // Roll back parent so DB doesn't accumulate orphan running runs.
+    await db.from("place_intelligence_runs")
+      .update({
+        status: "failed",
+        error_reason: childErr.message,
+        completed_at: new Date().toISOString(),
+      })
+      .eq("id", runId);
+    return json({ error: childErr.message }, 500);
+  }
+
+  // Immediate kick (same fire-and-forget pattern as handleStartRun for
+  // full_city mode at line ~1322). Worker writes status to DB; the existing
+  // kick_pending_trial_runs cron picks up the child if this kick is missed.
+  if (supabaseServiceKey) {
+    try {
+      const workerUrl = `${
+        Deno.env.get("SUPABASE_URL") ?? ""
+      }/functions/v1/run-place-intelligence-trial`;
+      fetch(workerUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${supabaseServiceKey}`,
+        },
+        body: JSON.stringify({ action: "process_chunk", run_id: runId }),
+      }).catch((e) => {
+        console.error(
+          `[admin_reeval_place] kick failed: ${
+            e instanceof Error ? e.message : String(e)
+          }`,
+        );
+      });
+    } catch (e) {
+      console.error(
+        `[admin_reeval_place] kick exception: ${
+          e instanceof Error ? e.message : String(e)
+        }`,
+      );
+    }
+  }
+
+  return json({
+    ok: true,
+    run_id: runId,
+    place_pool_id: placePoolId,
+  });
+}
+
 interface AnchorRow {
   place_pool_id: string;
   // ORCH-0734 — signal_id + anchor_index nullable (city-runs places have no anchor metadata).
@@ -1498,6 +1772,46 @@ async function processOnePlace(args: {
       .eq("place_pool_id", anchor.place_pool_id);
     if (updateErr) {
       throw new Error(`trial row update failed: ${updateErr.message}`);
+    }
+
+    // META-ORCH-1009 Sub-A — mirror Q2 slice into place_pool.ai_signal_scores
+    // for the production ranker (Sub-B reads it). Trial row is source of
+    // truth; this is a DERIVED materialisation. Non-fatal: if the secondary
+    // write fails we log + continue; the migration's idempotent backfill SQL
+    // is re-runnable to recover laggards. Constitutionally blessed by DEC-099
+    // (column) + DEC-181 (name). Sole-writer invariant:
+    // I-AI-SIGNAL-SCORES-COLUMN-SOLE-OWNER.
+    //
+    // Gemini Q2 shape ref (q2.evaluations[]): per
+    // https://ai.google.dev/api/generate-content#function_calling (verified
+    // 2026-05-30) — toolCall arg payload returned by Gemini function-calling
+    // mode is parsed in callGeminiQuestion() upstream; q2.evaluations is a
+    // plain JS array of { signal_id, score_0_to_100, inappropriate_for,
+    // reasoning } objects per Q2_TOOL declaration in this file.
+    try {
+      const aiSignalScoresSlice = buildAiSignalScoresSlice(
+        (q2 as { evaluations?: ReadonlyArray<{
+          signal_id: string;
+          score_0_to_100: number;
+          inappropriate_for: boolean;
+          reasoning: string;
+        }> })?.evaluations,
+        completedAt,
+        PROMPT_VERSION,
+        GEMINI_MODEL_NAME_SHORT,
+      );
+      // Helper handles empty-slice skip + supabase-error log + thrown-error
+      // catch; never rejects. See writeAiSignalScoresToPlacePool() above.
+      await writeAiSignalScoresToPlacePool(
+        db as unknown as Parameters<typeof writeAiSignalScoresToPlacePool>[0],
+        anchor.place_pool_id,
+        aiSignalScoresSlice,
+      );
+    } catch (sliceErr) {
+      console.error(
+        `[place-intel-trial:ai_signal_scores_slice_failed] place=${anchor.place_pool_id} err=${sliceErr instanceof Error ? sliceErr.message : String(sliceErr)}`,
+      );
+      // Non-fatal.
     }
 
     const finalDiagnostics = safeMergeDiagnostics(preWriteDiagnostics, {
@@ -2194,7 +2508,8 @@ async function insertRetryChildrenInChunks(
 
 // ═══════════════════════════════════════════════════════════════════════════
 // intelligence_coverage — per-city coverage tiles for the Intelligence
-// Overview tab (ORCH-1008 + ORCH-1014 seed/refresh badge fields).
+// Overview tab (ORCH-1008 + ORCH-1014 seed/refresh badge fields + ORCH-1015
+// Boundary/Details binary readiness flags).
 // Returns one row per seeding_city with ≥1 servable place_pool row; sorted
 // by servable_count desc.
 //
@@ -2206,212 +2521,81 @@ async function insertRetryChildrenInChunks(
 // external API surface. Stale threshold = 90 days (operator-chosen
 // operational constant; no external doc).
 //
+// ORCH-1015: extends row shape with 3 MORE fields driving the 3-band
+// readiness ladder + smart-skip bulk launcher in IntelligenceOverviewTab:
+//   - regeocoded:           seeding_cities.coverage_radius_km = 0
+//   - refreshed_new_fields: MIN(last_detail_refresh) for is_servable >= 2026-03-19
+//   - needs_refresh_count:  COUNT(is_servable AND last_detail_refresh < 2026-03-19)
+// The cutover date is operator-locked to 2026-03-19 (commit 596b3c05c) when
+// the 48-field DETAIL_FIELD_MASK shipped in admin-refresh-places. Hardcoded
+// constant (NOT runtime-tunable) — if the field mask expands again, operator
+// opens a new ORCH to bump it. seeding_cities fetch extended to include
+// coverage_radius_km. All 6 ORCH-1014 fields PRESERVED (operator diagnostic).
+//
 // COMMS-0003 — external API parameters/pricing must cite provider docs URL.
 // This action is Supabase-only (no Gemini calls) but the file-level Gemini
 // 2.5 Flash pricing citation is preserved in the q1/q2 helpers above:
-//   https://ai.google.dev/pricing/gemini-2-5-flash (verified 2026-05-29).
+//   https://ai.google.dev/pricing/gemini-2-5-flash (verified 2026-05-30).
 // ═══════════════════════════════════════════════════════════════════════════
 
-// ORCH-1014 — operator-chosen stale threshold (90 days). Internal operational
-// constant, not an external API parameter. last_detail_refresh older than
-// this counts as "stale" in the Refresh status badge.
-const ORCH_1014_STALE_THRESHOLD_MS = 90 * 24 * 60 * 60 * 1000;
+// ORCH-1017 — the Intelligence Coverage operational constants (90-day stale
+// threshold from ORCH-1014; 2026-03-19 details-refresh cutover from ORCH-1015,
+// commit 596b3c05c's 48-field DETAIL_FIELD_MASK) now live INSIDE the
+// pg_intelligence_coverage() RPC (migration
+// 20260807000000_orch_1017_pg_intelligence_coverage.sql), since the per-city
+// aggregation moved from JS into Postgres to fix the Edge WORKER_LIMIT / HTTP
+// 546 failure. If the field mask ever expands again, bump the cutover in that
+// migration via a new ORCH — NOT runtime-tunable. See
+// supabase/functions/admin-refresh-places/index.ts L31-L143 (DETAIL_FIELD_MASK).
 
 async function handleIntelligenceCoverage(
   db: SupabaseClient,
 ): Promise<Response> {
-  // 6 parallel queries → client-side join (Supabase MCP-friendly; avoids
-  // a new SECURITY DEFINER RPC for what is admin-only read state).
-  // ORCH-1014 added (5) servableDetailsRes + (6) seedWindowRes for the new
-  // Seed + Refresh status badges. The pre-existing (2) servableRes count
-  // remains as the canonical servable_count source; (5) only feeds the new
-  // refresh/missing aggregates so the count contract stays identical.
-  const [
-    citiesRes,
-    servableRes,
-    completedRes,
-    runsRes,
-    servableDetailsRes,
-    seedWindowRes,
-  ] = await Promise.all([
-    db
-      .from("seeding_cities")
-      .select("id, name, country")
-      .order("name"),
-    db
-      .from("place_pool")
-      .select("city_id")
-      .eq("is_servable", true)
-      .not("city_id", "is", null),
-    // ORCH-1013 Finding A — restrict evaluated set to places STILL servable.
-    // Without the !inner+is_servable filter, places that drifted out of the
-    // pool (e.g. re-classified non-servable post-evaluation) are counted as
-    // evaluated, falsely inflating coverage to 100% and zeroing remaining.
-    // Verified live 2026-05-30 against Cary: 6 drifted rows masked 1 truly
-    // un-evaluated servable place. See SPEC §3 Finding A.
-    // Gemini pricing ref (COMMS-0003): https://ai.google.dev/pricing/gemini-2-5-flash
-    db
-      .from("place_intelligence_trial_runs")
-      .select("city_id, place_pool_id, place_pool!inner(is_servable)")
-      .eq("status", "completed")
-      .eq("place_pool.is_servable", true)
-      .not("city_id", "is", null),
-    db
-      .from("place_intelligence_runs")
-      .select(
-        "city_id, id, completed_at, status, cost_so_far_usd, mode, started_at",
-      )
-      .in("status", ["complete", "failed", "cancelled"])
-      .order("completed_at", { ascending: false, nullsFirst: false }),
-    // ORCH-1014 NEW — servable details for the Refresh status badge
-    db
-      .from("place_pool")
-      .select("city_id, last_detail_refresh, generative_summary, editorial_summary, reviews")
-      .eq("is_servable", true)
-      .not("city_id", "is", null),
-    // ORCH-1014 NEW — seed window across ALL place_pool rows (servable + non)
-    db
-      .from("place_pool")
-      .select("city_id, created_at")
-      .not("city_id", "is", null),
-  ]);
+  // ORCH-1017 — aggregation pushed entirely into Postgres via the
+  // `pg_intelligence_coverage()` SECURITY DEFINER RPC (migration
+  // 20260807000000_orch_1017_pg_intelligence_coverage.sql). This REPLACES the
+  // prior 6-query Promise.all + JS-side per-city aggregation, which pulled the
+  // ENTIRE place_pool (~79k rows) for the seed window, the servable set (~13.6k)
+  // TWICE — one copy carrying generative_summary + editorial_summary + the full
+  // reviews jsonb array per row — plus ~2.6k run rows into the edge function's
+  // memory on every call. That intermittently exceeded the Edge WORKER_LIMIT and
+  // returned HTTP 546 ("not enough compute resources"). The RPC does one GROUP BY
+  // and returns ~17 city rows; payload + compute drop by ~3 orders of magnitude.
+  //
+  // Output shape is byte-for-byte identical to the prior JS row builder (same
+  // field names, same filters, same constants: 90-day stale threshold +
+  // 2026-03-19 refresh cutover). numeric columns are coerced to JS numbers so the
+  // contract (coverage_pct/last_run_cost_usd as numbers) is preserved regardless
+  // of PostgREST numeric serialization.
+  const { data, error } = await db.rpc("pg_intelligence_coverage");
+  if (error) return json({ error: error.message }, 500);
 
-  if (citiesRes.error) return json({ error: citiesRes.error.message }, 500);
-  if (servableRes.error) return json({ error: servableRes.error.message }, 500);
-  if (completedRes.error) return json({ error: completedRes.error.message }, 500);
-  if (runsRes.error) return json({ error: runsRes.error.message }, 500);
-  if (servableDetailsRes.error) return json({ error: servableDetailsRes.error.message }, 500);
-  if (seedWindowRes.error) return json({ error: seedWindowRes.error.message }, 500);
+  const toNum = (v: unknown): number | null =>
+    v === null || v === undefined ? null : typeof v === "number" ? v : Number(v);
 
-  const servableByCity = new Map<string, number>();
-  for (const row of servableRes.data || []) {
-    if (!row.city_id) continue;
-    servableByCity.set(row.city_id, (servableByCity.get(row.city_id) || 0) + 1);
-  }
-
-  // ORCH-1014 — refresh + missing-fields aggregates, all scoped to is_servable=true
-  const refreshOldestByCity = new Map<string, string>(); // ISO
-  const refreshNewestByCity = new Map<string, string>(); // ISO
-  const staleRefreshByCity = new Map<string, number>();
-  const missingFieldsByCity = new Map<string, number>();
-  const nowMs = Date.now();
-  for (const row of servableDetailsRes.data || []) {
-    if (!row.city_id) continue;
-    const cityId = row.city_id as string;
-
-    // refresh window
-    const lastRefresh = (row.last_detail_refresh ?? null) as string | null;
-    if (lastRefresh) {
-      const cur = refreshOldestByCity.get(cityId);
-      if (!cur || lastRefresh < cur) refreshOldestByCity.set(cityId, lastRefresh);
-      const curN = refreshNewestByCity.get(cityId);
-      if (!curN || lastRefresh > curN) refreshNewestByCity.set(cityId, lastRefresh);
-      if (nowMs - Date.parse(lastRefresh) > ORCH_1014_STALE_THRESHOLD_MS) {
-        staleRefreshByCity.set(cityId, (staleRefreshByCity.get(cityId) || 0) + 1);
-      }
-    } else {
-      // Treat NULL last_detail_refresh as stale (never refreshed)
-      staleRefreshByCity.set(cityId, (staleRefreshByCity.get(cityId) || 0) + 1);
-    }
-
-    // missing fields
-    const reviewsLen = Array.isArray(row.reviews) ? row.reviews.length : 0;
-    const missingAny =
-      row.generative_summary == null ||
-      row.editorial_summary == null ||
-      row.reviews == null ||
-      reviewsLen === 0;
-    if (missingAny) {
-      missingFieldsByCity.set(cityId, (missingFieldsByCity.get(cityId) || 0) + 1);
-    }
-  }
-
-  // ORCH-1014 — seed window across ALL place_pool rows (servable + non-servable)
-  const firstSeededByCity = new Map<string, string>();
-  const lastSeededByCity = new Map<string, string>();
-  for (const row of seedWindowRes.data || []) {
-    if (!row.city_id || !row.created_at) continue;
-    const cityId = row.city_id as string;
-    const createdAt = row.created_at as string;
-    const f = firstSeededByCity.get(cityId);
-    if (!f || createdAt < f) firstSeededByCity.set(cityId, createdAt);
-    const l = lastSeededByCity.get(cityId);
-    if (!l || createdAt > l) lastSeededByCity.set(cityId, createdAt);
-  }
-
-  // distinct (city_id, place_pool_id) pairs across all completed runs
-  const evaluatedByCity = new Map<string, Set<string>>();
-  for (const row of completedRes.data || []) {
-    if (!row.city_id || !row.place_pool_id) continue;
-    let set = evaluatedByCity.get(row.city_id);
-    if (!set) {
-      set = new Set<string>();
-      evaluatedByCity.set(row.city_id, set);
-    }
-    set.add(row.place_pool_id as string);
-  }
-
-  // First terminal run per city (already sorted desc by completed_at)
-  const latestRunByCity = new Map<
-    string,
-    {
-      id: string;
-      completed_at: string | null;
-      status: string;
-      cost_so_far_usd: number | null;
-      mode: string;
-    }
-  >();
-  for (const row of runsRes.data || []) {
-    if (!row.city_id) continue;
-    if (latestRunByCity.has(row.city_id)) continue;
-    latestRunByCity.set(row.city_id, {
-      id: row.id as string,
-      completed_at: (row.completed_at ?? row.started_at ?? null) as string | null,
-      status: row.status as string,
-      cost_so_far_usd: (row.cost_so_far_usd ?? null) as number | null,
-      mode: row.mode as string,
-    });
-  }
-
-  const rows = (citiesRes.data || [])
-    .map((c) => {
-      const servable = servableByCity.get(c.id) || 0;
-      const evaluated = (evaluatedByCity.get(c.id) || new Set()).size;
-      const lastRun = latestRunByCity.get(c.id) || null;
-      const coveragePct = servable === 0
-        ? 0
-        : Math.min(100, +((evaluated / servable) * 100).toFixed(1));
-      return {
-        city_id: c.id,
-        city_name: c.name,
-        country: c.country,
-        servable_count: servable,
-        // ORCH-1013 Finding A — `evaluated` is now ≤ `servable` by construction
-        // (the JOIN at the completedRes query filters to currently-servable
-        // places only). Math.min/Math.max retained as defensive cosmetic safety
-        // for the 4 non-transactional parallel queries (race could theoretically
-        // see a 1-row skew). See SPEC §3 Finding A + §7 D9.
-        evaluated_count: Math.min(evaluated, servable),
-        remaining_count: Math.max(0, servable - evaluated),
-        coverage_pct: coveragePct,
-        last_run_id: lastRun?.id ?? null,
-        last_run_at: lastRun?.completed_at ?? null,
-        last_run_status: lastRun?.status ?? null,
-        last_run_cost_usd: lastRun?.cost_so_far_usd ?? null,
-        last_run_mode: lastRun?.mode ?? null,
-        // ORCH-1014 — Seed status badge inputs (all place_pool rows for this city)
-        first_seeded_at: firstSeededByCity.get(c.id) ?? null,
-        last_seeded_at: lastSeededByCity.get(c.id) ?? null,
-        // ORCH-1014 — Refresh status badge inputs (is_servable=true only)
-        refresh_oldest_at: refreshOldestByCity.get(c.id) ?? null,
-        refresh_newest_at: refreshNewestByCity.get(c.id) ?? null,
-        stale_refresh_count: staleRefreshByCity.get(c.id) ?? 0,
-        missing_fields_count: missingFieldsByCity.get(c.id) ?? 0,
-      };
-    })
-    .filter((r) => r.servable_count > 0)
-    .sort((a, b) => b.servable_count - a.servable_count);
+  const rows = ((data as Record<string, unknown>[] | null) ?? []).map((r) => ({
+    city_id: r.city_id,
+    city_name: r.city_name,
+    country: r.country,
+    servable_count: r.servable_count,
+    evaluated_count: r.evaluated_count,
+    remaining_count: r.remaining_count,
+    coverage_pct: toNum(r.coverage_pct),
+    last_run_id: r.last_run_id ?? null,
+    last_run_at: r.last_run_at ?? null,
+    last_run_status: r.last_run_status ?? null,
+    last_run_cost_usd: toNum(r.last_run_cost_usd),
+    last_run_mode: r.last_run_mode ?? null,
+    first_seeded_at: r.first_seeded_at ?? null,
+    last_seeded_at: r.last_seeded_at ?? null,
+    refresh_oldest_at: r.refresh_oldest_at ?? null,
+    refresh_newest_at: r.refresh_newest_at ?? null,
+    stale_refresh_count: r.stale_refresh_count ?? 0,
+    missing_fields_count: r.missing_fields_count ?? 0,
+    regeocoded: r.regeocoded === true,
+    refreshed_new_fields: r.refreshed_new_fields === true,
+    needs_refresh_count: r.needs_refresh_count ?? 0,
+  }));
 
   return json({ rows });
 }

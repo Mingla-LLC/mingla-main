@@ -344,3 +344,145 @@
 - I-PUBLIC-BRAND-KIND-BRANCHED (SUPERSEDED)
 - DEC-170 (universal authoring — the data side of this rendering decision)
 - COMMS-0005 (ORCH-0964 `<Head>` SEO/metadata block preserved zero-diff in this rebuild)
+
+## DEC-181 — `place_pool.ai_signal_scores` column landed under META-ORCH-1009 Sub-A; renamed from DEC-099's tentative `claude_signal_evaluations` (2026-05-30)
+
+**Decision:** The single JSONB column on `place_pool` pre-authorised by DEC-099 (2026-05-04) ships as `ai_signal_scores` (NOT DEC-099's originally-proposed `claude_signal_evaluations`). Landed by migration `supabase/migrations/20260802000003_meta_orch_1009_sub_a_ai_signal_scores.sql` under META-ORCH-1009 Sub-A [ai-signal-scores schema]. Column type `JSONB`, nullable, GIN-indexed with `jsonb_path_ops` opclass per Postgres 17 JSONB Indexing docs (https://www.postgresql.org/docs/17/datatype-json.html#JSON-INDEXING). Per-signal shape (6 keys): `score_0_to_100` (int 0–100), `inappropriate_for` (bool), `reasoning` (text), `evaluated_at` (ISO-8601 string), `prompt_version` (text), `model` (text). One-shot backfill seeded ~2,366 places from existing `place_intelligence_trial_runs.q2_response` corpus. Sole writer: `processOnePlace` in `supabase/functions/run-place-intelligence-trial/index.ts` via the `writeAiSignalScoresToPlacePool` helper.
+
+**Rationale (renaming):** DEC-099 was written 2026-05-04 when Claude was the candidate AI provider. The trial pipeline shipped on Gemini 2.5 Flash (operator decision per DEC-101 Anthropic-dropped, 2026-05-?). The column will outlive the current provider — `ai_signal_scores` is provider-agnostic and survives a future swap (each per-signal entry stamps its own `model` field so the column body remains auditable). Operator Gemini-not-Claude lock-in confirmed 2026-05-30 during META-ORCH-1009 Sub-A spec write; vendor-specific names (`gemini_signal_evaluations`) rejected for the same forward-compatibility reason.
+
+**Rationale (landing under Sub-A):** Sub-A is pure plumbing — column + index + backfill + edge-fn secondary write. Sub-B will wire the consumer ranker to READ the column; Sub-C will backfill Gemini coverage from 2,366 → 13,671 servable places; Sub-D will add refresh cron + admin re-eval. Splitting the landing this way lets Sub-A merge with zero user-visible change while Sub-B can be a one-file ranker edit on top of a stable schema.
+
+**Alternatives rejected:**
+- Keep `claude_signal_evaluations` per DEC-099 verbatim — rejected because the column body no longer matches the name (no Claude evaluations exist in the corpus). Future-engineer cost of reading code under a wrong name outweighs the audit-trail value of literal DEC-099 adherence.
+- `gemini_signal_evaluations` — rejected because the column will outlive Gemini; vendor naming forces a column rename on next provider swap.
+- Separate `place_ai_evaluations` table — rejected per DEC-099 Cut 2 ("cut down on needless tables"); single JSONB column on `place_pool` matches the existing `photo_aesthetic_data` JSONB precedent and lets the read path stay a single column lookup (no LEFT JOIN).
+- Defer the column landing until Sub-B is ready — rejected because that bundles the schema risk + ranker logic risk in a single PR; splitting them lets Sub-A bake without affecting deck rendering.
+
+**Impact:**
+- Schema: +1 JSONB column on `place_pool`, +1 GIN index (`idx_place_pool_ai_signal_scores`), ~2,366 rows backfilled at apply time.
+- Edge fn: +2 helpers (`buildAiSignalScoresSlice`, `writeAiSignalScoresToPlacePool`) + 1 non-fatal secondary write inside `processOnePlace`. Trial row remains source of truth.
+- Invariants: retracts `I-TRIAL-OUTPUT-NEVER-FEEDS-RANKING`; establishes `I-AI-SIGNAL-SCORES-COLUMN-SOLE-OWNER` (ACTIVE), `I-AI-SIGNAL-SCORES-SHAPE-CONTRACT` (ACTIVE), `I-AI-SIGNAL-SCORES-PROMPT-VERSION-DISCRIMINATED` (DRAFT → ACTIVE on Sub-B).
+- User-visible: zero (Sub-B ships the ranker change that turns this column into deck behaviour).
+
+**EXIT signal:** none — column rename post-Sub-B landing is expensive (touches the migration history + the ranker code + every test). Lock now. If a future AI provider swap requires a different per-signal field set, extend the shape under a new prompt_version with backward-compatible defaults and let `I-AI-SIGNAL-SCORES-PROMPT-VERSION-DISCRIMINATED` gate the read.
+
+**Cross-references:**
+- DEC-099 (constitutional bless — original column pre-authorisation, 2026-05-04)
+- DEC-101 (Anthropic dropped from trial pipeline; Gemini sole provider)
+- I-AI-SIGNAL-SCORES-COLUMN-SOLE-OWNER (new ACTIVE)
+- I-AI-SIGNAL-SCORES-SHAPE-CONTRACT (new ACTIVE)
+- I-AI-SIGNAL-SCORES-PROMPT-VERSION-DISCRIMINATED (new DRAFT)
+- I-TRIAL-OUTPUT-NEVER-FEEDS-RANKING (RETRACTED)
+- META-ORCH-1009 Sub-A SPEC (`Mingla_Artifacts/specs/SPEC_META-ORCH-1009_SUB_A_AI_SIGNAL_SCORES_SCHEMA.md`)
+- META-ORCH-1009 Sub-A implementation report (`Mingla_Artifacts/reports/IMPLEMENTATION_META-ORCH-1009_SUB_A_AI_SIGNAL_SCORES_SCHEMA.md`)
+- Sub-B / Sub-C / Sub-D (sibling sub-dispatches — separate ORCHs)
+- COMMS-0003 (external-API docs cited inline — Gemini function-calling URL + Postgres JSONB indexing URL)
+
+---
+
+## DEC-182 — META-ORCH-1009 Sub-B: write-time AI blend + DELETE-on-veto + Record<signalId,string> reasoning payload
+
+**Date:** 2026-05-30
+**Owner:** META-ORCH-1009 Sub-B (orchestrator-dispatched implementor pass)
+**Context:** Sub-A landed the `place_pool.ai_signal_scores` column + backfill. Sub-B's job is the user-felt moment: every deck card now ranked by a blend of the rule scorer and Gemini's per-signal score, places vetoed by Gemini silently removed, and the expand-modal renders Gemini's reasoning on the card back. Three design choices fixed shape: WHERE the blend runs (write-time vs request-time), HOW veto is stored (the column accepts NOT NULL only), and what shape the reasoning payload takes on the wire.
+
+**Decision (load-bearing — three coupled choices):**
+
+1. **Blend happens at WRITE time** in `signalScorer.computeScore`, invoked by the offline `run-signal-scorer` edge function. The blended value lands in the existing `place_scores.score` numeric column. Request-time RPCs continue to ORDER BY the stored score with zero added blend logic at the hot path.
+
+2. **Veto-on-Gemini is materialised by DELETING the `place_scores` row** for the (place, signal) pair. `place_scores.score` is declared `NOT NULL` with `CHECK (0 <= score <= 200)` in the baseline DDL, so the SPEC's proposed NULL-sentinel cannot exist. Row-deletion has the same JOIN-side effect (the consumer RPCs `INNER JOIN place_scores ps ON ps.place_id = pp.id AND ps.signal_id = ...` exclude vetoed pairs automatically) without requiring a DDL change. Re-running `run-signal-scorer` after Gemini reverses a veto naturally restores the row via the existing UPSERT path.
+
+3. **Reasoning payload shape is `Record<signalId, string>`** keyed by signal_id (not a single string). A card surfaces under multiple signals when the user picks multiple chips; the expand-modal's `pickDominantReasoning` resolver picks whichever signal matches the card's `tags[0]` (the placeType the chip routed to), falling back to the first non-empty entry by `Object.keys` order.
+
+**Rationale:**
+
+- **Write-time blend:** (a) Zero hot-path latency added (RPC just SELECTs `place_scores.score`). (b) Preserves the collab determinism contract trivially (the RPC ORDER BY clause is unchanged → `I-COLLAB-DECK-DETERMINISM-PRESERVED-UNDER-AI-BLEND` holds by construction). (c) Preserves the existing `CATEGORY_TO_SIGNAL.filterMin` thresholds (100, 120, 80) without coordinated re-tuning because the blended value is re-scaled back to the [0, 200] rule scale.
+- **DELETE-on-veto:** No DDL change. Idempotent: `UPSERT` restores on un-veto, `DELETE` removes on veto. No risk of sentinel values leaking to admin tooling that SELECTs `place_scores.score` without the `>= filter_min` guard.
+- **Record<signalId, string>:** Multi-chip support. Lets a future Sub render "matches you for both romantic AND scenic" without re-shipping the payload format. Mobile-side dominant-signal resolver is a single shared helper in `ExpandedCardModal.tsx` so all 3 surfaces (Home solo, group-chat collab, paired-friend) get identical treatment.
+
+**Operator-confirmed constraints (carried over from dispatch 2026-05-30):**
+
+- D-1 staleness window: `run-signal-scorer` must be re-run after each Gemini Q2 coverage bump from Sub-C; operator triggers manually until Sub-D ships the auto-cron. Acceptable trade-off — bounds blend freshness at ≤24h.
+- D-8 paired-friend coverage gap: the friend-profile pipeline (`get-person-hero-cards` + `get-paired-profile-cards`) is INDEPENDENT of `discover-cards`; it uses `query_person_hero_places_by_signal` which Sub-B does NOT extend. Mobile types + mapper carry the reasoning field for forward-compat; the field is undefined in practice on the friend surface until a follow-up Sub extends that RPC. Modal hides the section when undefined (graceful degrade).
+
+**Alternatives rejected:**
+
+- **Request-time blend** (compute in `discover-cards` from a raw `ai_signal_scores` JSONB read per card per request) — rejected because (a) it requires hot-path JSONB key lookups against the cold place_pool column on every fetch, (b) it forces a parallel re-tune of every `CATEGORY_TO_SIGNAL.filterMin` to account for blended-scale values, and (c) it makes collab determinism harder to argue (the RPC would need a stable ORDER BY over a request-time computed expression).
+- **NULL-sentinel veto** (per SPEC §3.1) — rejected because `place_scores.score` is NOT NULL in DDL and adding the NULL allowance is a separate column-altering migration with its own apply risk.
+- **Single-string reasoning payload** — rejected because multi-chip cards surface under multiple signals; collapsing to a single string forces the backend to pick the dominant signal (it doesn't know which chip the user clicked at expand-time) and loses fidelity for a future "matches you for both X AND Y" UX.
+- **Per-signal `_ai_vetoed` boolean column on `place_scores`** — rejected as premature; row-deletion has the same RPC-exclusion effect without DDL.
+
+**Impact:**
+
+- **Scorer (offline):** `signalScorer.computeScore` gains a 3rd required arg `signalId`; the 21 existing scorer.test.ts call sites updated mechanically with TEST-MOD-APPROVED token. Adds the blend + veto + version-discriminator branches. 11 new Deno blend tests pass fails-on-revert at commit `141b1c69f`.
+- **Edge fn (offline):** `run-signal-scorer/index.ts` reads `ai_signal_scores` via extended SELECT; computes blend; UPSERTs non-veto rows; DELETEs veto rows in batches of 500. Adds `vetoed_count` + `ai_blended_count` to the summary response. Pure offline — no consumer latency.
+- **Consumer RPCs (online):** New migration `20260806000000_meta_orch_1009_sub_b_rpcs_with_reasoning.sql` re-CREATEs `query_servable_places_by_signal` + `query_servable_places_by_signal_intersection` with two appended columns: `ai_reasoning jsonb` (the full per-signal slice) + `ai_score_raw numeric` (admin convenience). ORDER BY clauses preserved verbatim. ~250 bytes per row added to the wire payload.
+- **Mobile (3 surfaces):** Optional `aiReasoningBySignal?: Record<string,string>` added to `ExpandedCardData`, `Recommendation`, and `HolidayCard`. `ExpandedCardModal.tsx` renders a "Why we picked this for you" section (violet-tinted card, sparkles icon, ~14sp body copy) when the dominant-signal resolver returns a non-empty string. Home + collab inherit via `unifiedCardToRecommendation`. Paired-friend mapper passes through the field but the source pipeline doesn't populate it (D-8) — section silently absent.
+- **Invariants:** Flips `I-AI-SIGNAL-SCORES-PROMPT-VERSION-DISCRIMINATED` DRAFT → ACTIVE; adds `I-CONSUMER-READS-AI-SIGNAL-SCORES-NOT-TRIAL-TABLE` ACTIVE + `I-COLLAB-DECK-DETERMINISM-PRESERVED-UNDER-AI-BLEND` ACTIVE.
+- **CI:** New strict-grep gate `i-consumer-reads-ai-signal-scores-not-trial-table.mjs` registered in `strict-grep-mingla-business.yml`. Self-test verified.
+
+**EXIT signal:** none — the write-time blend is the load-bearing choice; reversing it would force a re-tune of all `filterMin` thresholds + a request-time blend cost + a re-argument of the collab determinism contract. Lock now.
+
+**Cross-references:**
+
+- DEC-099 (constitutional bless — JSONB column pre-authorisation)
+- DEC-181 (column name `ai_signal_scores` over `claude_signal_evaluations`)
+- META-ORCH-1009 Sub-A close (column landed)
+- META-ORCH-1009 Sub-B SPEC (`Mingla_Artifacts/specs/SPEC_META-ORCH-1009_SUB_B_CONSUMER_RANKER_BLEND.md`)
+- META-ORCH-1009 Sub-B implementation report (`Mingla_Artifacts/reports/IMPLEMENTATION_META-ORCH-1009_SUB_B_CONSUMER_RANKER_BLEND.md`)
+- I-AI-SIGNAL-SCORES-PROMPT-VERSION-DISCRIMINATED (flipped DRAFT → ACTIVE)
+- I-CONSUMER-READS-AI-SIGNAL-SCORES-NOT-TRIAL-TABLE (new ACTIVE)
+- I-COLLAB-DECK-DETERMINISM-PRESERVED-UNDER-AI-BLEND (new ACTIVE)
+- COMMS-0003 (Gemini structured-output docs URL cited inline in signalScorer.ts header)
+
+## DEC-183 — META-ORCH-1009 Sub-D: 15-min auto-rescore cron + drift triggers + admin per-place re-eval + quarterly backstop
+
+**Date:** 2026-05-30
+**Owner:** META-ORCH-1009 Sub-D (orchestrator-dispatched implementor pass)
+
+**Context:** Sub-B's write-time blend created an implicit "deck is correct only as of the last manual click" contract (DEC-182 / operator-locked D-1). Sub-C's bulk Gemini coverage backfills make that contract untenable — 11K places can land fresh AI scores in one round and the deck stays stale until the operator remembers to click `run-signal-scorer`. Sub-D closes the loop with infrastructure only — no consumer-mobile or signalScorer math changes.
+
+**Decision (load-bearing — 4 coupled choices):**
+
+1. **Cron cadence = 15 min** (`*/15 * * * *`). Rejected 5-min (would fire 3× during a typical Sub-C round; risks edge-fn rate-limits + duplicated work) and hourly (leaves deck stale longer than operator's natural "did it work?" check cycle). 15 min catches the tail of a Sub-C burst on the next tick.
+2. **Per-tick LIMIT = 500 pairs, oldest-stale-first** in `pg_meta_orch_1009_sub_d_select_stale_pairs(int)`. Bucketed by `signal_id` so the kicker fires one HTTP request per dirty signal (not 500 per place). At 96 ticks/day this drains 48K pairs/day worst-case; the live 988 stale pairs probe + 26,682 (place, signal) overlap → first-sweep drain ~8h (with D-6 seed below).
+3. **D-6 (LOCKED) — pre-apply seed-UPDATE.** The Sub-D migration runs a single `UPDATE place_scores SET ai_signal_scores_at = (...).evaluated_at` for rows where `scored_at > ai_evaluated_at` (rows already up-to-date post-Sub-B). Reduces first-sweep drain from ~13.5h to ~8h. Rows with `scored_at <= ai_evaluated_at` (actually stale) and rows with no `place_scores` row at all stay NULL → cron picks them up correctly.
+4. **D-3 (LOCKED) — drift trigger fires on all 3 columns** (`business_status` / `editorial_summary` / `generative_summary`). Operator-acknowledged risk: Google's AI-generated `editorial_summary` + `generative_summary` can drift cosmetically. Ship as-is; monitor 30 days; tighten to `business_status` only if drift volume > 1,000/week (~$4/week at ~$0.0040 per Gemini Q2 re-eval per https://ai.google.dev/pricing/gemini-2-5-flash).
+
+**Operator-confirmed constraints (carried over from REVIEW 2026-05-30):**
+
+- Admin button rate-limit = server-side, any in-flight row blocks (429 + "wait for it to complete" toast). Avoids duplicating the ~$0.0040 Gemini call when a city sweep or drift trigger already queued the place. No `force=true` bypass.
+- Quarterly backstop at `0 4 1 */3 *` (04:00 UTC, day 1, every 3rd calendar month). Safety net for anything the drift trigger missed.
+- Admin button source-tag = `admin-reeval-button` (vs `auto-refresh-drift` for trigger insertions, NULL for legacy admin-initiated city sweeps). Enables future cost dashboards.
+
+**Alternatives rejected:**
+
+- **Request-time blend re-derivation** — rejected for the same reasons as DEC-182 (hot-path JSONB read cost + filter-min re-tune + collab determinism argument). Sub-D layers cron-driven freshness on top of Sub-B's offline blend; no consumer hot-path change.
+- **Google webhook subscription** — rejected; drift detection is INTERNAL via a Postgres trigger on the `place_pool` row our own ingestion pipeline updates.
+- **NULL-sentinel for stale rows** — rejected; the column defaults NULL so the helper fn handles "pre-Sub-D" (NULL) + "drift since last write" (older) uniformly via the same WHERE branch.
+- **Daily backstop** — rejected; defeats Sub-D's selectivity gains. Quarterly is the documented "safety net" cadence from research §9 Q6.
+
+**Impact:**
+
+- **Migration (new):** `supabase/migrations/20260808000000_meta_orch_1009_sub_d_refresh_cron.sql` — `place_scores.ai_signal_scores_at` column + `place_intelligence_trial_runs.source` column + CHECK + partial unique idx + 2 SECURITY DEFINER helper fns (`pg_meta_orch_1009_sub_d_select_stale_pairs`, `tg_meta_orch_1009_sub_d_kick_rescores`) + 1 quarterly fn + 2 cron schedules + 1 trigger fn on `place_pool` + vault pre-flight DO block + D-6 seed-UPDATE + schema/cron verification probes. Apply NOTICEs surface `seeded_count` + `stale_remaining` for operator visibility.
+- **Edge fn (scorer):** `supabase/functions/run-signal-scorer/index.ts` — extends request body with `place_ids: string[]` per-place mode (mutually exclusive with `all_cities`; capped at 1000); writes `ai_signal_scores_at` on every upsert; chunk payload + writes typing extended.
+- **Edge fn (shared):** `supabase/functions/_shared/signalScorer.ts` — 1-line addition to `ScoreResult.ai_blended` (passes `evaluated_at` from `aiEntry` to the caller).
+- **Edge fn (trial):** `supabase/functions/run-place-intelligence-trial/index.ts` — NEW action `admin_reeval_place` (~120 lines) creates synthetic parent+child rows tagged `source='admin-reeval-button'` and fires an immediate `process_chunk` kick. Server-side rate-limited to ANY pending/running row for the same place.
+- **Admin UI:** `mingla-admin/src/pages/PlacePoolManagementPage.jsx` — adds "Re-evaluate AI signals" button in the place detail modal + "Last AI Evaluated" timestamp in Data Freshness. Loading/error UI; toast variants for rate_limit vs failure.
+- **CI:** new strict-grep gate `meta-orch-1009-sub-d-ai-score-staleness-recovery.mjs` (cron-registered + sole-writer enforcement), registered in `strict-grep-mingla-business.yml`.
+- **Invariants:** new ACTIVE `I-AI-SCORE-STALENESS-AUTO-RECOVERED` (Sub-D close).
+
+**EXIT signal:** none — Sub-D is pure infrastructure that closes the staleness loop opened by DEC-182. Reverting would re-open the "stale until operator clicks" gap.
+
+**Cross-references:**
+
+- DEC-099 (constitutional bless — JSONB column pre-authorisation)
+- DEC-181 (column name `ai_signal_scores`)
+- DEC-182 (write-time blend authority — Sub-B)
+- META-ORCH-1009 Sub-A close (column landed)
+- META-ORCH-1009 Sub-B close (blend + veto + reasoning landed)
+- META-ORCH-1009 Sub-D SPEC (`Mingla_Artifacts/specs/SPEC_META-ORCH-1009_SUB_D_REFRESH_CRON.md`)
+- META-ORCH-1009 Sub-D implementation report (`Mingla_Artifacts/reports/IMPLEMENTATION_META-ORCH-1009_SUB_D_REFRESH_CRON.md`)
+- I-AI-SCORE-STALENESS-AUTO-RECOVERED (new ACTIVE)
+- COMMS-0003 (Gemini docs URLs cited inline in migration + new admin_reeval_place handler)

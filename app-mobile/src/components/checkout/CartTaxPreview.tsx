@@ -1,192 +1,300 @@
-// ORCH-1006 Slice 3 (Surface 6, WAVE 1) — buyer-side all-in price preview.
-//
-// SPEC §B.6 / §D.4: the billing-address form + the "Calculate tax" gate are
-// REMOVED from the buyer flow. Tax is sourced at the VENUE server-side
-// (events.venue_tax_address); the buyer NEVER types an address. This module is
-// now a HEADLESS hook that fires the repurposed `mode:"preview"` engine call
-// (no address) as soon as the cart is non-empty, and returns the all-in
-// `buyer_total` + the canonical `pricing_breakdown` for the sticky-bar display
-// + the "What's included" panel.
-//
-// History: this file used to render a `<CartTaxPreview>` billing-address form
-// component that gated the CTA behind a manual "Calculate tax" tap (which
-// computed £0 for nearly everyone — pure friction). That component is deleted.
-// Its only consumer was `TicketCartSheet.tsx`, which now drives this hook.
-
-import { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 
 import { supabase } from "../../services/supabase";
 
-/**
- * The canonical server `pricing_breakdown` shape (ORCH-1006 engine —
- * `_shared/allInPricingEngine.ts` `PricingBreakdown`). Mirrored here as the
- * client-side read contract for the all-in surfaces. All money fields are in
- * the smallest currency unit (cents/pence). Currency is resolved server-side;
- * NEVER hardcode a symbol — format with the breakdown's `currency`.
- */
-export interface PricingBreakdown {
-  region: string;
-  currency: string;
-  tax_behavior: "inclusive" | "exclusive";
-  tax_basis: string;
-  switches: {
-    pass_tax: boolean;
-    pass_mingla_fee: boolean;
-    pass_service_fee: boolean;
-  };
-  base_cents: number;
-  buyer_subtotal_cents: number;
-  buyer_total_cents: number;
-  components: {
-    mingla_fee_cents: number;
-    service_fee_cents: number;
-    tax_cents: number;
-  };
-  passed: {
-    mingla_fee_cents: number;
-    service_fee_cents: number;
-    tax_cents: number;
-  };
-  absorbed: {
-    mingla_fee_cents: number;
-    service_fee_cents: number;
-    tax_cents: number;
-  };
-  application_fee_amount_cents: number;
-  connected_account_payout_cents: number;
-  stripe_tax_calculation_id: string | null;
-  effective_take_rate_bps: number;
-  take_rate_source: string;
+export interface BuyerAddress {
+  line1: string;
+  line2?: string;
+  city: string;
+  state?: string;
+  postal: string;
+  country: string;
 }
 
-/**
- * Result of the headless all-in preview. `totalCents` is the buyer's all-in
- * total (engine `buyer_total_cents`); `calculationId` is forwarded to the
- * checkout-create call so the buyer pays exactly what the preview showed.
- */
-export interface CartAllInPreviewResult {
+export interface CartTaxPreviewResult {
+  address: BuyerAddress;
   calculationId: string | null;
   subtotalCents: number;
   taxCents: number;
   totalCents: number;
-  currency: string;
-  pricingBreakdown: PricingBreakdown | null;
   taxBreakdown: unknown[];
 }
 
-type PreviewLine = { ticketTypeId: string; quantity: number };
-
-interface PreviewResponse {
-  kind?: string;
-  calculationId: string | null;
-  subtotalCents: number;
-  taxCents: number;
-  totalCents: number;
-  currency?: string;
-  pricingBreakdown?: PricingBreakdown | null;
-  taxBreakdown?: unknown[];
-}
-
-export type CartAllInPreviewStatus =
-  | "idle"
-  | "loading"
-  | "ready"
-  | "error";
-
-export interface UseCartAllInPreviewResult {
-  status: CartAllInPreviewStatus;
-  preview: CartAllInPreviewResult | null;
-  /** Manual retry after a true network failure. */
-  retry: () => void;
-}
-
-const linesKey = (lines: PreviewLine[]): string =>
-  lines
-    .filter((l) => l.quantity > 0)
-    .map((l) => `${l.ticketTypeId}:${l.quantity}`)
-    .sort()
-    .join("|");
-
-/**
- * useCartAllInPreview — fires the no-address `mode:"preview"` engine call and
- * keeps the all-in total + breakdown in sync with the cart lines. Refetches
- * whenever the line set/quantities change. NO address, NO manual gate.
- *
- * @param enabled  false while the sheet is closed / submitting / cart empty.
- */
-export const useCartAllInPreview = (args: {
+interface Props {
   eventId: string;
-  lines: PreviewLine[];
-  buyer: { name: string; email: string; phone: string; marketingOptIn?: boolean };
-  enabled: boolean;
-}): UseCartAllInPreviewResult => {
-  const { eventId, lines, buyer, enabled } = args;
+  lines: Array<{ ticketTypeId: string; quantity: number }>;
+  buyer: {
+    name: string;
+    email: string;
+    phone: string;
+    marketingOptIn?: boolean;
+  };
+  currency: string;
+  disabled?: boolean;
+  onPreviewChange: (result: CartTaxPreviewResult | null) => void;
+}
 
-  const [status, setStatus] = useState<CartAllInPreviewStatus>("idle");
-  const [preview, setPreview] = useState<CartAllInPreviewResult | null>(null);
+const money = (cents: number, currency: string): string =>
+  new Intl.NumberFormat(undefined, { style: "currency", currency }).format(
+    cents / 100,
+  );
 
-  const key = enabled ? linesKey(lines) : "";
-  // Latest in-flight request token so a stale response never overwrites a
-  // newer one (rapid quantity taps).
-  const requestRef = useRef(0);
-  const [retryTick, setRetryTick] = useState(0);
+const TAX_COUNTRY_UNSUPPORTED_COPY =
+  "Tax couldn't be calculated for this country. Choose a different billing country.";
 
-  const retry = useCallback(() => setRetryTick((t) => t + 1), []);
+async function taxPreviewErrorCopy(error: unknown): Promise<string> {
+  const ctx = (error as { context?: unknown } | null)?.context;
+  if (
+    ctx !== null &&
+    typeof ctx === "object" &&
+    typeof (ctx as { text?: () => Promise<string> }).text === "function"
+  ) {
+    try {
+      const raw = await (ctx as { text: () => Promise<string> }).text();
+      const parsed = JSON.parse(raw) as { error?: unknown };
+      if (parsed.error === "tax_country_unsupported") {
+        return TAX_COUNTRY_UNSUPPORTED_COPY;
+      }
+    } catch {
+      // Fall through to generic retry copy.
+    }
+  }
+  return "Couldn't calculate tax. Tap to retry.";
+}
 
-  useEffect(() => {
-    if (!enabled || key.length === 0) {
-      setStatus("idle");
+export const CartTaxPreview: React.FC<Props> = ({
+  eventId,
+  lines,
+  buyer,
+  currency,
+  disabled = false,
+  onPreviewChange,
+}) => {
+  const [address, setAddress] = useState<BuyerAddress>({
+    line1: "",
+    city: "",
+    state: "",
+    postal: "",
+    country: "US",
+  });
+  const [preview, setPreview] = useState<CartTaxPreviewResult | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const complete = useMemo(
+    () =>
+      address.line1.trim().length > 0 &&
+      address.city.trim().length > 0 &&
+      address.postal.trim().length > 0 &&
+      /^[A-Z]{2}$/.test(address.country.trim()),
+    [address],
+  );
+
+  const updateAddress = useCallback(
+    (patch: Partial<BuyerAddress>) => {
+      setAddress((current) => ({ ...current, ...patch }));
       setPreview(null);
+      onPreviewChange(null);
+    },
+    [onPreviewChange],
+  );
+
+  const calculate = useCallback(async () => {
+    if (!complete || disabled || loading) return;
+    setLoading(true);
+    setError(null);
+    const cleanAddress = {
+      ...address,
+      line1: address.line1.trim(),
+      line2: address.line2?.trim() || undefined,
+      city: address.city.trim(),
+      state: address.state?.trim() || undefined,
+      postal: address.postal.trim(),
+      country: address.country.trim().toUpperCase(),
+    };
+    const { data, error: invokeError } = await supabase.functions.invoke<{
+      calculationId: string | null;
+      subtotalCents: number;
+      taxCents: number;
+      totalCents: number;
+      taxBreakdown: unknown[];
+    }>("ticket-checkout-create", {
+      body: {
+        eventId,
+        surface: "native",
+        mode: "preview",
+        buyer: { ...buyer, address: cleanAddress },
+        lines,
+      },
+    });
+    setLoading(false);
+    if (invokeError || !data) {
+      setError(await taxPreviewErrorCopy(invokeError));
+      onPreviewChange(null);
       return;
     }
-
-    let cancelled = false;
-    const token = ++requestRef.current;
-    setStatus("loading");
-
-    void (async () => {
-      const { data, error } = await supabase.functions.invoke<PreviewResponse>(
-        "ticket-checkout-create",
-        {
-          body: {
-            eventId,
-            surface: "native",
-            mode: "preview",
-            // No address — the engine sources tax at the venue (SPEC §B.1).
-            buyer: {
-              name: buyer.name,
-              email: buyer.email,
-              phone: buyer.phone,
-              marketingOptIn: buyer.marketingOptIn === true,
-            },
-            lines: lines.filter((l) => l.quantity > 0),
-          },
-        },
-      );
-      if (cancelled || token !== requestRef.current) return;
-      if (error || !data) {
-        setStatus("error");
-        setPreview(null);
-        return;
-      }
-      setPreview({
-        calculationId: data.calculationId ?? null,
-        subtotalCents: data.subtotalCents,
-        taxCents: data.taxCents,
-        totalCents: data.totalCents,
-        currency: data.currency ?? data.pricingBreakdown?.currency ?? "GBP",
-        pricingBreakdown: data.pricingBreakdown ?? null,
-        taxBreakdown: data.taxBreakdown ?? [],
-      });
-      setStatus("ready");
-    })();
-
-    return () => {
-      cancelled = true;
+    const next = {
+      address: cleanAddress,
+      calculationId: data.calculationId,
+      subtotalCents: data.subtotalCents,
+      taxCents: data.taxCents,
+      totalCents: data.totalCents,
+      taxBreakdown: data.taxBreakdown ?? [],
     };
-    // `key` captures the line set; buyer fields are stable per session.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, key, eventId, retryTick]);
+    setPreview(next);
+    onPreviewChange(next);
+  }, [
+    address,
+    buyer,
+    complete,
+    disabled,
+    eventId,
+    lines,
+    loading,
+    onPreviewChange,
+  ]);
 
-  return { status, preview, retry };
+  return (
+    <View style={styles.wrap}>
+      <Text style={styles.label}>BILLING ADDRESS</Text>
+      <TextInput
+        accessibilityLabel="Billing address line 1"
+        placeholder="Address line 1"
+        placeholderTextColor="rgba(255,255,255,0.45)"
+        style={styles.input}
+        value={address.line1}
+        autoComplete="address-line1"
+        textContentType="streetAddressLine1"
+        onChangeText={(line1) => updateAddress({ line1 })}
+      />
+      <TextInput
+        accessibilityLabel="Billing address line 2"
+        placeholder="Address line 2"
+        placeholderTextColor="rgba(255,255,255,0.45)"
+        style={styles.input}
+        value={address.line2 ?? ""}
+        autoComplete="address-line2"
+        textContentType="streetAddressLine2"
+        onChangeText={(line2) => updateAddress({ line2 })}
+      />
+      <View style={styles.row}>
+        <TextInput
+          accessibilityLabel="Billing city"
+          placeholder="City"
+          placeholderTextColor="rgba(255,255,255,0.45)"
+          style={[styles.input, styles.flex]}
+          value={address.city}
+          textContentType="addressCity"
+          onChangeText={(city) => updateAddress({ city })}
+        />
+        <TextInput
+          accessibilityLabel="Billing state or region"
+          placeholder="State"
+          placeholderTextColor="rgba(255,255,255,0.45)"
+          style={[styles.input, styles.state]}
+          value={address.state ?? ""}
+          textContentType="addressState"
+          onChangeText={(state) => updateAddress({ state })}
+        />
+      </View>
+      <View style={styles.row}>
+        <TextInput
+          accessibilityLabel="Billing postal code"
+          placeholder="Postal code"
+          placeholderTextColor="rgba(255,255,255,0.45)"
+          style={[styles.input, styles.flex]}
+          value={address.postal}
+          autoComplete="postal-code"
+          textContentType="postalCode"
+          onChangeText={(postal) => updateAddress({ postal })}
+        />
+        <TextInput
+          accessibilityLabel="Billing country"
+          placeholder="US"
+          autoCapitalize="characters"
+          maxLength={2}
+          placeholderTextColor="rgba(255,255,255,0.45)"
+          style={[styles.input, styles.country]}
+          value={address.country}
+          autoComplete="country"
+          onChangeText={(country) =>
+            updateAddress({ country: country.toUpperCase() })}
+        />
+      </View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Calculate tax"
+        disabled={!complete || disabled || loading}
+        onPress={calculate}
+        style={[
+          styles.button,
+          (!complete || disabled) && styles.buttonDisabled,
+        ]}
+      >
+        {loading
+          ? <ActivityIndicator color="#ffffff" />
+          : <Text style={styles.buttonText}>Calculate tax</Text>}
+      </Pressable>
+      {preview
+        ? (
+          <View style={styles.summary}>
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Tax</Text>
+              <Text style={styles.summaryValue}>
+                {money(preview.taxCents, currency)}
+              </Text>
+            </View>
+            <View style={styles.summaryRow}>
+              <Text style={styles.totalLabel}>Total</Text>
+              <Text style={styles.totalValue}>
+                {money(preview.totalCents, currency)}
+              </Text>
+            </View>
+          </View>
+        )
+        : error
+        ? <Text style={styles.error}>{error}</Text>
+        : null}
+    </View>
+  );
 };
+
+const styles = StyleSheet.create({
+  wrap: { gap: 10, marginTop: 16 },
+  label: { color: "rgba(255,255,255,0.62)", fontSize: 12, fontWeight: "700" },
+  input: {
+    minHeight: 44,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.14)",
+    color: "#ffffff",
+    paddingHorizontal: 12,
+  },
+  row: { flexDirection: "row", gap: 10 },
+  flex: { flex: 1 },
+  state: { width: 96 },
+  country: { width: 76 },
+  button: {
+    alignItems: "center",
+    borderRadius: 12,
+    backgroundColor: "#f97316",
+    paddingVertical: 12,
+  },
+  buttonDisabled: { opacity: 0.45 },
+  buttonText: { color: "#ffffff", fontWeight: "800" },
+  summary: { gap: 8 },
+  summaryRow: { flexDirection: "row", justifyContent: "space-between" },
+  summaryLabel: { color: "rgba(255,255,255,0.72)" },
+  summaryValue: { color: "#ffffff" },
+  totalLabel: { color: "#ffffff", fontWeight: "800" },
+  totalValue: { color: "#ffffff", fontWeight: "800" },
+  error: { color: "#fecaca" },
+});

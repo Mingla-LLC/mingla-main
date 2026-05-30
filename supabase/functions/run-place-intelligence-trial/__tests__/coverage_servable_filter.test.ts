@@ -128,22 +128,37 @@ Deno.test("Finding A — empty city (0 servable, N evaluated) returns 0/0/0", ()
   assertEquals(agg.coverage_pct, 0);
 });
 
-// ── Source-inspect: the JOIN filter MUST be present in the edge fn. ──
-Deno.test("Finding A — source contains place_pool!inner join + is_servable filter", async () => {
-  const url = new URL("../index.ts", import.meta.url);
-  const src = await Deno.readTextFile(url);
+// ── Source-inspect (ORCH-1017): the aggregation moved from JS into the
+//    pg_intelligence_coverage() RPC to fix the Edge WORKER_LIMIT / HTTP 546.
+//    The two-key revert detector is repointed at the new architecture:
+//      key 1 — index.ts calls the RPC (and no longer hand-rolls the JS query);
+//      key 2 — the migration's `evaluated` CTE preserves the is_servable join
+//              (ORCH-1013 Finding A) so coverage can't re-inflate from drifted
+//              rows. A revert to the JS 6-query path fails key 1; dropping the
+//              is_servable join in SQL fails key 2.
+Deno.test("Finding A — RPC + migration preserve the is_servable evaluated filter", async () => {
+  const src = await Deno.readTextFile(new URL("../index.ts", import.meta.url));
   assert(
-    src.includes(
-      'select("city_id, place_pool_id, place_pool!inner(is_servable)")',
+    src.includes('db.rpc("pg_intelligence_coverage")'),
+    "handleIntelligenceCoverage must call the pg_intelligence_coverage RPC — ORCH-1017",
+  );
+
+  const sql = await Deno.readTextFile(
+    new URL(
+      "../../../migrations/20260807000000_orch_1017_pg_intelligence_coverage.sql",
+      import.meta.url,
     ),
-    "completedRes query must select place_pool!inner(is_servable) — ORCH-1013 Finding A regression",
   );
   assert(
-    src.includes('.eq("place_pool.is_servable", true)'),
-    "completedRes query must filter to place_pool.is_servable = true — ORCH-1013 Finding A regression",
+    /JOIN\s+place_pool\s+pp\s+ON\s+pp\.id\s*=\s*tr\.place_pool_id/i.test(sql),
+    "evaluated CTE must JOIN place_pool to gate on servability — ORCH-1013 Finding A regression",
   );
   assert(
-    src.includes("ORCH-1013 Finding A"),
-    "Finding A comment marker missing — comment provides traceability for the join hint",
+    /pp\.is_servable\s*=\s*true/i.test(sql),
+    "evaluated CTE must filter pp.is_servable = true — ORCH-1013 Finding A regression",
+  );
+  assert(
+    /COUNT\s*\(\s*DISTINCT\s+tr\.place_pool_id\s*\)/i.test(sql),
+    "evaluated CTE must COUNT DISTINCT place_pool_id (dedupe across mode changes) — ORCH-1013 Finding A",
   );
 });

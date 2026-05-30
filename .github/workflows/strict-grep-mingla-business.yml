@@ -1103,6 +1103,39 @@ jobs:
       - name: Run I-ARI-NO-OKLCH gate
         run: node .github/scripts/strict-grep/i-ari-no-oklch.mjs
 
+  i-ai-signal-scores-column-sole-owner:
+    name: "I-AI-SIGNAL-SCORES-COLUMN-SOLE-OWNER: only run-place-intelligence-trial writes the column"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run I-AI-SIGNAL-SCORES-COLUMN-SOLE-OWNER gate
+        run: node .github/scripts/strict-grep/i-ai-signal-scores-column-sole-owner.mjs
+
+  i-consumer-reads-ai-signal-scores-not-trial-table:
+    name: "I-CONSUMER-READS-AI-SIGNAL-SCORES-NOT-TRIAL-TABLE: consumer ranker reads place_pool.ai_signal_scores, never trial table"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run I-CONSUMER-READS-AI-SIGNAL-SCORES-NOT-TRIAL-TABLE gate
+        run: node .github/scripts/strict-grep/i-consumer-reads-ai-signal-scores-not-trial-table.mjs
+
+  i-ai-score-staleness-auto-recovered:
+    name: "I-AI-SCORE-STALENESS-AUTO-RECOVERED: META-ORCH-1009 Sub-D rescore-sweep cron registered + sole-writer for place_scores.ai_signal_scores_at"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run I-AI-SCORE-STALENESS-AUTO-RECOVERED gate
+        run: node .github/scripts/strict-grep/meta-orch-1009-sub-d-ai-score-staleness-recovery.mjs
+
   i-ari-user-jwt-only:
     name: "I-ARI-USER-JWT-ONLY: Ari edge handlers never reference service role"
     runs-on: ubuntu-latest

@@ -1,15 +1,18 @@
 /**
- * RunRemainderOnAllConfirmModal — ORCH-1013 Finding B
+ * RunRemainderOnAllConfirmModal — ORCH-1013 Finding B + ORCH-1015 Finding C
  *
- * Bulk-launch confirmation modal for "Run remainder on all un-evaluated cities".
- * Mirrors the cost-guard shape of RunRemainderConfirmModal (single city) but
- * with a city-list body + a single typed-confirm phrase ("RUN ALL") for
- * totals >$10 (typing every city name is hostile UX — SPEC §7-D6).
+ * Bulk-launch confirmation modal for "Run remainder on all ready cities" (was
+ * "…un-evaluated cities" pre-1015). Mirrors the cost-guard shape of
+ * RunRemainderConfirmModal (single city) but with a city-list body + a single
+ * typed-confirm phrase ("RUN ALL") for totals >$10.
+ *
+ * ORCH-1015 adds `skippedCities` prop — cities with remainder that are NOT
+ * fully ready (boundary or details ⚠). Rendered in a sibling panel below the
+ * totals block so the operator sees them, but they NEVER enter the dispatcher
+ * (onConfirm fires with safeCities only). Per SPEC §3 C.2 + C.3.
  *
  * Gemini 2.5 Flash pricing reference (COMMS-0003):
  * https://ai.google.dev/pricing/gemini-2-5-flash (verified 2026-05-30).
- *
- * SPEC §3 B.5.
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -25,6 +28,7 @@ export function RunRemainderOnAllConfirmModal({
   open,
   onClose,
   candidateCities = [],
+  skippedCities = [],
   perPlaceCostUsd = DEFAULT_PER_PLACE_COST_USD,
   onConfirm,
 }) {
@@ -82,14 +86,16 @@ export function RunRemainderOnAllConfirmModal({
     <Modal
       open={open}
       onClose={onClose}
-      title={`Run remainder on ${safeCities.length} un-evaluated ${cityWord}`}
+      title={`Run remainder on ${safeCities.length} ready ${cityWord}`}
       size="md"
     >
       <ModalBody>
         <div className="flex flex-col gap-4">
           <p className="text-sm text-[var(--color-text-primary)] leading-6">
-            This will queue a remainder run for every city with un-evaluated
-            servable places, using Gemini 2.5 Flash.
+            This will queue a remainder run for every city where Boundary +
+            Details are both current, using Gemini 2.5 Flash. Cities needing
+            reseed or detail refresh are listed below as skipped — fix those
+            in Place Pool first.
           </p>
 
           {/* Per-city list */}
@@ -138,6 +144,32 @@ export function RunRemainderOnAllConfirmModal({
               <span className="ml-1">(verified 2026-05-30)</span>
             </p>
           </div>
+
+          {/* ORCH-1015 Finding C — skipped cities panel. Cities with remainder
+              that are NOT fully ready (boundary or details ⚠). Listed for
+              visibility; NEVER passed to onConfirm. Per SPEC §3 C.3. */}
+          {skippedCities.length > 0 && (
+            <div className="rounded-lg border border-[var(--gray-200)] bg-[var(--gray-50)]">
+              <div className="px-3 py-2 text-[10px] uppercase tracking-wide font-mono text-[var(--color-text-tertiary)] border-b border-[var(--gray-200)]">
+                Skipped — needs prep first ({skippedCities.length})
+              </div>
+              <div className="divide-y divide-[var(--gray-200)] max-h-[160px] overflow-y-auto">
+                {skippedCities.map((c) => (
+                  <div
+                    key={c.city_id}
+                    className="flex items-baseline justify-between gap-3 px-3 py-2 text-sm"
+                  >
+                    <span className="text-[var(--color-text-secondary)] font-medium truncate">
+                      {c.city_name}
+                    </span>
+                    <span className="text-xs text-[var(--color-warning-700)] shrink-0">
+                      {c.skip_reason}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* High-cost gate: typed phrase */}
           {requiresTypedConfirm && (

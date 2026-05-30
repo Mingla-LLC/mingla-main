@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
-import { Mochiy_Pop_One, Nunito_Sans } from 'next/font/google'
+import { Mochiy_Pop_One, Nunito_Sans, Inter } from 'next/font/google'
 import './globals.css'
+import { ContentProtection } from '@/components/marketing/content-protection'
 
 // Brand display — matches the live usemingla.com brand font.
 // Mochiy Pop One ships in a single weight (400) with no italic axis.
@@ -19,6 +20,16 @@ const nunito = Nunito_Sans({
   weight: ['400', '500', '600', '700'],
 })
 
+// Dashboard / product UI font — a neutral corporate grotesque used INSIDE the
+// product-mockup surfaces (hero dashboard card + the adapted dashboard widgets)
+// so they read like real software, not branded marketing type (ORCH-1010).
+const inter = Inter({
+  subsets: ['latin'],
+  variable: '--font-inter',
+  display: 'swap',
+  weight: ['400', '500', '600', '700'],
+})
+
 export const metadata: Metadata = {
   title: { default: 'Mingla — Find a vibe, not a venue.', template: '%s — Mingla' },
   description:
@@ -28,7 +39,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${mochiy.variable} ${nunito.variable}`}>
+    <html lang="en" className={`${mochiy.variable} ${nunito.variable} ${inter.variable}`}>
       <body>
         <a
           href="#main"
@@ -37,6 +48,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           Skip to content
         </a>
         {children}
+        <ContentProtection />
       </body>
     </html>
   )

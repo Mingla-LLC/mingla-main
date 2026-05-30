@@ -594,6 +594,12 @@ function buildCardStop(
     comboCategory: opts.comboCategory,
     // ORCH-0985: vibe rank signal (for Replace ordering); omitted when absent.
     ...(opts.rankSignal ? { rankSignal: opts.rankSignal } : {}),
+    // META-ORCH-1009 Sub-B — per-signal Gemini Q2 reasoning slice (keyed by
+    // rankSignal). Omitted when unevaluated or no reasoning string. Mobile
+    // ExpandedCardModal renders this in the "Why we picked this for you"
+    // section. signalRankFetch.fetchSinglesForSignalRank produced this from
+    // place_pool.ai_signal_scores[rankSignal].reasoning.
+    ...(card.aiReasoningBySignal ? { aiReasoningBySignal: card.aiReasoningBySignal } : {}),
   };
 }
 

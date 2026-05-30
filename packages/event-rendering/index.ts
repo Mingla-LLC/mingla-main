@@ -41,6 +41,18 @@ export { EventCover } from "./EventCover";
 export type { EventCoverProps } from "./EventCover";
 export { resolveEventCoverMediaPresentation } from "./coverMediaPresentation";
 export { shouldFreezeCoverForReduceMotion } from "./coverMediaPresentation";
+// ORCH-1016 — shared trip date-range formatter (consumer TripCard/detail +
+// business TripPreview/public page format trip dates identically).
+export { formatTripDateRange } from "./formatTripDateRange";
+export type { FormatTripDateRangeOptions } from "./formatTripDateRange";
+// ORCH-1016 — shared refund ladder (consumer trip detail + business public/
+// preview render the identical ladder; business side is a re-export shim).
+export { RefundPolicyDisplay } from "./RefundPolicyDisplay";
+export type {
+  RefundPolicyDisplayProps,
+  RefundPolicyShape,
+  RefundPolicyTier,
+} from "./RefundPolicyDisplay";
 // ORCH-0964 — BlurView wrapper that skips backdrop-filter on mobile web (where
 // stacked blur hard-crashes the renderer). Used by public brand + event pages.
 export { GlassBlur } from "./GlassBlur";

@@ -49,9 +49,23 @@ import {
 } from "@mingla/event-rendering";
 
 import { Icon } from "../ui/Icon";
-import { useCartAllInPreview } from "../checkout/CartTaxPreview";
+import {
+  CartTaxPreview,
+  type CartTaxPreviewResult,
+} from "../checkout/CartTaxPreview";
 import { ConsumerCartCard } from "./ConsumerCartCard";
 import { type CartLineSeed, useTicketCart } from "../../hooks/useTicketCart";
+import {
+  ConsumerIntakeForm,
+  tierHasUnsupportedRequired,
+} from "./ConsumerIntakeForm";
+import {
+  buildIntakeFormData,
+  type IntakeAnswerValue,
+  type IntakeFormData,
+  type IntakeSchema,
+  validateAnswerAgainstSchema,
+} from "../../services/tripIntakeSchemaService";
 
 // ORCH-0847 Phase C — snap to ~92% so the sheet rises just above the
 // consumer app's bottom tab bar, leaving a thin backdrop strip at the
@@ -128,9 +142,15 @@ const isVisibleForConsumer = (ticket: PublicTicketProps): boolean =>
 export interface TicketCartCheckoutPayload {
   lines: Array<{ ticketTypeId: string; quantity: number }>;
   marketingOptIn: boolean;
-  /** All-in buyer total from the no-address `mode:"preview"` engine call. */
   totalCents: number;
   taxCalculationId: string | null;
+  address: CartTaxPreviewResult["address"];
+  /**
+   * ORCH-1016 REWORK (D2) — per-tier trip intake answers for selected tiers
+   * that carry an intake schema. Empty array when no selected tier has a
+   * schema (the common case) so non-intake checkouts add nothing to the body.
+   */
+  intakeFormData: IntakeFormData[];
 }
 
 export interface TicketCartSheetProps {
@@ -138,6 +158,12 @@ export interface TicketCartSheetProps {
   eventId: string;
   /** From `usePublicEventTickets(eventId)`. `undefined` = loading. */
   tickets: ReadonlyArray<PublicTicketProps> | undefined;
+  /**
+   * ORCH-1016 REWORK (D2) — per-tier trip intake schemas keyed by
+   * ticket_type_id (from `useTripIntakeSchemas(eventId)`). Empty/undefined when
+   * the trip requires no intake (the common case) → no intake step renders.
+   */
+  intakeSchemasByTier?: Map<string, IntakeSchema>;
   /** Event currency fallback (used until a line is added). */
   fallbackCurrency: string;
   /** Seed the cart with this tier at quantity 1 on open. */
@@ -158,6 +184,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   tickets,
   fallbackCurrency,
   initialTicketTypeId,
+  intakeSchemasByTier,
   buyerName,
   buyerEmail,
   buyerPhone,
@@ -170,10 +197,52 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     fallbackCurrency,
   );
   const [marketingOptIn, setMarketingOptIn] = useState<boolean>(false);
-  // ORCH-1006 Surface 6 — the "What's included" disclosure panel (Airbnb-style
-  // tap-to-open; default view is just the all-in number + the quiet incl. line).
-  const [showBreakdown, setShowBreakdown] = useState<boolean>(false);
+  const [taxPreview, setTaxPreview] = useState<CartTaxPreviewResult | null>(
+    null,
+  );
+  // ORCH-1016 REWORK (D2) — per-tier intake answers + per-tier per-question
+  // validation errors. Keyed by ticket_type_id → { [questionId]: value/error }.
+  const [intakeAnswers, setIntakeAnswers] = useState<
+    Record<string, Record<string, IntakeAnswerValue>>
+  >({});
+  const [intakeErrors, setIntakeErrors] = useState<
+    Record<string, Record<string, string>>
+  >({});
   const lastOpenSeedRef = React.useRef<string | null>(null);
+
+  // Tiers in the cart (qty > 0) that carry an intake schema.
+  const selectedSchemaTiers = useMemo<
+    Array<{ tierId: string; tierName: string; schema: IntakeSchema }>
+  >(() => {
+    if (intakeSchemasByTier === undefined || intakeSchemasByTier.size === 0) {
+      return [];
+    }
+    return lines
+      .filter((l) => l.quantity > 0)
+      .map((l) => {
+        const schema = intakeSchemasByTier.get(l.ticketTypeId);
+        if (schema === undefined) return null;
+        return {
+          tierId: l.ticketTypeId,
+          tierName: l.ticketName,
+          schema,
+        };
+      })
+      .filter(
+        (
+          t,
+        ): t is { tierId: string; tierName: string; schema: IntakeSchema } =>
+          t !== null,
+      );
+  }, [lines, intakeSchemasByTier]);
+
+  // True when a selected tier requires something this surface can't collect
+  // (a required file_upload) — keeps the CTA disabled with a clear message
+  // instead of letting the buyer hit a server-side 400.
+  const hasUnsupportedRequired = useMemo<boolean>(
+    () => selectedSchemaTiers.some((t) => tierHasUnsupportedRequired(t.schema)),
+    [selectedSchemaTiers],
+  );
 
   // META-ORCH-0991 Wave A — open/close is owned by BaseBottomSheet
   // (declarative `visible`). The prior sheetRef + snapToIndex/close effect is
@@ -199,7 +268,9 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
       lastOpenSeedRef.current = null;
       reset();
       setMarketingOptIn(false);
-      setShowBreakdown(false);
+      setTaxPreview(null);
+      setIntakeAnswers({});
+      setIntakeErrors({});
     }
   }, [
     visible,
@@ -215,65 +286,76 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     onCancel();
   }, [isSubmitting, onCancel]);
 
-  // ORCH-1006 Surface 6 — headless all-in preview (no address). Fires the
-  // repurposed `mode:"preview"` engine call as soon as the cart has a paid
-  // line; the resolved `buyer_total` + breakdown drive the sticky bar.
-  const previewLines = useMemo(
-    () =>
-      lines
-        .filter((l) => l.quantity > 0)
-        .map((l) => ({ ticketTypeId: l.ticketTypeId, quantity: l.quantity })),
-    [lines],
+  const setTierAnswers = useCallback(
+    (tierId: string, next: Record<string, IntakeAnswerValue>): void => {
+      setIntakeAnswers((prev) => ({ ...prev, [tierId]: next }));
+      // Clear the tier's surfaced errors as the buyer edits.
+      setIntakeErrors((prev) => {
+        if (prev[tierId] === undefined) return prev;
+        const copy = { ...prev };
+        delete copy[tierId];
+        return copy;
+      });
+    },
+    [],
   );
-  // Free carts never need a price preview (no money moves) — gate it off so the
-  // CTA enables immediately for "Claim Free Ticket".
-  const previewEnabled =
-    visible && !isSubmitting && !totals.isEmpty && !totals.isFree;
-  const { status: previewStatus, preview, retry: retryPreview } =
-    useCartAllInPreview({
-      eventId: _eventId,
-      lines: previewLines,
-      buyer: {
-        name: buyerName,
-        email: buyerEmail,
-        phone: buyerPhone,
-        marketingOptIn,
-      },
-      enabled: previewEnabled,
-    });
-
-  // The all-in total to show + commit. Free carts resolve to 0 with no preview.
-  const allInTotalCents = totals.isFree ? 0 : preview?.totalCents ?? null;
-  const allInCurrency = preview?.currency ?? totals.currency;
-  const breakdown = preview?.pricingBreakdown ?? null;
-  const previewResolved = totals.isFree || previewStatus === "ready";
 
   const handleConfirm = useCallback((): void => {
-    if (totals.isEmpty || isSubmitting) return;
-    if (totals.isFree) {
-      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      onCheckout({
-        lines: previewLines,
-        marketingOptIn,
-        totalCents: 0,
-        taxCalculationId: null,
-      });
-      return;
+    if (totals.isEmpty || isSubmitting || taxPreview === null) return;
+    if (hasUnsupportedRequired) return;
+
+    // ORCH-1016 REWORK (D2) — required-field validation BEFORE payment.
+    // Mirrors the business validator AND the edge fn's required gate so the
+    // buyer never reaches the PaymentSheet (or a server 400) with a required
+    // intake question unanswered.
+    if (selectedSchemaTiers.length > 0) {
+      const nextErrors: Record<string, Record<string, string>> = {};
+      for (const tier of selectedSchemaTiers) {
+        const tierAnswers = intakeAnswers[tier.tierId] ?? {};
+        const errs = validateAnswerAgainstSchema(tier.schema, tierAnswers);
+        if (errs.length > 0) {
+          nextErrors[tier.tierId] = errs.reduce<Record<string, string>>(
+            (acc, e) => {
+              acc[e.question_id] = e.error;
+              return acc;
+            },
+            {},
+          );
+        }
+      }
+      if (Object.keys(nextErrors).length > 0) {
+        setIntakeErrors(nextErrors);
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        return;
+      }
     }
-    if (preview === null) return;
+
+    const intakeFormData = buildIntakeFormData(
+      selectedSchemaTiers.map((t) => t.tierId),
+      intakeSchemasByTier ?? new Map<string, IntakeSchema>(),
+      intakeAnswers,
+    );
+
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     onCheckout({
-      lines: previewLines,
+      lines: lines
+        .filter((l) => l.quantity > 0)
+        .map((l) => ({ ticketTypeId: l.ticketTypeId, quantity: l.quantity })),
       marketingOptIn,
-      totalCents: preview.totalCents,
-      taxCalculationId: preview.calculationId,
+      totalCents: taxPreview.totalCents,
+      taxCalculationId: taxPreview.calculationId,
+      address: taxPreview.address,
+      intakeFormData,
     });
   }, [
     totals.isEmpty,
-    totals.isFree,
     isSubmitting,
-    preview,
-    previewLines,
+    taxPreview,
+    hasUnsupportedRequired,
+    selectedSchemaTiers,
+    intakeAnswers,
+    intakeSchemasByTier,
+    lines,
     marketingOptIn,
     onCheckout,
   ]);
@@ -308,45 +390,24 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
       return "populated";
     })();
 
-  // ORCH-1006 Surface 6 — CTA enables the instant the cart is non-empty AND the
-  // all-in preview has resolved (free carts skip the preview). While the preview
-  // is in flight the CTA shows "Getting your price…" — never a dead grey button.
   const ctaLabel = totals.isEmpty
     ? "Add tickets above"
+    : hasUnsupportedRequired
+    ? "Reserve on web to continue"
     : totals.isFree
     ? "Claim Free Ticket"
-    : !previewResolved
-    ? "Getting your price…"
-    : allInTotalCents !== null
-    ? `Pay ${formatCentsCurrency(allInTotalCents, allInCurrency)}`
     : "Continue to Payment";
   const ctaDisabled =
     totals.isEmpty ||
     isSubmitting ||
-    (!totals.isFree && (preview === null || allInTotalCents === null));
+    taxPreview === null ||
+    hasUnsupportedRequired;
 
-  // The hero "Total" number on the sticky bar.
-  const totalValueText = totals.isEmpty
+  const subtotalValueText = totals.isEmpty
     ? "—"
     : totals.isFree
     ? "Free"
-    : allInTotalCents !== null
-    ? formatCentsCurrency(allInTotalCents, allInCurrency)
-    : "—";
-
-  // The quiet, region/switch-aware "incl. …" reassurance line (GB inclusive
-  // VAT). Only shown once a paid preview resolves with a VAT or passed fee.
-  const inclLineText = ((): string | null => {
-    if (totals.isFree || breakdown === null) return null;
-    const hasVat = breakdown.components.tax_cents > 0;
-    const hasPassedFee =
-      breakdown.passed.service_fee_cents > 0 ||
-      breakdown.passed.mingla_fee_cents > 0;
-    if (hasVat && hasPassedFee) return "incl. VAT & fees";
-    if (hasPassedFee) return "incl. fees";
-    if (hasVat) return "incl. VAT";
-    return null;
-  })();
+    : formatCentsCurrency(totals.totalCents, totals.currency);
 
   const stickyBarStyle = useMemo(
     () => [styles.stickyBar, { paddingBottom: insets.bottom + 16 }],
@@ -469,94 +530,54 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
             <BuyerRow label="Phone" value={buyerPhone} />
           </View>
         </ConsumerCartCard>
+
+        {/* ORCH-1016 REWORK (D2) — per-tier trip intake forms. Only renders for
+            selected tiers that carry an intake schema; the no-schema path shows
+            nothing here. */}
+        {selectedSchemaTiers.length > 0 ? (
+          <View style={styles.intakeSection}>
+            <Text style={styles.sectionLabel}>BEFORE YOU GO</Text>
+            {selectedSchemaTiers.map((tier) => (
+              <ConsumerIntakeForm
+                key={tier.tierId}
+                schema={tier.schema}
+                tierName={tier.tierName}
+                answers={intakeAnswers[tier.tierId] ?? {}}
+                onAnswersChange={(next) => setTierAnswers(tier.tierId, next)}
+                validationErrors={intakeErrors[tier.tierId]}
+                disabled={isSubmitting}
+              />
+            ))}
+          </View>
+        ) : null}
+
+        <CartTaxPreview
+          eventId={_eventId}
+          lines={lines
+            .filter((l) => l.quantity > 0)
+            .map((l) => ({
+              ticketTypeId: l.ticketTypeId,
+              quantity: l.quantity,
+            }))}
+          buyer={{
+            name: buyerName,
+            email: buyerEmail,
+            phone: buyerPhone,
+            marketingOptIn,
+          }}
+          currency={totals.currency}
+          disabled={isSubmitting || totals.isEmpty}
+          onPreviewChange={setTaxPreview}
+        />
       </>
     );
 
   const stickyFooter =
     renderState === "populated" ? (
       <View style={stickyBarStyle}>
-        {/* ORCH-1006 Surface 6 — "What's included" panel (opens above the bar,
-            reassurance only; mirrors the receipt row set). */}
-        {showBreakdown && breakdown !== null && !totals.isEmpty ? (
-          <View style={styles.includedPanel}>
-            <Text style={styles.includedTitle}>What&apos;s included</Text>
-            <View style={styles.includedRow}>
-              <Text style={styles.includedLabel}>Tickets</Text>
-              <Text style={styles.includedValue}>
-                {formatCentsCurrency(
-                  // Tickets line FOLDS the passed Mingla platform fee into the
-                  // subtotal (operator decision — no buyer-facing "Mingla fee"
-                  // line). Service fee stays its own disclosed line below.
-                  breakdown.base_cents + breakdown.passed.mingla_fee_cents,
-                  allInCurrency,
-                )}
-              </Text>
-            </View>
-            {breakdown.passed.service_fee_cents > 0 ? (
-              <View style={styles.includedRow}>
-                <Text style={styles.includedLabel}>Service fee</Text>
-                <Text style={styles.includedValue}>
-                  {formatCentsCurrency(
-                    breakdown.passed.service_fee_cents,
-                    allInCurrency,
-                  )}
-                </Text>
-              </View>
-            ) : null}
-            <View style={styles.includedDivider} />
-            <View style={styles.includedRow}>
-              <Text style={styles.includedTotalLabel}>Total</Text>
-              <Text style={styles.includedTotalValue}>
-                {allInTotalCents !== null
-                  ? formatCentsCurrency(allInTotalCents, allInCurrency)
-                  : "—"}
-              </Text>
-            </View>
-            {breakdown.components.tax_cents > 0 ? (
-              <Text style={styles.includedVatNote}>
-                Includes{" "}
-                {formatCentsCurrency(
-                  breakdown.components.tax_cents,
-                  allInCurrency,
-                )}{" "}
-                VAT
-              </Text>
-            ) : null}
-          </View>
-        ) : null}
-
         <View style={styles.subtotalRow}>
-          <View style={styles.totalTextCol}>
-            <Text style={styles.subtotalLabel}>Total</Text>
-            {previewStatus === "error" && !totals.isFree ? (
-              <Pressable
-                onPress={retryPreview}
-                accessibilityRole="button"
-                accessibilityLabel="Couldn't load price, tap to retry"
-                hitSlop={6}
-              >
-                <Text style={styles.retryLine}>
-                  Couldn&apos;t load price — tap to retry
-                </Text>
-              </Pressable>
-            ) : inclLineText !== null ? (
-              <Pressable
-                onPress={() => setShowBreakdown((v) => !v)}
-                accessibilityRole="button"
-                accessibilityLabel="Show what's included"
-                hitSlop={6}
-              >
-                <Text style={styles.inclLine}>
-                  {inclLineText} {showBreakdown ? "⌃" : "⌄"}
-                </Text>
-              </Pressable>
-            ) : null}
-          </View>
-          {!previewResolved && !totals.isFree ? (
-            <ActivityIndicator color="rgba(255,255,255,0.65)" />
-          ) : (
-            <Text style={styles.subtotalValue}>{totalValueText}</Text>
-          )}
+          <Text style={styles.subtotalLabel}>Subtotal</Text>
+          <Text style={styles.subtotalValue}>{subtotalValueText}</Text>
         </View>
         <Pressable
           onPress={handleConfirm}
@@ -571,11 +592,6 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
         >
           {isSubmitting ? (
             <ActivityIndicator color="#ffffff" />
-          ) : !previewResolved && !totals.isFree ? (
-            <View style={styles.ctaInflightRow}>
-              <ActivityIndicator color="#ffffff" />
-              <Text style={styles.ctaLabel}>Getting your price…</Text>
-            </View>
           ) : (
             <Text style={styles.ctaLabel}>{ctaLabel}</Text>
           )}
@@ -744,6 +760,10 @@ const styles = StyleSheet.create({
   recapCard: {
     marginTop: 12,
   },
+  // ORCH-1016 REWORK (D2) — intake section
+  intakeSection: {
+    marginTop: 16,
+  },
   recapSectionLabel: {
     fontSize: 12,
     fontWeight: "600",
@@ -782,83 +802,13 @@ const styles = StyleSheet.create({
   subtotalRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
+    alignItems: "baseline",
     marginBottom: 8,
-  },
-  totalTextCol: {
-    flex: 1,
-    minWidth: 0,
-    gap: 2,
   },
   subtotalLabel: {
     fontSize: 13,
     fontWeight: "500",
     color: "rgba(255, 255, 255, 0.55)",
-  },
-  // ORCH-1006 Surface 6 — quiet "incl. VAT & fees ⌄" reassurance line.
-  inclLine: {
-    fontSize: 12,
-    fontWeight: "500",
-    color: "rgba(255, 255, 255, 0.45)",
-  },
-  retryLine: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#fca5a5",
-  },
-  ctaInflightRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  // ORCH-1006 Surface 6 — "What's included" panel (sunken card above the bar).
-  includedPanel: {
-    backgroundColor: "rgba(255, 255, 255, 0.05)",
-    borderRadius: 14,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(255, 255, 255, 0.10)",
-    padding: 16,
-    marginBottom: 12,
-    gap: 8,
-  },
-  includedTitle: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "rgba(255, 255, 255, 0.72)",
-    marginBottom: 2,
-  },
-  includedRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "baseline",
-  },
-  includedLabel: {
-    fontSize: 14,
-    color: "rgba(255, 255, 255, 0.72)",
-  },
-  includedValue: {
-    fontSize: 14,
-    color: "rgba(255, 255, 255, 0.96)",
-  },
-  includedDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(255, 255, 255, 0.12)",
-    marginVertical: 2,
-  },
-  includedTotalLabel: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "rgba(255, 255, 255, 0.96)",
-  },
-  includedTotalValue: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "rgba(255, 255, 255, 0.96)",
-  },
-  includedVatNote: {
-    fontSize: 12,
-    color: "rgba(255, 255, 255, 0.55)",
-    marginTop: 2,
   },
   subtotalValue: {
     fontSize: 20,
