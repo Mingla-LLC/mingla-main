@@ -459,3 +459,68 @@ Read on entry. No BLOCK/WARN entry targets ORCH-0998 or this skill. COMMS-0003 (
 
 ## Discoveries for orchestrator (real assembly)
 None. The interleave is deterministic and self-contained to `mingla-marketing/`. No other surface touched.
+
+---
+
+# ADDENDUM — Hero headline pill driven by the rotating deck (2026-05-29)
+
+## Goal
+Sync the headline pill ("Find <pill> that fit the vibe") to the rotating deck so the pill word always equals the deck's current FRONT card, both advancing on ONE 2000ms tick, and extend the pill vocabulary to cover event kinds (concerts / parties / festivals / events).
+
+## Files changed
+
+### lib/dc-showcase-events.ts
+**Before:** `ShowcaseEvent` had no kind discriminator for the pill.
+**Now:** Added `export type EventKind = 'Concert' | 'Party' | 'Festival' | 'Event'` and a required `kind: EventKind` field on every event. Assignments: "Off The Wall" MJ Tribute → Party; Alex Isley → Concert; National Symphony Orchestra → Concert; The Knocks x Dragonette x Aquaria → Party; Rooftop Vinyl Sundays → Party; Lincoln Cottage Jazz Picnic → Festival.
+**Why:** spec §3 — `kind` drives the event pill word and answers the "events don't match the vibe" ask. Event card UI left unchanged per spec ("don't overhaul the card").
+**Lines:** ~12.
+
+### lib/dc-showcase-places.ts
+**Before:** places carried only the Google `category`; the Mingla category lived in a comment.
+**Now:** Added `export type PlacePillIcon` (10-name union) plus required `pillLabel: string` + `pillIcon: PlacePillIcon` on every place, set per the spec §2 SINGLE-PLACE mapping (nature places/Trees, icebreaker places/Sparkles, drinks places/Martini, brunch places/Coffee, casual places/UtensilsCrossed, fine dining places/ChefHat, movie dates/Film, theatre shows/Drama, artsy places/Palette, play dates/Gamepad2). `pillIcon` is a string NAME (data file stays icon-library-free).
+**Why:** spec §2 — each card carries its own pill word+icon; explicit fields avoid fragile category-string matching.
+**Lines:** ~25.
+
+### components/sections/explorer-home/hero-place-deck.tsx
+**Before:** `HeroPlaceDeck` OWNED the rotation: local `order` state + a `setInterval(AUTO_MS=4200)` timer + hover-pause + visibilitychange. The pill was a separate, independent timer in hero.tsx.
+**Now:**
+- Replaced `AUTO_MS=4200` with `ROTATION_MS=2000` (the single shared cadence).
+- Added pill resolvers: `PLACE_PILL_ICONS` (name→LucideIcon), `INTENT_PILL` (intent id→{label,icon}), `EVENT_PILL` (kind→{label,icon}), `pillForSlot(slot)→DeckPill`, plus a `FALLBACK_PILL`.
+- Added `export function useDeckRotation(): DeckRotation` — the SINGLE SOURCE OF TRUTH. It owns the one `order` array, the one `ROTATION_MS` timer, hover-pause, visibilitychange, and reduced-motion. It returns `{ order, pill, onMouseEnter, onMouseLeave }` where `pill = pillForSlot(DECK_SLOTS[order[0]])`.
+- `HeroPlaceDeck` is now a CONTROLLED renderer taking an optional `rotation` prop (omitted → static first-3 fallback for the server-rendered /intent-preview comparison route). It no longer owns any timer.
+- Added new lucide imports (Music, PartyPopper, Tent, CalendarDays, Drama, + the place/intent icons).
+**Why:** spec §1 — one index drives BOTH front card and pill; spec §2 — slot→pill mapping.
+**Lines:** ~120.
+
+### components/sections/explorer-home/hero.tsx
+**Before:** owned the independent pill cycle: `PREFERENCE_CHIPS` (15 hardcoded labels), `CYCLE_MS=2800`, and `PreferenceChipCycle` with its OWN `setInterval`. The deck mounted as `<HeroPlaceDeck/>` with no shared state.
+**Now:**
+- Deleted `PREFERENCE_CHIPS`, `CYCLE_MS`, `PreferenceChip` interface, and the `PreferenceChipCycle` timer component.
+- Added `HeadlinePill({ pill })` — a controlled, timer-free pill that reuses the EXACT prior visual markup (white-glass rounded pill + warm icon chip). The label swap uses `AnimatePresence mode="popLayout"` keyed on `pill.label` to keep the same enter/exit motion feel; `layout` animates the width.
+- `ExplorerHero` now calls `const rotation = useDeckRotation()` once and passes `rotation.pill` to `<HeadlinePill>` and `rotation` to `<HeroPlaceDeck>`.
+- Trimmed the now-unused lucide imports (kept only `X`).
+**Why:** spec §1/§4 — pill is now card-driven on the shared 2000ms tick; visual style preserved.
+**Lines:** ~70.
+
+## Sync architecture (how the index is the single source of truth)
+`useDeckRotation()` (in hero-place-deck.tsx) holds ONE `order: number[]` state and ONE `window.setInterval(…, ROTATION_MS=2000)` that rotates it (front→back). `ExplorerHero` invokes the hook ONCE and threads its result two ways: `rotation` → `<HeroPlaceDeck>` (renders `order.slice(0,3)`, front card = `order[0]`), and `rotation.pill` → `<HeadlinePill>`. `rotation.pill = pillForSlot(DECK_SLOTS[order[0]])`, so the pill word is computed FROM the exact same front-card index the deck renders. There is no second timer anywhere: hover-pause / tab-hidden / reduced-motion all gate the single interval, so when rotation holds, both the deck's front card AND the pill hold the same card. Reduced-motion keeps `order` at its initial value → both surfaces stay on the first card/label. Net: card N front ⇔ pill shows card N's label, advancing together every 2s.
+
+## No-scroll conclusion (768px hero) — PRESERVED
+No dimension changed. `hero.tsx` section is still `h-[100svh]`; all three card types remain `CARD_H=360`/`CARD_W=260` (verified by grep). The pill keeps its fixed `h-[1.08em] overflow-hidden` box — the inner `AnimatePresence` label swap does not alter the pill's height or the headline line-box. Deck still mounts only 3 cards. The v2.1-locked one-screen math at 768px tall holds exactly as before.
+
+## Verification
+- `npx tsc --noEmit` (mingla-marketing): **clean, exit 0**.
+- Dev server `:3008` (running from THIS worktree, hot-reloaded — NOT restarted): `curl http://localhost:3008/` → **HTTP 200** (time ~0.12s). HMR hot-update chunks regenerated cleanly after the edits.
+- Served homepage HTML contains the pill structure: `>Find<`, `that fit the vibe`, the first front card "Anacostia Park", and its synced pill label "nature places" — proving the initial state is synced (front card = first place ⇒ pill = that place's label).
+- Built client bundle (`.next/static`) grep confirms the full new pill vocabulary is wired: **concerts (8 chunks), parties (8), festivals (8)** (the event-kind ask), plus theatre shows, movie dates, play dates, stroll routes.
+- `/intent-preview` (static comparison route) → **HTTP 200** — the optional-rotation fallback renders without the client hook.
+- Shared cadence confirmed: `ROTATION_MS = 2000` is the only rotation timer; `AUTO_MS`/`CYCLE_MS`/`PREFERENCE_CHIPS`/`PreferenceChipCycle` no longer exist in the production hero path (only in removal-doc comments).
+
+## Comms ledger
+Read on entry. No BLOCK/WARN entry targets ORCH-0998 or this skill. COMMS-0003 (cite external-API docs) N/A — no live external API touched; pill mappings are static, lucide icons verified present in the installed lucide-react.
+
+## Regression test
+**BACKFILL-EXEMPT** — marketing-only presentational sync of hardcoded test data; mingla-marketing has no jest/vitest harness and the operator scoped this as a pragmatic test-run. Verification is the served-HTML + bundle-grep + tsc gates above. (If a harness is later added, the natural test asserts `pillForSlot(slot)` returns the spec label/icon for one slot of each kind, and that `useDeckRotation` advances `order[0]` and `pill` together.)
+
+## Discoveries for orchestrator
+None. Change is self-contained to `mingla-marketing/`. No other surface touched (admin/business/app-mobile/supabase untouched).

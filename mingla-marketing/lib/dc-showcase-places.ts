@@ -13,11 +13,34 @@
 // ShowcasePlace shape below.
 // ---------------------------------------------------------------
 
+/**
+ * Headline-pill label + icon (ORCH-0998 hero-pill sync). Each card carries the
+ * exact word phrase shown in "Find <pillLabel> that fit the vibe" plus the
+ * lucide icon name rendered in the pill's warm chip while this card is front.
+ * `pillIcon` is the lucide icon NAME (resolved to the component in the deck) so
+ * this data file stays icon-library-free.
+ */
+export type PlacePillIcon =
+  | 'Trees'
+  | 'Sparkles'
+  | 'Martini'
+  | 'Coffee'
+  | 'UtensilsCrossed'
+  | 'ChefHat'
+  | 'Film'
+  | 'Drama'
+  | 'Palette'
+  | 'Gamepad2'
+
 export interface ShowcasePlace {
   /** Display name — real, verbatim. */
   name: string
   /** Real category string (e.g. "Italian Restaurant"). Drives the sell-line fallback. */
   category: string
+  /** Headline-pill word for "Find <pillLabel> that fit the vibe" (Mingla-category derived). */
+  pillLabel: string
+  /** Lucide icon NAME for the pill warm chip (resolved to a component in the deck). */
+  pillIcon: PlacePillIcon
   /** Real Google rating (0–5). */
   rating: number
   /** Real review count. (Retained on the type; no longer rendered on the card post-v2.) */
@@ -66,6 +89,8 @@ export const DC_SHOWCASE_PLACES: readonly ShowcasePlace[] = [
     // Mingla category: Nature & Views
     name: 'Anacostia Park',
     category: 'Park',
+    pillLabel: 'nature places',
+    pillIcon: 'Trees',
     rating: 4.4,
     reviewCount: 1778,
     // Genuinely free (public park) → "Free" per the price-honesty rule.
@@ -79,6 +104,8 @@ export const DC_SHOWCASE_PLACES: readonly ShowcasePlace[] = [
     // Mingla category: Icebreakers
     name: 'National Gallery of Art',
     category: 'Art Museum',
+    pillLabel: 'icebreaker places',
+    pillIcon: 'Sparkles',
     rating: 4.8,
     reviewCount: 20211,
     // Free-admission museum → genuinely "Free".
@@ -92,6 +119,8 @@ export const DC_SHOWCASE_PLACES: readonly ShowcasePlace[] = [
     // Mingla category: Drinks & Music
     name: 'Jack Rose Dining Saloon',
     category: 'Cocktail Bar',
+    pillLabel: 'drinks places',
+    pillIcon: 'Martini',
     rating: 4.6,
     reviewCount: 2411,
     priceRange: '$50–$100',
@@ -104,6 +133,8 @@ export const DC_SHOWCASE_PLACES: readonly ShowcasePlace[] = [
     // Mingla category: Brunch
     name: 'Pisco y Nazca Ceviche Gastrobar',
     category: 'Peruvian',
+    pillLabel: 'brunch places',
+    pillIcon: 'Coffee',
     rating: 4.9,
     reviewCount: 25092,
     priceRange: '$30–$80',
@@ -116,6 +147,8 @@ export const DC_SHOWCASE_PLACES: readonly ShowcasePlace[] = [
     // Mingla category: Casual
     name: 'Oyamel',
     category: 'Mexican',
+    pillLabel: 'casual places',
+    pillIcon: 'UtensilsCrossed',
     rating: 4.5,
     reviewCount: 7642,
     priceRange: '$20–$70',
@@ -128,6 +161,8 @@ export const DC_SHOWCASE_PLACES: readonly ShowcasePlace[] = [
     // Mingla category: Upscale & Fine Dining
     name: 'KYOJIN Sushi',
     category: 'Sushi',
+    pillLabel: 'fine dining places',
+    pillIcon: 'ChefHat',
     rating: 4.9,
     reviewCount: 7104,
     priceRange: 'from $100',
@@ -140,6 +175,8 @@ export const DC_SHOWCASE_PLACES: readonly ShowcasePlace[] = [
     // Mingla category: Movies
     name: 'Regal Hyattsville Royale',
     category: 'Movie Theater',
+    pillLabel: 'movie dates',
+    pillIcon: 'Film',
     rating: 4.1,
     reviewCount: 1829,
     // Ticketed but no real price signal → null (card shows name only; never fake "Free").
@@ -153,6 +190,8 @@ export const DC_SHOWCASE_PLACES: readonly ShowcasePlace[] = [
     // Mingla category: Theatre
     name: 'Kennedy Center',
     category: 'Performing Arts Theater',
+    pillLabel: 'theatre shows',
+    pillIcon: 'Drama',
     rating: 4.8,
     reviewCount: 11449,
     // Ticketed but no real price signal → null (never fake "Free").
@@ -166,6 +205,8 @@ export const DC_SHOWCASE_PLACES: readonly ShowcasePlace[] = [
     // Mingla category: Creative & Arts
     name: 'National Museum of African American History & Culture',
     category: 'Museum',
+    pillLabel: 'artsy places',
+    pillIcon: 'Palette',
     rating: 4.8,
     reviewCount: 30458,
     // Free-admission Smithsonian museum → genuinely "Free".
@@ -179,6 +220,8 @@ export const DC_SHOWCASE_PLACES: readonly ShowcasePlace[] = [
     // Mingla category: Play
     name: 'The Great Escape Room DC',
     category: 'Amusement Center',
+    pillLabel: 'play dates',
+    pillIcon: 'Gamepad2',
     rating: 4.9,
     reviewCount: 875,
     // Ticketed but no real price signal → null (never fake "Free").

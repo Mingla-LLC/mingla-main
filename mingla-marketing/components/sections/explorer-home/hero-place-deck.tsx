@@ -1,14 +1,41 @@
 'use client'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
+import {
+  CalendarDays,
+  ChefHat,
+  Coffee,
+  Compass,
+  Drama,
+  Film,
+  Footprints,
+  Gamepad2,
+  Heart,
+  Martini,
+  Music,
+  Palette,
+  PartyPopper,
+  Sandwich,
+  Sparkles,
+  Tent,
+  Trees,
+  Users,
+  UtensilsCrossed,
+} from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import { useMinglaReducedMotion } from '@/lib/reduced-motion'
 import {
   DC_SHOWCASE_PLACES,
   placePhotoUrl,
+  type PlacePillIcon,
   type ShowcasePlace,
 } from '@/lib/dc-showcase-places'
 import { DC_INTENT_PLANS, type IntentPlan } from '@/lib/dc-intent-plans'
-import { DC_SHOWCASE_EVENTS, type ShowcaseEvent } from '@/lib/dc-showcase-events'
+import {
+  DC_SHOWCASE_EVENTS,
+  type EventKind,
+  type ShowcaseEvent,
+} from '@/lib/dc-showcase-events'
 import { IntentCard } from '@/components/sections/explorer-home/intent-card'
 import { EventCard } from '@/components/sections/explorer-home/event-card'
 
@@ -52,8 +79,12 @@ const exitAnim = {
 }
 
 const enterAnim = { y: -34, scale: 0.92, x: 0 }
-// Slightly slower than the SVG deck (3600) — real cards have more to read.
-const AUTO_MS = 4200
+// 🔒 Shared rotation cadence (ORCH-0998 hero-pill sync). ONE 2000ms tick drives
+// BOTH the deck's front card swipe-away AND the headline pill word change. The
+// old independent AUTO_MS (deck, 4200) and CYCLE_MS (pill, 2800 in hero.tsx)
+// were replaced by this single source-of-truth interval so card N and the pill
+// for card N always advance together. Do NOT reintroduce a second timer.
+const ROTATION_MS = 2000
 
 const CARD_W = 260
 // 🔒LOCKED (ORCH-0998 v2.1): 360 is the tallest height that clears a 768px-tall
@@ -99,6 +130,122 @@ function buildInterleavedSlots(): DeckSlot[] {
 
 const DECK_SLOTS: readonly DeckSlot[] = buildInterleavedSlots()
 
+// ---------------------------------------------------------------
+// Headline-pill resolution (ORCH-0998 hero-pill sync). The pill word + icon
+// shown in "Find <pill> that fit the vibe" is DERIVED from whatever slot is the
+// front card — never from an independent list. Three resolvers, one per slot
+// kind, feed a single { label, icon } that the hero's headline consumes.
+// ---------------------------------------------------------------
+export interface DeckPill {
+  label: string
+  icon: LucideIcon
+}
+
+// Single-place pill icon name (data-file string) → lucide component.
+const PLACE_PILL_ICONS: Record<PlacePillIcon, LucideIcon> = {
+  Trees,
+  Sparkles,
+  Martini,
+  Coffee,
+  UtensilsCrossed,
+  ChefHat,
+  Film,
+  Drama,
+  Palette,
+  Gamepad2,
+}
+
+// Intent id → pill label + icon (spec §2 INTENT mapping).
+const INTENT_PILL: Record<string, DeckPill> = {
+  romantic: { label: 'romantic plans', icon: Heart },
+  'first-date': { label: 'first date plans', icon: Sparkles },
+  adventurous: { label: 'adventurous plans', icon: Compass },
+  'group-fun': { label: 'group plans', icon: Users },
+  'picnic-dates': { label: 'picnic plans', icon: Sandwich },
+  'take-a-stroll': { label: 'stroll routes', icon: Footprints },
+}
+
+// Event kind → pill label + icon (spec §2 EVENT mapping).
+const EVENT_PILL: Record<EventKind, DeckPill> = {
+  Concert: { label: 'concerts', icon: Music },
+  Party: { label: 'parties', icon: PartyPopper },
+  Festival: { label: 'festivals', icon: Tent },
+  Event: { label: 'events', icon: CalendarDays },
+}
+
+// Safe fallback so the pill never renders blank if a future data row omits a
+// mapping. Matches the first single-place pill.
+const FALLBACK_PILL: DeckPill = { label: 'nature places', icon: Trees }
+
+function pillForSlot(slot: DeckSlot): DeckPill {
+  if (slot.kind === 'place') {
+    const icon = PLACE_PILL_ICONS[slot.place.pillIcon] ?? Trees
+    return { label: slot.place.pillLabel, icon }
+  }
+  if (slot.kind === 'intent') {
+    return INTENT_PILL[slot.plan.id] ?? FALLBACK_PILL
+  }
+  return EVENT_PILL[slot.event.kind] ?? FALLBACK_PILL
+}
+
+// ---------------------------------------------------------------
+// useDeckRotation — the SINGLE SOURCE OF TRUTH for the hero rotation.
+//
+// One `order` array (front card = order[0]) + one ROTATION_MS timer live here.
+// Both the deck (front card) and the headline pill derive from order[0], so
+// they are ALWAYS in lockstep — card N showing ⇔ pill shows card N's label.
+// Hover-pause, tab-visibility, and reduced-motion all hold BOTH surfaces because
+// they hold this one timer. The hero owns this hook and passes `order` to the
+// deck while reading `pill` for the headline.
+// ---------------------------------------------------------------
+export interface DeckRotation {
+  order: number[]
+  /** Pill for the current front card (order[0]). */
+  pill: DeckPill
+  /** Hover handlers for the deck wrapper — pausing here pauses the pill too. */
+  onMouseEnter: () => void
+  onMouseLeave: () => void
+}
+
+export function useDeckRotation(): DeckRotation {
+  const reduced = useMinglaReducedMotion()
+  const [order, setOrder] = useState<number[]>(() =>
+    DECK_SLOTS.map((_, i) => i),
+  )
+  const [paused, setPaused] = useState(false)
+
+  useEffect(() => {
+    if (reduced || paused || DECK_SLOTS.length <= 1) return
+    const id = window.setInterval(() => {
+      setOrder((prev) =>
+        prev.length === 0 ? prev : [...prev.slice(1), prev[0] as number],
+      )
+    }, ROTATION_MS)
+    return () => window.clearInterval(id)
+  }, [reduced, paused])
+
+  useEffect(() => {
+    const onVis = (): void => {
+      setPaused(document.visibilityState !== 'visible')
+    }
+    document.addEventListener('visibilitychange', onVis)
+    return () => document.removeEventListener('visibilitychange', onVis)
+  }, [])
+
+  const onMouseEnter = useCallback(() => setPaused(true), [])
+  const onMouseLeave = useCallback(() => setPaused(false), [])
+
+  // When reduced-motion is on, the order never advances, so order[0] stays the
+  // first slot — pill + deck both hold the first card/label exactly as required.
+  const frontIdx = order[0] ?? 0
+  const pill = useMemo(
+    () => pillForSlot(DECK_SLOTS[frontIdx] as DeckSlot),
+    [frontIdx],
+  )
+
+  return { order, pill, onMouseEnter, onMouseLeave }
+}
+
 // Category → editorial sell-line fallback (spec §5). Hardcoded for this
 // test run; deterministic, never renders a blank or a raw category slug.
 function fallbackSellLine(category: string): string {
@@ -117,39 +264,34 @@ function sellLineFor(place: ShowcasePlace): string {
   return place.blurb ?? fallbackSellLine(place.category)
 }
 
-export function HeroPlaceDeck() {
+// HeroPlaceDeck is now a CONTROLLED renderer: the `order` + hover handlers come
+// from the shared `useDeckRotation` hook owned by the hero, so the deck's front
+// card and the headline pill advance off the exact same index/timer. The deck
+// owns NO rotation timer of its own anymore.
+//
+// `rotation` is OPTIONAL: omitted (e.g. the static /intent-preview comparison
+// route, a server component that can't run the hook) → the deck renders the
+// first 3 slots statically with no rotation and no-op hover handlers.
+const STATIC_ORDER: number[] = DECK_SLOTS.map((_, i) => i)
+const NOOP = (): void => {}
+
+interface HeroPlaceDeckProps {
+  rotation?: DeckRotation
+}
+
+export function HeroPlaceDeck({ rotation }: HeroPlaceDeckProps) {
   const reduced = useMinglaReducedMotion()
-  const [order, setOrder] = useState<number[]>(() =>
-    DECK_SLOTS.map((_, i) => i),
-  )
-  const [paused, setPaused] = useState(false)
-
-  useEffect(() => {
-    if (reduced || paused || DECK_SLOTS.length <= 1) return
-    const id = window.setInterval(() => {
-      setOrder((prev) =>
-        prev.length === 0 ? prev : [...prev.slice(1), prev[0] as number],
-      )
-    }, AUTO_MS)
-    return () => window.clearInterval(id)
-  }, [reduced, paused])
-
-  useEffect(() => {
-    const onVis = (): void => {
-      setPaused(document.visibilityState !== 'visible')
-    }
-    document.addEventListener('visibilitychange', onVis)
-    return () => document.removeEventListener('visibilitychange', onVis)
-  }, [])
-
+  const order = rotation?.order ?? STATIC_ORDER
+  const onMouseEnter = rotation?.onMouseEnter ?? NOOP
+  const onMouseLeave = rotation?.onMouseLeave ?? NOOP
   const visible = order.slice(0, 3)
 
   return (
     <div
       role="group"
       aria-label="Real places, plans, and events on Mingla, from Washington DC"
-      onMouseEnter={() => setPaused(true)}
-      onMouseLeave={() => setPaused(false)}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
       style={{ width: CARD_W + 92, height: CARD_H + 62 }}
       className="relative overflow-hidden"
     >

@@ -31,6 +31,13 @@
 export type EventSource = 'mingla' | 'ticketmaster'
 
 /**
+ * Event kind — ORCH-0998 hero-pill sync. Drives the headline pill vocabulary
+ * (concerts / parties / festivals / events) so the rotating word always matches
+ * the front event card. NOT a backend field; assigned per-event in this snapshot.
+ */
+export type EventKind = 'Concert' | 'Party' | 'Festival' | 'Event'
+
+/**
  * One showcase event. Shape per DESIGN_ORCH-0998 §E.11.2.
  *
  * `coverImageUrl` present → image cover path; null + `coverHue` → striped
@@ -61,6 +68,13 @@ export interface ShowcaseEvent {
   ticketUrl: string
   /** True for Mingla Business events (renders the "On Mingla" ink chip). */
   onMingla: boolean
+  /**
+   * Event kind (ORCH-0998 hero-pill sync). Drives the headline pill word
+   * shown in "Find <pill> that fit the vibe" while this event is the front
+   * card: Concert → "concerts", Party → "parties", Festival → "festivals",
+   * Event → "events". Pill label + icon are resolved from this in the deck.
+   */
+  kind: EventKind
 }
 
 export const DC_SHOWCASE_EVENTS: readonly ShowcaseEvent[] = [
@@ -80,6 +94,7 @@ export const DC_SHOWCASE_EVENTS: readonly ShowcaseEvent[] = [
     ticketUrl:
       'https://www.ticketweb.com/event/off-the-wall-a-michael-howard-theatre-tickets/14920733',
     onMingla: false,
+    kind: 'Party',
   },
   {
     source: 'ticketmaster',
@@ -96,6 +111,7 @@ export const DC_SHOWCASE_EVENTS: readonly ShowcaseEvent[] = [
     ticketUrl:
       'https://www.ticketmaster.com/alex-isley-when-the-city-sleeps-washington-district-of-columbia-05-29-2026/event/15006470178EE92C',
     onMingla: false,
+    kind: 'Concert',
   },
   {
     source: 'ticketmaster',
@@ -111,6 +127,7 @@ export const DC_SHOWCASE_EVENTS: readonly ShowcaseEvent[] = [
     coverHue: null,
     ticketUrl: 'https://www.ticketmaster.com/event/Z7r9jZ1A7jvuE',
     onMingla: false,
+    kind: 'Concert',
   },
   {
     source: 'ticketmaster',
@@ -127,6 +144,7 @@ export const DC_SHOWCASE_EVENTS: readonly ShowcaseEvent[] = [
     ticketUrl:
       'https://www.ticketmaster.com/the-knocks-x-dragonette-x-aquaria-washington-district-of-columbia-05-29-2026/event/1500644DB27AC49B',
     onMingla: false,
+    kind: 'Party',
   },
 
   // ---- Mingla Business events (REPRESENTATIVE samples — real DB events are test data) ----
@@ -145,6 +163,7 @@ export const DC_SHOWCASE_EVENTS: readonly ShowcaseEvent[] = [
     coverHue: 25,
     ticketUrl: '#',
     onMingla: true,
+    kind: 'Party',
   },
   {
     source: 'mingla',
@@ -161,5 +180,6 @@ export const DC_SHOWCASE_EVENTS: readonly ShowcaseEvent[] = [
     coverHue: 200,
     ticketUrl: '#',
     onMingla: true,
+    kind: 'Festival',
   },
 ] as const
