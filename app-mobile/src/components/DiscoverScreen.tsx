@@ -924,7 +924,12 @@ function DiscoverScreen({
   const TAB_PILL_HEIGHT = 52;
   const TABS_1016: Array<{ id: "events" | "trips"; label: string; icon: IconName }> = [
     { id: "events", label: t("discover:events_tab", "Events"), icon: "sparkles-outline" },
-    { id: "trips", label: t("discover:trips_tab", "Trips"), icon: "compass-outline" },
+    // ORCH-1016 REWORK (operator, 2026-05-30): the Trips tab reads as travel via a
+    // paper-plane / send glyph (Lucide `Send`, mapped from `paper-plane-outline`)
+    // instead of the prior generic compass. Same outline family as the Events
+    // `sparkles-outline`; already bundled (also used for "Leaving from" in the
+    // trip detail). No new asset, no emoji.
+    { id: "trips", label: t("discover:trips_tab", "Trips"), icon: "paper-plane-outline" },
   ];
   const tab1016LayoutsRef = useRef<
     Record<"events" | "trips", { x: number; width: number } | undefined>

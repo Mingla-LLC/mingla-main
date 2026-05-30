@@ -14,6 +14,21 @@
  *      "Day 3"). The sticky Reserve bar is the sheet's `stickyFooter`, which the
  *      primitive pads with the same nav clearance.
  *
+ * ORCH-1016 REWORK-2 (operator on-device: "sheets hang and don't scroll", 2026-05-30):
+ *   FROZEN-SCROLL FIX — the first rework used `scrollMode="view"` and hand-rolled a
+ *   gorhom scroll container as the body. With a `stickyFooter` present,
+ *   BaseBottomSheet's view+sticky branch wraps the children in a plain `flex:1`
+ *   `<View>`, so the hand-rolled scroll landed TWO levels deep inside non-gorhom
+ *   Views — gorhom's sheet pan-responder then swallowed the inner scroll gesture
+ *   and the body felt frozen. FIX: use `scrollMode="scroll"` and let the primitive
+ *   OWN the gorhom `BottomSheetScrollView` (its sticky+scroll branch renders it as
+ *   a `flex:1` DIRECT child of the sheet's `BottomSheetView`, the gesture-
+ *   coordinated pattern TicketCartSheet already proves). The detail content is now
+ *   plain `children`; padding rides `scrollProps.contentContainerStyle`. Result:
+ *   the day-by-day list + policy + tiers scroll smoothly, the sticky Reserve footer
+ *   stays pinned, AND swipe-down-to-dismiss still works (the exact coordination
+ *   BottomSheetScrollView exists to provide).
+ *
  * Anon-read constraint (🔒 COMMS-0009): all data comes from useConsumerTripDetail
  * (anon-direct events/trip_* reads + RPC-sourced brand fields). NEVER `.from('brands')`.
  *
@@ -42,7 +57,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { EventCoverMedia, formatTripDateRange, RefundPolicyDisplay } from "@mingla/event-rendering";
 
 import { Icon } from "../../components/ui/Icon";
-import { BaseBottomSheet, BottomSheetScrollView } from "../../components/ui/BaseBottomSheet";
+import { BaseBottomSheet } from "../../components/ui/BaseBottomSheet";
 import { ExpandedBusinessEventSheet } from "../../components/expandedCard/ExpandedBusinessEventSheet";
 import { glass } from "../../constants/designSystem";
 import { hueFromId } from "../../utils/hueFromId";
@@ -272,15 +287,15 @@ export default function ConsumerTripDetailScreen({
   const includedItems = detail.inclusions.filter((i) => i.kind === "included");
   const excludedItems = detail.inclusions.filter((i) => i.kind === "excluded");
 
-  // ORCH-1016 REWORK — the trip body owns the SINGLE gorhom-aware scroll host
-  // (scrollMode="view"), mirroring ExpandedBusinessEventSheet. The detail content
-  // is the scroll's children; the sheet's own clearance is handled below by the
-  // tabBarAware sticky-footer, so the scroll only needs handle/internal spacing.
+  // ORCH-1016 REWORK-2 — the detail content is now PLAIN children. BaseBottomSheet
+  // owns the single gorhom-aware scroll (scrollMode="scroll" below): its
+  // sticky+scroll branch renders a `flex:1` BottomSheetScrollView as a DIRECT child
+  // of the sheet's BottomSheetView, so the scroll gesture coordinates with the
+  // sheet's pan-down handle instead of being swallowed (the frozen-scroll fix).
+  // The close/share chrome rides at the top of the scroll, over the hero.
   const detailBody: ReactElement = (
-    <BottomSheetScrollView
-      showsVerticalScrollIndicator={false}
-      contentContainerStyle={styles.scrollContent}
-    >
+    <>
+      {chrome}
       {/* Hero */}
       <View style={styles.hero}>
         <EventCoverMedia
@@ -426,7 +441,7 @@ export default function ConsumerTripDetailScreen({
           </View>
         ) : null}
       </View>
-    </BottomSheetScrollView>
+    </>
   );
 
   // Sticky Reserve bar — the sheet's stickyFooter. With tabBarAware the primitive
@@ -464,12 +479,15 @@ export default function ConsumerTripDetailScreen({
         theme="dark"
         snapPoints={SHEET_SNAP_POINTS}
         initialIndex={SHEET_INITIAL_INDEX}
-        scrollMode="view"
+        scrollMode="scroll"
+        scrollProps={{
+          showsVerticalScrollIndicator: false,
+          contentContainerStyle: styles.scrollContent,
+        }}
         tabBarAware={tabBarAware}
         stickyFooter={reserveFooter}
         accessibilityLabel={detail.title}
       >
-        {chrome}
         {detailBody}
       </BaseBottomSheet>
 
