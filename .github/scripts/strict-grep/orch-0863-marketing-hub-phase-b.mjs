@@ -1101,6 +1101,11 @@ function checkNoNewBackendFiles() {
     "supabase/functions/discover-cards/index.ts",
     "supabase/functions/generate-curated-experiences/index.ts",
     "supabase/functions/_shared/__tests__/signalScorer.blend.test.ts",
+    // [TEST-MOD-APPROVED META-ORCH-1009 Sub-B] 20 call sites in scorer.test.ts
+    // updated to pass the new required signalId arg to computeScore. Mechanical
+    // update; no existing test semantics altered. Inclusion in this allowlist
+    // documents the modification under ORCH-0840 append-only convention.
+    "supabase/functions/_shared/__tests__/scorer.test.ts",
     "supabase/functions/discover-cards/__tests__/ai_reasoning_passthrough.test.ts",
     "supabase/functions/discover-cards/__tests__/collab_determinism_under_ai_blend.test.ts",
     "supabase/functions/generate-curated-experiences/__tests__/ai_reasoning_passthrough.test.ts",
