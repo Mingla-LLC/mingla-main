@@ -35,7 +35,7 @@ import Animated, {
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { Icon, type IconName } from './ui/Icon';
-import { glass } from '../constants/designSystem';
+import { glass, ANDROID_GLASS_USES_OPAQUE_FALLBACK } from '../constants/designSystem';
 
 const c = glass.chrome;
 
@@ -63,7 +63,8 @@ export type GlassBottomNavProps = {
   coachLikesRef?: (node: View | null) => void;
 };
 
-const isAndroidPreBlur = Platform.OS === 'android' && Platform.Version < 31;
+// META-ORCH-1002 Sub-1 (S2/S4): shared Android-opaque-fallback gate (was the per-component Android-11 version gate).
+const isAndroidPreBlur = ANDROID_GLASS_USES_OPAQUE_FALLBACK;
 
 const TAB_ORDER: BottomNavPage[] = ['home', 'discover', 'connections', 'likes', 'profile'];
 

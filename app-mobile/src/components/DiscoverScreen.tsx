@@ -63,7 +63,7 @@ import { useSavedCards } from "../hooks/useSavedCards";
 import { savedCardsService } from "../services/savedCardsService";
 import { savedCardKeys } from "../hooks/queryKeys";
 import { useQueryClient } from "@tanstack/react-query";
-import { glass } from "../constants/designSystem";
+import { glass, ANDROID_GLASS_USES_OPAQUE_FALLBACK } from "../constants/designSystem";
 // ORCH-0809 M2: city picker + segment switcher
 import { CityPickerSheet } from "./discover/CityPickerSheet";
 import {
@@ -93,7 +93,8 @@ const SCREEN_WIDTH = Dimensions.get("window").width;
 const d = glass.discover;
 const GRID_CARD_WIDTH = (SCREEN_WIDTH - d.grid.horizontalPadding * 2 - d.grid.columnGap) / 2;
 const GRID_CARD_HEIGHT = GRID_CARD_WIDTH / d.card.aspectRatio;
-const isAndroidPreBlur = Platform.OS === "android" && Platform.Version < 31;
+// META-ORCH-1002 Sub-1 (S2): shared Android-opaque-fallback gate (was the per-component Android-11 version gate).
+const isAndroidPreBlur = ANDROID_GLASS_USES_OPAQUE_FALLBACK;
 
 interface NightOutCardData {
   id: string;

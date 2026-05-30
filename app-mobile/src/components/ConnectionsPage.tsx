@@ -40,7 +40,7 @@ import { Friend, Message } from "../services/connectionsService";
 import { useScreenLogger } from "../hooks/useScreenLogger";
 import { useKeyboard } from "../hooks/useKeyboard";
 import { useAppLayout } from "../hooks/useAppLayout";
-import { colors, spacing, typography, fontWeights, glass } from "../constants/designSystem";
+import { colors, spacing, typography, fontWeights, glass, ANDROID_GLASS_USES_OPAQUE_FALLBACK } from "../constants/designSystem";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNetworkMonitor } from "../services/networkMonitor";
 import { withTimeout } from "../utils/withTimeout";
@@ -371,7 +371,8 @@ interface PairedPillPerson {
   incomingRequest?: PairRequest;
 }
 
-const isAndroidPreBlur = Platform.OS === 'android' && Platform.Version < 31;
+// META-ORCH-1002 Sub-1 (S2): shared Android-opaque-fallback gate (was the per-component Android-11 version gate).
+const isAndroidPreBlur = ANDROID_GLASS_USES_OPAQUE_FALLBACK;
 
 // Compact dark-glass paired pill — horizontal inside the filter-bar-style row.
 // ORCH-0600: replaces the ORCH-0435 vertical avatar+name stack with a row pill
