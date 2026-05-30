@@ -74,74 +74,40 @@ ok(
     !/position:\s*"absolute"[\s\S]{0,120}bottom:\s*0/.test(detailSrc),
   "the old full-bleed <View style={host}> + absolute-bottom reserveBar overlay must be removed",
 );
-// ── FIX 1 (REWORK-3): frozen-scroll fix — MIRROR the empirically-proven sheet ──
-// Operator on-device STILL froze after REWORK-2: "swiping the sheet down closes,
-// but i cant scroll the content of the sheet itself". REWORK-2 used
-// scrollMode="scroll" + a `stickyFooter`, which routes BaseBottomSheet into its
-// sticky-footer branch: <BottomSheetContent> → <BottomSheetView flex:1> →
-// <BottomSheetScrollView flex:1>. gorhom's BottomSheetContent is a height-bounded
-// overflow:hidden box; the ONLY sheet that physically scrolls in this app
-// (ExpandedBusinessEventSheet) injects its gorhom BottomSheetScrollView as a
-// flex:1 *DIRECT* child of BottomSheetContent. Wrapping the scroll one
-// BottomSheetView deeper changed the measured viewport and froze it.
-//
-// FIX (mirror ExpandedBusinessEventSheet LINE-FOR-LINE): scrollMode="view" so the
-// primitive passes children straight into BottomSheetContent, and the screen
-// renders the gorhom BottomSheetScrollView (re-exported from the primitive — the
-// SOLE permitted gorhom importer) as its OWN flex:1 scroll host, with the sticky
-// Reserve footer as a SIBLING <View> below it (NOT the stickyFooter prop, which
-// re-introduces the freezing wrapper). These assertions FAIL on a revert to the
-// scrollMode="scroll"+stickyFooter (frozen) wiring.
+// ── FIX 1 (REWORK-2): frozen-scroll fix — the PRIMITIVE owns the gorhom scroll ──
+// Operator on-device 2026-05-30: "sheets hang and don't scroll". Root cause: the
+// first rework hand-rolled a <BottomSheetScrollView> as the body with
+// scrollMode="view" + a stickyFooter, so the scroll landed two Views deep inside
+// BaseBottomSheet's view+sticky branch and gorhom's sheet pan-responder swallowed
+// the scroll gesture. The fix: scrollMode="scroll" so BaseBottomSheet renders the
+// gorhom BottomSheetScrollView as a flex:1 DIRECT child of its BottomSheetView (the
+// gesture-coordinated TicketCartSheet pattern). The screen must NOT hand-roll its
+// own gorhom scroll, and must NEVER use a raw RN <ScrollView> inside the sheet.
 ok(
-  "R1f the trip detail sheet uses scrollMode='view' WITH the BottomSheetScrollView host as its direct child (proven ExpandedBusinessEventSheet wiring)",
-  /scrollMode="view"[\s\S]{0,200}accessibilityLabel=\{detail\.title\}[\s\S]{0,80}>\s*<BottomSheetScrollView/.test(
+  "R1f the trip detail sheet uses scrollMode='scroll' (the primitive owns the gorhom scroll host)",
+  /<BaseBottomSheet[\s\S]*?scrollMode="scroll"[\s\S]*?<\/BaseBottomSheet>/.test(
     detailSrc,
   ),
-  "scrollMode='view' must pass the gorhom scroll host straight into BottomSheetContent as a flex:1 direct child (the only config that scrolls)",
+  "scrollMode='scroll' lets BaseBottomSheet own the flex:1 BottomSheetScrollView that scrolls + pan-dismisses",
 );
 ok(
-  "R1f-2 the screen OWNS a BottomSheetScrollView (re-exported from the primitive) as its scroll host — exactly like ExpandedBusinessEventSheet",
-  /import\s*\{[\s\S]*?BottomSheetScrollView[\s\S]*?\}\s*from\s*["'][^"']*ui\/BaseBottomSheet["']/.test(
+  "R1f-2 the screen does NOT hand-roll its own BottomSheetScrollView nor a raw RN <ScrollView> (the frozen-scroll regression)",
+  !/<BottomSheetScrollView\b/.test(detailSrc) && !/<ScrollView\b/.test(detailSrc),
+  "a hand-rolled scroll nested under the sticky-footer View is exactly the swallowed-gesture freeze; the primitive must own it",
+);
+ok(
+  "R1f-3 the detail sheet keeps its sticky Reserve footer + tabBarAware nav clearance with the new scroll mode",
+  /<BaseBottomSheet[\s\S]*?scrollMode="scroll"[\s\S]*?tabBarAware=\{tabBarAware\}[\s\S]*?stickyFooter=\{reserveFooter\}[\s\S]*?<\/BaseBottomSheet>/.test(
     detailSrc,
-  ) && /<BottomSheetScrollView\b/.test(detailSrc),
-  "the proven pattern injects gorhom's BottomSheetScrollView as the OWN scroll host; the frozen REWORK-2 let the primitive own it via scrollMode='scroll'",
-);
-ok(
-  "R1f-2b the screen does NOT use a raw RN <ScrollView> inside the sheet (raw RN scroll fights the gorhom pan)",
-  !/<ScrollView\b/.test(detailSrc),
-  "a raw RN ScrollView nested in a gorhom sheet fights the sheet pan; must be the gorhom BottomSheetScrollView",
-);
-ok(
-  "R1f-3 the detail sheet does NOT use the stickyFooter prop (that branch is the frozen-scroll regression)",
-  !/stickyFooter=\{/.test(detailSrc) && !/scrollMode="scroll"/.test(detailSrc),
-  "the stickyFooter prop + scrollMode='scroll' is exactly the height-bounded-wrapper config that froze on device; the Reserve bar is now a sibling View",
-);
-ok(
-  "R1f-4 the scroll host claims flex:1 (bounded viewport inside BottomSheetContent) so a tall body actually scrolls",
-  /scrollHost:\s*\{\s*flex:\s*1\s*\}/.test(detailSrc) &&
-    /style=\{styles\.scrollHost\}/.test(detailSrc),
-  "without flex:1 the scroll host sizes to content inside the height-bounded BottomSheetContent and never scrolls",
-);
-ok(
-  "R1f-5 the Reserve footer is a sibling that still clears the floating nav (BOTTOM_NAV_CONTENT_HEIGHT) + safe area",
-  /import\s*\{\s*BOTTOM_NAV_CONTENT_HEIGHT\s*\}\s*from\s*["'][^"']*useAppLayout["']/.test(
-    detailSrc,
-  ) &&
-    /footerNavClearance\s*=[\s\S]*?BOTTOM_NAV_CONTENT_HEIGHT[\s\S]*?insets\.bottom/.test(
-      detailSrc,
-    ),
-  "the sibling footer now owns the nav clearance the primitive's tabBarAware path used to provide",
+  ),
+  "the scroll body must still pair with the pinned Reserve footer + nav clearance",
 );
 
-// ── FIX 2: the detail clears the bottom nav (tabBarAware threads to the footer) ─
-// REWORK-3: the sheet body no longer uses scrollMode="scroll"/stickyFooter, so the
-// primitive's tabBarAware padding no longer applies. The screen consumes the
-// tabBarAware prop directly to size its SIBLING footer's nav clearance. The last
-// Day + Reserve CTA still clear the floating GlassBottomNav.
+// ── FIX 2: the detail sheet clears the bottom nav (tabBarAware) ─────────────
 ok(
-  "R2a detail consumes tabBarAware to size the footer nav clearance (folds BOTTOM_NAV when in-app)",
-  /tabBarAware\s*\?\s*BOTTOM_NAV_CONTENT_HEIGHT\s*:\s*0/.test(detailSrc),
-  "tabBarAware must gate the floating-nav clearance on the sibling Reserve footer",
+  "R2a detail sheet is tabBarAware (adds BOTTOM_NAV clearance to the body)",
+  /<BaseBottomSheet[\s\S]*?tabBarAware/.test(detailSrc),
+  "tabBarAware must be set so the last Day + Reserve CTA clear the floating nav",
 );
 ok(
   "R2b in-app overlay (app/index.tsx) presents the detail tabBarAware",
