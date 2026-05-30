@@ -90,22 +90,8 @@ check('Audiences ships all 6 approved eyebrows verbatim (full experience economy
   assertHas(aud, 'Mingla makes it the plan.', 'audiences headline accent')
 })
 
-// 4. Comparison kill-shots — the 4 verbatim canonical positioning lines.
-//    A softened/reworded kill-shot is a brand regression the substring scan
-//    won't catch. COPY §6.
-check('Comparison ships the 4 verbatim canonical kill-shot Mingla lines', () => {
-  const cmp = read('comparison.tsx')
-  for (const line of [
-    "sells why you're worth choosing tonight.",
-    'sells the night.',
-    'finds the people already looking for a place like yours.',
-    'is where they get picked.',
-  ]) {
-    assertHas(cmp, line, 'comparison kill-shot')
-  }
-  // and the struck-through generics must remain (the contrast IS the device)
-  assertHas(cmp, 'is where plans go to die.', 'comparison struck generic')
-})
+// 4. (Retired) the Comparison section was deleted in ORCH-1010 — its kill-shot
+//    copy guard is removed with it.
 
 // 5. FAQ STRUCTURAL INVARIANT — exactly 8 question objects, and ZERO of them
 //    is a pricing/cost/SLA/timeline question (catches a re-introduced pricing
