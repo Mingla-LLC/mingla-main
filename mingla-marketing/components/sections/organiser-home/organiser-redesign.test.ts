@@ -124,11 +124,12 @@ const cases: ReadonlyArray<readonly [string, () => void]> = [
     },
   ],
   [
-    'dark sections use text-warm accent (correct on night canvas)',
+    'dark sections use the warm accent (correct on night canvas)',
     () => {
-      // All dark sections use the warm accent on dark.
+      // All dark sections use the warm accent on dark — as `text-warm` on the
+      // SpotlightBands, or as the `bg-warm` headline container in the hero.
       for (const file of DARK_SECTIONS) {
-        makeExpect(read(file)).toContain('text-warm')
+        makeExpect(/(text|bg)-warm/.test(read(file))).toBe(true)
       }
       // The two SpotlightBand sections specifically render via <SpotlightBand>
       // (the hero is dark via its own full-bleed booking-wall + overlay).
