@@ -435,3 +435,54 @@
 - I-CONSUMER-READS-AI-SIGNAL-SCORES-NOT-TRIAL-TABLE (new ACTIVE)
 - I-COLLAB-DECK-DETERMINISM-PRESERVED-UNDER-AI-BLEND (new ACTIVE)
 - COMMS-0003 (Gemini structured-output docs URL cited inline in signalScorer.ts header)
+
+## DEC-183 — META-ORCH-1009 Sub-D: 15-min auto-rescore cron + drift triggers + admin per-place re-eval + quarterly backstop
+
+**Date:** 2026-05-30
+**Owner:** META-ORCH-1009 Sub-D (orchestrator-dispatched implementor pass)
+
+**Context:** Sub-B's write-time blend created an implicit "deck is correct only as of the last manual click" contract (DEC-182 / operator-locked D-1). Sub-C's bulk Gemini coverage backfills make that contract untenable — 11K places can land fresh AI scores in one round and the deck stays stale until the operator remembers to click `run-signal-scorer`. Sub-D closes the loop with infrastructure only — no consumer-mobile or signalScorer math changes.
+
+**Decision (load-bearing — 4 coupled choices):**
+
+1. **Cron cadence = 15 min** (`*/15 * * * *`). Rejected 5-min (would fire 3× during a typical Sub-C round; risks edge-fn rate-limits + duplicated work) and hourly (leaves deck stale longer than operator's natural "did it work?" check cycle). 15 min catches the tail of a Sub-C burst on the next tick.
+2. **Per-tick LIMIT = 500 pairs, oldest-stale-first** in `pg_meta_orch_1009_sub_d_select_stale_pairs(int)`. Bucketed by `signal_id` so the kicker fires one HTTP request per dirty signal (not 500 per place). At 96 ticks/day this drains 48K pairs/day worst-case; the live 988 stale pairs probe + 26,682 (place, signal) overlap → first-sweep drain ~8h (with D-6 seed below).
+3. **D-6 (LOCKED) — pre-apply seed-UPDATE.** The Sub-D migration runs a single `UPDATE place_scores SET ai_signal_scores_at = (...).evaluated_at` for rows where `scored_at > ai_evaluated_at` (rows already up-to-date post-Sub-B). Reduces first-sweep drain from ~13.5h to ~8h. Rows with `scored_at <= ai_evaluated_at` (actually stale) and rows with no `place_scores` row at all stay NULL → cron picks them up correctly.
+4. **D-3 (LOCKED) — drift trigger fires on all 3 columns** (`business_status` / `editorial_summary` / `generative_summary`). Operator-acknowledged risk: Google's AI-generated `editorial_summary` + `generative_summary` can drift cosmetically. Ship as-is; monitor 30 days; tighten to `business_status` only if drift volume > 1,000/week (~$4/week at ~$0.0040 per Gemini Q2 re-eval per https://ai.google.dev/pricing/gemini-2-5-flash).
+
+**Operator-confirmed constraints (carried over from REVIEW 2026-05-30):**
+
+- Admin button rate-limit = server-side, any in-flight row blocks (429 + "wait for it to complete" toast). Avoids duplicating the ~$0.0040 Gemini call when a city sweep or drift trigger already queued the place. No `force=true` bypass.
+- Quarterly backstop at `0 4 1 */3 *` (04:00 UTC, day 1, every 3rd calendar month). Safety net for anything the drift trigger missed.
+- Admin button source-tag = `admin-reeval-button` (vs `auto-refresh-drift` for trigger insertions, NULL for legacy admin-initiated city sweeps). Enables future cost dashboards.
+
+**Alternatives rejected:**
+
+- **Request-time blend re-derivation** — rejected for the same reasons as DEC-182 (hot-path JSONB read cost + filter-min re-tune + collab determinism argument). Sub-D layers cron-driven freshness on top of Sub-B's offline blend; no consumer hot-path change.
+- **Google webhook subscription** — rejected; drift detection is INTERNAL via a Postgres trigger on the `place_pool` row our own ingestion pipeline updates.
+- **NULL-sentinel for stale rows** — rejected; the column defaults NULL so the helper fn handles "pre-Sub-D" (NULL) + "drift since last write" (older) uniformly via the same WHERE branch.
+- **Daily backstop** — rejected; defeats Sub-D's selectivity gains. Quarterly is the documented "safety net" cadence from research §9 Q6.
+
+**Impact:**
+
+- **Migration (new):** `supabase/migrations/20260808000000_meta_orch_1009_sub_d_refresh_cron.sql` — `place_scores.ai_signal_scores_at` column + `place_intelligence_trial_runs.source` column + CHECK + partial unique idx + 2 SECURITY DEFINER helper fns (`pg_meta_orch_1009_sub_d_select_stale_pairs`, `tg_meta_orch_1009_sub_d_kick_rescores`) + 1 quarterly fn + 2 cron schedules + 1 trigger fn on `place_pool` + vault pre-flight DO block + D-6 seed-UPDATE + schema/cron verification probes. Apply NOTICEs surface `seeded_count` + `stale_remaining` for operator visibility.
+- **Edge fn (scorer):** `supabase/functions/run-signal-scorer/index.ts` — extends request body with `place_ids: string[]` per-place mode (mutually exclusive with `all_cities`; capped at 1000); writes `ai_signal_scores_at` on every upsert; chunk payload + writes typing extended.
+- **Edge fn (shared):** `supabase/functions/_shared/signalScorer.ts` — 1-line addition to `ScoreResult.ai_blended` (passes `evaluated_at` from `aiEntry` to the caller).
+- **Edge fn (trial):** `supabase/functions/run-place-intelligence-trial/index.ts` — NEW action `admin_reeval_place` (~120 lines) creates synthetic parent+child rows tagged `source='admin-reeval-button'` and fires an immediate `process_chunk` kick. Server-side rate-limited to ANY pending/running row for the same place.
+- **Admin UI:** `mingla-admin/src/pages/PlacePoolManagementPage.jsx` — adds "Re-evaluate AI signals" button in the place detail modal + "Last AI Evaluated" timestamp in Data Freshness. Loading/error UI; toast variants for rate_limit vs failure.
+- **CI:** new strict-grep gate `meta-orch-1009-sub-d-ai-score-staleness-recovery.mjs` (cron-registered + sole-writer enforcement), registered in `strict-grep-mingla-business.yml`.
+- **Invariants:** new ACTIVE `I-AI-SCORE-STALENESS-AUTO-RECOVERED` (Sub-D close).
+
+**EXIT signal:** none — Sub-D is pure infrastructure that closes the staleness loop opened by DEC-182. Reverting would re-open the "stale until operator clicks" gap.
+
+**Cross-references:**
+
+- DEC-099 (constitutional bless — JSONB column pre-authorisation)
+- DEC-181 (column name `ai_signal_scores`)
+- DEC-182 (write-time blend authority — Sub-B)
+- META-ORCH-1009 Sub-A close (column landed)
+- META-ORCH-1009 Sub-B close (blend + veto + reasoning landed)
+- META-ORCH-1009 Sub-D SPEC (`Mingla_Artifacts/specs/SPEC_META-ORCH-1009_SUB_D_REFRESH_CRON.md`)
+- META-ORCH-1009 Sub-D implementation report (`Mingla_Artifacts/reports/IMPLEMENTATION_META-ORCH-1009_SUB_D_REFRESH_CRON.md`)
+- I-AI-SCORE-STALENESS-AUTO-RECOVERED (new ACTIVE)
+- COMMS-0003 (Gemini docs URLs cited inline in migration + new admin_reeval_place handler)
