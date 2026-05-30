@@ -259,19 +259,26 @@ export function EventCard({
         {/* Chip 2 — venue white chip (Variant B only, §E.6 #2 / §E.8). Long
             venue / venue+room moves OUT of the ink line onto its own white chip:
             ink-78% on white (9.8:1 AAA), hairline rim, 1-line truncate. */}
+        {/* Venue chip — full-width, GROWS to fill the space between the title and
+            the ticket pill (flex:1) with equal 8px margins, text left-aligned.
+            Mirrors the place/intent description chip exactly so all three card
+            types share one layout (no empty gap, consistent left alignment). */}
         {useVariantB && (
           <div
-            className="w-full max-w-full overflow-hidden font-sans"
+            className="flex w-full max-w-full flex-col justify-center overflow-hidden font-sans"
             style={{
-              marginTop: '6px',
+              flex: '1 1 auto',
+              minHeight: 0,
+              margin: '8px 0',
               background: '#ffffff',
               border: '1px solid rgba(14,14,16,0.08)',
               borderRadius: '8px',
-              padding: '5px 9px',
+              padding: '6px 9px',
               fontSize: '11.5px',
               lineHeight: 1.25,
               fontWeight: 500,
               color: 'rgba(14,14,16,0.78)',
+              textAlign: 'left',
               whiteSpace: 'nowrap',
               textOverflow: 'ellipsis',
             }}
@@ -279,10 +286,6 @@ export function EventCard({
             {event.venue}
           </div>
         )}
-
-        {/* Spacer — eats the slack so the orange pill pins to the block bottom
-            (mt-auto), matching the sibling layout in both variants. */}
-        <div style={{ flex: '1 1 auto', minHeight: '5px' }} />
 
         {/* Chip 3 — full-width ORANGE price/CTA pill (§E.7). Always carries the
             ACTION (CTA right); price rides the left ONLY when present (never
