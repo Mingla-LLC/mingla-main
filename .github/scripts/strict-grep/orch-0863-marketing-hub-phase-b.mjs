@@ -987,7 +987,17 @@ function checkNoNewBackendFiles() {
     "supabase/functions/_shared/stopAlternatives.ts",
     "supabase/functions/generate-curated-experiences/index.ts",
   ];
+  // ORCH-1006 [Universal all-in pricing engine]. New shared money engine + its
+  // regression test + the two pricing migrations. Admin take-rate persistence
+  // uses SECURITY DEFINER RPCs (no new edge function), so only these register.
+  const ORCH_1006_BACKEND_ALLOWLIST = [
+    "supabase/functions/_shared/allInPricingEngine.ts",
+    "supabase/functions/_shared/__tests__/allInPricingEngine.test.ts",
+    "supabase/migrations/20260802000000_orch_1006_pricing_switches.sql",
+    "supabase/migrations/20260802000001_orch_1006_pricing_views.sql",
+  ];
   const ALLOWLIST = [
+    ...ORCH_1006_BACKEND_ALLOWLIST,
     ...ORCH_0989_BACKEND_ALLOWLIST,
     ...ORCH_0990_BACKEND_ALLOWLIST,
     ...ORCH_0986_BACKEND_ALLOWLIST,
