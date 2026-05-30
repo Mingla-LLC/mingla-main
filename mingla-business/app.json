@@ -21,6 +21,10 @@
       "entitlements": {
         "com.apple.developer.in-app-payments": [
           "merchant.com.sethogieva.minglabusiness"
+        ],
+        "aps-environment": "production",
+        "com.apple.security.application-groups": [
+          "group.com.sethogieva.minglabusiness.onesignal"
         ]
       },
       "associatedDomains": [
@@ -122,7 +126,24 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "2d30bbc0-38d9-4a41-bf69-de89cbf6d142"
+        "projectId": "2d30bbc0-38d9-4a41-bf69-de89cbf6d142",
+        "build": {
+          "experimental": {
+            "ios": {
+              "appExtensions": [
+                {
+                  "targetName": "OneSignalNotificationServiceExtension",
+                  "bundleIdentifier": "com.sethogieva.minglabusiness.OneSignalNotificationServiceExtension",
+                  "entitlements": {
+                    "com.apple.security.application-groups": [
+                      "group.com.sethogieva.minglabusiness.onesignal"
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        }
       }
     },
     "updates": {
