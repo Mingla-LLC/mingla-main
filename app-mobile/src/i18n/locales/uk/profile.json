@@ -74,6 +74,18 @@
     "mingla_level": "Mingla level",
     "interests": "Interests",
     "message": "Message",
-    "friend_fallback": "Друг"
+    "friend_fallback": "Друг",
+    "add_friend": "Додати друга",
+    "requested": "Запит надіслано",
+    "accept_request": "Прийняти запит",
+    "sending": "Надсилання…",
+    "canceling": "Скасування…",
+    "accepting": "Прийняття…",
+    "error_generic": "Не вдалося надіслати. Торкніться, щоб повторити.",
+    "error_network": "Ви офлайн. Перевірте з'єднання та повторіть спробу.",
+    "error_unavailable": "Ця людина зараз недоступна.",
+    "cancel_request_title": "Скасувати запит у друзі?",
+    "cancel_request_body": "{{name}} не отримає сповіщення.",
+    "cancel_request_confirm": "Скасувати запит"
   }
 }

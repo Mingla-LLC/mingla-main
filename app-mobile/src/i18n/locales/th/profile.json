@@ -74,6 +74,18 @@
     "mingla_level": "เลเวล Mingla",
     "interests": "ความสนใจ",
     "message": "ข้อความ",
-    "friend_fallback": "เพื่อน"
+    "friend_fallback": "เพื่อน",
+    "add_friend": "เพิ่มเพื่อน",
+    "requested": "ส่งคำขอแล้ว",
+    "accept_request": "ตอบรับคำขอ",
+    "sending": "กำลังส่ง…",
+    "canceling": "กำลังยกเลิก…",
+    "accepting": "กำลังตอบรับ…",
+    "error_generic": "ส่งไม่สำเร็จ แตะเพื่อลองอีกครั้ง",
+    "error_network": "คุณออฟไลน์อยู่ ตรวจสอบการเชื่อมต่อแล้วลองใหม่",
+    "error_unavailable": "ขณะนี้ไม่สามารถติดต่อบุคคลนี้ได้",
+    "cancel_request_title": "ยกเลิกคำขอเป็นเพื่อนไหม?",
+    "cancel_request_body": "{{name}} จะไม่ได้รับการแจ้งเตือน",
+    "cancel_request_confirm": "ยกเลิกคำขอ"
   }
 }

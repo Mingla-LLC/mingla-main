@@ -2323,22 +2323,30 @@ export default function SwipeableCards({
             </View>
           )}
 
-          {/* View Previous overlay — appears after first swipe.
-              ORCH-0589 v4 (V4): repositioned below the floating top-bar chrome so it
-              doesn't collide with the Notifications bell. top = safeArea.top + ~62
-              (row height 52 + topInset 2 + 8 breathing). Right-aligned position preserved. */}
+          {/* Swipe History overlay — appears after first swipe.
+              ORCH-0991: renamed from the "{count} viewed" pill to a static "Swipe History"
+              label, centered horizontally and sat in the empty center slot of the glass
+              top bar (just below the status bar). top = safeArea.top + 10 aligns the chip
+              vertically against the preferences/notifications buttons (button band
+              safeArea.top+2 → +46, center +24). The center slot is empty here
+              (sessionSwitcher={null} in HomePage), so it clears both buttons. */}
           {sessionSwipedCards.length > 0 && (
-            <TouchableOpacity
-              style={[styles.batchChip, { top: safeAreaInsets.top + 62 }]}
-              onPress={() => setDismissedSheetVisible(true)}
-              activeOpacity={0.7}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            <View
+              style={[styles.batchChipWrap, { top: safeAreaInsets.top + 10 }]}
+              pointerEvents="box-none"
             >
-              <Icon name="time-outline" size={14} color="#6b7280" />
-              <Text style={styles.batchChipText}>
-                {t('cards:swipeable.viewed', { count: sessionSwipedCards.length })}
-              </Text>
-            </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.batchChip}
+                onPress={() => setDismissedSheetVisible(true)}
+                activeOpacity={0.7}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Icon name="time-outline" size={14} color="#6b7280" />
+                <Text style={styles.batchChipText}>
+                  {t('cards:swipeable.swipe_history')}
+                </Text>
+              </TouchableOpacity>
+            </View>
           )}
           {showNextBatchLoader && (
             <View style={styles.nextBatchOverlay} pointerEvents="none">
@@ -2376,12 +2384,7 @@ export default function SwipeableCards({
                       style={styles.heroGradient}
                     />
 
-                    {/* Gallery Indicator if multiple images (ORCH-0566: glass) */}
-                    {nextCard.images && nextCard.images.length > 1 && (
-                      <View style={styles.galleryIndicatorWrapper}>
-                        <GlassBadge iconName="images">{nextCard.images.length}</GlassBadge>
-                      </View>
-                    )}
+                    {/* ORCH-0991: image-count badge removed from cards. */}
 
                     {/* Title and Details Overlay */}
                     <View style={styles.titleOverlay}>
@@ -2513,12 +2516,7 @@ export default function SwipeableCards({
                       style={styles.heroGradient}
                     />
 
-                    {/* Gallery Indicator if multiple images (ORCH-0566: glass) */}
-                    {currentRec.images && currentRec.images.length > 1 && (
-                      <View style={styles.galleryIndicatorWrapper}>
-                        <GlassBadge iconName="images">{currentRec.images.length}</GlassBadge>
-                      </View>
-                    )}
+                    {/* ORCH-0991: image-count badge removed from cards. */}
 
                     {/* Title and Details Overlay - Bottom Left of Image */}
                     <Animated.View style={[
@@ -2799,12 +2797,6 @@ const styles = StyleSheet.create({
     color: "#1f2937",
     fontSize: 13,
     fontWeight: "600",
-  },
-  // ORCH-0566: position-only wrapper — GlassBadge provides its own skin.
-  galleryIndicatorWrapper: {
-    position: "absolute",
-    top: 16,
-    right: 16,
   },
   // ORCH-0589 v2 (G4): more breathing room — premium rhythm.
   // paddingBottom 24 → 40, cardTitle marginBottom 12 → 16.
@@ -3291,12 +3283,17 @@ const styles = StyleSheet.create({
     color: "#ffffff",
     fontWeight: "600",
   },
-  batchChip: {
-    // ORCH-0589 v4 (V4): `top` set at runtime via inline style using safeAreaInsets.top + 62
-    // so the chip sits below the floating top-bar chrome. Right-alignment preserved.
+  batchChipWrap: {
+    // ORCH-0991: full-width positioned wrapper so the content-sized chip centers
+    // horizontally. `top` set at runtime via inline style using safeAreaInsets.top + 10
+    // so the chip sits in the empty center slot of the glass top bar.
     position: "absolute",
-    right: 16,
+    left: 0,
+    right: 0,
     zIndex: 20,
+    alignItems: "center",
+  },
+  batchChip: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,

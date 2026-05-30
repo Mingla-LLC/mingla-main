@@ -121,6 +121,12 @@ const styles = StyleSheet.create({
   // Card chrome (scrim/canvas/radius/padding/shadow/maxWidth/fade) comes from
   // glass.centerDialog; `card` is just the content layout passthrough (playbook §1).
   card: {
+    // META-ORCH-0991 Wave B Batch 4: the visible dialog surface (scrim + opaque
+    // canvas + radius + padding + shadow + maxWidth) is supplied by the
+    // BaseBottomSheet center-dialog (glass.centerDialog canvas is already
+    // Android-opaque #FFFFFF, clipped to radius — the META-ORCH-1002 Android
+    // glass/inset-ring concern lands at the dialog canvas, not here). This inner
+    // card is just the content layout passthrough.
     width: "100%",
     alignItems: "center",
   },

@@ -401,6 +401,27 @@ export const resolveEventCoverMediaPresentation = ({
   return "fallback";
 };
 
+// ORCH-0992 [event-cover video paused on web] — kept identical to
+// @mingla/event-rendering `coverMediaPresentation.ts` `shouldFreezeCoverForReduceMotion`.
+// A muted-autoplay-loop cover is ambient motion (like a GIF cover, never frozen);
+// only non-ambient covers (sound-on / tap-to-play) still freeze to a still under
+// reduce-motion. If you change one copy, change the other.
+export const shouldFreezeCoverForReduceMotion = ({
+  reduceMotion,
+  autoplay,
+  muted,
+  loop,
+}: {
+  reduceMotion?: boolean;
+  autoplay?: boolean;
+  muted?: boolean;
+  loop?: boolean;
+}): boolean => {
+  const isAmbientMutedLoop =
+    autoplay === true && muted === true && loop === true;
+  return reduceMotion === true && !isAmbientMutedLoop;
+};
+
 export const isLegacyUnsafeEventCoverVideoUrl = (
   mediaUrl?: string | null,
   mediaType?: EventCoverMediaType | null,

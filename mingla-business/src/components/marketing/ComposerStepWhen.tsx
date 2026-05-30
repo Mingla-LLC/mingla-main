@@ -244,6 +244,7 @@ const styles = StyleSheet.create({
   segmented: {
     flexDirection: "row",
     borderRadius: radius.full,
+    overflow: "hidden",
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: glass.border.profileBase,
     backgroundColor: glass.tint.profileBase,
@@ -286,6 +287,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs, // F.8: was spacing.sm
     borderRadius: radius.md, // F.8: was radius.lg
+    overflow: "hidden",
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: glass.border.profileBase,
     backgroundColor: glass.tint.profileBase,
@@ -309,6 +311,7 @@ const styles = StyleSheet.create({
   },
   pickerHost: {
     borderRadius: radius.lg,
+    overflow: "hidden",
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: glass.border.profileBase,
     backgroundColor: glass.tint.profileBase,

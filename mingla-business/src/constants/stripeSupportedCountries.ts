@@ -67,10 +67,6 @@ const COUNTRY_BY_CODE: ReadonlyMap<string, StripeSupportedCountry> = new Map(
   STRIPE_SUPPORTED_COUNTRIES.map((entry) => [entry.country, entry]),
 );
 
-export function isStripeSupportedCountry(input: unknown): input is string {
-  return typeof input === "string" && COUNTRY_BY_CODE.has(input.trim().toUpperCase());
-}
-
 export function getStripeSupportedCountry(
   code: string,
 ): StripeSupportedCountry | null {

@@ -13,6 +13,7 @@ import {
   resolveFilterSignal,
   resolveFilterMin,
   resolveTypeFilter,
+  resolvePrimaryTypeGate,
 } from './signalRankFetch.ts';
 import {
   CATEGORY_DURATION_MINUTES,
@@ -114,6 +115,13 @@ export async function fetchStopAlternatives(
   // returning a generic park / art class for those slots.
   const requiredTypes = resolveTypeFilter(categoryId);
 
+  // ORCH-0990: pass the composite primary-type gate through so swapping a
+  // "flowers" stop returns ONLY verified bouquet sources (primary_type='florist'
+  // OR grocery/supermarket+florist-tag), matching the curated generator.
+  // Constitution #13: generation and serving use the same gate. undefined for
+  // every non-flowers slug → no-op in the RPC, behavior unchanged.
+  const primaryTypeGate = resolvePrimaryTypeGate(categoryId);
+
   // ORCH-0985: rank by the vibe signal the generator stamped on the stop
   // (romantic/icebreakers/lively/scenic/picnic_friendly) so alternatives are
   // ordered by the SAME vibe the plan was built with. Filtering is always by the
@@ -131,6 +139,8 @@ export async function fetchStopAlternatives(
     radiusMeters: clampedRadius,
     limit: 100,
     requiredTypes,
+    primaryTypeRequired: primaryTypeGate?.primaryTypes,
+    groceryFloralTag: primaryTypeGate?.groceryFloralTag,
   });
 
   // Filter: not in exclude list, within budget, fine-dining tier floor.

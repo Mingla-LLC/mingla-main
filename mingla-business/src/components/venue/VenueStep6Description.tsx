@@ -77,6 +77,7 @@ const styles = StyleSheet.create({
     minHeight: 140,
     padding: spacing.md,
     borderRadius: 12,
+    overflow: "hidden",
     borderWidth: 1,
     borderColor: INPUT_BORDER,
     backgroundColor: INPUT_BG,

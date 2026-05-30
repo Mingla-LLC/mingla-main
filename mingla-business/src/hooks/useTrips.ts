@@ -23,6 +23,8 @@ import {
   type UseQueryResult,
 } from "@tanstack/react-query";
 
+import { useAuth } from "../context/AuthContext";
+
 // ORCH-0965 — home composite-upcoming cache key.
 // Imported from the keyless `upcomingKeys` module to avoid a require-cycle
 // (useUpcomingForBrand → useTrips → useUpcomingForBrand).
@@ -82,7 +84,12 @@ const TRIP_DETAIL_STALE_MS = 60 * 1000;
 export const useTripsByBrand = (
   brandId: string | null,
 ): UseQueryResult<Trip[], Error> => {
-  const enabled = brandId !== null && brandId.length > 0;
+  // ORCH-1004 — gate on auth readiness: getTripsByBrand reads RLS
+  // auth.uid()-scoped `events` (security_invoker management path). Firing
+  // pre-auth returns 200 + [] which React Query caches as success for the
+  // staleTime window. isAuthReady ⟺ signed_in_ready + access_token present.
+  const { isAuthReady } = useAuth();
+  const enabled = isAuthReady && brandId !== null && brandId.length > 0;
   return useQuery<Trip[], Error>({
     queryKey: enabled ? tripKeys.listByBrand(brandId) : DISABLED_KEY,
     queryFn: async () => {
@@ -99,7 +106,11 @@ export const useTripsByBrand = (
 export const useTrip = (
   eventId: string | null,
 ): UseQueryResult<Trip | null, Error> => {
-  const enabled = eventId !== null && eventId.length > 0;
+  // ORCH-1004 — authed trip detail (dashboard/edit). getTrip reads RLS
+  // auth.uid()-scoped `events` + sidecars. The public buyer path uses
+  // usePublicTripBySlug / usePublicTripById (anon-tolerant, NOT gated).
+  const { isAuthReady } = useAuth();
+  const enabled = isAuthReady && eventId !== null && eventId.length > 0;
   return useQuery<Trip | null, Error>({
     queryKey: enabled ? tripKeys.detail(eventId) : DISABLED_KEY,
     queryFn: async () => {

@@ -74,6 +74,18 @@
     "mingla_level": "Mingla level",
     "interests": "Interessi",
     "message": "Messaggio",
-    "friend_fallback": "Amico"
+    "friend_fallback": "Amico",
+    "add_friend": "Aggiungi amico",
+    "requested": "Richiesto",
+    "accept_request": "Accetta richiesta",
+    "sending": "Invio…",
+    "canceling": "Annullamento…",
+    "accepting": "Accettazione…",
+    "error_generic": "Invio non riuscito. Tocca per riprovare.",
+    "error_network": "Sei offline. Controlla la connessione e riprova.",
+    "error_unavailable": "Questa persona non è disponibile al momento.",
+    "cancel_request_title": "Annullare la richiesta di amicizia?",
+    "cancel_request_body": "{{name}} non riceverà una notifica.",
+    "cancel_request_confirm": "Annulla richiesta"
   }
 }

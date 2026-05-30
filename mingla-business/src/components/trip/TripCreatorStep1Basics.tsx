@@ -34,7 +34,9 @@ import {
 } from "../../constants/designSystem";
 import { Button } from "../ui/Button";
 import { AddressAutocompleteInput } from "../event/AddressAutocompleteInput";
-import { CoverPicker, type CoverPatch } from "../ui/CoverPicker";
+import { type CoverPatch } from "../ui/CoverPicker";
+import { CoverPickerSheet } from "../ui/CoverPickerSheet";
+import { EventCoverMedia } from "../ui/EventCoverMedia";
 import type { EventCoverMediaType } from "../../store/draftEventStore";
 
 export interface Step1Draft {
@@ -152,6 +154,7 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
     },
     [onShowToast],
   );
+  const [coverPickerVisible, setCoverPickerVisible] = useState<boolean>(false);
   const [pickerMode, setPickerMode] = useState<PickerMode>(null);
   const [tempPickerValue, setTempPickerValue] = useState<Date | null>(null);
 
@@ -386,28 +389,64 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
         />
       </View>
 
-      {/* Cover (ORCH-0876 — shared CoverPicker; emits 7-field patch but
-          Step 1 persists url + type via updateTripBasics. EditPublishedTripScreen
-          handles the full 7-field patch via biz_update_live_trip.) */}
+      {/* Cover (ORCH-0989 — unified CoverPickerSheet; gallery-first tabs +
+          video now ENABLED on trips. Step 1 persists url + type via
+          updateTripBasics; EditPublishedTripScreen handles the full 7-field
+          patch via biz_update_live_trip.) */}
       <View style={styles.fieldGroup}>
         <Text style={styles.fieldLabel}>Cover</Text>
-        <CoverPicker
-          brandId={brandId}
-          eventRowId={tripEventId}
-          initialMediaUrl={draft.coverMediaUrl}
-          initialMediaType={draft.coverMediaType}
-          initialProvider={null}
-          initialSourceUrl={null}
-          initialCredit={null}
-          initialCreditUrl={null}
-          initialAlt={null}
-          onCoverChange={handleCoverChange}
-          onShowToast={handleCoverToast}
-          providers={["upload", "giphy", "pexels"]}
-          enableVideoUpload={false}
+        <View style={styles.coverPreview}>
+          <EventCoverMedia
+            hue={0}
+            mediaUrl={draft.coverMediaUrl}
+            mediaType={draft.coverMediaType}
+            radius={12}
+            label="trip cover"
+            height={180}
+            muted={true}
+            showAudioControl={draft.coverMediaType === "video"}
+          />
+        </View>
+        <Button
+          label={
+            typeof draft.coverMediaUrl === "string" && draft.coverMediaUrl.length > 0
+              ? "Change cover"
+              : "Add cover"
+          }
+          leadingIcon="upload"
+          variant="secondary"
+          size="md"
+          shape="square"
+          onPress={() => setCoverPickerVisible(true)}
           disabled={disabled}
+          accessibilityLabel="Add cover photo, GIF, or video"
         />
       </View>
+
+      {/* ORCH-0989 — unified cover sheet, JSX child of this host
+          (I-SUB-SHEET-INSIDE-PARENT). Video ENABLED on trips. */}
+      <CoverPickerSheet
+        visible={coverPickerVisible}
+        onClose={() => setCoverPickerVisible(false)}
+        target={{
+          kind: "trip",
+          brandId,
+          eventRowId: tripEventId,
+          coverMediaApplyMode: "draft_auto",
+        }}
+        initial={{
+          coverMediaUrl: draft.coverMediaUrl,
+          coverMediaType: draft.coverMediaType,
+          coverMediaProvider: null,
+          coverMediaSourceUrl: null,
+          coverMediaCredit: null,
+          coverMediaCreditUrl: null,
+          coverMediaAlt: null,
+        }}
+        onCoverChange={handleCoverChange}
+        onShowToast={handleCoverToast}
+        disabled={disabled}
+      />
 
       {/* iOS picker modal */}
       {Platform.OS === "ios" && pickerMode !== null && tempPickerValue !== null ? (
@@ -486,6 +525,10 @@ const styles = StyleSheet.create({
   fieldGroup: {
     gap: spacing.xs,
   },
+  coverPreview: {
+    borderRadius: 12,
+    overflow: "hidden",
+  },
   fieldLabel: {
     fontSize: typography.caption.fontSize,
     lineHeight: typography.caption.lineHeight,
@@ -496,6 +539,7 @@ const styles = StyleSheet.create({
     height: 48,
     paddingHorizontal: 14,
     borderRadius: radiusTokens.md,
+    overflow: "hidden",
     backgroundColor: INPUT_BG,
     borderWidth: 1,
     borderColor: INPUT_BORDER,
@@ -513,6 +557,7 @@ const styles = StyleSheet.create({
     height: 48,
     paddingHorizontal: 14,
     borderRadius: radiusTokens.md,
+    overflow: "hidden",
     backgroundColor: INPUT_BG,
     borderWidth: 1,
     borderColor: INPUT_BORDER,

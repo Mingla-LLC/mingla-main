@@ -13,7 +13,7 @@
  */
 
 import React, { useMemo } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
   accent,
@@ -246,11 +246,19 @@ const TripStatusPill: React.FC<TripStatusPillProps> = ({ status, startAt }) => {
 const styles = StyleSheet.create({
   host: {
     position: "relative",
-    backgroundColor: glass.tint.profileBase,
+    // META-ORCH-1002 Sub-1 (S6): opaque frosted fill on Android (the translucent
+    // rgba(255,255,255,0.04) let the corner ring show); kit-consistent rgba(20,22,26,0.92).
+    // iOS keeps the translucent profileBase. All children are positioned inside host
+    // bounds (no intentional overflow), so clipping to the radius is safe.
+    backgroundColor: Platform.select({
+      ios: glass.tint.profileBase,
+      android: "rgba(20, 22, 26, 0.92)",
+      default: glass.tint.profileBase,
+    }),
     borderRadius: radiusTokens.lg,
     borderWidth: 1,
     borderColor: glass.border.profileBase,
-    overflow: "visible",
+    overflow: "hidden",
   },
   hostFaded: {
     opacity: 0.7,
@@ -350,6 +358,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: radiusTokens.full,
+    overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: glass.tint.chrome.idle,

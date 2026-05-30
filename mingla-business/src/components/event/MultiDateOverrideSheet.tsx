@@ -668,6 +668,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
     borderRadius: radiusTokens.md,
+    overflow: "hidden",
     borderWidth: 1,
     borderColor: glass.border.profileBase,
     backgroundColor: glass.tint.profileBase,
@@ -686,6 +687,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: radiusTokens.md,
+    overflow: "hidden",
     backgroundColor: accent.tint,
     borderWidth: 1,
     borderColor: accent.border,
@@ -710,6 +712,7 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 999,
+    overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: glass.tint.profileElevated,
@@ -720,6 +723,7 @@ const styles = StyleSheet.create({
   // Input + revert link ------------------------------------------------
   inputWrap: {
     borderRadius: radiusTokens.md,
+    overflow: "hidden",
     borderWidth: 1,
     borderColor: glass.border.profileBase,
     backgroundColor: glass.tint.profileBase,

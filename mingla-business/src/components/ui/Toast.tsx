@@ -179,7 +179,19 @@ const supportsBackdropFilter: boolean =
   ((globalThis as { CSS?: { supports?: (prop: string, value: string) => boolean } }).CSS!.supports!("backdrop-filter", "blur(10px)") ||
     (globalThis as { CSS?: { supports?: (prop: string, value: string) => boolean } }).CSS!.supports!("-webkit-backdrop-filter", "blur(10px)"));
 
-const blurOk = Platform.OS !== "web" || supportsBackdropFilter;
+// META-ORCH-1002 Sub-D: Android glass policy = OPAQUE frosted fallback.
+// Mirrors GlassChrome.shouldUseRealBlur(): iOS uses real UIVisualEffectView
+// blur; Android's expo-blur backdrop renders near-transparent against busy
+// content, so route Android to the solid `FALLBACK_BACKGROUND` (the same
+// fallback the rest of the kit uses); web uses real blur only when
+// backdrop-filter is supported. The prior `Platform.OS !== "web" || ...`
+// evaluated true on Android, leaving the toast washed-out (inverted guard).
+const blurOk =
+  Platform.OS === "ios"
+    ? true
+    : Platform.OS === "android"
+      ? false
+      : supportsBackdropFilter;
 
 const FALLBACK_BACKGROUND = "rgba(20, 22, 26, 0.92)";
 

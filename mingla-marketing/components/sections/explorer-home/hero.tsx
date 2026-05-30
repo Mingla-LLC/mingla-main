@@ -2,26 +2,14 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { AnimatePresence, motion } from 'framer-motion'
-import {
-  ChefHat,
-  Coffee,
-  Compass,
-  Film,
-  Footprints,
-  Gamepad2,
-  Heart,
-  Martini,
-  Palette,
-  Sandwich,
-  Sparkles,
-  Trees,
-  Users,
-  UtensilsCrossed,
-  X,
-} from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
+import { X } from 'lucide-react'
 import { useMinglaReducedMotion } from '@/lib/reduced-motion'
-import { HeroVibeDeck } from '@/components/sections/explorer-home/hero-vibe-deck'
+import {
+  HeroPlaceDeck,
+  useDeckRotation,
+  type DeckPill,
+} from '@/components/sections/explorer-home/hero-place-deck'
+import { DEFAULT_CITY, type CityKey } from '@/lib/city-decks'
 import { cn } from '@/lib/cn'
 import { PRIVACY_SECTIONS, PRIVACY_EFFECTIVE_DATE } from '@/lib/privacyContent'
 import { TERMS_SECTIONS, TERMS_EFFECTIVE_DATE } from '@/lib/termsContent'
@@ -51,67 +39,24 @@ const SITE_CHIPS: ChipLink[] = [
   { href: '/terms', label: 'Terms' },
 ]
 
-interface PreferenceChip {
-  label: string
-  icon: LucideIcon
+// ---------------------------------------------------------------
+// HeadlinePill — the white-glass rounded pill in "Find <pill> that fit the
+// vibe". ORCH-1007 hero-pill sync: it is now DRIVEN by the rotating deck. The
+// `pill` ({ label, icon }) comes from the shared `useDeckRotation` hook, so the
+// word always matches the deck's current front card and they advance on the
+// SAME 2000ms tick. There is no independent timer here anymore — the previous
+// PREFERENCE_CHIPS list + CYCLE_MS cycle were removed.
+//
+// Visual style is preserved verbatim (white glass pill + warm icon chip). The
+// label swap keeps the same enter/exit motion feel via AnimatePresence keyed on
+// the label, and `layout` animates the pill width as the word changes.
+// ---------------------------------------------------------------
+interface HeadlinePillProps {
+  pill: DeckPill
 }
 
-const PREFERENCE_CHIPS: PreferenceChip[] = [
-  { label: 'romantic plans', icon: Heart },
-  { label: 'adventurous plans', icon: Compass },
-  { label: 'first date plans', icon: Sparkles },
-  { label: 'group plans', icon: Users },
-  { label: 'picnic plans', icon: Sandwich },
-  { label: 'stroll routes', icon: Footprints },
-  { label: 'play dates', icon: Gamepad2 },
-  { label: 'icebreaker places', icon: Sparkles },
-  { label: 'nature places', icon: Trees },
-  { label: 'drinks places', icon: Martini },
-  { label: 'artsy places', icon: Palette },
-  { label: 'movie dates', icon: Film },
-  { label: 'brunch places', icon: Coffee },
-  { label: 'casual places', icon: UtensilsCrossed },
-  { label: 'fine dining places', icon: ChefHat },
-] as const
-
-const CYCLE_MS = 2800
-
-
-
-interface PreferenceChipCycleProps {
-  chips: readonly PreferenceChip[]
-  intervalMs?: number
-  startDelayMs?: number
-}
-
-function PreferenceChipCycle({
-  chips,
-  intervalMs = CYCLE_MS,
-  startDelayMs = 0,
-}: PreferenceChipCycleProps) {
-  const reduced = useMinglaReducedMotion()
-  const [i, setI] = useState(0)
-  const [armed, setArmed] = useState(startDelayMs === 0)
-
-  useEffect(() => {
-    if (reduced) return
-    if (startDelayMs > 0) {
-      const t = window.setTimeout(() => setArmed(true), startDelayMs)
-      return () => window.clearTimeout(t)
-    }
-  }, [reduced, startDelayMs])
-
-  useEffect(() => {
-    if (reduced || !armed) return
-    const id = window.setInterval(
-      () => setI((prev) => (prev + 1) % chips.length),
-      intervalMs,
-    )
-    return () => window.clearInterval(id)
-  }, [reduced, armed, chips.length, intervalMs])
-
-  const current = reduced ? chips[0] : chips[i]
-  const Icon = current.icon
+function HeadlinePill({ pill }: HeadlinePillProps) {
+  const Icon = pill.icon
   const chipMotion = {
     duration: 0.52,
     ease: [0.16, 1, 0.3, 1] as const,
@@ -130,7 +75,17 @@ function PreferenceChipCycle({
         >
           <Icon strokeWidth={2.35} className="size-[0.86em]" />
         </span>
-        <span>{current.label}</span>
+        <AnimatePresence mode="popLayout" initial={false}>
+          <motion.span
+            key={pill.label}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={chipMotion}
+          >
+            {pill.label}
+          </motion.span>
+        </AnimatePresence>
       </span>
     </motion.span>
   )
@@ -541,8 +496,17 @@ function SupportModal({ open, onClose }: TermsModalProps) {
   )
 }
 
-export function ExplorerHero() {
+interface ExplorerHeroProps {
+  /** Server-resolved marketing city (ORCH-1007 location-aware). Defaults to DC. */
+  cityKey?: CityKey
+}
+
+export function ExplorerHero({ cityKey = DEFAULT_CITY }: ExplorerHeroProps) {
   const reduced = useMinglaReducedMotion()
+  // Single source of truth for the rotation: the SAME index/timer drives both
+  // the deck's front card and the headline pill (ORCH-1007 hero-pill sync).
+  // The rotation is built from the RESOLVED city's interleaved slots.
+  const rotation = useDeckRotation(cityKey)
   const [supportOpen, setSupportOpen] = useState(false)
   const [termsOpen, setTermsOpen] = useState(false)
   const [privacyOpen, setPrivacyOpen] = useState(false)
@@ -584,7 +548,7 @@ export function ExplorerHero() {
         >
           <span className="inline-flex items-center justify-center gap-x-[0.22em] whitespace-nowrap">
             <span>Find</span>
-            <PreferenceChipCycle chips={PREFERENCE_CHIPS} startDelayMs={900} />
+            <HeadlinePill pill={rotation.pill} />
           </span>
           <span className="whitespace-nowrap">
             that fit the vibe.
@@ -611,7 +575,7 @@ export function ExplorerHero() {
               transformOrigin: 'center',
             }}
           >
-            <HeroVibeDeck />
+            <HeroPlaceDeck rotation={rotation} cityKey={cityKey} />
           </div>
         </motion.div>
       </div>

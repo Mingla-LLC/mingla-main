@@ -78,10 +78,9 @@ import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { Icon } from "../ui/Icon";
 import { IconChrome } from "../ui/IconChrome";
 import { Toast } from "../ui/Toast";
-import {
-  CoverPicker,
-  type CoverPatch,
-} from "../ui/CoverPicker";
+import { type CoverPatch } from "../ui/CoverPicker";
+import { CoverPickerSheet } from "../ui/CoverPickerSheet";
+import { EventCoverMedia } from "../ui/EventCoverMedia";
 
 import { ChangeSummaryModal } from "../event/ChangeSummaryModal";
 import { EditAfterPublishTripBanner } from "./EditAfterPublishTripBanner";
@@ -518,6 +517,7 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
     severity: "additive",
   });
   const [submitting, setSubmitting] = useState<boolean>(false);
+  const [coverPickerVisible, setCoverPickerVisible] = useState<boolean>(false);
 
   // Reject dialog
   const [rejectDialog, setRejectDialog] = useState<RejectDialogContent | null>(
@@ -1080,20 +1080,54 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
         case "cover":
           return (
             <View style={styles.coverWrap}>
-              <CoverPicker
-                brandId={trip.brandId}
-                eventRowId={trip.id}
-                initialMediaUrl={editState.coverMediaUrl}
-                initialMediaType={editState.coverMediaType}
-                initialProvider={editState.coverMediaProvider}
-                initialSourceUrl={editState.coverMediaSourceUrl}
-                initialCredit={editState.coverMediaCredit}
-                initialCreditUrl={editState.coverMediaCreditUrl}
-                initialAlt={editState.coverMediaAlt}
+              {/* ORCH-0989 — unified CoverPickerSheet; video ENABLED on trips. */}
+              <View style={styles.coverPreviewWrap}>
+                <EventCoverMedia
+                  hue={0}
+                  mediaUrl={editState.coverMediaUrl}
+                  mediaType={editState.coverMediaType}
+                  radius={12}
+                  label={editState.coverMediaAlt ?? "trip cover"}
+                  height={180}
+                  muted={true}
+                  showAudioControl={editState.coverMediaType === "video"}
+                />
+              </View>
+              <Button
+                label={
+                  typeof editState.coverMediaUrl === "string" &&
+                  editState.coverMediaUrl.length > 0
+                    ? "Change cover"
+                    : "Add cover"
+                }
+                leadingIcon="upload"
+                variant="secondary"
+                size="md"
+                shape="square"
+                onPress={() => setCoverPickerVisible(true)}
+                disabled={submitting}
+                accessibilityLabel="Add cover photo, GIF, or video"
+              />
+              <CoverPickerSheet
+                visible={coverPickerVisible}
+                onClose={() => setCoverPickerVisible(false)}
+                target={{
+                  kind: "trip",
+                  brandId: trip.brandId,
+                  eventRowId: trip.id,
+                  coverMediaApplyMode: "published_manual",
+                }}
+                initial={{
+                  coverMediaUrl: editState.coverMediaUrl,
+                  coverMediaType: editState.coverMediaType,
+                  coverMediaProvider: editState.coverMediaProvider,
+                  coverMediaSourceUrl: editState.coverMediaSourceUrl,
+                  coverMediaCredit: editState.coverMediaCredit,
+                  coverMediaCreditUrl: editState.coverMediaCreditUrl,
+                  coverMediaAlt: editState.coverMediaAlt,
+                }}
                 onCoverChange={handleCoverChange}
                 onShowToast={showToast}
-                providers={["upload", "giphy", "pexels"]}
-                enableVideoUpload={false}
                 disabled={submitting}
               />
             </View>
@@ -1379,6 +1413,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: radiusTokens.full,
+    overflow: "hidden",
     backgroundColor: accent.tint,
     borderWidth: 1,
     borderColor: accent.border,
@@ -1426,6 +1461,11 @@ const styles = StyleSheet.create({
   },
   coverWrap: {
     paddingTop: spacing.sm,
+    gap: spacing.sm,
+  },
+  coverPreviewWrap: {
+    borderRadius: 12,
+    overflow: "hidden",
   },
   // ORCH-0882 — planner-variant preview below PaymentPlanEditor in the
   // Pricing accordion. Sibling card with consistent vertical breathing

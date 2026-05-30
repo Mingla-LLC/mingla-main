@@ -4,6 +4,7 @@ import {
   isValidUuid,
   jsonResponse,
   mapEventCoverVideoStatus,
+  requireBrandCoverManager,
   requireEventManager,
   requireUserId,
   serviceRoleClient,
@@ -38,7 +39,11 @@ serve(async (req) => {
     return jsonResponse({ error: "internal_error" }, 500);
   }
   if (!job) return jsonResponse({ error: "not_found", detail: "job_not_found" }, 404);
-  const allowed = await requireEventManager(supabase, job.event_id, job.brand_id, userId);
+  const isBrandTarget = job.target_kind === "brand";
+  // ORCH-0989: brand-target gates on brand_admin; event-target keeps event_manager.
+  const allowed = isBrandTarget
+    ? await requireBrandCoverManager(supabase, job.brand_id, userId)
+    : await requireEventManager(supabase, job.event_id, job.brand_id, userId);
   if (allowed instanceof Response) return allowed;
   if (job.status !== "ready" || !job.processed_url) {
     return jsonResponse({
@@ -47,18 +52,35 @@ serve(async (req) => {
     }, 409);
   }
 
-  const { error: updateError } = await supabase
-    .from("events")
-    .update({
-      cover_media_type: "video",
-      cover_media_url: job.processed_url,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", job.event_id)
-    .is("deleted_at", null);
-  if (updateError) {
-    console.error("[event-cover-video-apply] event update failed:", updateError);
-    return jsonResponse({ error: "internal_error" }, 500);
+  if (isBrandTarget) {
+    // ORCH-0989: brand target writes brands.cover_media_url (not events).
+    const { error: brandUpdateError } = await supabase
+      .from("brands")
+      .update({
+        cover_media_type: "video",
+        cover_media_url: job.processed_url,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", job.brand_id)
+      .is("deleted_at", null);
+    if (brandUpdateError) {
+      console.error("[event-cover-video-apply] brand update failed:", brandUpdateError);
+      return jsonResponse({ error: "internal_error" }, 500);
+    }
+  } else {
+    const { error: updateError } = await supabase
+      .from("events")
+      .update({
+        cover_media_type: "video",
+        cover_media_url: job.processed_url,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", job.event_id)
+      .is("deleted_at", null);
+    if (updateError) {
+      console.error("[event-cover-video-apply] event update failed:", updateError);
+      return jsonResponse({ error: "internal_error" }, 500);
+    }
   }
   await supabase
     .from("event_cover_video_jobs")

@@ -950,7 +950,59 @@ function checkNoNewBackendFiles() {
     "supabase/functions/get-person-hero-cards/index.ts",
     "supabase/functions/generate-curated-experiences/index.ts",
   ];
+  // ORCH-0989 [Unified cover picker sheet]: brand-cover video target migration
+  // + new Pexels curated edge fn + the 6 generalized event-cover-video fns +
+  // shared helper (edits flagged by C7's modified-file detection). Per
+  // SPEC_ORCH-0989 §9.4 + COMMS-0002.
+  const ORCH_0989_BACKEND_ALLOWLIST = [
+    "supabase/functions/event-cover-pexels-curated/index.ts",
+    "supabase/migrations/20260801000000_orch_0989_brand_cover_video_target.sql",
+    "supabase/functions/event-cover-video-upload-intent/index.ts",
+    "supabase/functions/event-cover-video-source-uploaded/index.ts",
+    "supabase/functions/event-cover-video-status/index.ts",
+    "supabase/functions/event-cover-video-apply/index.ts",
+    "supabase/functions/event-cover-video-cancel/index.ts",
+    "supabase/functions/event-cover-video-webhook/index.ts",
+    "supabase/functions/_shared/eventCoverVideo.ts",
+    // ORCH-0989 tester-authored adversarial regressions. Ship with the close PR.
+    // #1 curated edge fn error/boundary/no-orientation invariant.
+    "supabase/functions/event-cover-pexels-curated/index.adversarial.test.ts",
+    // #2 brand-cover-video target boundary (CHECK + RLS + apply gate).
+    "supabase/functions/event-cover-video-apply/index.adversarial.test.ts",
+  ];
+  // ORCH-0990 [Curated "Flowers" stop resolves to real florists]. C7 is scoped to
+  // ORCH-0863 marketing; these backend touches are the composite primary-type
+  // florist gate: a read-only re-create of the fetch_local_signal_ranked RPC
+  // (two new optional params, no-op at defaults), the shared signal-rank helper
+  // (new gate map + resolver + floor 0), its Deno regression test, the stop-swap
+  // resolver, and the curated generator call-site. No marketing scope.
+  const ORCH_0990_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260801000001_orch_0990_fetch_local_signal_ranked_primary_type_gate.sql",
+    "supabase/functions/_shared/signalRankFetch.ts",
+    "supabase/functions/_shared/signalRankFetch.flowers.test.ts",
+    // ORCH-0990 tester-authored adversarial regression test (QA Step 0.5(b)) —
+    // evaluates the composite gate predicate against adversarial rows (a different
+    // angle than the implementor's SQL-text grep test). Same C7 rationale.
+    "supabase/functions/_shared/signalRankFetch.flowers.adversarial.test.ts",
+    "supabase/functions/_shared/stopAlternatives.ts",
+    "supabase/functions/generate-curated-experiences/index.ts",
+  ];
+  // ORCH-1008 [Admin shell prune + Intelligence Overview tab + remainder mode].
+  // C7 is scoped to ORCH-0863 marketing; these backend touches are the new
+  // place_intelligence_runs CHECK-constraint extension (adds 'remainder' to
+  // the mode enum + sample_size consistency), the in-place edge fn extension
+  // (handleStartRun branches on mode='remainder' + a new intelligence_coverage
+  // action for the Overview tab), plus the Deno regression test asserting
+  // remainder enqueues exactly servable - completed places. Per COMMS-0002.
+  const ORCH_1008_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260801000002_orch_1008_remainder_mode.sql",
+    "supabase/functions/run-place-intelligence-trial/index.ts",
+    "supabase/functions/run-place-intelligence-trial/__tests__/runRemainder.test.ts",
+    "supabase/functions/run-place-intelligence-trial/__tests__/runRemainder_adversarial.test.ts",
+  ];
   const ALLOWLIST = [
+    ...ORCH_0989_BACKEND_ALLOWLIST,
+    ...ORCH_0990_BACKEND_ALLOWLIST,
     ...ORCH_0986_BACKEND_ALLOWLIST,
     ...ORCH_0985_BACKEND_ALLOWLIST,
     ...META_ORCH_0952_BACKEND_ALLOWLIST,
@@ -1001,6 +1053,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_0964_BACKEND_ALLOWLIST,
     ...ORCH_0977_BACKEND_ALLOWLIST,
     ...ORCH_0978_BACKEND_ALLOWLIST,
+    ...ORCH_1008_BACKEND_ALLOWLIST,
   ];
   const forbidden = changed.filter(
     (p) =>

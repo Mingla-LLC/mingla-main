@@ -74,6 +74,18 @@
     "mingla_level": "Ọkwa Mingla",
     "interests": "Ihe Masịrị",
     "message": "Ozi",
-    "friend_fallback": "Enyi"
+    "friend_fallback": "Enyi",
+    "add_friend": "Tinye enyi",
+    "requested": "Arịọla",
+    "accept_request": "Nabata arịrịọ",
+    "sending": "Na-eziga…",
+    "canceling": "Na-akagbu…",
+    "accepting": "Na-anabata…",
+    "error_generic": "Enweghị ike izite. Pịa ka ịnwaa ọzọ.",
+    "error_network": "Ị nọ na-anọghị n'ịntanetị. Lelee njikọ gị ma nwaa ọzọ.",
+    "error_unavailable": "Onye a adịghị ugbu a.",
+    "cancel_request_title": "Kagbuo arịrịọ enyi?",
+    "cancel_request_body": "A gaghị agwa {{name}}.",
+    "cancel_request_confirm": "Kagbuo arịrịọ"
   }
 }

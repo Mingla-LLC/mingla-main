@@ -31,10 +31,13 @@ import {
   View,
 } from "react-native";
 import * as Haptics from "expo-haptics";
-// META-ORCH-0991 Bug 3b (thumbnails): the SHARED cover renderer owns image +
-// video-poster + error/fallback for every cover surface (COMMS-0007). The
-// Discover card consumes it instead of a bare ExpoImage so video covers show a
-// poster frame and image covers get the shared onError → hue-band fallback.
+// ORCH-0994 + META-ORCH-0991 Bug 3b — shared cover renderer (image + GIF +
+// video). Replaces the image-only ExpoImage path: video covers PLAY in the
+// Discover grid (muted/looping ambient autoplay, reduce-motion aware) instead of
+// falling through to a solid hue band, and image covers inherit the shared
+// onError → hue-band fallback + per-mediaUrl error/recycling reset (COMMS-0007;
+// the Android robustness the bare ExpoImage lacked). Same component the event
+// hero uses; renders its own hue-band fallback (EventCover) on missing/failed media.
 import { EventCoverMedia } from "@mingla/event-rendering";
 // META-ORCH-0991 Bug 3a (intermittent card tap): the card lives inside the
 // Discover screen-level RN <ScrollView>. A plain <Pressable onPress> is cancelled
@@ -55,13 +58,20 @@ interface BusinessEventCardProps {
   onPress: (data: BusinessEventCardData) => void;
 }
 
+// ORCH-0994 — single source for the card corner radius, shared by the card
+// container clip and the EventCoverMedia radius so the cover (and its fallback
+// band) corners align with the card.
+const CARD_RADIUS = 18;
+
 // ORCH-0877 — formatDateChip replaced by centralized
 // `formatEventDateChip` from app-mobile/src/utils/eventDateDisplay.ts.
 // I-14 single-source; cross-midnight aware via the shared helper.
-
-// META-ORCH-0991 Bug 3b: the hue-band fallback now lives in the shared
-// EventCoverMedia / EventCover (@mingla/event-rendering), so the local
-// `heroColorFromHue` helper was removed — the card no longer hand-rolls a band.
+//
+// ORCH-0994 + META-ORCH-0991 Bug 3b — the local `heroColorFromHue` hue-band
+// helper was removed: the no-media / failed-media fallback band is now rendered
+// by EventCoverMedia's built-in EventCover (hsl(hue, 60%, 45%) base — identical
+// to the prior local band), keeping a single owner for cover rendering across
+// hero + grid (@mingla/event-rendering).
 
 const BusinessEventCardImpl: React.FC<BusinessEventCardProps> = ({
   data,
@@ -107,39 +117,31 @@ const BusinessEventCardImpl: React.FC<BusinessEventCardProps> = ({
         { width, height },
       ]}
     >
-      {/* Hero — META-ORCH-0991 Bug 3b: render via the SHARED EventCoverMedia
-          (@mingla/event-rendering) instead of a hand-rolled ExpoImage + hue band.
-          This fixes BOTH 3b causes at once:
-            (1) Video covers now show a real first-frame POSTER (autoplay=false →
-                the shared component mounts the video paused on its first frame)
-                instead of the previous flat hue band — the old condition
-                `coverMediaType !== "video"` fell through to a solid color.
-            (2) Images get the shared component's built-in onError → hue-band
-                fallback + error/recycling handling (resolveEventCoverMediaPresentation
-                + the per-mediaUrl error reset), the robustness the bare ExpoImage
-                lacked on Android.
-          autoplay/playbackActive=false so a grid of many cards never spins up
-          concurrent video playback (static posters only); the hue band still
-          backs any null/errored cover via the shared fallback. */}
-      {/* pointerEvents="none": the cover (incl. the native VideoView for video
-          posters) is decorative — without this it captures the touch and the
-          card's tap GestureDetector never fires, so video-cover cards wouldn't
-          open. The image-cover Discover/TM cards have no VideoView and opened
-          fine, which is how this surfaced only on the "On Mingla" video cards. */}
+      {/* Hero — image / GIF / video, with built-in hue-band fallback.
+          ORCH-0994: routes through the shared EventCoverMedia so a video
+          cover PLAYS (muted, looping ambient) instead of dropping to a solid
+          band; videoContentFit="cover" fills the fixed grid cell (crop) — the
+          "contain" letterbox treatment is for the full-bleed event hero only.
+          Image covers also inherit the shared onError → hue-band fallback +
+          per-mediaUrl error/recycling reset (the Android-robustness the bare
+          ExpoImage lacked — the second half of META-ORCH-0991 Bug 3b).
+
+          META-ORCH-0991 Bug 3a wrapper — pointerEvents="none": the cover (incl.
+          the native VideoView for playing video covers) is decorative. Without
+          this it captures the touch and the card's tap GestureDetector never
+          fires, so video-cover cards wouldn't open. The image-cover Discover/TM
+          cards have no VideoView and opened fine, which is how this surfaced only
+          on the "On Mingla" video cards. The wrapper keeps ORCH-0994's playing
+          behavior AND lets every card open on tap. */}
       <View style={styles.heroFill} pointerEvents="none">
         <EventCoverMedia
           hue={data.coverHue}
           mediaUrl={data.coverMediaUrl}
           mediaType={data.coverMediaType}
-          radius={18}
+          radius={CARD_RADIUS}
+          videoContentFit="cover"
           label={data.title}
-          height="100%"
-          width="100%"
-          autoplay={false}
-          playbackActive={false}
-          muted
-          loop={false}
-          showAudioControl={false}
+          style={StyleSheet.absoluteFill}
         />
       </View>
 
@@ -180,7 +182,7 @@ export const BusinessEventCard = React.memo(BusinessEventCardImpl);
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 18,
+    borderRadius: CARD_RADIUS,
     overflow: "hidden",
     backgroundColor: "rgba(255,255,255,0.04)",
     position: "relative",

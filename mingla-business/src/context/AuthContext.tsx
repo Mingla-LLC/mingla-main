@@ -259,47 +259,56 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // USER_UPDATED]: brutal Playwright test against live Chromium proved
       // Supabase v2 fires TOKEN_REFRESHED (not INITIAL_SESSION) when a hung
       // refresh-token request eventually succeeds after bootstrap-timeout.
-      // Any PASSIVE event post-timeout is a late echo of the failed
-      // bootstrap — ignore it. Only explicit user-intent events (SIGNED_IN /
-      // SIGNED_OUT) clear the gate so a normal login post-timeout proceeds.
-      // Honouring a passive late echo would flash anon→home and re-fire
-      // ensureCreatorAccount + analytics-identities. Originally
-      // INITIAL_SESSION-only per ORCH-0887-A rework / SPEC §3.3 Option (b);
-      // expanded to TOKEN_REFRESHED + USER_UPDATED post brutal-test feedback.
+      //
+      // ORCH-1004 [Business web data reliability] — REVISION of the original
+      // "ignore every late passive event" behavior. The v1/v2 logic discarded
+      // the real session that finally resolved after the 3s bootstrap-timeout,
+      // so on a slow cold start the app stayed anon (isAuthReady=false) and
+      // every auth-scoped query stayed disabled until a manual refresh — the
+      // exact RC-3 tail case in the ORCH-1004 investigation.
+      //
+      // New behavior: when a PASSIVE late event (INITIAL_SESSION /
+      // TOKEN_REFRESHED / USER_UPDATED) arrives post-timeout WITH a usable
+      // session, APPLY it (setSession / setUser, clear the timed-out gate) so
+      // isAuthReady flips true and the gated queries fire — but DO NOT run the
+      // SIGNED_IN-only recovery + first-event analytics block below (that
+      // stays gated to `_event === "SIGNED_IN"`). Applying session state
+      // without the SIGNED_IN side-effects preserves the ORCH-0887-A
+      // anti-flash / no-duplicate-analytics protection the ignore was built
+      // for (no ensureCreatorAccount re-run flash, no duplicate af_login /
+      // Mixpanel Login). A passive late event with NO usable session is still
+      // a stale echo of the failed bootstrap — keep ignoring it.
       if (bootstrapTimedOutRef.current) {
         const isPassiveLateEcho =
           _event === "INITIAL_SESSION" ||
           _event === "TOKEN_REFRESHED" ||
           _event === "USER_UPDATED";
-        if (_event === "INITIAL_SESSION") {
+        if (isPassiveLateEcho) {
+          if (!hasUsableBusinessSession(s)) {
+            if (__DEV__) {
+              console.warn(
+                `[auth] late ${_event} after bootstrap-timeout with no usable session — ignoring (ORCH-0887-A-2 / ORCH-1004)`,
+              );
+            }
+            return;
+          }
+          // Late but REAL session — recover it without the SIGNED_IN
+          // side-effects (ORCH-1004). Clear the gate, apply session state,
+          // and fall through to the shared setSession/setUser writes below.
+          // The SIGNED_IN recovery + analytics block stays gated to
+          // `_event === "SIGNED_IN"`, so it does NOT fire for this passive
+          // recovery — anti-flash / no-duplicate-analytics preserved.
           if (__DEV__) {
             console.warn(
-              "[auth] late INITIAL_SESSION after bootstrap-timeout — ignoring (ORCH-0887-A-2)",
+              `[auth] late ${_event} after bootstrap-timeout WITH usable session — applying late session (ORCH-1004)`,
             );
           }
-          return;
+          bootstrapTimedOutRef.current = false;
+        } else {
+          // Explicit user-intent event (SIGNED_IN / SIGNED_OUT) — clear the
+          // gate so the listener resumes normal processing.
+          bootstrapTimedOutRef.current = false;
         }
-        if (_event === "TOKEN_REFRESHED") {
-          if (__DEV__) {
-            console.warn(
-              "[auth] late TOKEN_REFRESHED after bootstrap-timeout — ignoring (ORCH-0887-A-2)",
-            );
-          }
-          return;
-        }
-        if (_event === "USER_UPDATED") {
-          if (__DEV__) {
-            console.warn(
-              "[auth] late USER_UPDATED after bootstrap-timeout — ignoring (ORCH-0887-A-2)",
-            );
-          }
-          return;
-        }
-        // Guard reads isPassiveLateEcho so the union remains the single
-        // source of truth (TypeScript checks all three branches above match);
-        // unreachable in practice because each event has its own return.
-        if (isPassiveLateEcho) return;
-        bootstrapTimedOutRef.current = false;
       }
       if (__DEV__) {
         console.info("[auth] auth-event", {

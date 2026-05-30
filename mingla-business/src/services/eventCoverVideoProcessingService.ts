@@ -13,11 +13,8 @@ declare const require: (moduleName: string) => {
   };
 };
 
-export const EVENT_COVER_FINAL_MAX_BYTES = 25 * 1024 * 1024;
 export const EVENT_COVER_MAX_VIDEO_DURATION_MS = 29_000;
 export const EVENT_COVER_SOURCE_CEILING_MS = 33_000;
-export const EVENT_COVER_MAX_SOURCE_VIDEO_BYTES = 100 * 1024 * 1024;
-export const EVENT_COVER_MAX_SOURCE_VIDEO_DURATION_MS = 60_000;
 export const EVENT_COVER_VIDEO_PROCESSING_COPY =
   "Use your phone's trim screen to keep video covers to 29 seconds. Mingla compresses the cover to a browser-safe MP4 under 25 MB.";
 export const EVENT_COVER_VIDEO_NOT_CONFIGURED_COPY =
@@ -84,8 +81,11 @@ export type CompressionProgress = { phase: "compressing"; percent: number };
 
 export interface EventCoverVideoStatus {
   jobId: string;
-  eventId: string;
+  // ORCH-0989: null for brand-target jobs.
+  eventId: string | null;
   brandId: string;
+  // ORCH-0989: "event" (default) or "brand".
+  targetKind?: "event" | "brand";
   status: EventCoverVideoJobStatus;
   applyMode: EventCoverVideoApplyMode;
   stageLabel: string;
@@ -630,7 +630,9 @@ const edgeError = async (
 };
 
 export const createEventCoverVideoUploadIntent = async (input: {
-  eventId: string;
+  // ORCH-0989: "event" (default) or "brand". Brand-target jobs carry no eventId.
+  target?: "event" | "brand";
+  eventId?: string;
   brandId: string;
   applyMode: EventCoverVideoApplyMode;
   sourceFileName?: string | null;
@@ -682,7 +684,7 @@ export const createEventCoverVideoUploadIntent = async (input: {
     logEventCoverVideoUploadTelemetry("video_cover_upload_intent_failed", {
       applyMode: input.applyMode,
       errorCode: errorCodeOf(caught),
-      eventId: input.eventId,
+      eventId: input.eventId ?? "",
       phase: "upload_intent",
       timestamp: new Date().toISOString(),
     });
@@ -692,7 +694,7 @@ export const createEventCoverVideoUploadIntent = async (input: {
     devWarn("upload-intent-edge-error", {
       applyMode: input.applyMode,
       brandId: input.brandId,
-      eventId: input.eventId,
+      eventId: input.eventId ?? "",
       requestId,
     });
     const preparedError = await edgeError(error, "Could not prepare video upload.", {
@@ -702,7 +704,7 @@ export const createEventCoverVideoUploadIntent = async (input: {
     logEventCoverVideoUploadTelemetry("video_cover_upload_intent_failed", {
       applyMode: input.applyMode,
       errorCode: errorCodeOf(preparedError, "edge_error"),
-      eventId: input.eventId,
+      eventId: input.eventId ?? "",
       phase: "upload_intent",
       timestamp: new Date().toISOString(),
     });
@@ -721,7 +723,7 @@ export const createEventCoverVideoUploadIntent = async (input: {
     logEventCoverVideoUploadTelemetry("video_cover_upload_intent_failed", {
       applyMode: input.applyMode,
       errorCode: errorCodeOf(preparedError, data.error),
-      eventId: input.eventId,
+      eventId: input.eventId ?? "",
       phase: "upload_intent",
       timestamp: new Date().toISOString(),
     });
@@ -913,7 +915,9 @@ const mapStatusResponse = (
     canRetry: Boolean(payload.canRetry),
     cancelledAt: payload.cancelledAt ?? null,
     createdAt: payload.createdAt ?? null,
-    eventId: typeof payload.eventId === "string" ? payload.eventId : "",
+    // ORCH-0989: null for brand-target jobs (the edge fn returns null eventId).
+    eventId: typeof payload.eventId === "string" ? payload.eventId : null,
+    targetKind: payload.targetKind === "brand" ? "brand" : "event",
     failureCode: payload.failureCode ?? null,
     failureMessage: payload.failureMessage ?? null,
     isTerminal: Boolean(payload.isTerminal),
@@ -934,8 +938,10 @@ const mapStatusResponse = (
 };
 
 export const acknowledgeEventCoverVideoSourceUploaded = async (input: {
+  // ORCH-0989: "event" (default) or "brand". Brand-target carries no eventId.
+  target?: "event" | "brand";
   jobId: string;
-  eventId: string;
+  eventId?: string;
   brandId: string;
   providerUploadResponse?: EventCoverVideoProviderUploadResponse | null;
 }): Promise<EventCoverVideoStatus> => {
@@ -1033,7 +1039,7 @@ export const waitForEventCoverVideoReady = async (
     if (status.status === "ready" || status.status === "applied") {
       logEventCoverVideoUploadTelemetry("video_cover_upload_ready", {
         applyMode: status.applyMode,
-        eventId: status.eventId,
+        eventId: status.eventId ?? "",
         jobId: status.jobId,
         phase: "status",
         timestamp: new Date().toISOString(),

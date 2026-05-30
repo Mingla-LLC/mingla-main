@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, Image, StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
 import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
@@ -42,6 +43,12 @@ interface Props {
 
 export function CuratedExperienceSwipeCard({ card, onSeePlan, travelMode, measurementSystem, currencyCode }: Props) {
   const { t } = useTranslation(['common']);
+  const insets = useSafeAreaInsets();
+  // ORCH-0991: deck is full-bleed under the floating glass top bar (HomePage safeArea has
+  // no top inset). Push the per-stop number badges below the chrome so they aren't clipped
+  // behind the status bar / Dynamic Island / preferences button. +62 matches the codebase's
+  // established "just below the glass top bar" offset.
+  const stopBadgeTop = insets.top + 62;
 
   // Compact card shows only main (non-optional) stops
   const mainStops = card.stops.filter(s => !s.optional);
@@ -101,7 +108,7 @@ export function CuratedExperienceSwipeCard({ card, onSeePlan, travelMode, measur
                 <View style={[styles.stopImage, styles.imagePlaceholder]} />
               )}
               {!isSingleStop && (
-                <View style={styles.stopBadgeWrapper}>
+                <View style={[styles.stopBadgeWrapper, { top: stopBadgeTop }]}>
                   <GlassBadge variant="circular" accessibilityLabel={`Stop ${idx + 1}`}>
                     {idx + 1}
                   </GlassBadge>
@@ -196,9 +203,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#2C2C2E',
   },
   // ORCH-0566: position-only wrapper — GlassBadge (variant=circular) provides its own skin.
+  // ORCH-0991: `top` is set at runtime (safe-area inset + 62) so the badge clears the
+  // floating glass top bar; `left` is static.
   stopBadgeWrapper: {
     position: 'absolute',
-    top: 8,
     left: 8,
   },
   // Hero fade — matches SwipeableCards.tsx heroGradient

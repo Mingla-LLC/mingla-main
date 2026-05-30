@@ -29,6 +29,12 @@ const walkFiles = (dirPath) => {
 };
 
 const coverPickerPath = "mingla-business/src/components/ui/CoverPicker.tsx";
+// ORCH-1001: the native trim wiring (react-native-video-trim import + showEditor
+// + cancel handler) moved out of CoverPicker.tsx into a Metro platform-split
+// module so the native-only package never lands in the web bundle (white-page
+// crash). C1/C12 below check that wiring in the split module; CoverPicker.tsx
+// still owns the video picker, the source ceiling, and the trimmed-upload build.
+const trimEditorPath = "mingla-business/src/components/ui/coverPickerVideoTrimEditor.ts";
 const processingServicePath =
   "mingla-business/src/services/eventCoverVideoProcessingService.ts";
 const mediaRulesPath = "mingla-business/src/utils/eventCoverMediaRules.ts";
@@ -38,8 +44,15 @@ const uploadIntentPath = "supabase/functions/event-cover-video-upload-intent/ind
 const webhookPath = "supabase/functions/event-cover-video-webhook/index.ts";
 
 const coverPicker = read(coverPickerPath);
-if (!coverPicker.includes("maxDuration: EVENT_COVER_MAX_VIDEO_DURATION_MS")) {
-  fail("C1", `${coverPickerPath} must pass EVENT_COVER_MAX_VIDEO_DURATION_MS to showEditor`);
+const trimEditor = read(trimEditorPath);
+if (
+  !coverPicker.includes(
+    "trimVideoWithDedicatedEditor(asset.uri, EVENT_COVER_MAX_VIDEO_DURATION_MS)",
+  )
+) {
+  fail("C1", `${coverPickerPath} must pass EVENT_COVER_MAX_VIDEO_DURATION_MS to the trim editor`);
+} else if (!trimEditor.includes("maxDuration: maxDurationMs")) {
+  fail("C1", `${trimEditorPath} must forward the duration cap to showEditor`);
 } else if (coverPicker.includes("videoMaxDuration")) {
   fail("C1", `${coverPickerPath} must not rely on ImagePicker videoMaxDuration`);
 } else {
@@ -191,12 +204,12 @@ if (videoPickerCall === undefined) {
   fail("C12", `${coverPickerPath} video picker must not pass allowsEditing`);
 } else if (videoPickerCall.includes("videoMaxDuration")) {
   fail("C12", `${coverPickerPath} video picker must not pass videoMaxDuration`);
-} else if (!coverPicker.includes('from "react-native-video-trim"')) {
-  fail("C12", `${coverPickerPath} must import react-native-video-trim`);
-} else if (!coverPicker.includes("showEditor(uri")) {
-  fail("C12", `${coverPickerPath} must call showEditor for the native trim flow`);
-} else if (!coverPicker.includes("onCancelTrimming")) {
-  fail("C12", `${coverPickerPath} must handle trimmer cancel`);
+} else if (!trimEditor.includes('from "react-native-video-trim"')) {
+  fail("C12", `${trimEditorPath} must import react-native-video-trim`);
+} else if (!trimEditor.includes("showEditor(uri")) {
+  fail("C12", `${trimEditorPath} must call showEditor for the native trim flow`);
+} else if (!trimEditor.includes("onCancelTrimming")) {
+  fail("C12", `${trimEditorPath} must handle trimmer cancel`);
 } else if (!coverPicker.includes("buildTrimmedVideoUploadFile")) {
   fail("C12", `${coverPickerPath} must build uploads from the trimmed outputPath`);
 } else {

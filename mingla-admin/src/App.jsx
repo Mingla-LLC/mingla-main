@@ -9,42 +9,30 @@ import { ToastContainer } from "./components/ui/Toast";
 import { PageLoader } from "./components/ui/Spinner";
 import { CommandPalette } from "./components/CommandPalette";
 import { OverviewPage } from "./pages/OverviewPage";
-import { TableBrowserPage } from "./pages/TableBrowserPage";
-import { SeedPage } from "./pages/SeedPage";
-import { ReportsPage } from "./pages/ReportsPage";
 import { AdminPage } from "./pages/AdminPage";
 import { PlacePoolManagementPage } from "./pages/PlacePoolManagementPage";
-// ORCH-0671: PhotoPoolManagementPage DELETED — bouncer-blind ghost page replaced by Photos tab on Place Pool page.
 import { UserManagementPage } from "./pages/UserManagementPage";
-import { ContentModerationPage } from "./pages/ContentModerationPage";
-import { AnalyticsPage } from "./pages/AnalyticsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { EmailPage } from "./pages/EmailPage";
 import { SubscriptionManagementPage } from "./pages/SubscriptionManagementPage";
-import { BetaFeedbackPage } from "./pages/BetaFeedbackPage";
 import { SignalLibraryPage } from "./pages/SignalLibraryPage";
 import { PhotoLabelingPage } from "./pages/PhotoLabelingPage";
 import { PhotoScorerPage } from "./pages/PhotoScorerPage";
 import { PlaceIntelligenceTrialPage } from "./pages/PlaceIntelligenceTrialPage";
 import { ClaimsPage } from "./pages/ClaimsPage";
+// ORCH-1008: 6 pages deleted (Seed, ContentModeration, Analytics, Reports,
+//   BetaFeedback, TableBrowser). Sidebar flattened; System dropdown removed.
+//   See SPEC_ORCH-1008_ADMIN_SHELL_PRUNE_INTELLIGENCE_OVERVIEW.md §2 + §3.
+// ORCH-0671: PhotoPoolManagementPage DELETED — bouncer-blind ghost page replaced by Photos tab on Place Pool page.
 // ORCH-0640 ch08: AIValidationPage + CardPoolManagementPage DELETED.
-//   - Rules Filter tab rehomed to SignalLibraryPage via tab prop (ORCH-0640 DEC-045).
-//   - Seed / Refresh tabs rehomed to SeedPage.
-//   - Card Pool page has no successor (DEC-037 — card_pool archived).
 
 const PAGES = {
   overview: OverviewPage,
-  analytics: AnalyticsPage,
   users: UserManagementPage,
   subscriptions: SubscriptionManagementPage,
-  content: ContentModerationPage,
-  tables: TableBrowserPage,
-  seed: SeedPage,
   placepool: PlacePoolManagementPage,
   claims: ClaimsPage,
   // ORCH-0671: 'photos' route deleted — getTabFromHash falls back to 'overview' via PAGES[hash] guard.
-  feedback: BetaFeedbackPage,
-  reports: ReportsPage,
   email: EmailPage,
   admin: AdminPage,
   settings: SettingsPage,

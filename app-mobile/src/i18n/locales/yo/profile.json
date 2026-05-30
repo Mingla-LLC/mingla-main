@@ -74,6 +74,18 @@
     "mingla_level": "Ìpele Mingla",
     "interests": "Àwọn Ìfẹ́ràn",
     "message": "Ìfiránṣẹ́",
-    "friend_fallback": "Ọ̀rẹ́"
+    "friend_fallback": "Ọ̀rẹ́",
+    "add_friend": "Fi ọrẹ kun",
+    "requested": "A ti béèrè",
+    "accept_request": "Gba ìbéèrè",
+    "sending": "Ń fì ránṣẹ́…",
+    "canceling": "Ń fagilé…",
+    "accepting": "Ń gbà…",
+    "error_generic": "Kò ṣeé fì ránṣẹ́. Tẹ̀ láti tún gbìyànjú.",
+    "error_network": "O wà láìsí ìntánẹ́ẹ̀tì. Ṣàyẹ̀wò ìsopọ̀ rẹ kí o sì tún gbìyànjú.",
+    "error_unavailable": "Ẹni yìí kò sí lọ́wọ́lọ́wọ́.",
+    "cancel_request_title": "Fagilé ìbéèrè ọrẹ?",
+    "cancel_request_body": "A kò ní fi tó {{name}} létí.",
+    "cancel_request_confirm": "Fagilé ìbéèrè"
   }
 }

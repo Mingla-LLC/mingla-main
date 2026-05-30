@@ -219,6 +219,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: glass.border.profileBase,
     borderRadius: radiusTokens.md,
+    overflow: "hidden",
     backgroundColor: glass.tint.profileBase,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,

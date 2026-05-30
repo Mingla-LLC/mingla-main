@@ -74,6 +74,18 @@
     "mingla_level": "Matakin Mingla",
     "interests": "Abubuwan Sha'awa",
     "message": "Saƙo",
-    "friend_fallback": "Aboki"
+    "friend_fallback": "Aboki",
+    "add_friend": "Ƙara aboki",
+    "requested": "An nema",
+    "accept_request": "Karɓi buƙata",
+    "sending": "Ana aikawa…",
+    "canceling": "Ana sokewa…",
+    "accepting": "Ana karɓa…",
+    "error_generic": "An kasa aikawa. Danna don sake gwadawa.",
+    "error_network": "Kana layi. Duba haɗin ka sannan ka sake gwadawa.",
+    "error_unavailable": "Wannan mutumin ba ya nan a yanzu.",
+    "cancel_request_title": "A soke buƙatar abota?",
+    "cancel_request_body": "Ba za a sanar da {{name}} ba.",
+    "cancel_request_confirm": "Soke buƙata"
   }
 }

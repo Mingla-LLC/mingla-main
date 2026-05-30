@@ -958,6 +958,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: glass.notificationsSheet.cardBorder,
     backgroundColor: '#FFFFFF',
+    // META-ORCH-1002 Sub-1 (S1): clip fill+border to the radius so the fill reaches
+    // the rounded corner on Android (kills the inset taupe ring). iOS unaffected.
+    overflow: 'hidden',
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 12,
@@ -1189,6 +1192,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: glass.notificationsSheet.cardBorder,
     backgroundColor: '#FFFFFF',
+    // META-ORCH-1002 Sub-1 (S1): clip to radius on Android (mirror notificationCard).
+    overflow: 'hidden',
     ...glass.notificationsSheet.cardShadow,
   },
   skeletonAvatar: {

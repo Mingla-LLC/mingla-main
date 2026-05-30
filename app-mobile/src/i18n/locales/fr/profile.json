@@ -74,6 +74,18 @@
     "mingla_level": "Niveau Mingla",
     "interests": "Centres d'intérêt",
     "message": "Message",
-    "friend_fallback": "Ami"
+    "friend_fallback": "Ami",
+    "add_friend": "Ajouter en ami",
+    "requested": "Demandé",
+    "accept_request": "Accepter la demande",
+    "sending": "Envoi…",
+    "canceling": "Annulation…",
+    "accepting": "Acceptation…",
+    "error_generic": "Échec de l'envoi. Touchez pour réessayer.",
+    "error_network": "Vous êtes hors ligne. Vérifiez votre connexion et réessayez.",
+    "error_unavailable": "Cette personne n'est pas disponible pour le moment.",
+    "cancel_request_title": "Annuler la demande d'ami ?",
+    "cancel_request_body": "{{name}} ne sera pas notifié.",
+    "cancel_request_confirm": "Annuler la demande"
   }
 }

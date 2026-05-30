@@ -74,6 +74,18 @@
     "mingla_level": "Mingla লেভেল",
     "interests": "আগ্রহ",
     "message": "মেসেজ",
-    "friend_fallback": "বন্ধু"
+    "friend_fallback": "বন্ধু",
+    "add_friend": "বন্ধু যোগ করুন",
+    "requested": "অনুরোধ পাঠানো হয়েছে",
+    "accept_request": "অনুরোধ গ্রহণ করুন",
+    "sending": "পাঠানো হচ্ছে…",
+    "canceling": "বাতিল করা হচ্ছে…",
+    "accepting": "গ্রহণ করা হচ্ছে…",
+    "error_generic": "পাঠানো যায়নি। আবার চেষ্টা করতে ট্যাপ করুন।",
+    "error_network": "আপনি অফলাইন। সংযোগ পরীক্ষা করে আবার চেষ্টা করুন।",
+    "error_unavailable": "এই ব্যক্তি এখন উপলব্ধ নন।",
+    "cancel_request_title": "বন্ধু অনুরোধ বাতিল করবেন?",
+    "cancel_request_body": "{{name}} কে জানানো হবে না।",
+    "cancel_request_confirm": "অনুরোধ বাতিল করুন"
   }
 }

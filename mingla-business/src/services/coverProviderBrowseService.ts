@@ -1,0 +1,184 @@
+/**
+ * coverProviderBrowseService — ORCH-0989 [Unified cover picker sheet].
+ *
+ * Gallery-first browse for the unified CoverPicker's GIF + Stock tabs:
+ *   - `trendingGiphyCovers`  → GIPHY Trending, CLIENT-DIRECT (ToS forbids
+ *     proxying GIPHY; key is the public EXPO_PUBLIC_GIPHY_API_KEY).
+ *   - `curatedPexelsCovers`  → Pexels Curated, via the edge proxy
+ *     `event-cover-pexels-curated` (key stays SERVER-SIDE; never client-read).
+ *
+ * Returns the SAME result shapes as the existing search adapters
+ * (`GiphyCoverSearchResult[]` / `PexelsCoverSearchPage`) so the picker can
+ * render trending/curated and search results through one code path.
+ *
+ * External-API contract (COMMS-0003 — docs cited inline):
+ *   GIPHY Trending:
+ *     GET https://api.giphy.com/v1/gifs/trending
+ *     https://developers.giphy.com/docs/api/endpoint/#trending
+ *     Client-side mandatory; proxying forbidden:
+ *     https://developers.giphy.com/docs/api/
+ *     Rate limit (beta key) 100/hour:
+ *     https://developers.giphy.com/docs/api/#rate-limits
+ *     Attribution "Powered By GIPHY":
+ *     https://developers.giphy.com/docs/api/#design-guidelines-and-requirements
+ *   Pexels Curated:
+ *     GET https://api.pexels.com/v1/curated  (proxied via edge fn)
+ *     https://www.pexels.com/api/documentation/#photos-curated
+ *
+ * Replaces the retired giphyBrandCoverService + pexelsBrandCoverService
+ * (subtract-before-add — the brand sheet's two duplicates are deleted).
+ */
+
+import { supabase } from "./supabase";
+import { EventCoverProviderError } from "./eventCoverProviderError";
+import type { GiphyCoverSearchResult } from "./giphyEventCoverService";
+import type {
+  PexelsCoverSearchPage,
+} from "./pexelsEventCoverService";
+
+// ----- GIPHY trending (client-direct) ------------------------------------
+
+type GiphyImage = { url?: unknown };
+type GiphyResult = {
+  id?: unknown;
+  title?: unknown;
+  url?: unknown;
+  source_post_url?: unknown;
+  source?: unknown;
+  images?: {
+    fixed_width?: GiphyImage;
+    downsized_medium?: GiphyImage;
+    downsized?: GiphyImage;
+    original?: GiphyImage;
+  };
+};
+
+const envValue = (name: string): string | null => {
+  const maybeProcess = globalThis as typeof globalThis & {
+    process?: { env?: Record<string, string | undefined> };
+  };
+  const value = maybeProcess.process?.env?.[name];
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : null;
+};
+
+const publicGiphyKey = (): string | null =>
+  envValue("EXPO_PUBLIC_GIPHY_API_KEY") ?? envValue("EXPO_PUBLIC_GIPHY_KEY");
+
+const asUrl = (value: unknown): string | null =>
+  typeof value === "string" && /^https?:\/\//i.test(value) ? value : null;
+
+const normalizeGiphy = (result: GiphyResult): GiphyCoverSearchResult | null => {
+  const id =
+    typeof result.id === "string" && result.id.length > 0 ? result.id : null;
+  const previewUrl = asUrl(result.images?.fixed_width?.url);
+  const selectedUrl =
+    asUrl(result.images?.downsized_medium?.url) ??
+    asUrl(result.images?.downsized?.url) ??
+    asUrl(result.images?.original?.url);
+  if (id === null || previewUrl === null || selectedUrl === null) return null;
+  const sourceUrl =
+    asUrl(result.url) ?? asUrl(result.source_post_url) ?? asUrl(result.source);
+  const title =
+    typeof result.title === "string" && result.title.trim().length > 0
+      ? result.title.trim()
+      : null;
+  return {
+    id,
+    provider: "giphy",
+    previewUrl,
+    mediaUrl: selectedUrl,
+    sourceUrl,
+    credit: "GIPHY",
+    creditUrl: sourceUrl,
+    alt: title,
+  };
+};
+
+export const trendingGiphyCovers = async (
+  options: { limit?: number; offset?: number } = {},
+): Promise<GiphyCoverSearchResult[]> => {
+  const apiKey = publicGiphyKey();
+  if (apiKey === null) {
+    throw new EventCoverProviderError(
+      "not_configured",
+      "GIPHY is not configured yet.",
+    );
+  }
+  // Clamp 6-25 to match searchGiphyEventCovers; rating pg to match.
+  const limit = Math.max(6, Math.min(options.limit ?? 24, 25));
+  const offset = Math.max(0, Math.min(options.offset ?? 0, 499));
+  const params = new URLSearchParams({
+    api_key: apiKey,
+    limit: String(limit),
+    offset: String(offset),
+    rating: "pg",
+  });
+  // GIPHY Trending — client-direct (no `q`). Proxying is forbidden by ToS.
+  const response = await fetch(
+    `https://api.giphy.com/v1/gifs/trending?${params}`,
+  );
+  if (response.status === 429) {
+    throw new EventCoverProviderError("rate_limited", "GIPHY is rate limited.", 429);
+  }
+  if (!response.ok) {
+    throw new EventCoverProviderError(
+      "provider_unavailable",
+      "GIPHY is unavailable.",
+      response.status,
+    );
+  }
+  const body = (await response.json()) as { data?: unknown };
+  if (!Array.isArray(body.data)) {
+    throw new EventCoverProviderError(
+      "invalid_response",
+      "GIPHY returned an unexpected response.",
+    );
+  }
+  return body.data
+    .map((item) => normalizeGiphy(item as GiphyResult))
+    .filter((item): item is GiphyCoverSearchResult => item !== null);
+};
+
+// ----- Pexels curated (edge-proxied) -------------------------------------
+
+const pexelsErrorCodeForEdgeError = (
+  error: unknown,
+): EventCoverProviderError["code"] => {
+  const message =
+    error instanceof Error ? error.message : typeof error === "string" ? error : "";
+  if (message.includes("auth_required")) return "auth_required";
+  if (message.includes("pexels_rate_limited")) return "rate_limited";
+  if (message.includes("pexels_not_configured")) return "not_configured";
+  return "provider_unavailable";
+};
+
+export const curatedPexelsCovers = async (
+  options: { page?: number; perPage?: number } = {},
+): Promise<PexelsCoverSearchPage> => {
+  // Pexels key stays SERVER-SIDE — never read client-side here.
+  const { data, error } = await supabase.functions.invoke(
+    "event-cover-pexels-curated",
+    {
+      body: {
+        page: options.page,
+        perPage: options.perPage,
+      },
+    },
+  );
+  if (error !== null) {
+    throw new EventCoverProviderError(
+      pexelsErrorCodeForEdgeError(error),
+      error.message,
+    );
+  }
+  const page = data as PexelsCoverSearchPage | null;
+  if (page === null || !Array.isArray(page.photos)) {
+    throw new EventCoverProviderError(
+      "invalid_response",
+      "Pexels returned an unexpected response.",
+    );
+  }
+  return page;
+};

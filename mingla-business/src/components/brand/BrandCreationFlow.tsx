@@ -39,7 +39,7 @@ import {
   routeForOffering,
   type OfferingKind,
 } from "./OfferingChooser";
-import { BrandCoverPickerSheet } from "./BrandCoverPickerSheet";
+import { CoverPickerSheet } from "../ui/CoverPickerSheet";
 
 export interface BrandCreationFlowProps {
   onComplete: (newBrandId: string) => void;
@@ -386,26 +386,52 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
         ) : null}
       </View>
 
+      {/* ORCH-0989 — unified cover picker sheet (replaces BrandCoverPickerSheet);
+          brand video enabled. JSX child of host (I-SUB-SHEET-INSIDE-PARENT). */}
       {brand !== null && accountId !== null ? (
-        <BrandCoverPickerSheet
+        <CoverPickerSheet
           visible={coverPickerVisible}
-          brandId={brand.id}
-          accountId={accountId}
-          existingDescription={joinBrandDescription(brand.tagline, brand.bio)}
-          currentMediaUrl={brand.coverMediaUrl ?? null}
           onClose={() => setCoverPickerVisible(false)}
-          onPicked={(result) =>
+          target={{
+            kind: "brand",
+            brandId: brand.id,
+            accountId,
+            existingDescription: joinBrandDescription(brand.tagline, brand.bio),
+          }}
+          initial={{
+            coverMediaUrl: brand.coverMediaUrl ?? null,
+            coverMediaType: brand.coverMediaType ?? null,
+            coverMediaProvider: null,
+            coverMediaSourceUrl: null,
+            coverMediaCredit: null,
+            coverMediaCreditUrl: null,
+            coverMediaAlt: null,
+          }}
+          onCoverChange={(patch) =>
             setBrand((prev) =>
               prev === null
                 ? prev
                 : {
                     ...prev,
-                    coverMediaUrl: result.publicUrl,
-                    coverMediaType: result.mediaType,
+                    coverMediaUrl: patch.coverMediaUrl ?? undefined,
+                    coverMediaType:
+                      patch.coverMediaUrl === null
+                        ? undefined
+                        : patch.coverMediaType === "video"
+                          ? "video"
+                          : patch.coverMediaType === "gif"
+                            ? "gif"
+                            : "image",
                   },
             )
           }
-          onErrorToast={setToast}
+          onShowToast={(msg) => {
+            // BrandCreationFlow's Toast is error-styled; only surface genuine
+            // failures, not the picker's selection-success confirmations.
+            if (/fail|could not|couldn't|isn't|not available|try again|permission/i.test(msg)) {
+              setToast(msg);
+            }
+          }}
         />
       ) : null}
       <Toast
@@ -435,6 +461,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: radius.full,
+    overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: glass.tint.profileBase,
@@ -469,6 +496,7 @@ const styles = StyleSheet.create({
     minHeight: 112,
     padding: spacing.md,
     borderRadius: radius.md,
+    overflow: "hidden",
     backgroundColor: glass.tint.profileBase,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: glass.border.profileBase,

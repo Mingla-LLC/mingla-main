@@ -66,7 +66,7 @@ import type { ExpandedCardData } from "../types/expandedCardTypes";  // ORCH-068
 import type { BusinessEventCard } from "../types/mergedDiscover";
 import { useTranslation } from 'react-i18next';
 import { HapticFeedback } from "../utils/hapticFeedback";
-import { colors as dsColors, spacing as dsSpacing, glass } from "../constants/designSystem";
+import { colors as dsColors, spacing as dsSpacing, glass, ANDROID_GLASS_USES_OPAQUE_FALLBACK } from "../constants/designSystem";
 import { colors } from "../constants/colors";
 import { useAppLayout } from "../hooks/useAppLayout";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -1917,17 +1917,28 @@ export default function MessageInterface({
           keyboardHeight={0}
         />
         <View style={styles.inputCapsule}>
-          <BlurView
-            intensity={glass.chrome.blur.intensity}
-            tint="dark"
-            experimentalBlurMethod={Platform.OS === "android" ? "dimezisBlurView" : undefined}
-            style={StyleSheet.absoluteFill}
-            pointerEvents="none"
-          />
-          <View
-            pointerEvents="none"
-            style={[StyleSheet.absoluteFill, { backgroundColor: glass.chrome.tint.floor }]}
-          />
+          {/* META-ORCH-1002 Sub-1 (S3): on Android render a solid frosted fill instead of
+              the see-through BlurView + 0.48 tint floor. iOS path is byte-identical. */}
+          {ANDROID_GLASS_USES_OPAQUE_FALLBACK ? (
+            <View
+              pointerEvents="none"
+              style={[StyleSheet.absoluteFill, { backgroundColor: glass.chrome.fallback.solid }]}
+            />
+          ) : (
+            <>
+              <BlurView
+                intensity={glass.chrome.blur.intensity}
+                tint="dark"
+                experimentalBlurMethod={Platform.OS === "android" ? "dimezisBlurView" : undefined}
+                style={StyleSheet.absoluteFill}
+                pointerEvents="none"
+              />
+              <View
+                pointerEvents="none"
+                style={[StyleSheet.absoluteFill, { backgroundColor: glass.chrome.tint.floor }]}
+              />
+            </>
+          )}
           <View style={styles.inputContainer}>
           {/* Attachment Menu */}
           <View style={styles.attachmentContainer}>

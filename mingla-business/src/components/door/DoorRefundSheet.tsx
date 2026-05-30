@@ -425,6 +425,7 @@ const styles = StyleSheet.create({
   summaryCard: {
     padding: spacing.md,
     borderRadius: radiusTokens.md,
+    overflow: "hidden",
     borderWidth: 1,
     borderColor: glass.border.profileBase,
     backgroundColor: glass.tint.profileBase,
@@ -465,6 +466,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 999,
+    overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: glass.tint.profileElevated,
@@ -524,6 +526,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: glass.border.profileBase,
     borderRadius: radiusTokens.md,
+    overflow: "hidden",
     backgroundColor: glass.tint.profileBase,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,

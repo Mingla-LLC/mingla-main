@@ -1,21 +1,10 @@
 import type { BrandStripeStatus } from "../store/currentBrandStore";
-import type { IconName } from "../components/ui/Icon";
 
 export const ACTIVE_STRIPE_BANNER_TITLE = "You're connected to Stripe";
 
 export interface BrandProfileStripeBannerCopy {
   title: string;
   sub: string;
-}
-
-export interface PaymentsStatusBannerConfig {
-  icon: IconName;
-  iconColor: string;
-  title: string;
-  sub: string;
-  ctaLabel: string | null;
-  ctaVariant: "primary" | "destructive" | null;
-  destructive: boolean;
 }
 
 export interface StripeCountryPickerStateInput {

@@ -74,6 +74,18 @@
     "mingla_level": "Level Mingla",
     "interests": "Minat",
     "message": "Pesan",
-    "friend_fallback": "Teman"
+    "friend_fallback": "Teman",
+    "add_friend": "Tambah teman",
+    "requested": "Diminta",
+    "accept_request": "Terima permintaan",
+    "sending": "Mengirim…",
+    "canceling": "Membatalkan…",
+    "accepting": "Menerima…",
+    "error_generic": "Gagal mengirim. Ketuk untuk coba lagi.",
+    "error_network": "Kamu sedang offline. Periksa koneksimu dan coba lagi.",
+    "error_unavailable": "Orang ini sedang tidak tersedia.",
+    "cancel_request_title": "Batalkan permintaan pertemanan?",
+    "cancel_request_body": "{{name}} tidak akan diberi tahu.",
+    "cancel_request_confirm": "Batalkan permintaan"
   }
 }

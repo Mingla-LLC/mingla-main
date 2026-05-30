@@ -38,16 +38,29 @@ describe("CoverPicker dedicated trimmer wiring", () => {
     });
   });
 
+  // [TEST-MOD-APPROVED ORCH-1001] Repointed: the native trimmer wiring
+  // (onCancelTrimming + settle(resolve(null))) moved out of CoverPicker.tsx
+  // into the Metro platform-split module coverPickerVideoTrimEditor.ts so the
+  // native-only `react-native-video-trim` import never reaches the web bundle
+  // (the ORCH-0989 white-page crash). The cancel→no-upload CONTRACT is
+  // unchanged — it now spans the editor module (cancel resolves null) and
+  // CoverPicker.tsx (early-return before videoUpload.start). Both halves verified.
   test("T-AMEND9-02 trimmer cancel resolves without starting an upload", () => {
-    const source = repoFile("src/components/ui/CoverPicker.tsx");
-    const cancelHandlerIndex = source.indexOf("videoTrim.onCancelTrimming");
-    const cancelReturnIndex = source.indexOf("if (isNative && trimResult === null) return;");
-    const uploadStartIndex = source.indexOf("await videoUpload.start(uploadFile);");
+    const editor = repoFile("src/components/ui/coverPickerVideoTrimEditor.ts");
+    const picker = repoFile("src/components/ui/CoverPicker.tsx");
 
-    expect(cancelHandlerIndex).toBeGreaterThan(-1);
-    expect(cancelReturnIndex).toBeGreaterThan(cancelHandlerIndex);
+    // Editor module: cancel handler resolves null.
+    expect(editor.indexOf("videoTrim.onCancelTrimming")).toBeGreaterThan(-1);
+    expect(editor).toContain("settle(() => resolve(null))");
+
+    // CoverPicker: the early-return on a null trim result precedes the upload.
+    const cancelReturnIndex = picker.indexOf("if (isNative && trimResult === null) return;");
+    const uploadStartIndex = picker.indexOf("await videoUpload.start(uploadFile);");
+    expect(cancelReturnIndex).toBeGreaterThan(-1);
     expect(uploadStartIndex).toBeGreaterThan(cancelReturnIndex);
-    expect(source).toContain("settle(() => resolve(null))");
-    expect(source).not.toContain("[ORCH-0978-POC]");
+
+    // The native-only import is gone from CoverPicker; it lives only in the split module.
+    expect(picker).not.toMatch(/from\s+["']react-native-video-trim["']/);
+    expect(editor).not.toContain("[ORCH-0978-POC]");
   });
 });
