@@ -164,15 +164,6 @@ export interface ExpandedCardData {
   savedCardId?: string;
   sessionId?: string;
 
-  // [META-ORCH-1009 Sub-B] Per-signal Gemini Q2 reasoning slice for the
-  // "Why we picked this for you" section. Keyed by signal_id (e.g. 'romantic',
-  // 'fine_dining', 'icebreakers'). The ExpandedCardModal renders the entry
-  // matching the card's dominant signal (tag/category match) or the first
-  // non-empty entry as a fallback. Optional — section is hidden when absent
-  // or all values are empty (graceful degrade for places Gemini hasn't yet
-  // evaluated; Sub-C is backfilling coverage in parallel).
-  aiReasoningBySignal?: Record<string, string>;
-
   // Night Out-specific data
   nightOutData?: {
     eventName: string;

@@ -46,6 +46,7 @@ import type { BusinessEventCard } from "../../types/mergedDiscover";
 import { formatEventDateLine } from "../../utils/eventDateDisplay";
 import { useAppStore } from "../../store/appStore";
 import { usePublicEventTickets } from "../../hooks/usePublicEventTickets";
+import { useTripIntakeSchemas } from "../../hooks/useTripIntakeSchemas";
 import { useEventTheme } from "../../hooks/useEventTheme";
 import { circleKeys } from "../../hooks/queryKeys";
 import {
@@ -172,6 +173,11 @@ export const ExpandedBusinessEventSheet: React.FC<
 
   const ticketsQuery = usePublicEventTickets(visible ? data.eventId : null);
   const themeQuery = useEventTheme(visible ? data : null);
+  // ORCH-1016 REWORK (D2) — per-tier trip intake schemas. Empty Map when the
+  // trip requires no intake (the common case → no intake step renders).
+  const intakeSchemasQuery = useTripIntakeSchemas(
+    visible ? data.eventId : null,
+  );
   const runNativeCheckout = useNativeCheckoutFlow();
 
   // ORCH-0828 REWORK: diagnostic log only. Sheet open/close is driven by
@@ -253,6 +259,13 @@ export const ExpandedBusinessEventSheet: React.FC<
             address: payload.address,
           },
           taxCalculationId: payload.taxCalculationId,
+          // ORCH-1016 REWORK (D2) — forward per-tier trip intake answers →
+          // orders.intake_form_data via the existing ticket-checkout-create
+          // body key. Empty array (no-schema trips) is omitted by
+          // nativeCheckoutFlow so the request shape stays byte-identical.
+          ...(payload.intakeFormData.length > 0
+            ? { intakeFormData: payload.intakeFormData }
+            : {}),
         });
       } catch (err) {
         // ORCH-0829-B D-1 H-2: runNativeCheckout's contract is to return a
@@ -442,6 +455,7 @@ export const ExpandedBusinessEventSheet: React.FC<
         tickets={ticketsQuery.data}
         fallbackCurrency={data.currency}
         initialTicketTypeId={initialTicketTypeId}
+        intakeSchemasByTier={intakeSchemasQuery.data}
         buyerName={
           profile?.display_name?.trim() || user?.email?.split("@")[0] || "Guest"
         }

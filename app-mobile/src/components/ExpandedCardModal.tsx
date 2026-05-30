@@ -1357,91 +1357,6 @@ function StopOpenBadge({ openingHours }: { openingHours: Record<string, string> 
   );
 }
 
-// ============================================================================
-// META-ORCH-1009 Sub-B — "Why we picked this for you" reasoning section.
-//
-// Renders Gemini Q2's per-signal reasoning on the back of an expanded card.
-// The reasoning slice arrives from the backend as `aiReasoningBySignal:
-// Record<signalId, reasoningText>`. A single card may surface under multiple
-// signals (multi-chip selection); pickDominantReasoning picks one entry using
-// the deterministic algorithm pinned in SPEC §3.3:
-//   1. Prefer the signal that matches the card's tags[0] (the placeType set
-//      by deckService.unifiedCardToRecommendation), which corresponds 1:1 with
-//      the chip the user actually clicked.
-//   2. Fall back to the first key by Object.keys order (alphabetical determinism).
-//
-// Returns null when the input is absent or every value is empty — the renderer
-// short-circuits and the section is NOT shown (Constitution #9: no fabricated
-// "Why we picked this" placeholder).
-// ============================================================================
-function pickDominantReasoning(card: ExpandedCardData): string | null {
-  const map = card.aiReasoningBySignal;
-  if (!map || typeof map !== 'object') return null;
-  const keys = Object.keys(map);
-  if (keys.length === 0) return null;
-  // Prefer the signal matching the card's primary placeType tag (tags[0])
-  const primaryTag = Array.isArray(card.tags) ? card.tags[0] : undefined;
-  if (primaryTag && typeof map[primaryTag] === 'string' && map[primaryTag].trim().length > 0) {
-    return map[primaryTag];
-  }
-  // Otherwise return the first non-empty entry by Object.keys order
-  for (const key of keys) {
-    const val = map[key];
-    if (typeof val === 'string' && val.trim().length > 0) return val;
-  }
-  return null;
-}
-
-function WhyWePickedThisSection({ card }: { card: ExpandedCardData }) {
-  const reasoning = pickDominantReasoning(card);
-  if (!reasoning) return null;
-  return (
-    <View
-      style={whyWePickedStyles.container}
-      testID="why-we-picked-section"
-      accessibilityLabel="Why we picked this for you"
-    >
-      <View style={whyWePickedStyles.headerRow}>
-        <Icon name="sparkles" size={16} color="#7c3aed" style={{ marginRight: 6 }} />
-        <Text style={whyWePickedStyles.title}>Why we picked this for you</Text>
-      </View>
-      <Text style={whyWePickedStyles.body} testID="why-we-picked-body">
-        {reasoning}
-      </Text>
-    </View>
-  );
-}
-
-const whyWePickedStyles = StyleSheet.create({
-  container: {
-    marginHorizontal: 16,
-    marginTop: 12,
-    marginBottom: 4,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    backgroundColor: '#faf5ff', // light violet — subtle AI marker; non-load-bearing
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#ede9fe',
-  },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  title: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#6d28d9',
-    letterSpacing: 0.1,
-  },
-  body: {
-    fontSize: 14,
-    lineHeight: 20,
-    color: '#374151',
-  },
-});
-
 export default function ExpandedCardModal({
   visible,
   target,
@@ -2025,13 +1940,6 @@ export default function ExpandedCardModal({
                   tip={card.tip}
                   currency={accountPreferences?.currency}
                 />
-
-                {/* META-ORCH-1009 Sub-B — "Why we picked this for you" reasoning
-                    section. Renders the per-signal Gemini Q2 reasoning slice
-                    (when present); silently absent when AI hasn't evaluated
-                    the place. Shared with Home + Collab + paired-friend
-                    surfaces via this single modal component. */}
-                <WhyWePickedThisSection card={card} />
 
                 {/* See Full Plan Button (for Stroll cards) */}
                 {isStrollCard && !(strollData && strollData.timeline) && (

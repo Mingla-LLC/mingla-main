@@ -55,6 +55,17 @@ import {
 } from "../checkout/CartTaxPreview";
 import { ConsumerCartCard } from "./ConsumerCartCard";
 import { type CartLineSeed, useTicketCart } from "../../hooks/useTicketCart";
+import {
+  ConsumerIntakeForm,
+  tierHasUnsupportedRequired,
+} from "./ConsumerIntakeForm";
+import {
+  buildIntakeFormData,
+  type IntakeAnswerValue,
+  type IntakeFormData,
+  type IntakeSchema,
+  validateAnswerAgainstSchema,
+} from "../../services/tripIntakeSchemaService";
 
 // ORCH-0847 Phase C — snap to ~92% so the sheet rises just above the
 // consumer app's bottom tab bar, leaving a thin backdrop strip at the
@@ -134,6 +145,12 @@ export interface TicketCartCheckoutPayload {
   totalCents: number;
   taxCalculationId: string | null;
   address: CartTaxPreviewResult["address"];
+  /**
+   * ORCH-1016 REWORK (D2) — per-tier trip intake answers for selected tiers
+   * that carry an intake schema. Empty array when no selected tier has a
+   * schema (the common case) so non-intake checkouts add nothing to the body.
+   */
+  intakeFormData: IntakeFormData[];
 }
 
 export interface TicketCartSheetProps {
@@ -141,6 +158,12 @@ export interface TicketCartSheetProps {
   eventId: string;
   /** From `usePublicEventTickets(eventId)`. `undefined` = loading. */
   tickets: ReadonlyArray<PublicTicketProps> | undefined;
+  /**
+   * ORCH-1016 REWORK (D2) — per-tier trip intake schemas keyed by
+   * ticket_type_id (from `useTripIntakeSchemas(eventId)`). Empty/undefined when
+   * the trip requires no intake (the common case) → no intake step renders.
+   */
+  intakeSchemasByTier?: Map<string, IntakeSchema>;
   /** Event currency fallback (used until a line is added). */
   fallbackCurrency: string;
   /** Seed the cart with this tier at quantity 1 on open. */
@@ -161,6 +184,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   tickets,
   fallbackCurrency,
   initialTicketTypeId,
+  intakeSchemasByTier,
   buyerName,
   buyerEmail,
   buyerPhone,
@@ -176,7 +200,49 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   const [taxPreview, setTaxPreview] = useState<CartTaxPreviewResult | null>(
     null,
   );
+  // ORCH-1016 REWORK (D2) — per-tier intake answers + per-tier per-question
+  // validation errors. Keyed by ticket_type_id → { [questionId]: value/error }.
+  const [intakeAnswers, setIntakeAnswers] = useState<
+    Record<string, Record<string, IntakeAnswerValue>>
+  >({});
+  const [intakeErrors, setIntakeErrors] = useState<
+    Record<string, Record<string, string>>
+  >({});
   const lastOpenSeedRef = React.useRef<string | null>(null);
+
+  // Tiers in the cart (qty > 0) that carry an intake schema.
+  const selectedSchemaTiers = useMemo<
+    Array<{ tierId: string; tierName: string; schema: IntakeSchema }>
+  >(() => {
+    if (intakeSchemasByTier === undefined || intakeSchemasByTier.size === 0) {
+      return [];
+    }
+    return lines
+      .filter((l) => l.quantity > 0)
+      .map((l) => {
+        const schema = intakeSchemasByTier.get(l.ticketTypeId);
+        if (schema === undefined) return null;
+        return {
+          tierId: l.ticketTypeId,
+          tierName: l.ticketName,
+          schema,
+        };
+      })
+      .filter(
+        (
+          t,
+        ): t is { tierId: string; tierName: string; schema: IntakeSchema } =>
+          t !== null,
+      );
+  }, [lines, intakeSchemasByTier]);
+
+  // True when a selected tier requires something this surface can't collect
+  // (a required file_upload) — keeps the CTA disabled with a clear message
+  // instead of letting the buyer hit a server-side 400.
+  const hasUnsupportedRequired = useMemo<boolean>(
+    () => selectedSchemaTiers.some((t) => tierHasUnsupportedRequired(t.schema)),
+    [selectedSchemaTiers],
+  );
 
   // META-ORCH-0991 Wave A — open/close is owned by BaseBottomSheet
   // (declarative `visible`). The prior sheetRef + snapToIndex/close effect is
@@ -203,6 +269,8 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
       reset();
       setMarketingOptIn(false);
       setTaxPreview(null);
+      setIntakeAnswers({});
+      setIntakeErrors({});
     }
   }, [
     visible,
@@ -218,8 +286,56 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     onCancel();
   }, [isSubmitting, onCancel]);
 
+  const setTierAnswers = useCallback(
+    (tierId: string, next: Record<string, IntakeAnswerValue>): void => {
+      setIntakeAnswers((prev) => ({ ...prev, [tierId]: next }));
+      // Clear the tier's surfaced errors as the buyer edits.
+      setIntakeErrors((prev) => {
+        if (prev[tierId] === undefined) return prev;
+        const copy = { ...prev };
+        delete copy[tierId];
+        return copy;
+      });
+    },
+    [],
+  );
+
   const handleConfirm = useCallback((): void => {
     if (totals.isEmpty || isSubmitting || taxPreview === null) return;
+    if (hasUnsupportedRequired) return;
+
+    // ORCH-1016 REWORK (D2) — required-field validation BEFORE payment.
+    // Mirrors the business validator AND the edge fn's required gate so the
+    // buyer never reaches the PaymentSheet (or a server 400) with a required
+    // intake question unanswered.
+    if (selectedSchemaTiers.length > 0) {
+      const nextErrors: Record<string, Record<string, string>> = {};
+      for (const tier of selectedSchemaTiers) {
+        const tierAnswers = intakeAnswers[tier.tierId] ?? {};
+        const errs = validateAnswerAgainstSchema(tier.schema, tierAnswers);
+        if (errs.length > 0) {
+          nextErrors[tier.tierId] = errs.reduce<Record<string, string>>(
+            (acc, e) => {
+              acc[e.question_id] = e.error;
+              return acc;
+            },
+            {},
+          );
+        }
+      }
+      if (Object.keys(nextErrors).length > 0) {
+        setIntakeErrors(nextErrors);
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        return;
+      }
+    }
+
+    const intakeFormData = buildIntakeFormData(
+      selectedSchemaTiers.map((t) => t.tierId),
+      intakeSchemasByTier ?? new Map<string, IntakeSchema>(),
+      intakeAnswers,
+    );
+
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     onCheckout({
       lines: lines
@@ -229,11 +345,16 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
       totalCents: taxPreview.totalCents,
       taxCalculationId: taxPreview.calculationId,
       address: taxPreview.address,
+      intakeFormData,
     });
   }, [
     totals.isEmpty,
     isSubmitting,
     taxPreview,
+    hasUnsupportedRequired,
+    selectedSchemaTiers,
+    intakeAnswers,
+    intakeSchemasByTier,
     lines,
     marketingOptIn,
     onCheckout,
@@ -271,10 +392,16 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
 
   const ctaLabel = totals.isEmpty
     ? "Add tickets above"
+    : hasUnsupportedRequired
+    ? "Reserve on web to continue"
     : totals.isFree
     ? "Claim Free Ticket"
     : "Continue to Payment";
-  const ctaDisabled = totals.isEmpty || isSubmitting || taxPreview === null;
+  const ctaDisabled =
+    totals.isEmpty ||
+    isSubmitting ||
+    taxPreview === null ||
+    hasUnsupportedRequired;
 
   const subtotalValueText = totals.isEmpty
     ? "—"
@@ -403,6 +530,27 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
             <BuyerRow label="Phone" value={buyerPhone} />
           </View>
         </ConsumerCartCard>
+
+        {/* ORCH-1016 REWORK (D2) — per-tier trip intake forms. Only renders for
+            selected tiers that carry an intake schema; the no-schema path shows
+            nothing here. */}
+        {selectedSchemaTiers.length > 0 ? (
+          <View style={styles.intakeSection}>
+            <Text style={styles.sectionLabel}>BEFORE YOU GO</Text>
+            {selectedSchemaTiers.map((tier) => (
+              <ConsumerIntakeForm
+                key={tier.tierId}
+                schema={tier.schema}
+                tierName={tier.tierName}
+                answers={intakeAnswers[tier.tierId] ?? {}}
+                onAnswersChange={(next) => setTierAnswers(tier.tierId, next)}
+                validationErrors={intakeErrors[tier.tierId]}
+                disabled={isSubmitting}
+              />
+            ))}
+          </View>
+        ) : null}
+
         <CartTaxPreview
           eventId={_eventId}
           lines={lines
@@ -611,6 +759,10 @@ const styles = StyleSheet.create({
   // Buyer recap
   recapCard: {
     marginTop: 12,
+  },
+  // ORCH-1016 REWORK (D2) — intake section
+  intakeSection: {
+    marginTop: 16,
   },
   recapSectionLabel: {
     fontSize: 12,

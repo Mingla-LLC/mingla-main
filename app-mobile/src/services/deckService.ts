@@ -239,16 +239,6 @@ export function unifiedCardToRecommendation(card: any): Recommendation {
     },
     oneLiner: card.oneLiner || null,
     tip: card.tip || null,
-    // [META-ORCH-1009 Sub-B] Carry the per-signal Gemini Q2 reasoning slice
-    // from the discover-cards `ai_reasoning_by_signal` payload field through
-    // to the canonical Recommendation shape so the shared ExpandedCardModal
-    // can render the "Why we picked this for you" section on all 3 surfaces
-    // (Home solo, group-chat collab, paired-friend public profile via the
-    // holidayCardToExpandedCardData mapper).
-    aiReasoningBySignal:
-      card?.ai_reasoning_by_signal && typeof card.ai_reasoning_by_signal === 'object'
-        ? (card.ai_reasoning_by_signal as Record<string, string>)
-        : undefined,
   };
 }
 
