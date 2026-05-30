@@ -1010,6 +1010,19 @@ function checkNoNewBackendFiles() {
     // ORCH-1013 QA adversarial tests (no production code touched)
     "supabase/functions/run-place-intelligence-trial/__tests__/coverage_adversarial.test.ts",
   ];
+  // ORCH-1014 [Intelligence Trial consolidation — prune photo pages +
+  // per-city Seed/Refresh readiness badges]. C7 is scoped to ORCH-0863
+  // marketing; ORCH-1014's only backend touch is a read-only extension to
+  // the intelligence_coverage action (6 new fields per city row + 2 new
+  // place_pool fetches client-side aggregated) plus its Deno regression
+  // test. No new external API surface (Supabase-only). Per COMMS-0003 the
+  // existing Gemini-2.5-Flash citation block in the file is preserved.
+  // The edge fn path is already in ORCH_1008_BACKEND_ALLOWLIST above;
+  // duplicates here are harmless (ALLOWLIST is a union via .includes()).
+  const ORCH_1014_BACKEND_ALLOWLIST = [
+    "supabase/functions/run-place-intelligence-trial/index.ts",
+    "supabase/functions/run-place-intelligence-trial/__tests__/intelligence_coverage_seed_refresh.test.ts",
+  ];
   const ALLOWLIST = [
     ...ORCH_0989_BACKEND_ALLOWLIST,
     ...ORCH_0990_BACKEND_ALLOWLIST,
@@ -1064,7 +1077,11 @@ function checkNoNewBackendFiles() {
     ...ORCH_0977_BACKEND_ALLOWLIST,
     ...ORCH_0978_BACKEND_ALLOWLIST,
     ...ORCH_1008_BACKEND_ALLOWLIST,
+<<<<<<< HEAD
     ...ORCH_1013_BACKEND_ALLOWLIST,
+=======
+    ...ORCH_1014_BACKEND_ALLOWLIST,
+>>>>>>> ecfc84d18 ([ORCH-1014] Finding B: per-city Seed + Refresh readiness badges on Intelligence Overview)
   ];
   const forbidden = changed.filter(
     (p) =>
