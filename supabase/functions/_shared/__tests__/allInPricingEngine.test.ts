@@ -117,3 +117,62 @@ Deno.test("Operator-locked 6% migration default on a £40 base", () => {
   assertEquals(miglaFeeCents, 240); // 6.00% of £40 = £2.40
   assertEquals(buyerSubtotalCents, 4240); // 4000 + 240 (service fee absorbed)
 });
+
+// ── ORCH-1006 Slice 2 additions (SPEC §B.4 degrade + §G.3 inclusive math) ──
+
+Deno.test("[ORCH-1006] GB inclusive: buyer_total == buyer_subtotal (tax baked in, NOT added on top)", () => {
+  // The exclusive-only `amount_total − base` bug being fixed: for inclusive VAT
+  // the displayed/charged number IS the all-in; tax is informational only.
+  const input: ComputeAllInInput = {
+    ...base,
+    switches: { pass_tax: true, pass_mingla_fee: true, pass_service_fee: true },
+  };
+  const { buyerSubtotalCents } = computeBuyerSubtotal(input);
+  assertEquals(buyerSubtotalCents, 4320);
+  // Stripe inclusive: amount_total === sum(line amounts) === buyer_subtotal.
+  const vatCents = 4320 - Math.round(4320 / 1.2); // 720
+  const bd = buildPricingBreakdown({
+    input,
+    amountTotalCents: 4320, // inclusive: equals the subtotal
+    taxCents: vatCents,
+    taxBasis: "venue_resolved",
+    stripeTaxCalculationId: "taxcalc_inclusive",
+  });
+  assertEquals(bd.tax_behavior, "inclusive");
+  // The fixed contract: inclusive total must equal the subtotal, not subtotal+tax.
+  assertEquals(bd.buyer_total_cents, bd.buyer_subtotal_cents);
+  assertEquals(bd.buyer_total_cents, 4320);
+  assertEquals(bd.components.tax_cents, 720);
+});
+
+Deno.test("[ORCH-1006] degrade-to-flat-absorb (T-02/T-10): tax 0, basis flat, total == subtotal", () => {
+  // When the brand is unregistered / venue unresolved / the calc throws, the
+  // edge function passes amount_total = buyer_subtotal, tax_cents = 0, and one
+  // of the *_flat_absorb bases — the buyer still pays one clean number.
+  const input: ComputeAllInInput = {
+    ...base,
+    switches: { pass_tax: true, pass_mingla_fee: true, pass_service_fee: true },
+  };
+  const { buyerSubtotalCents } = computeBuyerSubtotal(input);
+  for (
+    const basis of [
+      "unresolved_flat_absorb",
+      "country_unsupported_flat_absorb",
+      "calc_failed_flat_absorb",
+    ] as const
+  ) {
+    const bd = buildPricingBreakdown({
+      input,
+      amountTotalCents: buyerSubtotalCents,
+      taxCents: 0,
+      taxBasis: basis,
+      stripeTaxCalculationId: null,
+    });
+    assertEquals(bd.tax_basis, basis);
+    assertEquals(bd.components.tax_cents, 0);
+    assertEquals(bd.buyer_total_cents, bd.buyer_subtotal_cents);
+    assertEquals(bd.stripe_tax_calculation_id, null);
+    // The Mingla skim is still collected on the degrade path.
+    assertEquals(bd.application_fee_amount_cents, bd.components.mingla_fee_cents);
+  }
+});
