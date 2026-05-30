@@ -42,7 +42,6 @@ function stripComments(src: string): string {
 // (hero.tsx moved to DARK after the ORCH-1010 booking-wall pivot.)
 const LIGHT_SECTIONS = [
   'what-mingla-does.tsx',
-  'how-it-works.tsx',
   'audiences.tsx',
   'features.tsx',
   'faq.tsx',

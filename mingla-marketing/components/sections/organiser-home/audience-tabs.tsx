@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { Reveal } from '@/components/ui/reveal'
 import { SpotlightBand } from '@/components/ui/spotlight-band'
 import { EarningsCard } from '@/components/sections/organiser-home/earnings-card'
+import { VenueActivityFeed } from '@/components/sections/organiser-home/venue-activity-feed'
 import { cn } from '@/lib/cn'
 import { useMinglaReducedMotion } from '@/lib/reduced-motion'
 
@@ -214,17 +215,10 @@ export function OrganiserAudienceTabs() {
                 ))}
               </ol>
 
-              {/* Feature cards */}
-              <div className="grid gap-4 sm:grid-cols-2">
-                {tab.features.map((f) => (
-                  <div
-                    key={f.title}
-                    className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 transition-colors duration-200 hover:bg-white/[0.06]"
-                  >
-                    <h4 className="font-display text-base leading-tight text-white">{f.title}</h4>
-                    <p className="mt-2 text-sm leading-snug text-white/60">{f.body}</p>
-                  </div>
-                ))}
+              {/* Per-tab chart — Venues = live "your business, right now" feed;
+                  the other tabs get their own charts next. */}
+              <div className="flex justify-center lg:justify-end">
+                {tab.id === 'venues' ? <VenueActivityFeed /> : null}
               </div>
             </div>
           </motion.div>
