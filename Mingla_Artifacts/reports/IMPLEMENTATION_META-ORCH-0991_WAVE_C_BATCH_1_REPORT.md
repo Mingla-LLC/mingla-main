@@ -69,6 +69,17 @@ All screenshots under `Mingla_Artifacts/reports/screenshots/wave_c_batch_1/`.
 
 ## BLOCKER — PreferencesSheet body cannot scroll inside a gorhom sheet
 
+> **RESOLVED 2026-05-29** — PreferencesSheet was rebuilt and now scrolls correctly
+> as a `BaseBottomSheet` (sim-proven, all 5 sections + Apply reachable). The
+> real root cause was NOT a nested `KeyboardAwareScrollView` per se — it was that
+> the primitive's `header`/`stickyFooter` slots wrap the `BottomSheetScrollView`
+> in an intermediate `BottomSheetView`, breaking gorhom's content-pan→scroll
+> handoff when the body overflows. The fix renders the title + sections + footer
+> as DIRECT children of `scrollMode="scroll"`. Full detail:
+> `Mingla_Artifacts/reports/IMPLEMENTATION_META-ORCH-0991_WAVE_C_PREFERENCESSHEET_REBUILD_REPORT.md`
+> and the playbook §12 HARD LESSON. The original (suspected) analysis below is
+> retained for history.
+
 **Symptom (sim-proven):** opened as a `BaseBottomSheet`, only ~3 of the 5 sections render; gorhom reports the scroll as "1 page"; the body will not scroll to the "How are you rolling?" / "How far?" sections or the **Apply** button. The user cannot complete or apply preferences → broken core flow. Screenshot: `prefs_blocker_no_scroll.png`. (It DOES roll up + swipe-close correctly — `prefs_as_sheet_before_revert.png` — only the body scroll is broken.)
 
 **Four documented patterns attempted, all failed to scroll:**

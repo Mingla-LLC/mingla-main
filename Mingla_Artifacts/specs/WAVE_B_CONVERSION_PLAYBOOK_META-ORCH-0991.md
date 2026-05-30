@@ -255,7 +255,7 @@ shipped; PreferencesSheet hit a hard gorhom-scroll blocker (see below).**
 | CreateGroupChatSheet | sheet (light) | `['90%']` | **yes** (name + search inputs) | `scroll` (header + `BottomSheetScrollView` body + **stickyFooter** Create button) | **true** | Was flex-end `maxHeight:'85%'` RN `<Modal>`. The friend list is a `.map`, not a long FlatList — fine in the scroll body. `availableFriends.length > 3` search-field gate preserved. Restores the old `accessibilityViewIsModal` focus-trap (via the RN-Modal wrap). Sim-verified: roll-up, keyboard never covers name field / footer, selection toggles + Create enables, swipe-close. |
 | FriendPickerSheet | sheet (light) | `['88%']` | **yes** (search) | **`flatlist`** (long friend results → `BottomSheetFlatList`; loading/no-friends/no-results states are the FlatList `ListEmptyComponent`; header = title+close+search via `ListHeaderComponent`) | **true** | Was height `'88%'` RN `<Modal>` with a raw RN `<FlatList>` + the hand-rolled `useKeyboard` footer-padding hack (both DELETED — gorhom owns keyboard + the list). **Orphaned entry point** (`setFriendPickerVisible(true)` is never called in ConnectionsPage) — sim-verified by a TEMP `useState(true)` flip, screenshotted, then `git checkout --` (never committed; playbook §7.5). Sim-verified: roll-up, keyboard never covers search/results, live filter ("Ava" → 1 result), swipe-close. |
 | CityPickerSheet | sheet (**dark**) | `['90%']` | **yes** (autoFocus search) | `scroll` (header + status/results body) | **true** | Was an RN `<Modal>` + a hand-rolled `KeyboardAvoidingView` lifting a `flex:1` sheet (DELETED — gorhom owns keyboard). Bespoke dark canvas `rgba(20,22,26,0.98)` + topRadius 24 preserved via `backgroundStyle`. `autoFocus` + 250ms autocomplete debounce + all status rows preserved. Mounted on Discover before the floating GlassBottomNav (same z-trap as the Batch-5 Night Out filter). Sim-verified: roll-up, autoFocus, keyboard never covers field/results, live Google-Places filter ("Brooklyn" → 5 results), swipe-close. |
-| **PreferencesSheet** | **NOT CONVERTED — gorhom-scroll BLOCKER** | — | — | — | — | Stays its original RN `<Modal>`. See the blocker note below. A regression-test guard (T-8) asserts it remains an RN `<Modal>` so nobody silently ships the broken conversion without re-proving body scroll on a sim. |
+| **PreferencesSheet** | sheet (light) | `['90%']` | **yes** (×2 inputs) | **direct-child `scroll`** (title + 5 sections + Apply/Reset row are ALL direct children of the bare `BottomSheetScrollView`; NO `header`/`stickyFooter` slots) | **true** | REBUILT 2026-05-29. The first overflowing-body sheet — exposed that the `header`/`stickyFooter` slots break gorhom scroll on overflow (root cause in the HARD LESSON below). Fixed by rendering header/body/footer as direct scroll children; the two nested fields → `BottomSheetTextInput`, suggestions dropdown → `BottomSheetScrollView`. Legacy inline full-screen path (visible undefined) preserved with `KeyboardAwareScrollView`. Cream `#fff9f5` canvas via `backgroundStyle`. Sim-verified: all 5 sections scroll, Apply reachable + applies + closes, swipe-down close. ZERO primitive changes. |
 
 **Pattern worth reusing — search/keyboard-list sheet:**
 - **Long VERTICAL result list → `scrollMode="flatlist"`** with the data/renderItem/
@@ -272,32 +272,46 @@ shipped; PreferencesSheet hit a hard gorhom-scroll blocker (see below).**
   coordination once the field is a `BottomSheetTextInput`. (CreateGroupChatSheet,
   CityPickerSheet.)
 
-> **HARD LESSON (Batch C-1) — a deeply-nested RN-ScrollView body sheet may NOT
-> be convertible.** PreferencesSheet's body is a `KeyboardAwareScrollView` (a raw
-> RN `<ScrollView>`) wrapping 5 `Animated.View` sections + an absolute footer,
-> inside a `SafeAreaView`, with a sibling `CustomPaywallScreen` Modal, behind a
-> dual render mode (sheet when `visible` defined, legacy full-screen inline
-> otherwise). **FOUR documented patterns were tried on the iPhone 17 Pro sim and
-> ALL failed to scroll the body**: (1) `scrollMode="view"` + a nested
-> `BottomSheetScrollView`; (2) `scrollMode="scroll"` + `header`/`stickyFooter`
-> slots; (3) `scrollMode="scroll"` + footer inline in the scroll content; (4) a
-> two-stop `['50%','90%']` snap with `initialIndex={1}` (events-sheet config). In
-> every case gorhom mounted only ~3 of the 5 sections, reported the scroll as
-> "1 page", and refused to scroll to the travel sections / Apply button — i.e.
-> the user could not reach "How far?" or tap Apply. Root cause: a raw RN
-> `<ScrollView>` (KeyboardAwareScrollView) nested inside a gorhom `<BottomSheet>`
-> defeats gorhom's content-size measurement + pan→scroll handoff, AND wrapping
-> `BottomSheetScrollView` under intermediate flex Views (SafeAreaView + flexed
-> `stickyFooter` container) clips the tall body off-screen. **The real fix is to
-> rebuild the body to render its sections as DIRECT children of the primitive's
-> `BottomSheetScrollView` (no intervening `KeyboardAwareScrollView`/SafeAreaView/
-> absolute-footer/flex wrappers), and to migrate the two nested inputs
-> (LocationInputSection + TravelLimitSection, which live in out-of-scope
-> `PreferencesSheet/*` sub-components) to `BottomSheetTextInput`.** That is a
-> standalone refactor of a core consumer surface — it should be its own ORCH (or
-> a dedicated Wave-C PreferencesSheet sub-task with the sub-component edits in
-> scope), NOT bundled into a mechanical batch. Until then, PreferencesSheet stays
-> an RN `<Modal>` (it works today) and T-8 guards against a premature flip.
+> **HARD LESSON (Batch C-1, RESOLVED 2026-05-29) — a tall scrolling body must be
+> a DIRECT child of `scrollMode="scroll"`; the `header`/`stickyFooter` slots
+> break gorhom scroll when the body OVERFLOWS.** PreferencesSheet was the first
+> converted sheet whose body genuinely overflows its snap height, and it exposed
+> a real limitation. The prior batch's 4 attempts all failed because they used
+> the primitive's `header` (and/or `stickyFooter`) slot.
+>
+> **ROOT CAUSE (sim-proven on iPhone 17 Pro, controlled isolation):** gorhom's
+> `BottomSheetScrollView` only scrolls when it is a **DIRECT child of
+> `<BottomSheet>`**. `BaseBottomSheet`'s `header` slot (scroll+header path,
+> BaseBottomSheet.tsx ~394-401) and `stickyFooter` slot (~362-368) both wrap the
+> scrollable inside an intermediate flexed `<BottomSheetView>`. That intermediate
+> view makes the scrollview a non-direct descendant, so gorhom never hands the
+> content-pan off to the scrollview — every drag is treated as a sheet-pan and an
+> overflowing body will not move (only swipe-down-to-close works). Proof: a body
+> of 40 dummy `<Text>` rows scrolled cleanly as the BARE direct child of
+> `scrollMode="scroll"`, but stuck the moment ONLY `header={...}` was added back;
+> Animated.View sections, wrapInRNModal, GestureHandlerRootView, and the paywall
+> child were each ruled OUT by live sim edits.
+>
+> **THE FIX (reuse this for any overflowing-body sheet):** render the title, the
+> scrolling sections, AND the pinned-looking footer as **DIRECT children** of
+> `scrollMode="scroll"` (the bare `BottomSheetScrollView`). Do NOT use the
+> `header` or `stickyFooter` slots on such a sheet. The title + CTA scroll WITH
+> the content (acceptable; the old RN-Modal sheet scrolled them too). Set the
+> per-surface canvas via `backgroundStyle` (not `bodyContainerStyle`, which feeds
+> the slot wrapper). Also migrate any nested `<TextInput>` →
+> `<BottomSheetTextInput>` and any nested vertical `<ScrollView>` →
+> `<BottomSheetScrollView>` (both re-exported from `BaseBottomSheet`).
+> Sim-verified: all 5 sections render + scroll + Apply reachable + apply/close +
+> swipe-down close.
+>
+> **CAVEAT for the `header`/`stickyFooter` slots:** they are still correct for
+> sheets whose content FITS the snap height (EditInterestsSheet, the short
+> pickers) — those never need to scroll, so the wrapper is harmless. Only switch
+> to the direct-child pattern when the body can overflow. (If a future sheet
+> needs BOTH a pinned header AND overflow scroll, the primitive should be
+> upgraded to gorhom's native sticky-first-child support — see the implementation
+> report's "Discoveries for orchestrator" #1.) Detail:
+> `Mingla_Artifacts/reports/IMPLEMENTATION_META-ORCH-0991_WAVE_C_PREFERENCESSHEET_REBUILD_REPORT.md`.
 
 ## 13. Batch C-2 decision record (AccountSettings nested-modal chain)
 

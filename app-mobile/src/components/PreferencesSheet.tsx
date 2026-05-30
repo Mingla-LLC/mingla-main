@@ -3,14 +3,12 @@ import {
   Text,
   View,
   TouchableOpacity,
-  Pressable,
   TextInput,
   StyleSheet,
   ScrollView,
   ActivityIndicator,
   StatusBar,
   Platform,
-  Modal,
   Alert,
   Animated,
   Easing,
@@ -23,8 +21,7 @@ import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
-import { SCREEN_WIDTH, SCREEN_HEIGHT, vs } from "../utils/responsive";
-import { useAppLayout } from "../hooks/useAppLayout";
+import { SCREEN_WIDTH, SCREEN_HEIGHT } from "../utils/responsive";
 import { KeyboardAwareScrollView } from "./ui/KeyboardAwareScrollView";
 import { Icon } from './ui/Icon';
 import { PreferencesService } from "../services/preferencesService";
@@ -62,9 +59,21 @@ import { CustomPaywallScreen } from './CustomPaywallScreen';
 import type { GatedFeature } from '../hooks/useFeatureGate';
 import { normalizeCategoryArray } from '../utils/categoryUtils';
 import { colors } from '../constants/designSystem';
+// META-ORCH-0991 Wave C — the `visible`-prop bottom-sheet path now renders
+// inside the shared gorhom primitive (header + scrolling body + sticky Apply
+// footer) so all 5 sections scroll and the Apply CTA is reachable. The legacy
+// inline full-screen path (visible undefined, from app/index.tsx) is unchanged.
+import { BaseBottomSheet } from './ui/BaseBottomSheet';
 
 type DateOptionId = 'today' | 'this_weekend' | 'pick_dates';
 export type PreferencesSheetFocusSection = 'travel' | 'location' | 'categories' | 'dates';
+
+// META-ORCH-0991 Wave C — tall fixed snap for the bottom-sheet path. The old
+// RN-Modal sheet was SHEET_HEIGHT ≈ SCREEN_HEIGHT * 0.88 (status-bar inset
+// trimmed off the top); ['90%'] preserves that near-full-height feel as a true
+// swipe-down sheet. Fixed (not enableDynamicSizing) per the playbook §2
+// off-screen lesson.
+const PREFERENCES_SNAP_POINTS = ['90%'];
 
 const DATE_OPTIONS: { id: DateOptionId; labelKey: string }[] = [
   { id: 'today', labelKey: 'date_options.today' },
@@ -165,7 +174,6 @@ export default function PreferencesSheet({
   const [showPaywall, setShowPaywall] = useState(false);
   const [paywallFeature, setPaywallFeature] = useState<GatedFeature>('custom_starting_point');
   const insets = useSafeAreaInsets();
-  const appLayout = useAppLayout();
   // Only load preferences data if modal is visible
   const {
     preferences: loadedPreferences,
@@ -1106,41 +1114,41 @@ export default function PreferencesSheet({
     onClose,
   ]);
 
-  const sheetContent = (
-    <>  
-      <SafeAreaView style={styles.container} edges={[]}>
-        <StatusBar barStyle="dark-content" />
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.titleContainer}>
-            {!isEditable ? (
-              <>
-                <Text style={styles.subtitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
-                  {viewedParticipantName}'s picks (read-only)
-                </Text>
-                <Text style={styles.sessionBannerHint}>View-only session preferences</Text>
-              </>
-            ) : isCollaborationMode && sessionName ? (
-              <>
-                <Text style={styles.subtitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
-                  {t('preferences:sheet.session_vibes', { name: sessionName })}
-                </Text>
-                {/* ORCH-0446 R4.2: Session banner — visual indicator of collab mode */}
-                <Text style={styles.sessionBannerHint}>Your picks for this session</Text>
-              </>
-            ) : (
-              <Text style={styles.title}>{t('preferences:sheet.title')}</Text>
-            )}
-          </View>
-        </View>
+  // ── META-ORCH-0991 Wave C: header / body / footer split ───────────────────
+  // The 5 sections are rendered as the BODY, the title as the HEADER slot, and
+  // the Apply/Reset row as the sticky FOOTER slot, so the gorhom
+  // BottomSheetScrollView owns the scroll (the old KeyboardAwareScrollView, a
+  // raw RN <ScrollView>, defeated gorhom's content-size + pan→scroll handoff and
+  // refused to scroll past ~3 of 5 sections). The legacy inline path (visible
+  // undefined) re-wraps the SAME body in the original KeyboardAwareScrollView +
+  // absolute footer so its full-screen behavior is byte-identical.
+  const headerContent = (
+    <View style={styles.header}>
+      <View style={styles.titleContainer}>
+        {!isEditable ? (
+          <>
+            <Text style={styles.subtitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
+              {viewedParticipantName}'s picks (read-only)
+            </Text>
+            <Text style={styles.sessionBannerHint}>View-only session preferences</Text>
+          </>
+        ) : isCollaborationMode && sessionName ? (
+          <>
+            <Text style={styles.subtitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
+              {t('preferences:sheet.session_vibes', { name: sessionName })}
+            </Text>
+            {/* ORCH-0446 R4.2: Session banner — visual indicator of collab mode */}
+            <Text style={styles.sessionBannerHint}>Your picks for this session</Text>
+          </>
+        ) : (
+          <Text style={styles.title}>{t('preferences:sheet.title')}</Text>
+        )}
+      </View>
+    </View>
+  );
 
-        <View style={{ flex: 1 }}>
-          <KeyboardAwareScrollView
-            ref={scrollRef}
-            style={styles.scrollView}
-            contentContainerStyle={styles.scrollContent}
-            keyboardShouldPersistTaps="handled"
-          >
+  const bodyContent = (
+    <>
           {/* 1. Starting Point — moved to top (ORCH-0434) */}
           <Animated.View style={{
             opacity: sectionAnims[0],
@@ -1367,89 +1375,147 @@ export default function PreferencesSheet({
             )}
           </View>
           </Animated.View>
-
-          </KeyboardAwareScrollView>
-        {/* Apply Button */}
-        {isEditable && (
-        <View
-          style={[
-            styles.footer,
-            { paddingBottom: 48 },
-          ]}
-        >
-          <View style={styles.footerButtonsContainer}>
-            <TouchableOpacity
-              onPress={handleApplyPreferences}
-              style={[
-                styles.applyButton,
-                (isSaving || !isFormComplete || !hasChanges) && styles.applyButtonDisabled,
-              ]}
-              disabled={isSaving || !isFormComplete || !hasChanges}
-              accessibilityLabel={ctaHintText ?? (hasChanges ? `${t('preferences:sheet.lock_it_in')}, ${countChanges()} changes` : t('preferences:sheet.lock_it_in'))}
-              accessibilityState={{ disabled: isSaving || !isFormComplete || !hasChanges }}
-            >
-              {isSaving ? (
-                <View style={styles.buttonLoadingContainer}>
-                  <ActivityIndicator size="small" color="#ffffff" />
-                  <Text style={styles.applyButtonText}>{t('preferences:sheet.saving')}</Text>
-                </View>
-              ) : (
-                <Text style={styles.applyButtonText}>
-                  {!isFormComplete && ctaHintText
-                    ? ctaHintText
-                    : isFormComplete && !hasChanges
-                      ? "No changes to save"
-                      : hasChanges
-                        ? t('preferences:sheet.lock_it_in_count', { count: countChanges() })
-                        : t('preferences:sheet.lock_it_in')}
-                </Text>
-              )}
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={handleReset}
-              style={styles.resetButton}
-              disabled={isSaving}
-            >
-              <Text style={styles.resetButtonText}>{t('preferences:sheet.start_over')}</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-        )}
-      </View>
-
-      </SafeAreaView>
-
-      <CustomPaywallScreen
-        isVisible={showPaywall}
-        onClose={() => setShowPaywall(false)}
-        userId={user?.id ?? ''}
-        feature={paywallFeature}
-      />
     </>
   );
 
-  // If `visible` prop is supplied, present inside a Modal (88% height bottom-sheet)
-  // Otherwise render inline for backward-compat (full-screen usage from index.tsx)
+  const footerContent = isEditable ? (
+    <View style={styles.footerButtonsContainer}>
+      <TouchableOpacity
+        onPress={handleApplyPreferences}
+        style={[
+          styles.applyButton,
+          (isSaving || !isFormComplete || !hasChanges) && styles.applyButtonDisabled,
+        ]}
+        disabled={isSaving || !isFormComplete || !hasChanges}
+        accessibilityLabel={ctaHintText ?? (hasChanges ? `${t('preferences:sheet.lock_it_in')}, ${countChanges()} changes` : t('preferences:sheet.lock_it_in'))}
+        accessibilityState={{ disabled: isSaving || !isFormComplete || !hasChanges }}
+      >
+        {isSaving ? (
+          <View style={styles.buttonLoadingContainer}>
+            <ActivityIndicator size="small" color="#ffffff" />
+            <Text style={styles.applyButtonText}>{t('preferences:sheet.saving')}</Text>
+          </View>
+        ) : (
+          <Text style={styles.applyButtonText}>
+            {!isFormComplete && ctaHintText
+              ? ctaHintText
+              : isFormComplete && !hasChanges
+                ? "No changes to save"
+                : hasChanges
+                  ? t('preferences:sheet.lock_it_in_count', { count: countChanges() })
+                  : t('preferences:sheet.lock_it_in')}
+          </Text>
+        )}
+      </TouchableOpacity>
+      <TouchableOpacity
+        onPress={handleReset}
+        style={styles.resetButton}
+        disabled={isSaving}
+      >
+        <Text style={styles.resetButtonText}>{t('preferences:sheet.start_over')}</Text>
+      </TouchableOpacity>
+    </View>
+  ) : null;
+
+  const paywall = (
+    <CustomPaywallScreen
+      isVisible={showPaywall}
+      onClose={() => setShowPaywall(false)}
+      userId={user?.id ?? ''}
+      feature={paywallFeature}
+    />
+  );
+
+  // Legacy inline body (full-screen, visible undefined): re-wraps the same body
+  // in the original SafeAreaView + KeyboardAwareScrollView + absolute footer so
+  // its behavior is byte-identical to before this conversion.
+  const legacyInlineContent = (
+    <>
+      <SafeAreaView style={styles.container} edges={[]}>
+        <StatusBar barStyle="dark-content" />
+        {headerContent}
+        <View style={{ flex: 1 }}>
+          <KeyboardAwareScrollView
+            ref={scrollRef}
+            style={styles.scrollView}
+            contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+          >
+            {bodyContent}
+          </KeyboardAwareScrollView>
+          {isEditable && (
+            <View style={[styles.footer, { paddingBottom: 48 }]}>
+              {footerContent}
+            </View>
+          )}
+        </View>
+      </SafeAreaView>
+      {paywall}
+    </>
+  );
+
+  // ── Bottom-sheet path (visible prop supplied) ─────────────────────────────
+  // META-ORCH-0991 Wave C: shared gorhom BaseBottomSheet. Tall fixed snap
+  // (['90%'], matching the old SHEET_HEIGHT ≈ 88% + status-bar inset).
+  //
+  // ROOT-CAUSE NOTE (why the prior 4 attempts couldn't scroll): the title, the
+  // 5 sections, AND the Apply/Reset footer are ALL rendered as DIRECT children
+  // of scrollMode="scroll" (gorhom's own BottomSheetScrollView) — we do NOT use
+  // the primitive's `header` / `stickyFooter` slots here. Those slots wrap the
+  // BottomSheetScrollView inside an intermediate flexed <BottomSheetView>, which
+  // makes the scrollable a non-direct descendant of <BottomSheet> and breaks
+  // gorhom's content-pan→scroll handoff (sim-proven: with a `header` slot the
+  // body would not scroll past ~3 of 5 sections; as direct scroll children it
+  // scrolls top-to-bottom and Apply is reachable). The "Your Vibe" title and the
+  // Apply/Reset row therefore scroll WITH the content (acceptable — the prior
+  // RN-Modal sheet also scrolled the title via KeyboardAwareScrollView).
+  //
+  // wrapInRNModal z-stacks above the floating GlassBottomNav / chat input (the
+  // sheet mounts from app/index.tsx + MessageInterface/CollabDeckSheet, all over
+  // the tab bar). Pan-down + backdrop-press close via onClose. Android
+  // hardware-back is wired by the RN-Modal wrap. Stock gorhom motion. Cream
+  // canvas (#fff9f5) preserved via backgroundStyle.
   if (typeof visible !== "undefined") {
     return (
-      <Modal
-        visible={visible}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={onClose}
-        statusBarTranslucent
-      >
-        <View style={styles.sheetOverlay}>
-          <Pressable style={styles.backdropTouch} onPress={onClose} />
-          <View style={[styles.sheetContent, { height: appLayout.screenHeight - appLayout.insets.top - vs(20) }]}>
-            {preferencesLoading ? (
-              <LoadingShimmer />
-            ) : (
-              sheetContent
-            )}
-          </View>
-        </View>
-      </Modal>
+      <>
+        <BaseBottomSheet
+          visible={!!visible}
+          onClose={() => onClose?.()}
+          theme="light"
+          snapPoints={PREFERENCES_SNAP_POINTS}
+          scrollMode="scroll"
+          wrapInRNModal
+          keyboardBehavior="interactive"
+          keyboardBlurBehavior="restore"
+          android_keyboardInputMode="adjustResize"
+          accessibilityLabel={t('preferences:sheet.title')}
+          backgroundStyle={styles.sheetBackground}
+          scrollProps={{
+            contentContainerStyle: styles.sheetScrollContent,
+            keyboardShouldPersistTaps: 'handled',
+            showsVerticalScrollIndicator: false,
+          }}
+        >
+          {preferencesLoading ? (
+            <LoadingShimmer />
+          ) : (
+            <>
+              {headerContent}
+              {bodyContent}
+              {isEditable && (
+                <View style={[styles.footer, styles.sheetFooter, { paddingBottom: Math.max(insets.bottom, 16) + 12 }]}>
+                  {footerContent}
+                </View>
+              )}
+            </>
+          )}
+        </BaseBottomSheet>
+        {/* Paywall is its own RN Modal — render it OUTSIDE the sheet's scroll
+            body so it neither lands inside the BottomSheetScrollView content
+            (which disrupts gorhom's content-size measurement) nor fights the
+            wrapInRNModal presentation window. It floats independently. */}
+        {paywall}
+      </>
     );
   }
 
@@ -1465,42 +1531,44 @@ export default function PreferencesSheet({
   return (
     <View style={styles.overlayContainer}>
       <View style={styles.modalContainer}>
-        {sheetContent}
+        {legacyInlineContent}
       </View>
     </View>
   );
 }
 
-// SCREEN_WIDTH and SCREEN_HEIGHT are now imported from responsive.ts
-
-// Sheet fills from bottom, accounting for status bar area
-// Actual height is computed dynamically when useAppLayout is available;
-// this static fallback is used only for legacy full-screen overlay styles.
-const SHEET_HEIGHT = SCREEN_HEIGHT * 0.88;
+// SCREEN_WIDTH and SCREEN_HEIGHT are now imported from responsive.ts (used by
+// the legacy full-screen overlay styles below).
 
 const styles = StyleSheet.create({
-  // --- Bottom-sheet modal styles (used when `visible` prop is passed) ---
-  sheetOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.35)",
-    justifyContent: "flex-end",
-    alignItems: "center",
-  },
-  backdropTouch: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  sheetContent: {
-    height: SHEET_HEIGHT,
-    width: "100%",
-    backgroundColor: "#FFFFFF",
+  // --- Bottom-sheet (gorhom BaseBottomSheet) styles — visible prop supplied ---
+  // META-ORCH-0991 Wave C: the title + 5 sections + Apply/Reset footer ride
+  // gorhom's BottomSheetScrollView as DIRECT children. The old hand-rolled
+  // sheetOverlay/backdropTouch/sheetContent card is GONE — BaseBottomSheet owns
+  // the scrim, card, radius, shadow, and pan-down.
+  sheetBackground: {
+    backgroundColor: '#fff9f5',  // warm glow — glass cards float above this
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
-    overflow: "hidden",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 6,
+  },
+  sheetScrollContent: {
+    paddingTop: 8,
+    // The Apply/Reset footer is the last scroll child (no absolute footer), so
+    // the content no longer reserves the ~120px the absolute footer used to
+    // need. A small tail keeps the footer off the very bottom edge.
+    paddingBottom: 16,
+  },
+  sheetFooter: {
+    // Override the legacy absolute positioning — inside the scroll body the
+    // footer is a normal last child, not a pinned overlay.
+    position: 'relative',
+    bottom: undefined,
+    left: undefined,
+    right: undefined,
+    backgroundColor: 'transparent',
+    shadowOpacity: 0,
+    elevation: 0,
+    marginTop: 8,
   },
   // --- Legacy full-screen styles (used when `visible` prop is not provided) ---
   overlayContainer: {

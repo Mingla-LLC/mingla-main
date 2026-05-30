@@ -4,14 +4,23 @@ import {
   TouchableOpacity,
   Text,
   StyleSheet,
-  TextInput,
-  ScrollView,
   ActivityIndicator,
   Switch,
 } from "react-native";
 import { useTranslation } from 'react-i18next';
 import { Icon } from '../ui/Icon';
 import { TRAVEL_TIME_PRESETS } from "../../types/onboarding";
+// META-ORCH-0991 Wave C — PreferencesSheet body now scrolls inside a gorhom
+// BaseBottomSheet. The two text fields here must be gorhom's
+// BottomSheetTextInput (so a focused field coordinates with the sheet position
+// instead of being hidden by the keyboard), and the suggestions dropdown must
+// use gorhom's BottomSheetScrollView (a raw RN <ScrollView> nested in a gorhom
+// sheet fights the sheet pan). Both are re-exported from BaseBottomSheet because
+// the sole-gorhom-consumer gate forbids importing @gorhom/bottom-sheet directly.
+import {
+  BottomSheetTextInput,
+  BottomSheetScrollView,
+} from "../ui/BaseBottomSheet";
 
 export const TravelLimitSection = memo(
   ({
@@ -94,7 +103,7 @@ export const TravelLimitSection = memo(
               color="#6b7280"
               style={styles.constraintInputIcon}
             />
-            <TextInput
+            <BottomSheetTextInput
               value={constraintValue?.toString() || ""}
               onChangeText={onConstraintValueChange}
               onFocus={onFocus}
@@ -208,7 +217,7 @@ export const LocationInputSection = memo(
               color="#6b7280"
               style={styles.locationInputIcon}
             />
-            <TextInput
+            <BottomSheetTextInput
               style={styles.locationTextInput}
               placeholder={t('preferences:location.search_placeholder')}
               placeholderTextColor="#9ca3af"
@@ -239,7 +248,7 @@ export const LocationInputSection = memo(
       {/* Suggestions Dropdown */}
       {showSuggestions &&
         (suggestions.length > 0 || isLoadingSuggestions) && (
-          <ScrollView
+          <BottomSheetScrollView
             style={styles.suggestionsContainer}
             nestedScrollEnabled={true}
             keyboardShouldPersistTaps="handled"
@@ -280,7 +289,7 @@ export const LocationInputSection = memo(
                 </TouchableOpacity>
               ))
             )}
-          </ScrollView>
+          </BottomSheetScrollView>
         )}
     </View>
     );
