@@ -17,7 +17,6 @@ Reference: [WORKTREE_STRATEGY.md](WORKTREE_STRATEGY.md).
 | `~/Desktop/mingla-orchs/meta-orch-0952-[buyer-web-confirm-deep-forensics]` | `meta-orch-0952-buyer-web-confirm-deep-forensics` | META-ORCH-0952 | INVESTIGATE | no sim — buyer-web (Playwright Chromium + Safari) | 8083 | 2026-05-24 | Claude `mingla-orchestrator` (dispatch) → Claude `mingla-forensics` (active) |
 | `~/Desktop/mingla-orchs/ORCH-0990-[flower-stop-real-florists]` | `ORCH-0990-flower-stop-real-florists` | ORCH-0990 | SPEC | no sim — backend-only (edge fn + RPC + place_pool data) | 8086 | 2026-05-29 | Claude `mingla-orchestrator` (dispatch) → Claude `mingla-forensics` (active) |
 | `~/Desktop/mingla-orchs/ORCH-1006-[universal-allin-pricing-engine]` | `ORCH-1006-universal-allin-pricing-engine` | ORCH-1006 | INVESTIGATE done → awaiting SPEC | TBD (native checkout) | 8091 | 2026-05-29 | Claude `mingla-orchestrator` (dispatch) → Claude `mingla-forensics` (active) |
-| `~/Desktop/mingla-orchs/ORCH-1008-[admin-shell-prune-intelligence-overview]` | `ORCH-1008-admin-shell-prune-intelligence-overview` | ORCH-1008 | SPEC + DESIGN (parallel) | no sim — admin-web (Vite, not Expo) | n/a (Vite picks free) | 2026-05-30 | Claude `mingla-orchestrator` (dispatch) → Claude `mingla-forensics` (SPEC P1-3) + Claude `mingla-designer` (Phase 4 UX) |
 
 ---
 

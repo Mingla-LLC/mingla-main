@@ -987,6 +987,19 @@ function checkNoNewBackendFiles() {
     "supabase/functions/_shared/stopAlternatives.ts",
     "supabase/functions/generate-curated-experiences/index.ts",
   ];
+  // ORCH-1008 [Admin shell prune + Intelligence Overview tab + remainder mode].
+  // C7 is scoped to ORCH-0863 marketing; these backend touches are the new
+  // place_intelligence_runs CHECK-constraint extension (adds 'remainder' to
+  // the mode enum + sample_size consistency), the in-place edge fn extension
+  // (handleStartRun branches on mode='remainder' + a new intelligence_coverage
+  // action for the Overview tab), plus the Deno regression test asserting
+  // remainder enqueues exactly servable - completed places. Per COMMS-0002.
+  const ORCH_1008_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260801000002_orch_1008_remainder_mode.sql",
+    "supabase/functions/run-place-intelligence-trial/index.ts",
+    "supabase/functions/run-place-intelligence-trial/__tests__/runRemainder.test.ts",
+    "supabase/functions/run-place-intelligence-trial/__tests__/runRemainder_adversarial.test.ts",
+  ];
   const ALLOWLIST = [
     ...ORCH_0989_BACKEND_ALLOWLIST,
     ...ORCH_0990_BACKEND_ALLOWLIST,
@@ -1040,6 +1053,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_0964_BACKEND_ALLOWLIST,
     ...ORCH_0977_BACKEND_ALLOWLIST,
     ...ORCH_0978_BACKEND_ALLOWLIST,
+    ...ORCH_1008_BACKEND_ALLOWLIST,
   ];
   const forbidden = changed.filter(
     (p) =>
