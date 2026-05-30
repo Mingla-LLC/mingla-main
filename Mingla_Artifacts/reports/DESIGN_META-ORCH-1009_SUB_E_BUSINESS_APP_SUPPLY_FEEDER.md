@@ -388,11 +388,15 @@ Map bouncer codes to plain English. Exact code names can stay in debug logs, not
 
 | Code family | Sarah-facing reason | Primary fix CTA |
 |---|---|---|
-| B3 | `Mingla needs a clearer location before this can appear in the deck.` | `Fix address` |
-| B4 | `Your venue needs a usable cover photo or video.` | `Choose cover` |
-| B5 | `Mingla needs enough detail to know when to recommend you.` | `Answer vibe questions` |
-| B6 | `Some key details are missing or conflicting.` | `Review details` |
-| B8 | `Your venue is still being checked for deck safety.` | `Refresh check` |
+| B3 | `Mingla is missing a required venue detail like name, address, or map pin.` | `Open venue basics` |
+| B4 | `This place type is not a strong Mingla destination yet.` | `Review category` |
+| B5 | `Mingla needs a trusted website or contact signal before recommending this venue.` | `Add website/contact` |
+| B6 | `Mingla needs your hours before it can recommend this venue.` | `Add hours` |
+| B8 | `Mingla needs at least one usable venue photo or video.` | `Add photos` |
+| B9 | `This looks like a location inside another business.` | `Request review` |
+| B10 | `This looks like a fast-food or snack category Mingla does not serve in the deck.` | `Request review` |
+| B11 | `This looks like a fast-food or coffee chain.` | `Request review` |
+| B12 | `This looks like a casual chain.` | `Request review` |
 
 If multiple reasons exist, pick the first fixable reason as the primary CTA. Secondary reasons remain tappable rows.
 
