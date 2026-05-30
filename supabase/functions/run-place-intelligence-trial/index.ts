@@ -668,7 +668,7 @@ serve(async (req: Request) => {
     if (!body.action) {
       return json({
         error:
-          "Missing 'action'. Use action='preview_run' | 'fetch_reviews' | 'compose_collage' | 'start_run' | 'run_trial_for_place' | 'run_status' | 'cancel_trial' | 'process_chunk' | 'list_active_runs' | 'city_coverage' | 'retry_failed_run' | 'intelligence_coverage'",
+          "Missing 'action'. Use action='preview_run' | 'fetch_reviews' | 'compose_collage' | 'start_run' | 'run_trial_for_place' | 'run_status' | 'cancel_trial' | 'process_chunk' | 'list_active_runs' | 'city_coverage' | 'retry_failed_run' | 'intelligence_coverage' | 'admin_reeval_place'",
       }, 400);
     }
 
@@ -740,6 +740,16 @@ serve(async (req: Request) => {
           supabaseAdmin,
           body,
           adminRow.id,
+          supabaseServiceKey,
+        );
+      // META-ORCH-1009 Sub-D — admin per-place re-evaluation. Creates a
+      // synthetic single-place parent run + 1 pending child + immediately
+      // kicks the worker (same pattern as full_city mode). Rate-limited
+      // server-side: 429 if any pending/running row exists for the place.
+      case "admin_reeval_place":
+        return await handleAdminReevalPlace(
+          supabaseAdmin,
+          body,
           supabaseServiceKey,
         );
       default:
@@ -1433,6 +1443,149 @@ async function handleRunTrialForPlace(
     emitTiming("row_failed", diagnostics);
     return json({ error: msg, place_pool_id: placePoolId }, 500);
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// META-ORCH-1009 Sub-D — admin_reeval_place
+//
+// Admin-initiated single-place re-evaluation. Creates a synthetic parent run
+// + 1 pending child + immediately kicks the worker (same pattern as
+// handleStartRun for full_city mode). Server-side rate-limited: rejects with
+// 429 if the same place_pool_id has any pending/running row in
+// place_intelligence_trial_runs (any source — drift, prior button click, or
+// in-progress city sweep).
+//
+// External-API doc: Gemini 2.5 Flash invoked via the existing trial pipeline
+// (the queued child is drained by handleProcessChunk → processOnePlace).
+// See https://ai.google.dev/api/generate-content#function_calling (cited at
+// line 1092 above) + https://ai.google.dev/pricing/gemini-2-5-flash for
+// per-place cost (~$0.0040). COMMS-0003.
+// ═══════════════════════════════════════════════════════════════════════════
+
+async function handleAdminReevalPlace(
+  db: SupabaseClient,
+  body: Record<string, unknown>,
+  supabaseServiceKey: string,
+): Promise<Response> {
+  const placePoolId = body.place_pool_id as string | undefined;
+  if (!placePoolId) return json({ error: "place_pool_id required" }, 400);
+
+  // Rate-limit: refuse if any pending/running row exists for this place (any
+  // source — admin city sweeps, drift triggers, or prior button clicks). The
+  // expensive resource is the Gemini Q2 call; duplicating it for a place
+  // that's already being processed wastes ~$0.0040 + worker contention.
+  const { count: inflight, error: inflightErr } = await db
+    .from("place_intelligence_trial_runs")
+    .select("id", { count: "exact", head: true })
+    .eq("place_pool_id", placePoolId)
+    .in("status", ["pending", "running"]);
+  if (inflightErr) return json({ error: inflightErr.message }, 500);
+  if ((inflight ?? 0) > 0) {
+    return json({
+      error: "rate_limited",
+      message:
+        "A re-evaluation is already pending or running for this place. Wait for it to complete.",
+    }, 429);
+  }
+
+  // Resolve city_id from the place (needed for parent run row).
+  const { data: place, error: placeErr } = await db
+    .from("place_pool")
+    .select("id, city_id, name")
+    .eq("id", placePoolId)
+    .maybeSingle();
+  if (placeErr) return json({ error: placeErr.message }, 500);
+  if (!place) return json({ error: "place not found" }, 404);
+
+  const runId = crypto.randomUUID();
+  const { error: parentErr } = await db.from("place_intelligence_runs").insert({
+    id: runId,
+    city_id: place.city_id,
+    city_name: "admin-reeval",
+    mode: "admin_reeval",
+    sample_size: 1,
+    total_count: 1,
+    estimated_cost_usd: PER_PLACE_COST_USD,
+    estimated_minutes: 1,
+    prompt_version: PROMPT_VERSION,
+    model: GEMINI_MODEL_NAME_SHORT,
+    started_by: null,
+    status: "running",
+    started_at: new Date().toISOString(),
+  });
+  if (parentErr) {
+    // 23505 unique violation = a run is already active for this place's city.
+    // Surface a clean 409 rather than 500 so the admin UI can guide.
+    if (parentErr.code === "23505") {
+      return json({ error: "concurrent_run_for_city" }, 409);
+    }
+    return json({ error: parentErr.message }, 500);
+  }
+
+  const { error: childErr } = await db
+    .from("place_intelligence_trial_runs")
+    .insert({
+      run_id: runId,
+      parent_run_id: runId,
+      place_pool_id: placePoolId,
+      city_id: place.city_id,
+      signal_id: null,
+      anchor_index: null,
+      input_payload: {},
+      status: "pending",
+      prompt_version: PROMPT_VERSION,
+      model: GEMINI_MODEL_NAME_SHORT,
+      retry_count: 0,
+      source: "admin-reeval-button",
+    });
+  if (childErr) {
+    // Roll back parent so DB doesn't accumulate orphan running runs.
+    await db.from("place_intelligence_runs")
+      .update({
+        status: "failed",
+        error_reason: childErr.message,
+        completed_at: new Date().toISOString(),
+      })
+      .eq("id", runId);
+    return json({ error: childErr.message }, 500);
+  }
+
+  // Immediate kick (same fire-and-forget pattern as handleStartRun for
+  // full_city mode at line ~1322). Worker writes status to DB; the existing
+  // kick_pending_trial_runs cron picks up the child if this kick is missed.
+  if (supabaseServiceKey) {
+    try {
+      const workerUrl = `${
+        Deno.env.get("SUPABASE_URL") ?? ""
+      }/functions/v1/run-place-intelligence-trial`;
+      fetch(workerUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${supabaseServiceKey}`,
+        },
+        body: JSON.stringify({ action: "process_chunk", run_id: runId }),
+      }).catch((e) => {
+        console.error(
+          `[admin_reeval_place] kick failed: ${
+            e instanceof Error ? e.message : String(e)
+          }`,
+        );
+      });
+    } catch (e) {
+      console.error(
+        `[admin_reeval_place] kick exception: ${
+          e instanceof Error ? e.message : String(e)
+        }`,
+      );
+    }
+  }
+
+  return json({
+    ok: true,
+    run_id: runId,
+    place_pool_id: placePoolId,
+  });
 }
 
 interface AnchorRow {
