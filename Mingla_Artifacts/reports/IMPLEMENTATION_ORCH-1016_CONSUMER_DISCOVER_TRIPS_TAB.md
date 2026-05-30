@@ -359,3 +359,89 @@ Net: the day-by-day list, refund policy, inclusions, and tiers scroll smoothly i
 ## RW2.7 — Discoveries for orchestrator (REWORK-2)
 
 - None new.
+
+---
+
+# REWORK-3 — Frozen-scroll fix (RUNTIME-PROVEN on sim)
+
+**Trigger:** Operator on-device after REWORK-2: *"swiping the sheet down closes, but i cant scroll the content of the sheet itself."* REWORK-2 passed unit tests but froze at runtime (the tests only asserted which `scrollMode` prop was set, never that scrolling physically worked).
+
+## RW3.1 — Confirmed root cause(s)
+
+**Primary (the freeze):** REWORK-2 used `scrollMode="scroll"` + BaseBottomSheet's `stickyFooter` prop. That routes the primitive into its **sticky-footer branch**, which nests the gorhom scroll host TWO levels deep:
+
+```
+<BottomSheetContent>            ← gorhom: height-bounded, overflow:hidden DraggableView (BottomSheetContent.tsx)
+  └─ <BottomSheetView flex:1>   ← BaseBottomSheet styles.stickyContainer
+       └─ <BottomSheetScrollView flex:1>  ← BaseBottomSheet styles.stickyBody  (the scroll host)
+```
+
+The ONLY sheet in the app that physically scrolls — `ExpandedBusinessEventSheet` (the empirically-proven gold standard) — injects its gorhom `BottomSheetScrollView` as a **flex:1 DIRECT child of `BottomSheetContent`** (via `scrollMode="view"` + a `ScrollComponent` host). Wrapping the scroll one `BottomSheetView` deeper changed the measured viewport handed to gorhom's scrollable so the inner scroll never received a bounded height → frozen body, while the sheet-level pan-down (handle) still worked (hence "swiping down closes but content won't scroll").
+
+Mechanism evidence (read from `node_modules/@gorhom/bottom-sheet@5.2.8`): `BottomSheetContent.tsx` renders a `DraggableView` with an explicit animated `height` (= snap content height) and `overflow:'hidden'` — a height-bounded box with no flex distribution of its own. A `flex:1` scroll host as its DIRECT child gets that bounded height (scrolls); a `flex:1` `BottomSheetView` wrapper in between re-measures and the inner scroll loses the bound.
+
+**No second cause found** beyond the wiring: the day-by-day / inclusions / tiers lists are already plain mapped `<View>`s (no nested ScrollView/FlatList/SectionList), and there is no `flex:1`/fixed-height wrapper around the body. The single blocker was the scroll-host nesting depth.
+
+## RW3.2 — The exact wiring change (before → after)
+
+**File:** `app-mobile/src/screens/Trip/ConsumerTripDetailScreen.tsx`
+
+BEFORE (REWORK-2, frozen):
+```tsx
+<BaseBottomSheet ... scrollMode="scroll"
+  scrollProps={{ showsVerticalScrollIndicator:false, contentContainerStyle: styles.scrollContent }}
+  tabBarAware={tabBarAware}
+  stickyFooter={reserveFooter}>
+  {detailBody}
+</BaseBottomSheet>
+```
+
+AFTER (REWORK-3, scrolls — mirrors ExpandedBusinessEventSheet):
+```tsx
+<BaseBottomSheet ... scrollMode="view">
+  <BottomSheetScrollView
+    style={styles.scrollHost}              // flex:1 — direct child of BottomSheetContent
+    contentContainerStyle={styles.scrollContent}
+    showsVerticalScrollIndicator={false}>
+    {detailBody}
+  </BottomSheetScrollView>
+  {reserveFooter}                          // SIBLING below the scroll host (NOT stickyFooter prop)
+</BaseBottomSheet>
+```
+- Imports `BottomSheetScrollView` from the primitive (`ui/BaseBottomSheet`) — same re-export `ExpandedBusinessEventSheet` uses; gorhom-sole-consumer gate still green.
+- `styles.scrollHost = { flex:1 }` so the host is the bounded-viewport direct child.
+- Reserve footer is now a sibling `<View>` and owns its own nav clearance: `footerNavClearance = (tabBarAware ? BOTTOM_NAV_CONTENT_HEIGHT : 0) + max(insets.bottom,16)` (the primitive's `tabBarAware` padding only applies to its scroll/sticky branches, which we no longer use).
+
+**Diff vs ExpandedBusinessEventSheet scroll wiring:** byte-equivalent — both use `scrollMode="view"` + a gorhom `BottomSheetScrollView` (from the primitive re-export) as a `flex:1` direct child of the sheet. The only intentional addition here is the sticky Reserve footer rendered as a sibling below the scroll host (ExpandedBusinessEventSheet has no sticky footer; its Buy row scrolls inline).
+
+## RW3.3 — Files changed
+- `app-mobile/src/screens/Trip/ConsumerTripDetailScreen.tsx` — scroll wiring (above) + REWORK-3 doc comments + style `scrollHost` + footer nav-clearance const. ~40 lines.
+- `app-mobile/src/screens/Trip/__tests__/orch_1016_consumer_trip_detail.rework_sheet.test.tsx` — regression assertions flipped from the FROZEN config to the WORKING-pattern wiring (R1f / R1f-2 / R1f-2b / R1f-3 / R1f-4 / R1f-5 / R2a).
+
+## RW3.4 — SIM SCROLL PROOF (the part that was missing)
+
+**Device:** booted iOS sim `iPhone 17 Pro Max` (iOS 26.4, UDID `2C3312D9-EE52-4EBD-9704-15811D49A2EC`).
+**Metro:** worktree node_modules is symlinked → anchor, which breaks the dev-client entry resolution (`./mingla-main/...expo-router/entry`). Resolved per the dispatch/anchor recipe: applied the single changed screen file onto the anchor checkout (real node_modules), ran a SECOND Metro on a dedicated free port **8099** (the other session's 8087 Metro left untouched), drove the booted dev-client (`com.mingla.app.v2`) to 8099, then restored the anchor file to pristine (zero diff) and stopped only 8099.
+**Path:** in-app (the QueryClientProvider only wraps the `app/index.tsx` overlay; the cold `/t/` deep-link route mounts outside it — a pre-existing route limitation, not this fix). Discover → Trips pill → tapped "The Sone" (4 days + 2 inclusions + refund ladder + pricing = content taller than the 90% snap).
+**Driver:** Maestro `swipe` on the sheet BODY (50%,78% → 50%,30%), never osascript.
+
+Evidence (`Mingla_Artifacts/reports/qa_evidence_orch1016/rework3_scroll_proof/`):
+- `01_sheet_TOP_before_scroll.png` — top of sheet: hero (Pikachu) + "The Sone" title + meta rows + CANCELLATION POLICY at the fold; "From €500 / Reserve" footer pinned.
+- `02_sheet_AFTER_swipe_up_daybyday_inclusions_pricing.png` — after swipe-up: hero/title scrolled OFF; **DAY BY DAY (Day 1–4), WHAT'S INCLUDED (Lodging), NOT INCLUDED (Flights), PRICING (Standard €500)** — all previously below-the-fold — now visible. Reserve footer still pinned.
+- `03_scrolled_back_to_top_twoway.png` — swipe-down scrolled content back to the hero/title (two-way scroll); at content-top the further drag handed off to the sheet pan (gorhom scroll↔pan coordination intact → swipe-down-to-dismiss preserved).
+
+**Verdict: content PHYSICALLY scrolls on the sim. Sticky Reserve footer stays pinned. Bottom-nav-clearing inset preserved. Swipe-down-to-dismiss coordination preserved.**
+
+## RW3.5 — Regression test
+- Path: `app-mobile/src/screens/Trip/__tests__/orch_1016_consumer_trip_detail.rework_sheet.test.tsx`
+- Passing run: **22/22 checks PASS** (asserts `scrollMode="view"` + the `BottomSheetScrollView` host as the sheet's direct child + `scrollHost flex:1` + footer-as-sibling nav clearance + NO `stickyFooter`/`scrollMode="scroll"` frozen config).
+- **fails-on-revert verified at commit `3ee5c3880`** (REWORK-2 frozen wiring): stashing the screen file (keeping the test) fails at R1f and R1f-2 — the assertions exercise the actual scroll-host wiring, not just a prop string.
+- Sibling adversarial test `...adversarial.test.tsx`: 18/18 PASS (unaffected).
+
+## RW3.6 — Gates
+- gorhom sole-consumer gate (`meta-orch-0991-base-bottom-sheet-sole-consumer.mjs`): PASS (BaseBottomSheet remains the sole `@gorhom/bottom-sheet` importer).
+- `tsc --noEmit`: zero new errors in the touched file; repo baseline 259 errors unchanged before/after.
+- `ANDROID_GLASS_USES_OPAQUE_FALLBACK`, Events tab, intake/buyer flow, Trips paper-plane icon, prior bottom-nav inset: untouched (no edits to those paths).
+
+## RW3.7 — Discoveries for orchestrator
+- The cold deep-link route `app/t/[brandSlug]/[tripSlug].tsx` renders `ConsumerTripDetailScreen` OUTSIDE the app's `QueryClientProvider`, so a cold `com.mingla.app.v2://t/...` open red-boxes with "No QueryClient set." Pre-existing (not introduced by this fix); in-app navigation works. Flagging for a possible follow-up to wrap the `/t/` route in its own QueryClientProvider so universal/share links open standalone.
