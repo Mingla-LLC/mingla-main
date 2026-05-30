@@ -56,7 +56,7 @@ export function EarningsCard() {
           +18%
         </span>
       </div>
-      <p className="mt-1.5 text-xs text-text-muted">vs. last 30 days · illustrative</p>
+      <p className="mt-1.5 text-xs text-text-muted">vs. last 30 days</p>
 
       {/* Revenue-by-category segmented bar */}
       <div className="mt-7 flex h-2.5 w-full overflow-hidden rounded-full bg-[rgba(14,14,16,0.05)]">
