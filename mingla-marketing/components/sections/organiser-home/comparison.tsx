@@ -1,6 +1,11 @@
 'use client'
-import { motion } from 'framer-motion'
-import { useMinglaReducedMotion } from '@/lib/reduced-motion'
+import { Reveal, RevealGroup } from '@/components/ui/reveal'
+import { SpotlightBand } from '@/components/ui/spotlight-band'
+
+// ORCH-1010 — the bright-line argument, on the first dark SpotlightBand. The
+// argument lands harder on the nightlife canvas and rhymes with the consumer
+// hero. Struck-through "generic" vs warm "Mingla" per row. On the dark band,
+// accent reverts to text-warm (4.71:1 on the night canvas) per the token rule.
 
 interface Contrast {
   category: string
@@ -11,86 +16,72 @@ interface Contrast {
 const CONTRASTS: Contrast[] = [
   {
     category: 'Listings',
-    generic: 'say what you are.',
-    mingla: 'sells why you are worth choosing.',
-  },
-  {
-    category: 'Ads',
-    generic: 'chase attention.',
-    mingla: 'connects you with intent.',
+    generic: 'tell people you exist.',
+    mingla: "sells why you're worth choosing tonight.",
   },
   {
     category: 'Ticketing',
-    generic: 'sells entry.',
-    mingla: 'sells the reason behind the entry.',
+    generic: 'sells the ticket.',
+    mingla: 'sells the night.',
   },
   {
-    category: 'Social posts',
-    generic: 'disappear.',
-    mingla: 'turns your offer into a plan people save, share, book, and buy.',
+    category: 'Ads',
+    generic: 'chase customers you have to pay for again and again.',
+    mingla: 'finds the people already looking for a place like yours.',
+  },
+  {
+    category: 'The group chat',
+    generic: 'is where plans go to die.',
+    mingla: 'is where they get picked.',
   },
 ]
 
-function Reveal({
-  children,
-  delay = 0,
-}: {
-  children: React.ReactNode
-  delay?: number
-}) {
-  const reduced = useMinglaReducedMotion()
-  return (
-    <motion.div
-      initial={reduced ? false : { opacity: 0, y: 24 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, amount: 0.2 }}
-      transition={{ duration: 0.6, delay: reduced ? 0 : delay, ease: [0.16, 1, 0.3, 1] }}
-    >
-      {children}
-    </motion.div>
-  )
-}
-
 export function OrganiserComparison() {
   return (
-    <section className="border-t border-divider px-6 py-24 md:px-10 md:py-32">
+    <SpotlightBand aria-label="Mingla vs the rest">
       <div className="mx-auto max-w-6xl">
-        <Reveal>
-          <span className="text-[11px] font-semibold uppercase tracking-[0.22em] text-text-muted">
-            Mingla vs the rest
-          </span>
+        <Reveal as="span" className="block text-xs font-semibold uppercase tracking-[0.2em] text-warm">
+          Mingla vs the rest
         </Reveal>
 
-        <Reveal delay={0.1}>
-          <h2 className="mt-4 max-w-4xl font-display text-3xl leading-[1.1] tracking-[-0.01em] text-text-primary md:text-6xl">
-            ads show people your business. <br className="hidden md:block" />
-            <span className="text-warm">Mingla shows them why they should care.</span>
+        <Reveal>
+          <h2 className="mt-4 max-w-4xl font-display text-4xl leading-[1.05] tracking-[-0.02em] text-text-primary md:text-7xl">
+            they show people your business. <br className="hidden md:block" />
+            <span className="text-warm">Mingla shows them why they’d love it.</span>
           </h2>
         </Reveal>
 
         <div className="mt-16 grid gap-4 md:grid-cols-2">
-          {CONTRASTS.map((contrast, i) => (
-            <Reveal key={contrast.category} delay={0.06 * i + 0.2}>
-              <article className="glass-soft flex h-full flex-col gap-4 rounded-2xl p-6">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted">
+          <RevealGroup
+            items={CONTRASTS}
+            step={0.06}
+            base={0.2}
+            keyFor={(c) => c.category}
+          >
+            {(contrast) => (
+              <article
+                className="glass-strong flex h-full flex-col gap-4 rounded-2xl p-6 md:p-8"
+                style={{ boxShadow: 'var(--elev-2)' }}
+              >
+                <span className="text-xs font-semibold uppercase tracking-[0.2em] text-text-muted">
                   {contrast.category}
                 </span>
 
-                <p className="text-base leading-relaxed text-text-muted line-through decoration-text-muted/40 md:text-lg">
+                <p className="text-lg leading-relaxed text-text-muted line-through decoration-text-muted/40">
                   {contrast.generic}
                 </p>
 
                 <div className="flex items-baseline gap-2">
                   <span className="font-display text-base text-warm">Mingla</span>
-                  <p className="font-display text-base leading-snug tracking-[-0.005em] text-text-primary md:text-lg">
+                  <p className="font-display text-xl leading-tight tracking-[-0.005em] text-text-primary md:text-2xl">
                     {contrast.mingla}
                   </p>
                 </div>
               </article>
-            </Reveal>
-          ))}
+            )}
+          </RevealGroup>
         </div>
       </div>
-    </section>
+    </SpotlightBand>
   )
 }

@@ -1,93 +1,104 @@
 'use client'
-import { motion } from 'framer-motion'
-import { useMinglaReducedMotion } from '@/lib/reduced-motion'
+import {
+  LayoutTemplate,
+  Sparkles,
+  Receipt,
+  Mail,
+  UserCheck,
+  Tag,
+  type LucideIcon,
+} from 'lucide-react'
+import { Reveal, RevealGroup } from '@/components/ui/reveal'
+
+// ORCH-1010 — the concrete, all-shipped capability list ("what you actually
+// get"). Back on parchment (daylight after the dark Comparison peak). Each card
+// carries a real lucide chip — NO mock dashboards, NO invented charts, NO fake
+// screenshots (reality-anchor). Every capability below is shipped, grade A/B.
 
 interface Feature {
+  icon: LucideIcon
   title: string
   body: string
 }
 
 const FEATURES: Feature[] = [
   {
-    title: 'vibe labeling',
-    body: 'Define the energy people should expect: cozy, lively, romantic, social, creative, upscale, low-key, family-friendly, late-night, work-friendly, high-energy, intimate, playful, or bold.',
+    icon: LayoutTemplate,
+    title: 'a page worth sharing',
+    body: 'A beautiful, on-brand page for your place, event, or experience — your colors, your photos and video, your story. The page people actually want to send to the group chat.',
   },
   {
-    title: 'menu and offer storytelling',
-    body: 'Turn dishes, drinks, specials, packages, and limited drops into cravings and clear reasons to visit.',
+    icon: Sparkles,
+    title: 'taste-matched discovery',
+    body: 'Your offer reaches people by vibe, taste, location, timing, budget, and what they’re already planning — not just who’s nearby, but who’s looking for exactly this tonight.',
   },
   {
-    title: 'ambience positioning',
-    body: 'Surface the details people care about: lighting, sound, seating, crowd, dress code, neighborhood, patio, music, layout, pace, and occasion fit.',
+    icon: Receipt,
+    title: 'all-in checkout, built in',
+    body: 'Sell tickets, tables, and packages right inside Mingla. One all-in price up front, no address typing, no checkout surprises — buyers see the full cost before they pay.',
   },
   {
-    title: 'event and pop-up packaging',
-    body: 'Turn your class, show, market, dinner, tasting, activation, or party into something people understand fast and want now.',
+    icon: Mail,
+    title: 'email your real customers',
+    body: 'Send campaigns to the people who actually bought from you or your events — no list to build, no extra tool to learn. They’re already there.',
   },
   {
-    title: 'audience matching',
-    body: 'Reach people based on vibe, taste, location, timing, budget, friend plans, saved behavior, and intent.',
+    icon: UserCheck,
+    title: 'know who showed up',
+    body: 'Your dashboard shows the guest list, check-ins, and what sold — so you finally know which nights, offers, and crowds are working.',
   },
   {
-    title: 'campaign creation',
-    body: 'Generate better titles, descriptions, posts, push copy, email copy, audience angles, and follow-up.',
-  },
-  {
-    title: 'performance learning',
-    body: 'See what people save, share, book, buy, attend, and come back for — then improve the next offer.',
+    icon: Tag,
+    title: 'tell your vibe in plain words',
+    body: 'Name the energy people should expect — cozy, lively, romantic, late-night, family-friendly, high-energy, intimate — so the right people self-select in, and the wrong fit self-selects out.',
   },
 ]
 
-function Reveal({
-  children,
-  delay = 0,
-}: {
-  children: React.ReactNode
-  delay?: number
-}) {
-  const reduced = useMinglaReducedMotion()
-  return (
-    <motion.div
-      initial={reduced ? false : { opacity: 0, y: 24 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, amount: 0.15 }}
-      transition={{ duration: 0.6, delay: reduced ? 0 : delay, ease: [0.16, 1, 0.3, 1] }}
-    >
-      {children}
-    </motion.div>
-  )
-}
-
 export function OrganiserFeatures() {
   return (
-    <section className="border-t border-divider px-6 py-24 md:px-10 md:py-32">
+    <section className="seam-top px-6 py-24 md:px-10 md:py-40 [padding-left:max(1.5rem,env(safe-area-inset-left))] [padding-right:max(1.5rem,env(safe-area-inset-right))] md:[padding-left:max(2.5rem,env(safe-area-inset-left))] md:[padding-right:max(2.5rem,env(safe-area-inset-right))]">
       <div className="mx-auto max-w-6xl">
-        <Reveal>
-          <span className="text-[11px] font-semibold uppercase tracking-[0.22em] text-text-muted">
-            What Mingla does for you
-          </span>
+        <Reveal as="span" className="block text-xs font-semibold uppercase tracking-[0.2em] text-warm-ink">
+          What you get
         </Reveal>
 
-        <Reveal delay={0.1}>
-          <h2 className="mt-4 max-w-3xl font-display text-3xl leading-[1.1] tracking-[-0.01em] text-text-primary md:text-6xl">
-            AI that packages <br className="hidden md:block" />
-            your business <span className="text-warm">for demand.</span>
+        <Reveal>
+          <h2 className="mt-4 max-w-3xl font-display text-4xl leading-[1.05] tracking-[-0.02em] text-text-primary md:text-7xl">
+            everything you need to turn a vibe <br className="hidden md:block" />
+            into a booking — <span className="text-warm-ink">and a full room.</span>
           </h2>
         </Reveal>
 
         <div className="mt-16 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {FEATURES.map((feature, i) => (
-            <Reveal key={feature.title} delay={0.04 * i + 0.2}>
-              <article className="glass-soft flex h-full flex-col gap-3 rounded-2xl p-6 transition-all duration-200 ease-out-quart hover:-translate-y-0.5 hover:brightness-105">
-                <h3 className="font-display text-lg leading-tight tracking-[-0.005em] text-text-primary md:text-xl">
-                  {feature.title}
-                </h3>
-                <p className="text-sm leading-relaxed text-text-secondary">
-                  {feature.body}
-                </p>
-              </article>
-            </Reveal>
-          ))}
+          <RevealGroup
+            items={FEATURES}
+            step={0.04}
+            base={0.2}
+            keyFor={(f) => f.title}
+          >
+            {(feature) => {
+              const Icon = feature.icon
+              return (
+                <article
+                  className="glass-soft flex h-full flex-col gap-3 rounded-2xl p-6 transition-all duration-200 ease-out-quart hover:-translate-y-0.5 md:p-8"
+                  style={{ boxShadow: 'var(--elev-1)' }}
+                >
+                  <span
+                    aria-hidden="true"
+                    className="flex size-10 items-center justify-center rounded-full bg-warm/10 text-warm-ink"
+                  >
+                    <Icon className="size-5" strokeWidth={1.8} />
+                  </span>
+                  <h3 className="font-display text-xl leading-tight tracking-[-0.005em] text-text-primary md:text-2xl">
+                    {feature.title}
+                  </h3>
+                  <p className="text-base leading-relaxed text-text-secondary">
+                    {feature.body}
+                  </p>
+                </article>
+              )
+            }}
+          </RevealGroup>
         </div>
       </div>
     </section>

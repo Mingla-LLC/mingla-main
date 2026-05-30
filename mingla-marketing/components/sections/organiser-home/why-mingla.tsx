@@ -1,90 +1,94 @@
 'use client'
-import { motion } from 'framer-motion'
-import { useMinglaReducedMotion } from '@/lib/reduced-motion'
+import { type ReactNode } from 'react'
+import { Reveal, RevealGroup } from '@/components/ui/reveal'
+
+// ORCH-1010 — the insight: people choose feelings before categories. The
+// generic→specific pairs are the page's smartest device. The generic-left text
+// is de-emphasized but MUST clear AA — so it uses text-text-secondary (6.38 on
+// vellum), NOT text-muted (3.29, fails). The quoted category is italic.
 
 interface Pair {
-  generic: string
+  generic: ReactNode
   specific: string
 }
 
 const PAIRS: Pair[] = [
   {
-    generic: 'they don\'t just want "a restaurant."',
-    specific: 'they want somewhere cute but not too loud.',
+    generic: (
+      <>
+        they don&rsquo;t want <span className="italic">&ldquo;a restaurant.&rdquo;</span>
+      </>
+    ),
+    specific: 'they want somewhere cute, where they can actually hear each other.',
   },
   {
-    generic: 'they don\'t just want "an event."',
-    specific: 'they want something that feels worth leaving the house for.',
+    generic: (
+      <>
+        they don&rsquo;t want <span className="italic">&ldquo;an event.&rdquo;</span>
+      </>
+    ),
+    specific: 'they want a night worth leaving the house for.',
   },
   {
-    generic: 'they don\'t just want "a class."',
-    specific: 'they want a social plan that feels fun, useful, or different.',
+    generic: (
+      <>
+        they don&rsquo;t want <span className="italic">&ldquo;a class.&rdquo;</span>
+      </>
+    ),
+    specific: 'they want a plan that feels fun, useful, or a little bit theirs.',
   },
   {
-    generic: 'they don\'t just want "a market."',
-    specific: 'they want a weekend ritual.',
+    generic: (
+      <>
+        they don&rsquo;t want <span className="italic">&ldquo;a trip.&rdquo;</span>
+      </>
+    ),
+    specific: 'they want the story they’ll tell for years.',
   },
   {
-    generic: 'they don\'t just want "a bar."',
-    specific: 'they want the right energy.',
+    generic: (
+      <>
+        they don&rsquo;t want <span className="italic">&ldquo;a bar.&rdquo;</span>
+      </>
+    ),
+    specific: 'they want the right energy, with the right people.',
   },
 ]
 
-function Reveal({
-  children,
-  delay = 0,
-}: {
-  children: React.ReactNode
-  delay?: number
-}) {
-  const reduced = useMinglaReducedMotion()
-  return (
-    <motion.div
-      initial={reduced ? false : { opacity: 0, y: 24 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, amount: 0.2 }}
-      transition={{ duration: 0.6, delay: reduced ? 0 : delay, ease: [0.16, 1, 0.3, 1] }}
-    >
-      {children}
-    </motion.div>
-  )
-}
-
 export function OrganiserWhyMingla() {
   return (
-    <section className="border-t border-divider bg-vellum px-6 py-24 md:px-10 md:py-32">
+    <section className="seam-top bg-vellum px-6 py-24 md:px-10 md:py-40 [padding-left:max(1.5rem,env(safe-area-inset-left))] [padding-right:max(1.5rem,env(safe-area-inset-right))] md:[padding-left:max(2.5rem,env(safe-area-inset-left))] md:[padding-right:max(2.5rem,env(safe-area-inset-right))]">
       <div className="mx-auto max-w-4xl">
-        <Reveal>
-          <span className="text-[11px] font-semibold uppercase tracking-[0.22em] text-text-muted">
-            Why Mingla
-          </span>
+        <Reveal as="span" className="block text-xs font-semibold uppercase tracking-[0.2em] text-warm-ink">
+          Why Mingla
         </Reveal>
 
-        <Reveal delay={0.1}>
-          <h2 className="mt-4 font-display text-3xl leading-[1.1] tracking-[-0.01em] text-text-primary md:text-6xl">
+        <Reveal>
+          <h2 className="mt-4 font-display text-4xl leading-[1.05] tracking-[-0.02em] text-text-primary md:text-7xl">
             because people choose <br className="hidden md:block" />
-            <span className="text-warm">feelings before categories.</span>
+            <span className="text-warm-ink">feelings before categories.</span>
           </h2>
         </Reveal>
 
         <div className="mt-16 flex flex-col gap-6 md:gap-8">
-          {PAIRS.map((pair, i) => (
-            <Reveal key={pair.generic} delay={0.06 * i + 0.2}>
-              <div className="grid gap-2 border-t border-divider pt-6 md:grid-cols-2 md:gap-8">
-                <p className="text-sm text-text-muted md:text-base">
-                  {pair.generic}
-                </p>
-                <p className="font-display text-lg leading-snug tracking-[-0.005em] text-text-primary md:text-2xl">
+          <RevealGroup items={PAIRS} step={0.06} base={0.2} keyFor={(_, i) => `pair-${i}`}>
+            {(pair) => (
+              <div
+                className="grid gap-2 border-t pt-6 md:grid-cols-2 md:gap-8"
+                style={{ borderColor: 'rgba(14,14,16,0.10)' }}
+              >
+                <p className="text-base text-text-secondary">{pair.generic}</p>
+                <p className="font-display text-3xl leading-[1.1] tracking-[-0.01em] text-text-primary md:text-5xl">
                   {pair.specific}
                 </p>
               </div>
-            </Reveal>
-          ))}
+            )}
+          </RevealGroup>
         </div>
 
         <Reveal delay={0.5}>
-          <p className="mt-16 text-center font-display text-xl leading-snug tracking-[-0.005em] text-text-primary md:text-3xl">
-            Mingla turns those feelings <span className="text-warm">into discovery.</span>
+          <p className="mt-16 text-center font-display text-3xl leading-[1.1] tracking-[-0.01em] text-text-primary md:text-5xl">
+            Mingla turns those feelings <span className="text-warm-ink">into demand.</span>
           </p>
         </Reveal>
       </div>

@@ -20,6 +20,16 @@
   --color-warm-glow: rgba(235, 120, 37, 0.35);
   --color-warm-tint: rgba(235, 120, 37, 0.28);
 
+  /* ----- ORCH-1010: accent TEXT token for LIGHT surfaces -----
+     Fixes the 2.73:1 warm-on-parchment contrast fail. #a8450e = warm darkened
+     to clear AA body (5.62:1 on parchment, 5.41:1 on vellum). Accent TEXT on the
+     light /organisers surface uses this; accent FILLS/dots/chips stay `warm`.
+     On nested data-theme="dark" spotlight bands, accent text reverts to `warm`. */
+  --color-warm-ink: #a8450e;
+  /* Warm spotlight ink for on-DARK bands — #eb7825 is already 4.71:1 on #08090c;
+     alias kept for intent clarity at call sites. */
+  --color-warm-on-dark: var(--color-warm);
+
   /* Coral palette retained for utility shades (hover bg, etc.). */
   --color-coral-50: #fff7ed;
   --color-coral-100: #ffedd5;
@@ -105,6 +115,21 @@
   --token-divider-strong: rgba(14, 14, 16, 0.12);
   --token-stripe: rgba(14, 14, 16, 0.02);
   --token-stripe-strong: rgba(14, 14, 16, 0.04);
+
+  /* ----- ORCH-1010 premium atmosphere (light surface only) -----
+     Warm aurora: a single soft top-anchored radial that gives the page a
+     light source. Used ONCE behind the hero + ONCE behind the CTA — nowhere
+     else (restraint). Parchment grain seam: a 1px hairline that replaces hard
+     section borders with a soft light-to-shadow seam, so sections layer. */
+  --bg-warm-aurora:
+    radial-gradient(ellipse 90% 55% at 50% -8%, rgba(235, 120, 37, 0.10) 0%, rgba(235, 120, 37, 0) 60%),
+    radial-gradient(ellipse 60% 40% at 85% 8%, rgba(235, 120, 37, 0.06) 0%, rgba(235, 120, 37, 0) 55%);
+  --seam-light: linear-gradient(90deg, transparent, rgba(14, 14, 16, 0.10) 18%, rgba(14, 14, 16, 0.10) 82%, transparent);
+
+  /* Light-surface elevation — soft, warm-tinted, no harsh black. */
+  --elev-1: 0 1px 2px rgba(14, 14, 16, 0.05), 0 4px 12px rgba(14, 14, 16, 0.04);
+  --elev-2: 0 2px 6px rgba(14, 14, 16, 0.06), 0 12px 32px rgba(14, 14, 16, 0.07);
+  --elev-3: 0 8px 24px rgba(14, 14, 16, 0.08), 0 24px 64px rgba(235, 120, 37, 0.10);
 }
 
 :root,
@@ -140,6 +165,22 @@
     inset -1px 0 0 rgba(255, 255, 255, 0.08);
 
   --glass-shadow: 0 1px 2px rgba(0, 0, 0, 0.20);
+
+  /* ----- ORCH-1010 spotlight band background (Comparison + CTA on-dark) -----
+     Lifted from explorer-home/hero.tsx so the business page's two dark "argument"
+     bands inherit the consumer night-canvas and the two surfaces feel like one
+     brand. Available on the shared dark scope so a nested data-theme="dark"
+     SpotlightBand inside the light /organisers page resolves it. */
+  --bg-spotlight:
+    radial-gradient(ellipse at 50% 8%, rgba(235, 120, 37, 0.16), transparent 38%),
+    radial-gradient(ellipse at 88% 22%, rgba(118, 67, 38, 0.18), transparent 40%),
+    linear-gradient(180deg, #0c0d10 0%, #08090c 100%);
+
+  /* Elevation tokens also resolve on the dark scope (dark cards on the spotlight
+     bands use --elev-2). Warm-tinted, deeper for the night canvas. */
+  --elev-1: 0 1px 2px rgba(0, 0, 0, 0.20), 0 4px 12px rgba(0, 0, 0, 0.24);
+  --elev-2: 0 2px 6px rgba(0, 0, 0, 0.28), 0 12px 32px rgba(0, 0, 0, 0.34);
+  --elev-3: 0 8px 24px rgba(0, 0, 0, 0.34), 0 24px 64px rgba(235, 120, 37, 0.14);
 }
 
 /* Cinematic dark variant kept identical (whole site is already dark). */
@@ -223,6 +264,23 @@ body {
 
   .ease-out-quart {
     transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  /* ORCH-1010 — soft section seam. A 1px top hairline using the --seam-light
+     gradient (fades at both ends) instead of a hard border-divider, so sections
+     read as layered rather than stacked. Apply to a section's top edge. */
+  .seam-top {
+    position: relative;
+  }
+  .seam-top::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: var(--seam-light);
+    pointer-events: none;
   }
 
   .focus-ring:focus-visible {
