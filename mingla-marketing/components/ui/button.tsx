@@ -15,11 +15,11 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 const variants: Record<Variant, string> = {
   primary:
     'bg-warm text-white hover:-translate-y-0.5 hover:bg-[var(--color-warm-hover)] hover:brightness-110 active:translate-y-0 active:brightness-100',
-  // ORCH-1010: warm fill + INK label. Fixes the 2.90:1 white-on-warm contrast
-  // fail for primary CTAs on the light /organisers surface (ink-on-warm = 6.65:1).
-  // Also the legible choice on the dark spotlight CTA band (brand punch + AA).
+  // ORCH-1010: warm fill + WHITE label. Operator directive — orange pills always
+  // carry white text (orange + ink read poorly); the ink-on-warm a11y variant was
+  // reverted to white-on-warm for brand consistency across all warm pills/buttons.
   'primary-ink':
-    'bg-warm text-ink hover:-translate-y-0.5 hover:brightness-105 active:translate-y-0 active:brightness-100',
+    'bg-warm text-white hover:-translate-y-0.5 hover:bg-[var(--color-warm-hover)] hover:brightness-110 active:translate-y-0 active:brightness-100',
   glass:
     'glass-soft text-text-primary hover:-translate-y-0.5 hover:brightness-110 active:translate-y-0 active:brightness-100',
   secondary:

@@ -173,7 +173,7 @@ export function OrganiserAudienceTabs() {
                   className={cn(
                     'rounded-full px-4 py-2 text-sm font-semibold transition-all duration-200 ease-out-quart focus-ring',
                     isActive
-                      ? 'bg-warm text-ink'
+                      ? 'bg-warm text-white'
                       : 'bg-white/[0.07] text-white/75 ring-1 ring-white/10 hover:bg-white/[0.12] hover:text-white',
                   )}
                 >
