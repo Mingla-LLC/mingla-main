@@ -167,6 +167,7 @@ export const NAV_GROUPS = [
     label: "Operations",
     items: [
       { id: "email", label: "Email", icon: "Mail" },
+      { id: "pricing", label: "Pricing", icon: "Percent" },
     ],
   },
   {

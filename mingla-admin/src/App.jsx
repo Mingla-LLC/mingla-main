@@ -27,6 +27,7 @@ import { PhotoLabelingPage } from "./pages/PhotoLabelingPage";
 import { PhotoScorerPage } from "./pages/PhotoScorerPage";
 import { PlaceIntelligenceTrialPage } from "./pages/PlaceIntelligenceTrialPage";
 import { ClaimsPage } from "./pages/ClaimsPage";
+import { PricingPage } from "./pages/PricingPage";
 // ORCH-0640 ch08: AIValidationPage + CardPoolManagementPage DELETED.
 //   - Rules Filter tab rehomed to SignalLibraryPage via tab prop (ORCH-0640 DEC-045).
 //   - Seed / Refresh tabs rehomed to SeedPage.
@@ -46,6 +47,7 @@ const PAGES = {
   feedback: BetaFeedbackPage,
   reports: ReportsPage,
   email: EmailPage,
+  pricing: PricingPage,
   admin: AdminPage,
   settings: SettingsPage,
   signals: SignalLibraryPage,
