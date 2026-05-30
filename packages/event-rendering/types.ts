@@ -7,6 +7,9 @@
 // If the underlying schema changes (e.g., M0 adds events.event_type), this
 // file updates once; both apps' type-checkers immediately flag any drift.
 
+import type { ComponentType } from "react";
+import type { ScrollViewProps } from "react-native";
+
 import type { ResolvedTheme, ThemeInput } from "./designTokens";
 
 export type EventCoverMediaType = "image" | "video" | "gif";
@@ -110,6 +113,17 @@ export interface PublicEventPageProps {
    */
   hideFloatingChrome?: boolean;
   theme?: ResolvedTheme;
+  /**
+   * META-ORCH-0991 (sheet rework — Bug 2): the scroll host the body renders with.
+   * Defaults to React Native's `ScrollView` (the web/business behavior, unchanged).
+   * When this page is hosted INSIDE a gorhom bottom sheet (app-mobile's
+   * ExpandedBusinessEventSheet), the host injects gorhom's `BottomSheetScrollView`
+   * here so the sheet has a SINGLE gorhom-aware scroll host instead of a raw RN
+   * `ScrollView` nested inside the sheet's gorhom scroll (the fragile double-scroll
+   * that was the probable freeze source). The component must accept ScrollView-shaped
+   * props (`style`, `contentContainerStyle`, `showsVerticalScrollIndicator`).
+   */
+  ScrollComponent?: ComponentType<ScrollViewProps>;
 }
 
 export interface PublicEventNotFoundProps {

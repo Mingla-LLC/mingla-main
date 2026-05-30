@@ -21,7 +21,12 @@ import React, {
   useMemo,
   useState,
 } from "react";
-import { Linking, Platform, StyleSheet } from "react-native";
+import {
+  Linking,
+  Platform,
+  StyleSheet,
+  type ScrollViewProps,
+} from "react-native";
 import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
 
@@ -48,7 +53,12 @@ import {
   useNativeCheckoutFlow,
 } from "../../payments/nativeCheckoutFlow";
 import { toastManager } from "../ui/Toast";
-import { BaseBottomSheet } from "../ui/BaseBottomSheet";
+// META-ORCH-0991 (sheet rework — Bug 2): import the gorhom scroll host re-export
+// from the primitive (the sole permitted gorhom importer) and inject it into the
+// shared PublicEventPage so the event body has a SINGLE gorhom-aware scroll host
+// instead of a raw RN ScrollView nested inside the sheet's gorhom scroll (the
+// fragile double-scroll structure that was the probable freeze source).
+import { BaseBottomSheet, BottomSheetScrollView } from "../ui/BaseBottomSheet";
 import { glass } from "../../constants/designSystem";
 // ORCH-0847 Phase C — multi-tier cart sheet replaces the single-ticket
 // TicketClaimConfirmModal. Mirrors public J-C1 cart screen.
@@ -359,6 +369,32 @@ export const ExpandedBusinessEventSheet: React.FC<
     [router, onClose],
   );
 
+  // META-ORCH-0991 (sheet rework — Bug 2): inject gorhom's BottomSheetScrollView
+  // as PublicEventPage's single scroll host. The wrapper appends this sheet's
+  // bottom clearance (`bottomContentInset` — carries the chat-composer / tab-bar
+  // clearance from MessageInterface) onto the page's own scrollContent padding so
+  // the last "Buy ticket" row clears the bottom. Memoized on bottomContentInset so
+  // the injected component identity is stable across re-renders (no remount).
+  const SheetScrollHost = useMemo(() => {
+    const bottomPad = Math.max(32, bottomContentInset);
+    const Host: React.FC<ScrollViewProps> = ({
+      contentContainerStyle,
+      ...rest
+    }) => (
+      <BottomSheetScrollView
+        {...rest}
+        contentContainerStyle={[
+          contentContainerStyle,
+          { paddingBottom: bottomPad },
+        ]}
+      >
+        {rest.children}
+      </BottomSheetScrollView>
+    );
+    Host.displayName = "EbesSheetScrollHost";
+    return Host;
+  }, [bottomContentInset]);
+
   // META-ORCH-0991 Wave A — migrated onto BaseBottomSheet. Declarative
   // `visible` + initialIndex=1 (90% snap) replicate the proven inline
   // <BottomSheet> open/close. onChange passthrough keeps the ORCH-0828
@@ -366,6 +402,12 @@ export const ExpandedBusinessEventSheet: React.FC<
   // via the per-consumer backgroundStyle) + rgba(255,255,255,0.32)/width-36
   // handle. The TicketCartSheet stays a SIBLING root in the same fragment
   // (feedback_rn_sub_sheet_must_render_inside_parent) — itself a BaseBottomSheet.
+  //
+  // META-ORCH-0991 (sheet rework — Bug 2): scrollMode is now "view" so the
+  // primitive does NOT wrap PublicEventPage in its OWN gorhom scroll. Instead
+  // PublicEventPage owns the SINGLE scroll host via the injected
+  // ScrollComponent (gorhom BottomSheetScrollView) — collapsing the prior
+  // double-scroll (raw RN ScrollView nested in the sheet's gorhom scroll).
   return (
     <>
       <BaseBottomSheet
@@ -377,14 +419,7 @@ export const ExpandedBusinessEventSheet: React.FC<
         initialIndex={SHEET_INITIAL_INDEX}
         backgroundStyle={styles.sheetBackground}
         handleStyle={styles.sheetHandle}
-        scrollMode="scroll"
-        scrollProps={{
-          style: styles.sheetScroll,
-          contentContainerStyle: [
-            styles.sheetScrollContent,
-            { paddingBottom: Math.max(32, bottomContentInset) },
-          ],
-        }}
+        scrollMode="view"
         accessibilityLabel={data.title}
       >
         <PublicEventPage
@@ -395,6 +430,7 @@ export const ExpandedBusinessEventSheet: React.FC<
             themeQuery.data ?? resolveTheme(null, publicEvent.themeOverrides)
           }
           callbacks={callbacks}
+          ScrollComponent={SheetScrollHost}
         />
       </BaseBottomSheet>
       {/* ORCH-0847 Phase C — multi-tier cart sheet. Renders as a sibling
@@ -426,12 +462,6 @@ const styles = StyleSheet.create({
   sheetHandle: {
     backgroundColor: "rgba(255,255,255,0.32)",
     width: 36,
-  },
-  sheetScroll: {
-    flex: 1,
-  },
-  sheetScrollContent: {
-    paddingBottom: 32,
   },
 });
 

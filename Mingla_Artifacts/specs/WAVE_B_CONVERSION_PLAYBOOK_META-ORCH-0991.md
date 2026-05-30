@@ -358,3 +358,50 @@ GlassBottomNav → `wrapInRNModal` (Batch-2 z-trap).
 > Guard it with a test that asserts the gate is intact AND that the parent is
 > NEVER rendered with a bare `visible={visible}` (adversarial — an ungated parent
 > re-introduces the crash). See `WaveCBatch2.test.mjs` T-7 + T-A2.
+
+---
+
+## PRIMITIVE REWORK (sheet bugs 1 / 2 / 4 / 4a) — commit `554db7904`, 2026-05-29
+
+Post-conversion operator forensics (`INVESTIGATION_META-ORCH-0991_SHEET_BUGS.md`)
+surfaced four primitive-level defects. All fixed in `BaseBottomSheet.tsx` (+ the
+shared `PublicEventPage` for the event sheet). New rules for every future sheet:
+
+1. **Swipe-down-to-close now works in `wrapInRNModal` mode** (was dead on Android,
+   fragile on iOS). The primitive wraps the modal-hosted sheet in a
+   `GestureHandlerRootView` inside the RN `<Modal>`. Consumers do nothing — every
+   `wrapInRNModal` sheet inherits working drag-to-dismiss. Do NOT remove that GHRV.
+
+2. **The primitive OWNS the bottom inset.** It applies `max(insets.bottom,16)` as
+   `paddingBottom` on the scroll / flatlist / sectionlist / sticky-footer content
+   container, MERGED via `Math.max` with any padding the consumer already passes
+   (never reduced). **Stop hand-rolling `paddingBottom: insets.bottom+…`** in new
+   sheets unless you need MORE than the floor — pass your extra value and the
+   primitive takes the larger. Existing hand-rolled sheets are safe (additive max).
+
+3. **`tabBarAware` prop (opt-in, default false).** Set it on a sheet rendered
+   BELOW the visible floating `GlassBottomNav` to add the nav content height
+   (`BOTTOM_NAV_CONTENT_HEIGHT`, now exported from `useAppLayout`) to the bottom
+   padding so the last button clears Mingla's menu too. Leave it OFF for
+   `wrapInRNModal` sheets — they z-stack ABOVE the nav (nav hidden behind the
+   backdrop) so the menu can't overlap them; they only need the OS-inset floor.
+
+4. **Header / sticky-footer slots are overflow-safe.** The header-present `scroll`
+   branch makes the scroll claim `flex:1` below the fixed header, so a TALL
+   (overflowing) body still scrolls. You may now use the `header` / `stickyFooter`
+   slots with tall content; PreferencesSheet's per-sheet direct-children workaround
+   is no longer required for new sheets (it remains valid).
+
+5. **No raw RN `<ScrollView>` inside a gorhom sheet — single scroll host.** The
+   event sheet froze because the shared `PublicEventPage` rendered a raw RN
+   `<ScrollView>` nested inside the sheet's gorhom scroll. `PublicEventPage` now
+   takes an injectable `ScrollComponent` (default RN `ScrollView` for web/business;
+   `ExpandedBusinessEventSheet` injects the gorhom `BottomSheetScrollView`
+   re-exported from `BaseBottomSheet` and uses `scrollMode="view"`). Pattern for
+   any sheet hosting a shared/cross-platform body that itself scrolls: inject the
+   gorhom scroll host rather than nesting a raw RN scroll, and use `scrollMode="view"`
+   so the primitive does not add a SECOND scroll.
+
+Regression guard: `app-mobile/src/components/ui/__tests__/BaseBottomSheetRework.test.mjs`
+(R-1/R-4b/R-4a/R-2 + adversarial; fails-on-revert at `b0063fcad`). Live-verified on
+iOS sim + Android emulator — see the rework implementation report.

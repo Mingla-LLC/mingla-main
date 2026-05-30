@@ -303,6 +303,10 @@ export const PublicEventPage: React.FC<PublicEventPageProps> = ({
   callbacks,
   hideFloatingChrome = false,
   theme,
+  // META-ORCH-0991 (sheet rework — Bug 2): default to the raw RN ScrollView so
+  // web/business behavior is unchanged; app-mobile's sheet host injects gorhom's
+  // BottomSheetScrollView to collapse the double-scroll into a single host.
+  ScrollComponent = ScrollView,
 }) => {
   const [passwordUnlocked, setPasswordUnlocked] = useState<boolean>(false);
   const resolvedTheme = useMemo<ResolvedTheme>(
@@ -343,6 +347,7 @@ export const PublicEventPage: React.FC<PublicEventPageProps> = ({
           variant={variant}
           callbacks={callbacks}
           theme={resolvedTheme}
+          ScrollComponent={ScrollComponent}
         />
       )}
 
@@ -405,6 +410,10 @@ interface PublishedBodyProps {
   variant: "published" | "pre-sale" | "sold-out" | "past";
   callbacks: PublicEventPageProps["callbacks"];
   theme: ResolvedTheme;
+  // META-ORCH-0991 (sheet rework — Bug 2): the scroll host (RN ScrollView by
+  // default; gorhom BottomSheetScrollView when sheet-hosted). Always defined —
+  // PublicEventPage supplies its default before passing down.
+  ScrollComponent: NonNullable<PublicEventPageProps["ScrollComponent"]>;
 }
 
 const PublishedBody: React.FC<PublishedBodyProps> = ({
@@ -413,6 +422,7 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
   variant,
   callbacks,
   theme,
+  ScrollComponent,
 }) => {
   const [showAllDates, setShowAllDates] = useState<boolean>(false);
   const [showOverflowDates, setShowOverflowDates] = useState<boolean>(false);
@@ -525,8 +535,11 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
         </View>
       ) : null}
 
-      {/* Body */}
-      <ScrollView
+      {/* Body — META-ORCH-0991 (Bug 2): single scroll host. `ScrollComponent`
+          is RN ScrollView on web/business (default) and gorhom's
+          BottomSheetScrollView when hosted inside app-mobile's sheet, so there
+          is never a raw RN ScrollView nested inside the sheet's gorhom scroll. */}
+      <ScrollComponent
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
@@ -889,7 +902,7 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
             </View>
           )}
         </View>
-      </ScrollView>
+      </ScrollComponent>
     </>
   );
 };

@@ -36,6 +36,7 @@ import {
   Modal as RNModal,
   StyleSheet,
   View,
+  type StyleProp,
   type ViewStyle,
 } from 'react-native';
 import BottomSheet, {
@@ -48,6 +49,18 @@ import BottomSheet, {
   type BottomSheetBackdropProps,
 } from '@gorhom/bottom-sheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+// META-ORCH-0991 (sheet rework — Bug 1): GestureHandlerRootView must wrap the
+// sheet INSIDE the RN <Modal> window so gorhom's pan-down-to-dismiss
+// PanGestureHandler registers there. RN <Modal> mounts its children in a
+// separate native window that the host-tree GestureHandlerRootView (in
+// app/_layout.tsx) does NOT extend into — without a GHRV inside the modal,
+// swipe-down-to-close is dead on Android and fragile on iOS.
+// react-native-gesture-handler is already a dependency (v2.x).
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+// META-ORCH-0991 (sheet rework — Bug 4): the floating-nav footprint is owned by
+// useAppLayout. The primitive reads the SAME constant so a sheet rendered below
+// the visible GlassBottomNav can clear it (single source of truth — no copy).
+import { BOTTOM_NAV_CONTENT_HEIGHT } from '../../hooks/useAppLayout';
 
 // META-ORCH-0991 Wave B — keyboard-aware text input re-export. Form sheets
 // (ReportUserModal, CustomHolidayModal, …) need gorhom's BottomSheetTextInput
@@ -159,6 +172,15 @@ interface BaseBottomSheetSheetProps extends BaseBottomSheetCommonProps {
   stickyFooter?: ReactNode;
   /** ORCH-0908 z-stacking-over-tab-bar escape hatch. Default false. */
   wrapInRNModal?: boolean;
+  /**
+   * META-ORCH-0991 (sheet rework — Bug 4): when true, the primitive adds the
+   * floating GlassBottomNav content height to the body's bottom padding so the
+   * last button/content clears Mingla's floating tab bar (not just the OS home
+   * indicator). Use for sheets rendered BELOW the visible nav. `wrapInRNModal`
+   * sheets z-stack ABOVE the nav (nav hidden behind the backdrop), so they leave
+   * this false and only get the OS-inset clearance. Default false.
+   */
+  tabBarAware?: boolean;
   keyboardBehavior?: 'interactive' | 'extend' | 'fillParent';
   keyboardBlurBehavior?: 'none' | 'restore';
   android_keyboardInputMode?: 'adjustPan' | 'adjustResize';
@@ -274,6 +296,7 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
     bodyContainerStyle,
     stickyFooter,
     wrapInRNModal = false,
+    tabBarAware = false,
     keyboardBehavior = 'interactive',
     keyboardBlurBehavior = 'restore',
     android_keyboardInputMode = 'adjustResize',
@@ -333,19 +356,62 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
     ? (handleStyle ?? defaultHandleStyle(theme))
     : undefined;
 
+  // META-ORCH-0991 (sheet rework — Bug 4b): the bottom-inset model the primitive
+  // now OWNS. Previously `safeBottom` was computed and then `void`-discarded, so
+  // every consumer had to hand-roll its own bottom padding and any sheet that
+  // forgot clipped its buttons under the OS home indicator / Android nav bar.
+  //   • `safeBottom`  = max(OS bottom inset, 16) — clears the home indicator.
+  //   • `+ tab bar`   = when `tabBarAware`, add the floating GlassBottomNav
+  //                     content height so the last button clears Mingla's menu
+  //                     too (only for sheets rendered BELOW the visible nav —
+  //                     wrapInRNModal sheets z-stack above it and leave it off).
+  // The computed value is applied as `paddingBottom` on the scroll/list content
+  // container and the sticky-footer container, MERGED with any consumer-supplied
+  // paddingBottom via Math.max so a sheet that already hand-rolls more padding
+  // (e.g. PreferencesSheet) is never REDUCED (zero-regression for the 34 sheets).
+  // Plain (non-hook) derivations: this code path runs only in the `sheet`
+  // variant, AFTER the `center-dialog` early return above. Computing these as
+  // plain consts/functions (NOT useMemo/useCallback) keeps the primitive's hook
+  // order identical to the pre-rework file (the existing hooks all sit above the
+  // early return) and avoids adding conditionally-called hooks. `bottomInset` is
+  // a cheap scalar; `withBottomInset` is referenced only by the `body` useMemo
+  // (which already lists `insets.bottom` + `tabBarAware` transitively via its
+  // own deps), so memoizing it buys nothing.
+  const safeBottomInset = Math.max(insets.bottom, 16);
+  const bottomInset = tabBarAware
+    ? safeBottomInset + BOTTOM_NAV_CONTENT_HEIGHT
+    : safeBottomInset;
+
+  // Merge `bottomInset` into a consumer's contentContainerStyle as paddingBottom,
+  // taking the MAX with any value the consumer already set (never reduce).
+  const withBottomInset = (cc: StyleProp<ViewStyle>): StyleProp<ViewStyle> => {
+    const flat = StyleSheet.flatten(cc) as ViewStyle | undefined;
+    const existing =
+      typeof flat?.paddingBottom === 'number' ? flat.paddingBottom : 0;
+    const paddingBottom = Math.max(existing, bottomInset);
+    return cc === undefined || cc === null
+      ? { paddingBottom }
+      : [cc, { paddingBottom }];
+  };
+
   // Body composition. `view` mode renders children directly as <BottomSheet>
   // children (consumer owns the container tree — the zero-regression path for
   // the keystone sheets). scroll/flatlist/sectionlist let the primitive own the
   // gorhom scrollable so no raw RN list ever lands inside a sheet (SC-10).
   const body = useMemo(() => {
-    const safeBottom = Math.max(insets.bottom, 16);
-    void safeBottom;
     if (stickyFooter !== undefined && stickyFooter !== null) {
       // Single flexed container: header (fixed) + scroll/view body claims flex:1
       // + footer pinned at the bottom (TicketCart pattern, SPEC §3.1). The body
       // scrolls when scrollMode='scroll' (gorhom BottomSheetScrollView) so the
-      // cart list pans without fighting the sheet. The footer node owns its own
-      // safe-area bottom padding (parity: TicketCart's insets.bottom+16, SPEC §7.2).
+      // cart list pans without fighting the sheet.
+      //
+      // META-ORCH-0991 Bug 4a fix: the scroll body MUST own flex:1 AND a
+      // bounded height so a tall body still scrolls when a header/footer is
+      // present. `styles.stickyBody` (flex:1) + the outer flexed container give
+      // gorhom's BottomSheetScrollView a bounded viewport; without flex:1 the
+      // inner scroll would size to content and never scroll. The footer node
+      // still owns its own safe-area padding, but the scroll content also gets
+      // the primitive's bottomInset so the last row clears the footer + inset.
       const stickyBody =
         scrollMode === 'scroll' ? (
           <BottomSheetScrollView
@@ -353,6 +419,13 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
             {...(scrollProps as Partial<
               React.ComponentProps<typeof BottomSheetScrollView>
             >)}
+            contentContainerStyle={withBottomInset(
+              (
+                scrollProps as Partial<
+                  React.ComponentProps<typeof BottomSheetScrollView>
+                >
+              )?.contentContainerStyle,
+            )}
           >
             {children}
           </BottomSheetScrollView>
@@ -384,9 +457,25 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
         }
         return children;
       case 'scroll': {
+        const scrollPropsTyped = scrollProps as
+          | Partial<React.ComponentProps<typeof BottomSheetScrollView>>
+          | undefined;
         const scroll = (
           <BottomSheetScrollView
-            {...(scrollProps as Partial<React.ComponentProps<typeof BottomSheetScrollView>>)}
+            {...scrollPropsTyped}
+            // META-ORCH-0991 Bug 4a: when a header is present the scroll must
+            // claim flex:1 so it gets a bounded viewport BELOW the fixed header
+            // and a tall (overflowing) body still scrolls. Previously the
+            // scroll sized to content inside the flexed wrapper and a body
+            // taller than the snap height could not scroll.
+            style={
+              hasHeader
+                ? [styles.flexContainer, scrollPropsTyped?.style]
+                : scrollPropsTyped?.style
+            }
+            contentContainerStyle={withBottomInset(
+              scrollPropsTyped?.contentContainerStyle,
+            )}
           >
             {children}
           </BottomSheetScrollView>
@@ -401,10 +490,16 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
         }
         return scroll;
       }
-      case 'flatlist':
+      case 'flatlist': {
+        const flatProps = scrollProps as React.ComponentProps<
+          typeof BottomSheetFlatList
+        >;
         return (
           <BottomSheetFlatList
-            {...(scrollProps as React.ComponentProps<typeof BottomSheetFlatList>)}
+            {...flatProps}
+            contentContainerStyle={withBottomInset(
+              flatProps?.contentContainerStyle,
+            )}
             ListHeaderComponent={
               (header ?? children) as React.ComponentProps<
                 typeof BottomSheetFlatList
@@ -412,6 +507,7 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
             }
           />
         );
+      }
       case 'sectionlist': {
         const sectionProps = scrollProps as
           | Partial<React.ComponentProps<typeof BottomSheetSectionList>>
@@ -430,6 +526,9 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
               <BottomSheetSectionList
                 {...(sectionProps as React.ComponentProps<typeof BottomSheetSectionList>)}
                 style={[styles.sectionList, sectionProps?.style]}
+                contentContainerStyle={withBottomInset(
+                  sectionProps?.contentContainerStyle,
+                )}
               />
             ) : null}
           </BottomSheetView>
@@ -447,7 +546,9 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
     bodyContainerStyle,
     children,
     stickyFooter,
-    insets.bottom,
+    // `withBottomInset` is a plain closure over `bottomInset`; depend on the
+    // scalar so the body re-memoizes when the inset changes (rotation / nav).
+    bottomInset,
   ]);
 
   const sheet = (
@@ -476,6 +577,17 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
     // ORCH-0908 z-stack: RN <Modal> hosts a separate OS overlay window so the
     // sheet lifts above the custom in-tree tab bar / chat input. RN Modal also
     // provides native accessibilityViewIsModal focus-trap + Android back.
+    //
+    // META-ORCH-0991 (sheet rework — Bug 1): the modal window is a SEPARATE
+    // native window/ViewRootImpl that the host-tree GestureHandlerRootView
+    // (app/_layout.tsx) does NOT extend into. Without a GestureHandlerRootView
+    // INSIDE this window, gorhom's pan-down-to-dismiss PanGestureHandler never
+    // receives touches → swipe-down-to-close is dead on Android and fragile on
+    // iOS. Wrapping {sheet} in its own GHRV re-activates the drag-to-dismiss
+    // engine in the modal window. (RNGH docs: "If you want to use gestures in
+    // Modals, you need to wrap Modal's content with GestureHandlerRootView";
+    // iOS evaluates GHRV as a plain View, Android requires it for touch
+    // registration — exactly the observed iOS-fragile / Android-dead asymmetry.)
     return (
       <RNModal
         visible={visible}
@@ -484,7 +596,9 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
         onRequestClose={onClose}
         statusBarTranslucent
       >
-        {sheet}
+        <GestureHandlerRootView style={styles.flexContainer}>
+          {sheet}
+        </GestureHandlerRootView>
       </RNModal>
     );
   }
