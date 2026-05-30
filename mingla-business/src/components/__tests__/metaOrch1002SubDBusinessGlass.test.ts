@@ -125,9 +125,11 @@ describe("Sub-D Symptom-B — marketing/BlastCustomersCta.tsx guarded", () => {
 // ---------------------------------------------------------------------------
 
 // (file, styleName) sample spanning the Phase-1 swept surfaces
-// (event / trip / marketing creators + composer). All confirmed present in the
-// Sub-D target catalog and swept in the same commit as this test.
+// (event / trip / marketing creators + composer = Phase 1; brand / door /
+// orders / ari = Phase 2). All confirmed present in the Sub-D target catalog
+// and swept in this PR.
 const SWEPT: readonly (readonly [string, string])[] = [
+  // Phase 1 — creators + composer
   ["event/CreatorStep2When.tsx", "countInputWrap"],
   ["event/CreatorStep2When.tsx", "addDateBtn"],
   ["event/TicketTierEditSheet.tsx", "inputWrap"],
@@ -140,6 +142,12 @@ const SWEPT: readonly (readonly [string, string])[] = [
   ["trip/PaymentPlanEditor.tsx", "daysInput"],
   ["marketing/ComposerStepWhen.tsx", "pickerPill"],
   ["marketing/AudiencePickerSheet.tsx", "row"],
+  // Phase 2 — brand / door / orders / ari / experience
+  ["ari/QuickReplyChips.tsx", "chip"],
+  ["brand/BrandDeleteSheet.tsx", "warnCard"],
+  ["door/DoorSaleNewSheet.tsx", "emptyTiersWrap"],
+  ["orders/RefundSheet.tsx", "reasonInputWrap"],
+  ["orders/RefundSheet.tsx", "summaryCard"],
 ];
 
 describe("Sub-D Symptom-A — swept surfaces carry overflow: 'hidden'", () => {

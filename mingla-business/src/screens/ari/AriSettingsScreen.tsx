@@ -231,6 +231,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: glass.border.profileBase,
     borderRadius: radius.md,
+    overflow: "hidden",
     padding: spacing.md,
     gap: spacing.md,
   },
@@ -273,6 +274,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     height: 44,
     borderRadius: radius.md,
+    overflow: "hidden",
     backgroundColor: glass.tint.profileElevated,
     borderWidth: 1,
     borderColor: glass.border.profileBase,
@@ -287,6 +289,7 @@ const styles = StyleSheet.create({
   destructiveBtn: {
     height: 44,
     borderRadius: radius.md,
+    overflow: "hidden",
     backgroundColor: semantic.errorTint,
     borderWidth: 1,
     borderColor: "rgba(239, 68, 68, 0.5)",
