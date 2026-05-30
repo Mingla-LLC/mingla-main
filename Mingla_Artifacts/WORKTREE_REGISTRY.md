@@ -17,6 +17,7 @@ Reference: [WORKTREE_STRATEGY.md](WORKTREE_STRATEGY.md).
 | `~/Desktop/mingla-orchs/meta-orch-0952-[buyer-web-confirm-deep-forensics]` | `meta-orch-0952-buyer-web-confirm-deep-forensics` | META-ORCH-0952 | INVESTIGATE | no sim — buyer-web (Playwright Chromium + Safari) | 8083 | 2026-05-24 | Claude `mingla-orchestrator` (dispatch) → Claude `mingla-forensics` (active) |
 | `~/Desktop/mingla-orchs/ORCH-0990-[flower-stop-real-florists]` | `ORCH-0990-flower-stop-real-florists` | ORCH-0990 | SPEC | no sim — backend-only (edge fn + RPC + place_pool data) | 8086 | 2026-05-29 | Claude `mingla-orchestrator` (dispatch) → Claude `mingla-forensics` (active) |
 | `~/Desktop/mingla-orchs/ORCH-1006-[universal-allin-pricing-engine]` | `ORCH-1006-universal-allin-pricing-engine` | ORCH-1006 | INVESTIGATE done → awaiting SPEC | TBD (native checkout) | 8091 | 2026-05-29 | Claude `mingla-orchestrator` (dispatch) → Claude `mingla-forensics` (active) |
+| `~/Desktop/mingla-orchs/ORCH-1020-[collab-deck-prefs-swipe-freeze]` | `ORCH-1020-collab-deck-prefs-swipe-freeze` | ORCH-1020 | WATCH / NOT REPRODUCED after INVESTIGATE | iPhone 17 Pro Max sim `2C3312D9-EE52-4EBD-9704-15811D49A2EC`; Android emulator available but parity unresolved | 8088 intended; investigation used app-mobile Metro 8082 when 8088 was occupied | 2026-05-30 | Codex `orchestrator-mingla` (review) -> parked unless Seth can reproduce with exact device/build/session/video |
 
 ---
 
