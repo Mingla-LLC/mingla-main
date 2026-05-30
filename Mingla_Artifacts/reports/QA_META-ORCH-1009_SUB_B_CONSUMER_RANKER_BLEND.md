@@ -94,7 +94,7 @@ No P0/P1 findings.
 
 **`place_scores.score` constraint:** `is_nullable: NO`. Confirms implementor's §11.1 deviation (DELETE-instead-of-NULL) was **mandatory**, not optional. SPEC was wrong; implementor's deviation is the correct shipping path.
 
-**Migration status:** Sub-B's `20260803000000_meta_orch_1009_sub_b_rpcs_with_reasoning.sql` is **NOT yet applied**. Live DB has `20260805000000_orch_1006_public_event_tier_allin` as the latest applied migration. Sub-B's timestamp is BEHIND — operator will need `--include-all` flag or to rebump Sub-B's filename forward (F-01).
+**Migration status:** Sub-B's `20260806000000_meta_orch_1009_sub_b_rpcs_with_reasoning.sql` is **NOT yet applied**. Live DB has `20260805000000_orch_1006_public_event_tier_allin` as the latest applied migration. Sub-B's timestamp is BEHIND — operator will need `--include-all` flag or to rebump Sub-B's filename forward (F-01).
 
 ---
 

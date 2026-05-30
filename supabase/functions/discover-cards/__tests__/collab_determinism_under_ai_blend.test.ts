@@ -24,7 +24,7 @@ const read = async (rel: string) => await Deno.readTextFile(`${root}/${rel}`);
 
 Deno.test('T-D-01: Sub-B migration preserves intersection ORDER BY clause verbatim', async () => {
   const sql = await read(
-    'supabase/migrations/20260803000000_meta_orch_1009_sub_b_rpcs_with_reasoning.sql',
+    'supabase/migrations/20260806000000_meta_orch_1009_sub_b_rpcs_with_reasoning.sql',
   );
   // Exact ORDER BY clause from baseline ORCH-0909 LCD-2 RPC.
   assert(
@@ -35,7 +35,7 @@ Deno.test('T-D-01: Sub-B migration preserves intersection ORDER BY clause verbat
 
 Deno.test('T-D-02: Sub-B migration preserves solo RPC ORDER BY clause verbatim', async () => {
   const sql = await read(
-    'supabase/migrations/20260803000000_meta_orch_1009_sub_b_rpcs_with_reasoning.sql',
+    'supabase/migrations/20260806000000_meta_orch_1009_sub_b_rpcs_with_reasoning.sql',
   );
   // Exact ORDER BY clause from baseline ORCH-0634 RPC.
   assert(
@@ -46,7 +46,7 @@ Deno.test('T-D-02: Sub-B migration preserves solo RPC ORDER BY clause verbatim',
 
 Deno.test('T-D-03: Sub-B migration ORDER BY clauses do NOT reference ai_signal_scores', async () => {
   const sql = await read(
-    'supabase/migrations/20260803000000_meta_orch_1009_sub_b_rpcs_with_reasoning.sql',
+    'supabase/migrations/20260806000000_meta_orch_1009_sub_b_rpcs_with_reasoning.sql',
   );
   // Strip SQL comments first (single-line `--` comments and multi-line `/* */`)
   // so prose like "preserves the ORDER BY" doesn't trigger a false positive.

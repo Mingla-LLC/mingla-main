@@ -40,7 +40,7 @@ No BLOCK rows.
 | EDIT | `supabase/functions/_shared/signalRankFetch.ts` | +25 / -3 | Curated rank helper (online) |
 | EDIT | `supabase/functions/discover-cards/index.ts` | +38 / -4 | Solo + collab consumer RPC consumer |
 | EDIT | `supabase/functions/generate-curated-experiences/index.ts` | +6 | Curated stop payload |
-| NEW  | `supabase/migrations/20260803000000_meta_orch_1009_sub_b_rpcs_with_reasoning.sql` | ~253 | RPC extension |
+| NEW  | `supabase/migrations/20260806000000_meta_orch_1009_sub_b_rpcs_with_reasoning.sql` | ~253 | RPC extension |
 | NEW  | `supabase/functions/_shared/__tests__/signalScorer.blend.test.ts` | ~265 (11 tests) | Scorer unit tests |
 | NEW  | `supabase/functions/discover-cards/__tests__/ai_reasoning_passthrough.test.ts` | ~105 (9 tests) | Source+unit tests |
 | NEW  | `supabase/functions/discover-cards/__tests__/collab_determinism_under_ai_blend.test.ts` | ~110 (6 tests) | Determinism tests |
@@ -228,7 +228,7 @@ OK   [C7: no-new-backend-files] zero touches under supabase/* (allowlisted via M
 
 ## §7 Migration handling (operator's lane)
 
-**New migration:** `supabase/migrations/20260803000000_meta_orch_1009_sub_b_rpcs_with_reasoning.sql` (~253 lines). Replaces both consumer RPCs verbatim from baseline, with 2 appended return columns (`ai_reasoning jsonb`, `ai_score_raw numeric`). ORDER BY clauses preserved exactly. No DDL on tables.
+**New migration:** `supabase/migrations/20260806000000_meta_orch_1009_sub_b_rpcs_with_reasoning.sql` (~253 lines). Replaces both consumer RPCs verbatim from baseline, with 2 appended return columns (`ai_reasoning jsonb`, `ai_score_raw numeric`). ORDER BY clauses preserved exactly. No DDL on tables.
 
 **Operator apply command:**
 
@@ -331,7 +331,7 @@ Note operator OTA-deferred until next native build per memory rule `project_ota_
 
 ### §11.2 Migration version bump
 
-SPEC §2.1 said `<TIMESTAMP>_meta_orch_1009_sub_b_rpcs_with_reasoning.sql`. Concrete name: `20260803000000_meta_orch_1009_sub_b_rpcs_with_reasoning.sql` (next monotonic version after Sub-A's `20260802000003_...`).
+SPEC §2.1 said `<TIMESTAMP>_meta_orch_1009_sub_b_rpcs_with_reasoning.sql`. Concrete name: `20260806000000_meta_orch_1009_sub_b_rpcs_with_reasoning.sql` (next monotonic version after Sub-A's `20260802000003_...`).
 
 ### §11.3 Performance bench (deferred)
 
