@@ -1,9 +1,9 @@
 // ---------------------------------------------------------------
-// DC Showcase Events — ORCH-0998 [marketing real place cards — DC test run]
+// DC Showcase Events — ORCH-1001 [marketing real place cards — DC test run]
 //
 // Hardcoded snapshot of 6 Washington-DC events for the THIRD marketing card
 // type (the "event card", sibling of the single place card + the intent card).
-// Built per DESIGN_ORCH-0998_MARKETING_PLACE_CARD_DC.md "Event Card v1"
+// Built per DESIGN_ORCH-1001_MARKETING_PLACE_CARD_DC.md "Event Card v1"
 // (§E.1–E.11).
 //
 // POSITIONING (LOCKED): Mingla is an EXPERIENCE / date-planning / social-
@@ -31,14 +31,14 @@
 export type EventSource = 'mingla' | 'ticketmaster'
 
 /**
- * Event kind — ORCH-0998 hero-pill sync. Drives the headline pill vocabulary
+ * Event kind — ORCH-1001 hero-pill sync. Drives the headline pill vocabulary
  * (concerts / parties / festivals / events) so the rotating word always matches
  * the front event card. NOT a backend field; assigned per-event in this snapshot.
  */
 export type EventKind = 'Concert' | 'Party' | 'Festival' | 'Event'
 
 /**
- * One showcase event. Shape per DESIGN_ORCH-0998 §E.11.2.
+ * One showcase event. Shape per DESIGN_ORCH-1001 §E.11.2.
  *
  * `coverImageUrl` present → image cover path; null + `coverHue` → striped
  * fallback band (§E.4b); null + no hue → Mingla-mark 404 fallback.
@@ -69,7 +69,7 @@ export interface ShowcaseEvent {
   /** True for Mingla Business events (renders the "On Mingla" ink chip). */
   onMingla: boolean
   /**
-   * Event kind (ORCH-0998 hero-pill sync). Drives the headline pill word
+   * Event kind (ORCH-1001 hero-pill sync). Drives the headline pill word
    * shown in "Find <pill> that fit the vibe" while this event is the front
    * card: Concert → "concerts", Party → "parties", Festival → "festivals",
    * Event → "events". Pill label + icon are resolved from this in the deck.

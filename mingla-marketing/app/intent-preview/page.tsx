@@ -6,7 +6,7 @@ import { DC_INTENT_PLANS } from '@/lib/dc-intent-plans'
 import { DC_SHOWCASE_EVENTS } from '@/lib/dc-showcase-events'
 
 // ---------------------------------------------------------------
-// Intent Cards — preview route (ORCH-0998 [marketing real place cards — DC])
+// Intent Cards — preview route (ORCH-1001 [marketing real place cards — DC])
 //
 // Standalone "let's see" preview. Renders all 4 intent cards in a responsive
 // grid on the marketing background, plus ONE existing single place-card deck
@@ -37,7 +37,7 @@ export default function IntentPreviewPage() {
               color: 'var(--color-warm)',
             }}
           >
-            ORCH-0998 · preview
+            ORCH-1001 · preview
           </p>
           <h1
             className="font-display"
@@ -97,7 +97,7 @@ export default function IntentPreviewPage() {
           <HeroPlaceDeck />
         </section>
 
-        {/* Event cards — the THIRD marketing card type (ORCH-0998 §E.1–E.11).
+        {/* Event cards — the THIRD marketing card type (ORCH-1001 §E.1–E.11).
             All 6 DC showcase events: 4 real Ticketmaster events + 2 Mingla
             Business samples (one photo cover, one coverHue striped fallback).
             Rendered statically (like the intent grid) for the "let's see" pass. */}

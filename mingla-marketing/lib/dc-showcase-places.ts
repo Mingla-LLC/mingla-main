@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------
-// DC Showcase Places — ORCH-0998 [marketing real place cards — DC test run]
+// DC Showcase Places — ORCH-1001 [marketing real place cards — DC test run]
 //
 // Hardcoded snapshot of 10 real Washington-DC places (top-scored servable
 // place per category, from place_scores) used by the interleaved hero deck.
@@ -14,7 +14,7 @@
 // ---------------------------------------------------------------
 
 /**
- * Headline-pill label + icon (ORCH-0998 hero-pill sync). Each card carries the
+ * Headline-pill label + icon (ORCH-1001 hero-pill sync). Each card carries the
  * exact word phrase shown in "Find <pillLabel> that fit the vibe" plus the
  * lucide icon name rendered in the pill's warm chip while this card is front.
  * `pillIcon` is the lucide icon NAME (resolved to the component in the deck) so
@@ -47,7 +47,7 @@ export interface ShowcasePlace {
   reviewCount: number
   /**
    * Real per-person price range (e.g. "$50–$100", en-dash U+2013), or null
-   * when the place has no real price → the card renders "Free" (ORCH-0998 v2.4).
+   * when the place has no real price → the card renders "Free" (ORCH-1001 v2.4).
    */
   priceRange: string | null
   /** Editorial blurb, or null → category-derived fallback sell-line is used. */
@@ -67,12 +67,12 @@ export interface ShowcasePlace {
   /**
    * Decorative social proof — "N locals recommend". NO real local-recommend
    * data exists; these are tasteful per-card values for the marketing test
-   * run. Do NOT wire to a backend. (ORCH-0998 v2.6)
+   * run. Do NOT wire to a backend. (ORCH-1001 v2.6)
    */
   recommendCount: number
 }
 
-// Fixed character budget for every card description (ORCH-0998 v3.5). All
+// Fixed character budget for every card description (ORCH-1001 v3.5). All
 // blurbs below are authored to fit within DESCRIPTION_MAX_CHARS so the deck
 // renders a uniform, compact 2-line description chip with equal spacing above
 // and below. Future cards added to this deck MUST follow the same rule — keep

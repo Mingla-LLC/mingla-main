@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------
-// Raleigh Showcase Events — ORCH-0998 [marketing real place cards — DC test run]
+// Raleigh Showcase Events — ORCH-1001 [marketing real place cards — DC test run]
 //
 // Hardcoded snapshot of 5 Raleigh-NC events for the event card, mirroring
 // dc-showcase-events.ts. TEST DATA — no backend calls at render time.

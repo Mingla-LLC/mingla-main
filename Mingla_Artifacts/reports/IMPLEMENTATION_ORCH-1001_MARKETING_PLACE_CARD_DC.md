@@ -1,8 +1,8 @@
-# IMPLEMENTATION — ORCH-0998 [marketing real place cards — DC test run]
+# IMPLEMENTATION — ORCH-1001 [marketing real place cards — DC test run]
 
 **Surface:** `mingla-marketing/` (Next.js 15 App Router, Tailwind v4, framer-motion)
-**Worktree:** `~/Desktop/mingla-orchs/ORCH-0998-[marketing-real-place-cards-dc]` on branch `ORCH-0998-marketing-real-place-cards-dc`
-**Spec:** `Mingla_Artifacts/specs/DESIGN_ORCH-0998_MARKETING_PLACE_CARD_DC.md`
+**Worktree:** `~/Desktop/mingla-orchs/ORCH-1001-[marketing-real-place-cards-dc]` on branch `ORCH-1001-marketing-real-place-cards-dc`
+**Spec:** `Mingla_Artifacts/specs/DESIGN_ORCH-1001_MARKETING_PLACE_CARD_DC.md`
 **Mode:** quick test run — working local preview, no merge/push/deploy.
 **Status:** implemented and verified (local dev preview).
 
@@ -36,7 +36,7 @@ The marketing homepage hero deck no longer shows 22 decorative SVG cards. It now
 
 ### `Mingla_Artifacts/WORKTREE_REGISTRY.md` (MODIFIED)
 **Before:** active-worktrees table listed only META-ORCH-0952.
-**Now:** appended the ORCH-0998 row (worktree path + branch + IMPLEMENT phase + port 3008 web preview + owner).
+**Now:** appended the ORCH-1001 row (worktree path + branch + IMPLEMENT phase + port 3008 web preview + owner).
 **Why:** dispatch instruction — register the worktree, commit alongside first work commit.
 
 `hero-vibe-deck.tsx` and the `dc-cards` SVG assets are intentionally LEFT ON DISK (no longer imported) per the dispatch — not deleted in this test run.
@@ -122,7 +122,7 @@ The hero (`hero.tsx`) is `flex h-[100svh] flex-col` with a fixed top spacer `cla
 
 ## REDESIGN v2 pass — 2026-05-29 (operator pass 2026-05-29)
 
-**Spec section:** "REDESIGN v2" in `DESIGN_ORCH-0998_MARKETING_PLACE_CARD_DC.md` (supersedes v1 §1 card-height, §2 photo-count pill, §3–§6 bottom-block, §12 mockup). Everything not contradicted (motion §7–§8, reduced-motion, photo treatment + scrim except the pill, 404 fallback, accent/font tokens) is unchanged. No-distance / no-travel-time honesty remains in force.
+**Spec section:** "REDESIGN v2" in `DESIGN_ORCH-1001_MARKETING_PLACE_CARD_DC.md` (supersedes v1 §1 card-height, §2 photo-count pill, §3–§6 bottom-block, §12 mockup). Everything not contradicted (motion §7–§8, reduced-motion, photo treatment + scrim except the pill, 404 fallback, accent/font tokens) is unchanged. No-distance / no-travel-time honesty remains in force.
 
 **Files edited (exactly 2, per dispatch):** `lib/dc-showcase-places.ts` + `components/sections/explorer-home/hero-place-deck.tsx`. Dev server already running on :3008 (orchestrator-started); all edits hot-reloaded; no restart, no second server, no process killed.
 
@@ -290,7 +290,7 @@ None.
 
 ## Intent Card v1 — NEW card type (preview route) — 2026-05-29
 
-Built the NEW "intent card" per `DESIGN_ORCH-0998_MARKETING_PLACE_CARD_DC.md` §I.1–I.9. An intent card is a snapshot of a multi-stop Mingla EXPERIENCE / plan (Mingla = experience / date-planning app, never a dating app). Additive only: new component + new data file + new standalone preview route. The production hero and `hero-place-deck.tsx` are untouched.
+Built the NEW "intent card" per `DESIGN_ORCH-1001_MARKETING_PLACE_CARD_DC.md` §I.1–I.9. An intent card is a snapshot of a multi-stop Mingla EXPERIENCE / plan (Mingla = experience / date-planning app, never a dating app). Additive only: new component + new data file + new standalone preview route. The production hero and `hero-place-deck.tsx` are untouched.
 
 ### New files
 
@@ -334,11 +334,11 @@ None. The optional auto-rotating sibling intent-deck (§I.5 alternative) and any
 
 # Event Card v1 — THIRD card type (appended 2026-05-29)
 
-**Spec section:** `DESIGN_ORCH-0998_MARKETING_PLACE_CARD_DC.md` "Event Card v1" §E.1–E.11
+**Spec section:** `DESIGN_ORCH-1001_MARKETING_PLACE_CARD_DC.md` "Event Card v1" §E.1–E.11
 **Status:** implemented and verified (local dev preview, static showcase)
 
 ## What changed for end users
-The ORCH-0998 preview route now shows a THIRD marketing card type below the intent + single-place sections: an **Events happening in DC** row of 6 real event cards. Four are REAL Ticketmaster events for Washington DC (real cover art, venue, date, ticket link); two are representative Mingla Business events — one with a photo cover, one showcasing the brand `coverHue` striped fallback band. Each card leads with a calendar-tile date badge (the event time-anchor), a source signal ("On Mingla" ink chip for business events; quiet "Ticketmaster" attribution in the CTA pill for TM), and a full-width orange ticket-CTA pill that shows a price only when one exists (never "TBA").
+The ORCH-1001 preview route now shows a THIRD marketing card type below the intent + single-place sections: an **Events happening in DC** row of 6 real event cards. Four are REAL Ticketmaster events for Washington DC (real cover art, venue, date, ticket link); two are representative Mingla Business events — one with a photo cover, one showcasing the brand `coverHue` striped fallback band. Each card leads with a calendar-tile date badge (the event time-anchor), a source signal ("On Mingla" ink chip for business events; quiet "Ticketmaster" attribution in the CTA pill for TM), and a full-width orange ticket-CTA pill that shows a price only when one exists (never "TBA").
 
 ## Files (Old → New receipts)
 
@@ -391,7 +391,7 @@ Both sources render; the hue=200 striped fallback renders for the no-media Mingl
 - `CARD_H = 360` shell parity 🔒: PRESERVED.
 
 ## Comms ledger (Event Card v1)
-Read on entry. No BLOCK/WARN entry targets ORCH-0998 or this skill. COMMS-0003 (cite external-API docs inline) is **N/A** — no live external API call is added in code; the TM events are static pre-fetched data with provenance recorded in the data file.
+Read on entry. No BLOCK/WARN entry targets ORCH-1001 or this skill. COMMS-0003 (cite external-API docs inline) is **N/A** — no live external API call is added in code; the TM events are static pre-fetched data with provenance recorded in the data file.
 
 ## Regression test (Event Card v1)
 **BACKFILL-EXEMPT** — marketing-only additive presentational component + hardcoded test data + a noindex preview route; zero product-logic, no shared state, no network mutation. Verification is the served-HTML + tsc gate above.
@@ -452,7 +452,7 @@ PRESERVED. All three card types are locked at `CARD_H = 360` / `CARD_W = 260` (v
 - Photo-URL spot check (`curl -I`): all **12 distinct new place photo keys returned HTTP 200** — Anacostia Park, National Gallery, Jack Rose, Pisco y Nazca, Oyamel, KYOJIN, Regal Hyattsville, Kennedy Center, NMAAHC, Great Escape Room, Decades DC, Fresh Baguette. **Zero 404s.**
 
 ## Comms ledger (real assembly)
-Read on entry. No BLOCK/WARN entry targets ORCH-0998 or this skill. COMMS-0003 (cite external-API docs inline) N/A — no live external API call added; all data is static.
+Read on entry. No BLOCK/WARN entry targets ORCH-1001 or this skill. COMMS-0003 (cite external-API docs inline) N/A — no live external API call added; all data is static.
 
 ## Regression test (real assembly)
 **BACKFILL-EXEMPT** — marketing-only presentational interleave of hardcoded test data; zero product-logic, no shared state, no network mutation, noindex preview route. Verification is the served-HTML + tsc + photo-URL gates above.
@@ -517,7 +517,7 @@ No dimension changed. `hero.tsx` section is still `h-[100svh]`; all three card t
 - Shared cadence confirmed: `ROTATION_MS = 2000` is the only rotation timer; `AUTO_MS`/`CYCLE_MS`/`PREFERENCE_CHIPS`/`PreferenceChipCycle` no longer exist in the production hero path (only in removal-doc comments).
 
 ## Comms ledger
-Read on entry. No BLOCK/WARN entry targets ORCH-0998 or this skill. COMMS-0003 (cite external-API docs) N/A — no live external API touched; pill mappings are static, lucide icons verified present in the installed lucide-react.
+Read on entry. No BLOCK/WARN entry targets ORCH-1001 or this skill. COMMS-0003 (cite external-API docs) N/A — no live external API touched; pill mappings are static, lucide icons verified present in the installed lucide-react.
 
 ## Regression test
 **BACKFILL-EXEMPT** — marketing-only presentational sync of hardcoded test data; mingla-marketing has no jest/vitest harness and the operator scoped this as a pragmatic test-run. Verification is the served-HTML + bundle-grep + tsc gates above. (If a harness is later added, the natural test asserts `pillForSlot(slot)` returns the spec label/icon for one slot of each kind, and that `useDeckRotation` advances `order[0]` and `pill` together.)

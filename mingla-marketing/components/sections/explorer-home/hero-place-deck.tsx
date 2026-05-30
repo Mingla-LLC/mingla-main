@@ -41,7 +41,7 @@ import { IntentCard } from '@/components/sections/explorer-home/intent-card'
 import { EventCard } from '@/components/sections/explorer-home/event-card'
 
 // ---------------------------------------------------------------
-// Hero Place Deck — ORCH-0998 [marketing real place cards — DC test run]
+// Hero Place Deck — ORCH-1001 [marketing real place cards — DC test run]
 //
 // REAL ASSEMBLY: a single auto-rotating 260×360 stack that INTERLEAVES all
 // three card types in the repeating order
@@ -80,7 +80,7 @@ const exitAnim = {
 }
 
 const enterAnim = { y: -34, scale: 0.92, x: 0 }
-// 🔒 Shared rotation cadence (ORCH-0998 hero-pill sync). ONE 2000ms tick drives
+// 🔒 Shared rotation cadence (ORCH-1001 hero-pill sync). ONE 2000ms tick drives
 // BOTH the deck's front card swipe-away AND the headline pill word change. The
 // old independent AUTO_MS (deck, 4200) and CYCLE_MS (pill, 2800 in hero.tsx)
 // were replaced by this single source-of-truth interval so card N and the pill
@@ -88,7 +88,7 @@ const enterAnim = { y: -34, scale: 0.92, x: 0 }
 const ROTATION_MS = 2000
 
 const CARD_W = 260
-// 🔒LOCKED (ORCH-0998 v2.1): 360 is the tallest height that clears a 768px-tall
+// 🔒LOCKED (ORCH-1001 v2.1): 360 is the tallest height that clears a 768px-tall
 // viewport with real headroom (+14.4px). The hero wrapper scales the deck by
 // ~1.075× at vmin=768, so every added pixel is amplified — 375 already overflows
 // (−1.7px). Do NOT round up past 360 or the one-screen hero reintroduces page scroll.
@@ -109,7 +109,7 @@ type DeckSlot =
   | { kind: 'event'; key: string; event: ShowcaseEvent }
 
 // Build the interleaved single→intent→event slot list for the RESOLVED city
-// (ORCH-0998 location-aware). The cadence is identical to the original DC-only
+// (ORCH-1001 location-aware). The cadence is identical to the original DC-only
 // build: one slot per place, with intents + events wrapped modulo so the strict
 // place→intent→event order holds across all places even when those lists are
 // shorter. Keys are prefixed with the city key + round index so AnimatePresence
@@ -138,7 +138,7 @@ function buildInterleavedSlots(deck: CityDeck): DeckSlot[] {
 }
 
 // ---------------------------------------------------------------
-// Headline-pill resolution (ORCH-0998 hero-pill sync). The pill word + icon
+// Headline-pill resolution (ORCH-1001 hero-pill sync). The pill word + icon
 // shown in "Find <pill> that fit the vibe" is DERIVED from whatever slot is the
 // front card — never from an independent list. Three resolvers, one per slot
 // kind, feed a single { label, icon } that the hero's headline consumes.
@@ -216,7 +216,7 @@ export interface DeckRotation {
   onMouseLeave: () => void
 }
 
-// ORCH-0998 location-aware: the rotation now depends on the RESOLVED city. The
+// ORCH-1001 location-aware: the rotation now depends on the RESOLVED city. The
 // `cityKey` comes from the server-resolved geo (page → ExplorerHero → here).
 // Slots are rebuilt (memoized) when the city changes; the order resets to the
 // new slot count so a city with a different total never indexes out of range.
@@ -504,7 +504,7 @@ export function PlaceCard({
           </span>
           {/* Price slot — shown ONLY when a real price exists. Honest: a
               ticketed place with no price data (priceRange === null) shows the
-              name only and NEVER a fake "Free" (ORCH-0998 real-assembly rule). */}
+              name only and NEVER a fake "Free" (ORCH-1001 real-assembly rule). */}
           {place.priceRange ? (
             <span
               className="font-sans"

@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------
-// DC Intent Plans — ORCH-0998 [marketing real place cards — DC test run]
+// DC Intent Plans — ORCH-1001 [marketing real place cards — DC test run]
 //
 // Hardcoded snapshot of 6 "intent plans" — ONE PER INTENT — themed, multi-stop
 // Mingla EXPERIENCES (Mingla is an experience / date-planning app, NOT a dating
@@ -11,7 +11,7 @@
 //   https://<project>.supabase.co/storage/v1/object/public/place-photos/<placeKey>/0.jpg
 // Photo index 0 is each stop's hero image.
 //
-// HONESTY OF THE TWO PILL FACTS (per DESIGN_ORCH-0998 §I.4):
+// HONESTY OF THE TWO PILL FACTS (per DESIGN_ORCH-1001 §I.4):
 //  - priceRange is a REAL summed range where the stops carry real price data;
 //    where a stop is free or has no price signal it is folded in as "from $X"
 //    or "Free" — never a fabricated number. These verbatim strings were set by

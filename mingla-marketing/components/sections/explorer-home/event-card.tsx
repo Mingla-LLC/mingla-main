@@ -3,12 +3,12 @@ import { useState } from 'react'
 import type { ShowcaseEvent } from '@/lib/dc-showcase-events'
 
 // ---------------------------------------------------------------
-// Event Card — ORCH-0998 [marketing real place cards — DC test run]
+// Event Card — ORCH-1001 [marketing real place cards — DC test run]
 //
 // The THIRD marketing card type (sibling of hero-place-deck.tsx's single place
 // card + intent-card.tsx): a TIME-ANCHORED happening you can go to — a show, a
 // party, a concert, a rooftop session. Built per
-// DESIGN_ORCH-0998_MARKETING_PLACE_CARD_DC.md "Event Card v1" (§E.1–E.11).
+// DESIGN_ORCH-1001_MARKETING_PLACE_CARD_DC.md "Event Card v1" (§E.1–E.11).
 //
 // POSITIONING (LOCKED): Mingla is an EXPERIENCE / date-planning / social-
 // experiences app — NOT a dating app. Date/time is the hero data point, so the
@@ -34,12 +34,12 @@ import type { ShowcaseEvent } from '@/lib/dc-showcase-events'
 // ---------------------------------------------------------------
 
 const CARD_W = 260
-// 🔒LOCKED (ORCH-0998 v2.1 / §E.2): same 360 as both siblings — the event card
+// 🔒LOCKED (ORCH-1001 v2.1 / §E.2): same 360 as both siblings — the event card
 // is a pixel-identical SHELL sibling, so the hero no-scroll math is unchanged.
 // Do NOT diverge this height.
 const CARD_H = 360
 
-// ORCH-0998 (operator directive): EVERY event card puts the venue on its own
+// ORCH-1001 (operator directive): EVERY event card puts the venue on its own
 // white chip — uniform layout. The old short-venue "inline" variant left a
 // visible gap between the title and the ticket pill on short-venue cards
 // (Howard, Warner, 9:30 CLUB), so all cards now look like the Jun 7 card.
@@ -57,7 +57,7 @@ export function EventCard({
   isFront = true,
   eager = false,
 }: EventCardProps) {
-  // ORCH-0998 (operator directive): present ALL events as "On Mingla" — no
+  // ORCH-1001 (operator directive): present ALL events as "On Mingla" — no
   // Ticketmaster attribution anywhere in the UI (Mingla aggregates these events).
   const isMingla = true
   const useVariantB = true
@@ -406,7 +406,7 @@ function PricePill({
 }: {
   event: ShowcaseEvent
 }): React.ReactElement {
-  // ORCH-0998 (operator directive): every event reads as "On Mingla" — no
+  // ORCH-1001 (operator directive): every event reads as "On Mingla" — no
   // Ticketmaster attribution. Price rides the left ONLY when present (never
   // "TBA"); the CTA is always "Get tickets →".
   const leftPrice: string | null = event.price // "from $15" / "$18" or null

@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------
-// Raleigh Intent Plans — ORCH-0998 [marketing real place cards — DC test run]
+// Raleigh Intent Plans — ORCH-1001 [marketing real place cards — DC test run]
 //
 // 6 themed multi-stop Mingla EXPERIENCES (one per intent), mirroring
 // dc-intent-plans.ts. TEST DATA — no backend calls. Stop hero photos are the
