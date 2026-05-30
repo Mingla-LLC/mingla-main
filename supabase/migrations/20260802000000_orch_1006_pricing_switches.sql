@@ -17,8 +17,9 @@
 --   #6 absorb shows "you covered £X" (pricing_breakdown.absorbed jsonb)
 --   #7 UK-first region-aware (brands.pricing_region CHECK ('GB'))
 -- Take-rate amendment:
---   DEFAULT take-rate = 600 bps (6.00%) DELIBERATE (operator-locked 2026-05-29,
---   a 4x raise over the prior hardcoded 1.5%; high-ticket inventory).
+--   DEFAULT take-rate = 150 bps (1.50%) = today's current hardcoded rate
+--   (operator-locked 2026-05-29). ZERO economic change at migration; operator
+--   raises it later in the admin /pricing UI.
 --
 -- IMPLEMENT NOTE: the large installment-aware `biz_ticket_checkout_create_session`
 -- RPC is NOT re-declared here (it returns a complex camelCase jsonb shape +
@@ -132,7 +133,7 @@ CREATE TABLE IF NOT EXISTS public.platform_pricing_config (
 );
 
 INSERT INTO public.platform_pricing_config (id, default_take_rate_bps)
-  VALUES (true, 600)
+  VALUES (true, 150)
   ON CONFLICT (id) DO NOTHING;
 
 -- A.7 RLS — platform-internal: service_role only. No anon/consumer/business read.
