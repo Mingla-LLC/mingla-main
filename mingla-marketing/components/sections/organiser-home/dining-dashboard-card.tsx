@@ -142,8 +142,13 @@ export function DiningDashboardCard() {
             Slow lunch? Ari fills your tables.
           </p>
         </div>
-        <Button variant="primary-ink" size="sm" className="shrink-0" aria-label="Boost covers with Mingla AI">
-          Boost covers
+        <Button
+          variant="primary-ink"
+          size="sm"
+          className="shrink-0 font-dashboard font-semibold"
+          aria-label="Learn more about Mingla for restaurants"
+        >
+          Learn more
           <ArrowRight className="ml-1.5 h-4 w-4" />
         </Button>
       </div>
