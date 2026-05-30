@@ -55,6 +55,9 @@ function inferOpenPeriod(openPart: string, closePart: string): Meridiem | null {
 
   if (closePeriod === 'PM') {
     if (openHour === 12) return 'PM';
+    // Noon-close shorthand ("9:00 - 12:00 PM") means the opening hour is AM,
+    // not an overnight 9 PM -> noon range.
+    if (closeHour === 12) return 'AM';
     // Google commonly writes "10:00 - 5:00 PM" for 10 AM to 5 PM, while
     // "5:00 - 10:00 PM" means an evening range.
     return openHour > closeHour ? 'AM' : 'PM';

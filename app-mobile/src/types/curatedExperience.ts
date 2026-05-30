@@ -34,9 +34,8 @@ export interface CuratedStop {
     | string
     | null;
   // ORCH-1019 F-2: per-stop venue UTC offset (Google Places v1
-  // utcOffsetMinutes via place_pool.utc_offset_minutes). Forward-compatible —
-  // the generator does NOT emit this yet (§11 deferred); when present the
-  // canonical reader evaluates open/closed in venue-local time.
+  // utcOffsetMinutes via place_pool.utc_offset_minutes). The canonical reader
+  // evaluates open/closed in venue-local time when present.
   utcOffsetMinutes?: number | null;
   // ORCH-0677 D-3: widened to allow honest absence (`null`) when the source
   // data does not include `openNow`. Constitution #9 — never fabricate `true`.
