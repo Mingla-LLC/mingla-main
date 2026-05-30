@@ -45,6 +45,13 @@
 -- 1. query_servable_places_by_signal — solo Home + curated
 -- ─────────────────────────────────────────────────────────────────────────────
 
+-- Postgres rejects CREATE OR REPLACE FUNCTION when the return TABLE shape
+-- changes (SQLSTATE 42P13 "cannot change return type of existing function").
+-- We're appending 2 new columns (ai_reasoning + ai_score_raw) so we must
+-- DROP first. No DB-level dependents (the deck edge fns call these at
+-- runtime, not as DB-managed dependencies) so plain DROP IF EXISTS is safe.
+DROP FUNCTION IF EXISTS public.query_servable_places_by_signal(text, numeric, double precision, double precision, double precision, uuid[], integer);
+
 CREATE OR REPLACE FUNCTION public.query_servable_places_by_signal(
   p_signal_id text,
   p_filter_min numeric,
@@ -142,6 +149,9 @@ GRANT ALL ON FUNCTION public.query_servable_places_by_signal(text, numeric, doub
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 2. query_servable_places_by_signal_intersection — collab positional deck
 -- ─────────────────────────────────────────────────────────────────────────────
+
+-- Same DROP-first pattern as above — return TABLE shape changes need DROP.
+DROP FUNCTION IF EXISTS public.query_servable_places_by_signal_intersection(text, numeric, jsonb, uuid[], integer);
 
 CREATE OR REPLACE FUNCTION public.query_servable_places_by_signal_intersection(
   p_signal_id text,
