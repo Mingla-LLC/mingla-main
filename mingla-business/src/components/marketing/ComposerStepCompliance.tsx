@@ -73,6 +73,7 @@ const styles = StyleSheet.create({
   },
   card: {
     borderRadius: radius.lg,
+    overflow: "hidden",
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: glass.border.profileBase,
     backgroundColor: glass.tint.profileBase,
@@ -94,6 +95,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: radius.md,
+    overflow: "hidden",
     backgroundColor: semantic.infoTint,
     borderLeftWidth: 3,
     borderLeftColor: semantic.info,
