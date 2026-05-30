@@ -536,6 +536,12 @@ export default function ConsumerTripDetailScreen({
           visible={reserveSheetVisible}
           data={card}
           onClose={() => setReserveSheetVisible(false)}
+          // ORCH-1016 REWORK-5 (FIX A cont.) — the reserve sheet renders BELOW
+          // the floating GlassBottomNav, so its ticket list + Buy CTA must clear
+          // the nav height + safe-area (default 32 left the Buy button blocked
+          // on-device). Same source of truth + pattern as MessageInterface's
+          // group-event sheet (BOTTOM_NAV_CONTENT_HEIGHT + insets.bottom + 32).
+          bottomContentInset={BOTTOM_NAV_CONTENT_HEIGHT + insets.bottom + 32}
         />
       ) : null}
     </>
