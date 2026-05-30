@@ -722,6 +722,19 @@ jobs:
       - name: Run ORCH-1001 gate
         run: node .github/scripts/strict-grep/orch-1001-no-native-turbomodule-in-web-bundle.mjs
 
+  orch-1004-auth-scoped-query-readiness:
+    name: "ORCH-1004: auth-scoped hooks gate enabled on isAuthReady"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-1004 gate self-test
+        run: node .github/scripts/strict-grep/orch-1004-auth-scoped-query-readiness.mjs --self-test
+      - name: Run ORCH-1004 gate
+        run: node .github/scripts/strict-grep/orch-1004-auth-scoped-query-readiness.mjs
+
   meta-orch-0827-package-isolation:
     name: "META-ORCH-0827: packages/ pure-presentational isolation"
     runs-on: ubuntu-latest

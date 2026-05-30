@@ -1,5 +1,6 @@
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 
+import { useAuth } from "../context/AuthContext";
 import { supabase } from "../services/supabase";
 import { brandKeys } from "./useBrands";
 
@@ -34,7 +35,11 @@ export const fetchBrandOfferingCounts = async (
 export function useBrandOfferingCounts(
   brandId: string | null,
 ): UseQueryResult<BrandOfferingCounts> {
-  const enabled = brandId !== null && brandId.length > 0;
+  // ORCH-1004 — pg_brand_offering_counts is SECURITY DEFINER but scopes its
+  // counts to the caller's brand access; pre-auth it returns zero counts that
+  // would cache as success. Gate on auth readiness.
+  const { isAuthReady } = useAuth();
+  const enabled = isAuthReady && brandId !== null && brandId.length > 0;
   return useQuery<BrandOfferingCounts>({
     queryKey: enabled
       ? brandKeys.offeringCounts(brandId)
