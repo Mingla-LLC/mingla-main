@@ -1,6 +1,6 @@
 # Implementation Rework Report: ORCH-1021 Decisive Curated + Single-Card Scheduling
 
-Date: 2026-05-30  
+Date: 2026-05-30
 Status: implemented and verified  
 Worktree: `/Users/sethogieva/Desktop/mingla-orchs/ORCH-1021-[curated-stop-timezone-false-open]`  
 Branch: `ORCH-1021-curated-stop-timezone-false-open`
@@ -72,3 +72,46 @@ After this branch merges to `main`, redeploy `discover-cards` so single-card dec
 ## 7. Residual Risk
 
 The scheduling decision now fails closed when hours are missing or unparseable. That is intentionally stricter than the old behavior and may block some real venues whose Google hours are incomplete, but it matches Seth's requested safety contract: Mingla should not say scheduling is safe unless it can prove the stop or place is open.
+
+## 8. Rework Addendum After QA FAIL `697969a93`
+
+Date: 2026-05-30
+Status: implemented and verified
+
+Tester found two release blockers in `Mingla_Artifacts/reports/QA_RETEST_ORCH-1021_DECISIVE_CURATED_AND_SINGLE_SCHEDULING.md`:
+
+- P1-001: expanded-card curated scheduling ran the single-card helper before the curated stop validator.
+- P1-002: `ExpandedCardData.openingHours` was widened, but `PracticalDetailsSectionProps.openingHours` still used the older narrower type.
+
+Rework shipped:
+
+- `ActionButtons.confirmAndSchedule` now detects `card.stops` before any single-card helper call and routes curated cards into `proceedWithScheduling`, where `checkAllCuratedStopsOpen` remains the only curated scheduling validator.
+- `PracticalDetailsSectionProps.openingHours` now accepts `{ lines?: string[] }` and `string[]`, matching the widened shapes passed by `ExpandedCardData`.
+- `schedulingSourceContract.test.ts` now includes a regression that fails on the QA-failed ActionButtons ordering. Fail-on-old proof against `HEAD` before this rework returned `{"curatedBypassIndex":-1,"wouldFail":true}`.
+
+Cross-surface matrix:
+
+| Surface | Impact |
+|---|---|
+| Consumer iOS / Android | Touched. Expanded-card schedule flow now preserves curated stop validation and single-card decisive validation. |
+| Buyer/anonymous Web | Not in scope; ORCH-1021 scheduling surfaces are app-mobile native. |
+| Business iOS / Android | Not in scope; no business mobile scheduling surface touched. |
+| Business Web preview | Not in scope. |
+| Admin Web | Not in scope. |
+| Supabase edge | No new edge change in this P1 rework; previous `discover-cards` and curated generator checks still pass. |
+
+Additional verification after P1 rework:
+
+| Command | Result |
+|---|---|
+| `deno test --no-check --sloppy-imports --allow-read app-mobile/src/utils/__tests__/openingHoursUtils.test.ts app-mobile/src/utils/__tests__/singleCardAvailability.test.ts app-mobile/src/utils/__tests__/schedulingSourceContract.test.ts` | PASS: 14 passed, 0 failed. |
+| `deno test --no-check --sloppy-imports --allow-read app-mobile/src/utils/__tests__/curatedStopsAvailability.test.ts app-mobile/src/utils/__tests__/curatedStopsAvailability.adversarial.test.ts` | PASS: 8 passed, 0 failed. |
+| `cd supabase && deno test --allow-read functions/generate-curated-experiences/__tests__/utc_offset_passthrough.test.ts` | PASS: 2 passed, 0 failed. |
+| `deno check --no-lock supabase/functions/generate-curated-experiences/index.ts` | PASS. |
+| `deno check --no-lock supabase/functions/discover-cards/index.ts` | PASS. |
+| `node .github/scripts/strict-grep/i-curated-hours-via-canonical-reader.mjs --self-test && node .github/scripts/strict-grep/i-curated-hours-via-canonical-reader.mjs` | PASS: scanned 423 files. |
+| `git diff --check` | PASS. |
+| `cd app-mobile && npx tsc --noEmit --pretty false 2>&1 \| rg "<ORCH touched/dependent files>"` | PASS: no remaining TypeScript errors in ORCH-1021 touched/dependent files. |
+| `cd app-mobile && npx tsc --noEmit --pretty false 2>&1 \| head -20` | Still fails on pre-existing repo-wide issues outside ORCH-1021, starting with Deno test globals and BoardDiscussion type errors. |
+
+UI/design note: this P1 rework does not introduce new visual layout or copy; it restores the interaction order required by the existing ORCH-1021 copy/behavior contract.

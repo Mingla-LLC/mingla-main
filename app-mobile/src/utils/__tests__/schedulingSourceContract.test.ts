@@ -31,3 +31,23 @@ Deno.test("ORCH-1021: single-card scheduling paths use decisive shared helper", 
   assert(actionButtons.includes("checkAllCuratedStopsOpen"));
   assertEquals((actionButtons.match(/isPlaceOpenAt/g) ?? []).length, 0);
 });
+
+Deno.test("ORCH-1021: curated ActionButtons validates stops before any single-card helper", async () => {
+  const actionButtons = await Deno.readTextFile("app-mobile/src/components/expandedCard/ActionButtons.tsx");
+  const confirmStart = actionButtons.indexOf("const confirmAndSchedule = (combinedDateTime: Date) => {");
+  const singleHelperIndex = actionButtons.indexOf("checkSingleCardSchedulingAvailability(card, combinedDateTime)", confirmStart);
+  const curatedBypassIndex = actionButtons.indexOf("Array.isArray(card.stops) && card.stops.length > 0", confirmStart);
+  const proceedIndex = actionButtons.indexOf("proceedWithScheduling(combinedDateTime);", curatedBypassIndex);
+
+  assert(confirmStart >= 0, "confirmAndSchedule block not found");
+  assert(singleHelperIndex >= 0, "single-card helper call not found");
+  assert(curatedBypassIndex >= 0, "curated bypass check not found before single-card helper");
+  assert(
+    curatedBypassIndex < singleHelperIndex,
+    "curated cards must bypass single-card availability before the helper runs",
+  );
+  assert(
+    proceedIndex >= curatedBypassIndex && proceedIndex < singleHelperIndex,
+    "curated bypass must route into proceedWithScheduling before single-card helper",
+  );
+});

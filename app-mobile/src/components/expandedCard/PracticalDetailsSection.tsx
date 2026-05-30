@@ -23,7 +23,9 @@ interface PracticalDetailsSectionProps {
         nextCloseTime?: string;
         weekdayDescriptions?: string[];
       }
+    | { lines?: string[] }
     | Record<string, string>
+    | string[]
     | null;
   phone?: string;
   website?: string;

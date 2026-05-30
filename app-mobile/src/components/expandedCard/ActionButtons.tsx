@@ -336,6 +336,13 @@ export default function ActionButtons({
       return;
     }
 
+    if (Array.isArray(card.stops) && card.stops.length > 0) {
+      setAvailabilityCheck(null);
+      setHasCheckedAvailability(false);
+      proceedWithScheduling(combinedDateTime);
+      return;
+    }
+
     const availability = checkSingleCardSchedulingAvailability(card, combinedDateTime);
     setAvailabilityCheck({
       isOpen: availability.isSafeToSchedule,
