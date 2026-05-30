@@ -40,12 +40,7 @@ function stripComments(src: string): string {
 
 // Light-surface sections (parchment/vellum) — accent text MUST be warm-ink.
 // (hero.tsx moved to DARK after the ORCH-1010 booking-wall pivot.)
-const LIGHT_SECTIONS = [
-  'what-mingla-does.tsx',
-  'audiences.tsx',
-  'features.tsx',
-  'faq.tsx',
-] as const
+const LIGHT_SECTIONS = ['audiences.tsx', 'features.tsx', 'faq.tsx'] as const
 
 // Dark sections — accent text uses warm (correct on dark). The hero is now a
 // full-bleed dark booking-wall section; comparison + cta are SpotlightBands.
@@ -154,13 +149,13 @@ const cases: ReadonlyArray<readonly [string, () => void]> = [
     },
   ],
   [
-    'hero is the full-bleed booking-wall; the dashboard card lives in what-mingla-does',
+    'hero is the full-bleed booking-wall; per-tab dashboards live in the audience tabs',
     () => {
-      // Operator pivot (ORCH-1010): the hero is a dark 3D booking-wall cover with
-      // the headline over an overlay; the business growth-OS dashboard card moved
-      // into what-mingla-does. Guard the current artifacts.
+      // Operator pivot (ORCH-1010): the hero is a dark 3D booking-wall cover; the
+      // dashboards moved into the audience-tabs section (Venues feed, Events card,
+      // Dining restaurant dashboard). Guard the current artifacts.
       makeExpect(read('hero.tsx')).toContain('HeroBookingWall')
-      makeExpect(read('what-mingla-does.tsx')).toContain('HeroBusinessCards')
+      makeExpect(read('audience-tabs.tsx')).toContain('DiningDashboardCard')
     },
   ],
   [

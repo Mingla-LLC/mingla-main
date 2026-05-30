@@ -2,7 +2,6 @@ import { OrganiserHero } from '@/components/sections/organiser-home/hero'
 import { OrganiserWhatIsMingla } from '@/components/sections/organiser-home/what-is-mingla'
 import { OrganiserImpactStats } from '@/components/sections/organiser-home/impact-stats'
 import { OrganiserAudienceTabs } from '@/components/sections/organiser-home/audience-tabs'
-import { OrganiserWhatMinglaDoes } from '@/components/sections/organiser-home/what-mingla-does'
 import { OrganiserAudiences } from '@/components/sections/organiser-home/audiences'
 import { OrganiserComparison } from '@/components/sections/organiser-home/comparison'
 import { OrganiserFeatures } from '@/components/sections/organiser-home/features'
@@ -23,7 +22,6 @@ export default function OrganiserHomePage() {
       <OrganiserImpactStats />
       <OrganiserAudiences />
       <OrganiserAudienceTabs />
-      <OrganiserWhatMinglaDoes />
       <OrganiserComparison />
       <OrganiserFeatures />
       <OrganiserFaq />

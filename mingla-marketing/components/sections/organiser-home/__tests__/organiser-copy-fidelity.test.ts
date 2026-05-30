@@ -68,26 +68,8 @@ check('CTA ships the [SACRED] business signature line verbatim, all three clause
   assertHas(cta, 'the people behind every experience, trip, and adventure', 'cta roll-call')
 })
 
-// 2. Litany — all 9 lines present AND in the approved experience-economy form
-//    (the implementor test never asserts the litany content; a dropped/reworded
-//    line would slip through). COPY §2.
-check('What-Mingla-Does litany ships all 9 approved lines incl. experience-economy + payoff', () => {
-  const wmd = read('what-mingla-does.tsx')
-  const LITANY = [
-    'The food.',
-    'The room.',
-    'The crowd.',
-    'The music.',
-    'The host who remembers your name.',
-    'The view from the trail.',
-    "The class you can't stop talking about.",
-    'The story only you can tell.',
-  ]
-  for (const line of LITANY) assertHas(wmd, line, 'litany')
-  // payoff: the quoted "we should go there" moment, warm-ink + italic
-  assertHas(wmd, 'we should go there', 'litany payoff phrase')
-  assertHas(wmd, 'moment.', 'litany payoff tail')
-})
+// 2. (Retired) the What-Mingla-Does litany section was deleted in ORCH-1010 —
+//    its copy guard is removed with it.
 
 // 3. Audiences — all 6 eyebrows verbatim (the 6th is the Inclusion-Rule card).
 //    Implementor only asserts the Compass eyebrow; a reworded restaurant/bar

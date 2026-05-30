@@ -6,6 +6,7 @@ import { SpotlightBand } from '@/components/ui/spotlight-band'
 import { EarningsCard } from '@/components/sections/organiser-home/earnings-card'
 import { VenueActivityFeed } from '@/components/sections/organiser-home/venue-activity-feed'
 import { EventAttendeesCard } from '@/components/sections/organiser-home/event-attendees-card'
+import { DiningDashboardCard } from '@/components/sections/organiser-home/dining-dashboard-card'
 import { cn } from '@/lib/cn'
 import { useMinglaReducedMotion } from '@/lib/reduced-motion'
 
@@ -220,6 +221,8 @@ export function OrganiserAudienceTabs() {
                 <VenueActivityFeed />
               ) : tab.id === 'events' ? (
                 <EventAttendeesCard />
+              ) : tab.id === 'dining' ? (
+                <DiningDashboardCard />
               ) : null}
             </div>
           </motion.div>
