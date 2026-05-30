@@ -84,6 +84,9 @@ const INPUT_CAPSULE_HEIGHT = 56;
 // META-ORCH-0991 Wave B Batch 5: fixed compact snap for the 1:1 chat
 // more-options action menu (was a flex-end RN <Modal>).
 const CHAT_MORE_OPTIONS_SNAP = ["45%"] as const;
+// META-ORCH-0991 Wave C: event-audience picker — was a dark flex-end RN <Modal>
+// (list maxHeight min(SCREEN_HEIGHT*0.52, 430) + header) → fixed ['70%'] snap.
+const EVENT_AUDIENCE_SNAP = ["70%"] as const;
 
 const BROADCAST_COMPOSER_NOTICE_HEIGHT = 56;
 const BROADCAST_COMPOSER_NOTICE_BOTTOM_GAP = 14;
@@ -2173,19 +2176,22 @@ export default function MessageInterface({
         />
       ) : null}
 
-      <Modal
+      {/* Event-audience picker — ORCH trip/event broadcast roster.
+          META-ORCH-0991 Wave C: was a dark flex-end RN <Modal> (scrim + card +
+          hand-rolled drag handle) → dark BaseBottomSheet, fixed ['70%'] snap,
+          wrapInRNModal (mounted in chat over the chat input). Header (icon +
+          title + subtitle) + scroll body (.map participant rows). Non-destructive
+          roster picker → full swipe-down sheet (operator rule §1). */}
+      <BaseBottomSheet
         visible={Boolean(isTripEventGroupChat && showEventAudienceSheet)}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowEventAudienceSheet(false)}
-      >
-        <TouchableOpacity
-          style={styles.eventAudienceOverlay}
-          activeOpacity={1}
-          onPress={() => setShowEventAudienceSheet(false)}
-        />
-        <View style={[styles.eventAudienceSheet, { paddingBottom: safeInsets.bottom + 24 }]}>
-          <View style={styles.chatSheetHandle} />
+        onClose={() => setShowEventAudienceSheet(false)}
+        snapPoints={EVENT_AUDIENCE_SNAP as unknown as string[]}
+        wrapInRNModal
+        theme="dark"
+        scrollMode="scroll"
+        backgroundStyle={styles.eventAudienceSheetBackground}
+        accessibilityLabel={eventAudienceTitle}
+        header={
           <View style={styles.eventAudienceSheetHeader}>
             <View style={styles.eventAudienceIconShell}>
               <Icon
@@ -2201,12 +2207,10 @@ export default function MessageInterface({
               </Text>
             </View>
           </View>
-
-          <ScrollView
-            style={styles.eventAudienceList}
-            contentContainerStyle={styles.eventAudienceListContent}
-            showsVerticalScrollIndicator={false}
-          >
+        }
+        scrollProps={{ contentContainerStyle: styles.eventAudienceListContent }}
+      >
+        <View style={styles.eventAudienceListInner}>
             {headerParticipants.length > 0 ? (
               headerParticipants.map((participant) => {
                 const participantName = getHeaderParticipantName(participant);
@@ -2255,9 +2259,8 @@ export default function MessageInterface({
                 </Text>
               </View>
             )}
-          </ScrollView>
         </View>
-      </Modal>
+      </BaseBottomSheet>
 
       {/* [ORCH-0696 F-13 lock-in] Shape 2a Modal hack deleted post-bottom-sheet
           conversion verified by operator live-fire on iOS + Android (2026-04-29).
@@ -3468,24 +3471,24 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginLeft: "auto",
   },
-  eventAudienceOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.52)",
-  },
-  eventAudienceSheet: {
+  // BaseBottomSheet bespoke dark canvas (was eventAudienceSheet). Scrim + flex-end
+  // card + hand-rolled handle are now owned by the primitive.
+  eventAudienceSheetBackground: {
     backgroundColor: "#111418",
     borderTopLeftRadius: 26,
     borderTopRightRadius: 26,
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    borderWidth: 1,
-    borderBottomWidth: 0,
+    borderTopWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.10)",
+  },
+  eventAudienceListInner: {
+    paddingHorizontal: 20,
   },
   eventAudienceSheetHeader: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
+    paddingHorizontal: 20,
+    paddingTop: 4,
     paddingBottom: 18,
     borderBottomWidth: 1,
     borderBottomColor: "rgba(255, 255, 255, 0.08)",
@@ -3514,12 +3517,9 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "rgba(255, 255, 255, 0.58)",
   },
-  eventAudienceList: {
-    maxHeight: Math.min(SCREEN_HEIGHT * 0.52, 430),
-  },
   eventAudienceListContent: {
     paddingTop: 10,
-    paddingBottom: 4,
+    paddingBottom: 24,
   },
   eventAudienceRow: {
     flexDirection: "row",
@@ -3588,16 +3588,6 @@ const styles = StyleSheet.create({
   chatSheetBody: {
     paddingHorizontal: 20,
     paddingBottom: 40,
-  },
-  // Retained for the untouched event-audience sheet (line ~2188), which is
-  // Wave C and still a raw RN <Modal> with its own drag handle.
-  chatSheetHandle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "#d1d5db",
-    alignSelf: "center",
-    marginBottom: 16,
   },
   chatSheetTitle: {
     fontSize: 17,
