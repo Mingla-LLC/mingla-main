@@ -1096,6 +1096,32 @@ function checkNoNewBackendFiles() {
   // intentionally NOT in scope.
   // Migration rebumped 20260803→20260806 to land after ORCH-1006's already-
   // applied 20260805 (tester P2 F-01).
+  // META-ORCH-1009 Sub-D [refresh cron + admin re-evaluate button]:
+  // closes the staleness loop DEC-182 left open by adding a 15-min pg_cron
+  // rescore-sweep + a Google-data-drift trigger on place_pool + a per-place
+  // admin re-eval button + a 90-day all-cities backstop. Touches:
+  //   - 1 new migration (cron + helper fns + drift trigger + column adds)
+  //   - run-signal-scorer/index.ts (per-place mode + ai_signal_scores_at write)
+  //   - _shared/signalScorer.ts (1-line evaluated_at passthrough)
+  //   - run-place-intelligence-trial/index.ts (new admin_reeval_place action)
+  //   - 5 new Deno + SQL tests under __tests__/
+  // C7 is scoped to ORCH-0863 marketing; this entry covers the Sub-D backend
+  // touches. See DEC-183 + I-AI-SCORE-STALENESS-AUTO-RECOVERED.
+  const META_ORCH_1009_SUB_D_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260808000000_meta_orch_1009_sub_d_refresh_cron.sql",
+    "supabase/functions/run-signal-scorer/index.ts",
+    "supabase/functions/_shared/signalScorer.ts",
+    "supabase/functions/run-place-intelligence-trial/index.ts",
+    "supabase/functions/run-signal-scorer/__tests__/per_place_mode.test.ts",
+    "supabase/functions/_shared/__tests__/signalScorer.evaluated_at_passthrough.test.ts",
+    "supabase/functions/run-place-intelligence-trial/__tests__/admin_reeval_place.test.ts",
+    "supabase/migrations/__tests__/sub_d_seed_idempotent.test.sql",
+    // Admin UI regression test (note: lives outside supabase/ so the C7
+    // backend-only forbid does not gate it; listed here for ORCH-trace).
+    "mingla-admin/src/__tests__/orch1009_sub_d_reeval_button.test.js",
+    // Strict-grep gate (also lives outside supabase/; listed for trace).
+    ".github/scripts/strict-grep/meta-orch-1009-sub-d-ai-score-staleness-recovery.mjs",
+  ];
   const META_ORCH_1009_SUB_B_BACKEND_ALLOWLIST = [
     "supabase/migrations/20260806000000_meta_orch_1009_sub_b_rpcs_with_reasoning.sql",
     "supabase/functions/_shared/signalScorer.ts",
@@ -1180,6 +1206,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_1015_BACKEND_ALLOWLIST,
     ...META_ORCH_1009_SUB_A_BACKEND_ALLOWLIST,
     ...META_ORCH_1009_SUB_B_BACKEND_ALLOWLIST,
+    ...META_ORCH_1009_SUB_D_BACKEND_ALLOWLIST,
   ];
   const forbidden = changed.filter(
     (p) =>
