@@ -112,6 +112,7 @@ import {
 // + city fields. Bridges the local-only EditPublishedScreen save flow to
 // the events DB row so legacy events become Discover-eligible after edit.
 import {
+  patchPublishedEventPricingSwitches,
   patchPublishedEventTaxonomy,
   patchPublishedEventTheme,
   patchPublishedEventWhen,
@@ -199,11 +200,19 @@ const ORCH_0964_THEME_PATCH_KEYS = new Set<keyof EditableLiveEventFields>([
   "themeOverrides",
 ]);
 
+// ORCH-1006: pricing switches have a server mutation path via
+// patchPublishedEventPricingSwitches (direct events.pass_* write). Lifts the
+// disableLocalSaveReason gate so a switch-only edit can save.
+const ORCH_1006_PRICING_PATCH_KEYS = new Set<keyof EditableLiveEventFields>([
+  "pricingSwitches",
+]);
+
 const SERVER_EDITABLE_PATCH_KEYS = new Set<keyof EditableLiveEventFields>([
   ...COVER_MEDIA_PATCH_KEYS,
   ...ORCH_0824_PATCH_KEYS,
   ...ORCH_0877_WHEN_PATCH_KEYS,
   ...ORCH_0964_THEME_PATCH_KEYS,
+  ...ORCH_1006_PRICING_PATCH_KEYS,
 ]);
 
 const sleep = (ms: number): Promise<void> =>
@@ -892,6 +901,33 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
           setSubmitting(false);
           setModal((prev) => ({ ...prev, visible: false }));
           showToast("Couldn't save the public theme. Tap to try again.");
+          return;
+        }
+      }
+
+      // ORCH-1006 — "Who covers the costs?" switches route through a direct
+      // events.pass_* write (patchPublishedEventPricingSwitches), like the
+      // theme block above. Server-success-then-local so caches + audit stay in
+      // sync. The section is read-only once sold, so this only runs unsold.
+      if (patch.pricingSwitches !== undefined) {
+        if (liveEvent.serverEventId === null) {
+          setSubmitting(false);
+          setModal((prev) => ({ ...prev, visible: false }));
+          showToast(
+            "Save failed because this event is missing its server id.",
+          );
+          return;
+        }
+        try {
+          await patchPublishedEventPricingSwitches(
+            liveEvent.serverEventId,
+            patch.pricingSwitches,
+          );
+          invalidateServerEventCaches();
+        } catch {
+          setSubmitting(false);
+          setModal((prev) => ({ ...prev, visible: false }));
+          showToast("Couldn't save who covers costs. Tap to try again.");
           return;
         }
       }

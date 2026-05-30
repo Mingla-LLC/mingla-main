@@ -47,6 +47,12 @@ interface BusinessManagementEventRow {
   cover_media_credit_url: string | null;
   cover_media_alt: string | null;
   currency?: string | null;
+  // ORCH-1006 — per-offering pricing switches. Optional: the management view
+  // does NOT expose these today, so they arrive undefined here and the edit
+  // detail path overlays the raw values via a direct events probe instead.
+  pass_tax?: boolean | null;
+  pass_mingla_fee?: boolean | null;
+  pass_service_fee?: boolean | null;
   visibility: string;
   show_on_discover: boolean;
   status: string;
@@ -447,6 +453,12 @@ const eventFromRow = (
       settings.inPersonPaymentsEnabled,
       tickets.some((ticket) => ticket.availableAt === "both" || ticket.availableAt === "door"),
     ),
+    // ORCH-1006 — per-offering pricing switches from events.pass_* (NULL = inherit).
+    pricingSwitches: {
+      passTax: row.pass_tax ?? null,
+      passMinglaFee: row.pass_mingla_fee ?? null,
+      passServiceFee: row.pass_service_fee ?? null,
+    },
     orders: [],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -540,15 +552,23 @@ export const fetchBusinessEventById = async (
   // event_type. Do a second small probe against events to reject trips.
   // Single-event detail is event-only; trip detail lives at /trip/{id}.
   // orch-strict-grep-allow events-type-filter — this IS the filter probe (returns event_type for client-side trip rejection)
+  // ORCH-1006: also grab the RAW (nullable) pass_* overrides here — the
+  // management view only exposes resolved/no switches, but the edit screen
+  // needs the raw per-offering values to show inherit-vs-override correctly.
   const typeResp = await supabase
     .from("events")
-    .select("id, event_type")
+    .select("id, event_type, pass_tax, pass_mingla_fee, pass_service_fee")
     .eq("id", eventId)
     .maybeSingle();
   if (typeResp.error !== null) throw typeResp.error;
   if (typeResp.data !== null && typeResp.data.event_type === "trip") {
     return null;
   }
+  const rawSwitches = (typeResp.data ?? null) as {
+    pass_tax?: boolean | null;
+    pass_mingla_fee?: boolean | null;
+    pass_service_fee?: boolean | null;
+  } | null;
 
   // orch-strict-grep-allow events-type-filter — view doesn't expose event_type; trip exclusion via probe above
   const { data, error } = await supabase
@@ -558,7 +578,18 @@ export const fetchBusinessEventById = async (
     .maybeSingle();
 
   if (error !== null) throw error;
-  return data === null ? null : detailFromRow(data as BusinessManagementEventRow);
+  if (data === null) return null;
+  const detail = await detailFromRow(data as BusinessManagementEventRow);
+  // ORCH-1006 — overlay the raw nullable switch overrides onto the LiveEvent so
+  // the edit screen seeds inherit (null) vs explicit override correctly.
+  if (rawSwitches !== null) {
+    detail.event.pricingSwitches = {
+      passTax: rawSwitches.pass_tax ?? null,
+      passMinglaFee: rawSwitches.pass_mingla_fee ?? null,
+      passServiceFee: rawSwitches.pass_service_fee ?? null,
+    };
+  }
+  return detail;
 };
 
 const eventFromPublishResponse = (
@@ -809,6 +840,44 @@ export const patchPublishedEventTheme = async (
   }
   if (data === null || data.length === 0) {
     throw new Error("patch_event_theme_no_rows");
+  }
+};
+
+// ─── ORCH-1006 — published-event pricing switches (who covers costs) ──
+
+/**
+ * ORCH-1006 — persist a published event's per-offering pricing switches to
+ * events.pass_* (NULL = inherit brand default). Direct column write, owner-
+ * scoped by the events RLS UPDATE policy (mirrors patchPublishedEventTheme +
+ * the trip-side setTripPricingSwitches). The post-sale lock is enforced by the
+ * UI rendering the section read-only once sold, so a switch patch only ever
+ * reaches here for an unsold offering. Rowcount-verified (I-PROPOSED-I).
+ */
+export const patchPublishedEventPricingSwitches = async (
+  eventId: string,
+  switches: {
+    passTax: boolean | null;
+    passMinglaFee: boolean | null;
+    passServiceFee: boolean | null;
+  },
+): Promise<void> => {
+  // orch-strict-grep-allow events-type-filter — id-targeted UPDATE; .select("id")
+  // is the rowcount check (I-PROPOSED-I), the eq("id") uniquely identifies the row.
+  const { data, error } = await supabase
+    .from("events")
+    .update({
+      pass_tax: switches.passTax,
+      pass_mingla_fee: switches.passMinglaFee,
+      pass_service_fee: switches.passServiceFee,
+    })
+    .eq("id", eventId)
+    .select("id");
+
+  if (error !== null) {
+    throw new Error(error.message ?? "patch_event_pricing_switches_failed");
+  }
+  if (data === null || data.length === 0) {
+    throw new Error("patch_event_pricing_switches_no_rows");
   }
 };
 
