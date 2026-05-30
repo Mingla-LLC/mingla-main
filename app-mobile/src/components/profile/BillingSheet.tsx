@@ -509,6 +509,9 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     paddingHorizontal: 16,
     marginBottom: 16,
+    // META-ORCH-1002 Sub-B (B3): clip opaque-white fill + orange border to the radius
+    // (kills the Android corner ring). iOS shadow unaffected — byte-identical.
+    overflow: "hidden",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
@@ -580,6 +583,9 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     paddingHorizontal: 16,
     marginBottom: 12,
+    // META-ORCH-1002 Sub-B (B4): clip opaque-white fill + border to the radius
+    // (kills the Android corner ring). iOS shadow unaffected — byte-identical.
+    overflow: "hidden",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.06,

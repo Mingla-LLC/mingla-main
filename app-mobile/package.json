@@ -16,6 +16,7 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "test:meta-orch-1002": "node ./scripts/ci/meta-orch-1002-android-glass-check.mjs",
+    "test:meta-orch-1002-sub-b": "node ./scripts/ci/meta-orch-1002-sub-b-consumer-glass-check.mjs",
     "test:orch-0749": "node ./scripts/ci/orch-0749-regression-check.mjs",
     "test:orch-0751": "node ./scripts/ci/orch-0751-revenuecat-logout-check.mjs",
     "test:orch-0809": "node ./scripts/ci/orch-0809-regression-check.mjs",

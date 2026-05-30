@@ -165,6 +165,10 @@ const styles = StyleSheet.create({
     paddingBottom: s(14),
     paddingHorizontal: s(12),
     alignItems: "center",
+    // META-ORCH-1002 Sub-B (B1): clip the opaque-white fill + border to the radius so
+    // they composite as one layer on Android (kills the corner ring). iOS shadow is
+    // unaffected by overflow:hidden, so iOS is byte-identical.
+    overflow: "hidden",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06,
