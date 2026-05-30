@@ -3,7 +3,6 @@ import { OrganiserWhatIsMingla } from '@/components/sections/organiser-home/what
 import { OrganiserImpactStats } from '@/components/sections/organiser-home/impact-stats'
 import { OrganiserAudienceTabs } from '@/components/sections/organiser-home/audience-tabs'
 import { OrganiserAudiences } from '@/components/sections/organiser-home/audiences'
-import { OrganiserComparison } from '@/components/sections/organiser-home/comparison'
 import { OrganiserFeatures } from '@/components/sections/organiser-home/features'
 import { OrganiserFaq } from '@/components/sections/organiser-home/faq'
 import { OrganiserCta } from '@/components/sections/organiser-home/cta'
@@ -22,7 +21,6 @@ export default function OrganiserHomePage() {
       <OrganiserImpactStats />
       <OrganiserAudiences />
       <OrganiserAudienceTabs />
-      <OrganiserComparison />
       <OrganiserFeatures />
       <OrganiserFaq />
       <OrganiserCta />

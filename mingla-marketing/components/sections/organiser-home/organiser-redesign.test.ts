@@ -44,7 +44,7 @@ const LIGHT_SECTIONS = ['audiences.tsx', 'features.tsx', 'faq.tsx'] as const
 
 // Dark sections — accent text uses warm (correct on dark). The hero is now a
 // full-bleed dark booking-wall section; comparison + cta are SpotlightBands.
-const DARK_SECTIONS = ['hero.tsx', 'comparison.tsx', 'cta.tsx'] as const
+const DARK_SECTIONS = ['hero.tsx', 'cta.tsx'] as const
 
 // Fabricated / off-reality phrases that must NOT appear anywhere on the page.
 const FORBIDDEN = [
@@ -58,7 +58,7 @@ const FORBIDDEN = [
   'RCS',
 ] as const
 
-const ALL_FILES = [...LIGHT_SECTIONS, ...DARK_SECTIONS, 'comparison.tsx']
+const ALL_FILES = [...LIGHT_SECTIONS, ...DARK_SECTIONS]
 
 interface Expect {
   toBe(expected: unknown): void
@@ -124,11 +124,9 @@ const cases: ReadonlyArray<readonly [string, () => void]> = [
       for (const file of DARK_SECTIONS) {
         makeExpect(/(text|bg)-warm/.test(read(file))).toBe(true)
       }
-      // The two SpotlightBand sections specifically render via <SpotlightBand>
-      // (the hero is dark via its own full-bleed booking-wall + overlay).
-      for (const file of ['comparison.tsx', 'cta.tsx']) {
-        makeExpect(read(file)).toContain('SpotlightBand')
-      }
+      // The CTA SpotlightBand section renders via <SpotlightBand> (the hero is
+      // dark via its own full-bleed booking-wall + overlay).
+      makeExpect(read('cta.tsx')).toContain('SpotlightBand')
     },
   ],
   [
