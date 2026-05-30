@@ -18,6 +18,7 @@ Reference: [WORKTREE_STRATEGY.md](WORKTREE_STRATEGY.md).
 | `~/Desktop/mingla-orchs/ORCH-0990-[flower-stop-real-florists]` | `ORCH-0990-flower-stop-real-florists` | ORCH-0990 | SPEC | no sim — backend-only (edge fn + RPC + place_pool data) | 8086 | 2026-05-29 | Claude `mingla-orchestrator` (dispatch) → Claude `mingla-forensics` (active) |
 | `~/Desktop/mingla-orchs/ORCH-1006-[universal-allin-pricing-engine]` | `ORCH-1006-universal-allin-pricing-engine` | ORCH-1006 | INVESTIGATE done → awaiting SPEC | TBD (native checkout) | 8091 | 2026-05-29 | Claude `mingla-orchestrator` (dispatch) → Claude `mingla-forensics` (active) |
 | `~/Desktop/mingla-orchs/ORCH-1008-[admin-shell-prune-intelligence-overview]` | `ORCH-1008-admin-shell-prune-intelligence-overview` | ORCH-1008 | SPEC + DESIGN (parallel) | no sim — admin-web (Vite, not Expo) | n/a (Vite picks free) | 2026-05-30 | Claude `mingla-orchestrator` (dispatch) → Claude `mingla-forensics` (SPEC P1-3) + Claude `mingla-designer` (Phase 4 UX) |
+| `~/Desktop/mingla-orchs/ORCH-1010-[marketing-business-rebrand-copy-design]` | `ORCH-1010-marketing-business-rebrand-copy-design` | ORCH-1010 | Phase 1 DONE → awaiting product (copy) → designer (redesign) | no sim — marketing web (Next.js) | 3010 (Next dev) / 8087 reserved | 2026-05-30 | Claude `mingla-orchestrator` (Phase 1 inline) → `mingla-product` (Phase 2) → `mingla-designer` (Phase 3) |
 
 ---
 
