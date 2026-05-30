@@ -149,11 +149,13 @@ const cases: ReadonlyArray<readonly [string, () => void]> = [
     },
   ],
   [
-    'hero renders the real consumer card deck (show-not-tell, no stock art)',
+    'hero renders the business growth-OS dashboard card (show-not-tell, no stock art)',
     () => {
+      // Operator pivot (ORCH-1010): the business hero shows the BUSINESS outcome
+      // (payouts / bookings / CRM / AI) via the dashboard card, not the consumer
+      // swipe deck. Guard the current artifact.
       const hero = read('hero.tsx')
-      makeExpect(hero).toContain('HeroPlaceDeck')
-      makeExpect(hero).toContain('ProductFrame')
+      makeExpect(hero).toContain('HeroBusinessCards')
     },
   ],
   [
