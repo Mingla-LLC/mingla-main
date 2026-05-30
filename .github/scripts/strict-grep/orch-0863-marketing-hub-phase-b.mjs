@@ -1000,6 +1000,14 @@ function checkNoNewBackendFiles() {
     "supabase/functions/run-place-intelligence-trial/__tests__/runRemainder.test.ts",
     "supabase/functions/run-place-intelligence-trial/__tests__/runRemainder_adversarial.test.ts",
   ];
+  // ORCH-1013 [Place Intel control tower + coverage-math fix + admin Tailwind
+  // drift]. Finding A patches handleIntelligenceCoverage to JOIN place_pool on
+  // is_servable so the "evaluated" set excludes drifted rows; Finding C is
+  // operational (no file edits). Per COMMS-0002.
+  const ORCH_1013_BACKEND_ALLOWLIST = [
+    "supabase/functions/run-place-intelligence-trial/index.ts",
+    "supabase/functions/run-place-intelligence-trial/__tests__/coverage_servable_filter.test.ts",
+  ];
   const ALLOWLIST = [
     ...ORCH_0989_BACKEND_ALLOWLIST,
     ...ORCH_0990_BACKEND_ALLOWLIST,
@@ -1054,6 +1062,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_0977_BACKEND_ALLOWLIST,
     ...ORCH_0978_BACKEND_ALLOWLIST,
     ...ORCH_1008_BACKEND_ALLOWLIST,
+    ...ORCH_1013_BACKEND_ALLOWLIST,
   ];
   const forbidden = changed.filter(
     (p) =>
