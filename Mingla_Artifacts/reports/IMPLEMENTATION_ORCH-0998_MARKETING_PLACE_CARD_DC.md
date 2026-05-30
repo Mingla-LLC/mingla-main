@@ -329,3 +329,72 @@ Built the NEW "intent card" per `DESIGN_ORCH-0998_MARKETING_PLACE_CARD_DC.md` §
 
 ### Discoveries for orchestrator (Intent Card v1)
 None. The optional auto-rotating sibling intent-deck (§I.5 alternative) and any homepage mount were intentionally NOT built — this is a "let's see" preview only (own-row static grid), per the dispatch.
+
+---
+
+# Event Card v1 — THIRD card type (appended 2026-05-29)
+
+**Spec section:** `DESIGN_ORCH-0998_MARKETING_PLACE_CARD_DC.md` "Event Card v1" §E.1–E.11
+**Status:** implemented and verified (local dev preview, static showcase)
+
+## What changed for end users
+The ORCH-0998 preview route now shows a THIRD marketing card type below the intent + single-place sections: an **Events happening in DC** row of 6 real event cards. Four are REAL Ticketmaster events for Washington DC (real cover art, venue, date, ticket link); two are representative Mingla Business events — one with a photo cover, one showcasing the brand `coverHue` striped fallback band. Each card leads with a calendar-tile date badge (the event time-anchor), a source signal ("On Mingla" ink chip for business events; quiet "Ticketmaster" attribution in the CTA pill for TM), and a full-width orange ticket-CTA pill that shows a price only when one exists (never "TBA").
+
+## Files (Old → New receipts)
+
+### `mingla-marketing/lib/dc-showcase-events.ts` (NEW)
+**Before:** did not exist.
+**Now:** typed `ShowcaseEvent` (discriminated on `source: 'mingla' | 'ticketmaster'`, shape per §E.11.2) + `DC_SHOWCASE_EVENTS` (6 events). Header comment documents provenance: TM events REAL (live from the Ticketmaster edge function for DC); the 2 Mingla events REPRESENTATIVE (real DB events are test data) — one photo cover, one `coverImageUrl:null` + `coverHue:200` to showcase the striped fallback.
+**Why:** §E.11.2.
+**Lines:** ~165.
+
+### `mingla-marketing/components/sections/explorer-home/event-card.tsx` (NEW)
+**Before:** did not exist.
+**Now:** ONE branched `EventCard` (§E.1 🔒) + internal `EventCover` / `CoverHueBand` / `MinglaMark` / `PricePill`. Reuses the 260×360 shell, `--radius-2xl`, border/elevation, frosted `rgba(255,255,255,0.96)` content block, `#1a1a2e` cover fill, plain `<img>`, graceful 404. Calendar badge (§E.3, orange month / white day Mochiy 22). Cover (§E.4): real image + bottom vignette; Mingla image-error → coverHue band; coverHue striped band translated 1:1 from `packages/event-rendering/EventCover.tsx` (`repeating-linear-gradient(135deg, hsl(h,60%,50%) 0 14px, hsl(h,60%,40%) 14px 28px)` + vignette); hard-404 → faint Mingla mark. Source chip (§E.5): Mingla → "On Mingla" ink chip top-right; TM → none. 3-chip block (§E.6): warm `#C75E12` 🔒 caps eyebrow → ink title(+venue Variant A) line → optional white venue chip (Variant B, venue >16 chars) → orange pill. Pill (§E.7): price-left-when-present + CTA-right; "Ticketmaster" on every TM card 🔒; never "TBA". `aria-hidden` decorative chips; card `aria-label` §E.9. Honesty comments inline.
+**Why:** §E.1–E.9 + build-notes 1–8.
+**Lines:** ~340.
+
+### `mingla-marketing/app/intent-preview/page.tsx` (MODIFIED)
+**Before:** intent grid + single-place-card comparison section.
+**Now:** + `EventCard` / `DC_SHOWCASE_EVENTS` import + an "Event cards / Events happening in DC" section rendering all 6 cards in the same responsive flex-wrap row. Existing sections intact.
+**Why:** §E.11.9 own-row placement + the "let's see" preview requirement.
+**Lines:** ~45 added.
+
+## Verification matrix (Event Card v1)
+
+| Check | Result |
+|---|---|
+| `npx tsc --noEmit` (mingla-marketing) | PASS — exit 0 |
+| `curl /intent-preview` | HTTP 200 |
+| All 6 titles in served HTML | PASS |
+| "On Mingla" (2 business cards) | PASS — 2 visible occurrences |
+| "Ticketmaster" attribution | PASS — `Tickets via Ticketmaster →` ×3 + `$18 · Ticketmaster →` ×1 |
+| "Get tickets" (Mingla CTA) | PASS |
+| "from $15" (Rooftop pill) | PASS |
+| No "TBA" | PASS — grep count 0 |
+| coverHue striped band (hue=200) | PASS — `repeating-linear-gradient(135deg, hsl(200,60%,50%) …)` present |
+| Eyebrow `#C75E12` (not `#EB7825`) | PASS |
+| TM cover URL (Off The Wall) | PASS — HTTP 200 |
+| Hip Flask place-photo URL | PASS — HTTP 200 |
+| Clean compile | PASS — card content served, no error overlay |
+
+Both sources render; the hue=200 striped fallback renders for the no-media Mingla event.
+
+## Cross-surface impact (Step 3.5)
+- **Affected:** Marketing Web only. New component + data file + extended preview route.
+- **NOT affected:** Consumer iOS/Android, Buyer/anon Web, Business iOS/Android, Admin Web — no shared code path; the app's `EventCover` recipe is reproduced (web CSS) not imported, so no coupling to `packages/event-rendering`.
+
+## Invariants
+- Positioning (experience app, not dating): PRESERVED.
+- Honesty (no distance/travel-time/autoplay/TBA/TM-logo): PRESERVED.
+- ONE branched component (§E.1 🔒): PRESERVED.
+- `CARD_H = 360` shell parity 🔒: PRESERVED.
+
+## Comms ledger (Event Card v1)
+Read on entry. No BLOCK/WARN entry targets ORCH-0998 or this skill. COMMS-0003 (cite external-API docs inline) is **N/A** — no live external API call is added in code; the TM events are static pre-fetched data with provenance recorded in the data file.
+
+## Regression test (Event Card v1)
+**BACKFILL-EXEMPT** — marketing-only additive presentational component + hardcoded test data + a noindex preview route; zero product-logic, no shared state, no network mutation. Verification is the served-HTML + tsc gate above.
+
+## Discoveries for orchestrator (Event Card v1)
+None. The event card is shell-compatible (260×360) with the auto-rotating hero deck if a future ORCH wants events mixed in (§E.11.9); per spec it sits on its own preview row this run, not in the locked hero deck.

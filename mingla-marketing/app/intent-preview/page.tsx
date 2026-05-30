@@ -1,7 +1,9 @@
 import type { Metadata } from 'next'
 import { IntentCard } from '@/components/sections/explorer-home/intent-card'
+import { EventCard } from '@/components/sections/explorer-home/event-card'
 import { HeroPlaceDeck } from '@/components/sections/explorer-home/hero-place-deck'
 import { DC_INTENT_PLANS } from '@/lib/dc-intent-plans'
+import { DC_SHOWCASE_EVENTS } from '@/lib/dc-showcase-events'
 
 // ---------------------------------------------------------------
 // Intent Cards — preview route (ORCH-0998 [marketing real place cards — DC])
@@ -93,6 +95,50 @@ export default function IntentPreviewPage() {
             for comparison — the single place card
           </p>
           <HeroPlaceDeck />
+        </section>
+
+        {/* Event cards — the THIRD marketing card type (ORCH-0998 §E.1–E.11).
+            All 6 DC showcase events: 4 real Ticketmaster events + 2 Mingla
+            Business samples (one photo cover, one coverHue striped fallback).
+            Rendered statically (like the intent grid) for the "let's see" pass. */}
+        <section
+          aria-label="Event card previews"
+          className="mt-20 flex w-full flex-col items-center"
+        >
+          <p
+            className="font-sans"
+            style={{
+              marginBottom: '4px',
+              fontSize: '11px',
+              fontWeight: 700,
+              letterSpacing: '0.12em',
+              textTransform: 'uppercase',
+              color: 'var(--color-warm)',
+            }}
+          >
+            Event cards
+          </p>
+          <h2
+            className="font-display"
+            style={{
+              marginBottom: '24px',
+              fontSize: '22px',
+              lineHeight: 1.15,
+              color: '#ffffff',
+            }}
+          >
+            Events happening in DC
+          </h2>
+          <div className="flex w-full flex-wrap items-start justify-center gap-8">
+            {DC_SHOWCASE_EVENTS.map((event) => (
+              <EventCard
+                key={`${event.source}-${event.title}`}
+                event={event}
+                isFront
+                eager
+              />
+            ))}
+          </div>
         </section>
       </div>
     </main>
