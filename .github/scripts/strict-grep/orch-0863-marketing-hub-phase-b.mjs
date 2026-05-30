@@ -1007,6 +1007,8 @@ function checkNoNewBackendFiles() {
   const ORCH_1013_BACKEND_ALLOWLIST = [
     "supabase/functions/run-place-intelligence-trial/index.ts",
     "supabase/functions/run-place-intelligence-trial/__tests__/coverage_servable_filter.test.ts",
+    // ORCH-1013 QA adversarial tests (no production code touched)
+    "supabase/functions/run-place-intelligence-trial/__tests__/coverage_adversarial.test.ts",
   ];
   const ALLOWLIST = [
     ...ORCH_0989_BACKEND_ALLOWLIST,
