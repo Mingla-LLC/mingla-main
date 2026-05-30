@@ -39,9 +39,10 @@ const CARD_W = 260
 // Do NOT diverge this height.
 const CARD_H = 360
 
-// §E.6 / §E.8: short venues ride the ink title line (Variant A, no white chip);
-// longer venues move onto their own white chip (Variant B). Threshold tunable.
-const VENUE_SHORT_MAX = 16
+// ORCH-0998 (operator directive): EVERY event card puts the venue on its own
+// white chip — uniform layout. The old short-venue "inline" variant left a
+// visible gap between the title and the ticket pill on short-venue cards
+// (Howard, Warner, 9:30 CLUB), so all cards now look like the Jun 7 card.
 
 interface EventCardProps {
   event: ShowcaseEvent
@@ -59,7 +60,7 @@ export function EventCard({
   // ORCH-0998 (operator directive): present ALL events as "On Mingla" — no
   // Ticketmaster attribution anywhere in the UI (Mingla aggregates these events).
   const isMingla = true
-  const useVariantB = event.venue.length > VENUE_SHORT_MAX
+  const useVariantB = true
 
   // §E.9 aria-label: the calendar badge, source chip, eyebrow + orange pill are
   // all aria-hidden, so the label carries date/time/venue/source/price. Honest
