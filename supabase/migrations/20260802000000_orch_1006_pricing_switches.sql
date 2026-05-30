@@ -123,7 +123,7 @@ ALTER TABLE public.orders
 -- ───────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.platform_pricing_config (
   id                    boolean PRIMARY KEY DEFAULT true,
-  default_take_rate_bps integer NOT NULL DEFAULT 600,   -- 6.00% — operator-locked migration default
+  default_take_rate_bps integer NOT NULL DEFAULT 150,   -- 1.50% = today's rate, operator-locked, zero economic change
   updated_at            timestamptz NOT NULL DEFAULT now(),
   updated_by            uuid REFERENCES auth.users(id),
   CONSTRAINT platform_pricing_config_singleton CHECK (id = true),
