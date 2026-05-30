@@ -5,6 +5,7 @@
 **Mode:** SPEC (builds on the proven INVESTIGATE report; no code in this artifact)
 **Date:** 2026-05-29
 **Author:** mingla-forensics (Claude)
+**⊕ AMENDMENT:** the Mingla platform fee is now an operator-configurable take-rate (global default + per-brand override, set in `mingla-admin`) — see `SPEC_ORCH-1006_AMENDMENT_CONFIGURABLE_MINGLA_TAKE_RATE.md`. It replaces the hardcoded `MINGLA_APPLICATION_FEE_RATE = 0.015` source referenced in §C.3 step 2; all other §C mechanics stand.
 **Inputs:**
 - Investigation: `Mingla_Artifacts/reports/INVESTIGATION_ORCH-1006_UNIVERSAL_ALLIN_PRICING_ENGINE.md` (this worktree) — proven current-state map.
 - Vision + 7 operator-locked decisions: `~/.claude/.../memory/project_checkout_allin_pricing_fee_tax_toggles.md`.
