@@ -1,8 +1,8 @@
 // ---------------------------------------------------------------
 // DC Intent Plans — ORCH-0998 [marketing real place cards — DC test run]
 //
-// Hardcoded snapshot of 4 "intent plans" — themed, multi-stop Mingla
-// EXPERIENCES (Mingla is an experience / date-planning app, NOT a dating
+// Hardcoded snapshot of 6 "intent plans" — ONE PER INTENT — themed, multi-stop
+// Mingla EXPERIENCES (Mingla is an experience / date-planning app, NOT a dating
 // app). Each plan is a snapshot of a PLAN: an ordered sequence of 2–4 real
 // Washington-DC places (stops) you'd do together for a given vibe.
 //
@@ -66,59 +66,81 @@ function stop(name: string, role: string, placeKey: string): IntentStop {
 
 export const DC_INTENT_PLANS: readonly IntentPlan[] = [
   {
-    id: 'romantic-evening',
+    id: 'romantic',
     intentTitle: 'A Romantic Evening',
-    sellLine: 'Candlelit pasta, late cocktails, and a slow river walk.',
+    sellLine: 'Omakase, a whiskey terrace, and a slow walk by the river.',
     itineraryLabel: 'Dinner → Cocktails → Stroll',
-    priceRange: '$80–$150 for two',
-    duration: '≈ 3 hrs',
+    priceRange: '$120–$200 for two',
+    duration: '≈ 3.5 hrs',
     stops: [
-      stop("L'Ardente", 'Dinner', 'ChIJ-82JrXi3t4kRSAkfWH-6ToU'),
-      stop('OKPB', 'Cocktails', 'ChIJuVcr4vHJt4kR3RGgn9ppyKM'),
+      stop('KYOJIN Sushi', 'Dinner', 'ChIJf57htim3t4kRAMbxTZCtjao'),
+      stop('Jack Rose Dining Saloon', 'Cocktails', 'ChIJK7e4Ldu3t4kRUg8DvM7SaSQ'),
       stop('Georgetown Waterfront Park', 'Stroll', 'ChIJ8Rr7HU-2t4kRSWaer7WwQag'),
     ],
   },
   {
-    id: 'group-night-out',
-    intentTitle: 'A Group Night Out',
-    sellLine: 'Pisco sours, a laser-room showdown, then a tiny-bar nightcap.',
-    itineraryLabel: 'Dinner → Game → Nightcap',
-    priceRange: 'from $40 for two',
-    duration: '≈ 3.5 hrs',
+    id: 'first-date',
+    intentTitle: 'A Slow First Date',
+    sellLine: 'Ceviche, an easy art wander, and a cup to talk over.',
+    itineraryLabel: 'Bites → Art → Coffee',
+    priceRange: '$30–$60 for two',
+    duration: '≈ 3 hrs',
     stops: [
-      stop('Pisco y Nazca', 'Dinner', 'ChIJixeyzuvJt4kRVW6c09ZsVZE'),
-      stop('Beat The Bomb DC', 'Game', 'ChIJX8KKlVy5t4kR24fw5XyyFM0'),
-      stop("Snappy's Small Bar", 'Nightcap', 'ChIJvd0xokXJt4kR8LkVsaOSLsM'),
-    ],
-  },
-  {
-    id: 'culture-crawl',
-    intentTitle: 'A Culture Crawl',
-    sellLine: 'Americana, a riverside walk, and a proper cup to end on.',
-    itineraryLabel: 'Museum → Walk → Coffee',
-    priceRange: 'Free–$20 for two',
-    duration: '≈ 4 hrs',
-    stops: [
-      stop(
-        'Smithsonian Museum of American History',
-        'Museum',
-        'ChIJx7K17Ji3t4kR6h3neQYXsjI',
-      ),
-      stop('Georgetown Waterfront Park', 'Walk', 'ChIJ8Rr7HU-2t4kRSWaer7WwQag'),
+      stop('Pisco y Nazca', 'Bites', 'ChIJDc1TJ5q3t4kRQX8x6Pj4IlA'),
+      stop('National Gallery of Art', 'Art', 'ChIJSYxSO5u3t4kRm4eyKw_Y7Kg'),
       stop('Dolan Coffee', 'Coffee', 'ChIJQWdBmMnJt4kR_7W5-BvkQso'),
     ],
   },
   {
-    id: 'slow-first-date',
-    intentTitle: 'A Slow First Date',
-    sellLine: 'Easy sushi, warm pastries, and an unhurried walk to talk.',
-    itineraryLabel: 'Sushi → Pastries → Stroll',
+    id: 'adventurous',
+    intentTitle: 'An Adventurous Afternoon',
+    sellLine: 'Crack an escape room, taco break, then dance the decades.',
+    itineraryLabel: 'Escape → Tacos → Dancing',
+    priceRange: '$60–$120 for two',
+    duration: '≈ 4 hrs',
+    stops: [
+      stop('The Great Escape Room DC', 'Escape', 'ChIJY2-6cTW3t4kRUvxabWiY3xA'),
+      stop('Oyamel', 'Tacos', 'ChIJvfdr_Y-3t4kRN-8elI5NN6g'),
+      stop('Decades DC', 'Dancing', 'ChIJKbZ-nLi3t4kROnEjIdE5cBs'),
+    ],
+  },
+  {
+    id: 'group-fun',
+    intentTitle: 'A Group Night Out',
+    sellLine: 'Pisco sours, a team showdown, then a whiskey nightcap.',
+    itineraryLabel: 'Dinner → Game → Nightcap',
+    priceRange: 'from $50 each',
+    duration: '≈ 4 hrs',
+    stops: [
+      stop('Pisco y Nazca', 'Dinner', 'ChIJDc1TJ5q3t4kRQX8x6Pj4IlA'),
+      stop('The Great Escape Room DC', 'Game', 'ChIJY2-6cTW3t4kRUvxabWiY3xA'),
+      stop('Jack Rose Dining Saloon', 'Nightcap', 'ChIJK7e4Ldu3t4kRUg8DvM7SaSQ'),
+    ],
+  },
+  {
+    id: 'picnic-dates',
+    intentTitle: 'A Picnic by the Water',
+    sellLine: 'Fresh pastries, a riverside blanket, easy afternoon light.',
+    itineraryLabel: 'Grab → Picnic → Stroll',
     priceRange: '$20–$40 for two',
     duration: '≈ 2.5 hrs',
     stops: [
-      stop('Mita Ethio-Japanese Cafe', 'Sushi', 'ChIJtc1Uk9HJt4kRUt5SDQNksww'),
-      stop("Nino's Bakery", 'Pastries', 'ChIJg__WApW3t4kRq7CvEnSb9q0'),
+      stop('Fresh Baguette', 'Grab', 'ChIJ6c1FMXzJt4kRNC1-JFVJWjI'),
+      stop('Georgetown Waterfront Park', 'Picnic', 'ChIJ8Rr7HU-2t4kRSWaer7WwQag'),
       stop('Anacostia Park', 'Stroll', 'ChIJCVOosVS4t4kRc5PLjLRnQU4'),
+    ],
+  },
+  {
+    id: 'take-a-stroll',
+    intentTitle: 'Take a Stroll',
+    sellLine: 'Masterpieces, a riverside walk, and a warm cup to finish.',
+    itineraryLabel: 'Art → Walk → Coffee',
+    priceRange: 'Free–$20 for two',
+    duration: '≈ 3 hrs',
+    stops: [
+      stop('National Gallery of Art', 'Art', 'ChIJSYxSO5u3t4kRm4eyKw_Y7Kg'),
+      stop('Georgetown Waterfront Park', 'Walk', 'ChIJ8Rr7HU-2t4kRSWaer7WwQag'),
+      stop('Dolan Coffee', 'Coffee', 'ChIJQWdBmMnJt4kR_7W5-BvkQso'),
     ],
   },
 ] as const

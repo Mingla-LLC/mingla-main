@@ -398,3 +398,64 @@ Read on entry. No BLOCK/WARN entry targets ORCH-0998 or this skill. COMMS-0003 (
 
 ## Discoveries for orchestrator (Event Card v1)
 None. The event card is shell-compatible (260×360) with the auto-rotating hero deck if a future ORCH wants events mixed in (§E.11.9); per spec it sits on its own preview row this run, not in the locked hero deck.
+
+---
+
+# REAL ASSEMBLY — interleaved data-driven hero deck (2026-05-29)
+
+The hero deck stops being single-place-only. It becomes ONE auto-rotating 260×360 stack that interleaves all three card types in the repeating order **1 single place → 1 intent → 1 event**, looping forever. DC only, marketing-only.
+
+## What changed for end users (real assembly)
+The homepage hero now cycles a mix: a real DC place card, then a multi-stop Mingla plan card, then a "what's on" event card — over and over. The single-place data grew from 5 to **10 top-scored DC places (one per Mingla category)**; the intent data grew from 4 to **6 plans (one per intent)**; events unchanged (6). Auto-rotate (4200ms), hover-pause, tab-hidden pause, and reduced-motion all preserved. Same 260×360 shell for every card, so the hero stays one screen tall at 768px (no page scroll).
+
+## Files changed (Old → New receipts)
+
+### `mingla-marketing/lib/dc-showcase-places.ts`
+**Before:** 5 DC places (L'Ardente, OKPB, President Lincoln's Cottage, Anacostia Park, Del Ray Café). Null price rendered "Free".
+**Now:** 10 places, exactly one per Mingla category (Nature & Views → Anacostia Park, Icebreakers → National Gallery of Art, Drinks & Music → Jack Rose, Brunch → Pisco y Nazca, Casual → Oyamel, Upscale → KYOJIN Sushi, Movies → Regal Hyattsville Royale, Theatre → Kennedy Center, Creative & Arts → NMAAHC, Play → The Great Escape Room DC). Real names/ratings/review-counts/photo keys verbatim. **Price-honesty rule applied:** genuinely-free places (parks + free-admission museums) show "Free"; ticketed places with no price data set `priceRange: null` and the card now renders the name ONLY (no fake "Free"). `recommendCount` values are decorative (flagged in-file).
+**Why:** dispatch §1.
+**Lines:** ~130 (array replaced).
+
+### `mingla-marketing/lib/dc-intent-plans.ts`
+**Before:** 4 plans (romantic-evening, group-night-out, culture-crawl, slow-first-date).
+**Now:** 6 plans, one per intent: A Romantic Evening (romantic), A Slow First Date (first-date), An Adventurous Afternoon (adventurous), A Group Night Out (group-fun), A Picnic by the Water (picnic-dates), Take a Stroll (take-a-stroll). New verbatim sell-lines, itinerary labels, price ranges, durations, and real stop place-keys (incl. new keys: Decades DC, Fresh Baguette, KYOJIN, Great Escape Room, etc.). `IntentPlan`/`IntentStop` shapes unchanged → `/intent-preview` keeps working.
+**Why:** dispatch §2.
+**Lines:** ~75 (array replaced).
+
+### `mingla-marketing/components/sections/explorer-home/hero-place-deck.tsx`
+**Before:** `HeroPlaceDeck` rotated only `DC_SHOWCASE_PLACES`; the single-place render lived inline inside `DeckCard`, which also owned the stack motion wrapper + border/shadow.
+**Now:**
+1. **Extracted `PlaceCard`** (exported) — the single-place card as a self-contained 260×360 shell (own border/shadow/radius), pixel-matching the `IntentCard`/`EventCard` signature `{ place, isFront, eager }`. Honest price: when `priceRange === null` the price chip is omitted entirely (no fake "Free").
+2. **`buildInterleavedSlots()`** — module-load round-robin producing the slot sequence `single[i] → intent[i % 6] → event[i % 6]` for `i` in 0..9 (10 singles). Shorter intent/event lists WRAP modulo so the strict single→intent→event cadence holds across all 10 singles. Deterministic (no `Math.random`) → no hydration mismatch. Slot keys are round-prefixed (`p{i}-`, `i{i}-`, `e{i}-`) so AnimatePresence never sees a duplicate key when a list wraps onto a second pass. 30 slots total.
+3. **`StackCell`** — the stack positioning wrapper (scale/y/zIndex/enter/exit/peeked-dim), now type-agnostic; renders `PlaceCard` | `IntentCard` | `EventCard` by `slot.kind`. The 260×360 shell moved INTO each card component so all three are pixel-identical in the stack.
+4. `HeroPlaceDeck` rotates `DECK_SLOTS` (was `DC_SHOWCASE_PLACES`); mounts the first 3 slots (`order.slice(0,3)`) — mechanically the same 3-card stack as before. Auto-rotate/hover-pause/visibilitychange/reduced-motion preserved verbatim.
+**Why:** dispatch §4.
+**Lines:** ~470 (rewritten).
+
+### `mingla-marketing/components/sections/explorer-home/hero.tsx`
+**No change.** Still imports + mounts `<HeroPlaceDeck />` at L614 inside the unchanged one-screen wrapper. Because the deck is interleaved under the same export name and same 260×360 shell, the headline, chip bar, and no-scroll layout are untouched.
+
+### `intent-card.tsx` / `event-card.tsx` / `dc-showcase-events.ts`
+**No change.** Reused as-is. `IntentPlan`/`ShowcaseEvent` type shapes unchanged → `/intent-preview` route keeps working with no import edits.
+
+## Interleave approach
+Round-robin built once at module load: for each of the 10 single places `i`, emit `single[i]`, then `intent[i % 6]`, then `event[i % 6]`. The 6-long intent + event lists wrap (modulo) onto a second partial pass so every one of the 10 singles is followed by an intent then an event — the strict single→intent→event pattern never breaks. The 30-slot array is rotated by the existing auto-rotate interval (shift front to back); the deck mounts only the front 3 slots, so it cycles identically to the original single-only stack and loops forever.
+
+## No-scroll conclusion (768px hero)
+PRESERVED. All three card types are locked at `CARD_H = 360` / `CARD_W = 260` (verified by grep across all three card files). `StackCell` is a pure positioning wrapper at 260×360; the deck container (`CARD_W + 92` × `CARD_H + 62`) and the `hero.tsx` deck-mount wrapper (L605-615, `scale(clamp(0.82…1.08))`) are unchanged. Only 3 cards mount at once. No new vertical footprint was introduced, so the v2.1-locked one-screen math at 768px tall holds exactly as before.
+
+## Verification (real assembly)
+- `npx tsc --noEmit` (mingla-marketing): **clean, exit 0**.
+- Dev server `:3008` (running from this worktree, hot-reloaded — not restarted): dev log shows `✓ Compiled / in 2.6s (1231 modules)`, `GET / 200`. No errors/warnings.
+- `curl http://localhost:3008/` → **HTTP 200**. Initial SSR HTML contains the expected front-3 interleave: single place "Anacostia Park" (×1), intent "A Romantic Evening" (×1), event "On Mingla" + "Get tickets" (×1). Later-slot cards (Jack Rose, KYOJIN) correctly appear only after rotation, not in initial HTML.
+- `curl http://localhost:3008/intent-preview` → **HTTP 200**; renders all 6 new intents + new place stops (KYOJIN, Great Escape Room) + events.
+- Photo-URL spot check (`curl -I`): all **12 distinct new place photo keys returned HTTP 200** — Anacostia Park, National Gallery, Jack Rose, Pisco y Nazca, Oyamel, KYOJIN, Regal Hyattsville, Kennedy Center, NMAAHC, Great Escape Room, Decades DC, Fresh Baguette. **Zero 404s.**
+
+## Comms ledger (real assembly)
+Read on entry. No BLOCK/WARN entry targets ORCH-0998 or this skill. COMMS-0003 (cite external-API docs inline) N/A — no live external API call added; all data is static.
+
+## Regression test (real assembly)
+**BACKFILL-EXEMPT** — marketing-only presentational interleave of hardcoded test data; zero product-logic, no shared state, no network mutation, noindex preview route. Verification is the served-HTML + tsc + photo-URL gates above.
+
+## Discoveries for orchestrator (real assembly)
+None. The interleave is deterministic and self-contained to `mingla-marketing/`. No other surface touched.

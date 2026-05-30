@@ -7,13 +7,26 @@ import {
   placePhotoUrl,
   type ShowcasePlace,
 } from '@/lib/dc-showcase-places'
+import { DC_INTENT_PLANS, type IntentPlan } from '@/lib/dc-intent-plans'
+import { DC_SHOWCASE_EVENTS, type ShowcaseEvent } from '@/lib/dc-showcase-events'
+import { IntentCard } from '@/components/sections/explorer-home/intent-card'
+import { EventCard } from '@/components/sections/explorer-home/event-card'
 
 // ---------------------------------------------------------------
 // Hero Place Deck — ORCH-0998 [marketing real place cards — DC test run]
 //
-// Auto-rotating 3-card stack showing 5 REAL Washington-DC places, built
-// per DESIGN_ORCH-0998_MARKETING_PLACE_CARD_DC.md. Replaces the decorative
-// 22-SVG HeroVibeDeck at the same hero mount slot (hero.tsx ~L614).
+// REAL ASSEMBLY: a single auto-rotating 260×360 stack that INTERLEAVES all
+// three card types in the repeating order
+//   1 single place → 1 intent → 1 event → (loop)
+// across 10 single places, 6 intents, and 6 events (the shorter lists WRAP
+// modulo so the strict single→intent→event cadence holds across all 10
+// singles). All three card types are the same 260×360 shell, so they cycle in
+// one stack mechanically identically to the original single-place deck.
+//
+// Card shells:
+//  - single place → <PlaceCard> (extracted below; previously inline DeckCard).
+//  - intent       → <IntentCard> (intent-card.tsx, reused unchanged).
+//  - event        → <EventCard>  (event-card.tsx, reused unchanged).
 //
 // Honesty rules (spec §4): NO distance, NO travel-time, NO "X min away".
 // Those are personalized live readings that only mean something for a
@@ -49,6 +62,43 @@ const CARD_W = 260
 // (−1.7px). Do NOT round up past 360 or the one-screen hero reintroduces page scroll.
 const CARD_H = 360
 
+// ---------------------------------------------------------------
+// Interleaved deck slots. Each slot is one card in the rotation, tagged by
+// kind so the stack cell can render the right component. Built once at module
+// load by round-robin: single[0], intent[0], event[0], single[1], intent[1],
+// event[1], … When a list is shorter than the singles list (6 intents,
+// 6 events vs 10 singles), it WRAPS modulo so every single is followed by an
+// intent then an event and the cadence never breaks. Deterministic ordering →
+// no hydration mismatch.
+// ---------------------------------------------------------------
+type DeckSlot =
+  | { kind: 'place'; key: string; place: ShowcasePlace }
+  | { kind: 'intent'; key: string; plan: IntentPlan }
+  | { kind: 'event'; key: string; event: ShowcaseEvent }
+
+function buildInterleavedSlots(): DeckSlot[] {
+  const slots: DeckSlot[] = []
+  const nSingles = DC_SHOWCASE_PLACES.length
+  for (let i = 0; i < nSingles; i++) {
+    const place = DC_SHOWCASE_PLACES[i] as ShowcasePlace
+    const plan = DC_INTENT_PLANS[i % DC_INTENT_PLANS.length] as IntentPlan
+    const event = DC_SHOWCASE_EVENTS[i % DC_SHOWCASE_EVENTS.length] as ShowcaseEvent
+    // Keys are made unique across the (possibly wrapped) sequence by prefixing
+    // the round index, so AnimatePresence never sees a duplicate key when a
+    // shorter list wraps onto a second pass.
+    slots.push({ kind: 'place', key: `p${i}-${place.placeKey}`, place })
+    slots.push({ kind: 'intent', key: `i${i}-${plan.id}`, plan })
+    slots.push({
+      kind: 'event',
+      key: `e${i}-${event.source}-${event.title}`,
+      event,
+    })
+  }
+  return slots
+}
+
+const DECK_SLOTS: readonly DeckSlot[] = buildInterleavedSlots()
+
 // Category → editorial sell-line fallback (spec §5). Hardcoded for this
 // test run; deterministic, never renders a blank or a raw category slug.
 function fallbackSellLine(category: string): string {
@@ -70,12 +120,12 @@ function sellLineFor(place: ShowcasePlace): string {
 export function HeroPlaceDeck() {
   const reduced = useMinglaReducedMotion()
   const [order, setOrder] = useState<number[]>(() =>
-    DC_SHOWCASE_PLACES.map((_, i) => i),
+    DECK_SLOTS.map((_, i) => i),
   )
   const [paused, setPaused] = useState(false)
 
   useEffect(() => {
-    if (reduced || paused || DC_SHOWCASE_PLACES.length <= 1) return
+    if (reduced || paused || DECK_SLOTS.length <= 1) return
     const id = window.setInterval(() => {
       setOrder((prev) =>
         prev.length === 0 ? prev : [...prev.slice(1), prev[0] as number],
@@ -97,22 +147,17 @@ export function HeroPlaceDeck() {
   return (
     <div
       role="group"
-      aria-label="Real places on Mingla, from Washington DC"
+      aria-label="Real places, plans, and events on Mingla, from Washington DC"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
       style={{ width: CARD_W + 92, height: CARD_H + 62 }}
       className="relative overflow-hidden"
     >
       <AnimatePresence initial={false}>
-        {visible.map((placeIdx, position) => {
-          const place = DC_SHOWCASE_PLACES[placeIdx] as ShowcasePlace
+        {visible.map((slotIdx, position) => {
+          const slot = DECK_SLOTS[slotIdx] as DeckSlot
           return (
-            <DeckCard
-              key={place.placeKey}
-              place={place}
-              position={position}
-              reduced={reduced}
-            />
+            <StackCell key={slot.key} slot={slot} position={position} reduced={reduced} />
           )
         })}
       </AnimatePresence>
@@ -120,34 +165,29 @@ export function HeroPlaceDeck() {
   )
 }
 
-interface DeckCardProps {
-  place: ShowcasePlace
+// ---------------------------------------------------------------
+// StackCell — the positioning wrapper for ONE card in the stack. It carries
+// the stack transform (scale / y / zIndex), the enter/exit animation, and the
+// peeked-card dim filter, then renders the right card component for the slot
+// kind. The 260×360 shell + border + shadow live INSIDE each card component
+// (PlaceCard / IntentCard / EventCard) so all three are pixel-identical in the
+// stack — mechanically the same as the original single-place deck.
+// ---------------------------------------------------------------
+interface StackCellProps {
+  slot: DeckSlot
   position: number
   reduced: boolean
 }
 
-function DeckCard({ place, position, reduced }: DeckCardProps) {
+function StackCell({ slot, position, reduced }: StackCellProps) {
   const { scale, y } = positionStyles[position] ?? positionStyles[2]
   const zIndex = 3 - position
   const isFront = position === 0
   const exit = isFront ? exitAnim : undefined
   const initial = position === 2 ? enterAnim : undefined
 
-  const sellLine = useMemo(() => sellLineFor(place), [place])
-  // v2.6 aria: drop the old rating/review clause; honest to AT (no fake
-  // recommend count). Price reads "Free" when there is no real range.
-  const priceLabel = place.priceRange ?? 'Free'
-
   return (
     <motion.div
-      // Front card carries the meaning; peeked cards are hidden from AT.
-      role={isFront ? 'img' : undefined}
-      aria-label={
-        isFront
-          ? `${place.name}. ${sellLine}. ${priceLabel}.`
-          : undefined
-      }
-      aria-hidden={isFront ? undefined : true}
       initial={reduced ? false : initial}
       animate={{ y, scale, x: 0 }}
       exit={exit}
@@ -159,22 +199,75 @@ function DeckCard({ place, position, reduced }: DeckCardProps) {
         bottom: 18,
         width: CARD_W,
         height: CARD_H,
+        // Peeked cards dim slightly so the front card reads as the hero. The
+        // border/shadow/radius are owned by the card component itself.
+        filter: isFront ? undefined : 'brightness(0.82)',
+        cursor: 'default',
+      }}
+      className="group absolute will-change-transform [backface-visibility:hidden] [transform-style:preserve-3d] hover:[transform:translateY(-4px)]"
+    >
+      {slot.kind === 'place' ? (
+        <PlaceCard place={slot.place} isFront={isFront} eager={isFront} />
+      ) : slot.kind === 'intent' ? (
+        <IntentCard plan={slot.plan} isFront={isFront} eager={isFront} />
+      ) : (
+        <EventCard event={slot.event} isFront={isFront} eager={isFront} />
+      )}
+    </motion.div>
+  )
+}
+
+// ---------------------------------------------------------------
+// PlaceCard — the single-place card, extracted from the old inline DeckCard so
+// the interleaved deck can render it as a sibling of IntentCard / EventCard.
+// Self-contained 260×360 shell: --radius-2xl, border/elevation tokens, frosted
+// white content block, #1a1a2e photo fill, 404 fallback. Pixel-identical shell
+// to the two siblings (chip recipe is the v3 ink→white→orange cadence).
+// ---------------------------------------------------------------
+interface PlaceCardProps {
+  place: ShowcasePlace
+  /** Front card carries meaning to AT; peeked/decorative cards are aria-hidden. */
+  isFront?: boolean
+  /** Eager-load the photo for the front card; lazy for peeked. */
+  eager?: boolean
+}
+
+export function PlaceCard({
+  place,
+  isFront = true,
+  eager = false,
+}: PlaceCardProps) {
+  const sellLine = useMemo(() => sellLineFor(place), [place])
+  // v2.6 aria: drop the old rating/review clause; honest to AT (no fake
+  // recommend count). Price reads "Free" when there is no real range.
+  const priceLabel = place.priceRange ?? 'Free'
+
+  return (
+    <div
+      // Front card carries the meaning; peeked cards are hidden from AT.
+      role={isFront ? 'img' : undefined}
+      aria-label={
+        isFront ? `${place.name}. ${sellLine}. ${priceLabel}.` : undefined
+      }
+      aria-hidden={isFront ? undefined : true}
+      style={{
+        width: CARD_W,
+        height: CARD_H,
         borderRadius: 'var(--radius-2xl)',
         border: '1px solid rgba(255,255,255,0.08)',
         boxShadow: isFront
           ? '0 18px 40px -12px rgba(0,0,0,0.55)'
           : '0 8px 24px -8px rgba(0,0,0,0.45)',
-        filter: isFront ? undefined : 'brightness(0.82)',
         cursor: 'default',
       }}
-      className="group absolute flex flex-col overflow-hidden bg-[#1a1a2e] will-change-transform [backface-visibility:hidden] [transform-style:preserve-3d] hover:[transform:translateY(-4px)]"
+      className="flex flex-col overflow-hidden bg-[#1a1a2e]"
     >
       {/* Photo zone — 58% (v2.7). Trimmed from 64% to give the chip stack
           (name + 2-line description + price + bottom social row) room to fit
           inside CARD_H=360 with no scroll. The over-photo sell-line, price pill
           and "5 photos" pill were removed in v2; only a faint seam scrim remains. */}
       <div className="relative h-[58%] w-full overflow-hidden bg-[#1a1a2e]">
-        <PhotoOrFallback place={place} eager={isFront} />
+        <PhotoOrFallback place={place} eager={eager} />
 
         {/* Seam scrim — lower 38% (v2.2: reduced from 52%, no text sits on it now) */}
         <div
@@ -204,15 +297,11 @@ function DeckCard({ place, position, reduced }: DeckCardProps) {
           padding: '10px 12px',
         }}
       >
-        {/* Category eyebrow removed (operator v2.7: the category labels go away).
-            The card no longer shows the category. */}
-
         {/* Name + price → ONE ink-black chip on a single line (v3.2). Name
             flexes left and truncates; price hugs the right and never wraps.
-            Range-only on this line (· per person dropped per v3.2 — a range on
-            a place card reads as per-person by convention). White text on ink
-            = 18.9:1 (AAA). "Free" renders in WHITE here, not orange — orange is
-            reserved for the locals pill (v3.1). */}
+            Range-only on this line. White text on ink = 18.9:1 (AAA). "Free"
+            renders in WHITE here, not orange — orange is reserved for the
+            locals pill (v3.1). */}
         <div
           className="flex max-w-full items-baseline overflow-hidden"
           style={{
@@ -238,28 +327,30 @@ function DeckCard({ place, position, reduced }: DeckCardProps) {
           >
             {place.name}
           </span>
-          <span
-            className="font-sans"
-            style={{
-              flex: '0 0 auto',
-              whiteSpace: 'nowrap',
-              fontSize: '12px',
-              fontWeight: 700,
-              color: '#ffffff',
-            }}
-          >
-            {place.priceRange ?? 'Free'}
-          </span>
+          {/* Price slot — shown ONLY when a real price exists. Honest: a
+              ticketed place with no price data (priceRange === null) shows the
+              name only and NEVER a fake "Free" (ORCH-0998 real-assembly rule). */}
+          {place.priceRange ? (
+            <span
+              className="font-sans"
+              style={{
+                flex: '0 0 auto',
+                whiteSpace: 'nowrap',
+                fontSize: '12px',
+                fontWeight: 700,
+                color: '#ffffff',
+              }}
+            >
+              {place.priceRange}
+            </span>
+          ) : null}
         </div>
 
         {/* description chip → solid white with a subtle hairline rim (v3.5),
             ink text at 78% (9.8:1 AAA), left-aligned. The chip GROWS to fill the
             space between the name+price chip and the locals pill (flex: 1), and
             carries an equal vertical margin top + bottom (8px each) so the gap
-            ABOVE the description equals the gap BELOW it. Text is vertically
-            centered inside the grown chip; descriptions are authored to
-            DESCRIPTION_MAX_CHARS so 2 tidy lines always fit (no clamp needed,
-            overflow:hidden on the chip + the content block guards any edge case). */}
+            ABOVE the description equals the gap BELOW it. */}
         <div
           className="flex w-full max-w-full flex-col justify-center font-sans"
           style={{
@@ -284,10 +375,7 @@ function DeckCard({ place, position, reduced }: DeckCardProps) {
 
         {/* Locals row → full-width orange pill (v3.5), sits at the block bottom
             because the description chip above grows to fill (flex:1) with equal
-            8px margins. Avatars left + label left-packed + flex spacer. Label is
-            WHITE + bold ≥14px (v3.5): white-on-orange is ~4.2:1 which passes
-            WCAG AA for LARGE text (≥14px bold needs only ≥3:1), so the bold 14px
-            white label is accessible. flex:0 0 auto so the pill never shrinks. */}
+            8px margins. */}
         <div
           className="flex w-full items-center overflow-hidden"
           style={{
@@ -302,7 +390,7 @@ function DeckCard({ place, position, reduced }: DeckCardProps) {
           <RecommendStack count={place.recommendCount} />
         </div>
       </div>
-    </motion.div>
+    </div>
   )
 }
 
