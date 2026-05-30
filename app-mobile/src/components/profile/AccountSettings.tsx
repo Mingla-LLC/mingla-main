@@ -4,20 +4,25 @@ import {
   View,
   TouchableOpacity,
   StyleSheet,
-  ScrollView,
   ActivityIndicator,
-  Modal,
-  Pressable,
   Alert,
   Platform,
   AppState,
   LayoutAnimation,
   UIManager,
-  useWindowDimensions,
   Linking,
 } from "react-native";
 import type { AppStateStatus } from "react-native";
 import { Icon } from "../ui/Icon";
+// META-ORCH-0991 Wave C — AccountSettings nested-modal chain → BaseBottomSheet.
+// Root settings sheet + 3 nested pickers (gender/language/birthday) are
+// sibling swipe-down sheets (one-sheet-at-a-time, ORCH-0828 sibling-root
+// pattern); the delete-account confirm is a NON-swipe center-dialog
+// (operator destructive-confirm rule, playbook §1). The pickers' inner
+// vertical scrollers use BottomSheetScrollView so they coordinate with the
+// sheet pan instead of fighting it. See the implementation report for the
+// full nesting rationale.
+import { BaseBottomSheet, BottomSheetScrollView } from "../ui/BaseBottomSheet";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { supabase } from "../../services/supabase";
 import { extractFunctionError } from "../../utils/edgeFunctionError";
@@ -45,6 +50,16 @@ import { persistLanguage } from '../../i18n'
 
 const VISIBILITY_MODES = ["friends", "public", "private"] as const;
 // Visibility labels/descriptions are now handled via i18n keys in the component
+
+// META-ORCH-0991 Wave C — fixed snap heights (playbook §2 off-screen lesson:
+// prefer explicit fixed snaps over enableDynamicSizing). Root settings was a
+// flex:1 sheet from windowHeight*0.08 ≈ 92% (BillingSheet precedent). Pickers
+// translated from their prior heights: gender (short tap-list) → 45%; language
+// (was maxHeight 70%) → 70%; birthday (3 column wheels + buttons) → 60%.
+const SETTINGS_SNAP: string[] = ["92%"];
+const GENDER_SNAP: string[] = ["45%"];
+const LANGUAGE_SNAP: string[] = ["70%"];
+const BIRTHDAY_SNAP: string[] = ["60%"];
 
 // --- Accordion section IDs ---
 type SectionId = "basics" | "privacy" | "notifications" | "quietHours" | "appInfo";
@@ -453,40 +468,78 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
     return lang ? `${lang.nativeName} (${lang.name})` : code;
   };
 
-  // --- Sheet sizing (matches BillingSheet pattern) ---
-  const { height: windowHeight } = useWindowDimensions();
-  const SHEET_TOP = Math.round(windowHeight * 0.08);
+  // --- Nested-sheet orchestration (one-sheet-at-a-time, playbook §3d option i) ──
+  // gorhom sheets do not portal/stack, and two `wrapInRNModal` sheets cannot
+  // co-present on iOS ("Attempt to present … which is already presenting …").
+  // So while ANY child surface (gender/language/birthday picker, country
+  // picker, or the delete center-dialog) is open, we DROP the root settings
+  // sheet's RN-Modal window — freeing the single presentation slot for the
+  // child. When the child dismisses (select-a-value → setShow*(false), or
+  // swipe/backdrop/back → its own onClose), `anyChildOpen` flips false and the
+  // root re-presents at its prior snap. This preserves the original UX (pick a
+  // value → return to settings with the value applied) with zero stuck/blank
+  // state. The root's onClose must NOT fire the parent `onClose` (which closes
+  // the whole settings flow) when the root is merely suppressed for a child —
+  // hence `handleRootClose` ignores the close while a child is open.
+  const anyChildOpen =
+    showGenderPicker ||
+    showLanguagePicker ||
+    showBirthdayPicker ||
+    showCountryPicker ||
+    showDeleteConfirmModal;
+
+  const handleRootClose = useCallback(() => {
+    // Suppressed-for-child close is internal, not a user dismiss — swallow it.
+    if (
+      showGenderPicker ||
+      showLanguagePicker ||
+      showBirthdayPicker ||
+      showCountryPicker ||
+      showDeleteConfirmModal
+    ) {
+      return;
+    }
+    onClose();
+  }, [
+    onClose,
+    showGenderPicker,
+    showLanguagePicker,
+    showBirthdayPicker,
+    showCountryPicker,
+    showDeleteConfirmModal,
+  ]);
 
   // --- Render ---
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.overlay}>
-        <Pressable style={{ height: SHEET_TOP }} onPress={onClose} />
-        <View style={styles.sheet}>
-          {/* Drag handle */}
-          <View style={styles.dragHandle} />
-
-          {/* Header */}
-          <View style={styles.header}>
-            <Text style={styles.headerTitle}>{t('settings:header')}</Text>
-            <TouchableOpacity
-              onPress={onClose}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              accessibilityLabel={t('settings:close_accessibility')}
-              accessibilityRole="button"
-            >
-              <Icon name="close" size={24} color="#6b7280" />
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView
-            style={styles.scrollContent}
-            contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 16) + 24 }}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-            bounces
-            overScrollMode="always"
+    <>
+    <BaseBottomSheet
+      visible={visible && !anyChildOpen}
+      onClose={handleRootClose}
+      snapPoints={SETTINGS_SNAP}
+      theme="light"
+      scrollMode="scroll"
+      wrapInRNModal
+      accessibilityLabel={t('settings:header')}
+      header={
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>{t('settings:header')}</Text>
+          <TouchableOpacity
+            onPress={onClose}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityLabel={t('settings:close_accessibility')}
+            accessibilityRole="button"
           >
+            <Icon name="close" size={24} color="#6b7280" />
+          </TouchableOpacity>
+        </View>
+      }
+      scrollProps={{
+        style: styles.scrollContent,
+        contentContainerStyle: { paddingBottom: Math.max(insets.bottom, 16) + 24 },
+        showsVerticalScrollIndicator: false,
+        keyboardShouldPersistTaps: "handled",
+      }}
+    >
             {/* Section 1: The Basics (accordion) */}
             <AccordionCard
               icon="person-circle"
@@ -795,82 +848,91 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
               </Text>
             </View>
 
-          </ScrollView>
-        </View>
-      </View>
+    </BaseBottomSheet>
 
-      {/* --- Picker modals --- */}
+      {/* --- Nested picker sheets (one-sheet-at-a-time, sibling roots) --- */}
+      {/* Each picker is its own wrapInRNModal BaseBottomSheet so it z-stacks
+          OVER the still-mounted root settings sheet; selecting a value closes
+          the picker (handleSelect* → setShow*(false)) and returns to settings
+          with the value applied — preserving the original UX. */}
 
       {/* Gender picker */}
-      <Modal visible={showGenderPicker} transparent animationType="slide" onRequestClose={() => setShowGenderPicker(false)}>
-        <Pressable style={styles.pickerOverlay} onPress={() => setShowGenderPicker(false)}>
-          <View style={styles.pickerSheet} onStartShouldSetResponder={() => true}>
-            <View style={styles.pickerHandle} />
-            <Text style={styles.pickerTitle}>{t('settings:pickers.gender_title')}</Text>
-            {GENDER_OPTIONS.map((option) => (
-              <TouchableOpacity
-                key={option}
-                style={styles.pickerOption}
-                onPress={() => handleSelectGender(option)}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.pickerOptionText, gender === option && styles.pickerOptionSelected]}>
-                  {GENDER_DISPLAY_LABELS[option]}
-                </Text>
-                {gender === option && <Icon name="checkmark" size={20} color="#eb7825" />}
-              </TouchableOpacity>
-            ))}
-            <View style={{ height: Math.max(insets.bottom, 16) }} />
-          </View>
-        </Pressable>
-      </Modal>
+      <BaseBottomSheet
+        visible={showGenderPicker}
+        onClose={() => setShowGenderPicker(false)}
+        snapPoints={GENDER_SNAP}
+        theme="light"
+        scrollMode="scroll"
+        wrapInRNModal
+        accessibilityLabel={t('settings:pickers.gender_title')}
+        header={<Text style={styles.pickerTitle}>{t('settings:pickers.gender_title')}</Text>}
+        scrollProps={{ contentContainerStyle: { paddingBottom: Math.max(insets.bottom, 16) } }}
+      >
+        {GENDER_OPTIONS.map((option) => (
+          <TouchableOpacity
+            key={option}
+            style={styles.pickerOption}
+            onPress={() => handleSelectGender(option)}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.pickerOptionText, gender === option && styles.pickerOptionSelected]}>
+              {GENDER_DISPLAY_LABELS[option]}
+            </Text>
+            {gender === option && <Icon name="checkmark" size={20} color="#eb7825" />}
+          </TouchableOpacity>
+        ))}
+      </BaseBottomSheet>
 
       {/* Language picker — uses canonical 29-language list */}
-      <Modal visible={showLanguagePicker} transparent animationType="slide" onRequestClose={() => setShowLanguagePicker(false)}>
-        <Pressable style={styles.pickerOverlay} onPress={() => setShowLanguagePicker(false)}>
-          <View style={[styles.pickerSheet, { maxHeight: '70%' }]} onStartShouldSetResponder={() => true}>
-            <View style={styles.pickerHandle} />
-            <Text style={styles.pickerTitle}>{t('settings:pickers.language_title')}</Text>
-            <ScrollView showsVerticalScrollIndicator keyboardShouldPersistTaps="handled">
-              {LANGUAGES.map((lang) => (
-                <TouchableOpacity
-                  key={lang.code}
-                  style={styles.pickerOption}
-                  onPress={() => handleSelectLanguage(lang.code)}
-                  activeOpacity={0.7}
-                >
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.pickerOptionText, preferredLanguage === lang.code && styles.pickerOptionSelected]}>
-                      {lang.nativeName}
-                    </Text>
-                    <Text style={{ fontSize: 13, color: '#9ca3af' }}>{lang.name}</Text>
-                  </View>
-                  {preferredLanguage === lang.code && <Icon name="checkmark" size={20} color="#eb7825" />}
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-            <View style={{ height: Math.max(insets.bottom, 16) }} />
-          </View>
-        </Pressable>
-      </Modal>
+      <BaseBottomSheet
+        visible={showLanguagePicker}
+        onClose={() => setShowLanguagePicker(false)}
+        snapPoints={LANGUAGE_SNAP}
+        theme="light"
+        scrollMode="scroll"
+        wrapInRNModal
+        accessibilityLabel={t('settings:pickers.language_title')}
+        header={<Text style={styles.pickerTitle}>{t('settings:pickers.language_title')}</Text>}
+        scrollProps={{ showsVerticalScrollIndicator: true, keyboardShouldPersistTaps: "handled", contentContainerStyle: { paddingBottom: Math.max(insets.bottom, 16) } }}
+      >
+        {LANGUAGES.map((lang) => (
+          <TouchableOpacity
+            key={lang.code}
+            style={styles.pickerOption}
+            onPress={() => handleSelectLanguage(lang.code)}
+            activeOpacity={0.7}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.pickerOptionText, preferredLanguage === lang.code && styles.pickerOptionSelected]}>
+                {lang.nativeName}
+              </Text>
+              <Text style={{ fontSize: 13, color: '#9ca3af' }}>{lang.name}</Text>
+            </View>
+            {preferredLanguage === lang.code && <Icon name="checkmark" size={20} color="#eb7825" />}
+          </TouchableOpacity>
+        ))}
+      </BaseBottomSheet>
 
       {/* Birthday picker */}
-      <Modal visible={showBirthdayPicker} transparent animationType="slide" onRequestClose={() => setShowBirthdayPicker(false)}>
-        <Pressable style={styles.pickerOverlay} onPress={() => setShowBirthdayPicker(false)}>
-          <View style={styles.pickerSheet} onStartShouldSetResponder={() => true}>
-            <View style={styles.pickerHandle} />
-            <Text style={styles.pickerTitle}>{t('settings:pickers.birthday_title')}</Text>
-            <BirthdayPicker
-              currentValue={birthday}
-              onSelect={handleSelectBirthday}
-              onCancel={() => setShowBirthdayPicker(false)}
-            />
-            <View style={{ height: Math.max(insets.bottom, 16) }} />
-          </View>
-        </Pressable>
-      </Modal>
+      <BaseBottomSheet
+        visible={showBirthdayPicker}
+        onClose={() => setShowBirthdayPicker(false)}
+        snapPoints={BIRTHDAY_SNAP}
+        theme="light"
+        scrollMode="view"
+        wrapInRNModal
+        accessibilityLabel={t('settings:pickers.birthday_title')}
+        header={<Text style={styles.pickerTitle}>{t('settings:pickers.birthday_title')}</Text>}
+      >
+        <BirthdayPicker
+          currentValue={birthday}
+          onSelect={handleSelectBirthday}
+          onCancel={() => setShowBirthdayPicker(false)}
+        />
+        <View style={{ height: Math.max(insets.bottom, 16) }} />
+      </BaseBottomSheet>
 
-      {/* Country Picker */}
+      {/* Country Picker (excluded sub-modal — own component, kept as sibling) */}
       <CountryPickerModal
         visible={showCountryPicker}
         selectedCode={profile?.country ?? "US"}
@@ -881,11 +943,18 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
         onClose={() => setShowCountryPicker(false)}
       />
 
-      {/* Delete Account Confirmation Modal */}
-      <Modal visible={showDeleteConfirmModal} transparent animationType="fade" onRequestClose={closeDeleteModal}>
-        <View style={styles.deleteOverlay}>
-          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={closeDeleteModal} />
-          <View style={styles.deleteModalContainer}>
+      {/* Delete Account Confirmation — NON-swipe center-dialog (destructive
+          confirm rule, playbook §1). Multi-step confirm/deleting/success/error
+          states render as the dialog children; the dialog supplies scrim + card
+          + radius + padding + shadow, so the consumer chrome is stripped. */}
+      <BaseBottomSheet
+        variant="center-dialog"
+        visible={showDeleteConfirmModal}
+        onClose={closeDeleteModal}
+        theme="light"
+        accessibilityLabel={t('settings:delete.confirm_title')}
+      >
+        <View style={styles.deleteDialogBody}>
             {deleteStep === "confirm" && (
               <>
                 <View style={styles.deleteIconCircle}>
@@ -940,10 +1009,9 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
                 </View>
               </>
             )}
-          </View>
         </View>
-      </Modal>
-    </Modal>
+      </BaseBottomSheet>
+    </>
   );
 }
 
@@ -1032,7 +1100,7 @@ function BirthdayPicker({ currentValue, onSelect, onCancel }: BirthdayPickerProp
       <View style={bdStyles.row}>
         <View style={bdStyles.column}>
           <Text style={bdStyles.colLabel}>{t('settings:pickers.birthday_month')}</Text>
-          <ScrollView style={bdStyles.scroll} showsVerticalScrollIndicator={false}>
+          <BottomSheetScrollView style={bdStyles.scroll} showsVerticalScrollIndicator={false}>
             {MONTHS.map((m, i) => (
               <TouchableOpacity
                 key={m}
@@ -1042,11 +1110,11 @@ function BirthdayPicker({ currentValue, onSelect, onCancel }: BirthdayPickerProp
                 <Text style={[bdStyles.optionText, month === i && bdStyles.optionTextSelected]}>{m}</Text>
               </TouchableOpacity>
             ))}
-          </ScrollView>
+          </BottomSheetScrollView>
         </View>
         <View style={bdStyles.column}>
           <Text style={bdStyles.colLabel}>{t('settings:pickers.birthday_day')}</Text>
-          <ScrollView style={bdStyles.scroll} showsVerticalScrollIndicator={false}>
+          <BottomSheetScrollView style={bdStyles.scroll} showsVerticalScrollIndicator={false}>
             {days.map((d) => (
               <TouchableOpacity
                 key={d}
@@ -1056,11 +1124,11 @@ function BirthdayPicker({ currentValue, onSelect, onCancel }: BirthdayPickerProp
                 <Text style={[bdStyles.optionText, day === d && bdStyles.optionTextSelected]}>{d}</Text>
               </TouchableOpacity>
             ))}
-          </ScrollView>
+          </BottomSheetScrollView>
         </View>
         <View style={bdStyles.column}>
           <Text style={bdStyles.colLabel}>{t('settings:pickers.birthday_year')}</Text>
-          <ScrollView style={bdStyles.scroll} showsVerticalScrollIndicator={false}>
+          <BottomSheetScrollView style={bdStyles.scroll} showsVerticalScrollIndicator={false}>
             {years.map((y) => (
               <TouchableOpacity
                 key={y}
@@ -1070,7 +1138,7 @@ function BirthdayPicker({ currentValue, onSelect, onCancel }: BirthdayPickerProp
                 <Text style={[bdStyles.optionText, year === y && bdStyles.optionTextSelected]}>{y}</Text>
               </TouchableOpacity>
             ))}
-          </ScrollView>
+          </BottomSheetScrollView>
         </View>
       </View>
       <View style={bdStyles.buttons}>
@@ -1105,26 +1173,6 @@ const bdStyles = StyleSheet.create({
 // --- Main styles ---
 
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-  },
-  sheet: {
-    flex: 1,
-    backgroundColor: "#f9fafb",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    overflow: "hidden",
-  },
-  dragHandle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "#d1d5db",
-    alignSelf: "center",
-    marginTop: 8,
-    marginBottom: 4,
-  },
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -1227,18 +1275,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 14,
   },
-  // Picker modals
-  pickerOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" },
-  pickerSheet: { backgroundColor: "#ffffff", borderTopLeftRadius: 24, borderTopRightRadius: 24 },
-  pickerHandle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "#d1d5db",
-    alignSelf: "center",
-    marginTop: 8,
-    marginBottom: 4,
-  },
+  // Picker sheets (chrome now from BaseBottomSheet — only title + options local)
   pickerTitle: {
     fontSize: 18,
     fontWeight: "700",
@@ -1256,20 +1293,10 @@ const styles = StyleSheet.create({
   },
   pickerOptionText: { fontSize: 16, fontWeight: "500", color: "#111827" },
   pickerOptionSelected: { color: "#eb7825", fontWeight: "600" },
-  // Delete confirmation modal
-  deleteOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 24,
-  },
-  deleteModalContainer: {
-    backgroundColor: "white",
-    borderRadius: 20,
-    padding: 24,
+  // Delete confirmation — center-dialog supplies scrim/card/radius/padding/
+  // shadow; this is just the inner content column (transparent passthrough).
+  deleteDialogBody: {
     width: "100%",
-    maxWidth: 400,
     alignItems: "center",
   },
   deleteIconCircle: {

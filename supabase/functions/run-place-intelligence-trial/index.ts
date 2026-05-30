@@ -547,7 +547,7 @@ serve(async (req: Request) => {
     if (!body.action) {
       return json({
         error:
-          "Missing 'action'. Use action='preview_run' | 'fetch_reviews' | 'compose_collage' | 'start_run' | 'run_trial_for_place' | 'run_status' | 'cancel_trial' | 'process_chunk' | 'list_active_runs' | 'city_coverage' | 'retry_failed_run'",
+          "Missing 'action'. Use action='preview_run' | 'fetch_reviews' | 'compose_collage' | 'start_run' | 'run_trial_for_place' | 'run_status' | 'cancel_trial' | 'process_chunk' | 'list_active_runs' | 'city_coverage' | 'retry_failed_run' | 'intelligence_coverage'",
       }, 400);
     }
 
@@ -612,6 +612,8 @@ serve(async (req: Request) => {
         return await handleListActiveRuns(supabaseAdmin);
       case "city_coverage":
         return await handleCityCoverage(supabaseAdmin, body);
+      case "intelligence_coverage":
+        return await handleIntelligenceCoverage(supabaseAdmin);
       case "retry_failed_run":
         return await handleRetryFailedRun(
           supabaseAdmin,
@@ -984,12 +986,16 @@ async function handleStartRun(
   }
 
   // ORCH-0737: mode field; default to 'sample' for backward compat
+  // ORCH-1008: 'remainder' added — evaluates servable places NOT yet completed
+  // for the city (NOT EXISTS subquery against place_intelligence_trial_runs
+  // status='completed'). sample_size NULL (mirrors full_city). Cost-guard
+  // tier matches full_city: confirm_high_cost=true required above $5.
   const mode = (body.mode as string) ?? "sample";
-  if (mode !== "sample" && mode !== "full_city") {
-    return json({ error: "mode must be 'sample' or 'full_city'" }, 400);
+  if (mode !== "sample" && mode !== "full_city" && mode !== "remainder") {
+    return json({ error: "mode must be 'sample' | 'full_city' | 'remainder'" }, 400);
   }
 
-  // sample_size only required for sample mode; full_city ignores it
+  // sample_size only required for sample mode; full_city + remainder ignore it
   let sampleSize: number | null = null;
   if (mode === "sample") {
     const sampleSizeRaw = body.sample_size ?? SAMPLE_SIZE_DEFAULT;
@@ -1032,18 +1038,39 @@ async function handleStartRun(
   }
 
   const totalServable = pool.length;
-  const effectiveCount = mode === "full_city"
-    ? totalServable
-    : Math.min(sampleSize as number, totalServable);
 
   // ORCH-0737: full_city mode takes ALL servable rows; sample mode uses stratified random.
+  // ORCH-1008: remainder mode subtracts places already completed for this city.
+  //   "Completed" = at least one row in place_intelligence_trial_runs with
+  //   status='completed' for the same city_id. Failed-only places remain
+  //   un-evaluated and ARE picked up by remainder (operator uses
+  //   retry_failed_run for source-lineage retries). See SPEC §5 invariant
+  //   I-PROPOSED-INTEL-REMAINDER-SKIPS-COMPLETED.
   let sampledIds: string[];
   if (mode === "full_city") {
     sampledIds = pool.map((p) => p.id);
+  } else if (mode === "remainder") {
+    const { data: completedRows, error: completedErr } = await db
+      .from("place_intelligence_trial_runs")
+      .select("place_pool_id")
+      .eq("city_id", cityId)
+      .eq("status", "completed");
+    if (completedErr) return json({ error: completedErr.message }, 500);
+    const evaluatedSet = new Set(
+      (completedRows ?? []).map((r) => r.place_pool_id as string),
+    );
+    sampledIds = pool.map((p) => p.id).filter((id) => !evaluatedSet.has(id));
+    if (sampledIds.length === 0) {
+      return json({
+        error: "no_remainder",
+        message:
+          `All ${pool.length} servable places in this city are already evaluated.`,
+      }, 400);
+    }
   } else {
     // Stratified random: top half by review_count + random fill of bottom half.
-    const topHalfCount = Math.ceil(effectiveCount / 2);
-    const bottomFillCount = effectiveCount - topHalfCount;
+    const topHalfCount = Math.ceil((sampleSize as number) / 2);
+    const bottomFillCount = (sampleSize as number) - topHalfCount;
     const topHalfIds = pool.slice(0, topHalfCount).map((p) => p.id);
     const remaining = pool.slice(topHalfCount).map((p) => p.id);
     // Fisher-Yates shuffle for the random-fill portion
@@ -1055,11 +1082,23 @@ async function handleStartRun(
     sampledIds = [...topHalfIds, ...bottomFillIds];
   }
 
+  // ORCH-1008: effectiveCount is the size of the actual enqueued set.
+  // sample: min(picker, servable); full_city: totalServable; remainder: sampledIds.length.
+  const effectiveCount = mode === "sample"
+    ? Math.min(sampleSize as number, totalServable)
+    : sampledIds.length;
+
+  // Gemini 2.5 Flash per-place cost. COMMS-0003: pricing reference
+  // https://ai.google.dev/pricing/gemini-2-5-flash (verified 2026-05-29).
+  // PER_PLACE_COST_USD = 0.0040 is the measured 32-anchor cost; update both
+  // here AND in PER_PLACE_COST_USD constant on line ~637 if Google moves the
+  // rate.
   const estCost = +(effectiveCount * PER_PLACE_COST_USD).toFixed(4);
 
   // ORCH-0737: cost guard. Sample mode: hard reject above $5.
-  // full_city mode: requires confirm_high_cost=true body field for cost > $5
-  // (admin UI surfaces a double-confirm dialog before sending this).
+  // full_city + remainder modes: require confirm_high_cost=true body field for
+  // cost > $5 (admin UI surfaces a double-confirm dialog before sending this).
+  // ORCH-1008: remainder mirrors full_city semantics.
   if (estCost > COST_GUARD_USD) {
     if (mode === "sample") {
       return json({
@@ -1068,13 +1107,17 @@ async function handleStartRun(
         } > $${COST_GUARD_USD}`,
       }, 400);
     }
-    if (mode === "full_city" && body.confirm_high_cost !== true) {
+    if (
+      (mode === "full_city" || mode === "remainder") &&
+      body.confirm_high_cost !== true
+    ) {
       return json({
         error: "cost_above_guard",
         estimated_cost_usd: estCost,
         cost_guard_usd: COST_GUARD_USD,
-        message:
-          `Full-city run exceeds $${COST_GUARD_USD} cost guard. Resubmit with confirm_high_cost=true to override.`,
+        message: `${
+          mode === "remainder" ? "Remainder" : "Full-city"
+        } run exceeds $${COST_GUARD_USD} cost guard. Resubmit with confirm_high_cost=true to override.`,
       }, 400);
     }
   }
@@ -1155,7 +1198,8 @@ async function handleStartRun(
   // ORCH-0737: full_city mode kicks the first chunk immediately via pg_net
   // (don't wait for next pg_cron tick which could be up to 60s away).
   // Sample mode skips this; browser drives the loop.
-  if (mode === "full_city" && serviceKey) {
+  // ORCH-1008: remainder mode is server-side durable like full_city — same kick.
+  if ((mode === "full_city" || mode === "remainder") && serviceKey) {
     try {
       const workerUrl = `${
         Deno.env.get("SUPABASE_URL") ?? ""
@@ -1192,8 +1236,8 @@ async function handleStartRun(
     provider: "gemini",
     model: GEMINI_MODEL_NAME_SHORT,
     // Browser-loop compat: only return anchors for sample mode (since browser
-    // still drives sample loop). Full-city mode returns empty array — browser
-    // becomes status viewer via polling.
+    // still drives sample loop). Full-city + remainder modes return empty
+    // array — browser becomes status viewer via polling.
     anchors: mode === "sample"
       ? sampledIds.map((ppId) => ({ place_pool_id: ppId, signal_id: null }))
       : [],
@@ -2146,6 +2190,287 @@ async function insertRetryChildrenInChunks(
     if (error) return error.message;
   }
   return null;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// intelligence_coverage — per-city coverage tiles for the Intelligence
+// Overview tab (ORCH-1008 + ORCH-1014 seed/refresh badge fields + ORCH-1015
+// Boundary/Details binary readiness flags).
+// Returns one row per seeding_city with ≥1 servable place_pool row; sorted
+// by servable_count desc.
+//
+// ORCH-1014: extended the per-row shape with 6 NEW fields for the Seed +
+// Refresh status badges (first_seeded_at, last_seeded_at, refresh_oldest_at,
+// refresh_newest_at, stale_refresh_count, missing_fields_count). Two
+// additional fetches (servable details + seed window) feed those aggregates
+// client-side via per-city Maps — no new SECURITY DEFINER RPC, no new
+// external API surface. Stale threshold = 90 days (operator-chosen
+// operational constant; no external doc).
+//
+// ORCH-1015: extends row shape with 3 MORE fields driving the 3-band
+// readiness ladder + smart-skip bulk launcher in IntelligenceOverviewTab:
+//   - regeocoded:           seeding_cities.coverage_radius_km = 0
+//   - refreshed_new_fields: MIN(last_detail_refresh) for is_servable >= 2026-03-19
+//   - needs_refresh_count:  COUNT(is_servable AND last_detail_refresh < 2026-03-19)
+// The cutover date is operator-locked to 2026-03-19 (commit 596b3c05c) when
+// the 48-field DETAIL_FIELD_MASK shipped in admin-refresh-places. Hardcoded
+// constant (NOT runtime-tunable) — if the field mask expands again, operator
+// opens a new ORCH to bump it. seeding_cities fetch extended to include
+// coverage_radius_km. All 6 ORCH-1014 fields PRESERVED (operator diagnostic).
+//
+// COMMS-0003 — external API parameters/pricing must cite provider docs URL.
+// This action is Supabase-only (no Gemini calls) but the file-level Gemini
+// 2.5 Flash pricing citation is preserved in the q1/q2 helpers above:
+//   https://ai.google.dev/pricing/gemini-2-5-flash (verified 2026-05-30).
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ORCH-1014 — operator-chosen stale threshold (90 days). Internal operational
+// constant, not an external API parameter. last_detail_refresh older than
+// this counts as "stale" in the Refresh status badge.
+const ORCH_1014_STALE_THRESHOLD_MS = 90 * 24 * 60 * 60 * 1000;
+
+// ORCH-1015 — operator-chosen cutover date for the 48-field DETAIL_FIELD_MASK.
+// Set 2026-03-19 (commit 596b3c05c "feat: admin stale-place lifecycle UI +
+// manual refresh edge function"). Anchored to the introduction of the full
+// field set the Gemini intelligence trial reads (editorialSummary,
+// generativeSummary, priceRange + 23 facet booleans). Hardcoded; if the field
+// mask ever expands again, operator opens a new ORCH to bump this value —
+// NOT runtime-tunable. See supabase/functions/admin-refresh-places/index.ts
+// L31-L143 (DETAIL_FIELD_MASK array).
+const ORCH_1015_REFRESH_CUTOVER_DATE_MS = Date.parse("2026-03-19T00:00:00Z");
+
+async function handleIntelligenceCoverage(
+  db: SupabaseClient,
+): Promise<Response> {
+  // 6 parallel queries → client-side join (Supabase MCP-friendly; avoids
+  // a new SECURITY DEFINER RPC for what is admin-only read state).
+  // ORCH-1014 added (5) servableDetailsRes + (6) seedWindowRes for the new
+  // Seed + Refresh status badges. The pre-existing (2) servableRes count
+  // remains as the canonical servable_count source; (5) only feeds the new
+  // refresh/missing aggregates so the count contract stays identical.
+  const [
+    citiesRes,
+    servableRes,
+    completedRes,
+    runsRes,
+    servableDetailsRes,
+    seedWindowRes,
+  ] = await Promise.all([
+    db
+      .from("seeding_cities")
+      // ORCH-1015 — coverage_radius_km drives the `regeocoded` flag (= 0 ⇔ city
+      // re-seeded under the 2026-04 bbox model; deprecated otherwise). See
+      // supabase/functions/admin-seed-places/index.ts L166-L168 BBOX MODEL note.
+      .select("id, name, country, coverage_radius_km")
+      .order("name"),
+    db
+      .from("place_pool")
+      .select("city_id")
+      .eq("is_servable", true)
+      .not("city_id", "is", null),
+    // ORCH-1013 Finding A — restrict evaluated set to places STILL servable.
+    // Without the !inner+is_servable filter, places that drifted out of the
+    // pool (e.g. re-classified non-servable post-evaluation) are counted as
+    // evaluated, falsely inflating coverage to 100% and zeroing remaining.
+    // Verified live 2026-05-30 against Cary: 6 drifted rows masked 1 truly
+    // un-evaluated servable place. See SPEC §3 Finding A.
+    // Gemini pricing ref (COMMS-0003): https://ai.google.dev/pricing/gemini-2-5-flash
+    db
+      .from("place_intelligence_trial_runs")
+      .select("city_id, place_pool_id, place_pool!inner(is_servable)")
+      .eq("status", "completed")
+      .eq("place_pool.is_servable", true)
+      .not("city_id", "is", null),
+    db
+      .from("place_intelligence_runs")
+      .select(
+        "city_id, id, completed_at, status, cost_so_far_usd, mode, started_at",
+      )
+      .in("status", ["complete", "failed", "cancelled"])
+      .order("completed_at", { ascending: false, nullsFirst: false }),
+    // ORCH-1014 NEW — servable details for the Refresh status badge
+    db
+      .from("place_pool")
+      .select("city_id, last_detail_refresh, generative_summary, editorial_summary, reviews")
+      .eq("is_servable", true)
+      .not("city_id", "is", null),
+    // ORCH-1014 NEW — seed window across ALL place_pool rows (servable + non)
+    db
+      .from("place_pool")
+      .select("city_id, created_at")
+      .not("city_id", "is", null),
+  ]);
+
+  if (citiesRes.error) return json({ error: citiesRes.error.message }, 500);
+  if (servableRes.error) return json({ error: servableRes.error.message }, 500);
+  if (completedRes.error) return json({ error: completedRes.error.message }, 500);
+  if (runsRes.error) return json({ error: runsRes.error.message }, 500);
+  if (servableDetailsRes.error) return json({ error: servableDetailsRes.error.message }, 500);
+  if (seedWindowRes.error) return json({ error: seedWindowRes.error.message }, 500);
+
+  const servableByCity = new Map<string, number>();
+  for (const row of servableRes.data || []) {
+    if (!row.city_id) continue;
+    servableByCity.set(row.city_id, (servableByCity.get(row.city_id) || 0) + 1);
+  }
+
+  // ORCH-1014 — refresh + missing-fields aggregates, all scoped to is_servable=true
+  const refreshOldestByCity = new Map<string, string>(); // ISO
+  const refreshNewestByCity = new Map<string, string>(); // ISO
+  const staleRefreshByCity = new Map<string, number>();
+  const missingFieldsByCity = new Map<string, number>();
+  // ORCH-1015 — per-city count of servable places with last_detail_refresh
+  // strictly before the 2026-03-19 cutover (NULL counts as needing refresh,
+  // mirroring the existing ORCH-1014 stale-NULL treatment).
+  const needsRefreshByCity = new Map<string, number>();
+  const nowMs = Date.now();
+  for (const row of servableDetailsRes.data || []) {
+    if (!row.city_id) continue;
+    const cityId = row.city_id as string;
+
+    // refresh window
+    const lastRefresh = (row.last_detail_refresh ?? null) as string | null;
+    if (lastRefresh) {
+      const cur = refreshOldestByCity.get(cityId);
+      if (!cur || lastRefresh < cur) refreshOldestByCity.set(cityId, lastRefresh);
+      const curN = refreshNewestByCity.get(cityId);
+      if (!curN || lastRefresh > curN) refreshNewestByCity.set(cityId, lastRefresh);
+      if (nowMs - Date.parse(lastRefresh) > ORCH_1014_STALE_THRESHOLD_MS) {
+        staleRefreshByCity.set(cityId, (staleRefreshByCity.get(cityId) || 0) + 1);
+      }
+      // ORCH-1015 — below-cutover places need refresh under the 48-field mask
+      if (Date.parse(lastRefresh) < ORCH_1015_REFRESH_CUTOVER_DATE_MS) {
+        needsRefreshByCity.set(cityId, (needsRefreshByCity.get(cityId) || 0) + 1);
+      }
+    } else {
+      // Treat NULL last_detail_refresh as stale (never refreshed)
+      staleRefreshByCity.set(cityId, (staleRefreshByCity.get(cityId) || 0) + 1);
+      // ORCH-1015 — NULL also counts as needing refresh (never refreshed at all)
+      needsRefreshByCity.set(cityId, (needsRefreshByCity.get(cityId) || 0) + 1);
+    }
+
+    // missing fields
+    const reviewsLen = Array.isArray(row.reviews) ? row.reviews.length : 0;
+    const missingAny =
+      row.generative_summary == null ||
+      row.editorial_summary == null ||
+      row.reviews == null ||
+      reviewsLen === 0;
+    if (missingAny) {
+      missingFieldsByCity.set(cityId, (missingFieldsByCity.get(cityId) || 0) + 1);
+    }
+  }
+
+  // ORCH-1014 — seed window across ALL place_pool rows (servable + non-servable)
+  const firstSeededByCity = new Map<string, string>();
+  const lastSeededByCity = new Map<string, string>();
+  for (const row of seedWindowRes.data || []) {
+    if (!row.city_id || !row.created_at) continue;
+    const cityId = row.city_id as string;
+    const createdAt = row.created_at as string;
+    const f = firstSeededByCity.get(cityId);
+    if (!f || createdAt < f) firstSeededByCity.set(cityId, createdAt);
+    const l = lastSeededByCity.get(cityId);
+    if (!l || createdAt > l) lastSeededByCity.set(cityId, createdAt);
+  }
+
+  // distinct (city_id, place_pool_id) pairs across all completed runs
+  const evaluatedByCity = new Map<string, Set<string>>();
+  for (const row of completedRes.data || []) {
+    if (!row.city_id || !row.place_pool_id) continue;
+    let set = evaluatedByCity.get(row.city_id);
+    if (!set) {
+      set = new Set<string>();
+      evaluatedByCity.set(row.city_id, set);
+    }
+    set.add(row.place_pool_id as string);
+  }
+
+  // First terminal run per city (already sorted desc by completed_at)
+  const latestRunByCity = new Map<
+    string,
+    {
+      id: string;
+      completed_at: string | null;
+      status: string;
+      cost_so_far_usd: number | null;
+      mode: string;
+    }
+  >();
+  for (const row of runsRes.data || []) {
+    if (!row.city_id) continue;
+    if (latestRunByCity.has(row.city_id)) continue;
+    latestRunByCity.set(row.city_id, {
+      id: row.id as string,
+      completed_at: (row.completed_at ?? row.started_at ?? null) as string | null,
+      status: row.status as string,
+      cost_so_far_usd: (row.cost_so_far_usd ?? null) as number | null,
+      mode: row.mode as string,
+    });
+  }
+
+  const rows = (citiesRes.data || [])
+    .map((c) => {
+      const servable = servableByCity.get(c.id) || 0;
+      const evaluated = (evaluatedByCity.get(c.id) || new Set()).size;
+      const lastRun = latestRunByCity.get(c.id) || null;
+      const coveragePct = servable === 0
+        ? 0
+        : Math.min(100, +((evaluated / servable) * 100).toFixed(1));
+      return {
+        city_id: c.id,
+        city_name: c.name,
+        country: c.country,
+        servable_count: servable,
+        // ORCH-1013 Finding A — `evaluated` is now ≤ `servable` by construction
+        // (the JOIN at the completedRes query filters to currently-servable
+        // places only). Math.min/Math.max retained as defensive cosmetic safety
+        // for the 4 non-transactional parallel queries (race could theoretically
+        // see a 1-row skew). See SPEC §3 Finding A + §7 D9.
+        evaluated_count: Math.min(evaluated, servable),
+        remaining_count: Math.max(0, servable - evaluated),
+        coverage_pct: coveragePct,
+        last_run_id: lastRun?.id ?? null,
+        last_run_at: lastRun?.completed_at ?? null,
+        last_run_status: lastRun?.status ?? null,
+        last_run_cost_usd: lastRun?.cost_so_far_usd ?? null,
+        last_run_mode: lastRun?.mode ?? null,
+        // ORCH-1014 — Seed status badge inputs (all place_pool rows for this city)
+        // PRESERVED post-ORCH-1015 for operator diagnostic use.
+        first_seeded_at: firstSeededByCity.get(c.id) ?? null,
+        last_seeded_at: lastSeededByCity.get(c.id) ?? null,
+        // ORCH-1014 — Refresh status badge inputs (is_servable=true only)
+        // PRESERVED post-ORCH-1015 for operator diagnostic use.
+        refresh_oldest_at: refreshOldestByCity.get(c.id) ?? null,
+        refresh_newest_at: refreshNewestByCity.get(c.id) ?? null,
+        stale_refresh_count: staleRefreshByCity.get(c.id) ?? 0,
+        missing_fields_count: missingFieldsByCity.get(c.id) ?? 0,
+        // ORCH-1015 — Boundary + Details binary readiness flags driving the
+        // 3-band ladder + smart-skip bulk launcher.
+        // regeocoded: city has been re-seeded under the bbox model (the
+        //   coverage_radius_km column is zeroed when operator re-seeds; see
+        //   supabase/functions/admin-seed-places/index.ts L166-L168
+        //   "BBOX MODEL (2026-04): … coverage_radius_km is deprecated").
+        regeocoded: (c.coverage_radius_km ?? null) === 0,
+        // refreshed_new_fields: TRUE iff every servable place has been refreshed
+        //   under the 48-field DETAIL_FIELD_MASK (commit 596b3c05c, 2026-03-19).
+        //   Equivalent to needs_refresh_count === 0 with at least one servable
+        //   place — NULL last_detail_refresh counts as not-refreshed (mirrors
+        //   the stale-NULL treatment above + the operator's mental model of
+        //   "have ALL my places been refreshed under the new mask?"). When
+        //   servable_count is 0 the city is filtered out below entirely.
+        refreshed_new_fields:
+          servable > 0 && (needsRefreshByCity.get(c.id) ?? 0) === 0,
+        // needs_refresh_count: number of servable places with last_detail_refresh
+        //   strictly before the cutover (or NULL). Used by DetailsReadinessBadge
+        //   to size the warning ("⚠ 41 places need refresh").
+        needs_refresh_count: needsRefreshByCity.get(c.id) ?? 0,
+      };
+    })
+    .filter((r) => r.servable_count > 0)
+    .sort((a, b) => b.servable_count - a.servable_count);
+
+  return json({ rows });
 }
 
 async function handleRetryFailedRun(

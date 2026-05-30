@@ -21,6 +21,10 @@
       "entitlements": {
         "com.apple.developer.in-app-payments": [
           "merchant.com.sethogieva.minglabusiness"
+        ],
+        "aps-environment": "production",
+        "com.apple.security.application-groups": [
+          "group.com.sethogieva.minglabusiness.onesignal"
         ]
       },
       "associatedDomains": [
@@ -32,7 +36,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#050505",
+        "backgroundColor": "#eb7825",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
@@ -90,11 +94,11 @@
         "expo-splash-screen",
         {
           "image": "./assets/images/splash-icon.png",
-          "imageWidth": 200,
+          "imageWidth": 240,
           "resizeMode": "contain",
-          "backgroundColor": "#050505",
+          "backgroundColor": "#eb7825",
           "dark": {
-            "backgroundColor": "#050505"
+            "backgroundColor": "#eb7825"
           }
         }
       ],
@@ -122,7 +126,24 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "2d30bbc0-38d9-4a41-bf69-de89cbf6d142"
+        "projectId": "2d30bbc0-38d9-4a41-bf69-de89cbf6d142",
+        "build": {
+          "experimental": {
+            "ios": {
+              "appExtensions": [
+                {
+                  "targetName": "OneSignalNotificationServiceExtension",
+                  "bundleIdentifier": "com.sethogieva.minglabusiness.OneSignalNotificationServiceExtension",
+                  "entitlements": {
+                    "com.apple.security.application-groups": [
+                      "group.com.sethogieva.minglabusiness.onesignal"
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        }
       }
     },
     "updates": {

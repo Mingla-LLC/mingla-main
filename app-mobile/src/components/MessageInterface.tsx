@@ -60,6 +60,7 @@ import { useConversationParticipants } from "../hooks/useConversationParticipant
 import { useChatCardTagSource } from "../hooks/useChatCardTagSource";
 import { useChatInputController } from "../hooks/useChatInputController";
 import ExpandedCardModal from "./ExpandedCardModal";  // ORCH-0667
+import { BaseBottomSheet } from "./ui/BaseBottomSheet";
 import { ExpandedBusinessEventSheet } from "./expandedCard/ExpandedBusinessEventSheet";
 import type { ExpandedCardData } from "../types/expandedCardTypes";  // ORCH-0685
 import type { BusinessEventCard } from "../types/mergedDiscover";
@@ -80,6 +81,13 @@ const INPUT_CAPSULE_MARGIN_BOTTOM = 14;
 /** ORCH-0600: intrinsic height of the glass input capsule (padding + 40pt controls). */
 const INPUT_CAPSULE_HEIGHT = 56;
 /** Bottom read-only broadcast pill height; used to keep chat bubbles and sheets above it. */
+// META-ORCH-0991 Wave B Batch 5: fixed compact snap for the 1:1 chat
+// more-options action menu (was a flex-end RN <Modal>).
+const CHAT_MORE_OPTIONS_SNAP = ["45%"] as const;
+// META-ORCH-0991 Wave C: event-audience picker — was a dark flex-end RN <Modal>
+// (list maxHeight min(SCREEN_HEIGHT*0.52, 430) + header) → fixed ['70%'] snap.
+const EVENT_AUDIENCE_SNAP = ["70%"] as const;
+
 const BROADCAST_COMPOSER_NOTICE_HEIGHT = 56;
 const BROADCAST_COMPOSER_NOTICE_BOTTOM_GAP = 14;
 const BROADCAST_COMPOSER_NOTICE_CONTENT_GAP = 12;
@@ -2179,19 +2187,22 @@ export default function MessageInterface({
         />
       ) : null}
 
-      <Modal
+      {/* Event-audience picker — ORCH trip/event broadcast roster.
+          META-ORCH-0991 Wave C: was a dark flex-end RN <Modal> (scrim + card +
+          hand-rolled drag handle) → dark BaseBottomSheet, fixed ['70%'] snap,
+          wrapInRNModal (mounted in chat over the chat input). Header (icon +
+          title + subtitle) + scroll body (.map participant rows). Non-destructive
+          roster picker → full swipe-down sheet (operator rule §1). */}
+      <BaseBottomSheet
         visible={Boolean(isTripEventGroupChat && showEventAudienceSheet)}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowEventAudienceSheet(false)}
-      >
-        <TouchableOpacity
-          style={styles.eventAudienceOverlay}
-          activeOpacity={1}
-          onPress={() => setShowEventAudienceSheet(false)}
-        />
-        <View style={[styles.eventAudienceSheet, { paddingBottom: safeInsets.bottom + 24 }]}>
-          <View style={styles.chatSheetHandle} />
+        onClose={() => setShowEventAudienceSheet(false)}
+        snapPoints={EVENT_AUDIENCE_SNAP as unknown as string[]}
+        wrapInRNModal
+        theme="dark"
+        scrollMode="scroll"
+        backgroundStyle={styles.eventAudienceSheetBackground}
+        accessibilityLabel={eventAudienceTitle}
+        header={
           <View style={styles.eventAudienceSheetHeader}>
             <View style={styles.eventAudienceIconShell}>
               <Icon
@@ -2207,12 +2218,10 @@ export default function MessageInterface({
               </Text>
             </View>
           </View>
-
-          <ScrollView
-            style={styles.eventAudienceList}
-            contentContainerStyle={styles.eventAudienceListContent}
-            showsVerticalScrollIndicator={false}
-          >
+        }
+        scrollProps={{ contentContainerStyle: styles.eventAudienceListContent }}
+      >
+        <View style={styles.eventAudienceListInner}>
             {headerParticipants.length > 0 ? (
               headerParticipants.map((participant) => {
                 const participantName = getHeaderParticipantName(participant);
@@ -2261,9 +2270,8 @@ export default function MessageInterface({
                 </Text>
               </View>
             )}
-          </ScrollView>
         </View>
-      </Modal>
+      </BaseBottomSheet>
 
       {/* [ORCH-0696 F-13 lock-in] Shape 2a Modal hack deleted post-bottom-sheet
           conversion verified by operator live-fire on iOS + Android (2026-04-29).
@@ -2343,22 +2351,22 @@ export default function MessageInterface({
         onParticipantsChange={onGroupParticipantsChange}
       />
 
-      {/* More options bottom sheet — ORCH-0435 */}
-      <Modal
+      {/* More options bottom sheet — ORCH-0435.
+          META-ORCH-0991 Wave B Batch 5: was an RN <Modal> flex-end card → light
+          BaseBottomSheet, fixed ['45%'] snap (action-menu list, not a tall sheet),
+          wrapInRNModal (mounted in chat over the chat input). Header (contact name) +
+          action-item body. Destructive items (Remove / Block / Report) route to their
+          OWN confirms downstream, so this menu itself is a non-destructive picker. */}
+      <BaseBottomSheet
         visible={!isGroupChat && showMoreOptionsMenu}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowMoreOptionsMenu(false)}
+        onClose={() => setShowMoreOptionsMenu(false)}
+        snapPoints={CHAT_MORE_OPTIONS_SNAP as unknown as string[]}
+        wrapInRNModal
+        scrollMode="view"
+        accessibilityLabel={cleanName(friend.name)}
+        header={<Text style={styles.chatSheetTitle}>{cleanName(friend.name)}</Text>}
       >
-        <TouchableOpacity
-          style={styles.chatSheetOverlay}
-          activeOpacity={1}
-          onPress={() => setShowMoreOptionsMenu(false)}
-        />
-        <View style={styles.chatSheetContainer}>
-          <View style={styles.chatSheetHandle} />
-          <Text style={styles.chatSheetTitle}>{cleanName(friend.name)}</Text>
-
+        <View style={styles.chatSheetBody}>
           <TouchableOpacity
             style={styles.chatSheetItem}
             onPress={() => { setShowMoreOptionsMenu(false); onViewProfile?.(friend.id); }}
@@ -2415,7 +2423,7 @@ export default function MessageInterface({
             <Text style={styles.chatSheetTextDanger}>Report User</Text>
           </TouchableOpacity>
         </View>
-      </Modal>
+      </BaseBottomSheet>
 
       {/* Local Notifications */}
       {notifications.length > 0 && (
@@ -3474,24 +3482,24 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginLeft: "auto",
   },
-  eventAudienceOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.52)",
-  },
-  eventAudienceSheet: {
+  // BaseBottomSheet bespoke dark canvas (was eventAudienceSheet). Scrim + flex-end
+  // card + hand-rolled handle are now owned by the primitive.
+  eventAudienceSheetBackground: {
     backgroundColor: "#111418",
     borderTopLeftRadius: 26,
     borderTopRightRadius: 26,
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    borderWidth: 1,
-    borderBottomWidth: 0,
+    borderTopWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.10)",
+  },
+  eventAudienceListInner: {
+    paddingHorizontal: 20,
   },
   eventAudienceSheetHeader: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
+    paddingHorizontal: 20,
+    paddingTop: 4,
     paddingBottom: 18,
     borderBottomWidth: 1,
     borderBottomColor: "rgba(255, 255, 255, 0.08)",
@@ -3520,12 +3528,9 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "rgba(255, 255, 255, 0.58)",
   },
-  eventAudienceList: {
-    maxHeight: Math.min(SCREEN_HEIGHT * 0.52, 430),
-  },
   eventAudienceListContent: {
     paddingTop: 10,
-    paddingBottom: 4,
+    paddingBottom: 24,
   },
   eventAudienceRow: {
     flexDirection: "row",
@@ -3591,31 +3596,16 @@ const styles = StyleSheet.create({
     color: "rgba(255, 255, 255, 0.56)",
     textAlign: "center",
   },
-  chatSheetOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.3)",
-  },
-  chatSheetContainer: {
-    backgroundColor: "#ffffff",
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+  chatSheetBody: {
     paddingHorizontal: 20,
-    paddingTop: 12,
     paddingBottom: 40,
-  },
-  chatSheetHandle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "#d1d5db",
-    alignSelf: "center",
-    marginBottom: 16,
   },
   chatSheetTitle: {
     fontSize: 17,
     fontWeight: "700",
     color: "#111827",
     textAlign: "center",
+    paddingTop: 4,
     marginBottom: 16,
   },
   chatSheetItem: {

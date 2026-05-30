@@ -6,15 +6,19 @@ import {
   StyleSheet,
   Modal,
   Pressable,
-  FlatList,
   ActivityIndicator,
   Image,
   ScrollView,
   Alert,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Audio } from 'expo-av';
 import { Icon } from './ui/Icon';
+// META-ORCH-0991 Wave C: FeedbackHistorySheet root list converted from a
+// hand-rolled RN <Modal> + Pressable scrim sheet to the shared BaseBottomSheet
+// (swipe-down, flatlist body, stock gorhom motion). The nested fullscreen
+// screenshot viewer stays an RN <Modal> but is gated one-sheet-at-a-time
+// (playbook §13) so it never co-presents with the wrapInRNModal root sheet.
+import { BaseBottomSheet } from './ui/BaseBottomSheet';
 import { colors, spacing, radius, typography, fontWeights } from '../constants/designSystem';
 import { useFeedbackHistory, useDeleteFeedback } from '../hooks/useBetaFeedback';
 import { betaFeedbackService, type BetaFeedback, type FeedbackCategory } from '../services/betaFeedbackService';
@@ -211,9 +215,11 @@ function FeedbackItem({
 
 // ── Main Component ──────────────────────────────────────────────────────────
 
+// Was maxHeight:'75%' flex-end card → fixed ['75%'] snap (playbook §2).
+const FEEDBACK_HISTORY_SNAP = ['75%'] as const;
+
 export default function FeedbackHistorySheet({ visible, onClose }: FeedbackHistorySheetProps) {
   const { t } = useTranslation(['feedback', 'common']);
-  const insets = useSafeAreaInsets();
   const { data: history, isLoading, isError } = useFeedbackHistory();
   const [fullScreenImageUrl, setFullScreenImageUrl] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -241,57 +247,77 @@ export default function FeedbackHistorySheet({ visible, onClose }: FeedbackHisto
     </View>
   );
 
+  // Header slot: drag-handle area is owned by the gorhom handle; this is the
+  // title row + close X.
+  const headerNode = (
+    <View style={styles.header}>
+      <View style={styles.headerRow}>
+        <Text style={styles.headerTitle}>{t('feedback:history.header')}</Text>
+        <TouchableOpacity onPress={onClose} hitSlop={8}>
+          <Icon name="close" size={24} color={colors.gray[400]} />
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+
+  // playbook §13 one-sheet-at-a-time gate: while the fullscreen screenshot
+  // viewer (a sibling RN <Modal>) is open, drop the root sheet's RN-Modal
+  // window so two RN-Modal-backed surfaces never co-present on iOS. handleRootClose
+  // swallows the suppress-for-child close so it does not tear down the whole sheet.
+  const screenshotOpen = !!fullScreenImageUrl;
+  const handleRootClose = useCallback(() => {
+    if (screenshotOpen) return;
+    onClose();
+  }, [screenshotOpen, onClose]);
+
+  const loadingOrError = isLoading ? (
+    <View style={styles.emptyContainer}>
+      <ActivityIndicator size="large" color={colors.primary[500]} />
+    </View>
+  ) : isError ? (
+    <View style={styles.emptyContainer}>
+      <Icon name="alert-circle" size={40} color={colors.error[400]} />
+      <Text style={styles.emptyText}>{t('feedback:history.load_error')}</Text>
+    </View>
+  ) : null;
+
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable
-          style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}
-          onPress={() => {}}
-        >
-          {/* Header */}
-          <View style={styles.header}>
-            <View style={styles.handle} />
-            <View style={styles.headerRow}>
-              <Text style={styles.headerTitle}>{t('feedback:history.header')}</Text>
-              <TouchableOpacity onPress={onClose} hitSlop={8}>
-                <Icon name="close" size={24} color={colors.gray[400]} />
-              </TouchableOpacity>
-            </View>
-          </View>
+    <>
+      <BaseBottomSheet
+        visible={visible && !screenshotOpen}
+        onClose={handleRootClose}
+        snapPoints={FEEDBACK_HISTORY_SNAP as unknown as string[]}
+        wrapInRNModal
+        theme="light"
+        scrollMode={loadingOrError ? 'view' : 'flatlist'}
+        header={headerNode}
+        accessibilityLabel={t('feedback:history.header')}
+        scrollProps={
+          loadingOrError
+            ? undefined
+            : {
+                data: history ?? [],
+                keyExtractor: (item: BetaFeedback) => item.id,
+                renderItem: ({ item }: { item: BetaFeedback }) => (
+                  <FeedbackItem
+                    item={item}
+                    onViewScreenshot={(url) => setFullScreenImageUrl(url)}
+                    onDelete={handleDelete}
+                    isDeleting={deletingId === item.id}
+                  />
+                ),
+                ListEmptyComponent: renderEmpty,
+                contentContainerStyle: styles.listContent,
+                showsVerticalScrollIndicator: false,
+              }
+        }
+      >
+        {loadingOrError}
+      </BaseBottomSheet>
 
-          {/* Content */}
-          {isLoading ? (
-            <View style={styles.emptyContainer}>
-              <ActivityIndicator size="large" color={colors.primary[500]} />
-            </View>
-          ) : isError ? (
-            <View style={styles.emptyContainer}>
-              <Icon name="alert-circle" size={40} color={colors.error[400]} />
-              <Text style={styles.emptyText}>{t('feedback:history.load_error')}</Text>
-            </View>
-          ) : (
-            <FlatList
-              data={history ?? []}
-              keyExtractor={(item) => item.id}
-              renderItem={({ item }) => (
-                <FeedbackItem
-                  item={item}
-                  onViewScreenshot={(url) => setFullScreenImageUrl(url)}
-                  onDelete={handleDelete}
-                  isDeleting={deletingId === item.id}
-                />
-              )}
-              ListEmptyComponent={renderEmpty}
-              contentContainerStyle={styles.listContent}
-              showsVerticalScrollIndicator={false}
-            />
-          )}
-        </Pressable>
-      </Pressable>
-
-      {/* Full-Screen Screenshot Viewer */}
+      {/* Full-Screen Screenshot Viewer — child RN <Modal>, §13-gated above. */}
       <Modal
-        visible={!!fullScreenImageUrl}
+        visible={screenshotOpen}
         transparent
         animationType="fade"
         onRequestClose={() => setFullScreenImageUrl(null)}
@@ -313,35 +339,16 @@ export default function FeedbackHistorySheet({ visible, onClose }: FeedbackHisto
           </TouchableOpacity>
         </Pressable>
       </Modal>
-    </Modal>
+    </>
   );
 }
 
 // ── Styles ──────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'flex-end',
-  },
-  sheet: {
-    backgroundColor: colors.background.primary,
-    borderTopLeftRadius: radius.xl,
-    borderTopRightRadius: radius.xl,
+  header: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
-    maxHeight: '75%',
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: spacing.md,
-  },
-  handle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.gray[300],
     marginBottom: spacing.md,
   },
   headerRow: {
@@ -356,8 +363,10 @@ const styles = StyleSheet.create({
     color: colors.text.primary,
   },
 
-  // List
+  // List — the old flex-end sheet supplied paddingHorizontal: spacing.lg on
+  // its container; now the list owns it (the gorhom flatlist body is edge-to-edge).
   listContent: {
+    paddingHorizontal: spacing.lg,
     paddingBottom: spacing.md,
   },
 

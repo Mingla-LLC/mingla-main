@@ -1,18 +1,17 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
-  Modal,
+  Modal as RNModal,
   Platform,
   ScrollView,
-  Animated,
   Dimensions,
 } from "react-native";
+import { BaseBottomSheet } from "../ui/BaseBottomSheet";
 import { Icon } from "../ui/Icon";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { KeyboardAwareView } from "../ui/KeyboardAwareView";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import DateOptionsGrid from "./DateOptionsGrid";
 import WeekendDaySelection from "./WeekendDaySelection";
@@ -22,6 +21,19 @@ import { extractWeekdayText, isPlaceOpenAt } from "../../utils/openingHoursUtils
 import { useTranslation } from 'react-i18next';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
+
+// META-ORCH-0991 Wave B Batch 4: was a hand-rolled Animated slide-up RN <Modal>
+// sheet capped at SCREEN_HEIGHT*0.85 → fixed ['85%'] snap (playbook §2). Stock
+// gorhom motion replaces the custom slide/backdrop springs. Fixed snap (NOT
+// enableDynamicSizing) per the Batch-3 off-screen lesson.
+const PROPOSE_DATE_TIME_SNAP_POINTS = ['85%'];
+
+// Preserve the bespoke dark canvas (#1C1C1E, topRadius 24) the sheet shipped with.
+const PROPOSE_DATE_TIME_BACKGROUND_STYLE = {
+  backgroundColor: "#1C1C1E",
+  borderTopLeftRadius: 24,
+  borderTopRightRadius: 24,
+} as const;
 
 interface SavedCard {
   id: string;
@@ -71,48 +83,6 @@ export default function ProposeDateTimeModal({
   >(null);
 
   const insets = useSafeAreaInsets();
-
-  // Bottom sheet slide animation
-  const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
-  const backdropAnim = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    if (visible) {
-      Animated.parallel([
-        Animated.spring(slideAnim, {
-          toValue: 0,
-          damping: 25,
-          stiffness: 200,
-          useNativeDriver: true,
-        }),
-        Animated.timing(backdropAnim, {
-          toValue: 1,
-          duration: 250,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    } else {
-      slideAnim.setValue(SCREEN_HEIGHT);
-      backdropAnim.setValue(0);
-    }
-  }, [visible]);
-
-  const animateClose = () => {
-    Animated.parallel([
-      Animated.timing(slideAnim, {
-        toValue: SCREEN_HEIGHT,
-        duration: 250,
-        useNativeDriver: true,
-      }),
-      Animated.timing(backdropAnim, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      handleClose();
-    });
-  };
 
   // [ORCH-0649 — CONSTITUTION #2] Local normalizeOpeningHours DELETED.
   // extractWeekdayText (openingHoursUtils.ts) is the canonical reader — it
@@ -427,81 +397,82 @@ export default function ProposeDateTimeModal({
     onClose();
   };
 
+  const header = (
+    <View style={styles.header}>
+      <View style={styles.headerLeft}>
+        <View style={styles.headerIconContainer}>
+          <Icon
+            name={isCurated ? "map" : "calendar"}
+            size={18}
+            color="#F59E0B"
+          />
+        </View>
+        <View style={styles.headerTextContainer}>
+          <Text style={styles.headerTitle}>
+            {isCurated ? t('activity:proposeDateTimeModal.schedulePlan') : t('activity:proposeDateTimeModal.scheduleExperience')}
+          </Text>
+          {card && (
+            <Text style={styles.headerSubtitle} numberOfLines={1}>
+              {card.title}
+            </Text>
+          )}
+        </View>
+      </View>
+      <TouchableOpacity
+        onPress={handleClose}
+        style={styles.closeButton}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+      >
+        <Icon
+          name="close"
+          size={18}
+          color="rgba(255,255,255,0.6)"
+        />
+      </TouchableOpacity>
+    </View>
+  );
+
+  const footer = (
+    <ProposeDateTimeFooter
+      selectedDateOption={selectedDateOption}
+      selectedWeekendDay={selectedWeekendDay}
+      isAvailabilityChecked={isAvailabilityChecked}
+      isPlaceOpen={isPlaceOpen}
+      isCheckingAvailability={isCheckingAvailability}
+      onCheckAvailability={handleCheckCompatibility}
+      onSchedule={
+        isCurated ? handleScheduleCuratedDirect : handleScheduleRegular
+      }
+      isScheduling={isScheduling}
+      isCurated={isCurated}
+      customTime={customTime}
+      dark
+    />
+  );
+
   return (
     <>
-      <Modal
+      <BaseBottomSheet
         visible={visible}
-        transparent={true}
-        animationType="none"
-        onRequestClose={animateClose}
-        statusBarTranslucent
+        onClose={handleClose}
+        theme="dark"
+        snapPoints={PROPOSE_DATE_TIME_SNAP_POINTS}
+        wrapInRNModal
+        backgroundStyle={PROPOSE_DATE_TIME_BACKGROUND_STYLE}
+        keyboardBehavior="interactive"
+        keyboardBlurBehavior="restore"
+        android_keyboardInputMode="adjustResize"
+        accessibilityLabel={isCurated ? t('activity:proposeDateTimeModal.schedulePlan') : t('activity:proposeDateTimeModal.scheduleExperience')}
+        header={header}
+        stickyFooter={footer}
+        scrollMode="scroll"
+        scrollProps={{
+          style: styles.scrollContent,
+          contentContainerStyle: styles.scrollContentContainer,
+          showsVerticalScrollIndicator: false,
+          bounces: false,
+        }}
       >
-        <KeyboardAwareView
-          style={{ flex: 1 }}
-          dismissOnTap={false}
-        >
-          {/* Backdrop */}
-          <Animated.View style={[styles.backdrop, { opacity: backdropAnim }]}>
-            <TouchableOpacity
-              style={StyleSheet.absoluteFill}
-              activeOpacity={1}
-              onPress={animateClose}
-            />
-          </Animated.View>
-
-          {/* Bottom Sheet */}
-          <Animated.View
-            style={[
-              styles.bottomSheet,
-              { transform: [{ translateY: slideAnim }] },
-            ]}
-          >
-            {/* Drag handle */}
-            <View style={styles.handleContainer}>
-              <View style={styles.handle} />
-            </View>
-
-            {/* Header */}
-            <View style={styles.header}>
-              <View style={styles.headerLeft}>
-                <View style={styles.headerIconContainer}>
-                  <Icon
-                    name={isCurated ? "map" : "calendar"}
-                    size={18}
-                    color="#F59E0B"
-                  />
-                </View>
-                <View style={styles.headerTextContainer}>
-                  <Text style={styles.headerTitle}>
-                    {isCurated ? t('activity:proposeDateTimeModal.schedulePlan') : t('activity:proposeDateTimeModal.scheduleExperience')}
-                  </Text>
-                  {card && (
-                    <Text style={styles.headerSubtitle} numberOfLines={1}>
-                      {card.title}
-                    </Text>
-                  )}
-                </View>
-              </View>
-              <TouchableOpacity
-                onPress={animateClose}
-                style={styles.closeButton}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <Icon
-                  name="close"
-                  size={18}
-                  color="rgba(255,255,255,0.6)"
-                />
-              </TouchableOpacity>
-            </View>
-
-            {/* Content */}
-            <ScrollView
-              style={styles.scrollContent}
-              contentContainerStyle={styles.scrollContentContainer}
-              showsVerticalScrollIndicator={false}
-              bounces={false}
-            >
               {/* Curated plan info banner */}
               {isCurated && stopCount > 0 && (
                 <View style={styles.curatedBanner}>
@@ -660,28 +631,19 @@ export default function ProposeDateTimeModal({
                     </Text>
                   </View>
                 )}
-            </ScrollView>
+      </BaseBottomSheet>
 
-            {/* Footer */}
-            <ProposeDateTimeFooter
-              selectedDateOption={selectedDateOption}
-              selectedWeekendDay={selectedWeekendDay}
-              isAvailabilityChecked={isAvailabilityChecked}
-              isPlaceOpen={isPlaceOpen}
-              isCheckingAvailability={isCheckingAvailability}
-              onCheckAvailability={handleCheckCompatibility}
-              onSchedule={
-                isCurated ? handleScheduleCuratedDirect : handleScheduleRegular
-              }
-              isScheduling={isScheduling}
-              isCurated={isCurated}
-              customTime={customTime}
-              dark
-            />
-          </Animated.View>
-
-        {/* Date Picker — INSIDE main Modal as overlay (iOS) */}
-        {showDatePicker && Platform.OS === "ios" && (
+      {/* Date Picker (iOS) — own RN Modal so it floats ABOVE the sheet's wrapInRNModal
+          window. Was an absolute overlay inside the old hand-rolled Modal; with the
+          sheet now in its own OS window, the picker needs its own window too. */}
+      {showDatePicker && Platform.OS === "ios" && (
+        <RNModal
+          visible
+          transparent
+          animationType="slide"
+          onRequestClose={() => setShowDatePicker(false)}
+          statusBarTranslucent
+        >
           <View style={pickerModalStyles.overlay}>
             <TouchableOpacity
               style={pickerModalStyles.backdrop}
@@ -719,10 +681,18 @@ export default function ProposeDateTimeModal({
               />
             </SafeAreaView>
           </View>
-        )}
+        </RNModal>
+      )}
 
-        {/* Time Picker — INSIDE main Modal as overlay (iOS) */}
-        {showTimePicker && Platform.OS === "ios" && (
+      {/* Time Picker (iOS) — own RN Modal, floats above the sheet window. */}
+      {showTimePicker && Platform.OS === "ios" && (
+        <RNModal
+          visible
+          transparent
+          animationType="slide"
+          onRequestClose={() => setShowTimePicker(false)}
+          statusBarTranslucent
+        >
           <View style={pickerModalStyles.overlay}>
             <TouchableOpacity
               style={pickerModalStyles.backdrop}
@@ -756,11 +726,10 @@ export default function ProposeDateTimeModal({
               />
             </SafeAreaView>
           </View>
-        )}
-        </KeyboardAwareView>
-      </Modal>
+        </RNModal>
+      )}
 
-      {/* Android native pickers — render OUTSIDE Modal (native dialogs always on top) */}
+      {/* Android native pickers — render directly (native dialogs always on top) */}
       {showDatePicker && Platform.OS === "android" && (
         <DateTimePicker
           value={customDate}
@@ -784,36 +753,14 @@ export default function ProposeDateTimeModal({
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0, 0, 0, 0.6)",
-  },
-  bottomSheet: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: "#1C1C1E",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    maxHeight: SCREEN_HEIGHT * 0.85,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 16,
-  },
-  handleContainer: {
-    alignItems: "center",
-    paddingTop: 10,
-    paddingBottom: 4,
-  },
-  handle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "rgba(255,255,255,0.2)",
-  },
+  // META-ORCH-0991 Wave B Batch 4: removed the hand-rolled Animated slide-up
+  // RN <Modal> chrome (`backdrop` scrim, `bottomSheet` absolute card + custom
+  // slide spring, `handleContainer`/`handle` cosmetic handle). Now a swipe-down
+  // dark BaseBottomSheet at ['85%'] with stock gorhom motion + the real handle +
+  // pan-down/backdrop close; canvas preserved via PROPOSE_DATE_TIME_BACKGROUND_STYLE.
+  // wrapInRNModal z-stacks above the floating tab bar (opened from SavedTab/
+  // CalendarTab/LockedCardSchedulingSheet). iOS date/time pickers float in their
+  // own RN Modals above the sheet window. Header + scroll body + sticky footer.
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -861,7 +808,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   scrollContent: {
-    maxHeight: SCREEN_HEIGHT * 0.55,
+    // META-ORCH-0991 Wave B Batch 4: dropped the fixed maxHeight (SCREEN_HEIGHT*0.55);
+    // inside the sticky-footer flex container the body claims flex:1 between the
+    // header and the pinned footer, matching the prior visual proportions at ['85%'].
+    flex: 1,
   },
   scrollContentContainer: {
     paddingHorizontal: 20,

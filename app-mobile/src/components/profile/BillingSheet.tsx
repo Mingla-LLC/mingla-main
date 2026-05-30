@@ -1,21 +1,18 @@
-import React, { useState, useMemo } from "react";
+import React, { useState } from "react";
 import {
   Text,
   View,
   TouchableOpacity,
   StyleSheet,
-  ScrollView,
   ActivityIndicator,
-  Modal,
-  Pressable,
   Alert,
   Platform,
   Linking,
-  useWindowDimensions,
 } from "react-native";
 import { Icon } from "../ui/Icon";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { BaseBottomSheet } from "../ui/BaseBottomSheet";
 import { useAppStore } from "../../store/appStore";
 import { useRestorePurchases } from "../../hooks/useRevenueCat";
 import {
@@ -83,6 +80,15 @@ interface BillingSheetProps {
   visible: boolean;
   onClose: () => void;
 }
+
+// META-ORCH-0991 Wave B Batch 2: full-detail subscription sheet. Was a flex:1
+// sheet opening from windowHeight*0.08 (≈92% tall) with a hand-rolled drag
+// handle + an overlay tap-strip at the top. Becomes a true swipe-down sheet at
+// snap ['92%'] (matches the prior ~92% height); the real gorhom handle replaces
+// the cosmetic one, and pan-down/backdrop close replace the overlay tap-strip.
+// No text input → not keyboard-aware. The nested CustomPaywallScreen is its own
+// RN <Modal> (excluded surface) and floats independently regardless of JSX site.
+const BILLING_SNAP_POINTS = ["92%"];
 
 // --- Component ---
 
@@ -155,119 +161,110 @@ export default function BillingSheet({ visible, onClose }: BillingSheetProps) {
 
   const currentRank = TIER_RANK[effectiveTier];
 
-  const { height: windowHeight } = useWindowDimensions();
-  const SHEET_TOP = Math.round(windowHeight * 0.08);
+  const scrollContentStyle = { paddingBottom: Math.max(insets.bottom, 16) + 24 };
 
-  const overlayTapStyle = useMemo(() => ({ height: SHEET_TOP }), [SHEET_TOP]);
-  const scrollContentStyle = useMemo(
-    () => ({ paddingBottom: Math.max(insets.bottom, 16) + 24 }),
-    [insets.bottom],
-  );
+  void subscription;
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.overlay}>
-        <Pressable style={overlayTapStyle} onPress={onClose} />
-        <View style={styles.sheet}>
-          {/* Drag handle */}
-          <View style={styles.dragHandle} />
-
-          {/* Header */}
-          <View style={styles.header}>
-            <Text style={styles.headerTitle}>{t('billing:sheet.title')}</Text>
-            <TouchableOpacity
-              onPress={onClose}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              accessibilityLabel={t('billing:sheet.close_label')}
-              accessibilityRole="button"
-            >
-              <Icon name="close" size={24} color="#6b7280" />
-            </TouchableOpacity>
-          </View>
-
-          {/* Content */}
-          <ScrollView
-            style={styles.scrollContent}
-            contentContainerStyle={scrollContentStyle}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
+    <BaseBottomSheet
+      visible={visible}
+      onClose={onClose}
+      theme="light"
+      snapPoints={BILLING_SNAP_POINTS}
+      scrollMode="scroll"
+      wrapInRNModal
+      backgroundStyle={styles.sheetBackground}
+      accessibilityLabel={t('billing:sheet.title')}
+      scrollProps={{
+        contentContainerStyle: scrollContentStyle,
+        showsVerticalScrollIndicator: false,
+        keyboardShouldPersistTaps: "handled",
+        style: styles.scrollContent,
+      }}
+      header={
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>{t('billing:sheet.title')}</Text>
+          <TouchableOpacity
+            onPress={onClose}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityLabel={t('billing:sheet.close_label')}
+            accessibilityRole="button"
           >
-            {isLoading ? (
-              <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color="#eb7825" />
-              </View>
-            ) : isError ? (
-              <View style={styles.errorCard}>
-                <Icon name="cloud-offline-outline" size={32} color="#9ca3af" />
-                <Text style={styles.errorTitle}>{t('billing:sheet.error_title')}</Text>
-                <Text style={styles.errorBody}>{t('billing:sheet.error_body')}</Text>
-                <TouchableOpacity style={styles.retryButton} onPress={() => refetch()}>
-                  <Text style={styles.retryText}>{t('billing:sheet.retry')}</Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <>
-                {/* Current Plan Summary */}
-                <CurrentPlanCard
-                  tier={effectiveTier}
-                  trialDays={trialDays}
-                  trialTotalDays={trialTotalDays}
-                  referralDays={referralDays}
-                />
-
-                {/* Compare Plans */}
-                <Text style={styles.compareSectionTitle}>{t('billing:sheet.compare_plans')}</Text>
-
-                {TIER_ORDER.map((tier) => {
-                  const isCurrent = tier === effectiveTier;
-                  const tierRank = TIER_RANK[tier];
-                  const isUpgrade = tierRank > currentRank;
-                  const isDowngrade = tierRank < currentRank;
-
-                  return (
-                    <TierCard
-                      key={tier}
-                      tier={tier}
-                      isCurrent={isCurrent}
-                      isUpgrade={isUpgrade}
-                      isDowngrade={isDowngrade}
-                      onChangePlan={handleChangePlan}
-                    />
-                  );
-                })}
-
-                {/* Restore purchases */}
-                <TouchableOpacity
-                  style={styles.restoreButton}
-                  onPress={handleRestore}
-                  disabled={isRestoring}
-                  accessibilityLabel={t('billing:sheet.restore_purchases')}
-                  accessibilityRole="button"
-                >
-                  {isRestoring ? (
-                    <ActivityIndicator size="small" color="#6b7280" />
-                  ) : (
-                    <Text style={styles.restoreText}>{t('billing:sheet.restore_purchases')}</Text>
-                  )}
-                </TouchableOpacity>
-
-
-              </>
-            )}
-          </ScrollView>
-
-          {/* Internal paywall for upgrade/downgrade */}
-          {userId && (
-            <CustomPaywallScreen
-              isVisible={showPaywall}
-              onClose={() => setShowPaywall(false)}
-              userId={userId}
-
-            />
-          )}
+            <Icon name="close" size={24} color="#6b7280" />
+          </TouchableOpacity>
         </View>
-      </View>
-    </Modal>
+      }
+    >
+      {isLoading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#eb7825" />
+        </View>
+      ) : isError ? (
+        <View style={styles.errorCard}>
+          <Icon name="cloud-offline-outline" size={32} color="#9ca3af" />
+          <Text style={styles.errorTitle}>{t('billing:sheet.error_title')}</Text>
+          <Text style={styles.errorBody}>{t('billing:sheet.error_body')}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={() => refetch()}>
+            <Text style={styles.retryText}>{t('billing:sheet.retry')}</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <>
+          {/* Current Plan Summary */}
+          <CurrentPlanCard
+            tier={effectiveTier}
+            trialDays={trialDays}
+            trialTotalDays={trialTotalDays}
+            referralDays={referralDays}
+          />
+
+          {/* Compare Plans */}
+          <Text style={styles.compareSectionTitle}>{t('billing:sheet.compare_plans')}</Text>
+
+          {TIER_ORDER.map((tier) => {
+            const isCurrent = tier === effectiveTier;
+            const tierRank = TIER_RANK[tier];
+            const isUpgrade = tierRank > currentRank;
+            const isDowngrade = tierRank < currentRank;
+
+            return (
+              <TierCard
+                key={tier}
+                tier={tier}
+                isCurrent={isCurrent}
+                isUpgrade={isUpgrade}
+                isDowngrade={isDowngrade}
+                onChangePlan={handleChangePlan}
+              />
+            );
+          })}
+
+          {/* Restore purchases */}
+          <TouchableOpacity
+            style={styles.restoreButton}
+            onPress={handleRestore}
+            disabled={isRestoring}
+            accessibilityLabel={t('billing:sheet.restore_purchases')}
+            accessibilityRole="button"
+          >
+            {isRestoring ? (
+              <ActivityIndicator size="small" color="#6b7280" />
+            ) : (
+              <Text style={styles.restoreText}>{t('billing:sheet.restore_purchases')}</Text>
+            )}
+          </TouchableOpacity>
+        </>
+      )}
+
+      {/* Internal paywall for upgrade/downgrade — its own RN <Modal>, floats independently */}
+      {userId && (
+        <CustomPaywallScreen
+          isVisible={showPaywall}
+          onClose={() => setShowPaywall(false)}
+          userId={userId}
+        />
+      )}
+    </BaseBottomSheet>
   );
 }
 
@@ -428,36 +425,21 @@ function TierCard({ tier, isCurrent, isUpgrade, isDowngrade, onChangePlan }: Tie
 
 const styles = StyleSheet.create({
   // Shell
-  overlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-  },
-  sheet: {
-    flex: 1,
+  sheetBackground: {
     backgroundColor: "#f9fafb",
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    overflow: "hidden",
-  },
-  dragHandle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "#d1d5db",
-    alignSelf: "center",
-    marginTop: 8,
-    marginBottom: 4,
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 24,
-    paddingTop: 12,
+    paddingTop: 4,
     paddingBottom: 16,
   },
   headerTitle: { fontSize: 20, fontWeight: "700", color: "#111827" },
-  scrollContent: { flex: 1, paddingHorizontal: 16 },
+  scrollContent: { paddingHorizontal: 16 },
 
   // Loading
   loadingContainer: {
@@ -661,5 +643,4 @@ const styles = StyleSheet.create({
     color: "#6b7280",
     textDecorationLine: "underline",
   },
-
 });

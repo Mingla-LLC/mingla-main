@@ -1,18 +1,11 @@
 import React, { useState, useMemo } from 'react';
-import {
-  View,
-  Text,
-  Modal,
-  TouchableOpacity,
-  ScrollView,
-  StyleSheet,
-  Pressable,
-} from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { X } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { ONBOARDING_INTENTS } from '../../types/onboarding';
 import { categories } from '../../constants/categories';
 import { INTENT_ICON_MAP, CATEGORY_ICON_MAP } from '../../constants/interestIcons';
+import { BaseBottomSheet } from '../ui/BaseBottomSheet';
 import { useTranslation } from 'react-i18next';
 
 interface EditInterestsSheetProps {
@@ -22,6 +15,11 @@ interface EditInterestsSheetProps {
   currentCategories: string[];
   onSave: (intents: string[], categories: string[]) => void;
 }
+
+// META-ORCH-0991 Wave B Batch 2: chips picker (no text input). Was a flex-end
+// card capped at maxHeight 85% → snap ['85%'] preserves that height as a true
+// swipe-down sheet. Header pinned, chip list scrolls, save pinned as footer.
+const EDIT_INTERESTS_SNAP_POINTS = ['85%'];
 
 const EditInterestsSheet: React.FC<EditInterestsSheetProps> = ({
   visible,
@@ -72,112 +70,108 @@ const EditInterestsSheet: React.FC<EditInterestsSheetProps> = ({
   }, [visible, currentIntents, currentCategories]);
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable style={styles.card} onPress={() => {}}>
-          <View style={styles.header}>
-            <Text style={styles.headerTitle}>{t('profile:edit_interests.title')}</Text>
-            <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <X size={24} color="#111827" strokeWidth={2} />
-            </TouchableOpacity>
-          </View>
+    <BaseBottomSheet
+      visible={visible}
+      onClose={onClose}
+      theme="light"
+      snapPoints={EDIT_INTERESTS_SNAP_POINTS}
+      scrollMode="scroll"
+      wrapInRNModal
+      accessibilityLabel={t('profile:edit_interests.title')}
+      scrollProps={{ showsVerticalScrollIndicator: false }}
+      header={
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>{t('profile:edit_interests.title')}</Text>
+          <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <X size={24} color="#111827" strokeWidth={2} />
+          </TouchableOpacity>
+        </View>
+      }
+      stickyFooter={
+        <View style={styles.footer}>
+          <TouchableOpacity
+            style={[styles.saveButton, !hasChanged && styles.saveButtonDisabled]}
+            onPress={handleSave}
+            disabled={!hasChanged}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.saveText}>{t('profile:edit_interests.save')}</Text>
+          </TouchableOpacity>
+        </View>
+      }
+    >
+      <View style={styles.scroll}>
+        <Text style={styles.sectionTitle}>{t('profile:edit_interests.what_are_you_into')}</Text>
+        <View style={styles.pillsWrap}>
+          {ONBOARDING_INTENTS.map((intent) => {
+            const selected = selectedIntents.includes(intent.id);
+            const IconComponent = INTENT_ICON_MAP[intent.id];
+            return (
+              <TouchableOpacity
+                key={intent.id}
+                style={[
+                  styles.intentPill,
+                  selected
+                    ? { backgroundColor: intent.color }
+                    : styles.unselectedPill,
+                ]}
+                onPress={() => toggleIntent(intent.id)}
+                activeOpacity={0.7}
+              >
+                {IconComponent && (
+                  <IconComponent
+                    size={16}
+                    color={selected ? '#ffffff' : '#374151'}
+                    strokeWidth={2.5}
+                    style={styles.pillIcon}
+                  />
+                )}
+                <Text style={[styles.pillText, selected ? styles.selectedText : styles.unselectedText]}>
+                  {intent.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
 
-          <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
-            <Text style={styles.sectionTitle}>{t('profile:edit_interests.what_are_you_into')}</Text>
-            <View style={styles.pillsWrap}>
-              {ONBOARDING_INTENTS.map((intent) => {
-                const selected = selectedIntents.includes(intent.id);
-                const IconComponent = INTENT_ICON_MAP[intent.id];
-                return (
-                  <TouchableOpacity
-                    key={intent.id}
-                    style={[
-                      styles.intentPill,
-                      selected
-                        ? { backgroundColor: intent.color }
-                        : styles.unselectedPill,
-                    ]}
-                    onPress={() => toggleIntent(intent.id)}
-                    activeOpacity={0.7}
-                  >
-                    {IconComponent && (
-                      <IconComponent
-                        size={16}
-                        color={selected ? '#ffffff' : '#374151'}
-                        strokeWidth={2.5}
-                        style={styles.pillIcon}
-                      />
-                    )}
-                    <Text style={[styles.pillText, selected ? styles.selectedText : styles.unselectedText]}>
-                      {intent.label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+        <Text style={styles.sectionTitle}>{t('profile:edit_interests.what_do_you_like')}</Text>
+        <View style={styles.pillsWrap}>
+          {categories.map((cat) => {
+            const selected = selectedCategories.includes(cat.slug);
+            const CatIcon = CATEGORY_ICON_MAP[cat.slug];
+            return (
+              <TouchableOpacity
+                key={cat.slug}
+                style={[
+                  styles.categoryPill,
+                  selected ? styles.selectedCategoryPill : styles.unselectedPill,
+                ]}
+                onPress={() => toggleCategory(cat.slug)}
+                activeOpacity={0.7}
+              >
+                {CatIcon && (
+                  <CatIcon
+                    size={16}
+                    color={selected ? '#ffffff' : '#374151'}
+                    strokeWidth={2}
+                    style={styles.catPillIcon}
+                  />
+                )}
+                <Text style={[styles.pillText, selected ? styles.selectedText : styles.unselectedText]}>
+                  {t(`common:category_${cat.slug}`)}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
 
-            <Text style={styles.sectionTitle}>{t('profile:edit_interests.what_do_you_like')}</Text>
-            <View style={styles.pillsWrap}>
-              {categories.map((cat) => {
-                const selected = selectedCategories.includes(cat.slug);
-                const CatIcon = CATEGORY_ICON_MAP[cat.slug];
-                return (
-                  <TouchableOpacity
-                    key={cat.slug}
-                    style={[
-                      styles.categoryPill,
-                      selected ? styles.selectedCategoryPill : styles.unselectedPill,
-                    ]}
-                    onPress={() => toggleCategory(cat.slug)}
-                    activeOpacity={0.7}
-                  >
-                    {CatIcon && (
-                      <CatIcon
-                        size={16}
-                        color={selected ? '#ffffff' : '#374151'}
-                        strokeWidth={2}
-                        style={styles.catPillIcon}
-                      />
-                    )}
-                    <Text style={[styles.pillText, selected ? styles.selectedText : styles.unselectedText]}>
-                      {t(`common:category_${cat.slug}`)}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            <View style={styles.scrollPadding} />
-          </ScrollView>
-
-          <View style={styles.footer}>
-            <TouchableOpacity
-              style={[styles.saveButton, !hasChanged && styles.saveButtonDisabled]}
-              onPress={handleSave}
-              disabled={!hasChanged}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.saveText}>{t('profile:edit_interests.save')}</Text>
-            </TouchableOpacity>
-          </View>
-        </Pressable>
-      </Pressable>
-    </Modal>
+        <View style={styles.scrollPadding} />
+      </View>
+    </BaseBottomSheet>
   );
 };
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
-  },
-  card: {
-    backgroundColor: '#ffffff',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    maxHeight: '85%',
-  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',

@@ -13,10 +13,10 @@
  *        showing collage + Q2 (per-signal evaluation). Q1 dropped at v3.
  */
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import {
-  Play, RefreshCw, Square, ChevronDown, ChevronRight,
-  CheckCircle, XCircle, Globe, Clock, RotateCcw,
+  Play, RefreshCw, Square,
+  RotateCcw, Info,
 } from "lucide-react";
 import { supabase, invokeWithRefresh } from "../../lib/supabase";
 import { extractFunctionError } from "../../lib/edgeFunctionError";
@@ -24,6 +24,12 @@ import { useToast } from "../../context/ToastContext";
 import { SectionCard, AlertCard } from "../ui/Card";
 import { Button } from "../ui/Button";
 import { Spinner } from "../ui/Spinner";
+import { RunHistoryGroups } from "./RunHistoryGroups";
+import { SignalDistributionPanel } from "./SignalDistributionPanel";
+// ORCH-1013 Finding B — the in-tab active-run banner is deleted in this PR;
+// CancelRunConfirmModal is now consumed exclusively by <ActiveRunCard /> inside
+// the page-level <ActiveRunsControlTower />.
+import { RunRemainderConfirmModal } from "./RunRemainderConfirmModal";
 
 function formatCost(n) {
   if (n == null) return "—";
@@ -35,176 +41,6 @@ function formatPercent(n) {
   return `${Number(n).toFixed(1)}%`;
 }
 
-// ── Per-place result card ───────────────────────────────────────────────────
-
-function PlaceResultCard({ row }) {
-  const [expanded, setExpanded] = useState(false);
-  const place = row.place;
-  const q1 = row.q1_response;
-  const q2 = row.q2_response;
-  const failed = row.status === "failed";
-
-  return (
-    <div className="border border-[var(--gray-200)] rounded-lg overflow-hidden bg-[var(--color-background-primary)]">
-      <button
-        type="button"
-        onClick={() => setExpanded((v) => !v)}
-        className="w-full px-4 py-3 flex items-center gap-3 hover:bg-[var(--gray-50)] transition-colors duration-150 cursor-pointer"
-      >
-        {expanded ? <ChevronDown className="w-4 h-4 shrink-0" /> : <ChevronRight className="w-4 h-4 shrink-0" />}
-        {/* ORCH-0734 — anchor badge only renders for legacy 32-anchor rows.
-            City-runs rows (signal_id=null, city_id set) skip the badge. */}
-        {row.signal_id && row.anchor_index != null && (
-          <span className="text-[10px] uppercase tracking-wide font-mono px-1.5 py-0.5 rounded bg-[var(--color-brand-50)] text-[var(--color-brand-700)]">
-            {row.signal_id} #{row.anchor_index}
-          </span>
-        )}
-        <span className="text-sm font-semibold text-[var(--color-text-primary)] truncate flex-1 text-left">
-          {place?.name || row.place_pool_id}
-        </span>
-        <span className={[
-          "text-[10px] uppercase tracking-wide font-mono px-1.5 py-0.5 rounded",
-          row.status === "completed" && "bg-[var(--color-success-50)] text-[var(--color-success-700)]",
-          row.status === "running" && "bg-[var(--color-info-50)] text-[var(--color-info-700)]",
-          row.status === "failed" && "bg-[var(--color-error-50)] text-[var(--color-error-700)]",
-          row.status === "pending" && "bg-[var(--gray-100)] text-[var(--color-text-tertiary)]",
-          row.status === "cancelled" && "bg-[var(--color-warning-50)] text-[var(--color-warning-700)]",
-        ].filter(Boolean).join(" ")}>
-          {row.status}
-        </span>
-        {/* ORCH-0713 Gemini A/B — model badge distinguishes Anthropic vs Gemini runs at a glance. */}
-        {row.model && (
-          <span
-            className={[
-              "text-[10px] uppercase tracking-wide font-mono px-1.5 py-0.5 rounded shrink-0",
-              row.model.startsWith("gemini")
-                ? "bg-[var(--color-warning-50)] text-[var(--color-warning-700)]"
-                : "bg-[var(--color-info-50)] text-[var(--color-info-700)]",
-            ].join(" ")}
-            title={`Model: ${row.model}${row.model_version ? ` (${row.model_version})` : ""}`}
-          >
-            {row.model.startsWith("gemini") ? "Gemini" : "Haiku"}
-          </span>
-        )}
-        <span className="text-xs text-[var(--color-text-tertiary)] font-mono shrink-0">
-          {formatCost(row.cost_usd)}
-        </span>
-      </button>
-
-      {expanded && (
-        <div className="border-t border-[var(--gray-200)] p-4 space-y-4">
-          {row.collage_url && (
-            <div className="flex justify-center">
-              <img
-                src={row.collage_url}
-                alt="Photo collage"
-                className="max-w-full max-h-[400px] rounded-lg border border-[var(--gray-200)]"
-              />
-            </div>
-          )}
-
-          {failed && row.error_message && (
-            <AlertCard variant="error" title="Run failed">
-              {row.error_message}
-            </AlertCard>
-          )}
-
-          {q1 && (
-            <div className="border border-[var(--gray-200)] rounded-lg p-3 space-y-2">
-              <h5 className="text-xs uppercase tracking-wide text-[var(--color-text-tertiary)] font-mono">
-                Q1 — Open Exploration
-              </h5>
-              {q1.proposed_vibes && q1.proposed_vibes.length > 0 && (
-                <div>
-                  <div className="text-[10px] uppercase tracking-wide text-[var(--color-text-tertiary)] mb-1">Proposed vibes</div>
-                  <div className="flex flex-wrap gap-1">
-                    {q1.proposed_vibes.map((v, i) => (
-                      <span key={i} className="text-xs px-2 py-0.5 rounded-full bg-[var(--color-brand-50)] text-[var(--color-brand-700)]">{v}</span>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {q1.proposed_signals && q1.proposed_signals.length > 0 && (
-                <div>
-                  <div className="text-[10px] uppercase tracking-wide text-[var(--color-text-tertiary)] mb-1">Proposed new signals</div>
-                  <div className="space-y-1">
-                    {q1.proposed_signals.map((s, i) => (
-                      <div key={i} className="text-xs">
-                        <span className="font-mono font-semibold">{s.name}</span> — {s.definition}
-                        {s.rationale && <span className="text-[var(--color-text-secondary)]"> ({s.rationale})</span>}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {q1.notable_observations && (
-                <div>
-                  <div className="text-[10px] uppercase tracking-wide text-[var(--color-text-tertiary)] mb-1">Observations</div>
-                  <p className="text-xs text-[var(--color-text-primary)] italic">{q1.notable_observations}</p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {q2 && q2.evaluations && (
-            <div className="border border-[var(--gray-200)] rounded-lg p-3 space-y-2">
-              <h5 className="text-xs uppercase tracking-wide text-[var(--color-text-tertiary)] font-mono">
-                Q2 — Per-Signal Evaluation
-              </h5>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-1 text-xs font-mono">
-                {q2.evaluations.map((e, i) => {
-                  // ORCH-0713 Phase 0.5 — score_0_to_100 is the v2 shape; old v1 rows
-                  // surface confidence_0_to_10 (× 10 ≈ score). Strong_match dropped in v2;
-                  // tier color derived from score for both shapes.
-                  const score = e.score_0_to_100 != null
-                    ? Number(e.score_0_to_100)
-                    : (e.confidence_0_to_10 != null ? Number(e.confidence_0_to_10) * 10 : null);
-                  const tierClass = e.inappropriate_for
-                    ? "bg-[var(--color-error-50)]"
-                    : score == null
-                    ? "bg-[var(--gray-50)]"
-                    : score >= 70
-                    ? "bg-[var(--color-success-50)]"
-                    : score >= 30
-                    ? "bg-[var(--color-warning-50)]"
-                    : "bg-[var(--color-error-50)]";
-                  const scoreColor = e.inappropriate_for
-                    ? "text-[var(--color-error-700)]"
-                    : score == null
-                    ? "text-[var(--color-text-tertiary)]"
-                    : score >= 70
-                    ? "text-[var(--color-success-700)]"
-                    : score >= 30
-                    ? "text-[var(--color-warning-700)]"
-                    : "text-[var(--color-error-700)]";
-                  return (
-                    <div
-                      key={i}
-                      className={["flex items-baseline gap-2 p-1.5 rounded", tierClass].join(" ")}
-                    >
-                      {e.inappropriate_for ? (
-                        <XCircle className="w-3 h-3 text-[var(--color-error-700)] shrink-0" title="Structurally inappropriate (hard veto)" />
-                      ) : score != null && score >= 70 ? (
-                        <CheckCircle className="w-3 h-3 text-[var(--color-success-700)] shrink-0" title="Strong fit" />
-                      ) : (
-                        <span className="w-3 h-3 shrink-0 inline-block rounded-full border border-[var(--gray-300)]" />
-                      )}
-                      <span className="font-semibold w-24 shrink-0">{e.signal_id}</span>
-                      <span className={["w-12 shrink-0 font-bold tabular-nums", scoreColor].join(" ")}>
-                        {e.inappropriate_for ? "VETO" : score != null ? `${Math.round(score)}/100` : "—"}
-                      </span>
-                      <span className="text-[var(--color-text-secondary)] truncate flex-1" title={e.reasoning}>{e.reasoning}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
 
 // ── Tab ─────────────────────────────────────────────────────────────────────
 
@@ -249,16 +85,25 @@ export function TrialResultsTab() {
   const isRunningRef = useRef(false);
 
   // ORCH-0737 — mode toggle (sample default, full_city is async durable mode)
+  // ORCH-1008 — extended with 'remainder' as a third option.
   const [mode, setMode] = useState("sample");
 
-  // ORCH-0737 — active full-city run state. activeRunId set after start_run
-  // OR via list_active_runs hydration on mount (cross-session resume).
-  // activeRun is the polled parent row; updated every 5s while running.
+  // ORCH-0737 — active full-city run state. activeRunId is set after a same-
+  // session start_run / retry_failed / remainder; the polling effect below
+  // watches it to refresh the history list on terminal status.
+  // ORCH-1013 Finding B — `activeRun` no longer has a UI reader (banner was
+  // deleted), but the setter still feeds the polling-effect terminal check;
+  // keep the reducer underscored so lint passes without a behavioural change.
   const [activeRunId, setActiveRunId] = useState(null);
-  const [activeRun, setActiveRun] = useState(null);
+  const [_activeRun, setActiveRun] = useState(null);
   const [cityCoverage, setCityCoverage] = useState(null);
   const [coverageLoading, setCoverageLoading] = useState(false);
   const [retryingFailed, setRetryingFailed] = useState(false);
+  // ORCH-1008 Phase 4 — modal state for remainder confirmation. ORCH-1013
+  // Finding B deleted the in-tab cancel modal state (cancelModalOpen /
+  // cancelLoading / bannerDismissed) — cancel UX now lives in the shared
+  // <ActiveRunsControlTower /> mounted at the page level.
+  const [remainderModalOpen, setRemainderModalOpen] = useState(false);
 
   const fetchCityCoverage = useCallback(async (targetCityId, { quiet = false } = {}) => {
     if (!targetCityId) {
@@ -355,33 +200,30 @@ export function TrialResultsTab() {
     return bDate.localeCompare(aDate);
   });
 
-  // ORCH-0737 — cross-session resume on mount. If any full-city run is currently
-  // active (status pending/running/cancelling), hydrate UI immediately so the
-  // operator sees in-progress state on tab reopen.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const { data, error } = await invokeWithRefresh("run-place-intelligence-trial", {
-          body: { action: "list_active_runs" },
-        });
-        if (cancelled) return;
-        if (error) return; // silent: feature is non-critical for hydration
-        if (data?.runs?.length > 0) {
-          // Pick the most recent active run; if multiple, panel shows newest first
-          setActiveRunId(data.runs[0].id);
-          setActiveRun(data.runs[0]);
-        }
-      } catch {
-        // silent
+  // ORCH-1008 Phase 4d — pick most-recent run (by city if selected) whose
+  // children include ≥10 completed rows. Drives SignalDistributionPanel.
+  const { lastCompletedRunId, lastCompletedRunRows } = useMemo(() => {
+    for (const rid of runIds) {
+      const rows = runs[rid];
+      if (cityId && rows[0]?.city_id !== cityId) continue;
+      const completed = rows.filter((r) => r.status === "completed");
+      if (completed.length >= 10) {
+        return { lastCompletedRunId: rid, lastCompletedRunRows: rows };
       }
-    })();
-    return () => { cancelled = true; };
-  }, []);
+    }
+    return { lastCompletedRunId: null, lastCompletedRunRows: [] };
+    // Deps tracked through allRows (which drives runs + runIds)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allRows, cityId]);
 
-  // ORCH-0737 — poll active run status every 5s while activeRunId is set.
-  // When run reaches terminal state (complete/cancelled/failed), stop polling
-  // and refresh the run-history list.
+  // ORCH-1013 Finding B — cross-session hydration effect deleted: the page-
+  // level <ActiveRunsControlTower /> owns active-run UI; in-tab hydration
+  // would orphan activeRun state with no visible consumer. Sample-mode
+  // browser-loop uses `progress` state below, not `activeRun`.
+
+  // ORCH-0737 — poll active run status every 5s while activeRunId is set
+  // (still used for SAME-SESSION full_city / remainder / retry_failed flows
+  // started from THIS tab, so the history list refreshes on completion).
   useEffect(() => {
     if (!activeRunId) return;
     let cancelled = false;
@@ -410,38 +252,27 @@ export function TrialResultsTab() {
     return () => { cancelled = true; };
   }, [activeRunId, cityId, fetchCityCoverage, refresh]);
 
-  // ORCH-0737 — cancel active full-city run (calls cancel_trial action).
-  async function handleCancelActiveRun(runId) {
-    if (!window.confirm("Cancel this run? Partial results will be preserved.")) return;
-    try {
-      const { error } = await invokeWithRefresh("run-place-intelligence-trial", {
-        body: { action: "cancel_trial", run_id: runId },
-      });
-      if (error) {
-        addToast({
-          variant: "error",
-          title: "Couldn't cancel",
-          description: await extractFunctionError(error, "cancel_trial failed"),
-        });
-        return;
-      }
-      addToast({
-        variant: "info",
-        title: "Cancelling…",
-        description: "Run will stop after current chunk (~30-90s).",
-      });
-    } catch (err) {
-      addToast({ variant: "error", title: "Couldn't cancel", description: err.message });
-    }
-  }
+  // ORCH-1013 Finding B — handleCancelActiveRunConfirmed deleted. Cancel UX
+  // now lives on each <ActiveRunCard /> inside the control tower; that card
+  // owns its own CancelRunConfirmModal mount.
 
   // ORCH-0737 — top-level dispatcher. Branches on mode.
+  // ORCH-1008 — remainder mode uses the dedicated modal (same code path the
+  //   Overview tab uses) for consistent cost-guard UX.
   async function handleRunTrial() {
     if (mode === "sample") {
       return handleRunSampleTrial();
     }
+    if (mode === "remainder") {
+      setRemainderModalOpen(true);
+      return;
+    }
     return handleRunFullCityTrial();
   }
+
+  // ORCH-1013 Finding B — handleResumeFromN deleted. Resume affordance is
+  // deferred; operator re-fires remainder from the Overview tab or via the
+  // bulk "Run remainder on all" button.
 
   // ORCH-0737 — full-city async mode. Submits start_run with mode=full_city,
   // optional confirm_high_cost flag (after double-confirm dialog), then sets
@@ -753,18 +584,38 @@ export function TrialResultsTab() {
   }
 
   const selectedCity = cities.find((c) => c.id === cityId) || null;
-  // ORCH-0737 — effectiveCount depends on mode. full_city = all servable; sample = min(picker, servable)
+  // ORCH-1008 — remainder count = servable - scored (uses cityCoverage if loaded).
+  const remainderCount = selectedCity && cityCoverage
+    ? Math.max(
+        0,
+        Number(cityCoverage?.coverage?.servable_count ?? selectedCity.servable_count) -
+          Number(cityCoverage?.coverage?.scored_count ?? 0),
+      )
+    : 0;
+  // ORCH-0737 + ORCH-1008 — effectiveCount depends on mode.
+  //   full_city  = all servable
+  //   sample     = min(picker, servable)
+  //   remainder  = servable - scored (from cityCoverage)
   const effectiveCount = !selectedCity
     ? 0
     : mode === "full_city"
       ? selectedCity.servable_count
-      : Math.min(sampleSize, selectedCity.servable_count);
+      : mode === "remainder"
+        ? remainderCount
+        : Math.min(sampleSize, selectedCity.servable_count);
   const estCostNum = effectiveCount * PER_PLACE_COST_USD;
   const estCostUsd = estCostNum.toFixed(2);
   const estMinutes = Math.ceil((effectiveCount * PER_PLACE_WALL_SECONDS) / 60);
   const estTimeStr = estMinutes >= 60 ? `~${(estMinutes / 60).toFixed(1)} hrs` : `~${estMinutes} min`;
   const exceedsCostGuard = estCostNum > 5;
-  const canRun = !!cityId && !running && !loading && !activeRunId && !retryingFailed;          // ORCH-0737 block while active full-city run
+  // ORCH-0737 block while active full-city run; ORCH-1008: also block remainder
+  // with zero remaining (avoids the no_remainder 400).
+  const canRun = !!cityId
+    && !running
+    && !loading
+    && !activeRunId
+    && !retryingFailed
+    && !(mode === "remainder" && remainderCount === 0);
   const retryableFailedCount = Number(cityCoverage?.retryable_failed_count || 0);
   const failedCount = Number(cityCoverage?.failed_count || 0);
   const nonretryableFailedCount = Number(cityCoverage?.nonretryable_failed_count || 0);
@@ -791,67 +642,9 @@ export function TrialResultsTab() {
       }
     >
       <div className="space-y-4">
-        {/* ORCH-0737 — active-run panel for full-city durable runs. Renders
-            above the form when a full-city run is in flight. Survives tab
-            close/refresh via list_active_runs hydration on mount. */}
-        {activeRun && (
-          <div className="border border-[var(--color-brand-200)] rounded-lg p-4 space-y-3 bg-[var(--color-brand-50)]">
-            <div className="flex items-baseline justify-between gap-2">
-              <h4 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2">
-                {activeRun.mode === "retry_failed"
-                  ? <><RotateCcw className="w-4 h-4 inline" /> Retry failed run</>
-                  : activeRun.mode === "full_city"
-                    ? <><Globe className="w-4 h-4 inline" /> Full-city run</>
-                    : <><Clock className="w-4 h-4 inline" /> Sample run</>}
-                {" — "}{activeRun.city_name}
-              </h4>
-              <span className="text-xs font-mono text-[var(--color-text-secondary)]">
-                {activeRun.processed_count} / {activeRun.total_count}
-                {" "}({Math.round((activeRun.processed_count / Math.max(1, activeRun.total_count)) * 100)}%)
-              </span>
-            </div>
-            <div className="h-2 bg-[var(--gray-200)] rounded-full overflow-hidden">
-              <div
-                className="h-full bg-[var(--color-brand-500)] transition-all duration-200"
-                style={{ width: `${(activeRun.processed_count / Math.max(1, activeRun.total_count)) * 100}%` }}
-              />
-            </div>
-            <div className="flex flex-wrap items-center gap-3 text-xs">
-              <span className="text-[var(--color-success-700)] font-mono">✓ {activeRun.succeeded_count}</span>
-              <span className="text-[var(--color-error-700)] font-mono">✗ {activeRun.failed_count}</span>
-              <span className="text-[var(--color-text-secondary)] font-mono">
-                cost: ${Number(activeRun.cost_so_far_usd || 0).toFixed(4)} of ~${Number(activeRun.estimated_cost_usd || 0).toFixed(2)}
-              </span>
-              <span className="ml-auto">
-                <span className={[
-                  "text-[10px] uppercase tracking-wide font-mono px-1.5 py-0.5 rounded",
-                  activeRun.status === "running" && "bg-[var(--color-info-50)] text-[var(--color-info-700)]",
-                  activeRun.status === "cancelling" && "bg-[var(--color-warning-50)] text-[var(--color-warning-700)]",
-                  activeRun.status === "pending" && "bg-[var(--gray-100)] text-[var(--color-text-tertiary)]",
-                ].filter(Boolean).join(" ")}>
-                  {activeRun.status}
-                </span>
-              </span>
-            </div>
-            {activeRun.status === "running" && (
-              <Button variant="danger" size="sm" icon={Square} onClick={() => handleCancelActiveRun(activeRun.id)}>
-                Cancel run
-              </Button>
-            )}
-            {activeRun.status === "cancelling" && (
-              <p className="text-xs text-[var(--color-warning-700)]">
-                Cancelling… will stop after current chunk (~30-90s).
-              </p>
-            )}
-            <p className="text-xs text-[var(--color-text-tertiary)] italic">
-              {activeRun.mode === "retry_failed"
-                ? "Retrying failed places on the server — safe to close this tab. Status updates every 5s while page is open."
-                : activeRun.mode === "full_city"
-                ? "Running on the server — safe to close this tab. Status updates every 5s while page is open."
-                : "Sample run in progress."}
-            </p>
-          </div>
-        )}
+        {/* ORCH-1013 Finding B — in-tab active-run banner deleted. Live
+            progress now surfaces in the page-level <ActiveRunsControlTower />
+            pinned above the tabs (PlaceIntelligenceTrialPage). */}
 
         {/* ORCH-0734 — city picker + sample size. ORCH-0737 — added mode toggle.
             Sample mode: browser-loop, ~75 min/200 places.
@@ -893,11 +686,28 @@ export function TrialResultsTab() {
               >
                 Whole city
               </button>
+              <button
+                type="button"
+                onClick={() => setMode("remainder")}
+                disabled={running || loading || !!activeRunId}
+                aria-pressed={mode === "remainder"}
+                className={[
+                  "flex-1 h-9 text-sm font-medium rounded-md transition-colors duration-150",
+                  mode === "remainder"
+                    ? "bg-[var(--color-background-primary)] text-[var(--color-text-primary)] shadow-sm cursor-pointer"
+                    : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] cursor-pointer",
+                  "disabled:cursor-not-allowed disabled:opacity-50",
+                ].join(" ")}
+              >
+                Remainder only
+              </button>
             </div>
             <p className="text-xs text-[var(--color-text-tertiary)]">
               {mode === "sample"
-                ? "Stratified random sample, runs in your browser (~75 min for 200 places). Don't refresh during the run."
-                : "Process every servable place in the city. Runs on the server — close the tab, come back later. Cancel anytime."}
+                ? "Stratified random sample. Runs in your browser — don't refresh. ~75 min for 200 places."
+                : mode === "remainder"
+                  ? "Only places we haven't scored yet. Runs on the server. Perfect for incremental backfills."
+                  : "Every servable place in the city. Runs on the server — close the tab, come back later. Cancel anytime."}
             </p>
           </div>
 
@@ -981,35 +791,62 @@ export function TrialResultsTab() {
               )}
             </div>
           </div>
-          {/* ORCH-0737 — cost+time helper text adapts to mode */}
-          <div className="text-xs text-[var(--color-text-tertiary)]">
-            {selectedCity ? (
-              <>
-                {mode === "full_city" ? (
-                  <>
-                    {`Whole city: ${effectiveCount} servable places · ~$${estCostUsd} · ${estTimeStr} wall time`}
-                    {exceedsCostGuard && (
-                      <strong className="text-[var(--color-warning-700)]"> · cost guard requires double-confirm</strong>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    Stratified random — top half by review_count + random fill of bottom half.
-                    {` ${effectiveCount} of ${selectedCity.servable_count} servable places · ~$${estCostUsd} · ${estTimeStr} wall time`}
-                  </>
-                )}
-              </>
-            ) : (
-              mode === "sample"
-                ? <>{` Range ${SAMPLE_SIZE_MIN}-${SAMPLE_SIZE_MAX}, default ${SAMPLE_SIZE_DEFAULT}.`}</>
-                : <>Pick a city to see cost + time estimate for the full pool.</>
-            )}
-            {!!activeRunId && (
-              <span className="block mt-1 text-[var(--color-warning-700)]">
-                Already a run in progress — wait or cancel above before starting another.
+          {/* ORCH-0737 + ORCH-1008 — live cost preview chip adapts to mode */}
+          {!selectedCity ? (
+            <div className="flex items-center gap-2 text-xs text-[var(--color-text-tertiary)]">
+              <Info className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+              <span>
+                {mode === "sample"
+                  ? `Pick a city to preview cost. Range ${SAMPLE_SIZE_MIN}-${SAMPLE_SIZE_MAX}, default ${SAMPLE_SIZE_DEFAULT}.`
+                  : "Pick a city to preview cost + time."}
               </span>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div>
+              <div className="text-[10px] uppercase tracking-wide text-[var(--color-text-tertiary)] font-mono mb-1.5">
+                Cost preview
+              </div>
+              <div className="rounded-lg bg-[var(--gray-50)] border border-[var(--gray-200)] px-4 py-3">
+                <div className="flex items-baseline justify-between gap-2 font-mono tabular-nums text-sm">
+                  <span className="text-[var(--color-text-secondary)]">
+                    {Number(effectiveCount).toLocaleString()} places × ${PER_PLACE_COST_USD.toFixed(4)}
+                  </span>
+                  <span
+                    className={[
+                      "font-semibold",
+                      estCostNum > 10
+                        ? "text-[var(--color-error-700)]"
+                        : estCostNum > 5
+                          ? "text-[var(--color-warning-700)]"
+                          : "text-[var(--color-text-primary)]",
+                    ].join(" ")}
+                  >
+                    ~${estCostUsd}
+                  </span>
+                </div>
+                <p className="text-xs text-[var(--color-text-tertiary)] mt-0.5">
+                  {estTimeStr} wall time
+                  {mode === "sample" && " (browser-loop — don't refresh)"}
+                  {(mode === "full_city" || mode === "remainder") && " (server-side; tab-close safe)"}
+                </p>
+                {mode === "remainder" && cityCoverage?.coverage && (
+                  <p className="text-xs text-[var(--color-text-tertiary)] mt-0.5">
+                    {Number(cityCoverage.coverage.scored_count || 0).toLocaleString()} of{" "}
+                    {Number(cityCoverage.coverage.servable_count || selectedCity.servable_count).toLocaleString()}{" "}
+                    already scored — only the rest
+                  </p>
+                )}
+                {mode === "remainder" && remainderCount === 0 && (
+                  <p className="text-xs text-[var(--color-success-700)] mt-1">
+                    Nothing to evaluate — city is fully scored.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+          {/* ORCH-1013 Finding B — "Already a run in progress" warning deleted;
+              the page-level <ActiveRunsControlTower /> now surfaces the running
+              run with its own soft-cancel affordance. */}
           <div className="flex flex-wrap items-center gap-3 pt-1 border-t border-[var(--gray-200)]">
             <span className="text-xs text-[var(--color-text-tertiary)] uppercase tracking-wide font-mono shrink-0">AI Provider</span>
             <span className="text-xs font-medium text-[var(--color-text-primary)]">Gemini 2.5 Flash</span>
@@ -1127,37 +964,71 @@ export function TrialResultsTab() {
           <div className="flex items-center justify-center py-12"><Spinner size="md" /></div>
         )}
 
-        {!loading && runIds.length === 0 && (
+        {!loading && allRows.length === 0 && (
           <AlertCard variant="info" title="No trials yet">
-            Pick a city + sample size, then click Run trial. Results will appear here once the run completes.
+            Pick a city, choose a mode, then click Run trial. Results will appear here once the run completes.
           </AlertCard>
         )}
 
-        {runIds.map((runId) => {
-          const runRows = runs[runId];
-          const succeeded = runRows.filter((r) => r.status === "completed").length;
-          const failed = runRows.filter((r) => r.status === "failed").length;
-          const totalCost = runRows.reduce((s, r) => s + Number(r.cost_usd || 0), 0);
-          const startedAt = runRows[0]?.created_at;
-          return (
-            <div key={runId} className="space-y-2">
-              <div className="flex items-baseline justify-between gap-2 px-1">
-                <h4 className="text-sm font-semibold text-[var(--color-text-primary)]">
-                  Run {runId.slice(0, 8)}…
-                </h4>
-                <span className="text-xs text-[var(--color-text-tertiary)] font-mono">
-                  {runRows.length} places · ✓{succeeded} ✗{failed} · {formatCost(totalCost)} · {new Date(startedAt).toLocaleString()}
-                </span>
-              </div>
-              <div className="space-y-1">
-                {runRows.map((row) => (
-                  <PlaceResultCard key={row.id} row={row} />
-                ))}
-              </div>
-            </div>
-          );
-        })}
+        {/* ORCH-1008 Phase 4d — per-signal verdict distribution for the most
+            recent completed run on the selected city. Hidden if <10 completed. */}
+        {selectedCity && lastCompletedRunRows.length >= 10 && (
+          <SignalDistributionPanel
+            runId={lastCompletedRunId}
+            runRows={lastCompletedRunRows}
+            onOpenPlace={(placeId) => {
+              if (placeId) window.location.hash = `#/placepool?id=${placeId}`;
+            }}
+          />
+        )}
+
+        {/* ORCH-1008 Phase 4b — status-grouped run history replaces the
+            per-run flat list. */}
+        {allRows.length > 0 && (
+          <RunHistoryGroups
+            allRows={allRows}
+            onFilterByRun={(rid) => {
+              // No-op for now: deep-filter would require a dedicated tab state.
+              // Lineage badge in the expanded card opens to that run id for
+              // future deep-filter wiring.
+              addToast({ variant: "info", title: `Run ${String(rid).slice(0, 8)}…`, description: "Lineage filter not yet wired." });
+            }}
+            onRetryFailed={canRetryFailed ? handleRetryFailedPlaces : undefined}
+            retryFailedDisabled={!canRetryFailed}
+            retryableFailedCount={retryableFailedCount}
+          />
+        )}
       </div>
+
+      {/* ORCH-1008 Phase 4 — confirmation modals.
+          ORCH-1013 Finding B — the CancelRunConfirmModal mount moved to
+          <ActiveRunCard /> inside the page-level control tower. */}
+      <RunRemainderConfirmModal
+        open={remainderModalOpen}
+        onClose={() => setRemainderModalOpen(false)}
+        cityId={cityId}
+        cityName={selectedCity?.name}
+        remainingCount={remainderCount}
+        perPlaceCostUsd={PER_PLACE_COST_USD}
+        onStarted={({ runId: newRunId, cityName: newCityName }) => {
+          setActiveRunId(newRunId);
+          setActiveRun({
+            id: newRunId,
+            city_name: newCityName,
+            mode: "remainder",
+            total_count: remainderCount,
+            processed_count: 0,
+            succeeded_count: 0,
+            failed_count: 0,
+            cost_so_far_usd: 0,
+            estimated_cost_usd: estCostNum,
+            status: "running",
+          });
+        }}
+        onConcurrentRun={() => {
+          /* banner is already visible; just close the modal */
+        }}
+      />
     </SectionCard>
   );
 }

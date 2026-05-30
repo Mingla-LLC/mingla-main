@@ -24,7 +24,6 @@ import {
   StyleSheet,
   StatusBar,
   ScrollView,
-  Modal,
   Pressable,
   AppState,
   Platform,
@@ -39,6 +38,12 @@ import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 import { Image as ExpoImage } from "expo-image";
 import * as Haptics from "expo-haptics";
+// META-ORCH-0991 Bug 3a (intermittent card tap): the Discover grid lives inside
+// the screen-level RN <ScrollView>, which steals a child Pressable's tap on the
+// slightest finger drift. An RNGH Tap gesture with a generous `maxDistance`
+// keeps firing for small drift while a clear drag still scrolls. RNGH is already
+// a dependency (v2.28.0).
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 // ORCH-0839-A F-4: AsyncStorage import removed — mobile cache deleted; server caches authoritatively.
 import { Icon, type IconName } from "./ui/Icon";
 import { formatPriceRange, parseAndFormatDistance } from "./utils/formatters";
@@ -64,6 +69,11 @@ import { savedCardsService } from "../services/savedCardsService";
 import { savedCardKeys } from "../hooks/queryKeys";
 import { useQueryClient } from "@tanstack/react-query";
 import { glass, ANDROID_GLASS_USES_OPAQUE_FALLBACK } from "../constants/designSystem";
+import { BaseBottomSheet } from "./ui/BaseBottomSheet";
+
+// META-ORCH-0991 Wave B Batch 5: fixed snap translated from the old filter
+// modal's `maxHeight: "85%"`.
+const FILTER_SNAP_POINTS = ["85%"] as const;
 // ORCH-0809 M2: city picker + segment switcher
 import { CityPickerSheet } from "./discover/CityPickerSheet";
 import {
@@ -95,6 +105,10 @@ const GRID_CARD_WIDTH = (SCREEN_WIDTH - d.grid.horizontalPadding * 2 - d.grid.co
 const GRID_CARD_HEIGHT = GRID_CARD_WIDTH / d.card.aspectRatio;
 // META-ORCH-1002 Sub-1 (S2): shared Android-opaque-fallback gate (was the per-component Android-11 version gate).
 const isAndroidPreBlur = ANDROID_GLASS_USES_OPAQUE_FALLBACK;
+// META-ORCH-0991 Bug 3b: neutral dark blurhash shown under a Ticketmaster card
+// image while it decodes (expo-image placeholder) so the cell is never an empty
+// flash on Android. A flat charcoal hash matches the cards' dark hero treatment.
+const TM_CARD_BLURHASH = "L02rs;fQfQfQfQfQfQfQfQfQfQfQ";
 
 interface NightOutCardData {
   id: string;
@@ -340,8 +354,18 @@ const EventGridCard: React.FC<EventGridCardProps> = ({
   const useGlass = !reduceTransparency && !isAndroidPreBlur;
   const pressScale = useRef(new RNAnimated.Value(1)).current;
   const heartScale = useRef(new RNAnimated.Value(1)).current;
+  // META-ORCH-0991 Bug 3b: expo-image on Android silently shows nothing on a
+  // failed decode and never retries. Track an error so the card falls back to a
+  // dark band (the gradient + chip stay legible) instead of a blank cell. Reset
+  // when the image URL changes (recycled card cell).
+  const [hasImageError, setHasImageError] = useState(false);
+  useEffect(() => {
+    setHasImageError(false);
+  }, [card.image]);
 
-  const handlePressIn = (): void => {
+  // META-ORCH-0991 Bug 3a: wrapped in useCallback so the RNGH tap gestures below
+  // memoize stably (a gesture rebuilt every render can drop an in-flight tap).
+  const handlePressIn = useCallback((): void => {
     if (Platform.OS === "ios") {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     }
@@ -352,8 +376,8 @@ const EventGridCard: React.FC<EventGridCardProps> = ({
       easing: RNEasing.out(RNEasing.quad),
       useNativeDriver: true,
     }).start();
-  };
-  const handlePressOut = (): void => {
+  }, [reduceMotion, pressScale]);
+  const handlePressOut = useCallback((): void => {
     if (reduceMotion) return;
     RNAnimated.timing(pressScale, {
       toValue: 1,
@@ -361,9 +385,9 @@ const EventGridCard: React.FC<EventGridCardProps> = ({
       easing: RNEasing.out(RNEasing.quad),
       useNativeDriver: true,
     }).start();
-  };
+  }, [reduceMotion, pressScale]);
 
-  const handleSavePress = (): void => {
+  const handleSavePress = useCallback((): void => {
     if (Platform.OS === "ios") {
       if (!isSaved) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
@@ -387,7 +411,7 @@ const EventGridCard: React.FC<EventGridCardProps> = ({
         useNativeDriver: true,
       }),
     ]).start();
-  };
+  }, [isSaved, onSaveToggle, reduceMotion, heartScale]);
 
   const formattedPrice = formatPriceRange(card.price, currency);
   const displayPrice = formattedPrice || card.price || "";
@@ -403,25 +427,56 @@ const EventGridCard: React.FC<EventGridCardProps> = ({
 
   const accLabel = `${card.eventName}, ${dateTag}, ${card.venueName}${displayPrice ? `, ${displayPrice}` : ""}`;
 
+  // META-ORCH-0991 Bug 3a: the save-heart tap (a small top-right region) must win
+  // in its area; the rest of the card opens the event. Both are RNGH Tap gestures
+  // tolerant of ~16px drift (the parent ScrollView no longer steals a near-static
+  // tap). `cardTapGesture.requireExternalGestureToFail(saveTapGesture)` makes the
+  // open-tap defer to the save-tap so a tap on the heart never ALSO opens the card.
+  const saveTapGesture = useMemo(
+    () => Gesture.Tap().maxDistance(16).maxDuration(500).runOnJS(true).onEnd(handleSavePress),
+    [handleSavePress],
+  );
+  const cardTapGesture = useMemo(
+    () =>
+      Gesture.Tap()
+        .maxDistance(16)
+        .maxDuration(500)
+        .runOnJS(true)
+        .onBegin(handlePressIn)
+        .onFinalize(handlePressOut)
+        .onEnd(onPress)
+        .requireExternalGestureToFail(saveTapGesture),
+    [onPress, handlePressIn, handlePressOut, saveTapGesture],
+  );
+
   return (
     <RNAnimated.View style={[styles.cardOuter, { transform: [{ scale: pressScale }] }]}>
-      <Pressable
+      <GestureDetector gesture={cardTapGesture}>
+      <View
         style={styles.cardPressable}
-        onPress={onPress}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
         accessibilityRole="button"
         accessibilityLabel={accLabel}
         accessibilityHint="Double tap to view details"
       >
-        {/* L0/L1 — photo */}
-        <ExpoImage
-          source={{ uri: card.image }}
-          style={StyleSheet.absoluteFill}
-          contentFit="cover"
-          transition={200}
-          cachePolicy="memory-disk"
-        />
+        {/* L0/L1 — photo — META-ORCH-0991 Bug 3b: placeholder while loading,
+            onError → dark-band fallback (never a blank cell), and a stable
+            recyclingKey so a recycled cell never shows the previous card's
+            image. cachePolicy already memory-disk. */}
+        {hasImageError ? (
+          <View style={[StyleSheet.absoluteFill, styles.cardImageFallback]} />
+        ) : (
+          <ExpoImage
+            source={{ uri: card.image }}
+            style={StyleSheet.absoluteFill}
+            contentFit="cover"
+            transition={200}
+            cachePolicy="memory-disk"
+            recyclingKey={card.id}
+            placeholder={{ blurhash: TM_CARD_BLURHASH }}
+            placeholderContentFit="cover"
+            onError={() => setHasImageError(true)}
+          />
+        )}
 
         {/* L2 — bottom gradient overlay */}
         <LinearGradient
@@ -464,11 +519,12 @@ const EventGridCard: React.FC<EventGridCardProps> = ({
           </View>
         ) : null}
 
-        {/* L4 — save heart (top-right) */}
-        <Pressable
+        {/* L4 — save heart (top-right) — META-ORCH-0991 Bug 3a: RNGH tap so it
+            coordinates with the card-open tap (the card-open gesture defers to
+            this via requireExternalGestureToFail) and the parent ScrollView. */}
+        <GestureDetector gesture={saveTapGesture}>
+        <View
           style={styles.cardSaveButtonWrap}
-          hitSlop={d.card.saveButton.hitSlop}
-          onPress={handleSavePress}
           accessibilityRole="button"
           accessibilityLabel={isSaved ? `Saved ${card.eventName}` : `Save ${card.eventName}`}
           accessibilityState={{ selected: isSaved }}
@@ -524,7 +580,8 @@ const EventGridCard: React.FC<EventGridCardProps> = ({
               }
             />
           </RNAnimated.View>
-        </Pressable>
+        </View>
+        </GestureDetector>
 
         {/* L5 — bottom info chip */}
         <View style={styles.cardBottomChip}>
@@ -567,7 +624,8 @@ const EventGridCard: React.FC<EventGridCardProps> = ({
             ) : null}
           </View>
         </View>
-      </Pressable>
+      </View>
+      </GestureDetector>
     </RNAnimated.View>
   );
 };
@@ -2120,27 +2178,53 @@ function DiscoverScreen({
         onCityPicked={handleCityPicked}
       />
 
-      {/* Night Out Filter Modal (content unchanged from Phase 1 — trigger moved to More chip) */}
-      <Modal
+      {/* Night Out Filter sheet (content unchanged from Phase 1 — trigger moved to More chip).
+          META-ORCH-0991 Wave B Batch 5: was an RN <Modal> flex-end card (maxHeight 85%,
+          dark rgba(22,24,28,1) canvas, topRadius 24) → BaseBottomSheet dark surface,
+          fixed ['85%'] snap, wrapInRNModal (Discover tab mounts it before the floating
+          GlassBottomNav sibling, so an unwrapped sheet would render under the nav).
+          Header + scroll body + sticky Reset/Apply footer. Bespoke dark canvas + radius
+          preserved via backgroundStyle. */}
+      <BaseBottomSheet
         visible={isFilterModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={handleCloseFilterModal}
+        onClose={handleCloseFilterModal}
+        snapPoints={FILTER_SNAP_POINTS as unknown as string[]}
+        wrapInRNModal
+        theme="dark"
+        backgroundStyle={{
+          backgroundColor: "rgba(22,24,28,1)",
+          borderTopLeftRadius: 24,
+          borderTopRightRadius: 24,
+        }}
+        accessibilityLabel={t("discover:filters.title")}
+        scrollProps={{ style: styles.filterModalScrollView, showsVerticalScrollIndicator: false }}
+        header={
+          <View style={styles.filterModalHeader}>
+            <Text style={styles.filterModalTitle}>{t("discover:filters.title")}</Text>
+            <TouchableOpacity onPress={handleCloseFilterModal} style={styles.modalCloseButton}>
+              <Icon name="x" size={24} color="rgba(255,255,255,0.65)" />
+            </TouchableOpacity>
+          </View>
+        }
+        stickyFooter={
+          <View style={styles.filterButtonsContainer}>
+            <TouchableOpacity
+              style={styles.resetFilterButton}
+              onPress={handleResetFilters}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.resetFilterButtonText}>{t("discover:filters.reset")}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.applyFilterButton}
+              onPress={handleApplyFilters}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.applyFilterButtonText}>{t("discover:filters.apply")}</Text>
+            </TouchableOpacity>
+          </View>
+        }
       >
-        <View style={styles.filterModalOverlay}>
-          <TouchableOpacity
-            style={styles.backdropTouch}
-            activeOpacity={1}
-            onPress={handleCloseFilterModal}
-          />
-          <View style={styles.filterModalContent}>
-            <View style={styles.filterModalHeader}>
-              <Text style={styles.filterModalTitle}>{t("discover:filters.title")}</Text>
-              <TouchableOpacity onPress={handleCloseFilterModal} style={styles.modalCloseButton}>
-                <Icon name="x" size={24} color="rgba(255,255,255,0.65)" />
-              </TouchableOpacity>
-            </View>
-            <ScrollView style={styles.filterModalScrollView} showsVerticalScrollIndicator={false}>
               <View style={styles.filterSection}>
                 <View style={styles.filterSectionHeader}>
                   <Icon name="calendar" size={20} color={glass.chrome.active.glowColor} />
@@ -2262,27 +2346,7 @@ function DiscoverScreen({
                   </Text>
                 ) : null}
               </View>
-            </ScrollView>
-
-            <View style={styles.filterButtonsContainer}>
-              <TouchableOpacity
-                style={styles.resetFilterButton}
-                onPress={handleResetFilters}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.resetFilterButtonText}>{t("discover:filters.reset")}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.applyFilterButton}
-                onPress={handleApplyFilters}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.applyFilterButtonText}>{t("discover:filters.apply")}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      </BaseBottomSheet>
     </View>
   );
 }
@@ -2496,6 +2560,11 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     backgroundColor: "rgba(22,24,28,1)", // guard against white flash while expo-image decodes
   },
+  // META-ORCH-0991 Bug 3b: dark band shown when the Ticketmaster image fails to
+  // load (expo-image onError) so the card is never a blank/empty cell.
+  cardImageFallback: {
+    backgroundColor: "rgba(22,24,28,1)",
+  },
   cardTopBadge: {
     position: "absolute",
     top: d.card.topBadge.topInset,
@@ -2625,22 +2694,6 @@ const styles = StyleSheet.create({
   },
 
   // Filter modal (dark-glass restyle; structure preserved from Phase 1)
-  filterModalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.55)",
-    justifyContent: "flex-end",
-  },
-  backdropTouch: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  filterModalContent: {
-    backgroundColor: "rgba(22,24,28,1)",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingTop: 20,
-    paddingBottom: 28,
-    maxHeight: "85%",
-  },
   filterModalHeader: {
     flexDirection: "row",
     alignItems: "center",

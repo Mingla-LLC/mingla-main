@@ -3,18 +3,26 @@ import {
   Text,
   View,
   TouchableOpacity,
-  TextInput,
   ActivityIndicator,
   Alert,
   StyleSheet,
   Share,
-  FlatList,
   Platform,
 } from "react-native";
 import { useTranslation } from 'react-i18next';
 import { Icon } from "../ui/Icon";
 import * as Haptics from "expo-haptics";
-import { KeyboardAwareScrollView } from '../ui/KeyboardAwareScrollView';
+// META-ORCH-0991 Wave C: AddFriendView is rendered ONLY inside the ConnectionsPage
+// friends modal, which is now a BaseBottomSheet. The phone field uses
+// BottomSheetTextInput so it coordinates with the sheet (the keyboard never
+// covers it). The country picker stays CountryPickerModal (its own fullScreen
+// RN <Modal>, sibling fragment) — the SAME proven Batch-4 PairRequestModal
+// pattern: a fullScreen RN <Modal> sub-picker opened by a user tap stacks above
+// the wrapInRNModal sheet (it escapes the sheet's scroll context so it does NOT
+// trip the "VirtualizedLists nested in a ScrollView" warning that a
+// CountryPickerOverlay-in-sheet would). Its FlatList rows are virtualized
+// correctly because the Modal is a separate window.
+import { BottomSheetTextInput } from "../ui/BaseBottomSheet";
 import {
   getDefaultCountryCode,
   getCountryByCode,
@@ -402,7 +410,7 @@ export function AddFriendView({
 
             <View style={styles.phoneDivider} />
 
-            <TextInput
+            <BottomSheetTextInput
               style={styles.phoneInput}
               value={phoneNumber}
               onChangeText={(text) => {
@@ -512,7 +520,9 @@ export function AddFriendView({
           </TouchableOpacity>
       </View>
 
-      {/* Country picker modal */}
+      {/* Country picker modal — fullScreen RN <Modal> sibling fragment, opened by
+          a user tap (Batch-4 PairRequestModal precedent). Stacks above the friends
+          BaseBottomSheet and virtualizes its country FlatList in its own window. */}
       <CountryPickerModal
         visible={showCountryPicker}
         selectedCode={selectedCountry.code}

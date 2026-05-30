@@ -8,11 +8,11 @@ import {
   Alert,
   Linking,
   ActivityIndicator,
-  Modal,
   Platform,
   Animated,
 } from "react-native";
 import * as Haptics from "expo-haptics";
+import { BaseBottomSheet } from "../ui/BaseBottomSheet";
 import { Icon } from "../ui/Icon";
 import { TrackedTouchableOpacity } from "../TrackedTouchableOpacity";
 import { useQueryClient } from "@tanstack/react-query";
@@ -24,13 +24,19 @@ import { CalendarService } from "../../services/calendarService";
 import { useAppStore } from "../../store/appStore";
 import { useCalendarEntries } from "../../hooks/useCalendarEntries";
 import { toastManager } from "../ui/Toast";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { DeviceCalendarService } from "@/src/services/deviceCalendarService";
 import { useIsPlaceOpen } from "../../hooks/useIsPlaceOpen";
 import { extractWeekdayText, isPlaceOpenAt } from "../../utils/openingHoursUtils";
 import { normalizeWebsiteUrl } from "../../utils/normalizeWebsiteUrl";
 import { useTranslation } from "react-i18next";
 
+
+// META-ORCH-0991 Wave B Batch 4: the iOS date/time picker <Modal> (a flex-end
+// white sheet) → fixed ['45%'] BaseBottomSheet snap. Fits the picker spinner
+// (height 200) + header; fixed snap (NOT enableDynamicSizing) per the Batch-3
+// off-screen lesson. ONLY this modal is converted; the rest of ActionButtons is
+// untouched, and the Android native DateTimePicker branch stays as-is.
+const DATE_TIME_PICKER_SNAP_POINTS = ['45%'];
 
 interface ActionButtonsProps {
   card: ExpandedCardData;
@@ -77,7 +83,6 @@ export default function ActionButtons({
   onPaywallRequired,
   canAccessCurated = true,
 }: ActionButtonsProps) {
-  const insets = useSafeAreaInsets();
   const { t } = useTranslation(['expanded_details', 'common']);
   const [isSaving, setIsSaving] = useState(false);
   const [isScheduling, setIsScheduling] = useState(false);
@@ -653,73 +658,66 @@ export default function ActionButtons({
       {showDateTimePicker && (
         <>
           {Platform.OS === "ios" ? (
-            <Modal
+            <BaseBottomSheet
               visible={showDateTimePicker}
-              transparent={true}
-              animationType="slide"
-              onRequestClose={() => setShowDateTimePicker(false)}
-            >
-              <View style={styles.modalOverlay}>
-                <TrackedTouchableOpacity
-                  logComponent="ActionButtons"
-                  logId="picker_dismiss"
-                  style={styles.backdropTouch}
-                  activeOpacity={1}
-                  onPress={() => setShowDateTimePicker(false)}
-                />
-                <SafeAreaView style={[styles.modalContent, { paddingBottom: Math.max(insets.bottom, 20) }]} edges={['bottom', 'left', 'right']}>
-                  <View style={styles.modalHeader}>
-                    <Text style={styles.modalTitle} numberOfLines={1} ellipsizeMode="tail">
-                      {pickerMode === "date" ? t('expanded_details:action_buttons.select_date') : t('expanded_details:action_buttons.select_time')}
-                    </Text>
-                    <View style={styles.modalHeaderButtons}>
+              onClose={() => setShowDateTimePicker(false)}
+              snapPoints={DATE_TIME_PICKER_SNAP_POINTS}
+              wrapInRNModal
+              scrollMode="view"
+              accessibilityLabel={pickerMode === "date" ? t('expanded_details:action_buttons.select_date') : t('expanded_details:action_buttons.select_time')}
+              header={
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle} numberOfLines={1} ellipsizeMode="tail">
+                    {pickerMode === "date" ? t('expanded_details:action_buttons.select_date') : t('expanded_details:action_buttons.select_time')}
+                  </Text>
+                  <View style={styles.modalHeaderButtons}>
+                    <TrackedTouchableOpacity
+                      logComponent="ActionButtons"
+                      logId="picker_cancel"
+                      style={styles.modalCancelButton}
+                      onPress={() => setShowDateTimePicker(false)}
+                    >
+                      <Text style={styles.modalCancelText}>{t('expanded_details:action_buttons.cancel')}</Text>
+                    </TrackedTouchableOpacity>
+                    {/* ORCH-0690 S-3: Back-to-date button visible only in time-mode */}
+                    {pickerMode === "time" && (
                       <TrackedTouchableOpacity
                         logComponent="ActionButtons"
-                        logId="picker_cancel"
+                        logId="picker_back_to_date"
                         style={styles.modalCancelButton}
-                        onPress={() => setShowDateTimePicker(false)}
+                        onPress={handleBackToDate}
                       >
-                        <Text style={styles.modalCancelText}>{t('expanded_details:action_buttons.cancel')}</Text>
-                      </TrackedTouchableOpacity>
-                      {/* ORCH-0690 S-3: Back-to-date button visible only in time-mode */}
-                      {pickerMode === "time" && (
-                        <TrackedTouchableOpacity
-                          logComponent="ActionButtons"
-                          logId="picker_back_to_date"
-                          style={styles.modalCancelButton}
-                          onPress={handleBackToDate}
-                        >
-                          <Text style={styles.modalCancelText}>
-                            {t('expanded_details:action_buttons.back_to_date')}
-                          </Text>
-                        </TrackedTouchableOpacity>
-                      )}
-                      <TrackedTouchableOpacity
-                        logComponent="ActionButtons"
-                        logId="picker_done"
-                        style={styles.modalConfirmButton}
-                        onPress={pickerMode === "date" ? handleDatePickerConfirm : handleTimePickerConfirm}
-                      >
-                        <Text style={styles.modalConfirmText}>
-                          {pickerMode === "date" ? t('expanded_details:action_buttons.next') : t('expanded_details:action_buttons.done')}
+                        <Text style={styles.modalCancelText}>
+                          {t('expanded_details:action_buttons.back_to_date')}
                         </Text>
                       </TrackedTouchableOpacity>
-                    </View>
+                    )}
+                    <TrackedTouchableOpacity
+                      logComponent="ActionButtons"
+                      logId="picker_done"
+                      style={styles.modalConfirmButton}
+                      onPress={pickerMode === "date" ? handleDatePickerConfirm : handleTimePickerConfirm}
+                    >
+                      <Text style={styles.modalConfirmText}>
+                        {pickerMode === "date" ? t('expanded_details:action_buttons.next') : t('expanded_details:action_buttons.done')}
+                      </Text>
+                    </TrackedTouchableOpacity>
                   </View>
-                  <DateTimePicker
-                    value={pickerMode === "date" ? selectedDate : selectedTime}
-                    mode={pickerMode}
-                    is24Hour={false}
-                    display="spinner"
-                    onChange={handleDateTimePickerChange}
-                    minimumDate={new Date()}
-                    style={styles.dateTimePicker}
-                    themeVariant="light"
-                    textColor="#111827"
-                  />
-                </SafeAreaView>
-              </View>
-            </Modal>
+                </View>
+              }
+            >
+              <DateTimePicker
+                value={pickerMode === "date" ? selectedDate : selectedTime}
+                mode={pickerMode}
+                is24Hour={false}
+                display="spinner"
+                onChange={handleDateTimePickerChange}
+                minimumDate={new Date()}
+                style={styles.dateTimePicker}
+                themeVariant="light"
+                textColor="#111827"
+              />
+            </BaseBottomSheet>
           ) : (
             <DateTimePicker
               value={pickerMode === "date" ? selectedDate : selectedTime}
@@ -1031,19 +1029,10 @@ const styles = StyleSheet.create({
     color: "#6b7280",
     fontWeight: "500",
   },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    justifyContent: "flex-end",
-  },
-  backdropTouch: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  modalContent: {
-    backgroundColor: "white",
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-  },
+  // META-ORCH-0991 Wave B Batch 4: removed the iOS date/time picker <Modal>'s
+  // hand-rolled chrome (`modalOverlay` scrim, `backdropTouch`, `modalContent`
+  // card). The picker is now a light BaseBottomSheet at ['45%'] with the real
+  // gorhom handle + pan-down/backdrop close; only this modal changed.
   modalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",

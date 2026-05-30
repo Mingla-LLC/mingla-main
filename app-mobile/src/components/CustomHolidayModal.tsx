@@ -3,18 +3,21 @@ import {
   View,
   Text,
   StyleSheet,
-  Modal,
-  TextInput,
   TouchableOpacity,
   ScrollView,
 } from "react-native";
-import { KeyboardAwareScrollView } from './ui/KeyboardAwareScrollView';
+import { BaseBottomSheet, BottomSheetTextInput } from './ui/BaseBottomSheet';
 import { Icon } from './ui/Icon';
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
-import { s, vs, SCREEN_HEIGHT } from "../utils/responsive";
+import { s, vs } from "../utils/responsive";
 import { colors } from "../constants/designSystem";
 import { useTranslation } from "react-i18next";
+
+// META-ORCH-0991 Wave B Batch 4: was a flex-end RN <Modal> sheet capped at
+// SCREEN_HEIGHT*0.88 → fixed ['88%'] snap (playbook §2). Fixed snap (NOT
+// enableDynamicSizing) per the Batch-3 off-screen lesson.
+const CUSTOM_HOLIDAY_SNAP_POINTS = ['88%'];
 
 interface CustomHolidayModalProps {
   visible: boolean;
@@ -147,50 +150,44 @@ const CustomHolidayModal: React.FC<CustomHolidayModalProps> = ({
     return isFutureDate(selectedYear, selectedMonth, day);
   };
 
+  const header = (
+    <View style={styles.header}>
+      <Text style={styles.title}>{t('modals:custom_holiday.title')}</Text>
+      <TouchableOpacity
+        onPress={onClose}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+      >
+        <Icon name="close" size={s(24)} color={colors.gray[400]} />
+      </TouchableOpacity>
+    </View>
+  );
+
   return (
-    <Modal
+    <BaseBottomSheet
       visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
+      onClose={onClose}
+      snapPoints={CUSTOM_HOLIDAY_SNAP_POINTS}
+      wrapInRNModal
+      keyboardBehavior="interactive"
+      keyboardBlurBehavior="restore"
+      android_keyboardInputMode="adjustResize"
+      accessibilityLabel={t('modals:custom_holiday.title')}
+      header={header}
+      bodyContainerStyle={styles.bodyContainer}
+      scrollMode="scroll"
+      scrollProps={{
+        showsVerticalScrollIndicator: false,
+        keyboardShouldPersistTaps: "handled",
+        contentContainerStyle: {
+          paddingHorizontal: s(24),
+          paddingBottom: Math.max(insets.bottom, 16) + 16,
+        },
+      }}
     >
-      <View style={styles.overlay}>
-        <TouchableOpacity
-          style={styles.backdrop}
-          activeOpacity={1}
-          onPress={onClose}
-        />
-        <View
-          style={[
-            styles.sheetContent,
-            { paddingBottom: Math.max(insets.bottom, 16) + 16 },
-          ]}
-        >
-          {/* Handle */}
-          <View style={styles.handleContainer}>
-            <View style={styles.handle} />
-          </View>
-
-          <KeyboardAwareScrollView
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-            bounces={false}
-          >
-            {/* Header */}
-            <View style={styles.header}>
-              <Text style={styles.title}>{t('modals:custom_holiday.title')}</Text>
-              <TouchableOpacity
-                onPress={onClose}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <Icon name="close" size={s(24)} color={colors.gray[400]} />
-              </TouchableOpacity>
-            </View>
-
             {/* Name */}
             <View style={styles.field}>
               <Text style={styles.label}>{t('modals:custom_holiday.whats_the_day')}</Text>
-              <TextInput
+              <BottomSheetTextInput
                 style={[styles.textInput, errors.name && styles.inputError]}
                 value={name}
                 onChangeText={(t) => {
@@ -318,46 +315,27 @@ const CustomHolidayModal: React.FC<CustomHolidayModalProps> = ({
             <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
               <Text style={styles.saveButtonText}>{t('modals:custom_holiday.save_this_day')}</Text>
             </TouchableOpacity>
-          </KeyboardAwareScrollView>
-        </View>
-      </View>
-    </Modal>
+    </BaseBottomSheet>
   );
 };
 
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "flex-end",
-  },
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  sheetContent: {
-    backgroundColor: "#FFFFFF",
-    borderTopLeftRadius: s(24),
-    borderTopRightRadius: s(24),
-    paddingHorizontal: s(24),
+  // META-ORCH-0991 Wave B Batch 4: removed the hand-rolled RN <Modal> chrome
+  // (`overlay` scrim, `backdrop`, `sheetContent` card capped at SCREEN_HEIGHT*0.88,
+  // `handleContainer`/`handle` cosmetic drag handle). Now a swipe-down
+  // BaseBottomSheet at ['88%'] with the real gorhom handle + pan-down/backdrop
+  // close; keyboard-aware via BottomSheetTextInput. wrapInRNModal z-stacks above
+  // the floating GlassBottomNav (ViewFriendProfileScreen mounts it over the nav).
+  bodyContainer: {
     paddingTop: s(12),
-    maxHeight: SCREEN_HEIGHT * 0.88,
-    width: "100%",
-  },
-  handleContainer: {
-    alignItems: "center",
-    paddingVertical: vs(8),
-  },
-  handle: {
-    width: s(36),
-    height: s(4),
-    borderRadius: s(2),
-    backgroundColor: colors.gray[300],
   },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: vs(20),
+    paddingHorizontal: s(24),
+    paddingTop: s(12),
   },
   title: {
     fontSize: s(20),

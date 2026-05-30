@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   Animated,
   ScrollView,
 } from 'react-native';
+import { BottomSheetFlatList } from './ui/BaseBottomSheet';
 import { useTranslation } from 'react-i18next';
 import { Icon } from './ui/Icon';
 import { s, vs, SCREEN_WIDTH } from '../utils/responsive';
@@ -48,6 +49,14 @@ interface PairedSavesListScreenProps {
   categories?: string[];
   selectedCategory?: string;
   onCategoryChange?: (category: string | undefined) => void;
+  /**
+   * META-ORCH-0991 Wave B Batch 5: when this screen is rendered INSIDE a
+   * BaseBottomSheet (PersonHolidayView's saves list), the vertical grid must
+   * use gorhom's BottomSheetFlatList so its scroll coordinates with the sheet
+   * pan gesture instead of fighting it. Defaults to false (raw RN FlatList) so
+   * the full-screen / page-sheet consumers (visits list) are unchanged.
+   */
+  inBottomSheet?: boolean;
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -104,8 +113,11 @@ const PairedSavesListScreen: React.FC<PairedSavesListScreenProps> = ({
   categories,
   selectedCategory,
   onCategoryChange,
+  inBottomSheet = false,
 }) => {
   const { t } = useTranslation(['social', 'common']);
+  // gorhom-aware list inside a sheet; raw RN FlatList everywhere else.
+  const ListComponent = inBottomSheet ? BottomSheetFlatList : FlatList;
   const renderItem = useCallback(
     ({ item }: { item: ListItem }) => (
       <View style={styles.cardWrapper}>
@@ -248,9 +260,9 @@ const PairedSavesListScreen: React.FC<PairedSavesListScreenProps> = ({
           <Text style={styles.emptyTitle}>{t('social:nothingHereYet')}</Text>
         </View>
       ) : (
-        <FlatList
+        <ListComponent
           data={items}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item: ListItem) => item.id}
           renderItem={renderItem}
           numColumns={NUM_COLUMNS}
           contentContainerStyle={styles.gridContent}

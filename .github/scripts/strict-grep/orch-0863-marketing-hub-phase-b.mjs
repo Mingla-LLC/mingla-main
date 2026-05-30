@@ -987,7 +987,63 @@ function checkNoNewBackendFiles() {
     "supabase/functions/_shared/stopAlternatives.ts",
     "supabase/functions/generate-curated-experiences/index.ts",
   ];
+  // ORCH-1006 [Universal all-in pricing engine]. New shared money engine + its
+  // regression test + the three pricing migrations. Admin take-rate persistence
+  // uses SECURITY DEFINER RPCs (no new edge function), so only these register.
+  const ORCH_1006_BACKEND_ALLOWLIST = [
+    "supabase/functions/_shared/allInPricingEngine.ts",
+    "supabase/functions/_shared/__tests__/allInPricingEngine.test.ts",
+    "supabase/migrations/20260802000000_orch_1006_pricing_switches.sql",
+    "supabase/migrations/20260802000001_orch_1006_pricing_views.sql",
+    "supabase/migrations/20260802000002_orch_1006_finalize_copy_pricing_breakdown.sql",
+  ];
+  // ORCH-1008 [Admin shell prune + Intelligence Overview tab + remainder mode].
+  // C7 is scoped to ORCH-0863 marketing; these backend touches are the new
+  // place_intelligence_runs CHECK-constraint extension (adds 'remainder' to
+  // the mode enum + sample_size consistency), the in-place edge fn extension
+  // (handleStartRun branches on mode='remainder' + a new intelligence_coverage
+  // action for the Overview tab), plus the Deno regression test asserting
+  // remainder enqueues exactly servable - completed places. Per COMMS-0002.
+  const ORCH_1008_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260801000002_orch_1008_remainder_mode.sql",
+    "supabase/functions/run-place-intelligence-trial/index.ts",
+    "supabase/functions/run-place-intelligence-trial/__tests__/runRemainder.test.ts",
+    "supabase/functions/run-place-intelligence-trial/__tests__/runRemainder_adversarial.test.ts",
+  ];
+  // ORCH-1013 [Place Intel control tower + coverage-math fix + admin Tailwind
+  // drift]. Finding A patches handleIntelligenceCoverage to JOIN place_pool on
+  // is_servable so the "evaluated" set excludes drifted rows; Finding C is
+  // operational (no file edits). Per COMMS-0002.
+  const ORCH_1013_BACKEND_ALLOWLIST = [
+    "supabase/functions/run-place-intelligence-trial/index.ts",
+    "supabase/functions/run-place-intelligence-trial/__tests__/coverage_servable_filter.test.ts",
+    // ORCH-1013 QA adversarial tests (no production code touched)
+    "supabase/functions/run-place-intelligence-trial/__tests__/coverage_adversarial.test.ts",
+  ];
+  // ORCH-1014 [Intelligence Trial consolidation — prune photo pages +
+  // per-city Seed/Refresh readiness badges]. C7 is scoped to ORCH-0863
+  // marketing; ORCH-1014's only backend touch is a read-only extension to
+  // the intelligence_coverage action (6 new fields per city row + 2 new
+  // place_pool fetches client-side aggregated) plus its Deno regression
+  // test. No new external API surface (Supabase-only). Per COMMS-0003 the
+  // existing Gemini-2.5-Flash citation block in the file is preserved.
+  // The edge fn path is already in ORCH_1008_BACKEND_ALLOWLIST above;
+  // duplicates here are harmless (ALLOWLIST is a union via .includes()).
+  const ORCH_1014_BACKEND_ALLOWLIST = [
+    "supabase/functions/run-place-intelligence-trial/index.ts",
+    "supabase/functions/run-place-intelligence-trial/__tests__/intelligence_coverage_seed_refresh.test.ts",
+  ];
+  // ORCH-1015 — Intelligence Overview readiness ladder. Edge fn touched is
+  // the existing intelligence_coverage action (3 new fields per city row +
+  // 1 extended fetch column on seeding_cities). The Deno test file is
+  // extended in-place (no new test file). Edge fn path duplicates
+  // ORCH_1008/ORCH_1014 — harmless (ALLOWLIST is a union via .includes()).
+  const ORCH_1015_BACKEND_ALLOWLIST = [
+    "supabase/functions/run-place-intelligence-trial/index.ts",
+    "supabase/functions/run-place-intelligence-trial/__tests__/intelligence_coverage_seed_refresh.test.ts",
+  ];
   const ALLOWLIST = [
+    ...ORCH_1006_BACKEND_ALLOWLIST,
     ...ORCH_0989_BACKEND_ALLOWLIST,
     ...ORCH_0990_BACKEND_ALLOWLIST,
     ...ORCH_0986_BACKEND_ALLOWLIST,
@@ -1040,6 +1096,10 @@ function checkNoNewBackendFiles() {
     ...ORCH_0964_BACKEND_ALLOWLIST,
     ...ORCH_0977_BACKEND_ALLOWLIST,
     ...ORCH_0978_BACKEND_ALLOWLIST,
+    ...ORCH_1008_BACKEND_ALLOWLIST,
+    ...ORCH_1013_BACKEND_ALLOWLIST,
+    ...ORCH_1014_BACKEND_ALLOWLIST,
+    ...ORCH_1015_BACKEND_ALLOWLIST,
   ];
   const forbidden = changed.filter(
     (p) =>

@@ -10,12 +10,10 @@ import {
   Alert,
   FlatList,
   TextInput,
-  Modal,
   TouchableWithoutFeedback,
   Keyboard,
   Platform,
   ScrollView,
-  useWindowDimensions,
   RefreshControl,
   InteractionManager,
   Image,
@@ -49,6 +47,13 @@ import { showMutationError } from "../utils/showMutationError";
 import { getDisplayName } from "../utils/getDisplayName";
 import { useTranslation } from 'react-i18next';
 import type { BusinessEventCard } from "../types/mergedDiscover";
+
+// META-ORCH-0991 Wave C: the 4-tab friends modal converted from a hand-rolled
+// RN <Modal> + useKeyboard sheet-height math to the shared BaseBottomSheet
+// (swipe-down, scroll body, stock gorhom motion). gorhom owns keyboard
+// coordination once AddFriendView's field is a BottomSheetTextInput, so the
+// useKeyboard sheetHeight/marginBottom math is no longer applied to this sheet.
+import { BaseBottomSheet } from "./ui/BaseBottomSheet";
 
 // Sub-components
 import { ChatListItem } from "./connections/ChatListItem";
@@ -91,6 +96,8 @@ type PanelId = "add" | "friends" | "blocked" | null; // [TRANSITIONAL] kept for 
 type FriendsModalTab = "friend-list" | "sent" | "requests" | "blocked";
 
 const BUSINESS_BUYER_DOMAIN = "https://business.mingla.app";
+// Was a flex-end sheet sized at screenHeight*0.88 → fixed ['88%'] snap (playbook §2).
+const FRIENDS_MODAL_SNAP = ["88%"] as const;
 
 type GroupEventMeta = {
   id: string;
@@ -568,33 +575,15 @@ function ConnectionsPageRefactored({
     isUnlimited,
   } = useSessionCreationGate();
   const { bottomNavTotalHeight } = useAppLayout();
-  const { height: screenHeight } = useWindowDimensions();
-
-  // ── Keyboard-aware sheet height ────────────────────────────
-  // Replaces KeyboardAvoidingView which conflicts with fixed-height sheets.
-  // Captures the window height BEFORE the keyboard opens so Android's
-  // adjustResize doesn't pollute the baseline, then subtracts keyboard height.
   const chatInsets = useSafeAreaInsets();
-  const {
-    isVisible: keyboardVisible,
-    keyboardHeight: rawKeyboardHeight,
-    dismiss: dismissKeyboard,
-  } = useKeyboard({ disableLayoutAnimation: true });
-  // iOS keyboardHeight includes safe area bottom — subtract it so input sits flush against keyboard
-  const keyboardHeight = Platform.OS === 'ios'
-    ? Math.max(0, rawKeyboardHeight - chatInsets.bottom)
-    : rawKeyboardHeight;
 
-  const stableHeightRef = useRef(screenHeight);
-  useEffect(() => {
-    if (!keyboardVisible) {
-      stableHeightRef.current = screenHeight;
-    }
-  }, [screenHeight, keyboardVisible]);
-
-  const sheetHeight = keyboardVisible
-    ? Math.max(200, stableHeightRef.current - keyboardHeight - 44)
-    : stableHeightRef.current * 0.88;
+  // ── Keyboard dismissal ────────────────────────────
+  // META-ORCH-0991 Wave C: the friends modal is now a BaseBottomSheet (fixed
+  // ['88%'] snap) and gorhom owns keyboard coordination, so the prior
+  // useKeyboard sheet-height math (keyboardVisible/keyboardHeight/stableHeightRef
+  // → sheetHeight/marginBottom) was removed. Only dismissKeyboard remains, used
+  // by the row/close handlers.
+  const { dismiss: dismissKeyboard } = useKeyboard({ disableLayoutAnimation: true });
 
   // ── ORCH-0600: Accessibility state for glass header ──────
   const [reduceTransparency, setReduceTransparency] = useState(false);
@@ -783,6 +772,32 @@ function ConnectionsPageRefactored({
   const pendingCollabChatRef = useRef<PendingCollabChatDetails | null>(null);
   const readyPendingCollabToastSessionIdsRef = useRef(new Set<string>());
   pendingCollabChatRef.current = pendingCollabChat;
+
+  // META-ORCH-0991 Wave C — §13 one-sheet-at-a-time gate for the friends modal.
+  // Every child surface the friends modal can open is itself an RN-Modal-backed
+  // surface (wrapInRNModal BaseBottomSheet, center-dialog, or RN <Modal>). Two
+  // RN-Modal-backed surfaces cannot co-present on iOS, so while any child is open
+  // the friends sheet's window is dropped (visible gated below). handleFriendsModalClose
+  // swallows the suppress-for-child close (BaseBottomSheet fires onClose on
+  // onChange(-1) when visible flips false) so suppressing for a child does NOT
+  // tear down the whole friends flow — only a genuine user dismiss propagates.
+  const anyFriendsChildOpen =
+    friendPickerVisible ||
+    actionsSheetVisible ||
+    showPairRequestModal ||
+    showFriendsActionChooser ||
+    showCreateGroupChatSheet ||
+    showReportModal ||
+    showBlockModal ||
+    showAddToBoardModal ||
+    showPaywall ||
+    !!pendingCollabChat ||
+    !!showIncomingPairRequest;
+  const handleFriendsModalClose = useCallback(() => {
+    if (anyFriendsChildOpen) return;
+    dismissKeyboard();
+    setShowFriendsModal(false);
+  }, [anyFriendsChildOpen, dismissKeyboard]);
 
   const activePairedPeople: PairedPillPerson[] = useMemo(() => {
     const active = pairingPills
@@ -3557,23 +3572,31 @@ function ConnectionsPageRefactored({
         </View>
       </View>
 
-      {/* ORCH-0435: Consolidated 4-tab Friends Modal */}
-      <Modal
-        visible={showFriendsModal}
-        animationType="slide"
-        transparent
-        onRequestClose={() => { dismissKeyboard(); setShowFriendsModal(false); }}
-      >
-        <View style={styles.sheetOverlay}>
-          <TouchableWithoutFeedback onPress={() => { dismissKeyboard(); setShowFriendsModal(false); }}>
-            <View style={styles.backdropFill} />
-          </TouchableWithoutFeedback>
-
-          <View
-            style={[styles.sheetContainer, { height: sheetHeight, paddingBottom: keyboardVisible ? 0 : 32, marginBottom: keyboardVisible ? keyboardHeight : 0 }]}
-            onStartShouldSetResponder={() => true}
-          >
-            <View style={styles.sheetHandle} />
+      {/* ORCH-0435: Consolidated 4-tab Friends Modal.
+          META-ORCH-0991 Wave C: RN <Modal> + hand-rolled useKeyboard sheet-height
+          → light BaseBottomSheet, fixed ['88%'] snap, scroll body, wrapInRNModal
+          (mounts under the floating GlassBottomNav — Batch-2 z-trap). gorhom owns
+          keyboard coordination (AddFriendView field is a BottomSheetTextInput).
+          Non-destructive picker → full swipe-down sheet (operator rule §1).
+          §13 one-sheet-at-a-time gate: every child surface this page can open
+          (action chooser, create-group, pair request, friend actions, friend
+          picker) is itself a wrapInRNModal sheet; while one is open the friends
+          sheet's RN-Modal window is dropped so two RN-Modal-backed surfaces never
+          co-present on iOS. The row handlers already setShowFriendsModal(false)
+          before opening a child; the gate makes that invariant structural. */}
+      <BaseBottomSheet
+        visible={showFriendsModal && !anyFriendsChildOpen}
+        onClose={handleFriendsModalClose}
+        snapPoints={FRIENDS_MODAL_SNAP as unknown as string[]}
+        wrapInRNModal
+        theme="light"
+        scrollMode="scroll"
+        keyboardBehavior="interactive"
+        keyboardBlurBehavior="restore"
+        android_keyboardInputMode="adjustResize"
+        accessibilityLabel="Friends"
+        header={
+          <View style={styles.friendsSheetHeaderBlock}>
             <View style={styles.sheetHeader}>
               <Text style={styles.sheetTitle}>Friends</Text>
               <TouchableOpacity onPress={() => { dismissKeyboard(); setShowFriendsModal(false); }} activeOpacity={0.7}>
@@ -3637,14 +3660,16 @@ function ConnectionsPageRefactored({
                 </Text>
               </TouchableOpacity>
             </View>
-
-            <ScrollView
-              style={styles.sheetBody}
-              contentContainerStyle={styles.sheetBodyContent}
-              keyboardShouldPersistTaps="handled"
-              keyboardDismissMode="on-drag"
-              showsVerticalScrollIndicator={false}
-            >
+          </View>
+        }
+        scrollProps={{
+          contentContainerStyle: styles.sheetBodyContent,
+          keyboardShouldPersistTaps: "handled",
+          keyboardDismissMode: "on-drag",
+          showsVerticalScrollIndicator: false,
+        }}
+      >
+        <View style={styles.sheetBodyInner}>
               {/* Tab 1: Friend List = Add Friend + Friend List */}
               {friendsModalTab === "friend-list" && (
                 <>
@@ -3803,10 +3828,8 @@ function ConnectionsPageRefactored({
                   onUnblock={handleUnblock}
                 />
               )}
-            </ScrollView>
-          </View>
         </View>
-      </Modal>
+      </BaseBottomSheet>
 
       {/* Friend Picker Sheet */}
       <FriendPickerSheet
@@ -4002,9 +4025,6 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-  },
-  backdropFill: {
-    ...StyleSheet.absoluteFillObject,
   },
 
   // ── ORCH-0600: Glass header panel ────────────────────────
@@ -4426,25 +4446,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "500",
   },
-  // ── Bottom Sheet ──────────────────────────
-  sheetOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.35)",
-    justifyContent: "flex-end",
-  },
-  sheetContainer: {
-    backgroundColor: "#ffffff",
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-  },
-  sheetHandle: {
-    width: 36,
-    height: 4,
-    backgroundColor: "#d1d5db",
-    borderRadius: 2,
-    alignSelf: "center",
-    marginTop: 10,
-    marginBottom: 8,
+  // ── Bottom Sheet (Friends modal) ──────────────────────────
+  // META-ORCH-0991 Wave C: the scrim/flex-end card/hand-rolled handle styles
+  // (sheetOverlay, sheetContainer, sheetHandle) are owned by BaseBottomSheet now.
+  friendsSheetHeaderBlock: {
+    paddingTop: 4,
   },
   sheetHeader: {
     flexDirection: "row",
@@ -4460,13 +4466,13 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#111827",
   },
-sheetBody: {
-  flex: 1,
-},
-sheetBodyContent: {
-  paddingTop: 8,
-  paddingBottom: 24,
-},
+  sheetBodyInner: {
+    flex: 1,
+  },
+  sheetBodyContent: {
+    paddingTop: 8,
+    paddingBottom: 24,
+  },
   // ── Tab bar (Friends modal) ────────────
   tabBar: {
     flexDirection: "row",

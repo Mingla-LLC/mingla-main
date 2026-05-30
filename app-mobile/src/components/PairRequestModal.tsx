@@ -9,8 +9,6 @@ import {
   View,
   Text,
   TouchableOpacity,
-  TextInput,
-  Modal,
   ActivityIndicator,
   StyleSheet,
   Image,
@@ -18,10 +16,10 @@ import {
   Share,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { BaseBottomSheet, BottomSheetTextInput } from "./ui/BaseBottomSheet";
 import { Icon } from './ui/Icon';
 import * as Haptics from "expo-haptics";
 import { useQueryClient } from "@tanstack/react-query";
-import { KeyboardAwareScrollView } from "./ui/KeyboardAwareScrollView";
 import { useFriends } from "../hooks/useFriends";
 import type { Friend } from "../hooks/useFriends";
 import { usePairingPills, useSendPairRequest } from "../hooks/usePairings";
@@ -37,7 +35,7 @@ import { usePhoneLookup, useDebouncedValue } from "../hooks/usePhoneLookup";
 import { createPendingInvite } from "../services/phoneLookupService";
 import { phoneInviteKeys } from "../hooks/usePhoneInvite";
 import { useTranslation } from 'react-i18next';
-import { colors, spacing, radius, shadows } from "../constants/designSystem";
+import { colors, spacing, radius } from "../constants/designSystem";
 import { s } from "../utils/responsive";
 import { getDisplayName } from "../utils/getDisplayName";
 
@@ -47,6 +45,12 @@ const INITIALS_COLORS = [
   "#10B981",
   "#8B5CF6",
 ];
+
+// META-ORCH-0991 Wave B Batch 4: was a flex-end RN <Modal> sheet capped at
+// maxHeight 85% → fixed ['85%'] snap (playbook §2 — translate the old maxHeight).
+// A fixed snap (NOT enableDynamicSizing) per the Batch-3 lesson: content-height
+// sheets can measure children below the viewport and snap off-screen-bottom.
+const PAIR_REQUEST_SNAP_POINTS = ['85%'];
 
 interface PairRequestModalProps {
   visible: boolean;
@@ -289,47 +293,40 @@ export default function PairRequestModal({
     onClose();
   }, [onClose]);
 
+  const header = (
+    <View style={styles.header}>
+      <Text style={styles.headerTitle}>{t('social:pairWithSomeone')}</Text>
+      <TouchableOpacity
+        style={styles.closeButton}
+        onPress={handleClose}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      >
+        <Icon name="close" size={20} color={colors.gray[500]} />
+      </TouchableOpacity>
+    </View>
+  );
+
   return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      transparent
-      onRequestClose={handleClose}
-      statusBarTranslucent
-    >
-      <View style={styles.overlay}>
-        <TouchableOpacity
-          style={styles.backdrop}
-          activeOpacity={1}
-          onPress={handleClose}
-        />
-        <View
-          style={[
-            styles.sheet,
-            { paddingBottom: Math.max(insets.bottom, 16) + 16 },
-          ]}
-        >
-          {/* Drag Handle */}
-          <View style={styles.handleContainer}>
-            <View style={styles.handle} />
-          </View>
-
-          {/* Header */}
-          <View style={styles.header}>
-            <Text style={styles.headerTitle}>{t('social:pairWithSomeone')}</Text>
-            <TouchableOpacity
-              style={styles.closeButton}
-              onPress={handleClose}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Icon name="close" size={20} color={colors.gray[500]} />
-            </TouchableOpacity>
-          </View>
-
-          <KeyboardAwareScrollView
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.scrollContent}
-          >
+    <>
+      <BaseBottomSheet
+        visible={visible}
+        onClose={handleClose}
+        snapPoints={PAIR_REQUEST_SNAP_POINTS}
+        wrapInRNModal
+        keyboardBehavior="interactive"
+        keyboardBlurBehavior="restore"
+        android_keyboardInputMode="adjustResize"
+        accessibilityLabel={t('social:pairWithSomeone')}
+        header={header}
+        scrollMode="scroll"
+        scrollProps={{
+          showsVerticalScrollIndicator: false,
+          contentContainerStyle: {
+            ...styles.scrollContent,
+            paddingBottom: Math.max(insets.bottom, 16) + 24,
+          },
+        }}
+      >
             {/* Section 1: Your Friends */}
             <View style={styles.section}>
               <Text style={styles.sectionHeader}>{t('social:yourFriends')}</Text>
@@ -342,7 +339,7 @@ export default function PairRequestModal({
                     size={16}
                     color={colors.gray[400]}
                   />
-                  <TextInput
+                  <BottomSheetTextInput
                     style={styles.searchInput}
                     placeholder={t('social:searchFriends')}
                     placeholderTextColor={colors.gray[400]}
@@ -496,7 +493,7 @@ export default function PairRequestModal({
                 <View style={styles.phoneDivider} />
 
                 {/* Phone Input */}
-                <TextInput
+                <BottomSheetTextInput
                   style={styles.phoneInput}
                   placeholder={t('social:phoneNumber')}
                   placeholderTextColor={colors.gray[400]}
@@ -581,48 +578,28 @@ export default function PairRequestModal({
                 )}
               </TouchableOpacity>
             </View>
-          </KeyboardAwareScrollView>
-        </View>
-      </View>
+      </BaseBottomSheet>
 
-      {/* Country picker modal */}
+      {/* Country picker modal — its own RN Modal; renders as a sibling so it floats
+          independently above the sheet (excluded sub-modal, like BillingSheet's
+          nested paywall in Batch 2). */}
       <CountryPickerModal
         visible={showCountryPicker}
         selectedCode={selectedCountry.code}
         onSelect={handleCountrySelect}
         onClose={() => setShowCountryPicker(false)}
       />
-    </Modal>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.35)",
-    justifyContent: "flex-end",
-  },
-  backdrop: {
-    flex: 1,
-  },
-  sheet: {
-    backgroundColor: "#FFFFFF",
-    borderTopLeftRadius: s(24),
-    borderTopRightRadius: s(24),
-    maxHeight: "85%",
-    ...shadows.lg,
-  },
-  handleContainer: {
-    alignItems: "center",
-    paddingTop: s(12),
-    paddingBottom: s(4),
-  },
-  handle: {
-    width: s(40),
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.gray[300],
-  },
+  // META-ORCH-0991 Wave B Batch 4: removed the hand-rolled RN <Modal> chrome
+  // (`overlay` scrim, `backdrop`, `sheet` card with maxHeight 85% + shadow,
+  // `handleContainer`/`handle` cosmetic drag handle). Now a swipe-down
+  // BaseBottomSheet at ['85%'] with the real gorhom handle + pan-down/backdrop
+  // close; keyboard-aware via BottomSheetTextInput. wrapInRNModal z-stacks above
+  // the floating GlassBottomNav (mounted as a later sibling than ConnectionsPage).
   header: {
     flexDirection: "row",
     alignItems: "center",
