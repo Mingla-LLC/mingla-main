@@ -75,15 +75,10 @@ export function OrganiserHero() {
               initial={reduced ? false : { opacity: 0, y: 12, filter: 'blur(8px)' }}
               animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
               transition={{ duration: 0.72, delay: reduced ? 0 : 0.1, ease: EASE }}
-              className="font-display text-4xl tracking-[-0.02em] text-white md:text-6xl"
+              className="font-display text-5xl leading-[1.05] tracking-[-0.02em] text-white md:text-7xl"
+              style={{ textShadow: '0 2px 24px rgba(0,0,0,0.4)' }}
             >
-              {/* Curvy orange container hugging the headline. */}
-              <span
-                className="inline-block rounded-[2.6rem_2rem_2.8rem_2.1rem/2.1rem_2.8rem_2rem_2.6rem] bg-warm px-6 py-3 text-ink md:px-8 md:py-4"
-                style={{ boxShadow: '0 16px 48px rgba(235,120,37,0.38)', lineHeight: 1.12 }}
-              >
-                You deserve to be found.
-              </span>
+              You deserve <br className="hidden sm:block" />to be <span className="text-warm">found.</span>
             </motion.h1>
 
             <motion.p
