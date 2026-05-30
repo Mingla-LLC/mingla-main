@@ -86,26 +86,8 @@ check('Audiences ships all 6 approved eyebrows verbatim (full experience economy
 // 4. (Retired) the Comparison section was deleted in ORCH-1010 — its kill-shot
 //    copy guard is removed with it.
 
-// 5. FAQ STRUCTURAL INVARIANT — exactly 8 question objects, and ZERO of them
-//    is a pricing/cost/SLA/timeline question (catches a re-introduced pricing
-//    FAQ even if phrased to dodge the FORBIDDEN-phrase scan, e.g. "What does it
-//    cost?" / "How long until I'm live?").
-check('FAQ has exactly 8 items and none asks about price/cost/billing/SLA/timeline', () => {
-  const faq = read('faq.tsx')
-  // count question keys: `q:` entries inside the FAQS array
-  const qCount = (faq.match(/^\s*q:\s*['"`]/gm) || []).length
-  if (qCount !== 8) throw new Error(`expected exactly 8 FAQ questions, found ${qCount}`)
-  // extract each question string and assert none is about money/time-to-live
-  const questions = [...faq.matchAll(/q:\s*(['"`])((?:\\.|(?!\1).)*)\1/g)].map((m) => norm(m[2]))
-  const banned = ['price', 'pricing', 'cost', 'how much', 'fee to use', 'billing', 'charge', 'free', 'how long until', 'go live', 'within a week', 'timeline', 'sla']
-  for (const q of questions) {
-    for (const term of banned) {
-      if (q.includes(term)) {
-        throw new Error(`FAQ re-introduced a forbidden question topic ("${term}") in: "${q}"`)
-      }
-    }
-  }
-})
+// 5. (Retired) the FAQ section was deleted in ORCH-1010 — its structural
+//    invariant guard (exactly 8 items, no pricing/SLA question) is removed with it.
 
 // 6. Page metadata description ships the approved emotion-first sacred text,
 //    NOT the old feature-list run-on. COPY PAGE METADATA. (Different file than
@@ -124,4 +106,4 @@ if (failures.length > 0) {
   console.error(`\n${failures.length} test(s) failed`)
   process.exit(1)
 }
-console.log(`\nAll 6 adversarial copy-fidelity tests passed`)
+console.log(`\nAll ${2} adversarial copy-fidelity tests passed`)

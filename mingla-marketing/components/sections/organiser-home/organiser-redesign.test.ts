@@ -40,7 +40,7 @@ function stripComments(src: string): string {
 
 // Light-surface sections (parchment/vellum) — accent text MUST be warm-ink.
 // (hero.tsx moved to DARK after the ORCH-1010 booking-wall pivot.)
-const LIGHT_SECTIONS = ['audiences.tsx', 'features.tsx', 'faq.tsx'] as const
+const LIGHT_SECTIONS = ['audiences.tsx', 'features.tsx'] as const
 
 // Dark sections — accent text uses warm (correct on dark). The hero is now a
 // full-bleed dark booking-wall section; comparison + cta are SpotlightBands.
