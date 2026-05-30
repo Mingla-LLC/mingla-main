@@ -40,7 +40,7 @@ export function PlaceIntelligenceTrialPage() {
   const [activeTab, setActiveTab] = useState("results");
 
   return (
-    <div className="max-w-[var(--content-max-width)] mx-auto px-6 py-6 space-y-6">
+    <div className="py-6 flex flex-col gap-6">
       <div className="flex items-start gap-3">
         <div className="w-10 h-10 rounded-full bg-[var(--color-brand-50)] flex items-center justify-center shrink-0">
           <Microscope className="w-5 h-5 text-[var(--color-brand-500)]" />
