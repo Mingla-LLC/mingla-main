@@ -1,5 +1,6 @@
 'use client'
 import { ArrowRight } from 'lucide-react'
+import { cn } from '@/lib/cn'
 import { Reveal } from '@/components/ui/reveal'
 import { useMinglaReducedMotion } from '@/lib/reduced-motion'
 
@@ -71,18 +72,48 @@ const AUDIENCES: Audience[] = [
 // text) so nothing overlaps the headline on mobile or desktop.
 const CHIPS: { label: string; s: React.CSSProperties }[] = [
   // above
-  { label: 'Restaurant', s: { top: '-9%', left: '2%' } },
-  { label: 'Taco truck', s: { top: '-22%', left: '24%' } },
-  { label: 'Pottery studio', s: { top: '-10%', left: '46%' } },
-  { label: 'Trip planners', s: { top: '-24%', left: '62%' } },
-  { label: 'Rooftop bar', s: { top: '-12%', right: '1%' } },
+  { label: 'Restaurant', s: { top: '-20%', left: '-2%' } },
+  { label: 'Taco truck', s: { top: '-40%', left: '22%' } },
+  { label: 'Pottery studio', s: { top: '-22%', left: '48%' } },
+  { label: 'Trip planners', s: { top: '-42%', left: '68%' } },
+  { label: 'Rooftop bar', s: { top: '-26%', right: '-3%' } },
   // below
-  { label: 'Sunday market', s: { top: '108%', left: '3%' } },
-  { label: 'Comedy night', s: { top: '126%', left: '24%' } },
-  { label: 'Wine tasting', s: { top: '110%', left: '46%' } },
-  { label: 'Supper club', s: { top: '128%', left: '64%' } },
-  { label: 'Food festival', s: { top: '112%', right: '1%' } },
+  { label: 'Sunday market', s: { top: '116%', left: '-2%' } },
+  { label: 'Comedy night', s: { top: '140%', left: '22%' } },
+  { label: 'Wine tasting', s: { top: '120%', left: '48%' } },
+  { label: 'Supper club', s: { top: '142%', left: '66%' } },
+  { label: 'Food festival', s: { top: '122%', right: '-3%' } },
 ]
+
+function Pin({
+  label,
+  index,
+  reduced,
+  className,
+  style,
+}: {
+  label: string
+  index: number
+  reduced: boolean
+  className?: string
+  style?: React.CSSProperties
+}) {
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-white/85 px-2.5 py-1 text-[11px] font-medium text-text-secondary shadow-sm ring-1 ring-black/[0.06] backdrop-blur',
+        className,
+      )}
+      style={{
+        ...style,
+        animation: reduced ? undefined : `mingla-chip-pulse 4.5s ease-in-out ${index * 0.4}s infinite`,
+      }}
+    >
+      <span className="h-1.5 w-1.5 rounded-full" style={{ background: 'var(--color-success)' }} />
+      {label}
+    </span>
+  )
+}
 
 function AudienceCard({ a }: { a: Audience }) {
   return (
@@ -135,22 +166,20 @@ export function OrganiserAudiences() {
   const loop = [...AUDIENCES, ...AUDIENCES]
 
   return (
-    <section className="seam-top relative overflow-hidden py-24 md:py-32 [padding-left:max(1.5rem,env(safe-area-inset-left))] [padding-right:max(1.5rem,env(safe-area-inset-right))]">
+    <section className="seam-top relative overflow-hidden pb-24 pt-24 md:pb-32 lg:pt-48 [padding-left:max(1.5rem,env(safe-area-inset-left))] [padding-right:max(1.5rem,env(safe-area-inset-right))]">
       {/* Heading + pin-dot chip cloud */}
       <div className="relative mx-auto max-w-3xl px-6 text-center md:px-10">
-        <div aria-hidden="true" className="pointer-events-none absolute inset-0">
+        {/* Desktop: scattered pin cloud around the heading. */}
+        <div aria-hidden="true" className="pointer-events-none absolute inset-0 hidden lg:block">
           {CHIPS.map((c, i) => (
-            <span
-              key={c.label}
-              className="absolute inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-white/85 px-2.5 py-1 text-[10px] font-medium text-text-secondary shadow-sm ring-1 ring-black/[0.06] backdrop-blur md:text-[11px]"
-              style={{
-                ...c.s,
-                animation: reduced ? undefined : `mingla-chip-pulse 4.5s ease-in-out ${i * 0.4}s infinite`,
-              }}
-            >
-              <span className="h-1.5 w-1.5 rounded-full" style={{ background: 'var(--color-success)' }} />
-              {c.label}
-            </span>
+            <Pin key={c.label} label={c.label} index={i} reduced={reduced} className="absolute" style={c.s} />
+          ))}
+        </div>
+
+        {/* Mobile: clean wrapped rows above + below the heading (no overlap). */}
+        <div aria-hidden="true" className="mb-8 flex flex-wrap justify-center gap-2 lg:hidden">
+          {CHIPS.slice(0, 5).map((c, i) => (
+            <Pin key={c.label} label={c.label} index={i} reduced={reduced} />
           ))}
         </div>
 
@@ -160,12 +189,18 @@ export function OrganiserAudiences() {
             <span className="text-warm-ink">Mingla makes it the plan.</span>
           </h2>
         </Reveal>
+
+        <div aria-hidden="true" className="mt-8 flex flex-wrap justify-center gap-2 lg:hidden">
+          {CHIPS.slice(5).map((c, i) => (
+            <Pin key={c.label} label={c.label} index={i + 5} reduced={reduced} />
+          ))}
+        </div>
       </div>
 
       {/* Right-drifting marquee of image cards, edge-faded. Generous gap below
           the heading so the pin chips don't crowd the cards. */}
       <div
-        className="group relative mt-28 [mask-image:linear-gradient(90deg,transparent,#000_7%,#000_93%,transparent)] md:mt-36"
+        className="group relative mt-16 [mask-image:linear-gradient(90deg,transparent,#000_7%,#000_93%,transparent)] lg:mt-44"
         aria-label="Business types Mingla is built for"
       >
         <div
