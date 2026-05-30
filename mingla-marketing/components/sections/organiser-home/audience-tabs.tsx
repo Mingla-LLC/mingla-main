@@ -190,18 +190,15 @@ export function OrganiserAudienceTabs() {
             animate={{ opacity: 1, y: 0 }}
             exit={reduced ? undefined : { opacity: 0, y: -8 }}
             transition={{ duration: 0.34, ease: EASE }}
-            className="mt-16"
+            className="mt-16 grid gap-12 lg:grid-cols-2 lg:items-start lg:gap-16"
           >
-            <div className="max-w-2xl">
+            {/* LEFT — heading + intro + steps (one column) */}
+            <div>
               <h3 className="font-display text-3xl leading-tight tracking-[-0.01em] text-white md:text-4xl">
                 {tab.heading}
               </h3>
               <p className="mt-5 text-base leading-relaxed text-white/70 md:text-lg">{tab.intro}</p>
-            </div>
-
-            <div className="mt-12 grid gap-12 lg:grid-cols-2 lg:gap-16">
-              {/* Steps */}
-              <ol className="space-y-7">
+              <ol className="mt-10 space-y-7">
                 {tab.steps.map((s, i) => (
                   <li key={s.title} className="flex gap-5">
                     <span className="font-display text-2xl leading-none tabular-nums text-warm/45">
@@ -214,12 +211,11 @@ export function OrganiserAudienceTabs() {
                   </li>
                 ))}
               </ol>
+            </div>
 
-              {/* Per-tab chart — Venues = live "your business, right now" feed;
-                  the other tabs get their own charts next. */}
-              <div className="flex justify-center lg:justify-end">
-                {tab.id === 'venues' ? <VenueActivityFeed /> : null}
-              </div>
+            {/* RIGHT — per-tab chart (Venues = live feed; others coming) */}
+            <div className="flex justify-center lg:justify-end">
+              {tab.id === 'venues' ? <VenueActivityFeed /> : null}
             </div>
           </motion.div>
         </AnimatePresence>
