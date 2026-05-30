@@ -16,7 +16,7 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import {
   Play, RefreshCw, Square,
-  Globe, Clock, RotateCcw, ArrowRight, Info,
+  RotateCcw, Info,
 } from "lucide-react";
 import { supabase, invokeWithRefresh } from "../../lib/supabase";
 import { extractFunctionError } from "../../lib/edgeFunctionError";
@@ -26,7 +26,9 @@ import { Button } from "../ui/Button";
 import { Spinner } from "../ui/Spinner";
 import { RunHistoryGroups } from "./RunHistoryGroups";
 import { SignalDistributionPanel } from "./SignalDistributionPanel";
-import { CancelRunConfirmModal } from "./CancelRunConfirmModal";
+// ORCH-1013 Finding B — the in-tab active-run banner is deleted in this PR;
+// CancelRunConfirmModal is now consumed exclusively by <ActiveRunCard /> inside
+// the page-level <ActiveRunsControlTower />.
 import { RunRemainderConfirmModal } from "./RunRemainderConfirmModal";
 
 function formatCost(n) {
@@ -86,21 +88,22 @@ export function TrialResultsTab() {
   // ORCH-1008 — extended with 'remainder' as a third option.
   const [mode, setMode] = useState("sample");
 
-  // ORCH-0737 — active full-city run state. activeRunId set after start_run
-  // OR via list_active_runs hydration on mount (cross-session resume).
-  // activeRun is the polled parent row; updated every 5s while running.
+  // ORCH-0737 — active full-city run state. activeRunId is set after a same-
+  // session start_run / retry_failed / remainder; the polling effect below
+  // watches it to refresh the history list on terminal status.
+  // ORCH-1013 Finding B — `activeRun` no longer has a UI reader (banner was
+  // deleted), but the setter still feeds the polling-effect terminal check;
+  // keep the reducer underscored so lint passes without a behavioural change.
   const [activeRunId, setActiveRunId] = useState(null);
-  const [activeRun, setActiveRun] = useState(null);
+  const [_activeRun, setActiveRun] = useState(null);
   const [cityCoverage, setCityCoverage] = useState(null);
   const [coverageLoading, setCoverageLoading] = useState(false);
   const [retryingFailed, setRetryingFailed] = useState(false);
-  // ORCH-1008 Phase 4 — modal state for cancel + remainder confirmation
-  const [cancelModalOpen, setCancelModalOpen] = useState(false);
-  const [cancelLoading, setCancelLoading] = useState(false);
+  // ORCH-1008 Phase 4 — modal state for remainder confirmation. ORCH-1013
+  // Finding B deleted the in-tab cancel modal state (cancelModalOpen /
+  // cancelLoading / bannerDismissed) — cancel UX now lives in the shared
+  // <ActiveRunsControlTower /> mounted at the page level.
   const [remainderModalOpen, setRemainderModalOpen] = useState(false);
-  // Dismissed-banner persistence for terminal active-run state (so we don't
-  // keep showing a cancelled/failed banner once operator acknowledges).
-  const [bannerDismissed, setBannerDismissed] = useState(false);
 
   const fetchCityCoverage = useCallback(async (targetCityId, { quiet = false } = {}) => {
     if (!targetCityId) {
@@ -213,38 +216,14 @@ export function TrialResultsTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allRows, cityId]);
 
-  // ORCH-0737 — cross-session resume on mount. If any full-city run is currently
-  // active (status pending/running/cancelling), hydrate UI immediately so the
-  // operator sees in-progress state on tab reopen.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const { data, error } = await invokeWithRefresh("run-place-intelligence-trial", {
-          body: { action: "list_active_runs" },
-        });
-        if (cancelled) return;
-        if (error) return; // silent: feature is non-critical for hydration
-        if (data?.runs?.length > 0) {
-          // Pick the most recent active run; if multiple, panel shows newest first
-          setActiveRunId(data.runs[0].id);
-          setActiveRun(data.runs[0]);
-        }
-      } catch {
-        // silent
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
+  // ORCH-1013 Finding B — cross-session hydration effect deleted: the page-
+  // level <ActiveRunsControlTower /> owns active-run UI; in-tab hydration
+  // would orphan activeRun state with no visible consumer. Sample-mode
+  // browser-loop uses `progress` state below, not `activeRun`.
 
-  // ORCH-0737 — poll active run status every 5s while activeRunId is set.
-  // When run reaches terminal state (complete/cancelled/failed), stop polling
-  // and refresh the run-history list.
-  // ORCH-1008 Phase 4 — reset banner-dismissed when a new active run mounts
-  useEffect(() => {
-    if (activeRunId) setBannerDismissed(false);
-  }, [activeRunId]);
-
+  // ORCH-0737 — poll active run status every 5s while activeRunId is set
+  // (still used for SAME-SESSION full_city / remainder / retry_failed flows
+  // started from THIS tab, so the history list refreshes on completion).
   useEffect(() => {
     if (!activeRunId) return;
     let cancelled = false;
@@ -273,35 +252,9 @@ export function TrialResultsTab() {
     return () => { cancelled = true; };
   }, [activeRunId, cityId, fetchCityCoverage, refresh]);
 
-  // ORCH-0737 — cancel active full-city run (calls cancel_trial action).
-  // ORCH-1008 Phase 4 — replaced window.confirm with CancelRunConfirmModal.
-  async function handleCancelActiveRunConfirmed() {
-    if (!activeRunId) return;
-    setCancelLoading(true);
-    try {
-      const { error } = await invokeWithRefresh("run-place-intelligence-trial", {
-        body: { action: "cancel_trial", run_id: activeRunId },
-      });
-      if (error) {
-        addToast({
-          variant: "error",
-          title: "Couldn't cancel",
-          description: await extractFunctionError(error, "cancel_trial failed"),
-        });
-        return;
-      }
-      addToast({
-        variant: "info",
-        title: "Cancelling…",
-        description: "Run will stop after current chunk (~30-90s).",
-      });
-    } catch (err) {
-      addToast({ variant: "error", title: "Couldn't cancel", description: err.message });
-    } finally {
-      setCancelLoading(false);
-      setCancelModalOpen(false);
-    }
-  }
+  // ORCH-1013 Finding B — handleCancelActiveRunConfirmed deleted. Cancel UX
+  // now lives on each <ActiveRunCard /> inside the control tower; that card
+  // owns its own CancelRunConfirmModal mount.
 
   // ORCH-0737 — top-level dispatcher. Branches on mode.
   // ORCH-1008 — remainder mode uses the dedicated modal (same code path the
@@ -317,14 +270,9 @@ export function TrialResultsTab() {
     return handleRunFullCityTrial();
   }
 
-  function handleResumeFromN() {
-    if (!cityId || !activeRun) return;
-    setMode("remainder");
-    setBannerDismissed(true);
-    setActiveRunId(null);
-    setActiveRun(null);
-    setRemainderModalOpen(true);
-  }
+  // ORCH-1013 Finding B — handleResumeFromN deleted. Resume affordance is
+  // deferred; operator re-fires remainder from the Overview tab or via the
+  // bulk "Run remainder on all" button.
 
   // ORCH-0737 — full-city async mode. Submits start_run with mode=full_city,
   // optional confirm_high_cost flag (after double-confirm dialog), then sets
@@ -694,79 +642,9 @@ export function TrialResultsTab() {
       }
     >
       <div className="space-y-4">
-        {/* ORCH-0737 — active-run panel for full-city durable runs. Renders
-            above the form when a full-city run is in flight. Survives tab
-            close/refresh via list_active_runs hydration on mount.
-            ORCH-1008 Phase 4 — banner can be dismissed once terminal; Resume
-            button appears for cancelled runs (kicks remainder modal). */}
-        {activeRun && !bannerDismissed && (
-          <div className="border border-[var(--color-brand-200)] rounded-lg p-4 space-y-3 bg-[var(--color-brand-50)]">
-            <div className="flex items-baseline justify-between gap-2">
-              <h4 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2">
-                {activeRun.mode === "retry_failed"
-                  ? <><RotateCcw className="w-4 h-4 inline" /> Retry failed run</>
-                  : activeRun.mode === "full_city"
-                    ? <><Globe className="w-4 h-4 inline" /> Full-city run</>
-                    : <><Clock className="w-4 h-4 inline" /> Sample run</>}
-                {" — "}{activeRun.city_name}
-              </h4>
-              <span className="text-xs font-mono text-[var(--color-text-secondary)]">
-                {activeRun.processed_count} / {activeRun.total_count}
-                {" "}({Math.round((activeRun.processed_count / Math.max(1, activeRun.total_count)) * 100)}%)
-              </span>
-            </div>
-            <div className="h-2 bg-[var(--gray-200)] rounded-full overflow-hidden">
-              <div
-                className="h-full bg-[var(--color-brand-500)] transition-all duration-200"
-                style={{ width: `${(activeRun.processed_count / Math.max(1, activeRun.total_count)) * 100}%` }}
-              />
-            </div>
-            <div className="flex flex-wrap items-center gap-3 text-xs">
-              <span className="text-[var(--color-success-700)] font-mono">✓ {activeRun.succeeded_count}</span>
-              <span className="text-[var(--color-error-700)] font-mono">✗ {activeRun.failed_count}</span>
-              <span className="text-[var(--color-text-secondary)] font-mono">
-                cost: ${Number(activeRun.cost_so_far_usd || 0).toFixed(4)} of ~${Number(activeRun.estimated_cost_usd || 0).toFixed(2)}
-              </span>
-              <span className="ml-auto">
-                <span className={[
-                  "text-[10px] uppercase tracking-wide font-mono px-1.5 py-0.5 rounded",
-                  activeRun.status === "running" && "bg-[var(--color-info-50)] text-[var(--color-info-700)]",
-                  activeRun.status === "cancelling" && "bg-[var(--color-warning-50)] text-[var(--color-warning-700)]",
-                  activeRun.status === "pending" && "bg-[var(--gray-100)] text-[var(--color-text-tertiary)]",
-                ].filter(Boolean).join(" ")}>
-                  {activeRun.status}
-                </span>
-              </span>
-            </div>
-            {activeRun.status === "running" && (
-              <Button variant="danger" size="sm" icon={Square} onClick={() => setCancelModalOpen(true)}>
-                Cancel run
-              </Button>
-            )}
-            {activeRun.status === "cancelling" && (
-              <p className="text-xs text-[var(--color-warning-700)]">
-                Cancelling… will stop after current chunk (~30-90s).
-              </p>
-            )}
-            {activeRun.status === "cancelled" && cityId && (
-              <Button
-                variant="primary"
-                size="sm"
-                iconRight={ArrowRight}
-                onClick={handleResumeFromN}
-              >
-                Resume from place {Number(activeRun.processed_count || 0) + 1}
-              </Button>
-            )}
-            <p className="text-xs text-[var(--color-text-tertiary)] italic">
-              {activeRun.mode === "retry_failed"
-                ? "Retrying failed places on the server — safe to close this tab. Status updates every 5s while page is open."
-                : (activeRun.mode === "full_city" || activeRun.mode === "remainder")
-                ? "Running on the server — safe to close this tab. Status updates every 5s while page is open."
-                : "Sample run in progress."}
-            </p>
-          </div>
-        )}
+        {/* ORCH-1013 Finding B — in-tab active-run banner deleted. Live
+            progress now surfaces in the page-level <ActiveRunsControlTower />
+            pinned above the tabs (PlaceIntelligenceTrialPage). */}
 
         {/* ORCH-0734 — city picker + sample size. ORCH-0737 — added mode toggle.
             Sample mode: browser-loop, ~75 min/200 places.
@@ -966,11 +844,9 @@ export function TrialResultsTab() {
               </div>
             </div>
           )}
-          {!!activeRunId && (
-            <p className="text-xs text-[var(--color-warning-700)]">
-              Already a run in progress — wait or cancel above before starting another.
-            </p>
-          )}
+          {/* ORCH-1013 Finding B — "Already a run in progress" warning deleted;
+              the page-level <ActiveRunsControlTower /> now surfaces the running
+              run with its own soft-cancel affordance. */}
           <div className="flex flex-wrap items-center gap-3 pt-1 border-t border-[var(--gray-200)]">
             <span className="text-xs text-[var(--color-text-tertiary)] uppercase tracking-wide font-mono shrink-0">AI Provider</span>
             <span className="text-xs font-medium text-[var(--color-text-primary)]">Gemini 2.5 Flash</span>
@@ -1124,16 +1000,9 @@ export function TrialResultsTab() {
         )}
       </div>
 
-      {/* ORCH-1008 Phase 4 — confirmation modals */}
-      <CancelRunConfirmModal
-        open={cancelModalOpen}
-        onClose={() => setCancelModalOpen(false)}
-        onConfirm={handleCancelActiveRunConfirmed}
-        cityName={activeRun?.city_name}
-        processedCount={activeRun?.processed_count || 0}
-        totalCount={activeRun?.total_count || 0}
-        loading={cancelLoading}
-      />
+      {/* ORCH-1008 Phase 4 — confirmation modals.
+          ORCH-1013 Finding B — the CancelRunConfirmModal mount moved to
+          <ActiveRunCard /> inside the page-level control tower. */}
       <RunRemainderConfirmModal
         open={remainderModalOpen}
         onClose={() => setRemainderModalOpen(false)}
