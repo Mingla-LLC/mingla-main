@@ -124,26 +124,10 @@ const cases: ReadonlyArray<readonly [string, () => void]> = [
       for (const file of DARK_SECTIONS) {
         makeExpect(/(text|bg)-warm/.test(read(file))).toBe(true)
       }
-      // The CTA SpotlightBand section renders via <SpotlightBand> (the hero is
-      // dark via its own full-bleed booking-wall + overlay).
-      makeExpect(read('cta.tsx')).toContain('SpotlightBand')
-    },
-  ],
-  [
-    'CTA ships the SACRED Business signature line verbatim',
-    () => {
-      const cta = read('cta.tsx')
-      makeExpect(cta).toContain('your business has a vibe')
-      makeExpect(cta).toContain('your community is looking for it')
-      makeExpect(cta).toContain('Mingla helps them find you')
-    },
-  ],
-  [
-    'CTA primary button uses primary-ink variant (white-on-warm fix)',
-    () => {
-      // Hero no longer carries a primary button (booking-wall pivot — single
-      // glass PlayTile on the dark overlay). The CTA still owns the primary-ink.
-      makeExpect(read('cta.tsx')).toContain("variant=\"primary-ink\"")
+      // The impact-stats + audience-tabs bands render via <SpotlightBand> (the
+      // hero is dark via its own full-bleed booking-wall + overlay).
+      makeExpect(read('impact-stats.tsx')).toContain('SpotlightBand')
+      makeExpect(read('audience-tabs.tsx')).toContain('SpotlightBand')
     },
   ],
   [

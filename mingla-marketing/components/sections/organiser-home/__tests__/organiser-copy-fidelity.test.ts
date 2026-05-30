@@ -58,15 +58,8 @@ function assertHas(haystack: string, needle: string, where: string): void {
   }
 }
 
-// 1. SACRED CTA line — must ship verbatim, split exactly as approved (COPY §9).
-check('CTA ships the [SACRED] business signature line verbatim, all three clauses', () => {
-  const cta = read('cta.tsx')
-  assertHas(cta, 'your business has a vibe.', 'cta headline L1')
-  assertHas(cta, 'your community is looking for it.', 'cta headline L2 accent')
-  assertHas(cta, 'Mingla helps them find you.', 'cta body sacred completion')
-  // the full roll-call must explicitly include the experience economy (Inclusion Rule)
-  assertHas(cta, 'the people behind every experience, trip, and adventure', 'cta roll-call')
-})
+// 1. (Retired) the CTA section was deleted in ORCH-1010 — its sacred-line guard
+//    is removed; the sacred line still ships in the page <meta> (guard below).
 
 // 2. (Retired) the What-Mingla-Does litany section was deleted in ORCH-1010 —
 //    its copy guard is removed with it.
