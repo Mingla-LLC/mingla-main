@@ -1,0 +1,29 @@
+[m375] overflow scrollW=375 clientW=375 -> no overflow OK
+[m375] HERO accent color=rgb(168, 69, 14) class="text-warm-ink" ratio-on-parchment=5.62 (>=4.5 PASS) classCheck=warm-ink OK
+[m375] eyebrows scanned=33; bare-warm(#eb7825) on light text count=2 -> [{"text":"Mingla vs the rest","color":"rgb(235, 120, 37)"},{"text":"Ready to give people a reason?","color":"rgb(235, 120, 37)"}]
+[m375] PRIMARY BTN color=rgb(14, 14, 16) bg=rgb(235, 120, 37) ratio=6.65 (>=4.5 PASS) primary-ink=NO
+[m375] screenshot saved organisers_m375.png
+[m390] overflow scrollW=390 clientW=390 -> no overflow OK
+[m390] HERO accent color=rgb(168, 69, 14) class="text-warm-ink" ratio-on-parchment=5.62 (>=4.5 PASS) classCheck=warm-ink OK
+[m390] eyebrows scanned=33; bare-warm(#eb7825) on light text count=2 -> [{"text":"Mingla vs the rest","color":"rgb(235, 120, 37)"},{"text":"Ready to give people a reason?","color":"rgb(235, 120, 37)"}]
+[m390] PRIMARY BTN color=rgb(14, 14, 16) bg=rgb(235, 120, 37) ratio=6.65 (>=4.5 PASS) primary-ink=NO
+[m430] overflow scrollW=430 clientW=430 -> no overflow OK
+[m430] HERO accent color=rgb(168, 69, 14) class="text-warm-ink" ratio-on-parchment=5.62 (>=4.5 PASS) classCheck=warm-ink OK
+[m430] eyebrows scanned=33; bare-warm(#eb7825) on light text count=2 -> [{"text":"Mingla vs the rest","color":"rgb(235, 120, 37)"},{"text":"Ready to give people a reason?","color":"rgb(235, 120, 37)"}]
+[m430] PRIMARY BTN color=rgb(14, 14, 16) bg=rgb(235, 120, 37) ratio=6.65 (>=4.5 PASS) primary-ink=NO
+[desktop] overflow scrollW=1280 clientW=1280 -> no overflow OK
+[desktop] HERO accent color=rgb(168, 69, 14) class="text-warm-ink" ratio-on-parchment=5.62 (>=4.5 PASS) classCheck=warm-ink OK
+[desktop] eyebrows scanned=33; bare-warm(#eb7825) on light text count=2 -> [{"text":"Mingla vs the rest","color":"rgb(235, 120, 37)"},{"text":"Ready to give people a reason?","color":"rgb(235, 120, 37)"}]
+[desktop] PRIMARY BTN color=rgb(14, 14, 16) bg=rgb(235, 120, 37) ratio=6.65 (>=4.5 PASS) primary-ink=NO
+[desktop] screenshot saved organisers_desktop.png
+[a11y] FAQ buttons=8; all have aria-controls=true; (panels render only when open)
+[a11y] FAQ after click: expanded=true panelRole=region labelledby=yes text="Mingla learns what people are "
+[a11y] headings: h1count=1 total=25 firstThree=["H1:we give people a reasonto show","H2:we sell what makes you special","H2:from what you have to a full r"]
+[a11y] images=6 missingAlt=0 
+[a11y] first Tab focus -> BUTTON "What kinds of businesses is Mi"
+[reduced-motion] CTA headline visible=true opacity=1
+[reduced-motion] aurora opacity sample1=1 sample2=1 STATIC OK
+[reduced-motion] screenshot organisers_reducedmotion_cta.png
+[dark-band] comparison-accent color=rgb(235, 120, 37) ratio-on-#08090c=6.87 (>=3 large OK)
+[dark-band] comparison-struck color=rgba(255, 255, 255, 0.52) ratio-on-#08090c=5.69 (>=3 large OK)
+[dark-band] cta-accent color=rgb(235, 120, 37) ratio-on-#08090c=6.87 (>=3 large OK)
