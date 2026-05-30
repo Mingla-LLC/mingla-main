@@ -1,5 +1,7 @@
 # Open Investigations
 
+> **2026-05-30 — ORCH-1014 [Intelligence Trial consolidation — prune photo pages + per-city Seed/Refresh readiness badges] CLOSED PASS Grade A.** Full close banner in WORLD_MAP. Edge fn `run-place-intelligence-trial` redeployed; worktree reaped.
+
 > **2026-05-30 — ORCH-1014 [Intelligence Trial consolidation — prune photo pages + per-city seed/refresh readiness badges (read-only)] REGISTERED → FORENSICS QUEUED.** S2-medium / `ux` + `architecture-flaw`. **Affected Surfaces:** Admin Web. **Source:** operator request 2026-05-30 to consolidate everything into Intelligence Trial (delete PhotoScorerPage + PhotoLabelingPage — both leftovers from decommissioned ORCH-0708 photo-aesthetic system per DEC-099) AND give per-city visibility into whether seed + refresh are current before running Intelligence (so operator knows when to go act in Place Pool first). Read-only badges only — Place Pool owns the actions. **Next lifecycle gate:** SPEC → IMPLEMENT → TEST → CLOSE. Working tree: `~/Desktop/mingla-orchs/ORCH-1014-[intel-trial-consolidation-photo-prune-readiness-badges]`. Full scope in WORLD_MAP.
 
 > **2026-05-30 — ORCH-1013 [Place Intelligence multi-run control tower + coverage-math fix + admin build/Tailwind drift fix] CLOSED CONDITIONAL PASS Grade A.** Full close banner in WORLD_MAP. ORCH-1012 ABSORBED + RESOLVED via Finding C. Tester self-fixed the 1 P1 allowlist gap in QA commit before CI.
