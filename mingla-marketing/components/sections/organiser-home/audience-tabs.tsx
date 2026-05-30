@@ -5,6 +5,7 @@ import { Reveal } from '@/components/ui/reveal'
 import { SpotlightBand } from '@/components/ui/spotlight-band'
 import { EarningsCard } from '@/components/sections/organiser-home/earnings-card'
 import { VenueActivityFeed } from '@/components/sections/organiser-home/venue-activity-feed'
+import { EventAttendeesCard } from '@/components/sections/organiser-home/event-attendees-card'
 import { cn } from '@/lib/cn'
 import { useMinglaReducedMotion } from '@/lib/reduced-motion'
 
@@ -215,7 +216,11 @@ export function OrganiserAudienceTabs() {
 
             {/* RIGHT — per-tab chart (Venues = live feed; others coming) */}
             <div className="flex justify-center lg:justify-end">
-              {tab.id === 'venues' ? <VenueActivityFeed /> : null}
+              {tab.id === 'venues' ? (
+                <VenueActivityFeed />
+              ) : tab.id === 'events' ? (
+                <EventAttendeesCard />
+              ) : null}
             </div>
           </motion.div>
         </AnimatePresence>
