@@ -205,6 +205,13 @@ export default function FriendRequestsModal({
       theme="light"
       snapPoints={FRIEND_REQUESTS_SNAP_POINTS}
       scrollMode="scroll"
+      // META-ORCH-0991 Bug 4 (tab-bar awareness): this sheet is opened from
+      // HomePage as a NON-wrapInRNModal sheet, so Mingla's floating GlassBottomNav
+      // (rendered absolutely at the app root, zIndex 50) stays VISIBLE and overlaps
+      // the sheet's bottom. tabBarAware makes the primitive add the nav-capsule
+      // clearance to the sticky footer so the "manage connections" footer + the
+      // last request row sit ABOVE the floating menu (not behind it).
+      tabBarAware
       header={header}
       stickyFooter={footer}
       scrollProps={{

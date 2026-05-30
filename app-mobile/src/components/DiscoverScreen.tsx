@@ -38,6 +38,12 @@ import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 import { Image as ExpoImage } from "expo-image";
 import * as Haptics from "expo-haptics";
+// META-ORCH-0991 Bug 3a (intermittent card tap): the Discover grid lives inside
+// the screen-level RN <ScrollView>, which steals a child Pressable's tap on the
+// slightest finger drift. An RNGH Tap gesture with a generous `maxDistance`
+// keeps firing for small drift while a clear drag still scrolls. RNGH is already
+// a dependency (v2.28.0).
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 // ORCH-0839-A F-4: AsyncStorage import removed — mobile cache deleted; server caches authoritatively.
 import { Icon, type IconName } from "./ui/Icon";
 import { formatPriceRange, parseAndFormatDistance } from "./utils/formatters";
@@ -85,6 +91,10 @@ const d = glass.discover;
 const GRID_CARD_WIDTH = (SCREEN_WIDTH - d.grid.horizontalPadding * 2 - d.grid.columnGap) / 2;
 const GRID_CARD_HEIGHT = GRID_CARD_WIDTH / d.card.aspectRatio;
 const isAndroidPreBlur = Platform.OS === "android" && Platform.Version < 31;
+// META-ORCH-0991 Bug 3b: neutral dark blurhash shown under a Ticketmaster card
+// image while it decodes (expo-image placeholder) so the cell is never an empty
+// flash on Android. A flat charcoal hash matches the cards' dark hero treatment.
+const TM_CARD_BLURHASH = "L02rs;fQfQfQfQfQfQfQfQfQfQfQ";
 
 interface NightOutCardData {
   id: string;
@@ -330,8 +340,18 @@ const EventGridCard: React.FC<EventGridCardProps> = ({
   const useGlass = !reduceTransparency && !isAndroidPreBlur;
   const pressScale = useRef(new RNAnimated.Value(1)).current;
   const heartScale = useRef(new RNAnimated.Value(1)).current;
+  // META-ORCH-0991 Bug 3b: expo-image on Android silently shows nothing on a
+  // failed decode and never retries. Track an error so the card falls back to a
+  // dark band (the gradient + chip stay legible) instead of a blank cell. Reset
+  // when the image URL changes (recycled card cell).
+  const [hasImageError, setHasImageError] = useState(false);
+  useEffect(() => {
+    setHasImageError(false);
+  }, [card.image]);
 
-  const handlePressIn = (): void => {
+  // META-ORCH-0991 Bug 3a: wrapped in useCallback so the RNGH tap gestures below
+  // memoize stably (a gesture rebuilt every render can drop an in-flight tap).
+  const handlePressIn = useCallback((): void => {
     if (Platform.OS === "ios") {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     }
@@ -342,8 +362,8 @@ const EventGridCard: React.FC<EventGridCardProps> = ({
       easing: RNEasing.out(RNEasing.quad),
       useNativeDriver: true,
     }).start();
-  };
-  const handlePressOut = (): void => {
+  }, [reduceMotion, pressScale]);
+  const handlePressOut = useCallback((): void => {
     if (reduceMotion) return;
     RNAnimated.timing(pressScale, {
       toValue: 1,
@@ -351,9 +371,9 @@ const EventGridCard: React.FC<EventGridCardProps> = ({
       easing: RNEasing.out(RNEasing.quad),
       useNativeDriver: true,
     }).start();
-  };
+  }, [reduceMotion, pressScale]);
 
-  const handleSavePress = (): void => {
+  const handleSavePress = useCallback((): void => {
     if (Platform.OS === "ios") {
       if (!isSaved) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
@@ -377,7 +397,7 @@ const EventGridCard: React.FC<EventGridCardProps> = ({
         useNativeDriver: true,
       }),
     ]).start();
-  };
+  }, [isSaved, onSaveToggle, reduceMotion, heartScale]);
 
   const formattedPrice = formatPriceRange(card.price, currency);
   const displayPrice = formattedPrice || card.price || "";
@@ -393,25 +413,56 @@ const EventGridCard: React.FC<EventGridCardProps> = ({
 
   const accLabel = `${card.eventName}, ${dateTag}, ${card.venueName}${displayPrice ? `, ${displayPrice}` : ""}`;
 
+  // META-ORCH-0991 Bug 3a: the save-heart tap (a small top-right region) must win
+  // in its area; the rest of the card opens the event. Both are RNGH Tap gestures
+  // tolerant of ~16px drift (the parent ScrollView no longer steals a near-static
+  // tap). `cardTapGesture.requireExternalGestureToFail(saveTapGesture)` makes the
+  // open-tap defer to the save-tap so a tap on the heart never ALSO opens the card.
+  const saveTapGesture = useMemo(
+    () => Gesture.Tap().maxDistance(16).maxDuration(500).runOnJS(true).onEnd(handleSavePress),
+    [handleSavePress],
+  );
+  const cardTapGesture = useMemo(
+    () =>
+      Gesture.Tap()
+        .maxDistance(16)
+        .maxDuration(500)
+        .runOnJS(true)
+        .onBegin(handlePressIn)
+        .onFinalize(handlePressOut)
+        .onEnd(onPress)
+        .requireExternalGestureToFail(saveTapGesture),
+    [onPress, handlePressIn, handlePressOut, saveTapGesture],
+  );
+
   return (
     <RNAnimated.View style={[styles.cardOuter, { transform: [{ scale: pressScale }] }]}>
-      <Pressable
+      <GestureDetector gesture={cardTapGesture}>
+      <View
         style={styles.cardPressable}
-        onPress={onPress}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
         accessibilityRole="button"
         accessibilityLabel={accLabel}
         accessibilityHint="Double tap to view details"
       >
-        {/* L0/L1 — photo */}
-        <ExpoImage
-          source={{ uri: card.image }}
-          style={StyleSheet.absoluteFill}
-          contentFit="cover"
-          transition={200}
-          cachePolicy="memory-disk"
-        />
+        {/* L0/L1 — photo — META-ORCH-0991 Bug 3b: placeholder while loading,
+            onError → dark-band fallback (never a blank cell), and a stable
+            recyclingKey so a recycled cell never shows the previous card's
+            image. cachePolicy already memory-disk. */}
+        {hasImageError ? (
+          <View style={[StyleSheet.absoluteFill, styles.cardImageFallback]} />
+        ) : (
+          <ExpoImage
+            source={{ uri: card.image }}
+            style={StyleSheet.absoluteFill}
+            contentFit="cover"
+            transition={200}
+            cachePolicy="memory-disk"
+            recyclingKey={card.id}
+            placeholder={{ blurhash: TM_CARD_BLURHASH }}
+            placeholderContentFit="cover"
+            onError={() => setHasImageError(true)}
+          />
+        )}
 
         {/* L2 — bottom gradient overlay */}
         <LinearGradient
@@ -454,11 +505,12 @@ const EventGridCard: React.FC<EventGridCardProps> = ({
           </View>
         ) : null}
 
-        {/* L4 — save heart (top-right) */}
-        <Pressable
+        {/* L4 — save heart (top-right) — META-ORCH-0991 Bug 3a: RNGH tap so it
+            coordinates with the card-open tap (the card-open gesture defers to
+            this via requireExternalGestureToFail) and the parent ScrollView. */}
+        <GestureDetector gesture={saveTapGesture}>
+        <View
           style={styles.cardSaveButtonWrap}
-          hitSlop={d.card.saveButton.hitSlop}
-          onPress={handleSavePress}
           accessibilityRole="button"
           accessibilityLabel={isSaved ? `Saved ${card.eventName}` : `Save ${card.eventName}`}
           accessibilityState={{ selected: isSaved }}
@@ -514,7 +566,8 @@ const EventGridCard: React.FC<EventGridCardProps> = ({
               }
             />
           </RNAnimated.View>
-        </Pressable>
+        </View>
+        </GestureDetector>
 
         {/* L5 — bottom info chip */}
         <View style={styles.cardBottomChip}>
@@ -557,7 +610,8 @@ const EventGridCard: React.FC<EventGridCardProps> = ({
             ) : null}
           </View>
         </View>
-      </Pressable>
+      </View>
+      </GestureDetector>
     </RNAnimated.View>
   );
 };
@@ -2196,6 +2250,11 @@ const styles = StyleSheet.create({
     borderRadius: d.card.radius,
     overflow: "hidden",
     backgroundColor: "rgba(22,24,28,1)", // guard against white flash while expo-image decodes
+  },
+  // META-ORCH-0991 Bug 3b: dark band shown when the Ticketmaster image fails to
+  // load (expo-image onError) so the card is never a blank/empty cell.
+  cardImageFallback: {
+    backgroundColor: "rgba(22,24,28,1)",
   },
   cardTopBadge: {
     position: "absolute",

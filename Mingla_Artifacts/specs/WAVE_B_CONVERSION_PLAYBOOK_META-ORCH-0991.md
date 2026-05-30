@@ -379,12 +379,25 @@ shared `PublicEventPage` for the event sheet). New rules for every future sheet:
    sheets unless you need MORE than the floor — pass your extra value and the
    primitive takes the larger. Existing hand-rolled sheets are safe (additive max).
 
-3. **`tabBarAware` prop (opt-in, default false).** Set it on a sheet rendered
-   BELOW the visible floating `GlassBottomNav` to add the nav content height
-   (`BOTTOM_NAV_CONTENT_HEIGHT`, now exported from `useAppLayout`) to the bottom
-   padding so the last button clears Mingla's menu too. Leave it OFF for
-   `wrapInRNModal` sheets — they z-stack ABOVE the nav (nav hidden behind the
-   backdrop) so the menu can't overlap them; they only need the OS-inset floor.
+3. **`tabBarAware` prop (opt-in, default false) — ENABLED on the 2 in-tree sheets
+   (finishing pass).** Set it on a sheet rendered BELOW the visible floating
+   `GlassBottomNav` to add the nav content height (`BOTTOM_NAV_CONTENT_HEIGHT`,
+   exported from `useAppLayout`) to the bottom padding so the last button clears
+   Mingla's menu too. Leave it OFF for `wrapInRNModal` sheets — they z-stack ABOVE
+   the nav (nav hidden behind the backdrop) so the menu can't overlap them; they
+   only need the OS-inset floor.
+   - **Currently set on (and ONLY on):** `NotificationsSheet` (`wrapInRNModal={false}`)
+     and `FriendRequestsModal` (no wrap) — the two HomePage in-tree absolute-float
+     sheets the app-root nav z-stacks over.
+   - **Do NOT set it on EBES / TicketCartSheet / the AccountSettings pickers** even
+     though they are non-`wrapInRNModal`: they mount INSIDE a `wrapInRNModal` parent
+     window, so the nav is hidden behind that parent and tab-bar padding would open a
+     wrong gap. (The finishing-pass test asserts TicketCartSheet stays non-tabBarAware.)
+   - **Sticky-footer sheets:** when `tabBarAware`, the primitive wraps the
+     `stickyFooter` with the nav clearance and pads the scroll body above it with the
+     OS-inset ONLY (`withFooterClearance`) — so the pinned footer clears the menu
+     without a gap above it. Non-tabBarAware sticky footers (e.g. TicketCartSheet,
+     which hand-rolls `insets.bottom+16`) are never double-padded.
 
 4. **Header / sticky-footer slots are overflow-safe.** The header-present `scroll`
    branch makes the scroll claim `flex:1` below the fixed header, so a TALL
@@ -405,3 +418,37 @@ shared `PublicEventPage` for the event sheet). New rules for every future sheet:
 Regression guard: `app-mobile/src/components/ui/__tests__/BaseBottomSheetRework.test.mjs`
 (R-1/R-4b/R-4a/R-2 + adversarial; fails-on-revert at `b0063fcad`). Live-verified on
 iOS sim + Android emulator — see the rework implementation report.
+
+## Finishing pass — Discover card tap + cover thumbnails (bugs 3a / 3b)
+
+Two per-surface fixes that surfaced during sheet QA (NOT primitive-level):
+
+A. **Tappable cards inside a screen-level RN `<ScrollView>` must use an RNGH
+   `Gesture.Tap`, not a bare `<Pressable onPress>`.** A `Pressable` loses its tap
+   to the scroll on the slightest finger drift. Wrap the card body in
+   `<GestureDetector gesture={Gesture.Tap().maxDistance(16).maxDuration(500).runOnJS(true).onEnd(open)}>`.
+   For a card with a nested action button (e.g. a save-heart), give the inner button
+   its own `Gesture.Tap` and compose the card-open tap with
+   `.requireExternalGestureToFail(saveTap)` so the button wins in its region.
+   **If the card's background is a native media surface** (a shared `EventCoverMedia`
+   with a `VideoView`/`Image`), wrap that media in a `pointerEvents="none"` View —
+   otherwise the native view captures the touch and the card's GestureDetector
+   never fires (this only bites video-cover cards; image-only cards have no
+   touch-capturing native child). Pattern lives in `discover/BusinessEventCard.tsx`
+   + `DiscoverScreen.tsx` `EventGridCard`.
+
+B. **Card covers render via the SHARED `EventCoverMedia` (`@mingla/event-rendering`),
+   never a hand-rolled `ExpoImage` + hue band** (COMMS-0007). The shared component
+   gives video covers a real poster frame (`autoplay={false}` for grid thumbnails →
+   a paused first frame, no concurrent playback), images the built-in `onError` →
+   hue-band fallback + per-`mediaUrl` error reset, and null/errored covers the shared
+   band. For consumer-app images that are NOT a shared cover surface (the Discover
+   Ticketmaster card), add `recyclingKey`, a `placeholder` blurhash, and an `onError`
+   dark-band fallback directly. Never leave a remote `<ExpoImage>` on a card without
+   `onError` + `recyclingKey` (Android expo-image shows nothing on a failed decode
+   and recycles the wrong image otherwise).
+
+Regression guard: `app-mobile/src/components/ui/__tests__/MetaOrch0991FinishingPass.test.mjs`
+(A tab-bar / B card-tap / C cover-render + adversarial; fails-on-revert at `cd68b3805`).
+iOS-verified (posters render, taps reliable); Android Ticketmaster-photo render needs a
+REAL device (emulator can't reach the Ticketmaster CDN) — see the finishing-pass report.

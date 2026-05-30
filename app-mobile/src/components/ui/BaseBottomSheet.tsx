@@ -378,9 +378,14 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
   // (which already lists `insets.bottom` + `tabBarAware` transitively via its
   // own deps), so memoizing it buys nothing.
   const safeBottomInset = Math.max(insets.bottom, 16);
-  const bottomInset = tabBarAware
-    ? safeBottomInset + BOTTOM_NAV_CONTENT_HEIGHT
-    : safeBottomInset;
+  // The floating-nav clearance is ADDITIVE on top of the OS inset, and is applied
+  // ONLY when `tabBarAware` (a non-wrapInRNModal sheet rendered below the visible
+  // GlassBottomNav). For the bottommost body element (a non-sticky scroll/list)
+  // the full `bottomInset` is the right padding; for the sticky-footer pattern
+  // the tab-bar clearance belongs to the FOOTER (the true bottommost element) and
+  // the scroll body above it only needs footer clearance — see the sticky branch.
+  const tabBarExtra = tabBarAware ? BOTTOM_NAV_CONTENT_HEIGHT : 0;
+  const bottomInset = safeBottomInset + tabBarExtra;
 
   // Merge `bottomInset` into a consumer's contentContainerStyle as paddingBottom,
   // taking the MAX with any value the consumer already set (never reduce).
@@ -389,6 +394,19 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
     const existing =
       typeof flat?.paddingBottom === 'number' ? flat.paddingBottom : 0;
     const paddingBottom = Math.max(existing, bottomInset);
+    return cc === undefined || cc === null
+      ? { paddingBottom }
+      : [cc, { paddingBottom }];
+  };
+
+  // Sticky-footer variant of the merge: the scroll body that sits ABOVE a sticky
+  // footer must NOT carry the tab-bar height (that would open a tall empty gap
+  // above the pinned footer). It only needs the OS-inset footer clearance.
+  const withFooterClearance = (cc: StyleProp<ViewStyle>): StyleProp<ViewStyle> => {
+    const flat = StyleSheet.flatten(cc) as ViewStyle | undefined;
+    const existing =
+      typeof flat?.paddingBottom === 'number' ? flat.paddingBottom : 0;
+    const paddingBottom = Math.max(existing, safeBottomInset);
     return cc === undefined || cc === null
       ? { paddingBottom }
       : [cc, { paddingBottom }];
@@ -409,9 +427,11 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
       // bounded height so a tall body still scrolls when a header/footer is
       // present. `styles.stickyBody` (flex:1) + the outer flexed container give
       // gorhom's BottomSheetScrollView a bounded viewport; without flex:1 the
-      // inner scroll would size to content and never scroll. The footer node
-      // still owns its own safe-area padding, but the scroll content also gets
-      // the primitive's bottomInset so the last row clears the footer + inset.
+      // inner scroll would size to content and never scroll. The scroll content
+      // gets only the OS-inset footer clearance (`withFooterClearance`) — NOT the
+      // tab-bar height — because the footer below it is the true bottommost
+      // element; padding the scroll with the nav height would open a gap above
+      // the pinned footer.
       const stickyBody =
         scrollMode === 'scroll' ? (
           <BottomSheetScrollView
@@ -419,7 +439,7 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
             {...(scrollProps as Partial<
               React.ComponentProps<typeof BottomSheetScrollView>
             >)}
-            contentContainerStyle={withBottomInset(
+            contentContainerStyle={withFooterClearance(
               (
                 scrollProps as Partial<
                   React.ComponentProps<typeof BottomSheetScrollView>
@@ -432,11 +452,23 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
         ) : (
           <View style={styles.stickyBody}>{children}</View>
         );
+      // META-ORCH-0991 Bug 4 (tab-bar awareness): when `tabBarAware`, the sticky
+      // footer is the bottommost element and must clear BOTH the OS home indicator
+      // AND Mingla's floating GlassBottomNav. Wrap it with `bottomInset`
+      // (safeBottom + nav height) padding. This wrapper is added ONLY when
+      // tabBarAware, so non-tabBarAware sticky-footer sheets (e.g. TicketCartSheet,
+      // which already hand-rolls `insets.bottom+16` on its own footer) are
+      // untouched and never double-padded.
+      const footerNode = tabBarAware ? (
+        <View style={{ paddingBottom: bottomInset }}>{stickyFooter}</View>
+      ) : (
+        stickyFooter
+      );
       return (
         <BottomSheetView style={[styles.stickyContainer, bodyContainerStyle]}>
           {header}
           {stickyBody}
-          {stickyFooter}
+          {footerNode}
         </BottomSheetView>
       );
     }

@@ -129,12 +129,18 @@ function run() {
   );
   // The helper must be applied to the scroll/list contentContainerStyle (the
   // actual fix — discarding it again would drop these call sites).
-  const withBottomInsetCalls = (
-    baseCode.match(/withBottomInset\(/g) || []
-  ).length;
+  // META-ORCH-0991 FINISHING PASS [TEST-MOD-APPROVED META-ORCH-0991]: the
+  // sticky-footer scroll body now uses the `withFooterClearance` sibling helper
+  // (OS-inset-only, so the tab-bar height is NOT added above the pinned footer),
+  // while scroll/flatlist/sectionlist keep `withBottomInset`. Count BOTH helpers
+  // as "bottom-padding-applied" call sites; the contract (inset is applied, not
+  // discarded) is unchanged — the total must still be >=4.
+  const withBottomInsetCalls =
+    (baseCode.match(/withBottomInset\(/g) || []).length +
+    (baseCode.match(/withFooterClearance\(/g) || []).length;
   assert.ok(
     withBottomInsetCalls >= 4,
-    `R-4b withBottomInset applied to scroll/flatlist/sectionlist/footer (found ${withBottomInsetCalls}, need >=4)`,
+    `R-4b withBottomInset/withFooterClearance applied to scroll/flatlist/sectionlist/footer (found ${withBottomInsetCalls}, need >=4)`,
   );
   // Tab-bar awareness — opt-in prop + canonical nav-height source.
   assert.match(base, /tabBarAware\?:\s*boolean/, "R-4b tabBarAware prop typed");

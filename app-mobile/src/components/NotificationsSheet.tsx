@@ -778,6 +778,13 @@ export default function NotificationsSheet({
       onClose={onClose}
       theme="light"
       wrapInRNModal={false}
+      // META-ORCH-0991 Bug 4 (tab-bar awareness): this sheet is z-stacked by
+      // HomePage as a NON-wrapInRNModal sheet, so Mingla's floating GlassBottomNav
+      // (app-root absolute, zIndex 50) stays VISIBLE and overlaps the sheet's
+      // bottom. tabBarAware makes the primitive add the nav-capsule clearance to
+      // the notifications list's bottom padding (Math.max with the existing
+      // insets.bottom+16) so the last notification row clears the floating menu.
+      tabBarAware
       snapPoints={SHEET_SNAP_POINTS}
       backdropOpacity={0.32}
       backgroundStyle={styles.sheetBackground}
