@@ -20,8 +20,31 @@ Buyer always sees ONE all-in price (the exact charge); brand sets 3 switches (ta
 ## OPERATOR DECISIONS LOCKED
 - Brand reporting wording: **"You covered £X"** (not "absorbed").
 - Buyer breakdown: **Mingla fee FOLDED** into ticket subtotal (no buyer-facing "Mingla fee" line). Service fee IS its own line.
+- (2026-05-30) Sequencing: **core vertical first** (event flow), then trip/experience + Surface 2. Surface 4: **build the tax-registrations endpoint** (not just a fallback).
+
+## PROGRESS LOG (2026-05-30 session)
+- **Task 1 (brand mini-card all-in "From £X")** — DONE, committed `8526c1bc4`. `displayPriceCents`/`displayCurrency` plumbed view-row → LiveEvent → PublicBrandEvent; shared `minPriceLabel` prefers the all-in cents over base, preserves Free. tsc-clean.
+- **Task 2 CORE VERTICAL (event flow)** — DONE, committed `508fcc681`. tsc proven zero-new-errors (263==263 baseline; all 263 are worktree expo node_modules noise). Delivered:
+  - Foundation: `mingla-business/src/utils/pricingPreview.ts` (pure engine mirror; "Buyer pays" EXACT for GB inclusive VAT; "You keep" = honest flat-absorb floor since client can't know Stripe VAT) + `src/constants/pricing.ts` (MINGLA_SERVICE_FEE_BPS=300, DEFAULT_TAKE_RATE_BPS=150) + parity unit test `src/utils/__tests__/pricingPreview.test.ts`.
+  - `src/services/pricingSwitchesService.ts` — wraps `business_set_pricing_switches` + `business_set_brand_pricing_defaults`; `resolveSwitches()` (view COALESCE mirror); `isPricingLockedError()`.
+  - `brandMapping.ts` + `types/brand.ts` — `defaultPass*`, `takeRateBpsOverride`, `pricingRegion/Currency` from `brands.*` (NULL→false=absorb). `brands` uses `select("*")` so columns arrive automatically.
+  - **Shared `src/components/pricing/WhoCoversCostsSection.tsx`** (Surfaces 1+3+4): three pass/absorb segmented rows, live preview chip, locked read-only state (Surface 3), VAT "Set up VAT" nudge (Surface 4). Dark tokens, a11y radiogroup.
+  - Event persistence: `DraftEvent.pricingSwitches` (per-column NULL=inherit) → `events.pass_*` direct columns via `serverDraftEventMapper` (written+read-back every autosave like taxonomy cols, so autosave never zeroes the choice) + `EVENT_DRAFT_SELECT`. Mounted in `CreatorStep5Tickets.tsx`.
+  - Surface 5: `eventOrdersService` selects `orders.pricing_breakdown`, parses `.absorbed` → `OrderRecord.absorbedCostsCents`; `EventDetailKpiCard` renders "You covered £X in VAT & fees" (omitted at £0); summed in `app/event/[id]/index.tsx`.
+
+### KNOWN GAPS / DECISIONS surfaced this session
+- **Surface 1 VAT row currently interactive (`vatRegistered` hardcoded true).** Safe — the engine probes tax.registrations at checkout and fail-closes to absorb for unregistered brands. Swap to the real probe when the Surface-4 endpoint lands.
+- **RPC can't write NULL.** `business_set_pricing_switches` takes non-null booleans → no server-side "reset to inherit"/partial per-column override. The EVENT flow sidesteps this by writing columns directly (true per-column NULL inheritance via autosave). Trip/experience + post-publish live-edit will hit this if they route through the RPC — a NULL-writing RPC (or direct-column writes) is needed for reset/partial.
+- **"You keep" economics caveat (handoff §3).** The chip shows "You keep …before VAT" using the flat-absorb floor. The service-fee-recovers-whose-cost question is still unsettled; current copy avoids claiming what the service fee compensates. Settle before any payout/fee copy hardens.
 
 ## REMAINING WORK (in priority order)
+### 0. NEXT BATCH (post core-vertical) — trip + experience mounts, Surface 2, Surface 4 endpoint
+- **Trip mount:** add `pricingSwitches` to `Step4Draft` + thread through `TripCreatorWizard` state; persist to the trip's `events.pass_*` (trip is an events row; `updateTripPricing` only writes `trip_pricing_tiers`, so add a separate events write — either direct columns or the RPC). Mount `<WhoCoversCostsSection format="trip" .../>` in `TripCreatorStep4Pricing.tsx`. Brand defaults via `useCurrentBrand`.
+- **Experience mount:** experiences insert directly into `events` in `ExperienceCreatorWizard.tsx` — add `pass_*` to that insert/update + mount `<WhoCoversCostsSection format="experience" .../>`.
+- **Surface 2:** new screen `app/brand/[id]/pricing-defaults.tsx` + `src/components/brand/BrandPricingDefaultsView.tsx` (mirror `BrandEditView`); reuse `WhoCoversCostsSection`-style rows against `business_set_brand_pricing_defaults` (already wrapped in `pricingSwitchesService`). Add a settings-list link; wire `onEditDefaults` deep-link from Surface 1.
+- **Surface 4 endpoint:** new business-callable edge fn (e.g. `brand-tax-registrations-list`) calling `stripe.tax.registrations.list({status:"active"})` for the brand's connected account (pattern: `ticket-checkout-create/index.ts:1040`). Add `ORCH_1006_BACKEND_ALLOWLIST` entry. Feed `vatRegistered` into `WhoCoversCostsSection`; wire `onSetupVat` deep-link to `/connect-tax-registrations`.
+
+
 
 ### 1. FINISH brand mini-card render (small — 3 precise edits)
 Goal: brand page `/b/{slug}` EventMiniCard "From £X" shows all-in, not base. The shared render is ALREADY done (`packages/brand-rendering/PublicBrandPage.tsx` `minPriceLabel` + `PublicBrandEvent.displayPriceCents`/`displayCurrency` in `types.ts`). The data just isn't carried into the `PublicBrandEvent` objects. THREE edits, all in `mingla-business/`:
