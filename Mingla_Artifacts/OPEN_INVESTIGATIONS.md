@@ -1,5 +1,7 @@
 # Open Investigations
 
+> **2026-05-30 — ORCH-1015 [Intelligence Overview readiness ladder] CLOSED CONDITIONAL PASS Grade A.** Full banner in WORLD_MAP. PR #271 merged as `265f11c9e`. Edge fn redeployed. Worktree reaped.
+
 > **2026-05-30 — ORCH-1015 [Intelligence Overview readiness ladder — Boundary + Details binary badges + smart-skip bulk run] REGISTERED → FORENSICS QUEUED.** S2-medium / `ux`. **Source:** operator clarification 2026-05-30 that ORCH-1014's count-based badges aren't what they actually want — they want two true/false flags per city: "has the city been regeocoded under the new bbox model?" + "has the city been refreshed since the new Google-field cutover (2026-03-19)?" Replaces ORCH-1014 visualizations with operator-approved 3-band readiness ladder. Smart-skip on bulk button protects Gemini scoring quality. Full scope in WORLD_MAP.
 
 > **2026-05-30 — ORCH-1014 [Intelligence Trial consolidation — prune photo pages + per-city Seed/Refresh readiness badges] CLOSED PASS Grade A.** Full close banner in WORLD_MAP. Edge fn `run-place-intelligence-trial` redeployed; worktree reaped.
