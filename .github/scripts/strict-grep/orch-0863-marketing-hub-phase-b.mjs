@@ -987,6 +987,16 @@ function checkNoNewBackendFiles() {
     "supabase/functions/_shared/stopAlternatives.ts",
     "supabase/functions/generate-curated-experiences/index.ts",
   ];
+  // ORCH-1006 [Universal all-in pricing engine]. New shared money engine + its
+  // regression test + the three pricing migrations. Admin take-rate persistence
+  // uses SECURITY DEFINER RPCs (no new edge function), so only these register.
+  const ORCH_1006_BACKEND_ALLOWLIST = [
+    "supabase/functions/_shared/allInPricingEngine.ts",
+    "supabase/functions/_shared/__tests__/allInPricingEngine.test.ts",
+    "supabase/migrations/20260802000000_orch_1006_pricing_switches.sql",
+    "supabase/migrations/20260802000001_orch_1006_pricing_views.sql",
+    "supabase/migrations/20260802000002_orch_1006_finalize_copy_pricing_breakdown.sql",
+  ];
   // ORCH-1008 [Admin shell prune + Intelligence Overview tab + remainder mode].
   // C7 is scoped to ORCH-0863 marketing; these backend touches are the new
   // place_intelligence_runs CHECK-constraint extension (adds 'remainder' to
@@ -1024,6 +1034,7 @@ function checkNoNewBackendFiles() {
     "supabase/functions/run-place-intelligence-trial/__tests__/intelligence_coverage_seed_refresh.test.ts",
   ];
   const ALLOWLIST = [
+    ...ORCH_1006_BACKEND_ALLOWLIST,
     ...ORCH_0989_BACKEND_ALLOWLIST,
     ...ORCH_0990_BACKEND_ALLOWLIST,
     ...ORCH_0986_BACKEND_ALLOWLIST,
