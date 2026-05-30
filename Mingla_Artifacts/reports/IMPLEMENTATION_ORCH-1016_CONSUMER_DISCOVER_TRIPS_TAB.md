@@ -289,3 +289,73 @@ The trip body now mirrors `ExpandedBusinessEventSheet` exactly: `theme="dark"`, 
 ## RW.7 — Discoveries for orchestrator (REWORK)
 
 - None new. The pre-existing migration handoff (RLS `db push`) from the D2 rework still stands unchanged.
+
+---
+
+# REWORK-2 — Frozen-scroll fix + Trips plane icon (operator on-device, 2026-05-30)
+
+**Operator feedback (verbatim):** "events should use a plane icon, or a send icon. The sheets also hang and dont scroll almost like they are frozen"
+
+## RW2.1 — FIX 1: the trip detail sheet was frozen / wouldn't scroll
+
+### Root cause
+
+REWORK-1 moved the trip detail into `BaseBottomSheet` (the app's sole `@gorhom/bottom-sheet` consumer) using **`scrollMode="view"` + a hand-rolled `<BottomSheetScrollView>` as the body + a `stickyFooter`**. In BaseBottomSheet's `view`+`stickyFooter` branch (`BaseBottomSheet.tsx` lines 419-473), the children are wrapped in a plain `flex:1` `<View>` (`stickyBody`, line 453) inside a `<BottomSheetView>`. So the hand-rolled `BottomSheetScrollView` landed **two non-gorhom Views deep**. gorhom's scroll containers must be a **direct managed descendant** of the sheet for the pan-gesture coordination to work; nested that deep, the sheet's own pan-responder swallowed the inner scroll's gesture — the body felt frozen. This is the classic gorhom gesture-conflict.
+
+### The exact fix (before → after)
+
+| | BEFORE (frozen) | AFTER (scrolls + dismisses) |
+|---|---|---|
+| `scrollMode` | `"view"` | `"scroll"` |
+| Scroll container | hand-rolled `<BottomSheetScrollView>` rendered by the SCREEN, nested under the sticky `flex:1` View → gesture swallowed | **`BaseBottomSheet` owns** the `BottomSheetScrollView`; its `scroll`+`stickyFooter` branch (lines 435-451) renders it as a `flex:1` **direct child** of the sheet's `BottomSheetView` (the gesture-coordinated TicketCartSheet pattern) |
+| Detail content | children of the hand-rolled scroll | plain `children` of `<BaseBottomSheet>` |
+| Scroll padding | `contentContainerStyle={styles.scrollContent}` on the hand-rolled scroll | passed via `scrollProps={{ showsVerticalScrollIndicator:false, contentContainerStyle: styles.scrollContent }}` |
+| Sticky Reserve footer | `stickyFooter={reserveFooter}` (kept) | `stickyFooter={reserveFooter}` (kept) |
+| `tabBarAware` nav clearance | kept | kept |
+| Import | `import { BaseBottomSheet, BottomSheetScrollView } from ".../BaseBottomSheet"` | `import { BaseBottomSheet } from ".../BaseBottomSheet"` (scroll now primitive-owned) |
+
+Net: the day-by-day list, refund policy, inclusions, and tiers scroll smoothly inside the sheet; the sticky Reserve footer stays pinned; swipe-down-to-dismiss still closes (the exact coordination `BottomSheetScrollView` exists to provide). The bottom-nav-clearing `tabBarAware` inset from REWORK-1 is preserved unchanged. Loading / error / not-found state sheets keep `scrollMode="view"` (centered single-state bodies, nothing to scroll) — untouched.
+
+**`TripsContent.tsx` audit:** the Trips tab list uses a plain RN `<FlatList>`, but it is a Discover tab body, **NOT inside a gorhom sheet** — no pan-gesture conflict, no freeze. No change needed there (confirmed by grep: zero `@gorhom`/`BaseBottomSheet` in TripsContent). The freeze was unique to the sheet.
+
+## RW2.2 — FIX 2: Trips tab pill icon = plane / send
+
+`DiscoverScreen.tsx` `TABS_1016` — the Trips pill `icon` changed from **`"compass-outline"` → `"paper-plane-outline"`**. In the app's unified `Icon` set (`components/ui/Icon.tsx` line 373), `paper-plane-outline` maps to **Lucide's `Send`** glyph — a paper-plane / send icon that reads as travel, exactly the operator's "plane icon, or a send icon" ask. Already bundled (also used for "Leaving from" in the trip detail itself, line 322). No new asset, no emoji. The Events pill keeps `"sparkles-outline"` (untouched). Same outline family as Events for visual consistency. (No literal `airplane` glyph exists in the app's icon map; `paper-plane-outline`/`Send` is the cleanest bundled travel glyph.)
+
+## RW2.3 — Files changed (REWORK-2)
+
+| File | Before | After | Why |
+|---|---|---|---|
+| `app-mobile/src/screens/Trip/ConsumerTripDetailScreen.tsx` | `scrollMode="view"` + hand-rolled `<BottomSheetScrollView>` body nested under sticky View (frozen); imports `BottomSheetScrollView` | `scrollMode="scroll"` + `scrollProps.contentContainerStyle`; content is plain `children`; `BottomSheetScrollView` import dropped; chrome moved to top of scroll content | Frozen-scroll fix — primitive owns the gorhom-managed scroll |
+| `app-mobile/src/components/DiscoverScreen.tsx` | Trips pill `icon: "compass-outline"` | Trips pill `icon: "paper-plane-outline"` (Lucide `Send`) | Plane/send travel glyph per operator |
+| `app-mobile/src/screens/Trip/__tests__/orch_1016_consumer_trip_detail.rework_sheet.test.tsx` | R1f asserted hand-rolled `BottomSheetScrollView` present (encoded the bug) | R1f → `scrollMode="scroll"`; +R1f-2 (no hand-rolled scroll / raw ScrollView); +R1f-3 (scroll + sticky footer + tabBarAware together); +R3a/R3b/R3c (Trips plane icon, not compass, Events untouched) | Regression test now asserts the CORRECT post-fix behavior so the freeze can't return `[TEST-MOD-APPROVED ORCH-1016]` |
+
+## RW2.4 — Regression test (REWORK-2)
+
+**Path:** `app-mobile/src/screens/Trip/__tests__/orch_1016_consumer_trip_detail.rework_sheet.test.tsx`
+
+**Run command:** `node app-mobile/src/screens/Trip/__tests__/orch_1016_consumer_trip_detail.rework_sheet.test.tsx`
+
+**Passing run:** `19 checks PASS` (was 14; +5 new: R1f-2, R1f-3, R3a, R3b, R3c — R1f reworded).
+
+**Fails-on-revert:** verified at commit `3b5de3dac` (HEAD before REWORK-2). Reverted ONLY the two source files (`ConsumerTripDetailScreen.tsx` + `DiscoverScreen.tsx`) to HEAD while keeping the NEW test, re-ran → **FAILED at `R1f the trip detail sheet uses scrollMode='scroll'`** (the pre-fix source still had `scrollMode="view"`). Restored the fix; back to 19 PASS. This proves the new test actually exercises the freeze fix, not just the file structure.
+
+**Existing adversarial test:** `orch_1016_consumer_trip_detail.adversarial.test.tsx` still `18 checks PASS` — no regression.
+
+## RW2.5 — Verification (REWORK-2)
+
+| Check | Result |
+|---|---|
+| tsc (touched files) | Clean — `npx tsc --noEmit` shows **zero** `error TS` referencing `ConsumerTripDetailScreen.tsx`, `DiscoverScreen.tsx`, or `BaseBottomSheet.tsx`. The repo-wide 259 pre-existing errors are `packages/*` workspace-resolution artifacts of the isolated worktree, unrelated and unchanged. |
+| eslint (touched files) | No NEW problems — HEAD baseline and post-fix both report the identical 9 problem-lines (the `@mingla/event-rendering` `import/no-unresolved` worktree-symlink artifact + pre-existing `import/first` / `array-type` warnings on lines that predate this rework). |
+| strict-grep `meta-orch-0991-base-bottom-sheet-sole-consumer` | OK — scanned 422 files; `BaseBottomSheet.tsx` remains the sole `@gorhom/bottom-sheet` importer. The fix REMOVED a `BottomSheetScrollView` import from the screen (fewer importers, not more) — gate strengthened, not regressed. |
+| Regression + adversarial tests | 19 PASS + 18 PASS. |
+
+## RW2.6 — Surface impact (REWORK-2)
+
+- **Consumer iOS / Android:** changed — trip detail now scrolls; Trips pill icon is a plane/send glyph. Parity automatic (shared RN component + shared `BaseBottomSheet`; `ANDROID_GLASS_USES_OPAQUE_FALLBACK` not implicated — opaque `#0c0e12` sheet, no translucent Android fill introduced).
+- **Buyer-anon Web / Business iOS+Android / Admin:** unaffected — consumer-app surface with no analog elsewhere.
+
+## RW2.7 — Discoveries for orchestrator (REWORK-2)
+
+- None new.
