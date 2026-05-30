@@ -26,13 +26,6 @@ export interface PoolSearchResponse {
   matches: PoolMatch[];
 }
 
-/** Edge function request body. */
-export interface PoolSearchRequest {
-  query: string;
-  limit?: number;
-}
-
 export const POOL_SEARCH_MIN_QUERY_LENGTH = 3;
 export const POOL_SEARCH_DEBOUNCE_MS = 300;
 export const POOL_SEARCH_DEFAULT_LIMIT = 1;
-export const POOL_SEARCH_MAX_LIMIT = 5;

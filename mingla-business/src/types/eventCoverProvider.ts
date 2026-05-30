@@ -29,24 +29,6 @@ export const asEventCoverMediaProvider = (
 ): EventCoverMediaProvider | null =>
   value === "upload" || value === "giphy" || value === "pexels" ? value : null;
 
-const cleanStringOrNull = (value: unknown): string | null =>
-  typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
-
-export const normalizeEventCoverProviderMetadata = (
-  value: Partial<EventCoverProviderMetadata> | null | undefined,
-): EventCoverProviderMetadata => {
-  if (value === null || value === undefined) {
-    return EMPTY_EVENT_COVER_PROVIDER_METADATA;
-  }
-  return {
-    provider: asEventCoverMediaProvider(value.provider),
-    sourceUrl: cleanStringOrNull(value.sourceUrl),
-    credit: cleanStringOrNull(value.credit),
-    creditUrl: cleanStringOrNull(value.creditUrl),
-    alt: cleanStringOrNull(value.alt),
-  };
-};
-
 export const eventCoverProviderCreditLabel = (
   metadata: {
     provider?: EventCoverMediaProvider | null;

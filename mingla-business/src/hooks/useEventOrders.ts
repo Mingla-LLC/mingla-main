@@ -13,12 +13,9 @@ import {
   getEventGuestById,
   getEventGuestList,
   getEventHasWebPurchases,
-  getEventOrderActivity,
   getEventOrderById,
   getEventOrderRevenue,
   getEventSoldCounts,
-  type EventOrderActivity,
-  type EventOrderRevenue,
 } from "../services/eventOrdersService";
 import {
   issueOrderRefund,
@@ -91,22 +88,6 @@ export const useEventOrderById = (
   });
 };
 
-export const useEventOrderRevenue = (
-  eventId: string | null,
-  currency = "GBP",
-): EventOrderRevenue => {
-  const ordersQuery = useEventOrders(eventId);
-  return getEventOrderRevenue(ordersQuery.data ?? [], currency);
-};
-
-export const useEventOrderActivity = (
-  eventId: string | null,
-  sinceTs?: number,
-): EventOrderActivity[] => {
-  const ordersQuery = useEventOrders(eventId);
-  return getEventOrderActivity(ordersQuery.data ?? [], sinceTs);
-};
-
 export const useEventGuestList = (eventId: string | null): OrderRecord[] => {
   const ordersQuery = useEventOrders(eventId);
   return getEventGuestList(ordersQuery.data ?? []);
@@ -124,32 +105,6 @@ export const useEventGuestById = (
 export const useEventReconciliation = (eventId: string | null): OrderRecord[] => {
   const ordersQuery = useEventOrders(eventId);
   return ordersQuery.data ?? [];
-};
-
-export const useEventSoldCounts = (
-  eventIds: string[],
-): Record<string, { soldCount: number; revenue: number }> => {
-  const { loading, session } = useAuth();
-  const queries = useQueries({
-    queries: eventIds.map((eventId) => ({
-      queryKey: eventOrdersKeys.detail(eventId),
-      enabled: !loading && session !== null,
-      staleTime: 15 * 1000,
-      queryFn: () => fetchEventOrders(eventId),
-    })),
-  });
-  return queries.reduce<Record<string, { soldCount: number; revenue: number }>>(
-    (acc, query, index) => {
-      const orders = query.data ?? [];
-      const revenue = getEventOrderRevenue(orders);
-      acc[eventIds[index]] = {
-        soldCount: revenue.soldCount,
-        revenue: revenue.revenue,
-      };
-      return acc;
-    },
-    {},
-  );
 };
 
 export interface EventSalesSummarySource {

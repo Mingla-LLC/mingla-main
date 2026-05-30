@@ -32,4 +32,3 @@ if (!RESOLVED || RESOLVED.length === 0) {
 }
 
 export const MINGLA_BUSINESS_WEB_URL: string = RESOLVED;
-export const MINGLA_BUSINESS_WEB_HOST: string = new URL(RESOLVED).host;

@@ -35,11 +35,6 @@ export const BRAND_ROLE_RANK = {
 
 export const NO_MEMBERSHIP_RANK = 0;
 
-export const meetsRoleRank = (
-  currentRank: number,
-  requiredRank: number,
-): boolean => currentRank >= requiredRank;
-
 export const roleDisplayName = (role: BrandRole): string => {
   switch (role) {
     case "account_owner":

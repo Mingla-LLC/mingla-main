@@ -215,57 +215,5 @@ export const expandRecurrenceToDates = (
   return out;
 };
 
-/**
- * Convert RecurrenceRule to RFC 5545 RRULE string.
- *
- * Used by Cycle 9 publish edge function consumption layer.
- *
- * Format:
- *   daily       → "FREQ=DAILY;COUNT=N" or "FREQ=DAILY;UNTIL=YYYYMMDDT000000Z"
- *   weekly      → "FREQ=WEEKLY;BYDAY=MO;COUNT=N"
- *   biweekly    → "FREQ=WEEKLY;INTERVAL=2;BYDAY=MO;COUNT=N"
- *   monthly_dom → "FREQ=MONTHLY;BYMONTHDAY=15;COUNT=N"
- *   monthly_dow → "FREQ=MONTHLY;BYDAY=1MO;COUNT=N" (with BYSETPOS prefix in BYDAY)
- */
-export const recurrenceRuleToRfc5545 = (
-  rule: RecurrenceRule,
-  _firstDate: string,
-): string => {
-  const parts: string[] = [];
-  switch (rule.preset) {
-    case "daily":
-      parts.push("FREQ=DAILY");
-      break;
-    case "weekly":
-      parts.push("FREQ=WEEKLY");
-      if (rule.byDay !== undefined) parts.push(`BYDAY=${rule.byDay}`);
-      break;
-    case "biweekly":
-      parts.push("FREQ=WEEKLY", "INTERVAL=2");
-      if (rule.byDay !== undefined) parts.push(`BYDAY=${rule.byDay}`);
-      break;
-    case "monthly_dom":
-      parts.push("FREQ=MONTHLY");
-      if (rule.byMonthDay !== undefined) parts.push(`BYMONTHDAY=${rule.byMonthDay}`);
-      break;
-    case "monthly_dow":
-      parts.push("FREQ=MONTHLY");
-      if (rule.byDay !== undefined && rule.bySetPos !== undefined) {
-        // RFC 5545 BYDAY accepts a numeric prefix: "1MO" = first Monday,
-        // "-1FR" = last Friday.
-        parts.push(`BYDAY=${rule.bySetPos}${rule.byDay}`);
-      }
-      break;
-  }
-  if (rule.termination.kind === "count") {
-    parts.push(`COUNT=${rule.termination.count}`);
-  } else {
-    // RFC 5545 UNTIL: YYYYMMDDTHHMMSSZ — use end-of-day UTC for inclusive semantics.
-    const u = rule.termination.until.replaceAll("-", "");
-    parts.push(`UNTIL=${u}T235959Z`);
-  }
-  return parts.join(";");
-};
-
 // Suppress unused import warning for symbols only used as types.
 void toIso;

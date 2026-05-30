@@ -98,17 +98,6 @@ export type CampaignChannelPayload =
 // Row types — match table shapes
 // ---------------------------------------------------------------------------
 
-export interface MarketingAudienceRow {
-  id: string;
-  account_id: string;
-  brand_id: string | null;
-  name: string;
-  query_definition: AudienceQueryDefinition;
-  is_system_generated: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
 export interface MarketingTemplateRow {
   id: string;
   account_id: string | null;
@@ -159,49 +148,8 @@ export type MessageStatus =
   /** Live-broadcast gate (MARKETING_SEND_LIVE_ENABLED=false). */
   | "preview_skipped";
 
-export interface MarketingMessageRow {
-  id: string;
-  campaign_id: string;
-  recipient_email: string | null;
-  recipient_phone: string | null;
-  channel: MarketingChannel;
-  provider_message_id: string | null;
-  status: MessageStatus;
-  sent_at: string | null;
-  delivered_at: string | null;
-  opened_at: string | null;
-  last_clicked_at: string | null;
-  click_count: number;
-  failure_reason: string | null;
-  created_at: string;
-}
-
-export interface MarketingClickRow {
-  id: string;
-  campaign_id: string;
-  message_id: string | null;
-  destination_url: string;
-  tracking_id: string;
-  clicked_at: string | null;
-  user_agent: string | null;
-  ip_hash: string | null;
-  created_at: string;
-}
-
 export type UnsubscribeScope = "account" | "brand" | "global";
 export type UnsubscribeChannel = MarketingChannel | "all";
-
-export interface MarketingUnsubscribeRow {
-  id: string;
-  contact_email: string | null;
-  contact_phone: string | null;
-  channel: UnsubscribeChannel;
-  scope: UnsubscribeScope;
-  brand_id: string | null;
-  account_id: string | null;
-  reason: string | null;
-  unsubscribed_at: string;
-}
 
 // ---------------------------------------------------------------------------
 // Buyer-row shape (shared by Brand Customers + Event Buyers + audience detail)
@@ -305,37 +253,3 @@ export interface AudienceListEntry {
   last_used_at: string | null;
 }
 
-// ---------------------------------------------------------------------------
-// Type guards (runtime discriminator narrowing — I-PROPOSED-BP/BQ)
-// ---------------------------------------------------------------------------
-
-export function isBrandBuyersQuery(
-  q: AudienceQueryDefinition,
-): q is AudienceQueryBrandBuyers {
-  return q.kind === "brand_buyers";
-}
-
-export function isEventBuyersQuery(
-  q: AudienceQueryDefinition,
-): q is AudienceQueryEventBuyers {
-  return q.kind === "event_buyers";
-}
-
-export function isEmailPayload(
-  p: CampaignChannelPayload,
-): p is ChannelPayloadEmail {
-  return p.kind === "email";
-}
-
-/** Exhaustiveness helper — call from default-branch switch arms. */
-export function assertNeverChannelKind(p: never): never {
-  throw new Error(
-    `unknown_channel_kind:${(p as { kind?: string } | undefined)?.kind ?? "undefined"}`,
-  );
-}
-
-export function assertNeverAudienceKind(q: never): never {
-  throw new Error(
-    `unknown_audience_kind:${(q as { kind?: string } | undefined)?.kind ?? "undefined"}`,
-  );
-}

@@ -3,7 +3,6 @@ import {
   buildDraftEvent,
   type DraftEvent,
 } from "../store/draftEventStore";
-import { draftTicketToTicketTypeInsert } from "./ticketTypeMapper";
 import { generateEventSlug } from "../utils/eventSlug";
 import {
   draftToServerInsert,
@@ -87,21 +86,6 @@ const fetchBrandDefaultCurrency = async (brandId: string): Promise<string | null
   );
 };
 
-const resolveDraftCurrencyForPublish = async (
-  draft: DraftEvent,
-  existingCurrency: unknown = null,
-): Promise<string> => {
-  const localCurrency = nullableCurrency(draft.currency);
-  if (localCurrency !== null) return localCurrency;
-  const serverCurrency = nullableCurrency(existingCurrency);
-  if (serverCurrency !== null) return serverCurrency;
-  const brandCurrency = await fetchBrandDefaultCurrency(draft.brandId);
-  if (brandCurrency === null) {
-    throw new Error("Brand currency is not set. Connect Stripe before publishing paid tickets.");
-  }
-  return brandCurrency;
-};
-
 const resolveDraftCurrencyForSave = async (
   draft: DraftEvent,
   existingCurrency: unknown = null,
@@ -135,32 +119,6 @@ const asDiscardDraftRpcResponse = (value: unknown): DiscardDraftRpcResponse => {
     throw new Error("discardServerDraft: RPC response missing discard fields");
   }
   return { event_id: eventId, brand_id: brandId, deleted_at: deletedAt };
-};
-
-export const syncDraftTicketsToServerEvent = async (
-  draft: DraftEvent,
-): Promise<void> => {
-  if (draft.tickets.length === 0) {
-    throw new Error("Publish requires at least one ticket type.");
-  }
-
-  const now = new Date().toISOString();
-  // I-MUTATION-ROWCOUNT-WAIVER: ORCH-0763 first sync may have zero existing ticket rows
-  const { error: softDeleteError } = await supabase
-    .from("ticket_types")
-    .update({ deleted_at: now })
-    .eq("event_id", draft.id)
-    .is("deleted_at", null);
-
-  if (softDeleteError !== null) throw softDeleteError;
-
-  const brandCurrency = await resolveDraftCurrencyForPublish(draft);
-  const rows = draft.tickets.map((ticket) =>
-    draftTicketToTicketTypeInsert(draft.id, ticket, brandCurrency),
-  );
-  const { error: insertError } = await supabase.from("ticket_types").insert(rows);
-
-  if (insertError !== null) throw insertError;
 };
 
 export const createServerDraft = async (
