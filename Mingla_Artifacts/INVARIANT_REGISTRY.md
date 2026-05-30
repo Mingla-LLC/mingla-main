@@ -11,6 +11,20 @@
 
 Five invariants total. Sub-A landed three (sole-owner ACTIVE + shape contract ACTIVE + prompt-version-discriminated DRAFT). Sub-B flipped the discriminator ACTIVE + added two new ACTIVE invariants (consumer-reads-not-trial-table + collab-determinism-preserved-under-AI-blend). Backed by Deno tests at `supabase/functions/_shared/__tests__/signalScorer.blend.test.ts` (11 blend tests, fails-on-revert verified at commit `141b1c69f`), `supabase/functions/discover-cards/__tests__/ai_reasoning_passthrough.test.ts` (9 tests) + `collab_determinism_under_ai_blend.test.ts` (6 tests), `supabase/functions/generate-curated-experiences/__tests__/ai_reasoning_passthrough.test.ts` (5 tests), the existing Sub-A trial-writer tests (11 tests), the new strict-grep gate `i-consumer-reads-ai-signal-scores-not-trial-table.mjs` (registered in `strict-grep-mingla-business.yml`), and the post-apply SQL probe `meta_orch_1009_sub_b_rpc_reasoning_return.test.sql`.
 
+### I-CURATED-HOURS-VIA-CANONICAL-READER (ACTIVE post ORCH-1019 CLOSE 2026-05-30)
+
+**Statement:** Every opening-hours / availability check in `app-mobile/` MUST read hours via `extractWeekdayText(openingHours)` and evaluate open/closed via `isPlaceOpenAt(weekdayText, date, utcOffsetMinutes?)` from `app-mobile/src/utils/openingHoursUtils.ts`. No code under `app-mobile/src` may index an `openingHours` value by a weekday name (`openingHours[dayName]`, `openingHours?.["Saturday"]`, `oh[weekday]`, etc.). The canonical reader is the single all-shape-tolerant authority — it handles Google v1 (`weekdayDescriptions`), Google legacy (`weekday_text`), `Record<string,string>`, plain string arrays, and JSON-stringified input.
+
+**Rationale:** ORCH-1019 proved two opposite-direction bugs from one root: a bespoke day-name key lookup (`SavedTab.checkSingleStopOpen`) silently missed the real Google-v1 object shape and produced **false-OK** ("All Stops Are Open!" for a closed venue — Constitution #9 fabricated availability), while two modal call-sites that dropped `stops`/`isCurated` routed curated cards through the regular reader and produced **false-WARNING** ("couldn't verify hours"). Both vanish when all paths use the canonical reader.
+
+**Enforcement:** strict-grep gate `.github/scripts/strict-grep/i-curated-hours-via-canonical-reader.mjs` (job `orch-1019-curated-hours-canonical-reader` in `strict-grep-mingla-business.yml`) fails CI on any direct weekday-name index of an `openingHours` value in `app-mobile/src`; ships with `--self-test`.
+
+**Test that catches a regression:** happy-path `app-mobile/src/utils/__tests__/curatedStopsAvailability.test.ts` (implementor, fails-on-revert verified at `d2101c61a`) + adversarial `app-mobile/src/utils/__tests__/curatedStopsAvailability.adversarial.test.ts` (tester, 4 false-OK vectors, fails-on-revert verified at `bb4b71d01`).
+
+**Established:** 2026-05-30 by ORCH-1019 CLOSE.
+
+---
+
 ### I-AI-SIGNAL-SCORES-COLUMN-SOLE-OWNER (ACTIVE post META-ORCH-1009 Sub-A CLOSE)
 
 **Statement:** `public.place_pool.ai_signal_scores` is written by EXACTLY ONE code path — `processOnePlace` in `supabase/functions/run-place-intelligence-trial/index.ts` (via the encapsulated `writeAiSignalScoresToPlacePool` helper) — plus the one-shot backfill in migration `20260802000003_meta_orch_1009_sub_a_ai_signal_scores.sql`. No other edge function, no RPC, no admin action, no migration, no manual SQL ad-hoc write may set this column. Reads are unrestricted (Sub-B ranker is the primary consumer; admin inspector is a secondary consumer).
