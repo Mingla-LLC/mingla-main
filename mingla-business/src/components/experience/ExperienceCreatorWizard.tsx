@@ -34,6 +34,7 @@ import { Toast } from "../ui/Toast";
 import { WhoCoversCostsSection } from "../pricing/WhoCoversCostsSection";
 import { DEFAULT_TAKE_RATE_BPS } from "../../constants/pricing";
 import type { PricingSwitchOverrides } from "../../services/pricingSwitchesService";
+import { useBrandTaxRegistration } from "../../hooks/useBrandTaxRegistration";
 
 export interface ExperienceCreatorWizardProps {
   brandId: string;
@@ -109,6 +110,7 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
   const { user } = useAuth();
   const brand = useCurrentBrand();
   const router = useRouter();
+  const taxRegistration = useBrandTaxRegistration(brand?.id ?? null);
   const updateBrand = useUpdateBrand();
   const venueDefault = useExperienceVenueDefault(brandId);
   const [step, setStep] = useState<StepIndex>(1);
@@ -321,9 +323,15 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
                 onEditDefaults={() =>
                   router.push(`/brand/${brand.id}/pricing-defaults` as never)
                 }
-                // Create-only wizard — never locked at create; engine fail-closes
-                // VAT to absorb at checkout for unregistered brands.
-                vatRegistered
+                // Create-only wizard — never locked at create. VAT row
+                // interactive only when the brand has an active Stripe tax
+                // registration; else the "Set up VAT" nudge.
+                vatRegistered={
+                  taxRegistration.data?.hasActiveRegistration === true
+                }
+                onSetupVat={() =>
+                  router.push("/connect-tax-registrations" as never)
+                }
               />
             ) : null}
           </View>

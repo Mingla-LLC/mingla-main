@@ -37,6 +37,7 @@ import { useRouter } from "expo-router";
 import { WhoCoversCostsSection } from "../pricing/WhoCoversCostsSection";
 import { DEFAULT_TAKE_RATE_BPS } from "../../constants/pricing";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
+import { useBrandTaxRegistration } from "../../hooks/useBrandTaxRegistration";
 
 export interface Step4Draft {
   tierName: string;
@@ -102,6 +103,7 @@ export const TripCreatorStep4Pricing: React.FC<TripCreatorStep4PricingProps> = (
   const [confirmRemoveOpen, setConfirmRemoveOpen] = useState(false);
   const brand = useCurrentBrand();
   const router = useRouter();
+  const taxRegistration = useBrandTaxRegistration(brand?.id ?? null);
   const priceCents = Math.round((parseFloat(draft.priceMajor) || 0) * 100);
   const planEnabled = draft.paymentPlan !== null;
   // ORCH-0876 — read-only price when at least one confirmed booking exists
@@ -280,9 +282,11 @@ export const TripCreatorStep4Pricing: React.FC<TripCreatorStep4PricingProps> = (
           onEditDefaults={() =>
             router.push(`/brand/${brand.id}/pricing-defaults` as never)
           }
-          // Surface 4 — interim interactive; engine fail-closes to absorb at
-          // checkout for unregistered brands. Real probe wires with the endpoint.
-          vatRegistered
+          // Surface 4 — VAT row interactive only when the brand has an active
+          // Stripe tax registration; else the "Set up VAT" nudge. Engine also
+          // fail-closes at checkout.
+          vatRegistered={taxRegistration.data?.hasActiveRegistration === true}
+          onSetupVat={() => router.push("/connect-tax-registrations" as never)}
         />
       ) : null}
 

@@ -48,6 +48,7 @@ import { Icon } from "../ui/Icon";
 import { WhoCoversCostsSection } from "../pricing/WhoCoversCostsSection";
 import { DEFAULT_TAKE_RATE_BPS } from "../../constants/pricing";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
+import { useBrandTaxRegistration } from "../../hooks/useBrandTaxRegistration";
 
 import { TicketTierCard } from "./TicketTierCard";
 import { TicketTierEditSheet } from "./TicketTierEditSheet";
@@ -214,6 +215,7 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
   // ORCH-1006 — "Who covers the costs?" section state.
   const brand = useCurrentBrand();
   const router = useRouter();
+  const taxRegistration = useBrandTaxRegistration(brand?.id ?? null);
   const pricingSwitches = draft.pricingSwitches ?? {
     passTax: null,
     passMinglaFee: null,
@@ -348,10 +350,13 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
           onEditDefaults={() =>
             router.push(`/brand/${brand.id}/pricing-defaults` as never)
           }
-          // Surface 4 — VAT-registration probe wires in with its endpoint
-          // (next batch). Interim: interactive; the engine fail-closes to
-          // absorb at checkout for unregistered brands regardless of this UI.
-          vatRegistered
+          // Surface 4 — VAT row is interactive only when the brand has an
+          // active Stripe tax registration; otherwise it shows the "Set up
+          // VAT" nudge. The engine independently fail-closes at checkout.
+          vatRegistered={taxRegistration.data?.hasActiveRegistration === true}
+          onSetupVat={() =>
+            router.push("/connect-tax-registrations" as never)
+          }
         />
       ) : null}
 
