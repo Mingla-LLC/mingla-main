@@ -319,7 +319,10 @@ BEGIN
       prompt_version, model, started_by, status, started_at
     ) VALUES (
       v_run_id, NEW.city_id,
-      COALESCE((SELECT name FROM public.cities WHERE id = NEW.city_id LIMIT 1), 'drift'),
+      -- Sub-D P0 fix (tester F-01): canonical city table is seeding_cities,
+      -- not 'cities' which doesn't exist on this project. F-02 defense:
+      -- COALESCE → 'drift' fallback handles NULL city_id cleanly.
+      COALESCE((SELECT name FROM public.seeding_cities WHERE id = NEW.city_id LIMIT 1), 'drift'),
       'drift_reeval',
       1, 1,
       0.0040, 1,   -- ~$0.0040/place Gemini Q2 cost per https://ai.google.dev/pricing/gemini-2-5-flash
