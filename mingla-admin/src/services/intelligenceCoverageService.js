@@ -34,6 +34,13 @@
 import { invokeWithRefresh } from "../lib/supabase";
 import { extractFunctionError } from "../lib/edgeFunctionError";
 
+// Estimators live in a pure-math sibling so the Node test runner can exercise
+// them without importing the supabase-js client.
+export {
+  estimateRemainderCostUsd,
+  estimateRemainderMinutes,
+} from "./intelligenceCoverageEstimators.js";
+
 export async function fetchIntelligenceCoverage() {
   const { data, error } = await invokeWithRefresh("run-place-intelligence-trial", {
     body: { action: "intelligence_coverage" },
@@ -45,29 +52,4 @@ export async function fetchIntelligenceCoverage() {
     throw new Error("intelligence_coverage returned malformed payload");
   }
   return data.rows;
-}
-
-/**
- * Estimated USD cost for a `remainder` run.
- *
- * @param {number} remainingCount - integer ≥0
- * @param {number} [perPlace=0.0040] - per-place rate; SPEC default matches the
- *   edge fn PER_PLACE_COST_USD constant. Override at the call site only when
- *   the operator has bumped the rate (COMMS-0003 — change both places at once).
- * @returns {number} - rounded to 4 dp
- */
-export function estimateRemainderCostUsd(remainingCount, perPlace = 0.0040) {
-  if (!Number.isFinite(remainingCount) || remainingCount <= 0) return 0;
-  return +(remainingCount * perPlace).toFixed(4);
-}
-
-/**
- * Estimated wall-time minutes for a `remainder` run (server-side, ~30s per place).
- *
- * @param {number} remainingCount
- * @returns {number} - rounded UP to whole minutes
- */
-export function estimateRemainderMinutes(remainingCount) {
-  if (!Number.isFinite(remainingCount) || remainingCount <= 0) return 0;
-  return Math.ceil((remainingCount * 30) / 60);
 }
