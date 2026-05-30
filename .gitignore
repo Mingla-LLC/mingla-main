@@ -24,6 +24,10 @@
 
 # === Node ===
 node_modules/
+# Also ignore a `node_modules` SYMLINK (a file, not a dir) — the trailing-slash
+# pattern above only matches directories, so a stray symlink could otherwise be
+# committed (ORCH-1006: one was, and broke a checkout's node_modules).
+node_modules
 
 # === Build output ===
 dist/
