@@ -112,6 +112,11 @@ export type EditableLiveEventFields = Pick<
   | "city"
   | "locationGeo"
   | "themeOverrides"
+  // ORCH-1006 — pricing switches editable post-publish (when unsold). Routed
+  // through patchPublishedEventPricingSwitches (server-editable, no buyer-
+  // protection guard rail; the post-sale lock is enforced server-side + the UI
+  // renders read-only once sold).
+  | "pricingSwitches"
 >;
 
 /**
@@ -226,6 +231,24 @@ export interface LiveEvent {
   coverMediaAlt?: string | null;
   /** ISO 4217 immutable commerce currency for this published event. */
   currency?: string;
+  /**
+   * ORCH-1006 Slice 3 — server-computed all-in (tax/fee-inclusive) lowest-tier
+   * price in CENTS, sourced from business_public_events_view. Null when no
+   * priced tier; the brand mini-card "From" label then falls back to base.
+   */
+  displayPriceCents?: number | null;
+  displayCurrency?: string | null;
+  /**
+   * ORCH-1006 — per-offering all-in pricing switches (who covers each cost).
+   * Each NULL = inherit the brand default; explicit boolean = override. Read
+   * from events.pass_*. Editable post-publish (when unsold) — see
+   * EditableLiveEventFields + patchPublishedEventPricingSwitches.
+   */
+  pricingSwitches?: {
+    passTax: boolean | null;
+    passMinglaFee: boolean | null;
+    passServiceFee: boolean | null;
+  };
   /** ORCH-0964 — nullable per-event public theme overrides. */
   themeOverrides?: ThemeInput | null;
   tickets: TicketStub[];

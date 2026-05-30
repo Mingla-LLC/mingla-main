@@ -280,7 +280,10 @@ const formatTicketPrice = (
   fallbackCurrency: string,
 ): string => {
   if (ticket.isFree) return "Free";
-  if (ticket.priceGbp === null) return "—";
+  // ORCH-1006: show the server-computed all-in price; fall back to base. Never
+  // recompute fees here — priceAllInGbp is compute_all_in_cents output / 100.
+  const price = ticket.priceAllInGbp ?? ticket.priceGbp;
+  if (price === null || price === undefined) return "—";
   const currency = ticket.currency ?? fallbackCurrency;
   try {
     return new Intl.NumberFormat("en-US", {
@@ -288,9 +291,9 @@ const formatTicketPrice = (
       currency,
       minimumFractionDigits: 0,
       maximumFractionDigits: 2,
-    }).format(ticket.priceGbp);
+    }).format(price);
   } catch {
-    return `${currency} ${ticket.priceGbp.toFixed(2)}`;
+    return `${currency} ${price.toFixed(2)}`;
   }
 };
 

@@ -229,6 +229,21 @@ export type Brand = {
    */
   defaultCurrency?: string;
   /**
+   * ORCH-1006 — brand-level all-in pricing defaults (who covers each cost).
+   * Mapped from `brands.default_pass_*`. NULL/absent → false (absorb, zero
+   * surprise to existing brands). Per-offering switches inherit these when the
+   * offering's own pass_* is NULL. Surface 2 (Pricing defaults) writes them.
+   */
+  defaultPassTax?: boolean;
+  defaultPassMinglaFee?: boolean;
+  defaultPassServiceFee?: boolean;
+  /** ORCH-1006 — brand take-rate override (bps). Undefined → platform default. */
+  takeRateBpsOverride?: number;
+  /** ORCH-1006 — pricing region (GB-only this ORCH). Mapped from `brands.pricing_region`. */
+  pricingRegion?: string;
+  /** ORCH-1006 — pricing currency (GBP-only this ORCH). Mapped from `brands.pricing_currency`. */
+  pricingCurrency?: string;
+  /**
    * Deprecated legacy cache. Do not use for active Payments display.
    */
   availableBalanceGbp?: number;

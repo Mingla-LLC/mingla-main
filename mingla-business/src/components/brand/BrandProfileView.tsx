@@ -131,6 +131,8 @@ export interface BrandProfileViewProps {
    * Receives the brand id. NEW in J-A10.
    */
   onPayments: (brandId: string) => void;
+  /** ORCH-1006 — opens the brand-level all-in pricing defaults screen. */
+  onPricingDefaults: (brandId: string) => void;
   /**
    * Called when user taps the "Finance reports" Operations row.
    * Receives the brand id. NEW in J-A12 — final navigation prop in
@@ -190,6 +192,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   onTeam,
   onStripe,
   onPayments,
+  onPricingDefaults,
   onReports,
   onAuditLog,
   onBlasts,
@@ -297,6 +300,15 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
         },
       },
       {
+        // ORCH-1006 — Surface 2. Brand-level all-in pricing defaults.
+        icon: "pound",
+        label: "Pricing defaults",
+        sub: "Who covers VAT and fees by default",
+        onPress: () => {
+          if (brand !== null) onPricingDefaults(brand.id);
+        },
+      },
+      {
         icon: "users",
         label: "Team & permissions",
         // Cycle 13a: brand.members is dropped (DEC-092). Member count now lives
@@ -345,6 +357,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
     onTeam,
     onBlasts,
     onPayments,
+    onPricingDefaults,
     onReports,
     onAuditLog,
     canViewAuditLog,

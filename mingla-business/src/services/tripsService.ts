@@ -123,6 +123,17 @@ export interface Trip {
    * Server-derived via biz_trip_tickets_sold(p_event_id).
    */
   ticketsSoldCount: number;
+  /**
+   * ORCH-1006 — per-offering all-in pricing switches. Each NULL = inherit the
+   * brand default; explicit boolean = override. Read from events.pass_*.
+   * Optional: `mapTrip` (the authoring read path) always populates it; public
+   * Trip constructions omit it (the public buyer surfaces don't author).
+   */
+  pricingSwitches?: {
+    passTax: boolean | null;
+    passMinglaFee: boolean | null;
+    passServiceFee: boolean | null;
+  };
 }
 
 export interface CreateTripDraftInput {
@@ -254,6 +265,11 @@ interface EventRow {
   booking_deadline: string | null;
   bookings_closed: boolean | null;
   bookings_closed_at: string | null;
+  // ORCH-1006 — per-offering all-in pricing switches. NULL = inherit brand
+  // default. Selected via getTrip's `select("*")`.
+  pass_tax?: boolean | null;
+  pass_mingla_fee?: boolean | null;
+  pass_service_fee?: boolean | null;
 }
 
 interface EventDateRow {
@@ -420,7 +436,53 @@ function mapTrip(
     bookingsClosed: event.bookings_closed === true,
     bookingsClosedAt: event.bookings_closed_at,
     ticketsSoldCount,
+    // ORCH-1006 — pricing switches from events.pass_*. NULL = inherit.
+    pricingSwitches: {
+      passTax: event.pass_tax ?? null,
+      passMinglaFee: event.pass_mingla_fee ?? null,
+      passServiceFee: event.pass_service_fee ?? null,
+    },
   };
+}
+
+// ---------------------- ORCH-1006 pricing switches ----------------------
+
+/**
+ * Persist a trip's per-offering all-in pricing switches to events.pass_*.
+ *
+ * Direct column write (NULL = inherit the brand default) — mirrors the event
+ * draft path and supports true per-column inheritance, unlike the all-or-nothing
+ * `business_set_pricing_switches` RPC. Owner-scoped by the events RLS policy
+ * (same policy that governs `updateTripBasics`). The CALLER must only invoke
+ * this when the trip is NOT locked (no confirmed bookings) — once a ticket
+ * sells the section renders read-only and no write is attempted, mirroring the
+ * server-side post-sale lock.
+ */
+export async function setTripPricingSwitches(
+  eventId: string,
+  overrides: {
+    passTax: boolean | null;
+    passMinglaFee: boolean | null;
+    passServiceFee: boolean | null;
+  },
+): Promise<void> {
+  // I-PROPOSED-I (MUTATION-ROWCOUNT-VERIFIED): chain .select() so a 0-row write
+  // (RLS denial / wrong id / not-a-trip) surfaces as an error, never a silent
+  // no-op. Mirrors patchPublishedEventPricingSwitches on the event side.
+  const { data, error } = await supabase
+    .from("events")
+    .update({
+      pass_tax: overrides.passTax,
+      pass_mingla_fee: overrides.passMinglaFee,
+      pass_service_fee: overrides.passServiceFee,
+    })
+    .eq("id", eventId)
+    .eq("event_type", "trip")
+    .select("id");
+  if (error) throw error;
+  if (data === null || data.length === 0) {
+    throw new Error("set_trip_pricing_switches_no_rows");
+  }
 }
 
 // ---------------------- createTripDraft ----------------------

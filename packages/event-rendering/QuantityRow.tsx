@@ -58,6 +58,12 @@ export interface QuantityRowTicket {
   description?: string | null;
   /** Major-unit price (e.g., 12.50 for £12.50). Null when isFree. */
   priceGbp: number | null;
+  /**
+   * ORCH-1006 Slice 3: server-computed all-in (tax/fee-inclusive) major-unit
+   * price. When present and > priceGbp, the row shows the all-in number plus a
+   * quiet "incl. VAT & fees" line. Falls back to priceGbp when absent/null.
+   */
+  priceAllInGbp?: number | null;
   /** ISO 4217 code. Falls back to caller-supplied default. */
   currency?: string;
   /** Remaining capacity. NaN/null treated as "no capacity info". */
@@ -234,9 +240,19 @@ export const QuantityRow: React.FC<QuantityRowProps> = ({
   }, [canJoinWaitlist, onJoinWaitlist, ticket.id, triggerHaptic]);
 
   // Render ------------------------------------------------------------------
+  // ORCH-1006: show the server-computed all-in price; never recompute fees here.
+  // cents/100 was already done in the service layer. Fall back to base price.
+  const effectivePrice = ticket.priceAllInGbp ?? ticket.priceGbp ?? 0;
   const priceText = ticket.isFree
     ? "Free"
-    : formatCurrency(ticket.priceGbp ?? 0, ticket.currency ?? fallbackCurrency);
+    : formatCurrency(effectivePrice, ticket.currency ?? fallbackCurrency);
+  // Quiet "incl. VAT & fees" treatment ONLY when all-in differs from base
+  // (a passed switch grossed it up). All-absorb / free => plain price, no suffix.
+  const showInclusive =
+    !ticket.isFree &&
+    ticket.priceAllInGbp != null &&
+    ticket.priceGbp != null &&
+    ticket.priceAllInGbp > ticket.priceGbp;
 
   const nameStyle: TextStyle = { ...styles.name, color: t.textPrimary };
   const qtyStyle: TextStyle = { ...styles.qty, color: t.textPrimary };
@@ -257,6 +273,11 @@ export const QuantityRow: React.FC<QuantityRowProps> = ({
   const xLeftStyle: TextStyle = {
     ...styles.xLeftText,
     color: t.semanticWarning,
+  };
+  // ORCH-1006: quiet, tertiary "incl. VAT & fees" caption under the price.
+  const inclusiveTextStyle: TextStyle = {
+    ...styles.inclusiveText,
+    color: t.textTertiary,
   };
   const descriptionStyle: TextStyle = {
     ...styles.description,
@@ -375,6 +396,9 @@ export const QuantityRow: React.FC<QuantityRowProps> = ({
           </Text>
         ) : null}
       </View>
+      {showInclusive ? (
+        <Text style={inclusiveTextStyle}>incl. VAT &amp; fees</Text>
+      ) : null}
 
       {ticket.description && ticket.description.trim().length > 0 ? (
         <Text style={descriptionStyle} numberOfLines={2}>
@@ -467,6 +491,11 @@ const styles = StyleSheet.create({
   xLeftText: {
     fontSize: 13,
     fontWeight: "500",
+  },
+  inclusiveText: {
+    fontSize: 11,
+    fontWeight: "400",
+    marginTop: 2,
   },
   description: {
     marginTop: 4,

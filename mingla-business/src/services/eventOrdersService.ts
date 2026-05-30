@@ -52,6 +52,8 @@ interface OrderRow {
   cancellation_reason: string | null;
   refunded_amount_cents: number;
   stripe_application_fee_amount_cents: number | null;
+  // ORCH-1006 — canonical per-order money split (jsonb). NULL on legacy orders.
+  pricing_breakdown: unknown | null;
   events: { brand_id: null | string } | null;
   order_line_items: OrderLineItemRow[];
   refunds: RefundRow[];
@@ -122,6 +124,25 @@ const paymentMethodFromRow = (method: string): OrderRecord["paymentMethod"] => {
   return "card";
 };
 
+// ORCH-1006 — safely extract the brand-absorbed split from orders.pricing_breakdown.
+// Returns undefined for legacy/NULL/malformed breakdowns (Surface 5 then omits
+// the line rather than showing a misleading £0.00).
+const parseAbsorbedCents = (
+  breakdown: unknown,
+): OrderRecord["absorbedCostsCents"] => {
+  if (typeof breakdown !== "object" || breakdown === null) return undefined;
+  const absorbed = (breakdown as { absorbed?: unknown }).absorbed;
+  if (typeof absorbed !== "object" || absorbed === null) return undefined;
+  const a = absorbed as Record<string, unknown>;
+  const num = (v: unknown): number =>
+    typeof v === "number" && Number.isFinite(v) ? v : 0;
+  return {
+    taxCents: num(a.tax_cents),
+    miglaFeeCents: num(a.mingla_fee_cents),
+    serviceFeeCents: num(a.service_fee_cents),
+  };
+};
+
 export const fetchEventOrders = async (
   eventId: string,
 ): Promise<OrderRecord[]> => {
@@ -147,6 +168,7 @@ export const fetchEventOrders = async (
       cancellation_reason,
       refunded_amount_cents,
       stripe_application_fee_amount_cents,
+      pricing_breakdown,
       events!inner ( brand_id ),
       order_line_items (
         id,
@@ -241,6 +263,7 @@ export const fetchEventOrders = async (
       // The moneySummary fallback chain stays as defensive code in case the
       // column gets added in a future migration.
       stripeApplicationFeeAmountCents: order.stripe_application_fee_amount_cents,
+      absorbedCostsCents: parseAbsorbedCents(order.pricing_breakdown),
       refunds: succeededRefunds.map((row) => ({
         ...mapRefundRow(row, orderCurrency),
         orderId: order.id,

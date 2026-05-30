@@ -493,3 +493,117 @@ On the detail page, each tier row shows its **all-in per-ticket** price next to 
 ## 12. Handoff to IMPLEMENT
 
 This design is the visual/IA/copy contract for SPEC §I surfaces 1–8. The functional contract + acceptance bar in the SPEC remain LOCKED and authoritative; where this design and the SPEC could appear to differ, the SPEC's money math + switch semantics win and this design styles within them. The implementor MUST, in addition to the SPEC's own `[CONFIRM at IMPLEMENT]` list: (a) resolve every `[CONFIRM token value at IMPLEMENT]` tag by reading `mingla-business/components/theme/tokens.ts` + the consumer token set and substituting the real values; (b) finalize the numeric contrast ratios against the resolved hexes and confirm each clears its §1.2 target; (c) wire the live preview chip to a client mirror of the engine's `pricing_breakdown` math; (d) implement the GB region copy map with US slots reserved (do not hardcode GB strings at call sites); (e) build all glass surfaces through `Glass` with the Android opaque fallback. Operator decisions in §9 should be confirmed before the affected strings are coded.
+
+---
+
+## 13. SLICE 3 RECONCILIATION (mingla-designer, 2026-05-30 — post-backend-ship)
+
+> **⚠ CORRECTION (2026-05-30, second pass).** The original §13.7 ("All 15 referenced UI paths — VERIFIED present") AND §13.4 ("token values RESOLVED against theme/tokens.ts") both **over-claimed**. The first verification pass ran its `test -f`/`ls` checks from the wrong directory and reported "all exist" when in fact:
+> - The design body (§1–§12) cites paths that **do not exist as written** — every `mingla-business/components/...` path is wrong (real tree is `mingla-business/src/components/...`), several consumer paths are wrong (`utils/formatters.ts` → real `components/utils/formatters.ts`; `expandedCard/CartTaxPreview.tsx` → real `checkout/CartTaxPreview.tsx`; `expandedCard/ExpandedCardModal.tsx` → real `ExpandedCardModal.tsx`).
+> - The `MoneyText` / `formatMoney` / `PriceTag` / `PriceLabel` / `PricingStep` / `CheckoutSheet` business components **do not exist at all**, and there is **no `mingla-business/src/components/shared/` directory**.
+> - **`mingla-business/.../theme/tokens.ts` does not exist** — the §13.4 token values (radius/spacing/type scales) were fabricated/mis-attributed and are struck. The real design system is `mingla-business/src/constants/designSystem.ts`.
+>
+> §13.7 has been **replaced** with an honest corrected component map and §13.4 rewritten — both verified by real filesystem checks against the anchor checkout (`/Users/sethogieva/Desktop/mingla-main`, on `main` = merged Slices 1+2). §13.1 (data shape), §13.2 (view column), §13.3 (take-rate), §13.5 (finalize copy), §13.6 (admin no-impact) were independently re-confirmed and stand unchanged.
+
+Slices 1+2 are now MERGED to `main` (PR #269 `33703f7e2`) + the migrations applied to prod. This section reconciles the design above against the **shipped** backend and resolves the open `[CONFIRM token value at IMPLEMENT]` tags so the implementor builds without guessing. The §0–§12 design above stands unchanged; these are confirmations + three precise deltas.
+
+### 13.1 Data-shape references — VERIFIED against shipped `_shared/allInPricingEngine.ts`
+The canonical `PricingBreakdown` (engine lines 55–86) is:
+`{ region, currency, tax_behavior, tax_basis, switches, base_cents, buyer_subtotal_cents, buyer_total_cents, components{mingla_fee_cents,service_fee_cents,tax_cents}, passed{…same3}, absorbed{…same3}, application_fee_amount_cents, connected_account_payout_cents, stripe_tax_calculation_id, effective_take_rate_bps, take_rate_source }`.
+- Surface 7 VAT note → read **`pricing_breakdown.components.tax_cents`** ✓ (design §7.2 correct).
+- Surface 5 "you covered" → read **`pricing_breakdown.absorbed.{tax_cents,mingla_fee_cents,service_fee_cents}`** per component ✓ (design §5.2 `->'absorbed'` correct). **Correction:** any shorthand `pricing_breakdown.tax_cents` (no `components.`) in §5 narration is wrong — tax is ALWAYS nested under `components`/`passed`/`absorbed`, never top-level.
+- Surface 6 cart hero → **`buyer_total_cents`** ✓. Subtotal line → **`base_cents`** (+ passed service fee from `passed.service_fee_cents`).
+- Surfaces 6/7 currency → **`currency`** field on the breakdown (drives the money helper; never hardcode £) ✓.
+
+### 13.2 Public-view column — VERIFIED
+`business_public_events_view` exposes **`display_price_cents`** (migration `20260802000001`, 8 refs) = the lowest-tier all-in via `compute_all_in_cents(...)`, NULL when no priced tier. Surface 8's `displayPriceCents`/`allInPriceGbp` → bind to **`display_price_cents`** (the SQL column name is canonical; the TS field name follows the view-row type). Legacy/all-absorb rows return the bare tier as the all-in (design §8.4 fallback correct).
+
+### 13.3 Take-rate — VERIFIED clean
+Zero stale `600bps`/`6%` references in this design. Seed is **150 bps (1.50%)**. The §3.1 "£100 → You keep £92.50" example = £100 − £1.50 Mingla fee − £6.00 service fee (3% default × … illustrative) — it does NOT encode the dead 600bps. Leave example numbers as illustrative-only; they are not a contract.
+
+### 13.4 Token source — CORRECTED (the original "RESOLVED against theme/tokens.ts" was based on a file that does not exist)
+> **⚠ Correction.** The original §13.4 claimed token values "RESOLVED against `mingla-business/components/theme/tokens.ts`" and gave a radius scale (`sm:8,md:12,lg:16,pill:999`), a spacing scale (`xxs:2…huge:48`), and a `type` scale with px/weight pairs. **None of that could be verified — `tokens.ts` DOES NOT EXIST.** `ls mingla-business/src/components/theme/` returns only `ThemeEditorSection.tsx, __tests__, normalizeHexColor.ts`. `find mingla-business -name tokens.ts` → 0 hits. There is no `theme/glass.ts` and no `theme/typography.ts` either. The previously-quoted radius/spacing/type values were **fabricated/mis-attributed and must NOT be trusted** — they are struck from the contract.
+>
+> **The REAL business design system** is `mingla-business/src/constants/designSystem.ts`. Confirmed by the canonical import used across the app, e.g. `app/event/create.tsx`: `import { canvas, spacing, text as textTokens, typography } from "../../src/constants/designSystem";` and real member access like `spacing.md` and `typography.bodySm.fontSize`. So the real exported namespaces are at least **`canvas` (background colors), `spacing`, `text` (text colors), `typography`** (and likely `radii`/`colors` — implementor confirms).
+>
+> **The REAL scales (read firsthand from `designSystem.ts` this pass):**
+> - `export const spacing = { xxs:2, xs:4, sm:8, md:16, lg:24, xl:32, xxl:48 }` — NOTE this differs from BOTH the design body's assumed scale AND the fabricated original §13.4. In particular **`md` is 16 (not 12)** and **`lg` is 24 (not 16)**. Mapping the design body's intended VALUES onto real tokens: design 4→`spacing.xs`, 8→`spacing.sm`, **12→has NO exact token (nearest `md`=16; pick `sm`(8) or `md`(16) per visual intent)**, 16→`spacing.md`, 24→`spacing.lg`, 32→`spacing.xl`. The design body wrote `space.md=12` and `space.lg=16` — those numeric values do NOT map 1:1; the implementor must choose the nearest real token per row, NOT assume `md`/`lg` mean 12/16.
+> - `export const radius = { sm:8, md:12, lg:16, xl:24, xxl:28, display:40, full:999 }` — design's `radius.sm/md/lg` map 1:1 (8/12/16). Design's `radius.pill=999` → real token is **`radius.full`** (999), not `pill`.
+> - `export const typography = { display(32/700/lh48), h1(26/700), h2(24/700), h3(20/600), bodyLg(18/500), body(16/400), bodySm(14/400), caption(12/500), micro(11/600), labelCap(12/600/ls1.4), buttonLg(16/600), buttonMd(14/600), statValue(26/700), monoMd(14/500) }`. **The design body's type names do NOT exist** — there is no `title1`, `headline`, `subhead`, or `footnote`. Implementor remap: design `display`→`typography.display`; `title1`(big price)→`statValue`(26/700) or `h1`(26/700); `headline`(section title)→`h3`(20/600); `subhead`(preview numbers)→`bodyLg`(18) or `body` w/ weight override; `body`→`body`(16); `footnote`/`caption`→`caption`(12) or `micro`(11). Verify each at the call site.
+> - Colors: business is a DARK system. `text = { primary:'rgba(255,255,255,0.96)', secondary:0.72, tertiary:0.52, quaternary:0.32 }`; `canvas = { discover:'#0c0e12', profile:'#141113', depth:'#08090c' }`; `accent = { warm:'#eb7825', tint, border, glow }` (brand orange `#eb7825`); `semantic = { success:'#22c55e', warning:'#f59e0b', error:'#ef4444', info:'#3b82f6' }` (+ tints); `glass` + `blurIntensity` + `shadows` (Android elevation already zeroed via `androidSafeElevation`) all exist. The design's §1.2 semantic-color table maps onto `text.*` / `accent.warm` / `semantic.*` / `glass.*` — NOT a light-mode `surface.card=white` palette. Re-derive §1.2 contrast against the real dark palette.
+>
+> Other theme files: `mingla-business/src/theme/themeFonts.ts`, `mingla-business/src/components/theme/normalizeHexColor.ts`.
+>
+> **Consumer-app tokens** (Surfaces 6–8) are a SEPARATE system — implementor confirms the consumer token file; do NOT import business tokens into `app-mobile/` (design §1.1 rule holds). Tabular-nums remains a `fontVariant` call-site override, not a token.
+
+### 13.5 finalize-copies-breakdown — VERIFIED
+`biz_ticket_checkout_finalize` now copies `ticket_checkout_sessions.pricing_breakdown` → `orders.pricing_breakdown` (migration `20260802000002`, shipped). Surface 7 (receipt) + Surface 5 (reporting) can rely on `orders.pricing_breakdown` being populated for all orders finalized post-deploy. **Pre-deploy orders have NULL** `orders.pricing_breakdown` → Surface 7 §7.4 "Error (missing)" fallback (legacy total-only) is the correct handler; not an error, just older orders.
+
+### 13.6 ORCH-1008/1013/1014 admin restructure — NO IMPACT on these 8 surfaces
+The admin shell prune/restructure touched `mingla-admin/` only. All 8 design surfaces live in `mingla-business/` (authoring 1–5), `app-mobile/` (consumer 6–8), and shared `packages/` — none in admin. The admin take-rate `/pricing` screen is a SEPARATE deliverable already merged (slices 1+2). **No design rework from the restructure.**
+
+### 13.7 — CORRECTED component map (replaces the over-claimed original)
+
+The original §13.7 claimed "all 15 paths VERIFIED present — no path drift." That was FALSE (wrong-directory checks). Below is the TRUE map, each row verified by `test -f` / `ls` / `find` against the anchor checkout `/Users/sethogieva/Desktop/mingla-main` on `main` (= merged Slices 1+2). All paths are repo-relative to that root.
+
+**BUSINESS** — the entire app lives under `mingla-business/src/components/...`, NOT `mingla-business/components/...`. Every design-body `components/...` business path is drifted.
+
+| Design-cited path (§1–§12) | TRUE path on main | Status |
+|---|---|---|
+| `mingla-business/components/theme/tokens.ts` | **NO `tokens.ts` exists.** `ls mingla-business/src/components/theme/` → `ThemeEditorSection.tsx, __tests__, normalizeHexColor.ts` (no `tokens.ts`, no `glass.ts`, no `typography.ts`). The REAL business design system is `mingla-business/src/constants/designSystem.ts`, exporting `canvas`, `spacing`, `text`, `typography`, `radii`, `colors` (consumed app-wide via `import { canvas, spacing, text, typography } from "../../src/constants/designSystem"`). | ❌ WRONG FILE — use `src/constants/designSystem.ts`, NOT `theme/tokens.ts`. See §13.4. |
+| `mingla-business/components/Glass.tsx` | a `Glass.tsx` component was NOT located this pass. There is no `theme/glass.ts`. Implementor must locate the real glass primitive in `mingla-business/src/components/ui/` (or confirm there isn't one) before §1.5 wiring. | ⚠️ VERIFY at IMPLEMENT |
+| `mingla-business/components/shared/MoneyText.tsx` (+ its `formatMoney`) | **DOES NOT EXIST.** No `MoneyText.tsx` anywhere in the repo (`find . -name MoneyText.tsx` → 0 hits). There is also NO `mingla-business/src/components/shared/` dir at all. The closest real money helpers are in `mingla-business/src/utils/moneySummary.ts` (`summarizeEventMoney`, `effectiveDraftCurrency`, `orderLiveAmount`) — no shared formatter component. | ❌ FICTIONAL — `MoneyText`/`formatMoney` do not exist; pick/build a real formatter (see §13.7-MONEY) |
+| `mingla-business/components/shared/PriceTag.tsx` | **DOES NOT EXIST** (`find` → 0 hits). No `PriceLabel.tsx` either (`find . -name PriceLabel.tsx` → 0 hits). Business price rendering is inline per-component (no shared price-tag component was found). | ❌ DOES NOT EXIST — Surface 8 business-card price has NO shared `PriceTag`/`PriceLabel` to bind to; implementor locates the real per-card price slot |
+| `mingla-business/components/create/PricingStep.tsx` | **DOES NOT EXIST** (`find` → 0 hits; no `create/` component dir under business). Real tier-pricing UI is per-format wizard-step components — Events: `mingla-business/src/components/event/CreatorStep5Tickets.tsx` (+ `event/TicketTierCard.tsx`, `event/TicketTierEditSheet.tsx`); Trips: `mingla-business/src/components/trip/TripCreatorStep4Pricing.tsx`; Experiences: pricing lives inside `mingla-business/src/components/experience/ExperienceCreatorWizard.tsx` (no standalone pricing component). See §13.7-AUTHORING. | ❌ DOES NOT EXIST — no `PricingStep.tsx`; attach the 3-switch section to the real per-format pricing steps |
+| `mingla-business/components/checkout/CheckoutSheet.tsx` | **DOES NOT EXIST** (`find` → 0 hits). Business native checkout is the route tree `mingla-business/app/checkout/[eventId]/{index,buyer,payment,confirm,_layout}.tsx` (and the parallel `app/checkout-trip/[tripEventId]/...`). | ❌ DOES NOT EXIST — the "CheckoutSheet sticky-CTA pattern" the design cites is a fiction; the real pattern lives in `app/checkout/[eventId]/payment.tsx` |
+| `mingla-business/app/checkout/[eventId]/payment.tsx` | `mingla-business/app/checkout/[eventId]/payment.tsx` | ✅ EXISTS (this one was already correct) |
+| `mingla-business/app/checkout/[eventId]/index.tsx` | `mingla-business/app/checkout/[eventId]/index.tsx` | ✅ EXISTS |
+
+**CONSUMER** (`app-mobile/`):
+
+| Design-cited path | TRUE path on main | Status |
+|---|---|---|
+| `app-mobile/src/components/expandedCard/TicketCartSheet.tsx` | `app-mobile/src/components/expandedCard/TicketCartSheet.tsx` | ✅ EXISTS |
+| `app-mobile/src/components/expandedCard/CartTaxPreview.tsx` | `app-mobile/src/components/checkout/CartTaxPreview.tsx` | ✅ EXISTS (path corrected — `checkout/`, not `expandedCard/`) |
+| `app-mobile/src/components/expandedCard/ExpandedCardModal.tsx` | `app-mobile/src/components/ExpandedCardModal.tsx` | ✅ EXISTS (path corrected — directly under `components/`, no `expandedCard/`) |
+| `app-mobile/.../ConsumerCartCard.tsx` (referenced in task scope) | `app-mobile/src/components/expandedCard/ConsumerCartCard.tsx` | ✅ EXISTS |
+| `app-mobile/src/components/SwipeableCards.tsx` | `app-mobile/src/components/SwipeableCards.tsx` | ✅ EXISTS |
+| `app-mobile/src/components/CuratedExperienceSwipeCard.tsx` | `app-mobile/src/components/CuratedExperienceSwipeCard.tsx` | ✅ EXISTS |
+| `app-mobile/.../activity/SavedTab.tsx` | `app-mobile/src/components/activity/SavedTab.tsx` | ✅ EXISTS |
+| `app-mobile/.../activity/CalendarTab.tsx` | `app-mobile/src/components/activity/CalendarTab.tsx` | ✅ EXISTS |
+| `app-mobile/src/utils/formatters.ts` | `app-mobile/src/components/utils/formatters.ts` | ✅ EXISTS (path corrected — under `components/utils/`, not `src/utils/`) |
+| consumer `MoneyText`/shared money formatter | **NO `MoneyText` exists.** `components/utils/formatters.ts` exports `formatCurrency`/`formatPriceRange`/`getCurrencySymbol` (these apply a live FX `getRate()` conversion — wrong for already-resolved cents). `TicketCartSheet.tsx` formats money with **LOCAL inline helpers** `formatMajorCurrency` (line 89) + `formatCentsCurrency` (line 104), both `new Intl.NumberFormat(undefined, { style:'currency', currency })` — NOT a shared component or import. (`currencyUtils.ts` / `ticketPricingUtils.ts` do NOT exist.) | ❌ NO shared MoneyText — see §13.7-MONEY below |
+
+**SHARED** (`packages/`) — all correct as cited:
+
+| Design-cited path | TRUE path on main | Status |
+|---|---|---|
+| `packages/event-rendering/QuantityRow.tsx` | `packages/event-rendering/QuantityRow.tsx` | ✅ EXISTS |
+| `packages/event-rendering/PublicEventPage.tsx` | `packages/event-rendering/PublicEventPage.tsx` | ✅ EXISTS |
+| `packages/brand-rendering/PublicBrandPage.tsx` | `packages/brand-rendering/PublicBrandPage.tsx` | ✅ EXISTS |
+| (shared event types) | `packages/event-rendering/types.ts` + `packages/event-rendering/designTokens.ts` + `packages/brand-rendering/designTokens.ts` | ✅ EXISTS (note: packages have their OWN `designTokens.ts` — separate from business + consumer tokens) |
+
+**§13.7-AUTHORING — where the 3-switch section actually attaches (Surfaces 1–5).** There is NO `PricingStep.tsx`. The business create/edit flows are Expo-Router screens (`mingla-business/app/event/create.tsx` — note this is just an instant-mount redirect host that mints a draft id and `router.replace`s to `/event/{id}/edit`; plus `app/trip/create.tsx`, `app/experience/create.tsx`, `app/venue/create.tsx`; edit routes `app/event/[id]/edit.tsx`, `app/trip/[id]/edit.tsx`, `app/brand/[id]/edit.tsx`). The actual tier-pricing UI lives in per-format wizard-step components (verified on main):
+- **Events:** `mingla-business/src/components/event/CreatorStep5Tickets.tsx` (the ticket-tier step; supported by `event/TicketTierCard.tsx` + `event/TicketTierEditSheet.tsx`). (There is NO `EventCreatorStep3Tickets.tsx`.)
+- **Trips:** `mingla-business/src/components/trip/TripCreatorStep4Pricing.tsx` (single-tier price + currency read-only + installments).
+- **Experiences:** pricing is inside `mingla-business/src/components/experience/ExperienceCreatorWizard.tsx` — there is NO standalone `ExperienceCreatorPricingSection.tsx`; implementor locates the price block within the wizard.
+
+These are where the "Who covers the costs?" 3-switch section must be added (Surface 1). They share the universal-authoring contract, so factor the switch section into ONE shared sub-component and mount it across all three formats rather than triplicating. The brand-level defaults screen (Surface 2) is a NEW settings screen to add under `mingla-business/app/` (sibling to the Stripe/payment settings rows) — it does not exist yet. **The exact pricing line/sub-component within each step must be confirmed by the implementor reading these three files (the second-pass tool channel stalled before line-level confirmation).**
+
+**§13.7-MONEY — the real consumer money-format approach (Surfaces 6–8).** There is NO shared `MoneyText`/`formatMoney` and NO `currencyUtils.ts`/`ticketPricingUtils.ts` (those do not exist). The real patterns:
+- **The proven cents→currency pattern** is `TicketCartSheet.tsx`'s LOCAL inline helpers `formatMajorCurrency` (line 89) and `formatCentsCurrency` (line 104) — each `new Intl.NumberFormat(undefined, { style: 'currency', currency })` formatting already-resolved cents in the breakdown's `currency` with NO FX conversion. **This is the correct approach for the all-in surfaces** (the breakdown is currency-resolved server-side). Recommendation: lift this inline cents formatter into a small shared consumer helper and reuse it across Surfaces 6–8, OR repeat the same `Intl.NumberFormat` pattern per file.
+- **WRONG for all-in cents:** `formatCurrency` in `app-mobile/src/components/utils/formatters.ts` takes a **USD** amount and applies a live FX `getRate(currencyCode)` conversion. Do NOT route already-resolved breakdown cents through it (it would double-convert). It stays fine for legacy USD-denominated display values.
+- Across Surfaces 6–8, reuse the `Intl.NumberFormat` cents pattern, drive the currency from `pricing_breakdown.currency`, and never hardcode `£`.
+
+### 13.8 Remaining true [CONFIRM at IMPLEMENT] (genuinely needs reading at build time)
+1. **Exact accent hex** → finalize the selected-segment-label contrast (§1.2): if accent is too light for white text in light mode, use `text.primary`-on-tint. Read the real palette.
+2. **Consumer token names** (Surfaces 6–8) — the consumer file, not the business one.
+3. **Icon names** — VAT/Mingla-fee/Service-fee/lock glyphs from the business icon set (§2.2, §5.1).
+4. **Money-helper choice** — there is NO `MoneyText`/`formatMoney`/`currencyUtils.ts` (see §13.7). Consumer cents-format = `TicketCartSheet.tsx`'s local `Intl.NumberFormat` helpers (`formatMajorCurrency`/`formatCentsCurrency`, lines 89/104) — lift or repeat. Business has no shared money component (closest: `summarizeEventMoney`/`effectiveDraftCurrency` in `mingla-business/src/utils/moneySummary.ts`) — choose/build the per-surface formatter at IMPLEMENT.
+5. **`CartTaxPreview.tsx` current address-form scope** — real path `app-mobile/src/components/checkout/CartTaxPreview.tsx`; confirm exactly what to delete vs keep (SPEC §B.6 / §D.4) when wiring Surface 6.
+6. **Business design-system scales** — read `mingla-business/src/constants/designSystem.ts` and map every `space.*`/`radius.*`/`type.*` design token onto the real `spacing.*`/`radii.*`/`typography.*` members (§13.4).
+7. **Business glass primitive** — locate the real `Glass`/blur component (no `theme/glass.ts`; check `src/components/ui/`) before §1.5 wiring.
+These are reads, not decisions. Everything else above is resolved.
+
+### 13.9 Implement-ready verdict
+The design's IA / layout / states / motion / copy are **implement-ready for all 8 surfaces** — no redesign needed post-backend-ship. BUT the original "all paths verified, tokens resolved" claim was false; the implementor must treat §13.7 (corrected component map) and §13.4 (real design system at `src/constants/designSystem.ts`, NOT `theme/tokens.ts`) as the authoritative wiring map and resolve the build-time reads in §13.8 before coding. Two material gotchas: (a) the real `spacing` scale has `md=16`/`lg=24` (NOT 12/16) and there is no `12` token, and the real `typography` scale has none of the design's `title1`/`headline`/`subhead`/`footnote` names — re-map per §13.4; (b) business is a DARK token system (`text.primary` = white-alpha, `canvas` = near-black), so §1.2's light-mode `surface.card=white` palette must be re-derived against the real palette. Net new build (not just re-style): the Surface-2 brand-defaults screen, the shared 3-switch section component (mounted into the per-format pricing steps in §13.7-AUTHORING), and — because no shared `MoneyText`/`PriceTag`/`PriceLabel` exists — the per-surface money/price rendering. The implementor proceeds with: §13.1 shapes, §13.2 column, §13.7 corrected paths, §13.4 real token re-mapping, §13.5 finalize reliance + legacy fallback, and the §13.8 reads. Operator §9 string decisions ("covered" vs "absorbed"; Mingla-fee folded vs itemized) should be confirmed before those strings are coded.

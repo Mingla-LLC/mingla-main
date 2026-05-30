@@ -119,6 +119,13 @@ interface BusinessEventCard {
   musicGenres: string[];
   priceMin: number | null;
   priceMax: number | null;
+  // ORCH-1006 Slice 3 Wave 2 — all-in (tax/fee-inclusive) lowest-tier
+  // price in CENTS, computed server-side in
+  // business_public_events_view.display_price_cents. null when there is
+  // no priced tier (free / unpriced) → clients fall back to priceMin.
+  // Pure data-plumbing of an existing column; no pricing math runs here.
+  displayPriceCents: number | null;
+  displayCurrency: string | null;
   currency: string;
   publicBuyerUrl: string;
 }
@@ -407,6 +414,40 @@ serve(async (req: Request): Promise<Response> => {
 
   // Normalize business events to BusinessEventCard shape + filter brands.deleted_at.
   type RawRow = Record<string, any>;
+
+  // ORCH-1006 Slice 3 Wave 2 — side-fetch the server-computed all-in price
+  // from business_public_events_view, keyed by event id. Kept SEPARATE from
+  // the events/ticket_types query above so that query (and every field it
+  // returns) is untouched: if this view fetch errors, the map stays empty →
+  // displayPriceCents resolves to null → clients fall back to the base
+  // priceMin. No pricing math runs here; display_price_cents is precomputed
+  // server-side (the canonical all-in engine output, already on prod).
+  const allInByEventId = new Map<
+    string,
+    { displayPriceCents: number | null; displayCurrency: string | null }
+  >();
+  const allInEventIds = (rawRows ?? [])
+    .map((r: RawRow) => r.id)
+    .filter((id: unknown): id is string => typeof id === "string");
+  if (allInEventIds.length > 0) {
+    const { data: allInRows, error: allInError } = await supabase
+      .from("business_public_events_view")
+      .select("id, display_price_cents, pricing_currency")
+      .in("id", allInEventIds);
+    if (allInError) {
+      console.error(
+        "[discover-merged-events] all-in view query error:",
+        allInError,
+      );
+    }
+    for (const r of (allInRows ?? []) as RawRow[]) {
+      allInByEventId.set(r.id, {
+        displayPriceCents: r.display_price_cents ?? null,
+        displayCurrency: r.pricing_currency ?? null,
+      });
+    }
+  }
+
   const businessItems: BusinessEventCard[] = (rawRows ?? [])
     .filter((row: RawRow) => row.brand && row.brand.deleted_at == null)
     .map((row: RawRow): BusinessEventCard => {
@@ -491,6 +532,12 @@ serve(async (req: Request): Promise<Response> => {
         musicGenres: Array.isArray(row.music_genres) ? row.music_genres : [],
         priceMin,
         priceMax,
+        // ORCH-1006 Slice 3 Wave 2 — all-in lowest-tier price (cents) + its
+        // currency, side-fetched from business_public_events_view above.
+        // null when the row has no priced tier → clients fall back to
+        // priceMin. No math here; display_price_cents is precomputed.
+        displayPriceCents: allInByEventId.get(row.id)?.displayPriceCents ?? null,
+        displayCurrency: allInByEventId.get(row.id)?.displayCurrency ?? null,
         currency: row.currency ?? "GBP",
         publicBuyerUrl: `${BUSINESS_BUYER_DOMAIN}/e/${row.brand.slug}/${row.slug}`,
       };

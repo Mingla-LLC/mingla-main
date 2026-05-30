@@ -151,6 +151,17 @@ export interface OrderRecord {
    * Stripe webhook lands. ORCH-0796.
    */
   stripeApplicationFeeAmountCents?: number | null;
+  /**
+   * ORCH-1006 — what the BRAND covered on this order (absorbed costs, in
+   * cents), parsed from `orders.pricing_breakdown.absorbed`. Undefined for
+   * legacy (pre-ORCH-1006) orders whose `pricing_breakdown` is NULL. Drives
+   * Surface 5's "You covered £X" earnings line.
+   */
+  absorbedCostsCents?: {
+    taxCents: number;
+    miglaFeeCents: number;
+    serviceFeeCents: number;
+  };
   /** Append-only audit log. */
   refunds: RefundRecord[];
   cancelledAt: string | null;

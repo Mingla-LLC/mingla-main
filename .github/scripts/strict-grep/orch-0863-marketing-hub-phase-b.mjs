@@ -988,16 +988,18 @@ function checkNoNewBackendFiles() {
     "supabase/functions/generate-curated-experiences/index.ts",
   ];
   // ORCH-1006 [Universal all-in pricing engine]. New shared money engine + its
-  // regression test + the three pricing migrations. Admin take-rate persistence
-  // uses SECURITY DEFINER RPCs (no new edge function), so only these register.
+  // regression test + the pricing migrations. Admin take-rate persistence uses
+  // SECURITY DEFINER RPCs (no new edge function). Slice 3 Surface 4 adds the
+  // read-only tax-registration probe edge fn for the authoring VAT row.
+  // (META-ORCH-1009 Sub-B previously source-reconciled the migrations from this
+  // branch to unblock db push; this merge supersedes that with the full list.)
   const ORCH_1006_BACKEND_ALLOWLIST = [
     "supabase/functions/_shared/allInPricingEngine.ts",
     "supabase/functions/_shared/__tests__/allInPricingEngine.test.ts",
+    "supabase/functions/brand-tax-registrations-list/index.ts",
     "supabase/migrations/20260802000000_orch_1006_pricing_switches.sql",
     "supabase/migrations/20260802000001_orch_1006_pricing_views.sql",
     "supabase/migrations/20260802000002_orch_1006_finalize_copy_pricing_breakdown.sql",
-    // META-ORCH-1009 Sub-B source-reconciled this from ORCH-1006's branch (commit
-    // 832736f7f) to unblock db push — same path as the future ORCH-1006 merge.
     "supabase/migrations/20260805000000_orch_1006_public_event_tier_allin.sql",
   ];
   // ORCH-1008 [Admin shell prune + Intelligence Overview tab + remainder mode].
