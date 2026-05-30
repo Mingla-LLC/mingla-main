@@ -5,7 +5,6 @@ import { OrganiserAudienceTabs } from '@/components/sections/organiser-home/audi
 import { OrganiserWhatMinglaDoes } from '@/components/sections/organiser-home/what-mingla-does'
 import { OrganiserHowItWorks } from '@/components/sections/organiser-home/how-it-works'
 import { OrganiserAudiences } from '@/components/sections/organiser-home/audiences'
-import { OrganiserWhyMingla } from '@/components/sections/organiser-home/why-mingla'
 import { OrganiserComparison } from '@/components/sections/organiser-home/comparison'
 import { OrganiserFeatures } from '@/components/sections/organiser-home/features'
 import { OrganiserFaq } from '@/components/sections/organiser-home/faq'
@@ -27,7 +26,6 @@ export default function OrganiserHomePage() {
       <OrganiserAudienceTabs />
       <OrganiserWhatMinglaDoes />
       <OrganiserHowItWorks />
-      <OrganiserWhyMingla />
       <OrganiserComparison />
       <OrganiserFeatures />
       <OrganiserFaq />

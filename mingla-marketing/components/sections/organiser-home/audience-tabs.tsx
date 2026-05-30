@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Reveal } from '@/components/ui/reveal'
 import { SpotlightBand } from '@/components/ui/spotlight-band'
+import { EarningsCard } from '@/components/sections/organiser-home/earnings-card'
 import { cn } from '@/lib/cn'
 import { useMinglaReducedMotion } from '@/lib/reduced-motion'
 
@@ -158,41 +159,56 @@ export function OrganiserAudienceTabs() {
           })}
         </div>
 
-        {/* Tab content */}
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={tab.id}
-            initial={reduced ? false : { opacity: 0, y: 14 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={reduced ? undefined : { opacity: 0, y: -8 }}
-            transition={{ duration: 0.34, ease: EASE }}
-            className="mt-12"
-          >
-            <div className="max-w-2xl">
-              <h3 className="font-display text-3xl leading-tight tracking-[-0.01em] text-white md:text-4xl">
-                {tab.heading}
-              </h3>
-              <p className="mt-5 text-base leading-relaxed text-white/70 md:text-lg">{tab.intro}</p>
+        {/* Tab content — heading/intro/steps on the left; the Earnings chart
+            (static) fills the top-right, with the tailored feature cards beneath. */}
+        <div className="mt-12 grid gap-12 lg:grid-cols-[1.08fr_0.92fr] lg:gap-16">
+          {/* LEFT — heading + intro + steps (animated per tab) */}
+          <div>
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={tab.id}
+                initial={reduced ? false : { opacity: 0, y: 14 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={reduced ? undefined : { opacity: 0, y: -8 }}
+                transition={{ duration: 0.34, ease: EASE }}
+              >
+                <h3 className="font-display text-3xl leading-tight tracking-[-0.01em] text-white md:text-4xl">
+                  {tab.heading}
+                </h3>
+                <p className="mt-5 max-w-xl text-base leading-relaxed text-white/70 md:text-lg">
+                  {tab.intro}
+                </p>
+                <ol className="mt-10 space-y-7">
+                  {tab.steps.map((s, i) => (
+                    <li key={s.title} className="flex gap-5">
+                      <span className="font-display text-2xl leading-none tabular-nums text-warm/45">
+                        {i + 1}
+                      </span>
+                      <div>
+                        <h4 className="font-display text-lg leading-tight text-white">{s.title}</h4>
+                        <p className="mt-1.5 text-sm leading-relaxed text-white/60">{s.body}</p>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              </motion.div>
+            </AnimatePresence>
+          </div>
+
+          {/* RIGHT — Earnings chart (static across tabs) + feature cards (animated) */}
+          <div>
+            <div data-theme="light">
+              <EarningsCard />
             </div>
-
-            <div className="mt-14 grid gap-12 lg:grid-cols-2 lg:gap-16">
-              {/* Steps */}
-              <ol className="space-y-8">
-                {tab.steps.map((s, i) => (
-                  <li key={s.title} className="flex gap-5">
-                    <span className="font-display text-2xl leading-none tabular-nums text-warm/45">
-                      {i + 1}
-                    </span>
-                    <div>
-                      <h4 className="font-display text-lg leading-tight text-white">{s.title}</h4>
-                      <p className="mt-1.5 text-sm leading-relaxed text-white/60">{s.body}</p>
-                    </div>
-                  </li>
-                ))}
-              </ol>
-
-              {/* Feature cards */}
-              <div className="grid gap-4 sm:grid-cols-2">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={tab.id}
+                initial={reduced ? false : { opacity: 0, y: 14 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={reduced ? undefined : { opacity: 0, y: -8 }}
+                transition={{ duration: 0.34, ease: EASE }}
+                className="mt-5 grid gap-4 sm:grid-cols-2"
+              >
                 {tab.features.map((f) => (
                   <div
                     key={f.title}
@@ -202,10 +218,10 @@ export function OrganiserAudienceTabs() {
                     <p className="mt-2 text-sm leading-snug text-white/60">{f.body}</p>
                   </div>
                 ))}
-              </div>
-            </div>
-          </motion.div>
-        </AnimatePresence>
+              </motion.div>
+            </AnimatePresence>
+          </div>
+        </div>
       </div>
     </SpotlightBand>
   )

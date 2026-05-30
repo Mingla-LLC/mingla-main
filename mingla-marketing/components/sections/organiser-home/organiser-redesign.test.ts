@@ -44,7 +44,6 @@ const LIGHT_SECTIONS = [
   'what-mingla-does.tsx',
   'how-it-works.tsx',
   'audiences.tsx',
-  'why-mingla.tsx',
   'features.tsx',
   'faq.tsx',
 ] as const
