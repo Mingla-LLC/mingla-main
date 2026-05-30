@@ -122,7 +122,7 @@ const SIGNAL_IDS = [
   "groceries","icebreakers","lively","movies","nature","picnic_friendly",
   "play","romantic","scenic","theatre",
 ]; // mirror of supabase/functions/_shared/photoAestheticEnums.ts:MINGLA_SIGNAL_IDS
-const PER_PLACE_COST_USD = 0.0075;   // operator-set Phase 4 cost-preview rate; dispatch headline
+const PER_PLACE_COST_USD = 0.0040;   // operator-set Phase 4 cost-preview rate; dispatch headline
 const COST_REVIEW_THRESHOLD_USD = 10; // "Review and confirm →" button appears at > $10
 const SCORE_BUCKETS = [
   { id: "0_25",  label: "0–25",   min: 0,  max: 25,  tokenBg: "var(--color-error-500)"   },
@@ -133,7 +133,7 @@ const SCORE_BUCKETS = [
 ];
 ```
 
-> **Note** — the dispatch headline cost figure (`$0.0075`) differs from the existing edge-fn constant (`PER_PLACE_COST_USD = 0.0040` at TrialResultsTab.jsx:219 and edge fn line ~637). The user-visible cost preview MUST use the operator-stated `$0.0075` figure. The `confirm_high_cost` server gate still uses the edge fn's own threshold — the UI just displays the operator's number. **Flag for operator review:** if `$0.0075` is the correct truth, ORCH-1009 backfill will use it; the edge fn's `PER_PLACE_COST_USD` constant should be updated to match in the same PR. If `$0.0040` was correct all along and the dispatch headline is loose, the cost preview drops to that number. The design accepts either value via the single `PER_PLACE_COST_USD` constant; the implementor MUST confirm the value before shipping.
+> **Note** — the dispatch headline cost figure (`$0.0040`) differs from the existing edge-fn constant (`PER_PLACE_COST_USD = 0.0040` at TrialResultsTab.jsx:219 and edge fn line ~637). The user-visible cost preview MUST use the operator-stated `$0.0040` figure. The `confirm_high_cost` server gate still uses the edge fn's own threshold — the UI just displays the operator's number. **Flag for operator review:** if `$0.0040` is the correct truth, ORCH-1009 backfill will use it; the edge fn's `PER_PLACE_COST_USD` constant should be updated to match in the same PR. If `$0.0040` was correct all along and the dispatch headline is loose, the cost preview drops to that number. The design accepts either value via the single `PER_PLACE_COST_USD` constant; the implementor MUST confirm the value before shipping.
 
 ---
 
@@ -267,7 +267,7 @@ Treatment: `text-xs text-[var(--color-text-tertiary)]`, icon `Info w-3.5 h-3.5`.
 ┌──────────────────────────────────────────────────────────────────────────┐
 │  Cost preview                                                              │
 │  ┌────────────────────────────────────────────────────────────────────┐  │
-│  │  200 places  ×  $0.0075  =  ~$1.50 estimated                       │  │
+│  │  200 places  ×  $0.0040  =  ~$0.80 estimated                       │  │
 │  │  ~100 min wall time (browser-loop)                                   │  │
 │  └────────────────────────────────────────────────────────────────────┘  │
 └──────────────────────────────────────────────────────────────────────────┘
@@ -278,7 +278,7 @@ Treatment:
 - Inner chip: `rounded-lg bg-[var(--gray-50)] border border-[var(--gray-200)] px-4 py-3`.
 - Equation line: `text-sm font-mono tabular-nums text-[var(--color-text-primary)]`.
 - Time line: `text-xs text-[var(--color-text-tertiary)] mt-0.5`.
-- Numbers (`200`, `$0.0075`, `~$1.50`) get `font-semibold`. Operators `×`, `=` stay regular weight; symbol `~` regular.
+- Numbers (`200`, `$0.0040`, `~$1.50`) get `font-semibold`. Operators `×`, `=` stay regular weight; symbol `~` regular.
 - The `~$1.50` total turns **`text-[var(--color-warning-700)] font-semibold`** when total >$5, **`text-[var(--color-error-700)] font-semibold`** when total >$10.
 
 **Layout when `mode='full_city'` (city has 11,344 servable):**
@@ -286,7 +286,7 @@ Treatment:
 ┌──────────────────────────────────────────────────────────────────────────┐
 │  Cost preview                            [COUNTING…  spinner-12]           │
 │  ┌────────────────────────────────────────────────────────────────────┐  │
-│  │  11,344 places  ×  $0.0075  =  ~$85.08 estimated                   │  │
+│  │  11,344 places  ×  $0.0040  =  ~$45.38 estimated                   │  │
 │  │  ~5.7 hrs wall time (server-side; tab-close safe)                    │  │
 │  └────────────────────────────────────────────────────────────────────┘  │
 └──────────────────────────────────────────────────────────────────────────┘
@@ -301,7 +301,7 @@ Treatment:
 ┌──────────────────────────────────────────────────────────────────────────┐
 │  Cost preview                            [COUNTING…  spinner-12]           │
 │  ┌────────────────────────────────────────────────────────────────────┐  │
-│  │  9,820 places  ×  $0.0075  =  ~$73.65 estimated                    │  │
+│  │  9,820 places  ×  $0.0040  =  ~$39.28 estimated                    │  │
 │  │  ~4.9 hrs wall time (server-side; tab-close safe)                    │  │
 │  │  1,524 of 11,344 already scored — only the rest                      │  │
 │  └────────────────────────────────────────────────────────────────────┘  │
@@ -384,7 +384,7 @@ Reused for ALL three modes — Phase 3 SPEC defined this modal for `remainder` o
 │                                                                     │
 │   ┌──────────────────────────────────────────────────────────┐    │
 │   │  COST BREAKDOWN                                            │    │
-│   │  11,344 places × $0.0075      ──────────  ~$85.08          │    │
+│   │  11,344 places × $0.0040      ──────────  ~$45.38          │    │
 │   │  Gemini 2.5 Flash, server-side                            │    │
 │   └──────────────────────────────────────────────────────────┘    │
 │                                                                     │
@@ -400,7 +400,7 @@ Reused for ALL three modes — Phase 3 SPEC defined this modal for `remainder` o
 │   │  └──────────────────────────────────────┘                  │    │
 │   └──────────────────────────────────────────────────────────┘    │
 │                                                                     │
-│   ☐  I understand this will charge ~$85.08 on the Gemini API.      │
+│   ☐  I understand this will charge ~$45.38 on the Gemini API.      │
 │                                                                     │
 ├────────────────────────────────────────────────────────────────────┤
 │                                                Cancel  [Run trial] │
@@ -410,7 +410,7 @@ Reused for ALL three modes — Phase 3 SPEC defined this modal for `remainder` o
 - **`<Modal size="md" title="Review and confirm — <Mode> trial for <city>" />`** — the existing `Modal` primitive at `ui/Modal.jsx`.
 - Body padding: `p-6` (existing `ModalBody` default).
 - Sentence type: `text-sm text-[var(--color-text-primary)] leading-6`.
-- Cost-breakdown box: `rounded-lg bg-[var(--gray-50)] border border-[var(--gray-200)] p-4`. Inner row uses `flex justify-between items-baseline` with `font-mono tabular-nums` for `~$85.08`.
+- Cost-breakdown box: `rounded-lg bg-[var(--gray-50)] border border-[var(--gray-200)] p-4`. Inner row uses `flex justify-between items-baseline` with `font-mono tabular-nums` for `~$45.38`.
 - Wall-time box: same chrome.
 - Warning box (only > $10): `border-l-4 border-l-[var(--color-warning-500)] bg-[var(--color-warning-50)] p-4 rounded-r-lg`. Title `text-sm font-semibold text-[var(--color-warning-700)]`. The input is a standard `<input>` styled like the city picker. Once `value.trim() === cityName`, a `CheckCircle text-[var(--color-success-700)]` swaps in.
 - Acknowledgement checkbox (`type="checkbox"`): mandatory for **any** confirm modal (both for $5–$10 layer and >$10 layer, per Phase 3 SPEC §7-D5). Label uses Mingla voice — direct, no fluff.
@@ -442,7 +442,7 @@ Reused for ALL three modes — Phase 3 SPEC defined this modal for `remainder` o
 │                                                                                    │
 │  COST PREVIEW                                                                      │
 │  ┌────────────────────────────────────────────────────────────────────────────┐  │
-│  │  9,820 places  ×  $0.0075  =  ~$73.65 estimated                              │  │  warning-700 on total
+│  │  9,820 places  ×  $0.0040  =  ~$39.28 estimated                              │  │  warning-700 on total
 │  │  ~4.9 hrs wall time (server-side; tab-close safe)                              │  │
 │  │  1,524 of 11,344 already scored — only the rest                                │  │
 │  └────────────────────────────────────────────────────────────────────────────┘  │
@@ -695,7 +695,7 @@ The existing active-run banner at `TrialResultsTab.jsx:797-854` already shows a 
 │  🌐 Full-city run — Lagos, Nigeria                            running     │
 │  ─────────────────────────────────────────────────────────────────────    │
 │  ████████████████████░░░░░░░░░░░░░░░░░░░░░░░░  4,231 / 11,344  (37 %)   │
-│  ✓ 4,198    ✗ 33    cost: $31.74 of ~$85.08                              │
+│  ✓ 4,198    ✗ 33    cost: $31.74 of ~$45.38                              │
 │                                                                            │
 │  [▢ Cancel run]                                       [Last update 3 s]    │
 │  Running on the server — safe to close this tab.                            │
@@ -748,7 +748,7 @@ When the active run transitions to `status === "cancelled"`:
 │  🌐 Full-city run — Lagos, Nigeria                          cancelled     │
 │  ─────────────────────────────────────────────────────────────────────    │
 │  ████████████████████░░░░░░░░░░░░░░░░░░░░░░░░  4,231 / 11,344  (37 %)    │
-│  ✓ 4,198    ✗ 33    cost: $31.74 of ~$85.08                              │
+│  ✓ 4,198    ✗ 33    cost: $31.74 of ~$45.38                              │
 │                                                                            │
 │  [▶ Resume from place 4,232 →]              Cancelled 12 s ago             │
 │  4,231 places are now in your scored set; resume continues from the rest.  │
@@ -1162,7 +1162,7 @@ All text uses `rem`-based Tailwind sizes (`text-xs / text-sm / text-base`). At 2
 ## §10 — Operator review flags (one paragraph)
 
 Two items for Seth before implementor takes over:
-1. **Cost-per-place constant ($0.0075 vs $0.0040)** — the dispatch headline says `$0.0075`, the existing edge-fn + UI constant is `$0.0040`. Design assumes the dispatch headline is the new truth; if not, the UI swaps in a one-line change and the bigger question of which figure the META-ORCH-1009 backfill bills against stays with you. See §0 "Note" + §2.4.
+1. **Cost-per-place constant ($0.0040 vs $0.0040)** — the dispatch headline says `$0.0040`, the existing edge-fn + UI constant is `$0.0040`. Design assumes the dispatch headline is the new truth; if not, the UI swaps in a one-line change and the bigger question of which figure the META-ORCH-1009 backfill bills against stays with you. See §0 "Note" + §2.4.
 2. **Tabs primitive enhancement** — to support arrow-key navigation between Overview and Trial Results (`§7.1`), the implementor needs to add ~10 lines to `ui/Tabs.jsx`. This change is additive and propagates to every other admin page that uses `Tabs`. Worth a sanity glance before merging. No callers expect old behaviour.
 
 — END DESIGN —
