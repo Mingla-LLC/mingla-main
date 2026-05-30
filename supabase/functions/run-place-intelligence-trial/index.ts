@@ -2213,10 +2213,18 @@ async function handleIntelligenceCoverage(
       .select("city_id")
       .eq("is_servable", true)
       .not("city_id", "is", null),
+    // ORCH-1013 Finding A — restrict evaluated set to places STILL servable.
+    // Without the !inner+is_servable filter, places that drifted out of the
+    // pool (e.g. re-classified non-servable post-evaluation) are counted as
+    // evaluated, falsely inflating coverage to 100% and zeroing remaining.
+    // Verified live 2026-05-30 against Cary: 6 drifted rows masked 1 truly
+    // un-evaluated servable place. See SPEC §3 Finding A.
+    // Gemini pricing ref (COMMS-0003): https://ai.google.dev/pricing/gemini-2-5-flash
     db
       .from("place_intelligence_trial_runs")
-      .select("city_id, place_pool_id")
+      .select("city_id, place_pool_id, place_pool!inner(is_servable)")
       .eq("status", "completed")
+      .eq("place_pool.is_servable", true)
       .not("city_id", "is", null),
     db
       .from("place_intelligence_runs")
@@ -2286,6 +2294,11 @@ async function handleIntelligenceCoverage(
         city_name: c.name,
         country: c.country,
         servable_count: servable,
+        // ORCH-1013 Finding A — `evaluated` is now ≤ `servable` by construction
+        // (the JOIN at the completedRes query filters to currently-servable
+        // places only). Math.min/Math.max retained as defensive cosmetic safety
+        // for the 4 non-transactional parallel queries (race could theoretically
+        // see a 1-row skew). See SPEC §3 Finding A + §7 D9.
         evaluated_count: Math.min(evaluated, servable),
         remaining_count: Math.max(0, servable - evaluated),
         coverage_pct: coveragePct,

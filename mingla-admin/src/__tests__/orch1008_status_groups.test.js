@@ -115,9 +115,9 @@ describe("ORCH-1008 Phase 4b — TrialResultsTab mounts the status-grouped run h
     );
   });
 
-  it("imports SignalDistributionPanel and cancel modal", () => {
+  it("imports SignalDistributionPanel and remainder modal (ORCH-1013: in-tab cancel modal moved to control tower)", () => {
     assert.ok(src.includes("import { SignalDistributionPanel }"));
-    assert.ok(src.includes("import { CancelRunConfirmModal }"));
+    // ORCH-1013 Finding B — CancelRunConfirmModal import moved to ActiveRunCard.
     assert.ok(src.includes("import { RunRemainderConfirmModal }"));
   });
 
@@ -128,17 +128,18 @@ describe("ORCH-1008 Phase 4b — TrialResultsTab mounts the status-grouped run h
     assert.ok(src.includes("Remainder only"));
   });
 
-  it("cancel button opens the modal rather than calling window.confirm", () => {
-    // The new path uses setCancelModalOpen(true); the legacy path called
-    // window.confirm("Cancel this run? ...") — that string must not appear.
-    assert.ok(
-      src.includes("setCancelModalOpen(true)"),
-      "expected setCancelModalOpen(true) on the Cancel button",
-    );
+  it("ORCH-1013 Finding B — in-tab cancel banner deleted; window.confirm not reintroduced", () => {
+    // Legacy window.confirm cancel prompt must NEVER come back; the soft-cancel
+    // UX lives on <ActiveRunCard /> inside the page-level control tower now.
     assert.equal(
       src.includes('window.confirm("Cancel this run'),
       false,
-      "legacy window.confirm cancel prompt must be replaced by the modal",
+      "legacy window.confirm cancel prompt must not be reintroduced",
+    );
+    assert.equal(
+      src.includes("setCancelModalOpen("),
+      false,
+      "ORCH-1013: in-tab cancel modal state is deleted — cancel UX is in <ActiveRunCard />",
     );
   });
 });

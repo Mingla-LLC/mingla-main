@@ -28,6 +28,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Tabs } from "../components/ui/Tabs";
 import { TrialResultsTab } from "../components/placeIntelligenceTrial/TrialResultsTab";
 import { IntelligenceOverviewTab } from "../components/placeIntelligenceTrial/IntelligenceOverviewTab";
+// ORCH-1013 Finding B — shared control tower for parallel city backfills.
+import { ActiveRunsControlTower } from "../components/placeIntelligenceTrial/ActiveRunsControlTower";
 
 // ORCH-1008 — Overview is the operator's landing tab; Trial Results follows.
 const TABS = [
@@ -61,6 +63,11 @@ export function PlaceIntelligenceTrialPage({ onTabChange }) {
           </p>
         </div>
       </div>
+
+      {/* ORCH-1013 Finding B — pinned active-runs panel. Auto-hides when no
+          active or terminal runs are in the poller buffer. Cancelled-card
+          "View" deep-links to the Results tab. */}
+      <ActiveRunsControlTower onViewRun={() => setActiveTab("results")} />
 
       <div>
         <Tabs tabs={TABS} activeTab={activeTab} onChange={setActiveTab} />

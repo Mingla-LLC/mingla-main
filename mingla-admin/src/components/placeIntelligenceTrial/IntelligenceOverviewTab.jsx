@@ -27,6 +27,9 @@ import { extractFunctionError } from "../../lib/edgeFunctionError";
 import { fetchIntelligenceCoverage } from "../../services/intelligenceCoverageService";
 import { timeAgo } from "../../lib/formatters";
 import { RunRemainderConfirmModal } from "./RunRemainderConfirmModal";
+// ORCH-1013 Finding B — bulk launch ("Run remainder on all").
+import { RunRemainderOnAllConfirmModal } from "./RunRemainderOnAllConfirmModal";
+import { useBulkRunDispatcher } from "../../hooks/useBulkRunDispatcher";
 
 const PER_PLACE_COST_USD = 0.0040;
 
@@ -59,6 +62,9 @@ export function IntelligenceOverviewTab({ onSwitchToResults, onTabChange }) {
   const [error, setError] = useState(null);
   const [modalCity, setModalCity] = useState(null); // { id, name, remaining_count }
   const [checkingActiveRun, setCheckingActiveRun] = useState(false);
+  // ORCH-1013 Finding B — bulk-launch modal + 3-concurrent dispatcher.
+  const [bulkModalOpen, setBulkModalOpen] = useState(false);
+  const dispatcher = useBulkRunDispatcher({ onToast: addToast });
 
   const refresh = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
@@ -83,6 +89,20 @@ export function IntelligenceOverviewTab({ onSwitchToResults, onTabChange }) {
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  // ORCH-1013 Finding B — list of cities with un-evaluated remainder; feeds the
+  // bulk modal + dispatcher.
+  const candidateCities = useMemo(
+    () =>
+      rows
+        .filter((r) => r.remaining_count > 0)
+        .map((r) => ({
+          city_id: r.city_id,
+          city_name: r.city_name,
+          remaining_count: r.remaining_count,
+        })),
+    [rows],
+  );
 
   const aggregate = useMemo(() => {
     const totals = rows.reduce(
@@ -209,15 +229,33 @@ export function IntelligenceOverviewTab({ onSwitchToResults, onTabChange }) {
         title="Per-city coverage"
         subtitle={`${rows.length} cit${rows.length === 1 ? "y" : "ies"} · ${aggregate.servable.toLocaleString()} servable · ${aggregate.evaluated.toLocaleString()} evaluated (${aggregate.coverage_pct.toFixed(1)}%)`}
         action={
-          <Button
-            size="sm"
-            variant="ghost"
-            icon={RefreshCw}
-            onClick={() => refresh()}
-            disabled={loading}
-          >
-            Refresh
-          </Button>
+          <div className="flex items-center gap-2">
+            {/* ORCH-1013 Finding B — bulk "Run remainder on all" trigger. */}
+            <Button
+              size="sm"
+              variant="secondary"
+              icon={Play}
+              onClick={() => setBulkModalOpen(true)}
+              disabled={loading || candidateCities.length === 0}
+              title={
+                candidateCities.length === 0
+                  ? "All cities are fully evaluated"
+                  : `Run remainder on ${candidateCities.length} un-evaluated cit${candidateCities.length === 1 ? "y" : "ies"}`
+              }
+            >
+              Run remainder on all
+              {candidateCities.length > 0 ? ` (${candidateCities.length})` : ""}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              icon={RefreshCw}
+              onClick={() => refresh()}
+              disabled={loading}
+            >
+              Refresh
+            </Button>
+          </div>
         }
       >
         <div className="flex flex-col gap-4">
@@ -388,6 +426,29 @@ export function IntelligenceOverviewTab({ onSwitchToResults, onTabChange }) {
           onSwitchToResults?.();
         }}
         onConcurrentRun={() => onSwitchToResults?.()}
+      />
+
+      {/* ORCH-1013 Finding B — bulk "Run remainder on all" modal + dispatcher. */}
+      <RunRemainderOnAllConfirmModal
+        open={bulkModalOpen}
+        onClose={() => setBulkModalOpen(false)}
+        candidateCities={candidateCities}
+        perPlaceCostUsd={PER_PLACE_COST_USD}
+        onConfirm={(cities) => {
+          dispatcher.enqueue(cities);
+          const totalCost = cities.reduce(
+            (sum, c) => sum + Number(c.remaining_count || 0) * PER_PLACE_COST_USD,
+            0,
+          );
+          addToast({
+            variant: "info",
+            title: "Bulk remainder queued",
+            description: `${cities.length} cit${cities.length === 1 ? "y" : "ies"}, ~$${totalCost.toFixed(2)} total. Up to 3 run at a time.`,
+          });
+          // Surface the in-flight runs ASAP — the control tower poll picks them
+          // up within 5s anyway.
+          refresh({ silent: true });
+        }}
       />
     </>
   );
