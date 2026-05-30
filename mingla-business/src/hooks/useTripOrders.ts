@@ -12,6 +12,7 @@
 
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 
+import { useAuth } from "../context/AuthContext";
 import { supabase } from "../services/supabase";
 
 const TRIP_ORDERS_STALE_MS = 30 * 1000; // 30s — relatively fresh for operator dashboard
@@ -55,7 +56,9 @@ const DISABLED_KEY = ["trips", "orders", "__disabled__"] as const;
 export const useTripOrders = (
   eventId: string | null,
 ): UseQueryResult<TripOrderRow[], Error> => {
-  const enabled = eventId !== null && eventId.length > 0;
+  // ORCH-1004 — orders is RLS auth.uid()-scoped (organiser-only); gate on auth.
+  const { isAuthReady } = useAuth();
+  const enabled = isAuthReady && eventId !== null && eventId.length > 0;
   return useQuery<TripOrderRow[], Error>({
     queryKey: enabled ? tripOrdersKey(eventId) : DISABLED_KEY,
     enabled,

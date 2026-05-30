@@ -13,6 +13,7 @@
 import { useMemo } from "react";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 
+import { useAuth } from "../../context/AuthContext";
 import {
   resolveBrandBuyers,
   type ResolveBuyersResult,
@@ -38,7 +39,10 @@ export interface UseBrandCustomersState {
 export function useBrandCustomers(
   brandId: string | null | undefined,
 ): UseBrandCustomersState {
-  const enabled = typeof brandId === "string" && brandId.length > 0;
+  // ORCH-1004 — brand customers read auth.uid()-scoped buyer rollups; gate on auth.
+  const { isAuthReady } = useAuth();
+  const enabled =
+    isAuthReady && typeof brandId === "string" && brandId.length > 0;
 
   const query = useQuery<ResolveBuyersResult>({
     queryKey: enabled

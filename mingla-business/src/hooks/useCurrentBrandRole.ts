@@ -83,10 +83,15 @@ const DISABLED_KEY = ["brand-role-disabled"] as const;
 export const useCurrentBrandRole = (
   brandId: string | null,
 ): CurrentBrandRoleState => {
-  const { user } = useAuth();
+  const { isAuthReady, user } = useAuth();
   const userId = user?.id ?? null;
 
-  const enabled = brandId !== null && userId !== null;
+  // ORCH-1004 — tighten from `userId !== null` to the canonical isAuthReady
+  // signal. brand_team_members + brands + creator_accounts are all RLS
+  // auth.uid()-scoped; firing before the access_token is attached returns a
+  // null role (rank 0) that caches as success and locks the operator out of
+  // gated surfaces until a manual refresh. isAuthReady ⟹ a usable session.
+  const enabled = isAuthReady && brandId !== null && userId !== null;
 
   // [TRANSITIONAL] stub-mode synthesis input — read the local brand's
   // `Brand.role` so we can synthesize when the DB chain returns null for

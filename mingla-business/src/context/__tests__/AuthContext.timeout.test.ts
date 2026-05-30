@@ -396,55 +396,59 @@ describe("ORCH-0887-A — AuthContext.tsx source-text structural assertions (Sur
   // The ref was dead code. Cases 15-16 below assert the READ + the
   // event-discriminator semantics now live in AuthContext.tsx.
   //
-  // Fails-on-revert: removing either the `if (bootstrapTimedOutRef.current)`
-  // gate OR the "late INITIAL_SESSION after bootstrap-timeout" warn string
-  // OR the `bootstrapTimedOutRef.current = false` clear-line makes one of
-  // these assertions fail.
+  // [TEST-MOD-APPROVED ORCH-1004] — Cases 15/17/18 originally asserted the
+  // "ignore EVERY late passive event" behavior (early `return;` + "ignoring"
+  // warn strings). ORCH-1004 [Business web data reliability] REVISED that:
+  // a late passive event WITH a usable session is now APPLIED (so isAuthReady
+  // flips true and gated queries fire), while a late passive event with NO
+  // usable session is still ignored. The recovery deliberately does NOT run
+  // the SIGNED_IN-only block (anti-flash / no-duplicate-analytics preserved).
+  // These cases now assert the NEW behavior; the ref-read gate + the
+  // isPassiveLateEcho union + the no-SIGNED_IN-in-guard invariant are
+  // preserved. Fails-on-revert: reverting to the old ignore-all behavior
+  // (removing the hasUsableBusinessSession(s) branch / the "applying late
+  // session" warn / the apply-path comments) makes these expects fail.
   // ────────────────────────────────────────────────────────────────────
 
   it(
-    "Case 15 — onAuthStateChange listener READS bootstrapTimedOutRef and skips late-arriving INITIAL_SESSION (SPEC §3.3 Option b: late getSession() Promise must not flash anon→home or re-fire ensureCreatorAccount)",
+    "Case 15 (ORCH-1004) — onAuthStateChange listener READS bootstrapTimedOutRef and, for a late INITIAL_SESSION WITH a usable session, APPLIES it instead of ignoring (so isAuthReady flips true and gated queries fire — RC-3 fix)",
     () => {
-      // The ref-read gate inside the listener body. The literal string
-      // pattern `if (bootstrapTimedOutRef.current) {` immediately followed
-      // (within ~30 lines) by `if (_event === "INITIAL_SESSION")` proves
-      // the discriminator is in place.
-      const listenerGuardPattern =
-        /if \(bootstrapTimedOutRef\.current\)\s*\{\s*[\s\S]{0,400}?if \(_event === ["']INITIAL_SESSION["']\)/;
-      expect(AUTH_CONTEXT_SOURCE).toMatch(listenerGuardPattern);
-
-      // I-NO-SILENT-FAILURES: the skip path warns explicitly so silent
-      // late-resolution drops are observable in dev console.
+      // The ref-read gate inside the listener body must still exist.
       expect(AUTH_CONTEXT_SOURCE).toMatch(
-        /late INITIAL_SESSION after bootstrap-timeout/,
+        /if \(bootstrapTimedOutRef\.current\)\s*\{/,
       );
 
-      // The skip path returns early (no setSession/setUser writes for
-      // the late INITIAL_SESSION). Loose pattern: a `return;` appears
-      // between the INITIAL_SESSION discriminator and the next closing
-      // brace pair.
+      // NEW behavior: the guard branches on whether the late event carries a
+      // usable session. The apply-path warn string is the fails-on-revert
+      // anchor (it did not exist in the old ignore-all implementation).
       expect(AUTH_CONTEXT_SOURCE).toMatch(
-        /if \(_event === ["']INITIAL_SESSION["']\)\s*\{[\s\S]{0,300}?return;\s*\}/,
+        /applying late session \(ORCH-1004\)/,
+      );
+
+      // The no-usable-session path still ignores (returns early) and warns.
+      expect(AUTH_CONTEXT_SOURCE).toMatch(
+        /no usable session — ignoring/,
+      );
+      expect(AUTH_CONTEXT_SOURCE).toMatch(
+        /if \(!hasUsableBusinessSession\(s\)\)\s*\{[\s\S]{0,300}?return;\s*\}/,
+      );
+
+      // The apply path clears the timed-out gate then falls through to the
+      // shared setSession/setUser writes (NO early return on the apply path).
+      expect(AUTH_CONTEXT_SOURCE).toMatch(
+        /bootstrapTimedOutRef\.current = false;/,
       );
     },
     5000,
   );
 
   it(
-    "Case 16 — post-timeout non-INITIAL_SESSION events clear bootstrapTimedOutRef before continuing handler (SPEC §3.3 Option b: SIGNED_IN/SIGNED_OUT/TOKEN_REFRESHED/USER_UPDATED represent real subsequent state; subsequent INITIAL_SESSION events after the clear must process normally)",
+    "Case 16 — post-timeout events clear bootstrapTimedOutRef; both write-sites coexist + ref is referenced ≥ 3 times (declaration + set + read/clear) — guards against a refactor that removes the ref-read but leaves declaration + set (the v1 dead-code bug class)",
     () => {
-      // The clear-line lives inside the same `if (bootstrapTimedOutRef.current)`
-      // block as the INITIAL_SESSION skip, but on the else/after branch.
-      // Pattern: the `bootstrapTimedOutRef.current = false;` assignment
-      // appears AFTER the timeout-branch set (line 192) and INSIDE the
-      // listener guard block.
       expect(AUTH_CONTEXT_SOURCE).toMatch(
         /bootstrapTimedOutRef\.current = false;/,
       );
 
-      // Both write-sites coexist: the timeout-branch SET (= true) AND the
-      // listener-clear (= false). grep-count ≥ 2 write lines proves the
-      // late-resolution lifecycle is wired both ways.
       const setTrueMatches = (
         AUTH_CONTEXT_SOURCE.match(/bootstrapTimedOutRef\.current = true;/g) ??
         []
@@ -456,9 +460,6 @@ describe("ORCH-0887-A — AuthContext.tsx source-text structural assertions (Sur
       expect(setTrueMatches).toBeGreaterThanOrEqual(1);
       expect(setFalseMatches).toBeGreaterThanOrEqual(1);
 
-      // Total bootstrapTimedOutRef references ≥ 3 (declaration + set + read/clear).
-      // Guards against a future refactor that removes the ref-read but leaves
-      // the ref declaration + set in place (the exact v1 bug class).
       const refMatches = (
         AUTH_CONTEXT_SOURCE.match(/bootstrapTimedOutRef/g) ?? []
       ).length;
@@ -468,70 +469,35 @@ describe("ORCH-0887-A — AuthContext.tsx source-text structural assertions (Sur
   );
 
   // ────────────────────────────────────────────────────────────────────
-  // ORCH-0887-A-2 [Late-resolution defense — expand to TOKEN_REFRESHED +
-  // USER_UPDATED] — brutal Playwright test against live Chromium proved
-  // Supabase v2 fires TOKEN_REFRESHED (not INITIAL_SESSION) when a hung
-  // refresh-token request eventually succeeds after bootstrap-timeout.
-  // Observed sequence: @7023ms bootstrap-timeout fires → @9006ms refresh
-  // resolves → Supabase emits `event: TOKEN_REFRESHED, hasSession: true`.
-  // The v1 listener guard caught INITIAL_SESSION only, so TOKEN_REFRESHED
-  // flowed through and the UI flashed welcome→home.
+  // ORCH-0887-A-2 — TOKEN_REFRESHED + USER_UPDATED are passive late events
+  // Supabase v2 can emit after bootstrap-timeout. ORCH-1004 keeps them in
+  // the isPassiveLateEcho union (so the apply-or-ignore branch covers them)
+  // but the post-timeout handling is now apply-if-usable, not ignore-all.
   //
-  // Cases 17-18 below assert the expanded passive-event ignore-set lives
-  // in AuthContext.tsx. Fails-on-revert: removing TOKEN_REFRESHED or
-  // USER_UPDATED from the `isPassiveLateEcho` check (back to
-  // INITIAL_SESSION-only) makes one of these expects fail immediately.
+  // Cases 17-18 assert the union still lists all three passive events and
+  // that SIGNED_IN/SIGNED_OUT are NOT in the union (they are user-intent
+  // events that clear the gate via the else branch).
   // ────────────────────────────────────────────────────────────────────
 
   it(
-    "Case 17 — TOKEN_REFRESHED post-timeout is treated as a passive late echo and ignored (ORCH-0887-A-2: brutal Playwright proved Supabase v2 fires this event, not INITIAL_SESSION, when a hung refresh-token request eventually succeeds after bootstrap-timeout)",
+    "Case 17 (ORCH-1004) — TOKEN_REFRESHED stays in the isPassiveLateEcho union (apply-if-usable, ignore-if-not), and the ORCH-0887-A-2 + ORCH-1004 citations are grep-discoverable",
     () => {
-      // The expanded passive-event ignore-set must list TOKEN_REFRESHED as
-      // one of the events caught by the late-echo guard. Pattern: the
-      // literal `_event === "TOKEN_REFRESHED"` appears INSIDE the
-      // `if (bootstrapTimedOutRef.current)` block (within ~600 chars).
-      const tokenRefreshedGuardPattern =
-        /if \(bootstrapTimedOutRef\.current\)\s*\{\s*[\s\S]{0,600}?_event === ["']TOKEN_REFRESHED["']/;
-      expect(AUTH_CONTEXT_SOURCE).toMatch(tokenRefreshedGuardPattern);
-
-      // I-NO-SILENT-FAILURES: the skip path for TOKEN_REFRESHED warns
-      // explicitly so silent late-resolution drops are observable in dev
-      // console. The literal string is the fails-on-revert anchor.
-      expect(AUTH_CONTEXT_SOURCE).toMatch(
-        /late TOKEN_REFRESHED after bootstrap-timeout/,
+      const guardBlockMatch = AUTH_CONTEXT_SOURCE.match(
+        /const isPassiveLateEcho =[\s\S]{0,400}?;/,
       );
-
-      // The ORCH-0887-A-2 citation appears in the warn line (or its
-      // adjacent comment block) so the source-of-truth for this expansion
-      // is grep-discoverable from the warn string itself.
+      expect(guardBlockMatch).not.toBeNull();
+      if (guardBlockMatch) {
+        expect(guardBlockMatch[0]).toMatch(/TOKEN_REFRESHED/);
+      }
       expect(AUTH_CONTEXT_SOURCE).toMatch(/ORCH-0887-A-2/);
+      expect(AUTH_CONTEXT_SOURCE).toMatch(/ORCH-1004/);
     },
     5000,
   );
 
   it(
-    "Case 18 — USER_UPDATED post-timeout is treated as a passive late echo and ignored (ORCH-0887-A-2: USER_UPDATED is another passive Supabase v2 event that can fire as a late echo of the original bootstrap, e.g. when refresh resolves and Supabase emits user metadata changes — must not flash the UI either)",
+    "Case 18 (ORCH-1004) — the isPassiveLateEcho union lists all three passive events (INITIAL_SESSION / TOKEN_REFRESHED / USER_UPDATED) and excludes the user-intent SIGNED_IN / SIGNED_OUT events",
     () => {
-      // The expanded passive-event ignore-set must list USER_UPDATED as
-      // one of the events caught by the late-echo guard. Pattern: the
-      // literal `_event === "USER_UPDATED"` appears INSIDE the
-      // `if (bootstrapTimedOutRef.current)` block (within ~700 chars,
-      // wider window since it comes after TOKEN_REFRESHED).
-      const userUpdatedGuardPattern =
-        /if \(bootstrapTimedOutRef\.current\)\s*\{\s*[\s\S]{0,700}?_event === ["']USER_UPDATED["']/;
-      expect(AUTH_CONTEXT_SOURCE).toMatch(userUpdatedGuardPattern);
-
-      // I-NO-SILENT-FAILURES: the skip path for USER_UPDATED warns
-      // explicitly. The literal string is the fails-on-revert anchor.
-      expect(AUTH_CONTEXT_SOURCE).toMatch(
-        /late USER_UPDATED after bootstrap-timeout/,
-      );
-
-      // Cross-check: all three passive events appear in the guard. SIGNED_IN
-      // and SIGNED_OUT MUST NOT appear inside the isPassiveLateEcho check
-      // (they are user-intent events and must clear the gate + process
-      // normally). Confirm by isolating the guard block and asserting
-      // SIGNED_IN/SIGNED_OUT are absent from it.
       const guardBlockMatch = AUTH_CONTEXT_SOURCE.match(
         /const isPassiveLateEcho =[\s\S]{0,400}?;/,
       );
@@ -544,6 +510,11 @@ describe("ORCH-0887-A — AuthContext.tsx source-text structural assertions (Sur
         expect(guardBlock).not.toMatch(/SIGNED_IN/);
         expect(guardBlock).not.toMatch(/SIGNED_OUT/);
       }
+
+      // The SIGNED_IN-only recovery + analytics block stays gated to the
+      // explicit SIGNED_IN event so the passive late-session recovery does
+      // NOT re-fire ensureCreatorAccount analytics (anti-flash preserved).
+      expect(AUTH_CONTEXT_SOURCE).toMatch(/if \(_event === ["']SIGNED_IN["']\)/);
     },
     5000,
   );
