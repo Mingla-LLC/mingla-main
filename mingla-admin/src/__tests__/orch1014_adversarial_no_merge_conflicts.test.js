@@ -19,12 +19,16 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, "..", "..", "..");
 
+// ORCH-1015 [TEST-MOD-APPROVED ORCH-1015] — swapped 3 deleted ORCH-1014 badge
+// files for the 3 new ORCH-1015 readiness badge files. Test name + assertion
+// shape preserved verbatim.
 const FILES_TO_SCAN = [
   // shipped UI source
   "mingla-admin/src/components/placeIntelligenceTrial/IntelligenceOverviewTab.jsx",
-  "mingla-admin/src/components/placeIntelligenceTrial/SeedStatusBadge.jsx",
-  "mingla-admin/src/components/placeIntelligenceTrial/RefreshStatusBadge.jsx",
-  "mingla-admin/src/components/placeIntelligenceTrial/seedRefreshBadgeContent.js",
+  "mingla-admin/src/components/placeIntelligenceTrial/BoundaryReadinessBadge.jsx",
+  "mingla-admin/src/components/placeIntelligenceTrial/DetailsReadinessBadge.jsx",
+  "mingla-admin/src/components/placeIntelligenceTrial/readinessBadgeContent.js",
+  "mingla-admin/src/components/placeIntelligenceTrial/RunRemainderOnAllConfirmModal.jsx",
   "mingla-admin/src/lib/constants.js",
   "mingla-admin/src/App.jsx",
   // shipped edge fn

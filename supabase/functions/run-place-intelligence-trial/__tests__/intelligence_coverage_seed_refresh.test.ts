@@ -216,3 +216,153 @@ Deno.test("ORCH-1014 — edge fn row shape includes 6 new badge fields", () => {
     assert(INDEX_TS.includes(field), `row shape must include ${field}`);
   }
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ORCH-1015 [TEST-MOD-APPROVED ORCH-1015] — extension assertions for the
+// Boundary + Details binary readiness flags + needs_refresh_count.
+// Mirrors the same two-key strategy: (a) a logic-mirror that aggregates over
+// a per-city fixture exactly like the edge fn does, and (b) source-inspect
+// regex asserts. All 6 ORCH-1014 fields above are PRESERVED — these new
+// asserts only EXTEND.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const REFRESH_CUTOVER_DATE_MS = Date.parse("2026-03-19T00:00:00Z");
+
+type ServableDetailRow1015 = {
+  city_id: string;
+  last_detail_refresh: string | null;
+};
+
+function aggregateRegeocoded(coverage_radius_km: number | null): boolean {
+  // Mirrors the edge-fn predicate `(c.coverage_radius_km ?? null) === 0`
+  return (coverage_radius_km ?? null) === 0;
+}
+
+function aggregateRefreshedAndNeedsRefresh(
+  cityId: string,
+  rows: ServableDetailRow1015[],
+): { refreshed_new_fields: boolean; needs_refresh_count: number } {
+  let needs = 0;
+  let servable = 0;
+  for (const r of rows) {
+    if (r.city_id !== cityId) continue;
+    servable += 1;
+    if (r.last_detail_refresh) {
+      if (Date.parse(r.last_detail_refresh) < REFRESH_CUTOVER_DATE_MS) needs += 1;
+    } else {
+      // NULL counts as needing refresh (never refreshed)
+      needs += 1;
+    }
+  }
+  // Mirrors the edge-fn predicate: TRUE iff every servable place is refreshed
+  // (needs_refresh_count === 0 with at least one servable place).
+  const refreshed = servable > 0 && needs === 0;
+  return { refreshed_new_fields: refreshed, needs_refresh_count: needs };
+}
+
+Deno.test("ORCH-1015 — regeocoded flag is true when coverage_radius_km = 0", () => {
+  assertEquals(aggregateRegeocoded(0), true);
+});
+
+Deno.test("ORCH-1015 — regeocoded flag is false when coverage_radius_km = 10", () => {
+  assertEquals(aggregateRegeocoded(10), false);
+});
+
+Deno.test("ORCH-1015 — regeocoded flag is false when coverage_radius_km is null (defensive)", () => {
+  assertEquals(aggregateRegeocoded(null), false);
+});
+
+Deno.test(
+  "ORCH-1015 — refreshed_new_fields true when oldest >= cutover (3 places post-cutover)",
+  () => {
+    const cityId = "c1015a";
+    const rows: ServableDetailRow1015[] = [
+      { city_id: cityId, last_detail_refresh: "2026-04-01T00:00:00Z" },
+      { city_id: cityId, last_detail_refresh: "2026-04-10T00:00:00Z" },
+      { city_id: cityId, last_detail_refresh: "2026-05-01T00:00:00Z" },
+    ];
+    const agg = aggregateRefreshedAndNeedsRefresh(cityId, rows);
+    assertEquals(agg.refreshed_new_fields, true);
+    assertEquals(agg.needs_refresh_count, 0);
+  },
+);
+
+Deno.test(
+  "ORCH-1015 — refreshed_new_fields false when ANY place below cutover (count = 1)",
+  () => {
+    const cityId = "c1015b";
+    const rows: ServableDetailRow1015[] = [
+      { city_id: cityId, last_detail_refresh: "2026-04-01T00:00:00Z" },
+      { city_id: cityId, last_detail_refresh: "2026-03-15T00:00:00Z" }, // below cutover
+      { city_id: cityId, last_detail_refresh: "2026-04-10T00:00:00Z" },
+    ];
+    const agg = aggregateRefreshedAndNeedsRefresh(cityId, rows);
+    assertEquals(agg.refreshed_new_fields, false);
+    assertEquals(agg.needs_refresh_count, 1);
+  },
+);
+
+Deno.test(
+  "ORCH-1015 — NULL last_detail_refresh counts as needing refresh (mirrors stale-NULL)",
+  () => {
+    const cityId = "c1015c";
+    const rows: ServableDetailRow1015[] = [
+      { city_id: cityId, last_detail_refresh: null },
+      { city_id: cityId, last_detail_refresh: "2026-04-01T00:00:00Z" },
+    ];
+    const agg = aggregateRefreshedAndNeedsRefresh(cityId, rows);
+    assertEquals(agg.refreshed_new_fields, false, "NULL prevents refreshed_new_fields");
+    assertEquals(agg.needs_refresh_count, 1, "NULL must count as needing refresh");
+  },
+);
+
+Deno.test(
+  "ORCH-1015 — edge fn source declares ORCH_1015_REFRESH_CUTOVER_DATE_MS = 2026-03-19",
+  () => {
+    assert(
+      /const\s+ORCH_1015_REFRESH_CUTOVER_DATE_MS\s*=\s*Date\.parse\(\s*"2026-03-19T00:00:00Z"\s*\)/.test(
+        INDEX_TS,
+      ),
+      "edge fn must declare ORCH_1015_REFRESH_CUTOVER_DATE_MS = Date.parse('2026-03-19T00:00:00Z')",
+    );
+  },
+);
+
+Deno.test("ORCH-1015 — edge fn source fetches seeding_cities.coverage_radius_km", () => {
+  assert(
+    INDEX_TS.includes('"id, name, country, coverage_radius_km"'),
+    "seeding_cities .select must include coverage_radius_km for the regeocoded flag",
+  );
+});
+
+Deno.test("ORCH-1015 — edge fn row shape includes the 3 new readiness fields", () => {
+  for (const field of [
+    "regeocoded:",
+    "refreshed_new_fields:",
+    "needs_refresh_count:",
+  ]) {
+    assert(
+      INDEX_TS.includes(field),
+      `row shape must include new field ${field}`,
+    );
+  }
+});
+
+Deno.test(
+  "ORCH-1015 — all 6 ORCH-1014 fields PRESERVED in row shape (regression guard)",
+  () => {
+    for (const field of [
+      "first_seeded_at:",
+      "last_seeded_at:",
+      "refresh_oldest_at:",
+      "refresh_newest_at:",
+      "stale_refresh_count:",
+      "missing_fields_count:",
+    ]) {
+      assert(
+        INDEX_TS.includes(field),
+        `ORCH-1014 field ${field} must remain on the wire (operator diagnostic per §7-D7)`,
+      );
+    }
+  },
+);

@@ -2194,7 +2194,8 @@ async function insertRetryChildrenInChunks(
 
 // ═══════════════════════════════════════════════════════════════════════════
 // intelligence_coverage — per-city coverage tiles for the Intelligence
-// Overview tab (ORCH-1008 + ORCH-1014 seed/refresh badge fields).
+// Overview tab (ORCH-1008 + ORCH-1014 seed/refresh badge fields + ORCH-1015
+// Boundary/Details binary readiness flags).
 // Returns one row per seeding_city with ≥1 servable place_pool row; sorted
 // by servable_count desc.
 //
@@ -2206,16 +2207,37 @@ async function insertRetryChildrenInChunks(
 // external API surface. Stale threshold = 90 days (operator-chosen
 // operational constant; no external doc).
 //
+// ORCH-1015: extends row shape with 3 MORE fields driving the 3-band
+// readiness ladder + smart-skip bulk launcher in IntelligenceOverviewTab:
+//   - regeocoded:           seeding_cities.coverage_radius_km = 0
+//   - refreshed_new_fields: MIN(last_detail_refresh) for is_servable >= 2026-03-19
+//   - needs_refresh_count:  COUNT(is_servable AND last_detail_refresh < 2026-03-19)
+// The cutover date is operator-locked to 2026-03-19 (commit 596b3c05c) when
+// the 48-field DETAIL_FIELD_MASK shipped in admin-refresh-places. Hardcoded
+// constant (NOT runtime-tunable) — if the field mask expands again, operator
+// opens a new ORCH to bump it. seeding_cities fetch extended to include
+// coverage_radius_km. All 6 ORCH-1014 fields PRESERVED (operator diagnostic).
+//
 // COMMS-0003 — external API parameters/pricing must cite provider docs URL.
 // This action is Supabase-only (no Gemini calls) but the file-level Gemini
 // 2.5 Flash pricing citation is preserved in the q1/q2 helpers above:
-//   https://ai.google.dev/pricing/gemini-2-5-flash (verified 2026-05-29).
+//   https://ai.google.dev/pricing/gemini-2-5-flash (verified 2026-05-30).
 // ═══════════════════════════════════════════════════════════════════════════
 
 // ORCH-1014 — operator-chosen stale threshold (90 days). Internal operational
 // constant, not an external API parameter. last_detail_refresh older than
 // this counts as "stale" in the Refresh status badge.
 const ORCH_1014_STALE_THRESHOLD_MS = 90 * 24 * 60 * 60 * 1000;
+
+// ORCH-1015 — operator-chosen cutover date for the 48-field DETAIL_FIELD_MASK.
+// Set 2026-03-19 (commit 596b3c05c "feat: admin stale-place lifecycle UI +
+// manual refresh edge function"). Anchored to the introduction of the full
+// field set the Gemini intelligence trial reads (editorialSummary,
+// generativeSummary, priceRange + 23 facet booleans). Hardcoded; if the field
+// mask ever expands again, operator opens a new ORCH to bump this value —
+// NOT runtime-tunable. See supabase/functions/admin-refresh-places/index.ts
+// L31-L143 (DETAIL_FIELD_MASK array).
+const ORCH_1015_REFRESH_CUTOVER_DATE_MS = Date.parse("2026-03-19T00:00:00Z");
 
 async function handleIntelligenceCoverage(
   db: SupabaseClient,
@@ -2236,7 +2258,10 @@ async function handleIntelligenceCoverage(
   ] = await Promise.all([
     db
       .from("seeding_cities")
-      .select("id, name, country")
+      // ORCH-1015 — coverage_radius_km drives the `regeocoded` flag (= 0 ⇔ city
+      // re-seeded under the 2026-04 bbox model; deprecated otherwise). See
+      // supabase/functions/admin-seed-places/index.ts L166-L168 BBOX MODEL note.
+      .select("id, name, country, coverage_radius_km")
       .order("name"),
     db
       .from("place_pool")
@@ -2294,6 +2319,10 @@ async function handleIntelligenceCoverage(
   const refreshNewestByCity = new Map<string, string>(); // ISO
   const staleRefreshByCity = new Map<string, number>();
   const missingFieldsByCity = new Map<string, number>();
+  // ORCH-1015 — per-city count of servable places with last_detail_refresh
+  // strictly before the 2026-03-19 cutover (NULL counts as needing refresh,
+  // mirroring the existing ORCH-1014 stale-NULL treatment).
+  const needsRefreshByCity = new Map<string, number>();
   const nowMs = Date.now();
   for (const row of servableDetailsRes.data || []) {
     if (!row.city_id) continue;
@@ -2309,9 +2338,15 @@ async function handleIntelligenceCoverage(
       if (nowMs - Date.parse(lastRefresh) > ORCH_1014_STALE_THRESHOLD_MS) {
         staleRefreshByCity.set(cityId, (staleRefreshByCity.get(cityId) || 0) + 1);
       }
+      // ORCH-1015 — below-cutover places need refresh under the 48-field mask
+      if (Date.parse(lastRefresh) < ORCH_1015_REFRESH_CUTOVER_DATE_MS) {
+        needsRefreshByCity.set(cityId, (needsRefreshByCity.get(cityId) || 0) + 1);
+      }
     } else {
       // Treat NULL last_detail_refresh as stale (never refreshed)
       staleRefreshByCity.set(cityId, (staleRefreshByCity.get(cityId) || 0) + 1);
+      // ORCH-1015 — NULL also counts as needing refresh (never refreshed at all)
+      needsRefreshByCity.set(cityId, (needsRefreshByCity.get(cityId) || 0) + 1);
     }
 
     // missing fields
@@ -2401,13 +2436,35 @@ async function handleIntelligenceCoverage(
         last_run_cost_usd: lastRun?.cost_so_far_usd ?? null,
         last_run_mode: lastRun?.mode ?? null,
         // ORCH-1014 — Seed status badge inputs (all place_pool rows for this city)
+        // PRESERVED post-ORCH-1015 for operator diagnostic use.
         first_seeded_at: firstSeededByCity.get(c.id) ?? null,
         last_seeded_at: lastSeededByCity.get(c.id) ?? null,
         // ORCH-1014 — Refresh status badge inputs (is_servable=true only)
+        // PRESERVED post-ORCH-1015 for operator diagnostic use.
         refresh_oldest_at: refreshOldestByCity.get(c.id) ?? null,
         refresh_newest_at: refreshNewestByCity.get(c.id) ?? null,
         stale_refresh_count: staleRefreshByCity.get(c.id) ?? 0,
         missing_fields_count: missingFieldsByCity.get(c.id) ?? 0,
+        // ORCH-1015 — Boundary + Details binary readiness flags driving the
+        // 3-band ladder + smart-skip bulk launcher.
+        // regeocoded: city has been re-seeded under the bbox model (the
+        //   coverage_radius_km column is zeroed when operator re-seeds; see
+        //   supabase/functions/admin-seed-places/index.ts L166-L168
+        //   "BBOX MODEL (2026-04): … coverage_radius_km is deprecated").
+        regeocoded: (c.coverage_radius_km ?? null) === 0,
+        // refreshed_new_fields: TRUE iff every servable place has been refreshed
+        //   under the 48-field DETAIL_FIELD_MASK (commit 596b3c05c, 2026-03-19).
+        //   Equivalent to needs_refresh_count === 0 with at least one servable
+        //   place — NULL last_detail_refresh counts as not-refreshed (mirrors
+        //   the stale-NULL treatment above + the operator's mental model of
+        //   "have ALL my places been refreshed under the new mask?"). When
+        //   servable_count is 0 the city is filtered out below entirely.
+        refreshed_new_fields:
+          servable > 0 && (needsRefreshByCity.get(c.id) ?? 0) === 0,
+        // needs_refresh_count: number of servable places with last_detail_refresh
+        //   strictly before the cutover (or NULL). Used by DetailsReadinessBadge
+        //   to size the warning ("⚠ 41 places need refresh").
+        needs_refresh_count: needsRefreshByCity.get(c.id) ?? 0,
       };
     })
     .filter((r) => r.servable_count > 0)
