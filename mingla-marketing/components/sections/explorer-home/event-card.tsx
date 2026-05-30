@@ -56,13 +56,15 @@ export function EventCard({
   isFront = true,
   eager = false,
 }: EventCardProps) {
-  const isMingla = event.source === 'mingla'
+  // ORCH-0998 (operator directive): present ALL events as "On Mingla" — no
+  // Ticketmaster attribution anywhere in the UI (Mingla aggregates these events).
+  const isMingla = true
   const useVariantB = event.venue.length > VENUE_SHORT_MAX
 
   // §E.9 aria-label: the calendar badge, source chip, eyebrow + orange pill are
   // all aria-hidden, so the label carries date/time/venue/source/price. Honest
   // to AT: no fake recommend count, no "TBA" — "tickets available" when no price.
-  const sourceClause = isMingla ? 'On Mingla' : 'Ticketmaster event'
+  const sourceClause = 'On Mingla'
   const priceClause = event.price ? `${event.price}.` : 'Tickets available.'
   const ariaLabel = `${event.title}. ${event.weekdayTime}, at ${event.venue}. ${sourceClause}. ${priceClause}`
 
@@ -287,7 +289,7 @@ export function EventCard({
             orange (4.2:1 fails). The string "Ticketmaster" appears on every TM
             card here (attribution honesty 🔒). aria-hidden — price/CTA fact is
             in the card aria-label. Presentational this run (no live link). */}
-        <PricePill event={event} isMingla={isMingla} />
+        <PricePill event={event} />
       </div>
     </div>
   )
@@ -397,26 +399,14 @@ function MinglaMark(): React.ReactElement {
 // ---------------------------------------------------------------
 function PricePill({
   event,
-  isMingla,
 }: {
   event: ShowcaseEvent
-  isMingla: boolean
 }): React.ReactElement {
-  // CTA copy + whether a separate left-aligned price segment renders.
-  let leftPrice: string | null = null
-  let cta: string
-  if (isMingla) {
-    leftPrice = event.price // "from $15" or null
-    cta = 'Get tickets →'
-  } else if (event.price) {
-    // TM with a price → the price folds into the CTA with the attribution.
-    leftPrice = null
-    cta = `${event.price} · Ticketmaster →`
-  } else {
-    // TM without a price → the full width is the attributed CTA.
-    leftPrice = null
-    cta = 'Tickets via Ticketmaster →'
-  }
+  // ORCH-0998 (operator directive): every event reads as "On Mingla" — no
+  // Ticketmaster attribution. Price rides the left ONLY when present (never
+  // "TBA"); the CTA is always "Get tickets →".
+  const leftPrice: string | null = event.price // "from $15" / "$18" or null
+  const cta = 'Get tickets →'
 
   return (
     <div
@@ -434,10 +424,10 @@ function PricePill({
       {leftPrice && (
         <span
           style={{
-            fontSize: '13px',
+            fontSize: '14px',
             lineHeight: 1,
             fontWeight: 700,
-            color: 'var(--color-ink)',
+            color: '#FFFFFF',
             whiteSpace: 'nowrap',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
@@ -450,10 +440,10 @@ function PricePill({
         style={{
           flex: '0 0 auto',
           marginLeft: leftPrice ? '8px' : 0,
-          fontSize: '12px',
+          fontSize: '14px',
           lineHeight: 1,
           fontWeight: 700,
-          color: 'var(--color-ink)',
+          color: '#FFFFFF',
           whiteSpace: 'nowrap',
         }}
       >
