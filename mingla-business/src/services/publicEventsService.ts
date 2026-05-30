@@ -824,6 +824,29 @@ const fetchTicketTypesRemaining = async (
   return new Map(rows.map((r) => [r.ticket_type_id, r.remaining]));
 };
 
+// ORCH-1006 — per-tier ALL-IN (WYSIWYP). Server-computed via the SAME
+// compute_all_in_cents the cart + view use (pg_public_event_tier_allin RPC),
+// ZERO fee math in TS. RPC failure is non-fatal → every tier falls back to its
+// base price (never blank). Mirrors app-mobile's publicEventTicketsService.
+const fetchTierAllInCents = async (
+  eventId: string,
+): Promise<Map<string, number>> => {
+  const map = new Map<string, number>();
+  const { data, error } = await supabase.rpc("pg_public_event_tier_allin", {
+    p_event_id: eventId,
+  });
+  if (error !== null || !Array.isArray(data)) return map;
+  for (const row of data as Array<{
+    ticket_type_id?: string;
+    all_in_cents?: number;
+  }>) {
+    if (row?.ticket_type_id != null && typeof row.all_in_cents === "number") {
+      map.set(row.ticket_type_id, row.all_in_cents);
+    }
+  }
+  return map;
+};
+
 const fetchTickets = async (
   eventId: string,
 ): Promise<PublicTicketTypeRecord[]> => {
@@ -842,12 +865,24 @@ const fetchTickets = async (
   // ORCH-0946 — overwrite capacity with remaining so the buyer-checkout
   // sold-out gate + QuantityRow "+" cap reflect what's actually bookable
   // (not total tier capacity). Unlimited tiers keep capacity=null untouched.
-  const remainingById = await fetchTicketTypesRemaining(eventId);
+  // ORCH-1006 — also resolve each tier's server-computed all-in (WYSIWYP) so
+  // the web public page shows what the buyer actually pays, not the base price.
+  const [remainingById, allInById] = await Promise.all([
+    fetchTicketTypesRemaining(eventId),
+    fetchTierAllInCents(eventId),
+  ]);
   return stubs.map((s) => {
-    if (s.isUnlimited) return s;
-    const remaining = remainingById.get(s.id);
-    if (remaining === undefined) return s;
-    return { ...s, capacity: remaining };
+    const allInCents = allInById.get(s.id);
+    const priceAllInGbp = s.isFree
+      ? null
+      : typeof allInCents === "number"
+        ? allInCents / 100
+        : (s.priceGbp ?? null);
+    const withAllIn: PublicTicketTypeRecord = { ...s, priceAllInGbp };
+    if (withAllIn.isUnlimited) return withAllIn;
+    const remaining = remainingById.get(withAllIn.id);
+    if (remaining === undefined) return withAllIn;
+    return { ...withAllIn, capacity: remaining };
   });
 };
 

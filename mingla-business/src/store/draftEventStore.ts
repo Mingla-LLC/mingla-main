@@ -85,6 +85,13 @@ export interface TicketStub {
   name: string;
   /** Null when isFree=true; otherwise positive major-unit price. */
   priceGbp: number | null;
+  /**
+   * ORCH-1006 — server-computed all-in (tax/fee-inclusive) major-unit price for
+   * this tier (WYSIWYP). Populated on public read paths from
+   * pg_public_event_tier_allin; undefined/null on authoring stubs → renderers
+   * fall back to priceGbp. NEVER recompute fees in TS.
+   */
+  priceAllInGbp?: number | null;
   /** ISO 4217 event/ticket currency. Undefined means inherit the event. */
   currency?: string;
   /**
