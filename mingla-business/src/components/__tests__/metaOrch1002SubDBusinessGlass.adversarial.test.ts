@@ -298,31 +298,33 @@ const detectComposedShadowClips = (): {
 };
 
 /*
- * KNOWN OFFENDERS (filed as QA finding F-1, P2 — iOS active-tab glow clipped).
+ * F-1 RESOLVED (QA finding F-1, P2 — iOS active-tab glow clipped) — REWORK 2026-05-29.
  *
- * These two trip-intake tab pills compose a shadow-bearing `tabActive` glow
- * onto the SAME `<Pressable>` that Sub-D clipped with overflow:'hidden'. On iOS
- * that sets masksToBounds=true and clips the active-tab orange glow
- * (shadowColor #eb7825, shadowRadius 14) — an SC-iOS-frozen violation, the
- * exact case the spec EXCLUDED for `BottomNav.spotlight`. Functionally benign
- * (no cropped interactive child; dark canvas; niche edit-flow tab) → P2, not a
- * release blocker.
+ * Originally the two trip-intake tab pills below composed a shadow-bearing
+ * `tabActive` glow onto the SAME `<Pressable>` that Sub-D had clipped with
+ * overflow:'hidden'. On iOS that sets masksToBounds=true and clipped the
+ * active-tab orange glow (shadowColor #eb7825, shadowRadius 14) — an
+ * SC-iOS-frozen violation, the exact case the spec EXCLUDED for
+ * `BottomNav.spotlight`:
+ *   - mingla-business/src/components/trip/EditPublishedTripIntakeAccordion.tsx [tab]
+ *   - mingla-business/src/components/trip/TripCreatorStep6Intake.tsx [tab]
  *
- * The test below is GREEN against this exact set so it ships with the gate, but
- * it FAILS THE MOMENT the set GROWS, SHRINKS, or MOVES — so (a) a new sweep
- * surface that clips a shadow glow is caught, and (b) when the implementor
- * fixes F-1 (drop the clip on these two pills, mirroring BottomNav), this
- * assertion forces the expected list to be emptied in the same commit.
+ * The F-1 rework REMOVED overflow:'hidden' from those two `tab` blocks (the
+ * first-strike Android `elevation:0` already kills the rectangular Android
+ * shadow artifact on these full-radius pills, and the iOS glow must not be
+ * clipped). So the composed-shadow-clip offender set is now EMPTY.
  *
- * Tracking: QA_META-ORCH-1002_SUB-D_BUSINESS_GLASS.md › F-1.
+ * This gate asserts the set stays EMPTY: if ANY swept surface clips a
+ * shadow-bearing glow on the same element (including a regression that re-adds
+ * overflow:'hidden' to these two pills), the offender list becomes non-empty
+ * and this test FAILS — locking F-1 fixed and catching any new violation.
+ *
+ * Tracking: QA_META-ORCH-1002_SUB-D_BUSINESS_GLASS.md › F-1 (RESOLVED).
  */
-const KNOWN_SHADOW_CLIP_OFFENDERS: readonly string[] = [
-  "mingla-business/src/components/trip/EditPublishedTripIntakeAccordion.tsx — clipped [tab] composed with shadow sibling [tabActive]",
-  "mingla-business/src/components/trip/TripCreatorStep6Intake.tsx — clipped [tab] composed with shadow sibling [tabActive]",
-];
+const KNOWN_SHADOW_CLIP_OFFENDERS: readonly string[] = [];
 
-describe("Sub-D adversarial D — overflow:'hidden' never clips an iOS shadow on a NEW element", () => {
-  test("the composed-shadow-clip offender set has not grown beyond the known F-1 pair", () => {
+describe("Sub-D adversarial D — overflow:'hidden' never clips an iOS shadow on any element (F-1 RESOLVED)", () => {
+  test("the composed-shadow-clip offender set is empty (F-1 fixed, cannot regress)", () => {
     // Line-agnostic identity so unrelated edits to these files don't flap the test.
     const offenders = detectComposedShadowClips()
       .map(
@@ -335,8 +337,10 @@ describe("Sub-D adversarial D — overflow:'hidden' never clips an iOS shadow on
       )
       .sort();
 
-    // A NEW offender (a swept surface that clips a shadow glow) is a fresh
-    // SC-iOS-frozen regression and must fail this gate immediately.
+    // Post-F-1 the set MUST be empty: any swept surface that clips a shadow glow
+    // on the same element (including a regression re-adding overflow:'hidden' to
+    // the two trip-intake `tab` pills) is a fresh SC-iOS-frozen violation and
+    // must fail this gate immediately.
     expect(offenders).toEqual([...KNOWN_SHADOW_CLIP_OFFENDERS].sort());
   });
 });

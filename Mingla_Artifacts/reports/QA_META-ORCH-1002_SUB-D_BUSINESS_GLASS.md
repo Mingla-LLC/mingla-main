@@ -119,3 +119,46 @@ Ran `npx jest desktopWebLayoutContracts wizardDesktopLayout BottomNavWebDesktopP
 The mechanical sweep is source-correct and scope-clean: the no-flatten contract holds across **all 198** clipped blocks, no functional out-of-bounds child is cropped by any clip, and the 3 stragglers are iOS-frozen + opaque-on-Android. The one defect is **F-1 (P2)** — two trip-intake active-tab pills lose their iOS orange glow because the clip was applied to a shadow-composing element, the exact case the spec excluded for `BottomNav.spotlight`. It is below the release-blocking bar but must be fixed to fully satisfy SC-iOS-frozen, and the adversarial test pins it so a fix (or any new occurrence) is enforced.
 
 **Source-level: CONDITIONAL PASS** — clean except F-1 (P2). On-device PASS is deferred to the orchestrator's dev-build decision; when the build is available, the Android leg must confirm the inset-ring is gone on a representative sample and the iOS leg must confirm F-1 is the only glow affected.
+
+---
+
+## 8. F-1 RESOLVED (REWORK — 2026-05-29)
+
+**Finding:** F-1 (P2) — iOS active-tab glow clipped. Sub-D's blanket sweep added `overflow: "hidden"` to the `tab` style block in two trip-intake files. On iOS that sets `masksToBounds=true`, clipping the active-tab orange glow (`tabActive`: `shadowColor #eb7825`, `shadowRadius 14`) that the META-ORCH-1002 first strike deliberately preserved (the first strike only zeroed the Android `elevation` via `Platform.select({ ios: 8, android: 0 })`). Same case the bottom-nav spotlight was excluded for.
+
+**Fix (2 lines removed, nothing else):**
+1. `mingla-business/src/components/trip/EditPublishedTripIntakeAccordion.tsx` — removed `overflow: "hidden",` from the `tab:` style block. `borderRadius`/`borderWidth`/`borderColor`/`backgroundColor` unchanged. The Android `elevation: 0` in `tabActive` continues to suppress the rectangular Android shadow artifact on this full-radius pill; the iOS glow is no longer clipped.
+2. `mingla-business/src/components/trip/TripCreatorStep6Intake.tsx` — same one-line removal from its `tab:` block.
+
+No other surface touched. The unrelated `reasonInput` clip (a TextInput, no glow) in `EditPublishedTripIntakeAccordion.tsx` is intentionally retained — out of F-1 scope.
+
+**Test sync (gate flipped to assert F-1 fixed, can't regress):**
+- `metaOrch1002SubDBusinessGlass.adversarial.test.ts` › suite **D** "overflow:'hidden' never clips an iOS shadow on any element (F-1 RESOLVED)": the `KNOWN_SHADOW_CLIP_OFFENDERS` list was emptied (`[]`) and the assertion now requires `detectComposedShadowClips()` to return the empty set. Any swept surface that clips a shadow-bearing glow on the same element — including a regression that re-adds `overflow:"hidden"` to either `tab` pill — repopulates the offender list and FAILS the gate immediately.
+- `metaOrch1002SubDBusinessGlass.test.ts` (happy-path) was **not** changed: its `SWEPT` sample never referenced the two `tab` blocks, so it asserted nothing about them.
+
+**Green run** (`cd mingla-business && npx jest metaOrch1002SubDBusinessGlass --runInBand`):
+```
+PASS src/components/__tests__/metaOrch1002SubDBusinessGlass.adversarial.test.ts
+PASS src/components/__tests__/metaOrch1002SubDBusinessGlass.test.ts
+Test Suites: 2 passed, 2 total
+Tests:       36 passed, 36 total
+```
+
+**Fails-on-revert verified** (at commit `5a6026b27`, pre-fix): temporarily re-adding `overflow:"hidden"` to both `tab` blocks makes suite **D** FAIL with both offenders reappearing:
+```
+Sub-D adversarial D — ... (F-1 RESOLVED)
+  ✕ the composed-shadow-clip offender set is empty (F-1 fixed, cannot regress)
+- Array []
++ Array [
++   "mingla-business/src/components/trip/EditPublishedTripIntakeAccordion.tsx — clipped [tab] composed with shadow sibling [tabActive]",
++   "mingla-business/src/components/trip/TripCreatorStep6Intake.tsx — clipped [tab] composed with shadow sibling [tabActive]",
++ ]
+Tests: 1 failed, 6 passed, 7 total
+```
+Fix restored, suite re-run GREEN (36/36).
+
+**Desktop-web contract gates re-run** (`npx jest desktopWebLayoutContracts wizardDesktopLayout BottomNavWebDesktopPolish Sheet.web --runInBand`): **18 passed / 1 failed (19 total).** The single failure is the SAME pre-existing baseline — `desktopWebLayoutContracts.test.ts › "keeps Home desktop KPIs fixed…"` asserting `scrollEnabled={!isWideDesktop}` in `app/(tabs)/home.tsx`. Re-confirmed baseline: Sub-D (and this F-1 rework) does not touch `app/(tabs)/home.tsx` (`git diff origin/main...HEAD --name-only` excludes it) and `origin/main:app/(tabs)/home.tsx` already lacks the asserted string (count 0). **No NEW desktop-web contract failure introduced by the F-1 fix.**
+
+`tsc --noEmit` on `mingla-business`: clean for all three touched files (`EditPublishedTripIntakeAccordion.tsx`, `TripCreatorStep6Intake.tsx`, `metaOrch1002SubDBusinessGlass.adversarial.test.ts`).
+
+**F-1 status: RESOLVED.** SC-iOS-frozen now fully satisfied for the two trip-intake tab pills; the adversarial D gate locks it.
