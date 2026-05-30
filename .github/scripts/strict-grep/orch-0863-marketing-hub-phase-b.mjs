@@ -1115,6 +1115,8 @@ function checkNoNewBackendFiles() {
     "supabase/functions/run-signal-scorer/__tests__/per_place_mode.test.ts",
     "supabase/functions/_shared/__tests__/signalScorer.evaluated_at_passthrough.test.ts",
     "supabase/functions/run-place-intelligence-trial/__tests__/admin_reeval_place.test.ts",
+    // Tester adversarial test (Sub-D QA pass) — pinned P0 drift trigger fix.
+    "supabase/migrations/__tests__/meta_orch_1009_sub_d_adversarial.test.ts",
     "supabase/migrations/__tests__/sub_d_seed_idempotent.test.sql",
     // Admin UI regression test (note: lives outside supabase/ so the C7
     // backend-only forbid does not gate it; listed here for ORCH-trace).
