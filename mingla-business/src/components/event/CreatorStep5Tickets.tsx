@@ -44,6 +44,9 @@ import {
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
+import { WhoCoversCostsSection } from "../pricing/WhoCoversCostsSection";
+import { DEFAULT_TAKE_RATE_BPS } from "../../constants/pricing";
+import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 
 import { TicketTierCard } from "./TicketTierCard";
 import { TicketTierEditSheet } from "./TicketTierEditSheet";
@@ -207,6 +210,35 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
   // Find the next available displayOrder for the new-ticket sheet.
   const nextOrder = nextDisplayOrder(draft.tickets);
 
+  // ORCH-1006 — "Who covers the costs?" section state.
+  const brand = useCurrentBrand();
+  const pricingSwitches = draft.pricingSwitches ?? {
+    passTax: null,
+    passMinglaFee: null,
+    passServiceFee: null,
+  };
+  // Representative single-ticket base for the live preview = the lowest paid
+  // tier (mirrors the buyer's "From £X"). Major-units → cents.
+  const lowestPaidMajor = draft.tickets.reduce<number | null>((min, t) => {
+    if (t.isFree || typeof t.priceGbp !== "number" || t.priceGbp <= 0) return min;
+    return min === null ? t.priceGbp : Math.min(min, t.priceGbp);
+  }, null);
+  const previewBaseCents =
+    lowestPaidMajor === null ? 0 : Math.round(lowestPaidMajor * 100);
+  // Post-sale lock (Surface 3): the server stamps pricing_locked_at on the
+  // first order; any sold tier is the UI proxy.
+  const pricingLocked = Object.values(soldCountByTier).some(
+    (n) => (n ?? 0) > 0,
+  );
+  const switchesCurrency = hasDisplayCurrency ? displayCurrency : "GBP";
+
+  const handleSwitchesChange = useCallback(
+    (next: typeof pricingSwitches): void => {
+      updateDraft({ pricingSwitches: next });
+    },
+    [updateDraft],
+  );
+
   return (
     <View>
       {/* Existing tickets — sorted by displayOrder */}
@@ -295,6 +327,27 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
             <Text style={styles.summaryValue}>{maxRevenue}</Text>
           </View>
         </GlassCard>
+      ) : null}
+
+      {brand !== null ? (
+        <WhoCoversCostsSection
+          format="event"
+          overrides={pricingSwitches}
+          defaults={{
+            passTax: brand.defaultPassTax ?? false,
+            passMinglaFee: brand.defaultPassMinglaFee ?? false,
+            passServiceFee: brand.defaultPassServiceFee ?? false,
+          }}
+          onChange={handleSwitchesChange}
+          previewBaseCents={previewBaseCents}
+          currency={switchesCurrency}
+          effectiveTakeRateBps={brand.takeRateBpsOverride ?? DEFAULT_TAKE_RATE_BPS}
+          locked={pricingLocked}
+          // Surface 4 — VAT-registration probe wires in with its endpoint
+          // (next batch). Interim: interactive; the engine fail-closes to
+          // absorb at checkout for unregistered brands regardless of this UI.
+          vatRegistered
+        />
       ) : null}
 
       <TicketTierEditSheet

@@ -40,6 +40,14 @@ export interface BrandRow {
   display_attendee_count: boolean;
   tax_settings: unknown;
   default_currency: string | null;
+  // ORCH-1006 — brand-level all-in pricing defaults (NULL-safe; DB defaults to
+  // false = absorb everywhere). Per-offering switches inherit these.
+  default_pass_tax?: boolean | null;
+  default_pass_mingla_fee?: boolean | null;
+  default_pass_service_fee?: boolean | null;
+  take_rate_bps_override?: number | null;
+  pricing_region?: string | null;
+  pricing_currency?: string | null;
   stripe_connect_id: string | null;
   stripe_payouts_enabled: boolean;
   stripe_charges_enabled: boolean;
@@ -275,6 +283,13 @@ export function mapBrandRowToUi(row: BrandRow, options: MapBrandRowToUiOptions):
     // ORCH-0769: expose brands.default_currency only once Stripe/brand setup
     // has actually set it. Undefined means "currency not set" — do not imply GBP.
     defaultCurrency: row.default_currency || undefined,
+    // ORCH-1006 — brand all-in pricing defaults. NULL/undefined → false (absorb).
+    defaultPassTax: row.default_pass_tax ?? false,
+    defaultPassMinglaFee: row.default_pass_mingla_fee ?? false,
+    defaultPassServiceFee: row.default_pass_service_fee ?? false,
+    takeRateBpsOverride: row.take_rate_bps_override ?? undefined,
+    pricingRegion: row.pricing_region ?? undefined,
+    pricingCurrency: row.pricing_currency ?? undefined,
     claimStatus: (row.claim_status as BrandClaimStatus | undefined) ?? "none",
     rejectionReason: row.rejection_reason?.trim() || undefined,
     claimFollowUpAt: row.claim_follow_up_at ?? undefined,

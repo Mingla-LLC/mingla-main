@@ -313,6 +313,18 @@ export interface DraftEvent {
   /** ISO 4217 event commerce currency. Null means server should use brand default. */
   currency?: string | null;
   tickets: TicketStub[];
+  /**
+   * ORCH-1006 — per-offering all-in pricing switches (who covers each cost).
+   * Each field NULL = inherit the brand default; explicit boolean = override.
+   * Persisted via the `business_set_pricing_switches` RPC at save time (only
+   * when the brand has customised — see pricingSwitchesService). Absent on
+   * legacy drafts → treated as all-inherit.
+   */
+  pricingSwitches?: {
+    passTax: boolean | null;
+    passMinglaFee: boolean | null;
+    passServiceFee: boolean | null;
+  };
   // Step 6 — Settings
   visibility: DraftEventVisibility;
   requireApproval: boolean;
