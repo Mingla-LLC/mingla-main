@@ -72,10 +72,6 @@ export function initializeOneSignal(): void {
   }
 }
 
-export function isOneSignalReady(): boolean {
-  return _initialized;
-}
-
 /**
  * Link this device to a Supabase user. Fire-and-forget.
  * Idempotent — safe to call multiple times for the same userId.

@@ -3,7 +3,4 @@
 // cards/public pages, app-mobile, AND the shared brand page. This file is a thin
 // re-export to preserve the existing `../ui/EventCoverMedia` import path.
 export { EventCoverMedia } from "@mingla/event-rendering";
-export type {
-  EventCoverMediaProps,
-  EventCoverMediaErrorEvent,
-} from "@mingla/event-rendering";
+export type { EventCoverMediaErrorEvent } from "@mingla/event-rendering";

@@ -175,36 +175,6 @@ export interface CreateVenueBrandPendingInput {
   hours: BrandHourEntry[];
 }
 
-interface BrandHourRow {
-  weekday: number;
-  open_time: string | null;
-  close_time: string | null;
-  is_closed: boolean;
-}
-
-function formatTimeForUi(t: string | null): string | null {
-  if (t === null || t.length === 0) return null;
-  const parts = t.split(":");
-  if (parts.length >= 2) return `${parts[0]}:${parts[1]}`;
-  return t;
-}
-
-export async function getBrandHours(brandId: string): Promise<BrandHourEntry[]> {
-  const { data, error } = await supabase
-    .from("brand_hours")
-    .select("weekday,open_time,close_time,is_closed")
-    .eq("brand_id", brandId)
-    .order("weekday", { ascending: true });
-
-  if (error !== null) throw error;
-  return ((data ?? []) as BrandHourRow[]).map((r) => ({
-    weekday: r.weekday,
-    openTime: r.is_closed ? null : formatTimeForUi(r.open_time),
-    closeTime: r.is_closed ? null : formatTimeForUi(r.close_time),
-    isClosed: r.is_closed,
-  }));
-}
-
 /**
  * Replaces all `brand_hours` rows for a brand (expects exactly 7 weekdays).
  * Callers must hold brand admin-plus; mirrors the RPC insert shape.
