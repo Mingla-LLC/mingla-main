@@ -1119,7 +1119,21 @@ function checkNoNewBackendFiles() {
     "supabase/functions/generate-curated-experiences/__tests__/ai_reasoning_passthrough.test.ts",
     "supabase/migrations/__tests__/meta_orch_1009_sub_b_rpc_reasoning_return.test.sql",
   ];
+  // ORCH-1018 [Bouncer batch runner — memory-safe, resumable, non-aborting].
+  // C7 is scoped to ORCH-0863 marketing; ORCH-1018's backend touches are the new
+  // shared cursor-paged batch loop + its two Deno tests, plus the two Bouncer
+  // edge functions rewired onto that loop (C7 flags modified backend files too,
+  // so run-pre-photo-bouncer/run-bouncer are listed alongside the new helper).
+  // No marketing scope. Per COMMS-0002.
+  const ORCH_1018_BACKEND_ALLOWLIST = [
+    "supabase/functions/_shared/bouncerBatch.ts",
+    "supabase/functions/_shared/__tests__/bouncerBatch.test.ts",
+    "supabase/functions/_shared/__tests__/bouncerBatch.adversarial.test.ts",
+    "supabase/functions/run-pre-photo-bouncer/index.ts",
+    "supabase/functions/run-bouncer/index.ts",
+  ];
   const ALLOWLIST = [
+    ...ORCH_1018_BACKEND_ALLOWLIST,
     ...ORCH_1017_BACKEND_ALLOWLIST,
     ...ORCH_1006_BACKEND_ALLOWLIST,
     ...ORCH_0989_BACKEND_ALLOWLIST,

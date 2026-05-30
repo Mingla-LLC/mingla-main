@@ -154,10 +154,31 @@ function ClusterBreakdown({ data }) {
   );
 }
 
+// ORCH-1018 — accumulate per-batch summaries from the cursor loop into one total
+// so the ClusterBreakdown reflects the WHOLE city, not just the last batch.
+function mergeBouncerSummary(acc, data) {
+  const next = {
+    pass_count: (acc?.pass_count ?? 0) + (data?.pass_count ?? 0),
+    reject_count: (acc?.reject_count ?? 0) + (data?.reject_count ?? 0),
+    written: (acc?.written ?? 0) + (data?.written ?? 0),
+    write_errors: (acc?.write_errors ?? 0) + (data?.write_errors ?? 0),
+    by_cluster: { ...(acc?.by_cluster ?? {}) },
+  };
+  for (const [cluster, v] of Object.entries(data?.by_cluster ?? {})) {
+    const prev = next.by_cluster[cluster] ?? { pass: 0, reject: 0 };
+    next.by_cluster[cluster] = {
+      pass: prev.pass + (v?.pass ?? 0),
+      reject: prev.reject + (v?.reject ?? 0),
+    };
+  }
+  return next;
+}
+
 function BouncerStep({ stepNum, label, edgeFn, helpText, cityId, cityName, onComplete }) {
   const { showToast } = useToast();
   const [running, setRunning] = useState(false);
   const [lastResult, setLastResult] = useState(null);
+  const [progress, setProgress] = useState(null);
 
   async function trigger() {
     if (!cityId) {
@@ -166,20 +187,49 @@ function BouncerStep({ stepNum, label, edgeFn, helpText, cityId, cityName, onCom
     }
     setRunning(true);
     setLastResult(null);
+    setProgress(null);
     try {
-      const { data, error } = await invokeWithRefresh(edgeFn, {
-        body: { city_id: cityId },
-      });
-      if (error) {
-        const msg = await extractFunctionError(error, "Edge function error");
-        throw new Error(msg);
+      // ORCH-1018 — the edge fn caps work per invocation at max_rows and returns
+      // next_cursor + done. Loop the cursor until done so ONE click finishes any
+      // size city (London @ 15.5k ≈ 6 calls). The prior single-shot caller fired
+      // one request and ignored next_cursor, so it only ever processed the first
+      // batch and stranded the rest — which on the old whole-city-in-memory
+      // function also blew the Edge compute budget (HTTP 546) on large cities.
+      let cursor = null;
+      let acc = null;
+      let calls = 0;
+      // Safety bound: MAX_MAX_ROWS=20k per call vs largest city ≈ 16k, so 1 call
+      // covers it; this generous cap only guards against a stuck/null cursor.
+      const MAX_CALLS = 500;
+      while (calls < MAX_CALLS) {
+        calls += 1;
+        const { data, error } = await invokeWithRefresh(edgeFn, {
+          body: { city_id: cityId, after_id: cursor },
+        });
+        if (error) {
+          const msg = await extractFunctionError(error, "Edge function error");
+          throw new Error(msg);
+        }
+        if (data?.error) throw new Error(data.error);
+        acc = mergeBouncerSummary(acc, data);
+        setLastResult(acc);
+        setProgress({
+          batches: calls,
+          judged: acc.pass_count + acc.reject_count,
+          remaining: data?.remaining ?? null,
+          done: data?.done === true,
+        });
+        if (data?.done === true) break;
+        const nextCursor = data?.next_cursor ?? null;
+        if (!nextCursor || nextCursor === cursor) break;
+        cursor = nextCursor;
       }
-      setLastResult(data);
+      const errsuffix = acc?.write_errors ? `, ${acc.write_errors} write errors` : "";
       showToast(
-        `${label} done: ${data?.pass_count ?? 0} pass / ${data?.reject_count ?? 0} reject (${data?.duration_ms ?? 0}ms)`,
-        "success",
+        `${label} done: ${acc?.pass_count ?? 0} pass / ${acc?.reject_count ?? 0} reject across ${calls} batch${calls === 1 ? "" : "es"}${errsuffix}`,
+        acc?.write_errors ? "info" : "success",
       );
-      onComplete?.(data);
+      onComplete?.(acc);
     } catch (err) {
       console.error(`[${edgeFn}]`, err);
       showToast(`${label} failed: ${err.message}`, "error");
@@ -196,8 +246,17 @@ function BouncerStep({ stepNum, label, edgeFn, helpText, cityId, cityName, onCom
       <p className="text-xs text-[--color-text-secondary]">{helpText}</p>
       <Button onClick={trigger} disabled={running || !cityId} size="sm">
         {running ? <Spinner size="sm" /> : <Play className="w-3 h-3" />}
-        {running ? `Running ${label}…` : `Run ${label} for ${cityName || "selected city"}`}
+        {running
+          ? `Running ${label}… ${progress ? `batch ${progress.batches}` : ""}`
+          : `Run ${label} for ${cityName || "selected city"}`}
       </Button>
+      {progress && (
+        <div className="text-xs text-[--color-text-tertiary] font-mono">
+          {progress.batches} batch{progress.batches === 1 ? "" : "es"} · judged={progress.judged}
+          {progress.remaining != null ? ` · remaining=${progress.remaining}` : ""}
+          {progress.done ? " · done" : "…"}
+        </div>
+      )}
       <ClusterBreakdown data={lastResult} />
     </div>
   );
