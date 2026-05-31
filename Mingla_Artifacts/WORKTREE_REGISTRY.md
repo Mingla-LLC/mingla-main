@@ -14,7 +14,6 @@ Reference: [WORKTREE_STRATEGY.md](WORKTREE_STRATEGY.md).
 
 | Worktree path | Branch | ORCH-ID | Phase | Sim assigned | Metro port | Spawned | Owner |
 |---------------|--------|---------|-------|--------------|------------|---------|-------|
-| `~/Desktop/mingla-orchs/ORCH-1022-[dm-shared-card-freeze-policies-reservations]` | `ORCH-1022-dm-shared-card-freeze-policies-reservations` | ORCH-1022 | INVESTIGATE queued | iOS + Android TBD | 8088 | 2026-05-30 | Codex `orchestrator-mingla` (dispatch) → Claude `mingla-forensics` (next) |
 | `~/Desktop/mingla-orchs/meta-orch-0952-[buyer-web-confirm-deep-forensics]` | `meta-orch-0952-buyer-web-confirm-deep-forensics` | META-ORCH-0952 | INVESTIGATE | no sim — buyer-web (Playwright Chromium + Safari) | 8083 | 2026-05-24 | Claude `mingla-orchestrator` (dispatch) → Claude `mingla-forensics` (active) |
 | `~/Desktop/mingla-orchs/ORCH-0990-[flower-stop-real-florists]` | `ORCH-0990-flower-stop-real-florists` | ORCH-0990 | SPEC | no sim — backend-only (edge fn + RPC + place_pool data) | 8086 | 2026-05-29 | Claude `mingla-orchestrator` (dispatch) → Claude `mingla-forensics` (active) |
 | `~/Desktop/mingla-orchs/ORCH-1006-[universal-allin-pricing-engine]` | `ORCH-1006-universal-allin-pricing-engine` | ORCH-1006 | INVESTIGATE done → awaiting SPEC | TBD (native checkout) | 8091 | 2026-05-29 | Claude `mingla-orchestrator` (dispatch) → Claude `mingla-forensics` (active) |
@@ -40,6 +39,7 @@ Reference: [WORKTREE_STRATEGY.md](WORKTREE_STRATEGY.md).
 
 | Worktree path | Branch | ORCH-ID | Reaped | Merged via PR |
 |---------------|--------|---------|--------|---------------|
+| `~/Desktop/mingla-orchs/ORCH-1022-[dm-shared-card-freeze-policies-reservations]/` | `ORCH-1022-dm-shared-card-freeze-policies-reservations` | ORCH-1022 | 2026-05-31 | PR #287 |
 | `~/Desktop/mingla-orchs/ORCH-0975-[consumer-notifications-redesign]/` | `ORCH-0975-consumer-notifications-redesign` | ORCH-0975 | 2026-05-25 | (PR on push) |
 | `~/Desktop/mingla-orchs/ORCH-0963-[public-brand-page-events-vs-trip]/` | `ORCH-0963-public-brand-page-events-vs-trip` | ORCH-0963 | 2026-05-25 | (PR on push) |
 | `~/Desktop/mingla-orchs/0957-[storage-image-transform-overage]/` | `0957-storage-image-transform-overage` | ORCH-0957 | 2026-05-25 | (pending PR merge) |
