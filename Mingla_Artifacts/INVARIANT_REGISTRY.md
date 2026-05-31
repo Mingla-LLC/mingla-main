@@ -33,11 +33,11 @@ Six invariants total. Sub-A landed three (sole-owner ACTIVE + shape contract ACT
 - I-AI-SIGNAL-SCORES-PROMPT-VERSION-DISCRIMINATED (sibling — read side of the blend)
 - I-CONSUMER-READS-AI-SIGNAL-SCORES-NOT-TRIAL-TABLE (sibling — what production reads from)
 
-### I-AI-SIGNAL-SCORES-COLUMN-SOLE-OWNER (ACTIVE post META-ORCH-1009 Sub-A CLOSE)
+### I-AI-SIGNAL-SCORES-COLUMN-SOLE-OWNER (ACTIVE post META-ORCH-1009 Sub-A CLOSE; AMENDED to two writers by Sub-E 2026-05-31)
 
-**Statement:** `public.place_pool.ai_signal_scores` is written by EXACTLY ONE code path — `processOnePlace` in `supabase/functions/run-place-intelligence-trial/index.ts` (via the encapsulated `writeAiSignalScoresToPlacePool` helper) — plus the one-shot backfill in migration `20260802000003_meta_orch_1009_sub_a_ai_signal_scores.sql`. No other edge function, no RPC, no admin action, no migration, no manual SQL ad-hoc write may set this column. Reads are unrestricted (Sub-B ranker is the primary consumer; admin inspector is a secondary consumer).
+**Statement (amended by Sub-E):** `public.place_pool.ai_signal_scores` is written by EXACTLY TWO runtime code paths: (1) `processOnePlace` in `supabase/functions/run-place-intelligence-trial/index.ts` (via `writeAiSignalScoresToPlacePool`) for Google-ingested places — the original Sub-A writer; and (2) `handleTier2` in `supabase/functions/run-business-place-authoring-pipeline/index.ts` (via `buildAiSignalScores`) for business-app authored/claimed places — added by META-ORCH-1009 Sub-E (Stage 6 Gemini 2.5 Flash pre-evaluation, `prompt_version='v4'`, identical 6-key shape). Plus the one-shot backfill in migration `20260802000003_meta_orch_1009_sub_a_ai_signal_scores.sql`. No OTHER edge function, RPC, admin action, migration, or manual SQL ad-hoc write may set this column. Reads are unrestricted (Sub-B ranker is the primary consumer; admin inspector is a secondary consumer). Both writers are listed in the strict-grep gate `ALLOWED_WRITER_FILES`.
 
-**Authority:** The column comment (set in the migration DDL) names `processOnePlace` as the sole writer.
+**Authority:** The column comment (set in the migration DDL) names `processOnePlace` as the original writer; the Sub-E amendment (DEC-181 amendment, this registry entry, and the gate header) names `run-business-place-authoring-pipeline` as the second authorized writer.
 
 **Rationale:** Single-writer guarantees shape consistency (I-AI-SIGNAL-SCORES-SHAPE-CONTRACT cannot drift), prompt-version honesty (I-AI-SIGNAL-SCORES-PROMPT-VERSION-DISCRIMINATED can trust the stored prompt_version field), and a single audit log (the trial-run row carries the full evaluation context the column slice was derived from).
 
@@ -45,9 +45,9 @@ Six invariants total. Sub-A landed three (sole-owner ACTIVE + shape contract ACT
 1. Column comment readable in any psql `\d+ place_pool` inspection; in-DB documentation surviving code-grep evasion.
 2. Sub-A close registers this invariant. A dedicated strict-grep gate enforcing the no-other-writer rule may be added in a follow-up; for now the allowlist on the per-PR diff catches new write call-sites.
 
-**Test that catches a regression:** any new `.update({ ai_signal_scores` outside the two allowed call-sites is a direct violation. Manual psql writes are caught at runtime by the shape contract the first time Sub-B reads them.
+**Test that catches a regression:** any new `.update({ ai_signal_scores` / `.upsert` / `.insert` outside the TWO allowed writer files is a direct violation, caught by `.github/scripts/strict-grep/i-ai-signal-scores-column-sole-owner.mjs` (`ALLOWED_WRITER_FILES`). Manual psql writes are caught at runtime by the shape contract the first time Sub-B reads them.
 
-**Established:** 2026-05-30 by META-ORCH-1009 Sub-A CLOSE.
+**Established:** 2026-05-30 by META-ORCH-1009 Sub-A CLOSE. **Amended:** 2026-05-31 by META-ORCH-1009 Sub-E (single-writer → constrained two-writer; second writer = `run-business-place-authoring-pipeline/index.ts`).
 
 **Related invariants:**
 - I-AI-SIGNAL-SCORES-SHAPE-CONTRACT (sibling — shape gate)

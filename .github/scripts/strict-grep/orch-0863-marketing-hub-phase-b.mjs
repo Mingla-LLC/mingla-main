@@ -1137,6 +1137,15 @@ function checkNoNewBackendFiles() {
     "supabase/migrations/__tests__/sub_e_pending_action_expiry.test.sql",
     "supabase/functions/run-business-place-authoring-pipeline/index.ts",
     "supabase/functions/run-business-place-authoring-pipeline/__tests__/stage_contract.test.ts",
+    // Sub-E rework 5 (C4): behavioral pipeline test (ai_signal_scores shape,
+    // B9-B12 coaching, Google cross-validation, bouncer gate).
+    "supabase/functions/run-business-place-authoring-pipeline/__tests__/pipeline_behavioral.test.ts",
+    // Sub-E rework 5 (C2): agent-confirm-action 410 dead-end -> in-Hub regenerate.
+    "supabase/functions/agent-confirm-action/index.ts",
+    "supabase/migrations/__tests__/sub_e_business_place_schema.test.sql",
+    "supabase/migrations/__tests__/sub_e_pending_action_expiry.test.sql",
+    // Sub-E rework 5 (C4): behavioral expiry SQL test (stale->expired flip + preserve terminal).
+    "supabase/migrations/__tests__/sub_e_pending_action_expiry_behavioral.test.sql",
     "supabase/functions/places-autocomplete/index.ts",
     "supabase/functions/places-autocomplete/index.test.ts",
     "supabase/functions/claim-search-pool/index.ts",

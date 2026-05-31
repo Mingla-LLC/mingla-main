@@ -75,18 +75,24 @@ COMMENT ON COLUMN public.place_pool.photo_analysis IS
 COMMENT ON COLUMN public.place_pool.business_authoring_inputs IS
   'META-ORCH-1009 Sub-E: Tier 1/Tier 2 business-app input snapshot used to generate deck-facing AI evaluations.';
 
+-- SPEC §5.2 canonical shape (rework 5): tier1_completed_at / tier2_completed_at
+-- timestamps, bouncer_reasons text[] (plural), last_error_code + last_error_message.
+-- The 'coaching' jsonb is retained as an additive convenience column (it caches
+-- the plain-English Hub coaching cards so the client get_authoring_context path
+-- does not have to re-derive them) and is NOT part of the SPEC contract surface;
+-- the contract columns are the SPEC §5.2 set.
 CREATE TABLE IF NOT EXISTS public.brand_place_pipeline_state (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   brand_id uuid NOT NULL REFERENCES public.brands(id) ON DELETE CASCADE,
   place_pool_id uuid NULL REFERENCES public.place_pool(id) ON DELETE SET NULL,
   status text NOT NULL DEFAULT 'draft',
+  tier1_completed_at timestamptz NULL,
+  tier2_completed_at timestamptz NULL,
   stage_status jsonb NOT NULL DEFAULT '{}'::jsonb,
-  readiness jsonb NOT NULL DEFAULT '{}'::jsonb,
-  bouncer_reason text NULL,
+  bouncer_reasons text[] NOT NULL DEFAULT '{}'::text[],
+  last_error_code text NULL,
+  last_error_message text NULL,
   coaching jsonb NOT NULL DEFAULT '[]'::jsonb,
-  last_started_at timestamptz NULL,
-  last_completed_at timestamptz NULL,
-  last_error text NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT brand_place_pipeline_state_brand_unique UNIQUE (brand_id),
@@ -102,17 +108,28 @@ CREATE TABLE IF NOT EXISTS public.brand_place_pipeline_state (
 );
 
 COMMENT ON TABLE public.brand_place_pipeline_state IS
-  'META-ORCH-1009 Sub-E: one row per business venue brand tracking Tier 1/Tier 2 pipeline progress and Hub deck-readiness coaching.';
+  'META-ORCH-1009 Sub-E: one row per business venue brand tracking Tier 1/Tier 2 pipeline progress and Hub deck-readiness coaching. SPEC §5.2.';
+COMMENT ON COLUMN public.brand_place_pipeline_state.tier1_completed_at IS
+  'Timestamp when the Tier 1 (4-minute) create/link path completed for this brand.';
+COMMENT ON COLUMN public.brand_place_pipeline_state.tier2_completed_at IS
+  'Timestamp when the Tier 2 (5-minute) deck-eligible pipeline (stages 1-8) completed for this brand.';
 COMMENT ON COLUMN public.brand_place_pipeline_state.stage_status IS
   'Per-stage status keyed by the 8 business-app Gemini stages.';
-COMMENT ON COLUMN public.brand_place_pipeline_state.readiness IS
-  'Deck-readiness verdict details, including bouncer code and fix target.';
+COMMENT ON COLUMN public.brand_place_pipeline_state.bouncer_reasons IS
+  'SPEC §5.2: ordered list of active bouncer reason codes (B3/B5/B6/B8/B9-B12) blocking deck readiness.';
+COMMENT ON COLUMN public.brand_place_pipeline_state.last_error_code IS
+  'SPEC §5.2: machine error code from the last failed pipeline run (e.g. gemini_unconfigured), NULL on success.';
+COMMENT ON COLUMN public.brand_place_pipeline_state.last_error_message IS
+  'SPEC §5.2: human-readable error message from the last failed pipeline run, NULL on success.';
 COMMENT ON COLUMN public.brand_place_pipeline_state.coaching IS
-  'Plain-English Hub coaching cards derived from bouncer/readiness reason codes.';
+  'Additive cache (non-contract): plain-English Hub coaching cards derived from bouncer_reasons.';
 
 CREATE INDEX IF NOT EXISTS idx_brand_place_pipeline_state_place_pool
   ON public.brand_place_pipeline_state (place_pool_id)
   WHERE place_pool_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_brand_place_pipeline_state_status_updated
+  ON public.brand_place_pipeline_state (status, updated_at);
 
 DROP TRIGGER IF EXISTS trg_brand_place_pipeline_state_updated_at
   ON public.brand_place_pipeline_state;
@@ -179,6 +196,56 @@ CREATE POLICY brand_place_pipeline_state_owner_update
         AND b.deleted_at IS NULL
     )
   );
+
+-- =============================================================
+-- D3 (SPEC §6.1, [[rls-returning-owner-gap]]) — direct-predicate owner-UPDATE
+-- RLS on place_pool so the brand owner can UPDATE their own authored/claimed
+-- row from a user-scoped client (Hub one-tap fixes: address, hours, website,
+-- cover). This is a DIRECT predicate (not a SECURITY DEFINER helper), which is
+-- the pattern mandated by I-RLS-RETURNING-OWNER-GAP because SECURITY DEFINER
+-- helpers fail in RETURNING + soft-delete WITH CHECK contexts. The service-role
+-- pipeline writes (run-business-place-authoring-pipeline) continue to bypass RLS
+-- for scoring internals; this policy is additive for client edits only.
+--
+-- Ownership resolves through the authoring brand: the place_pool row's
+-- business_author_brand_id (create-new) OR a brand whose place_pool_id points
+-- back at this row (claim-existing) must belong to a brand whose account_id =
+-- auth.uid() and which is not soft-deleted. claimed_by = auth.uid() is also
+-- accepted as a direct fast-path predicate.
+ALTER TABLE public.place_pool ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS place_pool_business_owner_update ON public.place_pool;
+CREATE POLICY place_pool_business_owner_update
+  ON public.place_pool
+  FOR UPDATE
+  TO authenticated
+  USING (
+    claimed_by = auth.uid()
+    OR EXISTS (
+      SELECT 1 FROM public.brands b
+      WHERE b.account_id = auth.uid()
+        AND b.deleted_at IS NULL
+        AND (
+          b.id = place_pool.business_author_brand_id
+          OR b.place_pool_id = place_pool.id
+        )
+    )
+  )
+  WITH CHECK (
+    claimed_by = auth.uid()
+    OR EXISTS (
+      SELECT 1 FROM public.brands b
+      WHERE b.account_id = auth.uid()
+        AND b.deleted_at IS NULL
+        AND (
+          b.id = place_pool.business_author_brand_id
+          OR b.place_pool_id = place_pool.id
+        )
+    )
+  );
+
+COMMENT ON POLICY place_pool_business_owner_update ON public.place_pool IS
+  'META-ORCH-1009 Sub-E (D3): direct-predicate owner-UPDATE so business owners can edit their own authored/claimed place_pool row from a user-scoped client. Not a SECURITY DEFINER helper per I-RLS-RETURNING-OWNER-GAP.';
 
 CREATE OR REPLACE FUNCTION public.biz_create_venue_brand_authoring (
   p_name text,
@@ -514,6 +581,65 @@ TO service_role;
 COMMENT ON FUNCTION public.expire_agent_pending_actions(timestamptz) IS
   'META-ORCH-1009 Sub-E: expires stale Hub proposal rows so business UI does not render dead accept actions.';
 
+-- =============================================================
+-- C1 (SPEC §5.3) — recurring pg_cron 15-min sweep of expire_agent_pending_actions.
+--
+-- Without a recurring schedule the one-shot backfill below only flips rows that
+-- are stale AT MIGRATION TIME; rows that expire after deploy go stale again and
+-- the dead-accept-card loop returns. This 15-min cron keeps agent_pending_actions
+-- continuously swept so the client-side `.gt(expires_at, now)` filter and the
+-- agent-confirm-action regenerate path both operate on fresh status.
+--
+-- Matches the canonical Sub-D idempotent cron pattern
+-- (supabase/migrations/20260808000000_meta_orch_1009_sub_d_refresh_cron.sql §5):
+-- unschedule-by-jobname-if-present, then schedule. If pg_cron is not available
+-- (local test stacks), define the fn + run backfill but skip the schedule with a
+-- NOTICE instead of failing (SPEC §5.3).
+--
+-- External-API / extension docs cited inline per COMMS-0003:
+--   - Supabase pg_cron: https://supabase.com/docs/guides/cron
+-- =============================================================
+
+DO $cron_setup$
+DECLARE
+  v_job_id bigint;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') THEN
+    RAISE NOTICE 'META-ORCH-1009 Sub-E advisory: pg_cron not enabled; expire_agent_pending_actions recurring sweep NOT scheduled. Function + one-shot backfill still applied. Enable pg_cron (Database -> Extensions) and re-run to schedule the 15-min sweep.';
+  ELSE
+    SELECT jobid INTO v_job_id FROM cron.job
+      WHERE jobname = 'meta_orch_1009_sub_e_expire_agent_pending_actions';
+    IF v_job_id IS NOT NULL THEN PERFORM cron.unschedule(v_job_id); END IF;
+
+    PERFORM cron.schedule(
+      'meta_orch_1009_sub_e_expire_agent_pending_actions',
+      '*/15 * * * *',
+      $job$ SELECT public.expire_agent_pending_actions(now()); $job$
+    );
+    RAISE NOTICE 'META-ORCH-1009 Sub-E: scheduled meta_orch_1009_sub_e_expire_agent_pending_actions every 15 min.';
+  END IF;
+END;
+$cron_setup$;
+
+-- C1 verification probe — when pg_cron is present the schedule must be registered
+-- exactly as */15. Skipped (NOTICE only) when pg_cron is absent.
+DO $$
+DECLARE
+  v_schedule text;
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') THEN
+    SELECT schedule INTO v_schedule FROM cron.job
+      WHERE jobname = 'meta_orch_1009_sub_e_expire_agent_pending_actions' LIMIT 1;
+    IF v_schedule IS DISTINCT FROM '*/15 * * * *' THEN
+      RAISE EXCEPTION 'META-ORCH-1009 Sub-E probe failed: expire sweep cron schedule is % (expected */15 * * * *)', v_schedule;
+    END IF;
+  ELSE
+    RAISE NOTICE 'META-ORCH-1009 Sub-E: pg_cron absent, skipping expire-sweep cron schedule probe.';
+  END IF;
+END$$;
+
+-- One-shot backfill (SPEC §5.3): flip rows already stale at migration time.
+-- Expected live effect ≈ 23 stale hub_experience rows -> expired.
 SELECT public.expire_agent_pending_actions(now());
 
 COMMIT;

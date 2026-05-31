@@ -61,14 +61,20 @@ export interface RefreshDeckReadinessResult {
   coaching: PipelineCoachingCard[];
 }
 
+// META-ORCH-1009 Sub-E (schema-align to SPEC §5.2): the pipeline-state row uses
+// bouncer_reasons text[] (plural), tier1/tier2_completed_at, and
+// last_error_code/last_error_message. `coaching` is an additive cache column.
 export interface BrandPlacePipelineState {
   id: string;
   brand_id: string;
   place_pool_id: string | null;
   status: "draft" | "processing" | "needs_fix" | "deck_eligible" | "failed";
+  tier1_completed_at: string | null;
+  tier2_completed_at: string | null;
   stage_status: Record<string, unknown>;
-  readiness: Record<string, unknown>;
-  bouncer_reason: string | null;
+  bouncer_reasons: string[];
+  last_error_code: string | null;
+  last_error_message: string | null;
   coaching: PipelineCoachingCard[];
   updated_at: string;
 }
@@ -242,7 +248,7 @@ export async function fetchBrandPlacePipelineState(
 ): Promise<BrandPlacePipelineState | null> {
   const { data, error } = await supabase
     .from("brand_place_pipeline_state")
-    .select("id, brand_id, place_pool_id, status, stage_status, readiness, bouncer_reason, coaching, updated_at")
+    .select("id, brand_id, place_pool_id, status, tier1_completed_at, tier2_completed_at, stage_status, bouncer_reasons, last_error_code, last_error_message, coaching, updated_at")
     .eq("brand_id", brandId)
     .maybeSingle();
   if (error !== null) throw error;

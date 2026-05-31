@@ -3,7 +3,7 @@
  */
 
 import React, { useMemo } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
   accent,
@@ -48,6 +48,8 @@ export const DeckReadinessCard: React.FC<DeckReadinessCardProps> = ({
     return "Finish the setup tasks so Mingla can safely recommend this venue.";
   }, [primary, state.status]);
   const fix = primary?.fix ?? "review_pipeline";
+  // SPEC §8.5: keep the rest of the active reasons visible in a compact list.
+  const rest = state.coaching.slice(1);
 
   return (
     <GlassCard variant="elevated" padding={spacing.lg}>
@@ -66,6 +68,23 @@ export const DeckReadinessCard: React.FC<DeckReadinessCardProps> = ({
             leadingIcon="sparkle"
             onPress={() => onFix(fix)}
           />
+        </View>
+      ) : null}
+      {state.status !== "deck_eligible" && rest.length > 0 ? (
+        <View style={styles.restList}>
+          <Text style={styles.restHeading}>Also blocking</Text>
+          {rest.map((card) => (
+            <Pressable
+              key={card.code}
+              accessibilityRole="button"
+              accessibilityLabel={`Fix: ${card.title}`}
+              onPress={() => onFix(card.fix)}
+              style={styles.restRow}
+            >
+              <Text style={styles.restDot}>•</Text>
+              <Text style={styles.restText}>{card.title}</Text>
+            </Pressable>
+          ))}
         </View>
       ) : null}
     </GlassCard>
@@ -104,6 +123,37 @@ const styles = StyleSheet.create({
   ctaRow: {
     alignItems: "flex-start",
     marginTop: spacing.md,
+  },
+  // SPEC §8.5: compact list of the remaining active blocking reasons.
+  restList: {
+    marginTop: spacing.md,
+    gap: spacing.xs,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: textTokens.tertiary,
+    paddingTop: spacing.sm,
+  },
+  restHeading: {
+    fontSize: typography.caption.fontSize,
+    fontWeight: "700",
+    color: textTokens.tertiary,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  restRow: {
+    flexDirection: "row",
+    gap: spacing.xs,
+    alignItems: "flex-start",
+  },
+  restDot: {
+    fontSize: typography.bodySm.fontSize,
+    color: accent.warm,
+    lineHeight: 20,
+  },
+  restText: {
+    flex: 1,
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: 20,
+    color: textTokens.secondary,
   },
 });
 

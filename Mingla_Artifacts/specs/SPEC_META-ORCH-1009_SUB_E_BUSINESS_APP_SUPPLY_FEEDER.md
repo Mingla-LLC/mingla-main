@@ -161,6 +161,7 @@ Columns:
 - `last_error_message text null`
 - `updated_at timestamptz not null default now()`
 - `created_at timestamptz not null default now()`
+- `coaching jsonb not null default '[]'` — **rework-5 addendum (additive, non-contract):** an extra convenience column that caches the plain-English Hub coaching cards derived from `bouncer_reasons`, so the client `get_authoring_context` / `fetchBrandPlacePipelineState` path renders the readiness card without re-deriving the B-code→copy map. It is NOT part of the contract surface (the contract columns are the set above); it is a denormalized cache the pipeline writes alongside `bouncer_reasons`. Recorded here so code (`brand_place_pipeline_state.coaching`) and contract agree per the rework-5 "no silent divergence" directive.
 
 Indexes:
 

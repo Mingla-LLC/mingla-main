@@ -367,14 +367,17 @@
 
 **EXIT signal:** none — column rename post-Sub-B landing is expensive (touches the migration history + the ranker code + every test). Lock now. If a future AI provider swap requires a different per-signal field set, extend the shape under a new prompt_version with backward-compatible defaults and let `I-AI-SIGNAL-SCORES-PROMPT-VERSION-DISCRIMINATED` gate the read.
 
+**Amendment (META-ORCH-1009 Sub-E, 2026-05-31):** DEC-099 + DEC-181's single-writer rule for `place_pool.ai_signal_scores` is widened to a constrained TWO-writer rule. Sub-E [business-app supply-side feeder] adds `supabase/functions/run-business-place-authoring-pipeline/index.ts` (`handleTier2` → `buildAiSignalScores`) as the second authorized writer — it writes the column for business-app authored/claimed `place_pool` rows (Stage 6 Gemini 2.5 Flash pre-evaluation, `prompt_version='v4'`, identical 6-key shape to the trial writer). Rationale: business-authored venues never pass through the Google trial pipeline (`run-place-intelligence-trial`), so they need their own constrained writer to enter the consumer deck; Sub-D's drift trigger + 15-min rescore sweep pick up the business-authored AI slices identically. Both writers are listed in the strict-grep gate `ALLOWED_WRITER_FILES` (`.github/scripts/strict-grep/i-ai-signal-scores-column-sole-owner.mjs`); any THIRD writer remains a P0 invariant breach. The `I-AI-SIGNAL-SCORES-COLUMN-SOLE-OWNER` registry entry + the gate header comment are amended to match. No new DEC number is allocated — this is an in-place amendment to DEC-181 (and DEC-099 by extension) recorded here per SPEC §10.1.
+
 **Cross-references:**
 - DEC-099 (constitutional bless — original column pre-authorisation, 2026-05-04)
 - DEC-101 (Anthropic dropped from trial pipeline; Gemini sole provider)
-- I-AI-SIGNAL-SCORES-COLUMN-SOLE-OWNER (new ACTIVE)
+- I-AI-SIGNAL-SCORES-COLUMN-SOLE-OWNER (ACTIVE; amended to two writers by Sub-E 2026-05-31)
 - I-AI-SIGNAL-SCORES-SHAPE-CONTRACT (new ACTIVE)
 - I-AI-SIGNAL-SCORES-PROMPT-VERSION-DISCRIMINATED (new DRAFT)
 - I-TRIAL-OUTPUT-NEVER-FEEDS-RANKING (RETRACTED)
 - META-ORCH-1009 Sub-A SPEC (`Mingla_Artifacts/specs/SPEC_META-ORCH-1009_SUB_A_AI_SIGNAL_SCORES_SCHEMA.md`)
+- META-ORCH-1009 Sub-E SPEC §10.1 (`Mingla_Artifacts/specs/SPEC_META-ORCH-1009_SUB_E_BUSINESS_APP_SUPPLY_FEEDER.md`)
 - META-ORCH-1009 Sub-A implementation report (`Mingla_Artifacts/reports/IMPLEMENTATION_META-ORCH-1009_SUB_A_AI_SIGNAL_SCORES_SCHEMA.md`)
 - Sub-B / Sub-C / Sub-D (sibling sub-dispatches — separate ORCHs)
 - COMMS-0003 (external-API docs cited inline — Gemini function-calling URL + Postgres JSONB indexing URL)

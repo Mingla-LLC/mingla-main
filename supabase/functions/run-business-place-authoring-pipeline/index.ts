@@ -136,7 +136,8 @@ function categoryTypes(category: VenueCategory | null | undefined): {
   return { primaryType: "restaurant", types: ["restaurant", "food", "point_of_interest"] };
 }
 
-function coachingForReasons(reasons: string[]): Array<{
+// Exported for the C4 behavioral test (no behavior change; pure function).
+export function coachingForReasons(reasons: string[]): Array<{
   code: string;
   title: string;
   body: string;
@@ -179,6 +180,37 @@ function coachingForReasons(reasons: string[]): Array<{
           title: "Add a hero photo or video",
           body: "The deck needs at least one saved visual for this place.",
           fix: "edit_cover",
+        };
+      // SPEC §8.5: B9-B12 are the bouncer codes most likely to block real venues
+      // (child-venue, fast-food type, fast-food/coffee chain, casual chain). They
+      // are not self-serve fixable, so the one-tap action requests a human review.
+      case "B9":
+        return {
+          code,
+          title: "This looks like a sub-location",
+          body: "This looks like a sub-location inside another business. If that's wrong, request a review and we'll take a closer look.",
+          fix: "request_review",
+        };
+      case "B10":
+        return {
+          code,
+          title: "This looks like fast food",
+          body: "This looks like a fast-food/snack category we don't serve in the deck yet. If that's wrong, request a review.",
+          fix: "request_review",
+        };
+      case "B11":
+        return {
+          code,
+          title: "This looks like a chain",
+          body: "This looks like a fast-food or coffee chain. If you're an independent venue, request a review.",
+          fix: "request_review",
+        };
+      case "B12":
+        return {
+          code,
+          title: "This looks like a casual chain",
+          body: "This looks like a casual chain. If you're an independent venue, request a review.",
+          fix: "request_review",
         };
       case "CONFIRM":
         return {
@@ -339,8 +371,11 @@ async function handleTier1(
     if (brandUpdateErr) return errorResponse(500, "BRAND_UPDATE_FAILED", brandUpdateErr.message);
 
     await upsertPipelineState(client, brand.id, selectedPlacePoolId, "processing", {
-      tier1: "linked_existing",
-    }, [], null);
+      stageStatus: { tier1: "linked_existing" },
+      coaching: [],
+      bouncerReasons: [],
+      tier1CompletedAt: new Date().toISOString(),
+    });
 
     return jsonResponse(200, {
       kind: "ok",
@@ -406,8 +441,11 @@ async function handleTier1(
   if (brandUpdateErr) return errorResponse(500, "BRAND_UPDATE_FAILED", brandUpdateErr.message);
 
   await upsertPipelineState(client, brand.id, placePoolId, "processing", {
-    tier1: "created_business_authored",
-  }, [], null);
+    stageStatus: { tier1: "created_business_authored" },
+    coaching: [],
+    bouncerReasons: [],
+    tier1CompletedAt: new Date().toISOString(),
+  });
 
   return jsonResponse(200, {
     kind: "ok",
@@ -417,30 +455,40 @@ async function handleTier1(
   });
 }
 
+interface PipelineStatePatch {
+  stageStatus: Record<string, unknown>;
+  coaching: unknown[];
+  bouncerReasons: string[];
+  tier1CompletedAt?: string | null;
+  tier2CompletedAt?: string | null;
+  lastErrorCode?: string | null;
+  lastErrorMessage?: string | null;
+}
+
+// SPEC §5.2 canonical shape: writes bouncer_reasons text[] (plural),
+// tier1_completed_at / tier2_completed_at, last_error_code / last_error_message.
 async function upsertPipelineState(
   client: SupabaseClient,
   brandId: string,
   placePoolId: string | null,
   status: "draft" | "processing" | "needs_fix" | "deck_eligible" | "failed",
-  stageStatus: Record<string, unknown>,
-  coaching: unknown[],
-  bouncerReason: string | null,
+  patch: PipelineStatePatch,
 ): Promise<void> {
+  const row: Record<string, unknown> = {
+    brand_id: brandId,
+    place_pool_id: placePoolId,
+    status,
+    stage_status: patch.stageStatus,
+    coaching: patch.coaching,
+    bouncer_reasons: patch.bouncerReasons,
+    last_error_code: patch.lastErrorCode ?? null,
+    last_error_message: patch.lastErrorMessage ?? null,
+  };
+  if (patch.tier1CompletedAt !== undefined) row.tier1_completed_at = patch.tier1CompletedAt;
+  if (patch.tier2CompletedAt !== undefined) row.tier2_completed_at = patch.tier2CompletedAt;
   await client
     .from("brand_place_pipeline_state")
-    .upsert({
-      brand_id: brandId,
-      place_pool_id: placePoolId,
-      status,
-      stage_status: stageStatus,
-      coaching,
-      bouncer_reason: bouncerReason,
-      readiness: {
-        status,
-        bouncer_reason: bouncerReason,
-      },
-      last_completed_at: status === "deck_eligible" || status === "needs_fix" ? new Date().toISOString() : null,
-    }, { onConflict: "brand_id" });
+    .upsert(row, { onConflict: "brand_id" });
 }
 
 async function loadSignals(client: SupabaseClient): Promise<SignalRow[]> {
@@ -453,14 +501,68 @@ async function loadSignals(client: SupabaseClient): Promise<SignalRow[]> {
   return (data ?? []) as SignalRow[];
 }
 
+// D1 (SPEC §7 Stage 3) — Gemini 2.5 Flash vision image-understanding.
+// Inline image bytes are sent as `inline_data` { mime_type, data: base64 } parts
+// per the official image-understanding API:
+//   https://ai.google.dev/gemini-api/docs/image-understanding
+// We cap at 5 images (hero + up to 4 gallery) to bound request size + cost, and
+// only fetch http(s) URLs of an image content-type. If NO usable image bytes can
+// be fetched, photo_analysis is returned EMPTY (-> persisted NULL by the caller)
+// — never fabricated from metadata (Constitution rule 9, no-fabricated-data).
+const MAX_VISION_IMAGES = 5;
+const SUPPORTED_IMAGE_MIME = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/heic",
+  "image/heif",
+]);
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
+async function fetchImageParts(
+  imageUrls: string[],
+): Promise<Array<{ inline_data: { mime_type: string; data: string } }>> {
+  const parts: Array<{ inline_data: { mime_type: string; data: string } }> = [];
+  for (const url of imageUrls.slice(0, MAX_VISION_IMAGES)) {
+    if (typeof url !== "string" || !/^https?:\/\//i.test(url)) continue;
+    try {
+      const res = await fetch(url, { method: "GET" });
+      if (!res.ok) continue;
+      const mime = (res.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
+      if (!SUPPORTED_IMAGE_MIME.has(mime)) {
+        // Drain body so the connection can be reused, then skip.
+        await res.arrayBuffer().catch(() => undefined);
+        continue;
+      }
+      const buf = new Uint8Array(await res.arrayBuffer());
+      if (buf.length === 0 || buf.length > 7_000_000) continue; // skip empty / >7MB
+      parts.push({ inline_data: { mime_type: mime, data: bytesToBase64(buf) } });
+    } catch (_err) {
+      // Network/decoding failure on one image must not fabricate analysis;
+      // skip this image and continue. An empty result -> NULL photo_analysis.
+      continue;
+    }
+  }
+  return parts;
+}
+
 async function callGeminiForEvaluations(input: {
   brand: OwnedBrand;
   place: Record<string, unknown>;
   signals: SignalRow[];
   tier2: Record<string, unknown>;
+  imageUrls: string[];
 }): Promise<{
   bio: string;
-  photo_analysis: Record<string, unknown>;
+  photo_analysis: Record<string, unknown> | null;
   facets: Record<string, unknown>;
   evaluations: AiEvaluation[];
 }> {
@@ -469,19 +571,36 @@ async function callGeminiForEvaluations(input: {
     throw new Error("gemini_unconfigured");
   }
 
+  // D1: fetch real image bytes for the vision stage. May be empty -> no fabrication.
+  const imageParts = await fetchImageParts(input.imageUrls);
+  const hasImages = imageParts.length > 0;
+
   const prompt = {
-    instruction:
-      "Generate a sales bio, photo/facet analysis, and one Q2 score per active Mingla signal. Return strict JSON only.",
+    instruction: hasImages
+      ? "You are given venue photos as inline images plus structured venue data. Generate (1) an AI-authored sales bio, (2) a photo_analysis object from the ACTUAL images provided (lighting, ambience, composition_score_0_to_100, near_duplicate_groups, facet_hints, reasoning), (3) structured facet inference, and (4) one Q2 score per active Mingla signal. Return strict JSON only."
+      : "No venue photos are available. Generate an AI-authored sales bio, structured facet inference, and one Q2 score per active Mingla signal. Set photo_analysis to null — do NOT invent photo analysis without images. Return strict JSON only.",
     model_contract: {
       model: GEMINI_MODEL,
       prompt_version: PROMPT_VERSION,
       score_keys: ["score_0_to_100", "inappropriate_for", "reasoning"],
+      photo_analysis_shape: {
+        model: GEMINI_MODEL,
+        evaluated_at: "ISO-8601",
+        aesthetic: { lighting: "string", ambience: "string", composition_score_0_to_100: 0 },
+        dedupe: { near_duplicate_groups: [] },
+        facet_hints: {},
+        reasoning: "short plain-English summary",
+      },
     },
+    has_images: hasImages,
+    image_count: imageParts.length,
     brand: input.brand,
     place: input.place,
     tier2: input.tier2,
     signals: input.signals,
   };
+
+  const parts: Array<Record<string, unknown>> = [{ text: JSON.stringify(prompt) }, ...imageParts];
 
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
@@ -489,7 +608,7 @@ async function callGeminiForEvaluations(input: {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        contents: [{ role: "user", parts: [{ text: JSON.stringify(prompt) }] }],
+        contents: [{ role: "user", parts }],
         generationConfig: { responseMimeType: "application/json" },
       }),
     },
@@ -512,11 +631,20 @@ async function callGeminiForEvaluations(input: {
   if (!Array.isArray(parsed.evaluations)) {
     throw new Error("gemini_missing_evaluations");
   }
+  // D1 honesty guard: only accept photo_analysis when we actually sent images.
+  // With no images, photo_analysis is NULL regardless of what Gemini returned.
+  let photoAnalysis: Record<string, unknown> | null = null;
+  if (hasImages && parsed.photo_analysis && typeof parsed.photo_analysis === "object") {
+    photoAnalysis = {
+      ...(parsed.photo_analysis as Record<string, unknown>),
+      model: GEMINI_MODEL,
+      evaluated_at: new Date().toISOString(),
+      image_count: imageParts.length,
+    };
+  }
   return {
     bio: asString(parsed.bio, ""),
-    photo_analysis: parsed.photo_analysis && typeof parsed.photo_analysis === "object"
-      ? parsed.photo_analysis as Record<string, unknown>
-      : {},
+    photo_analysis: photoAnalysis,
     facets: parsed.facets && typeof parsed.facets === "object"
       ? parsed.facets as Record<string, unknown>
       : {},
@@ -532,7 +660,97 @@ async function callGeminiForEvaluations(input: {
   };
 }
 
-function buildAiSignalScores(
+// D2 (SPEC §7 Stage 7) — deterministic, NO-AI Google cross-validation.
+// claim-existing: diff Sarah's Tier1/Tier2 inputs against the existing Google
+//   place_pool row, archive the Google values, persist the diff under
+//   raw_google_data.business_claim_diff. Operator-confirmed values win on the
+//   live columns; the original Google values are archived, not overwritten.
+// create-new: stamp raw_google_data.source='business_authored' +
+//   business_authored_inputs_hash. Never call the row Google-verified.
+async function djb2Hash(input: string): Promise<string> {
+  // Deterministic content hash for business_authored_inputs_hash (SHA-256 hex).
+  const data = new TextEncoder().encode(input);
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function normalizeForDiff(v: unknown): string {
+  if (v === null || v === undefined) return "";
+  if (typeof v === "string") return v.trim().toLowerCase();
+  return String(v).trim().toLowerCase();
+}
+
+// Exported for the C4 behavioral test (no behavior change; deterministic, no AI).
+export async function buildCrossValidation(
+  place: Record<string, unknown>,
+  tier1: Record<string, unknown>,
+  tier2: Record<string, unknown>,
+): Promise<{
+  raw_google_data: Record<string, unknown>;
+  stage_status: string;
+  conflicts: string[];
+}> {
+  const existingRaw =
+    (place.raw_google_data && typeof place.raw_google_data === "object")
+      ? { ...(place.raw_google_data as Record<string, unknown>) }
+      : {};
+  const googlePlaceId = (place as { google_place_id?: string | null }).google_place_id ?? null;
+  const isClaimExisting = typeof googlePlaceId === "string" && googlePlaceId.length > 0;
+
+  const sarahName = asString(tier1.name) || asString((place as { name?: string }).name);
+  const sarahAddress = asString(tier1.address) || asString((place as { address?: string }).address);
+  const sarahWebsite = asString(tier2.website) || asString((place as { website?: string }).website);
+
+  if (isClaimExisting) {
+    // Compare Sarah inputs vs the Google/place-pool authoritative fields.
+    const fields: Array<{ field: string; sarah: unknown; google: unknown }> = [
+      { field: "name", sarah: sarahName, google: (place as { name?: unknown }).name },
+      { field: "address", sarah: sarahAddress, google: (place as { address?: unknown }).address },
+      { field: "website", sarah: sarahWebsite, google: (place as { website?: unknown }).website },
+    ];
+    const diff = fields
+      .filter((f) => normalizeForDiff(f.sarah) !== "" &&
+        normalizeForDiff(f.sarah) !== normalizeForDiff(f.google))
+      .map((f) => ({
+        field: f.field,
+        business_value: f.sarah,
+        google_value: f.google ?? null,
+      }));
+    existingRaw.business_claim_diff = {
+      compared_at: new Date().toISOString(),
+      google_place_id: googlePlaceId,
+      diff,
+      // Archive the Google values so operator-confirmed values can win on the
+      // live columns without losing the original Google authority.
+      archived_google: {
+        name: (place as { name?: unknown }).name ?? null,
+        address: (place as { address?: unknown }).address ?? null,
+        website: (place as { website?: unknown }).website ?? null,
+      },
+    };
+    return {
+      raw_google_data: existingRaw,
+      stage_status: diff.length > 0 ? "claim_diff_recorded" : "claim_no_conflicts",
+      conflicts: diff.map((d) => d.field),
+    };
+  }
+
+  // create-new path.
+  const inputsHash = await djb2Hash(JSON.stringify({ tier1, tier2 }));
+  existingRaw.source = "business_authored";
+  existingRaw.not_google_reviewed = true;
+  existingRaw.business_authored_inputs_hash = inputsHash;
+  return {
+    raw_google_data: existingRaw,
+    stage_status: "create_new_no_google",
+    conflicts: [],
+  };
+}
+
+// Exported for the C4 behavioral test (no behavior change; pure function).
+export function buildAiSignalScores(
   signals: SignalRow[],
   evaluations: AiEvaluation[],
   evaluatedAt: string,
@@ -590,17 +808,43 @@ async function handleTier2(
 
   const signals = await loadSignals(client);
   const tier2 = body.tier2 ?? {};
-  const gemini = await callGeminiForEvaluations({ brand, place, signals, tier2 });
+  const existingInputs =
+    ((place as { business_authoring_inputs?: Record<string, unknown> | null }).business_authoring_inputs ?? {});
+  const tier1 = typeof existingInputs.tier1 === "object" && existingInputs.tier1 !== null
+    ? existingInputs.tier1 as Record<string, unknown>
+    : {};
+
+  // D1 (Stage 3): collect the actual venue image URLs for vision. Hero +
+  // gallery from Tier 2, falling back to the stored cover. tier2.photoUrls is
+  // the Tier-2 media set; stored_photo_urls is the canonical persisted set.
+  const tier2Photos = Array.isArray((tier2 as { photoUrls?: unknown }).photoUrls)
+    ? ((tier2 as { photoUrls: unknown[] }).photoUrls.filter((u): u is string => typeof u === "string"))
+    : [];
+  const storedPhotos = Array.isArray((place as { stored_photo_urls?: unknown }).stored_photo_urls)
+    ? ((place as { stored_photo_urls: unknown[] }).stored_photo_urls.filter((u): u is string => typeof u === "string"))
+    : [];
+  const imageUrls = Array.from(new Set([...tier2Photos, ...storedPhotos])).slice(0, MAX_VISION_IMAGES);
+
+  const gemini = await callGeminiForEvaluations({ brand, place, signals, tier2, imageUrls });
   const evaluatedAt = new Date().toISOString();
   const aiSignalScores = buildAiSignalScores(signals, gemini.evaluations, evaluatedAt);
+  // D1: photo_analysis is NULL when no real images were analyzed (no fabrication).
+  const photoAnalysis = gemini.photo_analysis;
   const facetPatch = Object.fromEntries(
     Object.entries(gemini.facets).filter(([key, value]) =>
       FACET_COLUMNS.has(key) && (typeof value === "boolean" || value === null)
     ),
   );
 
+  // D2 (Stage 7): deterministic Google cross-validation (no AI).
+  const crossValidation = await buildCrossValidation(
+    place as Record<string, unknown>,
+    tier1,
+    tier2,
+  );
+
   const mergedInputs = {
-    ...((place as { business_authoring_inputs?: Record<string, unknown> | null }).business_authoring_inputs ?? {}),
+    ...existingInputs,
     tier2,
     pending_ai_outputs: {
       generated_bio: gemini.bio,
@@ -613,7 +857,9 @@ async function handleTier2(
 
   const bouncerPlace = placeForBouncer(placePoolId, place as Record<string, unknown>, tier2);
   const verdict = bounce(bouncerPlace);
-  const reasons = verdict.reasons;
+  const reasons = crossValidation.conflicts.length > 0
+    ? [...verdict.reasons, ...crossValidation.conflicts.map((c) => `CLAIM_CONFLICT:${c}`)]
+    : verdict.reasons;
   const nextStatus = verdict.is_servable ? "processing" : "needs_fix";
   const coaching = verdict.is_servable
     ? coachingForReasons(["CONFIRM:ai_outputs"])
@@ -623,7 +869,8 @@ async function handleTier2(
     .from("place_pool")
     .update({
       ai_signal_scores: aiSignalScores,
-      photo_analysis: gemini.photo_analysis,
+      photo_analysis: photoAnalysis,
+      raw_google_data: crossValidation.raw_google_data,
       business_authoring_inputs: mergedInputs,
       business_authoring_status: nextStatus,
       is_servable: false,
@@ -634,14 +881,18 @@ async function handleTier2(
     .eq("id", placePoolId);
   if (updateErr) return errorResponse(500, "PLACE_UPDATE_FAILED", updateErr.message);
 
-  await upsertPipelineState(client, brand.id, placePoolId, nextStatus, fullStageStatus({
-    photo_analysis: "complete",
-    sales_bio_generation: "generated_pending_confirmation",
-    structured_facet_inference: "generated_pending_confirmation",
-    signal_pre_evaluation: "complete",
-    google_cross_validation: "complete_or_not_applicable",
-    bouncer_servability: verdict.is_servable ? "passed_pending_confirmation" : "needs_fix",
-  }), coaching, reasons[0] ?? null);
+  await upsertPipelineState(client, brand.id, placePoolId, nextStatus, {
+    stageStatus: fullStageStatus({
+      photo_analysis: photoAnalysis && Object.keys(photoAnalysis).length > 0 ? "complete" : "skipped_no_images",
+      sales_bio_generation: "generated_pending_confirmation",
+      structured_facet_inference: "generated_pending_confirmation",
+      signal_pre_evaluation: "complete",
+      google_cross_validation: crossValidation.stage_status,
+      bouncer_servability: verdict.is_servable ? "passed_pending_confirmation" : "needs_fix",
+    }),
+    coaching,
+    bouncerReasons: reasons,
+  });
 
   return jsonResponse(200, {
     kind: "ok",
@@ -716,14 +967,19 @@ async function handleConfirmAiOutputs(
     .eq("id", placePoolId);
   if (updateErr) return errorResponse(500, "PLACE_UPDATE_FAILED", updateErr.message);
 
-  await upsertPipelineState(client, brand.id, placePoolId, nextStatus, fullStageStatus({
-    photo_analysis: "complete",
-    sales_bio_generation: "confirmed",
-    structured_facet_inference: "confirmed",
-    signal_pre_evaluation: "complete",
-    google_cross_validation: "complete_or_not_applicable",
-    bouncer_servability: verdict.is_servable ? "passed" : "needs_fix",
-  }), coaching, reasons[0] ?? null);
+  await upsertPipelineState(client, brand.id, placePoolId, nextStatus, {
+    stageStatus: fullStageStatus({
+      photo_analysis: "complete",
+      sales_bio_generation: "confirmed",
+      structured_facet_inference: "confirmed",
+      signal_pre_evaluation: "complete",
+      google_cross_validation: "complete_or_not_applicable",
+      bouncer_servability: verdict.is_servable ? "passed" : "needs_fix",
+    }),
+    coaching,
+    bouncerReasons: reasons,
+    tier2CompletedAt: nextStatus === "deck_eligible" ? new Date().toISOString() : null,
+  });
 
   return jsonResponse(200, {
     kind: "ok",
@@ -775,14 +1031,19 @@ async function handleRefreshDeckReadiness(
     .eq("id", placePoolId);
   if (updateErr) return errorResponse(500, "PLACE_UPDATE_FAILED", updateErr.message);
 
-  await upsertPipelineState(client, brand.id, placePoolId, status, fullStageStatus({
-    photo_analysis: "complete_or_not_applicable",
-    sales_bio_generation: confirmed ? "confirmed" : "pending_confirmation",
-    structured_facet_inference: confirmed ? "confirmed" : "pending_confirmation",
-    signal_pre_evaluation: "complete_or_pending",
-    google_cross_validation: "complete_or_not_applicable",
-    bouncer_servability: verdict.is_servable ? "passed" : "needs_fix",
-  }), coaching, reasons[0] ?? null);
+  await upsertPipelineState(client, brand.id, placePoolId, status, {
+    stageStatus: fullStageStatus({
+      photo_analysis: "complete_or_not_applicable",
+      sales_bio_generation: confirmed ? "confirmed" : "pending_confirmation",
+      structured_facet_inference: confirmed ? "confirmed" : "pending_confirmation",
+      signal_pre_evaluation: "complete_or_pending",
+      google_cross_validation: "complete_or_not_applicable",
+      bouncer_servability: verdict.is_servable ? "passed" : "needs_fix",
+    }),
+    coaching,
+    bouncerReasons: reasons,
+    tier2CompletedAt: status === "deck_eligible" ? new Date().toISOString() : null,
+  });
 
   return jsonResponse(200, {
     kind: "ok",
