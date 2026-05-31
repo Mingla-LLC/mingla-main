@@ -1,5 +1,7 @@
 # Open Investigations
 
+> **2026-05-31 — ORCH-1023 [Scheduling picker regression] CLOSED PASS — no open investigation/rework remains.** This was a fast hotfix/QA loop from an operator-reported picker regression after ORCH-1021. Final evidence lives in `Mingla_Artifacts/reports/QA_ORCH-1023_SCHEDULING_PICKER_REGRESSION.md`; close banner lives in WORLD_MAP. No further forensics/spec/implementation/test handoff is pending.
+
 > **2026-05-30 — ORCH-1021 [Decisive scheduling availability for curated + single cards] CLOSED PASS — no open investigation/rework remains.** This was a fast rework/QA loop from an operator-reported scheduling false-open, not a queued open investigation. Final evidence lives in `Mingla_Artifacts/reports/QA_FINAL_ORCH-1021_DECISIVE_CURATED_AND_SINGLE_SCHEDULING.md`; close banner lives in WORLD_MAP. No further forensics/spec/implementation/test handoff is pending.
 
 > **2026-05-30 — META-ORCH-1009 Sub-D [Refresh cron + admin re-evaluate button] REGISTERED → FORENSICS QUEUED.** S2-medium / `architecture-flaw` + `ux`. Parent: META-ORCH-1009. Removes the manual `run-signal-scorer` click after Sub-C backfill rounds via `pg_cron` (15-min interval) + new `place_scores.ai_signal_scores_at` detection column. Adds per-place admin "Re-evaluate this place" button. Google-drift triggers (business_status / editorial_summary / generative_summary changes) auto-queue Q2 re-eval. Backstop: quarterly full sweep. Worktree: `~/Desktop/mingla-orchs/META-ORCH-1009-Sub-D-[refresh-cron-admin-reeval-button]`. Full scope in WORLD_MAP.

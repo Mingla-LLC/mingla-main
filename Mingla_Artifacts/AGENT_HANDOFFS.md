@@ -1,5 +1,17 @@
 # Agent Handoffs
 
+## 2026-05-31 — ORCH-1023 [Scheduling picker regression after decisive scheduling fix] CLOSED PASS Grade A
+
+**Pipeline executed (worktree `~/Desktop/mingla-orchs/ORCH-1023-[scheduling-picker-regression]` on branch `ORCH-1023-scheduling-picker-regression`):** operator report -> Codex `implementor-mingla` hotfix -> Codex `tester-mingla` PASS -> Seth app smoke PASS ("works now, schedule is fixed") -> Codex `orchestrator-mingla` CLOSE.
+
+**Step 0.5 satisfied:** `app-mobile/src/components/ui/__tests__/WaveBBatch4.test.mjs` now asserts `ProposeDateTimeModal` does not import/use nested `RNModal` picker overlays, keeps Android `DateTimePicker display="default"`, and contains inline iOS date/time picker panels. Fail-on-revert proof confirms the parent source had `Modal as RNModal`, two `<RNModal>` picker overlays, and no inline picker test IDs.
+
+**Evidence:** implementation report `Mingla_Artifacts/reports/IMPLEMENTATION_ORCH-1023_SCHEDULING_PICKER_REGRESSION.md`; QA report `Mingla_Artifacts/reports/QA_ORCH-1023_SCHEDULING_PICKER_REGRESSION.md`.
+
+**Close gates:** focused regression PASS; scheduling source/single-card/curated-stop Deno tests PASS (12/12); scoped Expo lint PASS; `git diff --check` PASS; zero `[ORCH-1023-DIAG]` markers; no migration; no Supabase edge deploy; no Vercel `[deploy]` tag. Broad `app-mobile` `tsc` remains blocked by unrelated existing repo-wide debt outside this hotfix.
+
+---
+
 ## 2026-05-30 — ORCH-1021 [Decisive scheduling availability for curated + single cards] CLOSED PASS Grade A
 
 **Pipeline executed (worktree `~/Desktop/mingla-orchs/ORCH-1021-[curated-stop-timezone-false-open]` on branch `ORCH-1021-curated-stop-timezone-false-open`):** operator report → Codex `orchestrator-mingla` takeover → Codex `implementor-mingla` implementation → Codex `tester-mingla` FAIL (P1 ActionButtons curated ordering + P1 PracticalDetails type drift) → Codex `implementor-mingla` P1 rework → Codex `tester-mingla` CONDITIONAL PASS → Seth app smoke PASS ("works great now") → Codex `tester-mingla` final QA receipt → Codex `orchestrator-mingla` CLOSE.
