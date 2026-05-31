@@ -1046,7 +1046,9 @@ function checkNoNewBackendFiles() {
   const ORCH_1016_BACKEND_ALLOWLIST = [
     "supabase/migrations/20260803000000_orch_1016_events_departure_text.sql",
     "supabase/migrations/20260803000001_orch_1016_pg_published_trips_public.sql",
+    "supabase/migrations/20260805000001_orch_1016_trip_intake_schemas_buyer_select.sql",
     "supabase/migrations/__tests__/orch_1016_pg_published_trips_public.test.ts",
+    "supabase/functions/_test/orch_1016_hard_guards_adversarial.test.ts",
   ];
   // ORCH-1015 — Intelligence Overview readiness ladder. Edge fn touched is
   // the existing intelligence_coverage action (3 new fields per city row +
