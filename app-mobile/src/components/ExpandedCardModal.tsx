@@ -693,6 +693,9 @@ function CuratedPlanView({
   onSave,
   onShare,
   onClose,
+  onOpenBrowser,
+  onOpenImageLightbox,
+  onSchedulePickerModalVisibilityChange,
   userPreferences,
   currentMode,
   onCardRemoved,
@@ -705,6 +708,9 @@ function CuratedPlanView({
   onSave: (card: ExpandedCardData) => Promise<void> | void;
   onShare?: (card: ExpandedCardData) => void;
   onClose: () => void;
+  onOpenBrowser: (url: string, title: string) => void;
+  onOpenImageLightbox: (images: string[], initialIndex: number) => void;
+  onSchedulePickerModalVisibilityChange: (isOpen: boolean) => void;
   userPreferences?: any;
   currentMode?: string;
   onCardRemoved?: (cardId: string) => void;
@@ -719,6 +725,9 @@ function CuratedPlanView({
       onSave={onSave}
       onShare={onShare}
       onClose={onClose}
+      onOpenBrowser={onOpenBrowser}
+      onOpenImageLightbox={onOpenImageLightbox}
+      onSchedulePickerModalVisibilityChange={onSchedulePickerModalVisibilityChange}
       userPreferences={userPreferences}
       currentMode={currentMode}
       onCardRemoved={onCardRemoved}
@@ -736,6 +745,9 @@ function MultiStopPlanView({
   onSave,
   onShare,
   onClose,
+  onOpenBrowser,
+  onOpenImageLightbox,
+  onSchedulePickerModalVisibilityChange,
   userPreferences,
   currentMode,
   onCardRemoved,
@@ -748,6 +760,9 @@ function MultiStopPlanView({
   onSave: (card: ExpandedCardData) => Promise<void> | void;
   onShare?: (card: ExpandedCardData) => void;
   onClose: () => void;
+  onOpenBrowser: (url: string, title: string) => void;
+  onOpenImageLightbox: (images: string[], initialIndex: number) => void;
+  onSchedulePickerModalVisibilityChange: (isOpen: boolean) => void;
   userPreferences?: any;
   currentMode?: string;
   onCardRemoved?: (cardId: string) => void;
@@ -790,11 +805,6 @@ function MultiStopPlanView({
   const [expandedStops, setExpandedStops] = useState<Set<number>>(new Set());
   // Dismissed optional stops (resets when modal reopens — acceptable)
   const [dismissedStops, setDismissedStops] = useState<Set<number>>(new Set());
-  const [browserUrl, setBrowserUrl] = useState<string | null>(null);
-  const [browserTitle, setBrowserTitle] = useState('');
-  const [lightbox, setLightbox] = useState<{ visible: boolean; images: string[]; initialIndex: number }>({
-    visible: false, images: [], initialIndex: 0,
-  });
 
   // ── Stop replacement state ──────────────────────────────────────────────
   const { alternatives, isLoading: isLoadingAlts, error: altsError, fetchAlternatives, clearAlternatives } = useReplaceStop();
@@ -1039,13 +1049,12 @@ function MultiStopPlanView({
                         ? stop.imageUrls
                         : [stop.imageUrl].filter(Boolean)
                     }
-                    onImagePress={(index) => setLightbox({
-                      visible: true,
-                      images: stop.imageUrls && stop.imageUrls.length > 0
+                    onImagePress={(index) => {
+                      const images = stop.imageUrls && stop.imageUrls.length > 0
                         ? stop.imageUrls
-                        : [stop.imageUrl].filter(Boolean),
-                      initialIndex: index,
-                    })}
+                        : [stop.imageUrl].filter(Boolean);
+                      onOpenImageLightbox(images, index);
+                    }}
                   />
                 ) : null}
 
@@ -1114,8 +1123,7 @@ function MultiStopPlanView({
                     onPress={() => {
                       const normalized = normalizeWebsiteUrl(stop.website);
                       if (!normalized) return;
-                      setBrowserTitle(stop.placeName);
-                      setBrowserUrl(normalized);
+                      onOpenBrowser(normalized, stop.placeName);
                     }}
                     activeOpacity={0.8}
                   >
@@ -1295,10 +1303,8 @@ function MultiStopPlanView({
         currentMode={currentMode}
         onCardRemoved={onCardRemoved}
         onScheduleSuccess={() => onClose()}
-        onOpenBrowser={(url, title) => {
-          setBrowserUrl(url);
-          setBrowserTitle(title);
-        }}
+        onOpenBrowser={onOpenBrowser}
+        onSchedulePickerModalVisibilityChange={onSchedulePickerModalVisibilityChange}
         onPaywallRequired={onPaywallRequired}
         canAccessCurated={canAccessCurated}
       />
@@ -1315,21 +1321,6 @@ function MultiStopPlanView({
         </View>
       )}
 
-      {/* In-app browser for reservations */}
-      <InAppBrowserModal
-        visible={browserUrl !== null}
-        url={browserUrl ?? ''}
-        title={browserTitle}
-        onClose={() => setBrowserUrl(null)}
-      />
-
-      {/* Full-screen image lightbox */}
-      <ImageLightbox
-        visible={lightbox.visible}
-        images={lightbox.images}
-        initialIndex={lightbox.initialIndex}
-        onClose={() => setLightbox(prev => ({ ...prev, visible: false }))}
-      />
     </View>
   );
 }
@@ -1414,6 +1405,28 @@ export default function ExpandedCardModal({
   const [ticketBrowserUrl, setTicketBrowserUrl] = useState<string | null>(null);
   const [browserUrl, setBrowserUrl] = useState<string | null>(null);
   const [browserTitle, setBrowserTitle] = useState('');
+  const [isSchedulePickerOpen, setIsSchedulePickerOpen] = useState(false);
+  const [curatedLightbox, setCuratedLightbox] = useState<{ visible: boolean; images: string[]; initialIndex: number }>({
+    visible: false,
+    images: [],
+    initialIndex: 0,
+  });
+  const anyChildModalOpen =
+    browserUrl !== null ||
+    ticketBrowserUrl !== null ||
+    isNightOutShareOpen ||
+    isSchedulePickerOpen ||
+    curatedLightbox.visible;
+
+  const handleRootSheetClose = useCallback(() => {
+    // ORCH-1022: while a child RN Modal/WebView is open, the root sheet is
+    // intentionally suppressed to free the native presentation slot. Swallow
+    // BaseBottomSheet's synthetic close so the card state is not torn down.
+    if (browserUrl !== null || ticketBrowserUrl !== null || isNightOutShareOpen || isSchedulePickerOpen || curatedLightbox.visible) {
+      return;
+    }
+    onClose();
+  }, [browserUrl, curatedLightbox.visible, isNightOutShareOpen, isSchedulePickerOpen, onClose, ticketBrowserUrl]);
 
   // Review navigation: horizontal swipe to cycle through reviewed cards
   const hasNavigation = onNavigateNext !== undefined || onNavigatePrevious !== undefined;
@@ -1455,6 +1468,12 @@ export default function ExpandedCardModal({
       setStrollData(undefined);
       setPicnicData(undefined);
       setSeatMapFailed(false);
+      setTicketBrowserUrl(null);
+      setBrowserUrl(null);
+      setBrowserTitle('');
+      setIsNightOutShareOpen(false);
+      setIsSchedulePickerOpen(false);
+      setCuratedLightbox({ visible: false, images: [], initialIndex: 0 });
     }
   }, [visible, card, viewerLoc?.lat, viewerLoc?.lng, effectiveTravelMode]);
 
@@ -1787,52 +1806,53 @@ export default function ExpandedCardModal({
     ) : undefined;
 
   return (
-    // META-ORCH-0991 Wave A — migrated onto BaseBottomSheet. wrapInRNModal=true
-    // preserves the ORCH-0908 z-stack above the custom tab bar / chat input.
-    // theme keyed on isNightOut reproduces the EXACT prior chrome (dark
-    // rgba(12,14,18,1) bg + rgba(255,255,255,0.30) handle; light #ffffff bg +
-    // rgba(0,0,0,0.30) handle) via per-consumer backgroundStyle/handleStyle so
-    // there is zero pixel drift. initialIndex=1 opens at the 90% snap. The
-    // review-nav header is the `header` slot; the scroll body is `children`
-    // (primitive owns BottomSheetScrollView). Child modals (InAppBrowser/Share)
-    // are RN Modals — moved to siblings of the sheet in this fragment; they
-    // still present in their own OS window over the sheet (position-independent).
     <>
-    <BaseBottomSheet
-      visible={visible}
-      onClose={onClose}
-      wrapInRNModal
-      theme={isNightOut ? 'dark' : 'light'}
-      snapPoints={glass.bottomSheet.snapPoints as unknown as (string | number)[]}
-      initialIndex={1}
-      backdropOpacity={0.55}
-      handleStyle={{
-        // [ORCH-0696 hotfix-3] Conditional chrome theme:
-        //   • Ticketmaster events → dark sheet (designs perfect per operator)
-        //   • Place / curated cards → light sheet (operator directive: cards
-        //     keep their original light theme; only chrome is new)
-        backgroundColor: isNightOut ? "rgba(255,255,255,0.30)" : "rgba(0,0,0,0.30)",
-        width: glass.bottomSheet.handle.width,
-        height: glass.bottomSheet.handle.height,
-      }}
-      backgroundStyle={{
-        backgroundColor: isNightOut ? "rgba(12, 14, 18, 1)" : "#ffffff",
-        borderTopLeftRadius: glass.bottomSheet.topRadius,
-        borderTopRightRadius: glass.bottomSheet.topRadius,
-        borderTopWidth: StyleSheet.hairlineWidth,
-        borderTopColor: isNightOut ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)",
-      }}
-      header={reviewNavHeader}
-      scrollMode="scroll"
-      accessibilityLabel={card.title}
-      scrollProps={{
-        style: styles.scrollView,
-        contentContainerStyle: [
-          styles.scrollContent,
-          { paddingBottom: Math.max(insets.bottom, 16) },
-        ],
-      }}
-    >
+      {/* META-ORCH-0991 Wave A — migrated onto BaseBottomSheet. wrapInRNModal=true
+          preserves the ORCH-0908 z-stack above the custom tab bar / chat input.
+          theme keyed on isNightOut reproduces the EXACT prior chrome (dark
+          rgba(12,14,18,1) bg + rgba(255,255,255,0.30) handle; light #ffffff bg +
+          rgba(0,0,0,0.30) handle) via per-consumer backgroundStyle/handleStyle so
+          there is zero pixel drift. initialIndex=1 opens at the 90% snap. The
+          review-nav header is the `header` slot; the scroll body is `children`
+          (primitive owns BottomSheetScrollView). ORCH-1022: child RN Modal
+          surfaces (browser/share/lightbox) are siblings in this fragment, and the
+          root sheet is gated off while they are open so iOS never co-presents two
+          RN-Modal-backed surfaces. */}
+      <BaseBottomSheet
+        visible={visible && !anyChildModalOpen}
+        onClose={handleRootSheetClose}
+        wrapInRNModal
+        theme={isNightOut ? 'dark' : 'light'}
+        snapPoints={glass.bottomSheet.snapPoints as unknown as (string | number)[]}
+        initialIndex={1}
+        backdropOpacity={0.55}
+        handleStyle={{
+          // [ORCH-0696 hotfix-3] Conditional chrome theme:
+          //   • Ticketmaster events → dark sheet (designs perfect per operator)
+          //   • Place / curated cards → light sheet (operator directive: cards
+          //     keep their original light theme; only chrome is new)
+          backgroundColor: isNightOut ? "rgba(255,255,255,0.30)" : "rgba(0,0,0,0.30)",
+          width: glass.bottomSheet.handle.width,
+          height: glass.bottomSheet.handle.height,
+        }}
+        backgroundStyle={{
+          backgroundColor: isNightOut ? "rgba(12, 14, 18, 1)" : "#ffffff",
+          borderTopLeftRadius: glass.bottomSheet.topRadius,
+          borderTopRightRadius: glass.bottomSheet.topRadius,
+          borderTopWidth: StyleSheet.hairlineWidth,
+          borderTopColor: isNightOut ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)",
+        }}
+        header={reviewNavHeader}
+        scrollMode="scroll"
+        accessibilityLabel={card.title}
+        scrollProps={{
+          style: styles.scrollView,
+          contentContainerStyle: [
+            styles.scrollContent,
+            { paddingBottom: Math.max(insets.bottom, 16) },
+          ],
+        }}
+      >
             {/* ORCH-0908: locked-in banner — renders for ANY card type (curated/event/place) when shared via lock-and-schedule */}
             {card && <LockedInBanner card={card} />}
 
@@ -1845,6 +1865,14 @@ export default function ExpandedCardModal({
                   onSave={onSave}
                   onShare={onShare}
                   onClose={onClose}
+                  onOpenBrowser={(url, title) => {
+                    setBrowserUrl(url);
+                    setBrowserTitle(title);
+                  }}
+                  onOpenImageLightbox={(images, initialIndex) => {
+                    setCuratedLightbox({ visible: true, images, initialIndex });
+                  }}
+                  onSchedulePickerModalVisibilityChange={setIsSchedulePickerOpen}
                   userPreferences={userPreferences}
                   currentMode={currentMode}
                   onCardRemoved={onCardRemoved}
@@ -2188,12 +2216,13 @@ export default function ExpandedCardModal({
                     setBrowserUrl(url);
                     setBrowserTitle(title);
                   }}
+                  onSchedulePickerModalVisibilityChange={setIsSchedulePickerOpen}
                   onPaywallRequired={onPaywallRequired}
                   canAccessCurated={canAccessCurated}
                 />
               </>
             ))}
-    </BaseBottomSheet>
+      </BaseBottomSheet>
 
       {/* META-ORCH-0991 Wave A — child RN Modals moved to siblings of the sheet.
           They render in their own OS overlay window regardless of tree position,
@@ -2215,6 +2244,13 @@ export default function ExpandedCardModal({
         url={browserUrl ?? ''}
         title={browserTitle}
         onClose={() => setBrowserUrl(null)}
+      />
+
+      <ImageLightbox
+        visible={curatedLightbox.visible}
+        images={curatedLightbox.images}
+        initialIndex={curatedLightbox.initialIndex}
+        onClose={() => setCuratedLightbox(prev => ({ ...prev, visible: false }))}
       />
 
       {isNightOut && nightOut && (

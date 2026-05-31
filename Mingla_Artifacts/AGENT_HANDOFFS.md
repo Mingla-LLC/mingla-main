@@ -1,5 +1,21 @@
 # Agent Handoffs
 
+## 2026-05-31 — ORCH-1022 [DM-shared card freeze + single-card Policies & Reservations dead taps] CLOSED PASS Grade A
+
+**Pipeline executed:** Codex `orchestrator-mingla` INTAKE + spawn → Codex `forensic-mingla` INVESTIGATE → Codex `implementor-mingla` IMPLEMENT → Codex `tester-mingla` TEST FAIL P1 (iOS Schedule picker still collided with root sheet) → Codex `implementor-mingla` REWORK → Codex `tester-mingla` RETEST PASS → Seth dev-build smoke PASS ("passes") → Codex `orchestrator-mingla` CLOSE.
+
+**Worktree:** `~/Desktop/mingla-orchs/ORCH-1022-[dm-shared-card-freeze-policies-reservations]` on branch `ORCH-1022-dm-shared-card-freeze-policies-reservations`.
+
+**Step 0.5 satisfied:** `npm run test:orch-1022` passes 8/8, including parent overlay aggregate, root-sheet gating, synthetic close swallow, curated browser/lightbox ownership, schedule-picker visibility callback, both ActionButtons call sites, and reset-on-close. Fail-on-revert against the previous implementation fails 5/8. `npm run test:orch-0908-chat` passes 6/6.
+
+**Close gates:** tester retest PASS with zero P0/P1; Seth runtime smoke on `exp://172.20.9.90:8084` reported "passes"; zero `[ORCH-1022-DIAG]`; no backend/migration/Vercel deploy; app-mobile OTA deferred under `project_ota_deferred_until_new_build`.
+
+**Artifacts:** investigation, implementation, initial QA, and retest QA reports live under `Mingla_Artifacts/reports/`. Close note: `Mingla_Artifacts/CLOSE_NOTE_ORCH-1022_DM_SHARED_CARD_FREEZE_POLICIES_RESERVATIONS.md`.
+
+**Residuals:** optional Android manual smoke only; ORCH-0910 curated chat payload failures remain out of scope.
+
+---
+
 ## 2026-05-31 — ORCH-1023 [Scheduling picker regression after decisive scheduling fix] CLOSED PASS Grade A
 
 **Pipeline executed (worktree `~/Desktop/mingla-orchs/ORCH-1023-[scheduling-picker-regression]` on branch `ORCH-1023-scheduling-picker-regression`):** operator report -> Codex `implementor-mingla` hotfix -> Codex `tester-mingla` PASS -> Seth app smoke PASS ("works now, schedule is fixed") -> Codex `orchestrator-mingla` CLOSE.
@@ -11,7 +27,6 @@
 **Close gates:** focused regression PASS; scheduling source/single-card/curated-stop Deno tests PASS (12/12); scoped Expo lint PASS; `git diff --check` PASS; zero `[ORCH-1023-DIAG]` markers; no migration; no Supabase edge deploy; no Vercel `[deploy]` tag. Broad `app-mobile` `tsc` remains blocked by unrelated existing repo-wide debt outside this hotfix.
 
 ---
-
 ## 2026-05-30 — ORCH-1021 [Decisive scheduling availability for curated + single cards] CLOSED PASS Grade A
 
 **Pipeline executed (worktree `~/Desktop/mingla-orchs/ORCH-1021-[curated-stop-timezone-false-open]` on branch `ORCH-1021-curated-stop-timezone-false-open`):** operator report → Codex `orchestrator-mingla` takeover → Codex `implementor-mingla` implementation → Codex `tester-mingla` FAIL (P1 ActionButtons curated ordering + P1 PracticalDetails type drift) → Codex `implementor-mingla` P1 rework → Codex `tester-mingla` CONDITIONAL PASS → Seth app smoke PASS ("works great now") → Codex `tester-mingla` final QA receipt → Codex `orchestrator-mingla` CLOSE.

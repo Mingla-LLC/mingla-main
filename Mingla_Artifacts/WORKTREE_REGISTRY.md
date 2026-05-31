@@ -39,6 +39,7 @@ Reference: [WORKTREE_STRATEGY.md](WORKTREE_STRATEGY.md).
 
 | Worktree path | Branch | ORCH-ID | Reaped | Merged via PR |
 |---------------|--------|---------|--------|---------------|
+| `~/Desktop/mingla-orchs/ORCH-1022-[dm-shared-card-freeze-policies-reservations]/` | `ORCH-1022-dm-shared-card-freeze-policies-reservations` | ORCH-1022 | 2026-05-31 | PR #287 |
 | `~/Desktop/mingla-orchs/ORCH-0975-[consumer-notifications-redesign]/` | `ORCH-0975-consumer-notifications-redesign` | ORCH-0975 | 2026-05-25 | (PR on push) |
 | `~/Desktop/mingla-orchs/ORCH-0963-[public-brand-page-events-vs-trip]/` | `ORCH-0963-public-brand-page-events-vs-trip` | ORCH-0963 | 2026-05-25 | (PR on push) |
 | `~/Desktop/mingla-orchs/0957-[storage-image-transform-overage]/` | `0957-storage-image-transform-overage` | ORCH-0957 | 2026-05-25 | (pending PR merge) |

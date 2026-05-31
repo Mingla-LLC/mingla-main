@@ -1,5 +1,7 @@
 # Open Investigations
 
+> **2026-05-31 — ORCH-1022 [DM-shared card freeze + single-card Policies & Reservations dead taps] COMPLETED + CLOSED PASS Grade A.** No open investigation/rework remains for the modal-collision fix. Evidence lives in `Mingla_Artifacts/reports/INVESTIGATION_ORCH-1022_DM_SHARED_CARD_FREEZE_POLICIES_RESERVATIONS.md`, `IMPLEMENTATION_ORCH-1022_DM_SHARED_CARD_FREEZE_POLICIES_RESERVATIONS.md`, `TEST_REPORT_ORCH-1022_DM_SHARED_CARD_FREEZE_POLICIES_RESERVATIONS.md`, and `TEST_REPORT_ORCH-1022_DM_SHARED_CARD_FREEZE_POLICIES_RESERVATIONS_RETEST.md`. Optional Android smoke and separate ORCH-0910 curated chat payload failures are not ORCH-1022 blockers.
+
 > **2026-05-31 — ORCH-1023 [Scheduling picker regression] CLOSED PASS — no open investigation/rework remains.** This was a fast hotfix/QA loop from an operator-reported picker regression after ORCH-1021. Final evidence lives in `Mingla_Artifacts/reports/QA_ORCH-1023_SCHEDULING_PICKER_REGRESSION.md`; close banner lives in WORLD_MAP. No further forensics/spec/implementation/test handoff is pending.
 
 > **2026-05-30 — ORCH-1021 [Decisive scheduling availability for curated + single cards] CLOSED PASS — no open investigation/rework remains.** This was a fast rework/QA loop from an operator-reported scheduling false-open, not a queued open investigation. Final evidence lives in `Mingla_Artifacts/reports/QA_FINAL_ORCH-1021_DECISIVE_CURATED_AND_SINGLE_SCHEDULING.md`; close banner lives in WORLD_MAP. No further forensics/spec/implementation/test handoff is pending.
