@@ -41,6 +41,7 @@ const repoRoot = path.resolve(__dirname, "../../..");
 // + a new ORCH banner.
 const ALLOWED_WRITER_FILES = new Set([
   "supabase/functions/run-place-intelligence-trial/index.ts",
+  "supabase/functions/run-business-place-authoring-pipeline/index.ts",
 ]);
 
 // Directories to scan for write payloads. Excludes admin UI (read-only by

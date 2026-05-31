@@ -10,9 +10,7 @@ export function venueStepError(
 ): string | null {
   switch (step) {
     case 0:
-      if (d.googlePlaceId === null || d.googlePlaceId.trim() === "") {
-        return "Pick your venue address from the suggestions.";
-      }
+      if (d.formattedAddress.trim().length === 0) return "Address is required.";
       if (d.lat === null || d.lng === null) return "Address is missing location.";
       return null;
     case 1: {
@@ -21,7 +19,6 @@ export function venueStepError(
       return null;
     }
     case 2:
-      if (d.photoUris.length < 1) return "Add at least one photo.";
       return null;
     case 3: {
       for (const h of d.hours) {

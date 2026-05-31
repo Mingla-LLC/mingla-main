@@ -76,6 +76,7 @@ export const ExperienceReviewCards: React.FC<ExperienceReviewCardsProps> = ({
         <ExperienceConfirmationCard
           key={row.id}
           args={row.tool_args}
+          expiresAt={row.expires_at}
           isExecuting={isExecuting && activeId === row.id}
           onAccept={(edited) => void handleAccept(row.id, edited)}
           onReject={() => void handleReject(row.id)}

@@ -40,9 +40,12 @@ describe("ORCH-1001 CoverPicker web/native video-trim split", () => {
     expect(webStub).not.toContain("getEnforcing");
   });
 
-  test("the native base file is the ONLY holder of the eager import", () => {
+  test("the native base file lazy-requires the package without a top-level value import", () => {
     const nativeFile = repoFile("src/components/ui/coverPickerVideoTrimEditor.ts");
-    expect(nativeFile).toMatch(/from\s+["']react-native-video-trim["']/);
+    expect(nativeFile).not.toMatch(
+      /(?:^|\n)\s*import\s+(?!type\b)[\s\S]*?from\s+["']react-native-video-trim["']/,
+    );
+    expect(nativeFile).toMatch(/require\(\s*["']react-native-video-trim["']\s*\)/);
   });
 
   test("web stub resolves to null without throwing (no in-app trim on web)", async () => {

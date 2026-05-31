@@ -36,6 +36,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BrandDeleteSheet } from "../../src/components/brand/BrandDeleteSheet";
 import { BrandSwitcherSheet } from "../../src/components/brand/BrandSwitcherSheet";
+import { DeckReadinessCard } from "../../src/components/venue/DeckReadinessCard";
 import {
   OfferingChooser,
   routeForOffering,
@@ -68,6 +69,7 @@ import {
 } from "../../src/store/currentBrandStore";
 import { useCurrentBrand } from "../../src/hooks/useCurrentBrand";
 import { useCurrentBrandRecovery } from "../../src/hooks/useCurrentBrandRecovery";
+import { useBrandPlacePipelineState } from "../../src/hooks/useBrandPlacePipelineState";
 import { useResponsiveLayout } from "../../src/hooks/useResponsiveLayout";
 import { brandKeys, useBrands } from "../../src/hooks/useBrands";
 import {
@@ -86,6 +88,7 @@ import type { Trip } from "../../src/services/tripsService";
 // ORCH-0865 REWORK 5 — canonical routing helper, ban hardcoded /event/{id}
 import { routeForEventRowDefensive } from "../../src/utils/routeForEventRow";
 import { pickHomeNextAction } from "../../src/utils/homeNextAction";
+import { routeForPipelineStateFix } from "../../src/utils/deckReadinessRoutes";
 
 import { formatCurrencyRound } from "../../src/utils/currency";
 import { formatDraftDateLine } from "../../src/utils/eventDateDisplay";
@@ -140,6 +143,7 @@ export default function HomeTab(): React.ReactElement {
   const brandRecovery = useCurrentBrandRecovery();
   useServerDraftsForBrand(currentBrand?.id ?? null);
   const upcoming = useUpcomingForBrand(currentBrand?.id ?? null);
+  const pipelineState = useBrandPlacePipelineState(currentBrand?.id ?? null);
   const drafts = useDraftsForBrand(currentBrand?.id ?? null);
   const [sheetVisible, setSheetVisible] = useState<boolean>(false);
   // ORCH-0826 M0: universal creator sheet (Create event/experience/trip)
@@ -379,6 +383,20 @@ export default function HomeTab(): React.ReactElement {
     router.push(nextAction.ctaRoute as never);
   }, [nextAction, currentBrand, brands.length, router]);
 
+  const handleDeckReadinessFix = useCallback(
+    (fix: string): void => {
+      if (currentBrand === null) return;
+      router.push(
+        routeForPipelineStateFix({
+          brandId: currentBrand.id,
+          state: pipelineState.data,
+          fix,
+        }) as never,
+      );
+    },
+    [currentBrand, pipelineState.data, router],
+  );
+
   const handleOfferingSelect = useCallback(
     (offering: OfferingKind): void => {
       if (currentBrand === null) {
@@ -482,12 +500,19 @@ export default function HomeTab(): React.ReactElement {
           ) : (
             <>
               {/* ORCH-0965 — rule-ladder card. Renders ABOVE the KPI grid when
-                  a rung fires AND no live offering is present (live hero takes
-                  precedence; if a brand is healthy enough to have a live event,
-                  the rule ladder yields the floor to that signal except for the
-                  physical-no-address rung which surfaces alongside). */}
-              {nextAction !== null && (upcoming.counts.live === 0 || nextAction.rung === 4) ? (
+                  a rung fires AND no live offering is present; if a brand is
+                  healthy enough to have a live event, the rule ladder yields
+                  the floor to that signal. */}
+              {nextAction !== null && upcoming.counts.live === 0 ? (
                 <HomeNextActionCard action={nextAction} onPress={handleNextActionPress} />
+              ) : null}
+              {pipelineState.data !== null &&
+              pipelineState.data !== undefined &&
+              pipelineState.data.status !== "draft" ? (
+                <DeckReadinessCard
+                  state={pipelineState.data}
+                  onFix={handleDeckReadinessFix}
+                />
               ) : null}
               <View style={styles.desktopKpiGrid}>
                 <View style={styles.desktopKpiCell}>
@@ -808,7 +833,7 @@ export default function HomeTab(): React.ReactElement {
         // orch-0974-lock-pane:begin-mobile-populated; META-ORCH-0972 — rule-ladder card renders only before a live offering exists, with the no_offerings rung yielding the unified OfferingChooser.
         <View style={styles.mobileBody}>
           <View style={styles.lockedZone}>
-            {nextAction !== null && (upcoming.counts.live === 0 || nextAction.rung === 4) && !isSmallPhoneWithLiveHero ? (
+            {nextAction !== null && upcoming.counts.live === 0 && !isSmallPhoneWithLiveHero ? (
               nextAction.kind === "no_offerings" ? (
                 <View style={styles.nextActionChooser}>
                   <OfferingChooser
@@ -958,7 +983,7 @@ export default function HomeTab(): React.ReactElement {
             showsVerticalScrollIndicator={false}
           />
 
-          {nextAction !== null && (upcoming.counts.live === 0 || nextAction.rung === 4) && isSmallPhoneWithLiveHero ? (
+          {nextAction !== null && upcoming.counts.live === 0 && isSmallPhoneWithLiveHero ? (
             <View style={styles.smallPhoneLadderHost}>
               <HomeNextActionCard action={nextAction} onPress={handleNextActionPress} />
             </View>

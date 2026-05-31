@@ -196,6 +196,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     isBrand ? "brand" : "event",
   );
   const lastVideoUploadFileRef = useRef<EventCoverVideoUploadFile | null>(null);
+  const lastEmittedProcessedVideoUrlRef = useRef<string | null>(null);
 
   const brandCover = useBrandCoverUpload();
 
@@ -292,6 +293,10 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     if (videoUpload.stage.phase !== "ready" || videoUpload.processedUrl === null) {
       return;
     }
+    if (lastEmittedProcessedVideoUrlRef.current === videoUpload.processedUrl) {
+      return;
+    }
+    lastEmittedProcessedVideoUrlRef.current = videoUpload.processedUrl;
     setMediaDisplayError(null);
     emitChange({
       coverMediaUrl: videoUpload.processedUrl,

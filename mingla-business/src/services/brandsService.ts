@@ -162,7 +162,7 @@ export interface CreateVenueBrandPendingInput {
   tagline?: string;
   bio?: string;
   placePoolId?: string | null;
-  googlePlaceId: string;
+  googlePlaceId?: string | null;
   lat: number;
   lng: number;
   city: string | null;
@@ -208,7 +208,7 @@ async function invokeVenueClaimSubmittedEmail(brandId: string): Promise<void> {
 }
 
 /**
- * Ve1 — atomic create via `biz_create_venue_brand_pending_review` + confirmation email.
+ * Ve1/Sub-E — atomic create via venue authoring RPC + confirmation email.
  */
 export async function createVenueBrandPendingReview(
   input: CreateVenueBrandPendingInput,
@@ -216,12 +216,12 @@ export async function createVenueBrandPendingReview(
 ): Promise<Brand> {
   const description = joinBrandDescription(input.tagline, input.bio);
   const { data, error } = await supabase.rpc(
-    "biz_create_venue_brand_pending_review",
+    "biz_create_venue_brand_authoring",
     {
       p_name: input.name,
       p_slug: input.slug,
       p_description: description,
-      p_google_place_id: input.googlePlaceId,
+      p_google_place_id: input.googlePlaceId ?? "",
       p_lat: input.lat,
       p_lng: input.lng,
       p_city: input.city ?? "",
@@ -244,7 +244,7 @@ export async function createVenueBrandPendingReview(
         throw new SlugCollisionError(input.slug);
       }
       throw new Error(
-        "This place is already in our verification queue with the same Google location. Contact support if you need help.",
+        "This place is already in our verification queue. Contact support if you need help.",
       );
     }
     throw error;

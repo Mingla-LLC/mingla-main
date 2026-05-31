@@ -2,10 +2,12 @@
  * Ve1 — 7-step venue onboarding wizard (after category selection).
  */
 
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
+  Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 // ORCH-0892-B v2: ScrollView via SmartScrollView wrapper. KeyboardAvoidingView
@@ -22,14 +24,23 @@ import {
 import { useAuth } from "../../context/AuthContext";
 import {
   useCreateVenueBrand,
-  useUpdateBrand,
   SlugCollisionError,
 } from "../../hooks/useBrands";
-import { joinBrandDescription } from "../../services/brandMapping";
-import { uploadBrandCover } from "../../services/brandCoverService";
+import {
+  confirmAiOutputs,
+  refreshDeckReadiness,
+  runTier2Pipeline,
+  syncHeroMedia,
+  upsertTier1Place,
+  type PipelineCoachingCard,
+} from "../../services/businessPlaceAuthoringService";
+import type { Brand } from "../../types/brand";
+import type { DeckReadinessFocus } from "../../utils/deckReadinessRoutes";
 import { useDraftVenueStore } from "../../store/draftVenueStore";
 import { venueStepError } from "./venueWizardValidation";
 import { Button } from "../ui/Button";
+import { CoverPickerSheet } from "../ui/CoverPickerSheet";
+import type { CoverPatch } from "../ui/CoverPicker";
 import { IconChrome } from "../ui/IconChrome";
 import { Stepper, type StepperStep } from "../ui/Stepper";
 import { VenueStep1Address } from "./VenueStep1Address";
@@ -44,10 +55,10 @@ const TOTAL = 7;
 const STEPPER_STEPS: StepperStep[] = [
   { id: "s0", label: "Address" },
   { id: "s1", label: "Name" },
-  { id: "s2", label: "Photos" },
+  { id: "s2", label: "Cover" },
   { id: "s3", label: "Hours" },
   { id: "s4", label: "Contact" },
-  { id: "s5", label: "Story" },
+  { id: "s5", label: "Inputs" },
   { id: "s6", label: "Review" },
 ];
 
@@ -64,12 +75,15 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const createVenue = useCreateVenueBrand();
-  const updateBrandMutation = useUpdateBrand();
 
   const [step, setStep] = useState(0);
   const [showErr, setShowErr] = useState(false);
   const [slugCollision, setSlugCollision] = useState<string | null>(null);
   const [submitErr, setSubmitErr] = useState<string | null>(null);
+  const [createdVenue, setCreatedVenue] = useState<{
+    brand: Brand;
+    placePoolId: string;
+  } | null>(null);
 
   const draft = useDraftVenueStore();
   const poolLinked = draft.placePoolId !== null;
@@ -101,7 +115,6 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
       return;
     }
     if (
-      st.googlePlaceId === null ||
       st.lat === null ||
       st.lng === null ||
       st.venueCategory === null
@@ -120,10 +133,6 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
         }
       }
       setShowErr(false);
-      const existingDesc = joinBrandDescription(st.tagline, st.description);
-      const firstUri = st.photoUris[0];
-      const remoteCover =
-        firstUri !== undefined && firstUri.startsWith("https://");
       const brand = await createVenue.mutateAsync({
         accountId: user.id,
         name: st.displayName.trim(),
@@ -142,34 +151,33 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
           email: st.contactEmail.trim() || undefined,
           phone: st.contactPhone.trim() || undefined,
         },
-        coverMediaUrl: remoteCover ? firstUri : null,
-        coverMediaType: remoteCover ? "image" : null,
+        coverMediaUrl: null,
+        coverMediaType: null,
         hours: st.hours,
       });
 
-      let coverWarning: string | null = null;
-      if (firstUri !== undefined && !remoteCover) {
-        try {
-          const up = await uploadBrandCover(
-            brand.id,
-            { uri: firstUri },
-            {},
-          );
-          await updateBrandMutation.mutateAsync({
-            brandId: brand.id,
-            accountId: user.id,
-            existingDescription: existingDesc,
-            patch: {
-              coverMediaUrl: up.publicUrl,
-              coverMediaType: up.mediaType === "gif" ? "gif" : "image",
-            },
-          });
-        } catch {
-          coverWarning =
-            "Your venue was submitted, but we couldn't save the cover photo. You can add one after approval.";
-        }
+      const tier1 = await upsertTier1Place({
+        brandId: brand.id,
+        selectedPlacePoolId: st.placePoolId,
+        draft: {
+          name: st.displayName.trim(),
+          address: st.formattedAddress.trim(),
+          lat: st.lat,
+          lng: st.lng,
+          city: st.city,
+          countryCode: st.countryCode,
+          venueCategory: st.venueCategory,
+          coverMediaUrl: null,
+          coverMediaType: null,
+          tagline: st.tagline.trim(),
+          description: st.description.trim(),
+          hours: st.hours,
+        },
+      });
+      if (tier1.place_pool_id.length === 0) {
+        throw new Error("place_pool_link_missing");
       }
-      onDone(coverWarning);
+      setCreatedVenue({ brand, placePoolId: tier1.place_pool_id });
     } catch (e) {
       if (e instanceof SlugCollisionError) {
         setSlugCollision(
@@ -186,7 +194,18 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
         e instanceof Error ? e.message : "Could not submit. Try again.",
       );
     }
-  }, [createVenue, onDone, updateBrandMutation, user?.id]);
+  }, [createVenue, user?.id]);
+
+  if (createdVenue !== null && user?.id !== undefined) {
+    return (
+      <VenueDeckReadinessSetup
+        accountId={user.id}
+        brand={createdVenue.brand}
+        placePoolId={createdVenue.placePoolId}
+        onDone={() => onDone(null)}
+      />
+    );
+  }
 
   const body = ((): React.ReactElement => {
     switch (step) {
@@ -281,6 +300,389 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
   );
 };
 
+export interface VenueDeckReadinessSetupProps {
+  accountId: string;
+  brand: Brand;
+  placePoolId: string;
+  onDone: () => void;
+  focus?: DeckReadinessFocus;
+  initialTier2?: Record<string, unknown>;
+  initialPendingBio?: string | null;
+  initialFacets?: Record<string, boolean | null>;
+  initialCoaching?: PipelineCoachingCard[];
+  initialCover?: CoverPatch | null;
+}
+
+const VIBE_CHIPS = [
+  "date night",
+  "small group",
+  "premium",
+  "low-key",
+  "celebration",
+] as const;
+
+const EMPTY_COVER: CoverPatch = {
+  coverMediaUrl: null,
+  coverMediaType: null,
+  coverMediaProvider: null,
+  coverMediaSourceUrl: null,
+  coverMediaCredit: null,
+  coverMediaCreditUrl: null,
+  coverMediaAlt: null,
+};
+const EMPTY_TIER2: Record<string, unknown> = {};
+const EMPTY_FACETS: Record<string, boolean | null> = {};
+const EMPTY_COACHING: PipelineCoachingCard[] = [];
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
+}
+
+function stringValue(value: unknown, fallback: string): string {
+  return typeof value === "string" ? value : fallback;
+}
+
+export function VenueDeckReadinessSetup({
+  accountId,
+  brand,
+  placePoolId,
+  onDone,
+  focus = "review",
+  initialTier2 = EMPTY_TIER2,
+  initialPendingBio = null,
+  initialFacets = EMPTY_FACETS,
+  initialCoaching = EMPTY_COACHING,
+  initialCover = null,
+}: VenueDeckReadinessSetupProps): React.ReactElement {
+  const [coverVisible, setCoverVisible] = useState(false);
+  const [cover, setCover] = useState<CoverPatch>({
+    ...EMPTY_COVER,
+    coverMediaUrl:
+      initialCover?.coverMediaUrl ?? brand.coverMediaUrl ?? null,
+    coverMediaType:
+      initialCover?.coverMediaType ?? brand.coverMediaType ?? null,
+  });
+  const [website, setWebsite] = useState(
+    stringValue(initialTier2.website, ""),
+  );
+  const [priceTier, setPriceTier] = useState(
+    stringValue(initialTier2.price_tier, "mid"),
+  );
+  const [selectedVibes, setSelectedVibes] = useState<string[]>(
+    stringArray(initialTier2.vibe_chips),
+  );
+  const [generatedBio, setGeneratedBio] = useState(initialPendingBio ?? "");
+  const [editedBio, setEditedBio] = useState(initialPendingBio ?? "");
+  const [facets, setFacets] = useState<Record<string, boolean | null>>(
+    initialFacets,
+  );
+  const [coaching, setCoaching] = useState<PipelineCoachingCard[]>(initialCoaching);
+  const [busy, setBusy] = useState<"ai" | "confirm" | "refresh" | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    setWebsite(stringValue(initialTier2.website, ""));
+    setPriceTier(stringValue(initialTier2.price_tier, "mid"));
+    setSelectedVibes(stringArray(initialTier2.vibe_chips));
+    setGeneratedBio(initialPendingBio ?? "");
+    setEditedBio(initialPendingBio ?? "");
+    setFacets(initialFacets);
+    setCoaching(initialCoaching);
+  }, [initialCoaching, initialFacets, initialPendingBio, initialTier2]);
+
+  useEffect(() => {
+    if (focus === "cover") setCoverVisible(true);
+  }, [focus]);
+
+  const buildTier2 = useCallback(
+    () => ({
+      website: website.trim() || null,
+      price_tier: priceTier,
+      vibe_chips: selectedVibes,
+      operator_inputs: {
+        tagline: brand.tagline ?? null,
+        description: brand.bio ?? null,
+      },
+    }),
+    [brand.bio, brand.tagline, priceTier, selectedVibes, website],
+  );
+
+  const handleCoverChange = useCallback(
+    (patch: CoverPatch): void => {
+      setCover(patch);
+      void syncHeroMedia({
+        brandId: brand.id,
+        placePoolId,
+        coverMediaUrl: patch.coverMediaUrl,
+        coverMediaType: patch.coverMediaType,
+      }).catch((error) => {
+        setMessage(
+          error instanceof Error
+            ? error.message
+            : "Cover saved, but deck readiness did not sync yet.",
+        );
+      });
+    },
+    [brand.id, placePoolId],
+  );
+
+  const toggleVibe = useCallback((vibe: string): void => {
+    setSelectedVibes((prev) =>
+      prev.includes(vibe)
+        ? prev.filter((v) => v !== vibe)
+        : [...prev, vibe],
+    );
+  }, []);
+
+  const handleRunAi = useCallback(async (): Promise<void> => {
+    setBusy("ai");
+    setMessage(null);
+    try {
+      const result = await runTier2Pipeline({
+        brandId: brand.id,
+        placePoolId,
+        tier2: buildTier2(),
+      });
+      setGeneratedBio(result.generated_bio);
+      setEditedBio(result.generated_bio);
+      setFacets(result.facets);
+      setCoaching(result.coaching);
+      setMessage("AI draft ready. Confirm or edit the bio before it goes public.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "AI setup failed.");
+    } finally {
+      setBusy(null);
+    }
+  }, [brand.id, buildTier2, placePoolId]);
+
+  const handleConfirm = useCallback(async (): Promise<void> => {
+    if (editedBio.trim().length < 20) {
+      setMessage("Confirm a public bio of at least 20 characters.");
+      return;
+    }
+    setBusy("confirm");
+    setMessage(null);
+    try {
+      const result = await confirmAiOutputs({
+        brandId: brand.id,
+        placePoolId,
+        salesBio: editedBio.trim(),
+        facets,
+        tier2: buildTier2(),
+      });
+      setCoaching(result.coaching);
+      if (result.status !== "deck_eligible") {
+        setMessage(
+          result.coaching[0]?.body ??
+            "One more fix is needed before this venue is deck-ready.",
+        );
+        return;
+      }
+      onDone();
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : "Could not confirm AI outputs.",
+      );
+    } finally {
+      setBusy(null);
+    }
+  }, [brand.id, buildTier2, editedBio, facets, onDone, placePoolId]);
+
+  const handleRefresh = useCallback(async (): Promise<void> => {
+    setBusy("refresh");
+    setMessage(null);
+    try {
+      const result = await refreshDeckReadiness({
+        brandId: brand.id,
+        placePoolId,
+      });
+      setCoaching(result.coaching);
+      setMessage(
+        result.status === "deck_eligible"
+          ? "Deck readiness passed."
+          : result.coaching[0]?.body ?? "Review the remaining deck-readiness tasks.",
+      );
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : "Could not refresh deck readiness.",
+      );
+    } finally {
+      setBusy(null);
+    }
+  }, [brand.id, placePoolId]);
+
+  return (
+    <View style={styles.root}>
+      <View style={styles.deckHeader}>
+        <Text style={styles.deckTitle}>Finish deck readiness</Text>
+        <Text style={styles.deckBody}>
+          Add a hero cover, answer the Tier 2 signals, then approve the AI bio.
+        </Text>
+      </View>
+
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.deckContent}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.deckBlock}>
+          <Text style={styles.blockTitle}>Hero media</Text>
+          <Text style={styles.blockBody}>
+            A saved hero video earns the business-video signal boost; photos
+            satisfy the deck visual requirement.
+          </Text>
+          <Button
+            label={cover.coverMediaUrl === null ? "Add hero cover" : "Change hero cover"}
+            variant="secondary"
+            size="md"
+            leadingIcon="upload"
+            onPress={() => setCoverVisible(true)}
+          />
+        </View>
+
+        {focus === "basics" || focus === "hours" ? (
+          <View style={styles.deckBlock}>
+            <Text style={styles.blockTitle}>
+              {focus === "hours" ? "Confirm opening hours" : "Review venue basics"}
+            </Text>
+            <Text style={styles.blockBody}>
+              {focus === "hours"
+                ? "Use the hours you entered during venue setup, then refresh the deck check. If hours changed, update the venue profile before refreshing."
+                : "Confirm the venue name and map location are correct, then refresh the deck check."}
+            </Text>
+            <Button
+              label={busy === "refresh" ? "Refreshing..." : "Refresh deck check"}
+              variant="secondary"
+              size="md"
+              loading={busy === "refresh"}
+              disabled={busy !== null}
+              onPress={() => void handleRefresh()}
+            />
+          </View>
+        ) : null}
+
+        <View style={styles.deckBlock}>
+          <Text style={styles.blockTitle}>Tier 2 signals</Text>
+          <TextInput
+            value={website}
+            onChangeText={setWebsite}
+            placeholder="Website"
+            placeholderTextColor={textTokens.tertiary}
+            style={styles.input}
+            autoCapitalize="none"
+            keyboardType="url"
+          />
+          <View style={styles.chipRow}>
+            {["budget", "mid", "premium"].map((tier) => (
+              <Pressable
+                key={tier}
+                onPress={() => setPriceTier(tier)}
+                style={[styles.chip, priceTier === tier && styles.chipActive]}
+              >
+                <Text style={[styles.chipText, priceTier === tier && styles.chipTextActive]}>
+                  {tier}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+          <View style={styles.chipRow}>
+            {VIBE_CHIPS.map((vibe) => {
+              const selected = selectedVibes.includes(vibe);
+              return (
+                <Pressable
+                  key={vibe}
+                  onPress={() => toggleVibe(vibe)}
+                  style={[styles.chip, selected && styles.chipActive]}
+                >
+                  <Text style={[styles.chipText, selected && styles.chipTextActive]}>
+                    {vibe}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <Button
+            label={busy === "ai" ? "Generating..." : "Generate AI bio and scores"}
+            variant="primary"
+            size="md"
+            leadingIcon="sparkle"
+            loading={busy === "ai"}
+            disabled={busy !== null}
+            onPress={() => void handleRunAi()}
+          />
+        </View>
+
+        {generatedBio.length > 0 ? (
+          <View style={styles.deckBlock}>
+            <Text style={styles.blockTitle}>Confirm AI bio</Text>
+            <TextInput
+              value={editedBio}
+              onChangeText={setEditedBio}
+              multiline
+              textAlignVertical="top"
+              placeholder="AI-generated sales bio"
+              placeholderTextColor={textTokens.tertiary}
+              style={[styles.input, styles.bioInput]}
+            />
+            <Button
+              label={busy === "confirm" ? "Confirming..." : "Confirm deck outputs"}
+              variant="primary"
+              size="md"
+              loading={busy === "confirm"}
+              disabled={busy !== null}
+              onPress={() => void handleConfirm()}
+            />
+          </View>
+        ) : null}
+
+        <View style={styles.deckBlock}>
+          <Text style={styles.blockTitle}>Deck check</Text>
+          <Text style={styles.blockBody}>
+            Refresh after adding media, website, hours, or confirming the AI story.
+          </Text>
+          <Button
+            label={busy === "refresh" ? "Refreshing..." : "Refresh deck check"}
+            variant="secondary"
+            size="md"
+            loading={busy === "refresh"}
+            disabled={busy !== null}
+            onPress={() => void handleRefresh()}
+          />
+        </View>
+
+        {coaching.length > 0 ? (
+          <View style={styles.deckBlock}>
+            <Text style={styles.blockTitle}>Why you're not in the deck yet</Text>
+            {coaching.map((card) => (
+              <View key={`${card.code}-${card.fix}`} style={styles.coachCard}>
+                <Text style={styles.coachTitle}>{card.title}</Text>
+                <Text style={styles.coachBody}>{card.body}</Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
+
+        {message !== null ? <Text style={styles.submitErr}>{message}</Text> : null}
+      </ScrollView>
+
+      <CoverPickerSheet
+        visible={coverVisible}
+        onClose={() => setCoverVisible(false)}
+        target={{
+          kind: "brand",
+          brandId: brand.id,
+          accountId,
+          existingDescription:
+            [brand.tagline, brand.bio].filter(Boolean).join("\n\n") || null,
+        }}
+        initial={cover}
+        onCoverChange={handleCoverChange}
+        onShowToast={setMessage}
+      />
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   root: {
     flex: 1,
@@ -316,6 +718,104 @@ const styles = StyleSheet.create({
   },
   scroll: {
     flex: 1,
+  },
+  deckHeader: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.md,
+    gap: spacing.xs,
+  },
+  deckTitle: {
+    fontSize: typography.h3.fontSize,
+    fontWeight: typography.h3.fontWeight,
+    color: textTokens.primary,
+  },
+  deckBody: {
+    fontSize: typography.bodySm.fontSize,
+    color: textTokens.secondary,
+    lineHeight: 20,
+  },
+  deckContent: {
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.xl,
+  },
+  deckBlock: {
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.06)",
+  },
+  blockTitle: {
+    fontSize: typography.body.fontSize,
+    fontWeight: "700",
+    color: textTokens.primary,
+  },
+  blockBody: {
+    fontSize: typography.bodySm.fontSize,
+    color: textTokens.secondary,
+    lineHeight: 20,
+  },
+  input: {
+    minHeight: 48,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    borderRadius: 12,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: "rgba(0,0,0,0.18)",
+    color: textTokens.primary,
+    fontSize: typography.body.fontSize,
+  },
+  bioInput: {
+    minHeight: 150,
+  },
+  chipRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
+  chip: {
+    minHeight: 36,
+    justifyContent: "center",
+    paddingHorizontal: spacing.md,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.14)",
+    backgroundColor: "rgba(255,255,255,0.05)",
+  },
+  chipActive: {
+    borderColor: "rgba(255,138,76,0.7)",
+    backgroundColor: "rgba(255,138,76,0.16)",
+  },
+  chipText: {
+    fontSize: typography.caption.fontSize,
+    color: textTokens.secondary,
+    textTransform: "capitalize",
+  },
+  chipTextActive: {
+    color: textTokens.primary,
+    fontWeight: "700",
+  },
+  coachCard: {
+    gap: spacing.xs,
+    padding: spacing.sm,
+    borderRadius: 10,
+    backgroundColor: "rgba(0,0,0,0.16)",
+  },
+  coachTitle: {
+    fontSize: typography.bodySm.fontSize,
+    fontWeight: "700",
+    color: textTokens.primary,
+  },
+  coachBody: {
+    fontSize: typography.caption.fontSize,
+    color: textTokens.secondary,
+    lineHeight: 18,
+  },
+  submitErr: {
+    fontSize: typography.caption.fontSize,
+    color: "#F59E0B",
   },
   dock: {
     paddingHorizontal: spacing.lg,

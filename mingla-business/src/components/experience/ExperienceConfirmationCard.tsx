@@ -17,6 +17,7 @@ import { GlassChrome } from "../ui/GlassChrome";
 
 export interface ExperienceConfirmationCardProps {
   args: Record<string, unknown>;
+  expiresAt?: string;
   isExecuting: boolean;
   onAccept: (editedArgs?: Record<string, unknown>) => void;
   onReject: () => void;
@@ -54,6 +55,7 @@ function formatPriceRange(args: Record<string, unknown>): string | null {
 
 export const ExperienceConfirmationCard: React.FC<ExperienceConfirmationCardProps> = ({
   args,
+  expiresAt,
   isExecuting,
   onAccept,
   onReject,
@@ -80,6 +82,8 @@ export const ExperienceConfirmationCard: React.FC<ExperienceConfirmationCardProp
     title: title.trim(),
     narrative: narrative.trim(),
   });
+  const expired =
+    typeof expiresAt === "string" && Date.parse(expiresAt) <= Date.now();
 
   return (
     <GlassChrome
@@ -125,6 +129,11 @@ export const ExperienceConfirmationCard: React.FC<ExperienceConfirmationCardProp
         {intentTags.length > 0 && (
           <Text style={styles.tags}>{intentTags.join(" · ")}</Text>
         )}
+        {expired ? (
+          <Text style={styles.expired}>
+            This suggestion expired. Upload or regenerate suggestions before accepting.
+          </Text>
+        ) : null}
         <View style={styles.actions}>
           <Pressable
             onPress={onReject}
@@ -146,12 +155,14 @@ export const ExperienceConfirmationCard: React.FC<ExperienceConfirmationCardProp
           </Pressable>
           <Pressable
             onPress={() => onAccept(editing ? buildEditedArgs() : undefined)}
-            disabled={isExecuting}
+            disabled={isExecuting || expired}
             style={({ pressed }) => [styles.btn, styles.acceptBtn, pressed && styles.pressed]}
             accessibilityRole="button"
-            accessibilityLabel="Accept experience"
+            accessibilityLabel={expired ? "Experience suggestion expired" : "Accept experience"}
           >
-            <Text style={styles.acceptText}>{isExecuting ? "Saving…" : "Accept"}</Text>
+            <Text style={styles.acceptText}>
+              {expired ? "Expired" : isExecuting ? "Saving…" : "Accept"}
+            </Text>
           </Pressable>
         </View>
       </View>
@@ -206,6 +217,11 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontSize: typography.caption.fontSize,
     color: textTokens.tertiary,
+  },
+  expired: {
+    marginTop: spacing.sm,
+    fontSize: typography.caption.fontSize,
+    color: "#B45309",
   },
   actions: {
     marginTop: spacing.md,

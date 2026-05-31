@@ -72,7 +72,7 @@ export default function VenueCreateRoute(): React.ReactElement {
   const [coverWarning, setCoverWarning] = useState<string | null>(null);
 
   const {
-    match: poolMatch,
+    matches: poolMatches,
     loading: poolSearchLoading,
     error: poolSearchError,
   } = usePoolMatchSearch(phase === "gate" ? workingName : "");
@@ -116,7 +116,7 @@ export default function VenueCreateRoute(): React.ReactElement {
   }, [patch, workingName]);
 
   const goToWizardFromPool = useCallback(
-    (match: NonNullable<typeof poolMatch>): void => {
+    (match: (typeof poolMatches)[number]): void => {
       patch(prefillDraftFromPoolMatch(match));
       setPoolNote(null);
       setPhase("wizard");
@@ -125,12 +125,8 @@ export default function VenueCreateRoute(): React.ReactElement {
   );
 
   const handleGateContinue = useCallback((): void => {
-    if (poolMatch !== null) {
-      setPoolNote("Tap Yes on the match card, or No to enter details manually.");
-      return;
-    }
     goToCategory();
-  }, [goToCategory, poolMatch]);
+  }, [goToCategory]);
 
   const handleCategoryContinue = useCallback((): void => {
     if (venueCategory === null) return;
@@ -157,9 +153,9 @@ export default function VenueCreateRoute(): React.ReactElement {
     return (
       <View style={[styles.root, { paddingTop: insets.top, paddingHorizontal: spacing.lg }]}>
         <View style={styles.successInner}>
-          <Text style={styles.successTitle}>Thanks — you’re in the queue</Text>
+          <Text style={styles.successTitle}>Your venue is being prepared</Text>
           <Text style={styles.successBody}>
-            Pending review. We usually approve venues within 4 business hours.
+            We created the venue record and started the deck-readiness pipeline.
           </Text>
           {coverWarning !== null ? (
             <Text style={styles.successWarning}>{coverWarning}</Text>
@@ -211,13 +207,19 @@ export default function VenueCreateRoute(): React.ReactElement {
             {poolSearchError !== null ? (
               <Text style={styles.warn}>{poolSearchError}</Text>
             ) : null}
-            {poolMatch !== null && placePoolId === null ? (
-              <PoolMatchCard
-                match={poolMatch}
-                onYes={() => goToWizardFromPool(poolMatch)}
-                onNo={goToCategory}
-                onSkip={goToCategory}
-              />
+            {poolMatches.length > 0 && placePoolId === null ? (
+              <View style={styles.matchList}>
+                {poolMatches.map((match) => (
+                  <PoolMatchCard
+                    key={match.id}
+                    match={match}
+                    onYes={() => goToWizardFromPool(match)}
+                    onNo={goToCategory}
+                    onSkip={goToCategory}
+                    testID={`pool-match-card-${match.id}`}
+                  />
+                ))}
+              </View>
             ) : null}
             {poolNote !== null ? <Text style={styles.warn}>{poolNote}</Text> : null}
             <Button
@@ -301,6 +303,9 @@ const styles = StyleSheet.create({
   warn: {
     fontSize: typography.caption.fontSize,
     color: "#F59E0B",
+  },
+  matchList: {
+    gap: spacing.md,
   },
   backRow: {
     flexDirection: "row",

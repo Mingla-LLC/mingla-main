@@ -21,6 +21,7 @@ export interface PendingExperienceProposal {
   id: string;
   tool_name: string;
   tool_args: Record<string, unknown>;
+  expires_at: string;
 }
 
 export type ParseMenuResponse =
@@ -92,6 +93,7 @@ export async function fetchPendingExperiencesForBrand(
     .eq("related_brand_id", brandId)
     .eq("source", "hub_experience")
     .eq("status", "pending")
+    .gt("expires_at", new Date().toISOString())
     .order("created_at", { ascending: true });
   if (error) throw error;
   return (data ?? []) as HubPendingExperienceRow[];
