@@ -254,6 +254,10 @@ const styles = StyleSheet.create({
     color: accent.warm,
     fontWeight: "600",
   },
+  errText: {
+    color: "#EF4444",
+    fontSize: typography.caption.fontSize,
+  },
 });
 
 export default VenueStep2NameSlug;
