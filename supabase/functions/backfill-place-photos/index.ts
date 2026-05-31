@@ -1,6 +1,11 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { downloadAndStorePhotos } from '../_shared/photoStorageService.ts';
+import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import {
+  downloadAndStorePhotosWithDiagnostics,
+  formatPhotoBackfillFailedPlace,
+  photoBackfillFailureSummary,
+  type PhotoBackfillFailedPlace,
+} from '../_shared/photoStorageService.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -16,7 +21,13 @@ function json(data: unknown, status = 200): Response {
 
 const COST_PER_PLACE = 0.035; // 5 photos × $0.007
 
-serve(async (req: Request) => {
+// ORCH-1023 rework: the request handler is exported and the serve() bootstrap is
+// guarded by import.meta.main (proven repo pattern — mirrors
+// backfill-place-photo-thumbs/index.ts) so the batch process path can be imported
+// and exercised by a Deno regression test without binding the HTTP server. The
+// Supabase edge runtime runs this file as the entry module (import.meta.main=true),
+// so production behavior is unchanged.
+export async function handler(req: Request): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
   try {
@@ -92,7 +103,11 @@ serve(async (req: Request) => {
     console.error('[backfill-place-photos] Error:', err);
     return json({ error: err instanceof Error ? err.message : 'Internal error' }, 500);
   }
-});
+}
+
+if (import.meta.main) {
+  serve(handler);
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Action handlers
@@ -116,7 +131,8 @@ serve(async (req: Request) => {
 //   'refresh_servable'  — admin maintenance for already-final-bouncer-approved places.
 //                         Gate: is_servable=true (regardless of photo state).
 //                         Use case: forcing photo re-download for a healthy city.
-type BackfillMode = 'pre_photo_passed' | 'refresh_servable';
+export type BackfillMode = 'pre_photo_passed' | 'refresh_servable';
+type SupabaseDb = SupabaseClient<any, any, any, any, any>;
 
 function parseBackfillMode(raw: unknown): BackfillMode {
   // ORCH-0678: 'pre_photo_passed' is the default — it's the first-pass mode used
@@ -241,7 +257,7 @@ function buildRunPreview(places: CityPlaceRow[], mode: BackfillMode) {
 }
 
 async function loadCityPlacesForRun(
-  db: ReturnType<typeof createClient>,
+  db: SupabaseDb,
   cityId: string,
   mode: BackfillMode,
 ): Promise<{ places: CityPlaceRow[]; analysis: RunPreviewAnalysis; eligiblePlaces: CityPlaceRow[] }> {
@@ -278,7 +294,7 @@ async function loadCityPlacesForRun(
 }
 
 async function handlePreviewRun(
-  db: ReturnType<typeof createClient>,
+  db: SupabaseDb,
   body: Record<string, unknown>,
 ): Promise<Response> {
   const cityId = body.cityId as string;
@@ -307,7 +323,7 @@ async function handlePreviewRun(
 }
 
 async function handleCreateRun(
-  db: ReturnType<typeof createClient>,
+  db: SupabaseDb,
   body: Record<string, unknown>,
   userId: string,
 ): Promise<Response> {
@@ -428,7 +444,7 @@ async function handleCreateRun(
 // ── run_next_batch ────────────────────────────────────────────────────────
 
 async function handleRunNextBatch(
-  db: ReturnType<typeof createClient>,
+  db: SupabaseDb,
   body: Record<string, unknown>,
   apiKey: string,
 ): Promise<Response> {
@@ -590,15 +606,15 @@ async function handleRunNextBatch(
 
 // ── Shared batch processing logic ─────────────────────────────────────────
 
-interface BatchResult {
+export interface BatchResult {
   succeeded: number;
   failed: number;
   skipped: number;
-  failedPlaces: Array<{ placePoolId: string; googlePlaceId: string; error: string }>;
+  failedPlaces: Array<PhotoBackfillFailedPlace>;
 }
 
-async function processBatch(
-  db: ReturnType<typeof createClient>,
+export async function processBatch(
+  db: SupabaseDb,
   batch: { place_pool_ids: string[] },
   apiKey: string,
   mode: BackfillMode,
@@ -652,25 +668,34 @@ async function processBatch(
       }
 
       // Download and store
-      const storedUrls = await downloadAndStorePhotos(
+      const photoResult = await downloadAndStorePhotosWithDiagnostics(
         db, place.google_place_id, photoMeta, apiKey
       );
 
-      if (storedUrls && storedUrls.length > 0) {
+      if (photoResult.storedUrls.length > 0) {
         // ORCH-0640: card_pool update block REMOVED. place_pool.stored_photo_urls
         // is the sole photo authority (I-POOL-ONLY-SERVING); card_pool is dropped.
         succeeded++;
       } else {
-        // All photos failed
-        await db
-          .from('place_pool')
-          .update({ stored_photo_urls: ['__backfill_failed__'] })
-          .eq('id', place.id);
-        failedPlaces.push({
-          placePoolId: place.id,
-          googlePlaceId: place.google_place_id,
-          error: 'All photo downloads failed',
-        });
+        const summary = photoBackfillFailureSummary(photoResult);
+        if (summary.retryable) {
+          // Retryable provider pressure should not poison rows with the terminal
+          // sentinel. Clear any existing sentinel so a later retry can re-attempt.
+          await db
+            .from('place_pool')
+            .update({ stored_photo_urls: null })
+            .eq('id', place.id);
+        } else {
+          await db
+            .from('place_pool')
+            .update({ stored_photo_urls: ['__backfill_failed__'] })
+            .eq('id', place.id);
+        }
+        failedPlaces.push(formatPhotoBackfillFailedPlace(
+          place.id,
+          place.google_place_id,
+          photoResult,
+        ));
         failed++;
       }
     } catch (err) {
@@ -686,6 +711,15 @@ async function processBatch(
         placePoolId: placeId,
         googlePlaceId: 'unknown',
         error: errMsg,
+        code: 'PHOTO_BACKFILL_UNEXPECTED_EXCEPTION',
+        retryable: false,
+        refreshed: false,
+        failures: [{
+          stage: 'storage',
+          code: 'PHOTO_BACKFILL_UNEXPECTED_EXCEPTION',
+          message: errMsg,
+          retryable: false,
+        }],
       });
       failed++;
     }
@@ -702,7 +736,7 @@ async function processBatch(
 // ── run_status ────────────────────────────────────────────────────────────
 
 async function handleRunStatus(
-  db: ReturnType<typeof createClient>,
+  db: SupabaseDb,
   body: Record<string, unknown>,
 ): Promise<Response> {
   const runId = body.runId as string;
@@ -728,7 +762,7 @@ async function handleRunStatus(
 // ── active_runs ───────────────────────────────────────────────────────────
 
 async function handleActiveRuns(
-  db: ReturnType<typeof createClient>,
+  db: SupabaseDb,
 ): Promise<Response> {
   const { data: runs } = await db
     .from('photo_backfill_runs')
@@ -760,7 +794,7 @@ async function handleActiveRuns(
 // ── cancel_run ────────────────────────────────────────────────────────────
 
 async function handleCancelRun(
-  db: ReturnType<typeof createClient>,
+  db: SupabaseDb,
   body: Record<string, unknown>,
 ): Promise<Response> {
   const runId = body.runId as string;
@@ -806,7 +840,7 @@ async function handleCancelRun(
 // ── pause_run ─────────────────────────────────────────────────────────────
 
 async function handlePauseRun(
-  db: ReturnType<typeof createClient>,
+  db: SupabaseDb,
   body: Record<string, unknown>,
 ): Promise<Response> {
   const runId = body.runId as string;
@@ -834,7 +868,7 @@ async function handlePauseRun(
 // ── resume_run ────────────────────────────────────────────────────────────
 
 async function handleResumeRun(
-  db: ReturnType<typeof createClient>,
+  db: SupabaseDb,
   body: Record<string, unknown>,
 ): Promise<Response> {
   const runId = body.runId as string;
@@ -862,7 +896,7 @@ async function handleResumeRun(
 // ── retry_batch ───────────────────────────────────────────────────────────
 
 async function handleRetryBatch(
-  db: ReturnType<typeof createClient>,
+  db: SupabaseDb,
   body: Record<string, unknown>,
   apiKey: string,
 ): Promise<Response> {
@@ -993,7 +1027,7 @@ async function handleRetryBatch(
 // ── skip_batch ────────────────────────────────────────────────────────────
 
 async function handleSkipBatch(
-  db: ReturnType<typeof createClient>,
+  db: SupabaseDb,
   body: Record<string, unknown>,
 ): Promise<Response> {
   const runId = body.runId as string;
