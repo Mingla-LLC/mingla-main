@@ -88,6 +88,12 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
   const draft = useDraftVenueStore();
   const poolLinked = draft.placePoolId !== null;
 
+  // B2 — the dock Continue must be visibly disabled (greyed) until the current
+  // step is valid, instead of looking active and silently no-op'ing on tap.
+  // On step 0 this means Continue stays greyed until a validated autocomplete
+  // address (with lat/lng) is selected. Recomputed from live draft state.
+  const stepValid = venueStepError(step, draft) === null;
+
   const goNext = useCallback((): void => {
     const e = venueStepError(step, draft);
     if (e !== null) {
@@ -216,6 +222,7 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
           <VenueStep2NameSlug
             showErrors={showErr}
             slugError={slugCollision}
+            accountId={user?.id ?? null}
           />
         );
       case 2:
@@ -292,7 +299,13 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
             ) : (
               <View style={{ width: 88 }} />
             )}
-            <Button label="Continue" variant="primary" size="lg" onPress={goNext} />
+            <Button
+              label="Continue"
+              variant="primary"
+              size="lg"
+              onPress={goNext}
+              disabled={!stepValid}
+            />
           </View>
         </View>
       ) : null}

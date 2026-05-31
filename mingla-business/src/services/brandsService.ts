@@ -83,6 +83,79 @@ export class SlugCollisionError extends Error {
   }
 }
 
+// ----- Venue slug availability (META-ORCH-1009 Sub-E B3 + B5) -------------
+
+/**
+ * Returns true when `slug` is free for a NEW venue brand.
+ *
+ * B5 fix: only a LIVE (non-soft-deleted) brand owned by SOMEONE ELSE makes a
+ * slug "taken". Previously the only slug feedback came from the create RPC's
+ * `slug_taken` exception, which (a) fired only on submit and (b) counted the
+ * caller's OWN just-created brand from a prior partial submit — producing the
+ * false "this slug is taken" Seth saw. This scopes to `deleted_at IS NULL` and
+ * (when provided) excludes the caller's own account so a retry on the same name
+ * is not reported as a conflict against the row the caller just made.
+ */
+export async function checkVenueSlugAvailable(
+  slug: string,
+  ownAccountId?: string | null,
+): Promise<boolean> {
+  const normalized = slug.trim().toLowerCase();
+  if (normalized.length === 0) return false;
+
+  const { data, error } = await supabase
+    .from("brands")
+    .select("id, account_id")
+    .eq("slug", normalized)
+    .is("deleted_at", null);
+  if (error !== null) throw error;
+
+  const rows = (data ?? []) as { id: string; account_id: string }[];
+  if (rows.length === 0) return true;
+  // Only the caller's own brand(s) hold this slug → still effectively available
+  // to them (the create RPC reuses/links rather than duplicating after B6).
+  if (ownAccountId !== null && ownAccountId !== undefined) {
+    return rows.every((r) => r.account_id === ownAccountId);
+  }
+  return false;
+}
+
+/**
+ * Suggest up to `limit` AVAILABLE slug candidates derived from a venue name.
+ *
+ * B3: the operator should never hand-type a slug. The first candidate is the
+ * plain kebab root; fallbacks append numeric suffixes. Only candidates that
+ * pass `checkVenueSlugAvailable` are returned. If the availability check fails
+ * (offline), we degrade to returning the root un-checked so the flow is never
+ * fully blocked.
+ */
+export async function suggestVenueSlugs(
+  name: string,
+  limit = 3,
+  ownAccountId?: string | null,
+): Promise<string[]> {
+  const root = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "")
+    .slice(0, 32);
+  if (root.length === 0) return [];
+
+  const candidates = [root, `${root}1`, `${root}2`, `${root}3`];
+  const available: string[] = [];
+  for (const candidate of candidates) {
+    if (available.length >= limit) break;
+    try {
+      if (await checkVenueSlugAvailable(candidate, ownAccountId)) {
+        available.push(candidate);
+      }
+    } catch {
+      if (available.length === 0) available.push(candidate);
+      break;
+    }
+  }
+  return available;
+}
+
 // ----- Inputs / Results --------------------------------------------------
 
 export interface CreateBrandInput {

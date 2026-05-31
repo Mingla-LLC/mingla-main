@@ -27,15 +27,16 @@ export const VenueStep3Photos: React.FC<VenueStep3PhotosProps> = ({
     <View style={styles.host}>
       <Text style={styles.title}>Hero cover</Text>
       <Text style={styles.helper}>
-        We save your venue basics first, then the next screen opens the same
-        CoverPicker used everywhere else in Mingla. That keeps photos and video
-        in one trusted upload pipeline.
+        You’ll add your cover right after you submit — the same photo/video
+        picker used everywhere else in Mingla, so everything goes through one
+        trusted upload pipeline.
       </Text>
       <GlassCard variant="elevated" padding={spacing.md}>
-        <Text style={styles.cardTitle}>Coming next in this session</Text>
+        <Text style={styles.cardTitle}>Next: add your cover</Text>
         <Text style={styles.cardBody}>
-          Add a hero photo or short video, answer the deck-readiness questions,
-          and confirm the AI-written venue bio before it goes public.
+          After you submit, the deck-readiness screen opens the cover picker so
+          you can add a hero photo or short video, answer the readiness
+          questions, and confirm your AI-written venue bio before it goes public.
         </Text>
       </GlassCard>
     </View>

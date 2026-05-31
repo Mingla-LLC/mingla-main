@@ -246,10 +246,14 @@ export default function VenueCreateRoute(): React.ReactElement {
               onChange={(v: VenueCategory) => patch({ venueCategory: v })}
               testID="venue-category-picker"
             />
+            {/* B1: fullWidth makes Continue stretch to the same insets as the
+                category cards above it (previously it shrank to content width,
+                so the cards read as wider than the button). */}
             <Button
               label="Continue"
               variant="primary"
               size="lg"
+              fullWidth
               disabled={venueCategory === null}
               onPress={handleCategoryContinue}
             />
