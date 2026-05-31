@@ -1172,7 +1172,22 @@ function checkNoNewBackendFiles() {
     "supabase/functions/generate-curated-experiences/index.ts",
     "supabase/functions/generate-curated-experiences/__tests__/utc_offset_passthrough.test.ts",
   ];
+  // ORCH-1024 [Photo backfill originals-only + separate thumbnail tab].
+  // C7 is scoped to ORCH-0863 marketing; ORCH-1024 makes the main photo
+  // backfill download+store ORIGINALS ONLY (the inline imagescript thumbnail
+  // generation that crashed `backfill-place-photos` with "not enough compute
+  // resources" is removed; thumbnails move to the separate
+  // `backfill-place-photo-thumbs` function driven from a new admin tab). It also
+  // carries the ORCH-1023 expired-name REFRESH fix + its process-path test.
+  // No marketing scope. Per COMMS-0002.
+  const ORCH_1024_BACKEND_ALLOWLIST = [
+    "supabase/functions/_shared/photoStorageService.ts",
+    "supabase/functions/_shared/photoStorageService.test.ts",
+    "supabase/functions/backfill-place-photos/index.ts",
+    "supabase/functions/backfill-place-photos/index.test.ts",
+  ];
   const ALLOWLIST = [
+    ...ORCH_1024_BACKEND_ALLOWLIST,
     ...ORCH_1021_BACKEND_ALLOWLIST,
     ...ORCH_1018_BACKEND_ALLOWLIST,
     ...ORCH_1017_BACKEND_ALLOWLIST,
