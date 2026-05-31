@@ -32,9 +32,8 @@
  *   T-5  Keyboard-aware sheets swap TextInput → BottomSheetTextInput + set
  *        keyboardBehavior interactive.
  *   T-6  Sheets mounted over the tab bar z-stack via wrapInRNModal.
- *   T-7  ProposeDateTimeModal keeps its DateTimePicker and wraps the iOS OS
- *        pickers in their own RN Modals (float above the sheet window); custom
- *        slide spring is gone.
+ *   T-7  ProposeDateTimeModal keeps its DateTimePicker and renders the iOS
+ *        pickers inline inside the scheduling sheet; custom slide spring is gone.
  *   T-8  PairRequestModal keeps the excluded CountryPickerModal sub-modal.
  *   T-9  ActionButtons: ONLY the date/time picker modal converted; the Android
  *        native DateTimePicker branch + the rest of the file are intact.
@@ -195,10 +194,17 @@ function run() {
     assert.match(code(src), /wrapInRNModal/, `T-6 ${name} z-stacks over the tab bar via wrapInRNModal`);
   }
 
-  // ── T-7: ProposeDateTime keeps DateTimePicker; iOS OS pickers in own RN
-  //        Modals; custom slide spring gone ────────────────────────────────
+  // ── T-7: ProposeDateTime keeps DateTimePicker; iOS pickers render inline
+  //        inside the sheet so they cannot be hidden by a nested RN Modal stack.
   assert.match(code(propose), /<DateTimePicker\b/, "T-7 Propose keeps the DateTimePicker");
-  assert.match(code(propose), /<RNModal\b/, "T-7 Propose wraps the iOS OS pickers in their own RN Modal(s)");
+  assert.doesNotMatch(code(propose), /<RNModal\b/, "T-7 Propose must not put iOS pickers in nested RN Modal(s)");
+  assert.doesNotMatch(
+    code(propose),
+    /import\s+(?:RNModal[\s\S]*?|\{[^}]*\bModal\b[^}]*\})\s+from\s+["']react-native["']/,
+    "T-7 Propose must not import Modal from react-native for picker overlays",
+  );
+  assert.match(code(propose), /testID=["']propose-date-inline-picker["']/, "T-7 Propose renders an inline date picker panel");
+  assert.match(code(propose), /testID=["']propose-time-inline-picker["']/, "T-7 Propose renders an inline time picker panel");
   assert.match(code(propose), /stickyFooter=\{/, "T-7 Propose pins ProposeDateTimeFooter (stickyFooter)");
   assert.match(code(propose), /theme=["']dark["']/, "T-7 Propose preserves the dark surface");
   assert.match(code(propose), /backgroundStyle=\{PROPOSE_DATE_TIME_BACKGROUND_STYLE\}/, "T-7 Propose keeps its #1C1C1E canvas via backgroundStyle override");
