@@ -147,7 +147,7 @@ export const VenueStep2NameSlug: React.FC<VenueStep2NameSlugProps> = ({
         onChangeText={onChangeName}
         placeholder="Venue name"
         accessibilityLabel="Venue display name"
-        error={nameErr}
+        errorText={nameErr}
       />
       <Input
         variant="text"
@@ -157,7 +157,7 @@ export const VenueStep2NameSlug: React.FC<VenueStep2NameSlugProps> = ({
         accessibilityLabel="Venue URL slug"
         autoCapitalize="none"
         autoCorrect={false}
-        error={slugFieldErr}
+        errorText={slugFieldErr}
       />
 
       {checking ? (
