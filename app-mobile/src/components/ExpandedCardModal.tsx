@@ -17,8 +17,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from 'react-i18next';
 import { Icon } from "./ui/Icon";
 import { BaseBottomSheet } from "./ui/BaseBottomSheet";
-// ORCH-1016 REWORK-5 (FIX A cont.) — floating-nav clearance for the reserve sheet.
-import { BOTTOM_NAV_CONTENT_HEIGHT } from "../hooks/useAppLayout";
 import { ExpandedCardModalProps, ExpandedCardData } from "../types/expandedCardTypes";
 import type { CuratedExperienceCard, CuratedStop } from '../types/curatedExperience';
 import { formatDistanceFromMeters, formatPriceRange, formatCurrency } from "./utils/formatters";
@@ -1711,11 +1709,12 @@ export default function ExpandedCardModal({
         visible={visible}
         data={businessEvent}
         onClose={onClose}
-        // ORCH-1016 REWORK-5 (FIX A cont.) — consumer event detail also renders
-        // below the floating GlassBottomNav; default inset (32) left the ticket
-        // rows + Buy CTA blocked by the nav. Clear it via the shared nav height +
-        // safe-area, same as the trip reserve sheet + MessageInterface group sheet.
-        bottomContentInset={BOTTOM_NAV_CONTENT_HEIGHT + insets.bottom + 32}
+        // ORCH-1016 overlay-carrier rework — the business-event branch returns
+        // this sheet directly, before the normal ExpandedCardModal RN-Modal sheet
+        // exists. Host the whole EBES + cart group in one overlay so it sits above
+        // Mingla's floating nav instead of trying to out-pad a later sibling.
+        renderInOverlayCarrier
+        bottomContentInset={Math.max(insets.bottom, 16) + 32}
       />
     );
   }

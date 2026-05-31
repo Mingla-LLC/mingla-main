@@ -12,8 +12,9 @@
 //           its CTA bar only padded insets.bottom (no nav clearance). FIX mirrors
 //           the proven ExpandedBusinessEventSheet / ConsumerTripDetailScreen
 //           wiring: scrollMode="view" + a BottomSheetScrollView (re-exported from
-//           the primitive) as a flex:1 DIRECT child + the CTA bar as a SIBLING
-//           that carries BOTTOM_NAV_CONTENT_HEIGHT + safe-area.
+//           the primitive) as a flex:1 DIRECT child + the CTA bar as a SIBLING.
+//           Inline uses add BOTTOM_NAV_CONTENT_HEIGHT; overlay-carried uses only
+//           safe-area because the nav is behind the modal window.
 //
 //   FIX B — the Trips-tab filter picker sheets (TripFilterChips) had TYPED fields
 //           inside a raw RN <Modal> pinned to the bottom with NO keyboard
@@ -76,11 +77,11 @@ ok(
   "the proven scroll wiring needs the BottomSheetScrollView re-export (sole-consumer gate forbids a direct @gorhom import)",
 );
 ok(
-  "A2 TicketCartSheet uses scrollMode='view' with the BottomSheetScrollView as the sheet's direct child (NOT the frozen scrollMode='scroll')",
+  "A2 TicketCartSheet uses scrollMode='view' with a bounded BottomSheetScrollView body (NOT the frozen scrollMode='scroll')",
   /scrollMode="view"[\s\S]{0,260}<BottomSheetScrollView/.test(cartSrc) &&
     !/scrollMode=\{[^}]*"scroll"[^}]*\}/.test(cartSrc) &&
     !/scrollMode="scroll"/.test(cartSrc),
-  "scrollMode='view' + a flex:1 BottomSheetScrollView direct child is the ONLY config that physically scrolls (REWORK-3 proof)",
+  "scrollMode='view' + a flex:1 BottomSheetScrollView in the sheet body is the runtime scroll contract",
 );
 ok(
   "A3 TicketCartSheet does NOT use BaseBottomSheet's stickyFooter prop (that branch nests the scroll host two levels deep → frozen body)",
@@ -94,12 +95,16 @@ ok(
   "without flex:1 the scroll host sizes to content inside height-bounded BottomSheetContent and never scrolls",
 );
 ok(
-  "A5 the CTA bar clears the floating GlassBottomNav via the BOTTOM_NAV_CONTENT_HEIGHT source of truth (+ safe-area), not just insets.bottom",
+  "A5 the CTA bar can clear the floating nav inline, but skips fake nav padding when its sheet group is overlay-carried",
   /import\s*\{\s*BOTTOM_NAV_CONTENT_HEIGHT\s*\}\s*from\s*["'][^"']*useAppLayout["']/.test(
     cartSrc,
   ) &&
-    /BOTTOM_NAV_CONTENT_HEIGHT\s*\+\s*Math\.max\(insets\.bottom/.test(cartSrc),
-  "the buy/Continue button was blocked by the nav because the footer only padded insets.bottom; it must add the nav height too",
+    /clearFloatingNav\?:\s*boolean/.test(cartSrc) &&
+    /clearFloatingNav\s*=\s*true/.test(cartSrc) &&
+    /\(clearFloatingNav\s*\?\s*BOTTOM_NAV_CONTENT_HEIGHT\s*:\s*0\)\s*\+\s*Math\.max\(insets\.bottom,\s*16\)/.test(
+      cartSrc,
+    ),
+  "inline cart sheets must add nav height; cart sheets inside SheetOverlayCarrier should only use OS safe-area clearance",
 );
 ok(
   "A6 the stickyFooter element is rendered as a SIBLING below the scroll host inside BaseBottomSheet",

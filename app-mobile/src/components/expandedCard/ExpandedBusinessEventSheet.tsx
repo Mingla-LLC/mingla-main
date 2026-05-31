@@ -61,6 +61,7 @@ import { toastManager } from "../ui/Toast";
 // instead of a raw RN ScrollView nested inside the sheet's gorhom scroll (the
 // fragile double-scroll structure that was the probable freeze source).
 import { BaseBottomSheet, BottomSheetScrollView } from "../ui/BaseBottomSheet";
+import { SheetOverlayCarrier } from "../ui/SheetOverlayCarrier";
 import { glass } from "../../constants/designSystem";
 // ORCH-0847 Phase C — multi-tier cart sheet replaces the single-ticket
 // TicketClaimConfirmModal. Mirrors public J-C1 cart screen.
@@ -73,6 +74,8 @@ interface ExpandedBusinessEventSheetProps {
   data: BusinessEventCard;
   onClose: () => void;
   bottomContentInset?: number;
+  bottomSheetInset?: number;
+  renderInOverlayCarrier?: boolean;
 }
 
 // ORCH-0828 REWORK: canonical bottomSheet snapPoints from design tokens,
@@ -155,7 +158,14 @@ const openMapsForQuery = (query: string): void => {
 
 export const ExpandedBusinessEventSheet: React.FC<
   ExpandedBusinessEventSheetProps
-> = ({ visible, data, onClose, bottomContentInset = 32 }) => {
+> = ({
+  visible,
+  data,
+  onClose,
+  bottomContentInset = 32,
+  bottomSheetInset = 0,
+  renderInOverlayCarrier = false,
+}) => {
   const router = useRouter();
   const user = useAppStore((s) => s.user);
   const profile = useAppStore((s) => s.profile);
@@ -345,6 +355,14 @@ export const ExpandedBusinessEventSheet: React.FC<
     setInitialTicketTypeId(null);
   }, []);
 
+  const handleCarrierRequestClose = useCallback((): void => {
+    if (cartSheetVisible) {
+      handleCartCancel();
+      return;
+    }
+    onClose();
+  }, [cartSheetVisible, handleCartCancel, onClose]);
+
   const callbacks: PublicEventCallbacks = useMemo(
     () => ({
       onClose: () => {
@@ -386,11 +404,13 @@ export const ExpandedBusinessEventSheet: React.FC<
   // META-ORCH-0991 (sheet rework — Bug 2): inject gorhom's BottomSheetScrollView
   // as PublicEventPage's single scroll host. The wrapper appends this sheet's
   // bottom clearance (`bottomContentInset` — carries the chat-composer / tab-bar
-  // clearance from MessageInterface) onto the page's own scrollContent padding so
-  // the last "Buy ticket" row clears the bottom. Memoized on bottomContentInset so
-  // the injected component identity is stable across re-renders (no remount).
+  // clearance from MessageInterface) plus any explicit sheet-overlay footprint
+  // onto the page's own scrollContent so the last "Buy ticket" row can scroll
+  // above the floating nav. Memoized on the clearance scalars so the injected
+  // component identity is stable across re-renders (no remount).
   const SheetScrollHost = useMemo(() => {
-    const bottomPad = Math.max(32, bottomContentInset);
+    const bottomPad =
+      Math.max(32, bottomContentInset) + Math.max(0, bottomSheetInset);
     const Host: React.FC<ScrollViewProps> = ({
       contentContainerStyle,
       children,
@@ -399,6 +419,29 @@ export const ExpandedBusinessEventSheet: React.FC<
       <BottomSheetScrollView
         {...rest}
         contentContainerStyle={contentContainerStyle}
+        onLayout={(event) => {
+          console.log("[ORCH1016_MEASURE] EBES scroll layout", {
+            height: event.nativeEvent.layout.height,
+            width: event.nativeEvent.layout.width,
+            y: event.nativeEvent.layout.y,
+          });
+          rest.onLayout?.(event);
+        }}
+        onContentSizeChange={(width, height) => {
+          console.log("[ORCH1016_MEASURE] EBES content size", {
+            width,
+            height,
+            bottomPad,
+          });
+          rest.onContentSizeChange?.(width, height);
+        }}
+        onScroll={(event) => {
+          console.log("[ORCH1016_MEASURE] EBES scroll offset", {
+            y: event.nativeEvent.contentOffset.y,
+          });
+          rest.onScroll?.(event);
+        }}
+        scrollEventThrottle={250}
       >
         {children}
         {/* ORCH-1016 REWORK-6 — ROOT CAUSE of the "Buy button blocked by the
@@ -417,7 +460,7 @@ export const ExpandedBusinessEventSheet: React.FC<
     );
     Host.displayName = "EbesSheetScrollHost";
     return Host;
-  }, [bottomContentInset]);
+  }, [bottomContentInset, bottomSheetInset]);
 
   // META-ORCH-0991 Wave A — migrated onto BaseBottomSheet. Declarative
   // `visible` + initialIndex=1 (90% snap) replicate the proven inline
@@ -432,7 +475,7 @@ export const ExpandedBusinessEventSheet: React.FC<
   // PublicEventPage owns the SINGLE scroll host via the injected
   // ScrollComponent (gorhom BottomSheetScrollView) — collapsing the prior
   // double-scroll (raw RN ScrollView nested in the sheet's gorhom scroll).
-  return (
+  const sheetGroup = (
     <>
       <BaseBottomSheet
         visible={visible}
@@ -444,6 +487,8 @@ export const ExpandedBusinessEventSheet: React.FC<
         backgroundStyle={styles.sheetBackground}
         handleStyle={styles.sheetHandle}
         scrollMode="view"
+        bodyContainerStyle={styles.sheetBody}
+        bottomSheetInset={bottomSheetInset}
         accessibilityLabel={data.title}
       >
         <PublicEventPage
@@ -473,14 +518,31 @@ export const ExpandedBusinessEventSheet: React.FC<
         buyerEmail={user?.email ?? profile?.email ?? ""}
         buyerPhone={profile?.phone ?? ""}
         isSubmitting={checkoutInFlight}
+        clearFloatingNav={!renderInOverlayCarrier}
         onCancel={handleCartCancel}
         onCheckout={handleCartCheckout}
       />
     </>
   );
+
+  if (renderInOverlayCarrier) {
+    return (
+      <SheetOverlayCarrier
+        visible={visible || cartSheetVisible}
+        onRequestClose={handleCarrierRequestClose}
+      >
+        {sheetGroup}
+      </SheetOverlayCarrier>
+    );
+  }
+
+  return sheetGroup;
 };
 
 const styles = StyleSheet.create({
+  sheetBody: {
+    flex: 1,
+  },
   sheetBackground: {
     backgroundColor: "#0c0e12",
   },

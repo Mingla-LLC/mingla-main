@@ -185,6 +185,12 @@ export interface TicketCartSheetProps {
   buyerPhone: string;
   /** True while the upstream `runNativeCheckout` is in flight. */
   isSubmitting: boolean;
+  /**
+   * True when this cart is rendered inline below Mingla's floating nav. When the
+   * parent group is already hosted in an overlay carrier, the nav is behind the
+   * modal window and the CTA only needs OS safe-area clearance.
+   */
+  clearFloatingNav?: boolean;
   onCancel: () => void;
   onCheckout: (payload: TicketCartCheckoutPayload) => void;
 }
@@ -200,6 +206,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   buyerEmail,
   buyerPhone,
   isSubmitting,
+  clearFloatingNav = true,
   onCancel,
   onCheckout,
 }) => {
@@ -423,15 +430,20 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   // ORCH-1016 REWORK-4 (FIX A) — the CTA bar must clear BOTH the OS home
   // indicator AND Mingla's floating GlassBottomNav. This sheet renders BELOW the
   // visible nav (no wrapInRNModal), so the nav height is additive on top of the
-  // safe-area inset — same `BOTTOM_NAV_CONTENT_HEIGHT` source of truth the trip
-  // detail fix used. Previously only `insets.bottom + 16`, so the buy/Continue
-  // button was blocked by the nav on-device.
+  // safe-area inset for inline uses. Overlay-carried uses skip the nav height
+  // because the whole sheet group already renders above the app nav. Previously
+  // only `insets.bottom + 16`, so the buy/Continue button was blocked by the nav
+  // on-device.
   const stickyBarStyle = useMemo(
     () => [
       styles.stickyBar,
-      { paddingBottom: BOTTOM_NAV_CONTENT_HEIGHT + Math.max(insets.bottom, 16) },
+      {
+        paddingBottom:
+          (clearFloatingNav ? BOTTOM_NAV_CONTENT_HEIGHT : 0) +
+          Math.max(insets.bottom, 16),
+      },
     ],
-    [insets.bottom],
+    [clearFloatingNav, insets.bottom],
   );
 
   // META-ORCH-0991 Wave A — migrated onto BaseBottomSheet. Header is the fixed
@@ -645,10 +657,10 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   //   {stickyFooter}     → the CTA bar as a SIBLING View BELOW the scroll host
   //                        (NOT BaseBottomSheet's `stickyFooter` prop, which
   //                        routed the sheet into the frozen nested branch).
-  // The CTA bar (stickyBarStyle) already carries BOTTOM_NAV_CONTENT_HEIGHT so it
-  // clears the floating nav. The non-populated states (loading/empty/sold-out)
-  // render their centered message body inside the same scroll host — nothing to
-  // scroll there, but the wiring stays uniform.
+  // The CTA bar (stickyBarStyle) carries the needed bottom clearance for its
+  // host mode. The non-populated states (loading/empty/sold-out) render their
+  // centered message body inside the same scroll host — nothing to scroll there,
+  // but the wiring stays uniform.
   return (
     <BaseBottomSheet
       visible={visible}

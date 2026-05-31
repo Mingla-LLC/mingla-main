@@ -36,6 +36,7 @@ import {
   Modal as RNModal,
   StyleSheet,
   View,
+  useWindowDimensions,
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
@@ -181,6 +182,13 @@ interface BaseBottomSheetSheetProps extends BaseBottomSheetCommonProps {
    * this false and only get the OS-inset clearance. Default false.
    */
   tabBarAware?: boolean;
+  /**
+   * Optional inline-container clearance for sheets rendered below an absolute
+   * sibling such as GlassBottomNav. Inner padding/spacers affect scrollable
+   * content; this keeps gorhom's measured inline host at the real window height
+   * while accounting for the overlay's bottom footprint.
+   */
+  bottomSheetInset?: number;
   keyboardBehavior?: 'interactive' | 'extend' | 'fillParent';
   keyboardBlurBehavior?: 'none' | 'restore';
   android_keyboardInputMode?: 'adjustPan' | 'adjustResize';
@@ -267,6 +275,7 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
   const { visible, onClose, onChange, children, accessibilityLabel } = props;
   const theme: BaseBottomSheetTheme = props.theme ?? 'light';
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
   const sheetRef = useRef<BottomSheet>(null);
 
   // ── center-dialog: NOT gorhom (SPEC §3.1 / §5.4). Wave A ships the typed
@@ -297,6 +306,7 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
     stickyFooter,
     wrapInRNModal = false,
     tabBarAware = false,
+    bottomSheetInset = 0,
     keyboardBehavior = 'interactive',
     keyboardBlurBehavior = 'restore',
     android_keyboardInputMode = 'adjustResize',
@@ -355,7 +365,6 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
   const resolvedHandleStyle = showHandle
     ? (handleStyle ?? defaultHandleStyle(theme))
     : undefined;
-
   // META-ORCH-0991 (sheet rework — Bug 4b): the bottom-inset model the primitive
   // now OWNS. Previously `safeBottom` was computed and then `void`-discarded, so
   // every consumer had to hand-roll its own bottom padding and any sheet that
@@ -386,6 +395,7 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
   // the scroll body above it only needs footer clearance — see the sticky branch.
   const tabBarExtra = tabBarAware ? BOTTOM_NAV_CONTENT_HEIGHT : 0;
   const bottomInset = safeBottomInset + tabBarExtra;
+  const inlineContainerHeight = windowHeight + Math.max(0, bottomSheetInset);
 
   // Merge `bottomInset` into a consumer's contentContainerStyle as paddingBottom,
   // taking the MAX with any value the consumer already set (never reduce).
@@ -477,9 +487,11 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
 
     switch (scrollMode) {
       case 'view':
-        // Children render directly as <BottomSheet> children (consumer-composed).
-        // A header, when present, is wrapped with the children in a flex View.
-        if (hasHeader) {
+        // Children render directly as <BottomSheet> children by default
+        // (consumer-composed). When a consumer supplies a body container, honor it
+        // with the same flexed BottomSheetView wrapper used by header-bearing view
+        // sheets so an owned BottomSheetScrollView receives a bounded viewport.
+        if (hasHeader || bodyContainerStyle !== undefined) {
           return (
             <BottomSheetView style={[styles.flexContainer, bodyContainerStyle]}>
               {header}
@@ -598,6 +610,7 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
       keyboardBehavior={keyboardBehavior}
       keyboardBlurBehavior={keyboardBlurBehavior}
       android_keyboardInputMode={android_keyboardInputMode}
+      bottomInset={bottomSheetInset}
       accessible={false}
       accessibilityLabel={accessibilityLabel}
     >
@@ -639,10 +652,17 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
   // to content behind the sheet (SPEC §5 a11y / §9 blast #5). The sheet floats
   // absolutely; this View provides the modal semantics RN <Modal> gives wrapped
   // sheets for free. pointerEvents=box-none keeps the backdrop/sheet interactive.
+  // ORCH-1016 REWORK-10: do not rely on `StyleSheet.absoluteFill` here. Live
+  // iPhone evidence showed Discover's ancestor could hand gorhom an inline
+  // parent taller than the physical window, making BottomSheetScrollView report
+  // a 1057pt viewport on an 852pt-tall phone. Bound the inline host to the real
+  // window height; add `bottomSheetInset` back because gorhom's HostingContainer
+  // applies that inset as `bottom`, so the measured container remains exactly
+  // the real window while the nav-overlay clearance still feeds snap math.
   if (!visible) return sheet;
   return (
     <View
-      style={StyleSheet.absoluteFill}
+      style={[styles.inlineContainer, { height: inlineContainerHeight }]}
       pointerEvents="box-none"
       accessibilityViewIsModal
     >
@@ -728,6 +748,12 @@ function CenterDialog({
 
 const styles = StyleSheet.create({
   flexContainer: { flex: 1 },
+  inlineContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+  },
   stickyContainer: { flex: 1 },
   stickyBody: { flex: 1 },
   sectionListContainer: { flex: 1 },
