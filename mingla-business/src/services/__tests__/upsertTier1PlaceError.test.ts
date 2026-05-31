@@ -22,7 +22,9 @@ const mockInvoke = supabase.functions.invoke as jest.MockedFunction<
 >;
 
 describe("upsertTier1Place B6 error surfacing", () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
 
   it("throws the REAL server message from the error context body, not the opaque one", async () => {
     const fakeResponse = {

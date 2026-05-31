@@ -43,7 +43,9 @@ function mockBrandsBySlug(
 }
 
 describe("checkVenueSlugAvailable (B5)", () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
 
   it("is AVAILABLE when no live brand holds the slug", async () => {
     mockBrandsBySlug({});
@@ -71,7 +73,9 @@ describe("checkVenueSlugAvailable (B5)", () => {
 });
 
 describe("suggestVenueSlugs (B3)", () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
 
   it("returns the kebab root first when available", async () => {
     mockBrandsBySlug({});
