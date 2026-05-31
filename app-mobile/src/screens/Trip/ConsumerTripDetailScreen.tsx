@@ -7,27 +7,26 @@
  *      ExpandedBusinessEventSheet + every other detail/expanded surface), not the
  *      prior bespoke full-screen overlay. Same presentation, same drag-handle/
  *      pan-down close, same dark chrome as the rest of the app. `onClose`→`onBack`.
- *   2. SCROLL CLEARS THE BOTTOM NAV — the sheet is `tabBarAware`, so the scroll
- *      body's bottom padding includes `BOTTOM_NAV_CONTENT_HEIGHT + safe-area`
- *      (single source of truth: useAppLayout). The last itinerary Day + Reserve
- *      CTA are fully reachable above the floating GlassBottomNav (no clipped
- *      "Day 3"). The sticky Reserve bar is the sheet's `stickyFooter`, which the
- *      primitive pads with the same nav clearance.
+ *   2. SCROLL CLEARS THE BOTTOM NAV — while the sheet is open it sets
+ *      `hidesBottomNav`, so the floating GlassBottomNav is hidden and the Reserve
+ *      CTA has no nav to clear (just OS safe-area). (Earlier REWORKs tried to
+ *      out-pad the nav, then to host the sheet group in a SheetOverlayCarrier RN
+ *      Modal above the nav; both are removed — the carrier broke Android scroll
+ *      gestures without fixing z-order.)
  *
- * ORCH-1016 REWORK-2 (operator on-device: "sheets hang and don't scroll", 2026-05-30):
- *   FROZEN-SCROLL FIX — the first rework used `scrollMode="view"` and hand-rolled a
- *   gorhom scroll container as the body. With a `stickyFooter` present,
- *   BaseBottomSheet's view+sticky branch wraps the children in a plain `flex:1`
- *   `<View>`, so the hand-rolled scroll landed TWO levels deep inside non-gorhom
- *   Views — gorhom's sheet pan-responder then swallowed the inner scroll gesture
- *   and the body felt frozen. FIX: use `scrollMode="scroll"` and let the primitive
- *   OWN the gorhom `BottomSheetScrollView` (its sticky+scroll branch renders it as
- *   a `flex:1` DIRECT child of the sheet's `BottomSheetView`, the gesture-
- *   coordinated pattern TicketCartSheet already proves). The detail content is now
- *   plain `children`; padding rides `scrollProps.contentContainerStyle`. Result:
- *   the day-by-day list + policy + tiers scroll smoothly, the sticky Reserve footer
- *   stays pinned, AND swipe-down-to-dismiss still works (the exact coordination
- *   BottomSheetScrollView exists to provide).
+ * ORCH-1016 ROOT-CAUSE FIX (frozen-scroll; operator on-device "i cant scroll the
+ * content of the sheet itself", 2026-05-30; verified on-device iOS + Android):
+ *   The populated sheet uses a BARE `scrollMode="scroll"` so BaseBottomSheet's own
+ *   gorhom `BottomSheetScrollView` is the DIRECT child of the height-bounded
+ *   `BottomSheetContent` — the ONLY structure gorhom constrains to the snap height.
+ *   {detailBody} + {reserveFooter} are its two children. Any wrapper (the
+ *   `stickyFooter`/`header`/`bodyContainerStyle` props, or injecting a scroll host
+ *   one `BottomSheetView` level deeper as the superseded `scrollMode="view"`
+ *   approach did) makes gorhom size the sheet to CONTENT → viewport==content →
+ *   maxScroll=0 → frozen. The Reserve footer is the second child (pins at the
+ *   bottom), not the `stickyFooter` prop. Loading/empty/error states keep
+ *   `scrollMode="view"` (short, non-scrolling). Result: day-by-day + policy + tiers
+ *   physically scroll, Reserve stays pinned, swipe-down-to-dismiss still works.
  *
  * Anon-read constraint (🔒 COMMS-0009): all data comes from useConsumerTripDetail
  * (anon-direct events/trip_* reads + RPC-sourced brand fields). NEVER `.from('brands')`.
@@ -57,7 +56,15 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { EventCoverMedia, formatTripDateRange, RefundPolicyDisplay } from "@mingla/event-rendering";
 
 import { Icon } from "../../components/ui/Icon";
-import { BaseBottomSheet } from "../../components/ui/BaseBottomSheet";
+// ORCH-1016 REWORK-3 — import the gorhom scroll host re-export from the primitive
+// (the SOLE permitted gorhom importer, per
+// I-PROPOSED-BASE-BOTTOM-SHEET-SOLE-GORHOM-CONSUMER) and inject it as the trip
+// detail's OWN scroll host — the exact wiring ExpandedBusinessEventSheet uses.
+import {
+  BaseBottomSheet,
+  BottomSheetScrollView,
+} from "../../components/ui/BaseBottomSheet";
+import { BOTTOM_NAV_CONTENT_HEIGHT } from "../../hooks/useAppLayout";
 import { ExpandedBusinessEventSheet } from "../../components/expandedCard/ExpandedBusinessEventSheet";
 import { glass } from "../../constants/designSystem";
 import { hueFromId } from "../../utils/hueFromId";
@@ -74,10 +81,10 @@ interface ConsumerTripDetailScreenProps {
   seed?: DiscoverTripRow | null;
   onBack: () => void;
   /**
-   * ORCH-1016 REWORK — true when the detail is presented BELOW the floating
-   * GlassBottomNav (the in-app Discover overlay), so the sheet adds the nav
-   * clearance to its scroll body. The cold deep-link route (app/t/...) has no
-   * nav and passes false. Default true (the common in-app case).
+   * ORCH-1016 REWORK — true when the detail is presented from the in-app
+   * Discover overlay where GlassBottomNav is mounted. In that case the whole
+   * trip sheet group is hosted above the nav. The cold deep-link route (app/t/...)
+   * has no nav and passes false. Default true (the common in-app case).
    */
   tabBarAware?: boolean;
   accountPreferences?: { currency: string; measurementSystem: "Metric" | "Imperial" };
@@ -178,6 +185,11 @@ export default function ConsumerTripDetailScreen({
   );
   const [reserveSheetVisible, setReserveSheetVisible] = useState(false);
 
+  // ORCH-1016 — the SheetOverlayCarrier (RN Modal) is removed: it broke Android
+  // scroll gestures and did NOT fix the z-order. The sheets now hide the nav
+  // directly via `hidesBottomNav`, so this is a passthrough.
+  const renderSheetGroup = (sheetGroup: ReactElement): ReactElement => sheetGroup;
+
   const handleShare = (): void => {
     void Share.share({
       url: `https://business.usemingla.com/t/${brandSlug}/${tripSlug}`,
@@ -214,7 +226,7 @@ export default function ConsumerTripDetailScreen({
 
   // ── Loading (cold deep-link) ──
   if (isLoading && detail === null) {
-    return (
+    return renderSheetGroup(
       <BaseBottomSheet
         visible
         onClose={onBack}
@@ -222,20 +234,20 @@ export default function ConsumerTripDetailScreen({
         snapPoints={SHEET_SNAP_POINTS}
         initialIndex={SHEET_INITIAL_INDEX}
         scrollMode="view"
-        tabBarAware={tabBarAware}
+        hidesBottomNav
         accessibilityLabel="Trip detail"
       >
         <View style={[styles.stateBody, { paddingBottom: insets.bottom + 48 }]}>
           {chrome}
           <ActivityIndicator color={ACCENT} />
         </View>
-      </BaseBottomSheet>
+      </BaseBottomSheet>,
     );
   }
 
   // ── Error ──
   if (isError && detail === null) {
-    return (
+    return renderSheetGroup(
       <BaseBottomSheet
         visible
         onClose={onBack}
@@ -243,7 +255,7 @@ export default function ConsumerTripDetailScreen({
         snapPoints={SHEET_SNAP_POINTS}
         initialIndex={SHEET_INITIAL_INDEX}
         scrollMode="view"
-        tabBarAware={tabBarAware}
+        hidesBottomNav
         accessibilityLabel="Trip detail"
       >
         <View style={[styles.stateBody, { paddingBottom: insets.bottom + 48 }]}>
@@ -253,12 +265,12 @@ export default function ConsumerTripDetailScreen({
             <Text style={styles.retryText}>Try again</Text>
           </Pressable>
         </View>
-      </BaseBottomSheet>
+      </BaseBottomSheet>,
     );
   }
 
   if (detail === null) {
-    return (
+    return renderSheetGroup(
       <BaseBottomSheet
         visible
         onClose={onBack}
@@ -266,14 +278,14 @@ export default function ConsumerTripDetailScreen({
         snapPoints={SHEET_SNAP_POINTS}
         initialIndex={SHEET_INITIAL_INDEX}
         scrollMode="view"
-        tabBarAware={tabBarAware}
+        hidesBottomNav
         accessibilityLabel="Trip detail"
       >
         <View style={[styles.stateBody, { paddingBottom: insets.bottom + 48 }]}>
           {chrome}
           <Text style={styles.stateTitle}>Trip not found</Text>
         </View>
-      </BaseBottomSheet>
+      </BaseBottomSheet>,
     );
   }
 
@@ -287,12 +299,12 @@ export default function ConsumerTripDetailScreen({
   const includedItems = detail.inclusions.filter((i) => i.kind === "included");
   const excludedItems = detail.inclusions.filter((i) => i.kind === "excluded");
 
-  // ORCH-1016 REWORK-2 — the detail content is now PLAIN children. BaseBottomSheet
-  // owns the single gorhom-aware scroll (scrollMode="scroll" below): its
-  // sticky+scroll branch renders a `flex:1` BottomSheetScrollView as a DIRECT child
-  // of the sheet's BottomSheetView, so the scroll gesture coordinates with the
-  // sheet's pan-down handle instead of being swallowed (the frozen-scroll fix).
-  // The close/share chrome rides at the top of the scroll, over the hero.
+  // ORCH-1016 REWORK-3 — the detail content is the scroll-host's children. The
+  // screen's own gorhom BottomSheetScrollView (mounted in the return below, mirror
+  // of ExpandedBusinessEventSheet) wraps this body as a flex:1 direct child of
+  // BottomSheetContent, so the day-by-day list + policy + tiers physically scroll
+  // while pan-down still dismisses. The close/share chrome rides at the top of the
+  // scroll, over the hero.
   const detailBody: ReactElement = (
     <>
       {chrome}
@@ -444,11 +456,16 @@ export default function ConsumerTripDetailScreen({
     </>
   );
 
-  // Sticky Reserve bar — the sheet's stickyFooter. With tabBarAware the primitive
-  // pads it with BOTTOM_NAV_CONTENT_HEIGHT + safe-area so it clears the floating
-  // GlassBottomNav; we keep an internal paddingTop for breathing room.
+  // ORCH-1016 ROOT-CAUSE FIX — the Reserve bar is a SIBLING rendered directly
+  // below {detailBody} as the second child of the bare scrollMode="scroll" sheet
+  // (NOT BaseBottomSheet's `stickyFooter` prop, which routes the sheet into the
+  // nested BottomSheetView branch that froze the scroll). The footer only needs
+  // OS safe-area clearance: the sheet sets `hidesBottomNav`, so the GlassBottomNav
+  // is hidden while it's open and the Reserve CTA has no floating nav to clear.
+  const footerNavClearance = Math.max(insets.bottom, 16);
+  const scrollBottomClearance = footerNavClearance;
   const reserveFooter: ReactElement = (
-    <View style={styles.reserveBar}>
+    <View style={[styles.reserveBar, { paddingBottom: footerNavClearance }]}>
       <View style={styles.reservePriceCol}>
         <Text style={styles.reservePriceLabel}>
           {detail.hasFreeTier && priceLabel === null
@@ -471,7 +488,14 @@ export default function ConsumerTripDetailScreen({
     </View>
   );
 
-  return (
+  // ORCH-1016 ROOT-CAUSE FIX (measured on-device): use a BARE scrollMode="scroll"
+  // so the gorhom BottomSheetScrollView is the DIRECT child of BottomSheetContent —
+  // the ONLY structure gorhom constrains to the snap height (a header / stickyFooter
+  // / bodyContainerStyle wrapper makes gorhom size the sheet to content → viewport
+  // == content → maxScroll 0 → frozen, proven by measurement). The Reserve CTA lives
+  // at the END of the scroll content. `hidesBottomNav` hides the floating nav while
+  // open so nothing is painted over the CTA — no fragile scroll-padding needed.
+  return renderSheetGroup(
     <>
       <BaseBottomSheet
         visible
@@ -480,15 +504,15 @@ export default function ConsumerTripDetailScreen({
         snapPoints={SHEET_SNAP_POINTS}
         initialIndex={SHEET_INITIAL_INDEX}
         scrollMode="scroll"
+        hidesBottomNav
         scrollProps={{
-          showsVerticalScrollIndicator: false,
           contentContainerStyle: styles.scrollContent,
+          showsVerticalScrollIndicator: false,
         }}
-        tabBarAware={tabBarAware}
-        stickyFooter={reserveFooter}
         accessibilityLabel={detail.title}
       >
         {detailBody}
+        {reserveFooter}
       </BaseBottomSheet>
 
       {/* Reserve flow — reuses the proven business-event checkout sheet. Sibling
@@ -498,14 +522,20 @@ export default function ConsumerTripDetailScreen({
           visible={reserveSheetVisible}
           data={card}
           onClose={() => setReserveSheetVisible(false)}
+          // ORCH-1016: EBES hides the nav itself. The scroll viewport extends ~46px
+          // below the visible screen edge, so the spacer must clear that overshoot +
+          // a small gap for the Buy CTA — without over-scrolling. ~58.
+          bottomContentInset={Math.max(insets.bottom, 16) + 8}
         />
       ) : null}
-    </>
+    </>,
   );
 }
 
 const styles = StyleSheet.create({
-  scrollContent: { paddingBottom: 16 },
+  // Minimum breathing room; runtime footer/nav clearance is merged inline so
+  // the final pricing/tickets rows can scroll fully above the Reserve bar + nav.
+  scrollContent: { paddingBottom: 24 },
   hero: { width: "100%", height: 320, backgroundColor: "#1a1c20" },
   closeChrome: {
     position: "absolute",

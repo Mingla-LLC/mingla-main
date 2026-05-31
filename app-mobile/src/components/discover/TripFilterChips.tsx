@@ -12,16 +12,30 @@
 
 import React, { useState } from "react";
 import {
-  Modal,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+// ORCH-1016 REWORK-4 (FIX B) — the trip filter picker sheets had TYPED fields
+// ("Where to", "Leaving from", "Price", "Group") inside a raw RN <Modal> pinned
+// to the bottom with NO keyboard avoidance, so the soft keyboard covered the
+// field on-device. Mirror the CANONICAL pattern the consumer app already uses
+// for input-bearing bottom sheets (CityPickerSheet, ReportUserModal, …):
+// BaseBottomSheet + BottomSheetTextInput + keyboardBehavior="interactive" +
+// keyboardBlurBehavior="restore" + android_keyboardInputMode="adjustResize" +
+// wrapInRNModal. gorhom then lifts the focused field above the keyboard. The
+// strict-grep gate (I-PROPOSED-BASE-BOTTOM-SHEET-SOLE-GORHOM-CONSUMER) forbids a
+// direct @gorhom import, so BottomSheetTextInput comes from the primitive's
+// re-export — exactly like CityPickerSheet.
+import {
+  BaseBottomSheet,
+  BottomSheetTextInput,
+} from "../ui/BaseBottomSheet";
 
 import { Icon, type IconName } from "../ui/Icon";
 import {
@@ -74,6 +88,17 @@ const SORT_LABEL: Record<DiscoverTripSort, string> = {
   price_asc: "Price ↑",
   price_desc: "Price ↓",
 };
+
+// ORCH-1016 REWORK-4 (FIX B) — fixed snap (the filter sheets are short forms;
+// 60% leaves the focused field high in the viewport so gorhom's keyboard lift
+// keeps it visible). Bespoke dark canvas preserved from the prior raw-modal sheet
+// (#181B20 + topRadius 24) via backgroundStyle, mirroring CityPickerSheet.
+const SHEET_SNAP_POINTS = ["60%"];
+const SHEET_BACKGROUND = {
+  backgroundColor: "#181B20",
+  borderTopLeftRadius: 24,
+  borderTopRightRadius: 24,
+} as const;
 
 interface ChipProps {
   icon: IconName;
@@ -217,156 +242,168 @@ export const TripFilterChips: React.FC<TripFilterChipsProps> = ({
         />
       </ScrollView>
 
-      <Modal
+      {/* ORCH-1016 REWORK-4 (FIX B) — canonical input-bearing bottom sheet.
+          BaseBottomSheet (gorhom) + BottomSheetTextInput so the focused field
+          rises above the soft keyboard instead of being covered. wrapInRNModal
+          z-stacks above the floating GlassBottomNav (same trap CityPickerSheet
+          solved). keyboardBehavior/keyboardBlurBehavior/android_keyboardInputMode
+          mirror CityPickerSheet exactly. Body scrolls (scrollMode="scroll") so a
+          tall option list + keyboard never strand the Apply button. */}
+      <BaseBottomSheet
         visible={sheet !== null}
-        transparent
-        animationType="fade"
-        onRequestClose={closeSheet}
+        onClose={closeSheet}
+        theme="dark"
+        snapPoints={SHEET_SNAP_POINTS}
+        wrapInRNModal
+        keyboardBehavior="interactive"
+        keyboardBlurBehavior="restore"
+        android_keyboardInputMode="adjustResize"
+        backgroundStyle={SHEET_BACKGROUND}
+        accessibilityLabel="Trip filter"
+        scrollMode="scroll"
+        scrollProps={{
+          keyboardShouldPersistTaps: "handled",
+          contentContainerStyle: [
+            styles.sheetContent,
+            { paddingBottom: insets.bottom + 24 },
+          ],
+        }}
       >
-        <Pressable style={styles.backdrop} onPress={closeSheet}>
-          <Pressable
-            style={[styles.sheet, { paddingBottom: insets.bottom + 16 }]}
-            onPress={(e) => e.stopPropagation()}
-          >
-            <View style={styles.handle} />
+        {(sheet === "destination" || sheet === "departure") && (
+          <>
+            <Text style={styles.sheetTitle}>
+              {sheet === "destination" ? "Where to?" : "Leaving from?"}
+            </Text>
+            <BottomSheetTextInput
+              value={draftText}
+              onChangeText={setDraftText}
+              placeholder={sheet === "destination" ? "City or country" : "Your city"}
+              placeholderTextColor="rgba(255,255,255,0.4)"
+              autoFocus
+              style={styles.input}
+              returnKeyType="search"
+              onSubmitEditing={() => applyText(sheet)}
+            />
+            <View style={styles.sheetActions}>
+              <Pressable
+                onPress={() => {
+                  setDraftText("");
+                  onChange(
+                    sheet === "destination"
+                      ? { ...filters, destinationQuery: null }
+                      : { ...filters, departureQuery: null },
+                  );
+                  closeSheet();
+                }}
+                style={styles.clearBtn}
+              >
+                <Text style={styles.clearBtnText}>Clear</Text>
+              </Pressable>
+              <Pressable onPress={() => applyText(sheet)} style={styles.applyBtn}>
+                <Text style={styles.applyBtnText}>Apply</Text>
+              </Pressable>
+            </View>
+          </>
+        )}
 
-            {(sheet === "destination" || sheet === "departure") && (
-              <>
-                <Text style={styles.sheetTitle}>
-                  {sheet === "destination" ? "Where to?" : "Leaving from?"}
-                </Text>
-                <TextInput
-                  value={draftText}
-                  onChangeText={setDraftText}
-                  placeholder={sheet === "destination" ? "City or country" : "Your city"}
-                  placeholderTextColor="rgba(255,255,255,0.4)"
-                  autoFocus
-                  style={styles.input}
-                  returnKeyType="search"
-                  onSubmitEditing={() => applyText(sheet)}
-                />
-                <View style={styles.sheetActions}>
-                  <Pressable
-                    onPress={() => {
-                      setDraftText("");
-                      onChange(
-                        sheet === "destination"
-                          ? { ...filters, destinationQuery: null }
-                          : { ...filters, departureQuery: null },
-                      );
-                      closeSheet();
-                    }}
-                    style={styles.clearBtn}
-                  >
-                    <Text style={styles.clearBtnText}>Clear</Text>
-                  </Pressable>
-                  <Pressable onPress={() => applyText(sheet)} style={styles.applyBtn}>
-                    <Text style={styles.applyBtnText}>Apply</Text>
-                  </Pressable>
-                </View>
-              </>
-            )}
+        {sheet === "dates" && (
+          <>
+            <Text style={styles.sheetTitle}>When?</Text>
+            {[
+              { key: "anytime", label: "Anytime" },
+              { key: "this", label: "This month" },
+              { key: "next", label: "Next month" },
+            ].map((opt) => (
+              <Pressable
+                key={opt.key}
+                style={styles.optionRow}
+                onPress={() => {
+                  if (opt.key === "anytime") {
+                    onChange({ ...filters, dateFrom: null, dateTo: null });
+                  } else if (opt.key === "this") {
+                    const r = thisMonthRange();
+                    onChange({ ...filters, dateFrom: r.from, dateTo: r.to });
+                  } else {
+                    const r = nextMonthRange();
+                    onChange({ ...filters, dateFrom: r.from, dateTo: r.to });
+                  }
+                  closeSheet();
+                }}
+              >
+                <Text style={styles.optionLabel}>{opt.label}</Text>
+              </Pressable>
+            ))}
+          </>
+        )}
 
-            {sheet === "dates" && (
-              <>
-                <Text style={styles.sheetTitle}>When?</Text>
-                {[
-                  { key: "anytime", label: "Anytime" },
-                  { key: "this", label: "This month" },
-                  { key: "next", label: "Next month" },
-                ].map((opt) => (
-                  <Pressable
-                    key={opt.key}
-                    style={styles.optionRow}
-                    onPress={() => {
-                      if (opt.key === "anytime") {
-                        onChange({ ...filters, dateFrom: null, dateTo: null });
-                      } else if (opt.key === "this") {
-                        const r = thisMonthRange();
-                        onChange({ ...filters, dateFrom: r.from, dateTo: r.to });
-                      } else {
-                        const r = nextMonthRange();
-                        onChange({ ...filters, dateFrom: r.from, dateTo: r.to });
-                      }
-                      closeSheet();
-                    }}
-                  >
-                    <Text style={styles.optionLabel}>{opt.label}</Text>
-                  </Pressable>
-                ))}
-              </>
-            )}
+        {(sheet === "price" || sheet === "group") && (
+          <>
+            <Text style={styles.sheetTitle}>
+              {sheet === "price" ? "Price range" : "Group size"}
+            </Text>
+            <View style={styles.rangeRow}>
+              <BottomSheetTextInput
+                value={draftMin}
+                onChangeText={setDraftMin}
+                placeholder={sheet === "price" ? "Min $" : "Min"}
+                placeholderTextColor="rgba(255,255,255,0.4)"
+                keyboardType="number-pad"
+                style={[styles.input, styles.rangeInput]}
+              />
+              <Text style={styles.rangeDash}>–</Text>
+              <BottomSheetTextInput
+                value={draftMax}
+                onChangeText={setDraftMax}
+                placeholder={sheet === "price" ? "Max $" : "Max"}
+                placeholderTextColor="rgba(255,255,255,0.4)"
+                keyboardType="number-pad"
+                style={[styles.input, styles.rangeInput]}
+              />
+            </View>
+            <View style={styles.sheetActions}>
+              <Pressable
+                onPress={() => {
+                  setDraftMin("");
+                  setDraftMax("");
+                  onChange(
+                    sheet === "price"
+                      ? { ...filters, minPriceCents: null, maxPriceCents: null }
+                      : { ...filters, groupSizeMin: null, groupSizeMax: null },
+                  );
+                  closeSheet();
+                }}
+                style={styles.clearBtn}
+              >
+                <Text style={styles.clearBtnText}>Clear</Text>
+              </Pressable>
+              <Pressable onPress={() => applyRange(sheet)} style={styles.applyBtn}>
+                <Text style={styles.applyBtnText}>Apply</Text>
+              </Pressable>
+            </View>
+          </>
+        )}
 
-            {(sheet === "price" || sheet === "group") && (
-              <>
-                <Text style={styles.sheetTitle}>
-                  {sheet === "price" ? "Price range" : "Group size"}
-                </Text>
-                <View style={styles.rangeRow}>
-                  <TextInput
-                    value={draftMin}
-                    onChangeText={setDraftMin}
-                    placeholder={sheet === "price" ? "Min $" : "Min"}
-                    placeholderTextColor="rgba(255,255,255,0.4)"
-                    keyboardType="number-pad"
-                    style={[styles.input, styles.rangeInput]}
-                  />
-                  <Text style={styles.rangeDash}>–</Text>
-                  <TextInput
-                    value={draftMax}
-                    onChangeText={setDraftMax}
-                    placeholder={sheet === "price" ? "Max $" : "Max"}
-                    placeholderTextColor="rgba(255,255,255,0.4)"
-                    keyboardType="number-pad"
-                    style={[styles.input, styles.rangeInput]}
-                  />
-                </View>
-                <View style={styles.sheetActions}>
-                  <Pressable
-                    onPress={() => {
-                      setDraftMin("");
-                      setDraftMax("");
-                      onChange(
-                        sheet === "price"
-                          ? { ...filters, minPriceCents: null, maxPriceCents: null }
-                          : { ...filters, groupSizeMin: null, groupSizeMax: null },
-                      );
-                      closeSheet();
-                    }}
-                    style={styles.clearBtn}
-                  >
-                    <Text style={styles.clearBtnText}>Clear</Text>
-                  </Pressable>
-                  <Pressable onPress={() => applyRange(sheet)} style={styles.applyBtn}>
-                    <Text style={styles.applyBtnText}>Apply</Text>
-                  </Pressable>
-                </View>
-              </>
-            )}
-
-            {sheet === "sort" && (
-              <>
-                <Text style={styles.sheetTitle}>Sort by</Text>
-                {SORT_OPTIONS.map((opt) => (
-                  <Pressable
-                    key={opt.value}
-                    style={styles.optionRow}
-                    onPress={() => {
-                      onChange({ ...filters, sort: opt.value });
-                      closeSheet();
-                    }}
-                  >
-                    <Text style={styles.optionLabel}>{opt.label}</Text>
-                    {filters.sort === opt.value ? (
-                      <Icon name="checkmark-circle-outline" size={18} color="#FF6B35" />
-                    ) : null}
-                  </Pressable>
-                ))}
-              </>
-            )}
-          </Pressable>
-        </Pressable>
-      </Modal>
+        {sheet === "sort" && (
+          <>
+            <Text style={styles.sheetTitle}>Sort by</Text>
+            {SORT_OPTIONS.map((opt) => (
+              <Pressable
+                key={opt.value}
+                style={styles.optionRow}
+                onPress={() => {
+                  onChange({ ...filters, sort: opt.value });
+                  closeSheet();
+                }}
+              >
+                <Text style={styles.optionLabel}>{opt.label}</Text>
+                {filters.sort === opt.value ? (
+                  <Icon name="checkmark-circle-outline" size={18} color="#FF6B35" />
+                ) : null}
+              </Pressable>
+            ))}
+          </>
+        )}
+      </BaseBottomSheet>
     </View>
   );
 };
@@ -414,25 +451,12 @@ const styles = StyleSheet.create({
   chipLabelActive: {
     color: chrome.active.labelColor,
   },
-  backdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "flex-end",
-  },
-  sheet: {
-    backgroundColor: "#181B20",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+  // ORCH-1016 REWORK-4 (FIX B) — scroll content padding for the BaseBottomSheet
+  // body (the backdrop, sheet container, and hand-rolled handle are now owned by
+  // BaseBottomSheet; the per-kind body renders inside its scroll host).
+  sheetContent: {
     paddingHorizontal: 20,
-    paddingTop: 12,
-  },
-  handle: {
-    alignSelf: "center",
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "rgba(255,255,255,0.3)",
-    marginBottom: 16,
+    paddingTop: 8,
   },
   sheetTitle: {
     fontSize: 17,

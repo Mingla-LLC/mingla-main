@@ -1731,6 +1731,11 @@ export default function ExpandedCardModal({
         visible={visible}
         data={businessEvent}
         onClose={onClose}
+        // ORCH-1016: EBES hides the nav while open (hidesBottomNav), so the CTA is
+        // never covered. The small bottom inset is just breathing room below the
+        // last row; the gorhom BottomSheetScrollView (scrollMode="scroll", direct
+        // child) owns the bounded scroll.
+        bottomContentInset={Math.max(insets.bottom, 16) + 8}
       />
     );
   }

@@ -35,6 +35,7 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
+import { formatTripDateRange } from "@mingla/event-rendering";
 import { Icon } from "../ui/Icon";
 import type {
   Trip,
@@ -63,22 +64,8 @@ export interface TripPreviewProps {
   testID?: string;
 }
 
-function formatDateRange(startAt: string | null, endAt: string | null): string {
-  if (startAt === null || endAt === null) return "Dates to be set";
-  try {
-    const start = new Date(startAt);
-    const end = new Date(endAt);
-    const fmt = (d: Date): string =>
-      d.toLocaleDateString(undefined, {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      });
-    return `${fmt(start)} – ${fmt(end)}`;
-  } catch {
-    return "Dates to be set";
-  }
-}
+// ORCH-1016 — date range now from the shared @mingla/event-rendering helper so
+// the consumer card/detail and this preview/public page format identically.
 
 function formatPrice(tier: TripPricingTier | undefined): string {
   if (tier === undefined) return "Pricing TBD";
@@ -130,9 +117,23 @@ export const TripPreview: React.FC<TripPreviewProps> = ({
         <View style={styles.metaRow}>
           <Icon name="calendar" size={16} color={accent.warm} />
           <Text style={styles.metaText}>
-            {formatDateRange(trip.businessTrip.startAt, trip.businessTrip.endAt)}
+            {formatTripDateRange(
+              trip.businessTrip.startAt,
+              trip.businessTrip.endAt,
+            )}
           </Text>
         </View>
+        {/* ORCH-1016 — "Leaving from {city}" ABOVE destination ("leave here →
+            go there"). Conditional: hidden when departure not set. Mirrors the
+            consumer card + detail treatment (paper-plane icon, sentence case). */}
+        {trip.businessTrip.departureLocationText !== null ? (
+          <View style={styles.metaRow}>
+            <Icon name="send" size={16} color={accent.warm} />
+            <Text style={styles.metaText} numberOfLines={2}>
+              Leaving from {trip.businessTrip.departureLocationText}
+            </Text>
+          </View>
+        ) : null}
         {trip.businessTrip.destinationLocationText !== null ? (
           <View style={styles.metaRow}>
             <Icon name="location" size={16} color={accent.warm} />

@@ -40,7 +40,19 @@ import {
 import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+// ORCH-1016 REWORK-4 (FIX A) — import the gorhom scroll host re-export so this
+// sheet scrolls via the SAME proven ROOT-CAUSE wiring as
+// ExpandedBusinessEventSheet / ConsumerTripDetailScreen: a BARE scrollMode="scroll"
+// so BaseBottomSheet's own gorhom BottomSheetScrollView is the DIRECT child of
+// BottomSheetContent, with {header}{body}{stickyFooter} as scroll children. Any
+// wrapper prop (header/stickyFooter/bodyContainerStyle) nests the scroll one
+// BottomSheetView level deeper → viewport==content → frozen (RW3.1).
 import { BaseBottomSheet } from "../ui/BaseBottomSheet";
+// ORCH-1016 REWORK-4 (FIX A) — single source of truth for the floating
+// GlassBottomNav footprint. The sticky CTA bar carries this clearance so the
+// buy/Continue button always sits ABOVE Mingla's bottom nav (the on-device bug:
+// the CTA was blocked by the nav because the footer only padded insets.bottom).
+import { BOTTOM_NAV_CONTENT_HEIGHT } from "../../hooks/useAppLayout";
 
 import {
   type PublicTicketProps,
@@ -174,6 +186,12 @@ export interface TicketCartSheetProps {
   buyerPhone: string;
   /** True while the upstream `runNativeCheckout` is in flight. */
   isSubmitting: boolean;
+  /**
+   * True when this cart is rendered inline below Mingla's floating nav. When the
+   * parent group is already hosted in an overlay carrier, the nav is behind the
+   * modal window and the CTA only needs OS safe-area clearance.
+   */
+  clearFloatingNav?: boolean;
   onCancel: () => void;
   onCheckout: (payload: TicketCartCheckoutPayload) => void;
 }
@@ -189,6 +207,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   buyerEmail,
   buyerPhone,
   isSubmitting,
+  clearFloatingNav = true,
   onCancel,
   onCheckout,
 }) => {
@@ -409,9 +428,23 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     ? "Free"
     : formatCentsCurrency(totals.totalCents, totals.currency);
 
+  // ORCH-1016 REWORK-4 (FIX A) — the CTA bar must clear BOTH the OS home
+  // indicator AND Mingla's floating GlassBottomNav. This sheet renders BELOW the
+  // visible nav (no wrapInRNModal), so the nav height is additive on top of the
+  // safe-area inset for inline uses. Overlay-carried uses skip the nav height
+  // because the whole sheet group already renders above the app nav. Previously
+  // only `insets.bottom + 16`, so the buy/Continue button was blocked by the nav
+  // on-device.
   const stickyBarStyle = useMemo(
-    () => [styles.stickyBar, { paddingBottom: insets.bottom + 16 }],
-    [insets.bottom],
+    () => [
+      styles.stickyBar,
+      {
+        paddingBottom:
+          (clearFloatingNav ? BOTTOM_NAV_CONTENT_HEIGHT : 0) +
+          Math.max(insets.bottom, 16),
+      },
+    ],
+    [clearFloatingNav, insets.bottom],
   );
 
   // META-ORCH-0991 Wave A — migrated onto BaseBottomSheet. Header is the fixed
@@ -615,6 +648,27 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
       </View>
     ) : undefined;
 
+  // ORCH-1016 REWORK-4 (FIX A) — mirror ExpandedBusinessEventSheet /
+  // ConsumerTripDetailScreen's PROVEN scroll wiring (RW3.2):
+  //   scrollMode="view"  → BaseBottomSheet passes children straight into
+  //                        BottomSheetContent (no extra nesting),
+  //   <BottomSheetScrollView flex:1>  → the gorhom scroll host as a flex:1
+  //                        DIRECT child of BottomSheetContent (so a tall cart +
+  //                        intake form physically scrolls at runtime),
+  //   {stickyFooter}     → the CTA bar as a SIBLING View BELOW the scroll host
+  //                        (NOT BaseBottomSheet's `stickyFooter` prop, which
+  //                        routed the sheet into the frozen nested branch).
+  // The CTA bar (stickyBarStyle) carries the needed bottom clearance for its
+  // host mode. The non-populated states (loading/empty/sold-out) render their
+  // centered message body inside the same scroll host — nothing to scroll there,
+  // but the wiring stays uniform.
+  // ORCH-1016 ROOT-CAUSE FIX: BARE scrollMode="scroll" so the gorhom
+  // BottomSheetScrollView is the DIRECT child of BottomSheetContent (the only
+  // structure gorhom constrains to the snap height). The header + body + Pay CTA
+  // are scroll children — the long billing form now scrolls to reach Pay. The nav
+  // is hidden (`hidesBottomNav`) so the CTA isn't covered. (Was scrollMode="view"
+  // + header + bodyContainerStyle + injected scroll → wrapped scroll → viewport ==
+  // content → frozen, so the form never reached Pay.)
   return (
     <BaseBottomSheet
       visible={visible}
@@ -623,21 +677,17 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
       snapPoints={SHEET_SNAP_POINTS}
       backgroundStyle={styles.sheetBackground}
       handleStyle={styles.handleIndicator}
-      bodyContainerStyle={styles.content}
       accessibilityLabel="Get tickets"
-      scrollMode={renderState === "populated" ? "scroll" : "view"}
-      scrollProps={
-        renderState === "populated"
-          ? {
-              contentContainerStyle: styles.scrollContent,
-              showsVerticalScrollIndicator: false,
-            }
-          : undefined
-      }
-      header={header}
-      stickyFooter={stickyFooter}
+      scrollMode="scroll"
+      hidesBottomNav
+      scrollProps={{
+        contentContainerStyle: styles.scrollContent,
+        showsVerticalScrollIndicator: false,
+      }}
     >
+      {header}
       {body}
+      {stickyFooter}
     </BaseBottomSheet>
   );
 };
@@ -710,12 +760,9 @@ const styles = StyleSheet.create({
     textAlign: "center",
     lineHeight: 22,
   },
-  // Scroll body — populated state
-  scroll: {
-    flex: 1,
-  },
   scrollContent: {
     paddingHorizontal: 24,
+    // Breathing room above the (separately nav-cleared) sticky CTA footer.
     paddingBottom: 16,
   },
   sectionLabel: {

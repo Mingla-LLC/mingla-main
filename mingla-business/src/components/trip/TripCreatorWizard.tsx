@@ -198,6 +198,11 @@ function tripToStep1Draft(trip: Trip): Step1Draft {
     destinationLocationText: trip.businessTrip.destinationLocationText,
     destinationLat: trip.businessTrip.destinationLat,
     destinationLng: trip.businessTrip.destinationLng,
+    // ORCH-1016 — departure (origin) seeded from current trip row.
+    departurePlaceId: trip.businessTrip.departurePlaceId,
+    departureLocationText: trip.businessTrip.departureLocationText,
+    departureLat: trip.businessTrip.departureLat,
+    departureLng: trip.businessTrip.departureLng,
     capacity: trip.businessTrip.capacity,
     // ORCH-0876 — cover media seeded from current trip row.
     coverMediaUrl: trip.coverMediaUrl,
@@ -478,6 +483,10 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
         destinationLocationText: step1Draft.destinationLocationText,
         destinationLat: step1Draft.destinationLat,
         destinationLng: step1Draft.destinationLng,
+        departurePlaceId: step1Draft.departurePlaceId,
+        departureLocationText: step1Draft.departureLocationText,
+        departureLat: step1Draft.departureLat,
+        departureLng: step1Draft.departureLng,
         capacity: step1Draft.capacity,
       },
       days: daysDraft.map((d, i) => ({
@@ -530,6 +539,10 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
           destinationLocationText: step1Draft.destinationLocationText,
           destinationLat: step1Draft.destinationLat,
           destinationLng: step1Draft.destinationLng,
+          departurePlaceId: step1Draft.departurePlaceId,
+          departureLocationText: step1Draft.departureLocationText,
+          departureLat: step1Draft.departureLat,
+          departureLng: step1Draft.departureLng,
         },
         // ORCH-0876 — cover fields persist alongside basics. CoverPicker
         // emits patches synchronously into draft state; this writes them
@@ -829,6 +842,10 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
               destinationLocationText: step1Draft.destinationLocationText,
               destinationLat: step1Draft.destinationLat,
               destinationLng: step1Draft.destinationLng,
+              departurePlaceId: step1Draft.departurePlaceId,
+              departureLocationText: step1Draft.departureLocationText,
+              departureLat: step1Draft.departureLat,
+              departureLng: step1Draft.departureLng,
               capacity: step1Draft.capacity,
             },
           },

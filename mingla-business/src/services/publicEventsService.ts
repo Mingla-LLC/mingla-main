@@ -1259,6 +1259,22 @@ export const getPublicTripById = async (
         typeof bt.destinationLat === "number" ? bt.destinationLat : null,
       destinationLng:
         typeof bt.destinationLng === "number" ? bt.destinationLng : null,
+      // ORCH-1016 — departure (origin). Prefer canonical events.departure_text.
+      departurePlaceId:
+        typeof bt.departurePlaceId === "string" ? bt.departurePlaceId : null,
+      departureLocationText:
+        typeof (event as { departure_text?: string | null }).departure_text ===
+          "string" &&
+        (((event as { departure_text?: string | null }).departure_text ?? "") as string)
+          .trim().length > 0
+          ? ((event as { departure_text?: string | null }).departure_text ?? null)
+          : typeof bt.departureLocationText === "string"
+            ? bt.departureLocationText
+            : null,
+      departureLat:
+        typeof bt.departureLat === "number" ? bt.departureLat : null,
+      departureLng:
+        typeof bt.departureLng === "number" ? bt.departureLng : null,
       capacity: typeof bt.capacity === "number" ? bt.capacity : null,
     },
     days: days.map(

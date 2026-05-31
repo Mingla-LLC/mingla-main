@@ -179,6 +179,11 @@ interface LocalTripEditState {
   destinationLocationText: string | null;
   destinationLat: number | null;
   destinationLng: number | null;
+  // ORCH-1016 — departure (origin) city
+  departurePlaceId: string | null;
+  departureLocationText: string | null;
+  departureLat: number | null;
+  departureLng: number | null;
   capacity: number | null;
   // Itinerary
   days: TripDayDraft[];
@@ -214,6 +219,10 @@ function tripToLocalEditState(trip: Trip): LocalTripEditState {
     destinationLocationText: trip.businessTrip.destinationLocationText,
     destinationLat: trip.businessTrip.destinationLat,
     destinationLng: trip.businessTrip.destinationLng,
+    departurePlaceId: trip.businessTrip.departurePlaceId,
+    departureLocationText: trip.businessTrip.departureLocationText,
+    departureLat: trip.businessTrip.departureLat,
+    departureLng: trip.businessTrip.departureLng,
     capacity: trip.businessTrip.capacity,
     days: trip.days.map((d) => ({
       ordinal: d.ordinal,
@@ -295,6 +304,10 @@ function buildLiveTripPatch(
     destinationLocationText: string | null;
     destinationLat: number | null;
     destinationLng: number | null;
+    departurePlaceId: string | null;
+    departureLocationText: string | null;
+    departureLat: number | null;
+    departureLng: number | null;
     capacity: number | null;
   }> = {};
   if (state.startAt !== trip.businessTrip.startAt) bt.startAt = state.startAt;
@@ -313,6 +326,24 @@ function buildLiveTripPatch(
   }
   if (state.destinationLng !== trip.businessTrip.destinationLng) {
     bt.destinationLng = state.destinationLng;
+  }
+  // ORCH-1016 — departure is ADDITIVE (no refund gate; doesn't change
+  // price/dates/capacity/inclusions). The biz_update_live_trip generic
+  // theme.business_trip merge persists these into theme; the ORCH-1016 trigger
+  // syncs theme.business_trip.departureLocationText/Lat/Lng → events.departure_text/geo.
+  if (state.departurePlaceId !== trip.businessTrip.departurePlaceId) {
+    bt.departurePlaceId = state.departurePlaceId;
+  }
+  if (
+    state.departureLocationText !== trip.businessTrip.departureLocationText
+  ) {
+    bt.departureLocationText = state.departureLocationText;
+  }
+  if (state.departureLat !== trip.businessTrip.departureLat) {
+    bt.departureLat = state.departureLat;
+  }
+  if (state.departureLng !== trip.businessTrip.departureLng) {
+    bt.departureLng = state.departureLng;
   }
   if (state.capacity !== trip.businessTrip.capacity) {
     bt.capacity = state.capacity;
@@ -1040,6 +1071,26 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                   numberOfLines={4}
                   accessibilityLabel="Trip description"
                   testID="edit-trip-description"
+                />
+              </View>
+              {/* ORCH-1016 — Departing from (origin), ABOVE Destination. Text-only
+                  edit (mirrors the destination edit field's plain TextInput). The
+                  ORCH-1016 trigger syncs theme.business_trip.departureLocationText →
+                  events.departure_text. Additive — no refund gate. */}
+              <View style={styles.fieldGroup}>
+                <Text style={styles.fieldLabel}>Departing from</Text>
+                <TextInput
+                  value={editState.departureLocationText ?? ""}
+                  onChangeText={(v) =>
+                    updateBasics({
+                      departureLocationText: v.trim().length === 0 ? null : v,
+                    })
+                  }
+                  placeholder="e.g. Washington, DC, USA"
+                  placeholderTextColor={textTokens.tertiary}
+                  style={styles.textInput}
+                  accessibilityLabel="Departing from"
+                  testID="edit-trip-departure"
                 />
               </View>
               <View style={styles.fieldGroup}>

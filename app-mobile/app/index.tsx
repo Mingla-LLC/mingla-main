@@ -42,6 +42,7 @@ import { ToastContainer } from "../src/components/ui/ToastContainer";
 import { toastManager } from "../src/components/ui/Toast";
 import { ToastProvider } from "../src/components/ToastManager";
 import { useAppStore } from "../src/store/appStore";
+import { useBottomNavHidden } from "../src/store/bottomNavStore";
 import { messagingService } from "../src/services/messagingService";
 import { BoardMessageService } from "../src/services/boardMessageService";
 import { muteService } from "../src/services/muteService";
@@ -161,6 +162,8 @@ function AppContent() {
   const handlersRef = useRef(handlers);
   handlersRef.current = handlers;
   const layout = useAppLayout();
+  // ORCH-1016 — hide the floating nav while a full detail/checkout sheet is open.
+  const bottomNavHidden = useBottomNavHidden();
   const { t } = useTranslation(['navigation', 'common']);
 
   // ORCH-0837: Stripe URL-callback handler. Used by the Linking listener
@@ -2505,7 +2508,10 @@ function AppContent() {
                       {/* Coach Mark Spotlight Overlay */}
                       <SpotlightOverlay />
 
-                      {/* Bottom Navigation — ORCH-0589 floating glass capsule with orange spotlight. */}
+                      {/* Bottom Navigation — ORCH-0589 floating glass capsule with orange spotlight.
+                          ORCH-1016: hidden while a full detail/checkout sheet is open
+                          (bottomNavHidden) so its content/CTA isn't painted over by the nav. */}
+                      {!bottomNavHidden && (
                       <CoachMarkNavigationGate layout={layout}>
                         <View style={styles.glassNavWrapper}>
                           <GlassBottomNavWithCoach
@@ -2543,6 +2549,7 @@ function AppContent() {
                           />
                         </View>
                       </CoachMarkNavigationGate>
+                      )}
                     </View>
 
                     {/* Share Modal */}

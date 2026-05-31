@@ -47,6 +47,12 @@ export interface Step1Draft {
   destinationLocationText: string | null;
   destinationLat: number | null;
   destinationLng: number | null;
+  // ORCH-1016 — DEPARTURE/origin city ("where travelers leave from"). Mirrors
+  // the destination* family. Optional — never gates publish (NG-3 sparse data).
+  departurePlaceId: string | null;
+  departureLocationText: string | null;
+  departureLat: number | null;
+  departureLng: number | null;
   capacity: number | null;
   /**
    * ORCH-0876 — cover media for the trip (mirror of the events table
@@ -342,6 +348,33 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
             </Pressable>
           )}
         </View>
+      </View>
+
+      {/* ORCH-1016 — Departing from (origin city) via Google Places. Sits ABOVE
+          Destination: the mental model is "leave here → go there". Optional. */}
+      <View style={styles.fieldGroup}>
+        <Text style={styles.fieldLabel}>Departing from</Text>
+        <AddressAutocompleteInput
+          value={draft.departureLocationText ?? ""}
+          onChangeText={(v) => onChange({ departureLocationText: v })}
+          onPick={(place) => {
+            onChange({
+              departurePlaceId: place.placeId,
+              departureLocationText: place.formattedAddress,
+              departureLat: place.location.lat,
+              departureLng: place.location.lng,
+            });
+          }}
+          onClear={() => {
+            onChange({
+              departurePlaceId: null,
+              departureLocationText: null,
+              departureLat: null,
+              departureLng: null,
+            });
+          }}
+          placeholder="e.g. Washington, DC, USA"
+        />
       </View>
 
       {/* Destination via Google Places */}

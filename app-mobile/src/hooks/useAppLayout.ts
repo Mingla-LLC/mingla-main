@@ -1,5 +1,7 @@
 import { useMemo } from 'react';
+import { Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { glass } from '../constants/designSystem';
 import { SCREEN_WIDTH, SCREEN_HEIGHT, vs } from '../utils/responsive';
 
 // ─── Fixed Layout Constants ──────────────────────────────────────────
@@ -18,6 +20,33 @@ const HEADER_CONTENT_HEIGHT = vs(52);
  * footprint — the primitive must NOT hardcode its own copy.
  */
 export const BOTTOM_NAV_CONTENT_HEIGHT = vs(56);
+
+/**
+ * Actual floating GlassBottomNav viewport footprint, including the capsule and
+ * its absolute bottom offset. This is distinct from BOTTOM_NAV_CONTENT_HEIGHT:
+ * sheet containers need to move above the rendered capsule, not just pad inner
+ * scroll content.
+ */
+export const BOTTOM_NAV_CAPSULE_HEIGHT = glass.chrome.nav.capsuleHeight;
+export const BOTTOM_NAV_IOS_BOTTOM_OFFSET = 11;
+export const BOTTOM_NAV_ANDROID_BOTTOM_OFFSET = 6;
+export const BOTTOM_NAV_ANDROID_CAPSULE_REDUCTION = 3;
+export const BOTTOM_NAV_SHEET_CLEARANCE_GAP = 8;
+
+export function getFloatingBottomNavSheetInset(
+  bottomSafeAreaInset: number,
+  platformOS: typeof Platform.OS = Platform.OS,
+): number {
+  const capsuleHeight =
+    BOTTOM_NAV_CAPSULE_HEIGHT -
+    (platformOS === 'android' ? BOTTOM_NAV_ANDROID_CAPSULE_REDUCTION : 0);
+  const navBottomOffset =
+    platformOS === 'android'
+      ? bottomSafeAreaInset + BOTTOM_NAV_ANDROID_BOTTOM_OFFSET
+      : BOTTOM_NAV_IOS_BOTTOM_OFFSET;
+
+  return capsuleHeight + navBottomOffset + BOTTOM_NAV_SHEET_CLEARANCE_GAP;
+}
 
 /** Minimum bottom padding when no system inset exists (Android w/o gesture nav) */
 const MIN_BOTTOM_PADDING = 8;
