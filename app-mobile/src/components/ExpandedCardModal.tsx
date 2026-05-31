@@ -695,6 +695,7 @@ function CuratedPlanView({
   onClose,
   onOpenBrowser,
   onOpenImageLightbox,
+  onSchedulePickerModalVisibilityChange,
   userPreferences,
   currentMode,
   onCardRemoved,
@@ -709,6 +710,7 @@ function CuratedPlanView({
   onClose: () => void;
   onOpenBrowser: (url: string, title: string) => void;
   onOpenImageLightbox: (images: string[], initialIndex: number) => void;
+  onSchedulePickerModalVisibilityChange: (isOpen: boolean) => void;
   userPreferences?: any;
   currentMode?: string;
   onCardRemoved?: (cardId: string) => void;
@@ -725,6 +727,7 @@ function CuratedPlanView({
       onClose={onClose}
       onOpenBrowser={onOpenBrowser}
       onOpenImageLightbox={onOpenImageLightbox}
+      onSchedulePickerModalVisibilityChange={onSchedulePickerModalVisibilityChange}
       userPreferences={userPreferences}
       currentMode={currentMode}
       onCardRemoved={onCardRemoved}
@@ -744,6 +747,7 @@ function MultiStopPlanView({
   onClose,
   onOpenBrowser,
   onOpenImageLightbox,
+  onSchedulePickerModalVisibilityChange,
   userPreferences,
   currentMode,
   onCardRemoved,
@@ -758,6 +762,7 @@ function MultiStopPlanView({
   onClose: () => void;
   onOpenBrowser: (url: string, title: string) => void;
   onOpenImageLightbox: (images: string[], initialIndex: number) => void;
+  onSchedulePickerModalVisibilityChange: (isOpen: boolean) => void;
   userPreferences?: any;
   currentMode?: string;
   onCardRemoved?: (cardId: string) => void;
@@ -1299,6 +1304,7 @@ function MultiStopPlanView({
         onCardRemoved={onCardRemoved}
         onScheduleSuccess={() => onClose()}
         onOpenBrowser={onOpenBrowser}
+        onSchedulePickerModalVisibilityChange={onSchedulePickerModalVisibilityChange}
         onPaywallRequired={onPaywallRequired}
         canAccessCurated={canAccessCurated}
       />
@@ -1399,6 +1405,7 @@ export default function ExpandedCardModal({
   const [ticketBrowserUrl, setTicketBrowserUrl] = useState<string | null>(null);
   const [browserUrl, setBrowserUrl] = useState<string | null>(null);
   const [browserTitle, setBrowserTitle] = useState('');
+  const [isSchedulePickerOpen, setIsSchedulePickerOpen] = useState(false);
   const [curatedLightbox, setCuratedLightbox] = useState<{ visible: boolean; images: string[]; initialIndex: number }>({
     visible: false,
     images: [],
@@ -1408,17 +1415,18 @@ export default function ExpandedCardModal({
     browserUrl !== null ||
     ticketBrowserUrl !== null ||
     isNightOutShareOpen ||
+    isSchedulePickerOpen ||
     curatedLightbox.visible;
 
   const handleRootSheetClose = useCallback(() => {
     // ORCH-1022: while a child RN Modal/WebView is open, the root sheet is
     // intentionally suppressed to free the native presentation slot. Swallow
     // BaseBottomSheet's synthetic close so the card state is not torn down.
-    if (browserUrl !== null || ticketBrowserUrl !== null || isNightOutShareOpen || curatedLightbox.visible) {
+    if (browserUrl !== null || ticketBrowserUrl !== null || isNightOutShareOpen || isSchedulePickerOpen || curatedLightbox.visible) {
       return;
     }
     onClose();
-  }, [browserUrl, curatedLightbox.visible, isNightOutShareOpen, onClose, ticketBrowserUrl]);
+  }, [browserUrl, curatedLightbox.visible, isNightOutShareOpen, isSchedulePickerOpen, onClose, ticketBrowserUrl]);
 
   // Review navigation: horizontal swipe to cycle through reviewed cards
   const hasNavigation = onNavigateNext !== undefined || onNavigatePrevious !== undefined;
@@ -1464,6 +1472,7 @@ export default function ExpandedCardModal({
       setBrowserUrl(null);
       setBrowserTitle('');
       setIsNightOutShareOpen(false);
+      setIsSchedulePickerOpen(false);
       setCuratedLightbox({ visible: false, images: [], initialIndex: 0 });
     }
   }, [visible, card, viewerLoc?.lat, viewerLoc?.lng, effectiveTravelMode]);
@@ -1863,6 +1872,7 @@ export default function ExpandedCardModal({
                   onOpenImageLightbox={(images, initialIndex) => {
                     setCuratedLightbox({ visible: true, images, initialIndex });
                   }}
+                  onSchedulePickerModalVisibilityChange={setIsSchedulePickerOpen}
                   userPreferences={userPreferences}
                   currentMode={currentMode}
                   onCardRemoved={onCardRemoved}
@@ -2206,6 +2216,7 @@ export default function ExpandedCardModal({
                     setBrowserUrl(url);
                     setBrowserTitle(title);
                   }}
+                  onSchedulePickerModalVisibilityChange={setIsSchedulePickerOpen}
                   onPaywallRequired={onPaywallRequired}
                   canAccessCurated={canAccessCurated}
                 />

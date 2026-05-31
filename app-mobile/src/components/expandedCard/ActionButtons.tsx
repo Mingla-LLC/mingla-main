@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from "react";
+import React, { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { mixpanelService } from "../../services/mixpanelService";
 import {
   View,
@@ -56,6 +56,7 @@ interface ActionButtonsProps {
   onCardRemoved?: (cardId: string) => void; // Callback to remove card from deck
   onScheduleSuccess?: (card: ExpandedCardData) => void; // Callback after successful scheduling
   onOpenBrowser?: (url: string, title: string) => void; // Opens in-app browser (for Policies & Reservations)
+  onSchedulePickerModalVisibilityChange?: (isOpen: boolean) => void;
   isVisited?: boolean;
   isVisitLoading?: boolean;
   onVisitPress?: () => void;
@@ -80,6 +81,7 @@ export default function ActionButtons({
   onCardRemoved,
   onScheduleSuccess,
   onOpenBrowser,
+  onSchedulePickerModalVisibilityChange,
   isVisited = false,
   isVisitLoading = false,
   onVisitPress,
@@ -106,6 +108,23 @@ export default function ActionButtons({
   const [pendingDateConfirmation, setPendingDateConfirmation] = useState<Date | null>(null);
   const [showAllHours, setShowAllHours] = useState(false);
   const visitScaleAnim = useRef(new Animated.Value(1)).current;
+  const setDateTimePickerVisible = useCallback(
+    (isOpen: boolean) => {
+      setShowDateTimePicker(isOpen);
+      if (Platform.OS === "ios") {
+        onSchedulePickerModalVisibilityChange?.(isOpen);
+      }
+    },
+    [onSchedulePickerModalVisibilityChange],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (Platform.OS === "ios") {
+        onSchedulePickerModalVisibilityChange?.(false);
+      }
+    };
+  }, [onSchedulePickerModalVisibilityChange]);
 
   const { user } = useAppStore();
   const queryClient = useQueryClient();
@@ -251,13 +270,13 @@ export default function ActionButtons({
     setSelectedDate(now);
     setSelectedTime(now);
     setPickerMode("date");
-    setShowDateTimePicker(true);
+    setDateTimePickerVisible(true);
   };
 
   const handleDateTimePickerChange = (event: any, date?: Date) => {
     if (Platform.OS === "android") {
       if (event.type === "dismissed") {
-        setShowDateTimePicker(false);
+        setDateTimePickerVisible(false);
         setPendingDateConfirmation(null);
         return;
       }
@@ -267,7 +286,7 @@ export default function ActionButtons({
           // ORCH-0690 S-2: Android calendar dialog OK'd. Stage the date and surface
           // a preview/confirm Alert before advancing to time-mode. User can review
           // the picked date and back out to pick a different day.
-          setShowDateTimePicker(false);
+          setDateTimePickerVisible(false);
           setPendingDateConfirmation(date);
           showAndroidDateConfirmation(date);
         } else {
@@ -277,7 +296,7 @@ export default function ActionButtons({
           combinedDateTime.setMinutes(date.getMinutes());
           setSelectedTime(combinedDateTime);
           setSelectedDateTime(combinedDateTime);
-          setShowDateTimePicker(false);
+          setDateTimePickerVisible(false);
           confirmAndSchedule(combinedDateTime);
         }
       }
@@ -328,7 +347,7 @@ export default function ActionButtons({
               setSelectedDateTime(null);
               setSelectedTime(new Date());
               setPickerMode('time');
-              setShowDateTimePicker(true);
+              setDateTimePickerVisible(true);
             },
           },
         ],
@@ -368,7 +387,7 @@ export default function ActionButtons({
               // S-8: keep selectedDate; only reset selectedTime to now.
               setSelectedTime(new Date());
               setPickerMode('time');
-              setShowDateTimePicker(true);
+              setDateTimePickerVisible(true);
             },
           },
           { text: t('expanded_details:action_buttons.cancel'), style: 'cancel' },
@@ -395,7 +414,7 @@ export default function ActionButtons({
             // Re-open calendar dialog. Keep pickerMode="date".
             setPendingDateConfirmation(null);
             setSelectedDate(date);
-            setShowDateTimePicker(true);
+            setDateTimePickerVisible(true);
           },
         },
         {
@@ -406,7 +425,7 @@ export default function ActionButtons({
             setSelectedTime(date);
             setPickerMode('time');
             setPendingDateConfirmation(null);
-            setShowDateTimePicker(true);
+            setDateTimePickerVisible(true);
           },
         },
       ],
@@ -422,7 +441,7 @@ export default function ActionButtons({
     combinedDateTime.setHours(selectedTime.getHours());
     combinedDateTime.setMinutes(selectedTime.getMinutes());
     setSelectedDateTime(combinedDateTime);
-    setShowDateTimePicker(false);
+    setDateTimePickerVisible(false);
     confirmAndSchedule(combinedDateTime);
   };
 
@@ -627,7 +646,7 @@ export default function ActionButtons({
           {Platform.OS === "ios" ? (
             <BaseBottomSheet
               visible={showDateTimePicker}
-              onClose={() => setShowDateTimePicker(false)}
+              onClose={() => setDateTimePickerVisible(false)}
               snapPoints={DATE_TIME_PICKER_SNAP_POINTS}
               wrapInRNModal
               scrollMode="view"
@@ -642,7 +661,7 @@ export default function ActionButtons({
                       logComponent="ActionButtons"
                       logId="picker_cancel"
                       style={styles.modalCancelButton}
-                      onPress={() => setShowDateTimePicker(false)}
+                      onPress={() => setDateTimePickerVisible(false)}
                     >
                       <Text style={styles.modalCancelText}>{t('expanded_details:action_buttons.cancel')}</Text>
                     </TrackedTouchableOpacity>

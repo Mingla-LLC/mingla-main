@@ -5,8 +5,9 @@
  *
  * The native freeze/dead-button bug came from co-presenting the root
  * BaseBottomSheet's RN Modal with child RN Modal surfaces such as the in-app
- * browser. This check locks the shared fix: child overlays are parent-owned
- * siblings, and the root sheet is suppressed while any child overlay is open.
+ * browser and iOS schedule picker. This check locks the shared fix: child
+ * overlays are parent-owned or parent-gated, and the root sheet is suppressed
+ * while any child overlay is open.
  */
 
 import fs from "node:fs";
@@ -20,6 +21,7 @@ const read = (relativePath) =>
   fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
 
 const source = read("app-mobile/src/components/ExpandedCardModal.tsx");
+const actionButtonsSource = read("app-mobile/src/components/expandedCard/ActionButtons.tsx");
 const checks = [];
 const check = (name, pass, detail) => checks.push({ name, pass, detail });
 
@@ -42,10 +44,10 @@ const overlayBlock =
 
 check(
   "G-01 child overlay aggregate covers all RN Modal child surfaces",
-  /const anyChildModalOpen\s*=\s*[\s\S]*?browserUrl !== null[\s\S]*?ticketBrowserUrl !== null[\s\S]*?isNightOutShareOpen[\s\S]*?curatedLightbox\.visible;/s.test(
+  /const anyChildModalOpen\s*=\s*[\s\S]*?browserUrl !== null[\s\S]*?ticketBrowserUrl !== null[\s\S]*?isNightOutShareOpen[\s\S]*?isSchedulePickerOpen[\s\S]*?curatedLightbox\.visible;/s.test(
     mainBody,
   ),
-  "ExpandedCardModal must derive one anyChildModalOpen flag from policy browser, ticket browser, event share modal, and curated lightbox state.",
+  "ExpandedCardModal must derive one anyChildModalOpen flag from policy browser, ticket browser, event share modal, iOS schedule picker, and curated lightbox state.",
 );
 
 check(
@@ -58,7 +60,7 @@ check(
 
 check(
   "G-03 synthetic root closes are swallowed during child overlays",
-  /const handleRootSheetClose = useCallback\(\(\) => \{[\s\S]*?if \(browserUrl !== null \|\| ticketBrowserUrl !== null \|\| isNightOutShareOpen \|\| curatedLightbox\.visible\) \{[\s\S]*?return;[\s\S]*?\}[\s\S]*?onClose\(\);/s.test(
+  /const handleRootSheetClose = useCallback\(\(\) => \{[\s\S]*?if \(browserUrl !== null \|\| ticketBrowserUrl !== null \|\| isNightOutShareOpen \|\| isSchedulePickerOpen \|\| curatedLightbox\.visible\) \{[\s\S]*?return;[\s\S]*?\}[\s\S]*?onClose\(\);/s.test(
     mainBody,
   ),
   "BaseBottomSheet can emit a close while the root sheet is suppressed; that synthetic close must not tear down the expanded card.",
@@ -89,8 +91,28 @@ check(
     mainBody.includes("setBrowserUrl(null);") &&
     mainBody.includes("setBrowserTitle('');") &&
     mainBody.includes("setIsNightOutShareOpen(false);") &&
+    mainBody.includes("setIsSchedulePickerOpen(false);") &&
     mainBody.includes("setCuratedLightbox({ visible: false, images: [], initialIndex: 0 });"),
   "Closing the expanded card must clear all parent-owned child overlay state before the next card opens.",
+);
+
+check(
+  "G-07 schedule picker reports visibility to the root overlay gate",
+  actionButtonsSource.includes("onSchedulePickerModalVisibilityChange?: (isOpen: boolean) => void") &&
+    actionButtonsSource.includes("const setDateTimePickerVisible = useCallback") &&
+    actionButtonsSource.includes("onSchedulePickerModalVisibilityChange?.(isOpen)") &&
+    actionButtonsSource.includes("onSchedulePickerModalVisibilityChange?.(false)") &&
+    [...actionButtonsSource.matchAll(/setShowDateTimePicker\(/g)].length === 1,
+  "ActionButtons must route iOS schedule picker open/close through one helper that notifies the expanded-card parent before mounting the RN-Modal-backed picker.",
+);
+
+check(
+  "G-08 all expanded-card ActionButtons wire schedule picker gating",
+  mainBody.includes("const [isSchedulePickerOpen, setIsSchedulePickerOpen] = useState(false);") &&
+    curatedBody.includes("onSchedulePickerModalVisibilityChange: (isOpen: boolean) => void") &&
+    curatedBody.includes("onSchedulePickerModalVisibilityChange={onSchedulePickerModalVisibilityChange}") &&
+    (mainBody.match(/onSchedulePickerModalVisibilityChange=\{setIsSchedulePickerOpen\}/g) ?? []).length >= 2,
+  "Both curated and single-card ActionButtons must notify ExpandedCardModal so the root RN Modal is hidden while the iOS schedule picker is open.",
 );
 
 const failures = checks.filter((item) => !item.pass);
