@@ -30,7 +30,7 @@ All 8 conditions verified against actual code (not the report). Working tree cle
 - orch-0863 backend allowlist gate: exit 0 ✅
 
 ### Migration drift (pre-db-push)
-- `supabase migration list --linked`: `20260809000000` is LOCAL-only (correctly pending); NO remote-only drift rows. Plain `db push` is safe (monotonic-after ORCH-1006 pricing set). ✅
+- The worktree is not `supabase link`ed, so `migration list --linked` errors there. Verified instead via Management API read-only query of `supabase_migrations.schema_migrations`: remote's latest applied is `20260808000000` (Sub-D refresh cron); full recent set `20260808/20260807/20260806/20260805/20260802x4`. Sub-E's `20260809000000` is monotonic-after with NO remote-only version above it → plain `db push` is safe (no `--include-all`). ✅
 
 ### Carry-forward (not blockers)
 - 237 pre-existing `tsc` errors in `mingla-business` (checkout, ComposerV2, payments-native, brand-rendering) — NOT introduced by Sub-E; flag for a type-debt ORCH.
