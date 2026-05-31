@@ -109,6 +109,34 @@ function assertPipelineOk<T extends { kind: string }>(
   return body as T;
 }
 
+// META-ORCH-1009 Sub-E B6 — supabase-js surfaces a non-2xx edge response as a
+// FunctionsHttpError whose `.message` is the opaque "Edge Function returned a
+// non-2xx status code" string and stashes the real Response on `.context`.
+// This reads the structured `{ code, message }` body our edge function returns
+// via bad() so the venue-submit flow shows the REAL reason instead of a generic
+// "Could not submit. Try again." Falls back to the original error when the body
+// can't be parsed.
+async function pipelineInvokeError(
+  error: { message?: string; context?: unknown } | null,
+  fallback: string,
+): Promise<Error> {
+  if (error === null) return new Error(fallback);
+  const ctx = (error as { context?: unknown }).context;
+  if (ctx !== null && ctx !== undefined &&
+      typeof (ctx as Response).json === "function") {
+    try {
+      const parsed = (await (ctx as Response).json()) as PipelineErrorBody;
+      const real = parsed?.message ?? parsed?.code;
+      if (typeof real === "string" && real.length > 0) {
+        return new Error(real);
+      }
+    } catch {
+      // fall through to the opaque message
+    }
+  }
+  return new Error(error.message ?? fallback);
+}
+
 export async function upsertTier1Place(input: {
   brandId: string;
   selectedPlacePoolId: string | null;
@@ -125,7 +153,9 @@ export async function upsertTier1Place(input: {
       },
     },
   );
-  if (error !== null) throw error;
+  // B6: surface the real server error (code/message) rather than the opaque
+  // FunctionsHttpError string the user was seeing.
+  if (error !== null) throw await pipelineInvokeError(error, "tier1_place_failed");
   return assertPipelineOk(data as Tier1PlaceResult | PipelineErrorBody, "tier1_place_failed");
 }
 
