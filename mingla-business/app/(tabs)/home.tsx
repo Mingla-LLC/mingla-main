@@ -43,6 +43,7 @@ import {
   type OfferingKind,
 } from "../../src/components/brand/OfferingChooser";
 import { HomeNextActionCard } from "../../src/components/home/HomeNextActionCard";
+import { NoVenueDeckEntryCard } from "../../src/components/home/NoVenueDeckEntryCard";
 import { HomeTripRow } from "../../src/components/home/HomeTripRow";
 import { UpcomingListItem } from "../../src/components/home/UpcomingListItem";
 import { EventCoverMedia } from "../../src/components/ui/EventCoverMedia";
@@ -397,6 +398,22 @@ export default function HomeTab(): React.ReactElement {
     [currentBrand, pipelineState.data, router],
   );
 
+  // META-ORCH-1009 Sub-E (Job A) — always-available entry for a brand with no
+  // authored/claimed venue yet. <DeckReadinessCard> only renders once a venue
+  // exists; this fills the discoverability gap so a brand-new operator can find
+  // the path into the deck.
+  const handleAddVenue = useCallback((): void => {
+    router.push("/venue/create" as never);
+  }, [router]);
+
+  // True only after the pipeline query has resolved AND found no venue for the
+  // selected brand (null = no claimed/authored place_pool row). While loading
+  // we render nothing to avoid a flash.
+  const showNoVenueEntry =
+    currentBrand !== null &&
+    pipelineState.isFetched &&
+    pipelineState.data === null;
+
   const handleOfferingSelect = useCallback(
     (offering: OfferingKind): void => {
       if (currentBrand === null) {
@@ -505,6 +522,9 @@ export default function HomeTab(): React.ReactElement {
                   the floor to that signal. */}
               {nextAction !== null && upcoming.counts.live === 0 ? (
                 <HomeNextActionCard action={nextAction} onPress={handleNextActionPress} />
+              ) : null}
+              {showNoVenueEntry ? (
+                <NoVenueDeckEntryCard onPress={handleAddVenue} />
               ) : null}
               {pipelineState.data !== null &&
               pipelineState.data !== undefined &&
@@ -829,6 +849,14 @@ export default function HomeTab(): React.ReactElement {
             </GlassCard>
           </View>
         </ScrollView>
+      ) : showNoVenueEntry ? (
+        // META-ORCH-1009 Sub-E (Job A) — when the selected brand has no venue
+        // yet, the mobile Home renders the discoverability entry INSTEAD of the
+        // KPI/upcoming dashboard (which is empty anyway pre-venue). This keeps
+        // the ORCH-0974 locked pane below byte-identical for the venue case.
+        <View style={styles.mobileNoVenueBody}>
+          <NoVenueDeckEntryCard onPress={handleAddVenue} />
+        </View>
       ) : (
         // orch-0974-lock-pane:begin-mobile-populated; META-ORCH-0972 — rule-ladder card renders only before a live offering exists, with the no_offerings rung yielding the unified OfferingChooser.
         <View style={styles.mobileBody}>
