@@ -45,21 +45,22 @@ import { IconChrome } from "../ui/IconChrome";
 import { Stepper, type StepperStep } from "../ui/Stepper";
 import { VenueStep1Address } from "./VenueStep1Address";
 import { VenueStep2NameSlug } from "./VenueStep2NameSlug";
-import { VenueStep3Photos } from "./VenueStep3Photos";
 import { VenueStep4Hours } from "./VenueStep4Hours";
 import { VenueStep5Contact } from "./VenueStep5Contact";
 import { VenueStep6Description } from "./VenueStep6Description";
 import { VenueStep7Review } from "./VenueStep7Review";
 
-const TOTAL = 7;
+// META-ORCH-1009 Sub-E: the old step-2 "Cover" was a dead explainer card (no
+// picker) — the real hero-cover upload happens post-submit on the deck-readiness
+// screen via the unified CoverPicker. Removed to drop the wasted tap (7→6 steps).
+const TOTAL = 6;
 const STEPPER_STEPS: StepperStep[] = [
   { id: "s0", label: "Address" },
   { id: "s1", label: "Name" },
-  { id: "s2", label: "Cover" },
-  { id: "s3", label: "Hours" },
-  { id: "s4", label: "Contact" },
-  { id: "s5", label: "Inputs" },
-  { id: "s6", label: "Review" },
+  { id: "s2", label: "Hours" },
+  { id: "s3", label: "Contact" },
+  { id: "s4", label: "Inputs" },
+  { id: "s5", label: "Review" },
 ];
 
 export interface VenueCreatorWizardProps {
@@ -226,14 +227,12 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
           />
         );
       case 2:
-        return <VenueStep3Photos showErrors={showErr} />;
-      case 3:
         return <VenueStep4Hours showErrors={showErr} />;
-      case 4:
+      case 3:
         return <VenueStep5Contact showErrors={showErr} />;
-      case 5:
+      case 4:
         return <VenueStep6Description showErrors={showErr} />;
-      case 6:
+      case 5:
         return (
           <VenueStep7Review
             submitting={createVenue.isPending}
