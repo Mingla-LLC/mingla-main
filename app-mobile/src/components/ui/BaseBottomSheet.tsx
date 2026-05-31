@@ -62,6 +62,10 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 // useAppLayout. The primitive reads the SAME constant so a sheet rendered below
 // the visible GlassBottomNav can clear it (single source of truth — no copy).
 import { BOTTOM_NAV_CONTENT_HEIGHT } from '../../hooks/useAppLayout';
+import {
+  pushHideBottomNav,
+  popHideBottomNav,
+} from '../../store/bottomNavStore';
 
 // META-ORCH-0991 Wave B — keyboard-aware text input re-export. Form sheets
 // (ReportUserModal, CustomHolidayModal, …) need gorhom's BottomSheetTextInput
@@ -182,6 +186,15 @@ interface BaseBottomSheetSheetProps extends BaseBottomSheetCommonProps {
    * this false and only get the OS-inset clearance. Default false.
    */
   tabBarAware?: boolean;
+  /**
+   * ORCH-1016 — when true, the floating GlassBottomNav is HIDDEN while this sheet
+   * is visible (ref-counted via bottomNavStore). Use for FULL detail/checkout
+   * sheets (trip detail, ticket/reserve, cart, place/event detail) whose content
+   * would otherwise sit behind the nav. Brings the sheet "forward" without an RN
+   * Modal — so the Buy/Reserve CTA is fully visible with nothing painted over it.
+   * Default false.
+   */
+  hidesBottomNav?: boolean;
   /**
    * Optional inline-container clearance for sheets rendered below an absolute
    * sibling such as GlassBottomNav. Inner padding/spacers affect scrollable
@@ -306,6 +319,7 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
     stickyFooter,
     wrapInRNModal = false,
     tabBarAware = false,
+    hidesBottomNav = false,
     bottomSheetInset = 0,
     keyboardBehavior = 'interactive',
     keyboardBlurBehavior = 'restore',
@@ -328,6 +342,15 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
       sheetRef.current?.close();
     }
   }, [visible, initialIndex]);
+
+  // ORCH-1016 — hide the floating GlassBottomNav while a full detail/checkout sheet
+  // is open, so its bottom content/CTA isn't painted over by the nav. Ref-counted
+  // so overlapping sheets each hold it hidden until the last closes.
+  useEffect(() => {
+    if (!visible || !hidesBottomNav) return undefined;
+    pushHideBottomNav();
+    return () => popHideBottomNav();
+  }, [visible, hidesBottomNav]);
 
   // Android hardware-back for NON-wrapped sheets (SPEC §3.3 / §9 blast #6).
   // Wrapped sheets get back via the RN <Modal onRequestClose>.

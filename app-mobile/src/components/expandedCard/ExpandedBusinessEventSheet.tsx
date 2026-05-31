@@ -61,7 +61,6 @@ import { toastManager } from "../ui/Toast";
 // instead of a raw RN ScrollView nested inside the sheet's gorhom scroll (the
 // fragile double-scroll structure that was the probable freeze source).
 import { BaseBottomSheet, BottomSheetScrollView } from "../ui/BaseBottomSheet";
-import { SheetOverlayCarrier } from "../ui/SheetOverlayCarrier";
 import { glass } from "../../constants/designSystem";
 // ORCH-0847 Phase C — multi-tier cart sheet replaces the single-ticket
 // TicketClaimConfirmModal. Mirrors public J-C1 cart screen.
@@ -75,7 +74,6 @@ interface ExpandedBusinessEventSheetProps {
   onClose: () => void;
   bottomContentInset?: number;
   bottomSheetInset?: number;
-  renderInOverlayCarrier?: boolean;
 }
 
 // ORCH-0828 REWORK: canonical bottomSheet snapPoints from design tokens,
@@ -164,7 +162,6 @@ export const ExpandedBusinessEventSheet: React.FC<
   onClose,
   bottomContentInset = 32,
   bottomSheetInset = 0,
-  renderInOverlayCarrier = false,
 }) => {
   const router = useRouter();
   const user = useAppStore((s) => s.user);
@@ -355,14 +352,6 @@ export const ExpandedBusinessEventSheet: React.FC<
     setInitialTicketTypeId(null);
   }, []);
 
-  const handleCarrierRequestClose = useCallback((): void => {
-    if (cartSheetVisible) {
-      handleCartCancel();
-      return;
-    }
-    onClose();
-  }, [cartSheetVisible, handleCartCancel, onClose]);
-
   const callbacks: PublicEventCallbacks = useMemo(
     () => ({
       onClose: () => {
@@ -408,57 +397,26 @@ export const ExpandedBusinessEventSheet: React.FC<
   // onto the page's own scrollContent so the last "Buy ticket" row can scroll
   // above the floating nav. Memoized on the clearance scalars so the injected
   // component identity is stable across re-renders (no remount).
+  // ORCH-1016 ROOT-CAUSE FIX: PublicEventPage's injected scroll only PARTIALLY
+  // bound (its viewport tracked content, so the last row stayed below the screen).
+  // Instead, BaseBottomSheet OWNS the scroll (scrollMode="scroll" below) — the only
+  // structure that binds the viewport to the visible sheet height — and this
+  // ScrollComponent is now a NON-scroll passthrough (a plain View carrying
+  // PublicEventPage's contentContainerStyle + a home-indicator spacer). The page
+  // content thus renders directly inside the primitive's bare scroll.
   const SheetScrollHost = useMemo(() => {
     const bottomPad =
-      Math.max(32, bottomContentInset) + Math.max(0, bottomSheetInset);
+      Math.max(8, bottomContentInset) + Math.max(0, bottomSheetInset);
     const Host: React.FC<ScrollViewProps> = ({
       contentContainerStyle,
       children,
-      ...rest
     }) => (
-      <BottomSheetScrollView
-        {...rest}
-        contentContainerStyle={contentContainerStyle}
-        onLayout={(event) => {
-          console.log("[ORCH1016_MEASURE] EBES scroll layout", {
-            height: event.nativeEvent.layout.height,
-            width: event.nativeEvent.layout.width,
-            y: event.nativeEvent.layout.y,
-          });
-          rest.onLayout?.(event);
-        }}
-        onContentSizeChange={(width, height) => {
-          console.log("[ORCH1016_MEASURE] EBES content size", {
-            width,
-            height,
-            bottomPad,
-          });
-          rest.onContentSizeChange?.(width, height);
-        }}
-        onScroll={(event) => {
-          console.log("[ORCH1016_MEASURE] EBES scroll offset", {
-            y: event.nativeEvent.contentOffset.y,
-          });
-          rest.onScroll?.(event);
-        }}
-        scrollEventThrottle={250}
-      >
+      <View style={contentContainerStyle}>
         {children}
-        {/* ORCH-1016 REWORK-6 — ROOT CAUSE of the "Buy button blocked by the
-            bottom nav" bug: gorhom's BottomSheetScrollView does NOT reliably
-            extend its scrollable content height from `contentContainerStyle`
-            paddingBottom (it measures children for snap/scroll extent), so the
-            last "Buy ticket" row could never scroll above Mingla's floating
-            GlassBottomNav no matter how large the padding was. A REAL spacer
-            View as the final scroll child is counted as content, guaranteeing
-            the body overflows by `bottomPad` so the Buy CTA scrolls fully clear
-            of the nav. Replaces the prior (non-working) contentContainerStyle
-            paddingBottom approach. `bottomPad` carries the nav footprint +
-            safe-area + buffer from the mount site's `bottomContentInset`. */}
         <View style={{ height: bottomPad }} pointerEvents="none" />
-      </BottomSheetScrollView>
+      </View>
     );
-    Host.displayName = "EbesSheetScrollHost";
+    Host.displayName = "EbesPassthroughHost";
     return Host;
   }, [bottomContentInset, bottomSheetInset]);
 
@@ -486,9 +444,12 @@ export const ExpandedBusinessEventSheet: React.FC<
         initialIndex={SHEET_INITIAL_INDEX}
         backgroundStyle={styles.sheetBackground}
         handleStyle={styles.sheetHandle}
-        scrollMode="view"
-        bodyContainerStyle={styles.sheetBody}
+        scrollMode="scroll"
+        hidesBottomNav
         bottomSheetInset={bottomSheetInset}
+        scrollProps={{
+          showsVerticalScrollIndicator: false,
+        }}
         accessibilityLabel={data.title}
       >
         <PublicEventPage
@@ -518,24 +479,16 @@ export const ExpandedBusinessEventSheet: React.FC<
         buyerEmail={user?.email ?? profile?.email ?? ""}
         buyerPhone={profile?.phone ?? ""}
         isSubmitting={checkoutInFlight}
-        clearFloatingNav={!renderInOverlayCarrier}
+        clearFloatingNav={false}
         onCancel={handleCartCancel}
         onCheckout={handleCartCheckout}
       />
     </>
   );
 
-  if (renderInOverlayCarrier) {
-    return (
-      <SheetOverlayCarrier
-        visible={visible || cartSheetVisible}
-        onRequestClose={handleCarrierRequestClose}
-      >
-        {sheetGroup}
-      </SheetOverlayCarrier>
-    );
-  }
-
+  // ORCH-1016 — the SheetOverlayCarrier (RN Modal) is gone: it broke Android
+  // scroll gestures and didn't fix the z-order. Nav coverage is now solved by
+  // `hidesBottomNav` on the sheets themselves.
   return sheetGroup;
 };
 

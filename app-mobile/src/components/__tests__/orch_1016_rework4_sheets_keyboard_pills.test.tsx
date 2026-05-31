@@ -68,48 +68,38 @@ function ok(name, cond, detail) {
   passed += 1;
 }
 
-// ── FIX A: reserve/checkout sheet scrolls + CTA clears the floating nav ──────
+// ── FIX A (ROOT-CAUSE, verified on-device iOS + Android 2026-05-31): the cart
+// scrolls + CTA is reachable via bare scrollMode="scroll" + hidesBottomNav ─────
+// The earlier REWORK fixes (scrollMode="view" + an injected BottomSheetScrollView
+// host, plus clearFloatingNav padding to clear a still-visible nav) still froze /
+// cut off the CTA on device. The proven shape is a BARE scrollMode="scroll" so
+// BaseBottomSheet's OWN gorhom BottomSheetScrollView is the DIRECT child of the
+// height-bounded BottomSheetContent; {header}{body}{stickyFooter} are its scroll
+// children; and hidesBottomNav hides the floating nav so the Pay CTA is reachable.
 ok(
-  "A1 TicketCartSheet imports the gorhom scroll host re-export from the primitive",
-  /import\s*\{[\s\S]*?BottomSheetScrollView[\s\S]*?\}\s*from\s*["'][^"']*ui\/BaseBottomSheet["']/.test(
+  "A1 TicketCartSheet uses a BARE scrollMode='scroll' (BaseBottomSheet owns the gorhom scroll as a direct child), NOT the frozen scrollMode='view'+injected-host config",
+  /scrollMode="scroll"\s*\n\s*hidesBottomNav/.test(cartSrc) &&
+    !/scrollMode="view"/.test(cartSrc),
+  "bare scrollMode='scroll' makes the gorhom BottomSheetScrollView the DIRECT child of BottomSheetContent — the only structure gorhom constrains to the snap height so the long billing form scrolls to reach Pay",
+);
+ok(
+  "A2 the header + body + Pay CTA are the sheet's DIRECT children (no injected scroll host, no wrapper)",
+  /scrollMode="scroll"[\s\S]{0,200}>\s*\{header\}\s*\{body\}\s*\{stickyFooter\}\s*<\/BaseBottomSheet>/.test(
     cartSrc,
   ),
-  "the proven scroll wiring needs the BottomSheetScrollView re-export (sole-consumer gate forbids a direct @gorhom import)",
+  "{header}{body}{stickyFooter} render straight inside the bare scroll sheet; a wrapper child re-introduces the frozen viewport==content config that cut off the CTA",
 );
 ok(
-  "A2 TicketCartSheet uses scrollMode='view' with a bounded BottomSheetScrollView body (NOT the frozen scrollMode='scroll')",
-  /scrollMode="view"[\s\S]{0,260}<BottomSheetScrollView/.test(cartSrc) &&
-    !/scrollMode=\{[^}]*"scroll"[^}]*\}/.test(cartSrc) &&
-    !/scrollMode="scroll"/.test(cartSrc),
-  "scrollMode='view' + a flex:1 BottomSheetScrollView in the sheet body is the runtime scroll contract",
+  "A3 TicketCartSheet does NOT use BaseBottomSheet's stickyFooter / header / bodyContainerStyle wrapper props (each nests the scroll one BottomSheetView level deeper → frozen)",
+  !/stickyFooter=\{/.test(cartSrc) &&
+    !/<BaseBottomSheet[\s\S]*?bodyContainerStyle=/.test(cartSrc) &&
+    !/<BaseBottomSheet[\s\S]*?\sheader=\{/.test(cartSrc),
+  "the wrapper props route the sheet into the frozen nested branch; the CTA bar (the `stickyFooter` local) is a plain scroll child, not the primitive prop",
 );
 ok(
-  "A3 TicketCartSheet does NOT use BaseBottomSheet's stickyFooter prop (that branch nests the scroll host two levels deep → frozen body)",
-  !/stickyFooter=\{/.test(cartSrc),
-  "the stickyFooter prop routes the sheet into the frozen nested branch; the CTA bar must be a sibling below the scroll host",
-);
-ok(
-  "A4 the scroll host claims flex:1 so a tall cart + intake body gets a bounded viewport and scrolls",
-  /scrollHost:\s*\{\s*flex:\s*1\s*\}/.test(cartSrc) &&
-    /style=\{styles\.scrollHost\}/.test(cartSrc),
-  "without flex:1 the scroll host sizes to content inside height-bounded BottomSheetContent and never scrolls",
-);
-ok(
-  "A5 the CTA bar can clear the floating nav inline, but skips fake nav padding when its sheet group is overlay-carried",
-  /import\s*\{\s*BOTTOM_NAV_CONTENT_HEIGHT\s*\}\s*from\s*["'][^"']*useAppLayout["']/.test(
-    cartSrc,
-  ) &&
-    /clearFloatingNav\?:\s*boolean/.test(cartSrc) &&
-    /clearFloatingNav\s*=\s*true/.test(cartSrc) &&
-    /\(clearFloatingNav\s*\?\s*BOTTOM_NAV_CONTENT_HEIGHT\s*:\s*0\)\s*\+\s*Math\.max\(insets\.bottom,\s*16\)/.test(
-      cartSrc,
-    ),
-  "inline cart sheets must add nav height; cart sheets inside SheetOverlayCarrier should only use OS safe-area clearance",
-);
-ok(
-  "A6 the stickyFooter element is rendered as a SIBLING below the scroll host inside BaseBottomSheet",
-  /<\/BottomSheetScrollView>\s*\{stickyFooter\}/.test(cartSrc),
-  "the CTA bar is a sibling View (the proven pattern), not the primitive's stickyFooter prop",
+  "A4 the cart hides the floating nav while open (hidesBottomNav) so the Pay CTA is never covered — no faked nav-height padding needed",
+  /hidesBottomNav/.test(cartSrc),
+  "nav clearance is solved by hiding the nav, not by padding the CTA under a still-visible floating nav (the superseded clearFloatingNav approach)",
 );
 
 // ── FIX B: trip filter sheets keyboard-avoid via the canonical pattern ──────
