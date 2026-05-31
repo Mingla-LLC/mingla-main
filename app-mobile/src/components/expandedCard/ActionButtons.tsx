@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from "react";
+import React, { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { mixpanelService } from "../../services/mixpanelService";
 import {
   View,
@@ -26,7 +26,12 @@ import { useCalendarEntries } from "../../hooks/useCalendarEntries";
 import { toastManager } from "../ui/Toast";
 import { DeviceCalendarService } from "@/src/services/deviceCalendarService";
 import { useIsPlaceOpen } from "../../hooks/useIsPlaceOpen";
-import { extractWeekdayText, isPlaceOpenAt } from "../../utils/openingHoursUtils";
+import { extractWeekdayText } from "../../utils/openingHoursUtils";
+import { checkAllCuratedStopsOpen } from "../../utils/curatedStopsAvailability";
+import {
+  buildSingleCardNotSafeMessage,
+  checkSingleCardSchedulingAvailability,
+} from "../../utils/singleCardAvailability";
 import { normalizeWebsiteUrl } from "../../utils/normalizeWebsiteUrl";
 import { useTranslation } from "react-i18next";
 
@@ -51,6 +56,7 @@ interface ActionButtonsProps {
   onCardRemoved?: (cardId: string) => void; // Callback to remove card from deck
   onScheduleSuccess?: (card: ExpandedCardData) => void; // Callback after successful scheduling
   onOpenBrowser?: (url: string, title: string) => void; // Opens in-app browser (for Policies & Reservations)
+  onSchedulePickerModalVisibilityChange?: (isOpen: boolean) => void;
   isVisited?: boolean;
   isVisitLoading?: boolean;
   onVisitPress?: () => void;
@@ -75,6 +81,7 @@ export default function ActionButtons({
   onCardRemoved,
   onScheduleSuccess,
   onOpenBrowser,
+  onSchedulePickerModalVisibilityChange,
   isVisited = false,
   isVisitLoading = false,
   onVisitPress,
@@ -101,6 +108,23 @@ export default function ActionButtons({
   const [pendingDateConfirmation, setPendingDateConfirmation] = useState<Date | null>(null);
   const [showAllHours, setShowAllHours] = useState(false);
   const visitScaleAnim = useRef(new Animated.Value(1)).current;
+  const setDateTimePickerVisible = useCallback(
+    (isOpen: boolean) => {
+      setShowDateTimePicker(isOpen);
+      if (Platform.OS === "ios") {
+        onSchedulePickerModalVisibilityChange?.(isOpen);
+      }
+    },
+    [onSchedulePickerModalVisibilityChange],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (Platform.OS === "ios") {
+        onSchedulePickerModalVisibilityChange?.(false);
+      }
+    };
+  }, [onSchedulePickerModalVisibilityChange]);
 
   const { user } = useAppStore();
   const queryClient = useQueryClient();
@@ -125,7 +149,8 @@ export default function ActionButtons({
   }, [card.openingHours]);
 
   // Live open/closed status computed from weekday_text against local clock
-  const liveOpenStatus = useIsPlaceOpen(card.openingHours);
+  const cardUtcOffset = card.utcOffsetMinutes ?? card.utc_offset_minutes ?? null;
+  const liveOpenStatus = useIsPlaceOpen(card.openingHours, cardUtcOffset);
 
   // Get today's day name for highlighting
   const todayDayName = useMemo(() => {
@@ -134,10 +159,8 @@ export default function ActionButtons({
   }, []);
 
   // [ORCH-0649 — CONSTITUTION #2] Local parseTimeString + checkPlaceAvailability
-  // DELETED. All availability checks now inline the canonical isPlaceOpenAt
-  // (openingHoursUtils.ts) at the call site. Mapping isPlaceOpenAt's
-  // true | false | null result to the legacy {isOpen, isAssumption, reason}
-  // shape is done per call site.
+  // DELETED. Scheduling-time availability now routes through shared helpers so
+  // open/closed/unknown semantics cannot drift between card surfaces.
 
   // Helper function to generate suggested dates
   const generateSuggestedDates = (dateTimePrefs: any) => {
@@ -247,13 +270,13 @@ export default function ActionButtons({
     setSelectedDate(now);
     setSelectedTime(now);
     setPickerMode("date");
-    setShowDateTimePicker(true);
+    setDateTimePickerVisible(true);
   };
 
   const handleDateTimePickerChange = (event: any, date?: Date) => {
     if (Platform.OS === "android") {
       if (event.type === "dismissed") {
-        setShowDateTimePicker(false);
+        setDateTimePickerVisible(false);
         setPendingDateConfirmation(null);
         return;
       }
@@ -263,7 +286,7 @@ export default function ActionButtons({
           // ORCH-0690 S-2: Android calendar dialog OK'd. Stage the date and surface
           // a preview/confirm Alert before advancing to time-mode. User can review
           // the picked date and back out to pick a different day.
-          setShowDateTimePicker(false);
+          setDateTimePickerVisible(false);
           setPendingDateConfirmation(date);
           showAndroidDateConfirmation(date);
         } else {
@@ -273,7 +296,7 @@ export default function ActionButtons({
           combinedDateTime.setMinutes(date.getMinutes());
           setSelectedTime(combinedDateTime);
           setSelectedDateTime(combinedDateTime);
-          setShowDateTimePicker(false);
+          setDateTimePickerVisible(false);
           confirmAndSchedule(combinedDateTime);
         }
       }
@@ -324,7 +347,7 @@ export default function ActionButtons({
               setSelectedDateTime(null);
               setSelectedTime(new Date());
               setPickerMode('time');
-              setShowDateTimePicker(true);
+              setDateTimePickerVisible(true);
             },
           },
         ],
@@ -332,53 +355,28 @@ export default function ActionButtons({
       return;
     }
 
-    const weekdayText = extractWeekdayText(card?.openingHours ?? null);
-    const openAt = isPlaceOpenAt(weekdayText, combinedDateTime);
-    const availability =
-      openAt === null
-        ? {
-            isOpen: true,
-            isAssumption: true,
-            reason: 'Opening hours data not available',
-          }
-        : { isOpen: openAt, isAssumption: false };
-    setAvailabilityCheck(availability);
+    if (Array.isArray(card.stops) && card.stops.length > 0) {
+      setAvailabilityCheck(null);
+      setHasCheckedAvailability(false);
+      proceedWithScheduling(combinedDateTime);
+      return;
+    }
+
+    const availability = checkSingleCardSchedulingAvailability(card, combinedDateTime);
+    setAvailabilityCheck({
+      isOpen: availability.isSafeToSchedule,
+      isAssumption: false,
+      reason: availability.reason,
+    });
     setHasCheckedAvailability(true);
 
-    // S-5: isAssumption surfacing — Constitution #9 spirit fix. Never silently
-    // auto-schedule when hours are unknown; ask the user instead.
-    if (availability.isOpen && availability.isAssumption) {
-      Alert.alert(
-        t('expanded_details:action_buttons.unverified_hours_title'),
-        t('expanded_details:action_buttons.unverified_hours_message', {
-          venueName: card.title,
-        }),
-        [
-          {
-            text: t('expanded_details:action_buttons.cancel'),
-            style: 'cancel',
-            onPress: () => {
-              setAvailabilityCheck(null);
-              setHasCheckedAvailability(false);
-              setSelectedDateTime(null);
-            },
-          },
-          {
-            text: t('expanded_details:action_buttons.schedule_anyway'),
-            onPress: () => proceedWithScheduling(combinedDateTime),
-          },
-        ],
-      );
-      return;
-    }
-
-    if (availability.isOpen) {
+    if (availability.isSafeToSchedule) {
       proceedWithScheduling(combinedDateTime);
     } else {
       // HF-2 fix: preserve selectedDate, only reset selectedTime, reopen in time-mode.
       Alert.alert(
-        t('expanded_details:action_buttons.place_closed_title'),
-        t('expanded_details:action_buttons.place_closed_body'),
+        "Not Safe to Schedule",
+        buildSingleCardNotSafeMessage(availability),
         [
           {
             text: t('expanded_details:action_buttons.choose_another_time'),
@@ -389,7 +387,7 @@ export default function ActionButtons({
               // S-8: keep selectedDate; only reset selectedTime to now.
               setSelectedTime(new Date());
               setPickerMode('time');
-              setShowDateTimePicker(true);
+              setDateTimePickerVisible(true);
             },
           },
           { text: t('expanded_details:action_buttons.cancel'), style: 'cancel' },
@@ -416,7 +414,7 @@ export default function ActionButtons({
             // Re-open calendar dialog. Keep pickerMode="date".
             setPendingDateConfirmation(null);
             setSelectedDate(date);
-            setShowDateTimePicker(true);
+            setDateTimePickerVisible(true);
           },
         },
         {
@@ -427,7 +425,7 @@ export default function ActionButtons({
             setSelectedTime(date);
             setPickerMode('time');
             setPendingDateConfirmation(null);
-            setShowDateTimePicker(true);
+            setDateTimePickerVisible(true);
           },
         },
       ],
@@ -443,7 +441,7 @@ export default function ActionButtons({
     combinedDateTime.setHours(selectedTime.getHours());
     combinedDateTime.setMinutes(selectedTime.getMinutes());
     setSelectedDateTime(combinedDateTime);
-    setShowDateTimePicker(false);
+    setDateTimePickerVisible(false);
     confirmAndSchedule(combinedDateTime);
   };
 
@@ -460,7 +458,7 @@ export default function ActionButtons({
     // selectedDate intentionally preserved.
   };
 
-  const proceedWithScheduling = async (scheduledDateTime: Date, skipStopCheck = false) => {
+  const proceedWithScheduling = async (scheduledDateTime: Date) => {
     if (!user?.id) {
       Alert.alert(t('common:error'), t('expanded_details:action_buttons.error_login'));
       setIsScheduling(false);
@@ -475,35 +473,22 @@ export default function ActionButtons({
         return;
       }
 
-      // For curated cards: validate each stop's hours at estimated arrival time
-      if (!skipStopCheck && card.stops && card.stops.length > 0) {
-        const stopIssues: string[] = [];
-        let cumulativeMinutes = 0;
+      // For curated cards: use the same all-stops validator as SavedTab.
+      if (card.stops && card.stops.length > 0) {
+        const availability = checkAllCuratedStopsOpen(card.stops, scheduledDateTime);
 
-        for (const stop of card.stops) {
-          const estimatedArrival = new Date(scheduledDateTime.getTime() + cumulativeMinutes * 60000);
-          const weekdayText = extractWeekdayText((stop as any).openingHours || (stop as any).opening_hours);
-          const openAtArrival = isPlaceOpenAt(weekdayText, estimatedArrival);
+        if (!availability.allOpen) {
+          const unavailableList = availability.results
+            .filter((result) => !result.isOpen)
+            .map((result) => `  • ${result.stopName} — ${result.reason}`)
+            .join('\n');
 
-          if (openAtArrival === false) {
-            stopIssues.push(`${(stop as any).placeName || (stop as any).title} may be closed at ${estimatedArrival.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`);
-          }
-
-          cumulativeMinutes += ((stop as any).durationMinutes || (stop as any).duration || 60);
-          cumulativeMinutes += ((stop as any).travelTimeToNext || 15);
-        }
-
-        if (stopIssues.length > 0) {
           setIsScheduling(false);
           Alert.alert(
-            "Some Stops May Be Closed",
-            stopIssues.join('\n'),
+            "Not Safe to Schedule",
+            `Mingla could not confirm every stop is open at the time you selected:\n\n${unavailableList}\n\nPlease choose a different time when all stops are confirmed open.`,
             [
               { text: "Change Time", style: "cancel" },
-              { text: "Schedule Anyway", onPress: () => {
-                setIsScheduling(true);
-                proceedWithScheduling(scheduledDateTime, true);
-              }},
             ]
           );
           return;
@@ -551,6 +536,7 @@ export default function ActionButtons({
         travelTime: card.travelTime || '',
         address: card.address || '',
         openingHours: card.openingHours,
+        utcOffsetMinutes: card.utcOffsetMinutes ?? card.utc_offset_minutes ?? null,
         highlights: card.highlights || [],
         tags: card.tags || [],
         matchScore: card.matchScore || 0,
@@ -660,7 +646,7 @@ export default function ActionButtons({
           {Platform.OS === "ios" ? (
             <BaseBottomSheet
               visible={showDateTimePicker}
-              onClose={() => setShowDateTimePicker(false)}
+              onClose={() => setDateTimePickerVisible(false)}
               snapPoints={DATE_TIME_PICKER_SNAP_POINTS}
               wrapInRNModal
               scrollMode="view"
@@ -675,7 +661,7 @@ export default function ActionButtons({
                       logComponent="ActionButtons"
                       logId="picker_cancel"
                       style={styles.modalCancelButton}
-                      onPress={() => setShowDateTimePicker(false)}
+                      onPress={() => setDateTimePickerVisible(false)}
                     >
                       <Text style={styles.modalCancelText}>{t('expanded_details:action_buttons.cancel')}</Text>
                     </TrackedTouchableOpacity>
@@ -934,7 +920,7 @@ export default function ActionButtons({
           <View style={styles.closedMessageContainer}>
             <Icon name="alert-circle" size={16} color="#9a3412" />
             <Text style={styles.closedMessage}>
-              {t('expanded_details:action_buttons.closed_message')}
+              {availabilityCheck.reason ?? t('expanded_details:action_buttons.closed_message')}
             </Text>
           </View>
         )}

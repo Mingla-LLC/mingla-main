@@ -20,7 +20,7 @@ import {
 // Without these the mapper falls back to empty arrays / null and silently
 // deselects the user's party-type / vibe-tag / music-genre picks every 700ms.
 const EVENT_DRAFT_SELECT =
-  "id,brand_id,created_by,title,description,slug,location_text,online_url,cover_media_url,cover_media_type,currency,is_online,is_recurring,is_multi_date,recurrence_rules,theme,visibility,status,timezone,created_at,updated_at,published_at,deleted_at,party_types,vibe_tags,music_genres,city,location_geo";
+  "id,brand_id,created_by,title,description,slug,location_text,online_url,cover_media_url,cover_media_type,currency,is_online,is_recurring,is_multi_date,recurrence_rules,theme,visibility,status,timezone,created_at,updated_at,published_at,deleted_at,party_types,vibe_tags,music_genres,city,location_geo,pass_tax,pass_mingla_fee,pass_service_fee";
 
 export type ServerDraftLifecycleErrorCode =
   | "draft_not_found"

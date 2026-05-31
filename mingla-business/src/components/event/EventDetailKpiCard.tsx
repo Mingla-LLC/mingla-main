@@ -29,15 +29,24 @@ export interface EventDetailKpiCardProps {
    * Null when no online payments exist — renders as "—". ORCH-0796.
    */
   payoutGbp: number | null;
+  /**
+   * ORCH-1006 — total the BRAND covered (absorbed VAT + fees) across this
+   * offering's orders, major units. Null/0/undefined → the line is omitted
+   * (don't show "You covered £0.00"). Surface 5.
+   */
+  coveredGbp?: number | null;
   currency?: string;
 }
 
 export const EventDetailKpiCard: React.FC<EventDetailKpiCardProps> = ({
   revenueGbp,
   payoutGbp,
+  coveredGbp,
   currency = "GBP",
 }) => {
   const hasData = revenueGbp > 0;
+  const showCovered =
+    typeof coveredGbp === "number" && Number.isFinite(coveredGbp) && coveredGbp > 0;
 
   return (
     <GlassCard
@@ -62,6 +71,12 @@ export const EventDetailKpiCard: React.FC<EventDetailKpiCardProps> = ({
           </Text>
         </View>
       </View>
+      {showCovered ? (
+        <Text style={styles.coveredLine}>
+          You covered {formatCurrency(coveredGbp as number, currency)} in VAT &
+          fees
+        </Text>
+      ) : null}
       <SparklineBar />
     </GlassCard>
   );
@@ -126,6 +141,12 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: textTokens.secondary,
     fontVariant: ["tabular-nums"],
+  },
+  coveredLine: {
+    fontSize: 12,
+    color: textTokens.secondary,
+    marginTop: -spacing.sm,
+    marginBottom: spacing.md,
   },
   sparklineRow: {
     flexDirection: "row",

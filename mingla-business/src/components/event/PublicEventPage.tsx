@@ -64,6 +64,9 @@ const mapTicket = (t: TicketStub): PublicTicketProps => ({
   name: t.name,
   description: t.description ?? null,
   priceGbp: t.priceGbp ?? null,
+  // ORCH-1006 — carry the server-computed per-tier all-in (WYSIWYP) so the
+  // QuantityRow shows what the buyer pays, not the base price.
+  priceAllInGbp: t.priceAllInGbp ?? null,
   currency: t.currency ?? null,
   isFree: t.isFree,
   isUnlimited: t.isUnlimited,

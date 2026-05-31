@@ -75,6 +75,7 @@ import {
   useUpdateRefundPolicy,
 } from "../../hooks/useRefundPolicy";
 import type { Trip, TripPublishValidationError } from "../../services/tripsService";
+import { setTripPricingSwitches } from "../../services/tripsService";
 
 import {
   TripCreatorStep1Basics,
@@ -239,6 +240,12 @@ function tripToStep4Draft(trip: Trip): Step4Draft {
     capacity: trip.businessTrip.capacity,
     paymentPlan: tier?.installmentSchedule ?? null,
     paymentPlanLocked: false,
+    // ORCH-1006 — seed switches from events.pass_* (NULL = inherit).
+    pricingSwitches: {
+      passTax: trip.pricingSwitches?.passTax ?? null,
+      passMinglaFee: trip.pricingSwitches?.passMinglaFee ?? null,
+      passServiceFee: trip.pricingSwitches?.passServiceFee ?? null,
+    },
   };
 }
 
@@ -595,7 +602,19 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
         installmentSchedule: step4Draft.paymentPlan,
       },
     });
-  }, [step4Draft, step1Draft.capacity, trip.id, updatePricingMutation]);
+    // ORCH-1006 — persist the all-in pricing switches to events.pass_*. Skip
+    // once any ticket has sold (post-sale lock): the section renders read-only
+    // and the server would reject the change anyway.
+    if (trip.ticketsSoldCount === 0) {
+      await setTripPricingSwitches(trip.id, step4Draft.pricingSwitches);
+    }
+  }, [
+    step4Draft,
+    step1Draft.capacity,
+    trip.id,
+    trip.ticketsSoldCount,
+    updatePricingMutation,
+  ]);
 
   // ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — Step 5 autosave.
   // Writes refund_policy + booking_deadline via two parallel mutations.

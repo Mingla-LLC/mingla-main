@@ -3,7 +3,7 @@ import { forwardRef, type ButtonHTMLAttributes } from 'react'
 import { Loader2 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 
-type Variant = 'primary' | 'glass' | 'secondary' | 'ghost'
+type Variant = 'primary' | 'primary-ink' | 'glass' | 'secondary' | 'ghost'
 type Size = 'sm' | 'md' | 'lg'
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -14,6 +14,11 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 const variants: Record<Variant, string> = {
   primary:
+    'bg-warm text-white hover:-translate-y-0.5 hover:bg-[var(--color-warm-hover)] hover:brightness-110 active:translate-y-0 active:brightness-100',
+  // ORCH-1010: warm fill + WHITE label. Operator directive — orange pills always
+  // carry white text (orange + ink read poorly); the ink-on-warm a11y variant was
+  // reverted to white-on-warm for brand consistency across all warm pills/buttons.
+  'primary-ink':
     'bg-warm text-white hover:-translate-y-0.5 hover:bg-[var(--color-warm-hover)] hover:brightness-110 active:translate-y-0 active:brightness-100',
   glass:
     'glass-soft text-text-primary hover:-translate-y-0.5 hover:brightness-110 active:translate-y-0 active:brightness-100',

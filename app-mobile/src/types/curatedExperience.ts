@@ -15,7 +15,28 @@ export interface CuratedStop {
   priceTier: PriceTierSlug;
   priceMin: number;
   priceMax: number;
-  openingHours: Record<string, string>;
+  // ORCH-1019 F-7: runtime value is the raw Google Places v1 object passed
+  // through verbatim by generate-curated-experiences (index.ts:567) →
+  // signalRankFetch. The old Record<string,string> was a type lie that let
+  // SavedTab's bespoke openingHours[dayName] lookup typecheck while missing
+  // at runtime. Read ONLY via extractWeekdayText() (openingHoursUtils.ts) —
+  // never index a day key directly. Union also admits legacy persisted shapes.
+  openingHours:
+    | {
+        openNow?: boolean;
+        periods?: unknown[];
+        weekdayDescriptions?: string[];
+        nextOpenTime?: string;
+        nextCloseTime?: string;
+      }
+    | Record<string, string>   // legacy lowercase-day-record rows still in prod data
+    | string[]
+    | string
+    | null;
+  // ORCH-1019 F-2: per-stop venue UTC offset (Google Places v1
+  // utcOffsetMinutes via place_pool.utc_offset_minutes). The canonical reader
+  // evaluates open/closed in venue-local time when present.
+  utcOffsetMinutes?: number | null;
   // ORCH-0677 D-3: widened to allow honest absence (`null`) when the source
   // data does not include `openNow`. Constitution #9 — never fabricate `true`.
   isOpenNow: boolean | null;

@@ -36,7 +36,12 @@ import { formatPriceRange, formatCurrency, getCurrencySymbol, getCurrencyRate } 
 import { PriceTierSlug, TIER_BY_SLUG, formatTierLabel } from '../../constants/priceTiers';
 import { HapticFeedback } from "../../utils/hapticFeedback";
 import type { CuratedStop } from "../../types/curatedExperience";
-import { isPlaceOpenNow, isPlaceOpenAt, extractWeekdayText } from "../../utils/openingHoursUtils";
+import { isPlaceOpenNow, extractWeekdayText } from "../../utils/openingHoursUtils";
+import { checkAllCuratedStopsOpen, type CuratedStopsAvailabilityResult } from "../../utils/curatedStopsAvailability";
+import {
+  buildSingleCardNotSafeMessage,
+  checkSingleCardSchedulingAvailability,
+} from "../../utils/singleCardAvailability";
 import { getReadableCategoryName } from "../../utils/categoryUtils";
 import { CardFilterBar, WhenFilter } from './CardFilterBar';
 import { useFeatureGate } from "../../hooks/useFeatureGate";
@@ -92,7 +97,9 @@ interface SavedCard {
     popular?: boolean;
   }>;
 
-  openingHours?: Record<string, string>;
+  openingHours?: Parameters<typeof extractWeekdayText>[0];
+  utcOffsetMinutes?: number | null;
+  utc_offset_minutes?: number | null;
   lat: number;
   lng: number;
 }
@@ -1076,111 +1083,21 @@ const SavedTab = ({
   };
 
   // ---- Opening Hours Validation for Curated Plans ----
-
-  interface StopAvailability {
-    stopName: string;
-    isOpen: boolean;
-    reason?: string;
-  }
-
-  const to24Hour = (hour: number, ampm: string): number => {
-    const isPM = ampm.toUpperCase() === 'PM';
-    if (hour === 12) return isPM ? 12 : 0;
-    return isPM ? hour + 12 : hour;
-  };
-
-  const checkSingleStopOpen = (
-    stop: CuratedStop,
-    arrivalTime: Date
-  ): StopAvailability => {
-    const dayName = arrivalTime.toLocaleDateString(getUserLocale(), { weekday: 'long' });
-    const hoursString = stop.openingHours?.[dayName];
-
-    // No hours data — assume open
-    if (!hoursString) {
-      return { stopName: stop.placeName, isOpen: true };
-    }
-
-    // Explicitly closed
-    if (hoursString.toLowerCase().includes('closed')) {
-      return {
-        stopName: stop.placeName,
-        isOpen: false,
-        reason: `Closed on ${dayName}s`,
-      };
-    }
-
-    // Open 24 hours
-    if (hoursString.toLowerCase().includes('24 hours') || hoursString.toLowerCase().includes('open 24')) {
-      return { stopName: stop.placeName, isOpen: true };
-    }
-
-    // Parse "9:00 AM – 5:00 PM" or "9 AM – 5 PM" format
-    const match = hoursString.match(
-      /(\d{1,2}):?(\d{2})?\s*(AM|PM)\s*[–\-]\s*(\d{1,2}):?(\d{2})?\s*(AM|PM)/i
-    );
-    if (!match) {
-      // Can't parse — assume open
-      return { stopName: stop.placeName, isOpen: true };
-    }
-
-    const openHour = to24Hour(parseInt(match[1]), match[3]);
-    const openMinute = parseInt(match[2] || '0');
-    const closeHour = to24Hour(parseInt(match[4]), match[6]);
-    const closeMinute = parseInt(match[5] || '0');
-
-    const arrivalHour = arrivalTime.getHours();
-    const arrivalMinute = arrivalTime.getMinutes();
-    const arrivalTotal = arrivalHour * 60 + arrivalMinute;
-    const openTotal = openHour * 60 + openMinute;
-    const closeTotal = closeHour * 60 + closeMinute;
-
-    if (arrivalTotal < openTotal) {
-      const openTimeStr = `${match[1]}:${match[2] || '00'} ${match[3]}`;
-      return {
-        stopName: stop.placeName,
-        isOpen: false,
-        reason: `Opens at ${openTimeStr}`,
-      };
-    }
-
-    if (arrivalTotal >= closeTotal && closeTotal > openTotal) {
-      const closeTimeStr = `${match[4]}:${match[5] || '00'} ${match[6]}`;
-      return {
-        stopName: stop.placeName,
-        isOpen: false,
-        reason: `Closes at ${closeTimeStr}`,
-      };
-    }
-
-    return { stopName: stop.placeName, isOpen: true };
-  };
+  //
+  // ORCH-1019 F-2: the bespoke day-name parser (to24Hour / checkSingleStopOpen /
+  // checkAllStopsOpen with `stop.openingHours?.[dayName]`) was DELETED. It indexed
+  // a day key on the openingHours value, which is the raw Google Places v1 object
+  // ({ weekdayDescriptions: [...] }) at runtime — so the lookup was always
+  // undefined and every stop was reported "open" ("All Stops Are Open!" even for
+  // closed venues). All curated availability now routes through the canonical
+  // shared validator (checkAllCuratedStopsOpen) which uses extractWeekdayText +
+  // isPlaceOpenAt — the single hours authority. See I-CURATED-HOURS-VIA-CANONICAL-READER.
 
   const checkAllStopsOpen = (
     stops: CuratedStop[],
     startTime: Date
-  ): { allOpen: boolean; results: StopAvailability[] } => {
-    let cumulativeMinutes = 0;
-
-    const results: StopAvailability[] = stops.map((stop, idx) => {
-      // Calculate estimated arrival time at this stop
-      const arrivalTime = new Date(startTime.getTime() + cumulativeMinutes * 60000);
-      const availability = checkSingleStopOpen(stop, arrivalTime);
-
-      // Add this stop's duration + next stop's travel time
-      cumulativeMinutes += (stop.estimatedDurationMinutes ?? 45);
-      if (idx < stops.length - 1 && stops[idx + 1]?.travelTimeFromPreviousStopMin) {
-        cumulativeMinutes += stops[idx + 1].travelTimeFromPreviousStopMin!;
-      }
-
-      return availability;
-    });
-
-    return {
-      allOpen: results.every(r => r.isOpen),
-      results,
-    };
-  };
+  ): CuratedStopsAvailabilityResult =>
+    checkAllCuratedStopsOpen(stops, startTime, getUserLocale());
 
   const handleScheduleCurated = (card: SavedCard) => {
     // Gate: curated card schedule requires Mingla+
@@ -1245,23 +1162,23 @@ const SavedTab = ({
           hour12: true,
         });
         Alert.alert(
-          'All Stops Are Open!',
-          `All ${stops.length} stops are open at ${timeStr}.\n\nWould you like to schedule this plan and add it to your calendar?`,
+          'Safe to Schedule',
+          `All ${stops.length} stops are confirmed open at ${timeStr}.\n\nWould you like to schedule this plan and add it to your calendar?`,
           [
             { text: 'Not Now', style: 'cancel', onPress: () => setCardToSchedule(null) },
             { text: 'Schedule', onPress: () => proceedWithScheduling(date) },
           ]
         );
       } else {
-        // Some stops are closed — show which ones and why
-        const closedStops = results.filter(r => !r.isOpen);
-        const closedList = closedStops
+        // Any closed or unknown stop means the plan is not safe to schedule.
+        const unavailableStops = results.filter(r => !r.isOpen);
+        const unavailableList = unavailableStops
           .map(s => `  \u2022 ${s.stopName} \u2014 ${s.reason}`)
           .join('\n');
 
         Alert.alert(
-          'Some Stops Are Closed',
-          `Not all activities are open at the time you selected:\n\n${closedList}\n\nPlease choose a different time when all stops are available.`,
+          'Not Safe to Schedule',
+          `Mingla could not confirm every stop is open at the time you selected:\n\n${unavailableList}\n\nPlease choose a different time when all stops are confirmed open.`,
           [
             { text: 'Cancel', style: 'cancel', onPress: () => setCardToSchedule(null) },
             {
@@ -1275,16 +1192,19 @@ const SavedTab = ({
         );
       }
     } else {
-      // Regular card — check if place is open at selected time
-      const weekdayText = extractWeekdayText(cardToSchedule?.openingHours);
-      const openAtSelectedTime = isPlaceOpenAt(weekdayText, date);
-      if (openAtSelectedTime === false) {
+      // Regular card — scheduling is safe only when the selected time is proven open.
+      const availability = checkSingleCardSchedulingAvailability(
+        cardToSchedule,
+        date,
+        getUserLocale(),
+      );
+      if (!availability.isSafeToSchedule) {
         Alert.alert(
-          "Place Closed",
-          "This place appears to be closed at the time you selected. Choose a different time or schedule anyway.",
+          "Not Safe to Schedule",
+          buildSingleCardNotSafeMessage(availability),
           [
-            { text: "Change Time", style: "cancel" },
-            { text: "Schedule Anyway", onPress: () => proceedWithScheduling(date) },
+            { text: "Cancel", style: "cancel", onPress: () => setCardToSchedule(null) },
+            { text: "Choose New Time", onPress: () => setShowProposeDateTimeModal(true) },
           ]
         );
         return;
@@ -1356,6 +1276,7 @@ const SavedTab = ({
         travelTime: cardToSchedule.travelTime || "15 min",
         address: cardToSchedule.address || "",
         openingHours: cardToSchedule.openingHours,
+        utcOffsetMinutes: cardToSchedule.utcOffsetMinutes ?? cardToSchedule.utc_offset_minutes ?? null,
         highlights: cardToSchedule.highlights || [],
         tags: (cardToSchedule as any).tags || [],
         matchScore: cardToSchedule.matchScore || 0,
@@ -1498,6 +1419,7 @@ const SavedTab = ({
       travelTime: card.travelTime || undefined,
       address: card.address || "",
       openingHours: card.openingHours,
+      utcOffsetMinutes: card.utcOffsetMinutes ?? card.utc_offset_minutes ?? null,
       highlights: card.highlights || [],
       tags: (card as any).tags || [],
       matchScore: matchScore || 0,
@@ -1840,7 +1762,10 @@ const SavedTab = ({
     const isRemoving = removingCardIds.has(card.id);
 
     // Check if place is currently open using live client-side time computation
-    const liveStatus = isPlaceOpenNow(extractWeekdayText(card.openingHours));
+    const liveStatus = isPlaceOpenNow(
+      extractWeekdayText(card.openingHours),
+      card.utcOffsetMinutes ?? card.utc_offset_minutes ?? null,
+    );
     const isPlaceOpen = liveStatus !== false; // true or null (unknown) → allow scheduling
 
     return (

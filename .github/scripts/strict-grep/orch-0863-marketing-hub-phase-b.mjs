@@ -987,6 +987,21 @@ function checkNoNewBackendFiles() {
     "supabase/functions/_shared/stopAlternatives.ts",
     "supabase/functions/generate-curated-experiences/index.ts",
   ];
+  // ORCH-1006 [Universal all-in pricing engine]. New shared money engine + its
+  // regression test + the pricing migrations. Admin take-rate persistence uses
+  // SECURITY DEFINER RPCs (no new edge function). Slice 3 Surface 4 adds the
+  // read-only tax-registration probe edge fn for the authoring VAT row.
+  // (META-ORCH-1009 Sub-B previously source-reconciled the migrations from this
+  // branch to unblock db push; this merge supersedes that with the full list.)
+  const ORCH_1006_BACKEND_ALLOWLIST = [
+    "supabase/functions/_shared/allInPricingEngine.ts",
+    "supabase/functions/_shared/__tests__/allInPricingEngine.test.ts",
+    "supabase/functions/brand-tax-registrations-list/index.ts",
+    "supabase/migrations/20260802000000_orch_1006_pricing_switches.sql",
+    "supabase/migrations/20260802000001_orch_1006_pricing_views.sql",
+    "supabase/migrations/20260802000002_orch_1006_finalize_copy_pricing_breakdown.sql",
+    "supabase/migrations/20260805000000_orch_1006_public_event_tier_allin.sql",
+  ];
   // ORCH-1008 [Admin shell prune + Intelligence Overview tab + remainder mode].
   // C7 is scoped to ORCH-0863 marketing; these backend touches are the new
   // place_intelligence_runs CHECK-constraint extension (adds 'remainder' to
@@ -1033,7 +1048,160 @@ function checkNoNewBackendFiles() {
     "supabase/migrations/20260803000001_orch_1016_pg_published_trips_public.sql",
     "supabase/migrations/__tests__/orch_1016_pg_published_trips_public.test.ts",
   ];
+  // ORCH-1015 — Intelligence Overview readiness ladder. Edge fn touched is
+  // the existing intelligence_coverage action (3 new fields per city row +
+  // 1 extended fetch column on seeding_cities). The Deno test file is
+  // extended in-place (no new test file). Edge fn path duplicates
+  // ORCH_1008/ORCH_1014 — harmless (ALLOWLIST is a union via .includes()).
+  const ORCH_1015_BACKEND_ALLOWLIST = [
+    "supabase/functions/run-place-intelligence-trial/index.ts",
+    "supabase/functions/run-place-intelligence-trial/__tests__/intelligence_coverage_seed_refresh.test.ts",
+  ];
+  // META-ORCH-1009 Sub-A [ai-signal-scores schema]: adds the place_pool
+  // ai_signal_scores JSONB column + GIN(jsonb_path_ops) index + one-shot
+  // backfill from place_intelligence_trial_runs.q2_response; extends the
+  // trial edge function with a non-fatal secondary write to mirror Q2 slice
+  // into the new column. New Deno tests cover the slice helper + write-path
+  // contract; new SQL probe covers post-apply backfill verification. The
+  // edge-fn source path (`run-place-intelligence-trial/index.ts`) is already
+  // listed in ORCH_1015_BACKEND_ALLOWLIST above — duplicated here for
+  // explicit Sub-A ownership; the ALLOWLIST spread is a union so dup is
+  // harmless. C7 is scoped to ORCH-0863 marketing; this entry covers the
+  // Sub-A backend touches.
+  const META_ORCH_1009_SUB_A_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260802000003_meta_orch_1009_sub_a_ai_signal_scores.sql",
+    "supabase/functions/run-place-intelligence-trial/index.ts",
+    "supabase/functions/run-place-intelligence-trial/__tests__/ai_signal_scores_slice.test.ts",
+    "supabase/functions/run-place-intelligence-trial/__tests__/ai_signal_scores_write_path.test.ts",
+    // QA pass — adversarial coverage on slice + writer (5 new tests):
+    "supabase/functions/run-place-intelligence-trial/__tests__/ai_signal_scores_adversarial.test.ts",
+    "supabase/migrations/__tests__/meta_orch_1009_sub_a_ai_signal_scores_backfill.test.sql",
+  ];
+  // ORCH-1017 [Intelligence Trial "Couldn't load coverage" — Edge HTTP 546]:
+  // moves the intelligence_coverage per-city aggregation out of JS (which pulled
+  // ~79k place_pool rows into the edge fn and intermittently blew the Edge
+  // WORKER_LIMIT) into the SECURITY DEFINER RPC pg_intelligence_coverage().
+  // New migration + 2 new Deno tests; the 2 ORCH-1013 coverage tests have their
+  // source-inspect halves repointed at the RPC/migration ([TEST-MOD-APPROVED
+  // ORCH-1017]). The edge-fn source path is already covered by ORCH_1015 /
+  // META_ORCH_1009_SUB_A above — listed here for explicit ORCH-1017 ownership;
+  // the ALLOWLIST spread is a union so dups are harmless. C7 is scoped to
+  // ORCH-0863 marketing; this entry covers the ORCH-1017 backend touches.
+  const ORCH_1017_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260807000000_orch_1017_pg_intelligence_coverage.sql",
+    "supabase/functions/run-place-intelligence-trial/index.ts",
+    "supabase/functions/run-place-intelligence-trial/__tests__/orch1017_coverage_rpc.test.ts",
+    "supabase/functions/run-place-intelligence-trial/__tests__/orch1017_coverage_rpc_adversarial.test.ts",
+    "supabase/functions/run-place-intelligence-trial/__tests__/coverage_servable_filter.test.ts",
+    "supabase/functions/run-place-intelligence-trial/__tests__/coverage_adversarial.test.ts",
+    "supabase/functions/run-place-intelligence-trial/__tests__/intelligence_coverage_seed_refresh.test.ts",
+  ];
+  // META-ORCH-1009 Sub-B [consumer ranker blend + reasoning-on-card-back]:
+  // extends signalScorer.computeScore with AI blend + inappropriate_for veto,
+  // wires run-signal-scorer to read place_pool.ai_signal_scores + DELETE
+  // vetoed rows, surfaces ai_reasoning + ai_score_raw on the two consumer
+  // RPCs via a new migration, threads the per-signal reasoning slice through
+  // discover-cards + generate-curated-experiences + _shared/signalRankFetch.
+  // Per-Sub-B contract: 5 backend code files + 1 migration + new Deno test
+  // suites + 1 new strict-grep gate (registered separately in the workflow
+  // file, not under supabase/). All consumer-ranker-only — admin paths
+  // intentionally NOT in scope.
+  // Migration rebumped 20260803→20260806 to land after ORCH-1006's already-
+  // applied 20260805 (tester P2 F-01).
+  // META-ORCH-1009 Sub-D [refresh cron + admin re-evaluate button]:
+  // closes the staleness loop DEC-182 left open by adding a 15-min pg_cron
+  // rescore-sweep + a Google-data-drift trigger on place_pool + a per-place
+  // admin re-eval button + a 90-day all-cities backstop. Touches:
+  //   - 1 new migration (cron + helper fns + drift trigger + column adds)
+  //   - run-signal-scorer/index.ts (per-place mode + ai_signal_scores_at write)
+  //   - _shared/signalScorer.ts (1-line evaluated_at passthrough)
+  //   - run-place-intelligence-trial/index.ts (new admin_reeval_place action)
+  //   - 5 new Deno + SQL tests under __tests__/
+  // C7 is scoped to ORCH-0863 marketing; this entry covers the Sub-D backend
+  // touches. See DEC-183 + I-AI-SCORE-STALENESS-AUTO-RECOVERED.
+  const META_ORCH_1009_SUB_D_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260808000000_meta_orch_1009_sub_d_refresh_cron.sql",
+    "supabase/functions/run-signal-scorer/index.ts",
+    "supabase/functions/_shared/signalScorer.ts",
+    "supabase/functions/run-place-intelligence-trial/index.ts",
+    "supabase/functions/run-signal-scorer/__tests__/per_place_mode.test.ts",
+    "supabase/functions/_shared/__tests__/signalScorer.evaluated_at_passthrough.test.ts",
+    "supabase/functions/run-place-intelligence-trial/__tests__/admin_reeval_place.test.ts",
+    // Tester adversarial test (Sub-D QA pass) — pinned P0 drift trigger fix.
+    "supabase/migrations/__tests__/meta_orch_1009_sub_d_adversarial.test.ts",
+    "supabase/migrations/__tests__/sub_d_seed_idempotent.test.sql",
+    // Admin UI regression test (note: lives outside supabase/ so the C7
+    // backend-only forbid does not gate it; listed here for ORCH-trace).
+    "mingla-admin/src/__tests__/orch1009_sub_d_reeval_button.test.js",
+    // Strict-grep gate (also lives outside supabase/; listed for trace).
+    ".github/scripts/strict-grep/meta-orch-1009-sub-d-ai-score-staleness-recovery.mjs",
+  ];
+  const META_ORCH_1009_SUB_B_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260806000000_meta_orch_1009_sub_b_rpcs_with_reasoning.sql",
+    "supabase/functions/_shared/signalScorer.ts",
+    "supabase/functions/_shared/signalRankFetch.ts",
+    "supabase/functions/run-signal-scorer/index.ts",
+    "supabase/functions/discover-cards/index.ts",
+    "supabase/functions/generate-curated-experiences/index.ts",
+    "supabase/functions/_shared/__tests__/signalScorer.blend.test.ts",
+    // [META-ORCH-1009 Sub-B tester adversarial] 10 additional edge-case tests
+    // for the AI blend ranker — determinism, veto round-trip, NaN/Infinity
+    // sanitization, snippet trimming, strict ===/case discriminators, clamp
+    // floor. Lives next to the implementor's blend.test.ts; same gate.
+    "supabase/functions/_shared/__tests__/signalScorer.blend.adversarial.test.ts",
+    // [TEST-MOD-APPROVED META-ORCH-1009 Sub-B] 20 call sites in scorer.test.ts
+    // updated to pass the new required signalId arg to computeScore. Mechanical
+    // update; no existing test semantics altered. Inclusion in this allowlist
+    // documents the modification under ORCH-0840 append-only convention.
+    "supabase/functions/_shared/__tests__/scorer.test.ts",
+    "supabase/functions/discover-cards/__tests__/ai_reasoning_passthrough.test.ts",
+    "supabase/functions/discover-cards/__tests__/collab_determinism_under_ai_blend.test.ts",
+    "supabase/functions/generate-curated-experiences/__tests__/ai_reasoning_passthrough.test.ts",
+    "supabase/migrations/__tests__/meta_orch_1009_sub_b_rpc_reasoning_return.test.sql",
+  ];
+  // ORCH-1018 [Bouncer batch runner — memory-safe, resumable, non-aborting].
+  // C7 is scoped to ORCH-0863 marketing; ORCH-1018's backend touches are the new
+  // shared cursor-paged batch loop + its two Deno tests, plus the two Bouncer
+  // edge functions rewired onto that loop (C7 flags modified backend files too,
+  // so run-pre-photo-bouncer/run-bouncer are listed alongside the new helper).
+  // No marketing scope. Per COMMS-0002.
+  const ORCH_1018_BACKEND_ALLOWLIST = [
+    "supabase/functions/_shared/bouncerBatch.ts",
+    "supabase/functions/_shared/__tests__/bouncerBatch.test.ts",
+    "supabase/functions/_shared/__tests__/bouncerBatch.adversarial.test.ts",
+    "supabase/functions/run-pre-photo-bouncer/index.ts",
+    "supabase/functions/run-bouncer/index.ts",
+  ];
+  // ORCH-1021 [Decisive scheduling availability].
+  // C7 is scoped to ORCH-0863 marketing; ORCH-1021 only threads Google Places
+  // utc_offset_minutes through existing card payloads so mobile scheduling can
+  // evaluate the selected time in the venue's timezone.
+  // No marketing scope. Per COMMS-0002.
+  const ORCH_1021_BACKEND_ALLOWLIST = [
+    "supabase/functions/discover-cards/index.ts",
+    "supabase/functions/generate-curated-experiences/index.ts",
+    "supabase/functions/generate-curated-experiences/__tests__/utc_offset_passthrough.test.ts",
+  ];
+  // ORCH-1024 [Photo backfill originals-only + separate thumbnail tab].
+  // C7 is scoped to ORCH-0863 marketing; ORCH-1024 makes the main photo
+  // backfill download+store ORIGINALS ONLY (the inline imagescript thumbnail
+  // generation that crashed `backfill-place-photos` with "not enough compute
+  // resources" is removed; thumbnails move to the separate
+  // `backfill-place-photo-thumbs` function driven from a new admin tab). It also
+  // carries the ORCH-1023 expired-name REFRESH fix + its process-path test.
+  // No marketing scope. Per COMMS-0002.
+  const ORCH_1024_BACKEND_ALLOWLIST = [
+    "supabase/functions/_shared/photoStorageService.ts",
+    "supabase/functions/_shared/photoStorageService.test.ts",
+    "supabase/functions/backfill-place-photos/index.ts",
+    "supabase/functions/backfill-place-photos/index.test.ts",
+  ];
   const ALLOWLIST = [
+    ...ORCH_1024_BACKEND_ALLOWLIST,
+    ...ORCH_1021_BACKEND_ALLOWLIST,
+    ...ORCH_1018_BACKEND_ALLOWLIST,
+    ...ORCH_1017_BACKEND_ALLOWLIST,
+    ...ORCH_1006_BACKEND_ALLOWLIST,
     ...ORCH_1016_BACKEND_ALLOWLIST,
     ...ORCH_0989_BACKEND_ALLOWLIST,
     ...ORCH_0990_BACKEND_ALLOWLIST,
@@ -1090,6 +1258,10 @@ function checkNoNewBackendFiles() {
     ...ORCH_1008_BACKEND_ALLOWLIST,
     ...ORCH_1013_BACKEND_ALLOWLIST,
     ...ORCH_1014_BACKEND_ALLOWLIST,
+    ...ORCH_1015_BACKEND_ALLOWLIST,
+    ...META_ORCH_1009_SUB_A_BACKEND_ALLOWLIST,
+    ...META_ORCH_1009_SUB_B_BACKEND_ALLOWLIST,
+    ...META_ORCH_1009_SUB_D_BACKEND_ALLOWLIST,
   ];
   const forbidden = changed.filter(
     (p) =>

@@ -21,6 +21,7 @@ export function useIsPlaceOpen(
         nextCloseTime?: string;
         weekdayDescriptions?: string[];
       }
+    | { lines?: string[] }
     | Record<string, string>
     | string[]
     | null

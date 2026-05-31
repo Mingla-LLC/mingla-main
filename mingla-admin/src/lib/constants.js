@@ -130,6 +130,8 @@ export const NAV_GROUPS = [
       { id: "signals",                   label: "Signal Library",     icon: "Activity" },
       { id: "place-intelligence-trial",  label: "Intelligence Trial", icon: "Microscope" },
       { id: "email",                     label: "Email",              icon: "Mail" },
+      // ORCH-1006: Mingla take-rate admin screen (global default + per-brand override).
+      { id: "pricing",                   label: "Pricing",            icon: "Percent" },
       { id: "claims",                    label: "Venue claims",       icon: "ClipboardList" },
       { id: "users",                     label: "Users",              icon: "Users" },
       { id: "settings",                  label: "Settings",           icon: "Settings" },

@@ -565,6 +565,7 @@ function buildCardStop(
     priceTier: card.price_tiers?.[0] || card.price_tier || 'chill',
     priceTiers: card.price_tiers?.length ? card.price_tiers : (card.price_tier ? [card.price_tier] : ['chill']),
     openingHours: card.opening_hours || {},
+    utcOffsetMinutes: card.utc_offset_minutes ?? null,
     // ORCH-0677 D-3: derive truthfully from openingHours.openNow when present.
     // Never fabricate `true` (Constitution #9). null = honestly unknown.
     isOpenNow: (() => {
@@ -594,6 +595,12 @@ function buildCardStop(
     comboCategory: opts.comboCategory,
     // ORCH-0985: vibe rank signal (for Replace ordering); omitted when absent.
     ...(opts.rankSignal ? { rankSignal: opts.rankSignal } : {}),
+    // META-ORCH-1009 Sub-B — per-signal Gemini Q2 reasoning slice (keyed by
+    // rankSignal). Omitted when unevaluated or no reasoning string. Mobile
+    // ExpandedCardModal renders this in the "Why we picked this for you"
+    // section. signalRankFetch.fetchSinglesForSignalRank produced this from
+    // place_pool.ai_signal_scores[rankSignal].reasoning.
+    ...(card.aiReasoningBySignal ? { aiReasoningBySignal: card.aiReasoningBySignal } : {}),
   };
 }
 

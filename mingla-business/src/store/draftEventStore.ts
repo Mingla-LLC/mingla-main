@@ -85,6 +85,13 @@ export interface TicketStub {
   name: string;
   /** Null when isFree=true; otherwise positive major-unit price. */
   priceGbp: number | null;
+  /**
+   * ORCH-1006 — server-computed all-in (tax/fee-inclusive) major-unit price for
+   * this tier (WYSIWYP). Populated on public read paths from
+   * pg_public_event_tier_allin; undefined/null on authoring stubs → renderers
+   * fall back to priceGbp. NEVER recompute fees in TS.
+   */
+  priceAllInGbp?: number | null;
   /** ISO 4217 event/ticket currency. Undefined means inherit the event. */
   currency?: string;
   /**
@@ -313,6 +320,18 @@ export interface DraftEvent {
   /** ISO 4217 event commerce currency. Null means server should use brand default. */
   currency?: string | null;
   tickets: TicketStub[];
+  /**
+   * ORCH-1006 — per-offering all-in pricing switches (who covers each cost).
+   * Each field NULL = inherit the brand default; explicit boolean = override.
+   * Persisted via the `business_set_pricing_switches` RPC at save time (only
+   * when the brand has customised — see pricingSwitchesService). Absent on
+   * legacy drafts → treated as all-inherit.
+   */
+  pricingSwitches?: {
+    passTax: boolean | null;
+    passMinglaFee: boolean | null;
+    passServiceFee: boolean | null;
+  };
   // Step 6 — Settings
   visibility: DraftEventVisibility;
   requireApproval: boolean;

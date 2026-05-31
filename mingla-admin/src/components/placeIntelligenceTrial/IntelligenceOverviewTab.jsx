@@ -30,11 +30,138 @@ import { RunRemainderConfirmModal } from "./RunRemainderConfirmModal";
 // ORCH-1013 Finding B — bulk launch ("Run remainder on all").
 import { RunRemainderOnAllConfirmModal } from "./RunRemainderOnAllConfirmModal";
 import { useBulkRunDispatcher } from "../../hooks/useBulkRunDispatcher";
-// ORCH-1014 Finding B — per-city Seed + Refresh readiness badges.
-import { SeedStatusBadge } from "./SeedStatusBadge";
-import { RefreshStatusBadge } from "./RefreshStatusBadge";
+// ORCH-1015 Finding A — per-city Boundary + Details binary readiness badges.
+// Replaces ORCH-1014's count-based Seed + Refresh badges (those raw fields
+// stay on the wire as operator diagnostics; see SPEC §7-D7).
+import { BoundaryReadinessBadge } from "./BoundaryReadinessBadge";
+import { DetailsReadinessBadge } from "./DetailsReadinessBadge";
 
 const PER_PLACE_COST_USD = 0.0040;
+
+// ORCH-1015 — readiness predicates used by both the 3-band layout (§3 B.2)
+// and the smart-skip bulk button (§3 C.2). Keep these helpers HERE (not in a
+// shared util) so the test surface stays bound to the component file.
+function isBoundaryReady(r) {
+  return r?.regeocoded === true;
+}
+function isDetailsReady(r) {
+  return r?.refreshed_new_fields === true;
+}
+function isFullyReady(r) {
+  return isBoundaryReady(r) && isDetailsReady(r);
+}
+
+// ORCH-1015 — operator-locked band labels per SPEC §3 B.2.
+const BAND_LABELS = {
+  band1: "Ready — boundary current + details current",
+  band2: "Needs detail refresh",
+  band3: "Needs re-seed (deprecated boundary)",
+};
+
+// ORCH-1015 — per-city <tr> renderer extracted so all 3 bands share one shape.
+// Per SPEC §3 B.2 — within a band sort happens at the bandedRows memo level;
+// this helper only renders. Per-row "Run remainder" button is preserved across
+// all 3 bands (override path per SPEC §3 C.4 / §7-D6).
+function renderCityRow({ row, checkingActiveRun, handleOpenRemainderModal }) {
+  const disabled = row.remaining_count <= 0 || checkingActiveRun;
+  return (
+    <tr
+      key={row.city_id}
+      className="border-b border-[var(--gray-200)] last:border-b-0 hover:bg-[var(--gray-50)] transition-colors duration-150"
+    >
+      <td className="px-3 py-2 text-[var(--color-text-primary)] font-medium">
+        {row.city_name}
+      </td>
+      <td className="px-3 py-2 text-[var(--color-text-secondary)]">
+        {row.country || "—"}
+      </td>
+      {/* ORCH-1015 — Boundary + Details binary readiness cells (read-only) */}
+      <td className="px-3 py-2 align-top">
+        <BoundaryReadinessBadge regeocoded={row.regeocoded} />
+      </td>
+      <td className="px-3 py-2 align-top">
+        <DetailsReadinessBadge
+          refreshed={row.refreshed_new_fields}
+          needs_refresh_count={row.needs_refresh_count ?? 0}
+        />
+      </td>
+      <td className="px-3 py-2 text-right text-[var(--color-text-primary)] font-mono tabular-nums">
+        {row.servable_count.toLocaleString()}
+      </td>
+      <td className="px-3 py-2 text-right text-[var(--color-success-700)] font-mono tabular-nums">
+        {row.evaluated_count.toLocaleString()}
+      </td>
+      <td className="px-3 py-2 text-right text-[var(--color-warning-700)] font-mono tabular-nums">
+        {row.remaining_count.toLocaleString()}
+      </td>
+      <td className="px-3 py-2">
+        <div className="flex items-center gap-2">
+          <div className="flex-1 bg-[var(--gray-100)] rounded-full h-2 overflow-hidden max-w-[120px]">
+            <div
+              className="h-full bg-[var(--color-brand-500)] transition-all duration-200"
+              style={{ width: `${row.coverage_pct}%` }}
+              role="progressbar"
+              aria-valuenow={row.coverage_pct}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-label={`${row.city_name} coverage ${row.coverage_pct.toFixed(1)}%`}
+            />
+          </div>
+          <span className="text-xs font-mono tabular-nums text-[var(--color-text-secondary)] shrink-0">
+            {row.coverage_pct.toFixed(1)}%
+          </span>
+        </div>
+      </td>
+      <td className="px-3 py-2 text-xs text-[var(--color-text-secondary)]">
+        {row.last_run_at ? (
+          <span className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[var(--color-text-primary)]">
+              {modeLabel(row.last_run_mode)}
+            </span>
+            <span
+              className={[
+                "text-[10px] uppercase tracking-wide font-mono px-1.5 py-0.5 rounded",
+                statusBadgeClasses(row.last_run_status),
+              ].join(" ")}
+            >
+              {row.last_run_status}
+            </span>
+            <span className="text-[var(--color-text-tertiary)]">·</span>
+            <span>{timeAgo(row.last_run_at)}</span>
+            {row.last_run_cost_usd != null && (
+              <>
+                <span className="text-[var(--color-text-tertiary)]">·</span>
+                <span className="font-mono">
+                  ${Number(row.last_run_cost_usd).toFixed(2)}
+                </span>
+              </>
+            )}
+          </span>
+        ) : (
+          <span className="text-[var(--color-text-tertiary)]">—</span>
+        )}
+      </td>
+      <td className="px-3 py-2 text-right">
+        <Button
+          size="sm"
+          variant={disabled ? "ghost" : "secondary"}
+          icon={Play}
+          onClick={() => handleOpenRemainderModal(row)}
+          disabled={disabled}
+          title={
+            row.remaining_count <= 0
+              ? "0 places to evaluate"
+              : checkingActiveRun
+                ? "Checking active runs…"
+                : `Evaluate ${row.remaining_count.toLocaleString()} un-evaluated places`
+          }
+        >
+          Run remainder
+        </Button>
+      </td>
+    </tr>
+  );
+}
 
 function modeLabel(mode) {
   if (!mode) return "—";
@@ -93,12 +220,14 @@ export function IntelligenceOverviewTab({ onSwitchToResults, onTabChange }) {
     refresh();
   }, [refresh]);
 
-  // ORCH-1013 Finding B — list of cities with un-evaluated remainder; feeds the
-  // bulk modal + dispatcher.
-  const candidateCities = useMemo(
+  // ORCH-1015 Finding C — split candidate cities into "ready" (both badges ✓,
+  // safe to bulk-run) and "skipped" (boundary or details ⚠, surfaced in modal
+  // as needing prep first). Replaces ORCH-1013's flat candidateCities memo.
+  // Per SPEC §3-C.2.
+  const readyCities = useMemo(
     () =>
       rows
-        .filter((r) => r.remaining_count > 0)
+        .filter((r) => r.remaining_count > 0 && isFullyReady(r))
         .map((r) => ({
           city_id: r.city_id,
           city_name: r.city_name,
@@ -106,6 +235,38 @@ export function IntelligenceOverviewTab({ onSwitchToResults, onTabChange }) {
         })),
     [rows],
   );
+
+  const skippedCities = useMemo(
+    () =>
+      rows
+        .filter((r) => r.remaining_count > 0 && !isFullyReady(r))
+        .map((r) => ({
+          city_id: r.city_id,
+          city_name: r.city_name,
+          remaining_count: r.remaining_count,
+          regeocoded: r.regeocoded,
+          refreshed_new_fields: r.refreshed_new_fields,
+          skip_reason: !r.regeocoded
+            ? "needs reseed"
+            : "needs detail refresh",
+        })),
+    [rows],
+  );
+
+  // ORCH-1015 Finding B — 3-band ladder. Each band sorted by servable_count
+  // DESC so the biggest (most expensive) cities surface first within band.
+  // Per SPEC §3 B.4.
+  const bandedRows = useMemo(() => {
+    const sortBySrv = (a, b) => b.servable_count - a.servable_count;
+    const band1 = rows
+      .filter((r) => isBoundaryReady(r) && isDetailsReady(r))
+      .sort(sortBySrv);
+    const band2 = rows
+      .filter((r) => isBoundaryReady(r) && !isDetailsReady(r))
+      .sort(sortBySrv);
+    const band3 = rows.filter((r) => !isBoundaryReady(r)).sort(sortBySrv);
+    return { band1, band2, band3 };
+  }, [rows]);
 
   const aggregate = useMemo(() => {
     const totals = rows.reduce(
@@ -233,21 +394,25 @@ export function IntelligenceOverviewTab({ onSwitchToResults, onTabChange }) {
         subtitle={`${rows.length} cit${rows.length === 1 ? "y" : "ies"} · ${aggregate.servable.toLocaleString()} servable · ${aggregate.evaluated.toLocaleString()} evaluated (${aggregate.coverage_pct.toFixed(1)}%)`}
         action={
           <div className="flex items-center gap-2">
-            {/* ORCH-1013 Finding B — bulk "Run remainder on all" trigger. */}
+            {/* ORCH-1015 Finding C — smart-skip bulk launcher. Only enqueues
+                cities where BOTH Boundary + Details are ✓; cities needing
+                prep land in the modal's "skipped" panel. Per SPEC §3-C.1. */}
             <Button
               size="sm"
               variant="secondary"
               icon={Play}
               onClick={() => setBulkModalOpen(true)}
-              disabled={loading || candidateCities.length === 0}
+              disabled={loading || readyCities.length === 0}
               title={
-                candidateCities.length === 0
-                  ? "All cities are fully evaluated"
-                  : `Run remainder on ${candidateCities.length} un-evaluated cit${candidateCities.length === 1 ? "y" : "ies"}`
+                readyCities.length === 0
+                  ? skippedCities.length > 0
+                    ? "All cities with remainder need prep first (reseed or detail refresh)"
+                    : "All cities are fully evaluated"
+                  : `Queues remainder runs on ${readyCities.length} cit${readyCities.length === 1 ? "y" : "ies"} — skips ${skippedCities.length} cit${skippedCities.length === 1 ? "y" : "ies"} needing reseed or refresh to protect Gemini scoring quality`
               }
             >
-              Run remainder on all
-              {candidateCities.length > 0 ? ` (${candidateCities.length})` : ""}
+              Run remainder on all ready cities
+              {readyCities.length > 0 ? ` (${readyCities.length})` : ""}
             </Button>
             <Button
               size="sm"
@@ -310,19 +475,19 @@ export function IntelligenceOverviewTab({ onSwitchToResults, onTabChange }) {
                   <tr className="text-left text-[10px] uppercase tracking-wide font-mono text-[var(--color-text-tertiary)]">
                     <th className="px-3 py-2 font-medium">City</th>
                     <th className="px-3 py-2 font-medium">Country</th>
-                    {/* ORCH-1014 — Seed + Refresh readiness columns
+                    {/* ORCH-1015 — Boundary + Details binary readiness columns
                         (read-only; act on Place Pool page) */}
                     <th
                       className="px-3 py-2 font-medium"
-                      title="Reseed in Place Pool"
+                      title="Re-seed in Place Pool when ⚠"
                     >
-                      Seed status
+                      Boundary
                     </th>
                     <th
                       className="px-3 py-2 font-medium"
-                      title="Refresh in Place Pool"
+                      title="Refresh in Place Pool when ⚠"
                     >
-                      Refresh status
+                      Details (new Google fields)
                     </th>
                     <th className="px-3 py-2 font-medium text-right">Servable</th>
                     <th className="px-3 py-2 font-medium text-right">Evaluated</th>
@@ -333,109 +498,75 @@ export function IntelligenceOverviewTab({ onSwitchToResults, onTabChange }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((row) => {
-                    const disabled = row.remaining_count <= 0 || checkingActiveRun;
-                    return (
+                  {/* ORCH-1015 Finding B — 3-band ladder. Empty bands skip
+                      their divider row entirely (no "Needs re-seed — 0 cities"
+                      noise). Per SPEC §3 B.2. */}
+                  {bandedRows.band1.length > 0 && (
+                    <>
                       <tr
-                        key={row.city_id}
-                        className="border-b border-[var(--gray-200)] last:border-b-0 hover:bg-[var(--gray-50)] transition-colors duration-150"
+                        className="bg-[var(--gray-50)] border-y border-[var(--gray-200)]"
+                        data-band="band1"
                       >
-                        <td className="px-3 py-2 text-[var(--color-text-primary)] font-medium">
-                          {row.city_name}
-                        </td>
-                        <td className="px-3 py-2 text-[var(--color-text-secondary)]">
-                          {row.country || "—"}
-                        </td>
-                        {/* ORCH-1014 — Seed + Refresh readiness cells (read-only) */}
-                        <td className="px-3 py-2 align-top">
-                          <SeedStatusBadge
-                            firstSeededAt={row.first_seeded_at}
-                            lastSeededAt={row.last_seeded_at}
-                          />
-                        </td>
-                        <td className="px-3 py-2 align-top">
-                          <RefreshStatusBadge
-                            missingFieldsCount={row.missing_fields_count ?? 0}
-                            staleRefreshCount={row.stale_refresh_count ?? 0}
-                          />
-                        </td>
-                        <td className="px-3 py-2 text-right text-[var(--color-text-primary)] font-mono tabular-nums">
-                          {row.servable_count.toLocaleString()}
-                        </td>
-                        <td className="px-3 py-2 text-right text-[var(--color-success-700)] font-mono tabular-nums">
-                          {row.evaluated_count.toLocaleString()}
-                        </td>
-                        <td className="px-3 py-2 text-right text-[var(--color-warning-700)] font-mono tabular-nums">
-                          {row.remaining_count.toLocaleString()}
-                        </td>
-                        <td className="px-3 py-2">
-                          <div className="flex items-center gap-2">
-                            <div className="flex-1 bg-[var(--gray-100)] rounded-full h-2 overflow-hidden max-w-[120px]">
-                              <div
-                                className="h-full bg-[var(--color-brand-500)] transition-all duration-200"
-                                style={{ width: `${row.coverage_pct}%` }}
-                                role="progressbar"
-                                aria-valuenow={row.coverage_pct}
-                                aria-valuemin={0}
-                                aria-valuemax={100}
-                                aria-label={`${row.city_name} coverage ${row.coverage_pct.toFixed(1)}%`}
-                              />
-                            </div>
-                            <span className="text-xs font-mono tabular-nums text-[var(--color-text-secondary)] shrink-0">
-                              {row.coverage_pct.toFixed(1)}%
-                            </span>
-                          </div>
-                        </td>
-                        <td className="px-3 py-2 text-xs text-[var(--color-text-secondary)]">
-                          {row.last_run_at ? (
-                            <span className="flex items-center gap-1.5 flex-wrap">
-                              <span className="text-[var(--color-text-primary)]">
-                                {modeLabel(row.last_run_mode)}
-                              </span>
-                              <span
-                                className={[
-                                  "text-[10px] uppercase tracking-wide font-mono px-1.5 py-0.5 rounded",
-                                  statusBadgeClasses(row.last_run_status),
-                                ].join(" ")}
-                              >
-                                {row.last_run_status}
-                              </span>
-                              <span className="text-[var(--color-text-tertiary)]">·</span>
-                              <span>{timeAgo(row.last_run_at)}</span>
-                              {row.last_run_cost_usd != null && (
-                                <>
-                                  <span className="text-[var(--color-text-tertiary)]">·</span>
-                                  <span className="font-mono">
-                                    ${Number(row.last_run_cost_usd).toFixed(2)}
-                                  </span>
-                                </>
-                              )}
-                            </span>
-                          ) : (
-                            <span className="text-[var(--color-text-tertiary)]">—</span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2 text-right">
-                          <Button
-                            size="sm"
-                            variant={disabled ? "ghost" : "secondary"}
-                            icon={Play}
-                            onClick={() => handleOpenRemainderModal(row)}
-                            disabled={disabled}
-                            title={
-                              row.remaining_count <= 0
-                                ? "0 places to evaluate"
-                                : checkingActiveRun
-                                  ? "Checking active runs…"
-                                  : `Evaluate ${row.remaining_count.toLocaleString()} un-evaluated places`
-                            }
-                          >
-                            Run remainder
-                          </Button>
+                        <td
+                          colSpan={10}
+                          className="px-3 py-1.5 text-[10px] uppercase tracking-wide font-mono text-[var(--color-text-tertiary)]"
+                        >
+                          {BAND_LABELS.band1}
                         </td>
                       </tr>
-                    );
-                  })}
+                      {bandedRows.band1.map((row) =>
+                        renderCityRow({
+                          row,
+                          checkingActiveRun,
+                          handleOpenRemainderModal,
+                        }),
+                      )}
+                    </>
+                  )}
+                  {bandedRows.band2.length > 0 && (
+                    <>
+                      <tr
+                        className="bg-[var(--gray-50)] border-y border-[var(--gray-200)]"
+                        data-band="band2"
+                      >
+                        <td
+                          colSpan={10}
+                          className="px-3 py-1.5 text-[10px] uppercase tracking-wide font-mono text-[var(--color-text-tertiary)]"
+                        >
+                          {BAND_LABELS.band2}
+                        </td>
+                      </tr>
+                      {bandedRows.band2.map((row) =>
+                        renderCityRow({
+                          row,
+                          checkingActiveRun,
+                          handleOpenRemainderModal,
+                        }),
+                      )}
+                    </>
+                  )}
+                  {bandedRows.band3.length > 0 && (
+                    <>
+                      <tr
+                        className="bg-[var(--gray-50)] border-y border-[var(--gray-200)]"
+                        data-band="band3"
+                      >
+                        <td
+                          colSpan={10}
+                          className="px-3 py-1.5 text-[10px] uppercase tracking-wide font-mono text-[var(--color-text-tertiary)]"
+                        >
+                          {BAND_LABELS.band3}
+                        </td>
+                      </tr>
+                      {bandedRows.band3.map((row) =>
+                        renderCityRow({
+                          row,
+                          checkingActiveRun,
+                          handleOpenRemainderModal,
+                        }),
+                      )}
+                    </>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -458,11 +589,14 @@ export function IntelligenceOverviewTab({ onSwitchToResults, onTabChange }) {
         onConcurrentRun={() => onSwitchToResults?.()}
       />
 
-      {/* ORCH-1013 Finding B — bulk "Run remainder on all" modal + dispatcher. */}
+      {/* ORCH-1015 Finding C — bulk launcher with smart-skip. Modal receives
+          ready cities (sent to dispatcher) + skipped cities (listed in modal
+          for visibility only; never enqueued). Per SPEC §3 C.2 + C.3. */}
       <RunRemainderOnAllConfirmModal
         open={bulkModalOpen}
         onClose={() => setBulkModalOpen(false)}
-        candidateCities={candidateCities}
+        candidateCities={readyCities}
+        skippedCities={skippedCities}
         perPlaceCostUsd={PER_PLACE_COST_USD}
         onConfirm={(cities) => {
           dispatcher.enqueue(cities);

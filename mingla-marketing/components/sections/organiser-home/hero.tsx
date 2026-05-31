@@ -2,9 +2,16 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { Play } from 'lucide-react'
-import { Button } from '@/components/ui/button'
 import { VideoModal } from '@/components/ui/video-modal'
+import { HeroBookingWall } from '@/components/sections/organiser-home/hero-booking-wall'
 import { useMinglaReducedMotion } from '@/lib/reduced-motion'
+
+// ORCH-1010 — business hero. A full-bleed 3D "booking wall" (vibe-themed booking
+// moments across restaurants, cafés, events, clubs, tables) runs as the section
+// background behind a dark overlay; the headline sits on top in high contrast.
+// Shows the DEMAND Mingla creates. Illustrative content, no stock art.
+
+const EASE = [0.16, 1, 0.3, 1] as const
 
 interface PlayTileProps {
   onPlay: () => void
@@ -16,7 +23,7 @@ function PlayTile({ onPlay }: PlayTileProps) {
       type="button"
       onClick={onPlay}
       aria-label="Watch — see how Mingla works (2:14)"
-      className="group glass-strong flex h-14 cursor-pointer items-center gap-3 rounded-full p-1.5 pr-5 transition-all duration-200 ease-out-quart hover:-translate-y-0.5 hover:brightness-110 active:translate-y-0 focus-ring"
+      className="group flex h-14 cursor-pointer items-center gap-3 rounded-full border border-white/20 bg-white/10 p-1.5 pr-5 backdrop-blur-md transition-all duration-200 ease-out-quart hover:-translate-y-0.5 hover:bg-white/15 active:translate-y-0 focus-ring"
     >
       <span
         aria-hidden="true"
@@ -25,16 +32,12 @@ function PlayTile({ onPlay }: PlayTileProps) {
         <Play className="ml-0.5 h-4 w-4 fill-white text-white" />
       </span>
       <span className="flex flex-col items-start gap-0 leading-none">
-        <span className="text-[9px] font-semibold uppercase tracking-[0.22em] text-text-muted">
+        <span className="text-[9px] font-semibold uppercase tracking-[0.22em] text-white/70">
           Watch
         </span>
-        <span className="mt-1 font-display text-base text-text-primary">
-          See how Mingla works
-        </span>
+        <span className="mt-1 font-display text-base text-white">See how Mingla works</span>
       </span>
-      <span className="ml-1 self-end pb-1 text-[11px] font-medium text-text-muted">
-        2:14
-      </span>
+      <span className="ml-1 self-end pb-1 text-[11px] font-medium text-white/70">2:14</span>
     </button>
   )
 }
@@ -45,61 +48,66 @@ export function OrganiserHero() {
 
   return (
     <>
-      <section className="relative overflow-hidden px-6 pb-24 pt-32 md:px-10 md:pb-32 md:pt-44">
-        <div className="relative mx-auto flex max-w-5xl flex-col items-center text-center">
-          <motion.h1
-            initial={reduced ? false : { opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{
-              duration: 0.7,
-              delay: reduced ? 0 : 0.1,
-              ease: [0.16, 1, 0.3, 1],
-            }}
-            className="font-display text-4xl leading-[1.05] tracking-[-0.005em] text-text-primary sm:text-5xl md:text-7xl"
-          >
-            we give people a reason
-            <br />
-            <span className="text-warm">to show up for you.</span>
-          </motion.h1>
+      <section className="relative flex min-h-[88vh] items-center overflow-hidden px-6 pb-24 pt-32 md:px-10 md:pb-32 md:pt-40 [padding-left:max(1.5rem,env(safe-area-inset-left))] [padding-right:max(1.5rem,env(safe-area-inset-right))] md:[padding-left:max(2.5rem,env(safe-area-inset-left))] md:[padding-right:max(2.5rem,env(safe-area-inset-right))]">
+        {/* Background — the 3D booking wall (full-bleed cover). */}
+        <HeroBookingWall />
 
-          <motion.p
-            initial={reduced ? false : { opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{
-              duration: 0.6,
-              delay: reduced ? 0 : 0.35,
-              ease: [0.16, 1, 0.3, 1],
-            }}
-            className="mt-8 max-w-3xl text-base leading-relaxed text-text-secondary md:text-lg"
-          >
-            Mingla turns what makes your place, event, menu, or pop-up special into something people want to book, buy, visit, and share. Using AI, we label the vibe, shape the story, highlight what matters, and match you with the people most likely to care.
-          </motion.p>
+        {/* Overlay — darkens the wall so the headline reads in high contrast.
+            Warm-tinted near the foot, deepest behind the text column. */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background:
+              'linear-gradient(180deg, rgba(8,9,12,0.78) 0%, rgba(8,9,12,0.66) 42%, rgba(20,10,4,0.82) 100%)',
+          }}
+        />
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-y-0 left-0 w-full md:w-3/4"
+          style={{ background: 'linear-gradient(90deg, rgba(8,9,12,0.72) 0%, transparent 100%)' }}
+        />
+        {/* Dissolve — the dark wall melts into the next section's canvas so the
+            scroll from hero → "What is Mingla?" is one continuous pull, not a cut. */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-[38%]"
+          style={{ background: 'linear-gradient(to bottom, transparent 0%, var(--color-smoke) 92%)' }}
+        />
 
-          <motion.div
-            initial={reduced ? false : { opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{
-              duration: 0.6,
-              delay: reduced ? 0 : 0.5,
-              ease: [0.16, 1, 0.3, 1],
-            }}
-            className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:gap-3"
-          >
-            <Button size="lg" variant="glass">
-              Partner with Mingla
-            </Button>
-            <PlayTile onPlay={() => setVideoOpen(true)} />
-          </motion.div>
+        {/* Foreground — headline + single CTA, centered, high contrast on the wall. */}
+        <div className="relative mx-auto w-full max-w-6xl">
+          <div className="mx-auto flex max-w-2xl flex-col items-center text-center">
+            <motion.h1
+              initial={reduced ? false : { opacity: 0, y: 12, filter: 'blur(8px)' }}
+              animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+              transition={{ duration: 0.72, delay: reduced ? 0 : 0.1, ease: EASE }}
+              className="font-display text-5xl leading-[1.05] tracking-[-0.02em] text-white md:text-7xl"
+              style={{ textShadow: '0 2px 24px rgba(0,0,0,0.4)' }}
+            >
+              You deserve <br className="hidden sm:block" />to be <span className="text-warm">found.</span>
+            </motion.h1>
 
-          <motion.p
-            initial={reduced ? false : { opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.6, delay: reduced ? 0 : 0.75 }}
-            className="mt-12 text-sm text-text-muted"
-          >
-            Not just listings. Not just ads.{' '}
-            <span className="text-text-primary">Reasons people choose you.</span>
-          </motion.p>
+            <motion.p
+              initial={reduced ? false : { opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: reduced ? 0 : 0.35, ease: EASE }}
+              className="mt-8 max-w-xl text-xl font-bold leading-snug text-white md:text-2xl"
+              style={{ textShadow: '0 2px 20px rgba(0,0,0,0.45)' }}
+            >
+              Your business has a vibe, your community is looking for it. Mingla
+              helps them find you.
+            </motion.p>
+
+            <motion.div
+              initial={reduced ? false : { opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: reduced ? 0 : 0.5, ease: EASE }}
+              className="mt-10"
+            >
+              <PlayTile onPlay={() => setVideoOpen(true)} />
+            </motion.div>
+          </div>
         </div>
       </section>
 

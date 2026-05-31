@@ -25,6 +25,7 @@ import {
   ChevronDown,
   X,
   ClipboardList,
+  Percent,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { NAV_GROUPS } from "../../lib/constants";
@@ -33,7 +34,7 @@ import minglaLogo from "../../assets/mingla-logo.png";
 const ICON_MAP = {
   LayoutDashboard, Database, Terminal, Globe, Flag, Shield, Users, Layers,
   BarChart3, Mail, Settings, CreditCard, Mic, Rocket, Brain, Activity, Camera, Sparkles, Microscope,
-  ClipboardList,
+  ClipboardList, Percent,
 };
 
 export function Sidebar({

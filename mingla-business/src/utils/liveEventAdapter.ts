@@ -91,6 +91,12 @@ export const liveEventToEditableDraft = (e: LiveEvent): DraftEvent => ({
   themeOverrides: e.themeOverrides ?? null,
   privateGuestList: e.privateGuestList,
   inPersonPaymentsEnabled: e.inPersonPaymentsEnabled,
+  // ORCH-1006 — pricing switches; legacy events predate the field → all-inherit.
+  pricingSwitches: e.pricingSwitches ?? {
+    passTax: null,
+    passMinglaFee: null,
+    passServiceFee: null,
+  },
   // DraftEvent-only fields (wizard-internal; stubbed for edit mode)
   lastStepReached: 0,
   status: "live" as const,
@@ -144,6 +150,8 @@ export const FIELD_LABELS: Record<keyof EditableLiveEventFields, string> = {
   musicGenres: "Music genres",
   city: "City",
   locationGeo: "Map location",
+  // ORCH-1006
+  pricingSwitches: "Who covers costs",
 };
 
 /**
@@ -331,6 +339,22 @@ export const editableDraftToPatch = (
   const origLocationGeo = original.locationGeo ?? null;
   if (!deepEqual(origLocationGeo, edited.locationGeo)) {
     patch.locationGeo = edited.locationGeo;
+  }
+  // ORCH-1006 — diff the pricing switches (who covers VAT/Mingla fee/service
+  // fee). Without this, toggling a switch on a published event produces an
+  // empty patch and Save stays disabled — same root cause as the Cycle-12
+  // inPersonPayments + ORCH-0824 taxonomy bugs. Legacy events have no switches
+  // → treat as all-inherit so the diff is honest.
+  const origSwitches = original.pricingSwitches ?? {
+    passTax: null,
+    passMinglaFee: null,
+    passServiceFee: null,
+  };
+  if (
+    edited.pricingSwitches !== undefined &&
+    !deepEqual(origSwitches, edited.pricingSwitches)
+  ) {
+    patch.pricingSwitches = edited.pricingSwitches;
   }
   return patch;
 };

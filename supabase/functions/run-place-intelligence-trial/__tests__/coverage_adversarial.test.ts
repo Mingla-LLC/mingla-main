@@ -184,52 +184,58 @@ Deno.test("ADV-A8 — rows sorted by servable_count DESC", () => {
   assertEquals(rows.map((r) => r.city_name), ["Big", "Med", "Small"]);
 });
 
-// ── Source-inspect: post-fix safety guards must still be present ──
+// ── Source-inspect (ORCH-1017): the aggregation moved into the
+//    pg_intelligence_coverage() migration. The same defensive guards the JS
+//    handler carried (drop-empty, clamp, coverage rounding, completed gate)
+//    must now exist in SQL form. Each test asserts BOTH that index.ts calls the
+//    RPC (so a JS-revert is caught) AND that the migration retains the guard.
 
-Deno.test("ADV-A9 — source still has .filter(r => r.servable_count > 0) drop guard", async () => {
-  const url = new URL("../index.ts", import.meta.url);
-  const src = await Deno.readTextFile(url);
+const MIGRATION_SQL = await Deno.readTextFile(
+  new URL(
+    "../../../migrations/20260807000000_orch_1017_pg_intelligence_coverage.sql",
+    import.meta.url,
+  ),
+);
+const INDEX_SRC = await Deno.readTextFile(new URL("../index.ts", import.meta.url));
+
+Deno.test("ADV-A9 — RPC call present + migration drops servable_count=0 cities", () => {
   assert(
-    src.includes(".filter((r) => r.servable_count > 0)"),
-    "drop-row guard at L2312 must remain after Finding A",
+    INDEX_SRC.includes('db.rpc("pg_intelligence_coverage")'),
+    "handler must call the RPC — ORCH-1017",
+  );
+  assert(
+    /WHERE\s+s\.servable_count\s*>\s*0/i.test(MIGRATION_SQL),
+    "migration must retain the servable_count > 0 drop guard",
   );
 });
 
-Deno.test("ADV-A10 — source retains Math.min/Math.max defensive clamp", async () => {
-  const url = new URL("../index.ts", import.meta.url);
-  const src = await Deno.readTextFile(url);
+Deno.test("ADV-A10 — migration retains LEAST/GREATEST defensive clamp", () => {
   assert(
-    src.includes("Math.min(evaluated, servable)"),
-    "Math.min clamp must remain as defensive safety per SPEC §7-D9",
+    /LEAST\s*\(\s*COALESCE\(\s*e\.evaluated_count/i.test(MIGRATION_SQL),
+    "evaluated_count must be LEAST(evaluated, servable) — defensive clamp per SPEC §7-D9",
   );
   assert(
-    src.includes("Math.max(0, servable - evaluated)"),
-    "Math.max clamp must remain as defensive safety per SPEC §7-D9",
-  );
-});
-
-Deno.test("ADV-A11 — source retains coverage_pct toFixed(1) for display stability", async () => {
-  const url = new URL("../index.ts", import.meta.url);
-  const src = await Deno.readTextFile(url);
-  assert(
-    src.includes("Math.min(100, +((evaluated / servable) * 100).toFixed(1))"),
-    "coverage_pct must round to 1 decimal place and clamp to 100",
+    /GREATEST\s*\(\s*0\s*,\s*s\.servable_count\s*-\s*COALESCE\(\s*e\.evaluated_count/i
+      .test(MIGRATION_SQL),
+    "remaining_count must be GREATEST(0, servable - evaluated) — defensive clamp per SPEC §7-D9",
   );
 });
 
-Deno.test("ADV-A12 — Finding A query still gates by .eq('status', 'completed')", async () => {
-  const url = new URL("../index.ts", import.meta.url);
-  const src = await Deno.readTextFile(url);
-  // Locate the Finding A query specifically (it's the one with the !inner join)
-  const findingAIdx = src.indexOf(
-    'select("city_id, place_pool_id, place_pool!inner(is_servable)")',
-  );
-  assert(findingAIdx > 0, "Finding A query must be present");
-  // The .eq("status", "completed") gate should be within the next ~300 chars
-  const slice = src.slice(findingAIdx, findingAIdx + 400);
+Deno.test("ADV-A11 — migration clamps + rounds coverage_pct (LEAST(100, ROUND(...,1)))", () => {
   assert(
-    slice.includes('.eq("status", "completed")'),
-    "Finding A fix must NOT drop the status='completed' filter from the evaluated query",
+    /LEAST\s*\(\s*100\s*,\s*ROUND\(/i.test(MIGRATION_SQL),
+    "coverage_pct must clamp to 100 and round to 1dp in SQL",
+  );
+  assert(
+    /ROUND\([\s\S]*?\*\s*100\s*,\s*1\s*\)/i.test(MIGRATION_SQL),
+    "coverage_pct must round (evaluated/servable)*100 to 1 decimal place",
+  );
+});
+
+Deno.test("ADV-A12 — migration evaluated CTE still gates by status = 'completed'", () => {
+  assert(
+    /tr\.status\s*=\s*'completed'/i.test(MIGRATION_SQL),
+    "evaluated CTE must NOT drop the status='completed' filter",
   );
 });
 

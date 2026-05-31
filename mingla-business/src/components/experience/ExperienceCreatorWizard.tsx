@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "expo-router";
 // orch-strict-grep-allow orch-0892 — META-ORCH-0972 Sub-B ExperienceCreatorWizard is a single-form experience creation flow; keyboard-input fields (title, description, venue) sit at top of viewport with explicit keyboardShouldPersistTaps and are not scroll-occluded by the on-screen keyboard. SmartScrollView migration deferred to a dedicated keyboard-hygiene follow-up ORCH.
 import {
   Pressable,
@@ -30,6 +31,10 @@ import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
 import { Stepper } from "../ui/Stepper";
 import { Toast } from "../ui/Toast";
+import { WhoCoversCostsSection } from "../pricing/WhoCoversCostsSection";
+import { DEFAULT_TAKE_RATE_BPS } from "../../constants/pricing";
+import type { PricingSwitchOverrides } from "../../services/pricingSwitchesService";
+import { useBrandTaxRegistration } from "../../hooks/useBrandTaxRegistration";
 
 export interface ExperienceCreatorWizardProps {
   brandId: string;
@@ -104,6 +109,8 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
 }) => {
   const { user } = useAuth();
   const brand = useCurrentBrand();
+  const router = useRouter();
+  const taxRegistration = useBrandTaxRegistration(brand?.id ?? null);
   const updateBrand = useUpdateBrand();
   const venueDefault = useExperienceVenueDefault(brandId);
   const [step, setStep] = useState<StepIndex>(1);
@@ -115,6 +122,12 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
   const [tierName, setTierName] = useState("Standard");
   const [priceMajor, setPriceMajor] = useState("0.00");
   const [capacity, setCapacity] = useState("20");
+  // ORCH-1006 — per-offering all-in pricing switches (NULL = inherit default).
+  const [pricingSwitches, setPricingSwitches] = useState<PricingSwitchOverrides>({
+    passTax: null,
+    passMinglaFee: null,
+    passServiceFee: null,
+  });
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -157,6 +170,10 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
             visibility: publish ? "public" : "draft",
             published_at: publish ? new Date().toISOString() : null,
             currency: brand.defaultCurrency ?? "USD",
+            // ORCH-1006 — per-offering switches (NULL = inherit brand default).
+            pass_tax: pricingSwitches.passTax,
+            pass_mingla_fee: pricingSwitches.passMinglaFee,
+            pass_service_fee: pricingSwitches.passServiceFee,
             theme: {
               experience_meta: {
                 venue_text: venueText.trim(),
@@ -198,6 +215,7 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
       nextOccurrence,
       onComplete,
       priceMajor,
+      pricingSwitches,
       saveAsBrandAddress,
       tierName,
       title,
@@ -289,6 +307,33 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
             <Input variant="text" value={priceMajor} onChangeText={setPriceMajor} placeholder="0.00" accessibilityLabel="Price" />
             <Text style={styles.label}>Capacity</Text>
             <Input variant="text" value={capacity} onChangeText={setCapacity} placeholder="20" accessibilityLabel="Capacity" />
+            {brand !== null ? (
+              <WhoCoversCostsSection
+                format="experience"
+                overrides={pricingSwitches}
+                defaults={{
+                  passTax: brand.defaultPassTax ?? false,
+                  passMinglaFee: brand.defaultPassMinglaFee ?? false,
+                  passServiceFee: brand.defaultPassServiceFee ?? false,
+                }}
+                onChange={setPricingSwitches}
+                previewBaseCents={Math.round((parseFloat(priceMajor) || 0) * 100)}
+                currency={brand.defaultCurrency ?? "USD"}
+                effectiveTakeRateBps={brand.takeRateBpsOverride ?? DEFAULT_TAKE_RATE_BPS}
+                onEditDefaults={() =>
+                  router.push(`/brand/${brand.id}/pricing-defaults` as never)
+                }
+                // Create-only wizard — never locked at create. VAT row
+                // interactive only when the brand has an active Stripe tax
+                // registration; else the "Set up VAT" nudge.
+                vatRegistered={
+                  taxRegistration.data?.hasActiveRegistration === true
+                }
+                onSetupVat={() =>
+                  router.push("/connect-tax-registrations" as never)
+                }
+              />
+            ) : null}
           </View>
         ) : null}
         {step === 5 ? (

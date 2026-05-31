@@ -181,26 +181,47 @@ Deno.test(
 const INDEX_TS_PATH = new URL("../index.ts", import.meta.url);
 const INDEX_TS = await Deno.readTextFile(INDEX_TS_PATH);
 
-Deno.test("ORCH-1014 — edge fn source declares STALE_THRESHOLD_MS = 90 days", () => {
+// ORCH-1017 — the per-city aggregation moved from JS into the
+// pg_intelligence_coverage() RPC (fixing Edge WORKER_LIMIT / HTTP 546). The
+// source-inspect assertions below are repointed at the migration SQL; the
+// pure-math mirrors above are unchanged and remain the behavioral spec.
+const MIGRATION_SQL = await Deno.readTextFile(
+  new URL(
+    "../../../migrations/20260807000000_orch_1017_pg_intelligence_coverage.sql",
+    import.meta.url,
+  ),
+);
+
+Deno.test("ORCH-1014 — RPC migration encodes the 90-day stale threshold", () => {
   assert(
-    /ORCH_1014_STALE_THRESHOLD_MS\s*=\s*90\s*\*\s*24\s*\*\s*60\s*\*\s*60\s*\*\s*1000/.test(INDEX_TS),
-    "must declare 90-day stale threshold constant",
+    INDEX_TS.includes('db.rpc("pg_intelligence_coverage")'),
+    "handler must call the RPC — ORCH-1017",
+  );
+  assert(
+    /interval\s+'90 days'/i.test(MIGRATION_SQL),
+    "stale_refresh_count must use a 90-day interval in SQL",
   );
 });
 
-Deno.test("ORCH-1014 — edge fn source fetches servable details (last_detail_refresh, generative_summary, editorial_summary, reviews)", () => {
-  assert(
-    INDEX_TS.includes(
-      '"city_id, last_detail_refresh, generative_summary, editorial_summary, reviews"',
-    ),
-    "must select the 4 detail-readiness columns from place_pool",
-  );
+Deno.test("ORCH-1014 — migration servable CTE reads the 4 detail-readiness columns", () => {
+  for (const col of [
+    "last_detail_refresh",
+    "generative_summary",
+    "editorial_summary",
+    "reviews",
+  ]) {
+    assert(
+      MIGRATION_SQL.includes(col),
+      `servable/missing-fields aggregate must reference ${col}`,
+    );
+  }
 });
 
-Deno.test("ORCH-1014 — edge fn source fetches seed window (city_id, created_at) across all place_pool", () => {
+Deno.test("ORCH-1014 — migration seed_window CTE aggregates created_at across all place_pool", () => {
   assert(
-    INDEX_TS.includes('"city_id, created_at"'),
-    "must select city_id + created_at for the seed window",
+    /MIN\s*\(\s*pp\.created_at\s*\)/i.test(MIGRATION_SQL) &&
+      /MAX\s*\(\s*pp\.created_at\s*\)/i.test(MIGRATION_SQL),
+    "seed_window must MIN/MAX(created_at) for first/last_seeded_at",
   );
 });
 
@@ -216,3 +237,151 @@ Deno.test("ORCH-1014 — edge fn row shape includes 6 new badge fields", () => {
     assert(INDEX_TS.includes(field), `row shape must include ${field}`);
   }
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ORCH-1015 [TEST-MOD-APPROVED ORCH-1015] — extension assertions for the
+// Boundary + Details binary readiness flags + needs_refresh_count.
+// Mirrors the same two-key strategy: (a) a logic-mirror that aggregates over
+// a per-city fixture exactly like the edge fn does, and (b) source-inspect
+// regex asserts. All 6 ORCH-1014 fields above are PRESERVED — these new
+// asserts only EXTEND.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const REFRESH_CUTOVER_DATE_MS = Date.parse("2026-03-19T00:00:00Z");
+
+type ServableDetailRow1015 = {
+  city_id: string;
+  last_detail_refresh: string | null;
+};
+
+function aggregateRegeocoded(coverage_radius_km: number | null): boolean {
+  // Mirrors the edge-fn predicate `(c.coverage_radius_km ?? null) === 0`
+  return (coverage_radius_km ?? null) === 0;
+}
+
+function aggregateRefreshedAndNeedsRefresh(
+  cityId: string,
+  rows: ServableDetailRow1015[],
+): { refreshed_new_fields: boolean; needs_refresh_count: number } {
+  let needs = 0;
+  let servable = 0;
+  for (const r of rows) {
+    if (r.city_id !== cityId) continue;
+    servable += 1;
+    if (r.last_detail_refresh) {
+      if (Date.parse(r.last_detail_refresh) < REFRESH_CUTOVER_DATE_MS) needs += 1;
+    } else {
+      // NULL counts as needing refresh (never refreshed)
+      needs += 1;
+    }
+  }
+  // Mirrors the edge-fn predicate: TRUE iff every servable place is refreshed
+  // (needs_refresh_count === 0 with at least one servable place).
+  const refreshed = servable > 0 && needs === 0;
+  return { refreshed_new_fields: refreshed, needs_refresh_count: needs };
+}
+
+Deno.test("ORCH-1015 — regeocoded flag is true when coverage_radius_km = 0", () => {
+  assertEquals(aggregateRegeocoded(0), true);
+});
+
+Deno.test("ORCH-1015 — regeocoded flag is false when coverage_radius_km = 10", () => {
+  assertEquals(aggregateRegeocoded(10), false);
+});
+
+Deno.test("ORCH-1015 — regeocoded flag is false when coverage_radius_km is null (defensive)", () => {
+  assertEquals(aggregateRegeocoded(null), false);
+});
+
+Deno.test(
+  "ORCH-1015 — refreshed_new_fields true when oldest >= cutover (3 places post-cutover)",
+  () => {
+    const cityId = "c1015a";
+    const rows: ServableDetailRow1015[] = [
+      { city_id: cityId, last_detail_refresh: "2026-04-01T00:00:00Z" },
+      { city_id: cityId, last_detail_refresh: "2026-04-10T00:00:00Z" },
+      { city_id: cityId, last_detail_refresh: "2026-05-01T00:00:00Z" },
+    ];
+    const agg = aggregateRefreshedAndNeedsRefresh(cityId, rows);
+    assertEquals(agg.refreshed_new_fields, true);
+    assertEquals(agg.needs_refresh_count, 0);
+  },
+);
+
+Deno.test(
+  "ORCH-1015 — refreshed_new_fields false when ANY place below cutover (count = 1)",
+  () => {
+    const cityId = "c1015b";
+    const rows: ServableDetailRow1015[] = [
+      { city_id: cityId, last_detail_refresh: "2026-04-01T00:00:00Z" },
+      { city_id: cityId, last_detail_refresh: "2026-03-15T00:00:00Z" }, // below cutover
+      { city_id: cityId, last_detail_refresh: "2026-04-10T00:00:00Z" },
+    ];
+    const agg = aggregateRefreshedAndNeedsRefresh(cityId, rows);
+    assertEquals(agg.refreshed_new_fields, false);
+    assertEquals(agg.needs_refresh_count, 1);
+  },
+);
+
+Deno.test(
+  "ORCH-1015 — NULL last_detail_refresh counts as needing refresh (mirrors stale-NULL)",
+  () => {
+    const cityId = "c1015c";
+    const rows: ServableDetailRow1015[] = [
+      { city_id: cityId, last_detail_refresh: null },
+      { city_id: cityId, last_detail_refresh: "2026-04-01T00:00:00Z" },
+    ];
+    const agg = aggregateRefreshedAndNeedsRefresh(cityId, rows);
+    assertEquals(agg.refreshed_new_fields, false, "NULL prevents refreshed_new_fields");
+    assertEquals(agg.needs_refresh_count, 1, "NULL must count as needing refresh");
+  },
+);
+
+Deno.test(
+  "ORCH-1015 — migration encodes the 2026-03-19 details-refresh cutover",
+  () => {
+    assert(
+      /2026-03-19/.test(MIGRATION_SQL),
+      "needs_refresh_count must compare last_detail_refresh against the 2026-03-19 cutover in SQL",
+    );
+  },
+);
+
+Deno.test("ORCH-1015 — migration computes regeocoded from coverage_radius_km", () => {
+  assert(
+    /coverage_radius_km\s*=\s*0/i.test(MIGRATION_SQL),
+    "regeocoded must be derived from seeding_cities.coverage_radius_km = 0",
+  );
+});
+
+Deno.test("ORCH-1015 — edge fn row shape includes the 3 new readiness fields", () => {
+  for (const field of [
+    "regeocoded:",
+    "refreshed_new_fields:",
+    "needs_refresh_count:",
+  ]) {
+    assert(
+      INDEX_TS.includes(field),
+      `row shape must include new field ${field}`,
+    );
+  }
+});
+
+Deno.test(
+  "ORCH-1015 — all 6 ORCH-1014 fields PRESERVED in row shape (regression guard)",
+  () => {
+    for (const field of [
+      "first_seeded_at:",
+      "last_seeded_at:",
+      "refresh_oldest_at:",
+      "refresh_newest_at:",
+      "stale_refresh_count:",
+      "missing_fields_count:",
+    ]) {
+      assert(
+        INDEX_TS.includes(field),
+        `ORCH-1014 field ${field} must remain on the wire (operator diagnostic per §7-D7)`,
+      );
+    }
+  },
+);

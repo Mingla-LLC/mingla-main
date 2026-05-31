@@ -37,7 +37,18 @@ export interface Recommendation {
         open_now?: boolean;
         weekday_text?: string[];
       }
+    | {
+        openNow?: boolean;
+        periods?: unknown[];
+        nextOpenTime?: string;
+        nextCloseTime?: string;
+        weekdayDescriptions?: string[];
+      }
+    | { lines?: string[] }
+    | string[]
     | null;
+  utcOffsetMinutes?: number | null;
+  utc_offset_minutes?: number | null;
   tags: string[];
   matchScore: number;
   reviewCount: number;

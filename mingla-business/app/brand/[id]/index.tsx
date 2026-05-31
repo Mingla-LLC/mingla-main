@@ -97,6 +97,11 @@ export default function BrandProfileRoute(): React.ReactElement {
     router.push(`/brand/${brandId}/payments/reports` as never);
   };
 
+  // ORCH-1006 — Surface 2: brand-level all-in pricing defaults.
+  const handleOpenPricingDefaults = (brandId: string): void => {
+    router.push(`/brand/${brandId}/pricing-defaults` as never);
+  };
+
   // Cycle 13a (SPEC §4.14): brand-admin+ menu row → audit log viewer.
   const handleOpenAuditLog = (brandId: string): void => {
     router.push(`/brand/${brandId}/audit-log` as never);
@@ -138,6 +143,7 @@ export default function BrandProfileRoute(): React.ReactElement {
         onTeam={handleOpenTeam}
         onStripe={handleOpenStripe}
         onPayments={handleOpenPayments}
+        onPricingDefaults={handleOpenPricingDefaults}
         onReports={handleOpenReports}
         onAuditLog={handleOpenAuditLog}
         onBlasts={handleOpenBlasts}

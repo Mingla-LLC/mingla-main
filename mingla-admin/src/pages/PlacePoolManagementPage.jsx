@@ -18,6 +18,7 @@ import {
   ChevronDown, ChevronRight, AlertTriangle, CheckCircle,
   Download, ImageOff, Eye, Edit3, DollarSign, Layers,
   Square, SkipForward, XCircle, Loader, RotateCcw, Zap, MinusCircle,
+  Image as ImageIcon,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { extractFunctionError } from "../lib/edgeFunctionError";
@@ -48,6 +49,14 @@ import { HARD_CAP_USD, formatCost, TILE_RADIUS_OPTIONS } from "../lib/seedingFor
 // HARD_CAP_USD + formatCost moved to lib/seedingFormat.js (shared with RefreshTab).
 
 const PRICE_TIERS = ["chill", "comfy", "bougie", "lavish"];
+
+// ORCH-1024 — thumbnail backfill runs share the `photo_backfill_runs` table with
+// the originals-download runs but are tagged with this synthetic city marker
+// (the `backfill-place-photo-thumbs` function's RUN_CITY). The Photos panel must
+// EXCLUDE these so a global thumbs run never appears as a city download run; the
+// Thumbnails panel binds to `backfill-place-photo-thumbs` whose own active_runs
+// already filters to exactly this marker.
+const THUMBS_RUN_CITY = "ORCH-0957 place-photo thumbs";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -362,6 +371,9 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
     ai_categories: [],
   });
   const [saving, setSaving] = useState(false);
+  // META-ORCH-1009 Sub-D — admin per-place re-evaluation. Pending state
+  // disables the button + shows spinner; error surfaces inline + via toast.
+  const [reeval, setReeval] = useState({ pending: false, error: null });
 
   useEffect(() => {
     if (!open || !place) return;
@@ -414,6 +426,56 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
     addToast({ variant: "success", title: "Place updated" }); onClose(); if (onSave) onSave();
     setSaving(false);
   };
+
+  // META-ORCH-1009 Sub-D — fires the admin re-evaluation action. Optimistic
+  // toast on success; rate-limit/error paths show inline + toast.
+  const handleReeval = async () => {
+    setReeval({ pending: true, error: null });
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        "run-place-intelligence-trial",
+        { body: { action: "admin_reeval_place", place_pool_id: place.id } },
+      );
+      if (error) throw error;
+      if (data?.error) {
+        const msg = data?.message || data.error;
+        addToast({
+          variant: data.error === "rate_limited" ? "warning" : "error",
+          title: data.error === "rate_limited" ? "Already in progress" : "Re-evaluation failed",
+          description: msg,
+        });
+        setReeval({ pending: false, error: msg });
+        return;
+      }
+      addToast({
+        variant: "success",
+        title: "Re-evaluation queued",
+        description: "Gemini Q2 runs within ~1 min; deck refresh within ~16 min.",
+      });
+      setReeval({ pending: false, error: null });
+    } catch (e) {
+      const msg = e?.message ?? String(e);
+      addToast({ variant: "error", title: "Re-evaluation failed", description: msg });
+      setReeval({ pending: false, error: msg });
+    }
+  };
+
+  // META-ORCH-1009 Sub-D — extract the most-recent AI evaluated_at across
+  // signals on this place. NULL if the place has no AI scores (Sub-C hasn't
+  // covered it yet).
+  const aiLastEvaluatedAt = (() => {
+    const slices = place.ai_signal_scores;
+    if (!slices || typeof slices !== "object") return null;
+    let latest = null;
+    for (const v of Object.values(slices)) {
+      const ts = v?.evaluated_at;
+      if (!ts) continue;
+      if (!latest || new Date(ts).getTime() > new Date(latest).getTime()) {
+        latest = ts;
+      }
+    }
+    return latest;
+  })();
 
   const relativeTime = (dateStr) => {
     if (!dateStr) return "Never";
@@ -533,7 +595,40 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
               <div><span className="text-[var(--color-text-secondary)]">Last Refreshed:</span> {place.last_detail_refresh ? `${new Date(place.last_detail_refresh).toLocaleDateString()} (${relativeTime(place.last_detail_refresh)})` : "Never"}</div>
               <div><span className="text-[var(--color-text-secondary)]">Refresh Failures:</span> {place.refresh_failures || 0}</div>
               <div><span className="text-[var(--color-text-secondary)]">Fetched Via:</span> {place.fetched_via || "—"}</div>
+              {/* META-ORCH-1009 Sub-D — "Last AI evaluated" surfaces the most
+                  recent evaluated_at across signals so admin knows whether
+                  the AI looked at this place recently. */}
+              <div>
+                <span className="text-[var(--color-text-secondary)]">Last AI Evaluated:</span>{" "}
+                {aiLastEvaluatedAt
+                  ? `${new Date(aiLastEvaluatedAt).toLocaleDateString()} (${relativeTime(aiLastEvaluatedAt)})`
+                  : "Never"}
+              </div>
             </div>
+          </div>
+
+          {/* META-ORCH-1009 Sub-D — Admin re-evaluate this place.
+              Forces a fresh Gemini Q2 read + rescore for one place; rate-
+              limited server-side so duplicate clicks during in-flight runs
+              get a friendly 429. */}
+          <div>
+            <h4 className="text-xs font-semibold text-[var(--color-text-tertiary)] uppercase tracking-wider mb-2">AI Signals</h4>
+            <div className="flex items-center gap-3 flex-wrap">
+              <Button
+                variant="secondary"
+                loading={reeval.pending}
+                disabled={reeval.pending}
+                onClick={handleReeval}
+              >
+                Re-evaluate AI signals
+              </Button>
+              <span className="text-xs text-[var(--color-text-secondary)] max-w-md">
+                Forces a fresh Gemini Q2 read + rescore for this place. ~$0.004 each. Use when you suspect AI got it wrong.
+              </span>
+            </div>
+            {reeval.error && (
+              <div className="text-xs text-[var(--color-error-600)] mt-2">{reeval.error}</div>
+            )}
           </div>
 
           {/* Edit Controls */}
@@ -1388,7 +1483,10 @@ function PhotoTab({ scope, registeredCity: regCity, onActiveRunsChange }) {
   const refreshActiveRuns = async () => {
     try {
       const data = await invoke({ action: "active_runs" });
-      if (onActiveRunsChange) onActiveRunsChange(data.runs || []);
+      // ORCH-1024: never surface thumbnail runs in the originals (Photos) status bar.
+      if (onActiveRunsChange) {
+        onActiveRunsChange((data.runs || []).filter((r) => r?.run?.city !== THUMBS_RUN_CITY));
+      }
     } catch { /* ignore */ }
   };
 
@@ -1458,8 +1556,10 @@ function PhotoTab({ scope, registeredCity: regCity, onActiveRunsChange }) {
       try {
         const data = await invoke({ action: "active_runs" });
         if (cancelled) return;
-        if (onActiveRunsChange) onActiveRunsChange(data.runs || []);
-        const match = (data.runs || []).find(
+        // ORCH-1024: thumbnail runs share the table; keep them out of the Photos status bar.
+        const cityRuns = (data.runs || []).filter((r) => r?.run?.city !== THUMBS_RUN_CITY);
+        if (onActiveRunsChange) onActiveRunsChange(cityRuns);
+        const match = cityRuns.find(
           (r) => r.run.city === cityTextName && r.run.country === countryTextName
         );
         if (match) {
@@ -1943,6 +2043,430 @@ function PhotoTab({ scope, registeredCity: regCity, onActiveRunsChange }) {
 }
 
 
+// ── Thumbnails Tab (ORCH-1024) ───────────────────────────────────────────────
+// Clones the PhotoTab job runner but drives the SEPARATE
+// `backfill-place-photo-thumbs` edge function. This is a GLOBAL run over every
+// place that has stored originals but no thumbnails (no city scoping). Moving
+// thumbnail generation off the originals-download hot path is what keeps the main
+// `backfill-place-photos` function from crashing with "not enough compute
+// resources" (ORCH-0957 had inlined imagescript decode/resize/encode). Same
+// admin auth + same action surface (preview_run / create_run / run_next_batch /
+// run_status / active_runs / pause_run / resume_run / cancel_run / retry_batch /
+// skip_batch). estimatedCost is always $0; create_run takes no city/country args.
+
+function ThumbnailTab() {
+  const { addToast } = useToast();
+  const mountedRef = useRef(true);
+  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
+
+  const [loading, setLoading] = useState(false);
+  const [pendingCount, setPendingCount] = useState(null);
+
+  const [activeRun, setActiveRun] = useState(null);
+  const [batches, setBatches] = useState([]);
+  const [runningBatch, setRunningBatch] = useState(false);
+  const [autoRunning, setAutoRunning] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [expandedBatch, setExpandedBatch] = useState(null);
+  // Aggregate thumbnail counters surfaced by run_next_batch responses.
+  const [thumbsWritten, setThumbsWritten] = useState(0);
+  const [thumbsAlreadyPresent, setThumbsAlreadyPresent] = useState(0);
+  const stopAutoRef = useRef(false);
+
+  const invoke = async (body) => {
+    const { data, error } = await supabase.functions.invoke("backfill-place-photo-thumbs", { body });
+    if (error) {
+      const msg = await extractFunctionError(error, "Edge function error");
+      throw new Error(msg);
+    }
+    if (data?.error) throw new Error(data.error);
+    return data;
+  };
+
+  // Accumulate per-batch thumb counters when the function reports them.
+  const accumulateThumbCounters = (data) => {
+    if (data && typeof data.thumbsWritten === "number") {
+      setThumbsWritten((prev) => prev + data.thumbsWritten);
+    }
+    if (data && typeof data.thumbsAlreadyPresent === "number") {
+      setThumbsAlreadyPresent((prev) => prev + data.thumbsAlreadyPresent);
+    }
+  };
+
+  // ── Pending preview (totalPlaces = places with originals but no thumbs) ─────
+
+  const fetchPreview = async () => {
+    try {
+      const data = await invoke({ action: "preview_run" });
+      if (mountedRef.current) setPendingCount(Number(data.totalPlaces) || 0);
+    } catch {
+      if (mountedRef.current) setPendingCount(null);
+    }
+  };
+
+  // ── Hydrate the (single, global) active thumbnail run on mount ─────────────
+
+  useEffect(() => {
+    setLoading(true);
+    let cancelled = false;
+    (async () => {
+      await fetchPreview();
+      try {
+        const data = await invoke({ action: "active_runs" });
+        if (cancelled) return;
+        const match = (data.runs || [])[0];
+        if (match) {
+          const status = await invoke({ action: "run_status", runId: match.id });
+          if (!cancelled) { setActiveRun(status.run); setBatches(status.batches || []); }
+        } else if (!cancelled) {
+          setActiveRun(null); setBatches([]);
+        }
+      } catch { /* ignore */ }
+      if (!cancelled) setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // ── Create run (global — no city/country args) ─────────────────────────────
+
+  const handleCreateRun = async () => {
+    setCreating(true);
+    try {
+      const data = await invoke({ action: "create_run" });
+      if (data.status === "nothing_to_do") {
+        addToast({ variant: "info", title: "No thumbnails to generate", description: "Every place with originals already has thumbnails." });
+        await fetchPreview();
+        setCreating(false);
+        return;
+      }
+      if (data.status === "already_active") {
+        const status = await invoke({ action: "run_status", runId: data.runId });
+        setActiveRun(status.run); setBatches(status.batches || []);
+        setCreating(false);
+        return;
+      }
+      const status = await invoke({ action: "run_status", runId: data.runId });
+      setActiveRun(status.run); setBatches(status.batches || []);
+      addToast({
+        variant: "success",
+        title: "Thumbnail run created",
+        description: `${formatCount(data.totalPlaces)} places, ${formatCount(data.totalBatches)} batches`,
+      });
+      await fetchPreview();
+    } catch (err) {
+      console.error("[ThumbnailBackfill] create run error:", err);
+      addToast({ variant: "error", title: "Failed to create run", description: err.message });
+    }
+    setCreating(false);
+  };
+
+  // ── Run Next Batch ─────────────────────────────────────────────────────────
+
+  const handleRunNext = async () => {
+    if (!activeRun || runningBatch) return;
+    setRunningBatch(true);
+    try {
+      const data = await invoke({ action: "run_next_batch", runId: activeRun.id });
+      accumulateThumbCounters(data);
+      if (data.done) addToast({ variant: "success", title: "All batches complete!" });
+      const status = await invoke({ action: "run_status", runId: activeRun.id });
+      setActiveRun(status.run); setBatches(status.batches || []);
+    } catch (err) {
+      addToast({ variant: "error", title: "Batch failed", description: err.message });
+    }
+    setRunningBatch(false);
+    await fetchPreview();
+  };
+
+  // ── Run All (auto-advance) ─────────────────────────────────────────────────
+
+  const handleRunAll = async () => {
+    if (!activeRun) return;
+    setAutoRunning(true);
+    stopAutoRef.current = false;
+
+    try {
+      if (activeRun.status === "paused") {
+        await invoke({ action: "resume_run", runId: activeRun.id });
+      }
+    } catch { /* ignore */ }
+
+    while (!stopAutoRef.current && mountedRef.current) {
+      try {
+        setRunningBatch(true);
+        const data = await invoke({ action: "run_next_batch", runId: activeRun.id });
+        accumulateThumbCounters(data);
+        setRunningBatch(false);
+
+        const status = await invoke({ action: "run_status", runId: activeRun.id });
+        if (mountedRef.current) { setActiveRun(status.run); setBatches(status.batches || []); }
+
+        if (data.done) {
+          addToast({ variant: "success", title: "All batches complete!" });
+          break;
+        }
+        if (stopAutoRef.current) {
+          addToast({ variant: "info", title: "Auto-run paused" });
+          break;
+        }
+        await new Promise((r) => setTimeout(r, 500));
+      } catch (err) {
+        setRunningBatch(false);
+        try { await invoke({ action: "pause_run", runId: activeRun.id }); } catch { /* ignore */ }
+        addToast({ variant: "error", title: "Batch failed — auto-run paused", description: err.message });
+        try {
+          const status = await invoke({ action: "run_status", runId: activeRun.id });
+          if (mountedRef.current) { setActiveRun(status.run); setBatches(status.batches || []); }
+        } catch { /* ignore */ }
+        break;
+      }
+    }
+
+    setAutoRunning(false);
+    setRunningBatch(false);
+    await fetchPreview();
+  };
+
+  // ── Pause / Cancel / Retry / Skip / Dismiss ────────────────────────────────
+
+  const handlePause = async () => {
+    stopAutoRef.current = true;
+    try {
+      await invoke({ action: "pause_run", runId: activeRun.id });
+      const status = await invoke({ action: "run_status", runId: activeRun.id });
+      setActiveRun(status.run); setBatches(status.batches || []);
+    } catch (err) {
+      addToast({ variant: "error", title: "Pause failed", description: err.message });
+    }
+  };
+
+  const handleCancel = async () => {
+    stopAutoRef.current = true;
+    try {
+      await invoke({ action: "cancel_run", runId: activeRun.id });
+      const status = await invoke({ action: "run_status", runId: activeRun.id });
+      setActiveRun(status.run); setBatches(status.batches || []);
+      addToast({ variant: "info", title: "Run cancelled" });
+    } catch (err) {
+      addToast({ variant: "error", title: "Cancel failed", description: err.message });
+    }
+  };
+
+  const handleRetryBatch = async (batchId) => {
+    setRunningBatch(true);
+    try {
+      await invoke({ action: "retry_batch", runId: activeRun.id, batchId });
+      const status = await invoke({ action: "run_status", runId: activeRun.id });
+      setActiveRun(status.run); setBatches(status.batches || []);
+      addToast({ variant: "success", title: "Batch retried" });
+    } catch (err) {
+      addToast({ variant: "error", title: "Retry failed", description: err.message });
+    }
+    setRunningBatch(false);
+    await fetchPreview();
+  };
+
+  const handleSkipBatch = async (batchId) => {
+    try {
+      await invoke({ action: "skip_batch", runId: activeRun.id, batchId });
+      const status = await invoke({ action: "run_status", runId: activeRun.id });
+      setActiveRun(status.run); setBatches(status.batches || []);
+    } catch (err) {
+      addToast({ variant: "error", title: "Skip failed", description: err.message });
+    }
+  };
+
+  const handleDismiss = () => {
+    setActiveRun(null);
+    setBatches([]);
+    fetchPreview();
+  };
+
+  // ── Derived values ─────────────────────────────────────────────────────────
+
+  const runProgressPct = activeRun && activeRun.total_batches > 0
+    ? Math.round(((activeRun.completed_batches + activeRun.failed_batches + activeRun.skipped_batches) / activeRun.total_batches) * 100)
+    : 0;
+  const isTerminal = activeRun && ["completed", "cancelled", "failed"].includes(activeRun.status);
+  const canRunNext = activeRun && !isTerminal && !runningBatch && !autoRunning;
+  const canRunAll = activeRun && !isTerminal && !autoRunning;
+  const canCancel = activeRun && !isTerminal;
+
+  const statusColors = {
+    ready: "bg-blue-100 text-blue-800",
+    running: "bg-green-100 text-green-800",
+    paused: "bg-yellow-100 text-yellow-800",
+    completed: "bg-green-100 text-green-800",
+    cancelled: "bg-gray-100 text-gray-600",
+    failed: "bg-red-100 text-red-800",
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Stats */}
+      <div className="grid grid-cols-4 gap-4">
+        <StatCard icon={ImageIcon} label="Pending Thumbnails" value={pendingCount ?? "—"} />
+        <StatCard icon={CheckCircle} label="Thumbs Written" value={formatCount(thumbsWritten)} />
+        <StatCard icon={Layers} label="Already Present" value={formatCount(thumbsAlreadyPresent)} />
+        <StatCard icon={DollarSign} label="Est. Cost" value="$0.00" />
+      </div>
+
+      {loading ? (
+        <div className="flex items-center gap-2 py-4 text-sm text-[var(--color-text-secondary)]">
+          <Loader className="w-4 h-4 animate-spin" /> Loading thumbnail status...
+        </div>
+      ) : !activeRun ? (
+        /* ── Phase 1: No active run ──────────────────────────────────── */
+        <SectionCard title="Generate Thumbnails"
+          subtitle="Creates 384×384 thumbnails for every place that has stored originals but no thumbnail yet. Global run — no city selection needed.">
+          {pendingCount === 0 ? (
+            <div className="py-4">
+              <div className="flex items-center gap-2 text-sm text-[var(--color-success-700)]">
+                <CheckCircle className="w-4 h-4" /> Every place with originals already has thumbnails.
+              </div>
+              <Button size="sm" variant="secondary" icon={RefreshCw} className="mt-3" onClick={fetchPreview}>
+                Re-check
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="rounded-lg p-4 bg-[var(--gray-50)]">
+                <div className="text-sm space-y-2">
+                  <div>
+                    <strong>{pendingCount === null ? "—" : formatCount(pendingCount)}</strong> places have originals but no thumbnails.
+                  </div>
+                  <div className="text-[var(--color-text-secondary)]">
+                    Thumbnails are generated from already-stored originals (no Google calls). Estimated cost: <strong>$0.00</strong>.
+                  </div>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="primary" icon={ImageIcon} onClick={handleCreateRun} disabled={creating}>
+                  {creating
+                    ? "Creating..."
+                    : `Run All (${pendingCount === null ? "—" : formatCount(pendingCount)} places)`}
+                </Button>
+                <Button variant="secondary" icon={RefreshCw} onClick={fetchPreview} size="sm">
+                  Re-check
+                </Button>
+              </div>
+            </div>
+          )}
+        </SectionCard>
+      ) : (
+        /* ── Phase 2: Active run ─────────────────────────────────────── */
+        <div className="space-y-4">
+          <SectionCard title="Thumbnail Generation"
+            badge={<span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[activeRun.status] || ""}`}>{activeRun.status}</span>}>
+            <div className="space-y-4">
+              <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
+                <span>{activeRun.completed_batches + activeRun.failed_batches + activeRun.skipped_batches}/{activeRun.total_batches} batches</span>
+                <span className="text-[var(--color-success-700)]">{activeRun.total_succeeded} succeeded</span>
+                {activeRun.total_failed > 0 && <span className="text-[var(--color-error-700)]">{activeRun.total_failed} failed</span>}
+                {activeRun.total_skipped > 0 && <span className="text-[var(--color-text-secondary)]">{activeRun.total_skipped} skipped</span>}
+                {thumbsWritten > 0 && <span>{formatCount(thumbsWritten)} thumbs written</span>}
+                {thumbsAlreadyPresent > 0 && <span className="text-[var(--color-text-secondary)]">{formatCount(thumbsAlreadyPresent)} already present</span>}
+              </div>
+
+              <div className="flex items-center gap-3">
+                <div className="flex-1 bg-[var(--gray-100)] rounded-full h-3 overflow-hidden">
+                  <div className="h-full rounded-full bg-[var(--color-brand-500)] transition-all duration-500"
+                    style={{ width: `${runProgressPct}%` }} />
+                </div>
+                <span className="text-sm font-medium w-12 text-right">{runProgressPct}%</span>
+              </div>
+
+              <div className="flex gap-2">
+                {isTerminal ? (
+                  <Button variant="secondary" onClick={handleDismiss}>Dismiss</Button>
+                ) : autoRunning ? (
+                  <>
+                    <Button variant="secondary" icon={Pause} onClick={handlePause}>Pause</Button>
+                    <Button variant="secondary" icon={XCircle} onClick={handleCancel}>Cancel</Button>
+                  </>
+                ) : (
+                  <>
+                    <Button variant="primary" icon={Play} onClick={handleRunNext} disabled={!canRunNext}>
+                      {runningBatch ? "Running..." : "Run Next"}
+                    </Button>
+                    <Button variant="secondary" icon={Zap} onClick={handleRunAll} disabled={!canRunAll}>
+                      Run All
+                    </Button>
+                    <Button variant="secondary" icon={XCircle} onClick={handleCancel} disabled={!canCancel}>
+                      Cancel
+                    </Button>
+                  </>
+                )}
+              </div>
+            </div>
+          </SectionCard>
+
+          <SectionCard title="Batches" subtitle={`${batches.length} total`}>
+            <div className="divide-y divide-[var(--color-border)]">
+              {batches.map((b) => {
+                const isExpanded = expandedBatch === b.id;
+                const hasFailed = b.failed_places && b.failed_places.length > 0;
+                return (
+                  <div key={b.id} className="py-2">
+                    <div className="flex items-center gap-3 text-sm">
+                      {b.status === "pending" && <span className="w-4 h-4 rounded-full bg-gray-300 inline-block" />}
+                      {b.status === "running" && <Loader className="w-4 h-4 animate-spin text-[var(--color-brand-600)]" />}
+                      {b.status === "completed" && <CheckCircle className="w-4 h-4 text-[var(--color-success-700)]" />}
+                      {b.status === "failed" && <XCircle className="w-4 h-4 text-[var(--color-error-700)]" />}
+                      {b.status === "skipped" && <MinusCircle className="w-4 h-4 text-gray-400" />}
+
+                      <span className="font-medium">Batch {b.batch_index + 1}</span>
+
+                      {b.status === "pending" && <span className="text-[var(--color-text-secondary)]">{b.place_count} places</span>}
+                      {b.status === "running" && <span className="text-[var(--color-brand-600)]">processing...</span>}
+                      {b.status === "completed" && (
+                        <span className="text-[var(--color-text-secondary)]">
+                          {b.succeeded} succeeded{b.failed > 0 ? `, ${b.failed} failed` : ""}{b.skipped > 0 ? `, ${b.skipped} skipped` : ""}
+                        </span>
+                      )}
+                      {b.status === "failed" && <span className="text-[var(--color-error-700)]">all {b.place_count} failed</span>}
+                      {b.status === "skipped" && <span className="text-gray-400">skipped</span>}
+
+                      {b.status === "failed" && !isTerminal && (
+                        <div className="ml-auto flex gap-1">
+                          <Button size="xs" variant="secondary" icon={RotateCcw} onClick={() => handleRetryBatch(b.id)} disabled={runningBatch}>
+                            Retry
+                          </Button>
+                          <Button size="xs" variant="secondary" icon={SkipForward} onClick={() => handleSkipBatch(b.id)}>
+                            Skip
+                          </Button>
+                        </div>
+                      )}
+
+                      {hasFailed && b.status !== "pending" && (
+                        <button className="ml-auto p-1 text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+                          onClick={() => setExpandedBatch(isExpanded ? null : b.id)}>
+                          {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                        </button>
+                      )}
+                    </div>
+
+                    {isExpanded && hasFailed && (
+                      <div className="mt-2 ml-7 space-y-1">
+                        {b.failed_places.map((fp, i) => (
+                          <div key={i} className="text-xs text-[var(--color-error-700)] bg-red-50 rounded px-2 py-1">
+                            <span className="font-mono">{fp.googlePlaceId || fp.placePoolId}</span>
+                            {fp.error && <span className="ml-2 text-[var(--color-text-secondary)]">— {fp.error}</span>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </SectionCard>
+        </div>
+      )}
+    </div>
+  );
+}
+
 
 // ── Tab 6: Stats & Analytics ─────────────────────────────────────────────────
 
@@ -2386,7 +2910,13 @@ export function PlacePoolManagementPage({ onTabChange }) {
   // Hydrate photo backfill active runs on mount
   useEffect(() => {
     supabase.functions.invoke("backfill-place-photos", { body: { action: "active_runs" } })
-      .then(({ data }) => { if (mountedRef.current && data?.runs) setActivePhotoRuns(data.runs); })
+      .then(({ data }) => {
+        if (mountedRef.current && data?.runs) {
+          // ORCH-1024: exclude thumbnail runs (shared table, synthetic city marker)
+          // so the Photos status bar only ever shows real city download runs.
+          setActivePhotoRuns(data.runs.filter((r) => r?.run?.city !== THUMBS_RUN_CITY));
+        }
+      })
       .catch(() => {});
   }, []);
 
@@ -2431,6 +2961,7 @@ export function PlacePoolManagementPage({ onTabChange }) {
     { id: "seeding", label: "Seeding" },
     { id: "refresh", label: "Refresh" },
     { id: "photos", label: "Photos" },
+    { id: "thumbnails", label: "Thumbnails" },
     { id: "excluded", label: "Bouncer-Excluded" },
   ];
 
@@ -2544,6 +3075,10 @@ export function PlacePoolManagementPage({ onTabChange }) {
           ) : (
             <div className="text-center py-12 text-[var(--color-text-secondary)]">Select a city to manage photos.</div>
           )
+        )}
+        {activeTab === "thumbnails" && (
+          /* ORCH-1024: global thumbnail backfill — no city scope required. */
+          <ThumbnailTab />
         )}
         {activeTab === "excluded" && (
           <ExcludedTab scope={scope} onRefresh={refresh} />

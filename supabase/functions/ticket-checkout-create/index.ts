@@ -19,17 +19,32 @@ import {
   ticketCorsHeaders,
   userIdFromAuthHeader,
 } from "../_shared/ticketCheckout.ts";
+// ORCH-1006 [Universal all-in pricing engine] — shared money engine.
+// Slice 2 wires in the full engine: the gross-up (computeBuyerSubtotal), the
+// canonical breakdown assembler (buildPricingBreakdown), the region→behaviour
+// map (taxBehaviorForRegion), and the service-fee default (MINGLA_SERVICE_FEE_BPS).
+// The engine is the SINGLE owner of the all-in math (Constitution #2); this
+// edge function never hand-rolls tax/fee arithmetic.
+import {
+  buildPricingBreakdown,
+  computeBuyerSubtotal,
+  MINGLA_SERVICE_FEE_BPS,
+  taxBehaviorForRegion,
+  type ComputeAllInInput,
+  type PricingBreakdown,
+  type PricingRegion,
+  type PricingSwitches,
+  type TaxBasis,
+} from "../_shared/allInPricingEngine.ts";
 
 type CheckoutLine = { ticketTypeId: string; quantity: number };
 type CheckoutMode = "create" | "preview";
-type BuyerAddress = {
-  line1: string;
-  line2?: string;
-  city: string;
-  state?: string;
-  postal: string;
-  country: string;
-};
+// ORCH-1006 Slice 2 (SPEC §B.6): the BuyerAddress type + parseBuyerAddress +
+// validateBuyerAddress are REMOVED. Tax is sourced at the VENUE (SPEC §B.1),
+// never the buyer — the buyer never types an address in the native flow. The
+// tax basis is events.venue_tax_address from resolve_event_pricing_inputs.
+// (The web hosted-Checkout path collects the address on Stripe's hosted page
+// via automatic_tax and never used these helpers — removal is native-only.)
 type TaxCalculationSummary = {
   id: string;
   amount_total: number;
@@ -75,52 +90,9 @@ function optionalTrimmed(value: unknown): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-function parseBuyerAddress(value: unknown): BuyerAddress | null {
-  if (value === null || typeof value !== "object") return null;
-  const input = value as Record<string, unknown>;
-  const line1 = optionalTrimmed(input.line1);
-  const city = optionalTrimmed(input.city);
-  const postal = optionalTrimmed(input.postal);
-  const country = optionalTrimmed(input.country);
-  if (!line1 || !city || !postal || !country) return null;
-  return {
-    line1,
-    ...(optionalTrimmed(input.line2)
-      ? { line2: optionalTrimmed(input.line2) }
-      : {}),
-    city,
-    ...(optionalTrimmed(input.state)
-      ? { state: optionalTrimmed(input.state) }
-      : {}),
-    postal,
-    country,
-  };
-}
-
-function validateBuyerAddress(address: BuyerAddress | null): string | null {
-  if (address === null) {
-    return "buyer.address.line1 is required for native paid checkout";
-  }
-  if (address.line1.length > 200) {
-    return "buyer.address.line1 must be 200 characters or fewer";
-  }
-  if (address.line2 && address.line2.length > 200) {
-    return "buyer.address.line2 must be 200 characters or fewer";
-  }
-  if (address.city.length > 100) {
-    return "buyer.address.city must be 100 characters or fewer";
-  }
-  if (address.state && address.state.length > 50) {
-    return "buyer.address.state must be 50 characters or fewer";
-  }
-  if (address.postal.length > 20) {
-    return "buyer.address.postal must be 20 characters or fewer";
-  }
-  if (!/^[A-Z]{2}$/.test(address.country)) {
-    return "country must match ISO-3166 alpha-2 uppercase";
-  }
-  return null;
-}
+// ORCH-1006 Slice 2 (SPEC §B.6): parseBuyerAddress / validateBuyerAddress
+// DELETED — the native flow no longer captures or validates a buyer address.
+// Tax is venue-sourced (events.venue_tax_address). See the type comment above.
 
 function classifyStripeTaxCalculationFailure(err: unknown): StripeTaxFailure {
   const record = err as
@@ -239,7 +211,7 @@ serve(async (req) => {
     : "";
   const buyerPhoneE164 = normalizePhoneE164(buyer.phone);
   const marketingOptIn = buyer.marketingOptIn === true;
-  const buyerAddress = parseBuyerAddress(buyer.address);
+  // ORCH-1006 Slice 2 (SPEC §B.6): no buyer-address parse. Tax is venue-sourced.
   const lines = Array.isArray(body.lines)
     ? body.lines.filter(isCheckoutLine)
     : [];
@@ -272,29 +244,9 @@ serve(async (req) => {
   if (lines.length === 0) {
     return jsonResponse({ error: "ticket_lines_required" }, 400);
   }
-  if (surface === "native" && mode === "create") {
-    const addressError = validateBuyerAddress(buyerAddress);
-    if (addressError !== null) {
-      return jsonResponse(
-        {
-          error: buyerAddress === null
-            ? "buyer_address_required"
-            : "buyer_address_invalid",
-          detail: addressError,
-        },
-        400,
-      );
-    }
-  }
-  if (surface === "native" && mode === "preview" && buyerAddress !== null) {
-    const addressError = validateBuyerAddress(buyerAddress);
-    if (addressError !== null) {
-      return jsonResponse(
-        { error: "buyer_address_invalid", detail: addressError },
-        400,
-      );
-    }
-  }
+  // ORCH-1006 Slice 2 (SPEC §B.6): native create/preview no longer gate on a
+  // buyer address. The address-required + address-invalid gates are DELETED —
+  // tax is sourced at the venue, so the buyer never supplies an address.
 
   const userId = await userIdFromAuthHeader(req);
   const supabase = serviceClient();
@@ -528,20 +480,10 @@ serve(async (req) => {
   const totalCents = Number(session.totalCents ?? 0);
   const currency = String(session.currency ?? "GBP").toLowerCase();
 
-  if (surface === "native" && mode === "preview" && buyerAddress === null) {
-    return jsonResponse({
-      kind: "preview",
-      checkoutSessionId,
-      subtotalCents: totalCents,
-      taxCents: 0,
-      totalCents,
-      currency: String(session.currency ?? "GBP"),
-      taxBreakdown: [],
-      calculationId: null,
-      calculationExpiresAt: null,
-      addressMissing: true,
-    });
-  }
+  // ORCH-1006 Slice 2 (SPEC §C.4): the native-preview "addressMissing" early
+  // return is DELETED. Preview now always computes the full venue-sourced all-in
+  // with NO buyer address (WYSIWYP) — it flows through the same engine path as
+  // create below, so the cart sticky bar shows the exact PaymentSheet total.
 
   // ORCH-0869 [Tr3 Installment Payments]: when the session RPC returns an
   // installmentSchedule (trip with payment plan), the deposit PI must save
@@ -599,23 +541,71 @@ serve(async (req) => {
     return jsonResponse({ error: "stripe_account_not_ready" }, 409);
   }
 
-  // ORCH-0843 (2026-05-15) — Mingla platform application-fee formula.
-  // Hardcoded 1.5% of the order's unit amount per operator decision (G-2).
-  // Computed in the edge function (NOT plumbed through the RPC) so that
-  // changing the rate requires only an edge-function redeploy. Integer math
-  // via Math.round on integer-cent input × 0.015 is precision-safe for any
-  // realistic order amount (max safe cents ≈ 9.0×10^15). If the resulting
-  // fee is zero (totalCents < ~67), the application_fee_amount key is
-  // OMITTED from the Stripe call body entirely — Stripe documents both
-  // omitting and passing zero as accepted, but omitting is the cleaner
-  // contract and avoids any future "application_fee_amount must be > 0"
-  // edge-case error. Discovery for orchestrator (future ORCH): plumb the
-  // fee percentage through `brands` table or env config for dynamic
-  // adjustment without code redeploy.
-  const MINGLA_APPLICATION_FEE_RATE = 0.015 as const;
-  const applicationFeeAmountCents = Math.round(
-    totalCents * MINGLA_APPLICATION_FEE_RATE,
+  // ORCH-1006 [Universal all-in pricing engine] — resolve the brand/event
+  // pricing config (3 pass/absorb switches + region/currency + venue tax
+  // basis + the CONFIGURABLE Mingla take-rate, global default with per-brand
+  // override) for this event. One single-row read via the resolver RPC
+  // (standalone, no clobber of the big session RPC). Replaces ORCH-0843's
+  // hardcoded 1.5% application-fee constant (DEC: take-rate is now
+  // operator-tunable in the admin /pricing screen; stored as integer basis
+  // points; migration default = 150 bps = today's 1.5% → zero economic
+  // change at migration). resolve_event_pricing_inputs is GRANTed to
+  // service_role; this edge function runs service-role.
+  const { data: pricingRows, error: pricingError } = await supabase.rpc(
+    "resolve_event_pricing_inputs",
+    { p_event_id: eventId },
   );
+  if (pricingError || !Array.isArray(pricingRows) || pricingRows.length === 0) {
+    console.error(
+      "[ticket-checkout-create] resolve_event_pricing_inputs failed",
+      pricingError,
+    );
+    return jsonResponse(
+      { error: "pricing_config_unavailable", detail: pricingError?.message },
+      409,
+    );
+  }
+  const pricing = pricingRows[0] as {
+    pass_tax: boolean;
+    pass_mingla_fee: boolean;
+    pass_service_fee: boolean;
+    pricing_region: string | null;
+    pricing_currency: string | null;
+    venue_tax_address: Record<string, unknown> | null;
+    pricing_locked: boolean;
+    effective_take_rate_bps: number;
+    take_rate_source: "brand_override" | "platform_default";
+  };
+  const pricingRegion = (pricing.pricing_region ?? "GB") as PricingRegion;
+  const pricingSwitches: PricingSwitches = {
+    pass_tax: pricing.pass_tax,
+    pass_mingla_fee: pricing.pass_mingla_fee,
+    pass_service_fee: pricing.pass_service_fee,
+  };
+
+  // ORCH-1006 Slice 2 (SPEC §C.3 steps 2-4) — the all-in gross-up. The engine
+  // is the single owner of the money math; it computes the buyer subtotal
+  // (base + passed Mingla fee + passed service fee) BEFORE tax. The same
+  // deterministic result feeds preview, create, and the PI amount so the
+  // PaymentSheet shows the exact all-in the buyer was quoted (WYSIWYP).
+  const engineInput: ComputeAllInInput = {
+    baseCents: totalCents,
+    switches: pricingSwitches,
+    region: pricingRegion,
+    currency,
+    effectiveTakeRateBps: pricing.effective_take_rate_bps,
+    takeRateSource: pricing.take_rate_source,
+    serviceFeeBps: MINGLA_SERVICE_FEE_BPS,
+  };
+  const buyerSubtotal = computeBuyerSubtotal(engineInput);
+  // application_fee_amount = Mingla's take-rate skim (miglaFeeCents), ALWAYS
+  // (independent of pass/absorb — the switch only changes the buyer-facing
+  // gross-up, not what Mingla collects). Direct-charge collection:
+  // https://docs.stripe.com/api/payment_intents/create#create_payment_intent-application_fee_amount
+  // https://docs.stripe.com/connect/direct-charges#collect-fees
+  // Integer basis-point math (no float; invariant I-PROPOSED-TAKE-RATE-BPS-INTEGER).
+  // Omitted from the Stripe body when it rounds to zero (existing >0 guard kept).
+  const applicationFeeAmountCents = buyerSubtotal.miglaFeeCents;
 
   // ORCH-0843 — persist the computed fee on the session row so the refund
   // flow (refund-order) can read it back via biz_refund_order and decide
@@ -1001,25 +991,12 @@ serve(async (req) => {
     );
   }
 
-  const lineItemsRaw = Array.isArray(session.lineItems)
-    ? session.lineItems
-    : Array.isArray(session.items)
-    ? session.items
-    : [];
-  const rawTaxLineItems = (lineItemsRaw as Array<Record<string, unknown>>)
-    .map((line): TaxLineItem => ({
-      ticketTypeId: String(line.ticketTypeId ?? ""),
-      ticketName: String(line.ticketName ?? "Ticket"),
-      quantity: Number(line.quantity ?? 0),
-      unitPriceCents: Number(line.unitPriceCents ?? 0),
-      totalCents: Number(line.totalCents ?? 0),
-    }))
-    .filter((line) => line.ticketTypeId.length > 0 && line.totalCents > 0);
-  const taxLineItems = normalizeTaxLineItemsForCurrentCharge({
-    lineItems: rawTaxLineItems,
-    isInstallmentPlan,
-    totalCents,
-  });
+  // ORCH-1006 Slice 2 — the tax calc now uses ONE line item whose amount is the
+  // engine-grossed-up buyer subtotal (SPEC §C.3 step 5), so the per-tier
+  // tax-line decomposition (rawTaxLineItems / normalizeTaxLineItemsForCurrentCharge)
+  // is no longer used on the calc path. The installment-deposit normalisation is
+  // preserved implicitly: buyerSubtotal is derived from totalCents, which the
+  // session RPC already sets to the deposit amount for installment plans.
 
   let taxCalculation: TaxCalculationSummary | null = null;
   if (clientTaxCalculationId !== null && !isInstallmentPlan) {
@@ -1046,69 +1023,154 @@ serve(async (req) => {
     }
   }
 
+  // ORCH-1006 Slice 2 — venue-sourced tax with degrade-not-fail (SPEC §B/§C.2).
+  // The tax basis is taxBehaviorForRegion(region) (GB→"inclusive"), NOT a
+  // hardcoded literal; the customer address is the VENUE (venue_tax_address),
+  // NOT the buyer; and ANY failure degrades to flat brand-absorbed pricing
+  // (one clean number) rather than failing the session (SPEC §B.4, T-02/T-10).
+  let taxBasis: TaxBasis = "venue_resolved";
+  const taxBehavior = taxBehaviorForRegion(pricingRegion); // GB → "inclusive"
+  // Tax is computed on the grossed-up buyer subtotal so the all-in is internally
+  // consistent (SPEC §C.3 step 5). For inclusive (GB), Stripe returns
+  // amount_total === sum(line amounts) === buyerSubtotal (VAT extracted inside).
+  const taxAmountCents = buyerSubtotal.buyerSubtotalCents;
+
   if (taxCalculation === null) {
-    try {
-      const address = buyerAddress as BuyerAddress;
-      const stripeForTax = stripeTicketCheckout();
-      // @ts-ignore -- Stripe SDK Tax namespace is runtime-provided in Deno.
-      const fresh = await stripeForTax.tax.calculations.create(
-        {
-          currency,
-          line_items: taxLineItems.map((line) => ({
-            amount: line.totalCents,
-            reference: line.ticketName.slice(0, 200),
-            tax_code: "txcd_50010001",
-            tax_behavior: "exclusive" as const,
-          })),
-          customer_details: {
-            address: {
-              line1: address.line1,
-              ...(address.line2 ? { line2: address.line2 } : {}),
-              city: address.city,
-              ...(address.state ? { state: address.state } : {}),
-              postal_code: address.postal,
-              country: address.country,
+    // SPEC §B.5 / §C.2 — registration gate. Stripe Tax only collects where the
+    // connected account has an active registration; if none, degrade (don't
+    // charge tax the brand can't remit). Probe BEFORE the calc.
+    // Doc: https://docs.stripe.com/api/tax/registrations/list
+    let hasActiveRegistration = false;
+    if (pricing.pass_tax && pricing.venue_tax_address) {
+      try {
+        const stripeForReg = stripeTicketCheckout();
+        // @ts-ignore -- Stripe SDK Tax namespace is runtime-provided in Deno.
+        const regs = await stripeForReg.tax.registrations.list(
+          { status: "active" },
+          { stripeAccount: stripeAccountId },
+        );
+        hasActiveRegistration =
+          Array.isArray(regs?.data) && regs.data.length > 0;
+      } catch (regErr) {
+        // Probe failure → treat as unregistered (degrade). Non-fatal.
+        console.error(
+          "[ticket-checkout-create] tax registration probe failed (degrade)",
+          regErr instanceof Error ? regErr.message : regErr,
+        );
+        hasActiveRegistration = false;
+      }
+    }
+
+    if (!pricing.pass_tax || !pricing.venue_tax_address) {
+      // Brand absorbs tax, or no resolved venue → flat-absorb (SPEC §B.4).
+      taxCalculation = { id: "", amount_total: taxAmountCents, tax_breakdown: [] };
+      taxBasis = "unresolved_flat_absorb";
+    } else if (!hasActiveRegistration) {
+      // Unregistered brand → cannot collect tax → flat-absorb (decision #2).
+      taxCalculation = { id: "", amount_total: taxAmountCents, tax_breakdown: [] };
+      taxBasis = "unresolved_flat_absorb";
+    } else {
+      try {
+        const stripeForTax = stripeTicketCheckout();
+        // @ts-ignore -- Stripe SDK Tax namespace is runtime-provided in Deno.
+        // SPEC §B.3 — venue address as customer_details.address (NOT buyer);
+        // tax_behavior per region (NOT hardcoded); line amount = buyer subtotal.
+        // Doc: https://docs.stripe.com/api/tax/calculations/create
+        const fresh = await stripeForTax.tax.calculations.create(
+          {
+            currency,
+            line_items: [
+              {
+                amount: taxAmountCents,
+                reference: eventId.slice(0, 500),
+                // ORCH-0955 admissions/event tax code — retained.
+                tax_code: "txcd_50010001",
+                tax_behavior: taxBehavior,
+              },
+            ],
+            customer_details: {
+              // deno-lint-ignore no-explicit-any
+              address: pricing.venue_tax_address as any,
+              // SPEC §B.3 — admissions tax is sourced at the supplied (venue)
+              // address regardless of source label; "billing" is retained.
+              address_source: "billing" as const,
             },
-            address_source: "billing" as const,
+            expand: ["tax_breakdown"],
           },
-        },
-        { stripeAccount: stripeAccountId },
-      );
-      taxCalculation = {
-        id: String(fresh.id),
-        amount_total: Number(fresh.amount_total ?? totalCents),
-        tax_breakdown: Array.isArray(fresh.tax_breakdown)
-          ? fresh.tax_breakdown
-          : [],
-      };
-    } catch (taxErr) {
-      const failure = classifyStripeTaxCalculationFailure(taxErr);
-      console.error(
-        "[ticket-checkout-create] tax calculation failed",
-        failure.detail,
-      );
-      await supabase
-        .from("ticket_checkout_sessions")
-        .update({
-          status: "failed",
-          failed_at: new Date().toISOString(),
-          failure_reason: failure.error,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", checkoutSessionId);
-      return jsonResponse(
-        { error: failure.error, detail: failure.detail },
-        failure.httpStatus,
-      );
+          { stripeAccount: stripeAccountId },
+        );
+        taxCalculation = {
+          id: String(fresh.id),
+          amount_total: Number(fresh.amount_total ?? taxAmountCents),
+          tax_breakdown: Array.isArray(fresh.tax_breakdown)
+            ? fresh.tax_breakdown
+            : [],
+        };
+        taxBasis = "venue_resolved";
+      } catch (taxErr) {
+        // SPEC §B.4 / regression note — degrade-not-fail. A tax-calc throw
+        // (unsupported country, network, etc.) must NOT block the buyer with a
+        // failed session; it degrades to flat brand-absorbed (one clean
+        // number). Contrast with today's session status:"failed" (DELETED).
+        const failure = classifyStripeTaxCalculationFailure(taxErr);
+        console.error(
+          "[ticket-checkout-create] tax calculation degraded to flat-absorb",
+          failure.detail,
+        );
+        taxCalculation = {
+          id: "",
+          amount_total: taxAmountCents,
+          tax_breakdown: [],
+        };
+        taxBasis = failure.error === "tax_country_unsupported"
+          ? "country_unsupported_flat_absorb"
+          : "calc_failed_flat_absorb";
+      }
     }
   }
 
-  const taxCents = Math.max(0, taxCalculation.amount_total - totalCents);
+  // ORCH-1006 — derive the canonical breakdown from the engine (single source
+  // of truth, SPEC §C.5). For inclusive (GB), tax is the VAT portion extracted
+  // from inside amount_total (NOT amount_total − base, which is the exclusive-
+  // only formula and a REAL BUG for inclusive — fixed here). For flat-absorb,
+  // taxCents = 0. Doc inclusive semantics:
+  // https://docs.stripe.com/tax/products-prices-tax-codes-tax-behavior
+  let taxCents: number;
+  if (taxBasis !== "venue_resolved") {
+    taxCents = 0;
+  } else if (taxBehavior === "inclusive") {
+    // GB VAT is inside the total: extract the VAT portion (standard-rate model
+    // mirrored by the engine happy-path tests). Stripe also reports this as
+    // tax_amount_inclusive on the calculation; we recompute deterministically
+    // from amount_total so the persisted breakdown is self-consistent.
+    taxCents = taxCalculation.amount_total -
+      Math.round(taxCalculation.amount_total / 1.2);
+  } else {
+    // Exclusive (future US): tax is added on top of the subtotal.
+    taxCents = Math.max(0, taxCalculation.amount_total - taxAmountCents);
+  }
+
+  const pricingBreakdown: PricingBreakdown = buildPricingBreakdown({
+    input: engineInput,
+    amountTotalCents: taxCalculation.amount_total,
+    taxCents,
+    taxBasis,
+    stripeTaxCalculationId: taxCalculation.id.length > 0
+      ? taxCalculation.id
+      : null,
+  });
+
   await supabase
     .from("ticket_checkout_sessions")
     .update({
-      tax_calculation_id: taxCalculation.id,
+      tax_calculation_id: taxCalculation.id.length > 0
+        ? taxCalculation.id
+        : null,
       tax_amount_cents: taxCents,
+      // ORCH-1006 §A.3/§C.6 — the canonical money record. finalize copies it to
+      // orders.pricing_breakdown (FLAG: the live biz_ticket_checkout_finalize
+      // does not yet copy this column — see the implementor report follow-up).
+      pricing_breakdown: pricingBreakdown,
       updated_at: new Date().toISOString(),
     })
     .eq("id", checkoutSessionId);
@@ -1119,11 +1181,13 @@ serve(async (req) => {
       checkoutSessionId,
       subtotalCents: totalCents,
       taxCents,
-      totalCents: taxCalculation.amount_total,
+      totalCents: pricingBreakdown.buyer_total_cents,
       currency: String(session.currency ?? "GBP"),
       taxBreakdown: taxCalculation.tax_breakdown,
-      calculationId: taxCalculation.id,
+      calculationId: taxCalculation.id.length > 0 ? taxCalculation.id : null,
       calculationExpiresAt: null,
+      // ORCH-1006 §C.4 — the all-in breakdown feeds WYSIWYP (no buyer address).
+      pricingBreakdown,
     });
   }
 
@@ -1153,7 +1217,10 @@ serve(async (req) => {
     // orch-0837-regression-check.mjs T-C1 (still bans
     // automatic_payment_methods: enabled: true).
     const piCreateBody: Record<string, unknown> = {
-      amount: taxCalculation.amount_total,
+      // ORCH-1006 §C.4 — the inclusive all-in buyer total from the engine
+      // breakdown (NOT the raw exclusive amount_total). For GB inclusive this
+      // equals the buyer subtotal; for flat-absorb it is the subtotal too.
+      amount: pricingBreakdown.buyer_total_cents,
       currency,
       // ORCH-0869 [Tr3 Installment Payments]: when deposit is installment-
       // plan-root, save PM for off-session installment charges.
@@ -1268,13 +1335,16 @@ serve(async (req) => {
     kind: "requires_payment",
     checkoutSessionId,
     buyerStatusToken,
-    totalCents: taxCalculation.amount_total,
+    // ORCH-1006 §C.4 — buyer_total is the inclusive all-in (= PI amount).
+    totalCents: pricingBreakdown.buyer_total_cents,
     subtotalCents: totalCents,
     taxCents,
     taxBreakdown: taxCalculation.tax_breakdown,
     currency: String(session.currency ?? "GBP"),
     clientSecret,
     paymentIntentId: paymentIntent.id,
+    // ORCH-1006 §C.4 — canonical breakdown for the receipt/confirmation.
+    pricingBreakdown,
     publishableKey: Deno.env.get("EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY") ??
       Deno.env.get("STRIPE_PUBLISHABLE_KEY") ??
       null,

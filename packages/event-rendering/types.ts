@@ -23,6 +23,13 @@ export interface PublicTicketProps {
   name: string;
   description: string | null;
   priceGbp: number | null;
+  /**
+   * ORCH-1006 Slice 3: server-computed tax/fee-inclusive (all-in) price in
+   * major units. Optional + back-compat: when absent or null, surfaces fall
+   * back to priceGbp. NULL for free tiers. Never recomputed client-side — it is
+   * compute_all_in_cents output divided by 100.
+   */
+  priceAllInGbp?: number | null;
   currency: string | null;
   isFree: boolean;
   isUnlimited: boolean;

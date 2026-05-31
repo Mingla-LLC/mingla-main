@@ -4,23 +4,21 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  Modal as RNModal,
   Platform,
-  ScrollView,
-  Dimensions,
 } from "react-native";
 import { BaseBottomSheet } from "../ui/BaseBottomSheet";
 import { Icon } from "../ui/Icon";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import DateOptionsGrid from "./DateOptionsGrid";
 import WeekendDaySelection from "./WeekendDaySelection";
 import ProposeDateTimeFooter from "./ProposeDateTimeFooter";
 import { useIsPlaceOpen } from "../../hooks/useIsPlaceOpen";
-import { extractWeekdayText, isPlaceOpenAt } from "../../utils/openingHoursUtils";
+import { extractWeekdayText } from "../../utils/openingHoursUtils";
+import {
+  buildSingleCardNotSafeMessage,
+  checkSingleCardSchedulingAvailability,
+} from "../../utils/singleCardAvailability";
 import { useTranslation } from 'react-i18next';
-
-const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 // META-ORCH-0991 Wave B Batch 4: was a hand-rolled Animated slide-up RN <Modal>
 // sheet capped at SCREEN_HEIGHT*0.85 → fixed ['85%'] snap (playbook §2). Stock
@@ -38,6 +36,9 @@ const PROPOSE_DATE_TIME_BACKGROUND_STYLE = {
 interface SavedCard {
   id: string;
   title: string;
+  openingHours?: unknown;
+  utcOffsetMinutes?: number | null;
+  utc_offset_minutes?: number | null;
   [key: string]: any;
 }
 
@@ -78,11 +79,9 @@ export default function ProposeDateTimeModal({
   const [isPlaceOpen, setIsPlaceOpen] = useState(false);
   const [isCheckingAvailability, setIsCheckingAvailability] = useState(false);
   const [proposedDateTime, setProposedDateTime] = useState<Date | null>(null);
-  const [availabilityAssumption, setAvailabilityAssumption] = useState<
+  const [availabilityIssueMessage, setAvailabilityIssueMessage] = useState<
     string | null
   >(null);
-
-  const insets = useSafeAreaInsets();
 
   // [ORCH-0649 — CONSTITUTION #2] Local normalizeOpeningHours DELETED.
   // extractWeekdayText (openingHoursUtils.ts) is the canonical reader — it
@@ -95,7 +94,8 @@ export default function ProposeDateTimeModal({
   }, [card?.openingHours]);
 
   // Live open/closed status computed from weekday_text against local clock
-  const liveOpenStatus = useIsPlaceOpen(card?.openingHours ?? null);
+  const cardUtcOffset = card?.utcOffsetMinutes ?? card?.utc_offset_minutes ?? null;
+  const liveOpenStatus = useIsPlaceOpen(card?.openingHours ?? null, cardUtcOffset);
 
   const todayDayName = useMemo(() => {
     const days = [
@@ -125,13 +125,10 @@ export default function ProposeDateTimeModal({
     setIsAvailabilityChecked(false);
     setIsPlaceOpen(false);
     setProposedDateTime(null);
-    setAvailabilityAssumption(null);
+    setAvailabilityIssueMessage(null);
 
-    if (option === "custom") {
-      setShowDatePicker(true);
-    } else if (option === "today") {
-      setShowTimePicker(true);
-    }
+    setShowDatePicker(option === "custom");
+    setShowTimePicker(option === "today");
   };
 
   const handleWeekendDaySelect = (day: "saturday" | "sunday") => {
@@ -139,7 +136,8 @@ export default function ProposeDateTimeModal({
     setIsAvailabilityChecked(false);
     setIsPlaceOpen(false);
     setProposedDateTime(null);
-    setAvailabilityAssumption(null);
+    setAvailabilityIssueMessage(null);
+    setShowDatePicker(false);
     setShowTimePicker(true);
   };
 
@@ -198,9 +196,7 @@ export default function ProposeDateTimeModal({
   };
 
   // [ORCH-0649 — CONSTITUTION #2] Local parseTimeString + checkPlaceAvailability
-  // DELETED. Canonical isPlaceOpenAt (openingHoursUtils.ts) is now the single
-  // owner of the open/closed decision. See call site below for the
-  // true | false | null → {isOpen, isAssumption, reason} mapping.
+  // DELETED. The shared scheduling helper owns the open/closed/unknown decision.
 
   const handleDatePickerChange = (_event: any, date?: Date) => {
     if (Platform.OS === "android") {
@@ -212,7 +208,7 @@ export default function ProposeDateTimeModal({
       setIsAvailabilityChecked(false);
       setIsPlaceOpen(false);
       setProposedDateTime(null);
-      setAvailabilityAssumption(null);
+      setAvailabilityIssueMessage(null);
 
       // On Android, onChange fires once on OK — auto-advance to time picker.
       // On iOS, onChange fires on every spinner scroll — the "Done" button handles the transition.
@@ -240,7 +236,7 @@ export default function ProposeDateTimeModal({
       setIsAvailabilityChecked(false);
       setIsPlaceOpen(false);
       setProposedDateTime(null);
-      setAvailabilityAssumption(null);
+      setAvailabilityIssueMessage(null);
     }
   };
 
@@ -274,18 +270,14 @@ export default function ProposeDateTimeModal({
     setProposedDateTime(proposedDate);
 
     setTimeout(() => {
-      // [ORCH-0649] Canonical isPlaceOpenAt → {isOpen, isAssumption, reason}.
-      // null result = "cannot determine" → treat as advisory (allow schedule
-      // but show warning), NOT as closed.
-      const weekdayText = extractWeekdayText(card?.openingHours ?? null);
-      const openAt = isPlaceOpenAt(weekdayText, proposedDate);
-      if (openAt === null) {
-        setIsPlaceOpen(true);
-        setAvailabilityAssumption(t('activity:proposeDateTimeModal.hoursUnknown'));
-      } else {
-        setIsPlaceOpen(openAt);
-        setAvailabilityAssumption(null);
-      }
+      const availability = checkSingleCardSchedulingAvailability(
+        card,
+        proposedDate,
+      );
+      setIsPlaceOpen(availability.isSafeToSchedule);
+      setAvailabilityIssueMessage(
+        availability.isSafeToSchedule ? null : buildSingleCardNotSafeMessage(availability),
+      );
       setIsAvailabilityChecked(true);
       setIsCheckingAvailability(false);
     }, 500);
@@ -357,7 +349,7 @@ export default function ProposeDateTimeModal({
     }
 
     return null;
-  }, [selectedDateOption, customTime, customDate, selectedWeekendDay]);
+  }, [selectedDateOption, customTime, customDate, selectedWeekendDay, t]);
 
   const formatDate = (dateStr: Date | string): string => {
     const date = typeof dateStr === "string" ? new Date(dateStr) : dateStr;
@@ -389,7 +381,7 @@ export default function ProposeDateTimeModal({
     setIsPlaceOpen(false);
     setIsCheckingAvailability(false);
     setProposedDateTime(null);
-    setAvailabilityAssumption(null);
+    setAvailabilityIssueMessage(null);
   };
 
   const handleClose = () => {
@@ -585,6 +577,66 @@ export default function ProposeDateTimeModal({
                     dark
                   />
                 )}
+
+                {showDatePicker && Platform.OS === "ios" && (
+                  <View
+                    style={styles.inlinePickerPanel}
+                    testID="propose-date-inline-picker"
+                  >
+                    <View style={styles.inlinePickerHeader}>
+                      <Text style={styles.inlinePickerTitle}>{t('activity:proposeDateTimeModal.selectDate')}</Text>
+                      <View style={styles.inlinePickerActions}>
+                        <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+                          <Text style={styles.inlinePickerCancel}>{t('activity:proposeDateTimeModal.cancel')}</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={handleDatePickerDone}>
+                          <Text style={styles.inlinePickerDone}>{t('activity:proposeDateTimeModal.done')}</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                    {/* ORCH-0908 (2026-05-21): iOS inline calendar grid keeps
+                        day selection scannable while staying inside this sheet. */}
+                    <DateTimePicker
+                      value={customDate}
+                      mode="date"
+                      display="inline"
+                      onChange={handleDatePickerChange}
+                      minimumDate={new Date()}
+                      style={styles.inlineDatePicker}
+                      themeVariant="dark"
+                      textColor="#FFFFFF"
+                    />
+                  </View>
+                )}
+
+                {showTimePicker && Platform.OS === "ios" && (
+                  <View
+                    style={styles.inlinePickerPanel}
+                    testID="propose-time-inline-picker"
+                  >
+                    <View style={styles.inlinePickerHeader}>
+                      <Text style={styles.inlinePickerTitle}>Select Time</Text>
+                      <View style={styles.inlinePickerActions}>
+                        <TouchableOpacity onPress={() => setShowTimePicker(false)}>
+                          <Text style={styles.inlinePickerCancel}>Cancel</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={handleTimePickerDone}>
+                          <Text style={styles.inlinePickerDone}>Done</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                    <DateTimePicker
+                      value={customTime || new Date()}
+                      mode="time"
+                      display="spinner"
+                      is24Hour={false}
+                      onChange={handleTimePickerChange}
+                      style={styles.inlineTimePicker}
+                      themeVariant="dark"
+                      textColor="#FFFFFF"
+                    />
+                  </View>
+                )}
               </View>
 
               {/* Selected time display */}
@@ -610,124 +662,11 @@ export default function ProposeDateTimeModal({
                 <View style={styles.availabilityMessage}>
                   <Icon name="warning" size={18} color="#ef4444" />
                   <Text style={styles.availabilityMessageText}>
-                    {t('activity:proposeDateTimeModal.closedAtTime')}
+                    {availabilityIssueMessage ?? t('activity:proposeDateTimeModal.closedAtTime')}
                   </Text>
                 </View>
               )}
-
-              {!isCurated &&
-                isAvailabilityChecked &&
-                isPlaceOpen &&
-                availabilityAssumption && (
-                  <View style={styles.assumptionWarning}>
-                    <Icon
-                      name="information-circle"
-                      size={18}
-                      color="#F59E0B"
-                    />
-                    <Text style={styles.assumptionWarningText}>
-                      {availabilityAssumption}. Please verify opening hours
-                      before scheduling.
-                    </Text>
-                  </View>
-                )}
       </BaseBottomSheet>
-
-      {/* Date Picker (iOS) — own RN Modal so it floats ABOVE the sheet's wrapInRNModal
-          window. Was an absolute overlay inside the old hand-rolled Modal; with the
-          sheet now in its own OS window, the picker needs its own window too. */}
-      {showDatePicker && Platform.OS === "ios" && (
-        <RNModal
-          visible
-          transparent
-          animationType="slide"
-          onRequestClose={() => setShowDatePicker(false)}
-          statusBarTranslucent
-        >
-          <View style={pickerModalStyles.overlay}>
-            <TouchableOpacity
-              style={pickerModalStyles.backdrop}
-              activeOpacity={1}
-              onPress={() => setShowDatePicker(false)}
-            />
-            <SafeAreaView
-              style={[pickerModalStyles.content, { paddingBottom: Math.max(insets.bottom, 20) }]}
-              edges={["bottom", "left", "right"]}
-            >
-              <View style={pickerModalStyles.header}>
-                <Text style={pickerModalStyles.title}>{t('activity:proposeDateTimeModal.selectDate')}</Text>
-                <View style={pickerModalStyles.headerButtons}>
-                  <TouchableOpacity onPress={() => setShowDatePicker(false)}>
-                    <Text style={pickerModalStyles.cancelText}>{t('activity:proposeDateTimeModal.cancel')}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={handleDatePickerDone}>
-                    <Text style={pickerModalStyles.doneText}>{t('activity:proposeDateTimeModal.done')}</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-              {/* ORCH-0908 (2026-05-21): switched from display="spinner" (wheel)
-                  to display="inline" (calendar grid) per operator feedback —
-                  the wheel-style days picker was hard to scan. iOS 14+ renders
-                  a tap-to-select month grid which is the standard iOS pattern. */}
-              <DateTimePicker
-                value={customDate}
-                mode="date"
-                display="inline"
-                onChange={handleDatePickerChange}
-                minimumDate={new Date()}
-                style={pickerModalStyles.picker}
-                themeVariant="dark"
-                textColor="#FFFFFF"
-              />
-            </SafeAreaView>
-          </View>
-        </RNModal>
-      )}
-
-      {/* Time Picker (iOS) — own RN Modal, floats above the sheet window. */}
-      {showTimePicker && Platform.OS === "ios" && (
-        <RNModal
-          visible
-          transparent
-          animationType="slide"
-          onRequestClose={() => setShowTimePicker(false)}
-          statusBarTranslucent
-        >
-          <View style={pickerModalStyles.overlay}>
-            <TouchableOpacity
-              style={pickerModalStyles.backdrop}
-              activeOpacity={1}
-              onPress={() => setShowTimePicker(false)}
-            />
-            <SafeAreaView
-              style={[pickerModalStyles.content, { paddingBottom: Math.max(insets.bottom, 20) }]}
-              edges={["bottom", "left", "right"]}
-            >
-              <View style={pickerModalStyles.header}>
-                <Text style={pickerModalStyles.title}>Select Time</Text>
-                <View style={pickerModalStyles.headerButtons}>
-                  <TouchableOpacity onPress={() => setShowTimePicker(false)}>
-                    <Text style={pickerModalStyles.cancelText}>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={handleTimePickerDone}>
-                    <Text style={pickerModalStyles.doneText}>Done</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-              <DateTimePicker
-                value={customTime || new Date()}
-                mode="time"
-                display="spinner"
-                is24Hour={false}
-                onChange={handleTimePickerChange}
-                style={pickerModalStyles.picker}
-                themeVariant="dark"
-                textColor="#FFFFFF"
-              />
-            </SafeAreaView>
-          </View>
-        </RNModal>
-      )}
 
       {/* Android native pickers — render directly (native dialogs always on top) */}
       {showDatePicker && Platform.OS === "android" && (
@@ -759,8 +698,8 @@ const styles = StyleSheet.create({
   // dark BaseBottomSheet at ['85%'] with stock gorhom motion + the real handle +
   // pan-down/backdrop close; canvas preserved via PROPOSE_DATE_TIME_BACKGROUND_STYLE.
   // wrapInRNModal z-stacks above the floating tab bar (opened from SavedTab/
-  // CalendarTab/LockedCardSchedulingSheet). iOS date/time pickers float in their
-  // own RN Modals above the sheet window. Header + scroll body + sticky footer.
+  // CalendarTab/LockedCardSchedulingSheet). iOS date/time pickers render inline
+  // inside the sheet so they stay visible in the same OS window.
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -982,6 +921,49 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#F59E0B",
   },
+  inlinePickerPanel: {
+    marginTop: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+    backgroundColor: "rgba(255,255,255,0.05)",
+    overflow: "hidden",
+  },
+  inlinePickerHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "rgba(255,255,255,0.1)",
+  },
+  inlinePickerTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#FFFFFF",
+  },
+  inlinePickerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 16,
+  },
+  inlinePickerCancel: {
+    fontSize: 15,
+    color: "rgba(255,255,255,0.62)",
+    fontWeight: "600",
+  },
+  inlinePickerDone: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#F59E0B",
+  },
+  inlineDatePicker: {
+    minHeight: 320,
+  },
+  inlineTimePicker: {
+    height: 190,
+  },
   availabilityMessage: {
     flexDirection: "row",
     alignItems: "center",
@@ -1015,56 +997,5 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "rgba(245,158,11,0.9)",
     fontWeight: "500",
-  },
-});
-
-const pickerModalStyles = StyleSheet.create({
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: "flex-end",
-    zIndex: 100,
-  },
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0, 0, 0, 0.4)",
-  },
-  content: {
-    backgroundColor: "#1C1C1E",
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: SCREEN_HEIGHT * 0.45,
-    overflow: 'hidden',
-  },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "rgba(255, 255, 255, 0.1)",
-    minHeight: 48,
-  },
-  headerButtons: {
-    flexDirection: "row",
-    gap: 16,
-  },
-  title: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#FFFFFF",
-  },
-  cancelText: {
-    fontSize: 16,
-    color: "rgba(255, 255, 255, 0.6)",
-    fontWeight: "500",
-  },
-  doneText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#F59E0B",
-  },
-  picker: {
-    height: Math.min(200, SCREEN_HEIGHT * 0.25),
   },
 });

@@ -11,7 +11,7 @@ interface Segment {
 
 const SEGMENTS: Segment[] = [
   { surface: 'explorer', label: 'Explorer', href: '/' },
-  { surface: 'organiser', label: 'Organiser', href: '/organisers' },
+  { surface: 'organiser', label: 'Business', href: '/organisers' },
 ]
 
 export function SurfaceToggle() {
