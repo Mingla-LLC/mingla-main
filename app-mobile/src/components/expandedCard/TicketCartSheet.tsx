@@ -61,10 +61,12 @@ import {
 } from "@mingla/event-rendering";
 
 import { Icon } from "../ui/Icon";
-import {
-  CartTaxPreview,
-  type CartTaxPreviewResult,
-} from "../checkout/CartTaxPreview";
+// ORCH-1025 [Seamless native consumer cart] — the buyer billing-address +
+// "Calculate tax" gate (CartTaxPreview) is RETIRED. Tax is computed server-side
+// from the venue (ORCH-1006, ticket-checkout-create v130), and the all-in price
+// is already available per tier client-side (PublicTicketProps.priceAllInGbp,
+// from pg_public_event_tier_allin). The cart now shows the all-in total upfront
+// and goes straight to the native PaymentSheet — no address typed.
 import { ConsumerCartCard } from "./ConsumerCartCard";
 import { type CartLineSeed, useTicketCart } from "../../hooks/useTicketCart";
 import {
@@ -154,9 +156,15 @@ const isVisibleForConsumer = (ticket: PublicTicketProps): boolean =>
 export interface TicketCartCheckoutPayload {
   lines: Array<{ ticketTypeId: string; quantity: number }>;
   marketingOptIn: boolean;
+  /**
+   * ORCH-1025 — the displayed all-in total (sum of per-tier server `all_in_cents`
+   * × qty, in cents). Carried for the paid/free checkout branch + telemetry ONLY;
+   * the authoritative charge is the PaymentIntent amount the backend computes
+   * from the same `compute_all_in_cents` engine (WYSIWYP parity by construction).
+   * The cart no longer sends `address` or `taxCalculationId` — tax is sourced at
+   * the venue server-side, so the buyer never types an address.
+   */
   totalCents: number;
-  taxCalculationId: string | null;
-  address: CartTaxPreviewResult["address"];
   /**
    * ORCH-1016 REWORK (D2) — per-tier trip intake answers for selected tiers
    * that carry an intake schema. Empty array when no selected tier has a
@@ -216,9 +224,8 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     fallbackCurrency,
   );
   const [marketingOptIn, setMarketingOptIn] = useState<boolean>(false);
-  const [taxPreview, setTaxPreview] = useState<CartTaxPreviewResult | null>(
-    null,
-  );
+  // ORCH-1025 — "What's included" breakdown panel expand/collapse.
+  const [breakdownOpen, setBreakdownOpen] = useState<boolean>(false);
   // ORCH-1016 REWORK (D2) — per-tier intake answers + per-tier per-question
   // validation errors. Keyed by ticket_type_id → { [questionId]: value/error }.
   const [intakeAnswers, setIntakeAnswers] = useState<
@@ -263,6 +270,54 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     [selectedSchemaTiers],
   );
 
+  // ORCH-1025 — all-in pricing, derived ONLY from server data (G-1 WYSIWYP / G-3
+  // no fabricated numbers). For each cart line we read the tier's server-computed
+  // all-in major-unit price (`priceAllInGbp`, = compute_all_in_cents / 100 from
+  // pg_public_event_tier_allin) and its base price (`priceGbp`). The ONLY client
+  // arithmetic is sum + (× quantity) + ×100/÷100 — NO inline tax/fee math.
+  //   - baseCents  : Σ base price_cents × qty  (the "Tickets" subtotal — the
+  //                  Mingla fee is folded into the all-in, not split out here)
+  //   - allInCents : Σ all-in cents × qty  (the amount the buyer pays; the
+  //                  authoritative charge is the PI built from the same engine)
+  //   - feesTaxCents = allInCents − baseCents  (the ONE truthful derived figure;
+  //                  the public RPC exposes no VAT/fee SPLIT, so we never
+  //                  fabricate separate VAT vs service-fee numbers — see report)
+  // When a tier has no server all-in (RPC miss → priceAllInGbp falls back to
+  // priceGbp in the service), its all-in == base, contributing 0 to feesTax and
+  // dropping the "includes VAT & fees" affordance for that tier automatically.
+  const pricing = useMemo<{
+    baseCents: number;
+    allInCents: number;
+    feesTaxCents: number;
+    hasAllInDelta: boolean;
+  }>(() => {
+    let baseCents = 0;
+    let allInCents = 0;
+    for (const line of lines) {
+      if (line.quantity <= 0) continue;
+      const ticket = tickets?.find((t) => t.id === line.ticketTypeId);
+      // Base from the cart line (authoritative price_cents seed).
+      const lineBaseCents = line.unitPriceCents * line.quantity;
+      // All-in from the tier's server priceAllInGbp; fall back to base when the
+      // RPC produced no figure for this tier (never invent a number).
+      const allInMajor =
+        ticket?.priceAllInGbp != null ? ticket.priceAllInGbp : null;
+      const lineAllInCents =
+        allInMajor != null
+          ? Math.round(allInMajor * 100) * line.quantity
+          : lineBaseCents;
+      baseCents += lineBaseCents;
+      allInCents += lineAllInCents;
+    }
+    const feesTaxCents = Math.max(0, allInCents - baseCents);
+    return {
+      baseCents,
+      allInCents,
+      feesTaxCents,
+      hasAllInDelta: feesTaxCents > 0,
+    };
+  }, [lines, tickets]);
+
   // META-ORCH-0991 Wave A — open/close is owned by BaseBottomSheet
   // (declarative `visible`). The prior sheetRef + snapToIndex/close effect is
   // removed; the primitive replicates that exact open/close pattern internally.
@@ -287,7 +342,6 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
       lastOpenSeedRef.current = null;
       reset();
       setMarketingOptIn(false);
-      setTaxPreview(null);
       setIntakeAnswers({});
       setIntakeErrors({});
     }
@@ -320,7 +374,9 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   );
 
   const handleConfirm = useCallback((): void => {
-    if (totals.isEmpty || isSubmitting || taxPreview === null) return;
+    // ORCH-1025 — no taxPreview gate: the buyer can pay immediately. The cart is
+    // unblocked the moment it has lines (and any required intake is valid).
+    if (totals.isEmpty || isSubmitting) return;
     if (hasUnsupportedRequired) return;
 
     // ORCH-1016 REWORK (D2) — required-field validation BEFORE payment.
@@ -356,26 +412,27 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     );
 
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    // ORCH-1025 — payload omits `address` and `taxCalculationId` (G-2). The
+    // all-in total (derived only from server all_in_cents) rides as `totalCents`
+    // for the paid/free branch + telemetry; the charge is the PI amount.
     onCheckout({
       lines: lines
         .filter((l) => l.quantity > 0)
         .map((l) => ({ ticketTypeId: l.ticketTypeId, quantity: l.quantity })),
       marketingOptIn,
-      totalCents: taxPreview.totalCents,
-      taxCalculationId: taxPreview.calculationId,
-      address: taxPreview.address,
+      totalCents: pricing.allInCents,
       intakeFormData,
     });
   }, [
     totals.isEmpty,
     isSubmitting,
-    taxPreview,
     hasUnsupportedRequired,
     selectedSchemaTiers,
     intakeAnswers,
     intakeSchemasByTier,
     lines,
     marketingOptIn,
+    pricing.allInCents,
     onCheckout,
   ]);
 
@@ -417,16 +474,15 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     ? "Claim Free Ticket"
     : "Continue to Payment";
   const ctaDisabled =
-    totals.isEmpty ||
-    isSubmitting ||
-    taxPreview === null ||
-    hasUnsupportedRequired;
+    totals.isEmpty || isSubmitting || hasUnsupportedRequired;
 
+  // ORCH-1025 — the sticky bar shows the ALL-IN total (sum of server all_in_cents),
+  // not the base subtotal, so the buyer sees the exact amount they'll pay upfront.
   const subtotalValueText = totals.isEmpty
     ? "—"
     : totals.isFree
     ? "Free"
-    : formatCentsCurrency(totals.totalCents, totals.currency);
+    : formatCentsCurrency(pricing.allInCents, totals.currency);
 
   // ORCH-1016 REWORK-4 (FIX A) — the CTA bar must clear BOTH the OS home
   // indicator AND Mingla's floating GlassBottomNav. This sheet renders BELOW the
@@ -584,24 +640,66 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
           </View>
         ) : null}
 
-        <CartTaxPreview
-          eventId={_eventId}
-          lines={lines
-            .filter((l) => l.quantity > 0)
-            .map((l) => ({
-              ticketTypeId: l.ticketTypeId,
-              quantity: l.quantity,
-            }))}
-          buyer={{
-            name: buyerName,
-            email: buyerEmail,
-            phone: buyerPhone,
-            marketingOptIn,
-          }}
-          currency={totals.currency}
-          disabled={isSubmitting || totals.isEmpty}
-          onPreviewChange={setTaxPreview}
-        />
+        {/* ORCH-1025 — "What's included" breakdown. Replaces the retired
+            billing-address + Calculate-tax form (CartTaxPreview). Shows the
+            all-in total upfront with a tappable breakdown. Only the truthful,
+            server-derived figures are shown: the base "Tickets" subtotal, the
+            combined "Fees & tax" delta (all-in − base), and the all-in total.
+            The public RPC exposes no VAT/service-fee SPLIT, so we never fabricate
+            separate numbers — when an all-in delta exists we add the qualitative
+            "Includes VAT & fees" note (G-3). Hidden for free-only carts. */}
+        {!totals.isEmpty && !totals.isFree ? (
+          <View style={styles.breakdownWrap}>
+            <Pressable
+              onPress={() => setBreakdownOpen((v) => !v)}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: breakdownOpen }}
+              accessibilityLabel="What's included"
+              disabled={isSubmitting}
+              style={({ pressed }) => [
+                styles.breakdownHeader,
+                pressed && styles.breakdownHeaderPressed,
+              ]}
+            >
+              <Text style={styles.breakdownTitle}>What’s included</Text>
+              <Icon
+                name={breakdownOpen ? "chevron-up" : "chevron-down"}
+                size={18}
+                color="rgba(255,255,255,0.55)"
+              />
+            </Pressable>
+            {breakdownOpen ? (
+              <View style={styles.breakdownBody}>
+                <View style={styles.breakdownRow}>
+                  <Text style={styles.breakdownLabel}>Tickets</Text>
+                  <Text style={styles.breakdownValue}>
+                    {formatCentsCurrency(pricing.baseCents, totals.currency)}
+                  </Text>
+                </View>
+                {pricing.hasAllInDelta ? (
+                  <View style={styles.breakdownRow}>
+                    <Text style={styles.breakdownLabel}>Fees &amp; tax</Text>
+                    <Text style={styles.breakdownValue}>
+                      {formatCentsCurrency(
+                        pricing.feesTaxCents,
+                        totals.currency,
+                      )}
+                    </Text>
+                  </View>
+                ) : null}
+                <View style={[styles.breakdownRow, styles.breakdownTotalRow]}>
+                  <Text style={styles.breakdownTotalLabel}>Total</Text>
+                  <Text style={styles.breakdownTotalValue}>
+                    {formatCentsCurrency(pricing.allInCents, totals.currency)}
+                  </Text>
+                </View>
+                {pricing.hasAllInDelta ? (
+                  <Text style={styles.breakdownNote}>Includes VAT &amp; fees</Text>
+                ) : null}
+              </View>
+            ) : null}
+          </View>
+        ) : null}
       </>
     );
 
@@ -837,6 +935,69 @@ const styles = StyleSheet.create({
     color: "rgba(255, 255, 255, 0.96)",
     fontSize: 14,
     textAlign: "right",
+  },
+  // ORCH-1025 — "What's included" breakdown panel
+  breakdownWrap: {
+    marginTop: 16,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.10)",
+    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    overflow: "hidden",
+  },
+  breakdownHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+  },
+  breakdownHeaderPressed: {
+    opacity: 0.7,
+  },
+  breakdownTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "rgba(255, 255, 255, 0.88)",
+  },
+  breakdownBody: {
+    paddingHorizontal: 16,
+    paddingBottom: 14,
+    gap: 8,
+  },
+  breakdownRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+  },
+  breakdownLabel: {
+    fontSize: 14,
+    color: "rgba(255, 255, 255, 0.62)",
+  },
+  breakdownValue: {
+    fontSize: 14,
+    color: "rgba(255, 255, 255, 0.88)",
+  },
+  breakdownTotalRow: {
+    marginTop: 4,
+    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(255, 255, 255, 0.10)",
+  },
+  breakdownTotalLabel: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "rgba(255, 255, 255, 0.96)",
+  },
+  breakdownTotalValue: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "rgba(255, 255, 255, 0.96)",
+  },
+  breakdownNote: {
+    fontSize: 12,
+    color: "rgba(255, 255, 255, 0.45)",
+    marginTop: 2,
   },
   // Sticky bottom bar
   stickyBar: {

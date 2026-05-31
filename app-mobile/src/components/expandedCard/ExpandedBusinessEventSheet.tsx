@@ -265,7 +265,11 @@ export const ExpandedBusinessEventSheet: React.FC<
             phone: buyerPhone,
             marketingOptIn: payload.marketingOptIn,
           },
-          taxCalculationId: payload.taxCalculationId,
+          // ORCH-1025 [Seamless native cart] — no `taxCalculationId` and no
+          // `address` are sent: tax is computed server-side from the venue
+          // (ticket-checkout-create v130). nativeCheckoutFlow already accepts the
+          // address-less / taxCalculationId-less path (the field is optional and
+          // omitted from the request body when absent).
           // ORCH-1016 REWORK (D2) — forward per-tier trip intake answers →
           // orders.intake_form_data via the existing ticket-checkout-create
           // body key. Empty array (no-schema trips) is omitted by
