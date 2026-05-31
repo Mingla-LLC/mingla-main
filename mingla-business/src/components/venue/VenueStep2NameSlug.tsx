@@ -152,13 +152,11 @@ export const VenueStep2NameSlug: React.FC<VenueStep2NameSlugProps> = ({
         <Text style={styles.errText}>{nameErr}</Text>
       ) : null}
       <Input
-        variant="text"
+        variant="email"
         value={slug}
         onChangeText={onChangeSlug}
         placeholder="your-venue-slug"
         accessibilityLabel="Venue URL slug"
-        autoCapitalize="none"
-        autoCorrect={false}
       />
       {slugFieldErr !== undefined ? (
         <Text style={styles.errText}>{slugFieldErr}</Text>
