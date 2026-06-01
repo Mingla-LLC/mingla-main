@@ -1,66 +1,64 @@
 /**
- * META-ORCH-1009 Sub-E (Job A) — no-venue discoverability entry.
+ * META-ORCH-1009 Sub-E (Job A) — no-venue discoverability — UPDATED for ORCH-1038.
  *
- * Source-contract test (matches the existing Sub-E test pattern — pure
- * fs.readFileSync, no render library, so it runs in this jest setup):
- *  1. The component declares the discoverability copy + the CTA contract.
- *  2. home.tsx imports + renders <NoVenueDeckEntryCard> twice (desktop + mobile),
- *     gates it on the place-pipeline query having resolved to null (no venue),
- *     routes onPress to /venue/create, and never renders it INSIDE the
- *     ORCH-0974 mobile locked pane (the only pane with markers in this file).
- *
- * Fails-on-revert: reverting home.tsx removes the wiring/gate/route assertions
- * and the 2 render sites.
+ * ORCH-1038 replaced the standalone <NoVenueDeckEntryCard> (now deleted) with a
+ * row in the shared smart to-do toggle. The Sub-E CAPABILITY is preserved: a
+ * brand with no venue is still guided to /venue/create (resume-aware). This test
+ * locks that capability at its new home — buildBusinessTodos + the toggle that
+ * Home and Hub both render.
  */
 import { describe, expect, test } from "@jest/globals";
 import { readFileSync } from "fs";
 import { join } from "path";
 
-const CARD = join(__dirname, "..", "NoVenueDeckEntryCard.tsx");
+import {
+  buildBusinessTodos,
+  type BusinessTodoInput,
+} from "../../../utils/businessTodos";
+
 const HOME = join(__dirname, "../../../..", "app/(tabs)/home.tsx");
+const HUB = join(__dirname, "../../../..", "app/(tabs)/hub/_layout.tsx");
 
-describe("META-ORCH-1009 Sub-E Job A — no-venue deck entry", () => {
-  test("component declares the discoverability copy + resume-aware CTA contract", () => {
-    const src = readFileSync(CARD, "utf8");
-    expect(src).toContain("Get your venue into the deck");
-    expect(src).toContain("no-venue-deck-entry-cta");
-    expect(src).toContain("onPress={onPress}");
-    // META-ORCH-1009 Sub-E: the CTA is resume-aware — "Add your venue" when fresh,
-    // "Continue your venue" when a persisted draft is in progress.
-    expect(src).toContain('"Add your venue"');
-    expect(src).toContain('"Continue your venue"');
-    expect(src).toContain("resumable");
+const withBrand: BusinessTodoInput = {
+  hasNoBrands: false,
+  hasBrandsButNoSelection: false,
+  brandResolving: false,
+  hasBrand: true,
+  pipelineFetched: true,
+  pipelineStatus: null, // no venue yet
+  pipelineRoute:
+    "/venue/deck-readiness?brand_id=b1&focus=review&fix=review_pipeline",
+  venueDraftInProgress: false,
+  counts: { total: 1, live: 1, draft: 0 },
+  stripeActive: true,
+  hasDraftPaidOffering: false,
+  stripeRoute: "/brand/b1/payments",
+  draftRoute: null,
+};
+
+describe("META-ORCH-1009 Sub-E Job A — no-venue entry (ORCH-1038 to-do toggle)", () => {
+  test("no venue → add_venue row routes to /venue/create", () => {
+    const todo = buildBusinessTodos(withBrand).find((t) => t.id === "add_venue");
+    expect(todo).toBeDefined();
+    expect(todo?.action).toEqual({ kind: "route", route: "/venue/create" });
   });
 
-  test("home wires the entry, gates on no-venue pipeline state, routes to /venue/create", () => {
-    const src = readFileSync(HOME, "utf8");
-    expect(src).toContain("NoVenueDeckEntryCard");
-    expect(src).toContain("<NoVenueDeckEntryCard onPress={handleAddVenue}");
-    // Resume-awareness wired from the persisted venue draft.
-    expect(src).toContain("resumable={venueDraftInProgress}");
-    expect(src).toContain("const venueDraftInProgress");
-    expect(src).toContain('router.push("/venue/create" as never)');
-    expect(src).toContain("pipelineState.isFetched");
-    expect(src).toContain("pipelineState.data === null");
-    expect(src).toContain("const showNoVenueEntry");
+  test("in-progress venue draft → resume-aware finish_venue row (still /venue/create)", () => {
+    const todo = buildBusinessTodos({
+      ...withBrand,
+      venueDraftInProgress: true,
+    }).find((t) => t.id === "finish_venue");
+    expect(todo).toBeDefined();
+    expect(todo?.label).toBe("Finish adding your venue");
+    expect(todo?.action).toEqual({ kind: "route", route: "/venue/create" });
   });
 
-  test("entry renders twice and never inside the ORCH-0974 mobile locked pane", () => {
-    const src = readFileSync(HOME, "utf8");
-    const mBegin = src.indexOf("lock-pane:begin-mobile-populated");
-    const mEnd = src.indexOf("lock-pane:end-mobile-populated");
-    expect(mBegin).toBeGreaterThan(-1);
-    expect(mEnd).toBeGreaterThan(mBegin);
-
-    let idx = src.indexOf("<NoVenueDeckEntryCard");
-    let count = 0;
-    while (idx !== -1) {
-      count += 1;
-      // Must never sit inside the locked mobile pane.
-      expect(idx > mBegin && idx < mEnd).toBe(false);
-      idx = src.indexOf("<NoVenueDeckEntryCard", idx + 1);
-    }
-    // Rendered on both the desktop and mobile populated paths.
-    expect(count).toBe(2);
+  test("Home and Hub both surface the entry via the shared to-do toggle", () => {
+    const home = readFileSync(HOME, "utf8");
+    const hub = readFileSync(HUB, "utf8");
+    expect(home).toContain("<BusinessTodoToggle");
+    expect(hub).toContain("<BusinessTodoToggle");
+    // the deleted standalone card must not return
+    expect(home).not.toContain("NoVenueDeckEntryCard");
   });
 });
