@@ -33,6 +33,7 @@ import { geocodingService } from '../services/geocodingService'
 import { sendOtp, verifyOtp, OtpChannel } from '../services/otpService'
 import { logger } from '../utils/logger'
 import { saveOnboardingData, clearOnboardingData } from '../utils/onboardingPersistence'
+import { resolveOnboardingLocationOverride } from '../utils/onboardingLocationOverride'
 import { detectLocaleFromCoordinates, detectLocaleFromCountryName } from '../utils/localeDetection'
 
 // Legacy saved_people + audio services removed — pairing uses real behavior data.
@@ -1718,6 +1719,29 @@ const OnboardingFlow = ({
     setSavingPrefs(true)
     setPrefsSaveError(false)
     try {
+      // ORCH-1036 [gate-override clobber]: this final save must NOT null out the
+      // launch-city override the location step already wrote (I-1028-ONE-LOCATION-OWNER).
+      // The launch-city gate sets data.cityName + data.coordinates + useGpsLocation=false
+      // but NOT data.manualLocation; the legacy manual-location flow sets data.manualLocation.
+      // Sourcing custom_location from the always-null data.manualLocation clobbered the
+      // gate's custom_location to null while the coords survived (column-scoped upsert),
+      // leaving a deck-works-but-blank-city state. Derive the four location fields from
+      // the SAME onboarding state the location step populated, keyed off use_gps_location:
+      //  - GPS user  → custom_location/lat/lng = null (no stale override)
+      //  - non-GPS   → custom_location = data.cityName (gate) ?? data.manualLocation (legacy),
+      //                coords from data.coordinates
+      // This derives from existing state — it is NOT a third independent writer.
+      const {
+        custom_location: resolvedCustomLocation,
+        custom_lat: resolvedCustomLat,
+        custom_lng: resolvedCustomLng,
+      } = resolveOnboardingLocationOverride({
+        useGpsLocation: data.useGpsLocation,
+        cityName: data.cityName,
+        manualLocation: data.manualLocation,
+        coordinates: data.coordinates,
+      })
+
       await withTimeout(
         PreferencesService.updateUserPreferences(user.id, {
           intents: data.selectedIntents,
@@ -1729,10 +1753,12 @@ const OnboardingFlow = ({
           date_option: 'this_weekend',
           selected_dates: data.selectedDates?.length > 0 ? data.selectedDates : null,
           use_gps_location: data.useGpsLocation,
-          custom_location: data.manualLocation,
+          custom_location: resolvedCustomLocation,
+          custom_lat: resolvedCustomLat,
+          custom_lng: resolvedCustomLng,
           intent_toggle: true,
           category_toggle: true,
-        } as any),
+        }),
         8000,
         'saveOnboardingPreferences'
       )
@@ -1755,9 +1781,9 @@ const OnboardingFlow = ({
         datetime_pref: datetimePref,
         date_option: 'this_weekend',
         use_gps_location: data.useGpsLocation,
-        custom_location: data.manualLocation,
-        custom_lat: data.coordinates?.lat ?? null,
-        custom_lng: data.coordinates?.lng ?? null,
+        custom_location: resolvedCustomLocation,
+        custom_lat: resolvedCustomLat,
+        custom_lng: resolvedCustomLng,
         intent_toggle: true,
         category_toggle: true,
         selected_dates: data.selectedDates?.length > 0 ? data.selectedDates : null,
