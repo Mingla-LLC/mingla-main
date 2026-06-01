@@ -24,6 +24,16 @@ interface ScrollTargetOffset {
   height: number;
 }
 
+/**
+ * ORCH-1037 (SPEC §3.3): a per-scroll-step thunk that measures the actual row
+ * leaf node via measureInWindow and invokes the callback with the raw window
+ * rect (the context applies the ORCH-0688 Android Y-correction + the stable
+ * loop). ProfilePage registers one per scroll step; the context calls it AFTER
+ * the programmatic scroll settles, so the registered rect is a real post-scroll
+ * window measurement — NOT a `contentY − scrollY` reconstruction.
+ */
+type ScrollTargetMeasurer = (cb: (rect: { x: number; y: number; width: number; height: number } | null) => void) => void;
+
 interface CoachMarkContextType {
   currentStep: number;
   isCoachActive: boolean;
@@ -37,6 +47,10 @@ interface CoachMarkContextType {
   registerTarget: (stepId: number, rect: TargetRect) => void;
   registerScrollRef: (tabName: string, ref: React.RefObject<any>) => void;
   registerTargetScrollOffset: (stepId: number, contentX: number, contentY: number, width: number, height: number) => void;
+  /** ORCH-1037 (SPEC §3.3): register the post-scroll direct-measure thunk for a
+   *  scroll step's row node. The context calls it after the scroll settles and
+   *  feeds the result through the two-consecutive-match stable loop. */
+  registerTargetMeasurer: (stepId: number, measurer: ScrollTargetMeasurer) => void;
   overlayVisible: boolean;
   scrollLockActive: boolean;
   /** ORCH-1029 (F-1): bumps every time a target measurement registers. Consumers
@@ -58,18 +72,27 @@ const CoachMarkContext = createContext<CoachMarkContextType | undefined>(undefin
 
 const LOADING_SENTINEL = -2;
 const TOUR_NOT_STARTED = 0;
-// ORCH-1029: tour shrank from 9 to 7 steps (steps 4/5 deleted). TOUR_COMPLETED is
-// COACH_STEP_COUNT + 1 (now 8) and derives automatically — no edit needed here.
+// ORCH-1037/1035: tour is 11 steps. TOUR_COMPLETED is COACH_STEP_COUNT + 1 (now 12)
+// and derives automatically — no edit needed here when the count changes.
 const TOUR_COMPLETED = COACH_STEP_COUNT + 1;
 const TOUR_SKIPPED = -1;
 const START_DELAY_MS = 1500;
 const TAB_NAVIGATE_DELAY_MS = 400;
 const SCROLL_SETTLE_MS = 500;
 
-// ORCH-1029: scroll-offset steps on Profile — Account Settings row (6) + Beta Feedback (7).
-// Renumbered from [8,9] when steps 4/5 ("Better together"/"Back to solo") were deleted.
-// This is the ONE hard-coded step literal that does NOT self-adjust from COACH_STEP_COUNT.
-const SCROLL_STEPS = new Set([6, 7]);
+// ORCH-1037 stable-measure (SPEC §3.2/§3.3): the post-scroll measure of a Profile
+// row node is accepted only when two consecutive measureInWindow reads agree within
+// STABLE_EPSILON_PX — the SAME mechanism useCoachMark uses for non-scroll steps —
+// so a scroll step can never paint from a mid-scroll/stale rect.
+const STABLE_EPSILON_PX = 1;
+const STABLE_POLL_MS = 50;
+const STABLE_TIMEOUT_MS = 1200;
+
+// ORCH-1037/1035: scroll-offset steps on Profile — Interests (8) + Your Circle (9) +
+// Account Settings row (10) + Beta Feedback (11). Renumbered from [6,7] when the four
+// new steps were added. This is the ONE hard-coded step literal that does NOT
+// self-adjust from COACH_STEP_COUNT — keep it in lockstep with coachMarkSteps.ts.
+const SCROLL_STEPS = new Set([8, 9, 10, 11]);
 
 // ── Provider ────────────────────────────────────────────────────────────────
 
@@ -91,8 +114,12 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
   const [targetVersion, setTargetVersion] = useState(0);
   // Scroll refs per tab
   const scrollRefsRef = useRef<Map<string, React.RefObject<any>>>(new Map());
-  // Scroll target offsets — contentY within ScrollView, captured via onLayout
+  // Scroll target offsets — contentY within ScrollView, captured via onLayout.
+  // ORCH-1037: still used to compute HOW FAR to scroll; the registered cutout rect
+  // now comes from a post-scroll measureInWindow, not from this offset arithmetic.
   const scrollTargetOffsetsRef = useRef<Map<number, ScrollTargetOffset>>(new Map());
+  // ORCH-1037 (SPEC §3.3): per-scroll-step direct-measure thunks (row leaf node).
+  const scrollTargetMeasurersRef = useRef<Map<number, ScrollTargetMeasurer>>(new Map());
 
   const screenWidth = Dimensions.get('window').width;
   const screenHeight = Dimensions.get('window').height;
@@ -214,20 +241,41 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
   }, [targetMeasurements]);
 
   // ── Known-position scroll for profile steps ─────────────────────────────
-  // ORCH-1029 (F-3): the scroll + synthetic-measurement path is GATED on the scroll
-  // offset being registered, NOT on a fixed timer. Previously this read
-  // scrollTargetOffsetsRef.get(step) ONCE after TAB_NAVIGATE_DELAY_MS=400 and, on a
-  // miss (common on first Profile entry because ProfilePage registered the offset only
-  // ~800ms after mount), fell through to scrollToEnd() → no cutout + footer over-scroll.
-  // Now we poll the ref until the offset is present (it registers deterministically via
-  // ProfilePage's onLayout → measureLayout — see ProfilePage F-3), then scroll. The
+  // ORCH-1029 (F-3): the scroll path is GATED on the scroll offset being registered,
+  // NOT on a fixed timer. We poll until the offset is present (it registers
+  // deterministically via ProfilePage's onLayout → measureLayout), then scroll. The
   // scrollToEnd-to-footer fallback is removed: if the offset genuinely never registers
   // within the budget (true error, not a race), we leave the page at top with a centered
   // bubble — less wrong than dumping the user at the footer.
-  // Spec: SPEC_ORCH-1029_COACH_MARK_FIXES.md §3.F-3 (SC-3.1 / SC-3.2 / SC-3.5).
+  //
+  // ORCH-1037 (F / SPEC §3.3): the OFFSET is now used ONLY to compute HOW FAR to scroll.
+  // The registered cutout rect is no longer reconstructed as `contentY − scrollY` (that
+  // arithmetic was fragile — it depended on contentY being final, scrollY exact, and no
+  // conditional rows shifting; live, steps 6 & 7 registered the IDENTICAL contentY and the
+  // cutout landed one row low). Instead, after the scroll settles we perform a REAL
+  // measureInWindow of the actual row leaf node (via the per-step measurer thunk that
+  // ProfilePage registers) and feed it through the SAME two-consecutive-match stable loop
+  // useCoachMark uses for non-scroll steps. The ORCH-0688 Android window-frame Y-correction
+  // is applied to the measured window Y (mirrors useCoachMark.ts).
+  // Spec: SPEC_ORCH-1037-1035_…§3.3 ; SPEC_ORCH-1029_COACH_MARK_FIXES.md §3.F-3 (lineage).
   const OFFSET_POLL_INTERVAL_MS = 60;
   const OFFSET_POLL_MAX_ATTEMPTS = 25; // ~1.5s total budget; correctness comes from the
   // offset being present, not from the interval length.
+
+  // Two rects equal within STABLE_EPSILON_PX on every axis (ORCH-1037 §3.2/§3.3).
+  const rectsStableEqual = (
+    a: { x: number; y: number; width: number; height: number } | null,
+    b: { x: number; y: number; width: number; height: number } | null,
+  ): boolean => {
+    if (!a || !b) return false;
+    return (
+      Math.abs(a.x - b.x) <= STABLE_EPSILON_PX &&
+      Math.abs(a.y - b.y) <= STABLE_EPSILON_PX &&
+      Math.abs(a.width - b.width) <= STABLE_EPSILON_PX &&
+      Math.abs(a.height - b.height) <= STABLE_EPSILON_PX
+    );
+  };
+
   const scrollToKnownPosition = useCallback((step: number): void => {
     // Unlock scroll so programmatic scrollTo works (scrollEnabled must be true)
     setScrollLockActive(false);
@@ -235,55 +283,93 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
     const stepConfig = COACH_STEPS.find((s) => s.id === step);
     if (!stepConfig) return;
 
+    // ORCH-1037: register the post-scroll-measured row rect (with ORCH-0688 Android
+    // correction) and surface the overlay. Single writer for the scroll-step rect.
+    const commitMeasuredRect = (raw: { x: number; y: number; width: number; height: number }): void => {
+      // ORCH-0688 / ORCH-1029 (F-4): POSITIVE Android-only window-frame Y-correction
+      // sourced from the resolved safe-area top inset (NOT StatusBar.currentHeight —
+      // that double-counts under Android 15 edge-to-edge). iOS branch is the identity.
+      // Refs: https://developer.android.com/about/versions/15/behavior-changes-15#edge-to-edge
+      //       https://github.com/th3rdwave/react-native-safe-area-context#usesafeareainsets
+      const correctedY = Platform.OS === 'android' ? raw.y + insets.top : raw.y;
+      registerTarget(step, {
+        x: raw.x,
+        y: correctedY,
+        width: raw.width,
+        height: raw.height,
+        radius: 12,
+      });
+      setScrollLockActive(true);
+      setOverlayVisible(true);
+    };
+
+    // ORCH-1037: poll the row's measureInWindow until two consecutive reads agree
+    // within STABLE_EPSILON_PX (or best-effort on timeout). This runs the row node's
+    // real post-scroll window measurement through the stable loop — NOT arithmetic.
+    const measureRowUntilStable = (measurer: ScrollTargetMeasurer): void => {
+      const startedAt = Date.now();
+      let prevRect: { x: number; y: number; width: number; height: number } | null = null;
+      let lastNonZeroRect: { x: number; y: number; width: number; height: number } | null = null;
+
+      const tick = (): void => {
+        measurer((rect) => {
+          const elapsed = Date.now() - startedAt;
+          if (!rect || (rect.width === 0 && rect.height === 0)) {
+            if (elapsed < STABLE_TIMEOUT_MS) {
+              setTimeout(tick, STABLE_POLL_MS);
+            } else if (lastNonZeroRect) {
+              commitMeasuredRect(lastNonZeroRect);
+            } else {
+              // Never measurable — leave at top with a centered fallback.
+              setScrollLockActive(true);
+              setOverlayVisible(true);
+            }
+            return;
+          }
+          lastNonZeroRect = rect;
+          if (rectsStableEqual(prevRect, rect)) {
+            commitMeasuredRect(rect);
+            return;
+          }
+          prevRect = rect;
+          if (elapsed < STABLE_TIMEOUT_MS) {
+            setTimeout(tick, STABLE_POLL_MS);
+          } else {
+            commitMeasuredRect(rect);
+          }
+        });
+      };
+      tick();
+    };
+
     // The inner routine runs ONLY once a real offset exists.
     const performScrollAndMeasure = (
       scrollRef: React.RefObject<any>,
       offset: ScrollTargetOffset,
     ): void => {
-      // Place the target at 35% from the top of the screen
+      // Place the target at 35% from the top of the screen. The OFFSET is used ONLY
+      // here, to compute how far to scroll — never to reconstruct the cutout rect.
       const desiredScreenY = screenHeight * 0.35;
       const scrollY = Math.max(0, offset.contentY - desiredScreenY);
 
       scrollRef.current.scrollTo?.({ y: scrollY, animated: true });
 
-      // After scroll settles, register a SYNTHETIC measurement at the known position
+      // After the scroll settles, do a REAL post-scroll measureInWindow of the row
+      // leaf node (via the registered measurer) through the stable loop. Fall back to
+      // the offset-reconstruction ONLY if no measurer was registered for this step
+      // (keeps the overlay alive rather than hanging).
       setTimeout(() => {
-        // Profile page extends behind status bar — scroll content starts at y=0.
-        // exactScreenY = contentY - scrollY (no insets offset needed at THIS layer).
-        //
-        // ORCH-0688: Android Y-correction also applied here because the SVG mask in
-        // SpotlightOverlay paints in the application-window frame (which extends
-        // behind the status bar under edge-to-edge), while the synthetic exactScreenY
-        // is computed in the application-content frame. Without the correction, steps
-        // 6-7 (Profile Account Settings + Beta Feedback) would land ~24dp too high on
-        // Samsung One UI. Mirrors the parallel correction in useCoachMark.ts. iOS
-        // branch is a literal no-op (keyWindow + React root share one frame).
-        //
-        // ORCH-1029 (F-4): the correction SOURCE is now the resolved safe-area top
-        // inset (`insets.top` from useSafeAreaInsets), NOT raw StatusBar.currentHeight.
-        // Under Android 15 edge-to-edge (Expo SDK 54, edgeToEdgeEnabled:true),
-        // measureInWindow already returns Y close to the window frame, so adding the
-        // full StatusBar.currentHeight DOUBLE-COUNTS the inset → cutout ~14dp too high
-        // into the status bar. `insets.top` is the value WindowInsets actually applied:
-        // it's edge-to-edge-correct on Android 15 AND equals the status-bar height on
-        // legacy/pre-edge-to-edge Android, so the ORCH-0688 case stays corrected (no
-        // regression). Keep this a POSITIVE Android correction — do NOT remove it and
-        // do NOT revert to StatusBar.currentHeight.
-        // Refs: https://developer.android.com/about/versions/15/behavior-changes-15#edge-to-edge
-        //       https://github.com/th3rdwave/react-native-safe-area-context#usesafeareainsets
-        // Do NOT remove without re-reading SPEC_ORCH-0688_COACH_MARK_ANDROID_OFFSET.md.
+        const measurer = scrollTargetMeasurersRef.current.get(step);
+        if (measurer) {
+          measureRowUntilStable(measurer);
+          return;
+        }
+        // Legacy fallback (no measurer registered): reconstruct from the offset so the
+        // step still shows a cutout. Should not happen once ProfilePage registers all
+        // four scroll-step measurers; logged so a missing wiring is caught.
+        console.warn(`[CoachMark] no direct measurer for scroll step ${step}; using offset fallback`);
         const exactScreenY = offset.contentY - scrollY;
-        const correctedY = Platform.OS === 'android' ? exactScreenY + insets.top : exactScreenY;
-
-        registerTarget(step, {
-          x: offset.contentX,
-          y: correctedY,
-          width: offset.width,
-          height: offset.height,
-          radius: 12,
-        });
-        setScrollLockActive(true);
-        setOverlayVisible(true);
+        commitMeasuredRect({ x: offset.contentX, y: exactScreenY, width: offset.width, height: offset.height });
       }, SCROLL_SETTLE_MS);
     };
 
@@ -346,6 +432,11 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
   // ── Register scroll target offset (from onLayout in ProfilePage) ────────
   const registerTargetScrollOffset = useCallback((stepId: number, contentX: number, contentY: number, width: number, height: number): void => {
     scrollTargetOffsetsRef.current.set(stepId, { contentX, contentY, width, height });
+  }, []);
+
+  // ── ORCH-1037: register a scroll step's direct post-scroll measurer thunk ──
+  const registerTargetMeasurer = useCallback((stepId: number, measurer: ScrollTargetMeasurer): void => {
+    scrollTargetMeasurersRef.current.set(stepId, measurer);
   }, []);
 
   // ── Navigate and transition ─────────────────────────────────────────────
@@ -459,6 +550,7 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
     registerTarget,
     registerScrollRef,
     registerTargetScrollOffset,
+    registerTargetMeasurer,
     overlayVisible,
     scrollLockActive,
     targetVersion,
@@ -475,6 +567,7 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
     registerTarget,
     registerScrollRef,
     registerTargetScrollOffset,
+    registerTargetMeasurer,
     overlayVisible,
     scrollLockActive,
     targetVersion,

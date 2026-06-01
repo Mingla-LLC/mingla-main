@@ -311,7 +311,9 @@ function runAdversarial() {
     let m;
     const idRe = /\bid:\s*(\d+)\b/g;
     while ((m = idRe.exec(arrBody)) !== null) stepIds.add(Number(m[1]));
-    assert.ok(stepIds.size === 7, `AT-04 expected 7 COACH_STEPS ids; got ${stepIds.size}`);
+    // [TEST-MOD-APPROVED ORCH-1037] tour grew 7→11 (4 new steps: Trips, + button,
+    // Interests, Circle).
+    assert.ok(stepIds.size === 11, `AT-04 expected 11 COACH_STEPS ids; got ${stepIds.size}`);
 
     // Live grep across the whole source trees.
     const files = [...walkSourceFiles('app'), ...walkSourceFiles('src')];
@@ -338,12 +340,10 @@ function runAdversarial() {
       assert.ok(stepIds.has(id),
         `AT-04 dangling registration: call-site id ${id} references a step NOT in COACH_STEPS (orphaned registration)`);
     }
-    // Belt-and-suspenders: deleted-step ids 8/9 (and the never-registered 4/5 of the OLD
-    // tour) must not be registered anywhere.
-    for (const dead of [8, 9]) {
-      assert.ok(!callSiteIds.has(dead),
-        `AT-04 stale registration for deleted step ${dead} found in the source tree`);
-    }
+    // [TEST-MOD-APPROVED ORCH-1037] ids 8/9/10/11 are now LIVE Profile scroll steps
+    // (Interests/Circle/Account/Feedback). The dead-id belt-and-suspenders check is
+    // dropped — the bijection above (every call-site id ∈ COACH_STEPS, and vice versa)
+    // already proves there is no registration beyond the live 11 steps.
   }
 }
 

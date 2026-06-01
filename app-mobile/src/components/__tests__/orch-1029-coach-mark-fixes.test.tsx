@@ -128,12 +128,15 @@ function runOrch1029CoachMarkFixesTest() {
   const homeSrc = readSource('src/components/HomePage.tsx');
   const indexSrc = readSource('app/index.tsx');
 
-  // ── T-01 [FAILS-ON-REVERT]: 7 steps, ids [1..7], deleted-step titles gone ──
+  // ── T-01 [FAILS-ON-REVERT]: 11 steps (ORCH-1037/1035 expansion), ids [1..11],
+  //    deleted ORCH-1029 step titles still gone ──
+  // [TEST-MOD-APPROVED ORCH-1037] the tour grew 7→11 (4 new steps added). The deleted-
+  // title and contiguity invariants are retained against the new count.
   const ids = parseCoachStepIds(stepsSrc);
   assert.deepEqual(
     ids,
-    [1, 2, 3, 4, 5, 6, 7],
-    `T-01 COACH_STEPS must be exactly 7 steps with ids [1..7]; got [${ids.join(',')}]`
+    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+    `T-01 COACH_STEPS must be exactly 11 steps with ids [1..11]; got [${ids.join(',')}]`
   );
   // Scope the deleted-title check to the COACH_STEPS array body, not the header comment
   // (the header documents the deletion and legitimately names the old titles).
@@ -156,49 +159,51 @@ function runOrch1029CoachMarkFixesTest() {
     );
   });
 
-  // ── T-03 [FAILS-ON-REVERT]: each call site repointed ──
+  // ── T-03 [FAILS-ON-REVERT]: each call site repointed (ORCH-1037/1035 11-step) ──
+  // [TEST-MOD-APPROVED ORCH-1037] DiscoverScreen now has steps 4 (Events) + 5 (Trips);
+  // ConnectionsPage steps 6 (people) + 7 (+ button); ProfilePage scroll steps 8/9/10/11.
   assert.ok(
     /useCoachMark\(4\b/.test(discoverSrc),
-    'T-03 DiscoverScreen must use useCoachMark(4 (renumbered from 6)'
+    'T-03 DiscoverScreen must use useCoachMark(4 (Events tab)'
   );
   assert.ok(
-    !/useCoachMark\(6\b/.test(discoverSrc),
-    'T-03 DiscoverScreen must NOT still use useCoachMark(6'
+    /useCoachMark\(5\b/.test(discoverSrc),
+    'T-03 DiscoverScreen must use useCoachMark(5 (Trips tab)'
   );
   assert.ok(
-    /useCoachMark\(5\b/.test(connectionsSrc),
-    'T-03 ConnectionsPage must use useCoachMark(5 (renumbered from 7)'
+    /useCoachMark\(6\b/.test(connectionsSrc),
+    'T-03 ConnectionsPage must use useCoachMark(6 (people icon)'
   );
   assert.ok(
-    !/useCoachMark\(7\b/.test(connectionsSrc),
-    'T-03 ConnectionsPage must NOT still use useCoachMark(7'
+    /useCoachMark\(7\b/.test(connectionsSrc),
+    'T-03 ConnectionsPage must use useCoachMark(7 (+ button)'
   );
   assert.ok(
-    /registerTargetScrollOffset\(6\b/.test(profileSrc),
-    'T-03 ProfilePage must register step 6 offset (renumbered from 8)'
+    /registerTargetScrollOffset\(8\b/.test(profileSrc) &&
+      /registerTargetScrollOffset\(9\b/.test(profileSrc) &&
+      /registerTargetScrollOffset\(10\b/.test(profileSrc) &&
+      /registerTargetScrollOffset\(11\b/.test(profileSrc),
+    'T-03 ProfilePage must register step 8/9/10/11 offsets'
   );
   assert.ok(
-    /registerTargetScrollOffset\(7\b/.test(profileSrc),
-    'T-03 ProfilePage must register step 7 offset (renumbered from 9)'
-  );
-  assert.ok(
-    !/registerTargetScrollOffset\(8\b/.test(profileSrc) &&
-      !/registerTargetScrollOffset\(9\b/.test(profileSrc),
-    'T-03 ProfilePage must NOT still register step 8/9 offsets'
+    !/registerTargetScrollOffset\(6\b/.test(profileSrc) &&
+      !/registerTargetScrollOffset\(7\b/.test(profileSrc),
+    'T-03 ProfilePage must NOT still register the stale step 6/7 offsets'
   );
   // ids 1,2,3 unchanged at their call sites
   assert.ok(/useCoachMark\(1\b/.test(homeSrc), 'T-03 HomePage step 1 unchanged');
   assert.ok(/useCoachMark\(2\b/.test(homeSrc), 'T-03 HomePage step 2 unchanged');
   assert.ok(/useCoachMark\(3\b/.test(indexSrc), 'T-03 app/index step 3 unchanged');
 
-  // ── T-04 [FAILS-ON-REVERT]: SCROLL_STEPS literal is new Set([6, 7]) ──
+  // ── T-04 [FAILS-ON-REVERT]: SCROLL_STEPS literal is new Set([8, 9, 10, 11]) ──
+  // [TEST-MOD-APPROVED ORCH-1037] renumbered from [6, 7] when the 4 new steps were added.
   assert.ok(
-    /SCROLL_STEPS\s*=\s*new Set\(\[\s*6\s*,\s*7\s*\]\)/.test(contextSrc),
-    'T-04 SCROLL_STEPS must be new Set([6, 7]) (renumbered from [8, 9])'
+    /SCROLL_STEPS\s*=\s*new Set\(\[\s*8\s*,\s*9\s*,\s*10\s*,\s*11\s*\]\)/.test(contextSrc),
+    'T-04 SCROLL_STEPS must be new Set([8, 9, 10, 11]) (renumbered from [6, 7])'
   );
   assert.ok(
-    !/SCROLL_STEPS\s*=\s*new Set\(\[\s*8\s*,\s*9\s*\]\)/.test(contextSrc),
-    'T-04 SCROLL_STEPS must NOT be the stale new Set([8, 9])'
+    !/SCROLL_STEPS\s*=\s*new Set\(\[\s*6\s*,\s*7\s*\]\)/.test(contextSrc),
+    'T-04 SCROLL_STEPS must NOT be the stale new Set([6, 7])'
   );
 
   // ── T-09 [FAILS-ON-REVERT, BEHAVIORAL]: predicate accepts deck rect, rejects fullscreen ──
@@ -304,7 +309,7 @@ if (require.main === module) {
   try {
     runOrch1029CoachMarkFixesTest();
     console.log(
-      'PASS T-01..T-08 ORCH-1029 coach-mark fixes: 7 contiguous steps, four call sites repointed, SCROLL_STEPS=[6,7], F-1 plausibility clamp, F-4 insets.top correction, F-3 onLayout offset registration, no orphan steps'
+      'PASS T-01..T-08 ORCH-1029 coach-mark fixes (ORCH-1037/1035 11-step update): 11 contiguous steps, call sites repointed, SCROLL_STEPS=[8,9,10,11], F-1 plausibility clamp, F-4 insets.top correction, F-3 onLayout offset registration, no orphan steps'
     );
   } catch (error) {
     console.error(error);
