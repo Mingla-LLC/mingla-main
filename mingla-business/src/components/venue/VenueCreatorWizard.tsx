@@ -4,6 +4,8 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import {
+  ActivityIndicator,
+  Image,
   Pressable,
   StyleSheet,
   Text,
@@ -403,6 +405,19 @@ const RECOMMEND_STAGES: readonly string[] = [
   "Almost there…",
 ];
 
+// Sub-F: keyless on-demand website screenshot (no npm dep, no API key). Shown in
+// the loader so the operator sees their site actually being captured. Falls back
+// to a placeholder if the screenshot service is slow/unavailable.
+function websiteScreenshotUrl(website: string): string | null {
+  const w = website.trim();
+  if (w.length === 0) return null;
+  const full = /^https?:\/\//i.test(w) ? w : `https://${w}`;
+  return `https://image.thum.io/get/width/800/${full}`;
+}
+function websiteHost(website: string): string {
+  return website.trim().replace(/^https?:\/\//i, "").replace(/\/.*$/, "");
+}
+
 // WS5: price tiers mirror the consumer deck taxonomy (app-mobile priceTiers.ts).
 // Multi-select; persisted to place_pool.price_tiers + derived price_level (engine).
 const PRICE_TIERS_BIZ: ReadonlyArray<{ id: string; label: string; range: string }> = [
@@ -526,12 +541,15 @@ export function VenueDeckReadinessSetup({
   const [coaching, setCoaching] = useState<PipelineCoachingCard[]>(initialCoaching);
   const [busy, setBusy] = useState<"ai" | "confirm" | "refresh" | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  // WS8: rotating loader copy while "Recommend me" runs.
+  // WS8 + Sub-F: rotating loader copy + a live website screenshot while "Recommend
+  // me" runs (spinner over the screenshot, messages beneath).
   const [recommendStage, setRecommendStage] = useState(0);
+  const [shotFailed, setShotFailed] = useState(false);
 
   useEffect(() => {
     if (busy !== "ai") {
       setRecommendStage(0);
+      setShotFailed(false);
       return undefined;
     }
     const id = setInterval(() => {
@@ -979,11 +997,27 @@ export function VenueDeckReadinessSetup({
             onPress={() => void handleRunAi()}
           />
           {busy === "ai" ? (
-            <Text style={styles.recommendStage}>
-              {recommendStage === 0 && website.trim().length > 0
-                ? `Reading ${website.trim().replace(/^https?:\/\//i, "").replace(/\/.*$/, "")}…`
-                : RECOMMEND_STAGES[recommendStage]}
-            </Text>
+            <View style={styles.loaderCard}>
+              {/* Live website screenshot with the spinner over it. */}
+              {websiteScreenshotUrl(website) !== null && !shotFailed ? (
+                <Image
+                  source={{ uri: websiteScreenshotUrl(website) as string }}
+                  style={styles.loaderShot}
+                  resizeMode="cover"
+                  onError={() => setShotFailed(true)}
+                />
+              ) : (
+                <View style={[styles.loaderShot, styles.loaderShotPlaceholder]} />
+              )}
+              <View style={styles.loaderOverlay}>
+                <ActivityIndicator size="large" color="#fff" />
+              </View>
+              <Text style={styles.recommendStage}>
+                {recommendStage === 0 && website.trim().length > 0
+                  ? `Reading ${websiteHost(website)}…`
+                  : RECOMMEND_STAGES[recommendStage]}
+              </Text>
+            </View>
           ) : null}
           {busy !== "ai" && !recommendReady ? (
             <Text style={styles.fieldHint}>
@@ -1185,7 +1219,32 @@ const styles = StyleSheet.create({
     color: "#FF8A4C",
     fontWeight: "600",
     textAlign: "center",
-    marginTop: spacing.xs,
+    marginTop: spacing.sm,
+  },
+  loaderCard: {
+    marginTop: spacing.sm,
+    alignItems: "center",
+  },
+  loaderShot: {
+    width: "100%",
+    height: 180,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.06)",
+  },
+  loaderShotPlaceholder: {
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+  },
+  loaderOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 180,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.35)",
+    borderRadius: 12,
   },
   facetRow: {
     flexDirection: "row",
