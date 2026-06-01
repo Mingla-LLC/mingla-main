@@ -536,7 +536,7 @@ export function VenueDeckReadinessSetup({
     }
     const id = setInterval(() => {
       setRecommendStage((i) => Math.min(i + 1, RECOMMEND_STAGES.length - 1));
-    }, 2600);
+    }, 2000);
     return () => clearInterval(id);
   }, [busy]);
 
@@ -979,7 +979,11 @@ export function VenueDeckReadinessSetup({
             onPress={() => void handleRunAi()}
           />
           {busy === "ai" ? (
-            <Text style={styles.recommendStage}>{RECOMMEND_STAGES[recommendStage]}</Text>
+            <Text style={styles.recommendStage}>
+              {recommendStage === 0 && website.trim().length > 0
+                ? `Reading ${website.trim().replace(/^https?:\/\//i, "").replace(/\/.*$/, "")}…`
+                : RECOMMEND_STAGES[recommendStage]}
+            </Text>
           ) : null}
           {busy !== "ai" && !recommendReady ? (
             <Text style={styles.fieldHint}>

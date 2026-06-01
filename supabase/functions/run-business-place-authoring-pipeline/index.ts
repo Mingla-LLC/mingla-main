@@ -667,9 +667,11 @@ async function loadSignals(client: SupabaseClient): Promise<SignalRow[]> {
 // only fetch http(s) URLs of an image content-type. If NO usable image bytes can
 // be fetched, photo_analysis is returned EMPTY (-> persisted NULL by the caller)
 // — never fabricated from metadata (Constitution rule 9, no-fabricated-data).
-// WS6: the gallery is 5–20 photos; cap the vision set at 12 to bound tokens/cost
-// while still giving Gemini a strong multi-image read.
-const MAX_VISION_IMAGES = 12;
+// WS6/Sub-F: cap the vision set so the edge function stays within its memory/CPU
+// budget. Downloading + base64-encoding many multi-MB photos in one invocation is
+// what triggered the "not enough compute resources" (546) crash. 4 images is a
+// strong multi-image read while keeping peak memory small.
+const MAX_VISION_IMAGES = 4;
 const SUPPORTED_IMAGE_MIME = new Set([
   "image/png",
   "image/jpeg",
@@ -703,7 +705,7 @@ async function fetchImageParts(
         continue;
       }
       const buf = new Uint8Array(await res.arrayBuffer());
-      if (buf.length === 0 || buf.length > 7_000_000) continue; // skip empty / >7MB
+      if (buf.length === 0 || buf.length > 3_000_000) continue; // skip empty / >3MB (bound peak memory)
       parts.push({ inline_data: { mime_type: mime, data: bytesToBase64(buf) } });
     } catch (_err) {
       // Network/decoding failure on one image must not fabricate analysis;
@@ -721,9 +723,10 @@ async function fetchImageParts(
 // (no dependency). Hard caps on pages, bytes, total text, and wall-clock so a
 // slow/hostile site can't hang the function.
 const WEBSITE_LINK_HINTS = /about|menu|story|visit|contact|food|drink|experience|gallery|our-|whats-on|what-s-on/i;
-const WEBSITE_MAX_PAGES = 5;
-const WEBSITE_MAX_TOTAL_CHARS = 12_000;
-const WEBSITE_PER_FETCH_TIMEOUT_MS = 6_000;
+// Sub-F: keep the function within edge compute — 3 pages, 8k chars, 5s/page.
+const WEBSITE_MAX_PAGES = 3;
+const WEBSITE_MAX_TOTAL_CHARS = 8_000;
+const WEBSITE_PER_FETCH_TIMEOUT_MS = 5_000;
 
 function stripHtmlToText(html: string): string {
   return html

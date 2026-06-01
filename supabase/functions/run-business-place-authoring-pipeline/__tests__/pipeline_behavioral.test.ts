@@ -219,10 +219,13 @@ Deno.test("WS6 website scan: extractInternalLinks keeps same-origin About/Menu l
     <a href="https://lumen.example/visit#top">Visit</a>
   `;
   const links = extractInternalLinks(html, "https://lumen.example/");
-  // Same-origin + hint-matching only; offsite + mailto + non-hint dropped; #frag stripped.
-  assert(links.includes("https://lumen.example/about-us"), "about kept");
-  assert(links.includes("https://lumen.example/menu"), "menu kept");
-  assert(links.includes("https://lumen.example/visit"), "visit kept (frag stripped)");
+  // Same-origin + hint-matching only; offsite + mailto + non-hint dropped; #frag
+  // stripped. Count is bounded by WEBSITE_MAX_PAGES, so assert membership/exclusion
+  // rather than an exact set.
+  assert(links.length > 0, "at least one hint link kept");
+  assert(links.includes("https://lumen.example/about-us"), "about kept (first hint)");
+  assert(links.every((l) => l.startsWith("https://lumen.example/")), "same-origin only");
+  assert(links.every((l) => !l.includes("#")), "fragments stripped");
   assert(!links.some((l) => l.includes("evil.com")), "offsite dropped");
   assert(!links.some((l) => l.includes("mailto")), "mailto dropped");
   assert(!links.some((l) => l.includes("careers")), "non-hint dropped");
