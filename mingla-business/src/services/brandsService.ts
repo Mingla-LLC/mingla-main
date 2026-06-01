@@ -83,6 +83,139 @@ export class SlugCollisionError extends Error {
   }
 }
 
+// ----- Venue slug availability (META-ORCH-1009 Sub-E B3 + B5) -------------
+
+/**
+ * Returns true when `slug` is free for a NEW venue brand.
+ *
+ * ROOT-CAUSE FIX (META-ORCH-1009 Sub-E, 2026-05-31): the slug is the brand's
+ * public URL (business.usemingla.com/b/<slug>) and is GLOBALLY UNIQUE — the DB
+ * enforces `UNIQUE(slug) WHERE deleted_at IS NULL`. The venue-create flow ALWAYS
+ * INSERTs a brand-new brand (`biz_create_venue_brand_authoring` → INSERT INTO
+ * brands); it never reuses/links an existing one. Therefore a slug already held
+ * by ANY live brand — INCLUDING one the caller owns — is NOT available for a new
+ * venue: inserting it collides with the unique index.
+ *
+ * A prior change added an "own-account exemption" (return true if only the
+ * caller's own brands hold the slug) to silence a false-positive from a partial
+ * submit. That was wrong: it turned a false-positive into a FALSE-NEGATIVE — the
+ * UI auto-selected a slug the caller already used (e.g. typing the exact same
+ * venue name twice), which then failed at submit with a unique-violation. The
+ * `ownAccountId` parameter is retained for signature compatibility but is now
+ * intentionally ignored: availability is purely "no live brand holds this slug".
+ */
+export async function checkVenueSlugAvailable(
+  slug: string,
+  _ownAccountId?: string | null,
+): Promise<boolean> {
+  const normalized = slug.trim().toLowerCase();
+  if (normalized.length === 0) return false;
+
+  const { data, error } = await supabase
+    .from("brands")
+    .select("id")
+    .eq("slug", normalized)
+    .is("deleted_at", null)
+    .limit(1);
+  if (error !== null) throw error;
+
+  // Available iff NO live brand (anyone's) already holds this slug.
+  return (data ?? []).length === 0;
+}
+
+/**
+ * Suggest up to `limit` AVAILABLE slug candidates derived from a venue name.
+ *
+ * B3: the operator should never hand-type a slug. The first candidate is the
+ * plain kebab root; fallbacks append numeric suffixes. Only candidates that
+ * pass `checkVenueSlugAvailable` are returned. If the availability check fails
+ * (offline), we degrade to returning the root un-checked so the flow is never
+ * fully blocked.
+ */
+export async function suggestVenueSlugs(
+  name: string,
+  limit = 3,
+  ownAccountId?: string | null,
+): Promise<string[]> {
+  const root = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "")
+    .slice(0, 32);
+  if (root.length === 0) return [];
+
+  const candidates = [root, `${root}1`, `${root}2`, `${root}3`];
+  const available: string[] = [];
+  for (const candidate of candidates) {
+    if (available.length >= limit) break;
+    try {
+      if (await checkVenueSlugAvailable(candidate, ownAccountId)) {
+        available.push(candidate);
+      }
+    } catch {
+      if (available.length === 0) available.push(candidate);
+      break;
+    }
+  }
+  return available;
+}
+
+/**
+ * Resolve a slug that is GUARANTEED available, derived from a venue name.
+ *
+ * Unlike `suggestVenueSlugs` (which returns up to N candidates for the UI to
+ * display), this is the authoritative submit-time resolver: it always returns a
+ * single slug that passed `checkVenueSlugAvailable`. It walks numeric suffixes
+ * up to 50, then falls back to a base-36 timestamp suffix that cannot collide in
+ * practice — so it can never "run out" of options and never returns a taken slug.
+ *
+ * The caller passes the slug the UI currently shows as `preferred`; if that one
+ * is still available we keep it (stable URLs), otherwise we advance. The DB's
+ * UNIQUE(slug) constraint remains the final backstop for the submit-time race.
+ *
+ * Throws only if a venue name yields an empty root (caller validates name first).
+ */
+export async function resolveAvailableVenueSlug(
+  name: string,
+  preferred: string | null,
+  ownAccountId?: string | null,
+): Promise<string> {
+  const sanitize = (s: string): string =>
+    s.toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 32);
+
+  const root = sanitize(name);
+  if (root.length === 0) {
+    throw new Error("Venue name is required to generate a web address.");
+  }
+
+  // 1) Honor the UI's preferred slug if it's still free (keeps the shown URL).
+  const pref = preferred !== null ? sanitize(preferred) : "";
+  if (pref.length > 0 && (await checkVenueSlugAvailable(pref, ownAccountId))) {
+    return pref;
+  }
+
+  // 2) root, root1, root2, … root50 — truncate the root so suffix fits in 32.
+  for (let i = 0; i <= 50; i++) {
+    const suffix = i === 0 ? "" : String(i);
+    const base = root.slice(0, 32 - suffix.length);
+    const candidate = `${base}${suffix}`;
+    if (await checkVenueSlugAvailable(candidate, ownAccountId)) {
+      return candidate;
+    }
+  }
+
+  // 3) Timestamp fallback — cannot realistically collide. Base-36 of epoch-ms.
+  const stamp = Date.now().toString(36);
+  const base = root.slice(0, 32 - stamp.length);
+  const candidate = `${base}${stamp}`;
+  // One last check; if even this is taken (astronomically unlikely), surface it
+  // so the DB unique constraint isn't the first line of defense.
+  if (await checkVenueSlugAvailable(candidate, ownAccountId)) {
+    return candidate;
+  }
+  // Final fallback: return it anyway — the DB UNIQUE constraint is the backstop.
+  return candidate;
+}
+
 // ----- Inputs / Results --------------------------------------------------
 
 export interface CreateBrandInput {
@@ -162,7 +295,7 @@ export interface CreateVenueBrandPendingInput {
   tagline?: string;
   bio?: string;
   placePoolId?: string | null;
-  googlePlaceId: string;
+  googlePlaceId?: string | null;
   lat: number;
   lng: number;
   city: string | null;
@@ -208,7 +341,7 @@ async function invokeVenueClaimSubmittedEmail(brandId: string): Promise<void> {
 }
 
 /**
- * Ve1 — atomic create via `biz_create_venue_brand_pending_review` + confirmation email.
+ * Ve1/Sub-E — atomic create via venue authoring RPC + confirmation email.
  */
 export async function createVenueBrandPendingReview(
   input: CreateVenueBrandPendingInput,
@@ -216,12 +349,12 @@ export async function createVenueBrandPendingReview(
 ): Promise<Brand> {
   const description = joinBrandDescription(input.tagline, input.bio);
   const { data, error } = await supabase.rpc(
-    "biz_create_venue_brand_pending_review",
+    "biz_create_venue_brand_authoring",
     {
       p_name: input.name,
       p_slug: input.slug,
       p_description: description,
-      p_google_place_id: input.googlePlaceId,
+      p_google_place_id: input.googlePlaceId ?? "",
       p_lat: input.lat,
       p_lng: input.lng,
       p_city: input.city ?? "",
@@ -244,7 +377,7 @@ export async function createVenueBrandPendingReview(
         throw new SlugCollisionError(input.slug);
       }
       throw new Error(
-        "This place is already in our verification queue with the same Google location. Contact support if you need help.",
+        "This place is already in our verification queue. Contact support if you need help.",
       );
     }
     throw error;

@@ -17,9 +17,15 @@ import { GlassChrome } from "../ui/GlassChrome";
 
 export interface ExperienceConfirmationCardProps {
   args: Record<string, unknown>;
+  expiresAt?: string;
   isExecuting: boolean;
   onAccept: (editedArgs?: Record<string, unknown>) => void;
   onReject: () => void;
+  // META-ORCH-1009 Sub-E (C2): invoked when Sarah taps Regenerate on an expired
+  // proposal so the Hub routes to the re-snap (parse-*) upload flow. When
+  // provided, an expired card shows a Regenerate CTA instead of a disabled
+  // Accept button (which would 410 server-side pre-Sub-E).
+  onRegenerate?: () => void;
 }
 
 function formatCapacity(args: Record<string, unknown>): string | null {
@@ -54,9 +60,11 @@ function formatPriceRange(args: Record<string, unknown>): string | null {
 
 export const ExperienceConfirmationCard: React.FC<ExperienceConfirmationCardProps> = ({
   args,
+  expiresAt,
   isExecuting,
   onAccept,
   onReject,
+  onRegenerate,
 }) => {
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(String(args.title ?? ""));
@@ -80,6 +88,8 @@ export const ExperienceConfirmationCard: React.FC<ExperienceConfirmationCardProp
     title: title.trim(),
     narrative: narrative.trim(),
   });
+  const expired =
+    typeof expiresAt === "string" && Date.parse(expiresAt) <= Date.now();
 
   return (
     <GlassChrome
@@ -125,35 +135,67 @@ export const ExperienceConfirmationCard: React.FC<ExperienceConfirmationCardProp
         {intentTags.length > 0 && (
           <Text style={styles.tags}>{intentTags.join(" · ")}</Text>
         )}
-        <View style={styles.actions}>
-          <Pressable
-            onPress={onReject}
-            disabled={isExecuting}
-            style={({ pressed }) => [styles.btn, styles.rejectBtn, pressed && styles.pressed]}
-            accessibilityRole="button"
-            accessibilityLabel="Reject experience"
-          >
-            <Text style={styles.rejectText}>Reject</Text>
-          </Pressable>
-          <Pressable
-            onPress={() => setEditing((e) => !e)}
-            disabled={isExecuting}
-            style={({ pressed }) => [styles.btn, styles.editBtn, pressed && styles.pressed]}
-            accessibilityRole="button"
-            accessibilityLabel={editing ? "Done editing" : "Edit experience"}
-          >
-            <Text style={styles.editText}>{editing ? "Done" : "Edit"}</Text>
-          </Pressable>
-          <Pressable
-            onPress={() => onAccept(editing ? buildEditedArgs() : undefined)}
-            disabled={isExecuting}
-            style={({ pressed }) => [styles.btn, styles.acceptBtn, pressed && styles.pressed]}
-            accessibilityRole="button"
-            accessibilityLabel="Accept experience"
-          >
-            <Text style={styles.acceptText}>{isExecuting ? "Saving…" : "Accept"}</Text>
-          </Pressable>
-        </View>
+        {expired ? (
+          <Text style={styles.expired}>
+            This suggestion expired. Re-snap your menu or photos to generate a fresh one.
+          </Text>
+        ) : null}
+        {/* META-ORCH-1009 Sub-E (C2 / SPEC §11.4): expired proposals show a
+            Regenerate CTA instead of a dead Accept button that 410s. */}
+        {expired && onRegenerate ? (
+          <View style={styles.actions}>
+            <Pressable
+              onPress={onReject}
+              disabled={isExecuting}
+              style={({ pressed }) => [styles.btn, styles.rejectBtn, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel="Dismiss expired suggestion"
+            >
+              <Text style={styles.rejectText}>Dismiss</Text>
+            </Pressable>
+            <Pressable
+              onPress={onRegenerate}
+              disabled={isExecuting}
+              style={({ pressed }) => [styles.btn, styles.regenBtn, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel="Regenerate suggestion"
+            >
+              <Text style={styles.acceptText}>{isExecuting ? "Refreshing…" : "Regenerate"}</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <View style={styles.actions}>
+            <Pressable
+              onPress={onReject}
+              disabled={isExecuting}
+              style={({ pressed }) => [styles.btn, styles.rejectBtn, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel="Reject experience"
+            >
+              <Text style={styles.rejectText}>Reject</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setEditing((e) => !e)}
+              disabled={isExecuting}
+              style={({ pressed }) => [styles.btn, styles.editBtn, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel={editing ? "Done editing" : "Edit experience"}
+            >
+              <Text style={styles.editText}>{editing ? "Done" : "Edit"}</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => onAccept(editing ? buildEditedArgs() : undefined)}
+              disabled={isExecuting || expired}
+              style={({ pressed }) => [styles.btn, styles.acceptBtn, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel={expired ? "Experience suggestion expired" : "Accept experience"}
+            >
+              <Text style={styles.acceptText}>
+                {expired ? "Expired" : isExecuting ? "Saving…" : "Accept"}
+              </Text>
+            </Pressable>
+          </View>
+        )}
       </View>
     </GlassChrome>
   );
@@ -207,6 +249,11 @@ const styles = StyleSheet.create({
     fontSize: typography.caption.fontSize,
     color: textTokens.tertiary,
   },
+  expired: {
+    marginTop: spacing.sm,
+    fontSize: typography.caption.fontSize,
+    color: "#B45309",
+  },
   actions: {
     marginTop: spacing.md,
     flexDirection: "row",
@@ -231,6 +278,11 @@ const styles = StyleSheet.create({
   acceptBtn: {
     flex: 1.4,
     backgroundColor: accent.warm,
+  },
+  // META-ORCH-1009 Sub-E (C2): regenerate CTA for expired proposals.
+  regenBtn: {
+    flex: 1.4,
+    backgroundColor: "#B45309",
   },
   rejectText: { color: textTokens.secondary, fontWeight: "500" },
   editText: { color: textTokens.primary, fontWeight: "500" },

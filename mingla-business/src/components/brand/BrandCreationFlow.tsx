@@ -40,6 +40,11 @@ import {
   type OfferingKind,
 } from "./OfferingChooser";
 import { CoverPickerSheet } from "../ui/CoverPickerSheet";
+// META-ORCH-1009 Sub-F (WS1+WS2): validated address autocomplete + cover preview.
+import { AddressAutocompleteInput } from "../event/AddressAutocompleteInput";
+import { parseGooglePlaceResult } from "../../utils/parseGooglePlaceResult";
+import type { PlaceDetails } from "../../services/googlePlacesService";
+import { EventCoverMedia } from "../ui/EventCoverMedia";
 
 export interface BrandCreationFlowProps {
   onComplete: (newBrandId: string) => void;
@@ -151,8 +156,21 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
   const [name, setName] = useState("");
   const [bio, setBio] = useState("");
   const [address, setAddress] = useState("");
+  // META-ORCH-1009 Sub-F WS1: validated-address metadata. Only set when the user
+  // PICKS an autocomplete result; cleared on free-text typing so Continue stays
+  // gated until a real, geocoded address is chosen (Skip handles no-address brands).
+  const [addrMeta, setAddrMeta] = useState<{
+    lat: number | null;
+    lng: number | null;
+    city: string | null;
+    countryCode: string | null;
+    googlePlaceId: string | null;
+  }>({ lat: null, lng: null, city: null, countryCode: null, googlePlaceId: null });
   const [toast, setToast] = useState<string | null>(null);
   const [coverPickerVisible, setCoverPickerVisible] = useState(false);
+
+  const addressValidated =
+    address.trim().length > 0 && addrMeta.lat !== null && addrMeta.lng !== null;
 
   const accountId = user?.id ?? null;
   const trimmedName = name.trim();
@@ -205,12 +223,25 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
   ]);
 
   const persistAddress = useCallback(
-    async (nextAddress: string | null): Promise<void> => {
+    async (
+      nextAddress: string | null,
+      geo: typeof addrMeta,
+    ): Promise<void> => {
       if (brand === null || accountId === null) return;
+      // WS1: only attach the validated geo when a real address was picked
+      // (Continue is gated on that). Skip leaves the brand's geo untouched.
+      const patch: Partial<Brand> = { address: nextAddress };
+      if (nextAddress !== null && geo.lat !== null && geo.lng !== null) {
+        patch.lat = geo.lat;
+        patch.lng = geo.lng;
+        if (geo.city !== null) patch.city = geo.city;
+        if (geo.countryCode !== null) patch.countryCode = geo.countryCode;
+        if (geo.googlePlaceId !== null) patch.googlePlaceId = geo.googlePlaceId;
+      }
       const nextBrand = await updateBrandMutation.mutateAsync({
         brandId: brand.id,
         accountId,
-        patch: { address: nextAddress },
+        patch,
         existingDescription: joinBrandDescription(brand.tagline, brand.bio),
       });
       setBrand(nextBrand);
@@ -220,9 +251,10 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
   );
 
   const handleContinueAddress = useCallback(async (): Promise<void> => {
+    // WS1: Continue only fires for a validated pick; Skip uses address=null.
     const nextAddress = address.trim().length > 0 ? address.trim() : null;
     try {
-      await persistAddress(nextAddress);
+      await persistAddress(nextAddress, addrMeta);
       updateState({ type: "setAddress", address: nextAddress });
     } catch (error) {
       setToast(
@@ -231,7 +263,13 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
           : "Couldn't save address. Tap to retry.",
       );
     }
-  }, [address, persistAddress, updateState]);
+  }, [address, addrMeta, persistAddress, updateState]);
+
+  const handleSkipAddress = useCallback((): void => {
+    setAddress("");
+    setAddrMeta({ lat: null, lng: null, city: null, countryCode: null, googlePlaceId: null });
+    updateState({ type: "setAddress", address: null });
+  }, [updateState]);
 
   const handleOfferingSelect = useCallback(
     (offering: OfferingKind): void => {
@@ -293,14 +331,43 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
           <View style={styles.stepBody}>
             <Text style={styles.title}>{BRAND_CREATION_COPY.step2.title}</Text>
             <Text style={styles.body}>{BRAND_CREATION_COPY.step2.subtitle}</Text>
-            <Input
-              variant="text"
+            {/* WS1: validated autocomplete. Free-text typing clears the geo meta so
+                Continue stays gated until a real result is picked; Skip handles
+                brands with no fixed address. */}
+            <AddressAutocompleteInput
               value={address}
-              onChangeText={setAddress}
+              onChangeText={(t) => {
+                setAddress(t);
+                setAddrMeta({
+                  lat: null,
+                  lng: null,
+                  city: null,
+                  countryCode: null,
+                  googlePlaceId: null,
+                });
+              }}
+              onPick={(details: PlaceDetails): void => {
+                const p = parseGooglePlaceResult(details);
+                setAddress(p.formattedAddress);
+                setAddrMeta({
+                  lat: p.lat,
+                  lng: p.lng,
+                  city: p.city,
+                  countryCode: p.countryCode,
+                  googlePlaceId: p.googlePlaceId,
+                });
+              }}
+              onClear={(): void => {
+                setAddress("");
+                setAddrMeta({
+                  lat: null,
+                  lng: null,
+                  city: null,
+                  countryCode: null,
+                  googlePlaceId: null,
+                });
+              }}
               placeholder={BRAND_CREATION_COPY.step2.addressPlaceholder}
-              accessibilityLabel="Brand address"
-              leadingIcon="location"
-              clearable
             />
           </View>
         ) : null}
@@ -310,12 +377,29 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
             <Text style={styles.title}>{BRAND_CREATION_COPY.step3.title}</Text>
             <GlassCard variant="elevated" padding={spacing.lg}>
               <View style={styles.coverPrompt}>
-                <Icon name="upload" size={24} color={accent.warm} />
-                <Text style={styles.body}>
-                  Use your existing cover picker to add a photo or GIF, or skip it for now.
-                </Text>
+                {/* WS2: render the chosen cover so the user sees it saved. */}
+                {brand?.coverMediaUrl != null ? (
+                  <View style={styles.coverPreview}>
+                    <EventCoverMedia
+                      hue={25}
+                      mediaUrl={brand.coverMediaUrl}
+                      mediaType={brand.coverMediaType ?? "image"}
+                      radius={radius.md}
+                      label="Brand cover preview"
+                      height={170}
+                      muted
+                    />
+                  </View>
+                ) : (
+                  <>
+                    <Icon name="upload" size={24} color={accent.warm} />
+                    <Text style={styles.body}>
+                      Use your existing cover picker to add a photo or GIF, or skip it for now.
+                    </Text>
+                  </>
+                )}
                 <Button
-                  label="Add cover"
+                  label={brand?.coverMediaUrl != null ? "Change cover" : "Add cover"}
                   onPress={() => setCoverPickerVisible(true)}
                   variant="secondary"
                   size="md"
@@ -351,7 +435,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
           <View style={styles.footerRow}>
             <Button
               label={BRAND_CREATION_COPY.step2.skip}
-              onPress={() => updateState({ type: "setAddress", address: null })}
+              onPress={handleSkipAddress}
               variant="secondary"
               size="lg"
               style={styles.footerButton}
@@ -362,6 +446,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
               variant="primary"
               size="lg"
               loading={updateBrandMutation.isPending}
+              disabled={!addressValidated || updateBrandMutation.isPending}
               style={styles.footerButton}
             />
           </View>
@@ -508,6 +593,11 @@ const styles = StyleSheet.create({
   coverPrompt: {
     gap: spacing.md,
     alignItems: "flex-start",
+  },
+  coverPreview: {
+    width: "100%",
+    borderRadius: radius.md,
+    overflow: "hidden",
   },
   footer: {
     padding: spacing.lg,

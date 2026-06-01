@@ -10,6 +10,7 @@ import { POOL_SEARCH_DEBOUNCE_MS, POOL_SEARCH_MIN_QUERY_LENGTH } from "../types/
 
 export interface UsePoolMatchSearchResult {
   match: PoolMatch | null;
+  matches: PoolMatch[];
   loading: boolean;
   error: string | null;
   clearError: () => void;
@@ -17,6 +18,7 @@ export interface UsePoolMatchSearchResult {
 
 export function usePoolMatchSearch(query: string): UsePoolMatchSearchResult {
   const [match, setMatch] = useState<PoolMatch | null>(null);
+  const [matches, setMatches] = useState<PoolMatch[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -37,6 +39,7 @@ export function usePoolMatchSearch(query: string): UsePoolMatchSearchResult {
     const q = query.trim();
     if (q.length < POOL_SEARCH_MIN_QUERY_LENGTH) {
       setMatch(null);
+      setMatches([]);
       setLoading(false);
       setError(null);
       return;
@@ -54,6 +57,7 @@ export function usePoolMatchSearch(query: string): UsePoolMatchSearchResult {
             signal: controller.signal,
           });
           if (controller.signal.aborted) return;
+          setMatches(matches);
           setMatch(matches[0] ?? null);
         } catch (e) {
           if (controller.signal.aborted) return;
@@ -64,6 +68,7 @@ export function usePoolMatchSearch(query: string): UsePoolMatchSearchResult {
             setError("Could not search our directory. Check your connection.");
           }
           setMatch(null);
+          setMatches([]);
         } finally {
           if (!controller.signal.aborted) {
             setLoading(false);
@@ -80,5 +85,5 @@ export function usePoolMatchSearch(query: string): UsePoolMatchSearchResult {
     };
   }, [query]);
 
-  return { match, loading, error, clearError };
+  return { match, matches, loading, error, clearError };
 }

@@ -1138,6 +1138,45 @@ function checkNoNewBackendFiles() {
     // Strict-grep gate (also lives outside supabase/; listed for trace).
     ".github/scripts/strict-grep/meta-orch-1009-sub-d-ai-score-staleness-recovery.mjs",
   ];
+  // META-ORCH-1009 Sub-E [business-app supply feeder]: adds the business
+  // authoring place_pool migration, business writer edge function, parser TTL /
+  // universal-authoring relaxations, claim-search all-match path, signalScorer
+  // hero-video boost, and focused SQL/Deno tests. C7 is scoped to ORCH-0863
+  // marketing; this allowlist covers intentional Sub-E backend touches.
+  const META_ORCH_1009_SUB_E_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260809000000_meta_orch_1009_sub_e_business_supply_feeder.sql",
+    "supabase/migrations/__tests__/sub_e_business_place_schema.test.sql",
+    "supabase/migrations/__tests__/sub_e_pending_action_expiry.test.sql",
+    "supabase/functions/run-business-place-authoring-pipeline/index.ts",
+    "supabase/functions/run-business-place-authoring-pipeline/__tests__/stage_contract.test.ts",
+    // Sub-E rework 5 (C4): behavioral pipeline test (ai_signal_scores shape,
+    // B9-B12 coaching, Google cross-validation, bouncer gate).
+    "supabase/functions/run-business-place-authoring-pipeline/__tests__/pipeline_behavioral.test.ts",
+    // Sub-E rework 5 (C2): agent-confirm-action 410 dead-end -> in-Hub regenerate.
+    "supabase/functions/agent-confirm-action/index.ts",
+    "supabase/migrations/__tests__/sub_e_business_place_schema.test.sql",
+    "supabase/migrations/__tests__/sub_e_pending_action_expiry.test.sql",
+    // Sub-E rework 5 (C4): behavioral expiry SQL test (stale->expired flip + preserve terminal).
+    "supabase/migrations/__tests__/sub_e_pending_action_expiry_behavioral.test.sql",
+    "supabase/functions/places-autocomplete/index.ts",
+    "supabase/functions/places-autocomplete/index.test.ts",
+    "supabase/functions/claim-search-pool/index.ts",
+    "supabase/functions/_shared/poolMatchResponse.ts",
+    "supabase/functions/_shared/agentTools.ts",
+    "supabase/functions/_shared/signalScorer.ts",
+    "supabase/functions/_shared/__tests__/signalScorer.blend.test.ts",
+    "supabase/functions/parse-restaurant-menu/index.ts",
+    "supabase/functions/parse-play-activities/index.ts",
+    // Sub-E pipeline-state readiness compat column (submit-failure fix).
+    "supabase/migrations/20260809000300_meta_orch_1009_sub_e_pipeline_state_readiness_compat.sql",
+    // Sub-E brand_id uuid-guard unit test.
+    "supabase/functions/run-business-place-authoring-pipeline/__tests__/isUuid.test.ts",
+    // Sub-E required venue gallery (5–20 photos) column.
+    "supabase/migrations/20260812000000_meta_orch_1009_sub_e_venue_gallery.sql",
+    // Sub-F Recommend-me review: edit-cap + admin score-veto columns.
+    "supabase/migrations/20260813000000_meta_orch_1009_sub_f_recommend_review.sql",
+    "supabase/functions/admin-review-venue-claim/index.ts",
+  ];
   const META_ORCH_1009_SUB_B_BACKEND_ALLOWLIST = [
     "supabase/migrations/20260806000000_meta_orch_1009_sub_b_rpcs_with_reasoning.sql",
     "supabase/functions/_shared/signalScorer.ts",
@@ -1313,6 +1352,7 @@ function checkNoNewBackendFiles() {
     ...META_ORCH_1009_SUB_A_BACKEND_ALLOWLIST,
     ...META_ORCH_1009_SUB_B_BACKEND_ALLOWLIST,
     ...META_ORCH_1009_SUB_D_BACKEND_ALLOWLIST,
+    ...META_ORCH_1009_SUB_E_BACKEND_ALLOWLIST,
     ...ORCH_1030_BACKEND_ALLOWLIST,
   ];
   const forbidden = changed.filter(

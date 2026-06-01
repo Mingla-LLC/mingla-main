@@ -36,12 +36,14 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BrandDeleteSheet } from "../../src/components/brand/BrandDeleteSheet";
 import { BrandSwitcherSheet } from "../../src/components/brand/BrandSwitcherSheet";
+import { DeckReadinessCard } from "../../src/components/venue/DeckReadinessCard";
 import {
   OfferingChooser,
   routeForOffering,
   type OfferingKind,
 } from "../../src/components/brand/OfferingChooser";
 import { HomeNextActionCard } from "../../src/components/home/HomeNextActionCard";
+import { NoVenueDeckEntryCard } from "../../src/components/home/NoVenueDeckEntryCard";
 import { HomeTripRow } from "../../src/components/home/HomeTripRow";
 import { UpcomingListItem } from "../../src/components/home/UpcomingListItem";
 import { EventCoverMedia } from "../../src/components/ui/EventCoverMedia";
@@ -66,8 +68,10 @@ import {
   useCurrentBrandStore,
   type Brand,
 } from "../../src/store/currentBrandStore";
+import { useDraftVenueStore } from "../../src/store/draftVenueStore";
 import { useCurrentBrand } from "../../src/hooks/useCurrentBrand";
 import { useCurrentBrandRecovery } from "../../src/hooks/useCurrentBrandRecovery";
+import { useBrandPlacePipelineState } from "../../src/hooks/useBrandPlacePipelineState";
 import { useResponsiveLayout } from "../../src/hooks/useResponsiveLayout";
 import { brandKeys, useBrands } from "../../src/hooks/useBrands";
 import {
@@ -86,6 +90,7 @@ import type { Trip } from "../../src/services/tripsService";
 // ORCH-0865 REWORK 5 — canonical routing helper, ban hardcoded /event/{id}
 import { routeForEventRowDefensive } from "../../src/utils/routeForEventRow";
 import { pickHomeNextAction } from "../../src/utils/homeNextAction";
+import { routeForPipelineStateFix } from "../../src/utils/deckReadinessRoutes";
 
 import { formatCurrencyRound } from "../../src/utils/currency";
 import { formatDraftDateLine } from "../../src/utils/eventDateDisplay";
@@ -140,6 +145,7 @@ export default function HomeTab(): React.ReactElement {
   const brandRecovery = useCurrentBrandRecovery();
   useServerDraftsForBrand(currentBrand?.id ?? null);
   const upcoming = useUpcomingForBrand(currentBrand?.id ?? null);
+  const pipelineState = useBrandPlacePipelineState(currentBrand?.id ?? null);
   const drafts = useDraftsForBrand(currentBrand?.id ?? null);
   const [sheetVisible, setSheetVisible] = useState<boolean>(false);
   // ORCH-0826 M0: universal creator sheet (Create event/experience/trip)
@@ -379,6 +385,63 @@ export default function HomeTab(): React.ReactElement {
     router.push(nextAction.ctaRoute as never);
   }, [nextAction, currentBrand, brands.length, router]);
 
+  const handleDeckReadinessFix = useCallback(
+    (fix: string): void => {
+      if (currentBrand === null) return;
+      router.push(
+        routeForPipelineStateFix({
+          brandId: currentBrand.id,
+          state: pipelineState.data,
+          fix,
+        }) as never,
+      );
+    },
+    [currentBrand, pipelineState.data, router],
+  );
+
+  // META-ORCH-1009 Sub-E (Job A) — always-available entry for a brand with no
+  // authored/claimed venue yet. <DeckReadinessCard> only renders once a venue
+  // exists; this fills the discoverability gap so a brand-new operator can find
+  // the path into the deck.
+  const handleAddVenue = useCallback((): void => {
+    router.push("/venue/create" as never);
+  }, [router]);
+
+  // True only after the pipeline query has resolved AND found no venue for the
+  // selected brand (null = no claimed/authored place_pool row). While loading
+  // we render nothing to avoid a flash.
+  const showNoVenueEntry =
+    currentBrand !== null &&
+    pipelineState.isFetched &&
+    pipelineState.data === null;
+
+  // META-ORCH-1009 Sub-E: a persisted, in-progress venue draft (wizard started
+  // but not yet submitted) makes the no-venue entry a RESUME instead of a fresh
+  // start — so "continue where you left off" is reachable from Home after a
+  // refresh, not only by re-opening the wizard.
+  const venueDraftInProgress = useDraftVenueStore(
+    (s) =>
+      s.displayName.trim().length > 0 ||
+      s.workingName.trim().length > 0 ||
+      s.step > 0,
+  );
+
+  // META-ORCH-1009 Sub-E (mobile parity fix): the desktop branch renders
+  // <DeckReadinessCard> once a venue exists past "draft", but the MOBILE
+  // populated branch never did — so on a phone an in-progress venue (status
+  // processing / needs_fix) had NO entry into the deck-readiness funnel; Home
+  // just showed the offering chooser. Mirror the desktop card on mobile as its
+  // own branch (like showNoVenueEntry) while the venue is still being finished.
+  // Once deck_eligible we fall through to the normal dashboard so the operator
+  // can create events for the venue.
+  const showDeckReadinessEntry =
+    currentBrand !== null &&
+    pipelineState.isFetched &&
+    pipelineState.data !== null &&
+    pipelineState.data !== undefined &&
+    pipelineState.data.status !== "draft" &&
+    pipelineState.data.status !== "deck_eligible";
+
   const handleOfferingSelect = useCallback(
     (offering: OfferingKind): void => {
       if (currentBrand === null) {
@@ -482,12 +545,22 @@ export default function HomeTab(): React.ReactElement {
           ) : (
             <>
               {/* ORCH-0965 — rule-ladder card. Renders ABOVE the KPI grid when
-                  a rung fires AND no live offering is present (live hero takes
-                  precedence; if a brand is healthy enough to have a live event,
-                  the rule ladder yields the floor to that signal except for the
-                  physical-no-address rung which surfaces alongside). */}
-              {nextAction !== null && (upcoming.counts.live === 0 || nextAction.rung === 4) ? (
+                  a rung fires AND no live offering is present; if a brand is
+                  healthy enough to have a live event, the rule ladder yields
+                  the floor to that signal. */}
+              {nextAction !== null && upcoming.counts.live === 0 ? (
                 <HomeNextActionCard action={nextAction} onPress={handleNextActionPress} />
+              ) : null}
+              {showNoVenueEntry ? (
+                <NoVenueDeckEntryCard onPress={handleAddVenue} resumable={venueDraftInProgress} />
+              ) : null}
+              {pipelineState.data !== null &&
+              pipelineState.data !== undefined &&
+              pipelineState.data.status !== "draft" ? (
+                <DeckReadinessCard
+                  state={pipelineState.data}
+                  onFix={handleDeckReadinessFix}
+                />
               ) : null}
               <View style={styles.desktopKpiGrid}>
                 <View style={styles.desktopKpiCell}>
@@ -804,11 +877,38 @@ export default function HomeTab(): React.ReactElement {
             </GlassCard>
           </View>
         </ScrollView>
+      ) : showNoVenueEntry ? (
+        // META-ORCH-1009 Sub-E (Job A) — when the selected brand has no venue
+        // yet, the mobile Home renders the discoverability entry INSTEAD of the
+        // KPI/upcoming dashboard (which is empty anyway pre-venue). This keeps
+        // the ORCH-0974 locked pane below byte-identical for the venue case.
+        <View style={styles.mobileNoVenueBody}>
+          <NoVenueDeckEntryCard onPress={handleAddVenue} resumable={venueDraftInProgress} />
+        </View>
+      ) : showDeckReadinessEntry && pipelineState.data != null ? (
+        // META-ORCH-1009 Sub-E (mobile parity): in-progress venue → surface the
+        // deck-readiness coaching card with a one-tap route into the funnel
+        // (where "Generate AI bio and scores" lives). Scrollable so the coaching
+        // list is always reachable.
+        <ScrollView
+          contentContainerStyle={styles.emptyScroll}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
+          }
+        >
+          <View style={styles.emptyCol}>
+            <DeckReadinessCard
+              state={pipelineState.data}
+              onFix={handleDeckReadinessFix}
+            />
+          </View>
+        </ScrollView>
       ) : (
         // orch-0974-lock-pane:begin-mobile-populated; META-ORCH-0972 — rule-ladder card renders only before a live offering exists, with the no_offerings rung yielding the unified OfferingChooser.
         <View style={styles.mobileBody}>
           <View style={styles.lockedZone}>
-            {nextAction !== null && (upcoming.counts.live === 0 || nextAction.rung === 4) && !isSmallPhoneWithLiveHero ? (
+            {nextAction !== null && upcoming.counts.live === 0 && !isSmallPhoneWithLiveHero ? (
               nextAction.kind === "no_offerings" ? (
                 <View style={styles.nextActionChooser}>
                   <OfferingChooser
@@ -958,7 +1058,7 @@ export default function HomeTab(): React.ReactElement {
             showsVerticalScrollIndicator={false}
           />
 
-          {nextAction !== null && (upcoming.counts.live === 0 || nextAction.rung === 4) && isSmallPhoneWithLiveHero ? (
+          {nextAction !== null && upcoming.counts.live === 0 && isSmallPhoneWithLiveHero ? (
             <View style={styles.smallPhoneLadderHost}>
               <HomeNextActionCard action={nextAction} onPress={handleNextActionPress} />
             </View>
@@ -1051,6 +1151,12 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xl * 4,
   },
   mobileBody: {
+    flex: 1,
+    minHeight: 0,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+  },
+  mobileNoVenueBody: {
     flex: 1,
     minHeight: 0,
     paddingHorizontal: spacing.md,

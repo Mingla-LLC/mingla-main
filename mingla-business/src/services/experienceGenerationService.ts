@@ -21,6 +21,7 @@ export interface PendingExperienceProposal {
   id: string;
   tool_name: string;
   tool_args: Record<string, unknown>;
+  expires_at: string;
 }
 
 export type ParseMenuResponse =
@@ -81,11 +82,23 @@ export interface HubPendingExperienceRow {
   status: string;
   expires_at: string;
   created_at: string;
+  // META-ORCH-1009 Sub-E (C2): true when the row is still DB-`pending` but past
+  // its expiry. The Hub renders a regenerate / re-snap CTA for these instead of
+  // hiding them, so Sarah never sees an empty list where a dead card used to be.
+  isExpired: boolean;
 }
 
 export async function fetchPendingExperiencesForBrand(
   brandId: string,
 ): Promise<HubPendingExperienceRow[]> {
+  // META-ORCH-1009 Sub-E (C2 / SPEC §11.4): do NOT filter expired rows out.
+  // Previously `.gt("expires_at", now)` hid them, so an expired proposal
+  // silently vanished; now we keep `pending` rows and flag expiry client-side
+  // so the card can show a regenerate CTA. The 15-min pg_cron sweep
+  // (expire_agent_pending_actions) eventually flips truly-stale rows to
+  // `expired`, which this `status = pending` filter then excludes — the window
+  // between expiry and the sweep is exactly when the regenerate CTA matters.
+  const nowMs = Date.now();
   const { data, error } = await supabase
     .from("agent_pending_actions")
     .select("id, tool_name, tool_args, status, expires_at, created_at")
@@ -94,7 +107,18 @@ export async function fetchPendingExperiencesForBrand(
     .eq("status", "pending")
     .order("created_at", { ascending: true });
   if (error) throw error;
-  return (data ?? []) as HubPendingExperienceRow[];
+  return (data ?? []).map((r: Record<string, unknown>): HubPendingExperienceRow => {
+    const expiresAt = r.expires_at as string;
+    return {
+      id: r.id as string,
+      tool_name: r.tool_name as string,
+      tool_args: (r.tool_args as Record<string, unknown>) ?? {},
+      status: r.status as string,
+      expires_at: expiresAt,
+      created_at: r.created_at as string,
+      isExpired: expiresAt ? new Date(expiresAt).getTime() < nowMs : false,
+    };
+  });
 }
 
 export async function confirmExperienceProposal(
