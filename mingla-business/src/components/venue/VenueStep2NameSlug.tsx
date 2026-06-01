@@ -256,6 +256,33 @@ const styles = StyleSheet.create({
     color: "#EF4444",
     fontSize: typography.caption.fontSize,
   },
+  urlPreview: {
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radiusTokens.md,
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
+  },
+  urlLabel: {
+    fontSize: typography.caption.fontSize,
+    color: textTokens.tertiary,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  urlValue: {
+    fontSize: typography.bodySm.fontSize,
+    color: textTokens.secondary,
+  },
+  urlSlug: {
+    color: accent.warm,
+    fontWeight: "700",
+  },
+  chipSelected: {
+    borderColor: accent.warm,
+    backgroundColor: "rgba(255,138,76,0.22)",
+  },
 });
 
 export default VenueStep2NameSlug;
