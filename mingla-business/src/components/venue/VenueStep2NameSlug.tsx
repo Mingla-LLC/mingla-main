@@ -105,7 +105,12 @@ export const VenueStep2NameSlug: React.FC<VenueStep2NameSlugProps> = ({
     return () => clearTimeout(timer);
   }, [slug, accountId]);
 
-  // B3 — fetch tappable alternate slugs only when the auto slug is taken.
+  // B3 (operator-directed: "it should be smart") — when the derived slug is
+  // taken, auto-ADVANCE the selection to the first AVAILABLE candidate
+  // (lumenwinebar → lumenwinebar1) instead of leaving a taken slug selected.
+  // Remaining available candidates are also offered as tappable pills so the
+  // operator can pick a different one, but they never have to. We only
+  // auto-advance while the operator hasn't manually chosen a pill.
   useEffect(() => {
     if (available !== false || displayName.trim().length === 0) {
       setSuggestions([]);
@@ -113,13 +118,21 @@ export const VenueStep2NameSlug: React.FC<VenueStep2NameSlugProps> = ({
     }
     let cancelled = false;
     void (async () => {
-      const picks = await suggestVenueSlugs(displayName, 3, accountId);
-      if (!cancelled) setSuggestions(picks.filter((p) => p !== slug.trim()));
+      const picks = await suggestVenueSlugs(displayName, 4, accountId);
+      if (cancelled) return;
+      if (!slugChosen.current && picks.length > 0) {
+        // Auto-select the first available slug; the availability effect will
+        // re-run against it and flip `available` true.
+        patch({ slug: picks[0] });
+        setSuggestions(picks.slice(1));
+      } else {
+        setSuggestions(picks.filter((p) => p !== slug.trim()));
+      }
     })();
     return () => {
       cancelled = true;
     };
-  }, [available, displayName, accountId, slug]);
+  }, [available, displayName, accountId, slug, patch]);
 
   const nameErr =
     showErrors && displayName.trim().length === 0
@@ -164,9 +177,7 @@ export const VenueStep2NameSlug: React.FC<VenueStep2NameSlugProps> = ({
           ) : available === true ? (
             <Text style={styles.statusOk}>✓ Available — auto-selected</Text>
           ) : available === false ? (
-            <Text style={styles.statusTaken}>
-              That address is taken — pick one below
-            </Text>
+            <Text style={styles.statusTaken}>Finding an available address…</Text>
           ) : null}
         </View>
       ) : null}

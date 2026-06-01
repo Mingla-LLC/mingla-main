@@ -1158,7 +1158,25 @@ Deno.serve(async (req) => {
   }
 
   if (!isUuid(body.brand_id)) {
-    return errorResponse(400, "BAD_REQUEST", "brand_id must be a uuid");
+    // META-ORCH-1009 Sub-E DIAG (2026-05-31): operator's create-new submit creates
+    // the brand (valid uuid) but this call rejects brand_id. Log the EXACT received
+    // value + type + action so we can see what the client actually sent, regardless
+    // of client bundle caching, and return it in the message for on-device capture.
+    const received = (body as { brand_id?: unknown }).brand_id;
+    console.error(
+      "[SUBE-DIAG] brand_id rejected:",
+      JSON.stringify({
+        action: (body as { action?: unknown }).action ?? null,
+        brand_id: received ?? null,
+        type: typeof received,
+        keys: body && typeof body === "object" ? Object.keys(body) : [],
+      }),
+    );
+    return errorResponse(
+      400,
+      "BAD_REQUEST",
+      `brand_id must be a uuid (received ${typeof received}: ${String(received)})`,
+    );
   }
   const brand = await loadOwnedBrand(userResult.serviceClient, body.brand_id, userResult.userId);
   if (brand instanceof Response) return brand;
