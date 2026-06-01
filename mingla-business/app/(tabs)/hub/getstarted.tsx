@@ -1,38 +1,16 @@
-import React, { useCallback } from "react";
-import { ScrollView, StyleSheet } from "react-native";
-import { useRouter } from "expo-router";
-
-import {
-  OfferingChooser,
-  routeForOffering,
-  type OfferingKind,
-} from "../../../src/components/brand/OfferingChooser";
-import { spacing } from "../../../src/constants/designSystem";
+/**
+ * (tabs)/hub/getstarted — DECOMMISSIONED by ORCH-1038.
+ *
+ * The chunky 3-tile OfferingChooser "Get started" page took too much space and
+ * made the UI unfriendly (operator, 2026-06-01). Creating a first offering now
+ * lives as a single row in the shared to-do toggle, which opens the compact
+ * UniversalCreatorSheet. The "Get started" sub-nav pill is gone too
+ * (deriveHubVisibleTabs no longer returns it), so this route is unreachable via
+ * navigation; this redirect is a safety net for any stale deep link / history.
+ */
+import React from "react";
+import { Redirect } from "expo-router";
 
 export default function HubGetStartedRoute(): React.ReactElement {
-  const router = useRouter();
-  const handleSelect = useCallback(
-    (offering: OfferingKind): void => {
-      router.push(routeForOffering(offering) as never);
-    },
-    [router],
-  );
-
-  return (
-    <ScrollView contentContainerStyle={styles.scrollContent}>
-      <OfferingChooser
-        variant="hub-getstarted"
-        headline="Get started — pick what to create"
-        subhead=""
-        onSelect={handleSelect}
-      />
-    </ScrollView>
-  );
+  return <Redirect href="/(tabs)/hub/events" />;
 }
-
-const styles = StyleSheet.create({
-  scrollContent: {
-    padding: spacing.md,
-    paddingBottom: 120,
-  },
-});

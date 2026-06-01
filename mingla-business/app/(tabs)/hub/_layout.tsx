@@ -24,11 +24,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BrandDeleteSheet } from "../../../src/components/brand/BrandDeleteSheet";
 import { BrandSwitcherSheet } from "../../../src/components/brand/BrandSwitcherSheet";
-import { DeckReadinessCard } from "../../../src/components/venue/DeckReadinessCard";
+import { BusinessTodoToggle } from "../../../src/components/home/BusinessTodoToggle";
 import { HubSubNav } from "../../../src/components/hub/HubSubNav";
 import { VenueClaimStatusBanner } from "../../../src/components/brand/VenueClaimStatusBanner";
+import { useBusinessTodos } from "../../../src/hooks/useBusinessTodos";
 import { useCurrentBrand } from "../../../src/hooks/useCurrentBrand";
-import { useBrandPlacePipelineState } from "../../../src/hooks/useBrandPlacePipelineState";
 import {
   persistHubLastTab,
   useHubInitialTab,
@@ -45,7 +45,7 @@ import {
   useCurrentBrandStore,
   type Brand,
 } from "../../../src/store/currentBrandStore";
-import { routeForPipelineStateFix } from "../../../src/utils/deckReadinessRoutes";
+import type { BusinessTodo } from "../../../src/utils/businessTodos";
 
 export default function HubTabLayout(): React.ReactElement {
   const insets = useSafeAreaInsets();
@@ -54,7 +54,7 @@ export default function HubTabLayout(): React.ReactElement {
   const { user } = useAuth();
   const setCurrentBrand = useCurrentBrandStore((s) => s.setCurrentBrand);
   const currentBrand = useCurrentBrand();
-  const pipelineState = useBrandPlacePipelineState(currentBrand?.id ?? null);
+  const todos = useBusinessTodos();
   const visibleTabs = useHubVisibleTabs(currentBrand?.id ?? null);
   const initialTab = useHubInitialTab(
     currentBrand?.id ?? null,
@@ -119,18 +119,25 @@ export default function HubTabLayout(): React.ReactElement {
     persistHubLastTab(tab);
   }, []);
 
-  const handleDeckReadinessFix = useCallback(
-    (fix: string): void => {
-      if (currentBrand === null) return;
-      router.push(
-        routeForPipelineStateFix({
-          brandId: currentBrand.id,
-          state: pipelineState.data,
-          fix,
-        }) as never,
-      );
+  const handleTodoAction = useCallback(
+    (todo: BusinessTodo): void => {
+      switch (todo.action.kind) {
+        case "open_brand_switcher":
+          setBrandSheetVisible(true);
+          return;
+        case "open_universal_creator":
+          setIsUniversalCreatorOpen(true);
+          return;
+        case "route":
+          router.push(todo.action.route as never);
+          return;
+        default: {
+          const _exhaustive: never = todo.action;
+          return _exhaustive;
+        }
+      }
     },
-    [currentBrand, pipelineState.data, router],
+    [router],
   );
 
   return (
@@ -150,6 +157,15 @@ export default function HubTabLayout(): React.ReactElement {
           }
         />
       </View>
+      {/* ORCH-1038 — unified smart to-do toggle, flush under the top bar and
+          ABOVE the sub-nav pills; same component + list as Home. */}
+      <View style={styles.todoWrap}>
+        <BusinessTodoToggle
+          todos={todos}
+          onAction={handleTodoAction}
+          testID="hub-todo-toggle"
+        />
+      </View>
       <HubSubNav
         visibleTabs={visibleTabs.data}
         counts={{
@@ -161,16 +177,6 @@ export default function HubTabLayout(): React.ReactElement {
         onTabPress={handleHubTabPress}
       />
       <VenueClaimStatusBanner brand={currentBrand} />
-      {pipelineState.data !== null &&
-      pipelineState.data !== undefined &&
-      pipelineState.data.status !== "draft" ? (
-        <View style={styles.readinessWrap}>
-          <DeckReadinessCard
-            state={pipelineState.data}
-            onFix={handleDeckReadinessFix}
-          />
-        </View>
-      ) : null}
       <Slot />
       <BrandSwitcherSheet
         visible={brandSheetVisible}
@@ -202,7 +208,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.sm,
   },
-  readinessWrap: {
+  todoWrap: {
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.sm,
   },
