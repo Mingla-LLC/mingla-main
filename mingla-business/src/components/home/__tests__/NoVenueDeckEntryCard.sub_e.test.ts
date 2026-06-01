@@ -20,18 +20,25 @@ const CARD = join(__dirname, "..", "NoVenueDeckEntryCard.tsx");
 const HOME = join(__dirname, "../../../..", "app/(tabs)/home.tsx");
 
 describe("META-ORCH-1009 Sub-E Job A — no-venue deck entry", () => {
-  test("component declares the discoverability copy + CTA contract", () => {
+  test("component declares the discoverability copy + resume-aware CTA contract", () => {
     const src = readFileSync(CARD, "utf8");
     expect(src).toContain("Get your venue into the deck");
     expect(src).toContain("no-venue-deck-entry-cta");
     expect(src).toContain("onPress={onPress}");
-    expect(src).toContain('label="Add your venue"');
+    // META-ORCH-1009 Sub-E: the CTA is resume-aware — "Add your venue" when fresh,
+    // "Continue your venue" when a persisted draft is in progress.
+    expect(src).toContain('"Add your venue"');
+    expect(src).toContain('"Continue your venue"');
+    expect(src).toContain("resumable");
   });
 
   test("home wires the entry, gates on no-venue pipeline state, routes to /venue/create", () => {
     const src = readFileSync(HOME, "utf8");
     expect(src).toContain("NoVenueDeckEntryCard");
-    expect(src).toContain("<NoVenueDeckEntryCard onPress={handleAddVenue} />");
+    expect(src).toContain("<NoVenueDeckEntryCard onPress={handleAddVenue}");
+    // Resume-awareness wired from the persisted venue draft.
+    expect(src).toContain("resumable={venueDraftInProgress}");
+    expect(src).toContain("const venueDraftInProgress");
     expect(src).toContain('router.push("/venue/create" as never)');
     expect(src).toContain("pipelineState.isFetched");
     expect(src).toContain("pipelineState.data === null");

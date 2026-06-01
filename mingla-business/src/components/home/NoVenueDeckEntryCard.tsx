@@ -21,27 +21,42 @@ import { GlassCard } from "../ui/GlassCard";
 
 export interface NoVenueDeckEntryCardProps {
   onPress: () => void;
+  /**
+   * META-ORCH-1009 Sub-E: true when a persisted venue draft is in progress (the
+   * operator started the wizard but hasn't submitted). The card then offers to
+   * RESUME rather than start fresh, so "continue where you left off" is reachable
+   * from Home after a refresh — not just by re-opening the wizard.
+   */
+  resumable?: boolean;
 }
 
 export const NoVenueDeckEntryCard: React.FC<NoVenueDeckEntryCardProps> = ({
   onPress,
+  resumable = false,
 }) => {
   return (
     <GlassCard variant="elevated" padding={spacing.lg}>
       <Text style={styles.eyebrow}>Get discovered</Text>
-      <Text style={styles.title}>Get your venue into the deck</Text>
+      <Text style={styles.title}>
+        {resumable ? "Finish adding your venue" : "Get your venue into the deck"}
+      </Text>
       <Text style={styles.body}>
-        Add your venue so Mingla can recommend it to people deciding where to
-        go. We&apos;ll build your story and check deck readiness for you.
+        {resumable
+          ? "You have a venue setup in progress. Pick up right where you left off — we kept your details."
+          : "Add your venue so Mingla can recommend it to people deciding where to go. We'll build your story and check deck readiness for you."}
       </Text>
       <View style={styles.ctaRow}>
         <Button
-          label="Add your venue"
+          label={resumable ? "Continue your venue" : "Add your venue"}
           variant="primary"
           size="md"
           leadingIcon="sparkle"
           onPress={onPress}
-          accessibilityLabel="Add your venue to get into the deck"
+          accessibilityLabel={
+            resumable
+              ? "Continue your in-progress venue setup"
+              : "Add your venue to get into the deck"
+          }
           testID="no-venue-deck-entry-cta"
         />
       </View>

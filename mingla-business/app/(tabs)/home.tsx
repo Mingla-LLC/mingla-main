@@ -68,6 +68,7 @@ import {
   useCurrentBrandStore,
   type Brand,
 } from "../../src/store/currentBrandStore";
+import { useDraftVenueStore } from "../../src/store/draftVenueStore";
 import { useCurrentBrand } from "../../src/hooks/useCurrentBrand";
 import { useCurrentBrandRecovery } from "../../src/hooks/useCurrentBrandRecovery";
 import { useBrandPlacePipelineState } from "../../src/hooks/useBrandPlacePipelineState";
@@ -414,6 +415,17 @@ export default function HomeTab(): React.ReactElement {
     pipelineState.isFetched &&
     pipelineState.data === null;
 
+  // META-ORCH-1009 Sub-E: a persisted, in-progress venue draft (wizard started
+  // but not yet submitted) makes the no-venue entry a RESUME instead of a fresh
+  // start — so "continue where you left off" is reachable from Home after a
+  // refresh, not only by re-opening the wizard.
+  const venueDraftInProgress = useDraftVenueStore(
+    (s) =>
+      s.displayName.trim().length > 0 ||
+      s.workingName.trim().length > 0 ||
+      s.step > 0,
+  );
+
   // META-ORCH-1009 Sub-E (mobile parity fix): the desktop branch renders
   // <DeckReadinessCard> once a venue exists past "draft", but the MOBILE
   // populated branch never did — so on a phone an in-progress venue (status
@@ -540,7 +552,7 @@ export default function HomeTab(): React.ReactElement {
                 <HomeNextActionCard action={nextAction} onPress={handleNextActionPress} />
               ) : null}
               {showNoVenueEntry ? (
-                <NoVenueDeckEntryCard onPress={handleAddVenue} />
+                <NoVenueDeckEntryCard onPress={handleAddVenue} resumable={venueDraftInProgress} />
               ) : null}
               {pipelineState.data !== null &&
               pipelineState.data !== undefined &&
@@ -871,7 +883,7 @@ export default function HomeTab(): React.ReactElement {
         // KPI/upcoming dashboard (which is empty anyway pre-venue). This keeps
         // the ORCH-0974 locked pane below byte-identical for the venue case.
         <View style={styles.mobileNoVenueBody}>
-          <NoVenueDeckEntryCard onPress={handleAddVenue} />
+          <NoVenueDeckEntryCard onPress={handleAddVenue} resumable={venueDraftInProgress} />
         </View>
       ) : showDeckReadinessEntry && pipelineState.data != null ? (
         // META-ORCH-1009 Sub-E (mobile parity): in-progress venue → surface the
