@@ -295,11 +295,29 @@ function fullStageStatus(overrides: Record<string, unknown> = {}): Record<string
   };
 }
 
-function placeForBouncer(
+// Exported for the B7 business-authored-photos behavioral test.
+export function placeForBouncer(
   placePoolId: string,
   place: Record<string, unknown>,
   tier2: Record<string, unknown> = {},
 ) {
+  const googlePhotos = (place as { photos?: unknown[] | null }).photos ?? null;
+  const storedPhotos = (place as { stored_photo_urls?: string[] | null }).stored_photo_urls ?? null;
+  const isBusinessAuthored =
+    (place as { fetched_via?: string | null }).fetched_via === "business_authored";
+  // META-ORCH-1009 Sub-E: a business-AUTHORED venue isn't on Google, so it has no
+  // Google photos and could never clear the B7 "Google photos required" gate —
+  // it would be stuck on "Action needed" forever even after uploading its own
+  // hero. Operator decision (2026-06-01): the operator's uploaded photo IS the
+  // venue's visual, so let stored_photo_urls satisfy the photo gate for
+  // business-authored rows. Real Google venues (incl. claim-existing) keep their
+  // Google photos and are unaffected.
+  const photosForGate =
+    Array.isArray(googlePhotos) && googlePhotos.length > 0
+      ? googlePhotos
+      : isBusinessAuthored && Array.isArray(storedPhotos) && storedPhotos.length > 0
+        ? storedPhotos
+        : googlePhotos;
   return {
     id: placePoolId,
     name: (place as { name?: string | null }).name ?? null,
@@ -309,8 +327,8 @@ function placeForBouncer(
     business_status: (place as { business_status?: string | null }).business_status ?? null,
     website: (tier2.website as string | undefined) ?? (place as { website?: string | null }).website ?? null,
     opening_hours: (place as { opening_hours?: unknown }).opening_hours ?? null,
-    photos: (place as { photos?: unknown[] | null }).photos ?? null,
-    stored_photo_urls: (place as { stored_photo_urls?: string[] | null }).stored_photo_urls ?? null,
+    photos: photosForGate,
+    stored_photo_urls: storedPhotos,
     review_count: (place as { review_count?: number | null }).review_count ?? null,
     rating: (place as { rating?: number | null }).rating ?? null,
   };

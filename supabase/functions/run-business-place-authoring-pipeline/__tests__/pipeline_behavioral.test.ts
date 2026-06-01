@@ -24,6 +24,7 @@ import {
   buildAiSignalScores,
   buildCrossValidation,
   coachingForReasons,
+  placeForBouncer,
 } from "../index.ts";
 import { bounce } from "../../_shared/bouncer.ts";
 
@@ -175,6 +176,48 @@ Deno.test("bounce gate: a complete business-authored venue passes; a fast-food c
   const chainVerdict = bounce(chain);
   assertEquals(chainVerdict.is_servable, false);
   assert(chainVerdict.reasons.some((r) => r.startsWith("B11")), "expected B11 chain rejection");
+});
+
+Deno.test("placeForBouncer: an operator-uploaded hero satisfies the photo gate for a business-authored venue (no Google photos)", () => {
+  const businessAuthored = {
+    id: "p3",
+    name: "Lumen Wine Bar",
+    lat: 39.59,
+    lng: -76.99,
+    types: ["bar", "restaurant", "point_of_interest"],
+    business_status: "OPERATIONAL",
+    website: "https://lumenwine.example",
+    opening_hours: { friday: "17:00-23:00" },
+    // Not on Google → no Google photo metadata, only the operator's uploaded hero.
+    photos: null,
+    stored_photo_urls: ["https://cdn.example/hero.jpg"],
+    fetched_via: "business_authored",
+    review_count: null,
+    rating: null,
+  };
+  const mapped = placeForBouncer("p3", businessAuthored, { website: "https://lumenwine.example" });
+  // The operator photo is mapped into the Google-photo slot so B7 can clear.
+  const verdict = bounce(mapped);
+  assertEquals(verdict.is_servable, true, `unexpected reasons: ${verdict.reasons.join(",")}`);
+
+  // Without any uploaded photo, the business-authored venue is still blocked (B7/B8).
+  const noPhotos = placeForBouncer("p3", { ...businessAuthored, stored_photo_urls: null });
+  const blocked = bounce(noPhotos);
+  assertEquals(blocked.is_servable, false);
+
+  // A NON-business-authored (real Google) row with no Google photos is NOT given
+  // the operator-photo bypass — it must still have Google photos (B7 fires).
+  const googleRow = placeForBouncer("p4", {
+    ...businessAuthored,
+    fetched_via: "google_places",
+    photos: null,
+    stored_photo_urls: ["https://cdn.example/hero.jpg"],
+  });
+  const googleVerdict = bounce(googleRow);
+  assert(
+    googleVerdict.reasons.some((r) => r.startsWith("B7")),
+    "expected B7 to still fire for a non-business-authored row lacking Google photos",
+  );
 });
 
 Deno.test("bounce gate: a business-authored row with no photos + no hours surfaces fixable reasons (not a hard chain reject)", () => {
