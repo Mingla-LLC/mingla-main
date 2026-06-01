@@ -107,6 +107,8 @@ type VenueCategory = "restaurant" | "play" | "creative_and_arts";
 // go-live gate; the max bounds storage + the AI vision set.
 const GALLERY_MIN = 5;
 const GALLERY_MAX = 20;
+// WS7: "Recommend me" allowed runs = initial + 3 changes. Reset on admin reject.
+const RECOMMEND_EDIT_CAP = 4;
 
 interface Tier1Draft {
   name?: string;
@@ -1139,6 +1141,19 @@ async function handleTier2(
   if (placeErr) return errorResponse(500, "PLACE_READ_FAILED", placeErr.message);
   if (!place) return errorResponse(404, "PLACE_NOT_FOUND", "Place not found");
 
+  // META-ORCH-1009 Sub-F WS7: cap "Recommend me" at the initial run + 3 changes.
+  // Admin rejection resets the count to 0 (see admin-review-venue-claim).
+  const editCount = Number(
+    (place as { business_recommend_edit_count?: unknown }).business_recommend_edit_count ?? 0,
+  );
+  if (editCount >= RECOMMEND_EDIT_CAP) {
+    return errorResponse(
+      429,
+      "RECOMMEND_EDIT_LIMIT",
+      "You've used your 3 changes. An admin review (or a rejection) re-opens editing.",
+    );
+  }
+
   const signals = await loadSignals(client);
   const tier2 = body.tier2 ?? {};
   const existingInputs =
@@ -1252,6 +1267,7 @@ async function handleTier2(
       bouncer_reason: reasons.join(",") || null,
       bouncer_validated_at: evaluatedAt,
       website: bouncerPlace.website,
+      business_recommend_edit_count: editCount + 1,
     })
     .eq("id", placePoolId);
   if (updateErr) return errorResponse(500, "PLACE_UPDATE_FAILED", updateErr.message);
@@ -1347,7 +1363,11 @@ async function handleConfirmAiOutputs(
       business_authoring_inputs: mergedInputs,
       business_authoring_status: nextStatus,
       generative_summary: salesBio,
-      is_servable: servable,
+      // WS7 hold-until-verified: a self-listed venue is NOT live on submit. The
+      // listing is prepared (deck_eligible = quality-ready) but is_servable stays
+      // false until an admin approves the claim (admin-review-venue-claim flips
+      // is_servable=true + runs the scorer → place_scores → appears in the deck).
+      is_servable: false,
       bouncer_reason: reasons.join(",") || null,
       bouncer_validated_at: new Date().toISOString(),
       website: bouncerPlace.website,
@@ -1459,7 +1479,7 @@ async function handleGetAuthoringContext(
   }
   const { data: place, error: placeErr } = await client
     .from("place_pool")
-    .select("id, business_authoring_status, business_authoring_inputs, stored_photo_urls, business_hero_video_present, website, business_gallery_urls")
+    .select("id, business_authoring_status, business_authoring_inputs, stored_photo_urls, business_hero_video_present, website, business_gallery_urls, business_recommend_edit_count, ai_signal_scores")
     .eq("id", placePoolId)
     .maybeSingle();
   if (placeErr) return errorResponse(500, "PLACE_READ_FAILED", placeErr.message);
@@ -1505,6 +1525,14 @@ async function handleGetAuthoringContext(
     gallery_urls: galleryUrls(place as Record<string, unknown>),
     gallery_min: GALLERY_MIN,
     gallery_max: GALLERY_MAX,
+    // WS7: results view — the AI signal scores + how many "Recommend" changes remain.
+    ai_signal_scores:
+      (place as { ai_signal_scores?: Record<string, unknown> | null }).ai_signal_scores ?? null,
+    recommend_edits_remaining: Math.max(
+      0,
+      RECOMMEND_EDIT_CAP -
+        Number((place as { business_recommend_edit_count?: unknown }).business_recommend_edit_count ?? 0),
+    ),
     coaching: (pipeline as { coaching?: unknown[] } | null)?.coaching ?? [],
   });
 }
