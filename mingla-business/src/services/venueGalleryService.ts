@@ -22,20 +22,47 @@ import * as ImagePicker from "expo-image-picker";
 
 import { supabase } from "./supabase";
 import { readBrandAvatarFileBytes } from "./brandAvatarFileReader";
-import {
-  generateBrandAvatarPathToken,
-  resolveBrandAvatarContentType,
-  type BrandAvatarMimeType,
-} from "../utils/brandAvatarRules";
+import { generateBrandAvatarPathToken } from "../utils/brandAvatarRules";
 
 export const VENUE_GALLERY_BUCKET = "brand_covers";
 export const VENUE_GALLERY_MAX_BYTES = 10 * 1024 * 1024;
 
-const EXT_BY_MIME: Record<BrandAvatarMimeType, string> = {
+// META-ORCH-1009 Sub-F: the gallery accepts HEIC/HEIF too — iPhone's default photo
+// format. (The brand-avatar resolver is JPEG/PNG/WEBP only because that flow uses
+// an editing crop that re-encodes; multi-select gallery picks deliver originals,
+// which on iOS are HEIC.) Gemini vision + iOS rendering both handle HEIC.
+type GalleryMime =
+  | "image/jpeg"
+  | "image/png"
+  | "image/webp"
+  | "image/heic"
+  | "image/heif";
+const EXT_BY_MIME: Record<GalleryMime, string> = {
   "image/jpeg": "jpg",
   "image/png": "png",
   "image/webp": "webp",
+  "image/heic": "heic",
+  "image/heif": "heif",
 };
+const MIME_BY_EXT: Record<string, GalleryMime> = {
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  webp: "image/webp",
+  heic: "image/heic",
+  heif: "image/heif",
+};
+function resolveGalleryContentType(asset: {
+  mimeType?: string | null;
+  fileName?: string | null;
+  uri?: string | null;
+}): GalleryMime | null {
+  const m = (asset.mimeType ?? "").toLowerCase().split(";")[0].trim();
+  if (m in EXT_BY_MIME) return m as GalleryMime;
+  const name = asset.fileName ?? asset.uri ?? "";
+  const ext = name.split("?")[0].split(".").pop()?.toLowerCase() ?? "";
+  return MIME_BY_EXT[ext] ?? null;
+}
 
 export class VenueGalleryError extends Error {
   constructor(public code: string, message: string) {
@@ -87,15 +114,11 @@ export async function uploadGalleryPhoto(
   brandId: string,
   asset: GalleryPickAsset,
 ): Promise<string> {
-  const contentType = resolveBrandAvatarContentType({
-    uri: asset.uri,
-    mimeType: asset.mimeType ?? undefined,
-    fileName: asset.fileName ?? undefined,
-  });
+  const contentType = resolveGalleryContentType(asset);
   if (contentType === null) {
     throw new VenueGalleryError(
       "unsupported_type",
-      "Use JPEG, PNG or WEBP photos.",
+      "That file isn't a photo we can use. Try a different image.",
     );
   }
   if (typeof asset.fileSize === "number" && asset.fileSize > VENUE_GALLERY_MAX_BYTES) {
