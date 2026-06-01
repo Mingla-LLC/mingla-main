@@ -48,6 +48,7 @@ import { logAppsFlyerEvent } from '../services/appsFlyerService'
 import { mixpanelService } from '../services/mixpanelService'
 
 import { OnboardingShell } from './onboarding/OnboardingShell'
+import { resolveScrollEnabled } from './onboarding/onboardingScrollPolicy'
 import { PhoneInput } from './onboarding/PhoneInput'
 import { OTPInput } from './onboarding/OTPInput'
 import { OnboardingCollaborationStep } from './onboarding/OnboardingCollaborationStep'
@@ -689,6 +690,16 @@ const OnboardingFlow = ({
   // instead of using the stale module-load capture (SPEC §0.9 / R-2). Falls back to the
   // module constants on the first synchronous render before the hook resolves.
   const { width: winWidth, height: winHeight } = useWindowDimensions()
+
+  // [ORCH-1028 REWORK F-1/F-2] Short-viewport flag for responsive scroll-enablement.
+  // On the smallest in-matrix device (iPhone SE 3, 667pt) the fixed-bottom-bar steps
+  // whose content can exceed the viewport (`gender_identity` 8 rows, `intents` 6 cards
+  // w/ subtitles) clip their last option/subtitle behind the CTA bar while scroll is
+  // disabled. We re-enable scroll for those steps ONLY when the viewport is too short
+  // to fit the content — a no-op on iPhone 12-mini-and-up (>=740pt) and Android where
+  // the content already fits, so larger screens keep their fixed/centered layout.
+  const SHORT_VIEWPORT_MAX_HEIGHT = 740
+  const isShortViewport = winHeight < SHORT_VIEWPORT_MAX_HEIGHT
 
   // ─── Friends (for incoming request UI in Step 5/friends) ───
   const {
@@ -2441,6 +2452,35 @@ const OnboardingFlow = ({
 
           {showDatePicker && (
             <View style={{ marginTop: spacing.sm }}>
+              {/* [ORCH-1028 REWORK F-3] iOS "Done" sits ABOVE the spinner as a toolbar
+                  row (directly under the DOB field), so it is never occluded by the
+                  fixed bottom CTA bar on short viewports (iPhone SE 3). The spinner
+                  renders below it. Android uses its own native modal/confirm — no row. */}
+              {Platform.OS === 'ios' && (
+                <Pressable
+                  style={{
+                    alignItems: 'flex-end',
+                    paddingHorizontal: spacing.md,
+                    paddingVertical: spacing.sm,
+                  }}
+                  onPress={() => {
+                    const dateToCommit = pendingBirthdayRef.current
+                    if (dateToCommit) {
+                      setData((p) => ({ ...p, userBirthday: dateToCommit }))
+                      pendingBirthdayRef.current = null
+                    }
+                    setShowDatePicker(false)
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('common:done')}
+                >
+                  <Text style={{
+                    ...typography.md,
+                    fontWeight: fontWeights.semibold,
+                    color: colors.primary[600],
+                  }}>{t('common:done')}</Text>
+                </Pressable>
+              )}
               <DateTimePicker
                 value={pendingBirthdayRef.current || data.userBirthday || BIRTHDAY_PICKER_DEFAULT}
                 mode="date"
@@ -2460,29 +2500,6 @@ const OnboardingFlow = ({
                   if (selectedDate) pendingBirthdayRef.current = selectedDate
                 }}
               />
-              {Platform.OS === 'ios' && (
-                <Pressable
-                  style={{
-                    alignItems: 'flex-end',
-                    paddingHorizontal: spacing.md,
-                    paddingVertical: spacing.sm,
-                  }}
-                  onPress={() => {
-                    const dateToCommit = pendingBirthdayRef.current
-                    if (dateToCommit) {
-                      setData((p) => ({ ...p, userBirthday: dateToCommit }))
-                      pendingBirthdayRef.current = null
-                    }
-                    setShowDatePicker(false)
-                  }}
-                >
-                  <Text style={{
-                    ...typography.md,
-                    fontWeight: fontWeights.semibold,
-                    color: colors.primary[600],
-                  }}>{t('common:done')}</Text>
-                </Pressable>
-              )}
             </View>
           )}
 
@@ -3181,7 +3198,7 @@ const OnboardingFlow = ({
       hidePrimaryCta={ctaConfig.hide}
       hideBottomBar={navState.subStep === 'getting_experiences'}
       disableKeyboardAvoidance={navState.subStep === 'collaborations' || navState.subStep === 'welcome'}
-      scrollEnabled={navState.subStep !== 'welcome' && navState.subStep !== 'intents' && navState.subStep !== 'celebration' && navState.subStep !== 'gender_identity' && navState.subStep !== 'collaborations' && navState.subStep !== 'categories'}
+      scrollEnabled={resolveScrollEnabled(navState.subStep, isShortViewport)}
       flushContent={navState.subStep === 'categories'}
       onBackToWelcome={isFirstScreen ? handleBackToWelcome : undefined}
     >

@@ -159,3 +159,70 @@ The tester writes the adversarial test (§F.2) separately.
 ## Transition items
 
 None.
+
+---
+
+# REWORK — ORCH-1028 QA CONDITIONAL PASS → F-1/F-2/F-3 small-screen fixes
+
+**Author:** mingla-implementor (Claude). **Date:** 2026-06-01.
+**Trigger:** `Mingla_Artifacts/reports/QA_ORCH-1028_COMBINED.md` — VERDICT CONDITIONAL PASS. Part-1 gate PASS + frozen (NOT touched here). Part-2 responsive had three SE-3-only small-screen clips sharing one root (fixed bottom bar + hard-disabled scroll on the smallest viewport).
+**Scope:** `app-mobile/` only. No backend, no migration, no deploy. Part-1 launch-city gate code untouched (PASS/frozen).
+**Commit:** `f89501fb3` on branch `ORCH-1028-onboarding-launch-city-gate` (this report's hash-update is a trailing amend; the code/test/evidence landed in `f89501fb3`).
+
+## Root cause
+
+`OnboardingFlow.tsx` rendered `<OnboardingShell scrollEnabled={…}>` with a hardcoded predicate that ALWAYS disabled scroll for `welcome`, `intents`, `celebration`, `gender_identity`, `collaborations`, `categories`. On iPhone SE 3 (375×667pt) the `gender_identity` step (8 options) and `intents` step (6 subtitled cards) overflow the viewport, so with scroll disabled the last option / subtitles clipped behind the fixed bottom CTA bar and were unreachable (F-1 P2) / cut (F-2 P3). F-3 (P3): the iOS inline date-picker rendered its "Done" button BELOW the spinner, occluded by the fixed bottom bar on SE 3.
+
+## Fix
+
+### `app-mobile/src/components/onboarding/onboardingScrollPolicy.ts` (NEW — pure, testable)
+**What it does:** exports `resolveScrollEnabled(subStep, isShortViewport)`. Always-fixed steps (`welcome`/`celebration`/`collaborations`/`categories`) → `false`. The two overflow-prone steps (`gender_identity`/`intents`) → `false` on tall viewports (fit-at-a-glance, centered — unchanged) but `true` on short viewports (content overflows → scroll to reach all options). Every other step → `true`.
+**Why:** makes scroll-enablement responsive instead of hard-excluding the two steps, so the full option list/subtitles become reachable on small screens while large screens stay byte-identical.
+
+### `app-mobile/src/components/OnboardingFlow.tsx`
+**Before:** `scrollEnabled={navState.subStep !== 'welcome' && … !== 'intents' && … !== 'gender_identity' && …}` (hardcoded, viewport-blind).
+**After:** added `const isShortViewport = winHeight < SHORT_VIEWPORT_MAX_HEIGHT` (740pt) using the Part-2-wired `useWindowDimensions().height`; `scrollEnabled={resolveScrollEnabled(navState.subStep, isShortViewport)}`. Threshold 740 covers SE 1/2/3 (667pt) + older small devices; iPhone 12-mini-and-up (≥812pt actually; ≥740 boundary) and Android are unaffected (predicate returns the identical `false` for the two steps → pure no-op).
+**F-3:** moved the iOS date-picker "Done" Pressable to render ABOVE the `<DateTimePicker>` spinner (a toolbar row directly under the DOB field) + added `accessibilityRole/Label`. The Done button is now adjacent to the field, clear of the fixed bottom bar on every screen size. The spinner renders below it. Android path unchanged (own native confirm).
+**Lines changed:** ~12 (predicate + short-viewport flag) + ~10 (Done relocation).
+
+## Regression test (mandatory gate)
+
+- **Test:** `app-mobile/src/components/onboarding/__tests__/onboardingScrollPolicy.test.ts` (NEW) + CI runner `app-mobile/scripts/ci/orch-1028-scroll-policy-check.mjs` + `package.json` script `test:orch-1028-scroll`. Runs via `node --experimental-strip-types --test` (repo has no jest).
+- **Passing run:** `# tests 6 # pass 6 # fail 0`.
+- **Fails-on-revert verified at `21e34c44b`** (pre-fix HEAD = the QA commit): reverting the helper's `FIXED_ON_TALL_ONLY_SUBSTEPS.has(subStep) ? isShortViewport` back to the buggy `return false` → tests 1 & 3 (F-1 + F-2 short-viewport cases) FAIL (`# pass 4 # fail 2`); restored helper → `# pass 6`.
+- Asserts: gender_identity/intents scroll-enabled on short viewport + NON-scroll on tall (no large-screen regression); always-fixed steps stay fixed on both; default steps stay scrollable on both.
+- Part-1 tests unaffected: `useLaunchCityGate.test.ts` 4/4 + `useLaunchCityGate.adversarial.test.ts` 10/10 still green.
+
+## Live re-verify (mandatory)
+
+Bundle staged onto the anchor checkout (worktree node_modules is a symlink to anchor; Metro run from anchor `:8101`, anchor tracked files restored byte-for-byte afterward; the other session's ORCH-1031 work was never touched). Test user `78d9913f…@usemingla.com` reset to onboarding via Management API; reviewer OTP bypass `+12015550199`/`123456` cleared the in-flow phone step. Maestro (no osascript).
+
+### iPhone SE 3 (375×667, sim `E07985BA`) — DEFECTS FIXED
+- **F-1:** scrolled the gender list (scroll now enabled) → "Prefer not to say" fully visible above the CTA bar → tapped it → selected (orange + checkmark) + "Next" enabled. Evidence: `orch-1028-rework-evidence/se3_F1_gender_prefer_not_to_say_visible.png`, `…_SELECTED_next_enabled.png`.
+- **F-2:** scrolled intents → "Picnic Dates / Sun, snacks, good times" + "Take a Stroll / Wander with purpose" subtitles + the "Pick the ones that excite you." hint all fully visible, no clip. Evidence: `se3_F2_intents_subtitles_visible.png`.
+- **F-3:** opened DOB picker → "Done" renders above the spinner, clear of the CTA bar → tapped → DOB `01/01/2000` committed + "Let's go" enabled. Evidence: `se3_F3_datepicker_done_above_spinner.png`, `se3_F3_dob_committed_letsgo_enabled.png`.
+
+### iPhone 17 Pro (large, sim `17091E60`) — NO REGRESSION
+Reached via session injection into AsyncStorage + `onboarding_step=NULL` reset (resume → gender_identity).
+- **gender_identity:** all 8 options render fully WITHOUT scrolling, comfortable clearance above the disabled "Next" bar (scroll stays disabled on tall — `resolveScrollEnabled` returns the identical `false`). Evidence: `17pro_gender_all8_noscroll_NOREGRESSION.png`.
+- **details:** "Done" above the spinner looks clean on the tall screen too (no regression from the F-3 relocation). Evidence: `17pro_datepicker_done_clean.png`.
+- **intents:** all 6 cards + full subtitles + footer hint render fully WITHOUT scrolling. Evidence: `17pro_intents_all6_noscroll_NOREGRESSION.png`.
+
+## Verification matrix
+
+| Item | Method | Verdict |
+|------|--------|---------|
+| F-1 gender 8th option reachable + tappable (SE 3) | Maestro live + screenshot | PASS |
+| F-2 intents subtitles visible (SE 3) | Maestro live + screenshot | PASS |
+| F-3 date-picker Done tappable (SE 3) | Maestro live + screenshot | PASS |
+| Large-screen non-regression (17 Pro): gender/details/intents | Maestro live + screenshots | PASS (no scroll, full render, identical to pre-fix) |
+| Predicate parity (tall = pre-fix `false`) | `onboardingScrollPolicy.test.ts` | PASS + fails-on-revert @ `21e34c44b` |
+| Part-1 gate untouched | code (no edits to gate path) + Part-1 tests green | PASS |
+| tsc clean on touched files | `tsc --noEmit` grep of touched names | clean |
+
+## Production safety — confirmed CLEAN
+- `seeding_cities` live count = 0/17. Test user `78d9913f` → `has_completed_onboarding=true`, reviewer phone detached (`profiles.phone=null`, 0 rows with `+12015550199`). Anchor `OnboardingFlow.tsx` restored to sha `ecc06dc7…`, `onboarding.json` to `c210a70f…`; other session's ORCH-1031 work untouched. Metro `:8101` freed.
+- **Cleanup flag for Seth:** 4 ORCH-1028 source files I staged onto the anchor working tree to bundle (`onboarding/onboardingScrollPolicy.ts`, `onboarding/LaunchCityPicker.tsx`, `hooks/launchCityGateLogic.ts`, `hooks/useLaunchCityGate.ts`) are still present as UNTRACKED files on the anchor — the sandbox blocked `rm`/`git clean`. They are harmless (untracked, never committed by add-explicit-path sessions) but should be removed: `git -C ~/Desktop/mingla-main clean -f -- app-mobile/src/components/onboarding/onboardingScrollPolicy.ts app-mobile/src/components/onboarding/LaunchCityPicker.tsx app-mobile/src/hooks/launchCityGateLogic.ts app-mobile/src/hooks/useLaunchCityGate.ts`.
+
+## Comms ledger
+Read on entry. No BLOCK rows target ORCH-1028 / mingla-implementor. `ALL`/WARN rows (COMMS-0002/0003/0004/0011/0012/0013/0015) are N/A — this rework is consumer-app frontend only: no external API, no backend `supabase/functions`, no migration, no INTAKE/ID assignment.
