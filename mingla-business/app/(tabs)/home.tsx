@@ -414,6 +414,22 @@ export default function HomeTab(): React.ReactElement {
     pipelineState.isFetched &&
     pipelineState.data === null;
 
+  // META-ORCH-1009 Sub-E (mobile parity fix): the desktop branch renders
+  // <DeckReadinessCard> once a venue exists past "draft", but the MOBILE
+  // populated branch never did — so on a phone an in-progress venue (status
+  // processing / needs_fix) had NO entry into the deck-readiness funnel; Home
+  // just showed the offering chooser. Mirror the desktop card on mobile as its
+  // own branch (like showNoVenueEntry) while the venue is still being finished.
+  // Once deck_eligible we fall through to the normal dashboard so the operator
+  // can create events for the venue.
+  const showDeckReadinessEntry =
+    currentBrand !== null &&
+    pipelineState.isFetched &&
+    pipelineState.data !== null &&
+    pipelineState.data !== undefined &&
+    pipelineState.data.status !== "draft" &&
+    pipelineState.data.status !== "deck_eligible";
+
   const handleOfferingSelect = useCallback(
     (offering: OfferingKind): void => {
       if (currentBrand === null) {
@@ -857,6 +873,25 @@ export default function HomeTab(): React.ReactElement {
         <View style={styles.mobileNoVenueBody}>
           <NoVenueDeckEntryCard onPress={handleAddVenue} />
         </View>
+      ) : showDeckReadinessEntry && pipelineState.data != null ? (
+        // META-ORCH-1009 Sub-E (mobile parity): in-progress venue → surface the
+        // deck-readiness coaching card with a one-tap route into the funnel
+        // (where "Generate AI bio and scores" lives). Scrollable so the coaching
+        // list is always reachable.
+        <ScrollView
+          contentContainerStyle={styles.emptyScroll}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
+          }
+        >
+          <View style={styles.emptyCol}>
+            <DeckReadinessCard
+              state={pipelineState.data}
+              onFix={handleDeckReadinessFix}
+            />
+          </View>
+        </ScrollView>
       ) : (
         // orch-0974-lock-pane:begin-mobile-populated; META-ORCH-0972 — rule-ladder card renders only before a live offering exists, with the no_offerings rung yielding the unified OfferingChooser.
         <View style={styles.mobileBody}>
