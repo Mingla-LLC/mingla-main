@@ -1871,6 +1871,11 @@ function AppContent() {
     () => (currentPage === 'connections' ? deepLinkParams : null),
     [currentPage, deepLinkParams]
   );
+  // ORCH-1030: calendar/review notification deep links route to Likes → Calendar.
+  const likesDeepLinkParams = useMemo(
+    () => (currentPage === 'likes' ? deepLinkParams : null),
+    [currentPage, deepLinkParams]
+  );
 
   const handleDeepLinkHandled = useCallback(() => {
     setDeepLinkParams(null);
@@ -2152,6 +2157,8 @@ function AppContent() {
             accountPreferences={accountPreferences}
             navigationData={activityNavigation}
             onNavigationComplete={() => setActivityNavigation(null)}
+            deepLinkParams={likesDeepLinkParams}
+            onDeepLinkHandled={handleDeepLinkHandled}
             onPurchaseFromSaved={(card: any, purchaseOption: any) => {
               console.log("Purchasing from saved:", card, purchaseOption);
               // Handle purchase logic here
@@ -2422,6 +2429,8 @@ function AppContent() {
                                       accountPreferences={accountPreferences}
                                       navigationData={activityNavigation}
                                       onNavigationComplete={handleNavigationComplete}
+                                      deepLinkParams={likesDeepLinkParams}
+                                      onDeepLinkHandled={handleDeepLinkHandled}
                                       onPurchaseFromSaved={handlePurchaseFromSavedLikes}
                                       onRemoveFromCalendar={stableHandleRemoveFromCalendar}
                                       onShareCard={stableHandleShareCard}
