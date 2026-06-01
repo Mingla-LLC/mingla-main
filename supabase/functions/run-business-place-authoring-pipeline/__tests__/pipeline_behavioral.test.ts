@@ -25,8 +25,12 @@ import {
   businessGateReasons,
   buildCrossValidation,
   coachingForReasons,
+  extractInternalLinks,
   galleryUrls,
   placeForBouncer,
+  priceLevelFromTiers,
+  priceTiersFromTier2,
+  storedPhotosForDeck,
 } from "../index.ts";
 import { bounce } from "../../_shared/bouncer.ts";
 
@@ -178,6 +182,50 @@ Deno.test("bounce gate: a complete business-authored venue passes; a fast-food c
   const chainVerdict = bounce(chain);
   assertEquals(chainVerdict.is_servable, false);
   assert(chainVerdict.reasons.some((r) => r.startsWith("B11")), "expected B11 chain rejection");
+});
+
+Deno.test("WS6 price: tiers map to the highest Google level; deck-photo mirror keeps hero + gallery", () => {
+  // Only valid Mingla tiers survive; price_level is the HIGHEST selected.
+  assertEquals(priceTiersFromTier2({ price_tiers: ["comfy", "bougie", "bogus"] }), ["comfy", "bougie"]);
+  assertEquals(priceLevelFromTiers(["chill"]), "PRICE_LEVEL_INEXPENSIVE");
+  assertEquals(priceLevelFromTiers(["comfy", "lavish", "chill"]), "PRICE_LEVEL_VERY_EXPENSIVE");
+  assertEquals(priceLevelFromTiers([]), null);
+
+  // stored_photo_urls = hero (existing, not in gallery) + gallery, deduped.
+  const place = { stored_photo_urls: ["https://cdn/hero.jpg"] };
+  const gallery = ["https://cdn/g1.jpg", "https://cdn/g2.jpg"];
+  assertEquals(storedPhotosForDeck(place, gallery), [
+    "https://cdn/hero.jpg",
+    "https://cdn/g1.jpg",
+    "https://cdn/g2.jpg",
+  ]);
+  // If the existing set already contains gallery items, hero is still picked
+  // (first existing not in gallery) and no dupes leak.
+  const place2 = { stored_photo_urls: ["https://cdn/hero.jpg", "https://cdn/g1.jpg"] };
+  assertEquals(storedPhotosForDeck(place2, gallery), [
+    "https://cdn/hero.jpg",
+    "https://cdn/g1.jpg",
+    "https://cdn/g2.jpg",
+  ]);
+});
+
+Deno.test("WS6 website scan: extractInternalLinks keeps same-origin About/Menu links only", () => {
+  const html = `
+    <a href="/about-us">About</a>
+    <a href="/menu">Menu</a>
+    <a href="https://evil.com/menu">offsite menu</a>
+    <a href="mailto:x@y.com">email</a>
+    <a href="/careers">Careers (no hint)</a>
+    <a href="https://lumen.example/visit#top">Visit</a>
+  `;
+  const links = extractInternalLinks(html, "https://lumen.example/");
+  // Same-origin + hint-matching only; offsite + mailto + non-hint dropped; #frag stripped.
+  assert(links.includes("https://lumen.example/about-us"), "about kept");
+  assert(links.includes("https://lumen.example/menu"), "menu kept");
+  assert(links.includes("https://lumen.example/visit"), "visit kept (frag stripped)");
+  assert(!links.some((l) => l.includes("evil.com")), "offsite dropped");
+  assert(!links.some((l) => l.includes("mailto")), "mailto dropped");
+  assert(!links.some((l) => l.includes("careers")), "non-hint dropped");
 });
 
 Deno.test("businessGateReasons: requires a 5-photo gallery before go-live", () => {

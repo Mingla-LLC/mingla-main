@@ -76,6 +76,17 @@ const GEMINI_RESPONSE_SCHEMA: Record<string, unknown> = {
         required: ["signal_id", "score_0_to_100", "inappropriate_for", "reasoning"],
       },
     },
+    // WS6: consistency check (operator claims vs website/photos) — informational.
+    consistency: {
+      type: "object",
+      nullable: true,
+      properties: {
+        verdict: { type: "string", nullable: true },
+        confidence_0_to_100: { type: "integer", nullable: true },
+        summary: { type: "string", nullable: true },
+        flags: { type: "array", nullable: true, items: { type: "string" } },
+      },
+    },
   },
   required: ["bio", "facets", "evaluations"],
 };
@@ -366,6 +377,50 @@ export function businessGateReasons(place: Record<string, unknown>): string[] {
   return count < GALLERY_MIN ? [`GALLERY_MIN:${count}`] : [];
 }
 
+// WS6: map the Mingla price tiers (chill/comfy/bougie/lavish — the consumer deck
+// taxonomy) to Google price levels. The deck DISPLAYS price_level, so we persist
+// the highest selected tier's level alongside the price_tiers array.
+const PRICE_TIER_ORDER = ["chill", "comfy", "bougie", "lavish"] as const;
+const PRICE_TIER_TO_GOOGLE_LEVEL: Record<string, string> = {
+  chill: "PRICE_LEVEL_INEXPENSIVE",
+  comfy: "PRICE_LEVEL_MODERATE",
+  bougie: "PRICE_LEVEL_EXPENSIVE",
+  lavish: "PRICE_LEVEL_VERY_EXPENSIVE",
+};
+export function priceTiersFromTier2(tier2: Record<string, unknown>): string[] {
+  const raw = (tier2 as { price_tiers?: unknown }).price_tiers;
+  return Array.isArray(raw)
+    ? raw.filter(
+        (t): t is string =>
+          typeof t === "string" && PRICE_TIER_TO_GOOGLE_LEVEL[t] !== undefined,
+      )
+    : [];
+}
+export function priceLevelFromTiers(tiers: string[]): string | null {
+  let best = -1;
+  for (const t of tiers) {
+    const i = PRICE_TIER_ORDER.indexOf(t as (typeof PRICE_TIER_ORDER)[number]);
+    if (i > best) best = i;
+  }
+  return best >= 0 ? PRICE_TIER_TO_GOOGLE_LEVEL[PRICE_TIER_ORDER[best]] : null;
+}
+// WS6: the consumer deck shows photos from stored_photo_urls (NOT the gallery
+// column). Mirror hero + gallery into stored_photo_urls so a self-listed venue's
+// photos actually render on its deck card. Hero = the first existing stored URL
+// (sync_hero_media wrote it); gallery appended, deduped.
+export function storedPhotosForDeck(
+  place: Record<string, unknown>,
+  gallery: string[],
+): string[] {
+  const existing = Array.isArray((place as { stored_photo_urls?: unknown }).stored_photo_urls)
+    ? (place as { stored_photo_urls: unknown[] }).stored_photo_urls.filter(
+        (u): u is string => typeof u === "string" && u.length > 0,
+      )
+    : [];
+  const hero = existing.find((u) => !gallery.includes(u));
+  return Array.from(new Set([...(hero ? [hero] : []), ...gallery]));
+}
+
 async function requireUser(req: Request): Promise<
   | { userId: string; authHeader: string; serviceClient: SupabaseClient }
   | Response
@@ -610,7 +665,9 @@ async function loadSignals(client: SupabaseClient): Promise<SignalRow[]> {
 // only fetch http(s) URLs of an image content-type. If NO usable image bytes can
 // be fetched, photo_analysis is returned EMPTY (-> persisted NULL by the caller)
 // — never fabricated from metadata (Constitution rule 9, no-fabricated-data).
-const MAX_VISION_IMAGES = 5;
+// WS6: the gallery is 5–20 photos; cap the vision set at 12 to bound tokens/cost
+// while still giving Gemini a strong multi-image read.
+const MAX_VISION_IMAGES = 12;
 const SUPPORTED_IMAGE_MIME = new Set([
   "image/png",
   "image/jpeg",
@@ -655,17 +712,116 @@ async function fetchImageParts(
   return parts;
 }
 
+// META-ORCH-1009 Sub-F WS6: scan the venue's website for real context. Fetches the
+// homepage, follows a few same-origin internal links (About / Menu / Story /
+// Visit / Contact), strips HTML to text, and concatenates — so Gemini reasons
+// about ACTUAL content (and can flag claims that don't match). Plain fetch only
+// (no dependency). Hard caps on pages, bytes, total text, and wall-clock so a
+// slow/hostile site can't hang the function.
+const WEBSITE_LINK_HINTS = /about|menu|story|visit|contact|food|drink|experience|gallery|our-|whats-on|what-s-on/i;
+const WEBSITE_MAX_PAGES = 5;
+const WEBSITE_MAX_TOTAL_CHARS = 12_000;
+const WEBSITE_PER_FETCH_TIMEOUT_MS = 6_000;
+
+function stripHtmlToText(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&[a-z]+;/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+async function fetchText(url: string): Promise<string | null> {
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), WEBSITE_PER_FETCH_TIMEOUT_MS);
+    const res = await fetch(url, {
+      signal: ctrl.signal,
+      headers: { "User-Agent": "MinglaBot/1.0 (+venue-verification)" },
+      redirect: "follow",
+    });
+    clearTimeout(t);
+    if (!res.ok) return null;
+    const ctype = (res.headers.get("content-type") ?? "").toLowerCase();
+    if (!ctype.includes("text/html") && !ctype.includes("text/plain") && ctype !== "") {
+      await res.arrayBuffer().catch(() => undefined);
+      return null;
+    }
+    const body = await res.text();
+    return body.slice(0, 200_000); // cap raw bytes per page
+  } catch {
+    return null;
+  }
+}
+
+// Exported for the website-scan behavioral test.
+export function extractInternalLinks(html: string, baseUrl: string): string[] {
+  let origin = "";
+  try {
+    origin = new URL(baseUrl).origin;
+  } catch {
+    return [];
+  }
+  const out = new Set<string>();
+  const re = /href\s*=\s*["']([^"']+)["']/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) {
+    const href = m[1];
+    if (!WEBSITE_LINK_HINTS.test(href)) continue;
+    let abs: string;
+    try {
+      abs = new URL(href, baseUrl).toString();
+    } catch {
+      continue;
+    }
+    // Same-origin only; drop fragments/mailto/tel.
+    if (!abs.startsWith(origin)) continue;
+    if (/^(mailto:|tel:|javascript:)/i.test(href)) continue;
+    out.add(abs.split("#")[0]);
+    if (out.size >= WEBSITE_MAX_PAGES - 1) break;
+  }
+  return [...out];
+}
+
+export async function scanWebsite(
+  websiteUrl: string | null | undefined,
+): Promise<{ text: string; pages_read: number } | null> {
+  if (typeof websiteUrl !== "string" || websiteUrl.trim().length === 0) return null;
+  let url = websiteUrl.trim();
+  if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
+  const homeHtml = await fetchText(url);
+  if (homeHtml === null) return null;
+
+  const pages: string[] = [stripHtmlToText(homeHtml)];
+  const links = extractInternalLinks(homeHtml, url);
+  for (const link of links) {
+    if (pages.length >= WEBSITE_MAX_PAGES) break;
+    const html = await fetchText(link);
+    if (html !== null) pages.push(stripHtmlToText(html));
+  }
+  const text = pages.join("\n\n").slice(0, WEBSITE_MAX_TOTAL_CHARS).trim();
+  if (text.length === 0) return null;
+  return { text, pages_read: pages.length };
+}
+
 async function callGeminiForEvaluations(input: {
   brand: OwnedBrand;
   place: Record<string, unknown>;
   signals: SignalRow[];
   tier2: Record<string, unknown>;
   imageUrls: string[];
+  websiteText: string | null;
 }): Promise<{
   bio: string;
   photo_analysis: Record<string, unknown> | null;
   facets: Record<string, unknown>;
   evaluations: AiEvaluation[];
+  consistency: Record<string, unknown> | null;
 }> {
   const apiKey = Deno.env.get("GEMINI_API_KEY") ?? Deno.env.get("GOOGLE_AI_API_KEY") ?? "";
   if (!apiKey) {
@@ -715,7 +871,16 @@ async function callGeminiForEvaluations(input: {
     brand: { id: input.brand.id, name: (input.brand as { name?: unknown }).name ?? null },
     place: slimPlace,
     tier2: input.tier2,
+    // WS6: the venue's own website content (homepage + About/Menu pages) for real
+    // context — base the bio + scores on this, not guesswork.
+    website_content: input.websiteText,
     signals: input.signals.map((s) => ({ id: s.id, label: s.label })),
+    // WS6: also return a `consistency` object judging whether the website +
+    // photos SUPPORT the operator's claims (tier2 price_tiers, facet answers,
+    // vibe signal picks). Informational for an admin — do NOT change scores
+    // because of it. Shape: { verdict: "consistent"|"mixed"|"contradicted",
+    // confidence_0_to_100: int, summary: short text, flags: [short strings] }.
+    consistency_required: true,
   };
 
   const parts: Array<Record<string, unknown>> = [{ text: JSON.stringify(prompt) }, ...imageParts];
@@ -740,9 +905,9 @@ async function callGeminiForEvaluations(input: {
           generationConfig: {
             responseMimeType: "application/json",
             responseSchema: GEMINI_RESPONSE_SCHEMA,
-            // Speed: terse per-signal reasoning keeps the response small, so 4096
-            // is ample for bio + facets + 16 short evaluations.
-            maxOutputTokens: 4096,
+            // WS6: bio + facets + 16 evals + a consistency block. 6144 fits it with
+            // terse per-signal reasoning.
+            maxOutputTokens: 6144,
             temperature: 0.4,
           },
         }),
@@ -768,6 +933,7 @@ async function callGeminiForEvaluations(input: {
       photo_analysis?: unknown;
       facets?: unknown;
       evaluations?: unknown;
+      consistency?: unknown;
     };
     try {
       parsed = JSON.parse(text);
@@ -818,6 +984,10 @@ async function callGeminiForEvaluations(input: {
         ? parsed.facets as Record<string, unknown>
         : {},
       evaluations,
+      consistency:
+        parsed.consistency && typeof parsed.consistency === "object"
+          ? parsed.consistency as Record<string, unknown>
+          : null,
     };
   }
   throw new Error(lastErr || "gemini_failed");
@@ -977,16 +1147,19 @@ async function handleTier2(
     ? existingInputs.tier1 as Record<string, unknown>
     : {};
 
-  // META-ORCH-1009 Sub-E (speed): NO synchronous AI vision here. The vision stage
-  // (photo_analysis) was built to analyze a multi-photo GALLERY — dedup near
-  // duplicates, score composition across many images, infer facets from a set.
-  // The current flow only collects a single hero cover, so downloading it and
-  // running vision at generation time is the bulk of the latency for almost no
-  // value. We generate the pitch + signal scores from venue TEXT (type, website,
-  // price, vibes) which is fast. When a real gallery-upload step lands (post
-  // go-live venue management), vision moves there. Passing [] => no image fetch,
-  // no vision, photo_analysis stays NULL (honesty guard).
-  const imageUrls: string[] = [];
+  // META-ORCH-1009 Sub-F WS6: send ALL operator-uploaded gallery photos to Gemini
+  // (multi-image, no stitch — zero Supabase conversion cost) so vision analyzes
+  // the real set. Also scan the venue's website (homepage + About/Menu internal
+  // links) for genuine context the model bases the bio + scores + consistency on.
+  // The funny client loader covers the wait. (Hero/video boosts the recommendation
+  // separately; the gallery is the analysis input.)
+  const imageUrls = galleryUrls(place as Record<string, unknown>);
+  const websiteForScan =
+    (tier2 as { website?: unknown }).website ??
+    (place as { website?: unknown }).website ?? null;
+  const websiteScan = await scanWebsite(
+    typeof websiteForScan === "string" ? websiteForScan : null,
+  );
 
   // META-ORCH-1009 Sub-E: the AI stage (Gemini call + fail-closed score assembly)
   // is the one place this handler can throw on external/model conditions. Persist
@@ -998,7 +1171,14 @@ async function handleTier2(
   let evaluatedAt: string;
   let aiSignalScores: ReturnType<typeof buildAiSignalScores>;
   try {
-    gemini = await callGeminiForEvaluations({ brand, place, signals, tier2, imageUrls });
+    gemini = await callGeminiForEvaluations({
+      brand,
+      place,
+      signals,
+      tier2,
+      imageUrls,
+      websiteText: websiteScan?.text ?? null,
+    });
     evaluatedAt = new Date().toISOString();
     aiSignalScores = buildAiSignalScores(signals, gemini.evaluations, evaluatedAt);
   } catch (aiErr) {
@@ -1030,6 +1210,17 @@ async function handleTier2(
   const mergedInputs = {
     ...existingInputs,
     tier2,
+    // WS6: store the consistency check + website-scan provenance for the admin
+    // review (informational; does not change scores).
+    consistency: gemini.consistency,
+    website_scan: websiteScan === null
+      ? null
+      : {
+          pages_read: websiteScan.pages_read,
+          chars: websiteScan.text.length,
+          scanned_at: evaluatedAt,
+        },
+    images_analyzed: imageUrls.length,
     pending_ai_outputs: {
       generated_bio: gemini.bio,
       facets: gemini.facets,
@@ -1139,6 +1330,17 @@ async function handleConfirmAiOutputs(
   const nextStatus = servable ? "deck_eligible" : "needs_fix";
   const coaching = coachingForReasons(reasons);
 
+  // WS6: deck-integration data. price_tiers (consumer taxonomy) + derived
+  // price_level (deck displays this); stored_photo_urls = hero + gallery (deck
+  // image source). place_scores is produced by run-signal-scorer on admin
+  // go-live (WS7), since per-place scoring requires is_servable=true.
+  const priceTiers = priceTiersFromTier2(tier2);
+  const priceLevel = priceLevelFromTiers(priceTiers);
+  const storedPhotos = storedPhotosForDeck(
+    place as Record<string, unknown>,
+    galleryUrls(place as Record<string, unknown>),
+  );
+
   const { error: updateErr } = await client
     .from("place_pool")
     .update({
@@ -1149,6 +1351,9 @@ async function handleConfirmAiOutputs(
       bouncer_reason: reasons.join(",") || null,
       bouncer_validated_at: new Date().toISOString(),
       website: bouncerPlace.website,
+      price_tiers: priceTiers.length > 0 ? priceTiers : null,
+      ...(priceLevel !== null ? { price_level: priceLevel } : {}),
+      ...(storedPhotos.length > 0 ? { stored_photo_urls: storedPhotos } : {}),
       ...facetPatch,
     })
     .eq("id", placePoolId);
