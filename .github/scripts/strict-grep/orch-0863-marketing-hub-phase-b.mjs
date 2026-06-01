@@ -1240,6 +1240,9 @@ function checkNoNewBackendFiles() {
     "supabase/functions/run-place-intelligence-trial/__tests__/concurrencyCap.test.ts",
     "supabase/functions/run-place-intelligence-trial/__tests__/concurrencyCap_adversarial.test.ts",
     "supabase/migrations/__tests__/orch_1032_cron_promotion.test.ts",
+    // ORCH-1032 QA: tester-authored adversarial regression test (additive-safety
+    // predicate logic + gate count-query running-only correctness).
+    "supabase/migrations/__tests__/orch_1032_additive_safety_adversarial.test.ts",
   ];
   const ALLOWLIST = [
     ...ORCH_1032_BACKEND_ALLOWLIST,
