@@ -38,6 +38,7 @@ import {
 import type { Brand } from "../../types/brand";
 import type { DeckReadinessFocus } from "../../utils/deckReadinessRoutes";
 import { useDraftVenueStore } from "../../store/draftVenueStore";
+import { useCurrentBrandStore } from "../../store/currentBrandStore";
 import { venueStepError } from "./venueWizardValidation";
 import { Button } from "../ui/Button";
 import { CoverPickerSheet } from "../ui/CoverPickerSheet";
@@ -205,10 +206,15 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
         throw new Error("place_pool_link_missing");
       }
       setCreatedVenue({ brand, placePoolId: tier1.place_pool_id });
-      // META-ORCH-1009 Sub-E: the venue is now created and the flow moves to the
-      // deck-readiness screen (which reads from createdVenue, not the draft).
-      // Clear the persisted draft so the NEXT "Add a venue" starts clean instead
-      // of resuming this just-submitted venue.
+      // META-ORCH-1009 Sub-E: make the just-created venue the ACTIVE brand. The
+      // venue is its own brand; without this the operator stays on their previous
+      // brand and Home shows "Add your venue" again after a reload instead of the
+      // deck-readiness card. currentBrandId is persisted, so this resume survives
+      // an app reload — Home lands straight on "Finish deck readiness".
+      useCurrentBrandStore.getState().setCurrentBrandId(brand.id);
+      // The venue is created and the flow moves to the deck-readiness screen
+      // (which reads from createdVenue, not the draft). Clear the persisted draft
+      // so the NEXT "Add a venue" starts clean instead of resuming this one.
       useDraftVenueStore.getState().reset();
     } catch (e) {
       if (e instanceof SlugCollisionError) {
