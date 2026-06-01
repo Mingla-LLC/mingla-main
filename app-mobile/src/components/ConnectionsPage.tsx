@@ -567,9 +567,13 @@ function ConnectionsPageRefactored({
 
   useScreenLogger('connections');
   const { t } = useTranslation(['connections', 'common', 'social']);
-  // ORCH-0635: step ID 8 → 7 (old step 5 dropped → renumber).
-  // ORCH-1029: renumbered 7 → 5 (steps 4/5 "Better together"/"Back to solo" deleted).
-  const coachChatHeader = useCoachMark(5, 0);
+  // ORCH-1037 + ORCH-1035: step 6 = the in-page people icon (NOT the bottom-nav tab,
+  // NOT the whole header row — operator-LOCKED); step 7 (NEW) = the + button that
+  // opens the FriendsActionChooser (pair a friend + start a shared group chat).
+  // Renumbered from the prior single step 5. People icon radius ~14 hugs the 22px
+  // icon + hit area; + button radius ~8 hugs the round glass button.
+  const coachPeopleIcon = useCoachMark(6, 14);
+  const coachPlusButton = useCoachMark(7, 8);
   const user = useAppStore((state) => state.user);
   const {
     canCreateSession,
@@ -3306,8 +3310,9 @@ function ConnectionsPageRefactored({
           />
 
           {/* Single header row — title + friends icon (+ button / pills relocated above search per ORCH-0990) */}
+          {/* ORCH-1037: coach step 6 ref moved OFF this broad header row onto the
+              people-icon Pressable below (operator-LOCKED exact target). */}
           <View
-            ref={coachChatHeader.targetRef as any}
             style={[styles.headerRowAbsolute, { top: HEADER_ROW_TOP, height: HEADER_ROW_HEIGHT }]}
           >
             <Text style={styles.titleText} numberOfLines={1} allowFontScaling accessibilityRole="header">
@@ -3315,6 +3320,8 @@ function ConnectionsPageRefactored({
             </Text>
 
             <Pressable
+              ref={coachPeopleIcon.targetRef as React.Ref<View>}
+              collapsable={false}
               onPress={() => openFriendsModal()}
               hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
               accessibilityRole="button"
@@ -3339,6 +3346,8 @@ function ConnectionsPageRefactored({
               glass header to sit directly above the search bar. */}
           <View style={styles.pairControlsRow}>
             <Pressable
+              ref={coachPlusButton.targetRef as React.Ref<View>}
+              collapsable={false}
               onPress={() => {
                 HapticFeedback.light();
                 setShowFriendsActionChooser(true);

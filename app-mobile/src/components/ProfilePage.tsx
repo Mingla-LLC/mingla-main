@@ -132,15 +132,20 @@ function ProfilePage({
   const [showInterestsSheet, setShowInterestsSheet] = useState(false);
   const [showAccountSettings, setShowAccountSettings] = useState(false);
   const [showBillingSheet, setShowBillingSheet] = useState(false);
-  // ORCH-0635: coach-mark scroll-offset steps on Profile — step 8 (Account Settings
-  // row) + step 9 (Beta Feedback button). Step 9 was re-added after device feedback.
+  // ORCH-1037 + ORCH-1035: coach-mark scroll-offset steps on Profile —
+  //   step 8  Interests card    (NEW)
+  //   step 9  Your Circle card  (NEW)
+  //   step 10 Account Settings row (renumbered from 6)
+  //   step 11 Beta Feedback button (renumbered from 7)
   const scrollRef = useRef<any>(null);
   const contentRef = useRef<View>(null);
+  const interestsRef = useRef<View>(null);
+  const circleRef = useRef<View>(null);
   const accountSettingsRef = useRef<View>(null);
   const feedbackButtonRef = useRef<View>(null);
-  const { currentStep, registerScrollRef, registerTargetScrollOffset, scrollLockActive } = useCoachMarkContext();
-  // ORCH-1029: Profile scroll-offset steps renumbered 8→6, 9→7 (steps 4/5 deleted).
-  const isScrollStep = currentStep === 6 || currentStep === 7;
+  const { currentStep, registerScrollRef, registerTargetScrollOffset, registerTargetMeasurer, scrollLockActive } = useCoachMarkContext();
+  // ORCH-1037/1035: Profile scroll-offset steps renumbered to 8/9/10/11.
+  const isScrollStep = currentStep === 8 || currentStep === 9 || currentStep === 10 || currentStep === 11;
   const coachScrollPadding = isScrollStep ? Dimensions.get('window').height * 0.65 : 0;
 
   useEffect(() => {
@@ -162,41 +167,57 @@ function ProfilePage({
     [registryScrollRef]
   );
 
-  // ORCH-1029 (F-3): register both Profile scroll-offset targets — step 6 (Account
-  // Settings row) and step 7 (Beta Feedback button) — driven by a DETERMINISTIC layout
-  // signal (onLayout → measureLayout success), NOT a blind setTimeout(…, 800). The old
-  // 800ms timer raced the step-5→6 cross-tab mount: on first Profile entry the offset was
-  // usually not yet registered, so scrollToKnownPosition fell through to scrollToEnd() →
-  // no cutout + footer over-scroll. onLayout fires exactly when each row has real bounds,
-  // so the offset registers the instant the row is measurable. measureLayout resolves the
-  // row's contentY relative to contentRef (the scroll content), which is what the
-  // CoachMarkContext scroll math consumes.
-  // Spec: SPEC_ORCH-1029_COACH_MARK_FIXES.md §3.F-3 (SC-3.3 / SC-3.5).
-  const handleAccountSettingsLayout = useCallback((): void => {
-    const node = accountSettingsRef.current;
-    const content = contentRef.current;
-    if (!node || !content) return;
-    (node as any).measureLayout(
-      content,
-      (x: number, y: number, width: number, height: number) => {
-        registerTargetScrollOffset(6, x, y, width, height);
-      },
-      () => console.warn('[CoachMark] measureLayout failed for step 6'),
-    );
-  }, [registerTargetScrollOffset]);
+  // ORCH-1029 (F-3) + ORCH-1037 (§3.3): each Profile scroll step wires TWO things via a
+  // DETERMINISTIC onLayout signal (NOT a blind setTimeout(…, 800), which raced the cross-tab
+  // mount and dumped the user at the footer):
+  //   (1) registerTargetScrollOffset — gives CoachMarkContext the row's contentY so it can
+  //       compute HOW FAR to scroll. This is the gate that drives scrollToKnownPosition.
+  //   (2) registerTargetMeasurer — a thunk that does a REAL measureInWindow of the row leaf
+  //       node. ORCH-1037: after the scroll settles, the context calls this and feeds the
+  //       window rect through its two-consecutive-match stable loop, so the cutout is
+  //       painted from a true post-scroll measurement — NOT the old `contentY − scrollY`
+  //       reconstruction that landed steps one row low (identical-contentY bug).
+  // measureLayout resolves contentY relative to contentRef (the scroll content); the
+  // measurer uses the node's own measureInWindow (window-frame coords, what the SVG mask
+  // paints in). Both fire the instant the row is measurable.
+  // Spec: SPEC_ORCH-1037-1035_…§3.3 ; SPEC_ORCH-1029_COACH_MARK_FIXES.md §3.F-3 (lineage).
+  // (2) post-scroll direct measurer factory — measures the live row node in the window
+  // frame. The step ids are written as explicit literal call sites below so the
+  // orphan-bijection CI assertion can grep them.
+  const wireScrollStep = useCallback(
+    (stepId: number, nodeRef: React.RefObject<View | null>): void => {
+      const node = nodeRef.current;
+      const content = contentRef.current;
+      if (!node || !content) return;
+      (node as any).measureLayout(
+        content,
+        (x: number, y: number, width: number, height: number) => {
+          // offset (drives scroll distance) — explicit per-step call sites below.
+          if (stepId === 8) registerTargetScrollOffset(8, x, y, width, height);
+          else if (stepId === 9) registerTargetScrollOffset(9, x, y, width, height);
+          else if (stepId === 10) registerTargetScrollOffset(10, x, y, width, height);
+          else if (stepId === 11) registerTargetScrollOffset(11, x, y, width, height);
+        },
+        () => console.warn(`[CoachMark] measureLayout failed for step ${stepId}`),
+      );
+      registerTargetMeasurer(stepId, (cb) => {
+        const liveNode = nodeRef.current;
+        if (!liveNode) {
+          cb(null);
+          return;
+        }
+        (liveNode as any).measureInWindow((x: number, y: number, width: number, height: number) => {
+          cb({ x, y, width, height });
+        });
+      });
+    },
+    [registerTargetScrollOffset, registerTargetMeasurer],
+  );
 
-  const handleFeedbackButtonLayout = useCallback((): void => {
-    const node = feedbackButtonRef.current;
-    const content = contentRef.current;
-    if (!node || !content) return;
-    (node as any).measureLayout(
-      content,
-      (x: number, y: number, width: number, height: number) => {
-        registerTargetScrollOffset(7, x, y, width, height);
-      },
-      () => console.warn('[CoachMark] measureLayout failed for step 7'),
-    );
-  }, [registerTargetScrollOffset]);
+  const handleInterestsLayout = useCallback(() => wireScrollStep(8, interestsRef), [wireScrollStep]);
+  const handleCircleLayout = useCallback(() => wireScrollStep(9, circleRef), [wireScrollStep]);
+  const handleAccountSettingsLayout = useCallback(() => wireScrollStep(10, accountSettingsRef), [wireScrollStep]);
+  const handleFeedbackButtonLayout = useCallback(() => wireScrollStep(11, feedbackButtonRef), [wireScrollStep]);
 
   // Profile interests
   const { data: interests } = useProfileInterests();
@@ -462,20 +483,24 @@ function ProfilePage({
             </GlassCard>
           </View>
 
-          {/* 2. Interests card */}
-          <GlassCard variant="base">
-            <ProfileInterestsSection
-              intents={interests?.intents || []}
-              categories={interests?.categories || []}
-              isOwnProfile
-              onEditPress={() => setShowInterestsSheet(true)}
-            />
-          </GlassCard>
+          {/* 2. Interests card — ORCH-1035 coach step 8 (scroll + direct measure) */}
+          <View ref={interestsRef} collapsable={false} onLayout={handleInterestsLayout}>
+            <GlassCard variant="base">
+              <ProfileInterestsSection
+                intents={interests?.intents || []}
+                categories={interests?.categories || []}
+                isOwnProfile
+                onEditPress={() => setShowInterestsSheet(true)}
+              />
+            </GlassCard>
+          </View>
 
-          {/* 3. Your Circle card */}
-          <GlassCard variant="base">
-            <YourCircleSection onViewProfile={onViewFriendProfile} />
-          </GlassCard>
+          {/* 3. Your Circle card — ORCH-1035 coach step 9 (scroll + direct measure) */}
+          <View ref={circleRef} collapsable={false} onLayout={handleCircleLayout}>
+            <GlassCard variant="base">
+              <YourCircleSection onViewProfile={onViewFriendProfile} />
+            </GlassCard>
+          </View>
 
           {/* 4. Stats bento card */}
           <GlassCard variant="base">

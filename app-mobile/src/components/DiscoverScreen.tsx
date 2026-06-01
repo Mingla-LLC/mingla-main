@@ -873,10 +873,20 @@ function DiscoverScreen({
 
   const { t } = useTranslation(["discover", "common"]);
   const insets = useSafeAreaInsets();
-  // ORCH-0635 (rework): step target is the header panel (title + filter bar).
-  // targetRadius 24 → cutout radius 28 matches HEADER_PANEL_RADIUS for a neat fit.
-  // ORCH-1029: renumbered 6 → 4 (steps 4/5 "Better together"/"Back to solo" deleted).
-  const coachDiscoverFeed = useCoachMark(4, 24);
+  // ORCH-1037 + ORCH-1035: coach steps now target the exact tab pills, not the
+  // whole header panel. Step 4 = Events pill, step 5 (NEW) = Trips pill. Both
+  // pills are rendered by the same TABS_1016 `.map`, so we attach the right coach
+  // ref per tab.id via the helper below (radius ~10 hugs the small pill).
+  const coachEventsTab = useCoachMark(4, 10);
+  const coachTripsTab = useCoachMark(5, 10);
+  const coachTabRefFor = useCallback(
+    (tabId: string): ((node: View | null) => void) | undefined => {
+      if (tabId === 'events') return coachEventsTab.targetRef;
+      if (tabId === 'trips') return coachTripsTab.targetRef;
+      return undefined;
+    },
+    [coachEventsTab.targetRef, coachTripsTab.targetRef],
+  );
 
   // Accessibility state (mirrors home chrome pattern)
   const [reduceTransparency, setReduceTransparency] = useState(false);
@@ -1944,10 +1954,9 @@ function DiscoverScreen({
     <View style={styles.safeArea}>
       <StatusBar barStyle="light-content" />
 
-      {/* ORCH-0635 (rework): coach-mark step 6 target — the header panel itself
-          (title + filter bar). Bubble renders centered via bubblePosition='center'. */}
+      {/* Header panel (title + filter bar). ORCH-1037: the coach-mark target moved
+          OFF this broad panel onto the exact Events/Trips pills below. */}
       <View
-        ref={coachDiscoverFeed.targetRef}
         collapsable={false}
         pointerEvents="box-none"
         style={[
@@ -2010,6 +2019,9 @@ function DiscoverScreen({
                 return (
                   <Pressable
                     key={tab.id}
+                    // ORCH-1037/1035: coach step 4 → Events pill, step 5 → Trips pill.
+                    ref={coachTabRefFor(tab.id) as React.Ref<View>}
+                    collapsable={false}
                     onPress={() => handleTab1016Change(tab.id)}
                     onLayout={(e) => {
                       const { x, width } = e.nativeEvent.layout;

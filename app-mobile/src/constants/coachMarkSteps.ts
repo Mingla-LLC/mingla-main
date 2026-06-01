@@ -1,17 +1,28 @@
 /**
- * Coach mark step definitions — ORCH-0635 refresh (Pass 3, 7-step variant).
+ * Coach mark step definitions — ORCH-1037 + ORCH-1035 (11-step variant).
  *
  * ORCH-1029: steps 4/5 ("Better together"/"Back to solo") deleted — META-ORCH-0929
- * made Home solo-only, so that Solo/Together session switcher no longer exists.
- * The remaining trailing steps were renumbered to a contiguous 1..7 (no gap) and the
- * four target call sites (DiscoverScreen 6→4, ConnectionsPage 7→5, ProfilePage 8→6 & 9→7)
- * plus the SCROLL_STEPS literal in CoachMarkContext were repointed in lockstep.
+ * made Home solo-only — leaving a contiguous 7-step tour.
  *
- * Step-to-target wiring is by numeric stepId only (see useCoachMark.ts).
- * The old `targetId` string field was dead metadata and has been removed.
+ * ORCH-1037 [exact-target determinism] + ORCH-1035 [content expansion]: the tour
+ * grew 7 → 11. Four NEW steps were added (Trips, the + button, Your interests,
+ * Your circle) and every existing trailing step was renumbered. Final order is
+ * driven by tab (home → discover → connections → profile) and within-screen
+ * reading order:
+ *   1 Deck · 2 Preferences · 3 Likes        (home — unchanged ids)
+ *   4 Events tab · 5 Trips tab              (discover)
+ *   6 People icon · 7 + button              (connections)
+ *   8 Interests · 9 Circle · 10 Account · 11 Share Feedback (profile, scroll steps)
  *
- * Spec: Mingla_Artifacts/outputs/DESIGN_ORCH-0635_COACH_MARK_REFRESH_SPEC.md §2
- *       Mingla_Artifacts/specs/SPEC_ORCH-1029_COACH_MARK_FIXES.md §3.F-2
+ * ⚠ LOCKSTEP-RENUMBER WARNING: step-to-target wiring is by numeric stepId only
+ * (see useCoachMark.ts). EVERY useCoachMark(<id>), registerTargetScrollOffset(<id>),
+ * and the SCROLL_STEPS literal in CoachMarkContext (= new Set([8,9,10,11])) MUST
+ * match the ids below. A mismatch orphans a step's target (the dev-time warning in
+ * useCoachMark.ts + the happy-path bijection test catch it). The old `targetId`
+ * string field was dead metadata and was removed in ORCH-1029.
+ *
+ * Spec: Mingla_Artifacts/specs/SPEC_ORCH-1037-1035_COACHMARK_DETERMINISM_AND_EXPANSION.md §5
+ *       Mingla_Artifacts/specs/SPEC_ORCH-1029_COACH_MARK_FIXES.md §3.F-2 (lineage)
  */
 export interface CoachStep {
   id: number;
@@ -48,32 +59,64 @@ export const COACH_STEPS: CoachStep[] = [
     buttonLabel: 'Got it',
   },
   {
+    // ORCH-1037: now targets the small Events tab Pressable (not the whole header
+    // panel), so the bubble hugs the pill like every other small target — the
+    // 'center' override was a band-aid for the too-broad target and is removed.
     id: 4,
     tab: 'discover',
     title: 'Events, near you',
     description: 'Concerts, shows, experiences — all within reach.',
     buttonLabel: 'Got it',
-    // Cutout covers the entire header panel (title + filter bar). With a large
-    // top-of-screen target, the auto-positioned bubble would hug the bottom edge
-    // awkwardly. Center on screen for a cleaner read.
-    bubblePosition: 'center',
   },
   {
+    // ORCH-1035 NEW: Trips tab (ORCH-1016 travel reframing).
     id: 5,
+    tab: 'discover',
+    title: 'Trips, ready when you are',
+    description: 'Weekend escapes, big adventures — plan the whole thing here.',
+    buttonLabel: 'Got it',
+  },
+  {
+    id: 6,
     tab: 'connections',
     title: 'Your people',
     description: 'Friends, requests, blocks — everything social lives here.',
     buttonLabel: 'Got it',
   },
   {
-    id: 6,
+    // ORCH-1035 NEW: the + button opens the FriendsActionChooser — pair a friend
+    // AND start a shared group chat (the chooser does exactly both).
+    id: 7,
+    tab: 'connections',
+    title: 'Pair up, plan together',
+    description: 'Tap + to pair with a friend and start a shared group chat.',
+    buttonLabel: 'Got it',
+  },
+  {
+    // ORCH-1035 NEW: Interests card (scroll step).
+    id: 8,
+    tab: 'profile',
+    title: 'Your interests',
+    description: "Tell us what you're into — your deck gets sharper every time.",
+    buttonLabel: 'Got it',
+  },
+  {
+    // ORCH-1035 NEW: Your Circle card (scroll step).
+    id: 9,
+    tab: 'profile',
+    title: 'Your circle',
+    description: 'The people you plan with, all in one place.',
+    buttonLabel: 'Got it',
+  },
+  {
+    id: 10,
     tab: 'profile',
     title: 'Your rules',
     description: 'Privacy, notifications, language — all in Account Settings.',
     buttonLabel: 'Got it',
   },
   {
-    id: 7,
+    id: 11,
     tab: 'profile',
     title: 'Tell us what works',
     description: "Love something? Spot a bug? Tap here — we read every one.",
