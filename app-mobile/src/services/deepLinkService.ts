@@ -1,16 +1,48 @@
 /**
  * Deep Link Service — Unified deep link parser and executor.
  *
- * Replaces ad-hoc navigation in processNotification (index.tsx).
- * Parses `mingla://` URLs and maps them to navigation actions.
+ * ORCH-1030 [Consumer app notification deep-linking]:
+ * ONE canonical pipeline for in-app sheet taps, OneSignal push taps, OS Linking,
+ * and the deferred onboarding-gated replay. The server's `data.deepLink`
+ * (`mingla://…`) is the single source of truth:
+ *
+ *   data.deepLink  →  parseDeepLink(url): Destination | null
+ *                  →  executeDeepLink(Destination | null, handlers)
+ *
+ * When `data.deepLink` is absent or `parseDeepLink` returns null, the caller
+ * falls back to `typeFallbackDestination(type, data)`, which returns the SAME
+ * typed `Destination` shape so it can never disagree with the parser
+ * (invariant I-NOTIF-FALLBACK-AGREES).
  */
 
-// ── Types ────────────────────────────────────────────────────────────────────
+// ── Typed destination union (ORCH-1030) ───────────────────────────────────────
 
-export interface NavigationAction {
-  page: string;
-  params?: Record<string, string>;
-}
+/**
+ * The single typed contract every navigation target speaks. Each screen
+ * consumes its own slice; the discriminated union makes "you forgot to carry
+ * entryId/experienceId" a compile error rather than a silent drop (kills the
+ * F-02/F-11 param-dropped-at-screen class).
+ */
+export type Destination =
+  | { kind: 'session'; sessionId: string }
+  | {
+      kind: 'conversation';
+      conversationId?: string;
+      eventId?: string;
+      orderId?: string;
+      claimToken?: string;
+      chatType?: 'direct' | 'group';
+    }
+  | { kind: 'profile'; userId: string }
+  | { kind: 'calendarEntry'; entryId: string }
+  | { kind: 'review'; experienceId: string }
+  | { kind: 'pairedDeck' } // mingla://discover?paired=true
+  | {
+      kind: 'page';
+      page: 'home' | 'discover' | 'connections' | 'likes' | 'saved' | 'profile' | 'onboarding' | 'board-invite';
+      params?: Record<string, string>;
+    }
+  | { kind: 'paywall' };
 
 export interface NavigationHandlers {
   setCurrentPage: (page: string) => void;
@@ -24,7 +56,12 @@ export interface NavigationHandlers {
 
 // ── Parser ───────────────────────────────────────────────────────────────────
 
-export function parseDeepLink(url: string): NavigationAction | null {
+/**
+ * Parse a `mingla://…` (or https) deep link into a typed Destination.
+ * Returns `null` on unknown/garbled input — the caller then falls back to
+ * `typeFallbackDestination`. Never throws.
+ */
+export function parseDeepLink(url: string): Destination | null {
   try {
     const normalized = (() => {
       if (/^https?:\/\//i.test(url)) {
@@ -50,69 +87,97 @@ export function parseDeepLink(url: string): NavigationAction | null {
 
     switch (path) {
       case 'home':
-        return { page: 'home', params };
+        return { kind: 'page', page: 'home', params };
+
       case 'discover':
-        return { page: 'discover', params };
+        // mingla://discover?paired=true → the paired/collab deck container.
+        if (params.paired === 'true') {
+          return { kind: 'pairedDeck' };
+        }
+        return { kind: 'page', page: 'discover', params };
+
       case 'connections':
-        return { page: 'connections', params };
-      case 'session':
-        return {
-          page: 'home',
-          params: { openSessionId: pathSegments[1], ...params },
-        };
+        return { kind: 'page', page: 'connections', params };
+
+      case 'session': {
+        // Path-form mingla://session/{id} AND query-form mingla://session?id={id}
+        // (the tag-along producer emits the query-form — F-12 latent fix).
+        const sessionId = pathSegments[1] ?? params.id;
+        if (!sessionId) {
+          return { kind: 'page', page: 'home' };
+        }
+        return { kind: 'session', sessionId };
+      }
+
       case 'messages':
         return {
-          page: 'connections',
-          params: { tab: 'messages', conversationId: pathSegments[1], ...params },
+          kind: 'conversation',
+          conversationId: pathSegments[1],
+          ...(params.eventId ? { eventId: params.eventId } : {}),
         };
+
       case 'chat':
         return {
-          page: 'connections',
-          params: {
-            tab: 'messages',
-            conversationId: pathSegments[1],
-            eventId: params.eventId,
-            chatType: params.type ?? 'group',
-            ...params,
-          },
+          kind: 'conversation',
+          conversationId: pathSegments[1],
+          ...(params.eventId ? { eventId: params.eventId } : {}),
+          chatType: (params.type as 'direct' | 'group') ?? 'group',
         };
+
       case 'orders':
         if (pathSegments[1] && pathSegments[2] === 'chat') {
           return {
-            page: 'connections',
-            params: {
-              tab: 'messages',
-              orderId: pathSegments[1],
-              claimToken: params.token,
-              claimPendingTripChats: 'true',
-              ...params,
-            },
+            kind: 'conversation',
+            orderId: pathSegments[1],
+            ...(params.token ? { claimToken: params.token } : {}),
           };
         }
+        // orders/{id} without /chat — out of consumer scope (Ruling 2); latent.
         return null;
-      case 'calendar':
-        return {
-          page: 'likes',
-          params: { tab: 'calendar', entryId: pathSegments[1], ...params },
-        };
-      case 'review':
-        return {
-          page: 'review',
-          params: { experienceId: pathSegments[1], ...params },
-        };
-      case 'profile':
-        return { page: 'profile', params };
+
+      case 'calendar': {
+        const entryId = pathSegments[1];
+        if (!entryId) {
+          return { kind: 'page', page: 'likes' };
+        }
+        return { kind: 'calendarEntry', entryId };
+      }
+
+      case 'review': {
+        // Executor MUST carry experienceId (no silent drop — F-11).
+        const experienceId = pathSegments[1];
+        if (!experienceId) {
+          return { kind: 'page', page: 'likes' };
+        }
+        return { kind: 'review', experienceId };
+      }
+
+      case 'profile': {
+        // mingla://profile/{userId} → open that person's profile (Ruling 1).
+        // Bare mingla://profile → the user's own Profile tab.
+        const userId = pathSegments[1] ?? params.userId;
+        if (userId) {
+          return { kind: 'profile', userId };
+        }
+        return { kind: 'page', page: 'profile', params };
+      }
+
       case 'subscription':
-        return { page: 'subscription', params };
+        return { kind: 'paywall' };
+
       case 'onboarding':
-        return { page: 'onboarding', params };
+        return { kind: 'page', page: 'onboarding', params };
+
       case 'board':
         // Legacy: mingla://board/{code}
-        return { page: 'board-invite', params: { code: pathSegments[1] } };
+        return { kind: 'page', page: 'board-invite', params: { code: pathSegments[1] } };
+
       case 'likes':
-        return { page: 'likes', params };
+        return { kind: 'page', page: 'likes', params };
+
       case 'saved':
-        return { page: 'saved', params };
+        return { kind: 'page', page: 'saved', params };
+
       default:
         console.warn('[deepLinkService] Unknown deep link path:', path);
         return null;
@@ -123,51 +188,154 @@ export function parseDeepLink(url: string): NavigationAction | null {
   }
 }
 
-// ── Executor ─────────────────────────────────────────────────────────────────
+// ── Type-based fallback ────────────────────────────────────────────────────────
 
-export function executeDeepLink(
-  action: NavigationAction | null,
-  handlers: NavigationHandlers
-): void {
-  if (!action) return;
+/**
+ * Compute a Destination from a notification `type` + its `data` payload, used
+ * ONLY when `data.deepLink` is absent or `parseDeepLink` returned null. This
+ * REPLACES the legacy `NAV_TARGETS` string map and the five hand-coded in-app
+ * special-cases. It MUST return the SAME `Destination` kinds the parser can
+ * produce so it can never disagree (I-NOTIF-FALLBACK-AGREES).
+ */
+export function typeFallbackDestination(
+  type: string,
+  data?: Record<string, unknown>
+): Destination {
+  const str = (key: string): string | undefined => {
+    const v = data?.[key];
+    return typeof v === 'string' && v ? v : undefined;
+  };
 
-  const { page, params } = action;
-
-  // Forward params so target pages can react (e.g., open specific tab,
-  // scroll to message, open conversation). Without this, params parsed
-  // from deep links like mingla://connections?tab=messages were discarded.
-  if (params && Object.keys(params).length > 0 && handlers.setDeepLinkParams) {
-    handlers.setDeepLinkParams(params);
+  // Collaboration / sessions → Home + the session (collab/board UI mounts from Home).
+  if (type.startsWith('collaboration_') || type.startsWith('session_') || type.startsWith('board_card_')) {
+    const sessionId = str('sessionId') ?? str('relatedId') ?? str('related_id');
+    return sessionId ? { kind: 'session', sessionId } : { kind: 'page', page: 'home' };
   }
 
-  switch (page) {
-    case 'home':
-      if (params?.openSessionId && handlers.setPendingSessionOpen) {
-        handlers.setPendingSessionOpen(params.openSessionId);
-      }
+  // Board / group messages → the conversation thread (Connections opens it).
+  if (type.startsWith('board_message_')) {
+    const conversationId = str('conversationId') ?? str('relatedId') ?? str('related_id');
+    return conversationId
+      ? { kind: 'conversation', conversationId, chatType: 'group' }
+      : { kind: 'page', page: 'home' };
+  }
+
+  // Direct messages → the DM thread (preserve the working no-deepLink DM behavior).
+  if (type.startsWith('direct_message_')) {
+    const conversationId = str('conversationId') ?? str('relatedId') ?? str('related_id');
+    return conversationId
+      ? { kind: 'conversation', conversationId, chatType: 'direct' }
+      : { kind: 'page', page: 'connections' };
+  }
+
+  // Paired-user activity → that friend's profile if we know who, else the paired deck.
+  if (type.startsWith('paired_user_')) {
+    const userId = str('actor_id') ?? str('actorId');
+    return userId ? { kind: 'profile', userId } : { kind: 'pairedDeck' };
+  }
+
+  // Birthday / holiday reminders → the person's profile if a Mingla user id is present.
+  if (type === 'birthday_reminder' || type === 'holiday_reminder') {
+    const userId = str('partnerId') ?? str('actor_id') ?? str('actorId');
+    return userId ? { kind: 'profile', userId } : { kind: 'page', page: 'connections' };
+  }
+
+  // Friend / pair requests → Connections.
+  if (type.startsWith('friend_') || type.startsWith('pair_') || type.startsWith('link_')) {
+    return { kind: 'page', page: 'connections' };
+  }
+
+  // Calendar / visit feedback → Likes.
+  if (type.startsWith('calendar_') || type === 'visit_feedback_prompt') {
+    return { kind: 'page', page: 'likes' };
+  }
+
+  // Lifecycle / engagement.
+  if (type === 'trial_ending') {
+    return { kind: 'paywall' };
+  }
+  if (type.startsWith('re_engagement') || type === 'weekly_digest' || type === 'referral_credited') {
+    return { kind: 'page', page: 'home' };
+  }
+
+  // Unknown type → Home (never a dead tap — I-NO-SILENT-FAILURE).
+  return { kind: 'page', page: 'home' };
+}
+
+// ── Executor ─────────────────────────────────────────────────────────────────
+
+/**
+ * Apply a typed Destination via the supplied handlers. `null` is a no-op — the
+ * caller is responsible for substituting `typeFallbackDestination` before
+ * calling, so a null here means "intentionally do nothing".
+ */
+export function executeDeepLink(
+  dest: Destination | null,
+  handlers: NavigationHandlers
+): void {
+  if (!dest) return;
+
+  switch (dest.kind) {
+    case 'session':
+      handlers.setPendingSessionOpen?.(dest.sessionId);
       handlers.setCurrentPage('home');
       break;
 
-    case 'discover':
-    case 'connections':
-    case 'likes':
-    case 'saved':
+    case 'conversation': {
+      const params: Record<string, string> = { tab: 'messages' };
+      if (dest.conversationId) params.conversationId = dest.conversationId;
+      if (dest.eventId) params.eventId = dest.eventId;
+      if (dest.orderId) {
+        params.orderId = dest.orderId;
+        params.claimPendingTripChats = 'true';
+      }
+      if (dest.claimToken) params.claimToken = dest.claimToken;
+      if (dest.chatType) params.chatType = dest.chatType;
+      handlers.setDeepLinkParams?.(params);
+      handlers.setCurrentPage('connections');
+      break;
+    }
+
     case 'profile':
-      handlers.setCurrentPage(page);
+      // Overlay mounts over whatever page is current — no page change needed.
+      handlers.setViewingFriendProfileId?.(dest.userId);
       break;
 
-    case 'subscription':
-      handlers.setShowPaywall?.(true);
-      break;
-
-    case 'review':
-      // Navigate to likes for now; review modal is triggered by usePostExperienceCheck
+    case 'calendarEntry':
+      handlers.setDeepLinkParams?.({ tab: 'calendar', entryId: dest.entryId });
       handlers.setCurrentPage('likes');
       break;
 
-    default:
-      // Fallback — try navigating directly
-      handlers.setCurrentPage(page);
+    case 'review':
+      // v1 coarse: land Likes → Calendar (the entry the review is for). Opening
+      // the review modal by id is a documented v2 follow-up. MUST carry the id
+      // forward (no silent drop).
+      handlers.setDeepLinkParams?.({ tab: 'calendar', experienceId: dest.experienceId });
+      handlers.setCurrentPage('likes');
       break;
+
+    case 'pairedDeck':
+      handlers.setDeepLinkParams?.({ paired: 'true' });
+      handlers.setCurrentPage('discover');
+      break;
+
+    case 'page':
+      if (dest.params && Object.keys(dest.params).length > 0) {
+        handlers.setDeepLinkParams?.(dest.params);
+      }
+      handlers.setCurrentPage(dest.page);
+      break;
+
+    case 'paywall':
+      handlers.setShowPaywall?.(true);
+      break;
+
+    default: {
+      // Exhaustiveness guard — a new Destination kind without a branch is a
+      // compile error here.
+      const _exhaustive: never = dest;
+      void _exhaustive;
+      break;
+    }
   }
 }

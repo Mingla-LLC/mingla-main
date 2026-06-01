@@ -161,6 +161,12 @@ interface CalendarTabProps {
     currency: string;
     measurementSystem: "Metric" | "Imperial";
   };
+  /**
+   * ORCH-1030: a calendar/review notification deep link carries the target
+   * entry id here. v1 behavior = SELECT the matching entry (auto-expand its
+   * inline card); no scroll. Null/absent → no selection.
+   */
+  selectedEntryId?: string | null;
 }
 
 const CalendarTab = ({
@@ -172,6 +178,7 @@ const CalendarTab = ({
   onShowQRCode,
   userPreferences,
   accountPreferences,
+  selectedEntryId,
 }: CalendarTabProps) => {
   const { t } = useTranslation(['activity', 'common']);
   const { canAccess } = useFeatureGate();
@@ -226,6 +233,18 @@ const CalendarTab = ({
     await queryClient.invalidateQueries({ queryKey: ["calendarEntries", user?.id] });
     setIsRefreshing(false);
   }, [queryClient, user?.id]);
+
+  // ORCH-1030: a calendar/review notification deep link selects its target
+  // entry by auto-expanding the matching inline card (v1 = select, no scroll).
+  // Only fires when the entry is actually present in the loaded list, so a
+  // stale id degrades gracefully to the plain Calendar landing.
+  useEffect(() => {
+    if (!selectedEntryId) return;
+    const match = calendarEntries.find((e) => e.id === selectedEntryId);
+    if (match) {
+      setExpandedCard(selectedEntryId);
+    }
+  }, [selectedEntryId, calendarEntries]);
 
   // Animation refs
   const searchBarOpacity = useRef(new Animated.Value(0)).current;

@@ -1198,7 +1198,37 @@ function checkNoNewBackendFiles() {
     "supabase/functions/backfill-place-photos/index.ts",
     "supabase/functions/backfill-place-photos/index.test.ts",
   ];
+  // ORCH-1027 [Launch Cities admin control]: adds the consumer-launch flag
+  // migration (seeding_cities.is_live_for_consumers + partial index + the
+  // admin_launch_city_list / admin_set_city_live RPCs) plus the public
+  // check-launch-city edge fn (the ORCH-1028 onboarding location-gate contract).
+  // C7 is scoped to ORCH-0863 marketing; these are launch-cities backend
+  // touches. Per COMMS-0002.
+  const ORCH_1027_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260810000000_orch_1027_launch_cities.sql",
+    "supabase/functions/check-launch-city/index.ts",
+    "supabase/functions/check-launch-city/__tests__/check_launch_city.test.ts",
+    // ORCH-1027 QA: tester adversarial regression suite (NULL-bbox/degenerate/
+    // antimeridian/equidistant-tiebreak/corner-coords) + the index.ts NULL guard.
+    "supabase/functions/check-launch-city/__tests__/check_launch_city_adversarial.test.ts",
+  ];
+  // ORCH-1030 [Consumer app notification deep-linking]. C7 is scoped to
+  // ORCH-0863 marketing; ORCH-1030's backend touches correct the notification
+  // producers' deep links so they actually reach the device: birthday/holiday
+  // reminders now route to the gift-target's profile, board/group messages
+  // carry their chat deep link, and all three pass the link TOP-LEVEL so
+  // notify-dispatch fills both `data.deepLink` and the `deep_link` column. C7
+  // flags MODIFIED backend files too, so these existing edge fns are listed
+  // here. No marketing scope. Per COMMS-0002.
+  const ORCH_1030_BACKEND_ALLOWLIST = [
+    "supabase/functions/notify-birthday-reminder/index.ts",
+    "supabase/functions/notify-holiday-reminder/index.ts",
+    "supabase/functions/notify-message/index.ts",
+    "supabase/functions/notify-dispatch/index.ts",
+  ];
   const ALLOWLIST = [
+    ...ORCH_1027_BACKEND_ALLOWLIST,
+    ...ORCH_1030_BACKEND_ALLOWLIST,
     ...ORCH_1024_BACKEND_ALLOWLIST,
     ...ORCH_1021_BACKEND_ALLOWLIST,
     ...ORCH_1018_BACKEND_ALLOWLIST,
@@ -1264,6 +1294,7 @@ function checkNoNewBackendFiles() {
     ...META_ORCH_1009_SUB_A_BACKEND_ALLOWLIST,
     ...META_ORCH_1009_SUB_B_BACKEND_ALLOWLIST,
     ...META_ORCH_1009_SUB_D_BACKEND_ALLOWLIST,
+    ...ORCH_1030_BACKEND_ALLOWLIST,
   ];
   const forbidden = changed.filter(
     (p) =>

@@ -59,7 +59,9 @@
     "test:orch-0964-logout-cache": "node ./scripts/ci/orch-0964-logout-cache-regression-check.mjs",
     "test:orch-1022": "node ./scripts/ci/orch-1022-expanded-card-modal-gating-check.mjs",
     "test:orch-1028": "node ./scripts/ci/orch-1028-launch-city-gate-check.mjs",
-    "test:orch-1028-scroll": "node ./scripts/ci/orch-1028-scroll-policy-check.mjs"
+    "test:orch-1028-scroll": "node ./scripts/ci/orch-1028-scroll-policy-check.mjs",
+    "test:orch-1029": "node ./src/components/__tests__/orch-1029-coach-mark-fixes.test.tsx",
+    "test:orch-1029-adv": "node ./src/contexts/__tests__/orch-1029-coach-mark-adversarial.test.tsx"
   },
   "dependencies": {
     "@expo-google-fonts/anton": "^0.4.2",

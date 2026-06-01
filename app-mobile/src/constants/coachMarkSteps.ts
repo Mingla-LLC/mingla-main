@@ -1,10 +1,17 @@
 /**
- * Coach mark step definitions — ORCH-0635 refresh (Pass 2, 8-step variant).
+ * Coach mark step definitions — ORCH-0635 refresh (Pass 3, 7-step variant).
+ *
+ * ORCH-1029: steps 4/5 ("Better together"/"Back to solo") deleted — META-ORCH-0929
+ * made Home solo-only, so that Solo/Together session switcher no longer exists.
+ * The remaining trailing steps were renumbered to a contiguous 1..7 (no gap) and the
+ * four target call sites (DiscoverScreen 6→4, ConnectionsPage 7→5, ProfilePage 8→6 & 9→7)
+ * plus the SCROLL_STEPS literal in CoachMarkContext were repointed in lockstep.
  *
  * Step-to-target wiring is by numeric stepId only (see useCoachMark.ts).
  * The old `targetId` string field was dead metadata and has been removed.
  *
  * Spec: Mingla_Artifacts/outputs/DESIGN_ORCH-0635_COACH_MARK_REFRESH_SPEC.md §2
+ *       Mingla_Artifacts/specs/SPEC_ORCH-1029_COACH_MARK_FIXES.md §3.F-2
  */
 export interface CoachStep {
   id: number;
@@ -42,20 +49,6 @@ export const COACH_STEPS: CoachStep[] = [
   },
   {
     id: 4,
-    tab: 'home',
-    title: 'Better together',
-    description: 'Start a session, invite your crew, swipe the same deck together.',
-    buttonLabel: 'Got it',
-  },
-  {
-    id: 5,
-    tab: 'home',
-    title: 'Back to solo',
-    description: 'Your deck, your rules. Tap Solo to switch back anytime.',
-    buttonLabel: 'Got it',
-  },
-  {
-    id: 6,
     tab: 'discover',
     title: 'Events, near you',
     description: 'Concerts, shows, experiences — all within reach.',
@@ -66,21 +59,21 @@ export const COACH_STEPS: CoachStep[] = [
     bubblePosition: 'center',
   },
   {
-    id: 7,
+    id: 5,
     tab: 'connections',
     title: 'Your people',
     description: 'Friends, requests, blocks — everything social lives here.',
     buttonLabel: 'Got it',
   },
   {
-    id: 8,
+    id: 6,
     tab: 'profile',
     title: 'Your rules',
     description: 'Privacy, notifications, language — all in Account Settings.',
     buttonLabel: 'Got it',
   },
   {
-    id: 9,
+    id: 7,
     tab: 'profile',
     title: 'Tell us what works',
     description: "Love something? Spot a bug? Tap here — we read every one.",
