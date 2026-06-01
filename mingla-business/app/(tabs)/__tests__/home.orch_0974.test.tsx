@@ -1,16 +1,26 @@
 /**
- * ORCH-0974 [Home mobile section lock + spacing] happy-path regression tests.
+ * ORCH-0974 [Home mobile section lock + spacing] — UPDATED for ORCH-1038
+ * [unified smart to-do toggle].
  *
- * The mingla-business Jest harness is node/ts-jest, so this file verifies the
- * source-level contract that makes the runtime layout possible. Fails-on-revert
- * minimum coverage:
- *   - T-01 fails if the old outer mobile ScrollView returns.
- *   - T-02 fails if section-header spacing reverts.
- *   - T-05 fails if the large-phone ladder card placement is removed.
+ * ORCH-1038 replaced every per-surface conditional card (no-brand / choose-brand /
+ * loading / add-venue / deck-readiness / rule-ladder next-action / offering-chooser)
+ * with one collapsible <BusinessTodoToggle> flush under the top bar, and gated the
+ * analytics so KPI tiles + the Upcoming section render ONLY when there is real data.
+ *
+ * This file now locks the NEW source-level contract. The ORCH-0974 wins it preserves:
+ *   - the mobile populated pane is still a single FlatList scroll surface (no nested
+ *     ScrollView) inside the locked zone, with the 24/16 section-header spacing and
+ *     the 8px KPI gap.
+ * What it newly enforces (ORCH-1038):
+ *   - the to-do toggle renders under the top bar (both surfaces, one component),
+ *   - analytics are data-gated,
+ *   - the removed cards/copy do not come back.
  */
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+
+import { describe, expect, test } from "@jest/globals";
 
 const REPO_ROOT = join(__dirname, "..", "..", "..", "..");
 const read = (rel: string): string => readFileSync(join(REPO_ROOT, rel), "utf8");
@@ -22,8 +32,6 @@ const UPCOMING_ITEM = read(
 
 const BEGIN = "// orch-0974-lock-pane:begin-mobile-populated";
 const END = "// orch-0974-lock-pane:end-mobile-populated";
-const LADDER_CONDITION =
-  "nextAction !== null && (upcoming.counts.live === 0 || nextAction.rung === 4)";
 
 function scopedMobilePopulated(): string {
   const begin = HOME.indexOf(BEGIN);
@@ -52,62 +60,57 @@ function styleBlock(key: string): string {
   throw new Error(`Style block not closed: ${key}`);
 }
 
-describe("ORCH-0974 mobile Home lock pane", () => {
-  test("T-01: mobile populated path has locked primitives and one FlatList scroll surface", () => {
+describe("ORCH-1038 Home to-do toggle + ORCH-0974 lock pane", () => {
+  test("T-01: to-do toggle renders under the top bar (one shared component, flush width)", () => {
+    expect(HOME).toContain("<BusinessTodoToggle");
+    expect(HOME).toContain("todos={todos}");
+    expect(HOME).toContain("onAction={handleTodoAction}");
+    // wrapped in todoWrap, which matches the top bar's horizontal padding
+    expect(HOME).toContain("style={styles.todoWrap}");
+    expect(styleBlock("todoWrap")).toContain("paddingHorizontal: spacing.md");
+    // toggle sits AFTER the barWrap/TopBar block
+    expect(HOME.indexOf("style={styles.todoWrap}")).toBeGreaterThan(
+      HOME.indexOf("style={styles.barWrap}"),
+    );
+  });
+
+  test("T-02: mobile populated pane is one FlatList scroll surface in the locked zone", () => {
     const scoped = scopedMobilePopulated();
     expect(scoped).toContain("styles.mobileBody");
     expect(scoped).toContain("styles.lockedZone");
     expect(scoped).toContain("styles.mobileKpiStack");
-    expect(scoped).toContain("styles.mobileSectionHeaderRow");
     expect(countToken(scoped, "<FlatList")).toBe(1);
     expect(countToken(scoped, "<ScrollView")).toBe(0);
   });
 
-  test("T-02: section header has 24px top boundary and 16px breathing room below", () => {
+  test("T-03: analytics are data-gated (no zero/empty placeholder tiles)", () => {
+    const scoped = scopedMobilePopulated();
+    expect(scoped).toContain("{showKpiGrid ? (");
+    expect(scoped).toContain("{showRevenueTile ? (");
+    expect(scoped).toContain("{hasActiveEvents ? (");
+    expect(scoped).toContain("{hasUpcomingItems ? (");
+  });
+
+  test("T-04: section header keeps 24px top / 16px bottom spacing", () => {
     const sectionHeader = styleBlock("mobileSectionHeaderRow");
     expect(sectionHeader).toContain("paddingTop: spacing.lg");
     expect(sectionHeader).toContain("paddingBottom: spacing.md");
-    expect(scopedMobilePopulated()).toContain("<Text style={styles.sectionTitle}>Upcoming</Text>");
+    expect(scopedMobilePopulated()).toContain(
+      "<Text style={styles.sectionTitle}>Upcoming</Text>",
+    );
     expect(UPCOMING_ITEM).toContain("<EventCoverMedia");
   });
 
-  test("T-03: KPI hero and Active Events tile use the 8px gap contract", () => {
+  test("T-05: KPI hero/tiles keep the 8px gap contract", () => {
     expect(styleBlock("mobileKpiStack")).toContain("gap: spacing.sm");
   });
 
-  test("T-04: empty mobile branch keeps its ScrollView, emptyCol, copy, and RefreshControl", () => {
-    const emptyBranchStart = HOME.indexOf(") : currentBrand === null ? (");
-    const lockStart = HOME.indexOf(BEGIN);
-    expect(emptyBranchStart).toBeGreaterThanOrEqual(0);
-    expect(lockStart).toBeGreaterThan(emptyBranchStart);
-    const emptyBranch = HOME.slice(emptyBranchStart, lockStart);
-    expect(emptyBranch).toContain("<ScrollView");
-    expect(emptyBranch).toContain("contentContainerStyle={styles.emptyScroll}");
-    expect(emptyBranch).toContain("refreshControl=");
-    expect(emptyBranch).toContain("<View style={styles.emptyCol}>");
-    expect(emptyBranch).toContain("No brands yet");
-    expect(emptyBranch).toContain("Choose a brand");
-    expect(emptyBranch).toContain("Loading brands");
-  });
-
-  test("T-05: large-phone ladder card renders inside the locked zone before FlatList", () => {
-    const scoped = scopedMobilePopulated();
-    const lockedCondition = `${LADDER_CONDITION} && !isSmallPhoneWithLiveHero`;
-    expect(scoped).toContain(lockedCondition);
-    expect(scoped.indexOf(lockedCondition)).toBeLessThan(scoped.indexOf("<FlatList"));
-    expect(scoped.indexOf("<HomeNextActionCard action={nextAction}")).toBeLessThan(
-      scoped.indexOf("<FlatList"),
-    );
-  });
-
-  test("T-06: iPhone-SE-class live-hero carve-out renders ladder card after FlatList", () => {
-    const scoped = scopedMobilePopulated();
-    expect(HOME).toContain(
-      "primaryLiveEvent !== null && dimensions.height <= 700",
-    );
-    const footerCondition = `${LADDER_CONDITION} && isSmallPhoneWithLiveHero`;
-    expect(scoped).toContain(footerCondition);
-    expect(scoped.indexOf(footerCondition)).toBeGreaterThan(scoped.indexOf("<FlatList"));
-    expect(styleBlock("smallPhoneLadderHost")).toContain("flexShrink: 0");
+  test("T-06: the replaced cards + empty-state copy do not return", () => {
+    expect(HOME).not.toContain("HomeNextActionCard");
+    expect(HOME).not.toContain("NoVenueDeckEntryCard");
+    expect(HOME).not.toContain("OfferingChooser");
+    expect(HOME).not.toContain("No brands yet");
+    expect(HOME).not.toContain("Choose a brand");
+    expect(HOME).not.toContain("No upcoming events");
   });
 });
