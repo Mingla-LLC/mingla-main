@@ -1156,6 +1156,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingTop: spacing.md,
   },
+  mobileNoVenueBody: {
+    flex: 1,
+    minHeight: 0,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+  },
   lockedZone: {
     flexShrink: 0,
   },
