@@ -912,6 +912,9 @@ export function VenueDeckReadinessSetup({
                 <Pressable
                   key={tier.id}
                   onPress={() => togglePrice(tier.id)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: on }}
+                  accessibilityLabel={`${tier.label} ${tier.range}`}
                   style={[styles.chip, on && styles.chipActive]}
                 >
                   <Text style={[styles.chipText, on && styles.chipTextActive]}>
@@ -937,6 +940,9 @@ export function VenueDeckReadinessSetup({
                 <Pressable
                   key={sig.id}
                   onPress={() => toggleVibe(sig.id)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  accessibilityLabel={sig.label}
                   style={[styles.chip, selected && styles.chipActive]}
                 >
                   <Text style={[styles.chipText, selected && styles.chipTextActive]}>

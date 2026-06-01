@@ -1167,6 +1167,15 @@ function checkNoNewBackendFiles() {
     "supabase/functions/_shared/__tests__/signalScorer.blend.test.ts",
     "supabase/functions/parse-restaurant-menu/index.ts",
     "supabase/functions/parse-play-activities/index.ts",
+    // Sub-E pipeline-state readiness compat column (submit-failure fix).
+    "supabase/migrations/20260809000300_meta_orch_1009_sub_e_pipeline_state_readiness_compat.sql",
+    // Sub-E brand_id uuid-guard unit test.
+    "supabase/functions/run-business-place-authoring-pipeline/__tests__/isUuid.test.ts",
+    // Sub-E required venue gallery (5–20 photos) column.
+    "supabase/migrations/20260812000000_meta_orch_1009_sub_e_venue_gallery.sql",
+    // Sub-F Recommend-me review: edit-cap + admin score-veto columns.
+    "supabase/migrations/20260813000000_meta_orch_1009_sub_f_recommend_review.sql",
+    "supabase/functions/admin-review-venue-claim/index.ts",
   ];
   const META_ORCH_1009_SUB_B_BACKEND_ALLOWLIST = [
     "supabase/migrations/20260806000000_meta_orch_1009_sub_b_rpcs_with_reasoning.sql",

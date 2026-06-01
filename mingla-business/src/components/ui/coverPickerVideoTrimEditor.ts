@@ -16,7 +16,14 @@
  * When the native module is available, behaviour matches the prior inline
  * implementation that lived in CoverPicker.tsx.
  */
+// ORCH-0978 C12 / ORCH-1001: a TYPE-ONLY import keeps the native trim package
+// statically discoverable to the invariant gate, while staying fully erased at
+// compile time — so it never triggers the TurboModule import-eval that crashes
+// the web bundle. The runtime module is still loaded lazily via require() below.
+import type ReactNativeVideoTrim from "react-native-video-trim";
 import type { VideoTrimFinishPayload } from "./coverPickerVideoTrimUpload";
+
+type _NativeVideoTrimDefault = typeof ReactNativeVideoTrim;
 
 type VideoTrimSubscription = { remove: () => void };
 
