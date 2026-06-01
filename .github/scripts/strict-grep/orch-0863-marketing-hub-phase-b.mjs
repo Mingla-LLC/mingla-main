@@ -1226,7 +1226,23 @@ function checkNoNewBackendFiles() {
     "supabase/functions/notify-message/index.ts",
     "supabase/functions/notify-dispatch/index.ts",
   ];
+  // ORCH-1032 [Intelligence pipeline concurrency cap + chunked enqueue]:
+  // adds the additive 'queued'-status migration (status CHECK widen + per-city
+  // unique active index widen + tg_kick_pending_trial_runs promotion built on
+  // the v3 cancelling body) plus two Deno test files and one SQL-shape
+  // migration test. The edge fn run-place-intelligence-trial/index.ts is a
+  // MODIFY already allowlisted under META_ORCH_1009_SUB_D; only the new
+  // migration + new test files need allowlisting here. C7 is scoped to
+  // ORCH-0863 marketing; these are intelligence-pipeline backend touches.
+  // Per COMMS-0002.
+  const ORCH_1032_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260811000000_orch_1032_queued_status_and_cap.sql",
+    "supabase/functions/run-place-intelligence-trial/__tests__/concurrencyCap.test.ts",
+    "supabase/functions/run-place-intelligence-trial/__tests__/concurrencyCap_adversarial.test.ts",
+    "supabase/migrations/__tests__/orch_1032_cron_promotion.test.ts",
+  ];
   const ALLOWLIST = [
+    ...ORCH_1032_BACKEND_ALLOWLIST,
     ...ORCH_1027_BACKEND_ALLOWLIST,
     ...ORCH_1030_BACKEND_ALLOWLIST,
     ...ORCH_1024_BACKEND_ALLOWLIST,
