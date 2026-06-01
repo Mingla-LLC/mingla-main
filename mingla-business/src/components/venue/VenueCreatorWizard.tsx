@@ -25,6 +25,7 @@ import { useAuth } from "../../context/AuthContext";
 import {
   useCreateVenueBrand,
   SlugCollisionError,
+  resolveAvailableVenueSlug,
 } from "../../hooks/useBrands";
 import {
   confirmAiOutputs,
@@ -140,10 +141,23 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
         }
       }
       setShowErr(false);
+
+      // META-ORCH-1009 Sub-E: resolve a GUARANTEED-available slug at submit time,
+      // regardless of what the name-step UI currently shows. This closes the gaps
+      // where the UI could still carry a taken/unverified slug (availability check
+      // still in flight, all 4 displayed candidates taken, or a race since the
+      // check ran). resolveAvailableVenueSlug honors the shown slug if still free,
+      // else advances suffixes, with a timestamp fallback that cannot run out.
+      const resolvedSlug = await resolveAvailableVenueSlug(
+        st.displayName.trim(),
+        st.slug.trim() || null,
+        user.id,
+      );
+
       const brand = await createVenue.mutateAsync({
         accountId: user.id,
         name: st.displayName.trim(),
-        slug: st.slug.trim(),
+        slug: resolvedSlug,
         tagline: st.tagline.trim() || undefined,
         bio: st.description.trim(),
         placePoolId: st.placePoolId,

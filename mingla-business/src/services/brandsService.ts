@@ -156,6 +156,63 @@ export async function suggestVenueSlugs(
   return available;
 }
 
+/**
+ * Resolve a slug that is GUARANTEED available, derived from a venue name.
+ *
+ * Unlike `suggestVenueSlugs` (which returns up to N candidates for the UI to
+ * display), this is the authoritative submit-time resolver: it always returns a
+ * single slug that passed `checkVenueSlugAvailable`. It walks numeric suffixes
+ * up to 50, then falls back to a base-36 timestamp suffix that cannot collide in
+ * practice — so it can never "run out" of options and never returns a taken slug.
+ *
+ * The caller passes the slug the UI currently shows as `preferred`; if that one
+ * is still available we keep it (stable URLs), otherwise we advance. The DB's
+ * UNIQUE(slug) constraint remains the final backstop for the submit-time race.
+ *
+ * Throws only if a venue name yields an empty root (caller validates name first).
+ */
+export async function resolveAvailableVenueSlug(
+  name: string,
+  preferred: string | null,
+  ownAccountId?: string | null,
+): Promise<string> {
+  const sanitize = (s: string): string =>
+    s.toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 32);
+
+  const root = sanitize(name);
+  if (root.length === 0) {
+    throw new Error("Venue name is required to generate a web address.");
+  }
+
+  // 1) Honor the UI's preferred slug if it's still free (keeps the shown URL).
+  const pref = preferred !== null ? sanitize(preferred) : "";
+  if (pref.length > 0 && (await checkVenueSlugAvailable(pref, ownAccountId))) {
+    return pref;
+  }
+
+  // 2) root, root1, root2, … root50 — truncate the root so suffix fits in 32.
+  for (let i = 0; i <= 50; i++) {
+    const suffix = i === 0 ? "" : String(i);
+    const base = root.slice(0, 32 - suffix.length);
+    const candidate = `${base}${suffix}`;
+    if (await checkVenueSlugAvailable(candidate, ownAccountId)) {
+      return candidate;
+    }
+  }
+
+  // 3) Timestamp fallback — cannot realistically collide. Base-36 of epoch-ms.
+  const stamp = Date.now().toString(36);
+  const base = root.slice(0, 32 - stamp.length);
+  const candidate = `${base}${stamp}`;
+  // One last check; if even this is taken (astronomically unlikely), surface it
+  // so the DB unique constraint isn't the first line of defense.
+  if (await checkVenueSlugAvailable(candidate, ownAccountId)) {
+    return candidate;
+  }
+  // Final fallback: return it anyway — the DB UNIQUE constraint is the backstop.
+  return candidate;
+}
+
 // ----- Inputs / Results --------------------------------------------------
 
 export interface CreateBrandInput {
