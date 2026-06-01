@@ -114,9 +114,16 @@ function errorResponse(status: number, code: string, message: string): Response 
   return jsonResponse(status, { kind: "error", code, message });
 }
 
-function isUuid(v: unknown): v is string {
+export function isUuid(v: unknown): v is string {
+  // ROOT CAUSE of every "brand_id must be a uuid" failure (META-ORCH-1009 Sub-E,
+  // 2026-05-31): the original pattern had only FOUR groups (8-4-4-12) and was
+  // missing the 4th `[0-9a-f]{4}-` group, so it rejected EVERY valid UUID — e.g.
+  // 3c7ebebf-7249-45a2-8b0b-c6b5ec319ec0. A canonical UUID is 8-4-4-4-12 (36
+  // chars, five hyphen-separated groups). This is why 0 business_authored places
+  // ever got created and why selected_place_pool_id (same isUuid) would also have
+  // failed the claim path.
   return typeof v === "string" &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 }
 
 function asString(v: unknown, fallback = ""): string {
@@ -1158,25 +1165,7 @@ Deno.serve(async (req) => {
   }
 
   if (!isUuid(body.brand_id)) {
-    // META-ORCH-1009 Sub-E DIAG (2026-05-31): operator's create-new submit creates
-    // the brand (valid uuid) but this call rejects brand_id. Log the EXACT received
-    // value + type + action so we can see what the client actually sent, regardless
-    // of client bundle caching, and return it in the message for on-device capture.
-    const received = (body as { brand_id?: unknown }).brand_id;
-    console.error(
-      "[SUBE-DIAG] brand_id rejected:",
-      JSON.stringify({
-        action: (body as { action?: unknown }).action ?? null,
-        brand_id: received ?? null,
-        type: typeof received,
-        keys: body && typeof body === "object" ? Object.keys(body) : [],
-      }),
-    );
-    return errorResponse(
-      400,
-      "BAD_REQUEST",
-      `brand_id must be a uuid (received ${typeof received}: ${String(received)})`,
-    );
+    return errorResponse(400, "BAD_REQUEST", "brand_id must be a uuid");
   }
   const brand = await loadOwnedBrand(userResult.serviceClient, body.brand_id, userResult.userId);
   if (brand instanceof Response) return brand;
