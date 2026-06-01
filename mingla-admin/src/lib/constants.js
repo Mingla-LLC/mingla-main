@@ -127,6 +127,10 @@ export const NAV_GROUPS = [
       { id: "subscriptions",             label: "Subscriptions",      icon: "CreditCard" },
       { id: "admin",                     label: "Admin Users",        icon: "Shield" },
       { id: "placepool",                 label: "Place Pool",         icon: "Globe" },
+      // ORCH-1027: operator switch to declare cities live for consumer onboarding
+      // (the ORCH-1028 location gate). Sits next to Place Pool — the consumer-facing
+      // counterpart to the seeding/place tooling.
+      { id: "launch-cities",             label: "Launch Cities",      icon: "Rocket" },
       { id: "signals",                   label: "Signal Library",     icon: "Activity" },
       { id: "place-intelligence-trial",  label: "Intelligence Trial", icon: "Microscope" },
       { id: "email",                     label: "Email",              icon: "Mail" },

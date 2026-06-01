@@ -88,6 +88,13 @@ verify_jwt = false
 [functions.waitlist-signup]
 verify_jwt = false
 
+# ORCH-1027 — public launch-city point-in-bbox gate. Consumer-callable BEFORE
+# sign-in (the ORCH-1028 onboarding location gate runs at app launch, possibly
+# pre-auth). Exposes only non-sensitive city geometry; reads the live subset via
+# the service-role client. No PII, no auth-scoped data. Per SPEC_ORCH-1027 §C.1.
+[functions.check-launch-city]
+verify_jwt = false
+
 # ORCH-0880 [Tr5 Traveler Intake Forms]: anon-tolerant signed-URL endpoint
 # per feedback_anon_buyer_routes.md. Buyer is anonymous when uploading intake
 # files; authentication happens at the trip/schema/question lookup layer +

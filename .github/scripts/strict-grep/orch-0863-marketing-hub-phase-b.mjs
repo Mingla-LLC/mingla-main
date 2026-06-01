@@ -1198,7 +1198,22 @@ function checkNoNewBackendFiles() {
     "supabase/functions/backfill-place-photos/index.ts",
     "supabase/functions/backfill-place-photos/index.test.ts",
   ];
+  // ORCH-1027 [Launch Cities admin control]: adds the consumer-launch flag
+  // migration (seeding_cities.is_live_for_consumers + partial index + the
+  // admin_launch_city_list / admin_set_city_live RPCs) plus the public
+  // check-launch-city edge fn (the ORCH-1028 onboarding location-gate contract).
+  // C7 is scoped to ORCH-0863 marketing; these are launch-cities backend
+  // touches. Per COMMS-0002.
+  const ORCH_1027_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260810000000_orch_1027_launch_cities.sql",
+    "supabase/functions/check-launch-city/index.ts",
+    "supabase/functions/check-launch-city/__tests__/check_launch_city.test.ts",
+    // ORCH-1027 QA: tester adversarial regression suite (NULL-bbox/degenerate/
+    // antimeridian/equidistant-tiebreak/corner-coords) + the index.ts NULL guard.
+    "supabase/functions/check-launch-city/__tests__/check_launch_city_adversarial.test.ts",
+  ];
   const ALLOWLIST = [
+    ...ORCH_1027_BACKEND_ALLOWLIST,
     ...ORCH_1024_BACKEND_ALLOWLIST,
     ...ORCH_1021_BACKEND_ALLOWLIST,
     ...ORCH_1018_BACKEND_ALLOWLIST,
