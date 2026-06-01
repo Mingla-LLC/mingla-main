@@ -54,6 +54,8 @@ import { OnboardingCollaborationStep } from './onboarding/OnboardingCollaboratio
 import { CategoryTile } from './ui/CategoryTile'
 import { OnboardingFriendsAndPairingStep } from './onboarding/OnboardingFriendsAndPairingStep'
 import { OnboardingConsentStep } from './onboarding/OnboardingConsentStep'
+import { LaunchCityPicker } from './onboarding/LaunchCityPicker'
+import { checkLaunchCity, type LaunchCityWithBbox } from '../hooks/useLaunchCityGate'
 import { Checkbox } from './ui/checkbox'
 import InAppBrowserModal from './InAppBrowserModal'
 import { LEGAL_URLS } from '../constants/urls'
@@ -95,6 +97,7 @@ import {
   shadows,
   glass,
   responsiveTypography,
+  responsiveSpacing,
 } from '../constants/designSystem'
 import { ms } from '../utils/responsive'
 
@@ -810,6 +813,24 @@ const OnboardingFlow = ({
   const [showChannelOptions, setShowChannelOptions] = useState(false)
   const [valuePropBeat, setValuePropBeat] = useState(0)
   const [locationStatus, setLocationStatus] = useState<'idle' | 'requesting' | 'granted' | 'settings' | 'error'>('idle')
+
+  // ─── ORCH-1028 launch-city gate (onboarding-time only, DEC-1028-1) ───
+  // After a successful GPS capture, check-launch-city decides whether the user's
+  // real city is live. Out-of-city users pick a live city; the override is written
+  // ONCE here (§C / I-1028-ONE-LOCATION-OWNER). No runtime re-gate exists (E-5).
+  type LaunchGateUiState =
+    | { phase: 'idle' } // gate not run / in-city passthrough
+    | { phase: 'checking' } // edge call in flight
+    | { phase: 'out_of_city'; liveCities: LaunchCityWithBbox[] }
+    | { phase: 'picker'; liveCities: LaunchCityWithBbox[] }
+    | { phase: 'no_live_cities' }
+    | { phase: 'check_failed' }
+  const [launchGate, setLaunchGate] = useState<LaunchGateUiState>({ phase: 'idle' })
+  const [launchGateSelectedCity, setLaunchGateSelectedCity] = useState<LaunchCityWithBbox | null>(null)
+  const [launchGateWriting, setLaunchGateWriting] = useState(false)
+  const [launchGateWriteError, setLaunchGateWriteError] = useState(false)
+  // Count of check failures so the "Continue anyway" escape only appears after >=2 (§B.5).
+  const [launchCheckFailures, setLaunchCheckFailures] = useState(0)
   const [manualLocationText, setManualLocationText] = useState(initialData.manualLocation ?? '')
   const [locationSuggestions, setLocationSuggestions] = useState<import('../services/geocodingService').AutocompleteSuggestion[]>([])
   const [selectedLocation, setSelectedLocation] = useState<import('../services/geocodingService').AutocompleteSuggestion | null>(
@@ -957,6 +978,18 @@ const OnboardingFlow = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (navState.subStep === 'location') {
+      // [ORCH-1028 E-7] Reset the launch-city gate on (re)entry. The gate is
+      // re-driven by captureLocation (its single owner — §0.2/§A.2); a stale
+      // picker/reassurance phase must not resurface. The override is only ever
+      // written on an explicit confirm. NOTE: we deliberately do NOT call the
+      // gate from this effect — `data.coordinates` is not hydrated when the
+      // [navState.subStep]-keyed effect fires (the same race the original
+      // location-status effect comment warns about), so the gate lives only in
+      // captureLocation, which re-runs on every fresh Enable-Location press.
+      setLaunchGate({ phase: 'idle' })
+      setLaunchGateSelectedCity(null)
+      setLaunchGateWriteError(false)
+      setLaunchGateWriting(false)
       if (data.locationGranted && data.coordinates) {
         setLocationStatus('granted')
       } else {
@@ -1364,7 +1397,25 @@ const OnboardingFlow = ({
 
       // Persist location choice immediately so it survives app restart
       persistStep(4).catch(() => {})
-      autoAdvanceRef.current = setTimeout(() => goNextRef.current(), 1200)
+
+      // ─── ORCH-1028 launch-city gate (§A.2) ───
+      // Run the gate AFTER the successful capture, BEFORE scheduling auto-advance.
+      // `in_city` is byte-identical to the prior flow (1200ms auto-advance,
+      // DEC-1028-4). Any non-in-city branch schedules NO auto-advance — the user
+      // must act (reassurance → pick / retry / proceed). The gate NEVER throws.
+      setLaunchGate({ phase: 'checking' })
+      const gateResult = await checkLaunchCity(loc.latitude, loc.longitude)
+      if (gateResult.status === 'in_city') {
+        setLaunchGate({ phase: 'idle' })
+        autoAdvanceRef.current = setTimeout(() => goNextRef.current(), 1200)
+      } else if (gateResult.status === 'out_of_city') {
+        setLaunchGate({ phase: 'out_of_city', liveCities: gateResult.liveCities })
+      } else if (gateResult.status === 'no_live_cities') {
+        setLaunchGate({ phase: 'no_live_cities' })
+      } else {
+        setLaunchCheckFailures((n) => n + 1)
+        setLaunchGate({ phase: 'check_failed' })
+      }
 
       // Locale detection — use country from the geocode result we already have
       if (city) {
@@ -1429,6 +1480,93 @@ const OnboardingFlow = ({
       }
     }
   }, [persistStep, user?.id, setProfile])
+
+  // ─── ORCH-1028 launch-city gate handlers ───
+
+  // Re-run the gate check (§B.5 "Try again"). Uses the already-captured coords.
+  const handleLaunchGateRetry = useCallback(async () => {
+    if (!data.coordinates) {
+      // Defensive (unreachable): the gate only shows after a capture that set
+      // coordinates. With no coords, drop back to the idle location prompt so the
+      // user can re-grant rather than being stuck on a retry that can't run.
+      setLaunchGate({ phase: 'idle' })
+      setLocationStatus('idle')
+      return
+    }
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+    setLaunchGate({ phase: 'checking' })
+    const result = await checkLaunchCity(data.coordinates.lat, data.coordinates.lng)
+    if (result.status === 'in_city') {
+      setLaunchGate({ phase: 'idle' })
+      autoAdvanceRef.current = setTimeout(() => goNextRef.current(), 1200)
+    } else if (result.status === 'out_of_city') {
+      setLaunchGate({ phase: 'out_of_city', liveCities: result.liveCities })
+    } else if (result.status === 'no_live_cities') {
+      setLaunchGate({ phase: 'no_live_cities' })
+    } else {
+      setLaunchCheckFailures((n) => n + 1)
+      setLaunchGate({ phase: 'check_failed' })
+    }
+  }, [data.coordinates])
+
+  // Proceed with the real GPS location (used by no_live_cities §B.4 "Notify me"
+  // and check_failed ≥2-failure §B.5 "Continue anyway"). This is the ONLY
+  // non-in-city path that advances without a city pick — it is honest (real GPS,
+  // use_gps_location stays true) and exists so the user is never stranded (E-3/E-2).
+  const handleLaunchGateProceedWithGps = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+    setLaunchGate({ phase: 'idle' })
+    setData((prev) => ({ ...prev, useGpsLocation: true }))
+    if (autoAdvanceRef.current) { clearTimeout(autoAdvanceRef.current); autoAdvanceRef.current = null }
+    goNextRef.current()
+  }, [])
+
+  // Confirm the picked launch city: write the override (§C) then advance.
+  const handleLaunchGateConfirmCity = useCallback(async () => {
+    const city = launchGateSelectedCity
+    if (!city) return
+    setLaunchGateWriteError(false)
+    setLaunchGateWriting(true)
+    try {
+      // I-1028-ONE-LOCATION-OWNER: write ONLY the four custom_*/use_gps_location
+      // fields the main deck reads (useUserLocation Priority-1). NEVER discover_city_*.
+      if (user?.id) {
+        await PreferencesService.updateUserPreferences(user.id, {
+          custom_lat: city.center_lat,
+          custom_lng: city.center_lng,
+          custom_location: city.name,
+          use_gps_location: false,
+        })
+        // Invalidate both location-bearing query keys so the deck picks up the
+        // override on first mount (I-LOCATION-INVALIDATE-ON-LOCATION-ONLY — this IS
+        // a real location change).
+        queryClient.invalidateQueries({ queryKey: ['userPreferences', user.id] })
+        queryClient.invalidateQueries({ queryKey: ['userLocation', user.id] })
+      }
+      // Keep local onboarding state consistent with the override (E-4: if userId
+      // were somehow null, we skip the DB write but still hold the chosen city).
+      setData((prev) => ({
+        ...prev,
+        useGpsLocation: false,
+        coordinates: { lat: city.center_lat, lng: city.center_lng },
+        cityName: city.name,
+      }))
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+      setLaunchGateWriting(false)
+      setLaunchGate({ phase: 'idle' })
+      if (autoAdvanceRef.current) { clearTimeout(autoAdvanceRef.current); autoAdvanceRef.current = null }
+      goNextRef.current()
+    } catch (err: unknown) {
+      // Constitution rule 3 / I-1028-NO-SILENT-SUCCESS: never appear to succeed.
+      logger.onboarding('Launch-city override write failed', {
+        error: err instanceof Error ? err.message : String(err),
+      })
+      setLaunchGateWriting(false)
+      setLaunchGateWriteError(true)
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
+      // Stay on the picker with the selection intact; the user retries the same city.
+    }
+  }, [launchGateSelectedCity, user?.id, queryClient])
 
   // ─── Location Permission ───
   const handleLocationRequest = useCallback(async () => {
@@ -1913,8 +2051,32 @@ const OnboardingFlow = ({
           persistStep(3).catch(() => {})
           handleGoNext()
         }, hide: false }
-      case 'location':
-        return { label: t('onboarding:location.cta_enable'), disabled: locationStatus === 'requesting', loading: locationStatus === 'requesting', onPress: handleLocationRequest, hide: true }
+      case 'location': {
+        // [ORCH-1028] The launch-city gate phases own the shell bottom-bar CTA;
+        // every other location render uses its own inline buttons (hide: true).
+        switch (launchGate.phase) {
+          case 'out_of_city':
+            return { label: t('onboarding:launch_gate.out_of_city_cta'), disabled: false, loading: false, onPress: () => setLaunchGate({ phase: 'picker', liveCities: launchGate.liveCities }), hide: false }
+          case 'picker':
+            return {
+              label: launchGateSelectedCity
+                ? t('onboarding:launch_gate.picker_confirm', { city: launchGateSelectedCity.name })
+                : t('onboarding:launch_gate.picker_confirm_placeholder'),
+              disabled: !launchGateSelectedCity || launchGateWriting,
+              loading: launchGateWriting,
+              onPress: handleLaunchGateConfirmCity,
+              hide: false,
+            }
+          case 'no_live_cities':
+            return { label: t('onboarding:launch_gate.no_live_cities_cta'), disabled: false, loading: false, onPress: handleLaunchGateProceedWithGps, hide: false }
+          case 'check_failed':
+            return { label: t('onboarding:launch_gate.check_failed_cta'), disabled: false, loading: false, onPress: handleLaunchGateRetry, hide: false }
+          case 'checking':
+          case 'idle':
+          default:
+            return { label: t('onboarding:location.cta_enable'), disabled: locationStatus === 'requesting', loading: locationStatus === 'requesting', onPress: handleLocationRequest, hide: true }
+        }
+      }
       case 'celebration':
         return { label: t('common:next'), disabled: false, loading: false, onPress: handleGoNext, hide: false }
       case 'categories':
@@ -1953,7 +2115,7 @@ const OnboardingFlow = ({
       default:
         return { label: t('common:next'), disabled: false, loading: false, onPress: handleGoNext, hide: false }
     }
-  }, [navState, data, otpCode, otpLoading, sendingOtp, isPhoneValid, smsConsentChecked, valuePropBeat, locationStatus, selectedLocation, savingPrefs, prefsSaveError, handleGoNext, handleSendOtp, handleVerifyOtp, handleLocationRequest, handleManualLocation, handleSavePreferences, handleSaveIdentity, persistStep, goToSubStep])
+  }, [navState, data, otpCode, otpLoading, sendingOtp, isPhoneValid, smsConsentChecked, valuePropBeat, locationStatus, selectedLocation, savingPrefs, prefsSaveError, handleGoNext, handleSendOtp, handleVerifyOtp, handleLocationRequest, handleManualLocation, handleSavePreferences, handleSaveIdentity, persistStep, goToSubStep, launchGate, launchGateSelectedCity, launchGateWriting, handleLaunchGateConfirmCity, handleLaunchGateProceedWithGps, handleLaunchGateRetry])
 
   // ─── Render Step Content ───
   const renderContent = () => {
@@ -2428,11 +2590,123 @@ const OnboardingFlow = ({
       // inside `if (locationStatus === 'settings')`, TS narrows to literal 'settings'
       // and flags comparisons to 'requesting' as impossible.
       const isRequesting = locationStatus === 'requesting';
+
+      // ─── ORCH-1028 launch-city gate renders (DESIGN §3) ───
+      // Rendered BEFORE the locationStatus-driven renders, gated by launchGate.phase.
+      // `checking` falls through to the existing `granted` card (DESIGN §3.0) with a
+      // small overlaid indicator — no third layout flash. `idle` (in-city) is the
+      // byte-unchanged granted passthrough.
+
+      // §3.A Reassurance — out_of_city
+      if (launchGate.phase === 'out_of_city') {
+        const city = data.cityName
+        return (
+          <View style={styles.locContainer}>
+            <Animated.View style={[styles.locGlassCard, { opacity: locIconAnim.opacity, transform: [{ scale: locIconAnim.scale }, { translateY: locIconAnim.translateY }] }]}>
+              <Animated.View style={[styles.locIconCircle, { transform: [{ scale: locPulse }] }]}>
+                <Icon name="paper-plane-outline" size={36} color={colors.primary[500]} />
+              </Animated.View>
+            </Animated.View>
+            <Animated.Text style={[styles.locHeadline, { opacity: locHeadlineAnim.opacity, transform: [{ translateY: locHeadlineAnim.translateY }] }]}>
+              {city
+                ? t('onboarding:launch_gate.out_of_city_headline', { city })
+                : t('onboarding:launch_gate.out_of_city_headline_no_city')}
+            </Animated.Text>
+            <Animated.Text style={[styles.locBody, { opacity: locBodyAnim.opacity, transform: [{ translateY: locBodyAnim.translateY }] }]}>
+              {t('onboarding:launch_gate.out_of_city_body')}
+            </Animated.Text>
+          </View>
+        )
+      }
+
+      // §3.B Picker — pick from the frozen liveCities only (DEC-1028-6)
+      if (launchGate.phase === 'picker') {
+        return (
+          <View>
+            <LaunchCityPicker
+              cities={launchGate.liveCities}
+              selectedCityId={launchGateSelectedCity?.id ?? null}
+              onSelect={(c) => { setLaunchGateWriteError(false); setLaunchGateSelectedCity(c) }}
+              origin={data.coordinates}
+              disabled={launchGateWriting}
+            />
+            {launchGateWriteError && (
+              <View style={styles.gateInlineError}>
+                <Icon name="alert-circle-outline" size={16} color={colors.error[600]} />
+                <Text style={styles.gateInlineErrorText}>
+                  {t('onboarding:launch_gate.write_failed_inline')}
+                </Text>
+              </View>
+            )}
+          </View>
+        )
+      }
+
+      // §3.D Degraded — zero live cities (E-3, should not fire in production)
+      if (launchGate.phase === 'no_live_cities') {
+        return (
+          <View style={styles.locContainer}>
+            <Animated.View style={[styles.locGlassCard, { opacity: locIconAnim.opacity, transform: [{ scale: locIconAnim.scale }, { translateY: locIconAnim.translateY }] }]}>
+              <Animated.View style={[styles.locIconCircle, { transform: [{ scale: locPulse }] }]}>
+                <Icon name="time-outline" size={36} color={colors.primary[500]} />
+              </Animated.View>
+            </Animated.View>
+            <Animated.Text style={[styles.locHeadline, { opacity: locHeadlineAnim.opacity, transform: [{ translateY: locHeadlineAnim.translateY }] }]}>
+              {t('onboarding:launch_gate.no_live_cities_headline')}
+            </Animated.Text>
+            <Animated.Text style={[styles.locBody, { opacity: locBodyAnim.opacity, transform: [{ translateY: locBodyAnim.translateY }] }]}>
+              {t('onboarding:launch_gate.no_live_cities_body')}
+            </Animated.Text>
+          </View>
+        )
+      }
+
+      // §3.E Check-failed — transient backend hiccup (E-2). Neutral, NO red.
+      if (launchGate.phase === 'check_failed') {
+        return (
+          <View style={styles.locContainer}>
+            <Animated.View style={[styles.locGlassCard, { opacity: locIconAnim.opacity, transform: [{ scale: locIconAnim.scale }, { translateY: locIconAnim.translateY }] }]}>
+              <View style={styles.gateNeutralCircle}>
+                <Icon name="refresh-outline" size={36} color={colors.text.secondary} />
+              </View>
+            </Animated.View>
+            <Animated.Text style={[styles.locHeadline, { opacity: locHeadlineAnim.opacity, transform: [{ translateY: locHeadlineAnim.translateY }] }]}>
+              {t('onboarding:launch_gate.check_failed_headline')}
+            </Animated.Text>
+            <Animated.Text style={[styles.locBody, { opacity: locBodyAnim.opacity, transform: [{ translateY: locBodyAnim.translateY }] }]}>
+              {t('onboarding:launch_gate.check_failed_body')}
+            </Animated.Text>
+            {/* ≥2 failures: quiet "Continue anyway" escape (§B.5) — hidden on first fail. */}
+            {launchCheckFailures >= 2 && (
+              <Animated.View style={[{ opacity: locButtonAnim.opacity, marginTop: spacing.md }]}>
+                <Pressable
+                  style={styles.gateSecondaryLink}
+                  onPress={handleLaunchGateProceedWithGps}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('onboarding:launch_gate.check_failed_continue_anyway')}
+                  accessibilityHint={t('onboarding:launch_gate.continue_anyway_hint')}
+                >
+                  <Text style={styles.gateSecondaryLinkText}>
+                    {t('onboarding:launch_gate.check_failed_continue_anyway')}
+                  </Text>
+                </Pressable>
+              </Animated.View>
+            )}
+          </View>
+        )
+      }
+
       if (locationStatus === 'granted') {
+        // [ORCH-1028 §3.0] During `checking` the gate decision is in flight — hold
+        // this exact success card (no third layout), show "Checking your city", and
+        // disable tap-to-advance until the gate resolves.
+        const isChecking = launchGate.phase === 'checking'
         return (
           <Pressable
             style={styles.locContainer}
+            disabled={isChecking}
             onPress={() => {
+              if (isChecking) return
               if (autoAdvanceRef.current) { clearTimeout(autoAdvanceRef.current); autoAdvanceRef.current = null }
               goNextRef.current()
             }}
@@ -2445,7 +2719,14 @@ const OnboardingFlow = ({
             <Animated.Text style={[styles.locHeadline, { opacity: locHeadlineAnim.opacity, transform: [{ translateY: locHeadlineAnim.translateY }] }]}>
               {t('onboarding:location.granted_headline', { city: data.cityName })}
             </Animated.Text>
-            <Text style={styles.locTapHint}>{t('onboarding:location.granted_tap_hint')}</Text>
+            {isChecking ? (
+              <View style={styles.gateCheckingRow} accessibilityLabel={t('onboarding:launch_gate.checking')}>
+                <ActivityIndicator size="small" color={colors.primary[500]} />
+                <Text style={styles.locTapHint}>{t('onboarding:launch_gate.checking')}</Text>
+              </View>
+            ) : (
+              <Text style={styles.locTapHint}>{t('onboarding:location.granted_tap_hint')}</Text>
+            )}
           </Pressable>
         )
       }
@@ -3666,6 +3947,49 @@ const styles = StyleSheet.create({
     ...typography.xs,
     fontWeight: fontWeights.medium,
     color: colors.text.tertiary,
+  },
+  // ─── ORCH-1028 launch-city gate (DESIGN §3) ───
+  gateCheckingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  // §3.E neutral grey circle for check-failed (NOT the warm brand circle, NOT red)
+  gateNeutralCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: colors.gray[100],
+    borderWidth: 1.5,
+    borderColor: colors.gray[200],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // §3.E quiet "Continue anyway" escape (only after >=2 failures)
+  gateSecondaryLink: {
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.lg,
+  },
+  gateSecondaryLinkText: {
+    ...responsiveTypography.sm,
+    fontWeight: fontWeights.semibold,
+    color: colors.text.tertiary,
+    letterSpacing: 0.2,
+  },
+  // §3.B inline write-failure strip (this IS a real failure → red is correct here)
+  gateInlineError: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginTop: responsiveSpacing.md,
+  },
+  gateInlineErrorText: {
+    ...responsiveTypography.sm,
+    color: colors.error[600],
+    flexShrink: 1,
   },
   // ─── Generic Inline Button (launch retry etc.) ───
   primaryButton: {
