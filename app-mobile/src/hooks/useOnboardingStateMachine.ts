@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useRef } from 'react'
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import {
   OnboardingNavState,
   OnboardingStep,
@@ -75,6 +75,36 @@ export function useOnboardingStateMachine({
     appliedInitialStep.current = initialStep
     setState(resolveEntry(initialStep, hasCollabContext))
   }
+
+  // ─── Fix B (ORCH-1039 rework): re-resolve off a now-hidden current step ───
+  // The lazy initializer + `appliedInitialStep` guard resolve the entry only
+  // when `initialStep` changes — NOT when `hasCollabContext` flips. On a
+  // resume-at-Step-6 with no context, `hasCollabContext` starts on the SAFE
+  // (true) default while the lifted async server reads load, so the entry
+  // resolves to Step 6; when those reads settle to no-context the flag flips
+  // false and Step 6 becomes hidden (`buildSequence(6,false) === []`) — but
+  // nothing moved the user off it, stranding them on the hollow "Who's in?"
+  // placeholder (the exact screen this ORCH eliminates), only in the resume
+  // path (T-12 / adversarial T-A1).
+  //
+  // This effect fires ONLY when the CURRENT step's sequence has become empty
+  // (the false-flip), and advances to the next non-empty step via the same
+  // skip-empty normalizer as `resolveEntry`/`advance`. It is a no-op whenever
+  // the current step is non-empty, so it NEVER yanks a user off a step they are
+  // legitimately on (with context) and never fights goNext/goBack (those skip
+  // empty steps and so can never land on an empty one). Keeps the non-blocking
+  // safe-default (show-while-checking) intact — it only acts once the context
+  // has actually resolved to empty.
+  useEffect(() => {
+    const current = stateRef.current
+    if (buildSequence(current.step, hasCollabContext).length !== 0) return
+    const resolved = resolveEntry(current.step, hasCollabContext)
+    if (resolved.step === current.step && resolved.subStep === current.subStep) return
+    logger.onboarding(
+      `resolve-empty: Step ${current.step}/${current.subStep} became hidden (hasCollabContext=${hasCollabContext}) → Step ${resolved.step}/${resolved.subStep}`
+    )
+    setState(resolved)
+  }, [hasCollabContext])
 
   const goNext = useCallback(() => {
     const prev = stateRef.current
