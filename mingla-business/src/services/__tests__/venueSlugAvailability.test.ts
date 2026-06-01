@@ -1,10 +1,13 @@
 /**
  * META-ORCH-1009 Sub-E — regression tests for venue slug availability.
  *
- * B5: checkVenueSlugAvailable must only report "taken" for a LIVE brand owned by
- *     someone else — not soft-deleted rows, and not the caller's own brand.
- * B3: suggestVenueSlugs derives numbered candidates and returns only the
- *     available ones.
+ * ROOT-CAUSE FIX (2026-05-31): the slug is the brand's GLOBALLY-UNIQUE public URL
+ * and the venue-create flow always INSERTs a new brand, so a slug held by ANY
+ * live brand — including one the caller owns — is NOT available for a new venue.
+ * The earlier "own-account exemption" caused a false-NEGATIVE (auto-selecting a
+ * slug the caller already used → unique-violation at submit). These tests now
+ * assert the correct global-uniqueness behavior.
+ * B3: suggestVenueSlugs derives numbered candidates and returns only available.
  */
 import { describe, it, expect, jest, beforeEach } from "@jest/globals";
 
@@ -20,23 +23,32 @@ import {
 } from "../brandsService";
 
 /**
- * Mocks the `from('brands').select(...).eq('slug', s).is('deleted_at', null)`
- * chain. The terminal `.is()` resolves to { data, error }. `rowsBySlug` maps a
- * slug → the rows the query returns for that slug.
+ * Mocks the `from('brands').select(...).eq('slug', s).is('deleted_at', null)
+ * .limit(1)` chain. Both `.is()` (older callers) and the terminal `.limit()`
+ * (checkVenueSlugAvailable) are thenable so either shape resolves to
+ * { data, error }. `rowsBySlug` maps a slug → rows the query returns.
  */
 function mockBrandsBySlug(
   rowsBySlug: Record<string, { id: string; account_id: string }[]>,
 ): void {
   (supabase.from as jest.Mock).mockImplementation(() => {
     let slugArg = "";
-    const chain = {
+    // A PromiseLike chain: every builder method returns the same object, and the
+    // object is awaitable (resolves to { data, error }). This handles BOTH
+    // `.is()`-terminal (older callers) and `.is().limit()`-terminal
+    // (checkVenueSlugAvailable) without caring where the await happens.
+    const chain: Record<string, unknown> = {
       select: () => chain,
       eq: (_col: string, val: string) => {
         slugArg = val;
         return chain;
       },
-      is: () =>
-        Promise.resolve({ data: rowsBySlug[slugArg] ?? [], error: null }),
+      is: () => chain,
+      limit: () => chain,
+      then: (onFulfilled: (v: { data: unknown; error: null }) => unknown) =>
+        Promise.resolve({ data: rowsBySlug[slugArg] ?? [], error: null }).then(
+          onFulfilled,
+        ),
     };
     return chain;
   });
@@ -59,11 +71,11 @@ describe("checkVenueSlugAvailable (B5)", () => {
     ).resolves.toBe(false);
   });
 
-  it("is AVAILABLE when only the caller's OWN brand holds the slug (no false-taken on retry)", async () => {
+  it("is TAKEN even when the caller's OWN brand holds the slug (global uniqueness — venue-create always INSERTs a new brand, so reusing your own slug collides)", async () => {
     mockBrandsBySlug({ mine: [{ id: "b1", account_id: "my-acct" }] });
     await expect(
       checkVenueSlugAvailable("mine", "my-acct"),
-    ).resolves.toBe(true);
+    ).resolves.toBe(false);
   });
 
   it("returns false for an empty slug", async () => {

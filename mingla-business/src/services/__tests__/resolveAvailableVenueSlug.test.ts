@@ -19,21 +19,33 @@ let throwOnQuery = false;
 // row set (not owned by caller) as taken.
 jest.mock("../supabase", () => ({
   supabase: {
-    from: () => ({
-      select: () => ({
-        eq: (_col: string, slug: string) => ({
-          is: () => {
-            if (throwOnQuery) {
-              return Promise.resolve({ data: null, error: new Error("offline") });
-            }
-            const rows = takenSlugs.has(slug)
-              ? [{ id: "x", account_id: "someone-else" }]
-              : [];
-            return Promise.resolve({ data: rows, error: null });
-          },
-        }),
-      }),
-    }),
+    from: () => {
+      let slugArg = "";
+      // PromiseLike chain — every builder returns the chain, and the chain is
+      // awaitable. Handles `.eq().is().limit(1)` (checkVenueSlugAvailable's
+      // current shape) regardless of where the await lands.
+      const chain: Record<string, unknown> = {
+        select: () => chain,
+        eq: (_col: string, slug: string) => {
+          slugArg = slug;
+          return chain;
+        },
+        is: () => chain,
+        limit: () => chain,
+        then: (onFulfilled: (v: unknown) => unknown) => {
+          if (throwOnQuery) {
+            return Promise.resolve({ data: null, error: new Error("offline") }).then(
+              onFulfilled,
+            );
+          }
+          const rows = takenSlugs.has(slugArg)
+            ? [{ id: "x", account_id: "someone-else" }]
+            : [];
+          return Promise.resolve({ data: rows, error: null }).then(onFulfilled);
+        },
+      };
+      return chain;
+    },
   },
 }));
 

@@ -88,36 +88,39 @@ export class SlugCollisionError extends Error {
 /**
  * Returns true when `slug` is free for a NEW venue brand.
  *
- * B5 fix: only a LIVE (non-soft-deleted) brand owned by SOMEONE ELSE makes a
- * slug "taken". Previously the only slug feedback came from the create RPC's
- * `slug_taken` exception, which (a) fired only on submit and (b) counted the
- * caller's OWN just-created brand from a prior partial submit — producing the
- * false "this slug is taken" Seth saw. This scopes to `deleted_at IS NULL` and
- * (when provided) excludes the caller's own account so a retry on the same name
- * is not reported as a conflict against the row the caller just made.
+ * ROOT-CAUSE FIX (META-ORCH-1009 Sub-E, 2026-05-31): the slug is the brand's
+ * public URL (business.usemingla.com/b/<slug>) and is GLOBALLY UNIQUE — the DB
+ * enforces `UNIQUE(slug) WHERE deleted_at IS NULL`. The venue-create flow ALWAYS
+ * INSERTs a brand-new brand (`biz_create_venue_brand_authoring` → INSERT INTO
+ * brands); it never reuses/links an existing one. Therefore a slug already held
+ * by ANY live brand — INCLUDING one the caller owns — is NOT available for a new
+ * venue: inserting it collides with the unique index.
+ *
+ * A prior change added an "own-account exemption" (return true if only the
+ * caller's own brands hold the slug) to silence a false-positive from a partial
+ * submit. That was wrong: it turned a false-positive into a FALSE-NEGATIVE — the
+ * UI auto-selected a slug the caller already used (e.g. typing the exact same
+ * venue name twice), which then failed at submit with a unique-violation. The
+ * `ownAccountId` parameter is retained for signature compatibility but is now
+ * intentionally ignored: availability is purely "no live brand holds this slug".
  */
 export async function checkVenueSlugAvailable(
   slug: string,
-  ownAccountId?: string | null,
+  _ownAccountId?: string | null,
 ): Promise<boolean> {
   const normalized = slug.trim().toLowerCase();
   if (normalized.length === 0) return false;
 
   const { data, error } = await supabase
     .from("brands")
-    .select("id, account_id")
+    .select("id")
     .eq("slug", normalized)
-    .is("deleted_at", null);
+    .is("deleted_at", null)
+    .limit(1);
   if (error !== null) throw error;
 
-  const rows = (data ?? []) as { id: string; account_id: string }[];
-  if (rows.length === 0) return true;
-  // Only the caller's own brand(s) hold this slug → still effectively available
-  // to them (the create RPC reuses/links rather than duplicating after B6).
-  if (ownAccountId !== null && ownAccountId !== undefined) {
-    return rows.every((r) => r.account_id === ownAccountId);
-  }
-  return false;
+  // Available iff NO live brand (anyone's) already holds this slug.
+  return (data ?? []).length === 0;
 }
 
 /**
