@@ -61,6 +61,11 @@ function statusPillClasses(status) {
   if (status === "cancelling") {
     return "bg-[var(--color-warning-50)] text-[var(--color-warning-700)]";
   }
+  // ORCH-1032: queued is a calm waiting state — neutral gray, NEVER
+  // error/warning. Reads as "waiting for a slot," not "problem."
+  if (status === "queued") {
+    return "bg-[var(--gray-100)] text-[var(--color-text-secondary)]";
+  }
   return "bg-[var(--gray-100)] text-[var(--color-text-tertiary)]";
 }
 
@@ -68,6 +73,7 @@ function statusLabel(status) {
   if (status === "complete") return "Done";
   if (status === "cancelled") return "Cancelled";
   if (status === "failed") return "Failed";
+  if (status === "queued") return "Queued"; // ORCH-1032
   return status;
 }
 
@@ -109,6 +115,7 @@ export function ActiveRunCard({ run, onCancelled, onViewRun }) {
   const isTerminal = ["complete", "cancelled", "failed"].includes(run.status);
   const isRunning = run.status === "running";
   const isCancelling = run.status === "cancelling";
+  const isQueued = run.status === "queued"; // ORCH-1032
 
   async function handleCancelConfirmed() {
     if (!run.id) return;
@@ -246,6 +253,14 @@ export function ActiveRunCard({ run, onCancelled, onViewRun }) {
             <div className="flex items-center gap-2 text-xs text-[var(--color-warning-700)]">
               <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
               <span>Cancelling… (~30-90s)</span>
+            </div>
+          )}
+          {/* ORCH-1032: queued is idle (no slot yet), not working — calm copy,
+              NO spinner. */}
+          {isQueued && (
+            <div className="flex items-center gap-2 text-xs text-[var(--color-text-secondary)]">
+              <Clock className="w-3.5 h-3.5" aria-hidden="true" />
+              <span>Queued — waiting for a free slot</span>
             </div>
           )}
           {isTerminal && (
