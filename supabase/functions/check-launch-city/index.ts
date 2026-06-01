@@ -74,6 +74,18 @@ export function isInsideBbox(
     "bbox_sw_lat" | "bbox_ne_lat" | "bbox_sw_lng" | "bbox_ne_lng"
   >,
 ): boolean {
+  // NULL-bbox guard (ORCH-1027 QA hardening): the bbox_* columns are NOT NULL
+  // today, but a future nullable migration (or a hand-edited row) could surface
+  // a live city with null bounds. In JS `null` coerces to 0 in numeric
+  // comparison, so an unguarded all-null bbox would MATCH the point (0,0)
+  // ("Null Island" — also the common GPS-failure default), wrongly reporting
+  // inLaunchCity:true. A malformed row must match NOTHING, never something.
+  if (
+    !Number.isFinite(c.bbox_sw_lat) || !Number.isFinite(c.bbox_ne_lat) ||
+    !Number.isFinite(c.bbox_sw_lng) || !Number.isFinite(c.bbox_ne_lng)
+  ) {
+    return false;
+  }
   return c.bbox_sw_lat <= lat && c.bbox_ne_lat >= lat &&
     c.bbox_sw_lng <= lng && c.bbox_ne_lng >= lng;
 }

@@ -1208,6 +1208,9 @@ function checkNoNewBackendFiles() {
     "supabase/migrations/20260810000000_orch_1027_launch_cities.sql",
     "supabase/functions/check-launch-city/index.ts",
     "supabase/functions/check-launch-city/__tests__/check_launch_city.test.ts",
+    // ORCH-1027 QA: tester adversarial regression suite (NULL-bbox/degenerate/
+    // antimeridian/equidistant-tiebreak/corner-coords) + the index.ts NULL guard.
+    "supabase/functions/check-launch-city/__tests__/check_launch_city_adversarial.test.ts",
   ];
   const ALLOWLIST = [
     ...ORCH_1027_BACKEND_ALLOWLIST,
