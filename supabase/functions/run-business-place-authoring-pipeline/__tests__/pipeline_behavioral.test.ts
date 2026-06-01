@@ -22,8 +22,10 @@ import {
 
 import {
   buildAiSignalScores,
+  businessGateReasons,
   buildCrossValidation,
   coachingForReasons,
+  galleryUrls,
   placeForBouncer,
 } from "../index.ts";
 import { bounce } from "../../_shared/bouncer.ts";
@@ -176,6 +178,34 @@ Deno.test("bounce gate: a complete business-authored venue passes; a fast-food c
   const chainVerdict = bounce(chain);
   assertEquals(chainVerdict.is_servable, false);
   assert(chainVerdict.reasons.some((r) => r.startsWith("B11")), "expected B11 chain rejection");
+});
+
+Deno.test("businessGateReasons: requires a 5-photo gallery before go-live", () => {
+  // Fewer than 5 gallery photos -> GALLERY_MIN blocker + coaching to add photos.
+  const few = { business_gallery_urls: ["https://cdn/1.jpg", "https://cdn/2.jpg"] };
+  assertEquals(galleryUrls(few).length, 2);
+  const reasons = businessGateReasons(few);
+  assertEquals(reasons.length, 1);
+  assert(reasons[0].startsWith("GALLERY_MIN"), `got ${reasons[0]}`);
+  const card = coachingForReasons(reasons)[0];
+  assertEquals(card.code, "GALLERY_MIN");
+  assert(card.title.toLowerCase().includes("photo"));
+
+  // Exactly 5 -> no blocker.
+  const five = {
+    business_gallery_urls: [
+      "https://cdn/1.jpg",
+      "https://cdn/2.jpg",
+      "https://cdn/3.jpg",
+      "https://cdn/4.jpg",
+      "https://cdn/5.jpg",
+    ],
+  };
+  assertEquals(businessGateReasons(five).length, 0);
+
+  // Non-string / empty entries are ignored by galleryUrls.
+  const dirty = { business_gallery_urls: ["https://cdn/1.jpg", "", null, 7] };
+  assertEquals(galleryUrls(dirty).length, 1);
 });
 
 Deno.test("placeForBouncer: an operator-uploaded hero satisfies the photo gate for a business-authored venue (no Google photos)", () => {

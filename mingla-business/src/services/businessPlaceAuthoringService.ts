@@ -93,6 +93,10 @@ export interface BrandPlaceAuthoringContext {
   cover_media_url: string | null;
   cover_media_type: "image" | "video" | "gif" | null;
   website: string | null;
+  // META-ORCH-1009 Sub-E: required venue photo gallery (5–20, hero excluded).
+  gallery_urls: string[];
+  gallery_min: number;
+  gallery_max: number;
   coaching: PipelineCoachingCard[];
 }
 
@@ -179,6 +183,38 @@ export async function syncHeroMedia(input: {
   );
   if (error !== null) throw error;
   assertPipelineOk(data as { kind: "ok" } | PipelineErrorBody, "sync_hero_media_failed");
+}
+
+export interface SyncGalleryResult {
+  kind: "ok";
+  gallery_count: number;
+  gallery_min: number;
+  gallery_max: number;
+}
+
+// META-ORCH-1009 Sub-E: persist the venue gallery (the operator already uploaded
+// the photos to storage; this writes the authoritative URL set server-side).
+export async function syncGallery(input: {
+  brandId: string;
+  placePoolId: string;
+  galleryUrls: string[];
+}): Promise<SyncGalleryResult> {
+  const { data, error } = await supabase.functions.invoke(
+    "run-business-place-authoring-pipeline",
+    {
+      body: {
+        action: "sync_gallery",
+        brand_id: input.brandId,
+        place_pool_id: input.placePoolId,
+        gallery_urls: input.galleryUrls,
+      },
+    },
+  );
+  if (error !== null) throw await pipelineInvokeError(error, "sync_gallery_failed");
+  return assertPipelineOk(
+    data as SyncGalleryResult | PipelineErrorBody,
+    "sync_gallery_failed",
+  );
 }
 
 export async function runTier2Pipeline(input: {

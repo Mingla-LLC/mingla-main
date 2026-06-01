@@ -139,6 +139,7 @@ export default function VenueDeckReadinessRoute(): React.ReactElement {
         initialFacets={contextQuery.data.pending_ai_outputs?.facets ?? EMPTY_FACETS}
         initialCoaching={contextQuery.data.coaching}
         initialCover={cover}
+        initialGallery={contextQuery.data.gallery_urls}
         onDone={() => router.replace("/(tabs)/hub/events" as never)}
       />
     </View>

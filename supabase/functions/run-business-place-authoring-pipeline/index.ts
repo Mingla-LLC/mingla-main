@@ -87,8 +87,15 @@ type Action =
   | "confirm_ai_outputs"
   | "refresh_deck_readiness"
   | "get_authoring_context"
-  | "sync_hero_media";
+  | "sync_hero_media"
+  | "sync_gallery";
 type VenueCategory = "restaurant" | "play" | "creative_and_arts";
+
+// META-ORCH-1009 Sub-E: a self-listed/claimed venue must upload 5–20 gallery
+// photos (in addition to the hero) before it can go live. The min is a hard
+// go-live gate; the max bounds storage + the AI vision set.
+const GALLERY_MIN = 5;
+const GALLERY_MAX = 20;
 
 interface Tier1Draft {
   name?: string;
@@ -121,6 +128,7 @@ interface RequestBody {
   facets?: Record<string, boolean | null>;
   cover_media_url?: string | null;
   cover_media_type?: "image" | "video" | "gif" | null;
+  gallery_urls?: string[];
 }
 
 interface OwnedBrand {
@@ -263,6 +271,13 @@ export function coachingForReasons(reasons: string[]): Array<{
           body: "This looks like a casual chain. If you're an independent venue, request a review.",
           fix: "request_review",
         };
+      case "GALLERY_MIN":
+        return {
+          code,
+          title: "Add more photos",
+          body: `Add at least ${GALLERY_MIN} photos of your venue (you can pick several at once) so customers can see what to expect.`,
+          fix: "edit_cover",
+        };
       case "CONFIRM":
         return {
           code,
@@ -332,6 +347,23 @@ export function placeForBouncer(
     review_count: (place as { review_count?: number | null }).review_count ?? null,
     rating: (place as { rating?: number | null }).rating ?? null,
   };
+}
+
+// Exported for the gallery-gate behavioral test.
+export function galleryUrls(place: Record<string, unknown>): string[] {
+  const raw = (place as { business_gallery_urls?: unknown }).business_gallery_urls;
+  return Array.isArray(raw)
+    ? raw.filter((u): u is string => typeof u === "string" && u.length > 0)
+    : [];
+}
+
+// META-ORCH-1009 Sub-E: business-pipeline go-live blockers BEYOND the shared
+// bouncer. The required 5-photo gallery is enforced here (the shared bouncer is
+// generic to Google-ingested places and has no gallery concept). Returns a
+// GALLERY_MIN reason when the venue has fewer than the required gallery photos.
+export function businessGateReasons(place: Record<string, unknown>): string[] {
+  const count = galleryUrls(place).length;
+  return count < GALLERY_MIN ? [`GALLERY_MIN:${count}`] : [];
 }
 
 async function requireUser(req: Request): Promise<
@@ -1100,8 +1132,11 @@ async function handleConfirmAiOutputs(
   };
   const bouncerPlace = placeForBouncer(placePoolId, place as Record<string, unknown>, tier2);
   const verdict = bounce(bouncerPlace);
-  const reasons = verdict.reasons;
-  const nextStatus = verdict.is_servable ? "deck_eligible" : "needs_fix";
+  // META-ORCH-1009 Sub-E: combine the shared bouncer verdict with the business
+  // gallery gate (>=5 photos). The venue is only servable when BOTH pass.
+  const reasons = [...verdict.reasons, ...businessGateReasons(place as Record<string, unknown>)];
+  const servable = verdict.is_servable && reasons.length === verdict.reasons.length;
+  const nextStatus = servable ? "deck_eligible" : "needs_fix";
   const coaching = coachingForReasons(reasons);
 
   const { error: updateErr } = await client
@@ -1110,7 +1145,7 @@ async function handleConfirmAiOutputs(
       business_authoring_inputs: mergedInputs,
       business_authoring_status: nextStatus,
       generative_summary: salesBio,
-      is_servable: verdict.is_servable,
+      is_servable: servable,
       bouncer_reason: reasons.join(",") || null,
       bouncer_validated_at: new Date().toISOString(),
       website: bouncerPlace.website,
@@ -1126,7 +1161,7 @@ async function handleConfirmAiOutputs(
       structured_facet_inference: "confirmed",
       signal_pre_evaluation: "complete",
       google_cross_validation: "complete_or_not_applicable",
-      bouncer_servability: verdict.is_servable ? "passed" : "needs_fix",
+      bouncer_servability: servable ? "passed" : "needs_fix",
     }),
     coaching,
     bouncerReasons: reasons,
@@ -1167,9 +1202,11 @@ async function handleRefreshDeckReadiness(
   const confirmed = typeof inputs.confirmed_ai_outputs === "object" &&
       inputs.confirmed_ai_outputs !== null;
   const verdict = bounce(placeForBouncer(placePoolId, place as Record<string, unknown>, tier2));
-  const reasons = verdict.reasons;
-  const status = verdict.is_servable && confirmed ? "deck_eligible" : "needs_fix";
-  const coaching = verdict.is_servable && !confirmed
+  // META-ORCH-1009 Sub-E: include the business gallery gate (>=5 photos).
+  const reasons = [...verdict.reasons, ...businessGateReasons(place as Record<string, unknown>)];
+  const servable = verdict.is_servable && reasons.length === verdict.reasons.length;
+  const status = servable && confirmed ? "deck_eligible" : "needs_fix";
+  const coaching = servable && !confirmed
     ? coachingForReasons(["CONFIRM:ai_outputs"])
     : coachingForReasons(reasons);
 
@@ -1217,7 +1254,7 @@ async function handleGetAuthoringContext(
   }
   const { data: place, error: placeErr } = await client
     .from("place_pool")
-    .select("id, business_authoring_status, business_authoring_inputs, stored_photo_urls, business_hero_video_present, website")
+    .select("id, business_authoring_status, business_authoring_inputs, stored_photo_urls, business_hero_video_present, website, business_gallery_urls")
     .eq("id", placePoolId)
     .maybeSingle();
   if (placeErr) return errorResponse(500, "PLACE_READ_FAILED", placeErr.message);
@@ -1260,6 +1297,9 @@ async function handleGetAuthoringContext(
         ? "image"
         : null,
     website: (place as { website?: string | null }).website ?? null,
+    gallery_urls: galleryUrls(place as Record<string, unknown>),
+    gallery_min: GALLERY_MIN,
+    gallery_max: GALLERY_MAX,
     coaching: (pipeline as { coaching?: unknown[] } | null)?.coaching ?? [],
   });
 }
@@ -1288,6 +1328,39 @@ async function handleSyncHeroMedia(
     action: "sync_hero_media",
     place_pool_id: placePoolId,
     business_hero_video_present: mediaType === "video",
+  });
+}
+
+async function handleSyncGallery(
+  client: SupabaseClient,
+  brand: OwnedBrand,
+  body: RequestBody,
+): Promise<Response> {
+  const placePoolId = body.place_pool_id ?? brand.place_pool_id;
+  if (!isUuid(placePoolId)) {
+    return errorResponse(400, "BAD_REQUEST", "place_pool_id is required");
+  }
+  // Client has already uploaded the photos to storage (brand_covers bucket, gated
+  // by brand-id path). Here we just persist the resulting public URLs, de-duped,
+  // http(s)-only, capped at GALLERY_MAX. This is the authoritative gallery write.
+  const raw = Array.isArray(body.gallery_urls) ? body.gallery_urls : [];
+  const cleaned = Array.from(
+    new Set(
+      raw.filter((u): u is string => typeof u === "string" && /^https?:\/\//i.test(u)),
+    ),
+  ).slice(0, GALLERY_MAX);
+  const { error } = await client
+    .from("place_pool")
+    .update({ business_gallery_urls: cleaned })
+    .eq("id", placePoolId);
+  if (error) return errorResponse(500, "PLACE_UPDATE_FAILED", error.message);
+  return jsonResponse(200, {
+    kind: "ok",
+    action: "sync_gallery",
+    place_pool_id: placePoolId,
+    gallery_count: cleaned.length,
+    gallery_min: GALLERY_MIN,
+    gallery_max: GALLERY_MAX,
   });
 }
 
@@ -1333,6 +1406,9 @@ Deno.serve(async (req) => {
     }
     if (body.action === "sync_hero_media") {
       return await handleSyncHeroMedia(userResult.serviceClient, brand, body);
+    }
+    if (body.action === "sync_gallery") {
+      return await handleSyncGallery(userResult.serviceClient, brand, body);
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Pipeline failed";

@@ -31,10 +31,16 @@ import {
   confirmAiOutputs,
   refreshDeckReadiness,
   runTier2Pipeline,
+  syncGallery,
   syncHeroMedia,
   upsertTier1Place,
   type PipelineCoachingCard,
 } from "../../services/businessPlaceAuthoringService";
+import {
+  pickGalleryPhotos,
+  uploadGalleryPhoto,
+  VenueGalleryError,
+} from "../../services/venueGalleryService";
 import type { Brand } from "../../types/brand";
 import type { DeckReadinessFocus } from "../../utils/deckReadinessRoutes";
 import { useDraftVenueStore } from "../../store/draftVenueStore";
@@ -355,7 +361,14 @@ export interface VenueDeckReadinessSetupProps {
   initialFacets?: Record<string, boolean | null>;
   initialCoaching?: PipelineCoachingCard[];
   initialCover?: CoverPatch | null;
+  initialGallery?: string[];
 }
+
+// META-ORCH-1009 Sub-E: required venue gallery bounds (mirror the edge GALLERY_MIN
+// / GALLERY_MAX). Hero is separate; the gallery is 5–20 additional photos.
+const GALLERY_MIN = 5;
+const GALLERY_MAX = 20;
+const EMPTY_GALLERY: string[] = [];
 
 // META-ORCH-1009 Sub-E: the "Best for" options are REAL Mingla signals (ids match
 // public.signal_definitions, the taxonomy the consumer app matches on) — NOT the
@@ -411,8 +424,11 @@ export function VenueDeckReadinessSetup({
   initialFacets = EMPTY_FACETS,
   initialCoaching = EMPTY_COACHING,
   initialCover = null,
+  initialGallery = EMPTY_GALLERY,
 }: VenueDeckReadinessSetupProps): React.ReactElement {
   const [coverVisible, setCoverVisible] = useState(false);
+  const [gallery, setGallery] = useState<string[]>(initialGallery);
+  const [galleryBusy, setGalleryBusy] = useState(false);
   const [cover, setCover] = useState<CoverPatch>({
     ...EMPTY_COVER,
     coverMediaUrl:
@@ -449,6 +465,10 @@ export function VenueDeckReadinessSetup({
   }, [initialCoaching, initialFacets, initialPendingBio, initialTier2]);
 
   useEffect(() => {
+    setGallery(initialGallery);
+  }, [initialGallery]);
+
+  useEffect(() => {
     if (focus === "cover") setCoverVisible(true);
   }, [focus]);
 
@@ -482,6 +502,53 @@ export function VenueDeckReadinessSetup({
       });
     },
     [brand.id, placePoolId],
+  );
+
+  // META-ORCH-1009 Sub-E: multi-select gallery upload. Pick many at once (capped
+  // at remaining slots), upload each to storage, then persist the URL set.
+  const handleAddPhotos = useCallback(async (): Promise<void> => {
+    const remaining = GALLERY_MAX - gallery.length;
+    if (remaining <= 0) {
+      setMessage(`You can add up to ${GALLERY_MAX} photos.`);
+      return;
+    }
+    setGalleryBusy(true);
+    setMessage(null);
+    try {
+      const picked = await pickGalleryPhotos(remaining);
+      if (picked.length === 0) return;
+      const uploaded: string[] = [];
+      for (const asset of picked) {
+        try {
+          uploaded.push(await uploadGalleryPhoto(brand.id, asset));
+        } catch (e) {
+          setMessage(
+            e instanceof VenueGalleryError ? e.message : "A photo failed to upload.",
+          );
+        }
+      }
+      if (uploaded.length === 0) return;
+      const next = Array.from(new Set([...gallery, ...uploaded])).slice(0, GALLERY_MAX);
+      setGallery(next);
+      await syncGallery({ brandId: brand.id, placePoolId, galleryUrls: next });
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Couldn't add photos. Try again.");
+    } finally {
+      setGalleryBusy(false);
+    }
+  }, [brand.id, gallery, placePoolId]);
+
+  const handleRemovePhoto = useCallback(
+    async (url: string): Promise<void> => {
+      const next = gallery.filter((u) => u !== url);
+      setGallery(next);
+      try {
+        await syncGallery({ brandId: brand.id, placePoolId, galleryUrls: next });
+      } catch (e) {
+        setMessage(e instanceof Error ? e.message : "Couldn't update photos.");
+      }
+    },
+    [brand.id, gallery, placePoolId],
   );
 
   const toggleVibe = useCallback((vibe: string): void => {
@@ -613,6 +680,65 @@ export function VenueDeckReadinessSetup({
             size="md"
             leadingIcon="upload"
             onPress={() => setCoverVisible(true)}
+          />
+        </View>
+
+        {/* META-ORCH-1009 Sub-E: required venue gallery — 5–20 photos, multi-select. */}
+        <View style={styles.deckBlock}>
+          <Text style={styles.blockTitle}>Venue photos · required</Text>
+          <Text style={styles.blockBody}>
+            Add at least {GALLERY_MIN} photos (up to {GALLERY_MAX}) so customers can
+            picture your space. Tap once and pick several at a time.
+          </Text>
+          <Text
+            style={[
+              styles.fieldHint,
+              gallery.length >= GALLERY_MIN && styles.galleryCountOk,
+            ]}
+          >
+            {gallery.length} / {GALLERY_MIN} minimum · up to {GALLERY_MAX}
+            {gallery.length >= GALLERY_MIN ? "  ✓" : ""}
+          </Text>
+          {gallery.length > 0 ? (
+            <View style={styles.galleryGrid}>
+              {gallery.map((url) => (
+                <View key={url} style={styles.galleryTile}>
+                  <EventCoverMedia
+                    hue={25}
+                    mediaUrl={url}
+                    mediaType="image"
+                    radius={10}
+                    label="Venue photo"
+                    height={92}
+                    width={92}
+                  />
+                  <Pressable
+                    onPress={() => void handleRemovePhoto(url)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Remove photo"
+                    hitSlop={8}
+                    style={styles.galleryRemove}
+                  >
+                    <Text style={styles.galleryRemoveText}>×</Text>
+                  </Pressable>
+                </View>
+              ))}
+            </View>
+          ) : null}
+          <Button
+            label={
+              galleryBusy
+                ? "Uploading..."
+                : gallery.length === 0
+                  ? "Add photos"
+                  : "Add more photos"
+            }
+            variant="secondary"
+            size="md"
+            leadingIcon="upload"
+            loading={galleryBusy}
+            disabled={galleryBusy || gallery.length >= GALLERY_MAX}
+            onPress={() => void handleAddPhotos()}
           />
         </View>
 
@@ -864,6 +990,38 @@ const styles = StyleSheet.create({
   heroPreview: {
     borderRadius: 12,
     overflow: "hidden",
+  },
+  galleryGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
+  galleryTile: {
+    width: 92,
+    height: 92,
+    borderRadius: 10,
+    overflow: "hidden",
+  },
+  galleryRemove: {
+    position: "absolute",
+    top: 2,
+    right: 2,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  galleryRemoveText: {
+    color: "#fff",
+    fontSize: 16,
+    lineHeight: 18,
+    fontWeight: "700",
+  },
+  galleryCountOk: {
+    color: "#4ADE80",
+    fontWeight: "700",
   },
   fieldLabel: {
     fontSize: typography.bodySm.fontSize,
