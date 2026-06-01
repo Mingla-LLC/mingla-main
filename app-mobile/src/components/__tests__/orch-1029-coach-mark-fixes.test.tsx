@@ -16,6 +16,11 @@
 //         StatusBar.currentHeight; useCoachMark imports useSafeAreaInsets (F-4)
 //   T-07  ProfilePage registers Profile offsets via onLayout, not a bare 800ms timer (F-3)
 //   T-08  orphan-step CI assertion (spec §10): COACH_STEPS ids ⇔ call-site ids bijection
+//   T-09  BEHAVIORAL (REWORK): the recalibrated isPlausibleCutout predicate ACCEPTS a
+//         full-width-but-not-full-height deck rect ({0,2,375,589} on 375×667) AND still
+//         REJECTS a true whole-screen rect ({0,2,448,879} on 448×896). This is the exact
+//         gap the static-grep suite missed (a grep cannot tell a mis-calibrated threshold
+//         from a correct one). The predicate body is extracted from source and executed.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -56,6 +61,60 @@ function parseCallSiteIds(sources) {
     while ((m = re2.exec(src)) !== null) ids.add(Number(m[1]));
   }
   return ids;
+}
+
+// Derive an executable `(rect, screenWidth, screenHeight) => boolean` model of the source
+// predicate, WITHOUT eval/new Function (no code-injection surface; source is parsed, never
+// executed). The model is reconstructed from the structural facts present in the source so
+// it tracks the source's actual decision:
+//   • REWORK form  → whole-screen rejection: reject ONLY when width ≥ W·ratio AND
+//                    height ≥ H·ratio AND y ≤ topInset (constants read from source).
+//   • PRE-REWORK   → upper-bound clamp: accept ONLY when width ≤ W·0.96 AND height ≤ H·0.85.
+// A revert to the pre-rework clamp therefore drives the model to REJECT the full-width deck
+// rect, failing T-09 (fails-on-revert).
+function buildIsPlausibleCutoutFromSource(overlaySrc) {
+  const start = overlaySrc.indexOf('const isPlausibleCutout');
+  assert.notEqual(start, -1, 'T-09 isPlausibleCutout must exist in SpotlightOverlay source');
+
+  const num = (re, fallback) => {
+    const m = overlaySrc.match(re);
+    return m ? Number(m[1]) : fallback;
+  };
+
+  // REWORK shape: a whole-screen rejection gated on BOTH width and height ratios.
+  const hasWidthRatio = /screenWidth\s*\*\s*FULLSCREEN_WIDTH_RATIO/.test(overlaySrc);
+  const hasHeightRatio = /screenHeight\s*\*\s*FULLSCREEN_HEIGHT_RATIO/.test(overlaySrc);
+  const reworkShape = hasWidthRatio && hasHeightRatio;
+
+  // PRE-REWORK shape: an upper-bound clamp `width <= screenWidth*0.9x && height <= screenHeight*0.8x`.
+  const preReworkShape =
+    /t\.width\s*<=\s*screenWidth\s*\*\s*0\.9/.test(overlaySrc) &&
+    /t\.height\s*<=\s*screenHeight\s*\*\s*0\.8/.test(overlaySrc);
+
+  if (reworkShape) {
+    const wRatio = num(/FULLSCREEN_WIDTH_RATIO\s*=\s*([\d.]+)/, 0.98);
+    const hRatio = num(/FULLSCREEN_HEIGHT_RATIO\s*=\s*([\d.]+)/, 0.95);
+    const topInset = num(/FULLSCREEN_TOP_INSET\s*=\s*([\d.]+)/, 64);
+    return (rect, screenWidth, screenHeight) => {
+      if (rect.width <= 0 || rect.height <= 0) return false;
+      const coversFullWidth = rect.width >= screenWidth * wRatio;
+      const coversFullHeight = rect.height >= screenHeight * hRatio;
+      const startsAtTop = rect.y <= topInset;
+      return !(coversFullWidth && coversFullHeight && startsAtTop);
+    };
+  }
+
+  if (preReworkShape) {
+    const wRatio = num(/t\.width\s*<=\s*screenWidth\s*\*\s*(0\.9\d*)/, 0.96);
+    const hRatio = num(/t\.height\s*<=\s*screenHeight\s*\*\s*(0\.8\d*)/, 0.85);
+    return (rect, screenWidth, screenHeight) =>
+      rect.width > 0 &&
+      rect.height > 0 &&
+      rect.width <= screenWidth * wRatio &&
+      rect.height <= screenHeight * hRatio;
+  }
+
+  assert.fail('T-09 could not recognize the isPlausibleCutout predicate shape in source');
 }
 
 function runOrch1029CoachMarkFixesTest() {
@@ -142,14 +201,42 @@ function runOrch1029CoachMarkFixesTest() {
     'T-04 SCROLL_STEPS must NOT be the stale new Set([8, 9])'
   );
 
+  // ── T-09 [FAILS-ON-REVERT, BEHAVIORAL]: predicate accepts deck rect, rejects fullscreen ──
+  // Runs FIRST among the F-1 checks because it is the load-bearing proof the static grep
+  // missed: a grep cannot tell a mis-calibrated threshold from a correct one. The predicate
+  // model is reconstructed from source (no eval), so a revert to the pre-rework full-width-
+  // rejecting clamp drives this to REJECT the deck rect and fail here.
+  const predicate = buildIsPlausibleCutoutFromSource(overlaySrc);
+  // Real iOS SE3 deck card: full WIDTH (375 === screenWidth, x=0) but NOT full height
+  // (589 of 667 ≈ 88%), top at y=2. This is the LEGITIMATE target → must be ACCEPTED.
+  const deckRect = { x: 0, y: 2, width: 375, height: 589, radius: 36 };
+  assert.equal(
+    predicate(deckRect, 375, 667),
+    true,
+    'T-09 the recalibrated clamp MUST ACCEPT the full-width-but-not-full-height deck card {0,2,375,589} on 375×667'
+  );
+  // Android warm-deck fallthrough rect: near-100% width (448/448) AND near-100% height
+  // (879 of 896 ≈ 98%) AND top at y=2 → a TRUE whole-screen rect → must be REJECTED
+  // (this is the case F-1's clamp exists to kill).
+  const fullscreenRect = { x: 0, y: 2, width: 448, height: 879, radius: 36 };
+  assert.equal(
+    predicate(fullscreenRect, 448, 896),
+    false,
+    'T-09 the clamp MUST still REJECT a true whole-screen rect {0,2,448,879} on 448×896'
+  );
+  // A zero/degenerate rect is never plausible.
+  assert.equal(predicate({ x: 0, y: 0, width: 0, height: 0, radius: 0 }, 375, 667), false, 'T-09 degenerate rect rejected');
+  // A small inset card (e.g. a header chip) is plausible.
+  assert.equal(predicate({ x: 24, y: 120, width: 200, height: 60, radius: 8 }, 375, 667), true, 'T-09 small inset target accepted');
+
   // ── T-05 [FAILS-ON-REVERT]: fullscreen-rejection / plausibility clamp (F-1) ──
-  // The overlay must reject a near-fullscreen rect (Android whole-screen-cutout case)
-  // via a width/height-vs-screen ratio guard. The bare `width>0 && height>0` test on
+  // The overlay must reject a TRUE whole-screen rect (Android warm-deck fallthrough case)
+  // via a width AND height AND top-origin guard. The bare `width>0 && height>0` test on
   // its own is NOT sufficient as the cutout gate.
   assert.ok(
-    /screenWidth\s*\*\s*0\.9\d*/.test(overlaySrc) &&
-      /screenHeight\s*\*\s*0\.8\d*/.test(overlaySrc),
-    'T-05 SpotlightOverlay must have a fullscreen-rejection clamp (width vs screenWidth*0.9x AND height vs screenHeight*0.8x)'
+    /screenWidth\s*\*\s*FULLSCREEN_WIDTH_RATIO/.test(overlaySrc) &&
+      /screenHeight\s*\*\s*FULLSCREEN_HEIGHT_RATIO/.test(overlaySrc),
+    'T-05 SpotlightOverlay must gate the whole-screen rejection on BOTH a width ratio AND a height ratio of the screen'
   );
   assert.ok(
     /isPlausibleCutout/.test(overlaySrc),

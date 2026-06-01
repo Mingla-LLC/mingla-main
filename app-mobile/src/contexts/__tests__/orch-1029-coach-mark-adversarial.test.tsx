@@ -14,8 +14,10 @@
 //
 //   AT-01  Unmeasured/fullscreen target must NOT present a misleading spotlight
 //          (hasTarget is gated by the plausibility predicate, NOT a bare width>0&&height>0;
-//           the predicate uses the correct directional bound (<= screen*ratio, an UPPER
-//           bound that rejects the fullscreen rect); step 1 holds → returns null).
+//           the predicate REJECTS only a TRUE whole-screen rect — near-100% width AND
+//           near-100% height AND top-origin near 0 — while ACCEPTING the full-width-but-
+//           shorter deck card; step 1 holds → returns null). [AT-01b TEST-MOD-APPROVED
+//           ORCH-1029: the original upper-bound-on-both clamp encoded the P1 tour-freeze.]
 //   AT-02  Step-6 scroll is gated on offset registration, not a fixed delay
 //          (scrollToEnd is GONE entirely; the scroll routine is reachable ONLY inside the
 //           offset-present guard; the budget-exhausted miss path leaves the page at top,
@@ -113,21 +115,43 @@ function runAdversarial() {
       'AT-01a hasTarget must NOT regress to the bare `target && target.width > 0 ...` rect gate'
     );
 
-    // (b) the plausibility predicate must use an UPPER bound (<=) on the screen ratio —
-    //     the whole point is to REJECT a rect that fills the screen. A `>=` would invert it
-    //     and accept the Android {0,2,448,879} whole-screen rect.
+    // (b) [TEST-MOD-APPROVED ORCH-1029] the plausibility predicate must REJECT a TRUE
+    //     whole-screen rect, distinguishing it from the LEGITIMATE full-width deck card.
+    //
+    //     ORIGINAL AT-01b (this commit's predecessor) required `t.width <= screenWidth*0.9x`
+    //     AND `t.height <= screenHeight*0.8x` — an upper-bound-on-BOTH clamp. That clamp is
+    //     the EXACT P1 the QA verdict proved: the deck card is full-WIDTH by design
+    //     (`cardContainer` is `width: SCREEN_WIDTH`), so a `width <= screenWidth*0.96` arm can
+    //     NEVER be satisfied → step 1 holds forever → the tour freezes. The original AT-01b
+    //     is mathematically unsatisfiable alongside a working fix, so it is corrected here
+    //     (the REWORK direction, dispatched by the orchestrator).
+    //
+    //     The recalibrated predicate rejects a rect ONLY when it covers essentially the
+    //     whole screen: near-100% WIDTH (`>=` a width ratio) AND near-100% HEIGHT (`>=` a
+    //     height ratio) AND a top-origin near 0. A full-width-but-shorter deck card (height
+    //     well under the height ratio) is therefore ACCEPTED; the Android {0,2,448,879}
+    //     whole-screen rect (≈98% w, ≈98% h, y≈0) is REJECTED. The adversarial guard is now:
+    //     the whole-screen detector must gate on BOTH a width ratio AND a height ratio (a
+    //     width-only or height-only gate would mis-classify), and the final result must be
+    //     the NEGATION of the whole-screen test (so the gate rejects, not accepts, fullscreen).
     assert.ok(
-      /t\.width\s*<=\s*screenWidth\s*\*\s*0\.9\d*/.test(squishedOverlay),
-      'AT-01b plausibility predicate must bound width with `<= screenWidth * 0.9x` (reject fullscreen). A `>=` inverts the gate.'
+      /t\.width\s*>=\s*screenWidth\s*\*\s*FULLSCREEN_WIDTH_RATIO/.test(squishedOverlay),
+      'AT-01b whole-screen detector must gate on a width ratio (t.width >= screenWidth * FULLSCREEN_WIDTH_RATIO)'
     );
     assert.ok(
-      /t\.height\s*<=\s*screenHeight\s*\*\s*0\.8\d*/.test(squishedOverlay),
-      'AT-01b plausibility predicate must bound height with `<= screenHeight * 0.8x` (reject fullscreen). A `>=` inverts the gate.'
+      /t\.height\s*>=\s*screenHeight\s*\*\s*FULLSCREEN_HEIGHT_RATIO/.test(squishedOverlay),
+      'AT-01b whole-screen detector must gate on a height ratio (t.height >= screenHeight * FULLSCREEN_HEIGHT_RATIO)'
+    );
+    // The detector must AND the width + height + top conditions (a single-axis gate would
+    // wrongly reject the full-width deck card), and the predicate must RETURN ITS NEGATION
+    // (reject the whole-screen rect, accept everything else).
+    assert.ok(
+      /const isWholeScreen\s*=\s*coversFullWidth\s*&&\s*coversFullHeight\s*&&\s*startsAtTop/.test(squishedOverlay),
+      'AT-01b whole-screen = coversFullWidth && coversFullHeight && startsAtTop (all three, ANDed)'
     );
     assert.ok(
-      !/t\.width\s*>=\s*screenWidth/.test(squishedOverlay) &&
-        !/t\.height\s*>=\s*screenHeight/.test(squishedOverlay),
-      'AT-01b plausibility predicate must NOT use a `>=` screen-ratio comparison (that accepts the fullscreen rect)'
+      /return\s*!isWholeScreen/.test(squishedOverlay),
+      'AT-01b the predicate must return the NEGATION of the whole-screen test (reject fullscreen, accept the deck)'
     );
 
     // (c) step 1 must HOLD (render nothing) when there is no plausible target — the

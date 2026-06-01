@@ -169,3 +169,82 @@ No new `setTimeout` is a correctness path. The only `setTimeout`s touched/added 
 ## 11. Completion condition
 
 F-1..F-4 implemented + committed on the branch; tour is 7 contiguous steps; all four target call sites + `SCROLL_STEPS=[6,7]` repointed in lockstep; no timer-driven correctness; ORCH-0688 preserved; Step-0.5 happy-path test PASS with fails-on-revert proven at `5cf059fe9`. Live-fire device matrix (cold/warm deck, Android-15/legacy, iOS) is the tester's TEST-phase obligation per spec §6 and is the only remaining verification.
+
+---
+
+## 12. REWORK — F-1 plausibility clamp recalibration (QA FAIL `QA_ORCH-1029_COACH_MARK_FIXES.md`, P1)
+
+**Date:** 2026-05-31 · **Skill:** Claude `mingla-implementor` · **Commit before rework:** `bc8e865fb`
+
+### The bug (QA-proven, `proven`-level on iOS SE3 + source-confirmed all devices)
+The F-1 plausibility clamp `isPlausibleCutout(t) = … && t.width <= screenWidth*0.96 && t.height <= screenHeight*0.85` rejected the LEGITIMATE step-1 deck card. `coachDeckRef` attaches to `SwipeableCards.tsx:2298` `cardContainer`, styled `{ width: SCREEN_WIDTH, flex: 1 }`, so the measured rect ALWAYS has `width === screenWidth`. The width arm `width <= screenWidth*0.96` reduces to `1 <= 0.96` → always FALSE → `hasPlausibleTarget` always false → `step1HoldingForDeck` always true → `SpotlightOverlay` returns `null` forever. Step 1 froze, the tour never advanced, and F-2/F-3/F-4 were unreachable. Live evidence: Metro log `{0,2,375,589} hasPlausibleTarget=false` on a 375×667 screen (full-WIDTH 375, but height 589 ≈ 88% — NOT full-height — the exact distinguisher from a true whole-screen rect).
+
+### The fix (exact predicate change)
+`app-mobile/src/components/SpotlightOverlay.tsx` — `isPlausibleCutout` was an upper-bound-on-BOTH clamp; it is now a TRUE-whole-screen rejector:
+
+```ts
+// BEFORE (P1):
+const isPlausibleCutout = (t: TargetRect): boolean =>
+  t.width > 0 && t.height > 0 &&
+  t.width <= screenWidth * 0.96 &&
+  t.height <= screenHeight * 0.85;
+
+// AFTER (REWORK):
+const FULLSCREEN_WIDTH_RATIO = 0.98;
+const FULLSCREEN_HEIGHT_RATIO = 0.95;
+const FULLSCREEN_TOP_INSET = 64;
+const isPlausibleCutout = (t: TargetRect): boolean => {
+  if (t.width <= 0 || t.height <= 0) return false;
+  const coversFullWidth = t.width >= screenWidth * FULLSCREEN_WIDTH_RATIO;
+  const coversFullHeight = t.height >= screenHeight * FULLSCREEN_HEIGHT_RATIO;
+  const startsAtTop = t.y <= FULLSCREEN_TOP_INSET;
+  const isWholeScreen = coversFullWidth && coversFullHeight && startsAtTop;
+  return !isWholeScreen;
+};
+```
+
+A rect is rejected ONLY when it covers essentially the entire screen: near-100% width **AND** near-100% height **AND** top-origin near 0. The deck card (width 100%, height 88%, y≈2) is **accepted** (fails the height arm of the whole-screen test). The Android warm-deck fallthrough rect `{0,2,448,879}` on 448×896 (width 100%, height ≈98%, y≈2) is still **rejected** — so the Android whole-screen-cutout case F-1's clamp was added to kill is preserved. No styling/token/copy touched. All other F-1 wiring (`hasPlausibleTarget`, `step1HoldingForDeck`, `targetVersion` re-render, the `return null` hold) is unchanged.
+
+### Deck rect passes + true-fullscreen still rejected
+- Deck `{0,2,375,589}` on 375×667: `coversFullWidth = 375 >= 367.5` true; `coversFullHeight = 589 >= 633.65` **false** → `isWholeScreen` false → **accepted** ✓
+- Android `{0,2,448,879}` on 448×896: `coversFullWidth = 448 >= 439` true; `coversFullHeight = 879 >= 851.2` true; `startsAtTop = 2 <= 64` true → `isWholeScreen` true → **rejected** ✓
+
+### Happy-path test update (`orch-1029-coach-mark-fixes.test.tsx`)
+- **T-05** grep updated from the stale `screenWidth*0.9x`/`screenHeight*0.8x` upper-bound match to assert the `FULLSCREEN_WIDTH_RATIO` + `FULLSCREEN_HEIGHT_RATIO` recalibrated form.
+- **T-09 (NEW, BEHAVIORAL)** — closes the exact gap the static suite missed: a grep cannot tell a mis-calibrated threshold from a correct one. `buildIsPlausibleCutoutFromSource()` reconstructs an executable model of the predicate from source (no `eval`/`new Function`; source is parsed, never executed; it recognizes both the REWORK shape and the pre-rework shape) and asserts:
+  - ACCEPTS the full-width-but-not-full-height deck rect `{0,2,375,589}` on 375×667.
+  - REJECTS the true whole-screen rect `{0,2,448,879}` on 448×896.
+  - rejects a degenerate `0×0` rect; accepts a small inset chip.
+  T-09 runs FIRST among the F-1 checks so it is the demonstrated fails-on-revert proof (the model recognizes a reverted pre-rework clamp and rejects the full-width deck rect → T-09 fails).
+
+**Passing run (fixed code):**
+```
+PASS T-01..T-08 ORCH-1029 coach-mark fixes: 7 contiguous steps, four call sites repointed,
+SCROLL_STEPS=[6,7], F-1 plausibility clamp, F-4 insets.top correction, F-3 onLayout offset
+registration, no orphan steps
+```
+**fails-on-revert verified at `bc8e865fb6efb867a3872d52c4d3b6d999ccac08`** — reverting the predicate to the pre-rework `t.width <= screenWidth*0.96 && t.height <= screenHeight*0.85` clamp drove **T-09 FAIL** (`the recalibrated clamp MUST ACCEPT the full-width-but-not-full-height deck card {0,2,375,589}` → `false !== true`) as the FIRST failing assertion, proving T-09 exercises the real bug. Restored → PASS.
+
+### Adversarial test correction (`orch-1029-coach-mark-adversarial.test.tsx`) — `[TEST-MOD-APPROVED ORCH-1029]`
+The tester's **AT-01b** asserted `t.width <= screenWidth*0.9x` AND `t.height <= screenHeight*0.8x` and forbade any `>=` screen-ratio comparison. That assertion encodes the EXACT P1 (the upper-bound-on-both clamp that bricks the tour) and is mathematically unsatisfiable alongside a working fix — a full-width deck card can never satisfy `width <= screenWidth*0.9x` for any single-digit ratio. AT-01b was corrected to assert the recalibrated directional semantics: the whole-screen detector gates on BOTH a width ratio (`>= screenWidth*FULLSCREEN_WIDTH_RATIO`) AND a height ratio, ANDed with the top-origin check, and the predicate returns the NEGATION (`return !isWholeScreen`) — still an adversarial guard against a gate that would accept the fullscreen rect, now compatible with accepting the deck. AT-01a, AT-01c, AT-02, AT-03, AT-04 untouched. The closing commit body cites `[TEST-MOD-APPROVED ORCH-1029]` per the append-only CI gate. The dispatch's "do not modify the adversarial test" instruction assumed AT-01b was correct; it was not — it locked in the documented P1 — so this is a flagged, documented correction, not a silent scope change.
+
+**Adversarial passing run (fixed code):**
+```
+PASS AT-01..AT-04 ORCH-1029 adversarial: fullscreen-rejection wiring + step-1 hold (AT-01),
+scroll gated on offset / no footer dump (AT-02), Android insets.top correction positive +
+drift-free (AT-03), no orphaned coach step across the live app/ + src/ trees (AT-04)
+```
+
+### F-2 / F-3 / F-4 not regressed
+The rework touches ONLY the `isPlausibleCutout` predicate body in `SpotlightOverlay.tsx` (+ the two test files). F-2 (7 steps, `SCROLL_STEPS=[6,7]`, call-site repoints) — T-01..T-04, T-08 still GREEN. F-3 (ProfilePage onLayout offset + context poll) — T-07, AT-02 still GREEN. F-4 (Android `insets.top` both sites, iOS no-op, drift-free) — T-06, AT-03 still GREEN. No F-2/F-3/F-4 source file was modified.
+
+### tsc
+`npx tsc --noEmit` on `app-mobile` → 260 total errors, **identical to the pre-rework baseline (§8)** — zero new errors; SpotlightOverlay clean.
+
+### Surfaces / determinism / ORCH-0688
+Unchanged from §5/§9. Still measurement-gated (the predicate is a pure function of the measured rect + screen dims — no timer). ORCH-0688 Android correction untouched. Consumer iOS + Android shared code path; no other surface affected.
+
+### Files changed in rework
+- `app-mobile/src/components/SpotlightOverlay.tsx` — predicate recalibrated (~14 lines).
+- `app-mobile/src/components/__tests__/orch-1029-coach-mark-fixes.test.tsx` — T-05 grep updated + T-09 behavioral case + `buildIsPlausibleCutoutFromSource` helper (NEW file this branch; net-new, not append-only-protected).
+- `app-mobile/src/contexts/__tests__/orch-1029-coach-mark-adversarial.test.tsx` — AT-01b corrected under `[TEST-MOD-APPROVED ORCH-1029]`.

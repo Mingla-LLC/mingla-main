@@ -144,18 +144,37 @@ export default function SpotlightOverlay(): React.ReactElement | null {
   const isLastStep = currentStep === COACH_STEP_COUNT;
   const target: TargetRect | undefined = targetMeasurements.get(currentStep);
 
-  // ORCH-1029 (F-1): fullscreen-rejection clamp. A valid cutout must be meaningfully
-  // SMALLER than the screen. On a warm Android deck, measureInWindow on the deck
-  // wrapper can return a near-fullscreen rect ({0,2,448,879}) → a whole-screen cutout =
-  // no visible spotlight. The deck card is a tall-but-not-full silhouette, so a real
-  // target is < 96% of screen width AND < 85% of screen height. An implausible
-  // (fullscreen) measurement is treated as NOT-yet-ready, not as a valid cutout.
+  // ORCH-1029 (F-1, REWORK): fullscreen-rejection clamp — recalibrated.
+  //
+  // The clamp's ONLY job is to reject a measurement that covers essentially the WHOLE
+  // screen (the Android warm-deck fallthrough rect {0,2,448,879} on a 448×896 screen),
+  // which would paint a no-op whole-screen cutout. It must NOT reject the LEGITIMATE
+  // deck card.
+  //
+  // The deck ref (`coachDeckRef` → SwipeableCards `cardContainer`) is styled
+  // `{ width: SCREEN_WIDTH, flex: 1 }`, so the real deck card is full-WIDTH by design
+  // (width === screenWidth, x === 0) but NOT full-height — it stops above the bottom tab
+  // bar. Observed real rect on iOS SE3: {0,2,375,589} on a 375×667 screen → height ≈ 88%.
+  // The old clamp (`width <= screenWidth*0.96`) could NEVER be satisfied by a full-width
+  // target, so it rejected the deck card on every device and froze the tour at step 1.
+  //
+  // The recalibrated predicate accepts anything that is NOT a true whole-screen rect.
+  // A true whole-screen rect is near-100% width AND near-100% height AND top-origin near 0
+  // (covers the entire screen top-to-bottom). The Android fallthrough rect hits all three
+  // (width 448 ≥ 98%, height 879 ≥ 95% of 896, y ≈ 0); the deck card hits width + top but
+  // NOT height (589 < 95% of 667), so it is accepted.
   // Spec: SPEC_ORCH-1029_COACH_MARK_FIXES.md §3.F-1 (SC-1.1).
-  const isPlausibleCutout = (t: TargetRect): boolean =>
-    t.width > 0 &&
-    t.height > 0 &&
-    t.width <= screenWidth * 0.96 &&
-    t.height <= screenHeight * 0.85;
+  const FULLSCREEN_WIDTH_RATIO = 0.98;
+  const FULLSCREEN_HEIGHT_RATIO = 0.95;
+  const FULLSCREEN_TOP_INSET = 64; // status-bar-scale top origin → "starts at the top edge"
+  const isPlausibleCutout = (t: TargetRect): boolean => {
+    if (t.width <= 0 || t.height <= 0) return false;
+    const coversFullWidth = t.width >= screenWidth * FULLSCREEN_WIDTH_RATIO;
+    const coversFullHeight = t.height >= screenHeight * FULLSCREEN_HEIGHT_RATIO;
+    const startsAtTop = t.y <= FULLSCREEN_TOP_INSET;
+    const isWholeScreen = coversFullWidth && coversFullHeight && startsAtTop;
+    return !isWholeScreen;
+  };
 
   const hasPlausibleTarget = !!target && isPlausibleCutout(target);
 
