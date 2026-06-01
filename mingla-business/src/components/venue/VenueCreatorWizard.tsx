@@ -392,6 +392,63 @@ const VIBE_SIGNALS: ReadonlyArray<{ id: string; label: string }> = [
   { id: "movies", label: "Movies" },
 ];
 
+// WS5: price tiers mirror the consumer deck taxonomy (app-mobile priceTiers.ts).
+// Multi-select; persisted to place_pool.price_tiers + derived price_level (engine).
+const PRICE_TIERS_BIZ: ReadonlyArray<{ id: string; label: string; range: string }> = [
+  { id: "chill", label: "Chill", range: "$50 max" },
+  { id: "comfy", label: "Comfy", range: "$50–$150" },
+  { id: "bougie", label: "Bougie", range: "$150–$300" },
+  { id: "lavish", label: "Lavish", range: "$300+" },
+];
+
+// WS5: Google-Places facet yes/no questions, by venue category. ids match the
+// place_pool facet boolean columns + the edge FACET_COLUMNS.
+const FACET_CORE: ReadonlyArray<{ id: string; q: string }> = [
+  { id: "good_for_groups", q: "Good for groups?" },
+  { id: "good_for_children", q: "Good for kids?" },
+  { id: "good_for_watching_sports", q: "Good for watching sports?" },
+  { id: "allows_dogs", q: "Dog-friendly?" },
+  { id: "outdoor_seating", q: "Outdoor seating?" },
+  { id: "live_music", q: "Live music?" },
+  { id: "has_restroom", q: "Restrooms available?" },
+  { id: "reservable", q: "Takes reservations?" },
+];
+const FACET_RESTAURANT: ReadonlyArray<{ id: string; q: string }> = [
+  { id: "serves_breakfast", q: "Serves breakfast?" },
+  { id: "serves_brunch", q: "Serves brunch?" },
+  { id: "serves_lunch", q: "Serves lunch?" },
+  { id: "serves_dinner", q: "Serves dinner?" },
+  { id: "serves_dessert", q: "Serves dessert?" },
+  { id: "serves_coffee", q: "Serves coffee?" },
+  { id: "serves_beer", q: "Serves beer?" },
+  { id: "serves_wine", q: "Serves wine?" },
+  { id: "serves_cocktails", q: "Serves cocktails?" },
+  { id: "serves_vegetarian_food", q: "Vegetarian options?" },
+  { id: "menu_for_children", q: "Kids' menu?" },
+  { id: "dine_in", q: "Dine-in?" },
+  { id: "takeout", q: "Takeout?" },
+  { id: "delivery", q: "Delivery?" },
+  { id: "curbside_pickup", q: "Curbside pickup?" },
+];
+const FACET_PLAY: ReadonlyArray<{ id: string; q: string }> = [
+  { id: "serves_coffee", q: "Serves coffee?" },
+  { id: "serves_beer", q: "Serves beer?" },
+  { id: "serves_cocktails", q: "Serves cocktails?" },
+  { id: "serves_dessert", q: "Serves snacks/dessert?" },
+];
+const FACET_ARTS: ReadonlyArray<{ id: string; q: string }> = [
+  { id: "serves_coffee", q: "Serves coffee?" },
+  { id: "serves_wine", q: "Serves wine?" },
+  { id: "serves_dessert", q: "Serves snacks/dessert?" },
+];
+function facetQuestionsForCategory(
+  cat: string,
+): ReadonlyArray<{ id: string; q: string }> {
+  if (cat === "play") return [...FACET_CORE, ...FACET_PLAY];
+  if (cat === "creative_and_arts") return [...FACET_CORE, ...FACET_ARTS];
+  return [...FACET_CORE, ...FACET_RESTAURANT]; // restaurant / default
+}
+
 const EMPTY_COVER: CoverPatch = {
   coverMediaUrl: null,
   coverMediaType: null,
@@ -426,6 +483,9 @@ export function VenueDeckReadinessSetup({
   initialCover = null,
   initialGallery = EMPTY_GALLERY,
 }: VenueDeckReadinessSetupProps): React.ReactElement {
+  const insets = useSafeAreaInsets();
+  const venueCategory = brand.venueCategory ?? "restaurant";
+  const facetQuestions = facetQuestionsForCategory(venueCategory);
   const [coverVisible, setCoverVisible] = useState(false);
   const [gallery, setGallery] = useState<string[]>(initialGallery);
   const [galleryBusy, setGalleryBusy] = useState(false);
@@ -439,8 +499,10 @@ export function VenueDeckReadinessSetup({
   const [website, setWebsite] = useState(
     stringValue(initialTier2.website, ""),
   );
-  const [priceTier, setPriceTier] = useState(
-    stringValue(initialTier2.price_tier, "mid"),
+  // WS5: multi-select price tiers (Chill/Comfy/Bougie/Lavish), matching the
+  // consumer deck's price_tiers taxonomy.
+  const [priceTiers, setPriceTiers] = useState<string[]>(
+    stringArray(initialTier2.price_tiers),
   );
   const [selectedVibes, setSelectedVibes] = useState<string[]>(
     stringArray(initialTier2.vibe_chips),
@@ -456,7 +518,7 @@ export function VenueDeckReadinessSetup({
 
   useEffect(() => {
     setWebsite(stringValue(initialTier2.website, ""));
-    setPriceTier(stringValue(initialTier2.price_tier, "mid"));
+    setPriceTiers(stringArray(initialTier2.price_tiers));
     setSelectedVibes(stringArray(initialTier2.vibe_chips));
     setGeneratedBio(initialPendingBio ?? "");
     setEditedBio(initialPendingBio ?? "");
@@ -475,15 +537,33 @@ export function VenueDeckReadinessSetup({
   const buildTier2 = useCallback(
     () => ({
       website: website.trim() || null,
-      price_tier: priceTier,
+      price_tiers: priceTiers,
       vibe_chips: selectedVibes,
+      facets,
       operator_inputs: {
         tagline: brand.tagline ?? null,
         description: brand.bio ?? null,
       },
     }),
-    [brand.bio, brand.tagline, priceTier, selectedVibes, website],
+    [brand.bio, brand.tagline, facets, priceTiers, selectedVibes, website],
   );
+
+  // WS5: "Recommend me" is only enabled once the venue has the must-haves.
+  const recommendReady =
+    cover.coverMediaUrl !== null &&
+    gallery.length >= GALLERY_MIN &&
+    website.trim().length > 0 &&
+    priceTiers.length > 0;
+
+  const togglePrice = useCallback((id: string): void => {
+    setPriceTiers((prev) =>
+      prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id],
+    );
+  }, []);
+
+  const setFacet = useCallback((id: string, val: boolean): void => {
+    setFacets((prev) => ({ ...prev, [id]: val }));
+  }, []);
 
   const handleCoverChange = useCallback(
     (patch: CoverPatch): void => {
@@ -637,7 +717,7 @@ export function VenueDeckReadinessSetup({
   }, [brand.id, placePoolId]);
 
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, { paddingTop: insets.top }]}>
       <View style={styles.deckHeader}>
         <Text style={styles.deckTitle}>Get recommended on Mingla</Text>
         <Text style={styles.deckBody}>
@@ -766,12 +846,11 @@ export function VenueDeckReadinessSetup({
         <View style={styles.deckBlock}>
           <Text style={styles.blockTitle}>About your venue</Text>
           <Text style={styles.blockBody}>
-            The more you share, the better Mingla matches you to the right
-            customers. This is optional — you can create your listing now and
-            refine it anytime.
+            Tell us about your venue so Mingla recommends you to the right
+            customers.
           </Text>
 
-          <Text style={styles.fieldLabel}>Website</Text>
+          <Text style={styles.fieldLabel}>Website (required)</Text>
           <TextInput
             value={website}
             onChangeText={setWebsite}
@@ -782,23 +861,26 @@ export function VenueDeckReadinessSetup({
             keyboardType="url"
           />
 
-          <Text style={styles.fieldLabel}>Price range</Text>
+          {/* WS5: multi-select price tiers with $ boundaries (consumer taxonomy). */}
+          <Text style={styles.fieldLabel}>Price range (pick all that fit)</Text>
           <View style={styles.chipRow}>
-            {[
-              { value: "budget", label: "$ Budget" },
-              { value: "mid", label: "$$ Mid-range" },
-              { value: "premium", label: "$$$ Premium" },
-            ].map((tier) => (
-              <Pressable
-                key={tier.value}
-                onPress={() => setPriceTier(tier.value)}
-                style={[styles.chip, priceTier === tier.value && styles.chipActive]}
-              >
-                <Text style={[styles.chipText, priceTier === tier.value && styles.chipTextActive]}>
-                  {tier.label}
-                </Text>
-              </Pressable>
-            ))}
+            {PRICE_TIERS_BIZ.map((tier) => {
+              const on = priceTiers.includes(tier.id);
+              return (
+                <Pressable
+                  key={tier.id}
+                  onPress={() => togglePrice(tier.id)}
+                  style={[styles.chip, on && styles.chipActive]}
+                >
+                  <Text style={[styles.chipText, on && styles.chipTextActive]}>
+                    {tier.label}
+                  </Text>
+                  <Text style={[styles.priceRange, on && styles.chipTextActive]}>
+                    {tier.range}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </View>
 
           <Text style={styles.fieldLabel}>Best for</Text>
@@ -823,19 +905,61 @@ export function VenueDeckReadinessSetup({
             })}
           </View>
 
+          {/* WS5: Google-facet yes/no questionnaire (by category). */}
+          <Text style={styles.fieldLabel}>A few quick questions</Text>
           <Text style={styles.fieldHint}>
-            Our AI writes your venue&apos;s pitch and works out which outings
-            you&apos;re perfect for. You can edit everything before it goes live.
+            Tap Yes or No — these sharpen your match and let our AI verify your venue.
+          </Text>
+          {facetQuestions.map((f) => {
+            const v = facets[f.id];
+            return (
+              <View key={f.id} style={styles.facetRow}>
+                <Text style={styles.facetQ}>{f.q}</Text>
+                <View style={styles.facetBtns}>
+                  <Pressable
+                    onPress={() => setFacet(f.id, true)}
+                    style={[styles.facetBtn, v === true && styles.facetBtnYes]}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${f.q} Yes`}
+                  >
+                    <Text style={[styles.facetBtnText, v === true && styles.chipTextActive]}>
+                      Yes
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => setFacet(f.id, false)}
+                    style={[styles.facetBtn, v === false && styles.facetBtnNo]}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${f.q} No`}
+                  >
+                    <Text style={[styles.facetBtnText, v === false && styles.chipTextActive]}>
+                      No
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
+            );
+          })}
+
+          <Text style={styles.fieldHint}>
+            Our AI scans your website + photos, writes your pitch, and scores how
+            well you match each vibe. You can edit everything before it goes live.
           </Text>
           <Button
-            label={busy === "ai" ? "Creating your listing..." : "Create my listing with AI"}
+            label={busy === "ai" ? "Working on it..." : "Recommend me to users"}
             variant="primary"
             size="md"
             leadingIcon="sparkle"
             loading={busy === "ai"}
-            disabled={busy !== null}
+            disabled={busy !== null || !recommendReady}
             onPress={() => void handleRunAi()}
           />
+          {!recommendReady ? (
+            <Text style={styles.fieldHint}>
+              Add a cover, {GALLERY_MIN}+ photos, a website, and a price range to
+              continue.
+            </Text>
+          ) : null}
         </View>
 
         {generatedBio.length > 0 ? (
@@ -865,21 +989,7 @@ export function VenueDeckReadinessSetup({
           </View>
         ) : null}
 
-        <View style={styles.deckBlock}>
-          <Text style={styles.blockTitle}>Am I ready?</Text>
-          <Text style={styles.blockBody}>
-            Check your status after adding photos, a website, hours, or approving
-            your pitch.
-          </Text>
-          <Button
-            label={busy === "refresh" ? "Checking..." : "Check my status"}
-            variant="secondary"
-            size="md"
-            loading={busy === "refresh"}
-            disabled={busy !== null}
-            onPress={() => void handleRefresh()}
-          />
-        </View>
+        {/* WS5: "Am I ready?" removed — readiness is automatic (gate + engine). */}
 
         {coaching.length > 0 ? (
           <View style={styles.deckBlock}>
@@ -1033,6 +1143,49 @@ const styles = StyleSheet.create({
     fontSize: typography.caption.fontSize,
     color: textTokens.tertiary,
     lineHeight: 17,
+  },
+  priceRange: {
+    fontSize: typography.caption.fontSize,
+    color: textTokens.tertiary,
+    marginTop: 1,
+  },
+  facetRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+    paddingVertical: 4,
+  },
+  facetQ: {
+    flex: 1,
+    fontSize: typography.bodySm.fontSize,
+    color: textTokens.primary,
+  },
+  facetBtns: {
+    flexDirection: "row",
+    gap: spacing.xs,
+  },
+  facetBtn: {
+    minWidth: 52,
+    paddingVertical: 6,
+    borderRadius: 8,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.14)",
+    backgroundColor: "rgba(255,255,255,0.05)",
+  },
+  facetBtnYes: {
+    borderColor: "rgba(74,222,128,0.7)",
+    backgroundColor: "rgba(74,222,128,0.16)",
+  },
+  facetBtnNo: {
+    borderColor: "rgba(248,113,113,0.6)",
+    backgroundColor: "rgba(248,113,113,0.14)",
+  },
+  facetBtnText: {
+    fontSize: typography.caption.fontSize,
+    color: textTokens.secondary,
+    fontWeight: "700",
   },
   input: {
     minHeight: 48,
