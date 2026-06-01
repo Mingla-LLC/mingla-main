@@ -36,6 +36,50 @@ const FACET_COLUMNS = new Set([
   "curbside_pickup",
 ]);
 
+// META-ORCH-1009 Sub-E: FORCE Gemini's output shape with a responseSchema
+// (structured output) instead of relying on the model to volunteer the right
+// JSON keys. The earlier free-form `responseMimeType: application/json` let
+// Gemini return a structure WITHOUT an `evaluations` array -> "gemini_missing
+// _evaluations". A schema guarantees the array (and the per-signal object shape)
+// is always present. Schema vocabulary per the Gemini structured-output docs:
+//   https://ai.google.dev/gemini-api/docs/structured-output
+const GEMINI_RESPONSE_SCHEMA: Record<string, unknown> = {
+  type: "object",
+  properties: {
+    bio: { type: "string" },
+    facets: {
+      type: "object",
+      properties: Object.fromEntries(
+        [...FACET_COLUMNS].map((k) => [k, { type: "boolean", nullable: true }]),
+      ),
+    },
+    photo_analysis: {
+      type: "object",
+      nullable: true,
+      properties: {
+        lighting: { type: "string", nullable: true },
+        ambience: { type: "string", nullable: true },
+        composition_score_0_to_100: { type: "integer", nullable: true },
+        reasoning: { type: "string", nullable: true },
+      },
+    },
+    evaluations: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          signal_id: { type: "string" },
+          score_0_to_100: { type: "integer" },
+          inappropriate_for: { type: "boolean" },
+          reasoning: { type: "string" },
+        },
+        required: ["signal_id", "score_0_to_100", "inappropriate_for", "reasoning"],
+      },
+    },
+  },
+  required: ["bio", "facets", "evaluations"],
+};
+
 type Action =
   | "upsert_tier1_place"
   | "run_tier2_pipeline"
@@ -157,7 +201,7 @@ export function coachingForReasons(reasons: string[]): Array<{
         return {
           code,
           title: "Add the missing venue basics",
-          body: "We need a venue name and map location before this can enter the deck.",
+          body: "We need your venue name and map location before we can recommend you to customers.",
           fix: "edit_address",
         };
       case "B4":
@@ -171,21 +215,21 @@ export function coachingForReasons(reasons: string[]): Array<{
         return {
           code,
           title: "Use an official domain",
-          body: "A social-only link is not enough for deck readiness. Add the venue's own website.",
+          body: "A social-only link isn't enough. Add the venue's own website so customers can verify you.",
           fix: "edit_website",
         };
       case "B6":
         return {
           code,
           title: "Confirm opening hours",
-          body: "We need clear hours before we can recommend this venue.",
+          body: "We need clear opening hours before we can recommend your venue.",
           fix: "edit_hours",
         };
       case "B8":
         return {
           code,
           title: "Add a hero photo or video",
-          body: "The deck needs at least one saved visual for this place.",
+          body: "Add at least one photo or video so customers can see your space.",
           fix: "edit_cover",
         };
       // SPEC §8.5: B9-B12 are the bouncer codes most likely to block real venues
@@ -222,15 +266,15 @@ export function coachingForReasons(reasons: string[]): Array<{
       case "CONFIRM":
         return {
           code,
-          title: "Confirm your AI bio",
-          body: "Review the generated sales bio and approve it before it becomes public.",
+          title: "Approve your pitch",
+          body: "Review your AI-written pitch and approve it before it goes live to customers.",
           fix: "confirm_ai_outputs",
         };
       default:
         return {
           code,
-          title: "Fix deck readiness",
-          body: "This venue needs one more quality check before it can enter the deck.",
+          title: "One more quick check",
+          body: "One more quick check before your venue goes live to customers.",
           fix: "review_pipeline",
         };
     }
@@ -645,6 +689,7 @@ async function callGeminiForEvaluations(input: {
           contents: [{ role: "user", parts }],
           generationConfig: {
             responseMimeType: "application/json",
+            responseSchema: GEMINI_RESPONSE_SCHEMA,
             maxOutputTokens: 8192,
             temperature: 0.4,
           },

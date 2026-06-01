@@ -35,27 +35,34 @@ export const DeckReadinessCard: React.FC<DeckReadinessCardProps> = ({
 }) => {
   const primary = state.coaching[0] ?? null;
   const title = useMemo((): string => {
-    if (state.status === "deck_eligible") return "Venue deck-ready";
+    if (state.status === "deck_eligible") return "You're live on Mingla";
     if (primary !== null) return primary.title;
-    if (state.status === "processing") return "Preparing your venue for the deck";
-    return "Why you're not in the deck yet";
+    if (state.status === "processing") return "Finish setting up your listing";
+    return "A few things left before you go live";
   }, [primary, state.status]);
   const body = useMemo((): string => {
     if (state.status === "deck_eligible") {
-      return "Your venue passed the current deck-readiness checks.";
+      return "Customers can now discover your venue in Mingla recommendations.";
     }
     if (primary !== null) return primary.body;
-    return "Finish the setup tasks so Mingla can safely recommend this venue.";
+    return "Finish a few quick steps so Mingla can recommend your venue to the right customers.";
   }, [primary, state.status]);
   const fix = primary?.fix ?? "review_pipeline";
+  // META-ORCH-1009 Sub-E: business-friendly status label (no internal jargon).
+  const statusLabel = useMemo((): string => {
+    if (state.status === "deck_eligible") return "Live";
+    if (state.status === "processing") return "In setup";
+    if (state.status === "needs_fix") return "Action needed";
+    return "Draft";
+  }, [state.status]);
   // SPEC §8.5: keep the rest of the active reasons visible in a compact list.
   const rest = state.coaching.slice(1);
 
   return (
     <GlassCard variant="elevated" padding={spacing.lg}>
       <View style={styles.topRow}>
-        <Text style={styles.eyebrow}>Deck readiness</Text>
-        <Text style={styles.status}>{state.status.replace("_", " ")}</Text>
+        <Text style={styles.eyebrow}>Get recommended</Text>
+        <Text style={styles.status}>{statusLabel}</Text>
       </View>
       <Text style={styles.title}>{title}</Text>
       <Text style={styles.body}>{body}</Text>
@@ -72,7 +79,7 @@ export const DeckReadinessCard: React.FC<DeckReadinessCardProps> = ({
       ) : null}
       {state.status !== "deck_eligible" && rest.length > 0 ? (
         <View style={styles.restList}>
-          <Text style={styles.restHeading}>Also blocking</Text>
+          <Text style={styles.restHeading}>Also to do</Text>
           {rest.map((card) => (
             <Pressable
               key={card.code}

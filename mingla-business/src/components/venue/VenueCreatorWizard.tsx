@@ -491,7 +491,7 @@ export function VenueDeckReadinessSetup({
       setEditedBio(result.generated_bio);
       setFacets(result.facets);
       setCoaching(result.coaching);
-      setMessage("AI draft ready. Confirm or edit the bio before it goes public.");
+      setMessage("Your listing is ready. Review the pitch below, edit anything, then approve it to go live.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "AI setup failed.");
     } finally {
@@ -558,9 +558,11 @@ export function VenueDeckReadinessSetup({
   return (
     <View style={styles.root}>
       <View style={styles.deckHeader}>
-        <Text style={styles.deckTitle}>Finish deck readiness</Text>
+        <Text style={styles.deckTitle}>Get recommended on Mingla</Text>
         <Text style={styles.deckBody}>
-          Add a hero cover, answer the Tier 2 signals, then approve the AI bio.
+          Mingla recommends venues to people deciding where to go out. Add a few
+          details and our AI writes your listing and matches you to the right
+          customers — couples on date night, groups celebrating, and more.
         </Text>
       </View>
 
@@ -570,10 +572,11 @@ export function VenueDeckReadinessSetup({
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.deckBlock}>
-          <Text style={styles.blockTitle}>Hero media</Text>
+          <Text style={styles.blockTitle}>Photos &amp; video</Text>
           <Text style={styles.blockBody}>
-            A saved hero video earns the business-video signal boost; photos
-            satisfy the deck visual requirement.
+            This is the first thing customers see when your venue is recommended.
+            A short video stands out the most and gets you shown more often; a
+            great photo works too.
           </Text>
           {/* META-ORCH-1009 Sub-E: show the uploaded hero so the operator has
               visual confirmation it saved after closing the cover sheet. */}
@@ -606,11 +609,11 @@ export function VenueDeckReadinessSetup({
             </Text>
             <Text style={styles.blockBody}>
               {focus === "hours"
-                ? "Use the hours you entered during venue setup, then refresh the deck check. If hours changed, update the venue profile before refreshing."
-                : "Confirm the venue name and map location are correct, then refresh the deck check."}
+                ? "Use the hours you entered during venue setup, then re-check your status. If hours changed, update the venue profile first."
+                : "Confirm the venue name and map location are correct, then re-check your status."}
             </Text>
             <Button
-              label={busy === "refresh" ? "Refreshing..." : "Refresh deck check"}
+              label={busy === "refresh" ? "Checking..." : "Check my status"}
               variant="secondary"
               size="md"
               loading={busy === "refresh"}
@@ -621,29 +624,48 @@ export function VenueDeckReadinessSetup({
         ) : null}
 
         <View style={styles.deckBlock}>
-          <Text style={styles.blockTitle}>Tier 2 signals</Text>
+          <Text style={styles.blockTitle}>About your venue</Text>
+          <Text style={styles.blockBody}>
+            The more you share, the better Mingla matches you to the right
+            customers. This is optional — you can create your listing now and
+            refine it anytime.
+          </Text>
+
+          <Text style={styles.fieldLabel}>Website</Text>
           <TextInput
             value={website}
             onChangeText={setWebsite}
-            placeholder="Website"
+            placeholder="yourvenue.com"
             placeholderTextColor={textTokens.tertiary}
             style={styles.input}
             autoCapitalize="none"
             keyboardType="url"
           />
+
+          <Text style={styles.fieldLabel}>Price range</Text>
           <View style={styles.chipRow}>
-            {["budget", "mid", "premium"].map((tier) => (
+            {[
+              { value: "budget", label: "$ Budget" },
+              { value: "mid", label: "$$ Mid-range" },
+              { value: "premium", label: "$$$ Premium" },
+            ].map((tier) => (
               <Pressable
-                key={tier}
-                onPress={() => setPriceTier(tier)}
-                style={[styles.chip, priceTier === tier && styles.chipActive]}
+                key={tier.value}
+                onPress={() => setPriceTier(tier.value)}
+                style={[styles.chip, priceTier === tier.value && styles.chipActive]}
               >
-                <Text style={[styles.chipText, priceTier === tier && styles.chipTextActive]}>
-                  {tier}
+                <Text style={[styles.chipText, priceTier === tier.value && styles.chipTextActive]}>
+                  {tier.label}
                 </Text>
               </Pressable>
             ))}
           </View>
+
+          <Text style={styles.fieldLabel}>Best for</Text>
+          <Text style={styles.fieldHint}>
+            Pick the moments your venue is great for, so we recommend you to people
+            planning them.
+          </Text>
           <View style={styles.chipRow}>
             {VIBE_CHIPS.map((vibe) => {
               const selected = selectedVibes.includes(vibe);
@@ -660,8 +682,13 @@ export function VenueDeckReadinessSetup({
               );
             })}
           </View>
+
+          <Text style={styles.fieldHint}>
+            Our AI writes your venue&apos;s pitch and works out which outings
+            you&apos;re perfect for. You can edit everything before it goes live.
+          </Text>
           <Button
-            label={busy === "ai" ? "Generating..." : "Generate AI bio and scores"}
+            label={busy === "ai" ? "Creating your listing..." : "Create my listing with AI"}
             variant="primary"
             size="md"
             leadingIcon="sparkle"
@@ -673,18 +700,22 @@ export function VenueDeckReadinessSetup({
 
         {generatedBio.length > 0 ? (
           <View style={styles.deckBlock}>
-            <Text style={styles.blockTitle}>Confirm AI bio</Text>
+            <Text style={styles.blockTitle}>Your venue&apos;s pitch</Text>
+            <Text style={styles.blockBody}>
+              This is what customers read when Mingla recommends you. Edit anything,
+              then approve it to go live.
+            </Text>
             <TextInput
               value={editedBio}
               onChangeText={setEditedBio}
               multiline
               textAlignVertical="top"
-              placeholder="AI-generated sales bio"
+              placeholder="Your venue's pitch"
               placeholderTextColor={textTokens.tertiary}
               style={[styles.input, styles.bioInput]}
             />
             <Button
-              label={busy === "confirm" ? "Confirming..." : "Confirm deck outputs"}
+              label={busy === "confirm" ? "Publishing..." : "Approve & publish"}
               variant="primary"
               size="md"
               loading={busy === "confirm"}
@@ -695,12 +726,13 @@ export function VenueDeckReadinessSetup({
         ) : null}
 
         <View style={styles.deckBlock}>
-          <Text style={styles.blockTitle}>Deck check</Text>
+          <Text style={styles.blockTitle}>Am I ready?</Text>
           <Text style={styles.blockBody}>
-            Refresh after adding media, website, hours, or confirming the AI story.
+            Check your status after adding photos, a website, hours, or approving
+            your pitch.
           </Text>
           <Button
-            label={busy === "refresh" ? "Refreshing..." : "Refresh deck check"}
+            label={busy === "refresh" ? "Checking..." : "Check my status"}
             variant="secondary"
             size="md"
             loading={busy === "refresh"}
@@ -711,7 +743,7 @@ export function VenueDeckReadinessSetup({
 
         {coaching.length > 0 ? (
           <View style={styles.deckBlock}>
-            <Text style={styles.blockTitle}>Why you're not in the deck yet</Text>
+            <Text style={styles.blockTitle}>What&apos;s left before you go live</Text>
             {coaching.map((card) => (
               <View key={`${card.code}-${card.fix}`} style={styles.coachCard}>
                 <Text style={styles.coachTitle}>{card.title}</Text>
@@ -818,6 +850,17 @@ const styles = StyleSheet.create({
   heroPreview: {
     borderRadius: 12,
     overflow: "hidden",
+  },
+  fieldLabel: {
+    fontSize: typography.bodySm.fontSize,
+    fontWeight: "700",
+    color: textTokens.primary,
+    marginTop: spacing.xs,
+  },
+  fieldHint: {
+    fontSize: typography.caption.fontSize,
+    color: textTokens.tertiary,
+    lineHeight: 17,
   },
   input: {
     minHeight: 48,
