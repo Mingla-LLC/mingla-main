@@ -1212,8 +1212,23 @@ function checkNoNewBackendFiles() {
     // antimeridian/equidistant-tiebreak/corner-coords) + the index.ts NULL guard.
     "supabase/functions/check-launch-city/__tests__/check_launch_city_adversarial.test.ts",
   ];
+  // ORCH-1030 [Consumer app notification deep-linking]. C7 is scoped to
+  // ORCH-0863 marketing; ORCH-1030's backend touches correct the notification
+  // producers' deep links so they actually reach the device: birthday/holiday
+  // reminders now route to the gift-target's profile, board/group messages
+  // carry their chat deep link, and all three pass the link TOP-LEVEL so
+  // notify-dispatch fills both `data.deepLink` and the `deep_link` column. C7
+  // flags MODIFIED backend files too, so these existing edge fns are listed
+  // here. No marketing scope. Per COMMS-0002.
+  const ORCH_1030_BACKEND_ALLOWLIST = [
+    "supabase/functions/notify-birthday-reminder/index.ts",
+    "supabase/functions/notify-holiday-reminder/index.ts",
+    "supabase/functions/notify-message/index.ts",
+    "supabase/functions/notify-dispatch/index.ts",
+  ];
   const ALLOWLIST = [
     ...ORCH_1027_BACKEND_ALLOWLIST,
+    ...ORCH_1030_BACKEND_ALLOWLIST,
     ...ORCH_1024_BACKEND_ALLOWLIST,
     ...ORCH_1021_BACKEND_ALLOWLIST,
     ...ORCH_1018_BACKEND_ALLOWLIST,
@@ -1279,6 +1294,7 @@ function checkNoNewBackendFiles() {
     ...META_ORCH_1009_SUB_A_BACKEND_ALLOWLIST,
     ...META_ORCH_1009_SUB_B_BACKEND_ALLOWLIST,
     ...META_ORCH_1009_SUB_D_BACKEND_ALLOWLIST,
+    ...ORCH_1030_BACKEND_ALLOWLIST,
   ];
   const forbidden = changed.filter(
     (p) =>
