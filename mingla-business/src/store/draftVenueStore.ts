@@ -71,6 +71,8 @@ interface DraftVenueStore extends DraftVenueState {
   patch: (p: Partial<DraftVenueState>) => void;
   setStep: (step: number) => void;
   setHoursRow: (weekday: number, part: Partial<BrandHourEntry>) => void;
+  /** META-ORCH-1009 Sub-F WS3: apply one open/close patch to many days at once. */
+  setHoursRows: (weekdays: number[], part: Partial<BrandHourEntry>) => void;
 }
 
 export const useDraftVenueStore = create<DraftVenueStore>()(
@@ -86,6 +88,15 @@ export const useDraftVenueStore = create<DraftVenueStore>()(
             h.weekday === weekday ? { ...h, ...part } : h,
           ),
         })),
+      setHoursRows: (weekdays, part) =>
+        set((s) => {
+          const set2 = new Set(weekdays);
+          return {
+            hours: s.hours.map((h) =>
+              set2.has(h.weekday) ? { ...h, ...part } : h,
+            ),
+          };
+        }),
     }),
     {
       name: "mingla-business-draft-venue-v1",
