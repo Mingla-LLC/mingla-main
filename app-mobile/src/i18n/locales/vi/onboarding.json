@@ -181,8 +181,9 @@
     "fallback_user": "Người dùng"
   },
   "collaborations": {
-    "headline": "Lên kế hoạch cùng nhau",
-    "body": "Bắt đầu phiên với nhóm bạn. Khám phá những việc cần làm, bình chọn yêu thích, và biến nó thành hiện thực.",
+    "headline": "Cùng nhau lên kế hoạch",
+    "body": "Tạo nhóm với hội bạn của bạn, hoặc tham gia cuộc trò chuyện hay chuyến đi mà bạn đã được mời.",
+    "start_button": "Tạo nhóm",
     "whos_in": "Ai tham gia?",
     "session_name_label": "Tên phiên",
     "session_name_placeholder": "VD: Kế hoạch cuối tuần, Ý tưởng hẹn hò...",
@@ -196,7 +197,11 @@
     "generic_error": "Hmm, không thành công. Thử lại nhé.",
     "join_error": "Không thể tham gia phiên",
     "decline_error": "Không thể từ chối lời mời",
-    "empty_state": "Thêm bạn bè trước — rồi bạn có thể bắt đầu lên kế hoạch cùng nhau."
+    "empty_state": "Thêm bạn bè trước — rồi bạn có thể bắt đầu lên kế hoạch cùng nhau.",
+    "trip_chats_header": "Trò chuyện chuyến đi và sự kiện của bạn",
+    "trip_chats_loading": "Đang tải cuộc trò chuyện…",
+    "trip_chats_join_subtitle": "Tham gia trò chuyện nhóm người mua",
+    "trip_chats_join_button": "Tham gia trò chuyện"
   },
   "consent": {
     "headline": "Một điều nữa",

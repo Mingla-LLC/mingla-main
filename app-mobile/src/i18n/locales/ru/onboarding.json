@@ -181,8 +181,9 @@
     "fallback_user": "Пользователь"
   },
   "collaborations": {
-    "headline": "Plan something together",
-    "body": "Start a session with your crew. Открытия things to do, vote on favorites, и actually make it happen.",
+    "headline": "Спланируйте вместе",
+    "body": "Создайте группу со своей компанией или присоединитесь к чату или поездке, куда вас уже пригласили.",
+    "start_button": "Создать группу",
     "whos_in": "Who's in?",
     "session_name_label": "Session name",
     "session_name_placeholder": "e.g. Weekend plans, Date night ideas...",
@@ -196,7 +197,11 @@
     "generic_error": "Hmm, that didn't work. Give it another go.",
     "join_error": "Could not join session",
     "decline_error": "Could not decline invite",
-    "empty_state": "Добавить friends first — then you can start planning together."
+    "empty_state": "Добавить friends first — then you can start planning together.",
+    "trip_chats_header": "Ваши чаты поездок и мероприятий",
+    "trip_chats_loading": "Загрузка чатов…",
+    "trip_chats_join_subtitle": "Присоединиться к групповому чату покупателей",
+    "trip_chats_join_button": "Войти в чат"
   },
   "consent": {
     "headline": "One quick thing",

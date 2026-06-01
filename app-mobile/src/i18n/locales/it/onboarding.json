@@ -181,8 +181,9 @@
     "fallback_user": "Utente"
   },
   "collaborations": {
-    "headline": "Pianifica qualcosa insieme",
-    "body": "Inizio a session with your crew. Scopri things to do, vote on favorites, e actually make it happen.",
+    "headline": "Organizzatelo insieme",
+    "body": "Crea un gruppo con la tua compagnia, o entra in una chat o in un viaggio a cui sei già stato invitato.",
+    "start_button": "Crea il gruppo",
     "whos_in": "Who's in?",
     "session_name_label": "Sessione name",
     "session_name_placeholder": "e.g. Weekend plans, Data night ideas...",
@@ -196,7 +197,11 @@
     "generic_error": "Hmm, that didn't work. Give it another go.",
     "join_error": "Could not join session",
     "decline_error": "Could not decline invite",
-    "empty_state": "Aggiungi friends first — then you can start planning together."
+    "empty_state": "Aggiungi friends first — then you can start planning together.",
+    "trip_chats_header": "Le tue chat di viaggi ed eventi",
+    "trip_chats_loading": "Caricamento chat…",
+    "trip_chats_join_subtitle": "Entra nella chat di gruppo degli acquirenti",
+    "trip_chats_join_button": "Entra nella chat"
   },
   "consent": {
     "headline": "One quick thing",

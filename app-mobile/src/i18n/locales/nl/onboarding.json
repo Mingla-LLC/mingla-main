@@ -181,8 +181,9 @@
     "fallback_user": "Gebruiker"
   },
   "collaborations": {
-    "headline": "Plan iets samen",
-    "body": "Start een sessie met je groep. Ontdek dingen om te doen, stem op favorieten en maak het waar.",
+    "headline": "Plan het samen",
+    "body": "Begin een groep met je crew, of spring in een chat of trip waarvoor je al bent uitgenodigd.",
+    "start_button": "Start de groep",
     "whos_in": "Wie doet mee?",
     "session_name_label": "Sessienaam",
     "session_name_placeholder": "bijv. Weekendplannen, Date-ideeën...",
@@ -196,7 +197,11 @@
     "generic_error": "Hmm, dat werkte niet. Probeer het nog eens.",
     "join_error": "Kon niet deelnemen aan sessie",
     "decline_error": "Uitnodiging kon niet worden geweigerd",
-    "empty_state": "Voeg eerst vrienden toe — daarna kun je samen plannen."
+    "empty_state": "Voeg eerst vrienden toe — daarna kun je samen plannen.",
+    "trip_chats_header": "Je trip- en evenementchats",
+    "trip_chats_loading": "Chats laden…",
+    "trip_chats_join_subtitle": "Doe mee met de groepschat voor kopers",
+    "trip_chats_join_button": "Doe mee met de chat"
   },
   "consent": {
     "headline": "Nog één ding",
