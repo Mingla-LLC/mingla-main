@@ -1,9 +1,11 @@
 /**
- * Ve1 wizard — Step 2: Display name + slug.
+ * Ve1 wizard — Step 2: Venue name (+ auto-selected web address / slug).
  *
  * META-ORCH-1009 Sub-E:
- *   B3 — slug auto-generates (kebab) from the venue name as you type, with
- *        tappable numbered suggestions; still editable.
+ *   B3 (operator-directed) — the slug is AUTO-SELECTED from the venue name and
+ *        shown read-only as the public-URL preview. It is NOT a typeable field.
+ *        Alternate slug PILLS appear only when the auto slug is already taken;
+ *        tapping a pill selects it. The name field is the only text input here.
  *   B5 — debounced live availability check that only reports "taken" for a real
  *        live conflict (not the caller's own brand, not soft-deleted rows).
  */
@@ -48,20 +50,21 @@ export const VenueStep2NameSlug: React.FC<VenueStep2NameSlugProps> = ({
   const slug = useDraftVenueStore((s) => s.slug);
   const patch = useDraftVenueStore((s) => s.patch);
 
-  // Tracks whether the user has hand-edited the slug. While false, the slug
-  // mirrors the name automatically (B3). Once they type in the slug field we
-  // stop auto-overwriting so we never clobber a deliberate choice.
-  const slugTouched = useRef(slug.trim().length > 0);
+  // True once the operator has picked an alternate slug pill. While false the
+  // slug auto-mirrors the name; after an explicit pick we stop overwriting so a
+  // deliberate choice is never clobbered by further name edits.
+  const slugChosen = useRef(false);
 
   const [available, setAvailable] = useState<boolean | null>(null);
   const [checking, setChecking] = useState(false);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const checkSeq = useRef(0);
 
-  // B3 — derive slug from name until the user takes over the slug field.
+  // B3 — derive the slug from the name automatically (until an alternate pill
+  // is explicitly chosen). No typeable slug field exists.
   const onChangeName = useCallback(
     (t: string): void => {
-      if (slugTouched.current) {
+      if (slugChosen.current) {
         patch({ displayName: t });
       } else {
         patch({ displayName: t, slug: slugifyBrandSlug(t) });
@@ -70,17 +73,9 @@ export const VenueStep2NameSlug: React.FC<VenueStep2NameSlugProps> = ({
     [patch],
   );
 
-  const onChangeSlug = useCallback(
-    (t: string): void => {
-      slugTouched.current = true;
-      patch({ slug: slugifyBrandSlug(t) });
-    },
-    [patch],
-  );
-
   const onPickSuggestion = useCallback(
     (value: string): void => {
-      slugTouched.current = true;
+      slugChosen.current = true;
       patch({ slug: value });
     },
     [patch],
@@ -95,7 +90,7 @@ export const VenueStep2NameSlug: React.FC<VenueStep2NameSlugProps> = ({
     }
     const seq = ++checkSeq.current;
     setChecking(true);
-    const t = setTimeout(() => {
+    const timer = setTimeout(() => {
       void (async () => {
         try {
           const ok = await checkVenueSlugAvailable(value, accountId);
@@ -107,10 +102,10 @@ export const VenueStep2NameSlug: React.FC<VenueStep2NameSlugProps> = ({
         }
       })();
     }, 400);
-    return () => clearTimeout(t);
+    return () => clearTimeout(timer);
   }, [slug, accountId]);
 
-  // B3 — fetch tappable numbered suggestions when the derived slug is taken.
+  // B3 — fetch tappable alternate slugs only when the auto slug is taken.
   useEffect(() => {
     if (available !== false || displayName.trim().length === 0) {
       setSuggestions([]);
@@ -132,14 +127,15 @@ export const VenueStep2NameSlug: React.FC<VenueStep2NameSlugProps> = ({
       : undefined;
   const slugFieldErr =
     slugError ??
-    (showErrors && slug.trim().length === 0 ? "Slug is required." : undefined);
+    (showErrors && slug.trim().length === 0
+      ? "Enter a venue name to generate your web address."
+      : undefined);
 
   return (
     <View style={styles.host}>
-      <Text style={styles.title}>Venue name & web address</Text>
+      <Text style={styles.title}>What's your venue called?</Text>
       <Text style={styles.helper}>
-        Your public page will use the slug in the URL. We fill it in from your
-        name — tap a suggestion or edit it.
+        We create your web address automatically from the name — no typing a slug.
       </Text>
       <Input
         variant="text"
@@ -151,39 +147,46 @@ export const VenueStep2NameSlug: React.FC<VenueStep2NameSlugProps> = ({
       {nameErr !== undefined ? (
         <Text style={styles.errText}>{nameErr}</Text>
       ) : null}
-      <Input
-        variant="email"
-        value={slug}
-        onChangeText={onChangeSlug}
-        placeholder="your-venue-slug"
-        accessibilityLabel="Venue URL slug"
-      />
+
+      {/* B3 (operator-directed): slug auto-selected + read-only URL preview. */}
+      {slug.trim().length > 0 ? (
+        <View style={styles.urlPreview}>
+          <Text style={styles.urlLabel}>Your public page</Text>
+          <Text style={styles.urlValue}>
+            business.usemingla.com/b/
+            <Text style={styles.urlSlug}>{slug}</Text>
+          </Text>
+          {checking ? (
+            <View style={styles.statusRow}>
+              <ActivityIndicator size="small" color={accent.warm} />
+              <Text style={styles.statusMuted}>Checking availability…</Text>
+            </View>
+          ) : available === true ? (
+            <Text style={styles.statusOk}>✓ Available — auto-selected</Text>
+          ) : available === false ? (
+            <Text style={styles.statusTaken}>
+              That address is taken — pick one below
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
       {slugFieldErr !== undefined ? (
         <Text style={styles.errText}>{slugFieldErr}</Text>
       ) : null}
 
-      {checking ? (
-        <View style={styles.statusRow}>
-          <ActivityIndicator size="small" color={accent.warm} />
-          <Text style={styles.statusMuted}>Checking availability…</Text>
-        </View>
-      ) : available === true ? (
-        <Text style={styles.statusOk}>Available</Text>
-      ) : available === false ? (
-        <Text style={styles.statusTaken}>This slug is taken</Text>
-      ) : null}
-
-      {suggestions.length > 0 ? (
+      {/* Alternate slug PILLS — only when the auto slug is taken. Tap to select;
+          no manual typing anywhere in this step. */}
+      {available === false && suggestions.length > 0 ? (
         <View style={styles.suggestWrap}>
-          <Text style={styles.suggestLabel}>Try one of these</Text>
+          <Text style={styles.suggestLabel}>Available alternatives</Text>
           <View style={styles.suggestRow}>
             {suggestions.map((s) => (
               <Pressable
                 key={s}
                 onPress={() => onPickSuggestion(s)}
                 accessibilityRole="button"
-                accessibilityLabel={`Use slug ${s}`}
-                style={styles.chip}
+                accessibilityLabel={`Use ${s} as your web address`}
+                style={[styles.chip, slug === s ? styles.chipSelected : null]}
               >
                 <Text style={styles.chipText}>{s}</Text>
               </Pressable>
@@ -247,6 +250,10 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,138,76,0.5)",
     backgroundColor: "rgba(255,138,76,0.12)",
   },
+  chipSelected: {
+    borderColor: accent.warm,
+    backgroundColor: "rgba(255,138,76,0.22)",
+  },
   chipText: {
     fontSize: typography.caption.fontSize,
     color: accent.warm,
@@ -278,10 +285,6 @@ const styles = StyleSheet.create({
   urlSlug: {
     color: accent.warm,
     fontWeight: "700",
-  },
-  chipSelected: {
-    borderColor: accent.warm,
-    backgroundColor: "rgba(255,138,76,0.22)",
   },
 });
 
