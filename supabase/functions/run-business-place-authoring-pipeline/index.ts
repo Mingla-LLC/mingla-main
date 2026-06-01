@@ -664,7 +664,7 @@ async function callGeminiForEvaluations(input: {
   const prompt = {
     instruction: hasImages
       ? "You are given venue photos as inline images plus structured venue data. Generate (1) an AI-authored sales bio, (2) a photo_analysis object from the ACTUAL images provided (lighting, ambience, composition_score_0_to_100, near_duplicate_groups, facet_hints, reasoning), (3) structured facet inference, and (4) one Q2 score per active Mingla signal. You MUST return exactly one evaluation object per signal id provided in `signals` — never omit a signal. Return strict JSON only."
-      : "No venue photos are available. Generate an AI-authored sales bio, structured facet inference, and one Q2 score per active Mingla signal. You MUST return exactly one evaluation object per signal id provided in `signals` — never omit a signal. Set photo_analysis to null — do NOT invent photo analysis without images. Return strict JSON only.",
+      : "Generate an AI-authored sales bio, structured facet inference, and one score per active Mingla signal from the venue's text details. You MUST return exactly one evaluation object per signal id provided in `signals` — never omit a signal. Keep each signal's reasoning to ONE short phrase (max 10 words). Set photo_analysis to null. Return strict JSON only.",
     model_contract: {
       model: GEMINI_MODEL,
       prompt_version: PROMPT_VERSION,
@@ -708,7 +708,9 @@ async function callGeminiForEvaluations(input: {
           generationConfig: {
             responseMimeType: "application/json",
             responseSchema: GEMINI_RESPONSE_SCHEMA,
-            maxOutputTokens: 8192,
+            // Speed: terse per-signal reasoning keeps the response small, so 4096
+            // is ample for bio + facets + 16 short evaluations.
+            maxOutputTokens: 4096,
             temperature: 0.4,
           },
         }),
@@ -943,16 +945,16 @@ async function handleTier2(
     ? existingInputs.tier1 as Record<string, unknown>
     : {};
 
-  // D1 (Stage 3): collect the actual venue image URLs for vision. Hero +
-  // gallery from Tier 2, falling back to the stored cover. tier2.photoUrls is
-  // the Tier-2 media set; stored_photo_urls is the canonical persisted set.
-  const tier2Photos = Array.isArray((tier2 as { photoUrls?: unknown }).photoUrls)
-    ? ((tier2 as { photoUrls: unknown[] }).photoUrls.filter((u): u is string => typeof u === "string"))
-    : [];
-  const storedPhotos = Array.isArray((place as { stored_photo_urls?: unknown }).stored_photo_urls)
-    ? ((place as { stored_photo_urls: unknown[] }).stored_photo_urls.filter((u): u is string => typeof u === "string"))
-    : [];
-  const imageUrls = Array.from(new Set([...tier2Photos, ...storedPhotos])).slice(0, MAX_VISION_IMAGES);
+  // META-ORCH-1009 Sub-E (speed): NO synchronous AI vision here. The vision stage
+  // (photo_analysis) was built to analyze a multi-photo GALLERY — dedup near
+  // duplicates, score composition across many images, infer facets from a set.
+  // The current flow only collects a single hero cover, so downloading it and
+  // running vision at generation time is the bulk of the latency for almost no
+  // value. We generate the pitch + signal scores from venue TEXT (type, website,
+  // price, vibes) which is fast. When a real gallery-upload step lands (post
+  // go-live venue management), vision moves there. Passing [] => no image fetch,
+  // no vision, photo_analysis stays NULL (honesty guard).
+  const imageUrls: string[] = [];
 
   // META-ORCH-1009 Sub-E: the AI stage (Gemini call + fail-closed score assembly)
   // is the one place this handler can throw on external/model conditions. Persist
