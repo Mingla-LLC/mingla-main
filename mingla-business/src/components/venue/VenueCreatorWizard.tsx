@@ -392,6 +392,17 @@ const VIBE_SIGNALS: ReadonlyArray<{ id: string; label: string }> = [
   { id: "movies", label: "Movies" },
 ];
 
+// WS8: playful staged loader copy shown while "Recommend me" runs (it's the long
+// op — website scan + multi-image AI). Rotates every ~2.6s in Mingla's voice.
+const RECOMMEND_STAGES: readonly string[] = [
+  "Fetching your website…",
+  "Reading the room…",
+  "Looking through your photos…",
+  "Getting your vibe…",
+  "Scoring your signals…",
+  "Almost there…",
+];
+
 // WS5: price tiers mirror the consumer deck taxonomy (app-mobile priceTiers.ts).
 // Multi-select; persisted to place_pool.price_tiers + derived price_level (engine).
 const PRICE_TIERS_BIZ: ReadonlyArray<{ id: string; label: string; range: string }> = [
@@ -515,6 +526,19 @@ export function VenueDeckReadinessSetup({
   const [coaching, setCoaching] = useState<PipelineCoachingCard[]>(initialCoaching);
   const [busy, setBusy] = useState<"ai" | "confirm" | "refresh" | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  // WS8: rotating loader copy while "Recommend me" runs.
+  const [recommendStage, setRecommendStage] = useState(0);
+
+  useEffect(() => {
+    if (busy !== "ai") {
+      setRecommendStage(0);
+      return undefined;
+    }
+    const id = setInterval(() => {
+      setRecommendStage((i) => Math.min(i + 1, RECOMMEND_STAGES.length - 1));
+    }, 2600);
+    return () => clearInterval(id);
+  }, [busy]);
 
   useEffect(() => {
     setWebsite(stringValue(initialTier2.website, ""));
@@ -946,7 +970,7 @@ export function VenueDeckReadinessSetup({
             well you match each vibe. You can edit everything before it goes live.
           </Text>
           <Button
-            label={busy === "ai" ? "Working on it..." : "Recommend me to users"}
+            label={busy === "ai" ? "Working on it…" : "Recommend me to users"}
             variant="primary"
             size="md"
             leadingIcon="sparkle"
@@ -954,7 +978,10 @@ export function VenueDeckReadinessSetup({
             disabled={busy !== null || !recommendReady}
             onPress={() => void handleRunAi()}
           />
-          {!recommendReady ? (
+          {busy === "ai" ? (
+            <Text style={styles.recommendStage}>{RECOMMEND_STAGES[recommendStage]}</Text>
+          ) : null}
+          {busy !== "ai" && !recommendReady ? (
             <Text style={styles.fieldHint}>
               Add a cover, {GALLERY_MIN}+ photos, a website, and a price range to
               continue.
@@ -1148,6 +1175,13 @@ const styles = StyleSheet.create({
     fontSize: typography.caption.fontSize,
     color: textTokens.tertiary,
     marginTop: 1,
+  },
+  recommendStage: {
+    fontSize: typography.bodySm.fontSize,
+    color: "#FF8A4C",
+    fontWeight: "600",
+    textAlign: "center",
+    marginTop: spacing.xs,
   },
   facetRow: {
     flexDirection: "row",
