@@ -357,13 +357,27 @@ export interface VenueDeckReadinessSetupProps {
   initialCover?: CoverPatch | null;
 }
 
-const VIBE_CHIPS = [
-  "date night",
-  "small group",
-  "premium",
-  "low-key",
-  "celebration",
-] as const;
+// META-ORCH-1009 Sub-E: the "Best for" options are REAL Mingla signals (ids match
+// public.signal_definitions, the taxonomy the consumer app matches on) — NOT the
+// earlier arbitrary "date night / celebration" labels, which didn't map to any
+// signal. The operator taps which of these genuinely apply; the selected ids feed
+// the AI as vibe_chips so the hint speaks the same language as the scoring engine.
+// (Curated to the experiential signals that read sensibly as a venue self-tag; the
+// AI still scores the venue against ALL 16 active signals automatically.)
+const VIBE_SIGNALS: ReadonlyArray<{ id: string; label: string }> = [
+  { id: "romantic", label: "Romantic" },
+  { id: "lively", label: "Lively" },
+  { id: "drinks", label: "Drinks" },
+  { id: "brunch", label: "Brunch" },
+  { id: "casual_food", label: "Casual food" },
+  { id: "fine_dining", label: "Fine dining" },
+  { id: "scenic", label: "Scenic" },
+  { id: "nature", label: "Nature & outdoors" },
+  { id: "creative_arts", label: "Creative & arts" },
+  { id: "play", label: "Play" },
+  { id: "theatre", label: "Theatre" },
+  { id: "movies", label: "Movies" },
+];
 
 const EMPTY_COVER: CoverPatch = {
   coverMediaUrl: null,
@@ -667,16 +681,16 @@ export function VenueDeckReadinessSetup({
             planning them.
           </Text>
           <View style={styles.chipRow}>
-            {VIBE_CHIPS.map((vibe) => {
-              const selected = selectedVibes.includes(vibe);
+            {VIBE_SIGNALS.map((sig) => {
+              const selected = selectedVibes.includes(sig.id);
               return (
                 <Pressable
-                  key={vibe}
-                  onPress={() => toggleVibe(vibe)}
+                  key={sig.id}
+                  onPress={() => toggleVibe(sig.id)}
                   style={[styles.chip, selected && styles.chipActive]}
                 >
                   <Text style={[styles.chipText, selected && styles.chipTextActive]}>
-                    {vibe}
+                    {sig.label}
                   </Text>
                 </Pressable>
               );
