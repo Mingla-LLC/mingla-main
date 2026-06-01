@@ -582,10 +582,27 @@ async function callGeminiForEvaluations(input: {
   const imageParts = await fetchImageParts(input.imageUrls);
   const hasImages = imageParts.length > 0;
 
+  // META-ORCH-1009 Sub-E: send a SLIM place projection, not the whole row. The
+  // raw place_pool row carries raw_google_data / stored_photo_urls / large JSON
+  // blobs that bloat the prompt, push Gemini toward the output-token cap, and
+  // cause truncated JSON (which previously threw gemini_missing_signal -> opaque
+  // 546/500). Only the fields the model actually needs to reason are included.
+  const slimPlace = {
+    name: (input.place as { name?: unknown }).name ?? null,
+    address: (input.place as { address?: unknown }).address ?? null,
+    city: (input.place as { city?: unknown }).city ?? null,
+    country: (input.place as { country?: unknown }).country ?? null,
+    primary_type: (input.place as { primary_type?: unknown }).primary_type ?? null,
+    types: (input.place as { types?: unknown }).types ?? null,
+    website: (input.place as { website?: unknown }).website ?? null,
+    business_status: (input.place as { business_status?: unknown }).business_status ?? null,
+    generative_summary: (input.place as { generative_summary?: unknown }).generative_summary ?? null,
+  };
+
   const prompt = {
     instruction: hasImages
-      ? "You are given venue photos as inline images plus structured venue data. Generate (1) an AI-authored sales bio, (2) a photo_analysis object from the ACTUAL images provided (lighting, ambience, composition_score_0_to_100, near_duplicate_groups, facet_hints, reasoning), (3) structured facet inference, and (4) one Q2 score per active Mingla signal. Return strict JSON only."
-      : "No venue photos are available. Generate an AI-authored sales bio, structured facet inference, and one Q2 score per active Mingla signal. Set photo_analysis to null — do NOT invent photo analysis without images. Return strict JSON only.",
+      ? "You are given venue photos as inline images plus structured venue data. Generate (1) an AI-authored sales bio, (2) a photo_analysis object from the ACTUAL images provided (lighting, ambience, composition_score_0_to_100, near_duplicate_groups, facet_hints, reasoning), (3) structured facet inference, and (4) one Q2 score per active Mingla signal. You MUST return exactly one evaluation object per signal id provided in `signals` — never omit a signal. Return strict JSON only."
+      : "No venue photos are available. Generate an AI-authored sales bio, structured facet inference, and one Q2 score per active Mingla signal. You MUST return exactly one evaluation object per signal id provided in `signals` — never omit a signal. Set photo_analysis to null — do NOT invent photo analysis without images. Return strict JSON only.",
     model_contract: {
       model: GEMINI_MODEL,
       prompt_version: PROMPT_VERSION,
@@ -601,61 +618,73 @@ async function callGeminiForEvaluations(input: {
     },
     has_images: hasImages,
     image_count: imageParts.length,
-    brand: input.brand,
-    place: input.place,
+    brand: { id: input.brand.id, name: (input.brand as { name?: unknown }).name ?? null },
+    place: slimPlace,
     tier2: input.tier2,
-    signals: input.signals,
+    signals: input.signals.map((s) => ({ id: s.id, label: s.label })),
   };
 
   const parts: Array<Record<string, unknown>> = [{ text: JSON.stringify(prompt) }, ...imageParts];
+  const requiredSignalIds = new Set(input.signals.map((s) => s.id));
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ role: "user", parts }],
-        generationConfig: { responseMimeType: "application/json" },
-      }),
-    },
-  );
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`gemini_failed:${res.status}:${body.slice(0, 200)}`);
-  }
-  const payload = await res.json() as {
-    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-  };
-  const text = payload.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) throw new Error("gemini_empty");
-  const parsed = JSON.parse(text) as {
-    bio?: unknown;
-    photo_analysis?: unknown;
-    facets?: unknown;
-    evaluations?: unknown;
-  };
-  if (!Array.isArray(parsed.evaluations)) {
-    throw new Error("gemini_missing_evaluations");
-  }
-  // D1 honesty guard: only accept photo_analysis when we actually sent images.
-  // With no images, photo_analysis is NULL regardless of what Gemini returned.
-  let photoAnalysis: Record<string, unknown> | null = null;
-  if (hasImages && parsed.photo_analysis && typeof parsed.photo_analysis === "object") {
-    photoAnalysis = {
-      ...(parsed.photo_analysis as Record<string, unknown>),
-      model: GEMINI_MODEL,
-      evaluated_at: new Date().toISOString(),
-      image_count: imageParts.length,
+  // META-ORCH-1009 Sub-E: a bio + facets + photo_analysis + 16 per-signal
+  // evaluations is a large JSON payload. Gemini occasionally truncates or omits a
+  // signal even with the token cap. We do NOT fabricate the missing score
+  // (buildAiSignalScores fail-closes by design). Instead we retry the model call
+  // up to ONE extra time when the response is truncated, unparseable, or doesn't
+  // cover every signal — re-asking the model rather than inventing data.
+  const MAX_ATTEMPTS = 2;
+  let lastErr = "";
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts }],
+          generationConfig: {
+            responseMimeType: "application/json",
+            maxOutputTokens: 8192,
+            temperature: 0.4,
+          },
+        }),
+      },
+    );
+    if (!res.ok) {
+      const body = await res.text();
+      lastErr = `gemini_failed:${res.status}:${body.slice(0, 200)}`;
+      // 4xx (bad key / quota / bad request) won't fix on retry — fail fast.
+      if (res.status < 500) throw new Error(lastErr);
+      continue;
+    }
+    const payload = await res.json() as {
+      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
     };
-  }
-  return {
-    bio: asString(parsed.bio, ""),
-    photo_analysis: photoAnalysis,
-    facets: parsed.facets && typeof parsed.facets === "object"
-      ? parsed.facets as Record<string, unknown>
-      : {},
-    evaluations: parsed.evaluations.map((ev) => {
+    const text = payload.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) {
+      lastErr = "gemini_empty";
+      continue;
+    }
+    let parsed: {
+      bio?: unknown;
+      photo_analysis?: unknown;
+      facets?: unknown;
+      evaluations?: unknown;
+    };
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      // Truncated / malformed JSON — retry once.
+      lastErr = "gemini_unparseable_json";
+      continue;
+    }
+    if (!Array.isArray(parsed.evaluations)) {
+      lastErr = "gemini_missing_evaluations";
+      continue;
+    }
+
+    const evaluations = parsed.evaluations.map((ev) => {
       const row = ev as Record<string, unknown>;
       return {
         signal_id: asString(row.signal_id),
@@ -663,8 +692,38 @@ async function callGeminiForEvaluations(input: {
         inappropriate_for: row.inappropriate_for === true,
         reasoning: asString(row.reasoning, "No reasoning returned."),
       };
-    }).filter((ev) => ev.signal_id.length > 0),
-  };
+    }).filter((ev) => ev.signal_id.length > 0);
+
+    // Coverage check: every active signal must have an evaluation. If not, retry
+    // (re-ask the model) before letting buildAiSignalScores fail-close.
+    const covered = new Set(evaluations.map((ev) => ev.signal_id));
+    const missing = [...requiredSignalIds].filter((id) => !covered.has(id));
+    if (missing.length > 0 && attempt < MAX_ATTEMPTS) {
+      lastErr = `gemini_incomplete_coverage:${missing.slice(0, 5).join(",")}`;
+      continue;
+    }
+
+    // D1 honesty guard: only accept photo_analysis when we actually sent images.
+    // With no images, photo_analysis is NULL regardless of what Gemini returned.
+    let photoAnalysis: Record<string, unknown> | null = null;
+    if (hasImages && parsed.photo_analysis && typeof parsed.photo_analysis === "object") {
+      photoAnalysis = {
+        ...(parsed.photo_analysis as Record<string, unknown>),
+        model: GEMINI_MODEL,
+        evaluated_at: new Date().toISOString(),
+        image_count: imageParts.length,
+      };
+    }
+    return {
+      bio: asString(parsed.bio, ""),
+      photo_analysis: photoAnalysis,
+      facets: parsed.facets && typeof parsed.facets === "object"
+        ? parsed.facets as Record<string, unknown>
+        : {},
+      evaluations,
+    };
+  }
+  throw new Error(lastErr || "gemini_failed");
 }
 
 // D2 (SPEC §7 Stage 7) — deterministic, NO-AI Google cross-validation.
@@ -832,9 +891,30 @@ async function handleTier2(
     : [];
   const imageUrls = Array.from(new Set([...tier2Photos, ...storedPhotos])).slice(0, MAX_VISION_IMAGES);
 
-  const gemini = await callGeminiForEvaluations({ brand, place, signals, tier2, imageUrls });
-  const evaluatedAt = new Date().toISOString();
-  const aiSignalScores = buildAiSignalScores(signals, gemini.evaluations, evaluatedAt);
+  // META-ORCH-1009 Sub-E: the AI stage (Gemini call + fail-closed score assembly)
+  // is the one place this handler can throw on external/model conditions. Persist
+  // the real reason to brand_place_pipeline_state.last_error_* so a failed
+  // "Generate AI bio and scores" is diagnosable instead of an opaque 500/546, then
+  // rethrow to the top-level catch (which returns the structured error body the
+  // client now surfaces).
+  let gemini: Awaited<ReturnType<typeof callGeminiForEvaluations>>;
+  let evaluatedAt: string;
+  let aiSignalScores: ReturnType<typeof buildAiSignalScores>;
+  try {
+    gemini = await callGeminiForEvaluations({ brand, place, signals, tier2, imageUrls });
+    evaluatedAt = new Date().toISOString();
+    aiSignalScores = buildAiSignalScores(signals, gemini.evaluations, evaluatedAt);
+  } catch (aiErr) {
+    const aiMsg = aiErr instanceof Error ? aiErr.message : "ai_stage_failed";
+    await upsertPipelineState(client, brand.id, placePoolId, "needs_fix", {
+      stageStatus: { tier2: "ai_stage_failed" },
+      coaching: coachingForReasons(["AI_STAGE_FAILED"]),
+      bouncerReasons: [],
+      lastErrorCode: "AI_STAGE_FAILED",
+      lastErrorMessage: aiMsg.slice(0, 500),
+    });
+    throw aiErr;
+  }
   // D1: photo_analysis is NULL when no real images were analyzed (no fabrication).
   const photoAnalysis = gemini.photo_analysis;
   const facetPatch = Object.fromEntries(

@@ -2,7 +2,7 @@
  * Ve1+Ve2 — physical venue onboarding: pool match → category (optional) → wizard.
  */
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Pressable,
   StyleSheet,
@@ -71,6 +71,35 @@ export default function VenueCreateRoute(): React.ReactElement {
   const [poolNote, setPoolNote] = useState<string | null>(null);
   const [coverWarning, setCoverWarning] = useState<string | null>(null);
 
+  // META-ORCH-1009 Sub-E: the venue draft is now AsyncStorage-persisted, which
+  // hydrates asynchronously. We must NOT read the draft (to pick the resume
+  // phase) or run the empty-draft reset below until hydration completes —
+  // otherwise a cold start reads defaults and wipes the persisted draft. Mirror
+  // the proven event/create.tsx hydration gate.
+  const [hydrated, setHydrated] = useState<boolean>(() =>
+    useDraftVenueStore.persist.hasHydrated(),
+  );
+  const phaseResumedRef = useRef(false);
+
+  useEffect(() => {
+    if (hydrated) return undefined;
+    const unsub = useDraftVenueStore.persist.onFinishHydration(() => {
+      setHydrated(true);
+    });
+    // Defensive re-check for the rare microtask race between the initial
+    // hasHydrated() read and this effect mounting.
+    if (useDraftVenueStore.persist.hasHydrated()) setHydrated(true);
+    return unsub;
+  }, [hydrated]);
+
+  // Once hydrated, recompute the resume phase from the now-real persisted draft
+  // (the useState initializer ran pre-hydration against defaults).
+  useEffect(() => {
+    if (!hydrated || phaseResumedRef.current) return;
+    phaseResumedRef.current = true;
+    setPhase(resolveInitialPhase(fromPoolParam));
+  }, [fromPoolParam, hydrated]);
+
   const {
     matches: poolMatches,
     loading: poolSearchLoading,
@@ -78,6 +107,9 @@ export default function VenueCreateRoute(): React.ReactElement {
   } = usePoolMatchSearch(phase === "gate" ? workingName : "");
 
   useEffect(() => {
+    // Gate on hydration — pre-hydration the store reads defaults, which would
+    // reset() and wipe a legitimately-persisted in-progress draft on cold start.
+    if (!hydrated) return;
     if (fromPoolParam || useDraftVenueStore.getState().placePoolId !== null) {
       return;
     }
@@ -87,7 +119,7 @@ export default function VenueCreateRoute(): React.ReactElement {
     reset();
     setPhase("gate");
     setPoolNote(null);
-  }, [fromPoolParam, reset]);
+  }, [fromPoolParam, hydrated, reset]);
 
   useEffect(() => {
     if (!isAuthReady) return;
@@ -133,7 +165,7 @@ export default function VenueCreateRoute(): React.ReactElement {
     setPhase("wizard");
   }, [venueCategory]);
 
-  if (!isAuthReady || user === null) {
+  if (!isAuthReady || user === null || !hydrated) {
     return <View style={[styles.root, { paddingTop: insets.top }]} />;
   }
 

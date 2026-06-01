@@ -197,7 +197,10 @@ export async function runTier2Pipeline(input: {
       },
     },
   );
-  if (error !== null) throw error;
+  // META-ORCH-1009 Sub-E: surface the REAL server reason (e.g. gemini_failed:429,
+  // gemini_incomplete_coverage) instead of the opaque "Edge Function returned a
+  // non-2xx status code" string, matching the other pipeline calls.
+  if (error !== null) throw await pipelineInvokeError(error, "tier2_pipeline_failed");
   return assertPipelineOk(
     data as Tier2PipelineResult | PipelineErrorBody,
     "tier2_pipeline_failed",
@@ -224,7 +227,7 @@ export async function confirmAiOutputs(input: {
       },
     },
   );
-  if (error !== null) throw error;
+  if (error !== null) throw await pipelineInvokeError(error, "confirm_ai_outputs_failed");
   return assertPipelineOk(
     data as ConfirmAiOutputsResult | PipelineErrorBody,
     "confirm_ai_outputs_failed",
@@ -245,7 +248,7 @@ export async function refreshDeckReadiness(input: {
       },
     },
   );
-  if (error !== null) throw error;
+  if (error !== null) throw await pipelineInvokeError(error, "refresh_deck_readiness_failed");
   return assertPipelineOk(
     data as RefreshDeckReadinessResult | PipelineErrorBody,
     "refresh_deck_readiness_failed",

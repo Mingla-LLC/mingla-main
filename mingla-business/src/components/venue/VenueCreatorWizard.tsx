@@ -78,7 +78,13 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
   const { user } = useAuth();
   const createVenue = useCreateVenueBrand();
 
-  const [step, setStep] = useState(0);
+  // META-ORCH-1009 Sub-E: the wizard step is sourced REACTIVELY from the
+  // PERSISTED draft store so re-entry resumes where the operator stopped (not
+  // always step 0). A reactive selector — rather than a one-time useState
+  // initializer — also sidesteps the AsyncStorage rehydration race (the persisted
+  // step lands a tick after mount and flows in automatically).
+  const step = useDraftVenueStore((s) => s.step);
+  const setStep = useDraftVenueStore((s) => s.setStep);
   const [showErr, setShowErr] = useState(false);
   const [slugCollision, setSlugCollision] = useState<string | null>(null);
   const [submitErr, setSubmitErr] = useState<string | null>(null);
@@ -104,14 +110,14 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
     }
     setShowErr(false);
     setSlugCollision(null);
-    setStep((s) => Math.min(TOTAL - 1, s + 1));
-  }, [draft, step]);
+    setStep(Math.min(TOTAL - 1, step + 1));
+  }, [draft, setStep, step]);
 
   const goBack = useCallback((): void => {
     setShowErr(false);
     setSlugCollision(null);
-    setStep((s) => Math.max(0, s - 1));
-  }, []);
+    setStep(Math.max(0, step - 1));
+  }, [setStep, step]);
 
   const handleSubmit = useCallback(async (): Promise<void> => {
     if (user?.id === undefined) return;
@@ -199,6 +205,11 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
         throw new Error("place_pool_link_missing");
       }
       setCreatedVenue({ brand, placePoolId: tier1.place_pool_id });
+      // META-ORCH-1009 Sub-E: the venue is now created and the flow moves to the
+      // deck-readiness screen (which reads from createdVenue, not the draft).
+      // Clear the persisted draft so the NEXT "Add a venue" starts clean instead
+      // of resuming this just-submitted venue.
+      useDraftVenueStore.getState().reset();
     } catch (e) {
       if (e instanceof SlugCollisionError) {
         setSlugCollision(
