@@ -7,7 +7,7 @@ import {
   Animated,
   Easing,
   StyleSheet,
-  Dimensions,
+  useWindowDimensions,
   Linking,
   Platform,
   AccessibilityInfo,
@@ -94,12 +94,18 @@ import {
   touchTargets,
   shadows,
   glass,
+  responsiveTypography,
 } from '../constants/designSystem'
+import { ms } from '../utils/responsive'
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window')
+// [ORCH-1028 Part-2 R-2] The former module-scope `Dimensions.get('window')` capture was
+// removed: it never updated on rotation / Android fold / split-view (SPEC §0.9). All
+// layout-driving width/height now read live via useWindowDimensions() inside the
+// component. See `winWidth`/`winHeight` and the helpers below.
 
-/** Intent vibe cards: two columns with gap 6, horizontal padding 24+24 from OnboardingShell */
-const INTENT_CARD_WIDTH = (SCREEN_WIDTH - 48 - 6) / 2
+/** Intent vibe cards: two columns with gap 6, horizontal padding 24+24 from OnboardingShell.
+ *  [ORCH-1028 Part-2 R-2] live width helper — pass the current window width. */
+const intentCardWidth = (winWidth: number): number => (winWidth - 48 - 6) / 2
 
 function formatBirthdayDisplay(date: Date): string {
   const day = date.getDate().toString().padStart(2, '0')
@@ -674,6 +680,12 @@ const OnboardingFlow = ({
   const { user, profile, setProfile } = useAppStore()
   const queryClient = useQueryClient()
   const { t } = useTranslation(['onboarding', 'common'])
+
+  // [ORCH-1028 Part-2 R-2] Live window dimensions — drives every layout-width/height
+  // computation in renderContent so rotation / Android foldables / split-view recompute
+  // instead of using the stale module-load capture (SPEC §0.9 / R-2). Falls back to the
+  // module constants on the first synchronous render before the hook resolves.
+  const { width: winWidth, height: winHeight } = useWindowDimensions()
 
   // ─── Friends (for incoming request UI in Step 5/friends) ───
   const {
@@ -1948,6 +1960,10 @@ const OnboardingFlow = ({
     const { step, subStep } = navState
     logger.onboarding(`Rendering: Step ${step} / ${subStep}`)
 
+    // [ORCH-1028 Part-2 R-2] Two-up selection-tile width from the live window
+    // (transport / travel-time grids), replacing the module-scope SCREEN_WIDTH capture.
+    const selectionTileWidth = (winWidth - 48 - 8) / 2
+
     // ─── STEP 1 ───
     if (subStep === 'language') {
       return (
@@ -2319,23 +2335,25 @@ const OnboardingFlow = ({
         { icon: 'people-outline' as const, headline: t('onboarding:value_prop.beat2_headline'), sub: t('onboarding:value_prop.beat2_sub') },
         { icon: 'flash-outline' as const, headline: t('onboarding:value_prop.beat3_headline'), sub: t('onboarding:value_prop.beat3_sub') },
       ]
+      // [ORCH-1028 Part-2 R-2] page width from live window, not module capture.
+      const pageWidth = winWidth - 48
       return (
-        <View style={styles.valuePropCenter}>
+        <View style={[styles.valuePropCenter, { minHeight: winHeight * 0.55 }]}>
           <ScrollView
             horizontal
             pagingEnabled
             showsHorizontalScrollIndicator={false}
-            style={{ width: SCREEN_WIDTH - 48 }}
+            style={{ width: pageWidth }}
             contentContainerStyle={{ alignItems: 'center' }}
             onMomentumScrollEnd={(e) => {
-              const idx = Math.round(e.nativeEvent.contentOffset.x / (SCREEN_WIDTH - 48))
+              const idx = Math.round(e.nativeEvent.contentOffset.x / pageWidth)
               if (idx >= 0 && idx < beats.length) {
                 setValuePropBeat(idx)
               }
             }}
           >
             {beats.map((beat, i) => (
-              <View key={i} style={{ width: SCREEN_WIDTH - 48, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16 }}>
+              <View key={i} style={{ width: pageWidth, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16 }}>
                 <View style={styles.vpIconWrap}>
                   <Icon name={beat.icon} size={64} color={colors.primary[500]} />
                 </View>
@@ -2365,7 +2383,8 @@ const OnboardingFlow = ({
                 <Animated.View
                   key={intent.id}
                   style={{
-                    width: INTENT_CARD_WIDTH,
+                    // [ORCH-1028 Part-2 R-2] live width
+                    width: intentCardWidth(winWidth),
                     opacity: intentAnims[idx].opacity,
                     transform: [{ scale: intentAnims[idx].scale }],
                   }}
@@ -2636,7 +2655,7 @@ const OnboardingFlow = ({
             {TRANSPORT_MODES.map((mode) => (
               <Pressable
                 key={mode.value}
-                style={[styles.selectionTile, styles.selectionTileTall, data.travelMode === mode.value && styles.selectionTileActive]}
+                style={[styles.selectionTile, { width: selectionTileWidth }, styles.selectionTileTall, data.travelMode === mode.value && styles.selectionTileActive]}
                 onPress={() => {
                   logger.action(`Transport selected: ${mode.value}`)
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
@@ -2667,6 +2686,7 @@ const OnboardingFlow = ({
                 key={mins}
                 style={[
                   styles.selectionTile,
+                  { width: selectionTileWidth },
                   !showCustomTravelTime && data.travelTimeMinutes === mins && styles.selectionTileActive,
                   showCustomTravelTime && styles.selectionTileDimmed,
                 ]}
@@ -2942,7 +2962,7 @@ const styles = StyleSheet.create({
   valuePropCenter: {
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: SCREEN_HEIGHT * 0.55,
+    // [ORCH-1028 Part-2 R-2] minHeight is supplied inline from the live window height.
   },
   textCenter: {
     textAlign: 'center',
@@ -2955,8 +2975,10 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   welcomeName: {
-    fontSize: 40,
-    lineHeight: 48,
+    // [ORCH-1028 Part-2 R-1] ms-scaled so the 40pt name shrinks on SE / small Android
+    // (already has adjustsFontSizeToFit as a second safety net) (SPEC §D.0 R-1).
+    fontSize: ms(40),
+    lineHeight: ms(48),
     fontWeight: fontWeights.bold,
     color: colors.text.primary,
     letterSpacing: -1.0,
@@ -2984,15 +3006,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
   },
   nameGreeting: {
-    fontSize: 28,
-    lineHeight: 36,
+    // [ORCH-1028 Part-2 R-1] ms-scaled (SPEC §D.0 R-1).
+    fontSize: ms(28),
+    lineHeight: ms(36),
     fontWeight: fontWeights.regular,
     color: colors.text.secondary,
     textAlign: 'center',
   },
   nameGreetingAccent: {
-    fontSize: 36,
-    lineHeight: 44,
+    // [ORCH-1028 Part-2 R-1] ms-scaled — the 36pt accent line was the worst SE overflow
+    // risk in the name-collection stack (SPEC §D.0 R-1).
+    fontSize: ms(36),
+    lineHeight: ms(44),
     fontWeight: fontWeights.bold,
     color: colors.text.primary,
     textAlign: 'center',
@@ -3263,7 +3288,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.lg,
   },
   selectionTile: {
-    width: (SCREEN_WIDTH - 48 - 8) / 2,
+    // [ORCH-1028 Part-2 R-2] width is supplied inline (live window) at the call site.
     height: 80,
     borderRadius: radius.md,
     borderWidth: 1.5,
@@ -3514,7 +3539,12 @@ const styles = StyleSheet.create({
   },
   // ─── Location Step (Glass Morphism) ───
   locContainer: {
-    flex: 1,
+    // [ORCH-1028 Part-2 R-1/host-screen] Was `flex:1` — inside the shell's scrollable
+    // ScrollView that collapsed the centered stack and could clip the headline/body/CTA
+    // on iPhone SE. `flexGrow:1` lets the stack center when it fits and the ScrollView
+    // scroll when the scaled content still exceeds the viewport (SPEC §D.1 location row,
+    // highest priority). minHeight is supplied inline from the live window.
+    flexGrow: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingTop: spacing.xxl,
@@ -3551,7 +3581,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   locHeadline: {
-    ...typography.xxxl,
+    // [ORCH-1028 Part-2 R-1] responsiveTypography.xxxl (ms-scaled) so the 32pt headline
+    // shrinks gently on iPhone SE / small Android instead of clipping (SPEC §0.8 / R-1).
+    ...responsiveTypography.xxxl,
     fontWeight: fontWeights.bold,
     color: colors.text.primary,
     letterSpacing: -0.5,
