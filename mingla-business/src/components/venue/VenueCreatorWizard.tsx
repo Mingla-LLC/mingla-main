@@ -41,6 +41,7 @@ import { useDraftVenueStore } from "../../store/draftVenueStore";
 import { useCurrentBrandStore } from "../../store/currentBrandStore";
 import { venueStepError } from "./venueWizardValidation";
 import { Button } from "../ui/Button";
+import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { CoverPickerSheet } from "../ui/CoverPickerSheet";
 import type { CoverPatch } from "../ui/CoverPicker";
 import { IconChrome } from "../ui/IconChrome";
@@ -574,6 +575,21 @@ export function VenueDeckReadinessSetup({
             A saved hero video earns the business-video signal boost; photos
             satisfy the deck visual requirement.
           </Text>
+          {/* META-ORCH-1009 Sub-E: show the uploaded hero so the operator has
+              visual confirmation it saved after closing the cover sheet. */}
+          {cover.coverMediaUrl !== null ? (
+            <View style={styles.heroPreview}>
+              <EventCoverMedia
+                hue={25}
+                mediaUrl={cover.coverMediaUrl}
+                mediaType={cover.coverMediaType}
+                radius={12}
+                label="Hero cover preview"
+                height={170}
+                muted
+              />
+            </View>
+          ) : null}
           <Button
             label={cover.coverMediaUrl === null ? "Add hero cover" : "Change hero cover"}
             variant="secondary"
@@ -798,6 +814,10 @@ const styles = StyleSheet.create({
     fontSize: typography.bodySm.fontSize,
     color: textTokens.secondary,
     lineHeight: 20,
+  },
+  heroPreview: {
+    borderRadius: 12,
+    overflow: "hidden",
   },
   input: {
     minHeight: 48,
