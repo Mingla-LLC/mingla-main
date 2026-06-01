@@ -1004,50 +1004,10 @@ const LibraryTab: React.FC<{
     </View>
     {credit !== null ? <Text style={styles.creditText}>{credit}</Text> : null}
 
-    <View style={styles.actionRow}>
-      <Button
-        label={hasCover ? "Replace" : "Upload image or GIF"}
-        leadingIcon="upload"
-        variant="secondary"
-        size="md"
-        shape="square"
-        onPress={onPickImage}
-        loading={uploading}
-        disabled={uploading || activeVideoUpload || disabled}
-        style={styles.actionButton}
-      />
-      <Button
-        label="Upload video"
-        leadingIcon="play"
-        variant="secondary"
-        size="md"
-        shape="square"
-        onPress={onPickVideo}
-        disabled={uploading || activeVideoUpload || disabled}
-        style={styles.actionButton}
-      />
-      {hasCover ? (
-        <Button
-          label="Remove"
-          leadingIcon="trash"
-          variant="ghost"
-          size="md"
-          shape="square"
-          onPress={onRemove}
-          disabled={uploading || activeVideoUpload || disabled}
-          style={styles.removeButton}
-        />
-      ) : null}
-    </View>
-
-    {Platform.OS === "web" ? (
-      <Text style={styles.helperText}>
-        On the web, video uploads use the clip as-is. For trimming, use the Mingla
-        Business app.
-      </Text>
-    ) : null}
-
     {activeVideoUpload ? (
+      // META-ORCH-1009 Sub-F: while a video processes, show ONLY the progress
+      // (spinner/percent overlay sits on the preview above) + Cancel. Hide all
+      // other controls so the operator isn't tempted to act mid-process.
       <View style={styles.actionRow}>
         <Button
           label="Cancel upload"
@@ -1058,35 +1018,80 @@ const LibraryTab: React.FC<{
           style={styles.actionButton}
         />
       </View>
-    ) : null}
-
-    {videoErrorMessage !== null ? (
-      <View style={styles.videoErrorRow}>
-        <Text accessibilityRole="alert" style={styles.mediaErrorText}>
-          {videoErrorMessage}
-        </Text>
-        {canRetryVideo ? (
+    ) : (
+      <>
+        <View style={styles.actionRow}>
           <Button
-            label="Upload failed - try again"
+            label={hasCover ? "Replace" : "Image"}
+            leadingIcon="upload"
             variant="secondary"
-            size="sm"
+            size="md"
             shape="square"
-            onPress={onRetryVideo}
+            onPress={onPickImage}
+            loading={uploading}
             disabled={uploading || disabled}
-            style={styles.retryButton}
+            style={styles.actionButton}
           />
+          <Button
+            label="Video"
+            leadingIcon="play"
+            variant="secondary"
+            size="md"
+            shape="square"
+            onPress={onPickVideo}
+            disabled={uploading || disabled}
+            style={styles.actionButton}
+          />
+          {hasCover ? (
+            <Button
+              label="Remove"
+              leadingIcon="trash"
+              variant="ghost"
+              size="md"
+              shape="square"
+              onPress={onRemove}
+              disabled={uploading || disabled}
+              style={styles.removeButton}
+            />
+          ) : null}
+        </View>
+
+        {Platform.OS === "web" ? (
+          <Text style={styles.helperText}>
+            On the web, video uploads use the clip as-is. For trimming, use the
+            Mingla Business app.
+          </Text>
         ) : null}
-      </View>
-    ) : null}
 
-    <Text style={styles.uploadLimitText}>{EVENT_COVER_UPLOAD_LIMIT_COPY}</Text>
-    <Text style={styles.uploadLimitText}>{EVENT_COVER_VIDEO_PROCESSING_COPY}</Text>
+        {videoErrorMessage !== null ? (
+          <View style={styles.videoErrorRow}>
+            <Text accessibilityRole="alert" style={styles.mediaErrorText}>
+              {videoErrorMessage}
+            </Text>
+            {canRetryVideo ? (
+              <Button
+                label="Upload failed - try again"
+                variant="secondary"
+                size="sm"
+                shape="square"
+                onPress={onRetryVideo}
+                disabled={uploading || disabled}
+                style={styles.retryButton}
+              />
+            ) : null}
+          </View>
+        ) : null}
 
-    {mediaDisplayError !== null ? (
-      <Text accessibilityRole="alert" style={styles.mediaErrorText}>
-        {mediaDisplayError}
-      </Text>
-    ) : null}
+        <Text style={styles.uploadLimitText}>{EVENT_COVER_UPLOAD_LIMIT_COPY}</Text>
+        <Text style={styles.uploadLimitText}>{EVENT_COVER_VIDEO_PROCESSING_COPY}</Text>
+
+        {mediaDisplayError !== null ? (
+          <Text accessibilityRole="alert" style={styles.mediaErrorText}>
+            {mediaDisplayError}
+          </Text>
+        ) : null}
+      </>
+    )}
   </View>
 );
 
