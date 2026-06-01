@@ -181,8 +181,9 @@
     "fallback_user": "Utilisateur"
   },
   "collaborations": {
-    "headline": "Organisez quelque chose ensemble",
-    "body": "Lancez une session avec votre groupe. Découvrez des activités, votez pour vos favoris, et concrétisez vos plans.",
+    "headline": "Organisez-le ensemble",
+    "body": "Crée un groupe avec ta bande, ou rejoins une conversation ou un voyage où tu es déjà invité.",
+    "start_button": "Créer le groupe",
     "whos_in": "Qui participe ?",
     "session_name_label": "Nom de la session",
     "session_name_placeholder": "ex. Plans du weekend, Idées de soirée...",
@@ -196,7 +197,11 @@
     "generic_error": "Hmm, ça n'a pas marché. Réessayez.",
     "join_error": "Impossible de rejoindre la session",
     "decline_error": "Impossible de refuser l'invitation",
-    "empty_state": "Ajoutez d'abord des amis — ensuite vous pourrez planifier ensemble."
+    "empty_state": "Ajoutez d'abord des amis — ensuite vous pourrez planifier ensemble.",
+    "trip_chats_header": "Tes conversations de voyages et d'événements",
+    "trip_chats_loading": "Chargement des conversations…",
+    "trip_chats_join_subtitle": "Rejoindre le chat de groupe des acheteurs",
+    "trip_chats_join_button": "Rejoindre le chat"
   },
   "consent": {
     "headline": "Une dernière chose",

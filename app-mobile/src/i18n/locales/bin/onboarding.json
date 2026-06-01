@@ -181,8 +181,9 @@
     "fallback_user": "Ọghe"
   },
   "collaborations": {
-    "headline": "Rhan emwi uwa",
-    "body": "Bẹ ghe ẹghẹ ne ẹvbo ẹre. Mwẹ emwi ne uwa gha ru, kẹ ne emwi ne uwa hẹnmwẹ, ya mu ẹre sẹ.",
+    "headline": "Plan it together",
+    "body": "Bụlọ otu vbe iyẹnmwẹ ruẹ, ra dee yọ chat ra trip nẹ a na tie ruẹ.",
+    "start_button": "Bụlọ otu",
     "whos_in": "De iran?",
     "session_name_label": "Eni ẹghẹ",
     "session_name_placeholder": "vbe ẹtan irrie ẹdẹ ọghe, emwi ne a gha ru ason...",
@@ -196,7 +197,11 @@
     "generic_error": "Hmm, ọ i ru ẹre. Ke gberra.",
     "join_error": "I gha bẹghe ẹghẹ na",
     "decline_error": "I gha giẹ itiẹ na",
-    "empty_state": "Fie ọre sẹ — ke u gha rhan emwi uwa."
+    "empty_state": "Fie ọre sẹ — ke u gha rhan emwi uwa.",
+    "trip_chats_header": "Trip kevbe event chat ruẹ",
+    "trip_chats_loading": "A loading chat…",
+    "trip_chats_join_subtitle": "Dee yọ buyer group chat",
+    "trip_chats_join_button": "Dee yọ chat"
   },
   "consent": {
     "headline": "Emwi ọkpa nẹ nẹ",

@@ -62,6 +62,8 @@ import { Checkbox } from './ui/checkbox'
 import InAppBrowserModal from './InAppBrowserModal'
 import { LEGAL_URLS } from '../constants/urls'
 import { useFriends } from '../hooks/useFriends'
+import { useSessionManagement } from '../hooks/useSessionManagement'
+import { usePendingTripChatClaims } from '../hooks/usePendingTripChatClaims'
 import { FriendRequest } from '../services/friendsService'
 // processPersonAudio removed — pairing uses real behavior data
 // PulseDotLoader removed — launch animation now in GettingExperiencesScreen
@@ -721,6 +723,70 @@ const OnboardingFlow = ({
   const [data, setData] = useState<OnboardingData>(initialData)
   const [hasGpsPermission, setHasGpsPermission] = useState(initialHasGpsPermission)
 
+  // ─── Collaboration context (ORCH-1039) ───
+  // The collaborations step (Step 6) is HIDDEN when the user has nothing to act
+  // on. The fuller condition ORs four signals: added friends, sessions already
+  // created in this onboarding, pending collaboration invites, and pending
+  // trip/event-chat claims. The invite + trip-claim reads previously lived
+  // INSIDE OnboardingCollaborationStep; they are lifted here so getSequence can
+  // evaluate the gate BEFORE the step renders.
+  //
+  // Non-blocking: these two reads must never stall onboarding. While either is
+  // still loading we default to the SAFE path (treat context as present) so we
+  // never flash the step then yank it once an empty result lands. addedFriends /
+  // createdSessions are synchronous local data, so the overwhelmingly common
+  // "fresh user, no friends" case resolves instantly to hidden.
+  const {
+    pendingInvites: liftedPendingInvites,
+    loadUserSessions: liftedLoadUserSessions,
+  } = useSessionManagement()
+  const { claims: liftedTripChatClaims, loading: liftedTripClaimsLoading } =
+    usePendingTripChatClaims()
+
+  // useSessionManagement does NOT auto-load invites on mount (loading starts
+  // false, pendingInvites starts []), so we kick the read once here and track
+  // first-load completion ourselves. usePendingTripChatClaims DOES auto-load,
+  // so we read its `loading` directly.
+  const [invitesFirstLoadDone, setInvitesFirstLoadDone] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    liftedLoadUserSessions()
+      .catch((err) => {
+        console.warn('[OnboardingFlow] collab-context invite preload failed', String(err))
+      })
+      .finally(() => {
+        if (!cancelled) setInvitesFirstLoadDone(true)
+      })
+    // Safety: never let a hung read block the gate forever — release after 10s.
+    const timeout = setTimeout(() => {
+      if (!cancelled) setInvitesFirstLoadDone(true)
+    }, 10_000)
+    return () => {
+      cancelled = true
+      clearTimeout(timeout)
+    }
+  }, [liftedLoadUserSessions])
+
+  const hasCollabContext = useMemo(() => {
+    const collabReadsLoading = !invitesFirstLoadDone || liftedTripClaimsLoading
+    return (
+      data.addedFriends.length > 0 ||
+      data.createdSessions.length > 0 ||
+      (liftedPendingInvites?.length ?? 0) > 0 ||
+      liftedTripChatClaims.length > 0 ||
+      // Safe path: while the server reads are still resolving, keep the step
+      // eligible so we never remove an already-shown step (no flash-then-yank).
+      collabReadsLoading
+    )
+  }, [
+    data.addedFriends.length,
+    data.createdSessions.length,
+    liftedPendingInvites,
+    liftedTripChatClaims.length,
+    invitesFirstLoadDone,
+    liftedTripClaimsLoading,
+  ])
+
   // ─── State Machine ───
   const {
     state: navState,
@@ -729,7 +795,7 @@ const OnboardingFlow = ({
     goToSubStep,
     progress,
     isLaunch,
-  } = useOnboardingStateMachine({ initialStep, hasGpsPermission })
+  } = useOnboardingStateMachine({ initialStep, hasGpsPermission, hasCollabContext })
 
 
   // isFirstScreen: true when the user is at the earliest screen where "Back to sign in"
@@ -3176,7 +3242,6 @@ const OnboardingFlow = ({
             setData(prev => ({ ...prev, createdSessions: sessions }))
             goNext()
           }}
-          onSkip={() => {}}
           onActionTaken={() => {
             setData(prev => ({ ...prev, collabActionTaken: true }))
           }}

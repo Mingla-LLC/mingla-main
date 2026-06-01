@@ -5,22 +5,24 @@ import {
   SubStep,
 } from '../types/onboarding'
 import { logger } from '../utils/logger'
+import {
+  buildSequence,
+  advance,
+  retreat,
+  resolveEntry,
+  computeSegmentFill,
+} from './onboardingSequenceLogic'
 
 // ─── Step Sub-Step Sequences ───
-
-const STEP_SUBSTEPS: Record<OnboardingStep, SubStep[]> = {
-  1: ['language', 'welcome', 'phone', 'otp', 'gender_identity', 'details'],
-  2: ['value_prop', 'intents'],
-  3: ['location'],
-  4: ['celebration', 'categories', 'transport', 'travel_time'],
-  5: ['friends_and_pairing'],   // single substep, no paths
-  6: ['collaborations'],         // NEW
-  7: ['consent', 'getting_experiences'],  // NEW: consent moved here
-}
+// The authoritative sequencing tables + decision functions live in the
+// dependency-free core `onboardingSequenceLogic.ts` (so they can be unit-tested
+// under Node's built-in test runner — this app has no jest). This hook is a thin
+// React adapter over that core: it owns the nav state + setState + launch flag.
 
 interface UseOnboardingStateMachineProps {
   initialStep?: OnboardingStep
   hasGpsPermission: boolean  // determines whether 'manual_location' sub-step appears in Step 4
+  hasCollabContext: boolean  // false ⇒ Step 6 (collaborations) is hidden/skipped (ORCH-1039)
 }
 
 interface UseOnboardingStateMachineReturn {
@@ -34,12 +36,17 @@ interface UseOnboardingStateMachineReturn {
 
 export function useOnboardingStateMachine({
   initialStep = 1,
-  hasGpsPermission,
+  // hasGpsPermission is part of the public prop contract (reserved for the
+  // Step-4 manual_location branch) but currently unused by the sequencing core.
+  hasGpsPermission: _hasGpsPermission,
+  hasCollabContext,
 }: UseOnboardingStateMachineProps): UseOnboardingStateMachineReturn {
-  const [state, setState] = useState<OnboardingNavState>({
-    step: initialStep,
-    subStep: STEP_SUBSTEPS[initialStep][0],
-  })
+  // Lazy initializer resolves the entry through the skip-empty normalizer so a
+  // resume at a hidden step (e.g. Step 6 with no collab context) never paints
+  // the hidden step — not even for one frame (ORCH-1039 §3.6).
+  const [state, setState] = useState<OnboardingNavState>(() =>
+    resolveEntry(initialStep, hasCollabContext)
+  )
   const [isLaunch, setIsLaunch] = useState(false)
 
   // Mirror state in a ref so goNext/goBack can read it synchronously
@@ -47,6 +54,11 @@ export function useOnboardingStateMachine({
   // defer when there are pending updates, breaking the shouldLaunch pattern).
   const stateRef = useRef(state)
   stateRef.current = state
+
+  // Keep the latest hasCollabContext readable synchronously inside callbacks
+  // without re-creating them on every flag flip.
+  const hasCollabContextRef = useRef(hasCollabContext)
+  hasCollabContextRef.current = hasCollabContext
 
   // ─── Fix A: Sync state when initialStep changes after mount ───
   // React's useState only uses the initial value on the first render.
@@ -56,103 +68,52 @@ export function useOnboardingStateMachine({
   // (equivalent to getDerivedStateFromProps) — React discards the current
   // render and immediately re-renders with the new state, so the user
   // never sees the stale step. No flash, no extra paint.
+  // resolveEntry skips any hidden step so a resumed user never lands on one.
   const appliedInitialStep = useRef(initialStep)
   if (appliedInitialStep.current !== initialStep) {
     logger.onboarding(`initialStep changed: ${appliedInitialStep.current} → ${initialStep}`)
     appliedInitialStep.current = initialStep
-    setState({ step: initialStep, subStep: STEP_SUBSTEPS[initialStep][0] })
+    setState(resolveEntry(initialStep, hasCollabContext))
   }
-
-  // Build the effective sub-step sequence for Step 4 (conditionally includes manual_location)
-  const getStep4Sequence = useCallback((): SubStep[] => {
-    // GPS is mandatory (Step 3) — no manual_location fallback. 'when' removed — defaults to this_weekend.
-    return ['celebration', 'categories', 'transport', 'travel_time']
-  }, [hasGpsPermission])
-
-  // Get full sequence for a given step
-  const getSequence = useCallback((step: OnboardingStep): SubStep[] => {
-    if (step === 4) return getStep4Sequence()
-    return STEP_SUBSTEPS[step]
-  }, [getStep4Sequence])
 
   const goNext = useCallback(() => {
     const prev = stateRef.current
-    const seq = getSequence(prev.step)
-    const idx = seq.indexOf(prev.subStep)
-
-    // Guard: if subStep is not in the sequence, stay put (fixes indexOf -1 bug)
-    if (idx === -1) {
-      logger.onboarding(`ERROR: subStep '${prev.subStep}' not found in sequence [${seq.join(', ')}]. Staying put.`)
+    const result = advance(prev, hasCollabContextRef.current)
+    if (result.kind === 'stay') {
+      logger.onboarding(`goNext: subStep '${prev.subStep}' not in sequence — staying put.`)
       return
     }
-
-    // If not at end of current step's sub-steps, advance within step
-    if (idx < seq.length - 1) {
-      const next = { step: prev.step, subStep: seq[idx + 1] }
-      logger.onboarding(`goNext: Step ${prev.step}/${prev.subStep} → Step ${next.step}/${next.subStep}`)
-      setState(next)
+    if (result.kind === 'launch') {
+      logger.onboarding('LAUNCH triggered (no further non-empty step)')
+      setIsLaunch(true)
       return
     }
+    logger.onboarding(`goNext: Step ${prev.step}/${prev.subStep} → Step ${result.next.step}/${result.next.subStep}`)
+    setState(result.next)
+  }, [])
 
-    // At end of step — advance to next step
-    if (prev.step < 7) {
-      const nextStep = (prev.step + 1) as OnboardingStep
-      const nextSeq = getSequence(nextStep)
-      const next = { step: nextStep, subStep: nextSeq[0] }
-      logger.onboarding(`goNext: Step ${prev.step}/${prev.subStep} → Step ${next.step}/${next.subStep}`)
-      setState(next)
-      return
-    }
-
-    // At end of Step 7 — trigger launch
-    logger.onboarding('LAUNCH triggered from end of Step 7')
-    setIsLaunch(true)
-  }, [getSequence])
-
-  // ─── Fix C: goBack floor is always Step 1 ───
   const goBack = useCallback(() => {
     const prev = stateRef.current
-    const seq = getSequence(prev.step)
-    const idx = seq.indexOf(prev.subStep)
-
-    // Guard: if subStep is not in the sequence, stay put (fixes indexOf -1 bug)
-    if (idx === -1) {
-      logger.onboarding(`ERROR: subStep '${prev.subStep}' not found in sequence [${seq.join(', ')}]. Staying put.`)
+    const result = retreat(prev, hasCollabContextRef.current)
+    if (result.kind === 'stay') {
+      logger.onboarding(`goBack: at earliest step or corrupt state — no-op.`)
       return
     }
-
-    // If not at start of current step, go back within step
-    if (idx > 0) {
-      const next = { step: prev.step, subStep: seq[idx - 1] }
-      logger.onboarding(`goBack: Step ${prev.step}/${prev.subStep} → Step ${next.step}/${next.subStep}`)
-      setState(next)
-      return
-    }
-
-    // At start of step — go to previous step's last sub-step
-    if (prev.step > 1) {
-      const prevStep = (prev.step - 1) as OnboardingStep
-      const prevSeq = getSequence(prevStep)
-      const next = { step: prevStep, subStep: prevSeq[prevSeq.length - 1] }
-      logger.onboarding(`goBack: Step ${prev.step}/${prev.subStep} → Step ${next.step}/${next.subStep}`)
-      setState(next)
-      return
-    }
-
-    // At Step 1 language — can't go back further
-    logger.onboarding(`goBack: already at Step 1/language — no-op`)
-  }, [getSequence])
+    logger.onboarding(`goBack: Step ${prev.step}/${prev.subStep} → Step ${result.next.step}/${result.next.subStep}`)
+    setState(result.next)
+  }, [])
 
   const goToSubStep = useCallback((subStep: SubStep) => {
     setState((prev) => ({ ...prev, subStep }))
   }, [])
 
   const progress = useMemo(() => {
-    const seq = getSequence(state.step)
-    const idx = seq.indexOf(state.subStep)
-    const segmentFill = seq.length > 1 ? (idx + 1) / seq.length : 1
+    // Guard: an empty/single-substep sequence (never the CURRENT step — advance/
+    // retreat/resolveEntry all skip empty steps) yields a full segment (1)
+    // rather than NaN. Do NOT "simplify" the skip-empty logic away upstream.
+    const segmentFill = computeSegmentFill(state, hasCollabContext)
     return { step: state.step, segmentFill }
-  }, [state, getSequence])
+  }, [state, hasCollabContext])
 
   return {
     state,
@@ -163,3 +124,7 @@ export function useOnboardingStateMachine({
     isLaunch,
   }
 }
+
+// Re-export buildSequence for any consumer that needs to know whether a step is
+// present (kept for parity with the prior hook surface; the core is the authority).
+export { buildSequence }

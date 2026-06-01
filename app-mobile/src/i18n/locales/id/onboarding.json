@@ -181,8 +181,9 @@
     "fallback_user": "Pengguna"
   },
   "collaborations": {
-    "headline": "Rencanakan sesuatu bersama",
-    "body": "Mulai sesi dengan krumu. Temukan hal seru, voting favorit, dan benar-benar lakukan.",
+    "headline": "Rencanakan bareng",
+    "body": "Mulai grup bareng teman-temanmu, atau gabung ke obrolan atau trip yang sudah mengundangmu.",
+    "start_button": "Mulai grupnya",
     "whos_in": "Siapa yang ikut?",
     "session_name_label": "Nama sesi",
     "session_name_placeholder": "mis. Rencana akhir pekan, Ide malam kencan...",
@@ -196,7 +197,11 @@
     "generic_error": "Hmm, tidak berhasil. Coba lagi.",
     "join_error": "Tidak bisa bergabung dengan sesi",
     "decline_error": "Tidak bisa menolak undangan",
-    "empty_state": "Tambah teman dulu — lalu kamu bisa mulai merencanakan bersama."
+    "empty_state": "Tambah teman dulu — lalu kamu bisa mulai merencanakan bersama.",
+    "trip_chats_header": "Obrolan trip dan acaramu",
+    "trip_chats_loading": "Memuat obrolan…",
+    "trip_chats_join_subtitle": "Gabung obrolan grup pembeli",
+    "trip_chats_join_button": "Gabung obrolan"
   },
   "consent": {
     "headline": "Satu hal cepat",
