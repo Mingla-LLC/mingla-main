@@ -163,8 +163,36 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
         hours: st.hours,
       });
 
+      // META-ORCH-1009 Sub-E DIAG (2026-05-31): the create-new submit reached the
+      // brand-create step (email sent) but the follow-up authoring call rejected
+      // brand_id as a non-uuid. Log the exact returned brand so we can see what
+      // mutateAsync resolved to, and fail with a precise message instead of the
+      // opaque edge "brand_id must be a uuid".
+      const resolvedBrandId =
+        brand !== null && brand !== undefined ? brand.id : undefined;
+      console.error(
+        "[SUBE-DIAG] createVenue resolved:",
+        JSON.stringify({
+          hasBrand: brand !== null && brand !== undefined,
+          brandId: resolvedBrandId,
+          brandIdType: typeof resolvedBrandId,
+          keys: brand ? Object.keys(brand) : [],
+        }),
+      );
+      if (
+        typeof resolvedBrandId !== "string" ||
+        !/^[0-9a-f-]{36}$/i.test(resolvedBrandId)
+      ) {
+        setSubmitErr(
+          `Venue was saved for review, but linking its profile failed (brand id = ${String(
+            resolvedBrandId,
+          )}). Tell Claude this exact text.`,
+        );
+        return;
+      }
+
       const tier1 = await upsertTier1Place({
-        brandId: brand.id,
+        brandId: resolvedBrandId,
         selectedPlacePoolId: st.placePoolId,
         draft: {
           name: st.displayName.trim(),
