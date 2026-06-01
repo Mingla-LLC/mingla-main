@@ -53,6 +53,8 @@ export function ClaimsPage() {
   const [acting, setActing] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
+  // META-ORCH-1009 Sub-F WS7: admin reduce-only signal-score vetoes for this claim.
+  const [vetoes, setVetoes] = useState({});
 
   const duplicateGroups = useMemo(
     () => groupClaimsByGooglePlaceId(rows),
@@ -111,6 +113,7 @@ export function ClaimsPage() {
   const closeDetail = () => {
     setDetail(null);
     setHours([]);
+    setVetoes({});
   };
 
   const runReview = async (action, opts = {}) => {
@@ -387,6 +390,134 @@ export function ClaimsPage() {
                   </ul>
                 )}
               </div>
+
+              {/* META-ORCH-1009 Sub-F WS7: recommendation profile + reduce-only veto. */}
+              {(() => {
+                const pp = detail.place_pool ?? {};
+                const inputs = pp.business_authoring_inputs ?? {};
+                const consistency = inputs.consistency ?? null;
+                const facets =
+                  inputs.confirmed_ai_outputs?.facets ?? inputs.tier2?.facets ?? {};
+                const scores = pp.ai_signal_scores ?? {};
+                const gallery = Array.isArray(pp.business_gallery_urls)
+                  ? pp.business_gallery_urls
+                  : [];
+                const scoreEntries = Object.entries(scores);
+                return (
+                  <div className="mt-2 border-t border-[var(--color-border)] pt-4 space-y-4">
+                    <div className="text-[var(--color-text-primary)] font-semibold">
+                      Recommendation profile
+                    </div>
+                    <div className="text-xs text-[var(--color-text-tertiary)]">
+                      {pp.business_recommend_edit_count ?? 0} recommend run(s) ·{" "}
+                      {pp.website ? (
+                        <a href={pp.website} target="_blank" rel="noreferrer" className="text-[var(--color-brand-400)] underline">
+                          website
+                        </a>
+                      ) : "no website"}
+                    </div>
+
+                    {pp.generative_summary ? (
+                      <div>
+                        <div className="text-[var(--color-text-tertiary)] mb-1">AI pitch</div>
+                        <div className="whitespace-pre-wrap text-sm">{pp.generative_summary}</div>
+                      </div>
+                    ) : null}
+
+                    {gallery.length > 0 ? (
+                      <div>
+                        <div className="text-[var(--color-text-tertiary)] mb-1">Photos ({gallery.length})</div>
+                        <div className="flex flex-wrap gap-2">
+                          {gallery.map((u) => (
+                            <a key={u} href={u} target="_blank" rel="noreferrer">
+                              <img src={u} alt="venue" className="h-16 w-16 object-cover rounded" />
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {Object.keys(facets).length > 0 ? (
+                      <div>
+                        <div className="text-[var(--color-text-tertiary)] mb-1">Operator answers</div>
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                          {Object.entries(facets).map(([k, v]) => (
+                            <span key={k}>
+                              {k.replace(/_/g, " ")}: <b>{v === true ? "Yes" : v === false ? "No" : "—"}</b>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {consistency ? (
+                      <div>
+                        <div className="text-[var(--color-text-tertiary)] mb-1">
+                          AI consistency check
+                        </div>
+                        <div className="text-sm">
+                          <b>{consistency.verdict ?? "—"}</b>
+                          {consistency.confidence_0_to_100 != null
+                            ? ` (${consistency.confidence_0_to_100}%)`
+                            : ""}
+                          {consistency.summary ? ` — ${consistency.summary}` : ""}
+                        </div>
+                        {Array.isArray(consistency.flags) && consistency.flags.length > 0 ? (
+                          <ul className="list-disc ml-5 text-xs text-amber-200/90 mt-1">
+                            {consistency.flags.map((f, i) => (
+                              <li key={i}>{String(f)}</li>
+                            ))}
+                          </ul>
+                        ) : null}
+                      </div>
+                    ) : null}
+
+                    {scoreEntries.length > 0 ? (
+                      <div>
+                        <div className="text-[var(--color-text-tertiary)] mb-1">
+                          Signal scores — lower a score to veto (deck shows ≥120-equiv)
+                        </div>
+                        <div className="space-y-1">
+                          {scoreEntries.map(([sigId, entry]) => {
+                            const original = Number(entry?.score_0_to_100 ?? 0);
+                            const current = vetoes[sigId]?.vetoed_score ?? original;
+                            return (
+                              <div key={sigId} className="flex items-center gap-2 text-sm">
+                                <span className="flex-1">{sigId.replace(/_/g, " ")}</span>
+                                <span className="text-[var(--color-text-tertiary)] w-10 text-right">{original}</span>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  max={original}
+                                  value={current}
+                                  onChange={(e) => {
+                                    const val = Math.max(0, Math.min(original, Number(e.target.value) || 0));
+                                    setVetoes((prev) => {
+                                      const next = { ...prev };
+                                      if (val < original) {
+                                        next[sigId] = { vetoed_score: val, original_score: original, reason: "" };
+                                      } else {
+                                        delete next[sigId];
+                                      }
+                                      return next;
+                                    });
+                                  }}
+                                  className="w-16 rounded bg-[var(--color-surface)] border border-[var(--color-border)] px-2 py-1 text-right"
+                                />
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {Object.keys(vetoes).length > 0 ? (
+                          <div className="text-xs text-amber-200/90 mt-1">
+                            {Object.keys(vetoes).length} score(s) will be reduced on approve.
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })()}
             </div>
           )}
         </ModalBody>
@@ -415,7 +546,7 @@ export function ClaimsPage() {
           ) : (
             <Button
               variant="primary"
-              onClick={() => void runReview("approve")}
+              onClick={() => void runReview("approve", { scoreVetoes: vetoes })}
               disabled={acting || !canApprove}
               title={
                 isDuplicateOfApproved
