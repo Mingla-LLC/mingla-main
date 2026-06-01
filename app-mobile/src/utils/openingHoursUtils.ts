@@ -13,19 +13,61 @@
  * ignored — this utility is the single source of truth for open/closed.
  */
 
+type Meridiem = 'AM' | 'PM';
+
 /**
  * Parse a time string like "9:00 AM" into minutes since midnight.
- * Returns null if the string cannot be parsed.
+ * Google weekday descriptions sometimes omit the first meridiem in ranges
+ * such as "10:00 - 5:00 PM" or "5:00 - 10:00 PM"; callers may pass an
+ * inferred period for that first endpoint.
  */
-function parseTimeToMinutes(timeStr: string): number | null {
-  const match = timeStr.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+function parseTimeToMinutes(timeStr: string, inferredPeriod?: Meridiem | null): number | null {
+  const match = timeStr.trim().match(/^(\d{1,2}):(\d{2})(?:\s*(AM|PM))?$/i);
   if (!match) return null;
   let hours = parseInt(match[1], 10);
   const minutes = parseInt(match[2], 10);
-  const period = match[3].toUpperCase();
+  const period = (match[3]?.toUpperCase() ?? inferredPeriod ?? null) as Meridiem | null;
+  if (!period) return null;
   if (period === 'AM' && hours === 12) hours = 0;
   if (period === 'PM' && hours !== 12) hours += 12;
   return hours * 60 + minutes;
+}
+
+function explicitMeridiem(timeStr: string): Meridiem | null {
+  const match = timeStr.trim().match(/\b(AM|PM)$/i);
+  return match ? (match[1].toUpperCase() as Meridiem) : null;
+}
+
+function clockHour(timeStr: string): number | null {
+  const match = timeStr.trim().match(/^(\d{1,2}):\d{2}/);
+  if (!match) return null;
+  const hour = parseInt(match[1], 10);
+  return Number.isFinite(hour) && hour >= 1 && hour <= 12 ? hour : null;
+}
+
+function inferOpenPeriod(openPart: string, closePart: string): Meridiem | null {
+  if (explicitMeridiem(openPart)) return null;
+
+  const closePeriod = explicitMeridiem(closePart);
+  const openHour = clockHour(openPart);
+  const closeHour = clockHour(closePart);
+  if (!closePeriod || openHour == null || closeHour == null) return null;
+
+  if (closePeriod === 'PM') {
+    if (openHour === 12) return 'PM';
+    // Noon-close shorthand ("9:00 - 12:00 PM") means the opening hour is AM,
+    // not an overnight 9 PM -> noon range.
+    if (closeHour === 12) return 'AM';
+    // Google commonly writes "10:00 - 5:00 PM" for 10 AM to 5 PM, while
+    // "5:00 - 10:00 PM" means an evening range.
+    return openHour > closeHour ? 'AM' : 'PM';
+  }
+
+  // Morning close with an omitted opening meridiem is usually an overnight
+  // range, e.g. "9:00 - 1:00 AM". If the hours don't imply overnight, keep it
+  // as same-morning.
+  if (openHour === 12) return 'AM';
+  return openHour > closeHour ? 'PM' : 'AM';
 }
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -105,7 +147,7 @@ export function isPlaceOpenAt(
     const parts = range.split(/\s+[–\-]\s+/);
     if (parts.length !== 2) continue;
 
-    const openMinutes = parseTimeToMinutes(parts[0]);
+    const openMinutes = parseTimeToMinutes(parts[0], inferOpenPeriod(parts[0], parts[1]));
     const closeMinutes = parseTimeToMinutes(parts[1]);
 
     if (openMinutes === null || closeMinutes === null) continue;

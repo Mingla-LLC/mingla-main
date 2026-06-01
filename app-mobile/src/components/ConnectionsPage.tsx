@@ -568,7 +568,8 @@ function ConnectionsPageRefactored({
   useScreenLogger('connections');
   const { t } = useTranslation(['connections', 'common', 'social']);
   // ORCH-0635: step ID 8 → 7 (old step 5 dropped → renumber).
-  const coachChatHeader = useCoachMark(7, 0);
+  // ORCH-1029: renumbered 7 → 5 (steps 4/5 "Better together"/"Back to solo" deleted).
+  const coachChatHeader = useCoachMark(5, 0);
   const user = useAppStore((state) => state.user);
   const {
     canCreateSession,

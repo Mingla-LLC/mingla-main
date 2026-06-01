@@ -40,7 +40,19 @@ import {
 import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+// ORCH-1016 REWORK-4 (FIX A) — import the gorhom scroll host re-export so this
+// sheet scrolls via the SAME proven ROOT-CAUSE wiring as
+// ExpandedBusinessEventSheet / ConsumerTripDetailScreen: a BARE scrollMode="scroll"
+// so BaseBottomSheet's own gorhom BottomSheetScrollView is the DIRECT child of
+// BottomSheetContent, with {header}{body}{stickyFooter} as scroll children. Any
+// wrapper prop (header/stickyFooter/bodyContainerStyle) nests the scroll one
+// BottomSheetView level deeper → viewport==content → frozen (RW3.1).
 import { BaseBottomSheet } from "../ui/BaseBottomSheet";
+// ORCH-1016 REWORK-4 (FIX A) — single source of truth for the floating
+// GlassBottomNav footprint. The sticky CTA bar carries this clearance so the
+// buy/Continue button always sits ABOVE Mingla's bottom nav (the on-device bug:
+// the CTA was blocked by the nav because the footer only padded insets.bottom).
+import { BOTTOM_NAV_CONTENT_HEIGHT } from "../../hooks/useAppLayout";
 
 import {
   type PublicTicketProps,
@@ -49,10 +61,12 @@ import {
 } from "@mingla/event-rendering";
 
 import { Icon } from "../ui/Icon";
-import {
-  CartTaxPreview,
-  type CartTaxPreviewResult,
-} from "../checkout/CartTaxPreview";
+// ORCH-1025 [Seamless native consumer cart] — the buyer billing-address +
+// "Calculate tax" gate (CartTaxPreview) is RETIRED. Tax is computed server-side
+// from the venue (ORCH-1006, ticket-checkout-create v130), and the all-in price
+// is already available per tier client-side (PublicTicketProps.priceAllInGbp,
+// from pg_public_event_tier_allin). The cart now shows the all-in total upfront
+// and goes straight to the native PaymentSheet — no address typed.
 import { ConsumerCartCard } from "./ConsumerCartCard";
 import { type CartLineSeed, useTicketCart } from "../../hooks/useTicketCart";
 import {
@@ -142,9 +156,15 @@ const isVisibleForConsumer = (ticket: PublicTicketProps): boolean =>
 export interface TicketCartCheckoutPayload {
   lines: Array<{ ticketTypeId: string; quantity: number }>;
   marketingOptIn: boolean;
+  /**
+   * ORCH-1025 — the displayed all-in total (sum of per-tier server `all_in_cents`
+   * × qty, in cents). Carried for the paid/free checkout branch + telemetry ONLY;
+   * the authoritative charge is the PaymentIntent amount the backend computes
+   * from the same `compute_all_in_cents` engine (WYSIWYP parity by construction).
+   * The cart no longer sends `address` or `taxCalculationId` — tax is sourced at
+   * the venue server-side, so the buyer never types an address.
+   */
   totalCents: number;
-  taxCalculationId: string | null;
-  address: CartTaxPreviewResult["address"];
   /**
    * ORCH-1016 REWORK (D2) — per-tier trip intake answers for selected tiers
    * that carry an intake schema. Empty array when no selected tier has a
@@ -174,6 +194,12 @@ export interface TicketCartSheetProps {
   buyerPhone: string;
   /** True while the upstream `runNativeCheckout` is in flight. */
   isSubmitting: boolean;
+  /**
+   * True when this cart is rendered inline below Mingla's floating nav. When the
+   * parent group is already hosted in an overlay carrier, the nav is behind the
+   * modal window and the CTA only needs OS safe-area clearance.
+   */
+  clearFloatingNav?: boolean;
   onCancel: () => void;
   onCheckout: (payload: TicketCartCheckoutPayload) => void;
 }
@@ -189,6 +215,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   buyerEmail,
   buyerPhone,
   isSubmitting,
+  clearFloatingNav = true,
   onCancel,
   onCheckout,
 }) => {
@@ -197,9 +224,8 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     fallbackCurrency,
   );
   const [marketingOptIn, setMarketingOptIn] = useState<boolean>(false);
-  const [taxPreview, setTaxPreview] = useState<CartTaxPreviewResult | null>(
-    null,
-  );
+  // ORCH-1025 — "What's included" breakdown panel expand/collapse.
+  const [breakdownOpen, setBreakdownOpen] = useState<boolean>(false);
   // ORCH-1016 REWORK (D2) — per-tier intake answers + per-tier per-question
   // validation errors. Keyed by ticket_type_id → { [questionId]: value/error }.
   const [intakeAnswers, setIntakeAnswers] = useState<
@@ -244,6 +270,54 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     [selectedSchemaTiers],
   );
 
+  // ORCH-1025 — all-in pricing, derived ONLY from server data (G-1 WYSIWYP / G-3
+  // no fabricated numbers). For each cart line we read the tier's server-computed
+  // all-in major-unit price (`priceAllInGbp`, = compute_all_in_cents / 100 from
+  // pg_public_event_tier_allin) and its base price (`priceGbp`). The ONLY client
+  // arithmetic is sum + (× quantity) + ×100/÷100 — NO inline tax/fee math.
+  //   - baseCents  : Σ base price_cents × qty  (the "Tickets" subtotal — the
+  //                  Mingla fee is folded into the all-in, not split out here)
+  //   - allInCents : Σ all-in cents × qty  (the amount the buyer pays; the
+  //                  authoritative charge is the PI built from the same engine)
+  //   - feesTaxCents = allInCents − baseCents  (the ONE truthful derived figure;
+  //                  the public RPC exposes no VAT/fee SPLIT, so we never
+  //                  fabricate separate VAT vs service-fee numbers — see report)
+  // When a tier has no server all-in (RPC miss → priceAllInGbp falls back to
+  // priceGbp in the service), its all-in == base, contributing 0 to feesTax and
+  // dropping the "includes VAT & fees" affordance for that tier automatically.
+  const pricing = useMemo<{
+    baseCents: number;
+    allInCents: number;
+    feesTaxCents: number;
+    hasAllInDelta: boolean;
+  }>(() => {
+    let baseCents = 0;
+    let allInCents = 0;
+    for (const line of lines) {
+      if (line.quantity <= 0) continue;
+      const ticket = tickets?.find((t) => t.id === line.ticketTypeId);
+      // Base from the cart line (authoritative price_cents seed).
+      const lineBaseCents = line.unitPriceCents * line.quantity;
+      // All-in from the tier's server priceAllInGbp; fall back to base when the
+      // RPC produced no figure for this tier (never invent a number).
+      const allInMajor =
+        ticket?.priceAllInGbp != null ? ticket.priceAllInGbp : null;
+      const lineAllInCents =
+        allInMajor != null
+          ? Math.round(allInMajor * 100) * line.quantity
+          : lineBaseCents;
+      baseCents += lineBaseCents;
+      allInCents += lineAllInCents;
+    }
+    const feesTaxCents = Math.max(0, allInCents - baseCents);
+    return {
+      baseCents,
+      allInCents,
+      feesTaxCents,
+      hasAllInDelta: feesTaxCents > 0,
+    };
+  }, [lines, tickets]);
+
   // META-ORCH-0991 Wave A — open/close is owned by BaseBottomSheet
   // (declarative `visible`). The prior sheetRef + snapToIndex/close effect is
   // removed; the primitive replicates that exact open/close pattern internally.
@@ -268,7 +342,6 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
       lastOpenSeedRef.current = null;
       reset();
       setMarketingOptIn(false);
-      setTaxPreview(null);
       setIntakeAnswers({});
       setIntakeErrors({});
     }
@@ -301,7 +374,9 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   );
 
   const handleConfirm = useCallback((): void => {
-    if (totals.isEmpty || isSubmitting || taxPreview === null) return;
+    // ORCH-1025 — no taxPreview gate: the buyer can pay immediately. The cart is
+    // unblocked the moment it has lines (and any required intake is valid).
+    if (totals.isEmpty || isSubmitting) return;
     if (hasUnsupportedRequired) return;
 
     // ORCH-1016 REWORK (D2) — required-field validation BEFORE payment.
@@ -337,26 +412,27 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     );
 
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    // ORCH-1025 — payload omits `address` and `taxCalculationId` (G-2). The
+    // all-in total (derived only from server all_in_cents) rides as `totalCents`
+    // for the paid/free branch + telemetry; the charge is the PI amount.
     onCheckout({
       lines: lines
         .filter((l) => l.quantity > 0)
         .map((l) => ({ ticketTypeId: l.ticketTypeId, quantity: l.quantity })),
       marketingOptIn,
-      totalCents: taxPreview.totalCents,
-      taxCalculationId: taxPreview.calculationId,
-      address: taxPreview.address,
+      totalCents: pricing.allInCents,
       intakeFormData,
     });
   }, [
     totals.isEmpty,
     isSubmitting,
-    taxPreview,
     hasUnsupportedRequired,
     selectedSchemaTiers,
     intakeAnswers,
     intakeSchemasByTier,
     lines,
     marketingOptIn,
+    pricing.allInCents,
     onCheckout,
   ]);
 
@@ -398,20 +474,33 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     ? "Claim Free Ticket"
     : "Continue to Payment";
   const ctaDisabled =
-    totals.isEmpty ||
-    isSubmitting ||
-    taxPreview === null ||
-    hasUnsupportedRequired;
+    totals.isEmpty || isSubmitting || hasUnsupportedRequired;
 
+  // ORCH-1025 — the sticky bar shows the ALL-IN total (sum of server all_in_cents),
+  // not the base subtotal, so the buyer sees the exact amount they'll pay upfront.
   const subtotalValueText = totals.isEmpty
     ? "—"
     : totals.isFree
     ? "Free"
-    : formatCentsCurrency(totals.totalCents, totals.currency);
+    : formatCentsCurrency(pricing.allInCents, totals.currency);
 
+  // ORCH-1016 REWORK-4 (FIX A) — the CTA bar must clear BOTH the OS home
+  // indicator AND Mingla's floating GlassBottomNav. This sheet renders BELOW the
+  // visible nav (no wrapInRNModal), so the nav height is additive on top of the
+  // safe-area inset for inline uses. Overlay-carried uses skip the nav height
+  // because the whole sheet group already renders above the app nav. Previously
+  // only `insets.bottom + 16`, so the buy/Continue button was blocked by the nav
+  // on-device.
   const stickyBarStyle = useMemo(
-    () => [styles.stickyBar, { paddingBottom: insets.bottom + 16 }],
-    [insets.bottom],
+    () => [
+      styles.stickyBar,
+      {
+        paddingBottom:
+          (clearFloatingNav ? BOTTOM_NAV_CONTENT_HEIGHT : 0) +
+          Math.max(insets.bottom, 16),
+      },
+    ],
+    [clearFloatingNav, insets.bottom],
   );
 
   // META-ORCH-0991 Wave A — migrated onto BaseBottomSheet. Header is the fixed
@@ -551,24 +640,66 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
           </View>
         ) : null}
 
-        <CartTaxPreview
-          eventId={_eventId}
-          lines={lines
-            .filter((l) => l.quantity > 0)
-            .map((l) => ({
-              ticketTypeId: l.ticketTypeId,
-              quantity: l.quantity,
-            }))}
-          buyer={{
-            name: buyerName,
-            email: buyerEmail,
-            phone: buyerPhone,
-            marketingOptIn,
-          }}
-          currency={totals.currency}
-          disabled={isSubmitting || totals.isEmpty}
-          onPreviewChange={setTaxPreview}
-        />
+        {/* ORCH-1025 — "What's included" breakdown. Replaces the retired
+            billing-address + Calculate-tax form (CartTaxPreview). Shows the
+            all-in total upfront with a tappable breakdown. Only the truthful,
+            server-derived figures are shown: the base "Tickets" subtotal, the
+            combined "Fees & tax" delta (all-in − base), and the all-in total.
+            The public RPC exposes no VAT/service-fee SPLIT, so we never fabricate
+            separate numbers — when an all-in delta exists we add the qualitative
+            "Includes VAT & fees" note (G-3). Hidden for free-only carts. */}
+        {!totals.isEmpty && !totals.isFree ? (
+          <View style={styles.breakdownWrap}>
+            <Pressable
+              onPress={() => setBreakdownOpen((v) => !v)}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: breakdownOpen }}
+              accessibilityLabel="What's included"
+              disabled={isSubmitting}
+              style={({ pressed }) => [
+                styles.breakdownHeader,
+                pressed && styles.breakdownHeaderPressed,
+              ]}
+            >
+              <Text style={styles.breakdownTitle}>What’s included</Text>
+              <Icon
+                name={breakdownOpen ? "chevron-up" : "chevron-down"}
+                size={18}
+                color="rgba(255,255,255,0.55)"
+              />
+            </Pressable>
+            {breakdownOpen ? (
+              <View style={styles.breakdownBody}>
+                <View style={styles.breakdownRow}>
+                  <Text style={styles.breakdownLabel}>Tickets</Text>
+                  <Text style={styles.breakdownValue}>
+                    {formatCentsCurrency(pricing.baseCents, totals.currency)}
+                  </Text>
+                </View>
+                {pricing.hasAllInDelta ? (
+                  <View style={styles.breakdownRow}>
+                    <Text style={styles.breakdownLabel}>Fees &amp; tax</Text>
+                    <Text style={styles.breakdownValue}>
+                      {formatCentsCurrency(
+                        pricing.feesTaxCents,
+                        totals.currency,
+                      )}
+                    </Text>
+                  </View>
+                ) : null}
+                <View style={[styles.breakdownRow, styles.breakdownTotalRow]}>
+                  <Text style={styles.breakdownTotalLabel}>Total</Text>
+                  <Text style={styles.breakdownTotalValue}>
+                    {formatCentsCurrency(pricing.allInCents, totals.currency)}
+                  </Text>
+                </View>
+                {pricing.hasAllInDelta ? (
+                  <Text style={styles.breakdownNote}>Includes VAT &amp; fees</Text>
+                ) : null}
+              </View>
+            ) : null}
+          </View>
+        ) : null}
       </>
     );
 
@@ -615,6 +746,27 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
       </View>
     ) : undefined;
 
+  // ORCH-1016 REWORK-4 (FIX A) — mirror ExpandedBusinessEventSheet /
+  // ConsumerTripDetailScreen's PROVEN scroll wiring (RW3.2):
+  //   scrollMode="view"  → BaseBottomSheet passes children straight into
+  //                        BottomSheetContent (no extra nesting),
+  //   <BottomSheetScrollView flex:1>  → the gorhom scroll host as a flex:1
+  //                        DIRECT child of BottomSheetContent (so a tall cart +
+  //                        intake form physically scrolls at runtime),
+  //   {stickyFooter}     → the CTA bar as a SIBLING View BELOW the scroll host
+  //                        (NOT BaseBottomSheet's `stickyFooter` prop, which
+  //                        routed the sheet into the frozen nested branch).
+  // The CTA bar (stickyBarStyle) carries the needed bottom clearance for its
+  // host mode. The non-populated states (loading/empty/sold-out) render their
+  // centered message body inside the same scroll host — nothing to scroll there,
+  // but the wiring stays uniform.
+  // ORCH-1016 ROOT-CAUSE FIX: BARE scrollMode="scroll" so the gorhom
+  // BottomSheetScrollView is the DIRECT child of BottomSheetContent (the only
+  // structure gorhom constrains to the snap height). The header + body + Pay CTA
+  // are scroll children — the long billing form now scrolls to reach Pay. The nav
+  // is hidden (`hidesBottomNav`) so the CTA isn't covered. (Was scrollMode="view"
+  // + header + bodyContainerStyle + injected scroll → wrapped scroll → viewport ==
+  // content → frozen, so the form never reached Pay.)
   return (
     <BaseBottomSheet
       visible={visible}
@@ -623,21 +775,17 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
       snapPoints={SHEET_SNAP_POINTS}
       backgroundStyle={styles.sheetBackground}
       handleStyle={styles.handleIndicator}
-      bodyContainerStyle={styles.content}
       accessibilityLabel="Get tickets"
-      scrollMode={renderState === "populated" ? "scroll" : "view"}
-      scrollProps={
-        renderState === "populated"
-          ? {
-              contentContainerStyle: styles.scrollContent,
-              showsVerticalScrollIndicator: false,
-            }
-          : undefined
-      }
-      header={header}
-      stickyFooter={stickyFooter}
+      scrollMode="scroll"
+      hidesBottomNav
+      scrollProps={{
+        contentContainerStyle: styles.scrollContent,
+        showsVerticalScrollIndicator: false,
+      }}
     >
+      {header}
       {body}
+      {stickyFooter}
     </BaseBottomSheet>
   );
 };
@@ -710,12 +858,9 @@ const styles = StyleSheet.create({
     textAlign: "center",
     lineHeight: 22,
   },
-  // Scroll body — populated state
-  scroll: {
-    flex: 1,
-  },
   scrollContent: {
     paddingHorizontal: 24,
+    // Breathing room above the (separately nav-cleared) sticky CTA footer.
     paddingBottom: 16,
   },
   sectionLabel: {
@@ -790,6 +935,69 @@ const styles = StyleSheet.create({
     color: "rgba(255, 255, 255, 0.96)",
     fontSize: 14,
     textAlign: "right",
+  },
+  // ORCH-1025 — "What's included" breakdown panel
+  breakdownWrap: {
+    marginTop: 16,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.10)",
+    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    overflow: "hidden",
+  },
+  breakdownHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+  },
+  breakdownHeaderPressed: {
+    opacity: 0.7,
+  },
+  breakdownTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "rgba(255, 255, 255, 0.88)",
+  },
+  breakdownBody: {
+    paddingHorizontal: 16,
+    paddingBottom: 14,
+    gap: 8,
+  },
+  breakdownRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+  },
+  breakdownLabel: {
+    fontSize: 14,
+    color: "rgba(255, 255, 255, 0.62)",
+  },
+  breakdownValue: {
+    fontSize: 14,
+    color: "rgba(255, 255, 255, 0.88)",
+  },
+  breakdownTotalRow: {
+    marginTop: 4,
+    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(255, 255, 255, 0.10)",
+  },
+  breakdownTotalLabel: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "rgba(255, 255, 255, 0.96)",
+  },
+  breakdownTotalValue: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "rgba(255, 255, 255, 0.96)",
+  },
+  breakdownNote: {
+    fontSize: 12,
+    color: "rgba(255, 255, 255, 0.45)",
+    marginTop: 2,
   },
   // Sticky bottom bar
   stickyBar: {

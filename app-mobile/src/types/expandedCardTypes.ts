@@ -45,8 +45,12 @@ export interface ExpandedCardData {
         nextCloseTime?: string;
         weekdayDescriptions?: string[];
       }
+    | { lines?: string[] }
     | Record<string, string>  // Mingla legacy ({ monday: "9-5", ... }) — 37 rows in pool
+    | string[]
     | null;
+  utcOffsetMinutes?: number | null;
+  utc_offset_minutes?: number | null;
   phone?: string;
   website?: string;
   highlights: string[];

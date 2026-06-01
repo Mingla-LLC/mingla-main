@@ -1038,6 +1038,18 @@ function checkNoNewBackendFiles() {
     "supabase/functions/run-place-intelligence-trial/index.ts",
     "supabase/functions/run-place-intelligence-trial/__tests__/intelligence_coverage_seed_refresh.test.ts",
   ];
+  // ORCH-1016 [Consumer Discover Trips tab] — global published-trips RPC +
+  // departure_text column (+ departure_geo + theme→column sync trigger). C7 is
+  // scoped to ORCH-0863 marketing; these are ORCH-1016 consumer-surfacing
+  // backend touches. No new edge function (the buyer flow reuses the already-
+  // allowlisted ticket-checkout-create). Per COMMS-0002.
+  const ORCH_1016_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260803000000_orch_1016_events_departure_text.sql",
+    "supabase/migrations/20260803000001_orch_1016_pg_published_trips_public.sql",
+    "supabase/migrations/20260805000001_orch_1016_trip_intake_schemas_buyer_select.sql",
+    "supabase/migrations/__tests__/orch_1016_pg_published_trips_public.test.ts",
+    "supabase/functions/_test/orch_1016_hard_guards_adversarial.test.ts",
+  ];
   // ORCH-1015 — Intelligence Overview readiness ladder. Edge fn touched is
   // the existing intelligence_coverage action (3 new fields per city row +
   // 1 extended fetch column on seeding_cities). The Deno test file is
@@ -1192,10 +1204,86 @@ function checkNoNewBackendFiles() {
     "supabase/functions/run-pre-photo-bouncer/index.ts",
     "supabase/functions/run-bouncer/index.ts",
   ];
+  // ORCH-1021 [Decisive scheduling availability].
+  // C7 is scoped to ORCH-0863 marketing; ORCH-1021 only threads Google Places
+  // utc_offset_minutes through existing card payloads so mobile scheduling can
+  // evaluate the selected time in the venue's timezone.
+  // No marketing scope. Per COMMS-0002.
+  const ORCH_1021_BACKEND_ALLOWLIST = [
+    "supabase/functions/discover-cards/index.ts",
+    "supabase/functions/generate-curated-experiences/index.ts",
+    "supabase/functions/generate-curated-experiences/__tests__/utc_offset_passthrough.test.ts",
+  ];
+  // ORCH-1024 [Photo backfill originals-only + separate thumbnail tab].
+  // C7 is scoped to ORCH-0863 marketing; ORCH-1024 makes the main photo
+  // backfill download+store ORIGINALS ONLY (the inline imagescript thumbnail
+  // generation that crashed `backfill-place-photos` with "not enough compute
+  // resources" is removed; thumbnails move to the separate
+  // `backfill-place-photo-thumbs` function driven from a new admin tab). It also
+  // carries the ORCH-1023 expired-name REFRESH fix + its process-path test.
+  // No marketing scope. Per COMMS-0002.
+  const ORCH_1024_BACKEND_ALLOWLIST = [
+    "supabase/functions/_shared/photoStorageService.ts",
+    "supabase/functions/_shared/photoStorageService.test.ts",
+    "supabase/functions/backfill-place-photos/index.ts",
+    "supabase/functions/backfill-place-photos/index.test.ts",
+  ];
+  // ORCH-1027 [Launch Cities admin control]: adds the consumer-launch flag
+  // migration (seeding_cities.is_live_for_consumers + partial index + the
+  // admin_launch_city_list / admin_set_city_live RPCs) plus the public
+  // check-launch-city edge fn (the ORCH-1028 onboarding location-gate contract).
+  // C7 is scoped to ORCH-0863 marketing; these are launch-cities backend
+  // touches. Per COMMS-0002.
+  const ORCH_1027_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260810000000_orch_1027_launch_cities.sql",
+    "supabase/functions/check-launch-city/index.ts",
+    "supabase/functions/check-launch-city/__tests__/check_launch_city.test.ts",
+    // ORCH-1027 QA: tester adversarial regression suite (NULL-bbox/degenerate/
+    // antimeridian/equidistant-tiebreak/corner-coords) + the index.ts NULL guard.
+    "supabase/functions/check-launch-city/__tests__/check_launch_city_adversarial.test.ts",
+  ];
+  // ORCH-1030 [Consumer app notification deep-linking]. C7 is scoped to
+  // ORCH-0863 marketing; ORCH-1030's backend touches correct the notification
+  // producers' deep links so they actually reach the device: birthday/holiday
+  // reminders now route to the gift-target's profile, board/group messages
+  // carry their chat deep link, and all three pass the link TOP-LEVEL so
+  // notify-dispatch fills both `data.deepLink` and the `deep_link` column. C7
+  // flags MODIFIED backend files too, so these existing edge fns are listed
+  // here. No marketing scope. Per COMMS-0002.
+  const ORCH_1030_BACKEND_ALLOWLIST = [
+    "supabase/functions/notify-birthday-reminder/index.ts",
+    "supabase/functions/notify-holiday-reminder/index.ts",
+    "supabase/functions/notify-message/index.ts",
+    "supabase/functions/notify-dispatch/index.ts",
+  ];
+  // ORCH-1032 [Intelligence pipeline concurrency cap + chunked enqueue]:
+  // adds the additive 'queued'-status migration (status CHECK widen + per-city
+  // unique active index widen + tg_kick_pending_trial_runs promotion built on
+  // the v3 cancelling body) plus two Deno test files and one SQL-shape
+  // migration test. The edge fn run-place-intelligence-trial/index.ts is a
+  // MODIFY already allowlisted under META_ORCH_1009_SUB_D; only the new
+  // migration + new test files need allowlisting here. C7 is scoped to
+  // ORCH-0863 marketing; these are intelligence-pipeline backend touches.
+  // Per COMMS-0002.
+  const ORCH_1032_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260811000000_orch_1032_queued_status_and_cap.sql",
+    "supabase/functions/run-place-intelligence-trial/__tests__/concurrencyCap.test.ts",
+    "supabase/functions/run-place-intelligence-trial/__tests__/concurrencyCap_adversarial.test.ts",
+    "supabase/migrations/__tests__/orch_1032_cron_promotion.test.ts",
+    // ORCH-1032 QA: tester-authored adversarial regression test (additive-safety
+    // predicate logic + gate count-query running-only correctness).
+    "supabase/migrations/__tests__/orch_1032_additive_safety_adversarial.test.ts",
+  ];
   const ALLOWLIST = [
+    ...ORCH_1032_BACKEND_ALLOWLIST,
+    ...ORCH_1027_BACKEND_ALLOWLIST,
+    ...ORCH_1030_BACKEND_ALLOWLIST,
+    ...ORCH_1024_BACKEND_ALLOWLIST,
+    ...ORCH_1021_BACKEND_ALLOWLIST,
     ...ORCH_1018_BACKEND_ALLOWLIST,
     ...ORCH_1017_BACKEND_ALLOWLIST,
     ...ORCH_1006_BACKEND_ALLOWLIST,
+    ...ORCH_1016_BACKEND_ALLOWLIST,
     ...ORCH_0989_BACKEND_ALLOWLIST,
     ...ORCH_0990_BACKEND_ALLOWLIST,
     ...ORCH_0986_BACKEND_ALLOWLIST,
@@ -1256,6 +1344,7 @@ function checkNoNewBackendFiles() {
     ...META_ORCH_1009_SUB_B_BACKEND_ALLOWLIST,
     ...META_ORCH_1009_SUB_D_BACKEND_ALLOWLIST,
     ...META_ORCH_1009_SUB_E_BACKEND_ALLOWLIST,
+    ...ORCH_1030_BACKEND_ALLOWLIST,
   ];
   const forbidden = changed.filter(
     (p) =>

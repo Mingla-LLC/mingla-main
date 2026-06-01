@@ -38,6 +38,10 @@ const trip = (patch: Partial<Trip> = {}): Trip => ({
     destinationLocationText: "Tulum, Quintana Roo, Mexico",
     destinationLat: 20.2114,
     destinationLng: -87.4654,
+    departurePlaceId: null,
+    departureLocationText: null,
+    departureLat: null,
+    departureLng: null,
     capacity: 12,
   },
   days: [

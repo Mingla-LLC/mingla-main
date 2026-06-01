@@ -139,7 +139,8 @@ function ProfilePage({
   const accountSettingsRef = useRef<View>(null);
   const feedbackButtonRef = useRef<View>(null);
   const { currentStep, registerScrollRef, registerTargetScrollOffset, scrollLockActive } = useCoachMarkContext();
-  const isScrollStep = currentStep === 8 || currentStep === 9;
+  // ORCH-1029: Profile scroll-offset steps renumbered 8→6, 9→7 (steps 4/5 deleted).
+  const isScrollStep = currentStep === 6 || currentStep === 7;
   const coachScrollPadding = isScrollStep ? Dimensions.get('window').height * 0.65 : 0;
 
   useEffect(() => {
@@ -161,31 +162,40 @@ function ProfilePage({
     [registryScrollRef]
   );
 
-  // ORCH-0635: measureLayout for both Profile scroll-offset targets —
-  // step 8 (Account Settings row) and step 9 (Beta Feedback button).
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (!contentRef.current) return;
-      if (accountSettingsRef.current) {
-        (accountSettingsRef.current as any).measureLayout(
-          contentRef.current,
-          (x: number, y: number, width: number, height: number) => {
-            registerTargetScrollOffset(8, x, y, width, height);
-          },
-          () => console.warn('[CoachMark] measureLayout failed for step 8'),
-        );
-      }
-      if (feedbackButtonRef.current) {
-        (feedbackButtonRef.current as any).measureLayout(
-          contentRef.current,
-          (x: number, y: number, width: number, height: number) => {
-            registerTargetScrollOffset(9, x, y, width, height);
-          },
-          () => console.warn('[CoachMark] measureLayout failed for step 9'),
-        );
-      }
-    }, 800);
-    return () => clearTimeout(timer);
+  // ORCH-1029 (F-3): register both Profile scroll-offset targets — step 6 (Account
+  // Settings row) and step 7 (Beta Feedback button) — driven by a DETERMINISTIC layout
+  // signal (onLayout → measureLayout success), NOT a blind setTimeout(…, 800). The old
+  // 800ms timer raced the step-5→6 cross-tab mount: on first Profile entry the offset was
+  // usually not yet registered, so scrollToKnownPosition fell through to scrollToEnd() →
+  // no cutout + footer over-scroll. onLayout fires exactly when each row has real bounds,
+  // so the offset registers the instant the row is measurable. measureLayout resolves the
+  // row's contentY relative to contentRef (the scroll content), which is what the
+  // CoachMarkContext scroll math consumes.
+  // Spec: SPEC_ORCH-1029_COACH_MARK_FIXES.md §3.F-3 (SC-3.3 / SC-3.5).
+  const handleAccountSettingsLayout = useCallback((): void => {
+    const node = accountSettingsRef.current;
+    const content = contentRef.current;
+    if (!node || !content) return;
+    (node as any).measureLayout(
+      content,
+      (x: number, y: number, width: number, height: number) => {
+        registerTargetScrollOffset(6, x, y, width, height);
+      },
+      () => console.warn('[CoachMark] measureLayout failed for step 6'),
+    );
+  }, [registerTargetScrollOffset]);
+
+  const handleFeedbackButtonLayout = useCallback((): void => {
+    const node = feedbackButtonRef.current;
+    const content = contentRef.current;
+    if (!node || !content) return;
+    (node as any).measureLayout(
+      content,
+      (x: number, y: number, width: number, height: number) => {
+        registerTargetScrollOffset(7, x, y, width, height);
+      },
+      () => console.warn('[CoachMark] measureLayout failed for step 7'),
+    );
   }, [registerTargetScrollOffset]);
 
   // Profile interests
@@ -496,7 +506,7 @@ function ProfilePage({
               showChevron
               onPress={() => setShowBillingSheet(true)}
             />
-            <View ref={accountSettingsRef} collapsable={false}>
+            <View ref={accountSettingsRef} collapsable={false} onLayout={handleAccountSettingsLayout}>
               <SettingsRow
                 icon="shield"
                 label={t('profile:page.account_settings_label')}
@@ -509,7 +519,7 @@ function ProfilePage({
           </GlassCard>
 
           {/* 6. Beta feedback (conditional — retained styling for Phase 1; re-skin = ORCH-0634) */}
-          <BetaFeedbackButton isTabVisible={isTabVisible} feedbackButtonRef={feedbackButtonRef} />
+          <BetaFeedbackButton isTabVisible={isTabVisible} feedbackButtonRef={feedbackButtonRef} onCoachLayout={handleFeedbackButtonLayout} />
 
           {/* 7. Footer card — legal + sign out + meta */}
           <GlassCard variant="base">

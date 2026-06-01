@@ -203,13 +203,21 @@ serve(async (req) => {
         const year = now.getUTCFullYear();
 
         try {
+          // ORCH-1030: route a birthday reminder to the partner's PROFILE
+          // (`mingla://profile/{id}`), not the generic Discover deck. The deep
+          // link MUST be passed top-level so notify-dispatch fills BOTH
+          // `data.deepLink` (what the client routes on) and the `deep_link`
+          // column — a nested-only `data.deepLink` is nulled by notify-dispatch
+          // (index.ts:307 `deepLink: deepLink || null` overrides the nested one).
+          const birthdayDeepLink = `mingla://profile/${birthdayOwner.id}`;
           await callNotifyDispatch(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
             userId: recipient.id,
             type: "birthday_reminder",
             title,
             body,
+            deepLink: birthdayDeepLink,
             data: {
-              deepLink: "mingla://discover",
+              deepLink: birthdayDeepLink,
               partnerId: birthdayOwner.id,
               pairingId: pairing.id,
               milestone: daysUntil,

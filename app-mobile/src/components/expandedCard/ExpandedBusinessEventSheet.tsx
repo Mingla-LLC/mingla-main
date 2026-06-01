@@ -25,6 +25,7 @@ import {
   Linking,
   Platform,
   StyleSheet,
+  View,
   type ScrollViewProps,
 } from "react-native";
 import { useRouter } from "expo-router";
@@ -72,6 +73,7 @@ interface ExpandedBusinessEventSheetProps {
   data: BusinessEventCard;
   onClose: () => void;
   bottomContentInset?: number;
+  bottomSheetInset?: number;
 }
 
 // ORCH-0828 REWORK: canonical bottomSheet snapPoints from design tokens,
@@ -154,7 +156,13 @@ const openMapsForQuery = (query: string): void => {
 
 export const ExpandedBusinessEventSheet: React.FC<
   ExpandedBusinessEventSheetProps
-> = ({ visible, data, onClose, bottomContentInset = 32 }) => {
+> = ({
+  visible,
+  data,
+  onClose,
+  bottomContentInset = 32,
+  bottomSheetInset = 0,
+}) => {
   const router = useRouter();
   const user = useAppStore((s) => s.user);
   const profile = useAppStore((s) => s.profile);
@@ -257,7 +265,11 @@ export const ExpandedBusinessEventSheet: React.FC<
             phone: buyerPhone,
             marketingOptIn: payload.marketingOptIn,
           },
-          taxCalculationId: payload.taxCalculationId,
+          // ORCH-1025 [Seamless native cart] — no `taxCalculationId` and no
+          // `address` are sent: tax is computed server-side from the venue
+          // (ticket-checkout-create v130). nativeCheckoutFlow already accepts the
+          // address-less / taxCalculationId-less path (the field is optional and
+          // omitted from the request body when absent).
           // ORCH-1016 REWORK (D2) — forward per-tier trip intake answers →
           // orders.intake_form_data via the existing ticket-checkout-create
           // body key. Empty array (no-schema trips) is omitted by
@@ -384,28 +396,32 @@ export const ExpandedBusinessEventSheet: React.FC<
   // META-ORCH-0991 (sheet rework — Bug 2): inject gorhom's BottomSheetScrollView
   // as PublicEventPage's single scroll host. The wrapper appends this sheet's
   // bottom clearance (`bottomContentInset` — carries the chat-composer / tab-bar
-  // clearance from MessageInterface) onto the page's own scrollContent padding so
-  // the last "Buy ticket" row clears the bottom. Memoized on bottomContentInset so
-  // the injected component identity is stable across re-renders (no remount).
+  // clearance from MessageInterface) plus any explicit sheet-overlay footprint
+  // onto the page's own scrollContent so the last "Buy ticket" row can scroll
+  // above the floating nav. Memoized on the clearance scalars so the injected
+  // component identity is stable across re-renders (no remount).
+  // ORCH-1016 ROOT-CAUSE FIX: PublicEventPage's injected scroll only PARTIALLY
+  // bound (its viewport tracked content, so the last row stayed below the screen).
+  // Instead, BaseBottomSheet OWNS the scroll (scrollMode="scroll" below) — the only
+  // structure that binds the viewport to the visible sheet height — and this
+  // ScrollComponent is now a NON-scroll passthrough (a plain View carrying
+  // PublicEventPage's contentContainerStyle + a home-indicator spacer). The page
+  // content thus renders directly inside the primitive's bare scroll.
   const SheetScrollHost = useMemo(() => {
-    const bottomPad = Math.max(32, bottomContentInset);
+    const bottomPad =
+      Math.max(8, bottomContentInset) + Math.max(0, bottomSheetInset);
     const Host: React.FC<ScrollViewProps> = ({
       contentContainerStyle,
-      ...rest
+      children,
     }) => (
-      <BottomSheetScrollView
-        {...rest}
-        contentContainerStyle={[
-          contentContainerStyle,
-          { paddingBottom: bottomPad },
-        ]}
-      >
-        {rest.children}
-      </BottomSheetScrollView>
+      <View style={contentContainerStyle}>
+        {children}
+        <View style={{ height: bottomPad }} pointerEvents="none" />
+      </View>
     );
-    Host.displayName = "EbesSheetScrollHost";
+    Host.displayName = "EbesPassthroughHost";
     return Host;
-  }, [bottomContentInset]);
+  }, [bottomContentInset, bottomSheetInset]);
 
   // META-ORCH-0991 Wave A — migrated onto BaseBottomSheet. Declarative
   // `visible` + initialIndex=1 (90% snap) replicate the proven inline
@@ -420,7 +436,7 @@ export const ExpandedBusinessEventSheet: React.FC<
   // PublicEventPage owns the SINGLE scroll host via the injected
   // ScrollComponent (gorhom BottomSheetScrollView) — collapsing the prior
   // double-scroll (raw RN ScrollView nested in the sheet's gorhom scroll).
-  return (
+  const sheetGroup = (
     <>
       <BaseBottomSheet
         visible={visible}
@@ -431,7 +447,12 @@ export const ExpandedBusinessEventSheet: React.FC<
         initialIndex={SHEET_INITIAL_INDEX}
         backgroundStyle={styles.sheetBackground}
         handleStyle={styles.sheetHandle}
-        scrollMode="view"
+        scrollMode="scroll"
+        hidesBottomNav
+        bottomSheetInset={bottomSheetInset}
+        scrollProps={{
+          showsVerticalScrollIndicator: false,
+        }}
         accessibilityLabel={data.title}
       >
         <PublicEventPage
@@ -461,14 +482,23 @@ export const ExpandedBusinessEventSheet: React.FC<
         buyerEmail={user?.email ?? profile?.email ?? ""}
         buyerPhone={profile?.phone ?? ""}
         isSubmitting={checkoutInFlight}
+        clearFloatingNav={false}
         onCancel={handleCartCancel}
         onCheckout={handleCartCheckout}
       />
     </>
   );
+
+  // ORCH-1016 — the SheetOverlayCarrier (RN Modal) is gone: it broke Android
+  // scroll gestures and didn't fix the z-order. Nav coverage is now solved by
+  // `hidesBottomNav` on the sheets themselves.
+  return sheetGroup;
 };
 
 const styles = StyleSheet.create({
+  sheetBody: {
+    flex: 1,
+  },
   sheetBackground: {
     backgroundColor: "#0c0e12",
   },

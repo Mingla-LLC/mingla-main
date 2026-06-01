@@ -197,6 +197,10 @@ export default function LockedCardSchedulingSheet({
         onClose={resetAndClose}
         card={cardForModal}
         onProposeDateTime={handleDatePicked}
+        isCurated={
+          Array.isArray((cardData as any)?.stops) &&
+          (cardData as any).stops.length > 0
+        }
       />
     );
   }

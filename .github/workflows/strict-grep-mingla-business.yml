@@ -158,6 +158,8 @@ jobs:
           node-version: "20"
       - name: Run ORCH-0913 dashboard parity gate
         run: node .github/scripts/strict-grep/orch-0913-no-tabs-on-dashboards.mjs
+      - name: Run ORCH-1016 bottom-sheet inline scroll-binding gate
+        run: node .github/scripts/strict-grep/i-bottomsheet-inline-scroll-binding.mjs
 
   orch-0947-trip-spots-tickets-not-orders:
     name: "ORCH-0947: trip spots count tickets"
@@ -312,6 +314,19 @@ jobs:
           node-version: "20"
       - name: Run ORCH-0975 notifications sheet gate
         run: node .github/scripts/strict-grep/orch-0975-notifications-sheet.mjs
+
+  orch-1019-curated-hours-canonical-reader:
+    name: "ORCH-1019: curated hours via canonical reader (I-CURATED-HOURS-VIA-CANONICAL-READER)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the gate
+        run: node .github/scripts/strict-grep/i-curated-hours-via-canonical-reader.mjs --self-test
+      - name: Run ORCH-1019 canonical-reader gate
+        run: node .github/scripts/strict-grep/i-curated-hours-via-canonical-reader.mjs
 
   meta-orch-0991-base-bottom-sheet-sole-consumer:
     name: "META-ORCH-0991: BaseBottomSheet sole gorhom consumer invariant"

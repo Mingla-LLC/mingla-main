@@ -7,7 +7,7 @@ import {
   Animated,
   Easing,
   StyleSheet,
-  Dimensions,
+  useWindowDimensions,
   Linking,
   Platform,
   AccessibilityInfo,
@@ -33,6 +33,7 @@ import { geocodingService } from '../services/geocodingService'
 import { sendOtp, verifyOtp, OtpChannel } from '../services/otpService'
 import { logger } from '../utils/logger'
 import { saveOnboardingData, clearOnboardingData } from '../utils/onboardingPersistence'
+import { resolveOnboardingLocationOverride } from '../utils/onboardingLocationOverride'
 import { detectLocaleFromCoordinates, detectLocaleFromCountryName } from '../utils/localeDetection'
 
 // Legacy saved_people + audio services removed — pairing uses real behavior data.
@@ -48,12 +49,15 @@ import { logAppsFlyerEvent } from '../services/appsFlyerService'
 import { mixpanelService } from '../services/mixpanelService'
 
 import { OnboardingShell } from './onboarding/OnboardingShell'
+import { resolveScrollEnabled } from './onboarding/onboardingScrollPolicy'
 import { PhoneInput } from './onboarding/PhoneInput'
 import { OTPInput } from './onboarding/OTPInput'
 import { OnboardingCollaborationStep } from './onboarding/OnboardingCollaborationStep'
 import { CategoryTile } from './ui/CategoryTile'
 import { OnboardingFriendsAndPairingStep } from './onboarding/OnboardingFriendsAndPairingStep'
 import { OnboardingConsentStep } from './onboarding/OnboardingConsentStep'
+import { LaunchCityPicker } from './onboarding/LaunchCityPicker'
+import { checkLaunchCity, type LaunchCityWithBbox } from '../hooks/useLaunchCityGate'
 import { Checkbox } from './ui/checkbox'
 import InAppBrowserModal from './InAppBrowserModal'
 import { LEGAL_URLS } from '../constants/urls'
@@ -94,12 +98,19 @@ import {
   touchTargets,
   shadows,
   glass,
+  responsiveTypography,
+  responsiveSpacing,
 } from '../constants/designSystem'
+import { ms } from '../utils/responsive'
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window')
+// [ORCH-1028 Part-2 R-2] The former module-scope `Dimensions.get('window')` capture was
+// removed: it never updated on rotation / Android fold / split-view (SPEC §0.9). All
+// layout-driving width/height now read live via useWindowDimensions() inside the
+// component. See `winWidth`/`winHeight` and the helpers below.
 
-/** Intent vibe cards: two columns with gap 6, horizontal padding 24+24 from OnboardingShell */
-const INTENT_CARD_WIDTH = (SCREEN_WIDTH - 48 - 6) / 2
+/** Intent vibe cards: two columns with gap 6, horizontal padding 24+24 from OnboardingShell.
+ *  [ORCH-1028 Part-2 R-2] live width helper — pass the current window width. */
+const intentCardWidth = (winWidth: number): number => (winWidth - 48 - 6) / 2
 
 function formatBirthdayDisplay(date: Date): string {
   const day = date.getDate().toString().padStart(2, '0')
@@ -675,6 +686,22 @@ const OnboardingFlow = ({
   const queryClient = useQueryClient()
   const { t } = useTranslation(['onboarding', 'common'])
 
+  // [ORCH-1028 Part-2 R-2] Live window dimensions — drives every layout-width/height
+  // computation in renderContent so rotation / Android foldables / split-view recompute
+  // instead of using the stale module-load capture (SPEC §0.9 / R-2). Falls back to the
+  // module constants on the first synchronous render before the hook resolves.
+  const { width: winWidth, height: winHeight } = useWindowDimensions()
+
+  // [ORCH-1028 REWORK F-1/F-2] Short-viewport flag for responsive scroll-enablement.
+  // On the smallest in-matrix device (iPhone SE 3, 667pt) the fixed-bottom-bar steps
+  // whose content can exceed the viewport (`gender_identity` 8 rows, `intents` 6 cards
+  // w/ subtitles) clip their last option/subtitle behind the CTA bar while scroll is
+  // disabled. We re-enable scroll for those steps ONLY when the viewport is too short
+  // to fit the content — a no-op on iPhone 12-mini-and-up (>=740pt) and Android where
+  // the content already fits, so larger screens keep their fixed/centered layout.
+  const SHORT_VIEWPORT_MAX_HEIGHT = 740
+  const isShortViewport = winHeight < SHORT_VIEWPORT_MAX_HEIGHT
+
   // ─── Friends (for incoming request UI in Step 5/friends) ───
   const {
     friendRequests,
@@ -798,6 +825,24 @@ const OnboardingFlow = ({
   const [showChannelOptions, setShowChannelOptions] = useState(false)
   const [valuePropBeat, setValuePropBeat] = useState(0)
   const [locationStatus, setLocationStatus] = useState<'idle' | 'requesting' | 'granted' | 'settings' | 'error'>('idle')
+
+  // ─── ORCH-1028 launch-city gate (onboarding-time only, DEC-1028-1) ───
+  // After a successful GPS capture, check-launch-city decides whether the user's
+  // real city is live. Out-of-city users pick a live city; the override is written
+  // ONCE here (§C / I-1028-ONE-LOCATION-OWNER). No runtime re-gate exists (E-5).
+  type LaunchGateUiState =
+    | { phase: 'idle' } // gate not run / in-city passthrough
+    | { phase: 'checking' } // edge call in flight
+    | { phase: 'out_of_city'; liveCities: LaunchCityWithBbox[] }
+    | { phase: 'picker'; liveCities: LaunchCityWithBbox[] }
+    | { phase: 'no_live_cities' }
+    | { phase: 'check_failed' }
+  const [launchGate, setLaunchGate] = useState<LaunchGateUiState>({ phase: 'idle' })
+  const [launchGateSelectedCity, setLaunchGateSelectedCity] = useState<LaunchCityWithBbox | null>(null)
+  const [launchGateWriting, setLaunchGateWriting] = useState(false)
+  const [launchGateWriteError, setLaunchGateWriteError] = useState(false)
+  // Count of check failures so the "Continue anyway" escape only appears after >=2 (§B.5).
+  const [launchCheckFailures, setLaunchCheckFailures] = useState(0)
   const [manualLocationText, setManualLocationText] = useState(initialData.manualLocation ?? '')
   const [locationSuggestions, setLocationSuggestions] = useState<import('../services/geocodingService').AutocompleteSuggestion[]>([])
   const [selectedLocation, setSelectedLocation] = useState<import('../services/geocodingService').AutocompleteSuggestion | null>(
@@ -945,6 +990,18 @@ const OnboardingFlow = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (navState.subStep === 'location') {
+      // [ORCH-1028 E-7] Reset the launch-city gate on (re)entry. The gate is
+      // re-driven by captureLocation (its single owner — §0.2/§A.2); a stale
+      // picker/reassurance phase must not resurface. The override is only ever
+      // written on an explicit confirm. NOTE: we deliberately do NOT call the
+      // gate from this effect — `data.coordinates` is not hydrated when the
+      // [navState.subStep]-keyed effect fires (the same race the original
+      // location-status effect comment warns about), so the gate lives only in
+      // captureLocation, which re-runs on every fresh Enable-Location press.
+      setLaunchGate({ phase: 'idle' })
+      setLaunchGateSelectedCity(null)
+      setLaunchGateWriteError(false)
+      setLaunchGateWriting(false)
       if (data.locationGranted && data.coordinates) {
         setLocationStatus('granted')
       } else {
@@ -1352,7 +1409,25 @@ const OnboardingFlow = ({
 
       // Persist location choice immediately so it survives app restart
       persistStep(4).catch(() => {})
-      autoAdvanceRef.current = setTimeout(() => goNextRef.current(), 1200)
+
+      // ─── ORCH-1028 launch-city gate (§A.2) ───
+      // Run the gate AFTER the successful capture, BEFORE scheduling auto-advance.
+      // `in_city` is byte-identical to the prior flow (1200ms auto-advance,
+      // DEC-1028-4). Any non-in-city branch schedules NO auto-advance — the user
+      // must act (reassurance → pick / retry / proceed). The gate NEVER throws.
+      setLaunchGate({ phase: 'checking' })
+      const gateResult = await checkLaunchCity(loc.latitude, loc.longitude)
+      if (gateResult.status === 'in_city') {
+        setLaunchGate({ phase: 'idle' })
+        autoAdvanceRef.current = setTimeout(() => goNextRef.current(), 1200)
+      } else if (gateResult.status === 'out_of_city') {
+        setLaunchGate({ phase: 'out_of_city', liveCities: gateResult.liveCities })
+      } else if (gateResult.status === 'no_live_cities') {
+        setLaunchGate({ phase: 'no_live_cities' })
+      } else {
+        setLaunchCheckFailures((n) => n + 1)
+        setLaunchGate({ phase: 'check_failed' })
+      }
 
       // Locale detection — use country from the geocode result we already have
       if (city) {
@@ -1417,6 +1492,93 @@ const OnboardingFlow = ({
       }
     }
   }, [persistStep, user?.id, setProfile])
+
+  // ─── ORCH-1028 launch-city gate handlers ───
+
+  // Re-run the gate check (§B.5 "Try again"). Uses the already-captured coords.
+  const handleLaunchGateRetry = useCallback(async () => {
+    if (!data.coordinates) {
+      // Defensive (unreachable): the gate only shows after a capture that set
+      // coordinates. With no coords, drop back to the idle location prompt so the
+      // user can re-grant rather than being stuck on a retry that can't run.
+      setLaunchGate({ phase: 'idle' })
+      setLocationStatus('idle')
+      return
+    }
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+    setLaunchGate({ phase: 'checking' })
+    const result = await checkLaunchCity(data.coordinates.lat, data.coordinates.lng)
+    if (result.status === 'in_city') {
+      setLaunchGate({ phase: 'idle' })
+      autoAdvanceRef.current = setTimeout(() => goNextRef.current(), 1200)
+    } else if (result.status === 'out_of_city') {
+      setLaunchGate({ phase: 'out_of_city', liveCities: result.liveCities })
+    } else if (result.status === 'no_live_cities') {
+      setLaunchGate({ phase: 'no_live_cities' })
+    } else {
+      setLaunchCheckFailures((n) => n + 1)
+      setLaunchGate({ phase: 'check_failed' })
+    }
+  }, [data.coordinates])
+
+  // Proceed with the real GPS location (used by no_live_cities §B.4 "Notify me"
+  // and check_failed ≥2-failure §B.5 "Continue anyway"). This is the ONLY
+  // non-in-city path that advances without a city pick — it is honest (real GPS,
+  // use_gps_location stays true) and exists so the user is never stranded (E-3/E-2).
+  const handleLaunchGateProceedWithGps = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+    setLaunchGate({ phase: 'idle' })
+    setData((prev) => ({ ...prev, useGpsLocation: true }))
+    if (autoAdvanceRef.current) { clearTimeout(autoAdvanceRef.current); autoAdvanceRef.current = null }
+    goNextRef.current()
+  }, [])
+
+  // Confirm the picked launch city: write the override (§C) then advance.
+  const handleLaunchGateConfirmCity = useCallback(async () => {
+    const city = launchGateSelectedCity
+    if (!city) return
+    setLaunchGateWriteError(false)
+    setLaunchGateWriting(true)
+    try {
+      // I-1028-ONE-LOCATION-OWNER: write ONLY the four custom_*/use_gps_location
+      // fields the main deck reads (useUserLocation Priority-1). NEVER discover_city_*.
+      if (user?.id) {
+        await PreferencesService.updateUserPreferences(user.id, {
+          custom_lat: city.center_lat,
+          custom_lng: city.center_lng,
+          custom_location: city.name,
+          use_gps_location: false,
+        })
+        // Invalidate both location-bearing query keys so the deck picks up the
+        // override on first mount (I-LOCATION-INVALIDATE-ON-LOCATION-ONLY — this IS
+        // a real location change).
+        queryClient.invalidateQueries({ queryKey: ['userPreferences', user.id] })
+        queryClient.invalidateQueries({ queryKey: ['userLocation', user.id] })
+      }
+      // Keep local onboarding state consistent with the override (E-4: if userId
+      // were somehow null, we skip the DB write but still hold the chosen city).
+      setData((prev) => ({
+        ...prev,
+        useGpsLocation: false,
+        coordinates: { lat: city.center_lat, lng: city.center_lng },
+        cityName: city.name,
+      }))
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+      setLaunchGateWriting(false)
+      setLaunchGate({ phase: 'idle' })
+      if (autoAdvanceRef.current) { clearTimeout(autoAdvanceRef.current); autoAdvanceRef.current = null }
+      goNextRef.current()
+    } catch (err: unknown) {
+      // Constitution rule 3 / I-1028-NO-SILENT-SUCCESS: never appear to succeed.
+      logger.onboarding('Launch-city override write failed', {
+        error: err instanceof Error ? err.message : String(err),
+      })
+      setLaunchGateWriting(false)
+      setLaunchGateWriteError(true)
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
+      // Stay on the picker with the selection intact; the user retries the same city.
+    }
+  }, [launchGateSelectedCity, user?.id, queryClient])
 
   // ─── Location Permission ───
   const handleLocationRequest = useCallback(async () => {
@@ -1557,6 +1719,29 @@ const OnboardingFlow = ({
     setSavingPrefs(true)
     setPrefsSaveError(false)
     try {
+      // ORCH-1036 [gate-override clobber]: this final save must NOT null out the
+      // launch-city override the location step already wrote (I-1028-ONE-LOCATION-OWNER).
+      // The launch-city gate sets data.cityName + data.coordinates + useGpsLocation=false
+      // but NOT data.manualLocation; the legacy manual-location flow sets data.manualLocation.
+      // Sourcing custom_location from the always-null data.manualLocation clobbered the
+      // gate's custom_location to null while the coords survived (column-scoped upsert),
+      // leaving a deck-works-but-blank-city state. Derive the four location fields from
+      // the SAME onboarding state the location step populated, keyed off use_gps_location:
+      //  - GPS user  → custom_location/lat/lng = null (no stale override)
+      //  - non-GPS   → custom_location = data.cityName (gate) ?? data.manualLocation (legacy),
+      //                coords from data.coordinates
+      // This derives from existing state — it is NOT a third independent writer.
+      const {
+        custom_location: resolvedCustomLocation,
+        custom_lat: resolvedCustomLat,
+        custom_lng: resolvedCustomLng,
+      } = resolveOnboardingLocationOverride({
+        useGpsLocation: data.useGpsLocation,
+        cityName: data.cityName,
+        manualLocation: data.manualLocation,
+        coordinates: data.coordinates,
+      })
+
       await withTimeout(
         PreferencesService.updateUserPreferences(user.id, {
           intents: data.selectedIntents,
@@ -1568,10 +1753,12 @@ const OnboardingFlow = ({
           date_option: 'this_weekend',
           selected_dates: data.selectedDates?.length > 0 ? data.selectedDates : null,
           use_gps_location: data.useGpsLocation,
-          custom_location: data.manualLocation,
+          custom_location: resolvedCustomLocation,
+          custom_lat: resolvedCustomLat,
+          custom_lng: resolvedCustomLng,
           intent_toggle: true,
           category_toggle: true,
-        } as any),
+        }),
         8000,
         'saveOnboardingPreferences'
       )
@@ -1594,9 +1781,9 @@ const OnboardingFlow = ({
         datetime_pref: datetimePref,
         date_option: 'this_weekend',
         use_gps_location: data.useGpsLocation,
-        custom_location: data.manualLocation,
-        custom_lat: data.coordinates?.lat ?? null,
-        custom_lng: data.coordinates?.lng ?? null,
+        custom_location: resolvedCustomLocation,
+        custom_lat: resolvedCustomLat,
+        custom_lng: resolvedCustomLng,
         intent_toggle: true,
         category_toggle: true,
         selected_dates: data.selectedDates?.length > 0 ? data.selectedDates : null,
@@ -1901,8 +2088,32 @@ const OnboardingFlow = ({
           persistStep(3).catch(() => {})
           handleGoNext()
         }, hide: false }
-      case 'location':
-        return { label: t('onboarding:location.cta_enable'), disabled: locationStatus === 'requesting', loading: locationStatus === 'requesting', onPress: handleLocationRequest, hide: true }
+      case 'location': {
+        // [ORCH-1028] The launch-city gate phases own the shell bottom-bar CTA;
+        // every other location render uses its own inline buttons (hide: true).
+        switch (launchGate.phase) {
+          case 'out_of_city':
+            return { label: t('onboarding:launch_gate.out_of_city_cta'), disabled: false, loading: false, onPress: () => setLaunchGate({ phase: 'picker', liveCities: launchGate.liveCities }), hide: false }
+          case 'picker':
+            return {
+              label: launchGateSelectedCity
+                ? t('onboarding:launch_gate.picker_confirm', { city: launchGateSelectedCity.name })
+                : t('onboarding:launch_gate.picker_confirm_placeholder'),
+              disabled: !launchGateSelectedCity || launchGateWriting,
+              loading: launchGateWriting,
+              onPress: handleLaunchGateConfirmCity,
+              hide: false,
+            }
+          case 'no_live_cities':
+            return { label: t('onboarding:launch_gate.no_live_cities_cta'), disabled: false, loading: false, onPress: handleLaunchGateProceedWithGps, hide: false }
+          case 'check_failed':
+            return { label: t('onboarding:launch_gate.check_failed_cta'), disabled: false, loading: false, onPress: handleLaunchGateRetry, hide: false }
+          case 'checking':
+          case 'idle':
+          default:
+            return { label: t('onboarding:location.cta_enable'), disabled: locationStatus === 'requesting', loading: locationStatus === 'requesting', onPress: handleLocationRequest, hide: true }
+        }
+      }
       case 'celebration':
         return { label: t('common:next'), disabled: false, loading: false, onPress: handleGoNext, hide: false }
       case 'categories':
@@ -1941,12 +2152,16 @@ const OnboardingFlow = ({
       default:
         return { label: t('common:next'), disabled: false, loading: false, onPress: handleGoNext, hide: false }
     }
-  }, [navState, data, otpCode, otpLoading, sendingOtp, isPhoneValid, smsConsentChecked, valuePropBeat, locationStatus, selectedLocation, savingPrefs, prefsSaveError, handleGoNext, handleSendOtp, handleVerifyOtp, handleLocationRequest, handleManualLocation, handleSavePreferences, handleSaveIdentity, persistStep, goToSubStep])
+  }, [navState, data, otpCode, otpLoading, sendingOtp, isPhoneValid, smsConsentChecked, valuePropBeat, locationStatus, selectedLocation, savingPrefs, prefsSaveError, handleGoNext, handleSendOtp, handleVerifyOtp, handleLocationRequest, handleManualLocation, handleSavePreferences, handleSaveIdentity, persistStep, goToSubStep, launchGate, launchGateSelectedCity, launchGateWriting, handleLaunchGateConfirmCity, handleLaunchGateProceedWithGps, handleLaunchGateRetry])
 
   // ─── Render Step Content ───
   const renderContent = () => {
     const { step, subStep } = navState
     logger.onboarding(`Rendering: Step ${step} / ${subStep}`)
+
+    // [ORCH-1028 Part-2 R-2] Two-up selection-tile width from the live window
+    // (transport / travel-time grids), replacing the module-scope SCREEN_WIDTH capture.
+    const selectionTileWidth = (winWidth - 48 - 8) / 2
 
     // ─── STEP 1 ───
     if (subStep === 'language') {
@@ -2263,6 +2478,35 @@ const OnboardingFlow = ({
 
           {showDatePicker && (
             <View style={{ marginTop: spacing.sm }}>
+              {/* [ORCH-1028 REWORK F-3] iOS "Done" sits ABOVE the spinner as a toolbar
+                  row (directly under the DOB field), so it is never occluded by the
+                  fixed bottom CTA bar on short viewports (iPhone SE 3). The spinner
+                  renders below it. Android uses its own native modal/confirm — no row. */}
+              {Platform.OS === 'ios' && (
+                <Pressable
+                  style={{
+                    alignItems: 'flex-end',
+                    paddingHorizontal: spacing.md,
+                    paddingVertical: spacing.sm,
+                  }}
+                  onPress={() => {
+                    const dateToCommit = pendingBirthdayRef.current
+                    if (dateToCommit) {
+                      setData((p) => ({ ...p, userBirthday: dateToCommit }))
+                      pendingBirthdayRef.current = null
+                    }
+                    setShowDatePicker(false)
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('common:done')}
+                >
+                  <Text style={{
+                    ...typography.md,
+                    fontWeight: fontWeights.semibold,
+                    color: colors.primary[600],
+                  }}>{t('common:done')}</Text>
+                </Pressable>
+              )}
               <DateTimePicker
                 value={pendingBirthdayRef.current || data.userBirthday || BIRTHDAY_PICKER_DEFAULT}
                 mode="date"
@@ -2282,29 +2526,6 @@ const OnboardingFlow = ({
                   if (selectedDate) pendingBirthdayRef.current = selectedDate
                 }}
               />
-              {Platform.OS === 'ios' && (
-                <Pressable
-                  style={{
-                    alignItems: 'flex-end',
-                    paddingHorizontal: spacing.md,
-                    paddingVertical: spacing.sm,
-                  }}
-                  onPress={() => {
-                    const dateToCommit = pendingBirthdayRef.current
-                    if (dateToCommit) {
-                      setData((p) => ({ ...p, userBirthday: dateToCommit }))
-                      pendingBirthdayRef.current = null
-                    }
-                    setShowDatePicker(false)
-                  }}
-                >
-                  <Text style={{
-                    ...typography.md,
-                    fontWeight: fontWeights.semibold,
-                    color: colors.primary[600],
-                  }}>{t('common:done')}</Text>
-                </Pressable>
-              )}
             </View>
           )}
 
@@ -2319,23 +2540,25 @@ const OnboardingFlow = ({
         { icon: 'people-outline' as const, headline: t('onboarding:value_prop.beat2_headline'), sub: t('onboarding:value_prop.beat2_sub') },
         { icon: 'flash-outline' as const, headline: t('onboarding:value_prop.beat3_headline'), sub: t('onboarding:value_prop.beat3_sub') },
       ]
+      // [ORCH-1028 Part-2 R-2] page width from live window, not module capture.
+      const pageWidth = winWidth - 48
       return (
-        <View style={styles.valuePropCenter}>
+        <View style={[styles.valuePropCenter, { minHeight: winHeight * 0.55 }]}>
           <ScrollView
             horizontal
             pagingEnabled
             showsHorizontalScrollIndicator={false}
-            style={{ width: SCREEN_WIDTH - 48 }}
+            style={{ width: pageWidth }}
             contentContainerStyle={{ alignItems: 'center' }}
             onMomentumScrollEnd={(e) => {
-              const idx = Math.round(e.nativeEvent.contentOffset.x / (SCREEN_WIDTH - 48))
+              const idx = Math.round(e.nativeEvent.contentOffset.x / pageWidth)
               if (idx >= 0 && idx < beats.length) {
                 setValuePropBeat(idx)
               }
             }}
           >
             {beats.map((beat, i) => (
-              <View key={i} style={{ width: SCREEN_WIDTH - 48, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16 }}>
+              <View key={i} style={{ width: pageWidth, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16 }}>
                 <View style={styles.vpIconWrap}>
                   <Icon name={beat.icon} size={64} color={colors.primary[500]} />
                 </View>
@@ -2365,7 +2588,8 @@ const OnboardingFlow = ({
                 <Animated.View
                   key={intent.id}
                   style={{
-                    width: INTENT_CARD_WIDTH,
+                    // [ORCH-1028 Part-2 R-2] live width
+                    width: intentCardWidth(winWidth),
                     opacity: intentAnims[idx].opacity,
                     transform: [{ scale: intentAnims[idx].scale }],
                   }}
@@ -2409,11 +2633,123 @@ const OnboardingFlow = ({
       // inside `if (locationStatus === 'settings')`, TS narrows to literal 'settings'
       // and flags comparisons to 'requesting' as impossible.
       const isRequesting = locationStatus === 'requesting';
+
+      // ─── ORCH-1028 launch-city gate renders (DESIGN §3) ───
+      // Rendered BEFORE the locationStatus-driven renders, gated by launchGate.phase.
+      // `checking` falls through to the existing `granted` card (DESIGN §3.0) with a
+      // small overlaid indicator — no third layout flash. `idle` (in-city) is the
+      // byte-unchanged granted passthrough.
+
+      // §3.A Reassurance — out_of_city
+      if (launchGate.phase === 'out_of_city') {
+        const city = data.cityName
+        return (
+          <View style={styles.locContainer}>
+            <Animated.View style={[styles.locGlassCard, { opacity: locIconAnim.opacity, transform: [{ scale: locIconAnim.scale }, { translateY: locIconAnim.translateY }] }]}>
+              <Animated.View style={[styles.locIconCircle, { transform: [{ scale: locPulse }] }]}>
+                <Icon name="paper-plane-outline" size={36} color={colors.primary[500]} />
+              </Animated.View>
+            </Animated.View>
+            <Animated.Text style={[styles.locHeadline, { opacity: locHeadlineAnim.opacity, transform: [{ translateY: locHeadlineAnim.translateY }] }]}>
+              {city
+                ? t('onboarding:launch_gate.out_of_city_headline', { city })
+                : t('onboarding:launch_gate.out_of_city_headline_no_city')}
+            </Animated.Text>
+            <Animated.Text style={[styles.locBody, { opacity: locBodyAnim.opacity, transform: [{ translateY: locBodyAnim.translateY }] }]}>
+              {t('onboarding:launch_gate.out_of_city_body')}
+            </Animated.Text>
+          </View>
+        )
+      }
+
+      // §3.B Picker — pick from the frozen liveCities only (DEC-1028-6)
+      if (launchGate.phase === 'picker') {
+        return (
+          <View>
+            <LaunchCityPicker
+              cities={launchGate.liveCities}
+              selectedCityId={launchGateSelectedCity?.id ?? null}
+              onSelect={(c) => { setLaunchGateWriteError(false); setLaunchGateSelectedCity(c) }}
+              origin={data.coordinates}
+              disabled={launchGateWriting}
+            />
+            {launchGateWriteError && (
+              <View style={styles.gateInlineError}>
+                <Icon name="alert-circle-outline" size={16} color={colors.error[600]} />
+                <Text style={styles.gateInlineErrorText}>
+                  {t('onboarding:launch_gate.write_failed_inline')}
+                </Text>
+              </View>
+            )}
+          </View>
+        )
+      }
+
+      // §3.D Degraded — zero live cities (E-3, should not fire in production)
+      if (launchGate.phase === 'no_live_cities') {
+        return (
+          <View style={styles.locContainer}>
+            <Animated.View style={[styles.locGlassCard, { opacity: locIconAnim.opacity, transform: [{ scale: locIconAnim.scale }, { translateY: locIconAnim.translateY }] }]}>
+              <Animated.View style={[styles.locIconCircle, { transform: [{ scale: locPulse }] }]}>
+                <Icon name="time-outline" size={36} color={colors.primary[500]} />
+              </Animated.View>
+            </Animated.View>
+            <Animated.Text style={[styles.locHeadline, { opacity: locHeadlineAnim.opacity, transform: [{ translateY: locHeadlineAnim.translateY }] }]}>
+              {t('onboarding:launch_gate.no_live_cities_headline')}
+            </Animated.Text>
+            <Animated.Text style={[styles.locBody, { opacity: locBodyAnim.opacity, transform: [{ translateY: locBodyAnim.translateY }] }]}>
+              {t('onboarding:launch_gate.no_live_cities_body')}
+            </Animated.Text>
+          </View>
+        )
+      }
+
+      // §3.E Check-failed — transient backend hiccup (E-2). Neutral, NO red.
+      if (launchGate.phase === 'check_failed') {
+        return (
+          <View style={styles.locContainer}>
+            <Animated.View style={[styles.locGlassCard, { opacity: locIconAnim.opacity, transform: [{ scale: locIconAnim.scale }, { translateY: locIconAnim.translateY }] }]}>
+              <View style={styles.gateNeutralCircle}>
+                <Icon name="refresh-outline" size={36} color={colors.text.secondary} />
+              </View>
+            </Animated.View>
+            <Animated.Text style={[styles.locHeadline, { opacity: locHeadlineAnim.opacity, transform: [{ translateY: locHeadlineAnim.translateY }] }]}>
+              {t('onboarding:launch_gate.check_failed_headline')}
+            </Animated.Text>
+            <Animated.Text style={[styles.locBody, { opacity: locBodyAnim.opacity, transform: [{ translateY: locBodyAnim.translateY }] }]}>
+              {t('onboarding:launch_gate.check_failed_body')}
+            </Animated.Text>
+            {/* ≥2 failures: quiet "Continue anyway" escape (§B.5) — hidden on first fail. */}
+            {launchCheckFailures >= 2 && (
+              <Animated.View style={[{ opacity: locButtonAnim.opacity, marginTop: spacing.md }]}>
+                <Pressable
+                  style={styles.gateSecondaryLink}
+                  onPress={handleLaunchGateProceedWithGps}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('onboarding:launch_gate.check_failed_continue_anyway')}
+                  accessibilityHint={t('onboarding:launch_gate.continue_anyway_hint')}
+                >
+                  <Text style={styles.gateSecondaryLinkText}>
+                    {t('onboarding:launch_gate.check_failed_continue_anyway')}
+                  </Text>
+                </Pressable>
+              </Animated.View>
+            )}
+          </View>
+        )
+      }
+
       if (locationStatus === 'granted') {
+        // [ORCH-1028 §3.0] During `checking` the gate decision is in flight — hold
+        // this exact success card (no third layout), show "Checking your city", and
+        // disable tap-to-advance until the gate resolves.
+        const isChecking = launchGate.phase === 'checking'
         return (
           <Pressable
             style={styles.locContainer}
+            disabled={isChecking}
             onPress={() => {
+              if (isChecking) return
               if (autoAdvanceRef.current) { clearTimeout(autoAdvanceRef.current); autoAdvanceRef.current = null }
               goNextRef.current()
             }}
@@ -2426,7 +2762,14 @@ const OnboardingFlow = ({
             <Animated.Text style={[styles.locHeadline, { opacity: locHeadlineAnim.opacity, transform: [{ translateY: locHeadlineAnim.translateY }] }]}>
               {t('onboarding:location.granted_headline', { city: data.cityName })}
             </Animated.Text>
-            <Text style={styles.locTapHint}>{t('onboarding:location.granted_tap_hint')}</Text>
+            {isChecking ? (
+              <View style={styles.gateCheckingRow} accessibilityLabel={t('onboarding:launch_gate.checking')}>
+                <ActivityIndicator size="small" color={colors.primary[500]} />
+                <Text style={styles.locTapHint}>{t('onboarding:launch_gate.checking')}</Text>
+              </View>
+            ) : (
+              <Text style={styles.locTapHint}>{t('onboarding:location.granted_tap_hint')}</Text>
+            )}
           </Pressable>
         )
       }
@@ -2636,7 +2979,7 @@ const OnboardingFlow = ({
             {TRANSPORT_MODES.map((mode) => (
               <Pressable
                 key={mode.value}
-                style={[styles.selectionTile, styles.selectionTileTall, data.travelMode === mode.value && styles.selectionTileActive]}
+                style={[styles.selectionTile, { width: selectionTileWidth }, styles.selectionTileTall, data.travelMode === mode.value && styles.selectionTileActive]}
                 onPress={() => {
                   logger.action(`Transport selected: ${mode.value}`)
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
@@ -2667,6 +3010,7 @@ const OnboardingFlow = ({
                 key={mins}
                 style={[
                   styles.selectionTile,
+                  { width: selectionTileWidth },
                   !showCustomTravelTime && data.travelTimeMinutes === mins && styles.selectionTileActive,
                   showCustomTravelTime && styles.selectionTileDimmed,
                 ]}
@@ -2880,7 +3224,7 @@ const OnboardingFlow = ({
       hidePrimaryCta={ctaConfig.hide}
       hideBottomBar={navState.subStep === 'getting_experiences'}
       disableKeyboardAvoidance={navState.subStep === 'collaborations' || navState.subStep === 'welcome'}
-      scrollEnabled={navState.subStep !== 'welcome' && navState.subStep !== 'intents' && navState.subStep !== 'celebration' && navState.subStep !== 'gender_identity' && navState.subStep !== 'collaborations' && navState.subStep !== 'categories'}
+      scrollEnabled={resolveScrollEnabled(navState.subStep, isShortViewport)}
       flushContent={navState.subStep === 'categories'}
       onBackToWelcome={isFirstScreen ? handleBackToWelcome : undefined}
     >
@@ -2942,7 +3286,7 @@ const styles = StyleSheet.create({
   valuePropCenter: {
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: SCREEN_HEIGHT * 0.55,
+    // [ORCH-1028 Part-2 R-2] minHeight is supplied inline from the live window height.
   },
   textCenter: {
     textAlign: 'center',
@@ -2955,8 +3299,10 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   welcomeName: {
-    fontSize: 40,
-    lineHeight: 48,
+    // [ORCH-1028 Part-2 R-1] ms-scaled so the 40pt name shrinks on SE / small Android
+    // (already has adjustsFontSizeToFit as a second safety net) (SPEC §D.0 R-1).
+    fontSize: ms(40),
+    lineHeight: ms(48),
     fontWeight: fontWeights.bold,
     color: colors.text.primary,
     letterSpacing: -1.0,
@@ -2984,15 +3330,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
   },
   nameGreeting: {
-    fontSize: 28,
-    lineHeight: 36,
+    // [ORCH-1028 Part-2 R-1] ms-scaled (SPEC §D.0 R-1).
+    fontSize: ms(28),
+    lineHeight: ms(36),
     fontWeight: fontWeights.regular,
     color: colors.text.secondary,
     textAlign: 'center',
   },
   nameGreetingAccent: {
-    fontSize: 36,
-    lineHeight: 44,
+    // [ORCH-1028 Part-2 R-1] ms-scaled — the 36pt accent line was the worst SE overflow
+    // risk in the name-collection stack (SPEC §D.0 R-1).
+    fontSize: ms(36),
+    lineHeight: ms(44),
     fontWeight: fontWeights.bold,
     color: colors.text.primary,
     textAlign: 'center',
@@ -3263,7 +3612,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.lg,
   },
   selectionTile: {
-    width: (SCREEN_WIDTH - 48 - 8) / 2,
+    // [ORCH-1028 Part-2 R-2] width is supplied inline (live window) at the call site.
     height: 80,
     borderRadius: radius.md,
     borderWidth: 1.5,
@@ -3514,7 +3863,12 @@ const styles = StyleSheet.create({
   },
   // ─── Location Step (Glass Morphism) ───
   locContainer: {
-    flex: 1,
+    // [ORCH-1028 Part-2 R-1/host-screen] Was `flex:1` — inside the shell's scrollable
+    // ScrollView that collapsed the centered stack and could clip the headline/body/CTA
+    // on iPhone SE. `flexGrow:1` lets the stack center when it fits and the ScrollView
+    // scroll when the scaled content still exceeds the viewport (SPEC §D.1 location row,
+    // highest priority). minHeight is supplied inline from the live window.
+    flexGrow: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingTop: spacing.xxl,
@@ -3551,7 +3905,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   locHeadline: {
-    ...typography.xxxl,
+    // [ORCH-1028 Part-2 R-1] responsiveTypography.xxxl (ms-scaled) so the 32pt headline
+    // shrinks gently on iPhone SE / small Android instead of clipping (SPEC §0.8 / R-1).
+    ...responsiveTypography.xxxl,
     fontWeight: fontWeights.bold,
     color: colors.text.primary,
     letterSpacing: -0.5,
@@ -3634,6 +3990,49 @@ const styles = StyleSheet.create({
     ...typography.xs,
     fontWeight: fontWeights.medium,
     color: colors.text.tertiary,
+  },
+  // ─── ORCH-1028 launch-city gate (DESIGN §3) ───
+  gateCheckingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  // §3.E neutral grey circle for check-failed (NOT the warm brand circle, NOT red)
+  gateNeutralCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: colors.gray[100],
+    borderWidth: 1.5,
+    borderColor: colors.gray[200],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // §3.E quiet "Continue anyway" escape (only after >=2 failures)
+  gateSecondaryLink: {
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.lg,
+  },
+  gateSecondaryLinkText: {
+    ...responsiveTypography.sm,
+    fontWeight: fontWeights.semibold,
+    color: colors.text.tertiary,
+    letterSpacing: 0.2,
+  },
+  // §3.B inline write-failure strip (this IS a real failure → red is correct here)
+  gateInlineError: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginTop: responsiveSpacing.md,
+  },
+  gateInlineErrorText: {
+    ...responsiveTypography.sm,
+    color: colors.error[600],
+    flexShrink: 1,
   },
   // ─── Generic Inline Button (launch retry etc.) ───
   primaryButton: {

@@ -151,6 +151,21 @@ export const usePublicTripBySlug = (
             typeof bt.destinationLat === "number" ? bt.destinationLat : null,
           destinationLng:
             typeof bt.destinationLng === "number" ? bt.destinationLng : null,
+          // ORCH-1016 — departure (origin). Prefer the canonical
+          // events.departure_text column; fall back to theme.business_trip.
+          departurePlaceId:
+            typeof bt.departurePlaceId === "string" ? bt.departurePlaceId : null,
+          departureLocationText:
+            typeof event.departure_text === "string" &&
+            (event.departure_text as string).trim().length > 0
+              ? (event.departure_text as string)
+              : typeof bt.departureLocationText === "string"
+                ? bt.departureLocationText
+                : null,
+          departureLat:
+            typeof bt.departureLat === "number" ? bt.departureLat : null,
+          departureLng:
+            typeof bt.departureLng === "number" ? bt.departureLng : null,
           capacity: typeof bt.capacity === "number" ? bt.capacity : null,
         },
         days: days.map(

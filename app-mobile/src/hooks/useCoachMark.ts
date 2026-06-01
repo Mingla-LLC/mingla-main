@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
-import { View, Platform, StatusBar } from 'react-native';
+import { View, Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useCoachMarkContext } from '../contexts/CoachMarkContext';
 
 interface UseCoachMarkResult {
@@ -22,6 +23,7 @@ interface UseCoachMarkResult {
  */
 export function useCoachMark(stepId: number, targetRadius: number = 8): UseCoachMarkResult {
   const { currentStep, registerTarget } = useCoachMarkContext();
+  const insets = useSafeAreaInsets();
   const nodeRef = useRef<View | null>(null);
   const isActive = currentStep === stepId;
 
@@ -37,17 +39,29 @@ export function useCoachMark(stepId: number, targetRadius: number = 8): UseCoach
       // (which extends behind the status bar under edge-to-edge — see app.json
       // `edgeToEdgeEnabled: true` + the translucent <StatusBar> at app/index.tsx).
       // node.measureInWindow on Android returns Y in the application-content
-      // frame (excluding the status-bar zone). The two frames differ by exactly
-      // StatusBar.currentHeight, so the cutout was rendered ~24dp above its
-      // target (founder Samsung Galaxy screenshots: step 2 cutout sat on the
-      // system clock; step 4 cutout sat on a status-bar icon). On iOS the
-      // keyWindow + React root view share one frame, so this branch is a no-op.
+      // frame (excluding the status-bar zone), so the cutout was rendered ~24dp
+      // above its target (founder Samsung Galaxy screenshots: step 2 cutout sat on
+      // the system clock). On iOS the keyWindow + React root view share one frame,
+      // so this branch is a no-op.
+      //
+      // ORCH-1029 (F-4): the correction SOURCE is now the resolved safe-area top
+      // inset (`insets.top`), NOT raw StatusBar.currentHeight. Under Android 15
+      // edge-to-edge (Expo SDK 54, edgeToEdgeEnabled:true), measureInWindow already
+      // returns Y close to the window frame, so adding the full
+      // StatusBar.currentHeight DOUBLE-COUNTS the inset → cutout ~14dp too high into
+      // the status bar. `insets.top` is the value WindowInsets actually applied:
+      // edge-to-edge-correct on Android 15 AND equal to the status-bar height on
+      // legacy/pre-edge-to-edge Android, so the ORCH-0688 case stays corrected (no
+      // regression). Keep this a POSITIVE Android correction — do NOT remove it and
+      // do NOT revert to StatusBar.currentHeight.
+      // Refs: https://developer.android.com/about/versions/15/behavior-changes-15#edge-to-edge
+      //       https://github.com/th3rdwave/react-native-safe-area-context#usesafeareainsets
       // Do NOT remove without re-reading SPEC_ORCH-0688_COACH_MARK_ANDROID_OFFSET.md.
-      const correctedY = Platform.OS === 'android' ? y + (StatusBar.currentHeight ?? 0) : y;
+      const correctedY = Platform.OS === 'android' ? y + insets.top : y;
 
       registerTarget(stepId, { x, y: correctedY, width, height, radius: targetRadius });
     });
-  }, [stepId, targetRadius, registerTarget]);
+  }, [stepId, targetRadius, registerTarget, insets.top]);
 
   const targetRef = useCallback((node: View | null): void => {
     nodeRef.current = node;

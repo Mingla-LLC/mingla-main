@@ -1,5 +1,44 @@
 # Agent Handoffs
 
+## 2026-05-31 — ORCH-1022 [DM-shared card freeze + single-card Policies & Reservations dead taps] CLOSED PASS Grade A
+
+**Pipeline executed:** Codex `orchestrator-mingla` INTAKE + spawn → Codex `forensic-mingla` INVESTIGATE → Codex `implementor-mingla` IMPLEMENT → Codex `tester-mingla` TEST FAIL P1 (iOS Schedule picker still collided with root sheet) → Codex `implementor-mingla` REWORK → Codex `tester-mingla` RETEST PASS → Seth dev-build smoke PASS ("passes") → Codex `orchestrator-mingla` CLOSE.
+
+**Worktree:** `~/Desktop/mingla-orchs/ORCH-1022-[dm-shared-card-freeze-policies-reservations]` on branch `ORCH-1022-dm-shared-card-freeze-policies-reservations`.
+
+**Step 0.5 satisfied:** `npm run test:orch-1022` passes 8/8, including parent overlay aggregate, root-sheet gating, synthetic close swallow, curated browser/lightbox ownership, schedule-picker visibility callback, both ActionButtons call sites, and reset-on-close. Fail-on-revert against the previous implementation fails 5/8. `npm run test:orch-0908-chat` passes 6/6.
+
+**Close gates:** tester retest PASS with zero P0/P1; Seth runtime smoke on `exp://172.20.9.90:8084` reported "passes"; zero `[ORCH-1022-DIAG]`; no backend/migration/Vercel deploy; app-mobile OTA deferred under `project_ota_deferred_until_new_build`.
+
+**Artifacts:** investigation, implementation, initial QA, and retest QA reports live under `Mingla_Artifacts/reports/`. Close note: `Mingla_Artifacts/CLOSE_NOTE_ORCH-1022_DM_SHARED_CARD_FREEZE_POLICIES_RESERVATIONS.md`.
+
+**Residuals:** optional Android manual smoke only; ORCH-0910 curated chat payload failures remain out of scope.
+
+---
+
+## 2026-05-31 — ORCH-1023 [Scheduling picker regression after decisive scheduling fix] CLOSED PASS Grade A
+
+**Pipeline executed (worktree `~/Desktop/mingla-orchs/ORCH-1023-[scheduling-picker-regression]` on branch `ORCH-1023-scheduling-picker-regression`):** operator report -> Codex `implementor-mingla` hotfix -> Codex `tester-mingla` PASS -> Seth app smoke PASS ("works now, schedule is fixed") -> Codex `orchestrator-mingla` CLOSE.
+
+**Step 0.5 satisfied:** `app-mobile/src/components/ui/__tests__/WaveBBatch4.test.mjs` now asserts `ProposeDateTimeModal` does not import/use nested `RNModal` picker overlays, keeps Android `DateTimePicker display="default"`, and contains inline iOS date/time picker panels. Fail-on-revert proof confirms the parent source had `Modal as RNModal`, two `<RNModal>` picker overlays, and no inline picker test IDs.
+
+**Evidence:** implementation report `Mingla_Artifacts/reports/IMPLEMENTATION_ORCH-1023_SCHEDULING_PICKER_REGRESSION.md`; QA report `Mingla_Artifacts/reports/QA_ORCH-1023_SCHEDULING_PICKER_REGRESSION.md`.
+
+**Close gates:** focused regression PASS; scheduling source/single-card/curated-stop Deno tests PASS (12/12); scoped Expo lint PASS; `git diff --check` PASS; zero `[ORCH-1023-DIAG]` markers; no migration; no Supabase edge deploy; no Vercel `[deploy]` tag. Broad `app-mobile` `tsc` remains blocked by unrelated existing repo-wide debt outside this hotfix.
+
+---
+## 2026-05-30 — ORCH-1021 [Decisive scheduling availability for curated + single cards] CLOSED PASS Grade A
+
+**Pipeline executed (worktree `~/Desktop/mingla-orchs/ORCH-1021-[curated-stop-timezone-false-open]` on branch `ORCH-1021-curated-stop-timezone-false-open`):** operator report → Codex `orchestrator-mingla` takeover → Codex `implementor-mingla` implementation → Codex `tester-mingla` FAIL (P1 ActionButtons curated ordering + P1 PracticalDetails type drift) → Codex `implementor-mingla` P1 rework → Codex `tester-mingla` CONDITIONAL PASS → Seth app smoke PASS ("works great now") → Codex `tester-mingla` final QA receipt → Codex `orchestrator-mingla` CLOSE.
+
+**Step 0.5 satisfied:** parser, single-card helper, curated-stop validator, weak-copy removal, source-order contract, and UTC-offset passthrough are covered by repo-running tests. Fail-on-old proof confirms the ActionButtons curated-ordering test fails against the QA-failed parent commit.
+
+**Evidence:** implementation reports `Mingla_Artifacts/reports/IMPLEMENTATION_ORCH-1021_CURATED_STOP_TIMEZONE_FALSE_OPEN.md` and `Mingla_Artifacts/reports/IMPLEMENTATION_REWORK_ORCH-1021_DECISIVE_CURATED_AND_SINGLE_SCHEDULING.md`; QA reports `Mingla_Artifacts/reports/QA_ORCH-1021_CURATED_STOP_TIMEZONE_FALSE_OPEN.md`, `QA_RETEST_ORCH-1021_DECISIVE_CURATED_AND_SINGLE_SCHEDULING.md`, `QA_RETEST2_ORCH-1021_DECISIVE_CURATED_AND_SINGLE_SCHEDULING.md`, and `QA_FINAL_ORCH-1021_DECISIVE_CURATED_AND_SINGLE_SCHEDULING.md`.
+
+**Close gates:** zero `[ORCH-1021-DIAG]` markers; no migration; Supabase edge function edits are allowlisted for ORCH-0863 C7; post-merge deploy required for `discover-cards` and conditionally `generate-curated-experiences`; no EAS update per current mobile OTA deferral policy.
+
+---
+
 ## 2026-05-25 — ORCH-0955 [Native Stripe Tax for Platforms] CLOSED PASS Grade A
 
 **Pipeline executed (worktree `~/Desktop/mingla-orchs/ORCH-0955-[native-stripe-tax]/` on branch `ORCH-0955-native-stripe-tax`):** Claude `mingla-orchestrator` (operator manual spawn, INTAKE pre-existing) → Claude `mingla-forensics` INVESTIGATE (resolved against post-ORCH-0953 main via Amendment 1; 11 findings F-1..F-11 HIGH confidence) → Claude `mingla-orchestrator` REVIEW APPROVED → Claude `mingla-forensics` SPEC (resolved 14 open questions: 13 orchestrator-locked + Q8 operator-locked; 16 success criteria + 5 new invariants + 28-row test matrix + Amendment A for COMMS-0002 ORCH-0863 C7 allowlist) → Codex `implementor-mingla` IMPLEMENT at `d2106b21` (41 files, +4612/-1214; ORCH-0840 happy-path T-IH-01..T-IH-13 with fails-on-revert at d2106b21) → Claude `mingla-orchestrator` REVIEW APPROVED at `d673f1d5` (spot-checked cross-ORCH gate touches legitimate; live DB probe confirmed zero pg_depend dependents on DROP+RECREATE'd RPCs) → operator `supabase db push --linked` (migration `20260727000000_orch_0955_native_stripe_tax.sql` applied 2026-05-25) → Claude `mingla-orchestrator` DEPLOY (5 edge functions: ticket-checkout-create v103→v110, refund-order v70→v76, brand-stripe-tax-account-session new→v1, ticket-confirmation-dispatch v91→v97, stripe-webhook v128→v137 with `verify_jwt: false` preserved) → Codex `tester-mingla` TEST (P0/P1 findings) → Codex `implementor-mingla` REWORK QA fixes → Codex `tester-mingla` RETEST 1 → Codex `implementor-mingla` REWORK (ORCH-0863 C7 allowlist for `shell.test.ts`) → Codex `tester-mingla` RETEST 2 PASS (P0:0 P1:0 P2:0 P3:0 P4:1; 17/17 ORCH-0955 regression tests + 10/10 email shell tests + all 5 strict-grep gates + ORCH-0804 + ORCH-0863 C7 all PASS at `122000e6`) → Codex `orchestrator-mingla` routed CLOSE to Claude → Claude `mingla-orchestrator` CLOSE this commit.
