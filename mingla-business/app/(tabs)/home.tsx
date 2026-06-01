@@ -27,7 +27,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  useWindowDimensions,
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
@@ -61,36 +60,25 @@ import {
   useCurrentBrandStore,
   type Brand,
 } from "../../src/store/currentBrandStore";
-import { useDraftVenueStore } from "../../src/store/draftVenueStore";
 import { useCurrentBrand } from "../../src/hooks/useCurrentBrand";
 import { useCurrentBrandRecovery } from "../../src/hooks/useCurrentBrandRecovery";
-import { useBrandPlacePipelineState } from "../../src/hooks/useBrandPlacePipelineState";
+import { useBusinessTodos } from "../../src/hooks/useBusinessTodos";
 import { useResponsiveLayout } from "../../src/hooks/useResponsiveLayout";
-import { brandKeys, useBrands } from "../../src/hooks/useBrands";
+import { brandKeys } from "../../src/hooks/useBrands";
 import {
   eventOrdersKeys,
   useEventSalesSummaries,
 } from "../../src/hooks/useEventOrders";
-import { useServerDraftsForBrand } from "../../src/hooks/useServerDraftEvents";
 import {
   upcomingKeys,
   useUpcomingForBrand,
 } from "../../src/hooks/useUpcomingForBrand";
 import type { DraftEvent } from "../../src/store/draftEventStore";
-import { useDraftsForBrand } from "../../src/store/draftEventStore";
 import type { LiveEvent } from "../../src/store/liveEventStore";
 import type { Trip } from "../../src/services/tripsService";
 // ORCH-0865 REWORK 5 — canonical routing helper, ban hardcoded /event/{id}
 import { routeForEventRowDefensive } from "../../src/utils/routeForEventRow";
-import {
-  hasAnyDraftPaidOffering,
-  mostRecentDraftRoute,
-} from "../../src/utils/homeNextAction";
-import {
-  buildBusinessTodos,
-  type BusinessTodo,
-} from "../../src/utils/businessTodos";
-import { routeForPipelineStateFix } from "../../src/utils/deckReadinessRoutes";
+import type { BusinessTodo } from "../../src/utils/businessTodos";
 
 import { formatCurrencyRound } from "../../src/utils/currency";
 import { formatDraftDateLine } from "../../src/utils/eventDateDisplay";
@@ -101,14 +89,6 @@ interface ToastState {
   visible: boolean;
   message: string;
 }
-
-const greetingLabel = (): string => {
-  const hour = new Date().getHours();
-  if (hour < 5) return "Late night";
-  if (hour < 12) return "Good morning";
-  if (hour < 17) return "Good afternoon";
-  return "Good evening";
-};
 
 const getEventName = (name: string, fallback: string): string =>
   name.trim().length > 0 ? name : fallback;
@@ -133,20 +113,13 @@ const formatCapacityLabel = (event: LiveEvent): string => {
 export default function HomeTab(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const dimensions = useWindowDimensions();
   const { isWideDesktop } = useResponsiveLayout();
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const brandsQuery = useBrands(user?.id ?? null);
-  const brands = brandsQuery.data ?? [];
   const currentBrand = useCurrentBrand();
-  const currentBrandId = useCurrentBrandStore((s) => s.currentBrandId);
   const setCurrentBrand = useCurrentBrandStore((s) => s.setCurrentBrand);
   const brandRecovery = useCurrentBrandRecovery();
-  useServerDraftsForBrand(currentBrand?.id ?? null);
   const upcoming = useUpcomingForBrand(currentBrand?.id ?? null);
-  const pipelineState = useBrandPlacePipelineState(currentBrand?.id ?? null);
-  const drafts = useDraftsForBrand(currentBrand?.id ?? null);
   const [sheetVisible, setSheetVisible] = useState<boolean>(false);
   // ORCH-0826 M0: universal creator sheet (Create event/experience/trip)
   const [isUniversalCreatorOpen, setIsUniversalCreatorOpen] = useState<boolean>(false);
@@ -280,18 +253,6 @@ export default function HomeTab(): React.ReactElement {
     }
   }, [brandRecovery.errorMessage]);
 
-  const hasNoBrands = brandsQuery.isFetched && brands.length === 0;
-  const isBrandResolving =
-    !brandsQuery.isFetched ||
-    brandRecovery.isResolving ||
-    (brands.length > 0 && currentBrandId !== null && currentBrand === null);
-  const hasBrandsButNoSelection =
-    brandsQuery.isFetched &&
-    brands.length > 0 &&
-    currentBrandId === null &&
-    currentBrand === null &&
-    !isBrandResolving;
-
   const primaryLiveItem = upcoming.primaryLiveItem;
   const primaryLiveEvent: LiveEvent | null =
     primaryLiveItem !== null &&
@@ -362,19 +323,9 @@ export default function HomeTab(): React.ReactElement {
     [upcoming.counts],
   );
 
-  // ORCH-1038: the old per-card handlers (next-action / deck-readiness / add-venue)
-  // are folded into the unified to-do toggle below (see `handleTodoAction`).
-
-  // META-ORCH-1009 Sub-E: a persisted, in-progress venue draft (wizard started
-  // but not yet submitted) makes the no-venue entry a RESUME instead of a fresh
-  // start — so "continue where you left off" is reachable from Home after a
-  // refresh, not only by re-opening the wizard.
-  const venueDraftInProgress = useDraftVenueStore(
-    (s) =>
-      s.displayName.trim().length > 0 ||
-      s.workingName.trim().length > 0 ||
-      s.step > 0,
-  );
+  // ORCH-1038: the no-brand / choose-brand / add-venue / deck-readiness /
+  // rule-ladder / offering-chooser logic now lives in the shared useBusinessTodos
+  // hook + handleTodoAction below.
 
   // ORCH-0965 — scan-QR action visible ONLY when the primary live hero is
   // an `event`-kind offering. Experiences route to a coming-soon stub
@@ -398,55 +349,9 @@ export default function HomeTab(): React.ReactElement {
   const showKpiGrid = showRevenueTile || hasActiveEvents;
 
   // ORCH-1038 — unified smart to-do list: derived from live state, ordered by
-  // priority, auto-vanishing as conditions are met. One source of truth shared
-  // with Hub (see BusinessTodoToggle).
-  const pipelineRoute = useMemo(
-    () =>
-      currentBrand !== null
-        ? routeForPipelineStateFix({
-            brandId: currentBrand.id,
-            state: pipelineState.data,
-            fix: "review_pipeline",
-          })
-        : "",
-    [currentBrand, pipelineState.data],
-  );
-  const todos = useMemo(
-    () =>
-      buildBusinessTodos({
-        hasNoBrands,
-        hasBrandsButNoSelection,
-        brandResolving: isBrandResolving,
-        hasBrand: currentBrand !== null,
-        pipelineFetched: pipelineState.isFetched,
-        pipelineStatus: pipelineState.data?.status ?? null,
-        pipelineRoute,
-        venueDraftInProgress,
-        counts: {
-          total: upcoming.counts.total,
-          live: upcoming.counts.live,
-          draft: upcoming.counts.draft,
-        },
-        stripeActive: currentBrand?.stripeStatus === "active",
-        hasDraftPaidOffering: hasAnyDraftPaidOffering(drafts),
-        stripeRoute:
-          currentBrand !== null ? `/brand/${currentBrand.id}/payments` : "",
-        draftRoute: mostRecentDraftRoute(drafts),
-      }),
-    [
-      hasNoBrands,
-      hasBrandsButNoSelection,
-      isBrandResolving,
-      currentBrand,
-      pipelineState.isFetched,
-      pipelineState.data,
-      pipelineRoute,
-      venueDraftInProgress,
-      upcoming.counts,
-      upcoming.items.length,
-      drafts,
-    ],
-  );
+  // priority, auto-vanishing as conditions are met. Single source of truth shared
+  // with Hub (useBusinessTodos).
+  const todos = useBusinessTodos();
   const handleTodoAction = useCallback(
     (todo: BusinessTodo): void => {
       switch (todo.action.kind) {
