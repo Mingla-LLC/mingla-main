@@ -873,9 +873,10 @@ function DiscoverScreen({
 
   const { t } = useTranslation(["discover", "common"]);
   const insets = useSafeAreaInsets();
-  // ORCH-0635 (rework): step 6 target is the header panel (title + filter bar).
+  // ORCH-0635 (rework): step target is the header panel (title + filter bar).
   // targetRadius 24 → cutout radius 28 matches HEADER_PANEL_RADIUS for a neat fit.
-  const coachDiscoverFeed = useCoachMark(6, 24);
+  // ORCH-1029: renumbered 6 → 4 (steps 4/5 "Better together"/"Back to solo" deleted).
+  const coachDiscoverFeed = useCoachMark(4, 24);
 
   // Accessibility state (mirrors home chrome pattern)
   const [reduceTransparency, setReduceTransparency] = useState(false);

@@ -46,6 +46,10 @@ export default function SpotlightOverlay(): React.ReactElement | null {
     skipTour,
     targetMeasurements,
     overlayVisible,
+    // ORCH-1029 (F-1): consumed so the overlay re-renders when a measurement registers
+    // (the targetMeasurements Map is mutated in place). Releases step 1's deck-hold the
+    // instant the deck attaches + measures a plausible rect.
+    targetVersion,
   } = useCoachMarkContext();
   const layout = useAppLayout();
   const { t } = useTranslation(['modals', 'common']);
@@ -139,10 +143,43 @@ export default function SpotlightOverlay(): React.ReactElement | null {
   const isFirstStep = currentStep === 1;
   const isLastStep = currentStep === COACH_STEP_COUNT;
   const target: TargetRect | undefined = targetMeasurements.get(currentStep);
-  const hasTarget = target && target.width > 0 && target.height > 0;
+
+  // ORCH-1029 (F-1): fullscreen-rejection clamp. A valid cutout must be meaningfully
+  // SMALLER than the screen. On a warm Android deck, measureInWindow on the deck
+  // wrapper can return a near-fullscreen rect ({0,2,448,879}) → a whole-screen cutout =
+  // no visible spotlight. The deck card is a tall-but-not-full silhouette, so a real
+  // target is < 96% of screen width AND < 85% of screen height. An implausible
+  // (fullscreen) measurement is treated as NOT-yet-ready, not as a valid cutout.
+  // Spec: SPEC_ORCH-1029_COACH_MARK_FIXES.md §3.F-1 (SC-1.1).
+  const isPlausibleCutout = (t: TargetRect): boolean =>
+    t.width > 0 &&
+    t.height > 0 &&
+    t.width <= screenWidth * 0.96 &&
+    t.height <= screenHeight * 0.85;
+
+  const hasPlausibleTarget = !!target && isPlausibleCutout(target);
+
+  // ORCH-1029 (F-1): step 1 ("Meet your deck") owns a cutout and MUST NOT present a
+  // misleading no-cutout centered bubble (iOS) or a whole-screen cutout (Android) as its
+  // resting state. If the deck target is unmeasured or fullscreen, step 1 HOLDS — it
+  // renders nothing until a plausible rect arrives. The deck's callback-ref attach (when
+  // SwipeableCards leaves the "Curating" skeleton) fires the rAF measurement that
+  // registers a plausible rect, releasing this hold deterministically — not on a timer.
+  // Spec: SPEC_ORCH-1029_COACH_MARK_FIXES.md §3.F-1 (SC-1.2 / SC-1.3).
+  const step1HoldingForDeck = isFirstStep && !hasPlausibleTarget;
+
+  // For the cutout itself, a step only gets a cutout when the target is plausible.
+  // (Non-step-1 steps with bubblePosition:'center' intentionally render centered when
+  // they have no cutout — preserved below via `forceCenter`.)
+  const hasTarget = hasPlausibleTarget;
 
   if (__DEV__) {
-    console.log(`[Spotlight] Step ${currentStep}: target=${JSON.stringify(target)}, hasTarget=${hasTarget}`);
+    console.log(`[Spotlight] Step ${currentStep} (v${targetVersion}): target=${JSON.stringify(target)}, hasPlausibleTarget=${hasPlausibleTarget}, step1HoldingForDeck=${step1HoldingForDeck}`);
+  }
+
+  // ORCH-1029 (F-1): hold step 1's presentation until the deck measures a plausible rect.
+  if (step1HoldingForDeck) {
+    return null;
   }
 
   // ── Cutout calculation ──────────────────────────────────────────────────
