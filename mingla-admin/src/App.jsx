@@ -19,6 +19,7 @@ import { SignalLibraryPage } from "./pages/SignalLibraryPage";
 import { PlaceIntelligenceTrialPage } from "./pages/PlaceIntelligenceTrialPage";
 import { ClaimsPage } from "./pages/ClaimsPage";
 import { PricingPage } from "./pages/PricingPage";
+import { LaunchCitiesPage } from "./pages/LaunchCitiesPage";
 // ORCH-1008: 6 pages deleted (Seed, ContentModeration, Analytics, Reports,
 //   BetaFeedback, TableBrowser). Sidebar flattened; System dropdown removed.
 //   See SPEC_ORCH-1008_ADMIN_SHELL_PRUNE_INTELLIGENCE_OVERVIEW.md §2 + §3.
@@ -33,6 +34,7 @@ const PAGES = {
   users: UserManagementPage,
   subscriptions: SubscriptionManagementPage,
   placepool: PlacePoolManagementPage,
+  "launch-cities": LaunchCitiesPage,
   claims: ClaimsPage,
   // ORCH-0671: 'photos' route deleted — getTabFromHash falls back to 'overview' via PAGES[hash] guard.
   email: EmailPage,
