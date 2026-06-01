@@ -143,12 +143,16 @@ export function buildBusinessTodos(input: BusinessTodoInput): BusinessTodo[] {
     });
   }
 
-  // 4 — Stripe, only once a paid draft exists (matches ORCH-0965 rung 1).
-  if (!input.stripeActive && input.hasDraftPaidOffering) {
+  // 4 — Stripe. ORCH-1040: show whenever the brand has NOT activated Stripe — any
+  // brand without active Stripe can't take payments yet, so surface it regardless
+  // of whether a paid offering exists. Sublabel sharpens when a paid draft waits.
+  if (!input.stripeActive) {
     todos.push({
       id: "connect_stripe",
       label: "Connect Stripe to take payments",
-      sublabel: "You have a paid offering ready",
+      sublabel: input.hasDraftPaidOffering
+        ? "You have a paid offering ready"
+        : "Set up payouts so you can sell",
       action: { kind: "route", route: input.stripeRoute },
     });
   }

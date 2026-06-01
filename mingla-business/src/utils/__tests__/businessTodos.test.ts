@@ -169,10 +169,22 @@ describe("buildBusinessTodos — offering / stripe / draft", () => {
     });
   });
 
-  test("Stripe inactive but NO paid draft → no connect_stripe", () => {
-    expect(
-      ids({ ...base, stripeActive: false, hasDraftPaidOffering: false }),
-    ).not.toContain("connect_stripe");
+  test("Stripe inactive shows connect_stripe even with NO paid draft (ORCH-1040)", () => {
+    const stripe = buildBusinessTodos({
+      ...base,
+      stripeActive: false,
+      hasDraftPaidOffering: false,
+    }).find((t) => t.id === "connect_stripe");
+    expect(stripe).toBeDefined();
+    expect(stripe?.sublabel).toBe("Set up payouts so you can sell");
+    expect(stripe?.action).toEqual({
+      kind: "route",
+      route: "/brand/b1/payments",
+    });
+  });
+
+  test("Stripe active → no connect_stripe", () => {
+    expect(ids({ ...base, stripeActive: true })).not.toContain("connect_stripe");
   });
 
   test("has draft + nothing live + draftRoute → finish_draft", () => {
