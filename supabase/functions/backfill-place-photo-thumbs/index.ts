@@ -3,7 +3,12 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { Image, decode } from "https://deno.land/x/imagescript@1.2.17/mod.ts";
 
 const BUCKET = 'place-photos';
-const DEFAULT_BATCH_SIZE = 25;
+// ORCH-1044: shrink the default batch so a freshly-created run's batches are
+// small (≤ ~20 photos worst-case at MAX_PHOTOS=5, typically far fewer after the
+// thumbExists HEAD skips). The CPU_WALL_GUARD_MS guard below makes even a legacy
+// batch_size=25 batch safe by stopping mid-batch + self-invoking; the smaller
+// default just reduces self-invoke chatter for NEW runs.
+const DEFAULT_BATCH_SIZE = 4;
 const MAX_BATCH_SIZE = 100;
 const THUMB_SIZE = 384;
 const THUMB_JPEG_QUALITY = 80;
@@ -14,27 +19,36 @@ const THUMB_JPEG_QUALITY = 80;
 const RUN_CITY = 'ORCH-0957 place-photo thumbs';
 const RUN_COUNTRY = 'GLOBAL';
 
-// ORCH-1043 (Finding B, I-THUMB-DECODE-PARALLEL-N-BOUNDED) — bounded parallel decode.
+// ORCH-1044 (Root Cause 1 + 2, I-THUMB-INVOCATION-CPU-BUDGET-BOUNDED) — serial decode.
 //
-// MEMORY MATH (keep in sync if tuning):
-//   imagescript decode() materializes a W×H×4-byte RGBA bitmap BEFORE resize.
-//   Place-photo originals are downloaded capped at 800px (photoStorageService.ts:361),
-//   so the long edge is ≤ 800px. Live sampling: tallest 800×1422 = 4.3 MB RGBA;
-//   pessimistic portrait bound 800×2000 = 6.4 MB. The 384² output bitmap (0.56 MB)
-//   and the transient JPEG encode buffer (few hundred KB) are negligible.
-//   N = floor(60 MB in-flight image budget / 6.4 MB) ≈ 9.
-//   PARALLEL_N=6 → 6 × 6.4 MB ≈ 38 MB peak in-flight ≪ 150 MB working contract
-//   ≪ ~256 MB edge hard cap (the intel pipeline runs parallel-12 only because it
-//   downscales via URL-transform BEFORE decode; thumbs decode the FULL 800px
-//   original, so a smaller N is correct).
-// TUNABLE 4–9 — keep this math comment accurate if you change the value.
-export const PARALLEL_N = 6;
+// Edge isolates enforce a 2 s CPU hard cap
+// (https://supabase.com/docs/guides/functions/limits — "Max CPU Time = 2 s …
+// actual time spent on the CPU per request — does not include async I/O").
+// imagescript decode/resize/encode is pure CPU. ORCH-1043's PARALLEL_N=6 +
+// multi-batch budget loop crammed ~125 photos/batch and kept claiming more
+// batches for 110 s → blew the 2 s CPU cap in seconds → HTTP 546 (WORKER_LIMIT).
+//
+// PARALLEL_N=1: concurrency buys NOTHING for CPU-bound decode on a single-threaded
+// isolate — the decodes serialize on the CPU anyway; parallelism only front-loads
+// CPU and accelerates hitting the soft limit. Serial + a wall guard makes CPU
+// accrual predictable and lets a single invocation stop cleanly under the cap.
+// 🔒 LOCKED (ORCH-1044 SPEC §5.1). Do NOT bump — the i-orch-1044 gate fails CI.
+export const PARALLEL_N = 1;
 
-// ORCH-1043 (A) — server-driven budget loop, mirrors run-place-intelligence-trial.
-const BUDGET_MS = 110_000; // 110s; ~40s headroom under the 150s edge fn timeout
-const SAFETY_MAX_ITERATIONS = 20; // belt+suspenders against a runaway loop
+// ORCH-1044 (A) — single small unit per invocation, then self-invoke. NO
+// multi-batch wall-budget loop (the deleted BUDGET_MS=110_000 loop is what
+// 546'd). handleProcessChunk processes AT MOST PER_INVOCATION_BATCHES (=1) batch
+// per invocation, stops CPU-bound work at the wall guard, then self-invokes.
+// Many tiny self-invokes, cron-backstopped. Slow but never 546. The single-unit
+// shape STRUCTURALLY caps per-invocation work — no iteration counter needed.
+export const PER_INVOCATION_BATCHES = 1; // 🔒 LOCKED — one batch per invocation.
+const CPU_WALL_GUARD_MS = 1_200;        // 🔒 LOCKED — stop starting new photo jobs
+                                        // once wall ≥ 1.2 s. Wall ≥ CPU, so this
+                                        // guarantees < 2 s CPU for the CPU-bound
+                                        // portion with ~800 ms headroom.
 // Heartbeat staleness (the cron re-kicks a 'running' run whose heartbeat is
-// older than this) is enforced in the migration's tg_kick_pending_thumb_backfill.
+// older than this) is enforced in the migration's tg_kick_pending_thumb_backfill,
+// which (ORCH-1044) also reclaims orphaned 'running' batches back to 'pending'.
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -63,6 +77,11 @@ interface BatchResult {
   thumbsWritten: number;
   thumbsAlreadyPresent: number;
   failedPlaces: Array<{ placePoolId: string; error: string; failedPhotos?: Array<{ url: string; error: string }> }>;
+  // ORCH-1044: true when the CPU_WALL_GUARD_MS guard tripped mid-batch and the
+  // batch was NOT fully drained. The caller MUST return the batch to 'pending'
+  // (not a terminal status) so it is re-claimed and resumed — already-written
+  // thumbs are HEAD-skipped on the re-run, so per-place all-or-nothing holds.
+  partial: boolean;
 }
 
 function json(data: unknown, status = 200): Response {
@@ -484,7 +503,7 @@ async function handleCreateRun(
 async function claimAndProcessNextBatch(
   db: SupabaseAdmin,
   runId: string,
-): Promise<{ claimed: boolean; result?: BatchResult; batchStatus?: 'completed' | 'failed' }> {
+): Promise<{ claimed: boolean; result?: BatchResult; batchStatus?: 'completed' | 'failed' | 'pending' }> {
   const { data: batch } = await db
     .from('photo_backfill_batches')
     .select('*')
@@ -510,6 +529,21 @@ async function claimAndProcessNextBatch(
   }
 
   const batchResult = await processBatch(db, batch.place_pool_ids ?? []);
+
+  // ORCH-1044: if the CPU wall guard tripped mid-batch, the batch is NOT
+  // finished. Return it to 'pending' (clear started_at) so the next invocation
+  // re-claims + resumes it; do NOT write a terminal status and do NOT roll the
+  // partial counters into the run (already-written thumbs are HEAD-skipped on
+  // the re-run, so resuming is cheap and never double-counts). The caller
+  // self-invokes because work remains.
+  if (batchResult.partial) {
+    await db
+      .from('photo_backfill_batches')
+      .update({ status: 'pending', started_at: null })
+      .eq('id', batch.id);
+    return { claimed: true, result: batchResult, batchStatus: 'pending' };
+  }
+
   const batchStatus: 'completed' | 'failed' =
     batchResult.succeeded === 0 && batchResult.failed > 0 ? 'failed' : 'completed';
 
@@ -551,10 +585,16 @@ async function claimAndProcessNextBatch(
   return { claimed: true, result: batchResult, batchStatus };
 }
 
-async function processBatch(
+export async function processBatch(
   db: SupabaseAdmin,
   placeIds: string[],
+  opts: { nowMs?: () => number } = {},
 ): Promise<BatchResult> {
+  // ORCH-1044: `nowMs` is injectable so the regression test can drive a mock
+  // clock past CPU_WALL_GUARD_MS deterministically. Defaults to Date.now.
+  const nowMs = opts.nowMs ?? Date.now;
+  const batchStartMs = nowMs();
+
   const result: BatchResult = {
     succeeded: 0,
     failed: 0,
@@ -562,11 +602,14 @@ async function processBatch(
     thumbsWritten: 0,
     thumbsAlreadyPresent: 0,
     failedPlaces: [],
+    partial: false,
   };
 
   // Load every place in the batch (still no-thumb), then flatten ALL their
-  // photos into one job list and drain it through the PARALLEL_N semaphore.
-  // This parallelizes at the PHOTO level across the whole batch (ORCH-1043 B).
+  // photos into one job list and drain it SERIALLY (PARALLEL_N=1) under the
+  // CPU wall guard. ORCH-1044: a single invocation must do ≤ ~1.2 s wall of
+  // CPU-bound work, then stop + self-invoke, so it never approaches the 2 s
+  // CPU cap. Concurrency is gone (it only front-loads CPU on a 1-thread isolate).
   const places: PendingPlaceRow[] = [];
   for (const placeId of placeIds) {
     const { data: place, error } = await db
@@ -590,30 +633,50 @@ async function processBatch(
 
   // Build per-place job lists + track invalids.
   const perPlace = new Map<string, { jobs: PhotoJob[]; invalid: Array<{ url: string; error: string }> }>();
-  const allJobs: PhotoJob[] = [];
   for (const place of places) {
-    const built = buildPhotoJobs(db, place);
-    perPlace.set(place.id, built);
-    allJobs.push(...built.jobs);
+    perPlace.set(place.id, buildPhotoJobs(db, place));
   }
 
-  // Drain ALL photo-jobs across the batch at PARALLEL_N concurrency.
-  const outcomes = await runWithConcurrency(
-    allJobs.map((job) => () => runPhotoJob(db, job)),
-    PARALLEL_N,
-  );
-
-  // Tally per place.
+  // Per-place tally we fill as we drain jobs serially under the wall guard.
   const tally = new Map<string, { written: number; present: number; failures: Array<{ url: string; error: string }> }>();
   for (const place of places) tally.set(place.id, { written: 0, present: 0, failures: [] });
-  for (const o of outcomes) {
-    const t = tally.get(o.placeId)!;
-    if (o.status === 'written') t.written++;
-    else if (o.status === 'present') t.present++;
-    else t.failures.push({ url: o.url, error: o.error });
+
+  // ORCH-1044 (LOCKED): drain photo jobs SERIALLY, checking the CPU wall guard
+  // BEFORE starting each job. The moment wall ≥ CPU_WALL_GUARD_MS we stop
+  // starting new jobs and flag the batch partial — remaining jobs are simply
+  // left undone (their place will NOT get thumbs_backfilled_at; the batch is
+  // returned to 'pending' by claimAndProcessNextBatch and resumed cheaply since
+  // thumbExists HEAD-skips already-written thumbs).
+  let guardTripped = false;
+  for (const place of places) {
+    if (guardTripped) break;
+    const built = perPlace.get(place.id)!;
+    const t = tally.get(place.id)!;
+    for (const job of built.jobs) {
+      if (nowMs() - batchStartMs >= CPU_WALL_GUARD_MS) {
+        guardTripped = true;
+        break;
+      }
+      const o = await runPhotoJob(db, job);
+      if (o.status === 'written') t.written++;
+      else if (o.status === 'present') t.present++;
+      else t.failures.push({ url: o.url, error: o.error });
+    }
   }
 
-  // Resolve each place: all-or-nothing → set thumbs_backfilled_at only if no failures.
+  if (guardTripped) {
+    result.partial = true;
+    console.log(
+      `[backfill-place-photo-thumbs] CPU wall guard tripped at ${
+        nowMs() - batchStartMs
+      }ms (>=${CPU_WALL_GUARD_MS}); leaving batch pending for re-claim + self-invoke`,
+    );
+  }
+
+  // Resolve each place: all-or-nothing → set thumbs_backfilled_at only when
+  // EVERY one of its photo jobs ran (this round) AND none failed. If the guard
+  // tripped before a place's jobs were fully drained, that place is neither
+  // succeeded nor failed this round — it is left for the resumed batch.
   for (const place of places) {
     const built = perPlace.get(place.id)!;
     const t = tally.get(place.id)!;
@@ -622,7 +685,17 @@ async function processBatch(
     result.thumbsAlreadyPresent += t.present;
 
     if (built.jobs.length === 0 && built.invalid.length === 0) {
+      // No work for this place at all — skip regardless of guard.
       result.skipped++;
+      continue;
+    }
+
+    const jobsRanForPlace = t.written + t.present + t.failures.length;
+    const fullyDrained = jobsRanForPlace >= built.jobs.length;
+
+    if (!fullyDrained) {
+      // Guard stopped mid-place: leave it for the resumed batch (no terminal
+      // tally, no thumbs_backfilled_at — preserves all-or-nothing).
       continue;
     }
     if (failures.length > 0) {
@@ -651,9 +724,18 @@ async function processBatch(
 }
 
 /**
- * ORCH-1043 (A): server-driven worker. Budget loop processes pending batches
- * until the time budget is exhausted, then self-invokes if work remains and the
- * run is still 'running'. Service-role-only.
+ * ORCH-1044 (A): server-driven worker — SINGLE small unit per invocation, then
+ * self-invoke. Service-role-only.
+ *
+ * Edge isolates enforce a 2 s CPU hard cap
+ * (https://supabase.com/docs/guides/functions/limits). imagescript
+ * decode/resize/encode is CPU-bound; do ONE small unit per invocation under
+ * CPU_WALL_GUARD_MS, then self-invoke. NEVER reintroduce a multi-batch
+ * wall-budget loop — it 546s (ORCH-1043 v34 did exactly that). The chain is:
+ * each invocation processes (at most) one batch up to the CPU wall guard →
+ * self-invokes → the next invocation continues. The pg_cron kicker (every
+ * 10 min) is the backstop that re-kicks a stalled run AND reclaims orphaned
+ * 'running' batches (ORCH-1044 migration, step (c)).
  */
 export async function handleProcessChunk(db: SupabaseAdmin, body: Record<string, unknown>): Promise<Response> {
   const runId = body.runId as string;
@@ -683,29 +765,30 @@ export async function handleProcessChunk(db: SupabaseAdmin, body: Record<string,
     await db.from('photo_backfill_runs').update({ last_heartbeat_at: new Date().toISOString() }).eq('id', runId);
   }
 
-  let iterations = 0;
   let batchesProcessed = 0;
   let thumbsWritten = 0;
   let thumbsAlreadyPresent = 0;
   let succeeded = 0;
   let failed = 0;
   let skipped = 0;
+  let partial = false;
   let done = false;
-  let exitReason = 'budget_exhausted';
+  let exitReason = 'unit_done';
 
-  while (Date.now() - startedAtMs < BUDGET_MS && iterations < SAFETY_MAX_ITERATIONS) {
-    iterations++;
-
-    // Re-check run status each iteration (operator may pause/cancel mid-budget).
-    const { data: liveRun } = await db
-      .from('photo_backfill_runs')
-      .select('status')
-      .eq('id', runId)
-      .maybeSingle();
-    if (!liveRun) { exitReason = 'run_vanished'; break; }
-    if (liveRun.status === 'paused') { exitReason = 'paused'; break; }
-    if (liveRun.status === 'cancelled') { exitReason = 'cancelled'; break; }
-
+  // ORCH-1044: re-check status once (operator may have paused/cancelled), then
+  // process AT MOST one batch (PER_INVOCATION_BATCHES=1). No multi-batch loop.
+  const { data: liveRun } = await db
+    .from('photo_backfill_runs')
+    .select('status')
+    .eq('id', runId)
+    .maybeSingle();
+  if (!liveRun) {
+    exitReason = 'run_vanished';
+  } else if (liveRun.status === 'paused') {
+    exitReason = 'paused';
+  } else if (liveRun.status === 'cancelled') {
+    exitReason = 'cancelled';
+  } else {
     const step = await claimAndProcessNextBatch(db, runId);
     if (!step.claimed) {
       // No pending batch left to claim → run is complete.
@@ -715,22 +798,23 @@ export async function handleProcessChunk(db: SupabaseAdmin, body: Record<string,
         .eq('id', runId);
       done = true;
       exitReason = 'completed';
-      break;
-    }
-
-    batchesProcessed++;
-    if (step.result) {
-      thumbsWritten += step.result.thumbsWritten;
-      thumbsAlreadyPresent += step.result.thumbsAlreadyPresent;
-      succeeded += step.result.succeeded;
-      failed += step.result.failed;
-      skipped += step.result.skipped;
+    } else {
+      batchesProcessed++;
+      if (step.result) {
+        thumbsWritten += step.result.thumbsWritten;
+        thumbsAlreadyPresent += step.result.thumbsAlreadyPresent;
+        succeeded += step.result.succeeded;
+        failed += step.result.failed;
+        skipped += step.result.skipped;
+        partial = step.result.partial;
+      }
+      exitReason = step.batchStatus === 'pending' ? 'guard_tripped_partial' : 'unit_done';
     }
   }
 
-  if (iterations >= SAFETY_MAX_ITERATIONS) exitReason = 'safety_max_iterations';
-
-  // End-of-budget self-invoke: if work remains AND the run is still running.
+  // ORCH-1044: self-invoke if work remains AND the run is still running. A
+  // guard-tripped batch was returned to 'pending', so it counts as remaining
+  // work and the chain continues to drain it.
   if (!done) {
     const { data: chainRun } = await db
       .from('photo_backfill_runs')
@@ -758,6 +842,7 @@ export async function handleProcessChunk(db: SupabaseAdmin, body: Record<string,
     succeeded,
     failed,
     skipped,
+    partial,
     done,
     exitReason,
     elapsedMs: Date.now() - startedAtMs,
