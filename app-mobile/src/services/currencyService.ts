@@ -119,6 +119,37 @@ export function getRate(currencyCode: string): number {
 }
 
 /**
+ * ORCH-1034 [de-GBP-ify the currency layer] — convert an amount FROM one
+ * currency TO another using the USD-based cross-rate.
+ *
+ * The rate table is USD-based (1 USD = getRate(code) units of `code`). To go
+ * from `fromCurrency` to `toCurrency` we must include BOTH legs:
+ *   amount_in_USD = amount / getRate(fromCurrency)
+ *   converted     = amount_in_USD * getRate(toCurrency)
+ *               =  amount * getRate(toCurrency) / getRate(fromCurrency)
+ *
+ * The pre-ORCH-1034 formatters omitted the seller→USD leg (they did
+ * `amount * getRate(toCurrency)`, which is only correct when the source amount
+ * is ALREADY in USD). This corrects that USD-base bug.
+ *
+ * Same-currency is an exact identity (no rate math, no rounding drift) — the
+ * common US-launch case where seller currency == buyer currency.
+ */
+export function convertBetween(
+  amount: number,
+  fromCurrency: string,
+  toCurrency: string,
+): number {
+  const from = (fromCurrency || "USD").toUpperCase();
+  const to = (toCurrency || "USD").toUpperCase();
+  if (from === to) return amount; // identity — one clean number, no conversion
+  const fromRate = getRate(from);
+  const toRate = getRate(to);
+  if (!fromRate || fromRate <= 0) return amount; // defensive: never divide by 0
+  return amount * (toRate / fromRate);
+}
+
+/**
  * Get all currently cached rates (for display or debugging).
  */
 export function getRates(): Record<string, number> {

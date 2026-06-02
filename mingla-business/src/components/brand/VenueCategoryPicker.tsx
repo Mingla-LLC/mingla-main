@@ -74,8 +74,11 @@ export const VenueCategoryPicker: React.FC<VenueCategoryPickerProps> = ({
 
 const styles = StyleSheet.create({
   host: {
+    // B1: no inner horizontal padding — the cards now share the exact insets of
+    // the page section (and the full-width Continue button below them) instead
+    // of being double-padded. The parent screen already applies section
+    // padding, so the cards and the CTA line up to the same width.
     gap: spacing.sm,
-    paddingHorizontal: spacing.lg,
   },
   cardOuter: {
     borderRadius: radiusTokens.lg,

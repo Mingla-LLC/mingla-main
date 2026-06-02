@@ -181,8 +181,9 @@
     "fallback_user": "ユーザー"
   },
   "collaborations": {
-    "headline": "一緒に計画しよう",
-    "body": "仲間とセッションを始めましょう。やりたいことを見つけて、お気に入りに投票して、実現させましょう。",
+    "headline": "みんなで計画しよう",
+    "body": "仲間とグループを作るか、すでに招待されているチャットや旅行に参加しよう。",
+    "start_button": "グループを作る",
     "whos_in": "誰が参加する？",
     "session_name_label": "セッション名",
     "session_name_placeholder": "例: 週末プラン、デートのアイデア...",
@@ -196,7 +197,11 @@
     "generic_error": "うまくいきませんでした。もう一度お試しください。",
     "join_error": "セッションに参加できませんでした",
     "decline_error": "招待を辞退できませんでした",
-    "empty_state": "まず友達を追加してから一緒に計画を始めましょう。"
+    "empty_state": "まず友達を追加してから一緒に計画を始めましょう。",
+    "trip_chats_header": "旅行・イベントのチャット",
+    "trip_chats_loading": "チャットを読み込み中…",
+    "trip_chats_join_subtitle": "購入者グループチャットに参加",
+    "trip_chats_join_button": "チャットに参加"
   },
   "consent": {
     "headline": "一つお知らせ",

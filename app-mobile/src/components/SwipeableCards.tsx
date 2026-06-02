@@ -4,7 +4,6 @@ import {
   View,
   TouchableOpacity,
   Pressable,
-  Image,
   StyleSheet,
   Animated,
   Easing,
@@ -12,6 +11,12 @@ import {
   StatusBar,
   Platform,
 } from "react-native";
+// ORCH-1042: deck hero photos render via expo-image (NOT react-native <Image>).
+// expo-image gives us a placeholder + fade transition + a managed memory-disk
+// cache + recyclingKey so the per-card remount (`key={currentRec.id}`, ORCH-0694)
+// never flashes a bare dark `#1a1a2e` panel during async decode. Keep
+// `key={currentRec.id}` — the fix works WITH the remount, not by removing it.
+import { Image as ExpoImage } from "expo-image";
 import { useTranslation } from 'react-i18next';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { HapticFeedback } from "../utils/hapticFeedback";
@@ -105,19 +110,45 @@ const IMAGE_SECTION_RATIO = 0.88;
 const DETAILS_SECTION_RATIO = 1 - IMAGE_SECTION_RATIO;
 const CARD_ANIMATION_DURATION = 400;
 
-const CARD_FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&q=80';
+// ORCH-1042: exported so CuratedExperienceSwipeCard reuses the SAME hard-failure
+// fallback URL (one source of truth — do not duplicate the literal).
+export const CARD_FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&q=80';
 
-/** Card hero image with automatic fallback on load failure */
+// ORCH-1042: neutral dark blurhash shown during decode so the hero is NEVER a bare
+// `#1a1a2e`/`#2C2C2E` panel. Reads as an intentional "loading" affordance (a soft
+// neutral wash), not the old near-black container. No new dependency, no server
+// pipeline — expo-image accepts a constant blurhash string natively. Exported so
+// the curated deck path uses the identical placeholder.
+export const DECK_HERO_PLACEHOLDER_BLURHASH = 'L23%jdof00WB~qj[ayfQayfQfQfQ';
+
+// ORCH-1042: fade-in once the photo decodes so the swap is never a hard black→photo
+// cut. Within the spec's 180–300 ms band.
+const DECK_HERO_TRANSITION_MS = 220;
+
+/**
+ * Card hero image with automatic fallback on load failure.
+ *
+ * ORCH-1042: renders via expo-image with a placeholder + fade transition +
+ * `cachePolicy="memory-disk"` + `recyclingKey` so the per-card remount
+ * (`key={currentRec.id}`, ORCH-0694) never flashes a bare dark panel during the
+ * async decode window. The placeholder covers the decode gap; `CARD_FALLBACK_IMAGE`
+ * is the hard-failure fallback (a real photo, distinct from the placeholder).
+ */
 function CardHeroImage({ uri, style }: { uri: string; style: any }) {
   const [src, setSrc] = React.useState(uri && uri.length > 0 ? uri : CARD_FALLBACK_IMAGE);
   React.useEffect(() => {
     setSrc(uri && uri.length > 0 ? uri : CARD_FALLBACK_IMAGE);
   }, [uri]);
   return (
-    <Image
+    <ExpoImage
       source={{ uri: src }}
       style={style}
-      resizeMode="cover"
+      contentFit="cover"
+      cachePolicy="memory-disk"
+      recyclingKey={src}
+      transition={DECK_HERO_TRANSITION_MS}
+      placeholder={{ blurhash: DECK_HERO_PLACEHOLDER_BLURHASH }}
+      placeholderContentFit="cover"
       onError={() => {
         if (src !== CARD_FALLBACK_IMAGE) setSrc(CARD_FALLBACK_IMAGE);
       }}
@@ -766,18 +797,20 @@ export default function SwipeableCards({
 
   // ── Prefetch next 2 card images for instant swipe transitions ──
   // When the current card changes, prefetch the images for the next 2 cards.
-  // Image.prefetch downloads to the native image cache (OkHttp on Android,
-  // NSURLCache on iOS). Failures are silently ignored — the image will load
-  // normally when the card becomes visible.
+  // ORCH-1042: prefetch via ExpoImage.prefetch with cachePolicy:'memory-disk' so
+  // the warm-up populates the SAME expo-image managed cache the hero now reads
+  // from (the old react-native Image.prefetch warmed NSURLCache/OkHttp — a
+  // DIFFERENT store than expo-image's — leaving the warm-up wasted). Failures are
+  // silently ignored — the image will load normally when the card becomes visible.
   const currentCardId = availableRecommendations[0]?.id;
   useEffect(() => {
     const nextCard = availableRecommendations[1];
     if (nextCard?.image) {
-      Image.prefetch(nextCard.image).catch(() => {});
+      ExpoImage.prefetch(nextCard.image, { cachePolicy: 'memory-disk' }).catch(() => {});
     }
     const cardAfterNext = availableRecommendations[2];
     if (cardAfterNext?.image) {
-      Image.prefetch(cardAfterNext.image).catch(() => {});
+      ExpoImage.prefetch(cardAfterNext.image, { cachePolicy: 'memory-disk' }).catch(() => {});
     }
   }, [currentCardId]);
 

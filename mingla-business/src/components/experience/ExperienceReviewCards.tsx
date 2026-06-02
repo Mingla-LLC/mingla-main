@@ -21,6 +21,9 @@ export interface ExperienceReviewCardsProps {
   onAccept: (id: string, editedArgs?: Record<string, unknown>) => Promise<void>;
   onReject: (id: string) => Promise<void>;
   onAcceptAll: () => Promise<void>;
+  // META-ORCH-1009 Sub-E (C2): invoked when Sarah taps Regenerate on an expired
+  // proposal so the Hub clears the stale card + prompts a fresh re-snap.
+  onRegenerate?: (id: string, parserSource: string | null) => Promise<void>;
 }
 
 export const ExperienceReviewCards: React.FC<ExperienceReviewCardsProps> = ({
@@ -29,6 +32,7 @@ export const ExperienceReviewCards: React.FC<ExperienceReviewCardsProps> = ({
   onAccept,
   onReject,
   onAcceptAll,
+  onRegenerate,
 }) => {
   const [activeId, setActiveId] = useState<string | null>(null);
 
@@ -56,6 +60,20 @@ export const ExperienceReviewCards: React.FC<ExperienceReviewCardsProps> = ({
     [onReject],
   );
 
+  // META-ORCH-1009 Sub-E (C2): regenerate an expired proposal in-Hub.
+  const handleRegenerate = useCallback(
+    async (id: string, parserSource: string | null) => {
+      if (!onRegenerate) return;
+      setActiveId(id);
+      try {
+        await onRegenerate(id, parserSource);
+      } finally {
+        setActiveId(null);
+      }
+    },
+    [onRegenerate],
+  );
+
   if (pending.length === 0) return null;
 
   return (
@@ -76,9 +94,19 @@ export const ExperienceReviewCards: React.FC<ExperienceReviewCardsProps> = ({
         <ExperienceConfirmationCard
           key={row.id}
           args={row.tool_args}
+          expiresAt={row.expires_at}
           isExecuting={isExecuting && activeId === row.id}
           onAccept={(edited) => void handleAccept(row.id, edited)}
           onReject={() => void handleReject(row.id)}
+          onRegenerate={
+            onRegenerate
+              ? () =>
+                  void handleRegenerate(
+                    row.id,
+                    (row.tool_args?.parser_source as string | null) ?? null,
+                  )
+              : undefined
+          }
         />
       ))}
     </View>

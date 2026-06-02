@@ -37,13 +37,38 @@ export interface HomeNextActionRung {
   ctaRoute: string;
 }
 
-const hasAnyDraftPaidOffering = (drafts: DraftEvent[]): boolean =>
+/**
+ * ORCH-1038: exported so the unified Business to-do list can show the Stripe row
+ * independently of the (single-pick) rule ladder. True when any draft has a paid
+ * (non-free, >0) ticket.
+ */
+export const hasAnyDraftPaidOffering = (drafts: DraftEvent[]): boolean =>
   drafts.some((draft) =>
     (draft.tickets ?? []).some((ticket) => {
       if (ticket.isFree) return false;
       return typeof ticket.priceGbp === "number" && ticket.priceGbp > 0;
     }),
   );
+
+/**
+ * ORCH-1038: route to the most-recently-updated draft (kind-aware), or null when
+ * there are no drafts. Mirrors rung 3's target selection so the "Finish your
+ * draft" to-do row lands on the same place the old ladder card did.
+ */
+export const mostRecentDraftRoute = (drafts: DraftEvent[]): string | null => {
+  if (drafts.length === 0) return null;
+  const mostRecent = drafts
+    .slice()
+    .sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""))[0];
+  const eventType: EventTypeForRouting =
+    (mostRecent as DraftEvent & { event_type?: EventTypeForRouting })
+      .event_type ?? "event";
+  return routeForEventRowDefensive({
+    id: mostRecent.id,
+    event_type: eventType,
+    status: "draft",
+  });
+};
 
 /**
  * Pick the highest-priority next-action rung for the given brand state.

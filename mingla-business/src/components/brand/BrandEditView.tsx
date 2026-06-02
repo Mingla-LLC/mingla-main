@@ -498,30 +498,45 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
             </View>
           </GlassCard>
 
-          {draft.claimStatus === "none" && draft.placePoolId == null ? (
-            <GlassCard variant="elevated" padding={spacing.lg}>
-              <View style={styles.claimAffordance}>
-                <View style={styles.claimIconWrap}>
-                  <Icon name="location" size={20} color={accent.warm} />
-                </View>
-                <View style={styles.claimTextCol}>
-                  <Text style={styles.claimTitle}>Claim a venue on Mingla</Text>
-                  <Text style={styles.claimBody}>
-                    Got a physical space? Claim it for the Verified badge and better local discovery.
-                  </Text>
-                </View>
+          {/* ORCH-1040 — ONE compact physical-location block (replaces the old
+              always-present "Claim a venue" card + the duplicate Display toggle).
+              The toggle IS the question; when it's on and there's no venue yet, a
+              small inline CTA appears right here. Off → just the question. */}
+          <Text style={styles.sectionLabel}>PHYSICAL LOCATION</Text>
+          <GlassCard variant="base" padding={spacing.md}>
+            <View style={styles.toggleRow}>
+              <View style={styles.toggleTextCol}>
+                <Text style={styles.toggleLabel}>Customers visit you in person</Text>
+                <Text style={styles.toggleSub}>
+                  Turn on to list your venue so Mingla can recommend it for local
+                  plans. Leave off if you're online-only or run pop-ups/events.
+                </Text>
               </View>
+              <InlineToggle
+                value={draft.hasPhysicalLocation === true}
+                onPress={() =>
+                  setDraft({
+                    ...draft,
+                    hasPhysicalLocation: !(draft.hasPhysicalLocation === true),
+                  })
+                }
+                accessibilityLabel="Physical location"
+              />
+            </View>
+            {draft.hasPhysicalLocation === true &&
+            draft.claimStatus === "none" &&
+            draft.placePoolId == null ? (
               <View style={styles.claimCtaRow}>
                 <Button
-                  label="Find my venue"
+                  label="Add your venue"
                   onPress={handleClaimVenue}
                   variant="secondary"
                   size="md"
-                  leadingIcon="search"
+                  leadingIcon="location"
                 />
               </View>
-            </GlassCard>
-          ) : null}
+            ) : null}
+          </GlassCard>
 
           {/* SECTION B — About */}
           <Text style={styles.sectionLabel}>ABOUT</Text>

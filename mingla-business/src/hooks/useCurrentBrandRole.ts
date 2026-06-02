@@ -2,13 +2,13 @@
  * useCurrentBrandRole — React Query hook for the current user's role within a brand (Cycle 13a).
  *
  * SPEC §4.6. Reads `brand_team_members` for the authenticated user; on null,
- * falls back to account_owner SYNTHESIS for solo operators (brand creator's
+ * falls back to brand_owner SYNTHESIS for solo operators (brand creator's
  * auth.uid() === creator_accounts.user_id of brands.account_id).
  *
  * The synthesis fallback is CRITICAL — without it, every existing solo
  * operator on a deploy of Cycle 13a loses access (no brand_team_members row
  * yet). The synthesis matches the SQL-side authority: RLS treats the brand
- * creator as account_owner via the same join chain (see biz_rank_for_caller
+ * creator as brand_owner via the same join chain (see biz_rank_for_caller
  * function in the b1 migration: brands.account_id → creator_accounts.user_id).
  *
  * [TRANSITIONAL] Stub-mode synthesis fallback (Cycle 13a rework v2 / DEC-092):
@@ -26,7 +26,7 @@
  * only fires for un-persisted local brands).
  *
  * Stale-store risk: if B-cycle later demotes the operator's role on a brand
- * (e.g. account_owner → event_manager) but the local `Brand.role` is still
+ * (e.g. brand_owner → event_manager) but the local `Brand.role` is still
  * "owner", the DB query returns the demoted role → `data.role` wins → stub
  * fallback does NOT override. Safe.
  *
@@ -131,7 +131,7 @@ export const useCurrentBrandRole = (
             {},
         };
       }
-      // Step 2: account_owner synthesis fallback for solo operators.
+      // Step 2: brand_owner synthesis fallback for solo operators.
       // Without this, every existing solo operator loses access on deploy.
       // Cycle 17e-A: filter deleted_at IS NULL per I-PROPOSED-A — soft-deleted
       // brands MUST NOT grant role synthesis to anyone (closed brand = no access).
@@ -152,7 +152,7 @@ export const useCurrentBrandRole = (
         .maybeSingle();
       if (accountErr) throw accountErr;
       if (accountRow !== null && accountRow.user_id === userId) {
-        return { role: "account_owner", permissionsOverride: {} };
+        return { role: "brand_owner", permissionsOverride: {} };
       }
       return { role: null, permissionsOverride: {} };
     },
@@ -164,14 +164,14 @@ export const useCurrentBrandRole = (
   // returns no role (typically because the brand is a local-only stub from
   // `brandList.STUB_BRANDS` and isn't persisted to the production DB yet).
   // Maps the existing local-only `Brand.role` enum to the 6-role enum:
-  //   "owner" → "account_owner" (rank 60 — top of hierarchy)
+  //   "owner" → "brand_owner" (rank 60 — top of hierarchy)
   //   "admin" → "brand_admin"   (rank 50)
   // Once B-cycle persists brands + brand_team_members, the queryFn returns
   // a non-null role on Step 1 or Step 2, `data.role` wins above, and this
   // branch becomes dead code. EXIT condition documented in file header.
   if (role === null && stubBrandRole !== null) {
     if (stubBrandRole === "owner") {
-      role = "account_owner";
+      role = "brand_owner";
     } else if (stubBrandRole === "admin") {
       role = "brand_admin";
     }

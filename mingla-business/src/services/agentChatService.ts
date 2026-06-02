@@ -32,6 +32,17 @@ export type AgentConfirmResponse =
       followup_text?: string;
     }
   | { kind: "cancelled"; pending_action_id: string }
+  // META-ORCH-1009 Sub-E (C2): an expired Hub proposal no longer 410s — the
+  // edge fn returns this so the Hub can render a regenerate / re-snap CTA.
+  | {
+      kind: "expired_regenerate";
+      pending_action_id: string;
+      status: "expired";
+      parser_source: string | null;
+      tool_name: string;
+      brand_id: string | null;
+      regenerate: { cta: string; title: string; body: string };
+    }
   | { kind: "error"; code: string; message: string };
 
 export interface SendMessageArgs {

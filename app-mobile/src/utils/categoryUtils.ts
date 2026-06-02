@@ -3,7 +3,32 @@
  * Provides functions to convert category translation keys to readable names.
  * 10 categories: 8 visible + 2 hidden (Groceries, Flowers). ORCH-0434.
  */
-import i18n from '../i18n';
+
+// ORCH-1044 (test seam, S-3): the i18n singleton (`../i18n`) hard-imports
+// react-i18next + AsyncStorage at module load, so a Deno/node unit test cannot
+// statically import this module without booting the full RN stack. We therefore
+// (1) expose the pure resolution in `resolveReadableCategoryName`, which takes an
+// injected i18n-like object, and (2) load the real `../i18n` singleton LAZILY
+// only when the exported `getReadableCategoryName` is called at runtime. This
+// keeps module load RN-free for unit tests while leaving the public API and all
+// ~14 call sites unchanged. Do NOT reintroduce a top-level `import i18n` — it
+// re-breaks the §6.1 seam (SPEC_ORCH-1044).
+
+/** Minimal i18next surface the resolver actually uses. */
+export interface CategoryI18nLike {
+  exists: (key: string) => boolean;
+  t: (key: string) => string;
+}
+
+let i18nSingleton: CategoryI18nLike | null = null;
+const getI18n = (): CategoryI18nLike => {
+  if (!i18nSingleton) {
+    // Lazy load: defers the RN/AsyncStorage import to first runtime call.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    i18nSingleton = require('../i18n').default as CategoryI18nLike;
+  }
+  return i18nSingleton;
+};
 
 // ORCH-0424: Selection limits removed. intents[] and categories[] are unbounded.
 // Do NOT reintroduce caps without a product decision.
@@ -44,10 +69,17 @@ export const VISIBLE_CATEGORY_SLUGS = [...VALID_SLUGS].filter(
 );
 
 /**
- * Convert translation key to readable category name.
- * Uses i18n for locale-aware display names, with legacy slug normalization.
+ * Pure category-label resolver (ORCH-1044, S-3 test seam).
+ *
+ * Takes an injected i18n-like object so it can be unit-tested in Deno/node
+ * WITHOUT booting the RN i18n module. `getReadableCategoryName` delegates here
+ * with the real `../i18n` singleton. Public behavior is identical to the prior
+ * `getReadableCategoryName`; the only change is Decision D-1 (existence guard).
  */
-export const getReadableCategoryName = (categoryKey: string): string => {
+export const resolveReadableCategoryName = (
+  categoryKey: string,
+  i18nLike: CategoryI18nLike,
+): string => {
   if (!categoryKey) return 'Experience';
 
   // ORCH-0434: Legacy slugs now resolve to new canonical slugs.
@@ -106,15 +138,29 @@ export const getReadableCategoryName = (categoryKey: string): string => {
   const slug = legacyToSlug[stripped] ?? legacyToSlug[categoryKey] ?? stripped;
   const normalizedSlug = slug.replace(/-/g, '_').toLowerCase();
 
-  // Try i18n translation
+  // Try i18n translation.
   const key = `common:category_${normalizedSlug}`;
-  const translated = i18n.t(key);
-  // If i18n returns the key itself (no translation found), fall back to formatting
-  if (translated === key) {
+  // ORCH-1044 (D-1): detect a missing key with i18next's own existence check,
+  // NOT string-equality against `key`. On a MISS, i18next STRIPS the namespace
+  // and returns "category_<slug>" (default appendNamespaceToMissingKey:false),
+  // so `translated === key` is NEVER true on a miss → the old guard was dead
+  // code and the bare "category_romantic" token leaked to the UI. `exists()`
+  // asks i18next directly and is immune to namespace-stripping + the init
+  // options in NG-1. Do NOT "simplify" this back to an equality check.
+  if (!i18nLike.exists(key)) {
     return slug.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
   }
-  return translated;
+  return i18nLike.t(key);
 };
+
+/**
+ * Convert translation key to readable category name.
+ * Uses i18n for locale-aware display names, with legacy slug normalization.
+ * Delegates to the pure `resolveReadableCategoryName` with the real i18n
+ * singleton (loaded lazily — see the test-seam note at the top of this file).
+ */
+export const getReadableCategoryName = (categoryKey: string): string =>
+  resolveReadableCategoryName(categoryKey, getI18n());
 
 /**
  * Get category slug from translation key or category name.

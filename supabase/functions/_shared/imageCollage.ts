@@ -125,6 +125,17 @@ function transformPhotoUrlForTileInternal(url: string, tileSize: number, forceLe
   return url;
 }
 
+// ORCH-1033 F-fix: missing-thumb fallback master switch (default ON).
+// Historically named THUMB_404_FALLBACK_TO_TRANSFORM because the fallback used
+// to route to the metered Supabase render endpoint and was assumed to fire on a
+// 404. In production a missing Storage object returns HTTP **400** with a JSON
+// body {"statusCode":"404","error":"not_found","message":"Object not found"} —
+// NOT 404 — so the old 404-only guard never fired and ~68% of London servable
+// places failed the intelligence collage. The fallback now (a) fires on ANY
+// non-OK thumb response and (b) falls back to the ORIGINAL full-size object
+// (a baseline, decodable JPEG), NEVER the metered render endpoint. The legacy
+// metered render path remains reachable ONLY via USE_PLACE_PHOTO_THUMBS=false
+// (see transformPhotoUrlForTileInternal's ORCH-0957 allowlist block).
 function thumbFallbackEnabled(): boolean {
   const raw = Deno.env.get("THUMB_404_FALLBACK_TO_TRANSFORM");
   return raw === undefined ? true : raw === "true";
@@ -136,8 +147,14 @@ function isThumbObjectRewrite(originalUrl: string, rewrittenUrl: string): boolea
     rewrittenUrl.endsWith("_thumb.jpg");
 }
 
-function legacyTransformFallbackUrl(originalUrl: string, tileSize: number): string {
-  return transformPhotoUrlForTileInternal(originalUrl, tileSize, true);
+// ORCH-1033 F-fix: fall back to the ORIGINAL full-size object, NOT the metered
+// render endpoint. The thumb rewrite was `<dir>/<i>.<ext>` -> `<dir>/<stem>_thumb.jpg`,
+// so the un-rewritten input URL IS the original object URL (a non-metered
+// /storage/v1/object/public/ path). Returning it verbatim gives the decodable
+// baseline JPEG. This MUST NOT introduce the metered render-image endpoint
+// reference (ORCH-0957 gate: orch-0957-no-metered-place-photo-reads.mjs).
+function originalObjectFallbackUrl(originalUrl: string): string {
+  return originalUrl;
 }
 
 async function fetchUrl(url: string, timeoutMs: number): Promise<Response> {
@@ -151,41 +168,58 @@ async function fetchUrl(url: string, timeoutMs: number): Promise<Response> {
 }
 
 /**
+ * Outcome of a single photo fetch+decode attempt.
+ * ORCH-1033: distinguish fetch-failure from decode-failure so composeCollage
+ * can report distinct counts (SC-9).
+ */
+type DecodeOutcome =
+  | { image: Image }
+  | { image: null; failure: "fetch" | "decode" };
+
+/**
  * Fetch a photo URL and decode to imagescript Image.
- * Returns null on failure (caller leaves cell blank).
+ * Returns { image } on success, or { image: null, failure } on failure
+ * (caller leaves the cell blank and counts the failure kind).
  *
  * ORCH-0737 v6: caller MUST pass tileSize so the URL is rewritten to request
  * tile-resolution from the remote (memory-safety contract — see helper above).
+ *
+ * ORCH-1033 F-fix: when the rewritten thumb object is missing, Supabase Storage
+ * returns HTTP 400 (not 404) with an "Object not found" JSON body. Fire the
+ * fallback on ANY non-OK thumb response and fall back to the ORIGINAL full-size
+ * object (decodable baseline JPEG) — never the metered render endpoint.
  */
-async function fetchAndDecode(url: string, tileSize: number, timeoutMs = 12_000): Promise<Image | null> {
+async function fetchAndDecode(url: string, tileSize: number, timeoutMs = 12_000): Promise<DecodeOutcome> {
   const transformedUrl = transformPhotoUrlForTile(url, tileSize);
+  let fetchUrlForDecode = transformedUrl;
   try {
-    let fetchUrlForDecode = transformedUrl;
     let res = await fetchUrl(fetchUrlForDecode, timeoutMs);
 
+    // ORCH-1033: a missing thumb object returns 400 ("Object not found"), 404,
+    // or a transient 5xx — fire the fallback on ANY non-OK response, not just 404.
     if (
-      res.status === 404 &&
+      !res.ok &&
       thumbFallbackEnabled() &&
       isThumbObjectRewrite(url, transformedUrl)
     ) {
-      fetchUrlForDecode = legacyTransformFallbackUrl(url, tileSize);
-      console.warn(`[imageCollage] thumb missing; falling back to legacy transform for ${transformedUrl.slice(0, 80)}`);
+      fetchUrlForDecode = originalObjectFallbackUrl(url);
+      console.warn(`[imageCollage] thumb missing (${res.status}); falling back to original object for ${transformedUrl.slice(0, 80)}`);
       res = await fetchUrl(fetchUrlForDecode, timeoutMs);
     }
 
     if (!res.ok) {
       console.warn(`[imageCollage] fetch failed ${res.status} for ${fetchUrlForDecode.slice(0, 80)}`);
-      return null;
+      return { image: null, failure: "fetch" };
     }
     const buf = await res.arrayBuffer();
     const img = await decode(new Uint8Array(buf));
     // imagescript decode returns Image | GIF; we only handle Image
-    if (img instanceof Image) return img;
+    if (img instanceof Image) return { image: img };
     console.warn(`[imageCollage] decoded as non-Image (likely GIF) for ${fetchUrlForDecode.slice(0, 80)}`);
-    return null;
+    return { image: null, failure: "decode" };
   } catch (err) {
-    console.warn(`[imageCollage] decode error for ${transformedUrl.slice(0, 80)}:`, err instanceof Error ? err.message : err);
-    return null;
+    console.warn(`[imageCollage] decode error for ${fetchUrlForDecode.slice(0, 80)}:`, err instanceof Error ? err.message : err);
+    return { image: null, failure: "decode" };
   }
 }
 
@@ -213,19 +247,31 @@ export async function composeCollage(photoUrls: string[]): Promise<{
 
   let placed = 0;
   let failed = 0;
+  // ORCH-1033 SC-9: track WHY photos failed so the all-failed throw distinguishes
+  // a missing/unreachable object (fetchFailed) from a corrupt/undecodable one
+  // (decodeFailed). The original-object fallback (F-fix) keeps fetchFailed low
+  // once the thumb backlog drains.
+  let fetchFailed = 0;
+  let decodeFailed = 0;
 
   // [CRITICAL — ORCH-0737 v6] This loop stays SERIAL on purpose.
   // Per-call memory safety: ~5 MB peak per photo (URL-transformed at tile
   // resolution). The outer parallel-12 lives in `runPrepIteration` — DO NOT
   // also parallelize photos within a single compose call, or memory blows
   // (12 outer × 16 inner = 192 in-flight decoded buffers = 546 errors).
+  // ORCH-1033: the original-object fallback (when a thumb is missing) decodes a
+  // single full-size 800px original at a time here, so this loop staying serial
+  // keeps the worst case at one ≤6.4 MB decode in flight.
   for (let i = 0; i < limited.length; i++) {
-    const img = await fetchAndDecode(limited[i], tile);                     // v6: pass tile for URL transform
-    if (!img) {
+    const outcome = await fetchAndDecode(limited[i], tile);                 // v6: pass tile for URL transform
+    if (!outcome.image) {
       failed++;
+      if (outcome.failure === "fetch") fetchFailed++;
+      else decodeFailed++;
       continue;
     }
     try {
+      const img = outcome.image;
       img.resize(tile, tile);                                               // safety net — usually a no-op (img already at tile size)
       const x = (i % grid) * tile;
       const y = Math.floor(i / grid) * tile;
@@ -234,11 +280,14 @@ export async function composeCollage(photoUrls: string[]): Promise<{
     } catch (err) {
       console.warn(`[imageCollage] composite failed for index ${i}:`, err instanceof Error ? err.message : err);
       failed++;
+      decodeFailed++;
     }
   }
 
   if (placed === 0) {
-    throw new Error(`composeCollage: 0 of ${limited.length} photos could be decoded — all fetches failed`);
+    throw new Error(
+      `composeCollage: 0 of ${limited.length} photos placed (fetchFailed=${fetchFailed}, decodeFailed=${decodeFailed})`,
+    );
   }
 
   const pngBytes = await canvas.encode();

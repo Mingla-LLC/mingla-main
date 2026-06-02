@@ -1,8 +1,9 @@
 'use client'
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { Play } from 'lucide-react'
-import { VideoModal } from '@/components/ui/video-modal'
+import { ArrowRight } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { BetaAccessModal } from '@/components/marketing/beta-access-modal'
 import { HeroBookingWall } from '@/components/sections/organiser-home/hero-booking-wall'
 import { useMinglaReducedMotion } from '@/lib/reduced-motion'
 
@@ -10,41 +11,17 @@ import { useMinglaReducedMotion } from '@/lib/reduced-motion'
 // moments across restaurants, cafés, events, clubs, tables) runs as the section
 // background behind a dark overlay; the headline sits on top in high contrast.
 // Shows the DEMAND Mingla creates. Illustrative content, no stock art.
+//
+// ORCH-1045 — the hero CTA is now "Get Beta Access" (opens the 3-step lead
+// modal). The prior demo-clip launch tile + its modal wiring were removed
+// entirely (I-1045-HERO-NO-VIDEO); the shared ui/video-modal component itself is
+// left in the repo for reuse elsewhere.
 
 const EASE = [0.16, 1, 0.3, 1] as const
 
-interface PlayTileProps {
-  onPlay: () => void
-}
-
-function PlayTile({ onPlay }: PlayTileProps) {
-  return (
-    <button
-      type="button"
-      onClick={onPlay}
-      aria-label="Watch — see how Mingla works (2:14)"
-      className="group flex h-14 cursor-pointer items-center gap-3 rounded-full border border-white/20 bg-white/10 p-1.5 pr-5 backdrop-blur-md transition-all duration-200 ease-out-quart hover:-translate-y-0.5 hover:bg-white/15 active:translate-y-0 focus-ring"
-    >
-      <span
-        aria-hidden="true"
-        className="flex h-11 w-11 items-center justify-center rounded-full bg-warm transition-transform duration-200 ease-out-quart group-hover:scale-105"
-      >
-        <Play className="ml-0.5 h-4 w-4 fill-white text-white" />
-      </span>
-      <span className="flex flex-col items-start gap-0 leading-none">
-        <span className="text-[9px] font-semibold uppercase tracking-[0.22em] text-white/70">
-          Watch
-        </span>
-        <span className="mt-1 font-display text-base text-white">See how Mingla works</span>
-      </span>
-      <span className="ml-1 self-end pb-1 text-[11px] font-medium text-white/70">2:14</span>
-    </button>
-  )
-}
-
 export function OrganiserHero() {
   const reduced = useMinglaReducedMotion()
-  const [videoOpen, setVideoOpen] = useState(false)
+  const [betaOpen, setBetaOpen] = useState(false)
 
   return (
     <>
@@ -105,16 +82,22 @@ export function OrganiserHero() {
               transition={{ duration: 0.6, delay: reduced ? 0 : 0.5, ease: EASE }}
               className="mt-10"
             >
-              <PlayTile onPlay={() => setVideoOpen(true)} />
+              <Button variant="primary" size="lg" onClick={() => setBetaOpen(true)}>
+                Get Beta Access
+                <ArrowRight className="h-4 w-4" aria-hidden="true" />
+              </Button>
+              <p className="mt-4 text-sm text-white/70">
+                Free during beta. Two minutes to join.
+              </p>
             </motion.div>
           </div>
         </div>
       </section>
 
-      <VideoModal
-        open={videoOpen}
-        onClose={() => setVideoOpen(false)}
-        title="See how Mingla works"
+      <BetaAccessModal
+        open={betaOpen}
+        onClose={() => setBetaOpen(false)}
+        source="organiser_marketing_hero"
       />
     </>
   )

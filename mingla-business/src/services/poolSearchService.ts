@@ -19,7 +19,9 @@ function mapMatchRow(raw: Record<string, unknown>): PoolMatch {
       : String(raw.country),
     lat: Number(raw.lat),
     lng: Number(raw.lng),
-    googlePlaceId: String(raw.googlePlaceId),
+    googlePlaceId: raw.googlePlaceId === null || raw.googlePlaceId === undefined
+      ? null
+      : String(raw.googlePlaceId),
     primaryPhotoUrl: raw.primaryPhotoUrl === null ||
         raw.primaryPhotoUrl === undefined
       ? null
@@ -41,7 +43,7 @@ function mapMatchRow(raw: Record<string, unknown>): PoolMatch {
  */
 export async function searchPoolMatches(
   query: string,
-  options: { limit?: number; signal?: AbortSignal } = {},
+  options: { signal?: AbortSignal } = {},
 ): Promise<PoolMatch[]> {
   const q = query.trim();
   if (q.length < POOL_SEARCH_MIN_QUERY_LENGTH) {
@@ -51,7 +53,8 @@ export async function searchPoolMatches(
   const { data, error } = await supabase.functions.invoke("claim-search-pool", {
     body: {
       query: q,
-      limit: options.limit ?? POOL_SEARCH_DEFAULT_LIMIT,
+      limit: POOL_SEARCH_DEFAULT_LIMIT,
+      fetch_all: true,
     },
   });
 

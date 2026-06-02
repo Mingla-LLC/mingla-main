@@ -57,7 +57,18 @@
     "test:orch-0908-chat": "node ./scripts/ci/orch-0908-chat-mention-card-tag-check.mjs",
     "test:orch-0897-chat-polish": "node ./scripts/ci/orch-0897-consumer-chat-polish-check.mjs",
     "test:orch-0964-logout-cache": "node ./scripts/ci/orch-0964-logout-cache-regression-check.mjs",
-    "test:orch-1022": "node ./scripts/ci/orch-1022-expanded-card-modal-gating-check.mjs"
+    "test:orch-1022": "node ./scripts/ci/orch-1022-expanded-card-modal-gating-check.mjs",
+    "test:orch-1028": "node ./scripts/ci/orch-1028-launch-city-gate-check.mjs",
+    "test:orch-1028-scroll": "node ./scripts/ci/orch-1028-scroll-policy-check.mjs",
+    "test:orch-1039": "node ./scripts/ci/orch-1039-collab-gate-check.mjs",
+    "test:orch-1029": "node ./src/components/__tests__/orch-1029-coach-mark-fixes.test.tsx",
+    "test:orch-1029-adv": "node ./src/contexts/__tests__/orch-1029-coach-mark-adversarial.test.tsx",
+    "test:orch-1042": "node ./scripts/ci/orch-1042-deck-hero-placeholder-check.mjs",
+    "test:orch-1042-adv": "node ./scripts/ci/orch-1042-deck-hero-adversarial-check.mjs",
+    "test:orch-1043": "node ./scripts/ci/orch-1043-sheet-scroll-viewport-check.mjs",
+    "test:orch-1043-tester-adv": "node ./scripts/ci/orch-1043-tester-adversarial-check.mjs",
+    "test:orch-1049": "node ./scripts/ci/orch-1049-matches-sheet-bottom-inset-check.mjs",
+    "test:orch-1054": "node ./scripts/ci/orch-1054-matches-expanded-card-parity-check.mjs"
   },
   "dependencies": {
     "@expo-google-fonts/anton": "^0.4.2",

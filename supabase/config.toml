@@ -95,6 +95,13 @@ verify_jwt = false
 [functions.check-launch-city]
 verify_jwt = false
 
+# ORCH-1045 — public "Get Beta Access" lead-submit. The organiser marketing site
+# is unauthenticated; anon callers POST a lead. The fn re-validates all input,
+# soft-throttles by salted IP hash, and writes via the service role (anon has no
+# table policy — deny-by-default). No JWT required. Per SPEC_ORCH-1045 §3.3.3.
+[functions.beta-access-lead-submit]
+verify_jwt = false
+
 # ORCH-0880 [Tr5 Traveler Intake Forms]: anon-tolerant signed-URL endpoint
 # per feedback_anon_buyer_routes.md. Buyer is anonymous when uploading intake
 # files; authentication happens at the trip/schema/question lookup layer +
@@ -121,4 +128,33 @@ verify_jwt = true
 # ORCH-0986 — paired profile batched cards. Auth-gated; function resolves the
 # paired friend's last-known GPS server-side and never returns coordinates.
 [functions.get-paired-profile-cards]
+verify_jwt = true
+
+# ORCH-1050 [Brand team invite + accept + ownership transfer]
+# META-ORCH-1048 sub-B. Both endpoints require an authenticated caller — the
+# invite endpoint reads auth.uid() for the brand_admin+ rank check, and the
+# accept endpoint resolves auth.uid() → creator_accounts.id for the RPC.
+[functions.invite-brand-member]
+verify_jwt = true
+
+[functions.accept-brand-invitation]
+verify_jwt = true
+
+# ORCH-1051 [Scanner invite + brand-scoped scanner]
+# META-ORCH-1048 sub-C. Both endpoints require an authenticated caller — the
+# invite endpoint reads auth.uid() for the event_manager+ rank check, and the
+# accept endpoint resolves auth.uid() → creator_accounts.id for the RPC.
+[functions.invite-scanner]
+verify_jwt = true
+
+[functions.accept-scanner-invitation]
+verify_jwt = true
+
+# ORCH-1052 [Partner identity + account-level Stripe Connect + currency-match
+# invite gate]. META-ORCH-1048 sub-D. Partner-Stripe onboarding + account-
+# session minter require an authenticated caller (auth.uid() → partner gate).
+[functions.partner-stripe-onboard]
+verify_jwt = true
+
+[functions.partner-stripe-account-session]
 verify_jwt = true

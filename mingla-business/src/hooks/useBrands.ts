@@ -572,7 +572,7 @@ export const useCreateVenueBrand = (): UseCreateVenueBrandResult => {
 
 // ----- Re-exports for convenience ---------------------------------------
 
-export { SlugCollisionError } from "../services/brandsService";
+export { SlugCollisionError, resolveAvailableVenueSlug } from "../services/brandsService";
 export type {
   CreateBrandInput,
   CreateVenueBrandPendingInput,
