@@ -82,7 +82,7 @@ export async function getBrandPaymentManagerUserIds(
     .eq("brand_id", brandId)
     .is("removed_at", null)
     .not("accepted_at", "is", null)
-    .in("role", ["account_owner", "brand_admin", "finance_manager"]);
+    .in("role", ["brand_owner", "brand_admin", "finance_manager"]);
   if (error) {
     console.error("[stripeEdgeAuth] brand manager lookup failed:", error);
     return [];
