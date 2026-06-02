@@ -31,6 +31,7 @@ import {
   typography,
 } from "../../constants/designSystem";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
+import { Button } from "./Button";
 import { CoverPicker, type CoverPatch } from "./CoverPicker";
 import type { CoverTarget } from "./coverTarget";
 import { Icon } from "./Icon";
@@ -103,6 +104,23 @@ export const CoverPickerSheet: React.FC<CoverPickerSheetProps> = ({
             onCoverVideoProcessingChange={onCoverVideoProcessingChange}
           />
         </ScrollView>
+
+        {/* META-ORCH-1009 Sub-E: an explicit Done button anchored at the bottom.
+            The top-right X is easy to miss once the picker is scrolled down after
+            an upload; a clear primary "Done" gives a reliable way to confirm and
+            close. Cover changes persist live via onCoverChange, so Done is purely
+            a dismiss. */}
+        <View style={styles.footer}>
+          <Button
+            label="Done"
+            variant="primary"
+            size="lg"
+            fullWidth
+            onPress={onClose}
+            accessibilityLabel="Done choosing cover"
+            testID="cover-picker-done"
+          />
+        </View>
       </View>
     </Sheet>
   );
@@ -135,5 +153,9 @@ const styles = StyleSheet.create({
   },
   bodyContent: {
     paddingBottom: spacing.lg,
+  },
+  footer: {
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.md,
   },
 });

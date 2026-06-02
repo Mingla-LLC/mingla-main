@@ -90,7 +90,7 @@ import { useOtaUpdates } from "../src/hooks/useOtaUpdates";
 import { OtaUpdateBanner } from "../src/components/ui/OtaUpdateBanner";
 import RealtimeSubscriptions from "../src/components/RealtimeSubscriptions";
 import * as friendsService from "../src/services/friendsService";
-import { parseDeepLink, executeDeepLink } from "../src/services/deepLinkService";
+import { parseDeepLink, executeDeepLink, typeFallbackDestination, type NavigationHandlers } from "../src/services/deepLinkService";
 import {
   dismissCollaborationInviteNotifications,
   type ServerNotification,
@@ -267,6 +267,14 @@ function AppContent() {
     useState<number>(0);
   const [isCreatingSession, setIsCreatingSession] = useState<boolean>(false);
   const [showPaywall, setShowPaywall] = useState<boolean>(false);
+  // ORCH-1030: session deep-link target. A session notification lands on Home
+  // (fixing the F-01 wrong-tab-to-Connections misroute) and records the session
+  // id here. NOTE: auto-opening the specific CollabDeckSheet is a documented v2
+  // gap — collab decks mount ONLY inside the session's group chat per the active
+  // [[collab-deck-lives-in-group-chat]] product rule and Home is solo-only, so
+  // there is no Home primitive to auto-open the deck. The pill/Home landing is
+  // the correct v1 container.
+  const [pendingSessionOpen, setPendingSessionOpen] = useState<string | null>(null);
   const [pendingOpenDmUserId, setPendingOpenDmUserId] = useState<string | null>(null);
   const [pendingConnectionsPanel, setPendingConnectionsPanel] = useState<"friends" | "add" | "blocked" | null>(null);
   const [collabPreferencesTarget, setCollabPreferencesTarget] = useState<{
@@ -406,20 +414,41 @@ function AppContent() {
   // Push payloads now include notificationId and deepLink.
   // Registered once on mount. Uses userIdRef for current auth state.
   useEffect(() => {
+    // ORCH-1030: the push routing handlers — same NavigationHandlers shape as the
+    // in-app `notificationHandlers`, including setPendingSessionOpen +
+    // setViewingFriendProfileId (previously absent here, which is why push
+    // session/profile taps silently failed). All members are React-stable
+    // setState setters, safe to capture in this mount-once effect closure.
+    const pushNavigationHandlers: NavigationHandlers = {
+      setCurrentPage: setCurrentPage as (page: string) => void,
+      setPendingSessionOpen: (sessionId: string) => setPendingSessionOpen(sessionId),
+      setViewingFriendProfileId: (id: string) => setViewingFriendProfileId(id),
+      setShowPaywall: (show: boolean) => setShowPaywall(show),
+      setDeepLinkParams: (params: Record<string, string>) => setDeepLinkParams(params),
+    };
+
     /**
      * V2 processNotification: handles push data from OneSignal.
      * Server already created the notification row — we just mark as read and navigate.
      */
-    function processNotification(
-      data: Record<string, unknown>,
-      navigationTarget?: string
-    ) {
+    function processNotification(data: Record<string, unknown>) {
       if (!userIdRef.current) {
-        // Stash the deep link for after auth
-        if (data.type === 'paired_user_saved_card' && data.notificationId) {
-          pendingDeepLinkRef.current = `mingla://connections?paired=true&notificationId=${data.notificationId as string}`;
-        } else if (data.deepLink) {
-          pendingDeepLinkRef.current = data.deepLink as string;
+        // Stash the deep link for after auth.
+        // ORCH-1030 F-13: ALSO persist to AsyncStorage (same key/shape as the OS
+        // Linking path) so a tap that triggers a COLD launch survives the
+        // auth+onboarding gate and replays at the onboarding-gated effect — the
+        // in-memory ref alone is lost on a cold start. The paired_user_saved_card
+        // synthetic URL is dropped: the typed profile/pairedDeck routes now handle
+        // it from `data.deepLink` (or the type fallback) directly.
+        const stashUrl = (data.deepLink as string | undefined) ?? null;
+        if (stashUrl) {
+          pendingDeepLinkRef.current = stashUrl;
+          AsyncStorage.setItem(
+            'mingla_deferred_deeplink',
+            JSON.stringify({ url: stashUrl, ts: Date.now() })
+          ).catch((err) => {
+            console.warn('[processNotification] Failed to persist cold-start deep link:', err);
+          });
         }
         return;
       }
@@ -458,31 +487,18 @@ function AppContent() {
         notification_id: notificationId ?? 'unknown',
       });
 
-      // Navigate via deep link
-      // ORCH-0435: paired_user_saved_card → open friend profile
-      if (data.type === 'paired_user_saved_card' && notificationId) {
-        supabase
-          .from('notifications')
-          .select('actor_id')
-          .eq('id', notificationId)
-          .maybeSingle()
-          .then(({ data: notification }) => {
-            setCurrentPage('connections');
-            if (notification?.actor_id) {
-              setViewingFriendProfileId(notification.actor_id);
-            }
-          });
-      } else if (deepLink) {
-        const action = parseDeepLink(deepLink);
-        executeDeepLink(action, {
-          setCurrentPage: setCurrentPage as (page: string) => void,
-          setShowPaywall: (show: boolean) => setShowPaywall(show),
-          setDeepLinkParams: (params: Record<string, string>) => setDeepLinkParams(params),
-        });
-      } else if (navigationTarget) {
-        // Fallback for old push format
-        setCurrentPage(navigationTarget as any);
-      }
+      // ORCH-1030: ONE canonical pipeline, identical to the in-app sheet tap —
+      // server deepLink first, typed fallback second. The paired_user_saved_card
+      // push special-case is DELETED; `data.deepLink` (mingla://discover?paired=
+      // true) routes to the paired deck, and the type fallback resolves a
+      // profile target from actor_id when there is no deepLink. `setPendingSession
+      // Open` + `setViewingFriendProfileId` are now wired so push session/profile
+      // taps actually reach the container (previously missing — push session/
+      // profile taps silently failed). `navigationTarget` (legacy NAV_TARGETS
+      // string) is no longer needed — the typed fallback covers every type.
+      const dest = (deepLink ? parseDeepLink(deepLink) : null)
+        ?? typeFallbackDestination(data.type as string, data);
+      executeDeepLink(dest, pushNavigationHandlers);
     }
 
     /**
@@ -581,56 +597,12 @@ function AppContent() {
       }
     }
 
-    // Navigation targets per notification type (fallback when deepLink is absent).
-    // Every notification type MUST have an entry here so tapping the push always lands somewhere.
-    // Fallback navigation map — used when a push notification's deepLink is
-    // absent. Every notification type that could arrive as a push MUST have
-    // an entry here so tapping it always lands somewhere meaningful.
-    const NAV_TARGETS: Record<string, string> = {
-      // Social
-      friend_request_received: "connections",
-      friend_request_accepted: "connections",
-      friend_request: "connections", // legacy
-      friend_accepted: "connections", // legacy
-      pair_request_received: "connections",
-      pair_request_accepted: "connections",
-      paired_user_saved_card: "connections",
-      paired_user_visited: "connections",
-      // Collaboration / Sessions
-      collaboration_invite_received: "home",
-      collaboration_invite_accepted: "home",
-      collaboration_invite_declined: "home",
-      collaboration_invite_response: "home",
-      collaboration_invite_sent: "home",
-      session_member_joined: "home",
-      session_member_left: "home",
-      session_deleted: "home",
-      board_card_saved: "home",
-      board_card_voted: "home",
-      board_card_rsvp: "home",
-      // DM notification types
-      direct_message_received: "connections",
-      message: "connections", // legacy type from send-message-email
-      // Board message types
-      board_message_received: "home",
-      board_message_mention: "home",
-      board_card_message: "home",
-      // Lifecycle
-      trial_ending: "home",
-      re_engagement: "home",
-      re_engagement_3d: "home",
-      re_engagement_7d: "home",
-      weekly_digest: "home",
-      // Calendar
-      calendar_reminder_tomorrow: "likes",
-      calendar_reminder_today: "likes",
-      // Referral
-      referral_credited: "home",
-      // Feedback
-      visit_feedback_prompt: "likes",
-      // Holiday reminders (Block 3 Pass 2)
-      holiday_reminder: "connections",
-    };
+    // ORCH-1030: the legacy `NAV_TARGETS` string→page fallback map is DELETED.
+    // It was the third routing authority (alongside parseDeepLink and the in-app
+    // special-cases) and could disagree with both. Its job is now done by the
+    // typed `typeFallbackDestination(type, data)` in deepLinkService, which
+    // returns the SAME `Destination` kinds the parser produces (so push, in-app,
+    // and deferred replay can never diverge — I-NOTIF-FALLBACK-AGREES).
 
     // ORCH-0407: NO foreground listener registered. Without a listener, the
     // OneSignal native SDK auto-displays ALL push notifications in the system
@@ -651,7 +623,7 @@ function AppContent() {
     // Background/tap: user taps a push notification
     const removeClicked = onNotificationClicked((data) => {
       if (!data?.type) return;
-      processNotification(data, NAV_TARGETS[data.type as string]);
+      processNotification(data);
     });
 
     // ORCH-0448D: Foreground push handler — reacts to pushes while app is active.
@@ -763,32 +735,25 @@ function AppContent() {
     };
   }, [user?.id]); // Re-subscribe only when userId changes (login/logout)
 
-  // V2: Process pending deep link after auth resolves
+  // V2: Process pending deep link after auth resolves (warm-process login —
+  // the user was signed out when the push arrived but did NOT cold-launch, so
+  // the in-memory ref survived). ORCH-1030: routes through the ONE canonical
+  // pipeline with the FULL handler set (setPendingSessionOpen +
+  // setViewingFriendProfileId included) so a deferred session/profile tap
+  // reaches its container instead of silently no-op'ing. The legacy ORCH-0435
+  // paired→notificationId-lookup branch is removed: no producer emits
+  // `notificationId` in the deepLink, and `mingla://discover?paired=true` now
+  // parses to the typed `pairedDeck` Destination directly.
   useEffect(() => {
     if (user?.id && pendingDeepLinkRef.current) {
-      const action = parseDeepLink(pendingDeepLinkRef.current);
-
-      // ORCH-0435: paired notification deep link → open friend profile
-      if (action?.page === 'connections' && action.params?.paired === 'true' && action.params?.notificationId) {
-        supabase
-          .from('notifications')
-          .select('actor_id')
-          .eq('id', action.params.notificationId)
-          .maybeSingle()
-          .then(({ data: notification }) => {
-            setCurrentPage('connections');
-            if (notification?.actor_id) {
-              setViewingFriendProfileId(notification.actor_id);
-            }
-          });
-      } else {
-        executeDeepLink(action, {
-          setCurrentPage: setCurrentPage as (page: string) => void,
-          setShowPaywall: (show: boolean) => setShowPaywall(show),
-          setDeepLinkParams: (params: Record<string, string>) => setDeepLinkParams(params),
-        });
-      }
-
+      const dest = parseDeepLink(pendingDeepLinkRef.current);
+      executeDeepLink(dest, {
+        setCurrentPage: setCurrentPage as (page: string) => void,
+        setPendingSessionOpen: (sessionId: string) => setPendingSessionOpen(sessionId),
+        setViewingFriendProfileId: (id: string) => setViewingFriendProfileId(id),
+        setShowPaywall: (show: boolean) => setShowPaywall(show),
+        setDeepLinkParams: (params: Record<string, string>) => setDeepLinkParams(params),
+      });
       pendingDeepLinkRef.current = null;
     }
   }, [user?.id]);
@@ -1011,6 +976,33 @@ function AppContent() {
     [dbFriends]
   );
 
+  // ORCH-1030: the single NavigationHandlers object shared by EVERY routing
+  // call site — in-app sheet tap, OneSignal push tap, OS Linking, and the
+  // deferred onboarding-gated replay. Threading one object guarantees in-app
+  // and push produce identical navigation (kills the 3-authority drift).
+  // All members are React-stable setState setters, so this memo never changes.
+  const notificationHandlers = useMemo<NavigationHandlers>(() => ({
+    setCurrentPage: setCurrentPage as (page: string) => void,
+    setPendingSessionOpen: (sessionId: string) => setPendingSessionOpen(sessionId),
+    setViewingFriendProfileId: (id: string) => setViewingFriendProfileId(id),
+    setShowPaywall: (show: boolean) => setShowPaywall(show),
+    setDeepLinkParams: (params: Record<string, string>) => setDeepLinkParams(params),
+  }), [setCurrentPage, setViewingFriendProfileId, setShowPaywall, setDeepLinkParams]);
+
+  // ORCH-1030: a session notification records its id in `pendingSessionOpen` and
+  // lands the user on Home (the correct container — fixes F-01's wrong-tab
+  // misroute to Connections). Auto-opening the specific CollabDeckSheet is a
+  // documented v2 follow-up: collab decks mount ONLY inside the session's group
+  // chat per [[collab-deck-lives-in-group-chat]] and Home is solo-only, so there
+  // is no Home primitive to auto-open the deck. We clear the pending id once Home
+  // is reached so a later tap re-triggers cleanly. This effect is the v2 seam.
+  useEffect(() => {
+    if (pendingSessionOpen && currentPage === 'home') {
+      // v2 hook point: open the CollabDeckSheet for `pendingSessionOpen` here.
+      setPendingSessionOpen(null);
+    }
+  }, [pendingSessionOpen, currentPage]);
+
   // Handle notification tap → navigate to the relevant page (V2: ServerNotification)
   // ORCH-0679 Wave 2.5: useCallback-wrapped — all closure deps are setState
   // setters (React-stable) so identity is permanently stable.
@@ -1018,76 +1010,25 @@ function AppContent() {
     const deepLink = notification.data?.deepLink as string | undefined;
     logger.action('Notification tapped', { type: notification.type, deepLink });
 
-    // ORCH-0435: Pair notifications → Friends tab + open friend profile
-    if (notification.type === 'paired_user_saved_card' && notification.actor_id) {
-      setCurrentPage('connections');
-      setViewingFriendProfileId(notification.actor_id);
-      return;
-    }
-    if ((notification.type === 'paired_user_visited' || notification.type === 'holiday_reminder') && notification.actor_id) {
-      setCurrentPage('connections');
-      setViewingFriendProfileId(notification.actor_id);
-      return;
-    }
-
-    // ORCH-0435: Friend request received → Friends tab + open modal to Requests tab
-    if (notification.type === 'friend_request_received' || notification.type === 'friend_request') {
-      setCurrentPage('connections');
-      setPendingConnectionsPanel('friends');
-      return;
-    }
-
-    // Pair request notifications → Friends tab (pills show incoming/accepted)
-    if (notification.type === 'pair_request_received' || notification.type === 'pair_request_accepted') {
-      setCurrentPage('connections');
-      return;
-    }
-
-    // DM notifications → open the conversation directly via existing openDirectMessageWithUserId pattern
-    if (notification.type.startsWith('direct_message_') && notification.actor_id) {
-      setPendingOpenDmUserId(notification.actor_id);
-      setCurrentPage('connections');
-      return;
-    }
-
-    // Try deep link first
-    if (deepLink) {
-      const action = parseDeepLink(deepLink);
-      executeDeepLink(action, {
-        setCurrentPage: setCurrentPage as (page: string) => void,
-        setShowPaywall: (show: boolean) => setShowPaywall(show),
-        setDeepLinkParams: (params: Record<string, string>) => setDeepLinkParams(params),
-      });
-      return;
-    }
-
-    // Fallback: map notification type to page
-    const type = notification.type;
-    if (type.startsWith('friend_') || type.startsWith('pair_') || type.startsWith('link_')) {
-      setCurrentPage('connections');
-    } else if (type.startsWith('collaboration_') || type.startsWith('session_')) {
-      setCurrentPage('connections');
-    } else if (type.startsWith('direct_message_')) {
-      setCurrentPage('connections');
-    } else if (type.startsWith('board_message_') || type.startsWith('board_card_')) {
-      setCurrentPage('home');
-    } else if (type.startsWith('calendar_')) {
-      setCurrentPage('likes');
-    } else if (type === 'weekly_digest') {
-      setCurrentPage('home');
-    } else if (type === 'trial_ending') {
-      setShowPaywall(true);
-    } else {
-      setCurrentPage('home');
-    }
-  }, [
-    setCurrentPage,
-    setViewingFriendProfileId,
-    setPendingConnectionsPanel,
-    setPendingOpenDmUserId,
-    setShowPaywall,
-    setDeepLinkParams,
-  ]);
+    // ORCH-1030: ONE canonical pipeline — server deepLink first, typed
+    // fallback second. The legacy in-app special-cases (paired_user_*,
+    // holiday_reminder, friend_request_*, pair_request_*, direct_message_*)
+    // and the collaboration_/session_ → Connections misroute (F-01) are
+    // DELETED; their targets are expressed as parser routes / typed-fallback
+    // Destinations so the server link is genuinely canonical and the in-app
+    // path can never disagree with the push path.
+    //
+    // `notification.data` carries the entity ids (sessionId, conversationId,
+    // actor_id, …). Fold actor_id into the fallback data so the typed fallback
+    // can resolve a paired/DM/profile target when there is no deepLink.
+    const fallbackData: Record<string, unknown> = {
+      ...(notification.data ?? {}),
+      ...(notification.actor_id ? { actor_id: notification.actor_id } : {}),
+    };
+    const dest = (deepLink ? parseDeepLink(deepLink) : null)
+      ?? typeFallbackDestination(notification.type, fallbackData);
+    executeDeepLink(dest, notificationHandlers);
+  }, [notificationHandlers]);
 
   // Helper function to refresh all sessions (active + pending)
   // ORCH-0679 Wave 2A: useCallback-wrapped so its identity is stable across renders.
@@ -1760,9 +1701,16 @@ function AppContent() {
       return;
     }
 
+    // ORCH-1030: OS Linking + the F-13 cold-start deferred replay (which calls
+    // handleDeepLink with the persisted URL) route through the ONE canonical
+    // pipeline with the FULL handler set — including setPendingSessionOpen +
+    // setViewingFriendProfileId — so a `mingla://session/{id}` or
+    // `mingla://profile/{id}` cold-start tap reaches its container (SC-6).
     const action = parseDeepLink(url);
     executeDeepLink(action, {
       setCurrentPage: setCurrentPage as (page: string) => void,
+      setPendingSessionOpen: (sessionId: string) => setPendingSessionOpen(sessionId),
+      setViewingFriendProfileId: (id: string) => setViewingFriendProfileId(id),
       setShowPaywall: (show: boolean) => setShowPaywall(show),
       setDeepLinkParams: (params: Record<string, string>) => setDeepLinkParams(params),
     });
@@ -1921,6 +1869,11 @@ function AppContent() {
   );
   const connectionsDeepLinkParams = useMemo(
     () => (currentPage === 'connections' ? deepLinkParams : null),
+    [currentPage, deepLinkParams]
+  );
+  // ORCH-1030: calendar/review notification deep links route to Likes → Calendar.
+  const likesDeepLinkParams = useMemo(
+    () => (currentPage === 'likes' ? deepLinkParams : null),
     [currentPage, deepLinkParams]
   );
 
@@ -2204,6 +2157,8 @@ function AppContent() {
             accountPreferences={accountPreferences}
             navigationData={activityNavigation}
             onNavigationComplete={() => setActivityNavigation(null)}
+            deepLinkParams={likesDeepLinkParams}
+            onDeepLinkHandled={handleDeepLinkHandled}
             onPurchaseFromSaved={(card: any, purchaseOption: any) => {
               console.log("Purchasing from saved:", card, purchaseOption);
               // Handle purchase logic here
@@ -2474,6 +2429,8 @@ function AppContent() {
                                       accountPreferences={accountPreferences}
                                       navigationData={activityNavigation}
                                       onNavigationComplete={handleNavigationComplete}
+                                      deepLinkParams={likesDeepLinkParams}
+                                      onDeepLinkHandled={handleDeepLinkHandled}
                                       onPurchaseFromSaved={handlePurchaseFromSavedLikes}
                                       onRemoveFromCalendar={stableHandleRemoveFromCalendar}
                                       onShareCard={stableHandleShareCard}

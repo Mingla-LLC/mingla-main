@@ -26,7 +26,6 @@ yarn-error.*
 .DS_Store
 **/.DS_Store
 Mingla_Artifacts/
-app-mobile/
 mingla-admin/
 mingla-marketing/
 orch-*.png

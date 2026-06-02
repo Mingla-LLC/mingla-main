@@ -113,6 +113,28 @@
     "privacy_hint": "Your location stays private. Always.",
     "cta_enable": "Enable location"
   },
+  "launch_gate": {
+    "checking": "Checking your city",
+    "out_of_city_headline": "We're not in {{city}} yet",
+    "out_of_city_headline_no_city": "We're not in your city yet",
+    "out_of_city_body": "Mingla is just getting started — we're rolling out city by city. Pick one of our live cities below and we'll plan around it. We'll let you know the moment we land near you.",
+    "out_of_city_cta": "Choose a city to explore",
+    "picker_headline": "Where do you want to explore?",
+    "picker_body": "We'll fill your deck with the best of one of these cities.",
+    "picker_search_placeholder": "Search live cities",
+    "picker_empty_search": "No live city matches that.",
+    "picker_confirm": "Explore {{city}}",
+    "picker_confirm_placeholder": "Pick a city to continue",
+    "no_live_cities_headline": "We're almost ready",
+    "no_live_cities_body": "Mingla is launching very soon. Leave us your spot and we'll text you the moment your city goes live.",
+    "no_live_cities_cta": "Notify me",
+    "check_failed_headline": "Hmm, that didn't go through",
+    "check_failed_body": "We couldn't check your city just now. Tap to try again.",
+    "check_failed_cta": "Try again",
+    "check_failed_continue_anyway": "Continue anyway",
+    "continue_anyway_hint": "Continues with your current location",
+    "write_failed_inline": "That didn't save — tap Explore to try again."
+  },
   "celebration": {
     "headline": "Look at you go.",
     "body": "Four quick picks and you're done."
@@ -181,8 +203,9 @@
     "fallback_user": "User"
   },
   "collaborations": {
-    "headline": "Plan something together",
-    "body": "Start a session with your crew. Discover things to do, vote on favorites, and actually make it happen.",
+    "headline": "Plan it together",
+    "body": "Start a group with your crew, or jump into a chat or trip you're already invited to.",
+    "start_button": "Start the group",
     "whos_in": "Who's in?",
     "session_name_label": "Session name",
     "session_name_placeholder": "e.g. Weekend plans, Date night ideas...",
@@ -196,7 +219,11 @@
     "generic_error": "Hmm, that didn't work. Give it another go.",
     "join_error": "Could not join session",
     "decline_error": "Could not decline invite",
-    "empty_state": "Add friends first — then you can start planning together."
+    "empty_state": "Add friends first — then you can start planning together.",
+    "trip_chats_header": "Your trip and event chats",
+    "trip_chats_loading": "Loading chats…",
+    "trip_chats_join_subtitle": "Join the buyer group chat",
+    "trip_chats_join_button": "Join chat"
   },
   "consent": {
     "headline": "One quick thing",

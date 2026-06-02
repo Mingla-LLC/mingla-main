@@ -29,7 +29,7 @@ import { Sheet } from "../ui/Sheet";
 
 /** Render order mirrors operator UX convention: highest privilege first. */
 const ROLE_ORDER: ReadonlyArray<BrandRole> = [
-  "account_owner",
+  "brand_owner",
   "brand_admin",
   "event_manager",
   "finance_manager",

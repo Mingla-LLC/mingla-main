@@ -181,8 +181,9 @@
     "fallback_user": "Utilizator"
   },
   "collaborations": {
-    "headline": "Plan something together",
-    "body": "Start a session with your crew. Descoperă things to do, vote on favorites, și actually make it happen.",
+    "headline": "Planificați împreună",
+    "body": "Pornește un grup cu gașca ta sau intră într-o conversație ori o excursie la care ești deja invitat.",
+    "start_button": "Pornește grupul",
     "whos_in": "Who's in?",
     "session_name_label": "Session name",
     "session_name_placeholder": "e.g. Weekend plans, Date night ideas...",
@@ -196,7 +197,11 @@
     "generic_error": "Hmm, that didn't work. Give it another go.",
     "join_error": "Could not join session",
     "decline_error": "Could not decline invite",
-    "empty_state": "Adaugă friends first — then you can start planning together."
+    "empty_state": "Adaugă friends first — then you can start planning together.",
+    "trip_chats_header": "Conversațiile tale despre excursii și evenimente",
+    "trip_chats_loading": "Se încarcă conversațiile…",
+    "trip_chats_join_subtitle": "Intră în conversația de grup a cumpărătorilor",
+    "trip_chats_join_button": "Intră în conversație"
   },
   "consent": {
     "headline": "One quick thing",

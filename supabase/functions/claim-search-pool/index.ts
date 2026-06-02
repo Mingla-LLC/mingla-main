@@ -19,8 +19,6 @@ const corsHeaders = {
 };
 
 const MIN_QUERY_LENGTH = 3;
-const DEFAULT_LIMIT = 1;
-const MAX_LIMIT = 5;
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX = 10;
 
@@ -36,7 +34,7 @@ function jsonResponse(body: unknown, status = 200): Response {
 export function normalizeSearchBody(
   body: unknown,
 ):
-  | { ok: true; query: string; limit: number }
+  | { ok: true; query: string; limit: number | null; fetchAll: boolean }
   | { ok: false; error: string } {
   if (body === null || typeof body !== "object") {
     return { ok: false, error: "invalid_json" };
@@ -46,11 +44,12 @@ export function normalizeSearchBody(
   if (query.length < MIN_QUERY_LENGTH) {
     return { ok: false, error: "query_too_short" };
   }
-  let limit = DEFAULT_LIMIT;
+  const fetchAll = b.fetch_all === true;
+  let limit: number | null = null;
   if (typeof b.limit === "number" && Number.isFinite(b.limit)) {
-    limit = Math.max(1, Math.min(Math.floor(b.limit), MAX_LIMIT));
+    limit = Math.max(1, Math.floor(b.limit));
   }
-  return { ok: true, query, limit };
+  return { ok: true, query, limit: fetchAll ? null : limit, fetchAll };
 }
 
 export function checkRateLimit(userId: string, now = Date.now()): boolean {
@@ -138,5 +137,5 @@ serve(async (req: Request): Promise<Response> => {
     return match;
   });
 
-  return jsonResponse({ matches });
+  return jsonResponse({ matches, exhausted: true });
 });

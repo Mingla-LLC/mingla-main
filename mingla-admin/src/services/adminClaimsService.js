@@ -26,7 +26,17 @@ const CLAIM_SELECT = `
   duplicate_of_brand_id,
   place_pool:place_pool_id (
     national_phone_number,
-    google_maps_uri
+    google_maps_uri,
+    website,
+    generative_summary,
+    stored_photo_urls,
+    business_gallery_urls,
+    price_tiers,
+    price_level,
+    ai_signal_scores,
+    ai_signal_scores_veto,
+    business_authoring_inputs,
+    business_recommend_edit_count
   )
 `;
 
@@ -69,12 +79,16 @@ export async function listRejectedClaims() {
 /**
  * @param {string} brandId
  * @param {"mark_called"|"approve"|"reject"|"need_more_info"} action
- * @param {{ rejectionReason?: string }} [opts]
+ * @param {{ rejectionReason?: string, scoreVetoes?: Record<string, unknown> }} [opts]
  */
 export async function reviewClaim(brandId, action, opts = {}) {
   const body = { brand_id: brandId, action };
   if (action === "reject") {
     body.rejection_reason = opts.rejectionReason ?? "";
+  }
+  // META-ORCH-1009 Sub-F WS7: optional admin reduce-only score vetoes on approve.
+  if (action === "approve" && opts.scoreVetoes && Object.keys(opts.scoreVetoes).length > 0) {
+    body.score_vetoes = opts.scoreVetoes;
   }
 
   const { data, error } = await supabase.functions.invoke(

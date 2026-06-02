@@ -55,13 +55,21 @@ export const currencySymbols = {
   ILS: '₪'
 };
 
-export function convertCurrency(amountInUSD: number, targetCurrency: string): number {
-  const rate = exchangeRates[targetCurrency as keyof typeof exchangeRates];
-  return amountInUSD * (rate || 1);
+// ORCH-1034 [de-GBP-ify the currency layer] — convert FROM `sourceCurrency` TO
+// `targetCurrency` using the USD-based cross-rate (fixes the prior USD-base bug
+// that omitted the source→USD leg). Same-currency is an exact identity.
+// `sourceCurrency` defaults to 'USD' for backward compatibility — with the
+// default the cross-rate reduces to the prior `amount * rate[target]` behavior.
+export function convertCurrency(amount: number, targetCurrency: string, sourceCurrency: string = 'USD'): number {
+  if (sourceCurrency === targetCurrency) return amount; // identity, no rate math
+  const targetRate = exchangeRates[targetCurrency as keyof typeof exchangeRates] ?? 1;
+  const sourceRate = exchangeRates[sourceCurrency as keyof typeof exchangeRates] ?? 1;
+  if (!sourceRate) return amount; // defensive: never divide by 0
+  return amount * (targetRate / sourceRate);
 }
 
-export function formatCurrency(amountInUSD: number, targetCurrency: string): string {
-  const convertedAmount = convertCurrency(amountInUSD, targetCurrency);
+export function formatCurrency(amount: number, targetCurrency: string, sourceCurrency: string = 'USD'): string {
+  const convertedAmount = convertCurrency(amount, targetCurrency, sourceCurrency);
   const symbol = currencySymbols[targetCurrency as keyof typeof currencySymbols] || '$';
   
   // Handle currencies that don't use decimal places

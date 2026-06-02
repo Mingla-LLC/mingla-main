@@ -165,13 +165,20 @@ interface BaseBottomSheetSheetProps extends BaseBottomSheetCommonProps {
   /** Forwarded to the chosen scrollable (sections/renderItem/contentContainerStyle…). */
   scrollProps?: BaseBottomSheetScrollProps;
   /**
-   * Fixed (non-scrolling) content rendered ABOVE the scroll/list body, inside a
-   * single flexed BottomSheetView. The classic header pattern (title + close +
-   * action row) for scroll/sectionlist sheets. When set with scrollMode scroll/
-   * sectionlist, the body claims flex:1 below it.
+   * Fixed (non-scrolling) content rendered ABOVE the scroll/list body as an
+   * intrinsic-height SIBLING direct child of <BottomSheet> (ORCH-1043 — NOT
+   * wrapped in a BottomSheetView). The classic header pattern (title + close +
+   * action row) for scroll/sectionlist sheets. The scroll/list body below it
+   * claims flex:1 and scrolls.
    */
   header?: ReactNode;
-  /** Style for the outer flexed BottomSheetView when `header` is set. */
+  /**
+   * ORCH-1043: the body branches no longer wrap their content in a flexed
+   * BottomSheetView, so this prop no longer styles a wrapper node. It is retained
+   * for API compatibility (consumers may still pass it) but has no layout effect;
+   * a consumer needing body padding/sizing should apply it inside
+   * `header`/`children`/`contentContainerStyle` instead.
+   */
   bodyContainerStyle?: ViewStyle;
   /** Pins a footer at the bottom of a single flexed container (TicketCart pattern). */
   stickyFooter?: ReactNode;
@@ -449,6 +456,42 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
   // children (consumer owns the container tree — the zero-regression path for
   // the keystone sheets). scroll/flatlist/sectionlist let the primitive own the
   // gorhom scrollable so no raw RN list ever lands inside a sheet (SC-10).
+  //
+  // ── ORCH-1043 (I-PROPOSED-BASE-BOTTOM-SHEET-SCROLLABLE-IS-DIRECT-CHILD) ──────
+  // 🔒 LOAD-BEARING — do NOT wrap a scrollable in `BottomSheetView`.
+  //
+  // gorhom's `BottomSheetView` ALWAYS appends its own `styles.container`
+  // (`{ position:'absolute', left:0, top:0, right:0 }`) LAST in its style array
+  // (see node_modules/@gorhom/bottom-sheet bottomSheetView/styles.ts +
+  // BottomSheetView.tsx + hooks/useBottomSheetContentContainerStyle.ts). That
+  // absolutely-positioned, content-sized node makes any `flex:1` we hand it inert
+  // and sizes itself to its CONTENT. A `BottomSheetScrollView` placed INSIDE such
+  // a wrapper therefore gets an UNBOUNDED parent → viewport == content height →
+  // `maxScrollY = 0` → the body FREEZES and the bottom control is unreachable.
+  // This bit ~26 wrapped sheets (notifications, pickers, report-user, billing,
+  // propose-time, …) and is the exact collapse ORCH-1040 measured on a Pixel 8
+  // Pro (0px bounds-delta) for AccountSettings — INSIDE a `wrapInRNModal` window,
+  // proving the RN-Modal "bounded parent" exemption was empirically FALSE.
+  //
+  // THE RULE (enforced by `.github/scripts/strict-grep/i-bottomsheet-inline-scroll-binding.mjs`
+  // + `app-mobile/scripts/ci/orch-1043-sheet-scroll-viewport-check.mjs`):
+  // every body-composition branch returns a React Fragment of DIRECT children of
+  // `<BottomSheet>` — i.e. of gorhom's height-bounded `BottomSheetContent`
+  // `DraggableView` (`height = sheetHeight − handleHeight`, see
+  // bottomSheet/BottomSheetContent.tsx). The gorhom scrollable carries its own
+  // `styles.container = { flex:1, overflow:'visible' }`, so as a direct child it
+  // fills the remaining bounded height beside an intrinsic-height header/footer
+  // sibling → BOUNDED viewport → it scrolls. This is exactly the proven ORCH-1016
+  // bare EBES/TicketCart mechanism, now guaranteed for ALL sheets.
+  //   • header  → intrinsic-height SIBLING direct child, FIRST (stays pinned top).
+  //   • body    → the scrollable (or, in `view` mode, consumer `children`), with
+  //               `flex:1` so it claims the slack below the header. The `flex:1`
+  //               is LOAD-BEARING now that it is a direct child — do NOT remove it.
+  //   • footer  → intrinsic-height SIBLING direct child, LAST (pinned bottom; the
+  //               `flex:1` body above absorbs all slack).
+  // NEVER re-introduce a `BottomSheetView` (or any `View`/`Animated.View`) wrapper
+  // around a scrollable "for layout" — it re-collapses the viewport. Direct
+  // children only. (ORCH-1043; investigation INVESTIGATION_ORCH-1043_SHEET_EXPAND_SWIPE_FREEZE.md.)
   const body = useMemo(() => {
     if (stickyFooter !== undefined && stickyFooter !== null) {
       // Single flexed container: header (fixed) + scroll/view body claims flex:1
@@ -497,12 +540,17 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
       ) : (
         stickyFooter
       );
+      // ORCH-1043: header + flex:1 scroll body + footer are DIRECT children of
+      // <BottomSheet> (Fragment, no BottomSheetView wrapper). `stickyBody` keeps
+      // `styles.stickyBody` (flex:1) so it claims the bounded space between the
+      // intrinsic-height header and the footer; `footerNode` renders LAST → pinned
+      // at the bottom of gorhom's bounded host. See the §body comment above.
       return (
-        <BottomSheetView style={[styles.stickyContainer, bodyContainerStyle]}>
+        <>
           {header}
           {stickyBody}
           {footerNode}
-        </BottomSheetView>
+        </>
       );
     }
 
@@ -511,15 +559,19 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
     switch (scrollMode) {
       case 'view':
         // Children render directly as <BottomSheet> children by default
-        // (consumer-composed). When a consumer supplies a body container, honor it
-        // with the same flexed BottomSheetView wrapper used by header-bearing view
-        // sheets so an owned BottomSheetScrollView receives a bounded viewport.
+        // (consumer-composed). When a consumer supplies a header (or a
+        // bodyContainerStyle), ORCH-1043 renders {header}{children} as DIRECT
+        // children of <BottomSheet> (Fragment, no BottomSheetView wrapper) so any
+        // consumer-owned BottomSheetScrollView inside `children` becomes a direct
+        // child / receives gorhom's bounded host and scrolls. A `view`-mode
+        // consumer that relied on `bodyContainerStyle` to size/pad its owned tree
+        // must apply that style inside its own `children` root. See §body comment.
         if (hasHeader || bodyContainerStyle !== undefined) {
           return (
-            <BottomSheetView style={[styles.flexContainer, bodyContainerStyle]}>
+            <>
               {header}
               {children}
-            </BottomSheetView>
+            </>
           );
         }
         return children;
@@ -548,11 +600,15 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
           </BottomSheetScrollView>
         );
         if (hasHeader) {
+          // ORCH-1043: header (intrinsic height) + scroll (flex:1) are DIRECT
+          // children of <BottomSheet> (Fragment, no BottomSheetView wrapper). The
+          // scroll keeps `styles.flexContainer` (flex:1) so it claims the bounded
+          // space below the header → bounded viewport → scrolls. See §body comment.
           return (
-            <BottomSheetView style={[styles.flexContainer, bodyContainerStyle]}>
+            <>
               {header}
               {scroll}
-            </BottomSheetView>
+            </>
           );
         }
         return scroll;
@@ -582,11 +638,17 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
         const hasSections =
           sectionProps?.sections !== undefined &&
           sectionProps.sections !== null;
-        // header + children render above the list. When sections are omitted
-        // (consumer-owned loading/empty/error state in children), only the
-        // header + children render — no list. (NotificationsSheet pattern.)
+        // ORCH-1043: header + children (intrinsic-height siblings) + the
+        // BottomSheetSectionList are DIRECT children of <BottomSheet> (Fragment,
+        // no BottomSheetView wrapper). The list keeps `styles.sectionList`
+        // (flex:1) so it claims the bounded space below header/children → bounded
+        // viewport → scrolls. When sections are omitted (consumer-owned
+        // loading/empty/error state in children), only header + children render —
+        // no list. (NotificationsSheet pattern.) The former `bodyContainerStyle`
+        // wrapper is removed; a sectionlist consumer that needs that padding must
+        // reproduce it in header/children/contentContainerStyle. See §body comment.
         return (
-          <BottomSheetView style={[styles.sectionListContainer, bodyContainerStyle]}>
+          <>
             {header}
             {children}
             {hasSections ? (
@@ -598,7 +660,7 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
                 )}
               />
             ) : null}
-          </BottomSheetView>
+          </>
         );
       }
       default: {
@@ -777,9 +839,11 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
   },
-  stickyContainer: { flex: 1 },
+  // ORCH-1043: `stickyContainer` + `sectionListContainer` removed — they styled
+  // the BottomSheetView wrappers the sticky/sectionlist branches no longer use
+  // (the scrollable is now a direct child of <BottomSheet>). `stickyBody` and
+  // `sectionList` (flex:1) stay — they are on the SCROLLABLES themselves.
   stickyBody: { flex: 1 },
-  sectionListContainer: { flex: 1 },
   sectionList: { flex: 1 },
   centerScrim: {
     flex: 1,

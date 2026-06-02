@@ -181,8 +181,9 @@
     "fallback_user": "Onye ọrụ"
   },
   "collaborations": {
-    "headline": "Hazịa ihe ọnụ",
-    "body": "Malite oge na ndị otu gị. Chọpụta ihe unu ga-eme, vootu maka nke unu masịrị karịsịa, mee ka ọ mee.",
+    "headline": "Hazienụ ya ọnụ",
+    "body": "Malite otù ya na ndị enyi gị, ma ọ bụ banye na nkata ma ọ bụ njem a kpọrọ gị maka ya.",
+    "start_button": "Malite otù ahụ",
     "whos_in": "Onye nọ?",
     "session_name_label": "Aha oge",
     "session_name_placeholder": "dịka Atụmatụ ọgwụgwụ izu, Echiche maka abalị...",
@@ -196,7 +197,11 @@
     "generic_error": "Hmm, ọ naghị arụ ọrụ. Nwaa ọzọ.",
     "join_error": "Enweghị ike ịsonye na oge",
     "decline_error": "Enweghị ike ịjụ oku",
-    "empty_state": "Tinye enyi na mbụ — ka ị nwee ike ịmalite ịhazị ọnụ."
+    "empty_state": "Tinye enyi na mbụ — ka ị nwee ike ịmalite ịhazị ọnụ.",
+    "trip_chats_header": "Nkata njem na emume gị",
+    "trip_chats_loading": "Na-ebu nkata…",
+    "trip_chats_join_subtitle": "Sonye na nkata otù ndị na-azụ ahịa",
+    "trip_chats_join_button": "Sonye na nkata"
   },
   "consent": {
     "headline": "Ihe otu ngwa ngwa",

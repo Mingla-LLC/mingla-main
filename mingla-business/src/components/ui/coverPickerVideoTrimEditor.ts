@@ -6,29 +6,99 @@
  * there is no native runtime, so that call throws synchronously and takes the
  * ENTIRE bundle down before React can mount (blank #root → white page).
  *
- * The fix is a Metro platform split: this `.native.ts` holds the real import
- * and is bundled ONLY for iOS/Android; the `.web.ts` sibling is a no-op stub,
- * so `react-native-video-trim` is never present in the web export. Callers
- * gate on `Platform.OS !== "web"` and only invoke this on native — web uploads
- * the raw clip and the server (Cloudinary) trims to <=29s.
+ * The web fix is a Metro platform split: this base native file is replaced by
+ * the `.web.ts` sibling on web, so `react-native-video-trim` is never present
+ * in the web export. Native also loads the package lazily inside trim
+ * invocation, because stale dev builds can be missing the VideoTrim TurboModule;
+ * that should reject the trim action, not crash the whole app while the bundle
+ * loads.
  *
- * Behaviour is byte-for-byte the same as the prior inline implementation that
- * lived in CoverPicker.tsx; only the import boundary changed.
+ * When the native module is available, behaviour matches the prior inline
+ * implementation that lived in CoverPicker.tsx.
  */
-import NativeVideoTrim, {
-  showEditor,
-  type Spec as VideoTrimSpec,
-} from "react-native-video-trim";
+// ORCH-0978 C12 / ORCH-1001: a TYPE-ONLY import keeps the native trim package
+// statically discoverable to the invariant gate, while staying fully erased at
+// compile time — so it never triggers the TurboModule import-eval that crashes
+// the web bundle. The runtime module is still loaded lazily via require() below.
+import type ReactNativeVideoTrim from "react-native-video-trim";
 import type { VideoTrimFinishPayload } from "./coverPickerVideoTrimUpload";
 
+type _NativeVideoTrimDefault = typeof ReactNativeVideoTrim;
+
 type VideoTrimSubscription = { remove: () => void };
+
+type VideoTrimSpec = {
+  onCancel: (callback: () => void) => VideoTrimSubscription;
+  onCancelTrimming: (callback: () => void) => VideoTrimSubscription;
+  onError: (
+    callback: (error: { errorCode?: string | number; message?: string }) => void,
+  ) => VideoTrimSubscription;
+  onFinishTrimming: (
+    callback: (payload: VideoTrimFinishPayload) => void,
+  ) => VideoTrimSubscription;
+};
+
+type ShowEditorOptions = {
+  cancelButtonText: string;
+  enablePreciseTrimming: boolean;
+  maxDuration: number;
+  saveButtonText: string;
+};
+
+type NativeVideoTrimModule = {
+  default?: VideoTrimSpec;
+  showEditor?: (uri: string, options: ShowEditorOptions) => void;
+};
+
+const unavailableNativeTrimError = (cause?: unknown): Error => {
+  const detail =
+    cause instanceof Error ? cause.message : String(cause ?? "unknown error");
+  return new Error(
+    `Video trimming requires an updated Mingla Business native build with the VideoTrim module installed. ${detail}`,
+  );
+};
+
+const loadNativeVideoTrim = (): {
+  showEditor: (uri: string, options: ShowEditorOptions) => void;
+  videoTrim: VideoTrimSpec;
+} => {
+  try {
+    // Lazy by design: a stale dev build may throw TurboModuleRegistry.getEnforcing
+    // here, and that must reject this action instead of crashing bundle load.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const module = require("react-native-video-trim") as NativeVideoTrimModule;
+    const videoTrim = module.default;
+    const showEditor = module.showEditor;
+    if (
+      !videoTrim ||
+      typeof videoTrim.onFinishTrimming !== "function" ||
+      typeof videoTrim.onCancelTrimming !== "function" ||
+      typeof videoTrim.onCancel !== "function" ||
+      typeof videoTrim.onError !== "function" ||
+      typeof showEditor !== "function"
+    ) {
+      throw new Error("react-native-video-trim loaded without the expected API.");
+    }
+    return { showEditor, videoTrim };
+  } catch (error) {
+    throw unavailableNativeTrimError(error);
+  }
+};
 
 export const trimVideoWithDedicatedEditor = (
   uri: string,
   maxDurationMs: number,
 ): Promise<VideoTrimFinishPayload | null> =>
   new Promise((resolve, reject) => {
-    const videoTrim = NativeVideoTrim as VideoTrimSpec;
+    let nativeVideoTrim: ReturnType<typeof loadNativeVideoTrim>;
+    try {
+      nativeVideoTrim = loadNativeVideoTrim();
+    } catch (error) {
+      reject(error);
+      return;
+    }
+
+    const { showEditor, videoTrim } = nativeVideoTrim;
     const subscriptions: VideoTrimSubscription[] = [];
     let settled = false;
     const settle = (handler: () => void): void => {
@@ -38,24 +108,27 @@ export const trimVideoWithDedicatedEditor = (
       handler();
     };
 
-    subscriptions.push(
-      videoTrim.onFinishTrimming((payload: VideoTrimFinishPayload) => {
-        settle(() => resolve(payload));
-      }) as VideoTrimSubscription,
-      videoTrim.onCancelTrimming(() => {
-        settle(() => resolve(null));
-      }) as VideoTrimSubscription,
-      videoTrim.onCancel(() => {
-        settle(() => resolve(null));
-      }) as VideoTrimSubscription,
-      videoTrim.onError(({ message, errorCode }) => {
-        settle(() =>
-          reject(new Error(`Video trim failed (${errorCode || "unknown"}): ${message}`)),
-        );
-      }) as VideoTrimSubscription,
-    );
-
     try {
+      subscriptions.push(
+        videoTrim.onFinishTrimming((payload: VideoTrimFinishPayload) => {
+          settle(() => resolve(payload));
+        }),
+        videoTrim.onCancelTrimming(() => {
+          settle(() => resolve(null));
+        }),
+        videoTrim.onCancel(() => {
+          settle(() => resolve(null));
+        }),
+        videoTrim.onError(({ message, errorCode }) => {
+          settle(() =>
+            reject(
+              new Error(
+                `Video trim failed (${errorCode || "unknown"}): ${message ?? "Unknown error"}`,
+              ),
+            ),
+          );
+        }),
+      );
       // react-native-video-trim docs:
       // https://github.com/maitrungduc1410/react-native-video-trim
       showEditor(uri, {

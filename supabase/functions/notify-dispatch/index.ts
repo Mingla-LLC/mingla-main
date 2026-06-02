@@ -304,6 +304,13 @@ serve(async (req) => {
         type,
         title,
         body,
+        // ORCH-1030 CONTRACT: callers MUST pass the deep link as the TOP-LEVEL
+        // `deepLink` field, NOT only nested inside `data`. This line OVERRIDES
+        // `data.deepLink` with the top-level value (or null) — so a caller that
+        // sets only `data: { deepLink }` and omits the top-level field gets its
+        // deep link SILENTLY NULLED in both `data.deepLink` (what the consumer
+        // app routes on) and the `deep_link` column. Pass both: `deepLink, data:
+        // { deepLink }`. (Bug fixed for birthday/holiday/board-message producers.)
         data: { ...data, deepLink: deepLink || null },
         brand_id: brandId || null,
         deep_link: deepLink || null,

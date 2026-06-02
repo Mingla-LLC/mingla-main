@@ -46,6 +46,10 @@ export default function SpotlightOverlay(): React.ReactElement | null {
     skipTour,
     targetMeasurements,
     overlayVisible,
+    // ORCH-1029 (F-1): consumed so the overlay re-renders when a measurement registers
+    // (the targetMeasurements Map is mutated in place). Releases step 1's deck-hold the
+    // instant the deck attaches + measures a plausible rect.
+    targetVersion,
   } = useCoachMarkContext();
   const layout = useAppLayout();
   const { t } = useTranslation(['modals', 'common']);
@@ -139,10 +143,62 @@ export default function SpotlightOverlay(): React.ReactElement | null {
   const isFirstStep = currentStep === 1;
   const isLastStep = currentStep === COACH_STEP_COUNT;
   const target: TargetRect | undefined = targetMeasurements.get(currentStep);
-  const hasTarget = target && target.width > 0 && target.height > 0;
+
+  // ORCH-1029 (F-1, REWORK): fullscreen-rejection clamp — recalibrated.
+  //
+  // The clamp's ONLY job is to reject a measurement that covers essentially the WHOLE
+  // screen (the Android warm-deck fallthrough rect {0,2,448,879} on a 448×896 screen),
+  // which would paint a no-op whole-screen cutout. It must NOT reject the LEGITIMATE
+  // deck card.
+  //
+  // The deck ref (`coachDeckRef` → SwipeableCards `cardContainer`) is styled
+  // `{ width: SCREEN_WIDTH, flex: 1 }`, so the real deck card is full-WIDTH by design
+  // (width === screenWidth, x === 0) but NOT full-height — it stops above the bottom tab
+  // bar. Observed real rect on iOS SE3: {0,2,375,589} on a 375×667 screen → height ≈ 88%.
+  // The old clamp (`width <= screenWidth*0.96`) could NEVER be satisfied by a full-width
+  // target, so it rejected the deck card on every device and froze the tour at step 1.
+  //
+  // The recalibrated predicate accepts anything that is NOT a true whole-screen rect.
+  // A true whole-screen rect is near-100% width AND near-100% height AND top-origin near 0
+  // (covers the entire screen top-to-bottom). The Android fallthrough rect hits all three
+  // (width 448 ≥ 98%, height 879 ≥ 95% of 896, y ≈ 0); the deck card hits width + top but
+  // NOT height (589 < 95% of 667), so it is accepted.
+  // Spec: SPEC_ORCH-1029_COACH_MARK_FIXES.md §3.F-1 (SC-1.1).
+  const FULLSCREEN_WIDTH_RATIO = 0.98;
+  const FULLSCREEN_HEIGHT_RATIO = 0.95;
+  const FULLSCREEN_TOP_INSET = 64; // status-bar-scale top origin → "starts at the top edge"
+  const isPlausibleCutout = (t: TargetRect): boolean => {
+    if (t.width <= 0 || t.height <= 0) return false;
+    const coversFullWidth = t.width >= screenWidth * FULLSCREEN_WIDTH_RATIO;
+    const coversFullHeight = t.height >= screenHeight * FULLSCREEN_HEIGHT_RATIO;
+    const startsAtTop = t.y <= FULLSCREEN_TOP_INSET;
+    const isWholeScreen = coversFullWidth && coversFullHeight && startsAtTop;
+    return !isWholeScreen;
+  };
+
+  const hasPlausibleTarget = !!target && isPlausibleCutout(target);
+
+  // ORCH-1029 (F-1): step 1 ("Meet your deck") owns a cutout and MUST NOT present a
+  // misleading no-cutout centered bubble (iOS) or a whole-screen cutout (Android) as its
+  // resting state. If the deck target is unmeasured or fullscreen, step 1 HOLDS — it
+  // renders nothing until a plausible rect arrives. The deck's callback-ref attach (when
+  // SwipeableCards leaves the "Curating" skeleton) fires the rAF measurement that
+  // registers a plausible rect, releasing this hold deterministically — not on a timer.
+  // Spec: SPEC_ORCH-1029_COACH_MARK_FIXES.md §3.F-1 (SC-1.2 / SC-1.3).
+  const step1HoldingForDeck = isFirstStep && !hasPlausibleTarget;
+
+  // For the cutout itself, a step only gets a cutout when the target is plausible.
+  // (Non-step-1 steps with bubblePosition:'center' intentionally render centered when
+  // they have no cutout — preserved below via `forceCenter`.)
+  const hasTarget = hasPlausibleTarget;
 
   if (__DEV__) {
-    console.log(`[Spotlight] Step ${currentStep}: target=${JSON.stringify(target)}, hasTarget=${hasTarget}`);
+    console.log(`[Spotlight] Step ${currentStep} (v${targetVersion}): target=${JSON.stringify(target)}, hasPlausibleTarget=${hasPlausibleTarget}, step1HoldingForDeck=${step1HoldingForDeck}`);
+  }
+
+  // ORCH-1029 (F-1): hold step 1's presentation until the deck measures a plausible rect.
+  if (step1HoldingForDeck) {
+    return null;
   }
 
   // ── Cutout calculation ──────────────────────────────────────────────────

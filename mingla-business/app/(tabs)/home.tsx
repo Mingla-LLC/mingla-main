@@ -1,20 +1,20 @@
 /**
  * Home tab — brand-owner dashboard.
  *
- * ORCH-0965 [Home dashboard intelligent KPIs + tri-kind upcoming]:
- *   - Upcoming list now covers all 3 offering kinds (event, experience, trip)
- *     + local drafts, sorted live-pinned then startAtUtc ascending.
- *   - When the brand has no live offering AND a rule-ladder rung fires,
- *     <HomeNextActionCard> replaces the empty-zero KPI tile with one
- *     best-next-action recommendation (absorbs the ORCH-0855 trip-planner CTA).
- *   - When the live hero renders an `event`-kind offering, a scan-QR action
- *     routes to /event/{id}/scanner.
+ * ORCH-1038 [unified smart to-do toggle]:
+ *   - A single collapsible <BusinessTodoToggle> sits flush under the top bar
+ *     (shared with Hub). It derives an ordered, auto-vanishing to-do list from
+ *     live state (create/select brand, add/finish venue, get venue live, create
+ *     first offering, connect Stripe, finish draft) and replaces ALL the prior
+ *     conditional cards (no-brand / choose-brand / loading / add-venue /
+ *     deck-readiness / rule-ladder next-action / offering-chooser).
+ *   - Analytics render ONLY when there is real data: the live hero, the 7-day
+ *     revenue KPI (rev7d > 0), the Active-events KPI (total > 0), and the
+ *     Upcoming list (items > 0). No zero/empty placeholder tiles.
+ *   - The live hero's scan-QR action still routes to /event/{id}/scanner.
  *
- * States (pre-ORCH-0965 contract preserved):
- *   - Empty (brands.length === 0)              → "No brands yet" prompt + topbar chip CTA
- *   - Populated, no live event (currentBrand)  → 7-day aggregate hero + KPI grid + Upcoming list
- *   - Populated with live event                → Live KPI hero + scan-QR (event-kind only) + KPI grid + Upcoming list
- *   - Populated + ladder rung fires            → <HomeNextActionCard> above KPI section
+ * ORCH-0965 [tri-kind upcoming]: the Upcoming list covers events, experiences,
+ * trips + local drafts, sorted live-pinned then startAtUtc ascending.
  *
  * Brand-chip on TopBar opens BrandSwitcherSheet (mode auto-derives from list state).
  */
@@ -27,7 +27,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  useWindowDimensions,
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
@@ -36,12 +35,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BrandDeleteSheet } from "../../src/components/brand/BrandDeleteSheet";
 import { BrandSwitcherSheet } from "../../src/components/brand/BrandSwitcherSheet";
-import {
-  OfferingChooser,
-  routeForOffering,
-  type OfferingKind,
-} from "../../src/components/brand/OfferingChooser";
-import { HomeNextActionCard } from "../../src/components/home/HomeNextActionCard";
+import { BusinessTodoToggle } from "../../src/components/home/BusinessTodoToggle";
 import { HomeTripRow } from "../../src/components/home/HomeTripRow";
 import { UpcomingListItem } from "../../src/components/home/UpcomingListItem";
 import { EventCoverMedia } from "../../src/components/ui/EventCoverMedia";
@@ -69,24 +63,23 @@ import {
 import { useCurrentBrand } from "../../src/hooks/useCurrentBrand";
 import { useCurrentBrandRole } from "../../src/hooks/useCurrentBrandRole";
 import { useCurrentBrandRecovery } from "../../src/hooks/useCurrentBrandRecovery";
+import { useBusinessTodos } from "../../src/hooks/useBusinessTodos";
 import { useResponsiveLayout } from "../../src/hooks/useResponsiveLayout";
-import { brandKeys, useBrands } from "../../src/hooks/useBrands";
+import { brandKeys } from "../../src/hooks/useBrands";
 import {
   eventOrdersKeys,
   useEventSalesSummaries,
 } from "../../src/hooks/useEventOrders";
-import { useServerDraftsForBrand } from "../../src/hooks/useServerDraftEvents";
 import {
   upcomingKeys,
   useUpcomingForBrand,
 } from "../../src/hooks/useUpcomingForBrand";
 import type { DraftEvent } from "../../src/store/draftEventStore";
-import { useDraftsForBrand } from "../../src/store/draftEventStore";
 import type { LiveEvent } from "../../src/store/liveEventStore";
 import type { Trip } from "../../src/services/tripsService";
 // ORCH-0865 REWORK 5 — canonical routing helper, ban hardcoded /event/{id}
 import { routeForEventRowDefensive } from "../../src/utils/routeForEventRow";
-import { pickHomeNextAction } from "../../src/utils/homeNextAction";
+import type { BusinessTodo } from "../../src/utils/businessTodos";
 
 import { formatCurrencyRound } from "../../src/utils/currency";
 import { formatDraftDateLine } from "../../src/utils/eventDateDisplay";
@@ -103,14 +96,6 @@ interface ToastState {
   visible: boolean;
   message: string;
 }
-
-const greetingLabel = (): string => {
-  const hour = new Date().getHours();
-  if (hour < 5) return "Late night";
-  if (hour < 12) return "Good morning";
-  if (hour < 17) return "Good afternoon";
-  return "Good evening";
-};
 
 const getEventName = (name: string, fallback: string): string =>
   name.trim().length > 0 ? name : fallback;
@@ -135,14 +120,10 @@ const formatCapacityLabel = (event: LiveEvent): string => {
 export default function HomeTab(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const dimensions = useWindowDimensions();
   const { isWideDesktop } = useResponsiveLayout();
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const brandsQuery = useBrands(user?.id ?? null);
-  const brands = brandsQuery.data ?? [];
   const currentBrand = useCurrentBrand();
-  const currentBrandId = useCurrentBrandStore((s) => s.currentBrandId);
   const setCurrentBrand = useCurrentBrandStore((s) => s.setCurrentBrand);
   // ORCH-1055: rank-10 scanners render the stripped-down ScannerHome
   // instead of the brand-owner KPI dashboard. Hook MUST be called every
@@ -150,9 +131,7 @@ export default function HomeTab(): React.ReactElement {
   // value below, after all sibling hooks have run.
   const { rank: callerRank } = useCurrentBrandRole(currentBrandId);
   const brandRecovery = useCurrentBrandRecovery();
-  useServerDraftsForBrand(currentBrand?.id ?? null);
   const upcoming = useUpcomingForBrand(currentBrand?.id ?? null);
-  const drafts = useDraftsForBrand(currentBrand?.id ?? null);
   const [sheetVisible, setSheetVisible] = useState<boolean>(false);
   // ORCH-0826 M0: universal creator sheet (Create event/experience/trip)
   const [isUniversalCreatorOpen, setIsUniversalCreatorOpen] = useState<boolean>(false);
@@ -286,18 +265,6 @@ export default function HomeTab(): React.ReactElement {
     }
   }, [brandRecovery.errorMessage]);
 
-  const hasNoBrands = brandsQuery.isFetched && brands.length === 0;
-  const isBrandResolving =
-    !brandsQuery.isFetched ||
-    brandRecovery.isResolving ||
-    (brands.length > 0 && currentBrandId !== null && currentBrand === null);
-  const hasBrandsButNoSelection =
-    brandsQuery.isFetched &&
-    brands.length > 0 &&
-    currentBrandId === null &&
-    currentBrand === null &&
-    !isBrandResolving;
-
   const primaryLiveItem = upcoming.primaryLiveItem;
   const primaryLiveEvent: LiveEvent | null =
     primaryLiveItem !== null &&
@@ -305,17 +272,21 @@ export default function HomeTab(): React.ReactElement {
       ? (primaryLiveItem.source as LiveEvent)
       : null;
 
-  // Sales summary lookup only for event/experience live items — trips have
-  // their own ticketsSoldCount on the Trip row.
-  const summaryLiveEvents = useMemo<LiveEvent[]>(
+  // Sales summary lookup for ALL event/experience items — both live AND upcoming.
+  // Upcoming (scheduled, future-dated) events are still selling tickets, so their
+  // sold count + revenue must be fetched too. Previously this filtered to
+  // status === "live", so every upcoming row fell back to a false "0 sold" / "$0"
+  // (its orders were never fetched). Trips are excluded — they carry their own
+  // ticketsSoldCount on the Trip row; drafts have no orders.
+  const summaryEvents = useMemo<LiveEvent[]>(
     () =>
       upcoming.items
-        .filter((i) => i.status === "live" && (i.kind === "event" || i.kind === "experience"))
+        .filter((i) => i.kind === "event" || i.kind === "experience")
         .map((i) => i.source as LiveEvent),
     [upcoming.items],
   );
   const eventSalesSummaries = useEventSalesSummaries(
-    summaryLiveEvents,
+    summaryEvents,
     currentBrand?.defaultCurrency,
   );
 
@@ -351,15 +322,6 @@ export default function HomeTab(): React.ReactElement {
     };
   }, [primaryLiveEvent, currentBrand?.defaultCurrency, eventSalesSummaries]);
 
-  // ORCH-0965 — rule-ladder card. Only computed when a brand is selected.
-  const nextAction = useMemo(
-    () =>
-      currentBrand !== null
-        ? pickHomeNextAction(currentBrand, upcoming.counts, drafts)
-        : null,
-    [currentBrand, upcoming.counts, drafts],
-  );
-
   // ORCH-0965 — counts shape for the existing getActiveEventsKpiSub helper.
   // The helper consumes BrandEventSummaryCounts which has `all` + status
   // buckets; we map our UpcomingCounts (which mirrors the same shape minus
@@ -377,35 +339,9 @@ export default function HomeTab(): React.ReactElement {
     [upcoming.counts],
   );
 
-  const handleNextActionPress = useCallback((): void => {
-    if (nextAction === null) return;
-    if (currentBrand === null) {
-      setToast({
-        visible: true,
-        message:
-          brands.length > 0 ? "Select a brand first." : "Create a brand first.",
-      });
-      setSheetVisible(true);
-      return;
-    }
-    router.push(nextAction.ctaRoute as never);
-  }, [nextAction, currentBrand, brands.length, router]);
-
-  const handleOfferingSelect = useCallback(
-    (offering: OfferingKind): void => {
-      if (currentBrand === null) {
-        setToast({
-          visible: true,
-          message:
-            brands.length > 0 ? "Select a brand first." : "Create a brand first.",
-        });
-        setSheetVisible(true);
-        return;
-      }
-      router.push(routeForOffering(offering) as never);
-    },
-    [brands.length, currentBrand, router],
-  );
+  // ORCH-1038: the no-brand / choose-brand / add-venue / deck-readiness /
+  // rule-ladder / offering-chooser logic now lives in the shared useBusinessTodos
+  // hook + handleTodoAction below.
 
   // ORCH-0965 — scan-QR action visible ONLY when the primary live hero is
   // an `event`-kind offering. Experiences route to a coming-soon stub
@@ -413,13 +349,45 @@ export default function HomeTab(): React.ReactElement {
   const showScanAction =
     primaryLiveItem !== null && primaryLiveItem.kind === "event";
 
-  const isSmallPhoneWithLiveHero =
-    primaryLiveEvent !== null && dimensions.height <= 700;
-
   const handleScanPress = useCallback((): void => {
     if (primaryLiveItem === null || primaryLiveItem.kind !== "event") return;
     router.push(`/event/${primaryLiveItem.id}/scanner` as never);
   }, [primaryLiveItem, router]);
+
+  // ORCH-1038 — analytics tiles render ONLY when there is real data to show
+  // (no zero/empty placeholders); the to-do toggle carries guidance instead.
+  const hasRevenueData =
+    currentBrand?.defaultCurrency !== undefined &&
+    (currentBrand?.stats.rev7d ?? 0) > 0;
+  const showRevenueTile = primaryLiveEvent !== null || hasRevenueData;
+  const hasActiveEvents = upcoming.counts.total > 0;
+  const hasUpcomingItems = upcoming.items.length > 0;
+  const showKpiGrid = showRevenueTile || hasActiveEvents;
+
+  // ORCH-1038 — unified smart to-do list: derived from live state, ordered by
+  // priority, auto-vanishing as conditions are met. Single source of truth shared
+  // with Hub (useBusinessTodos).
+  const todos = useBusinessTodos();
+  const handleTodoAction = useCallback(
+    (todo: BusinessTodo): void => {
+      switch (todo.action.kind) {
+        case "open_brand_switcher":
+          setSheetVisible(true);
+          return;
+        case "open_universal_creator":
+          setIsUniversalCreatorOpen(true);
+          return;
+        case "route":
+          router.push(todo.action.route as never);
+          return;
+        default: {
+          const _exhaustive: never = todo.action;
+          return _exhaustive;
+        }
+      }
+    },
+    [router],
+  );
 
   // ORCH-1055: rank-10 scanner — render the door-only surface. All hooks
   // above have run unconditionally; this is a render-time branch, safe
@@ -448,6 +416,16 @@ export default function HomeTab(): React.ReactElement {
         />
       </View>
 
+      {/* ORCH-1038 — unified smart to-do toggle, flush under the top bar, full
+          top-bar width, on Home + Hub. Hides entirely when there is nothing to do. */}
+      <View style={styles.todoWrap}>
+        <BusinessTodoToggle
+          todos={todos}
+          onAction={handleTodoAction}
+          testID="business-todo-toggle"
+        />
+      </View>
+
       {isWideDesktop ? (
         <ScrollView
           style={styles.desktopOuterScroll}
@@ -458,59 +436,13 @@ export default function HomeTab(): React.ReactElement {
             <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
           }
         >
-          {currentBrand === null ? (
-            <View style={styles.emptyCol}>
-              <GlassCard variant="elevated" padding={spacing.lg}>
-                <Text style={styles.greetingTier}>{greetingLabel()}</Text>
-                {hasNoBrands ? (
-                  <>
-                    <Text style={styles.emptyTitle}>No brands yet</Text>
-                    <Text style={styles.emptyBody}>
-                      Tap{" "}
-                      <Text style={styles.emptyChipName}>Create brand</Text>
-                      {" "}in the top bar to set up your first brand. You can
-                      edit it any time.
-                    </Text>
-                  </>
-                ) : hasBrandsButNoSelection ? (
-                  <>
-                    <Text style={styles.emptyTitle}>Choose a brand</Text>
-                    <Text style={styles.emptyBody}>
-                      We found your brands. Pick one from the top bar to continue.
-                    </Text>
-                    <Pressable
-                      onPress={handleOpenSwitcher}
-                      accessibilityRole="button"
-                      accessibilityLabel="Choose a brand"
-                      style={styles.emptyBuildAction}
-                    >
-                      <Icon name="chevD" size={16} color={accent.warm} />
-                      <Text style={styles.emptyBuildActionText}>
-                        Choose brand
-                      </Text>
-                    </Pressable>
-                  </>
-                ) : (
-                  <>
-                    <Text style={styles.emptyTitle}>Loading brands</Text>
-                    <Text style={styles.emptyBody}>
-                      Getting your brand workspace ready.
-                    </Text>
-                  </>
-                )}
-              </GlassCard>
-            </View>
-          ) : (
+          {currentBrand === null ? null : (
             <>
-              {/* ORCH-0965 — rule-ladder card. Renders ABOVE the KPI grid when
-                  a rung fires AND no live offering is present (live hero takes
-                  precedence; if a brand is healthy enough to have a live event,
-                  the rule ladder yields the floor to that signal except for the
-                  physical-no-address rung which surfaces alongside). */}
-              {nextAction !== null && (upcoming.counts.live === 0 || nextAction.rung === 4) ? (
-                <HomeNextActionCard action={nextAction} onPress={handleNextActionPress} />
-              ) : null}
+              {/* ORCH-1038 — analytics only when there's real data; the to-do
+                  toggle above carries all guidance/empty-state actions. */}
+              {showKpiGrid ? (
               <View style={styles.desktopKpiGrid}>
+                {showRevenueTile ? (
                 <View style={styles.desktopKpiCell}>
                   {primaryLiveEvent !== null ? (
                     <GlassCard variant="elevated" padding={spacing.lg}>
@@ -595,7 +527,9 @@ export default function HomeTab(): React.ReactElement {
                     />
                   )}
                 </View>
+                ) : null}
 
+                {hasActiveEvents ? (
                 <View style={styles.desktopKpiCell}>
                   <KpiTile
                     label="Active events"
@@ -603,8 +537,11 @@ export default function HomeTab(): React.ReactElement {
                     sub={getActiveEventsKpiSub(kpiCountsForSub, isWideDesktop)}
                   />
                 </View>
+                ) : null}
               </View>
+              ) : null}
 
+              {hasUpcomingItems ? (
               <View style={styles.desktopUpcomingPane}>
                 <View style={styles.sectionHeaderRow}>
                   <Text style={styles.sectionTitle}>Upcoming</Text>
@@ -626,17 +563,7 @@ export default function HomeTab(): React.ReactElement {
                     styles.desktopEventsGrid,
                   ]}
                 >
-                {upcoming.items.length === 0 ? (
-                  <GlassCard variant="base" padding={spacing.lg}>
-                    <Text style={styles.emptyTitle}>No upcoming events</Text>
-                    <Text style={styles.emptyBody}>
-                      Tap{" "}
-                      <Text style={styles.emptyEmphasis}>+</Text>
-                      {" "}in the top right to create your first event.
-                    </Text>
-                  </GlassCard>
-                ) : (
-                  upcoming.items.map((item) => {
+                {upcoming.items.map((item) => {
                     if (item.kind === "draft") {
                       const draft = item.source as DraftEvent;
                       return (
@@ -768,82 +695,23 @@ export default function HomeTab(): React.ReactElement {
                       </Pressable>
                       </View>
                     );
-                  })
-                )}
+                  })}
                 </ScrollView>
               </View>
+              ) : null}
             </>
           )}
         </ScrollView>
-      ) : currentBrand === null ? (
-        <ScrollView
-          contentContainerStyle={styles.emptyScroll}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
-          }
-        >
-          <View style={styles.emptyCol}>
-            <GlassCard variant="elevated" padding={spacing.lg}>
-              <Text style={styles.greetingTier}>{greetingLabel()}</Text>
-              {hasNoBrands ? (
-                <>
-                  <Text style={styles.emptyTitle}>No brands yet</Text>
-                  <Text style={styles.emptyBody}>
-                    Tap{" "}
-                    <Text style={styles.emptyChipName}>Create brand</Text>
-                    {" "}in the top bar to set up your first brand. You can
-                    edit it any time.
-                  </Text>
-                </>
-              ) : hasBrandsButNoSelection ? (
-                <>
-                  <Text style={styles.emptyTitle}>Choose a brand</Text>
-                  <Text style={styles.emptyBody}>
-                    We found your brands. Pick one from the top bar to continue.
-                  </Text>
-                  <Pressable
-                    onPress={handleOpenSwitcher}
-                    accessibilityRole="button"
-                    accessibilityLabel="Choose a brand"
-                    style={styles.emptyBuildAction}
-                  >
-                    <Icon name="chevD" size={16} color={accent.warm} />
-                    <Text style={styles.emptyBuildActionText}>
-                      Choose brand
-                    </Text>
-                  </Pressable>
-                </>
-              ) : (
-                <>
-                  <Text style={styles.emptyTitle}>Loading brands</Text>
-                  <Text style={styles.emptyBody}>
-                    Getting your brand workspace ready.
-                  </Text>
-                </>
-              )}
-            </GlassCard>
-          </View>
-        </ScrollView>
-      ) : (
-        // orch-0974-lock-pane:begin-mobile-populated; META-ORCH-0972 — rule-ladder card renders only before a live offering exists, with the no_offerings rung yielding the unified OfferingChooser.
+      ) : currentBrand === null ? null : (
+        // orch-0974-lock-pane:begin-mobile-populated; ORCH-1038 — the to-do
+        // toggle above carries no-brand / no-venue / deck-readiness / offering
+        // guidance; this pane is now analytics-only (gated on real data).
         <View style={styles.mobileBody}>
           <View style={styles.lockedZone}>
-            {nextAction !== null && (upcoming.counts.live === 0 || nextAction.rung === 4) && !isSmallPhoneWithLiveHero ? (
-              nextAction.kind === "no_offerings" ? (
-                <View style={styles.nextActionChooser}>
-                  <OfferingChooser
-                    variant="home-empty"
-                    onSelect={handleOfferingSelect}
-                  />
-                </View>
-              ) : (
-                <HomeNextActionCard action={nextAction} onPress={handleNextActionPress} />
-              )
-            ) : null}
-
+            {showKpiGrid ? (
             <View style={styles.mobileKpiStack}>
-              {primaryLiveEvent !== null ? (
+              {showRevenueTile ? (
+              primaryLiveEvent !== null ? (
                 <GlassCard variant="elevated" padding={spacing.lg}>
                   <View style={styles.heroLiveTagRow}>
                     <Pill variant="live" livePulse>
@@ -924,15 +792,20 @@ export default function HomeTab(): React.ReactElement {
                       : "—"
                   }
                 />
-              )}
+              )
+              ) : null}
 
+              {hasActiveEvents ? (
               <KpiTile
                 label="Active events"
                 value={upcoming.counts.active}
                 sub={getActiveEventsKpiSub(kpiCountsForSub, isWideDesktop)}
               />
+              ) : null}
             </View>
+            ) : null}
 
+            {hasUpcomingItems ? (
             <View style={styles.mobileSectionHeaderRow}>
               <Text style={styles.sectionTitle}>Upcoming</Text>
               <Pressable
@@ -943,6 +816,7 @@ export default function HomeTab(): React.ReactElement {
                 <Text style={styles.sectionLink}>See all</Text>
               </Pressable>
             </View>
+            ) : null}
           </View>
 
           <FlatList
@@ -962,28 +836,12 @@ export default function HomeTab(): React.ReactElement {
             ItemSeparatorComponent={() => (
               <View style={styles.mobileUpcomingSep} />
             )}
-            ListEmptyComponent={
-              <GlassCard variant="base" padding={spacing.lg}>
-                <Text style={styles.emptyTitle}>No upcoming events</Text>
-                <Text style={styles.emptyBody}>
-                  Tap{" "}
-                  <Text style={styles.emptyEmphasis}>+</Text>
-                  {" "}in the top right to create your first event.
-                </Text>
-              </GlassCard>
-            }
             contentContainerStyle={styles.mobileUpcomingContent}
             refreshControl={
               <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
             }
             showsVerticalScrollIndicator={false}
           />
-
-          {nextAction !== null && (upcoming.counts.live === 0 || nextAction.rung === 4) && isSmallPhoneWithLiveHero ? (
-            <View style={styles.smallPhoneLadderHost}>
-              <HomeNextActionCard action={nextAction} onPress={handleNextActionPress} />
-            </View>
-          ) : null}
         </View>
         // orch-0974-lock-pane:end-mobile-populated
       )}
@@ -1030,6 +888,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.sm,
   },
+  // ORCH-1038 — to-do toggle wrapper: matches the top bar's horizontal padding
+  // so the toggle is flush + the same width as the bar above it.
+  todoWrap: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
+  },
   scroll: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.lg,
@@ -1072,6 +936,12 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xl * 4,
   },
   mobileBody: {
+    flex: 1,
+    minHeight: 0,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+  },
+  mobileNoVenueBody: {
     flex: 1,
     minHeight: 0,
     paddingHorizontal: spacing.md,

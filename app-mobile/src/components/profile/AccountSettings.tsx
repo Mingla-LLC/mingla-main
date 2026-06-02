@@ -520,26 +520,42 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
       scrollMode="scroll"
       wrapInRNModal
       accessibilityLabel={t('settings:header')}
-      header={
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>{t('settings:header')}</Text>
-          <TouchableOpacity
-            onPress={onClose}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            accessibilityLabel={t('settings:close_accessibility')}
-            accessibilityRole="button"
-          >
-            <Icon name="close" size={24} color="#6b7280" />
-          </TouchableOpacity>
-        </View>
-      }
       scrollProps={{
+        // ORCH-1040 [android-settings-modal-scroll]: NO `header` prop here.
+        // Passing `header` routes the primitive through its header-bearing
+        // branch, which wraps the BottomSheetScrollView inside a flex:1
+        // BottomSheetView (BaseBottomSheet.tsx:550-556). On Android (gorhom
+        // 5.2.8) that wrapper collapses the inner scroll viewport to content
+        // height → maxScrollY = 0 → the body freezes and the Red Zone /
+        // "Delete My Account" become unreachable (proven on Pixel 8 Pro,
+        // 0px bounds-delta). Mirroring the verified-scrolling
+        // ExpandedBusinessEventSheet pattern, the scroll is now the BARE
+        // direct child of the sheet content (header moved INTO the scroll
+        // body below). Dismissibility is preserved by gorhom's
+        // swipe-down handle (enablePanDownToClose defaults true) + the
+        // close-X which sits at the top of the scroll content (the resting
+        // open position), so it is always visible without scrolling.
         style: styles.scrollContent,
         contentContainerStyle: { paddingBottom: Math.max(insets.bottom, 16) + 24 },
         showsVerticalScrollIndicator: false,
         keyboardShouldPersistTaps: "handled",
       }}
     >
+            {/* ORCH-1040: header is now the first SCROLL child (was a pinned
+                `header` prop). At the sheet's resting open position the scroll
+                is at offset 0, so the title + close-X are fully visible. */}
+            <View style={styles.header}>
+              <Text style={styles.headerTitle}>{t('settings:header')}</Text>
+              <TouchableOpacity
+                onPress={onClose}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityLabel={t('settings:close_accessibility')}
+                accessibilityRole="button"
+              >
+                <Icon name="close" size={24} color="#6b7280" />
+              </TouchableOpacity>
+            </View>
+
             {/* Section 1: The Basics (accordion) */}
             <AccordionCard
               icon="person-circle"
@@ -1177,7 +1193,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 24,
+    // ORCH-1040: header now lives INSIDE the scroll body, which already
+    // applies `scrollContent.paddingHorizontal: 16`. Drop the extra
+    // horizontal padding so the title aligns with the cards below it
+    // (was paddingHorizontal: 24 when this was a flush-to-edge pinned header).
+    paddingHorizontal: 8,
     paddingTop: 12,
     paddingBottom: 16,
   },

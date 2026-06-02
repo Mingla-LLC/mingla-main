@@ -1138,6 +1138,45 @@ function checkNoNewBackendFiles() {
     // Strict-grep gate (also lives outside supabase/; listed for trace).
     ".github/scripts/strict-grep/meta-orch-1009-sub-d-ai-score-staleness-recovery.mjs",
   ];
+  // META-ORCH-1009 Sub-E [business-app supply feeder]: adds the business
+  // authoring place_pool migration, business writer edge function, parser TTL /
+  // universal-authoring relaxations, claim-search all-match path, signalScorer
+  // hero-video boost, and focused SQL/Deno tests. C7 is scoped to ORCH-0863
+  // marketing; this allowlist covers intentional Sub-E backend touches.
+  const META_ORCH_1009_SUB_E_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260809000000_meta_orch_1009_sub_e_business_supply_feeder.sql",
+    "supabase/migrations/__tests__/sub_e_business_place_schema.test.sql",
+    "supabase/migrations/__tests__/sub_e_pending_action_expiry.test.sql",
+    "supabase/functions/run-business-place-authoring-pipeline/index.ts",
+    "supabase/functions/run-business-place-authoring-pipeline/__tests__/stage_contract.test.ts",
+    // Sub-E rework 5 (C4): behavioral pipeline test (ai_signal_scores shape,
+    // B9-B12 coaching, Google cross-validation, bouncer gate).
+    "supabase/functions/run-business-place-authoring-pipeline/__tests__/pipeline_behavioral.test.ts",
+    // Sub-E rework 5 (C2): agent-confirm-action 410 dead-end -> in-Hub regenerate.
+    "supabase/functions/agent-confirm-action/index.ts",
+    "supabase/migrations/__tests__/sub_e_business_place_schema.test.sql",
+    "supabase/migrations/__tests__/sub_e_pending_action_expiry.test.sql",
+    // Sub-E rework 5 (C4): behavioral expiry SQL test (stale->expired flip + preserve terminal).
+    "supabase/migrations/__tests__/sub_e_pending_action_expiry_behavioral.test.sql",
+    "supabase/functions/places-autocomplete/index.ts",
+    "supabase/functions/places-autocomplete/index.test.ts",
+    "supabase/functions/claim-search-pool/index.ts",
+    "supabase/functions/_shared/poolMatchResponse.ts",
+    "supabase/functions/_shared/agentTools.ts",
+    "supabase/functions/_shared/signalScorer.ts",
+    "supabase/functions/_shared/__tests__/signalScorer.blend.test.ts",
+    "supabase/functions/parse-restaurant-menu/index.ts",
+    "supabase/functions/parse-play-activities/index.ts",
+    // Sub-E pipeline-state readiness compat column (submit-failure fix).
+    "supabase/migrations/20260809000300_meta_orch_1009_sub_e_pipeline_state_readiness_compat.sql",
+    // Sub-E brand_id uuid-guard unit test.
+    "supabase/functions/run-business-place-authoring-pipeline/__tests__/isUuid.test.ts",
+    // Sub-E required venue gallery (5–20 photos) column.
+    "supabase/migrations/20260812000000_meta_orch_1009_sub_e_venue_gallery.sql",
+    // Sub-F Recommend-me review: edit-cap + admin score-veto columns.
+    "supabase/migrations/20260813000000_meta_orch_1009_sub_f_recommend_review.sql",
+    "supabase/functions/admin-review-venue-claim/index.ts",
+  ];
   const META_ORCH_1009_SUB_B_BACKEND_ALLOWLIST = [
     "supabase/migrations/20260806000000_meta_orch_1009_sub_b_rpcs_with_reasoning.sql",
     "supabase/functions/_shared/signalScorer.ts",
@@ -1212,8 +1251,176 @@ function checkNoNewBackendFiles() {
     // antimeridian/equidistant-tiebreak/corner-coords) + the index.ts NULL guard.
     "supabase/functions/check-launch-city/__tests__/check_launch_city_adversarial.test.ts",
   ];
+  // ORCH-1045 [Business "Get Beta Access" lead-capture]: adds the beta-lead
+  // migration (beta_access_leads table + admin_beta_leads_list RPC) and the
+  // public beta-access-lead-submit edge fn (+ its Deno tests). C7 is scoped to
+  // ORCH-0863 marketing; these are beta-lead-capture backend touches. Per
+  // COMMS-0002 — must land in the SAME commit as the migration + edge fn.
+  const ORCH_1045_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260817000000_orch_1045_beta_access_leads.sql",
+    "supabase/functions/beta-access-lead-submit/index.ts",
+    "supabase/functions/beta-access-lead-submit/__tests__/submit_happy.test.ts",
+    "supabase/functions/beta-access-lead-submit/__tests__/submit_adversarial.test.ts",
+    // tester-authored adversarial regression (ORCH-1045 QA) — same backend dir.
+    "supabase/functions/beta-access-lead-submit/__tests__/submit_handler_sideeffects.tester.test.ts",
+  ];
+  // ORCH-1050 [Brand team invite + accept + ownership transfer]. META-ORCH-1048
+  // sub-B. C7 is scoped to ORCH-0863 marketing; these are brand-team invite
+  // pipeline backend touches (migration + two edge fns + tests). Per
+  // COMMS-0002 — must land in the SAME commit as the service + UI wiring.
+  const ORCH_1050_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260820000000_orch_1050_brand_invite_flow.sql",
+    "supabase/functions/invite-brand-member/index.ts",
+    "supabase/functions/accept-brand-invitation/index.ts",
+    "supabase/functions/invite-brand-member/__tests__/orch-1050-invite-happy.test.ts",
+    "supabase/functions/accept-brand-invitation/__tests__/orch-1050-accept-happy.test.ts",
+    "supabase/functions/accept-brand-invitation/__tests__/orch-1050-accept-adversarial.test.ts",
+  ];
+  // ORCH-1051 [Scanner invite + brand-scoped scanner]. META-ORCH-1048 sub-C.
+  // C7 is scoped to ORCH-0863 marketing; these are scanner-team invite
+  // pipeline backend touches (migration + two edge fns + tests). Per
+  // COMMS-0002 — must land in the SAME commit as the service + UI wiring.
+  const ORCH_1051_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260821000000_orch_1051_scanner_invite_flow.sql",
+    "supabase/functions/invite-scanner/index.ts",
+    "supabase/functions/accept-scanner-invitation/index.ts",
+    "supabase/functions/invite-scanner/__tests__/orch-1051-invite-happy.test.ts",
+    "supabase/functions/accept-scanner-invitation/__tests__/orch-1051-accept-happy.test.ts",
+    "supabase/functions/accept-scanner-invitation/__tests__/orch-1051-accept-adversarial.test.ts",
+  ];
+  // ORCH-1052 [Partner identity + account-level Stripe Connect + currency-
+  // match invite gate]. META-ORCH-1048 sub-D. C7 is scoped to ORCH-0863
+  // marketing; these are partner-Stripe + invite-gate backend touches
+  // (migration + 2 new edge fns + modified accept-brand-invitation + tests).
+  // Per COMMS-0002 must land in the SAME commit as the service + UI wiring.
+  const ORCH_1052_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260822000000_orch_1052_partner_identity_stripe.sql",
+    "supabase/functions/partner-stripe-onboard/index.ts",
+    "supabase/functions/partner-stripe-account-session/index.ts",
+    "supabase/functions/accept-brand-invitation/index.ts",
+    "supabase/functions/partner-stripe-onboard/__tests__/orch-1052-onboard-happy.test.ts",
+    "supabase/functions/partner-stripe-onboard/__tests__/orch-1052-onboard-adversarial.test.ts",
+    "supabase/functions/accept-brand-invitation/__tests__/orch-1052-currency-gate.test.ts",
+    "supabase/migrations/__tests__/orch_1052_partner_can_accept_brand.test.ts",
+  ];
+  // ORCH-1056 [Lead welcome email]: modifies the beta-access edge fn (already
+  // allowlisted above) to also send the lead a welcome email (web-app link +
+  // Ari spotlight + mobile-in-the-works). Adds two new test files. C7 flags new
+  // backend files; per COMMS-0002 they land in the same commit as the edge-fn
+  // change. No marketing scope.
+  const ORCH_1056_BACKEND_ALLOWLIST = [
+    "supabase/functions/beta-access-lead-submit/__tests__/welcome_email.test.ts",
+    "supabase/functions/beta-access-lead-submit/__tests__/welcome_email_adversarial.tester.test.ts",
+  ];
+  // ORCH-1030 [Consumer app notification deep-linking]. C7 is scoped to
+  // ORCH-0863 marketing; ORCH-1030's backend touches correct the notification
+  // producers' deep links so they actually reach the device: birthday/holiday
+  // reminders now route to the gift-target's profile, board/group messages
+  // carry their chat deep link, and all three pass the link TOP-LEVEL so
+  // notify-dispatch fills both `data.deepLink` and the `deep_link` column. C7
+  // flags MODIFIED backend files too, so these existing edge fns are listed
+  // here. No marketing scope. Per COMMS-0002.
+  const ORCH_1030_BACKEND_ALLOWLIST = [
+    "supabase/functions/notify-birthday-reminder/index.ts",
+    "supabase/functions/notify-holiday-reminder/index.ts",
+    "supabase/functions/notify-message/index.ts",
+    "supabase/functions/notify-dispatch/index.ts",
+  ];
+  // ORCH-1040 [Brand physical-location flag]. Additive-only migration adding
+  // brands.has_physical_location (default false; gates the venue/listing
+  // surfaces). No marketing scope; C7 flags new supabase/migrations files.
+  const ORCH_1040_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260814000000_orch_1040_brand_has_physical_location.sql",
+  ];
+  // ORCH-1032 [Intelligence pipeline concurrency cap + chunked enqueue]:
+  // adds the additive 'queued'-status migration (status CHECK widen + per-city
+  // unique active index widen + tg_kick_pending_trial_runs promotion built on
+  // the v3 cancelling body) plus two Deno test files and one SQL-shape
+  // migration test. The edge fn run-place-intelligence-trial/index.ts is a
+  // MODIFY already allowlisted under META_ORCH_1009_SUB_D; only the new
+  // migration + new test files need allowlisting here. C7 is scoped to
+  // ORCH-0863 marketing; these are intelligence-pipeline backend touches.
+  // Per COMMS-0002.
+  const ORCH_1032_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260811000000_orch_1032_queued_status_and_cap.sql",
+    "supabase/functions/run-place-intelligence-trial/__tests__/concurrencyCap.test.ts",
+    "supabase/functions/run-place-intelligence-trial/__tests__/concurrencyCap_adversarial.test.ts",
+    "supabase/migrations/__tests__/orch_1032_cron_promotion.test.ts",
+    // ORCH-1032 QA: tester-authored adversarial regression test (additive-safety
+    // predicate logic + gate count-query running-only correctness).
+    "supabase/migrations/__tests__/orch_1032_additive_safety_adversarial.test.ts",
+  ];
+  // ORCH-1034 [de-GBP-ify the currency layer — charge in seller currency]:
+  // a config-column migration on brands (align pricing_currency:=default_currency,
+  // drop the GBP-only currency CHECK, widen the region CHECK to GB/US/EU/CH) plus
+  // two MODIFY backend files (charge currency = seller settlement currency + the
+  // per-region tax_behavior display flag) and a Deno regression test for the
+  // engine flag generalization. C7 is scoped to ORCH-0863 marketing; these are
+  // pricing/currency backend touches. Per COMMS-0002.
+  const ORCH_1034_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260816000000_orch_1034_currency_de_gbp.sql",
+    "supabase/functions/ticket-checkout-create/index.ts",
+    "supabase/functions/_shared/allInPricingEngine.ts",
+    "supabase/functions/_shared/__tests__/orch_1034_currency_de_gbp.test.ts",
+    "supabase/functions/_shared/__tests__/orch_1034_currency_de_gbp.tester-adversarial.test.ts",
+  ];
+  // ORCH-1043 [Photo-thumbnail pipeline: server-driven + parallel + scoped +
+  // collage fallback]: adds the new pg_cron auto-drain migration + the migration
+  // SQL-shape test + the implementor happy-path collage fallback test. The edge
+  // fn backfill-place-photo-thumbs/index.ts, its index.test.ts, _shared/imageCollage.ts,
+  // and _shared/__tests__/imageCollage.thumbFallback.test.ts are MODIFIES already
+  // allowlisted under the ORCH-0957 block above — only the NEW files need listing
+  // here. C7 is scoped to ORCH-0863 marketing; these are place-photo-pipeline
+  // backend touches. Per COMMS-0002.
+  const ORCH_1043_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260815000000_orch_1043_thumb_backfill_cron.sql",
+    "supabase/functions/_shared/imageCollage.fallback400.test.ts",
+    // Tester-authored adversarial migration test (T-04 partner) — registered
+    // ahead so the tester's same-PR add does not re-trip C7.
+    "supabase/migrations/__tests__/orch_1043_thumb_backfill_cron.test.ts",
+    // ORCH-1043 hotfix: cron auto-run triggered_by NULL (FK-violation fix).
+    "supabase/migrations/20260816000000_orch_1043_auto_run_triggered_by_nullable.sql",
+  ];
+  // ORCH-1044 [Thumbnail generation must fit the edge compute budget + reliably
+  // drain]: adds ONE new migration that extends tg_kick_pending_thumb_backfill()
+  // with a 'running'→'pending' orphaned-batch reclaim, plus the implementor +
+  // tester regression tests. The edge fn backfill-place-photo-thumbs/index.ts +
+  // its index.test.ts are MODIFIES already allowlisted under ORCH_0957 above —
+  // only the NEW files need listing here. C7 is scoped to ORCH-0863 marketing;
+  // these are place-photo-pipeline backend touches. Per COMMS-0002.
+  const ORCH_1044_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260818000000_orch_1044_thumb_orphaned_batch_reclaim.sql",
+    "supabase/migrations/__tests__/orch_1044_thumb_orphaned_batch_reclaim.test.ts",
+    // Tester-authored adversarial regression suite (mid-place guard trip + clean
+    // resume with no double-upload + exact-boundary guard). Per COMMS-0002.
+    "supabase/functions/backfill-place-photo-thumbs/index.adversarial.test.ts",
+  ];
+  // ORCH-1054 [Partner splits ledger + Stripe Transfer pipeline]. META-ORCH-1048
+  // sub-E. C7 is scoped to ORCH-0863 marketing; these are partner-splits backend
+  // touches (new migration + new _shared/partnerSplits.ts module + tests). The
+  // stripeWebhookRouter.ts edit is a MODIFY of an existing file already in the
+  // repo (not a new backend addition). Per COMMS-0002 the migration + new
+  // module + tests must land in the SAME commit as the service + UI wiring.
+  const ORCH_1054_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260823000000_orch_1054_partner_splits.sql",
+    "supabase/functions/_shared/partnerSplits.ts",
+    "supabase/functions/_shared/__tests__/orch_1054_partner_splits_happy.test.ts",
+    "supabase/functions/_shared/__tests__/orch_1054_partner_splits_adversarial.test.ts",
+    "supabase/migrations/__tests__/orch_1054_partner_splits.test.ts",
+  ];
   const ALLOWLIST = [
+    ...ORCH_1054_BACKEND_ALLOWLIST,
+    ...ORCH_1052_BACKEND_ALLOWLIST,
+    ...ORCH_1051_BACKEND_ALLOWLIST,
+    ...ORCH_1050_BACKEND_ALLOWLIST,
+    ...ORCH_1044_BACKEND_ALLOWLIST,
+    ...ORCH_1045_BACKEND_ALLOWLIST,
+    ...ORCH_1056_BACKEND_ALLOWLIST,
+    ...ORCH_1034_BACKEND_ALLOWLIST,
+    ...ORCH_1043_BACKEND_ALLOWLIST,
+    ...ORCH_1032_BACKEND_ALLOWLIST,
     ...ORCH_1027_BACKEND_ALLOWLIST,
+    ...ORCH_1030_BACKEND_ALLOWLIST,
     ...ORCH_1024_BACKEND_ALLOWLIST,
     ...ORCH_1021_BACKEND_ALLOWLIST,
     ...ORCH_1018_BACKEND_ALLOWLIST,
@@ -1279,6 +1486,9 @@ function checkNoNewBackendFiles() {
     ...META_ORCH_1009_SUB_A_BACKEND_ALLOWLIST,
     ...META_ORCH_1009_SUB_B_BACKEND_ALLOWLIST,
     ...META_ORCH_1009_SUB_D_BACKEND_ALLOWLIST,
+    ...META_ORCH_1009_SUB_E_BACKEND_ALLOWLIST,
+    ...ORCH_1030_BACKEND_ALLOWLIST,
+    ...ORCH_1040_BACKEND_ALLOWLIST,
   ];
   const forbidden = changed.filter(
     (p) =>

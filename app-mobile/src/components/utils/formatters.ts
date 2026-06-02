@@ -1,6 +1,6 @@
 // Utility functions for formatting currency and measurements based on user preferences
 
-import { getRate } from '../../services/currencyService';
+import { getRate, convertBetween } from '../../services/currencyService';
 import { currencySymbolMap } from '../../services/countryCurrencyService';
 import { getUserLocale } from '../../utils/localeUtils';
 
@@ -30,18 +30,32 @@ const wholeNumberCurrencies = [
 ];
 
 /**
- * Format currency based on user preferences with thousand separators
- * @param amount - Amount in USD
- * @param currencyCode - Target currency code
+ * Format currency based on user preferences with thousand separators.
+ *
+ * ORCH-1034 [de-GBP-ify the currency layer]: converts FROM `sourceCurrency` TO
+ * `currencyCode` using the USD-based CROSS-rate (fixes the prior USD-base bug
+ * that omitted the source→USD leg). Same-currency is an exact identity.
+ *
+ * @param amount - Amount expressed in `sourceCurrency`
+ * @param currencyCode - Target (buyer) currency code to display in
+ * @param sourceCurrency - Currency the `amount` is in. Defaults to 'USD' for
+ *   legacy non-commerce callers whose source genuinely IS USD (place-pool
+ *   price data). COMMERCE callers (event/ticket prices in the seller currency)
+ *   MUST pass the real seller currency. With the default 'USD', the cross-rate
+ *   reduces to the prior `amount * getRate(target)` behavior — fully backward
+ *   compatible — while same-currency (USD→USD) now returns the amount unchanged.
  * @returns Formatted currency string (e.g., 136851 -> "$136,851")
  */
-export function formatCurrency(amount: number, currencyCode: string = 'USD'): string {
+export function formatCurrency(
+  amount: number,
+  currencyCode: string = 'USD',
+  sourceCurrency: string = 'USD',
+): string {
   const currency = currencyData[currencyCode as keyof typeof currencyData];
-  const rate = getRate(currencyCode);
   if (!currency) return `$${Math.round(amount).toLocaleString(getUserLocale())}`;
 
-  const convertedAmount = amount * rate;
-  
+  const convertedAmount = convertBetween(amount, sourceCurrency, currencyCode);
+
   if (wholeNumberCurrencies.includes(currencyCode)) {
     return `${currency.symbol}${Math.round(convertedAmount).toLocaleString(getUserLocale())}`;
   }
@@ -133,21 +147,26 @@ export function getCurrencySymbol(currencyCode: string = 'USD'): string {
 }
 
 /**
- * Convert a price range string from USD to user's preferred currency
- * @param priceRange - Price range string in USD (e.g., "$20-40", "$100+", "Free", "$50")
- * @param currencyCode - Target currency code
+ * Convert a price range string to the user's preferred currency.
+ *
+ * ORCH-1034: converts FROM `sourceCurrency` TO `currencyCode` via the USD-based
+ * cross-rate. `sourceCurrency` defaults to 'USD' (place-pool price strings are
+ * USD-based) — with the default the cross-rate reduces to the prior behavior.
+ *
+ * @param priceRange - Price range string (e.g., "$20-40", "$100+", "Free", "$50")
+ * @param currencyCode - Target (buyer) currency code
+ * @param sourceCurrency - Currency the parsed numbers are in (default 'USD')
  * @returns Formatted price range string in target currency
  */
-export function formatPriceRange(priceRange: string | undefined, currencyCode: string = 'USD'): string {
+export function formatPriceRange(priceRange: string | undefined, currencyCode: string = 'USD', sourceCurrency: string = 'USD'): string {
   if (!priceRange || priceRange.includes('undefined') || priceRange.includes('NaN')) return 'Free';
-  
+
   // Handle "Free" or non-numeric ranges
   if (priceRange.toLowerCase() === 'free' || priceRange === '-') {
     return priceRange;
   }
 
   const currency = currencyData[currencyCode as keyof typeof currencyData];
-  const rate = getRate(currencyCode);
   const symbol = currency?.symbol || '$';
 
   // Extract numbers from the price range
@@ -158,16 +177,16 @@ export function formatPriceRange(priceRange: string | undefined, currencyCode: s
 
   if (rangeMatch) {
     // Range format: $20-40 or $20 - $40
-    const minUSD = parseFloat(rangeMatch[1].replace(/,/g, ''));
-    const maxUSD = parseFloat(rangeMatch[2].replace(/,/g, ''));
-    const minConverted = Math.round(minUSD * rate);
-    const maxConverted = Math.round(maxUSD * rate);
-    
+    const minSource = parseFloat(rangeMatch[1].replace(/,/g, ''));
+    const maxSource = parseFloat(rangeMatch[2].replace(/,/g, ''));
+    const minConverted = Math.round(convertBetween(minSource, sourceCurrency, currencyCode));
+    const maxConverted = Math.round(convertBetween(maxSource, sourceCurrency, currencyCode));
+
     return `${symbol}${minConverted.toLocaleString(getUserLocale())} - ${symbol}${maxConverted.toLocaleString(getUserLocale())}`;
   } else if (singleMatch) {
     // Single value format: $100+ or $50
-    const valueUSD = parseFloat(singleMatch[1].replace(/,/g, ''));
-    const valueConverted = Math.round(valueUSD * rate);
+    const valueSource = parseFloat(singleMatch[1].replace(/,/g, ''));
+    const valueConverted = Math.round(convertBetween(valueSource, sourceCurrency, currencyCode));
     
     return `${symbol}${valueConverted.toLocaleString(getUserLocale())}${hasPlus ? '+' : ''}`;
   }

@@ -2071,7 +2071,10 @@ function ThumbnailTab() {
   // Aggregate thumbnail counters surfaced by run_next_batch responses.
   const [thumbsWritten, setThumbsWritten] = useState(0);
   const [thumbsAlreadyPresent, setThumbsAlreadyPresent] = useState(0);
-  const stopAutoRef = useRef(false);
+  // ORCH-1033 (C/E): optional city scoping for the run (resolved server-side to
+  // city_id via seeding_cities). Empty string = global servable backlog.
+  const [cityList, setCityList] = useState([]);
+  const [selectedCity, setSelectedCity] = useState("");
 
   const invoke = async (body) => {
     const { data, error } = await supabase.functions.invoke("backfill-place-photo-thumbs", { body });
@@ -2104,6 +2107,15 @@ function ThumbnailTab() {
     }
   };
 
+  // ── Load the optional city list (for scoped runs) ──────────────────────────
+
+  useEffect(() => {
+    supabase.from("seeding_cities").select("id, name").order("name", { ascending: true })
+      .then(({ data }) => {
+        if (mountedRef.current && Array.isArray(data)) setCityList(data);
+      });
+  }, []);
+
   // ── Hydrate the (single, global) active thumbnail run on mount ─────────────
 
   useEffect(() => {
@@ -2127,12 +2139,35 @@ function ThumbnailTab() {
     return () => { cancelled = true; };
   }, []);
 
+  // ── ORCH-1033 (E): poll the SERVER run for display while non-terminal ───────
+  // The run is driven server-side (process_chunk self-invoke + cron). This poll
+  // is for the progress UI ONLY — closing/reloading the tab does NOT stop the run.
+  useEffect(() => {
+    if (!activeRun) return;
+    if (["completed", "cancelled", "failed"].includes(activeRun.status)) return;
+    const runId = activeRun.id;
+    const timer = setInterval(async () => {
+      try {
+        const status = await invoke({ action: "run_status", runId });
+        if (!mountedRef.current) return;
+        setActiveRun(status.run);
+        setBatches(status.batches || []);
+        if (typeof status.remainingPlaces === "number") setPendingCount(status.remainingPlaces);
+      } catch { /* transient — next tick retries */ }
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [activeRun?.id, activeRun?.status]);
+
   // ── Create run (global — no city/country args) ─────────────────────────────
 
   const handleCreateRun = async () => {
     setCreating(true);
     try {
-      const data = await invoke({ action: "create_run" });
+      // ORCH-1033: create_run server-kicks process_chunk; the run advances on the
+      // server. Pass the optional city to scope to one city's servable backlog.
+      const body = { action: "create_run" };
+      if (selectedCity) body.city = selectedCity;
+      const data = await invoke(body);
       if (data.status === "nothing_to_do") {
         addToast({ variant: "info", title: "No thumbnails to generate", description: "Every place with originals already has thumbnails." });
         await fetchPreview();
@@ -2178,59 +2213,30 @@ function ThumbnailTab() {
     await fetchPreview();
   };
 
-  // ── Run All (auto-advance) ─────────────────────────────────────────────────
+  // ── Run All (resume the SERVER run) ────────────────────────────────────────
+  // ORCH-1033 (E): the browser run-loop is DELETED. The run is driven server-side
+  // (process_chunk self-invoke chain + the kick_pending_thumb_backfill cron). This
+  // button just resumes a paused run and re-kicks it; the polling effect refreshes
+  // progress. Closing the tab does NOT stop the run.
 
   const handleRunAll = async () => {
     if (!activeRun) return;
     setAutoRunning(true);
-    stopAutoRef.current = false;
-
     try {
-      if (activeRun.status === "paused") {
-        await invoke({ action: "resume_run", runId: activeRun.id });
-      }
-    } catch { /* ignore */ }
-
-    while (!stopAutoRef.current && mountedRef.current) {
-      try {
-        setRunningBatch(true);
-        const data = await invoke({ action: "run_next_batch", runId: activeRun.id });
-        accumulateThumbCounters(data);
-        setRunningBatch(false);
-
-        const status = await invoke({ action: "run_status", runId: activeRun.id });
-        if (mountedRef.current) { setActiveRun(status.run); setBatches(status.batches || []); }
-
-        if (data.done) {
-          addToast({ variant: "success", title: "All batches complete!" });
-          break;
-        }
-        if (stopAutoRef.current) {
-          addToast({ variant: "info", title: "Auto-run paused" });
-          break;
-        }
-        await new Promise((r) => setTimeout(r, 500));
-      } catch (err) {
-        setRunningBatch(false);
-        try { await invoke({ action: "pause_run", runId: activeRun.id }); } catch { /* ignore */ }
-        addToast({ variant: "error", title: "Batch failed — auto-run paused", description: err.message });
-        try {
-          const status = await invoke({ action: "run_status", runId: activeRun.id });
-          if (mountedRef.current) { setActiveRun(status.run); setBatches(status.batches || []); }
-        } catch { /* ignore */ }
-        break;
-      }
+      // resume_run server-re-kicks process_chunk.
+      await invoke({ action: "resume_run", runId: activeRun.id });
+      const status = await invoke({ action: "run_status", runId: activeRun.id });
+      if (mountedRef.current) { setActiveRun(status.run); setBatches(status.batches || []); }
+      addToast({ variant: "success", title: "Run resumed", description: "The thumbnail run is now generating on the server." });
+    } catch (err) {
+      addToast({ variant: "error", title: "Failed to resume", description: err.message });
     }
-
     setAutoRunning(false);
-    setRunningBatch(false);
-    await fetchPreview();
   };
 
   // ── Pause / Cancel / Retry / Skip / Dismiss ────────────────────────────────
 
   const handlePause = async () => {
-    stopAutoRef.current = true;
     try {
       await invoke({ action: "pause_run", runId: activeRun.id });
       const status = await invoke({ action: "run_status", runId: activeRun.id });
@@ -2241,7 +2247,6 @@ function ThumbnailTab() {
   };
 
   const handleCancel = async () => {
-    stopAutoRef.current = true;
     try {
       await invoke({ action: "cancel_run", runId: activeRun.id });
       const status = await invoke({ action: "run_status", runId: activeRun.id });
@@ -2340,11 +2345,27 @@ function ThumbnailTab() {
                   </div>
                 </div>
               </div>
+              {/* ORCH-1033 (C/E): optional city scope — empty = global servable backlog. */}
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-[var(--color-text-secondary)]">Scope (optional)</label>
+                <select
+                  className="block w-full max-w-xs rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm"
+                  value={selectedCity}
+                  onChange={(e) => setSelectedCity(e.target.value)}
+                >
+                  <option value="">All cities (global servable backlog)</option>
+                  {cityList.map((c) => (
+                    <option key={c.id} value={c.name}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
               <div className="flex flex-wrap gap-2">
                 <Button variant="primary" icon={ImageIcon} onClick={handleCreateRun} disabled={creating}>
                   {creating
                     ? "Creating..."
-                    : `Run All (${pendingCount === null ? "—" : formatCount(pendingCount)} places)`}
+                    : selectedCity
+                      ? `Run for ${selectedCity}`
+                      : `Run All (${pendingCount === null ? "—" : formatCount(pendingCount)} places)`}
                 </Button>
                 <Button variant="secondary" icon={RefreshCw} onClick={fetchPreview} size="sm">
                   Re-check
