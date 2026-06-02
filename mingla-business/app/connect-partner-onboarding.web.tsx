@@ -215,10 +215,14 @@ export default function ConnectPartnerOnboardingPage(): React.ReactElement {
 }
 
 const pageWrapperStyle: React.CSSProperties = {
+  // Block layout (NOT flex column) so body scrolls naturally in iOS
+  // WKWebView / ASWebAuthenticationSession. The previous
+  // `display: flex; flexDirection: column` + `flex: 1` on <main> created a
+  // viewport-height-bounded flex container, which prevented the Stripe
+  // iframe (which can be much taller than the viewport) from being
+  // scrollable on iPhone.
   minHeight: "100vh",
   backgroundColor: "#FAFAFA",
-  display: "flex",
-  flexDirection: "column",
   fontFamily:
     '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
 };
@@ -238,7 +242,7 @@ const headerTitleStyle: React.CSSProperties = {
 };
 
 const mainStyle: React.CSSProperties = {
-  flex: 1,
+  // No `flex: 1` — wrapper is plain block layout now (see pageWrapperStyle).
   padding: "24px",
   maxWidth: "780px",
   width: "100%",
