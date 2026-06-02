@@ -1,5 +1,7 @@
 # Open Investigations
 
+> **2026-06-02 — ORCH-1051 [Scanner invite + brand-scoped scanner] CLOSED PASS — squash 49c9305fc, PR #320 (bundles ORCH-1050 fix).** No open investigation remains. Next dispatch: ORCH-1052 SPEC + IMPLEMENT (partner identity + account-level Stripe Connect + currency-match invite gate).
+
 > **2026-06-02 — ORCH-1050 [Brand-team invite + accept + ownership transfer] CLOSED PASS — squash 1164476e2, PR #318.** No open investigation remains. Next dispatch: ORCH-1051 SPEC + IMPLEMENT (scanner invite + brand-scoped scanner).
 
 > **2026-06-02 — ORCH-1047 [`account_owner` → `brand_owner` role rename] CLOSED PASS — squash 401d5eb9f, PR #314, migration applied, worktree reaped.** No open investigation/rework remains. Evidence: WORLD_MAP CLOSE banner, regression scripts at `app-mobile/scripts/ci/orch-1047-rename-{regression,adversarial}-check.mjs`, migration at `supabase/migrations/20260819000000_orch_1047_account_owner_to_brand_owner_rename.sql`. Next dispatch: ORCH-1050 SPEC + IMPLEMENT (in flight via worktree spawn 2026-06-02).
