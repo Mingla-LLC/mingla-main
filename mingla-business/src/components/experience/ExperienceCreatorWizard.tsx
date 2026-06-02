@@ -29,12 +29,13 @@ import { useExperienceVenueDefault } from "../../hooks/useExperienceVenueDefault
 import { useExperienceDraftAdapter } from "../../hooks/useExperienceDraftAdapter";
 import { supabase } from "../../services/supabase";
 import { Button } from "../ui/Button";
-import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
 import { Stepper } from "../ui/Stepper";
 import { Toast } from "../ui/Toast";
 import { CreatorStep2When } from "../event/CreatorStep2When";
+import { ExperienceCoverStep } from "./ExperienceCoverStep";
+import type { CoverPatch } from "../ui/CoverPicker";
 import { DEFAULT_TAKE_RATE_BPS } from "../../constants/pricing";
 import type { PricingSwitchOverrides } from "../../services/pricingSwitchesService";
 import { useBrandTaxRegistration } from "../../hooks/useBrandTaxRegistration";
@@ -54,6 +55,40 @@ export interface ExperienceCreatorWizardProps {
   onCancel?: () => void;
   /** Optional AI-proposal / draft prefill (Layer 6 "Set up & publish"). */
   prefill?: { title?: string; description?: string; wholePriceMajor?: string };
+  /**
+   * META-ORCH-1059 Sub-B — edit-mode. When set, the wizard does NOT create a
+   * new draft; it edits the existing draft row (its events-row id) in place.
+   * The dashboard/edit route passes the draft id here so the cover step + the
+   * publish/save path target the already-persisted row.
+   */
+  existingExperienceId?: string;
+  /** Initial cover for edit-mode (so the cover step previews the saved cover). */
+  initialCover?: CoverPatch;
+  /** Full draft seed for edit-mode (stops + modes + pricing + when). */
+  initialDraft?: ExperienceWizardInitialDraft;
+}
+
+/** META-ORCH-1059 Sub-B — edit-mode seed for the whole wizard. */
+export interface ExperienceWizardInitialDraft {
+  title: string;
+  description: string;
+  locationMode: ExperienceLocationMode;
+  pricingMode: ExperiencePricingMode;
+  stops: ExperienceStopDraft[];
+  wholePriceMajor: string;
+  isFree: boolean;
+  capacity: string;
+  unlimited: boolean;
+  pricingSwitches: PricingSwitchOverrides;
+  when?: {
+    whenMode: "single" | "recurring" | "multi_date";
+    date: string | null;
+    doorsOpen: string | null;
+    endsAt: string | null;
+    timezone: string;
+    recurrenceRule: import("../../store/draftEventStore").RecurrenceRule | null;
+    multiDates: import("../../store/draftEventStore").MultiDateEntry[] | null;
+  };
 }
 
 type StepIndex = 1 | 2 | 3 | 4 | 5;
@@ -81,16 +116,31 @@ const RPC_ERROR_COPY: Record<string, string> = {
   experience_price_invalid: "Set a valid price, or mark the experience free.",
   event_date_required: "Pick at least one date.",
   slug_taken: "An experience with that name already exists. Try a small variation.",
+  experience_not_found: "We couldn't find this experience. It may have been deleted.",
+  event_not_an_experience: "That isn't an editable experience.",
 };
 
 const currencySymbolFor = (currency: string): string =>
   currency === "GBP" ? "£" : currency === "EUR" ? "€" : currency === "USD" ? "$" : `${currency} `;
+
+const EMPTY_COVER: CoverPatch = {
+  coverMediaUrl: null,
+  coverMediaType: null,
+  coverMediaProvider: null,
+  coverMediaSourceUrl: null,
+  coverMediaCredit: null,
+  coverMediaCreditUrl: null,
+  coverMediaAlt: null,
+};
 
 export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = ({
   brandId,
   onComplete,
   onCancel,
   prefill,
+  existingExperienceId,
+  initialCover,
+  initialDraft,
 }) => {
   const { user } = useAuth();
   const brand = useCurrentBrand();
@@ -104,31 +154,55 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
   const currencySymbol = currencySymbolFor(currency);
 
   const [step, setStep] = useState<StepIndex>(1);
-  const [title, setTitle] = useState(prefill?.title ?? "");
-  const [description, setDescription] = useState(prefill?.description ?? "");
+  const [title, setTitle] = useState(initialDraft?.title ?? prefill?.title ?? "");
+  const [description, setDescription] = useState(
+    initialDraft?.description ?? prefill?.description ?? "",
+  );
 
   // Stops + modes
-  const [locationMode, setLocationMode] = useState<ExperienceLocationMode>("single");
-  const [pricingMode, setPricingMode] = useState<ExperiencePricingMode>("whole");
-  const [stops, setStops] = useState<ExperienceStopDraft[]>([emptyStop(), emptyStop()]);
+  const [locationMode, setLocationMode] = useState<ExperienceLocationMode>(
+    initialDraft?.locationMode ?? "single",
+  );
+  const [pricingMode, setPricingMode] = useState<ExperiencePricingMode>(
+    initialDraft?.pricingMode ?? "whole",
+  );
+  const [stops, setStops] = useState<ExperienceStopDraft[]>(
+    initialDraft?.stops && initialDraft.stops.length > 0
+      ? initialDraft.stops
+      : [emptyStop(), emptyStop()],
+  );
 
   // Pricing
-  const [wholePriceMajor, setWholePriceMajor] = useState(prefill?.wholePriceMajor ?? "0.00");
-  const [isFree, setIsFree] = useState(false);
-  const [capacity, setCapacity] = useState("20");
-  const [unlimited, setUnlimited] = useState(false);
-  const [pricingSwitches, setPricingSwitches] = useState<PricingSwitchOverrides>({
-    passTax: null,
-    passMinglaFee: null,
-    passServiceFee: null,
-  });
+  const [wholePriceMajor, setWholePriceMajor] = useState(
+    initialDraft?.wholePriceMajor ?? prefill?.wholePriceMajor ?? "0.00",
+  );
+  const [isFree, setIsFree] = useState(initialDraft?.isFree ?? false);
+  const [capacity, setCapacity] = useState(initialDraft?.capacity ?? "20");
+  const [unlimited, setUnlimited] = useState(initialDraft?.unlimited ?? false);
+  const [pricingSwitches, setPricingSwitches] = useState<PricingSwitchOverrides>(
+    initialDraft?.pricingSwitches ?? {
+      passTax: null,
+      passMinglaFee: null,
+      passServiceFee: null,
+    },
+  );
 
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [showStepErrors, setShowStepErrors] = useState(false);
 
-  // When-step adapter (feeds the lifted CreatorStep2When).
-  const whenAdapter = useExperienceDraftAdapter(brandId);
+  // META-ORCH-1059 Sub-B — draft-first lifecycle. A server draft row (and thus
+  // an events-row id) is created UP FRONT so the Cover step has a real id for
+  // the video-capable picker. In edit-mode the id is the existing draft.
+  const [experienceId, setExperienceId] = useState<string | null>(
+    existingExperienceId ?? null,
+  );
+  const [creatingDraft, setCreatingDraft] = useState(false);
+  const draftCreateInFlight = useRef(false);
+  const [cover, setCover] = useState<CoverPatch>(initialCover ?? EMPTY_COVER);
+
+  // When-step adapter (feeds the lifted CreatorStep2When). Edit-mode seeds it.
+  const whenAdapter = useExperienceDraftAdapter(brandId, initialDraft?.when);
 
   // Seed stop 1 from the brand venue default (design §2.7): name/address text
   // only; placeId stays null so the brand must confirm a real Mapbox pick.
@@ -189,16 +263,6 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
     else setStep((prev) => Math.max(1, prev - 1) as StepIndex);
   }, [onCancel, step]);
 
-  const goNext = useCallback((): void => {
-    if (!canContinue) {
-      setShowStepErrors(true);
-      if (step === 3) whenAdapter.setShowErrors(true);
-      return;
-    }
-    setShowStepErrors(false);
-    setStep((prev) => Math.min(5, prev + 1) as StepIndex);
-  }, [canContinue, step, whenAdapter]);
-
   const buildPayload = useCallback(
     (publish: boolean) => {
       const whenPayload = whenAdapter.toPayloadWhen();
@@ -255,6 +319,56 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
     ],
   );
 
+  // META-ORCH-1059 Sub-B — create the server draft row up front (returns its
+  // events-row id) so the Cover step's video-capable picker has a real id.
+  // Idempotent: only creates once; edit-mode short-circuits to the existing id.
+  const ensureDraft = useCallback(async (): Promise<string | null> => {
+    if (experienceId !== null) return experienceId;
+    if (draftCreateInFlight.current) return null;
+    draftCreateInFlight.current = true;
+    setCreatingDraft(true);
+    try {
+      const { data, error } = await supabase.rpc("biz_create_experience", {
+        p_brand_id: brandId,
+        p_payload: buildPayload(false),
+        p_publish: false,
+      });
+      if (error !== null) {
+        const code = error.message ?? "";
+        throw new Error(RPC_ERROR_COPY[code] ?? "Couldn't start your draft. Tap to retry.");
+      }
+      const result = data as { event?: { id?: string } } | null;
+      const newId = result?.event?.id;
+      if (typeof newId !== "string") {
+        throw new Error("Couldn't start your draft. Tap to retry.");
+      }
+      setExperienceId(newId);
+      return newId;
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : "Couldn't start your draft. Tap to retry.");
+      return null;
+    } finally {
+      draftCreateInFlight.current = false;
+      setCreatingDraft(false);
+    }
+  }, [brandId, buildPayload, experienceId]);
+
+  const goNext = useCallback((): void => {
+    if (!canContinue) {
+      setShowStepErrors(true);
+      if (step === 3) whenAdapter.setShowErrors(true);
+      return;
+    }
+    setShowStepErrors(false);
+    // Leaving Step 1 (Identity) → ensure the server draft exists so the Cover
+    // step (Step 5) has a real events-row id. Fire-and-advance; the Cover step
+    // renders a "preparing" state until the id resolves.
+    if (step === 1 && experienceId === null) {
+      void ensureDraft();
+    }
+    setStep((prev) => Math.min(5, prev + 1) as StepIndex);
+  }, [canContinue, ensureDraft, experienceId, step, whenAdapter]);
+
   const handleSubmit = useCallback(
     async (publish: boolean): Promise<void> => {
       if (brand === null || user?.id === undefined) return;
@@ -266,8 +380,15 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
       }
       setSubmitting(true);
       try {
-        const { data, error } = await supabase.rpc("biz_create_experience", {
-          p_brand_id: brandId,
+        // Ensure the draft row exists (covers the case where the operator
+        // jumped straight to publish without leaving Step 1, or a prior
+        // ensureDraft failed). Then UPDATE-publish it via biz_publish_experience.
+        const targetId = await ensureDraft();
+        if (targetId === null) {
+          throw new Error("Couldn't save experience. Tap to retry.");
+        }
+        const { data, error } = await supabase.rpc("biz_publish_experience", {
+          p_event_id: targetId,
           p_payload: buildPayload(publish),
           p_publish: publish,
         });
@@ -276,18 +397,24 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
           throw new Error(RPC_ERROR_COPY[code] ?? "Couldn't save experience. Tap to retry.");
         }
         const result = data as { event?: { id?: string } } | null;
-        const newId = result?.event?.id;
-        if (typeof newId !== "string") {
-          throw new Error("Couldn't save experience. Tap to retry.");
-        }
-        onComplete(newId);
+        const savedId = result?.event?.id ?? targetId;
+        onComplete(savedId);
       } catch (e) {
         setToast(e instanceof Error ? e.message : "Couldn't save experience. Tap to retry.");
       } finally {
         setSubmitting(false);
       }
     },
-    [brand, brandId, buildPayload, onComplete, pricingValid, stopsValid, user?.id, whenAdapter],
+    [
+      brand,
+      buildPayload,
+      ensureDraft,
+      onComplete,
+      pricingValid,
+      stopsValid,
+      user?.id,
+      whenAdapter,
+    ],
   );
 
   return (
@@ -393,15 +520,14 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
         ) : null}
 
         {step === 5 ? (
-          <View style={styles.stepBody}>
-            <Text style={styles.title}>Cover</Text>
-            <GlassCard variant="elevated" padding={spacing.lg}>
-              <Text style={styles.body}>
-                Add cover art later from the edit screen. Publish now to make this experience
-                bookable, or save it as a draft to finish later.
-              </Text>
-            </GlassCard>
-          </View>
+          <ExperienceCoverStep
+            brandId={brandId}
+            experienceId={experienceId}
+            preparingDraft={creatingDraft}
+            cover={cover}
+            onCoverChange={setCover}
+            onShowToast={setToast}
+          />
         ) : null}
       </ScrollView>
       <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.lg }]}>

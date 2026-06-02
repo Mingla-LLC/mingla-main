@@ -138,15 +138,17 @@ export interface UseExperienceDraftAdapterResult {
 
 export function useExperienceDraftAdapter(
   brandId: string,
+  // META-ORCH-1059 Sub-B — edit-mode seeds the When state from the loaded draft.
+  initialWhen?: Partial<ExperienceWhenState>,
 ): UseExperienceDraftAdapterResult {
   const [whenState, setWhenState] = useState<ExperienceWhenState>({
-    whenMode: "single",
-    date: null,
-    doorsOpen: null,
-    endsAt: null,
-    timezone: detectDeviceTimezone(),
-    recurrenceRule: null,
-    multiDates: null,
+    whenMode: initialWhen?.whenMode ?? "single",
+    date: initialWhen?.date ?? null,
+    doorsOpen: initialWhen?.doorsOpen ?? null,
+    endsAt: initialWhen?.endsAt ?? null,
+    timezone: initialWhen?.timezone ?? detectDeviceTimezone(),
+    recurrenceRule: initialWhen?.recurrenceRule ?? null,
+    multiDates: initialWhen?.multiDates ?? null,
   });
   const [showErrors, setShowErrors] = useState(false);
 

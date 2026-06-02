@@ -288,6 +288,58 @@ describe("ORCH-0859 REWORK 3 — strict-grep gate registered", () => {
   });
 });
 
+describe("META-ORCH-1059 Sub-B — experience routing via routeForEventRow", () => {
+  const ROUTE_HELPER = read("utils/routeForEventRow.ts");
+
+  test("routeForEventRow routes experience drafts to /experience/{id}/edit", () => {
+    // The experience branch must mirror the event/trip branch: draft → /edit,
+    // everything else → the dashboard. Reverting to the old
+    // `/experience/coming-soon` stub flips this assertion.
+    expect(ROUTE_HELPER).toMatch(/event_type === ["']experience["']/);
+    expect(ROUTE_HELPER).toMatch(
+      /`\/experience\/\$\{row\.id\}\/edit`/,
+    );
+  });
+
+  test("routeForEventRow routes published experiences to /experience/{id}", () => {
+    expect(ROUTE_HELPER).toMatch(/`\/experience\/\$\{row\.id\}`/);
+    // The dead coming-soon stub must be gone from the experience branch.
+    const expBranch = ROUTE_HELPER.match(
+      /if \(row\.event_type === "experience"\)[\s\S]*?\n  \}/,
+    );
+    expect(expBranch).not.toBeNull();
+    expect(expBranch?.[0]).not.toMatch(/coming-soon/);
+  });
+
+  test("experience dashboard + edit routes exist under app/experience/[id]", () => {
+    // The dashboard + edit screens are the tap-through targets above.
+    expect(() => appRead("experience/[id]/index.tsx")).not.toThrow();
+    expect(() => appRead("experience/[id]/edit.tsx")).not.toThrow();
+  });
+
+  test("biz_publish_experience migration writes exactly one ticket + UPDATEs (no new events INSERT)", () => {
+    const migration = readFileSync(
+      join(
+        __dirname,
+        "..",
+        "..",
+        "..",
+        "..",
+        "supabase",
+        "migrations",
+        "20260825000000_meta_orch_1059_sub_b_publish_experience.sql",
+      ),
+      "utf8",
+    );
+    // UPDATE the existing row (draft-first), not a new INSERT INTO events.
+    expect(migration).toMatch(/UPDATE\s+public\.events\s+SET/);
+    expect(migration).not.toMatch(/INSERT\s+INTO\s+public\.events/);
+    // Exactly one ticket_types INSERT (I-1 one-ticket).
+    const ticketInserts = migration.match(/INSERT\s+INTO\s+public\.ticket_types/gi) ?? [];
+    expect(ticketInserts.length).toBe(1);
+  });
+});
+
 // Silence unused-import warning for appRead — kept for symmetry with other
 // audit tests that may need app/ reads in a future expansion.
 void appRead;

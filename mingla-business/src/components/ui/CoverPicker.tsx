@@ -193,7 +193,10 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     isBrand ? "" : target.eventRowId,
     target.brandId,
     isBrand ? "published_manual" : target.coverMediaApplyMode,
-    isBrand ? "brand" : "event",
+    // META-ORCH-1059 Sub-B: experiences ride the event-cover video pipeline
+    // (same events.cover_media_* columns + events-row id). Pass "experience"
+    // for call-site clarity; the hook normalizes it to the "event" server path.
+    isBrand ? "brand" : target.kind === "experience" ? "experience" : "event",
   );
   const lastVideoUploadFileRef = useRef<EventCoverVideoUploadFile | null>(null);
   const lastEmittedProcessedVideoUrlRef = useRef<string | null>(null);

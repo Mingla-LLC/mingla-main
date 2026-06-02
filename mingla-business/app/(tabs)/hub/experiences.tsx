@@ -23,6 +23,7 @@ import {
   accent,
   glass,
   radius,
+  semantic,
   spacing,
   text as textTokens,
   typography,
@@ -39,6 +40,10 @@ import type { ExperienceFilePayload } from "../../../src/services/experienceGene
 import type { VenueExperience } from "../../../src/services/experiencesService";
 import { canGenerateExperiencesFromActivities } from "../../../src/utils/canGenerateExperiencesFromActivities";
 import { canGenerateExperiencesFromMenu } from "../../../src/utils/canGenerateExperiencesFromMenu";
+import {
+  routeForEventRow,
+  type EventStatusForRouting,
+} from "../../../src/utils/routeForEventRow";
 
 type HubPhase = "idle" | "parsing" | "review";
 
@@ -99,6 +104,47 @@ function formatExperienceMeta(exp: VenueExperience): string | null {
     parts.push(exp.intentTags.join(" \u00b7 "));
   }
   return parts.length > 0 ? parts.join(" \u00b7 ") : null;
+}
+
+// META-ORCH-1059 Sub-B \u2014 map the raw events.status string to the routing union
+// + a status chip so brands see lifecycle at a glance and taps land correctly.
+function normalizeExperienceStatus(status: string): EventStatusForRouting {
+  switch (status) {
+    case "draft":
+    case "scheduled":
+    case "live":
+    case "ended":
+    case "cancelled":
+      return status;
+    default:
+      return null;
+  }
+}
+
+function experienceStatusChip(status: string): {
+  label: string;
+  style: { backgroundColor: string };
+  textStyle: { color: string };
+} {
+  if (status === "live" || status === "scheduled") {
+    return {
+      label: status === "live" ? "Live" : "Scheduled",
+      style: { backgroundColor: semantic.successTint },
+      textStyle: { color: semantic.success },
+    };
+  }
+  if (status === "ended" || status === "cancelled") {
+    return {
+      label: status === "ended" ? "Ended" : "Cancelled",
+      style: { backgroundColor: glass.tint.profileBase },
+      textStyle: { color: textTokens.tertiary },
+    };
+  }
+  return {
+    label: "Draft",
+    style: { backgroundColor: glass.tint.profileBase },
+    textStyle: { color: textTokens.tertiary },
+  };
 }
 
 interface ExperienceGenerationSurfaceProps {
@@ -243,16 +289,39 @@ function ExperienceGenerationSurface({
           <View style={[styles.expList, isWideDesktop && styles.desktopListGrid]}>
             {experiences.map((exp) => {
               const meta = formatExperienceMeta(exp);
+              const statusForRouting = normalizeExperienceStatus(exp.status);
+              const chip = experienceStatusChip(exp.status);
               return (
-                <View
+                <Pressable
                   key={exp.id}
-                  style={[
+                  onPress={() =>
+                    router.push(
+                      routeForEventRow({
+                        id: exp.id,
+                        event_type: "experience",
+                        status: statusForRouting,
+                      }) as never,
+                    )
+                  }
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open experience ${exp.title}`}
+                  style={({ pressed }) => [
                     styles.expCard,
                     isWideDesktop && styles.desktopListCell,
+                    pressed && styles.expCardPressed,
                   ]}
                 >
                   <GlassCard variant="elevated" padding={spacing.md}>
-                    <Text style={styles.expTitle}>{exp.title}</Text>
+                    <View style={styles.expHeaderRow}>
+                      <Text style={styles.expTitle} numberOfLines={1}>
+                        {exp.title}
+                      </Text>
+                      <View style={[styles.statusChip, chip.style]}>
+                        <Text style={[styles.statusChipText, chip.textStyle]}>
+                          {chip.label}
+                        </Text>
+                      </View>
+                    </View>
                     {exp.description !== null && (
                       <Text style={styles.expBody} numberOfLines={3}>
                         {exp.description}
@@ -262,7 +331,7 @@ function ExperienceGenerationSurface({
                       <Text style={styles.expTags}>{meta}</Text>
                     )}
                   </GlassCard>
-                </View>
+                </Pressable>
               );
             })}
           </View>
@@ -429,7 +498,25 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   expCard: { marginBottom: spacing.sm },
+  expCardPressed: { opacity: 0.9 },
+  expHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+  },
+  statusChip: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radius.full,
+  },
+  statusChipText: {
+    fontSize: typography.micro.fontSize,
+    lineHeight: typography.micro.lineHeight,
+    fontWeight: "700",
+  },
   expTitle: {
+    flex: 1,
     fontSize: typography.body.fontSize,
     fontWeight: "600",
     color: textTokens.primary,

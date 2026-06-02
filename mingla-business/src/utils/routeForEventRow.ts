@@ -23,8 +23,9 @@
  *   - event_type='trip' + status='draft' → /trip/{id}/edit (resume wizard)
  *   - event_type='trip' + status='scheduled' | 'live' | 'ended' | 'cancelled'
  *     → /trip/{id} (operator dashboard)
- *   - event_type='experience' → /experience/coming-soon (Ve series not
- *     shipped yet; route stub keeps the link safe)
+ *   - event_type='experience' + status='draft' → /experience/{id}/edit
+ *   - event_type='experience' + status anything else → /experience/{id}
+ *     (META-ORCH-1059 Sub-B — experiences now have a dashboard + edit route)
  *   - event_type='event' + status='draft' → /event/{id}/edit
  *   - event_type='event' + status anything else → /event/{id}
  *   - status undefined → default to non-edit path
@@ -67,9 +68,12 @@ export function routeForEventRow(row: EventRowForRouting): string {
       : `/trip/${row.id}`;
   }
   if (row.event_type === "experience") {
-    // Ve-series surfaces ship later. Until then, the coming-soon stub
-    // exists at /experience/coming-soon and is safe to deep-link.
-    return `/experience/coming-soon`;
+    // META-ORCH-1059 Sub-B: experiences now have a real dashboard + edit route
+    // (mirrors event/trip). Drafts resume the wizard; everything else opens the
+    // operator dashboard.
+    return row.status === "draft"
+      ? `/experience/${row.id}/edit`
+      : `/experience/${row.id}`;
   }
   // event_type === 'event' (default)
   return row.status === "draft"
