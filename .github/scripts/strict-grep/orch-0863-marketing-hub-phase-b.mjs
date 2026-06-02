@@ -1264,6 +1264,18 @@ function checkNoNewBackendFiles() {
     // tester-authored adversarial regression (ORCH-1045 QA) — same backend dir.
     "supabase/functions/beta-access-lead-submit/__tests__/submit_handler_sideeffects.tester.test.ts",
   ];
+  // ORCH-1050 [Brand team invite + accept + ownership transfer]. META-ORCH-1048
+  // sub-B. C7 is scoped to ORCH-0863 marketing; these are brand-team invite
+  // pipeline backend touches (migration + two edge fns + tests). Per
+  // COMMS-0002 — must land in the SAME commit as the service + UI wiring.
+  const ORCH_1050_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260820000000_orch_1050_brand_invite_flow.sql",
+    "supabase/functions/invite-brand-member/index.ts",
+    "supabase/functions/accept-brand-invitation/index.ts",
+    "supabase/functions/invite-brand-member/__tests__/orch-1050-invite-happy.test.ts",
+    "supabase/functions/accept-brand-invitation/__tests__/orch-1050-accept-happy.test.ts",
+    "supabase/functions/accept-brand-invitation/__tests__/orch-1050-accept-adversarial.test.ts",
+  ];
   // ORCH-1056 [Lead welcome email]: modifies the beta-access edge fn (already
   // allowlisted above) to also send the lead a welcome email (web-app link +
   // Ari spotlight + mobile-in-the-works). Adds two new test files. C7 flags new
@@ -1357,6 +1369,7 @@ function checkNoNewBackendFiles() {
     "supabase/functions/backfill-place-photo-thumbs/index.adversarial.test.ts",
   ];
   const ALLOWLIST = [
+    ...ORCH_1050_BACKEND_ALLOWLIST,
     ...ORCH_1044_BACKEND_ALLOWLIST,
     ...ORCH_1045_BACKEND_ALLOWLIST,
     ...ORCH_1056_BACKEND_ALLOWLIST,

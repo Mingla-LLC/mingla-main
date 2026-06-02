@@ -129,3 +129,13 @@ verify_jwt = true
 # paired friend's last-known GPS server-side and never returns coordinates.
 [functions.get-paired-profile-cards]
 verify_jwt = true
+
+# ORCH-1050 [Brand team invite + accept + ownership transfer]
+# META-ORCH-1048 sub-B. Both endpoints require an authenticated caller — the
+# invite endpoint reads auth.uid() for the brand_admin+ rank check, and the
+# accept endpoint resolves auth.uid() → creator_accounts.id for the RPC.
+[functions.invite-brand-member]
+verify_jwt = true
+
+[functions.accept-brand-invitation]
+verify_jwt = true
