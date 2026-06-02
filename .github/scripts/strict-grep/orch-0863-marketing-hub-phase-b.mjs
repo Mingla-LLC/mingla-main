@@ -1343,6 +1343,9 @@ function checkNoNewBackendFiles() {
   const ORCH_1044_BACKEND_ALLOWLIST = [
     "supabase/migrations/20260818000000_orch_1044_thumb_orphaned_batch_reclaim.sql",
     "supabase/migrations/__tests__/orch_1044_thumb_orphaned_batch_reclaim.test.ts",
+    // Tester-authored adversarial regression suite (mid-place guard trip + clean
+    // resume with no double-upload + exact-boundary guard). Per COMMS-0002.
+    "supabase/functions/backfill-place-photo-thumbs/index.adversarial.test.ts",
   ];
   const ALLOWLIST = [
     ...ORCH_1044_BACKEND_ALLOWLIST,
