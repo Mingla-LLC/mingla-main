@@ -1291,7 +1291,7 @@ function checkNoNewBackendFiles() {
   // engine flag generalization. C7 is scoped to ORCH-0863 marketing; these are
   // pricing/currency backend touches. Per COMMS-0002.
   const ORCH_1034_BACKEND_ALLOWLIST = [
-    "supabase/migrations/20260815000000_orch_1034_currency_de_gbp.sql",
+    "supabase/migrations/20260816000000_orch_1034_currency_de_gbp.sql",
     "supabase/functions/ticket-checkout-create/index.ts",
     "supabase/functions/_shared/allInPricingEngine.ts",
     "supabase/functions/_shared/__tests__/orch_1034_currency_de_gbp.test.ts",
