@@ -1251,6 +1251,19 @@ function checkNoNewBackendFiles() {
     // antimeridian/equidistant-tiebreak/corner-coords) + the index.ts NULL guard.
     "supabase/functions/check-launch-city/__tests__/check_launch_city_adversarial.test.ts",
   ];
+  // ORCH-1045 [Business "Get Beta Access" lead-capture]: adds the beta-lead
+  // migration (beta_access_leads table + admin_beta_leads_list RPC) and the
+  // public beta-access-lead-submit edge fn (+ its Deno tests). C7 is scoped to
+  // ORCH-0863 marketing; these are beta-lead-capture backend touches. Per
+  // COMMS-0002 — must land in the SAME commit as the migration + edge fn.
+  const ORCH_1045_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260817000000_orch_1045_beta_access_leads.sql",
+    "supabase/functions/beta-access-lead-submit/index.ts",
+    "supabase/functions/beta-access-lead-submit/__tests__/submit_happy.test.ts",
+    "supabase/functions/beta-access-lead-submit/__tests__/submit_adversarial.test.ts",
+    // tester-authored adversarial regression (ORCH-1045 QA) — same backend dir.
+    "supabase/functions/beta-access-lead-submit/__tests__/submit_handler_sideeffects.tester.test.ts",
+  ];
   // ORCH-1030 [Consumer app notification deep-linking]. C7 is scoped to
   // ORCH-0863 marketing; ORCH-1030's backend touches correct the notification
   // producers' deep links so they actually reach the device: birthday/holiday
@@ -1321,6 +1334,7 @@ function checkNoNewBackendFiles() {
     "supabase/migrations/20260816000000_orch_1043_auto_run_triggered_by_nullable.sql",
   ];
   const ALLOWLIST = [
+    ...ORCH_1045_BACKEND_ALLOWLIST,
     ...ORCH_1034_BACKEND_ALLOWLIST,
     ...ORCH_1043_BACKEND_ALLOWLIST,
     ...ORCH_1032_BACKEND_ALLOWLIST,
