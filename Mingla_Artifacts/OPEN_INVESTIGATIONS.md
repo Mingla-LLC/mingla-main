@@ -1,5 +1,7 @@
 # Open Investigations
 
+> **2026-06-02 — ORCH-1052 [Partner identity + account-level Stripe + currency-match gate] CLOSED PASS — squash 6ea9b3557, PR #321.** No open investigation remains. Next dispatch: ORCH-1054 SPEC + IMPLEMENT (partner splits ledger + Stripe Transfer pipeline — pays partners their 0.15% of GMV per ticket sale in source currency, zero FX, including webhook handlers for account.updated, charge.succeeded, charge.refunded, charge.dispute.*).
+
 > **2026-06-02 — ORCH-1051 [Scanner invite + brand-scoped scanner] CLOSED PASS — squash 49c9305fc, PR #320 (bundles ORCH-1050 fix).** No open investigation remains. Next dispatch: ORCH-1052 SPEC + IMPLEMENT (partner identity + account-level Stripe Connect + currency-match invite gate).
 
 > **2026-06-02 — ORCH-1050 [Brand-team invite + accept + ownership transfer] CLOSED PASS — squash 1164476e2, PR #318.** No open investigation remains. Next dispatch: ORCH-1051 SPEC + IMPLEMENT (scanner invite + brand-scoped scanner).
