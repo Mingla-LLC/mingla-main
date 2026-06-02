@@ -50,6 +50,15 @@ const ALLOWED_WRITER_FILES = new Set([
   "supabase/functions/run-business-place-authoring-pipeline/index.ts",
 ]);
 
+// ORCH-1040 — files that REFERENCE the column name only in a READ / response-type
+// context (never a DB write). The invariant explicitly allows unrestricted reads;
+// this list prevents the object-key heuristic from false-positiving on a TS
+// interface field. The client authoring service types the `get_authoring_context`
+// READ response (which includes ai_signal_scores) — the edge fn is the only writer.
+const READ_REFERENCE_EXEMPT = new Set([
+  "mingla-business/src/services/businessPlaceAuthoringService.ts",
+]);
+
 // Directories to scan for write payloads. Excludes admin UI (read-only by
 // design), app-mobile (read-only by design), business-app (no relation).
 const SCAN_DIRS = [
@@ -113,6 +122,9 @@ for (const dir of SCAN_DIRS) {
 
     // Allowed writers: the trial edge fn
     if (ALLOWED_WRITER_FILES.has(relPath)) continue;
+
+    // ORCH-1040 — read/response-type references are allowed (reads unrestricted).
+    if (READ_REFERENCE_EXEMPT.has(relPath)) continue;
 
     // Migrations that DEFINE the column (ALTER TABLE / backfill UPDATE) are
     // architectural, not runtime writers. The owning migration for Sub-A is

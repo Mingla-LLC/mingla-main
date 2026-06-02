@@ -44,6 +44,7 @@ import {
   VenueGalleryError,
 } from "../../services/venueGalleryService";
 import type { Brand } from "../../types/brand";
+import { VENUE_SIGNALS } from "../../constants/venueSignals";
 import type { DeckReadinessFocus } from "../../utils/deckReadinessRoutes";
 import { useDraftVenueStore } from "../../store/draftVenueStore";
 import { useCurrentBrandStore } from "../../store/currentBrandStore";
@@ -378,21 +379,10 @@ const EMPTY_GALLERY: string[] = [];
 // signal. The operator taps which of these genuinely apply; the selected ids feed
 // the AI as vibe_chips so the hint speaks the same language as the scoring engine.
 // (Curated to the experiential signals that read sensibly as a venue self-tag; the
-// AI still scores the venue against ALL 16 active signals automatically.)
-const VIBE_SIGNALS: ReadonlyArray<{ id: string; label: string }> = [
-  { id: "romantic", label: "Romantic" },
-  { id: "lively", label: "Lively" },
-  { id: "drinks", label: "Drinks" },
-  { id: "brunch", label: "Brunch" },
-  { id: "casual_food", label: "Casual food" },
-  { id: "fine_dining", label: "Fine dining" },
-  { id: "scenic", label: "Scenic" },
-  { id: "nature", label: "Nature & outdoors" },
-  { id: "creative_arts", label: "Creative & arts" },
-  { id: "play", label: "Play" },
-  { id: "theatre", label: "Theatre" },
-  { id: "movies", label: "Movies" },
-];
+// AI still scores the venue against ALL active signals automatically.)
+// ORCH-1040: ids/labels live in the shared venueSignals constant so the wizard
+// chips and the listing-management score view never drift.
+const VIBE_SIGNALS = VENUE_SIGNALS;
 
 // WS8: playful staged loader copy shown while "Recommend me" runs (it's the long
 // op — website scan + multi-image AI). Rotates every ~2.6s in Mingla's voice.

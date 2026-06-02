@@ -21,6 +21,7 @@ const base: BusinessTodoInput = {
   pipelineStatus: "deck_eligible", // healthy venue by default
   pipelineRoute: "/venue/deck-readiness?brand_id=b1&focus=review&fix=review_pipeline",
   venueDraftInProgress: false,
+  hasPhysicalLocation: true,
   counts: { total: 3, live: 1, draft: 0 },
   stripeActive: true,
   hasDraftPaidOffering: false,
@@ -87,6 +88,36 @@ describe("buildBusinessTodos — venue", () => {
       id: "add_venue",
       action: { kind: "route", route: "/venue/create" },
     });
+  });
+
+  test("ORCH-1040: no physical location → NO add_venue/finish_venue", () => {
+    const noPhysical = ids({
+      ...base,
+      hasPhysicalLocation: false,
+      pipelineStatus: null,
+      counts: { total: 1, live: 1, draft: 0 },
+    });
+    expect(noPhysical).not.toContain("add_venue");
+    expect(noPhysical).not.toContain("finish_venue");
+    // a draft-in-progress is also suppressed when the brand isn't physical
+    const noPhysicalDraft = ids({
+      ...base,
+      hasPhysicalLocation: false,
+      venueDraftInProgress: true,
+      pipelineStatus: null,
+      counts: { total: 1, live: 1, draft: 0 },
+    });
+    expect(noPhysicalDraft).not.toContain("finish_venue");
+  });
+
+  test("ORCH-1040: get_venue_live shows even without the flag (venue already exists)", () => {
+    const v = ids({
+      ...base,
+      hasPhysicalLocation: false,
+      pipelineStatus: "needs_fix",
+      counts: { total: 1, live: 1, draft: 0 },
+    });
+    expect(v).toContain("get_venue_live");
   });
 
   test("no venue + draft-in-progress → finish_venue", () => {
@@ -169,10 +200,22 @@ describe("buildBusinessTodos — offering / stripe / draft", () => {
     });
   });
 
-  test("Stripe inactive but NO paid draft → no connect_stripe", () => {
-    expect(
-      ids({ ...base, stripeActive: false, hasDraftPaidOffering: false }),
-    ).not.toContain("connect_stripe");
+  test("Stripe inactive shows connect_stripe even with NO paid draft (ORCH-1040)", () => {
+    const stripe = buildBusinessTodos({
+      ...base,
+      stripeActive: false,
+      hasDraftPaidOffering: false,
+    }).find((t) => t.id === "connect_stripe");
+    expect(stripe).toBeDefined();
+    expect(stripe?.sublabel).toBe("Set up payouts so you can sell");
+    expect(stripe?.action).toEqual({
+      kind: "route",
+      route: "/brand/b1/payments",
+    });
+  });
+
+  test("Stripe active → no connect_stripe", () => {
+    expect(ids({ ...base, stripeActive: true })).not.toContain("connect_stripe");
   });
 
   test("has draft + nothing live + draftRoute → finish_draft", () => {

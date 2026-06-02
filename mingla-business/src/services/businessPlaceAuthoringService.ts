@@ -97,7 +97,19 @@ export interface BrandPlaceAuthoringContext {
   gallery_urls: string[];
   gallery_min: number;
   gallery_max: number;
+  // ORCH-1040 (Sub-F WS7 results surface): the per-signal AI scores the venue
+  // received + how many "Recommend me" changes remain (cap is initial + 3).
+  // The edge `get_authoring_context` already returns these; the listing
+  // management page renders them.
+  ai_signal_scores: Record<string, AiSignalScore> | null;
+  recommend_edits_remaining: number;
   coaching: PipelineCoachingCard[];
+}
+
+export interface AiSignalScore {
+  score_0_to_100: number;
+  inappropriate_for: boolean;
+  reasoning: string;
 }
 
 type PipelineErrorBody = { kind?: string; code?: string; message?: string };

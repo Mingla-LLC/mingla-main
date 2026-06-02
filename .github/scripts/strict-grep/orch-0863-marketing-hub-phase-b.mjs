@@ -1265,6 +1265,12 @@ function checkNoNewBackendFiles() {
     "supabase/functions/notify-message/index.ts",
     "supabase/functions/notify-dispatch/index.ts",
   ];
+  // ORCH-1040 [Brand physical-location flag]. Additive-only migration adding
+  // brands.has_physical_location (default false; gates the venue/listing
+  // surfaces). No marketing scope; C7 flags new supabase/migrations files.
+  const ORCH_1040_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260814000000_orch_1040_brand_has_physical_location.sql",
+  ];
   // ORCH-1032 [Intelligence pipeline concurrency cap + chunked enqueue]:
   // adds the additive 'queued'-status migration (status CHECK widen + per-city
   // unique active index widen + tg_kick_pending_trial_runs promotion built on
@@ -1354,6 +1360,7 @@ function checkNoNewBackendFiles() {
     ...META_ORCH_1009_SUB_D_BACKEND_ALLOWLIST,
     ...META_ORCH_1009_SUB_E_BACKEND_ALLOWLIST,
     ...ORCH_1030_BACKEND_ALLOWLIST,
+    ...ORCH_1040_BACKEND_ALLOWLIST,
   ];
   const forbidden = changed.filter(
     (p) =>
