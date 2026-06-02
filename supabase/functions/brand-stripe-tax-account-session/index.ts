@@ -1,7 +1,7 @@
 // ORCH-0955 — mints a Stripe AccountSession for embedded Tax components.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createStripeClient } from "../_shared/stripe.ts";
+import { stripeOnboard } from "../_shared/stripe.ts";
 import { writeAudit } from "../_shared/audit.ts";
 import { generateIdempotencyKey } from "../_shared/idempotency.ts";
 import {
@@ -62,7 +62,7 @@ serve(async (req) => {
 
   let sessionResult: { client_secret?: string; expires_at?: number };
   try {
-    const stripe = createStripeClient("STRIPE_RAK_ONBOARD");
+    const stripe = stripeOnboard();
     // orch-strict-grep-allow stripe-no-tos-gate — ToS is enforced upstream by requirePaymentsManager (line 56) which checks biz_can_manage_payments_for_brand RPC; that RPC verifies brand_team_members.mingla_tos_accepted_at IS NOT NULL. No state mutation on the Stripe side until the embedded Tax UI itself prompts brand admin to enable a registration; this call only mints a short-lived session secret.
     // @ts-ignore — Stripe SDK AccountSessions namespace is runtime-provided.
     sessionResult = await stripe.accountSessions.create(

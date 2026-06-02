@@ -16,7 +16,7 @@
 
 // orch-strict-grep-allow safearea-on-fullscreen-routes — web-only Stripe Connect Embedded Components page; renders DOM elements (<div>) via @stripe/react-connect-js, NOT React Native primitives. Mirrors connect-onboarding.web.tsx per I-PROPOSED-O.
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import Constants from "expo-constants";
 import {
   ConnectAccountOnboarding,
@@ -25,6 +25,11 @@ import {
 } from "@stripe/react-connect-js";
 import { loadConnectAndInitialize } from "@stripe/connect-js";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import {
+  connectEmbeddedPageStyles,
+  pageWrapperStyle,
+  useStripeConnectViewportZoomLock,
+} from "../src/components/stripe/connectEmbeddedPageHelpers";
 
 const MINGLA_BRAND_COLOR = "#eb7825" as const;
 
@@ -50,26 +55,8 @@ export default function ConnectPartnerOnboardingPage(): React.ReactElement {
   const [initError, setInitError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  // iOS auto-zoom fix: Stripe's embedded form inputs use font-size < 16px,
-  // which triggers iOS Safari to auto-zoom in when an input is focused —
-  // the user then has to pinch-zoom back out. The default Expo Web viewport
-  // (`width=device-width, initial-scale=1, shrink-to-fit=no`) doesn't block
-  // this. Overriding to add `maximum-scale=1, user-scalable=no` while the
-  // user is on this page prevents the zoom-on-focus jank. Restore the
-  // original tag on unmount so other pages keep normal pinch-zoom.
-  useEffect(() => {
-    if (typeof document === "undefined") return;
-    const meta = document.querySelector('meta[name="viewport"]');
-    if (!meta) return;
-    const original = meta.getAttribute("content");
-    meta.setAttribute(
-      "content",
-      "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, shrink-to-fit=no",
-    );
-    return () => {
-      if (original) meta.setAttribute("content", original);
-    };
-  }, []);
+  // ORCH-1056: iOS auto-zoom fix moved to shared helper.
+  useStripeConnectViewportZoomLock();
 
   const stripeConnectInstance = useMemo(() => {
     if (typeof sessionClientSecret !== "string") return null;
@@ -235,89 +222,17 @@ export default function ConnectPartnerOnboardingPage(): React.ReactElement {
   );
 }
 
-const pageWrapperStyle: React.CSSProperties = {
-  // iOS WKWebView scroll fix: react-native-web compiles to a fixed-viewport
-  // root (`html, body, #root { height: 100%; overflow: hidden }`), so we
-  // make THIS wrapper the scroll container by absolutely positioning it
-  // over the root and giving it explicit `overflowY: auto`. This avoids
-  // touching root-level styles (which break RN-web layout) while letting
-  // the Stripe iframe content scroll naturally inside the wrapper.
-  position: "absolute",
-  top: 0,
-  right: 0,
-  bottom: 0,
-  left: 0,
-  overflowY: "auto",
-  WebkitOverflowScrolling: "touch",
-  backgroundColor: "#FAFAFA",
-  fontFamily:
-    '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-};
-
-const headerStyle: React.CSSProperties = {
-  padding: "24px 24px 16px",
-  textAlign: "center",
-  borderBottom: "1px solid #E5E7EB",
-  backgroundColor: "#FFFFFF",
-};
-
-const headerTitleStyle: React.CSSProperties = {
-  fontSize: "20px",
-  fontWeight: 600,
-  margin: 0,
-  color: "#0F172A",
-};
-
-const mainStyle: React.CSSProperties = {
-  // No `flex: 1` — wrapper is plain block layout now (see pageWrapperStyle).
-  padding: "24px",
-  maxWidth: "780px",
-  width: "100%",
-  margin: "0 auto",
-  boxSizing: "border-box",
-};
-
-const footerStyle: React.CSSProperties = {
-  padding: "16px 24px",
-  borderTop: "1px solid #E5E7EB",
-  backgroundColor: "#FFFFFF",
-  textAlign: "center",
-};
-
-const footerTextStyle: React.CSSProperties = {
-  fontSize: "13px",
-  color: "#475569",
-  margin: 0,
-};
-
-const errorCardStyle: React.CSSProperties = {
-  maxWidth: "480px",
-  margin: "80px auto",
-  padding: "32px",
-  backgroundColor: "#FFFFFF",
-  border: "1px solid #FCA5A5",
-  borderRadius: "12px",
-  boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
-};
-
-const errorTitleStyle: React.CSSProperties = {
-  fontSize: "20px",
-  fontWeight: 600,
-  margin: "0 0 12px",
-  color: "#0F172A",
-};
-
-const errorBodyStyle: React.CSSProperties = {
-  fontSize: "15px",
-  lineHeight: 1.5,
-  margin: 0,
-  color: "#475569",
-};
-
-const loadingCardStyle: React.CSSProperties = {
-  maxWidth: "480px",
-  margin: "80px auto",
-  padding: "32px",
-  textAlign: "center",
-  color: "#475569",
-};
+// ORCH-1056: styles + layout consolidated into the shared helper module.
+// Local aliases so the existing JSX `style={…Style}` references still resolve.
+const headerStyle = connectEmbeddedPageStyles.headerStyle;
+const headerTitleStyle = connectEmbeddedPageStyles.headerTitleStyle;
+const mainStyle = connectEmbeddedPageStyles.mainStyle;
+const footerStyle = connectEmbeddedPageStyles.footerStyle;
+const footerTextStyle = connectEmbeddedPageStyles.footerTextStyle;
+const errorCardStyle = connectEmbeddedPageStyles.errorCardStyle;
+const errorTitleStyle = connectEmbeddedPageStyles.errorTitleStyle;
+const errorBodyStyle = connectEmbeddedPageStyles.errorBodyStyle;
+const loadingCardStyle = connectEmbeddedPageStyles.loadingCardStyle;
+// `pageWrapperStyle` re-exported as a top-level import to preserve current
+// JSX bindings (`style={pageWrapperStyle}` appears throughout the file).
+void pageWrapperStyle;

@@ -4,6 +4,11 @@
  * Web-only Path B surface opened from mingla-business via expo-web-browser.
  * Renders Stripe embedded account management plus notification banner from a
  * short-lived Account Session client_secret.
+ *
+ * ORCH-1056 backport: shared layout/zoom helpers now live in
+ * src/components/stripe/connectEmbeddedPageHelpers.ts. This file inherits
+ * the iOS WKWebView scroll fix (absolute-positioned wrapper) + auto-zoom
+ * block (viewport meta override) previously only on the partner pages.
  */
 
 // orch-strict-grep-allow safearea-on-fullscreen-routes — web-only Stripe Connect Embedded Components page; renders DOM elements (<div>) via @stripe/react-connect-js, NOT React Native primitives. Does not render natively on iOS/Android — only loads in Expo Web bundle / mobile expo-web-browser session. iOS status bar bleed cannot occur because the page never renders in the native React Native stack. Per ORCH-0954 [Embedded onboarding cutover + Stripe-managed risk].
@@ -17,6 +22,10 @@ import {
 } from "@stripe/react-connect-js";
 import { loadConnectAndInitialize } from "@stripe/connect-js";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import {
+  connectEmbeddedPageStyles,
+  useStripeConnectViewportZoomLock,
+} from "../src/components/stripe/connectEmbeddedPageHelpers";
 
 const MINGLA_BRAND_COLOR = "#eb7825" as const;
 
@@ -37,6 +46,9 @@ export default function ConnectAccountManagementPage(): React.ReactElement {
   const returnTo = firstParam(params.return_to);
   const [initError, setInitError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+
+  // ORCH-1056 — block iOS auto-zoom on input focus.
+  useStripeConnectViewportZoomLock();
 
   const stripeConnectInstance = useMemo(() => {
     if (typeof sessionClientSecret !== "string") return null;
@@ -103,10 +115,10 @@ export default function ConnectAccountManagementPage(): React.ReactElement {
 
   if (typeof sessionClientSecret !== "string") {
     return (
-      <div style={pageWrapperStyle}>
-        <div style={errorCardStyle}>
-          <h2 style={errorTitleStyle}>Invalid management link</h2>
-          <p style={errorBodyStyle}>
+      <div style={connectEmbeddedPageStyles.pageWrapperStyle}>
+        <div style={connectEmbeddedPageStyles.errorCardStyle}>
+          <h2 style={connectEmbeddedPageStyles.errorTitleStyle}>Invalid management link</h2>
+          <p style={connectEmbeddedPageStyles.errorBodyStyle}>
             This link is missing a required parameter. Return to Mingla Business
             and tap &ldquo;Manage payouts &amp; tax&rdquo; again.
           </p>
@@ -117,10 +129,10 @@ export default function ConnectAccountManagementPage(): React.ReactElement {
 
   if (initError !== null || loadError !== null) {
     return (
-      <div style={pageWrapperStyle}>
-        <div style={errorCardStyle}>
-          <h2 style={errorTitleStyle}>Couldn&rsquo;t load Stripe</h2>
-          <p style={errorBodyStyle}>{initError ?? loadError}</p>
+      <div style={connectEmbeddedPageStyles.pageWrapperStyle}>
+        <div style={connectEmbeddedPageStyles.errorCardStyle}>
+          <h2 style={connectEmbeddedPageStyles.errorTitleStyle}>Couldn&rsquo;t load Stripe</h2>
+          <p style={connectEmbeddedPageStyles.errorBodyStyle}>{initError ?? loadError}</p>
         </div>
       </div>
     );
@@ -128,8 +140,8 @@ export default function ConnectAccountManagementPage(): React.ReactElement {
 
   if (stripeConnectInstance === null) {
     return (
-      <div style={pageWrapperStyle}>
-        <div style={loadingCardStyle}>
+      <div style={connectEmbeddedPageStyles.pageWrapperStyle}>
+        <div style={connectEmbeddedPageStyles.loadingCardStyle}>
           <p>Initializing account management...</p>
         </div>
       </div>
@@ -137,16 +149,16 @@ export default function ConnectAccountManagementPage(): React.ReactElement {
   }
 
   return (
-    <div style={pageWrapperStyle}>
+    <div style={connectEmbeddedPageStyles.pageWrapperStyle}>
       <header style={headerStyle}>
         <div style={headerInnerStyle}>
-          <h1 style={headerTitleStyle}>Mingla — Payouts &amp; tax</h1>
+          <h1 style={connectEmbeddedPageStyles.headerTitleStyle}>Mingla — Payouts &amp; tax</h1>
           <button type="button" onClick={handleDone} style={doneButtonStyle}>
             Done
           </button>
         </div>
       </header>
-      <main style={mainStyle}>
+      <main style={connectEmbeddedPageStyles.mainStyle}>
         <ConnectComponentsProvider connectInstance={stripeConnectInstance}>
           <ConnectNotificationBanner
             collectionOptions={{
@@ -165,8 +177,8 @@ export default function ConnectAccountManagementPage(): React.ReactElement {
           />
         </ConnectComponentsProvider>
       </main>
-      <footer style={footerStyle}>
-        <p style={footerTextStyle}>
+      <footer style={connectEmbeddedPageStyles.footerStyle}>
+        <p style={connectEmbeddedPageStyles.footerTextStyle}>
           Powered by Stripe. Your bank details go directly to Stripe — Mingla
           never sees them.
         </p>
@@ -175,15 +187,8 @@ export default function ConnectAccountManagementPage(): React.ReactElement {
   );
 }
 
-const pageWrapperStyle: React.CSSProperties = {
-  minHeight: "100vh",
-  backgroundColor: "#FAFAFA",
-  display: "flex",
-  flexDirection: "column",
-  fontFamily:
-    '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-};
-
+// Account-management has a distinct header layout (Done button) — keep
+// page-local style overrides for the header inner + done button.
 const headerStyle: React.CSSProperties = {
   padding: "18px 24px",
   borderBottom: "1px solid #E5E7EB",
@@ -199,13 +204,6 @@ const headerInnerStyle: React.CSSProperties = {
   gap: "16px",
 };
 
-const headerTitleStyle: React.CSSProperties = {
-  fontSize: "20px",
-  fontWeight: 600,
-  margin: 0,
-  color: "#0F172A",
-};
-
 const doneButtonStyle: React.CSSProperties = {
   minHeight: "44px",
   padding: "0 16px",
@@ -216,61 +214,4 @@ const doneButtonStyle: React.CSSProperties = {
   fontSize: "15px",
   fontWeight: 600,
   cursor: "pointer",
-};
-
-const mainStyle: React.CSSProperties = {
-  flex: 1,
-  padding: "24px",
-  maxWidth: "780px",
-  width: "100%",
-  margin: "0 auto",
-  boxSizing: "border-box",
-};
-
-const footerStyle: React.CSSProperties = {
-  padding: "16px 24px",
-  borderTop: "1px solid #E5E7EB",
-  backgroundColor: "#FFFFFF",
-  textAlign: "center",
-};
-
-const footerTextStyle: React.CSSProperties = {
-  fontSize: "13px",
-  color: "#475569",
-  margin: 0,
-};
-
-const errorCardStyle: React.CSSProperties = {
-  maxWidth: "480px",
-  margin: "80px auto",
-  padding: "32px",
-  backgroundColor: "#FFFFFF",
-  border: "1px solid #FCA5A5",
-  borderRadius: "8px",
-  boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
-};
-
-const errorTitleStyle: React.CSSProperties = {
-  fontSize: "20px",
-  fontWeight: 600,
-  margin: "0 0 12px",
-  color: "#0F172A",
-};
-
-const errorBodyStyle: React.CSSProperties = {
-  fontSize: "15px",
-  lineHeight: 1.5,
-  color: "#475569",
-  margin: 0,
-};
-
-const loadingCardStyle: React.CSSProperties = {
-  maxWidth: "480px",
-  margin: "80px auto",
-  padding: "32px",
-  backgroundColor: "#FFFFFF",
-  border: "1px solid #E5E7EB",
-  borderRadius: "8px",
-  textAlign: "center",
-  color: "#475569",
 };
