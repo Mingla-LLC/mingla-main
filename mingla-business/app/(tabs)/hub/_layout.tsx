@@ -24,8 +24,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BrandDeleteSheet } from "../../../src/components/brand/BrandDeleteSheet";
 import { BrandSwitcherSheet } from "../../../src/components/brand/BrandSwitcherSheet";
+import { BusinessTodoToggle } from "../../../src/components/home/BusinessTodoToggle";
 import { HubSubNav } from "../../../src/components/hub/HubSubNav";
 import { VenueClaimStatusBanner } from "../../../src/components/brand/VenueClaimStatusBanner";
+import { useBusinessTodos } from "../../../src/hooks/useBusinessTodos";
 import { useCurrentBrand } from "../../../src/hooks/useCurrentBrand";
 import {
   persistHubLastTab,
@@ -43,6 +45,7 @@ import {
   useCurrentBrandStore,
   type Brand,
 } from "../../../src/store/currentBrandStore";
+import type { BusinessTodo } from "../../../src/utils/businessTodos";
 
 export default function HubTabLayout(): React.ReactElement {
   const insets = useSafeAreaInsets();
@@ -51,6 +54,7 @@ export default function HubTabLayout(): React.ReactElement {
   const { user } = useAuth();
   const setCurrentBrand = useCurrentBrandStore((s) => s.setCurrentBrand);
   const currentBrand = useCurrentBrand();
+  const todos = useBusinessTodos();
   const visibleTabs = useHubVisibleTabs(currentBrand?.id ?? null);
   const initialTab = useHubInitialTab(
     currentBrand?.id ?? null,
@@ -115,6 +119,27 @@ export default function HubTabLayout(): React.ReactElement {
     persistHubLastTab(tab);
   }, []);
 
+  const handleTodoAction = useCallback(
+    (todo: BusinessTodo): void => {
+      switch (todo.action.kind) {
+        case "open_brand_switcher":
+          setBrandSheetVisible(true);
+          return;
+        case "open_universal_creator":
+          setIsUniversalCreatorOpen(true);
+          return;
+        case "route":
+          router.push(todo.action.route as never);
+          return;
+        default: {
+          const _exhaustive: never = todo.action;
+          return _exhaustive;
+        }
+      }
+    },
+    [router],
+  );
+
   return (
     <View style={[styles.host, { paddingTop: insets.top }]}>
       <View style={styles.barWrap}>
@@ -130,6 +155,15 @@ export default function HubTabLayout(): React.ReactElement {
               testID="hub-universal-creator-button"
             />
           }
+        />
+      </View>
+      {/* ORCH-1038 — unified smart to-do toggle, flush under the top bar and
+          ABOVE the sub-nav pills; same component + list as Home. */}
+      <View style={styles.todoWrap}>
+        <BusinessTodoToggle
+          todos={todos}
+          onAction={handleTodoAction}
+          testID="hub-todo-toggle"
         />
       </View>
       <HubSubNav
@@ -171,6 +205,10 @@ const styles = StyleSheet.create({
     backgroundColor: canvas.discover,
   },
   barWrap: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
+  },
+  todoWrap: {
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.sm,
   },

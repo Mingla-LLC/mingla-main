@@ -56,6 +56,16 @@ interface LikesPageProps {
     activeTab?: LikesTab;
   } | null;
   onNavigationComplete?: () => void;
+  /**
+   * ORCH-1030: notification deep-link params for Likes (calendar/review routes).
+   * `{ tab: 'calendar', entryId }` (calendar reminder) or
+   * `{ tab: 'calendar', experienceId }` (review — v1 lands the Calendar
+   * container, experienceId is carried, not dropped). Seeds the Calendar tab +
+   * selects the entry. Mirrors the `navigationData`/`onNavigationComplete`
+   * pattern. Consumed once, then `onDeepLinkHandled` clears it.
+   */
+  deepLinkParams?: Record<string, string> | null;
+  onDeepLinkHandled?: () => void;
 }
 
 function LikesPage({
@@ -75,6 +85,8 @@ function LikesPage({
   onShowQRCode,
   navigationData,
   onNavigationComplete,
+  deepLinkParams,
+  onDeepLinkHandled,
 }: LikesPageProps): React.ReactElement {
   // ORCH-0679 Wave 2A: Dev-only render counter (I-TAB-PROPS-STABLE verification).
   const renderCountRef = React.useRef(0);
@@ -140,6 +152,22 @@ function LikesPage({
       }
     }
   }, [navigationData, onNavigationComplete]);
+
+  // ── Notification deep-link → Calendar entry select (ORCH-1030) ──
+  // A `calendar_reminder_*` (entryId) or `review` (experienceId) notification
+  // routes here with `deepLinkParams.tab === 'calendar'`. v1 = land the
+  // Calendar tab and select the entry (CalendarTab auto-expands the match);
+  // no scroll. The experienceId is carried, never silently dropped (F-11).
+  const [deepLinkEntryId, setDeepLinkEntryId] = useState<string | null>(null);
+  useEffect(() => {
+    if (deepLinkParams?.tab === 'calendar') {
+      setActiveTab('calendar');
+      // entryId for calendar reminders; experienceId for review links (the
+      // review's entry shares the experience id in v1 — carry it forward).
+      setDeepLinkEntryId(deepLinkParams.entryId ?? deepLinkParams.experienceId ?? null);
+      onDeepLinkHandled?.();
+    }
+  }, [deepLinkParams, onDeepLinkHandled]);
 
   const handleTabChange = (tab: LikesTab): void => {
     if (tab === activeTab) return;
@@ -344,6 +372,7 @@ function LikesPage({
             onShowQRCode={onShowQRCode || (() => {})}
             userPreferences={userPreferences}
             accountPreferences={accountPreferences}
+            selectedEntryId={deepLinkEntryId}
           />
         )}
       </View>

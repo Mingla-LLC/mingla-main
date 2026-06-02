@@ -318,3 +318,68 @@ Deno.test('T-B9: hard rule eligibility precedes blend — AI not even read on ra
   assertEquals(result.ai_blended, undefined);
   assertEquals(result.vetoed, undefined);
 });
+
+// ─── META-ORCH-1009 Sub-E: business hero video boost ────────────────────
+
+Deno.test('T-E1: business hero video boosts effective AI score but keeps raw contribution visible', () => {
+  const place = basePlace({
+    business_hero_video_present: true,
+    ai_signal_scores: {
+      romantic: aiEntry({ score_0_to_100: 80, prompt_version: 'v4' }),
+    },
+  });
+  const config: SignalConfig = {
+    ...ROMANTIC_CONFIG_BASE,
+    expected_prompt_version: 'v4',
+    ai_blend_weight: 1.0,
+  };
+
+  const result = computeScore(place, config, 'romantic');
+  assertAlmostEquals(result.score as number, 184, 0.001);
+  assertEquals(result.contributions._business_hero_video_boost, 1);
+  assertEquals(result.contributions._ai_score_pre_business_boost, 80);
+  assertEquals(result.ai_blended!.ai_score_0_to_100, 92);
+});
+
+Deno.test('T-E2: no business hero video flag leaves AI score unboosted', () => {
+  const place = basePlace({
+    business_hero_video_present: false,
+    ai_signal_scores: {
+      romantic: aiEntry({ score_0_to_100: 80, prompt_version: 'v4' }),
+    },
+  });
+  const config: SignalConfig = {
+    ...ROMANTIC_CONFIG_BASE,
+    expected_prompt_version: 'v4',
+    ai_blend_weight: 1.0,
+  };
+
+  const result = computeScore(place, config, 'romantic');
+  assertAlmostEquals(result.score as number, 160, 0.001);
+  assertEquals(result.contributions._business_hero_video_boost, undefined);
+  assertEquals(result.contributions._ai_score_pre_business_boost, undefined);
+  assertEquals(result.ai_blended!.ai_score_0_to_100, 80);
+});
+
+Deno.test('T-E3: inappropriate_for veto fires before business hero video boost', () => {
+  const place = basePlace({
+    business_hero_video_present: true,
+    ai_signal_scores: {
+      romantic: aiEntry({
+        score_0_to_100: 80,
+        inappropriate_for: true,
+        prompt_version: 'v4',
+      }),
+    },
+  });
+  const config: SignalConfig = {
+    ...ROMANTIC_CONFIG_BASE,
+    expected_prompt_version: 'v4',
+    ai_blend_weight: 1.0,
+  };
+
+  const result = computeScore(place, config, 'romantic');
+  assertEquals(result.score, null);
+  assertEquals(result.vetoed?.reason, 'inappropriate_for');
+  assertEquals(result.contributions._business_hero_video_boost, undefined);
+});

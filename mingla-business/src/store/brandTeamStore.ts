@@ -1,32 +1,31 @@
 /**
- * brandTeamStore — persisted Zustand store for brand-team invitations + accepted members (Cycle 13a).
+ * brandTeamStore — in-memory optimistic cache for brand-team invitations
+ * during the "Invite tapped → edge fn returned" window (ORCH-1050).
  *
- * I-31: UI-ONLY in Cycle 13a. recordInvitation creates a pending invitation
- * in client-side store; NO email is sent, NO acceptance flow exists, NO
- * functional brand-team-member sync to brand_team_members DB table.
+ * Status: ACTIVE post-ORCH-1050. Was [TRANSITIONAL] when invitations lived
+ * only client-side (Cycle 13a). ORCH-1050 wired the real backend pipeline
+ * (`brand_invitations` table + `invite-brand-member` + `accept-brand-invitation`
+ * edge fns + ownership-transfer RPC), so canonical state now lives in
+ * Postgres and is read via React Query (`useBrandInvitations` /
+ * `useBrandTeamMembers`). This store:
  *
- * [TRANSITIONAL] EXIT CONDITION: B-cycle wires:
- *   - edge function `invite-brand-member` (writes to brand_invitations + sends Resend email)
- *   - edge function `accept-brand-invitation` (writes to brand_team_members on token-gated route)
- *
- * When backend lands, this store contracts to a cache (or removes entirely
- * if backend is sole authority).
+ *   - holds OPTIMISTIC pending rows for the ~600ms between user tap and
+ *     the edge fn returning success — keeps the team list responsive,
+ *     - does NOT persist to AsyncStorage (no rehydration on app boot;
+ *     the React Query cache is the source of truth on cold start),
+ *   - is cleared on logout via clearAllStores().
  *
  * Constitutional notes:
- *   - #2 one owner per truth: brand-team UI invitations live ONLY here.
- *   - #6 logout clears: extended via clearAllStores.
- *   - #9 no fabricated data: store starts EMPTY; never seeded.
- *
- * Per Cycle 13a SPEC §4.7. Mirrors Cycle 11 scannerInvitationsStore pattern.
+ *   - Const #2 one owner per truth: React Query owns canonical state;
+ *     this store owns short-lived optimistic state only.
+ *   - Const #5 server state in React Query: invitations queries live in
+ *     useBrandInvitations.ts. This module is not server state — it is
+ *     an in-flight optimistic buffer.
+ *   - Const #6 logout clears: reset() is registered with clearAllStores.
+ *   - Const #9 no fabricated data: store starts EMPTY; never seeded.
  */
 
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
-import {
-  createJSONStorage,
-  persist,
-  type PersistOptions,
-} from "zustand/middleware";
 
 import type { BrandRole } from "../utils/brandRole";
 
@@ -35,7 +34,8 @@ import type { BrandRole } from "../utils/brandRole";
 export type BrandTeamEntryStatus = "pending" | "accepted" | "removed";
 
 export interface BrandTeamEntry {
-  /** btm_<base36-ts>_<base36-rand4> for accepted; bti_<...> for pending. */
+  /** Client-side optimistic id; replaced by the server-issued UUID once
+   * the edge fn returns. Prefixed with bti_ for clarity. */
   id: string;
   brandId: string;
   inviteeEmail: string;
@@ -46,35 +46,33 @@ export interface BrandTeamEntry {
   invitedBy: string;
   /** ISO 8601. */
   invitedAt: string;
-  /** null until B-cycle wires acceptance flow. */
+  /** Reserved — not populated by optimistic flow. */
   acceptedAt: string | null;
-  /** null unless operator revoked or removed. */
+  /** Reserved — not populated by optimistic flow. */
   removedAt: string | null;
 }
 
 export interface BrandTeamStoreState {
   entries: BrandTeamEntry[];
   // ---- Mutations ----
+  /** Adds an OPTIMISTIC pending entry. Caller is responsible for clearing it
+   * (via clearEntry(id)) once the edge fn returns and React Query refetches. */
   recordInvitation: (
     entry: Omit<
       BrandTeamEntry,
       "id" | "invitedAt" | "status" | "acceptedAt" | "removedAt"
     >,
   ) => BrandTeamEntry;
-  /** Pending → removed. Idempotent for non-pending. Returns updated record or null. */
-  revokeInvitation: (id: string) => BrandTeamEntry | null;
-  /** Accepted → removed. Idempotent for non-accepted. Returns updated record or null. */
-  removeAcceptedMember: (id: string) => BrandTeamEntry | null;
+  /** Removes an optimistic entry by id. */
+  clearEntry: (id: string) => void;
   /** Logout reset. */
   reset: () => void;
   // ---- Selectors ----
-  /** Single existing reference; safe to subscribe. */
   getEntryById: (id: string) => BrandTeamEntry | null;
-  /** Fresh array; USE VIA .getState() ONLY for one-shot lookups. Component reads use raw entries + useMemo. */
   getEntriesForBrand: (brandId: string) => BrandTeamEntry[];
 }
 
-// ---- ID generators --------------------------------------------------
+// ---- ID generator --------------------------------------------------
 
 const generateInviteId = (): string => {
   const ts36 = Date.now().toString(36);
@@ -84,81 +82,40 @@ const generateInviteId = (): string => {
   return `bti_${ts36}_${rand4}`;
 };
 
-// ---- Persistence ----------------------------------------------------
-
-type PersistedState = Pick<BrandTeamStoreState, "entries">;
-
-const persistOptions: PersistOptions<BrandTeamStoreState, PersistedState> = {
-  name: "mingla-business.brandTeamStore.v1",
-  storage: createJSONStorage(() => AsyncStorage),
-  partialize: (s): PersistedState => ({ entries: s.entries }),
-  version: 1,
-};
-
 // ---- Store ----------------------------------------------------------
+// No persist middleware — short-lived in-memory only.
 
-export const useBrandTeamStore = create<BrandTeamStoreState>()(
-  persist(
-    (set, get) => ({
-      entries: [],
+export const useBrandTeamStore = create<BrandTeamStoreState>()((set, get) => ({
+  entries: [],
 
-      // ---- Mutations ----
+  // ---- Mutations ----
 
-      recordInvitation: (entry): BrandTeamEntry => {
-        const newEntry: BrandTeamEntry = {
-          ...entry,
-          id: generateInviteId(),
-          invitedAt: new Date().toISOString(),
-          status: "pending",
-          acceptedAt: null,
-          removedAt: null,
-        };
-        set((s) => ({ entries: [newEntry, ...s.entries] }));
-        return newEntry;
-      },
+  recordInvitation: (entry): BrandTeamEntry => {
+    const newEntry: BrandTeamEntry = {
+      ...entry,
+      id: generateInviteId(),
+      invitedAt: new Date().toISOString(),
+      status: "pending",
+      acceptedAt: null,
+      removedAt: null,
+    };
+    set((s) => ({ entries: [newEntry, ...s.entries] }));
+    return newEntry;
+  },
 
-      revokeInvitation: (id): BrandTeamEntry | null => {
-        const existing = get().entries.find((e) => e.id === id);
-        if (existing === undefined) return null;
-        if (existing.status !== "pending") return existing; // idempotent
-        const updated: BrandTeamEntry = {
-          ...existing,
-          status: "removed",
-          removedAt: new Date().toISOString(),
-        };
-        set((s) => ({
-          entries: s.entries.map((e) => (e.id === id ? updated : e)),
-        }));
-        return updated;
-      },
+  clearEntry: (id): void => {
+    set((s) => ({ entries: s.entries.filter((e) => e.id !== id) }));
+  },
 
-      removeAcceptedMember: (id): BrandTeamEntry | null => {
-        const existing = get().entries.find((e) => e.id === id);
-        if (existing === undefined) return null;
-        if (existing.status !== "accepted") return existing; // idempotent
-        const updated: BrandTeamEntry = {
-          ...existing,
-          status: "removed",
-          removedAt: new Date().toISOString(),
-        };
-        set((s) => ({
-          entries: s.entries.map((e) => (e.id === id ? updated : e)),
-        }));
-        return updated;
-      },
+  reset: (): void => {
+    set({ entries: [] });
+  },
 
-      reset: (): void => {
-        set({ entries: [] });
-      },
+  // ---- Selectors ----
 
-      // ---- Selectors ----
+  getEntryById: (id): BrandTeamEntry | null =>
+    get().entries.find((e) => e.id === id) ?? null,
 
-      getEntryById: (id): BrandTeamEntry | null =>
-        get().entries.find((e) => e.id === id) ?? null,
-
-      getEntriesForBrand: (brandId): BrandTeamEntry[] =>
-        get().entries.filter((e) => e.brandId === brandId),
-    }),
-    persistOptions,
-  ),
-);
+  getEntriesForBrand: (brandId): BrandTeamEntry[] =>
+    get().entries.filter((e) => e.brandId === brandId),
+}));

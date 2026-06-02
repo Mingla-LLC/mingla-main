@@ -1,13 +1,19 @@
 #!/usr/bin/env node
 
 /**
- * I-AI-SIGNAL-SCORES-COLUMN-SOLE-OWNER (META-ORCH-1009 Sub-A invariant, ACTIVE)
+ * I-AI-SIGNAL-SCORES-COLUMN-SOLE-OWNER (META-ORCH-1009 Sub-A invariant, ACTIVE;
+ *   amended by Sub-E 2026-05-31 from single-writer to a constrained TWO-writer rule)
  *
- * Only `supabase/functions/run-place-intelligence-trial/index.ts` writes to
- * `place_pool.ai_signal_scores`. Any other code path that produces a write
- * payload (`.update`, `.upsert`, `.insert`) referencing `ai_signal_scores`
- * silently steals ownership of the AI-evaluation column and breaks the
- * single-writer guarantee that DEC-099 + DEC-181 codified.
+ * Exactly TWO runtime paths may write `place_pool.ai_signal_scores`:
+ *   1. `supabase/functions/run-place-intelligence-trial/index.ts`
+ *      (Google-ingested places — original Sub-A writer).
+ *   2. `supabase/functions/run-business-place-authoring-pipeline/index.ts`
+ *      (business-app authored/claimed places — added by META-ORCH-1009 Sub-E,
+ *      intentionally amending DEC-099/DEC-181; see DECISION_LOG DEC-181 amendment).
+ * Any OTHER code path that produces a write payload (`.update`, `.upsert`,
+ * `.insert`) referencing `ai_signal_scores` silently steals ownership of the
+ * AI-evaluation column and breaks the constrained-writer guarantee that
+ * DEC-099 + DEC-181 (as amended by Sub-E) codified.
  *
  * READS are unrestricted — Sub-B will add ranker reads, admin tools may
  * surface the data, etc. This gate only blocks WRITES outside the allowed
@@ -36,11 +42,21 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "../../..");
 
-// Files that ARE allowed to write to ai_signal_scores. The single-writer rule
-// codified by DEC-099 + DEC-181. Add NEW entries only with operator approval
-// + a new ORCH banner.
+// Files that ARE allowed to write to ai_signal_scores. The constrained
+// two-writer rule codified by DEC-099 + DEC-181 (Sub-E amendment). Add NEW
+// entries only with operator approval + a new ORCH banner.
 const ALLOWED_WRITER_FILES = new Set([
   "supabase/functions/run-place-intelligence-trial/index.ts",
+  "supabase/functions/run-business-place-authoring-pipeline/index.ts",
+]);
+
+// ORCH-1040 — files that REFERENCE the column name only in a READ / response-type
+// context (never a DB write). The invariant explicitly allows unrestricted reads;
+// this list prevents the object-key heuristic from false-positiving on a TS
+// interface field. The client authoring service types the `get_authoring_context`
+// READ response (which includes ai_signal_scores) — the edge fn is the only writer.
+const READ_REFERENCE_EXEMPT = new Set([
+  "mingla-business/src/services/businessPlaceAuthoringService.ts",
 ]);
 
 // Directories to scan for write payloads. Excludes admin UI (read-only by
@@ -106,6 +122,9 @@ for (const dir of SCAN_DIRS) {
 
     // Allowed writers: the trial edge fn
     if (ALLOWED_WRITER_FILES.has(relPath)) continue;
+
+    // ORCH-1040 — read/response-type references are allowed (reads unrestricted).
+    if (READ_REFERENCE_EXEMPT.has(relPath)) continue;
 
     // Migrations that DEFINE the column (ALTER TABLE / backfill UPDATE) are
     // architectural, not runtime writers. The owning migration for Sub-A is

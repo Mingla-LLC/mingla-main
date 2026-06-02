@@ -181,8 +181,9 @@
     "fallback_user": "Користувач"
   },
   "collaborations": {
-    "headline": "Plan something together",
-    "body": "Start a session with your crew. Відкриття things to do, vote on favorites, та actually make it happen.",
+    "headline": "Сплануйте разом",
+    "body": "Створіть групу зі своєю компанією або приєднайтеся до чату чи поїздки, куди вас уже запросили.",
+    "start_button": "Створити групу",
     "whos_in": "Who's in?",
     "session_name_label": "Session name",
     "session_name_placeholder": "e.g. Weekend plans, Date night ideas...",
@@ -196,7 +197,11 @@
     "generic_error": "Hmm, that didn't work. Give it another go.",
     "join_error": "Could not join session",
     "decline_error": "Could not decline invite",
-    "empty_state": "Додати friends first — then you can start planning together."
+    "empty_state": "Додати friends first — then you can start planning together.",
+    "trip_chats_header": "Ваші чати подорожей і подій",
+    "trip_chats_loading": "Завантаження чатів…",
+    "trip_chats_join_subtitle": "Приєднатися до групового чату покупців",
+    "trip_chats_join_button": "Приєднатися до чату"
   },
   "consent": {
     "headline": "One quick thing",

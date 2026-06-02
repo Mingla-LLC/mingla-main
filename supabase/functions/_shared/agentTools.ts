@@ -415,12 +415,6 @@ const createExperience: AgentTool = {
       default_currency: string | null;
     };
     const venueCategory = brand.venue_category;
-    if (venueCategory !== "restaurant" && venueCategory !== "play") {
-      throw new ToolError(
-        "INVALID_ARGS",
-        "Experiences require a Restaurant or Play venue category",
-      );
-    }
     const currency = isString(args.currency)
       ? args.currency.toUpperCase().slice(0, 3)
       : (brand.default_currency ?? "GBP");
@@ -464,7 +458,11 @@ const createExperience: AgentTool = {
       confidence: typeof args.confidence === "number"
         ? Math.max(0, Math.min(1, args.confidence))
         : null,
-      ai_source: venueCategory === "play" ? "activities_snap" : "menu_snap",
+      ai_source: venueCategory === "play"
+        ? "activities_snap"
+        : venueCategory === "restaurant"
+        ? "menu_snap"
+        : "business_snap",
     };
     if (venueCategory === "play") {
       experienceMeta.capacity_min = capacityMin;

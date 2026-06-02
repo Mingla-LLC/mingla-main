@@ -3,9 +3,11 @@
  */
 
 import React, { useCallback, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
+  accent,
+  radius,
   spacing,
   text as textTokens,
   typography,
@@ -18,6 +20,10 @@ export interface ExperienceReviewCardsProps {
   isExecuting: boolean;
   onAccept: (id: string, editedArgs?: Record<string, unknown>) => Promise<void>;
   onReject: (id: string) => Promise<void>;
+  onAcceptAll: () => Promise<void>;
+  // META-ORCH-1009 Sub-E (C2): invoked when Sarah taps Regenerate on an expired
+  // proposal so the Hub clears the stale card + prompts a fresh re-snap.
+  onRegenerate?: (id: string, parserSource: string | null) => Promise<void>;
 }
 
 export const ExperienceReviewCards: React.FC<ExperienceReviewCardsProps> = ({
@@ -25,6 +31,8 @@ export const ExperienceReviewCards: React.FC<ExperienceReviewCardsProps> = ({
   isExecuting,
   onAccept,
   onReject,
+  onAcceptAll,
+  onRegenerate,
 }) => {
   const [activeId, setActiveId] = useState<string | null>(null);
 
@@ -52,24 +60,53 @@ export const ExperienceReviewCards: React.FC<ExperienceReviewCardsProps> = ({
     [onReject],
   );
 
+  // META-ORCH-1009 Sub-E (C2): regenerate an expired proposal in-Hub.
+  const handleRegenerate = useCallback(
+    async (id: string, parserSource: string | null) => {
+      if (!onRegenerate) return;
+      setActiveId(id);
+      try {
+        await onRegenerate(id, parserSource);
+      } finally {
+        setActiveId(null);
+      }
+    },
+    [onRegenerate],
+  );
+
   if (pending.length === 0) return null;
 
   return (
     <View style={styles.host}>
       <View style={styles.headerRow}>
-        <Text style={styles.heading}>Suggested experiences</Text>
+        <Text style={styles.heading}>Review suggested experiences</Text>
+        <Pressable
+          onPress={() => void onAcceptAll()}
+          disabled={isExecuting}
+          style={({ pressed }) => [styles.acceptAll, pressed && styles.pressed]}
+          accessibilityRole="button"
+          accessibilityLabel="Accept all suggested experiences"
+        >
+          <Text style={styles.acceptAllText}>Accept all</Text>
+        </Pressable>
       </View>
-      <Text style={styles.helper}>
-        AI drafted these from your menu or activities. Add a date and price to publish each
-        one.
-      </Text>
       {pending.map((row) => (
         <ExperienceConfirmationCard
           key={row.id}
           args={row.tool_args}
+          expiresAt={row.expires_at}
           isExecuting={isExecuting && activeId === row.id}
           onAccept={(edited) => void handleAccept(row.id, edited)}
           onReject={() => void handleReject(row.id)}
+          onRegenerate={
+            onRegenerate
+              ? () =>
+                  void handleRegenerate(
+                    row.id,
+                    (row.tool_args?.parser_source as string | null) ?? null,
+                  )
+              : undefined
+          }
         />
       ))}
     </View>
@@ -90,10 +127,16 @@ const styles = StyleSheet.create({
     color: textTokens.primary,
     flex: 1,
   },
-  helper: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
-    marginBottom: spacing.md,
+  acceptAll: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.xl,
+    backgroundColor: accent.warm,
   },
+  acceptAllText: {
+    fontSize: typography.caption.fontSize,
+    fontWeight: "600",
+    color: textTokens.inverse,
+  },
+  pressed: { opacity: 0.85 },
 });

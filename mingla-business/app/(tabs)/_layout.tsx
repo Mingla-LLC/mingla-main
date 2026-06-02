@@ -25,6 +25,16 @@ import type { BottomNavTab } from "../../src/components/ui/BottomNav";
 import { DesktopCanvas } from "../../src/components/ui/DesktopCanvas";
 import { canvas, spacing } from "../../src/constants/designSystem";
 import { useResponsiveLayout } from "../../src/hooks/useResponsiveLayout";
+// ORCH-1055 (META-ORCH-1048 sub-F): rank-aware tab filtering. The TABS
+// array below is the registered superset; the actual visible set is
+// derived per-render from the caller's rank on the current brand. A
+// rank-10 scanner sees Home + Account only (no Hub / Ari / Blast). The
+// per-action `MIN_RANK` chokepoint in `permissionGates.ts` still gates
+// destructive actions inside surviving surfaces; RLS remains the ultimate
+// safety net.
+import { useCurrentBrandRole } from "../../src/hooks/useCurrentBrandRole";
+import { useCurrentBrandStore } from "../../src/store/currentBrandStore";
+import { visibleTabsForRank } from "../../src/utils/navTabGate";
 
 // ORCH-0891 M2: ⌘K command palette. Metro picks
 // `CommandPalette.web.tsx` on web (cmdk-backed dialog with global ⌘K
@@ -78,6 +88,15 @@ export default function TabsLayout(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const { isWideDesktop } = useResponsiveLayout();
 
+  // ORCH-1055: derive visible tabs from the caller's rank on the current
+  // brand. While the role query is loading (rank defaults to 0 in the
+  // hook's pending state) we render the safer scanner-shape (Home + Account)
+  // to avoid a one-frame flash of brand-management tabs to a scanner. The
+  // full set hydrates on the next render once the query resolves.
+  const currentBrandId = useCurrentBrandStore((s) => s.currentBrandId);
+  const { rank } = useCurrentBrandRole(currentBrandId);
+  const visibleTabs = useMemo(() => visibleTabsForRank(TABS, rank), [rank]);
+
   const activeId = useMemo(() => detectActiveTab(pathname), [pathname]);
 
   // Focused authoring surfaces hide the mobile bottom capsule so the route's
@@ -106,7 +125,7 @@ export default function TabsLayout(): React.ReactElement {
             },
           ]}
         >
-          <BottomNav tabs={TABS} active={activeId} onChange={handleChange} />
+          <BottomNav tabs={visibleTabs} active={activeId} onChange={handleChange} />
         </View>
       )}
       {/* ORCH-0891 M2: CommandPalette mounts on wide-desktop only. The

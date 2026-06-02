@@ -17,6 +17,7 @@
 
 import { useCurrentBrandStore } from "../store/currentBrandStore";
 import { useDraftEventStore } from "../store/draftEventStore";
+import { useDraftVenueStore } from "../store/draftVenueStore";
 import { useEventEditLogStore } from "../store/eventEditLogStore";
 import { useGuestStore } from "../store/guestStore";
 import { useLiveEventStore } from "../store/liveEventStore";
@@ -30,6 +31,7 @@ import { useNotificationPrefsStore } from "../store/notificationPrefsStore";
 export const clearAllStores = (): void => {
   useCurrentBrandStore.getState().reset();
   useDraftEventStore.getState().reset();
+  useDraftVenueStore.getState().reset(); // NEW META-ORCH-1009 Sub-E — Constitution #6 (persisted venue draft)
   useLiveEventStore.getState().reset(); // NEW Cycle 6 — Constitution #6
   useEventEditLogStore.getState().reset(); // NEW ORCH-0704 v2 — Constitution #6
   useOrderStore.getState().reset(); // NEW Cycle 9c — Constitution #6

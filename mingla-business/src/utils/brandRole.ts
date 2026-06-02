@@ -12,7 +12,7 @@
  */
 
 export type BrandRole =
-  | "account_owner"
+  | "brand_owner"
   | "brand_admin"
   | "event_manager"
   | "finance_manager"
@@ -21,7 +21,8 @@ export type BrandRole =
 
 /**
  * Rank values mirror SQL biz_role_rank() at
- * supabase/migrations/20260502100000_b1_business_schema_rls.sql:11-30.
+ * supabase/migrations/20260502100000_b1_business_schema_rls.sql:11-30
+ * (ORCH-1047 renamed the top role literal from the old label → brand_owner).
  * Higher = more privilege. 0 = no membership.
  */
 export const BRAND_ROLE_RANK = {
@@ -30,15 +31,15 @@ export const BRAND_ROLE_RANK = {
   finance_manager: 30,
   event_manager: 40,
   brand_admin: 50,
-  account_owner: 60,
+  brand_owner: 60,
 } as const satisfies Record<BrandRole, number>;
 
 export const NO_MEMBERSHIP_RANK = 0;
 
 export const roleDisplayName = (role: BrandRole): string => {
   switch (role) {
-    case "account_owner":
-      return "Account owner";
+    case "brand_owner":
+      return "Brand owner";
     case "brand_admin":
       return "Brand admin";
     case "event_manager":
@@ -58,7 +59,7 @@ export const roleDisplayName = (role: BrandRole): string => {
 
 export const roleDescription = (role: BrandRole): string => {
   switch (role) {
-    case "account_owner":
+    case "brand_owner":
       return "Full control of the account, brands, and billing.";
     case "brand_admin":
       return "Manage brand settings, team, events, and finances.";

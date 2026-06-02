@@ -1,18 +1,14 @@
 /**
- * InviteBrandMemberSheet — J-T3 brand-team invite (Cycle 13a).
+ * InviteBrandMemberSheet — brand-team invite (ORCH-1050).
  *
- * I-31: UI-only in Cycle 13a. recordInvitation creates a pending entry in the
- * client-side brandTeamStore; NO email is sent, NO acceptance flow exists.
- * The TRANSITIONAL banner makes this honest to the operator.
+ * Sends invites through the `invite-brand-member` edge function. The function
+ * writes to `public.brand_invitations` and ships a Resend invite email. The
+ * legacy [TRANSITIONAL] zustand-only path is gone — invitations are real
+ * canonical rows from the moment "Send invitation" returns success.
  *
- * [TRANSITIONAL] EXIT CONDITION: B-cycle wires:
- *   - edge function `invite-brand-member` (writes to brand_invitations + Resend)
- *   - edge function `accept-brand-invitation` (writes to brand_team_members)
+ * Role picker still uses the Cycle 11 sub-sheet pattern (RolePickerSheet).
  *
- * Generalizes the Cycle 11 InviteScannerSheet pattern: 2 boolean permission
- * toggles → role picker (sub-sheet).
- *
- * Per Cycle 13a SPEC §4.9.
+ * Status: ACTIVE post-ORCH-1050.
  */
 
 import React, { useCallback, useEffect, useState } from "react";
@@ -37,23 +33,18 @@ import {
   type BrandRole,
   roleDisplayName,
 } from "../../utils/brandRole";
-import {
-  useBrandTeamStore,
-  type BrandTeamEntry,
-} from "../../store/brandTeamStore";
+import { useInviteBrandMember } from "../../hooks/useBrandInvitations";
+import { BrandInvitationServiceError } from "../../services/brandInvitationsService";
 
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { Sheet } from "../ui/Sheet";
+import { Toast } from "../ui/Toast";
 
 import { RolePickerSheet } from "./RolePickerSheet";
 
-const NAME_MAX = 120;
+const NAME_MAX = 100;
 const EMAIL_MAX = 200;
-const PROCESSING_MS = 600;
-
-const sleep = (ms: number): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, ms));
 
 const isValidEmail = (s: string): boolean => {
   const t = s.trim();
@@ -64,16 +55,26 @@ export interface InviteBrandMemberSheetProps {
   visible: boolean;
   brandId: string;
   brandName: string;
+  /** Retained for prop compatibility with the call site (`team.tsx`); the
+   * canonical invited_by is auth.uid() inside the edge fn. */
   operatorAccountId: string;
   onClose: () => void;
-  onSuccess: (entry: BrandTeamEntry) => void;
+  /** Fires after a successful invite + email send. The detail param is
+   * intentionally minimal — the team list refetches from the canonical
+   * source via React Query invalidation. */
+  onSuccess: (details: { invitationId: string }) => void;
+}
+
+interface ToastState {
+  kind: "error" | "success";
+  message: string;
 }
 
 export const InviteBrandMemberSheet: React.FC<InviteBrandMemberSheetProps> = ({
   visible,
   brandId,
   brandName,
-  operatorAccountId,
+  operatorAccountId: _operatorAccountId,
   onClose,
   onSuccess,
 }) => {
@@ -82,7 +83,9 @@ export const InviteBrandMemberSheet: React.FC<InviteBrandMemberSheetProps> = ({
   const [role, setRole] = useState<BrandRole>("event_manager");
   const [rolePickerVisible, setRolePickerVisible] = useState<boolean>(false);
   const [rolePickerReadOnly, setRolePickerReadOnly] = useState<boolean>(false);
-  const [submitting, setSubmitting] = useState<boolean>(false);
+  const [toast, setToast] = useState<ToastState | null>(null);
+  const { mutateAsync: inviteAsync, isPending: submitting } =
+    useInviteBrandMember();
 
   // Reset state on visible flip → true.
   useEffect(() => {
@@ -92,7 +95,7 @@ export const InviteBrandMemberSheet: React.FC<InviteBrandMemberSheetProps> = ({
       setRole("event_manager");
       setRolePickerVisible(false);
       setRolePickerReadOnly(false);
-      setSubmitting(false);
+      setToast(null);
     }
   }, [visible]);
 
@@ -105,21 +108,20 @@ export const InviteBrandMemberSheet: React.FC<InviteBrandMemberSheetProps> = ({
 
   const handleConfirm = useCallback(async (): Promise<void> => {
     if (!canSubmit) return;
-    setSubmitting(true);
+    setToast(null);
     try {
-      await sleep(PROCESSING_MS);
-      const newEntry = useBrandTeamStore.getState().recordInvitation({
+      const result = await inviteAsync({
         brandId,
         inviteeEmail: email.trim().toLowerCase(),
         inviteeName: name.trim(),
         role,
-        invitedBy: operatorAccountId,
       });
-      onSuccess(newEntry);
-    } finally {
-      setSubmitting(false);
+      onSuccess({ invitationId: result.invitationId });
+    } catch (err) {
+      const message = errorMessageFor(err);
+      setToast({ kind: "error", message });
     }
-  }, [canSubmit, email, name, role, brandId, operatorAccountId, onSuccess]);
+  }, [canSubmit, email, name, role, brandId, inviteAsync, onSuccess]);
 
   const handleClose = useCallback((): void => {
     if (submitting) return;
@@ -148,7 +150,8 @@ export const InviteBrandMemberSheet: React.FC<InviteBrandMemberSheetProps> = ({
       <View style={styles.body}>
           <Text style={styles.title}>Invite team member</Text>
           <Text style={styles.subhead}>
-            {brandName} team. They&apos;ll get access when emails ship in B-cycle.
+            {brandName} team. We&apos;ll email them an invite link that
+            expires in 7 days.
           </Text>
 
           <ScrollView
@@ -158,14 +161,6 @@ export const InviteBrandMemberSheet: React.FC<InviteBrandMemberSheetProps> = ({
             keyboardDismissMode="on-drag"
             showsVerticalScrollIndicator={false}
           >
-            {/* TRANSITIONAL banner */}
-            <View style={styles.transitionalNote}>
-              <Text style={styles.transitionalNoteText}>
-                Testing mode — invitations are stored locally for now. Emails
-                ship in B-cycle.
-              </Text>
-            </View>
-
             {/* Name */}
             <View style={styles.fieldGroup}>
               <Text style={styles.label}>
@@ -291,9 +286,42 @@ export const InviteBrandMemberSheet: React.FC<InviteBrandMemberSheetProps> = ({
         onClose={() => setRolePickerVisible(false)}
         onSelect={handlePickerSelect}
       />
+
+      {toast !== null ? (
+        <View style={styles.toastWrap} pointerEvents="box-none">
+          <Toast
+            visible
+            kind={toast.kind}
+            message={toast.message}
+            onDismiss={() => setToast(null)}
+          />
+        </View>
+      ) : null}
     </Sheet>
   );
 };
+
+function errorMessageFor(err: unknown): string {
+  if (err instanceof BrandInvitationServiceError) {
+    switch (err.code) {
+      case "validation":
+        return "Check the name and email.";
+      case "unauthenticated":
+        return "Please sign in again and try.";
+      case "forbidden":
+        return "You don't have permission to invite for this brand.";
+      case "brand_not_found":
+        return "This brand wasn't found.";
+      case "already_invited":
+        return "There's already a pending invite for that email.";
+      case "email_send_failed":
+        return "Couldn't send the email. Try again in a moment.";
+      default:
+        return "Something went wrong. Try again.";
+    }
+  }
+  return err instanceof Error ? err.message : "Something went wrong.";
+}
 
 const styles = StyleSheet.create({
   body: {
@@ -384,24 +412,21 @@ const styles = StyleSheet.create({
     color: accent.warm,
     fontWeight: "500",
   },
-  transitionalNote: {
-    marginBottom: spacing.md,
-    padding: spacing.sm + 2,
-    borderRadius: radiusTokens.md,
-    backgroundColor: "rgba(59, 130, 246, 0.10)",
-    borderWidth: 1,
-    borderColor: "rgba(59, 130, 246, 0.24)",
-  },
-  transitionalNoteText: {
-    fontSize: 12,
-    color: textTokens.secondary,
-    lineHeight: 18,
-  },
   actions: {
     paddingTop: spacing.sm,
   },
   actionSpacer: {
     height: spacing.sm,
+  },
+  toastWrap: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: "flex-end",
+    alignItems: "center",
+    padding: spacing.lg,
   },
 });
 

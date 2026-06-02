@@ -14,7 +14,7 @@ export interface PoolMatchRow {
   country: string | null;
   lat: number;
   lng: number;
-  google_place_id: string;
+  google_place_id: string | null;
   primary_type: string | null;
   types: string[] | null;
   opening_hours: unknown | null;
@@ -29,7 +29,7 @@ export interface PoolMatchResult {
   country: string | null;
   lat: number;
   lng: number;
-  googlePlaceId: string;
+  googlePlaceId: string | null;
   primaryPhotoUrl: string | null;
   primaryType: string | null;
   types: string[];

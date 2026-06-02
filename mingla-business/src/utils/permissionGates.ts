@@ -50,7 +50,7 @@ export const canPerformAction = (
 export const gateCaptionFor = (action: GatedAction): string => {
   const requiredRank = MIN_RANK[action];
   const requiredRoleName = ((): string => {
-    if (requiredRank >= BRAND_ROLE_RANK.account_owner) return "account owner";
+    if (requiredRank >= BRAND_ROLE_RANK.brand_owner) return "brand owner";
     if (requiredRank >= BRAND_ROLE_RANK.brand_admin)
       return "brand admin or above";
     if (requiredRank >= BRAND_ROLE_RANK.event_manager)

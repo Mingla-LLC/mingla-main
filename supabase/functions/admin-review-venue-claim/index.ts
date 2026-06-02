@@ -49,8 +49,17 @@ serve(async (req) => {
     const authHeader = req.headers.get("authorization");
     if (!authHeader) return json({ error: "No authorization header" }, 401);
 
-    const parsed = normalizeReviewBody(await req.json().catch(() => null));
+    const rawBody = await req.json().catch(() => null);
+    const parsed = normalizeReviewBody(rawBody);
     if (!parsed.ok) return json({ error: parsed.error }, 400);
+    // META-ORCH-1009 Sub-F WS7: optional admin reduce-only score vetoes applied
+    // at go-live. Shape: { "<signal_id>": { vetoed_score, reason } }.
+    const scoreVetoes =
+      rawBody !== null && typeof rawBody === "object" &&
+        typeof (rawBody as { score_vetoes?: unknown }).score_vetoes === "object" &&
+        (rawBody as { score_vetoes?: unknown }).score_vetoes !== null
+        ? (rawBody as { score_vetoes: Record<string, unknown> }).score_vetoes
+        : null;
 
     const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       global: { headers: { Authorization: authHeader } },
@@ -80,7 +89,7 @@ serve(async (req) => {
     const { data: brandRow, error: brandErr } = await admin
       .from("brands")
       .select(
-        "id, name, slug, account_id, claim_status, contact_email, rejection_reason, claim_decision_emailed_at",
+        "id, name, slug, account_id, claim_status, contact_email, rejection_reason, claim_decision_emailed_at, place_pool_id",
       )
       .eq("id", parsed.brandId)
       .maybeSingle();
@@ -101,6 +110,47 @@ serve(async (req) => {
         rpc_result: rpcResult ?? null,
       },
     });
+
+    // META-ORCH-1009 Sub-F WS7: APPROVE = go live. Flip the venue servable + active,
+    // apply any admin reduce-only score vetoes, then run the per-place scorer so
+    // place_scores exists (the deck ranks on place_scores, not ai_signal_scores).
+    // REJECT = re-open editing by resetting the operator's "Recommend" edit cap.
+    const placePoolId =
+      (brandRow as { place_pool_id?: string | null }).place_pool_id ?? null;
+    if (!noop && placePoolId !== null) {
+      if (parsed.action === "approve") {
+        const livePatch: Record<string, unknown> = {
+          is_servable: true,
+          is_active: true,
+        };
+        if (scoreVetoes !== null) livePatch.ai_signal_scores_veto = scoreVetoes;
+        const { error: liveErr } = await admin
+          .from("place_pool")
+          .update(livePatch)
+          .eq("id", placePoolId);
+        if (liveErr) {
+          console.error("[admin-review-venue-claim] go-live update", liveErr.message);
+        } else {
+          // Best-effort: produce place_scores now that is_servable=true. If this
+          // fails, the Sub-D rescore-sweep cron picks the venue up later.
+          try {
+            await admin.functions.invoke("run-signal-scorer", {
+              body: { place_ids: [placePoolId] },
+            });
+          } catch (e) {
+            console.warn(
+              "[admin-review-venue-claim] scorer trigger",
+              e instanceof Error ? e.message : String(e),
+            );
+          }
+        }
+      } else if (parsed.action === "reject") {
+        await admin
+          .from("place_pool")
+          .update({ business_recommend_edit_count: 0 })
+          .eq("id", placePoolId);
+      }
+    }
 
     let emailSent = false;
     let pushSent = false;

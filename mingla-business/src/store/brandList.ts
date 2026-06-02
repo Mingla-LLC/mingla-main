@@ -31,7 +31,7 @@
  * REMOVED. Brand-team state authority is now `src/store/brandTeamStore.ts`
  * which starts EMPTY (per Const #9 — no fabricated data) and accumulates real
  * invitations via the operator's invite-flow UI. Solo-operator default is
- * synthesized at read sites by `useCurrentBrandRole` (account_owner fallback).
+ * synthesized at read sites by `useCurrentBrandRole` (brand_owner fallback).
  *
  * Cycle 2 J-A10/J-A11 (schema v8): each brand carries stripeStatus + payouts
  * + refunds + balances + lastPayoutAt to drive the payments dashboard's 4

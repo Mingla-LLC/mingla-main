@@ -181,8 +181,9 @@
     "fallback_user": "Usuario"
   },
   "collaborations": {
-    "headline": "Planea algo juntos",
-    "body": "Inicia una sesión con tu grupo. Descubran cosas que hacer, voten por sus favoritas y háganlo realidad.",
+    "headline": "Planéenlo juntos",
+    "body": "Crea un grupo con tu gente, o únete a un chat o viaje al que ya te invitaron.",
+    "start_button": "Crear el grupo",
     "whos_in": "¿Quién se apunta?",
     "session_name_label": "Nombre de la sesión",
     "session_name_placeholder": "ej. Planes del fin de semana, Ideas para citas...",
@@ -196,7 +197,11 @@
     "generic_error": "Hmm, eso no funcionó. Inténtalo de nuevo.",
     "join_error": "No se pudo unir a la sesión",
     "decline_error": "No se pudo rechazar la invitación",
-    "empty_state": "Añade amigos primero — luego podrán planear juntos."
+    "empty_state": "Añade amigos primero — luego podrán planear juntos.",
+    "trip_chats_header": "Tus chats de viajes y eventos",
+    "trip_chats_loading": "Cargando chats…",
+    "trip_chats_join_subtitle": "Únete al chat grupal de compradores",
+    "trip_chats_join_button": "Unirse al chat"
   },
   "consent": {
     "headline": "Una última cosa",

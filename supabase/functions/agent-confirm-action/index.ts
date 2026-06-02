@@ -24,6 +24,17 @@ interface RequestBody {
 type Response_ =
   | { kind: "executed"; pending_action_id: string; tool_name: string; result: unknown; followup_text?: string }
   | { kind: "cancelled"; pending_action_id: string }
+  // META-ORCH-1009 Sub-E (C2): expired Hub proposal -> in-Hub regenerate CTA
+  // instead of the old 410 "Ask Ari" dead-end (this Hub flow never uses Ari).
+  | {
+      kind: "expired_regenerate";
+      pending_action_id: string;
+      status: "expired";
+      parser_source: string | null;
+      tool_name: string;
+      brand_id: string | null;
+      regenerate: { cta: string; title: string; body: string };
+    }
   | { kind: "error"; code: string; message: string };
 
 function jsonResponse(status: number, body: Response_): Response {
@@ -85,7 +96,7 @@ Deno.serve(async (req) => {
   // Load the pending action
   const { data: pending, error: pendingErr } = await userClient
     .from("agent_pending_actions")
-    .select("id, conversation_id, tool_name, tool_args, status, expires_at, source")
+    .select("id, conversation_id, tool_name, tool_args, status, expires_at, source, related_brand_id")
     .eq("id", body.pending_action_id)
     .eq("user_id", userId)
     .maybeSingle();
@@ -130,13 +141,30 @@ Deno.serve(async (req) => {
     return errorResponse(400, "WRONG_STATE", `Cannot confirm — current status: ${pending.status}`);
   }
   if (new Date(pending.expires_at).getTime() < Date.now()) {
-    // Lazy-expire
+    // META-ORCH-1009 Sub-E (C2, SPEC §11.4): an expired Hub proposal must NOT
+    // dead-end with a 410 "Ask Ari" redirect — this Hub flow never uses Ari.
+    // Lazy-expire (preserves the I-ARI-PENDING-STATE-MACHINE pending->expired
+    // transition) then return an in-Hub regenerate contract the client renders
+    // as a "regenerate / re-snap" CTA instead of an Accept button that 410s.
     await userClient
       .from("agent_pending_actions")
       .update({ status: "expired" })
       .eq("id", pending.id)
       .eq("status", "pending");
-    return errorResponse(410, "EXPIRED", "This proposal expired. Ask Ari to propose it again.");
+    return jsonResponse(200, {
+      kind: "expired_regenerate",
+      pending_action_id: pending.id,
+      status: "expired",
+      // Inputs the Hub re-snap path needs to regenerate the same proposal.
+      parser_source: ((pending.tool_args as Record<string, unknown> | null)?.parser_source as string | null) ?? null,
+      tool_name: pending.tool_name,
+      brand_id: (pending.related_brand_id as string | null) ?? null,
+      regenerate: {
+        cta: "regenerate",
+        title: "This suggestion expired",
+        body: "Re-snap your menu or photos and we'll generate a fresh suggestion.",
+      },
+    });
   }
 
   // Atomic flip pending -> executing

@@ -178,6 +178,12 @@ async function handleUnifiedMessage(
       type: isGroup ? "board_message_received" : "direct_message_received",
       title,
       body: truncate(messagePreview, 100),
+      // ORCH-1030: pass the chat deep link TOP-LEVEL (not only nested in `data`)
+      // so notify-dispatch fills BOTH `data.deepLink` (what the client routes
+      // on) and the `deep_link` column. A nested-only value is nulled by
+      // notify-dispatch (index.ts:307 `deepLink: deepLink || null`), which is
+      // why 0/8 board_message_received rows carried a deep link.
+      deepLink,
       data: { deepLink },
       actorId: senderId,
       relatedId: conversationId,
@@ -254,6 +260,9 @@ async function handleUnifiedMention(
       type: "board_message_mention",
       title: `${senderName} mentioned you in "${titleConvName}"`,
       body: truncate(messagePreview || "", 100),
+      // ORCH-1030: top-level deepLink so notify-dispatch fills data.deepLink +
+      // the deep_link column (same fix as board_message_received above).
+      deepLink,
       data: { deepLink },
       actorId: senderId,
       relatedId: messageId,

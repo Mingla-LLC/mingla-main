@@ -181,8 +181,9 @@
     "fallback_user": "Pengguna"
   },
   "collaborations": {
-    "headline": "Rancang sesuatu bersama",
-    "body": "Mulakan sesi dengan krew anda. Temui aktiviti, undi kegemaran, dan jadikan ia kenyataan.",
+    "headline": "Rancang bersama",
+    "body": "Mulakan kumpulan dengan rakan anda, atau sertai sembang atau perjalanan yang anda telah dijemput.",
+    "start_button": "Mulakan kumpulan",
     "whos_in": "Siapa nak sertai?",
     "session_name_label": "Nama sesi",
     "session_name_placeholder": "cth. Rancangan hujung minggu, Idea temu janji...",
@@ -196,7 +197,11 @@
     "generic_error": "Hmm, tak berjaya. Cuba lagi.",
     "join_error": "Tidak dapat menyertai sesi",
     "decline_error": "Tidak dapat menolak jemputan",
-    "empty_state": "Tambah rakan dulu — kemudian anda boleh mula merancang bersama."
+    "empty_state": "Tambah rakan dulu — kemudian anda boleh mula merancang bersama.",
+    "trip_chats_header": "Sembang perjalanan dan acara anda",
+    "trip_chats_loading": "Memuatkan sembang…",
+    "trip_chats_join_subtitle": "Sertai sembang kumpulan pembeli",
+    "trip_chats_join_button": "Sertai sembang"
   },
   "consent": {
     "headline": "Satu perkara",

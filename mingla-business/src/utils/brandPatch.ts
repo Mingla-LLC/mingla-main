@@ -62,6 +62,10 @@ export function computeDirtyFieldsPatch(
   if (draft.profilePhotoType !== original.profilePhotoType) {
     patch.profilePhotoType = draft.profilePhotoType;
   }
+  // ORCH-1040 — physical-location opt-in toggle.
+  if (draft.hasPhysicalLocation !== original.hasPhysicalLocation) {
+    patch.hasPhysicalLocation = draft.hasPhysicalLocation;
+  }
   // Nested-object compare via JSON stringify (small flat shapes — fine)
   if (JSON.stringify(draft.contact) !== JSON.stringify(original.contact)) {
     patch.contact = draft.contact;
