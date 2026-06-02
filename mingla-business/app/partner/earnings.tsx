@@ -41,12 +41,18 @@ import type {
   PartnerSplitStatus,
 } from "../../src/services/partnerSplitsService";
 import {
-  colors,
   accent,
-  spacing,
+  canvas,
+  glass,
   radius,
+  semantic,
+  shadows,
+  spacing,
+  text as textTokens,
   typography,
 } from "../../src/constants/designSystem";
+import { GlassCard } from "../../src/components/ui/GlassCard";
+import { IconChrome } from "../../src/components/ui/IconChrome";
 
 const RETURN_DEEP_LINK = "mingla-business://partner-onboarding-complete";
 
@@ -83,25 +89,52 @@ export default function PartnerEarningsScreen(): React.ReactElement {
     }
   }, [statusQuery, startOnboarding]);
 
+  // ORCH-1052 hotfix — modal presentation + explicit close button so the
+  // screen is dismissable (was unreachable to back out of without crashing
+  // the back-stack).
+  const handleClose = useCallback((): void => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace("/(tabs)/account" as never);
+    }
+  }, [router]);
+
   return (
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
       <Stack.Screen
         options={{
-          title: "Partner earnings",
-          headerBackTitleVisible: false,
+          // iOS presents as a sheet that swipes down to dismiss; Android falls
+          // back to standard modal. We render our own header below.
+          presentation: "modal",
+          headerShown: false,
         }}
       />
-      <ScrollView contentContainerStyle={styles.scroll}>
-        <Text style={styles.h1}>Partner earnings</Text>
+      {/* On-brand header bar — title + close X. Matches the IconChrome
+          glass-circular button style used in TopBar across the business app. */}
+      <View style={styles.header}>
+        <View style={styles.headerTextCol}>
+          <Text style={styles.eyebrow}>MINGLA PARTNER</Text>
+          <Text style={styles.h1}>Earnings</Text>
+        </View>
+        <IconChrome
+          icon="x"
+          size={36}
+          onPress={handleClose}
+          accessibilityLabel="Close partner earnings"
+          testID="partner-earnings-close-button"
+        />
+      </View>
 
+      <ScrollView contentContainerStyle={styles.scroll}>
         {statusQuery.isLoading ? (
           <View style={styles.center}>
             <ActivityIndicator color={accent.warm} />
           </View>
         ) : statusQuery.error ? (
-          <View style={styles.errorCard}>
-            <Text style={styles.errorTitle}>Couldn’t load partner status</Text>
-            <Text style={styles.errorBody}>{statusQuery.error.message}</Text>
+          <GlassCard variant="elevated" padding={spacing.lg}>
+            <Text style={styles.cardTitle}>Couldn't load partner status</Text>
+            <Text style={styles.cardBody}>{statusQuery.error.message}</Text>
             <Pressable
               accessibilityLabel="Retry"
               style={styles.secondaryBtn}
@@ -109,11 +142,11 @@ export default function PartnerEarningsScreen(): React.ReactElement {
             >
               <Text style={styles.secondaryBtnText}>Retry</Text>
             </Pressable>
-          </View>
+          </GlassCard>
         ) : statusQuery.data?.partner_enabled === false ? (
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyTitle}>Not a Mingla partner yet</Text>
-            <Text style={styles.emptyBody}>
+          <GlassCard variant="elevated" padding={spacing.lg}>
+            <Text style={styles.cardTitle}>Not a Mingla partner yet</Text>
+            <Text style={styles.cardBody}>
               Mingla partners earn a share of every paid event they help bring
               in. Want in? Email{" "}
               <Text
@@ -124,7 +157,7 @@ export default function PartnerEarningsScreen(): React.ReactElement {
               </Text>
               .
             </Text>
-          </View>
+          </GlassCard>
         ) : (
           <>
             <StatusBlock
@@ -172,19 +205,23 @@ function PartnerSplitsSection(): React.ReactElement {
 
   if (summaryQuery.isLoading) {
     return (
-      <View style={styles.splitsCard}>
+      <GlassCard variant="elevated" padding={spacing.lg}>
         <Text style={styles.cardTitle}>Splits</Text>
         <ActivityIndicator color={accent.warm} />
-      </View>
+      </GlassCard>
     );
   }
 
   if (summaryQuery.error) {
     return (
-      <View style={styles.errorCard}>
-        <Text style={styles.errorTitle}>Couldn’t load splits</Text>
-        <Text style={styles.errorBody}>{summaryQuery.error.message}</Text>
-      </View>
+      <GlassCard variant="elevated" padding={spacing.lg}>
+        <View style={styles.statusIndicatorRow}>
+          <View style={styles.statusDotMuted} />
+          <Text style={styles.statusLabelMuted}>SPLITS UNAVAILABLE</Text>
+        </View>
+        <Text style={styles.cardTitle}>Couldn't load splits</Text>
+        <Text style={styles.cardBody}>{summaryQuery.error.message}</Text>
+      </GlassCard>
     );
   }
 
@@ -193,19 +230,19 @@ function PartnerSplitsSection(): React.ReactElement {
 
   if (totals.length === 0) {
     return (
-      <View style={styles.splitsCard}>
+      <GlassCard variant="elevated" padding={spacing.lg}>
         <Text style={styles.cardTitle}>Splits</Text>
         <Text style={styles.cardBody}>
           No splits yet. As soon as a partnered event sells tickets, your
           share lands here automatically.
         </Text>
-      </View>
+      </GlassCard>
     );
   }
 
   return (
     <>
-      <View style={styles.splitsCard}>
+      <GlassCard variant="elevated" padding={spacing.lg}>
         <Text style={styles.cardTitle}>Earnings by currency</Text>
         {totals.map((bucket) => (
           <View key={bucket.currency} style={styles.currencyRow}>
@@ -229,7 +266,7 @@ function PartnerSplitsSection(): React.ReactElement {
             </View>
           </View>
         ))}
-      </View>
+      </GlassCard>
 
       {availableCurrencies.length > 1 ? (
         <View style={styles.filterRow}>
@@ -241,7 +278,15 @@ function PartnerSplitsSection(): React.ReactElement {
             ]}
             onPress={() => setCurrencyFilter(null)}
           >
-            <Text style={styles.filterChipText}>All</Text>
+            <Text
+              style={
+                currencyFilter === null
+                  ? styles.filterChipTextActive
+                  : styles.filterChipText
+              }
+            >
+              All
+            </Text>
           </Pressable>
           {availableCurrencies.map((cur) => (
             <Pressable
@@ -253,13 +298,21 @@ function PartnerSplitsSection(): React.ReactElement {
               ]}
               onPress={() => setCurrencyFilter(cur)}
             >
-              <Text style={styles.filterChipText}>{cur.toUpperCase()}</Text>
+              <Text
+                style={
+                  currencyFilter === cur
+                    ? styles.filterChipTextActive
+                    : styles.filterChipText
+                }
+              >
+                {cur.toUpperCase()}
+              </Text>
             </Pressable>
           ))}
         </View>
       ) : null}
 
-      <View style={styles.splitsCard}>
+      <GlassCard variant="elevated" padding={spacing.lg}>
         <Text style={styles.cardTitle}>Recent splits</Text>
         {splits.length === 0 ? (
           <Text style={styles.cardBody}>
@@ -268,7 +321,7 @@ function PartnerSplitsSection(): React.ReactElement {
         ) : (
           splits.map((row) => <SplitRow key={row.id} row={row} />)
         )}
-      </View>
+      </GlassCard>
     </>
   );
 }
@@ -290,14 +343,15 @@ function SplitRow({ row }: { row: PartnerSplitRow }): React.ReactElement {
 }
 
 function StatusBadge({ status }: { status: PartnerSplitStatus }): React.ReactElement {
+  // ORCH-1052 hotfix — semantic-token alignment so badges read on dark canvas.
   const map: Record<PartnerSplitStatus, { label: string; color: string; bg: string }> = {
-    transferred: { label: "Transferred", color: "#065F46", bg: "#D1FAE5" },
-    pending: { label: "Pending", color: "#92400E", bg: "#FEF3C7" },
-    blocked_currency_mismatch: { label: "Blocked — currency", color: "#7F1D1D", bg: "#FEE2E2" },
-    blocked_no_stripe: { label: "Blocked — Stripe", color: "#7F1D1D", bg: "#FEE2E2" },
-    failed: { label: "Failed", color: "#7F1D1D", bg: "#FEE2E2" },
-    reversed: { label: "Reversed", color: "#475569", bg: "#E2E8F0" },
-    reversed_pending: { label: "Reversed (pending)", color: "#475569", bg: "#E2E8F0" },
+    transferred: { label: "Transferred", color: semantic.success, bg: semantic.successTint },
+    pending: { label: "Pending", color: semantic.warning, bg: semantic.warningTint },
+    blocked_currency_mismatch: { label: "Blocked — currency", color: semantic.error, bg: semantic.errorTint },
+    blocked_no_stripe: { label: "Blocked — Stripe", color: semantic.error, bg: semantic.errorTint },
+    failed: { label: "Failed", color: semantic.error, bg: semantic.errorTint },
+    reversed: { label: "Reversed", color: textTokens.tertiary, bg: glass.tint.profileElevated },
+    reversed_pending: { label: "Reversed (pending)", color: textTokens.tertiary, bg: glass.tint.profileElevated },
   };
   const cfg = map[status];
   return (
@@ -332,8 +386,12 @@ function StatusBlock(props: {
 
   if (status === "active") {
     return (
-      <View style={styles.statusCardActive}>
-        <Text style={styles.cardTitle}>Payouts ready</Text>
+      <GlassCard variant="elevated" padding={spacing.lg}>
+        <View style={styles.statusIndicatorRow}>
+          <View style={styles.statusDotSuccess} />
+          <Text style={styles.statusLabelSuccess}>PAYOUTS READY</Text>
+        </View>
+        <Text style={styles.cardTitle}>You're earning</Text>
         <Text style={styles.cardBody}>
           Your partner Stripe account is active
           {country ? ` (${country})` : ""}.
@@ -341,13 +399,17 @@ function StatusBlock(props: {
             ? ` We can settle in ${externalCurrencies.join(", ").toUpperCase()}.`
             : ""}
         </Text>
-      </View>
+      </GlassCard>
     );
   }
 
   if (status === "restricted") {
     return (
-      <View style={styles.statusCard}>
+      <GlassCard variant="elevated" padding={spacing.lg}>
+        <View style={styles.statusIndicatorRow}>
+          <View style={styles.statusDotWarning} />
+          <Text style={styles.statusLabelWarning}>ACTION NEEDED</Text>
+        </View>
         <Text style={styles.cardTitle}>Stripe needs more info</Text>
         <Text style={styles.cardBody}>
           Open your partner Stripe to finish the requirements Stripe is
@@ -355,7 +417,7 @@ function StatusBlock(props: {
         </Text>
         <Pressable
           accessibilityLabel="Resume Stripe onboarding"
-          style={styles.primaryBtn}
+          style={[styles.primaryBtn, starting && styles.primaryBtnDisabled]}
           onPress={onStart}
           disabled={starting}
         >
@@ -363,21 +425,29 @@ function StatusBlock(props: {
             {starting ? "Opening…" : "Resume onboarding"}
           </Text>
         </Pressable>
-        {startError ? <Text style={styles.errorBody}>{startError}</Text> : null}
-      </View>
+        {startError ? (
+          <View style={styles.inlineError}>
+            <Text style={styles.inlineErrorText}>{startError}</Text>
+          </View>
+        ) : null}
+      </GlassCard>
     );
   }
 
   if (status === "onboarding") {
     return (
-      <View style={styles.statusCard}>
+      <GlassCard variant="elevated" padding={spacing.lg}>
+        <View style={styles.statusIndicatorRow}>
+          <View style={styles.statusDotInfo} />
+          <Text style={styles.statusLabelInfo}>IN PROGRESS</Text>
+        </View>
         <Text style={styles.cardTitle}>Finish setting up payouts</Text>
         <Text style={styles.cardBody}>
           You started Stripe onboarding. Pick up where you left off.
         </Text>
         <Pressable
           accessibilityLabel="Resume Stripe onboarding"
-          style={styles.primaryBtn}
+          style={[styles.primaryBtn, starting && styles.primaryBtnDisabled]}
           onPress={onStart}
           disabled={starting}
         >
@@ -385,14 +455,22 @@ function StatusBlock(props: {
             {starting ? "Opening…" : "Resume onboarding"}
           </Text>
         </Pressable>
-        {startError ? <Text style={styles.errorBody}>{startError}</Text> : null}
-      </View>
+        {startError ? (
+          <View style={styles.inlineError}>
+            <Text style={styles.inlineErrorText}>{startError}</Text>
+          </View>
+        ) : null}
+      </GlassCard>
     );
   }
 
   // not_connected
   return (
-    <View style={styles.statusCard}>
+    <GlassCard variant="elevated" padding={spacing.lg}>
+      <View style={styles.statusIndicatorRow}>
+        <View style={styles.statusDotMuted} />
+        <Text style={styles.statusLabelMuted}>NOT CONNECTED</Text>
+      </View>
       <Text style={styles.cardTitle}>Connect partner Stripe</Text>
       <Text style={styles.cardBody}>
         Mingla pays partners through Stripe Connect. Set up your payout
@@ -401,7 +479,7 @@ function StatusBlock(props: {
       </Text>
       <Pressable
         accessibilityLabel="Connect Stripe"
-        style={styles.primaryBtn}
+        style={[styles.primaryBtn, starting && styles.primaryBtnDisabled]}
         onPress={onStart}
         disabled={starting}
       >
@@ -409,154 +487,219 @@ function StatusBlock(props: {
           {starting ? "Opening…" : "Connect Stripe"}
         </Text>
       </Pressable>
-      {startError ? <Text style={styles.errorBody}>{startError}</Text> : null}
-    </View>
+      {startError ? (
+        <View style={styles.inlineError}>
+          <Text style={styles.inlineErrorText}>{startError}</Text>
+        </View>
+      ) : null}
+    </GlassCard>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.background ?? "#FAFAFA" },
-  scroll: { padding: spacing.lg ?? 16, gap: spacing.md ?? 12 },
-  center: { paddingVertical: 48, alignItems: "center" },
+  // ORCH-1052 hotfix — Mingla brand alignment. Dark canvas + white-alpha text
+  // + accent.warm for primary actions + GlassCard for sections (used in JSX
+  // instead of bespoke white cards). Mirrors account.tsx / brand screens.
+  safe: { flex: 1, backgroundColor: canvas.profile },
+  scroll: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xxl,
+    gap: spacing.md,
+  },
+  center: { paddingVertical: spacing.xxl, alignItems: "center" },
+
+  // Header bar — eyebrow + h1 on the left, close X on the right.
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.md,
+  },
+  headerTextCol: { flex: 1, gap: 2 },
+  eyebrow: {
+    ...typography.labelCap,
+    color: accent.warm,
+  },
   h1: {
-    fontSize: 26,
-    fontWeight: "700",
-    color: colors.text ?? "#0F172A",
-    marginBottom: spacing.md ?? 12,
+    ...typography.h1,
+    color: textTokens.primary,
   },
-  statusCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: radius.lg ?? 12,
-    padding: spacing.lg ?? 16,
-    gap: spacing.sm ?? 8,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-  },
-  statusCardActive: {
-    backgroundColor: "#F0FDF4",
-    borderRadius: radius.lg ?? 12,
-    padding: spacing.lg ?? 16,
-    gap: spacing.sm ?? 8,
-    borderWidth: 1,
-    borderColor: "#86EFAC",
-  },
-  splitsCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: radius.lg ?? 12,
-    padding: spacing.lg ?? 16,
-    gap: spacing.sm ?? 8,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-  },
-  emptyCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: radius.lg ?? 12,
-    padding: spacing.lg ?? 16,
-    gap: spacing.sm ?? 8,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-  },
-  errorCard: {
-    backgroundColor: "#FEF2F2",
-    borderRadius: radius.lg ?? 12,
-    padding: spacing.lg ?? 16,
-    gap: spacing.sm ?? 8,
-    borderWidth: 1,
-    borderColor: "#FCA5A5",
-  },
+
+  // Card body content
   cardTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: colors.text ?? "#0F172A",
+    ...typography.h3,
+    color: textTokens.primary,
+    marginTop: spacing.xs,
   },
   cardBody: {
-    fontSize: 15,
-    lineHeight: 22,
-    color: "#475569",
+    ...typography.body,
+    color: textTokens.secondary,
+    marginTop: spacing.xs,
   },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: colors.text ?? "#0F172A",
+  link: {
+    color: accent.warm,
+    textDecorationLine: "underline",
   },
-  emptyBody: { fontSize: 15, lineHeight: 22, color: "#475569" },
-  errorTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#7F1D1D",
-  },
-  errorBody: { fontSize: 14, color: "#7F1D1D" },
-  link: { color: accent.warm ?? "#eb7825", textDecorationLine: "underline" },
-  primaryBtn: {
-    backgroundColor: accent.warm ?? "#eb7825",
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: radius.md ?? 8,
+
+  // Status indicator row (dot + label above title)
+  statusIndicatorRow: {
+    flexDirection: "row",
     alignItems: "center",
-    marginTop: spacing.sm ?? 8,
+    gap: spacing.xs,
   },
-  primaryBtnText: { color: "#FFFFFF", fontSize: 16, fontWeight: "600" },
+  statusDotSuccess: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: semantic.success,
+  },
+  statusDotWarning: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: semantic.warning,
+  },
+  statusDotInfo: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: semantic.info,
+  },
+  statusDotMuted: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: textTokens.tertiary,
+  },
+  statusLabelSuccess: { ...typography.labelCap, color: semantic.success },
+  statusLabelWarning: { ...typography.labelCap, color: semantic.warning },
+  statusLabelInfo: { ...typography.labelCap, color: semantic.info },
+  statusLabelMuted: { ...typography.labelCap, color: textTokens.tertiary },
+
+  // Buttons
+  primaryBtn: {
+    backgroundColor: accent.warm,
+    paddingVertical: spacing.sm + 4,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.md,
+    alignItems: "center",
+    marginTop: spacing.md,
+    ...shadows.md,
+  },
+  primaryBtnDisabled: { opacity: 0.5 },
+  primaryBtnText: {
+    ...typography.buttonLg,
+    color: textTokens.inverse,
+  },
   secondaryBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: radius.md ?? 8,
+    paddingVertical: spacing.sm + 2,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.md,
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#CBD5E1",
-    marginTop: spacing.sm ?? 8,
+    borderColor: glass.border.profileElevated,
+    marginTop: spacing.md,
+    backgroundColor: glass.tint.profileBase,
   },
-  secondaryBtnText: { color: "#0F172A", fontSize: 15, fontWeight: "500" },
+  secondaryBtnText: {
+    ...typography.buttonMd,
+    color: textTokens.primary,
+  },
+
+  // Inline error pill — shows under primary button when Stripe call fails
+  inlineError: {
+    marginTop: spacing.sm,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: semantic.errorTint,
+    borderWidth: 1,
+    borderColor: semantic.error,
+  },
+  inlineErrorText: {
+    ...typography.bodySm,
+    color: semantic.error,
+  },
+
   // ORCH-1054 partner_splits ledger
   currencyRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 8,
+    paddingVertical: spacing.sm,
     borderTopWidth: 1,
-    borderTopColor: "#F1F5F9",
+    borderTopColor: glass.border.profileBase,
   },
   currencyLabel: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#0F172A",
+    ...typography.bodyLg,
+    color: textTokens.primary,
   },
   currencyValues: { alignItems: "flex-end" },
-  currencyTransferred: { fontSize: 16, fontWeight: "600", color: "#065F46" },
-  currencyPending: { fontSize: 13, color: "#92400E" },
-  currencyReversed: { fontSize: 13, color: "#475569" },
+  currencyTransferred: {
+    ...typography.bodyLg,
+    color: semantic.success,
+  },
+  currencyPending: {
+    ...typography.bodySm,
+    color: semantic.warning,
+  },
+  currencyReversed: {
+    ...typography.bodySm,
+    color: textTokens.tertiary,
+  },
   filterRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 8,
+    gap: spacing.sm,
+    marginTop: spacing.sm,
   },
   filterChip: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 999,
+    paddingVertical: spacing.xs + 2,
+    paddingHorizontal: spacing.sm + 4,
+    borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: "#CBD5E1",
-    backgroundColor: "#FFFFFF",
+    borderColor: glass.border.profileElevated,
+    backgroundColor: glass.tint.profileBase,
   },
   filterChipActive: {
-    backgroundColor: accent.warm ?? "#eb7825",
-    borderColor: accent.warm ?? "#eb7825",
+    backgroundColor: accent.warm,
+    borderColor: accent.warm,
   },
-  filterChipText: { fontSize: 13, fontWeight: "500", color: "#0F172A" },
+  filterChipText: {
+    ...typography.caption,
+    color: textTokens.secondary,
+  },
+  filterChipTextActive: {
+    ...typography.caption,
+    color: textTokens.inverse,
+  },
   splitRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 10,
+    paddingVertical: spacing.sm + 2,
     borderTopWidth: 1,
-    borderTopColor: "#F1F5F9",
+    borderTopColor: glass.border.profileBase,
   },
-  splitRowLeft: { flex: 1, paddingRight: 8 },
-  splitAmount: { fontSize: 15, fontWeight: "600", color: "#0F172A" },
-  splitMeta: { fontSize: 12, color: "#64748B", marginTop: 2 },
+  splitRowLeft: { flex: 1, paddingRight: spacing.sm },
+  splitAmount: {
+    ...typography.bodyLg,
+    color: textTokens.primary,
+  },
+  splitMeta: {
+    ...typography.caption,
+    color: textTokens.tertiary,
+    marginTop: 2,
+  },
   badge: {
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    borderRadius: 999,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm + 2,
+    borderRadius: radius.full,
   },
-  badgeText: { fontSize: 12, fontWeight: "600" },
+  badgeText: {
+    ...typography.micro,
+  },
 });
