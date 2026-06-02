@@ -164,13 +164,32 @@ export interface CardTagEntry {
 }
 
 const COLLAB_TOKEN_USER_ID = '[a-zA-Z0-9_-]+';
+// ORCH-1058: this allowlist gates whether a chat message renders as a parsed
+// collab SYSTEM banner (tappable [[open-prefs:…]] buttons) vs. plain text. EVERY
+// string `buildCollabDeadEndBannerContent` (collabDeadEndBannerService.ts) can
+// emit MUST match exactly one entry below — a copy↔allowlist drift leaks the raw
+// `[[open-prefs:location:<uuid>]]` token to users. Parity is guarded by
+// app-mobile/__tests__/orch-1058-banner-allowlist-parity.mjs (do not let copy
+// change here go un-mirrored). Labels (City/ST, "Getting a fix…") are matched
+// permissively with `.+`; the structure + token are anchored.
 const COLLAB_DEAD_END_BANNER_PATTERNS = [
+  // intersection_empty · single outlier (3+ participants, one too far)
   new RegExp(`^.+ is too far from the group\\.[\\s\\S]*\\[\\[open-prefs:travel:${COLLAB_TOKEN_USER_ID}\\]\\]$`),
-  new RegExp(`^No location overlap yet\\.[\\s\\S]*\\[\\[open-prefs:location:${COLLAB_TOKEN_USER_ID}\\]\\]`),
+  // intersection_empty · waiting (someone's GPS fix hasn't landed yet)
+  new RegExp(`^Waiting on .+'s location to land — the deck fills in automatically\\. \\[\\[open-prefs:location:${COLLAB_TOKEN_USER_ID}\\]\\]$`),
+  // intersection_empty · different_cities (centers span > SAME_CITY_THRESHOLD_M)
+  new RegExp(`^You're in different cities — .+\\. Pick one spot you'll all head to\\. \\[\\[open-prefs:location:${COLLAB_TOKEN_USER_ID}\\]\\]$`),
+  // intersection_empty · same_city_tight (one metro, travel ranges don't touch)
+  new RegExp(`^So close — you're in the same area but your travel ranges don't touch\\. Bump travel time or distance\\? \\[\\[open-prefs:travel:${COLLAB_TOKEN_USER_ID}\\]\\]$`),
+  // no_matching_candidates · GPS-gap (still produced — names + per-id location tokens)
   new RegExp(`^Waiting for .+ to share location\\.[\\s\\S]*\\[\\[open-prefs:location:${COLLAB_TOKEN_USER_ID}\\]\\]`),
+  // no_matching_candidates · no categories picked
   /^Nobody has picked categories yet\. \[\[open-prefs:self:categories\]\]$/,
+  // no_unswiped_candidates · everything seen
   /^You've all seen everything for now\. \[\[open-dismissed\]\]$/,
+  // quorum_not_met · waiting on accepts
   new RegExp(`^Waiting for \\d+ more to accept\\. Pending: .+ \\[\\[compose-mention:${COLLAB_TOKEN_USER_ID}:can_you_tap_accept\\]\\]`),
+  // all_pools_exhausted · suggest a later date
   /^You've exhausted today's options\. Try next weekend\? \[\[open-prefs:self:dates\]\]$/,
 ];
 

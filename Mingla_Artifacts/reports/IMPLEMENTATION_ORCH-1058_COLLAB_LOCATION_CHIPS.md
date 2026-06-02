@@ -27,6 +27,31 @@ The operator REVERSED the GPS privacy decision. Originally a `use_gps_location =
 
 ---
 
+## REGRESSION FIX 2026-06-02 — "Notify the group" banner leaked raw `[[open-prefs:…]]` tokens
+
+**Symptom (operator-reported):** the collab "Notify the group" chat message rendered raw codes/symbols — e.g. the literal `[[open-prefs:location:<uuid>]]` — instead of a tappable system banner.
+
+**Root cause (orchestrator-confirmed, re-verified here):** a chat message renders as a parsed collab SYSTEM banner (tokens → tappable buttons) ONLY when `messagingService.isCollabDeadEndBannerMessage(content)` matches one of the `COLLAB_DEAD_END_BANNER_PATTERNS` allowlist regexes. That predicate feeds `isSystem` in `enrichMessage`/`enrichRealtimeMessage` (`messagingService.ts:1414`/`:1430`), which gates the `message.isSystem` render branch in `MessageBubble.tsx:237-243` (→ `renderSystemBannerContent`, which strips the token and renders a label). The banner is posted with `sender_id = currentUserId` (not null), so `isSystem` depends ENTIRELY on the allowlist match. The ORCH-1058 copy change rewrote the `intersection_empty` multi/2-person path in `buildCollabDeadEndBannerContent` into three new strings (waiting / different_cities / same_city_tight) WITHOUT updating the allowlist, so they failed the regex, fell back to plain-text rendering, and leaked the raw token. The stale `^No location overlap yet\.` pattern no longer matched any produced string.
+
+**Fix:** rewrote the `COLLAB_DEAD_END_BANNER_PATTERNS` allowlist (`messagingService.ts:166-189`) so EVERY string `buildCollabDeadEndBannerContent` can emit is anchored + token-matched:
+- KEPT: single-outlier (`is too far from the group … [[open-prefs:travel:UID]]`), `no_matching_candidates` GPS-gap (`Waiting for … to share location.` — still produced at `collabDeadEndBannerService.ts:138`), no-categories, no-unswiped, quorum, all-pools.
+- REPLACED the dead `^No location overlap yet\.` pattern with the 3 NEW intersection strings:
+  - `^Waiting on .+'s location to land — the deck fills in automatically\. \[\[open-prefs:location:UID\]\]$`
+  - `^You're in different cities — .+\. Pick one spot you'll all head to\. \[\[open-prefs:location:UID\]\]$`
+  - `^So close — you're in the same area but your travel ranges don't touch\. Bump travel time or distance\? \[\[open-prefs:travel:UID\]\]$`
+- Labels (City/ST, "Getting a fix…") matched permissively (`.+`); the em dash `—`, apostrophes `'`, and `?` are escaped/literal; the structure + `[[…:UID]]` token are anchored. UID uses the existing `COLLAB_TOKEN_USER_ID = [a-zA-Z0-9_-]+` sub-pattern (matches hyphenated UUIDs).
+
+**MessageBubble parse/strip — verified, no change needed.** `parseCollabSystemToken` (`MessageBubble.tsx:482`) already supports the `location` section (`VALID_PREF_SECTIONS` includes it) and the UID match class `[a-zA-Z0-9\-_,]+` covers hyphenated UUIDs. `renderSystemBannerContent` (`:512`) splits on `SYSTEM_TOKEN_REGEX`, replaces each token with a tappable label, and keeps surrounding prose (em dash + apostrophe render as plain `<Text>`). The parity test below proves no `[[` survives in visible text for any produced string. No edit to `MessageBubble.tsx` was required.
+
+**Regression test (NEW):** `app-mobile/scripts/ci/orch-1058-banner-allowlist-parity.mjs` — runs the REAL `buildCollabDeadEndBannerContent` (transpiled from source, imports stubbed) across all 9 emittable scenarios (every reason + all 3 intersection cases, with a sample hyphenated UUID), and for each asserts: (1) the produced string matches the REAL `isCollabDeadEndBannerMessage` allowlist (extracted + evaluated from source), and (2) the REAL `parseCollabSystemToken` + `SYSTEM_TOKEN_REGEX` strip the token from visible text (no `[[`/`]]` remains). Plus a fails-on-revert anchor over the 3 literal new copy lines. Makes copy↔allowlist drift impossible to ship silently.
+- **Run:** `37/37 checks passed. ORCH-1058 banner↔allowlist parity check PASSED.`
+- **Fails-on-revert: VERIFIED** — `git stash` the `messagingService.ts` allowlist edit (baseline commit `d7886fb7a`) → `31/37 ... FAILED (6 failing)` (the 3 new intersection scenarios' allowlist checks + 3 fails-on-revert anchors). `git stash pop` → 37/37 green.
+- **typecheck:** `tsc --noEmit` on app-mobile shows ZERO errors in `services/messagingService.ts`, `services/collabDeadEndBannerService.ts`, `chat/MessageBubble.tsx` (the 260 worktree-wide errors are pre-existing Deno-test/`packages/*` artifacts, unrelated).
+
+**Scope:** presentation/parsing only — no SQL/edge/migration/geo/freeze. `formatCityState`/chips/3-case copy + GPS-resolved-City,ST behavior all intact. Metro stayed live on 8087 (pure runtime-data regex-array change → hot-reload-safe).
+
+---
+
 ## Mission
 
 Presentation + copy only. No SQL / edge / migration / web. Restyle the collab-deck `intersection_empty` empty state: (1) a GPS privacy guard so a live-GPS participant's city never leaks, (2) a `formatCityState()` "City, ST" formatter + new `US_STATE_NAME_TO_CODE` map, (3) a 3-case honest copy matrix (different cities / same-city-too-tight / waiting-on-GPS), (4) bullet-separated read-only chips built on the existing `glass.discover.chip` tokens. The SQL intersection math, the positional-freeze contract, and the GPS write path are untouched (correct per investigation / separate debounce ORCH).
@@ -99,6 +124,9 @@ Read on entry. No `BLOCK`/`WARN`/`FYI` row is addressed to `mingla-implementor` 
 | Freeze/geo untouched | no edits to SQL/RPC/`detectIntersectionOutlier`/freeze code | PASS |
 | typecheck clean on touched files | `tsc --noEmit` grep of touched files empty | PASS |
 | Live empty-deck render (a)/(b)/(c) on device | requires a collab session with non-overlapping locations | UNVERIFIED — operator-assisted |
+| **REGRESSION:** all 4 banner strings match the messagingService allowlist (render as parsed system banners, no raw token) | parity test scenarios → `isCollabDeadEndBannerMessage` = true for all 9 produced strings | PASS |
+| **REGRESSION:** MessageBubble strips the token for every produced string | parity test → real `parseCollabSystemToken`/`SYSTEM_TOKEN_REGEX`, no `[[` in visible text | PASS |
+| **REGRESSION:** parity test green + fails-on-revert | `37/37 PASSED`; stash messagingService fix → `31/37 FAILED (6)` → restore → 37/37 | PASS |
 
 ## Invariant / Constitution
 
@@ -117,6 +145,7 @@ Read on entry. No `BLOCK`/`WARN`/`FYI` row is addressed to `mingla-implementor` 
 - **Icon substitution (minor spec deviation):** spec §3/§4 named `locate-outline` (pending) and `resize-outline` (same-city case). Neither exists in `app-mobile/src/components/ui/Icon.tsx` ICON_MAP. Used the mapped `hourglass-outline` for the pending chip glyph. The case-level icons in the §3 matrix are not wired to a render slot (the empty-deck icon circle uses the existing fixed `filter-outline`/`earth-outline`); leaving the icon-circle glyph unchanged keeps scope tight. If product wants per-case icon-circle glyphs, that's a follow-up (would need ICON_MAP additions for `resize-outline`).
 - **Live QA needed:** the empty-deck (a)/(b)/(c) render can only be exercised with a real collab session where participants' reachable circles don't overlap (e.g. one in DC, one in Raleigh, or same metro with tight travel ranges). Operator-assisted; orchestrator to batch.
 - **GPS implausible-jump debounce remains a SEPARATE ORCH** (investigation Discovery #1) — out of scope; this ORCH only makes the empty window honest, it does not stop the flap.
+- **Stale LOCKED test broken by the ORCH-1058 in-deck copy change (needs TEST-MOD-APPROVED decision):** `app-mobile/src/components/__tests__/orch-0945-dead-end-render.test.tsx` (committed on `main` at `c3358dcf3`, locked under the append-only CI gate) asserts the OLD in-deck `SwipeableCards.getCollabDeadEndCopy` copy — specifically T-02 `assert.match(helper, /No location overlap yet/)` and T-04 `/Pick some categories/` + `/Nobody has picked categories or intents yet/`. The ORCH-1058 copy rewrite (commit `7ccb93164`, the multi/2-person 3-case routing) removed the literal "No location overlap yet" branch, so this standalone node test now FAILS at T-02. **It is NOT a CI merge blocker** (it is a `require.main === module` node script, not wired into any `.github/workflows/*` job; the strict-grep gate `i-proposed-orch-0945-dead-end-reason-coverage.mjs` only checks that `case '<reason>'` branches exist, which the rewrite preserves — that gate still PASSES; the `tests-append-only.yml` gate does not RUN tests). I did NOT modify the locked test (per the implementor contract: changing an existing locked test "is itself a new ORCH — do NOT silently override"). Orchestrator decision needed: either (a) open a tiny TEST-MOD-APPROVED follow-up to repoint T-02/T-04 to the new copy, or (b) accept the stale standalone script as known-broken until the next collab-copy ORCH. The user-facing render is correct; this is test-asset staleness only.
 
 ## Deploy / Migration notes
 
