@@ -1264,6 +1264,15 @@ function checkNoNewBackendFiles() {
     // tester-authored adversarial regression (ORCH-1045 QA) — same backend dir.
     "supabase/functions/beta-access-lead-submit/__tests__/submit_handler_sideeffects.tester.test.ts",
   ];
+  // ORCH-1056 [Lead welcome email]: modifies the beta-access edge fn (already
+  // allowlisted above) to also send the lead a welcome email (web-app link +
+  // Ari spotlight + mobile-in-the-works). Adds two new test files. C7 flags new
+  // backend files; per COMMS-0002 they land in the same commit as the edge-fn
+  // change. No marketing scope.
+  const ORCH_1056_BACKEND_ALLOWLIST = [
+    "supabase/functions/beta-access-lead-submit/__tests__/welcome_email.test.ts",
+    "supabase/functions/beta-access-lead-submit/__tests__/welcome_email_adversarial.tester.test.ts",
+  ];
   // ORCH-1030 [Consumer app notification deep-linking]. C7 is scoped to
   // ORCH-0863 marketing; ORCH-1030's backend touches correct the notification
   // producers' deep links so they actually reach the device: birthday/holiday
@@ -1335,6 +1344,7 @@ function checkNoNewBackendFiles() {
   ];
   const ALLOWLIST = [
     ...ORCH_1045_BACKEND_ALLOWLIST,
+    ...ORCH_1056_BACKEND_ALLOWLIST,
     ...ORCH_1034_BACKEND_ALLOWLIST,
     ...ORCH_1043_BACKEND_ALLOWLIST,
     ...ORCH_1032_BACKEND_ALLOWLIST,

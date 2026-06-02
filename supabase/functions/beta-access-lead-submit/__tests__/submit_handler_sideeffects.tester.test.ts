@@ -155,9 +155,11 @@ function withEnv(fn: () => Promise<void>): () => Promise<void> {
   };
 }
 
-// ── SC-4: new lead → created + exactly ONE notify email to seth@usemingla.com ──
+// ── SC-4: new lead → created + notify to seth@ AND welcome to the lead ──
+// ORCH-1056 [TEST-MOD-APPROVED ORCH-1056]: a new lead now sends TWO emails —
+// the internal notify to seth@ AND the lead-facing welcome (web-app link + Ari).
 Deno.test(
-  "ADV new lead inserts → 200 created AND exactly one Resend email to seth@",
+  "ADV new lead inserts → 200 created AND two Resend emails (notify + welcome)",
   withEnv(async () => {
     const { restore, log } = installFakeBackend({
       // Successful insert → supabase-js returns 201 with empty body (no error).
@@ -168,10 +170,14 @@ Deno.test(
       assertEquals(res.status, 200);
       assertEquals(await res.json(), { ok: true, status: "created" });
       assertEquals(log.insertCalls, 1, "exactly one insert");
-      assertEquals(log.resendCalls, 1, "exactly one notify email on a new lead");
+      assertEquals(log.resendCalls, 2, "notify to Seth + welcome to the lead");
       assert(
         log.resendBodies[0].includes("seth@usemingla.com"),
-        "notify must be addressed to seth@usemingla.com",
+        "first email (notify) must be addressed to seth@usemingla.com",
+      );
+      assert(
+        log.resendBodies[1].includes("business.usemingla.com"),
+        "second email (welcome) must link the lead to the web app",
       );
     } finally {
       restore();
@@ -227,7 +233,8 @@ Deno.test(
       assertEquals(res.status, 200, "email failure must NOT fail the request");
       assertEquals(await res.json(), { ok: true, status: "created" });
       assertEquals(log.insertCalls, 1);
-      assertEquals(log.resendCalls, 1, "notify was attempted");
+      // ORCH-1056 [TEST-MOD-APPROVED ORCH-1056]: notify + welcome both attempted.
+      assertEquals(log.resendCalls, 2, "notify + welcome both attempted");
     } finally {
       restore();
     }
