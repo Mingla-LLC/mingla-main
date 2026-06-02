@@ -45,11 +45,6 @@ export const MIN_RANK_FOR_TAB = {
   ari: BRAND_ROLE_RANK.finance_manager, // 30
   marketing: BRAND_ROLE_RANK.marketing_manager, // 20
   account: 0,
-  // ORCH-1052 hotfix — partner earnings tab. Rank gate is 0 (any brand
-  // member) but the tab is further gated by partner_enabled in
-  // visibleTabsForRank below. Non-flagged users never see this tab even
-  // though their rank passes.
-  partner: 0,
 } as const;
 
 export type TabId = keyof typeof MIN_RANK_FOR_TAB;
@@ -63,26 +58,11 @@ export type TabId = keyof typeof MIN_RANK_FOR_TAB;
  * strict-grep gate prevents this from happening accidentally in code
  * review.
  */
-export interface NavGateExtras {
-  /**
-   * Whether `creator_accounts.partner_enabled = true` for the signed-in
-   * account. When false, the `partner` tab is hidden regardless of rank
-   * (so non-flagged users don't see a useless Earnings tab). When true,
-   * the tab surfaces immediately on the next render — paired with
-   * `refetchOnWindowFocus` on `usePartnerStripeStatus`, this gives
-   * near-instant visibility after an admin flips the flag.
-   */
-  partnerEnabled?: boolean;
-}
-
 export const visibleTabsForRank = <T extends BottomNavTab>(
   tabs: readonly T[],
   rank: number,
-  extras: NavGateExtras = {},
 ): T[] =>
   tabs.filter((tab) => {
-    // Partner-tab gate: account-level flag overrides rank-based passes.
-    if (tab.id === "partner" && extras.partnerEnabled !== true) return false;
     const min = (MIN_RANK_FOR_TAB as Record<string, number | undefined>)[tab.id];
     if (min === undefined) return false;
     return rank >= min;

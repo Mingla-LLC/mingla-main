@@ -35,10 +35,6 @@ import { useResponsiveLayout } from "../../src/hooks/useResponsiveLayout";
 import { useCurrentBrandRole } from "../../src/hooks/useCurrentBrandRole";
 import { useCurrentBrandStore } from "../../src/store/currentBrandStore";
 import { visibleTabsForRank } from "../../src/utils/navTabGate";
-// ORCH-1052 hotfix — surface the partner earnings tab when an admin flips
-// creator_accounts.partner_enabled=true. usePartnerStripeStatus refetches on
-// window focus so the flip becomes visible within seconds of the toggle.
-import { usePartnerStripeStatus } from "../../src/hooks/usePartnerStripe";
 
 // ORCH-0891 M2: ⌘K command palette. Metro picks
 // `CommandPalette.web.tsx` on web (cmdk-backed dialog with global ⌘K
@@ -65,11 +61,6 @@ const TABS: BottomNavTab[] = [
   // (paper-plane) is the closest semantic match for broadcast/campaign in
   // the existing icon set.
   { id: "marketing", icon: "send", label: "Blast" },
-  // ORCH-1052 hotfix — partner earnings tab. Surfaces only when
-  // creator_accounts.partner_enabled=true (gated in visibleTabsForRank via
-  // partnerEnabled extras). Route file: app/(tabs)/partner.tsx (re-exports
-  // app/partner/earnings.tsx).
-  { id: "partner", icon: "trending-up", label: "Partner" },
   { id: "account", icon: "user", label: "Account" },
 ];
 
@@ -104,17 +95,7 @@ export default function TabsLayout(): React.ReactElement {
   // full set hydrates on the next render once the query resolves.
   const currentBrandId = useCurrentBrandStore((s) => s.currentBrandId);
   const { rank } = useCurrentBrandRole(currentBrandId);
-  // ORCH-1052 hotfix — account-level partner_enabled flag drives the
-  // partner-tab visibility. Defaults to false while the query is pending so
-  // we don't flash the tab to non-partners. The query refetches on window
-  // focus (usePartnerStripeStatus) so a fresh admin toggle becomes visible
-  // within seconds of the next app foreground.
-  const partnerStatus = usePartnerStripeStatus();
-  const partnerEnabled = partnerStatus.data?.partner_enabled ?? false;
-  const visibleTabs = useMemo(
-    () => visibleTabsForRank(TABS, rank, { partnerEnabled }),
-    [rank, partnerEnabled],
-  );
+  const visibleTabs = useMemo(() => visibleTabsForRank(TABS, rank), [rank]);
 
   const activeId = useMemo(() => detectActiveTab(pathname), [pathname]);
 
