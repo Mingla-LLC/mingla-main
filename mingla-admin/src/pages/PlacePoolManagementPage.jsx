@@ -736,7 +736,7 @@ function AddCityModal({ open, onClose, onSave }) {
       const { data, error: fnErr } = await supabase.functions.invoke("admin-seed-places", {
         body: { action: "geocode_city", query: query.trim() },
       });
-      if (fnErr) throw fnErr;
+      if (fnErr) throw new Error(await extractFunctionError(fnErr, "Geocoding failed"));
       if (data?.error) throw new Error(data.error);
       setGeocodeResult(data);
 
@@ -781,9 +781,11 @@ function AddCityModal({ open, onClose, onSave }) {
       if (insertErr) throw insertErr;
 
       // Auto-generate tiles from bounding box
-      await supabase.functions.invoke("admin-seed-places", {
+      const { data: tileResult, error: tileErr } = await supabase.functions.invoke("admin-seed-places", {
         body: { action: "generate_tiles", cityId: city.id },
       });
+      if (tileErr) throw new Error(await extractFunctionError(tileErr, "Tile generation failed"));
+      if (tileResult?.error) throw new Error(tileResult.error);
 
       onSave(city);
       onClose();
@@ -935,7 +937,7 @@ function UpdateCityModal({ open, onClose, city, onUpdated }) {
       const { data, error: fnErr } = await supabase.functions.invoke("admin-seed-places", {
         body: { action: "geocode_city", query: query.trim() },
       });
-      if (fnErr) throw fnErr;
+      if (fnErr) throw new Error(await extractFunctionError(fnErr, "Geocoding failed"));
       if (data?.error) throw new Error(data.error);
       setGeocodeResult(data);
 
@@ -987,7 +989,7 @@ function UpdateCityModal({ open, onClose, city, onUpdated }) {
       const { data: tileResult, error: tileErr } = await supabase.functions.invoke("admin-seed-places", {
         body: { action: "generate_tiles", cityId: city.id },
       });
-      if (tileErr) throw tileErr;
+      if (tileErr) throw new Error(await extractFunctionError(tileErr, "Tile generation failed"));
       if (tileResult?.error) throw new Error(tileResult.error);
 
       onUpdated(tileResult?.tileCount || 0);
