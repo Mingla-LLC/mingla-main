@@ -50,6 +50,27 @@ export default function ConnectPartnerOnboardingPage(): React.ReactElement {
   const [initError, setInitError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  // iOS auto-zoom fix: Stripe's embedded form inputs use font-size < 16px,
+  // which triggers iOS Safari to auto-zoom in when an input is focused —
+  // the user then has to pinch-zoom back out. The default Expo Web viewport
+  // (`width=device-width, initial-scale=1, shrink-to-fit=no`) doesn't block
+  // this. Overriding to add `maximum-scale=1, user-scalable=no` while the
+  // user is on this page prevents the zoom-on-focus jank. Restore the
+  // original tag on unmount so other pages keep normal pinch-zoom.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const meta = document.querySelector('meta[name="viewport"]');
+    if (!meta) return;
+    const original = meta.getAttribute("content");
+    meta.setAttribute(
+      "content",
+      "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, shrink-to-fit=no",
+    );
+    return () => {
+      if (original) meta.setAttribute("content", original);
+    };
+  }, []);
+
   const stripeConnectInstance = useMemo(() => {
     if (typeof sessionClientSecret !== "string") return null;
     const fromExtra = (Constants.expoConfig?.extra as
