@@ -10,18 +10,15 @@
  * chevrons recomputes the Start Here / Then / End With labels live.
  *
  * Reuse at the primitive level (design §0.3): MapboxAddressInput, GlassCard,
- * Input, Icon, expo-image-picker device-upload path. No fork of any event step.
+ * Input, Icon. Per-stop photos are added through the app's EXISTING media
+ * picker surface — ExperienceStopPhotoSheet (Library + GIFs + Photos, NO video)
+ * — which reuses the unified CoverPicker's GIPHY/Pexels services + the brand-
+ * keyed device-upload path. No raw expo-image-picker single-photo path.
+ * (META-ORCH-1059 Sub-A · FIX 1.)
  */
 
 import React, { useCallback } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
-import * as ImagePicker from "expo-image-picker";
+import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
   accent,
@@ -37,7 +34,7 @@ import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
 import { MapboxAddressInput } from "../location/MapboxAddressInput";
 import type { PlaceDetails } from "../../services/mapboxGeocodeService";
-import { uploadExperienceStopImage } from "../../services/experienceStopImageService";
+import { ExperienceStopPhotoSheet } from "./ExperienceStopPhotoSheet";
 import {
   emptyStop,
   labelForIndex,
@@ -110,39 +107,18 @@ export const ExperienceStopsStep: React.FC<ExperienceStopsStepProps> = ({
     [setStops],
   );
 
-  const [uploadingIdx, setUploadingIdx] = React.useState<number | null>(null);
+  // Index of the stop whose photo sheet is open (null = closed).
+  const [photoSheetIdx, setPhotoSheetIdx] = React.useState<number | null>(null);
 
-  const addPhoto = useCallback(
-    async (i: number): Promise<void> => {
-      try {
-        const result = await ImagePicker.launchImageLibraryAsync({
-          mediaTypes: ["images"],
-          allowsEditing: false,
-          quality: 1,
-        });
-        if (result.canceled || result.assets.length === 0) return;
-        const asset = result.assets[0];
-        setUploadingIdx(i);
-        const url = await uploadExperienceStopImage(brandId, {
-          uri: asset.uri,
-          mimeType: asset.mimeType,
-          fileName: asset.fileName,
-          fileSize: asset.fileSize,
-        });
-        setStops((prev) =>
-          prev.map((s, idx) =>
-            idx === i ? { ...s, imageUrls: [...s.imageUrls, url].slice(0, 5) } : s,
-          ),
-        );
-      } catch (e) {
-        onToast(
-          e instanceof Error ? e.message : "Couldn't upload that photo. Tap to retry.",
-        );
-      } finally {
-        setUploadingIdx(null);
-      }
+  const appendPhotoToStop = useCallback(
+    (i: number, url: string): void => {
+      setStops((prev) =>
+        prev.map((s, idx) =>
+          idx === i ? { ...s, imageUrls: [...s.imageUrls, url].slice(0, 5) } : s,
+        ),
+      );
     },
-    [brandId, onToast, setStops],
+    [setStops],
   );
 
   const removePhoto = useCallback(
@@ -329,24 +305,22 @@ export const ExperienceStopsStep: React.FC<ExperienceStopsStepProps> = ({
                     >
                       <Icon name="close" size={12} color={textTokens.inverse} />
                     </Pressable>
-                    <View style={styles.thumb} accessibilityLabel={`Stop ${i + 1} photo ${p + 1}`} />
+                    <Image
+                      source={{ uri }}
+                      style={styles.thumb}
+                      accessibilityLabel={`Stop ${i + 1} photo ${p + 1}`}
+                    />
                   </View>
                 ))}
                 {stop.imageUrls.length < 5 ? (
-                  uploadingIdx === i ? (
-                    <View style={[styles.thumb, styles.addThumb]}>
-                      <ActivityIndicator size="small" color={accent.warm} />
-                    </View>
-                  ) : (
-                    <Pressable
-                      onPress={() => void addPhoto(i)}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Add photo to stop ${i + 1}`}
-                      style={[styles.thumb, styles.addThumb]}
-                    >
-                      <Icon name="plus" size={20} color={accent.warm} />
-                    </Pressable>
-                  )
+                  <Pressable
+                    onPress={() => setPhotoSheetIdx(i)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Add photo to stop ${i + 1}`}
+                    style={[styles.thumb, styles.addThumb]}
+                  >
+                    <Icon name="plus" size={20} color={accent.warm} />
+                  </Pressable>
                 ) : null}
               </View>
               <Text style={styles.helper}>First photo is the one buyers see first.</Text>
@@ -399,6 +373,21 @@ export const ExperienceStopsStep: React.FC<ExperienceStopsStepProps> = ({
       ) : null}
 
       <Text style={[styles.helper, helper.error && styles.helperError]}>{helper.text}</Text>
+
+      {/* Per-stop photo picker — Library + GIFs + Photos, NO video. Mounted as a
+          JSX child of this host View (I-SUB-SHEET-INSIDE-PARENT). */}
+      <ExperienceStopPhotoSheet
+        visible={photoSheetIdx !== null}
+        onClose={() => setPhotoSheetIdx(null)}
+        brandId={brandId}
+        currentCount={
+          photoSheetIdx !== null ? (stops[photoSheetIdx]?.imageUrls.length ?? 0) : 0
+        }
+        onAddPhoto={(url) => {
+          if (photoSheetIdx !== null) appendPhotoToStop(photoSheetIdx, url);
+        }}
+        onShowToast={onToast}
+      />
     </View>
   );
 };

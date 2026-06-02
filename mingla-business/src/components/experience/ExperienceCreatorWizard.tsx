@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 // orch-strict-grep-allow orch-0892 — META-ORCH-1059 Sub-A rebuilds the experience
 // wizard onto a multi-stop itinerary + lifted CreatorStep2When + two-mode pricing.
 // Keyboard-input fields sit in a single ScrollView with keyboardShouldPersistTaps;
@@ -94,6 +95,7 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
   const { user } = useAuth();
   const brand = useCurrentBrand();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const taxRegistration = useBrandTaxRegistration(brand?.id ?? null);
   const venueDefault = useExperienceVenueDefault(brandId);
   const scrollRef = useRef<ScrollView>(null);
@@ -402,7 +404,7 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
           </View>
         ) : null}
       </ScrollView>
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.lg }]}>
         {step < 5 ? (
           <Button label="Continue" onPress={goNext} variant="primary" size="lg" />
         ) : (
