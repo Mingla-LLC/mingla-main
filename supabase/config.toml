@@ -149,3 +149,12 @@ verify_jwt = true
 
 [functions.accept-scanner-invitation]
 verify_jwt = true
+
+# ORCH-1052 [Partner identity + account-level Stripe Connect + currency-match
+# invite gate]. META-ORCH-1048 sub-D. Partner-Stripe onboarding + account-
+# session minter require an authenticated caller (auth.uid() → partner gate).
+[functions.partner-stripe-onboard]
+verify_jwt = true
+
+[functions.partner-stripe-account-session]
+verify_jwt = true
