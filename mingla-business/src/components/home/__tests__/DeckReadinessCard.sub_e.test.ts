@@ -31,6 +31,7 @@ const base: BusinessTodoInput = {
   pipelineStatus: "needs_fix",
   pipelineRoute: DECK_ROUTE,
   venueDraftInProgress: false,
+  hasPhysicalLocation: true,
   counts: { total: 1, live: 1, draft: 0 },
   stripeActive: true,
   hasDraftPaidOffering: false,

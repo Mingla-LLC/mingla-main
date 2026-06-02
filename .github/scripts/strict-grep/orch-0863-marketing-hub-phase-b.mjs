@@ -1265,6 +1265,12 @@ function checkNoNewBackendFiles() {
     "supabase/functions/notify-message/index.ts",
     "supabase/functions/notify-dispatch/index.ts",
   ];
+  // ORCH-1040 [Brand physical-location flag]. Additive-only migration adding
+  // brands.has_physical_location (default false; gates the venue/listing
+  // surfaces). No marketing scope; C7 flags new supabase/migrations files.
+  const ORCH_1040_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260814000000_orch_1040_brand_has_physical_location.sql",
+  ];
   // ORCH-1032 [Intelligence pipeline concurrency cap + chunked enqueue]:
   // adds the additive 'queued'-status migration (status CHECK widen + per-city
   // unique active index widen + tg_kick_pending_trial_runs promotion built on
@@ -1297,8 +1303,24 @@ function checkNoNewBackendFiles() {
     "supabase/functions/_shared/__tests__/orch_1034_currency_de_gbp.test.ts",
     "supabase/functions/_shared/__tests__/orch_1034_currency_de_gbp.tester-adversarial.test.ts",
   ];
+  // ORCH-1033 [Photo-thumbnail pipeline: server-driven + parallel + scoped +
+  // collage fallback]: adds the new pg_cron auto-drain migration + the migration
+  // SQL-shape test + the implementor happy-path collage fallback test. The edge
+  // fn backfill-place-photo-thumbs/index.ts, its index.test.ts, _shared/imageCollage.ts,
+  // and _shared/__tests__/imageCollage.thumbFallback.test.ts are MODIFIES already
+  // allowlisted under the ORCH-0957 block above — only the NEW files need listing
+  // here. C7 is scoped to ORCH-0863 marketing; these are place-photo-pipeline
+  // backend touches. Per COMMS-0002.
+  const ORCH_1033_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260815000000_orch_1033_thumb_backfill_cron.sql",
+    "supabase/functions/_shared/imageCollage.fallback400.test.ts",
+    // Tester-authored adversarial migration test (T-04 partner) — registered
+    // ahead so the tester's same-PR add does not re-trip C7.
+    "supabase/migrations/__tests__/orch_1033_thumb_backfill_cron.test.ts",
+  ];
   const ALLOWLIST = [
     ...ORCH_1034_BACKEND_ALLOWLIST,
+    ...ORCH_1033_BACKEND_ALLOWLIST,
     ...ORCH_1032_BACKEND_ALLOWLIST,
     ...ORCH_1027_BACKEND_ALLOWLIST,
     ...ORCH_1030_BACKEND_ALLOWLIST,
@@ -1369,6 +1391,7 @@ function checkNoNewBackendFiles() {
     ...META_ORCH_1009_SUB_D_BACKEND_ALLOWLIST,
     ...META_ORCH_1009_SUB_E_BACKEND_ALLOWLIST,
     ...ORCH_1030_BACKEND_ALLOWLIST,
+    ...ORCH_1040_BACKEND_ALLOWLIST,
   ];
   const forbidden = changed.filter(
     (p) =>

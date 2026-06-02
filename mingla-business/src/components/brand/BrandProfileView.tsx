@@ -163,6 +163,12 @@ export interface BrandProfileViewProps {
    */
   onViewPublic: (brandSlug: string) => void;
   /**
+   * ORCH-1040 — called when user taps the "Venue listing" Operations row.
+   * Receives the brand id; parent routes to /brand/{id}/listing (the venue
+   * listing management page: status, AI scores, changes-remaining, manage).
+   */
+  onListing: (brandId: string) => void;
+  /**
    * Called when user taps the empty-events "Build a new event" CTA.
    * Routes to `/event/create` (the Cycle 3 wedge).
    * NEW in Cycle 7 FX1 — replaces Cycle-2 J-A7 TRANSITIONAL Toast that
@@ -197,6 +203,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   onAuditLog,
   onBlasts,
   onViewPublic,
+  onListing,
   onCreateEvent,
   onOpenLink,
   onRequestDelete,
@@ -289,8 +296,28 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   const stripeStatus =
     effectiveStripeStatus ?? brand?.stripeStatus ?? "not_connected";
 
+  // ORCH-1040 — the "Venue listing" row only shows for brands with a physical
+  // location (opt-in flag) OR that already have a linked venue (placePoolId) —
+  // online-only / event brands don't see it until they toggle physical-location on.
+  const showVenueListing =
+    brand?.hasPhysicalLocation === true ||
+    (brand?.placePoolId !== undefined && brand.placePoolId !== null);
+
   const operationsRows = useMemo<OperationsRow[]>(() => {
-    const rows: OperationsRow[] = [
+    const rows: OperationsRow[] = [];
+    if (showVenueListing) {
+      rows.push({
+        // ORCH-1040 — venue listing management (status, AI scores, changes,
+        // edit/resubmit). First row: the core of the brand's deck presence.
+        icon: "list",
+        label: "Venue listing",
+        sub: "Status, your match scores, and manage",
+        onPress: () => {
+          if (brand !== null) onListing(brand.id);
+        },
+      });
+    }
+    rows.push(
       {
         icon: "bank",
         label: "Payments & Stripe",
@@ -340,7 +367,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
           if (brand !== null) onReports(brand.id);
         },
       },
-    ];
+    );
     if (canViewAuditLog) {
       rows.push({
         icon: "shield",
@@ -354,6 +381,8 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
     return rows;
   }, [
     brand,
+    showVenueListing,
+    onListing,
     onTeam,
     onBlasts,
     onPayments,

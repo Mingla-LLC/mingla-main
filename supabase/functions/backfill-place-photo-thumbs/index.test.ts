@@ -1,8 +1,11 @@
 import { Image } from "https://deno.land/x/imagescript@1.2.17/mod.ts";
 import { assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
+import { assert } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   buildThumbPathFromObjectPath,
   extractPlacePhotoObjectPath,
+  handleProcessChunk,
+  loadPendingPlaces,
   processPlaceThumbs,
 } from "./index.ts";
 
@@ -127,4 +130,201 @@ Deno.test("T-07 backfill skips already-present thumbs without refetching origina
   } finally {
     globalThis.fetch = priorFetch;
   }
+});
+
+// ─── ORCH-1033 ──────────────────────────────────────────────────────────────
+
+// A terminal query-builder stub that records every .eq() applied. select/range/
+// order/is/not/ilike/limit/maybeSingle/eq all return `this`; the builder is
+// awaitable (then) and resolves to { data, error }.
+function makeRecordingBuilder(resolveData: unknown) {
+  const eqCalls: Array<{ column: string; value: unknown }> = [];
+  const builder: Record<string, unknown> = {};
+  const chain = () => builder;
+  for (const m of ["select", "range", "order", "is", "not", "ilike", "limit", "in", "update", "insert", "delete"]) {
+    builder[m] = chain;
+  }
+  builder.eq = (column: string, value: unknown) => {
+    eqCalls.push({ column, value });
+    return builder;
+  };
+  builder.maybeSingle = () => Promise.resolve({ data: resolveData, error: null });
+  builder.single = () => Promise.resolve({ data: resolveData, error: null });
+  // Awaitable: a paged select resolves to a single short page so the loop stops.
+  builder.then = (onFulfilled: (v: { data: unknown; error: null }) => unknown) =>
+    Promise.resolve({ data: resolveData, error: null }).then(onFulfilled);
+  return { builder, eqCalls };
+}
+
+Deno.test("T-02 loadPendingPlaces always filters is_servable=true and adds city_id when scoped", async () => {
+  const recorders: Array<{ eqCalls: Array<{ column: string; value: unknown }> }> = [];
+  const db = {
+    from(_table: string) {
+      const rec = makeRecordingBuilder([]); // 0-row page → loop exits
+      recorders.push(rec);
+      return rec.builder;
+    },
+  };
+
+  await loadPendingPlaces(db as unknown as Record<string, never>, { cityId: "london-uuid" });
+
+  const allEq = recorders.flatMap((r) => r.eqCalls);
+  assert(allEq.some((c) => c.column === "is_servable" && c.value === true), "must filter is_servable=true");
+  assert(allEq.some((c) => c.column === "city_id" && c.value === "london-uuid"), "must filter city_id when scoped");
+});
+
+Deno.test("T-02b loadPendingPlaces without city does NOT add a city_id filter", async () => {
+  const recorders: Array<{ eqCalls: Array<{ column: string; value: unknown }> }> = [];
+  const db = {
+    from(_table: string) {
+      const rec = makeRecordingBuilder([]);
+      recorders.push(rec);
+      return rec.builder;
+    },
+  };
+
+  await loadPendingPlaces(db as unknown as Record<string, never>, {});
+
+  const allEq = recorders.flatMap((r) => r.eqCalls);
+  assert(allEq.some((c) => c.column === "is_servable" && c.value === true), "must always filter is_servable=true");
+  assertEquals(allEq.some((c) => c.column === "city_id"), false);
+});
+
+// A mock db for handleProcessChunk: a runs table + a batches table with a
+// configurable number of pending batches. Tracks the run's terminal status.
+function makeChunkDb(opts: { pendingBatches: number }) {
+  const run = {
+    id: "run-1", status: "ready", started_at: null as string | null,
+    completed_batches: 0, failed_batches: 0, skipped_batches: 0,
+    total_succeeded: 0, total_failed: 0, total_skipped: 0, total_batches: opts.pendingBatches,
+    last_heartbeat_at: null as string | null, completed_at: null as string | null,
+  };
+  let pending = opts.pendingBatches;
+
+  const db = {
+    storage: {
+      from() {
+        return {
+          getPublicUrl(path: string) {
+            return { data: { publicUrl: `https://x.supabase.co/storage/v1/object/public/place-photos/${path}` } };
+          },
+          upload() { return Promise.resolve({ error: null }); },
+        };
+      },
+    },
+    from(table: string) {
+      if (table === "photo_backfill_runs") {
+        const b: Record<string, unknown> = {};
+        b.select = () => b;
+        b.eq = () => b;
+        b.update = (payload: Record<string, unknown>) => { Object.assign(run, payload); return b; };
+        b.single = () => Promise.resolve({ data: { ...run }, error: null });
+        b.maybeSingle = () => Promise.resolve({ data: { ...run }, error: null });
+        return b;
+      }
+      if (table === "photo_backfill_batches") {
+        const b: Record<string, unknown> = {};
+        let didUpdate = false;
+        let didSelectAfterUpdate = false;
+        b.select = () => { if (didUpdate) didSelectAfterUpdate = true; return b; };
+        b.order = () => b;
+        b.limit = () => b;
+        b.update = () => { didUpdate = true; return b; };
+        b.eq = () => b;
+        b.maybeSingle = () => {
+          if (pending > 0) {
+            return Promise.resolve({ data: { id: `batch-${pending}`, batch_index: 0, place_pool_ids: [], status: "pending" }, error: null });
+          }
+          return Promise.resolve({ data: null, error: null });
+        };
+        // Only the conditional CLAIM (update + select('id')) decrements pending.
+        // The batch-completion update (update, no select) does not.
+        b.then = (onF: (v: { data: unknown; error: null }) => unknown) => {
+          if (didUpdate && didSelectAfterUpdate && pending > 0) {
+            const claimedId = `batch-${pending}`;
+            pending--;
+            return Promise.resolve({ data: [{ id: claimedId }], error: null }).then(onF);
+          }
+          return Promise.resolve({ data: [], error: null }).then(onF);
+        };
+        return b;
+      }
+      const fb: Record<string, unknown> = {};
+      fb.select = () => fb; fb.eq = () => fb; fb.is = () => fb; fb.not = () => fb;
+      fb.order = () => fb; fb.range = () => fb;
+      fb.maybeSingle = () => Promise.resolve({ data: null, error: null });
+      fb.then = (onF: (v: { data: unknown; error: null }) => unknown) => Promise.resolve({ data: [], error: null }).then(onF);
+      return fb;
+    },
+  };
+  return { db, getRun: () => run };
+}
+
+Deno.test("T-03 process_chunk completes the run when no pending batch remains", async () => {
+  const { db, getRun } = makeChunkDb({ pendingBatches: 0 });
+  const res = await handleProcessChunk(db as unknown as Record<string, never>, { runId: "run-1" });
+  const out = await res.json();
+  assertEquals(out.ok, true);
+  assertEquals(out.done, true);
+  assertEquals(getRun().status, "completed");
+});
+
+Deno.test("T-03b process_chunk self-invokes (EdgeRuntime.waitUntil) when pending batches remain", async () => {
+  // SAFETY_MAX_ITERATIONS=20; 25 pending → loop exits on iteration cap with work
+  // still pending, forcing the end-of-budget self-invoke.
+  const { db } = makeChunkDb({ pendingBatches: 25 });
+  const priorFetch = globalThis.fetch;
+  // deno-lint-ignore no-explicit-any
+  const g = globalThis as any;
+  const priorEdge = g.EdgeRuntime;
+  const fetched: string[] = [];
+  let waitUntilCalled = false;
+
+  globalThis.fetch = (input: URL | RequestInfo) => {
+    fetched.push(String(input));
+    return Promise.resolve(new Response("{}", { status: 200 }));
+  };
+  g.EdgeRuntime = { waitUntil: (p: Promise<unknown>) => { waitUntilCalled = true; return p; } };
+
+  try {
+    Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", "svc-test");
+    const res = await handleProcessChunk(db as unknown as Record<string, never>, { runId: "run-1" });
+    const out = await res.json();
+    assertEquals(out.ok, true);
+    assertEquals(out.done, false);
+    assertEquals(out.exitReason, "safety_max_iterations");
+    assertEquals(waitUntilCalled, true);
+    assert(fetched.some((u) => u.includes("/functions/v1/backfill-place-photo-thumbs")), "self-invokes its own URL");
+  } finally {
+    globalThis.fetch = priorFetch;
+    g.EdgeRuntime = priorEdge;
+    Deno.env.delete("SUPABASE_SERVICE_ROLE_KEY");
+  }
+});
+
+Deno.test({
+  name: "T-03c process_chunk auth gate: wrong bearer → 403",
+  // createClient (supabase-js@2) starts internal token-refresh intervals that
+  // outlive the test — not a code leak, so disable the sanitizers for this case.
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+  const { handler } = await import("./index.ts");
+  Deno.env.set("SUPABASE_URL", "https://x.supabase.co");
+  Deno.env.set("SUPABASE_ANON_KEY", "anon-test");
+  Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", "the-real-service-key");
+  try {
+    const req = new Request("https://x/functions/v1/backfill-place-photo-thumbs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer wrong-token" },
+      body: JSON.stringify({ action: "process_chunk", runId: "run-1" }),
+    });
+    const res = await handler(req);
+    assertEquals(res.status, 403);
+  } finally {
+    Deno.env.delete("SUPABASE_URL");
+    Deno.env.delete("SUPABASE_ANON_KEY");
+    Deno.env.delete("SUPABASE_SERVICE_ROLE_KEY");
+  }
+  },
 });
