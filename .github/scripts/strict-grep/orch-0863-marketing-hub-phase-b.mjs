@@ -1295,6 +1295,7 @@ function checkNoNewBackendFiles() {
     "supabase/functions/ticket-checkout-create/index.ts",
     "supabase/functions/_shared/allInPricingEngine.ts",
     "supabase/functions/_shared/__tests__/orch_1034_currency_de_gbp.test.ts",
+    "supabase/functions/_shared/__tests__/orch_1034_currency_de_gbp.tester-adversarial.test.ts",
   ];
   const ALLOWLIST = [
     ...ORCH_1034_BACKEND_ALLOWLIST,
