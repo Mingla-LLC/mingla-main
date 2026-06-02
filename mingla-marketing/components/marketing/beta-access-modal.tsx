@@ -319,7 +319,7 @@ export function BetaAccessModal({ open, onClose, source }: BetaAccessModalProps)
             data-theme="light"
             {...panelMotion}
             onClick={(e) => e.stopPropagation()}
-            className="relative w-full max-w-[440px] overflow-hidden rounded-[36px] bg-[var(--color-parchment)] p-6 shadow-[var(--elev-3)] ring-1 ring-[var(--glass-border)] sm:max-w-[480px] sm:p-8"
+            className="relative w-full max-w-[440px] overflow-hidden rounded-[36px] bg-parchment p-6 shadow-[var(--elev-3)] ring-1 ring-[var(--glass-border)] sm:max-w-[480px] sm:p-8"
             style={{ maxHeight: '90vh', overflowY: 'auto', overscrollBehavior: 'contain' }}
           >
             {/* Close */}
@@ -327,7 +327,7 @@ export function BetaAccessModal({ open, onClose, source }: BetaAccessModalProps)
               type="button"
               onClick={onClose}
               aria-label="Close"
-              className="glass-soft absolute right-5 top-5 z-10 flex h-11 w-11 items-center justify-center rounded-full text-[var(--color-text-primary)] transition-all duration-200 hover:brightness-110 focus-ring"
+              className="glass-soft absolute right-5 top-5 z-10 flex h-11 w-11 items-center justify-center rounded-full text-text-primary transition-all duration-200 hover:brightness-110 focus-ring"
             >
               <X className="h-5 w-5" aria-hidden="true" />
             </button>
@@ -346,7 +346,7 @@ export function BetaAccessModal({ open, onClose, source }: BetaAccessModalProps)
                 <div className="pr-12">
                   <p
                     aria-live="polite"
-                    className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--color-warm-ink)]"
+                    className="text-[11px] font-semibold uppercase tracking-[0.22em] text-warm-ink"
                   >
                     Step {step} of 3
                   </p>
@@ -363,7 +363,7 @@ export function BetaAccessModal({ open, onClose, source }: BetaAccessModalProps)
                         key={n}
                         className={cn(
                           'h-1 flex-1 rounded-full transition-colors duration-200',
-                          n <= step ? 'bg-[var(--color-warm)]' : 'bg-[var(--color-divider-strong)]',
+                          n <= step ? 'bg-warm' : 'bg-divider-strong',
                         )}
                       />
                     ))}
@@ -410,10 +410,10 @@ export function BetaAccessModal({ open, onClose, source }: BetaAccessModalProps)
                     }}
                   >
                     <AlertCircle
-                      className="mt-0.5 h-4 w-4 shrink-0 text-[var(--color-danger)]"
+                      className="mt-0.5 h-4 w-4 shrink-0 text-danger"
                       aria-hidden="true"
                     />
-                    <span className="text-[13px] text-[var(--color-text-primary)]">
+                    <span className="text-[13px] text-text-primary">
                       {errorCopy}
                     </span>
                   </motion.div>
@@ -503,11 +503,11 @@ function StepBody(props: StepBodyProps) {
       <div className="mt-6">
         <h2
           id={headingId}
-          className="font-display text-2xl tracking-[-0.01em] text-[var(--color-text-primary)] md:text-[28px]"
+          className="font-display text-2xl tracking-[-0.01em] text-text-primary md:text-[28px]"
         >
           What kind of business are you?
         </h2>
-        <p className="mt-2 text-base text-[var(--color-text-secondary)]">
+        <p className="mt-2 text-base text-text-secondary">
           Pick the one that fits best. You can tell us more in a sec.
         </p>
         <div
@@ -534,8 +534,8 @@ function StepBody(props: StepBodyProps) {
                 className={cn(
                   'inline-flex h-12 items-center gap-2 rounded-full px-5 text-base font-medium transition-all duration-150 focus-ring active:scale-[0.98]',
                   selected
-                    ? 'bg-[var(--color-warm)] text-white hover:bg-[var(--color-warm-hover)]'
-                    : 'border border-[var(--glass-border)] text-[var(--color-text-primary)] hover:-translate-y-0.5 hover:border-[rgba(235,120,37,0.35)] hover:bg-[rgba(235,120,37,0.06)]',
+                    ? 'bg-warm text-white hover:bg-warm-hover'
+                    : 'border border-[var(--glass-border)] text-text-primary hover:-translate-y-0.5 hover:border-[rgba(235,120,37,0.35)] hover:bg-[rgba(235,120,37,0.06)]',
                 )}
               >
                 {selected ? <Check className="h-4 w-4" aria-hidden="true" /> : null}
@@ -553,11 +553,11 @@ function StepBody(props: StepBodyProps) {
       <div className="mt-6">
         <h2
           id={headingId}
-          className="font-display text-2xl tracking-[-0.01em] text-[var(--color-text-primary)] md:text-[28px]"
+          className="font-display text-2xl tracking-[-0.01em] text-text-primary md:text-[28px]"
         >
           Tell us about your place.
         </h2>
-        <p className="mt-2 text-base text-[var(--color-text-secondary)]">
+        <p className="mt-2 text-base text-text-secondary">
           Just the basics — so we know who we&apos;re setting up.
         </p>
         <div className="mt-6 flex flex-col gap-4">
@@ -612,11 +612,11 @@ function StepBody(props: StepBodyProps) {
     <div className="mt-6">
       <h2
         id={headingId}
-        className="font-display text-2xl tracking-[-0.01em] text-[var(--color-text-primary)] md:text-[28px]"
+        className="font-display text-2xl tracking-[-0.01em] text-text-primary md:text-[28px]"
       >
         Where do we send your invite?
       </h2>
-      <p className="mt-2 text-base text-[var(--color-text-secondary)]">
+      <p className="mt-2 text-base text-text-secondary">
         We&apos;ll email you when your spot opens up.
       </p>
       <div className="mt-6 flex flex-col gap-4">
@@ -646,9 +646,9 @@ function StepBody(props: StepBodyProps) {
               props.markTouched('consent')
             }}
             disabled={props.submitting}
-            className="mt-0.5 h-[22px] w-[22px] shrink-0 cursor-pointer rounded-[6px] border border-[var(--glass-border)] accent-[var(--color-warm)] focus-ring"
+            className="mt-0.5 h-[22px] w-[22px] shrink-0 cursor-pointer rounded-[6px] border border-[var(--glass-border)] accent-warm focus-ring"
           />
-          <span className="text-[13px] leading-relaxed text-[var(--color-text-secondary)]">
+          <span className="text-[13px] leading-relaxed text-text-secondary">
             I&apos;m OK with Mingla emailing me about the business beta and how to
             get set up.
           </span>
@@ -682,7 +682,7 @@ function Field(props: FieldProps) {
   const errorId = `${props.id}-error`
   return (
     <div className="flex flex-col gap-2">
-      <label htmlFor={props.id} className="text-sm font-semibold text-[var(--color-text-secondary)]">
+      <label htmlFor={props.id} className="text-sm font-semibold text-text-secondary">
         {props.label}
       </label>
       <input
@@ -702,11 +702,11 @@ function Field(props: FieldProps) {
         aria-invalid={hasError || undefined}
         aria-describedby={hasError ? errorId : undefined}
         className={cn(
-          'h-12 w-full rounded-[16px] bg-white/70 px-4 text-base text-[var(--color-text-primary)] transition-colors duration-150 placeholder:text-[var(--color-text-muted)] focus-ring',
+          'h-12 w-full rounded-[16px] bg-white/70 px-4 text-base text-text-primary transition-colors duration-150 placeholder:text-text-muted focus-ring',
           'border',
           hasError
-            ? 'border-[var(--color-danger)]'
-            : 'border-[var(--glass-border)] hover:border-[rgba(14,14,16,0.18)] focus:border-[var(--color-warm)]',
+            ? 'border-danger'
+            : 'border-[var(--glass-border)] hover:border-[rgba(14,14,16,0.18)] focus:border-warm',
           props.disabled ? 'opacity-60' : '',
         )}
       />
@@ -717,7 +717,7 @@ function Field(props: FieldProps) {
           initial={{ opacity: 0, y: -4 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.16 }}
-          className="text-[13px] text-[var(--color-danger)]"
+          className="text-[13px] text-danger"
         >
           {props.error}
         </motion.p>
@@ -751,35 +751,35 @@ function SuccessPanel(props: SuccessPanelProps) {
         className="flex h-14 w-14 items-center justify-center rounded-full"
         style={{ background: 'rgba(63,139,92,0.12)' }}
       >
-        <Check className="h-7 w-7 text-[var(--color-success)]" aria-hidden="true" />
+        <Check className="h-7 w-7 text-success" aria-hidden="true" />
       </motion.span>
       <h2
         id={props.headingId}
         data-success-heading
         tabIndex={-1}
         aria-live="polite"
-        className="mt-6 font-display text-2xl tracking-[-0.01em] text-[var(--color-text-primary)] outline-none md:text-[28px]"
+        className="mt-6 font-display text-2xl tracking-[-0.01em] text-text-primary outline-none md:text-[28px]"
       >
         {already ? "You're already on the list." : "You're on the list."}
       </h2>
-      <p className="mt-2 max-w-sm text-base text-[var(--color-text-secondary)]">
+      <p className="mt-2 max-w-sm text-base text-text-secondary">
         {already ? (
           <>
             Good news — we already have{' '}
-            <span className="font-medium text-[var(--color-text-primary)]">{props.email}</span>{' '}
+            <span className="font-medium text-text-primary">{props.email}</span>{' '}
             down for the business beta. We&apos;ll be in touch as your spot opens.
           </>
         ) : (
           <>
             Your place deserves to be found — and we&apos;re getting Mingla ready
             for you. We&apos;ll email{' '}
-            <span className="font-medium text-[var(--color-text-primary)]">{props.email}</span>{' '}
+            <span className="font-medium text-text-primary">{props.email}</span>{' '}
             the moment your spot opens.
           </>
         )}
       </p>
       {!already ? (
-        <p className="mt-2 text-[13px] text-[var(--color-text-muted)]">
+        <p className="mt-2 text-[13px] text-text-muted">
           Keep an eye on your inbox.
         </p>
       ) : null}
