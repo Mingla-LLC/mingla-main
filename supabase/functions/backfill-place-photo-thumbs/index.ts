@@ -7,10 +7,34 @@ const DEFAULT_BATCH_SIZE = 25;
 const MAX_BATCH_SIZE = 100;
 const THUMB_SIZE = 384;
 const THUMB_JPEG_QUALITY = 80;
-const INTER_PHOTO_DELAY_MS = 100;
-const INTER_PLACE_DELAY_MS = 500;
+// ORCH-1033: serial INTER_*_DELAY sleeps removed — the PARALLEL_N semaphore +
+// the server-driven budget loop replace the browser-paced throttle. A tiny
+// inter-photo yield is unnecessary at PARALLEL_N=6 (storage upload rate is far
+// below the limit at this concurrency).
 const RUN_CITY = 'ORCH-0957 place-photo thumbs';
 const RUN_COUNTRY = 'GLOBAL';
+
+// ORCH-1033 (Finding B, I-THUMB-DECODE-PARALLEL-N-BOUNDED) — bounded parallel decode.
+//
+// MEMORY MATH (keep in sync if tuning):
+//   imagescript decode() materializes a W×H×4-byte RGBA bitmap BEFORE resize.
+//   Place-photo originals are downloaded capped at 800px (photoStorageService.ts:361),
+//   so the long edge is ≤ 800px. Live sampling: tallest 800×1422 = 4.3 MB RGBA;
+//   pessimistic portrait bound 800×2000 = 6.4 MB. The 384² output bitmap (0.56 MB)
+//   and the transient JPEG encode buffer (few hundred KB) are negligible.
+//   N = floor(60 MB in-flight image budget / 6.4 MB) ≈ 9.
+//   PARALLEL_N=6 → 6 × 6.4 MB ≈ 38 MB peak in-flight ≪ 150 MB working contract
+//   ≪ ~256 MB edge hard cap (the intel pipeline runs parallel-12 only because it
+//   downscales via URL-transform BEFORE decode; thumbs decode the FULL 800px
+//   original, so a smaller N is correct).
+// TUNABLE 4–9 — keep this math comment accurate if you change the value.
+export const PARALLEL_N = 6;
+
+// ORCH-1033 (A) — server-driven budget loop, mirrors run-place-intelligence-trial.
+const BUDGET_MS = 110_000; // 110s; ~40s headroom under the 150s edge fn timeout
+const SAFETY_MAX_ITERATIONS = 20; // belt+suspenders against a runaway loop
+// Heartbeat staleness (the cron re-kicks a 'running' run whose heartbeat is
+// older than this) is enforced in the migration's tg_kick_pending_thumb_backfill.
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -50,10 +74,6 @@ function json(data: unknown, status = 200): Response {
 
 function parseBatchSize(raw: unknown): number {
   return Math.min(Math.max(Number(raw) || DEFAULT_BATCH_SIZE, 1), MAX_BATCH_SIZE);
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export function extractPlacePhotoObjectPath(url: string): string | null {
@@ -108,68 +128,119 @@ async function encodeThumb(bytes: Uint8Array): Promise<Uint8Array> {
   return await decoded.encodeJPEG(THUMB_JPEG_QUALITY);
 }
 
-export async function processPlaceThumbs(
-  db: SupabaseAdmin,
-  place: PendingPlaceRow,
-  options: { skipDelays?: boolean } = {},
-): Promise<ProcessPlaceResult> {
+/**
+ * A unit of work: shrink ONE photo into its `_thumb.jpg`.
+ * ORCH-1033 (B): these are flattened across a batch and run through a
+ * size-PARALLEL_N semaphore so in-flight decodes stay bounded.
+ */
+interface PhotoJob {
+  placeId: string;
+  url: string;
+  objectPath: string;
+  thumbPath: string;
+  thumbPublicUrl: string;
+}
+
+type PhotoOutcome =
+  | { placeId: string; status: 'written' }
+  | { placeId: string; status: 'present' }
+  | { placeId: string; status: 'failed'; url: string; error: string };
+
+async function runPhotoJob(db: SupabaseAdmin, job: PhotoJob): Promise<PhotoOutcome> {
+  try {
+    if (await thumbExists(job.thumbPublicUrl)) {
+      return { placeId: job.placeId, status: 'present' };
+    }
+    const originalBytes = await fetchOriginalBytes(normalizeObjectPublicUrl(job.url));
+    const thumbBytes = await encodeThumb(originalBytes);
+    const { error: uploadError } = await db.storage
+      .from(BUCKET)
+      .upload(job.thumbPath, thumbBytes, {
+        contentType: 'image/jpeg',
+        upsert: true,
+        cacheControl: '31536000',
+      });
+    if (uploadError) throw new Error(uploadError.message);
+    return { placeId: job.placeId, status: 'written' };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn(`[backfill-place-photo-thumbs] photo failed for place ${job.placeId}:`, message);
+    return { placeId: job.placeId, status: 'failed', url: job.url, error: message };
+  }
+}
+
+/**
+ * Run an array of async tasks at most `limit` at a time (semaphore).
+ * ORCH-1033 (B): caps in-flight photo decodes at PARALLEL_N.
+ */
+async function runWithConcurrency<T>(tasks: Array<() => Promise<T>>, limit: number): Promise<T[]> {
+  const results: T[] = new Array(tasks.length);
+  let next = 0;
+  async function worker(): Promise<void> {
+    while (true) {
+      const idx = next++;
+      if (idx >= tasks.length) return;
+      results[idx] = await tasks[idx]();
+    }
+  }
+  const workerCount = Math.min(limit, tasks.length);
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  return results;
+}
+
+function buildPhotoJobs(db: SupabaseAdmin, place: PendingPlaceRow): { jobs: PhotoJob[]; invalid: Array<{ url: string; error: string }> } {
   const urls = Array.isArray(place.stored_photo_urls)
     ? place.stored_photo_urls.filter((url): url is string => typeof url === 'string' && url.trim().length > 0)
     : [];
-
-  if (urls.length === 0) {
-    return { success: false, skipped: true, thumbsWritten: 0, thumbsAlreadyPresent: 0, failedPhotos: [] };
-  }
-
-  let thumbsWritten = 0;
-  let thumbsAlreadyPresent = 0;
-  const failedPhotos: Array<{ url: string; error: string }> = [];
-
-  for (let i = 0; i < urls.length; i++) {
-    const url = urls[i];
+  const jobs: PhotoJob[] = [];
+  const invalid: Array<{ url: string; error: string }> = [];
+  for (const url of urls) {
     const objectPath = extractPlacePhotoObjectPath(url);
     const thumbPath = objectPath ? buildThumbPathFromObjectPath(objectPath) : null;
     if (!objectPath || !thumbPath) {
-      failedPhotos.push({ url, error: 'invalid_place_photo_url' });
+      invalid.push({ url, error: 'invalid_place_photo_url' });
       continue;
     }
-
     const { data: thumbUrlData } = db.storage.from(BUCKET).getPublicUrl(thumbPath);
     const thumbPublicUrl = thumbUrlData?.publicUrl;
     if (!thumbPublicUrl) {
-      failedPhotos.push({ url, error: 'thumb_public_url_missing' });
+      invalid.push({ url, error: 'thumb_public_url_missing' });
       continue;
     }
+    jobs.push({ placeId: place.id, url, objectPath, thumbPath, thumbPublicUrl });
+  }
+  return { jobs, invalid };
+}
 
-    if (await thumbExists(thumbPublicUrl)) {
-      thumbsAlreadyPresent++;
-      continue;
-    }
+/**
+ * Shrink all photos for ONE place. Preserved for unit tests + the manual
+ * single-step path. ORCH-1033: photos run through the PARALLEL_N semaphore;
+ * `thumbs_backfilled_at` is set ONLY when ALL photo-jobs for the place succeed
+ * (all-or-nothing semantics preserved).
+ */
+export async function processPlaceThumbs(
+  db: SupabaseAdmin,
+  place: PendingPlaceRow,
+  _options: { skipDelays?: boolean } = {},
+): Promise<ProcessPlaceResult> {
+  const { jobs, invalid } = buildPhotoJobs(db, place);
 
-    try {
-      const originalBytes = await fetchOriginalBytes(normalizeObjectPublicUrl(url));
-      const thumbBytes = await encodeThumb(originalBytes);
-      const { error: uploadError } = await db.storage
-        .from(BUCKET)
-        .upload(thumbPath, thumbBytes, {
-          contentType: 'image/jpeg',
-          upsert: true,
-          cacheControl: '31536000',
-        });
+  if (jobs.length === 0 && invalid.length === 0) {
+    return { success: false, skipped: true, thumbsWritten: 0, thumbsAlreadyPresent: 0, failedPhotos: [] };
+  }
 
-      if (uploadError) {
-        throw new Error(uploadError.message);
-      }
-      thumbsWritten++;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      console.warn(`[backfill-place-photo-thumbs] photo failed for place ${place.id}:`, message);
-      failedPhotos.push({ url, error: message });
-    }
+  const outcomes = await runWithConcurrency(
+    jobs.map((job) => () => runPhotoJob(db, job)),
+    PARALLEL_N,
+  );
 
-    if (!options.skipDelays && i < urls.length - 1) {
-      await delay(INTER_PHOTO_DELAY_MS);
-    }
+  let thumbsWritten = 0;
+  let thumbsAlreadyPresent = 0;
+  const failedPhotos: Array<{ url: string; error: string }> = [...invalid];
+  for (const o of outcomes) {
+    if (o.status === 'written') thumbsWritten++;
+    else if (o.status === 'present') thumbsAlreadyPresent++;
+    else failedPhotos.push({ url: o.url, error: o.error });
   }
 
   if (failedPhotos.length > 0) {
@@ -194,22 +265,45 @@ export async function processPlaceThumbs(
   return { success: true, skipped: false, thumbsWritten, thumbsAlreadyPresent, failedPhotos: [] };
 }
 
-async function loadPendingPlaces(
+/**
+ * ORCH-1033 (C): resolve an optional city NAME → city_id via seeding_cities.
+ * Returns { cityId } on match, or { error } on an unknown name.
+ */
+export async function resolveCityId(db: SupabaseAdmin, cityName: string): Promise<{ cityId?: string; error?: string }> {
+  const { data, error } = await db
+    .from('seeding_cities')
+    .select('id, name')
+    .ilike('name', cityName)
+    .limit(1)
+    .maybeSingle();
+  if (error) return { error: error.message };
+  if (!data) return { error: `unknown_city: ${cityName}` };
+  return { cityId: data.id };
+}
+
+/**
+ * ORCH-1033 (C): scope = is_servable=true + has-photos + no-thumb (+ optional city_id).
+ * stored_photo_urls is text[] → use the existing array-length post-filter (NOT jsonb).
+ */
+export async function loadPendingPlaces(
   db: SupabaseAdmin,
-  limit?: number,
+  opts: { limit?: number; cityId?: string } = {},
 ): Promise<PendingPlaceRow[]> {
   const pageSize = 1000;
   const out: PendingPlaceRow[] = [];
   let offset = 0;
 
   while (true) {
-    const query = db
+    let query = db
       .from('place_pool')
       .select('id, stored_photo_urls')
+      .eq('is_servable', true)
       .is('thumbs_backfilled_at', null)
       .not('stored_photo_urls', 'is', null)
       .order('created_at', { ascending: true })
       .range(offset, offset + pageSize - 1);
+
+    if (opts.cityId) query = query.eq('city_id', opts.cityId);
 
     const { data, error } = await query;
     if (error) throw new Error(error.message);
@@ -218,7 +312,7 @@ async function loadPendingPlaces(
       .filter((row) => Array.isArray(row.stored_photo_urls) && row.stored_photo_urls.length > 0);
     out.push(...rows);
 
-    if (limit && out.length >= limit) return out.slice(0, limit);
+    if (opts.limit && out.length >= opts.limit) return out.slice(0, opts.limit);
     if (!data || data.length < pageSize) break;
     offset += pageSize;
   }
@@ -226,14 +320,20 @@ async function loadPendingPlaces(
   return out;
 }
 
-async function countPendingPlaces(db: SupabaseAdmin): Promise<number> {
-  const rows = await loadPendingPlaces(db);
+async function countPendingPlaces(db: SupabaseAdmin, opts: { cityId?: string } = {}): Promise<number> {
+  const rows = await loadPendingPlaces(db, { cityId: opts.cityId });
   return rows.length;
 }
 
 async function handlePreviewRun(db: SupabaseAdmin, body: Record<string, unknown>): Promise<Response> {
   const batchSize = parseBatchSize(body.batchSize ?? body.batch_size);
-  const totalPlaces = await countPendingPlaces(db);
+  let cityId: string | undefined;
+  if (typeof body.city === 'string' && body.city.trim().length > 0) {
+    const resolved = await resolveCityId(db, body.city.trim());
+    if (resolved.error) return json({ error: resolved.error }, 400);
+    cityId = resolved.cityId;
+  }
+  const totalPlaces = await countPendingPlaces(db, { cityId });
   return json({
     status: totalPlaces > 0 ? 'ready' : 'nothing_to_do',
     batchSize,
@@ -243,58 +343,44 @@ async function handlePreviewRun(db: SupabaseAdmin, body: Record<string, unknown>
   });
 }
 
-async function handleCreateRun(
+async function createRunRecord(
   db: SupabaseAdmin,
-  body: Record<string, unknown>,
-  userId: string,
-): Promise<Response> {
-  const batchSize = parseBatchSize(body.batchSize ?? body.batch_size);
-  const city = typeof body.city === 'string' && body.city.length > 0 ? body.city : RUN_CITY;
-  const country = typeof body.country === 'string' && body.country.length > 0 ? body.country : RUN_COUNTRY;
-
-  const { data: existing } = await db
-    .from('photo_backfill_runs')
-    .select('id')
-    .eq('city', city)
-    .eq('country', country)
-    .in('status', ['ready', 'running', 'paused'])
-    .limit(1)
-    .maybeSingle();
-
-  if (existing) {
-    return json({ status: 'already_active', runId: existing.id });
-  }
-
-  const eligiblePlaces = await loadPendingPlaces(db);
+  opts: { batchSize: number; cityId?: string; triggeredBy: string; cityLabel?: string },
+): Promise<{ runId?: string; status: string; totalPlaces: number; totalBatches: number; error?: string }> {
+  const eligiblePlaces = await loadPendingPlaces(db, { cityId: opts.cityId });
   if (eligiblePlaces.length === 0) {
-    return json({ status: 'nothing_to_do', totalPlaces: 0 });
+    return { status: 'nothing_to_do', totalPlaces: 0, totalBatches: 0 };
   }
 
   const totalPlaces = eligiblePlaces.length;
-  const totalBatches = Math.ceil(totalPlaces / batchSize);
+  const totalBatches = Math.ceil(totalPlaces / opts.batchSize);
+  // ORCH-1024 discriminator preserved: thumbs runs ALWAYS use city=RUN_CITY +
+  // country=RUN_COUNTRY so the admin Photos panel filter keeps excluding them.
+  // City scoping lives in city_id-filtered batches, NOT in the `city` column.
   const { data: run, error: runErr } = await db
     .from('photo_backfill_runs')
     .insert({
-      city,
-      country,
+      city: RUN_CITY,
+      country: RUN_COUNTRY,
       total_places: totalPlaces,
       total_batches: totalBatches,
-      batch_size: batchSize,
+      batch_size: opts.batchSize,
       estimated_cost_usd: 0,
-      triggered_by: userId,
+      triggered_by: opts.triggeredBy,
       status: 'ready',
       mode: 'refresh_servable',
+      last_heartbeat_at: new Date().toISOString(),
     })
     .select('id')
     .single();
 
   if (runErr || !run) {
-    return json({ error: runErr?.message ?? 'Failed to create run' }, 500);
+    return { status: 'error', totalPlaces: 0, totalBatches: 0, error: runErr?.message ?? 'Failed to create run' };
   }
 
   const batchRows = [];
   for (let i = 0; i < totalBatches; i++) {
-    const chunk = eligiblePlaces.slice(i * batchSize, (i + 1) * batchSize);
+    const chunk = eligiblePlaces.slice(i * opts.batchSize, (i + 1) * opts.batchSize);
     batchRows.push({
       run_id: run.id,
       batch_index: i,
@@ -307,10 +393,162 @@ async function handleCreateRun(
   const { error: batchErr } = await db.from('photo_backfill_batches').insert(batchRows);
   if (batchErr) {
     await db.from('photo_backfill_runs').delete().eq('id', run.id);
-    return json({ error: batchErr.message }, 500);
+    return { status: 'error', totalPlaces: 0, totalBatches: 0, error: batchErr.message };
   }
 
-  return json({ runId: run.id, totalPlaces, totalBatches, estimatedCostUsd: 0, status: 'ready' });
+  return { runId: run.id, status: 'ready', totalPlaces, totalBatches };
+}
+
+/**
+ * ORCH-1033 (A): fire a server-side process_chunk for `runId` via
+ * EdgeRuntime.waitUntil (fire-and-forget; cron recovers on failure).
+ */
+function kickProcessChunk(runId: string): void {
+  const selfUrl = `${
+    Deno.env.get('SUPABASE_URL') ?? 'https://gqnoajqerqhnvulmnyvv.supabase.co'
+  }/functions/v1/backfill-place-photo-thumbs`;
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+  try {
+    // @ts-ignore — EdgeRuntime is a Supabase-provided global, not in @types
+    if (typeof EdgeRuntime !== 'undefined' && EdgeRuntime?.waitUntil) {
+      // @ts-ignore
+      EdgeRuntime.waitUntil(
+        fetch(selfUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${serviceKey}` },
+          body: JSON.stringify({ action: 'process_chunk', runId }),
+        }).catch((err) => {
+          console.warn(`[thumb self-invoke] dispatch failed (cron will recover): ${err}`);
+        }),
+      );
+    } else {
+      console.warn('[thumb self-invoke] EdgeRuntime.waitUntil unavailable; cron will recover');
+    }
+  } catch (err) {
+    console.warn(`[thumb self-invoke] error scheduling self-invoke (cron will recover): ${err}`);
+  }
+}
+
+async function handleCreateRun(
+  db: SupabaseAdmin,
+  body: Record<string, unknown>,
+  userId: string,
+): Promise<Response> {
+  const batchSize = parseBatchSize(body.batchSize ?? body.batch_size);
+
+  let cityId: string | undefined;
+  if (typeof body.city === 'string' && body.city.trim().length > 0) {
+    const resolved = await resolveCityId(db, body.city.trim());
+    if (resolved.error) return json({ error: resolved.error }, 400);
+    cityId = resolved.cityId;
+  }
+
+  // At most one active thumbs run per (RUN_CITY, RUN_COUNTRY).
+  const { data: existing } = await db
+    .from('photo_backfill_runs')
+    .select('id')
+    .eq('city', RUN_CITY)
+    .eq('country', RUN_COUNTRY)
+    .in('status', ['ready', 'running', 'paused'])
+    .limit(1)
+    .maybeSingle();
+
+  if (existing) {
+    kickProcessChunk(existing.id); // make sure it's being driven server-side
+    return json({ status: 'already_active', runId: existing.id });
+  }
+
+  const created = await createRunRecord(db, { batchSize, cityId, triggeredBy: userId });
+  if (created.status === 'nothing_to_do') return json({ status: 'nothing_to_do', totalPlaces: 0 });
+  if (created.status === 'error' || !created.runId) return json({ error: created.error ?? 'Failed to create run' }, 500);
+
+  // ORCH-1033 (A): server-kick immediately so the run starts without waiting
+  // for the next cron tick. The admin tab only POLLS run_status for display.
+  kickProcessChunk(created.runId);
+
+  return json({
+    runId: created.runId,
+    totalPlaces: created.totalPlaces,
+    totalBatches: created.totalBatches,
+    estimatedCostUsd: 0,
+    status: 'ready',
+  });
+}
+
+/**
+ * Claim + process exactly one pending batch (the unit of progress). Returns the
+ * batch result + whether any pending batch remained to claim.
+ * ORCH-1033 (A): concurrency-safe claim — conditional UPDATE on status='pending'
+ * + affected-rows check so two workers never double-process a batch.
+ */
+async function claimAndProcessNextBatch(
+  db: SupabaseAdmin,
+  runId: string,
+): Promise<{ claimed: boolean; result?: BatchResult; batchStatus?: 'completed' | 'failed' }> {
+  const { data: batch } = await db
+    .from('photo_backfill_batches')
+    .select('*')
+    .eq('run_id', runId)
+    .eq('status', 'pending')
+    .order('batch_index', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (!batch) return { claimed: false };
+
+  // Conditional claim: only this worker may flip pending→running.
+  const { data: claimedRows } = await db
+    .from('photo_backfill_batches')
+    .update({ status: 'running', started_at: new Date().toISOString() })
+    .eq('id', batch.id)
+    .eq('status', 'pending')
+    .select('id');
+
+  if (!claimedRows || claimedRows.length === 0) {
+    // Another worker grabbed it first — treat as "claimed nothing this round".
+    return { claimed: false };
+  }
+
+  const batchResult = await processBatch(db, batch.place_pool_ids ?? []);
+  const batchStatus: 'completed' | 'failed' =
+    batchResult.succeeded === 0 && batchResult.failed > 0 ? 'failed' : 'completed';
+
+  await db
+    .from('photo_backfill_batches')
+    .update({
+      status: batchStatus,
+      succeeded: batchResult.succeeded,
+      failed: batchResult.failed,
+      skipped: batchResult.skipped,
+      failed_places: batchResult.failedPlaces,
+      error_message: batchStatus === 'failed' ? 'All places failed' : null,
+      completed_at: new Date().toISOString(),
+    })
+    .eq('id', batch.id);
+
+  // Roll batch counters up to the run.
+  const { data: freshRun } = await db
+    .from('photo_backfill_runs')
+    .select('completed_batches, failed_batches, skipped_batches, total_succeeded, total_failed, total_skipped, total_batches')
+    .eq('id', runId)
+    .single();
+
+  if (freshRun) {
+    const completedBatches = batchStatus === 'failed' ? freshRun.completed_batches : freshRun.completed_batches + 1;
+    const failedBatches = batchStatus === 'failed' ? freshRun.failed_batches + 1 : freshRun.failed_batches;
+    await db
+      .from('photo_backfill_runs')
+      .update({
+        completed_batches: completedBatches,
+        failed_batches: failedBatches,
+        total_succeeded: freshRun.total_succeeded + batchResult.succeeded,
+        total_failed: freshRun.total_failed + batchResult.failed,
+        total_skipped: freshRun.total_skipped + batchResult.skipped,
+      })
+      .eq('id', runId);
+  }
+
+  return { claimed: true, result: batchResult, batchStatus };
 }
 
 async function processBatch(
@@ -326,8 +564,11 @@ async function processBatch(
     failedPlaces: [],
   };
 
-  for (let i = 0; i < placeIds.length; i++) {
-    const placeId = placeIds[i];
+  // Load every place in the batch (still no-thumb), then flatten ALL their
+  // photos into one job list and drain it through the PARALLEL_N semaphore.
+  // This parallelizes at the PHOTO level across the whole batch (ORCH-1033 B).
+  const places: PendingPlaceRow[] = [];
+  for (const placeId of placeIds) {
     const { data: place, error } = await db
       .from('place_pool')
       .select('id, stored_photo_urls')
@@ -344,30 +585,222 @@ async function processBatch(
       result.skipped++;
       continue;
     }
+    places.push(place as PendingPlaceRow);
+  }
 
-    const placeResult = await processPlaceThumbs(db, place as PendingPlaceRow);
-    result.thumbsWritten += placeResult.thumbsWritten;
-    result.thumbsAlreadyPresent += placeResult.thumbsAlreadyPresent;
+  // Build per-place job lists + track invalids.
+  const perPlace = new Map<string, { jobs: PhotoJob[]; invalid: Array<{ url: string; error: string }> }>();
+  const allJobs: PhotoJob[] = [];
+  for (const place of places) {
+    const built = buildPhotoJobs(db, place);
+    perPlace.set(place.id, built);
+    allJobs.push(...built.jobs);
+  }
 
-    if (placeResult.success) result.succeeded++;
-    else if (placeResult.skipped) result.skipped++;
-    else {
+  // Drain ALL photo-jobs across the batch at PARALLEL_N concurrency.
+  const outcomes = await runWithConcurrency(
+    allJobs.map((job) => () => runPhotoJob(db, job)),
+    PARALLEL_N,
+  );
+
+  // Tally per place.
+  const tally = new Map<string, { written: number; present: number; failures: Array<{ url: string; error: string }> }>();
+  for (const place of places) tally.set(place.id, { written: 0, present: 0, failures: [] });
+  for (const o of outcomes) {
+    const t = tally.get(o.placeId)!;
+    if (o.status === 'written') t.written++;
+    else if (o.status === 'present') t.present++;
+    else t.failures.push({ url: o.url, error: o.error });
+  }
+
+  // Resolve each place: all-or-nothing → set thumbs_backfilled_at only if no failures.
+  for (const place of places) {
+    const built = perPlace.get(place.id)!;
+    const t = tally.get(place.id)!;
+    const failures = [...built.invalid, ...t.failures];
+    result.thumbsWritten += t.written;
+    result.thumbsAlreadyPresent += t.present;
+
+    if (built.jobs.length === 0 && built.invalid.length === 0) {
+      result.skipped++;
+      continue;
+    }
+    if (failures.length > 0) {
       result.failed++;
       result.failedPlaces.push({
-        placePoolId: placeId,
+        placePoolId: place.id,
         error: 'one_or_more_photos_failed',
-        failedPhotos: placeResult.failedPhotos,
+        failedPhotos: failures,
       });
+      continue;
     }
 
-    if (i < placeIds.length - 1) {
-      await delay(INTER_PLACE_DELAY_MS);
+    const { error: updateError } = await db
+      .from('place_pool')
+      .update({ thumbs_backfilled_at: new Date().toISOString() })
+      .eq('id', place.id);
+    if (updateError) {
+      result.failed++;
+      result.failedPlaces.push({ placePoolId: place.id, error: updateError.message });
+    } else {
+      result.succeeded++;
     }
   }
 
   return result;
 }
 
+/**
+ * ORCH-1033 (A): server-driven worker. Budget loop processes pending batches
+ * until the time budget is exhausted, then self-invokes if work remains and the
+ * run is still 'running'. Service-role-only.
+ */
+export async function handleProcessChunk(db: SupabaseAdmin, body: Record<string, unknown>): Promise<Response> {
+  const runId = body.runId as string;
+  if (!runId) return json({ error: 'runId required' }, 400);
+
+  const startedAtMs = Date.now();
+
+  const { data: run, error: runErr } = await db
+    .from('photo_backfill_runs')
+    .select('*')
+    .eq('id', runId)
+    .single();
+  if (runErr || !run) return json({ error: 'Run not found' }, 404);
+  if (!['ready', 'running', 'paused'].includes(run.status)) {
+    return json({ ok: true, runId, skipped: true, exitReason: `status=${run.status}` });
+  }
+  if (run.status === 'paused') {
+    return json({ ok: true, runId, skipped: true, exitReason: 'paused' });
+  }
+
+  // Flip ready→running, stamp started_at + heartbeat (heartbeat set once at start).
+  if (run.status !== 'running') {
+    const updates: Record<string, unknown> = { status: 'running', last_heartbeat_at: new Date().toISOString() };
+    if (!run.started_at) updates.started_at = new Date().toISOString();
+    await db.from('photo_backfill_runs').update(updates).eq('id', runId);
+  } else {
+    await db.from('photo_backfill_runs').update({ last_heartbeat_at: new Date().toISOString() }).eq('id', runId);
+  }
+
+  let iterations = 0;
+  let batchesProcessed = 0;
+  let thumbsWritten = 0;
+  let thumbsAlreadyPresent = 0;
+  let succeeded = 0;
+  let failed = 0;
+  let skipped = 0;
+  let done = false;
+  let exitReason = 'budget_exhausted';
+
+  while (Date.now() - startedAtMs < BUDGET_MS && iterations < SAFETY_MAX_ITERATIONS) {
+    iterations++;
+
+    // Re-check run status each iteration (operator may pause/cancel mid-budget).
+    const { data: liveRun } = await db
+      .from('photo_backfill_runs')
+      .select('status')
+      .eq('id', runId)
+      .maybeSingle();
+    if (!liveRun) { exitReason = 'run_vanished'; break; }
+    if (liveRun.status === 'paused') { exitReason = 'paused'; break; }
+    if (liveRun.status === 'cancelled') { exitReason = 'cancelled'; break; }
+
+    const step = await claimAndProcessNextBatch(db, runId);
+    if (!step.claimed) {
+      // No pending batch left to claim → run is complete.
+      await db
+        .from('photo_backfill_runs')
+        .update({ status: 'completed', completed_at: new Date().toISOString() })
+        .eq('id', runId);
+      done = true;
+      exitReason = 'completed';
+      break;
+    }
+
+    batchesProcessed++;
+    if (step.result) {
+      thumbsWritten += step.result.thumbsWritten;
+      thumbsAlreadyPresent += step.result.thumbsAlreadyPresent;
+      succeeded += step.result.succeeded;
+      failed += step.result.failed;
+      skipped += step.result.skipped;
+    }
+  }
+
+  if (iterations >= SAFETY_MAX_ITERATIONS) exitReason = 'safety_max_iterations';
+
+  // End-of-budget self-invoke: if work remains AND the run is still running.
+  if (!done) {
+    const { data: chainRun } = await db
+      .from('photo_backfill_runs')
+      .select('status')
+      .eq('id', runId)
+      .maybeSingle();
+    if (chainRun?.status === 'running') {
+      const { data: pending } = await db
+        .from('photo_backfill_batches')
+        .select('id')
+        .eq('run_id', runId)
+        .eq('status', 'pending')
+        .limit(1)
+        .maybeSingle();
+      if (pending) kickProcessChunk(runId);
+    }
+  }
+
+  return json({
+    ok: true,
+    runId,
+    batchesProcessed,
+    thumbsWritten,
+    thumbsAlreadyPresent,
+    succeeded,
+    failed,
+    skipped,
+    done,
+    exitReason,
+    elapsedMs: Date.now() - startedAtMs,
+  });
+}
+
+// Sentinel triggered_by for cron-created auto runs (triggered_by is NOT NULL).
+// All-zero uuid documents "system/cron" provenance.
+const AUTO_RUN_TRIGGERED_BY = '00000000-0000-0000-0000-000000000000';
+
+/**
+ * ORCH-1033 (D): service-role action the cron calls to (a) ensure a single
+ * global servable thumbs run exists when there is a backlog, and (b) kick it.
+ * Idempotent: no-op if an active run already exists.
+ */
+async function handleEnsureAutoRun(db: SupabaseAdmin): Promise<Response> {
+  const { data: existing } = await db
+    .from('photo_backfill_runs')
+    .select('id, status')
+    .eq('city', RUN_CITY)
+    .eq('country', RUN_COUNTRY)
+    .in('status', ['ready', 'running', 'paused'])
+    .limit(1)
+    .maybeSingle();
+
+  if (existing) {
+    if (existing.status !== 'paused') kickProcessChunk(existing.id);
+    return json({ ok: true, status: 'already_active', runId: existing.id });
+  }
+
+  // No active run — create one over the GLOBAL servable backlog if any exists.
+  const created = await createRunRecord(db, { batchSize: DEFAULT_BATCH_SIZE, triggeredBy: AUTO_RUN_TRIGGERED_BY });
+  if (created.status === 'nothing_to_do') return json({ ok: true, status: 'nothing_to_do' });
+  if (created.status === 'error' || !created.runId) return json({ error: created.error ?? 'auto run failed' }, 500);
+
+  kickProcessChunk(created.runId);
+  return json({ ok: true, status: 'created', runId: created.runId, totalPlaces: created.totalPlaces });
+}
+
+/**
+ * RETAINED manual single-step (admin "Run one batch" debug affordance).
+ * ORCH-1033: no longer the run engine — the admin tab does NOT loop this.
+ */
 async function handleRunNextBatch(db: SupabaseAdmin, body: Record<string, unknown>): Promise<Response> {
   const runId = body.runId as string;
   if (!runId) return json({ error: 'runId required' }, 400);
@@ -389,16 +822,8 @@ async function handleRunNextBatch(db: SupabaseAdmin, body: Record<string, unknow
     await db.from('photo_backfill_runs').update(updates).eq('id', runId);
   }
 
-  const { data: batch } = await db
-    .from('photo_backfill_batches')
-    .select('*')
-    .eq('run_id', runId)
-    .eq('status', 'pending')
-    .order('batch_index', { ascending: true })
-    .limit(1)
-    .maybeSingle();
-
-  if (!batch) {
+  const step = await claimAndProcessNextBatch(db, runId);
+  if (!step.claimed) {
     await db
       .from('photo_backfill_runs')
       .update({ status: 'completed', completed_at: new Date().toISOString() })
@@ -406,67 +831,7 @@ async function handleRunNextBatch(db: SupabaseAdmin, body: Record<string, unknow
     return json({ done: true });
   }
 
-  await db
-    .from('photo_backfill_batches')
-    .update({ status: 'running', started_at: new Date().toISOString() })
-    .eq('id', batch.id);
-
-  const batchResult = await processBatch(db, batch.place_pool_ids ?? []);
-  const batchStatus = batchResult.succeeded === 0 && batchResult.failed > 0 ? 'failed' : 'completed';
-
-  await db
-    .from('photo_backfill_batches')
-    .update({
-      status: batchStatus,
-      succeeded: batchResult.succeeded,
-      failed: batchResult.failed,
-      skipped: batchResult.skipped,
-      failed_places: batchResult.failedPlaces,
-      error_message: batchStatus === 'failed' ? 'All places failed' : null,
-      completed_at: new Date().toISOString(),
-    })
-    .eq('id', batch.id);
-
-  const { data: freshRun } = await db
-    .from('photo_backfill_runs')
-    .select('completed_batches, failed_batches, skipped_batches, total_succeeded, total_failed, total_skipped, total_batches')
-    .eq('id', runId)
-    .single();
-
-  if (!freshRun) {
-    return json({ ...batchResult, batchId: batch.id, batchIndex: batch.batch_index, done: false });
-  }
-
-  const completedBatches = batchStatus === 'failed' ? freshRun.completed_batches : freshRun.completed_batches + 1;
-  const failedBatches = batchStatus === 'failed' ? freshRun.failed_batches + 1 : freshRun.failed_batches;
-  const allBatchesDone = (completedBatches + failedBatches + freshRun.skipped_batches) >= freshRun.total_batches;
-
-  const runUpdate: Record<string, unknown> = {
-    completed_batches: completedBatches,
-    failed_batches: failedBatches,
-    total_succeeded: freshRun.total_succeeded + batchResult.succeeded,
-    total_failed: freshRun.total_failed + batchResult.failed,
-    total_skipped: freshRun.total_skipped + batchResult.skipped,
-  };
-  if (allBatchesDone) {
-    runUpdate.status = 'completed';
-    runUpdate.completed_at = new Date().toISOString();
-  }
-
-  await db.from('photo_backfill_runs').update(runUpdate).eq('id', runId);
-
-  return json({
-    batchId: batch.id,
-    batchIndex: batch.batch_index,
-    ...batchResult,
-    done: allBatchesDone,
-    runProgress: {
-      completedBatches,
-      totalBatches: freshRun.total_batches,
-      totalSucceeded: runUpdate.total_succeeded,
-      totalFailed: runUpdate.total_failed,
-    },
-  });
+  return json({ done: false, ...(step.result ?? {}) });
 }
 
 async function handleRunStatus(db: SupabaseAdmin, body: Record<string, unknown>): Promise<Response> {
@@ -513,8 +878,11 @@ async function updateRunStatus(
   if (!runId) return json({ error: 'runId required' }, 400);
   const patch: Record<string, unknown> = { status };
   if (status === 'cancelled') patch.completed_at = new Date().toISOString();
+  if (status === 'running') patch.last_heartbeat_at = new Date().toISOString();
   const { error } = await db.from('photo_backfill_runs').update(patch).eq('id', runId);
   if (error) return json({ error: error.message }, 500);
+  // ORCH-1033: resume re-kicks the server-driven chain.
+  if (status === 'running') kickProcessChunk(runId);
   return json({ runId, status });
 }
 
@@ -562,6 +930,23 @@ export async function handler(req: Request): Promise<Response> {
 
     if (!body.action) {
       return json({ error: "Missing 'action'. Use action='preview_run', 'create_run', 'run_next_batch', etc." }, 400);
+    }
+
+    // ORCH-1033 (A): process_chunk + ensure_auto_run are service-role-only
+    // (called by pg_cron via pg_net and by the create_run/resume self-invoke).
+    // Skip the user-auth gate; require a service-role bearer match instead.
+    if (body.action === 'process_chunk' || body.action === 'ensure_auto_run') {
+      const authHeader = req.headers.get('Authorization');
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return json({ error: 'Missing authorization' }, 401);
+      }
+      const token = authHeader.replace('Bearer ', '');
+      if (!supabaseServiceKey || token !== supabaseServiceKey) {
+        return json({ error: `${body.action} requires service-role auth` }, 403);
+      }
+      return body.action === 'process_chunk'
+        ? await handleProcessChunk(supabaseAdmin, body)
+        : await handleEnsureAutoRun(supabaseAdmin);
     }
 
     const authHeader = req.headers.get('Authorization');

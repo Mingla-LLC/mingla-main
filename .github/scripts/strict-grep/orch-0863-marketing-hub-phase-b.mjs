@@ -1289,7 +1289,23 @@ function checkNoNewBackendFiles() {
     // predicate logic + gate count-query running-only correctness).
     "supabase/migrations/__tests__/orch_1032_additive_safety_adversarial.test.ts",
   ];
+  // ORCH-1033 [Photo-thumbnail pipeline: server-driven + parallel + scoped +
+  // collage fallback]: adds the new pg_cron auto-drain migration + the migration
+  // SQL-shape test + the implementor happy-path collage fallback test. The edge
+  // fn backfill-place-photo-thumbs/index.ts, its index.test.ts, _shared/imageCollage.ts,
+  // and _shared/__tests__/imageCollage.thumbFallback.test.ts are MODIFIES already
+  // allowlisted under the ORCH-0957 block above — only the NEW files need listing
+  // here. C7 is scoped to ORCH-0863 marketing; these are place-photo-pipeline
+  // backend touches. Per COMMS-0002.
+  const ORCH_1033_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260815000000_orch_1033_thumb_backfill_cron.sql",
+    "supabase/functions/_shared/imageCollage.fallback400.test.ts",
+    // Tester-authored adversarial migration test (T-04 partner) — registered
+    // ahead so the tester's same-PR add does not re-trip C7.
+    "supabase/migrations/__tests__/orch_1033_thumb_backfill_cron.test.ts",
+  ];
   const ALLOWLIST = [
+    ...ORCH_1033_BACKEND_ALLOWLIST,
     ...ORCH_1032_BACKEND_ALLOWLIST,
     ...ORCH_1027_BACKEND_ALLOWLIST,
     ...ORCH_1030_BACKEND_ALLOWLIST,
