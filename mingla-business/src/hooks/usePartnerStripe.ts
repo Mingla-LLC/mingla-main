@@ -33,7 +33,12 @@ export function usePartnerStripeStatus(): UseQueryResult<
   return useQuery<PartnerStripeStatusRow, Error>({
     queryKey: partnerStripeKeys.status(),
     queryFn: getPartnerStripeStatus,
-    staleTime: 30 * 1000,
+    // ORCH-1052 hotfix — staleTime 0 + refetchOnWindowFocus so an admin-side
+    // partner_enabled toggle becomes visible within seconds of the next
+    // mingla-business foreground (no manual reload needed).
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+    refetchOnMount: "always",
   });
 }
 
