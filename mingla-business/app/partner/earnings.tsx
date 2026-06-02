@@ -1,16 +1,19 @@
 /**
- * /partner/earnings — Mingla partner earnings screen. ORCH-1052.
+ * /partner/earnings — Mingla partner earnings screen. ORCH-1052 + ORCH-1054.
  *
  * Visible only to flagged Mingla partners (creator_accounts.partner_enabled =
  * true). Surfaces:
  *  - Partner Stripe Connect status (not connected → CTA, onboarding → resume,
  *    active → managed)
- *  - Placeholder for the partner_splits table (data ships in ORCH-1054)
+ *  - ORCH-1054: live partner_splits ledger. Per-currency totals (no FX),
+ *    per-month + per-brand breakdowns, status badges, empty state on no
+ *    splits yet. Multi-currency safe — each currency renders in its own
+ *    section.
  *
  * Non-partners hit a friendly empty state directing them to support.
  */
 
-import React, { useCallback } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Linking,
@@ -29,6 +32,14 @@ import {
   usePartnerStripeStatus,
   useStartPartnerStripeOnboarding,
 } from "../../src/hooks/usePartnerStripe";
+import {
+  usePartnerEarningsSummary,
+  usePartnerSplits,
+} from "../../src/hooks/usePartnerSplits";
+import type {
+  PartnerSplitRow,
+  PartnerSplitStatus,
+} from "../../src/services/partnerSplitsService";
 import {
   colors,
   accent,
@@ -126,18 +137,186 @@ export default function PartnerEarningsScreen(): React.ReactElement {
               starting={startOnboarding.isPending}
               startError={startOnboarding.error?.message ?? null}
             />
-            <View style={styles.splitsCard}>
-              <Text style={styles.cardTitle}>Splits</Text>
-              <Text style={styles.cardBody}>
-                Your earnings will appear here once your first partnered event
-                sells. We’re wiring the split pipeline in the next release.
-              </Text>
-            </View>
+            <PartnerSplitsSection />
           </>
         )}
       </ScrollView>
     </SafeAreaView>
   );
+}
+
+/**
+ * ORCH-1054 — partner_splits live ledger UI.
+ *
+ * Renders:
+ *  - per-currency totals (transferred + pending + reversed; no FX between
+ *    currencies per I-PROPOSED-PARTNER-TRANSFER-SOURCE-CURRENCY)
+ *  - month + currency filter chips
+ *  - per-split rows with status badge
+ *  - empty state when the partner has no splits yet
+ */
+function PartnerSplitsSection(): React.ReactElement {
+  const [currencyFilter, setCurrencyFilter] = useState<string | null>(null);
+  const summaryQuery = usePartnerEarningsSummary();
+  const splitsQuery = usePartnerSplits(
+    currencyFilter ? { currency: currencyFilter } : {},
+  );
+
+  const availableCurrencies = useMemo(() => {
+    const set = new Set<string>();
+    for (const bucket of summaryQuery.data?.totals_by_currency ?? []) {
+      set.add(bucket.currency);
+    }
+    return Array.from(set).sort();
+  }, [summaryQuery.data]);
+
+  if (summaryQuery.isLoading) {
+    return (
+      <View style={styles.splitsCard}>
+        <Text style={styles.cardTitle}>Splits</Text>
+        <ActivityIndicator color={accent.warm} />
+      </View>
+    );
+  }
+
+  if (summaryQuery.error) {
+    return (
+      <View style={styles.errorCard}>
+        <Text style={styles.errorTitle}>Couldn’t load splits</Text>
+        <Text style={styles.errorBody}>{summaryQuery.error.message}</Text>
+      </View>
+    );
+  }
+
+  const totals = summaryQuery.data?.totals_by_currency ?? [];
+  const splits = splitsQuery.data ?? [];
+
+  if (totals.length === 0) {
+    return (
+      <View style={styles.splitsCard}>
+        <Text style={styles.cardTitle}>Splits</Text>
+        <Text style={styles.cardBody}>
+          No splits yet. As soon as a partnered event sells tickets, your
+          share lands here automatically.
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <>
+      <View style={styles.splitsCard}>
+        <Text style={styles.cardTitle}>Earnings by currency</Text>
+        {totals.map((bucket) => (
+          <View key={bucket.currency} style={styles.currencyRow}>
+            <Text style={styles.currencyLabel}>
+              {bucket.currency.toUpperCase()}
+            </Text>
+            <View style={styles.currencyValues}>
+              <Text style={styles.currencyTransferred}>
+                Paid {formatCents(bucket.transferred_cents, bucket.currency)}
+              </Text>
+              {bucket.pending_cents > 0 ? (
+                <Text style={styles.currencyPending}>
+                  Pending {formatCents(bucket.pending_cents, bucket.currency)}
+                </Text>
+              ) : null}
+              {bucket.reversed_cents > 0 ? (
+                <Text style={styles.currencyReversed}>
+                  Reversed {formatCents(bucket.reversed_cents, bucket.currency)}
+                </Text>
+              ) : null}
+            </View>
+          </View>
+        ))}
+      </View>
+
+      {availableCurrencies.length > 1 ? (
+        <View style={styles.filterRow}>
+          <Pressable
+            accessibilityLabel="Show all currencies"
+            style={[
+              styles.filterChip,
+              currencyFilter === null && styles.filterChipActive,
+            ]}
+            onPress={() => setCurrencyFilter(null)}
+          >
+            <Text style={styles.filterChipText}>All</Text>
+          </Pressable>
+          {availableCurrencies.map((cur) => (
+            <Pressable
+              key={cur}
+              accessibilityLabel={`Filter ${cur}`}
+              style={[
+                styles.filterChip,
+                currencyFilter === cur && styles.filterChipActive,
+              ]}
+              onPress={() => setCurrencyFilter(cur)}
+            >
+              <Text style={styles.filterChipText}>{cur.toUpperCase()}</Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+
+      <View style={styles.splitsCard}>
+        <Text style={styles.cardTitle}>Recent splits</Text>
+        {splits.length === 0 ? (
+          <Text style={styles.cardBody}>
+            No splits in this filter. Try clearing the currency filter.
+          </Text>
+        ) : (
+          splits.map((row) => <SplitRow key={row.id} row={row} />)
+        )}
+      </View>
+    </>
+  );
+}
+
+function SplitRow({ row }: { row: PartnerSplitRow }): React.ReactElement {
+  return (
+    <View style={styles.splitRow}>
+      <View style={styles.splitRowLeft}>
+        <Text style={styles.splitAmount}>
+          {formatCents(row.partner_share_cents, row.transfer_currency)}
+        </Text>
+        <Text style={styles.splitMeta}>
+          {new Date(row.created_at).toLocaleDateString()} · order {row.order_id.slice(0, 8)}
+        </Text>
+      </View>
+      <StatusBadge status={row.status} />
+    </View>
+  );
+}
+
+function StatusBadge({ status }: { status: PartnerSplitStatus }): React.ReactElement {
+  const map: Record<PartnerSplitStatus, { label: string; color: string; bg: string }> = {
+    transferred: { label: "Transferred", color: "#065F46", bg: "#D1FAE5" },
+    pending: { label: "Pending", color: "#92400E", bg: "#FEF3C7" },
+    blocked_currency_mismatch: { label: "Blocked — currency", color: "#7F1D1D", bg: "#FEE2E2" },
+    blocked_no_stripe: { label: "Blocked — Stripe", color: "#7F1D1D", bg: "#FEE2E2" },
+    failed: { label: "Failed", color: "#7F1D1D", bg: "#FEE2E2" },
+    reversed: { label: "Reversed", color: "#475569", bg: "#E2E8F0" },
+    reversed_pending: { label: "Reversed (pending)", color: "#475569", bg: "#E2E8F0" },
+  };
+  const cfg = map[status];
+  return (
+    <View style={[styles.badge, { backgroundColor: cfg.bg }]}>
+      <Text style={[styles.badgeText, { color: cfg.color }]}>{cfg.label}</Text>
+    </View>
+  );
+}
+
+function formatCents(cents: number, currency: string): string {
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency: currency.toUpperCase(),
+      currencyDisplay: "narrowSymbol",
+    }).format(cents / 100);
+  } catch {
+    return `${(cents / 100).toFixed(2)} ${currency.toUpperCase()}`;
+  }
 }
 
 function StatusBlock(props: {
@@ -327,4 +506,57 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm ?? 8,
   },
   secondaryBtnText: { color: "#0F172A", fontSize: 15, fontWeight: "500" },
+  // ORCH-1054 partner_splits ledger
+  currencyRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: "#F1F5F9",
+  },
+  currencyLabel: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#0F172A",
+  },
+  currencyValues: { alignItems: "flex-end" },
+  currencyTransferred: { fontSize: 16, fontWeight: "600", color: "#065F46" },
+  currencyPending: { fontSize: 13, color: "#92400E" },
+  currencyReversed: { fontSize: 13, color: "#475569" },
+  filterRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  filterChip: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#CBD5E1",
+    backgroundColor: "#FFFFFF",
+  },
+  filterChipActive: {
+    backgroundColor: accent.warm ?? "#eb7825",
+    borderColor: accent.warm ?? "#eb7825",
+  },
+  filterChipText: { fontSize: 13, fontWeight: "500", color: "#0F172A" },
+  splitRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#F1F5F9",
+  },
+  splitRowLeft: { flex: 1, paddingRight: 8 },
+  splitAmount: { fontSize: 15, fontWeight: "600", color: "#0F172A" },
+  splitMeta: { fontSize: 12, color: "#64748B", marginTop: 2 },
+  badge: {
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+  },
+  badgeText: { fontSize: 12, fontWeight: "600" },
 });
