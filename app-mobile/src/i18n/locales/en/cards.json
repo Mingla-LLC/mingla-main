@@ -110,5 +110,13 @@
   "swipeable.pipeline_error_title": "Couldn't load your deck",
   "swipeable.pipeline_error_subtitle": "Something went wrong on our end. Give it another try.",
   "swipeable.pipeline_error_toast": "We had trouble loading fresh cards.",
-  "swipeable.retry": "Retry"
+  "swipeable.retry": "Retry",
+  "collab.deadend.different_cities.title": "You're in different cities",
+  "collab.deadend.different_cities.guidance": "Pick one spot you'll all head to, or set a shared meeting point.",
+  "collab.deadend.same_city_tight.title": "So close — just out of reach",
+  "collab.deadend.same_city_tight.guidance": "You're in the same area, but your travel ranges don't quite touch. Nudge travel time or distance up a little.",
+  "collab.deadend.waiting.title_one": "Waiting on {{name}}'s location",
+  "collab.deadend.waiting.title_many": "Waiting on everyone's location",
+  "collab.deadend.waiting.guidance": "Hang tight — the deck fills in the moment their location lands.",
+  "collab.deadend.waiting.pending_chip": "{{name}}: getting a fix…"
 }

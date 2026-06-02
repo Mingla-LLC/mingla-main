@@ -39,6 +39,13 @@ import { PreferencesService } from "../../services/preferencesService";
 import type { DiscoverCity } from "../../types/discoverFilters";
 import { Icon } from "../ui/Icon";
 import { glass } from "../../constants/designSystem";
+// ORCH-1058: US_STATE_CODES + COUNTRY_NAME_TO_CODE moved to the shared
+// location-label util so the collab deck and this picker share one owner
+// (Constitution #2). No behavior change here — dedupe only.
+import {
+  US_STATE_CODES,
+  COUNTRY_NAME_TO_CODE,
+} from "../../utils/formatLocationLabel";
 
 // META-ORCH-0991 Wave C Batch 1 — was an RN <Modal> slide-up with a
 // KeyboardAvoidingView lifting a flex:1 sheet above the keyboard. Converted to
@@ -72,29 +79,8 @@ const DEBOUNCE_MS = 250;
  * for known US states, else null/null. TM tolerates city-name-only queries, so
  * unknown locales fall through gracefully.
  */
-const US_STATE_CODES = new Set([
-  "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA",
-  "KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ",
-  "NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT",
-  "VA","WA","WV","WI","WY","DC",
-]);
-
-const COUNTRY_NAME_TO_CODE: Record<string, string> = {
-  "USA": "US",
-  "United States": "US",
-  "United States of America": "US",
-  "UK": "GB",
-  "United Kingdom": "GB",
-  "Canada": "CA",
-  "Mexico": "MX",
-  "France": "FR",
-  "Germany": "DE",
-  "Spain": "ES",
-  "Italy": "IT",
-  "Japan": "JP",
-  "Australia": "AU",
-  "Brazil": "BR",
-};
+// US_STATE_CODES + COUNTRY_NAME_TO_CODE now imported from
+// ../../utils/formatLocationLabel (ORCH-1058 dedupe).
 
 function parseStateCountry(fullAddress: string): {
   stateCode: string | null;
