@@ -206,6 +206,9 @@ async function sendNotify(
   payload: ReturnType<typeof buildNotifyEmail>,
 ): Promise<{ ok: boolean; error?: string }> {
   try {
+    // no-attachment: ORCH-1045 lead-notify is a plain text/HTML alert to the
+    // Mingla inbox (brand type / name / city / email). It carries no PDF or
+    // file — there is nothing to attach (ORCH-0785-A opt-out).
     const response = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
