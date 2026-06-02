@@ -1212,7 +1212,24 @@ function checkNoNewBackendFiles() {
     // antimeridian/equidistant-tiebreak/corner-coords) + the index.ts NULL guard.
     "supabase/functions/check-launch-city/__tests__/check_launch_city_adversarial.test.ts",
   ];
+  // META-ORCH-1059 [experiences-business-parity] Sub-A — creation foundation.
+  // Adds the experience_stops table + events location/pricing-mode columns +
+  // the biz_create_experience RPC (one migration) and the mapbox-geocode edge
+  // fn (Mapbox Search Box proxy for the experience stops-builder address
+  // picker). Also lists the two source-level RPC regression tests + the
+  // modified agentTools.ts (AI create_experience now writes a draft shell).
+  // C7 is scoped to ORCH-0863 marketing; these are experience-parity backend
+  // touches. Per COMMS-0002 (allowlist lands in the SAME commit as the
+  // migration + edge fn).
+  const META_ORCH_1059_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260824000000_meta_orch_1059_sub_a_experience_stops.sql",
+    "supabase/functions/mapbox-geocode/index.ts",
+    "supabase/functions/__tests__/biz_create_experience.happy.test.ts",
+    "supabase/functions/__tests__/biz_create_experience.one_ticket_invariant.test.ts",
+    "supabase/functions/_shared/agentTools.ts",
+  ];
   const ALLOWLIST = [
+    ...META_ORCH_1059_BACKEND_ALLOWLIST,
     ...ORCH_1027_BACKEND_ALLOWLIST,
     ...ORCH_1024_BACKEND_ALLOWLIST,
     ...ORCH_1021_BACKEND_ALLOWLIST,

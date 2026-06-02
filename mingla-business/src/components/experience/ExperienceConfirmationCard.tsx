@@ -149,9 +149,11 @@ export const ExperienceConfirmationCard: React.FC<ExperienceConfirmationCardProp
             disabled={isExecuting}
             style={({ pressed }) => [styles.btn, styles.acceptBtn, pressed && styles.pressed]}
             accessibilityRole="button"
-            accessibilityLabel="Accept experience"
+            accessibilityLabel="Set up and publish experience"
           >
-            <Text style={styles.acceptText}>{isExecuting ? "Saving…" : "Accept"}</Text>
+            <Text style={styles.acceptText}>
+              {isExecuting ? "Saving…" : "Set up & publish"}
+            </Text>
           </Pressable>
         </View>
       </View>

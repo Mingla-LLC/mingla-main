@@ -3,11 +3,9 @@
  */
 
 import React, { useCallback, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 
 import {
-  accent,
-  radius,
   spacing,
   text as textTokens,
   typography,
@@ -20,7 +18,6 @@ export interface ExperienceReviewCardsProps {
   isExecuting: boolean;
   onAccept: (id: string, editedArgs?: Record<string, unknown>) => Promise<void>;
   onReject: (id: string) => Promise<void>;
-  onAcceptAll: () => Promise<void>;
 }
 
 export const ExperienceReviewCards: React.FC<ExperienceReviewCardsProps> = ({
@@ -28,7 +25,6 @@ export const ExperienceReviewCards: React.FC<ExperienceReviewCardsProps> = ({
   isExecuting,
   onAccept,
   onReject,
-  onAcceptAll,
 }) => {
   const [activeId, setActiveId] = useState<string | null>(null);
 
@@ -61,17 +57,12 @@ export const ExperienceReviewCards: React.FC<ExperienceReviewCardsProps> = ({
   return (
     <View style={styles.host}>
       <View style={styles.headerRow}>
-        <Text style={styles.heading}>Review suggested experiences</Text>
-        <Pressable
-          onPress={() => void onAcceptAll()}
-          disabled={isExecuting}
-          style={({ pressed }) => [styles.acceptAll, pressed && styles.pressed]}
-          accessibilityRole="button"
-          accessibilityLabel="Accept all suggested experiences"
-        >
-          <Text style={styles.acceptAllText}>Accept all</Text>
-        </Pressable>
+        <Text style={styles.heading}>Suggested experiences</Text>
       </View>
+      <Text style={styles.helper}>
+        AI drafted these from your menu or activities. Add a date and price to publish each
+        one.
+      </Text>
       {pending.map((row) => (
         <ExperienceConfirmationCard
           key={row.id}
@@ -99,16 +90,10 @@ const styles = StyleSheet.create({
     color: textTokens.primary,
     flex: 1,
   },
-  acceptAll: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: radius.xl,
-    backgroundColor: accent.warm,
-  },
-  acceptAllText: {
+  helper: {
     fontSize: typography.caption.fontSize,
-    fontWeight: "600",
-    color: textTokens.inverse,
+    lineHeight: typography.caption.lineHeight,
+    color: textTokens.tertiary,
+    marginBottom: spacing.md,
   },
-  pressed: { opacity: 0.85 },
 });

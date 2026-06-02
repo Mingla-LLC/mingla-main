@@ -122,3 +122,11 @@ verify_jwt = true
 # paired friend's last-known GPS server-side and never returns coordinates.
 [functions.get-paired-profile-cards]
 verify_jwt = true
+
+# META-ORCH-1059 Sub-A — Mapbox Search Box proxy for the experience stops
+# builder's address picker. Keeps MAPBOX_ACCESS_TOKEN server-side. Auth-gated:
+# the experience creation wizard is always authenticated; anonymous geocode
+# traffic is not a legitimate use. Coexists with places-autocomplete (Google)
+# which events keep using.
+[functions.mapbox-geocode]
+verify_jwt = true

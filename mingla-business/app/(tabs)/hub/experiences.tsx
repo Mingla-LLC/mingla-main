@@ -166,17 +166,10 @@ function ExperienceGenerationSurface({
     [copy.emptyParseToast, copy.parseErrorFallback, parseFiles],
   );
 
-  const handleAcceptAll = useCallback(async () => {
-    for (const row of pending) {
-      const response = await confirm({ id: row.id });
-      if (response.kind === "error") {
-        setToast(response.message);
-        return;
-      }
-    }
-    setPhase("idle");
-    setToast("Experiences published to your venue.");
-  }, [confirm, pending]);
+  // META-ORCH-1059 Sub-A (Layer 6): "Accept all" removed — AI proposals are
+  // now DRAFT shells the brand finishes (stops + date + price) before publish;
+  // bulk-publishing dated/stopped experiences is impossible. Each proposal is
+  // set up individually via "Set up & publish".
 
   return (
     <>
@@ -215,7 +208,11 @@ function ExperienceGenerationSurface({
                 setToast(response.message);
                 return;
               }
+              // META-ORCH-1059 Sub-A: the AI tool created a DRAFT shell (no
+              // stops/date/ticket). The brand finishes it from the experiences
+              // list (Sub-B wires the tap-to-edit). Surface the draft + nudge.
               if (pending.length <= 1) setPhase("idle");
+              setToast("Draft created — add stops, a date and price to publish it.");
             }}
             onReject={async (id) => {
               const response = await reject(id);
@@ -223,7 +220,6 @@ function ExperienceGenerationSurface({
                 setToast(response.message);
               }
             }}
-            onAcceptAll={handleAcceptAll}
           />
         )}
 
