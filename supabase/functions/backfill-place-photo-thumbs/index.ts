@@ -7,14 +7,14 @@ const DEFAULT_BATCH_SIZE = 25;
 const MAX_BATCH_SIZE = 100;
 const THUMB_SIZE = 384;
 const THUMB_JPEG_QUALITY = 80;
-// ORCH-1033: serial INTER_*_DELAY sleeps removed — the PARALLEL_N semaphore +
+// ORCH-1043: serial INTER_*_DELAY sleeps removed — the PARALLEL_N semaphore +
 // the server-driven budget loop replace the browser-paced throttle. A tiny
 // inter-photo yield is unnecessary at PARALLEL_N=6 (storage upload rate is far
 // below the limit at this concurrency).
 const RUN_CITY = 'ORCH-0957 place-photo thumbs';
 const RUN_COUNTRY = 'GLOBAL';
 
-// ORCH-1033 (Finding B, I-THUMB-DECODE-PARALLEL-N-BOUNDED) — bounded parallel decode.
+// ORCH-1043 (Finding B, I-THUMB-DECODE-PARALLEL-N-BOUNDED) — bounded parallel decode.
 //
 // MEMORY MATH (keep in sync if tuning):
 //   imagescript decode() materializes a W×H×4-byte RGBA bitmap BEFORE resize.
@@ -30,7 +30,7 @@ const RUN_COUNTRY = 'GLOBAL';
 // TUNABLE 4–9 — keep this math comment accurate if you change the value.
 export const PARALLEL_N = 6;
 
-// ORCH-1033 (A) — server-driven budget loop, mirrors run-place-intelligence-trial.
+// ORCH-1043 (A) — server-driven budget loop, mirrors run-place-intelligence-trial.
 const BUDGET_MS = 110_000; // 110s; ~40s headroom under the 150s edge fn timeout
 const SAFETY_MAX_ITERATIONS = 20; // belt+suspenders against a runaway loop
 // Heartbeat staleness (the cron re-kicks a 'running' run whose heartbeat is
@@ -130,7 +130,7 @@ async function encodeThumb(bytes: Uint8Array): Promise<Uint8Array> {
 
 /**
  * A unit of work: shrink ONE photo into its `_thumb.jpg`.
- * ORCH-1033 (B): these are flattened across a batch and run through a
+ * ORCH-1043 (B): these are flattened across a batch and run through a
  * size-PARALLEL_N semaphore so in-flight decodes stay bounded.
  */
 interface PhotoJob {
@@ -171,7 +171,7 @@ async function runPhotoJob(db: SupabaseAdmin, job: PhotoJob): Promise<PhotoOutco
 
 /**
  * Run an array of async tasks at most `limit` at a time (semaphore).
- * ORCH-1033 (B): caps in-flight photo decodes at PARALLEL_N.
+ * ORCH-1043 (B): caps in-flight photo decodes at PARALLEL_N.
  */
 async function runWithConcurrency<T>(tasks: Array<() => Promise<T>>, limit: number): Promise<T[]> {
   const results: T[] = new Array(tasks.length);
@@ -214,7 +214,7 @@ function buildPhotoJobs(db: SupabaseAdmin, place: PendingPlaceRow): { jobs: Phot
 
 /**
  * Shrink all photos for ONE place. Preserved for unit tests + the manual
- * single-step path. ORCH-1033: photos run through the PARALLEL_N semaphore;
+ * single-step path. ORCH-1043: photos run through the PARALLEL_N semaphore;
  * `thumbs_backfilled_at` is set ONLY when ALL photo-jobs for the place succeed
  * (all-or-nothing semantics preserved).
  */
@@ -266,7 +266,7 @@ export async function processPlaceThumbs(
 }
 
 /**
- * ORCH-1033 (C): resolve an optional city NAME → city_id via seeding_cities.
+ * ORCH-1043 (C): resolve an optional city NAME → city_id via seeding_cities.
  * Returns { cityId } on match, or { error } on an unknown name.
  */
 export async function resolveCityId(db: SupabaseAdmin, cityName: string): Promise<{ cityId?: string; error?: string }> {
@@ -282,7 +282,7 @@ export async function resolveCityId(db: SupabaseAdmin, cityName: string): Promis
 }
 
 /**
- * ORCH-1033 (C): scope = is_servable=true + has-photos + no-thumb (+ optional city_id).
+ * ORCH-1043 (C): scope = is_servable=true + has-photos + no-thumb (+ optional city_id).
  * stored_photo_urls is text[] → use the existing array-length post-filter (NOT jsonb).
  */
 export async function loadPendingPlaces(
@@ -345,7 +345,7 @@ async function handlePreviewRun(db: SupabaseAdmin, body: Record<string, unknown>
 
 async function createRunRecord(
   db: SupabaseAdmin,
-  opts: { batchSize: number; cityId?: string; triggeredBy: string; cityLabel?: string },
+  opts: { batchSize: number; cityId?: string; triggeredBy: string | null; cityLabel?: string },
 ): Promise<{ runId?: string; status: string; totalPlaces: number; totalBatches: number; error?: string }> {
   const eligiblePlaces = await loadPendingPlaces(db, { cityId: opts.cityId });
   if (eligiblePlaces.length === 0) {
@@ -400,7 +400,7 @@ async function createRunRecord(
 }
 
 /**
- * ORCH-1033 (A): fire a server-side process_chunk for `runId` via
+ * ORCH-1043 (A): fire a server-side process_chunk for `runId` via
  * EdgeRuntime.waitUntil (fire-and-forget; cron recovers on failure).
  */
 function kickProcessChunk(runId: string): void {
@@ -462,7 +462,7 @@ async function handleCreateRun(
   if (created.status === 'nothing_to_do') return json({ status: 'nothing_to_do', totalPlaces: 0 });
   if (created.status === 'error' || !created.runId) return json({ error: created.error ?? 'Failed to create run' }, 500);
 
-  // ORCH-1033 (A): server-kick immediately so the run starts without waiting
+  // ORCH-1043 (A): server-kick immediately so the run starts without waiting
   // for the next cron tick. The admin tab only POLLS run_status for display.
   kickProcessChunk(created.runId);
 
@@ -478,7 +478,7 @@ async function handleCreateRun(
 /**
  * Claim + process exactly one pending batch (the unit of progress). Returns the
  * batch result + whether any pending batch remained to claim.
- * ORCH-1033 (A): concurrency-safe claim — conditional UPDATE on status='pending'
+ * ORCH-1043 (A): concurrency-safe claim — conditional UPDATE on status='pending'
  * + affected-rows check so two workers never double-process a batch.
  */
 async function claimAndProcessNextBatch(
@@ -566,7 +566,7 @@ async function processBatch(
 
   // Load every place in the batch (still no-thumb), then flatten ALL their
   // photos into one job list and drain it through the PARALLEL_N semaphore.
-  // This parallelizes at the PHOTO level across the whole batch (ORCH-1033 B).
+  // This parallelizes at the PHOTO level across the whole batch (ORCH-1043 B).
   const places: PendingPlaceRow[] = [];
   for (const placeId of placeIds) {
     const { data: place, error } = await db
@@ -651,7 +651,7 @@ async function processBatch(
 }
 
 /**
- * ORCH-1033 (A): server-driven worker. Budget loop processes pending batches
+ * ORCH-1043 (A): server-driven worker. Budget loop processes pending batches
  * until the time budget is exhausted, then self-invokes if work remains and the
  * run is still 'running'. Service-role-only.
  */
@@ -764,12 +764,14 @@ export async function handleProcessChunk(db: SupabaseAdmin, body: Record<string,
   });
 }
 
-// Sentinel triggered_by for cron-created auto runs (triggered_by is NOT NULL).
-// All-zero uuid documents "system/cron" provenance.
-const AUTO_RUN_TRIGGERED_BY = '00000000-0000-0000-0000-000000000000';
+// triggered_by for cron-created auto runs. A cron tick has no human initiator and
+// the all-zero uuid is NOT a real auth.users row (it violated the
+// photo_backfill_runs_triggered_by_fkey FK → 500). Cron runs record NULL provenance;
+// migration 20260816000000 drops the NOT NULL so NULL is accepted (FK ignores NULL).
+const AUTO_RUN_TRIGGERED_BY: string | null = null;
 
 /**
- * ORCH-1033 (D): service-role action the cron calls to (a) ensure a single
+ * ORCH-1043 (D): service-role action the cron calls to (a) ensure a single
  * global servable thumbs run exists when there is a backlog, and (b) kick it.
  * Idempotent: no-op if an active run already exists.
  */
@@ -799,7 +801,7 @@ async function handleEnsureAutoRun(db: SupabaseAdmin): Promise<Response> {
 
 /**
  * RETAINED manual single-step (admin "Run one batch" debug affordance).
- * ORCH-1033: no longer the run engine — the admin tab does NOT loop this.
+ * ORCH-1043: no longer the run engine — the admin tab does NOT loop this.
  */
 async function handleRunNextBatch(db: SupabaseAdmin, body: Record<string, unknown>): Promise<Response> {
   const runId = body.runId as string;
@@ -881,7 +883,7 @@ async function updateRunStatus(
   if (status === 'running') patch.last_heartbeat_at = new Date().toISOString();
   const { error } = await db.from('photo_backfill_runs').update(patch).eq('id', runId);
   if (error) return json({ error: error.message }, 500);
-  // ORCH-1033: resume re-kicks the server-driven chain.
+  // ORCH-1043: resume re-kicks the server-driven chain.
   if (status === 'running') kickProcessChunk(runId);
   return json({ runId, status });
 }
@@ -932,7 +934,7 @@ export async function handler(req: Request): Promise<Response> {
       return json({ error: "Missing 'action'. Use action='preview_run', 'create_run', 'run_next_batch', etc." }, 400);
     }
 
-    // ORCH-1033 (A): process_chunk + ensure_auto_run are service-role-only
+    // ORCH-1043 (A): process_chunk + ensure_auto_run are service-role-only
     // (called by pg_cron via pg_net and by the create_run/resume self-invoke).
     // Skip the user-auth gate; require a service-role bearer match instead.
     if (body.action === 'process_chunk' || body.action === 'ensure_auto_run') {
