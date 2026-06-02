@@ -129,7 +129,7 @@ export default function HomeTab(): React.ReactElement {
   // instead of the brand-owner KPI dashboard. Hook MUST be called every
   // render (rules-of-hooks); the early-return branches on the resolved
   // value below, after all sibling hooks have run.
-  const { rank: callerRank } = useCurrentBrandRole(currentBrandId);
+  const { rank: callerRank } = useCurrentBrandRole(currentBrand?.id ?? null);
   const brandRecovery = useCurrentBrandRecovery();
   const upcoming = useUpcomingForBrand(currentBrand?.id ?? null);
   const [sheetVisible, setSheetVisible] = useState<boolean>(false);
