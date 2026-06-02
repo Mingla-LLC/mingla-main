@@ -198,3 +198,30 @@ export async function refreshPartnerAccountSession(
   }
   return data;
 }
+
+export interface PartnerDetachResult {
+  ok: boolean;
+  status: "detached" | "not_connected";
+  stripe_delete_error?: string | null;
+}
+
+/**
+ * Soft-detaches the caller's partner Stripe Connect account. Calls the
+ * partner-stripe-detach edge fn which marks
+ * partner_stripe_connect_accounts.detached_at = NOW() and attempts to
+ * delete the Stripe account itself. After this resolves, the partner
+ * status flips back to "not_connected" and the picker is editable again.
+ */
+export async function detachPartnerStripe(): Promise<PartnerDetachResult> {
+  const { data, error } = await supabase.functions.invoke<PartnerDetachResult>(
+    "partner-stripe-detach",
+    { body: {} },
+  );
+  if (error) {
+    throw new Error(error.message ?? "partner_stripe_detach_failed");
+  }
+  if (!data || !isRecord(data)) {
+    throw new Error("partner_stripe_detach_invalid_response");
+  }
+  return data;
+}
