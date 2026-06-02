@@ -1,5 +1,7 @@
 # Open Investigations
 
+> **2026-06-02 — META-ORCH-1048 [Mingla Partner Program] FULLY SHIPPED, all 6 sub-ORCHs closed. ORCH-1055 [scanner-only app shell] CLOSED PASS — PR #323.** No open investigation remains across the entire partner program. Awaiting operator end-to-end smoke + Stripe Connect webhook subscription for charge.succeeded.
+
 > **2026-06-02 — ORCH-1054 [Partner splits + Stripe Transfer pipeline] CLOSED PASS — PR #322.** Next dispatch: ORCH-1055 [scanner-only app shell sanity check — investigate whether rank-10 scanner sees stripped-down nav or design one].
 
 > **2026-06-02 — ORCH-1052 [Partner identity + account-level Stripe + currency-match gate] CLOSED PASS — squash 6ea9b3557, PR #321.** No open investigation remains. Next dispatch: ORCH-1054 SPEC + IMPLEMENT (partner splits ledger + Stripe Transfer pipeline — pays partners their 0.15% of GMV per ticket sale in source currency, zero FX, including webhook handlers for account.updated, charge.succeeded, charge.refunded, charge.dispute.*).
