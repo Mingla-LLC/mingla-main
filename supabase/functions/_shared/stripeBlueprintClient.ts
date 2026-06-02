@@ -107,13 +107,59 @@ function safeStripeErrorMessage(payload: unknown, fallback: string): string {
   return fallback;
 }
 
+/**
+ * Serialize an arbitrarily-nested body into Stripe v1's bracketed
+ * application/x-www-form-urlencoded format.
+ *
+ *   { components: { account_onboarding: { enabled: true } } }
+ *     → components[account_onboarding][enabled]=true
+ *
+ * Used for /v1/* paths (Stripe rejects JSON there). /v2/* paths still send
+ * JSON via the JSON.stringify branch below.
+ *
+ * ORCH-1052 hotfix: prior helper unconditionally JSON-encoded all bodies,
+ * which works for /v2/core/* but blows up at /v1/account_sessions with
+ * "Invalid request (check that your POST content type is application/x-www-
+ * form-urlencoded)". Affects every consumer that mints AccountSessions
+ * (partner-stripe-onboard, partner-stripe-account-session, brand-stripe-
+ * onboard, brand-stripe-account-session).
+ */
+function toStripeFormUrlEncoded(input: unknown, prefix = ""): string {
+  if (input === null || input === undefined) return "";
+  const pairs: string[] = [];
+  const walk = (value: unknown, key: string): void => {
+    if (value === null || value === undefined) return;
+    if (Array.isArray(value)) {
+      value.forEach((v, i) => walk(v, `${key}[${i}]`));
+      return;
+    }
+    if (typeof value === "object") {
+      for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+        walk(v, key ? `${key}[${k}]` : k);
+      }
+      return;
+    }
+    pairs.push(
+      `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`,
+    );
+  };
+  walk(input, prefix);
+  return pairs.join("&");
+}
+
 export async function stripeBlueprintRequest<T>(
   options: StripeBlueprintRequestOptions,
 ): Promise<T> {
   const key = resolveStripeKey(options.envVarNames);
+  // ORCH-1052 hotfix — Stripe v1 endpoints require form-urlencoded; v2
+  // accept (and prefer) JSON. Branch on path prefix instead of hard-coding
+  // JSON for every blueprint call.
+  const isV1Path = options.path.startsWith("/v1/");
   const headers = new Headers({
     Authorization: `Bearer ${key}`,
-    "Content-Type": "application/json",
+    "Content-Type": isV1Path
+      ? "application/x-www-form-urlencoded"
+      : "application/json",
   });
   headers.set(
     "Stripe-Version",
@@ -123,10 +169,14 @@ export async function stripeBlueprintRequest<T>(
     headers.set("Idempotency-Key", options.idempotencyKey);
   }
 
+  const requestBody = isV1Path
+    ? toStripeFormUrlEncoded(options.body)
+    : JSON.stringify(options.body);
+
   const response = await fetch(`https://api.stripe.com${options.path}`, {
     method: options.method,
     headers,
-    body: JSON.stringify(options.body),
+    body: requestBody,
   });
 
   let payload: unknown = null;
