@@ -120,7 +120,7 @@ export async function handler(req: Request): Promise<Response> {
     const { data: account, error: accountErr } = await service
       .from("creator_accounts")
       .select("id")
-      .eq("user_id", userId)
+      .eq("id", userId)
       .maybeSingle();
     if (accountErr) {
       console.error(
