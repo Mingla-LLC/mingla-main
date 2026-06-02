@@ -1,5 +1,7 @@
 # Open Investigations
 
+> **2026-06-02 — ORCH-1050 [Brand-team invite + accept + ownership transfer] CLOSED PASS — squash 1164476e2, PR #318.** No open investigation remains. Next dispatch: ORCH-1051 SPEC + IMPLEMENT (scanner invite + brand-scoped scanner).
+
 > **2026-06-02 — ORCH-1047 [`account_owner` → `brand_owner` role rename] CLOSED PASS — squash 401d5eb9f, PR #314, migration applied, worktree reaped.** No open investigation/rework remains. Evidence: WORLD_MAP CLOSE banner, regression scripts at `app-mobile/scripts/ci/orch-1047-rename-{regression,adversarial}-check.mjs`, migration at `supabase/migrations/20260819000000_orch_1047_account_owner_to_brand_owner_rename.sql`. Next dispatch: ORCH-1050 SPEC + IMPLEMENT (in flight via worktree spawn 2026-06-02).
 
 > **2026-06-02 — META-ORCH-1048 [Mingla Partner Program] REGISTERED → SUB ORCH-1047 SPEC DISPATCHED.** S2-medium. **Affected Surfaces:** Business iOS + Android + Web preview + Admin Web + Backend. 6 sub-ORCHs registered (skip sister-held 1049 + 1053): ORCH-1047 [rename], ORCH-1050 [brand-team invite+accept+ownership transfer], ORCH-1051 [scanner invite+accept+brand-scoped scanner], ORCH-1052 [partner Stripe + currency-match gate], ORCH-1054 [partner splits + Transfer pipeline], ORCH-1055 [scanner shell check]. ORCH-1047 SPEC dispatched now to Claude `mingla-forensics`; ORCH-1050 + 1051 SPEC queued behind 1047; ORCH-1052 + 1054 GATED on ORCH-1050 close (ORCH-1034 gate REMOVED — already closed); ORCH-1055 INVESTIGATE queued behind 1051. Full banner in WORLD_MAP.
