@@ -309,6 +309,68 @@ Deno.test("T-03b process_chunk self-invokes (EdgeRuntime.waitUntil) when pending
   }
 });
 
+// ORCH-1044 hotfix regression — a LOST CLAIM RACE must NOT complete the run.
+// Scenario: SELECT finds a pending batch, but the conditional claim UPDATE returns
+// [] (another concurrent worker grabbed it), while a real COUNT shows pending>0.
+// Before the fix, claimed:false → run flipped to 'completed' with batches pending.
+// After the fix: run stays 'running', exitReason='claim_race_lost', no self-invoke.
+function makeClaimRaceLostDb(pendingCount: number) {
+  const run = {
+    id: "run-1", status: "running", started_at: "2026-01-01T00:00:00Z",
+    completed_batches: 0, failed_batches: 0, skipped_batches: 0,
+    total_succeeded: 0, total_failed: 0, total_skipped: 0, total_batches: pendingCount,
+    last_heartbeat_at: null as string | null, completed_at: null as string | null,
+  };
+  const db = {
+    storage: { from() { return { getPublicUrl: (p: string) => ({ data: { publicUrl: `https://x/${p}` } }), upload: () => Promise.resolve({ error: null }) }; } },
+    from(table: string) {
+      if (table === "photo_backfill_runs") {
+        const b: Record<string, unknown> = {};
+        b.select = () => b; b.eq = () => b;
+        b.update = (p: Record<string, unknown>) => { Object.assign(run, p); return b; };
+        b.single = () => Promise.resolve({ data: { ...run }, error: null });
+        b.maybeSingle = () => Promise.resolve({ data: { ...run }, error: null });
+        return b;
+      }
+      // photo_backfill_batches
+      const b: Record<string, unknown> = {};
+      let updateMode = false;
+      let countMode = false;
+      b.select = (_c?: unknown, opts?: { head?: boolean }) => { if (opts?.head) countMode = true; return b; };
+      b.order = () => b; b.limit = () => b; b.eq = () => b;
+      b.update = () => { updateMode = true; return b; };
+      // The initial claim SELECT (order+limit+maybeSingle) finds a pending batch.
+      b.maybeSingle = () => Promise.resolve({ data: { id: "batch-x", batch_index: 0, place_pool_ids: [], status: "pending" }, error: null });
+      b.then = (onF: (v: { data: unknown; error: null; count?: number }) => unknown) => {
+        if (countMode) return Promise.resolve({ data: null, error: null, count: pendingCount }).then(onF);
+        if (updateMode) return Promise.resolve({ data: [], error: null }).then(onF); // claim LOST
+        return Promise.resolve({ data: [], error: null }).then(onF);
+      };
+      return b;
+    },
+  };
+  return { db, getRun: () => run };
+}
+
+Deno.test("T-08 (hotfix) lost claim race does NOT complete the run while batches remain", async () => {
+  const { db, getRun } = makeClaimRaceLostDb(5);
+  const priorFetch = globalThis.fetch;
+  const fetched: string[] = [];
+  globalThis.fetch = (input: URL | RequestInfo) => { fetched.push(String(input)); return Promise.resolve(new Response("{}", { status: 200 })); };
+  try {
+    Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", "svc-test");
+    const res = await handleProcessChunk(db as unknown as Record<string, never>, { runId: "run-1" });
+    const out = await res.json();
+    assertEquals(out.exitReason, "claim_race_lost");
+    assertEquals(getRun().status, "running"); // NOT 'completed'
+    assertEquals(getRun().completed_at, null);
+    assert(!fetched.some((u) => u.includes("/functions/v1/backfill-place-photo-thumbs")), "loser does NOT self-invoke (winner carries the chain)");
+  } finally {
+    globalThis.fetch = priorFetch;
+    Deno.env.delete("SUPABASE_SERVICE_ROLE_KEY");
+  }
+});
+
 // ─── ORCH-1044 [Thumb gen must fit the edge CPU budget + reliably drain] ──────
 
 import { processBatch } from "./index.ts";

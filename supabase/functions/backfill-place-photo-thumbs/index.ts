@@ -791,13 +791,30 @@ export async function handleProcessChunk(db: SupabaseAdmin, body: Record<string,
   } else {
     const step = await claimAndProcessNextBatch(db, runId);
     if (!step.claimed) {
-      // No pending batch left to claim → run is complete.
-      await db
-        .from('photo_backfill_runs')
-        .update({ status: 'completed', completed_at: new Date().toISOString() })
-        .eq('id', runId);
+      // ORCH-1044 hotfix: a failed claim does NOT prove the run is done. With the
+      // self-invoke chain + the pg_cron ensure_auto_run/re-kick all firing, several
+      // workers can target the same lowest-index pending batch; the losers' claim
+      // returns claimed:false. Treating that as "complete" wrongly flipped runs to
+      // 'completed' with thousands of batches still pending. Only complete when a
+      // real COUNT proves zero pending batches remain; on a lost race (pending > 0)
+      // exit WITHOUT completing and WITHOUT self-invoking — the worker that won the
+      // claim carries the chain, and the cron backstops.
+      const { count: pendingLeft } = await db
+        .from('photo_backfill_batches')
+        .select('id', { count: 'exact', head: true })
+        .eq('run_id', runId)
+        .eq('status', 'pending');
+      if ((pendingLeft ?? 0) === 0) {
+        await db
+          .from('photo_backfill_runs')
+          .update({ status: 'completed', completed_at: new Date().toISOString() })
+          .eq('id', runId);
+        exitReason = 'completed';
+      } else {
+        // Lost a claim race; work remains and another worker is progressing.
+        exitReason = 'claim_race_lost';
+      }
       done = true;
-      exitReason = 'completed';
     } else {
       batchesProcessed++;
       if (step.result) {
