@@ -1276,6 +1276,15 @@ function checkNoNewBackendFiles() {
     "supabase/functions/accept-brand-invitation/__tests__/orch-1050-accept-happy.test.ts",
     "supabase/functions/accept-brand-invitation/__tests__/orch-1050-accept-adversarial.test.ts",
   ];
+  // ORCH-1056 [Lead welcome email]: modifies the beta-access edge fn (already
+  // allowlisted above) to also send the lead a welcome email (web-app link +
+  // Ari spotlight + mobile-in-the-works). Adds two new test files. C7 flags new
+  // backend files; per COMMS-0002 they land in the same commit as the edge-fn
+  // change. No marketing scope.
+  const ORCH_1056_BACKEND_ALLOWLIST = [
+    "supabase/functions/beta-access-lead-submit/__tests__/welcome_email.test.ts",
+    "supabase/functions/beta-access-lead-submit/__tests__/welcome_email_adversarial.tester.test.ts",
+  ];
   // ORCH-1030 [Consumer app notification deep-linking]. C7 is scoped to
   // ORCH-0863 marketing; ORCH-1030's backend touches correct the notification
   // producers' deep links so they actually reach the device: birthday/holiday
@@ -1345,9 +1354,25 @@ function checkNoNewBackendFiles() {
     // ORCH-1043 hotfix: cron auto-run triggered_by NULL (FK-violation fix).
     "supabase/migrations/20260816000000_orch_1043_auto_run_triggered_by_nullable.sql",
   ];
+  // ORCH-1044 [Thumbnail generation must fit the edge compute budget + reliably
+  // drain]: adds ONE new migration that extends tg_kick_pending_thumb_backfill()
+  // with a 'running'→'pending' orphaned-batch reclaim, plus the implementor +
+  // tester regression tests. The edge fn backfill-place-photo-thumbs/index.ts +
+  // its index.test.ts are MODIFIES already allowlisted under ORCH_0957 above —
+  // only the NEW files need listing here. C7 is scoped to ORCH-0863 marketing;
+  // these are place-photo-pipeline backend touches. Per COMMS-0002.
+  const ORCH_1044_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260818000000_orch_1044_thumb_orphaned_batch_reclaim.sql",
+    "supabase/migrations/__tests__/orch_1044_thumb_orphaned_batch_reclaim.test.ts",
+    // Tester-authored adversarial regression suite (mid-place guard trip + clean
+    // resume with no double-upload + exact-boundary guard). Per COMMS-0002.
+    "supabase/functions/backfill-place-photo-thumbs/index.adversarial.test.ts",
+  ];
   const ALLOWLIST = [
     ...ORCH_1050_BACKEND_ALLOWLIST,
+    ...ORCH_1044_BACKEND_ALLOWLIST,
     ...ORCH_1045_BACKEND_ALLOWLIST,
+    ...ORCH_1056_BACKEND_ALLOWLIST,
     ...ORCH_1034_BACKEND_ALLOWLIST,
     ...ORCH_1043_BACKEND_ALLOWLIST,
     ...ORCH_1032_BACKEND_ALLOWLIST,

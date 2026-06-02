@@ -200,8 +200,78 @@ export function buildNotifyEmail(
   };
 }
 
+// ORCH-1056 — lead-facing welcome email. Pure → testable. Static marketing copy
+// only (no user-controlled field is interpolated into the HTML/text → no
+// injection surface, Constitution #9 — no fabricated data). Confirms the lead is
+// on the beta list, points them at the LIVE web app (business.usemingla.com),
+// flags the mobile app as in-the-works, and previews capabilities incl. Ari.
+export function buildWelcomeEmail(
+  lead: ValidatedLead,
+  from: string,
+): { from: string; to: string[]; subject: string; html: string; text: string } {
+  const BUSINESS_URL = "https://business.usemingla.com";
+
+  const html =
+    `<div style="font-family:system-ui,-apple-system,sans-serif;font-size:15px;line-height:1.55;color:#0e0e10;max-width:560px;">
+  <h1 style="margin:0 0 12px;font-size:22px;">You're on the list.</h1>
+  <p style="margin:0 0 16px;">Thanks for joining the Mingla Business beta. Your place deserves to be found — and you don't have to wait.</p>
+  <p style="margin:0 0 8px;font-weight:600;">Start now, on the web:</p>
+  <p style="margin:0 0 16px;"><a href="${BUSINESS_URL}" style="display:inline-block;background:#eb7825;color:#ffffff;text-decoration:none;font-weight:700;padding:12px 22px;border-radius:14px;">Open Mingla Business →</a></p>
+  <p style="margin:0 0 20px;color:#6b7280;font-size:13px;">That link (business.usemingla.com) is our web app. The mobile app is in the works — we'll email you the moment it lands.</p>
+  <h2 style="margin:0 0 8px;font-size:16px;">What you can do today</h2>
+  <ul style="margin:0 0 20px;padding-left:20px;">
+    <li>Create and publish events, trips, and experiences</li>
+    <li>Sell tickets and take bookings — one all-in price up front, paid out to you, no checkout surprises for your guests</li>
+    <li>Get discovered by people nearby looking for exactly your vibe</li>
+    <li>Build your audience and send email campaigns</li>
+    <li>Open a waitlist, set your hours and schedule, manage it all in one place</li>
+  </ul>
+  <h2 style="margin:0 0 8px;font-size:16px;">Coming very soon</h2>
+  <ul style="margin:0 0 20px;padding-left:20px;">
+    <li><strong>Ari — your AI co-pilot.</strong> We're building it right now. Very soon you'll run the whole business just by asking Ari: "create tonight's event," "launch a campaign," "who's coming Friday?" — done.</li>
+    <li>The mobile app</li>
+    <li>More ways to reach your people (SMS, and more)</li>
+  </ul>
+  <p style="margin:0;">We'll keep you posted as your spot opens.<br/>— The Mingla team</p>
+</div>`;
+
+  const text = [
+    "You're on the list.",
+    "",
+    "Thanks for joining the Mingla Business beta. Your place deserves to be found — and you don't have to wait.",
+    "",
+    `Start now, on the web: ${BUSINESS_URL}`,
+    "That link is our web app. The mobile app is in the works — we'll email you the moment it lands.",
+    "",
+    "What you can do today",
+    "- Create and publish events, trips, and experiences",
+    "- Sell tickets and take bookings — one all-in price up front, paid out to you, no checkout surprises for your guests",
+    "- Get discovered by people nearby looking for exactly your vibe",
+    "- Build your audience and send email campaigns",
+    "- Open a waitlist, set your hours and schedule, manage it all in one place",
+    "",
+    "Coming very soon",
+    "- Ari, your AI co-pilot. We're building it right now. Very soon you'll run the whole business just by asking Ari: create tonight's event, launch a campaign, who's coming Friday — done.",
+    "- The mobile app",
+    "- More ways to reach your people (SMS, and more)",
+    "",
+    "We'll keep you posted as your spot opens.",
+    "— The Mingla team",
+  ].join("\n");
+
+  return {
+    from,
+    to: [lead.email],
+    subject: "You're on the list — start with Mingla Business on the web",
+    html,
+    text,
+  };
+}
+
 // Best-effort Resend send. Returns ok/err; the CALLER decides it is non-fatal.
-async function sendNotify(
+// Generalized (ORCH-1056) to send any built email payload — the single Resend
+// fetch site keeps the ORCH-0785-A no-attachment opt-out below authoritative.
+async function sendEmail(
   apiKey: string,
   payload: ReturnType<typeof buildNotifyEmail>,
 ): Promise<{ ok: boolean; error?: string }> {
@@ -325,17 +395,28 @@ export async function handler(req: Request): Promise<Response> {
       Deno.env.get("RESEND_MARKETING_FROM") ??
       "Mingla Beta <beta@usemingla.com>";
     if (resendKey) {
-      const payload = buildNotifyEmail(lead, from, new Date().toISOString());
-      const sent = await sendNotify(resendKey, payload);
-      if (!sent.ok) {
+      // (1) Internal notify → Mingla inbox.
+      const notify = await sendEmail(
+        resendKey,
+        buildNotifyEmail(lead, from, new Date().toISOString()),
+      );
+      if (!notify.ok) {
         console.error(
           "[beta-access-lead-submit] notify email failed (non-fatal):",
-          sent.error,
+          notify.error,
+        );
+      }
+      // (2) ORCH-1056 — lead-facing welcome email (NEW lead only; non-fatal).
+      const welcome = await sendEmail(resendKey, buildWelcomeEmail(lead, from));
+      if (!welcome.ok) {
+        console.error(
+          "[beta-access-lead-submit] welcome email failed (non-fatal):",
+          welcome.error,
         );
       }
     } else {
       console.error(
-        "[beta-access-lead-submit] RESEND_API_KEY missing — skipped notify (non-fatal)",
+        "[beta-access-lead-submit] RESEND_API_KEY missing — skipped notify + welcome (non-fatal)",
       );
     }
 
