@@ -11,7 +11,7 @@
 // and asserts:
 //   1. composeCollage places the photo from the ORIGINAL full-size object.
 //   2. it does NOT throw.
-//   3. it NEVER fetches the metered /storage/v1/render/image/ endpoint.
+//   3. it NEVER fetches the metered Supabase render-image endpoint.
 //
 // Fails-on-revert: with the old `res.status === 404` guard, the 400 response
 // short-circuits to `return null` (no fallback) → placedCount 0 → throw. So
