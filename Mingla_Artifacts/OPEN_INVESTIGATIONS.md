@@ -1,5 +1,19 @@
 # Open Investigations
 
+> **2026-06-02 — META-ORCH-1048 [Mingla Partner Program] REGISTERED → SUB ORCH-1047 SPEC DISPATCHED.** S2-medium. **Affected Surfaces:** Business iOS + Android + Web preview + Admin Web + Backend. 6 sub-ORCHs registered (skip sister-held 1049 + 1053): ORCH-1047 [rename], ORCH-1050 [brand-team invite+accept+ownership transfer], ORCH-1051 [scanner invite+accept+brand-scoped scanner], ORCH-1052 [partner Stripe + currency-match gate], ORCH-1054 [partner splits + Transfer pipeline], ORCH-1055 [scanner shell check]. ORCH-1047 SPEC dispatched now to Claude `mingla-forensics`; ORCH-1050 + 1051 SPEC queued behind 1047; ORCH-1052 + 1054 GATED on ORCH-1050 close (ORCH-1034 gate REMOVED — already closed); ORCH-1055 INVESTIGATE queued behind 1051. Full banner in WORLD_MAP.
+
+> **2026-06-02 — ORCH-1047 [`account_owner` → `brand_owner` role rename] REGISTERED → SPEC DISPATCHED to Claude `mingla-forensics`.** Mechanical sweep — no behavior change. Worktree: `~/Desktop/mingla-orchs/ORCH-1047-[brand-owner-role-rename]/`. SPEC prompt staged at `Mingla_Artifacts/prompts/SPEC_ORCH-1047_BRAND_OWNER_ROLE_RENAME.md` (within worktree). Expected output: `Mingla_Artifacts/specs/SPEC_ORCH-1047_BRAND_OWNER_ROLE_RENAME.md`. Full banner in WORLD_MAP.
+
+> **2026-06-02 — ORCH-1050 [Brand-team invite + accept + ownership transfer] REGISTERED → SPEC QUEUED.** Depends on ORCH-1047. SPEC dispatches to Claude `mingla-forensics` after ORCH-1047 close. No worktree yet. Full banner in WORLD_MAP.
+
+> **2026-06-02 — ORCH-1051 [Scanner invite + accept + brand-scoped scanner] REGISTERED → SPEC QUEUED.** Depends on ORCH-1050. SPEC dispatches after ORCH-1050 close. No worktree yet. Full banner in WORLD_MAP.
+
+> **2026-06-02 — ORCH-1052 [Partner identity + account-level Stripe + currency-match gate] REGISTERED → SPEC QUEUED (GATED on ORCH-1050).** SPEC dispatches to Claude `mingla-forensics` after ORCH-1050 close. Must invoke `stripe-best-practices` skill at SPEC start. ORCH-1034 gate REMOVED. No worktree yet. Full banner in WORLD_MAP.
+
+> **2026-06-02 — ORCH-1054 [Partner splits ledger + Stripe Transfer pipeline] REGISTERED → SPEC QUEUED (GATED on ORCH-1052).** SPEC dispatches after ORCH-1052 close. Must invoke `stripe-best-practices` skill at SPEC start. No worktree yet. Full banner in WORLD_MAP.
+
+> **2026-06-02 — ORCH-1055 [Scanner-only app shell sanity check] REGISTERED → INVESTIGATE QUEUED.** Depends on ORCH-1051. INVESTIGATE dispatches to Claude `mingla-forensics` after ORCH-1051 close. Sim repro mandatory. No worktree yet. Full banner in WORLD_MAP.
+
 > **2026-05-30 — META-ORCH-1009 Sub-E [Business-app supply-side onboarding feeder] DESIGN REVIEW APPROVED -> IMPLEMENTOR READY.** Orchestrator approved the UI/UX gate after correcting the Hub bouncer B-code mapping in the design artifact to match the SPEC. Review artifact: `Mingla_Artifacts/reports/REVIEW_DESIGN_META-ORCH-1009_SUB_E_BUSINESS_APP_SUPPLY_FEEDER.md`. Implementor prompt: `Mingla_Artifacts/prompts/IMPLEMENTOR_META-ORCH-1009_SUB_E_BUSINESS_APP_SUPPLY_FEEDER.md`. Working tree: `~/Desktop/mingla-orchs/META-ORCH-1009-Sub-E-[business-app-supply-feeder]` on branch `META-ORCH-1009-Sub-E-business-app-supply-feeder`.
 
 > **2026-05-30 — META-ORCH-1009 Sub-E [Business-app supply-side onboarding feeder] UI/UX DESIGN COMPLETE -> ORCHESTRATOR REVIEW NEXT.** Design artifact `Mingla_Artifacts/reports/DESIGN_META-ORCH-1009_SUB_E_BUSINESS_APP_SUPPLY_FEEDER.md` is ready. It defines Tier 1/Tier 2 screen flow, all-match claim/create selection, AI sales-bio confirmation, vibe/facet controls, CoverPicker hero placement, Hub deck-readiness coaching, expired proposal handling, 8-stage Gemini loading/retry/partial-success states, accessibility gates, and implementation acceptance criteria. Working tree: `~/Desktop/mingla-orchs/META-ORCH-1009-Sub-E-[business-app-supply-feeder]` on branch `META-ORCH-1009-Sub-E-business-app-supply-feeder`.
