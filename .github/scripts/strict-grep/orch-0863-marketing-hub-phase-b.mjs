@@ -1395,7 +1395,21 @@ function checkNoNewBackendFiles() {
     // resume with no double-upload + exact-boundary guard). Per COMMS-0002.
     "supabase/functions/backfill-place-photo-thumbs/index.adversarial.test.ts",
   ];
+  // ORCH-1054 [Partner splits ledger + Stripe Transfer pipeline]. META-ORCH-1048
+  // sub-E. C7 is scoped to ORCH-0863 marketing; these are partner-splits backend
+  // touches (new migration + new _shared/partnerSplits.ts module + tests). The
+  // stripeWebhookRouter.ts edit is a MODIFY of an existing file already in the
+  // repo (not a new backend addition). Per COMMS-0002 the migration + new
+  // module + tests must land in the SAME commit as the service + UI wiring.
+  const ORCH_1054_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260823000000_orch_1054_partner_splits.sql",
+    "supabase/functions/_shared/partnerSplits.ts",
+    "supabase/functions/_shared/__tests__/orch_1054_partner_splits_happy.test.ts",
+    "supabase/functions/_shared/__tests__/orch_1054_partner_splits_adversarial.test.ts",
+    "supabase/migrations/__tests__/orch_1054_partner_splits.test.ts",
+  ];
   const ALLOWLIST = [
+    ...ORCH_1054_BACKEND_ALLOWLIST,
     ...ORCH_1052_BACKEND_ALLOWLIST,
     ...ORCH_1051_BACKEND_ALLOWLIST,
     ...ORCH_1050_BACKEND_ALLOWLIST,
