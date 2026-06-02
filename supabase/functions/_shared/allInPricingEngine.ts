@@ -15,7 +15,18 @@
 //   - PaymentIntent application_fee_amount: https://docs.stripe.com/api/payment_intents/create#create_payment_intent-application_fee_amount
 //   - tax.calculations.create line_items.tax_behavior (inclusive|exclusive):
 //       https://docs.stripe.com/api/tax/calculations/create#create_tax_calculation-line_items-tax_behavior
-//   - amounts in smallest currency unit (zero-float): https://docs.stripe.com/currencies
+//   - amounts in smallest currency unit (zero-decimal currencies carry NO minor
+//     unit — JPY/KRW etc.): https://docs.stripe.com/currencies
+//   - charge in the connected account's settlement currency to avoid Stripe FX
+//     (presentment == settlement ⇒ no conversion fee): https://docs.stripe.com/currencies
+//       and on_behalf_of settlement: https://docs.stripe.com/connect/charges
+//
+// ORCH-1034 [de-GBP-ify the currency layer — charge in seller currency]:
+//   `currency` is the brand's SETTLEMENT currency (brands.pricing_currency, now
+//   aligned to default_currency = the Stripe-synced settlement currency). The
+//   engine math is currency-agnostic integer minor-unit (cents); zero-decimal
+//   currencies treat the "cents" as whole units (none of the live currencies
+//   USD/GBP/EUR/CHF are zero-decimal, so this is a forward-safety note).
 
 // Launch default for the disclosed, uniform service fee (T-2 operator-locked:
 // flat % of order, uniform across ALL card types — never card-conditional, which
@@ -24,7 +35,13 @@
 // launch default (matches the amendment's worked example).
 export const MINGLA_SERVICE_FEE_BPS = 300 as const;
 
-export type PricingRegion = "GB"; // US reserved (decision #7); not enabled this ORCH.
+// ORCH-1034 [de-GBP-ify the currency layer] — region union widened from the
+// GB-only literal to the enabled-region allowlist matching the brands.pricing_region
+// CHECK (GB/US/EU/CH). `tax_behavior` is a thin per-region DISPLAY flag, NOT a tax
+// calculator — Stripe Tax (venue-sourced, ORCH-0955) owns the charged AMOUNT; the
+// engine only relays inclusive|exclusive to Stripe and re-derives the display split.
+// Investigation: Mingla_Artifacts/reports/INVESTIGATION_ORCH-1034_TAX_TIE_IN.md.
+export type PricingRegion = "GB" | "US" | "EU" | "CH";
 export type TaxBehavior = "inclusive" | "exclusive";
 export type TaxBasis =
   | "venue_resolved"
@@ -32,18 +49,50 @@ export type TaxBasis =
   | "country_unsupported_flat_absorb"
   | "calc_failed_flat_absorb";
 
-// GB → inclusive VAT by law; US (later) → exclusive. Region drives behavior,
-// NEVER a hardcoded literal at the call site (invariant I-PROPOSED-ALLIN-REGION-TAX-BEHAVIOR).
+// ORCH-1034 — per-region inclusive-VAT divisor (1 + VAT rate) used ONLY to
+// re-derive the display tax portion from Stripe's amount_total for INCLUSIVE
+// markets. This is a presentation split of a Stripe-owned number, NOT a tax
+// calculation (the engine never computes tax — see investigation §3 PROVE-1/2).
+// Generalizes ORCH-1006's hardcoded `/1.2` (GB-20%) to the seller's market.
+// Standard headline rates: GB 20%, EU baseline 20% (member-state rates vary but
+// the venue-sourced Stripe amount is authoritative; this divisor only partitions
+// the inclusive total for the receipt), CH 8.1%. US is exclusive (no divisor).
+// Doc (tax_behavior inclusive|exclusive presentation semantics):
+//   https://docs.stripe.com/tax/products-prices-tax-codes-tax-behavior
+export const INCLUSIVE_VAT_DIVISOR: Record<PricingRegion, number> = {
+  GB: 1.2, // 20% VAT
+  EU: 1.2, // 20% baseline (venue-sourced Stripe amount is authoritative)
+  CH: 1.081, // 8.1% VAT
+  US: 1.0, // exclusive — divisor unused (kept for exhaustiveness)
+};
+
+// GB/EU/CH → inclusive VAT (market convention); US → exclusive sales tax.
+// Region drives behavior, NEVER a hardcoded literal at the call site
+// (invariant I-PROPOSED-ALLIN-REGION-TAX-BEHAVIOR). ORCH-1034: degrade-not-throw
+// — the call site must degrade to flat-absorb BEFORE passing an unmapped region,
+// so this never throws on a real checkout. The exhaustive `never` guard is kept
+// as a loud programming-error catch (adding a region literal without mapping it).
 export function taxBehaviorForRegion(region: PricingRegion): TaxBehavior {
   switch (region) {
     case "GB":
+    case "EU":
+    case "CH":
       return "inclusive";
+    case "US":
+      return "exclusive";
     default: {
-      // Exhaustive guard: any unmapped region is a programming error.
+      // Exhaustive guard: any unmapped region literal is a programming error.
       const _never: never = region;
       throw new Error(`unsupported_pricing_region:${String(_never)}`);
     }
   }
+}
+
+// ORCH-1034 — the inclusive-VAT divisor for the seller's region, used by the
+// call site to extract the display tax portion from Stripe's inclusive total.
+// Returns 1.0 for exclusive/unknown regions (no divide-out).
+export function inclusiveVatDivisorForRegion(region: PricingRegion): number {
+  return INCLUSIVE_VAT_DIVISOR[region] ?? 1.0;
 }
 
 export interface PricingSwitches {
