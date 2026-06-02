@@ -1,20 +1,22 @@
-// ORCH-1050 [Brand team invite + accept + ownership transfer] — accept endpoint.
+// ORCH-1051 [Scanner invite + brand-scoped scanner] — accept endpoint.
+// META-ORCH-1048 sub-C.
 //
 // AUTHENTICATED edge function (verify_jwt=true in config.toml). The Business
-// app POSTs the raw token from /accept-brand-invitation?token=…. The function:
+// app POSTs the raw token from /accept-scanner-invitation?token=…. The function:
 //   1. extracts auth.uid() from the JWT,
-//   2. resolves auth.uid() → creator_accounts.id (RPC needs the account id),
+//   2. resolves auth.uid() → creator_accounts.id. PROBED 2026-06-02:
+//      creator_accounts.id IS auth.users.id (no separate user_id column).
 //   3. computes SHA-256(token),
-//   4. calls accept_invite_and_transfer_brand_ownership(token_hash, account_id).
-//      The RPC performs the atomic accept + (when role=brand_owner) ownership
-//      transfer in a single SQL transaction with FOR UPDATE locking on the
-//      invitation row so concurrent accepts cannot double-spend the token.
+//   4. calls accept_scanner_invitation(token_hash, account_id). The RPC
+//      performs the atomic accept with FOR UPDATE locking on the invitation
+//      row so concurrent accepts cannot double-spend the token, and branches
+//      on scope to upsert either event_scanners (scope=event) or
+//      brand_team_members (scope=brand).
 //   5. maps RPC ERRCODEs (P0001..P0005) to clean HTTP responses.
 //
 // HTTP contract:
 //   POST { token }
-//   → 200 { brand_id, role, transferred, previous_owner_account_id,
-//           new_owner_account_id }
+//   → 200 { scope, brand_id, event_id?, user_id }
 //   → 400 { error:'validation' }
 //   → 401 { error:'unauthenticated' }
 //   → 403 { error:'invite_email_mismatch' }
@@ -117,6 +119,7 @@ export async function handler(req: Request): Promise<Response> {
     });
 
     // Resolve creator_accounts.id for this auth user.
+    // creator_accounts.id IS auth.users.id (probed 2026-06-02). Lookup by id.
     const { data: account, error: accountErr } = await service
       .from("creator_accounts")
       .select("id")
@@ -124,7 +127,7 @@ export async function handler(req: Request): Promise<Response> {
       .maybeSingle();
     if (accountErr) {
       console.error(
-        "[accept-brand-invitation] account lookup failed",
+        "[accept-scanner-invitation] account lookup failed",
         accountErr.message,
       );
       return json({ error: "server" }, 500);
@@ -137,7 +140,7 @@ export async function handler(req: Request): Promise<Response> {
     const tokenHash = await sha256Hex(token);
 
     const { data: rpcResult, error: rpcErr } = await service.rpc(
-      "accept_invite_and_transfer_brand_ownership",
+      "accept_scanner_invitation",
       { p_token_hash: tokenHash, p_accepting_account_id: account.id },
     );
 
@@ -164,7 +167,7 @@ export async function handler(req: Request): Promise<Response> {
         return json({ error: "invite_revoked" }, 410);
       }
       console.error(
-        "[accept-brand-invitation] rpc failed",
+        "[accept-scanner-invitation] rpc failed",
         rpcErr.code,
         rpcErr.message,
       );
@@ -174,7 +177,7 @@ export async function handler(req: Request): Promise<Response> {
     return json(rpcResult ?? {}, 200);
   } catch (err) {
     console.error(
-      "[accept-brand-invitation] unexpected error",
+      "[accept-scanner-invitation] unexpected error",
       err instanceof Error ? err.message : String(err),
     );
     return json({ error: "server" }, 500);

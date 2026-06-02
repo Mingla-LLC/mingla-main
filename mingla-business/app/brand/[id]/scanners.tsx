@@ -1,15 +1,16 @@
 /**
- * /event/[id]/scanners — Scanner-team management screen.
+ * /brand/[id]/scanners — Brand-level scanner team (ORCH-1051).
  *
- * Reads scanner invitations from the canonical Postgres table via
- * `useScannerInvitationsForEvent`; revokes through the
- * `useRevokeScannerInvitation` mutation. Invitations go out via the
- * `invite-scanner` edge fn through `InviteScannerSheet`.
+ * Mirrors /event/[id]/scanners but scoped to the brand. Lists all pending +
+ * past brand-scoped invitations (scope='brand') so the operator can see
+ * who's already in the brand's standing scanner roster. Invitations always
+ * go out with scope='brand' from this surface (event-only invites stay on
+ * the per-event screen).
  *
  * Status: ACTIVE post-ORCH-1051 (META-ORCH-1048 sub-C).
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   Pressable,
   ScrollView,
@@ -21,56 +22,30 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
-  accent,
   canvas,
   glass,
   radius as radiusTokens,
   spacing,
   text as textTokens,
-} from "../../../../src/constants/designSystem";
-import type { ScannerInvitationRow } from "../../../../src/services/scannerInvitationsService";
-import { useAuth } from "../../../../src/context/AuthContext";
-import { useManagedEventRoute } from "../../../../src/hooks/useManagedEventRoute";
+} from "../../../src/constants/designSystem";
+import { useAuth } from "../../../src/context/AuthContext";
 import {
-  useScannerInvitationsForEvent,
+  useScannerInvitationsForBrand,
   useRevokeScannerInvitation,
-} from "../../../../src/hooks/useScannerInvitations";
+} from "../../../src/hooks/useScannerInvitations";
+import type { ScannerInvitationRow } from "../../../src/services/scannerInvitationsService";
 
-import { EmptyState } from "../../../../src/components/ui/EmptyState";
-import { IconChrome } from "../../../../src/components/ui/IconChrome";
-import { Pill } from "../../../../src/components/ui/Pill";
-import { Sheet } from "../../../../src/components/ui/Sheet";
-import { Toast } from "../../../../src/components/ui/Toast";
-import { Button } from "../../../../src/components/ui/Button";
+import { EmptyState } from "../../../src/components/ui/EmptyState";
+import { IconChrome } from "../../../src/components/ui/IconChrome";
+import { Pill } from "../../../src/components/ui/Pill";
+import { Sheet } from "../../../src/components/ui/Sheet";
+import { Toast } from "../../../src/components/ui/Toast";
+import { Button } from "../../../src/components/ui/Button";
 
-import { useCurrentBrandRole } from "../../../../src/hooks/useCurrentBrandRole";
-import { canPerformAction } from "../../../../src/utils/permissionGates";
+import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
+import { canPerformAction } from "../../../src/utils/permissionGates";
 
-import { InviteScannerSheet } from "../../../../src/components/scanners/InviteScannerSheet";
-
-// ---- Helpers --------------------------------------------------------
-
-const RELATIVE_TIME_MS = {
-  minute: 60 * 1000,
-  hour: 60 * 60 * 1000,
-  day: 24 * 60 * 60 * 1000,
-};
-
-const formatRelativeTime = (iso: string | null | undefined): string => {
-  if (!iso) return "";
-  const now = Date.now();
-  const then = new Date(iso).getTime();
-  if (Number.isNaN(then)) return "";
-  const delta = now - then;
-  if (delta < RELATIVE_TIME_MS.minute) return "just now";
-  if (delta < RELATIVE_TIME_MS.hour) {
-    return `${Math.floor(delta / RELATIVE_TIME_MS.minute)}m ago`;
-  }
-  if (delta < RELATIVE_TIME_MS.day) {
-    return `${Math.floor(delta / RELATIVE_TIME_MS.hour)}h ago`;
-  }
-  return `${Math.floor(delta / RELATIVE_TIME_MS.day)}d ago`;
-};
+import { InviteScannerSheet } from "../../../src/components/scanners/InviteScannerSheet";
 
 const hashStringToHue = (s: string): number => {
   let hash = 0;
@@ -112,43 +87,38 @@ const invitationStatusPill = (
   }
 };
 
-// ---- Screen ---------------------------------------------------------
-
-export default function EventScannersListRoute(): React.ReactElement {
+export default function BrandScannersListRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const params = useLocalSearchParams<{ id: string | string[] }>();
-  const eventId = Array.isArray(params.id) ? params.id[0] : params.id;
+  const brandId = Array.isArray(params.id) ? params.id[0] : params.id;
   const { user } = useAuth();
   const operatorAccountId = user?.id ?? "anonymous";
 
-  const routeEvent = useManagedEventRoute(
-    typeof eventId === "string" ? eventId : null,
+  const { rank: currentRank } = useCurrentBrandRole(
+    typeof brandId === "string" ? brandId : null,
   );
-  const event = routeEvent.event;
-  const brand = routeEvent.brand;
-
-  const { rank: currentRank } = useCurrentBrandRole(brand?.id ?? null);
   const canManageScanners = canPerformAction(currentRank, "MANAGE_SCANNERS");
 
-  // React Query — canonical source post-ORCH-1051.
-  const invitationsQuery = useScannerInvitationsForEvent(
-    typeof eventId === "string" ? eventId : null,
+  const invitationsQuery = useScannerInvitationsForBrand(
+    typeof brandId === "string" ? brandId : null,
   );
   const revoke = useRevokeScannerInvitation({
-    brandId: brand?.id ?? null,
-    eventId: typeof eventId === "string" ? eventId : null,
+    brandId: typeof brandId === "string" ? brandId : null,
+    eventId: null,
   });
 
+  // Brand surface only shows brand-scoped invitations. Event-scoped invites
+  // live on /event/[id]/scanners.
   const invitations = useMemo<ScannerInvitationRow[]>(() => {
     const list = invitationsQuery.data ?? [];
-    return [...list].sort(
-      (a, b) => {
+    return list
+      .filter((row) => row.scope === "brand")
+      .sort((a, b) => {
         const ta = new Date(a.created_at ?? a.expires_at).getTime();
         const tb = new Date(b.created_at ?? b.expires_at).getTime();
         return tb - ta;
-      },
-    );
+      });
   }, [invitationsQuery.data]);
 
   const [inviteSheetOpen, setInviteSheetOpen] = useState<boolean>(false);
@@ -165,23 +135,15 @@ export default function EventScannersListRoute(): React.ReactElement {
   const handleBack = useCallback((): void => {
     if (router.canGoBack()) {
       router.back();
-    } else if (typeof eventId === "string") {
-      router.replace(`/event/${eventId}` as never);
+    } else if (typeof brandId === "string") {
+      router.replace(`/brand/${brandId}` as never);
     }
-  }, [router, eventId]);
+  }, [router, brandId]);
 
-  const handleInviteSuccess = useCallback(
-    (details: { invitationId: string; scope: "event" | "brand" }): void => {
-      setInviteSheetOpen(false);
-      void details;
-      showToast(
-        details.scope === "brand"
-          ? "Invitation sent — brand-wide scanner."
-          : "Invitation sent.",
-      );
-    },
-    [showToast],
-  );
+  const handleInviteSuccess = useCallback((): void => {
+    setInviteSheetOpen(false);
+    showToast("Invitation sent.");
+  }, [showToast]);
 
   const handleRevoke = useCallback(
     async (id: string): Promise<void> => {
@@ -201,13 +163,7 @@ export default function EventScannersListRoute(): React.ReactElement {
     return invitations.find((i) => i.id === actionSheetForId) ?? null;
   }, [actionSheetForId, invitations]);
 
-  useEffect(() => {
-    if (routeEvent.replacementEventId !== null) {
-      router.replace(`/event/${routeEvent.replacementEventId}/scanners` as never);
-    }
-  }, [routeEvent.replacementEventId, router]);
-
-  if (event === null && routeEvent.isLoading && typeof eventId === "string") {
+  if (typeof brandId !== "string") {
     return (
       <View
         style={[
@@ -222,38 +178,13 @@ export default function EventScannersListRoute(): React.ReactElement {
             onPress={handleBack}
             accessibilityLabel="Back"
           />
-          <Text style={styles.chromeTitle}>Scanners</Text>
-          <View style={styles.chromeRightSlot} />
-        </View>
-        <View style={styles.emptyHost}>
-          <Text style={styles.emptyLoadingText}>Loading event...</Text>
-        </View>
-      </View>
-    );
-  }
-
-  if (event === null || typeof eventId !== "string") {
-    return (
-      <View
-        style={[
-          styles.host,
-          { paddingTop: insets.top, backgroundColor: canvas.discover },
-        ]}
-      >
-        <View style={styles.chromeRow}>
-          <IconChrome
-            icon="close"
-            size={36}
-            onPress={handleBack}
-            accessibilityLabel="Back"
-          />
-          <Text style={styles.chromeTitle}>Scanners</Text>
+          <Text style={styles.chromeTitle}>Brand scanners</Text>
           <View style={styles.chromeRightSlot} />
         </View>
         <View style={styles.emptyHost}>
           <EmptyState
             illustration="ticket"
-            title="Event not found"
+            title="Brand not found"
             description="It may have been deleted."
           />
         </View>
@@ -261,7 +192,6 @@ export default function EventScannersListRoute(): React.ReactElement {
     );
   }
 
-  // Hint to operator: still loading from server.
   const isFetching = invitationsQuery.isLoading;
 
   return (
@@ -271,7 +201,6 @@ export default function EventScannersListRoute(): React.ReactElement {
         { paddingTop: insets.top, backgroundColor: canvas.discover },
       ]}
     >
-      {/* Chrome */}
       <View style={styles.chromeRow}>
         <IconChrome
           icon="close"
@@ -279,14 +208,14 @@ export default function EventScannersListRoute(): React.ReactElement {
           onPress={handleBack}
           accessibilityLabel="Back"
         />
-        <Text style={styles.chromeTitle}>Scanners</Text>
+        <Text style={styles.chromeTitle}>Brand scanners</Text>
         <View style={styles.chromeRight}>
           {canManageScanners ? (
             <IconChrome
               icon="plus"
               size={36}
               onPress={() => setInviteSheetOpen(true)}
-              accessibilityLabel="Invite scanner"
+              accessibilityLabel="Invite brand scanner"
             />
           ) : null}
         </View>
@@ -300,24 +229,31 @@ export default function EventScannersListRoute(): React.ReactElement {
         ]}
         showsVerticalScrollIndicator={false}
       >
+        <View style={styles.lede}>
+          <Text style={styles.ledeText}>
+            Brand-wide scanners can scan tickets at every event you own — now
+            and later. Add door staff who work multiple shows here.
+          </Text>
+        </View>
+
         {isFetching && invitations.length === 0 ? (
           <View style={styles.emptyHost}>
-            <Text style={styles.emptyLoadingText}>Loading invitations...</Text>
+            <Text style={styles.emptyLoadingText}>Loading scanners...</Text>
           </View>
         ) : invitations.length === 0 ? (
           <View style={styles.emptyHost}>
             <EmptyState
               illustration="user"
-              title="No scanners invited"
+              title="No brand scanners yet"
               description={
                 canManageScanners
-                  ? "Invite door staff or backup scanners. They'll get an email with a one-tap accept link."
-                  : "Ask your event manager or above to invite door staff."
+                  ? "Add scanners who work across multiple events. For one-off scanners, invite from the event's scanners screen."
+                  : "Ask an event manager or above to add brand-wide scanners."
               }
               cta={
                 canManageScanners
                   ? {
-                      label: "Invite scanner",
+                      label: "Invite brand scanner",
                       onPress: () => setInviteSheetOpen(true),
                       variant: "primary",
                     }
@@ -327,30 +263,56 @@ export default function EventScannersListRoute(): React.ReactElement {
           </View>
         ) : (
           <View style={styles.list}>
-            {invitations.map((inv) => (
-              <InvitationRow
-                key={inv.id}
-                invitation={inv}
-                onPress={() => setActionSheetForId(inv.id)}
-              />
-            ))}
+            {invitations.map((inv) => {
+              const displayName = inv.invitee_name ?? inv.email;
+              const initials = getInitials(displayName);
+              const hue = hashStringToHue(inv.id);
+              const pill = invitationStatusPill(inv.status);
+              return (
+                <Pressable
+                  key={inv.id}
+                  onPress={() => setActionSheetForId(inv.id)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Brand scanner ${displayName}, ${pill.label}`}
+                  style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+                >
+                  <View
+                    style={[
+                      styles.avatar,
+                      { backgroundColor: `hsl(${hue}, 60%, 45%)` },
+                    ]}
+                  >
+                    <Text style={styles.avatarText}>{initials}</Text>
+                  </View>
+                  <View style={styles.rowBody}>
+                    <Text style={styles.rowName} numberOfLines={1}>
+                      {displayName}
+                    </Text>
+                    <Text style={styles.rowSubline} numberOfLines={1}>
+                      {inv.email}
+                    </Text>
+                    <View style={styles.rowPills}>
+                      <Pill variant={pill.variant}>{pill.label}</Pill>
+                      <Pill variant="info">BRAND-WIDE</Pill>
+                    </View>
+                  </View>
+                </Pressable>
+              );
+            })}
           </View>
         )}
       </ScrollView>
 
-      {/* Invite sheet */}
-      {brand !== null ? (
-        <InviteScannerSheet
-          visible={inviteSheetOpen}
-          event={event}
-          brandId={brand.id}
-          operatorAccountId={operatorAccountId}
-          onClose={() => setInviteSheetOpen(false)}
-          onSuccess={handleInviteSuccess}
-        />
-      ) : null}
+      <InviteScannerSheet
+        visible={inviteSheetOpen}
+        event={null}
+        brandId={brandId}
+        operatorAccountId={operatorAccountId}
+        brandOnly
+        onClose={() => setInviteSheetOpen(false)}
+        onSuccess={handleInviteSuccess}
+      />
 
-      {/* Action sheet for selected invitation */}
       <Sheet
         visible={actionSheetForId !== null}
         onClose={() => setActionSheetForId(null)}
@@ -372,9 +334,7 @@ export default function EventScannersListRoute(): React.ReactElement {
               >
                 {invitationStatusPill(activeActionInvitation.status).label}
               </Pill>
-              {activeActionInvitation.scope === "brand" ? (
-                <Pill variant="info">BRAND-WIDE</Pill>
-              ) : null}
+              <Pill variant="info">BRAND-WIDE</Pill>
             </View>
             <View style={styles.actionSpacer} />
             {activeActionInvitation.status === "pending" ? (
@@ -410,7 +370,6 @@ export default function EventScannersListRoute(): React.ReactElement {
         ) : null}
       </Sheet>
 
-      {/* Toast */}
       <View style={styles.toastWrap} pointerEvents="box-none">
         <Toast
           visible={toast.visible}
@@ -423,59 +382,8 @@ export default function EventScannersListRoute(): React.ReactElement {
   );
 }
 
-// ---- InvitationRow --------------------------------------------------
-
-interface InvitationRowProps {
-  invitation: ScannerInvitationRow;
-  onPress: () => void;
-}
-
-const InvitationRow: React.FC<InvitationRowProps> = ({ invitation, onPress }) => {
-  const displayName = invitation.invitee_name ?? invitation.email;
-  const initials = getInitials(displayName);
-  const hue = hashStringToHue(invitation.id);
-  const subline = `${invitation.email} · invited ${formatRelativeTime(invitation.created_at ?? null)}`;
-  const pill = invitationStatusPill(invitation.status);
-
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={`Scanner ${displayName}, ${pill.label}`}
-      style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
-    >
-      <View
-        style={[
-          styles.avatar,
-          { backgroundColor: `hsl(${hue}, 60%, 45%)` },
-        ]}
-      >
-        <Text style={styles.avatarText}>{initials}</Text>
-      </View>
-      <View style={styles.rowBody}>
-        <Text style={styles.rowName} numberOfLines={1}>
-          {displayName}
-        </Text>
-        <Text style={styles.rowSubline} numberOfLines={1}>
-          {subline}
-        </Text>
-        <View style={styles.rowPills}>
-          <Pill variant={pill.variant}>{pill.label}</Pill>
-          {invitation.scope === "brand" ? (
-            <Pill variant="info">BRAND-WIDE</Pill>
-          ) : null}
-        </View>
-      </View>
-    </Pressable>
-  );
-};
-
-// ---- Styles ---------------------------------------------------------
-
 const styles = StyleSheet.create({
-  host: {
-    flex: 1,
-  },
+  host: { flex: 1 },
   chromeRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -492,31 +400,33 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
     textAlign: "center",
   },
-  chromeRight: {
-    flexDirection: "row",
-    gap: spacing.xs,
-  },
-  chromeRightSlot: {
-    width: 36,
-  },
-  scroll: {
-    flex: 1,
-  },
+  chromeRight: { flexDirection: "row", gap: spacing.xs },
+  chromeRightSlot: { width: 36 },
+  scroll: { flex: 1 },
   scrollContent: {
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
   },
-  emptyHost: {
-    paddingTop: spacing.xl,
+  lede: {
+    padding: spacing.sm + 2,
+    borderRadius: radiusTokens.md,
+    backgroundColor: glass.tint.profileBase,
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+    marginBottom: spacing.md,
   },
+  ledeText: {
+    fontSize: 13,
+    color: textTokens.secondary,
+    lineHeight: 19,
+  },
+  emptyHost: { paddingTop: spacing.xl },
   emptyLoadingText: {
     fontSize: 14,
     color: textTokens.secondary,
     textAlign: "center",
   },
-  list: {
-    gap: spacing.sm,
-  },
+  list: { gap: spacing.sm },
   row: {
     flexDirection: "row",
     alignItems: "center",
@@ -527,9 +437,7 @@ const styles = StyleSheet.create({
     borderColor: glass.border.profileBase,
     backgroundColor: glass.tint.profileBase,
   },
-  rowPressed: {
-    backgroundColor: "rgba(255, 255, 255, 0.04)",
-  },
+  rowPressed: { backgroundColor: "rgba(255, 255, 255, 0.04)" },
   avatar: {
     width: 40,
     height: 40,
@@ -543,15 +451,8 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: textTokens.primary,
   },
-  rowBody: {
-    flex: 1,
-    minWidth: 0,
-  },
-  rowName: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: textTokens.primary,
-  },
+  rowBody: { flex: 1, minWidth: 0 },
+  rowName: { fontSize: 14, fontWeight: "600", color: textTokens.primary },
   rowSubline: {
     fontSize: 12,
     color: textTokens.tertiary,
@@ -562,20 +463,6 @@ const styles = StyleSheet.create({
     gap: 6,
     marginTop: 6,
     flexWrap: "wrap",
-  },
-  permPill: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: radiusTokens.sm,
-    backgroundColor: accent.tint,
-    borderWidth: 1,
-    borderColor: accent.border,
-  },
-  permPillText: {
-    fontSize: 9,
-    fontWeight: "700",
-    letterSpacing: 1.0,
-    color: accent.warm,
   },
   actionSheet: {
     paddingHorizontal: spacing.lg,
@@ -594,14 +481,8 @@ const styles = StyleSheet.create({
     color: textTokens.secondary,
     marginBottom: spacing.sm,
   },
-  actionPills: {
-    flexDirection: "row",
-    gap: 6,
-    flexWrap: "wrap",
-  },
-  actionSpacer: {
-    height: spacing.sm,
-  },
+  actionPills: { flexDirection: "row", gap: 6, flexWrap: "wrap" },
+  actionSpacer: { height: spacing.sm },
   actionDisabledNote: {
     fontSize: 13,
     color: textTokens.tertiary,
