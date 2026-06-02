@@ -1,7 +1,12 @@
-// ORCH-0957 T-05 — tester-authored adversarial regression for missing thumbs.
+// ORCH-0957 T-05 — adversarial regression for missing thumbs.
 //
-// Locks the 404 fallback contract from SPEC_ORCH-0957:
-// - THUMB_404_FALLBACK_TO_TRANSFORM=true retries exactly once through legacy render.
+// [TEST-MOD-APPROVED ORCH-1033] The original ORCH-0957 contract routed the
+// missing-thumb fallback to the metered Supabase render endpoint and assumed a
+// 404. ORCH-1033 F-fix proved a missing Storage object returns HTTP **400**
+// (not 404) and changes the fallback target to the ORIGINAL full-size object
+// (non-metered, decodable). Assertions updated to the new contract:
+// - THUMB_404_FALLBACK_TO_TRANSFORM=true falls back to the ORIGINAL object on a
+//   missing thumb (no render-endpoint call).
 // - THUMB_404_FALLBACK_TO_TRANSFORM=false leaves the cell blank and keeps composing.
 
 import { Image } from "https://deno.land/x/imagescript@1.2.17/mod.ts";
@@ -40,7 +45,7 @@ async function withEnv(
   }
 }
 
-Deno.test("T-05 thumb-missing fallback=true retries exactly once through legacy transform", async () => {
+Deno.test("T-05 thumb-missing fallback=true falls back to the ORIGINAL object (no render endpoint)", async () => {
   const priorFetch = globalThis.fetch;
   const jpegBody = await makeJpegBody();
   const fetchUrls: string[] = [];
@@ -71,9 +76,11 @@ Deno.test("T-05 thumb-missing fallback=true retries exactly once through legacy 
 
       assertEquals(result.placedCount, 2);
       assertEquals(result.failedCount, 0);
-      assertEquals(fetchUrls.filter((url) => url.includes(RENDER_ENDPOINT_NEEDLE)).length, 1);
+      // ORCH-1033: fallback target is the ORIGINAL object, NEVER the metered render endpoint.
+      assertEquals(fetchUrls.filter((url) => url.includes(RENDER_ENDPOINT_NEEDLE)).length, 0);
       assertEquals(fetchUrls.some((url) => url.endsWith("/0_thumb.jpg")), true);
-      assertEquals(fetchUrls.some((url) => url.includes("/0.jpg?width=384&height=384&resize=cover")), true);
+      // The original-object fallback fetches the un-rewritten object URL verbatim.
+      assertEquals(fetchUrls.some((url) => url === originalMissing), true);
       assertEquals(fetchUrls.some((url) => url.endsWith("/1_thumb.jpg")), true);
     });
   } finally {
