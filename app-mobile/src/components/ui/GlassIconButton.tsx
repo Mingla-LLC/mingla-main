@@ -245,10 +245,10 @@ export const GlassIconButton: React.FC<GlassIconButtonProps> = ({
         {/* ORCH-0589 v4 (V5): top-highlight line removed — rendered as visible
             artifact on chrome scale. Full-perimeter hairline border remains. */}
         {liquid ? (
-          <>
-            <View pointerEvents="none" style={styles.liquidHighlight} />
-            <View pointerEvents="none" style={styles.liquidInnerGlow} />
-          </>
+          // ORCH-1048: top liquidHighlight strip removed — read as a "white strip line"
+          // artifact on chrome-scale icons (same class ORCH-0589 removed for topHighlight).
+          // Keep only the bottom inner glow.
+          <View pointerEvents="none" style={styles.liquidInnerGlow} />
         ) : null}
 
         {/* L4 — active orange border override (on top of hairline border) */}
