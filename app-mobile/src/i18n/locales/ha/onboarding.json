@@ -181,8 +181,9 @@
     "fallback_user": "Mai amfani"
   },
   "collaborations": {
-    "headline": "Shirya wani abu tare",
-    "body": "Fara zama tare da ƙungiyar ka. Gano abubuwan da za ku yi, jefa ƙuri'a akan abin da kuka fi so, ku sa ya faru.",
+    "headline": "Ku tsara shi tare",
+    "body": "Fara rukuni da abokanka, ko ka shiga hira ko tafiya da aka riga aka gayyace ka.",
+    "start_button": "Fara rukunin",
     "whos_in": "Wanene?",
     "session_name_label": "Sunan zama",
     "session_name_placeholder": "misali Shirye-shiryen karshen mako, Ra'ayoyin dare...",
@@ -196,7 +197,11 @@
     "generic_error": "Hmm, bai yi ba. Sake gwadawa.",
     "join_error": "Ba a iya shiga zaman ba",
     "decline_error": "Ba a iya ƙin gayyatar ba",
-    "empty_state": "Fara ƙara abokai — sannan za ka iya shirya tare."
+    "empty_state": "Fara ƙara abokai — sannan za ka iya shirya tare.",
+    "trip_chats_header": "Hirarrakin tafiye-tafiye da abubuwan da kake da su",
+    "trip_chats_loading": "Ana loda hirarraki…",
+    "trip_chats_join_subtitle": "Shiga hirar rukunin masu siye",
+    "trip_chats_join_button": "Shiga hira"
   },
   "consent": {
     "headline": "Abu ɗaya cikin sauri",

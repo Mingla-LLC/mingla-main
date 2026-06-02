@@ -23,20 +23,19 @@ export const VenueStep1Address: React.FC<VenueStep1AddressProps> = ({
   showErrors,
 }) => {
   const formattedAddress = useDraftVenueStore((s) => s.formattedAddress);
-  const googlePlaceId = useDraftVenueStore((s) => s.googlePlaceId);
   const patch = useDraftVenueStore((s) => s.patch);
 
   const error =
     showErrors &&
-    (googlePlaceId === null || googlePlaceId.trim() === "")
-      ? "Pick your venue address from the suggestions."
+    formattedAddress.trim().length === 0
+      ? "Address is required."
       : undefined;
 
   return (
     <View style={styles.host}>
       <Text style={styles.title}>Where is your venue?</Text>
       <Text style={styles.helper}>
-        Start typing — choose a result so we can verify the location.
+        Start typing and choose a result when you see one.
       </Text>
       <AddressAutocompleteInput
         value={formattedAddress}

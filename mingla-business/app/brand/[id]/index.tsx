@@ -121,6 +121,11 @@ export default function BrandProfileRoute(): React.ReactElement {
     router.push(`/b/${brandSlug}` as never);
   };
 
+  // ORCH-1040 — venue listing management page.
+  const handleOpenListing = (brandId: string): void => {
+    router.push(`/brand/${brandId}/listing` as never);
+  };
+
   const handleCreateEvent = (): void => {
     router.push("/event/create" as never);
   };
@@ -148,6 +153,7 @@ export default function BrandProfileRoute(): React.ReactElement {
         onAuditLog={handleOpenAuditLog}
         onBlasts={handleOpenBlasts}
         onViewPublic={handleViewPublic}
+        onListing={handleOpenListing}
         onCreateEvent={handleCreateEvent}
         onOpenLink={handleOpenLink}
         onRequestDelete={handleRequestDelete}

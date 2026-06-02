@@ -181,8 +181,9 @@
     "fallback_user": "사용자"
   },
   "collaborations": {
-    "headline": "함께 계획하기",
-    "body": "친구들과 세션을 시작하세요. 할 것을 발견하고, 좋아하는 것에 투표하고, 실행에 옮기세요.",
+    "headline": "함께 계획해요",
+    "body": "친구들과 그룹을 만들거나, 이미 초대받은 채팅이나 여행에 참여하세요.",
+    "start_button": "그룹 시작하기",
     "whos_in": "누가 참여하나요?",
     "session_name_label": "세션 이름",
     "session_name_placeholder": "예: 주말 계획, 데이트 아이디어...",
@@ -196,7 +197,11 @@
     "generic_error": "잘 안됐네요. 다시 시도해 주세요.",
     "join_error": "세션에 참여할 수 없습니다",
     "decline_error": "초대를 거절할 수 없습니다",
-    "empty_state": "먼저 친구를 추가하면 함께 계획을 시작할 수 있어요."
+    "empty_state": "먼저 친구를 추가하면 함께 계획을 시작할 수 있어요.",
+    "trip_chats_header": "내 여행 및 이벤트 채팅",
+    "trip_chats_loading": "채팅 불러오는 중…",
+    "trip_chats_join_subtitle": "구매자 그룹 채팅 참여",
+    "trip_chats_join_button": "채팅 참여"
   },
   "consent": {
     "headline": "한 가지만",

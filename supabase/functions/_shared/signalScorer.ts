@@ -87,6 +87,9 @@ export interface PlaceForScoring {
   // into place_pool.ai_signal_scores. null/undefined when the place is unevaluated
   // (graceful degrade to rule-only — Sub-C is backfilling coverage in parallel).
   ai_signal_scores?: Record<string, AiSignalEntry> | null;
+  // META-ORCH-1009 Sub-E — business-authored hero videos earn an effective
+  // AI-score multiplier after Stage 6, while preserving the stored raw AI score.
+  business_hero_video_present?: boolean | null;
   // Boolean signal fields (any of these may be null = unknown, not false)
   serves_dinner?: boolean | null;
   serves_lunch?: boolean | null;
@@ -340,7 +343,16 @@ export function computeScore(
   const rawW = typeof config.ai_blend_weight === 'number' ? config.ai_blend_weight : DEFAULT_AI_BLEND_WEIGHT;
   const w = Math.max(0, Math.min(1, rawW));
   const ruleNormalized = (ruleScore / RULE_SCORE_MAX_NORMALIZED) * 100;
-  const aiScore = Math.max(0, Math.min(100, Number(aiEntry.score_0_to_100) || 0));
+  const rawAiScore = Math.max(0, Math.min(100, Number(aiEntry.score_0_to_100) || 0));
+  const aiScore = place.business_hero_video_present === true
+    ? Math.min(100, rawAiScore * 1.15)
+    : rawAiScore;
+  const boostContribs: Record<string, number> = place.business_hero_video_present === true
+    ? {
+      _business_hero_video_boost: 1,
+      _ai_score_pre_business_boost: rawAiScore,
+    }
+    : {};
   const blendedNormalized = (1 - w) * ruleNormalized + w * aiScore;
   const blended = (blendedNormalized / 100) * RULE_SCORE_MAX_NORMALIZED;
   // Re-clamp into [clamp_min, cap] for the DB CHECK constraint safety net.
@@ -354,6 +366,7 @@ export function computeScore(
       _ai_weight: w,
       _ai_score: aiScore,
       _rule_score_pre_blend: ruleScore,
+      ...boostContribs,
     },
     ai_blended: {
       ai_score_0_to_100: aiScore,

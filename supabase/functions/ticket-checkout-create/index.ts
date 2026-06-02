@@ -28,6 +28,7 @@ import {
 import {
   buildPricingBreakdown,
   computeBuyerSubtotal,
+  inclusiveVatDivisorForRegion,
   MINGLA_SERVICE_FEE_BPS,
   taxBehaviorForRegion,
   type ComputeAllInInput,
@@ -478,7 +479,12 @@ serve(async (req) => {
     );
   }
   const totalCents = Number(session.totalCents ?? 0);
-  const currency = String(session.currency ?? "GBP").toLowerCase();
+  // ORCH-1034 — the session/ticket currency (ticket → event currency). This is
+  // the LEGACY charge-currency source; post-migration the AUTHORITATIVE charge
+  // currency is the brand's settlement currency (pricing.pricing_currency,
+  // resolved below). We keep this only as a same-currency cross-check + the
+  // zero-amount/free-path display fallback before pricing is resolved.
+  const sessionCurrency = String(session.currency ?? "GBP").toLowerCase();
 
   // ORCH-1006 Slice 2 (SPEC §C.4): the native-preview "addressMissing" early
   // return is DELETED. Preview now always computes the full venue-sourced all-in
@@ -576,7 +582,55 @@ serve(async (req) => {
     effective_take_rate_bps: number;
     take_rate_source: "brand_override" | "platform_default";
   };
-  const pricingRegion = (pricing.pricing_region ?? "GB") as PricingRegion;
+  // ORCH-1034 [de-GBP-ify the currency layer] — the AUTHORITATIVE charge currency
+  // is the brand's settlement currency (brands.pricing_currency, aligned to
+  // default_currency = the Stripe-synced settlement currency by the ORCH-1034
+  // migration). Charging in the connected account's settlement currency means
+  // presentment == settlement ⇒ ZERO Stripe FX. Doc:
+  //   https://docs.stripe.com/connect/charges  (on_behalf_of settlement)
+  //   https://docs.stripe.com/currencies        (presentment vs settlement)
+  // For populated rows pricing_currency already equals the session/ticket
+  // currency; on mismatch we PREFER pricing_currency (the post-migration
+  // authority) and warn. If pricing_currency is somehow NULL at charge time
+  // (should be impossible for a Stripe-ready brand post-migration), fail clean
+  // rather than silently charging GBP.
+  const settlementCurrencyRaw = typeof pricing.pricing_currency === "string"
+    ? pricing.pricing_currency.trim()
+    : "";
+  if (settlementCurrencyRaw.length === 0) {
+    console.error(
+      "[ticket-checkout-create] pricing_currency missing for charge",
+      { eventId },
+    );
+    return jsonResponse(
+      { error: "pricing_config_unavailable", detail: "pricing_currency_missing" },
+      409,
+    );
+  }
+  const currency = settlementCurrencyRaw.toLowerCase();
+  if (sessionCurrency !== currency) {
+    console.warn(
+      "[ticket-checkout-create] session/ticket currency != settlement currency; preferring settlement",
+      { eventId, sessionCurrency, settlementCurrency: currency },
+    );
+  }
+
+  // ORCH-1034 — region follows the seller. The engine's taxBehaviorForRegion
+  // now maps GB/EU/CH→inclusive, US→exclusive (no GB-throw). If pricing_region
+  // is NULL or NOT in the enabled allowlist, we degrade to flat-absorb BEFORE
+  // the engine is ever asked for a behavior, so the engine NEVER throws on a
+  // real checkout (regression guard — see SPEC §5.C item 2 + the latent-throw
+  // finding in INVESTIGATION_ORCH-1034_TAX_TIE_IN.md §3 PROVE-2).
+  const ENABLED_PRICING_REGIONS = ["GB", "US", "EU", "CH"] as const;
+  const rawRegion = typeof pricing.pricing_region === "string"
+    ? pricing.pricing_region.trim().toUpperCase()
+    : "";
+  const regionIsEnabled =
+    (ENABLED_PRICING_REGIONS as readonly string[]).includes(rawRegion);
+  const pricingRegion = (regionIsEnabled ? rawRegion : "GB") as PricingRegion;
+  // When the region is unknown/unmapped, force flat-absorb downstream (the tax
+  // block below honors this flag and never calls taxBehaviorForRegion on it).
+  const regionUnmappedForceFlatAbsorb = !regionIsEnabled;
   const pricingSwitches: PricingSwitches = {
     pass_tax: pricing.pass_tax,
     pass_mingla_fee: pricing.pass_mingla_fee,
@@ -871,7 +925,9 @@ serve(async (req) => {
       buyerStatusToken,
       hostedCheckoutUrl: checkoutSession.url,
       totalCents,
-      currency: String(session.currency ?? "GBP"),
+      // ORCH-1034 — report the settlement (charge) currency, not the legacy
+      // session/ticket currency with a GBP fallback.
+      currency: currency.toUpperCase(),
     });
   }
 
@@ -1029,7 +1085,11 @@ serve(async (req) => {
   // NOT the buyer; and ANY failure degrades to flat brand-absorbed pricing
   // (one clean number) rather than failing the session (SPEC §B.4, T-02/T-10).
   let taxBasis: TaxBasis = "venue_resolved";
-  const taxBehavior = taxBehaviorForRegion(pricingRegion); // GB → "inclusive"
+  // ORCH-1034 — tax_behavior is a thin per-region DISPLAY flag (GB/EU/CH →
+  // "inclusive", US → "exclusive"); Stripe Tax owns the AMOUNT. pricingRegion
+  // is guaranteed to be an enabled region here (the unmapped case was coerced
+  // to "GB" + flagged regionUnmappedForceFlatAbsorb), so this never throws.
+  const taxBehavior = taxBehaviorForRegion(pricingRegion);
   // Tax is computed on the grossed-up buyer subtotal so the all-in is internally
   // consistent (SPEC §C.3 step 5). For inclusive (GB), Stripe returns
   // amount_total === sum(line amounts) === buyerSubtotal (VAT extracted inside).
@@ -1041,7 +1101,10 @@ serve(async (req) => {
     // charge tax the brand can't remit). Probe BEFORE the calc.
     // Doc: https://docs.stripe.com/api/tax/registrations/list
     let hasActiveRegistration = false;
-    if (pricing.pass_tax && pricing.venue_tax_address) {
+    if (
+      pricing.pass_tax && pricing.venue_tax_address &&
+      !regionUnmappedForceFlatAbsorb
+    ) {
       try {
         const stripeForReg = stripeTicketCheckout();
         // @ts-ignore -- Stripe SDK Tax namespace is runtime-provided in Deno.
@@ -1061,8 +1124,12 @@ serve(async (req) => {
       }
     }
 
-    if (!pricing.pass_tax || !pricing.venue_tax_address) {
-      // Brand absorbs tax, or no resolved venue → flat-absorb (SPEC §B.4).
+    if (
+      !pricing.pass_tax || !pricing.venue_tax_address ||
+      regionUnmappedForceFlatAbsorb
+    ) {
+      // Brand absorbs tax, no resolved venue, OR an unmapped pricing_region
+      // (ORCH-1034 degrade-not-throw) → flat-absorb (SPEC §B.4).
       taxCalculation = { id: "", amount_total: taxAmountCents, tax_breakdown: [] };
       taxBasis = "unresolved_flat_absorb";
     } else if (!hasActiveRegistration) {
@@ -1139,12 +1206,15 @@ serve(async (req) => {
   if (taxBasis !== "venue_resolved") {
     taxCents = 0;
   } else if (taxBehavior === "inclusive") {
-    // GB VAT is inside the total: extract the VAT portion (standard-rate model
-    // mirrored by the engine happy-path tests). Stripe also reports this as
-    // tax_amount_inclusive on the calculation; we recompute deterministically
-    // from amount_total so the persisted breakdown is self-consistent.
+    // ORCH-1034 — inclusive VAT is inside the total: extract the display VAT
+    // portion using the SELLER region's divisor (GB/EU 1.20, CH 1.081), NOT a
+    // hardcoded GB `/1.2`. Stripe Tax owns the authoritative amount; this is a
+    // deterministic re-derivation of the inclusive split for the persisted
+    // breakdown so the receipt is self-consistent. Doc (tax_behavior inclusive):
+    // https://docs.stripe.com/tax/products-prices-tax-codes-tax-behavior
+    const divisor = inclusiveVatDivisorForRegion(pricingRegion);
     taxCents = taxCalculation.amount_total -
-      Math.round(taxCalculation.amount_total / 1.2);
+      Math.round(taxCalculation.amount_total / divisor);
   } else {
     // Exclusive (future US): tax is added on top of the subtotal.
     taxCents = Math.max(0, taxCalculation.amount_total - taxAmountCents);
@@ -1182,7 +1252,8 @@ serve(async (req) => {
       subtotalCents: totalCents,
       taxCents,
       totalCents: pricingBreakdown.buyer_total_cents,
-      currency: String(session.currency ?? "GBP"),
+      // ORCH-1034 — settlement (charge) currency, not the legacy GBP-fallback.
+      currency: currency.toUpperCase(),
       taxBreakdown: taxCalculation.tax_breakdown,
       calculationId: taxCalculation.id.length > 0 ? taxCalculation.id : null,
       calculationExpiresAt: null,
@@ -1340,7 +1411,9 @@ serve(async (req) => {
     subtotalCents: totalCents,
     taxCents,
     taxBreakdown: taxCalculation.tax_breakdown,
-    currency: String(session.currency ?? "GBP"),
+    // ORCH-1034 — settlement (charge) currency, not the legacy GBP-fallback.
+    // This is the currency the buyer's card is actually charged in (PI currency).
+    currency: currency.toUpperCase(),
     clientSecret,
     paymentIntentId: paymentIntent.id,
     // ORCH-1006 §C.4 — canonical breakdown for the receipt/confirmation.

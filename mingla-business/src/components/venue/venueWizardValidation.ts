@@ -1,5 +1,8 @@
 /**
- * Ve1 — inline validation for venue wizard steps.
+ * Ve1 + META-ORCH-1009 Sub-E — inline validation for venue wizard steps.
+ * Step indices MUST match VenueCreatorWizard's switch + STEPPER_STEPS order:
+ *   0 Address · 1 Name+slug · 2 Hours · 3 Contact · 4 Story · 5 Review
+ * (The old step-2 "Cover" explainer was removed — cover is set post-submit.)
  */
 
 import type { DraftVenueState } from "../../store/draftVenueStore";
@@ -10,9 +13,7 @@ export function venueStepError(
 ): string | null {
   switch (step) {
     case 0:
-      if (d.googlePlaceId === null || d.googlePlaceId.trim() === "") {
-        return "Pick your venue address from the suggestions.";
-      }
+      if (d.formattedAddress.trim().length === 0) return "Address is required.";
       if (d.lat === null || d.lng === null) return "Address is missing location.";
       return null;
     case 1: {
@@ -20,10 +21,7 @@ export function venueStepError(
       if (d.slug.trim().length === 0) return "URL slug is required.";
       return null;
     }
-    case 2:
-      if (d.photoUris.length < 1) return "Add at least one photo.";
-      return null;
-    case 3: {
+    case 2: {
       for (const h of d.hours) {
         if (h.isClosed) continue;
         const o = h.openTime ?? "";
@@ -37,7 +35,7 @@ export function venueStepError(
       }
       return null;
     }
-    case 4: {
+    case 3: {
       const em = d.contactEmail.trim();
       const ph = d.contactPhone.trim();
       if (em.length === 0 && ph.length === 0) {
@@ -45,13 +43,15 @@ export function venueStepError(
       }
       return null;
     }
-    case 5: {
+    case 4: {
       const bio = d.description.trim();
       if (bio.length < 20) {
         return "Description must be at least 20 characters.";
       }
       return null;
     }
+    case 5:
+      return null; // Review — submit handled separately
     default:
       return null;
   }

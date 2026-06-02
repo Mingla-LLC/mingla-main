@@ -19,11 +19,15 @@ export const HUB_LAST_TAB_STORAGE_KEY = "@mingla/hub/lastTab";
 export const deriveHubVisibleTabs = (
   counts: BrandOfferingCounts,
 ): HubTabName[] => {
+  // ORCH-1038: no "Get started" fallback pill — when the brand has no offerings,
+  // the shared to-do toggle (above the pills) carries the "Create your first
+  // offering" action instead. Hub then lands on its canonical /hub/events route
+  // (hub/index redirect) showing that sub-route's own empty state.
   const visible: HubTabName[] = [];
   if (counts.events > 0) visible.push("events");
   if (counts.trips > 0) visible.push("trips");
   if (counts.experiences > 0) visible.push("experiences");
-  return visible.length === 0 ? ["getstarted"] : visible;
+  return visible;
 };
 
 export const pickHubInitialTab = (
