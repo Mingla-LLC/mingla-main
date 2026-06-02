@@ -61,6 +61,7 @@ import {
   type Brand,
 } from "../../src/store/currentBrandStore";
 import { useCurrentBrand } from "../../src/hooks/useCurrentBrand";
+import { useCurrentBrandRole } from "../../src/hooks/useCurrentBrandRole";
 import { useCurrentBrandRecovery } from "../../src/hooks/useCurrentBrandRecovery";
 import { useBusinessTodos } from "../../src/hooks/useBusinessTodos";
 import { useResponsiveLayout } from "../../src/hooks/useResponsiveLayout";
@@ -84,6 +85,12 @@ import { formatCurrencyRound } from "../../src/utils/currency";
 import { formatDraftDateLine } from "../../src/utils/eventDateDisplay";
 import { getActiveEventsKpiSub } from "../../src/utils/homeKpiPresentation";
 import { formatRelativeTime } from "../../src/utils/relativeTime";
+// ORCH-1055 (META-ORCH-1048 sub-F): rank-10 scanners see a stripped-down
+// door-list surface instead of the brand-owner KPI dashboard. Importing
+// the scanner shell + rank gate at the top so the early-branch reads
+// cleanly. The full HomeTab body below is unchanged for rank>=20.
+import { ScannerHome } from "../../src/components/scanners/ScannerHome";
+import { isScannerOnlyRank } from "../../src/utils/navTabGate";
 
 interface ToastState {
   visible: boolean;
@@ -118,6 +125,11 @@ export default function HomeTab(): React.ReactElement {
   const queryClient = useQueryClient();
   const currentBrand = useCurrentBrand();
   const setCurrentBrand = useCurrentBrandStore((s) => s.setCurrentBrand);
+  // ORCH-1055: rank-10 scanners render the stripped-down ScannerHome
+  // instead of the brand-owner KPI dashboard. Hook MUST be called every
+  // render (rules-of-hooks); the early-return branches on the resolved
+  // value below, after all sibling hooks have run.
+  const { rank: callerRank } = useCurrentBrandRole(currentBrandId);
   const brandRecovery = useCurrentBrandRecovery();
   const upcoming = useUpcomingForBrand(currentBrand?.id ?? null);
   const [sheetVisible, setSheetVisible] = useState<boolean>(false);
@@ -376,6 +388,15 @@ export default function HomeTab(): React.ReactElement {
     },
     [router],
   );
+
+  // ORCH-1055: rank-10 scanner — render the door-only surface. All hooks
+  // above have run unconditionally; this is a render-time branch, safe
+  // under rules-of-hooks. rank<scanner (i.e. rank 0 / no membership)
+  // falls through to the regular Home so the empty-brand prompt can
+  // still drive onboarding.
+  if (isScannerOnlyRank(callerRank)) {
+    return <ScannerHome />;
+  }
 
   return (
     <View style={[styles.host, { paddingTop: insets.top }]}>

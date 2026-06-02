@@ -160,6 +160,8 @@ jobs:
         run: node .github/scripts/strict-grep/orch-0913-no-tabs-on-dashboards.mjs
       - name: Run ORCH-1016 bottom-sheet inline scroll-binding gate
         run: node .github/scripts/strict-grep/i-bottomsheet-inline-scroll-binding.mjs
+      - name: Run ORCH-1055 nav-tab rank-gate parity (scanner-only app shell)
+        run: node .github/scripts/strict-grep/orch-1055-nav-tab-rank-gate.mjs
 
   orch-0947-trip-spots-tickets-not-orders:
     name: "ORCH-0947: trip spots count tickets"
