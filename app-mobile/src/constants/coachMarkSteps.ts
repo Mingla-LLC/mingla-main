@@ -105,7 +105,7 @@ export const COACH_STEPS: CoachStep[] = [
     id: 9,
     tab: 'profile',
     title: 'Your circle',
-    description: 'The people you plan with, all in one place.',
+    description: 'Friends of friends, and people from the events and trips you shared — find them and connect.',
     buttonLabel: 'Got it',
   },
   {
