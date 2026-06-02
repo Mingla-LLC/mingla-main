@@ -1222,6 +1222,8 @@ function checkNoNewBackendFiles() {
     "supabase/functions/beta-access-lead-submit/index.ts",
     "supabase/functions/beta-access-lead-submit/__tests__/submit_happy.test.ts",
     "supabase/functions/beta-access-lead-submit/__tests__/submit_adversarial.test.ts",
+    // tester-authored adversarial regression (ORCH-1045 QA) — same backend dir.
+    "supabase/functions/beta-access-lead-submit/__tests__/submit_handler_sideeffects.tester.test.ts",
   ];
   const ALLOWLIST = [
     ...ORCH_1045_BACKEND_ALLOWLIST,
