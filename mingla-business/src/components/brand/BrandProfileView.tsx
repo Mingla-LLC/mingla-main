@@ -163,6 +163,12 @@ export interface BrandProfileViewProps {
    */
   onViewPublic: (brandSlug: string) => void;
   /**
+   * ORCH-1040 — called when user taps the "Venue listing" Operations row.
+   * Receives the brand id; parent routes to /brand/{id}/listing (the venue
+   * listing management page: status, AI scores, changes-remaining, manage).
+   */
+  onListing: (brandId: string) => void;
+  /**
    * Called when user taps the empty-events "Build a new event" CTA.
    * Routes to `/event/create` (the Cycle 3 wedge).
    * NEW in Cycle 7 FX1 — replaces Cycle-2 J-A7 TRANSITIONAL Toast that
@@ -197,6 +203,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   onAuditLog,
   onBlasts,
   onViewPublic,
+  onListing,
   onCreateEvent,
   onOpenLink,
   onRequestDelete,
@@ -292,6 +299,16 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   const operationsRows = useMemo<OperationsRow[]>(() => {
     const rows: OperationsRow[] = [
       {
+        // ORCH-1040 — venue listing management (status, AI scores, changes,
+        // edit/resubmit). First row: it's the core of the brand's deck presence.
+        icon: "list",
+        label: "Venue listing",
+        sub: "Status, your match scores, and manage",
+        onPress: () => {
+          if (brand !== null) onListing(brand.id);
+        },
+      },
+      {
         icon: "bank",
         label: "Payments & Stripe",
         sub: getBrandProfileStripeOperationsSub(stripeStatus),
@@ -354,6 +371,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
     return rows;
   }, [
     brand,
+    onListing,
     onTeam,
     onBlasts,
     onPayments,
