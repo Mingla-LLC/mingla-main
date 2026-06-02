@@ -260,17 +260,21 @@ export default function HomeTab(): React.ReactElement {
       ? (primaryLiveItem.source as LiveEvent)
       : null;
 
-  // Sales summary lookup only for event/experience live items — trips have
-  // their own ticketsSoldCount on the Trip row.
-  const summaryLiveEvents = useMemo<LiveEvent[]>(
+  // Sales summary lookup for ALL event/experience items — both live AND upcoming.
+  // Upcoming (scheduled, future-dated) events are still selling tickets, so their
+  // sold count + revenue must be fetched too. Previously this filtered to
+  // status === "live", so every upcoming row fell back to a false "0 sold" / "$0"
+  // (its orders were never fetched). Trips are excluded — they carry their own
+  // ticketsSoldCount on the Trip row; drafts have no orders.
+  const summaryEvents = useMemo<LiveEvent[]>(
     () =>
       upcoming.items
-        .filter((i) => i.status === "live" && (i.kind === "event" || i.kind === "experience"))
+        .filter((i) => i.kind === "event" || i.kind === "experience")
         .map((i) => i.source as LiveEvent),
     [upcoming.items],
   );
   const eventSalesSummaries = useEventSalesSummaries(
-    summaryLiveEvents,
+    summaryEvents,
     currentBrand?.defaultCurrency,
   );
 
