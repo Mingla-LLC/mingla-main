@@ -82,6 +82,7 @@ export function useBusinessTodos(): BusinessTodo[] {
         pipelineStatus: pipelineState.data?.status ?? null,
         pipelineRoute,
         venueDraftInProgress,
+        hasPhysicalLocation: currentBrand?.hasPhysicalLocation === true,
         counts: {
           total: upcoming.counts.total,
           live: upcoming.counts.live,

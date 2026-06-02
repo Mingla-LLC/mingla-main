@@ -44,6 +44,11 @@ export interface BusinessTodoInput {
   pipelineRoute: string;
   /** A persisted, in-progress venue wizard draft exists (→ "Finish" vs "Add"). */
   venueDraftInProgress: boolean;
+  /**
+   * ORCH-1040 — the brand has a physical location (opt-in toggle). Gates the
+   * add/finish-venue rows so non-physical brands are never nagged to add a venue.
+   */
+  hasPhysicalLocation: boolean;
   /** Upcoming buckets (total = live+upcoming+draft; past already filtered out). */
   counts: { total: number; live: number; draft: number };
   /** Brand Stripe status is "active". */
@@ -102,24 +107,29 @@ export function buildBusinessTodos(input: BusinessTodoInput): BusinessTodo[] {
 
   const todos: BusinessTodo[] = [];
 
-  // 2 — Venue. Either it doesn't exist yet (add/finish) or it exists but isn't live
-  // yet (get-live). These are mutually exclusive by construction.
+  // 2 — Venue. ORCH-1040: "Add/Finish your venue" only shows for brands that
+  // have toggled ON a physical location (opt-in) — online-only brands, event
+  // organizers and pop-ups never get nagged. "Get your venue live" is NOT gated
+  // on the flag: it only fires once a venue row exists, which means the brand
+  // already engaged the physical path, so an in-progress venue is never stranded.
   if (input.pipelineFetched && input.pipelineStatus === null) {
-    todos.push(
-      input.venueDraftInProgress
-        ? {
-            id: "finish_venue",
-            label: "Finish adding your venue",
-            sublabel: "Pick up where you left off",
-            action: { kind: "route", route: "/venue/create" },
-          }
-        : {
-            id: "add_venue",
-            label: "Add your venue",
-            sublabel: "Get discovered in the Mingla deck",
-            action: { kind: "route", route: "/venue/create" },
-          },
-    );
+    if (input.hasPhysicalLocation) {
+      todos.push(
+        input.venueDraftInProgress
+          ? {
+              id: "finish_venue",
+              label: "Finish adding your venue",
+              sublabel: "Pick up where you left off",
+              action: { kind: "route", route: "/venue/create" },
+            }
+          : {
+              id: "add_venue",
+              label: "Add your venue",
+              sublabel: "Get discovered in the Mingla deck",
+              action: { kind: "route", route: "/venue/create" },
+            },
+      );
+    }
   } else if (
     input.pipelineStatus !== null &&
     input.pipelineStatus !== "draft" &&

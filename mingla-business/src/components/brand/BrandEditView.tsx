@@ -780,6 +780,28 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
                 accessibilityLabel="Show attendee count"
               />
             </View>
+            {/* ORCH-1040 — physical-location opt-in. When on, the "Add your
+                venue" to-do + the "Venue listing" surface appear so the brand
+                can list its place on the Mingla deck. */}
+            <View style={styles.toggleRow}>
+              <View style={styles.toggleTextCol}>
+                <Text style={styles.toggleLabel}>Physical location</Text>
+                <Text style={styles.toggleSub}>
+                  Turn on if customers visit you in person — we'll help you list
+                  your venue so Mingla can recommend it.
+                </Text>
+              </View>
+              <InlineToggle
+                value={draft.hasPhysicalLocation === true}
+                onPress={() =>
+                  setDraft({
+                    ...draft,
+                    hasPhysicalLocation: !(draft.hasPhysicalLocation === true),
+                  })
+                }
+                accessibilityLabel="Physical location"
+              />
+            </View>
           </GlassCard>
 
           {/* Cycle 17e-A — Danger zone */}

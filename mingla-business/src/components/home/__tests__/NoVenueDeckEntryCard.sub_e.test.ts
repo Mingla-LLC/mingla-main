@@ -29,6 +29,7 @@ const withBrand: BusinessTodoInput = {
   pipelineRoute:
     "/venue/deck-readiness?brand_id=b1&focus=review&fix=review_pipeline",
   venueDraftInProgress: false,
+  hasPhysicalLocation: true,
   counts: { total: 1, live: 1, draft: 0 },
   stripeActive: true,
   hasDraftPaidOffering: false,

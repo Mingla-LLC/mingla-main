@@ -65,6 +65,8 @@ export interface BrandRow {
   deleted_at: string | null;
   // Ve1 — optional until row is loaded from a fresh `select *` after migration.
   place_pool_id?: string | null;
+  // ORCH-1040 — whether the brand has a physical location to list on the deck.
+  has_physical_location?: boolean | null;
   google_place_id?: string | null;
   lat?: number | null;
   lng?: number | null;
@@ -113,6 +115,7 @@ export type BrandTableInsert = {
   country_code?: string | null;
   claim_status?: BrandClaimStatus;
   venue_category?: VenueCategory | null;
+  has_physical_location?: boolean | null;
 };
 
 export const EMPTY_BRAND_STATS: BrandStats = {
@@ -301,6 +304,7 @@ export function mapBrandRowToUi(row: BrandRow, options: MapBrandRowToUiOptions):
     countryCode: row.country_code ?? undefined,
     venueCategory: (row.venue_category as VenueCategory | undefined) ?? undefined,
     placePoolId: row.place_pool_id ?? undefined,
+    hasPhysicalLocation: row.has_physical_location === true,
   };
 }
 
@@ -432,6 +436,9 @@ export function mapUiToBrandUpdatePatch(
   }
   if (patch.profilePhotoType !== undefined) {
     out.profile_photo_type = patch.profilePhotoType ?? null;
+  }
+  if (patch.hasPhysicalLocation !== undefined) {
+    out.has_physical_location = patch.hasPhysicalLocation;
   }
   if (patch.theme !== undefined) {
     out.theme_color = patch.theme?.color ?? null;
