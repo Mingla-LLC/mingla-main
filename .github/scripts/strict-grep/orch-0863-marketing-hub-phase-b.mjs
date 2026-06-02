@@ -1288,6 +1288,21 @@ function checkNoNewBackendFiles() {
     "supabase/functions/accept-scanner-invitation/__tests__/orch-1051-accept-happy.test.ts",
     "supabase/functions/accept-scanner-invitation/__tests__/orch-1051-accept-adversarial.test.ts",
   ];
+  // ORCH-1052 [Partner identity + account-level Stripe Connect + currency-
+  // match invite gate]. META-ORCH-1048 sub-D. C7 is scoped to ORCH-0863
+  // marketing; these are partner-Stripe + invite-gate backend touches
+  // (migration + 2 new edge fns + modified accept-brand-invitation + tests).
+  // Per COMMS-0002 must land in the SAME commit as the service + UI wiring.
+  const ORCH_1052_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260822000000_orch_1052_partner_identity_stripe.sql",
+    "supabase/functions/partner-stripe-onboard/index.ts",
+    "supabase/functions/partner-stripe-account-session/index.ts",
+    "supabase/functions/accept-brand-invitation/index.ts",
+    "supabase/functions/partner-stripe-onboard/__tests__/orch-1052-onboard-happy.test.ts",
+    "supabase/functions/partner-stripe-onboard/__tests__/orch-1052-onboard-adversarial.test.ts",
+    "supabase/functions/accept-brand-invitation/__tests__/orch-1052-currency-gate.test.ts",
+    "supabase/migrations/__tests__/orch_1052_partner_can_accept_brand.test.ts",
+  ];
   // ORCH-1056 [Lead welcome email]: modifies the beta-access edge fn (already
   // allowlisted above) to also send the lead a welcome email (web-app link +
   // Ari spotlight + mobile-in-the-works). Adds two new test files. C7 flags new
@@ -1381,6 +1396,7 @@ function checkNoNewBackendFiles() {
     "supabase/functions/backfill-place-photo-thumbs/index.adversarial.test.ts",
   ];
   const ALLOWLIST = [
+    ...ORCH_1052_BACKEND_ALLOWLIST,
     ...ORCH_1051_BACKEND_ALLOWLIST,
     ...ORCH_1050_BACKEND_ALLOWLIST,
     ...ORCH_1044_BACKEND_ALLOWLIST,

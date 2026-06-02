@@ -61,6 +61,16 @@ export const validateStep = (
 export const validatePublish = (
   draft: DraftEvent,
   brandStripeStatus: BrandStripeStatus,
+  /**
+   * ORCH-1052: when the caller is a flagged Mingla partner who hasn't yet
+   * connected their PARTNER Stripe identity, the publish gate also surfaces
+   * "Connect partner Stripe to receive partner earnings". One screen, one
+   * ask — partner gate bundles next to the brand gate (step 4).
+   */
+  partnerStripeGate?: {
+    partnerEnabled: boolean;
+    partnerStripeConnected: boolean;
+  },
 ): ValidationError[] => {
   const errors: ValidationError[] = [];
   for (let step = 0; step < 7; step++) {
@@ -76,6 +86,18 @@ export const validatePublish = (
       fieldKey: "stripeNotConnected",
       step: 4,
       message: "Connect Stripe to publish paid tickets.",
+    });
+  }
+  // ORCH-1052 partner money-gate bundle: same screen, additive ask.
+  if (
+    hasPaidTicket &&
+    partnerStripeGate?.partnerEnabled === true &&
+    partnerStripeGate.partnerStripeConnected !== true
+  ) {
+    errors.push({
+      fieldKey: "partnerStripeNotConnected",
+      step: 4,
+      message: "Connect partner Stripe to receive partner earnings.",
     });
   }
   return errors;

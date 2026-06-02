@@ -803,6 +803,19 @@ jobs:
       - name: Run ORCH-1051 gate
         run: node .github/scripts/strict-grep/orch-1051-scanner-invite-functional.mjs
 
+  orch-1052-partner-identity:
+    name: "ORCH-1052: partner identity + account-level Stripe + currency-match invite gate"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-1052 gate self-test
+        run: node .github/scripts/strict-grep/orch-1052-partner-identity.mjs --self-test
+      - name: Run ORCH-1052 gate
+        run: node .github/scripts/strict-grep/orch-1052-partner-identity.mjs
+
   meta-orch-0827-package-isolation:
     name: "META-ORCH-0827: packages/ pure-presentational isolation"
     runs-on: ubuntu-latest

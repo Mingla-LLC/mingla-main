@@ -19,8 +19,15 @@
 //   → 401 { error:'unauthenticated' }
 //   → 403 { error:'invite_email_mismatch' }
 //   → 404 { error:'invite_not_found' }
+//   → 409 { error:'invite_currency_mismatch', reason, brand_currency, partner_currencies }
 //   → 410 { error:'invite_already_used' | 'invite_expired' | 'invite_revoked' }
 //   → 500 { error:'server' }
+//
+// ORCH-1052: P0006 invite_currency_mismatch surfaces when the accepting
+// account is a flagged Mingla partner whose partner Stripe Connect account
+// either isn't connected or can't settle in the brand's default_currency. The
+// RPC carries the partner-gate payload in the exception DETAIL (JSON); we
+// parse it and surface to the client.
 
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -62,9 +69,29 @@ export function mapRpcError(code: string | undefined): {
       return { status: 403, error: "invite_email_mismatch" };
     case "P0005":
       return { status: 410, error: "invite_revoked" };
+    case "P0006":
+      return { status: 409, error: "invite_currency_mismatch" };
     default:
       return null;
   }
+}
+
+// ORCH-1052: parse the partner-gate payload that the RPC packs into the
+// EXCEPTION DETAIL. Falls back to a minimal object when DETAIL is missing /
+// not JSON so the client always gets a stable envelope.
+export function parsePartnerGateDetail(
+  detail: string | undefined,
+): Record<string, unknown> | null {
+  if (typeof detail !== "string" || detail.length === 0) return null;
+  try {
+    const parsed = JSON.parse(detail);
+    if (parsed && typeof parsed === "object") {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    // not JSON — fall through.
+  }
+  return null;
 }
 
 export async function handler(req: Request): Promise<Response> {
@@ -144,10 +171,33 @@ export async function handler(req: Request): Promise<Response> {
     if (rpcErr) {
       const mapped = mapRpcError(rpcErr.code);
       if (mapped) {
+        if (mapped.error === "invite_currency_mismatch") {
+          // ORCH-1052: surface the partner-gate payload (brand_currency,
+          // partner_currencies, reason) so the client can render a useful
+          // money-gate message and link out to partner-Stripe onboarding.
+          const partnerGate = parsePartnerGateDetail(
+            (rpcErr as { details?: string }).details ??
+              (rpcErr as { detail?: string }).detail,
+          );
+          return json(
+            { error: mapped.error, partner_gate: partnerGate },
+            mapped.status,
+          );
+        }
         return json({ error: mapped.error }, mapped.status);
       }
       // Sometimes pgrest surfaces the message instead of the code.
       const msg = rpcErr.message ?? "";
+      if (msg.includes("invite_currency_mismatch")) {
+        const partnerGate = parsePartnerGateDetail(
+          (rpcErr as { details?: string }).details ??
+            (rpcErr as { detail?: string }).detail,
+        );
+        return json(
+          { error: "invite_currency_mismatch", partner_gate: partnerGate },
+          409,
+        );
+      }
       if (msg.includes("invite_not_found")) {
         return json({ error: "invite_not_found" }, 404);
       }
