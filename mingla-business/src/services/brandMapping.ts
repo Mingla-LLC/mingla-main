@@ -145,7 +145,7 @@ export function membershipRoleToUiBrandRole(
   memberRole: string | null | undefined
 ): BrandRole {
   const r = memberRole?.toLowerCase() ?? "";
-  if (r === "account_owner") return "owner";
+  if (r === "brand_owner") return "owner";
   if (r === "brand_admin") return "admin";
   return "admin";
 }
