@@ -1283,7 +1283,21 @@ function checkNoNewBackendFiles() {
     // predicate logic + gate count-query running-only correctness).
     "supabase/migrations/__tests__/orch_1032_additive_safety_adversarial.test.ts",
   ];
+  // ORCH-1034 [de-GBP-ify the currency layer — charge in seller currency]:
+  // a config-column migration on brands (align pricing_currency:=default_currency,
+  // drop the GBP-only currency CHECK, widen the region CHECK to GB/US/EU/CH) plus
+  // two MODIFY backend files (charge currency = seller settlement currency + the
+  // per-region tax_behavior display flag) and a Deno regression test for the
+  // engine flag generalization. C7 is scoped to ORCH-0863 marketing; these are
+  // pricing/currency backend touches. Per COMMS-0002.
+  const ORCH_1034_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260815000000_orch_1034_currency_de_gbp.sql",
+    "supabase/functions/ticket-checkout-create/index.ts",
+    "supabase/functions/_shared/allInPricingEngine.ts",
+    "supabase/functions/_shared/__tests__/orch_1034_currency_de_gbp.test.ts",
+  ];
   const ALLOWLIST = [
+    ...ORCH_1034_BACKEND_ALLOWLIST,
     ...ORCH_1032_BACKEND_ALLOWLIST,
     ...ORCH_1027_BACKEND_ALLOWLIST,
     ...ORCH_1030_BACKEND_ALLOWLIST,
