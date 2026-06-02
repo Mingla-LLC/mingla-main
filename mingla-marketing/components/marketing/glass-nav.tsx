@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { SurfaceToggle } from '@/components/marketing/surface-toggle'
+import { BetaAccessModal } from '@/components/marketing/beta-access-modal'
 import { cn } from '@/lib/cn'
 
 export function GlassNav() {
@@ -25,6 +26,9 @@ export function GlassNav() {
     window.addEventListener('scroll', onScroll, { passive: true })
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
+
+  // ORCH-1045 — organiser-only "Get Beta Access" CTA opens the 3-step lead modal.
+  const [betaOpen, setBetaOpen] = useState(false)
 
   return (
     <>
@@ -80,12 +84,36 @@ export function GlassNav() {
             <SurfaceToggle />
           </div>
 
-          {/* CTA — same label across surfaces (organiser has its own app too) */}
-          <Button variant="glass" size="sm">
-            Get the app
-          </Button>
+          {/* CTA — branches by surface (ORCH-1045).
+              explorer: NG-1 keeps the dead "Get the app" button intentionally —
+              do not wire (operator-locked, out of scope).
+              organiser: "Get Beta Access" opens the 3-step lead modal. */}
+          {surface === 'organiser' ? (
+            <Button
+              variant="glass"
+              size="sm"
+              onClick={() => setBetaOpen(true)}
+              aria-haspopup="dialog"
+              aria-expanded={betaOpen}
+            >
+              Get Beta Access
+            </Button>
+          ) : (
+            <Button variant="glass" size="sm">
+              Get the app
+            </Button>
+          )}
         </div>
       </header>
+
+      {/* organiser-only — explorer never mounts the modal (I-1045-ORGANISER-ONLY-CTA) */}
+      {surface === 'organiser' ? (
+        <BetaAccessModal
+          open={betaOpen}
+          onClose={() => setBetaOpen(false)}
+          source="organiser_marketing_nav"
+        />
+      ) : null}
     </>
   )
 }

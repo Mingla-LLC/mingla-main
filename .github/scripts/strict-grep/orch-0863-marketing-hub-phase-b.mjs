@@ -1212,7 +1212,19 @@ function checkNoNewBackendFiles() {
     // antimeridian/equidistant-tiebreak/corner-coords) + the index.ts NULL guard.
     "supabase/functions/check-launch-city/__tests__/check_launch_city_adversarial.test.ts",
   ];
+  // ORCH-1045 [Business "Get Beta Access" lead-capture]: adds the beta-lead
+  // migration (beta_access_leads table + admin_beta_leads_list RPC) and the
+  // public beta-access-lead-submit edge fn (+ its Deno tests). C7 is scoped to
+  // ORCH-0863 marketing; these are beta-lead-capture backend touches. Per
+  // COMMS-0002 — must land in the SAME commit as the migration + edge fn.
+  const ORCH_1045_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260817000000_orch_1045_beta_access_leads.sql",
+    "supabase/functions/beta-access-lead-submit/index.ts",
+    "supabase/functions/beta-access-lead-submit/__tests__/submit_happy.test.ts",
+    "supabase/functions/beta-access-lead-submit/__tests__/submit_adversarial.test.ts",
+  ];
   const ALLOWLIST = [
+    ...ORCH_1045_BACKEND_ALLOWLIST,
     ...ORCH_1027_BACKEND_ALLOWLIST,
     ...ORCH_1024_BACKEND_ALLOWLIST,
     ...ORCH_1021_BACKEND_ALLOWLIST,

@@ -134,6 +134,9 @@ export const NAV_GROUPS = [
       { id: "signals",                   label: "Signal Library",     icon: "Activity" },
       { id: "place-intelligence-trial",  label: "Intelligence Trial", icon: "Microscope" },
       { id: "email",                     label: "Email",              icon: "Mail" },
+      // ORCH-1045: read-only list of "Get Beta Access" leads from the organiser
+      // marketing site. Operator growth tooling — sits next to Email.
+      { id: "beta-leads",                label: "Beta Leads",         icon: "Inbox" },
       // ORCH-1006: Mingla take-rate admin screen (global default + per-brand override).
       { id: "pricing",                   label: "Pricing",            icon: "Percent" },
       { id: "claims",                    label: "Venue claims",       icon: "ClipboardList" },

@@ -95,6 +95,13 @@ verify_jwt = false
 [functions.check-launch-city]
 verify_jwt = false
 
+# ORCH-1045 — public "Get Beta Access" lead-submit. The organiser marketing site
+# is unauthenticated; anon callers POST a lead. The fn re-validates all input,
+# soft-throttles by salted IP hash, and writes via the service role (anon has no
+# table policy — deny-by-default). No JWT required. Per SPEC_ORCH-1045 §3.3.3.
+[functions.beta-access-lead-submit]
+verify_jwt = false
+
 # ORCH-0880 [Tr5 Traveler Intake Forms]: anon-tolerant signed-URL endpoint
 # per feedback_anon_buyer_routes.md. Buyer is anonymous when uploading intake
 # files; authentication happens at the trip/schema/question lookup layer +
