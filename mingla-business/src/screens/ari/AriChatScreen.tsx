@@ -24,6 +24,7 @@ import {
 import type { KeyboardEvent } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Menu, Settings } from "lucide-react-native";
 
 import {
   canvas,
@@ -136,7 +137,7 @@ export const AriChatScreen: React.FC = () => {
           accessibilityRole="button"
           accessibilityLabel="Show conversations"
         >
-          <Text style={styles.iconText}>≡</Text>
+          <Menu size={24} color={textTokens.primary} strokeWidth={2} />
         </Pressable>
         <View style={styles.headerTitle}>
           <AriOrb size="sm" decorative />
@@ -148,7 +149,7 @@ export const AriChatScreen: React.FC = () => {
           accessibilityRole="button"
           accessibilityLabel="Open Ari settings"
         >
-          <Text style={styles.iconText}>⚙</Text>
+          <Settings size={22} color={textTokens.primary} strokeWidth={2} />
         </Pressable>
       </View>
 
@@ -166,7 +167,7 @@ export const AriChatScreen: React.FC = () => {
 
       <View style={styles.kav}>
         {noMessages ? (
-          <EmptyState onChipSelect={handleSend} />
+          <EmptyState />
         ) : (
           <MessageList
             messages={chat.messages}
@@ -254,10 +255,6 @@ const styles = StyleSheet.create({
     height: 44,
     alignItems: "center",
     justifyContent: "center",
-  },
-  iconText: {
-    fontSize: 22,
-    color: textTokens.primary,
   },
   headerTitle: {
     flexDirection: "row",
