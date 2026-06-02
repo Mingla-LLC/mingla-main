@@ -144,7 +144,7 @@ CREATE POLICY "brand_invitations_select_brand_admin_plus"
       FROM public.brands b
       INNER JOIN public.creator_accounts a ON a.id = b.account_id
       WHERE b.id = brand_invitations.brand_id
-        AND a.user_id = auth.uid()
+        AND a.id = auth.uid()
         AND b.deleted_at IS NULL
     )
   );
@@ -173,7 +173,7 @@ CREATE POLICY "brand_invitations_insert_brand_admin_plus"
         FROM public.brands b
         INNER JOIN public.creator_accounts a ON a.id = b.account_id
         WHERE b.id = brand_invitations.brand_id
-          AND a.user_id = auth.uid()
+          AND a.id = auth.uid()
           AND b.deleted_at IS NULL
       )
     )
@@ -203,7 +203,7 @@ CREATE POLICY "brand_invitations_update_brand_admin_plus"
       FROM public.brands b
       INNER JOIN public.creator_accounts a ON a.id = b.account_id
       WHERE b.id = brand_invitations.brand_id
-        AND a.user_id = auth.uid()
+        AND a.id = auth.uid()
         AND b.deleted_at IS NULL
     )
   )
@@ -224,7 +224,7 @@ CREATE POLICY "brand_invitations_update_brand_admin_plus"
       FROM public.brands b
       INNER JOIN public.creator_accounts a ON a.id = b.account_id
       WHERE b.id = brand_invitations.brand_id
-        AND a.user_id = auth.uid()
+        AND a.id = auth.uid()
         AND b.deleted_at IS NULL
     )
   );
@@ -263,8 +263,10 @@ DECLARE
   v_brand_record record;
   v_transferred boolean := false;
 BEGIN
-  -- Resolve the accepting user's auth email + user_id from creator_accounts.
-  SELECT a.user_id INTO v_acceptor_user_id
+  -- Resolve the accepting user's auth user_id from creator_accounts.
+  -- NOTE: creator_accounts.id IS the auth.users.id (no separate user_id col);
+  -- this SELECT confirms the row exists and aliases the id for the email lookup.
+  SELECT a.id INTO v_acceptor_user_id
   FROM public.creator_accounts a
   WHERE a.id = p_accepting_account_id;
 
