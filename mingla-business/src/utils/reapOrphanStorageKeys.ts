@@ -32,7 +32,10 @@ const KNOWN_MINGLA_KEYS = new Set<string>([
   "mingla-business.scannerInvitationsStore.v2",
   "mingla-business.doorSalesStore.v1",
   "mingla-business.scanStore.v1",
-  "mingla-business.brandTeamStore.v1",
+  // ORCH-1050: brandTeamStore.v1 was removed from the persist allowlist.
+  // The store is now in-memory optimistic only (canonical state lives in
+  // public.brand_invitations via React Query). The reaper now sweeps any
+  // residual `mingla-business.brandTeamStore.v1` key from prior installs.
 ]);
 
 const SUPABASE_AUTH_KEY_PATTERN = /^sb-.+-auth-token$/;

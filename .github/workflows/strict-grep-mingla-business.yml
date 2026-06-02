@@ -777,6 +777,19 @@ jobs:
       - name: Run ORCH-1047 gate
         run: node .github/scripts/strict-grep/orch-1047-brand-owner-renamed.mjs
 
+  orch-1050-brand-invite-functional:
+    name: "ORCH-1050: brand-team invite flow is functional (no TRANSITIONAL)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-1050 gate self-test
+        run: node .github/scripts/strict-grep/orch-1050-brand-invite-functional.mjs --self-test
+      - name: Run ORCH-1050 gate
+        run: node .github/scripts/strict-grep/orch-1050-brand-invite-functional.mjs
+
   meta-orch-0827-package-isolation:
     name: "META-ORCH-0827: packages/ pure-presentational isolation"
     runs-on: ubuntu-latest

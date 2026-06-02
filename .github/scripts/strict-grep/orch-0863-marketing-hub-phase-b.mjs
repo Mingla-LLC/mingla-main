@@ -1264,6 +1264,18 @@ function checkNoNewBackendFiles() {
     // tester-authored adversarial regression (ORCH-1045 QA) — same backend dir.
     "supabase/functions/beta-access-lead-submit/__tests__/submit_handler_sideeffects.tester.test.ts",
   ];
+  // ORCH-1050 [Brand team invite + accept + ownership transfer]. META-ORCH-1048
+  // sub-B. C7 is scoped to ORCH-0863 marketing; these are brand-team invite
+  // pipeline backend touches (migration + two edge fns + tests). Per
+  // COMMS-0002 — must land in the SAME commit as the service + UI wiring.
+  const ORCH_1050_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260820000000_orch_1050_brand_invite_flow.sql",
+    "supabase/functions/invite-brand-member/index.ts",
+    "supabase/functions/accept-brand-invitation/index.ts",
+    "supabase/functions/invite-brand-member/__tests__/orch-1050-invite-happy.test.ts",
+    "supabase/functions/accept-brand-invitation/__tests__/orch-1050-accept-happy.test.ts",
+    "supabase/functions/accept-brand-invitation/__tests__/orch-1050-accept-adversarial.test.ts",
+  ];
   // ORCH-1030 [Consumer app notification deep-linking]. C7 is scoped to
   // ORCH-0863 marketing; ORCH-1030's backend touches correct the notification
   // producers' deep links so they actually reach the device: birthday/holiday
@@ -1334,6 +1346,7 @@ function checkNoNewBackendFiles() {
     "supabase/migrations/20260816000000_orch_1043_auto_run_triggered_by_nullable.sql",
   ];
   const ALLOWLIST = [
+    ...ORCH_1050_BACKEND_ALLOWLIST,
     ...ORCH_1045_BACKEND_ALLOWLIST,
     ...ORCH_1034_BACKEND_ALLOWLIST,
     ...ORCH_1043_BACKEND_ALLOWLIST,
