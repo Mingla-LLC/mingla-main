@@ -270,8 +270,12 @@ Deno.test("T-03 process_chunk completes the run when no pending batch remains", 
 });
 
 Deno.test("T-03b process_chunk self-invokes (EdgeRuntime.waitUntil) when pending batches remain", async () => {
-  // SAFETY_MAX_ITERATIONS=20; 25 pending → loop exits on iteration cap with work
-  // still pending, forcing the end-of-budget self-invoke.
+  // [TEST-MOD-APPROVED ORCH-1044] ORCH-1044 replaced the ORCH-1043 multi-batch
+  // BUDGET_MS=110s loop (exitReason='safety_max_iterations') with a SINGLE small
+  // unit per invocation that self-invokes when work remains (exitReason='unit_done'
+  // / 'guard_tripped_partial'). The self-invoke INVARIANT this test guards is
+  // unchanged — only the exit-reason string changed because the loop is gone.
+  // 25 pending → after processing one (empty) batch, 24 remain → self-invoke.
   const { db } = makeChunkDb({ pendingBatches: 25 });
   const priorFetch = globalThis.fetch;
   // deno-lint-ignore no-explicit-any
@@ -292,13 +296,149 @@ Deno.test("T-03b process_chunk self-invokes (EdgeRuntime.waitUntil) when pending
     const out = await res.json();
     assertEquals(out.ok, true);
     assertEquals(out.done, false);
-    assertEquals(out.exitReason, "safety_max_iterations");
+    // [TEST-MOD-APPROVED ORCH-1044] one batch processed this invocation → 'unit_done';
+    // pending work remains → self-invoke.
+    assertEquals(out.exitReason, "unit_done");
+    assertEquals(out.batchesProcessed, 1);
     assertEquals(waitUntilCalled, true);
     assert(fetched.some((u) => u.includes("/functions/v1/backfill-place-photo-thumbs")), "self-invokes its own URL");
   } finally {
     globalThis.fetch = priorFetch;
     g.EdgeRuntime = priorEdge;
     Deno.env.delete("SUPABASE_SERVICE_ROLE_KEY");
+  }
+});
+
+// ─── ORCH-1044 [Thumb gen must fit the edge CPU budget + reliably drain] ──────
+
+import { processBatch } from "./index.ts";
+
+// A processBatch-focused db: place_pool lookups return a configured place row;
+// storage upload + place_pool thumbs_backfilled_at update both succeed. Records
+// how many HEAD checks + originals fetches happen so we can prove the guard
+// stopped early AND that already-written thumbs are HEAD-skipped (not re-encoded).
+function makeBatchDb(places: Record<string, string[]>) {
+  const updatedPlaceIds: string[] = [];
+  const db = {
+    storage: {
+      from() {
+        return {
+          getPublicUrl(path: string) {
+            return { data: { publicUrl: `https://x.supabase.co/storage/v1/object/public/place-photos/${path}` } };
+          },
+          upload() { return Promise.resolve({ error: null }); },
+        };
+      },
+    },
+    from(table: string) {
+      if (table !== "place_pool") throw new Error(`unexpected table ${table}`);
+      const b: Record<string, unknown> = {};
+      let selectedId: string | null = null;
+      let isUpdate = false;
+      let updateTargetId: string | null = null;
+      b.select = () => b;
+      b.is = () => b;
+      b.update = (_payload: Record<string, unknown>) => { isUpdate = true; return b; };
+      b.eq = (_col: string, val: string) => {
+        if (isUpdate) { updateTargetId = val; return Promise.resolve({ error: null }).then((r) => { updatedPlaceIds.push(updateTargetId!); return r; }); }
+        selectedId = val;
+        return b;
+      };
+      b.maybeSingle = () => {
+        const urls = selectedId ? places[selectedId] : undefined;
+        if (!urls) return Promise.resolve({ data: null, error: null });
+        return Promise.resolve({ data: { id: selectedId, stored_photo_urls: urls }, error: null });
+      };
+      return b;
+    },
+  };
+  return { db, updatedPlaceIds };
+}
+
+Deno.test("T-01 CPU wall guard stops processing mid-batch, flags partial, and skips already-written thumbs", async () => {
+  // 3 places × 1 photo each. A mock clock that advances 700ms per nowMs() call
+  // crosses CPU_WALL_GUARD_MS (1200) after the guard check for the 2nd photo,
+  // so only the 1st photo's place is fully drained; the rest are left undone.
+  const priorFetch = globalThis.fetch;
+  const headCalls: string[] = [];
+  const getCalls: string[] = [];
+  const jpeg = await makeJpegBytes();
+
+  globalThis.fetch = (input: URL | RequestInfo, init?: RequestInit) => {
+    const url = String(input);
+    const method = init?.method ?? "GET";
+    if (method === "HEAD") {
+      headCalls.push(url);
+      // place-1's thumb already exists (HEAD 200 → present, no re-encode);
+      // place-2/place-3 thumbs do not exist yet (404).
+      return Promise.resolve(new Response(null, { status: url.includes("p1/") ? 200 : 404 }));
+    }
+    getCalls.push(url);
+    return Promise.resolve(new Response(bodyFrom(jpeg), { status: 200, headers: { "content-type": "image/jpeg" } }));
+  };
+
+  try {
+    const { db, updatedPlaceIds } = makeBatchDb({
+      "place-1": ["https://x.supabase.co/storage/v1/object/public/place-photos/p1/0.jpg"],
+      "place-2": ["https://x.supabase.co/storage/v1/object/public/place-photos/p2/0.jpg"],
+      "place-3": ["https://x.supabase.co/storage/v1/object/public/place-photos/p3/0.jpg"],
+    });
+
+    // Mock clock sequence (each nowMs() call returns the next value):
+    //   call 1 = batchStartMs              → 0
+    //   call 2 = guard check, place-1 job1 → 0    (< 1200 → place-1's photo runs)
+    //   call 3 = guard check, place-2 job1 → 1300 (>= 1200 → TRIP, place-2/3 left undone)
+    //   call 4 = the console.log elapsed read → 1300
+    const clock = [0, 0, 1300, 1300];
+    let i = 0;
+    const nowMs = () => clock[Math.min(i++, clock.length - 1)];
+
+    const result = await processBatch(db as unknown as Record<string, never>, ["place-1", "place-2", "place-3"], { nowMs });
+
+    // Guard tripped → partial batch (must be returned to pending by the caller).
+    assertEquals(result.partial, true);
+    // place-1 fully drained: its single photo was already present (HEAD 200) → all
+    // its jobs ran with no failure → succeeded + thumbs_backfilled_at set.
+    assertEquals(updatedPlaceIds, ["place-1"]);
+    assertEquals(result.succeeded, 1);
+    assertEquals(result.thumbsAlreadyPresent, 1);
+    // place-2 + place-3 were NOT processed (guard tripped) — no terminal tally,
+    // no thumbs_backfilled_at, so they survive for the resumed batch.
+    assertEquals(result.failed, 0);
+    // Already-written thumb (place-1) was HEAD-skipped → NEVER re-encoded/refetched.
+    assertEquals(getCalls.length, 0, "no original was fetched (place-1 HEAD-skipped, place-2/3 never reached)");
+    // The guard stopped BEFORE place-2's HEAD even fired.
+    assertEquals(headCalls.length, 1, "only place-1's HEAD ran before the guard tripped");
+    assert(headCalls[0].includes("p1/"), "the one HEAD was place-1's thumb");
+  } finally {
+    globalThis.fetch = priorFetch;
+  }
+});
+
+Deno.test("T-03 (ORCH-1044) no-guard small batch completes: place fully drained, NOT partial", async () => {
+  // 1 place × 1 small photo, generous clock → guard never trips → batch fully
+  // processed, place gets thumbs_backfilled_at, partial=false.
+  const priorFetch = globalThis.fetch;
+  const jpeg = await makeJpegBytes();
+  globalThis.fetch = (input: URL | RequestInfo, init?: RequestInit) => {
+    const method = init?.method ?? "GET";
+    if (method === "HEAD") return Promise.resolve(new Response(null, { status: 404 }));
+    return Promise.resolve(new Response(bodyFrom(jpeg), { status: 200, headers: { "content-type": "image/jpeg" } }));
+  };
+  try {
+    const { db, updatedPlaceIds } = makeBatchDb({
+      "place-1": ["https://x.supabase.co/storage/v1/object/public/place-photos/p1/0.jpg"],
+    });
+    // Clock stays well under CPU_WALL_GUARD_MS for the whole batch.
+    let t = 0;
+    const nowMs = () => { const v = t; t += 10; return v; };
+    const result = await processBatch(db as unknown as Record<string, never>, ["place-1"], { nowMs });
+    assertEquals(result.partial, false);
+    assertEquals(result.succeeded, 1);
+    assertEquals(result.thumbsWritten, 1);
+    assertEquals(updatedPlaceIds, ["place-1"]);
+  } finally {
+    globalThis.fetch = priorFetch;
   }
 });
 

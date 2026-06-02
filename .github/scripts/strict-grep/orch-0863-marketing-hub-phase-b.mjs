@@ -1333,7 +1333,19 @@ function checkNoNewBackendFiles() {
     // ORCH-1043 hotfix: cron auto-run triggered_by NULL (FK-violation fix).
     "supabase/migrations/20260816000000_orch_1043_auto_run_triggered_by_nullable.sql",
   ];
+  // ORCH-1044 [Thumbnail generation must fit the edge compute budget + reliably
+  // drain]: adds ONE new migration that extends tg_kick_pending_thumb_backfill()
+  // with a 'running'→'pending' orphaned-batch reclaim, plus the implementor +
+  // tester regression tests. The edge fn backfill-place-photo-thumbs/index.ts +
+  // its index.test.ts are MODIFIES already allowlisted under ORCH_0957 above —
+  // only the NEW files need listing here. C7 is scoped to ORCH-0863 marketing;
+  // these are place-photo-pipeline backend touches. Per COMMS-0002.
+  const ORCH_1044_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260818000000_orch_1044_thumb_orphaned_batch_reclaim.sql",
+    "supabase/migrations/__tests__/orch_1044_thumb_orphaned_batch_reclaim.test.ts",
+  ];
   const ALLOWLIST = [
+    ...ORCH_1044_BACKEND_ALLOWLIST,
     ...ORCH_1045_BACKEND_ALLOWLIST,
     ...ORCH_1034_BACKEND_ALLOWLIST,
     ...ORCH_1043_BACKEND_ALLOWLIST,
