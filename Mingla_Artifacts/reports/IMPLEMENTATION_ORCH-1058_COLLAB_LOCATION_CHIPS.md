@@ -5,8 +5,25 @@
 **Worktree:** `~/Desktop/mingla-orchs/ORCH-1058-[collab-deck-empty-intersection-replay]/` on branch `ORCH-1058-collab-deck-empty-intersection-replay`
 **Spec (authoritative):** `Mingla_Artifacts/specs/DESIGN_ORCH-1058_COLLAB_LOCATION_CHIPS.md` (cdc32ef87)
 **Investigation:** `Mingla_Artifacts/reports/INVESTIGATION_ORCH-1058_COLLAB_DECK_EMPTY_INTERSECTION_REPLAY.md`
-**Commit:** `7ccb931647` (code + test); report committed separately on the same branch.
+**Commit:** `7ccb931647` (original code + test); report committed separately on the same branch. **CORRECTION 2026-06-02:** GPS-privacy reversal committed on top (see CORRECTION section).
 **Status:** implemented, partially verified — logic verified by behavioral regression test; live empty-deck render needs an operator-assisted collab session (see Discoveries).
+
+---
+
+## CORRECTION 2026-06-02 — GPS privacy reversal (operator directive)
+
+The operator REVERSED the GPS privacy decision. Originally a `use_gps_location === true` participant rendered "Sharing live location" / "Sharing your location" and NEVER their city (a privacy guard). That is now GONE. **A GPS participant renders their resolved location as "City, ST"** — the same `formatCityState` format as an explicit-location participant — so the group can SEE where everyone actually is and diagnose a geometry problem at a glance. During the investigated incident the flapping GPS now correctly shows "Washington, DC" then "Raleigh, NC" — that transparency is the whole point.
+
+**What changed in this correction:**
+
+- `formatLocationLabel.ts` `resolveParticipantLocationLabel()`: the GPS branch now formats the GPS user's resolved reverse-geocoded string via `formatCityState()` (kind stays `'gps'`). The resolved string is read from top-level `prefs.location` (verified against live `collaboration_sessions.participant_prefs` — GPS user `b17e3e15` held `location:"Raleigh, Wake County, North Carolina, United States"` while `custom_location` was null), with `prefs.custom_location` as a defensive fallback (new `pickGpsResolvedString` helper). GPS on but NO resolved string yet → degrades to a `'pending'` "Getting a fix…" label (never blank, never a stale city). `isSelf` no longer changes a GPS label (the city is the city for everyone).
+- Removed the now-unused `GPS_PHRASE_SELF` / `GPS_PHRASE_OTHER` / `GPS_PHRASE_INLINE` constants and the exported `GPS_INLINE_PHRASE` (verified zero importers across `app-mobile/src`). Rewrote the §1 "load-bearing privacy guard" header + resolver doc-comments to describe the transparency behavior honestly.
+- `collabDeadEndBannerService.ts`: updated the §3 banner comment + the `formatLocationLabel` delegating-fn comment (no logic change — it already delegates to the shared resolver, so it inherits the new behavior automatically).
+- Regression gate `orch-1058-regression-check.mjs`: the A-block FLIPPED from "GPS user never yields a city" to A-01..A-05 — GPS user with a resolved `prefs.location` yields "Raleigh, NC"; a flapping fix to DC yields "Washington, DC"; `isSelf` GPS yields the same city; `custom_location` fallback yields "London, UK"; and a GPS user with no fix yet yields the pending "Getting a fix…" state. B + C blocks unchanged.
+
+**Kept intact:** `formatCityState` + `US_STATE_NAME_TO_CODE`, the bullet chips (`CollabLocationChips`), and the 3-case empty-deck feedback (different-city / same-city-too-tight / waiting). No SQL / edge / migration / geo / freeze changes — presentation/copy only.
+
+**Correction regression run:** `22/22 checks passed. ORCH-1058 regression check PASSED.` **Fails-on-revert: VERIFIED at commit `7ccb931647`** — restoring the old privacy-guard `formatLocationLabel.ts` from that commit produced `17/22 ... FAILED (5 failing)` (A-01..A-05), then restored → 22/22 green. `tsc --noEmit` shows zero errors on the three touched files (the 260 worktree-wide errors are pre-existing missing-react-types artifacts in sibling `packages/*`, unrelated to this change).
 
 ---
 
@@ -24,8 +41,8 @@ Read on entry. No `BLOCK`/`WARN`/`FYI` row is addressed to `mingla-implementor` 
 
 ### app-mobile/src/utils/formatLocationLabel.ts (NEW, ~290 lines)
 **Before:** did not exist. No full-state-name→code map anywhere in the codebase.
-**Now:** exports `formatCityState(raw)`, `expandCityStateForA11y(raw)`, `resolveParticipantLocationLabel({prefs,isSelf})` (the §1 privacy precedence), and the new `US_STATE_NAME_TO_CODE` (50 states + DC). Re-homes `US_STATE_CODES` + `COUNTRY_NAME_TO_CODE` (moved out of CityPickerSheet) so picker + collab deck share one owner.
-**Why:** spec §1 (GPS privacy guard — the load-bearing leak fix), §2 (City, ST formatting + the missing state-name map + fallbacks).
+**Now:** exports `formatCityState(raw)`, `expandCityStateForA11y(raw)`, `resolveParticipantLocationLabel({prefs,isSelf})` (the §1 precedence — CORRECTED 2026-06-02 so the GPS branch shows the resolved "City, ST" from `prefs.location`/`custom_location`, pending fallback when no fix; privacy phrases removed), and the new `US_STATE_NAME_TO_CODE` (50 states + DC). Re-homes `US_STATE_CODES` + `COUNTRY_NAME_TO_CODE` (moved out of CityPickerSheet) so picker + collab deck share one owner.
+**Why:** spec §1 (GPS location label — now transparency, per operator reversal), §2 (City, ST formatting + the missing state-name map + fallbacks).
 
 ### app-mobile/src/components/discover/CityPickerSheet.tsx (~25 lines net removed)
 **Before:** defined its own local `US_STATE_CODES` set + `COUNTRY_NAME_TO_CODE` record.
@@ -58,7 +75,7 @@ Read on entry. No `BLOCK`/`WARN`/`FYI` row is addressed to `mingla-implementor` 
 
 | Requirement | Implemented | Evidence |
 |---|---|---|
-| R1 — GPS privacy guard (never leak a GPS user's city) | `resolveParticipantLocationLabel` checks `use_gps_location === true` FIRST, returns "Sharing live location" / "Sharing your location"; `formatLocationLabel` + banner + chips all route through it | Test A-01/02/03 PASS; fails-on-revert proven |
+| R1 — GPS transparency (CORRECTED 2026-06-02): GPS user shows resolved "City, ST", pending fallback when no fix | `resolveParticipantLocationLabel` GPS branch reads `prefs.location` (fallback `custom_location`) → `formatCityState()`, kind `'gps'`; no resolved string → `'pending'` "Getting a fix…"; `formatLocationLabel` + banner + chips all route through it | Test A-01..A-05 PASS; fails-on-revert proven @ `7ccb931647` |
 | R2 — `formatCityState` + `US_STATE_NAME_TO_CODE` + fallbacks | new util; all §2 worked vectors implemented | Test B vectors PASS (7 vectors + 4 fallbacks + map shape) |
 | R3 — 3-case copy matrix routed via `SAME_CITY_THRESHOLD_M=60000` | `classifyIntersectionCase`; exact §3 strings in cards.json + banner | Test C-(a)/(b)/(c) + boundary PASS |
 | R4 — bullet chips on `glass.discover.chip` tokens | `CollabLocationChips` mirrors `TripFilterChips` tokens; `•` separator; Android opaque fallback | Code review vs designSystem token block; tsc clean |
@@ -67,14 +84,14 @@ Read on entry. No `BLOCK`/`WARN`/`FYI` row is addressed to `mingla-implementor` 
 
 - **Path:** `app-mobile/scripts/ci/orch-1058-regression-check.mjs`
 - **Mechanism:** transpiles the REAL on-disk TS (`formatLocationLabel.ts` whole; the dependency-free `classifyIntersectionCase` + `haversineMeters` + `SAME_CITY_THRESHOLD_M` lifted from `collabDeadEndBannerService.ts`) via the `typescript` compiler API and exercises the actual logic — behavioral, bound to source, not a text scan.
-- **Passing run:** `20/20 checks passed. ORCH-1058 regression check PASSED.`
-- **Fails-on-revert: VERIFIED at commit `7ccb931647`.** Reverting the GPS guard + the `different_cities` routing branch produced `15/20 ... FAILED (5 failing)` (A-01/02/03 + C-(a) + C-boundary). Restored → 20/20 green, working tree clean.
+- **Passing run (post-correction):** `22/22 checks passed. ORCH-1058 regression check PASSED.`
+- **Fails-on-revert: VERIFIED at commit `7ccb931647`.** Restoring the old privacy-guard `formatLocationLabel.ts` from that commit produced `17/22 ... FAILED (5 failing)` (the flipped A-01..A-05 GPS-transparency checks). Restored → 22/22 green, working tree clean.
 
 ## Verification Matrix
 
 | Criterion | How verified | Verdict |
 |---|---|---|
-| GPS guard never yields a city | behavioral test A-01/02/03 + fails-on-revert | PASS |
+| GPS user shows resolved "City, ST"; pending fallback when no fix (CORRECTED) | behavioral test A-01..A-05 + fails-on-revert | PASS |
 | formatCityState vectors + fallbacks | behavioral test B (11 cases) | PASS |
 | 3-case routing + 60km threshold | behavioral test C (6 cases) | PASS |
 | Chips reuse glass.discover.chip tokens | source review vs `designSystem.ts:767-799` + mirror of `TripFilterChips` styles | PASS |
@@ -85,7 +102,7 @@ Read on entry. No `BLOCK`/`WARN`/`FYI` row is addressed to `mingla-implementor` 
 
 ## Invariant / Constitution
 
-- **GPS write path / `pg_aggregate_collab_prefs` geography / positional-freeze:** untouched. Privacy governs the display string only; `classifyIntersectionCase` reads raw coords for geometry, never gates the deck.
+- **GPS write path / `pg_aggregate_collab_prefs` geography / positional-freeze:** untouched. This is a display-string change only; `classifyIntersectionCase` reads raw coords for geometry, never gates the deck. (Post-correction the display string now SHOWS the GPS city — the geometry is still computed from raw coords independently.)
 - **Android glass policy (`ANDROID_GLASS_USES_OPAQUE_FALLBACK`):** chip honors the opaque fallback + `overflow:'hidden'` clip; no translucent Android fill reintroduced.
 - **Constitution #2 (one owner per truth):** state/country tables centralized in the util; CityPickerSheet re-imports. PASS.
 - **No silent failures / strict TS / no `any` escape hatch beyond the existing `prefs: any` shape already in the service:** PASS.

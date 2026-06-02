@@ -21,9 +21,23 @@ This is a **presentation + copy** change. It does NOT touch the SQL intersection
 
 ---
 
-## 1. Requirement 1 — GPS privacy phrase (never leak a live-GPS user's city)
+## 1. Requirement 1 — GPS location label
 
-### Rule (normative)
+> **CORRECTION 2026-06-02 (operator-reversed — SUPERSEDES the privacy-phrase rule below).**
+> The GPS privacy guard is REMOVED. A live-GPS participant now renders their
+> RESOLVED location as "City, ST" via `formatCityState()` — the SAME format as an
+> explicit-location participant — so the group can SEE where everyone actually is
+> (e.g. a flapping GPS correctly shows "Washington, DC" then "Raleigh, NC"; that
+> transparency is the point). The resolved string is read from top-level
+> `prefs.location` (verified live: GPS user held `location:"Raleigh, Wake County,
+> North Carolina, United States"`, `custom_location` null), with `custom_location`
+> as a defensive fallback. A GPS user with NO resolved fix yet degrades to the
+> pending "Getting a fix…" state — never blank, never a stale city. The
+> "Sharing live location" / "Sharing your location" phrases and the
+> `GPS_INLINE_PHRASE` export are deleted. The original rule below is retained for
+> history only.
+
+### Rule (normative — SUPERSEDED by the CORRECTION above)
 
 For each participant, the location label is resolved by this precedence:
 

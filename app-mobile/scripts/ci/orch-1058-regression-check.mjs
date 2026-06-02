@@ -10,8 +10,11 @@
  * routing logic regresses.
  *
  * Covers the three load-bearing requirements:
- *   A. GPS privacy guard — a use_gps_location:true participant NEVER yields a
- *      city string, even when custom_location/custom_lat/lng are populated.
+ *   A. GPS transparency (CORRECTION 2026-06-02, operator-reversed) — a
+ *      use_gps_location:true participant WITH a resolved location yields its
+ *      "City, ST" (same format as an explicit-location participant), and a GPS
+ *      participant with NO resolved fix yet yields the pending state. (The old
+ *      "GPS never yields a city" privacy guard was removed.)
  *   B. formatCityState vectors + fallbacks (spec §2 worked examples).
  *   C. 3-case feedback routing — same-city (b) vs different-city (a) vs pending (c),
  *      routed via SAME_CITY_THRESHOLD_M = 60000.
@@ -107,37 +110,62 @@ const check = (name, fn) => {
   }
 };
 
-// === A. GPS PRIVACY GUARD ===================================================
-check('A-01 GPS user with reverse-geocoded city NEVER yields the city', () => {
+// === A. GPS TRANSPARENCY (operator-reversed 2026-06-02) =====================
+// The GPS user's resolved reverse-geocoded location lands at top-level
+// prefs.location (verified against live participant_prefs); we now SHOW it as
+// "City, ST" so the group can see where everyone actually is.
+check('A-01 GPS user with resolved prefs.location yields its City, ST', () => {
   const resolved = resolveParticipantLocationLabel({
     prefs: {
       use_gps_location: true,
-      custom_location: 'Raleigh, Wake County, North Carolina, United States',
-      custom_lat: 35.7796,
-      custom_lng: -78.6382,
+      // Live shape: resolved string at top-level `location`, custom_location null.
+      location: 'Raleigh, Wake County, North Carolina, United States',
+      custom_location: null,
+      custom_lat: 35.7803977,
+      custom_lng: -78.6390989,
     },
     isSelf: false,
   });
   assert.equal(resolved.kind, 'gps');
-  assert.equal(resolved.label, 'Sharing live location');
-  assert.ok(!/Raleigh|North Carolina|Wake/.test(resolved.label), 'must not leak city');
+  assert.equal(resolved.label, 'Raleigh, NC');
 });
 
-check('A-02 GPS self chip reads first-person', () => {
+check('A-02 GPS flapping fix to DC yields Washington, DC (transparency is the point)', () => {
   const resolved = resolveParticipantLocationLabel({
-    prefs: { use_gps_location: true, custom_location: 'Washington, DC, USA' },
-    isSelf: true,
-  });
-  assert.equal(resolved.label, 'Sharing your location');
-  assert.ok(!/Washington/.test(resolved.label));
-});
-
-check('A-03 GPS guard wins even with only coords + string, no false place-kind', () => {
-  const resolved = resolveParticipantLocationLabel({
-    prefs: { use_gps_location: true, custom_lat: 51.5, custom_lng: -0.12, custom_location: 'London, UK' },
+    prefs: {
+      use_gps_location: true,
+      location: 'Washington, District of Columbia, United States',
+    },
+    isSelf: false,
   });
   assert.equal(resolved.kind, 'gps');
-  assert.ok(!/London/.test(resolved.label));
+  assert.equal(resolved.label, 'Washington, DC');
+});
+
+check('A-03 GPS self chip shows the same city (isSelf no longer changes a GPS label)', () => {
+  const resolved = resolveParticipantLocationLabel({
+    prefs: { use_gps_location: true, location: 'Washington, DC, USA' },
+    isSelf: true,
+  });
+  assert.equal(resolved.kind, 'gps');
+  assert.equal(resolved.label, 'Washington, DC');
+});
+
+check('A-04 GPS falls back to custom_location when prefs.location is absent', () => {
+  const resolved = resolveParticipantLocationLabel({
+    prefs: { use_gps_location: true, custom_location: 'London, Greater London, England, United Kingdom' },
+  });
+  assert.equal(resolved.kind, 'gps');
+  assert.equal(resolved.label, 'London, UK');
+});
+
+check('A-05 GPS user with NO resolved fix yet yields the pending state, never blank/stale', () => {
+  const resolved = resolveParticipantLocationLabel({
+    prefs: { use_gps_location: true, custom_lat: 35.79, custom_lng: -78.74 },
+  });
+  assert.equal(resolved.kind, 'pending');
+  assert.equal(resolved.label, 'Getting a fix…');
+  assert.ok(!/Raleigh|Washington|,/.test(resolved.label), 'no stale city while pending');
 });
 
 // === B. formatCityState VECTORS + FALLBACKS (spec §2) =======================

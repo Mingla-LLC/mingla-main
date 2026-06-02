@@ -4,12 +4,16 @@
  * Single owner for participant location-label presentation in the collab-deck
  * empty state. Pulls together three concerns that previously had no home:
  *
- *  1. The GPS PRIVACY GUARD (load-bearing). A participant who shares live GPS
- *     (`use_gps_location === true`) MUST NEVER render a place name — not the
- *     resolved city, not the county, nothing — even when the client has written
- *     a reverse-geocoded `custom_location` / `custom_lat`/`custom_lng` for them.
- *     The label resolves to a privacy-positive phrase instead. This is the leak
- *     the ORCH-1058 investigation found.
+ *  1. GPS LOCATION TRANSPARENCY (CORRECTION 2026-06-02, operator-reversed). A
+ *     participant who shares live GPS (`use_gps_location === true`) now renders
+ *     their RESOLVED reverse-geocoded location as a short "City, ST" label —
+ *     the SAME format as an explicit-location participant — so the group can SEE
+ *     where each person actually is and diagnose a geometry problem at a glance.
+ *     (During the investigated incident a flapping GPS would correctly show
+ *     "Washington, DC" then "Raleigh, NC" — that visibility is the whole point.)
+ *     The earlier "Sharing live location" privacy guard was REMOVED. If a GPS
+ *     user has no resolved location string yet, the label degrades to the
+ *     pending "getting a fix" state — never a blank, never a stale city.
  *
  *  2. "City, ST" formatting. Verbose Google/TM reverse-geocode strings
  *     ("Raleigh, Wake County, North Carolina, United States") condense to a
@@ -20,8 +24,8 @@
  *     used to live only inside `CityPickerSheet`; they now live here and are
  *     re-exported so the picker and the collab-deck share one owner (Constitution #2).
  *
- * Privacy only governs the DISPLAY STRING — the intersection geometry still uses
- * the raw coords. See `collabDeadEndBannerService.classifyIntersectionCase`.
+ * Presentation only — the intersection geometry uses the raw coords. See
+ * `collabDeadEndBannerService.classifyIntersectionCase`.
  *
  * Spec: Mingla_Artifacts/specs/DESIGN_ORCH-1058_COLLAB_LOCATION_CHIPS.md §1–§2.
  */
@@ -179,7 +183,8 @@ export function formatCityState(raw: string | null | undefined): string {
 /**
  * Full-name expansion for the screen-reader label. Mirrors `formatCityState`
  * but spells the US state out ("Raleigh, North Carolina") for VoiceOver
- * clarity. GPS / pending kinds resolve their own a11y strings at the chip.
+ * clarity. GPS participants reuse this expansion (their label is a real city);
+ * the pending kind resolves its own a11y string at the chip.
  */
 export function expandCityStateForA11y(raw: string | null | undefined): string {
   if (typeof raw !== 'string') return 'location set';
@@ -232,11 +237,30 @@ export type ResolvedParticipantLocation = {
   a11yLabel: string;
 };
 
-const GPS_PHRASE_OTHER = 'Sharing live location';
-const GPS_PHRASE_SELF = 'Sharing your location';
-const GPS_PHRASE_INLINE = 'sharing live location';
 const PINNED_PHRASE = 'A pinned spot';
 const NOT_SET_PHRASE = 'Location not set yet';
+const GPS_PENDING_PHRASE = 'Getting a fix…';
+
+/**
+ * Pick the GPS user's resolved reverse-geocoded location string from prefs.
+ *
+ * Verified against live `collaboration_sessions.participant_prefs` (ORCH-1058
+ * correction probe, 2026-06-02): a GPS participant's resolved string lands at
+ * the top-level `prefs.location` ("Raleigh, Wake County, North Carolina,
+ * United States"), while `custom_location` is null. We also accept
+ * `custom_location` as a defensive fallback so either write path resolves.
+ */
+function pickGpsResolvedString(prefs: Record<string, unknown>): string | null {
+  const fromLocation = prefs.location;
+  if (typeof fromLocation === 'string' && fromLocation.trim().length > 0) {
+    return fromLocation.trim();
+  }
+  const fromCustom = prefs.custom_location;
+  if (typeof fromCustom === 'string' && fromCustom.trim().length > 0) {
+    return fromCustom.trim();
+  }
+  return null;
+}
 
 type ResolveInput = {
   prefs: Record<string, unknown> | null | undefined;
@@ -245,22 +269,36 @@ type ResolveInput = {
 };
 
 /**
- * Resolve one participant's location label with the §1 privacy precedence:
+ * Resolve one participant's location label with the §1 precedence:
  *
- *   use_gps_location === true            → GPS phrase (NEVER the resolved city)
- *   explicit place string present        → formatCityState(custom_location)
- *   custom_lat/lng present, no string     → "A pinned spot"
- *   else                                  → "Location not set yet"
+ *   use_gps_location === true + resolved string  → formatCityState(prefs.location)
+ *   use_gps_location === true, no string yet      → "Getting a fix…" (pending)
+ *   explicit place string present                 → formatCityState(custom_location)
+ *   custom_lat/lng present, no string             → "A pinned spot"
+ *   else                                          → "Location not set yet"
+ *
+ * CORRECTION (operator-reversed 2026-06-02): a GPS participant now renders their
+ * REAL resolved city ("City, ST"), identical to an explicit-location participant
+ * — transparency so the group can see where everyone actually is. `isSelf` no
+ * longer changes a GPS label (the city is the city for everyone).
  */
 export function resolveParticipantLocationLabel(
   input: ResolveInput,
 ): ResolvedParticipantLocation {
   const prefs = input.prefs ?? {};
 
-  // 1. GPS privacy guard — load-bearing. Wins over any written string/coords.
+  // 1. GPS participant — show their resolved City, ST (transparency). When the
+  //    fix hasn't reverse-geocoded yet, degrade to pending — never blank/stale.
   if (prefs.use_gps_location === true) {
-    const label = input.isSelf ? GPS_PHRASE_SELF : GPS_PHRASE_OTHER;
-    return { kind: 'gps', label, a11yLabel: GPS_PHRASE_INLINE };
+    const resolvedString = pickGpsResolvedString(prefs);
+    if (resolvedString) {
+      return {
+        kind: 'gps',
+        label: formatCityState(resolvedString),
+        a11yLabel: expandCityStateForA11y(resolvedString),
+      };
+    }
+    return { kind: 'pending', label: GPS_PENDING_PHRASE, a11yLabel: 'getting a location fix' };
   }
 
   // 2. Explicit place string.
@@ -284,6 +322,3 @@ export function resolveParticipantLocationLabel(
   // 4. Nothing yet.
   return { kind: 'pending', label: NOT_SET_PHRASE, a11yLabel: 'location not in yet' };
 }
-
-/** Inline GPS phrase for chat banners (lowercase, mid-sentence). */
-export const GPS_INLINE_PHRASE = GPS_PHRASE_INLINE;

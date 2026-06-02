@@ -104,8 +104,9 @@ export function buildCollabDeadEndBannerContent(input: CollabDeadEndBannerInput)
       }
 
       // ORCH-1058 §3: the multi / 2-person path now routes to one of three
-      // honest banner strings. Locations use the privacy-aware resolver, so a
-      // GPS participant reads "sharing live location", never a leaked city.
+      // honest banner strings. Locations use the shared resolver, so a GPS
+      // participant reads their resolved "City, ST" (transparency), and a
+      // GPS user with no fix yet reads the pending "Getting a fix…" state.
       const labelFor = (id: string): string =>
         resolveParticipantLocationLabel({
           prefs: prefs[id],
@@ -200,10 +201,11 @@ export function formatTravelMode(mode: unknown): 'walking' | 'driving' | 'transi
     : 'walking';
 }
 
-// ORCH-1058: now privacy-aware. A live-GPS participant NEVER yields a city
-// string — even when custom_location/custom_lat/lng are populated by the
-// client's reverse-geocode write. Delegates to the shared resolver in
-// utils/formatLocationLabel (the §1 precedence + §2 "City, ST" formatting).
+// ORCH-1058 (corrected 2026-06-02): a live-GPS participant now yields their
+// RESOLVED "City, ST" (transparency), identical to an explicit-location
+// participant; a GPS user with no resolved fix yet yields the pending state.
+// Delegates to the shared resolver in utils/formatLocationLabel (the §1
+// precedence + §2 "City, ST" formatting).
 export function formatLocationLabel(prefs: any, isSelf: boolean = false): string {
   return resolveParticipantLocationLabel({ prefs, isSelf }).label;
 }
