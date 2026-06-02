@@ -179,6 +179,27 @@ export default function ConnectPartnerOnboardingPage(): React.ReactElement {
 
   return (
     <div style={pageWrapperStyle}>
+      {/* iOS WKWebView fix: Expo Web's react-native-web compiler injects
+          `html, body, #root { height: 100%; overflow: hidden; }` which is a
+          known issue with embedded SDK pages — the page becomes a fixed
+          viewport with no scroll. Override those rules so the body grows
+          with the Stripe iframe content and scrolls naturally. Also force
+          touch-scroll momentum for any nested overflow. */}
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
+            html, body, #root {
+              height: auto !important;
+              min-height: 100% !important;
+              overflow: visible !important;
+              overflow-y: auto !important;
+              -webkit-overflow-scrolling: touch !important;
+              overscroll-behavior-y: contain;
+            }
+            body { margin: 0; }
+          `,
+        }}
+      />
       <header style={headerStyle}>
         <h1 style={headerTitleStyle}>Mingla — Partner payouts</h1>
       </header>
