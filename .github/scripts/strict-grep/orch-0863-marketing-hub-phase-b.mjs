@@ -1276,6 +1276,18 @@ function checkNoNewBackendFiles() {
     "supabase/functions/accept-brand-invitation/__tests__/orch-1050-accept-happy.test.ts",
     "supabase/functions/accept-brand-invitation/__tests__/orch-1050-accept-adversarial.test.ts",
   ];
+  // ORCH-1051 [Scanner invite + brand-scoped scanner]. META-ORCH-1048 sub-C.
+  // C7 is scoped to ORCH-0863 marketing; these are scanner-team invite
+  // pipeline backend touches (migration + two edge fns + tests). Per
+  // COMMS-0002 — must land in the SAME commit as the service + UI wiring.
+  const ORCH_1051_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260821000000_orch_1051_scanner_invite_flow.sql",
+    "supabase/functions/invite-scanner/index.ts",
+    "supabase/functions/accept-scanner-invitation/index.ts",
+    "supabase/functions/invite-scanner/__tests__/orch-1051-invite-happy.test.ts",
+    "supabase/functions/accept-scanner-invitation/__tests__/orch-1051-accept-happy.test.ts",
+    "supabase/functions/accept-scanner-invitation/__tests__/orch-1051-accept-adversarial.test.ts",
+  ];
   // ORCH-1056 [Lead welcome email]: modifies the beta-access edge fn (already
   // allowlisted above) to also send the lead a welcome email (web-app link +
   // Ari spotlight + mobile-in-the-works). Adds two new test files. C7 flags new
@@ -1369,6 +1381,7 @@ function checkNoNewBackendFiles() {
     "supabase/functions/backfill-place-photo-thumbs/index.adversarial.test.ts",
   ];
   const ALLOWLIST = [
+    ...ORCH_1051_BACKEND_ALLOWLIST,
     ...ORCH_1050_BACKEND_ALLOWLIST,
     ...ORCH_1044_BACKEND_ALLOWLIST,
     ...ORCH_1045_BACKEND_ALLOWLIST,
