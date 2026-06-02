@@ -1,0 +1,106 @@
+# IMPLEMENTATION — ORCH-1058 [Collab deck location chips + smarter no-overlap feedback]
+
+**Skill:** mingla-implementor (Claude)
+**Date:** 2026-06-02
+**Worktree:** `~/Desktop/mingla-orchs/ORCH-1058-[collab-deck-empty-intersection-replay]/` on branch `ORCH-1058-collab-deck-empty-intersection-replay`
+**Spec (authoritative):** `Mingla_Artifacts/specs/DESIGN_ORCH-1058_COLLAB_LOCATION_CHIPS.md` (cdc32ef87)
+**Investigation:** `Mingla_Artifacts/reports/INVESTIGATION_ORCH-1058_COLLAB_DECK_EMPTY_INTERSECTION_REPLAY.md`
+**Commit:** `7ccb931647` (code + test); report committed separately on the same branch.
+**Status:** implemented, partially verified — logic verified by behavioral regression test; live empty-deck render needs an operator-assisted collab session (see Discoveries).
+
+---
+
+## Mission
+
+Presentation + copy only. No SQL / edge / migration / web. Restyle the collab-deck `intersection_empty` empty state: (1) a GPS privacy guard so a live-GPS participant's city never leaks, (2) a `formatCityState()` "City, ST" formatter + new `US_STATE_NAME_TO_CODE` map, (3) a 3-case honest copy matrix (different cities / same-city-too-tight / waiting-on-GPS), (4) bullet-separated read-only chips built on the existing `glass.discover.chip` tokens. The SQL intersection math, the positional-freeze contract, and the GPS write path are untouched (correct per investigation / separate debounce ORCH).
+
+## Comms ledger
+
+Read on entry. No `BLOCK`/`WARN`/`FYI` row is addressed to `mingla-implementor` or `ORCH-1058`. The OPEN WARN rows (COMMS-0003/0004/0012/0013/0015/0016) concern external-API doc-citation, INTAKE numbering, migration-apply gaps, and pricing — none touch collab-deck geography or copy. No external API touched (no provider docs to cite). No new cross-ORCH discovery to write (localized collab-deck presentation change, no shared-contract blast).
+
+---
+
+## Old → New Receipts
+
+### app-mobile/src/utils/formatLocationLabel.ts (NEW, ~290 lines)
+**Before:** did not exist. No full-state-name→code map anywhere in the codebase.
+**Now:** exports `formatCityState(raw)`, `expandCityStateForA11y(raw)`, `resolveParticipantLocationLabel({prefs,isSelf})` (the §1 privacy precedence), and the new `US_STATE_NAME_TO_CODE` (50 states + DC). Re-homes `US_STATE_CODES` + `COUNTRY_NAME_TO_CODE` (moved out of CityPickerSheet) so picker + collab deck share one owner.
+**Why:** spec §1 (GPS privacy guard — the load-bearing leak fix), §2 (City, ST formatting + the missing state-name map + fallbacks).
+
+### app-mobile/src/components/discover/CityPickerSheet.tsx (~25 lines net removed)
+**Before:** defined its own local `US_STATE_CODES` set + `COUNTRY_NAME_TO_CODE` record.
+**Now:** imports both from `../../utils/formatLocationLabel`; `parseStateCountry` unchanged.
+**Why:** spec §7 dedupe — one owner. No behavior change (same values, same `parseStateCountry`).
+
+### app-mobile/src/services/collabDeadEndBannerService.ts (~90 lines added)
+**Before:** `formatLocationLabel(prefs)` returned `custom_location` verbatim or "their location" — no GPS guard, leaking a reverse-geocoded GPS city. The `intersection_empty` multi branch printed one generic "No location overlap yet … Someone needs to widen travel or change location" with every raw location joined.
+**Now:** (1) `formatLocationLabel` delegates to the privacy-aware resolver (GPS guard + `formatCityState`); (2) added `SAME_CITY_THRESHOLD_M = 60000` + `classifyIntersectionCase()` returning `'different_cities'|'same_city_tight'|'waiting'` + `pendingIds` (geometry uses raw coords; privacy governs only the display string); (3) rewrote the `intersection_empty` banner branch to the §3 three banner strings with `[[open-prefs:…]]` tokens. The 3+ single-outlier branch is unchanged.
+**Why:** spec §1 + §3.
+
+### app-mobile/src/components/collab/CollabLocationChips.tsx (NEW, ~140 lines)
+**Before:** did not exist.
+**Now:** read-only presentational chip row from `glass.discover.chip` tokens, `•` separator (bullet hidden from a11y tree), `numberOfLines={1}` + `maxWidth:160` truncation, Android opaque-glass fallback honored, per-chip `accessibilityLabel`. Bullet+chip grouped in a non-wrapping inner row so a bullet never orphans at a wrapped line start.
+**Why:** spec §4 (mirror TripFilterChips, do not invent a visual system) + §8 (a11y).
+
+### app-mobile/src/components/SwipeableCards.tsx (~95 lines added/changed)
+**Before:** `getCollabDeadEndCopy()` `intersection_empty` multi branch returned `{title:'No location overlap yet', subtitle:<joined raw locations>}`; render printed a single subtitle `<Text>`.
+**Now:** the multi branch calls `classifyIntersectionCase` and returns `{reason,title,guidance,chips,showReviewDismissed}` per case, building privacy-aware `CollabLocationChip[]` via `resolveParticipantLocationLabel` (settled + pending "getting a fix…" chips for the waiting case). Render: when `chips` present, mounts `<CollabLocationChips>` between title and a guidance `<Text>`; all other reasons keep the plain subtitle `<Text>`. Unused `formatLocationLabel` import removed; `t` + `user?.id` added to the `useCallback` deps. New `emptyDeckGuidance` style (marginTop 8).
+**Why:** spec §3 + §4 wiring.
+
+### app-mobile/src/i18n/locales/en/cards.json (9 keys added)
+**Before:** dead-end copy was hardcoded inline.
+**Now:** added `collab.deadend.{different_cities,same_city_tight,waiting}.*` title/guidance keys + `waiting.pending_chip` + `waiting.title_one/title_many` with interpolation.
+**Why:** spec §7 — key the new strings (do not invent a new file; collab copy now lives in the existing cards namespace).
+
+---
+
+## Spec Traceability
+
+| Requirement | Implemented | Evidence |
+|---|---|---|
+| R1 — GPS privacy guard (never leak a GPS user's city) | `resolveParticipantLocationLabel` checks `use_gps_location === true` FIRST, returns "Sharing live location" / "Sharing your location"; `formatLocationLabel` + banner + chips all route through it | Test A-01/02/03 PASS; fails-on-revert proven |
+| R2 — `formatCityState` + `US_STATE_NAME_TO_CODE` + fallbacks | new util; all §2 worked vectors implemented | Test B vectors PASS (7 vectors + 4 fallbacks + map shape) |
+| R3 — 3-case copy matrix routed via `SAME_CITY_THRESHOLD_M=60000` | `classifyIntersectionCase`; exact §3 strings in cards.json + banner | Test C-(a)/(b)/(c) + boundary PASS |
+| R4 — bullet chips on `glass.discover.chip` tokens | `CollabLocationChips` mirrors `TripFilterChips` tokens; `•` separator; Android opaque fallback | Code review vs designSystem token block; tsc clean |
+
+## Regression Test
+
+- **Path:** `app-mobile/scripts/ci/orch-1058-regression-check.mjs`
+- **Mechanism:** transpiles the REAL on-disk TS (`formatLocationLabel.ts` whole; the dependency-free `classifyIntersectionCase` + `haversineMeters` + `SAME_CITY_THRESHOLD_M` lifted from `collabDeadEndBannerService.ts`) via the `typescript` compiler API and exercises the actual logic — behavioral, bound to source, not a text scan.
+- **Passing run:** `20/20 checks passed. ORCH-1058 regression check PASSED.`
+- **Fails-on-revert: VERIFIED at commit `7ccb931647`.** Reverting the GPS guard + the `different_cities` routing branch produced `15/20 ... FAILED (5 failing)` (A-01/02/03 + C-(a) + C-boundary). Restored → 20/20 green, working tree clean.
+
+## Verification Matrix
+
+| Criterion | How verified | Verdict |
+|---|---|---|
+| GPS guard never yields a city | behavioral test A-01/02/03 + fails-on-revert | PASS |
+| formatCityState vectors + fallbacks | behavioral test B (11 cases) | PASS |
+| 3-case routing + 60km threshold | behavioral test C (6 cases) | PASS |
+| Chips reuse glass.discover.chip tokens | source review vs `designSystem.ts:767-799` + mirror of `TripFilterChips` styles | PASS |
+| Only §7 files touched | `git show --stat` = 7 files, all in §7 | PASS |
+| Freeze/geo untouched | no edits to SQL/RPC/`detectIntersectionOutlier`/freeze code | PASS |
+| typecheck clean on touched files | `tsc --noEmit` grep of touched files empty | PASS |
+| Live empty-deck render (a)/(b)/(c) on device | requires a collab session with non-overlapping locations | UNVERIFIED — operator-assisted |
+
+## Invariant / Constitution
+
+- **GPS write path / `pg_aggregate_collab_prefs` geography / positional-freeze:** untouched. Privacy governs the display string only; `classifyIntersectionCase` reads raw coords for geometry, never gates the deck.
+- **Android glass policy (`ANDROID_GLASS_USES_OPAQUE_FALLBACK`):** chip honors the opaque fallback + `overflow:'hidden'` clip; no translucent Android fill reintroduced.
+- **Constitution #2 (one owner per truth):** state/country tables centralized in the util; CityPickerSheet re-imports. PASS.
+- **No silent failures / strict TS / no `any` escape hatch beyond the existing `prefs: any` shape already in the service:** PASS.
+
+## Cross-Surface Impact (Step 3.5)
+
+- **Consumer iOS / Android:** AFFECTED — shared RN code path (same component), parity automatic. Both honor the Android opaque-glass fallback.
+- **Buyer/anon Web, Business iOS/Android, Admin Web, Business Web preview:** UNAFFECTED — collab decks are consumer app-mobile only; no equivalent flow elsewhere (investigation Q5).
+
+## Discoveries for Orchestrator
+
+- **Icon substitution (minor spec deviation):** spec §3/§4 named `locate-outline` (pending) and `resize-outline` (same-city case). Neither exists in `app-mobile/src/components/ui/Icon.tsx` ICON_MAP. Used the mapped `hourglass-outline` for the pending chip glyph. The case-level icons in the §3 matrix are not wired to a render slot (the empty-deck icon circle uses the existing fixed `filter-outline`/`earth-outline`); leaving the icon-circle glyph unchanged keeps scope tight. If product wants per-case icon-circle glyphs, that's a follow-up (would need ICON_MAP additions for `resize-outline`).
+- **Live QA needed:** the empty-deck (a)/(b)/(c) render can only be exercised with a real collab session where participants' reachable circles don't overlap (e.g. one in DC, one in Raleigh, or same metro with tight travel ranges). Operator-assisted; orchestrator to batch.
+- **GPS implausible-jump debounce remains a SEPARATE ORCH** (investigation Discovery #1) — out of scope; this ORCH only makes the empty window honest, it does not stop the flap.
+
+## Deploy / Migration notes
+
+None. No edge functions, no migrations, no DB. Mobile-only presentation + copy; rides the next app build (OTA deferred per memory — merged changes ride the build).
