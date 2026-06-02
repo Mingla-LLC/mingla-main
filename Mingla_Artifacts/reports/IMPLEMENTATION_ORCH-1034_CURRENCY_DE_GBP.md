@@ -10,7 +10,7 @@
 
 ## 1. What was built (operator-locked decisions honored)
 
-1. **Migration** `supabase/migrations/20260815000000_orch_1034_currency_de_gbp.sql` — aligns `pricing_currency := default_currency` (NULL-skip), DROPs the GBP-only currency CHECK, WIDENs the region CHECK to `('GB','US','EU','CH')`, derives `pricing_region` from currency. The 21 NULL-default brands are LEFT NULL (never read for write).
+1. **Migration** `supabase/migrations/20260816000000_orch_1034_currency_de_gbp.sql` — aligns `pricing_currency := default_currency` (NULL-skip), DROPs the GBP-only currency CHECK, WIDENs the region CHECK to `('GB','US','EU','CH')`, derives `pricing_region` from currency. The 21 NULL-default brands are LEFT NULL (never read for write).
 2. **Engine** `_shared/allInPricingEngine.ts` — `PricingRegion` widened `"GB"` → `"GB" | "US" | "EU" | "CH"`; `taxBehaviorForRegion` maps GB/EU/CH→`inclusive`, US→`exclusive`; the GB-only throw is removed for live regions (exhaustive `never` guard kept for genuinely-unmapped literals). New `inclusiveVatDivisorForRegion` + `INCLUSIVE_VAT_DIVISOR` generalize the hardcoded `/1.2`.
 3. **Charge currency** `ticket-checkout-create/index.ts` — charge currency now sourced from `pricing.pricing_currency` (= settlement currency), not the legacy `session.currency ?? "GBP"`; region follows the seller; unmapped region degrades to flat-absorb BEFORE the engine is asked for a behavior (engine never throws on a real checkout); the `/1.2` inclusive divide-out is now per-region.
 4. **Buyer display** `formatters.ts` + `preferences.ts` + `currencyService.ts` — new `convertBetween(amount, from, to)` cross-rate helper (`amount * rate[to] / rate[from]`); same-currency is an exact identity; formatters thread an optional `sourceCurrency` (default `'USD'` → fully backward compatible for USD-source place-pool callers).
@@ -21,7 +21,7 @@
 
 ## 2. Old → New receipts
 
-### supabase/migrations/20260815000000_orch_1034_currency_de_gbp.sql (NEW)
+### supabase/migrations/20260816000000_orch_1034_currency_de_gbp.sql (NEW)
 **Before:** `brands.pricing_currency` CHECK `= 'GBP'`, `pricing_region` CHECK `= 'GB'`; both columns uniformly GBP/GB for all 50 brands.
 **After:** currency CHECK dropped; region CHECK widened to `IN ('GB','US','EU','CH')`; `pricing_currency := upper(trim(default_currency))` and `pricing_region` derived (GBP→GB, USD→US, EUR→EU, CHF→CH) for the 29 non-NULL-default brands; the 21 NULL-default brands left untouched (keep NOT-NULL defaults GBP/GB; they have no Stripe account and cannot charge).
 **Why:** SPEC §5.A + DECISION-1/2/3; charge in seller settlement currency, region-correct tax behavior.
