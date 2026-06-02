@@ -498,7 +498,13 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
             </View>
           </GlassCard>
 
-          {draft.claimStatus === "none" && draft.placePoolId == null ? (
+          {/* ORCH-1040 — the "Claim a venue" affordance is a venue surface, so it
+              only shows for brands that have toggled ON a physical location (and
+              haven't already claimed/linked a venue). Turn the toggle below off
+              and this disappears. */}
+          {draft.hasPhysicalLocation === true &&
+          draft.claimStatus === "none" &&
+          draft.placePoolId == null ? (
             <GlassCard variant="elevated" padding={spacing.lg}>
               <View style={styles.claimAffordance}>
                 <View style={styles.claimIconWrap}>
