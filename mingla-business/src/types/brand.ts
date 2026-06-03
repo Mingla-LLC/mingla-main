@@ -315,6 +315,13 @@ export type Brand = {
   venueCategory?: VenueCategory;
   /** Ve1+ — linked place_pool row after Ve2 match. */
   placePoolId?: string;
+  /**
+   * ORCH-1040 — whether this brand has a physical location customers visit.
+   * Gates the venue/listing to-dos + the "Venue listing" surface. Opt-in:
+   * defaults false (DB default), set via the brand toggle (creation/settings)
+   * and auto-set true when a venue is created/claimed.
+   */
+  hasPhysicalLocation?: boolean;
 };
 
 /** Ve1 — `brands.claim_status` + optional UI-only states. */

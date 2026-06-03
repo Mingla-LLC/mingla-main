@@ -72,6 +72,7 @@ serve(async (req) => {
         day,
         year,
         person_id,
+        paired_user_id,
         saved_people(display_name),
         profiles!custom_holidays_user_id_fkey(timezone)
       `);
@@ -139,6 +140,22 @@ serve(async (req) => {
       // Person name (LEFT JOIN — may be null if person was deleted)
       const personName = (holiday.saved_people as any)?.display_name || null;
 
+      // ORCH-1030: a holiday reminder routes to the gift-target's PROFILE when
+      // it is a real Mingla user (`paired_user_id`). `person_id` is a
+      // `saved_people` contact id (NOT a user id), so it cannot be the profile
+      // route target — when there is no linked user we omit the deep link
+      // entirely and let the client's `holiday_reminder` type fallback land
+      // Connections. The deep link is passed TOP-LEVEL so notify-dispatch fills
+      // both `data.deepLink` (what the client routes on) and the `deep_link`
+      // column; a nested-only value is nulled by notify-dispatch (index.ts:307).
+      const holidayProfileUserId =
+        typeof (holiday as any).paired_user_id === "string"
+          ? (holiday as any).paired_user_id
+          : null;
+      const holidayDeepLink = holidayProfileUserId
+        ? `mingla://profile/${holidayProfileUserId}`
+        : null;
+
       // Dispatch sequentially to avoid overwhelming notify-dispatch
       try {
         await callNotifyDispatch(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
@@ -148,9 +165,11 @@ serve(async (req) => {
             ? `Tomorrow is ${personName}'s ${holiday.name}!`
             : `Tomorrow: ${holiday.name}`,
           body: "Don't forget to plan something special.",
+          ...(holidayDeepLink ? { deepLink: holidayDeepLink } : {}),
           data: {
-            deepLink: "mingla://discover",
+            ...(holidayDeepLink ? { deepLink: holidayDeepLink } : {}),
             personId: holiday.person_id,
+            ...(holidayProfileUserId ? { partnerId: holidayProfileUserId } : {}),
             holidayId: holiday.id,
           },
           actorId: null,

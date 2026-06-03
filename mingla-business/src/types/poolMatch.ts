@@ -13,7 +13,7 @@ export interface PoolMatch {
   country: string | null;
   lat: number;
   lng: number;
-  googlePlaceId: string;
+  googlePlaceId: string | null;
   primaryPhotoUrl: string | null;
   primaryType: string | null;
   types: string[];
@@ -24,8 +24,9 @@ export interface PoolMatch {
 
 export interface PoolSearchResponse {
   matches: PoolMatch[];
+  exhausted?: boolean;
 }
 
 export const POOL_SEARCH_MIN_QUERY_LENGTH = 3;
 export const POOL_SEARCH_DEBOUNCE_MS = 300;
-export const POOL_SEARCH_DEFAULT_LIMIT = 1;
+export const POOL_SEARCH_DEFAULT_LIMIT = null;

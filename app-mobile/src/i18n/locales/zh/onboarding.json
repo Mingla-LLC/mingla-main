@@ -181,8 +181,9 @@
     "fallback_user": "用户"
   },
   "collaborations": {
-    "headline": "一起计划些什么",
-    "body": "和你的伙伴们开始一个会话。一起发现好去处、投票选出最爱、然后真正去做。",
+    "headline": "一起来计划",
+    "body": "和你的小伙伴建一个群，或者加入你已受邀的聊天或行程。",
+    "start_button": "建群",
     "whos_in": "谁参加？",
     "session_name_label": "会话名称",
     "session_name_placeholder": "例如：周末计划、约会点子...",
@@ -196,7 +197,11 @@
     "generic_error": "没成功，再试一次。",
     "join_error": "无法加入会话",
     "decline_error": "无法拒绝邀请",
-    "empty_state": "先添加好友 — 然后就可以一起计划了。"
+    "empty_state": "先添加好友 — 然后就可以一起计划了。",
+    "trip_chats_header": "你的行程和活动聊天",
+    "trip_chats_loading": "正在加载聊天…",
+    "trip_chats_join_subtitle": "加入买家群聊",
+    "trip_chats_join_button": "加入聊天"
   },
   "consent": {
     "headline": "说一件事",

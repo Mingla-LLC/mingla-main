@@ -68,11 +68,38 @@ export const VenueStep4Hours: React.FC<VenueStep4HoursProps> = ({
 }) => {
   const hours = useDraftVenueStore((s) => s.hours);
   const setHoursRow = useDraftVenueStore((s) => s.setHoursRow);
+  const setHoursRows = useDraftVenueStore((s) => s.setHoursRows);
+  // WS3: days selected for the "apply to multiple" quick-set bar.
+  const [selectedDays, setSelectedDays] = useState<Set<number>>(new Set());
   const [picker, setPicker] = useState<{
     weekday: number;
     field: "open" | "close";
     temp: Date;
+    // WS3: when present, the picked time applies to ALL these weekdays at once.
+    bulk?: number[];
   } | null>(null);
+
+  const toggleDay = useCallback((weekday: number): void => {
+    setSelectedDays((prev) => {
+      const next = new Set(prev);
+      if (next.has(weekday)) next.delete(weekday);
+      else next.add(weekday);
+      return next;
+    });
+  }, []);
+
+  const openBulkPicker = useCallback(
+    (field: "open" | "close"): void => {
+      if (selectedDays.size === 0) return;
+      setPicker({
+        weekday: -1,
+        field,
+        temp: hmToDate(null, field === "open" ? 9 : 17),
+        bulk: Array.from(selectedDays),
+      });
+    },
+    [selectedDays],
+  );
 
   const stepErr = useMemo((): string | null => {
     if (!showErrors) return null;
@@ -110,7 +137,12 @@ export const VenueStep4Hours: React.FC<VenueStep4HoursProps> = ({
         }
         if (picker !== null) {
           const key = picker.field === "open" ? "openTime" : "closeTime";
-          setHoursRow(picker.weekday, { [key]: dateToHm(selected) });
+          if (picker.bulk !== undefined) {
+            // Applying a time to many days also marks them open.
+            setHoursRows(picker.bulk, { isClosed: false, [key]: dateToHm(selected) });
+          } else {
+            setHoursRow(picker.weekday, { [key]: dateToHm(selected) });
+          }
         }
         setPicker(null);
         return;
@@ -119,21 +151,114 @@ export const VenueStep4Hours: React.FC<VenueStep4HoursProps> = ({
         setPicker({ ...picker, temp: selected });
       }
     },
-    [picker, setHoursRow],
+    [picker, setHoursRow, setHoursRows],
   );
 
   const commitIos = useCallback((): void => {
     if (picker === null) return;
     const key = picker.field === "open" ? "openTime" : "closeTime";
-    setHoursRow(picker.weekday, { [key]: dateToHm(picker.temp) });
+    if (picker.bulk !== undefined) {
+      setHoursRows(picker.bulk, { isClosed: false, [key]: dateToHm(picker.temp) });
+    } else {
+      setHoursRow(picker.weekday, { [key]: dateToHm(picker.temp) });
+    }
     setPicker(null);
-  }, [picker, setHoursRow]);
+  }, [picker, setHoursRow, setHoursRows]);
 
   return (
     <View style={styles.host}>
       <Text style={styles.title}>Opening hours</Text>
       <Text style={styles.helper}>Default: Mon–Sat 9–5, Sun closed.</Text>
       {stepErr !== null ? <Text style={styles.err}>{stepErr}</Text> : null}
+
+      {/* WS3: set multiple days at once. Pick days, then apply one open/close
+          time to all of them (or close them together). */}
+      <View style={styles.bulkBar}>
+        <Text style={styles.bulkTitle}>Set multiple days at once</Text>
+        <View style={styles.bulkDayRow}>
+          {DAY_NAMES.map((name, weekday) => {
+            const on = selectedDays.has(weekday);
+            return (
+              <Pressable
+                key={weekday}
+                onPress={() => toggleDay(weekday)}
+                accessibilityRole="button"
+                accessibilityLabel={`${on ? "Deselect" : "Select"} ${name}`}
+                style={[styles.bulkDayChip, on && styles.bulkDayChipOn]}
+              >
+                <Text style={[styles.bulkDayChipText, on && styles.bulkDayChipTextOn]}>
+                  {name.slice(0, 1)}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        <View style={styles.bulkQuickRow}>
+          <Pressable
+            onPress={() => setSelectedDays(new Set([0, 1, 2, 3, 4]))}
+            style={styles.bulkQuickBtn}
+          >
+            <Text style={styles.bulkQuickText}>Weekdays</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => setSelectedDays(new Set([5, 6]))}
+            style={styles.bulkQuickBtn}
+          >
+            <Text style={styles.bulkQuickText}>Weekend</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => setSelectedDays(new Set([0, 1, 2, 3, 4, 5, 6]))}
+            style={styles.bulkQuickBtn}
+          >
+            <Text style={styles.bulkQuickText}>All</Text>
+          </Pressable>
+          {selectedDays.size > 0 ? (
+            <Pressable onPress={() => setSelectedDays(new Set())} style={styles.bulkQuickBtn}>
+              <Text style={styles.bulkQuickText}>Clear</Text>
+            </Pressable>
+          ) : null}
+        </View>
+        {selectedDays.size > 0 ? (
+          <View style={styles.timeRow}>
+            <Pressable
+              style={styles.timeBtn}
+              onPress={() => openBulkPicker("open")}
+              accessibilityRole="button"
+              accessibilityLabel="Set opening time for selected days"
+            >
+              <Text style={styles.timeLbl}>Set opens →</Text>
+              <Text style={styles.timeVal}>{selectedDays.size} day{selectedDays.size === 1 ? "" : "s"}</Text>
+            </Pressable>
+            <Pressable
+              style={styles.timeBtn}
+              onPress={() => openBulkPicker("close")}
+              accessibilityRole="button"
+              accessibilityLabel="Set closing time for selected days"
+            >
+              <Text style={styles.timeLbl}>Set closes →</Text>
+              <Text style={styles.timeVal}>{selectedDays.size} day{selectedDays.size === 1 ? "" : "s"}</Text>
+            </Pressable>
+            <Pressable
+              style={styles.timeBtn}
+              onPress={() => {
+                setHoursRows(Array.from(selectedDays), {
+                  isClosed: true,
+                  openTime: null,
+                  closeTime: null,
+                });
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Mark selected days closed"
+            >
+              <Text style={styles.timeLbl}>Mark closed</Text>
+              <Text style={styles.timeVal}>{selectedDays.size} day{selectedDays.size === 1 ? "" : "s"}</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <Text style={styles.bulkHint}>Pick days above, then set one time for all of them.</Text>
+        )}
+      </View>
+
       {hours.map((row) => (
         <View key={row.weekday} style={styles.dayRow}>
           <View style={styles.dayHead}>
@@ -229,6 +354,66 @@ const styles = StyleSheet.create({
   err: {
     fontSize: typography.caption.fontSize,
     color: "#EF4444",
+  },
+  bulkBar: {
+    gap: spacing.sm,
+    padding: spacing.sm,
+    borderRadius: radiusTokens.md,
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+    marginBottom: spacing.sm,
+  },
+  bulkTitle: {
+    fontSize: typography.bodySm.fontSize,
+    fontWeight: "700",
+    color: textTokens.primary,
+  },
+  bulkDayRow: {
+    flexDirection: "row",
+    gap: spacing.xs,
+  },
+  bulkDayChip: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+    backgroundColor: "rgba(255,255,255,0.05)",
+  },
+  bulkDayChipOn: {
+    borderColor: accent.warm,
+    backgroundColor: accent.tint,
+  },
+  bulkDayChipText: {
+    fontSize: typography.bodySm.fontSize,
+    fontWeight: "700",
+    color: textTokens.secondary,
+  },
+  bulkDayChipTextOn: {
+    color: textTokens.primary,
+  },
+  bulkQuickRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.xs,
+  },
+  bulkQuickBtn: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+    borderRadius: radiusTokens.sm,
+    backgroundColor: "rgba(255,255,255,0.06)",
+  },
+  bulkQuickText: {
+    fontSize: typography.caption.fontSize,
+    color: textTokens.secondary,
+    fontWeight: "600",
+  },
+  bulkHint: {
+    fontSize: typography.caption.fontSize,
+    color: textTokens.tertiary,
   },
   dayRow: {
     borderRadius: radiusTokens.md,

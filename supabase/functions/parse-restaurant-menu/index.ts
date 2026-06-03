@@ -10,7 +10,7 @@ import { parseMenuWithGemini, type MenuFileInput } from "../_shared/geminiMenuPa
 
 const MAX_TOTAL_BYTES = 10 * 1024 * 1024;
 const MAX_FILES = 5;
-const HUB_EXPIRY_HOURS = 24;
+const HUB_EXPIRY_HOURS = 24 * 7;
 const RATE_LIMIT_WINDOW_MS = 86_400_000;
 const RATE_LIMIT_MAX = 20;
 
@@ -34,6 +34,7 @@ type ResponseBody =
       id: string;
       tool_name: string;
       tool_args: Record<string, unknown>;
+      expires_at: string;
     }>;
     experiences_count: number;
   }
@@ -154,12 +155,9 @@ Deno.serve(async (req) => {
   if (brand.account_id !== userId) {
     return errorResponse(403, "FORBIDDEN", "Brand not owned by caller");
   }
-  if (brand.venue_category !== "restaurant") {
-    return errorResponse(403, "BRAND_NOT_ELIGIBLE", "Menu generation is for Restaurant venues only");
-  }
-
   const defaultCurrency = (brand.default_currency as string | null)?.trim() || "GBP";
-  const temporaryCategory = "restaurant";
+  const temporaryCategory = "restaurant" as const;
+  const sourceCategory = (brand.venue_category as string | null)?.trim() || "unknown";
 
   let parseResult;
   try {
@@ -188,6 +186,7 @@ Deno.serve(async (req) => {
     id: string;
     tool_name: string;
     tool_args: Record<string, unknown>;
+    expires_at: string;
   }> = [];
 
   for (const exp of parseResult.experiences) {
@@ -215,7 +214,7 @@ Deno.serve(async (req) => {
         status: "pending",
         expires_at: expiresAt,
       })
-      .select("id, tool_name, tool_args")
+      .select("id, tool_name, tool_args, expires_at")
       .single();
 
     if (insertErr || !inserted) {
@@ -227,6 +226,7 @@ Deno.serve(async (req) => {
       id: inserted.id as string,
       tool_name: inserted.tool_name as string,
       tool_args: inserted.tool_args as Record<string, unknown>,
+      expires_at: inserted.expires_at as string,
     });
   }
 

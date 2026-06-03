@@ -25,8 +25,15 @@ function withStripeContractFetch(
 ): Promise<void> {
   const captured: CapturedRequest[] = [];
   const originalFetch = globalThis.fetch;
+  // ORCH-1056: blueprint helpers now route through resolveStripeKey which
+  // reads MINGLA_STRIPE_MODE + STRIPE_RAK_{ROLE}_{TEST|LIVE}. Set both the
+  // mode and the suffixed env so the resolver returns our fixture key.
   const originalKey = Deno.env.get("STRIPE_RAK_ONBOARD");
+  const originalKeyTest = Deno.env.get("STRIPE_RAK_ONBOARD_TEST");
+  const originalMode = Deno.env.get("MINGLA_STRIPE_MODE");
   Deno.env.set("STRIPE_RAK_ONBOARD", "rk_test_contract_mock");
+  Deno.env.set("STRIPE_RAK_ONBOARD_TEST", "rk_test_contract_mock");
+  Deno.env.set("MINGLA_STRIPE_MODE", "test");
   globalThis.fetch = ((url, init) => {
     const body = JSON.parse(String((init as { body?: unknown })?.body ?? "{}"));
     captured.push({ url: String(url), body });
@@ -99,11 +106,15 @@ function withStripeContractFetch(
 
   return fn(captured).finally(() => {
     globalThis.fetch = originalFetch;
-    if (originalKey === undefined) {
-      Deno.env.delete("STRIPE_RAK_ONBOARD");
+    if (originalKey === undefined) Deno.env.delete("STRIPE_RAK_ONBOARD");
+    else Deno.env.set("STRIPE_RAK_ONBOARD", originalKey);
+    if (originalKeyTest === undefined) {
+      Deno.env.delete("STRIPE_RAK_ONBOARD_TEST");
     } else {
-      Deno.env.set("STRIPE_RAK_ONBOARD", originalKey);
+      Deno.env.set("STRIPE_RAK_ONBOARD_TEST", originalKeyTest);
     }
+    if (originalMode === undefined) Deno.env.delete("MINGLA_STRIPE_MODE");
+    else Deno.env.set("MINGLA_STRIPE_MODE", originalMode);
   });
 }
 

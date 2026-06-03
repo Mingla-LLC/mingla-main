@@ -92,6 +92,7 @@ export const MessageList: React.FC<MessageListProps> = ({
       contentContainerStyle={styles.content}
       ItemSeparatorComponent={() => <View style={styles.sep} />}
       keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
       renderItem={({ item }) => {
         if (item.kind === "thinking") {
           return <View>{renderThinking?.()}</View>;

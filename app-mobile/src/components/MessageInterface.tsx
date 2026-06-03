@@ -1423,7 +1423,7 @@ export default function MessageInterface({
                 accessibilityLabel={`${action.label} ${headerTitle}`}
                 style={styles.collabHeaderActionButton}
               >
-                <Icon name={action.icon as any} size={19} color="#f97316" />
+                {/* text-only collab header actions (Matches / Swipe / Plans) — icons removed */}
                 <Text style={styles.collabHeaderActionText} numberOfLines={1}>
                   {action.label}
                 </Text>

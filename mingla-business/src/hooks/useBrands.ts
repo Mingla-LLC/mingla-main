@@ -46,6 +46,10 @@ import type { Brand } from "../store/currentBrandStore";
 // the hardcoded `["brand-role", brandId]` literal in useSoftDeleteBrand.onSuccess
 // (Constitutional #4 — one query key per entity).
 import { brandRoleKeys } from "./useCurrentBrandRole";
+// ORCH-1062 — soft-delete must synchronously evict the deleted brand from the
+// list cache + clear a stale default_brand_id pointer so useCurrentBrandRecovery
+// cannot re-resolve the just-deleted brand (the render-loop root cause).
+import { creatorAccountKeys, type CreatorAccountRow } from "./useCreatorAccount";
 
 // ORCH-0816 — brand stats (rev, rev7d, attendees) follow ticket sales, which
 // change frequently. Combined with the Realtime subscription on `orders`
@@ -418,7 +422,31 @@ export const useSoftDeleteBrand = (): UseSoftDeleteBrandResult => {
     },
     onSuccess: (result, { brandId, accountId }) => {
       if (!result.rejected) {
-        // Invalidate list — re-fetch shows brand absent (deleted_at IS NULL filter)
+        // ORCH-1062 — ROOT-CAUSE fix for the "Maximum update depth exceeded"
+        // crash when deleting the CURRENTLY-SELECTED brand. The old code only
+        // INVALIDATED the list, so React Query kept serving the STALE list (still
+        // containing the just-deleted brand) during the background refetch. In
+        // that window `useCurrentBrandRecovery` re-resolved the deleted brand
+        // (from the stale list / stale default_brand_id) while `useCurrentBrand`
+        // cleared currentBrandId to null (its detail fetch correctly returns
+        // null) — the two hooks ping-ponged currentBrandId synchronously until
+        // React's nested-update cap tripped the render-loop crash. Fix:
+        // SYNCHRONOUSLY drop the deleted brand from the list cache so the
+        // resolver immediately sees fresh data and lands on a valid brand.
+        queryClient.setQueryData<Brand[]>(brandKeys.list(accountId), (prev) =>
+          prev !== undefined ? prev.filter((b) => b.id !== brandId) : prev,
+        );
+        // Clear default_brand_id in the creator-account cache if it pointed at
+        // the deleted brand (softDeleteBrand Step 3 already cleared it server-
+        // side; this stops the cache from briefly re-resolving the dead pointer).
+        queryClient.setQueryData<CreatorAccountRow | null>(
+          creatorAccountKeys.byId(accountId),
+          (prev) =>
+            prev != null && prev.default_brand_id === brandId
+              ? { ...prev, default_brand_id: null }
+              : prev,
+        );
+        // Invalidate list — server-truth backstop (also reconciles any cascade).
         queryClient.invalidateQueries({ queryKey: brandKeys.list(accountId) });
         // Clear detail cache
         queryClient.removeQueries({ queryKey: brandKeys.detail(brandId) });
@@ -572,7 +600,7 @@ export const useCreateVenueBrand = (): UseCreateVenueBrandResult => {
 
 // ----- Re-exports for convenience ---------------------------------------
 
-export { SlugCollisionError } from "../services/brandsService";
+export { SlugCollisionError, resolveAvailableVenueSlug } from "../services/brandsService";
 export type {
   CreateBrandInput,
   CreateVenueBrandPendingInput,

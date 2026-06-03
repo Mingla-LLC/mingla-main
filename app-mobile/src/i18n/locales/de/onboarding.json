@@ -181,8 +181,9 @@
     "fallback_user": "Benutzer"
   },
   "collaborations": {
-    "headline": "Plant etwas zusammen",
-    "body": "Starte eine Sitzung mit deiner Gruppe. Entdeckt gemeinsam Aktivitäten, stimmt über Favoriten ab und setzt sie um.",
+    "headline": "Plant es gemeinsam",
+    "body": "Starte eine Gruppe mit deiner Crew oder spring in einen Chat oder Trip, zu dem du schon eingeladen bist.",
+    "start_button": "Gruppe starten",
     "whos_in": "Wer ist dabei?",
     "session_name_label": "Sitzungsname",
     "session_name_placeholder": "z.B. Wochenendpläne, Date-Ideen...",
@@ -196,7 +197,11 @@
     "generic_error": "Hmm, das hat nicht geklappt. Versuch es nochmal.",
     "join_error": "Konnte der Sitzung nicht beitreten",
     "decline_error": "Einladung konnte nicht abgelehnt werden",
-    "empty_state": "Füge zuerst Freunde hinzu — dann könnt ihr zusammen planen."
+    "empty_state": "Füge zuerst Freunde hinzu — dann könnt ihr zusammen planen.",
+    "trip_chats_header": "Deine Trip- und Event-Chats",
+    "trip_chats_loading": "Chats werden geladen…",
+    "trip_chats_join_subtitle": "Dem Käufer-Gruppenchat beitreten",
+    "trip_chats_join_button": "Chat beitreten"
   },
   "consent": {
     "headline": "Noch eine Sache",

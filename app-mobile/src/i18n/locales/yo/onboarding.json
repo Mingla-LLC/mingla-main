@@ -181,8 +181,9 @@
     "fallback_user": "Olùlò"
   },
   "collaborations": {
-    "headline": "Ṣe ètò nǹkan papọ̀",
-    "body": "Bẹ̀rẹ̀ ìgbà pẹ̀lú àwọn ọ̀rẹ́ rẹ. Rí àwọn nǹkan láti ṣe, dìbò lórí àwọn tó wù yín jùlọ, kí ẹ sì mú u ṣẹlẹ̀.",
+    "headline": "Ẹ jọ gbero rẹ",
+    "body": "Bẹrẹ ẹgbẹ kan pẹlu àwọn ọ̀rẹ́ rẹ, tàbí dara pọ̀ mọ́ ìfọ̀rọ̀wánilẹ́nuwò tàbí ìrìnàjò tí a ti pè ọ́ sí.",
+    "start_button": "Bẹrẹ ẹgbẹ náà",
     "whos_in": "Ta ló wà nínú?",
     "session_name_label": "Orúkọ ìgbà",
     "session_name_placeholder": "àpẹẹrẹ Ètò ìparí ọ̀sẹ̀, Èrò fún alẹ́...",
@@ -196,7 +197,11 @@
     "generic_error": "Hmm, kò ṣiṣẹ́. Tún gbìyànjú.",
     "join_error": "Kò lè darapọ̀ mọ́ ìgbà",
     "decline_error": "Kò lè kọ ìpè",
-    "empty_state": "Fi ọ̀rẹ́ kún ní àkọ́kọ́ — lẹ́yìn náà o lè bẹ̀rẹ̀ ètò papọ̀."
+    "empty_state": "Fi ọ̀rẹ́ kún ní àkọ́kọ́ — lẹ́yìn náà o lè bẹ̀rẹ̀ ètò papọ̀.",
+    "trip_chats_header": "Àwọn ìfọ̀rọ̀wérọ̀ ìrìnàjò àti ìṣẹ̀lẹ̀ rẹ",
+    "trip_chats_loading": "Ń gbé àwọn ìfọ̀rọ̀wérọ̀ wọlé…",
+    "trip_chats_join_subtitle": "Dara pọ̀ mọ́ ìfọ̀rọ̀wérọ̀ ẹgbẹ́ àwọn ará-ọjà",
+    "trip_chats_join_button": "Dara pọ̀ mọ́ ìfọ̀rọ̀wérọ̀"
   },
   "consent": {
     "headline": "Nǹkan kan ní kíákíá",

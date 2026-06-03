@@ -1,12 +1,17 @@
 import { readFileSync } from "fs";
 import path from "path";
 
-import { describe, expect, jest, test } from "@jest/globals";
+import { afterEach, describe, expect, jest, test } from "@jest/globals";
 
 import { buildTrimmedVideoUploadFile } from "../coverPickerVideoTrimUpload";
 
 const repoFile = (relativePath: string): string =>
   readFileSync(path.join(process.cwd(), relativePath), "utf8");
+
+afterEach(() => {
+  jest.dontMock("react-native-video-trim");
+  jest.resetModules();
+});
 
 describe("CoverPicker dedicated trimmer wiring", () => {
   test("T-AMEND9-01 builds the upload from the trimmer outputPath and selected segment", async () => {
@@ -62,5 +67,34 @@ describe("CoverPicker dedicated trimmer wiring", () => {
     // The native-only import is gone from CoverPicker; it lives only in the split module.
     expect(picker).not.toMatch(/from\s+["']react-native-video-trim["']/);
     expect(editor).not.toContain("[ORCH-0978-POC]");
+  });
+
+  test("T-SUBE-TRIM-01 native editor does not value-import react-native-video-trim at module top level", () => {
+    const editor = repoFile("src/components/ui/coverPickerVideoTrimEditor.ts");
+
+    expect(editor).not.toMatch(
+      /(?:^|\n)\s*import\s+(?!type\b)[\s\S]*?from\s+["']react-native-video-trim["']/,
+    );
+    expect(editor).not.toMatch(
+      /(?:^|\n)\s*import\s+(?!type\b)["']react-native-video-trim["']/,
+    );
+    expect(editor).toMatch(/require\(\s*["']react-native-video-trim["']\s*\)/);
+  });
+
+  test("T-SUBE-TRIM-02 missing native VideoTrim module rejects on trim invocation, not import", async () => {
+    const nativeModuleError =
+      "TurboModuleRegistry.getEnforcing('VideoTrim') could not be found";
+
+    jest.doMock("react-native-video-trim", () => {
+      throw new Error(nativeModuleError);
+    });
+
+    const editorModule = await import("../coverPickerVideoTrimEditor");
+    await expect(
+      editorModule.trimVideoWithDedicatedEditor("file:///clip.mov", 29_000),
+    ).rejects.toThrow("updated Mingla Business native build");
+    await expect(
+      editorModule.trimVideoWithDedicatedEditor("file:///clip.mov", 29_000),
+    ).rejects.toThrow(nativeModuleError);
   });
 });

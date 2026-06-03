@@ -21,6 +21,15 @@ import {
   isInstallmentPaymentIntentEvent,
 } from "./installmentWebhookHandlers.ts";
 import { handleChargeDispute } from "./stripeDisputeHandlers.ts";
+// ORCH-1054 — partner splits + Stripe Transfer pipeline.
+// charge.succeeded → create partner Transfer; charge.refunded + charge.dispute.*
+// → reverse partner Transfer; account.updated → populate partner
+// external_account_currencies (closes the ORCH-1052 currency-match gate).
+import {
+  handleChargeReversal,
+  handleChargeSucceeded,
+  syncPartnerAccountFromEvent,
+} from "./partnerSplits.ts";
 import {
   getKycRemediationForRequirements,
   mapPayoutFailureCode,
@@ -63,11 +72,17 @@ export const STRIPE_ROUTED_EVENT_TYPES = [
   // PaymentIntent id against our session so the payment_intent.succeeded
   // event arriving shortly after can finalise via the existing path.
   "checkout.session.completed",
-  // ORCH-0953: charge.succeeded, charge.failed, and payment_intent.processing
-  // are NOT routed and live webhook endpoints do NOT subscribe to them. The
-  // direct-charge model surfaces success/failure via payment_intent.succeeded /
-  // payment_intent.payment_failed. Delayed-payment methods are out of Phase 1
-  // scope (see DEC-158 — only card/link/apple_pay/google_pay enabled).
+  // ORCH-1054 (revises ORCH-0953): charge.succeeded IS now routed. It is the
+  // only event that carries the application_fee.id we need to fan-out partner
+  // splits via Stripe Transfer (source_transaction = charge.id). The Stripe
+  // Connect platform webhook endpoint MUST subscribe to charge.succeeded.
+  // charge.failed and payment_intent.processing remain unsubscribed.
+  "charge.succeeded",
+  // ORCH-0953: charge.failed and payment_intent.processing are NOT routed.
+  // The direct-charge model surfaces success/failure via
+  // payment_intent.succeeded / payment_intent.payment_failed. Delayed-payment
+  // methods are out of Phase 1 scope (see DEC-158 — only
+  // card/link/apple_pay/google_pay enabled).
   // ORCH-0953: dispute lifecycle — platform-liable Express direct-charge model
   // (DEC-156) requires explicit dispute observability. Persisted to
   // public.stripe_disputes by handlers in _shared/stripeDisputeHandlers.ts.
@@ -1176,6 +1191,21 @@ export async function routeStripeEvent(
   switch (event.type) {
     case "account.updated":
       brandId = await syncAccount(supabase, event.data.object, event.id);
+      // ORCH-1054: same account.updated event may be a PARTNER account (keyed
+      // by partner_stripe_connect_accounts.stripe_account_id) rather than a
+      // brand account. syncPartnerAccountFromEvent is a no-op if the account
+      // id does not match a partner row. Populates external_account_currencies
+      // which closes the ORCH-1052 currency-match invite gate.
+      try {
+        await syncPartnerAccountFromEvent(supabase, event.data.object);
+      } catch (partnerSyncErr) {
+        console.error(
+          "[stripe-webhook] partner account sync failed (non-fatal)",
+          partnerSyncErr instanceof Error
+            ? partnerSyncErr.message
+            : String(partnerSyncErr),
+        );
+      }
       break;
     case "account.application.deauthorized":
       brandId = await handleDeauthorized(supabase, event);
@@ -1212,6 +1242,29 @@ export async function routeStripeEvent(
     case "refund.created":
     case "refund.updated":
       brandId = await handleRefundEvent(supabase, event);
+      // ORCH-1054: refund → reverse partner split (TransferReversal if
+      // already transferred; mark reversed_pending otherwise). Only
+      // charge.refunded carries the application_fee on the charge object;
+      // the refund.* family also fires but we only need one trip through
+      // the reversal RPC per application_fee_id, and the RPC is idempotent.
+      if (event.type === "charge.refunded") {
+        try {
+          await handleChargeReversal(supabase, stripe, event, "refund");
+        } catch (reversalErr) {
+          console.error(
+            "[stripe-webhook] partner reversal (refund) failed",
+            reversalErr instanceof Error
+              ? reversalErr.message
+              : String(reversalErr),
+          );
+          // Rethrow so Stripe redelivers the webhook and we retry.
+          throw reversalErr;
+        }
+      }
+      break;
+    // ORCH-1054: charge.succeeded → partner split fan-out.
+    case "charge.succeeded":
+      brandId = (await handleChargeSucceeded(supabase, stripe, event)).brandId;
       break;
     case "application_fee.created":
     case "application_fee.refunded":
@@ -1248,6 +1301,23 @@ export async function routeStripeEvent(
     case "charge.dispute.updated":
     case "charge.dispute.closed":
       brandId = await handleChargeDispute(supabase, event);
+      // ORCH-1054: dispute → reverse partner split (TransferReversal if
+      // already transferred; mark reversed_pending otherwise). Only fire
+      // on dispute.created; updated/closed don't change the partner-share
+      // outcome (the reversal is idempotent in either case).
+      if (event.type === "charge.dispute.created") {
+        try {
+          await handleChargeReversal(supabase, stripe, event, "dispute");
+        } catch (reversalErr) {
+          console.error(
+            "[stripe-webhook] partner reversal (dispute) failed",
+            reversalErr instanceof Error
+              ? reversalErr.message
+              : String(reversalErr),
+          );
+          throw reversalErr;
+        }
+      }
       break;
     default:
       await writeAudit(supabase, {

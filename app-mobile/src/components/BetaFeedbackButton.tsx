@@ -13,11 +13,14 @@ interface BetaFeedbackButtonProps {
   isTabVisible?: boolean;
   /** Ref attached to the feedback button for coach mark measurement */
   feedbackButtonRef?: React.RefObject<any>;
+  /** ORCH-1029 (F-3): fires when the button has real bounds — drives the coach-mark
+   *  scroll-offset registration deterministically (replaces the 800ms timer race). */
+  onCoachLayout?: () => void;
 }
 
 // ── Component ───────────────────────────────────────────────────────────────
 
-export default function BetaFeedbackButton({ isTabVisible, feedbackButtonRef }: BetaFeedbackButtonProps) {
+export default function BetaFeedbackButton({ isTabVisible, feedbackButtonRef, onCoachLayout }: BetaFeedbackButtonProps) {
   const isBetaTester = useIsBetaTester();
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [showHistorySheet, setShowHistorySheet] = useState(false);
@@ -47,6 +50,7 @@ export default function BetaFeedbackButton({ isTabVisible, feedbackButtonRef }: 
 
         <TouchableOpacity
           ref={feedbackButtonRef}
+          onLayout={onCoachLayout}
           style={styles.feedbackButton}
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);

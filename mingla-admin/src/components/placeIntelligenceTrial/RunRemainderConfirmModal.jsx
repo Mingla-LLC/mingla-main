@@ -119,14 +119,26 @@ export function RunRemainderConfirmModal({
         setErrorCode(code);
         return;
       }
-      addToast({
-        variant: "info",
-        title: "Remainder run started",
-        description:
-          `${data.cityName} · ${data.totalPlaces} places · ~$${
-            Number(data.estimatedCostUsd ?? 0).toFixed(2)
-          } · run ${String(data.runId).slice(0, 8)}…`,
-      });
+      // ORCH-1032: a run started at capacity comes back queued — surface it as
+      // a calm waiting state (info, never error/warning), not "started".
+      if (data.queued) {
+        addToast({
+          variant: "info",
+          title: "Queued — waiting for a free slot",
+          description:
+            `${data.cityName} · ${data.totalPlaces} places · will auto-start when a run finishes` +
+            (data.aheadCount > 0 ? ` (${data.aheadCount} ahead)` : ""),
+        });
+      } else {
+        addToast({
+          variant: "info",
+          title: "Remainder run started",
+          description:
+            `${data.cityName} · ${data.totalPlaces} places · ~$${
+              Number(data.estimatedCostUsd ?? 0).toFixed(2)
+            } · run ${String(data.runId).slice(0, 8)}…`,
+        });
+      }
       onStarted?.({ runId: data.runId, cityName: data.cityName });
       onClose?.();
     } catch (err) {
