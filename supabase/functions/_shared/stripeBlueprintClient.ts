@@ -8,6 +8,27 @@
  */
 
 import { STRIPE_API_VERSION } from "./stripe.ts";
+import { resolveStripeKey, type StripeRole } from "./stripeMode.ts";
+
+/**
+ * Map legacy `envVarNames` literals to the canonical role enum used by
+ * `_shared/stripeMode.ts`. ORCH-1056 routes blueprint-client key reads
+ * through `resolveStripeKey(role)` so they pick up the mode-suffixed
+ * env vars (`STRIPE_RAK_{ROLE}_{TEST|LIVE}`) instead of the unsuffixed
+ * legacy secrets. The literal `envVarNames: ["STRIPE_RAK_ONBOARD"]` is
+ * preserved as a stable handle for the ORCH-0954 strict-grep gate.
+ */
+const ENV_VAR_TO_ROLE: Record<string, StripeRole> = {
+  STRIPE_RAK_ONBOARD: "ONBOARD",
+  STRIPE_RAK_WEBHOOK: "WEBHOOK",
+  STRIPE_RAK_REFRESH_STATUS: "REFRESH_STATUS",
+  STRIPE_RAK_DETACH: "DETACH",
+  STRIPE_RAK_BALANCES: "BALANCES",
+  STRIPE_RAK_KYC_REMINDER: "KYC_REMINDER",
+  STRIPE_RAK_TICKET_CHECKOUT: "TICKET_CHECKOUT",
+  STRIPE_RAK_TICKET_REFUND: "TICKET_REFUND",
+  STRIPE_RAK_TAX_DASHBOARD: "TAX_DASHBOARD",
+};
 
 export const STRIPE_BLUEPRINT_API_VERSION = "2026-04-22.preview" as const;
 
@@ -78,8 +99,20 @@ export interface StripeAccountSession {
   account: string;
 }
 
-function resolveStripeKey(envVarNames: readonly string[]): string {
+/**
+ * ORCH-1056: legacy `envVarNames` literals (e.g. `["STRIPE_RAK_ONBOARD"]`)
+ * are translated to the canonical `StripeRole` and resolved through
+ * `_shared/stripeMode.ts` so the key is mode-routed
+ * (`STRIPE_RAK_{ROLE}_{TEST|LIVE}`). If no entry maps to a known role we
+ * fall back to the historic direct-env behavior — preserves operability
+ * for any externally-passed env name during migration windows.
+ */
+function resolveBlueprintStripeKey(envVarNames: readonly string[]): string {
   for (const envVarName of envVarNames) {
+    const role = ENV_VAR_TO_ROLE[envVarName];
+    if (role !== undefined) {
+      return resolveStripeKey(role);
+    }
     const value = Deno.env.get(envVarName);
     if (value && value.trim().length > 0) {
       return value;
@@ -107,13 +140,59 @@ function safeStripeErrorMessage(payload: unknown, fallback: string): string {
   return fallback;
 }
 
+/**
+ * Serialize an arbitrarily-nested body into Stripe v1's bracketed
+ * application/x-www-form-urlencoded format.
+ *
+ *   { components: { account_onboarding: { enabled: true } } }
+ *     → components[account_onboarding][enabled]=true
+ *
+ * Used for /v1/* paths (Stripe rejects JSON there). /v2/* paths still send
+ * JSON via the JSON.stringify branch below.
+ *
+ * ORCH-1052 hotfix: prior helper unconditionally JSON-encoded all bodies,
+ * which works for /v2/core/* but blows up at /v1/account_sessions with
+ * "Invalid request (check that your POST content type is application/x-www-
+ * form-urlencoded)". Affects every consumer that mints AccountSessions
+ * (partner-stripe-onboard, partner-stripe-account-session, brand-stripe-
+ * onboard, brand-stripe-account-session).
+ */
+function toStripeFormUrlEncoded(input: unknown, prefix = ""): string {
+  if (input === null || input === undefined) return "";
+  const pairs: string[] = [];
+  const walk = (value: unknown, key: string): void => {
+    if (value === null || value === undefined) return;
+    if (Array.isArray(value)) {
+      value.forEach((v, i) => walk(v, `${key}[${i}]`));
+      return;
+    }
+    if (typeof value === "object") {
+      for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+        walk(v, key ? `${key}[${k}]` : k);
+      }
+      return;
+    }
+    pairs.push(
+      `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`,
+    );
+  };
+  walk(input, prefix);
+  return pairs.join("&");
+}
+
 export async function stripeBlueprintRequest<T>(
   options: StripeBlueprintRequestOptions,
 ): Promise<T> {
-  const key = resolveStripeKey(options.envVarNames);
+  const key = resolveBlueprintStripeKey(options.envVarNames);
+  // ORCH-1052 hotfix — Stripe v1 endpoints require form-urlencoded; v2
+  // accept (and prefer) JSON. Branch on path prefix instead of hard-coding
+  // JSON for every blueprint call.
+  const isV1Path = options.path.startsWith("/v1/");
   const headers = new Headers({
     Authorization: `Bearer ${key}`,
-    "Content-Type": "application/json",
+    "Content-Type": isV1Path
+      ? "application/x-www-form-urlencoded"
+      : "application/json",
   });
   headers.set(
     "Stripe-Version",
@@ -123,10 +202,14 @@ export async function stripeBlueprintRequest<T>(
     headers.set("Idempotency-Key", options.idempotencyKey);
   }
 
+  const requestBody = isV1Path
+    ? toStripeFormUrlEncoded(options.body)
+    : JSON.stringify(options.body);
+
   const response = await fetch(`https://api.stripe.com${options.path}`, {
     method: options.method,
     headers,
-    body: JSON.stringify(options.body),
+    body: requestBody,
   });
 
   let payload: unknown = null;

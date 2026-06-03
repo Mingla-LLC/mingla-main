@@ -38,6 +38,11 @@ import {
 } from "../../src/constants/designSystem";
 import { useAuth } from "../../src/context/AuthContext";
 import { useBrandListState } from "../../src/hooks/useBrandListShim";
+// ORCH-1052 hotfix — surface the partner earnings entry on the Account tab
+// when an admin flips creator_accounts.partner_enabled=true. The hook
+// refetches on window focus + mount so the flip becomes visible within
+// seconds of the next Account-tab open (no manual reload needed).
+import { usePartnerStripeStatus } from "../../src/hooks/usePartnerStripe";
 import {
   useCurrentBrandStore,
   type Brand,
@@ -105,6 +110,13 @@ export default function AccountTab(): React.ReactElement {
   const handleNotifications = useCallback((): void => {
     router.push("/account/notifications" as never);
   }, [router]);
+
+  // ORCH-1052 hotfix — partner section navigation.
+  const handlePartnerEarnings = useCallback((): void => {
+    router.push("/partner/earnings" as never);
+  }, [router]);
+  const partnerStatus = usePartnerStripeStatus();
+  const isPartner = partnerStatus.data?.partner_enabled === true;
 
   const handleOpenSwitcher = useCallback((): void => {
     setSheetVisible(true);
@@ -233,6 +245,27 @@ export default function AccountTab(): React.ReactElement {
             <Text style={styles.body}>
               Create your first brand from the brand switcher.
             </Text>
+          </GlassCard>
+        ) : null}
+
+        {/* ORCH-1052 hotfix — Mingla Partner section. Visible only when
+            creator_accounts.partner_enabled=true (account-level flag flipped
+            by a Mingla admin via mingla-admin User Management). Surfaces
+            within seconds of the toggle thanks to usePartnerStripeStatus
+            staleTime:0 + refetchOnWindowFocus:true. */}
+        {isPartner ? (
+          <GlassCard variant="elevated" padding={spacing.lg}>
+            <Text style={styles.title}>Mingla Partner</Text>
+            <Text style={styles.body}>
+              You earn 0.15% of every ticket sold on brands you manage as a brand admin.
+            </Text>
+            <View style={styles.navRowsCol}>
+              <SettingsNavRow
+                icon="trending-up"
+                label="Partner earnings"
+                onPress={handlePartnerEarnings}
+              />
+            </View>
           </GlassCard>
         ) : null}
 

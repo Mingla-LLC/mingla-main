@@ -1,17 +1,21 @@
 /**
- * /connect-account-management — Mingla-hosted Stripe Connect management page.
+ * /connect-partner-account-management — Mingla-hosted Stripe Connect
+ * Embedded Components page for PARTNER (account-level) Stripe management.
+ * ORCH-1052 follow-up.
  *
- * Web-only Path B surface opened from mingla-business via expo-web-browser.
- * Renders Stripe embedded account management plus notification banner from a
- * short-lived Account Session client_secret.
+ * Mirrors /connect-account-management (the brand-level page) verbatim, but
+ * for partner identity: query param `account_id` (the partner's
+ * creator_accounts.id / auth.uid()) instead of `brand_id`. Opened from
+ * mingla-business via WebBrowser.openAuthSessionAsync.
  *
- * ORCH-1056 backport: shared layout/zoom helpers now live in
- * src/components/stripe/connectEmbeddedPageHelpers.ts. This file inherits
- * the iOS WKWebView scroll fix (absolute-positioned wrapper) + auto-zoom
- * block (viewport meta override) previously only on the partner pages.
+ * Includes the same iOS WKWebView fixes shipped for the partner-onboarding
+ * page: absolute-positioned scroll wrapper + viewport meta tag override
+ * blocking auto-zoom on input focus.
+ *
+ * ROUTE: business.usemingla.com/connect-partner-account-management?session=...&account_id=...&return_to=...
  */
 
-// orch-strict-grep-allow safearea-on-fullscreen-routes — web-only Stripe Connect Embedded Components page; renders DOM elements (<div>) via @stripe/react-connect-js, NOT React Native primitives. Does not render natively on iOS/Android — only loads in Expo Web bundle / mobile expo-web-browser session. iOS status bar bleed cannot occur because the page never renders in the native React Native stack. Per ORCH-0954 [Embedded onboarding cutover + Stripe-managed risk].
+// orch-strict-grep-allow safearea-on-fullscreen-routes — web-only Stripe Connect Embedded Components page; renders DOM elements (<div>) via @stripe/react-connect-js, NOT React Native primitives. Mirrors connect-account-management.web.tsx per I-PROPOSED-O.
 
 import React, { useMemo, useState } from "react";
 import Constants from "expo-constants";
@@ -24,6 +28,7 @@ import { loadConnectAndInitialize } from "@stripe/connect-js";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   connectEmbeddedPageStyles,
+  pageWrapperStyle,
   useStripeConnectViewportZoomLock,
 } from "../src/components/stripe/connectEmbeddedPageHelpers";
 
@@ -33,21 +38,21 @@ function firstParam(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
 
-export default function ConnectAccountManagementPage(): React.ReactElement {
+export default function ConnectPartnerAccountManagementPage(): React.ReactElement {
   const router = useRouter();
   const params = useLocalSearchParams<{
     session: string | string[];
-    brand_id: string | string[];
+    account_id: string | string[];
     return_to: string | string[];
   }>();
 
   const sessionClientSecret = firstParam(params.session);
-  const brandId = firstParam(params.brand_id);
+  const accountId = firstParam(params.account_id);
   const returnTo = firstParam(params.return_to);
   const [initError, setInitError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  // ORCH-1056 — block iOS auto-zoom on input focus.
+  // ORCH-1056: iOS auto-zoom fix moved to shared helper.
   useStripeConnectViewportZoomLock();
 
   const stripeConnectInstance = useMemo(() => {
@@ -67,11 +72,7 @@ export default function ConnectAccountManagementPage(): React.ReactElement {
       return loadConnectAndInitialize({
         publishableKey,
         fetchClientSecret: async () => sessionClientSecret,
-        appearance: {
-          variables: {
-            colorPrimary: MINGLA_BRAND_COLOR,
-          },
-        },
+        appearance: { variables: { colorPrimary: MINGLA_BRAND_COLOR } },
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -87,18 +88,7 @@ export default function ConnectAccountManagementPage(): React.ReactElement {
       window.location.href = returnTo;
       return;
     }
-    if (typeof brandId === "string" && brandId.length > 0) {
-      router.replace(`/brand/${brandId}/payments` as never);
-      return;
-    }
-    router.replace("/" as never);
-  };
-
-  const handleNotificationsChange = (event: unknown): void => {
-    console.info("[connect-account-management] Stripe notifications changed", {
-      brandId,
-      event,
-    });
+    router.replace("/partner/earnings" as never);
   };
 
   const handleLoadError = (event: unknown): void => {
@@ -115,12 +105,12 @@ export default function ConnectAccountManagementPage(): React.ReactElement {
 
   if (typeof sessionClientSecret !== "string") {
     return (
-      <div style={connectEmbeddedPageStyles.pageWrapperStyle}>
-        <div style={connectEmbeddedPageStyles.errorCardStyle}>
-          <h2 style={connectEmbeddedPageStyles.errorTitleStyle}>Invalid management link</h2>
-          <p style={connectEmbeddedPageStyles.errorBodyStyle}>
-            This link is missing a required parameter. Return to Mingla Business
-            and tap &ldquo;Manage payouts &amp; tax&rdquo; again.
+      <div style={pageWrapperStyle}>
+        <div style={errorCardStyle}>
+          <h2 style={errorTitleStyle}>Invalid management link</h2>
+          <p style={errorBodyStyle}>
+            This link is missing a required parameter. Return to Mingla and tap
+            &ldquo;Manage Stripe account&rdquo; again.
           </p>
         </div>
       </div>
@@ -129,10 +119,10 @@ export default function ConnectAccountManagementPage(): React.ReactElement {
 
   if (initError !== null || loadError !== null) {
     return (
-      <div style={connectEmbeddedPageStyles.pageWrapperStyle}>
-        <div style={connectEmbeddedPageStyles.errorCardStyle}>
-          <h2 style={connectEmbeddedPageStyles.errorTitleStyle}>Couldn&rsquo;t load Stripe</h2>
-          <p style={connectEmbeddedPageStyles.errorBodyStyle}>{initError ?? loadError}</p>
+      <div style={pageWrapperStyle}>
+        <div style={errorCardStyle}>
+          <h2 style={errorTitleStyle}>Couldn&rsquo;t load Stripe</h2>
+          <p style={errorBodyStyle}>{initError ?? loadError}</p>
         </div>
       </div>
     );
@@ -140,32 +130,31 @@ export default function ConnectAccountManagementPage(): React.ReactElement {
 
   if (stripeConnectInstance === null) {
     return (
-      <div style={connectEmbeddedPageStyles.pageWrapperStyle}>
-        <div style={connectEmbeddedPageStyles.loadingCardStyle}>
-          <p>Initializing account management...</p>
+      <div style={pageWrapperStyle}>
+        <div style={loadingCardStyle}>
+          <p>Initializing account management…</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div style={connectEmbeddedPageStyles.pageWrapperStyle}>
+    <div style={pageWrapperStyle}>
       <header style={headerStyle}>
         <div style={headerInnerStyle}>
-          <h1 style={connectEmbeddedPageStyles.headerTitleStyle}>Mingla — Payouts &amp; tax</h1>
+          <h1 style={headerTitleStyle}>Mingla — Partner payouts</h1>
           <button type="button" onClick={handleDone} style={doneButtonStyle}>
             Done
           </button>
         </div>
       </header>
-      <main style={connectEmbeddedPageStyles.mainStyle}>
+      <main style={mainStyle}>
         <ConnectComponentsProvider connectInstance={stripeConnectInstance}>
           <ConnectNotificationBanner
             collectionOptions={{
               fields: "eventually_due",
               futureRequirements: "include",
             }}
-            onNotificationsChange={handleNotificationsChange}
             onLoadError={handleLoadError}
           />
           <ConnectAccountManagement
@@ -177,8 +166,8 @@ export default function ConnectAccountManagementPage(): React.ReactElement {
           />
         </ConnectComponentsProvider>
       </main>
-      <footer style={connectEmbeddedPageStyles.footerStyle}>
-        <p style={connectEmbeddedPageStyles.footerTextStyle}>
+      <footer style={footerStyle}>
+        <p style={footerTextStyle}>
           Powered by Stripe. Your bank details go directly to Stripe — Mingla
           never sees them.
         </p>
@@ -187,8 +176,18 @@ export default function ConnectAccountManagementPage(): React.ReactElement {
   );
 }
 
-// Account-management has a distinct header layout (Done button) — keep
-// page-local style overrides for the header inner + done button.
+// ORCH-1056: shared base styles via connectEmbeddedPageHelpers.
+const mainStyle = connectEmbeddedPageStyles.mainStyle;
+const footerStyle = connectEmbeddedPageStyles.footerStyle;
+const footerTextStyle = connectEmbeddedPageStyles.footerTextStyle;
+const errorCardStyle = connectEmbeddedPageStyles.errorCardStyle;
+const errorTitleStyle = connectEmbeddedPageStyles.errorTitleStyle;
+const errorBodyStyle = connectEmbeddedPageStyles.errorBodyStyle;
+const loadingCardStyle = connectEmbeddedPageStyles.loadingCardStyle;
+void pageWrapperStyle;
+
+// Page-local: account-management header (Done button + alignment) — distinct
+// from the centered-title onboarding header so kept inline.
 const headerStyle: React.CSSProperties = {
   padding: "18px 24px",
   borderBottom: "1px solid #E5E7EB",
@@ -204,14 +203,20 @@ const headerInnerStyle: React.CSSProperties = {
   gap: "16px",
 };
 
-const doneButtonStyle: React.CSSProperties = {
-  minHeight: "44px",
-  padding: "0 16px",
-  borderRadius: "999px",
-  border: "1px solid #E5E7EB",
-  backgroundColor: "#FFFFFF",
+const headerTitleStyle: React.CSSProperties = {
+  fontSize: "18px",
+  fontWeight: 600,
+  margin: 0,
   color: "#0F172A",
-  fontSize: "15px",
+};
+
+const doneButtonStyle: React.CSSProperties = {
+  border: "1px solid #E5E7EB",
+  background: "#FFFFFF",
+  color: "#0F172A",
+  padding: "8px 14px",
+  borderRadius: "9999px",
+  fontSize: "14px",
   fontWeight: 600,
   cursor: "pointer",
 };
