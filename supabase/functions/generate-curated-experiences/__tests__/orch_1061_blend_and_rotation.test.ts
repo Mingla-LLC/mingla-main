@@ -167,8 +167,9 @@ Deno.test('T-2-07: when the hours filter empties the deck, a summary verdict is 
     }],
   };
 
-  let cards: any[] = [closedCard];
-  let summary: any = undefined; // generateCardsForType returned cards>0, so no summary yet
+  let cards: Record<string, unknown>[] = [closedCard];
+  let summary: { emptyReason: string; candidateAnchorCount: number; failedAnchorCount: number } | undefined =
+    undefined; // generateCardsForType returned cards>0, so no summary yet
   cards = filterCuratedByStopHours(cards, WED_1800_UTC);
   if (cards.length === 0 && !summary) {
     summary = { emptyReason: 'pool_empty', candidateAnchorCount: 0, failedAnchorCount: 0 };

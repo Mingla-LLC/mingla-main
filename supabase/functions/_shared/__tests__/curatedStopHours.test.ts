@@ -37,7 +37,7 @@ function periods(day: number, openHour: number, closeHour: number) {
 // the place-local arrival of the FIRST stop is Wednesday (day=3) 18:00.
 const WED_1800_UTC = new Date(Date.UTC(2026, 5, 3, 18, 0, 0));
 
-function curatedCard(stops: any[]): any {
+function curatedCard(stops: Record<string, unknown>[]): Record<string, unknown> {
   return {
     cardType: 'curated',
     utcOffsetMinutes: 0,
