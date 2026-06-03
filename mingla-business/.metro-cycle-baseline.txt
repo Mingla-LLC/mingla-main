@@ -36,3 +36,16 @@ src/store/liveEventStore.ts | src/utils/publishedEventEditGuards.ts
 src/context/AuthContext.tsx | src/hooks/useBrandListShim.ts | src/hooks/useBrands.ts | src/store/currentBrandStore.ts | src/utils/clearAllStores.ts
 src/context/AuthContext.tsx | src/hooks/useBrands.ts | src/store/draftEventStore.ts | src/store/liveEventStore.ts | src/utils/clearAllStores.ts
 src/context/AuthContext.tsx | src/hooks/useBrands.ts | src/store/draftEventStore.ts | src/utils/clearAllStores.ts | src/utils/liveEventConverter.ts
+# ORCH-1050/1052/1055 introduced new lazy hook-runtime cycles through the brand
+# graph (useBrands now pulls useEventOrders + usePublicEvents/services, and the
+# currentBrandId reliability fix wired useBrandListShim/currentBrandStore deeper).
+# All are runtime-lazy (hooks called at render, never at module top level), so
+# they resolve fine — same benign pattern as the ORCH-1004 block above. The
+# introducing PRs merged without baselining; ORCH-1060 (main CI green-up)
+# baselines them with this rationale. Cycle-breaking refactor tracked separately.
+src/context/AuthContext.tsx | src/hooks/useBrandListShim.ts | src/hooks/useBrands.ts | src/hooks/useEventOrders.ts | src/store/currentBrandStore.ts | src/utils/clearAllStores.ts
+src/hooks/useBrands.ts | src/hooks/useEventOrders.ts | src/store/draftEventStore.ts | src/store/liveEventStore.ts
+src/hooks/useBrands.ts | src/hooks/useEventOrders.ts | src/store/draftEventStore.ts | src/utils/liveEventConverter.ts
+src/hooks/useBrandListShim.ts | src/hooks/useBrands.ts | src/hooks/usePublicEvents.ts | src/services/brandMapping.ts | src/services/publicEventsService.ts | src/store/currentBrandStore.ts | src/utils/deriveBrandStripeStatus.ts
+src/hooks/useBrandListShim.ts | src/hooks/useBrands.ts | src/hooks/usePublicEvents.ts | src/services/publicEventsService.ts | src/services/tripsService.ts | src/store/currentBrandStore.ts
+src/hooks/useBrandListShim.ts | src/hooks/useBrands.ts | src/store/currentBrandStore.ts

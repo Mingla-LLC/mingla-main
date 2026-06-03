@@ -3,7 +3,7 @@
  *
  * Sends invites through the `invite-scanner` edge function. The function
  * writes to `public.scanner_invitations` and ships a Resend invite email.
- * The legacy [TRANSITIONAL] zustand-only path is gone — invitations are
+ * The legacy [TRANSITIONAL] zustand-only path is gone (exit condition: ORCH-1051) — invitations are
  * real canonical rows from the moment "Send invitation" returns success.
  *
  * Scope picker: operator chooses "This event only" (default, preserves

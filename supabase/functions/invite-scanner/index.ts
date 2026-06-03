@@ -193,6 +193,8 @@ async function sendInviteEmail(
   payload: ReturnType<typeof buildInviteEmail>,
 ): Promise<{ ok: boolean; error?: string }> {
   try {
+    // no-attachment: scanner invite is a transactional HTML email (accept link
+    // only) — no PDF/ticket/file attachment by design.
     const response = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {

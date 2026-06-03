@@ -17,6 +17,12 @@
  *   - https://docs.stripe.com/keys (publishable key prefixes)
  */
 
+// orch-strict-grep-allow stripe-fn-no-audit — public, anonymous, read-only mode
+// reporter. No Stripe API call, no state mutation, no user/brand context to
+// audit (the answer is already public via the bundled pk_ prefix). I-PROPOSED-S
+// audit logging targets authenticated Stripe-mutating ops; nothing to log here.
+// Validated against stripe-best-practices security reference (ORCH-1060).
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import {
   resolvePublishablePrefix,

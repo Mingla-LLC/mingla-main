@@ -58,6 +58,11 @@ const ALLOWLIST = new Set([
   // INTAKE time as a known prior consumer; if this file ever ships in
   // production navigation, file a new ORCH amending the allow-list.
   "mingla-business/app/__styleguide.tsx",
+  // Type-only consumers — import the `BottomNavTab` TYPE (not the BottomNav
+  // component) for the desktop tab-visibility gate. No runtime chrome mount.
+  // (ORCH-1060 CI green-up; type imports are erased at build, never render.)
+  "mingla-business/src/utils/navTabGate.ts",
+  "mingla-business/src/utils/__tests__/navTabGate.test.ts",
 ]);
 
 const failures = [];

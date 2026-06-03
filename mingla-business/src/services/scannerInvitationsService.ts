@@ -2,7 +2,7 @@
  * scannerInvitationsService — backend contract for the scanner-team invite
  * flow (ORCH-1051).
  *
- * Replaces the [TRANSITIONAL] local-Zustand-only flow with real Supabase
+ * Replaces the [TRANSITIONAL] local-Zustand-only flow (exit condition: ORCH-1051) with real Supabase
  * persistence + Resend email + branch-on-scope accept RPC. The
  * `scannerInvitationsStore` now lives only as an optimistic-UI cache between
  * "Invite tapped" and "edge fn returned"; canonical state is read from

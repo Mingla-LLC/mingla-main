@@ -2,7 +2,7 @@
  * useBrandInvitations / useBrandTeamMembers / mutations (ORCH-1050).
  *
  * React Query layer for the brand-team invite flow. Replaces the
- * [TRANSITIONAL] zustand-only reads in /brand/[id]/team. Const #5: server
+ * [TRANSITIONAL] zustand-only reads in /brand/[id]/team (exit condition: ORCH-1050 — now React Query). Const #5: server
  * state lives in React Query, never Zustand.
  *
  * Cache invalidation rules:
