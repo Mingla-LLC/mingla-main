@@ -125,6 +125,15 @@ const categories = [
   { id: 'brunch',              label: 'Brunch',                 icon: 'coffee' },
   { id: 'casual_food',         label: 'Casual',                 icon: 'utensils-crossed' },
   { id: 'upscale_fine_dining', label: 'Fine Dining',            icon: 'chef-hat' },
+  // ORCH-1062 Part 2: three quality-grounded "vibe" categories promoted to
+  // user-pickable pills (Romantic/Lively/Scenic). Appended as a contiguous trio
+  // per DESIGN §3 — preserves the shipped 10-pill order byte-for-byte; the
+  // existing flexWrap grid handles the new row. Glyphs (heart-pulse / flame /
+  // tree-pine) are distinct from the Romantic INTENT heart, icebreakers sparkles,
+  // and nature trees, and all three already exist in Icon.tsx ICON_MAP.
+  { id: 'romantic',            label: 'Romantic',               icon: 'heart-pulse' },
+  { id: 'lively',              label: 'Lively',                 icon: 'flame' },
+  { id: 'scenic',              label: 'Scenic',                 icon: 'tree-pine' },
 ];
 
 // Travel modes matching database constraint

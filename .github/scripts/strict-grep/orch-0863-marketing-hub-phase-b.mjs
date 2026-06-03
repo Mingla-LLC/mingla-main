@@ -1354,6 +1354,15 @@ function checkNoNewBackendFiles() {
   // Per COMMS-0002.
   const ORCH_1062_BACKEND_ALLOWLIST = [
     "supabase/functions/generate-curated-experiences/__tests__/orch_1062_override_removal.test.ts",
+    // ORCH-1062 Part 2 [vibe-category-pills]: serving-side regression test for
+    // the three vibe categories. The edit to discover-cards/index.ts
+    // (CATEGORY_TO_SIGNAL) is a modification, not a new file. Per COMMS-0002 —
+    // lands in the same commit as the test.
+    "supabase/functions/discover-cards/__tests__/orch_1062_vibe_category_signals.test.ts",
+    // ORCH-1062 Part 2 [vibe-category-pills]: TESTER-OWNED adversarial serving
+    // test (SC-10 category/intent non-collision, filterMin >= boundary, alias
+    // no-drift). New backend file — allowlisted same-commit per COMMS-0002.
+    "supabase/functions/discover-cards/__tests__/orch_1062_vibe_category_adversarial.test.ts",
   ];
   // ORCH-1032 [Intelligence pipeline concurrency cap + chunked enqueue]:
   // adds the additive 'queued'-status migration (status CHECK widen + per-city
