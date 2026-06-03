@@ -1272,6 +1272,12 @@ function checkNoNewBackendFiles() {
     // lands in the SAME commit as the migration).
     "supabase/migrations/20260825000000_meta_orch_1059_sub_b_publish_experience.sql",
     "supabase/functions/__tests__/biz_publish_experience.draft_lifecycle.test.ts",
+    // Wizard CHANGES 1+2+3 (post Sub-A/B forward migration): draft-gated
+    // stop name/description validation + events.experience_intent column +
+    // publish-time intent/description gates. Per COMMS-0002 — allowlist lands in
+    // the SAME commit as the migration + its source-level regression test.
+    "supabase/migrations/20260827000000_meta_orch_1059_wizard_intent_desc_validation.sql",
+    "supabase/functions/__tests__/biz_experience_wizard_changes.test.ts",
   ];
   // ORCH-1045 [Business "Get Beta Access" lead-capture]: adds the beta-lead
   // migration (beta_access_leads table + admin_beta_leads_list RPC) and the

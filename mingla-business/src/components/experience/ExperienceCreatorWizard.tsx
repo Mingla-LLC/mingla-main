@@ -19,6 +19,7 @@ import {
   canvas,
   glass,
   radius,
+  semantic,
   spacing,
   text as textTokens,
   typography,
@@ -44,10 +45,15 @@ import { ExperiencePricingStep } from "./ExperiencePricingStep";
 import {
   emptyStop,
   stopHasValidatedLocation,
+  stopHasValidDescription,
   type ExperienceLocationMode,
   type ExperiencePricingMode,
   type ExperienceStopDraft,
 } from "./experienceWizardTypes";
+import {
+  EXPERIENCE_INTENTS,
+  type ExperienceIntentId,
+} from "../../constants/experienceIntents";
 
 export interface ExperienceCreatorWizardProps {
   brandId: string;
@@ -72,6 +78,8 @@ export interface ExperienceCreatorWizardProps {
 export interface ExperienceWizardInitialDraft {
   title: string;
   description: string;
+  /** META-ORCH-1059 CHANGE 2 — curated intent/vibe (edit-mode seed). */
+  intent: ExperienceIntentId | null;
   locationMode: ExperienceLocationMode;
   pricingMode: ExperiencePricingMode;
   stops: ExperienceStopDraft[];
@@ -111,6 +119,9 @@ const RPC_ERROR_COPY: Record<string, string> = {
   invalid_mode: "Something went wrong with the pricing/location setup. Try again.",
   experience_stop_count_invalid: "An experience needs 2–5 stops.",
   stop_name_required: "Every stop needs a name.",
+  stop_description_required: "Every stop needs a short description.",
+  experience_intent_required: "Pick the best vibe for this experience.",
+  experience_intent_invalid: "That vibe isn't recognised. Pick one from the list.",
   stop_address_unvalidated: "Pick each stop's address from the suggestions.",
   stop_too_many_images: "Each stop can have up to 5 photos.",
   experience_price_invalid: "Set a valid price, or mark the experience free.",
@@ -157,6 +168,10 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
   const [title, setTitle] = useState(initialDraft?.title ?? prefill?.title ?? "");
   const [description, setDescription] = useState(
     initialDraft?.description ?? prefill?.description ?? "",
+  );
+  // META-ORCH-1059 CHANGE 2 — curated intent/vibe (required at publish).
+  const [intent, setIntent] = useState<ExperienceIntentId | null>(
+    initialDraft?.intent ?? null,
   );
 
   // Stops + modes
@@ -236,6 +251,8 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
     if (stops.length < 2 || stops.length > 5) return false;
     return stops.every((s, i) => {
       if (s.placeName.trim().length === 0) return false;
+      // CHANGE 3 — every stop needs a description.
+      if (!stopHasValidDescription(s)) return false;
       const needsAddress = locationMode === "per_stop" || i === 0;
       if (needsAddress && !stopHasValidatedLocation(s)) return false;
       return true;
@@ -251,12 +268,17 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
   }, [unlimited, capacity, isFree, pricingMode, resolvedTotalMajor, stops]);
 
   const canContinue = useMemo(() => {
-    if (step === 1) return title.trim().length > 0 && description.trim().length >= 10;
+    if (step === 1)
+      return (
+        title.trim().length > 0 &&
+        description.trim().length >= 10 &&
+        intent !== null
+      );
     if (step === 2) return stopsValid;
     if (step === 3) return whenAdapter.isValid;
     if (step === 4) return pricingValid;
     return true;
-  }, [step, title, description, stopsValid, whenAdapter.isValid, pricingValid]);
+  }, [step, title, description, intent, stopsValid, whenAdapter.isValid, pricingValid]);
 
   const goBack = useCallback((): void => {
     if (step === 1) onCancel?.();
@@ -269,6 +291,7 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
       return {
         title: title.trim(),
         description: description.trim(),
+        experience_intent: intent,
         currency,
         location_mode: locationMode,
         pricing_mode: pricingMode,
@@ -294,7 +317,7 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
             pricingMode === "per_stop"
               ? Math.round((parseFloat(s.priceMajor) || 0) * 100)
               : 0,
-          ai_description: "",
+          ai_description: s.description.trim(),
         })),
         whenMode: whenPayload.whenMode,
         when: whenPayload.when,
@@ -307,6 +330,7 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
       whenAdapter,
       title,
       description,
+      intent,
       currency,
       locationMode,
       pricingMode,
@@ -372,10 +396,17 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
   const handleSubmit = useCallback(
     async (publish: boolean): Promise<void> => {
       if (brand === null || user?.id === undefined) return;
-      if (publish && (!stopsValid || !pricingValid || !whenAdapter.isValid)) {
+      if (
+        publish &&
+        (intent === null || !stopsValid || !pricingValid || !whenAdapter.isValid)
+      ) {
         setShowStepErrors(true);
         whenAdapter.setShowErrors(true);
-        setToast("Finish the required fields before publishing.");
+        setToast(
+          intent === null
+            ? "Pick the best vibe for this experience on step 1 before publishing."
+            : "Finish the required fields before publishing.",
+        );
         return;
       }
       setSubmitting(true);
@@ -409,6 +440,7 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
       brand,
       buildPayload,
       ensureDraft,
+      intent,
       onComplete,
       pricingValid,
       stopsValid,
@@ -457,6 +489,50 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
               multiline
               style={styles.textArea}
             />
+
+            {/* META-ORCH-1059 CHANGE 2 — curated intent/vibe picker (required) */}
+            <Text style={styles.label}>Best vibe for this experience</Text>
+            <Text style={styles.helperBody}>
+              Match the vibe buyers feel on the Mingla deck — this places your experience
+              in the right curated category.
+            </Text>
+            <View style={styles.intentGrid} accessibilityRole="radiogroup">
+              {EXPERIENCE_INTENTS.map((opt) => {
+                const selected = intent === opt.id;
+                return (
+                  <Pressable
+                    key={opt.id}
+                    onPress={() => setIntent(opt.id)}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected }}
+                    accessibilityLabel={`${opt.label} — ${opt.description}`}
+                    style={[styles.intentChip, selected && styles.intentChipActive]}
+                  >
+                    <Icon
+                      name={opt.icon}
+                      size={18}
+                      color={selected ? accent.warm : textTokens.secondary}
+                    />
+                    <View style={styles.intentTextCol}>
+                      <Text
+                        style={[
+                          styles.intentLabel,
+                          selected && styles.intentLabelActive,
+                        ]}
+                      >
+                        {opt.label}
+                      </Text>
+                      <Text style={styles.intentDesc} numberOfLines={1}>
+                        {opt.description}
+                      </Text>
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </View>
+            {showStepErrors && intent === null ? (
+              <Text style={styles.inlineError}>Pick the best vibe for this experience.</Text>
+            ) : null}
           </View>
         ) : null}
 
@@ -615,6 +691,52 @@ const styles = StyleSheet.create({
   footer: { padding: spacing.lg },
   footerRow: { flexDirection: "row", gap: spacing.sm },
   footerButton: { flex: 1 },
+  helperBody: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: textTokens.tertiary,
+  },
+  intentGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
+  intentChip: {
+    flexBasis: "47%",
+    flexGrow: 1,
+    minHeight: 56,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+    backgroundColor: glass.tint.profileBase,
+  },
+  intentChipActive: {
+    borderColor: accent.border,
+    backgroundColor: accent.tint,
+  },
+  intentTextCol: { flex: 1 },
+  intentLabel: {
+    fontSize: typography.bodySm.fontSize,
+    fontWeight: "600",
+    color: textTokens.secondary,
+  },
+  intentLabelActive: { color: textTokens.primary },
+  intentDesc: {
+    fontSize: typography.caption.fontSize,
+    color: textTokens.tertiary,
+    marginTop: 1,
+  },
+  inlineError: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: semantic.error,
+    marginTop: spacing.xxs,
+  },
 });
 
 export default ExperienceCreatorWizard;

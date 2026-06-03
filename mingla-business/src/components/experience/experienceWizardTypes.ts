@@ -27,7 +27,16 @@ export interface ExperienceStopDraft {
   startTime: string | null;
   /** Per-stop price major-unit string (used only in per_stop pricing mode). */
   priceMajor: string;
+  /**
+   * META-ORCH-1059 CHANGE 3 — compulsory per-stop blurb (1–280 chars).
+   * Persists to experience_stops.ai_description → CuratedStop.aiDescription
+   * (the per-stop line on the deck card + public page). Required at publish.
+   */
+  description: string;
 }
+
+/** CHANGE 3 — max length of the per-stop description. */
+export const MAX_STOP_DESCRIPTION = 280;
 
 let counter = 0;
 export const newStopClientId = (): string => {
@@ -48,6 +57,7 @@ export const emptyStop = (): ExperienceStopDraft => ({
   imageUrls: [],
   startTime: null,
   priceMajor: "0.00",
+  description: "",
 });
 
 /** Start Here / Then / End With label, derived from position + count (mirrors CuratedStop). */
@@ -61,3 +71,9 @@ export const labelForIndex = (i: number, n: number): string => {
 /** A stop is location-valid when it carries a confirmed pick (placeId set). */
 export const stopHasValidatedLocation = (s: ExperienceStopDraft): boolean =>
   s.placeId !== null && s.lat !== null && s.lng !== null;
+
+/** CHANGE 3 — a stop has a valid (non-empty, ≤280) description. */
+export const stopHasValidDescription = (s: ExperienceStopDraft): boolean => {
+  const len = s.description.trim().length;
+  return len > 0 && len <= MAX_STOP_DESCRIPTION;
+};

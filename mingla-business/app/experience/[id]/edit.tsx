@@ -78,6 +78,7 @@ function detailToInitialDraft(
     imageUrls: s.imageUrls,
     startTime: s.startTime,
     priceMajor: centsToMajor(s.priceCents),
+    description: s.description,
   }));
 
   // When seed.
@@ -121,6 +122,7 @@ function detailToInitialDraft(
   return {
     title: exp.title,
     description: exp.description ?? "",
+    intent: exp.experienceIntent,
     locationMode: exp.locationMode ?? "single",
     pricingMode: exp.pricingMode ?? "whole",
     stops,

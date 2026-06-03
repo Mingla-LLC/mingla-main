@@ -18,7 +18,7 @@
  */
 
 import React, { useCallback } from "react";
-import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import {
   accent,
@@ -39,6 +39,7 @@ import {
   emptyStop,
   labelForIndex,
   stopHasValidatedLocation,
+  MAX_STOP_DESCRIPTION,
   type ExperienceLocationMode,
   type ExperiencePricingMode,
   type ExperienceStopDraft,
@@ -184,6 +185,10 @@ export const ExperienceStopsStep: React.FC<ExperienceStopsStepProps> = ({
         const isLast = i === n - 1;
         const showAddress = locationMode === "per_stop" || i === 0;
         const nameError = showErrors && stop.placeName.trim().length === 0;
+        const descError =
+          showErrors && stop.description.trim().length === 0
+            ? "Add a short description for this stop."
+            : undefined;
         const addrError =
           showErrors && showAddress && !stopHasValidatedLocation(stop)
             ? "Pick this stop's address from the suggestions."
@@ -239,6 +244,27 @@ export const ExperienceStopsStep: React.FC<ExperienceStopsStepProps> = ({
                 clearable
               />
               {nameError ? <Text style={styles.inlineError}>Name this stop.</Text> : null}
+
+              {/* Stop description (compulsory — CHANGE 3) */}
+              <Text style={styles.fieldLabel}>Description</Text>
+              <TextInput
+                value={stop.description}
+                onChangeText={(v) =>
+                  updateStop(i, { description: v.slice(0, MAX_STOP_DESCRIPTION) })
+                }
+                placeholder="What happens at this stop? Sets the scene for buyers."
+                placeholderTextColor={textTokens.quaternary}
+                accessibilityLabel={`Stop ${i + 1} description`}
+                multiline
+                style={[styles.descArea, descError !== undefined && styles.descAreaError]}
+              />
+              {descError !== undefined ? (
+                <Text style={styles.inlineError}>{descError}</Text>
+              ) : (
+                <Text style={styles.helper}>
+                  {`${stop.description.trim().length}/${MAX_STOP_DESCRIPTION} — shows on the deck card.`}
+                </Text>
+              )}
 
               {/* Address (single mode: only stop 1 shows the picker) */}
               {showAddress ? (
@@ -503,6 +529,22 @@ const styles = StyleSheet.create({
     fontSize: typography.caption.fontSize,
     color: textTokens.tertiary,
     fontStyle: "italic",
+  },
+  descArea: {
+    minHeight: 72,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    overflow: "hidden",
+    backgroundColor: glass.tint.profileBase,
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+    color: textTokens.primary,
+    fontSize: typography.body.fontSize,
+    lineHeight: typography.body.lineHeight,
+    textAlignVertical: "top",
+  },
+  descAreaError: {
+    borderColor: semantic.error,
   },
   thumbStrip: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   thumbWrap: { position: "relative" },

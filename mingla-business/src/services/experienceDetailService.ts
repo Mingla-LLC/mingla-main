@@ -13,6 +13,10 @@
 
 import { supabase } from "./supabase";
 import type { RecurrenceRule } from "../store/draftEventStore";
+import {
+  asExperienceIntent,
+  type ExperienceIntentId,
+} from "../constants/experienceIntents";
 
 export interface ExperienceStopRow {
   id: string;
@@ -28,6 +32,8 @@ export interface ExperienceStopRow {
   imageUrls: string[];
   startTime: string | null;
   priceCents: number;
+  /** META-ORCH-1059 CHANGE 3 — per-stop blurb (experience_stops.ai_description). */
+  description: string;
 }
 
 export interface ExperienceTicketRow {
@@ -71,6 +77,8 @@ export interface ExperienceDetail {
   recurrenceRule: RecurrenceRule | null;
   whenMode: ExperienceWhenMode;
   venueText: string | null;
+  /** META-ORCH-1059 CHANGE 2 — curated intent/vibe (events.experience_intent). */
+  experienceIntent: ExperienceIntentId | null;
   stops: ExperienceStopRow[];
   ticket: ExperienceTicketRow | null;
   dates: ExperienceDateRow[];
@@ -90,6 +98,7 @@ interface RawEventRow {
   cover_media_type: string | null;
   location_mode: string | null;
   pricing_mode: string | null;
+  experience_intent: string | null;
   whole_price_cents: number | null;
   is_recurring: boolean | null;
   is_multi_date: boolean | null;
@@ -149,7 +158,7 @@ export async function getExperienceDetail(
   const { data: row, error } = await supabase
     .from("events")
     .select(
-      "id, brand_id, title, slug, description, status, visibility, currency, timezone, cover_media_url, cover_media_type, location_mode, pricing_mode, whole_price_cents, is_recurring, is_multi_date, recurrence_rules, event_type, theme, brands(slug)",
+      "id, brand_id, title, slug, description, status, visibility, currency, timezone, cover_media_url, cover_media_type, location_mode, pricing_mode, experience_intent, whole_price_cents, is_recurring, is_multi_date, recurrence_rules, event_type, theme, brands(slug)",
     )
     .eq("id", eventId)
     .eq("event_type", "experience")
@@ -166,7 +175,7 @@ export async function getExperienceDetail(
       supabase
         .from("experience_stops")
         .select(
-          "id, stop_order, place_id, place_name, address, city, region, country_code, lat, lng, image_urls, start_time, price_cents",
+          "id, stop_order, place_id, place_name, address, city, region, country_code, lat, lng, image_urls, start_time, price_cents, ai_description",
         )
         .eq("event_id", eventId)
         .order("stop_order", { ascending: true }),
@@ -225,6 +234,7 @@ export async function getExperienceDetail(
     recurrenceRule: firstRecurrenceRule(raw.recurrence_rules),
     whenMode: deriveWhenMode(isRecurring, isMultiDate),
     venueText,
+    experienceIntent: asExperienceIntent(raw.experience_intent),
     stops: (stopRows ?? []).map((s) => ({
       id: s.id,
       stopOrder: s.stop_order,
@@ -239,6 +249,7 @@ export async function getExperienceDetail(
       imageUrls: Array.isArray(s.image_urls) ? s.image_urls : [],
       startTime: s.start_time,
       priceCents: s.price_cents,
+      description: typeof s.ai_description === "string" ? s.ai_description : "",
     })),
     ticket:
       ticket !== undefined
