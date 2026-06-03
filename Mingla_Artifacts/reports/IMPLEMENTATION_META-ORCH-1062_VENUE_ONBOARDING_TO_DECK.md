@@ -129,3 +129,64 @@ All LOCKED SCs implemented: SC-0.1..0.5, SC-1.1..1.6-Admin, SC-2.1..2.3, SC-3.1.
 2. From the linked anchor: `supabase db push --linked` (applies only `20260831000000`).
 3. Deploy from main (verify_jwt preserved): `run-business-place-authoring-pipeline`, then `admin-review-venue-claim`.
 4. verify-first-call each (non-404), then live-fire `Lantern & Vine` approve → confirm `place_scores` rows created + venue returned by `query_servable_places_by_signal`.
+
+---
+
+## Post-#299 merge resolution (2026-06-03, mingla-implementor / Claude)
+
+PR #299 (META-ORCH-1009 Sub-E+F, squash `2d12f5678`) and the follow-on
+COMMS-0018 reconciliation merged to `origin/main` (`5e1f81798`) while this ORCH
+was in flight, touching the same files. Merged `origin/main` into the branch and
+resolved the cross-ORCH conflict preserving BOTH sides' intent. Merge commit
+`769e4dae3` (2 parents: `616a3e33a` ours + `5e1f81798` main).
+
+### Conflict map + resolution (6 conflicts)
+
+| File | Type | Resolution |
+|---|---|---|
+| `supabase/functions/run-business-place-authoring-pipeline/index.ts` | add/add | Took OURS. Verified the ONLY delta vs `origin/main` is the Phase 3 `nextIsServableForConfirm` change (function def + two call sites in `handleTier2` + `handleConfirmAiOutputs`). Ours == #299 base + Phase 3. |
+| `supabase/functions/admin-review-venue-claim/index.ts` | content | Took OURS. Keeps `score_vetoes` read (WS7 backward-compat), `runApproveGoLive`, `buildScorerInvokeBody` w/ `signal_id` (keystone 1062-A fix), Q1 rollback, Q3 off-deck. Supersedes the #299 WS7 go-live block per spec. |
+| `mingla-admin/src/pages/ClaimsPage.jsx` | 3-way (3 regions) | Semantic merge. See "How the two score-editing UIs were reconciled" below. |
+| `mingla-admin/src/services/adminClaimsService.js` | 3-way (2 regions) | Took main's more-general `scoreVetoes` JSDoc type + main's safer non-empty guard; kept the `score_vetoes` pass-through DORMANT for backward-compat (edge fn still accepts it; UI no longer sends it on approve). |
+| `.github/scripts/strict-grep/orch-0863-marketing-hub-phase-b.mjs` | content | UNION — `META_ORCH_1062_BACKEND_ALLOWLIST` + all of main's new ORCH allowlists (1044/1045/1050/1051/1052/1054/1058B/1060) merged into one `ALLOWLIST`. |
+| `Mingla_Artifacts/WORLD_MAP.md` | content | UNION — this branch's META-ORCH-1062 CLOSE entry on top + main's new entries (ORCH-1062 vibe-overrides, META-ORCH-1048, etc.) preserved. |
+
+`.easignore` and the remaining strict-grep files auto-merged cleanly (no symlink artifact; `.easignore` byte-identical to main). `supabase/config.toml` auto-merged to main's copy (no per-fn `verify_jwt` block for these fns → defaults preserved, zero regression).
+
+### How the two score-editing UIs were reconciled (operator-locked policy)
+
+The core conflict was two competing score editors in the admin claim modal.
+
+KEPT (this branch / META-ORCH-1062 — the single coherent console):
+- PhotoLightbox-based inline gallery (richer; `collectClaimPhotos(bundle, …)` → thumbnail grid → `PhotoLightbox`) — the ONE canonical gallery.
+- Real deck-rank scores via the admin-gated bundle read (`bundle.scores` = actual `place_scores`), shown in "Quality signals".
+- BIDIRECTIONAL Q2 score override (0–200, raise OR lower) via `admin_apply_score_override` (`overrideClaimScore`).
+- Whitelisted field-tweak control (`tweakClaimFields`).
+
+REMOVED from #299 WS7 (superseded — no dead controls, no duplicate gallery, no two editors):
+- The #299 simple `<img>` photo gallery (`pp.business_gallery_urls`) — duplicate of the PhotoLightbox grid.
+- The #299 REDUCE-ONLY signal-score veto editor (`vetoes` state + the `<input max={original}>` grid + "N score(s) will be reduced on approve"). The `vetoes` state, `setVetoes` calls, and `approve({ scoreVetoes: vetoes })` were removed; approve now calls `runReview("approve")` with no opts.
+
+PRESERVED from #299 WS7 (genuinely additive operator context):
+- The "Recommendation profile" panel: AI pitch (`generative_summary`), operator answers (`facets`), and the AI consistency check (`consistency.verdict/confidence/summary/flags`) read from `business_authoring_inputs`. Its local `pp` was renamed `recoPp` to avoid shadowing the outer bundle-derived `pp`.
+
+BACKWARD-COMPAT retained: `admin-review-venue-claim` still accepts `score_vetoes`, so `reviewClaim`'s pass-through is kept (dormant). Approve no longer depends on it — the go-live path is now Phase 4 (servable-flip → per-signal scorer), not WS7 vetoes.
+
+### Re-verification (all GREEN, captured)
+
+- `deno check` admin-review-venue-claim → exit 0; run-business-place-authoring-pipeline → exit 0.
+- `deno test` admin-review-venue-claim → 15 passed / 0 failed (incl. signal_id-always-present, Q1 total-failure rollback, Q3 off-deck, servable-flip-before-scorer ordering).
+- `deno test` run-business-place-authoring-pipeline → 23 passed / 0 failed; `meta_orch_1062_no_demotion.test.ts` → 3 passed / 0 failed (claim-of-live stays servable, net-new held, null→held).
+- `eslint` ClaimsPage.jsx + adminClaimsService.js → exit 0 (clean). `claimPhotos.test.js` → 4 pass. (Full-repo `eslint .` exits 1 from PRE-EXISTING debt in SignalLibraryPage/StripeModePage/SubscriptionManagementPage/UserManagementPage — inherited from main, NOT this merge; the two resolved files are clean.)
+- `vite build` mingla-admin → exit 0 (2945 modules, built in ~3.6s).
+- strict-grep `meta-orch-1062-approval-go-live.mjs` → OK (scorer carries signal_id, confirm preserves prior is_servable, approve loops active signals).
+- strict-grep `orch-0863-marketing-hub-phase-b.mjs` → All checks PASS (C7: 18 files in origin/main…HEAD diff, zero un-allowlisted backend touches).
+
+### Keystones confirmed intact post-merge
+- `buildScorerInvokeBody` throws on missing signal_id, returns `{ signal_id, place_ids }` (kills 1062-A HTTP 400).
+- Phase 3 `nextIsServableForConfirm` exported + wired in both confirm paths.
+- Migration `20260831000000_meta_orch_1062_admin_vetting_rpcs.sql` untouched (new file, 15721 bytes); branch migration prefix kept.
+- `verify_jwt` settings unchanged (config.toml == origin/main).
+
+### Hard guards honored
+No `db push`, no edge-fn deploy, no PR open/merge — orchestrator owns those. Only the merge/conflict files staged. Migration prefix and verify_jwt preserved.
