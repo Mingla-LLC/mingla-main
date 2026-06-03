@@ -13,7 +13,7 @@
  * a brief "preparing" state — the picker needs a real id to upload against.
  */
 
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 
 import {
@@ -27,6 +27,7 @@ import { CoverPickerSheet } from "../ui/CoverPickerSheet";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { eventCoverProviderCreditLabel } from "../../types/eventCoverProvider";
 import type { CoverPatch } from "../ui/CoverPicker";
+import type { CoverTarget } from "../ui/coverTarget";
 
 export interface ExperienceCoverStepProps {
   brandId: string;
@@ -39,7 +40,7 @@ export interface ExperienceCoverStepProps {
   onShowToast: (msg: string) => void;
 }
 
-export const ExperienceCoverStep: React.FC<ExperienceCoverStepProps> = ({
+const ExperienceCoverStepImpl: React.FC<ExperienceCoverStepProps> = ({
   brandId,
   experienceId,
   preparingDraft,
@@ -56,6 +57,27 @@ export const ExperienceCoverStep: React.FC<ExperienceCoverStepProps> = ({
     credit: cover.coverMediaCredit ?? null,
   });
   const ready = experienceId !== null;
+
+  // META-ORCH-1059 [cover freeze] — Stabilize the discriminated target so it
+  // keeps a constant reference across cover-selection re-renders. Previously
+  // this object was rebuilt inline on EVERY render; each new ref forced the
+  // CoverPickerSheet → CoverPicker subtree (two expo-video previews + provider
+  // grids) to re-reconcile on every cover change, compounding the jank that
+  // froze the wizard on image/GIF/video pick. It only depends on the draft id.
+  const target = useMemo<CoverTarget | null>(
+    () =>
+      experienceId === null
+        ? null
+        : {
+            kind: "experience",
+            brandId,
+            eventRowId: experienceId,
+            // Drafts auto-apply the cover patch in the webhook (same as event
+            // create-mode). The publish step re-saves the row regardless.
+            coverMediaApplyMode: "draft_auto",
+          },
+    [brandId, experienceId],
+  );
 
   return (
     <View style={styles.stepBody}>
@@ -74,7 +96,15 @@ export const ExperienceCoverStep: React.FC<ExperienceCoverStepProps> = ({
           label={cover.coverMediaAlt ?? "cover"}
           height={180}
           muted={true}
-          showAudioControl={cover.coverMediaType === "video"}
+          // META-ORCH-1059 [cover freeze] — While the picker sheet is open it
+          // renders its OWN live preview of the same cover. Mounting a SECOND
+          // autoplaying expo-video player here for the identical URL doubled the
+          // native video surfaces on Android and contributed to the freeze on
+          // video selection. Pause this inline player whenever the sheet is open;
+          // it resumes the moment the sheet closes.
+          autoplay={!pickerVisible}
+          playbackActive={!pickerVisible}
+          showAudioControl={cover.coverMediaType === "video" && !pickerVisible}
         />
       </View>
       {credit !== null ? <Text style={styles.creditText}>{credit}</Text> : null}
@@ -100,18 +130,11 @@ export const ExperienceCoverStep: React.FC<ExperienceCoverStepProps> = ({
         </View>
       )}
 
-      {ready ? (
+      {target !== null ? (
         <CoverPickerSheet
           visible={pickerVisible}
           onClose={() => setPickerVisible(false)}
-          target={{
-            kind: "experience",
-            brandId,
-            eventRowId: experienceId,
-            // Drafts auto-apply the cover patch in the webhook (same as event
-            // create-mode). The publish step re-saves the row regardless.
-            coverMediaApplyMode: "draft_auto",
-          }}
+          target={target}
           initial={cover}
           initialCoverHue={0}
           onCoverChange={onCoverChange}
@@ -121,6 +144,14 @@ export const ExperienceCoverStep: React.FC<ExperienceCoverStepProps> = ({
     </View>
   );
 };
+
+// META-ORCH-1059 [cover freeze] — Memoize the whole step so a cover selection
+// (which updates the wizard's `cover` state and re-renders the entire wizard
+// tree) only re-renders this step when ITS props actually change. The wizard
+// passes a stable `setCover`/`onShowToast`; the step then re-renders solely on
+// real cover/experienceId/preparing changes instead of on every wizard render.
+export const ExperienceCoverStep = React.memo(ExperienceCoverStepImpl);
+ExperienceCoverStep.displayName = "ExperienceCoverStep";
 
 const styles = StyleSheet.create({
   stepBody: { gap: spacing.md },
