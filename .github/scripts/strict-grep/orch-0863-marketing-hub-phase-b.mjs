@@ -1346,6 +1346,15 @@ function checkNoNewBackendFiles() {
     "supabase/functions/generate-curated-experiences/__tests__/orch_1061_blend_and_rotation.test.ts",
     "supabase/functions/generate-curated-experiences/__tests__/orch_1061_blend_rotation.adversarial.test.ts",
   ];
+  // ORCH-1062 [Curated vibe-overrides → user categories] Part 1: strips the
+  // EXPERIENCE_RANK_SIGNAL_OVERRIDE map down to the two nature overrides. The
+  // only NEW backend file is the override-removal regression test; the MODIFIED
+  // generate-curated-experiences/index.ts is not new so C7 does not fire on it.
+  // C7 is scoped to ORCH-0863 marketing; this is a curated-deck backend touch.
+  // Per COMMS-0002.
+  const ORCH_1062_BACKEND_ALLOWLIST = [
+    "supabase/functions/generate-curated-experiences/__tests__/orch_1062_override_removal.test.ts",
+  ];
   // ORCH-1032 [Intelligence pipeline concurrency cap + chunked enqueue]:
   // adds the additive 'queued'-status migration (status CHECK widen + per-city
   // unique active index widen + tg_kick_pending_trial_runs promotion built on
@@ -1513,6 +1522,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_1030_BACKEND_ALLOWLIST,
     ...ORCH_1040_BACKEND_ALLOWLIST,
     ...ORCH_1061_BACKEND_ALLOWLIST,
+    ...ORCH_1062_BACKEND_ALLOWLIST,
   ];
   const forbidden = changed.filter(
     (p) =>
