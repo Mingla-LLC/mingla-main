@@ -278,4 +278,4 @@ mingla-business/src/utils/__tests__/offeringActivityFromOrders.test.ts        (A
 Foreign cruft (`app-mobile/*`, `packages/*`, anchor `COMMS_LEDGER.md`) left
 untouched and NOT committed.
 
-**Commit hash:** _(filled at commit step below)_
+**Commit hash:** `53fc732da` (11 files, +1392/−180; mingla-business + report only).
