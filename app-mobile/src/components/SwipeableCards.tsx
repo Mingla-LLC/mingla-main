@@ -2066,6 +2066,20 @@ export default function SwipeableCards({
   // ── State-machine-driven render branches ────────────────────────────────
   // Single switch on effectiveUIState replaces 5 independent conditional branches.
   // Each DeckUIState maps to exactly one render path — no ambiguity, no overlap.
+  //
+  // ORCH-1063 (production freeze-after-close): `deckBody` returns ONLY deck
+  // content. The ExpandedCardModal / DismissedCardsSheet / CustomPaywallScreen
+  // overlays are NO LONGER rendered inside any switch branch — they are mounted
+  // exactly once, at a stable position, in the component's final return below.
+  // Previously the modal lived inside two different switch branches; any
+  // transient deck-state transition while a card was expanded (token refresh →
+  // AUTH_REQUIRED, transient PIPELINE_ERROR, background refetch, or reaching
+  // deck end → EXHAUSTED / EMPTY↔LOADED) unmounted the currently-PRESENTED RN
+  // <Modal> mid-flight. On a real device + release build iOS tore the presented
+  // modal window down, leaving an invisible full-screen modal that captured
+  // every touch → total app freeze. Single stable mount = only the `visible`
+  // prop ever changes, so no deck-state transition can swap the modal instance.
+  const deckBody: React.ReactNode = (() => {
   switch (effectiveUIState.type) {
     case 'INITIAL_LOADING':
     case 'MODE_TRANSITIONING':
@@ -2147,8 +2161,9 @@ export default function SwipeableCards({
         : 'cards:swipeable.seen_everything';
       const collabDeadEndCopy = getCollabDeadEndCopy();
 
+      // ORCH-1063: returns ONLY the empty-deck view. DismissedCardsSheet +
+      // ExpandedCardModal moved to the single stable mount in the final return.
       return (
-        <>
           <View style={styles.emptyDeckContainer}>
             <View style={styles.emptyDeckContent}>
               <View style={styles.emptyDeckIconCircle}>
@@ -2229,83 +2244,6 @@ export default function SwipeableCards({
               </View>
             </View>
           </View>
-          <DismissedCardsSheet
-            visible={dismissedSheetVisible}
-            onClose={() => setDismissedSheetVisible(false)}
-            dismissedCards={dismissedCards}
-            sessionSwipedCards={sessionSwipedCards}
-            collabDismissedRows={collabDismissedRows}
-            onSave={handleSaveDismissedCard}
-            onCardPress={handleDismissedCardPress}
-          />
-          <ExpandedCardModal
-            visible={isExpandedModalVisible}
-            // ORCH-0828: discriminated-union target. SwipeableCards only
-            // surfaces Night Out (place / TM) cards, never business events.
-            target={selectedCardForExpansion ? { kind: "nightOut", data: selectedCardForExpansion } : null}
-            onClose={handleCloseExpandedModal}
-            isSaved={
-              selectedCardForExpansion
-                ? savedCards.some(
-                    (savedCard) =>
-                      savedCard?.id === selectedCardForExpansion.id ||
-                      savedCard === selectedCardForExpansion.id
-                  )
-                : false
-            }
-            currentMode={currentMode}
-            onSave={async (card) => {
-              try {
-                // ORCH-0532: in collab, route through shared helper (writes
-                // swipe-state, honors quorum). In solo, onCardLike = handleSaveCard
-                // (now solo-only). Previously this was unguarded — always called
-                // onCardLike, bypassing quorum in collab.
-                if (isBoardSession && resolvedSessionId && user?.id) {
-                  await collabSaveCard({
-                    card: card as unknown as Recommendation,
-                    sessionId: resolvedSessionId,
-                    userId: user.id,
-                    t,
-                  });
-                } else {
-                  onCardLike?.(card);
-                }
-                mixpanelService.trackCardSaved({
-                  card_id: card.id,
-                  card_title: card.title,
-                  category: card.category,
-                  is_curated: (card as any).cardType === 'curated',
-                  source: 'dismissed_sheet',
-                });
-                handleCloseExpandedModal();
-              } catch (error: any) {
-                if (error?.code === "23505") {
-                  handleCloseExpandedModal();
-                }
-                throw error;
-              }
-            }}
-            onPurchase={(card, bookingOption) => {
-              onPurchaseComplete?.(card, bookingOption);
-              handleCloseExpandedModal();
-            }}
-            onShare={(card) => {
-              onShareCard?.(card);
-            }}
-            userPreferences={userPreferences}
-            accountPreferences={accountPreferences}
-            onNavigateNext={reviewIndex < reviewCards.length - 1 ? handleReviewNext : undefined}
-            onNavigatePrevious={reviewIndex > 0 ? handleReviewPrevious : undefined}
-            navigationIndex={reviewIndex}
-            navigationTotal={reviewCards.length}
-            canAccessCurated={canAccess('curated_cards')}
-            onPaywallRequired={() => {
-              handleCloseExpandedModal();
-              setPaywallFeature('curated_cards');
-              setShowPaywall(true);
-            }}
-          />
-        </>
       );
     }
 
@@ -2764,11 +2702,33 @@ export default function SwipeableCards({
           </Animated.View>
         </View>
       </View>
+      {/* ORCH-1063: ExpandedCardModal / DismissedCardsSheet / CustomPaywallScreen
+          are NO LONGER rendered here — they live in the single stable mount in
+          the component's final return below. */}
+    </View>
+  );
+  })();
 
-      {/* Expanded Card Modal */}
+  // ── Single stable overlay mount (ORCH-1063) ─────────────────────────────
+  // ExpandedCardModal, DismissedCardsSheet, and CustomPaywallScreen are each
+  // rendered EXACTLY ONCE here, as siblings of `deckBody`, OUTSIDE the
+  // deck-state switch. No deck-state transition (AUTH_REQUIRED, PIPELINE_ERROR,
+  // EMPTY↔EXHAUSTED↔LOADED, background refetch) can ever unmount/remount/swap
+  // them now — only their `visible` prop changes — which fixes the production
+  // freeze-after-close (a presented RN <Modal> being torn down mid-flight on a
+  // real device left an invisible touch-capturing window). The ExpandedCardModal
+  // prop set is the UNIFIED superset: the fuller main-deck props (onCardRemoved
+  // + currentRec-matching onSave) PLUS the review-navigation props that drive the
+  // EXHAUSTED "review dismissed → tap card" flow. The nav props auto-disable when
+  // reviewCards is empty (reviewIndex 0, total 0 ⇒ both callbacks undefined), so
+  // they are inert during normal deck expansion and active only while reviewing.
+  return (
+    <>
+      {deckBody}
       <ExpandedCardModal
         visible={isExpandedModalVisible}
-        // ORCH-0828: discriminated-union target.
+        // ORCH-0828: discriminated-union target. SwipeableCards only
+        // surfaces Night Out (place / TM) cards, never business events.
         target={selectedCardForExpansion ? { kind: "nightOut", data: selectedCardForExpansion } : null}
         onClose={handleCloseExpandedModal}
         isSaved={
@@ -2800,8 +2760,9 @@ export default function SwipeableCards({
               await handleSwipe("right", currentRec);
             } else {
               // ORCH-0532: fallback when expanded card doesn't match current deck card
-              // (e.g., modal opened from a different list). In collab, route through
-              // shared helper to preserve quorum. In solo, onCardLike = handleSaveCard.
+              // (e.g., modal opened from a different list / the review-dismissed
+              // sheet). In collab, route through shared helper to preserve quorum.
+              // In solo, onCardLike = handleSaveCard.
               if (isBoardSession && resolvedSessionId && user?.id) {
                 await collabSaveCard({
                   card: card as unknown as Recommendation,
@@ -2845,6 +2806,12 @@ export default function SwipeableCards({
         }}
         userPreferences={userPreferences}
         accountPreferences={accountPreferences}
+        // ORCH-1063: review-navigation props from the former EXHAUSTED-case
+        // modal instance. Inert when reviewCards is empty (normal deck tap).
+        onNavigateNext={reviewIndex < reviewCards.length - 1 ? handleReviewNext : undefined}
+        onNavigatePrevious={reviewIndex > 0 ? handleReviewPrevious : undefined}
+        navigationIndex={reviewIndex}
+        navigationTotal={reviewCards.length}
         canAccessCurated={canAccess('curated_cards')}
         onPaywallRequired={() => {
           handleCloseExpandedModal();
@@ -2869,7 +2836,7 @@ export default function SwipeableCards({
         userId={user?.id ?? ''}
         feature={paywallFeature}
       />
-    </View>
+    </>
   );
 }
 
