@@ -1270,6 +1270,13 @@ async function handleTier2(
     ? coachingForReasons(["CONFIRM:ai_outputs"])
     : coachingForReasons(reasons);
 
+  // META-ORCH-1062 Phase 3 (I-NO-CLAIM-DEMOTION): the Tier-2 AI step must not
+  // strip an already-live claim's servability either. Preserve a prior true;
+  // net-new (prior false) stays false. Same rule as confirm_ai_outputs.
+  const tier2NextIsServable = nextIsServableForConfirm(
+    (place as { is_servable?: boolean | null }).is_servable,
+  );
+
   const { error: updateErr } = await client
     .from("place_pool")
     .update({
@@ -1278,7 +1285,7 @@ async function handleTier2(
       raw_google_data: crossValidation.raw_google_data,
       business_authoring_inputs: mergedInputs,
       business_authoring_status: nextStatus,
-      is_servable: false,
+      is_servable: tier2NextIsServable,
       bouncer_reason: reasons.join(",") || null,
       bouncer_validated_at: evaluatedAt,
       website: bouncerPlace.website,

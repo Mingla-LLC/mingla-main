@@ -1151,6 +1151,19 @@ jobs:
       - name: Run I-AI-SCORE-STALENESS-AUTO-RECOVERED gate
         run: node .github/scripts/strict-grep/meta-orch-1009-sub-d-ai-score-staleness-recovery.mjs
 
+  meta-orch-1062-approval-go-live:
+    name: "META-ORCH-1062: approve scorer-invoke carries signal_id + confirm never demotes is_servable"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run META-ORCH-1062 approval-go-live gate self-test
+        run: node .github/scripts/strict-grep/meta-orch-1062-approval-go-live.mjs --self-test
+      - name: Run META-ORCH-1062 approval-go-live gate
+        run: node .github/scripts/strict-grep/meta-orch-1062-approval-go-live.mjs
+
   i-ari-user-jwt-only:
     name: "I-ARI-USER-JWT-ONLY: Ari edge handlers never reference service role"
     runs-on: ubuntu-latest

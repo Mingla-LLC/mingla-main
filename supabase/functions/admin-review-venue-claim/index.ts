@@ -16,6 +16,13 @@ import {
   renderTransactionalEmail,
 } from "../_shared/email/index.ts";
 import { sendPush } from "../_shared/push-utils.ts";
+// META-ORCH-1062 Phase 2 — the batch bouncer edge fns (run-bouncer /
+// run-pre-photo-bouncer) ONLY accept city_id/all_cities (they 400 on a single
+// place), so SPEC option (a) is not viable. Per SPEC §2.2 option (b) we import
+// the pure deterministic bouncer and re-evaluate the ONE linked row in-process
+// on approve. The approval wrapper is already the sole go-live writer for claims
+// (Constitution #2 preserved — no third uncoordinated is_servable writer added).
+import { bounce, type PlaceRow } from "../_shared/bouncer.ts";
 import {
   auditActionForReview,
   normalizeReviewBody,
@@ -38,6 +45,177 @@ function json(body: unknown, status = 200): Response {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
+}
+
+// deno-lint-ignore no-explicit-any
+type AdminClient = any;
+
+// META-ORCH-1062 — the bouncer-relevant projection of a place_pool row. Matches
+// _shared/bouncer.ts PlaceRow (id, name, lat, lng, types, business_status,
+// website, opening_hours, photos, stored_photo_urls, review_count, rating).
+const BOUNCER_SELECT =
+  "id, name, lat, lng, types, business_status, website, opening_hours, photos, stored_photo_urls, review_count, rating";
+
+interface GoLiveResult {
+  rebounced: boolean;
+  servable: boolean;
+  bounce_reasons: string[];
+  scored_signals: string[];
+  failed_signals: Array<{ signal_id: string; error: string }>;
+  rolled_back: boolean;
+}
+
+// META-ORCH-1062 Phase 4 — pure builder for the run-signal-scorer per-place
+// invoke body. The scorer hard-requires BOTH signal_id AND place_ids; the live
+// keystone bug (1062-A) was a call that passed place_ids ONLY → the scorer
+// 400'd `signal_id is required` → place_scores was never produced. This builder
+// makes the contract explicit + unit-testable (I-SCORER-INVOKE-HAS-SIGNAL-ID).
+export function buildScorerInvokeBody(
+  signalId: string,
+  placePoolId: string,
+): { signal_id: string; place_ids: string[] } {
+  if (!signalId) throw new Error("signal_id is required");
+  return { signal_id: signalId, place_ids: [placePoolId] };
+}
+
+// META-ORCH-1062 Phase 2/4 — the approve go-live orchestration. Pure-ish: all IO
+// goes through the injected service-role admin client. Returns a structured
+// result the response surfaces so the admin sees exactly what happened (no
+// silent failure — Constitution #5).
+async function runApproveGoLive(
+  admin: AdminClient,
+  placePoolId: string,
+  scoreVetoes: Record<string, unknown> | null,
+): Promise<GoLiveResult> {
+  const result: GoLiveResult = {
+    rebounced: false,
+    servable: false,
+    bounce_reasons: [],
+    scored_signals: [],
+    failed_signals: [],
+    rolled_back: false,
+  };
+
+  // ── Phase 2: re-bounce the linked row over its CURRENT data ────────────────
+  const { data: ppRow, error: ppErr } = await admin
+    .from("place_pool")
+    .select(BOUNCER_SELECT)
+    .eq("id", placePoolId)
+    .maybeSingle();
+  if (ppErr || !ppRow) {
+    console.error(
+      "[admin-review-venue-claim] re-bounce read",
+      ppErr?.message ?? "place_pool row not found",
+    );
+    return result; // identity already verified; deck go-live skipped, reasons empty
+  }
+
+  const verdict = bounce(ppRow as PlaceRow);
+  result.rebounced = true;
+  result.bounce_reasons = verdict.reasons;
+
+  // Always record the bouncer verdict + reasons so the admin can see why a
+  // venue can't go live yet (Q3=(b): verified identity, deck-eligibility stored
+  // separately as a reason).
+  const nowIso = new Date().toISOString();
+  if (!verdict.is_servable) {
+    await admin
+      .from("place_pool")
+      .update({
+        bouncer_reason: verdict.reasons.join(";") || null,
+        bouncer_validated_at: nowIso,
+      })
+      .eq("id", placePoolId);
+    // Do NOT flip is_servable. Claim stays verified; venue stays off-deck.
+    return result;
+  }
+
+  // ── Phase 4: flip servable (committed BEFORE scoring — the scorer's SELECT
+  // filters is_servable=true) then score per active signal ───────────────────
+  const livePatch: Record<string, unknown> = {
+    is_servable: true,
+    is_active: true,
+    bouncer_reason: null,
+    bouncer_validated_at: nowIso,
+  };
+  if (scoreVetoes !== null) livePatch.ai_signal_scores_veto = scoreVetoes;
+  const { error: liveErr } = await admin
+    .from("place_pool")
+    .update(livePatch)
+    .eq("id", placePoolId);
+  if (liveErr) {
+    console.error("[admin-review-venue-claim] go-live update", liveErr.message);
+    return result; // flip failed; nothing to score
+  }
+  result.servable = true;
+
+  // Load the active signals (16 live). Score ONCE PER SIGNAL with signal_id +
+  // place_ids — the live keystone bug (1062-A) was the missing signal_id.
+  const { data: signals, error: sigErr } = await admin
+    .from("signal_definitions")
+    .select("id")
+    .eq("is_active", true);
+  if (sigErr || !Array.isArray(signals)) {
+    console.error(
+      "[admin-review-venue-claim] signal_definitions read",
+      sigErr?.message ?? "no signals",
+    );
+    // No signals to score → treat as total failure (Q1 rollback below).
+    result.failed_signals.push({
+      signal_id: "*",
+      error: sigErr?.message ?? "signal_definitions_unavailable",
+    });
+  } else {
+    for (const sig of signals as Array<{ id: string }>) {
+      const signalId = sig.id;
+      try {
+        const { data: scoreRes, error: scoreErr } = await admin.functions
+          .invoke("run-signal-scorer", {
+            // I-SCORER-INVOKE-HAS-SIGNAL-ID: BOTH keys are required; the scorer
+            // 400s on a missing signal_id. NEVER drop signal_id here.
+            body: buildScorerInvokeBody(signalId, placePoolId),
+          });
+        if (scoreErr) {
+          console.error(
+            `[admin-review-venue-claim] scorer signal=${signalId}`,
+            scoreErr.message ?? String(scoreErr),
+          );
+          result.failed_signals.push({ signal_id: signalId, error: scoreErr.message ?? "invoke_error" });
+        } else {
+          result.scored_signals.push(signalId);
+          void scoreRes;
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error(`[admin-review-venue-claim] scorer signal=${signalId}`, msg);
+        result.failed_signals.push({ signal_id: signalId, error: msg });
+      }
+    }
+  }
+
+  // Q1=(b): if EVERY signal-scoring call failed, roll the servable flip back to
+  // false so we never leave a servable-but-unscored row. A partial success
+  // (≥1 scored signal) keeps the venue live — the venue ranks on the signals it
+  // qualified for, and the Sub-D cron retries the rest.
+  const totalFailure = result.scored_signals.length === 0 &&
+    result.failed_signals.length > 0;
+  if (totalFailure) {
+    const { error: rbErr } = await admin
+      .from("place_pool")
+      .update({
+        is_servable: false,
+        bouncer_reason: "scoring_failed_on_approve",
+        bouncer_validated_at: new Date().toISOString(),
+      })
+      .eq("id", placePoolId);
+    if (rbErr) {
+      console.error("[admin-review-venue-claim] servable rollback", rbErr.message);
+    }
+    result.servable = false;
+    result.rolled_back = true;
+  }
+
+  return result;
 }
 
 serve(async (req) => {
@@ -111,39 +289,28 @@ serve(async (req) => {
       },
     });
 
-    // META-ORCH-1009 Sub-F WS7: APPROVE = go live. Flip the venue servable + active,
-    // apply any admin reduce-only score vetoes, then run the per-place scorer so
-    // place_scores exists (the deck ranks on place_scores, not ai_signal_scores).
+    // META-ORCH-1062 (Phase 2 + Phase 4, supersedes the Sub-F WS7 block):
+    // APPROVE = go live. The identity approval (claim_status='verified') already
+    // happened in biz_review_venue_claim above and is NEVER blocked by deck
+    // go-live (Open Q3 = (b): claim approval and deck eligibility are separable).
+    // Deck go-live here:
+    //   1. Phase 2 — re-bounce the linked place_pool row over its CURRENT data
+    //      in-process (the batch bouncer fns only accept city scopes). Servable
+    //      is only granted if the re-bounce passes (I-CLAIM-REBOUNCE-ON-APPROVE).
+    //   2. Phase 4 — flip is_servable=true (committed before scoring), then loop
+    //      the ACTIVE signals and invoke run-signal-scorer ONCE PER SIGNAL with
+    //      BOTH signal_id + place_ids (the old call passed place_ids only → the
+    //      scorer 400'd `signal_id is required` → place_scores was never made →
+    //      the venue never reached the deck). Per-signal failures are LOGGED, not
+    //      swallowed. If EVERY signal fails (Q1=(b)), roll the servable flip back
+    //      to false so we never leave a servable-but-unscored row.
     // REJECT = re-open editing by resetting the operator's "Recommend" edit cap.
     const placePoolId =
       (brandRow as { place_pool_id?: string | null }).place_pool_id ?? null;
+    let goLive: GoLiveResult | null = null;
     if (!noop && placePoolId !== null) {
       if (parsed.action === "approve") {
-        const livePatch: Record<string, unknown> = {
-          is_servable: true,
-          is_active: true,
-        };
-        if (scoreVetoes !== null) livePatch.ai_signal_scores_veto = scoreVetoes;
-        const { error: liveErr } = await admin
-          .from("place_pool")
-          .update(livePatch)
-          .eq("id", placePoolId);
-        if (liveErr) {
-          console.error("[admin-review-venue-claim] go-live update", liveErr.message);
-        } else {
-          // Best-effort: produce place_scores now that is_servable=true. If this
-          // fails, the Sub-D rescore-sweep cron picks the venue up later.
-          try {
-            await admin.functions.invoke("run-signal-scorer", {
-              body: { place_ids: [placePoolId] },
-            });
-          } catch (e) {
-            console.warn(
-              "[admin-review-venue-claim] scorer trigger",
-              e instanceof Error ? e.message : String(e),
-            );
-          }
-        }
+        goLive = await runApproveGoLive(admin, placePoolId, scoreVetoes);
       } else if (parsed.action === "reject") {
         await admin
           .from("place_pool")
@@ -255,6 +422,10 @@ serve(async (req) => {
       result: rpcResult,
       email_sent: emailSent,
       push_sent: pushSent,
+      // META-ORCH-1062: surface the deck go-live outcome so the admin sees the
+      // re-bounce verdict + which signals scored / failed (Constitution #5 — no
+      // silent failure). null for non-approve actions or noop.
+      go_live: goLive,
     });
   } catch (e) {
     console.error("[admin-review-venue-claim]", e);
