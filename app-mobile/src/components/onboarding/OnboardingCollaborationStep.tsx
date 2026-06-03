@@ -41,7 +41,6 @@ interface OnboardingCollaborationStepProps {
     travelTimeMinutes: number
   }
   onContinue: (sessions: CreatedSession[]) => void
-  onSkip: () => void
   onActionTaken: () => void
 }
 
@@ -51,7 +50,6 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
   initialSessions,
   userPreferences,
   onContinue,
-  onSkip,
   onActionTaken,
 }) => {
   const { t } = useTranslation(['onboarding', 'common'])
@@ -409,7 +407,7 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
             {creating ? (
               <ActivityIndicator size="small" color={colors.text.inverse} />
             ) : (
-              <Text style={styles.createButtonText}>{t('common:start_session')}</Text>
+              <Text style={styles.createButtonText}>{t('onboarding:collaborations.start_button')}</Text>
             )}
           </Pressable>
           {createError && (
@@ -566,11 +564,11 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
 
       {(loadingTripChatClaims || pendingTripChatClaims.length > 0) && (
         <View style={styles.tripClaimsSection}>
-          <Text style={styles.sectionLabel}>Your trip and event chats</Text>
+          <Text style={styles.sectionLabel}>{t('onboarding:collaborations.trip_chats_header')}</Text>
           {loadingTripChatClaims ? (
             <View style={styles.loadingSection}>
               <ActivityIndicator size="small" color={colors.primary[500]} />
-              <Text style={styles.loadingText}>Loading chats…</Text>
+              <Text style={styles.loadingText}>{t('onboarding:collaborations.trip_chats_loading')}</Text>
             </View>
           ) : null}
           {pendingTripChatClaims.map((claim) => (
@@ -584,7 +582,7 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
                     {claim.event_name}
                   </Text>
                   <Text style={styles.inviteCardFrom} numberOfLines={1}>
-                    Join the buyer group chat
+                    {t('onboarding:collaborations.trip_chats_join_subtitle')}
                   </Text>
                 </View>
               </View>
@@ -599,7 +597,7 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
                 {processingClaimId === claim.event_id ? (
                   <ActivityIndicator size="small" color="#fff" />
                 ) : (
-                  <Text style={styles.inviteJoinButtonText}>Join chat</Text>
+                  <Text style={styles.inviteJoinButtonText}>{t('onboarding:collaborations.trip_chats_join_button')}</Text>
                 )}
               </Pressable>
             </View>

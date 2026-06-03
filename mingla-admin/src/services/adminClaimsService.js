@@ -26,7 +26,17 @@ const CLAIM_SELECT = `
   duplicate_of_brand_id,
   place_pool:place_pool_id (
     national_phone_number,
-    google_maps_uri
+    google_maps_uri,
+    website,
+    generative_summary,
+    stored_photo_urls,
+    business_gallery_urls,
+    price_tiers,
+    price_level,
+    ai_signal_scores,
+    ai_signal_scores_veto,
+    business_authoring_inputs,
+    business_recommend_edit_count
   )
 `;
 
@@ -129,16 +139,23 @@ export async function overrideClaimScore(brandId, signalId, score, reason) {
 /**
  * @param {string} brandId
  * @param {"mark_called"|"approve"|"reject"|"need_more_info"} action
- * @param {{ rejectionReason?: string, scoreVetoes?: Record<string, { vetoed_score: number, reason?: string }> }} [opts]
+ * @param {{ rejectionReason?: string, scoreVetoes?: Record<string, unknown> }} [opts]
+ *   NOTE (META-ORCH-1062 / #299 merge): `scoreVetoes` is the legacy #299 WS7
+ *   reduce-only channel. The admin UI no longer sends it on approve (score
+ *   editing is now the bidirectional `overrideClaimScore` path, go-live is the
+ *   Phase 4 servable→scorer path). The pass-through below is retained ONLY for
+ *   backward-compat: admin-review-venue-claim still accepts `score_vetoes`.
  */
 export async function reviewClaim(brandId, action, opts = {}) {
   const body = { brand_id: brandId, action };
   if (action === "reject") {
     body.rejection_reason = opts.rejectionReason ?? "";
   }
-  // META-ORCH-1062 — admin reduce-only score vetoes applied at go-live (Sub-F
-  // shape). Passed through to the edge wrapper's score_vetoes channel.
-  if (action === "approve" && opts.scoreVetoes) {
+  // Backward-compat (#299 WS7): if a caller still supplies non-empty scoreVetoes
+  // on approve, pass them through to the edge wrapper's score_vetoes channel. The
+  // current admin UI does NOT send these (see overrideClaimScore + Phase 4 go-live),
+  // but admin-review-venue-claim still accepts the field, so we keep the channel.
+  if (action === "approve" && opts.scoreVetoes && Object.keys(opts.scoreVetoes).length > 0) {
     body.score_vetoes = opts.scoreVetoes;
   }
 

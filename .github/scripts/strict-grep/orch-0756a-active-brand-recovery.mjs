@@ -43,15 +43,34 @@ expectNotIncludes(
   "brands.length === 0 || currentBrand === null",
   "old false-empty condition",
 );
-expectIncludes(homePath, home, "const hasNoBrands =", "true no-brands state");
+// ORCH-1038: the four active-brand states moved out of home.tsx into the shared
+// useBusinessTodos hook (derivations) + buildBusinessTodos (the create/select-brand
+// to-do rows). The recovery invariant is preserved — now shared by Home AND Hub —
+// just relocated. home.tsx must still RENDER the toggle that surfaces those rows.
 expectIncludes(
   homePath,
   home,
+  "<BusinessTodoToggle",
+  "home renders the to-do toggle (surfaces the brand-recovery rows)",
+);
+const todosHookPath = "mingla-business/src/hooks/useBusinessTodos.ts";
+const todosHook = read(todosHookPath);
+const todosUtilPath = "mingla-business/src/utils/businessTodos.ts";
+const todosUtil = read(todosUtilPath);
+expectIncludes(todosHookPath, todosHook, "const hasNoBrands =", "true no-brands state");
+expectIncludes(
+  todosHookPath,
+  todosHook,
   "const hasBrandsButNoSelection =",
   "brands-exist/no-selection state",
 );
-expectIncludes(homePath, home, "Loading brands", "resolving/loading state");
-expectIncludes(homePath, home, "Choose a brand", "brand-selection state");
+expectIncludes(
+  todosHookPath,
+  todosHook,
+  "brandResolving: isBrandResolving",
+  "resolving/loading state",
+);
+expectIncludes(todosUtilPath, todosUtil, '"Select a brand"', "brand-selection state");
 expectIncludes(
   homePath,
   home,

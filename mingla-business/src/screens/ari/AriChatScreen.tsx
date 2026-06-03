@@ -24,6 +24,7 @@ import {
 import type { KeyboardEvent } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Menu, Settings } from "lucide-react-native";
 
 import {
   canvas,
@@ -136,7 +137,7 @@ export const AriChatScreen: React.FC = () => {
           accessibilityRole="button"
           accessibilityLabel="Show conversations"
         >
-          <Text style={styles.iconText}>≡</Text>
+          <Menu size={24} color={textTokens.primary} strokeWidth={2} />
         </Pressable>
         <View style={styles.headerTitle}>
           <AriOrb size="sm" decorative />
@@ -148,7 +149,7 @@ export const AriChatScreen: React.FC = () => {
           accessibilityRole="button"
           accessibilityLabel="Open Ari settings"
         >
-          <Text style={styles.iconText}>⚙</Text>
+          <Settings size={22} color={textTokens.primary} strokeWidth={2} />
         </Pressable>
       </View>
 
@@ -166,7 +167,31 @@ export const AriChatScreen: React.FC = () => {
 
       <View style={styles.kav}>
         {noMessages ? (
-          <EmptyState onChipSelect={handleSend} />
+          <>
+            {/* Hero lives in an absolute overlay so the composer rising with the
+                keyboard can NOT squeeze the flex column and re-center (jump) the
+                orb. Its paddingBottom keeps the hero above the resting composer
+                and is keyboard-independent, so it stays put when the keyboard
+                opens. Tapping anywhere dismisses the keyboard — the only escape
+                on a multiline composer where Return inserts a newline. */}
+            <Pressable
+              style={[
+                styles.emptyOverlay,
+                {
+                  paddingBottom:
+                    Math.max(insets.bottom, spacing.md) +
+                    BOTTOM_NAV_CLEARANCE_PX +
+                    60,
+                },
+              ]}
+              onPress={() => Keyboard.dismiss()}
+              accessibilityRole="button"
+              accessibilityLabel="Dismiss keyboard"
+            >
+              <EmptyState />
+            </Pressable>
+            <View style={styles.flexSpacer} pointerEvents="none" />
+          </>
         ) : (
           <MessageList
             messages={chat.messages}
@@ -255,10 +280,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  iconText: {
-    fontSize: 22,
-    color: textTokens.primary,
-  },
   headerTitle: {
     flexDirection: "row",
     alignItems: "center",
@@ -273,6 +294,14 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   kav: {
+    flex: 1,
+  },
+  emptyOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  flexSpacer: {
     flex: 1,
   },
   inputWrap: {

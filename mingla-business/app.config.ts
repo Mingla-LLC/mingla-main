@@ -120,18 +120,39 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       // Cycle B2a Path C V3 — Stripe Connect publishable key. Used by the
       // Mingla-hosted connect-onboarding page (Path B host) when initialising
       // @stripe/connect-js. Publishable keys are public-by-design (ship in client
-      // bundle). ORCH-0954 amendment: Vercel production requires pk_live_;
-      // Vercel preview/development and local dev require pk_test_ so TEST-mode
-      // embedded Account Sessions can render on preview without weakening prod.
+      // bundle).
+      //
+      // ORCH-0954 amendment: Vercel production previously required pk_live_;
+      // Vercel preview/development and local dev required pk_test_.
+      //
+      // pre-ORCH-1056 hotfix (2026-06-02): the live-on-production rule assumed
+      // Supabase edge fns were also flipped to rk_live_*. They are NOT — Supabase
+      // is on rk_test_* across the board, which silently collapses the Stripe
+      // Connect embedded iframe (cross-account pk vs ak mismatch). Until the
+      // unified-mode system lands (ORCH-1056), production must MATCH the
+      // backend mode. MINGLA_STRIPE_MODE (defaults to "test") gates which pk
+      // prefix is required on production builds.
       EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY: (() => {
         const fromEnv = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY;
         const vercelEnv = process.env.VERCEL_ENV;
         const sandboxFallback =
           "pk_test_51TTnt1PjlZyAYA40f3kjmxF6uXjfEJKfFR25LiJpVqd7qw6TYfDqqKLcNamL3JGlD2vxh94Bzn4ciaqsMNN1PJ0C00oZVosOxd";
+        // Default to "live" when unset preserves the pre-hotfix behavior so a
+        // mid-rollout deploy (validator landed, MINGLA_STRIPE_MODE not yet set)
+        // does not start rejecting the existing pk_live_ production env. Set
+        // MINGLA_STRIPE_MODE=test on Vercel + swap the pk to pk_test_* in the
+        // same change to align production with the test-mode backend.
+        const stripeMode = process.env.MINGLA_STRIPE_MODE ?? "live";
+        if (stripeMode !== "test" && stripeMode !== "live") {
+          throw new Error(
+            `Unsupported MINGLA_STRIPE_MODE "${stripeMode}". Expected "test" or "live".`,
+          );
+        }
+        const requiredPkPrefix = stripeMode === "live" ? "pk_live_" : "pk_test_";
         if (vercelEnv === "production") {
-          if (!fromEnv || !fromEnv.startsWith("pk_live_")) {
+          if (!fromEnv || !fromEnv.startsWith(requiredPkPrefix)) {
             throw new Error(
-              "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY must be a pk_live_ value for Vercel production builds.",
+              `EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY must be a ${requiredPkPrefix} value for Vercel production builds when MINGLA_STRIPE_MODE=${stripeMode}.`,
             );
           }
           return fromEnv;

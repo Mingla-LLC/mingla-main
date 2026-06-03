@@ -64,6 +64,17 @@ export function CollabDeckSheet({
     onClose();
   };
 
+  // ORCH-1059: after a successful "Notify the group" post, return the user to
+  // the group chat so they see the success toast + the posted banner in context.
+  // Dismiss any open prefs sub-sheet first, then close the deck via onClose
+  // (the same path the back button uses). Distinct from onSessionLost — this is
+  // an intentional, success-only return, not a lost-session teardown. No haptic
+  // here (the toast already confirms); avoids a double-tap feel.
+  const handleAfterNotify = useCallback(() => {
+    setShowPrefsSheet(false);
+    onClose();
+  }, [onClose]);
+
   if (!sessionId) {
     return null;
   }
@@ -134,6 +145,7 @@ export function CollabDeckSheet({
               onResetCards={noop}
               onOpenPreferences={onOpenPreferences}
               onOpenCollabPreferences={handleOpenPreferences}
+              onAfterNotify={handleAfterNotify}
               generateNewMockCard={noop}
               refreshKey={0}
               savedCards={savedCards}

@@ -22,11 +22,17 @@
  * Stripe's web Connect components to render correctly, we need raw DOM hooks
  * (no <View>, <Text>). This is one of the few Expo Web-only files in
  * mingla-business/.
+ *
+ * ORCH-1056 backport: shared layout/zoom helpers now live in
+ * src/components/stripe/connectEmbeddedPageHelpers.ts. This file inherits
+ * the iOS WKWebView scroll fix (absolute-positioned wrapper) + auto-zoom
+ * block (viewport meta override) that previously only shipped on the
+ * partner pages.
  */
 
 // orch-strict-grep-allow safearea-on-fullscreen-routes — web-only Stripe Connect Embedded Components page; renders DOM elements (<div>) via @stripe/react-connect-js, NOT React Native primitives. Does not render natively on iOS/Android — only loads in Expo Web bundle / mobile expo-web-browser session. iOS status bar bleed cannot occur because the page never renders in the native React Native stack. Per ORCH-0859 [Tr2 Minimum Viable Trip] REWORK 5b 2026-05-17.
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import Constants from "expo-constants";
 import {
   ConnectAccountOnboarding,
@@ -35,6 +41,10 @@ import {
 } from "@stripe/react-connect-js";
 import { loadConnectAndInitialize } from "@stripe/connect-js";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import {
+  connectEmbeddedPageStyles,
+  useStripeConnectViewportZoomLock,
+} from "../src/components/stripe/connectEmbeddedPageHelpers";
 
 const MINGLA_BRAND_COLOR = "#eb7825" as const; // accent.warm per designSystem.ts:147
 
@@ -59,6 +69,9 @@ export default function ConnectOnboardingPage(): React.ReactElement {
   const [hasExited, setHasExited] = useState<boolean>(false);
   const [initError, setInitError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+
+  // ORCH-1056 — block iOS auto-zoom on input focus (Stripe input font-size < 16px).
+  useStripeConnectViewportZoomLock();
 
   const stripeConnectInstance = useMemo(() => {
     if (typeof sessionClientSecret !== "string") return null;
@@ -144,10 +157,10 @@ export default function ConnectOnboardingPage(): React.ReactElement {
   // Validation guards
   if (typeof sessionClientSecret !== "string") {
     return (
-      <div style={pageWrapperStyle}>
-        <div style={errorCardStyle}>
-          <h2 style={errorTitleStyle}>Invalid onboarding link</h2>
-          <p style={errorBodyStyle}>
+      <div style={connectEmbeddedPageStyles.pageWrapperStyle}>
+        <div style={connectEmbeddedPageStyles.errorCardStyle}>
+          <h2 style={connectEmbeddedPageStyles.errorTitleStyle}>Invalid onboarding link</h2>
+          <p style={connectEmbeddedPageStyles.errorBodyStyle}>
             This onboarding link is missing a required parameter. Return to
             Mingla Business and tap &ldquo;Set up payments&rdquo; again to start
             fresh.
@@ -159,10 +172,10 @@ export default function ConnectOnboardingPage(): React.ReactElement {
 
   if (initError !== null) {
     return (
-      <div style={pageWrapperStyle}>
-        <div style={errorCardStyle}>
-          <h2 style={errorTitleStyle}>Couldn&rsquo;t start onboarding</h2>
-          <p style={errorBodyStyle}>{initError}</p>
+      <div style={connectEmbeddedPageStyles.pageWrapperStyle}>
+        <div style={connectEmbeddedPageStyles.errorCardStyle}>
+          <h2 style={connectEmbeddedPageStyles.errorTitleStyle}>Couldn&rsquo;t start onboarding</h2>
+          <p style={connectEmbeddedPageStyles.errorBodyStyle}>{initError}</p>
         </div>
       </div>
     );
@@ -170,10 +183,10 @@ export default function ConnectOnboardingPage(): React.ReactElement {
 
   if (loadError !== null) {
     return (
-      <div style={pageWrapperStyle}>
-        <div style={errorCardStyle}>
-          <h2 style={errorTitleStyle}>Couldn&rsquo;t load onboarding</h2>
-          <p style={errorBodyStyle}>{loadError}</p>
+      <div style={connectEmbeddedPageStyles.pageWrapperStyle}>
+        <div style={connectEmbeddedPageStyles.errorCardStyle}>
+          <h2 style={connectEmbeddedPageStyles.errorTitleStyle}>Couldn&rsquo;t load onboarding</h2>
+          <p style={connectEmbeddedPageStyles.errorBodyStyle}>{loadError}</p>
         </div>
       </div>
     );
@@ -181,8 +194,8 @@ export default function ConnectOnboardingPage(): React.ReactElement {
 
   if (stripeConnectInstance === null) {
     return (
-      <div style={pageWrapperStyle}>
-        <div style={loadingCardStyle}>
+      <div style={connectEmbeddedPageStyles.pageWrapperStyle}>
+        <div style={connectEmbeddedPageStyles.loadingCardStyle}>
           <p>Initializing onboarding…</p>
         </div>
       </div>
@@ -191,8 +204,8 @@ export default function ConnectOnboardingPage(): React.ReactElement {
 
   if (hasExited) {
     return (
-      <div style={pageWrapperStyle}>
-        <div style={loadingCardStyle}>
+      <div style={connectEmbeddedPageStyles.pageWrapperStyle}>
+        <div style={connectEmbeddedPageStyles.loadingCardStyle}>
           <p>Onboarding session ended. Redirecting…</p>
         </div>
       </div>
@@ -200,11 +213,11 @@ export default function ConnectOnboardingPage(): React.ReactElement {
   }
 
   return (
-    <div style={pageWrapperStyle}>
-      <header style={headerStyle}>
-        <h1 style={headerTitleStyle}>Mingla — Set up payments</h1>
+    <div style={connectEmbeddedPageStyles.pageWrapperStyle}>
+      <header style={connectEmbeddedPageStyles.headerStyle}>
+        <h1 style={connectEmbeddedPageStyles.headerTitleStyle}>Mingla — Set up payments</h1>
       </header>
-      <main style={mainStyle}>
+      <main style={connectEmbeddedPageStyles.mainStyle}>
         <ConnectComponentsProvider connectInstance={stripeConnectInstance}>
           <ConnectNotificationBanner
             collectionOptions={{
@@ -226,8 +239,8 @@ export default function ConnectOnboardingPage(): React.ReactElement {
           />
         </ConnectComponentsProvider>
       </main>
-      <footer style={footerStyle}>
-        <p style={footerTextStyle}>
+      <footer style={connectEmbeddedPageStyles.footerStyle}>
+        <p style={connectEmbeddedPageStyles.footerTextStyle}>
           Powered by Stripe. Your bank details go directly to Stripe — Mingla
           never sees them.
         </p>
@@ -235,83 +248,3 @@ export default function ConnectOnboardingPage(): React.ReactElement {
     </div>
   );
 }
-
-// Inline styles — this file is Expo Web only; React Native styles don't apply.
-// Per `feedback_rn_color_formats.md`: hex/rgb/hsl/hwb only (no oklch/lab/lch).
-
-const pageWrapperStyle: React.CSSProperties = {
-  minHeight: "100vh",
-  backgroundColor: "#FAFAFA",
-  display: "flex",
-  flexDirection: "column",
-  fontFamily:
-    '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-};
-
-const headerStyle: React.CSSProperties = {
-  padding: "24px 24px 16px",
-  textAlign: "center",
-  borderBottom: "1px solid #E5E7EB",
-  backgroundColor: "#FFFFFF",
-};
-
-const headerTitleStyle: React.CSSProperties = {
-  fontSize: "20px",
-  fontWeight: 600,
-  margin: 0,
-  color: "#0F172A",
-};
-
-const mainStyle: React.CSSProperties = {
-  flex: 1,
-  padding: "24px",
-  maxWidth: "780px",
-  width: "100%",
-  margin: "0 auto",
-  boxSizing: "border-box",
-};
-
-const footerStyle: React.CSSProperties = {
-  padding: "16px 24px",
-  borderTop: "1px solid #E5E7EB",
-  backgroundColor: "#FFFFFF",
-  textAlign: "center",
-};
-
-const footerTextStyle: React.CSSProperties = {
-  fontSize: "13px",
-  color: "#475569",
-  margin: 0,
-};
-
-const errorCardStyle: React.CSSProperties = {
-  maxWidth: "480px",
-  margin: "80px auto",
-  padding: "32px",
-  backgroundColor: "#FFFFFF",
-  border: "1px solid #FCA5A5",
-  borderRadius: "12px",
-  boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
-};
-
-const errorTitleStyle: React.CSSProperties = {
-  fontSize: "20px",
-  fontWeight: 600,
-  margin: "0 0 12px",
-  color: "#0F172A",
-};
-
-const errorBodyStyle: React.CSSProperties = {
-  fontSize: "15px",
-  lineHeight: 1.5,
-  margin: 0,
-  color: "#475569",
-};
-
-const loadingCardStyle: React.CSSProperties = {
-  maxWidth: "480px",
-  margin: "80px auto",
-  padding: "32px",
-  textAlign: "center",
-  color: "#475569",
-};

@@ -1,24 +1,15 @@
 /**
- * InviteScannerSheet — J-S7 invite-scanner UI (Cycle 11).
+ * InviteScannerSheet — scanner invite UI (ORCH-1051).
  *
- * I-28: UI-only in Cycle 11. recordInvitation creates a pending entry in
- * client store; NO email is sent. canAcceptPayments toggle is DISABLED
- * (always false until B-cycle scanner-payments cluster).
+ * Sends invites through the `invite-scanner` edge function. The function
+ * writes to `public.scanner_invitations` and ships a Resend invite email.
+ * The legacy [TRANSITIONAL] zustand-only path is gone (exit condition: ORCH-1051) — invitations are
+ * real canonical rows from the moment "Send invitation" returns success.
  *
- * [TRANSITIONAL] EXIT CONDITION: B-cycle wires:
- *   - edge function `invite-scanner` (writes to scanner_invitations + Resend)
- *   - edge function `accept-scanner-invitation` (writes to event_scanners)
- *   - `/event/[id]/scanner` route auth gate
+ * Scope picker: operator chooses "This event only" (default, preserves
+ * existing UX) or "Every event in this brand" (new brand-scoped scanner).
  *
- * Mirrors AddCompGuestSheet pattern (Cycle 10).
- *
- * Per Cycle 11 SPEC §4.10/J-S7 sub-sheet.
- *
- * // orch-strict-grep-allow canManualCheckIn — Cycle 13b migration removes this field; reference is part of the strip logic, not active usage.
- * Cycle 13b Q1 (SPEC §4.6): `canManualCheckIn` toggle DROPPED. The field was
- * decorative in Cycle 11/12 (gated 0 consumers in scan logic, only rendered
- * an informational pill on the team list). Per DEC-093 + I-34. The
- * `canAcceptPayments` toggle (Cycle 12 Decision #4) STAYS unchanged.
+ * Status: ACTIVE post-ORCH-1051.
  */
 
 import React, { useCallback, useEffect, useState } from "react";
@@ -39,21 +30,19 @@ import {
   spacing,
   text as textTokens,
 } from "../../constants/designSystem";
+import { useInviteScanner } from "../../hooks/useScannerInvitations";
 import {
-  useScannerInvitationsStore,
-  type ScannerInvitation,
-} from "../../store/scannerInvitationsStore";
+  ScannerInvitationServiceError,
+  type ScannerInvitationScope,
+} from "../../services/scannerInvitationsService";
 import type { LiveEvent } from "../../store/liveEventStore";
 
 import { Button } from "../ui/Button";
 import { Sheet } from "../ui/Sheet";
+import { Toast } from "../ui/Toast";
 
-const NAME_MAX = 120;
+const NAME_MAX = 100;
 const EMAIL_MAX = 200;
-const PROCESSING_MS = 600;
-
-const sleep = (ms: number): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, ms));
 
 const isValidEmail = (s: string): boolean => {
   const t = s.trim();
@@ -62,91 +51,130 @@ const isValidEmail = (s: string): boolean => {
 
 export interface InviteScannerSheetProps {
   visible: boolean;
-  event: LiveEvent;
+  /** Pass when invoking from /event/[id]/scanners; omit for brand-only flow. */
+  event: LiveEvent | null;
   brandId: string;
+  /** Retained for prop compatibility; canonical invited_by is auth.uid()
+   *  inside the edge fn. */
   operatorAccountId: string;
+  /** When true, "Every event" is the only allowed scope (the operator opened
+   *  the sheet from a brand-level surface). */
+  brandOnly?: boolean;
   onClose: () => void;
-  onSuccess: (invitation: ScannerInvitation) => void;
+  onSuccess: (details: { invitationId: string; scope: ScannerInvitationScope }) => void;
+}
+
+interface ToastState {
+  kind: "error" | "success";
+  message: string;
+}
+
+function toastForCode(code: string, status: number): ToastState {
+  switch (code) {
+    case "validation":
+      return { kind: "error", message: "Check the form — some fields are invalid." };
+    case "forbidden":
+      return {
+        kind: "error",
+        message: "Only event managers and up can invite scanners.",
+      };
+    case "brand_not_found":
+    case "event_not_found":
+      return { kind: "error", message: "That event or brand no longer exists." };
+    case "already_invited":
+      return {
+        kind: "error",
+        message: "There's already a pending invite for that email.",
+      };
+    case "email_send_failed":
+      return {
+        kind: "error",
+        message: "We couldn't send the email. Try again in a moment.",
+      };
+    case "unauthenticated":
+      return { kind: "error", message: "Sign in again to invite scanners." };
+    default:
+      return {
+        kind: "error",
+        message: `Something went wrong (status ${status}). Try again.`,
+      };
+  }
 }
 
 export const InviteScannerSheet: React.FC<InviteScannerSheetProps> = ({
   visible,
   event,
   brandId,
-  operatorAccountId,
+  operatorAccountId: _operatorAccountId,
+  brandOnly,
   onClose,
   onSuccess,
 }) => {
+  const defaultScope: ScannerInvitationScope =
+    brandOnly === true || event === null ? "brand" : "event";
+
   const [name, setName] = useState<string>("");
   const [email, setEmail] = useState<string>("");
-  // Cycle 12 — semantics: "can take cash + manual payments at the door".
-  // Card reader + NFC remain TRANSITIONAL until B-cycle Stripe Terminal SDK.
+  const [scope, setScope] = useState<ScannerInvitationScope>(defaultScope);
   const [canAcceptPayments, setCanAcceptPayments] = useState<boolean>(false);
-  const [submitting, setSubmitting] = useState<boolean>(false);
+  const [toast, setToast] = useState<ToastState | null>(null);
 
-  // Reset state on visible flip → true
+  const { mutateAsync: inviteAsync, isPending: submitting } = useInviteScanner();
+
   useEffect(() => {
     if (visible) {
       setName("");
       setEmail("");
+      setScope(defaultScope);
       setCanAcceptPayments(false);
-      setSubmitting(false);
+      setToast(null);
     }
-  }, [visible]);
+  }, [visible, defaultScope]);
 
-  // Validation
   const trimmedNameLen = name.trim().length;
   const nameValid = trimmedNameLen >= 1 && trimmedNameLen <= NAME_MAX;
   const emailValid = isValidEmail(email);
-  const isValid = nameValid && emailValid;
+  const isValid = nameValid && emailValid &&
+    (scope === "brand" || (scope === "event" && event !== null));
   const canSubmit = !submitting && isValid;
 
   const handleConfirm = useCallback(async (): Promise<void> => {
     if (!canSubmit) return;
-    setSubmitting(true);
     try {
-      await sleep(PROCESSING_MS);
-      const newInvitation = useScannerInvitationsStore
-        .getState()
-        .recordInvitation({
-          eventId: event.id,
-          brandId,
-          inviteeEmail: email.trim().toLowerCase(),
-          inviteeName: name.trim(),
-          permissions: {
-            canScan: true,
-            // Cycle 12 — semantics = cash + manual today; card + NFC TRANSITIONAL
-            // until B-cycle Stripe Terminal SDK. Operator-controllable per scanner.
-            canAcceptPayments,
-          },
-          invitedBy: operatorAccountId,
+      const result = await inviteAsync({
+        brandId,
+        eventId: scope === "event" ? event?.id ?? null : null,
+        scope,
+        inviteeEmail: email,
+        inviteeName: name,
+        canAcceptPayments,
+      });
+      onSuccess({ invitationId: result.invitationId, scope });
+    } catch (err) {
+      if (err instanceof ScannerInvitationServiceError) {
+        setToast(toastForCode(err.code, err.status));
+      } else {
+        setToast({
+          kind: "error",
+          message: "Something went wrong. Try again.",
         });
-      onSuccess(newInvitation);
-    } finally {
-      setSubmitting(false);
+      }
     }
-  }, [
-    canSubmit,
-    event.id,
-    brandId,
-    email,
-    name,
-    canAcceptPayments,
-    operatorAccountId,
-    onSuccess,
-  ]);
+  }, [canSubmit, inviteAsync, brandId, scope, event, email, name, canAcceptPayments, onSuccess]);
 
   const handleClose = useCallback((): void => {
     if (submitting) return;
     onClose();
   }, [submitting, onClose]);
 
+  const eventScopeAllowed = event !== null && brandOnly !== true;
+
   return (
     <Sheet visible={visible} onClose={handleClose} snapPoint="full">
       <View style={styles.body}>
         <Text style={styles.title}>Invite scanner</Text>
         <Text style={styles.subhead}>
-          Door staff or backup scanners. They&apos;ll get access when emails ship in B-cycle.
+          Door staff or backup scanners. They&apos;ll get an email with a one-tap accept link.
         </Text>
 
         <ScrollView
@@ -213,14 +241,65 @@ export const InviteScannerSheet: React.FC<InviteScannerSheetProps> = ({
             ) : null}
           </View>
 
-          {/* Cycle 12 — Accept door payments toggle (FLIPPED from Cycle 11
-              hardcoded-false). Semantics: cash + manual today; card reader + NFC
-              remain TRANSITIONAL until B-cycle Stripe Terminal SDK. */}
+          {/* Scope picker */}
+          <View style={styles.fieldGroup}>
+            <Text style={styles.label}>Access</Text>
+            {eventScopeAllowed ? (
+              <Pressable
+                onPress={() => !submitting && setScope("event")}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: scope === "event" }}
+                accessibilityLabel="This event only"
+                disabled={submitting}
+                style={[
+                  styles.scopeOption,
+                  scope === "event" && styles.scopeOptionOn,
+                ]}
+              >
+                <View style={styles.scopeBullet}>
+                  {scope === "event" ? (
+                    <View style={styles.scopeBulletDot} />
+                  ) : null}
+                </View>
+                <View style={styles.scopeBody}>
+                  <Text style={styles.scopeLabel}>This event only</Text>
+                  <Text style={styles.scopeSub}>
+                    They can scan {event?.name ?? "this event"}.
+                  </Text>
+                </View>
+              </Pressable>
+            ) : null}
+            <Pressable
+              onPress={() => !submitting && setScope("brand")}
+              accessibilityRole="radio"
+              accessibilityState={{ selected: scope === "brand" }}
+              accessibilityLabel="Every event in this brand"
+              disabled={submitting}
+              style={[
+                styles.scopeOption,
+                scope === "brand" && styles.scopeOptionOn,
+              ]}
+            >
+              <View style={styles.scopeBullet}>
+                {scope === "brand" ? (
+                  <View style={styles.scopeBulletDot} />
+                ) : null}
+              </View>
+              <View style={styles.scopeBody}>
+                <Text style={styles.scopeLabel}>Every event in this brand</Text>
+                <Text style={styles.scopeSub}>
+                  They can scan tickets at any of your events — now and later.
+                </Text>
+              </View>
+            </Pressable>
+          </View>
+
+          {/* Accept door payments toggle */}
           <View style={styles.toggleRow}>
             <View style={styles.toggleCol}>
               <Text style={styles.toggleLabel}>Accept payments at the door</Text>
               <Text style={styles.toggleSubline}>
-                They can take cash and manual payments. Card reader and NFC tap-to-pay land in B-cycle.
+                Cash and manual payments. Card reader and NFC tap-to-pay land in B-cycle.
               </Text>
             </View>
             <Pressable
@@ -241,14 +320,6 @@ export const InviteScannerSheet: React.FC<InviteScannerSheetProps> = ({
                 ]}
               />
             </Pressable>
-          </View>
-
-          {/* TRANSITIONAL footer */}
-          <View style={styles.transitionalNote}>
-            <Text style={styles.transitionalNoteText}>
-              Note: emails will be sent when the scanner backend launches. The
-              invitation is stored locally for now.
-            </Text>
           </View>
         </ScrollView>
 
@@ -275,6 +346,15 @@ export const InviteScannerSheet: React.FC<InviteScannerSheetProps> = ({
             accessibilityLabel="Cancel invite scanner"
           />
         </View>
+
+        {toast !== null ? (
+          <Toast
+            visible={true}
+            kind={toast.kind === "error" ? "error" : "success"}
+            message={toast.message}
+            onDismiss={() => setToast(null)}
+          />
+        ) : null}
       </View>
     </Sheet>
   );
@@ -342,15 +422,57 @@ const styles = StyleSheet.create({
     color: accent.warm,
     marginTop: 4,
   },
+  scopeOption: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.sm,
+    padding: spacing.sm + 2,
+    borderRadius: radiusTokens.md,
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+    backgroundColor: glass.tint.profileBase,
+    marginBottom: spacing.xs + 2,
+  },
+  scopeOptionOn: {
+    borderColor: accent.warm,
+    backgroundColor: "rgba(235, 120, 37, 0.08)",
+  },
+  scopeBullet: {
+    width: 18,
+    height: 18,
+    borderRadius: 999,
+    borderWidth: 1.5,
+    borderColor: textTokens.tertiary,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 2,
+  },
+  scopeBulletDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: accent.warm,
+  },
+  scopeBody: {
+    flex: 1,
+    minWidth: 0,
+  },
+  scopeLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: textTokens.primary,
+  },
+  scopeSub: {
+    fontSize: 12,
+    color: textTokens.tertiary,
+    marginTop: 2,
+  },
   toggleRow: {
     flexDirection: "row",
     alignItems: "center",
     paddingVertical: spacing.sm,
     gap: spacing.md,
     marginBottom: spacing.xs,
-  },
-  toggleRowDisabled: {
-    opacity: 0.55,
   },
   toggleCol: {
     flex: 1,
@@ -360,9 +482,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
     color: textTokens.primary,
-  },
-  toggleLabelDisabled: {
-    color: textTokens.tertiary,
   },
   toggleSubline: {
     fontSize: 12,
@@ -380,9 +499,6 @@ const styles = StyleSheet.create({
   toggleTrackOn: {
     backgroundColor: accent.warm,
   },
-  toggleTrackDisabled: {
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
-  },
   toggleThumb: {
     width: 20,
     height: 20,
@@ -391,19 +507,6 @@ const styles = StyleSheet.create({
   },
   toggleThumbOn: {
     transform: [{ translateX: 18 }],
-  },
-  transitionalNote: {
-    marginTop: spacing.md,
-    padding: spacing.sm + 2,
-    borderRadius: radiusTokens.md,
-    backgroundColor: "rgba(59, 130, 246, 0.10)",
-    borderWidth: 1,
-    borderColor: "rgba(59, 130, 246, 0.24)",
-  },
-  transitionalNoteText: {
-    fontSize: 12,
-    color: textTokens.secondary,
-    lineHeight: 18,
   },
   actions: {
     paddingTop: spacing.sm,

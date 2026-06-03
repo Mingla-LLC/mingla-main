@@ -16,11 +16,12 @@
  *     blur/focus on tab switch creates noise without value.
  *   - refetchOnReconnect: true — re-fetch when connectivity returns.
  *
- * Persistence: NOT wired in 13a. `@tanstack/react-query-persist-client` +
+ * Persistence: NOT wired. `@tanstack/react-query-persist-client` +
  * `@tanstack/query-async-storage-persister` are installed but unused. A future
  * cycle can layer persistence (mirror app-mobile's setup) when offline-tolerant
- * server state grows. Cycle 13a's persisted client cache lives in
- * `useBrandTeamStore` (Zustand-persist) only.
+ * server state grows. (Historical note: Cycle 13a's brandTeamStore used to
+ * persist via Zustand-persist; ORCH-1050 demoted it to in-memory optimistic-
+ * only and moved canonical state into public.brand_invitations + React Query.)
  */
 
 import { QueryClient } from "@tanstack/react-query";

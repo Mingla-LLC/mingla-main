@@ -54,7 +54,66 @@ describe("searchPoolMatches", () => {
     expect(r).toHaveLength(1);
     expect(r[0]?.googlePlaceId).toBe("gid");
     expect(invokeMock).toHaveBeenCalledWith("claim-search-pool", {
-      body: { query: "joe", limit: 1 },
+      body: { query: "joe", limit: null, fetch_all: true },
     });
+  });
+
+  test("requests the complete active match set instead of a capped top-N", async () => {
+    invokeMock.mockResolvedValue({
+      data: { matches: [], exhausted: true },
+      error: null,
+    });
+
+    await searchPoolMatches("wine");
+
+    const call = invokeMock.mock.calls[0]?.[1] as { body: Record<string, unknown> };
+    expect(call.body.fetch_all).toBe(true);
+    expect(call.body.limit).toBeNull();
+  });
+
+  test("keeps all returned matches and supports business-authored rows without google ids", async () => {
+    invokeMock.mockResolvedValue({
+      data: {
+        matches: [
+          {
+            id: "pid-1",
+            name: "Joe's Pizza",
+            address: "123 Main",
+            city: "NYC",
+            country: "US",
+            lat: 40.1,
+            lng: -73.9,
+            googlePlaceId: "gid",
+            primaryPhotoUrl: null,
+            primaryType: "restaurant",
+            types: [],
+            venueCategory: "restaurant",
+            openingHours: null,
+            photoUrls: [],
+          },
+          {
+            id: "pid-2",
+            name: "Joe's Wine Room",
+            address: "456 Main",
+            city: "NYC",
+            country: "US",
+            lat: 40.2,
+            lng: -73.8,
+            googlePlaceId: null,
+            primaryPhotoUrl: null,
+            primaryType: "restaurant",
+            types: [],
+            venueCategory: "restaurant",
+            openingHours: null,
+            photoUrls: [],
+          },
+        ],
+      },
+      error: null,
+    });
+
+    const r = await searchPoolMatches("joe");
+    expect(r).toHaveLength(2);
+    expect(r[1]?.googlePlaceId).toBeNull();
   });
 });

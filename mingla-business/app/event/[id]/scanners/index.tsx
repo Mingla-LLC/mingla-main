@@ -1,13 +1,12 @@
 /**
- * /event/[id]/scanners — J-S7 Scanner-team management (Cycle 11).
+ * /event/[id]/scanners — Scanner-team management screen.
  *
- * Operator-side route to invite door staff + see pending/revoked invites.
+ * Reads scanner invitations from the canonical Postgres table via
+ * `useScannerInvitationsForEvent`; revokes through the
+ * `useRevokeScannerInvitation` mutation. Invitations go out via the
+ * `invite-scanner` edge fn through `InviteScannerSheet`.
  *
- * I-28: UI-only in Cycle 11 — emails ship in B-cycle. TRANSITIONAL banner
- * rendered always at top of the surface so operator never thinks invitations
- * are sent.
- *
- * Per Cycle 11 SPEC §4.10/J-S7.
+ * Status: ACTIVE post-ORCH-1051 (META-ORCH-1048 sub-C).
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
@@ -29,12 +28,13 @@ import {
   spacing,
   text as textTokens,
 } from "../../../../src/constants/designSystem";
-import {
-  useScannerInvitationsStore,
-  type ScannerInvitation,
-} from "../../../../src/store/scannerInvitationsStore";
+import type { ScannerInvitationRow } from "../../../../src/services/scannerInvitationsService";
 import { useAuth } from "../../../../src/context/AuthContext";
 import { useManagedEventRoute } from "../../../../src/hooks/useManagedEventRoute";
+import {
+  useScannerInvitationsForEvent,
+  useRevokeScannerInvitation,
+} from "../../../../src/hooks/useScannerInvitations";
 
 import { EmptyState } from "../../../../src/components/ui/EmptyState";
 import { IconChrome } from "../../../../src/components/ui/IconChrome";
@@ -56,7 +56,8 @@ const RELATIVE_TIME_MS = {
   day: 24 * 60 * 60 * 1000,
 };
 
-const formatRelativeTime = (iso: string): string => {
+const formatRelativeTime = (iso: string | null | undefined): string => {
+  if (!iso) return "";
   const now = Date.now();
   const then = new Date(iso).getTime();
   if (Number.isNaN(then)) return "";
@@ -79,8 +80,9 @@ const hashStringToHue = (s: string): number => {
   return Math.abs(hash) % 360;
 };
 
-const getInitials = (name: string): string => {
-  const parts = name.trim().split(/\s+/).filter((p) => p.length > 0);
+const getInitials = (name: string | null | undefined): string => {
+  const safe = name ?? "";
+  const parts = safe.trim().split(/\s+/).filter((p) => p.length > 0);
   if (parts.length === 0) return "?";
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
@@ -92,7 +94,7 @@ interface InvitationStatusPillSpec {
 }
 
 const invitationStatusPill = (
-  status: ScannerInvitation["status"],
+  status: ScannerInvitationRow["status"],
 ): InvitationStatusPillSpec => {
   switch (status) {
     case "pending":
@@ -101,6 +103,8 @@ const invitationStatusPill = (
       return { variant: "info", label: "ACCEPTED" };
     case "revoked":
       return { variant: "draft", label: "REVOKED" };
+    case "expired":
+      return { variant: "draft", label: "EXPIRED" };
     default: {
       const _exhaust: never = status;
       return _exhaust;
@@ -124,22 +128,28 @@ export default function EventScannersListRoute(): React.ReactElement {
   const event = routeEvent.event;
   const brand = routeEvent.brand;
 
-  // Cycle 13a J-T6 G6: scanner invite + revoke gated on MANAGE_SCANNERS
-  // (event_manager+). Hooks run on every render before any early-return shell.
   const { rank: currentRank } = useCurrentBrandRole(brand?.id ?? null);
   const canManageScanners = canPerformAction(currentRank, "MANAGE_SCANNERS");
 
-  // Raw subscription + useMemo for fresh-array filter (selector pattern rule).
-  const allInvitations = useScannerInvitationsStore((s) => s.entries);
-  const invitations = useMemo<ScannerInvitation[]>(() => {
-    if (typeof eventId !== "string") return [];
-    return allInvitations
-      .filter((i) => i.eventId === eventId)
-      .sort(
-        (a, b) =>
-          new Date(b.invitedAt).getTime() - new Date(a.invitedAt).getTime(),
-      );
-  }, [allInvitations, eventId]);
+  // React Query — canonical source post-ORCH-1051.
+  const invitationsQuery = useScannerInvitationsForEvent(
+    typeof eventId === "string" ? eventId : null,
+  );
+  const revoke = useRevokeScannerInvitation({
+    brandId: brand?.id ?? null,
+    eventId: typeof eventId === "string" ? eventId : null,
+  });
+
+  const invitations = useMemo<ScannerInvitationRow[]>(() => {
+    const list = invitationsQuery.data ?? [];
+    return [...list].sort(
+      (a, b) => {
+        const ta = new Date(a.created_at ?? a.expires_at).getTime();
+        const tb = new Date(b.created_at ?? b.expires_at).getTime();
+        return tb - ta;
+      },
+    );
+  }, [invitationsQuery.data]);
 
   const [inviteSheetOpen, setInviteSheetOpen] = useState<boolean>(false);
   const [actionSheetForId, setActionSheetForId] = useState<string | null>(null);
@@ -161,28 +171,32 @@ export default function EventScannersListRoute(): React.ReactElement {
   }, [router, eventId]);
 
   const handleInviteSuccess = useCallback(
-    (invitation: ScannerInvitation): void => {
+    (details: { invitationId: string; scope: "event" | "brand" }): void => {
       setInviteSheetOpen(false);
-      void invitation;
-      showToast("Invitation pending — emails ship in B-cycle.");
+      void details;
+      showToast(
+        details.scope === "brand"
+          ? "Invitation sent — brand-wide scanner."
+          : "Invitation sent.",
+      );
     },
     [showToast],
   );
 
   const handleRevoke = useCallback(
-    (id: string): void => {
-      const result = useScannerInvitationsStore.getState().revokeInvitation(id);
-      if (result === null) {
-        showToast("Couldn't revoke invitation. Tap to try again.");
-        return;
+    async (id: string): Promise<void> => {
+      try {
+        await revoke.mutateAsync(id);
+        setActionSheetForId(null);
+        showToast("Invitation revoked.");
+      } catch {
+        showToast("Couldn't revoke. Tap to try again.");
       }
-      setActionSheetForId(null);
-      showToast(`Invitation for ${result.inviteeName} revoked.`);
     },
-    [showToast],
+    [revoke, showToast],
   );
 
-  const activeActionInvitation = useMemo<ScannerInvitation | null>(() => {
+  const activeActionInvitation = useMemo<ScannerInvitationRow | null>(() => {
     if (actionSheetForId === null) return null;
     return invitations.find((i) => i.id === actionSheetForId) ?? null;
   }, [actionSheetForId, invitations]);
@@ -247,6 +261,9 @@ export default function EventScannersListRoute(): React.ReactElement {
     );
   }
 
+  // Hint to operator: still loading from server.
+  const isFetching = invitationsQuery.isLoading;
+
   return (
     <View
       style={[
@@ -283,21 +300,18 @@ export default function EventScannersListRoute(): React.ReactElement {
         ]}
         showsVerticalScrollIndicator={false}
       >
-        {/* TRANSITIONAL banner — always rendered per I-28 */}
-        <View style={styles.transitionalBanner}>
-          <Text style={styles.transitionalText}>
-            Scanner emails ship in B-cycle. Invitations are stored locally for now.
-          </Text>
-        </View>
-
-        {invitations.length === 0 ? (
+        {isFetching && invitations.length === 0 ? (
+          <View style={styles.emptyHost}>
+            <Text style={styles.emptyLoadingText}>Loading invitations...</Text>
+          </View>
+        ) : invitations.length === 0 ? (
           <View style={styles.emptyHost}>
             <EmptyState
               illustration="user"
               title="No scanners invited"
               description={
                 canManageScanners
-                  ? "Invite door staff or backup scanners. They'll receive access when emails ship in B-cycle."
+                  ? "Invite door staff or backup scanners. They'll get an email with a one-tap accept link."
                   : "Ask your event manager or above to invite door staff."
               }
               cta={
@@ -345,10 +359,10 @@ export default function EventScannersListRoute(): React.ReactElement {
         {activeActionInvitation !== null ? (
           <View style={styles.actionSheet}>
             <Text style={styles.actionTitle}>
-              {activeActionInvitation.inviteeName}
+              {activeActionInvitation.invitee_name ?? activeActionInvitation.email}
             </Text>
             <Text style={styles.actionEmail}>
-              {activeActionInvitation.inviteeEmail}
+              {activeActionInvitation.email}
             </Text>
             <View style={styles.actionPills}>
               <Pill
@@ -358,22 +372,28 @@ export default function EventScannersListRoute(): React.ReactElement {
               >
                 {invitationStatusPill(activeActionInvitation.status).label}
               </Pill>
+              {activeActionInvitation.scope === "brand" ? (
+                <Pill variant="info">BRAND-WIDE</Pill>
+              ) : null}
             </View>
             <View style={styles.actionSpacer} />
             {activeActionInvitation.status === "pending" ? (
               <Button
-                label="Revoke invitation"
+                label={revoke.isPending ? "Revoking..." : "Revoke invitation"}
                 variant="destructive"
                 size="lg"
                 fullWidth
-                disabled={!canManageScanners}
-                onPress={() => handleRevoke(activeActionInvitation.id)}
+                disabled={!canManageScanners || revoke.isPending}
+                loading={revoke.isPending}
+                onPress={() => void handleRevoke(activeActionInvitation.id)}
                 accessibilityLabel="Revoke pending invitation"
               />
             ) : (
               <Text style={styles.actionDisabledNote}>
                 {activeActionInvitation.status === "revoked"
                   ? "This invitation has been revoked."
+                  : activeActionInvitation.status === "expired"
+                  ? "This invitation expired."
                   : "This invitation has been accepted."}
               </Text>
             )}
@@ -406,21 +426,22 @@ export default function EventScannersListRoute(): React.ReactElement {
 // ---- InvitationRow --------------------------------------------------
 
 interface InvitationRowProps {
-  invitation: ScannerInvitation;
+  invitation: ScannerInvitationRow;
   onPress: () => void;
 }
 
 const InvitationRow: React.FC<InvitationRowProps> = ({ invitation, onPress }) => {
-  const initials = getInitials(invitation.inviteeName);
+  const displayName = invitation.invitee_name ?? invitation.email;
+  const initials = getInitials(displayName);
   const hue = hashStringToHue(invitation.id);
-  const subline = `${invitation.inviteeEmail} · invited ${formatRelativeTime(invitation.invitedAt)}`;
+  const subline = `${invitation.email} · invited ${formatRelativeTime(invitation.created_at ?? null)}`;
   const pill = invitationStatusPill(invitation.status);
 
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`Scanner ${invitation.inviteeName}, ${pill.label}`}
+      accessibilityLabel={`Scanner ${displayName}, ${pill.label}`}
       style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
     >
       <View
@@ -433,13 +454,16 @@ const InvitationRow: React.FC<InvitationRowProps> = ({ invitation, onPress }) =>
       </View>
       <View style={styles.rowBody}>
         <Text style={styles.rowName} numberOfLines={1}>
-          {invitation.inviteeName}
+          {displayName}
         </Text>
         <Text style={styles.rowSubline} numberOfLines={1}>
           {subline}
         </Text>
         <View style={styles.rowPills}>
           <Pill variant={pill.variant}>{pill.label}</Pill>
+          {invitation.scope === "brand" ? (
+            <Pill variant="info">BRAND-WIDE</Pill>
+          ) : null}
         </View>
       </View>
     </Pressable>
@@ -489,19 +513,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: textTokens.secondary,
     textAlign: "center",
-  },
-  transitionalBanner: {
-    padding: spacing.sm + 2,
-    borderRadius: radiusTokens.md,
-    backgroundColor: "rgba(59, 130, 246, 0.10)",
-    borderWidth: 1,
-    borderColor: "rgba(59, 130, 246, 0.24)",
-    marginBottom: spacing.md,
-  },
-  transitionalText: {
-    fontSize: 12,
-    color: textTokens.secondary,
-    lineHeight: 18,
   },
   list: {
     gap: spacing.sm,

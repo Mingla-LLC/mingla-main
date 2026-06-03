@@ -181,8 +181,9 @@
     "fallback_user": "Användare"
   },
   "collaborations": {
-    "headline": "Plan something together",
-    "body": "Start a session with your crew. Upptäck things to do, vote on favorites, och actually make it happen.",
+    "headline": "Planera ihop",
+    "body": "Starta en grupp med ditt gäng, eller hoppa in i en chatt eller resa du redan är inbjuden till.",
+    "start_button": "Starta gruppen",
     "whos_in": "Who's in?",
     "session_name_label": "Session name",
     "session_name_placeholder": "e.g. Weekend plans, Date night ideas...",
@@ -196,7 +197,11 @@
     "generic_error": "Hmm, that didn't work. Give it another go.",
     "join_error": "Could not join session",
     "decline_error": "Could not decline invite",
-    "empty_state": "Lägg till friends first — then you can start planning together."
+    "empty_state": "Lägg till friends first — then you can start planning together.",
+    "trip_chats_header": "Dina rese- och evenemangschattar",
+    "trip_chats_loading": "Laddar chattar…",
+    "trip_chats_join_subtitle": "Gå med i köparnas gruppchatt",
+    "trip_chats_join_button": "Gå med i chatten"
   },
   "consent": {
     "headline": "One quick thing",

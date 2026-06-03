@@ -1,18 +1,16 @@
 /**
- * /brand/[id]/team — J-T1 brand-team list (Cycle 13a).
+ * /brand/[id]/team — brand-team list (ORCH-1050).
  *
- * Replaces the J-A9 BrandTeamView cluster (deleted per DEC-092 / Path A).
- * Renders pending invitations + active members from `useBrandTeamStore`,
- * synthesizes the operator's self-row from `useCurrentBrandRole` for solo
- * operators, and gates the "+" invite CTA on MIN_RANK.INVITE_TEAM_MEMBER.
+ * Reads pending invitations + accepted members from React Query
+ * (`useBrandInvitations` / `useBrandTeamMembers`), synthesizes the
+ * operator's self-row from `useCurrentBrandRole` for solo operators, and
+ * gates the "+" invite CTA on MIN_RANK.INVITE_TEAM_MEMBER.
  *
- * I-31 TRANSITIONAL banner is permanent in 13a — emails ship in B-cycle.
+ * Revoke action calls `useRevokeBrandInvitation` → direct UPDATE under
+ * brand_admin+ RLS; React Query invalidates the list on success.
  *
- * Hook ordering follows ORCH-0710: ALL hooks run on every render before any
- * early-return shell. Guards happen via the `enabled` flag inside
- * `useCurrentBrandRole`, not via skipped hooks.
- *
- * Per Cycle 13a SPEC §4.10.
+ * Hook ordering follows ORCH-0710: ALL hooks run on every render before
+ * any early-return shell.
  */
 
 import React, { useCallback, useMemo, useState } from "react";
@@ -28,6 +26,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { InviteBrandMemberSheet } from "../../../src/components/team/InviteBrandMemberSheet";
 import { MemberDetailSheet } from "../../../src/components/team/MemberDetailSheet";
+import type { BrandTeamEntry } from "../../../src/store/brandTeamStore";
 import { Avatar } from "../../../src/components/ui/Avatar";
 import { Button } from "../../../src/components/ui/Button";
 import { EmptyState } from "../../../src/components/ui/EmptyState";
@@ -44,9 +43,14 @@ import {
 import { useAuth } from "../../../src/context/AuthContext";
 import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
 import {
-  useBrandTeamStore,
-  type BrandTeamEntry,
-} from "../../../src/store/brandTeamStore";
+  useBrandInvitations,
+  useBrandTeamMembers,
+  useRevokeBrandInvitation,
+} from "../../../src/hooks/useBrandInvitations";
+import type {
+  BrandInvitationRow,
+  BrandTeamMemberRow,
+} from "../../../src/services/brandInvitationsService";
 import { useBrandList } from "../../../src/store/currentBrandStore";
 import {
   type BrandRole,
@@ -88,11 +92,9 @@ export default function BrandTeamRoute(): React.ReactElement {
       ? brands.find((b) => b.id === brandIdResolved) ?? null
       : null;
 
-  const allEntries = useBrandTeamStore((s) => s.entries);
-  const revokeInvitation = useBrandTeamStore((s) => s.revokeInvitation);
-  const removeAcceptedMember = useBrandTeamStore(
-    (s) => s.removeAcceptedMember,
-  );
+  const { data: invitationRows = [] } = useBrandInvitations(brandIdResolved);
+  const { data: memberRows = [] } = useBrandTeamMembers(brandIdResolved);
+  const { mutateAsync: revokeAsync } = useRevokeBrandInvitation(brandIdResolved);
 
   const { role: currentRole, rank: currentRank } = useCurrentBrandRole(
     brandIdResolved,
@@ -101,46 +103,59 @@ export default function BrandTeamRoute(): React.ReactElement {
   const [inviteVisible, setInviteVisible] = useState<boolean>(false);
   const [detailEntry, setDetailEntry] = useState<DisplayEntry | null>(null);
 
-  const pendingEntries = useMemo<DisplayEntry[]>(
-    () =>
-      allEntries
-        .filter(
-          (e) => e.brandId === brandIdResolved && e.status === "pending",
-        )
-        .sort(
-          (a, b) =>
-            new Date(b.invitedAt).getTime() - new Date(a.invitedAt).getTime(),
-        )
-        .map<DisplayEntry>((e) => ({
-          id: e.id,
-          name: e.inviteeName,
-          email: e.inviteeEmail,
-          role: e.role,
-          status: "pending",
-          timestampIso: e.invitedAt,
-          storeEntry: e,
-        })),
-    [allEntries, brandIdResolved],
-  );
+  const pendingEntries = useMemo<DisplayEntry[]>(() => {
+    const nowMs = Date.now();
+    return invitationRows
+      .filter(
+        (row) =>
+          row.status === "pending" &&
+          new Date(row.expires_at).getTime() > nowMs,
+      )
+      .sort(
+        (a, b) =>
+          new Date(b.expires_at).getTime() - new Date(a.expires_at).getTime(),
+      )
+      .map<DisplayEntry>((row) => ({
+        id: row.id,
+        name: row.invitee_name ?? row.email,
+        email: row.email,
+        role: row.role,
+        status: "pending",
+        // Approximate "invited at" as expires - 7d to feed relative-time copy.
+        timestampIso: new Date(
+          new Date(row.expires_at).getTime() - 7 * 24 * 60 * 60 * 1000,
+        ).toISOString(),
+        storeEntry: invitationRowToEntry(row),
+      }));
+  }, [invitationRows]);
 
   const acceptedEntries = useMemo<DisplayEntry[]>(() => {
-    const fromStore = allEntries
+    const fromServer = memberRows
       .filter(
-        (e) => e.brandId === brandIdResolved && e.status === "accepted",
+        (row) =>
+          row.accepted_at !== null &&
+          row.removed_at === null &&
+          // Hide the self-row coming from the server; it is rendered via the
+          // synthesized row below to match the existing "You" affordance.
+          row.user_id !== userId,
       )
       .sort((a, b) => {
-        const aT = a.acceptedAt !== null ? new Date(a.acceptedAt).getTime() : 0;
-        const bT = b.acceptedAt !== null ? new Date(b.acceptedAt).getTime() : 0;
+        const aT = a.accepted_at !== null
+          ? new Date(a.accepted_at).getTime()
+          : 0;
+        const bT = b.accepted_at !== null
+          ? new Date(b.accepted_at).getTime()
+          : 0;
         return bT - aT;
       })
-      .map<DisplayEntry>((e) => ({
-        id: e.id,
-        name: e.inviteeName,
-        email: e.inviteeEmail,
-        role: e.role,
+      .map<DisplayEntry>((row) => ({
+        id: row.id,
+        name: row.user_id,
+        email: row.user_id,
+        role: row.role,
         status: "accepted",
-        timestampIso: e.acceptedAt ?? e.invitedAt,
-        storeEntry: e,
+        timestampIso: row.accepted_at ?? row.invited_at,
+        storeEntry: memberRowToEntry(row),
       }));
     // Synthesize self-row at top — solo operator falls back here.
     const selfRow: DisplayEntry | null =
@@ -155,8 +170,8 @@ export default function BrandTeamRoute(): React.ReactElement {
             storeEntry: null,
           }
         : null;
-    return selfRow !== null ? [selfRow, ...fromStore] : fromStore;
-  }, [allEntries, brandIdResolved, currentRole, user, userId]);
+    return selfRow !== null ? [selfRow, ...fromServer] : fromServer;
+  }, [memberRows, currentRole, user, userId]);
 
   const canInvite = canPerformAction(currentRank, "INVITE_TEAM_MEMBER");
 
@@ -173,9 +188,14 @@ export default function BrandTeamRoute(): React.ReactElement {
     setInviteVisible(true);
   }, [canInvite]);
 
-  const handleInviteSuccess = useCallback((): void => {
-    setInviteVisible(false);
-  }, []);
+  const handleInviteSuccess = useCallback(
+    (_details: { invitationId: string }): void => {
+      setInviteVisible(false);
+      // List is refetched via React Query invalidation triggered by the
+      // useInviteBrandMember mutation onSuccess.
+    },
+    [],
+  );
 
   const handleRowTap = useCallback((entry: DisplayEntry): void => {
     if (entry.status === "self") return; // self-row is informational only
@@ -184,18 +204,24 @@ export default function BrandTeamRoute(): React.ReactElement {
 
   const handleRevoke = useCallback(
     (entry: BrandTeamEntry): void => {
-      revokeInvitation(entry.id);
+      // Fire-and-forget; React Query refetches on success and the row
+      // disappears. The dialog is already optimistically closed.
+      revokeAsync(entry.id).catch(() => {
+        // Toast wiring deferred — error surfaces in next list refetch.
+      });
       setDetailEntry(null);
     },
-    [revokeInvitation],
+    [revokeAsync],
   );
 
   const handleRemove = useCallback(
-    (entry: BrandTeamEntry): void => {
-      removeAcceptedMember(entry.id);
+    (_entry: BrandTeamEntry): void => {
+      // ORCH-1050 ships invite+accept+revoke; member removal lands in a
+      // follow-up ORCH (ORCH-1051 partner identity / team admin removal).
+      // For now this close the sheet without a destructive action.
       setDetailEntry(null);
     },
-    [removeAcceptedMember],
+    [],
   );
 
   if (brandIdResolved === null || brand === null) {
@@ -248,14 +274,6 @@ export default function BrandTeamRoute(): React.ReactElement {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* TRANSITIONAL banner — permanent until B-cycle */}
-        <View style={styles.banner}>
-          <Text style={styles.bannerText}>
-            Testing mode — invitations are stored locally for now. Emails ship
-            in B-cycle.
-          </Text>
-        </View>
-
         {showEmpty ? (
           <View style={styles.emptyHost}>
             <EmptyState
@@ -377,6 +395,39 @@ const SectionList: React.FC<SectionListProps> = ({
     </View>
   );
 };
+
+// ---- Adapters: server rows → BrandTeamEntry shape consumed by MemberDetailSheet
+function invitationRowToEntry(row: BrandInvitationRow): BrandTeamEntry {
+  return {
+    id: row.id,
+    brandId: row.brand_id,
+    inviteeEmail: row.email,
+    inviteeName: row.invitee_name ?? row.email,
+    role: row.role,
+    status: "pending",
+    invitedBy: row.invited_by,
+    invitedAt: new Date(
+      new Date(row.expires_at).getTime() - 7 * 24 * 60 * 60 * 1000,
+    ).toISOString(),
+    acceptedAt: null,
+    removedAt: null,
+  };
+}
+
+function memberRowToEntry(row: BrandTeamMemberRow): BrandTeamEntry {
+  return {
+    id: row.id,
+    brandId: row.brand_id,
+    inviteeEmail: row.user_id,
+    inviteeName: row.user_id,
+    role: row.role,
+    status: "accepted",
+    invitedBy: row.user_id,
+    invitedAt: row.invited_at,
+    acceptedAt: row.accepted_at,
+    removedAt: row.removed_at,
+  };
+}
 
 const styles = StyleSheet.create({
   host: {

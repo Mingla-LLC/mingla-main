@@ -8,6 +8,7 @@ import {
   View,
 } from "react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BaseBottomSheet } from "../ui/BaseBottomSheet";
 import { Icon } from "../ui/Icon";
 import ExpandedCardModal from "../ExpandedCardModal";
@@ -19,6 +20,12 @@ import {
 import { realtimeService } from "../../services/realtimeService";
 import { supabase } from "../../services/supabase";
 import type { ExpandedCardData } from "../../types/expandedCardTypes";
+// ORCH-1054 [matches-expanded-card-parity]: canonical deck-parity mapper.
+// Replaces the pre-1054 bespoke lossy `toExpandedCard` (which forced
+// category:"night_out" + dropped curated/stroll/picnic + place metadata) so the
+// Matches + Plans expanded cards render identically to the deck. Mirrors
+// SwipeableCards.tsx `recommendationToExpanded`.
+import { savedCardToExpandedCardData } from "../utils/savedCardToExpandedCardData";
 
 interface Props {
   sessionId: string;
@@ -62,21 +69,6 @@ function cardTitle(
 ): string {
   const title = cardData?.title;
   return typeof title === "string" && title.trim() ? title : "Untitled card";
-}
-
-function cardImage(
-  cardData: Record<string, unknown> | null | undefined,
-): string | null {
-  if (!cardData) return null;
-  if (typeof cardData.image === "string" && cardData.image.length > 0)
-    return cardData.image;
-  if (Array.isArray(cardData.images)) {
-    const first = cardData.images.find(
-      (url) => typeof url === "string" && url.length > 0,
-    );
-    return typeof first === "string" ? first : null;
-  }
-  return null;
 }
 
 export function useSessionSavedCardsForSheet(sessionId: string | null | undefined): {
@@ -136,88 +128,6 @@ export function useSessionSavedCardsForSheet(sessionId: string | null | undefine
   return {
     savedCards: query.data ?? [],
     isLoading: query.isLoading,
-  };
-}
-
-function toExpandedCard(
-  cardData: Record<string, unknown> | null | undefined,
-): ExpandedCardData | null {
-  if (!cardData) return null;
-  const title = cardTitle(cardData);
-  const image = cardImage(cardData) ?? "";
-  return {
-    id: String(cardData.id ?? cardData.experience_id ?? title),
-    placeId:
-      typeof cardData.placeId === "string" ? cardData.placeId : undefined,
-    title,
-    category:
-      typeof cardData.category === "string" ? cardData.category : "night_out",
-    categoryIcon:
-      typeof cardData.categoryIcon === "string"
-        ? cardData.categoryIcon
-        : "location-outline",
-    description:
-      typeof cardData.description === "string" ? cardData.description : "",
-    fullDescription:
-      typeof cardData.fullDescription === "string"
-        ? cardData.fullDescription
-        : typeof cardData.description === "string"
-          ? cardData.description
-          : "",
-    image,
-    images: Array.isArray(cardData.images)
-      ? (cardData.images.filter((url) => typeof url === "string") as string[])
-      : image
-        ? [image]
-        : [],
-    rating: typeof cardData.rating === "number" ? cardData.rating : 0,
-    reviewCount:
-      typeof cardData.reviewCount === "number" ? cardData.reviewCount : 0,
-    priceRange:
-      typeof cardData.priceRange === "string" ? cardData.priceRange : undefined,
-    distance: typeof cardData.distance === "string" ? cardData.distance : null,
-    travelTime:
-      typeof cardData.travelTime === "string" ? cardData.travelTime : null,
-    address: typeof cardData.address === "string" ? cardData.address : "",
-    highlights: Array.isArray(cardData.highlights)
-      ? (cardData.highlights.filter((v) => typeof v === "string") as string[])
-      : [],
-    tags: Array.isArray(cardData.tags)
-      ? (cardData.tags.filter((v) => typeof v === "string") as string[])
-      : [],
-    matchScore:
-      typeof cardData.matchScore === "number" ? cardData.matchScore : 0,
-    matchFactors:
-      (cardData.matchFactors as ExpandedCardData["matchFactors"]) ?? {
-        location: 0,
-        budget: 0,
-        category: 0,
-        time: 0,
-        popularity: 0,
-      },
-    socialStats: (cardData.socialStats as ExpandedCardData["socialStats"]) ?? {
-      views: 0,
-      likes: 0,
-      saves: 0,
-      shares: 0,
-    },
-    location: cardData.location as ExpandedCardData["location"],
-    cardType: cardData.cardType === "curated" ? "curated" : undefined,
-    stops: cardData.stops as ExpandedCardData["stops"],
-    tagline:
-      typeof cardData.tagline === "string" ? cardData.tagline : undefined,
-    totalPriceMin:
-      typeof cardData.totalPriceMin === "number"
-        ? cardData.totalPriceMin
-        : undefined,
-    totalPriceMax:
-      typeof cardData.totalPriceMax === "number"
-        ? cardData.totalPriceMax
-        : undefined,
-    estimatedDurationMinutes:
-      typeof cardData.estimatedDurationMinutes === "number"
-        ? cardData.estimatedDurationMinutes
-        : undefined,
   };
 }
 
@@ -363,7 +273,9 @@ export function ScheduleSheet({ visible, onClose, sessionId }: SheetProps) {
             <TouchableOpacity
               key={item.savedCardId}
               style={styles.scheduleRow}
-              onPress={() => setExpandedCard(toExpandedCard(item.cardData))}
+              onPress={() =>
+                setExpandedCard(savedCardToExpandedCardData(item.cardData))
+              }
               accessibilityRole="button"
               accessibilityLabel={`Open ${cardTitle(item.cardData)} scheduled for ${formatScheduledAt(item.scheduledAt)}`}
             >
@@ -419,9 +331,24 @@ export function SavedToSessionCardsSheet({
   const [expandedCard, setExpandedCard] = useState<ExpandedCardData | null>(
     null,
   );
+  // ORCH-1049 [collab Matches sheet bottom bleed]: the Matches sheet renders
+  // CompactCollabBottomSheet in scrollMode="view", whose body is a consumer-owned
+  // flexed BottomSheetView — the BaseBottomSheet primitive only injects its
+  // bottom safe-area inset on scroll/list/sticky-footer bodies, NOT on view-mode
+  // bodies (by design; view bodies are consumer-composed). Without an inset here
+  // the SwipeableSessionCards deck (flex:1, alignItems:"stretch") stretches its
+  // cards to the very bottom of the sheet, bleeding under the iOS home indicator
+  // and the Android nav/gesture area at the taller snap point. We reserve the
+  // safe-area inset on savedCardsBody so the inset REDUCES the deck's effective
+  // height (paddingBottom on the flex parent), keeping the cards flush ABOVE the
+  // safe area at BOTH snap points on iOS + Android. Mirrors the primitive's
+  // policy: Math.max(insets.bottom, 16) clears the home indicator on iOS and
+  // gives a sensible floor on Android.
+  const insets = useSafeAreaInsets();
+  const savedCardsBottomInset = Math.max(insets.bottom, 16);
 
   const openExpandedCardModal = useCallback((card: SavedSessionCard) => {
-    const expanded = toExpandedCard(
+    const expanded = savedCardToExpandedCardData(
       card.card_data || card.experience_data || null,
     );
     if (expanded) setExpandedCard(expanded);
@@ -436,7 +363,12 @@ export function SavedToSessionCardsSheet({
         closeAccessibilityLabel="Close matches"
         snapPoints={MATCHES_SHEET_SNAP_POINTS}
       >
-        <View style={styles.savedCardsBody}>
+        <View
+          style={[
+            styles.savedCardsBody,
+            { paddingBottom: savedCardsBottomInset },
+          ]}
+        >
           <SwipeableSessionCards
             cards={savedCards}
             sessionId={sessionId}

@@ -55,6 +55,7 @@ import { initializeAppsFlyer } from "../src/services/appsFlyerService";
 import { mixpanelService } from "../src/services/mixpanelService";
 import { revenueCatService } from "../src/services/revenueCatService";
 import { initializeOneSignal } from "../src/services/oneSignalService";
+import { verifyStripeModeAlignment } from "../src/services/stripeModeHandshake";
 
 // J-X3 — Sentry init (DEC-098 D-16-2). Guarded by env-absent so dev/build
 // without DSN is a no-op, not a runtime error. EXIT condition: operator
@@ -145,6 +146,30 @@ function RootLayoutInner(): React.ReactElement {
     }, remaining);
     return () => clearTimeout(timer);
   }, [loading, brandReady, splashHidden]);
+
+  // ORCH-1056 — Stripe mode boot handshake. Verifies the bundled Stripe
+  // publishable key prefix matches the Supabase backend's MINGLA_STRIPE_MODE.
+  // Mismatch (e.g. pk_live_ on Vercel + rk_test_ on Supabase) silently
+  // collapses the Stripe Connect embedded iframe; rather than letting users
+  // hit that, we surface the mismatch as a fatal boundary error at boot.
+  // Soft-warns (returns null) on transport failure so offline boot still
+  // works. See src/services/stripeModeHandshake.ts.
+  const [stripeModeError, setStripeModeError] = useState<Error | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void verifyStripeModeAlignment().catch((err) => {
+      if (cancelled) return;
+      setStripeModeError(err instanceof Error ? err : new Error(String(err)));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  if (stripeModeError) {
+    // Re-throw during render so the surrounding ErrorBoundary catches it
+    // and Sentry captures the mismatch context.
+    throw stripeModeError;
+  }
 
   // ORCH-0808 — optional install/analytics SDK init runs after first paint.
   // Auth identity binding + first-event fire happen in AuthContext on

@@ -245,13 +245,16 @@ export function UserManagementPage() {
   const fetchUserDetail = useCallback(async (userId) => {
     setDetailLoading(true);
     try {
-      const [profileRes, prefsRes, friendsRes, activityRes, sessionsRes, participationsRes] = await Promise.all([
+      const [profileRes, prefsRes, friendsRes, activityRes, sessionsRes, participationsRes, creatorAccountRes] = await Promise.all([
         supabase.from("profiles").select("*").eq("id", userId).single(),
         supabase.from("preferences").select("*").eq("profile_id", userId).maybeSingle(),
         supabase.from("friends").select("*, friend:profiles!friends_friend_user_id_fkey(display_name, email, avatar_url)").eq("user_id", userId).eq("status", "accepted"),
         supabase.from("user_activity").select("*").eq("user_id", userId).order("created_at", { ascending: false }).limit(20),
         supabase.from("user_sessions").select("*").eq("user_id", userId).order("started_at", { ascending: false }).limit(10),
         supabase.from("session_participants").select("*, session:collaboration_sessions(name, status, session_type, board_id)").eq("user_id", userId).limit(20),
+        // ORCH-1052: read partner_enabled / partner_country so the Toggle
+        // Mingla partner button can render the correct label + state.
+        supabase.from("creator_accounts").select("id, partner_enabled, partner_country").eq("id", userId).maybeSingle(),
       ]);
 
       if (profileRes.error) throw profileRes.error;
@@ -263,7 +266,14 @@ export function UserManagementPage() {
         : { data: [] };
 
       if (!mountedRef.current) return;
-      setUserDetail(profileRes.data);
+      // ORCH-1052: merge creator_accounts.partner_enabled / partner_country
+      // onto the profile detail so the partner toggle reads consistently.
+      const ca = creatorAccountRes?.data ?? null;
+      setUserDetail({
+        ...profileRes.data,
+        partner_enabled: ca?.partner_enabled === true,
+        partner_country: ca?.partner_country ?? null,
+      });
       setUserPrefs(prefsRes.data);
       setUserFriends(friendsRes.data || []);
       setUserBoards(boardsRes.data || []);
@@ -624,6 +634,42 @@ export function UserManagementPage() {
       if (mountedRef.current) setBulkActioning(false);
     }
   }, [selectedIds, addToast, fetchUsers, fetchStats]);
+
+  // ORCH-1052: admin-only toggle for creator_accounts.partner_enabled. Calls
+  // the SECURITY DEFINER admin_toggle_partner RPC which self-checks the
+  // profiles.account_type='admin' gate against auth.uid() and writes an
+  // audit_log row. Re-reads userDetail on success so the UI reflects the new
+  // partner_enabled state.
+  const [partnerTogglingIds, setPartnerTogglingIds] = useState(new Set());
+  const handlePartnerToggle = useCallback(async (userId, currentValue) => {
+    const newValue = !currentValue;
+    setPartnerTogglingIds(prev => { const next = new Set(prev); next.add(userId); return next; });
+    try {
+      const { error } = await supabase.rpc("admin_toggle_partner", {
+        p_account_id: userId,
+        p_enabled: newValue,
+      });
+      if (error) throw error;
+      logAdminAction("user.partner_toggle", "user", userId, { partner_enabled: newValue });
+      if (userDetail?.id === userId) {
+        // Re-read so the detail card reflects the new state.
+        fetchUserDetail(userId);
+      }
+      addToast({
+        variant: "success",
+        title: newValue ? "Marked as Mingla partner" : "Unmarked Mingla partner",
+        description: newValue
+          ? "User can now connect partner Stripe to receive partner earnings."
+          : "User is no longer a partner.",
+      });
+    } catch (err) {
+      addToast({ variant: "error", title: "Partner toggle failed", description: err.message });
+    } finally {
+      if (mountedRef.current) {
+        setPartnerTogglingIds(prev => { const next = new Set(prev); next.delete(userId); return next; });
+      }
+    }
+  }, [addToast, fetchUserDetail, userDetail]);
 
   const handleBetaToggle = useCallback(async (userId, currentValue) => {
     const newValue = !currentValue;
@@ -1123,6 +1169,18 @@ export function UserManagementPage() {
                 Edit
               </Button>
             )}
+            {/* ORCH-1052: Toggle Mingla partner. Reads creator_accounts.partner_enabled,
+                falls back to false when the user has no creator_accounts row. */}
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={partnerTogglingIds.has(userDetail.id)}
+              onClick={() => handlePartnerToggle(userDetail.id, userDetail.partner_enabled === true)}
+            >
+              {userDetail.partner_enabled === true
+                ? "Unmark Mingla partner"
+                : "Toggle Mingla partner"}
+            </Button>
             {isBanned ? (
               <Button variant="secondary" size="sm" icon={UserCheck} loading={banningId === userDetail.id} onClick={() => handleUnban(userDetail.id)}>
                 Unban

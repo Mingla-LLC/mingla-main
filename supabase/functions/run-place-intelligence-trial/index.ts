@@ -772,6 +772,20 @@ const SAMPLE_SIZE_DEFAULT = 200;
 const SAMPLE_SIZE_MIN = 50;
 const SAMPLE_SIZE_MAX = 500;
 
+// ─────────────────────────────────────────────────────────────────────────
+// ORCH-1032: concurrency ceiling. MUST stay in sync with the cron LIMIT in
+// supabase/migrations/20260811000000_orch_1032_queued_status_and_cap.sql
+// (function tg_kick_pending_trial_runs, "free_slots := 4 - running_count" and
+// "LIMIT 4"). If you change one, change the other in the SAME PR. Default 4
+// leaves one slot of headroom under the ~5-chain Edge compute pool (ORCH-1032
+// investigation §4: intermittent worker-546s observed at 5 concurrent).
+// Regression test SC-2 / T-14 asserts both literals match.
+const MAX_CONCURRENT_RUNS = 4;
+
+// ORCH-1032 RC-2: chunked enqueue batch size. One .upsert per batch keeps the
+// start_run isolate memory bounded for 10k+ -city enqueues.
+const BATCH_INSERT_SIZE = 1000;
+
 async function handlePreviewRun(
   db: SupabaseClient,
   body: Record<string, unknown>,
@@ -1255,9 +1269,23 @@ async function handleStartRun(
 
   const estMinutes = Math.ceil(effectiveCount * 30 / 60); // 30s per place wallclock estimate
 
+  // ── ORCH-1032 S-3: concurrency gate ───────────────────────────────────────
+  // Count runs currently consuming an Edge compute slot. ONLY 'running' counts —
+  // queued runs hold no slot; cancelling runs are finishing and will free a slot
+  // shortly but are transient, and the per-city unique index already prevents a
+  // city from queueing behind its own cancel, so we count strictly 'running'
+  // (matches the investigation contract).
+  const { count: runningCount, error: countErr } = await db
+    .from("place_intelligence_runs")
+    .select("id", { count: "exact", head: true })
+    .eq("status", "running");
+  if (countErr) return json({ error: countErr.message }, 500);
+
+  const atCapacity = (runningCount ?? 0) >= MAX_CONCURRENT_RUNS;
+
   // ORCH-0737: insert parent row FIRST so child FK can reference it.
-  // Unique partial index on (city_id) WHERE status IN ('pending','running','cancelling')
-  // returns 23505 if a run is already active for this city.
+  // Unique partial index on (city_id) WHERE status IN ('pending','queued','running','cancelling')
+  // returns 23505 if a run is already active (or queued) for this city.
   const runId = crypto.randomUUID();
   const { error: parentInsertErr } = await db
     .from("place_intelligence_runs")
@@ -1273,8 +1301,11 @@ async function handleStartRun(
       prompt_version: PROMPT_VERSION,
       model: GEMINI_MODEL_NAME_SHORT,
       started_by: adminId,
-      status: "running",
-      started_at: new Date().toISOString(),
+      // ORCH-1032 S-3: at capacity → park as queued (no slot, no kick). The cron
+      // tg_kick_pending_trial_runs promotes oldest queued → running when a slot
+      // frees. Below capacity → behave exactly as before.
+      status: atCapacity ? "queued" : "running",
+      started_at: atCapacity ? null : new Date().toISOString(),
     });
 
   if (parentInsertErr) {
@@ -1311,11 +1342,29 @@ async function handleStartRun(
     model: GEMINI_MODEL_NAME_SHORT,
     retry_count: 0,
   }));
-  const { error: insertErr } = await db
-    .from("place_intelligence_trial_runs")
-    .upsert(pendingRows, { onConflict: "run_id,place_pool_id" });
+  // ── ORCH-1032 S-5: chunked enqueue ────────────────────────────────────────
+  // RC-2: a single .upsert of up to ~10,706 objects (London) is the most
+  // memory-hungry call in the pipeline and independently 546-prone. Insert in
+  // fixed BATCH_INSERT_SIZE chunks so the start_run isolate stays bounded
+  // (~1000 small rows per request). onConflict preserved for idempotent
+  // re-runs. Rollback-on-failure preserved: any failed batch fails the whole
+  // start_run and marks the parent 'failed' (children already inserted are
+  // harmless orphans the worker never picks up because the parent is terminal).
+  // Runs for both branches — a queued run needs its child rows pre-inserted so
+  // promotion has work to do.
+  let insertErr: { message: string } | null = null;
+  for (let i = 0; i < pendingRows.length; i += BATCH_INSERT_SIZE) {
+    const batch = pendingRows.slice(i, i + BATCH_INSERT_SIZE);
+    const { error: batchErr } = await db
+      .from("place_intelligence_trial_runs")
+      .upsert(batch, { onConflict: "run_id,place_pool_id" });
+    if (batchErr) {
+      insertErr = batchErr;
+      break;
+    }
+  }
   if (insertErr) {
-    // Roll back parent row to keep DB consistent
+    // Roll back parent row to keep DB consistent (identical to pre-ORCH-1032).
     await db.from("place_intelligence_runs")
       .update({
         status: "failed",
@@ -1330,7 +1379,12 @@ async function handleStartRun(
   // (don't wait for next pg_cron tick which could be up to 60s away).
   // Sample mode skips this; browser drives the loop.
   // ORCH-1008: remainder mode is server-side durable like full_city — same kick.
-  if ((mode === "full_city" || mode === "remainder") && serviceKey) {
+  // ORCH-1032 S-3: only kick immediately when we actually started 'running'. A
+  // queued run is NOT kicked here — tg_kick_pending_trial_runs promotes + kicks
+  // it when a slot frees. (sample mode never kicked; browser drives it.)
+  if (
+    !atCapacity && (mode === "full_city" || mode === "remainder") && serviceKey
+  ) {
     try {
       const workerUrl = `${
         Deno.env.get("SUPABASE_URL") ?? ""
@@ -1354,6 +1408,12 @@ async function handleStartRun(
     }
   }
 
+  // ORCH-1032 S-3: how many runs are ahead of this one in line. Best-effort UI
+  // sugar only — never throws, never blocks the 200. Given the per-city unique
+  // index limits queued depth, queued-ahead is usually 0, so we report the
+  // running count (the runs that must finish to free a slot) when at capacity.
+  const aheadCount = atCapacity ? (runningCount ?? 0) : 0;
+
   return json({
     runId,
     cityId: city.id,
@@ -1366,6 +1426,11 @@ async function handleStartRun(
     estimatedMinutes: estMinutes, // ORCH-0737 NEW
     provider: "gemini",
     model: GEMINI_MODEL_NAME_SHORT,
+    // ORCH-1032 S-3: queued state for the admin control tower + start modal.
+    status: atCapacity ? "queued" : "running",
+    queued: atCapacity,
+    aheadCount, // runs ahead in line (0 when not queued)
+    maxConcurrentRuns: MAX_CONCURRENT_RUNS,
     // Browser-loop compat: only return anchors for sample mode (since browser
     // still drives sample loop). Full-city + remainder modes return empty
     // array — browser becomes status viewer via polling.
@@ -2868,7 +2933,8 @@ async function handleListActiveRuns(db: SupabaseClient): Promise<Response> {
   const { data, error } = await db
     .from("place_intelligence_runs")
     .select("*")
-    .in("status", ["pending", "running", "cancelling"])
+    // ORCH-1032: include 'queued' so the control tower shows parked runs.
+    .in("status", ["pending", "queued", "running", "cancelling"])
     .order("created_at", { ascending: false });
   if (error) return json({ error: error.message }, 500);
   return json({ runs: data || [] });

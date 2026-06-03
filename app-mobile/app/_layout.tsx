@@ -10,12 +10,14 @@ import '../src/i18n'  // Must be first — initializes i18next before any compon
 // Originally tracked as DISC-QA-0892-A-RETEST-2-2 from ORCH-0892-A close.
 // See app-mobile/src/diagnostics/silenceStripeForwardRef.ts for full rationale.
 import '../src/diagnostics/silenceStripeForwardRef'
+import React, { useEffect, useState } from "react";
 import { Stack } from "expo-router";
 import { useFonts } from "expo-font";
 import * as Sentry from '@sentry/react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StripeNativeProvider } from "@mingla/payments-native";
 import { MINGLA_THEME_FONTS } from "../src/theme/themeFonts";
+import { verifyStripeModeAlignment } from "../src/services/stripeModeHandshake";
 
 // ORCH-0679 Wave 2B-2: SINGLE source of truth for Sentry init.
 // I-SENTRY-SINGLE-INIT — duplicate Sentry.init in app/index.tsx was deleted as
@@ -57,6 +59,25 @@ Sentry.init({
 
 export default Sentry.wrap(function RootLayout() {
   useFonts(MINGLA_THEME_FONTS);
+
+  // ORCH-1056 — Stripe mode boot handshake. Verifies bundled pk prefix
+  // matches the Supabase backend's MINGLA_STRIPE_MODE. Mismatch silently
+  // breaks PaymentSheet; throwing at render lets Sentry capture the
+  // misconfiguration before users hit a checkout dead-end.
+  const [stripeModeError, setStripeModeError] = useState<Error | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void verifyStripeModeAlignment().catch((err) => {
+      if (cancelled) return;
+      setStripeModeError(err instanceof Error ? err : new Error(String(err)));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  if (stripeModeError) {
+    throw stripeModeError;
+  }
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>

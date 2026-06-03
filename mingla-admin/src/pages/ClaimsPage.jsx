@@ -68,6 +68,10 @@ export function ClaimsPage() {
   const [tweakCategory, setTweakCategory] = useState("");
   const [tweakPriceLevel, setTweakPriceLevel] = useState("");
   // Score override draft per signal: { [signalId]: { score, reason } }.
+  // META-ORCH-1062 BIDIRECTIONAL override (Q2: admins may raise OR lower) — this
+  // SUPERSEDES the #299 WS7 reduce-only `vetoes` state, which was removed in the
+  // merge. admin-review-venue-claim still accepts score_vetoes for backward-compat,
+  // but approve no longer depends on it (go-live is the Phase 4 servable→scorer path).
   const [scoreDraft, setScoreDraft] = useState({});
 
   const duplicateGroups = useMemo(
@@ -767,6 +771,82 @@ export function ClaimsPage() {
                   )}
                 </div>
               ) : null}
+
+              {/*
+                META-ORCH-1009 Sub-F WS7 recommendation profile (PRESERVED in the
+                #299 merge): AI pitch + operator answers (facets) + AI consistency
+                check from business_authoring_inputs. The simple WS7 photo gallery
+                and the WS7 reduce-only signal-score veto editor were REMOVED here
+                — the canonical gallery is the PhotoLightbox grid above, and score
+                editing is the META-ORCH-1062 bidirectional override above. Approve
+                no longer depends on score_vetoes (the go-live path is now the
+                Phase 4 servable-flip → scorer, not WS7 vetoes); admin-review-
+                venue-claim still ACCEPTS score_vetoes for backward-compat.
+              */}
+              {(() => {
+                const recoPp = detail.place_pool ?? bundle?.place_pool ?? {};
+                const inputs = recoPp.business_authoring_inputs ?? {};
+                const consistency = inputs.consistency ?? null;
+                const facets =
+                  inputs.confirmed_ai_outputs?.facets ?? inputs.tier2?.facets ?? {};
+                return (
+                  <div className="mt-2 border-t border-[var(--color-border)] pt-4 space-y-4">
+                    <div className="text-[var(--color-text-primary)] font-semibold">
+                      Recommendation profile
+                    </div>
+                    <div className="text-xs text-[var(--color-text-tertiary)]">
+                      {recoPp.business_recommend_edit_count ?? 0} recommend run(s) ·{" "}
+                      {recoPp.website ? (
+                        <a href={recoPp.website} target="_blank" rel="noreferrer" className="text-[var(--color-brand-400)] underline">
+                          website
+                        </a>
+                      ) : "no website"}
+                    </div>
+
+                    {recoPp.generative_summary ? (
+                      <div>
+                        <div className="text-[var(--color-text-tertiary)] mb-1">AI pitch</div>
+                        <div className="whitespace-pre-wrap text-sm">{recoPp.generative_summary}</div>
+                      </div>
+                    ) : null}
+
+                    {Object.keys(facets).length > 0 ? (
+                      <div>
+                        <div className="text-[var(--color-text-tertiary)] mb-1">Operator answers</div>
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                          {Object.entries(facets).map(([k, v]) => (
+                            <span key={k}>
+                              {k.replace(/_/g, " ")}: <b>{v === true ? "Yes" : v === false ? "No" : "—"}</b>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {consistency ? (
+                      <div>
+                        <div className="text-[var(--color-text-tertiary)] mb-1">
+                          AI consistency check
+                        </div>
+                        <div className="text-sm">
+                          <b>{consistency.verdict ?? "—"}</b>
+                          {consistency.confidence_0_to_100 != null
+                            ? ` (${consistency.confidence_0_to_100}%)`
+                            : ""}
+                          {consistency.summary ? ` — ${consistency.summary}` : ""}
+                        </div>
+                        {Array.isArray(consistency.flags) && consistency.flags.length > 0 ? (
+                          <ul className="list-disc ml-5 text-xs text-amber-200/90 mt-1">
+                            {consistency.flags.map((f, i) => (
+                              <li key={i}>{String(f)}</li>
+                            ))}
+                          </ul>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })()}
             </div>
           )}
         </ModalBody>

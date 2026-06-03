@@ -1,5 +1,10 @@
 import React from 'react';
-import { View, Text, Image, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+// ORCH-1042: curated stop photos render via expo-image (NOT react-native <Image>)
+// so each stop gets a placeholder + fade transition + memory-disk cache +
+// recyclingKey + an onError fallback (this path previously had NO fallback at all
+// and would show a permanent dark `#2C2C2E` panel on a slow/failed stop image).
+import { Image as ExpoImage } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
@@ -8,6 +13,42 @@ import { Icon } from './ui/Icon';
 import { GlassBadge } from './ui/GlassBadge';
 import type { CuratedExperienceCard } from '../types/curatedExperience';
 import { parseAndFormatDistance, formatCurrency } from './utils/formatters';
+// ORCH-1042: reuse the SAME hard-failure fallback URL + placeholder blurhash as the
+// single-place deck hero (one source of truth — do not duplicate the literals).
+import { CARD_FALLBACK_IMAGE, DECK_HERO_PLACEHOLDER_BLURHASH } from './SwipeableCards';
+
+// ORCH-1042: fade-in within the spec's 180–300 ms band (mirrors SwipeableCards).
+const CURATED_STOP_TRANSITION_MS = 220;
+
+/**
+ * Curated multi-stop hero image with placeholder + fade + onError fallback.
+ *
+ * ORCH-1042: a curated stop whose `imageUrl` is slow or hard-fails used to show a
+ * permanent dark `#2C2C2E` panel (no placeholder, no onError). Now it renders via
+ * expo-image with the same prop contract as the single-place CardHeroImage and
+ * swaps to CARD_FALLBACK_IMAGE on a hard failure.
+ */
+function CuratedStopImage({ uri }: { uri: string }) {
+  const [src, setSrc] = React.useState(uri);
+  React.useEffect(() => {
+    setSrc(uri);
+  }, [uri]);
+  return (
+    <ExpoImage
+      source={{ uri: src }}
+      style={styles.stopImage}
+      contentFit="cover"
+      cachePolicy="memory-disk"
+      recyclingKey={src}
+      transition={CURATED_STOP_TRANSITION_MS}
+      placeholder={{ blurhash: DECK_HERO_PLACEHOLDER_BLURHASH }}
+      placeholderContentFit="cover"
+      onError={() => {
+        if (src !== CARD_FALLBACK_IMAGE) setSrc(CARD_FALLBACK_IMAGE);
+      }}
+    />
+  );
+}
 
 const CURATED_ICON_MAP: Record<string, string> = {
   'Adventurous':   'compass-outline',
@@ -99,11 +140,7 @@ export function CuratedExperienceSwipeCard({ card, onSeePlan, travelMode, measur
           {visibleStops.map((stop, idx) => (
             <View key={`${stop.placeId}_${idx}`} style={styles.imageWrapper}>
               {stop.imageUrl ? (
-                <Image
-                  source={{ uri: stop.imageUrl }}
-                  style={styles.stopImage}
-                  resizeMode="cover"
-                />
+                <CuratedStopImage uri={stop.imageUrl} />
               ) : (
                 <View style={[styles.stopImage, styles.imagePlaceholder]} />
               )}

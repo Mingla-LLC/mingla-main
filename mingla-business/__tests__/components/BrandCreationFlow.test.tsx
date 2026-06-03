@@ -42,9 +42,10 @@ describe("META-ORCH-0972 Sub-B BrandCreationFlow contract", () => {
     expect(source).toContain(
       'return { ...state, address: action.address, step: 3 };',
     );
-    expect(source).toContain(
-      'onPress={() => updateState({ type: "setAddress", address: null })}',
-    );
+    // META-ORCH-1009 Sub-F WS1: skip now routes through handleSkipAddress, which
+    // still dispatches a null-address setAddress (and clears validated geo meta).
+    expect(source).toContain("onPress={handleSkipAddress}");
+    expect(source).toContain('updateState({ type: "setAddress", address: null });');
   });
 
   test("SC-B-5 welcome offering chooser routes to every creator", () => {
