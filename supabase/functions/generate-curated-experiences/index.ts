@@ -402,74 +402,29 @@ for (const et of EXPERIENCE_TYPES) {
 // COMBO_SLUG_TO_FILTER_SIGNAL, COMBO_SLUG_TYPE_FILTER, and the [CRITICAL —
 // ORCH-0643] warning block also moved to _shared/signalRankFetch.ts.
 
-// Mapping from experience type id → (combo slug → rank signal). When an experience
-// type wants to rank a stop by a "vibe" signal instead of the chip's own signal,
-// declare it here. E.g., Romantic ranks non-flowers stops by the `romantic` signal.
+// ORCH-1062: vibe rank-overrides removed. Every non-nature curated stop now ranks
+// by its OWN filter signal (resolveStopRankSignal / fetchForCombo fall back to
+// COMBO_SLUG_TO_FILTER_SIGNAL[catId] when no override exists). The two NATURE
+// overrides are retained because for an OUTDOOR stop the "vibe" IS the quality
+// signal: 'scenic' surfaces trails/greenways/gardens over playgrounds, and
+// 'picnic_friendly' surfaces tables/shelters/lawns over hiking-heavy preserves.
+// Removing the rest kills crossover leaks (e.g. a brunch café winning a "drinks"
+// slot because it scored high on the generic 'lively' vibe). Do NOT re-add a
+// non-nature override without an operator directive — the own-category score is
+// the honest quality signal for every food/activity/drinks/show slot.
 const EXPERIENCE_RANK_SIGNAL_OVERRIDE: Record<string, Record<string, string>> = {
-  'romantic': {
-    // NOTE: Flowers stop intentionally NOT signal-overridden. card_pool.categories=[flowers]
-    // was manually curated to the correct set of "big-store bouquet sources" (Trader Joe's,
-    // Wegmans, Whole Foods, Harris Teeter) which Google's raw florist type tag misses. The
-    // signal-aware picker would be stricter than needed. Legacy fetchSinglesForCategory
-    // returns the 5 curated big stores — matches user directive "only at the big stores".
-    // Non-Flowers romantic stops get signal-aware ranking by romantic vibe.
-    'creative_arts': 'romantic',
-    'theatre': 'romantic',
-    'upscale_fine_dining': 'romantic',
-  },
-  'first-date': {
-    // All non-Flowers stops rank by `icebreakers` vibe signal — conversation-friendly,
-    // low-pressure, casual. Surfaces bistros/cafés/accessible upscale over intense
-    // candlelit venues. Flowers stop inherits legacy card_pool curated big-store list.
-    'brunch': 'icebreakers',
-    'theatre': 'icebreakers',
-    'movies': 'icebreakers',
-    'play': 'icebreakers',
-    'creative_arts': 'icebreakers',
-    'upscale_fine_dining': 'icebreakers',
-    'drinks_and_music': 'icebreakers',
-  },
-  'group-fun': {
-    // ORCH-0628 — all stops rank by `lively` vibe signal. Surfaces bowling/arcade/
-    // sports-bar energy on Activity stop, group-friendly bistros over candlelit spots
-    // on Food stop, and lively upscale venues (Capital Grille, Sullivan's) over
-    // intimate ones (Second Empire) on Dinner stop.
-    'play': 'lively',
-    'theatre': 'lively',
-    'movies': 'lively',
-    'brunch': 'lively',
-    'creative_arts': 'lively',
-    'casual_food': 'lively',
-    'upscale_fine_dining': 'lively',
-  },
-  'adventurous': {
-    // ORCH-0601 — Activity stops (play, hiking, theatre, creative_arts, museum)
-    // rank by their own chip signal (no override). Food stops rank by `lively` —
-    // after an adventurous outing, surface energetic restaurants over intimate ones.
-    'casual_food': 'lively',
-    'upscale_fine_dining': 'lively',
-  },
-  'take-a-stroll': {
-    // ORCH-0601 — Nature stop ranks by `scenic` (trails/greenways/gardens over
-    // playgrounds). Food stops rank by `icebreakers` — casual conversation-friendly
-    // spots for post-walk dining, not intense candlelit venues.
-    'nature': 'scenic',
-    'brunch': 'icebreakers',
-    'casual_food': 'icebreakers',
-    'upscale_fine_dining': 'icebreakers',
-  },
-  'picnic-dates': {
-    // ORCH-0601 — Picnic Spot ranks by `picnic_friendly` (tables/shelters/lawns
-    // over hiking-heavy preserves). Pullen/Lake Johnson/Shelley > Williamson Preserve.
-    'nature': 'picnic_friendly',
-  },
+  'take-a-stroll': { 'nature': 'scenic' },
+  'picnic-dates': { 'nature': 'picnic_friendly' },
 };
 
 // ORCH-0985: resolve the vibe rank signal a stop is selected/ranked by — the
 // type's EXPERIENCE_RANK_SIGNAL_OVERRIDE entry if present, else the slug's own
 // filter signal. Mirrors the rankSignal computed in fetchForCombo so the value
 // stamped on the stop equals the value the stop was actually ranked by.
-function resolveStopRankSignal(typeId: string, catId: string): string | undefined {
+// ORCH-1062: exported so the override-removal regression test can assert the
+// resolved rank signal directly (own-category fallback for non-nature stops,
+// nature overrides retained). Pure function — no side effects.
+export function resolveStopRankSignal(typeId: string, catId: string): string | undefined {
   return EXPERIENCE_RANK_SIGNAL_OVERRIDE[typeId]?.[catId] ?? COMBO_SLUG_TO_FILTER_SIGNAL[catId];
 }
 
