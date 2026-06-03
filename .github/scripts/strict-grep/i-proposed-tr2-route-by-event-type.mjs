@@ -69,6 +69,11 @@ const HELPER_FILE = join(
 );
 const EVENT_ROUTE_PREFIX = join(REPO_ROOT, "mingla-business", "app", "event") + "/";
 const TRIP_ROUTE_PREFIX = join(REPO_ROOT, "mingla-business", "app", "trip") + "/";
+// META-ORCH-1059 Sub-B: experiences now have a real dashboard + edit route
+// (app/experience/[id]/*). Internal navigation within an already-known-type
+// experience screen is exempt, exactly as event/trip route files are.
+const EXPERIENCE_ROUTE_PREFIX =
+  join(REPO_ROOT, "mingla-business", "app", "experience") + "/";
 
 const ALLOWLIST_TAG = "orch-strict-grep-allow route-by-event-type";
 
@@ -111,6 +116,7 @@ function isCallerExempt(file) {
   if (file === HELPER_FILE) return true;
   if (file.startsWith(EVENT_ROUTE_PREFIX)) return true;
   if (file.startsWith(TRIP_ROUTE_PREFIX)) return true;
+  if (file.startsWith(EXPERIENCE_ROUTE_PREFIX)) return true;
   return false;
 }
 

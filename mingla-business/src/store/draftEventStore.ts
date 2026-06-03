@@ -188,7 +188,12 @@ export type SetPos = 1 | 2 | 3 | 4 | -1;
 
 export type RecurrenceTermination =
   | { kind: "count"; count: number }       // 1..52
-  | { kind: "until"; until: string };      // ISO YYYY-MM-DD; max 1 year from first
+  | { kind: "until"; until: string }       // ISO YYYY-MM-DD; max 1 year from first
+  // META-ORCH-1059 — open-ended recurrence ("Never ends"). Stores no count and
+  // no until; materialises exactly the master (first) occurrence so the
+  // checkout engine always has >=1 future date while the rule carries the
+  // repeat. Experience-only entry point (events still require a bounded end).
+  | { kind: "never" };
 
 export interface RecurrenceRule {
   preset: RecurrencePreset;

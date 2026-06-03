@@ -57,17 +57,35 @@ describe("ORCH-0865 — routeForEventRow matrix", () => {
     ).toBe("/event/e3");
   });
 
-  test("experience (any status) → /experience/coming-soon", () => {
+  // META-ORCH-1059: experiences ALWAYS open the dashboard (`/experience/{id}`),
+  // draft or live — never the edit screen directly. The dashboard owns the
+  // deliberate "Continue editing" / "Edit" action into the wizard.
+  test("experience draft → /experience/{id} (dashboard, NOT edit)", () => {
     expect(
       routeForEventRow({ id: "x1", event_type: "experience", status: "draft" }),
-    ).toBe("/experience/coming-soon");
+    ).toBe("/experience/x1");
+  });
+
+  test("experience scheduled → /experience/{id} (dashboard)", () => {
     expect(
       routeForEventRow({
         id: "x2",
         event_type: "experience",
         status: "scheduled",
       }),
-    ).toBe("/experience/coming-soon");
+    ).toBe("/experience/x2");
+  });
+
+  test("experience live → /experience/{id} (dashboard)", () => {
+    expect(
+      routeForEventRow({ id: "x3", event_type: "experience", status: "live" }),
+    ).toBe("/experience/x3");
+  });
+
+  test("experience ended → /experience/{id} (dashboard)", () => {
+    expect(
+      routeForEventRow({ id: "x4", event_type: "experience", status: "ended" }),
+    ).toBe("/experience/x4");
   });
 });
 
