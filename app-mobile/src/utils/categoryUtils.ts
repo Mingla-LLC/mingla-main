@@ -52,6 +52,9 @@ const VALID_SLUGS = new Set([
   'brunch', 'casual_food',
   'movies', 'theatre',
   'upscale_fine_dining', 'creative_arts', 'play',
+  // ORCH-1062 Part 2: vibe categories (visible — auto-included in
+  // VISIBLE_CATEGORY_SLUGS since none are hidden/legacy).
+  'romantic', 'lively', 'scenic',
   'flowers', 'groceries',
   // [TRANSITIONAL] legacy bundled chips — kept for resolution / pre-OTA persistence.
   // brunch_lunch_casual → remove after 2026-05-12
@@ -275,6 +278,10 @@ export const getCategoryIcon = (categoryKey: string): string => {
     'movies_theatre': 'film-new',
     'creative_arts': 'color-palette-outline',
     'play': 'game-controller-outline',
+    // ORCH-1062 Part 2: vibe-category glyphs — must match PreferencesSheet pills.
+    'romantic': 'heart-pulse',
+    'lively': 'flame',
+    'scenic': 'tree-pine',
     'flowers': 'flower-outline',
     // groceries intentionally omitted — hidden category
   };
