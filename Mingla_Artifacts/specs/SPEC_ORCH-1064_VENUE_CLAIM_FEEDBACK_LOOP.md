@@ -293,7 +293,7 @@ comment on function public.admin_add_venue_claim_feedback(uuid, jsonb, text) is
   'claim_follow_up_at. Returns {round, item_count}.';
 ```
 
-> **Why the RPC sets `claim_follow_up_at` directly instead of calling `biz_review_venue_claim('need_more_info')`:** the existing RPC's only `need_more_info` side-effect IS `claim_follow_up_at = now()` (F-1). Re-invoking it from a SECURITY DEFINER context would double-gate `is_admin_user` (harmless) but adds a nested RPC call for one UPDATE. The edge wrapper (§5.2) calls this RPC; the claim is already `pending_review` (guarded above), so the transition is exactly the timestamp stamp. **Invariant I-1063-FEEDBACK-IMPLIES-FOLLOWUP:** every successful `admin_add_venue_claim_feedback` leaves `claim_follow_up_at` non-null. The push is fired by the edge wrapper (§5.2), NOT the RPC.
+> **Why the RPC sets `claim_follow_up_at` directly instead of calling `biz_review_venue_claim('need_more_info')`:** the existing RPC's only `need_more_info` side-effect IS `claim_follow_up_at = now()` (F-1). Re-invoking it from a SECURITY DEFINER context would double-gate `is_admin_user` (harmless) but adds a nested RPC call for one UPDATE. The edge wrapper (§5.2) calls this RPC; the claim is already `pending_review` (guarded above), so the transition is exactly the timestamp stamp. **Invariant I-1064-FEEDBACK-IMPLIES-FOLLOWUP:** every successful `admin_add_venue_claim_feedback` leaves `claim_follow_up_at` non-null. The push is fired by the edge wrapper (§5.2), NOT the RPC.
 
 #### 4.1.5 RPC `biz_mark_feedback_item_fixed` 🔒 LOCKED
 
@@ -550,9 +550,9 @@ Changes:
 
 ## 8. Invariants
 
-- **I-1063-FEEDBACK-IMPLIES-FOLLOWUP** (NEW): a successful `admin_add_venue_claim_feedback` always leaves `claim_follow_up_at` non-null on the brand. Test: T-BE-1 asserts the stamp post-call.
-- **I-1063-FEEDBACK-OWNER-READ** (NEW): `venue_claim_feedback` is readable only by an admin or the brand owner (`biz_brand_effective_rank_for_caller >= account_owner`); anon and other users get zero rows. Test: T-BE-8.
-- **I-1063-RPC-WRITES-ONLY** (NEW): `venue_claim_feedback` has NO owner INSERT/UPDATE/DELETE policy — all business writes go through the two SECURITY DEFINER RPCs. Test: a direct owner `UPDATE … SET status='fixed'` from the client is denied; the RPC path succeeds.
+- **I-1064-FEEDBACK-IMPLIES-FOLLOWUP** (NEW): a successful `admin_add_venue_claim_feedback` always leaves `claim_follow_up_at` non-null on the brand. Test: T-BE-1 asserts the stamp post-call.
+- **I-1064-FEEDBACK-OWNER-READ** (NEW): `venue_claim_feedback` is readable only by an admin or the brand owner (`biz_brand_effective_rank_for_caller >= account_owner`); anon and other users get zero rows. Test: T-BE-8.
+- **I-1064-RPC-WRITES-ONLY** (NEW): `venue_claim_feedback` has NO owner INSERT/UPDATE/DELETE policy — all business writes go through the two SECURITY DEFINER RPCs. Test: a direct owner `UPDATE … SET status='fixed'` from the client is denied; the RPC path succeeds.
 - **I-ADMIN-WRITE-GATED** (preserved, META-ORCH-1062): every new admin RPC re-asserts `is_admin_user()` server-side. Test: T-BE-2.
 - **I-SCORER-INVOKE-HAS-SIGNAL-ID** (preserved): untouched — this ORCH adds no scorer call.
 - **verify_jwt preserved** on `admin-review-venue-claim`: no dispatch/config change. Test: grep + deploy config unchanged.
@@ -597,7 +597,7 @@ Changes:
 ## 11. Regression prevention
 
 - The revert-proof Step-0.5 tests catch removal of the feedback RPCs/RLS.
-- `I-1063-FEEDBACK-OWNER-READ` + `I-1063-RPC-WRITES-ONLY` encoded as adversarial tests prevent an RLS-loosening regression (the classic "owner can read another brand's feedback" leak).
+- `I-1064-FEEDBACK-OWNER-READ` + `I-1064-RPC-WRITES-ONLY` encoded as adversarial tests prevent an RLS-loosening regression (the classic "owner can read another brand's feedback" leak).
 - Protective comments on the table + RPCs explain the `pending_review + follow_up = need_more_info` modeling so a future dev doesn't add a competing status column.
 - The ORCH-0863 allowlist entry documents WHY the migration is exempt (mirrors VE3 precedent) so C7 stays green and isn't disabled wholesale.
 
