@@ -52,6 +52,13 @@ Sentry.init({
   tracesSampleRate: 0,
   maxBreadcrumbs: 50,
 
+  // ORCH-1064: capture main-thread freezes (app hangs / ANRs) with a stack trace.
+  // The intermittent expanded-sheet freeze leaves no fatal crash, so without this
+  // we get no diagnostics. iOS app-hang fires after the main thread stalls >2s;
+  // the event flushes on recovery or the next launch.
+  enableAppHangTracking: true,
+  appHangTimeoutInterval: 2,
+
   // CRITICAL: Sentry disabled in dev. Preserved from the deleted app/index.tsx
   // init so collection only fires in production builds.
   enabled: !__DEV__,

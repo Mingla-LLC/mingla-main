@@ -553,6 +553,11 @@ export default function SwipeableCards({
   // deck tap (reviewCards is the whole session-swiped list, so it is non-empty
   // after any swipe — it cannot be used alone to detect review mode).
   const [isReviewMode, setIsReviewMode] = useState(false);
+  // ORCH-1064: timestamp of the last expanded-card close. Used to block a
+  // re-open within ~500ms so the wrapInRNModal RN <Modal> is never re-presented
+  // while the prior dismissal is still in flight on iOS (the intermittent
+  // release-build present-during-dismiss freeze on rapid open/close).
+  const lastModalCloseAtRef = useRef(0);
 
   const previousBatchRefreshKeyRef = useRef<number | string | undefined>(
     refreshKey
@@ -1502,6 +1507,9 @@ export default function SwipeableCards({
 
   const handleCardExpand = async () => {
     if (!currentRec) return;
+    // ORCH-1064: re-open guard — ignore an open within 500ms of the last close so
+    // the modal can't be re-presented mid-dismiss (intermittent freeze).
+    if (Date.now() - lastModalCloseAtRef.current < 500) return;
     setIsReviewMode(false); // ORCH-1064: normal deck tap — no review chrome
     setIsExpandedModalVisible(true);
 
@@ -1581,6 +1589,7 @@ export default function SwipeableCards({
     setIsExpandedModalVisible(false);
     setSelectedCardForExpansion(null);
     setIsReviewMode(false); // ORCH-1064: reset review mode on close
+    lastModalCloseAtRef.current = Date.now(); // ORCH-1064: re-open guard window
   };
 
   const handleSwipe = async (
