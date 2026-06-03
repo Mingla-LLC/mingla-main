@@ -1332,6 +1332,20 @@ function checkNoNewBackendFiles() {
   const ORCH_1040_BACKEND_ALLOWLIST = [
     "supabase/migrations/20260814000000_orch_1040_brand_has_physical_location.sql",
   ];
+  // ORCH-1061 [Curated stop variety + quality blend + solo hours gate].
+  // C7 is scoped to ORCH-0863 marketing; these backend touches are ORCH-1061
+  // scope: the extracted shared curated-hours module + its tests + the curated
+  // generator's new blend/rotation tests. (No migration — pure edge-fn logic.)
+  // The two MODIFIED index.ts (generate-curated-experiences, discover-cards) are
+  // not new files, so C7 (no-new-backend-files) does not fire on them.
+  // Per COMMS-0002.
+  const ORCH_1061_BACKEND_ALLOWLIST = [
+    "supabase/functions/_shared/curatedStopHours.ts",
+    "supabase/functions/_shared/__tests__/curatedStopHours.test.ts",
+    "supabase/functions/_shared/__tests__/curatedStopHours.adversarial.test.ts",
+    "supabase/functions/generate-curated-experiences/__tests__/orch_1061_blend_and_rotation.test.ts",
+    "supabase/functions/generate-curated-experiences/__tests__/orch_1061_blend_rotation.adversarial.test.ts",
+  ];
   // ORCH-1032 [Intelligence pipeline concurrency cap + chunked enqueue]:
   // adds the additive 'queued'-status migration (status CHECK widen + per-city
   // unique active index widen + tg_kick_pending_trial_runs promotion built on
@@ -1498,6 +1512,7 @@ function checkNoNewBackendFiles() {
     ...META_ORCH_1009_SUB_E_BACKEND_ALLOWLIST,
     ...ORCH_1030_BACKEND_ALLOWLIST,
     ...ORCH_1040_BACKEND_ALLOWLIST,
+    ...ORCH_1061_BACKEND_ALLOWLIST,
   ];
   const forbidden = changed.filter(
     (p) =>
