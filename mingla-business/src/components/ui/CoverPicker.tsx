@@ -100,6 +100,7 @@ import type { EventCoverMediaType } from "../../store/draftEventStore";
 import { useBrandCoverUpload } from "../../hooks/useBrandCoverUpload";
 import { BrandCoverError } from "../../utils/brandCoverRules";
 import { Button } from "./Button";
+import { findSelectedProviderId } from "./coverPickerSelection";
 import { Icon } from "./Icon";
 import { EventCoverMedia, type EventCoverMediaErrorEvent } from "./EventCoverMedia";
 import { useAuth } from "../../context/AuthContext";
@@ -797,6 +798,23 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   const columns = isWideDesktop ? 3 : 2;
   const hasCover = localCover.coverMediaUrl !== null;
 
+  // META-ORCH-1059: which GIF / Pexels tile is the currently-applied cover.
+  // Matched by the APPLIED media URL (result.mediaUrl), not the preview URL —
+  // tapping a tile calls emitChange with result.mediaUrl, so localCover holds
+  // that exact URL. Exactly one id can match at a time across all tabs.
+  const selectedGiphyId = findSelectedProviderId(
+    localCover.coverMediaUrl,
+    localCover.coverMediaProvider,
+    "giphy",
+    giphyResults,
+  );
+  const selectedPexelsId = findSelectedProviderId(
+    localCover.coverMediaUrl,
+    localCover.coverMediaProvider,
+    "pexels",
+    pexelsResults,
+  );
+
   return (
     <View style={styles.root}>
       {/* Tab bar — segmented control (DESIGN §3). */}
@@ -900,6 +918,8 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
           columns={columns}
           giphy={giphyResults}
           pexels={[]}
+          selectedGiphyId={selectedGiphyId}
+          selectedPexelsId={null}
           onSelectGiphy={(r) => {
             void selectGiphy(r);
           }}
@@ -921,6 +941,8 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
           columns={columns}
           giphy={[]}
           pexels={pexelsResults}
+          selectedGiphyId={null}
+          selectedPexelsId={selectedPexelsId}
           onSelectGiphy={() => {}}
           onSelectPexels={(r) => {
             void selectPexels(r);
@@ -983,7 +1005,7 @@ const LibraryTab: React.FC<{
   mediaDisplayError,
 }) => (
   <View>
-    <View style={styles.coverPreview}>
+    <View style={[styles.coverPreview, hasCover && !activeVideoUpload && styles.coverPreviewSelected]}>
       <EventCoverMedia
         hue={hue}
         mediaUrl={activeMediaUrl}
@@ -1004,6 +1026,13 @@ const LibraryTab: React.FC<{
           </View>
         ) : null}
       </EventCoverMedia>
+      {/* META-ORCH-1059: a check badge on the live preview signals the current
+          cover is applied (parity with the GIF/Stock tile selected state). */}
+      {hasCover && !activeVideoUpload ? (
+        <View style={styles.selectedBadge} pointerEvents="none">
+          <Icon name="check" size={14} color={textTokens.inverse} />
+        </View>
+      ) : null}
     </View>
     {credit !== null ? <Text style={styles.creditText}>{credit}</Text> : null}
 
@@ -1127,6 +1156,10 @@ const ProviderGrid: React.FC<{
   columns: number;
   giphy: GiphyCoverSearchResult[];
   pexels: PexelsCoverSearchResult[];
+  /** META-ORCH-1059: id of the GIF tile that is the current cover (or null). */
+  selectedGiphyId: string | null;
+  /** META-ORCH-1059: id of the Pexels tile that is the current cover (or null). */
+  selectedPexelsId: number | null;
   onSelectGiphy: (r: GiphyCoverSearchResult) => void;
   onSelectPexels: (r: PexelsCoverSearchResult) => void;
   onRetry: () => void;
@@ -1139,6 +1172,8 @@ const ProviderGrid: React.FC<{
   columns,
   giphy,
   pexels,
+  selectedGiphyId,
+  selectedPexelsId,
   onSelectGiphy,
   onSelectPexels,
   onRetry,
@@ -1222,6 +1257,7 @@ const ProviderGrid: React.FC<{
           key={`giphy-${r.id}`}
           imageUrl={r.previewUrl}
           label={r.alt ?? "GIPHY GIF"}
+          selected={selectedGiphyId === r.id}
           onPress={() => onSelectGiphy(r)}
         />,
       );
@@ -1238,6 +1274,7 @@ const ProviderGrid: React.FC<{
           avgColor={r.avgColor}
           label={r.alt ?? "Pexels photo"}
           credit={r.credit}
+          selected={selectedPexelsId === r.id}
           onPress={() => onSelectPexels(r)}
         />,
       );
@@ -1266,13 +1303,24 @@ const GridTile: React.FC<{
   aspect?: number;
   avgColor?: string | null;
   credit?: string;
+  /** META-ORCH-1059: paint the accent border + checkmark when this tile IS the
+   *  currently-applied cover. */
+  selected?: boolean;
   onPress: () => void;
-}> = ({ imageUrl, label, aspect = 1, avgColor, credit, onPress }) => (
+}> = ({ imageUrl, label, aspect = 1, avgColor, credit, selected = false, onPress }) => (
   <Pressable
     accessibilityRole="imagebutton"
-    accessibilityLabel={credit !== undefined ? `Select ${label} by ${credit}` : `Select ${label}`}
+    accessibilityState={{ selected }}
+    accessibilityLabel={
+      `${selected ? "Selected cover. " : ""}` +
+      (credit !== undefined ? `Select ${label} by ${credit}` : `Select ${label}`)
+    }
     onPress={onPress}
-    style={({ pressed }) => [styles.tile, pressed && styles.tilePressed]}
+    style={({ pressed }) => [
+      styles.tile,
+      selected && styles.tileSelected,
+      pressed && styles.tilePressed,
+    ]}
   >
     <Image
       source={{ uri: imageUrl }}
@@ -1282,6 +1330,11 @@ const GridTile: React.FC<{
         avgColor ? { backgroundColor: avgColor } : null,
       ]}
     />
+    {selected ? (
+      <View style={styles.selectedBadge} pointerEvents="none">
+        <Icon name="check" size={14} color={textTokens.inverse} />
+      </View>
+    ) : null}
     {credit !== undefined ? (
       <Text style={styles.tileCredit} numberOfLines={1}>
         — {credit}
@@ -1350,6 +1403,11 @@ const styles = StyleSheet.create({
     borderRadius: radiusTokens.md,
     overflow: "hidden",
     marginBottom: spacing.sm,
+  },
+  // META-ORCH-1059: accent ring on the Library preview when a cover is applied.
+  coverPreviewSelected: {
+    borderWidth: 2,
+    borderColor: accent.border,
   },
   creditText: {
     fontSize: typography.caption.fontSize,
@@ -1459,6 +1517,24 @@ const styles = StyleSheet.create({
   },
   tilePressed: {
     opacity: 0.82,
+  },
+  // META-ORCH-1059: persistent SELECTED treatment on the active-cover tile.
+  tileSelected: {
+    borderWidth: 2,
+    borderColor: accent.border,
+  },
+  selectedBadge: {
+    position: "absolute",
+    top: spacing.xs,
+    right: spacing.xs,
+    width: 24,
+    height: 24,
+    borderRadius: 999,
+    backgroundColor: accent.warm,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1.5,
+    borderColor: textTokens.inverse,
   },
   tileImage: {
     width: "100%",
