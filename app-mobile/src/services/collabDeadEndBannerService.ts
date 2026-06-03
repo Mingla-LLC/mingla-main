@@ -3,10 +3,35 @@ import {
   CollabDeadEndPayload,
   CollabDeadEndReason,
 } from './deckService';
-import { messagingService } from './messagingService';
 import { supabase } from './supabase';
 import { toastManager } from '../components/ui/Toast';
-import { resolveParticipantLocationLabel } from '../utils/formatLocationLabel';
+import {
+  resolveParticipantLocationLabel,
+  type ParticipantLocationKind,
+} from '../utils/formatLocationLabel';
+import type { CollabSystemAction } from '../components/chat/MessageBubble';
+
+/**
+ * ORCH-1058B — structured payload for a collab dead-end ("notify the group")
+ * banner. Written into `messages.card_payload` by rpc_post_collab_dead_end_banner
+ * so the chat renderer draws participant·City/ST chips + a tappable prefs button
+ * FROM DATA (never by parsing prose). `prose` is the token-stripped degrade text
+ * mirrored into `messages.content` for old builds + notification previews.
+ */
+export type CollabDeadEndBannerPayload = {
+  kind: 'collab_dead_end';
+  reason: CollabDeadEndReason;
+  version: 1;
+  participants: {
+    id: string;
+    name: string;
+    label: string;
+    locationKind: ParticipantLocationKind;
+    a11yLabel: string;
+  }[];
+  action: CollabSystemAction;
+  prose: string;
+};
 
 const DEBOUNCE_MS = 5 * 60 * 1000;
 
@@ -60,21 +85,18 @@ export async function postCollabDeadEndBanner(input: CollabDeadEndBannerInput): 
       return;
     }
 
-    const { conversation, error: conversationError } =
-      await messagingService.getOrCreateGroupConversationForSession(input.sessionId);
-    if (conversationError || !conversation?.id) {
-      throw new Error(conversationError ?? 'Group conversation not found');
-    }
-
-    const content = buildCollabDeadEndBannerContent(input);
-    const { error } = await supabase
-      .from('messages')
-      .insert({
-        conversation_id: conversation.id,
-        sender_id: input.currentUserId,
-        content,
-        message_type: 'text',
-      });
+    // ORCH-1058B: post via the SECURITY DEFINER RPC. The RPC resolves the
+    // session conversation, re-checks participant authorization, and inserts a
+    // TRUE SYSTEM ROW (sender_id=NULL, message_type='system') with the
+    // structured payload in card_payload + the token-stripped degrade prose in
+    // content. This replaces the prior direct user-attributed `messages` INSERT
+    // of a prose string.
+    const p_payload = buildCollabDeadEndBannerPayload(input);
+    const { error } = await supabase.rpc('rpc_post_collab_dead_end_banner', {
+      p_session_id: input.sessionId,
+      p_reason: input.reason,
+      p_payload,
+    });
     if (error) throw new Error(error.message ?? String(error));
 
     await AsyncStorage.setItem(key, String(now));
@@ -82,6 +104,110 @@ export async function postCollabDeadEndBanner(input: CollabDeadEndBannerInput): 
     console.warn('[collabDeadEndBannerService] post failed', error);
     toastManager.warning("Couldn't post to the chat. Tap to retry.", 3000);
   }
+}
+
+/**
+ * ORCH-1058B — strip every `[[…]]` system token from a prose string so old
+ * builds + notification previews show clean readable text, never raw codes.
+ * Exact rule from SPEC §6.
+ */
+export function stripCollabSystemTokens(content: string): string {
+  return content
+    .replace(/\s*\[\[[^\]]*\]\]/g, '')
+    .replace(/\s+\n/g, '\n')
+    .trim();
+}
+
+/**
+ * ORCH-1058B — derive the single-source-of-truth button action for a banner.
+ * Mirrors the `[[…]]` token the prose carries, so the rendered button targets
+ * exactly the same prefs section/participant the legacy inline token would have.
+ * SPEC §3.2 action table.
+ */
+export function buildCollabDeadEndBannerAction(input: CollabDeadEndBannerInput): CollabSystemAction {
+  const participants = normalizeParticipants(input.participants);
+  const prefs = input.participantPrefs ?? {};
+  const selfId = input.currentUserId;
+  const pendingGpsIds = input.payload?.pendingGpsUserIds ?? findPendingGpsIds(participants, prefs);
+
+  switch (input.reason) {
+    case 'intersection_empty': {
+      const outlier = detectIntersectionOutlier(participants, prefs);
+      if (outlier.mode === 'single') {
+        return { type: 'open-prefs', section: 'travel', userId: outlier.userId };
+      }
+      const { kind, pendingIds } = classifyIntersectionCase(participants, prefs, pendingGpsIds);
+      if (kind === 'waiting') {
+        return { type: 'open-prefs', section: 'location', userId: pendingIds[0] ?? selfId };
+      }
+      if (kind === 'different_cities') {
+        return { type: 'open-prefs', section: 'location', userId: selfId };
+      }
+      // same_city_tight
+      return { type: 'open-prefs', section: 'travel', userId: selfId };
+    }
+    case 'no_matching_candidates': {
+      const noGpsDetail = /no gps/i.test(input.payload?.detail ?? '');
+      if (noGpsDetail || pendingGpsIds.length > 0) {
+        // Multi-token degrade prose lists every pending id; the button targets
+        // the first pending, matching deck behavior.
+        return { type: 'open-prefs', section: 'location', userId: pendingGpsIds[0] ?? selfId };
+      }
+      return { type: 'open-prefs-self', section: 'categories' };
+    }
+    case 'no_unswiped_candidates':
+      return { type: 'open-dismissed' };
+    case 'quorum_not_met': {
+      const pendingAcceptIds = participants
+        .filter((p) => p.hasAccepted === false)
+        .map((p) => p.id);
+      const pending = pendingAcceptIds.length > 0
+        ? pendingAcceptIds
+        : input.payload?.pendingGpsUserIds ?? [];
+      return { type: 'compose-mention', userId: pending[0] ?? selfId, text: 'can you tap accept' };
+    }
+    case 'all_pools_exhausted':
+      return { type: 'open-prefs-self', section: 'dates' };
+  }
+}
+
+/**
+ * ORCH-1058B — build the structured `collab_dead_end` payload the renderer
+ * consumes. Reuses `buildCollabDeadEndBannerContent` for the prose (one matrix
+ * owner) then strips the inline token; builds the participant chip array exactly
+ * like the deck side (`resolveParticipantLocationLabel`, SwipeableCards parity);
+ * derives the action from the reason. SPEC §3.2.
+ */
+export function buildCollabDeadEndBannerPayload(
+  input: CollabDeadEndBannerInput,
+): CollabDeadEndBannerPayload {
+  const participants = normalizeParticipants(input.participants);
+  const prefs = input.participantPrefs ?? {};
+
+  const chipParticipants = participants.map((participant) => {
+    const resolved = resolveParticipantLocationLabel({
+      prefs: prefs[participant.id],
+      isSelf: participant.id === input.currentUserId,
+    });
+    return {
+      id: participant.id,
+      name: participant.name,
+      label: resolved.label,
+      locationKind: resolved.kind,
+      a11yLabel: `${participant.name}: ${resolved.a11yLabel}`,
+    };
+  });
+
+  const prose = stripCollabSystemTokens(buildCollabDeadEndBannerContent(input));
+
+  return {
+    kind: 'collab_dead_end',
+    reason: input.reason,
+    version: 1,
+    participants: chipParticipants,
+    action: buildCollabDeadEndBannerAction(input),
+    prose,
+  };
 }
 
 export function buildCollabDeadEndBannerContent(input: CollabDeadEndBannerInput): string {

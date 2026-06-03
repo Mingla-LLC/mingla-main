@@ -134,7 +134,7 @@ export interface DirectMessage {
   conversation_id: string;
   sender_id: string | null;
   content: string;
-  message_type: 'text' | 'image' | 'video' | 'file' | 'card';
+  message_type: 'text' | 'image' | 'video' | 'file' | 'card' | 'system';
   file_url?: string;
   file_name?: string;
   file_size?: number;
@@ -164,14 +164,19 @@ export interface CardTagEntry {
 }
 
 const COLLAB_TOKEN_USER_ID = '[a-zA-Z0-9_-]+';
-// ORCH-1058: this allowlist gates whether a chat message renders as a parsed
-// collab SYSTEM banner (tappable [[open-prefs:…]] buttons) vs. plain text. EVERY
-// string `buildCollabDeadEndBannerContent` (collabDeadEndBannerService.ts) can
-// emit MUST match exactly one entry below — a copy↔allowlist drift leaks the raw
-// `[[open-prefs:location:<uuid>]]` token to users. Parity is guarded by
-// app-mobile/__tests__/orch-1058-banner-allowlist-parity.mjs (do not let copy
-// change here go un-mirrored). Labels (City/ST, "Getting a fix…") are matched
-// permissively with `.+`; the structure + token are anchored.
+// ORCH-1058B: system-ness is now PRIMARILY intrinsic — a collab dead-end banner
+// is posted by rpc_post_collab_dead_end_banner as a row with sender_id=NULL AND
+// message_type='system', and `enrichMessage`/`enrichMessageRealtime` key
+// isSystem off THOSE intrinsic fields first (never off changeable prose). This
+// allowlist is now the LEGACY / DEGRADE FALLBACK only: it still matches (a) any
+// pre-1058B prose-only row already persisted, and (b) the token-stripped degrade
+// `content` mirrored alongside the structured card_payload (so a matched build
+// renders clean prose). A future copy change can no longer break system-ness
+// (INV-1). EVERY string `buildCollabDeadEndBannerContent` can emit still SHOULD
+// match exactly one entry below so the legacy path parses cleanly; parity is
+// guarded by app-mobile/__tests__/orch-1058b-system-banner.test.mjs. Labels
+// (City/ST, "Getting a fix…") are matched permissively with `.+`; the structure
+// + token are anchored.
 const COLLAB_DEAD_END_BANNER_PATTERNS = [
   // intersection_empty · single outlier (3+ participants, one too far)
   new RegExp(`^.+ is too far from the group\\.[\\s\\S]*\\[\\[open-prefs:travel:${COLLAB_TOKEN_USER_ID}\\]\\]$`),
@@ -1430,7 +1435,7 @@ export class MessagingService {
       ...message,
       sender_name: senderName,
       is_read: !!readData,
-      isSystem: message.sender_id === null || isCollabDeadEndBannerMessage(message.content),
+      isSystem: message.sender_id === null || message.message_type === 'system' || isCollabDeadEndBannerMessage(message.content),
     };
   }
 
@@ -1446,7 +1451,7 @@ export class MessagingService {
       ...message,
       sender_name: senderName,
       is_read: false,
-      isSystem: message.sender_id === null || isCollabDeadEndBannerMessage(message.content),
+      isSystem: message.sender_id === null || message.message_type === 'system' || isCollabDeadEndBannerMessage(message.content),
     };
   }
 

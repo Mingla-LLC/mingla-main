@@ -1212,7 +1212,16 @@ function checkNoNewBackendFiles() {
     // antimeridian/equidistant-tiebreak/corner-coords) + the index.ts NULL guard.
     "supabase/functions/check-launch-city/__tests__/check_launch_city_adversarial.test.ts",
   ];
+  // ORCH-1058B [Collab "Notify the group" dead-end system message]. The new
+  // SECURITY DEFINER RPC migration is collab-chat presentation scope, not
+  // ORCH-0863 marketing scope. C7 fires against origin/main..HEAD diff, which
+  // on the ORCH-1058 PR contains this migration (never reached main). Exempted
+  // for the same reason as the allowlists above.
+  const ORCH_1058B_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260826000000_orch_1058b_post_collab_dead_end_banner.sql",
+  ];
   const ALLOWLIST = [
+    ...ORCH_1058B_BACKEND_ALLOWLIST,
     ...ORCH_1027_BACKEND_ALLOWLIST,
     ...ORCH_1024_BACKEND_ALLOWLIST,
     ...ORCH_1021_BACKEND_ALLOWLIST,

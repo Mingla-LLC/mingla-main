@@ -1921,6 +1921,21 @@ jobs:
       - name: Run ORCH-0945 prefs read-only no-write gate
         run: node .github/scripts/strict-grep/i-proposed-orch-0945-prefs-sheet-read-only-no-write.mjs
 
+  orch-1058-collab-system-banner:
+    name: "ORCH-1058 / ORCH-1058B: collab dead-end system banner (allowlist parity + intrinsic marker + cross-build degrade)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install transpile dep
+        run: npm install --no-save typescript
+      - name: Run ORCH-1058 banner allowlist parity gate
+        run: node app-mobile/scripts/ci/orch-1058-banner-allowlist-parity.mjs
+      - name: Run ORCH-1058B intrinsic system-banner gate (incl. T-04 cross-build degrade)
+        run: node app-mobile/scripts/ci/orch-1058b-system-banner-check.mjs
+
   meta-orch-0954-comms-ledger-stanza:
     name: "META-ORCH-0954: comms ledger stanza + 2-section output"
     runs-on: ubuntu-latest
