@@ -134,7 +134,7 @@ export interface DirectMessage {
   conversation_id: string;
   sender_id: string | null;
   content: string;
-  message_type: 'text' | 'image' | 'video' | 'file' | 'card';
+  message_type: 'text' | 'image' | 'video' | 'file' | 'card' | 'system';
   file_url?: string;
   file_name?: string;
   file_size?: number;
@@ -164,13 +164,37 @@ export interface CardTagEntry {
 }
 
 const COLLAB_TOKEN_USER_ID = '[a-zA-Z0-9_-]+';
+// ORCH-1058B: system-ness is now PRIMARILY intrinsic — a collab dead-end banner
+// is posted by rpc_post_collab_dead_end_banner as a row with sender_id=NULL AND
+// message_type='system', and `enrichMessage`/`enrichMessageRealtime` key
+// isSystem off THOSE intrinsic fields first (never off changeable prose). This
+// allowlist is now the LEGACY / DEGRADE FALLBACK only: it still matches (a) any
+// pre-1058B prose-only row already persisted, and (b) the token-stripped degrade
+// `content` mirrored alongside the structured card_payload (so a matched build
+// renders clean prose). A future copy change can no longer break system-ness
+// (INV-1). EVERY string `buildCollabDeadEndBannerContent` can emit still SHOULD
+// match exactly one entry below so the legacy path parses cleanly; parity is
+// guarded by app-mobile/__tests__/orch-1058b-system-banner.test.mjs. Labels
+// (City/ST, "Getting a fix…") are matched permissively with `.+`; the structure
+// + token are anchored.
 const COLLAB_DEAD_END_BANNER_PATTERNS = [
+  // intersection_empty · single outlier (3+ participants, one too far)
   new RegExp(`^.+ is too far from the group\\.[\\s\\S]*\\[\\[open-prefs:travel:${COLLAB_TOKEN_USER_ID}\\]\\]$`),
-  new RegExp(`^No location overlap yet\\.[\\s\\S]*\\[\\[open-prefs:location:${COLLAB_TOKEN_USER_ID}\\]\\]`),
+  // intersection_empty · waiting (someone's GPS fix hasn't landed yet)
+  new RegExp(`^Waiting on .+'s location to land — the deck fills in automatically\\. \\[\\[open-prefs:location:${COLLAB_TOKEN_USER_ID}\\]\\]$`),
+  // intersection_empty · different_cities (centers span > SAME_CITY_THRESHOLD_M)
+  new RegExp(`^You're in different cities — .+\\. Pick one spot you'll all head to\\. \\[\\[open-prefs:location:${COLLAB_TOKEN_USER_ID}\\]\\]$`),
+  // intersection_empty · same_city_tight (one metro, travel ranges don't touch)
+  new RegExp(`^So close — you're in the same area but your travel ranges don't touch\\. Bump travel time or distance\\? \\[\\[open-prefs:travel:${COLLAB_TOKEN_USER_ID}\\]\\]$`),
+  // no_matching_candidates · GPS-gap (still produced — names + per-id location tokens)
   new RegExp(`^Waiting for .+ to share location\\.[\\s\\S]*\\[\\[open-prefs:location:${COLLAB_TOKEN_USER_ID}\\]\\]`),
+  // no_matching_candidates · no categories picked
   /^Nobody has picked categories yet\. \[\[open-prefs:self:categories\]\]$/,
+  // no_unswiped_candidates · everything seen
   /^You've all seen everything for now\. \[\[open-dismissed\]\]$/,
+  // quorum_not_met · waiting on accepts
   new RegExp(`^Waiting for \\d+ more to accept\\. Pending: .+ \\[\\[compose-mention:${COLLAB_TOKEN_USER_ID}:can_you_tap_accept\\]\\]`),
+  // all_pools_exhausted · suggest a later date
   /^You've exhausted today's options\. Try next weekend\? \[\[open-prefs:self:dates\]\]$/,
 ];
 
@@ -1411,7 +1435,7 @@ export class MessagingService {
       ...message,
       sender_name: senderName,
       is_read: !!readData,
-      isSystem: message.sender_id === null || isCollabDeadEndBannerMessage(message.content),
+      isSystem: message.sender_id === null || message.message_type === 'system' || isCollabDeadEndBannerMessage(message.content),
     };
   }
 
@@ -1427,7 +1451,7 @@ export class MessagingService {
       ...message,
       sender_name: senderName,
       is_read: false,
-      isSystem: message.sender_id === null || isCollabDeadEndBannerMessage(message.content),
+      isSystem: message.sender_id === null || message.message_type === 'system' || isCollabDeadEndBannerMessage(message.content),
     };
   }
 

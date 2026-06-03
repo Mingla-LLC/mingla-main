@@ -10,6 +10,7 @@ import {
   PanResponder,
   StatusBar,
   Platform,
+  Alert,
 } from "react-native";
 // ORCH-1042: deck hero photos render via expo-image (NOT react-native <Image>).
 // expo-image gives us a placeholder + fade transition + a managed memory-disk
@@ -78,14 +79,20 @@ import type { GatedFeature } from '../hooks/useFeatureGate';
 import NoGpsBanner from './collab/NoGpsBanner';
 import {
   buildCollabDeadEndBannerContent,
+  classifyIntersectionCase,
   detectIntersectionOutlier,
-  formatLocationLabel,
   formatParticipantName,
   formatTravelDiagnostic,
   normalizeParticipants,
   postCollabDeadEndBanner,
 } from "../services/collabDeadEndBannerService";
 import type { CollabDeadEndReason } from "../services/deckService";
+// ORCH-1058: privacy-aware location chips for the intersection_empty empty state.
+import {
+  CollabLocationChips,
+  type CollabLocationChip,
+} from "./collab/CollabLocationChips";
+import { resolveParticipantLocationLabel } from "../utils/formatLocationLabel";
 
 function getTimeOfDay(): string {
   const hour = new Date().getHours();
@@ -1737,7 +1744,12 @@ export default function SwipeableCards({
     }
   };
 
-  const handleNotifyGroup = useCallback(async (reason: CollabDeadEndReason) => {
+  // ORCH-1058B send-UX: tapping "Notify the group" first asks for explicit
+  // confirmation (proceed/cancel via the app's standard Alert.alert pattern —
+  // same shape used across SavedTab scheduling, ConnectionsPage, etc.). Only on
+  // "Notify" do we post the banner; success/failure feedback is surfaced by
+  // postCollabDeadEndBanner's toasts.
+  const postNotifyGroup = useCallback(async (reason: CollabDeadEndReason) => {
     if (!resolvedSessionId || !user?.id) return;
     await postCollabDeadEndBanner({
       sessionId: resolvedSessionId,
@@ -1748,6 +1760,18 @@ export default function SwipeableCards({
       currentUserId: user.id,
     });
   }, [allParticipantPrefs, collabDeadEndPayload, collabParticipants, resolvedSessionId, user?.id]);
+
+  const handleNotifyGroup = useCallback((reason: CollabDeadEndReason) => {
+    if (!resolvedSessionId || !user?.id) return;
+    Alert.alert(
+      'Notify the group?',
+      "We'll post a note in the chat that your locations don't overlap yet.",
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Notify', onPress: () => { void postNotifyGroup(reason); } },
+      ],
+    );
+  }, [postNotifyGroup, resolvedSessionId, user?.id]);
 
   const getCollabDeadEndCopy = useCallback(() => {
     const reason = (collabDeadEndPayload?.reason ?? collabDeckDeadEndReason) as CollabDeadEndReason | undefined;
@@ -1774,12 +1798,82 @@ export default function SwipeableCards({
             showReviewDismissed: false,
           };
         }
+        // ORCH-1058 §3: 2-person / no-clear-outlier path now routes to one of
+        // three honest cases with privacy-aware location chips.
+        const { kind, pendingIds } = classifyIntersectionCase(
+          normalizedParticipants,
+          participantPrefs,
+          pendingGpsIds,
+        );
+        const selfId = user?.id ?? null;
+        const pendingSet = new Set(pendingIds);
+
+        if (kind === 'waiting') {
+          const settledChips: CollabLocationChip[] = normalizedParticipants
+            .filter((participant) => !pendingSet.has(participant.id))
+            .map((participant) => {
+              const resolved = resolveParticipantLocationLabel({
+                prefs: participantPrefs[participant.id],
+                isSelf: participant.id === selfId,
+              });
+              return {
+                id: participant.id,
+                label: resolved.label,
+                kind: resolved.kind,
+                a11yLabel: `${participant.name}: ${resolved.a11yLabel}`,
+              };
+            });
+          const pendingChips: CollabLocationChip[] = pendingIds.map((id) => {
+            const name = namesById.get(id) ?? 'A participant';
+            return {
+              id,
+              label: t('cards:collab.deadend.waiting.pending_chip', { name }),
+              kind: 'pending' as const,
+              a11yLabel: `${name}: getting a fix`,
+            };
+          });
+          const firstPendingName = namesById.get(pendingIds[0] ?? '') ?? 'a friend';
+          return {
+            reason,
+            title:
+              pendingIds.length > 1
+                ? t('cards:collab.deadend.waiting.title_many')
+                : t('cards:collab.deadend.waiting.title_one', { name: firstPendingName }),
+            guidance: t('cards:collab.deadend.waiting.guidance'),
+            chips: [...settledChips, ...pendingChips],
+            showReviewDismissed: false,
+          };
+        }
+
+        const locationChips: CollabLocationChip[] = normalizedParticipants.map((participant) => {
+          const resolved = resolveParticipantLocationLabel({
+            prefs: participantPrefs[participant.id],
+            isSelf: participant.id === selfId,
+          });
+          return {
+            id: participant.id,
+            label: resolved.label,
+            kind: resolved.kind,
+            a11yLabel: `${participant.name}: ${resolved.a11yLabel}`,
+          };
+        });
+
+        if (kind === 'different_cities') {
+          return {
+            reason,
+            title: t('cards:collab.deadend.different_cities.title'),
+            guidance: t('cards:collab.deadend.different_cities.guidance'),
+            chips: locationChips,
+            showReviewDismissed: false,
+          };
+        }
+
+        // same_city_tight
         return {
           reason,
-          title: 'No location overlap yet',
-          subtitle: normalizedParticipants
-            .map((participant) => `${participant.name} in ${formatLocationLabel(participantPrefs[participant.id])}`)
-            .join(' · '),
+          title: t('cards:collab.deadend.same_city_tight.title'),
+          guidance: t('cards:collab.deadend.same_city_tight.guidance'),
+          chips: locationChips,
           showReviewDismissed: false,
         };
       }
@@ -1834,6 +1928,8 @@ export default function SwipeableCards({
     collabParticipants,
     isBoardSession,
     sessionSwipedCards.length,
+    t,
+    user?.id,
   ]);
 
   // ORCH-0532: dismissed-sheet re-save path. In collab mode, route through the
@@ -2049,19 +2145,32 @@ export default function SwipeableCards({
               <Text style={styles.emptyDeckTitle}>
                 {collabDeadEndCopy?.title ?? t(titleKey)}
               </Text>
-              <Text style={styles.emptyDeckSubtitle}>
-                {collabDeadEndCopy?.subtitle ??
-                  (isEmpty
-                  ? t('cards:swipeable.no_matches_subtitle')
-                  : (() => {
-                      const hour = new Date().getHours();
-                      const isLateNight = hour >= 21 || hour < 6;
-                      // ORCH-0446 R8.3: Smart late night suggestion (EXHAUSTED only)
-                      return isLateNight
-                        ? 'Most places are closing soon. Try "This Weekend" for more options.'
-                        : t('cards:swipeable.shift_vibe');
-                    })())}
-              </Text>
+              {/* ORCH-1058: intersection_empty returns privacy-aware chips +
+                  a guidance line; all other reasons keep the plain subtitle. */}
+              {collabDeadEndCopy && 'chips' in collabDeadEndCopy && collabDeadEndCopy.chips ? (
+                <>
+                  <CollabLocationChips chips={collabDeadEndCopy.chips} />
+                  <Text style={[styles.emptyDeckSubtitle, styles.emptyDeckGuidance]}>
+                    {collabDeadEndCopy.guidance}
+                  </Text>
+                </>
+              ) : (
+                <Text style={styles.emptyDeckSubtitle}>
+                  {(collabDeadEndCopy && 'subtitle' in collabDeadEndCopy
+                    ? collabDeadEndCopy.subtitle
+                    : undefined) ??
+                    (isEmpty
+                    ? t('cards:swipeable.no_matches_subtitle')
+                    : (() => {
+                        const hour = new Date().getHours();
+                        const isLateNight = hour >= 21 || hour < 6;
+                        // ORCH-0446 R8.3: Smart late night suggestion (EXHAUSTED only)
+                        return isLateNight
+                          ? 'Most places are closing soon. Try "This Weekend" for more options.'
+                          : t('cards:swipeable.shift_vibe');
+                      })())}
+                </Text>
+              )}
 
               <View style={styles.emptyDeckActions}>
                 {collabDeadEndCopy && (
@@ -3090,6 +3199,10 @@ const styles = StyleSheet.create({
     textAlign: "center",
     lineHeight: 18,
     marginBottom: 8,
+  },
+  // ORCH-1058: guidance line sits below the chip row with breathing room.
+  emptyDeckGuidance: {
+    marginTop: 8,
   },
   emptyDeckActions: {
     width: "100%",

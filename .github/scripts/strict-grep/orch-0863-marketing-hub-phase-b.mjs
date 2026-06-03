@@ -1430,7 +1430,14 @@ function checkNoNewBackendFiles() {
     "supabase/functions/stripe-mode/index.ts",
     "supabase/functions/invite-scanner/index.ts",
   ];
+  // ORCH-1058B [Collab "Notify the group" dead-end system message]: the new
+  // SECURITY DEFINER RPC migration is collab-chat presentation scope, not
+  // ORCH-0863 marketing. Per COMMS-0002 — lands with the migration.
+  const ORCH_1058B_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260826000000_orch_1058b_post_collab_dead_end_banner.sql",
+  ];
   const ALLOWLIST = [
+    ...ORCH_1058B_BACKEND_ALLOWLIST,
     ...ORCH_1060_BACKEND_ALLOWLIST,
     ...ORCH_1054_BACKEND_ALLOWLIST,
     ...ORCH_1052_BACKEND_ALLOWLIST,

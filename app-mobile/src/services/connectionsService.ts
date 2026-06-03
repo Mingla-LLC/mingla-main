@@ -43,7 +43,7 @@ export interface Message {
   senderName: string;
   content: string;
   timestamp: string;
-  type: 'text' | 'image' | 'video' | 'file' | 'card';  // ORCH-0667: + 'card'
+  type: 'text' | 'image' | 'video' | 'file' | 'card' | 'system';  // ORCH-0667: + 'card'; ORCH-1058B: + 'system'
   fileUrl?: string;
   fileName?: string;
   fileSize?: string;
@@ -57,6 +57,9 @@ export interface Message {
   replyToId?: string;
   marketingCampaignId?: string | null;
   isSystem?: boolean;
+  // ORCH-1058B: structured collab dead-end banner payload (chips + button data).
+  // Typed loosely (CollabDeadEndBannerPayload) to avoid a circular import.
+  systemPayload?: any;
 }
 
 export interface Conversation {
