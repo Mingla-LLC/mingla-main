@@ -1408,7 +1408,16 @@ function checkNoNewBackendFiles() {
     "supabase/functions/_shared/__tests__/orch_1054_partner_splits_adversarial.test.ts",
     "supabase/migrations/__tests__/orch_1054_partner_splits.test.ts",
   ];
+  // ORCH-1060 [main CI green-up] — comment-only touches to two existing edge
+  // functions (audit-exemption note on stripe-mode + no-attachment opt-out on
+  // invite-scanner) to satisfy I-PROPOSED-S / ORCH-0785-A. No new backend files,
+  // no runtime change, no edge deploy. Per COMMS-0002.
+  const ORCH_1060_BACKEND_ALLOWLIST = [
+    "supabase/functions/stripe-mode/index.ts",
+    "supabase/functions/invite-scanner/index.ts",
+  ];
   const ALLOWLIST = [
+    ...ORCH_1060_BACKEND_ALLOWLIST,
     ...ORCH_1054_BACKEND_ALLOWLIST,
     ...ORCH_1052_BACKEND_ALLOWLIST,
     ...ORCH_1051_BACKEND_ALLOWLIST,
