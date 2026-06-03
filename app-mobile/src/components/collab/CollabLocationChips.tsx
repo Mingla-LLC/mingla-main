@@ -2,8 +2,10 @@
  * CollabLocationChips — ORCH-1058 [Collab deck location chips + smarter no-overlap feedback]
  *
  * A read-only row of status chips for the collab-deck `intersection_empty`
- * empty state. One chip per participant; chips are separated by a bullet `•`.
- * These are STATUS chips, not pressable filters — no press state, no sheet.
+ * empty state. One chip per participant; chips are separated by SPACING ONLY
+ * (a row gap) — ORCH-1059 removed the inter-chip bullet/period separator that
+ * earlier shipped. These are STATUS chips, not pressable filters — no press
+ * state, no sheet.
  *
  * Styled entirely from the canonical `glass.discover.chip` tokens (same block
  * TripFilterChips uses) — no new visual system, no hardcoded colors. Honors
@@ -62,34 +64,17 @@ const SingleChip: React.FC<{ chip: CollabLocationChip }> = ({ chip }) => (
   </View>
 );
 
-// The bullet is decorative punctuation — hidden from the a11y tree so VoiceOver
-// reads "Raleigh, NC. London, UK." not "...bullet...".
-const BulletSeparator: React.FC = () => (
-  <Text
-    style={styles.bullet}
-    accessibilityElementsHidden
-    importantForAccessibility="no"
-  >
-    {'•'}
-  </Text>
-);
-
+// ORCH-1059: chips are separated by spacing only — no bullet glyph, no period
+// separator. The container's `gap` provides even horizontal + vertical spacing
+// across wrapped rows, so VoiceOver reads each chip's a11yLabel cleanly with no
+// decorative punctuation to hide.
 export const CollabLocationChips: React.FC<CollabLocationChipsProps> = ({ chips }) => {
   if (chips.length === 0) return null;
   return (
     <View style={styles.container}>
-      {chips.map((chip, index) =>
-        index === 0 ? (
-          <SingleChip key={chip.id} chip={chip} />
-        ) : (
-          // Group bullet+chip in a non-wrapping inner row so a bullet never
-          // orphans at the start of a wrapped line (spec §4 layout).
-          <View key={chip.id} style={styles.pairGroup}>
-            <BulletSeparator />
-            <SingleChip chip={chip} />
-          </View>
-        ),
-      )}
+      {chips.map((chip) => (
+        <SingleChip key={chip.id} chip={chip} />
+      ))}
     </View>
   );
 };
@@ -100,13 +85,11 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     alignItems: 'center',
     justifyContent: 'center',
+    // ORCH-1059: gap-only separation (no bullet). rowGap handles wrapped lines,
+    // columnGap handles between-chip horizontal spacing.
     rowGap: spacing.sm,
+    columnGap: spacing.sm,
     marginTop: spacing.sm,
-  },
-  pairGroup: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'nowrap',
   },
   chip: {
     flexDirection: 'row',
@@ -127,11 +110,6 @@ const styles = StyleSheet.create({
     fontWeight: g.chip.labelFontWeight,
     color: g.chip.inactive.labelColor,
     maxWidth: 160,
-  },
-  bullet: {
-    color: 'rgba(255, 255, 255, 0.40)',
-    fontSize: 14,
-    marginHorizontal: spacing.sm,
   },
 });
 

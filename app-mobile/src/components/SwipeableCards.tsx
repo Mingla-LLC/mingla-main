@@ -247,6 +247,14 @@ interface SwipeableCardsProps {
   onOpenPreferences?: () => void;
   onOpenCollabPreferences?: () => void;
   /**
+   * ORCH-1059: invoked by the collab deck ONLY after a successful "Notify the
+   * group" post (a real banner row landed). The owning CollabDeckSheet uses this
+   * to dismiss the deck (and any open prefs sub-sheet) and return the user to the
+   * group chat, where the global success toast + posted banner are in context.
+   * NOT called on debounce, cancel, or failure — the user stays put to retry.
+   */
+  onAfterNotify?: () => void;
+  /**
    * ORCH-0918: sheet-embedded collab decks must scope to the chat session
    * even when the surrounding app mode points elsewhere.
    */
@@ -466,6 +474,7 @@ export default function SwipeableCards({
   onResetCards,
   onOpenPreferences,
   onOpenCollabPreferences,
+  onAfterNotify,
   sessionIdOverride,
   generateNewMockCard,
   onboardingData,
@@ -1751,7 +1760,7 @@ export default function SwipeableCards({
   // postCollabDeadEndBanner's toasts.
   const postNotifyGroup = useCallback(async (reason: CollabDeadEndReason) => {
     if (!resolvedSessionId || !user?.id) return;
-    await postCollabDeadEndBanner({
+    const posted = await postCollabDeadEndBanner({
       sessionId: resolvedSessionId,
       reason,
       payload: collabDeadEndPayload,
@@ -1759,7 +1768,14 @@ export default function SwipeableCards({
       participantPrefs: allParticipantPrefs,
       currentUserId: user.id,
     });
-  }, [allParticipantPrefs, collabDeadEndPayload, collabParticipants, resolvedSessionId, user?.id]);
+    // ORCH-1059: on a real successful post ONLY, return the user to the group
+    // chat (the owning CollabDeckSheet dismisses the deck + any prefs sub-sheet).
+    // The success toast is global, so it stays visible across the navigation.
+    // On debounce/cancel/failure (posted === false) we stay put so they can retry.
+    if (posted) {
+      onAfterNotify?.();
+    }
+  }, [allParticipantPrefs, collabDeadEndPayload, collabParticipants, onAfterNotify, resolvedSessionId, user?.id]);
 
   const handleNotifyGroup = useCallback((reason: CollabDeadEndReason) => {
     if (!resolvedSessionId || !user?.id) return;
