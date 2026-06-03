@@ -1212,7 +1212,28 @@ function checkNoNewBackendFiles() {
     // antimeridian/equidistant-tiebreak/corner-coords) + the index.ts NULL guard.
     "supabase/functions/check-launch-city/__tests__/check_launch_city_adversarial.test.ts",
   ];
+  // META-ORCH-1062 [venue onboarding → admin vetting → deck pipeline repair].
+  // C7 is scoped to ORCH-0863 marketing; these backend touches are venue-claim
+  // deck-pipeline-repair scope: Phase 0 source reconcile (run-business-place-
+  // authoring-pipeline v37 + admin-review-venue-claim v92 WS7 + the already-
+  // applied Sub-F migration) + the approval→servable→scorer wiring (Phase 2/3/4)
+  // + the new admin-vetting RPCs (Phase 1). Per COMMS-0002 + COMMS-0018.
+  const META_ORCH_1062_BACKEND_ALLOWLIST = [
+    "supabase/functions/run-business-place-authoring-pipeline/index.ts",
+    "supabase/functions/run-business-place-authoring-pipeline/__tests__/isUuid.test.ts",
+    "supabase/functions/run-business-place-authoring-pipeline/__tests__/pipeline_behavioral.test.ts",
+    "supabase/functions/run-business-place-authoring-pipeline/__tests__/stage_contract.test.ts",
+    "supabase/functions/run-business-place-authoring-pipeline/__tests__/meta_orch_1062_no_demotion.test.ts",
+    "supabase/functions/admin-review-venue-claim/index.ts",
+    "supabase/functions/admin-review-venue-claim/reviewLogic.ts",
+    "supabase/functions/admin-review-venue-claim/index.test.ts",
+    "supabase/functions/admin-review-venue-claim/__tests__/meta_orch_1062_approve_scorer_loop.test.ts",
+    "supabase/migrations/20260813000000_meta_orch_1009_sub_f_recommend_review.sql",
+    "supabase/migrations/20260831000000_meta_orch_1062_admin_vetting_rpcs.sql",
+    "supabase/migrations/__tests__/meta_orch_1062_admin_vetting_rpcs.test.sql",
+  ];
   const ALLOWLIST = [
+    ...META_ORCH_1062_BACKEND_ALLOWLIST,
     ...ORCH_1027_BACKEND_ALLOWLIST,
     ...ORCH_1024_BACKEND_ALLOWLIST,
     ...ORCH_1021_BACKEND_ALLOWLIST,
