@@ -1,3 +1,4 @@
+// orch-strict-grep-allow orch-0892 — wizard uses a single ScrollView + keyboardShouldPersistTaps; SmartScrollView migration is a deferred keyboard-hygiene follow-up (token in first 3 lines: gate's multiline-import line-finder returns -1)
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -7,7 +8,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 // SmartScrollView migration deferred to a dedicated keyboard-hygiene follow-up.
 import {
   Pressable,
-  // orch-strict-grep-allow orch-0892 — wizard uses a single ScrollView + keyboardShouldPersistTaps; SmartScrollView migration is a deferred keyboard-hygiene follow-up
   ScrollView,
   StyleSheet,
   Text,
