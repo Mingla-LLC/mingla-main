@@ -1,9 +1,9 @@
-# SPEC — ORCH-1063 [admin↔business venue-listing feedback loop]
+# SPEC — ORCH-1064 [admin↔business venue-listing feedback loop]
 
 **Status:** READY FOR IMPLEMENT (SPEC complete)
 **Author:** mingla-forensics (Claude) — INVESTIGATE-then-SPEC
 **Date:** 2026-06-03
-**Worktree:** `~/Desktop/mingla-orchs/ORCH-1063-[venue-claim-feedback-loop]/` on branch `ORCH-1063-venue-claim-feedback-loop`
+**Worktree:** `~/Desktop/mingla-orchs/ORCH-1064-[venue-claim-feedback-loop]/` on branch `ORCH-1064-venue-claim-feedback-loop`
 **Builds on:** META-ORCH-1062 [venue onboarding → admin vetting → deck pipeline] — MERGED on this branch's base (`235593199`, PR #336). All META-ORCH-1062 RPCs, the admin claim modal (`ClaimsPage.jsx`), and the business "In review" banner are live.
 **Comms acknowledged:** COMMS-0018 (WARN→ME factored: the WS7 admin-review + Sub-F migration are reconciled onto this branch's base, so my new feedback RPCs build on the canonical `admin-review-venue-claim` v92/`biz_review_venue_claim`).
 
@@ -117,19 +117,19 @@ This SPEC closes that loop. An admin leaves **structured feedback items** (each 
 
 ### 4.1 Migration
 
-**File:** `supabase/migrations/20260901000000_orch_1063_venue_claim_feedback.sql`
+**File:** `supabase/migrations/20260901000000_orch_1064_venue_claim_feedback.sql`
 **Version allocation (proven):** remote max = `20260831000000` (META-ORCH-1062, confirmed via `schema_migrations` live probe). Max across ALL sibling worktrees = `20260831000000` (this worktree; next highest sibling = `20260829000000`). **`20260901000000` is strictly greater than every observed version.** 🔒 LOCKED — do not reuse a lower or colliding timestamp.
 
-> ⚠ **ID-collision note for the orchestrator (NOT this SPEC's lane):** a sibling worktree `~/Desktop/mingla-orchs/ORCH-1063-[sheet-nav-freeze-class]` also claims ORCH-1063. Per COMMS-0004/COMMS-0011 the orchestrator must renumber one before close. The migration filename uses a TIMESTAMP (`20260901000000`), not the ORCH-ID, so there is no migration-file collision regardless of how the ID dispute resolves. See OQ-1.
+> ⚠ **ID-collision note for the orchestrator (NOT this SPEC's lane):** a sibling worktree `~/Desktop/mingla-orchs/ORCH-1064-[sheet-nav-freeze-class]` also claims ORCH-1064. Per COMMS-0004/COMMS-0011 the orchestrator must renumber one before close. The migration filename uses a TIMESTAMP (`20260901000000`), not the ORCH-ID, so there is no migration-file collision regardless of how the ID dispute resolves. See OQ-1.
 
-> ORCH-0863 backend-allowlist requirement (COMMS-0002): this migration is a NEW `supabase/migrations/*` file → it WILL trip C7 `no-new-backend-files`. The implementor MUST add an `ORCH_1063_BACKEND_ALLOWLIST` const listing this migration path to `.github/scripts/strict-grep/orch-0863-marketing-hub-phase-b.mjs` **in the same commit** (mirror `ORCH_0101_VE3_BACKEND_ALLOWLIST` ln 323–330). No new `supabase/functions/*` file is created (the new RPCs reuse the existing `admin-review-venue-claim` wrapper for the admin call; the business calls go direct via `supabase.rpc`), so only the migration path needs allowlisting.
+> ORCH-0863 backend-allowlist requirement (COMMS-0002): this migration is a NEW `supabase/migrations/*` file → it WILL trip C7 `no-new-backend-files`. The implementor MUST add an `ORCH_1064_BACKEND_ALLOWLIST` const listing this migration path to `.github/scripts/strict-grep/orch-0863-marketing-hub-phase-b.mjs` **in the same commit** (mirror `ORCH_0101_VE3_BACKEND_ALLOWLIST` ln 323–330). No new `supabase/functions/*` file is created (the new RPCs reuse the existing `admin-review-venue-claim` wrapper for the admin call; the business calls go direct via `supabase.rpc`), so only the migration path needs allowlisting.
 
 #### 4.1.1 Table `public.venue_claim_feedback` 🔒 LOCKED
 
 Single-table model (justification below). Each row is ONE feedback item; an overall message is carried per-round. To avoid a second `feedback_rounds` table while keeping round semantics, the overall message is stored on the **first item of each round** via a nullable `overall_message` column and a `round` integer groups items. **Justification for single-table over round-table:** rounds are cheap (a per-brand integer), volume is tiny (a handful of items per claim, claims are rare — 1 pending today), and the admin always writes a whole round atomically in one RPC call, so a separate rounds table adds a join + FK + RLS surface for no query benefit. The `round` integer + `is_active_round` view (4.1.3) gives history + "current round" cleanly. (If a future ORCH needs per-round metadata beyond `overall_message`, promote to a rounds table then.)
 
 ```sql
--- ORCH-1063 [admin↔business venue-listing feedback loop]
+-- ORCH-1064 [admin↔business venue-listing feedback loop]
 -- Structured feedback the admin leaves on a pending venue claim; the business
 -- reads its OWN feedback, marks items fixed, and re-submits.
 --
@@ -164,7 +164,7 @@ create index if not exists idx_vcf_brand_status
   on public.venue_claim_feedback (brand_id, status);
 
 comment on table public.venue_claim_feedback is
-  'ORCH-1063 — structured admin→business feedback on a venue claim. One row per '
+  'ORCH-1064 — structured admin→business feedback on a venue claim. One row per '
   'item (category+note); overall_message rides the round''s first item; round '
   'groups items per admin pass; status open/fixed; business reads only its own '
   'brand''s rows via biz_brand_effective_rank_for_caller owner predicate.';
@@ -288,7 +288,7 @@ revoke all on function public.admin_add_venue_claim_feedback(uuid, jsonb, text) 
 grant execute on function public.admin_add_venue_claim_feedback(uuid, jsonb, text) to authenticated;
 
 comment on function public.admin_add_venue_claim_feedback(uuid, jsonb, text) is
-  'ORCH-1063 — admin-gated. Writes a fresh feedback round (items + optional '
+  'ORCH-1064 — admin-gated. Writes a fresh feedback round (items + optional '
   'overall_message on the first item) for a pending_review claim and stamps '
   'claim_follow_up_at. Returns {round, item_count}.';
 ```
@@ -334,7 +334,7 @@ revoke all on function public.biz_mark_feedback_item_fixed(uuid, boolean) from p
 grant execute on function public.biz_mark_feedback_item_fixed(uuid, boolean) to authenticated;
 
 comment on function public.biz_mark_feedback_item_fixed(uuid, boolean) is
-  'ORCH-1063 — brand-owner-gated. Toggles a feedback item status open/fixed '
+  'ORCH-1064 — brand-owner-gated. Toggles a feedback item status open/fixed '
   '(sets/clears resolved_at). Owner predicate = biz_brand_effective_rank_for_caller '
   '>= account_owner.';
 ```
@@ -396,7 +396,7 @@ revoke all on function public.biz_resubmit_venue_claim(uuid) from public, anon;
 grant execute on function public.biz_resubmit_venue_claim(uuid) to authenticated;
 
 comment on function public.biz_resubmit_venue_claim(uuid) is
-  'ORCH-1063 — brand-owner-gated. Re-submits a claim that received feedback: '
+  'ORCH-1064 — brand-owner-gated. Re-submits a claim that received feedback: '
   'clears claim_follow_up_at so it returns to the admin Pending queue as a fresh '
   'pending_review. Guards: must be pending_review WITH a follow-up stamp AND >=1 '
   'feedback round. The next admin pass opens a new round.';
@@ -405,7 +405,7 @@ comment on function public.biz_resubmit_venue_claim(uuid) is
 > **Round/state model clarification (LOCKED):** the claim NEVER leaves `claim_status='pending_review'` during the feedback loop — `need_more_info` is modeled as `pending_review + claim_follow_up_at IS NOT NULL` (the existing META-ORCH-1062 convention, F-1/F-3). `admin_add_…` sets the stamp; `biz_resubmit_…` clears it. This is faithful to the existing schema (there is no separate `need_more_info` enum value on `brands.claim_status` — it's only an *action* in `biz_review_venue_claim`). The "round" lives entirely in `venue_claim_feedback.round`. History is preserved because re-submit does NOT delete prior rounds; the next `admin_add_…` simply increments `max(round)+1`.
 
 ```sql
--- ORCH-1063 — reload PostgREST schema cache so the new RPCs/view are exposed.
+-- ORCH-1064 — reload PostgREST schema cache so the new RPCs/view are exposed.
 notify pgrst, 'reload schema';
 ```
 
@@ -458,7 +458,7 @@ notify pgrst, 'reload schema';
 **File (MODIFY):** `mingla-admin/src/services/adminClaimsService.js` — add:
 
 ```js
-/** ORCH-1063 — admin sends a feedback round; routed through the edge wrapper
+/** ORCH-1064 — admin sends a feedback round; routed through the edge wrapper
  *  (action:"add_feedback") so the push + admin_audit_log fire server-side. */
 export async function addClaimFeedback(brandId, items, overallMessage) {
   const { data, error } = await supabase.functions.invoke("admin-review-venue-claim", {
@@ -508,7 +508,7 @@ Changes:
 
 **🔒 LOCKED:** category grouping; per-item Open/Fixed toggle wired to `biz_mark_feedback_item_fixed`; Re-submit CTA wired to `biz_resubmit_venue_claim`; design-system tokens only; Android opaque-glass sheet fill (memory policy); thumb-zone CTA. **🎨 OPEN:** exact toggle component, group header styling, animation, copy micro-polish within Mingla voice.
 
-> This sheet's full granular visual contract (tokens, contrast, typography, spacing, motion, all-9-states copy) is delegated to a `mingla-designer` DESIGN pass per the granularity protocol — **the implementor must NOT free-hand the visuals.** REQUIRED design artifact: `Mingla_Artifacts/specs/DESIGN_ORCH-1063_VENUE_CLAIM_FEEDBACK_SHEET.md`. The functional contract above is binding regardless.
+> This sheet's full granular visual contract (tokens, contrast, typography, spacing, motion, all-9-states copy) is delegated to a `mingla-designer` DESIGN pass per the granularity protocol — **the implementor must NOT free-hand the visuals.** REQUIRED design artifact: `Mingla_Artifacts/specs/DESIGN_ORCH-1064_VENUE_CLAIM_FEEDBACK_SHEET.md`. The functional contract above is binding regardless.
 
 ### 6.3 Business data layer
 
@@ -578,13 +578,13 @@ Changes:
 | **T-BIZ-2 (adversarial)** | Offline toggle | airplane mode toggle | optimistic flips then rolls back on error + toast; no phantom fixed | Business hook+UI |
 | **T-BIZ-3 (parity)** | iOS + Android + web sheet | open sheet on each | renders; web does not blank (ORCH-0964); Android fill opaque | Business cross-surface |
 
-**Revert-proof gate (Step 0.5):** the happy-path pgTAP/deno test (`orch_1063_feedback_loop`) AND an adversarial test (`orch_1063_feedback_owner_rls.adversarial`) must each FAIL when the migration/RPC is reverted.
+**Revert-proof gate (Step 0.5):** the happy-path pgTAP/deno test (`orch_1064_feedback_loop`) AND an adversarial test (`orch_1064_feedback_owner_rls.adversarial`) must each FAIL when the migration/RPC is reverted.
 
 ---
 
 ## 10. Implementation order
 
-1. **DB migration** `20260901000000_orch_1063_venue_claim_feedback.sql` (table + RLS + view + 3 RPCs + `admin_get_claim_review_bundle` feedback extension + `notify pgrst`). Add `ORCH_1063_BACKEND_ALLOWLIST` to the ORCH-0863 strict-grep gate in the SAME commit.
+1. **DB migration** `20260901000000_orch_1064_venue_claim_feedback.sql` (table + RLS + view + 3 RPCs + `admin_get_claim_review_bundle` feedback extension + `notify pgrst`). Add `ORCH_1064_BACKEND_ALLOWLIST` to the ORCH-0863 strict-grep gate in the SAME commit.
 2. **pgTAP/deno tests** for SC-BE-1…8 (+ revert-proof).
 3. **Edge fn** `admin-review-venue-claim/index.ts` `add_feedback` branch + push + audit; `reviewLogic.ts` push copy if centralized there. (No new function file → no `config.toml` change.)
 4. **Admin service** `addClaimFeedback` + **ClaimsPage.jsx** feedback panel + current-round list.
@@ -605,11 +605,11 @@ Changes:
 
 ## 12. Open questions (need operator steering)
 
-- **OQ-1 (ID collision — orchestrator's lane, flag only):** a sibling worktree `~/Desktop/mingla-orchs/ORCH-1063-[sheet-nav-freeze-class]` also claims ORCH-1063. Per COMMS-0004/0011 one must renumber before close. This SPEC's migration uses a timestamp filename (`20260901000000`), so there's no file collision regardless — but the ORCH-ID on artifacts/branch needs orchestrator resolution.
+- **OQ-1 (ID collision — orchestrator's lane, flag only):** a sibling worktree `~/Desktop/mingla-orchs/ORCH-1064-[sheet-nav-freeze-class]` also claims ORCH-1064. Per COMMS-0004/0011 one must renumber before close. This SPEC's migration uses a timestamp filename (`20260901000000`), so there's no file collision regardless — but the ORCH-ID on artifacts/branch needs orchestrator resolution.
 - **OQ-2 (feedback read scope):** SPEC locks feedback reads to brand **owner** (`account_owner` rank). Should accepted **team members** (e.g., `event_manager`) also read/mark-fixed feedback? Default in this SPEC = owner-only; widening is a one-line predicate change (`>= biz_role_rank('viewer')` or similar). Confirm.
 - **OQ-3 (Re-submit enablement):** when is the "Re-submit for review" CTA enabled? Options: (a) always enabled once ≥1 round exists; (b) enabled only when ALL open items are marked fixed; (c) enabled when ≥1 item fixed. SPEC writes the CTA wiring agnostically; default proposed = **(a) always enabled** (the business is the judge of "ready"; admin re-reviews anyway). Confirm the desired gate.
 - **OQ-4 (overall_message on re-submit rounds):** locked that `overall_message` rides the round's first item. Confirm there's no need for a business-side reply field in v1 (currently a non-goal).
 
 ---
 
-**End of SPEC — ORCH-1063.**
+**End of SPEC — ORCH-1064.**
