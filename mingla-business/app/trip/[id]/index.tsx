@@ -40,12 +40,16 @@ import { Toast } from "../../../src/components/ui/Toast";
 // ORCH-0874 [Trip surfaces visual parity with Events]: hero + action grid +
 // header right-slot share/moreH + manage menu + cancel-trip CTA.
 import { ActionTile } from "../../../src/components/event/ActionTile";
+import { EventDetailKpiCard } from "../../../src/components/event/EventDetailKpiCard";
 import {
   EventDetailActivityRow,
   activityRowKey,
   type ActivityEvent,
 } from "../../../src/components/event/EventDetailActivityRow";
 import { EventDetailTicketTypeRow } from "../../../src/components/event/EventDetailTicketTypeRow";
+import { buildOfferingDashboardTiles } from "../../../src/components/offering/offeringDashboardTiles";
+import { summarizeEventMoney } from "../../../src/utils/moneySummary";
+import { useEventOrders } from "../../../src/hooks/useEventOrders";
 import { TripManageMenu } from "../../../src/components/trip/TripManageMenu";
 import {
   TripDetailHeroStatusPill,
@@ -139,6 +143,13 @@ export default function TripDashboardRoute(): React.ReactElement {
 
   const tripQuery = useTrip(typeof eventId === "string" ? eventId : null);
   const ordersQuery = useTripOrders(typeof eventId === "string" ? eventId : null);
+  // Pass 2 — OrderRecord-shaped orders (read by event_id) for the revenue/
+  // payout card. Trips are events-rows, so the shared orders read + money
+  // summary apply identically (payout needs the Stripe app-fee columns this
+  // service returns, which useTripOrders does not surface).
+  const recordOrdersQuery = useEventOrders(
+    typeof eventId === "string" ? eventId : null,
+  );
   const brandId = tripQuery.data?.brandId ?? null;
   const installmentsQuery = useInstallmentsForBrandTrips(brandId, {
     tripEventId: typeof eventId === "string" ? eventId : undefined,
@@ -263,6 +274,27 @@ export default function TripDashboardRoute(): React.ReactElement {
       .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
       .slice(0, 5);
   }, [installmentsQuery.data, ordersQuery.data, tripQuery.data?.pricingTiers]);
+
+  // Pass 2 — revenue/payout summary from OrderRecord-shaped orders.
+  const tripIdForMoney = tripQuery.data?.id ?? null;
+  const moneySummary = useMemo(
+    () =>
+      summarizeEventMoney({
+        expectedCurrency:
+          tripQuery.data?.pricingTiers[0]?.currency ??
+          tripQuery.data?.revenueCurrency ??
+          undefined,
+        orders:
+          tripIdForMoney === null
+            ? []
+            : (recordOrdersQuery.data ?? []).filter(
+                (o) => o.eventId === tripIdForMoney,
+              ),
+        doorSales: [],
+      }),
+    [recordOrdersQuery.data, tripIdForMoney, tripQuery.data],
+  );
+  const dashboardTiles = useMemo(() => buildOfferingDashboardTiles("trip"), []);
 
   if (typeof eventId !== "string" || eventId.length === 0) {
     return (
@@ -412,14 +444,50 @@ export default function TripDashboardRoute(): React.ReactElement {
         </View>
       </View>
 
-      {/* ORCH-0913: event-dashboard parity grid. */}
+      {/* META-ORCH-1059 Pass 2 — event-grade tile grid built from the per-kind
+          config so trips get the full operator set: Scan · Scanners · Orders ·
+          Travelers (Guests lens → /trip/{id}/travelers) · Blasts · Public ·
+          Brand · Reconciliation. Edit (primary) + Payments + Group chat are
+          trip-specific extras kept alongside. */}
       <View style={styles.actionGrid}>
+        {/* [ORCH-0913 deliberate divergence from event] Edit remains primary. */}
         <ActionTile
-          icon="users"
-          label="Travelers"
-          sub={`${ticketsSold} ${ticketsSold === 1 ? "traveler" : "travelers"}`}
-          onPress={() => router.push(`/trip/${trip.id}/travelers` as never)}
+          icon="edit"
+          label={trip.status === "draft" ? "Continue editing" : "Edit trip"}
+          primary
+          onPress={() => router.push(`/trip/${trip.id}/edit` as never)}
         />
+        {dashboardTiles.map((tile) => {
+          if (
+            tile.requiresPublicPage &&
+            (trip.brandSlug === null || trip.brandSlug.length === 0)
+          ) {
+            return null;
+          }
+          return (
+            <ActionTile
+              key={tile.key}
+              icon={tile.icon}
+              label={tile.label}
+              sub={
+                tile.key === "guests"
+                  ? `${ticketsSold} ${ticketsSold === 1 ? "traveler" : "travelers"}`
+                  : tile.key === "orders"
+                    ? `${ticketsSold} sold`
+                    : tile.sub
+              }
+              onPress={() =>
+                router.push(
+                  tile.route({
+                    id: trip.id,
+                    brandSlug: trip.brandSlug,
+                    slug: trip.slug,
+                  }) as never,
+                )
+              }
+            />
+          );
+        })}
         <ActionTile
           icon="receipt"
           label="Payments"
@@ -431,41 +499,20 @@ export default function TripDashboardRoute(): React.ReactElement {
           onPress={() => router.push(`/trip/${trip.id}/money` as never)}
         />
         <ActionTile
-          icon="send"
-          label="Blasts"
-          sub="Message ticket buyers"
-          onPress={() => router.push(`/event/${trip.id}/blasts` as never)}
-        />
-        <ActionTile
           icon="chat"
           label="Group chat"
           sub="Read + reply + moderate"
           onPress={() => router.push(`/event/${trip.id}/group-chat` as never)}
         />
-        {trip.brandSlug !== null && trip.brandSlug.length > 0 ? (
-          <ActionTile
-            icon="eye"
-            label="Public page"
-            onPress={() =>
-              router.push(`/t/${trip.brandSlug}/${trip.slug}` as never)
-            }
-          />
-        ) : null}
-        {trip.brandSlug !== null && trip.brandSlug.length > 0 ? (
-          <ActionTile
-            icon="user"
-            label="Brand page"
-            onPress={() => router.push(`/b/${trip.brandSlug}` as never)}
-          />
-        ) : null}
-        {/* [ORCH-0913 deliberate divergence from event] Edit remains primary. */}
-        <ActionTile
-          icon="edit"
-          label={trip.status === "draft" ? "Continue editing" : "Edit trip"}
-          primary
-          onPress={() => router.push(`/trip/${trip.id}/edit` as never)}
-        />
       </View>
+
+        {/* Pass 2 — single revenue-left / payout-right summary (mirrors the
+            event dashboard). Real money from orders read by event_id. */}
+        <EventDetailKpiCard
+          revenueGbp={moneySummary.onlineRevenue}
+          payoutGbp={moneySummary.onlineNetMajor}
+          currency={moneySummary.expectedCurrency}
+        />
 
         <TripDetailKpiCard
           revenueLabel={formatCurrency(totalRevenue, primaryCurrency)}

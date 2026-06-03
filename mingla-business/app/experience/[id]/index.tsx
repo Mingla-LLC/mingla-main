@@ -1,20 +1,22 @@
 /**
- * /experience/[id] — operator experience dashboard. META-ORCH-1059 Sub-B.
+ * /experience/[id] — operator experience dashboard. META-ORCH-1059 Sub-B +
+ * Pass 2 (dashboard tile grid + analytics parity).
  *
- * Mirrors app/trip/[id]/index.tsx (fixed TopBar → ScrollView{ hero → action
- * grid → KPI → stops/tiers → cancel CTA }). Experiences are events-table rows,
- * so the lifecycle pill + cancel reuse the same derive-from-dates logic.
+ * Mirrors app/event/[id]/index.tsx tile set. Experiences are events-table rows
+ * that issue ticket_types-backed tickets, so the shared event sub-screens
+ * (scanner/scanners/orders/guests/reconciliation/blasts) resolve directly off
+ * the experience id and read orders by event_id. The tile grid is built from
+ * the per-kind config (offeringDashboardTiles), so labels read through the
+ * experience lens ("Spots" not "Guests"). Revenue/payout + recent activity are
+ * derived from useEventOrders, identical to the event dashboard.
  *
- * Tile scope (Sub-B functional core): Edit (primary), Public page, Brand page,
- * Share, Cancel. Orders / Check-in / Blasts tiles are a fast-follow (the
- * experience orders/scanner routes don't exist yet) — omitted cleanly here so
- * there are NO dead taps.
+ * Layout: fixed TopBar → ScrollView{ hero → tile grid → revenue/payout →
+ * STOPS gallery (Types tile) → recent activity → cancel CTA }.
  */
 
 import React, { useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Image,
   Platform,
   ScrollView,
   StyleSheet,
@@ -38,6 +40,11 @@ import { ShareModal } from "../../../src/components/ui/ShareModal";
 import { TopBar } from "../../../src/components/ui/TopBar";
 import { Toast } from "../../../src/components/ui/Toast";
 import { ActionTile } from "../../../src/components/event/ActionTile";
+import { EventDetailKpiCard } from "../../../src/components/event/EventDetailKpiCard";
+import {
+  EventDetailActivityRow,
+  activityRowKey,
+} from "../../../src/components/event/EventDetailActivityRow";
 import { Button } from "../../../src/components/ui/Button";
 import { Pill } from "../../../src/components/ui/Pill";
 import {
@@ -48,8 +55,13 @@ import {
   OfferingManageSheet,
   buildOfferingManageActions,
 } from "../../../src/components/offering/OfferingManageSheet";
+import { buildOfferingDashboardTiles } from "../../../src/components/offering/offeringDashboardTiles";
+import { ExperienceStopsGalleryTile } from "../../../src/components/offering/ExperienceStopsGalleryTile";
 import { useExperienceDetail } from "../../../src/hooks/useExperienceDetail";
 import { useCancelBusinessEvent } from "../../../src/hooks/useBusinessEvents";
+import { useEventOrders } from "../../../src/hooks/useEventOrders";
+import { summarizeEventMoney } from "../../../src/utils/moneySummary";
+import { offeringActivityFromOrders } from "../../../src/utils/offeringActivityFromOrders";
 import { formatExperienceDateSubline } from "../../../src/utils/experienceDateSubline";
 
 function formatCurrency(cents: number, currency: string): string {
@@ -105,6 +117,11 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
     typeof eventId === "string" ? eventId : null,
   );
   const cancelMutation = useCancelBusinessEvent();
+  // Pass 2 — orders read by event_id (experiences are events-rows). Same hook
+  // the event dashboard uses; drives revenue/payout + recent activity.
+  const ordersQuery = useEventOrders(
+    typeof eventId === "string" ? eventId : null,
+  );
 
   const [shareModalVisible, setShareModalVisible] = useState(false);
   const [manageMenuVisible, setManageMenuVisible] = useState(false);
@@ -127,6 +144,51 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
       recurrenceRule: experience.recurrenceRule,
     });
   }, [experience]);
+
+  // Pass 2 — revenue/payout + recent activity from orders (mirrors the event
+  // dashboard's money summary + activity feed). Declared before any early
+  // return so hook order is stable.
+  const allOrders = ordersQuery.data ?? [];
+  const moneySummary = useMemo(
+    () =>
+      summarizeEventMoney({
+        expectedCurrency: experience?.currency,
+        orders:
+          experience === null
+            ? []
+            : allOrders.filter((o) => o.eventId === experience.id),
+        doorSales: [],
+      }),
+    [allOrders, experience],
+  );
+  const recentActivity = useMemo(
+    () =>
+      experience === null
+        ? []
+        : offeringActivityFromOrders(
+            allOrders.filter((o) => o.eventId === experience.id),
+          ),
+    [allOrders, experience],
+  );
+  const soldCount = useMemo<number>(() => {
+    if (experience === null) return 0;
+    return allOrders
+      .filter(
+        (o) =>
+          o.eventId === experience.id &&
+          (o.status === "paid" || o.status === "refunded_partial"),
+      )
+      .reduce(
+        (sum, o) =>
+          sum +
+          o.lines.reduce(
+            (ls, l) => ls + Math.max(0, l.quantity - l.refundedQuantity),
+            0,
+          ),
+        0,
+      );
+  }, [allOrders, experience]);
+  const tiles = useMemo(() => buildOfferingDashboardTiles("experience"), []);
 
   if (typeof eventId !== "string" || eventId.length === 0) {
     return (
@@ -255,6 +317,11 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
           </View>
         </View>
 
+        {/* Pass 2 — event-grade tile grid, built from the per-kind config so
+            labels read through the experience lens (e.g. "Spots" not
+            "Guests"). Edit stays the primary tile (drafts say "Continue
+            editing"). Public/Brand tiles only render when a public page
+            exists, so there are no dead taps. */}
         <View style={styles.actionGrid}>
           <ActionTile
             icon="edit"
@@ -264,35 +331,41 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
               router.push(`/experience/${experience.id}/edit` as never)
             }
           />
-          {hasPublicPage ? (
-            <ActionTile
-              icon="eye"
-              label="Public page"
-              onPress={() =>
-                router.push(
-                  `/exp/${experience.brandSlug}/${experience.slug}` as never,
-                )
-              }
-            />
-          ) : null}
-          {hasPublicPage ? (
-            <ActionTile
-              icon="user"
-              label="Brand page"
-              onPress={() =>
-                router.push(`/b/${experience.brandSlug}` as never)
-              }
-            />
-          ) : null}
-          {hasPublicPage ? (
-            <ActionTile
-              icon="share"
-              label="Share"
-              onPress={() => setShareModalVisible(true)}
-            />
-          ) : null}
+          {tiles.map((tile) => {
+            if (tile.requiresPublicPage && !hasPublicPage) return null;
+            return (
+              <ActionTile
+                key={tile.key}
+                icon={tile.icon}
+                label={tile.label}
+                sub={
+                  tile.key === "orders"
+                    ? `${soldCount} sold`
+                    : tile.sub
+                }
+                onPress={() =>
+                  router.push(
+                    tile.route({
+                      id: experience.id,
+                      brandSlug: experience.brandSlug,
+                      slug: experience.slug,
+                    }) as never,
+                  )
+                }
+              />
+            );
+          })}
         </View>
 
+        {/* Pass 2 — revenue-left / payout-right summary (mirrors the event
+            dashboard). Real money from orders read by event_id. */}
+        <EventDetailKpiCard
+          revenueGbp={moneySummary.onlineRevenue}
+          payoutGbp={moneySummary.onlineNetMajor}
+          currency={experience.currency}
+        />
+
+        {/* Pricing summary (price + capacity) — kept below the money card. */}
         <Text style={styles.sectionLabel}>PRICING</Text>
         <GlassCard variant="base" radius="md" padding={spacing.md}>
           <View style={styles.kpiRow}>
@@ -307,72 +380,28 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
           </View>
         </GlassCard>
 
+        {/* Pass 2 — "Types" tile for experiences = the STOPS, each spot's full
+            detail + a horizontally scrollable image gallery. */}
         <Text style={styles.sectionLabelSpacer}>STOPS</Text>
-        {experience.stops.length === 0 ? (
-          <GlassCard variant="base" radius="md" padding={spacing.md}>
-            <Text style={styles.emptySectionText}>No stops yet.</Text>
-          </GlassCard>
-        ) : (
-          <View style={styles.stopList}>
-            {experience.stops.map((stop) => {
-              const thumb = stop.imageUrls.length > 0 ? stop.imageUrls[0] : null;
-              const stopPriceLabel =
-                experience.pricingMode === "per_stop" && stop.priceCents > 0
-                  ? formatCurrency(stop.priceCents, experience.currency)
-                  : null;
-              const timeLabel =
-                stop.startTime !== null && stop.startTime.length >= 5
-                  ? stop.startTime.slice(0, 5)
-                  : null;
-              return (
-                <GlassCard
-                  key={stop.id}
-                  variant="base"
-                  radius="md"
-                  padding={spacing.md}
-                >
-                  <View style={styles.stopRow}>
-                    {thumb !== null ? (
-                      <Image
-                        source={{ uri: thumb }}
-                        style={styles.stopThumb}
-                        resizeMode="cover"
-                        accessibilityLabel={`${stop.placeName} photo`}
-                      />
-                    ) : (
-                      <View style={[styles.stopThumb, styles.stopThumbEmpty]} />
-                    )}
-                    <View style={styles.stopTextCol}>
-                      <Text style={styles.stopName} numberOfLines={1}>
-                        {stop.stopOrder + 1}. {stop.placeName}
-                      </Text>
-                      {stop.address.length > 0 ? (
-                        <Text style={styles.stopAddress} numberOfLines={1}>
-                          {stop.address}
-                        </Text>
-                      ) : null}
-                      {stop.description.length > 0 ? (
-                        <Text style={styles.stopDescription} numberOfLines={2}>
-                          {stop.description}
-                        </Text>
-                      ) : null}
-                      {timeLabel !== null || stopPriceLabel !== null ? (
-                        <View style={styles.stopMetaRow}>
-                          {timeLabel !== null ? (
-                            <Text style={styles.stopMeta}>{timeLabel}</Text>
-                          ) : null}
-                          {stopPriceLabel !== null ? (
-                            <Text style={styles.stopMeta}>{stopPriceLabel}</Text>
-                          ) : null}
-                        </View>
-                      ) : null}
-                    </View>
-                  </View>
-                </GlassCard>
-              );
-            })}
-          </View>
-        )}
+        <ExperienceStopsGalleryTile
+          stops={experience.stops}
+          currency={experience.currency}
+          showStopPrices={experience.pricingMode === "per_stop"}
+        />
+
+        {/* Pass 2 — Recent activity (purchase / refund / cancel). */}
+        <Text style={styles.sectionLabelSpacer}>RECENT ACTIVITY</Text>
+        <GlassCard variant="base" radius="md" padding={spacing.md}>
+          {recentActivity.length === 0 ? (
+            <Text style={styles.emptySectionText}>No activity yet.</Text>
+          ) : (
+            <View style={styles.activityList}>
+              {recentActivity.map((a) => (
+                <EventDetailActivityRow key={activityRowKey(a)} event={a} />
+              ))}
+            </View>
+          )}
+        </GlassCard>
 
         {experience.status !== "ended" &&
         experience.status !== "cancelled" &&
@@ -588,45 +617,7 @@ const styles = StyleSheet.create({
     fontSize: typography.caption.fontSize,
     color: textTokens.tertiary,
   },
-  stopList: { gap: spacing.xs },
-  stopRow: { flexDirection: "row", gap: spacing.md, alignItems: "flex-start" },
-  stopThumb: {
-    width: 64,
-    height: 64,
-    borderRadius: 12,
-    backgroundColor: "rgba(255,255,255,0.06)",
-  },
-  stopThumbEmpty: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(255,255,255,0.12)",
-  },
-  stopTextCol: { flex: 1, gap: 2 },
-  stopName: {
-    fontSize: typography.body.fontSize,
-    fontWeight: "600",
-    color: textTokens.primary,
-  },
-  stopAddress: {
-    marginTop: 2,
-    fontSize: typography.caption.fontSize,
-    color: textTokens.secondary,
-  },
-  stopDescription: {
-    marginTop: 4,
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.secondary,
-  },
-  stopMetaRow: {
-    flexDirection: "row",
-    gap: spacing.md,
-    marginTop: 4,
-  },
-  stopMeta: {
-    fontSize: typography.caption.fontSize,
-    fontWeight: "600",
-    color: textTokens.tertiary,
-  },
+  activityList: { gap: spacing.xs },
   emptySectionText: { fontSize: 13, color: textTokens.tertiary },
   cancelWrap: { marginTop: spacing.xl },
 });
