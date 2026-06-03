@@ -37,6 +37,9 @@ const base: BusinessTodoInput = {
   hasDraftPaidOffering: false,
   stripeRoute: "/brand/b1/payments",
   draftRoute: null,
+  // META-ORCH-1059 — new BusinessTodoInput fields (no pending venue claim here).
+  venueClaimPending: false,
+  venueListingRoute: "/brand/b1/listing",
 };
 
 describe("META-ORCH-1009 Sub-E deck readiness (ORCH-1038 to-do toggle)", () => {

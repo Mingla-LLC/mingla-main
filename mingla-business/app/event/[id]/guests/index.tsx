@@ -42,6 +42,11 @@ import {
 } from "../../../../src/store/doorSalesStore";
 import { useManagedEventRoute } from "../../../../src/hooks/useManagedEventRoute";
 import { useEventGuestList } from "../../../../src/hooks/useEventOrders";
+import {
+  capitalizeNoun,
+  offeringKindConfig,
+  offeringKindFromEventType,
+} from "../../../../src/components/offering/offeringKind";
 import { useAuth } from "../../../../src/context/AuthContext";
 import { exportGuestsCsv } from "../../../../src/utils/guestCsvExport";
 
@@ -211,6 +216,26 @@ export default function EventGuestsListRoute(): React.ReactElement {
   const event = routeEvent.event;
   const brand = routeEvent.brand;
 
+  // META-ORCH-1059 — kind-aware copy lens. This "Guests" screen is shared with
+  // trips + experiences. Read the per-kind headcount metric from the loaded
+  // row's event_type. EVENTS keep the established "Guests" wording (this screen
+  // predates the offeringKind config, whose event metricPlural is "attendees");
+  // trips/experiences read "Travelers"/"Spots". Singular/plural via count.
+  const offeringKind = offeringKindFromEventType(event?.event_type);
+  const kindCfg = offeringKindConfig(offeringKind);
+  // Headcount label: event → "Guests"/"guests" (unchanged); trip → "Travelers";
+  // experience → "Spots". Capitalized form for the chrome title + empty-state
+  // headings, lowercase plural for inline sentences.
+  const headcountPlural =
+    offeringKind === "event" ? "guests" : kindCfg.metricPlural;
+  const headcountSingular =
+    offeringKind === "event" ? "guest" : kindCfg.metricSingular;
+  const headcountPluralCap = capitalizeNoun(headcountPlural);
+  const headcountLabelForCount = useCallback(
+    (count: number): string => (count === 1 ? headcountSingular : headcountPlural),
+    [headcountSingular, headcountPlural],
+  );
+
   // Raw subscriptions — merge in useMemo to maintain stable refs.
   const allOrderEntries = useEventGuestList(typeof eventId === "string" ? eventId : null);
   const allCompEntries = useGuestStore((s) => s.entries);
@@ -322,15 +347,19 @@ export default function EventGuestsListRoute(): React.ReactElement {
         rows: merged,
       });
       if (result.method === "downloaded") {
-        showToast(`Downloaded ${merged.length} guest(s).`);
+        showToast(
+          `Downloaded ${merged.length} ${headcountLabelForCount(merged.length)}.`,
+        );
       } else if (result.method === "shared") {
-        showToast(`${merged.length} guest(s) — CSV shared.`);
+        showToast(
+          `${merged.length} ${headcountLabelForCount(merged.length)} — CSV shared.`,
+        );
       }
       // result.method === "dismissed" → silent.
     } catch (_err) {
       showToast("Couldn't export. Tap to try again.");
     }
-  }, [event, merged, showToast]);
+  }, [event, merged, showToast, headcountLabelForCount]);
 
   const handleAddSuccess = useCallback(
     (entry: CompGuestEntry): void => {
@@ -361,10 +390,14 @@ export default function EventGuestsListRoute(): React.ReactElement {
             onPress={handleBack}
             accessibilityLabel="Back"
           />
-          <Text style={styles.chromeTitle}>Guests</Text>
+          <Text style={styles.chromeTitle}>{headcountPluralCap}</Text>
           <View style={styles.chromeRightSlot} />
         </View>
         <View style={styles.emptyHost}>
+          {/* META-ORCH-1059 — kept generic "Loading event..." on purpose: the
+              row is still resolving here (event === null), so kind is unknown;
+              also the locked shared-route-recovery marker. Kind-aware copy
+              applies on the steady-state strings below. */}
           <Text style={styles.emptyLoadingText}>Loading event...</Text>
         </View>
       </View>
@@ -386,13 +419,13 @@ export default function EventGuestsListRoute(): React.ReactElement {
             onPress={handleBack}
             accessibilityLabel="Back"
           />
-          <Text style={styles.chromeTitle}>Guests</Text>
+          <Text style={styles.chromeTitle}>{headcountPluralCap}</Text>
           <View style={styles.chromeRightSlot} />
         </View>
         <View style={styles.emptyHost}>
           <EmptyState
             illustration="ticket"
-            title="Event not found"
+            title={`${capitalizeNoun(kindCfg.noun)} not found`}
             description="It may have been deleted."
           />
         </View>
@@ -417,19 +450,19 @@ export default function EventGuestsListRoute(): React.ReactElement {
           onPress={handleBack}
           accessibilityLabel="Back"
         />
-        <Text style={styles.chromeTitle}>Guests</Text>
+        <Text style={styles.chromeTitle}>{headcountPluralCap}</Text>
         <View style={styles.chromeRight}>
           <IconChrome
             icon="search"
             size={36}
             onPress={() => setSearchOpen((v) => !v)}
-            accessibilityLabel="Search guests"
+            accessibilityLabel={`Search ${headcountPlural}`}
           />
           <IconChrome
             icon="download"
             size={36}
             onPress={handleExport}
-            accessibilityLabel="Export guest list"
+            accessibilityLabel={`Export ${headcountPlural} list`}
           />
           <IconChrome
             icon="plus"
@@ -466,10 +499,10 @@ export default function EventGuestsListRoute(): React.ReactElement {
           <View style={styles.emptyHost}>
             <EmptyState
               illustration="ticket"
-              title="No guests yet"
+              title={`No ${headcountPlural} yet`}
               description="Once buyers buy tickets — or you add comp guests manually — they'll appear here."
               cta={{
-                label: "Share event link",
+                label: `Share ${kindCfg.noun} link`,
                 onPress: handleShareEvent,
                 variant: "primary",
               }}
@@ -480,7 +513,7 @@ export default function EventGuestsListRoute(): React.ReactElement {
             <EmptyState
               illustration="search"
               title="No matches"
-              description={`No guests match "${search.trim()}".`}
+              description={`No ${headcountPlural} match "${search.trim()}".`}
             />
           </View>
         ) : (

@@ -868,7 +868,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
         variant="elevated"
         padding={0}
         radius="xxl"
-        style={styles.dock}
+        style={[styles.dock, { marginBottom: insets.bottom + spacing.lg }]}
       >
         {isLastStep ? (
           // Step 7 — uniform Back + Publish dock. The Stripe-blocked
@@ -1209,7 +1209,9 @@ const styles = StyleSheet.create({
   },
   dock: {
     marginHorizontal: spacing.md,
-    marginBottom: spacing.lg,
+    // marginBottom is applied inline as insets.bottom + spacing.lg so the
+    // floating dock clears the phone's bottom nav / home-indicator on both
+    // Android gesture-nav and iOS (META-ORCH-1059 Sub-A footer-bleed fix).
     // Sleek + compact: tight vertical padding, generous horizontal.
     paddingVertical: 6,
     paddingHorizontal: 8,

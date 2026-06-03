@@ -358,8 +358,15 @@ function asOptionalCapacity(v: unknown): number | null {
 
 const createExperience: AgentTool = {
   name: "create_experience",
+  // META-ORCH-1059 Sub-A (Layer 6): the AI tool now creates a DRAFT SHELL, never
+  // a dateless sellable publish. Under the new always-2–5-stops + always-a-date +
+  // one-ticket rules an AI proposal (no stops, no date, no ticket) cannot be
+  // published directly. The brand opens the draft in the wizard ("Set up &
+  // publish") to add stops + a date + pricing, then publishes. This keeps the
+  // I-1/I-2/I-4 invariants: no AI path produces a published, sellable, dateless
+  // experience.
   description:
-    "Create a single-intent venue experience under a verified physical venue (Restaurant or Play). Publishes live and public immediately on accept.",
+    "Create a DRAFT experience shell under a verified physical venue (Restaurant or Play). The draft is NOT published or sellable — the brand finishes it (stops, date, price) in the wizard before publishing.",
   parameters: {
     type: "object",
     required: ["brand_id", "title", "narrative"],
@@ -469,6 +476,21 @@ const createExperience: AgentTool = {
 
     const theme = { experience_meta: experienceMeta };
 
+    // META-ORCH-1059 Sub-A (Layer 6): DRAFT shell — NOT live/public, no
+    // published_at. A draft has no stops/date/ticket; the brand finishes +
+    // publishes via the wizard. Seed location_mode/pricing_mode + a whole-price
+    // midpoint from the suggested range so the wizard lands prefilled. A draft
+    // is allowed to have <2 stops (the 2–5 gate fires only on publish).
+    const suggestedMidCents =
+      typeof experienceMeta.suggested_price_min_cents === "number" &&
+      typeof experienceMeta.suggested_price_max_cents === "number"
+        ? Math.round(
+            ((experienceMeta.suggested_price_min_cents as number) +
+              (experienceMeta.suggested_price_max_cents as number)) /
+              2,
+          )
+        : null;
+
     const row = {
       brand_id: args.brand_id,
       created_by: userId,
@@ -476,9 +498,13 @@ const createExperience: AgentTool = {
       slug,
       description: args.narrative.trim(),
       event_type: "experience",
-      status: "live",
-      visibility: "public",
+      status: "draft",
+      visibility: "draft",
+      published_at: null,
       timezone: "UTC",
+      location_mode: "single",
+      pricing_mode: "whole",
+      whole_price_cents: suggestedMidCents,
       theme,
     };
 

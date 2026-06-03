@@ -28,6 +28,7 @@ import {
   mostRecentDraftRoute,
 } from "../utils/homeNextAction";
 import { routeForPipelineStateFix } from "../utils/deckReadinessRoutes";
+import { venueClaimBannerVariant } from "../services/venueClaimBannerLogic";
 
 export function useBusinessTodos(): BusinessTodo[] {
   const { user } = useAuth();
@@ -58,6 +59,21 @@ export function useBusinessTodos(): BusinessTodo[] {
     currentBrandId === null &&
     currentBrand === null &&
     !isBrandResolving;
+
+  // META-ORCH-1059 — the venue-claim "under review" to-do row (replaces the Hub
+  // blue banner). Reuse the SAME variant logic the banner used so the row shows
+  // for exactly the pending/under-review states (pending_review + admin follow-up).
+  const venueClaimVariant = venueClaimBannerVariant(
+    currentBrand !== null
+      ? {
+          claim_status: currentBrand.claimStatus ?? "none",
+          rejection_reason: currentBrand.rejectionReason ?? null,
+          claim_follow_up_at: currentBrand.claimFollowUpAt ?? null,
+        }
+      : null,
+  );
+  const venueClaimPending =
+    venueClaimVariant === "pending_review" || venueClaimVariant === "follow_up";
 
   const pipelineRoute = useMemo(
     () =>
@@ -93,6 +109,9 @@ export function useBusinessTodos(): BusinessTodo[] {
         stripeRoute:
           currentBrand !== null ? `/brand/${currentBrand.id}/payments` : "",
         draftRoute: mostRecentDraftRoute(drafts),
+        venueClaimPending,
+        venueListingRoute:
+          currentBrand !== null ? `/brand/${currentBrand.id}/listing` : "",
       }),
     [
       hasNoBrands,
@@ -105,6 +124,7 @@ export function useBusinessTodos(): BusinessTodo[] {
       venueDraftInProgress,
       upcoming.counts,
       drafts,
+      venueClaimPending,
     ],
   );
 }

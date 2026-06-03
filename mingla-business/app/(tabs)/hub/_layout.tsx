@@ -26,7 +26,6 @@ import { BrandDeleteSheet } from "../../../src/components/brand/BrandDeleteSheet
 import { BrandSwitcherSheet } from "../../../src/components/brand/BrandSwitcherSheet";
 import { BusinessTodoToggle } from "../../../src/components/home/BusinessTodoToggle";
 import { HubSubNav } from "../../../src/components/hub/HubSubNav";
-import { VenueClaimStatusBanner } from "../../../src/components/brand/VenueClaimStatusBanner";
 import { useBusinessTodos } from "../../../src/hooks/useBusinessTodos";
 import { useCurrentBrand } from "../../../src/hooks/useCurrentBrand";
 import {
@@ -45,6 +44,7 @@ import {
   useCurrentBrandStore,
   type Brand,
 } from "../../../src/store/currentBrandStore";
+import { useHubCreatorStore } from "../../../src/store/hubCreatorStore";
 import type { BusinessTodo } from "../../../src/utils/businessTodos";
 
 export default function HubTabLayout(): React.ReactElement {
@@ -64,6 +64,17 @@ export default function HubTabLayout(): React.ReactElement {
 
   const [brandSheetVisible, setBrandSheetVisible] = useState<boolean>(false);
   const [isUniversalCreatorOpen, setIsUniversalCreatorOpen] = useState<boolean>(false);
+  // META-ORCH-1059 — a Hub SUB-route empty state ("Create your first offering")
+  // opens the SAME chooser via this shared flag (sub-routes can't reach the
+  // layout's local state). Mirror it into the local state + clear the flag.
+  const creatorRequestOpen = useHubCreatorStore((s) => s.isOpen);
+  const closeCreatorRequest = useHubCreatorStore((s) => s.close);
+  useEffect(() => {
+    if (creatorRequestOpen) {
+      setIsUniversalCreatorOpen(true);
+      closeCreatorRequest();
+    }
+  }, [creatorRequestOpen, closeCreatorRequest]);
   const [deleteSheetVisible, setDeleteSheetVisible] = useState<boolean>(false);
   const [brandPendingDelete, setBrandPendingDelete] = useState<Brand | null>(null);
 
@@ -103,6 +114,16 @@ export default function HubTabLayout(): React.ReactElement {
   useEffect(() => {
     if (visibleTabs.data === undefined || initialTab === null) return;
     const activePath = pathname.toLowerCase();
+    // META-ORCH-1059 fold-in fix: this layout stays MOUNTED while the user
+    // pushes a route OUTSIDE the hub group (e.g. /experience/{id} from a hub
+    // list row). When that happens `pathname` is no longer a `/hub/...` path,
+    // so the old code fell through to `active="events"`, found that a
+    // restaurant/experiences-only brand's visibleTabs do NOT include "events",
+    // and fired `router.replace('/(tabs)/hub/...')` — yanking the user back to
+    // the hub mid-transition (the operator's "swipe animates in then bounces
+    // back + nav locks"). Only run the visible-tab redirect when we are
+    // actually ON a hub sub-route; never hijack navigation to another stack.
+    if (!activePath.includes("/hub/")) return;
     const active: HubTabName = activePath.includes("/hub/getstarted")
       ? "getstarted"
       : activePath.includes("/hub/trips")
@@ -176,7 +197,10 @@ export default function HubTabLayout(): React.ReactElement {
         loading={visibleTabs.isLoading}
         onTabPress={handleHubTabPress}
       />
-      <VenueClaimStatusBanner brand={currentBrand} />
+      {/* META-ORCH-1059 — the venue-claim "being reviewed" blue box was removed
+          from Hub (operator: redundant — the brand-page venue listing already
+          shows claim status). A pending/under-review claim now surfaces as a
+          smart row in the shared to-do toggle above (see buildBusinessTodos). */}
       <Slot />
       <BrandSwitcherSheet
         visible={brandSheetVisible}

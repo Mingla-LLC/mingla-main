@@ -16,4 +16,22 @@ describe("experiencesService contract", () => {
     expect(source).toMatch(/capacity_min/);
     expect(source).toMatch(/suggested_time_of_day/);
   });
+
+  // META-ORCH-1059 — the list query selects the columns a proper offering-card
+  // needs (cover media + price + when fields) and the mapper resolves a date
+  // subline + price label. Reverting to the bare title/description select fails.
+  test("selects cover + price + when columns for the Hub list card", () => {
+    expect(source).toMatch(/cover_media_url/);
+    expect(source).toMatch(/cover_media_type/);
+    expect(source).toMatch(/whole_price_cents/);
+    expect(source).toMatch(/is_recurring/);
+    expect(source).toMatch(/is_multi_date/);
+  });
+
+  test("mapper resolves a dateSubline + priceLabel + cover media on each row", () => {
+    expect(source).toMatch(/dateSubline/);
+    expect(source).toMatch(/priceLabel/);
+    expect(source).toMatch(/coverMediaUrl/);
+    expect(source).toMatch(/experienceListSubline/);
+  });
 });

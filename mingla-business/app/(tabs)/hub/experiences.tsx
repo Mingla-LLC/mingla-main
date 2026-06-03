@@ -12,12 +12,19 @@ import {
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ActivitiesSnapInput } from "../../../src/components/experience/ActivitiesSnapInput";
+import { ExperienceListCard } from "../../../src/components/experience/ExperienceListCard";
 import { ExperienceReviewCards } from "../../../src/components/experience/ExperienceReviewCards";
 import { MenuSnapInput } from "../../../src/components/experience/MenuSnapInput";
+import {
+  OfferingManageSheet,
+  buildOfferingManageActions,
+} from "../../../src/components/offering/OfferingManageSheet";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
 import { Button } from "../../../src/components/ui/Button";
+import { ShareModal } from "../../../src/components/ui/ShareModal";
 import { Toast } from "../../../src/components/ui/Toast";
 import {
   accent,
@@ -39,6 +46,10 @@ import type { ExperienceFilePayload } from "../../../src/services/experienceGene
 import type { VenueExperience } from "../../../src/services/experiencesService";
 import { canGenerateExperiencesFromActivities } from "../../../src/utils/canGenerateExperiencesFromActivities";
 import { canGenerateExperiencesFromMenu } from "../../../src/utils/canGenerateExperiencesFromMenu";
+import {
+  routeForEventRow,
+  type EventStatusForRouting,
+} from "../../../src/utils/routeForEventRow";
 
 type HubPhase = "idle" | "parsing" | "review";
 
@@ -81,28 +92,26 @@ const PLAY_COPY: GenerationCopy = {
     "Once Mingla verifies your venue claim, you can generate experiences from your activities list here.",
 };
 
-function formatExperienceMeta(exp: VenueExperience): string | null {
-  const parts: string[] = [];
-  if (exp.capacityMin !== null && exp.capacityMax !== null) {
-    parts.push(
-      exp.capacityMin === exp.capacityMax
-        ? `Up to ${exp.capacityMax} people`
-        : `${exp.capacityMin}\u2013${exp.capacityMax} people`,
-    );
-  } else if (exp.capacityMax !== null) {
-    parts.push(`Up to ${exp.capacityMax} people`);
+// META-ORCH-1059 Sub-B \u2014 map the raw events.status string to the routing union.
+// (The list card derives its own status chip from exp.status; routing for
+// experiences ignores status, but we still pass the normalized value through.)
+function normalizeExperienceStatus(status: string): EventStatusForRouting {
+  switch (status) {
+    case "draft":
+    case "scheduled":
+    case "live":
+    case "ended":
+    case "cancelled":
+      return status;
+    default:
+      return null;
   }
-  if (exp.suggestedTimeOfDay) {
-    parts.push(exp.suggestedTimeOfDay);
-  }
-  if (exp.intentTags.length > 0) {
-    parts.push(exp.intentTags.join(" \u00b7 "));
-  }
-  return parts.length > 0 ? parts.join(" \u00b7 ") : null;
 }
 
 interface ExperienceGenerationSurfaceProps {
   brandId: string;
+  /** META-ORCH-1059 — current brand slug, for the manage-sheet public/share routes. */
+  brandSlug: string | null;
   parseMode: ExperienceParseMode;
   copy: GenerationCopy;
   canSnap: boolean;
@@ -115,12 +124,14 @@ interface ExperienceGenerationSurfaceProps {
 
 function ExperienceGenerationSurface({
   brandId,
+  brandSlug,
   parseMode,
   copy,
   canSnap,
   SnapInput,
 }: ExperienceGenerationSurfaceProps): React.ReactElement {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { isWideDesktop } = useResponsiveLayout();
   const experiencesQuery = useExperiencesByBrand(brandId);
   const {
@@ -135,6 +146,10 @@ function ExperienceGenerationSurface({
   const [snapSheetVisible, setSnapSheetVisible] = useState(false);
   const [phase, setPhase] = useState<HubPhase>("idle");
   const [toast, setToast] = useState<string | null>(null);
+  // META-ORCH-1059 Pass 1 — Hub list-card 3-dot opens the shared manage sheet.
+  const [manageExp, setManageExp] = useState<VenueExperience | null>(null);
+  const [shareExp, setShareExp] = useState<VenueExperience | null>(null);
+  const hasBrandSlug = brandSlug !== null && brandSlug.length > 0;
 
   const experiences = experiencesQuery.data ?? [];
   const showReview = phase === "review" || pending.length > 0;
@@ -166,21 +181,26 @@ function ExperienceGenerationSurface({
     [copy.emptyParseToast, copy.parseErrorFallback, parseFiles],
   );
 
-  const handleAcceptAll = useCallback(async () => {
-    for (const row of pending) {
-      const response = await confirm({ id: row.id });
-      if (response.kind === "error") {
-        setToast(response.message);
-        return;
-      }
-    }
-    setPhase("idle");
-    setToast("Experiences published to your venue.");
-  }, [confirm, pending]);
+  // META-ORCH-1059 Sub-A (Layer 6): "Accept all" removed — AI proposals are
+  // now DRAFT shells the brand finishes (stops + date + price) before publish;
+  // bulk-publishing dated/stopped experiences is impossible. Each proposal is
+  // set up individually via "Set up & publish".
 
   return (
     <>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      {/* META-ORCH-1059 fold-in fix: the floating absolute BottomNav tab bar
+          (app/(tabs)/_layout.tsx) overlays the bottom of this ScrollView. The
+          flat `paddingBottom: 120` left the last/only experience card UNDER the
+          tab bar on devices with a gesture-nav inset (e.g. Samsung A72), so the
+          card's Pressable could never receive the tap — it read as a dead tap
+          that "freezes" the nav. Mirror the events-hub pattern
+          (app/(tabs)/hub/events.tsx:553): pad by `insets.bottom + 120`. */}
+      <ScrollView
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: insets.bottom + 120 },
+        ]}
+      >
         {canSnap && (
           <Pressable
             onPress={() => setSnapSheetVisible(true)}
@@ -215,7 +235,11 @@ function ExperienceGenerationSurface({
                 setToast(response.message);
                 return;
               }
+              // META-ORCH-1059 Sub-A: the AI tool created a DRAFT shell (no
+              // stops/date/ticket). The brand finishes it from the experiences
+              // list (Sub-B wires the tap-to-edit). Surface the draft + nudge.
               if (pending.length <= 1) setPhase("idle");
+              setToast("Draft created — add stops, a date and price to publish it.");
             }}
             onReject={async (id) => {
               const response = await reject(id);
@@ -223,7 +247,6 @@ function ExperienceGenerationSurface({
                 setToast(response.message);
               }
             }}
-            onAcceptAll={handleAcceptAll}
           />
         )}
 
@@ -246,26 +269,30 @@ function ExperienceGenerationSurface({
         ) : (
           <View style={[styles.expList, isWideDesktop && styles.desktopListGrid]}>
             {experiences.map((exp) => {
-              const meta = formatExperienceMeta(exp);
+              const statusForRouting = normalizeExperienceStatus(exp.status);
               return (
                 <View
                   key={exp.id}
-                  style={[
-                    styles.expCard,
-                    isWideDesktop && styles.desktopListCell,
-                  ]}
+                  style={isWideDesktop ? styles.desktopListCell : undefined}
                 >
-                  <GlassCard variant="elevated" padding={spacing.md}>
-                    <Text style={styles.expTitle}>{exp.title}</Text>
-                    {exp.description !== null && (
-                      <Text style={styles.expBody} numberOfLines={3}>
-                        {exp.description}
-                      </Text>
-                    )}
-                    {meta !== null && (
-                      <Text style={styles.expTags}>{meta}</Text>
-                    )}
-                  </GlassCard>
+                  {/* META-ORCH-1059 — proper offering-card row (cover thumb +
+                      status pill + title + date·venue subline + price), matching
+                      the events + trips lists. Tap opens the DASHBOARD via
+                      routeForEventRow (experiences always resolve to
+                      /experience/{id}); the dashboard owns the edit action. */}
+                  <ExperienceListCard
+                    experience={exp}
+                    onOpen={() =>
+                      router.push(
+                        routeForEventRow({
+                          id: exp.id,
+                          event_type: "experience",
+                          status: statusForRouting,
+                        }) as never,
+                      )
+                    }
+                    onManageOpen={() => setManageExp(exp)}
+                  />
                 </View>
               );
             })}
@@ -285,13 +312,67 @@ function ExperienceGenerationSurface({
         message={toast ?? ""}
         onDismiss={() => setToast(null)}
       />
+
+      {/* META-ORCH-1059 Pass 1 — shared per-kind manage sheet opened from a
+          list-card 3-dot. Edit · View public · Share · Cancel (Orders +
+          Duplicate omitted — no experience orders/duplicate route yet). Cancel
+          routes to the experience dashboard's typeToConfirm flow. */}
+      {manageExp !== null ? (
+        <OfferingManageSheet
+          visible
+          onClose={() => setManageExp(null)}
+          kind="experience"
+          actions={buildOfferingManageActions(
+            "experience",
+            {
+              onEdit: () =>
+                router.push(`/experience/${manageExp.id}/edit` as never),
+              onViewPublic: hasBrandSlug
+                ? () =>
+                    router.push(
+                      `/exp/${brandSlug}/${manageExp.slug}` as never,
+                    )
+                : undefined,
+              onShare: hasBrandSlug ? () => setShareExp(manageExp) : undefined,
+              onCancel:
+                manageExp.status !== "ended" &&
+                manageExp.status !== "cancelled" &&
+                manageExp.status !== "draft"
+                  ? () => router.push(`/experience/${manageExp.id}` as never)
+                  : undefined,
+            },
+            () => setManageExp(null),
+          )}
+        />
+      ) : null}
+
+      {shareExp !== null && hasBrandSlug ? (
+        <ShareModal
+          visible
+          onClose={() => setShareExp(null)}
+          url={`https://business.usemingla.com/exp/${brandSlug}/${shareExp.slug}`}
+          title={`${shareExp.title} on Mingla`}
+          description={
+            shareExp.description !== null && shareExp.description.length > 0
+              ? shareExp.description.slice(0, 200)
+              : shareExp.title
+          }
+        />
+      ) : null}
     </>
   );
 }
 
 export default function HubExperiencesRoute(): React.ReactElement {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const currentBrand = useCurrentBrand();
+  // META-ORCH-1059 fold-in: clear the floating tab bar so empty-state CTAs
+  // are never tappable-blocked (mirror the surface ScrollView fix).
+  const emptyContentStyle = [
+    styles.scrollContent,
+    { paddingBottom: insets.bottom + 120 },
+  ];
 
   if (currentBrand === null) {
     return (
@@ -305,6 +386,7 @@ export default function HubExperiencesRoute(): React.ReactElement {
     return (
       <ExperienceGenerationSurface
         brandId={currentBrand.id}
+        brandSlug={currentBrand.slug}
         parseMode="menu"
         copy={RESTAURANT_COPY}
         canSnap={canGenerateExperiencesFromMenu(currentBrand)}
@@ -317,6 +399,7 @@ export default function HubExperiencesRoute(): React.ReactElement {
     return (
       <ExperienceGenerationSurface
         brandId={currentBrand.id}
+        brandSlug={currentBrand.slug}
         parseMode="activities"
         copy={PLAY_COPY}
         canSnap={canGenerateExperiencesFromActivities(currentBrand)}
@@ -327,7 +410,7 @@ export default function HubExperiencesRoute(): React.ReactElement {
 
   if (currentBrand.venueCategory === "creative_and_arts") {
     return (
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView contentContainerStyle={emptyContentStyle}>
         <GlassCard variant="elevated" padding={spacing.lg}>
           <Text style={styles.emptyTitle}>No experiences yet</Text>
           <Text style={styles.emptyBody}>Create experience</Text>
@@ -346,7 +429,7 @@ export default function HubExperiencesRoute(): React.ReactElement {
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.scrollContent}>
+    <ScrollView contentContainerStyle={emptyContentStyle}>
       <GlassCard variant="elevated" padding={spacing.lg}>
         <Text style={styles.emptyTitle}>No experiences yet</Text>
         <Text style={styles.emptyBody}>Create experience</Text>
@@ -431,22 +514,6 @@ const styles = StyleSheet.create({
     width: `${100 / DESKTOP_HUB_GRID_COLUMNS}%`,
     paddingHorizontal: spacing.xs,
     marginBottom: spacing.sm,
-  },
-  expCard: { marginBottom: spacing.sm },
-  expTitle: {
-    fontSize: typography.body.fontSize,
-    fontWeight: "600",
-    color: textTokens.primary,
-  },
-  expBody: {
-    marginTop: spacing.xs,
-    fontSize: typography.caption.fontSize,
-    color: textTokens.secondary,
-  },
-  expTags: {
-    marginTop: spacing.xs,
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
   },
   emptyTitle: {
     fontSize: typography.h3.fontSize,
