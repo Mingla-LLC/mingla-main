@@ -73,7 +73,15 @@ export type CollabDeadEndBannerInput = {
   currentUserId: string;
 };
 
-export async function postCollabDeadEndBanner(input: CollabDeadEndBannerInput): Promise<void> {
+/**
+ * ORCH-1059 — returns a SUCCESS boolean so the caller can decide whether to
+ * navigate the user back to the group chat. `true` is returned ONLY when a real
+ * banner row actually landed (the RPC returned a message id). Debounce hits and
+ * any error path return `false`, leaving the user where they are so they can
+ * retry. Toasts are still surfaced internally (global `toastManager`), so the
+ * success toast remains visible after the caller navigates back to chat.
+ */
+export async function postCollabDeadEndBanner(input: CollabDeadEndBannerInput): Promise<boolean> {
   const key = `orch_0945_banner_debounce:${input.sessionId}:${input.currentUserId}:${input.reason}`;
   const now = Date.now();
 
@@ -82,7 +90,7 @@ export async function postCollabDeadEndBanner(input: CollabDeadEndBannerInput): 
     const previousTimestamp = previous ? Number(previous) : 0;
     if (Number.isFinite(previousTimestamp) && now - previousTimestamp < DEBOUNCE_MS) {
       toastManager.warning('Already flagged just now.', 2000);
-      return;
+      return false;
     }
 
     // ORCH-1058B: post via the SECURITY DEFINER RPC. The RPC resolves the
@@ -120,9 +128,11 @@ export async function postCollabDeadEndBanner(input: CollabDeadEndBannerInput): 
 
     await AsyncStorage.setItem(key, String(now));
     toastManager.success('Group notified', 2000);
+    return true;
   } catch (error) {
     console.warn('[collabDeadEndBannerService] post failed', error);
     toastManager.error("Couldn't notify the group. Tap to retry.", 3000);
+    return false;
   }
 }
 
