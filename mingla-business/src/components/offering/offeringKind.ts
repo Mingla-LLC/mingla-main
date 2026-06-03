@@ -71,6 +71,34 @@ export function offeringKindConfig(kind: OfferingKind): OfferingKindConfig {
 }
 
 /**
+ * Resolve the OfferingKind from a row's `event_type` discriminator.
+ *
+ * The shared management sub-screens (`/event/[id]/orders|guests|scanner|
+ * scanners`) are reused by trips + experiences as well as events. They load
+ * the managed row via `useManagedEventRoute`, whose `LiveEvent.event_type`
+ * field carries the discriminator. This maps that field to the OfferingKind
+ * config so each screen's user-facing copy reads through the right lens.
+ *
+ * Defaults to "event" for null/undefined/unknown values — matching
+ * `routeForEventRowDefensive`'s legacy-row interpretation (pre-discriminator
+ * persisted rows are all events by definition). Events therefore render
+ * byte-identical copy ("event"/"attendees") and are never regressed.
+ */
+export function offeringKindFromEventType(
+  eventType: string | null | undefined,
+): OfferingKind {
+  if (eventType === "trip") return "trip";
+  if (eventType === "experience") return "experience";
+  return "event";
+}
+
+/** Capitalize the first letter (for sentence-leading nouns, e.g. "Trip not found"). */
+export function capitalizeNoun(noun: string): string {
+  if (noun.length === 0) return noun;
+  return noun.charAt(0).toUpperCase() + noun.slice(1);
+}
+
+/**
  * Format the per-kind headcount metric label, e.g. `1 traveler` / `3 spots sold`.
  * Experiences read as "N spots sold"; events/trips as "N attendees"/"N travelers".
  */
