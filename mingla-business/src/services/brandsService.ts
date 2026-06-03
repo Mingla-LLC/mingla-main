@@ -242,6 +242,17 @@ export interface SoftDeleteSuccess {
 }
 export type SoftDeleteResult = SoftDeleteSuccess | SoftDeleteRejection;
 export const BRAND_DELETE_BLOCKING_EVENT_STATUSES = ["scheduled", "live"] as const;
+// ORCH-1062 — statuses the brand HUB surfaces (mirrors
+// business_management_events_view's `status IN (...)` filter). The account-page
+// brand-card "N events" badge counts ONLY these so it can never claim drafts the
+// hub hides. Keep in lockstep with the view definition
+// (supabase/migrations/...orch_0792_events_with_master_date_view.sql).
+export const HUB_VISIBLE_EVENT_STATUSES = [
+  "scheduled",
+  "live",
+  "ended",
+  "cancelled",
+] as const;
 
 // ----- createBrand -------------------------------------------------------
 
@@ -437,11 +448,22 @@ async function getEventCountsByBrandIds(
 ): Promise<Map<string, number>> {
   if (brandIds.length === 0) return new Map();
 
-  // orch-strict-grep-allow events-type-filter — getEventCountsByBrandIds is intentionally type-agnostic ("does this brand have ANY content"); operator decision pending per ORCH-0859 REWORK 3 dispatch (whether trips should count as "events" for brand-card badges or get their own count)
+  // ORCH-1062 — the account-page brand badge "lied": it counted ALL non-deleted
+  // events including DRAFTS, so a brand whose hub shows zero events still rendered
+  // "N events" (e.g. brand "rrrr" showed "2 events" while its hub was empty —
+  // both events were drafts). The hub events list
+  // (businessEvents.ts → business_management_events_view) only surfaces
+  // status IN ('scheduled','live','ended','cancelled') — drafts are excluded.
+  // Mirror that EXACT status filter here so the badge can't claim content the hub
+  // hides (verified live 2026-06-02). Stays type-agnostic (no event_type filter —
+  // trips/experiences still counted; the ORCH-0859 events-vs-trips badge question
+  // is unchanged, only the draft inflation is removed).
+  // orch-strict-grep-allow events-type-filter — intentionally type-agnostic "any published hub content" count; no event_type filter by design (ORCH-1062 removes only draft inflation)
   const { data, error } = await supabase
     .from("events")
     .select("brand_id")
     .in("brand_id", brandIds)
+    .in("status", HUB_VISIBLE_EVENT_STATUSES)
     .is("deleted_at", null);
 
   if (error) throw error;
