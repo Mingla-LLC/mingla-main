@@ -55,6 +55,14 @@ import {
   normalizeExperienceIntents,
   type ExperienceIntentId,
 } from "../../constants/experienceIntents";
+import { EditAfterPublishExperienceBanner } from "./EditAfterPublishExperienceBanner";
+import {
+  validateLiveExperienceFieldUpdate,
+  liveExperienceRejectCopy,
+  type LiveExperiencePatch,
+  type UpdateLiveExperienceRejectReason,
+} from "../../utils/publishedExperienceEditGuards";
+import type { ExperienceDetail } from "../../services/experienceDetailService";
 
 export interface ExperienceCreatorWizardProps {
   brandId: string;
@@ -73,6 +81,17 @@ export interface ExperienceCreatorWizardProps {
   initialCover?: CoverPatch;
   /** Full draft seed for edit-mode (stops + modes + pricing + when). */
   initialDraft?: ExperienceWizardInitialDraft;
+  /**
+   * META-ORCH-1059 Sub-E — LIVE-edit mode. When set, the experience is
+   * scheduled/live (not a draft): the wizard shows the buyer-protection banner +
+   * required reason, runs the client guard against the loaded experience, and
+   * routes the single "Save changes" through biz_update_live_experience instead
+   * of biz_publish_experience. Draft edits leave this undefined and keep the
+   * existing Publish / Save-as-draft flow unchanged.
+   */
+  liveExperience?: ExperienceDetail;
+  /** Total confirmed (paid) order quantity for the live experience (refund-gate input). */
+  liveSoldCount?: number;
 }
 
 /** META-ORCH-1059 Sub-B — edit-mode seed for the whole wizard. */
@@ -130,6 +149,8 @@ const RPC_ERROR_COPY: Record<string, string> = {
   slug_taken: "An experience with that name already exists. Try a small variation.",
   experience_not_found: "We couldn't find this experience. It may have been deleted.",
   event_not_an_experience: "That isn't an editable experience.",
+  // META-ORCH-1059 Sub-E — live-edit refund-gate + lifecycle copy.
+  experience_not_editable_status: "This experience can't be edited in its current state.",
 };
 
 const currencySymbolFor = (currency: string): string =>
@@ -153,7 +174,10 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
   existingExperienceId,
   initialCover,
   initialDraft,
+  liveExperience,
+  liveSoldCount,
 }) => {
+  const isLiveEdit = liveExperience !== undefined;
   const { user } = useAuth();
   const brand = useCurrentBrand();
   const router = useRouter();
@@ -214,6 +238,9 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [showStepErrors, setShowStepErrors] = useState(false);
+  // META-ORCH-1059 Sub-E — live-edit reason + inline rejection message.
+  const [liveEditReason, setLiveEditReason] = useState("");
+  const [liveEditError, setLiveEditError] = useState<string | null>(null);
 
   // META-ORCH-1059 Sub-B — draft-first lifecycle. A server draft row (and thus
   // an events-row id) is created UP FRONT so the Cover step has a real id for
@@ -486,6 +513,118 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
     ],
   );
 
+  // META-ORCH-1059 Sub-E — live-experience save. Builds the LiveExperiencePatch
+  // from the SAME wizard state buildPayload uses, runs the client guard (UX
+  // fast-path), then routes through biz_update_live_experience. The server
+  // re-validates the refund-gate; the inline error mirrors the server reason.
+  const handleLiveSave = useCallback(async (): Promise<void> => {
+    if (liveExperience === undefined) return;
+    if (brand === null || user?.id === undefined) return;
+    setLiveEditError(null);
+
+    // Step-level completeness still required for a live experience (published
+    // rows must stay valid). Reuse the same publish-readiness checks.
+    if (intents.length === 0 || !stopsValid || !pricingValid || !whenAdapter.isValid) {
+      setShowStepErrors(true);
+      whenAdapter.setShowErrors(true);
+      const reason =
+        intents.length === 0
+          ? "Pick at least one vibe on step 1 before saving."
+          : !stopsValid
+            ? "Finish your stops (each needs a name, description, and address) before saving."
+            : !whenAdapter.isValid
+              ? "Set the date and time on the When step before saving."
+              : "Set a valid price (or mark it free) before saving.";
+      setToast(reason);
+      return;
+    }
+
+    // Build the guard patch from current wizard state (mirrors buildPayload).
+    const resolvedCents = Math.round(resolvedTotalMajor * 100);
+    const patch: LiveExperiencePatch = {
+      capacity: unlimited ? null : parseInt(capacity, 10) || null,
+      is_free: isFree,
+      pricing_mode: pricingMode,
+      whole_price_cents: resolvedCents,
+      stops: stops.map((s) => ({
+        placeName: s.placeName.trim(),
+        priceCents:
+          pricingMode === "per_stop"
+            ? Math.round((parseFloat(s.priceMajor) || 0) * 100)
+            : 0,
+      })),
+    };
+
+    // Client guard — UX fast-path.
+    const guard = validateLiveExperienceFieldUpdate(
+      liveExperience,
+      patch,
+      liveSoldCount ?? 0,
+      liveEditReason,
+    );
+    if (!guard.ok) {
+      const copy = liveExperienceRejectCopy(guard.reason, guard.affectedOrderCount);
+      setLiveEditError(copy);
+      setToast(copy);
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const { data, error } = await supabase.rpc("biz_update_live_experience", {
+        p_event_id: liveExperience.id,
+        p_payload: buildPayload(true),
+        p_reason: guard.trimmedReason,
+      });
+      if (error !== null) {
+        const code = (error.message ?? "").trim();
+        throw new Error(
+          RPC_ERROR_COPY[code] ??
+            (code.length > 0
+              ? `Couldn't save experience: ${code}`
+              : "Couldn't save experience. Tap to retry."),
+        );
+      }
+      const result = data as
+        | { ok?: boolean; reason?: string; affected_order_count?: number; event?: { id?: string } }
+        | null;
+      // Server-side refund-gate rejection (canonical).
+      if (result !== null && result.ok === false && typeof result.reason === "string") {
+        const copy = liveExperienceRejectCopy(
+          result.reason as UpdateLiveExperienceRejectReason,
+          result.affected_order_count,
+        );
+        setLiveEditError(copy);
+        setToast(copy);
+        return;
+      }
+      const savedId = result?.event?.id ?? liveExperience.id;
+      onComplete(savedId);
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : "Couldn't save experience. Tap to retry.");
+    } finally {
+      setSubmitting(false);
+    }
+  }, [
+    brand,
+    buildPayload,
+    capacity,
+    intents,
+    isFree,
+    liveEditReason,
+    liveExperience,
+    liveSoldCount,
+    onComplete,
+    pricingMode,
+    pricingValid,
+    resolvedTotalMajor,
+    stops,
+    stopsValid,
+    unlimited,
+    user?.id,
+    whenAdapter,
+  ]);
+
   return (
     <View style={styles.host}>
       <View style={styles.header}>
@@ -504,6 +643,16 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
+        {isLiveEdit ? (
+          <EditAfterPublishExperienceBanner
+            reason={liveEditReason}
+            onReasonChange={(next) => {
+              setLiveEditReason(next);
+              if (liveEditError !== null) setLiveEditError(null);
+            }}
+            errorMessage={liveEditError}
+          />
+        ) : null}
         {step === 1 ? (
           <View style={styles.stepBody}>
             <Text style={styles.title}>Create experience</Text>
@@ -648,6 +797,19 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
       <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.lg }]}>
         {step < 5 ? (
           <Button label="Continue" onPress={goNext} variant="primary" size="lg" />
+        ) : isLiveEdit ? (
+          // META-ORCH-1059 Sub-E — live experiences are already published, so
+          // there's one "Save changes" action routed through the refund-gate RPC
+          // (no Save-as-draft / Publish split — a live experience can't go back
+          // to draft).
+          <Button
+            label="Save changes"
+            onPress={() => void handleLiveSave()}
+            variant="primary"
+            size="lg"
+            loading={submitting}
+            testID="experience-live-edit-save"
+          />
         ) : (
           <View style={styles.footerRow}>
             <Button

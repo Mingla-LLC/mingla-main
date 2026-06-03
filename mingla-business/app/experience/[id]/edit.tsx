@@ -2,11 +2,14 @@
  * /experience/[id]/edit — status-based dispatch host. META-ORCH-1059 Sub-B.
  *
  * Loads the experience by id, then routes:
- *   - "draft" | "scheduled" | "live" → ExperienceCreatorWizard in edit-mode
- *       (seeds title/stops/modes/pricing/when/cover from the loaded draft;
- *       Publish / Save-as-draft both call biz_publish_experience against the
- *       existing row). Reusing the wizard in edit mode is the Sub-B pass; a
- *       dedicated sectioned EditPublishedExperienceScreen is Sub-E.
+ *   - "draft" → ExperienceCreatorWizard in edit-mode (seeds title/stops/modes/
+ *       pricing/when/cover from the loaded draft; Publish / Save-as-draft both
+ *       call biz_publish_experience against the existing row).
+ *   - "scheduled" | "live" → ExperienceCreatorWizard in LIVE-edit mode
+ *       (META-ORCH-1059 Sub-E): shows the buyer-protection banner + required
+ *       reason, runs the client refund-gate, and routes the single "Save
+ *       changes" through biz_update_live_experience (NOT biz_publish_experience)
+ *       so existing buyers stay protected (no price/date/capacity/stop regress).
  *   - "ended" | "cancelled" → read-only empty state + "Back to experience".
  *
  * Mirrors app/trip/[id]/edit.tsx's status dispatch.
@@ -33,6 +36,7 @@ import {
   type ExperienceStopDraft,
 } from "../../../src/components/experience/experienceWizardTypes";
 import { useExperienceDetail } from "../../../src/hooks/useExperienceDetail";
+import { useExperienceSoldCount } from "../../../src/hooks/useExperienceSoldCount";
 import type { ExperienceDetail } from "../../../src/services/experienceDetailService";
 import type { CoverPatch } from "../../../src/components/ui/CoverPicker";
 import type {
@@ -194,6 +198,18 @@ export default function ExperienceEditRoute(): React.ReactElement {
   );
   const experience = detailQuery.data ?? null;
 
+  // META-ORCH-1059 Sub-E — a scheduled/live experience routes through the
+  // buyer-protection live-edit path (banner + reason + biz_update_live_experience).
+  // Drafts keep the plain wizard flow. Load the confirmed sold count (same RPC
+  // the server gate uses) only when this is a live experience.
+  const isLive =
+    experience !== null &&
+    (experience.status === "scheduled" || experience.status === "live");
+  const soldCountQuery = useExperienceSoldCount(
+    typeof eventId === "string" ? eventId : null,
+    isLive,
+  );
+
   const initialDraft = useMemo<ExperienceWizardInitialDraft | null>(
     () => (experience !== null ? detailToInitialDraft(experience) : null),
     [experience],
@@ -289,6 +305,8 @@ export default function ExperienceEditRoute(): React.ReactElement {
         existingExperienceId={experience.id}
         initialDraft={initialDraft}
         initialCover={initialCover}
+        liveExperience={isLive ? experience : undefined}
+        liveSoldCount={isLive ? soldCountQuery.data ?? 0 : undefined}
         onComplete={(id) => router.replace(`/experience/${id}` as never)}
         onCancel={() => {
           if (router.canGoBack()) router.back();

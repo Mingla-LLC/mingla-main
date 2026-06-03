@@ -1291,6 +1291,13 @@ function checkNoNewBackendFiles() {
     // in the SAME commit as the migration + its regression test.
     "supabase/migrations/20260829000000_meta_orch_1059_draft_roundtrip_cover_neverends.sql",
     "supabase/functions/__tests__/biz_experience_draft_roundtrip.test.ts",
+    // Sub-E — edit-after-publish buyer-protection guards: experience_edit_log
+    // table + biz_experience_sold_count helper + biz_update_live_experience RPC
+    // (refund-gate mirroring biz_update_live_trip, adapted to stops + one ticket
+    // + dates). One migration + its source-level regression test. Per COMMS-0002
+    // — allowlist lands in the SAME commit as the migration.
+    "supabase/migrations/20260902000000_meta_orch_1059_sub_e_update_live_experience.sql",
+    "supabase/functions/__tests__/biz_update_live_experience.refund_gate.test.ts",
   ];
   // ORCH-1045 [Business "Get Beta Access" lead-capture]: adds the beta-lead
   // migration (beta_access_leads table + admin_beta_leads_list RPC) and the
