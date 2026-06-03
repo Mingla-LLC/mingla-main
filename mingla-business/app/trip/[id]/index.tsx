@@ -20,6 +20,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 
@@ -132,6 +133,7 @@ function normalizeCoverMediaType(value: string | null): EventCoverMediaType | nu
 
 export default function TripDashboardRoute(): React.ReactElement {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ id: string | string[] }>();
   const eventId = Array.isArray(params.id) ? params.id[0] : params.id;
 
@@ -363,7 +365,13 @@ export default function TripDashboardRoute(): React.ReactElement {
           tiles. */}
       <ScrollView
         style={styles.body}
-        contentContainerStyle={styles.bodyContent}
+        contentContainerStyle={[
+          styles.bodyContent,
+          // META-ORCH-1059 Pass 1 — clear the phone's bottom bar (home
+          // indicator / gesture nav) so content doesn't bleed into it, mirroring
+          // the event dashboard (app/event/[id]/index.tsx).
+          { paddingBottom: insets.bottom + spacing.xl },
+        ]}
         showsVerticalScrollIndicator={false}
       >
       {/* ORCH-0874: hero — full-width cover + gradient overlay + status pill

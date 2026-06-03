@@ -10,6 +10,7 @@
 
 import { supabase } from "./supabase";
 import { formatCurrency } from "../utils/currency";
+import { aggregatePaidOrdersByEvent } from "./tripsService";
 import {
   experienceListSubline,
   type ExperienceListWhenDraft,
@@ -45,6 +46,17 @@ export interface VenueExperience {
    * experience has no resolved whole price yet (e.g. per-stop pricing or unset).
    */
   priceLabel: string | null;
+  /**
+   * META-ORCH-1059 Pass 1 — spots sold (summed paid order_line_items.quantity)
+   * for the Hub list-card metric. 0 when no paid orders.
+   */
+  spotsSold: number;
+  /**
+   * META-ORCH-1059 Pass 1 — total paid revenue in minor units of
+   * `revenueCurrency`, for the list-card money strip. 0 when no paid orders.
+   */
+  revenueCents: number;
+  revenueCurrency: string | null;
 }
 
 interface EventRow {
@@ -80,7 +92,10 @@ function deriveWhenMode(
   return "single";
 }
 
-function mapExperience(row: EventRow): VenueExperience {
+function mapExperience(
+  row: EventRow,
+  agg?: { ticketsSold: number; revenueCents: number; revenueCurrency: string | null },
+): VenueExperience {
   const theme = row.theme ?? {};
   const meta = (theme.experience_meta as Record<string, unknown> | undefined) ?? {};
   const intentRaw = meta.intent_tags;
@@ -135,6 +150,9 @@ function mapExperience(row: EventRow): VenueExperience {
     coverMediaType: normalizeCoverType(row.cover_media_type),
     dateSubline,
     priceLabel,
+    spotsSold: agg?.ticketsSold ?? 0,
+    revenueCents: agg?.revenueCents ?? 0,
+    revenueCurrency: agg?.revenueCurrency ?? null,
   };
 }
 
@@ -149,5 +167,9 @@ export async function getExperiencesByBrand(brandId: string): Promise<VenueExper
     .is("deleted_at", null)
     .order("created_at", { ascending: false });
   if (error) throw error;
-  return ((data ?? []) as EventRow[]).map(mapExperience);
+  const rows = (data ?? []) as EventRow[];
+  // META-ORCH-1059 Pass 1: one batched paid-orders aggregation → per-experience
+  // spots-sold + revenue for the Hub list-card (parity with events + trips).
+  const agg = await aggregatePaidOrdersByEvent(rows.map((r) => r.id));
+  return rows.map((row) => mapExperience(row, agg.get(row.id)));
 }

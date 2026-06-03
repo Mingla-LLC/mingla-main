@@ -21,6 +21,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
 import {
@@ -43,6 +44,10 @@ import {
   deriveTripLifecycleStatus,
   type TripLifecycleStatus,
 } from "../../../src/components/trip/TripDetailHeroStatusPill";
+import {
+  OfferingManageSheet,
+  buildOfferingManageActions,
+} from "../../../src/components/offering/OfferingManageSheet";
 import { useExperienceDetail } from "../../../src/hooks/useExperienceDetail";
 import { useCancelBusinessEvent } from "../../../src/hooks/useBusinessEvents";
 import { formatExperienceDateSubline } from "../../../src/utils/experienceDateSubline";
@@ -92,6 +97,7 @@ function HeroStatusPill({
 
 export default function ExperienceDashboardRoute(): React.ReactElement {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ id: string | string[] }>();
   const eventId = Array.isArray(params.id) ? params.id[0] : params.id;
 
@@ -101,6 +107,7 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
   const cancelMutation = useCancelBusinessEvent();
 
   const [shareModalVisible, setShareModalVisible] = useState(false);
+  const [manageMenuVisible, setManageMenuVisible] = useState(false);
   const [cancelDialogVisible, setCancelDialogVisible] = useState(false);
   const [cancelSubmitting, setCancelSubmitting] = useState(false);
   const [toast, setToast] = useState<{
@@ -197,21 +204,34 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
           onBack={() => router.back()}
           title={experience.title}
           rightSlot={
-            hasPublicPage ? (
+            <View style={styles.headerRightSlot}>
+              {hasPublicPage ? (
+                <IconChrome
+                  icon="share"
+                  size={36}
+                  onPress={() => setShareModalVisible(true)}
+                  accessibilityLabel="Share experience"
+                />
+              ) : null}
               <IconChrome
-                icon="share"
+                icon="moreH"
                 size={36}
-                onPress={() => setShareModalVisible(true)}
-                accessibilityLabel="Share experience"
+                onPress={() => setManageMenuVisible(true)}
+                accessibilityLabel="Experience options"
               />
-            ) : null
+            </View>
           }
         />
       </View>
 
       <ScrollView
         style={styles.body}
-        contentContainerStyle={styles.bodyContent}
+        contentContainerStyle={[
+          styles.bodyContent,
+          // META-ORCH-1059 Pass 1 — clear the phone's bottom bar (home
+          // indicator / gesture nav), mirroring the event dashboard.
+          { paddingBottom: insets.bottom + spacing.xl },
+        ]}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.hero}>
@@ -370,6 +390,40 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
         ) : null}
       </ScrollView>
 
+      {/* META-ORCH-1059 Pass 1 — shared per-kind manage sheet (kind="experience").
+          Opened from the header 3-dot. Edit · View public · Share · Cancel.
+          Orders + Duplicate are intentionally omitted: experiences have no
+          orders/bookings route and no duplicate flow yet (scoped out — see the
+          implementation report), so showing them would be a dead tap. */}
+      <OfferingManageSheet
+        visible={manageMenuVisible}
+        onClose={() => setManageMenuVisible(false)}
+        kind="experience"
+        actions={buildOfferingManageActions(
+          "experience",
+          {
+            onEdit: () =>
+              router.push(`/experience/${experience.id}/edit` as never),
+            onViewPublic: hasPublicPage
+              ? () =>
+                  router.push(
+                    `/exp/${experience.brandSlug}/${experience.slug}` as never,
+                  )
+              : undefined,
+            onShare: hasPublicPage
+              ? () => setShareModalVisible(true)
+              : undefined,
+            onCancel:
+              experience.status !== "ended" &&
+              experience.status !== "cancelled" &&
+              experience.status !== "draft"
+                ? () => setCancelDialogVisible(true)
+                : undefined,
+          },
+          () => setManageMenuVisible(false),
+        )}
+      />
+
       {hasPublicPage ? (
         <ShareModal
           visible={shareModalVisible}
@@ -459,6 +513,11 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   headerWrap: { paddingHorizontal: spacing.md },
+  headerRightSlot: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
   hero: { borderRadius: 24, overflow: "hidden", position: "relative" },
   heroOverlay: {
     position: "absolute",

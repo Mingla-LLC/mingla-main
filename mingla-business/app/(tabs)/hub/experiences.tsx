@@ -18,8 +18,13 @@ import { ActivitiesSnapInput } from "../../../src/components/experience/Activiti
 import { ExperienceListCard } from "../../../src/components/experience/ExperienceListCard";
 import { ExperienceReviewCards } from "../../../src/components/experience/ExperienceReviewCards";
 import { MenuSnapInput } from "../../../src/components/experience/MenuSnapInput";
+import {
+  OfferingManageSheet,
+  buildOfferingManageActions,
+} from "../../../src/components/offering/OfferingManageSheet";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
 import { Button } from "../../../src/components/ui/Button";
+import { ShareModal } from "../../../src/components/ui/ShareModal";
 import { Toast } from "../../../src/components/ui/Toast";
 import {
   accent,
@@ -38,6 +43,7 @@ import {
   type ExperienceParseMode,
 } from "../../../src/hooks/usePendingExperiences";
 import type { ExperienceFilePayload } from "../../../src/services/experienceGenerationService";
+import type { VenueExperience } from "../../../src/services/experiencesService";
 import { canGenerateExperiencesFromActivities } from "../../../src/utils/canGenerateExperiencesFromActivities";
 import { canGenerateExperiencesFromMenu } from "../../../src/utils/canGenerateExperiencesFromMenu";
 import {
@@ -104,6 +110,8 @@ function normalizeExperienceStatus(status: string): EventStatusForRouting {
 
 interface ExperienceGenerationSurfaceProps {
   brandId: string;
+  /** META-ORCH-1059 — current brand slug, for the manage-sheet public/share routes. */
+  brandSlug: string | null;
   parseMode: ExperienceParseMode;
   copy: GenerationCopy;
   canSnap: boolean;
@@ -116,6 +124,7 @@ interface ExperienceGenerationSurfaceProps {
 
 function ExperienceGenerationSurface({
   brandId,
+  brandSlug,
   parseMode,
   copy,
   canSnap,
@@ -137,6 +146,10 @@ function ExperienceGenerationSurface({
   const [snapSheetVisible, setSnapSheetVisible] = useState(false);
   const [phase, setPhase] = useState<HubPhase>("idle");
   const [toast, setToast] = useState<string | null>(null);
+  // META-ORCH-1059 Pass 1 — Hub list-card 3-dot opens the shared manage sheet.
+  const [manageExp, setManageExp] = useState<VenueExperience | null>(null);
+  const [shareExp, setShareExp] = useState<VenueExperience | null>(null);
+  const hasBrandSlug = brandSlug !== null && brandSlug.length > 0;
 
   const experiences = experiencesQuery.data ?? [];
   const showReview = phase === "review" || pending.length > 0;
@@ -278,6 +291,7 @@ function ExperienceGenerationSurface({
                         }) as never,
                       )
                     }
+                    onManageOpen={() => setManageExp(exp)}
                   />
                 </View>
               );
@@ -298,6 +312,53 @@ function ExperienceGenerationSurface({
         message={toast ?? ""}
         onDismiss={() => setToast(null)}
       />
+
+      {/* META-ORCH-1059 Pass 1 — shared per-kind manage sheet opened from a
+          list-card 3-dot. Edit · View public · Share · Cancel (Orders +
+          Duplicate omitted — no experience orders/duplicate route yet). Cancel
+          routes to the experience dashboard's typeToConfirm flow. */}
+      {manageExp !== null ? (
+        <OfferingManageSheet
+          visible
+          onClose={() => setManageExp(null)}
+          kind="experience"
+          actions={buildOfferingManageActions(
+            "experience",
+            {
+              onEdit: () =>
+                router.push(`/experience/${manageExp.id}/edit` as never),
+              onViewPublic: hasBrandSlug
+                ? () =>
+                    router.push(
+                      `/exp/${brandSlug}/${manageExp.slug}` as never,
+                    )
+                : undefined,
+              onShare: hasBrandSlug ? () => setShareExp(manageExp) : undefined,
+              onCancel:
+                manageExp.status !== "ended" &&
+                manageExp.status !== "cancelled" &&
+                manageExp.status !== "draft"
+                  ? () => router.push(`/experience/${manageExp.id}` as never)
+                  : undefined,
+            },
+            () => setManageExp(null),
+          )}
+        />
+      ) : null}
+
+      {shareExp !== null && hasBrandSlug ? (
+        <ShareModal
+          visible
+          onClose={() => setShareExp(null)}
+          url={`https://business.usemingla.com/exp/${brandSlug}/${shareExp.slug}`}
+          title={`${shareExp.title} on Mingla`}
+          description={
+            shareExp.description !== null && shareExp.description.length > 0
+              ? shareExp.description.slice(0, 200)
+              : shareExp.title
+          }
+        />
+      ) : null}
     </>
   );
 }
@@ -325,6 +386,7 @@ export default function HubExperiencesRoute(): React.ReactElement {
     return (
       <ExperienceGenerationSurface
         brandId={currentBrand.id}
+        brandSlug={currentBrand.slug}
         parseMode="menu"
         copy={RESTAURANT_COPY}
         canSnap={canGenerateExperiencesFromMenu(currentBrand)}
@@ -337,6 +399,7 @@ export default function HubExperiencesRoute(): React.ReactElement {
     return (
       <ExperienceGenerationSurface
         brandId={currentBrand.id}
+        brandSlug={currentBrand.slug}
         parseMode="activities"
         copy={PLAY_COPY}
         canSnap={canGenerateExperiencesFromActivities(currentBrand)}
