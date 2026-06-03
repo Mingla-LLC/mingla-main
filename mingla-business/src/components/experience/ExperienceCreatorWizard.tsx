@@ -333,6 +333,18 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
         multiDates: whenPayload.multiDates,
         recurrence_rules: whenPayload.recurrence_rules,
         timezone: whenPayload.timezone,
+        // META-ORCH-1059 BUG 3 — thread the cover so the RPC persists the 7
+        // cover_media_* columns. Pexels/Giphy/Library picks only emit a patch
+        // to wizard state; without this the RPC drops the cover entirely.
+        cover: {
+          coverMediaUrl: cover.coverMediaUrl,
+          coverMediaType: cover.coverMediaType,
+          coverMediaProvider: cover.coverMediaProvider,
+          coverMediaSourceUrl: cover.coverMediaSourceUrl,
+          coverMediaCredit: cover.coverMediaCredit,
+          coverMediaCreditUrl: cover.coverMediaCreditUrl,
+          coverMediaAlt: cover.coverMediaAlt,
+        },
       };
     },
     [
@@ -349,6 +361,7 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
       capacity,
       pricingSwitches,
       stops,
+      cover,
     ],
   );
 
@@ -411,11 +424,17 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
       ) {
         setShowStepErrors(true);
         whenAdapter.setShowErrors(true);
-        setToast(
+        // META-ORCH-1059 BUG 5 — never a silent no-op. Name the specific
+        // missing piece so the operator knows WHY publish didn't go through.
+        const reason =
           intents.length === 0
-            ? "Pick at least one vibe for this experience on step 1 before publishing."
-            : "Finish the required fields before publishing.",
-        );
+            ? "Pick at least one vibe on step 1 before publishing."
+            : !stopsValid
+              ? "Finish your stops (each needs a name, description, and address) before publishing."
+              : !whenAdapter.isValid
+                ? "Set the date and time on the When step before publishing."
+                : "Set a valid price (or mark it free) before publishing.";
+        setToast(reason);
         return;
       }
       setSubmitting(true);
@@ -433,8 +452,17 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
           p_publish: publish,
         });
         if (error !== null) {
-          const code = error.message ?? "";
-          throw new Error(RPC_ERROR_COPY[code] ?? "Couldn't save experience. Tap to retry.");
+          // META-ORCH-1059 BUG 5 — NEVER fail silently. Prefer mapped copy;
+          // otherwise surface the raw reason so the operator sees SOMETHING
+          // actionable instead of a no-op publish.
+          const code = (error.message ?? "").trim();
+          const mapped = RPC_ERROR_COPY[code];
+          throw new Error(
+            mapped ??
+              (code.length > 0
+                ? `Couldn't ${publish ? "publish" : "save"} experience: ${code}`
+                : `Couldn't ${publish ? "publish" : "save"} experience. Tap to retry.`),
+          );
         }
         const result = data as { event?: { id?: string } } | null;
         const savedId = result?.event?.id ?? targetId;
@@ -569,6 +597,8 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
               showErrors={whenAdapter.showErrors}
               onShowToast={setToast}
               scrollToBottom={() => scrollRef.current?.scrollToEnd({ animated: true })}
+              // META-ORCH-1059 — experiences can recur with no end.
+              allowNeverEnds
             />
           </View>
         ) : null}

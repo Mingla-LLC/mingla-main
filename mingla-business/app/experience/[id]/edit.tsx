@@ -81,10 +81,52 @@ function detailToInitialDraft(
     description: s.description,
   }));
 
-  // When seed.
+  // When seed. META-ORCH-1059 BUG 1 — PREFER the raw persisted When inputs
+  // (theme.experience_meta.when_draft) so a DRAFT round-trips its date/time;
+  // drafts have NO materialised event_dates, so the old dates-only path showed
+  // a blank When. Fall back to event_dates for published rows (or pre-migration
+  // drafts that have no when_draft).
+  const wd = exp.whenDraft;
   const masterDate = exp.dates.find((d) => d.isMaster) ?? exp.dates[0] ?? null;
   let when: ExperienceWizardInitialDraft["when"];
-  if (exp.whenMode === "multi_date") {
+
+  if (wd !== null && (wd.when !== null || wd.multiDates !== null || wd.recurrenceRule !== null)) {
+    // Hydrate from the saved raw When.
+    if (wd.whenMode === "multi_date") {
+      const multiDates: MultiDateEntry[] = (wd.multiDates ?? []).map((d, i) => ({
+        id: `wd_${i}`,
+        date: d.date,
+        startTime: d.startTime,
+        endTime: d.endTime,
+        overrides: {
+          title: null,
+          description: null,
+          venueName: null,
+          address: null,
+          onlineUrl: null,
+        },
+      }));
+      when = {
+        whenMode: "multi_date",
+        date: null,
+        doorsOpen: null,
+        endsAt: null,
+        timezone: wd.timezone ?? exp.timezone,
+        recurrenceRule: null,
+        multiDates,
+      };
+    } else {
+      when = {
+        whenMode: wd.whenMode === "recurring" ? "recurring" : "single",
+        date: wd.when?.date ?? null,
+        doorsOpen: wd.when?.doorsOpen ?? null,
+        endsAt: wd.when?.endsAt ?? null,
+        timezone: wd.timezone ?? exp.timezone,
+        recurrenceRule: wd.recurrenceRule,
+        multiDates: null,
+      };
+    }
+  } else if (exp.whenMode === "multi_date") {
     const multiDates: MultiDateEntry[] = exp.dates.map((d) => ({
       id: d.id,
       date: isoToLocalDate(d.startAt),

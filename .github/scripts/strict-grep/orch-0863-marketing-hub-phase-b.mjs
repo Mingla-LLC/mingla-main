@@ -1284,6 +1284,13 @@ function checkNoNewBackendFiles() {
     // allowlist lands in the SAME commit as the migration + its regression test.
     "supabase/migrations/20260828000000_meta_orch_1059_experience_intents_multi.sql",
     "supabase/functions/__tests__/biz_experience_intents_multi.test.ts",
+    // META-ORCH-1059 draft round-trip + cover persistence + recurrence
+    // never-ends: both biz RPCs persist theme.experience_meta.when_draft on
+    // every save + write the 7 cover_media_* columns; 'never' termination
+    // materialises a single master event_date. Per COMMS-0002 — allowlist lands
+    // in the SAME commit as the migration + its regression test.
+    "supabase/migrations/20260829000000_meta_orch_1059_draft_roundtrip_cover_neverends.sql",
+    "supabase/functions/__tests__/biz_experience_draft_roundtrip.test.ts",
   ];
   // ORCH-1045 [Business "Get Beta Access" lead-capture]: adds the beta-lead
   // migration (beta_access_leads table + admin_beta_leads_list RPC) and the

@@ -14,6 +14,7 @@
 import React, { useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   Platform,
   ScrollView,
   StyleSheet,
@@ -293,23 +294,63 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
           </GlassCard>
         ) : (
           <View style={styles.stopList}>
-            {experience.stops.map((stop) => (
-              <GlassCard
-                key={stop.id}
-                variant="base"
-                radius="md"
-                padding={spacing.md}
-              >
-                <Text style={styles.stopName} numberOfLines={1}>
-                  {stop.stopOrder + 1}. {stop.placeName}
-                </Text>
-                {stop.address.length > 0 ? (
-                  <Text style={styles.stopAddress} numberOfLines={1}>
-                    {stop.address}
-                  </Text>
-                ) : null}
-              </GlassCard>
-            ))}
+            {experience.stops.map((stop) => {
+              const thumb = stop.imageUrls.length > 0 ? stop.imageUrls[0] : null;
+              const stopPriceLabel =
+                experience.pricingMode === "per_stop" && stop.priceCents > 0
+                  ? formatCurrency(stop.priceCents, experience.currency)
+                  : null;
+              const timeLabel =
+                stop.startTime !== null && stop.startTime.length >= 5
+                  ? stop.startTime.slice(0, 5)
+                  : null;
+              return (
+                <GlassCard
+                  key={stop.id}
+                  variant="base"
+                  radius="md"
+                  padding={spacing.md}
+                >
+                  <View style={styles.stopRow}>
+                    {thumb !== null ? (
+                      <Image
+                        source={{ uri: thumb }}
+                        style={styles.stopThumb}
+                        resizeMode="cover"
+                        accessibilityLabel={`${stop.placeName} photo`}
+                      />
+                    ) : (
+                      <View style={[styles.stopThumb, styles.stopThumbEmpty]} />
+                    )}
+                    <View style={styles.stopTextCol}>
+                      <Text style={styles.stopName} numberOfLines={1}>
+                        {stop.stopOrder + 1}. {stop.placeName}
+                      </Text>
+                      {stop.address.length > 0 ? (
+                        <Text style={styles.stopAddress} numberOfLines={1}>
+                          {stop.address}
+                        </Text>
+                      ) : null}
+                      {stop.description.length > 0 ? (
+                        <Text style={styles.stopDescription} numberOfLines={2}>
+                          {stop.description}
+                        </Text>
+                      ) : null}
+                      {timeLabel !== null || stopPriceLabel !== null ? (
+                        <View style={styles.stopMetaRow}>
+                          {timeLabel !== null ? (
+                            <Text style={styles.stopMeta}>{timeLabel}</Text>
+                          ) : null}
+                          {stopPriceLabel !== null ? (
+                            <Text style={styles.stopMeta}>{stopPriceLabel}</Text>
+                          ) : null}
+                        </View>
+                      ) : null}
+                    </View>
+                  </View>
+                </GlassCard>
+              );
+            })}
           </View>
         )}
 
@@ -489,6 +530,18 @@ const styles = StyleSheet.create({
     color: textTokens.tertiary,
   },
   stopList: { gap: spacing.xs },
+  stopRow: { flexDirection: "row", gap: spacing.md, alignItems: "flex-start" },
+  stopThumb: {
+    width: 64,
+    height: 64,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.06)",
+  },
+  stopThumbEmpty: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255,255,255,0.12)",
+  },
+  stopTextCol: { flex: 1, gap: 2 },
   stopName: {
     fontSize: typography.body.fontSize,
     fontWeight: "600",
@@ -498,6 +551,22 @@ const styles = StyleSheet.create({
     marginTop: 2,
     fontSize: typography.caption.fontSize,
     color: textTokens.secondary,
+  },
+  stopDescription: {
+    marginTop: 4,
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: textTokens.secondary,
+  },
+  stopMetaRow: {
+    flexDirection: "row",
+    gap: spacing.md,
+    marginTop: 4,
+  },
+  stopMeta: {
+    fontSize: typography.caption.fontSize,
+    fontWeight: "600",
+    color: textTokens.tertiary,
   },
   emptySectionText: { fontSize: 13, color: textTokens.tertiary },
   cancelWrap: { marginTop: spacing.xl },

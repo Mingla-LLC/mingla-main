@@ -57,6 +57,20 @@ export interface ExperienceDateRow {
 
 export type ExperienceWhenMode = "single" | "recurring" | "multi_date";
 
+/**
+ * META-ORCH-1059 BUG 1 — the RAW When inputs the operator picked, persisted to
+ * theme.experience_meta.when_draft on EVERY save so a DRAFT round-trips its
+ * date/time (event_dates is materialised publish-only, so a draft has none).
+ * Mirrors the biz RPC payload shape.
+ */
+export interface ExperienceWhenDraft {
+  whenMode: ExperienceWhenMode;
+  when: { date: string | null; doorsOpen: string | null; endsAt: string | null } | null;
+  multiDates: Array<{ date: string; startTime: string; endTime: string }> | null;
+  recurrenceRule: RecurrenceRule | null;
+  timezone: string | null;
+}
+
 export interface ExperienceDetail {
   id: string;
   brandId: string;
@@ -77,6 +91,13 @@ export interface ExperienceDetail {
   isMultiDate: boolean;
   recurrenceRule: RecurrenceRule | null;
   whenMode: ExperienceWhenMode;
+  /**
+   * META-ORCH-1059 BUG 1 — the raw When selection persisted on the row
+   * (theme.experience_meta.when_draft). Edit-mode prefers this for the date/
+   * time so a DRAFT (which has no materialised event_dates) round-trips its
+   * When. Null only for rows saved before this migration.
+   */
+  whenDraft: ExperienceWhenDraft | null;
   venueText: string | null;
   /**
    * META-ORCH-1059 — curated vibes (MULTI; events.experience_intents text[]).
@@ -150,6 +171,50 @@ function deriveWhenMode(isRecurring: boolean, isMultiDate: boolean): ExperienceW
   if (isRecurring) return "recurring";
   if (isMultiDate) return "multi_date";
   return "single";
+}
+
+/**
+ * META-ORCH-1059 BUG 1 — parse theme.experience_meta.when_draft into the typed
+ * shape. Tolerant: any missing/malformed field degrades to null rather than
+ * throwing, so a partial draft still hydrates what it can.
+ */
+function parseWhenDraft(meta: Record<string, unknown>): ExperienceWhenDraft | null {
+  const raw = meta.when_draft;
+  if (raw === null || typeof raw !== "object") return null;
+  const obj = raw as Record<string, unknown>;
+  const mode = obj.whenMode;
+  const whenMode: ExperienceWhenMode =
+    mode === "recurring" || mode === "multi_date" ? mode : "single";
+
+  let when: ExperienceWhenDraft["when"] = null;
+  if (obj.when !== null && typeof obj.when === "object") {
+    const w = obj.when as Record<string, unknown>;
+    when = {
+      date: typeof w.date === "string" ? w.date : null,
+      doorsOpen: typeof w.doorsOpen === "string" ? w.doorsOpen : null,
+      endsAt: typeof w.endsAt === "string" ? w.endsAt : null,
+    };
+  }
+
+  let multiDates: ExperienceWhenDraft["multiDates"] = null;
+  if (Array.isArray(obj.multiDates)) {
+    multiDates = obj.multiDates
+      .filter((e): e is Record<string, unknown> => e !== null && typeof e === "object")
+      .map((e) => ({
+        date: typeof e.date === "string" ? e.date : "",
+        startTime: typeof e.startTime === "string" ? e.startTime : "",
+        endTime: typeof e.endTime === "string" ? e.endTime : "",
+      }))
+      .filter((e) => e.date.length > 0);
+  }
+
+  return {
+    whenMode,
+    when,
+    multiDates,
+    recurrenceRule: firstRecurrenceRule(obj.recurrence_rules),
+    timezone: typeof obj.timezone === "string" ? obj.timezone : null,
+  };
 }
 
 function brandSlugOf(brands: RawEventRow["brands"]): string | null {
@@ -243,6 +308,7 @@ export async function getExperienceDetail(
     isMultiDate,
     recurrenceRule: firstRecurrenceRule(raw.recurrence_rules),
     whenMode: deriveWhenMode(isRecurring, isMultiDate),
+    whenDraft: parseWhenDraft(meta),
     venueText,
     // META-ORCH-1059 — prefer the array; fall back to the singular mirror for
     // any row written before the multi migration backfilled experience_intents.
