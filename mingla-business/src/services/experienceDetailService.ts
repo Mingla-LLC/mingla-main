@@ -15,6 +15,7 @@ import { supabase } from "./supabase";
 import type { RecurrenceRule } from "../store/draftEventStore";
 import {
   asExperienceIntent,
+  normalizeExperienceIntents,
   type ExperienceIntentId,
 } from "../constants/experienceIntents";
 
@@ -77,7 +78,15 @@ export interface ExperienceDetail {
   recurrenceRule: RecurrenceRule | null;
   whenMode: ExperienceWhenMode;
   venueText: string | null;
-  /** META-ORCH-1059 CHANGE 2 — curated intent/vibe (events.experience_intent). */
+  /**
+   * META-ORCH-1059 — curated vibes (MULTI; events.experience_intents text[]).
+   * Normalised + deduped to the canonical 4-id order; legacy/removed ids dropped.
+   */
+  experienceIntents: ExperienceIntentId[];
+  /**
+   * META-ORCH-1059 — DEPRECATED back-compat singular (events.experience_intent
+   * mirror = experienceIntents[0]). Prefer experienceIntents.
+   */
   experienceIntent: ExperienceIntentId | null;
   stops: ExperienceStopRow[];
   ticket: ExperienceTicketRow | null;
@@ -99,6 +108,7 @@ interface RawEventRow {
   location_mode: string | null;
   pricing_mode: string | null;
   experience_intent: string | null;
+  experience_intents: string[] | null;
   whole_price_cents: number | null;
   is_recurring: boolean | null;
   is_multi_date: boolean | null;
@@ -158,7 +168,7 @@ export async function getExperienceDetail(
   const { data: row, error } = await supabase
     .from("events")
     .select(
-      "id, brand_id, title, slug, description, status, visibility, currency, timezone, cover_media_url, cover_media_type, location_mode, pricing_mode, experience_intent, whole_price_cents, is_recurring, is_multi_date, recurrence_rules, event_type, theme, brands(slug)",
+      "id, brand_id, title, slug, description, status, visibility, currency, timezone, cover_media_url, cover_media_type, location_mode, pricing_mode, experience_intent, experience_intents, whole_price_cents, is_recurring, is_multi_date, recurrence_rules, event_type, theme, brands(slug)",
     )
     .eq("id", eventId)
     .eq("event_type", "experience")
@@ -234,6 +244,14 @@ export async function getExperienceDetail(
     recurrenceRule: firstRecurrenceRule(raw.recurrence_rules),
     whenMode: deriveWhenMode(isRecurring, isMultiDate),
     venueText,
+    // META-ORCH-1059 — prefer the array; fall back to the singular mirror for
+    // any row written before the multi migration backfilled experience_intents.
+    experienceIntents: ((): ExperienceIntentId[] => {
+      const fromArray = normalizeExperienceIntents(raw.experience_intents);
+      if (fromArray.length > 0) return fromArray;
+      const single = asExperienceIntent(raw.experience_intent);
+      return single !== null ? [single] : [];
+    })(),
     experienceIntent: asExperienceIntent(raw.experience_intent),
     stops: (stopRows ?? []).map((s) => ({
       id: s.id,

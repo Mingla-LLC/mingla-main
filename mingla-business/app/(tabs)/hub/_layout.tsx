@@ -45,6 +45,7 @@ import {
   useCurrentBrandStore,
   type Brand,
 } from "../../../src/store/currentBrandStore";
+import { useHubCreatorStore } from "../../../src/store/hubCreatorStore";
 import type { BusinessTodo } from "../../../src/utils/businessTodos";
 
 export default function HubTabLayout(): React.ReactElement {
@@ -64,6 +65,17 @@ export default function HubTabLayout(): React.ReactElement {
 
   const [brandSheetVisible, setBrandSheetVisible] = useState<boolean>(false);
   const [isUniversalCreatorOpen, setIsUniversalCreatorOpen] = useState<boolean>(false);
+  // META-ORCH-1059 — a Hub SUB-route empty state ("Create your first offering")
+  // opens the SAME chooser via this shared flag (sub-routes can't reach the
+  // layout's local state). Mirror it into the local state + clear the flag.
+  const creatorRequestOpen = useHubCreatorStore((s) => s.isOpen);
+  const closeCreatorRequest = useHubCreatorStore((s) => s.close);
+  useEffect(() => {
+    if (creatorRequestOpen) {
+      setIsUniversalCreatorOpen(true);
+      closeCreatorRequest();
+    }
+  }, [creatorRequestOpen, closeCreatorRequest]);
   const [deleteSheetVisible, setDeleteSheetVisible] = useState<boolean>(false);
   const [brandPendingDelete, setBrandPendingDelete] = useState<Brand | null>(null);
 

@@ -35,8 +35,11 @@ describe("META-ORCH-1059 Sub-A · FIX 1 — stop photo picker reuses CoverPicker
     expect(stopsStep).toMatch(/<ExperienceStopPhotoSheet\b/);
   });
 
-  test("ExperienceStopsStep renders real photo thumbnails (not empty placeholder Views)", () => {
-    expect(stopsStep).toMatch(/<Image\b[\s\S]*?source=\{\{ uri \}\}/);
+  // [TEST-MOD-APPROVED META-ORCH-1059] the per-stop thumbnail render moved into
+  // the new memoized ExperienceStopCard (perf bug #2 fix). Same <Image source>.
+  test("the stop card renders real photo thumbnails (not empty placeholder Views)", () => {
+    const stopCard = read("experience/ExperienceStopCard.tsx");
+    expect(stopCard).toMatch(/<Image\b[\s\S]*?source=\{\{ uri \}\}/);
   });
 
   test("the sheet reuses the unified CoverPicker GIPHY + Pexels services", () => {

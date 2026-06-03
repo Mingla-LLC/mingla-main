@@ -1278,6 +1278,12 @@ function checkNoNewBackendFiles() {
     // the SAME commit as the migration + its source-level regression test.
     "supabase/migrations/20260827000000_meta_orch_1059_wizard_intent_desc_validation.sql",
     "supabase/functions/__tests__/biz_experience_wizard_changes.test.ts",
+    // Intent picker → 4 ids + MULTI-select (forward migration; 20260827 is
+    // already on remote + immutable): new events.experience_intents text[]
+    // column + CHECK, backfill, RPC array read/validate/write. Per COMMS-0002 —
+    // allowlist lands in the SAME commit as the migration + its regression test.
+    "supabase/migrations/20260828000000_meta_orch_1059_experience_intents_multi.sql",
+    "supabase/functions/__tests__/biz_experience_intents_multi.test.ts",
   ];
   // ORCH-1045 [Business "Get Beta Access" lead-capture]: adds the beta-lead
   // migration (beta_access_leads table + admin_beta_leads_list RPC) and the

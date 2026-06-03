@@ -122,7 +122,7 @@ function detailToInitialDraft(
   return {
     title: exp.title,
     description: exp.description ?? "",
-    intent: exp.experienceIntent,
+    intents: exp.experienceIntents,
     locationMode: exp.locationMode ?? "single",
     pricingMode: exp.pricingMode ?? "whole",
     stops,

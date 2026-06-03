@@ -52,6 +52,7 @@ import {
 } from "./experienceWizardTypes";
 import {
   EXPERIENCE_INTENTS,
+  normalizeExperienceIntents,
   type ExperienceIntentId,
 } from "../../constants/experienceIntents";
 
@@ -78,8 +79,8 @@ export interface ExperienceCreatorWizardProps {
 export interface ExperienceWizardInitialDraft {
   title: string;
   description: string;
-  /** META-ORCH-1059 CHANGE 2 — curated intent/vibe (edit-mode seed). */
-  intent: ExperienceIntentId | null;
+  /** META-ORCH-1059 CHANGE 2 — curated vibes (MULTI; edit-mode seed). */
+  intents: ExperienceIntentId[];
   locationMode: ExperienceLocationMode;
   pricingMode: ExperiencePricingMode;
   stops: ExperienceStopDraft[];
@@ -169,10 +170,18 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
   const [description, setDescription] = useState(
     initialDraft?.description ?? prefill?.description ?? "",
   );
-  // META-ORCH-1059 CHANGE 2 — curated intent/vibe (required at publish).
-  const [intent, setIntent] = useState<ExperienceIntentId | null>(
-    initialDraft?.intent ?? null,
+  // META-ORCH-1059 CHANGE 2 — curated vibes (MULTI; ≥1 required at publish).
+  const [intents, setIntents] = useState<ExperienceIntentId[]>(
+    initialDraft?.intents ?? [],
   );
+  // Toggle a vibe in/out; preserves the canonical EXPERIENCE_INTENTS order.
+  const toggleIntent = useCallback((id: ExperienceIntentId): void => {
+    setIntents((prev) =>
+      prev.includes(id)
+        ? prev.filter((x) => x !== id)
+        : normalizeExperienceIntents([...prev, id]),
+    );
+  }, []);
 
   // Stops + modes
   const [locationMode, setLocationMode] = useState<ExperienceLocationMode>(
@@ -272,13 +281,13 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
       return (
         title.trim().length > 0 &&
         description.trim().length >= 10 &&
-        intent !== null
+        intents.length > 0
       );
     if (step === 2) return stopsValid;
     if (step === 3) return whenAdapter.isValid;
     if (step === 4) return pricingValid;
     return true;
-  }, [step, title, description, intent, stopsValid, whenAdapter.isValid, pricingValid]);
+  }, [step, title, description, intents, stopsValid, whenAdapter.isValid, pricingValid]);
 
   const goBack = useCallback((): void => {
     if (step === 1) onCancel?.();
@@ -291,7 +300,7 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
       return {
         title: title.trim(),
         description: description.trim(),
-        experience_intent: intent,
+        experience_intents: intents,
         currency,
         location_mode: locationMode,
         pricing_mode: pricingMode,
@@ -330,7 +339,7 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
       whenAdapter,
       title,
       description,
-      intent,
+      intents,
       currency,
       locationMode,
       pricingMode,
@@ -398,13 +407,13 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
       if (brand === null || user?.id === undefined) return;
       if (
         publish &&
-        (intent === null || !stopsValid || !pricingValid || !whenAdapter.isValid)
+        (intents.length === 0 || !stopsValid || !pricingValid || !whenAdapter.isValid)
       ) {
         setShowStepErrors(true);
         whenAdapter.setShowErrors(true);
         setToast(
-          intent === null
-            ? "Pick the best vibe for this experience on step 1 before publishing."
+          intents.length === 0
+            ? "Pick at least one vibe for this experience on step 1 before publishing."
             : "Finish the required fields before publishing.",
         );
         return;
@@ -440,7 +449,7 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
       brand,
       buildPayload,
       ensureDraft,
-      intent,
+      intents,
       onComplete,
       pricingValid,
       stopsValid,
@@ -490,26 +499,26 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
               style={styles.textArea}
             />
 
-            {/* META-ORCH-1059 CHANGE 2 — curated intent/vibe picker (required) */}
-            <Text style={styles.label}>Best vibe for this experience</Text>
+            {/* META-ORCH-1059 CHANGE 2 — curated vibes picker (MULTI; ≥1 required) */}
+            <Text style={styles.label}>Which vibes fit this experience?</Text>
             <Text style={styles.helperBody}>
-              Match the vibe buyers feel on the Mingla deck — this places your experience
-              in the right curated category.
+              Pick every vibe that fits — buyers find your experience under each one on
+              the Mingla deck. Choose at least one.
             </Text>
-            <View style={styles.intentGrid} accessibilityRole="radiogroup">
+            <View style={styles.intentGrid}>
               {EXPERIENCE_INTENTS.map((opt) => {
-                const selected = intent === opt.id;
+                const selected = intents.includes(opt.id);
                 return (
                   <Pressable
                     key={opt.id}
-                    onPress={() => setIntent(opt.id)}
-                    accessibilityRole="radio"
-                    accessibilityState={{ selected }}
+                    onPress={() => toggleIntent(opt.id)}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: selected }}
                     accessibilityLabel={`${opt.label} — ${opt.description}`}
                     style={[styles.intentChip, selected && styles.intentChipActive]}
                   >
                     <Icon
-                      name={opt.icon}
+                      name={selected ? "check" : opt.icon}
                       size={18}
                       color={selected ? accent.warm : textTokens.secondary}
                     />
@@ -530,8 +539,8 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
                 );
               })}
             </View>
-            {showStepErrors && intent === null ? (
-              <Text style={styles.inlineError}>Pick the best vibe for this experience.</Text>
+            {showStepErrors && intents.length === 0 ? (
+              <Text style={styles.inlineError}>Pick at least one vibe for this experience.</Text>
             ) : null}
           </View>
         ) : null}

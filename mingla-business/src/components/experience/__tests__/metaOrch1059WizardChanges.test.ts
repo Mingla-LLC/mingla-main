@@ -31,27 +31,25 @@ const read = (rel: string): string => readFileSync(join(SRC, rel), "utf8");
 // ── CHANGE 2 — curated intent taxonomy mirrors the consumer app exactly ───────
 
 describe("CHANGE 2 — curated intent taxonomy", () => {
-  test("the 6 ids match the consumer ONBOARDING_INTENTS / curatedExperience union", () => {
+  // [TEST-MOD-APPROVED META-ORCH-1059] operator removed picnic-dates +
+  // take-a-stroll (don't fit brand experiences) — the taxonomy is now the 4
+  // brand-experience ids only.
+  test("the 4 brand-experience ids (picnic/stroll removed)", () => {
     expect([...EXPERIENCE_INTENT_IDS].sort()).toEqual(
-      [
-        "adventurous",
-        "first-date",
-        "group-fun",
-        "picnic-dates",
-        "romantic",
-        "take-a-stroll",
-      ].sort(),
+      ["adventurous", "first-date", "group-fun", "romantic"].sort(),
     );
   });
 
+  // [TEST-MOD-APPROVED META-ORCH-1059] labels for the 4 kept ids only.
   test("labels mirror the consumer onboarding labels (not invented)", () => {
     const byId = Object.fromEntries(EXPERIENCE_INTENTS.map((i) => [i.id, i.label]));
     expect(byId["adventurous"]).toBe("Adventurous");
     expect(byId["first-date"]).toBe("First Dates");
     expect(byId["romantic"]).toBe("Romantic");
     expect(byId["group-fun"]).toBe("Group Fun");
-    expect(byId["picnic-dates"]).toBe("Picnic Dates");
-    expect(byId["take-a-stroll"]).toBe("Take a Stroll");
+    // removed ids carry no entry
+    expect(byId["picnic-dates"]).toBeUndefined();
+    expect(byId["take-a-stroll"]).toBeUndefined();
   });
 
   test("asExperienceIntent narrows valid ids and rejects junk", () => {
@@ -61,16 +59,18 @@ describe("CHANGE 2 — curated intent taxonomy", () => {
     expect(asExperienceIntent(undefined)).toBeNull();
   });
 
-  test("wizard makes intent part of the Step-1 Continue gate + publish gate", () => {
+  // [TEST-MOD-APPROVED META-ORCH-1059] intent single→MULTI: the picker is now
+  // multi-select (≥1 of 4 ids); the Step-1 + publish gates check intents.length.
+  test("wizard makes ≥1 vibe part of the Step-1 Continue gate + publish gate (multi)", () => {
     const src = read("experience/ExperienceCreatorWizard.tsx");
-    // Step-1 canContinue requires intent !== null.
-    expect(src).toMatch(/if \(step === 1\)[\s\S]*?intent !== null/);
-    // Publish is blocked when intent is null.
-    expect(src).toMatch(/publish &&\s*\(\s*intent === null/);
+    // Step-1 canContinue requires at least one selected vibe.
+    expect(src).toMatch(/if \(step === 1\)[\s\S]*?intents\.length > 0/);
+    // Publish is blocked when no vibe is selected.
+    expect(src).toMatch(/publish &&\s*\(\s*intents\.length === 0/);
     // The picker renders the canonical taxonomy.
     expect(src).toContain("EXPERIENCE_INTENTS.map");
-    // Intent is sent in the payload.
-    expect(src).toContain("experience_intent: intent");
+    // The vibe array is sent in the payload (multi).
+    expect(src).toContain("experience_intents: intents");
   });
 });
 
@@ -92,11 +92,14 @@ describe("CHANGE 3 — compulsory per-stop description", () => {
     expect(stopHasValidDescription(withDesc("x".repeat(MAX_STOP_DESCRIPTION + 1)))).toBe(false);
   });
 
-  test("StopsStep renders a description field gated on showErrors", () => {
-    const src = read("experience/ExperienceStopsStep.tsx");
+  // [TEST-MOD-APPROVED META-ORCH-1059] the per-stop field + its gated error
+  // moved from ExperienceStopsStep.tsx into the new memoized ExperienceStopCard
+  // (perf bug #2 fix); the patch is now clientId-keyed (onPatch), not index.
+  test("the stop card renders a description field gated on showErrors", () => {
+    const src = read("experience/ExperienceStopCard.tsx");
     // The field exists and is bound to stop.description.
     expect(src).toContain("Stop ${i + 1} description");
-    expect(src).toMatch(/updateStop\(i, \{ description:/);
+    expect(src).toMatch(/onPatch\(cid, \{ description:/);
     // The error is computed ONLY when showErrors is true (CHANGE 1 spine).
     expect(src).toMatch(/descError =\s*\n?\s*showErrors && stop\.description\.trim\(\)\.length === 0/);
   });
@@ -114,8 +117,10 @@ describe("CHANGE 3 — compulsory per-stop description", () => {
 // ── CHANGE 1 — no errors on step entry; every inline error gated ──────────────
 
 describe("CHANGE 1 — validation errors are gated, never shown on step entry", () => {
-  test("every inline error in StopsStep is gated on showErrors", () => {
-    const src = read("experience/ExperienceStopsStep.tsx");
+  // [TEST-MOD-APPROVED META-ORCH-1059] the gated inline errors moved into the
+  // memoized ExperienceStopCard (perf bug #2 fix); the gating spine is unchanged.
+  test("every inline error in the stop card is gated on showErrors", () => {
+    const src = read("experience/ExperienceStopCard.tsx");
     // nameError, descError, addrError, priceError all start from `showErrors &&`.
     expect(src).toMatch(/const nameError = showErrors &&/);
     expect(src).toMatch(/const descError =\s*\n?\s*showErrors &&/);
