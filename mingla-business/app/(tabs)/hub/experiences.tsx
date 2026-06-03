@@ -12,6 +12,7 @@ import {
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ActivitiesSnapInput } from "../../../src/components/experience/ActivitiesSnapInput";
 import { ExperienceReviewCards } from "../../../src/components/experience/ExperienceReviewCards";
@@ -167,6 +168,7 @@ function ExperienceGenerationSurface({
   SnapInput,
 }: ExperienceGenerationSurfaceProps): React.ReactElement {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { isWideDesktop } = useResponsiveLayout();
   const experiencesQuery = useExperiencesByBrand(brandId);
   const {
@@ -219,7 +221,19 @@ function ExperienceGenerationSurface({
 
   return (
     <>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      {/* META-ORCH-1059 fold-in fix: the floating absolute BottomNav tab bar
+          (app/(tabs)/_layout.tsx) overlays the bottom of this ScrollView. The
+          flat `paddingBottom: 120` left the last/only experience card UNDER the
+          tab bar on devices with a gesture-nav inset (e.g. Samsung A72), so the
+          card's Pressable could never receive the tap — it read as a dead tap
+          that "freezes" the nav. Mirror the events-hub pattern
+          (app/(tabs)/hub/events.tsx:553): pad by `insets.bottom + 120`. */}
+      <ScrollView
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: insets.bottom + 120 },
+        ]}
+      >
         {canSnap && (
           <Pressable
             onPress={() => setSnapSheetVisible(true)}
@@ -356,7 +370,14 @@ function ExperienceGenerationSurface({
 
 export default function HubExperiencesRoute(): React.ReactElement {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const currentBrand = useCurrentBrand();
+  // META-ORCH-1059 fold-in: clear the floating tab bar so empty-state CTAs
+  // are never tappable-blocked (mirror the surface ScrollView fix).
+  const emptyContentStyle = [
+    styles.scrollContent,
+    { paddingBottom: insets.bottom + 120 },
+  ];
 
   if (currentBrand === null) {
     return (
@@ -392,7 +413,7 @@ export default function HubExperiencesRoute(): React.ReactElement {
 
   if (currentBrand.venueCategory === "creative_and_arts") {
     return (
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView contentContainerStyle={emptyContentStyle}>
         <GlassCard variant="elevated" padding={spacing.lg}>
           <Text style={styles.emptyTitle}>No experiences yet</Text>
           <Text style={styles.emptyBody}>Create experience</Text>
@@ -411,7 +432,7 @@ export default function HubExperiencesRoute(): React.ReactElement {
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.scrollContent}>
+    <ScrollView contentContainerStyle={emptyContentStyle}>
       <GlassCard variant="elevated" padding={spacing.lg}>
         <Text style={styles.emptyTitle}>No experiences yet</Text>
         <Text style={styles.emptyBody}>Create experience</Text>

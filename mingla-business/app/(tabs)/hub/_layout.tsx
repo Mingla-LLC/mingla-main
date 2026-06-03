@@ -103,6 +103,16 @@ export default function HubTabLayout(): React.ReactElement {
   useEffect(() => {
     if (visibleTabs.data === undefined || initialTab === null) return;
     const activePath = pathname.toLowerCase();
+    // META-ORCH-1059 fold-in fix: this layout stays MOUNTED while the user
+    // pushes a route OUTSIDE the hub group (e.g. /experience/{id} from a hub
+    // list row). When that happens `pathname` is no longer a `/hub/...` path,
+    // so the old code fell through to `active="events"`, found that a
+    // restaurant/experiences-only brand's visibleTabs do NOT include "events",
+    // and fired `router.replace('/(tabs)/hub/...')` — yanking the user back to
+    // the hub mid-transition (the operator's "swipe animates in then bounces
+    // back + nav locks"). Only run the visible-tab redirect when we are
+    // actually ON a hub sub-route; never hijack navigation to another stack.
+    if (!activePath.includes("/hub/")) return;
     const active: HubTabName = activePath.includes("/hub/getstarted")
       ? "getstarted"
       : activePath.includes("/hub/trips")

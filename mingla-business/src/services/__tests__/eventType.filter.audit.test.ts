@@ -340,6 +340,71 @@ describe("META-ORCH-1059 Sub-B — experience routing via routeForEventRow", () 
   });
 });
 
+describe("META-ORCH-1059 Sub-C/D — buyer journey (public page + checkout entry)", () => {
+  const CHECKOUT_FLOW = read("components/experience/ExperienceCheckoutFlow.tsx");
+  const PUBLIC_SERVICE = read("services/publicExperienceService.ts");
+
+  test("the public experience route exists at app/exp/[brandSlug]/[experienceSlug]", () => {
+    expect(() =>
+      appRead("exp/[brandSlug]/[experienceSlug].tsx"),
+    ).not.toThrow();
+  });
+
+  test("the experience checkout chain exists (index/buyer/payment/confirm/_layout)", () => {
+    expect(() =>
+      appRead("checkout-experience/[experienceEventId]/_layout.tsx"),
+    ).not.toThrow();
+    expect(() =>
+      appRead("checkout-experience/[experienceEventId]/index.tsx"),
+    ).not.toThrow();
+    expect(() =>
+      appRead("checkout-experience/[experienceEventId]/buyer.tsx"),
+    ).not.toThrow();
+    expect(() =>
+      appRead("checkout-experience/[experienceEventId]/payment.tsx"),
+    ).not.toThrow();
+    expect(() =>
+      appRead("checkout-experience/[experienceEventId]/confirm.tsx"),
+    ).not.toThrow();
+  });
+
+  test("ExperienceCheckoutFlow routes into its own /checkout-experience chain (not event/trip)", () => {
+    expect(CHECKOUT_FLOW).toMatch(
+      /router\.push\(\s*`\/checkout-experience\/\$\{experience\.id\}`/,
+    );
+    // Must NOT route into the event-side or trip-side chains.
+    expect(CHECKOUT_FLOW).not.toMatch(/\/checkout\/\$\{/);
+    expect(CHECKOUT_FLOW).not.toMatch(/\/checkout-trip\//);
+  });
+
+  test("COMMS-0014/0016 — checkout POSTs to the SHARED ticket-checkout-create, no parallel money fn", () => {
+    const BUYER = appRead("checkout-experience/[experienceEventId]/buyer.tsx");
+    const PAYMENT = appRead(
+      "checkout-experience/[experienceEventId]/payment.tsx",
+    );
+    // Both reuse the shared createTicketCheckout service (event_type-agnostic).
+    expect(BUYER).toMatch(/createTicketCheckout/);
+    expect(PAYMENT).toMatch(/createTicketCheckout/);
+    // No bespoke edge-function name introduced for experiences.
+    expect(BUYER).not.toMatch(/experience-checkout-create/);
+    expect(PAYMENT).not.toMatch(/experience-checkout-create/);
+    // Native path goes through the shared NativeCheckoutPaymentBoundary.
+    expect(PAYMENT).toMatch(/NativeCheckoutPaymentBoundary/);
+  });
+
+  test("the public-by-slug resolver gates on published experiences only (draft never leaks)", () => {
+    // Anon resolver: event_type='experience' + published lifecycle statuses.
+    expect(PUBLIC_SERVICE).toMatch(/event_type["']?,\s*["']experience["']/);
+    expect(PUBLIC_SERVICE).toMatch(/PUBLIC_STATUSES/);
+    // "draft" must NOT be in the anon-visible status set.
+    const statusDecl = PUBLIC_SERVICE.match(
+      /PUBLIC_STATUSES\s*=\s*\[([^\]]*)\]/,
+    );
+    expect(statusDecl).not.toBeNull();
+    expect(statusDecl?.[1]).not.toMatch(/draft/);
+  });
+});
+
 // Silence unused-import warning for appRead — kept for symmetry with other
 // audit tests that may need app/ reads in a future expansion.
 void appRead;
