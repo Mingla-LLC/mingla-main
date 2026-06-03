@@ -290,7 +290,7 @@ Foreign cruft (`app-mobile/*`, `packages/*`, anchor `COMMS_LEDGER.md`, the
 unrelated `IMPLEMENTATION_*_COVER_PICKER_SELECTED_STATE.md`) left untouched and
 NOT committed. No stray "* 2.*" dupes found.
 
-**Commit hash:** _(filled in below after commit)_
+**Commit hash:** `2501cf689` (7 files, +592/−24; mingla-business + report only).
 
 ---
 
