@@ -91,18 +91,38 @@ export async function postCollabDeadEndBanner(input: CollabDeadEndBannerInput): 
     // structured payload in card_payload + the token-stripped degrade prose in
     // content. This replaces the prior direct user-attributed `messages` INSERT
     // of a prose string.
+    //
+    // ORCH-1058B send-UX hardening (the silent-failure fix): `supabase.rpc`
+    // does NOT throw on a Postgres error — it RESOLVES with `{ data, error }`.
+    // The RPC RAISEs (auth required / conversation not found / not a participant
+    // / unknown reason / invalid payload), each of which comes back as a
+    // non-null `error`, NOT a thrown exception. The prior try/catch alone could
+    // therefore NEVER see a RAISE → the failure was swallowed and the tap
+    // no-op'd silently (exactly the reported "no row lands, no feedback"
+    // symptom). We now explicitly inspect `error` AND a null `data` (the RPC
+    // RETURNS the inserted message uuid on success), route either to the failure
+    // toast, and only show the success toast + arm the debounce when a real row
+    // landed.
     const p_payload = buildCollabDeadEndBannerPayload(input);
-    const { error } = await supabase.rpc('rpc_post_collab_dead_end_banner', {
+    const { data, error } = await supabase.rpc('rpc_post_collab_dead_end_banner', {
       p_session_id: input.sessionId,
       p_reason: input.reason,
       p_payload,
     });
-    if (error) throw new Error(error.message ?? String(error));
+    if (error) {
+      throw new Error(error.message ?? String(error));
+    }
+    if (!data) {
+      // Defensive: no error but no message id returned means nothing was
+      // inserted — treat as a failure rather than reporting false success.
+      throw new Error('rpc_post_collab_dead_end_banner returned no message id');
+    }
 
     await AsyncStorage.setItem(key, String(now));
+    toastManager.success('Group notified', 2000);
   } catch (error) {
     console.warn('[collabDeadEndBannerService] post failed', error);
-    toastManager.warning("Couldn't post to the chat. Tap to retry.", 3000);
+    toastManager.error("Couldn't notify the group. Tap to retry.", 3000);
   }
 }
 

@@ -11,6 +11,7 @@ import {
   PanResponder,
   StatusBar,
   Platform,
+  Alert,
 } from "react-native";
 import { useTranslation } from 'react-i18next';
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -1710,7 +1711,12 @@ export default function SwipeableCards({
     }
   };
 
-  const handleNotifyGroup = useCallback(async (reason: CollabDeadEndReason) => {
+  // ORCH-1058B send-UX: tapping "Notify the group" first asks for explicit
+  // confirmation (proceed/cancel via the app's standard Alert.alert pattern —
+  // same shape used across SavedTab scheduling, ConnectionsPage, etc.). Only on
+  // "Notify" do we post the banner; success/failure feedback is surfaced by
+  // postCollabDeadEndBanner's toasts.
+  const postNotifyGroup = useCallback(async (reason: CollabDeadEndReason) => {
     if (!resolvedSessionId || !user?.id) return;
     await postCollabDeadEndBanner({
       sessionId: resolvedSessionId,
@@ -1721,6 +1727,18 @@ export default function SwipeableCards({
       currentUserId: user.id,
     });
   }, [allParticipantPrefs, collabDeadEndPayload, collabParticipants, resolvedSessionId, user?.id]);
+
+  const handleNotifyGroup = useCallback((reason: CollabDeadEndReason) => {
+    if (!resolvedSessionId || !user?.id) return;
+    Alert.alert(
+      'Notify the group?',
+      "We'll post a note in the chat that your locations don't overlap yet.",
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Notify', onPress: () => { void postNotifyGroup(reason); } },
+      ],
+    );
+  }, [postNotifyGroup, resolvedSessionId, user?.id]);
 
   const getCollabDeadEndCopy = useCallback(() => {
     const reason = (collabDeadEndPayload?.reason ?? collabDeckDeadEndReason) as CollabDeadEndReason | undefined;

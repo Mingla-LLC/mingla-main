@@ -188,6 +188,48 @@ No query keys changed. `card_payload` already flowed end-to-end. The intrinsic n
 
 ---
 
+## Send-UX + silent-failure hardening (ORCH-1058B rework, 2026-06-02)
+
+**Operator symptom:** tapping "Notify the group" gave NO confirmation prompt and NO success/failure feedback — it sent silently — and critically NO system row landed in the DB from recent taps.
+
+### Root cause of the no-row / silent symptom
+
+`supabase.rpc(...)` does **not** throw on a Postgres error — it resolves with `{ data, error }`. The deployed `rpc_post_collab_dead_end_banner` enforces its contract with `RAISE EXCEPTION` (auth required / conversation not found / **not a participant** / unknown reason / **invalid payload**). Every one of those RAISEs comes back to the client as a non-null `error` on the resolved promise — it is **not** a thrown exception. The committed poster wrapped the call in a `try/catch` and checked `if (error) throw …`, so the throw → catch path did surface *something*. BUT:
+
+1. **No success feedback existed at all.** On the happy path the poster armed the debounce and returned with zero UI — so a *successful* post and a *swallowed* one looked identical to the operator: "it just sends silently." This is the "no confirmation, no feedback" half of the report.
+2. **The catch used `toastManager.warning("Couldn't post to the chat …")`** — a low-salience warning, not an error toast, easy to miss.
+3. **The no-row half** is explained by the RPC rejecting the call (most likely `not a participant` — the caller's `auth.uid()` is not a `conversation_participants` row of the session conversation — or, secondarily, an `invalid payload` if the participants array were ever empty). On rejection, `error` is non-null → the row never inserts → "no system row lands." The param **names/shape are correct** (proven below), so the live rejection is an *authorization/state* condition surfaced by the RPC, NOT a param mismatch. The fix makes that rejection **loud** (error toast) instead of a missable warning, and adds the success toast so a valid tap is unambiguously confirmed.
+
+### Param-shape / signature proof (no mismatch)
+
+Deployed signature, read live from `pg_proc` via `execute_sql`:
+```
+rpc_post_collab_dead_end_banner(p_session_id uuid, p_reason text, p_payload jsonb) RETURNS uuid  [SECURITY DEFINER]
+```
+Client call (`collabDeadEndBannerService.ts`): `supabase.rpc('rpc_post_collab_dead_end_banner', { p_session_id, p_reason, p_payload })` — **exact** param-name match. `p_payload` is built by `buildCollabDeadEndBannerPayload`, which always sets `kind:'collab_dead_end'`, a `participants` array (one entry per normalized participant — non-empty for any real dead-end), `action`, and `prose`. This satisfies the RPC's §5 payload guard (`kind` = `collab_dead_end`, `participants` is a JSON array of length ≥ 1) and `p_reason` is one of the 5 allowed reasons. **Conclusion: the deployed-signature ↔ runtime-call shapes match; the silent failure was an unsurfaced RPC rejection + a total absence of success feedback, not a payload/signature bug.**
+
+### What changed
+
+**`app-mobile/src/services/collabDeadEndBannerService.ts` (`postCollabDeadEndBanner`)**
+- **Before:** `const { error } = await supabase.rpc(...)`; `if (error) throw …`; on success, silently armed the debounce; catch fired a `warning` toast.
+- **After:** destructures `{ data, error }`; `if (error) throw new Error(error.message ?? String(error))`; **adds `if (!data) throw …`** (the RPC RETURNS the inserted message uuid — a null `data` with no error means nothing inserted → treated as failure, never reported as success); on the proven-success path arms the debounce **and** shows `toastManager.success('Group notified', 2000)`; the catch now uses `toastManager.error("Couldn't notify the group. Tap to retry.", 3000)` (error, not warning). The pre-existing 5-min debounce no-op still shows its `warning('Already flagged just now.')` toast.
+
+**`app-mobile/src/components/SwipeableCards.tsx` (`handleNotifyGroup` + the CTA)**
+- **Before:** `handleNotifyGroup` was `async` and called `postCollabDeadEndBanner` **immediately** on tap — no confirm.
+- **After:** the post body moved to a new `postNotifyGroup` callback; `handleNotifyGroup` now opens `Alert.alert('Notify the group?', "We'll post a note in the chat that your locations don't overlap yet.", [{text:'Cancel', style:'cancel'}, {text:'Notify', onPress: () => void postNotifyGroup(reason)}])` — the app's standard confirm pattern (mirrors `SavedTab` scheduling, `ConnectionsPage`, etc.). The post fires **only** on the "Notify" action. `Alert` added to the existing `react-native` import. The CTA `onPress={() => handleNotifyGroup(collabDeadEndCopy.reason)}` is unchanged (now routes through the confirm).
+
+### Regression test (extended)
+
+`app-mobile/scripts/ci/orch-1058b-system-banner-check.mjs` extended with T-07..T-10 (40/40 total):
+- **T-07** — service destructures `{ data, error }` from the rpc, routes a non-null `error` to a throw, AND has the `if (!data)` null-row guard.
+- **T-08** — the catch surfaces a user-facing failure toast with notify-specific copy.
+- **T-09** — a success toast (`'Group notified'`) fires, AND its source position is **after** both the error guard and the null-data guard (proves it only fires on the success path).
+- **T-10** — the CTA is gated behind `Alert.alert('Notify the group?', …)` with a `Cancel` (style:'cancel') button and a `Notify` action that is the only path firing `postNotifyGroup`; `handleNotifyGroup` opens the confirm rather than posting directly.
+
+**fails-on-revert:** with `collabDeadEndBannerService.ts` + `SwipeableCards.tsx` stashed at `ad2e37b766da056daffb9c6e0fe3ffdaed8f122e`, T-07/T-08/T-09/T-10 all FAIL (36/40); restored → 40/40 PASS. Run: `node scripts/ci/orch-1058b-system-banner-check.mjs`.
+
+---
+
 ## Migrations awaiting `supabase db push`
 
 **File:** `supabase/migrations/20260826000000_orch_1058b_post_collab_dead_end_banner.sql`

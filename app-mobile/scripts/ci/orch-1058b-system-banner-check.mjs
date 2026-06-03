@@ -355,6 +355,97 @@ check('strip rule removes a trailing token and trims', () => {
 });
 
 // ---------------------------------------------------------------------------
+// ORCH-1058B send-UX + silent-failure hardening (rework section).
+//
+// THE BUG: tapping "Notify the group" gave no confirm, no success/failure
+// feedback, and no row landed in the DB. Root cause of the no-row symptom is
+// that `supabase.rpc` resolves with `{ data, error }` — it does NOT throw on a
+// Postgres RAISE — so a try/catch alone swallows every RPC rejection silently.
+//
+// These source-level checks fail-on-revert if the confirm gate, the
+// success/failure toasts, or the explicit `{ error }` (+ null `data`) inspection
+// are removed.
+// ---------------------------------------------------------------------------
+const serviceSource = read('src/services/collabDeadEndBannerService.ts');
+const swipeableSource = read('src/components/SwipeableCards.tsx');
+
+// T-07 — the service inspects the RPC RETURN `{ error }` (not just try/catch).
+check('T-07 service destructures { data, error } from the rpc and routes error → failure', () => {
+  assert.match(
+    serviceSource,
+    /const\s*\{\s*data,\s*error\s*\}\s*=\s*await\s+supabase\.rpc\(\s*'rpc_post_collab_dead_end_banner'/,
+    'must destructure { data, error } from the rpc call (rpc does not throw on DB error)',
+  );
+  assert.match(
+    serviceSource,
+    /if\s*\(\s*error\s*\)\s*\{[\s\S]*?throw new Error\(error\.message/,
+    'a non-null rpc error must be routed (thrown) so it reaches the failure toast',
+  );
+  assert.match(
+    serviceSource,
+    /if\s*\(\s*!data\s*\)/,
+    'a null data (no inserted message id) must be treated as a failure, not false success',
+  );
+});
+
+// T-08 — failure toast wired (no silent no-op).
+check('T-08 service shows a failure toast in the catch (no silent failure)', () => {
+  assert.match(
+    serviceSource,
+    /catch\s*\(error\)\s*\{[\s\S]*?toastManager\.(error|warning)\(/,
+    'the catch must surface a user-facing failure toast',
+  );
+  assert.match(
+    serviceSource,
+    /toastManager\.(error|warning)\(\s*"Couldn't notify the group/,
+    'failure toast copy must name the failed notify action',
+  );
+});
+
+// T-09 — success toast wired on a confirmed insert.
+check('T-09 service shows a success toast only after a real row landed', () => {
+  assert.match(
+    serviceSource,
+    /toastManager\.success\(\s*'Group notified'/,
+    'a successful post must show a "Group notified" success toast',
+  );
+  // success toast must come AFTER the error/null-data guards (proves it only
+  // fires on the success path, never before the rpc result is known).
+  const successIdx = serviceSource.indexOf("toastManager.success('Group notified'");
+  const errGuardIdx = serviceSource.search(/if\s*\(\s*error\s*\)\s*\{/);
+  const nullGuardIdx = serviceSource.search(/if\s*\(\s*!data\s*\)/);
+  assert.ok(successIdx > errGuardIdx && errGuardIdx !== -1, 'success toast must follow the error guard');
+  assert.ok(successIdx > nullGuardIdx && nullGuardIdx !== -1, 'success toast must follow the null-data guard');
+});
+
+// T-10 — confirm gate present before the post fires.
+check('T-10 "Notify the group" is gated behind an Alert.alert proceed/cancel confirm', () => {
+  assert.match(swipeableSource, /from "react-native";/, 'sanity: react-native import block present');
+  assert.match(
+    swipeableSource,
+    /Alert\.alert\(\s*\n?\s*'Notify the group\?'/,
+    'confirm dialog must use the "Notify the group?" title',
+  );
+  assert.match(
+    swipeableSource,
+    /\{\s*text:\s*'Cancel',\s*style:\s*'cancel'\s*\}/,
+    'confirm must offer a Cancel button',
+  );
+  assert.match(
+    swipeableSource,
+    /\{\s*text:\s*'Notify',\s*onPress:\s*\(\)\s*=>\s*\{\s*void\s+postNotifyGroup\(reason\)/,
+    'only the "Notify" action may fire the post',
+  );
+  // The post itself must NOT be called unconditionally inside handleNotifyGroup
+  // (it must live behind the confirm action).
+  assert.match(
+    swipeableSource,
+    /const handleNotifyGroup = useCallback\(\(reason: CollabDeadEndReason\) => \{[\s\S]*?Alert\.alert\(/,
+    'handleNotifyGroup must open the confirm, not post directly',
+  );
+});
+
+// ---------------------------------------------------------------------------
 let failed = 0;
 for (const c of checks) {
   if (c.pass) console.log(`  PASS  ${c.name}`);
