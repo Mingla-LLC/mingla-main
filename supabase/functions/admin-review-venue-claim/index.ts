@@ -25,6 +25,8 @@ import { sendPush } from "../_shared/push-utils.ts";
 import { bounce, type PlaceRow } from "../_shared/bouncer.ts";
 import {
   auditActionForReview,
+  feedbackPushCopy,
+  normalizeFeedbackBody,
   normalizeReviewBody,
   pushCopyForReview,
 } from "./reviewLogic.ts";
@@ -254,6 +256,74 @@ serve(async (req) => {
       rawBody !== null && typeof rawBody === "object"
         ? String((rawBody as { action?: unknown }).action ?? "")
         : "";
+    // ORCH-1064 — admin leaves a structured feedback round on a pending claim.
+    // Like tweak_fields/score_override: call the dedicated SECURITY DEFINER RPC
+    // (which re-asserts is_admin_user) through the user client, write an
+    // admin_audit_log row, and additionally fire the business push (the RPC has
+    // no server-only side-effect; the wrapper owns the push + audit). Returns early.
+    if (rawAction === "add_feedback") {
+      const adminEarly = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+      const parsed = normalizeFeedbackBody(rawBody);
+      if (!parsed.ok) return json({ error: parsed.error }, 400);
+
+      const { data: fbRes, error: fbErr } = await userClient.rpc(
+        "admin_add_venue_claim_feedback",
+        {
+          p_brand_id: parsed.brandId,
+          p_items: parsed.items,
+          p_overall_message: parsed.overallMessage,
+        },
+      );
+      if (fbErr) return json({ error: fbErr.message }, 400);
+
+      const round =
+        fbRes !== null && typeof fbRes === "object"
+          ? (fbRes as { round?: unknown }).round ?? null
+          : null;
+      const itemCount =
+        fbRes !== null && typeof fbRes === "object"
+          ? (fbRes as { item_count?: unknown }).item_count ?? null
+          : null;
+
+      await adminEarly.from("admin_audit_log").insert({
+        admin_email: user.email ?? "unknown",
+        action: "venue_claim_feedback",
+        target_type: "venue_claim",
+        target_id: parsed.brandId,
+        metadata: { round, item_count: itemCount },
+      });
+
+      // Push the business owner (brand.account_id = OneSignal external_id).
+      let pushSent = false;
+      const { data: fbBrand, error: fbBrandErr } = await adminEarly
+        .from("brands")
+        .select("name, account_id")
+        .eq("id", parsed.brandId)
+        .maybeSingle();
+      if (fbBrandErr) {
+        console.warn(
+          "[admin-review-venue-claim] add_feedback brand lookup",
+          fbBrandErr.message,
+        );
+      }
+      if (fbBrand && typeof fbBrand.account_id === "string") {
+        const copy = feedbackPushCopy((fbBrand.name as string) ?? "Your venue");
+        pushSent = await sendPush({
+          targetUserId: fbBrand.account_id,
+          title: copy.title,
+          body: copy.body,
+          data: {
+            type: "venue_claim_feedback",
+            brand_id: parsed.brandId,
+            round,
+          },
+          androidChannelId: "system",
+        });
+      }
+
+      return json({ ok: true, round, item_count: itemCount, push_sent: pushSent });
+    }
+
     if (rawAction === "tweak_fields" || rawAction === "score_override") {
       const adminEarly = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
       const b = rawBody as Record<string, unknown>;

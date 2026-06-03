@@ -1388,6 +1388,17 @@ function checkNoNewBackendFiles() {
     // no-drift). New backend file — allowlisted same-commit per COMMS-0002.
     "supabase/functions/discover-cards/__tests__/orch_1062_vibe_category_adversarial.test.ts",
   ];
+  // ORCH-1064 [admin↔business venue-listing feedback loop]: one NEW migration
+  // (venue_claim_feedback table + RLS + view + 3 RPCs + admin bundle extension)
+  // plus its backend regression tests. The edge fn (admin-review-venue-claim/
+  // index.ts) is a MODIFICATION of an existing file (already allowlisted under
+  // ORCH_0101_VE3), so only the migration + new test files need listing. Per
+  // COMMS-0002 — lands in the same commit as the migration.
+  const ORCH_1064_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260901000000_orch_1064_venue_claim_feedback.sql",
+    "supabase/migrations/__tests__/orch_1064_venue_claim_feedback.test.sql",
+    "supabase/functions/admin-review-venue-claim/__tests__/orch_1064_feedback_loop.test.ts",
+  ];
   // ORCH-1032 [Intelligence pipeline concurrency cap + chunked enqueue]:
   // adds the additive 'queued'-status migration (status CHECK widen + per-city
   // unique active index widen + tg_kick_pending_trial_runs promotion built on
@@ -1565,6 +1576,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_1040_BACKEND_ALLOWLIST,
     ...ORCH_1061_BACKEND_ALLOWLIST,
     ...ORCH_1062_BACKEND_ALLOWLIST,
+    ...ORCH_1064_BACKEND_ALLOWLIST,
     // Schedule-edit buyer protection + "Refund all & proceed" (separate PR;
     // shares the ORCH-1047 work id used in code). New migration recording the
     // already-live business_patch_event_when change — not ORCH-0863 marketing
