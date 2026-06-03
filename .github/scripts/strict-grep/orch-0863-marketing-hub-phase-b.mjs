@@ -1444,6 +1444,7 @@ function checkNoNewBackendFiles() {
   // ORCH-0863 marketing. Per COMMS-0002 — lands with the migration.
   const ORCH_1058B_BACKEND_ALLOWLIST = [
     "supabase/migrations/20260826000000_orch_1058b_post_collab_dead_end_banner.sql",
+    "supabase/migrations/20260826000001_orch_1058b_allow_system_message_type.sql",
   ];
   const ALLOWLIST = [
     ...ORCH_1058B_BACKEND_ALLOWLIST,
