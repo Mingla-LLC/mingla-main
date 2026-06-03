@@ -67,14 +67,79 @@ export async function listRejectedClaims() {
 }
 
 /**
+ * META-ORCH-1062 Q4 — fetch the full claim-review bundle (brand identity +
+ * linked place_pool vetting fields + place_scores array) via the admin-gated
+ * SECURITY DEFINER RPC. The RPC enforces is_admin_user() server-side; this is
+ * the single round-trip the modal uses for photos + scores + missing fields.
+ * @param {string} brandId
+ */
+export async function getClaimReviewBundle(brandId) {
+  const { data, error } = await supabase.rpc("admin_get_claim_review_bundle", {
+    p_brand_id: brandId,
+  });
+  if (error) throw error;
+  return data ?? null;
+}
+
+/**
+ * META-ORCH-1062 Phase 1 — tweak whitelisted submitted fields (address /
+ * venue_category / price_level / price_tiers) on a pending_review claim. Routed
+ * through the admin-review edge wrapper as action:"tweak_fields" so the admin
+ * gate + admin_audit_log path is shared with reviews.
+ * @param {string} brandId
+ * @param {{ address?: string, venue_category?: string, price_level?: string, price_tiers?: unknown }} patch
+ */
+export async function tweakClaimFields(brandId, patch) {
+  const { data, error } = await supabase.functions.invoke(
+    "admin-review-venue-claim",
+    { body: { brand_id: brandId, action: "tweak_fields", patch } },
+  );
+  if (error) throw error;
+  if (data?.error) throw new Error(data.error);
+  return data;
+}
+
+/**
+ * META-ORCH-1062 Q2 — bidirectional admin score override. Writes the deck-
+ * ranking place_scores.score (UPSERT, clamped 0–200) + the audit slice. Routed
+ * through the edge wrapper as action:"score_override".
+ * @param {string} brandId
+ * @param {string} signalId
+ * @param {number} score 0–200
+ * @param {string} [reason]
+ */
+export async function overrideClaimScore(brandId, signalId, score, reason) {
+  const { data, error } = await supabase.functions.invoke(
+    "admin-review-venue-claim",
+    {
+      body: {
+        brand_id: brandId,
+        action: "score_override",
+        signal_id: signalId,
+        score,
+        reason: reason ?? null,
+      },
+    },
+  );
+  if (error) throw error;
+  if (data?.error) throw new Error(data.error);
+  return data;
+}
+
+/**
  * @param {string} brandId
  * @param {"mark_called"|"approve"|"reject"|"need_more_info"} action
- * @param {{ rejectionReason?: string }} [opts]
+ * @param {{ rejectionReason?: string, scoreVetoes?: Record<string, { vetoed_score: number, reason?: string }> }} [opts]
  */
 export async function reviewClaim(brandId, action, opts = {}) {
   const body = { brand_id: brandId, action };
   if (action === "reject") {
     body.rejection_reason = opts.rejectionReason ?? "";
+  }
+  // META-ORCH-1062 — admin reduce-only score vetoes applied at go-live (Sub-F
+  // shape). Passed through to the edge wrapper's score_vetoes channel.
+  if (action === "approve" && opts.scoreVetoes) {
+    body.score_vetoes = opts.scoreVetoes;
   }
 
   const { data, error } = await supabase.functions.invoke(

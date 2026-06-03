@@ -228,16 +228,6 @@ serve(async (req) => {
     if (!authHeader) return json({ error: "No authorization header" }, 401);
 
     const rawBody = await req.json().catch(() => null);
-    const parsed = normalizeReviewBody(rawBody);
-    if (!parsed.ok) return json({ error: parsed.error }, 400);
-    // META-ORCH-1009 Sub-F WS7: optional admin reduce-only score vetoes applied
-    // at go-live. Shape: { "<signal_id>": { vetoed_score, reason } }.
-    const scoreVetoes =
-      rawBody !== null && typeof rawBody === "object" &&
-        typeof (rawBody as { score_vetoes?: unknown }).score_vetoes === "object" &&
-        (rawBody as { score_vetoes?: unknown }).score_vetoes !== null
-        ? (rawBody as { score_vetoes: Record<string, unknown> }).score_vetoes
-        : null;
 
     const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       global: { headers: { Authorization: authHeader } },
@@ -251,6 +241,76 @@ serve(async (req) => {
     if (adminErr) return json({ error: adminErr.message }, 500);
     if (isAdmin !== true) return json({ error: "Forbidden" }, 403);
 
+    // META-ORCH-1062 Phase 1 — pre-review admin write actions (tweak_fields /
+    // score_override). These do NOT run biz_review_venue_claim; they call the
+    // dedicated SECURITY DEFINER RPCs (which re-assert is_admin_user) and write
+    // their own admin_audit_log row, then return early. The RPCs are the
+    // server-side authority; this wrapper just shares the admin-gate + audit path.
+    const rawAction =
+      rawBody !== null && typeof rawBody === "object"
+        ? String((rawBody as { action?: unknown }).action ?? "")
+        : "";
+    if (rawAction === "tweak_fields" || rawAction === "score_override") {
+      const adminEarly = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+      const b = rawBody as Record<string, unknown>;
+      const brandId = typeof b.brand_id === "string" ? b.brand_id.trim() : "";
+      if (brandId.length === 0) return json({ error: "brand_id_required" }, 400);
+
+      if (rawAction === "tweak_fields") {
+        const patch = b.patch;
+        if (patch === null || typeof patch !== "object") {
+          return json({ error: "invalid_patch" }, 400);
+        }
+        // The RPC runs as the calling admin (RLS-bound via the user client) so
+        // is_admin_user() sees auth.uid(); call it through userClient.
+        const { data: tweakRes, error: tweakErr } = await userClient.rpc(
+          "admin_tweak_venue_claim_fields",
+          { p_brand_id: brandId, p_patch: patch },
+        );
+        if (tweakErr) return json({ error: tweakErr.message }, 400);
+        await adminEarly.from("admin_audit_log").insert({
+          admin_email: user.email ?? "unknown",
+          action: "venue_claim_tweak",
+          target_type: "venue_claim",
+          target_id: brandId,
+          metadata: { patch, result: tweakRes ?? null },
+        });
+        return json({ ok: true, result: tweakRes });
+      }
+
+      // score_override
+      const signalId = typeof b.signal_id === "string" ? b.signal_id.trim() : "";
+      const score = typeof b.score === "number" ? b.score : Number(b.score);
+      const reason = typeof b.reason === "string" ? b.reason : null;
+      if (signalId.length === 0) return json({ error: "signal_id_required" }, 400);
+      if (!Number.isFinite(score)) return json({ error: "score_required" }, 400);
+      const { data: ovRes, error: ovErr } = await userClient.rpc(
+        "admin_apply_score_override",
+        { p_brand_id: brandId, p_signal_id: signalId, p_score: score, p_reason: reason },
+      );
+      if (ovErr) return json({ error: ovErr.message }, 400);
+      await adminEarly.from("admin_audit_log").insert({
+        admin_email: user.email ?? "unknown",
+        action: "venue_claim_score_override",
+        target_type: "venue_claim",
+        target_id: brandId,
+        metadata: { signal_id: signalId, score, reason, result: ovRes ?? null },
+      });
+      return json({ ok: true, result: ovRes });
+    }
+
+    const parsed = normalizeReviewBody(rawBody);
+    if (!parsed.ok) return json({ error: parsed.error }, 400);
+    // META-ORCH-1009 Sub-F WS7: optional admin reduce-only score vetoes applied
+    // at go-live. Shape: { "<signal_id>": { vetoed_score, reason } }.
+    const scoreVetoes =
+      rawBody !== null && typeof rawBody === "object" &&
+        typeof (rawBody as { score_vetoes?: unknown }).score_vetoes === "object" &&
+        (rawBody as { score_vetoes?: unknown }).score_vetoes !== null
+        ? (rawBody as { score_vetoes: Record<string, unknown> }).score_vetoes
+        : null;
+
+    const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const { data: rpcResult, error: rpcErr } = await userClient.rpc(
       "biz_review_venue_claim",
       {
@@ -263,7 +323,6 @@ serve(async (req) => {
     );
     if (rpcErr) return json({ error: rpcErr.message }, 400);
 
-    const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const { data: brandRow, error: brandErr } = await admin
       .from("brands")
       .select(
