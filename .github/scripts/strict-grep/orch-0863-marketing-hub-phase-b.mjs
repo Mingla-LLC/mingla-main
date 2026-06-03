@@ -1228,6 +1228,10 @@ function checkNoNewBackendFiles() {
     "supabase/functions/admin-review-venue-claim/reviewLogic.ts",
     "supabase/functions/admin-review-venue-claim/index.test.ts",
     "supabase/functions/admin-review-venue-claim/__tests__/meta_orch_1062_approve_scorer_loop.test.ts",
+    // META-ORCH-1062 QA: tester adversarial regression for the approve
+    // orchestration (Q1 partial-vs-total rollback, Q3 bounce-fail off-deck,
+    // servable-flip-before-scorer ordering).
+    "supabase/functions/admin-review-venue-claim/__tests__/meta_orch_1062_approve_orchestration.adversarial.test.ts",
     "supabase/migrations/20260813000000_meta_orch_1009_sub_f_recommend_review.sql",
     "supabase/migrations/20260831000000_meta_orch_1062_admin_vetting_rpcs.sql",
     "supabase/migrations/__tests__/meta_orch_1062_admin_vetting_rpcs.test.sql",

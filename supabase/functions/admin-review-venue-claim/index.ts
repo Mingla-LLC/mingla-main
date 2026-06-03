@@ -82,7 +82,11 @@ export function buildScorerInvokeBody(
 // goes through the injected service-role admin client. Returns a structured
 // result the response surfaces so the admin sees exactly what happened (no
 // silent failure — Constitution #5).
-async function runApproveGoLive(
+// META-ORCH-1062 QA: exported (was module-private) so the tester's adversarial
+// regression test can drive the full approve orchestration (re-bounce gate,
+// Q1 partial-vs-total rollback, ordering) with an injected fake admin client.
+// No behavior change — export keyword only.
+export async function runApproveGoLive(
   admin: AdminClient,
   placePoolId: string,
   scoreVetoes: Record<string, unknown> | null,
