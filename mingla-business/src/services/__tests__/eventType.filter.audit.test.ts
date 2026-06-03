@@ -291,23 +291,24 @@ describe("ORCH-0859 REWORK 3 — strict-grep gate registered", () => {
 describe("META-ORCH-1059 Sub-B — experience routing via routeForEventRow", () => {
   const ROUTE_HELPER = read("utils/routeForEventRow.ts");
 
-  test("routeForEventRow routes experience drafts to /experience/{id}/edit", () => {
-    // The experience branch must mirror the event/trip branch: draft → /edit,
-    // everything else → the dashboard. Reverting to the old
-    // `/experience/coming-soon` stub flips this assertion.
+  test("routeForEventRow routes ALL experiences (incl. drafts) to /experience/{id} dashboard", () => {
+    // META-ORCH-1059: the experience branch ALWAYS returns the dashboard
+    // (`/experience/{id}`) — draft or live. Unlike event/trip, a draft does NOT
+    // jump straight to `/edit`; the dashboard's "Continue editing" action owns
+    // that. Reintroducing a draft → `/experience/{id}/edit` branch (or the old
+    // `/experience/coming-soon` stub) flips these assertions.
     expect(ROUTE_HELPER).toMatch(/event_type === ["']experience["']/);
-    expect(ROUTE_HELPER).toMatch(
-      /`\/experience\/\$\{row\.id\}\/edit`/,
-    );
+    expect(ROUTE_HELPER).toMatch(/`\/experience\/\$\{row\.id\}`/);
   });
 
-  test("routeForEventRow routes published experiences to /experience/{id}", () => {
-    expect(ROUTE_HELPER).toMatch(/`\/experience\/\$\{row\.id\}`/);
-    // The dead coming-soon stub must be gone from the experience branch.
+  test("the experience branch never routes to /edit or the coming-soon stub", () => {
     const expBranch = ROUTE_HELPER.match(
       /if \(row\.event_type === "experience"\)[\s\S]*?\n  \}/,
     );
     expect(expBranch).not.toBeNull();
+    // No draft→edit jump: the dashboard is the single tap-through target.
+    expect(expBranch?.[0]).not.toMatch(/`\/experience\/\$\{row\.id\}\/edit`/);
+    // The dead coming-soon stub must be gone from the experience branch.
     expect(expBranch?.[0]).not.toMatch(/coming-soon/);
   });
 

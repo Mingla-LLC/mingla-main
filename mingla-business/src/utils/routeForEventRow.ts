@@ -23,9 +23,11 @@
  *   - event_type='trip' + status='draft' → /trip/{id}/edit (resume wizard)
  *   - event_type='trip' + status='scheduled' | 'live' | 'ended' | 'cancelled'
  *     → /trip/{id} (operator dashboard)
- *   - event_type='experience' + status='draft' → /experience/{id}/edit
- *   - event_type='experience' + status anything else → /experience/{id}
- *     (META-ORCH-1059 Sub-B — experiences now have a dashboard + edit route)
+ *   - event_type='experience' + ANY status → /experience/{id} (operator
+ *     dashboard is ALWAYS the entry point — draft or live). The dashboard's
+ *     own "Continue editing" / "Edit" action is the only path into the wizard.
+ *     (META-ORCH-1059 — operator: tapping an experience opened the edit screen
+ *     directly; the dashboard must be the landing surface, with Edit deliberate.)
  *   - event_type='event' + status='draft' → /event/{id}/edit
  *   - event_type='event' + status anything else → /event/{id}
  *   - status undefined → default to non-edit path
@@ -68,12 +70,12 @@ export function routeForEventRow(row: EventRowForRouting): string {
       : `/trip/${row.id}`;
   }
   if (row.event_type === "experience") {
-    // META-ORCH-1059 Sub-B: experiences now have a real dashboard + edit route
-    // (mirrors event/trip). Drafts resume the wizard; everything else opens the
-    // operator dashboard.
-    return row.status === "draft"
-      ? `/experience/${row.id}/edit`
-      : `/experience/${row.id}`;
+    // META-ORCH-1059: the experience DASHBOARD is the single entry point for
+    // every status (draft included). Unlike event/trip drafts (which resume the
+    // wizard directly), tapping an experience ALWAYS opens `/experience/{id}`;
+    // the dashboard surfaces draft state + a deliberate "Continue editing" action
+    // into `/experience/{id}/edit`. (Operator: taps were jumping straight to edit.)
+    return `/experience/${row.id}`;
   }
   // event_type === 'event' (default)
   return row.status === "draft"

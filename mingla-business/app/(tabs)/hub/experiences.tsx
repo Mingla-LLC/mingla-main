@@ -15,6 +15,7 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ActivitiesSnapInput } from "../../../src/components/experience/ActivitiesSnapInput";
+import { ExperienceListCard } from "../../../src/components/experience/ExperienceListCard";
 import { ExperienceReviewCards } from "../../../src/components/experience/ExperienceReviewCards";
 import { MenuSnapInput } from "../../../src/components/experience/MenuSnapInput";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
@@ -24,7 +25,6 @@ import {
   accent,
   glass,
   radius,
-  semantic,
   spacing,
   text as textTokens,
   typography,
@@ -38,7 +38,6 @@ import {
   type ExperienceParseMode,
 } from "../../../src/hooks/usePendingExperiences";
 import type { ExperienceFilePayload } from "../../../src/services/experienceGenerationService";
-import type { VenueExperience } from "../../../src/services/experiencesService";
 import { canGenerateExperiencesFromActivities } from "../../../src/utils/canGenerateExperiencesFromActivities";
 import { canGenerateExperiencesFromMenu } from "../../../src/utils/canGenerateExperiencesFromMenu";
 import {
@@ -87,28 +86,9 @@ const PLAY_COPY: GenerationCopy = {
     "Once Mingla verifies your venue claim, you can generate experiences from your activities list here.",
 };
 
-function formatExperienceMeta(exp: VenueExperience): string | null {
-  const parts: string[] = [];
-  if (exp.capacityMin !== null && exp.capacityMax !== null) {
-    parts.push(
-      exp.capacityMin === exp.capacityMax
-        ? `Up to ${exp.capacityMax} people`
-        : `${exp.capacityMin}\u2013${exp.capacityMax} people`,
-    );
-  } else if (exp.capacityMax !== null) {
-    parts.push(`Up to ${exp.capacityMax} people`);
-  }
-  if (exp.suggestedTimeOfDay) {
-    parts.push(exp.suggestedTimeOfDay);
-  }
-  if (exp.intentTags.length > 0) {
-    parts.push(exp.intentTags.join(" \u00b7 "));
-  }
-  return parts.length > 0 ? parts.join(" \u00b7 ") : null;
-}
-
-// META-ORCH-1059 Sub-B \u2014 map the raw events.status string to the routing union
-// + a status chip so brands see lifecycle at a glance and taps land correctly.
+// META-ORCH-1059 Sub-B \u2014 map the raw events.status string to the routing union.
+// (The list card derives its own status chip from exp.status; routing for
+// experiences ignores status, but we still pass the normalized value through.)
 function normalizeExperienceStatus(status: string): EventStatusForRouting {
   switch (status) {
     case "draft":
@@ -120,32 +100,6 @@ function normalizeExperienceStatus(status: string): EventStatusForRouting {
     default:
       return null;
   }
-}
-
-function experienceStatusChip(status: string): {
-  label: string;
-  style: { backgroundColor: string };
-  textStyle: { color: string };
-} {
-  if (status === "live" || status === "scheduled") {
-    return {
-      label: status === "live" ? "Live" : "Scheduled",
-      style: { backgroundColor: semantic.successTint },
-      textStyle: { color: semantic.success },
-    };
-  }
-  if (status === "ended" || status === "cancelled") {
-    return {
-      label: status === "ended" ? "Ended" : "Cancelled",
-      style: { backgroundColor: glass.tint.profileBase },
-      textStyle: { color: textTokens.tertiary },
-    };
-  }
-  return {
-    label: "Draft",
-    style: { backgroundColor: glass.tint.profileBase },
-    textStyle: { color: textTokens.tertiary },
-  };
 }
 
 interface ExperienceGenerationSurfaceProps {
@@ -302,50 +256,30 @@ function ExperienceGenerationSurface({
         ) : (
           <View style={[styles.expList, isWideDesktop && styles.desktopListGrid]}>
             {experiences.map((exp) => {
-              const meta = formatExperienceMeta(exp);
               const statusForRouting = normalizeExperienceStatus(exp.status);
-              const chip = experienceStatusChip(exp.status);
               return (
-                <Pressable
+                <View
                   key={exp.id}
-                  onPress={() =>
-                    router.push(
-                      routeForEventRow({
-                        id: exp.id,
-                        event_type: "experience",
-                        status: statusForRouting,
-                      }) as never,
-                    )
-                  }
-                  accessibilityRole="button"
-                  accessibilityLabel={`Open experience ${exp.title}`}
-                  style={({ pressed }) => [
-                    styles.expCard,
-                    isWideDesktop && styles.desktopListCell,
-                    pressed && styles.expCardPressed,
-                  ]}
+                  style={isWideDesktop ? styles.desktopListCell : undefined}
                 >
-                  <GlassCard variant="elevated" padding={spacing.md}>
-                    <View style={styles.expHeaderRow}>
-                      <Text style={styles.expTitle} numberOfLines={1}>
-                        {exp.title}
-                      </Text>
-                      <View style={[styles.statusChip, chip.style]}>
-                        <Text style={[styles.statusChipText, chip.textStyle]}>
-                          {chip.label}
-                        </Text>
-                      </View>
-                    </View>
-                    {exp.description !== null && (
-                      <Text style={styles.expBody} numberOfLines={3}>
-                        {exp.description}
-                      </Text>
-                    )}
-                    {meta !== null && (
-                      <Text style={styles.expTags}>{meta}</Text>
-                    )}
-                  </GlassCard>
-                </Pressable>
+                  {/* META-ORCH-1059 — proper offering-card row (cover thumb +
+                      status pill + title + date·venue subline + price), matching
+                      the events + trips lists. Tap opens the DASHBOARD via
+                      routeForEventRow (experiences always resolve to
+                      /experience/{id}); the dashboard owns the edit action. */}
+                  <ExperienceListCard
+                    experience={exp}
+                    onOpen={() =>
+                      router.push(
+                        routeForEventRow({
+                          id: exp.id,
+                          event_type: "experience",
+                          status: statusForRouting,
+                        }) as never,
+                      )
+                    }
+                  />
+                </View>
               );
             })}
           </View>
@@ -517,40 +451,6 @@ const styles = StyleSheet.create({
     width: `${100 / DESKTOP_HUB_GRID_COLUMNS}%`,
     paddingHorizontal: spacing.xs,
     marginBottom: spacing.sm,
-  },
-  expCard: { marginBottom: spacing.sm },
-  expCardPressed: { opacity: 0.9 },
-  expHeaderRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: spacing.sm,
-  },
-  statusChip: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-    borderRadius: radius.full,
-  },
-  statusChipText: {
-    fontSize: typography.micro.fontSize,
-    lineHeight: typography.micro.lineHeight,
-    fontWeight: "700",
-  },
-  expTitle: {
-    flex: 1,
-    fontSize: typography.body.fontSize,
-    fontWeight: "600",
-    color: textTokens.primary,
-  },
-  expBody: {
-    marginTop: spacing.xs,
-    fontSize: typography.caption.fontSize,
-    color: textTokens.secondary,
-  },
-  expTags: {
-    marginTop: spacing.xs,
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
   },
   emptyTitle: {
     fontSize: typography.h3.fontSize,

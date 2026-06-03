@@ -59,6 +59,15 @@ export interface BusinessTodoInput {
   stripeRoute: string;
   /** Route to the most-recent draft, or null when there is none. */
   draftRoute: string | null;
+  /**
+   * META-ORCH-1059 — the brand has a venue claim that is pending / under review
+   * (claim_status='pending_review', incl. the admin-follow-up sub-state). Drives
+   * the "Venue claim under review" row that replaced the Hub blue banner. Vanishes
+   * automatically once the claim resolves (verified / rejected / none).
+   */
+  venueClaimPending: boolean;
+  /** Route to the brand's venue-listing surface (where claim status lives). */
+  venueListingRoute: string;
 }
 
 function venueLiveSublabel(
@@ -140,6 +149,19 @@ export function buildBusinessTodos(input: BusinessTodoInput): BusinessTodo[] {
       label: "Get your venue live",
       sublabel: venueLiveSublabel(input.pipelineStatus),
       action: { kind: "route", route: input.pipelineRoute },
+    });
+  }
+
+  // 2b — Venue claim under review. META-ORCH-1059: replaces the Hub blue
+  // "your venue claim is being reviewed" banner. Informational + tappable to the
+  // venue listing (where the live claim status is shown). Only present while the
+  // claim is actually pending/under-review, so it auto-vanishes on resolution.
+  if (input.venueClaimPending) {
+    todos.push({
+      id: "venue_claim_review",
+      label: "Venue claim under review",
+      sublabel: "We're verifying your venue — usually within 4 business hours",
+      action: { kind: "route", route: input.venueListingRoute },
     });
   }
 

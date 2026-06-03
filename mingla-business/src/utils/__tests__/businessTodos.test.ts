@@ -27,6 +27,9 @@ const base: BusinessTodoInput = {
   hasDraftPaidOffering: false,
   stripeRoute: "/brand/b1/payments",
   draftRoute: null,
+  // META-ORCH-1059 — venue-claim to-do row inputs (default: no pending claim).
+  venueClaimPending: false,
+  venueListingRoute: "/brand/b1/listing",
 };
 
 const ids = (input: BusinessTodoInput): string[] =>
@@ -274,5 +277,44 @@ describe("buildBusinessTodos — ordering + vanishing", () => {
       counts: { total: 0, live: 0, draft: 0 },
     });
     expect(venueDone).toEqual(["create_offering"]);
+  });
+});
+
+// META-ORCH-1059 — venue-claim "under review" to-do row (replaces the Hub blue
+// banner). Shows only while the claim is pending; vanishes on resolution.
+describe("buildBusinessTodos — venue claim under review (META-ORCH-1059)", () => {
+  test("pending claim → venue_claim_review row appears, routes to listing", () => {
+    const todos = buildBusinessTodos({ ...base, venueClaimPending: true });
+    const row = todos.find((t) => t.id === "venue_claim_review");
+    expect(row).toBeDefined();
+    expect(row?.label).toBe("Venue claim under review");
+    expect(row?.action).toEqual({ kind: "route", route: "/brand/b1/listing" });
+  });
+
+  test("no pending claim → row absent (default healthy brand)", () => {
+    expect(ids({ ...base, venueClaimPending: false })).not.toContain(
+      "venue_claim_review",
+    );
+  });
+
+  test("claim row vanishes once resolved (pending → not pending)", () => {
+    const pending = ids({ ...base, venueClaimPending: true });
+    expect(pending).toContain("venue_claim_review");
+    const resolved = ids({ ...base, venueClaimPending: false });
+    expect(resolved).not.toContain("venue_claim_review");
+  });
+
+  test("claim row sits after venue rows, before first-offering", () => {
+    const todos = ids({
+      ...base,
+      venueClaimPending: true,
+      pipelineStatus: "needs_fix", // get_venue_live
+      counts: { total: 0, live: 0, draft: 0 }, // create_offering
+    });
+    expect(todos).toEqual([
+      "get_venue_live",
+      "venue_claim_review",
+      "create_offering",
+    ]);
   });
 });

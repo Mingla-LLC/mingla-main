@@ -26,7 +26,6 @@ import { BrandDeleteSheet } from "../../../src/components/brand/BrandDeleteSheet
 import { BrandSwitcherSheet } from "../../../src/components/brand/BrandSwitcherSheet";
 import { BusinessTodoToggle } from "../../../src/components/home/BusinessTodoToggle";
 import { HubSubNav } from "../../../src/components/hub/HubSubNav";
-import { VenueClaimStatusBanner } from "../../../src/components/brand/VenueClaimStatusBanner";
 import { useBusinessTodos } from "../../../src/hooks/useBusinessTodos";
 import { useCurrentBrand } from "../../../src/hooks/useCurrentBrand";
 import {
@@ -198,7 +197,10 @@ export default function HubTabLayout(): React.ReactElement {
         loading={visibleTabs.isLoading}
         onTabPress={handleHubTabPress}
       />
-      <VenueClaimStatusBanner brand={currentBrand} />
+      {/* META-ORCH-1059 — the venue-claim "being reviewed" blue box was removed
+          from Hub (operator: redundant — the brand-page venue listing already
+          shows claim status). A pending/under-review claim now surfaces as a
+          smart row in the shared to-do toggle above (see buildBusinessTodos). */}
       <Slot />
       <BrandSwitcherSheet
         visible={brandSheetVisible}
