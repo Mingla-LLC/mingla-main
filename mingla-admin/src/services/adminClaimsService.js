@@ -170,6 +170,33 @@ export async function reviewClaim(brandId, action, opts = {}) {
 }
 
 /**
+ * ORCH-1064 — admin sends a feedback round on a pending claim. Routed through
+ * the admin-review edge wrapper (action:"add_feedback") so the business push +
+ * admin_audit_log fire server-side. Each call opens a fresh round and moves the
+ * claim to need_more_info (pending_review + claim_follow_up_at stamp).
+ * @param {string} brandId
+ * @param {Array<{ category: string, note: string }>} items
+ * @param {string|null} [overallMessage]
+ * @returns {Promise<{ ok: boolean, round: number, item_count: number, push_sent: boolean }>}
+ */
+export async function addClaimFeedback(brandId, items, overallMessage) {
+  const { data, error } = await supabase.functions.invoke(
+    "admin-review-venue-claim",
+    {
+      body: {
+        brand_id: brandId,
+        action: "add_feedback",
+        items,
+        overall_message: overallMessage ?? null,
+      },
+    },
+  );
+  if (error) throw error;
+  if (data?.error) throw new Error(data.error);
+  return data;
+}
+
+/**
  * Group pending claims by google_place_id for duplicate warnings.
  * @param {Array<{ id: string, google_place_id?: string | null }>} rows
  */

@@ -3,7 +3,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ClipboardList } from "lucide-react";
+import { ClipboardList, MessageSquarePlus, X } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { SectionCard } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -16,6 +16,7 @@ import { logAdminAction } from "../lib/auditLog";
 import { resolveClaimDisplayPhone, formatPhoneHref } from "../lib/claimsPhone";
 import { ClaimRow } from "../components/claims/ClaimRow";
 import {
+  addClaimFeedback,
   getClaimReviewBundle,
   groupClaimsByGooglePlaceId,
   listPendingClaims,
@@ -32,6 +33,27 @@ const CAT_LABELS = {
   play: "Play",
   creative_and_arts: "Creative & arts",
 };
+
+// ORCH-1064 — feedback category enum → human label (matches the migration
+// CHECK + the business sheet's group order).
+const FEEDBACK_CAT_LABELS = {
+  photos: "Photos",
+  address: "Address",
+  hours: "Hours",
+  category: "Category",
+  description: "Description",
+  quality: "Listing quality",
+  other: "Other",
+};
+const FEEDBACK_CAT_ORDER = [
+  "photos",
+  "address",
+  "hours",
+  "category",
+  "description",
+  "quality",
+  "other",
+];
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -73,6 +95,12 @@ export function ClaimsPage() {
   // merge. admin-review-venue-claim still accepts score_vetoes for backward-compat,
   // but approve no longer depends on it (go-live is the Phase 4 servable→scorer path).
   const [scoreDraft, setScoreDraft] = useState({});
+  // ORCH-1064 — feedback authoring draft: staged items + the per-row composer +
+  // the optional overall message. Cleared on open/close/submit.
+  const [feedbackItems, setFeedbackItems] = useState([]);
+  const [feedbackCat, setFeedbackCat] = useState("photos");
+  const [feedbackNote, setFeedbackNote] = useState("");
+  const [feedbackMessage, setFeedbackMessage] = useState("");
 
   const duplicateGroups = useMemo(
     () => groupClaimsByGooglePlaceId(rows),
@@ -126,6 +154,10 @@ export function ClaimsPage() {
     setBundleError(null);
     setLightboxIndex(null);
     setScoreDraft({});
+    setFeedbackItems([]);
+    setFeedbackCat("photos");
+    setFeedbackNote("");
+    setFeedbackMessage("");
     setTweakAddress(row.address ?? "");
     setTweakCategory(row.venue_category ?? "");
     setTweakPriceLevel("");
@@ -158,6 +190,62 @@ export function ClaimsPage() {
     setBundleError(null);
     setLightboxIndex(null);
     setScoreDraft({});
+    setFeedbackItems([]);
+    setFeedbackCat("photos");
+    setFeedbackNote("");
+    setFeedbackMessage("");
+  };
+
+  // ORCH-1064 — stage one feedback item into the local draft array.
+  const addFeedbackItem = () => {
+    const note = feedbackNote.trim();
+    if (note.length === 0) {
+      addToast({ variant: "warning", title: "Add a note for this item" });
+      return;
+    }
+    setFeedbackItems((items) => [...items, { category: feedbackCat, note }]);
+    setFeedbackNote("");
+  };
+
+  const removeFeedbackItem = (index) => {
+    setFeedbackItems((items) => items.filter((_, i) => i !== index));
+  };
+
+  // ORCH-1064 — send the staged round through the edge wrapper (push + audit
+  // server-side), then close + reload so the "Follow-up requested" badge shows.
+  const submitFeedback = async () => {
+    if (!detail) return;
+    if (feedbackItems.length === 0) {
+      addToast({ variant: "warning", title: "Add at least one feedback item" });
+      return;
+    }
+    setActing(true);
+    try {
+      const data = await addClaimFeedback(
+        detail.id,
+        feedbackItems,
+        feedbackMessage.trim() || null,
+      );
+      await logAdminAction("claim.add_feedback", "venue_claim", detail.id, {
+        round: data?.round ?? null,
+        item_count: data?.item_count ?? feedbackItems.length,
+      });
+      addToast({
+        variant: "info",
+        title: "Feedback sent",
+        description: `${data?.item_count ?? feedbackItems.length} item(s) sent to the business`,
+      });
+      closeDetail();
+      await load();
+    } catch (e) {
+      addToast({
+        variant: "error",
+        title: "Couldn't send feedback",
+        description: e?.message ?? String(e),
+      });
+    } finally {
+      setActing(false);
+    }
   };
 
   const runReview = async (action, opts = {}) => {
@@ -319,6 +407,24 @@ export function ClaimsPage() {
     [bundle, detail],
   );
   const scores = Array.isArray(bundle?.scores) ? bundle.scores : [];
+  // ORCH-1064 — the active feedback round's items (grouped by category for the
+  // read-only status view). bundle.feedback is the active round only.
+  const feedbackRows = useMemo(
+    () => (Array.isArray(bundle?.feedback) ? bundle.feedback : []),
+    [bundle],
+  );
+  const feedbackByCategory = useMemo(() => {
+    const groups = new Map();
+    for (const row of feedbackRows) {
+      const list = groups.get(row.category) ?? [];
+      list.push(row);
+      groups.set(row.category, list);
+    }
+    return FEEDBACK_CAT_ORDER.filter((c) => groups.has(c)).map((c) => ({
+      category: c,
+      items: groups.get(c),
+    }));
+  }, [feedbackRows]);
   const isPending = detail?.claim_status
     ? detail.claim_status === "pending_review"
     : activeTab === "pending";
@@ -769,6 +875,147 @@ export function ClaimsPage() {
                       Score override available after the venue is scored (on approve).
                     </p>
                   )}
+                </div>
+              ) : null}
+
+              {/* ORCH-1064 — feedback to the business (pending claims only). Each
+                  Send opens a fresh round, moves the claim to need_more_info, and
+                  pushes the owner; the current round's items + their fixed status
+                  render read-only below. */}
+              {isPending ? (
+                <div className="space-y-4 rounded-lg border border-white/10 bg-white/[0.03] p-3">
+                  <div className="flex items-center gap-2 text-[var(--color-text-tertiary)] text-xs uppercase tracking-wide">
+                    <MessageSquarePlus className="h-3.5 w-3.5" />
+                    Feedback to business
+                  </div>
+
+                  {/* Staged items */}
+                  {feedbackItems.length > 0 ? (
+                    <div className="space-y-1.5">
+                      {feedbackItems.map((item, i) => (
+                        <div
+                          key={`${item.category}-${i}`}
+                          className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-xs"
+                        >
+                          <span className="font-medium text-[var(--color-text-primary)]">
+                            {FEEDBACK_CAT_LABELS[item.category]}
+                          </span>
+                          <span className="flex-1 truncate text-[var(--color-text-secondary)]">
+                            {item.note}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => removeFeedbackItem(i)}
+                            disabled={acting}
+                            aria-label="Remove feedback item"
+                            className="rounded p-0.5 text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)]"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  {/* Add-item composer */}
+                  <div className="flex flex-wrap items-end gap-2">
+                    <label className="text-xs text-[var(--color-text-tertiary)]">
+                      Category
+                      <select
+                        value={feedbackCat}
+                        onChange={(e) => setFeedbackCat(e.target.value)}
+                        disabled={acting}
+                        className="mt-1 block w-36 rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-sm text-[var(--color-text-primary)]"
+                      >
+                        {FEEDBACK_CAT_ORDER.map((c) => (
+                          <option key={c} value={c}>
+                            {FEEDBACK_CAT_LABELS[c]}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="flex-1 min-w-[10rem] text-xs text-[var(--color-text-tertiary)]">
+                      Note
+                      <input
+                        type="text"
+                        value={feedbackNote}
+                        onChange={(e) => setFeedbackNote(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            addFeedbackItem();
+                          }
+                        }}
+                        placeholder="What needs fixing?"
+                        disabled={acting}
+                        className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-sm text-[var(--color-text-primary)]"
+                      />
+                    </label>
+                    <Button
+                      variant="secondary"
+                      onClick={addFeedbackItem}
+                      disabled={acting}
+                    >
+                      Add item
+                    </Button>
+                  </div>
+
+                  {/* Optional overall message */}
+                  <label className="block text-xs text-[var(--color-text-tertiary)]">
+                    Overall message (optional)
+                    <textarea
+                      value={feedbackMessage}
+                      onChange={(e) => setFeedbackMessage(e.target.value)}
+                      placeholder="Optional message to the business (one per round)."
+                      disabled={acting}
+                      rows={2}
+                      className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-sm text-[var(--color-text-primary)]"
+                    />
+                  </label>
+
+                  <Button
+                    variant="primary"
+                    onClick={() => void submitFeedback()}
+                    disabled={acting || feedbackItems.length === 0}
+                  >
+                    Send feedback
+                  </Button>
+
+                  {/* Current round status (read-only) */}
+                  {feedbackByCategory.length > 0 ? (
+                    <div className="space-y-2 border-t border-white/10 pt-3">
+                      <div className="text-xs text-[var(--color-text-secondary)]">
+                        Current round — what the business has addressed
+                      </div>
+                      {feedbackByCategory.map((group) => (
+                        <div key={group.category} className="space-y-1">
+                          <div className="text-[10px] uppercase tracking-wide text-[var(--color-text-tertiary)]">
+                            {FEEDBACK_CAT_LABELS[group.category]}
+                          </div>
+                          {group.items.map((item) => (
+                            <div
+                              key={item.id}
+                              className="flex items-center gap-2 text-xs"
+                            >
+                              <span className="flex-1 text-[var(--color-text-secondary)]">
+                                {item.note}
+                              </span>
+                              <Badge
+                                variant={item.status === "fixed" ? "success" : "warning"}
+                              >
+                                {item.status === "fixed" ? "Fixed" : "Open"}
+                              </Badge>
+                            </div>
+                          ))}
+                        </div>
+                      ))}
+                      {feedbackRows[0]?.overall_message ? (
+                        <p className="text-[11px] italic text-[var(--color-text-tertiary)]">
+                          “{feedbackRows[0].overall_message}”
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
 
