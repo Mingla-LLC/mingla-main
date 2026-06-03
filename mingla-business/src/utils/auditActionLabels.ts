@@ -73,6 +73,11 @@ export const KNOWN_STATIC_SLUGS: readonly string[] = [
   // emitted by brand-stripe-account-session after a successful Account
   // Session mint for the embedded onboarding or account-management surface.
   "stripe_connect.account_session_created",
+  // ORCH-1052 [Partner onboarding] — partner-side Stripe Connect audit slugs
+  // emitted by partner-stripe-onboard (onboard_initiated) +
+  // partner-stripe-account-session (account_session_created).
+  "partner_stripe_connect.onboard_initiated",
+  "partner_stripe_connect.account_session_created",
   "order_cancelled",
   "order_refund_issued",
   "mingla_tos_accept",
@@ -141,6 +146,19 @@ export const resolveAuditActionLabel = (action: string): AuditActionLabel => {
       return {
         title: "Opened Stripe account management",
         detail: "An embedded Account Session was minted for onboarding or account management.",
+        category: "stripe_connect",
+        iconHint: "bank",
+      };
+    case "partner_stripe_connect.onboard_initiated":
+      return {
+        title: "Started partner Stripe onboarding",
+        category: "stripe_connect",
+        iconHint: "bank",
+      };
+    case "partner_stripe_connect.account_session_created":
+      return {
+        title: "Opened partner Stripe account management",
+        detail: "An embedded Account Session was minted for partner onboarding or account management.",
         category: "stripe_connect",
         iconHint: "bank",
       };
