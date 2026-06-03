@@ -3,6 +3,7 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "scripts": {
+    "postinstall": "patch-package",
     "start": "expo start",
     "build-dev-android": "npx eas build --platform android --profile development",
     "build-dev-ios": "npx eas build --platform ios --profile development",
@@ -124,7 +125,6 @@
     "expo-location": "~19.0.8",
     "expo-router": "~6.0.23",
     "expo-sharing": "~14.0.7",
-    "expo-video": "~3.0.16",
     "expo-splash-screen": "~31.0.13",
     "expo-status-bar": "~3.0.9",
     "expo-symbols": "~1.0.8",
@@ -162,6 +162,7 @@
     "@types/react": "~19.1.0",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~10.0.0",
+    "patch-package": "^8.0.1",
     "typescript": "~5.9.2"
   },
   "private": true
