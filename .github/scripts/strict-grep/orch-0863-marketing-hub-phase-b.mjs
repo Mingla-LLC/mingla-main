@@ -1565,6 +1565,11 @@ function checkNoNewBackendFiles() {
     ...ORCH_1040_BACKEND_ALLOWLIST,
     ...ORCH_1061_BACKEND_ALLOWLIST,
     ...ORCH_1062_BACKEND_ALLOWLIST,
+    // Schedule-edit buyer protection + "Refund all & proceed" (separate PR;
+    // shares the ORCH-1047 work id used in code). New migration recording the
+    // already-live business_patch_event_when change — not ORCH-0863 marketing
+    // scope; same C7-scoping caveat as the allowlists above.
+    "supabase/migrations/20260820000000_schedule_change_buyer_protection_refund_all.sql",
   ];
   const forbidden = changed.filter(
     (p) =>

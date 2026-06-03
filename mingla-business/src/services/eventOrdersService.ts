@@ -319,6 +319,30 @@ export const getEventSoldCounts = (
   return counts;
 };
 
+/**
+ * Build a server-backed {@link SoldCountContext} from the live event orders.
+ *
+ * Replaces the legacy client-store reader (`getSoldCountContextForEvent`,
+ * ORCH-0704 stub that returned zeros for server-loaded events). The
+ * published-event edit guards (`validateLiveEventFieldUpdate`) consume this to
+ * decide whether a structural change (date move, tier delete, price/capacity
+ * change) collides with sold tickets — so it MUST reflect real server truth,
+ * not the empty client order store.
+ *
+ * - `soldCountByTier`: live ticket quantity per ticket-type (net of refunds).
+ * - `soldCountForEvent`: count of live orders (buyers) — matches the server
+ *   RPC's `count(*) … payment_status IN ('paid','partial_refund')` and the
+ *   "Refund N orders" copy in the reject dialog.
+ */
+export const buildSoldCountContextFromOrders = (
+  orders: OrderRecord[],
+): { soldCountByTier: Record<string, number>; soldCountForEvent: number } => ({
+  soldCountByTier: getEventSoldCounts(orders),
+  soldCountForEvent: orders.filter(
+    (o) => o.status === "paid" || o.status === "refunded_partial",
+  ).length,
+});
+
 export const getEventOrderActivity = (
   orders: OrderRecord[],
   sinceTs?: number,
