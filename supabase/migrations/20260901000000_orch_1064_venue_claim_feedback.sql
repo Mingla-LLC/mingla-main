@@ -80,7 +80,7 @@ create policy "owner reads own venue_claim_feedback"
   for select to authenticated
   using (
     public.biz_brand_effective_rank_for_caller(brand_id)
-      >= public.biz_role_rank('account_owner')
+      >= public.biz_role_rank('brand_owner')
   );
 
 -- ─────────────────────────────────────────────────────────────────────────────
@@ -203,7 +203,7 @@ begin
 
   -- Owner-only: the caller must own the brand this feedback belongs to.
   if public.biz_brand_effective_rank_for_caller(v_row.brand_id)
-       < public.biz_role_rank('account_owner') then
+       < public.biz_role_rank('brand_owner') then
     raise exception 'forbidden';
   end if;
 
@@ -223,7 +223,7 @@ grant execute on function public.biz_mark_feedback_item_fixed(uuid, boolean) to 
 comment on function public.biz_mark_feedback_item_fixed(uuid, boolean) is
   'ORCH-1064 — brand-owner-gated. Toggles a feedback item status open/fixed '
   '(sets/clears resolved_at). Owner predicate = biz_brand_effective_rank_for_caller '
-  '>= account_owner.';
+  '>= brand_owner (owner-only; rank 60).';
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 6. RPC biz_resubmit_venue_claim — brand-owner-gated; clears follow-up.
@@ -246,7 +246,7 @@ begin
   if not found then raise exception 'brand_not_found'; end if;
 
   if public.biz_brand_effective_rank_for_caller(p_brand_id)
-       < public.biz_role_rank('account_owner') then
+       < public.biz_role_rank('brand_owner') then
     raise exception 'forbidden';
   end if;
 
