@@ -1397,6 +1397,7 @@ function checkNoNewBackendFiles() {
   const ORCH_1064_BACKEND_ALLOWLIST = [
     "supabase/migrations/20260901000000_orch_1064_venue_claim_feedback.sql",
     "supabase/migrations/__tests__/orch_1064_venue_claim_feedback.test.sql",
+    "supabase/migrations/__tests__/orch_1064_feedback_owner_rls.adversarial.test.sql",
     "supabase/functions/admin-review-venue-claim/__tests__/orch_1064_feedback_loop.test.ts",
   ];
   // ORCH-1032 [Intelligence pipeline concurrency cap + chunked enqueue]:
