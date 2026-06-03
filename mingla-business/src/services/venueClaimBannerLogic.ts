@@ -41,9 +41,13 @@ export function venueClaimBannerCopy(
         body: "Your venue claim is being reviewed. Usually within 4 business hours.",
       };
     case "follow_up":
+      // ORCH-1064 (F-3 fix) — MUST differ from plain pending. DESIGN §2.5: the
+      // openCount≥1 copy (the openCount===0 "all addressed" variant is selected
+      // in the component from the badge count; this pure fn returns the ≥1 copy).
       return {
-        title: "Venue claim",
-        body: "Your venue claim is being reviewed. Usually within 4 business hours.",
+        title: "Updates requested",
+        body:
+          "The Mingla team asked for a few changes. A few tweaks will get you live — tap to see what to fix.",
       };
     case "rejected":
       return {

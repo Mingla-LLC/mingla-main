@@ -29,6 +29,11 @@ export function useVenueClaimRefresh(): void {
           void queryClient.invalidateQueries({
             queryKey: brandKeys.detail(currentBrandId),
           });
+          // ORCH-1064 — also refresh the active feedback round so a fresh admin
+          // round shows without a restart (mirrors the detail invalidation).
+          void queryClient.invalidateQueries({
+            queryKey: brandKeys.feedback(currentBrandId),
+          });
         }
       },
     );

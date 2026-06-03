@@ -27,6 +27,9 @@ import { BrandSwitcherSheet } from "../../../src/components/brand/BrandSwitcherS
 import { BusinessTodoToggle } from "../../../src/components/home/BusinessTodoToggle";
 import { HubSubNav } from "../../../src/components/hub/HubSubNav";
 import { VenueClaimStatusBanner } from "../../../src/components/brand/VenueClaimStatusBanner";
+import { VenueClaimFeedbackSheet } from "../../../src/components/brand/VenueClaimFeedbackSheet";
+import { useVenueClaimOpenCount } from "../../../src/hooks/useVenueClaimFeedback";
+import { Toast, type ToastKind } from "../../../src/components/ui/Toast";
 import { useBusinessTodos } from "../../../src/hooks/useBusinessTodos";
 import { useCurrentBrand } from "../../../src/hooks/useCurrentBrand";
 import {
@@ -66,6 +69,40 @@ export default function HubTabLayout(): React.ReactElement {
   const [isUniversalCreatorOpen, setIsUniversalCreatorOpen] = useState<boolean>(false);
   const [deleteSheetVisible, setDeleteSheetVisible] = useState<boolean>(false);
   const [brandPendingDelete, setBrandPendingDelete] = useState<Brand | null>(null);
+  // ORCH-1064 — venue-claim feedback sheet + single Toast host for the Hub.
+  const [feedbackSheetVisible, setFeedbackSheetVisible] = useState<boolean>(false);
+  const [toast, setToast] = useState<{ message: string; kind: ToastKind } | null>(
+    null,
+  );
+
+  const openCount = useVenueClaimOpenCount(
+    currentBrand?.id ?? null,
+    currentBrand?.claimFollowUpAt ?? null,
+  );
+
+  const showToast = useCallback((message: string, kind: ToastKind): void => {
+    setToast({ message, kind });
+  }, []);
+
+  const handleOpenFeedback = useCallback((): void => {
+    setFeedbackSheetVisible(true);
+  }, []);
+
+  const handleCloseFeedback = useCallback((): void => {
+    setFeedbackSheetVisible(false);
+  }, []);
+
+  const handleResubmitted = useCallback((): void => {
+    setFeedbackSheetVisible(false);
+    showToast("Re-submitted — we'll take another look.", "success");
+  }, [showToast]);
+
+  const handleFeedbackActionError = useCallback(
+    (message: string): void => {
+      showToast(message, "warn");
+    },
+    [showToast],
+  );
 
   const handleOpenSwitcher = useCallback((): void => {
     setBrandSheetVisible(true);
@@ -176,7 +213,11 @@ export default function HubTabLayout(): React.ReactElement {
         loading={visibleTabs.isLoading}
         onTabPress={handleHubTabPress}
       />
-      <VenueClaimStatusBanner brand={currentBrand} />
+      <VenueClaimStatusBanner
+        brand={currentBrand}
+        openCount={openCount}
+        onPressFeedback={handleOpenFeedback}
+      />
       <Slot />
       <BrandSwitcherSheet
         visible={brandSheetVisible}
@@ -194,6 +235,21 @@ export default function HubTabLayout(): React.ReactElement {
         accountId={user?.id ?? null}
         onClose={handleCloseDeleteSheet}
         onDeleted={handleBrandDeleted}
+      />
+      {/* ORCH-1064 — venue-claim feedback sheet + the single Hub Toast host. */}
+      <VenueClaimFeedbackSheet
+        visible={feedbackSheetVisible}
+        brand={currentBrand ?? null}
+        accountId={user?.id ?? null}
+        onClose={handleCloseFeedback}
+        onResubmitted={handleResubmitted}
+        onActionError={handleFeedbackActionError}
+      />
+      <Toast
+        visible={toast !== null}
+        kind={toast?.kind ?? "info"}
+        message={toast?.message ?? ""}
+        onDismiss={() => setToast(null)}
       />
     </View>
   );
