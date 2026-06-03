@@ -1251,6 +1251,30 @@ function checkNoNewBackendFiles() {
     // antimeridian/equidistant-tiebreak/corner-coords) + the index.ts NULL guard.
     "supabase/functions/check-launch-city/__tests__/check_launch_city_adversarial.test.ts",
   ];
+  // META-ORCH-1062 [venue onboarding → admin vetting → deck pipeline repair].
+  // C7 is scoped to ORCH-0863 marketing; these backend touches are venue-claim
+  // deck-pipeline-repair scope: Phase 0 source reconcile (run-business-place-
+  // authoring-pipeline v37 + admin-review-venue-claim v92 WS7 + the already-
+  // applied Sub-F migration) + the approval→servable→scorer wiring (Phase 2/3/4)
+  // + the new admin-vetting RPCs (Phase 1). Per COMMS-0002 + COMMS-0018.
+  const META_ORCH_1062_BACKEND_ALLOWLIST = [
+    "supabase/functions/run-business-place-authoring-pipeline/index.ts",
+    "supabase/functions/run-business-place-authoring-pipeline/__tests__/isUuid.test.ts",
+    "supabase/functions/run-business-place-authoring-pipeline/__tests__/pipeline_behavioral.test.ts",
+    "supabase/functions/run-business-place-authoring-pipeline/__tests__/stage_contract.test.ts",
+    "supabase/functions/run-business-place-authoring-pipeline/__tests__/meta_orch_1062_no_demotion.test.ts",
+    "supabase/functions/admin-review-venue-claim/index.ts",
+    "supabase/functions/admin-review-venue-claim/reviewLogic.ts",
+    "supabase/functions/admin-review-venue-claim/index.test.ts",
+    "supabase/functions/admin-review-venue-claim/__tests__/meta_orch_1062_approve_scorer_loop.test.ts",
+    // META-ORCH-1062 QA: tester adversarial regression for the approve
+    // orchestration (Q1 partial-vs-total rollback, Q3 bounce-fail off-deck,
+    // servable-flip-before-scorer ordering).
+    "supabase/functions/admin-review-venue-claim/__tests__/meta_orch_1062_approve_orchestration.adversarial.test.ts",
+    "supabase/migrations/20260813000000_meta_orch_1009_sub_f_recommend_review.sql",
+    "supabase/migrations/20260831000000_meta_orch_1062_admin_vetting_rpcs.sql",
+    "supabase/migrations/__tests__/meta_orch_1062_admin_vetting_rpcs.test.sql",
+  ];
   // ORCH-1045 [Business "Get Beta Access" lead-capture]: adds the beta-lead
   // migration (beta_access_leads table + admin_beta_leads_list RPC) and the
   // public beta-access-lead-submit edge fn (+ its Deno tests). C7 is scoped to
@@ -1456,6 +1480,7 @@ function checkNoNewBackendFiles() {
     "supabase/migrations/20260826000001_orch_1058b_allow_system_message_type.sql",
   ];
   const ALLOWLIST = [
+    ...META_ORCH_1062_BACKEND_ALLOWLIST,
     ...ORCH_1058B_BACKEND_ALLOWLIST,
     ...ORCH_1060_BACKEND_ALLOWLIST,
     ...ORCH_1054_BACKEND_ALLOWLIST,
