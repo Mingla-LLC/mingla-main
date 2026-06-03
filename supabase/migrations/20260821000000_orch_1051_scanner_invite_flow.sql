@@ -31,6 +31,23 @@
 -- =============================================================
 -- §1. scanner_invitations table
 -- =============================================================
+-- The ORCH-0729 baseline squash (20260505000000) already creates a LEGACY
+-- scanner_invitations table with the old event-scoped shape (event_id NOT NULL,
+-- token, NO scope/brand_id). A bare CREATE TABLE IF NOT EXISTS no-ops over it,
+-- so the new columns never get added and the `scope` CHECK below fails with
+-- "column scope does not exist" on a from-baseline apply (the CI
+-- migration-baseline job, broken for ALL PRs until this fix). The live DB was
+-- already rebuilt to the new schema during the original apply (probed
+-- 2026-06-03: no `token` column, `scope` present), so the faithful + idempotent
+-- repair is to drop the legacy table and recreate. scanner_invitations holds
+-- only ephemeral pending invite tokens — no durable data is lost, and the live
+-- project will NOT re-run this migration (already in schema_migrations); the
+-- DROP only ever executes against a fresh from-baseline build. CASCADE clears
+-- the legacy indexes/policy/grants that belonged to the old shape; no other
+-- table, view, or function references scanner_invitations (verified against the
+-- baseline squash).
+DROP TABLE IF EXISTS public.scanner_invitations CASCADE;
+
 CREATE TABLE IF NOT EXISTS public.scanner_invitations (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   brand_id uuid NOT NULL REFERENCES public.brands(id) ON DELETE CASCADE,

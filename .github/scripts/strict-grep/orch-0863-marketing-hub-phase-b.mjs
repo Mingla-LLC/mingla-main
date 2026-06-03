@@ -1299,6 +1299,30 @@ function checkNoNewBackendFiles() {
     "supabase/migrations/20260902000000_meta_orch_1059_sub_e_update_live_experience.sql",
     "supabase/functions/__tests__/biz_update_live_experience.refund_gate.test.ts",
   ];
+  // META-ORCH-1062 [venue onboarding → admin vetting → deck pipeline repair].
+  // C7 is scoped to ORCH-0863 marketing; these backend touches are venue-claim
+  // deck-pipeline-repair scope: Phase 0 source reconcile (run-business-place-
+  // authoring-pipeline v37 + admin-review-venue-claim v92 WS7 + the already-
+  // applied Sub-F migration) + the approval→servable→scorer wiring (Phase 2/3/4)
+  // + the new admin-vetting RPCs (Phase 1). Per COMMS-0002 + COMMS-0018.
+  const META_ORCH_1062_BACKEND_ALLOWLIST = [
+    "supabase/functions/run-business-place-authoring-pipeline/index.ts",
+    "supabase/functions/run-business-place-authoring-pipeline/__tests__/isUuid.test.ts",
+    "supabase/functions/run-business-place-authoring-pipeline/__tests__/pipeline_behavioral.test.ts",
+    "supabase/functions/run-business-place-authoring-pipeline/__tests__/stage_contract.test.ts",
+    "supabase/functions/run-business-place-authoring-pipeline/__tests__/meta_orch_1062_no_demotion.test.ts",
+    "supabase/functions/admin-review-venue-claim/index.ts",
+    "supabase/functions/admin-review-venue-claim/reviewLogic.ts",
+    "supabase/functions/admin-review-venue-claim/index.test.ts",
+    "supabase/functions/admin-review-venue-claim/__tests__/meta_orch_1062_approve_scorer_loop.test.ts",
+    // META-ORCH-1062 QA: tester adversarial regression for the approve
+    // orchestration (Q1 partial-vs-total rollback, Q3 bounce-fail off-deck,
+    // servable-flip-before-scorer ordering).
+    "supabase/functions/admin-review-venue-claim/__tests__/meta_orch_1062_approve_orchestration.adversarial.test.ts",
+    "supabase/migrations/20260813000000_meta_orch_1009_sub_f_recommend_review.sql",
+    "supabase/migrations/20260831000000_meta_orch_1062_admin_vetting_rpcs.sql",
+    "supabase/migrations/__tests__/meta_orch_1062_admin_vetting_rpcs.test.sql",
+  ];
   // ORCH-1045 [Business "Get Beta Access" lead-capture]: adds the beta-lead
   // migration (beta_access_leads table + admin_beta_leads_list RPC) and the
   // public beta-access-lead-submit edge fn (+ its Deno tests). C7 is scoped to
@@ -1380,6 +1404,38 @@ function checkNoNewBackendFiles() {
   const ORCH_1040_BACKEND_ALLOWLIST = [
     "supabase/migrations/20260814000000_orch_1040_brand_has_physical_location.sql",
   ];
+  // ORCH-1061 [Curated stop variety + quality blend + solo hours gate].
+  // C7 is scoped to ORCH-0863 marketing; these backend touches are ORCH-1061
+  // scope: the extracted shared curated-hours module + its tests + the curated
+  // generator's new blend/rotation tests. (No migration — pure edge-fn logic.)
+  // The two MODIFIED index.ts (generate-curated-experiences, discover-cards) are
+  // not new files, so C7 (no-new-backend-files) does not fire on them.
+  // Per COMMS-0002.
+  const ORCH_1061_BACKEND_ALLOWLIST = [
+    "supabase/functions/_shared/curatedStopHours.ts",
+    "supabase/functions/_shared/__tests__/curatedStopHours.test.ts",
+    "supabase/functions/_shared/__tests__/curatedStopHours.adversarial.test.ts",
+    "supabase/functions/generate-curated-experiences/__tests__/orch_1061_blend_and_rotation.test.ts",
+    "supabase/functions/generate-curated-experiences/__tests__/orch_1061_blend_rotation.adversarial.test.ts",
+  ];
+  // ORCH-1062 [Curated vibe-overrides → user categories] Part 1: strips the
+  // EXPERIENCE_RANK_SIGNAL_OVERRIDE map down to the two nature overrides. The
+  // only NEW backend file is the override-removal regression test; the MODIFIED
+  // generate-curated-experiences/index.ts is not new so C7 does not fire on it.
+  // C7 is scoped to ORCH-0863 marketing; this is a curated-deck backend touch.
+  // Per COMMS-0002.
+  const ORCH_1062_BACKEND_ALLOWLIST = [
+    "supabase/functions/generate-curated-experiences/__tests__/orch_1062_override_removal.test.ts",
+    // ORCH-1062 Part 2 [vibe-category-pills]: serving-side regression test for
+    // the three vibe categories. The edit to discover-cards/index.ts
+    // (CATEGORY_TO_SIGNAL) is a modification, not a new file. Per COMMS-0002 —
+    // lands in the same commit as the test.
+    "supabase/functions/discover-cards/__tests__/orch_1062_vibe_category_signals.test.ts",
+    // ORCH-1062 Part 2 [vibe-category-pills]: TESTER-OWNED adversarial serving
+    // test (SC-10 category/intent non-collision, filterMin >= boundary, alias
+    // no-drift). New backend file — allowlisted same-commit per COMMS-0002.
+    "supabase/functions/discover-cards/__tests__/orch_1062_vibe_category_adversarial.test.ts",
+  ];
   // ORCH-1032 [Intelligence pipeline concurrency cap + chunked enqueue]:
   // adds the additive 'queued'-status migration (status CHECK widen + per-city
   // unique active index widen + tg_kick_pending_trial_runs promotion built on
@@ -1456,8 +1512,26 @@ function checkNoNewBackendFiles() {
     "supabase/functions/_shared/__tests__/orch_1054_partner_splits_adversarial.test.ts",
     "supabase/migrations/__tests__/orch_1054_partner_splits.test.ts",
   ];
+  // ORCH-1060 [main CI green-up] — comment-only touches to two existing edge
+  // functions (audit-exemption note on stripe-mode + no-attachment opt-out on
+  // invite-scanner) to satisfy I-PROPOSED-S / ORCH-0785-A. No new backend files,
+  // no runtime change, no edge deploy. Per COMMS-0002.
+  const ORCH_1060_BACKEND_ALLOWLIST = [
+    "supabase/functions/stripe-mode/index.ts",
+    "supabase/functions/invite-scanner/index.ts",
+  ];
+  // ORCH-1058B [Collab "Notify the group" dead-end system message]: the new
+  // SECURITY DEFINER RPC migration is collab-chat presentation scope, not
+  // ORCH-0863 marketing. Per COMMS-0002 — lands with the migration.
+  const ORCH_1058B_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260826000000_orch_1058b_post_collab_dead_end_banner.sql",
+    "supabase/migrations/20260826000001_orch_1058b_allow_system_message_type.sql",
+  ];
   const ALLOWLIST = [
     ...META_ORCH_1059_BACKEND_ALLOWLIST,
+    ...META_ORCH_1062_BACKEND_ALLOWLIST,
+    ...ORCH_1058B_BACKEND_ALLOWLIST,
+    ...ORCH_1060_BACKEND_ALLOWLIST,
     ...ORCH_1054_BACKEND_ALLOWLIST,
     ...ORCH_1052_BACKEND_ALLOWLIST,
     ...ORCH_1051_BACKEND_ALLOWLIST,
@@ -1538,6 +1612,13 @@ function checkNoNewBackendFiles() {
     ...META_ORCH_1009_SUB_E_BACKEND_ALLOWLIST,
     ...ORCH_1030_BACKEND_ALLOWLIST,
     ...ORCH_1040_BACKEND_ALLOWLIST,
+    ...ORCH_1061_BACKEND_ALLOWLIST,
+    ...ORCH_1062_BACKEND_ALLOWLIST,
+    // Schedule-edit buyer protection + "Refund all & proceed" (separate PR;
+    // shares the ORCH-1047 work id used in code). New migration recording the
+    // already-live business_patch_event_when change — not ORCH-0863 marketing
+    // scope; same C7-scoping caveat as the allowlists above.
+    "supabase/migrations/20260820000000_schedule_change_buyer_protection_refund_all.sql",
   ];
   const forbidden = changed.filter(
     (p) =>

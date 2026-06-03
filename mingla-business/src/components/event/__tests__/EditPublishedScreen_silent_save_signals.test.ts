@@ -140,8 +140,12 @@ describe("ORCH-0980 — EditPublishedScreen save paths are never silent", () => 
 
     expect(localPath).toContain("if (result.ok) {");
     expect(localPath).toContain('showToast("Saved. Live now.");');
-    // Guard-rail rejection -> visible dialog, not a silent no-op.
-    expect(localPath).toContain("setRejectDialog(buildRejectDialog(result));");
+    // Guard-rail rejection -> visible dialog, not a silent no-op. ORCH-1047:
+    // the dialog is now presented on a deferred tick (REJECT_DIALOG_HANDOFF_MS)
+    // so iOS doesn't drop it while the reason sheet is still dismissing — but it
+    // is still unconditionally opened (never a silent pass).
+    expect(localPath).toContain("buildRejectDialog(result)");
+    expect(localPath).toContain("setRejectDialog(pendingReject)");
   });
 });
 

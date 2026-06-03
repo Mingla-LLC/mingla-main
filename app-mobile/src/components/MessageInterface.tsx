@@ -27,6 +27,7 @@ import { useKeyboard } from "../hooks/useKeyboard";
 import { useChatPresence } from "../hooks/useChatPresence";
 import { useBroadcastReceiver } from "../hooks/useBroadcastReceiver";
 import { MessageBubble, type CollabSystemToken } from "./chat/MessageBubble";
+import type { CollabDeadEndBannerPayload } from "../services/collabDeadEndBannerService";
 import PreferencesSheet, { type PreferencesSheetFocusSection } from "./PreferencesSheet";
 import { ChatInputChipsLayer } from "./chat/ChatInputChipsLayer";
 import { MessageContextMenu } from "./chat/MessageContextMenu";
@@ -98,7 +99,7 @@ interface Message {
   senderName: string;
   content: string;
   timestamp: string;
-  type: "text" | "image" | "video" | "file" | "card";
+  type: "text" | "image" | "video" | "file" | "card" | "system";
   fileUrl?: string;
   fileName?: string;
   fileSize?: string;
@@ -112,6 +113,7 @@ interface Message {
   replyToId?: string;
   marketingCampaignId?: string | null;
   isSystem?: boolean;
+  systemPayload?: CollabDeadEndBannerPayload;  // ORCH-1058B
 }
 
 interface Friend {
@@ -1590,6 +1592,7 @@ export default function MessageInterface({
                       isMe: item.message.isMe,
                       failed: item.message.failed,
                       isSystem: item.message.isSystem,
+                      systemPayload: item.message.systemPayload,
                     }}
                     onSystemTokenPress={handleSystemTokenPress}
                     isMe={item.message.isMe}
@@ -1654,6 +1657,7 @@ export default function MessageInterface({
                     isMe: item.message.isMe,
                     failed: item.message.failed,
                     isSystem: item.message.isSystem,
+                    systemPayload: item.message.systemPayload,
                   }}
                   onCardBubbleTap={(payload) => {
                     // ORCH-0685: typed conversion replaces unsafe `any` cast (Constitution #12 fix).

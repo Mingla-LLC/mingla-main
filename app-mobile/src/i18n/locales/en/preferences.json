@@ -26,6 +26,9 @@
   "category_descriptions.movies_theatre": "Cinemas, theatres, concert halls, and live performances",
   "category_descriptions.creative_arts": "Galleries, museums, cultural landmarks",
   "category_descriptions.play": "Arcades, bowling, escape rooms — bring your competitive side",
+  "category_descriptions.romantic": "Candlelit, intimate, made-for-two — places that turn a night into a moment",
+  "category_descriptions.lively": "Buzzy, high-energy rooms where the night finds its own momentum",
+  "category_descriptions.scenic": "Big views and beautiful backdrops — spots that are worth the look",
 
   "datetime.title": "When",
   "datetime.question": "When are you heading out?",

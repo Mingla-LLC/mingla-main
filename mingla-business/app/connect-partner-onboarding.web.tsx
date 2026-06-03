@@ -16,7 +16,7 @@
 
 // orch-strict-grep-allow safearea-on-fullscreen-routes — web-only Stripe Connect Embedded Components page; renders DOM elements (<div>) via @stripe/react-connect-js, NOT React Native primitives. Mirrors connect-onboarding.web.tsx per I-PROPOSED-O.
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import Constants from "expo-constants";
 import {
   ConnectAccountOnboarding,
@@ -25,6 +25,11 @@ import {
 } from "@stripe/react-connect-js";
 import { loadConnectAndInitialize } from "@stripe/connect-js";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import {
+  connectEmbeddedPageStyles,
+  pageWrapperStyle,
+  useStripeConnectViewportZoomLock,
+} from "../src/components/stripe/connectEmbeddedPageHelpers";
 
 const MINGLA_BRAND_COLOR = "#eb7825" as const;
 
@@ -49,6 +54,9 @@ export default function ConnectPartnerOnboardingPage(): React.ReactElement {
   const [hasExited, setHasExited] = useState<boolean>(false);
   const [initError, setInitError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+
+  // ORCH-1056: iOS auto-zoom fix moved to shared helper.
+  useStripeConnectViewportZoomLock();
 
   const stripeConnectInstance = useMemo(() => {
     if (typeof sessionClientSecret !== "string") return null;
@@ -179,27 +187,6 @@ export default function ConnectPartnerOnboardingPage(): React.ReactElement {
 
   return (
     <div style={pageWrapperStyle}>
-      {/* iOS WKWebView fix: Expo Web's react-native-web compiler injects
-          `html, body, #root { height: 100%; overflow: hidden; }` which is a
-          known issue with embedded SDK pages — the page becomes a fixed
-          viewport with no scroll. Override those rules so the body grows
-          with the Stripe iframe content and scrolls naturally. Also force
-          touch-scroll momentum for any nested overflow. */}
-      <style
-        dangerouslySetInnerHTML={{
-          __html: `
-            html, body, #root {
-              height: auto !important;
-              min-height: 100% !important;
-              overflow: visible !important;
-              overflow-y: auto !important;
-              -webkit-overflow-scrolling: touch !important;
-              overscroll-behavior-y: contain;
-            }
-            body { margin: 0; }
-          `,
-        }}
-      />
       <header style={headerStyle}>
         <h1 style={headerTitleStyle}>Mingla — Partner payouts</h1>
       </header>
@@ -235,83 +222,17 @@ export default function ConnectPartnerOnboardingPage(): React.ReactElement {
   );
 }
 
-const pageWrapperStyle: React.CSSProperties = {
-  // Block layout (NOT flex column) so body scrolls naturally in iOS
-  // WKWebView / ASWebAuthenticationSession. The previous
-  // `display: flex; flexDirection: column` + `flex: 1` on <main> created a
-  // viewport-height-bounded flex container, which prevented the Stripe
-  // iframe (which can be much taller than the viewport) from being
-  // scrollable on iPhone.
-  minHeight: "100vh",
-  backgroundColor: "#FAFAFA",
-  fontFamily:
-    '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-};
-
-const headerStyle: React.CSSProperties = {
-  padding: "24px 24px 16px",
-  textAlign: "center",
-  borderBottom: "1px solid #E5E7EB",
-  backgroundColor: "#FFFFFF",
-};
-
-const headerTitleStyle: React.CSSProperties = {
-  fontSize: "20px",
-  fontWeight: 600,
-  margin: 0,
-  color: "#0F172A",
-};
-
-const mainStyle: React.CSSProperties = {
-  // No `flex: 1` — wrapper is plain block layout now (see pageWrapperStyle).
-  padding: "24px",
-  maxWidth: "780px",
-  width: "100%",
-  margin: "0 auto",
-  boxSizing: "border-box",
-};
-
-const footerStyle: React.CSSProperties = {
-  padding: "16px 24px",
-  borderTop: "1px solid #E5E7EB",
-  backgroundColor: "#FFFFFF",
-  textAlign: "center",
-};
-
-const footerTextStyle: React.CSSProperties = {
-  fontSize: "13px",
-  color: "#475569",
-  margin: 0,
-};
-
-const errorCardStyle: React.CSSProperties = {
-  maxWidth: "480px",
-  margin: "80px auto",
-  padding: "32px",
-  backgroundColor: "#FFFFFF",
-  border: "1px solid #FCA5A5",
-  borderRadius: "12px",
-  boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
-};
-
-const errorTitleStyle: React.CSSProperties = {
-  fontSize: "20px",
-  fontWeight: 600,
-  margin: "0 0 12px",
-  color: "#0F172A",
-};
-
-const errorBodyStyle: React.CSSProperties = {
-  fontSize: "15px",
-  lineHeight: 1.5,
-  margin: 0,
-  color: "#475569",
-};
-
-const loadingCardStyle: React.CSSProperties = {
-  maxWidth: "480px",
-  margin: "80px auto",
-  padding: "32px",
-  textAlign: "center",
-  color: "#475569",
-};
+// ORCH-1056: styles + layout consolidated into the shared helper module.
+// Local aliases so the existing JSX `style={…Style}` references still resolve.
+const headerStyle = connectEmbeddedPageStyles.headerStyle;
+const headerTitleStyle = connectEmbeddedPageStyles.headerTitleStyle;
+const mainStyle = connectEmbeddedPageStyles.mainStyle;
+const footerStyle = connectEmbeddedPageStyles.footerStyle;
+const footerTextStyle = connectEmbeddedPageStyles.footerTextStyle;
+const errorCardStyle = connectEmbeddedPageStyles.errorCardStyle;
+const errorTitleStyle = connectEmbeddedPageStyles.errorTitleStyle;
+const errorBodyStyle = connectEmbeddedPageStyles.errorBodyStyle;
+const loadingCardStyle = connectEmbeddedPageStyles.loadingCardStyle;
+// `pageWrapperStyle` re-exported as a top-level import to preserve current
+// JSX bindings (`style={pageWrapperStyle}` appears throughout the file).
+void pageWrapperStyle;

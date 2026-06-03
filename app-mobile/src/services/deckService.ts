@@ -123,7 +123,7 @@ import type { CuratedEmptyReason } from '../types/curatedExperience';
 
 export interface DeckResponse {
   cards: Recommendation[];
-  deckMode: 'nature' | 'icebreakers' | 'drinks_and_music' | 'brunch' | 'casual_food' | 'brunch_lunch_casual' | 'upscale_fine_dining' | 'movies' | 'theatre' | 'movies_theatre' | 'creative_arts' | 'play' | 'curated' | 'mixed';
+  deckMode: 'nature' | 'icebreakers' | 'drinks_and_music' | 'brunch' | 'casual_food' | 'brunch_lunch_casual' | 'upscale_fine_dining' | 'movies' | 'theatre' | 'movies_theatre' | 'creative_arts' | 'play' | 'romantic' | 'lively' | 'scenic' | 'curated' | 'mixed';
   activePills: string[];
   total: number;
   hasMore: boolean;
@@ -174,6 +174,10 @@ const PILL_TO_CATEGORY_NAME: Record<string, string> = {
   movies_theatre: 'Movies & Theatre', // [TRANSITIONAL] legacy alias — remove after 2026-05-13
   creative_arts: 'Creative & Arts',
   play: 'Play',
+  // ORCH-1062 Part 2: vibe categories → display names sent to discover-cards.
+  romantic: 'Romantic',
+  lively: 'Lively',
+  scenic: 'Scenic',
 };
 
 /**
@@ -314,6 +318,13 @@ class DeckService {
       'creative_arts': 'creative_arts',
       'creative & arts': 'creative_arts',
       'play': 'play',
+      // ORCH-1062 Part 2: vibe categories. Slug == lowercased display name for
+      // all three, and the lookup at the loop below lowercases the input, so a
+      // single slug key resolves both the slug and the "Romantic"/"Lively"/
+      // "Scenic" display-name forms.
+      'romantic': 'romantic',
+      'lively': 'lively',
+      'scenic': 'scenic',
       // Old slugs → new slugs (backward compat)
       'first_meet': 'icebreakers',
       'first meet': 'icebreakers',

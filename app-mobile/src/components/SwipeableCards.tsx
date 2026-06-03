@@ -10,6 +10,7 @@ import {
   PanResponder,
   StatusBar,
   Platform,
+  Alert,
 } from "react-native";
 // ORCH-1042: deck hero photos render via expo-image (NOT react-native <Image>).
 // expo-image gives us a placeholder + fade transition + a managed memory-disk
@@ -78,14 +79,20 @@ import type { GatedFeature } from '../hooks/useFeatureGate';
 import NoGpsBanner from './collab/NoGpsBanner';
 import {
   buildCollabDeadEndBannerContent,
+  classifyIntersectionCase,
   detectIntersectionOutlier,
-  formatLocationLabel,
   formatParticipantName,
   formatTravelDiagnostic,
   normalizeParticipants,
   postCollabDeadEndBanner,
 } from "../services/collabDeadEndBannerService";
 import type { CollabDeadEndReason } from "../services/deckService";
+// ORCH-1058: privacy-aware location chips for the intersection_empty empty state.
+import {
+  CollabLocationChips,
+  type CollabLocationChip,
+} from "./collab/CollabLocationChips";
+import { resolveParticipantLocationLabel } from "../utils/formatLocationLabel";
 
 function getTimeOfDay(): string {
   const hour = new Date().getHours();
@@ -239,6 +246,14 @@ interface SwipeableCardsProps {
   onResetCards?: () => void;
   onOpenPreferences?: () => void;
   onOpenCollabPreferences?: () => void;
+  /**
+   * ORCH-1059: invoked by the collab deck ONLY after a successful "Notify the
+   * group" post (a real banner row landed). The owning CollabDeckSheet uses this
+   * to dismiss the deck (and any open prefs sub-sheet) and return the user to the
+   * group chat, where the global success toast + posted banner are in context.
+   * NOT called on debounce, cancel, or failure — the user stays put to retry.
+   */
+  onAfterNotify?: () => void;
   /**
    * ORCH-0918: sheet-embedded collab decks must scope to the chat session
    * even when the surrounding app mode points elsewhere.
@@ -459,6 +474,7 @@ export default function SwipeableCards({
   onResetCards,
   onOpenPreferences,
   onOpenCollabPreferences,
+  onAfterNotify,
   sessionIdOverride,
   generateNewMockCard,
   onboardingData,
@@ -1737,9 +1753,14 @@ export default function SwipeableCards({
     }
   };
 
-  const handleNotifyGroup = useCallback(async (reason: CollabDeadEndReason) => {
+  // ORCH-1058B send-UX: tapping "Notify the group" first asks for explicit
+  // confirmation (proceed/cancel via the app's standard Alert.alert pattern —
+  // same shape used across SavedTab scheduling, ConnectionsPage, etc.). Only on
+  // "Notify" do we post the banner; success/failure feedback is surfaced by
+  // postCollabDeadEndBanner's toasts.
+  const postNotifyGroup = useCallback(async (reason: CollabDeadEndReason) => {
     if (!resolvedSessionId || !user?.id) return;
-    await postCollabDeadEndBanner({
+    const posted = await postCollabDeadEndBanner({
       sessionId: resolvedSessionId,
       reason,
       payload: collabDeadEndPayload,
@@ -1747,7 +1768,26 @@ export default function SwipeableCards({
       participantPrefs: allParticipantPrefs,
       currentUserId: user.id,
     });
-  }, [allParticipantPrefs, collabDeadEndPayload, collabParticipants, resolvedSessionId, user?.id]);
+    // ORCH-1059: on a real successful post ONLY, return the user to the group
+    // chat (the owning CollabDeckSheet dismisses the deck + any prefs sub-sheet).
+    // The success toast is global, so it stays visible across the navigation.
+    // On debounce/cancel/failure (posted === false) we stay put so they can retry.
+    if (posted) {
+      onAfterNotify?.();
+    }
+  }, [allParticipantPrefs, collabDeadEndPayload, collabParticipants, onAfterNotify, resolvedSessionId, user?.id]);
+
+  const handleNotifyGroup = useCallback((reason: CollabDeadEndReason) => {
+    if (!resolvedSessionId || !user?.id) return;
+    Alert.alert(
+      'Notify the group?',
+      "We'll post a note in the chat that your locations don't overlap yet.",
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Notify', onPress: () => { void postNotifyGroup(reason); } },
+      ],
+    );
+  }, [postNotifyGroup, resolvedSessionId, user?.id]);
 
   const getCollabDeadEndCopy = useCallback(() => {
     const reason = (collabDeadEndPayload?.reason ?? collabDeckDeadEndReason) as CollabDeadEndReason | undefined;
@@ -1774,12 +1814,82 @@ export default function SwipeableCards({
             showReviewDismissed: false,
           };
         }
+        // ORCH-1058 §3: 2-person / no-clear-outlier path now routes to one of
+        // three honest cases with privacy-aware location chips.
+        const { kind, pendingIds } = classifyIntersectionCase(
+          normalizedParticipants,
+          participantPrefs,
+          pendingGpsIds,
+        );
+        const selfId = user?.id ?? null;
+        const pendingSet = new Set(pendingIds);
+
+        if (kind === 'waiting') {
+          const settledChips: CollabLocationChip[] = normalizedParticipants
+            .filter((participant) => !pendingSet.has(participant.id))
+            .map((participant) => {
+              const resolved = resolveParticipantLocationLabel({
+                prefs: participantPrefs[participant.id],
+                isSelf: participant.id === selfId,
+              });
+              return {
+                id: participant.id,
+                label: resolved.label,
+                kind: resolved.kind,
+                a11yLabel: `${participant.name}: ${resolved.a11yLabel}`,
+              };
+            });
+          const pendingChips: CollabLocationChip[] = pendingIds.map((id) => {
+            const name = namesById.get(id) ?? 'A participant';
+            return {
+              id,
+              label: t('cards:collab.deadend.waiting.pending_chip', { name }),
+              kind: 'pending' as const,
+              a11yLabel: `${name}: getting a fix`,
+            };
+          });
+          const firstPendingName = namesById.get(pendingIds[0] ?? '') ?? 'a friend';
+          return {
+            reason,
+            title:
+              pendingIds.length > 1
+                ? t('cards:collab.deadend.waiting.title_many')
+                : t('cards:collab.deadend.waiting.title_one', { name: firstPendingName }),
+            guidance: t('cards:collab.deadend.waiting.guidance'),
+            chips: [...settledChips, ...pendingChips],
+            showReviewDismissed: false,
+          };
+        }
+
+        const locationChips: CollabLocationChip[] = normalizedParticipants.map((participant) => {
+          const resolved = resolveParticipantLocationLabel({
+            prefs: participantPrefs[participant.id],
+            isSelf: participant.id === selfId,
+          });
+          return {
+            id: participant.id,
+            label: resolved.label,
+            kind: resolved.kind,
+            a11yLabel: `${participant.name}: ${resolved.a11yLabel}`,
+          };
+        });
+
+        if (kind === 'different_cities') {
+          return {
+            reason,
+            title: t('cards:collab.deadend.different_cities.title'),
+            guidance: t('cards:collab.deadend.different_cities.guidance'),
+            chips: locationChips,
+            showReviewDismissed: false,
+          };
+        }
+
+        // same_city_tight
         return {
           reason,
-          title: 'No location overlap yet',
-          subtitle: normalizedParticipants
-            .map((participant) => `${participant.name} in ${formatLocationLabel(participantPrefs[participant.id])}`)
-            .join(' · '),
+          title: t('cards:collab.deadend.same_city_tight.title'),
+          guidance: t('cards:collab.deadend.same_city_tight.guidance'),
+          chips: locationChips,
           showReviewDismissed: false,
         };
       }
@@ -1834,6 +1944,8 @@ export default function SwipeableCards({
     collabParticipants,
     isBoardSession,
     sessionSwipedCards.length,
+    t,
+    user?.id,
   ]);
 
   // ORCH-0532: dismissed-sheet re-save path. In collab mode, route through the
@@ -1954,6 +2066,20 @@ export default function SwipeableCards({
   // ── State-machine-driven render branches ────────────────────────────────
   // Single switch on effectiveUIState replaces 5 independent conditional branches.
   // Each DeckUIState maps to exactly one render path — no ambiguity, no overlap.
+  //
+  // ORCH-1063 (production freeze-after-close): `deckBody` returns ONLY deck
+  // content. The ExpandedCardModal / DismissedCardsSheet / CustomPaywallScreen
+  // overlays are NO LONGER rendered inside any switch branch — they are mounted
+  // exactly once, at a stable position, in the component's final return below.
+  // Previously the modal lived inside two different switch branches; any
+  // transient deck-state transition while a card was expanded (token refresh →
+  // AUTH_REQUIRED, transient PIPELINE_ERROR, background refetch, or reaching
+  // deck end → EXHAUSTED / EMPTY↔LOADED) unmounted the currently-PRESENTED RN
+  // <Modal> mid-flight. On a real device + release build iOS tore the presented
+  // modal window down, leaving an invisible full-screen modal that captured
+  // every touch → total app freeze. Single stable mount = only the `visible`
+  // prop ever changes, so no deck-state transition can swap the modal instance.
+  const deckBody: React.ReactNode = (() => {
   switch (effectiveUIState.type) {
     case 'INITIAL_LOADING':
     case 'MODE_TRANSITIONING':
@@ -2035,8 +2161,9 @@ export default function SwipeableCards({
         : 'cards:swipeable.seen_everything';
       const collabDeadEndCopy = getCollabDeadEndCopy();
 
+      // ORCH-1063: returns ONLY the empty-deck view. DismissedCardsSheet +
+      // ExpandedCardModal moved to the single stable mount in the final return.
       return (
-        <>
           <View style={styles.emptyDeckContainer}>
             <View style={styles.emptyDeckContent}>
               <View style={styles.emptyDeckIconCircle}>
@@ -2049,19 +2176,32 @@ export default function SwipeableCards({
               <Text style={styles.emptyDeckTitle}>
                 {collabDeadEndCopy?.title ?? t(titleKey)}
               </Text>
-              <Text style={styles.emptyDeckSubtitle}>
-                {collabDeadEndCopy?.subtitle ??
-                  (isEmpty
-                  ? t('cards:swipeable.no_matches_subtitle')
-                  : (() => {
-                      const hour = new Date().getHours();
-                      const isLateNight = hour >= 21 || hour < 6;
-                      // ORCH-0446 R8.3: Smart late night suggestion (EXHAUSTED only)
-                      return isLateNight
-                        ? 'Most places are closing soon. Try "This Weekend" for more options.'
-                        : t('cards:swipeable.shift_vibe');
-                    })())}
-              </Text>
+              {/* ORCH-1058: intersection_empty returns privacy-aware chips +
+                  a guidance line; all other reasons keep the plain subtitle. */}
+              {collabDeadEndCopy && 'chips' in collabDeadEndCopy && collabDeadEndCopy.chips ? (
+                <>
+                  <CollabLocationChips chips={collabDeadEndCopy.chips} />
+                  <Text style={[styles.emptyDeckSubtitle, styles.emptyDeckGuidance]}>
+                    {collabDeadEndCopy.guidance}
+                  </Text>
+                </>
+              ) : (
+                <Text style={styles.emptyDeckSubtitle}>
+                  {(collabDeadEndCopy && 'subtitle' in collabDeadEndCopy
+                    ? collabDeadEndCopy.subtitle
+                    : undefined) ??
+                    (isEmpty
+                    ? t('cards:swipeable.no_matches_subtitle')
+                    : (() => {
+                        const hour = new Date().getHours();
+                        const isLateNight = hour >= 21 || hour < 6;
+                        // ORCH-0446 R8.3: Smart late night suggestion (EXHAUSTED only)
+                        return isLateNight
+                          ? 'Most places are closing soon. Try "This Weekend" for more options.'
+                          : t('cards:swipeable.shift_vibe');
+                      })())}
+                </Text>
+              )}
 
               <View style={styles.emptyDeckActions}>
                 {collabDeadEndCopy && (
@@ -2104,83 +2244,6 @@ export default function SwipeableCards({
               </View>
             </View>
           </View>
-          <DismissedCardsSheet
-            visible={dismissedSheetVisible}
-            onClose={() => setDismissedSheetVisible(false)}
-            dismissedCards={dismissedCards}
-            sessionSwipedCards={sessionSwipedCards}
-            collabDismissedRows={collabDismissedRows}
-            onSave={handleSaveDismissedCard}
-            onCardPress={handleDismissedCardPress}
-          />
-          <ExpandedCardModal
-            visible={isExpandedModalVisible}
-            // ORCH-0828: discriminated-union target. SwipeableCards only
-            // surfaces Night Out (place / TM) cards, never business events.
-            target={selectedCardForExpansion ? { kind: "nightOut", data: selectedCardForExpansion } : null}
-            onClose={handleCloseExpandedModal}
-            isSaved={
-              selectedCardForExpansion
-                ? savedCards.some(
-                    (savedCard) =>
-                      savedCard?.id === selectedCardForExpansion.id ||
-                      savedCard === selectedCardForExpansion.id
-                  )
-                : false
-            }
-            currentMode={currentMode}
-            onSave={async (card) => {
-              try {
-                // ORCH-0532: in collab, route through shared helper (writes
-                // swipe-state, honors quorum). In solo, onCardLike = handleSaveCard
-                // (now solo-only). Previously this was unguarded — always called
-                // onCardLike, bypassing quorum in collab.
-                if (isBoardSession && resolvedSessionId && user?.id) {
-                  await collabSaveCard({
-                    card: card as unknown as Recommendation,
-                    sessionId: resolvedSessionId,
-                    userId: user.id,
-                    t,
-                  });
-                } else {
-                  onCardLike?.(card);
-                }
-                mixpanelService.trackCardSaved({
-                  card_id: card.id,
-                  card_title: card.title,
-                  category: card.category,
-                  is_curated: (card as any).cardType === 'curated',
-                  source: 'dismissed_sheet',
-                });
-                handleCloseExpandedModal();
-              } catch (error: any) {
-                if (error?.code === "23505") {
-                  handleCloseExpandedModal();
-                }
-                throw error;
-              }
-            }}
-            onPurchase={(card, bookingOption) => {
-              onPurchaseComplete?.(card, bookingOption);
-              handleCloseExpandedModal();
-            }}
-            onShare={(card) => {
-              onShareCard?.(card);
-            }}
-            userPreferences={userPreferences}
-            accountPreferences={accountPreferences}
-            onNavigateNext={reviewIndex < reviewCards.length - 1 ? handleReviewNext : undefined}
-            onNavigatePrevious={reviewIndex > 0 ? handleReviewPrevious : undefined}
-            navigationIndex={reviewIndex}
-            navigationTotal={reviewCards.length}
-            canAccessCurated={canAccess('curated_cards')}
-            onPaywallRequired={() => {
-              handleCloseExpandedModal();
-              setPaywallFeature('curated_cards');
-              setShowPaywall(true);
-            }}
-          />
-        </>
       );
     }
 
@@ -2639,11 +2702,33 @@ export default function SwipeableCards({
           </Animated.View>
         </View>
       </View>
+      {/* ORCH-1063: ExpandedCardModal / DismissedCardsSheet / CustomPaywallScreen
+          are NO LONGER rendered here — they live in the single stable mount in
+          the component's final return below. */}
+    </View>
+  );
+  })();
 
-      {/* Expanded Card Modal */}
+  // ── Single stable overlay mount (ORCH-1063) ─────────────────────────────
+  // ExpandedCardModal, DismissedCardsSheet, and CustomPaywallScreen are each
+  // rendered EXACTLY ONCE here, as siblings of `deckBody`, OUTSIDE the
+  // deck-state switch. No deck-state transition (AUTH_REQUIRED, PIPELINE_ERROR,
+  // EMPTY↔EXHAUSTED↔LOADED, background refetch) can ever unmount/remount/swap
+  // them now — only their `visible` prop changes — which fixes the production
+  // freeze-after-close (a presented RN <Modal> being torn down mid-flight on a
+  // real device left an invisible touch-capturing window). The ExpandedCardModal
+  // prop set is the UNIFIED superset: the fuller main-deck props (onCardRemoved
+  // + currentRec-matching onSave) PLUS the review-navigation props that drive the
+  // EXHAUSTED "review dismissed → tap card" flow. The nav props auto-disable when
+  // reviewCards is empty (reviewIndex 0, total 0 ⇒ both callbacks undefined), so
+  // they are inert during normal deck expansion and active only while reviewing.
+  return (
+    <>
+      {deckBody}
       <ExpandedCardModal
         visible={isExpandedModalVisible}
-        // ORCH-0828: discriminated-union target.
+        // ORCH-0828: discriminated-union target. SwipeableCards only
+        // surfaces Night Out (place / TM) cards, never business events.
         target={selectedCardForExpansion ? { kind: "nightOut", data: selectedCardForExpansion } : null}
         onClose={handleCloseExpandedModal}
         isSaved={
@@ -2675,8 +2760,9 @@ export default function SwipeableCards({
               await handleSwipe("right", currentRec);
             } else {
               // ORCH-0532: fallback when expanded card doesn't match current deck card
-              // (e.g., modal opened from a different list). In collab, route through
-              // shared helper to preserve quorum. In solo, onCardLike = handleSaveCard.
+              // (e.g., modal opened from a different list / the review-dismissed
+              // sheet). In collab, route through shared helper to preserve quorum.
+              // In solo, onCardLike = handleSaveCard.
               if (isBoardSession && resolvedSessionId && user?.id) {
                 await collabSaveCard({
                   card: card as unknown as Recommendation,
@@ -2720,6 +2806,12 @@ export default function SwipeableCards({
         }}
         userPreferences={userPreferences}
         accountPreferences={accountPreferences}
+        // ORCH-1063: review-navigation props from the former EXHAUSTED-case
+        // modal instance. Inert when reviewCards is empty (normal deck tap).
+        onNavigateNext={reviewIndex < reviewCards.length - 1 ? handleReviewNext : undefined}
+        onNavigatePrevious={reviewIndex > 0 ? handleReviewPrevious : undefined}
+        navigationIndex={reviewIndex}
+        navigationTotal={reviewCards.length}
         canAccessCurated={canAccess('curated_cards')}
         onPaywallRequired={() => {
           handleCloseExpandedModal();
@@ -2744,7 +2836,7 @@ export default function SwipeableCards({
         userId={user?.id ?? ''}
         feature={paywallFeature}
       />
-    </View>
+    </>
   );
 }
 
@@ -3090,6 +3182,10 @@ const styles = StyleSheet.create({
     textAlign: "center",
     lineHeight: 18,
     marginBottom: 8,
+  },
+  // ORCH-1058: guidance line sits below the chip row with breathing room.
+  emptyDeckGuidance: {
+    marginTop: 8,
   },
   emptyDeckActions: {
     width: "100%",

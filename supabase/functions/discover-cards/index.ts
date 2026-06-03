@@ -17,6 +17,20 @@ import { decideTypeAndPill } from '../_shared/mixedTypeInterleave.ts';
 // Single owner: _shared/distanceMath.ts. See
 // Mingla_Artifacts/specs/SPEC_ORCH-0659_0660_DECK_DISTANCE_TRAVELTIME.md.
 import { haversineKm, estimateTravelMinutes, radiusKmForConstraint, type TravelMode } from '../_shared/distanceMath.ts';
+// ORCH-1061 PART 2: single source of truth for the curated open-hours cascade +
+// the shared hours-text parsers. filterByDateTime AND the curated path both read
+// these — there is now exactly ONE parser (no duplicate defs). The shared
+// isStopOpenAtHour also carries the D-1 periods-shape fix.
+import {
+  parseSingleRange,
+  parseHoursText,
+  hourInRanges,
+  DAY_NAMES,
+  CURATED_STOP_DURATION,
+  ALWAYS_OPEN_TYPES,
+  isStopOpenAtHour,
+  filterCuratedByStopHours,
+} from '../_shared/curatedStopHours.ts';
 
 // ─── ORCH-0588 Slice 1: cohort cache for signal-serving rollout ───────────────
 // Module-scoped 60s cache for the admin-config cohort pct. 60s = balance between
@@ -85,6 +99,17 @@ const CATEGORY_TO_SIGNAL: Record<
   // signal. Completes the "every visible chip uses signal serving" invariant.
   'Icebreakers': { signalIds: ['icebreakers'], filterMin: 120, displayCategory: 'Icebreakers' },
   'icebreakers': { signalIds: ['icebreakers'], filterMin: 120, displayCategory: 'Icebreakers' },
+  // ORCH-1062 Part 2 — three quality-grounded "vibe" signals promoted to user-pickable
+  // categories. Rank-style: filterMin floors out noise, signal_score DESC orders.
+  // romantic/scenic use filterMin=60 (thin-city coverage; the score ORDERS quality);
+  // lively uses 120 (rich coverage everywhere). place_scores coverage + serving-pct=100
+  // verified live 2026-06-02 (see SPEC §1). No requiredTypes / primary-type gate.
+  'Romantic': { signalIds: ['romantic'], filterMin: 60,  displayCategory: 'Romantic' },
+  'romantic': { signalIds: ['romantic'], filterMin: 60,  displayCategory: 'Romantic' },
+  'Lively':   { signalIds: ['lively'],   filterMin: 120, displayCategory: 'Lively' },
+  'lively':   { signalIds: ['lively'],   filterMin: 120, displayCategory: 'Lively' },
+  'Scenic':   { signalIds: ['scenic'],   filterMin: 60,  displayCategory: 'Scenic' },
+  'scenic':   { signalIds: ['scenic'],   filterMin: 60,  displayCategory: 'Scenic' },
   // [TRANSITIONAL] ORCH-0597 pre-OTA clients still send the old union chip label/slug.
   // Serve the union (brunch + casual_food) via parallel-RPC merge, same as Slice 4 did.
   // Exit condition: 2026-05-12 (14d post ORCH-0597 100% OTA adoption).
@@ -143,82 +168,10 @@ const corsHeaders = {
 // _shared/distanceMath.ts. See ORCH-0903 close banner in WORLD_MAP.md.
 
 // ── DateTime Filter ─────────────────────────────────────────────────────────
-
-/** Parse a single time range like "9:00 AM – 5:00 PM" or "5:00 – 9:30 PM" (Google PM-only format).
- *  Returns { open, close } in fractional 24h hours, or null if unparseable.
- *  Handles overnight wraparound: "5 PM - 2 AM" → { open: 17, close: 26 }. */
-function parseSingleRange(range: string): { open: number; close: number } | null {
-  // Pattern 1: AM/PM on BOTH sides — "9:00 AM – 5:00 PM"
-  const fullMatch = range.match(/(\d{1,2})(?::(\d{2}))?\s*(AM|PM)\s*[–\-]\s*(\d{1,2})(?::(\d{2}))?\s*(AM|PM)/i);
-  if (fullMatch) {
-    let openH = parseInt(fullMatch[1]);
-    const openMin = parseInt(fullMatch[2] || '0');
-    const openAmPm = fullMatch[3].toUpperCase();
-    let closeH = parseInt(fullMatch[4]);
-    const closeMin = parseInt(fullMatch[5] || '0');
-    const closeAmPm = fullMatch[6].toUpperCase();
-    if (openAmPm === 'PM' && openH !== 12) openH += 12;
-    if (openAmPm === 'AM' && openH === 12) openH = 0;
-    if (closeAmPm === 'PM' && closeH !== 12) closeH += 12;
-    if (closeAmPm === 'AM' && closeH === 12) closeH = 0;
-    const open = openH + openMin / 60;
-    let close = closeH + closeMin / 60;
-    if (close <= open) close += 24;
-    return { open, close };
-  }
-
-  // Pattern 2: AM/PM only on closing — "5:00 – 9:30 PM" (Google PM-only format)
-  const partialMatch = range.match(/(\d{1,2})(?::(\d{2}))?\s*[–\-]\s*(\d{1,2})(?::(\d{2}))?\s*(AM|PM)/i);
-  if (partialMatch) {
-    let openH = parseInt(partialMatch[1]);
-    const openMin = parseInt(partialMatch[2] || '0');
-    let closeH = parseInt(partialMatch[3]);
-    const closeMin = parseInt(partialMatch[4] || '0');
-    const closeAmPm = partialMatch[5].toUpperCase();
-    if (closeAmPm === 'PM' && closeH !== 12) closeH += 12;
-    if (closeAmPm === 'AM' && closeH === 12) closeH = 0;
-    // Infer opening AM/PM: if close is PM and open <= close (in 12h), open is PM too
-    // If close is AM (late night), open is PM (crossed midnight)
-    if (closeAmPm === 'PM') {
-      if (openH !== 12 && openH < 12) openH += 12; // Infer PM
-    } else {
-      // Close is AM (e.g., "10:00 – 1:00 AM") → open is PM
-      if (openH !== 12 && openH < 12) openH += 12;
-    }
-    const open = openH + openMin / 60;
-    let close = closeH + closeMin / 60;
-    if (close <= open) close += 24;
-    return { open, close };
-  }
-
-  return null;
-}
-
-/** Parse hours text into an array of time ranges.
- *  Handles split hours: "11:00 AM – 2:30 PM, 5:00 – 10:00 PM" → two ranges.
- *  Returns null if closed or empty. */
-function parseHoursText(text: string): { open: number; close: number }[] | null {
-  if (!text || text.toLowerCase().includes('closed')) return null;
-  if (text.toLowerCase().includes('open 24') || text.toLowerCase().includes('24 hours')) {
-    return [{ open: 0, close: 24 }];
-  }
-
-  // Split on comma for multi-range hours
-  const parts = text.split(/,\s*/);
-  const ranges: { open: number; close: number }[] = [];
-  for (const part of parts) {
-    const parsed = parseSingleRange(part.trim());
-    if (parsed) ranges.push(parsed);
-  }
-  return ranges.length > 0 ? ranges : null;
-}
-
-/** Check if a target hour falls within any of the parsed ranges. */
-function hourInRanges(hour: number, ranges: { open: number; close: number }[]): boolean {
-  return ranges.some(r => hour >= r.open && hour < r.close);
-}
-
-const DAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+// ORCH-1061 PART 2: parseSingleRange / parseHoursText / hourInRanges / DAY_NAMES
+// were moved to _shared/curatedStopHours.ts (single source of truth) and are
+// imported at the top of this file. filterByDateTime below uses the imported
+// versions. Do NOT re-declare them here.
 
 /**
  * ORCH-0446: AND date filtering for collab sessions.
@@ -458,78 +411,13 @@ function filterByDateTime(
 }
 
 // ── Cascading Hours Filter for Curated Cards ───────────────────────────────
-// Before serving curated cards, check that each stop is open when the user
-// would actually arrive there (accounting for previous stop duration + travel).
-
-const CURATED_STOP_DURATION: Record<string, number> = {
-  park: 60, botanical_garden: 60, hiking_area: 90, beach: 90,
-  national_park: 90, state_park: 90, garden: 45,
-  bar: 60, pub: 60, wine_bar: 60, cocktail_bar: 60, brewery: 60,
-  restaurant: 60, fine_dining_restaurant: 90, french_restaurant: 90,
-  steak_house: 90, italian_restaurant: 75, seafood_restaurant: 60,
-  movie_theater: 150, art_gallery: 60, museum: 90,
-  performing_arts_theater: 120, concert_hall: 120, opera_house: 150,
-  bowling_alley: 60, karaoke: 90, video_arcade: 60,
-  amusement_center: 60, amusement_park: 180,
-  spa: 90, massage_spa: 90,
-  cafe: 30, coffee_shop: 30, bakery: 20,
-  grocery_store: 30, supermarket: 30, florist: 15,
-  picnic_ground: 120,
-};
-
-const ALWAYS_OPEN_TYPES = new Set([
-  'park', 'national_park', 'state_park', 'hiking_area', 'beach',
-  'botanical_garden', 'city_park', 'garden', 'nature_preserve',
-  'picnic_ground', 'scenic_spot', 'tourist_attraction', 'plaza',
-  'lake', 'river', 'woods', 'mountain_peak',
-]);
-
-function isStopOpenAtHour(stop: any, hour: number, dayOfWeek: number): boolean {
-  // Always-open outdoor types
-  const pType = stop.placeType || '';
-  if (ALWAYS_OPEN_TYPES.has(pType)) return true;
-
-  const oh = stop.openingHours;
-  if (!oh || typeof oh !== 'object') return true; // No data → assume open
-
-  const dayName = DAY_NAMES[dayOfWeek];
-  const dayText = oh[dayName];
-  if (!dayText) return true;
-
-  const parsed = parseHoursText(dayText);
-  if (!parsed) return false; // "Closed" or unparseable
-  return hourInRanges(hour, parsed);
-}
-
-function filterCuratedByStopHours(
-  cards: any[],
-  utcNow: Date,
-): any[] {
-  return cards.filter(card => {
-    if (card.cardType !== 'curated' || !card.stops?.length) return true;
-
-    // Compute place-local start time using card's timezone offset
-    const offsetMin = card.utcOffsetMinutes ?? (card.lng != null ? Math.round(card.lng / 15) * 60 : 0);
-    const localMs = utcNow.getTime() + offsetMin * 60 * 1000;
-    const localDate = new Date(localMs);
-    let currentHour = localDate.getUTCHours() + localDate.getUTCMinutes() / 60;
-    const localDay = localDate.getUTCDay();
-
-    for (let i = 0; i < card.stops.length; i++) {
-      const stop = card.stops[i];
-      if (stop.optional) continue;
-
-      if (!isStopOpenAtHour(stop, currentHour, localDay)) return false;
-
-      const duration = CURATED_STOP_DURATION[stop.placeType] || 45;
-      const travelToNext = (i < card.stops.length - 1)
-        ? (card.stops[i + 1]?.travelTimeFromPreviousStopMin || 15)
-        : 0;
-      currentHour += (duration + travelToNext) / 60;
-    }
-    return true;
-  });
-}
+// ORCH-1061 PART 2: CURATED_STOP_DURATION / ALWAYS_OPEN_TYPES / isStopOpenAtHour /
+// filterCuratedByStopHours were moved to _shared/curatedStopHours.ts (single
+// source of truth, shared with the SOLO generate-curated-experiences path) and
+// are imported at the top of this file. The extracted isStopOpenAtHour also
+// carries the D-1 periods-shape fix (it now actually filters the ~99.9% of
+// canonical Google v1 periods-shape rows the old text-only reader skipped).
+// Do NOT re-declare them here.
 
 // ─── ORCH-0588 Slice 1: signal-serving response shape ────────────────────────
 // Maps the new query_servable_places_by_signal RPC row → the same card shape

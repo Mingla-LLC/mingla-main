@@ -13,9 +13,10 @@
  * Non-partners hit a friendly empty state directing them to support.
  */
 
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Linking,
   Platform,
   Pressable,
@@ -29,7 +30,9 @@ import { Stack, useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 
 import {
+  useDetachPartnerStripe,
   usePartnerStripeStatus,
+  useRefreshPartnerAccountSession,
   useStartPartnerStripeOnboarding,
 } from "../../src/hooks/usePartnerStripe";
 import {
@@ -53,6 +56,8 @@ import {
 } from "../../src/constants/designSystem";
 import { GlassCard } from "../../src/components/ui/GlassCard";
 import { IconChrome } from "../../src/components/ui/IconChrome";
+import { BrandStripeCountryPicker } from "../../src/components/brand/BrandStripeCountryPicker";
+import { getStripeSupportedCountry } from "../../src/constants/stripeSupportedCountries";
 
 const RETURN_DEEP_LINK = "mingla-business://partner-onboarding-complete";
 
@@ -60,13 +65,35 @@ export default function PartnerEarningsScreen(): React.ReactElement {
   const router = useRouter();
   const statusQuery = usePartnerStripeStatus();
   const startOnboarding = useStartPartnerStripeOnboarding();
+  const refreshSession = useRefreshPartnerAccountSession();
+  const detachStripe = useDetachPartnerStripe();
+
+  // Country selection — pre-onboarding. Hydrates from persisted
+  // partner_country if set, else null so the user MUST pick explicitly.
+  // Locked once a Stripe account exists (Accounts v2 doesn't allow changing
+  // country post-create).
+  const [selectedCountry, setSelectedCountry] = useState<string | null>(null);
+  useEffect(() => {
+    if (
+      typeof statusQuery.data?.partner_country === "string" &&
+      statusQuery.data.partner_country.length > 0
+    ) {
+      setSelectedCountry(statusQuery.data.partner_country);
+    }
+  }, [statusQuery.data?.partner_country]);
+
+  const stripeAccountStatus = statusQuery.data?.status ?? "not_connected";
+  const countryLocked = stripeAccountStatus !== "not_connected";
 
   const handleStartOnboarding = useCallback(async () => {
     if (!statusQuery.data) return;
-    const country = statusQuery.data.partner_country ?? "GB";
+    if (selectedCountry === null) {
+      console.warn("[partner/earnings] start tapped with no country selected");
+      return;
+    }
     try {
       const result = await startOnboarding.mutateAsync({
-        country,
+        country: selectedCountry,
         returnUrl: RETURN_DEEP_LINK,
       });
       if (Platform.OS === "web") {
@@ -87,7 +114,54 @@ export default function PartnerEarningsScreen(): React.ReactElement {
       const message = err instanceof Error ? err.message : String(err);
       console.error("[partner/earnings] onboarding launch failed:", message);
     }
-  }, [statusQuery, startOnboarding]);
+  }, [statusQuery, startOnboarding, selectedCountry]);
+
+  const handleManageStripe = useCallback(async () => {
+    if (!statusQuery.data) return;
+    try {
+      const result = await refreshSession.mutateAsync("account_management");
+      // Edge fn already builds the full URL with session + account_id +
+      // return_to. The return_to it sets is the onboarding-complete deep
+      // link, which iOS auth-session honors for dismissal — same effect.
+      if (Platform.OS === "web") {
+        if (typeof window !== "undefined") {
+          window.location.href = result.target_url;
+        }
+      } else {
+        await WebBrowser.openAuthSessionAsync(
+          result.target_url,
+          RETURN_DEEP_LINK,
+        );
+        statusQuery.refetch();
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("[partner/earnings] manage launch failed:", message);
+    }
+  }, [statusQuery, refreshSession]);
+
+  const handleDisconnectStripe = useCallback((): void => {
+    Alert.alert(
+      "Disconnect Stripe?",
+      "Your partner Stripe account will be unlinked from Mingla. Already-paid splits remain on the existing account. You can reconnect anytime — possibly with a different country or business.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Disconnect",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await detachStripe.mutateAsync();
+              statusQuery.refetch();
+            } catch (err) {
+              const message = err instanceof Error ? err.message : String(err);
+              Alert.alert("Couldn't disconnect", message);
+            }
+          },
+        },
+      ],
+    );
+  }, [detachStripe, statusQuery]);
 
   // ORCH-1052 hotfix — modal presentation + explicit close button so the
   // screen is dismissable (was unreachable to back out of without crashing
@@ -104,9 +178,11 @@ export default function PartnerEarningsScreen(): React.ReactElement {
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
       <Stack.Screen
         options={{
-          // iOS presents as a sheet that swipes down to dismiss; Android falls
-          // back to standard modal. We render our own header below.
-          presentation: "modal",
+          // Push (not modal). Modal pageSheet on iOS caused a compress-and-
+          // restore animation when ASWebAuthenticationSession prepared its
+          // consent dialog over the modal — visible as a swipe glitch right
+          // before the iOS browser popup. We render our own header + close X
+          // below, so swipe-down-to-dismiss isn't needed.
           headerShown: false,
         }}
       />
@@ -169,6 +245,13 @@ export default function PartnerEarningsScreen(): React.ReactElement {
               onStart={handleStartOnboarding}
               starting={startOnboarding.isPending}
               startError={startOnboarding.error?.message ?? null}
+              selectedCountry={selectedCountry}
+              onSelectCountry={setSelectedCountry}
+              countryLocked={countryLocked}
+              onManage={handleManageStripe}
+              managing={refreshSession.isPending}
+              onDisconnect={handleDisconnectStripe}
+              disconnecting={detachStripe.isPending}
             />
             <PartnerSplitsSection />
           </>
@@ -380,9 +463,37 @@ function StatusBlock(props: {
   onStart: () => void;
   starting: boolean;
   startError: string | null;
+  selectedCountry: string | null;
+  onSelectCountry: (code: string) => void;
+  countryLocked: boolean;
+  onManage: () => void;
+  managing: boolean;
+  onDisconnect: () => void;
+  disconnecting: boolean;
 }): React.ReactElement {
-  const { status, country, externalCurrencies, onStart, starting, startError } =
-    props;
+  const {
+    status,
+    country,
+    externalCurrencies,
+    onStart,
+    starting,
+    startError,
+    selectedCountry,
+    onSelectCountry,
+    countryLocked,
+    onManage,
+    managing,
+    onDisconnect,
+    disconnecting,
+  } = props;
+
+  const selectedCountryMeta = selectedCountry
+    ? getStripeSupportedCountry(selectedCountry)
+    : null;
+  const partnerCurrency = selectedCountryMeta?.defaultCurrency ?? null;
+  const currencyHelper = partnerCurrency
+    ? `Stripe will settle you in ${partnerCurrency}. You'll only be able to partner with brands that sell in ${partnerCurrency}; invitations in other currencies will be blocked.`
+    : "Pick the country where you'll get paid out. Stripe locks this after onboarding, and you'll only be able to partner with brands selling in the matching currency.";
 
   if (status === "active") {
     return (
@@ -399,6 +510,26 @@ function StatusBlock(props: {
             ? ` We can settle in ${externalCurrencies.join(", ").toUpperCase()}.`
             : ""}
         </Text>
+        <Pressable
+          accessibilityLabel="Manage Stripe account"
+          style={[styles.primaryBtn, managing && styles.primaryBtnDisabled]}
+          onPress={onManage}
+          disabled={managing || disconnecting}
+        >
+          <Text style={styles.primaryBtnText}>
+            {managing ? "Opening…" : "Manage Stripe account"}
+          </Text>
+        </Pressable>
+        <Pressable
+          accessibilityLabel="Disconnect Stripe"
+          style={[styles.secondaryBtn, disconnecting && styles.primaryBtnDisabled]}
+          onPress={onDisconnect}
+          disabled={disconnecting || managing}
+        >
+          <Text style={styles.secondaryBtnTextDanger}>
+            {disconnecting ? "Disconnecting…" : "Disconnect Stripe"}
+          </Text>
+        </Pressable>
       </GlassCard>
     );
   }
@@ -465,6 +596,7 @@ function StatusBlock(props: {
   }
 
   // not_connected
+  const connectDisabled = starting || selectedCountry === null;
   return (
     <GlassCard variant="elevated" padding={spacing.lg}>
       <View style={styles.statusIndicatorRow}>
@@ -477,14 +609,26 @@ function StatusBlock(props: {
         account once — your bank details go directly to Stripe, never to
         Mingla.
       </Text>
+      <View style={styles.countryPickerWrap}>
+        <BrandStripeCountryPicker
+          value={selectedCountry}
+          onChange={onSelectCountry}
+          disabled={countryLocked || starting}
+          helperText={currencyHelper}
+        />
+      </View>
       <Pressable
         accessibilityLabel="Connect Stripe"
-        style={[styles.primaryBtn, starting && styles.primaryBtnDisabled]}
+        style={[styles.primaryBtn, connectDisabled && styles.primaryBtnDisabled]}
         onPress={onStart}
-        disabled={starting}
+        disabled={connectDisabled}
       >
         <Text style={styles.primaryBtnText}>
-          {starting ? "Opening…" : "Connect Stripe"}
+          {starting
+            ? "Opening…"
+            : selectedCountry === null
+              ? "Pick a country first"
+              : "Connect Stripe"}
         </Text>
       </Pressable>
       {startError ? (
@@ -590,6 +734,10 @@ const styles = StyleSheet.create({
     ...shadows.md,
   },
   primaryBtnDisabled: { opacity: 0.5 },
+  countryPickerWrap: {
+    marginTop: spacing.md,
+    marginBottom: spacing.md,
+  },
   primaryBtnText: {
     ...typography.buttonLg,
     color: textTokens.inverse,
@@ -607,6 +755,10 @@ const styles = StyleSheet.create({
   secondaryBtnText: {
     ...typography.buttonMd,
     color: textTokens.primary,
+  },
+  secondaryBtnTextDanger: {
+    ...typography.buttonMd,
+    color: semantic.error,
   },
 
   // Inline error pill — shows under primary button when Stripe call fails

@@ -19,6 +19,7 @@
 
 // @ts-ignore — Deno ESM import; types resolved at runtime
 import Stripe from "https://esm.sh/stripe@18.0.0?target=denonext";
+import { resolveStripeKey, type StripeRole } from "./stripeMode.ts";
 
 // 2026-05-07 hotfix: was "2026-04-30.preview" — that version does NOT exist in
 // Stripe's API catalog and is rejected by the SDK with "Invalid Stripe API version".
@@ -28,6 +29,15 @@ import Stripe from "https://esm.sh/stripe@18.0.0?target=denonext";
 // integration uses V1 controller properties, not the v2 endpoint.
 export const STRIPE_API_VERSION = "2026-04-22.dahlia" as const;
 
+/**
+ * Legacy direct-env-var key resolution. RETAINED for backward compatibility
+ * with callers that haven't migrated yet, but ORCH-1056 deprecates this
+ * shape — new call sites MUST go through `createStripeClientForRole` so the
+ * key is mode-routed by `resolveStripeKey(role)`.
+ *
+ * Forbidden outside this module + `stripeBlueprintClient.ts` per the strict-
+ * grep gate `orch-1056-stripe-rak-via-helper.mjs`.
+ */
 export function createStripeClient(envVarName: string): Stripe {
   const key = Deno.env.get(envVarName);
   if (!key) {
@@ -49,19 +59,36 @@ export function createStripeClient(envVarName: string): Stripe {
   });
 }
 
-export const stripeOnboard = () => createStripeClient("STRIPE_RAK_ONBOARD");
-export const stripeWebhook = () => createStripeClient("STRIPE_RAK_WEBHOOK");
+/**
+ * ORCH-1056 canonical client constructor. Resolves the per-role restricted
+ * API key from `MINGLA_STRIPE_MODE` + `STRIPE_RAK_{role}_{mode}` via
+ * `_shared/stripeMode.ts`. All `stripe*()` helpers below route through this.
+ */
+export function createStripeClientForRole(role: StripeRole): Stripe {
+  const key = resolveStripeKey(role);
+  return new Stripe(key, {
+    apiVersion: STRIPE_API_VERSION,
+    appInfo: {
+      name: "Mingla Business",
+      version: "1.0.0",
+      url: "https://usemingla.com",
+    },
+  });
+}
+
+export const stripeOnboard = () => createStripeClientForRole("ONBOARD");
+export const stripeWebhook = () => createStripeClientForRole("WEBHOOK");
 export const stripeRefreshStatus = () =>
-  createStripeClient("STRIPE_RAK_REFRESH_STATUS");
-export const stripeDetach = () => createStripeClient("STRIPE_RAK_DETACH");
-export const stripeBalances = () => createStripeClient("STRIPE_RAK_BALANCES");
+  createStripeClientForRole("REFRESH_STATUS");
+export const stripeDetach = () => createStripeClientForRole("DETACH");
+export const stripeBalances = () => createStripeClientForRole("BALANCES");
 export const stripeKycReminder = () =>
-  createStripeClient("STRIPE_RAK_KYC_REMINDER");
+  createStripeClientForRole("KYC_REMINDER");
 export const stripeTicketCheckout = () =>
-  createStripeClient("STRIPE_RAK_TICKET_CHECKOUT");
+  createStripeClientForRole("TICKET_CHECKOUT");
 // ORCH-0787: Refund issuance uses platform-account refunds with reverse_transfer.
 // Restricted API key must grant refunds:write + application_fees:read on the platform account.
 export const stripeTicketRefund = () =>
-  createStripeClient("STRIPE_RAK_TICKET_REFUND");
+  createStripeClientForRole("TICKET_REFUND");
 
 export type StripeClient = ReturnType<typeof createStripeClient>;

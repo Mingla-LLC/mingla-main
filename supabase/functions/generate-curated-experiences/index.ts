@@ -18,6 +18,11 @@ import {
   CATEGORY_DURATION_MINUTES,
   CATEGORY_DEFAULT_DURATION,
 } from '../_shared/curatedConstants.ts';
+// ORCH-1061 PART 2: shared open-during-the-outing cascade. The SOLO curated path
+// (this fn, called directly by deckService.ts) previously applied NO open-hours
+// filter — solo users could be served a plan whose stop was closed on arrival.
+// Now solo inherits the SAME gate collab already gets via discover-cards.
+import { filterCuratedByStopHours } from '../_shared/curatedStopHours.ts';
 
 /* ─────────────────────────────────────────────────────────────────────────────
  * generate-curated-experiences  –  Pool-Only Curated Card Generator
@@ -356,7 +361,7 @@ export const EXPERIENCE_TYPES: ExperienceTypeDef[] = [
 
 // ── Derived constants ──────────────────────────────────────────────────────
 
-const EXPERIENCE_TYPE_MAP: Record<string, ExperienceTypeDef> = {};
+export const EXPERIENCE_TYPE_MAP: Record<string, ExperienceTypeDef> = {};
 for (const et of EXPERIENCE_TYPES) {
   EXPERIENCE_TYPE_MAP[et.id] = et;
 }
@@ -397,74 +402,29 @@ for (const et of EXPERIENCE_TYPES) {
 // COMBO_SLUG_TO_FILTER_SIGNAL, COMBO_SLUG_TYPE_FILTER, and the [CRITICAL —
 // ORCH-0643] warning block also moved to _shared/signalRankFetch.ts.
 
-// Mapping from experience type id → (combo slug → rank signal). When an experience
-// type wants to rank a stop by a "vibe" signal instead of the chip's own signal,
-// declare it here. E.g., Romantic ranks non-flowers stops by the `romantic` signal.
+// ORCH-1062: vibe rank-overrides removed. Every non-nature curated stop now ranks
+// by its OWN filter signal (resolveStopRankSignal / fetchForCombo fall back to
+// COMBO_SLUG_TO_FILTER_SIGNAL[catId] when no override exists). The two NATURE
+// overrides are retained because for an OUTDOOR stop the "vibe" IS the quality
+// signal: 'scenic' surfaces trails/greenways/gardens over playgrounds, and
+// 'picnic_friendly' surfaces tables/shelters/lawns over hiking-heavy preserves.
+// Removing the rest kills crossover leaks (e.g. a brunch café winning a "drinks"
+// slot because it scored high on the generic 'lively' vibe). Do NOT re-add a
+// non-nature override without an operator directive — the own-category score is
+// the honest quality signal for every food/activity/drinks/show slot.
 const EXPERIENCE_RANK_SIGNAL_OVERRIDE: Record<string, Record<string, string>> = {
-  'romantic': {
-    // NOTE: Flowers stop intentionally NOT signal-overridden. card_pool.categories=[flowers]
-    // was manually curated to the correct set of "big-store bouquet sources" (Trader Joe's,
-    // Wegmans, Whole Foods, Harris Teeter) which Google's raw florist type tag misses. The
-    // signal-aware picker would be stricter than needed. Legacy fetchSinglesForCategory
-    // returns the 5 curated big stores — matches user directive "only at the big stores".
-    // Non-Flowers romantic stops get signal-aware ranking by romantic vibe.
-    'creative_arts': 'romantic',
-    'theatre': 'romantic',
-    'upscale_fine_dining': 'romantic',
-  },
-  'first-date': {
-    // All non-Flowers stops rank by `icebreakers` vibe signal — conversation-friendly,
-    // low-pressure, casual. Surfaces bistros/cafés/accessible upscale over intense
-    // candlelit venues. Flowers stop inherits legacy card_pool curated big-store list.
-    'brunch': 'icebreakers',
-    'theatre': 'icebreakers',
-    'movies': 'icebreakers',
-    'play': 'icebreakers',
-    'creative_arts': 'icebreakers',
-    'upscale_fine_dining': 'icebreakers',
-    'drinks_and_music': 'icebreakers',
-  },
-  'group-fun': {
-    // ORCH-0628 — all stops rank by `lively` vibe signal. Surfaces bowling/arcade/
-    // sports-bar energy on Activity stop, group-friendly bistros over candlelit spots
-    // on Food stop, and lively upscale venues (Capital Grille, Sullivan's) over
-    // intimate ones (Second Empire) on Dinner stop.
-    'play': 'lively',
-    'theatre': 'lively',
-    'movies': 'lively',
-    'brunch': 'lively',
-    'creative_arts': 'lively',
-    'casual_food': 'lively',
-    'upscale_fine_dining': 'lively',
-  },
-  'adventurous': {
-    // ORCH-0601 — Activity stops (play, hiking, theatre, creative_arts, museum)
-    // rank by their own chip signal (no override). Food stops rank by `lively` —
-    // after an adventurous outing, surface energetic restaurants over intimate ones.
-    'casual_food': 'lively',
-    'upscale_fine_dining': 'lively',
-  },
-  'take-a-stroll': {
-    // ORCH-0601 — Nature stop ranks by `scenic` (trails/greenways/gardens over
-    // playgrounds). Food stops rank by `icebreakers` — casual conversation-friendly
-    // spots for post-walk dining, not intense candlelit venues.
-    'nature': 'scenic',
-    'brunch': 'icebreakers',
-    'casual_food': 'icebreakers',
-    'upscale_fine_dining': 'icebreakers',
-  },
-  'picnic-dates': {
-    // ORCH-0601 — Picnic Spot ranks by `picnic_friendly` (tables/shelters/lawns
-    // over hiking-heavy preserves). Pullen/Lake Johnson/Shelley > Williamson Preserve.
-    'nature': 'picnic_friendly',
-  },
+  'take-a-stroll': { 'nature': 'scenic' },
+  'picnic-dates': { 'nature': 'picnic_friendly' },
 };
 
 // ORCH-0985: resolve the vibe rank signal a stop is selected/ranked by — the
 // type's EXPERIENCE_RANK_SIGNAL_OVERRIDE entry if present, else the slug's own
 // filter signal. Mirrors the rankSignal computed in fetchForCombo so the value
 // stamped on the stop equals the value the stop was actually ranked by.
-function resolveStopRankSignal(typeId: string, catId: string): string | undefined {
+// ORCH-1062: exported so the override-removal regression test can assert the
+// resolved rank signal directly (own-category fallback for non-nature stops,
+// nature overrides retained). Pure function — no side effects.
+export function resolveStopRankSignal(typeId: string, catId: string): string | undefined {
   return EXPERIENCE_RANK_SIGNAL_OVERRIDE[typeId]?.[catId] ?? COMBO_SLUG_TO_FILTER_SIGNAL[catId];
 }
 
@@ -637,6 +597,14 @@ function buildCardFromStops(
     tagline,
     categoryLabel: CURATED_TYPE_LABELS[experienceType] || 'Explore',
     imageUrl: mainStops.find(s => s.imageUrl)?.imageUrl ?? null,
+    // ORCH-1061 PART 2: expose first-stop timezone + coords at the card level so
+    // the shared filterCuratedByStopHours can resolve the arrival timezone for
+    // SOLO cards exactly as it does for collab cards (discover-cards card shape
+    // already carries these). Additive top-level fields; mobile ignores unknown
+    // top-level keys, and stop-level data is unchanged.
+    utcOffsetMinutes: mainStops[0]?.utcOffsetMinutes ?? null,
+    lat: mainStops[0]?.lat ?? null,
+    lng: mainStops[0]?.lng ?? null,
     stops,
     totalPriceMin,
     totalPriceMax,
@@ -658,6 +626,11 @@ async function generateCardsForType(
   limit: number,
   skipDescriptions: boolean,
   excludePlacePoolIds: string[] = [],
+  // ORCH-1061 PART 1B: stable per-batch integer used to seed the deterministic
+  // combo rotation. Threaded from the handler (was destructured but never passed
+  // before ORCH-1061). Defaults to 0 so collab agg / a bad client value can't
+  // break determinism. Collab decks stay reproducible (no Math.random).
+  batchSeed = 0,
 ): Promise<{ cards: any[]; summary?: CuratedSummary }> {
   // ORCH-0903 (2026-05-21): curated path uses unified TRAVEL_CONFIG via
   // radiusKmForConstraint(generosity=1.0). Curated multi-stop trips need
@@ -738,12 +711,12 @@ async function generateCardsForType(
     );
   }
 
-  // Build round-robin combo list
-  const comboList: string[][] = [];
-  const shuffled = shuffle([...typeDef.combos]);
-  while (comboList.length < limit * 2) {
-    comboList.push(...shuffle([...typeDef.combos]));
-  }
+  // ORCH-1061 PART 1B: deterministic combo ordering that rotates the intent's
+  // MAIN ACTIVITY across cards (so the deck shows variety) and descends quality,
+  // seeded off batchSeed. Replaces the old Math.random shuffle (which broke
+  // collab decks). The anchor PLACE still descends best→2nd→3rd across cards via
+  // the existing globalUsedPlaceIds accumulation; PART 1A blends the companions.
+  const comboList: string[][] = buildDeterministicComboList(typeDef, batchSeed, limit);
 
   // Build cards
   const cards: any[] = [];
@@ -844,7 +817,9 @@ async function generateCardsForType(
             }
             if (available.length === 0 && stopDef.optional) continue;
 
-            const place = selectClosestHighestRated(available, prevLat, prevLng);
+            // ORCH-1061 PART 1A: reverse-anchor companions blend quality+proximity.
+            // 3000 = the per-card near-fetch radius used at the fetch above.
+            const place = selectBlendedStop(available, prevLat, prevLng, 3000);
             if (!place && !stopDef.optional) {
               // ORCH-0677 RC-1: companion selection failed — mark anchor failed.
               failedAnchorIds.add(anchor.google_place_id);
@@ -890,11 +865,12 @@ async function generateCardsForType(
           break;
         }
 
-        // Stop 1 (first non-optional): highest quality. Stop 2+: proximity-chained.
+        // Stop 1 (first non-optional): highest quality (UNCHANGED — vibe rank top).
+        // Stop 2+: ORCH-1061 PART 1A quality+proximity blend within the fetch radius.
         const isFirstMainStop = stops.filter(s => !s.optional).length === 0;
         const place = isFirstMainStop
           ? available[0]
-          : selectClosestHighestRated(available, prevLat, prevLng);
+          : selectBlendedStop(available, prevLat, prevLng, clampedRadius);
 
         if (!place) {
           if (stopDef.optional) continue;
@@ -1013,44 +989,179 @@ async function generateCardsForType(
 
 // ── Utility functions ──────────────────────────────────────────────────────
 
-function shuffle<T>(array: T[]): T[] {
-  const arr = [...array];
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
+// ORCH-1061 PART 1B: the Math.random shuffle() (used only for combo ordering)
+// was DELETED — combo ordering is now deterministic via buildDeterministicComboList
+// (seeded off batchSeed) so collab decks are reproducible. The remaining
+// Math.random uses in this file (tagline pick in buildCardFromStops, the
+// per-card id suffix, the cosmetic matchScore) are display-only / identity-noise
+// and do NOT affect deck card ordering or selection — left untouched per spec §5.5.
+
+// ── ORCH-1061 PART 1B: deterministic main-activity rotation ─────────────────
+
+// Resolve the combo slot index whose CATEGORY we rotate across cards (the intent's
+// "main activity"). Derived from the typeDef, not hardcoded per-intent magic.
+//  - reverse-anchor (picnic): no rotation → -1 sentinel.
+//  - else: the first NON-OPTIONAL slot whose slug VARIES across combos
+//    (take-a-stroll's nature anchor is constant → rotates the food slot instead).
+// Expected mapping (pinned by T-1B-MAP): adventurous→0, first-date→1, romantic→1,
+// group-fun→0, take-a-stroll→1, picnic→-1.
+export function mainActivitySlotIndex(typeDef: ExperienceTypeDef): number {
+  if (typeDef.stops.some((s) => s.reverseAnchor)) return -1;
+  const firstNonOptional = typeDef.stops.findIndex((s) => !s.optional);
+  if (firstNonOptional < 0) return -1;
+  for (let i = firstNonOptional; i < typeDef.stops.length; i++) {
+    const slugsAtI = new Set(typeDef.combos.map((c) => c[i]));
+    if (slugsAtI.size > 1) return i; // first varying non-optional slot
   }
-  return arr;
+  return firstNonOptional; // all-constant fallback (not hit by the current table)
+}
+
+// Build a deterministic combo ordering (length ≥ limit*2) that rotates the main
+// activity across cards and descends quality WITHIN an activity (combos retain
+// their authored EXPERIENCE_TYPES order = best-first). PURE: no Math.random.
+export function buildDeterministicComboList(
+  typeDef: ExperienceTypeDef,
+  batchSeed: number,
+  limit: number,
+): string[][] {
+  const seed = Number.isFinite(batchSeed) ? Math.floor(Math.abs(batchSeed)) : 0;
+  const combos = typeDef.combos; // FROZEN order from EXPERIENCE_TYPES
+  const slotIdx = mainActivitySlotIndex(typeDef);
+  const target = Math.max(limit, 1) * 2;
+
+  // Picnic / no-rotation / single combo: deterministic repeat to target length.
+  if (slotIdx < 0 || combos.length <= 1) {
+    const out: string[][] = [];
+    let guard = 0;
+    while (out.length < target) {
+      out.push(...combos);
+      if (++guard > target + combos.length) break; // can't happen with ≥1 combo
+    }
+    return out;
+  }
+
+  // 1. Group combos by main-activity slug, preserving FIRST-appearance order.
+  const groupOrder: string[] = [];
+  const groups = new Map<string, string[][]>();
+  for (const c of combos) {
+    const slug = c[slotIdx];
+    if (!groups.has(slug)) { groups.set(slug, []); groupOrder.push(slug); }
+    groups.get(slug)!.push(c);
+  }
+
+  // 2. Deterministic rotation offset from batchSeed (NO Math.random).
+  const startOffset = ((seed % groupOrder.length) + groupOrder.length) % groupOrder.length;
+
+  // 3. Round-robin across groups starting at startOffset → MAIN ACTIVITY rotates
+  //    card-to-card; descend within each group as passes advance.
+  const out: string[][] = [];
+  const cursors = new Map<string, number>(groupOrder.map((s) => [s, 0]));
+  let exhaustedGuard = 0;
+  while (out.length < target) {
+    let pushedThisCycle = 0;
+    for (let k = 0; k < groupOrder.length; k++) {
+      const slug = groupOrder[(startOffset + k) % groupOrder.length];
+      const arr = groups.get(slug)!;
+      const cur = cursors.get(slug)!;
+      if (cur < arr.length) {
+        out.push(arr[cur]);
+        cursors.set(slug, cur + 1);
+        pushedThisCycle++;
+      }
+      if (out.length >= target) break;
+    }
+    // Every group exhausted → reset cursors to repeat the full deterministic
+    // sequence (mirrors the old "repeat to limit*2"). Still no randomness.
+    if (pushedThisCycle === 0) {
+      for (const s of groupOrder) cursors.set(s, 0);
+      if (++exhaustedGuard > target) break; // hard stop, can't happen with ≥1 combo
+    }
+  }
+  return out;
 }
 
 // ORCH-0659/0660: haversineKm + estimateTravelMinutes moved to
 // _shared/distanceMath.ts as the canonical owner. Imported above.
 
-// NEAREST-PLACE SELECTION (Block 8 — hardened 2026-03-22)
-// Picks the closest candidate by haversine distance. Pre-sorted array
-// means equidistant ties break to highest-rated. Replaces tiered 3km/5km logic.
-/**
- * Select the nearest place to a reference point by haversine distance.
- * Pure proximity — no tier thresholds. Quality is handled upstream:
- * first stop picks highest-rated; subsequent stops pick nearest.
- */
-function selectClosestHighestRated(
+// ORCH-1061 PART 1A — QUALITY-AWARE PROXIMITY BLEND for post-anchor stops.
+//
+// Replaces the old pure-nearest selectClosestHighestRated (which IGNORED quality
+// despite its name). Every stop AFTER the first non-optional stop is now picked
+// by a 60% quality / 40% proximity blend, so the 2nd/3rd stop is a good place
+// that's also reasonably close — not just whatever is physically nearest.
+//
+// PURE function of `available` + the ref point + radius — NO request-time
+// Math.random. `available` order/contents are themselves deterministic given the
+// request inputs + the dedup state, so collab decks stay reproducible
+// (I-COLLAB-DECK-DETERMINISM-PRESERVED-UNDER-AI-BLEND).
+//
+// Quality internal split 0.75 vibe-rank / 0.25 rating×reviews (LOCKED, OQ-1).
+// Quality-vs-proximity blend 0.60 / 0.40 (operator-approved, LOCKED).
+export function selectBlendedStop(
   available: any[],
   refLat: number,
   refLng: number,
+  radiusMeters: number,
 ): any | null {
+  // Empty / single guards — match the old helper so the failed-anchor cycle +
+  // optional-skip logic at the call sites is preserved exactly.
   if (available.length === 0) return null;
   if (available.length === 1) return available[0];
 
-  let closest = available[0];
-  let closestDist = haversineKm(refLat, refLng, available[0].lat ?? 0, available[0].lng ?? 0);
+  // Quality primary axis: vibe rank score normalized within THIS candidate set.
+  const rankMax = Math.max(...available.map((p) => p._rankScore ?? 0), 0);
+  const radiusKm = Math.max(radiusMeters / 1000, 0.001); // avoid /0
+
+  const BLEND_QUALITY = 0.60;   // operator-approved knob
+  const BLEND_PROXIMITY = 0.40;
+
+  const scoreOf = (p: any): number => {
+    const rankNorm = rankMax > 0 ? ((p._rankScore ?? 0) / rankMax) : 0; // 0..1
+
+    // Secondary: rating × log-dampened review_count, normalized 0..1.
+    const ratingNorm = Math.min(Math.max((p.rating ?? 0) / 5, 0), 1);
+    const reviewWeight = Math.min(Math.log10((p.review_count ?? 0) + 1) / 3, 1); // saturates ~1000 reviews
+    const ratingScore = ratingNorm * (0.5 + 0.5 * reviewWeight); // ratings with no reviews keep half weight
+
+    const Q = 0.75 * rankNorm + 0.25 * ratingScore; // 0..1
+
+    const distKm = haversineKm(refLat, refLng, p.lat ?? 0, p.lng ?? 0);
+    const P = Math.min(Math.max(1 - (distKm / radiusKm), 0), 1); // 1=at ref, 0=at/beyond radius edge
+
+    return BLEND_QUALITY * Q + BLEND_PROXIMITY * P;
+  };
+
+  // Deterministic tie-break chain (LOCKED, no Math.random): when blended scores
+  // are within 1e-9 → higher _rankScore, then rating, then review_count, then
+  // lexicographically smaller google_place_id (pool-independent final arbiter).
+  let best = available[0];
+  let bestScore = scoreOf(best);
   for (let i = 1; i < available.length; i++) {
-    const dist = haversineKm(refLat, refLng, available[i].lat ?? 0, available[i].lng ?? 0);
-    if (dist < closestDist) {
-      closestDist = dist;
-      closest = available[i];
+    const cand = available[i];
+    const candScore = scoreOf(cand);
+    if (candScore > bestScore + 1e-9) {
+      best = cand;
+      bestScore = candScore;
+    } else if (Math.abs(candScore - bestScore) <= 1e-9) {
+      if (tieBreakWins(cand, best)) {
+        best = cand;
+        bestScore = candScore;
+      }
     }
   }
-  return closest;
+  return best;
+}
+
+// ORCH-1061 PART 1A — deterministic tie-break: does `a` beat `b`? (pure)
+export function tieBreakWins(a: any, b: any): boolean {
+  const ar = a._rankScore ?? 0, br = b._rankScore ?? 0;
+  if (ar !== br) return ar > br;
+  const arat = a.rating ?? 0, brat = b.rating ?? 0;
+  if (arat !== brat) return arat > brat;
+  const arc = a.review_count ?? 0, brc = b.review_count ?? 0;
+  if (arc !== brc) return arc > brc;
+  const aid = a.google_place_id ?? '', bid = b.google_place_id ?? '';
+  return aid < bid; // lexicographically smaller id wins
 }
 
 // ── Picnic shopping list ───────────────────────────────────────────────────
@@ -1235,7 +1346,13 @@ ${stopList}`;
 
 // ── Main serve() handler ───────────────────────────────────────────────────
 
-serve(async (req) => {
+// ORCH-1061: exported as `handler` and guarded by `import.meta.main` so the
+// module can be imported by Deno unit tests (which exercise the PART 1A blend +
+// PART 1B rotation pure helpers) WITHOUT auto-starting the HTTP server. In the
+// deployed edge runtime `import.meta.main` is true (this file is the entry
+// module), so production behavior is identical. Mirrors the codebase's
+// check-launch-city / places-autocomplete testable-handler pattern.
+export const handler = async (req: Request): Promise<Response> => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
   try {
@@ -1348,12 +1465,25 @@ serve(async (req) => {
     const generateLimit = warmPool ? Math.min(limit, 15) : limit;
     // ORCH-0677: generateCardsForType now returns { cards, summary? }; summary
     // is set when cards.length === 0 to make the empty verdict explicit.
-    const { cards, summary } = await generateCardsForType(
+    let { cards, summary } = await generateCardsForType(
       typeDef,
       location.lat, location.lng, budgetMax, travelMode,
       travelConstraintValue, generateLimit, skipDescriptions,
       excludePlacePoolIds.filter((v: unknown): v is string => typeof v === 'string' && v.length > 0),
+      batchSeed,
     );
+
+    // ORCH-1061 PART 2: open-during-outing filter — solo path inherits the SAME
+    // cascade collab gets via discover-cards. Start time mirrors discover-cards
+    // (datetimePref ? new Date(datetimePref) : new Date()). filterCuratedByStopHours
+    // is idempotent, so the collab path filtering again downstream is a no-op.
+    const curatedUtcNow = datetimePref ? new Date(datetimePref) : new Date();
+    cards = filterCuratedByStopHours(cards, curatedUtcNow);
+    // If hours-filtering emptied the deck, surface the existing empty verdict
+    // shape so mobile routes to the EMPTY UI state instead of stuck-loading.
+    if (cards.length === 0 && !summary) {
+      summary = { emptyReason: 'pool_empty', candidateAnchorCount: 0, failedAnchorCount: 0 };
+    }
 
     console.log(`[curated-v2] Generated ${cards.length} ${experienceType} cards`);
 
@@ -1528,4 +1658,8 @@ serve(async (req) => {
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
   }
-});
+};
+
+if (import.meta.main) {
+  serve(handler);
+}

@@ -6,7 +6,9 @@ import { colors, typography, fontWeights, radius, spacing } from '../../constant
 import { MentionChip } from './MentionChip';
 import { ReplyQuoteBlock } from './ReplyQuoteBlock';
 import { ChatCardChip } from './ChatCardChip';
+import { CollabLocationChips } from '../collab/CollabLocationChips';
 import type { CardPayload, CardTagEntry, MentionEntry } from '../../services/messagingService';
+import type { CollabDeadEndBannerPayload } from '../../services/collabDeadEndBannerService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -30,6 +32,11 @@ interface MessageData {
   // row with no chrome (no reactions, no replies, no swipe actions). The data-transform
   // layer that builds MessageData populates this from messages.sender_id === null.
   isSystem?: boolean;
+  // ORCH-1058B: structured collab dead-end banner payload. When present (and
+  // isSystem), the system row renders participant·City/ST chips + a tappable
+  // prefs button FROM DATA instead of parsing prose. Populated by the data
+  // transform when card_payload?.kind === 'collab_dead_end'.
+  systemPayload?: CollabDeadEndBannerPayload;
 }
 
 interface ReplyToData {
@@ -59,6 +66,12 @@ export type CollabSystemToken =
   | { type: 'open-prefs-self'; section: CollabSystemPrefSection }
   | { type: 'open-dismissed' }
   | { type: 'compose-mention'; userId: string; text: string };
+
+// ORCH-1058B: the structured banner `action` IS a CollabSystemToken. Sharing
+// this one type between the poster (collabDeadEndBannerService.ts) and the
+// renderer means a poster/renderer divergence is a TypeScript error, not a
+// runtime drift — killing the two-mirrors problem (CF-1) for the action.
+export type CollabSystemAction = CollabSystemToken;
 
 type CollabSystemPrefSection = 'travel' | 'location' | 'categories' | 'dates';
 const SYSTEM_TOKEN_REGEX = /(\[\[[a-z\-]+(?::[a-zA-Z0-9\-_,]+)*\]\])/g;
@@ -235,6 +248,17 @@ export function MessageBubble({
   // "Plan another outing" round-start announcements, etc.) render as a centered muted
   // row with no chrome. Bypasses all the bubble + avatar + reactions + reply UI.
   if (message.isSystem) {
+    // ORCH-1058B: a structured collab dead-end payload draws chips + a real
+    // tappable button FROM DATA (raw [[…]] tokens NEVER parsed/rendered here).
+    // Any other system row (legacy prose, ORCH-0908 lifecycle) falls back to the
+    // existing prose-token parser, which strips tokens into inline buttons.
+    if (message.systemPayload?.kind === 'collab_dead_end') {
+      return (
+        <View style={chatSystemRowStyles.systemPayloadRow} accessible={false}>
+          {renderCollabDeadEndBanner(message.systemPayload, onSystemTokenPress)}
+        </View>
+      );
+    }
     return (
       <View style={chatSystemRowStyles.row} accessible={false}>
         {renderSystemBannerContent(message.content, onSystemTokenPress)}
@@ -544,6 +568,47 @@ function renderSystemBannerContent(
   );
 }
 
+/**
+ * ORCH-1058B — render a collab dead-end banner FROM the structured payload:
+ *   1. prose line (token-stripped degrade text)
+ *   2. participant·City/ST chip row (reuses CollabLocationChips verbatim)
+ *   3. a real tappable prefs BUTTON (not a raw inline link), routing the
+ *      structured `action` through the same handleSystemTokenPress handler.
+ * No prose is parsed for tokens here, so raw `[[…]]` can NEVER render.
+ */
+function renderCollabDeadEndBanner(
+  payload: CollabDeadEndBannerPayload,
+  onSystemTokenPress?: (token: CollabSystemToken) => void,
+): React.ReactElement {
+  const chips = payload.participants.map((p) => ({
+    id: p.id,
+    label: `${p.name} · ${p.label}`,
+    kind: p.locationKind,
+    a11yLabel: p.a11yLabel,
+  }));
+  const buttonLabel = getSystemTokenLabel(payload.action);
+  return (
+    <View style={chatSystemRowStyles.systemPayloadContent}>
+      {payload.prose.length > 0 && (
+        <Text style={chatSystemRowStyles.text}>{payload.prose}</Text>
+      )}
+      <CollabLocationChips chips={chips} />
+      <TouchableOpacity
+        onPress={() => onSystemTokenPress?.(payload.action)}
+        accessibilityRole="link"
+        accessibilityLabel={buttonLabel}
+        testID={`collab-system-token-${payload.action.type}`}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        disabled={!onSystemTokenPress}
+        activeOpacity={0.6}
+        style={chatSystemRowStyles.bannerButton}
+      >
+        <Text style={chatSystemRowStyles.bannerButtonLabel}>{buttonLabel}</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 function getSystemTokenLabel(token: CollabSystemToken): string {
   if (token.type === 'open-dismissed') return 'Review dismissed';
   if (token.type === 'compose-mention') return 'Message them';
@@ -790,5 +855,41 @@ const chatSystemRowStyles = StyleSheet.create({
     textAlign: 'center',
     fontStyle: 'italic',
     textDecorationLine: 'underline',
+  },
+  // ORCH-1058B: a taller, centered, full-width system row for the structured
+  // banner (prose + chip row + button stacked vertically).
+  systemPayloadRow: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    marginBottom: 8,
+  },
+  systemPayloadContent: {
+    maxWidth: SCREEN_WIDTH - 48,
+    flexDirection: 'column',
+    alignItems: 'center',
+  },
+  // ORCH-1058B: a real tappable control (NOT a raw inline link). Outlined pill,
+  // #eb7825 brand accent, ≥44pt hit target (padding + hitSlop), non-shifting
+  // press feedback via activeOpacity. SPEC §3.6 locked floor.
+  bannerButton: {
+    minHeight: 36,
+    marginTop: spacing.sm,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: '#eb7825',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(235, 120, 37, 0.10)',
+  },
+  bannerButtonLabel: {
+    fontSize: 13,
+    fontWeight: fontWeights.semibold,
+    color: '#eb7825',
+    textAlign: 'center',
   },
 });

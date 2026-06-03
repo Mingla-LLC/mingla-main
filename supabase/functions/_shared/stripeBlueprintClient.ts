@@ -8,6 +8,27 @@
  */
 
 import { STRIPE_API_VERSION } from "./stripe.ts";
+import { resolveStripeKey, type StripeRole } from "./stripeMode.ts";
+
+/**
+ * Map legacy `envVarNames` literals to the canonical role enum used by
+ * `_shared/stripeMode.ts`. ORCH-1056 routes blueprint-client key reads
+ * through `resolveStripeKey(role)` so they pick up the mode-suffixed
+ * env vars (`STRIPE_RAK_{ROLE}_{TEST|LIVE}`) instead of the unsuffixed
+ * legacy secrets. The literal `envVarNames: ["STRIPE_RAK_ONBOARD"]` is
+ * preserved as a stable handle for the ORCH-0954 strict-grep gate.
+ */
+const ENV_VAR_TO_ROLE: Record<string, StripeRole> = {
+  STRIPE_RAK_ONBOARD: "ONBOARD",
+  STRIPE_RAK_WEBHOOK: "WEBHOOK",
+  STRIPE_RAK_REFRESH_STATUS: "REFRESH_STATUS",
+  STRIPE_RAK_DETACH: "DETACH",
+  STRIPE_RAK_BALANCES: "BALANCES",
+  STRIPE_RAK_KYC_REMINDER: "KYC_REMINDER",
+  STRIPE_RAK_TICKET_CHECKOUT: "TICKET_CHECKOUT",
+  STRIPE_RAK_TICKET_REFUND: "TICKET_REFUND",
+  STRIPE_RAK_TAX_DASHBOARD: "TAX_DASHBOARD",
+};
 
 export const STRIPE_BLUEPRINT_API_VERSION = "2026-04-22.preview" as const;
 
@@ -78,8 +99,20 @@ export interface StripeAccountSession {
   account: string;
 }
 
-function resolveStripeKey(envVarNames: readonly string[]): string {
+/**
+ * ORCH-1056: legacy `envVarNames` literals (e.g. `["STRIPE_RAK_ONBOARD"]`)
+ * are translated to the canonical `StripeRole` and resolved through
+ * `_shared/stripeMode.ts` so the key is mode-routed
+ * (`STRIPE_RAK_{ROLE}_{TEST|LIVE}`). If no entry maps to a known role we
+ * fall back to the historic direct-env behavior — preserves operability
+ * for any externally-passed env name during migration windows.
+ */
+function resolveBlueprintStripeKey(envVarNames: readonly string[]): string {
   for (const envVarName of envVarNames) {
+    const role = ENV_VAR_TO_ROLE[envVarName];
+    if (role !== undefined) {
+      return resolveStripeKey(role);
+    }
     const value = Deno.env.get(envVarName);
     if (value && value.trim().length > 0) {
       return value;
@@ -150,7 +183,7 @@ function toStripeFormUrlEncoded(input: unknown, prefix = ""): string {
 export async function stripeBlueprintRequest<T>(
   options: StripeBlueprintRequestOptions,
 ): Promise<T> {
-  const key = resolveStripeKey(options.envVarNames);
+  const key = resolveBlueprintStripeKey(options.envVarNames);
   // ORCH-1052 hotfix — Stripe v1 endpoints require form-urlencoded; v2
   // accept (and prefer) JSON. Branch on path prefix instead of hard-coding
   // JSON for every blueprint call.

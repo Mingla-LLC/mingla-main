@@ -27,6 +27,7 @@ import { Icon } from "./ui/Icon";
 import { useFriends, Friend as UseFriend } from "../hooks/useFriends";
 import { useAppStore } from "../store/appStore";
 import { messagingService, DirectMessage, MentionEntry, CardTagEntry } from "../services/messagingService";
+import type { CollabDeadEndBannerPayload } from "../services/collabDeadEndBannerService";
 import { blockService, BlockReason } from "../services/blockService";
 import { muteService } from "../services/muteService";
 import { reportService, ReportReason } from "../services/reportService";
@@ -1564,6 +1565,14 @@ function ConnectionsPageRefactored({
       isRead: msg.is_read ?? false,
       replyToId: msg.reply_to_id ?? undefined,
       isSystem: msg.isSystem,
+      // ORCH-1058B: surface the structured collab dead-end payload so the
+      // renderer draws chips + a tappable button FROM DATA. Only a
+      // `collab_dead_end` card_payload qualifies; every other system row (e.g.
+      // ORCH-0908 card messages) leaves this undefined and renders unchanged.
+      systemPayload:
+        msg.card_payload && (msg.card_payload as { kind?: string }).kind === 'collab_dead_end'
+          ? (msg.card_payload as unknown as CollabDeadEndBannerPayload)
+          : undefined,
     }),
     []
   );

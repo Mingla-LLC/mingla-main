@@ -6,10 +6,27 @@
  *
  * The PARENT screen wraps this in a KeyboardAvoidingView OR pads the bottom
  * by the keyboard height — see AriChatScreen.
+ *
+ * ORCH-1057 — Send button redesign ("Ember Send", design spec A1):
+ * lucide ArrowUp on a warm flame→ember radial circle that rhymes with the
+ * Ari orb. iOS-only ember glow; Android opaque + overflow:hidden + no
+ * elevation per ANDROID_GLASS_USES_OPAQUE_FALLBACK. Send-moment scale spring
+ * + glow pulse gated behind useReducedMotion().
  */
 
 import React, { useState } from "react";
-import { Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
+import Svg, { Circle, Defs, RadialGradient, Stop } from "react-native-svg";
+import Animated, {
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withSequence,
+  withSpring,
+  withTiming,
+} from "react-native-reanimated";
+import { ArrowUp } from "lucide-react-native";
+import * as Haptics from "expo-haptics";
 
 import {
   ariPalette,
@@ -36,12 +53,47 @@ export const InputBar: React.FC<InputBarProps> = ({
   onShowSuggestions,
 }) => {
   const [text, setText] = useState("");
+  const reduceMotion = useReducedMotion();
 
   const canSend = text.trim().length > 0 && !disabled;
+
+  // Send-moment micro-interaction (A1 "ember flicker + lift").
+  const sendScale = useSharedValue(1);
+  const glowOpacity = useSharedValue(0.4);
+
+  // Scale transform on the circle + iOS-only glow pulse via shadowOpacity
+  // (Android ignores shadow* — no-op there, per the opaque-glass policy).
+  const sendAnimStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: sendScale.value }],
+    ...(Platform.OS === "ios" ? { shadowOpacity: glowOpacity.value } : {}),
+  }));
 
   const handleSend = (): void => {
     const t = text.trim();
     if (!t) return;
+
+    if (reduceMotion) {
+      // Reduced motion: simple dim → restore, no spring/flicker.
+      sendScale.value = withSequence(
+        withTiming(0.92, { duration: 80 }),
+        withTiming(1, { duration: 80 }),
+      );
+    } else {
+      // Press-down → ember flicker + lift spring.
+      sendScale.value = withSequence(
+        withTiming(0.92, { duration: 80 }),
+        withSpring(1, { damping: 14, stiffness: 220, mass: 0.7 }),
+      );
+      if (Platform.OS === "ios") {
+        glowOpacity.value = withSequence(
+          withTiming(0.7, { duration: 100 }),
+          withTiming(0.4, { duration: 100 }),
+        );
+      }
+    }
+
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
+
     onSend(t);
     setText("");
   };
@@ -80,15 +132,42 @@ export const InputBar: React.FC<InputBarProps> = ({
         onPress={handleSend}
         disabled={!canSend}
         style={({ pressed }) => [
-          styles.sendBtn,
-          !canSend && styles.btnDisabled,
-          pressed && canSend && styles.btnPressed,
+          pressed && canSend && reduceMotion && styles.btnPressed,
         ]}
         accessibilityRole="button"
         accessibilityLabel="Send message to Ari"
         accessibilityState={{ disabled: !canSend }}
+        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
       >
-        <View style={styles.sendArrow} />
+        <Animated.View
+          style={[styles.sendBtn, !canSend && styles.btnDisabled, sendAnimStyle]}
+        >
+          <Svg
+            width={38}
+            height={38}
+            viewBox="0 0 100 100"
+            style={styles.sendFill}
+          >
+            <Defs>
+              {/* Warm radial echoing the Ari orb — lit from above, ember bottom. */}
+              <RadialGradient
+                id="ari-send-fill"
+                cx="50"
+                cy="36"
+                rx="60"
+                ry="60"
+                fx="50"
+                fy="32"
+                gradientUnits="userSpaceOnUse"
+              >
+                <Stop offset="0%" stopColor={ariPalette.flame} stopOpacity="1" />
+                <Stop offset="100%" stopColor={ariPalette.ember} stopOpacity="1" />
+              </RadialGradient>
+            </Defs>
+            <Circle cx="50" cy="50" r="50" fill="url(#ari-send-fill)" />
+          </Svg>
+          <ArrowUp size={20} color="#ffffff" strokeWidth={2.5} />
+        </Animated.View>
       </Pressable>
     </View>
   );
@@ -117,16 +196,33 @@ const styles = StyleSheet.create({
     maxHeight: 120,
   },
   sendBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: ariPalette.flame,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: ariPalette.flame,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.35,
-    shadowRadius: 6,
+    ...Platform.select({
+      // iOS-only ember glow (purposeful depth, echoes orb halo). shadowOpacity
+      // is animated on send; this is the base. iOS shadow renders outside the
+      // bounds, so we do NOT clip with overflow on iOS.
+      ios: {
+        shadowColor: ariPalette.ember,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.4,
+        shadowRadius: 7,
+      },
+      // Android: NO elevation/shadow (draws a hard rectangle through rounded
+      // fills). Clip the SVG fill to the round shape (ANDROID_GLASS_USES_OPAQUE_FALLBACK).
+      default: {
+        overflow: "hidden",
+      },
+    }),
+  },
+  // The SVG radial fill sits behind the glyph, filling the circle.
+  sendFill: {
+    position: "absolute",
+    top: 0,
+    left: 0,
   },
   suggestBtn: {
     width: 32,
@@ -158,18 +254,6 @@ const styles = StyleSheet.create({
   },
   btnPressed: {
     opacity: 0.8,
-  },
-  // Simple upward-pointing triangle as the send icon (no extra icon dep needed)
-  sendArrow: {
-    width: 0,
-    height: 0,
-    borderLeftWidth: 7,
-    borderRightWidth: 7,
-    borderBottomWidth: 11,
-    borderLeftColor: "transparent",
-    borderRightColor: "transparent",
-    borderBottomColor: "#ffffff",
-    marginBottom: 2,
   },
 });
 

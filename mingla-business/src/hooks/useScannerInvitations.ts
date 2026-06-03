@@ -2,7 +2,7 @@
  * useScannerInvitations / mutations (ORCH-1051).
  *
  * React Query layer for the scanner-team invite flow. Replaces the
- * [TRANSITIONAL] zustand-only reads. Const #5: server state lives in
+ * [TRANSITIONAL] zustand-only reads (exit condition: ORCH-1051 — now React Query). Const #5: server state lives in
  * React Query, never Zustand.
  *
  * Cache invalidation rules:

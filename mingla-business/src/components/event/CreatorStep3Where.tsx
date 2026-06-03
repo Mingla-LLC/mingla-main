@@ -29,8 +29,13 @@ import {
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
-import { AddressAutocompleteInput } from "./AddressAutocompleteInput";
-import type { PlaceDetails } from "../../services/googlePlacesService";
+// ORCH-1047: the event Where step now uses the Mapbox address autocomplete
+// (META-ORCH-1059's mapbox-geocode edge fn + MapboxAddressInput) — the legacy
+// Google Places path was REQUEST_DENIED, leaving an empty suggestions dropdown.
+// MapboxAddressInput is a drop-in for AddressAutocompleteInput (same props +
+// the same PlaceDetails boundary: formattedAddress / city / location).
+import { MapboxAddressInput } from "../location/MapboxAddressInput";
+import type { PlaceDetails } from "../../services/mapboxGeocodeService";
 
 import { errorForKey, type StepBodyProps } from "./types";
 
@@ -74,7 +79,7 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
               from the suggestions." */}
           <View style={styles.field}>
             <Text style={styles.fieldLabel}>Address</Text>
-            <AddressAutocompleteInput
+            <MapboxAddressInput
               value={draft.address ?? ""}
               onChangeText={(v) => updateDraft({ address: v, city: null, locationGeo: null })}
               onPick={(details: PlaceDetails): void => {

@@ -2,7 +2,7 @@
  * brandInvitationsService — backend contract for the brand-team invite flow
  * (ORCH-1050).
  *
- * Replaces the [TRANSITIONAL] local-Zustand-only flow with real Supabase
+ * Replaces the [TRANSITIONAL] local-Zustand-only flow (exit condition: ORCH-1050) with real Supabase
  * persistence + Resend email + ownership-transfer RPC. The store now lives
  * only as an optimistic-UI cache between "Invite tapped" and "edge fn
  * returned"; canonical state is read from public.brand_invitations and

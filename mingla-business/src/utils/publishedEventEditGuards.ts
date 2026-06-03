@@ -80,6 +80,23 @@ export const validateLiveEventFieldUpdate = (
     };
   }
 
+  // Buyer protection: a TIME / timezone change (door / start / end) on a sold
+  // event is just as material to ticket holders as a date move — the event they
+  // paid for is moving — so it must pass through the same "refund first" process
+  // rather than saving silently. Date-DAY moves are already caught by the
+  // droppedDates block above; this closes the time-of-day exception.
+  const timeChanged =
+    (patch.doorsOpen !== undefined && patch.doorsOpen !== event.doorsOpen) ||
+    (patch.endsAt !== undefined && patch.endsAt !== event.endsAt) ||
+    (patch.timezone !== undefined && patch.timezone !== event.timezone);
+  if (timeChanged && soldCountForEvent > 0) {
+    return {
+      ok: false,
+      reason: "time_change_with_sales",
+      affectedOrderCount: soldCountForEvent,
+    };
+  }
+
   if (patch.tickets !== undefined) {
     const oldById = new Map(event.tickets.map((t) => [t.id, t]));
     const newIds = new Set(patch.tickets.map((t) => t.id));

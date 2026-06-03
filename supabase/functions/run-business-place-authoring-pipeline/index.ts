@@ -379,6 +379,18 @@ export function businessGateReasons(place: Record<string, unknown>): string[] {
   return count < GALLERY_MIN ? [`GALLERY_MIN:${count}`] : [];
 }
 
+// META-ORCH-1062 Phase 3 (I-NO-CLAIM-DEMOTION + I-NET-NEW-HOLD): the prior-
+// state-preserving is_servable decision for the Tier-2 confirm step. A net-new
+// business-authored row enters with is_servable=false and stays false (held off
+// the deck until admin approve). A CLAIM of an already-live place (prior true)
+// is NEVER demoted by the confirm — preserve the prior true. Pure + exported so
+// the regression test exercises the exact rule.
+export function nextIsServableForConfirm(
+  priorIsServable: boolean | null | undefined,
+): boolean {
+  return priorIsServable === true;
+}
+
 // WS6: map the Mingla price tiers (chill/comfy/bougie/lavish — the consumer deck
 // taxonomy) to Google price levels. The deck DISPLAYS price_level, so we persist
 // the highest selected tier's level alongside the price_tiers array.
@@ -1258,6 +1270,13 @@ async function handleTier2(
     ? coachingForReasons(["CONFIRM:ai_outputs"])
     : coachingForReasons(reasons);
 
+  // META-ORCH-1062 Phase 3 (I-NO-CLAIM-DEMOTION): the Tier-2 AI step must not
+  // strip an already-live claim's servability either. Preserve a prior true;
+  // net-new (prior false) stays false. Same rule as confirm_ai_outputs.
+  const tier2NextIsServable = nextIsServableForConfirm(
+    (place as { is_servable?: boolean | null }).is_servable,
+  );
+
   const { error: updateErr } = await client
     .from("place_pool")
     .update({
@@ -1266,7 +1285,7 @@ async function handleTier2(
       raw_google_data: crossValidation.raw_google_data,
       business_authoring_inputs: mergedInputs,
       business_authoring_status: nextStatus,
-      is_servable: false,
+      is_servable: tier2NextIsServable,
       bouncer_reason: reasons.join(",") || null,
       bouncer_validated_at: evaluatedAt,
       website: bouncerPlace.website,
@@ -1360,17 +1379,29 @@ async function handleConfirmAiOutputs(
     galleryUrls(place as Record<string, unknown>),
   );
 
+  // META-ORCH-1062 Phase 3 (I-NO-CLAIM-DEMOTION + I-NET-NEW-HOLD): never strip
+  // an already-live claim. A net-new business-authored row is inserted with
+  // is_servable=false and stays held off-deck until admin approve (Phase 4
+  // flips it + runs the scorer). But a CLAIM of a place that was ALREADY
+  // is_servable=true (e.g. a live Google-seeded place) must NOT be demoted by
+  // the Tier-2 confirm — that would silently remove a live venue from the deck
+  // with no restore path. So preserve a prior true; only default-false for rows
+  // that were not already servable. The bouncer verdict still gates
+  // business_authoring_status (deck_eligible vs needs_fix) unchanged above.
+  const nextIsServable = nextIsServableForConfirm(
+    (place as { is_servable?: boolean | null }).is_servable,
+  );
+
   const { error: updateErr } = await client
     .from("place_pool")
     .update({
       business_authoring_inputs: mergedInputs,
       business_authoring_status: nextStatus,
       generative_summary: salesBio,
-      // WS7 hold-until-verified: a self-listed venue is NOT live on submit. The
-      // listing is prepared (deck_eligible = quality-ready) but is_servable stays
-      // false until an admin approves the claim (admin-review-venue-claim flips
-      // is_servable=true + runs the scorer → place_scores → appears in the deck).
-      is_servable: false,
+      // META-ORCH-1062 Phase 3: prior-state-preserving. Net-new (prior false)
+      // stays false (hold-until-admin); an already-servable claim (prior true)
+      // stays true (no demotion). See nextIsServable above.
+      is_servable: nextIsServable,
       bouncer_reason: reasons.join(",") || null,
       bouncer_validated_at: new Date().toISOString(),
       website: bouncerPlace.website,

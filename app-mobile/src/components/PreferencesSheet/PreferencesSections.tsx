@@ -141,6 +141,11 @@ const CATEGORY_DESCRIPTION_KEYS: Record<string, string> = {
   movies_theatre: "category_descriptions.movies_theatre", // [TRANSITIONAL]
   creative_arts: "category_descriptions.creative_arts",
   play: "category_descriptions.play",
+  // ORCH-1062 Part 2: vibe-category tap-helper microcopy so the new pills show
+  // the same helper row as every other category.
+  romantic: "category_descriptions.romantic",
+  lively: "category_descriptions.lively",
+  scenic: "category_descriptions.scenic",
 };
 
 /**
