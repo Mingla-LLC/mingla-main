@@ -167,7 +167,31 @@ export const AriChatScreen: React.FC = () => {
 
       <View style={styles.kav}>
         {noMessages ? (
-          <EmptyState />
+          <>
+            {/* Hero lives in an absolute overlay so the composer rising with the
+                keyboard can NOT squeeze the flex column and re-center (jump) the
+                orb. Its paddingBottom keeps the hero above the resting composer
+                and is keyboard-independent, so it stays put when the keyboard
+                opens. Tapping anywhere dismisses the keyboard — the only escape
+                on a multiline composer where Return inserts a newline. */}
+            <Pressable
+              style={[
+                styles.emptyOverlay,
+                {
+                  paddingBottom:
+                    Math.max(insets.bottom, spacing.md) +
+                    BOTTOM_NAV_CLEARANCE_PX +
+                    60,
+                },
+              ]}
+              onPress={() => Keyboard.dismiss()}
+              accessibilityRole="button"
+              accessibilityLabel="Dismiss keyboard"
+            >
+              <EmptyState />
+            </Pressable>
+            <View style={styles.flexSpacer} pointerEvents="none" />
+          </>
         ) : (
           <MessageList
             messages={chat.messages}
@@ -270,6 +294,14 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   kav: {
+    flex: 1,
+  },
+  emptyOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  flexSpacer: {
     flex: 1,
   },
   inputWrap: {
