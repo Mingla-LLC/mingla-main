@@ -22,10 +22,14 @@ import {
   listPendingClaims,
   listRejectedClaims,
   listVerifiedClaims,
-  overrideClaimScore,
   reviewClaim,
   tweakClaimFields,
 } from "../services/adminClaimsService";
+// ORCH-1066 — the place-keyed tuner supersedes the brand-keyed overrideClaimScore
+// for set/pin (richer + works from zero). overrideClaimScore stays in the service
+// for the approval score_vetoes channel but the modal no longer calls it.
+import { ScoreTunerPanel } from "../components/ScoreTunerPanel";
+import { getActiveSignals } from "../services/deckTunerService";
 import { collectClaimPhotos } from "../lib/claimPhotos";
 
 const CAT_LABELS = {
@@ -89,12 +93,9 @@ export function ClaimsPage() {
   const [tweakAddress, setTweakAddress] = useState("");
   const [tweakCategory, setTweakCategory] = useState("");
   const [tweakPriceLevel, setTweakPriceLevel] = useState("");
-  // Score override draft per signal: { [signalId]: { score, reason } }.
-  // META-ORCH-1062 BIDIRECTIONAL override (Q2: admins may raise OR lower) — this
-  // SUPERSEDES the #299 WS7 reduce-only `vetoes` state, which was removed in the
-  // merge. admin-review-venue-claim still accepts score_vetoes for backward-compat,
-  // but approve no longer depends on it (go-live is the Phase 4 servable→scorer path).
-  const [scoreDraft, setScoreDraft] = useState({});
+  // ORCH-1066 — active-signal catalog (the 16 dials), fetched once + cached, so
+  // the tuner can show a row for every signal even when the place has 0 scores.
+  const [activeSignals, setActiveSignals] = useState([]);
   // ORCH-1064 — feedback authoring draft: staged items + the per-row composer +
   // the optional overall message. Cleared on open/close/submit.
   const [feedbackItems, setFeedbackItems] = useState([]);
@@ -133,6 +134,22 @@ export function ClaimsPage() {
     void load();
   }, [load]);
 
+  // ORCH-1066 — fetch the active-signal catalog once for the tuner dials.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const sigs = await getActiveSignals();
+        if (!cancelled) setActiveSignals(sigs);
+      } catch {
+        if (!cancelled) setActiveSignals([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const loadBundle = useCallback(async (brandId) => {
     setBundleLoading(true);
     setBundleError(null);
@@ -153,7 +170,6 @@ export function ClaimsPage() {
     setBundle(null);
     setBundleError(null);
     setLightboxIndex(null);
-    setScoreDraft({});
     setFeedbackItems([]);
     setFeedbackCat("photos");
     setFeedbackNote("");
@@ -189,7 +205,6 @@ export function ClaimsPage() {
     setBundle(null);
     setBundleError(null);
     setLightboxIndex(null);
-    setScoreDraft({});
     setFeedbackItems([]);
     setFeedbackCat("photos");
     setFeedbackNote("");
@@ -355,38 +370,10 @@ export function ClaimsPage() {
     }
   };
 
-  // META-ORCH-1062 Q2 — apply a bidirectional score override for one signal.
-  const submitScoreOverride = async (signalId) => {
-    if (!detail) return;
-    const draft = scoreDraft[signalId] ?? {};
-    const score = Number(draft.score);
-    if (!Number.isFinite(score) || score < 0 || score > 200) {
-      addToast({
-        variant: "warning",
-        title: "Score must be 0–200",
-      });
-      return;
-    }
-    setActing(true);
-    try {
-      const res = await overrideClaimScore(detail.id, signalId, score, draft.reason);
-      await logAdminAction("claim.score_override", "venue_claim", detail.id, {
-        signal_id: signalId,
-        score,
-      });
-      const dir = res?.result?.direction ?? "updated";
-      addToast({ variant: "info", title: `Score ${dir}`, description: `${signalId} → ${score}` });
-      await loadBundle(detail.id);
-    } catch (e) {
-      addToast({
-        variant: "error",
-        title: "Couldn't override score",
-        description: e?.message ?? String(e),
-      });
-    } finally {
-      setActing(false);
-    }
-  };
+  // ORCH-1066 — score editing moved to <ScoreTunerPanel> (place-keyed set/pin,
+  // works from zero, with live preview + projected rank). The brand-keyed
+  // overrideClaimScore + its submitScoreOverride handler were removed here; the
+  // RPC remains in the codebase for the approval score_vetoes channel (SC-8).
 
   const phoneInfo = detail ? resolveClaimDisplayPhone(detail) : null;
   const tel = phoneInfo ? formatPhoneHref(phoneInfo.phone) : null;
@@ -814,65 +801,42 @@ export function ClaimsPage() {
                     </Button>
                   </div>
 
-                  {scores.length > 0 ? (
-                    <div className="space-y-2">
-                      <div className="text-xs text-[var(--color-text-secondary)]">
-                        Score override (0–200; raises or lowers deck rank)
-                      </div>
-                      {scores.map((s) => (
-                        <div key={s.signal_id} className="flex flex-wrap items-end gap-2">
-                          <div className="text-xs">
-                            <div className="text-[var(--color-text-tertiary)]">
-                              {s.signal_id} (now {Math.round(s.score)})
-                            </div>
-                            <input
-                              type="number"
-                              min={0}
-                              max={200}
-                              value={scoreDraft[s.signal_id]?.score ?? ""}
-                              placeholder={String(Math.round(s.score))}
-                              onChange={(e) =>
-                                setScoreDraft((d) => ({
-                                  ...d,
-                                  [s.signal_id]: {
-                                    ...(d[s.signal_id] ?? {}),
-                                    score: e.target.value,
-                                  },
-                                }))
-                              }
-                              disabled={acting}
-                              className="mt-1 w-24 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-sm text-[var(--color-text-primary)]"
-                            />
-                          </div>
-                          <input
-                            type="text"
-                            placeholder="reason"
-                            value={scoreDraft[s.signal_id]?.reason ?? ""}
-                            onChange={(e) =>
-                              setScoreDraft((d) => ({
-                                ...d,
-                                [s.signal_id]: {
-                                  ...(d[s.signal_id] ?? {}),
-                                  reason: e.target.value,
-                                },
-                              }))
-                            }
-                            disabled={acting}
-                            className="flex-1 min-w-[8rem] rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-sm text-[var(--color-text-primary)]"
-                          />
-                          <Button
-                            variant="secondary"
-                            onClick={() => void submitScoreOverride(s.signal_id)}
-                            disabled={acting}
-                          >
-                            Apply
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
+                  {/* ORCH-1066 — deck score tuner: seed (from zero) + per-signal
+                      set/pin + live card preview + projected rank. Replaces the
+                      dead-end "available after approve" copy + the brand-keyed
+                      override grid. projected=true: the venue is pending/non-servable
+                      so rank is a projection ("goes live when you approve"). */}
+                  {detail.place_pool_id ? (
+                    <ScoreTunerPanel
+                      placePoolId={detail.place_pool_id}
+                      placeData={{
+                        id: detail.place_pool_id,
+                        name: detail.name,
+                        stored_photo_urls: pp?.stored_photo_urls ?? null,
+                        rating: pp?.rating ?? null,
+                        price_level: pp?.price_level ?? null,
+                        price_tiers: pp?.price_tiers ?? null,
+                        generative_summary: pp?.generative_summary ?? null,
+                        primary_type: null,
+                        types: null,
+                        lat: detail.lat ?? null,
+                        lng: detail.lng ?? null,
+                        is_servable: pp?.is_servable ?? false,
+                        is_active: pp?.is_active ?? true,
+                      }}
+                      scores={scores}
+                      signals={activeSignals}
+                      projected
+                      density="modal"
+                      loading={bundleLoading && scores.length === 0}
+                      error={bundleError}
+                      onAfterWrite={() => loadBundle(detail.id)}
+                      onRetry={() => loadBundle(detail.id)}
+                      addToast={addToast}
+                    />
                   ) : (
                     <p className="text-xs text-[var(--color-text-tertiary)]">
-                      Score override available after the venue is scored (on approve).
+                      No linked place — scoring is unavailable for this claim.
                     </p>
                   )}
                 </div>

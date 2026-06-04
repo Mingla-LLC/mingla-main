@@ -8,7 +8,7 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "node --test src/lib/__tests__/claimsPhone.test.js"
+    "test": "node --test src/lib/__tests__/claimsPhone.test.js src/lib/__tests__/deckCardPreviewRules.test.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.98.0",

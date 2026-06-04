@@ -197,6 +197,93 @@ export async function addClaimFeedback(brandId, items, overallMessage) {
 }
 
 /**
+ * ORCH-1066 — seed all 16 active signals at neutral 100 for a place so an admin
+ * can tune a non-servable pending venue from zero ("Score this venue now").
+ * Idempotent (ON CONFLICT DO NOTHING server-side). Routed through the edge
+ * wrapper (action:"score_place_preview") so the seed is admin-gated + audit-logged.
+ * @param {string} placePoolId
+ * @returns {Promise<{ ok: boolean, result: { seeded_count: number, existing_count: number, total_signals: number } }>}
+ */
+export async function scorePlacePreview(placePoolId) {
+  const { data, error } = await supabase.functions.invoke(
+    "admin-review-venue-claim",
+    { body: { action: "score_place_preview", place_pool_id: placePoolId } },
+  );
+  if (error) throw error;
+  if (data?.error) throw new Error(data.error);
+  return data;
+}
+
+/**
+ * ORCH-1066 — place-keyed manual score dial (works for ANY place_pool row,
+ * servable or pending). UPSERTs place_scores with the _admin_set sticky marker.
+ * @param {string} placePoolId
+ * @param {string} signalId
+ * @param {number} score 0–200
+ * @param {string|null} [reason]
+ */
+export async function setPlaceSignalScore(placePoolId, signalId, score, reason) {
+  const { data, error } = await supabase.functions.invoke(
+    "admin-review-venue-claim",
+    {
+      body: {
+        action: "set_place_score",
+        place_pool_id: placePoolId,
+        signal_id: signalId,
+        score,
+        reason: reason ?? null,
+      },
+    },
+  );
+  if (error) throw error;
+  if (data?.error) throw new Error(data.error);
+  return data;
+}
+
+/**
+ * ORCH-1066 — pin a place's signal score just above the current local #1 within
+ * radius (computed LEAST(200, local_max+1); 200 if the radius is empty). Stamps
+ * the _admin_pin sticky marker.
+ * @param {string} placePoolId
+ * @param {string} signalId
+ * @param {number} [radiusM] default 16000
+ */
+export async function pinPlaceToTop(placePoolId, signalId, radiusM = 16000) {
+  const { data, error } = await supabase.functions.invoke(
+    "admin-review-venue-claim",
+    {
+      body: {
+        action: "pin_place_score",
+        place_pool_id: placePoolId,
+        signal_id: signalId,
+        radius_m: radiusM,
+      },
+    },
+  );
+  if (error) throw error;
+  if (data?.error) throw new Error(data.error);
+  return data;
+}
+
+/**
+ * ORCH-1066 — read-only projected deck rank for a (place, signal, radius). Direct
+ * SECURITY DEFINER RPC (read-only, no audit needed). Returns
+ * { rank, total, score, top_score, is_servable, is_active, projected, gated_reason }.
+ * @param {string} placePoolId
+ * @param {string} signalId
+ * @param {number} [radiusM] default 16000
+ */
+export async function getPlaceDeckRank(placePoolId, signalId, radiusM = 16000) {
+  const { data, error } = await supabase.rpc("admin_place_deck_rank", {
+    p_place_pool_id: placePoolId,
+    p_signal_id: signalId,
+    p_radius_m: radiusM,
+  });
+  if (error) throw error;
+  return data ?? null;
+}
+
+/**
  * Group pending claims by google_place_id for duplicate warnings.
  * @param {Array<{ id: string, google_place_id?: string | null }>} rows
  */
