@@ -1455,6 +1455,17 @@ function checkNoNewBackendFiles() {
     // backend test file → allowlisted in the SAME commit (COMMS-0002).
     "supabase/functions/discover-cards/__tests__/orch1065_experience_supply_adversarial.test.ts",
   ];
+  // ORCH-1071 [experiences-on-curated-path]: front-loads brand experiences on the
+  // "See curated experiences" path (generate-curated-experiences/index.ts) via the
+  // EXISTING pg_eligible_experiences_for_deck RPC (ORCH-1065/1070) — NO new migration,
+  // NO new edge fn. generate-curated-experiences/index.ts is a MODIFY already
+  // allowlisted under ORCH_0902_0903_BACKEND_ALLOWLIST; re-listed here for clarity
+  // plus the new backend regression test. C7 is scoped to ORCH-0863 marketing; these
+  // are curated-deck backend touches. Per COMMS-0002 (same commit as the change).
+  const ORCH_1071_BACKEND_ALLOWLIST = [
+    "supabase/functions/generate-curated-experiences/index.ts",
+    "supabase/functions/generate-curated-experiences/__tests__/orch_1071_experiences_on_curated_path.test.ts",
+  ];
   // ORCH-1064 [admin↔business venue-listing feedback loop]: one NEW migration
   // (venue_claim_feedback table + RLS + view + 3 RPCs + admin bundle extension)
   // plus its backend regression tests. The edge fn (admin-review-venue-claim/
@@ -1713,6 +1724,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_1061_BACKEND_ALLOWLIST,
     ...ORCH_1062_BACKEND_ALLOWLIST,
     ...ORCH_1065_BACKEND_ALLOWLIST,
+    ...ORCH_1071_BACKEND_ALLOWLIST,
     ...ORCH_1064_BACKEND_ALLOWLIST,
     ...ORCH_1067_BACKEND_ALLOWLIST,
     // Schedule-edit buyer protection + "Refund all & proceed" (separate PR;

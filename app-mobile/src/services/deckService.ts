@@ -716,7 +716,20 @@ class DeckService {
             if (response.cards.length === 0 && response.summary) {
               pillEmptyReasons.set(pill.id, response.summary.emptyReason);
             }
-            return response.cards.map(curatedToRecommendation);
+            // ORCH-1071 [experiences-on-curated-path]: generate-curated-experiences
+            // now front-loads brand-authored experience envelopes (cardType:'experience')
+            // ahead of the AI cardType:'curated' cards for the 4 brand intents. Route
+            // those through the SAME brand-experience converter ORCH-1065 uses on the
+            // places path (experienceCardToRecommendation) instead of the AI-curated
+            // converter — keeping them FRONT-of-array (server already front-loaded).
+            // Cross-path dedupe (an experience that also arrives via discover-cards
+            // when "popular options" is also on) is handled by the final interleave's
+            // `seen` Set keyed by id, so each experience renders once, not twice.
+            return response.cards.map((card) =>
+              isExperiencePayload(card)
+                ? experienceCardToRecommendation(card)
+                : curatedToRecommendation(card),
+            );
           } catch (err) {
             console.warn(`[DeckService] Curated pill ${pill.id} failed:`, err);
             // ORCH-0677 RC-2: caught throws are treated as pipeline errors so
