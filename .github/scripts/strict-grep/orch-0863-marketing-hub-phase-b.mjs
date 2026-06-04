@@ -1495,6 +1495,14 @@ function checkNoNewBackendFiles() {
     "supabase/functions/_shared/__tests__/bouncer.test.ts",
     "supabase/functions/_shared/__tests__/bouncer_orch1067_adversarial.test.ts",
   ];
+  // ORCH-1072 [venue-card brand experiences section]: single additive RPC
+  // (pg_brand_experiences_for_place) that resolves a venue's claimed-brand
+  // published experiences for the consumer expanded venue card. C7 is scoped to
+  // ORCH-0863 marketing; this is a Discover/venue backend touch. Per COMMS-0002.
+  // (ORCH-1071 was already allocated to a separate effort; this work is 1072.)
+  const ORCH_1072_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260906000000_orch_1072_brand_experiences_for_place.sql",
+  ];
   // ORCH-1032 [Intelligence pipeline concurrency cap + chunked enqueue]:
   // adds the additive 'queued'-status migration (status CHECK widen + per-city
   // unique active index widen + tg_kick_pending_trial_runs promotion built on
@@ -1727,6 +1735,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_1071_BACKEND_ALLOWLIST,
     ...ORCH_1064_BACKEND_ALLOWLIST,
     ...ORCH_1067_BACKEND_ALLOWLIST,
+    ...ORCH_1072_BACKEND_ALLOWLIST,
     // Schedule-edit buyer protection + "Refund all & proceed" (separate PR;
     // shares the ORCH-1047 work id used in code). New migration recording the
     // already-live business_patch_event_when change — not ORCH-0863 marketing
