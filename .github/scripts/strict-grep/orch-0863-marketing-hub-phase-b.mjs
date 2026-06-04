@@ -1609,7 +1609,14 @@ function checkNoNewBackendFiles() {
     "supabase/functions/_shared/curatedStopHours.ts",
     "supabase/functions/run-business-place-authoring-pipeline/index.ts",
   ];
+  // ORCH-1069 [experience live-edit drops vibe]: one CREATE-OR-REPLACE migration
+  // fixing biz_update_live_experience to persist experience_intents on edit.
+  // No new edge fn, no new test files. Per COMMS-0002 — same commit as migration.
+  const ORCH_1069_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260906000000_orch_1069_live_edit_persists_experience_intents.sql",
+  ];
   const ALLOWLIST = [
+    ...ORCH_1069_BACKEND_ALLOWLIST,
     ...ORCH_1068_BACKEND_ALLOWLIST,
     ...ORCH_1066_BACKEND_ALLOWLIST,
     ...META_ORCH_1059_BACKEND_ALLOWLIST,
