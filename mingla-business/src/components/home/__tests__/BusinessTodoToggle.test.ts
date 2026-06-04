@@ -47,4 +47,13 @@ describe("BusinessTodoToggle contract", () => {
     expect(SRC).toContain('accessibilityRole="button"');
     expect(SRC).toContain("accessibilityLabel=");
   });
+
+  // ORCH-1064 — the "N to fix" count pill renders only when a row carries a badge
+  // (the venue-claim-feedback row), and the count is folded into the row's a11y
+  // label so screen-reader users get it without the visual pill.
+  test("renders an optional count badge folded into the row a11y label", () => {
+    expect(SRC).toContain("todo.badge !== undefined");
+    expect(SRC).toContain("<Text style={styles.badgeText}>{todo.badge}</Text>");
+    expect(SRC).toContain("`${todo.label}, ${todo.badge}`");
+  });
 });

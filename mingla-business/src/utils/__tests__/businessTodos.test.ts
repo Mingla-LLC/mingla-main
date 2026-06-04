@@ -30,6 +30,9 @@ const base: BusinessTodoInput = {
   // META-ORCH-1059 — venue-claim to-do row inputs (default: no pending claim).
   venueClaimPending: false,
   venueListingRoute: "/brand/b1/listing",
+  // ORCH-1064 — open admin-feedback escalation inputs (default: none).
+  venueClaimOpenFeedbackCount: 0,
+  venueFeedbackRoute: "/brand/b1/listing?focus=feedback",
 };
 
 const ids = (input: BusinessTodoInput): string[] =>
@@ -316,5 +319,58 @@ describe("buildBusinessTodos — venue claim under review (META-ORCH-1059)", () 
       "venue_claim_review",
       "create_offering",
     ]);
+  });
+});
+
+// ORCH-1064 — open admin-feedback escalation. When the active follow-up round
+// has OPEN items, the SAME venue_claim_review row sharpens into a punch-list
+// pointer: "Updates requested" + an "N to fix" badge, deep-linking the listing
+// with the feedback sheet focused. Plain pending (count 0) keeps the calm copy.
+describe("buildBusinessTodos — venue-claim open feedback (ORCH-1064)", () => {
+  test("open feedback → row escalates with 'N to fix' badge + feedback deep-link", () => {
+    const todos = buildBusinessTodos({
+      ...base,
+      venueClaimPending: true,
+      venueClaimOpenFeedbackCount: 3,
+    });
+    const row = todos.find((t) => t.id === "venue_claim_review");
+    expect(row).toBeDefined();
+    expect(row?.label).toBe("Updates requested");
+    expect(row?.badge).toBe("3 to fix");
+    expect(row?.action).toEqual({
+      kind: "route",
+      route: "/brand/b1/listing?focus=feedback",
+    });
+  });
+
+  test("single open item → singular '1 to fix' badge", () => {
+    const row = buildBusinessTodos({
+      ...base,
+      venueClaimPending: true,
+      venueClaimOpenFeedbackCount: 1,
+    }).find((t) => t.id === "venue_claim_review");
+    expect(row?.badge).toBe("1 to fix");
+  });
+
+  test("pending claim with NO open feedback → calm 'under review' row, no badge", () => {
+    const row = buildBusinessTodos({
+      ...base,
+      venueClaimPending: true,
+      venueClaimOpenFeedbackCount: 0,
+    }).find((t) => t.id === "venue_claim_review");
+    expect(row).toBeDefined();
+    expect(row?.label).toBe("Venue claim under review");
+    expect(row?.badge).toBeUndefined();
+    expect(row?.action).toEqual({ kind: "route", route: "/brand/b1/listing" });
+  });
+
+  test("open feedback but claim resolved → NO row (vanish logic intact)", () => {
+    // A stale open count must never resurrect a resolved claim's row.
+    const list = ids({
+      ...base,
+      venueClaimPending: false,
+      venueClaimOpenFeedbackCount: 3,
+    });
+    expect(list).not.toContain("venue_claim_review");
   });
 });
