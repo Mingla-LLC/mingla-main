@@ -1,5 +1,5 @@
 /**
- * Paystack provider client (META-ORCH-1072 — Paystack Africa / Nigeria).
+ * Paystack provider client (META-ORCH-1076 — Paystack Africa / Nigeria).
  *
  * Mirrors the Stripe mode-resolver pattern (_shared/stripeMode.ts): one source
  * of truth for which Paystack mode the edge fns operate in, with per-mode

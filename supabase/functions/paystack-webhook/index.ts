@@ -1,5 +1,5 @@
 /**
- * paystack-webhook (META-ORCH-1072 proof slice).
+ * paystack-webhook (META-ORCH-1076 proof slice).
  *
  * Receives Paystack webhooks, verifies x-paystack-signature (HMAC-SHA512 of the
  * RAW body with the secret key), logs the event, returns 200 fast.

@@ -1,5 +1,5 @@
 /**
- * paystack-checkout-create (META-ORCH-1072 proof slice).
+ * paystack-checkout-create (META-ORCH-1076 proof slice).
  *
  * Minimal Paystack transaction initializer to prove the test-mode integration
  * end-to-end: POST { email?, amount?, currency? } -> /transaction/initialize ->
@@ -59,7 +59,7 @@ serve(async (req) => {
       reference,
       callbackUrl: (payload.callback_url as string) ?? DEFAULT_CALLBACK,
       channels: (payload.channels as string[]) ?? NG_CHANNELS,
-      metadata: { source: "meta-orch-1072-proof", ...(payload.metadata as object ?? {}) },
+      metadata: { source: "meta-orch-1076-proof", ...(payload.metadata as object ?? {}) },
       subaccount: payload.subaccount as string | undefined,
       transactionChargeSubunits: payload.transaction_charge as number | undefined,
       bearer: payload.bearer as "account" | "subaccount" | undefined,

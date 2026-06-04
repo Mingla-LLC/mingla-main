@@ -159,7 +159,7 @@ verify_jwt = true
 [functions.partner-stripe-account-session]
 verify_jwt = true
 
-# META-ORCH-1072 [Paystack Africa / Nigeria] — proof slice.
+# META-ORCH-1076 [Paystack Africa / Nigeria] — proof slice.
 # paystack-webhook MUST be verify_jwt=false (Paystack sends no Supabase JWT;
 # it is authenticated by the x-paystack-signature HMAC-SHA512 check instead).
 [functions.paystack-webhook]
