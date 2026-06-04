@@ -15,6 +15,10 @@ export type VenueClaimBannerVariant =
   | "follow_up"
   | "rejected"
   | "verified"
+  // ORCH-1073 — admin suspend/delete. `suspended` is INTERACTIVE (same to-do
+  // sheet + resubmit loop as `follow_up`); `revoked` is a static "removed" notice.
+  | "suspended"
+  | "revoked"
   | null;
 
 export function venueClaimBannerVariant(
@@ -23,6 +27,10 @@ export function venueClaimBannerVariant(
   if (row === null || row === undefined) return null;
   if (row.claim_status === "verified") return "verified";
   if (row.claim_status === "rejected") return "rejected";
+  if (row.claim_status === "revoked") return "revoked";
+  // ORCH-1073 — a suspended listing always carries a follow-up stamp + a to-do
+  // round (admin_suspend_listing), so it routes through the interactive tile.
+  if (row.claim_status === "suspended") return "suspended";
   if (row.claim_status === "pending_review") {
     if (row.claim_follow_up_at) return "follow_up";
     return "pending_review";
@@ -58,6 +66,18 @@ export function venueClaimBannerCopy(
       return {
         title: "Verified location",
         body: "Verified location ✓ — your brand has the Verified badge on your public page.",
+      };
+    case "suspended":
+      // ORCH-1073 — distinct from follow_up: an admin took the live listing down.
+      return {
+        title: "Listing suspended",
+        body:
+          "An admin suspended your listing. Tap to see what to fix, then resubmit to go back live.",
+      };
+    case "revoked":
+      return {
+        title: "Listing removed",
+        body: "Your listing was removed from Mingla. Reach out to support if you think this was a mistake.",
       };
     default:
       return null;

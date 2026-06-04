@@ -375,8 +375,23 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
   // disables the button + shows spinner; error surfaces inline + via toast.
   const [reeval, setReeval] = useState({ pending: false, error: null });
 
+  // ORCH-1073 — admin listing actions (suspend with owner message + structured
+  // to-do list / soft-delete from the pool / restore). Calls admin_suspend_listing,
+  // admin_soft_delete_listing, admin_restore_listing.
+  const [actionView, setActionView] = useState(null); // 'suspend' | 'delete' | null
+  const [actionBusy, setActionBusy] = useState(false);
+  const [suspendMsg, setSuspendMsg] = useState("");
+  const [suspendReason, setSuspendReason] = useState("");
+  const [todoItems, setTodoItems] = useState([]); // [{ category, note }]
+  const [deleteMsg, setDeleteMsg] = useState("");
+  const [deleteReason, setDeleteReason] = useState("");
+
   useEffect(() => {
     if (!open || !place) return;
+    // reset action UI whenever a new place opens
+    setActionView(null); setActionBusy(false);
+    setSuspendMsg(""); setSuspendReason(""); setTodoItems([]);
+    setDeleteMsg(""); setDeleteReason("");
     setEditForm({
       name: place.name || "",
       price_tiers: place.price_tiers?.length ? place.price_tiers : (place.price_tier ? [place.price_tier] : []),
@@ -458,6 +473,53 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
       addToast({ variant: "error", title: "Re-evaluation failed", description: msg });
       setReeval({ pending: false, error: msg });
     }
+  };
+
+  // ORCH-1073 — feedback categories mirror the DB enum in admin_suspend_listing.
+  const FEEDBACK_CATEGORIES = ["photos", "address", "hours", "category", "description", "quality", "other"];
+
+  const handleSuspend = async () => {
+    setActionBusy(true);
+    const items = todoItems
+      .filter((i) => i.note && i.note.trim())
+      .map((i) => ({ category: i.category, note: i.note.trim() }));
+    const { data, error } = await supabase.rpc("admin_suspend_listing", {
+      p_place_id: place.id,
+      p_overall_message: suspendMsg.trim() || null,
+      p_items: items,
+      p_reason: suspendReason.trim() || null,
+    });
+    if (error) { addToast({ variant: "error", title: "Suspend failed", description: error.message }); setActionBusy(false); return; }
+    addToast({
+      variant: "success", title: "Listing suspended",
+      description: data?.brand_id
+        ? `Owner notified (${data.notified}); ${data.todo_items} to-do item(s) sent.`
+        : "Taken off the deck (no claimed owner to notify).",
+    });
+    setActionBusy(false); onClose(); if (onSave) onSave();
+  };
+
+  const handleDelete = async () => {
+    setActionBusy(true);
+    const { data, error } = await supabase.rpc("admin_soft_delete_listing", {
+      p_place_id: place.id,
+      p_reason: deleteReason.trim() || null,
+      p_message: deleteMsg.trim() || null,
+    });
+    if (error) { addToast({ variant: "error", title: "Delete failed", description: error.message }); setActionBusy(false); return; }
+    addToast({
+      variant: "success", title: "Listing removed",
+      description: data?.brand_id ? `Claim revoked; owner notified (${data.notified}).` : "Removed from the pool.",
+    });
+    setActionBusy(false); onClose(); if (onSave) onSave();
+  };
+
+  const handleRestore = async () => {
+    setActionBusy(true);
+    const { error } = await supabase.rpc("admin_restore_listing", { p_place_id: place.id });
+    if (error) { addToast({ variant: "error", title: "Restore failed", description: error.message }); setActionBusy(false); return; }
+    addToast({ variant: "success", title: "Listing restored" });
+    setActionBusy(false); onClose(); if (onSave) onSave();
   };
 
   // META-ORCH-1009 Sub-D — extract the most-recent AI evaluated_at across
@@ -669,6 +731,89 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
               </div>
               <Toggle label="Active" checked={editForm.is_active} onChange={(val) => setEditForm((f) => ({ ...f, is_active: val }))} />
             </div>
+          </div>
+
+          {/* ORCH-1073 — Listing actions: suspend (off the deck + notify the owner
+              with a custom message + structured to-do list), soft-delete (remove
+              from the pool + revoke claim + notify), or restore (admin undo). */}
+          <div className="border-t border-[var(--gray-200)] pt-4">
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="text-xs font-semibold text-[var(--color-text-tertiary)] uppercase tracking-wider">Listing Actions</h4>
+              {place.deleted_at
+                ? <Badge variant="error">Removed</Badge>
+                : !place.is_active
+                  ? <Badge variant="warning">Off deck</Badge>
+                  : <Badge variant="success">Live</Badge>}
+            </div>
+
+            {place.deleted_at ? (
+              <div className="space-y-2">
+                <p className="text-xs text-[var(--color-text-secondary)]">
+                  Removed{place.deleted_reason ? ` — "${place.deleted_reason}"` : ""}. Restoring brings it back as active and re-verifies any claim.
+                </p>
+                <Button variant="secondary" loading={actionBusy} onClick={handleRestore}>Restore listing</Button>
+              </div>
+            ) : actionView === "suspend" ? (
+              <div className="space-y-2">
+                <textarea
+                  className="block w-full rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm"
+                  rows={2} value={suspendMsg}
+                  onChange={(e) => setSuspendMsg(e.target.value)}
+                  placeholder="Message to the owner — why it was suspended / what to fix (shows in their listing banner + notification)" />
+                <div className="space-y-1.5">
+                  {todoItems.map((it, idx) => (
+                    <div className="flex gap-2 items-center" key={idx}>
+                      <select
+                        className="rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-xs"
+                        value={it.category}
+                        onChange={(e) => setTodoItems((arr) => arr.map((x, i) => i === idx ? { ...x, category: e.target.value } : x))}>
+                        {FEEDBACK_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                      <input
+                        className="flex-1 rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm"
+                        value={it.note}
+                        onChange={(e) => setTodoItems((arr) => arr.map((x, i) => i === idx ? { ...x, note: e.target.value } : x))}
+                        placeholder="What needs fixing (becomes a to-do item)" />
+                      <button type="button" className="text-[var(--color-text-tertiary)] hover:text-[var(--color-error-700)] px-1"
+                        onClick={() => setTodoItems((arr) => arr.filter((_, i) => i !== idx))}>×</button>
+                    </div>
+                  ))}
+                  <button type="button" className="text-xs text-[var(--color-brand-600)] hover:underline"
+                    onClick={() => setTodoItems((arr) => [...arr, { category: "photos", note: "" }])}>+ Add to-do item</button>
+                </div>
+                <input
+                  className="block w-full rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-xs"
+                  value={suspendReason} onChange={(e) => setSuspendReason(e.target.value)}
+                  placeholder="Internal reason (audit log, not shown to owner)" />
+                <div className="flex gap-2 justify-end">
+                  <Button variant="ghost" onClick={() => setActionView(null)} disabled={actionBusy}>Cancel</Button>
+                  <Button variant="primary" loading={actionBusy} onClick={handleSuspend}>Suspend &amp; notify owner</Button>
+                </div>
+              </div>
+            ) : actionView === "delete" ? (
+              <div className="space-y-2">
+                <p className="text-xs text-[var(--color-error-700)]">
+                  Removes the venue from the pool and revokes any claim. Reversible by an admin (Restore).
+                </p>
+                <textarea
+                  className="block w-full rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm"
+                  rows={2} value={deleteMsg} onChange={(e) => setDeleteMsg(e.target.value)}
+                  placeholder="Message to the owner (optional)" />
+                <input
+                  className="block w-full rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-xs"
+                  value={deleteReason} onChange={(e) => setDeleteReason(e.target.value)}
+                  placeholder="Internal reason (audit log)" />
+                <div className="flex gap-2 justify-end">
+                  <Button variant="ghost" onClick={() => setActionView(null)} disabled={actionBusy}>Cancel</Button>
+                  <Button variant="danger" loading={actionBusy} onClick={handleDelete}>Delete from pool</Button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <Button variant="secondary" onClick={() => setActionView("suspend")}>Suspend…</Button>
+                <Button variant="danger" onClick={() => setActionView("delete")}>Delete…</Button>
+              </div>
+            )}
           </div>
 
           {/* ORCH-0646: "AI Classification Override" block removed per D-3.
@@ -1157,7 +1302,7 @@ function MapTab({ scope, registeredCity, tiles, seedingOps }) {
     if (!selectedCity) { setPlaces([]); return; }
     setMapLoading(true);
     let q = supabase.from("place_pool")
-      .select("id, name, lat, lng, rating, ai_categories, seeding_category, is_active, stored_photo_urls, is_servable")
+      .select("id, name, lat, lng, rating, ai_categories, seeding_category, is_active, stored_photo_urls, is_servable, deleted_at, deleted_reason")
       .eq("is_active", true)
       .eq("is_servable", true)
       .eq("city_id", selectedCity);
