@@ -15,9 +15,29 @@
 
 ---
 
+## 0. AMENDMENT — EXPERIENCES FRONT-LOAD (operator-approved, Seth, 2026-06-03; commit `8d3d2332b`)
+
+**Decision (operator-approved, NOT a regression):** eligible brand experiences now LEAD the consumer solo swipe deck — placed at the FRONT (index 0..n-1), ahead of the AI curated cards and singles, so the feature is easy to spot and test. This intentionally supersedes the original ceil-spread "even spread" round-robin in §3.1 of the SPEC (SPEC AMENDMENT recorded inline at the `interleaveExperiencesIntoDeck (LOCKED behavior)` line).
+
+**Code:** `interleaveExperiencesIntoDeck` now returns `[...expToPlace, ...placeCards]` (experiences first, in stable RPC order — `pg_eligible_experiences_for_deck` returns `ORDER BY next_start_at ASC NULLS LAST, published_at DESC` = soonest upcoming first, then most recently published; the place deck follows unchanged). The ceil-spread round-robin body was removed. The call signature `interleaveExperiencesIntoDeck(finalCards, experienceCards)` is unchanged, so the source-pinned T-01b stays green.
+
+**Guards preserved (only POSITION changed):** dedupe by id; exclude-self (an experience whose id collides with a place id is dropped — no double-render); additive (no place card displaced/dropped); empty-pool experiences-only `path:'pipeline'` return; COMMS-0018 bypass (NO `place_pool`/`ai_signal_scores`/`run-signal-scorer`); no-parallel-money-fn; solo-deck-only (collab `handleDeterministicV2` byte-untouched).
+
+**Tests (locked, modified under `[TEST-MOD-APPROVED ORCH-1065]` in HEAD commit body):** `discover-cards/__tests__/orch1065_experience_supply_adversarial.test.ts` — (a) executable port re-synced to the front-load algorithm; (b) `interleave-pin` flipped from ceil-spread to the `[...expToPlace, ...placeCards]` source contract (+ asserts the ceil-spread is gone); (c) the "experiences are spread / not clustered at index 0" test replaced with a "experiences lead the deck (index 0..n-1, ahead of all place cards)" front-load assertion. Added an explicit front-load behavioral assertion (first cards are the experiences in RPC order).
+
+**Full suite:** 53 passed / 0 failed (`deno test --allow-read --no-check` over all 7 ORCH-1065 test files).
+
+**Fails-on-revert (re-proven for this amendment):**
+- *Front-load contract:* temporarily reverting BOTH the shipped helper (index.ts) and the test's executable port to the old ceil-spread → `interleave-pin` FAILED + `front-load` FAILED (`FAILED | 13 passed | 2 failed`). Restored → green.
+- *COMMS-0018 bypass:* injecting `const _x = "place_pool";` into the supply block → `T-09-guard` FAILED + `T-09+` FAILED (`21 passed | 2 failed`). Removed → green.
+
+**Gates:** `deno check supabase/functions/discover-cards/index.ts` exit 0; strict-grep C7 (`orch-0863-marketing-hub-phase-b.mjs`) exit 0 (18 files, zero offenders, no new backend files); append-only gate exit 0 (token present + Rule-0 label present).
+
+---
+
 ## 1. STATUS
 
-**implemented and verified** (code-level): all 8 spec deliverables built, 21 Deno regression tests green, 4 fails-on-revert proofs captured at `6b2c97f45`, `deno check` clean on the edge fn, `tsc --noEmit` clean on all three touched app-mobile files, C7 strict-grep green, migration predicate validated read-only against live remote data.
+**implemented and verified** (code-level): all 8 spec deliverables built, 21 Deno regression tests green, 4 fails-on-revert proofs captured at `6b2c97f45`, `deno check` clean on the edge fn, `tsc --noEmit` clean on all three touched app-mobile files, C7 strict-grep green, migration predicate validated read-only against live remote data. **Amended 2026-06-03 (commit `8d3d2332b`): experiences front-load — see §0.**
 
 **UNVERIFIED (requires runtime, orchestrator/tester-owned):** the on-device deck render (SC-2 iOS+Android) and end-to-end Book→PaymentSheet (SC-9) require (a) the migration applied via `db push`, (b) the edge fn deployed, (c) a seeded published-live experience, (d) sim/device live-fire. These are the tester's live-fire step (SPEC §7) — this implementor does NOT apply migrations or deploy edge fns (Rule 9/11).
 

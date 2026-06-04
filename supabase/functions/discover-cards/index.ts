@@ -288,11 +288,17 @@ async function fetchEligibleExperiences(args: {
   });
 }
 
-// Deterministic round-robin: place ONE experience card after roughly every
-// ceil(place.length / (exp.length + 1)) place cards (even spread). Preserves the
-// existing place order; dedupes by id; experiences NEVER displace place cards
-// (additive). If placeCards is empty but experiences exist, returns the
-// experiences alone (experiences-only deck).
+// FRONT-LOAD (operator-approved 2026-06-03, Seth): eligible brand experiences
+// LEAD the deck — every experience is placed at the FRONT (index 0..n-1), ahead
+// of the AI curated cards and singles, so the feature is easy to spot and test.
+// Order is deterministic and stable: experiences keep the RPC's existing order
+// (soonest upcoming date first, then most-recently published —
+// `ORDER BY next_start_at ASC NULLS LAST, published_at DESC` in
+// pg_eligible_experiences_for_deck), and the normal place deck follows them
+// unchanged. Preserves every prior guard: dedupes by id; excludes any experience
+// whose id collides with a place id (exclude-self / no double-render); additive
+// (experiences NEVER displace or drop place cards). If placeCards is empty but
+// experiences exist, returns the experiences alone (experiences-only deck).
 function interleaveExperiencesIntoDeck(
   placeCards: any[],
   experienceCards: ExperienceDeckCard[],
@@ -313,19 +319,8 @@ function interleaveExperiencesIntoDeck(
   }
   const expToPlace = dedupedExp.filter((e) => !placeIds.has(e.id));
   if (expToPlace.length === 0) return placeCards;
-  const gap = Math.max(1, Math.ceil(placeCards.length / (expToPlace.length + 1)));
-  const merged: any[] = [];
-  let expIdx = 0;
-  for (let i = 0; i < placeCards.length; i++) {
-    merged.push(placeCards[i]);
-    // After every `gap` place cards, inject the next experience (if any remain).
-    if ((i + 1) % gap === 0 && expIdx < expToPlace.length) {
-      merged.push(expToPlace[expIdx++]);
-    }
-  }
-  // Append any experiences that didn't fit the spacing windows.
-  while (expIdx < expToPlace.length) merged.push(expToPlace[expIdx++]);
-  return merged;
+  // Experiences first (stable RPC order), then the full place deck unchanged.
+  return [...expToPlace, ...placeCards];
 }
 // ─── end ORCH-1065 ────────────────────────────────────────────────────────────
 
@@ -2304,9 +2299,10 @@ serve(async (req: Request) => {
     // away signal ranking in favor of chip-match heuristics.
     const finalCards = hoursFilteredCards;
 
-    // ORCH-1065: server-interleave brand-authored experiences into the deck
-    // (additive — experiences never displace place cards). Bypasses
-    // place_pool/ai_signal_scores/run-signal-scorer entirely (COMMS-0018).
+    // ORCH-1065: front-load brand-authored experiences onto the deck — they LEAD
+    // the deck (index 0..n-1, ahead of curated/singles) in stable RPC order
+    // (operator-approved 2026-06-03). Additive — experiences never displace place
+    // cards. Bypasses place_pool/ai_signal_scores/run-signal-scorer (COMMS-0018).
     const mergedCards = interleaveExperiencesIntoDeck(finalCards, experienceCards);
 
     const elapsed = Date.now() - t0;

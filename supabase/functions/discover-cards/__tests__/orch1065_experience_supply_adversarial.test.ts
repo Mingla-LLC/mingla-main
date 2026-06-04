@@ -63,17 +63,8 @@ function interleaveExperiencesIntoDeck(
   }
   const expToPlace = dedupedExp.filter((e) => !placeIds.has(e.id));
   if (expToPlace.length === 0) return placeCards;
-  const gap = Math.max(1, Math.ceil(placeCards.length / (expToPlace.length + 1)));
-  const merged: any[] = [];
-  let expIdx = 0;
-  for (let i = 0; i < placeCards.length; i++) {
-    merged.push(placeCards[i]);
-    if ((i + 1) % gap === 0 && expIdx < expToPlace.length) {
-      merged.push(expToPlace[expIdx++]);
-    }
-  }
-  while (expIdx < expToPlace.length) merged.push(expToPlace[expIdx++]);
-  return merged;
+  // FRONT-LOAD (operator-approved 2026-06-03): experiences lead, then places.
+  return [...expToPlace, ...placeCards];
 }
 const place = (id: string) => ({ id, cardType: "place" as const });
 const exp = (id: string): ExpStub => ({ id, cardType: "experience" });
@@ -81,15 +72,24 @@ const exp = (id: string): ExpStub => ({ id, cardType: "experience" });
 // Guard: keep the executable port faithful to the shipped helper. If the helper
 // body in index.ts is rewritten, this pin must be updated in lockstep (and the
 // reviewer re-confirms the port). This is the anti-drift seam for the port.
-Deno.test("ORCH-1065 ADV interleave-pin: shipped helper still uses the ceil-spread + additive contract", () => {
+// FRONT-LOAD contract (operator-approved 2026-06-03): the shipped helper returns
+// `[...expToPlace, ...placeCards]` — experiences lead the deck, place cards
+// follow. The ceil-spread round-robin was retired with the same approval.
+Deno.test("ORCH-1065 ADV interleave-pin: shipped helper front-loads experiences + keeps the additive contract", () => {
   const body = edge.slice(
     edge.indexOf("function interleaveExperiencesIntoDeck"),
     edge.indexOf("// ─── end ORCH-1065"),
   );
   assert(body.length > 0, "interleaveExperiencesIntoDeck must exist in index.ts");
-  assertStringIncludes(body, "Math.ceil(placeCards.length / (expToPlace.length + 1))");
+  // The front-load return: experiences first, then the place deck unchanged.
+  assertStringIncludes(body, "return [...expToPlace, ...placeCards]");
   assertStringIncludes(body, "if (placeCards.length === 0) return [...dedupedExp]");
   assertStringIncludes(body, "filter((e) => !placeIds.has(e.id))");
+  // The retired ceil-spread round-robin must be gone (regression guard).
+  assert(
+    !body.includes("Math.ceil(placeCards.length / (expToPlace.length + 1))"),
+    "the ceil-spread round-robin must be removed — experiences front-load, not interleave",
+  );
 });
 
 // ── T-11 (executable): empty place pool + experiences ⇒ experiences-only, NOT empty.
@@ -106,9 +106,9 @@ Deno.test("ORCH-1065 ADV interleave: every place card is preserved (additive, ne
   // Every original place id is still present, in original relative order.
   const placeOrder = out.filter((c) => c.cardType === "place").map((c) => c.id);
   assertEquals(placeOrder, ["p1", "p2", "p3", "p4", "p5"]);
-  // All experiences present too.
+  // All experiences present too, in RPC order.
   const expOrder = out.filter((c) => c.cardType === "experience").map((c) => c.id);
-  assertEquals(expOrder.sort(), ["e1", "e2"]);
+  assertEquals(expOrder, ["e1", "e2"]);
   // Total = additive sum, nothing lost.
   assertEquals(out.length, 7);
 });
@@ -139,19 +139,34 @@ Deno.test("ORCH-1065 ADV interleave: experience colliding with a place id is exc
   assert(out.some((c) => c.id === "e2" && c.cardType === "experience"));
 });
 
-// ── Spacing: experiences are spread, not all clustered at the head or tail.
-Deno.test("ORCH-1065 ADV interleave: experiences are spread (not all clustered at index 0)", () => {
+// ── FRONT-LOAD (operator-approved 2026-06-03, Seth): experiences LEAD the deck —
+//    every experience occupies the front contiguous block (index 0..n-1) ahead of
+//    every place card, in stable RPC order. Fails-on-revert: the retired
+//    ceil-spread round-robin scattered experiences after the first place, so this
+//    assertion goes red the instant the helper reverts to interleaving.
+Deno.test("ORCH-1065 ADV front-load: experiences lead the deck (index 0..n-1), ahead of all place cards", () => {
   const places = Array.from({ length: 9 }, (_, i) => place(`p${i}`));
   const out = interleaveExperiencesIntoDeck(places, [exp("e1"), exp("e2")]);
+  // The first two cards are the experiences, in RPC order.
+  assertEquals(out[0].id, "e1");
+  assertEquals(out[0].cardType, "experience");
+  assertEquals(out[1].id, "e2");
+  assertEquals(out[1].cardType, "experience");
+  // Every experience appears at a strictly lower index than every place card.
   const expPositions = out
     .map((c, i) => (c.cardType === "experience" ? i : -1))
     .filter((i) => i >= 0);
-  assertEquals(expPositions.length, 2);
-  // Not both at the very front: the second experience appears after several places.
+  const placePositions = out
+    .map((c, i) => (c.cardType === "place" ? i : -1))
+    .filter((i) => i >= 0);
+  assertEquals(expPositions, [0, 1]);
   assert(
-    expPositions[1] - expPositions[0] >= 2,
-    `experiences must be spaced apart, got positions ${expPositions.join(",")}`,
+    Math.max(...expPositions) < Math.min(...placePositions),
+    `all experiences must precede all places; exp=${expPositions.join(",")} place head=${Math.min(...placePositions)}`,
   );
+  // The place deck follows, in its original order, immediately after.
+  const placeOrder = out.filter((c) => c.cardType === "place").map((c) => c.id);
+  assertEquals(placeOrder, places.map((p) => p.id));
 });
 
 // ── No-experiences short-circuit: a place-only deck is returned unchanged.
