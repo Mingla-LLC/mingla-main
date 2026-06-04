@@ -43,6 +43,10 @@ import ExpandedCardModal from "./ExpandedCardModal";
 import { ExpandedCardData } from "../types/expandedCardTypes";
 import { CuratedExperienceSwipeCard } from "./CuratedExperienceSwipeCard";
 import type { CuratedExperienceCard } from "../types/curatedExperience";
+// ORCH-1065: brand experiences expand → business-event sheet → ticket-checkout-create
+// (the proven ORCH-1016 trip pattern). NO parallel money fn (COMMS-0014/0016).
+import type { BusinessEventCard } from "../types/mergedDiscover";
+import { hueFromId } from "../utils/hueFromId";
 import { mixpanelService } from "../services/mixpanelService";
 import { logAppsFlyerEvent } from "../services/appsFlyerService";
 import { BoardCardService } from "../services/boardCardService";
@@ -100,6 +104,54 @@ function getTimeOfDay(): string {
   if (hour >= 12 && hour < 17) return 'afternoon';
   if (hour >= 17 && hour < 21) return 'evening';
   return 'night';
+}
+
+// ORCH-1065: map a brand-experience Recommendation onto the BusinessEventCard
+// shape ExpandedBusinessEventSheet consumes — so the proven cart → tax →
+// runNativeCheckout path is reused verbatim. Mirrors tripToBusinessEventCard
+// (ConsumerTripDetailScreen.tsx). NO parallel money fn (COMMS-0014/0016):
+// eventId = experience.id rides the existing ticket-checkout-create contract.
+function experienceRecToBusinessEventCard(rec: any): BusinessEventCard {
+  const firstStop = Array.isArray(rec?.stops) && rec.stops.length > 0 ? rec.stops[0] : null;
+  const eventId = String(rec?.eventId ?? rec?.id ?? '');
+  const brandSlug = typeof rec?.brandSlug === 'string' ? rec.brandSlug : '';
+  const eventSlug = typeof rec?.eventSlug === 'string' ? rec.eventSlug : '';
+  return {
+    eventId,
+    brandId: typeof rec?.brandId === 'string' ? rec.brandId : '',
+    brandSlug,
+    brandName: typeof rec?.brandName === 'string' ? rec.brandName : '',
+    brandProfilePhotoUrl: typeof rec?.brandLogoUrl === 'string' ? rec.brandLogoUrl : null,
+    eventSlug,
+    title: typeof rec?.title === 'string' ? rec.title : '',
+    description: typeof rec?.tagline === 'string' && rec.tagline.length > 0 ? rec.tagline : null,
+    coverMediaUrl: firstStop?.imageUrl ?? null,
+    coverMediaType: 'image',
+    coverHue: hueFromId(eventId),
+    masterDateUtc: rec?.masterDateUtc ?? null,
+    masterEndAtUtc: rec?.masterEndAtUtc ?? null,
+    doorsOpenLocal: null,
+    endsAtLocal: null,
+    timezone: typeof rec?.timezone === 'string' ? rec.timezone : 'UTC',
+    venueName: firstStop?.placeName ?? null,
+    city: null,
+    address: null,
+    hideAddressUntilTicket: false,
+    format: 'in-person',
+    locationGeo:
+      firstStop && typeof firstStop.lat === 'number' && typeof firstStop.lng === 'number'
+        ? { lat: firstStop.lat, lng: firstStop.lng }
+        : null,
+    partyTypes: [],
+    vibeTags: [],
+    musicGenres: [],
+    priceMin: typeof rec?.totalPriceMin === 'number' ? rec.totalPriceMin : null,
+    priceMax: typeof rec?.totalPriceMax === 'number' ? rec.totalPriceMax : null,
+    displayPriceCents: null,
+    displayCurrency: null,
+    currency: typeof rec?.currency === 'string' ? rec.currency : 'USD',
+    publicBuyerUrl: `https://business.usemingla.com/e/${brandSlug}/${eventSlug}`,
+  } as unknown as BusinessEventCard;
 }
 
 function parseDistanceToKm(distanceStr: string): number | null {
@@ -545,6 +597,10 @@ export default function SwipeableCards({
   const [isExpandedModalVisible, setIsExpandedModalVisible] = useState(false);
   const [selectedCardForExpansion, setSelectedCardForExpansion] =
     useState<ExpandedCardData | null>(null);
+  // ORCH-1065: brand experiences expand to the business-event sheet (NOT the
+  // curated itinerary). Parallel state keeps them a first-class branch.
+  const [expandedBrandExperience, setExpandedBrandExperience] =
+    useState<BusinessEventCard | null>(null);
   const [showNextBatchLoader, setShowNextBatchLoader] = useState(false);
   const [dismissedSheetVisible, setDismissedSheetVisible] = useState(false);
   const [reviewIndex, setReviewIndex] = useState(0);
@@ -1514,6 +1570,14 @@ export default function SwipeableCards({
       source: "home",
     });
 
+    // ORCH-1065: brand experiences expand to the business-event sheet →
+    // ticket-checkout-create (NO parallel money fn — COMMS-0014/0016), NOT the
+    // curated AI itinerary view. Routed BEFORE the curated branch.
+    if ((currentRec as any).cardType === 'experience') {
+      setExpandedBrandExperience(experienceRecToBusinessEventCard(currentRec));
+      return;
+    }
+
     // Curated cards have their own shape — pass through directly
     if ((currentRec as any).cardType === 'curated') {
       setSelectedCardForExpansion(currentRec as unknown as ExpandedCardData);
@@ -1574,6 +1638,7 @@ export default function SwipeableCards({
   const handleCloseExpandedModal = () => {
     setIsExpandedModalVisible(false);
     setSelectedCardForExpansion(null);
+    setExpandedBrandExperience(null);  // ORCH-1065
   };
 
   const handleSwipe = async (
@@ -2590,7 +2655,23 @@ export default function SwipeableCards({
               onPress={handleCardTap}
               style={StyleSheet.absoluteFill}
             >
-              {(currentRec as any).cardType === 'curated' ? (
+              {(currentRec as any).cardType === 'experience' ? (
+                  // ORCH-1065: brand experience reuses the curated multi-stop FACE
+                  // with a brand badge + "Book" CTA (curated callers pass neither
+                  // prop, so curated is byte-unaffected — SC-13).
+                  <CuratedExperienceSwipeCard
+                    card={currentRec as unknown as CuratedExperienceCard}
+                    onSeePlan={handleCardExpand}
+                    travelMode={effectiveTravelMode}
+                    measurementSystem={accountPreferences?.measurementSystem}
+                    currencyCode={accountPreferences?.currency || 'USD'}
+                    brandExperience={{
+                      brandName: (currentRec as any).brandName,
+                      brandLogoUrl: (currentRec as any).brandLogoUrl ?? null,
+                    }}
+                    ctaOverride="Book"
+                  />
+              ) : (currentRec as any).cardType === 'curated' ? (
                   <CuratedExperienceSwipeCard
                     card={currentRec as unknown as CuratedExperienceCard}
                     onSeePlan={handleCardExpand}
@@ -2727,9 +2808,16 @@ export default function SwipeableCards({
       {deckBody}
       <ExpandedCardModal
         visible={isExpandedModalVisible}
-        // ORCH-0828: discriminated-union target. SwipeableCards only
-        // surfaces Night Out (place / TM) cards, never business events.
-        target={selectedCardForExpansion ? { kind: "nightOut", data: selectedCardForExpansion } : null}
+        // ORCH-0828: discriminated-union target. SwipeableCards surfaces Night
+        // Out (place / TM) cards and — ORCH-1065 — brand experiences (which
+        // route to the businessEvent branch → ExpandedBusinessEventSheet).
+        target={
+          expandedBrandExperience
+            ? { kind: "businessEvent", data: expandedBrandExperience }
+            : selectedCardForExpansion
+            ? { kind: "nightOut", data: selectedCardForExpansion }
+            : null
+        }
         onClose={handleCloseExpandedModal}
         isSaved={
           selectedCardForExpansion

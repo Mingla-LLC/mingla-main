@@ -1,16 +1,19 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Platform, AccessibilityInfo } from 'react-native';
 // ORCH-1042: curated stop photos render via expo-image (NOT react-native <Image>)
 // so each stop gets a placeholder + fade transition + memory-disk cache +
 // recyclingKey + an onError fallback (this path previously had NO fallback at all
 // and would show a permanent dark `#2C2C2E` panel on a slow/failed stop image).
 import { Image as ExpoImage } from 'expo-image';
+import { BlurView } from 'expo-blur';
+import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
 import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
 import { Icon } from './ui/Icon';
 import { GlassBadge } from './ui/GlassBadge';
+import { glass, ANDROID_GLASS_USES_OPAQUE_FALLBACK } from '../constants/designSystem';
 import type { CuratedExperienceCard } from '../types/curatedExperience';
 import { parseAndFormatDistance, formatCurrency } from './utils/formatters';
 // ORCH-1042: reuse the SAME hard-failure fallback URL + placeholder blurhash as the
@@ -59,6 +62,130 @@ const CURATED_ICON_MAP: Record<string, string> = {
   'Take a Stroll': 'walk-outline',
 };
 
+// ─── ORCH-1065 [consumer-experience-deck-card]: brand badge + Book CTA ─────────
+// Built to DESIGN_ORCH-1065_BRAND_EXPERIENCE_DECK_CARD.md. Both elements are
+// gated behind the `brandExperience` / `ctaOverride` props being present, so
+// curated callers (which pass neither) render byte-identically (SC-13).
+
+const g = glass.badge;
+
+// Deterministic hue 0–359 from the brand name (stable monogram color across
+// sessions). Same hash family as hueFromId.
+function hueFromBrandName(name: string): number {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = (hash << 5) - hash + name.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash) % 360;
+}
+
+// Monogram fill per DESIGN §5.1: hsl(h, 58%, L) where L is band-clamped to 35%
+// in the yellow-green danger band [45,75] (else 42%) so white text clears AA on
+// every hue.
+function monogramFill(hue: number): string {
+  const lightness = hue >= 45 && hue <= 75 ? 35 : 42;
+  return `hsl(${hue}, 58%, ${lightness}%)`;
+}
+
+interface BrandChipProps {
+  brandName: string;
+  brandLogoUrl: string | null;
+  top: number;
+}
+
+// Top-left glass lockup: [logo/monogram disc] + [brand name]. Copies the
+// glass.badge five-layer vocabulary (DESIGN §2.2) so it reads as the same family
+// as the metadata chips; degrades to the opaque solid fill on Android pre-blur /
+// Reduce Transparency (ANDROID_GLASS_USES_OPAQUE_FALLBACK policy, DESIGN §2.6).
+function BrandChip({ brandName, brandLogoUrl, top }: BrandChipProps): React.ReactElement {
+  const [reduceTransparency, setReduceTransparency] = React.useState(false);
+  const [logoFailed, setLogoFailed] = React.useState(false);
+
+  React.useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const rt = await AccessibilityInfo.isReduceTransparencyEnabled();
+        if (mounted) setReduceTransparency(rt);
+      } catch {
+        if (mounted) setReduceTransparency(true);
+      }
+    })();
+    const sub = AccessibilityInfo.addEventListener(
+      'reduceTransparencyChanged',
+      (enabled: boolean) => setReduceTransparency(enabled),
+    );
+    return () => {
+      mounted = false;
+      sub.remove();
+    };
+  }, []);
+
+  const useGlass = !reduceTransparency && !ANDROID_GLASS_USES_OPAQUE_FALLBACK;
+  const showMonogram = !brandLogoUrl || logoFailed;
+  const trimmedName = (brandName ?? '').trim();
+  const initial = trimmedName.length > 0 ? trimmedName.charAt(0).toUpperCase() : '';
+  const hue = hueFromBrandName(trimmedName);
+
+  return (
+    <View
+      style={[styles.brandChip, { top }]}
+      accessibilityRole="image"
+      accessibilityLabel={`Experience by ${trimmedName}`}
+    >
+      {/* L1 — blur or opaque solid fallback */}
+      {useGlass ? (
+        <BlurView
+          intensity={g.blur.intensity}
+          tint={g.blur.tint}
+          pointerEvents="none"
+          experimentalBlurMethod={Platform.OS === 'android' ? 'dimezisBlurView' : undefined}
+          style={StyleSheet.absoluteFill}
+        />
+      ) : (
+        <View
+          pointerEvents="none"
+          style={[StyleSheet.absoluteFill, { backgroundColor: g.fallback.solid }]}
+        />
+      )}
+      {/* L2 — tint floor (glass path only) */}
+      {useGlass ? (
+        <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: g.tint.floor }]} />
+      ) : null}
+      {/* L3 — top highlight */}
+      <View pointerEvents="none" style={styles.brandChipTopHighlight} />
+
+      {/* Disc: logo OR monogram */}
+      {showMonogram || initial.length === 0 ? (
+        initial.length > 0 ? (
+          <View style={[styles.brandDisc, { backgroundColor: monogramFill(hue) }]}>
+            <Text style={styles.brandMonogram}>{initial}</Text>
+          </View>
+        ) : null
+      ) : (
+        <View style={styles.brandDisc}>
+          <ExpoImage
+            source={{ uri: brandLogoUrl as string }}
+            style={styles.brandLogo}
+            contentFit="cover"
+            cachePolicy="memory-disk"
+            recyclingKey={brandLogoUrl as string}
+            transition={180}
+            placeholder={{ blurhash: DECK_HERO_PLACEHOLDER_BLURHASH }}
+            onError={() => setLogoFailed(true)}
+          />
+        </View>
+      )}
+
+      <Text style={styles.brandName} numberOfLines={1} ellipsizeMode="tail" allowFontScaling>
+        {trimmedName}
+      </Text>
+    </View>
+  );
+}
+// ─── end ORCH-1065 brand badge ────────────────────────────────────────────────
+
 function getTravelModeIcon(mode?: string): string {
   switch (mode) {
     case 'driving': return 'car';
@@ -80,9 +207,13 @@ interface Props {
   travelMode?: string;
   measurementSystem?: 'Metric' | 'Imperial';
   currencyCode?: string;
+  // ORCH-1065: present ONLY for brand experiences. Curated callers omit both →
+  // byte-identical render (SC-13).
+  brandExperience?: { brandName: string; brandLogoUrl: string | null };
+  ctaOverride?: string;
 }
 
-export function CuratedExperienceSwipeCard({ card, onSeePlan, travelMode, measurementSystem, currencyCode }: Props) {
+export function CuratedExperienceSwipeCard({ card, onSeePlan, travelMode, measurementSystem, currencyCode, brandExperience, ctaOverride }: Props) {
   const { t } = useTranslation(['common']);
   const insets = useSafeAreaInsets();
   // ORCH-0991: deck is full-bleed under the floating glass top bar (HomePage safeArea has
@@ -114,7 +245,17 @@ export function CuratedExperienceSwipeCard({ card, onSeePlan, travelMode, measur
   const rawIntentKey = (card.experienceType || 'adventurous').replace(/-/g, '_');
   const categoryLabel = t(`common:intent_${rawIntentKey}`);
   const categoryIcon = CURATED_ICON_MAP[card.categoryLabel || 'Adventurous'] || 'compass-outline';
-  const ctaText = isSingleStop ? 'See Details' : 'See Full Plan';
+  // ORCH-1065: ctaOverride present ('Book') for experiences; curated keeps its
+  // existing text byte-for-byte.
+  const ctaText = ctaOverride ?? (isSingleStop ? 'See Details' : 'See Full Plan');
+  const isBookCta = ctaOverride != null;
+
+  const handleCtaPressIn = (): void => {
+    // ORCH-1065 DESIGN §3.3: Light haptic on the commerce action (iOS only).
+    if (isBookCta && Platform.OS === 'ios') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    }
+  };
 
   // First stop distance & travel time (most relevant to the user)
   const firstStop = visibleStops[0];
@@ -154,6 +295,16 @@ export function CuratedExperienceSwipeCard({ card, onSeePlan, travelMode, measur
             </View>
           ))}
         </View>
+
+        {/* ORCH-1065: brand badge (top-left, below the stop-badge baseline) —
+            only when this is a brand experience. */}
+        {brandExperience ? (
+          <BrandChip
+            brandName={brandExperience.brandName}
+            brandLogoUrl={brandExperience.brandLogoUrl}
+            top={stopBadgeTop}
+          />
+        ) : null}
 
         {/* Hero gradient — dark fade behind title + labels for legibility */}
         <LinearGradient
@@ -196,17 +347,33 @@ export function CuratedExperienceSwipeCard({ card, onSeePlan, travelMode, measur
         </View>
       </View>
 
-      {/* Details tray (12%) — minimal white section with a share-style CTA */}
+      {/* Details tray (12%) — share-style CTA for curated; filled "Book"
+          commerce CTA for brand experiences (ORCH-1065 DESIGN §3). */}
       <View style={styles.cardDetails}>
-        <TrackedTouchableOpacity
-          logComponent="CuratedExperienceSwipeCard"
-          style={styles.seePlanButton}
-          onPress={onSeePlan}
-          activeOpacity={0.7}
-        >
-          <Icon name="list-outline" size={18} color="#6b7280" />
-          <Text style={styles.seePlanButtonText}>{ctaText}</Text>
-        </TrackedTouchableOpacity>
+        {isBookCta ? (
+          <TrackedTouchableOpacity
+            logComponent="CuratedExperienceSwipeCard"
+            style={styles.bookButton}
+            onPress={onSeePlan}
+            onPressIn={handleCtaPressIn}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel={`Book ${card.title}`}
+          >
+            <Icon name="ticket-outline" size={18} color="#FFFFFF" />
+            <Text style={styles.bookButtonText}>{ctaText}</Text>
+          </TrackedTouchableOpacity>
+        ) : (
+          <TrackedTouchableOpacity
+            logComponent="CuratedExperienceSwipeCard"
+            style={styles.seePlanButton}
+            onPress={onSeePlan}
+            activeOpacity={0.7}
+          >
+            <Icon name="list-outline" size={18} color="#6b7280" />
+            <Text style={styles.seePlanButtonText}>{ctaText}</Text>
+          </TrackedTouchableOpacity>
+        )}
       </View>
     </View>
   );
@@ -317,5 +484,79 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#6b7280',
     fontWeight: '500',
+  },
+  // ─── ORCH-1065 brand badge + Book CTA (DESIGN §2, §3, §7) ───────────────────
+  brandChip: {
+    position: 'absolute',
+    left: 8,           // space.sm
+    zIndex: 3,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,            // space.sm — disc→name
+    paddingLeft: 4,    // space.xs
+    paddingRight: 12,  // space.md
+    paddingVertical: 4, // space.xs
+    maxWidth: '60%',
+    borderRadius: 9999, // radius.full
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: glass.badge.border.hairline,
+    shadowColor: glass.badge.shadow.color,
+    shadowOffset: glass.badge.shadow.offset,
+    shadowOpacity: glass.badge.shadow.opacity,
+    shadowRadius: glass.badge.shadow.radius,
+    elevation: glass.badge.shadow.elevation,
+  },
+  brandChipTopHighlight: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 1,
+    backgroundColor: glass.badge.border.topHighlight,
+  },
+  brandDisc: {
+    width: 28,
+    height: 28,
+    borderRadius: 9999,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
+  },
+  brandLogo: {
+    width: '100%',
+    height: '100%',
+  },
+  brandMonogram: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    textAlign: 'center',
+    lineHeight: 28,
+  },
+  brandName: {
+    fontSize: 13,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+    lineHeight: 18,
+    color: '#FFFFFF',
+  },
+  bookButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,             // space.sm
+    paddingVertical: 12, // space.md
+    minHeight: 44,       // guaranteed tap target
+    backgroundColor: '#FF6B35', // brand.primary
+    borderRadius: 12,    // radius.md
+  },
+  bookButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+    color: '#FFFFFF',
   },
 });
