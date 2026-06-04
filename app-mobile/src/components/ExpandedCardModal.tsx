@@ -41,6 +41,9 @@ import TimelineSection from "./expandedCard/TimelineSection";
 import EventDetailLayout from "./expandedCard/EventDetailLayout";
 import CompanionStopsSection from "./expandedCard/CompanionStopsSection";
 import { StopImageGallery } from "./expandedCard/StopImageGallery";
+// ORCH-1071: brand experiences claimed-to-this-venue, rendered as compact rows
+// beneath the stars/miles/price block and above the weather section.
+import VenueExperiencesSection from "./expandedCard/VenueExperiencesSection";
 import { ImageLightbox } from "./ImageLightbox";
 import ActionButtons from "./expandedCard/ActionButtons";
 import ShareModal from "./ShareModal";
@@ -2050,6 +2053,15 @@ export default function ExpandedCardModal({
                     </TouchableOpacity>
                   </View>
                 )}
+
+                {/* ORCH-1071: Experiences at this venue (claimed-brand only).
+                    Renders nothing for unclaimed venues or non-uuid card ids
+                    (stroll/picnic/curated/Ticketmaster). */}
+                <VenueExperiencesSection
+                  placePoolId={card.id}
+                  currency={accountPreferences?.currency}
+                  sheetBottomInset={Math.max(insets.bottom, 16) + 8}
+                />
 
                 {/* Weather Section */}
                 <WeatherSection
