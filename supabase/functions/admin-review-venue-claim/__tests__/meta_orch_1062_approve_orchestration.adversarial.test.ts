@@ -213,6 +213,60 @@ Deno.test("META-ORCH-1062 ADVERSARIAL: re-bounce FAIL leaves venue off-deck, nev
   assert(reasonWrite, "bouncer_reason recorded on bounce-fail");
 });
 
+// ─── ORCH-1067 — T-08: business-authored re-bounce in runApproveGoLive ───────
+// A business-authored projection (fetched_via='business_authored') with REAL
+// uploaded stored photos but NO Google `photos` must FLIP is_servable=true at
+// approve (B7 skipped, B8 satisfied) and proceed to scoring. Pre-ORCH-1067 this
+// row B7-rejected and stayed off-deck forever. The BOUNCER_SELECT now includes
+// fetched_via so the injected row carries provenance into bounce(). fails-on-
+// revert: removing the bouncer.ts B7-skip guard makes this row fail B7 →
+// res.servable=false → this test fails.
+const BUSINESS_AUTHORED_ROW = {
+  ...PASSING_ROW,
+  id: PPID,
+  fetched_via: "business_authored",
+  photos: [], // not on Google → zero Google photo metadata
+  stored_photo_urls: ["https://cdn/uploaded1.jpg", "https://cdn/uploaded2.jpg"],
+};
+
+Deno.test("ORCH-1067 ADVERSARIAL T-08: business-authored row (no Google photos) flips servable at approve and scores", async () => {
+  const fake = makeFakeAdmin({
+    ppRow: BUSINESS_AUTHORED_ROW,
+    signals: [{ id: "s1" }, { id: "s2" }],
+    scorerOutcome: () => ({ data: { success: true } }),
+  });
+
+  // deno-lint-ignore no-explicit-any
+  const res = await runApproveGoLive(fake.client as any, PPID, null);
+
+  assert(res.rebounced, "should have re-bounced");
+  assertEquals(res.servable, true, "business-authored w/ stored photos must flip servable (B7 skipped)");
+  assertEquals(res.rolled_back, false, "no rollback on a clean business-authored row");
+  // B7 must NOT appear in the surfaced bounce reasons.
+  assert(
+    !res.bounce_reasons.some((r) => r.startsWith("B7")),
+    `B7 must not fire for business-authored; got ${JSON.stringify(res.bounce_reasons)}`,
+  );
+  // It proceeds to scoring (servable flip → scorer invoked per signal).
+  assertEquals(res.scored_signals.sort(), ["s1", "s2"]);
+});
+
+Deno.test("ORCH-1067 ADVERSARIAL T-08b: business-authored row with NO stored photos stays off-deck (B8, not B7)", async () => {
+  const fake = makeFakeAdmin({
+    ppRow: { ...BUSINESS_AUTHORED_ROW, stored_photo_urls: [] },
+    signals: [{ id: "s1" }],
+    scorerOutcome: () => ({ data: { success: true } }),
+  });
+
+  // deno-lint-ignore no-explicit-any
+  const res = await runApproveGoLive(fake.client as any, PPID, null);
+
+  assertEquals(res.servable, false, "no stored photos ⇒ must NOT go live");
+  assert(res.bounce_reasons.some((r) => r.startsWith("B8")), "expected B8 (stored-photo gate)");
+  assert(!res.bounce_reasons.some((r) => r.startsWith("B7")), "B7 must not fire for business-authored");
+  assertEquals(fake.invokes.length, 0, "no scorer invoke when bounce fails");
+});
+
 Deno.test("META-ORCH-1062 ADVERSARIAL: servable flip is committed BEFORE the first scorer invoke (ordering)", async () => {
   const fake = makeFakeAdmin({
     ppRow: PASSING_ROW,

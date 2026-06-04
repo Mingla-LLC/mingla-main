@@ -56,7 +56,7 @@ type AdminClient = any;
 // _shared/bouncer.ts PlaceRow (id, name, lat, lng, types, business_status,
 // website, opening_hours, photos, stored_photo_urls, review_count, rating).
 const BOUNCER_SELECT =
-  "id, name, lat, lng, types, business_status, website, opening_hours, photos, stored_photo_urls, review_count, rating";
+  "id, name, lat, lng, types, business_status, website, opening_hours, photos, stored_photo_urls, fetched_via, review_count, rating";
 
 interface GoLiveResult {
   rebounced: boolean;

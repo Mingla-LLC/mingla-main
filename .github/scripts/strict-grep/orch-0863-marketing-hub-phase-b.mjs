@@ -1448,6 +1448,23 @@ function checkNoNewBackendFiles() {
     "supabase/migrations/__tests__/orch_1064_feedback_owner_rls.adversarial.test.sql",
     "supabase/functions/admin-review-venue-claim/__tests__/orch_1064_feedback_loop.test.ts",
   ];
+  // ORCH-1067 [Bouncer accepts business-authored uploaded photos]: skips deck
+  // bouncer rule B7 (Google-photos gate) ONLY for fetched_via='business_authored'
+  // rows, so a self-listed venue with real uploaded photos (stored_photo_urls /
+  // B8) reaches the deck. Edge-function-logic-only — NO migration, NO new edge
+  // fn source. The four bounce() callers (run-bouncer, run-pre-photo-bouncer,
+  // admin-review-venue-claim, run-business-place-authoring-pipeline index.ts +
+  // their two adversarial/behavioral tests) are already allowlisted under the
+  // ORCH-0100/0101/META-ORCH-1009/ORCH-1062/ORCH-1064 blocks above; only the
+  // canonical _shared/bouncer.ts (MODIFY), its existing Deno unit test (MODIFY),
+  // and the tester's NEW adversarial regression test need listing here. C7 is
+  // scoped to ORCH-0863 marketing; these are bouncer backend touches. Per
+  // COMMS-0002.
+  const ORCH_1067_BACKEND_ALLOWLIST = [
+    "supabase/functions/_shared/bouncer.ts",
+    "supabase/functions/_shared/__tests__/bouncer.test.ts",
+    "supabase/functions/_shared/__tests__/bouncer_orch1067_adversarial.test.ts",
+  ];
   // ORCH-1032 [Intelligence pipeline concurrency cap + chunked enqueue]:
   // adds the additive 'queued'-status migration (status CHECK widen + per-city
   // unique active index widen + tg_kick_pending_trial_runs promotion built on
@@ -1645,6 +1662,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_1061_BACKEND_ALLOWLIST,
     ...ORCH_1062_BACKEND_ALLOWLIST,
     ...ORCH_1064_BACKEND_ALLOWLIST,
+    ...ORCH_1067_BACKEND_ALLOWLIST,
     // Schedule-edit buyer protection + "Refund all & proceed" (separate PR;
     // shares the ORCH-1047 work id used in code). New migration recording the
     // already-live business_patch_event_when change — not ORCH-0863 marketing
