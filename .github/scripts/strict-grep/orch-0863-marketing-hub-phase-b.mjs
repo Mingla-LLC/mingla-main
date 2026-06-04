@@ -1703,7 +1703,19 @@ function checkNoNewBackendFiles() {
     "supabase/migrations/20260820000001_schedule_change_buyer_protection_refund_all.sql",
     "supabase/migrations/20260906000001_orch_1072_brand_experiences_for_place.sql",
   ];
+  // ORCH-1075 [paid-publish integrity guards]: one CREATE-OR-REPLACE migration
+  // adding pg_brand_can_charge() + re-emitting the 6 money RPCs +
+  // business_patch_event_when with publish-time Stripe-readiness + past-date
+  // guards. No edge-fn change (ticket-checkout-create 409 stays as last-line
+  // defense). The new strict-grep .mjs lives under .github/scripts (not
+  // supabase/**) so it is NOT subject to C7, but it is listed here for the
+  // audit trail. Per COMMS-0002 — this allowlist lands in the SAME commit as
+  // the migration.
+  const ORCH_1075_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260909000000_orch_1075_paid_publish_integrity_guards.sql",
+  ];
   const ALLOWLIST = [
+    ...ORCH_1075_BACKEND_ALLOWLIST,
     ...ORCH_1077_BACKEND_ALLOWLIST,
     ...META_ORCH_1074_BACKEND_ALLOWLIST,
     ...ORCH_1070_BACKEND_ALLOWLIST,
