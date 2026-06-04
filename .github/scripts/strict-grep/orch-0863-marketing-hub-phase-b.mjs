@@ -1475,14 +1475,11 @@ function checkNoNewBackendFiles() {
   // ORCH_1071), so only the migration + the two new test files need listing.
   // C7 is scoped to ORCH-0863 marketing; these are consumer-deck backend
   // touches. Per COMMS-0002 — lands in the SAME commit as the migration.
-  // NOTE (META-ORCH-1074 main-integration): the ORCH-1072 ID was multi-booked
-  // (see COMMS-0019). Two distinct efforts each shipped an `ORCH_1072_BACKEND_
-  // ALLOWLIST` const to main, which made this gate a JS redeclaration
-  // SyntaxError (gate crashed on pristine origin/main). This block (experience-
-  // detail-cover-availability) is renamed `ORCH_1072B_BACKEND_ALLOWLIST` to
-  // de-collide; the brand-experiences block below keeps the canonical name per
-  // COMMS-0019. No allowlist ENTRY is dropped — both stay active.
-  const ORCH_1072B_BACKEND_ALLOWLIST = [
+  // NOTE (ORCH-1073): this entry collided with the brand-experiences ORCH-1072
+  // below — two `const ORCH_1072_BACKEND_ALLOWLIST` in one scope crashed the gate
+  // (SyntaxError) on main. Renamed to a unique identifier to unbreak CI; the
+  // migration file retains its on-disk orch_1072 name (renumber was incomplete).
+  const ORCH_1072_EXPERIENCE_DETAIL_BACKEND_ALLOWLIST = [
     "supabase/migrations/20260908000000_orch_1072_experience_detail_cover_availability.sql",
     "supabase/functions/discover-cards/__tests__/orch_1072_experience_detail_supply.test.ts",
     "supabase/functions/ticket-checkout-create/__tests__/orch1072_experience_occurrence_checkout.test.ts",
@@ -1523,6 +1520,15 @@ function checkNoNewBackendFiles() {
   // (ORCH-1071 was already allocated to a separate effort; this work is 1072.)
   const ORCH_1072_BACKEND_ALLOWLIST = [
     "supabase/migrations/20260906000000_orch_1072_brand_experiences_for_place.sql",
+  ];
+  // ORCH-1073 [admin suspend/delete venue listing + owner messaging]: one
+  // additive migration (soft-delete cols + invariant trigger + claim_status &
+  // action_type CHECK widen + admin_suspend/soft_delete/restore RPCs + the
+  // biz_resubmit_venue_claim patch to accept a suspended brand). No new edge
+  // function source. C7 is scoped to ORCH-0863 marketing; this is an admin/
+  // venue-listing backend touch. Per COMMS-0002 — same commit as the migration.
+  const ORCH_1073_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260909000000_orch_1073_admin_suspend_delete_listing.sql",
   ];
   // ORCH-1032 [Intelligence pipeline concurrency cap + chunked enqueue]:
   // adds the additive 'queued'-status migration (status CHECK widen + per-city
@@ -1779,10 +1785,11 @@ function checkNoNewBackendFiles() {
     ...ORCH_1062_BACKEND_ALLOWLIST,
     ...ORCH_1065_BACKEND_ALLOWLIST,
     ...ORCH_1071_BACKEND_ALLOWLIST,
-    ...ORCH_1072B_BACKEND_ALLOWLIST,
+    ...ORCH_1072_EXPERIENCE_DETAIL_BACKEND_ALLOWLIST,
     ...ORCH_1064_BACKEND_ALLOWLIST,
     ...ORCH_1067_BACKEND_ALLOWLIST,
     ...ORCH_1072_BACKEND_ALLOWLIST,
+    ...ORCH_1073_BACKEND_ALLOWLIST,
     // Schedule-edit buyer protection + "Refund all & proceed" (separate PR;
     // shares the ORCH-1047 work id used in code). New migration recording the
     // already-live business_patch_event_when change — not ORCH-0863 marketing

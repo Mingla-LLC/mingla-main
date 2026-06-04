@@ -914,6 +914,16 @@
 
 ---
 
+## META-ORCH-1073 — Mingla Business search/find system (REGISTERED 2026-06-04)
+
+Multi-phase initiative making every aspect of the Mingla Business app searchable/findable. Operator decisions (2026-06-04): client-side filtering (no Postgres FTS in Phase 1), entry via the existing TopBar search icon → dropdown sheet, scope = Offerings + content + feature/settings findability first (People/Money later), foundation+shell first. Affected surfaces: business-iOS, business-Android, business-web preview. Brief: `Mingla_Artifacts/META-ORCH-1073_BUSINESS_SEARCH_SYSTEM_SHARED_UNDERSTANDING.md`.
+
+- **Sub-A [global search sheet]** — CLOSED CONDITIONAL PASS Grade A (2026-06-04). TopBar search icon → global search sheet over events/trips/experiences/drafts + 27-item screen/settings registry; grouped, ranked, role-gated, deep-links via `routeForEventRow`; COEXIST with web ⌘K palette. Impl `38ef11d3f`, F-1 fix `ac6d78da3`; jest 55/55; both Step-0.5 regression tests present. PR: see CLOSE banner.
+- **Sub-B [People/buyers search]** — OPEN (later). May need server-backing for large buyer lists.
+- **Sub-C [Money/orders search]** — OPEN (later), role-gated.
+- **Sub-D [per-list deep search rollout]** — OPEN (later).
+- Phase-1 P3 polish backlog: F-2 return-key activates first row; F-3 event subtitle date.
+
 ## Product Surface Inventory
 
 | Surface | Domain | Key Files | Grade | Items Tracked | Coverage |
