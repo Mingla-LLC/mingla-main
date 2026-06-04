@@ -780,10 +780,12 @@ export default function NotificationsSheet({
       // ORCH-1064: was wrapInRNModal={false} (inline) — which rendered the sheet
       // BELOW the app-root GlassBottomNav (zIndex 50) so it opened "behind the
       // nav menu", AND left its wrapped sectionlist scroll unbound (maxScroll==0
-      // frozen body). Wrapping in an RN <Modal> lifts it into a separate OS window
-      // ABOVE the nav and gives gorhom a bounded full-screen parent so the list
-      // scrolls. tabBarAware is now redundant (the nav no longer overlaps the
-      // sheet) and is dropped.
+      // frozen body). Enabling the BaseBottomSheet RN-modal wrapper (prop below)
+      // lifts it into a separate OS window ABOVE the nav and gives gorhom a
+      // bounded full-screen parent so the list scrolls. tabBarAware is now
+      // redundant (the nav no longer overlaps the sheet) and is dropped.
+      // NOTE: this sheet still imports NO RN Modal — the wrapper lives inside
+      // BaseBottomSheet (ORCH-0975 / META-ORCH-0991 sole-gorhom-consumer invariant).
       wrapInRNModal={true}
       snapPoints={SHEET_SNAP_POINTS}
       backdropOpacity={0.32}
