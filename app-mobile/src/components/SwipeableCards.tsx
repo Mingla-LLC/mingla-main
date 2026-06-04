@@ -2819,8 +2819,10 @@ export default function SwipeableCards({
                     brandExperience={{
                       brandName: (currentRec as any).brandName,
                       brandLogoUrl: (currentRec as any).brandLogoUrl ?? null,
-                      // ORCH-1072: real cover → card hero (image/video) with the
-                      // stop photos as a strip below (CuratedExperienceSwipeCard).
+                    }}
+                    // ORCH-1072: real cover → card hero (image/video) with the
+                    // stop photos as a strip below (CuratedExperienceSwipeCard).
+                    experienceCover={{
                       coverMediaUrl: (currentRec as any).coverMediaUrl ?? null,
                       coverMediaType: (currentRec as any).coverMediaType ?? null,
                       coverHue: hueFromId(String((currentRec as any).eventId ?? (currentRec as any).id ?? '')),

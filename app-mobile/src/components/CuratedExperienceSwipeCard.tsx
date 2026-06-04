@@ -217,20 +217,20 @@ interface Props {
   currencyCode?: string;
   // ORCH-1065: present ONLY for brand experiences. Curated callers omit both →
   // byte-identical render (SC-13).
-  // ORCH-1072: carries the experience's REAL cover so the card hero shows the
-  // cover (image/video) with the stop photos as a strip below — not the stop
-  // strip AS the hero. Curated callers omit it → unchanged stop-strip hero.
-  brandExperience?: {
-    brandName: string;
-    brandLogoUrl: string | null;
-    coverMediaUrl?: string | null;
-    coverMediaType?: 'image' | 'video' | 'gif' | null;
+  brandExperience?: { brandName: string; brandLogoUrl: string | null };
+  // ORCH-1072: the experience's REAL cover (separate prop so the ORCH-1065
+  // brandExperience contract stays byte-identical). When present, the card hero
+  // shows the cover (image/video) with the stop photos as a strip below — not
+  // the stop strip AS the hero. Curated callers omit it → unchanged stop-strip.
+  experienceCover?: {
+    coverMediaUrl: string | null;
+    coverMediaType: 'image' | 'video' | 'gif' | null;
     coverHue?: number;
   };
   ctaOverride?: string;
 }
 
-export function CuratedExperienceSwipeCard({ card, onSeePlan, travelMode, measurementSystem, currencyCode, brandExperience, ctaOverride }: Props) {
+export function CuratedExperienceSwipeCard({ card, onSeePlan, travelMode, measurementSystem, currencyCode, brandExperience, experienceCover, ctaOverride }: Props) {
   const { t } = useTranslation(['common']);
   const insets = useSafeAreaInsets();
   // ORCH-0991: deck is full-bleed under the floating glass top bar (HomePage safeArea has
@@ -314,8 +314,8 @@ export function CuratedExperienceSwipeCard({ card, onSeePlan, travelMode, measur
   // smaller strip BELOW it. Curated cards (no cover prop) keep the full-bleed
   // stop strip hero unchanged (SC-13). The experience cover-fallback (no cover
   // url) also keeps the stop-strip hero so a cover-less experience still renders.
-  const coverUrl = brandExperience?.coverMediaUrl ?? null;
-  const coverType = brandExperience?.coverMediaType ?? null;
+  const coverUrl = experienceCover?.coverMediaUrl ?? null;
+  const coverType = experienceCover?.coverMediaType ?? null;
   const showCoverHero =
     isBrandExperience && typeof coverUrl === 'string' && coverUrl.length > 0;
 
@@ -329,7 +329,7 @@ export function CuratedExperienceSwipeCard({ card, onSeePlan, travelMode, measur
             {/* Cover hero — the experience's real cover (image/video/gif). */}
             <View style={styles.coverHeroMedia}>
               <EventCoverMedia
-                hue={brandExperience?.coverHue}
+                hue={experienceCover?.coverHue}
                 mediaUrl={coverUrl}
                 mediaType={coverType}
                 autoplay
