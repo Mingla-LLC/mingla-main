@@ -18,6 +18,15 @@ import {
 // never flashes a bare dark `#1a1a2e` panel during async decode. Keep
 // `key={currentRec.id}` — the fix works WITH the remount, not by removing it.
 import { Image as ExpoImage } from "expo-image";
+// ORCH-1069: shared video-capable cover renderer (image + GIF + video, muted
+// autoplay, reduce-motion aware). Same renderer the event/trip grid + hero use
+// (COMMS-0007). A venue with a `.mp4` cover plays its video on the deck hero;
+// still-only venues keep the ExpoImage CardHeroImage path unchanged. Do NOT add
+// a parallel player or a direct expo-video call site here.
+import { EventCoverMedia } from "@mingla/event-rendering";
+// ORCH-1069: single owner of video-URL detection, mirrors discover-cards
+// isVideoUrl (I-1069-VIDEO-DETECTION-MATCHES-EDGE).
+import { firstVideoUrl } from "../utils/videoUrl";
 import { useTranslation } from 'react-i18next';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { HapticFeedback } from "../utils/hapticFeedback";
@@ -215,6 +224,77 @@ function CardHeroImage({ uri, style }: { uri: string; style: any }) {
         if (src !== CARD_FALLBACK_IMAGE) setSrc(CARD_FALLBACK_IMAGE);
       }}
     />
+  );
+}
+
+/**
+ * ORCH-1069 — video-aware deck card hero.
+ *
+ * Decides per card whether it has a cover VIDEO (a `.mp4`/Cloudinary-video URL
+ * detected in `images` via `firstVideoUrl`, mirroring the edge `isVideoUrl`):
+ *   - still-only venue (no video) → renders ONLY the existing `CardHeroImage`
+ *     (ExpoImage) — byte-identical behavior to pre-ORCH-1069 for every still /
+ *     event / TM / curated card. Zero regression.
+ *   - venue with a `.mp4` cover → renders the still (`image`) as the POSTER layer
+ *     behind, then `EventCoverMedia` (muted/looping ambient video) on top. The
+ *     still poster prevents a bare hue-band flash before the first video frame
+ *     (§4.1.b LOCKED). `EventCoverMedia` has no dedicated poster prop, hence the
+ *     behind-layer pattern. If `image` is empty/null, `CardHeroImage` already
+ *     falls back to CARD_FALLBACK_IMAGE — the video covers it (no crash, §4.1 edge case).
+ *
+ * Perf guard (I-1069-ONE-PLAYING-DECK-VIDEO, §5): only the TOP card plays.
+ * `isTopCard` gates BOTH `autoplay` and `playbackActive`; the card behind mounts
+ * the player paused on its poster (`playbackActive=false`), ready to play the
+ * instant it promotes to top. Cards deeper than index 1 are never rendered by the
+ * swipe stack, so at most two players exist and at most one plays. No video is
+ * prefetched (the still prefetch at ~L890 is unchanged).
+ *
+ * META-ORCH-0991 Bug 3a (LOCKED): the `EventCoverMedia` layer is wrapped in a
+ * `pointerEvents="none"` View so the native VideoView never eats the card's
+ * swipe/tap gesture. Without this, video-cover cards would be un-swipeable.
+ */
+function CardHero({
+  image,
+  images,
+  title,
+  isTopCard,
+  style,
+}: {
+  image: string;
+  images: string[];
+  title: string;
+  isTopCard: boolean;
+  style: any;
+}) {
+  const coverVideoUrl = firstVideoUrl(images);
+  const hasVideoCover = coverVideoUrl !== null;
+
+  if (!hasVideoCover) {
+    // Still-only path — unchanged from pre-ORCH-1069.
+    return <CardHeroImage uri={image} style={style} />;
+  }
+
+  return (
+    <View style={style}>
+      {/* Poster layer (still) — always behind, prevents bare-band flash. */}
+      <CardHeroImage uri={image} style={StyleSheet.absoluteFill} />
+      {/* Video layer — pointerEvents="none" so the card stays swipeable/tappable. */}
+      <View style={StyleSheet.absoluteFill} pointerEvents="none">
+        <EventCoverMedia
+          mediaUrl={coverVideoUrl}
+          mediaType="video"
+          radius={0}
+          label={title}
+          videoContentFit="cover"
+          autoplay={isTopCard}
+          playbackActive={isTopCard}
+          muted
+          loop
+          showAudioControl={false}
+          style={StyleSheet.absoluteFill}
+        />
+      </View>
+    </View>
   );
 }
 
@@ -2555,7 +2635,16 @@ export default function SwipeableCards({
                   <View style={styles.cardInner}>
                   {/* Hero Image Section */}
                   <View style={[styles.imageContainer, { backgroundColor: '#1a1a2e' }]}>
-                    <CardHeroImage uri={nextCard.image} style={styles.cardImage} />
+                    {/* ORCH-1069: video-aware hero. isTopCard={false} → the behind
+                        card does NOT play (poster + paused video), only the top
+                        card plays (perf guard I-1069-ONE-PLAYING-DECK-VIDEO). */}
+                    <CardHero
+                      image={nextCard.image}
+                      images={nextCard.images}
+                      title={nextCard.title}
+                      isTopCard={false}
+                      style={styles.cardImage}
+                    />
 
                     {/* ORCH-0589 v2 (G4): premium bottom-fade gradient — darker canvas for title + chips */}
                     <LinearGradient
@@ -2703,7 +2792,16 @@ export default function SwipeableCards({
                 <>
                   {/* Hero Image Section - 60-65% of card */}
                   <View style={[styles.imageContainer, { backgroundColor: '#1a1a2e' }]}>
-                    <CardHeroImage uri={currentRec.image} style={styles.cardImage} />
+                    {/* ORCH-1069: video-aware hero. isTopCard={true} → the top card
+                        plays its `.mp4` cover (muted/looping) with the still as
+                        poster; still-only venues render the unchanged image hero. */}
+                    <CardHero
+                      image={currentRec.image}
+                      images={currentRec.images}
+                      title={currentRec.title || t('cards:swipeable.experience')}
+                      isTopCard={true}
+                      style={styles.cardImage}
+                    />
 
                     {/* ORCH-0589 v2 (G4): premium bottom-fade gradient — darker canvas for title + chips */}
                     <LinearGradient
