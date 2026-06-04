@@ -18,7 +18,10 @@ import type { CuratedExperienceCard } from '../types/curatedExperience';
 import { parseAndFormatDistance, formatCurrency } from './utils/formatters';
 // ORCH-1042: reuse the SAME hard-failure fallback URL + placeholder blurhash as the
 // single-place deck hero (one source of truth — do not duplicate the literals).
-import { CARD_FALLBACK_IMAGE, DECK_HERO_PLACEHOLDER_BLURHASH } from './SwipeableCards';
+// ORCH-1065 BUG-3: import from the leaf ./deckHeroConstants module, NOT from
+// ./SwipeableCards — SwipeableCards imports THIS file (it renders the card), so
+// importing back from it closed a require cycle. The leaf module has no such edge.
+import { CARD_FALLBACK_IMAGE, DECK_HERO_PLACEHOLDER_BLURHASH } from './deckHeroConstants';
 
 // ORCH-1042: fade-in within the spec's 180–300 ms band (mirrors SwipeableCards).
 const CURATED_STOP_TRANSITION_MS = 220;
@@ -226,14 +229,33 @@ export function CuratedExperienceSwipeCard({ card, onSeePlan, travelMode, measur
   const mainStops = card.stops.filter(s => !s.optional);
   const visibleStops = mainStops.length > 0 ? mainStops : card.stops;
 
+  // ORCH-1065: this card is a brand experience when the brand-attribution prop is
+  // present (curated callers omit it → byte-identical render, SC-13).
+  const isBrandExperience = brandExperience != null;
+
   const avgRating = (visibleStops.reduce((s, st) => s + st.rating, 0) / visibleStops.length).toFixed(1);
 
   // ORCH-0629: Cumulative price — sum from the displayed stops directly.
   // Do NOT trust `card.totalPriceMin/Max` (card-level totals can be stale or left at 0
   // by the generator). Local sum is the truth the user sees on the card.
-  const cumulativePriceMin = visibleStops.reduce((sum, stop) => sum + (stop.priceMin || 0), 0);
-  const cumulativePriceMax = visibleStops.reduce((sum, stop) => sum + (stop.priceMax || 0), 0);
+  //
+  // ORCH-1065 BUG-1: that "distrust the envelope total" rule is correct for CURATED
+  // cards (whose per-stop prices ARE the source of truth), but WRONG for a brand
+  // experience: an experience carries its all-in price as the envelope
+  // total (`total_price_cents` → totalPriceMin/Max from discover-cards), and its
+  // stops carry NO per-stop price (price_cents=0 each). Summing those stops yields
+  // 0 → "Free" for a genuinely priced experience. So for an experience we read the
+  // envelope total directly (the same currency-aware formatCurrency helper, no
+  // fabrication — a 0 envelope total still shows "Free" honestly).
   const effectiveCurrency = currencyCode || 'USD';
+  const experienceTotalMin = typeof card.totalPriceMin === 'number' ? card.totalPriceMin : 0;
+  const experienceTotalMax = typeof card.totalPriceMax === 'number' ? card.totalPriceMax : 0;
+  const cumulativePriceMin = isBrandExperience
+    ? experienceTotalMin
+    : visibleStops.reduce((sum, stop) => sum + (stop.priceMin || 0), 0);
+  const cumulativePriceMax = isBrandExperience
+    ? experienceTotalMax
+    : visibleStops.reduce((sum, stop) => sum + (stop.priceMax || 0), 0);
   const priceLabel = (() => {
     if (cumulativePriceMin === 0 && cumulativePriceMax === 0) return 'Free';
     if (cumulativePriceMin === cumulativePriceMax) return formatCurrency(cumulativePriceMin, effectiveCurrency);
@@ -334,9 +356,15 @@ export function CuratedExperienceSwipeCard({ card, onSeePlan, travelMode, measur
                 {formattedTravelTime}
               </GlassBadge>
             ) : null}
-            <GlassBadge iconName="star" entryIndex={2}>
-              {avgRating}
-            </GlassBadge>
+            {/* ORCH-1065 BUG-2: brand experiences have NO star rating (their stops
+                carry rating 0 → "0.0", which is meaningless, not a real score).
+                Hide the rating chip entirely for the experience variant; curated
+                cards (real Google ratings) keep it. */}
+            {isBrandExperience ? null : (
+              <GlassBadge iconName="star" entryIndex={2}>
+                {avgRating}
+              </GlassBadge>
+            )}
             <GlassBadge iconName="pricetag" entryIndex={3}>
               {priceLabel}
             </GlassBadge>

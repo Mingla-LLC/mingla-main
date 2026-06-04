@@ -43,6 +43,13 @@ import ExpandedCardModal from "./ExpandedCardModal";
 import { ExpandedCardData } from "../types/expandedCardTypes";
 import { CuratedExperienceSwipeCard } from "./CuratedExperienceSwipeCard";
 import type { CuratedExperienceCard } from "../types/curatedExperience";
+// ORCH-1065 BUG-3: leaf hero-image constants now live in their own module so
+// CuratedExperienceSwipeCard can import them WITHOUT importing SwipeableCards
+// (which imports CuratedExperienceSwipeCard back — that closed a require cycle).
+import {
+  CARD_FALLBACK_IMAGE,
+  DECK_HERO_PLACEHOLDER_BLURHASH,
+} from "./deckHeroConstants";
 // ORCH-1065: brand experiences expand → business-event sheet → ticket-checkout-create
 // (the proven ORCH-1016 trip pattern). NO parallel money fn (COMMS-0014/0016).
 import type { BusinessEventCard } from "../types/mergedDiscover";
@@ -169,16 +176,12 @@ const IMAGE_SECTION_RATIO = 0.88;
 const DETAILS_SECTION_RATIO = 1 - IMAGE_SECTION_RATIO;
 const CARD_ANIMATION_DURATION = 400;
 
-// ORCH-1042: exported so CuratedExperienceSwipeCard reuses the SAME hard-failure
-// fallback URL (one source of truth — do not duplicate the literal).
-export const CARD_FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&q=80';
-
-// ORCH-1042: neutral dark blurhash shown during decode so the hero is NEVER a bare
-// `#1a1a2e`/`#2C2C2E` panel. Reads as an intentional "loading" affordance (a soft
-// neutral wash), not the old near-black container. No new dependency, no server
-// pipeline — expo-image accepts a constant blurhash string natively. Exported so
-// the curated deck path uses the identical placeholder.
-export const DECK_HERO_PLACEHOLDER_BLURHASH = 'L23%jdof00WB~qj[ayfQayfQfQfQ';
+// ORCH-1042 / ORCH-1065 BUG-3: these two leaf constants moved to
+// ./deckHeroConstants to break the SwipeableCards <-> CuratedExperienceSwipeCard
+// require cycle. Re-exported here so any historical importer that read them off
+// SwipeableCards keeps working (back-compat); the canonical source is the new
+// module. expo-image accepts a constant blurhash natively — no new dependency.
+export { CARD_FALLBACK_IMAGE, DECK_HERO_PLACEHOLDER_BLURHASH };
 
 // ORCH-1042: fade-in once the photo decodes so the swap is never a hard black→photo
 // cut. Within the spec's 180–300 ms band.
