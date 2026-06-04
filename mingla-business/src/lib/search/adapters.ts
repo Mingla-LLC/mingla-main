@@ -216,7 +216,8 @@ export function tripsToIndexEntries(
 
 // --------------------------------------------------------------------------
 // Experiences — useExperiencesByBrand → VenueExperience[]
-// Route resolves to /experience/coming-soon via routeForEventRow (R-2/N-6).
+// Route resolves via routeForEventRow → /experience/{id} dashboard
+// (META-ORCH-1059; the old coming-soon stub is retired). R-2/N-6.
 // --------------------------------------------------------------------------
 
 export function experiencesToIndexEntries(

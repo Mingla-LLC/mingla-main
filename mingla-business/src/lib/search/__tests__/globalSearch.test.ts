@@ -28,7 +28,6 @@ import type { Trip } from "../../../services/tripsService";
 import type { VenueExperience } from "../../../services/experiencesService";
 
 const BRAND_ID = "brand_123";
-const OWNER_RANK = 60;
 
 function makeEvent(over: Partial<LiveEvent> & { id: string; name: string }): LiveEvent {
   return {
@@ -121,6 +120,14 @@ function makeExperience(over: { id: string; title: string }): VenueExperience {
     capacityMin: null,
     capacityMax: null,
     suggestedTimeOfDay: null,
+    // META-ORCH-1059 list-card fields (added on main; kept in sync post-merge).
+    coverMediaUrl: null,
+    coverMediaType: null,
+    dateSubline: "Draft",
+    priceLabel: null,
+    spotsSold: 0,
+    revenueCents: 0,
+    revenueCurrency: null,
   };
 }
 
@@ -204,13 +211,15 @@ describe("globalSearch — T-03 trip + experience routes", () => {
     expect(top?.route).toBe("/trip/le_trip");
   });
 
-  test("experience resolves to /experience/coming-soon (no dead tap)", () => {
+  test("experience resolves to /experience/{id} dashboard (no dead tap)", () => {
     const exp = makeExperience({ id: "vx_wine", title: "Wine Tasting Flight" });
     const index = fullIndex([], [], [exp]);
     const results = searchIndex("Wine Tasting", index);
     const top = results.find((r) => r.type === "experience");
     expect(top?.id).toBe("vx_wine");
-    expect(top?.route).toBe("/experience/coming-soon");
+    // META-ORCH-1059 landed the experience dashboard; routeForEventRow now
+    // returns /experience/{id} (coming-soon stub retired) — still no dead tap.
+    expect(top?.route).toBe("/experience/vx_wine");
   });
 });
 

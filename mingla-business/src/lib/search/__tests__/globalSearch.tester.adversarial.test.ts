@@ -202,8 +202,10 @@ describe("tester-adversarial B — adapters skip junk ids + emit only safe route
     for (const e of [...trips, ...exps]) {
       expect(e.route.startsWith("/")).toBe(true);
     }
-    // experiences always resolve to the coming-soon stub (no dead tap).
-    expect(exps.every((e) => e.route === "/experience/coming-soon")).toBe(true);
+    // experiences resolve to their real dashboard route `/experience/{id}`
+    // via routeForEventRow (META-ORCH-1059 landed the experience dashboard;
+    // the old coming-soon stub is retired) — still no dead tap.
+    expect(exps.every((e) => e.route === `/experience/${e.id}`)).toBe(true);
   });
 
   test("a full build over type-faithful offerings still searches the registry", () => {
