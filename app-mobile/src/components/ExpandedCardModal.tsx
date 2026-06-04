@@ -50,6 +50,7 @@ import ShareModal from "./ShareModal";
 import InAppBrowserModal from "./InAppBrowserModal";
 // ORCH-0824: business-event branch (renders when props.businessEvent is set and props.card is null).
 import { ExpandedBusinessEventSheet } from "./expandedCard/ExpandedBusinessEventSheet";
+import type { BusinessEventCard } from "../types/mergedDiscover";
 import { PicnicShoppingList } from './PicnicShoppingList';
 import { useReplaceStop } from '../hooks/useReplaceStop';
 import { estimateTravelMinutes, haversineKm, replaceStopInCard, StopAlternative } from '../utils/mutateCuratedCard';
@@ -1414,22 +1415,30 @@ export default function ExpandedCardModal({
     images: [],
     initialIndex: 0,
   });
+  // ORCH-1071 — the experience opened from the VenueExperiencesSection. The
+  // ExpandedBusinessEventSheet renders as a SIBLING of the root sheet (below);
+  // while it is open the root sheet is gated off, mirroring the browser/share
+  // child-surface pattern.
+  const [selectedVenueExperience, setSelectedVenueExperience] =
+    useState<BusinessEventCard | null>(null);
+
   const anyChildModalOpen =
     browserUrl !== null ||
     ticketBrowserUrl !== null ||
     isNightOutShareOpen ||
     isSchedulePickerOpen ||
-    curatedLightbox.visible;
+    curatedLightbox.visible ||
+    selectedVenueExperience !== null;
 
   const handleRootSheetClose = useCallback(() => {
     // ORCH-1022: while a child RN Modal/WebView is open, the root sheet is
     // intentionally suppressed to free the native presentation slot. Swallow
     // BaseBottomSheet's synthetic close so the card state is not torn down.
-    if (browserUrl !== null || ticketBrowserUrl !== null || isNightOutShareOpen || isSchedulePickerOpen || curatedLightbox.visible) {
+    if (browserUrl !== null || ticketBrowserUrl !== null || isNightOutShareOpen || isSchedulePickerOpen || curatedLightbox.visible || selectedVenueExperience !== null) {
       return;
     }
     onClose();
-  }, [browserUrl, curatedLightbox.visible, isNightOutShareOpen, isSchedulePickerOpen, onClose, ticketBrowserUrl]);
+  }, [browserUrl, curatedLightbox.visible, isNightOutShareOpen, isSchedulePickerOpen, onClose, ticketBrowserUrl, selectedVenueExperience]);
 
   // Review navigation: horizontal swipe to cycle through reviewed cards
   const hasNavigation = onNavigateNext !== undefined || onNavigatePrevious !== undefined;
@@ -2060,7 +2069,7 @@ export default function ExpandedCardModal({
                 <VenueExperiencesSection
                   placePoolId={card.id}
                   currency={accountPreferences?.currency}
-                  sheetBottomInset={Math.max(insets.bottom, 16) + 8}
+                  onOpenExperience={setSelectedVenueExperience}
                 />
 
                 {/* Weather Section */}
@@ -2240,6 +2249,20 @@ export default function ExpandedCardModal({
               </>
             ))}
       </BaseBottomSheet>
+
+      {/* ORCH-1071 — experience opened from the VenueExperiencesSection. Renders
+          as a SIBLING of the root sheet (the proven sub-sheet pattern: a second
+          gorhom sheet must not be nested in the root sheet's scroll content).
+          The root sheet is gated off (anyChildModalOpen) while this is open;
+          closing it clears the selection WITHOUT tearing down the card. */}
+      {selectedVenueExperience !== null && (
+        <ExpandedBusinessEventSheet
+          visible={selectedVenueExperience !== null}
+          data={selectedVenueExperience}
+          onClose={() => setSelectedVenueExperience(null)}
+          bottomContentInset={Math.max(insets.bottom, 16) + 8}
+        />
+      )}
 
       {/* META-ORCH-0991 Wave A — child RN Modals moved to siblings of the sheet.
           They render in their own OS overlay window regardless of tree position,

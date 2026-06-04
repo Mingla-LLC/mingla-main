@@ -127,16 +127,21 @@ check("so_0 transform mirror produces the expected still URL", () => {
   assert.equal(out, "https://res.cloudinary.com/m/video/upload/so_0/v1/cover.jpg");
 });
 
-// ── 4. Section: empty → null (no header), opens the experience sheet ──
+// ── 4. Section: empty → null (no header), emits selection upward ──
 const section = read(SECTION);
 console.log("VenueExperiencesSection:");
 check("renders nothing when there are no experiences (no empty header)", () => {
   assert.match(section, /data\.length === 0/);
   assert.match(section, /return null/);
 });
-check("opens ExpandedBusinessEventSheet on row tap", () =>
-  assert.match(section, /<ExpandedBusinessEventSheet/),
-);
+check("emits the tapped experience via onOpenExperience (no nested sheet)", () => {
+  assert.match(section, /onOpenExperience/);
+  // The second sheet must NOT be nested inside this section's scroll content.
+  assert.ok(
+    !/<ExpandedBusinessEventSheet/.test(section),
+    "VenueExperiencesSection must not render ExpandedBusinessEventSheet itself",
+  );
+});
 check("maps the row through experienceToBusinessEventCard", () =>
   assert.match(section, /experienceToBusinessEventCard/),
 );
@@ -165,6 +170,27 @@ check("positioned BENEATH CardInfoSection and ABOVE WeatherSection", () => {
     `expected order CardInfo(${infoIdx}) < Experiences(${expIdx}) < Weather(${weatherIdx})`,
   );
 });
+check("experience sheet is a SIBLING of the root sheet (not nested in scroll)", () => {
+  // The ExpandedBusinessEventSheet opened by this section must render AFTER the
+  // root sheet closes (</BaseBottomSheet>) — i.e. as a sibling, gated on
+  // selectedVenueExperience — so the gorhom sheet is not mis-positioned inside
+  // the root sheet's scroll content.
+  assert.match(modal, /const \[selectedVenueExperience, setSelectedVenueExperience\]/);
+  assert.match(modal, /onOpenExperience=\{setSelectedVenueExperience\}/);
+  const rootCloseIdx = modal.lastIndexOf("</BaseBottomSheet>");
+  const siblingSheetIdx = modal.indexOf(
+    "data={selectedVenueExperience}",
+  );
+  assert.ok(rootCloseIdx !== -1, "root </BaseBottomSheet> not found");
+  assert.ok(siblingSheetIdx !== -1, "sibling experience sheet not found");
+  assert.ok(
+    siblingSheetIdx > rootCloseIdx,
+    "experience sheet must be a sibling AFTER the root sheet, not nested",
+  );
+});
+check("root sheet is gated off while the experience sheet is open", () =>
+  assert.match(modal, /selectedVenueExperience !== null/),
+);
 
 console.log("");
 if (simulateRevert) {

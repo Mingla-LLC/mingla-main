@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback } from "react";
 import {
   View,
   Text,
@@ -19,15 +19,20 @@ import {
   formatExperiencePrice,
   experienceToBusinessEventCard,
 } from "../../utils/venueExperienceMapping";
-import { ExpandedBusinessEventSheet } from "./ExpandedBusinessEventSheet";
+import type { BusinessEventCard } from "../../types/mergedDiscover";
 
 interface VenueExperiencesSectionProps {
   /** Deck card id == place_pool.id (uuid). Non-uuid ids disable the fetch. */
   placePoolId: string | null | undefined;
   /** Account-preference currency, used as the display fallback. */
   currency?: string | null;
-  /** Bottom inset forwarded to the experience sheet (safe-area breathing room). */
-  sheetBottomInset?: number;
+  /**
+   * Called with the experience mapped to the BusinessEventCard shape when a row
+   * is tapped. ExpandedCardModal renders the ExpandedBusinessEventSheet as a
+   * sibling of its root sheet (not nested here) and gates the root off while it
+   * is open — the proven sub-sheet pattern.
+   */
+  onOpenExperience: (card: BusinessEventCard) => void;
 }
 
 function ExperienceRow({
@@ -81,21 +86,18 @@ function ExperienceRow({
 export default function VenueExperiencesSection({
   placePoolId,
   currency,
-  sheetBottomInset = 24,
+  onOpenExperience,
 }: VenueExperiencesSectionProps): React.ReactElement | null {
   const { data } = useVenueExperiences(placePoolId);
-  const [openRow, setOpenRow] = useState<VenueExperienceRow | null>(null);
 
-  const handleOpen = useCallback((row: VenueExperienceRow) => {
-    setOpenRow(row);
-  }, []);
-  const handleClose = useCallback(() => {
-    setOpenRow(null);
-  }, []);
-
-  const experienceCard = useMemo(
-    () => (openRow ? experienceToBusinessEventCard(openRow) : null),
-    [openRow],
+  // Emit the selection upward; ExpandedCardModal owns the ExpandedBusinessEventSheet
+  // as a SIBLING of the root sheet (feedback_rn_sub_sheet_must_render_inside_parent
+  // — a second sheet must not be nested inside the root sheet's scroll content).
+  const handleOpen = useCallback(
+    (row: VenueExperienceRow) => {
+      onOpenExperience(experienceToBusinessEventCard(row));
+    },
+    [onOpenExperience],
   );
 
   // Render nothing until there is at least one experience — no empty header,
@@ -120,15 +122,6 @@ export default function VenueExperiencesSection({
           onPress={handleOpen}
         />
       ))}
-
-      {experienceCard !== null && (
-        <ExpandedBusinessEventSheet
-          visible={openRow !== null}
-          data={experienceCard}
-          onClose={handleClose}
-          bottomContentInset={sheetBottomInset}
-        />
-      )}
     </View>
   );
 }
