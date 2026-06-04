@@ -41,11 +41,12 @@ Sentry.init({
   // 10% session-replay coverage caused ~5-15% sustained CPU on Snapdragon 6xx
   // Android during scroll. 1% is plenty for diagnostic sampling pre-launch.
   // DO NOT raise without ORCH approval — Android perf cost.
-  // ORCH-1064 TEMPORARY DIAGNOSTIC (revert to 0.01 after capture): the
-  // device-only input-capture freeze produces no crash/hang/error, so the only
-  // way to see it is a forced 100% session replay (records dead-clicks + the
-  // exact screen/modal state at the freeze). Raised intentionally for diagnosis.
-  replaysSessionSampleRate: 1.0,
+  // ORCH-1064: 100% session-replay diagnostic was used to capture the device-only
+  // input-capture freeze (no crash/hang/error to surface it otherwise). Freeze
+  // root-caused (BaseBottomSheet half-open stall) + fixed (double-drive removal +
+  // deterministic timing animation) + operator-confirmed on device 2026-06-03.
+  // Reverted to 0.01 per the Android-perf rule above.
+  replaysSessionSampleRate: 0.01,
   replaysOnErrorSampleRate: 1,
   integrations: [Sentry.mobileReplayIntegration()],
 
