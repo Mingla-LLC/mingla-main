@@ -149,11 +149,27 @@ export function resolveBusinessNavTarget(data: BusinessPushData): BusinessNavTar
  */
 function markRowClicked(notificationId: string): void {
   const nowIso = new Date().toISOString();
+  // I-PROPOSED-I: chain `.select("id")` so the update returns affected rows and
+  // we verify exactly one was touched (a 0-row result means RLS blocked it or
+  // the id was stale — surfaced, never silently swallowed).
   void supabase
     .from("notifications")
     .update({ read_at: nowIso, push_clicked: true, push_clicked_at: nowIso })
     .eq("id", notificationId)
-    .then(() => undefined);
+    .select("id")
+    .then(({ data, error }) => {
+      if (error) {
+        console.warn(
+          "[businessNotificationRouting] markRowClicked failed:",
+          error.message,
+        );
+      } else if (!data || data.length === 0) {
+        console.warn(
+          "[businessNotificationRouting] markRowClicked: no row updated for",
+          notificationId,
+        );
+      }
+    });
 }
 
 type ExpoRouter = ReturnType<typeof useRouter>;
